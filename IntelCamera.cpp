@@ -1,316 +1,74 @@
+/*
+**
+** Copyright 2008, The Android Open Source Project
+**
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
+**
+**     http://www.apache.org/licenses/LICENSE-2.0
+**
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
+** limitations under the License.
+*/
+
 #define LOG_TAG "IntelCamera"
 #include <utils/Log.h>
 
 #include "IntelCamera.h"
 
-
 namespace android {
 
-#define CHECK_RET(ret, cond, msg)					\
-  if((ret) != (cond)) {							\
-    LOGE("%s: %s failed error code = %d", __FUNCTION__, (msg), (ret));	\
-  }									\
-  else {								\
-    if( DEBUG_LEVEL > 0) {						\
-      LOGD("%s: %s success", __FUNCTION__, (msg));			\
-    }									\
-  }
-#define CHECK_CI_RET(ret, msg)			\
-  CHECK_RET(ret, CI_STATUS_SUCCESS, msg)
+  static intel_fmt_list_t intel_fmt_list[] = {
+    { INTEL_PIX_FMT_RGB565 ,16 },
+    { INTEL_PIX_FMT_BGR32, 32 },
+    { INTEL_PIX_FMT_YUYV, 16 },
+    { INTEL_PIX_FMT_YUV422P, 16 },
+    { INTEL_PIX_FMT_YUV420, 12 },
+    { INTEL_PIX_FMT_YVU420, 12 },
+    { INTEL_PIX_FMT_NV12, 12 },
+    { INTEL_PIX_FMT_JPEG, 12 },
+    { INTEL_PIX_FMT_RAW08, 8 },
+    { INTEL_PIX_FMT_RAW10, 16 },
+    { INTEL_PIX_FMT_RAW12, 16 }
+  };
 
-
-IntelCamera::IntelCamera()
-  : frame_infos(0),
-    cur_frame_fmt(0),
-    snr_info(0)
-{
-  struct_init();
-}
-
-IntelCamera::~IntelCamera()
-{
-  struct_finalize();
-}
-
-void IntelCamera::struct_init(void)
-{
-  int ret;
-  /* initialize ci */
-  ret = ci_initialize(&ci_str.major_version, &ci_str.minor_version);
-  CHECK_CI_RET(ret, "ci initialize");
-  alloc_sensor_infos();
-  adv_setting_init();
-}
-
-void IntelCamera::struct_finalize(void)
-{
-  int ret;
-  free_sensor_infos();
-  ret = ci_terminate();
-  CHECK_CI_RET(ret, "ci terminate");
-}
-
-void IntelCamera::capture_init(unsigned int sensor_width, 
-				unsigned int sensor_height,
-				ci_frame_format frame_fmt,
-				unsigned int frame_num)
-{
-  int ret;
-  /* create context for view finding */
-  ret = ci_create_context(&(ci_str.context));
-  CHECK_CI_RET(ret, "create context");
-
-  /* config contexts */
-  ci_str.snr_id = snr_info->snr_id;
-  ret = ci_context_set_cfg(ci_str.context, CI_CFG_SENSOR,
-			   (void*)(&ci_str.snr_id));
-  CHECK_CI_RET(ret, "set sensor");
-
-  /* set sensor output resolution */
-  ci_resolution res;
-  res.width = sensor_width;
-  res.height = sensor_height;
-  ret = ci_context_set_cfg(ci_str.context, CI_CFG_SENSOR_RES,
-			   (void *)(&res));
-  CHECK_CI_RET(ret, "set sensor resolution");
-  if ( ret == CI_STATUS_SUCCESS ) {
-    ci_str.snr_width = res.width;
-    ci_str.snr_height = res.height;
-  }
-
-  /* get isp and snr device */
-  ret = ci_get_device(ci_str.context, CI_DEVICE_SENSOR,
-		&(ci_str.snr_dev));
-  CHECK_CI_RET(ret, "get sensor device");
-
-  ret = ci_get_device(ci_str.context, CI_DEVICE_ISP,
-		&(ci_str.isp_dev));
-  CHECK_CI_RET(ret, "get isp device");
-
-  /*start context */
-  ret = ci_start_context(ci_str.context);
-  CHECK_CI_RET(ret, "start context");
-
-  /* get isp config to determine whether to use continous_af */
-  ci_isp_config isp_cfg;
-  ret = ci_isp_get_cfg(ci_str.isp_dev, &isp_cfg);
-  ci_str.continous_af = isp_cfg.flags.continous_af;
-  CHECK_CI_RET(ret, "get isp config");
-
-  /* create frames */
-  //  ci_str.frames = (ci_isp_frame_id *)malloc(sizeof(ci_isp_frame_id)*frame_num);
-    ci_str.frames = new ci_isp_frame_id[frame_num];
-
-  unsigned int w, h;
-  w = sensor_width;
-  h = sensor_height;
-  ci_str.fm_width = w;
-  ci_str.fm_height = h;
-  /* VIDIOC_S_FMT, VIDIOC_REQBUFS */
-  ret = ci_isp_create_frames(ci_str.isp_dev, &w, &h,
-		       frame_fmt,
-		       frame_num,
-		       ci_str.frames);
-  CHECK_CI_RET(ret, "isp create frames");
-  cur_frame_fmt = frame_fmt;
-
-  ci_str.frame_num = frame_num;
-}
-
-void IntelCamera::capture_finalize(void)
-{
-  int ret;
-  /* destroy frames */
-  ret = ci_isp_destroy_frames(ci_str.isp_dev, ci_str.frames);
-  CHECK_CI_RET(ret, "destory frames");
-  //free(ci_str.frames);
-  delete [] ci_str.frames;
-  /* stop context */
-  ret = ci_stop_context(ci_str.context);
-  CHECK_CI_RET(ret, "stop context");
-  /* destroy context */
-  ret = ci_destroy_context(ci_str.context);
-  CHECK_CI_RET(ret, "destory context");
-  ci_str.cur_frame = 0;
-}
-
-void IntelCamera::capture_start(void)
-{
-  int ret;
-  ret = ci_isp_max_num_lock_frames(ci_str.isp_dev,
-			     &ci_str.max_lock_frame_num);
-  CHECK_CI_RET(ret, "isp max num lock frames");
-
-  /* VIDIOC_STREAMON , VIDIOC_QUERYBUF */
-  ret = ci_isp_start_capture(ci_str.isp_dev);
-  CHECK_CI_RET(ret, "isp start capture");
-
-  unsigned int i, frame_num = ci_str.frame_num;
-  for (i = 0; i < frame_num; i++) {
-    /* VIDIOC_QBUF */
-    ret = ci_isp_set_frame_ext(ci_str.isp_dev,
-			       ci_str.frames[i]);
-    CHECK_CI_RET(ret, "isp set frame ext");
-  }
-
-}
-
-void IntelCamera::capture_map_frame(void)
-{
-  int ret;
-  unsigned int i, frame_num = ci_str.frame_num;
-  frame_infos = new ci_isp_frame_map_info[frame_num];
-  
-  for(i = 0; i < frame_num; i++) {
-    ret = ci_isp_map_frame(ci_str.isp_dev, ci_str.frames[i], &(frame_infos[i]));
-    CHECK_CI_RET(ret, "capture map frame");
-    LOGD("%s : frame_infos[%u]=%p",__func__, i, &(frame_infos[i]));
-  }
-}
-
-void IntelCamera::capture_unmap_frame(void)
-{
-  int ret;
-  unsigned int i, frame_num = ci_str.frame_num;
-
-  for(i = 0; i < frame_num; i++) {
-    ret = ci_isp_unmap_frame(ci_str.isp_dev, &(frame_infos[i]));
-    CHECK_CI_RET(ret, "capture unmap frame");
-    LOGD("%s : frame_infos[%u]=%p",__func__, i, &(frame_infos[i]));
-  }
-  delete [] frame_infos;
-}
-
-unsigned int IntelCamera::capture_grab_frame(void *buffer)
-{
-  int ret;
-  unsigned int frame;
-
-  /* VIDIOC_DQBUF */
-  ret = ci_isp_capture_frame_ext(ci_str.isp_dev, (ci_isp_frame_id *)&frame);
-  CHECK_CI_RET(ret, "capture frame ext");
-  ci_str.cur_frame = frame;
-  /*
-  LOGD("frame_infos[%u].addr=0x%p, frame_infos[%u].size=0x%x, buffer=0x%p",
-       frame,
-       frame_infos[frame].addr,
-       frame,
-       frame_infos[frame].size,
-       buffer);
-  */
-  if(buffer != NULL) {
-    switch(cur_frame_fmt) {
-    case INTEL_PIX_FMT_YUYV :
-      //      LOGD("INTEL_PIX_FMT_YUYV");
-      yuyv422_to_yuv420sp((unsigned char *)(frame_infos[frame]).addr,
-			  (unsigned char *)buffer,
-			  ci_str.fm_width,
-			  ci_str.fm_height);
-      break;
-    case INTEL_PIX_FMT_NV12 :
-      //      LOGD("INTEL_PIX_FMT_NV12");
-      memcpy(buffer, frame_infos[frame].addr, frame_infos[frame].size);
-      break;
-    case INTEL_PIX_FMT_JPEG :
-      //      LOGD("INTEL_PIX_FMT_JPEG");
-      memcpy(buffer, frame_infos[frame].addr, frame_infos[frame].size);
-      break;
-    default :
-      LOGE("Unknown Format type");
+  static adv_param_t default_adv_params[] = {
+    {
+      {640,480},/* res */
+      {{0, 0, 640, 480},CI_ISP_AWB_AUTO,CI_ISP_AWB_AUTO_ON},/* wb */
+      {{((640/2)-(50/2)),((480/2)-(50/2)),50,50},{0, 0, 0, 0},{0, 0, 0, 0},CI_ISP_AFSS_OFF},/* af */
+      {{3, 1, 516, 388},{0, 0, 640, 480}}/* ae */
+    },
+    {
+      {1280,720},
+      {{0, 0, 1280, 720},CI_ISP_AWB_AUTO,CI_ISP_AWB_AUTO_ON},
+      {{((1280/2)-(50/2)),((720/2)-(50/2)),50,50},{0, 0, 0, 0},{0, 0, 0, 0},CI_ISP_AFSS_OFF},
+      {{6, 2, 516, 388},{0, 0, 1280, 720}}
+    },
+    {
+      {1280,960},
+      {{0, 0, 1280, 960},CI_ISP_AWB_AUTO,CI_ISP_AWB_AUTO_ON},
+      {{((1280/2)-(50/2)),((960/2)-(50/2)),50,50},{0, 0, 0, 0},{0, 0, 0, 0},CI_ISP_AFSS_OFF},
+      {{6, 2, 516, 388},{0, 0, 1280, 960}}
+    },
+    {
+      {1920,1080},
+      {{0, 0, 1920, 1080},CI_ISP_AWB_AUTO,CI_ISP_AWB_AUTO_ON},
+      {{((1920/2)-(50/2)),((1080/2)-(50/2)),50,50},{0, 0, 0, 0},{0, 0, 0, 0},CI_ISP_AFSS_OFF},
+      {{6, 2, 516, 388},{0, 0, 1920, 1080}}
+    },
+    {
+      {2592,1944},
+      {{0, 0, 2592, 1944},CI_ISP_AWB_AUTO,CI_ISP_AWB_AUTO_ON},
+      {{((2592/2)-(50/2)),((1944/2)-(50/2)),50,50},{0, 0, 0, 0},{0, 0, 0, 0},CI_ISP_AFSS_OFF},
+      {{6, 2, 516, 388},{0, 0, 2592, 1944}}
     }
-  }
-  ret = ci_bp_correct(ci_str.context);
-  CHECK_CI_RET(ret, "bp correct");
-  ret = ci_bl_compensate(ci_str.context);
-  CHECK_CI_RET(ret, "bl compensate");
+  };
 
-  return frame;
-}
-
-unsigned int IntelCamera::capture_grab_record_frame(void *buffer)
-{
-  if(buffer != NULL) {
-    switch(cur_frame_fmt) {
-    case INTEL_PIX_FMT_YUYV :
-      yuyv422_to_yuv420sp((unsigned char *)(frame_infos[ci_str.cur_frame]).addr,
-			  (unsigned char *)buffer,
-			  ci_str.fm_width,
-			  ci_str.fm_height);
-      break;
-    case INTEL_PIX_FMT_NV12 :
-      memcpy(buffer, frame_infos[ci_str.cur_frame].addr, frame_infos[ci_str.cur_frame].size);
-      break;
-    default :
-      LOGE("Unknown Format type");
-    }
-  }
-  return ci_str.cur_frame;
-}
-
-void IntelCamera::capture_recycle_frame(void)
-{
-  int ret;
-  //  ci_str.cur_frame = (ci_str.cur_frame + 1) % ci_str.frame_num;
-  ret = ci_isp_set_frame_ext(ci_str.isp_dev,ci_str.frames[ci_str.cur_frame]);
-  CHECK_CI_RET(ret, "isp set frame ext");
-}
-
-void IntelCamera::capture_setup_AE(unsigned int sw)
-{
-  if ( snr_info->type == SENSOR_TYPE_2M ) {
-    setup_AE_for_soc_snr();
-  } else {
-    setup_AE_for_raw_snr();
-  }
-}
-
-void IntelCamera::capture_setup_AWB(unsigned int sw)
-{
-  if ( snr_info->type == SENSOR_TYPE_2M ) {
-    setup_AWB_for_soc_snr();
-  } else {
-    setup_AWB_for_raw_snr();
-  }
-}
-
-void IntelCamera::capture_setup_AF(unsigned int sw)
-{
-  if ( snr_info->type == SENSOR_TYPE_2M ) {
-    setup_AF_for_soc_snr();
-  } else {
-    setup_AF_for_raw_snr();
-  }
-}
-
-void IntelCamera::auto_focus_process(void)
-{
-  int ret;
-  if ( snr_info->type == SENSOR_TYPE_5M ) {
-      ret = ci_af_process(ci_str.context);
-      CHECK_CI_RET(ret, "ci af process");
-  }
-}
-
-void IntelCamera::auto_exposure_process(void)
-{
-  int ret;
-  if ( snr_info->type == SENSOR_TYPE_5M ) {
-      ret = ci_ae_process(ci_str.context);
-      CHECK_CI_RET(ret, "ci ae process");
-  }
-}
-
-void IntelCamera::auto_white_balance_process(void)
-{
-  int ret;
-   if ( snr_info->type == SENSOR_TYPE_5M ) {
-       ret = ci_awb_process(ci_str.context);
-       CHECK_CI_RET(ret, "ci awb process");
-   }
-}
-
-void IntelCamera::capture_setup_jpeg_ratio(ci_jpeg_ratio ratio)
-{
   /*
 typedef enum
   {
@@ -325,20 +83,23 @@ typedef enum
     CI_JPEG_70_PERCENTAGE,
     CI_JPEG_80_PERCENTAGE,
     CI_JPEG_90_PERCENTAGE,
-        CI_JPEG_99_PERCENTAGE
+    CI_JPEG_99_PERCENTAGE
   }ci_jpeg_ratio;
   */
-  int ret;
-  /* set image effect */
-  adv_setting.jpeg_ratio = ratio;
-  ret = ci_context_set_cfg(ci_str.context, CI_CFG_JPEG,
-			   (void*)&(adv_setting.jpeg_ratio));
-  CHECK_CI_RET(ret, "set jpeg ratio");
-}
-
-void IntelCamera::capture_setup_image_effect(ci_ie_mode mode)
-{
-
+static pref_map_t pref_jpeg_quality_map[] = {
+  { "01", CI_JPEG_01_PERCENTAGE },
+  { "20", CI_JPEG_20_PERCENTAGE },
+  { "30", CI_JPEG_30_PERCENTAGE },
+  { "40", CI_JPEG_40_PERCENTAGE },
+  { "50", CI_JPEG_50_PERCENTAGE },
+  { "60", CI_JPEG_60_PERCENTAGE },
+  { "70", CI_JPEG_70_PERCENTAGE },
+  { "80", CI_JPEG_80_PERCENTAGE },
+  { "90", CI_JPEG_90_PERCENTAGE },
+  { "99", CI_JPEG_99_PERCENTAGE },
+  { "100", CI_JPEG_HIGH_COMPRESSION },
+  { NULL, 0 }
+};
   /*
   <typedef for enum of image effect mode for context config>
   typedef enum {
@@ -358,140 +119,668 @@ void IntelCamera::capture_setup_image_effect(ci_ie_mode mode)
     CI_IE_MODE_SKETCH
   }ci_ie_mode;
   */
-  int ret;
-  /* set image effect */
-  adv_setting.image_effect = mode;
-  ret = ci_context_set_cfg(ci_str.context, CI_CFG_IE,
-			   (void*)&(adv_setting.image_effect));
-  CHECK_CI_RET(ret, "set image effect");
-}
+static pref_map_t pref_color_effect_map[] = {
+  { "none", CI_IE_MODE_OFF },
+  { "mono", CI_IE_MODE_GRAYSCALE },
+  { "negative", CI_IE_MODE_NEGATIVE},
+  { "sepia", CI_IE_MODE_SEPIA},
+  { "aqua", CI_IE_MODE_COLORSEL},
+  { "pastel", CI_IE_MODE_EMBOSS},
+  { "whiteboard", CI_IE_MODE_SKETCH},
+  { NULL, 0 }
+};
 
-void IntelCamera::setup_AE_for_soc_snr(void)
-{
-  int ret;
-  adv_setting.soc_snr_ae_on = ON;
+  /*
+     possible autofocus search strategy modes
+     enum ci_isp_afss_mode {
+     CI_ISP_AFSS_OFF,
+     CI_ISP_AFSS_FULL_RANGE,
+     CI_ISP_AFSS_HILLCLIMBING,
+     CI_ISP_AFSS_ADAPTIVE_RANGE,
+     CI_ISP_AFSS_HELIMORPH_OPT,
+     CI_ISP_AFSS_OV2630_LPD4_OPT
+     };
+  */
 
-  if ( adv_setting.soc_snr_ae_on  == (unsigned int)ON ) {
-    LOGD("set AE ON");
-  } else {
-    LOGD("set AE OFF");
+static pref_map_t pref_af_map[] = {
+  { "off", CI_ISP_AFSS_OFF },
+  { "auto", CI_ISP_AFSS_ADAPTIVE_RANGE },
+  { "infinity", CI_ISP_AFSS_FULL_RANGE },
+  { "macro", CI_ISP_AFSS_OFF },
+  { NULL, 0 }
+};
+
+  /*
+     possible AEC modes
+     enum ci_isp_aec_mode {
+     CI_ISP_AEC_OFF,
+     CI_ISP_AEC_INTEGRAL,
+     CI_ISP_AEC_SPOT,
+     CI_ISP_AEC_MFIELD5,
+     CI_ISP_AEC_MFIELD9
+     };
+  */
+ static pref_map_t pref_aec_map[] = {
+  { "off", CI_ISP_AEC_OFF }, //off
+  { "on", CI_ISP_AEC_INTEGRAL }, //on
+  { "spot", CI_ISP_AEC_SPOT },
+  { "mfield5", CI_ISP_AEC_MFIELD5 },
+  { "mfield9", CI_ISP_AEC_MFIELD9 },
+  { NULL, 0 }
+};
+
+  /*
+  white balancing modes for the marvin hardware
+  enum ci_isp_awb_mode {
+    CI_ISP_AWB_COMPLETELY_OFF = 0,
+    CI_ISP_AWB_AUTO,
+    CI_ISP_AWB_MAN_MEAS,
+    CI_ISP_AWB_MAN_NOMEAS,
+    CI_ISP_AWB_MAN_PUSH_AUTO,
+    CI_ISP_AWB_ONLY_MEAS
+  };
+
+  white balancing modes for the marvin hardware
+  enum ci_isp_awb_sub_mode {
+    CI_ISP_AWB_SUB_OFF = 0,
+    CI_ISP_AWB_MAN_DAYLIGHT,
+    CI_ISP_AWB_MAN_CLOUDY,
+    CI_ISP_AWB_MAN_SHADE,
+    CI_ISP_AWB_MAN_FLUORCNT,
+    CI_ISP_AWB_MAN_FLUORCNTH,
+    CI_ISP_AWB_MAN_TUNGSTEN,
+    CI_ISP_AWB_MAN_TWILIGHT,
+    CI_ISP_AWB_MAN_SUNSET,
+    CI_ISP_AWB_MAN_FLASH,
+    CI_ISP_AWB_MAN_CIE_D65,
+    CI_ISP_AWB_MAN_CIE_D75,
+    CI_ISP_AWB_MAN_CIE_F2,
+    CI_ISP_AWB_MAN_CIE_F11,
+    CI_ISP_AWB_MAN_CIE_F12,
+    CI_ISP_AWB_MAN_CIE_A,
+    CI_ISP_AWB_AUTO_ON
+  };
+  */
+static pref_map_t pref_awb_map[] = {
+  { "off", CI_ISP_AWB_COMPLETELY_OFF },
+  { "auto", CI_ISP_AWB_AUTO },
+  { "man-meas", CI_ISP_AWB_MAN_MEAS },
+  { "man-nomeas", CI_ISP_AWB_MAN_NOMEAS },
+  { "man-push-auto", CI_ISP_AWB_MAN_PUSH_AUTO },
+  { "only-meas", CI_ISP_AWB_ONLY_MEAS},
+  { NULL, 0 }
+};
+static pref_map_t pref_awb_sub_map[] = {
+  { "auto", CI_ISP_AWB_AUTO_ON },
+  { "incandescent", CI_ISP_AWB_MAN_CIE_D65 },
+  { "daylight", CI_ISP_AWB_MAN_CIE_F2 },
+  { "fluorescent", CI_ISP_AWB_MAN_CIE_F11 },
+  { "cloudy", CI_ISP_AWB_MAN_CIE_F12 },
+  { "twilight", CI_ISP_AWB_MAN_CIE_A },
+  { NULL, 0 }
+};
+
+#define CHECK_RET(ret, cond, msg)					\
+  if((ret) != (cond)) {							\
+    LOGE("%s: %s failed error code = %d", __FUNCTION__, (msg), (ret));	\
+  }									\
+  else {								\
+      LOGV("%s: %s success", __FUNCTION__, (msg));			\
   }
-  /* setup AE */
-  ret = ci_context_set_cfg(ci_str.context, CI_CFG_AE,
-			   (void*)&(adv_setting.soc_snr_ae_on));
-  CHECK_CI_RET(ret, "set config for AE");
+#define CHECK_CI_RET(ret, msg)			\
+  CHECK_RET(ret, CI_STATUS_SUCCESS, msg)
+
+#define TURN_ON  1
+#define TURN_OFF 0
+
+AdvanceProcess::AdvanceProcess(ci_struct_t *ci_struct, sensor_info_t *snr_info_struct)
+  : fpImageProcessAF(NULL),
+    fpImageProcessAE(NULL),
+    fpImageProcessAWB(NULL),
+    fpSetAF(NULL),
+    fpSetAE(NULL),
+    fpSetAWB(NULL),
+    mCI(NULL),
+    mSensorInfo(NULL),
+    mParamAF(NULL),
+    mParamAE(NULL),
+    mParamAWB(NULL),
+    mImageProcessFlags(0)
+{
+     mCI = ci_struct;
+     mSensorInfo = snr_info_struct;
+     if ( mSensorInfo->type == SENSOR_TYPE_2M ) {
+	 fpSetAF = &AdvanceProcess::setAFforSOC;
+         fpSetAE = &AdvanceProcess::setAEforSOC;
+	 fpSetAWB = &AdvanceProcess::setAWBforSOC;
+	 fpImageProcessAF = &AdvanceProcess::imageProcessAFforSOC;
+	 fpImageProcessAE = &AdvanceProcess::imageProcessAEforSOC;
+	 fpImageProcessAWB = &AdvanceProcess::imageProcessAWBforSOC;
+     } else {
+	 fpSetAF = &AdvanceProcess::setAFforRAW;
+         fpSetAE = &AdvanceProcess::setAEforRAW;
+	 fpSetAWB = &AdvanceProcess::setAWBforRAW;
+	 fpImageProcessAF = &AdvanceProcess::imageProcessAFforRAW;
+	 fpImageProcessAE = &AdvanceProcess::imageProcessAEforRAW;
+	 fpImageProcessAWB = &AdvanceProcess::imageProcessAWBforRAW;
+     }
 }
 
-void IntelCamera::setup_AE_for_raw_snr(void)
+AdvanceProcess::~AdvanceProcess()
+{
+    fpSetAF = NULL;
+    fpSetAE = NULL;
+    fpSetAWB = NULL;
+    fpImageProcessAF = NULL;
+    fpImageProcessAE = NULL;
+    fpImageProcessAWB = NULL;
+    mParamAF = NULL;
+    mParamAE = NULL;
+    mParamAWB = NULL;
+}
+
+void AdvanceProcess::setAdvanceParams(unsigned int w, unsigned int h)
+{
+  int default_adv_param_num =
+    sizeof(default_adv_params)/sizeof(adv_param_t);
+
+  if (mSensorInfo->type == SENSOR_TYPE_5M) {
+    LOGV("%s: w=%u, h=%u",__func__,w,h);
+    for (int i=0; i<default_adv_param_num; i++) {
+      resolution_t *res = &default_adv_params[i].res;
+      if(res->width == w && res->height == h) {
+	mParamAF = &default_adv_params[i].af_param;
+	mParamAE = &default_adv_params[i].ae_param;
+	mParamAWB = &default_adv_params[i].wb_param;
+      }
+    }
+  } else {
+    mParamAF = NULL;
+    mParamAE = NULL;
+    mParamAWB = NULL;
+  }
+}
+
+void AdvanceProcess::advImageProcessAF(void)
+{
+    mImageProcessLock.lock();
+    if (fpImageProcessAF != NULL &&
+	isFlagEnabled(IMAGE_PRCOESS_FLAGS_TYPE_AF)) {
+        (this->*fpImageProcessAF)();
+    }
+    mImageProcessLock.unlock();
+}
+
+void AdvanceProcess::advImageProcessAE(void)
+{
+    mImageProcessLock.lock();
+    if (fpImageProcessAE != NULL &&
+	isFlagEnabled(IMAGE_PRCOESS_FLAGS_TYPE_AE)) {
+        (this->*fpImageProcessAE)();
+    }
+    mImageProcessLock.unlock();
+}
+
+void AdvanceProcess::advImageProcessAWB(void)
+{
+    mImageProcessLock.lock();
+    if (fpImageProcessAWB != NULL &&
+	isFlagEnabled(IMAGE_PRCOESS_FLAGS_TYPE_AWB)) {
+        (this->*fpImageProcessAWB)();
+    }
+    mImageProcessLock.unlock();
+}
+
+void AdvanceProcess::advSetAF(ci_isp_afss_mode mode)
+{
+    mImageProcessLock.lock();
+    if (fpSetAF != NULL) {
+        (this->*fpSetAF)(mode);
+    }
+    mImageProcessLock.unlock();
+}
+
+void AdvanceProcess::advSetAE(ci_isp_aec_mode mode)
+{
+    mImageProcessLock.lock();
+    if (fpSetAE != NULL) {
+        (this->*fpSetAE)(mode);
+    }
+    mImageProcessLock.unlock();
+}
+
+void AdvanceProcess::advSetAWB(ci_isp_awb_mode mode, ci_isp_awb_sub_mode sub_mode)
+{
+    mImageProcessLock.lock();
+    if (fpSetAWB != NULL) {
+        (this->*fpSetAWB)(mode, sub_mode);
+    }
+    mImageProcessLock.unlock();
+}
+
+void AdvanceProcess::imageProcessAFforSOC(void)
+{
+    disableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AF);
+}
+
+void AdvanceProcess::imageProcessAEforSOC(void)
+{
+    disableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AE);
+}
+
+void AdvanceProcess::imageProcessAWBforSOC(void)
+{
+    disableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AWB);
+}
+
+void AdvanceProcess::imageProcessAFforRAW(void)
 {
     int ret;
-    ci_ae_param ae_param = {
-      {3, 1, 516, 388},
-      {0, 0, 640, 480}};
+    LOGV("---- %s : AF PROCESS --",__func__);
+    ret = ci_af_process(mCI->context);
+    CHECK_CI_RET(ret, "ci af process");
+    disableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AF);
+}
 
-    adv_setting.raw_snr_aec_mode = CI_ISP_AEC_INTEGRAL;
-    LOGD("ae_param.meas_wnd: hoffs = %d, voffs = %d, ", ae_param.meas_wnd.hoffs, ae_param.meas_wnd.voffs);
-    LOGD("w = %d, h = %d", ae_param.meas_wnd.hsize, ae_param.meas_wnd.vsize);
-    LOGD("ae_param.hist_wnd: hoffs = %d, voffs = %d, ", ae_param.hist_wnd.hoffs, ae_param.hist_wnd.voffs);
-    LOGD("w = %d, h = %d", ae_param.hist_wnd.hsize, ae_param.hist_wnd.vsize);
-    if (adv_setting.raw_snr_aec_mode == CI_ISP_AEC_INTEGRAL) {
-      LOGD("set AE ON");
-      ret = ci_ae_setup(ci_str.context, ae_param, ON);
-    } else {
-      LOGD("set AE OFF");
-      ret = ci_ae_setup(ci_str.context, ae_param, OFF);
+void AdvanceProcess::imageProcessAEforRAW(void)
+{
+    int ret;
+    LOGV("---- %s : AE PROCESS--",__func__);
+    ret = ci_ae_process(mCI->context);
+    CHECK_CI_RET(ret, "ci ae process");
+    disableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AE);
+}
+
+void AdvanceProcess::imageProcessAWBforRAW(void)
+{
+    int ret;
+    LOGV("---- %s : AWB PROCESS --",__func__);
+    ret = ci_awb_process(mCI->context);
+    CHECK_CI_RET(ret, "ci awb process");
+    disableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AWB);
+}
+
+void AdvanceProcess::setAFforSOC(ci_isp_afss_mode mode)
+{
+    int ret;
+    // af only off
+    if ( mode != CI_ISP_AFSS_OFF ) {
+      mode = CI_ISP_AFSS_OFF;
     }
-    CHECK_CI_RET(ret, "ci_ae_setup");
-}
 
-void IntelCamera::setup_AWB_for_soc_snr(void)
-{
-  int ret;
-  if ( adv_setting.soc_snr_awb_on == (unsigned int)ON ) {
-    LOGD("set AWB ON");
-  } else {
-    LOGD("set AWB OFF");
-  }
-  /* setup AWB */
-  ret = ci_context_set_cfg(ci_str.context, CI_CFG_AWB,
-			   (void*)&(adv_setting.soc_snr_awb_on));
-  CHECK_CI_RET(ret, "set config for AWB");
-}
-
-void IntelCamera::setup_AWB_for_raw_snr(void)
-{
-  int ret;
-  ci_wb_param wb_param = {
-    {0, 0, 640, 480},
-    CI_ISP_AWB_AUTO,
-    CI_ISP_AWB_MAN_CIE_D65};
-
-  LOGD("wb_param.window: hoffs = %d, voffs = %d, ", wb_param.window.hoffs, wb_param.window.voffs);
-  LOGD("w = %d, h = %d", wb_param.window.hsize, wb_param.window.vsize);
-
-  if (wb_param.mode == CI_ISP_AWB_COMPLETELY_OFF) {
-    LOGD("set AWB OFF: %d, %d", (int)wb_param.mode, (int)wb_param.sub_mode);
-    ret = ci_wb_setup(ci_str.context, wb_param, OFF);
-  } else {
-    LOGD("set AWB OFF: %d, %d", (int)wb_param.mode, (int)wb_param.sub_mode);
-    ret = ci_wb_setup(ci_str.context, wb_param, ON);
-  }
-  CHECK_CI_RET(ret, "ci_awb_setup");
-}
-
-void IntelCamera::setup_AF_for_soc_snr(void)
-{
-  int ret;
-  if (adv_setting.soc_snr_af_on == (unsigned int)ON ) {
-    LOGD("set AF ON");
-  } else {
-    LOGD("set AF OFF");
-  }
+    if (mode == CI_ISP_AFSS_OFF ) {
+      LOGV("%s: set AF OFF",__func__);
+    } else {
+      LOGV("%s: set AF ON",__func__);
+    }
 
   /* setup AF */
-  ret = ci_context_set_cfg(ci_str.context, CI_CFG_AF,
-			   (void *)&(adv_setting.soc_snr_af_on));
+  ret = ci_context_set_cfg(mCI->context, CI_CFG_AF, (void *)&(mode));
   CHECK_CI_RET(ret, "set config for AF");
+  enableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AF);
 }
 
-void IntelCamera::setup_AF_for_raw_snr(void)
+void AdvanceProcess::setAEforSOC(ci_isp_aec_mode mode)
 {
   int ret;
-  ci_af_param af_param = {
-    {((640)/2-(50)/2),((480)/2-(50)/2),50,50},
-    {0, 0, 0, 0},
-    {0, 0, 0, 0},
-    CI_ISP_AFSS_OFF};
-
-  if(af_param.mode == CI_ISP_AFSS_OFF) {
-    LOGD("set AF OFF: %d",af_param.mode);
-    ret = ci_af_setup(ci_str.context, af_param, OFF);
-  } else {
-    LOGD("set AF OFF: %d",af_param.mode);
-    ret = ci_af_setup(ci_str.context, af_param, ON);
+  // ae only on
+  if ( mode != CI_ISP_AEC_INTEGRAL ) {
+    mode = CI_ISP_AEC_INTEGRAL;
   }
 
-  CHECK_CI_RET(ret, "ci_af_setup");
+  if ( mode == CI_ISP_AEC_OFF ) {
+    LOGV("%s: set AE OFF",__func__);
+  } else {
+    LOGV("%s: set AE ON",__func__);
+  }
+
+  /* setup AE */
+  ret = ci_context_set_cfg(mCI->context, CI_CFG_AE, (void*)&(mode));
+  CHECK_CI_RET(ret, "set config for AE");
+  enableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AE);
 }
 
-void IntelCamera::adv_setting_init(void)
+void AdvanceProcess::setAWBforSOC(ci_isp_awb_mode mode, ci_isp_awb_sub_mode sub_mode)
 {
-  adv_setting.soc_snr_af_on = OFF;
-  adv_setting.soc_snr_ae_on = ON;
-  adv_setting.soc_snr_awb_on = ON;
-  adv_setting.raw_snr_afss_mode = CI_ISP_AFSS_OFF;
-  adv_setting.raw_snr_awb_mode = CI_ISP_AWB_AUTO;
-  adv_setting.raw_snr_awb_submode = CI_ISP_AWB_MAN_CIE_D65;
-  adv_setting.raw_snr_aec_mode = CI_ISP_AEC_INTEGRAL;
-
-  adv_setting.jpeg_ratio = CI_JPEG_HIGH_COMPRESSION;
-  adv_setting.image_effect = CI_IE_MODE_OFF;
-
-  adv_setting.flash_light_mode = OFF;
-  /* color setting */
+  int ret;
+  unsigned int nmode = TURN_ON;
+  if ( nmode == (unsigned int)TURN_ON ) {
+    LOGV("%s: set AWB ON",__func__);
+  } else {
+    LOGV("%s: set AWB OFF",__func__);
+  }
+  /* setup AWB */
+  ret = ci_context_set_cfg(mCI->context, CI_CFG_AWB, (void*)&(nmode));
+  CHECK_CI_RET(ret, "set config for AWB");
+  enableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AWB);
 }
 
-void IntelCamera::alloc_sensor_infos(void)
+void AdvanceProcess::setAFforRAW(ci_isp_afss_mode mode)
+{
+    if ( mParamAF != NULL ) {
+        int ret;
+	mParamAF->mode = mode;
+
+	if(mParamAF->mode == CI_ISP_AFSS_OFF) {
+	    ret = ci_af_setup(mCI->context, *mParamAF, TURN_OFF);
+	    LOGV("%s: set AF OFF",__func__);
+	} else {
+	    ret = ci_af_setup(mCI->context, *mParamAF, TURN_ON);
+	    LOGV("%s: set AF ON",__func__);
+	    enableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AF);
+	}
+	CHECK_CI_RET(ret, "ci_af_setup");
+    }
+}
+
+void AdvanceProcess::setAEforRAW(ci_isp_aec_mode mode)
+{
+    if ( mParamAE != NULL ) {
+        int ret;
+	LOGV("mParamAE->meas_wnd: hoffs = %d, voffs = %d, ", mParamAE->meas_wnd.hoffs, mParamAE->meas_wnd.voffs);
+	LOGV("w = %d, h = %d", mParamAE->meas_wnd.hsize, mParamAE->meas_wnd.vsize);
+	LOGV("mParamAE->hist_wnd: hoffs = %d, voffs = %d, ", mParamAE->hist_wnd.hoffs, mParamAE->hist_wnd.voffs);
+	LOGV("w = %d, h = %d", mParamAE->hist_wnd.hsize, mParamAE->hist_wnd.vsize);
+
+	if (mode == CI_ISP_AEC_OFF) {
+	    ret = ci_ae_setup(mCI->context, *mParamAE, TURN_OFF);
+	    LOGV("%s: set AE OFF",__func__);
+	} else {
+	    ret = ci_ae_setup(mCI->context, *mParamAE, TURN_ON);
+	    LOGV("%s: set AE ON",__func__);
+	    enableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AE);
+	}
+	CHECK_CI_RET(ret, "ci_ae_setup");
+    }
+}
+
+void AdvanceProcess::setAWBforRAW(ci_isp_awb_mode mode, ci_isp_awb_sub_mode sub_mode)
+{
+    if ( mParamAWB != NULL ) {
+        int ret;
+	mParamAWB->mode = mode;
+	mParamAWB->sub_mode = sub_mode;
+	LOGV("mParamAWB->window: hoffs = %d, voffs = %d, ", mParamAWB->window.hoffs, mParamAWB->window.voffs);
+	LOGV("w = %d, h = %d", mParamAWB->window.hsize, mParamAWB->window.vsize);
+
+	if (mParamAWB->mode == CI_ISP_AWB_COMPLETELY_OFF) {
+	    ret = ci_wb_setup(mCI->context, *mParamAWB, TURN_OFF);
+	    LOGV("%s: set AWB OFF", __func__);
+	} else {
+	    ret = ci_wb_setup(mCI->context, *mParamAWB, TURN_ON);
+	    LOGV("%s: set AWB ON", __func__);
+	    enableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AWB);
+	}
+	CHECK_CI_RET(ret, "ci_awb_setup");
+    }
+}
+
+IntelCamera::IntelCamera()
+  : mFrameInfos(0),
+    mCurrentFrameFormat(0),
+    mSensorInfo(0),
+    mAdvanceProcess(NULL)
+{
+  int ret;
+  mCI = new ci_struct_t;
+  /* initialize ci */
+  ret = ci_initialize(&mCI->major_version, &mCI->minor_version);
+  CHECK_CI_RET(ret, "ci initialize");
+
+  allocSensorInfos();
+
+  if ( (mCI != NULL)  && (mSensorInfo != NULL)) {
+    mAdvanceProcess = new AdvanceProcess(mCI, mSensorInfo);
+  }
+}
+
+IntelCamera::~IntelCamera()
+{
+
+  int ret;
+  delete mAdvanceProcess;
+  freeSensorInfos();
+  ret = ci_terminate();
+  CHECK_CI_RET(ret, "ci terminate");
+  delete mCI;
+}
+
+void IntelCamera::captureInit(unsigned int width,
+				unsigned int height,
+				ci_frame_format frame_fmt,
+				unsigned int frame_num)
+{
+  int ret;
+  /* create context for view finding */
+  ret = ci_create_context(&(mCI->context));
+  CHECK_CI_RET(ret, "create context");
+
+  /* config contexts */
+  mCI->snr_id = mSensorInfo->snr_id;
+  ret = ci_context_set_cfg(mCI->context, CI_CFG_SENSOR,
+			   (void*)(&mCI->snr_id));
+  CHECK_CI_RET(ret, "set sensor");
+
+  /* set sensor output resolution */
+  ci_resolution res;
+  res.width = width;
+  res.height = height;
+  ret = ci_context_set_cfg(mCI->context, CI_CFG_SENSOR_RES,
+			   (void *)(&res));
+  CHECK_CI_RET(ret, "set sensor resolution");
+  if ( ret == CI_STATUS_SUCCESS ) {
+    mCI->snr_width = res.width;
+    mCI->snr_height = res.height;
+  }
+
+  /* get isp and snr device */
+  ret = ci_get_device(mCI->context, CI_DEVICE_SENSOR,
+		&(mCI->snr_dev));
+  CHECK_CI_RET(ret, "get sensor device");
+
+  ret = ci_get_device(mCI->context, CI_DEVICE_ISP,
+		&(mCI->isp_dev));
+  CHECK_CI_RET(ret, "get isp device");
+
+  /*start context */
+  ret = ci_start_context(mCI->context);
+  CHECK_CI_RET(ret, "start context");
+
+  /* get isp config to determine whether to use continous_af */
+  ci_isp_config isp_cfg;
+  ret = ci_isp_get_cfg(mCI->isp_dev, &isp_cfg);
+  mCI->continous_af = isp_cfg.flags.continous_af;
+  CHECK_CI_RET(ret, "get isp config");
+
+  /* create frames */
+  //  mCI->frames = (ci_isp_frame_id *)malloc(sizeof(ci_isp_frame_id)*frame_num);
+  mCI->frames = new ci_isp_frame_id[frame_num];
+
+  unsigned int w, h;
+  w = width;
+  h = height;
+  /* VIDIOC_S_FMT, VIDIOC_REQBUFS */
+  ret = ci_isp_create_frames(mCI->isp_dev, &w, &h,
+		       frame_fmt,
+		       frame_num,
+		       mCI->frames);
+  CHECK_CI_RET(ret, "isp create frames");
+
+  mCI->fm_width = w;
+  mCI->fm_height = h;
+
+  mCurrentFrameFormat = frame_fmt;
+
+  mCI->frame_num = frame_num;
+
+  if (mAdvanceProcess != NULL) {
+       mAdvanceProcess->setAdvanceParams(w,h);
+  }
+}
+
+void IntelCamera::captureFinalize(void)
+{
+  int ret;
+  /* destroy frames */
+  ret = ci_isp_destroy_frames(mCI->isp_dev, mCI->frames);
+  CHECK_CI_RET(ret, "destory frames");
+  //free(mCI->frames);
+  delete [] mCI->frames;
+  /* stop context */
+  ret = ci_stop_context(mCI->context);
+  CHECK_CI_RET(ret, "stop context");
+  /* destroy context */
+  ret = ci_destroy_context(mCI->context);
+  CHECK_CI_RET(ret, "destory context");
+  mCI->cur_frame = 0;
+}
+
+void IntelCamera::captureStart(void)
+{
+  int ret;
+  ret = ci_isp_max_num_lock_frames(mCI->isp_dev,
+			     &mCI->max_lock_frame_num);
+  CHECK_CI_RET(ret, "isp max num lock frames");
+
+  /* VIDIOC_STREAMON , VIDIOC_QUERYBUF */
+  ret = ci_isp_start_capture(mCI->isp_dev);
+  CHECK_CI_RET(ret, "isp start capture");
+
+  unsigned int i, frame_num = mCI->frame_num;
+  for (i = 0; i < frame_num; i++) {
+    /* VIDIOC_QBUF */
+    ret = ci_isp_set_frame_ext(mCI->isp_dev,
+			       mCI->frames[i]);
+    CHECK_CI_RET(ret, "isp set frame ext");
+  }
+
+}
+
+int IntelCamera::captureMapFrame(void)
+{
+    int ret, size;
+    if (mCurrentFrameFormat == INTEL_PIX_FMT_NV12) {
+        unsigned int i, frame_num = mCI->frame_num;
+
+	mFrameInfos = new ci_isp_frame_map_info[frame_num];
+
+	for(i = 0; i < frame_num; i++) {
+	    ret = ci_isp_map_frame(mCI->isp_dev, mCI->frames[i], &(mFrameInfos[i]));
+	    CHECK_CI_RET(ret, "capture map frame");
+	    LOGV("%s : mFrameInfos[%u].addr=%p, mFrameInfos[%u].size=%d",
+		 __func__, i, mFrameInfos[i].addr, i, mFrameInfos[i].size);
+	}
+	size =  mFrameInfos[0].size;
+    } else if (mCurrentFrameFormat == INTEL_PIX_FMT_JPEG) {
+        int ret;
+	ret = ci_isp_map_frame(mCI->isp_dev, mCI->cur_frame, &mJpegFrameInfo);
+	CHECK_CI_RET(ret, "capture jpeg map frame");
+	size = mJpegFrameInfo.size;
+    } else {
+        size = 0;
+    }
+    return size;
+}
+
+void IntelCamera::captureUnmapFrame(void)
+{
+  int ret;
+  if (mCurrentFrameFormat == INTEL_PIX_FMT_NV12) {
+      unsigned int i, frame_num = mCI->frame_num;
+
+      for(i = 0; i < frame_num; i++) {
+	  ret = ci_isp_unmap_frame(mCI->isp_dev, &(mFrameInfos[i]));
+	  CHECK_CI_RET(ret, "capture unmap frame");
+	  LOGV("%s : mFrameInfos[%u].addr=%p",__func__, i, mFrameInfos[i].addr);
+      }
+      delete [] mFrameInfos;
+  } else if (mCurrentFrameFormat == INTEL_PIX_FMT_JPEG) {
+      ret = ci_isp_unmap_frame(mCI->isp_dev, &mJpegFrameInfo);
+      CHECK_CI_RET(ret, "capture jpeg unmap frame");
+  }
+}
+
+unsigned int IntelCamera::captureGrabFrame(void)
+{
+  int ret;
+  unsigned int frame;
+  unsigned int frame_size;
+
+  /* VIDIOC_DQBUF */
+  ret = ci_isp_capture_frame_ext(mCI->isp_dev, (ci_isp_frame_id *)&frame,
+		  &frame_size);
+  //  CHECK_CI_RET(ret, "capture frame ext");
+
+  mCI->cur_frame = frame;
+  mCI->frame_size = frame_size;
+  return frame_size;
+}
+
+unsigned int IntelCamera::captureGetFrame(void *buffer)
+{
+  unsigned int frame = mCI->cur_frame;
+
+  if(buffer != NULL) {
+    switch(mCurrentFrameFormat) {
+    case INTEL_PIX_FMT_RGB565 :
+      //      LOGV("INTEL_PIX_FMT_RGB565");
+    case INTEL_PIX_FMT_JPEG :
+      //      LOGV("INTEL_PIX_FMT_JPEG");
+      memcpy(buffer, mJpegFrameInfo.addr, mJpegFrameInfo.size);
+      break;
+    case INTEL_PIX_FMT_YUYV :
+      //      LOGV("INTEL_PIX_FMT_YUYV");
+      yuyv422_to_yuv420sp((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
+                          mCI->fm_width, mCI->fm_height);
+      break;
+    case INTEL_PIX_FMT_NV12 :
+      //      LOGV("INTEL_PIX_FMT_NV12");
+      nv12_to_nv21((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
+		   mCI->fm_width, mCI->fm_height);
+      break;
+    default :
+      LOGE("Unknown Format type");
+      break;
+    }
+  }
+  return frame;
+}
+
+unsigned int IntelCamera::captureGetRecordingFrame(void *buffer)
+{
+  unsigned int frame = mCI->cur_frame;
+
+  if(buffer != NULL) {
+    switch(mCurrentFrameFormat) {
+    case INTEL_PIX_FMT_RGB565 :
+      //      LOGV("INTEL_PIX_FMT_RGB565");
+    case INTEL_PIX_FMT_YUYV :
+      //      LOGV("INTEL_PIX_FMT_YUYV");
+      yuyv422_to_yuv420sp((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
+                          mCI->fm_width, mCI->fm_height);
+      break;
+    case INTEL_PIX_FMT_NV12 :
+      //      LOGV("INTEL_PIX_FMT_NV12");
+      nv12_to_nv21((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
+		   mCI->fm_width, mCI->fm_height);
+      break;
+    default :
+      LOGE("Unknown Format typedddd");
+      break;
+    }
+  }
+  return frame;
+}
+
+void IntelCamera::captureRecycleFrame(void)
+{
+  int ret;
+  //  mCI->cur_frame = (mCI->cur_frame + 1) % mCI->frame_num;
+  ret = ci_isp_set_frame_ext(mCI->isp_dev,mCI->frames[mCI->cur_frame]);
+  //  CHECK_CI_RET(ret, "isp set frame ext");
+}
+
+void IntelCamera::allocSensorInfos(void)
 {
   ci_context_id ctx;
   int snr_id;
@@ -505,7 +794,7 @@ void IntelCamera::alloc_sensor_infos(void)
     ret = ci_context_set_cfg(ctx, CI_CFG_SENSOR, (void *)&snr_id);
 
     if(ret != CI_STATUS_SUCCESS) {
-      snr_info = NULL;
+      mSensorInfo = NULL;
       continue;
     } else {
       ci_device_id snr_dev;
@@ -513,7 +802,7 @@ void IntelCamera::alloc_sensor_infos(void)
       ci_resolution ress[CI_MAX_RES_NUM];
       int res_num, k;
       
-      snr_info = new sensor_info_t;
+      mSensorInfo = new sensor_info_t;
       ret = ci_get_device(ctx, CI_DEVICE_SENSOR, &snr_dev);
       CHECK_CI_RET(ret, "ci get sensor device");
       
@@ -522,34 +811,33 @@ void IntelCamera::alloc_sensor_infos(void)
       
       ret = ci_get_resolution((ci_sensor_num)snr_id, ress, &res_num, INTEL_PIX_FMT_JPEG);
       CHECK_CI_RET(ret, "ci_get_resolution");
-      snr_info->res_num = res_num;
+      mSensorInfo->res_num = res_num;
       
-      strncpy(snr_info->name, snr_cap.name, SNR_NAME_LEN-1);
-      
-      LOGD("Found sensor: %s\n", snr_cap.name);
+      strncpy(mSensorInfo->name, snr_cap.name, SNR_NAME_LEN-1);
+      LOGV("Found sensor: %s\n", snr_cap.name);
       
       if ((ret = strcmp(snr_cap.name, "s5k4e1")) == 0) {
-	snr_info->input = SENSOR_INPUT_MIPI;
-	LOGD("It is a MIPI sensor, auto-review not supported");
+	mSensorInfo->input = SENSOR_INPUT_MIPI;
+	LOGV("It is a MIPI sensor, auto-review not supported");
       } else {
-	snr_info->input = SENSOR_INPUT_PARALLEL;
+	mSensorInfo->input = SENSOR_INPUT_PARALLEL;
       }
       
-      strncpy(snr_info->name, snr_cap.name, SNR_NAME_LEN-1);    
-      snr_info->snr_id = (ci_sensor_num)snr_id;
+      strncpy(mSensorInfo->name, snr_cap.name, SNR_NAME_LEN-1);
+      mSensorInfo->snr_id = (ci_sensor_num)snr_id;
       
       if(snr_id == CI_SENSOR_SOC_0 || snr_id == CI_SENSOR_SOC_1)
-	snr_info->type = SENSOR_TYPE_2M;
+	mSensorInfo->type = SENSOR_TYPE_2M;
       else
-	snr_info->type = SENSOR_TYPE_5M;
+	mSensorInfo->type = SENSOR_TYPE_5M;
       
-      snr_info->resolutions = new sensor_res_t*[res_num];
+      mSensorInfo->resolutions = new sensor_res_t*[res_num];
       
       for(k = 0; k < res_num; k++) {
-	snr_info->resolutions[k] = new sensor_res_t;
-	snr_info->resolutions[k]->res.width = ress[k].width;
-	snr_info->resolutions[k]->res.height = ress[k].height;
-	snr_info->resolutions[k]->res.fps = ress[k].fps;
+	mSensorInfo->resolutions[k] = new sensor_res_t;
+	mSensorInfo->resolutions[k]->res.width = ress[k].width;
+	mSensorInfo->resolutions[k]->res.height = ress[k].height;
+	mSensorInfo->resolutions[k]->res.fps = ress[k].fps;
       }
       break;
     }
@@ -560,26 +848,24 @@ void IntelCamera::alloc_sensor_infos(void)
   CHECK_CI_RET(ret, "ci_destroy_context");
 }
 
-void IntelCamera::free_sensor_infos(void)
+void IntelCamera::freeSensorInfos(void)
 {
-   if (snr_info != NULL) {
-     for(unsigned int k = 0; k < snr_info->res_num; k++) {
-       delete snr_info->resolutions[k];
+   if (mSensorInfo != NULL) {
+     for(unsigned int k = 0; k < mSensorInfo->res_num; k++) {
+       delete mSensorInfo->resolutions[k];
      }
-     delete [] snr_info->resolutions;
-     delete snr_info;
+     delete [] mSensorInfo->resolutions;
+     delete mSensorInfo;
   }
 }
 
-int IntelCamera::is_sensor_support_resolution(int w, int h)
+int IntelCamera::isResolutionSupported(int w, int h)
 {
   sensor_res_t *snr_res;
 
-  if (snr_info != NULL) {
-      LOGD("res width=%d, height=%d",w,h);
-      for(unsigned int i = 0; i < snr_info->res_num; i++) {
-	snr_res = snr_info->resolutions[i];
-	LOGD("snr_info width=%d, height=%d",snr_res->res.width,snr_res->res.height);
+  if (mSensorInfo != NULL) {
+      for(unsigned int i = 0; i < mSensorInfo->res_num; i++) {
+	snr_res = mSensorInfo->resolutions[i];
 	if((unsigned int)w == snr_res->res.width &&
 	   (unsigned int)h == snr_res->res.height) {
 	  return 1;
@@ -589,39 +875,217 @@ int IntelCamera::is_sensor_support_resolution(int w, int h)
   return 0;
 }
 
-void IntelCamera::get_max_sensor_resolution(int *w, int *h)
+void IntelCamera::getMaxResolution(int *w, int *h)
 {
-    if (snr_info != NULL) {
+    if (mSensorInfo != NULL) {
       sensor_res_t *snr_res =
-	snr_info->resolutions[snr_info->res_num - 1];
+	mSensorInfo->resolutions[mSensorInfo->res_num - 1];
       *w = snr_res->res.width;
       *h = snr_res->res.height;
     }
 }
 
-sensor_info_t * IntelCamera::get_sensor_infos(void)
+sensor_info_t * IntelCamera::getSensorInfos(void)
 {
-  return snr_info;
+  return mSensorInfo;
 }
 
-void IntelCamera::print_sensor_infos(void)
+void IntelCamera::printSensorInfos(void)
 {
-    if (snr_info != NULL) {
-      LOGD("Current Sensor Name: %s", snr_info->name);
-      LOGD("Type: %s", snr_info->type == SENSOR_TYPE_2M ?  "SOC(2M)" : "RAW(5M)");
-      LOGD("Supported Jpeg Resolutions: ");
-      for(unsigned int i = 0; i < snr_info->res_num; i++) {
-	sensor_res_t *snr_res = snr_info->resolutions[i];
-	LOGD("\t %d*%d", snr_res->res.width, snr_res->res.height);
+    if (mSensorInfo != NULL) {
+      LOGV("Current Sensor Name: %s", mSensorInfo->name);
+      LOGV("Type: %s", mSensorInfo->type == SENSOR_TYPE_2M ?  "SOC(2M)" : "RAW(5M)");
+      LOGV("Supported Jpeg Resolutions: ");
+      for(unsigned int i = 0; i < mSensorInfo->res_num; i++) {
+	sensor_res_t *snr_res = mSensorInfo->resolutions[i];
+	LOGV("\t %dx%d", snr_res->res.width, snr_res->res.height);
       }
     }
 }
-/*
-void IntelCamera::nv12_to_nv21(unsigned char *bufsrc, unsigned char *bufdest, int width, int height)
+
+int IntelCamera::isImageProcessEnabled(void)
 {
-  unsigned char *y;
+  if (mAdvanceProcess != NULL) {
+    return mAdvanceProcess->isFlagDirty();
+  }
+  return -1;
 }
-*/
+
+int IntelCamera::getPrefMapValue(pref_map_t *map, const char *android_value)
+{
+  pref_map_t *p = map;
+
+  while(p->android_value != NULL) {
+    if (strcmp(p->android_value, android_value) == 0) {
+      LOGV("catch map : p->android_value = %s, p->intel_value = %d",
+	   p->android_value,p->intel_value);
+      return p->intel_value;
+    }
+    p++;
+  }
+  return -1;
+}
+
+int IntelCamera::getFrameSize(int w, int h)
+{
+  int depth = getDepth();
+  return calQBufferFrameSize(w,h,depth);
+}
+
+int IntelCamera::getRealFrameSize(int w, int h)
+{
+  int depth = getDepth();
+  return calRealFrameSize(w,h,depth);
+}
+
+int IntelCamera::getDepth(void)
+{
+  int intel_fmt_list_num =
+    sizeof(intel_fmt_list)/sizeof(intel_fmt_list_t);
+
+  intel_fmt_list_t *p = intel_fmt_list;
+
+  for(int i=0; i<intel_fmt_list_num; i++) {
+    if (p->fourcc == mCurrentFrameFormat) {
+      LOGV("catch depth : p->depth=%d",p->depth);
+      return p->depth;
+    }
+    p++;
+  }
+  return 0;
+}
+
+int IntelCamera::calQBufferFrameSize(int w, int h, int depth)
+{
+  unsigned int size = (unsigned int)(0x01 << 12);
+  unsigned int mask = (unsigned int)(~(size-1));
+  return ((w*h*depth/8) + size - 1) & mask;
+}
+
+int IntelCamera::calRealFrameSize(int w, int h, int depth)
+{
+  return (w*h*depth/8);
+}
+
+void IntelCamera::setAF(const char *value)
+{
+    if (mAdvanceProcess != NULL ) {
+      ci_isp_afss_mode mode =
+	(ci_isp_afss_mode)getPrefMapValue(pref_af_map, value);
+        mAdvanceProcess->advSetAF(mode);
+    }
+}
+
+void IntelCamera::setAE(const char *value)
+{
+    if (mAdvanceProcess != NULL ) {
+      ci_isp_aec_mode mode =
+	(ci_isp_aec_mode)getPrefMapValue(pref_aec_map, value);
+        mAdvanceProcess->advSetAE(mode);
+    }
+}
+
+void IntelCamera::setAWB(const char *value)
+{
+  if (mAdvanceProcess != NULL) {
+    ci_isp_awb_mode mode =
+      (ci_isp_awb_mode)getPrefMapValue(pref_awb_map, "auto");
+
+    ci_isp_awb_sub_mode sub_mode =
+      (ci_isp_awb_sub_mode)getPrefMapValue(pref_awb_sub_map, value);
+
+      mAdvanceProcess->advSetAWB(mode, sub_mode);
+  }
+}
+
+void IntelCamera::setJPEGRatio(const char *value)
+{
+  int ret;
+  ci_jpeg_ratio ratio = (ci_jpeg_ratio)getPrefMapValue(pref_jpeg_quality_map, value);
+  ret = ci_context_set_cfg(mCI->context, CI_CFG_JPEG, (void*)&(ratio));
+  CHECK_CI_RET(ret, "set jpeg ratio");
+}
+
+void IntelCamera::setColorEffect(const char *value)
+{
+  int ret;
+  ci_ie_mode effect = (ci_ie_mode)getPrefMapValue(pref_color_effect_map, value);
+  /* set color effect */
+  ret = ci_context_set_cfg(mCI->context, CI_CFG_IE, (void*)&(effect));
+  CHECK_CI_RET(ret, "set image effect");
+}
+
+void IntelCamera::imageProcessBP(void)
+{
+    int ret;
+    ret = ci_bp_correct(mCI->context);
+    //CHECK_CI_RET(ret, "bp correct");
+}
+
+void IntelCamera::imageProcessBL(void)
+{
+    int ret;
+    ret = ci_bl_compensate(mCI->context);
+    //CHECK_CI_RET(ret, "bl compensate");
+}
+
+void IntelCamera::imageProcessAF(void)
+{
+   if (mAdvanceProcess != NULL) {
+	mAdvanceProcess->advImageProcessAF();
+  }
+}
+
+void IntelCamera::imageProcessAE(void)
+{
+  if (mAdvanceProcess != NULL) {
+	mAdvanceProcess->advImageProcessAE();
+  }
+}
+
+void IntelCamera::imageProcessAWB(void)
+{
+  if (mAdvanceProcess != NULL) {
+	mAdvanceProcess->advImageProcessAWB();
+  }
+}
+
+void IntelCamera::nv12_to_nv21(unsigned char *nv12, unsigned char *nv21, int width, int height)
+{
+  int h,w;
+  /* copy y */
+  /*
+  for(h=0; h<height; h++) {
+    for(w=0; w<width; w+=4) {
+      *(nv21 + w + 0) = *(nv12 + w + 0);
+      *(nv21 + w + 1) = *(nv12 + w + 1);
+      *(nv21 + w + 2) = *(nv12 + w + 2);
+      *(nv21 + w + 3) = *(nv12 + w + 3);
+    }
+    nv21 += width;
+    nv12 += width;
+  }
+  */
+
+  for(h=0; h<height; h++) {
+    memcpy(nv21 + h * width , nv12 + h * width, width);
+  }
+
+  nv21 += width * height;
+  nv12 += width * height;
+
+  /* Change uv to vu*/
+  int height_div_2 = height/2;
+  for(h=0; h<height_div_2; h++) {
+    for(w=0; w<width; w+=2) {
+      *(nv21 + w + 1) = *(nv12 + w);
+      *(nv21 + w) = *(nv12 + w + 1);
+    }
+    nv21 += width;
+    nv12 += width;
+  }
+}
+
 void IntelCamera::yuv_to_rgb16(unsigned char y,unsigned char u, unsigned char v, unsigned char *rgb)
 {
 	register int r,g,b;

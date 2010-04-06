@@ -1,5 +1,24 @@
+/*
+**
+** Copyright 2008, The Android Open Source Project
+**
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
+**
+**     http://www.apache.org/licenses/LICENSE-2.0
+**
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
+** limitations under the License.
+*/
+
 #ifndef ANDROID_HARDWARE_INTEL_CAMERA_H
 #define ANDROID_HARDWARE_INTEL_CAMERA_H
+
+#include <utils/threads.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,8 +42,13 @@ typedef enum {
         SENSOR_INPUT_PARALLEL
 } sensor_input_t;
 
+typedef struct _resolution {
+        unsigned short width;
+        unsigned short height;
+} resolution_t;
+
 typedef struct _sensor_res {
-	ci_resolution   res;
+	ci_resolution res;
 } sensor_res_t;
 
 typedef void *  sensor_dev_t;
@@ -55,99 +79,169 @@ typedef struct _ci_struct {
 	unsigned int            frame_num;
 	unsigned int            max_lock_frame_num;
 	unsigned int            cur_frame;
+	unsigned int            frame_size;
 
 	unsigned int    *buf_status;
 } ci_struct_t;
 
-/* 
- * setting value context 
- */
-typedef struct _adv_setting {
-	ci_jpeg_ratio	jpeg_ratio;	/* for image mode only */
-	ci_ie_mode	image_effect;
+typedef struct __intel_fmt_list {
+	unsigned long fourcc;
+        int depth;
+} intel_fmt_list_t;
 
-	/* 3A for soc sensor */
-	unsigned int	soc_snr_af_on;
-	unsigned int	soc_snr_ae_on;
-	unsigned int	soc_snr_awb_on;
-	/* 3A for raw sensor */
-	ci_isp_afss_mode	raw_snr_afss_mode;
-	ci_isp_awb_mode		raw_snr_awb_mode;
-	ci_isp_awb_sub_mode	raw_snr_awb_submode;
-	ci_isp_aec_mode		raw_snr_aec_mode;
+typedef struct pref_map {
+        const char *const android_value;
+        int intel_value;
+} pref_map_t;
+
+typedef struct _adv_param {
+	resolution_t res;
+	ci_wb_param wb_param;
+	ci_af_param af_param;
+	ci_ae_param ae_param;
+} adv_param_t;
+
+#define IMAGE_PRCOESS_FLAGS_TYPE_AF 0x02
+#define IMAGE_PRCOESS_FLAGS_TYPE_AE 0x04
+#define IMAGE_PRCOESS_FLAGS_TYPE_AWB 0x08
+#define IMAGE_PRCOESS_FLAGS_TYPE_IMAGE_EFFECT 0x10
+
+class AdvanceProcess{
+public:
+	AdvanceProcess(ci_struct_t *ci_struct, sensor_info_t *snr_info_struct);
+	~AdvanceProcess();
+
+	void setAdvanceParams(unsigned int w, unsigned int h);
+
+	void advImageProcessAF(void);
+	void advImageProcessAE(void);
+	void advImageProcessAWB(void);
+	void advSetAF(ci_isp_afss_mode mode);
+	void advSetAE(ci_isp_aec_mode mode);
+	void advSetAWB(ci_isp_awb_mode mode, ci_isp_awb_sub_mode sub_mode);
+
+	int isFlagDirty(void) {
+		Mutex::Autolock lock(&mFlagLock);
+		return mImageProcessFlags;
+	}
+
+private:
+	void (AdvanceProcess::*fpImageProcessAF)(void);
+	void (AdvanceProcess::*fpImageProcessAE)(void);
+	void (AdvanceProcess::*fpImageProcessAWB)(void);
+	void imageProcessAFforSOC(void);
+	void imageProcessAEforSOC(void);
+	void imageProcessAWBforSOC(void);
+	void imageProcessAFforRAW(void);
+	void imageProcessAEforRAW(void);
+	void imageProcessAWBforRAW(void);
 	
-	/* flash light mode */
-	int		flash_light_mode;
+	void (AdvanceProcess::*fpSetAF)(ci_isp_afss_mode mode);
+	void (AdvanceProcess::*fpSetAE)(ci_isp_aec_mode mode);
+	void (AdvanceProcess::*fpSetAWB)(ci_isp_awb_mode mode, ci_isp_awb_sub_mode sub_mode);
+	void setAFforSOC(ci_isp_afss_mode mode);
+	void setAEforSOC(ci_isp_aec_mode mode);
+	void setAWBforSOC(ci_isp_awb_mode mode, ci_isp_awb_sub_mode sub_mode);
+	void setAFforRAW(ci_isp_afss_mode mode);
+	void setAEforRAW(ci_isp_aec_mode mode);
+	void setAWBforRAW(ci_isp_awb_mode mode, ci_isp_awb_sub_mode sub_mode);
 
-	/* color settings */
-/*	
-	unsigned char	brightness;
-	unsigned char	hue;
-	unsigned char	saturation;
-	unsigned char	contrast;
-*/
-} adv_setting_t;
+	inline int isFlagEnabled(unsigned int type) {
+		Mutex::Autolock lock(&mFlagLock);
+		return mImageProcessFlags & type;
+	};
+
+	inline void enableFlag(unsigned int type) {
+		Mutex::Autolock lock(&mFlagLock);
+		mImageProcessFlags |= type;
+	};
+	inline void disableFlag(unsigned int type) {
+		Mutex::Autolock lock(&mFlagLock);
+		mImageProcessFlags &= ~type;
+	};
+
+	ci_struct_t *mCI;
+	sensor_info_t *mSensorInfo;
+
+	ci_af_param *mParamAF;
+	ci_ae_param *mParamAE;
+	ci_wb_param *mParamAWB;
+
+	// to cheack if do 3As image process.
+	unsigned int mImageProcessFlags;
+
+	Mutex mFlagLock;
+	Mutex mImageProcessLock;
+};
 
 class IntelCamera {
 public:
     IntelCamera();
     ~IntelCamera();
 
-    void struct_init(void);
-    void struct_finalize(void);
-    void capture_init(unsigned int sensor_width, 
-		    unsigned int sensor_height,
+    void captureInit(unsigned int width,
+		    unsigned int height,
 		    ci_frame_format frame_fmt,
 		    unsigned int frame_num);
-    void capture_finalize(void);
-    void capture_start(void);
-    void capture_map_frame(void);
-    void capture_unmap_frame(void);
+    void captureFinalize(void);
+    void captureStart(void);
 
-    unsigned int capture_grab_frame(void *buffer);
-    unsigned int capture_grab_record_frame(void *buffer);
-    void capture_recycle_frame(void);
+    int captureMapFrame(void);
+    void captureUnmapFrame(void);
 
-    void adv_setting_init(void);
+    unsigned int captureGrabFrame(void);
+    unsigned int captureGetFrame(void *buffer);
+    unsigned int captureGetRecordingFrame(void *buffer);
+    void captureRecycleFrame(void);
 
-    void capture_setup_AE(unsigned int sw);
-    void capture_setup_AWB(unsigned int sw);
-    void capture_setup_AF(unsigned int sw);
+    int isResolutionSupported(int w, int h);
+    void getMaxResolution(int *w, int *h);
 
-    void auto_focus_process(void);
-    void auto_exposure_process(void);
-    void auto_white_balance_process(void);
+    sensor_info_t *getSensorInfos(void);
+    void printSensorInfos(void);
 
-    void capture_setup_jpeg_ratio(ci_jpeg_ratio ratio);
-    void capture_setup_image_effect(ci_ie_mode mode);
+    int isImageProcessEnabled(void);
 
-    int is_sensor_support_resolution(int w, int h);
-    void get_max_sensor_resolution(int *w, int *h);
-    sensor_info_t *get_sensor_infos(void);
-    void print_sensor_infos(void);
+    int getPrefMapValue(pref_map_t *map, const char *element);
 
+    int getFrameSize(int w, int h);
+    int getRealFrameSize(int w, int h);
+
+    void setAF(const char *value);
+    void setAE(const char *value);
+    void setAWB(const char *value);
+    void setJPEGRatio(const char *value);
+    void setColorEffect(const char *value);
+
+    void imageProcessBP(void);
+    void imageProcessBL(void);
+    void imageProcessAF(void);
+    void imageProcessAE(void);
+    void imageProcessAWB(void);
 private:
+    void nv12_to_nv21(unsigned char *nv12, unsigned char *nv21, int width, int height);
     void yuv_to_rgb16(unsigned char y,unsigned char u, unsigned char v, unsigned char *rgb);
     void yuyv422_to_rgb16(unsigned char *buf, unsigned char *rgb, int width, int height);
     void yuyv422_to_yuv420(unsigned char *bufsrc, unsigned char *bufdest, int width, int height);
     void yuyv422_to_yuv420sp(unsigned char *bufsrc, unsigned char *bufdest, int width, int height);
 
-    void alloc_sensor_infos(void);
-    void free_sensor_infos(void);
+    void allocSensorInfos(void);
+    void freeSensorInfos(void);
 
-    void setup_AE_for_soc_snr(void);
-    void setup_AE_for_raw_snr(void);
-    void setup_AWB_for_soc_snr(void);
-    void setup_AWB_for_raw_snr(void);
-    void setup_AF_for_soc_snr(void);
-    void setup_AF_for_raw_snr(void);
+    int getDepth(void);
+    int calQBufferFrameSize(int w, int h, int depth);
+    int calRealFrameSize(int w, int h, int depth);
 
-    ci_struct_t ci_str;
-    adv_setting_t adv_setting;
-    ci_isp_frame_map_info *frame_infos;
-    ci_frame_format cur_frame_fmt;
+    ci_struct_t *mCI;
 
-    sensor_info_t *snr_info;
+    ci_isp_frame_map_info mJpegFrameInfo;
+    ci_isp_frame_map_info *mFrameInfos;
+
+    ci_frame_format mCurrentFrameFormat;
+
+    sensor_info_t *mSensorInfo;
+
+    AdvanceProcess *mAdvanceProcess;
 };
 
 }; // namespace android

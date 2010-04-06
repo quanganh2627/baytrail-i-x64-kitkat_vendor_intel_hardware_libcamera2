@@ -29,7 +29,7 @@ LOCAL_SRC_FILES += \
 	CameraHardware.cpp \
 	IntelCamera.cpp
 
-LOCAL_CFLAGS += -DDEBUG_LEVEL=2
+LOCAL_CFLAGS += -DLOG_NDEBUG=1
 
 LOCAL_C_INCLUDES += \
 	frameworks/base/include/ui \
