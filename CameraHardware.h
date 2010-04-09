@@ -94,7 +94,6 @@ private:
     void initHeapLocked(int size);
 
     int previewThread();
-    int recordingThread();
 
     static int beginAutoFocusThread(void *cookie);
     int autoFocusThread();
@@ -103,71 +102,53 @@ private:
     int pictureThread();
 
     mutable Mutex       mLock;
+    Mutex               mStatusLock;
 
     CameraParameters    mParameters;
 
-    inline void setBF(unsigned int *bufferFlag, unsigned int flag) {
-	    *bufferFlag |= flag;
-    }
+    sp<MemoryHeapBase>  mHeap;
+    sp<MemoryBase>      mBuffer;
+    static const int    kRecordingBufferCount = 4;
 
-    inline void clrBF(unsigned int *bufferFlag, unsigned int flag) {
-	    *bufferFlag &= ~flag;
-    }
+    int                 mCurrentRecordingFrame;
 
-    inline bool isBFSet(unsigned int bufferFlag,unsigned int flag) {
-	    return (bufferFlag & flag);
-    }
-
-    static const int    kBufferCount = 4;
-
-    struct frame_buffer {
-	    sp<MemoryHeapBase>  heap;
-	    sp<MemoryBase>      base[kBufferCount];
-	    uint8_t             *start[kBufferCount];
-	    unsigned int        flags[kBufferCount];
-    } mPreviewBuffer, mRecordingBuffer;
+    sp<MemoryHeapBase>  mRecordingHeap;
+    sp<MemoryBase>      mRecordingBuffers[kRecordingBufferCount];
 
     enum {
-	    BF_ENABLED = 0x00000001,
-	    BF_LOCKED
+        RecordingBuffersStateReleased = 0,
+        RecordingBuffersStateLocked
     };
 
-    int                 mPreviewFrame;
-    int                 mPostPreviewFrame;
-
-    int                 mRecordingFrame;
-    int                 mPostRecordingFrame;
-
-    unsigned int        mPreviewPixelFormat;
-    unsigned int        mPicturePixelFormat;
+    int                 mRecordingBuffersState[kRecordingBufferCount];
 
     sp<MemoryHeapBase>  mRawHeap;
 
     IntelCamera        *mCamera;
-    sensor_info_t      *mCurrentSensor;
+    sensor_info_t *cur_snr;
 
     bool                mPreviewRunning;
-    bool                mRecordingRunning;
+    bool                mRecordRunning;
     int                 mPreviewFrameSize;
 
+    int                 mJpegFrameSize;
     // protected by mLock
     sp<PreviewThread>   mPreviewThread;
 
     notify_callback    mNotifyCb;
     data_callback      mDataCb;
     data_callback_timestamp mDataCbTimestamp;
-
     void               *mCallbackCookie;
 
     int32_t             mMsgEnabled;
 
- // only used from PreviewThread
+    // only used from PreviewThread
+    unsigned int        mCurrentFrame;
+    int                 mDelay;
 
     // fps
-    nsecs_t             mPreviewLastTS;
-    float               mPreviewLastFPS;
-    nsecs_t             mRecordingLastTS;
-    float               mRecordingLastFPS;
+    nsecs_t             mLastTS;
+    float               mLastFPS;
 };
 
 }; // namespace android

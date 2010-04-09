@@ -190,7 +190,7 @@ public:
     void captureUnmapFrame(void);
 
     unsigned int captureGrabFrame(void);
-    unsigned int captureGetFrame(void *buffer);
+    unsigned int captureGetFrame(void *buffer, int flag);
     unsigned int captureGetRecordingFrame(void *buffer);
     void captureRecycleFrame(void);
 
@@ -224,7 +224,9 @@ private:
     void yuyv422_to_rgb16(unsigned char *buf, unsigned char *rgb, int width, int height);
     void yuyv422_to_yuv420(unsigned char *bufsrc, unsigned char *bufdest, int width, int height);
     void yuyv422_to_yuv420sp(unsigned char *bufsrc, unsigned char *bufdest, int width, int height);
-
+	void nv12_to_rgb565(unsigned char* yuvs, int width, int height, unsigned char* rgbs);
+	void nv21_to_rgb565(unsigned char* yuvs, int width, int height, unsigned char* rgbs);
+	
     void allocSensorInfos(void);
     void freeSensorInfos(void);
 
