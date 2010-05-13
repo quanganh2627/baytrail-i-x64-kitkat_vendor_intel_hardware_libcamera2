@@ -222,7 +222,6 @@ private:
     void nv12_to_nv21(unsigned char *nv12, unsigned char *nv21, int width, int height);
     void yuv_to_rgb16(unsigned char y,unsigned char u, unsigned char v, unsigned char *rgb);
     void yuyv422_to_rgb16(unsigned char *buf, unsigned char *rgb, int width, int height);
-    void yuyv422_to_yuv420(unsigned char *bufsrc, unsigned char *bufdest, int width, int height);
     void yuyv422_to_yuv420sp(unsigned char *bufsrc, unsigned char *bufdest, int width, int height);
 	void nv12_to_rgb565(unsigned char* yuvs, int width, int height, unsigned char* rgbs);
 	void nv21_to_rgb565(unsigned char* yuvs, int width, int height, unsigned char* rgbs);
