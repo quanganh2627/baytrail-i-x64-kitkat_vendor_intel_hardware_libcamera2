@@ -101,6 +101,11 @@ void CameraHardware::initDefaultParameters()
       frameworks/base/core/java/android/hardware/Camera.java
     */
 
+    p.set("preview-format-values", "yuv420sp,rgb565");
+    p.set("preview-size-values", "640x480");
+    p.set("picture-format-values", "jpeg");
+    p.set("focus-mode-values", "fixed");
+
     p.set("jpeg-quality","100");
     p.set("whitebalance", "auto");
     p.set("effect", "none");
