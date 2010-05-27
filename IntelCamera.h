@@ -68,6 +68,7 @@ typedef struct _ci_struct {
         ci_context_id           context;
 	ci_sensor_num           snr_id;
 	ci_device_id            isp_dev;
+	ci_device_id            isp_dev_self;
 	ci_device_id            snr_dev;
 	unsigned short          snr_width;
 	unsigned short          snr_height;
@@ -76,10 +77,12 @@ typedef struct _ci_struct {
 	unsigned short          continous_af;
 
 	ci_isp_frame_id         *frames;
+	ci_isp_frame_id         *frames_self;
 	unsigned int            frame_num;
 	unsigned int            max_lock_frame_num;
 	unsigned int            cur_frame;
 	unsigned int            frame_size;
+	unsigned int            frame_size_self;
 
 	unsigned int    *buf_status;
 } ci_struct_t;
@@ -190,7 +193,7 @@ public:
     void captureUnmapFrame(void);
 
     unsigned int captureGrabFrame(void);
-    unsigned int captureGetFrame(void *buffer, int flag);
+    unsigned int captureGetFrame(void *buffer);
     unsigned int captureGetRecordingFrame(void *buffer);
     void captureRecycleFrame(void);
 
@@ -223,8 +226,6 @@ private:
     void yuv_to_rgb16(unsigned char y,unsigned char u, unsigned char v, unsigned char *rgb);
     void yuyv422_to_rgb16(unsigned char *buf, unsigned char *rgb, int width, int height);
     void yuyv422_to_yuv420sp(unsigned char *bufsrc, unsigned char *bufdest, int width, int height);
-	void nv12_to_rgb565(unsigned char* yuvs, int width, int height, unsigned char* rgbs);
-	void nv21_to_rgb565(unsigned char* yuvs, int width, int height, unsigned char* rgbs);
 	
     void allocSensorInfos(void);
     void freeSensorInfos(void);
@@ -237,6 +238,7 @@ private:
 
     ci_isp_frame_map_info mJpegFrameInfo;
     ci_isp_frame_map_info *mFrameInfos;
+    ci_isp_frame_map_info *mFrameInfos_self;
 
     ci_frame_format mCurrentFrameFormat;
 

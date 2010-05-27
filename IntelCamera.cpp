@@ -582,6 +582,10 @@ void IntelCamera::captureInit(unsigned int width,
 		&(mCI->isp_dev));
   CHECK_CI_RET(ret, "get isp device");
 
+if (frame_fmt != INTEL_PIX_FMT_JPEG) {
+  ret = ci_isp_open(LANGWELL_ISP_SELF, &(mCI->isp_dev_self));
+  CHECK_CI_RET(ret, "ci isp open self");
+}
   /*start context */
   ret = ci_start_context(mCI->context);
   CHECK_CI_RET(ret, "start context");
@@ -595,6 +599,7 @@ void IntelCamera::captureInit(unsigned int width,
   /* create frames */
   //  mCI->frames = (ci_isp_frame_id *)malloc(sizeof(ci_isp_frame_id)*frame_num);
   mCI->frames = new ci_isp_frame_id[frame_num];
+  mCI->frames_self = new ci_isp_frame_id[frame_num];
 
   unsigned int w, h;
   w = width;
@@ -613,6 +618,21 @@ void IntelCamera::captureInit(unsigned int width,
 
   mCI->frame_num = frame_num;
 
+/*
+  ret = ci_isp_close(mCI->isp_dev_self);
+  CHECK_CI_RET(ret, "ci isp open");
+  ret = ci_isp_open(LANGWELL_ISP_SELF, &(mCI->isp_dev_self));
+  CHECK_CI_RET(ret, "ci isp open self");
+*/
+
+if (mCurrentFrameFormat != INTEL_PIX_FMT_JPEG) {
+  frame_fmt = INTEL_PIX_FMT_RGB565;
+  ret = ci_isp_create_frames(mCI->isp_dev_self, &w, &h,
+		       frame_fmt,
+		       frame_num,
+		       mCI->frames_self);
+  CHECK_CI_RET(ret, "isp create frames self");
+}
   if (mAdvanceProcess != NULL) {
        mAdvanceProcess->setAdvanceParams(w,h);
   }
@@ -624,6 +644,11 @@ void IntelCamera::captureFinalize(void)
   /* destroy frames */
   ret = ci_isp_destroy_frames(mCI->isp_dev, mCI->frames);
   CHECK_CI_RET(ret, "destory frames");
+if (mCurrentFrameFormat != INTEL_PIX_FMT_JPEG) {
+  ret = ci_isp_destroy_frames(mCI->isp_dev_self, mCI->frames_self);
+  CHECK_CI_RET(ret, "destory frames self");
+  delete [] mCI->frames_self;
+}
   //free(mCI->frames);
   delete [] mCI->frames;
   /* stop context */
@@ -633,6 +658,12 @@ void IntelCamera::captureFinalize(void)
   ret = ci_destroy_context(mCI->context);
   CHECK_CI_RET(ret, "destory context");
   mCI->cur_frame = 0;
+if (mCurrentFrameFormat != INTEL_PIX_FMT_JPEG) {
+  ret = ci_isp_off(mCI->isp_dev_self);
+  CHECK_CI_RET(ret, "ci isp off");
+  ret = ci_isp_close(mCI->isp_dev_self);
+  CHECK_CI_RET(ret, "ci isp close");
+}
 }
 
 void IntelCamera::captureStart(void)
@@ -645,6 +676,10 @@ void IntelCamera::captureStart(void)
   /* VIDIOC_STREAMON , VIDIOC_QUERYBUF */
   ret = ci_isp_start_capture(mCI->isp_dev);
   CHECK_CI_RET(ret, "isp start capture");
+if (mCurrentFrameFormat != INTEL_PIX_FMT_JPEG) {
+  ret = ci_isp_start_capture(mCI->isp_dev_self);
+  CHECK_CI_RET(ret, "isp start capture self");
+}
 
   unsigned int i, frame_num = mCI->frame_num;
   for (i = 0; i < frame_num; i++) {
@@ -652,6 +687,11 @@ void IntelCamera::captureStart(void)
     ret = ci_isp_set_frame_ext(mCI->isp_dev,
 			       mCI->frames[i]);
     CHECK_CI_RET(ret, "isp set frame ext");
+if (mCurrentFrameFormat != INTEL_PIX_FMT_JPEG) {
+    ret = ci_isp_set_frame_ext(mCI->isp_dev_self,
+			       mCI->frames_self[i]);
+    CHECK_CI_RET(ret, "isp set frame ext self");
+}
   }
 
 }
@@ -659,16 +699,23 @@ void IntelCamera::captureStart(void)
 int IntelCamera::captureMapFrame(void)
 {
     int ret, size;
-    if (mCurrentFrameFormat == INTEL_PIX_FMT_NV12) {
+    if (mCurrentFrameFormat == INTEL_PIX_FMT_NV12 || mCurrentFrameFormat == INTEL_PIX_FMT_RGB565) {
         unsigned int i, frame_num = mCI->frame_num;
 
 	mFrameInfos = new ci_isp_frame_map_info[frame_num];
+	mFrameInfos_self = new ci_isp_frame_map_info[frame_num];
 
 	for(i = 0; i < frame_num; i++) {
 	    ret = ci_isp_map_frame(mCI->isp_dev, mCI->frames[i], &(mFrameInfos[i]));
 	    CHECK_CI_RET(ret, "capture map frame");
 	    LOGV("%s : mFrameInfos[%u].addr=%p, mFrameInfos[%u].size=%d",
 		 __func__, i, mFrameInfos[i].addr, i, mFrameInfos[i].size);
+	}
+	for(i = 0; i < frame_num; i++) {
+	    ret = ci_isp_map_frame(mCI->isp_dev_self, mCI->frames_self[i], &(mFrameInfos_self[i]));
+	    CHECK_CI_RET(ret, "capture map frame self");
+	    LOGV("%s self : mFrameInfos[%u].addr=%p, mFrameInfos[%u].size=%d",
+		 __func__, i, mFrameInfos_self[i].addr, i, mFrameInfos_self[i].size);
 	}
 	size =  mFrameInfos[0].size;
     } else if (mCurrentFrameFormat == INTEL_PIX_FMT_JPEG) {
@@ -685,7 +732,7 @@ int IntelCamera::captureMapFrame(void)
 void IntelCamera::captureUnmapFrame(void)
 {
   int ret;
-  if (mCurrentFrameFormat == INTEL_PIX_FMT_NV12) {
+    if (mCurrentFrameFormat == INTEL_PIX_FMT_NV12 || mCurrentFrameFormat == INTEL_PIX_FMT_RGB565) {
       unsigned int i, frame_num = mCI->frame_num;
 
       for(i = 0; i < frame_num; i++) {
@@ -694,6 +741,12 @@ void IntelCamera::captureUnmapFrame(void)
 	  LOGV("%s : mFrameInfos[%u].addr=%p",__func__, i, mFrameInfos[i].addr);
       }
       delete [] mFrameInfos;
+      for(i = 0; i < frame_num; i++) {
+	  ret = ci_isp_unmap_frame(mCI->isp_dev_self, &(mFrameInfos_self[i]));
+	  CHECK_CI_RET(ret, "capture unmap frame self");
+	  LOGV("%s self: mFrameInfos[%u].addr=%p",__func__, i, mFrameInfos_self[i].addr);
+      }
+      delete [] mFrameInfos_self;
   } else if (mCurrentFrameFormat == INTEL_PIX_FMT_JPEG) {
       ret = ci_isp_unmap_frame(mCI->isp_dev, &mJpegFrameInfo);
       CHECK_CI_RET(ret, "capture jpeg unmap frame");
@@ -704,19 +757,26 @@ unsigned int IntelCamera::captureGrabFrame(void)
 {
   int ret;
   unsigned int frame;
+  unsigned int frame_self;
   unsigned int frame_size;
+  unsigned int frame_size_self;
 
   /* VIDIOC_DQBUF */
   ret = ci_isp_capture_frame_ext(mCI->isp_dev, (ci_isp_frame_id *)&frame,
 		  &frame_size);
+if (mCurrentFrameFormat != INTEL_PIX_FMT_JPEG) {
+  ret = ci_isp_capture_frame_ext(mCI->isp_dev_self, (ci_isp_frame_id *)&frame_self,
+		  &frame_size_self);
+}
   //  CHECK_CI_RET(ret, "capture frame ext");
 
   mCI->cur_frame = frame;
   mCI->frame_size = frame_size;
+  mCI->frame_size_self = frame_size_self;
   return frame_size;
 }
 
-unsigned int IntelCamera::captureGetFrame(void *buffer, int rgbflag)
+unsigned int IntelCamera::captureGetFrame(void *buffer)
 {
   unsigned int frame = mCI->cur_frame;
 
@@ -724,6 +784,7 @@ unsigned int IntelCamera::captureGetFrame(void *buffer, int rgbflag)
     switch(mCurrentFrameFormat) {
     case INTEL_PIX_FMT_RGB565 :
       //      LOGV("INTEL_PIX_FMT_RGB565");
+      memcpy(buffer, (unsigned char *)mFrameInfos_self[frame].addr, mFrameInfos_self[frame].size);
     case INTEL_PIX_FMT_JPEG :
       //      LOGV("INTEL_PIX_FMT_JPEG");
       memcpy(buffer, mJpegFrameInfo.addr, mJpegFrameInfo.size);
@@ -735,12 +796,12 @@ unsigned int IntelCamera::captureGetFrame(void *buffer, int rgbflag)
       break;
     case INTEL_PIX_FMT_NV12 :
       //      LOGV("INTEL_PIX_FMT_NV12");
-      //nv12_to_nv21((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
-	//	   mCI->fm_width, mCI->fm_height);
-	  if (rgbflag)
-	  nv12_to_rgb565((unsigned char *)mFrameInfos[frame].addr,mCI->fm_width, mCI->fm_height,(unsigned char *)buffer);
-	  else
-	  nv12_to_nv21((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer, mCI->fm_width, mCI->fm_height);
+      /*
+      nv12_to_nv21((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
+		   mCI->fm_width, mCI->fm_height);
+*/
+//      LOGE("jinlu nv12 to pure 5650");
+      memcpy(buffer, (unsigned char *)mFrameInfos_self[frame].addr, mFrameInfos_self[frame].size);
       break;
     default :
       LOGE("Unknown Format type");
@@ -758,6 +819,8 @@ unsigned int IntelCamera::captureGetRecordingFrame(void *buffer)
     switch(mCurrentFrameFormat) {
     case INTEL_PIX_FMT_RGB565 :
       //      LOGV("INTEL_PIX_FMT_RGB565");
+      nv12_to_nv21((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
+		   mCI->fm_width, mCI->fm_height);
     case INTEL_PIX_FMT_YUYV :
       //      LOGV("INTEL_PIX_FMT_YUYV");
       yuyv422_to_yuv420sp((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
@@ -781,6 +844,9 @@ void IntelCamera::captureRecycleFrame(void)
   int ret;
   //  mCI->cur_frame = (mCI->cur_frame + 1) % mCI->frame_num;
   ret = ci_isp_set_frame_ext(mCI->isp_dev,mCI->frames[mCI->cur_frame]);
+if (mCurrentFrameFormat != INTEL_PIX_FMT_JPEG) {
+  ret = ci_isp_set_frame_ext(mCI->isp_dev_self,mCI->frames_self[mCI->cur_frame]);
+}
   //  CHECK_CI_RET(ret, "isp set frame ext");
 }
 
@@ -1133,122 +1199,6 @@ void IntelCamera::yuyv422_to_rgb16(unsigned char *buf, unsigned char *rgb, int w
 void IntelCamera::yuyv422_to_yuv420sp(unsigned char *bufsrc, unsigned char *bufdest, int width, int height)
 {
 	LOGV("yuyv422_to_yuv420sp empty");
-}
-
-/**
- * Converts semi-planar YUV420 as generated for camera preview into RGB565
- * format for use as an OpenGL ES texture. It assumes that both the input
- * and output data are contiguous and start at zero.
- * 
- * @param yuvs the array of YUV420 semi-planar data
- * @param rgbs an array into which the RGB565 data will be written
- * @param width the number of pixels horizontally
- * @param height the number of pixels vertically
- */
-
-//we tackle the conversion two pixels at a time for greater speed
-void IntelCamera::nv21_to_rgb565(unsigned char* yuvs, int width, int height, unsigned char* rgbs) {
-    //the end of the luminance data
-    int lumEnd = width * height;
-    //points to the next luminance value pair
-    int lumPtr = 0;
-    //points to the next chromiance value pair
-    int chrPtr = lumEnd;
-    //points to the next byte output pair of RGB565 value
-    int outPtr = 0;
-    //the end of the current luminance scanline
-    int lineEnd = width;
-
-    while (true) {
-        //skip back to the start of the chromiance values when necessary
-        if (lumPtr == lineEnd) {
-            if (lumPtr == lumEnd) break; //we've reached the end
-            //division here is a bit expensive, but's only done once per scanline
-            chrPtr = lumEnd + ((lumPtr  >> 1) / width) * width;
-            lineEnd += width;
-        }
-
-        //read the luminance and chromiance values
-        int Y1 = yuvs[lumPtr++] & 0xff; 
-        int Y2 = yuvs[lumPtr++] & 0xff; 
-        int Cr = (yuvs[chrPtr++] & 0xff) - 128; 
-        int Cb = (yuvs[chrPtr++] & 0xff) - 128;
-        int R, G, B;
-
-        //generate first RGB components
-        B = Y1 + ((454 * Cb) >> 8);
-        if(B < 0) B = 0; else if(B > 255) B = 255; 
-        G = Y1 - ((88 * Cb + 183 * Cr) >> 8); 
-        if(G < 0) G = 0; else if(G > 255) G = 255; 
-        R = Y1 + ((359 * Cr) >> 8); 
-        if(R < 0) R = 0; else if(R > 255) R = 255; 
-        //NOTE: this assume little-endian encoding
-        rgbs[outPtr++]  = (unsigned char) (((G & 0x3c) << 3) | (B >> 3));
-        rgbs[outPtr++]  = (unsigned char) ((R & 0xf8) | (G >> 5));
-
-        //generate second RGB components
-        B = Y2 + ((454 * Cb) >> 8);
-        if(B < 0) B = 0; else if(B > 255) B = 255; 
-        G = Y2 - ((88 * Cb + 183 * Cr) >> 8); 
-        if(G < 0) G = 0; else if(G > 255) G = 255; 
-        R = Y2 + ((359 * Cr) >> 8); 
-        if(R < 0) R = 0; else if(R > 255) R = 255; 
-        //NOTE: this assume little-endian encoding
-        rgbs[outPtr++]  = (unsigned char) (((G & 0x3c) << 3) | (B >> 3));
-        rgbs[outPtr++]  = (unsigned char) ((R & 0xf8) | (G >> 5));
-    }
-}
-
-void IntelCamera::nv12_to_rgb565(unsigned char* yuvs, int width, int height, unsigned char* rgbs) {
-    //the end of the luminance data
-    int lumEnd = width * height;
-    //points to the next luminance value pair
-    int lumPtr = 0;
-    //points to the next chromiance value pair
-    int chrPtr = lumEnd;
-    //points to the next byte output pair of RGB565 value
-    int outPtr = 0;
-    //the end of the current luminance scanline
-    int lineEnd = width;
-
-    while (true) {
-        //skip back to the start of the chromiance values when necessary
-        if (lumPtr == lineEnd) {
-            if (lumPtr == lumEnd) break; //we've reached the end
-            //division here is a bit expensive, but's only done once per scanline
-            chrPtr = lumEnd + ((lumPtr  >> 1) / width) * width;
-            lineEnd += width;
-        }
-
-        //read the luminance and chromiance values
-        int Y1 = yuvs[lumPtr++] & 0xff; 
-        int Y2 = yuvs[lumPtr++] & 0xff; 
-        int Cb = (yuvs[chrPtr++] & 0xff) - 128;		
-        int Cr = (yuvs[chrPtr++] & 0xff) - 128; 
-        int R, G, B;
-
-        //generate first RGB components
-        B = Y1 + ((454 * Cb) >> 8);
-        if(B < 0) B = 0; else if(B > 255) B = 255; 
-        G = Y1 - ((88 * Cb + 183 * Cr) >> 8); 
-        if(G < 0) G = 0; else if(G > 255) G = 255; 
-        R = Y1 + ((359 * Cr) >> 8); 
-        if(R < 0) R = 0; else if(R > 255) R = 255; 
-        //NOTE: this assume little-endian encoding
-        rgbs[outPtr++]  = (unsigned char) (((G & 0x3c) << 3) | (B >> 3));
-        rgbs[outPtr++]  = (unsigned char) ((R & 0xf8) | (G >> 5));
-
-        //generate second RGB components
-        B = Y2 + ((454 * Cb) >> 8);
-        if(B < 0) B = 0; else if(B > 255) B = 255; 
-        G = Y2 - ((88 * Cb + 183 * Cr) >> 8); 
-        if(G < 0) G = 0; else if(G > 255) G = 255; 
-        R = Y2 + ((359 * Cr) >> 8); 
-        if(R < 0) R = 0; else if(R > 255) R = 255; 
-        //NOTE: this assume little-endian encoding
-        rgbs[outPtr++]  = (unsigned char) (((G & 0x3c) << 3) | (B >> 3));
-        rgbs[outPtr++]  = (unsigned char) ((R & 0xf8) | (G >> 5));
-    }
 }
 
 }; // namespace android

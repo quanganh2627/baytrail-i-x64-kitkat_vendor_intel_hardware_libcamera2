@@ -49,6 +49,7 @@ CameraHardware::CameraHardware()
     cur_snr = mCamera->getSensorInfos();
     mCamera->printSensorInfos();
     initDefaultParameters();
+  LOGE("libcamera version: 2010-05-24 0.3.1");
 }
 
 void CameraHardware::initHeapLocked(int size)
@@ -203,11 +204,11 @@ int CameraHardware::previewThread()
 		preview_fmt = mParameters.getPreviewFormat();
 		
 		if (strcmp(preview_fmt, "yuv420sp") == 0) {
-			mCurrentFrame = mCamera->captureGetFrame(mHeap->getBase(), 0);
+			mCurrentFrame = mCamera->captureGetFrame(mHeap->getBase());
 		}  else if (strcmp(preview_fmt, "yuv422i-yuyv") == 0){
-			mCurrentFrame = mCamera->captureGetFrame(mHeap->getBase(), 0);
+			mCurrentFrame = mCamera->captureGetFrame(mHeap->getBase());
 		} else if (strcmp(preview_fmt, "rgb565") == 0){
-			mCurrentFrame = mCamera->captureGetFrame(mHeap->getBase(), 1);
+			mCurrentFrame = mCamera->captureGetFrame(mHeap->getBase());
 		} else {
 		  LOGE("Only yuv420sp, yuv422i-yuyv, rgb565 preview are supported");
 		  return -1;
@@ -229,7 +230,7 @@ int CameraHardware::previewThread()
                     memcpy(recordingframe, mHeap->getBase(),
                            mPreviewFrameSize);
                     #else
-					mCamera->captureGetFrame(recordingframe, 0);
+					mCamera->captureGetFrame(recordingframe);
 					#endif
 
                     mRecordingBuffersState[mCurrentRecordingFrame] =
@@ -275,16 +276,25 @@ status_t CameraHardware::startPreview()
         return INVALID_OPERATION;
     }
 
+	const char *preview_fmt;
+	preview_fmt = mParameters.getPreviewFormat();
+	
     int w, h, preview_size;
     mParameters.getPreviewSize(&w, &h);
     //mCamera->capture_init(w, h, INTEL_PIX_FMT_YUYV, 3);
-    mCamera->captureInit(w, h, INTEL_PIX_FMT_NV12, 3);
+    if (strcmp(preview_fmt, "yuv420sp") == 0) {
+	    mCamera->captureInit(w, h, INTEL_PIX_FMT_NV12, 3);
+    }  else if (strcmp(preview_fmt, "yuv422i-yuyv") == 0){
+	    mCamera->captureInit(w, h, INTEL_PIX_FMT_NV12, 3);
+    } else if (strcmp(preview_fmt, "rgb565") == 0){
+	    mCamera->captureInit(w, h, INTEL_PIX_FMT_NV12, 3);
+    } else {
+      LOGE("Only yuv420sp, yuv422i-yuyv, rgb565 preview are supported");
+      return -1;
+    }	
     mCamera->captureStart();
     //preview_size = 
     mCamera->captureMapFrame();
-	
-	const char *preview_fmt;
-	preview_fmt = mParameters.getPreviewFormat();
 	
     if (strcmp(preview_fmt, "yuv420sp") == 0) {
 	  preview_size = (w * h * 3)/2;
@@ -423,7 +433,7 @@ int CameraHardware::pictureThread()
 
       mCamera->captureGrabFrame();
 
-      mCurrentFrame = mCamera->captureGetFrame(heap->getBase(), 0);
+      mCurrentFrame = mCamera->captureGetFrame(heap->getBase());
       mDataCb(CAMERA_MSG_COMPRESSED_IMAGE, buffer, mCallbackCookie);
       mCamera->captureUnmapFrame();
       //      mCamera->capture_recycle_frame();
@@ -486,11 +496,15 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
 
     int preview_width,preview_height;
     p.getPreviewSize(&preview_width,&preview_height);
-    if( (preview_width != 640) && (preview_height != 480) ) {
+if (preview_width > 640 || preview_width < 32) {
       preview_width = 640;
+      LOGE("%dx%d for preview are not supported",preview_width,preview_height);
+}
+if (preview_height > 480 || preview_height < 16) {
       preview_height = 480;
-      LOGE("Only %dx%d for preview are supported",preview_width,preview_height);
-    }
+      LOGE("%dx%d for preview are not supported",preview_width,preview_height);
+}
+	
     p.setPreviewSize(preview_width,preview_height);
 
     const char *new_value, *set_value;
