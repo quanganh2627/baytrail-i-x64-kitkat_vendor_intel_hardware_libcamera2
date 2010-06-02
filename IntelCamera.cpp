@@ -605,6 +605,12 @@ if (frame_fmt != INTEL_PIX_FMT_JPEG) {
   w = width;
   h = height;
   /* VIDIOC_S_FMT, VIDIOC_REQBUFS */
+if (frame_fmt != INTEL_PIX_FMT_JPEG)
+  ret = ci_isp_create_frames(mCI->isp_dev, &w, &h,
+		       INTEL_PIX_FMT_NV12,
+		       frame_num,
+		       mCI->frames);
+else
   ret = ci_isp_create_frames(mCI->isp_dev, &w, &h,
 		       frame_fmt,
 		       frame_num,
@@ -785,6 +791,7 @@ unsigned int IntelCamera::captureGetFrame(void *buffer)
     case INTEL_PIX_FMT_RGB565 :
       //      LOGV("INTEL_PIX_FMT_RGB565");
       memcpy(buffer, (unsigned char *)mFrameInfos_self[frame].addr, mFrameInfos_self[frame].size);
+	break;
     case INTEL_PIX_FMT_JPEG :
       //      LOGV("INTEL_PIX_FMT_JPEG");
       memcpy(buffer, mJpegFrameInfo.addr, mJpegFrameInfo.size);
@@ -796,12 +803,10 @@ unsigned int IntelCamera::captureGetFrame(void *buffer)
       break;
     case INTEL_PIX_FMT_NV12 :
       //      LOGV("INTEL_PIX_FMT_NV12");
-      /*
       nv12_to_nv21((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
 		   mCI->fm_width, mCI->fm_height);
-*/
 //      LOGE("jinlu nv12 to pure 5650");
-      memcpy(buffer, (unsigned char *)mFrameInfos_self[frame].addr, mFrameInfos_self[frame].size);
+//      memcpy(buffer, (unsigned char *)mFrameInfos_self[frame].addr, mFrameInfos_self[frame].size);
       break;
     default :
       LOGE("Unknown Format type");
@@ -821,6 +826,7 @@ unsigned int IntelCamera::captureGetRecordingFrame(void *buffer)
       //      LOGV("INTEL_PIX_FMT_RGB565");
       nv12_to_nv21((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
 		   mCI->fm_width, mCI->fm_height);
+	break;
     case INTEL_PIX_FMT_YUYV :
       //      LOGV("INTEL_PIX_FMT_YUYV");
       yuyv422_to_yuv420sp((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,

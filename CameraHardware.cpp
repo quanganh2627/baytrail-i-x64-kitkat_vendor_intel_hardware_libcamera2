@@ -287,7 +287,7 @@ status_t CameraHardware::startPreview()
     }  else if (strcmp(preview_fmt, "yuv422i-yuyv") == 0){
 	    mCamera->captureInit(w, h, INTEL_PIX_FMT_NV12, 3);
     } else if (strcmp(preview_fmt, "rgb565") == 0){
-	    mCamera->captureInit(w, h, INTEL_PIX_FMT_NV12, 3);
+	    mCamera->captureInit(w, h, INTEL_PIX_FMT_RGB565, 3);
     } else {
       LOGE("Only yuv420sp, yuv422i-yuyv, rgb565 preview are supported");
       return -1;
