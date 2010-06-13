@@ -27,62 +27,70 @@ namespace android {
 
 CameraHardware::CameraHardware()
                   : mParameters(),
-                    mHeap(0),
-                    mCurrentRecordingFrame(0),
-                    mRecordingHeap(0),
-		    mRawHeap(0),
+		    mPreviewFrame(0),
+		    mPostPreviewFrame(0),
+		    mRecordingFrame(0),
+		    mPostRecordingFrame(0),
 		    mCamera(0),
-		    cur_snr(0),
+		    mCurrentSensor(0),
 		    mPreviewRunning(false),
-		    mRecordRunning(false),
+		    mRecordingRunning(false),
                     mPreviewFrameSize(0),
                     mNotifyCb(0),
                     mDataCb(0),
                     mDataCbTimestamp(0),
                     mCallbackCookie(0),
                     mMsgEnabled(0),
-                    mCurrentFrame(0),
-                    mLastTS(0),
-                    mLastFPS(0)
+                    mPreviewLastTS(0),
+                    mPreviewLastFPS(0),
+                    mRecordingLastTS(0),
+                    mRecordingLastFPS(0)
 {
     mCamera = new IntelCamera();
-    cur_snr = mCamera->getSensorInfos();
+    mCurrentSensor = mCamera->getSensorInfos();
     mCamera->printSensorInfos();
     initDefaultParameters();
-  LOGE("libcamera version: 2010-05-24 0.3.1");
+  LOGE("libcamera version: 2010-06-13 0.3.2");
 }
 
 void CameraHardware::initHeapLocked(int size)
 {
-	int recorder_size;
+	LOGD("xiaolin@%s(), size %d, preview size%d", __func__, size, mPreviewFrameSize);
+	int recordersize;
     if (size != mPreviewFrameSize) {
-        mHeap = new MemoryHeapBase(size);
-        mBuffer = new MemoryBase(mHeap, 0, size);
-        LOGD("%s Re Alloc Preview frame size=%d",__func__, size);
-		
-		const char *preview_fmt;
+	    const char *preview_fmt;
 		preview_fmt = mParameters.getPreviewFormat();
 		
 		if (strcmp(preview_fmt, "yuv420sp") == 0) {
-		  recorder_size = size;
+		  recordersize = size;
 		}  else if (strcmp(preview_fmt, "yuv422i-yuyv") == 0){
-		  recorder_size = size;
+		  recordersize = size;
 		} else if (strcmp(preview_fmt, "rgb565") == 0){
-		  recorder_size = (size * 3)/4;
+		  recordersize = (size * 3)/4;
 		} else {
 		  LOGE("Only yuv420sp, yuv422i-yuyv, rgb565 preview are supported");
-		}	
-
-
-        mRecordingHeap = new MemoryHeapBase(recorder_size * kRecordingBufferCount);
-        for (int i = 0; i < kRecordingBufferCount; i++) {
-            mRecordingBuffers[i] =
-                new MemoryBase(mRecordingHeap, i * recorder_size, recorder_size);
-            mRecordingBuffersState[i] = RecordingBuffersStateReleased;
-        }
+		  recordersize = size;
+		}
 		
-        LOGD("%s Re Alloc Recording frame size=%d",__func__, recorder_size);
+        mPreviewBuffer.heap = new MemoryHeapBase(size * kBufferCount);
+        mRecordingBuffer.heap = new MemoryHeapBase(recordersize * kBufferCount);
 
+	for (int i=0; i < kBufferCount; i++) {
+	    mPreviewBuffer.flags[i] = 0;
+	    mRecordingBuffer.flags[i] = 0;
+
+	    mPreviewBuffer.base[i] =
+	      new MemoryBase(mPreviewBuffer.heap, i * size, size);
+	    clrBF(&mPreviewBuffer.flags[i], BF_ENABLED|BF_LOCKED);
+	    mPreviewBuffer.start[i] = (uint8_t *)mPreviewBuffer.heap->base() + (i * size);
+
+	    mRecordingBuffer.base[i] =
+	      new MemoryBase(mRecordingBuffer.heap, i *recordersize, recordersize);
+	    clrBF(&mRecordingBuffer.flags[i], BF_ENABLED|BF_LOCKED);
+	    mRecordingBuffer.start[i] = (uint8_t *)mRecordingBuffer.heap->base() + (i * recordersize);
+
+	}
+	LOGD("%s Re Alloc previewframe size=%d, recordersiz=%d",__func__, size, recordersize);
         mPreviewFrameSize = size;
     }
 
@@ -93,8 +101,10 @@ void CameraHardware::initDefaultParameters()
     CameraParameters p;
 
     p.setPreviewSize(640, 480);
+//    p.setPreviewSize(320, 240);
     p.setPreviewFrameRate(15);
-    p.setPreviewFormat("rgb565"); /* yuv420sp */
+//    p.setPreviewFormat("yuv420sp");
+    p.setPreviewFormat("rgb565");
     p.setPictureSize(1600, 1200);
     p.setPictureFormat("jpeg");
 
@@ -104,6 +114,7 @@ void CameraHardware::initDefaultParameters()
 
     p.set("preview-format-values", "yuv420sp,rgb565");
     p.set("preview-size-values", "640x480");
+//    p.set("preview-size-values", "320x240");
     p.set("picture-format-values", "jpeg");
     p.set("focus-mode-values", "fixed");
 
@@ -118,8 +129,8 @@ void CameraHardware::initDefaultParameters()
     p.set("rotation-values","0,90,180");
     p.set("focus-mode","auto");
 
-    if (cur_snr != NULL) {
-      if (cur_snr->type == SENSOR_TYPE_2M) {
+    if (mCurrentSensor != NULL) {
+      if (mCurrentSensor->type == SENSOR_TYPE_2M) {
 	// 2M
 	p.set("picture-size-values","320x240,640x480,800x600,1280x1024,1600x1200");
 	p.set("whitebalance-values","auto");
@@ -146,7 +157,7 @@ CameraHardware::~CameraHardware()
 
 sp<IMemoryHeap> CameraHardware::getPreviewHeap() const
 {
-    return mHeap;
+    return mPreviewBuffer.heap;
 }
 
 sp<IMemoryHeap> CameraHardware::getRawHeap() const
@@ -185,86 +196,74 @@ bool CameraHardware::msgTypeEnabled(int32_t msgType)
 }
 
 // ---------------------------------------------------------------------------
-
 int CameraHardware::previewThread()
 {
-    // Notify the client of a new frame.
-    if (mPreviewRunning) {
-        if ( mMsgEnabled & CAMERA_MSG_PREVIEW_FRAME) {
-	  if(mCamera->isImageProcessEnabled()) {
-	      mCamera->imageProcessAF();
-	      mCamera->imageProcessAE();
-	      mCamera->imageProcessAWB();
+    if (mPreviewRunning && (mMsgEnabled & CAMERA_MSG_PREVIEW_FRAME)) {
+        // Get a preview frame
+        int previewFrame = mPreviewFrame;
+	if( !isBFSet(mPreviewBuffer.flags[previewFrame], BF_ENABLED)
+	    && !isBFSet(mPreviewBuffer.flags[previewFrame], BF_LOCKED)) {
+
+	    setBF(&mPreviewBuffer.flags[previewFrame],BF_LOCKED);
+	    mCamera->captureGrabFrame();
+	    if(mCamera->isImageProcessEnabled()) {
+	        mCamera->imageProcessAF();
+		mCamera->imageProcessAE();
+		mCamera->imageProcessAWB();
 	    }
 	    mCamera->imageProcessBP();
 	    mCamera->imageProcessBL();
-
-	    mCamera->captureGrabFrame();
+		
 		const char *preview_fmt;
 		preview_fmt = mParameters.getPreviewFormat();
 		
 		if (strcmp(preview_fmt, "yuv420sp") == 0) {
-			mCurrentFrame = mCamera->captureGetFrame(mHeap->getBase());
+			mCamera->captureGetFrame(mPreviewBuffer.start[previewFrame]);
 		}  else if (strcmp(preview_fmt, "yuv422i-yuyv") == 0){
-			mCurrentFrame = mCamera->captureGetFrame(mHeap->getBase());
+			mCamera->captureGetFrame(mPreviewBuffer.start[previewFrame]);
 		} else if (strcmp(preview_fmt, "rgb565") == 0){
-			mCurrentFrame = mCamera->captureGetFrame(mHeap->getBase());
+		//	LOGD("xiaolin@%s()111@", __func__);
+			mCamera->captureGetFrame(mPreviewBuffer.start[previewFrame]);
 		} else {
 		  LOGE("Only yuv420sp, yuv422i-yuyv, rgb565 preview are supported");
 		  return -1;
-		}		
-	    //mCurrentFrame = mCamera->captureGetFrame(mHeap->getBase(), 0);
+		}
+		//LOGD("xiaolin@%s()222@", __func__);
+	    clrBF(&mPreviewBuffer.flags[previewFrame],BF_LOCKED);
+	    setBF(&mPreviewBuffer.flags[previewFrame],BF_ENABLED);
 
-            if (mMsgEnabled & CAMERA_MSG_VIDEO_FRAME) {
-                if (mRecordingBuffersState[mCurrentRecordingFrame] ==
-                    RecordingBuffersStateReleased) {
-                    sp<MemoryHeapBase> heap = mRecordingHeap;
-                    sp<MemoryBase> buffer =
-                        mRecordingBuffers[mCurrentRecordingFrame];
-                    void *base = heap->base();
-                    ssize_t offset =
-                        mCurrentRecordingFrame * mPreviewFrameSize;
-                    uint8_t *recordingframe = ((uint8_t *)base) + offset;
-                    nsecs_t current_ts = systemTime(SYSTEM_TIME_MONOTONIC);
-					#if 0
-                    memcpy(recordingframe, mHeap->getBase(),
-                           mPreviewFrameSize);
-                    #else
-					mCamera->captureGetFrame(recordingframe);
-					#endif
+	    //mCamera->captureRecycleFrame();
+	    mPreviewFrame = (previewFrame + 1) % kBufferCount;
+	}
 
-                    mRecordingBuffersState[mCurrentRecordingFrame] =
-                        RecordingBuffersStateLocked;
-                    mCurrentRecordingFrame =
-                        (mCurrentRecordingFrame + 1) % kRecordingBufferCount;
+	// Notify the client of a new preview frame.
+	int postPreviewFrame = mPostPreviewFrame;
+	if (isBFSet(mPreviewBuffer.flags[postPreviewFrame], BF_ENABLED)
+	    && !isBFSet(mPreviewBuffer.flags[postPreviewFrame], BF_LOCKED)) {
+	    setBF(&mPreviewBuffer.flags[postPreviewFrame],BF_LOCKED);
+	    nsecs_t current_ts = systemTime(SYSTEM_TIME_MONOTONIC);
+	    nsecs_t interval_ts = current_ts - mPreviewLastTS;
+	    float current_fps, average_fps;
+	    mPreviewLastTS = current_ts;
+	    current_fps = (float)1000000000 / (float)interval_ts;
+	    average_fps = (current_fps + mPreviewLastFPS) / 2;
+	    mPreviewLastFPS = current_fps;
 
-//#if !LOG_NDEBUG
-                    nsecs_t interval_ts = current_ts - mLastTS;
-                    float current_fps, average_fps;
+	    LOGV("Preview FPS : %2.1f\n", average_fps);
+	    LOGV("transfer a preview frame to client (index:%d/%d)",
+		 postPreviewFrame, kBufferCount);
 
-                    mLastTS = current_ts;
-                    current_fps = (float)1000000000 / (float)interval_ts;
-                    average_fps = (current_fps + mLastFPS) / 2;
-                    mLastFPS = current_fps;
-
-                    LOGD("Recording FPS : %2.1f\n", average_fps);
-//#endif
-                    LOGV("give a recorded frame to client (index:%d/%d)\n"
-                         mCurrentRecordingFrame, kRecordingBufferCount);
-
-                    mDataCbTimestamp(current_ts, CAMERA_MSG_VIDEO_FRAME,
-                                     buffer, mCallbackCookie);
-                }
-            }
-	    LOGV("%s : mCurrentFrame = %u", __func__, mCurrentFrame);
-
-	    mDataCb(CAMERA_MSG_PREVIEW_FRAME, mBuffer, mCallbackCookie);
-	    mCamera->captureRecycleFrame();
-#if 0
-	    usleep(mDelay);
-#endif
+	    mDataCb(CAMERA_MSG_PREVIEW_FRAME,
+		    mPreviewBuffer.base[postPreviewFrame], mCallbackCookie);
+	    clrBF(&mPreviewBuffer.flags[postPreviewFrame],BF_LOCKED|BF_ENABLED);
+	    mPostPreviewFrame = (postPreviewFrame + 1) % kBufferCount;
 	}
     }
+
+    // TODO: Have to change the recordingThread() function to others thread ways
+    recordingThread();
+    mCamera->captureRecycleFrame();
+
     return NO_ERROR;
 }
 
@@ -276,25 +275,20 @@ status_t CameraHardware::startPreview()
         return INVALID_OPERATION;
     }
 
-	const char *preview_fmt;
-	preview_fmt = mParameters.getPreviewFormat();
-	
     int w, h, preview_size;
     mParameters.getPreviewSize(&w, &h);
     //mCamera->capture_init(w, h, INTEL_PIX_FMT_YUYV, 3);
-    if (strcmp(preview_fmt, "yuv420sp") == 0) {
-	    mCamera->captureInit(w, h, INTEL_PIX_FMT_NV12, 3);
-    }  else if (strcmp(preview_fmt, "yuv422i-yuyv") == 0){
-	    mCamera->captureInit(w, h, INTEL_PIX_FMT_NV12, 3);
-    } else if (strcmp(preview_fmt, "rgb565") == 0){
-	    mCamera->captureInit(w, h, INTEL_PIX_FMT_RGB565, 3);
-    } else {
-      LOGE("Only yuv420sp, yuv422i-yuyv, rgb565 preview are supported");
-      return -1;
-    }	
+    mCamera->captureInit(w, h, mPreviewPixelFormat, 3);
     mCamera->captureStart();
-    //preview_size = 
-    mCamera->captureMapFrame();
+
+    mCamera->setAE("on");
+    mCamera->setAWB(mParameters.get("whitebalance"));
+    mCamera->setAF(mParameters.get("focus-mode"));
+    mCamera->setColorEffect(mParameters.get("effect"));
+	mCamera->captureMapFrame();
+
+	const char *preview_fmt;
+	preview_fmt = mParameters.getPreviewFormat();
 	
     if (strcmp(preview_fmt, "yuv420sp") == 0) {
 	  preview_size = (w * h * 3)/2;
@@ -305,13 +299,9 @@ status_t CameraHardware::startPreview()
     } else {
       LOGE("Only yuv420sp, yuv422i-yuyv, rgb565 preview are supported");
       return -1;
-    }	
-    initHeapLocked(preview_size);
+    }
 
-    mCamera->setAE("on");
-    mCamera->setAWB(mParameters.get("whitebalance"));
-    mCamera->setAF(mParameters.get("focus-mode"));
-    mCamera->setColorEffect(mParameters.get("effect"));
+    initHeapLocked(preview_size);
 
     mPreviewThread = new PreviewThread(this);
     mPreviewRunning = true;
@@ -343,36 +333,90 @@ void CameraHardware::stopPreview()
     mPreviewRunning = false;
 }
 
-bool CameraHardware::previewEnabled() {
-    return mPreviewRunning;
+bool CameraHardware::previewEnabled()
+{
+    return mPreviewRunning && (mPreviewThread != 0);
+}
+
+int CameraHardware::recordingThread()
+{
+    if (mRecordingRunning && (mMsgEnabled & CAMERA_MSG_VIDEO_FRAME)) {
+        // Get a recording frame
+        int recordingFrame = mRecordingFrame;
+	int previewFrame = (mPreviewFrame + 3) % kBufferCount;
+	if (!isBFSet(mRecordingBuffer.flags[recordingFrame], BF_ENABLED)
+	    && !isBFSet(mRecordingBuffer.flags[recordingFrame], BF_LOCKED)) {
+#if 0 /* in order to avoid conversion twice with nv21 */
+	    mCamera->captureGetRecordingFrame(mRecordingBuffer.start[recordingFrame]);
+#else
+	    setBF(&mPreviewBuffer.flags[previewFrame], BF_LOCKED);
+	    setBF(&mRecordingBuffer.flags[recordingFrame], BF_LOCKED);
+		#if 0
+	    memcpy(mRecordingBuffer.start[recordingFrame],
+		   mPreviewBuffer.start[previewFrame], mPreviewFrameSize);
+		#endif
+		mCamera->captureGetRecordingFrame(mRecordingBuffer.start[recordingFrame]);
+	    clrBF(&mRecordingBuffer.flags[recordingFrame], BF_LOCKED);
+	    clrBF(&mPreviewBuffer.flags[previewFrame], BF_LOCKED);
+#endif
+	    setBF(&mRecordingBuffer.flags[recordingFrame],BF_ENABLED);
+	    mRecordingFrame = (recordingFrame + 1) % kBufferCount;
+	}
+
+	// Notify the client of a new recording frame.
+	int postRecordingFrame = mPostRecordingFrame;
+	if ( !isBFSet(mRecordingBuffer.flags[postRecordingFrame], BF_LOCKED)
+	     && isBFSet(mRecordingBuffer.flags[postRecordingFrame], BF_ENABLED)) {
+	    nsecs_t current_ts = systemTime(SYSTEM_TIME_MONOTONIC);
+	    nsecs_t interval_ts = current_ts - mRecordingLastTS;
+	    float current_fps, average_fps;
+	    mRecordingLastTS = current_ts;
+	    current_fps = (float)1000000000 / (float)interval_ts;
+	    average_fps = (current_fps + mRecordingLastFPS) / 2;
+	    mRecordingLastFPS = current_fps;
+
+	    LOGV("Recording FPS : %2.1f\n", average_fps);
+	    LOGV("transfer a recording frame to client (index:%d/%d) %u",
+		 postRecordingFrame, kBufferCount, (unsigned int)current_ts);
+
+	    clrBF(&mRecordingBuffer.flags[postRecordingFrame],BF_ENABLED);
+	    setBF(&mRecordingBuffer.flags[postRecordingFrame],BF_LOCKED);
+
+	    mDataCbTimestamp(current_ts, CAMERA_MSG_VIDEO_FRAME,
+			     mRecordingBuffer.base[postRecordingFrame], mCallbackCookie);
+	    mPostRecordingFrame = (postRecordingFrame + 1) % kBufferCount;
+	}
+    }
+    return NO_ERROR;
 }
 
 status_t CameraHardware::startRecording()
 {
-    mRecordRunning = true;
+    mRecordingRunning = true;
+
     return NO_ERROR;
 }
 
 void CameraHardware::stopRecording()
 {
-    mRecordRunning = false;
+    mRecordingRunning = false;
 }
 
 bool CameraHardware::recordingEnabled()
 {
-    return mRecordRunning;
+    return mRecordingRunning;
 }
 
 void CameraHardware::releaseRecordingFrame(const sp<IMemory>& mem)
 {
     ssize_t offset = mem->offset();
     size_t size = mem->size();
-    int index = offset / size;
+    int releasedFrame = offset / size;
 
-    mRecordingBuffersState[index] = RecordingBuffersStateReleased;
+    clrBF(&mRecordingBuffer.flags[releasedFrame], BF_LOCKED);
 
-    LOGV("recording buffer [index:%d/%d] has been released",
-         index, kRecordingBufferCount);
+    LOGV("a recording frame transfered to client has been released (index:%d/%d)",
+         releasedFrame, kBufferCount);
 }
 
 // ---------------------------------------------------------------------------
@@ -423,21 +467,35 @@ int CameraHardware::pictureThread()
       //          mDataCb(CAMERA_MSG_RAW_IMAGE, mBuffer, mCallbackCookie);
     }
     if (mMsgEnabled & CAMERA_MSG_COMPRESSED_IMAGE) {
-      sp<MemoryHeapBase> heap = new MemoryHeapBase(mJpegFrameSize);
-      sp<MemoryBase> buffer = new MemoryBase(heap, 0, mJpegFrameSize);
+        int w, h;
+	mParameters.getPictureSize(&w, &h);
 
-      mCamera->imageProcessAE();
-      mCamera->imageProcessAWB();
-      mCamera->imageProcessBP();
-      mCamera->imageProcessBL();
+	mCamera->captureInit(w, h, mPicturePixelFormat, 1);
+	mCamera->captureStart();
 
-      mCamera->captureGrabFrame();
+	mCamera->setAE("on");
+	mCamera->setAWB(mParameters.get("whitebalance"));
+	mCamera->setColorEffect(mParameters.get("effect"));
+	mCamera->setJPEGRatio(mParameters.get("jpeg-quality"));
 
-      mCurrentFrame = mCamera->captureGetFrame(heap->getBase());
-      mDataCb(CAMERA_MSG_COMPRESSED_IMAGE, buffer, mCallbackCookie);
-      mCamera->captureUnmapFrame();
-      //      mCamera->capture_recycle_frame();
-      mCamera->captureFinalize();
+	int jpegSize = mCamera->captureGrabFrame();
+	LOGD(" - JPEG size saved = %dB, %dK",jpegSize, jpegSize/1000);
+	mCamera->imageProcessAE();
+	mCamera->imageProcessAWB();
+	mCamera->captureRecycleFrame();
+
+	mCamera->imageProcessBP();
+	mCamera->imageProcessBL();
+
+	mCamera->captureMapFrame();
+	sp<MemoryHeapBase> heap = new MemoryHeapBase(jpegSize);
+	sp<MemoryBase> buffer = new MemoryBase(heap, 0, jpegSize);
+	mCamera->captureGetFrame(heap->getBase());
+	mCamera->captureUnmapFrame();
+
+	mCamera->captureFinalize();
+
+	mDataCb(CAMERA_MSG_COMPRESSED_IMAGE, buffer, mCallbackCookie);
     }
     return NO_ERROR;
 }
@@ -446,18 +504,6 @@ status_t CameraHardware::takePicture()
 {
     disableMsgType(CAMERA_MSG_PREVIEW_FRAME);
     stopPreview();
-
-    int w, h;
-    mParameters.getPictureSize(&w, &h);
-
-    mCamera->captureInit(w, h, INTEL_PIX_FMT_JPEG, 1);
-    mCamera->captureStart();
-    mJpegFrameSize = mCamera->captureMapFrame();
-
-    mCamera->setAE("on");
-    mCamera->setAWB(mParameters.get("whitebalance"));
-    mCamera->setColorEffect(mParameters.get("effect"));
-    mCamera->setJPEGRatio(mParameters.get("jpeg-quality"));
 
     if (createThread(beginPictureThread, this) == false)
         return -1;
@@ -482,52 +528,68 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     // XXX verify params
 
     CameraParameters p = params;
-#if 0
-    if (strcmp(p.getPreviewFormat(), "yuv420sp") != 0) {
-        LOGE("Only yuv420sp preview is supported");
-        return -1;
-    }
-#endif
 
-    if (strcmp(p.getPictureFormat(), "jpeg") != 0) {
-        LOGE("Only jpeg still pictures are supported");
-        return -1;
-    }
-
+	int preview_size;
     int preview_width,preview_height;
     p.getPreviewSize(&preview_width,&preview_height);
-if (preview_width > 640 || preview_width < 32) {
+/*
+    if( (preview_width != 640) && (preview_height != 480) ) {
       preview_width = 640;
-      LOGE("%dx%d for preview are not supported",preview_width,preview_height);
-}
-if (preview_height > 480 || preview_height < 16) {
       preview_height = 480;
-      LOGE("%dx%d for preview are not supported",preview_width,preview_height);
-}
-	
+      LOGE("Only %dx%d for preview are supported",preview_width,preview_height);
+    }
+*/
     p.setPreviewSize(preview_width,preview_height);
 
+    int new_fps = p.getPreviewFrameRate();
+    int set_fps = mParameters.getPreviewFrameRate();
+    LOGD(" - FPS = new \"%d\" / current \"%d\"",new_fps, set_fps);
+    if (new_fps != set_fps) {
+        p.setPreviewFrameRate(new_fps);
+	LOGD("     ++ Changed FPS to %d",p.getPreviewFrameRate());
+    }
+    LOGD("PREVIEW SIZE: %dx%d, FPS: %d", preview_width, preview_height, new_fps);
+
     const char *new_value, *set_value;
+
     new_value = p.getPreviewFormat();
     set_value = mParameters.getPreviewFormat();
 
-	int preview_size;
-
     if (strcmp(new_value, "yuv420sp") == 0) {
+      mPreviewPixelFormat = INTEL_PIX_FMT_NV12;
 	  preview_size = (preview_width * preview_height * 3)/2;
     }  else if (strcmp(new_value, "yuv422i-yuyv") == 0){
+      mPreviewPixelFormat = INTEL_PIX_FMT_YUYV;
 	  preview_size = preview_width * preview_height * 2;
     } else if (strcmp(new_value, "rgb565") == 0){
-     /* use the NV12 for camera output */
+      mPreviewPixelFormat = INTEL_PIX_FMT_RGB565;
 	  preview_size = preview_width * preview_height * 2;
     } else {
       LOGE("Only yuv420sp, yuv422i-yuyv, rgb565 preview are supported");
       return -1;
     }
 
-    int fps = p.getPreviewFrameRate();
-    p.setPreviewFrameRate(fps);
-    LOGD("PREVIEW SIZE: %dx%d, PICTURE FPS: %d", preview_width, preview_height, fps);
+    LOGD(" - Preview pixel format = new \"%s\"  / current \"%s\"",new_value, set_value);
+    if (strcmp(set_value, new_value)) {
+      p.setPreviewFormat(new_value);
+      LOGD("     ++ Changed Preview Pixel Format to %s",p.getPreviewFormat());
+    }
+
+    new_value = p.getPictureFormat();
+    LOGD("%s",new_value);
+    set_value = mParameters.getPictureFormat();
+    if (strcmp(new_value, "jpeg") == 0) {
+        mPicturePixelFormat = INTEL_PIX_FMT_JPEG;
+    } else {
+        LOGE("Only jpeg still pictures are supported");
+        return -1;
+    }
+
+    LOGD(" - Picture pixel format = new \"%s\"  / current \"%s\"",new_value, set_value);
+    if (strcmp(set_value, new_value)) {
+      p.setPictureFormat(new_value);
+      LOGD("     ++ Changed Preview Pixel Format to %s",p.getPictureFormat());
+    }
 
     int picture_width, picture_height;
     p.getPictureSize(&picture_width, &picture_height);
@@ -546,8 +608,6 @@ if (preview_height > 480 || preview_height < 16) {
 
 
     if ( (mMsgEnabled & CAMERA_MSG_PREVIEW_FRAME) || (mMsgEnabled & CAMERA_MSG_COMPRESSED_IMAGE) ) {
-      const char *new_value, *set_value;
-
       int jpeg_quality = p.getInt("jpeg-quality");
       new_value = p.get("jpeg-quality");
       set_value = mParameters.get("jpeg-quality");
