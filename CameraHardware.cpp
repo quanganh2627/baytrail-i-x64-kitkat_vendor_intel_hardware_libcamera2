@@ -50,7 +50,7 @@ CameraHardware::CameraHardware()
     mCurrentSensor = mCamera->getSensorInfos();
     mCamera->printSensorInfos();
     initDefaultParameters();
-  LOGE("libcamera version: 2010-06-13 0.3.2");
+  LOGE("libcamera version: 2010-07-05 0.3.3");
 }
 
 void CameraHardware::initHeapLocked(int size)
@@ -100,11 +100,15 @@ void CameraHardware::initDefaultParameters()
 {
     CameraParameters p;
 
-    p.setPreviewSize(640, 480);
-//    p.setPreviewSize(320, 240);
+#ifndef ANDROID_CAMERA_TEXTURE_STREAMING
+    p.setPreviewSize(320, 240);
     p.setPreviewFrameRate(15);
-//    p.setPreviewFormat("yuv420sp");
     p.setPreviewFormat("rgb565");
+#else
+    p.setPreviewSize(640, 480);
+    p.setPreviewFrameRate(30);
+    p.setPreviewFormat("yuv420sp");
+#endif
     p.setPictureSize(1600, 1200);
     p.setPictureFormat("jpeg");
 
@@ -217,13 +221,18 @@ int CameraHardware::previewThread()
 		const char *preview_fmt;
 		preview_fmt = mParameters.getPreviewFormat();
 		
-		if (strcmp(preview_fmt, "yuv420sp") == 0) {
+		if (!strcmp(preview_fmt, "yuv420sp") ||
+		    !strcmp(preview_fmt, "yuv422i-yuyv") ||
+		    !strcmp(preview_fmt, "rgb565")) {
+#ifndef ANDROID_CAMERA_TEXTURE_STREAMING
 			mCamera->captureGetFrame(mPreviewBuffer.start[previewFrame]);
-		}  else if (strcmp(preview_fmt, "yuv422i-yuyv") == 0){
-			mCamera->captureGetFrame(mPreviewBuffer.start[previewFrame]);
-		} else if (strcmp(preview_fmt, "rgb565") == 0){
-		//	LOGD("xiaolin@%s()111@", __func__);
-			mCamera->captureGetFrame(mPreviewBuffer.start[previewFrame]);
+#else
+			/* only copy current frame id */
+			unsigned int frame_id = mCamera->captureGetFrameID();
+			memcpy(mPreviewBuffer.start[previewFrame],
+			       &frame_id,
+			       sizeof(unsigned int));
+#endif
 		} else {
 		  LOGE("Only yuv420sp, yuv422i-yuyv, rgb565 preview are supported");
 		  return -1;

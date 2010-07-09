@@ -724,6 +724,14 @@ int IntelCamera::captureMapFrame(void)
 		 __func__, i, mFrameInfos_self[i].addr, i, mFrameInfos_self[i].size);
 	}
 	size =  mFrameInfos[0].size;
+
+	/* camera bcd stuff */
+#ifdef ANDROID_CAMERA_TEXTURE_STREAMING
+	ret = ci_isp_register_camera_bcd(mCI->isp_dev, mCI->frame_num, mCI->frames, mFrameInfos);
+	CHECK_CI_RET(ret, "register camera bcd");
+	LOGD("main end of bcd");
+#endif
+
     } else if (mCurrentFrameFormat == INTEL_PIX_FMT_JPEG) {
         int ret;
 	ret = ci_isp_map_frame(mCI->isp_dev, mCI->cur_frame, &mJpegFrameInfo);
@@ -815,6 +823,13 @@ unsigned int IntelCamera::captureGetFrame(void *buffer)
   }
   return frame;
 }
+
+#ifdef ANDROID_CAMERA_TEXTURE_STREAMING
+unsigned int IntelCamera::captureGetFrameID(void)
+{
+	return mCI->cur_frame;
+}
+#endif
 
 unsigned int IntelCamera::captureGetRecordingFrame(void *buffer)
 {
