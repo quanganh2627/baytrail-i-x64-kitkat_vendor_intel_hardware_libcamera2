@@ -379,7 +379,7 @@ void AdvanceProcess::imageProcessAFforRAW(void)
     LOGV("---- %s : AF PROCESS --",__func__);
     ret = ci_af_process(mCI->context);
     CHECK_CI_RET(ret, "ci af process");
-    disableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AF);
+    //disableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AF);
 }
 
 void AdvanceProcess::imageProcessAEforRAW(void)
@@ -388,7 +388,7 @@ void AdvanceProcess::imageProcessAEforRAW(void)
     LOGV("---- %s : AE PROCESS--",__func__);
     ret = ci_ae_process(mCI->context);
     CHECK_CI_RET(ret, "ci ae process");
-    disableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AE);
+    //disableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AE);
 }
 
 void AdvanceProcess::imageProcessAWBforRAW(void)
@@ -397,7 +397,7 @@ void AdvanceProcess::imageProcessAWBforRAW(void)
     LOGV("---- %s : AWB PROCESS --",__func__);
     ret = ci_awb_process(mCI->context);
     CHECK_CI_RET(ret, "ci awb process");
-    disableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AWB);
+    //disableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AWB);
 }
 
 void AdvanceProcess::setAFforSOC(ci_isp_afss_mode mode)
