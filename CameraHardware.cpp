@@ -465,8 +465,11 @@ status_t CameraHardware::cancelAutoFocus()
     return c->pictureThread();
 }
 
+#define MAX_FRAME_WAIT 20
 int CameraHardware::pictureThread()
 {
+    int frame_cnt = 0;
+
     if (mMsgEnabled & CAMERA_MSG_SHUTTER)
         mNotifyCb(CAMERA_MSG_SHUTTER, 0, 0, mCallbackCookie);
 
@@ -487,11 +490,20 @@ int CameraHardware::pictureThread()
 	mCamera->setColorEffect(mParameters.get("effect"));
 	mCamera->setJPEGRatio(mParameters.get("jpeg-quality"));
 
-	int jpegSize = mCamera->captureGrabFrame();
+	int jpegSize;
+	while (1) {
+		jpegSize = mCamera->captureGrabFrame();
+		if (mCamera->getSensorInfos()->type == SENSOR_TYPE_2M)
+			break;
+		mCamera->imageProcessAE();
+		mCamera->imageProcessAWB();
+		frame_cnt++;
+		if ((mCamera->isImageProcessFinishedAE() && mCamera->isImageProcessFinishedAWB()) ||
+		    frame_cnt >= MAX_FRAME_WAIT)
+			break;
+		mCamera->captureRecycleFrame();
+	}
 	LOGD(" - JPEG size saved = %dB, %dK",jpegSize, jpegSize/1000);
-	mCamera->imageProcessAE();
-	mCamera->imageProcessAWB();
-	mCamera->captureRecycleFrame();
 
 	mCamera->imageProcessBP();
 	mCamera->imageProcessBL();
@@ -502,6 +514,7 @@ int CameraHardware::pictureThread()
 	mCamera->captureGetFrame(heap->getBase());
 	mCamera->captureUnmapFrame();
 
+	mCamera->captureRecycleFrame();
 	mCamera->captureFinalize();
 
 	mDataCb(CAMERA_MSG_COMPRESSED_IMAGE, buffer, mCallbackCookie);

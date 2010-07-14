@@ -245,7 +245,10 @@ AdvanceProcess::AdvanceProcess(ci_struct_t *ci_struct, sensor_info_t *snr_info_s
     mParamAF(NULL),
     mParamAE(NULL),
     mParamAWB(NULL),
-    mImageProcessFlags(0)
+    mImageProcessFlags(0),
+    mFinishedAE(FALSE),
+    mFinishedAWB(FALSE),
+    mFinishedAF(FALSE)
 {
      mCI = ci_struct;
      mSensorInfo = snr_info_struct;
@@ -299,6 +302,10 @@ void AdvanceProcess::setAdvanceParams(unsigned int w, unsigned int h)
     mParamAE = NULL;
     mParamAWB = NULL;
   }
+
+  mFinishedAE = FALSE;
+  mFinishedAWB = FALSE;
+  mFinishedAF = FALSE;
 }
 
 void AdvanceProcess::advImageProcessAF(void)
@@ -380,6 +387,8 @@ void AdvanceProcess::imageProcessAFforRAW(void)
     ret = ci_af_process(mCI->context);
     CHECK_CI_RET(ret, "ci af process");
     //disableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AF);
+    if (!ret)
+	    mFinishedAF = TRUE;
 }
 
 void AdvanceProcess::imageProcessAEforRAW(void)
@@ -389,6 +398,8 @@ void AdvanceProcess::imageProcessAEforRAW(void)
     ret = ci_ae_process(mCI->context);
     CHECK_CI_RET(ret, "ci ae process");
     //disableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AE);
+    if (!ret)
+	    mFinishedAE = TRUE;
 }
 
 void AdvanceProcess::imageProcessAWBforRAW(void)
@@ -398,6 +409,8 @@ void AdvanceProcess::imageProcessAWBforRAW(void)
     ret = ci_awb_process(mCI->context);
     CHECK_CI_RET(ret, "ci awb process");
     //disableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AWB);
+    if (!ret)
+	    mFinishedAWB = TRUE;
 }
 
 void AdvanceProcess::setAFforSOC(ci_isp_afss_mode mode)
@@ -1139,6 +1152,21 @@ void IntelCamera::imageProcessAWB(void)
   if (mAdvanceProcess != NULL) {
 	mAdvanceProcess->advImageProcessAWB();
   }
+}
+
+int IntelCamera::isImageProcessFinishedAE(void)
+{
+	return mAdvanceProcess->isFinishedAE();
+}
+
+int IntelCamera::isImageProcessFinishedAWB(void)
+{
+	return mAdvanceProcess->isFinishedAWB();
+}
+
+int IntelCamera::isImageProcessFinishedAF(void)
+{
+	return mAdvanceProcess->isFinishedAF();
 }
 
 void IntelCamera::nv12_to_nv21(unsigned char *nv12, unsigned char *nv21, int width, int height)

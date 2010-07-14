@@ -130,6 +130,17 @@ public:
 		return mImageProcessFlags;
 	}
 
+	int isFinishedAE(void) {
+		return mFinishedAE;
+	}
+
+	int isFinishedAWB(void) {
+		return mFinishedAWB;
+	}
+
+	int isFinishedAF(void) {
+		return mFinishedAF;
+	}
 private:
 	void (AdvanceProcess::*fpImageProcessAF)(void);
 	void (AdvanceProcess::*fpImageProcessAE)(void);
@@ -174,6 +185,11 @@ private:
 
 	// to cheack if do 3As image process.
 	unsigned int mImageProcessFlags;
+
+	// to check if 3As finished.
+	int mFinishedAE;
+	int mFinishedAWB;
+	int mFinishedAF;
 
 	Mutex mFlagLock;
 	Mutex mImageProcessLock;
@@ -226,6 +242,10 @@ public:
     void imageProcessAF(void);
     void imageProcessAE(void);
     void imageProcessAWB(void);
+
+    int isImageProcessFinishedAE(void);
+    int isImageProcessFinishedAWB(void);
+    int isImageProcessFinishedAF(void);
 private:
     void nv12_to_nv21(unsigned char *nv12, unsigned char *nv21, int width, int height);
     void yuv_to_rgb16(unsigned char y,unsigned char u, unsigned char v, unsigned char *rgb);
