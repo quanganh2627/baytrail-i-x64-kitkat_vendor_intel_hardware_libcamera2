@@ -213,7 +213,7 @@ public:
 #ifdef BOARD_USE_CAMERA_TEXTURE_STREAMING
     unsigned int captureGetFrameID(void);
 #endif
-    unsigned int captureGetRecordingFrame(void *buffer);
+    unsigned int captureGetRecordingFrame(void *buffer, int buffer_share);
     void captureRecycleFrame(void);
 
     int isResolutionSupported(int w, int h);
@@ -244,6 +244,9 @@ public:
     int isImageProcessFinishedAE(void);
     int isImageProcessFinishedAWB(void);
     int isImageProcessFinishedAF(void);
+
+    unsigned int get_frame_num(void);
+    void get_frame_id(unsigned int *frame_id, unsigned int frame_num);
 private:
     void nv12_to_nv21(unsigned char *nv12, unsigned char *nv21, int width, int height);
     void yuv_to_rgb16(unsigned char y,unsigned char u, unsigned char v, unsigned char *rgb);

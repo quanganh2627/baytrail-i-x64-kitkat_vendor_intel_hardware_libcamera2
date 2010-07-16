@@ -25,6 +25,8 @@
 
 namespace android {
 
+bool share_buffer_caps_set=false;
+
 CameraHardware::CameraHardware()
                   : mParameters(),
 		    mPreviewFrame(0),
@@ -349,6 +351,18 @@ bool CameraHardware::previewEnabled()
 
 int CameraHardware::recordingThread()
 {
+
+if (!share_buffer_caps_set) {
+    unsigned int *frame_id;
+    unsigned int frame_num;
+    frame_num = mCamera->get_frame_num();
+    frame_id = new unsigned int[frame_num];
+    mCamera->get_frame_id(frame_id, frame_num);
+    mParameters.set_frame_id(frame_id, frame_num);
+    delete [] frame_id;
+    share_buffer_caps_set=true;
+}
+
     if (mRecordingRunning && (mMsgEnabled & CAMERA_MSG_VIDEO_FRAME)) {
         // Get a recording frame
         int recordingFrame = mRecordingFrame;
@@ -364,7 +378,10 @@ int CameraHardware::recordingThread()
 	    memcpy(mRecordingBuffer.start[recordingFrame],
 		   mPreviewBuffer.start[previewFrame], mPreviewFrameSize);
 		#endif
-		mCamera->captureGetRecordingFrame(mRecordingBuffer.start[recordingFrame]);
+		if (mParameters.get_buffer_sharing())
+			mCamera->captureGetRecordingFrame(mRecordingBuffer.start[recordingFrame], 1);
+		else
+			mCamera->captureGetRecordingFrame(mRecordingBuffer.start[recordingFrame], 0);
 	    clrBF(&mRecordingBuffer.flags[recordingFrame], BF_LOCKED);
 	    clrBF(&mPreviewBuffer.flags[previewFrame], BF_LOCKED);
 #endif

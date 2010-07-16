@@ -852,33 +852,37 @@ unsigned int IntelCamera::captureGetFrameID(void)
 }
 #endif
 
-unsigned int IntelCamera::captureGetRecordingFrame(void *buffer)
+unsigned int IntelCamera::captureGetRecordingFrame(void *buffer, int buffer_share)
 {
-  unsigned int frame = mCI->cur_frame;
+	unsigned int frame = mCI->cur_frame;
 
-  if(buffer != NULL) {
-    switch(mCurrentFrameFormat) {
-    case INTEL_PIX_FMT_RGB565 :
-      //      LOGV("INTEL_PIX_FMT_RGB565");
-      nv12_to_nv21((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
-		   mCI->fm_width, mCI->fm_height);
-	break;
-    case INTEL_PIX_FMT_YUYV :
-      //      LOGV("INTEL_PIX_FMT_YUYV");
-      yuyv422_to_yuv420sp((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
-                          mCI->fm_width, mCI->fm_height);
-      break;
-    case INTEL_PIX_FMT_NV12 :
-      //      LOGV("INTEL_PIX_FMT_NV12");
-      nv12_to_nv21((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
-		   mCI->fm_width, mCI->fm_height);
-      break;
-    default :
-      LOGE("Unknown Format typedddd");
-      break;
-    }
-  }
-  return frame;
+	if(buffer != NULL) {
+		if (buffer_share) {
+			memcpy(buffer, &frame, sizeof(unsigned int));
+		} else {
+			switch(mCurrentFrameFormat) {
+			case INTEL_PIX_FMT_RGB565 :
+				//      LOGV("INTEL_PIX_FMT_RGB565");
+				nv12_to_nv21((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
+					     mCI->fm_width, mCI->fm_height);
+				break;
+			case INTEL_PIX_FMT_YUYV :
+				//      LOGV("INTEL_PIX_FMT_YUYV");
+				yuyv422_to_yuv420sp((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
+						    mCI->fm_width, mCI->fm_height);
+				break;
+			case INTEL_PIX_FMT_NV12 :
+				//      LOGV("INTEL_PIX_FMT_NV12");
+				nv12_to_nv21((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
+					     mCI->fm_width, mCI->fm_height);
+				break;
+			default :
+				LOGE("Unknown Format typedddd");
+				break;
+			}
+		}
+	}
+	return frame;
 }
 
 void IntelCamera::captureRecycleFrame(void)
@@ -1261,6 +1265,18 @@ void IntelCamera::yuyv422_to_rgb16(unsigned char *buf, unsigned char *rgb, int w
 void IntelCamera::yuyv422_to_yuv420sp(unsigned char *bufsrc, unsigned char *bufdest, int width, int height)
 {
 	LOGV("yuyv422_to_yuv420sp empty");
+}
+
+unsigned int IntelCamera::get_frame_num(void)
+{
+        return mCI->frame_num;
+}
+
+void IntelCamera::get_frame_id(unsigned int *frame_id, unsigned int frame_num)
+{
+        int frame_index;
+        for (frame_index=0; frame_index<frame_num; frame_index++)
+                frame_id[frame_index] = mCI->frames[frame_index];
 }
 
 }; // namespace android
