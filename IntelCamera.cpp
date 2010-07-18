@@ -20,6 +20,14 @@
 
 #include "IntelCamera.h"
 
+
+#ifndef TRUE
+#define TRUE   1
+#endif
+#ifndef FALSE
+#define FALSE  0
+#endif
+
 namespace android {
 
   static intel_fmt_list_t intel_fmt_list[] = {

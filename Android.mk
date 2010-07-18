@@ -15,7 +15,7 @@ $(info Intel MRST Camera Hardware Interface)
 LOCAL_MODULE := libcamera
 
 LOCAL_SHARED_LIBRARIES := \
-	libui \
+	libcamera_client \
 	libutils \
 	libcutils \
 	libdl \
@@ -45,7 +45,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := ci-app
 
 LOCAL_SHARED_LIBRARIES := \
-	libui \
+	libcamera_client \
 	libutils \
 	libcutils \
 	libisphal \
