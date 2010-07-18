@@ -19,7 +19,7 @@
 #define ANDROID_HARDWARE_CAMERA_HARDWARE_H
 
 #include "IntelCamera.h"
-#include <ui/CameraHardwareInterface.h>
+#include <CameraHardwareInterface.h>
 #include <binder/MemoryBase.h>
 #include <binder/MemoryHeapBase.h>
 #include <utils/threads.h>

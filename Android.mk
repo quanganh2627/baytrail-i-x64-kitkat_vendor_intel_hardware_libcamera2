@@ -32,7 +32,7 @@ LOCAL_SRC_FILES += \
 LOCAL_CFLAGS += -DLOG_NDEBUG=1
 
 LOCAL_C_INCLUDES += \
-	frameworks/base/include/ui \
+	frameworks/base/include/camera \
 	hardware/intel/libci/include \
 	hardware/intel/libadvci/include
 
