@@ -10,8 +10,6 @@ LIBCAMERA_TOP := $(LOCAL_PATH)
 
 include $(CLEAR_VARS)
 
-$(info Intel MRST Camera Hardware Interface)
-
 LOCAL_MODULE := libcamera
 
 LOCAL_SHARED_LIBRARIES := \
