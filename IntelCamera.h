@@ -31,6 +31,8 @@ extern "C" {
 }
 #endif
 
+//#define RECYCLE_WHEN_RELEASING_RECORDING_FRAME
+
 namespace android {
 
 #define SNR_NAME_LEN    50
@@ -215,6 +217,10 @@ public:
 #endif
     unsigned int captureGetRecordingFrame(void *buffer, int buffer_share);
     void captureRecycleFrame(void);
+
+#ifdef RECYCLE_WHEN_RELEASING_RECORDING_FRAME
+    void captureRecycleFrameWithFrameId(unsigned int id);
+#endif
 
     int isResolutionSupported(int w, int h);
     void getMaxResolution(int *w, int *h);

@@ -211,7 +211,16 @@ int CameraHardware::previewThread()
 	    && !isBFSet(mPreviewBuffer.flags[previewFrame], BF_LOCKED)) {
 
 	    setBF(&mPreviewBuffer.flags[previewFrame],BF_LOCKED);
-	    mCamera->captureGrabFrame();
+#ifdef RECYCLE_WHEN_RELEASING_RECORDING_FRAME
+	    unsigned int ret_frame_size = mCamera->captureGrabFrame(); 
+            if(ret_frame_size == (unsigned int)-1) {
+                 clrBF(&mPreviewBuffer.flags[previewFrame],BF_LOCKED);
+                 usleep(10000);     
+                 return NO_ERROR;
+            }
+#else
+	    mCamera->captureGrabFrame(); 
+#endif
 	    if(mCamera->isImageProcessEnabled()) {
 	        mCamera->imageProcessAF();
 		mCamera->imageProcessAE();
@@ -273,7 +282,15 @@ int CameraHardware::previewThread()
 
     // TODO: Have to change the recordingThread() function to others thread ways
     recordingThread();
-    mCamera->captureRecycleFrame();
+
+#ifdef RECYCLE_WHEN_RELEASING_RECORDING_FRAME
+    if(!mRecordingRunning) {
+#endif
+         mCamera->captureRecycleFrame();
+#ifdef RECYCLE_WHEN_RELEASING_RECORDING_FRAME
+    }
+#endif
+
 
     return NO_ERROR;
 }
@@ -410,6 +427,7 @@ if (!share_buffer_caps_set) {
 
 	    mDataCbTimestamp(current_ts, CAMERA_MSG_VIDEO_FRAME,
 			     mRecordingBuffer.base[postRecordingFrame], mCallbackCookie);
+
 	    mPostRecordingFrame = (postRecordingFrame + 1) % kBufferCount;
 	}
     }
@@ -443,6 +461,19 @@ void CameraHardware::releaseRecordingFrame(const sp<IMemory>& mem)
     ssize_t offset = mem->offset();
     size_t size = mem->size();
     int releasedFrame = offset / size;
+
+#ifdef RECYCLE_WHEN_RELEASING_RECORDING_FRAME
+    unsigned int *buff = (unsigned int *)mem->pointer();
+
+    LOGV(" releaseRecordingFrame : buff = %x ", buff[0]); 
+    if(mRecordingRunning) {
+           LOGV(" Calls to captureRecycleFrame ");
+
+           mCamera->captureRecycleFrameWithFrameId(*buff);
+
+           LOGV(" Called captureRecycleFrame "); 
+    }
+#endif
 
     clrBF(&mRecordingBuffer.flags[releasedFrame], BF_LOCKED);
 

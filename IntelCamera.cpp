@@ -806,17 +806,30 @@ unsigned int IntelCamera::captureGrabFrame(void)
   /* VIDIOC_DQBUF */
   ret = ci_isp_capture_frame_ext(mCI->isp_dev, (ci_isp_frame_id *)&frame,
 		  &frame_size);
-if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_PIX_FMT_BGR32) {
-  ret = ci_isp_capture_frame_ext(mCI->isp_dev_self, (ci_isp_frame_id *)&frame_self,
+
+#ifdef RECYCLE_WHEN_RELEASING_RECORDING_FRAME
+  if(ret != CI_ISP_STATUS_SUCCESS) {
+      return (unsigned int)-1;  	
+  }
+#endif
+
+  if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_PIX_FMT_BGR32) {
+        ret = ci_isp_capture_frame_ext(mCI->isp_dev_self, (ci_isp_frame_id *)&frame_self,
 		  &frame_size_self);
-}
+#ifdef RECYCLE_WHEN_RELEASING_RECORDING_FRAME
+        if(ret != CI_ISP_STATUS_SUCCESS) {
+            return (unsigned int)-1;
+        }
+#endif
+  }
   //  CHECK_CI_RET(ret, "capture frame ext");
 
+  LOGV("captureGrabFrame : frame = %d", frame);
   mCI->cur_frame = frame;
   mCI->frame_size = frame_size;
-if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_PIX_FMT_BGR32) {
-  mCI->frame_size_self = frame_size_self;
-}
+  if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_PIX_FMT_BGR32) {
+      mCI->frame_size_self = frame_size_self;
+  }
   return frame_size;
 }
 
@@ -894,9 +907,24 @@ unsigned int IntelCamera::captureGetRecordingFrame(void *buffer, int buffer_shar
 	return frame;
 }
 
+#ifdef RECYCLE_WHEN_RELEASING_RECORDING_FRAME
+void IntelCamera::captureRecycleFrameWithFrameId(unsigned int id)
+{
+   int ret;
+
+   LOGV("captureRecycleFrameWithFrameId :  id = 0x%x", id);
+
+   ret = ci_isp_set_frame_ext(mCI->isp_dev, mCI->frames[id]);
+   if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_PIX_FMT_BGR32) {
+       ret = ci_isp_set_frame_ext(mCI->isp_dev_self, mCI->frames_self[id]);
+   }
+}
+#endif
+
 void IntelCamera::captureRecycleFrame(void)
 {
   int ret;
+
   //  mCI->cur_frame = (mCI->cur_frame + 1) % mCI->frame_num;
   ret = ci_isp_set_frame_ext(mCI->isp_dev,mCI->frames[mCI->cur_frame]);
 if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_PIX_FMT_BGR32) {
