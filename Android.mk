@@ -29,6 +29,12 @@ LOCAL_SRC_FILES += \
 
 LOCAL_CFLAGS += -DLOG_NDEBUG=1
 
+ifeq ($(BOARD_USES_CAMERA_TEXTURE_STREAMING), true)
+LOCAL_CFLAGS += -DBOARD_USE_CAMERA_TEXTURE_STREAMING
+else
+LOCAL_CFLAGS += -UBOARD_USE_CAMERA_TEXTURE_STREAMING
+endif
+
 LOCAL_C_INCLUDES += \
 	frameworks/base/include/camera \
 	hardware/intel/libci/include \

@@ -100,14 +100,14 @@ void CameraHardware::initDefaultParameters()
 {
     CameraParameters p;
 
-#ifndef ANDROID_CAMERA_TEXTURE_STREAMING
-    p.setPreviewSize(320, 240);
-    p.setPreviewFrameRate(15);
-    p.setPreviewFormat("rgb565");
-#else
+#ifdef BOARD_USE_CAMERA_TEXTURE_STREAMING
     p.setPreviewSize(640, 480);
     p.setPreviewFrameRate(30);
     p.setPreviewFormat("yuv420sp");
+#else
+    p.setPreviewSize(320, 240);
+    p.setPreviewFrameRate(15);
+    p.setPreviewFormat("rgb565");
 #endif
     p.setPictureSize(1600, 1200);
     p.setPictureFormat("jpeg");
@@ -224,14 +224,14 @@ int CameraHardware::previewThread()
 		if (!strcmp(preview_fmt, "yuv420sp") ||
 		    !strcmp(preview_fmt, "yuv422i-yuyv") ||
 		    !strcmp(preview_fmt, "rgb565")) {
-#ifndef ANDROID_CAMERA_TEXTURE_STREAMING
-			mCamera->captureGetFrame(mPreviewBuffer.start[previewFrame]);
-#else
+#ifdef BOARD_USE_CAMERA_TEXTURE_STREAMING
 			/* only copy current frame id */
 			unsigned int frame_id = mCamera->captureGetFrameID();
 			memcpy(mPreviewBuffer.start[previewFrame],
 			       &frame_id,
 			       sizeof(unsigned int));
+#else
+			mCamera->captureGetFrame(mPreviewBuffer.start[previewFrame]);
 #endif
 		} else {
 		  LOGE("Only yuv420sp, yuv422i-yuyv, rgb565 preview are supported");

@@ -31,8 +31,6 @@ extern "C" {
 }
 #endif
 
-#define ANDROID_CAMERA_TEXTURE_STREAMING
-
 namespace android {
 
 #define SNR_NAME_LEN    50
@@ -212,7 +210,7 @@ public:
 
     unsigned int captureGrabFrame(void);
     unsigned int captureGetFrame(void *buffer);
-#ifdef ANDROID_CAMERA_TEXTURE_STREAMING
+#ifdef BOARD_USE_CAMERA_TEXTURE_STREAMING
     unsigned int captureGetFrameID(void);
 #endif
     unsigned int captureGetRecordingFrame(void *buffer);
