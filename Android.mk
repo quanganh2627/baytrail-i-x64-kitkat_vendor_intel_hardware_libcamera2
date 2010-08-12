@@ -44,7 +44,7 @@ endif
 LOCAL_C_INCLUDES += \
 	frameworks/base/include/camera \
 	hardware/intel/libci/include \
-	hardware/intel/libadvci/include
+	hardware/intel/PRIVATE/libadvci/include
 
 LOCAL_STATIC_LIBRARIES +=
 
@@ -68,7 +68,7 @@ LOCAL_CFLAGS += -DLOG_TAG=\"CI-APP\" -DBOOL_ENABLE
 
 LOCAL_C_INCLUDES += \
 	hardware/intel/libci/include \
-	hardware/intel/libadvci/include
+	hardware/intel/PRIVATE/libadvci/include
 
 include $(BUILD_EXECUTABLE)
 
