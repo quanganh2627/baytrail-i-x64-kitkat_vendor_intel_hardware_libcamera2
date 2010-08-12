@@ -35,6 +35,12 @@ else
 LOCAL_CFLAGS += -UBOARD_USE_CAMERA_TEXTURE_STREAMING
 endif
 
+ifneq ($(BOARD_USES_WRS_OMXIL_CORE), true)
+LOCAL_CFLAGS += -DBOARD_USE_SOFTWARE_ENCODE
+else
+LOCAL_CFLAGS += -UBOARD_USE_SOFTWARE_ENCODE
+endif
+
 LOCAL_C_INCLUDES += \
 	frameworks/base/include/camera \
 	hardware/intel/libci/include \

@@ -1194,8 +1194,10 @@ void IntelCamera::nv12_to_nv21(unsigned char *nv12, unsigned char *nv21, int wid
   }
   */
 
+#ifdef BOARD_USE_SOFTWARE_ENCODE
   memcpy(nv21, nv12, 1.5*width*height);
   return;
+#endif
 
   for(h=0; h<height; h++) {
     memcpy(nv21 + h * width , nv12 + h * width, width);
