@@ -401,6 +401,11 @@ int CameraHardware::recordingThread()
 
 status_t CameraHardware::startRecording()
 {
+    for (int i=0; i < kBufferCount; i++) {
+        clrBF(&mPreviewBuffer.flags[i], BF_ENABLED|BF_LOCKED);
+        clrBF(&mRecordingBuffer.flags[i], BF_ENABLED|BF_LOCKED);
+    }
+
     mRecordingRunning = true;
 
     return NO_ERROR;
