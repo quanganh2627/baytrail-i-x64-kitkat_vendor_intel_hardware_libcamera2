@@ -35,7 +35,6 @@ CameraHardware::CameraHardware()
 		    mPostRecordingFrame(0),
 		    mCamera(0),
 		    mCurrentSensor(0),
-		    mPreviewRunning(false),
 		    mRecordingRunning(false),
                     mPreviewFrameSize(0),
                     mNotifyCb(0),
@@ -204,7 +203,7 @@ bool CameraHardware::msgTypeEnabled(int32_t msgType)
 // ---------------------------------------------------------------------------
 int CameraHardware::previewThread()
 {
-    if (mPreviewRunning && (mMsgEnabled & CAMERA_MSG_PREVIEW_FRAME)) {
+    if ((mMsgEnabled & CAMERA_MSG_PREVIEW_FRAME)) {
         // Get a preview frame
         int previewFrame = mPreviewFrame;
 	if( !isBFSet(mPreviewBuffer.flags[previewFrame], BF_ENABLED)
@@ -332,7 +331,6 @@ status_t CameraHardware::startPreview()
     initHeapLocked(preview_size);
 
     mPreviewThread = new PreviewThread(this);
-    mPreviewRunning = true;
 
     return NO_ERROR;
 }
@@ -351,19 +349,17 @@ void CameraHardware::stopPreview()
     }
 
     Mutex::Autolock lock(mLock);
-    mPreviewThread.clear();
 
-    if (mPreviewRunning) {
+    if (mPreviewThread != 0) {
+      mPreviewThread.clear();
       mCamera->captureUnmapFrame();
       mCamera->captureFinalize();
     }
-
-    mPreviewRunning = false;
 }
 
 bool CameraHardware::previewEnabled()
 {
-    return mPreviewRunning && (mPreviewThread != 0);
+    return (mPreviewThread != 0);
 }
 
 int CameraHardware::recordingThread()

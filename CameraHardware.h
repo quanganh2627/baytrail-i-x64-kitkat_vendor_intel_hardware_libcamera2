@@ -146,7 +146,6 @@ private:
     IntelCamera        *mCamera;
     sensor_info_t      *mCurrentSensor;
 
-    bool                mPreviewRunning;
     bool                mRecordingRunning;
     int                 mPreviewFrameSize;
 

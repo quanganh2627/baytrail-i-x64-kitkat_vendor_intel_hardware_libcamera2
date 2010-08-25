@@ -553,6 +553,8 @@ IntelCamera::IntelCamera()
   if ( (mCI != NULL)  && (mSensorInfo != NULL)) {
     mAdvanceProcess = new AdvanceProcess(mCI, mSensorInfo);
   }
+  mCI->frame_num = 0;
+  mCI->cur_frame = 0;
 }
 
 IntelCamera::~IntelCamera()
@@ -925,6 +927,10 @@ void IntelCamera::captureRecycleFrame(void)
 {
   int ret;
 
+  if (!mCI || mCI->cur_frame >= mCI->frame_num) {
+    LOGE("captureRecycleFrame: ERROR. Frame not ready!! cur_frame %d, mCI->frame_num %d", mCI->cur_frame, mCI->frame_num);
+    return;
+  }
   //  mCI->cur_frame = (mCI->cur_frame + 1) % mCI->frame_num;
   ret = ci_isp_set_frame_ext(mCI->isp_dev,mCI->frames[mCI->cur_frame]);
 if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_PIX_FMT_BGR32) {
