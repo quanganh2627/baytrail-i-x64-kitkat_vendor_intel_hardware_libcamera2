@@ -542,7 +542,7 @@ int CameraHardware::pictureThread()
 	int jpegSize;
 	while (1) {
 		jpegSize = mCamera->captureGrabFrame();
-		if (mCamera->getSensorInfos()->type == SENSOR_TYPE_2M)
+		if ((mCamera->getSensorInfos()->type == SENSOR_TYPE_2M) && (frame_cnt > 0))
 			break;
 		mCamera->imageProcessAE();
 		mCamera->imageProcessAWB();
