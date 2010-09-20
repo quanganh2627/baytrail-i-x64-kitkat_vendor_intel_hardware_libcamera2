@@ -1167,7 +1167,20 @@ void IntelCamera::setAWB(const char *value)
 void IntelCamera::setJPEGRatio(const char *value)
 {
   int ret;
-  ci_jpeg_ratio ratio = (ci_jpeg_ratio)getPrefMapValue(pref_jpeg_quality_map, value);
+  ci_jpeg_ratio ratio;
+
+  if (!strcmp(value, "85")) {
+	  LOGD("Picture quality -- SUPER mode\n", value);
+	  ratio = CI_JPEG_LOW_COMPRESSION;
+  } else if (!strcmp(value, "75")) {
+	  LOGD("Picture quality -- GOOD mode\n", value);
+	  ratio = CI_JPEG_20_PERCENTAGE;
+  } else if (!strcmp(value, "65")) {
+	  LOGD("Picture quality -- NORMAL mode\n", value);
+	  ratio = CI_JPEG_HIGH_COMPRESSION;
+  } else {
+	  ratio = (ci_jpeg_ratio)getPrefMapValue(pref_jpeg_quality_map, value);
+  }
   ret = ci_context_set_cfg(mCI->context, CI_CFG_JPEG, (void*)&(ratio));
   CHECK_CI_RET(ret, "set jpeg ratio");
 }
