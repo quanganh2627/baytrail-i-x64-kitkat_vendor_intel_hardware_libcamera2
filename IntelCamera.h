@@ -125,6 +125,14 @@ public:
 	void advSetAE(ci_isp_aec_mode mode);
 	void advSetAWB(ci_isp_awb_mode mode, ci_isp_awb_sub_mode sub_mode);
 
+	void advSetFlashLight(int mode) {
+		flash_light_mode = mode;
+	};
+
+	int advGetFlashLight(void) {
+		return flash_light_mode;
+	}
+
 	int isFlagDirty(void) {
 		Mutex::Autolock lock(&mFlagLock);
 		return mImageProcessFlags;
@@ -186,6 +194,9 @@ private:
 	// to cheack if do 3As image process.
 	unsigned int mImageProcessFlags;
 
+	// flash light mode
+	int flash_light_mode;
+
 	// to check if 3As finished.
 	int mFinishedAE;
 	int mFinishedAWB;
@@ -246,6 +257,10 @@ public:
     void imageProcessAF(void);
     void imageProcessAE(void);
     void imageProcessAWB(void);
+
+    void setFlash(const char *value);
+    int getFlash(void);
+    void triggerFlashLight(void);
 
     int isImageProcessFinishedAE(void);
     int isImageProcessFinishedAWB(void);

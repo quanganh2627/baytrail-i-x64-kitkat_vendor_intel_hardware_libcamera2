@@ -515,9 +515,11 @@ status_t CameraHardware::cancelAutoFocus()
 }
 
 #define MAX_FRAME_WAIT 20
+#define FLASH_FRAME_WAIT 4
 int CameraHardware::pictureThread()
 {
     int frame_cnt = 0;
+    int frame_wait = MAX_FRAME_WAIT;
 
     if (mMsgEnabled & CAMERA_MSG_SHUTTER)
         mNotifyCb(CAMERA_MSG_SHUTTER, 0, 0, mCallbackCookie);
@@ -538,17 +540,24 @@ int CameraHardware::pictureThread()
 	mCamera->setAWB(mParameters.get("whitebalance"));
 	mCamera->setColorEffect(mParameters.get("effect"));
 	mCamera->setJPEGRatio(mParameters.get("jpeg-quality"));
+	mCamera->setFlash(mParameters.get("flash-mode"));
+	mCamera->triggerFlashLight();
+
+	if (mCamera->getFlash())
+		frame_wait = FLASH_FRAME_WAIT;
+	else if (mCamera->getSensorInfos()->type == SENSOR_TYPE_2M)
+		frame_wait = 1;
+	else
+		frame_wait = MAX_FRAME_WAIT;
 
 	int jpegSize;
 	while (1) {
 		jpegSize = mCamera->captureGrabFrame();
-		if ((mCamera->getSensorInfos()->type == SENSOR_TYPE_2M) && (frame_cnt > 0))
-			break;
 		mCamera->imageProcessAE();
 		mCamera->imageProcessAWB();
 		frame_cnt++;
 		if ((mCamera->isImageProcessFinishedAE() && mCamera->isImageProcessFinishedAWB()) ||
-		    frame_cnt >= MAX_FRAME_WAIT)
+		    frame_cnt > frame_wait)
 			break;
 		mCamera->captureRecycleFrame();
 	}
@@ -735,6 +744,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
       if (strcmp(set_value, new_value) != 0) {
         p.set("flash-mode", new_value);
 	LOGD("     ++ Changed flash-mode to %s",p.get("flash-mode"));
+	mCamera->setFlash(p.get("flash-mode"));
       }
     }
 

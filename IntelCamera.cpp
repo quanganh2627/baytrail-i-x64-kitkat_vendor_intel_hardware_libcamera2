@@ -138,6 +138,13 @@ static pref_map_t pref_color_effect_map[] = {
   { NULL, 0 }
 };
 
+static pref_map_t pref_flash_light_map[] = {
+	{"on", ON},
+	{"off", OFF},
+	{"auto", OFF},
+	{NULL, 0}
+};
+
   /*
      possible autofocus search strategy modes
      enum ci_isp_afss_mode {
@@ -1174,6 +1181,17 @@ void IntelCamera::setColorEffect(const char *value)
   CHECK_CI_RET(ret, "set image effect");
 }
 
+void IntelCamera::setFlash(const char *value)
+{
+	int mode = (int)getPrefMapValue(pref_flash_light_map, value);
+	mAdvanceProcess->advSetFlashLight(mode);
+}
+
+int IntelCamera::getFlash(void)
+{
+	return mAdvanceProcess->advGetFlashLight();
+}
+
 void IntelCamera::imageProcessBP(void)
 {
     int ret;
@@ -1207,6 +1225,27 @@ void IntelCamera::imageProcessAWB(void)
   if (mAdvanceProcess != NULL) {
 	mAdvanceProcess->advImageProcessAWB();
   }
+}
+
+void IntelCamera::triggerFlashLight(void)
+{
+	int ret;
+	int snr_type = getSensorInfos()->type;
+
+	if (mAdvanceProcess->advGetFlashLight() == ON) {
+		LOGV("Triggering flashlight\n");
+		ret = ci_isp_trig_camera_flash(mCI->isp_dev);
+		CHECK_CI_RET(ret, "ci_isp_trig_camera_flash");
+
+		if (snr_type == SENSOR_TYPE_5M)
+			//delay 1 second for RAW sensors
+			sleep(1);
+		else if (snr_type == SENSOR_TYPE_2M) {
+			//delay 1.2 seconds for SOC sensors
+			sleep(1);
+			usleep(200000);
+		}
+	}
 }
 
 int IntelCamera::isImageProcessFinishedAE(void)
