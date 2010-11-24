@@ -119,6 +119,7 @@ private:
     }
 
     static const int    kBufferCount = 4;
+    static const int    mAFMaxFrames = 20;
 
     struct frame_buffer {
 	    sp<MemoryHeapBase>  heap;
@@ -131,6 +132,14 @@ private:
 	    BF_ENABLED = 0x00000001,
 	    BF_LOCKED
     };
+
+    enum {
+	    CAM_DEFAULT = 0x01,
+	    CAM_PREVIEW,
+	    CAM_PIC_FOCUS,
+	    CAM_PIC_SNAP,
+	    CAM_VID_RECORD,
+    } mCameraState;
 
     int                 mPreviewFrame;
     int                 mPostPreviewFrame;

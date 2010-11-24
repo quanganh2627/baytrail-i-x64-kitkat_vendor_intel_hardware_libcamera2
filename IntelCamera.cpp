@@ -328,6 +328,7 @@ void AdvanceProcess::advImageProcessAF(void)
     mImageProcessLock.lock();
     if (fpImageProcessAF != NULL &&
 	isFlagEnabled(IMAGE_PRCOESS_FLAGS_TYPE_AF)) {
+	mFinishedAF = FALSE;
         (this->*fpImageProcessAF)();
     }
     mImageProcessLock.unlock();
@@ -383,6 +384,7 @@ void AdvanceProcess::advSetAWB(ci_isp_awb_mode mode, ci_isp_awb_sub_mode sub_mod
 void AdvanceProcess::imageProcessAFforSOC(void)
 {
     disableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AF);
+    mFinishedAF = TRUE;
 }
 
 void AdvanceProcess::imageProcessAEforSOC(void)
@@ -402,7 +404,7 @@ void AdvanceProcess::imageProcessAFforRAW(void)
     ret = ci_af_process(mCI->context);
     //CHECK_CI_RET(ret, "ci af process");
     //disableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AF);
-    if (!ret)
+    if (ret == ADVCI_STATUS_SUCCESS || ret == ADVCI_STATUS_IDLE)
 	    mFinishedAF = TRUE;
 }
 

@@ -51,6 +51,7 @@ CameraHardware::CameraHardware()
     mCurrentSensor = mCamera->getSensorInfos();
     mCamera->printSensorInfos();
     initDefaultParameters();
+    mCameraState = CAM_DEFAULT;
   LOGE("libcamera version: 2010-07-05 0.3.3");
 }
 
@@ -220,7 +221,8 @@ int CameraHardware::previewThread()
 #else
 	    mCamera->captureGrabFrame(); 
 #endif
-	    if(mCamera->isImageProcessEnabled()) {
+	    if(mCamera->isImageProcessEnabled() &&
+	       (mCameraState == CAM_PREVIEW || mCameraState == CAM_VID_RECORD)) {
 	        mCamera->imageProcessAF();
 		mCamera->imageProcessAE();
 		mCamera->imageProcessAWB();
@@ -328,6 +330,7 @@ status_t CameraHardware::startPreview()
       return -1;
     }
 
+    mCameraState = CAM_PREVIEW;
     initHeapLocked(preview_size);
 
     mPreviewThread = new PreviewThread(this);
@@ -355,6 +358,8 @@ void CameraHardware::stopPreview()
       mCamera->captureUnmapFrame();
       mCamera->captureFinalize();
     }
+
+    mCameraState = CAM_DEFAULT;
 }
 
 bool CameraHardware::previewEnabled()
@@ -438,6 +443,7 @@ status_t CameraHardware::startRecording()
     }
 
     mRecordingRunning = true;
+    mCameraState = CAM_VID_RECORD;
 
     return NO_ERROR;
 }
@@ -445,6 +451,7 @@ status_t CameraHardware::startRecording()
 void CameraHardware::stopRecording()
 {
     mRecordingRunning = false;
+    mCameraState = CAM_PREVIEW;
 }
 
 bool CameraHardware::recordingEnabled()
@@ -487,16 +494,30 @@ int CameraHardware::beginAutoFocusThread(void *cookie)
 
 int CameraHardware::autoFocusThread()
 {
-    if (mMsgEnabled & CAMERA_MSG_FOCUS) {
-	mCamera->setAF(mParameters.get("focus-mode"));
-	mNotifyCb(CAMERA_MSG_FOCUS, true, 0, mCallbackCookie);
+    bool rc = false;
+    int i;
+
+    if (mMsgEnabled & CAMERA_MSG_FOCUS & mCamera->isImageProcessEnabled()) {
+	/* Start to do auto focus. Try 20 frames max */
+	for (i = 0; i < mAFMaxFrames; i++) {
+	        mCamera->imageProcessAF();
+		mCamera->imageProcessAE();
+		mCamera->imageProcessAWB();
+		rc = mCamera->isImageProcessFinishedAF();
+		if (rc)
+			break;
+	}
+	mNotifyCb(CAMERA_MSG_FOCUS, rc, 0, mCallbackCookie);
     }
     return NO_ERROR;
 }
 
 status_t CameraHardware::autoFocus()
 {
+    if (mCameraState == CAM_PIC_FOCUS)
+	return NO_ERROR;
     Mutex::Autolock lock(mLock);
+    mCameraState = CAM_PIC_FOCUS;
     if (createThread(beginAutoFocusThread, this) == false) {
         return UNKNOWN_ERROR;
     }
@@ -505,6 +526,7 @@ status_t CameraHardware::autoFocus()
 
 status_t CameraHardware::cancelAutoFocus()
 {
+    mCameraState = CAM_PREVIEW;
     return NO_ERROR;
 }
 
@@ -584,6 +606,7 @@ status_t CameraHardware::takePicture()
 {
     disableMsgType(CAMERA_MSG_PREVIEW_FRAME);
     stopPreview();
+    mCameraState = CAM_PIC_SNAP;
 
     if (createThread(beginPictureThread, this) == false)
         return -1;
