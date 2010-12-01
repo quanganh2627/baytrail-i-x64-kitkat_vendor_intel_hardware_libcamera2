@@ -267,7 +267,7 @@ AdvanceProcess::AdvanceProcess(ci_struct_t *ci_struct, sensor_info_t *snr_info_s
 {
      mCI = ci_struct;
      mSensorInfo = snr_info_struct;
-     if ( mSensorInfo->type == SENSOR_TYPE_2M ) {
+     if ( mSensorInfo->type == SENSOR_TYPE_SOC ) {
 	 fpSetAF = &AdvanceProcess::setAFforSOC;
          fpSetAE = &AdvanceProcess::setAEforSOC;
 	 fpSetAWB = &AdvanceProcess::setAWBforSOC;
@@ -302,7 +302,7 @@ void AdvanceProcess::setAdvanceParams(unsigned int w, unsigned int h)
   int default_adv_param_num =
     sizeof(default_adv_params)/sizeof(adv_param_t);
 
-  if (mSensorInfo->type == SENSOR_TYPE_5M) {
+  if (mSensorInfo->type == SENSOR_TYPE_RAW) {
     LOGV("%s: w=%u, h=%u",__func__,w,h);
     for (int i=0; i<default_adv_param_num; i++) {
       resolution_t *res = &default_adv_params[i].res;
@@ -584,7 +584,8 @@ IntelCamera::~IntelCamera()
 void IntelCamera::captureInit(unsigned int width,
 				unsigned int height,
 				ci_frame_format frame_fmt,
-				unsigned int frame_num)
+				unsigned int frame_num,
+				unsigned int index)
 {
   int ret;
   /* create context for view finding */
@@ -592,7 +593,7 @@ void IntelCamera::captureInit(unsigned int width,
   CHECK_CI_RET(ret, "create context");
 
   /* config contexts */
-  mCI->snr_id = mSensorInfo->snr_id;
+  mCI->snr_id = (ci_sensor_num)index;
   ret = ci_context_set_cfg(mCI->context, CI_CFG_SENSOR,
 			   (void*)(&mCI->snr_id));
   CHECK_CI_RET(ret, "set sensor");
@@ -973,6 +974,7 @@ void IntelCamera::allocSensorInfos(void)
       ci_sensor_caps snr_cap;
       ci_resolution ress[CI_MAX_RES_NUM];
       int res_num, k;
+      unsigned int sensor_type;
       
       mSensorInfo = new sensor_info_t;
       ret = ci_get_device(ctx, CI_DEVICE_SENSOR, &snr_dev);
@@ -980,6 +982,7 @@ void IntelCamera::allocSensorInfos(void)
       
       ret = ci_sensor_get_caps(snr_dev, &snr_cap);
       CHECK_CI_RET(ret, "ci get isp device");
+      sensor_type = snr_cap.type;
       
       ret = ci_get_resolution((ci_sensor_num)snr_id, ress, &res_num, INTEL_PIX_FMT_JPEG);
       CHECK_CI_RET(ret, "ci_get_resolution");
@@ -998,10 +1001,7 @@ void IntelCamera::allocSensorInfos(void)
       strncpy(mSensorInfo->name, snr_cap.name, SNR_NAME_LEN-1);
       mSensorInfo->snr_id = (ci_sensor_num)snr_id;
       
-      if(snr_id == CI_SENSOR_SOC_0 || snr_id == CI_SENSOR_SOC_1)
-	mSensorInfo->type = SENSOR_TYPE_2M;
-      else
-	mSensorInfo->type = SENSOR_TYPE_5M;
+      mSensorInfo->type = sensor_type;
       
       mSensorInfo->resolutions = new sensor_res_t*[res_num];
       
@@ -1066,7 +1066,7 @@ void IntelCamera::printSensorInfos(void)
 {
     if (mSensorInfo != NULL) {
       LOGV("Current Sensor Name: %s", mSensorInfo->name);
-      LOGV("Type: %s", mSensorInfo->type == SENSOR_TYPE_2M ?  "SOC(2M)" : "RAW(5M)");
+      LOGV("Type: %s", mSensorInfo->type == SENSOR_TYPE_SOC ?  "SOC(2M)" : "RAW(5M)");
       LOGV("Supported Jpeg Resolutions: ");
       for(unsigned int i = 0; i < mSensorInfo->res_num; i++) {
 	sensor_res_t *snr_res = mSensorInfo->resolutions[i];
@@ -1253,10 +1253,10 @@ void IntelCamera::triggerFlashLight(void)
 		ret = ci_isp_trig_camera_flash(mCI->isp_dev);
 		CHECK_CI_RET(ret, "ci_isp_trig_camera_flash");
 
-		if (snr_type == SENSOR_TYPE_5M)
+		if (snr_type == SENSOR_TYPE_RAW)
 			//delay 1 second for RAW sensors
 			sleep(1);
-		else if (snr_type == SENSOR_TYPE_2M) {
+		else if (snr_type == SENSOR_TYPE_SOC) {
 			//delay 1.2 seconds for SOC sensors
 			sleep(1);
 			usleep(200000);

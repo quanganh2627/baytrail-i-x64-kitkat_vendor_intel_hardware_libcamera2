@@ -146,7 +146,7 @@ void CameraHardware::initDefaultParameters()
 	p.set("zoom-supported","true");
 
     if (mCurrentSensor != NULL) {
-      if (mCurrentSensor->type == SENSOR_TYPE_2M) {
+      if (mCurrentSensor->type == SENSOR_TYPE_SOC) {
 	// 2M
 	p.set("picture-size-values","320x240,640x480,800x600,1280x1024,1600x1200");
 	p.set("whitebalance-values","auto");
@@ -317,7 +317,7 @@ status_t CameraHardware::startPreview()
     int w, h, preview_size;
     mParameters.getPreviewSize(&w, &h);
     //mCamera->capture_init(w, h, INTEL_PIX_FMT_YUYV, 3);
-    mCamera->captureInit(w, h, mPreviewPixelFormat, 3);
+    mCamera->captureInit(w, h, mPreviewPixelFormat, 3, 0);
     mCamera->captureStart();
 
     mCamera->setAE("on");
@@ -567,7 +567,7 @@ int CameraHardware::pictureThread()
         int w, h;
 	mParameters.getPictureSize(&w, &h);
 
-	mCamera->captureInit(w, h, mPicturePixelFormat, 1);
+	mCamera->captureInit(w, h, mPicturePixelFormat, 1, 0);
 	mCamera->captureStart();
 
 	mCamera->setAE("on");
@@ -579,7 +579,7 @@ int CameraHardware::pictureThread()
 
 	if (mCamera->getFlash())
 		frame_wait = FLASH_FRAME_WAIT;
-	else if (mCamera->getSensorInfos()->type == SENSOR_TYPE_2M)
+	else if (mCamera->getSensorInfos()->type == SENSOR_TYPE_SOC)
 		frame_wait = 1;
 	else
 		frame_wait = MAX_FRAME_WAIT;

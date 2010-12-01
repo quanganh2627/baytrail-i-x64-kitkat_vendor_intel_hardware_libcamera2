@@ -214,7 +214,8 @@ public:
     void captureInit(unsigned int width,
 		    unsigned int height,
 		    ci_frame_format frame_fmt,
-		    unsigned int frame_num);
+		    unsigned int frame_num,
+		    unsigned int index);
     void captureFinalize(void);
     void captureStart(void);
 
