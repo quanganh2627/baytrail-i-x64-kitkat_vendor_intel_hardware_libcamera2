@@ -135,6 +135,16 @@ void CameraHardware::initDefaultParameters()
     p.set("rotation-values","0,90,180");
     p.set("focus-mode","auto");
 
+    // This is a workaround to prevent camera apk crash when utilizing
+    // zoom functionality. For optimizations we'd want to implement
+    // a solution here where we set up zoom ratios for each of the
+    // supported platform cameras. See the following files for more information
+    // on using the KEY_MAX_ZOOM[] & KEY_ZOOM_RATIOS[] for finer grained control:
+    // frameworks/base/include/camera/CameraParameters.h
+    // and
+    // frameworks/base/libs/camera/CameraParameters.cpp
+	p.set("zoom-supported","true");
+
     if (mCurrentSensor != NULL) {
       if (mCurrentSensor->type == SENSOR_TYPE_2M) {
 	// 2M
