@@ -518,7 +518,9 @@ int CameraHardware::autoFocusThread()
 			break;
 	}
 	mNotifyCb(CAMERA_MSG_FOCUS, rc, 0, mCallbackCookie);
-    }
+    } else
+	mNotifyCb(CAMERA_MSG_FOCUS, true, 0, mCallbackCookie);
+
     return NO_ERROR;
 }
 

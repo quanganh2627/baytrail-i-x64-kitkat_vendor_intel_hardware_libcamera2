@@ -339,6 +339,7 @@ void AdvanceProcess::advImageProcessAE(void)
     mImageProcessLock.lock();
     if (fpImageProcessAE != NULL &&
 	isFlagEnabled(IMAGE_PRCOESS_FLAGS_TYPE_AE)) {
+	mFinishedAE = FALSE;
         (this->*fpImageProcessAE)();
     }
     mImageProcessLock.unlock();
@@ -349,6 +350,7 @@ void AdvanceProcess::advImageProcessAWB(void)
     mImageProcessLock.lock();
     if (fpImageProcessAWB != NULL &&
 	isFlagEnabled(IMAGE_PRCOESS_FLAGS_TYPE_AWB)) {
+	mFinishedAWB = FALSE;
         (this->*fpImageProcessAWB)();
     }
     mImageProcessLock.unlock();
@@ -390,11 +392,13 @@ void AdvanceProcess::imageProcessAFforSOC(void)
 void AdvanceProcess::imageProcessAEforSOC(void)
 {
     disableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AE);
+    mFinishedAE = TRUE;
 }
 
 void AdvanceProcess::imageProcessAWBforSOC(void)
 {
     disableFlag(IMAGE_PRCOESS_FLAGS_TYPE_AWB);
+    mFinishedAWB = TRUE;
 }
 
 void AdvanceProcess::imageProcessAFforRAW(void)
