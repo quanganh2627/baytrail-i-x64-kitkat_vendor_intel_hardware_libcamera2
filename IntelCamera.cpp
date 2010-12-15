@@ -911,8 +911,7 @@ unsigned int IntelCamera::captureGetRecordingFrame(void *buffer, int buffer_shar
 				break;
 			case INTEL_PIX_FMT_NV12 :
 				//      LOGV("INTEL_PIX_FMT_NV12");
-				nv12_to_nv21((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
-					     mCI->fm_width, mCI->fm_height);
+				memcpy(buffer, (void*)mFrameInfos[frame].addr, mCI->fm_width * mCI->fm_height * 3 / 2);
 				break;
 			default :
 				LOGE("Unknown Format typedddd");
