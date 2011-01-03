@@ -11,6 +11,7 @@ LIBCAMERA_TOP := $(LOCAL_PATH)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libcamera
+LOCAL_MODULE_TAGS := optional
 
 LOCAL_SHARED_LIBRARIES := \
 	libcamera_client \
@@ -52,6 +53,7 @@ include $(BUILD_SHARED_LIBRARY)
 # ci-app test program
 include $(CLEAR_VARS)
 LOCAL_MODULE := ci-app
+LOCAL_MODULE_TAGS := optional
 
 LOCAL_SHARED_LIBRARIES := \
 	libcamera_client \
