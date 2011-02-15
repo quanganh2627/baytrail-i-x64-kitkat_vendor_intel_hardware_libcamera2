@@ -741,7 +741,6 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     if (strcmp(new_value, "jpeg") == 0) {
   //      mPicturePixelFormat = INTEL_PIX_FMT_JPEG;
 	mPicturePixelFormat =	INTEL_PIX_FMT_RGB565;//ejding_debug
-	mPicturePixelFormat =	INTEL_PIX_FMT_NV12;//ejding_debug
     } else {
         LOGE("Only jpeg still pictures are supported");
         return -1;
