@@ -869,7 +869,27 @@ sp<CameraHardwareInterface> CameraHardware::createInstance()
     return hardware;
 }
 
-extern "C" sp<CameraHardwareInterface> openCameraHardware()
+static CameraInfo sCameraInfo[] = {
+    {
+        CAMERA_FACING_BACK,
+        90,  /* orientation */
+    }
+};
+
+extern "C" int HAL_getNumberOfCameras()
+{
+    return 1;
+}
+
+extern "C" void HAL_getCameraInfo(int cameraId, struct CameraInfo* cameraInfo)
+{
+    if (cameraId > 1) {
+        return;
+    }
+    memcpy(cameraInfo, &sCameraInfo[cameraId], sizeof(CameraInfo));
+}
+
+extern "C" sp<CameraHardwareInterface> HAL_openCameraHardware(int cameraId)
 {
     return CameraHardware::createInstance();
 }

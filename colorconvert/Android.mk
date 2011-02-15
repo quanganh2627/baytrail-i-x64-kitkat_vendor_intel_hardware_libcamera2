@@ -6,6 +6,7 @@ LOCAL_SRC_FILES := \
  	src/cczoomrotationbase.cpp \
 
 LOCAL_MODULE := libcameracc
+LOCAL_MODULE_TAGS := optional
 
 LOCAL_CFLAGS := -DFALSE=false
 
