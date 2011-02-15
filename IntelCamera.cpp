@@ -553,7 +553,8 @@ IntelCamera::IntelCamera()
   : mFrameInfos(0),
     mCurrentFrameFormat(0),
     mSensorInfo(0),
-    mAdvanceProcess(NULL)
+    mAdvanceProcess(NULL),
+    ccRGBtoYUV(NULL)
 {
   int ret;
   mCI = new ci_struct_t;
@@ -568,6 +569,9 @@ IntelCamera::IntelCamera()
 //  }
   mCI->frame_num = 0;
   mCI->cur_frame = 0;
+
+//color converter
+  trimBuffer = new unsigned char [1024 * 768 * 3 / 2];
 }
 
 IntelCamera::~IntelCamera()
@@ -579,6 +583,16 @@ IntelCamera::~IntelCamera()
   ret = ci_terminate();
   CHECK_CI_RET(ret, "ci terminate");
   delete mCI;
+
+// color converter
+  if (ccRGBtoYUV) {
+      delete ccRGBtoYUV;
+      ccRGBtoYUV = NULL;
+  };
+
+  if (trimBuffer) {
+	  delete [] trimBuffer;
+  };
 }
 
 void IntelCamera::captureInit(unsigned int width,
@@ -694,6 +708,15 @@ if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_
   if (mAdvanceProcess != NULL) {
        mAdvanceProcess->setAdvanceParams(w,h);
   }
+
+//color converter
+  ccRGBtoYUV = CCRGB16toYUV420sp::New();
+  ccRGBtoYUV->Init(mCI->fm_width, mCI->fm_height,
+		  mCI->fm_width, 
+		  mCI->fm_width, mCI->fm_height,
+		  ((mCI->fm_width + 15)>>4)<<4,
+		  0);
+
 }
 
 void IntelCamera::captureFinalize(void)
@@ -726,6 +749,11 @@ if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_
   CHECK_CI_RET(ret, "ci isp close");
 }
 #endif
+//color converter
+  if (ccRGBtoYUV) {
+	  delete ccRGBtoYUV;
+	  ccRGBtoYUV = NULL;
+  };
 }
 
 void IntelCamera::captureStart(void)
@@ -883,28 +911,26 @@ unsigned int IntelCamera::captureGetFrame(void *buffer)
   if(buffer != NULL) {
     switch(mCurrentFrameFormat) {
     case INTEL_PIX_FMT_RGB565 :
-      //      LOGV("INTEL_PIX_FMT_RGB565");
- //     memcpy(buffer, (unsigned char *)mFrameInfos_self[frame].addr, mFrameInfos_self[frame].size);
-      int i ;
-      for(i=0;i<mCI->fm_height;i++)
-	  memcpy( (unsigned char *)buffer+i*2*mCI->fm_width, (unsigned char *)mFrameInfos[frame].addr+i*mFrameInfos[frame].size/mCI->fm_height, 2*mCI->fm_width);
-
+      //LOGE("INTEL_PIX_FMT_RGB565");
+      trimRGB565((unsigned char*)mFrameInfos[frame].addr, (unsigned char*)buffer,
+		      mFrameInfos[frame].size/mCI->fm_height, mCI->fm_height,
+		      mCI->fm_width, mCI->fm_height);
 	break;
     case INTEL_PIX_FMT_JPEG :
-      //      LOGV("INTEL_PIX_FMT_JPEG");
+      //LOGE("INTEL_PIX_FMT_JPEG");
       memcpy(buffer, mJpegFrameInfo.addr, mJpegFrameInfo.size);
       break;
     case INTEL_PIX_FMT_YUYV :
-      //      LOGV("INTEL_PIX_FMT_YUYV");
+      //LOGE("INTEL_PIX_FMT_YUYV");
       yuyv422_to_yuv420sp((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
                           mCI->fm_width, mCI->fm_height);
       break;
     case INTEL_PIX_FMT_NV12 :
-      //      LOGV("INTEL_PIX_FMT_NV12");
-      nv12_to_nv21((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
-		   mCI->fm_width, mCI->fm_height);
-//      LOGE("jinlu nv12 to pure 5650");
-//      memcpy(buffer, (unsigned char *)mFrameInfos_self[frame].addr, mFrameInfos_self[frame].size);
+      //LOGE("INTEL_PIX_FMT_NV12 - preview");
+      trimNV12((unsigned char*)mFrameInfos[frame].addr, (unsigned char*)buffer,
+      		      mFrameInfos[frame].size/mCI->fm_height*2/3, mCI->fm_height,
+      		      mCI->fm_width, mCI->fm_height);
+
       break;
     default :
       LOGE("Unknown Format type");
@@ -932,8 +958,12 @@ unsigned int IntelCamera::captureGetRecordingFrame(void *buffer, int buffer_shar
 			switch(mCurrentFrameFormat) {
 			case INTEL_PIX_FMT_RGB565 :
 				//      LOGV("INTEL_PIX_FMT_RGB565");
-				nv12_to_nv21((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
-					     mCI->fm_width, mCI->fm_height);
+//				nv12_to_nv21((unsigned char *)mFrameInfos[frame].addr, (unsigned char *)buffer,
+//					     mCI->fm_width, mCI->fm_height);
+				trimRGB565((unsigned char*)mFrameInfos[frame].addr, (unsigned char*)trimBuffer,
+					mFrameInfos[frame].size/mCI->fm_height, mCI->fm_height,
+					mCI->fm_width, mCI->fm_height);
+				ccRGBtoYUV->Convert(trimBuffer, (uint8*)buffer);
 				break;
 			case INTEL_PIX_FMT_YUYV :
 				//      LOGV("INTEL_PIX_FMT_YUYV");
@@ -942,7 +972,10 @@ unsigned int IntelCamera::captureGetRecordingFrame(void *buffer, int buffer_shar
 				break;
 			case INTEL_PIX_FMT_NV12 :
 				//      LOGV("INTEL_PIX_FMT_NV12");
-				memcpy(buffer, (void*)mFrameInfos[frame].addr, mCI->fm_width * mCI->fm_height * 3 / 2);
+//				memcpy(buffer, (void*)mFrameInfos[frame].addr, mCI->fm_width * mCI->fm_height * 3 / 2);
+				trimNV12((unsigned char*)mFrameInfos[frame].addr, (unsigned char*)buffer,
+		      			mFrameInfos[frame].size/mCI->fm_height*2/3, mCI->fm_height,
+		      			mCI->fm_width, mCI->fm_height);
 				break;
 			default :
 				LOGE("Unknown Format typedddd");
@@ -1312,6 +1345,47 @@ int IntelCamera::isImageProcessFinishedAF(void)
 {
 	return mAdvanceProcess->isFinishedAF();
 }
+
+void IntelCamera::trimRGB565(unsigned char *src, unsigned char* dst,
+		int src_width, int src_height,
+		int dst_width, int dst_height)
+{
+        for (int i=0;i<dst_height;i++) {
+		memcpy( (unsigned char *)dst+i*2*dst_width, 
+				(unsigned char *)src+i*src_width, 
+				2*dst_width);
+	}
+
+};
+
+void IntelCamera::trimNV12(unsigned char *src, unsigned char* dst,
+		int src_width, int src_height,
+		int dst_width, int dst_height)
+{
+	unsigned char *dst_y, *dst_uv;
+	unsigned char *src_y, *src_uv;
+
+	dst_y = dst;
+	src_y = src;
+	
+	LOGV("%s:%s:%d", __FILE__, __func__, __LINE__);
+	LOGV("%d:%d:%d:%d", src_width, src_height, dst_width, dst_height);
+
+	for (int i=0;i<dst_height;i++) {
+		memcpy( (unsigned char *)dst_y + i * dst_width,
+				(unsigned char *)src_y + i * src_width,
+				dst_width);
+	};
+
+	dst_uv = dst_y + dst_width * dst_height;
+	src_uv = src_y + src_width * src_height;
+
+	for (int j=0;j<dst_height / 2; j++) {
+		memcpy( (unsigned char *)dst_uv + j * dst_width,
+				(unsigned char *)src_uv + j * src_width,
+				dst_width);
+	};
+};
 
 void IntelCamera::nv12_to_nv21(unsigned char *nv12, unsigned char *nv21, int width, int height)
 {

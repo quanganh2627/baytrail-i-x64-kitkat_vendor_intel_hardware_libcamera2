@@ -1,5 +1,6 @@
 # Copyright (c) 2009-2010 Wind River Systems, Inc.
 ifeq ($(USE_CAMERA_STUB),false)
+
 #
 # libcamera
 #
@@ -47,9 +48,11 @@ LOCAL_C_INCLUDES += \
 	frameworks/base/include/camera \
 	external/skia/include/core \
 	external/skia/include/images \
-	hardware/intel/libci/include
+	hardware/intel/libci/include \
+	hardware/intel/libcamera/colorconvert/src
 
-LOCAL_STATIC_LIBRARIES +=
+LOCAL_STATIC_LIBRARIES += libcameracc
+LOCAL_SHARED_LIBRARIES += libutils
 
 include $(BUILD_SHARED_LIBRARY)
 
@@ -74,5 +77,11 @@ LOCAL_C_INCLUDES += \
 	hardware/intel/libci/include
 
 include $(BUILD_EXECUTABLE)
+
+#
+# color convert
+#
+include hardware/intel/libcamera/colorconvert/Android.mk
+
 
 endif

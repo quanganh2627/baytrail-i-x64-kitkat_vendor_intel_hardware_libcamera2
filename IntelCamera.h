@@ -26,6 +26,7 @@ extern "C" {
 
 #include "ci.h"
 #include "ci_adv.h"
+#include "ccrgb16toyuv420sp.h"
 
 #ifdef __cplusplus
 }
@@ -275,6 +276,15 @@ private:
     void yuyv422_to_rgb16(unsigned char *buf, unsigned char *rgb, int width, int height);
     void yuyv422_to_yuv420sp(unsigned char *bufsrc, unsigned char *bufdest, int width, int height);
 	
+    void trimRGB565(unsigned char *src, unsigned char* dst,
+		int src_width, int src_height,
+		int dst_width, int dst_height);
+    void trimNV12(unsigned char *src, unsigned char* dst,
+		int src_width, int src_height,
+		int dst_width, int dst_height);
+
+
+
     void allocSensorInfos(void);
     void freeSensorInfos(void);
 
@@ -293,6 +303,10 @@ private:
     sensor_info_t *mSensorInfo;
 
     AdvanceProcess *mAdvanceProcess;
+
+    //color converters
+    ColorConvertBase *ccRGBtoYUV;
+    unsigned char *trimBuffer;
 };
 
 }; // namespace android
