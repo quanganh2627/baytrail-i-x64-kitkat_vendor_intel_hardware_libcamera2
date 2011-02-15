@@ -563,9 +563,9 @@ IntelCamera::IntelCamera()
 
   allocSensorInfos();
 
-  if ( (mCI != NULL)  && (mSensorInfo != NULL)) {
-    mAdvanceProcess = new AdvanceProcess(mCI, mSensorInfo);
-  }
+//  if ( (mCI != NULL)  && (mSensorInfo != NULL)) {
+//   mAdvanceProcess = new AdvanceProcess(mCI, mSensorInfo);
+//  }
   mCI->frame_num = 0;
   mCI->cur_frame = 0;
 }
@@ -598,6 +598,7 @@ void IntelCamera::captureInit(unsigned int width,
 			   (void*)(&mCI->snr_id));
   CHECK_CI_RET(ret, "set sensor");
 
+#if 0
   /* set sensor output resolution */
   ci_resolution res;
   res.width = width;
@@ -609,7 +610,7 @@ void IntelCamera::captureInit(unsigned int width,
     mCI->snr_width = res.width;
     mCI->snr_height = res.height;
   }
-
+#endif
   /* get isp and snr device */
   ret = ci_get_device(mCI->context, CI_DEVICE_SENSOR,
 		&(mCI->snr_dev));
@@ -619,10 +620,13 @@ void IntelCamera::captureInit(unsigned int width,
 		&(mCI->isp_dev));
   CHECK_CI_RET(ret, "get isp device");
 
+#if 0
 if (frame_fmt == INTEL_PIX_FMT_RGB565 || frame_fmt == INTEL_PIX_FMT_BGR32) {
   ret = ci_isp_open(LANGWELL_ISP_SELF, &(mCI->isp_dev_self));
   CHECK_CI_RET(ret, "ci isp open self");
 }
+#endif
+
   /*start context */
   ret = ci_start_context(mCI->context);
   CHECK_CI_RET(ret, "start context");
@@ -636,20 +640,27 @@ if (frame_fmt == INTEL_PIX_FMT_RGB565 || frame_fmt == INTEL_PIX_FMT_BGR32) {
   /* create frames */
   //  mCI->frames = (ci_isp_frame_id *)malloc(sizeof(ci_isp_frame_id)*frame_num);
   mCI->frames = new ci_isp_frame_id[frame_num];
+#if 0
 if (frame_fmt == INTEL_PIX_FMT_RGB565 || frame_fmt == INTEL_PIX_FMT_BGR32) {
   mCI->frames_self = new ci_isp_frame_id[frame_num];
 }
+#endif 
 
   unsigned int w, h;
   w = width;
   h = height;
   /* VIDIOC_S_FMT, VIDIOC_REQBUFS */
-if (frame_fmt != INTEL_PIX_FMT_JPEG)
+  //ejding_debug disable force to nv12 format ,to enable rgb565 format
+//  #if 0
+//if (frame_fmt != INTEL_PIX_FMT_JPEG)
+if (frame_fmt== INTEL_PIX_FMT_JPEG)
+	
   ret = ci_isp_create_frames(mCI->isp_dev, &w, &h,
 		       INTEL_PIX_FMT_NV12,
 		       frame_num,
 		       mCI->frames);
 else
+//#endif 	
   ret = ci_isp_create_frames(mCI->isp_dev, &w, &h,
 		       frame_fmt,
 		       frame_num,
@@ -670,6 +681,7 @@ else
   CHECK_CI_RET(ret, "ci isp open self");
 */
 
+#if 0
 if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_PIX_FMT_BGR32) {
   frame_fmt = mCurrentFrameFormat;
   ret = ci_isp_create_frames(mCI->isp_dev_self, &w, &h,
@@ -678,6 +690,7 @@ if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_
 		       mCI->frames_self);
   CHECK_CI_RET(ret, "isp create frames self");
 }
+#endif
   if (mAdvanceProcess != NULL) {
        mAdvanceProcess->setAdvanceParams(w,h);
   }
@@ -689,11 +702,13 @@ void IntelCamera::captureFinalize(void)
   /* destroy frames */
   ret = ci_isp_destroy_frames(mCI->isp_dev, mCI->frames);
   CHECK_CI_RET(ret, "destory frames");
+#if 0
 if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_PIX_FMT_BGR32) {
   ret = ci_isp_destroy_frames(mCI->isp_dev_self, mCI->frames_self);
   CHECK_CI_RET(ret, "destory frames self");
   delete [] mCI->frames_self;
 }
+#endif
   //free(mCI->frames);
   delete [] mCI->frames;
   /* stop context */
@@ -703,12 +718,14 @@ if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_
   ret = ci_destroy_context(mCI->context);
   CHECK_CI_RET(ret, "destory context");
   mCI->cur_frame = 0;
+#if 0
 if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_PIX_FMT_BGR32) {
   ret = ci_isp_off(mCI->isp_dev_self);
   CHECK_CI_RET(ret, "ci isp off");
   ret = ci_isp_close(mCI->isp_dev_self);
   CHECK_CI_RET(ret, "ci isp close");
 }
+#endif
 }
 
 void IntelCamera::captureStart(void)
@@ -721,22 +738,25 @@ void IntelCamera::captureStart(void)
   /* VIDIOC_STREAMON , VIDIOC_QUERYBUF */
   ret = ci_isp_start_capture(mCI->isp_dev);
   CHECK_CI_RET(ret, "isp start capture");
+#if 0
 if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_PIX_FMT_BGR32) {
   ret = ci_isp_start_capture(mCI->isp_dev_self);
   CHECK_CI_RET(ret, "isp start capture self");
 }
-
+#endif
   unsigned int i, frame_num = mCI->frame_num;
   for (i = 0; i < frame_num; i++) {
     /* VIDIOC_QBUF */
     ret = ci_isp_set_frame_ext(mCI->isp_dev,
 			       mCI->frames[i]);
     CHECK_CI_RET(ret, "isp set frame ext");
+#if 0
 if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_PIX_FMT_BGR32) {
     ret = ci_isp_set_frame_ext(mCI->isp_dev_self,
 			       mCI->frames_self[i]);
     CHECK_CI_RET(ret, "isp set frame ext self");
 }
+#endif
   }
 
 }
@@ -755,6 +775,7 @@ int IntelCamera::captureMapFrame(void)
 	    LOGV("%s : mFrameInfos[%u].addr=%p, mFrameInfos[%u].size=%d",
 		 __func__, i, mFrameInfos[i].addr, i, mFrameInfos[i].size);
 	}
+#if 0
 	if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565) {
 	mFrameInfos_self = new ci_isp_frame_map_info[frame_num];
 	for(i = 0; i < frame_num; i++) {
@@ -764,7 +785,7 @@ int IntelCamera::captureMapFrame(void)
 		 __func__, i, mFrameInfos_self[i].addr, i, mFrameInfos_self[i].size);
 	}
         }
-
+#endif
 	size =  mFrameInfos[0].size;
 
 	/* camera bcd stuff */
@@ -797,6 +818,7 @@ void IntelCamera::captureUnmapFrame(void)
 	  LOGV("%s : mFrameInfos[%u].addr=%p",__func__, i, mFrameInfos[i].addr);
       }
       delete [] mFrameInfos;
+#if 0
       if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565) {
       for(i = 0; i < frame_num; i++) {
 	  ret = ci_isp_unmap_frame(mCI->isp_dev_self, &(mFrameInfos_self[i]));
@@ -805,6 +827,7 @@ void IntelCamera::captureUnmapFrame(void)
       }
       delete [] mFrameInfos_self;
       }
+#endif
   } else if (mCurrentFrameFormat == INTEL_PIX_FMT_JPEG) {
       ret = ci_isp_unmap_frame(mCI->isp_dev, &mJpegFrameInfo);
       CHECK_CI_RET(ret, "capture jpeg unmap frame");
@@ -829,6 +852,7 @@ unsigned int IntelCamera::captureGrabFrame(void)
   }
 #endif
 
+#if 0
   if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_PIX_FMT_BGR32) {
         ret = ci_isp_capture_frame_ext(mCI->isp_dev_self, (ci_isp_frame_id *)&frame_self,
 		  &frame_size_self);
@@ -838,14 +862,17 @@ unsigned int IntelCamera::captureGrabFrame(void)
         }
 #endif
   }
+#endif
   //  CHECK_CI_RET(ret, "capture frame ext");
 
   LOGV("captureGrabFrame : frame = %d", frame);
   mCI->cur_frame = frame;
   mCI->frame_size = frame_size;
+#if 0
   if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_PIX_FMT_BGR32) {
       mCI->frame_size_self = frame_size_self;
   }
+#endif 
   return frame_size;
 }
 
@@ -857,7 +884,11 @@ unsigned int IntelCamera::captureGetFrame(void *buffer)
     switch(mCurrentFrameFormat) {
     case INTEL_PIX_FMT_RGB565 :
       //      LOGV("INTEL_PIX_FMT_RGB565");
-      memcpy(buffer, (unsigned char *)mFrameInfos_self[frame].addr, mFrameInfos_self[frame].size);
+ //     memcpy(buffer, (unsigned char *)mFrameInfos_self[frame].addr, mFrameInfos_self[frame].size);
+      int i ;
+      for(i=0;i<mCI->fm_height;i++)
+	  memcpy( (unsigned char *)buffer+i*2*mCI->fm_width, (unsigned char *)mFrameInfos[frame].addr+i*mFrameInfos[frame].size/mCI->fm_height, 2*mCI->fm_width);
+
 	break;
     case INTEL_PIX_FMT_JPEG :
       //      LOGV("INTEL_PIX_FMT_JPEG");
@@ -930,9 +961,11 @@ void IntelCamera::captureRecycleFrameWithFrameId(unsigned int id)
    LOGV("captureRecycleFrameWithFrameId :  id = 0x%x", id);
 
    ret = ci_isp_set_frame_ext(mCI->isp_dev, mCI->frames[id]);
+#if 0
    if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_PIX_FMT_BGR32) {
        ret = ci_isp_set_frame_ext(mCI->isp_dev_self, mCI->frames_self[id]);
    }
+ #endif  
 }
 #endif
 
@@ -946,9 +979,11 @@ void IntelCamera::captureRecycleFrame(void)
   }
   //  mCI->cur_frame = (mCI->cur_frame + 1) % mCI->frame_num;
   ret = ci_isp_set_frame_ext(mCI->isp_dev,mCI->frames[mCI->cur_frame]);
+#if 0  
 if (mCurrentFrameFormat == INTEL_PIX_FMT_RGB565 || mCurrentFrameFormat == INTEL_PIX_FMT_BGR32) {
   ret = ci_isp_set_frame_ext(mCI->isp_dev_self,mCI->frames_self[mCI->cur_frame]);
 }
+#endif
   //  CHECK_CI_RET(ret, "isp set frame ext");
 }
 
@@ -1033,7 +1068,7 @@ void IntelCamera::freeSensorInfos(void)
 int IntelCamera::isResolutionSupported(int w, int h)
 {
   sensor_res_t *snr_res;
-
+return 1;
   if (mSensorInfo != NULL) {
       for(unsigned int i = 0; i < mSensorInfo->res_num; i++) {
 	snr_res = mSensorInfo->resolutions[i];

@@ -22,6 +22,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libsensor \
 	libisphal \
 	libci \
+	libskia \
 	libadvci
 
 LOCAL_SRC_FILES += \
@@ -44,6 +45,8 @@ endif
 
 LOCAL_C_INCLUDES += \
 	frameworks/base/include/camera \
+	external/skia/include/core \
+	external/skia/include/images \
 	hardware/intel/libci/include
 
 LOCAL_STATIC_LIBRARIES +=

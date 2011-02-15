@@ -23,6 +23,11 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 
+
+#include "SkBitmap.h"
+#include "SkImageEncoder.h"
+#include "SkStream.h"
+
 namespace android {
 
 bool share_buffer_caps_set=false;
@@ -111,7 +116,9 @@ void CameraHardware::initDefaultParameters()
     p.setPreviewFrameRate(15);
     p.setPreviewFormat("rgb565");
 #endif
-    p.setPictureSize(1600, 1200);
+ //   p.setPictureSize(1600, 1200);
+    p.setPictureSize(640, 480);
+
     p.setPictureFormat("jpeg");
 
     /*
@@ -237,8 +244,8 @@ int CameraHardware::previewThread()
 		mCamera->imageProcessAE();
 		mCamera->imageProcessAWB();
 	    }
-	    mCamera->imageProcessBP();
-	    mCamera->imageProcessBL();
+//	    mCamera->imageProcessBP();
+//	    mCamera->imageProcessBL();
 		
 		const char *preview_fmt;
 		preview_fmt = mParameters.getPreviewFormat();
@@ -323,7 +330,7 @@ status_t CameraHardware::startPreview()
     mCamera->setAE("on");
     mCamera->setAWB(mParameters.get("whitebalance"));
     mCamera->setAF(mParameters.get("focus-mode"));
-    mCamera->setColorEffect(mParameters.get("effect"));
+//    mCamera->setColorEffect(mParameters.get("effect"));
 	mCamera->captureMapFrame();
 
 	const char *preview_fmt;
@@ -570,10 +577,11 @@ int CameraHardware::pictureThread()
 	mCamera->captureInit(w, h, mPicturePixelFormat, 1, 0);
 	mCamera->captureStart();
 
+#if 0
 	mCamera->setAE("on");
 	mCamera->setAWB(mParameters.get("whitebalance"));
-	mCamera->setColorEffect(mParameters.get("effect"));
-	mCamera->setJPEGRatio(mParameters.get("jpeg-quality"));
+//	mCamera->setColorEffect(mParameters.get("effect"));
+//	mCamera->setJPEGRatio(mParameters.get("jpeg-quality"));
 	mCamera->setFlash(mParameters.get("flash-mode"));
 	mCamera->triggerFlashLight();
 
@@ -583,33 +591,70 @@ int CameraHardware::pictureThread()
 		frame_wait = 1;
 	else
 		frame_wait = MAX_FRAME_WAIT;
-
+#endif
 	int jpegSize;
-	while (1) {
-		jpegSize = mCamera->captureGrabFrame();
-		mCamera->imageProcessAE();
-		mCamera->imageProcessAWB();
-		frame_cnt++;
-		if ((mCamera->isImageProcessFinishedAE() && mCamera->isImageProcessFinishedAWB()) ||
-		    frame_cnt > frame_wait)
-			break;
-		mCamera->captureRecycleFrame();
-	}
+	int sensorsize;
+//	while (1) {
+//		jpegSize = mCamera->captureGrabFrame();
+sensorsize = mCamera->captureGrabFrame();
+jpegSize=(sensorsize * 3)/4;
+
+//		mCamera->imageProcessAE();
+//		mCamera->imageProcessAWB();
+//		frame_cnt++;
+//		if ((mCamera->isImageProcessFinishedAE() && mCamera->isImageProcessFinishedAWB()) ||
+//		    frame_cnt > frame_wait)
+//			break;
+//		mCamera->captureRecycleFrame();
+//	}
 	LOGD(" - JPEG size saved = %dB, %dK",jpegSize, jpegSize/1000);
 
-	mCamera->imageProcessBP();
-	mCamera->imageProcessBL();
+//	mCamera->imageProcessBP();
+//	mCamera->imageProcessBL();
 
 	mCamera->captureMapFrame();
-	sp<MemoryHeapBase> heap = new MemoryHeapBase(jpegSize);
-	sp<MemoryBase> buffer = new MemoryBase(heap, 0, jpegSize);
-	mCamera->captureGetFrame(heap->getBase());
+//	sp<MemoryHeapBase> heap = new MemoryHeapBase(jpegSize);
+//	sp<MemoryBase> buffer = new MemoryBase(heap, 0, jpegSize);
+	sp<MemoryHeapBase> heapSensor = new MemoryHeapBase(sensorsize);
+	sp<MemoryBase> bufferSensor = new MemoryBase(heapSensor, 0, sensorsize);
+		sp<MemoryHeapBase> heapJpeg = new MemoryHeapBase(jpegSize);
+	sp<MemoryBase> bufferJpeg = new MemoryBase(heapJpeg, 0, jpegSize);
+
+//	mCamera->captureGetFrame(heap->getBase());
+	mCamera->captureGetFrame(heapSensor->getBase());
+
 	mCamera->captureUnmapFrame();
 
 	mCamera->captureRecycleFrame();
 	mCamera->captureFinalize();
 
-	mDataCb(CAMERA_MSG_COMPRESSED_IMAGE, buffer, mCallbackCookie);
+
+SkImageEncoder::Type fm;
+fm = SkImageEncoder::kJPEG_Type;
+
+
+bool success = false;
+//SkMemoryStream * stream = new SkMemoryStream(jpegSize);
+SkMemoryWStream *stream =new SkMemoryWStream(heapJpeg->getBase(),jpegSize);
+
+SkBitmap *bitmap =new SkBitmap();
+bitmap->setConfig(SkBitmap::kRGB_565_Config, w,h);
+
+	bitmap->setPixels(heapSensor->getBase(),NULL);
+
+
+
+	SkImageEncoder* encoder = SkImageEncoder::Create(fm);
+	if (NULL != encoder) {
+		success = encoder->encodeStream(stream, *bitmap, 75);
+//		success = encoder->encodeFile("/data/tmp.jpg", *bitmap, 75);
+//		LOGD(" sucess is %d",success);
+		delete encoder;
+	}
+
+//	mDataCb(CAMERA_MSG_COMPRESSED_IMAGE, buffer, mCallbackCookie);
+	mDataCb(CAMERA_MSG_COMPRESSED_IMAGE, bufferJpeg, mCallbackCookie);
+
     }
     return NO_ERROR;
 }
@@ -694,7 +739,9 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     LOGD("%s",new_value);
     set_value = mParameters.getPictureFormat();
     if (strcmp(new_value, "jpeg") == 0) {
-        mPicturePixelFormat = INTEL_PIX_FMT_JPEG;
+  //      mPicturePixelFormat = INTEL_PIX_FMT_JPEG;
+	mPicturePixelFormat =	INTEL_PIX_FMT_RGB565;//ejding_debug
+	mPicturePixelFormat =	INTEL_PIX_FMT_NV12;//ejding_debug
     } else {
         LOGE("Only jpeg still pictures are supported");
         return -1;
@@ -707,7 +754,8 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     }
 
     int picture_width, picture_height;
-    p.getPictureSize(&picture_width, &picture_height);
+ //   p.getPictureSize(&picture_width, &picture_height);
+	picture_width=640;picture_height=480;
 
     if(mCamera != NULL) {
         LOGD("verify a jpeg picture size %dx%d",picture_width,picture_height);
