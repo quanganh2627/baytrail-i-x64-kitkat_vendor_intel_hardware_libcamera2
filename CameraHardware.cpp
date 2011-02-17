@@ -228,8 +228,9 @@ int CameraHardware::previewThread()
 #else
 	    mCamera->captureGrabFrame(); 
 #endif
-	    if(mCamera->isImageProcessEnabled() &&
-	       (mCameraState == CAM_PREVIEW || mCameraState == CAM_VID_RECORD)) {
+//	    if(mCamera->isImageProcessEnabled() &&
+//	       (mCameraState == CAM_PREVIEW || mCameraState == CAM_VID_RECORD)) {
+            if (0) {
 	        mCamera->imageProcessAF();
 		mCamera->imageProcessAE();
 		mCamera->imageProcessAWB();
@@ -281,8 +282,10 @@ int CameraHardware::previewThread()
 	    LOGV("transfer a preview frame to client (index:%d/%d)",
 		 postPreviewFrame, kBufferCount);
 
-	    mDataCb(CAMERA_MSG_PREVIEW_FRAME,
-		    mPreviewBuffer.base[postPreviewFrame], mCallbackCookie);
+            if ((mMsgEnabled & CAMERA_MSG_PREVIEW_FRAME)) {
+	        mDataCb(CAMERA_MSG_PREVIEW_FRAME,
+		        mPreviewBuffer.base[postPreviewFrame], mCallbackCookie);
+            }
 	    clrBF(&mPreviewBuffer.flags[postPreviewFrame],BF_LOCKED|BF_ENABLED);
 	    mPostPreviewFrame = (postPreviewFrame + 1) % kBufferCount;
 	}
@@ -504,7 +507,8 @@ int CameraHardware::autoFocusThread()
     bool rc = false;
     int i;
 
-    if (mMsgEnabled & CAMERA_MSG_FOCUS & mCamera->isImageProcessEnabled()) {
+//    if (mMsgEnabled & CAMERA_MSG_FOCUS & mCamera->isImageProcessEnabled()) {
+    if (0) {
 	/* Start to do auto focus. Try 20 frames max */
 	for (i = 0; i < mAFMaxFrames; i++) {
 	        mCamera->imageProcessAF();
