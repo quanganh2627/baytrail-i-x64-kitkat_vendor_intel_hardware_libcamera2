@@ -141,6 +141,8 @@ void CameraHardware::initDefaultParameters()
     p.set("flash-mode-values","off,auto,on");
     p.set("rotation-values","0,90,180");
     p.set("focus-mode","auto");
+    p.set("video-frame-format","yuv420sp");
+ 
 
     if (mCurrentSensor != NULL) {
       if (mCurrentSensor->type == SENSOR_TYPE_SOC) {
