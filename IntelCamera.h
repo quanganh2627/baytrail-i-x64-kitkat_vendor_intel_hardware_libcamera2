@@ -24,18 +24,16 @@
 extern "C" {
 #endif
 
-#include "ci.h"
-#include "ci_adv.h"
+#include "v4l2.h"
 #include "ccrgb16toyuv420sp.h"
 
 #ifdef __cplusplus
 }
 #endif
 
-//#define RECYCLE_WHEN_RELEASING_RECORDING_FRAME
-
 namespace android {
 
+#if 0
 #define SNR_NAME_LEN    50
 #define RES_TEXT_LEN    20
 
@@ -206,6 +204,7 @@ private:
 	Mutex mFlagLock;
 	Mutex mImageProcessLock;
 };
+#endif
 
 class IntelCamera {
 public:
@@ -214,13 +213,13 @@ public:
 
     void captureInit(unsigned int width,
 		    unsigned int height,
-		    ci_frame_format frame_fmt,
-		    unsigned int frame_num,
-		    unsigned int index);
+		    v4l2_frame_format frame_fmt,
+		    unsigned int frame_num);
     void captureFinalize(void);
     void captureStart(void);
+    void captureStop(void);
 
-    int captureMapFrame(void);
+    void captureMapFrame(void);
     void captureUnmapFrame(void);
 
     unsigned int captureGrabFrame(void);
@@ -235,6 +234,7 @@ public:
     void captureRecycleFrameWithFrameId(unsigned int id);
 #endif
 
+    /*
     int isResolutionSupported(int w, int h);
     void getMaxResolution(int *w, int *h);
 
@@ -267,6 +267,7 @@ public:
     int isImageProcessFinishedAE(void);
     int isImageProcessFinishedAWB(void);
     int isImageProcessFinishedAF(void);
+    */
 
     unsigned int get_frame_num(void);
     void get_frame_id(unsigned int *frame_id, unsigned int frame_num);
@@ -284,25 +285,26 @@ private:
 		int dst_width, int dst_height);
 
 
-
+    /*
     void allocSensorInfos(void);
     void freeSensorInfos(void);
 
     int getDepth(void);
     int calQBufferFrameSize(int w, int h, int depth);
     int calRealFrameSize(int w, int h, int depth);
+    */
 
-    ci_struct_t *mCI;
+    v4l2_struct_t *mCI;
 
-    ci_isp_frame_map_info mJpegFrameInfo;
-    ci_isp_frame_map_info *mFrameInfos;
-    ci_isp_frame_map_info *mFrameInfos_self;
+    v4l2_frame_info *mFrameInfos;
 
-    ci_frame_format mCurrentFrameFormat;
+    v4l2_frame_format mCurrentFrameFormat;
 
+    /*
     sensor_info_t *mSensorInfo;
 
     AdvanceProcess *mAdvanceProcess;
+    */
 
     //color converters
     ColorConvertBase *ccRGBtoYUV;

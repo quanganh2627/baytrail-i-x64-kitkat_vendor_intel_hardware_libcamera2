@@ -20,15 +20,13 @@ LOCAL_SHARED_LIBRARIES := \
 	libcutils \
 	libdl \
 	libbinder \
-	libsensor \
-	libisphal \
-	libci \
-	libskia \
-	libadvci
+	libskia
 
 LOCAL_SRC_FILES += \
+	CameraHALBridge.cpp \
 	CameraHardware.cpp \
-	IntelCamera.cpp
+	IntelCamera.cpp \
+	v4l2.c
 
 LOCAL_CFLAGS += -DLOG_NDEBUG=1
 
@@ -48,35 +46,12 @@ LOCAL_C_INCLUDES += \
 	frameworks/base/include/camera \
 	external/skia/include/core \
 	external/skia/include/images \
-	hardware/intel/libci/include \
 	hardware/intel/libcamera/colorconvert/src
 
 LOCAL_STATIC_LIBRARIES += libcameracc
 LOCAL_SHARED_LIBRARIES += libutils
 
 include $(BUILD_SHARED_LIBRARY)
-
-# ci-app test program
-include $(CLEAR_VARS)
-LOCAL_MODULE := ci-app
-LOCAL_MODULE_TAGS := optional
-
-LOCAL_SHARED_LIBRARIES := \
-	libcamera_client \
-	libutils \
-	libcutils \
-	libisphal \
-	libci \
-	libadvci
-
-LOCAL_SRC_FILES += ci-app.c
-
-LOCAL_CFLAGS += -DLOG_TAG=\"CI-APP\" -DBOOL_ENABLE
-
-LOCAL_C_INCLUDES += \
-	hardware/intel/libci/include
-
-include $(BUILD_EXECUTABLE)
 
 #
 # color convert

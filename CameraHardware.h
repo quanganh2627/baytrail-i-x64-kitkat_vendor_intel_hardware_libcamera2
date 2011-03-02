@@ -60,10 +60,10 @@ public:
                                     int32_t arg2);
     virtual void release();
 
-    static sp<CameraHardwareInterface> createInstance();
+    static sp<CameraHardwareInterface> createInstance(int cameraId);
 
 private:
-                        CameraHardware();
+                        CameraHardware(int cameraId);
     virtual             ~CameraHardware();
 
     static wp<CameraHardwareInterface> singleton;
@@ -79,7 +79,7 @@ private:
 #else
             Thread(false),
 #endif
-              mHardware(hw) { }
+            mHardware(hw) { }
         virtual void onFirstRef() {
             run("CameraPreviewThread", PRIORITY_URGENT_DISPLAY);
         }
@@ -90,8 +90,12 @@ private:
         }
     };
 
-    void initDefaultParameters();
     void initHeapLocked(int size);
+    void initDefaultParameters();
+    void initPreviewBuffer();
+    void deInitPreviewBuffer();
+    void initRecordingBuffer();
+    void deInitRecordingBuffer();
 
     int previewThread();
     int recordingThread();
@@ -107,40 +111,41 @@ private:
     CameraParameters    mParameters;
 
     inline void setBF(unsigned int *bufferFlag, unsigned int flag) {
-	    *bufferFlag |= flag;
+        *bufferFlag |= flag;
     }
 
     inline void clrBF(unsigned int *bufferFlag, unsigned int flag) {
-	    *bufferFlag &= ~flag;
+        *bufferFlag &= ~flag;
     }
 
     inline bool isBFSet(unsigned int bufferFlag,unsigned int flag) {
-	    return (bufferFlag & flag);
+        return (bufferFlag & flag);
     }
 
     static const int    kBufferCount = 4;
     static const int    mAFMaxFrames = 20;
 
     struct frame_buffer {
-	    sp<MemoryHeapBase>  heap;
-	    sp<MemoryBase>      base[kBufferCount];
-	    uint8_t             *start[kBufferCount];
-	    unsigned int        flags[kBufferCount];
+        sp<MemoryHeapBase>  heap;
+        sp<MemoryBase>      base[kBufferCount];
+        uint8_t             *start[kBufferCount];
+        unsigned int        flags[kBufferCount];
     } mPreviewBuffer, mRecordingBuffer;
 
     enum {
-	    BF_ENABLED = 0x00000001,
-	    BF_LOCKED
+        BF_ENABLED = 0x00000001,
+        BF_LOCKED
     };
 
     enum {
-	    CAM_DEFAULT = 0x01,
-	    CAM_PREVIEW,
-	    CAM_PIC_FOCUS,
-	    CAM_PIC_SNAP,
-	    CAM_VID_RECORD,
+        CAM_DEFAULT = 0x01,
+        CAM_PREVIEW,
+        CAM_PIC_FOCUS,
+        CAM_PIC_SNAP,
+        CAM_VID_RECORD,
     } mCameraState;
 
+    int 		mCameraId;
     int                 mPreviewFrame;
     int                 mPostPreviewFrame;
 
@@ -153,7 +158,7 @@ private:
     sp<MemoryHeapBase>  mRawHeap;
 
     IntelCamera        *mCamera;
-    sensor_info_t      *mCurrentSensor;
+    //sensor_info_t      *mCurrentSensor;
 
     bool                mRecordingRunning;
     int                 mPreviewFrameSize;

@@ -23,7 +23,6 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 
-
 #include "SkBitmap.h"
 #include "SkImageEncoder.h"
 #include "SkStream.h"
@@ -32,14 +31,14 @@ namespace android {
 
 bool share_buffer_caps_set=false;
 
-CameraHardware::CameraHardware()
+CameraHardware::CameraHardware(int cameraId)
                   : mParameters(),
+		    mCameraId(cameraId),
 		    mPreviewFrame(0),
 		    mPostPreviewFrame(0),
 		    mRecordingFrame(0),
 		    mPostRecordingFrame(0),
 		    mCamera(0),
-		    mCurrentSensor(0),
 		    mRecordingRunning(false),
                     mPreviewFrameSize(0),
                     mNotifyCb(0),
@@ -53,11 +52,9 @@ CameraHardware::CameraHardware()
                     mRecordingLastFPS(0)
 {
     mCamera = new IntelCamera();
-    mCurrentSensor = mCamera->getSensorInfos();
-    mCamera->printSensorInfos();
     initDefaultParameters();
     mCameraState = CAM_DEFAULT;
-  LOGE("libcamera version: 2010-07-05 0.3.3");
+    LOGD("libcamera version: 2011-03-01 1.0.1");
 }
 
 void CameraHardware::initHeapLocked(int size)
@@ -103,6 +100,22 @@ void CameraHardware::initHeapLocked(int size)
 
 }
 
+void CameraHardware::initPreviewBuffer() {
+
+}
+
+void CameraHardware::deInitPreviewBuffer() {
+
+}
+
+void CameraHardware::initRecordingBuffer() {
+
+}
+
+void CameraHardware::deInitRecordingBuffer() {
+
+}
+
 void CameraHardware::initDefaultParameters()
 {
     CameraParameters p;
@@ -116,25 +129,17 @@ void CameraHardware::initDefaultParameters()
     p.setPreviewFrameRate(15);
     p.setPreviewFormat("rgb565");
 #endif
- //   p.setPictureSize(1600, 1200);
+//    p.setPictureSize(1600, 1200);
     p.setPictureSize(640, 480);
 
     p.setPictureFormat("jpeg");
-
-    /*
-      frameworks/base/core/java/android/hardware/Camera.java
-    */
-
     p.set("preview-format-values", "yuv420sp,rgb565");
     p.set("preview-size-values", "640x480");
-//    p.set("preview-size-values", "320x240");
     p.set("picture-format-values", "jpeg");
     p.set("focus-mode-values", "fixed");
-
     p.set("jpeg-quality","100");
     p.set("whitebalance", "auto");
     p.set("effect", "none");
-    p.set("rotation","90");
     p.set("flash-mode","off");
     p.set("jpeg-quality-values","1,20,30,40,50,60,70,80,90,99,100");
     p.set("effect-values","none,mono,negative,sepia,aqua,pastel,whiteboard");
@@ -142,19 +147,15 @@ void CameraHardware::initDefaultParameters()
     p.set("rotation-values","0,90,180");
     p.set("focus-mode","auto");
     p.set("video-frame-format","yuv420sp");
- 
 
-    if (mCurrentSensor != NULL) {
-      if (mCurrentSensor->type == SENSOR_TYPE_SOC) {
-	// 2M
-	p.set("picture-size-values","320x240,640x480,800x600,1280x1024,1600x1200");
-	p.set("whitebalance-values","auto");
-      } else {
-	// 5M
-	p.set("focus-mode-values","auto,infinity,macro");
-	p.set("picture-size-values","640x480,1280x720,1280x960,1920x1080,2592x1944");
-	p.set("whitebalance-values","auto,cloudy-daylight,daylight,fluorescent,incandescent,shade,twilight,warm-fluorescent");
-      }
+    if (mCameraId == CAMERA_FACING_BACK) {
+        // For main back camera
+        p.set("rotation","90");
+        p.set("picture-size-values","320x240,640x480,800x600,1280x1024,1600x1200");
+    } else {
+        // For front camera
+        p.set("rotation","0");
+        p.set("picture-size-values","320x240,640x480,800x600,1280x1024,1600x1200");
     }
 
     mParameters = p;
@@ -220,25 +221,7 @@ int CameraHardware::previewThread()
 	    && !isBFSet(mPreviewBuffer.flags[previewFrame], BF_LOCKED)) {
 
 	    setBF(&mPreviewBuffer.flags[previewFrame],BF_LOCKED);
-#ifdef RECYCLE_WHEN_RELEASING_RECORDING_FRAME
-	    unsigned int ret_frame_size = mCamera->captureGrabFrame(); 
-            if(ret_frame_size == (unsigned int)-1) {
-                 clrBF(&mPreviewBuffer.flags[previewFrame],BF_LOCKED);
-                 usleep(10000);     
-                 return NO_ERROR;
-            }
-#else
 	    mCamera->captureGrabFrame(); 
-#endif
-//	    if(mCamera->isImageProcessEnabled() &&
-//	       (mCameraState == CAM_PREVIEW || mCameraState == CAM_VID_RECORD)) {
-            if (0) {
-	        mCamera->imageProcessAF();
-		mCamera->imageProcessAE();
-		mCamera->imageProcessAWB();
-	    }
-//	    mCamera->imageProcessBP();
-//	    mCamera->imageProcessBL();
 		
 		const char *preview_fmt;
 		preview_fmt = mParameters.getPreviewFormat();
@@ -296,14 +279,7 @@ int CameraHardware::previewThread()
     // TODO: Have to change the recordingThread() function to others thread ways
     recordingThread();
 
-#ifdef RECYCLE_WHEN_RELEASING_RECORDING_FRAME
-    if(!mRecordingRunning) {
-#endif
-         mCamera->captureRecycleFrame();
-#ifdef RECYCLE_WHEN_RELEASING_RECORDING_FRAME
-    }
-#endif
-
+    mCamera->captureRecycleFrame();
 
     return NO_ERROR;
 }
@@ -318,24 +294,19 @@ status_t CameraHardware::startPreview()
 
     int w, h, preview_size;
     mParameters.getPreviewSize(&w, &h);
-    //mCamera->capture_init(w, h, INTEL_PIX_FMT_YUYV, 3);
-    mCamera->captureInit(w, h, mPreviewPixelFormat, 3, 0);
+    mCamera->captureInit(w, h, mPreviewPixelFormat, 3);
+    mCamera->captureMapFrame();
     mCamera->captureStart();
 
-    mCamera->setAE("on");
-    mCamera->setAWB(mParameters.get("whitebalance"));
-    mCamera->setAF(mParameters.get("focus-mode"));
-//    mCamera->setColorEffect(mParameters.get("effect"));
-	mCamera->captureMapFrame();
-
-	const char *preview_fmt;
-	preview_fmt = mParameters.getPreviewFormat();
+    const char *preview_fmt;
+    preview_fmt = mParameters.getPreviewFormat();
 	
     if (strcmp(preview_fmt, "yuv420sp") == 0) {
 	  preview_size = (w * h * 3)/2;
     }  else if (strcmp(preview_fmt, "yuv422i-yuyv") == 0){
 	  preview_size = w * h * 2;
     } else if (strcmp(preview_fmt, "rgb565") == 0){
+	    //FIXME
 	  preview_size = w * h * 2;
     } else {
       LOGE("Only yuv420sp, yuv422i-yuyv, rgb565 preview are supported");
@@ -367,6 +338,7 @@ void CameraHardware::stopPreview()
 
     if (mPreviewThread != 0) {
       mPreviewThread.clear();
+      mCamera->captureStop();
       mCamera->captureUnmapFrame();
       mCamera->captureFinalize();
     }
@@ -509,19 +481,6 @@ int CameraHardware::autoFocusThread()
     bool rc = false;
     int i;
 
-//    if (mMsgEnabled & CAMERA_MSG_FOCUS & mCamera->isImageProcessEnabled()) {
-    if (0) {
-	/* Start to do auto focus. Try 20 frames max */
-	for (i = 0; i < mAFMaxFrames; i++) {
-	        mCamera->imageProcessAF();
-		mCamera->imageProcessAE();
-		mCamera->imageProcessAWB();
-		rc = mCamera->isImageProcessFinishedAF();
-		if (rc)
-			break;
-	}
-	mNotifyCb(CAMERA_MSG_FOCUS, rc, 0, mCallbackCookie);
-    } else
 	mNotifyCb(CAMERA_MSG_FOCUS, true, 0, mCallbackCookie);
 
     return NO_ERROR;
@@ -570,58 +529,29 @@ int CameraHardware::pictureThread()
         int w, h;
 	mParameters.getPictureSize(&w, &h);
 
-	mCamera->captureInit(w, h, mPicturePixelFormat, 1, 0);
+	mCamera->captureInit(w, h, mPicturePixelFormat, 1);
+	mCamera->captureMapFrame();
 	mCamera->captureStart();
 
-#if 0
-	mCamera->setAE("on");
-	mCamera->setAWB(mParameters.get("whitebalance"));
-//	mCamera->setColorEffect(mParameters.get("effect"));
-//	mCamera->setJPEGRatio(mParameters.get("jpeg-quality"));
-	mCamera->setFlash(mParameters.get("flash-mode"));
-	mCamera->triggerFlashLight();
-
-	if (mCamera->getFlash())
-		frame_wait = FLASH_FRAME_WAIT;
-	else if (mCamera->getSensorInfos()->type == SENSOR_TYPE_SOC)
-		frame_wait = 1;
-	else
-		frame_wait = MAX_FRAME_WAIT;
-#endif
 	int jpegSize;
 	int sensorsize;
-//	while (1) {
-//		jpegSize = mCamera->captureGrabFrame();
-sensorsize = mCamera->captureGrabFrame();
-jpegSize=(sensorsize * 3)/4;
+	sensorsize = mCamera->captureGrabFrame();
+	jpegSize=(sensorsize * 3)/4;
 
-//		mCamera->imageProcessAE();
-//		mCamera->imageProcessAWB();
-//		frame_cnt++;
-//		if ((mCamera->isImageProcessFinishedAE() && mCamera->isImageProcessFinishedAWB()) ||
-//		    frame_cnt > frame_wait)
-//			break;
-//		mCamera->captureRecycleFrame();
-//	}
 	LOGD(" - JPEG size saved = %dB, %dK",jpegSize, jpegSize/1000);
 
-//	mCamera->imageProcessBP();
-//	mCamera->imageProcessBL();
 
 	mCamera->captureMapFrame();
-//	sp<MemoryHeapBase> heap = new MemoryHeapBase(jpegSize);
-//	sp<MemoryBase> buffer = new MemoryBase(heap, 0, jpegSize);
 	sp<MemoryHeapBase> heapSensor = new MemoryHeapBase(sensorsize);
 	sp<MemoryBase> bufferSensor = new MemoryBase(heapSensor, 0, sensorsize);
 		sp<MemoryHeapBase> heapJpeg = new MemoryHeapBase(jpegSize);
 	sp<MemoryBase> bufferJpeg = new MemoryBase(heapJpeg, 0, jpegSize);
 
-//	mCamera->captureGetFrame(heap->getBase());
 	mCamera->captureGetFrame(heapSensor->getBase());
 
-	mCamera->captureUnmapFrame();
-
 	mCamera->captureRecycleFrame();
+	mCamera->captureStop();
+	mCamera->captureUnmapFrame();
 	mCamera->captureFinalize();
 
 
@@ -712,13 +642,13 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     set_value = mParameters.getPreviewFormat();
 
     if (strcmp(new_value, "yuv420sp") == 0) {
-      mPreviewPixelFormat = INTEL_PIX_FMT_NV12;
+      mPreviewPixelFormat = V4L2_PIX_FMT_NV12;
 	  preview_size = (preview_width * preview_height * 3)/2;
     }  else if (strcmp(new_value, "yuv422i-yuyv") == 0){
-      mPreviewPixelFormat = INTEL_PIX_FMT_YUYV;
+      mPreviewPixelFormat = V4L2_PIX_FMT_YUYV;
 	  preview_size = preview_width * preview_height * 2;
     } else if (strcmp(new_value, "rgb565") == 0){
-      mPreviewPixelFormat = INTEL_PIX_FMT_RGB565;
+      mPreviewPixelFormat = V4L2_PIX_FMT_RGB565;
 	  preview_size = preview_width * preview_height * 2;
     } else {
       LOGE("Only yuv420sp, yuv422i-yuyv, rgb565 preview are supported");
@@ -734,10 +664,9 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     new_value = p.getPictureFormat();
     LOGD("%s",new_value);
     set_value = mParameters.getPictureFormat();
-    if (strcmp(new_value, "jpeg") == 0) {
-  //      mPicturePixelFormat = INTEL_PIX_FMT_JPEG;
-	mPicturePixelFormat =	INTEL_PIX_FMT_RGB565;//ejding_debug
-    } else {
+    if (strcmp(new_value, "jpeg") == 0)
+	mPicturePixelFormat = V4L2_PIX_FMT_RGB565;
+    else {
         LOGE("Only jpeg still pictures are supported");
         return -1;
     }
@@ -749,17 +678,10 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     }
 
     int picture_width, picture_height;
- //   p.getPictureSize(&picture_width, &picture_height);
-	picture_width=640;picture_height=480;
+    picture_width=640;picture_height=480;
 
-    if(mCamera != NULL) {
-        LOGD("verify a jpeg picture size %dx%d",picture_width,picture_height);
-	if ( !mCamera->isResolutionSupported(picture_width, picture_height) ) {
-	  LOGE("this jpeg resolution w=%d * h=%d is not supported",picture_width,picture_height);
-	  mCamera->getMaxResolution(&picture_width, &picture_height);
-	  LOGD("set into max jpeg resolution w=%d * h=%d",picture_width,picture_height);
-	}
-    }
+    if(mCamera != NULL)
+	    LOGD("verify a jpeg picture size %dx%d",picture_width,picture_height);
 
     p.setPictureSize(picture_width, picture_height);
     LOGD("PICTURE SIZE: w=%d h=%d", picture_width, picture_height);
@@ -773,7 +695,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
       if (strcmp(set_value, new_value) != 0) {
         p.set("jpeg-quality", new_value);
 	LOGD("     ++ Changed jpeg-quality to %s",p.get("jpeg-quality"));
-	mCamera->setJPEGRatio(p.get("jpeg-quality"));
+	//mCamera->setJPEGRatio(p.get("jpeg-quality"));
       }
 
       int effect = p.getInt("effect");
@@ -783,7 +705,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
       if (strcmp(set_value, new_value) != 0) {
         p.set("effect", new_value);
 	LOGD("     ++ Changed effect to %s",p.get("effect"));
-	mCamera->setColorEffect(p.get("effect"));
+	//mCamera->setColorEffect(p.get("effect"));
       }
 
       int whitebalance = p.getInt("whitebalance");
@@ -793,7 +715,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
       if (strcmp(set_value, new_value) != 0) {
         p.set("whitebalance", new_value);
 	LOGD("     ++ Changed whitebalance to %s",p.get("whitebalance"));
-	mCamera->setAWB(p.get("whitebalance"));
+	//mCamera->setAWB(p.get("whitebalance"));
       }
 
       int focus_mode = p.getInt("focus-mode");
@@ -803,7 +725,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
       if (strcmp(set_value, new_value) != 0) {
         p.set("focus-mode", new_value);
 	LOGD("     ++ Changed focus-mode to %s",p.get("focus-mode"));
-	mCamera->setAF(p.get("focus-mode"));
+	//mCamera->setAF(p.get("focus-mode"));
       }
 
       int rotation = p.getInt("rotation");
@@ -822,7 +744,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
       if (strcmp(set_value, new_value) != 0) {
         p.set("flash-mode", new_value);
 	LOGD("     ++ Changed flash-mode to %s",p.get("flash-mode"));
-	mCamera->setFlash(p.get("flash-mode"));
+	//mCamera->setFlash(p.get("flash-mode"));
       }
     }
 
@@ -852,7 +774,7 @@ void CameraHardware::release()
 
 wp<CameraHardwareInterface> CameraHardware::singleton;
 
-sp<CameraHardwareInterface> CameraHardware::createInstance()
+sp<CameraHardwareInterface> CameraHardware::createInstance(int cameraId)
 {
     if (singleton != 0) {
         sp<CameraHardwareInterface> hardware = singleton.promote();
@@ -860,34 +782,9 @@ sp<CameraHardwareInterface> CameraHardware::createInstance()
             return hardware;
         }
     }
-    sp<CameraHardwareInterface> hardware(new CameraHardware());
+    sp<CameraHardwareInterface> hardware(new CameraHardware(cameraId));
     singleton = hardware;
     return hardware;
-}
-
-static CameraInfo sCameraInfo[] = {
-    {
-        CAMERA_FACING_BACK,
-        90,  /* orientation */
-    }
-};
-
-extern "C" int HAL_getNumberOfCameras()
-{
-    return 1;
-}
-
-extern "C" void HAL_getCameraInfo(int cameraId, struct CameraInfo* cameraInfo)
-{
-    if (cameraId > 1) {
-        return;
-    }
-    memcpy(cameraInfo, &sCameraInfo[cameraId], sizeof(CameraInfo));
-}
-
-extern "C" sp<CameraHardwareInterface> HAL_openCameraHardware(int cameraId)
-{
-    return CameraHardware::createInstance();
 }
 
 }; // namespace android
