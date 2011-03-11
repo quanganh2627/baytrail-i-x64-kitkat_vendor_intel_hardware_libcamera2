@@ -294,7 +294,7 @@ status_t CameraHardware::startPreview()
 
     int w, h, preview_size;
     mParameters.getPreviewSize(&w, &h);
-    mCamera->captureInit(w, h, mPreviewPixelFormat, 3);
+    mCamera->captureInit(w, h, mPreviewPixelFormat, 3, mCameraId);
     mCamera->captureMapFrame();
     mCamera->captureStart();
 
@@ -510,7 +510,7 @@ status_t CameraHardware::cancelAutoFocus()
     return c->pictureThread();
 }
 
-#define MAX_FRAME_WAIT 20
+#define MAX_FRAME_WAIT 3
 #define FLASH_FRAME_WAIT 4
 int CameraHardware::pictureThread()
 {
@@ -529,19 +529,21 @@ int CameraHardware::pictureThread()
         int w, h;
 	mParameters.getPictureSize(&w, &h);
 
-	mCamera->captureInit(w, h, mPicturePixelFormat, 1);
+	mCamera->captureInit(w, h, mPicturePixelFormat, 1, mCameraId);
 	mCamera->captureMapFrame();
 	mCamera->captureStart();
 
 	int jpegSize;
 	int sensorsize;
+	while (frame_wait--) {
+		mCamera->captureGrabFrame();
+		mCamera->captureRecycleFrame();
+	}
 	sensorsize = mCamera->captureGrabFrame();
 	jpegSize=(sensorsize * 3)/4;
 
 	LOGD(" - JPEG size saved = %dB, %dK",jpegSize, jpegSize/1000);
 
-
-	mCamera->captureMapFrame();
 	sp<MemoryHeapBase> heapSensor = new MemoryHeapBase(sensorsize);
 	sp<MemoryBase> bufferSensor = new MemoryBase(heapSensor, 0, sensorsize);
 		sp<MemoryHeapBase> heapJpeg = new MemoryHeapBase(jpegSize);

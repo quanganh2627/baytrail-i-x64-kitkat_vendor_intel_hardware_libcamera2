@@ -37,10 +37,10 @@ IntelCamera::IntelCamera()
     /*mAdvanceProcess(NULL),*/
     ccRGBtoYUV(NULL)
 {
-	int ret;
+	LOGV("%s() called!\n", __func__);
+
 	mCI = new v4l2_struct_t;
 
-	v4l2_capture_init(mCI);
 
 	if (mCI != NULL) {
 		mCI->frame_num = 0;
@@ -53,8 +53,8 @@ IntelCamera::IntelCamera()
 
 IntelCamera::~IntelCamera()
 {
+	LOGV("%s() called!\n", __func__);
 
-	v4l2_capture_finalize(mCI);
 	// color converter
 	if (ccRGBtoYUV) {
 		delete ccRGBtoYUV;
@@ -71,14 +71,20 @@ IntelCamera::~IntelCamera()
 void IntelCamera::captureInit(unsigned int width,
 				unsigned int height,
 				v4l2_frame_format frame_fmt,
-				unsigned int frame_num)
+				unsigned int frame_num,
+				int camera_id)
 {
 	unsigned int w, h;
 
-	mCI->frame_ids = new unsigned int[frame_num];
 
 	w = width;
 	h = height;
+
+	mCI->frame_ids = new unsigned int[frame_num];
+	mCI->camera_id = camera_id;
+
+	/* Open, VIDIOC_S_INPUT */
+	v4l2_capture_init(mCI);
 
 	/* VIDIOC_S_FMT, VIDIOC_REQBUFS */
 	v4l2_capture_create_frames(mCI, w, h,
@@ -112,6 +118,7 @@ void IntelCamera::captureFinalize(void)
 	mCI->fm_height = 0;
 
 	v4l2_capture_destroy_frames(mCI);
+	v4l2_capture_finalize(mCI);
 
 	delete [] mCI->frame_ids;
 }

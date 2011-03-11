@@ -57,7 +57,7 @@ void v4l2_capture_init(v4l2_struct_t *v4l2_str)
 	assert(v4l2_str);
 	
 	int fd;
-	LOGI("Open video device %s", dev_name);
+	LOGI("---Open video device %s---", dev_name);
 	fd = open(dev_name, O_RDWR);
 
 	if (-1 == fd) {
@@ -71,6 +71,7 @@ void v4l2_capture_init(v4l2_struct_t *v4l2_str)
 	/* query capability */
 	CLEAR(v4l2_str->cap);
 
+	LOGV("VIDIOC_QUERYCAP");
 	if (-1 == xioctl(fd, VIDIOC_QUERYCAP, &v4l2_str->cap)) {
 		if (EINVAL == errno) {
 			LOGE("%s is no V4L2 device", dev_name);
@@ -89,34 +90,12 @@ void v4l2_capture_init(v4l2_struct_t *v4l2_str)
 		exit(EXIT_FAILURE);
 	}
 
-	/* enumerate input */
 	struct v4l2_input input;
-	int index;
 
 	CLEAR(input);
-	input.index = 0;
 
-	if (-1 == xioctl(fd, VIDIOC_ENUMINPUT, &input)) {
-		if (EINVAL == errno) {
-			LOGE("no sensor input available!");
-			exit(EXIT_FAILURE);
-		} else
-			errno_exit("VIDIOC_ENUMINPUT");
-	}
-	LOGI("Input %d (%s)", input.index, input.name);
-
-	CLEAR(input);
-	input.index = 1;
-
-	if (-1 == xioctl(fd, VIDIOC_ENUMINPUT, &input)) {
-		if (EINVAL == errno)
-			LOGI("Only 1 sensor is connected.");
-	} else
-		LOGI("Input %d (%s)", input.index, input.name);
-
-	/* set input */
-	CLEAR(input);
-	input.index = 0;
+	LOGV("VIDIOC_S_INPUT");
+	input.index = v4l2_str->camera_id;
 	if (-1 == xioctl(fd, VIDIOC_S_INPUT, &input)) {
 		if (EINVAL == errno)
 			LOGE("input index %d is out of bounds!", input.index);
@@ -130,6 +109,7 @@ void v4l2_capture_init(v4l2_struct_t *v4l2_str)
 void v4l2_capture_finalize(v4l2_struct_t *v4l2_str)
 {
 	/* close video device */
+	LOGI("----close device %s---", dev_name);
 	if (-1 == close(v4l2_str->dev_fd)) {
 		LOGE("Close video device %s failed!",
 		     v4l2_str->dev_name);
@@ -166,6 +146,8 @@ void v4l2_capture_create_frames(v4l2_struct_t *v4l2_str,
 	if (-1 == xioctl(fd, VIDIOC_S_FMT, &(v4l2_str->fmt)))
 		errno_exit("VIDIOC_S_FMT");
 
+	LOGV("VIDIOC_S_FMT");
+
 	/* Note VIDIOC_S_FMT may change width and height */
 
 	/* request buffers */
@@ -189,6 +171,8 @@ void v4l2_capture_create_frames(v4l2_struct_t *v4l2_str,
 		exit(EXIT_FAILURE);
 	}
 
+	LOGV("VIDIOC_REQBUFS, count=%d", v4l2_str->req_buf.count);
+
 	v4l2_str->frame_num = v4l2_str->req_buf.count;
 
 	for (i = 0; i < v4l2_str->frame_num; i++)
@@ -209,6 +193,8 @@ void v4l2_capture_destroy_frames(v4l2_struct_t *v4l2_str)
 
 	if (-1 == xioctl(fd, VIDIOC_REQBUFS, &v4l2_str->req_buf))
 		errno_exit("VIDIOC_REQBUFS");
+
+	LOGV("VIDIOC_REQBUFS, count=%d", v4l2_str->req_buf.count);
 
 	v4l2_str->frame_num = 0;
 }
@@ -232,12 +218,16 @@ void v4l2_capture_start(v4l2_struct_t *v4l2_str)
 
 		if (-1 == xioctl(v4l2_str->dev_fd, VIDIOC_QBUF, &buf))
 			errno_exit("VIDIOC_QBUF");
+
+		LOGV("VIDIOC_QBUF");
 	}
 
 	type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
 	if (-1 == xioctl(v4l2_str->dev_fd, VIDIOC_STREAMON, &type))
 		errno_exit("VIDIOC_STREAMON");
+
+	LOGV("VIDIOC_STREAMON");
 }
 
 void v4l2_capture_stop(v4l2_struct_t *v4l2_str)
@@ -249,6 +239,8 @@ void v4l2_capture_stop(v4l2_struct_t *v4l2_str)
 
 	if (-1 == xioctl(fd, VIDIOC_STREAMOFF, &type))
 		errno_exit("VIDIOC_STREAMOFF");
+
+	LOGV("VIDIOC_STREAMOFF");
 }
 
 int v4l2_capture_grab_frame(v4l2_struct_t *v4l2_str)
@@ -278,6 +270,8 @@ int v4l2_capture_grab_frame(v4l2_struct_t *v4l2_str)
 
 	assert(buf.index < v4l2_str->frame_num);
 
+	LOGV("VIDIOC_DQBUF");
+
 	v4l2_str->frame_size = buf.bytesused;
 	v4l2_str->cur_frame = buf.index;
 
@@ -302,6 +296,8 @@ void v4l2_capture_recycle_frame(v4l2_struct_t *v4l2_str,
 	/* enqueue the buffer */
 	if (-1 == xioctl(fd, VIDIOC_QBUF, &buf))
 		errno_exit("VIDIOC_QBUF");
+
+	LOGV("VIDIOC_QBUF");
 }
 
 void v4l2_capture_map_frame(v4l2_struct_t *v4l2_str,
@@ -330,6 +326,8 @@ void v4l2_capture_map_frame(v4l2_struct_t *v4l2_str,
 	if (-1 == xioctl(fd, VIDIOC_QUERYBUF, &buf))
 		errno_exit("VIDIOC_QUERYBUF");
 
+	LOGV("VIDIOC_QUERYBUF");
+
 	mapped_addr = mmap(NULL,
 			   buf.length,
 			   PROT_READ | PROT_WRITE,
@@ -339,6 +337,8 @@ void v4l2_capture_map_frame(v4l2_struct_t *v4l2_str,
 
 	if (MAP_FAILED == mapped_addr)
 		errno_exit("mmap");
+
+	LOGV("mmap");
 
 	mapped_length = buf.length;
 
@@ -361,6 +361,8 @@ void v4l2_capture_unmap_frame(v4l2_struct_t *v4l2_str,
 	
 	if (-1 == munmap(mapped_addr, mapped_length))
 		errno_exit("munmap");
+
+	LOGV("munmap");
 
 	buf_info->mapped_addr = NULL;
 	buf_info->mapped_length = 0;

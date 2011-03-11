@@ -214,7 +214,8 @@ public:
     void captureInit(unsigned int width,
 		    unsigned int height,
 		    v4l2_frame_format frame_fmt,
-		    unsigned int frame_num);
+		    unsigned int frame_num,
+		    int camera_id);
     void captureFinalize(void);
     void captureStart(void);
     void captureStop(void);

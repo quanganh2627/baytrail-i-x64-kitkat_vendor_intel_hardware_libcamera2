@@ -67,6 +67,7 @@ typedef struct _v4l2_struct {
 	struct v4l2_buffer *bufs;
 
 	unsigned int *buf_status;
+	int camera_id;
 } v4l2_struct_t;
 
 void v4l2_capture_init(v4l2_struct_t *v4l2_str);
