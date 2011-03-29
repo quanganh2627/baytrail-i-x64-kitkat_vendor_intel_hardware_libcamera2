@@ -22,7 +22,9 @@
 /** class CCRGB16toYUV420.cpp
 */
 #include <utils/Log.h>
+#ifndef LOG_TAG
 #define LOG_TAG "CC"
+#endif
 
 #include "ccrgb16toyuv420sp.h"
 
@@ -61,7 +63,7 @@ void CCRGB16toYUV420sp::freeRGB2YUVTables()
 
 
 int32 CCRGB16toYUV420sp:: Init(int32 Src_width, int32 Src_height, int32 Src_pitch, int32 Dst_width,
-                             int32 Dst_height, int32 Dst_pitch, int32 nRotation)
+                               int32 Dst_height, int32 Dst_pitch, int32 nRotation)
 {
     int i;
     uint8 *pTable;
@@ -410,10 +412,10 @@ extern "C"
         int   tmp;
         uint32 temp;
 
-	LOGV("%s: d_w = %d, d_h = %d, d_p = %d, s_w = %d, s_h = %d, s_p = %d", 
-			__func__,
-			width_dst, height_dst, pitch_dst,
-			0,0, pitch_src);
+        LOGV("%s: d_w = %d, d_h = %d, d_p = %d, s_w = %d, s_h = %d, s_p = %d",
+             __func__,
+             width_dst, height_dst, pitch_dst,
+             0,0, pitch_src);
 
         //for writing to the YUV buffer which is a pointer to uint32
         tempY = yuv[0];

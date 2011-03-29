@@ -25,7 +25,7 @@
 	statements
 #define OSCL_EXPORT_REF
 #define OSCL_IMPORT_REF
-#define OSCL_UNUSED_ARG(x) 
+#define OSCL_UNUSED_ARG(x)
 
 #define oscl_memcpy memcpy
 #define oscl_memset memset

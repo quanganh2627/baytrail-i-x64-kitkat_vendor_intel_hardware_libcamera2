@@ -18,11 +18,13 @@
 #ifndef ANDROID_HARDWARE_CAMERA_HARDWARE_H
 #define ANDROID_HARDWARE_CAMERA_HARDWARE_H
 
+#include <semaphore.h>
 #include "IntelCamera.h"
 #include <CameraHardwareInterface.h>
 #include <binder/MemoryBase.h>
 #include <binder/MemoryHeapBase.h>
 #include <utils/threads.h>
+#include "CameraAAAProcess.h"
 
 namespace android {
 
@@ -51,6 +53,10 @@ public:
 
     virtual status_t    autoFocus();
     virtual status_t    cancelAutoFocus();
+
+    virtual status_t    touchToFocus(int blockNumber);
+    virtual status_t    cancelTouchToFocus();
+
     virtual status_t    takePicture();
     virtual status_t    cancelPicture();
     virtual status_t    dump(int fd, const Vector<String16>& args) const;
@@ -63,7 +69,7 @@ public:
     static sp<CameraHardwareInterface> createInstance(int cameraId);
 
 private:
-                        CameraHardware(int cameraId);
+    CameraHardware(int cameraId);
     virtual             ~CameraHardware();
 
     static wp<CameraHardwareInterface> singleton;
@@ -84,7 +90,8 @@ private:
             run("CameraPreviewThread", PRIORITY_URGENT_DISPLAY);
         }
         virtual bool threadLoop() {
-            mHardware->previewThread();
+            if (mHardware->previewThread() < 0)
+                return false;
             // loop until we need to quit
             return true;
         }
@@ -105,6 +112,10 @@ private:
 
     static int beginPictureThread(void *cookie);
     int pictureThread();
+
+    static int beginAaaThread(void *cookie);
+    int aaaThread();
+    unsigned mAaaThreadStarted;  /* 0: not start, not 0: started */
 
     mutable Mutex       mLock;
 
@@ -174,13 +185,18 @@ private:
 
     int32_t             mMsgEnabled;
 
- // only used from PreviewThread
+// only used from PreviewThread
 
     // fps
     nsecs_t             mPreviewLastTS;
     float               mPreviewLastFPS;
     nsecs_t             mRecordingLastTS;
     float               mRecordingLastFPS;
+
+    cam_Window mWinFocus;
+    int mIsTouchFocus;
+    sem_t semAAA;
+    AAAProcess *mAAA;
 };
 
 }; // namespace android

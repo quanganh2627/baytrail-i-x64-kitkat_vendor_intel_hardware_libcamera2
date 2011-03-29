@@ -4,6 +4,7 @@ ifeq ($(USE_CAMERA_STUB),false)
 #
 # libcamera
 #
+$(shell cp hardware/intel/linux-2.6/include/linux/atomisp.h hardware/intel/include/linux/)
 
 LOCAL_PATH := $(call my-dir)
 
@@ -20,15 +21,18 @@ LOCAL_SHARED_LIBRARIES := \
 	libcutils \
 	libdl \
 	libbinder \
-	libskia
+	libskia \
+	libmfldadvci
 
 LOCAL_SRC_FILES += \
 	CameraHALBridge.cpp \
 	CameraHardware.cpp \
 	IntelCamera.cpp \
-	v4l2.c
+	CameraAAAProcess.cpp \
+	v4l2.c \
+	atomisp_features.c
 
-LOCAL_CFLAGS += -DLOG_NDEBUG=1
+LOCAL_CFLAGS += -DLOG_NDEBUG=1 -DSTDC99
 
 ifeq ($(BOARD_USES_CAMERA_TEXTURE_STREAMING), true)
 LOCAL_CFLAGS += -DBOARD_USE_CAMERA_TEXTURE_STREAMING
@@ -46,7 +50,9 @@ LOCAL_C_INCLUDES += \
 	frameworks/base/include/camera \
 	external/skia/include/core \
 	external/skia/include/images \
-	hardware/intel/libcamera/colorconvert/src
+	hardware/intel/libcamera/colorconvert/src \
+	hardware/intel/PRIVATE/libmfldadvci/include \
+	hardware/intel/include/
 
 LOCAL_STATIC_LIBRARIES += libcameracc
 LOCAL_SHARED_LIBRARIES += libutils

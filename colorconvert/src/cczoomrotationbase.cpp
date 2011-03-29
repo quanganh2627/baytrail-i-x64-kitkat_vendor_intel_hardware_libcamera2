@@ -138,9 +138,9 @@ int32 ColorConvertBase::Init(int32 Src_width, int32 Src_height, int32 Src_pitch,
     _mColPix = NULL;
 
     if ((_mRotation&0x1) == 0)
-    { /* no rotation */
+    {   /* no rotation */
         if ((_mDst_width != _mSrc_width) || (_mDst_height != _mSrc_height))
-        { /* scaling */
+        {   /* scaling */
             //calulate the Row
             int32 leavecode = 0;
             OSCL_TRY(leavecode,
@@ -170,9 +170,9 @@ int32 ColorConvertBase::Init(int32 Src_width, int32 Src_height, int32 Src_pitch,
         }
     }
     else
-    { /* rotation,  */
+    {   /* rotation,  */
         if ((_mDst_height != _mSrc_width) || (_mDst_width != _mSrc_height))
-        { /* scaling */
+        {   /* scaling */
             //calulate the Row
             int32 leavecode = 0;
             OSCL_TRY(leavecode,
