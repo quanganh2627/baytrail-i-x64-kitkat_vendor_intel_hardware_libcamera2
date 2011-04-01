@@ -28,6 +28,8 @@
 #include <unistd.h>
 #include <poll.h>
 #include "v4l2.h"
+#include <linux/atomisp.h>
+#include <ci_adv_pub.h>
 
 static volatile int32_t gLogLevel;
 
@@ -415,6 +417,37 @@ void v4l2_capture_unmap_frame(v4l2_struct_t *v4l2_str,
     buf_info->stride = 0;
     buf_info->fourcc = 0;
 }
+
+int v4l2_capture_set_capture_mode(int fd, int mode)
+{
+    int binary;
+    struct v4l2_streamparm parm;
+    switch (mode) {
+    case CI_ISP_MODE_PREVIEW:
+        binary = CI_MODE_PREVIEW;
+        break;;
+    case CI_ISP_MODE_CAPTURE:
+        binary = CI_MODE_STILL_CAPTURE;
+        break;
+    case CI_ISP_MODE_VIDEO:
+        binary = CI_MODE_VIDEO;
+        break;
+    default:
+        binary = CI_MODE_STILL_CAPTURE;
+        break;
+    }
+
+    parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    parm.parm.capture.capturemode = binary;
+
+    if (ioctl(fd, VIDIOC_S_PARM, &parm) < 0) {
+        LOGE("ERR(%s): error:%s \n", __func__, strerror(errno));
+        return -1;
+    }
+
+    return 0;
+}
+
 
 #if defined(ANDROID)
 #define BASE BASE_VIDIOC_PRIVATE

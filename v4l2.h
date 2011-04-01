@@ -102,6 +102,8 @@ void v4l2_capture_destroy_frames(v4l2_struct_t *v4l2_str);
 
 void v4l2_capture_finalize(v4l2_struct_t *v4l2_str);
 
+int v4l2_capture_set_capture_mode(int fd, int mode);
+
 /* for camera texture streaming */
 #if defined(ANDROID)
 typedef struct BC_Video_ioctl_package_TAG

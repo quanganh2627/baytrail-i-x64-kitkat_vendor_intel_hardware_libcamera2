@@ -464,4 +464,11 @@ int IntelCamera::get_zoom_val(void)
 }
 
 
+int IntelCamera::set_capture_mode(int mode)
+{
+    return v4l2_capture_set_capture_mode(mCI->dev_fd, mode);
+}
+
+
+
 }; // namespace android

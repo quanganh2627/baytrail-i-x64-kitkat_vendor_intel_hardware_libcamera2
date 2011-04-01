@@ -73,6 +73,7 @@ public:
     int get_device_fd(void);
     int get_zoom_val(void);
     int set_zoom_val(int zoom);
+    int set_capture_mode(int mode);
 private:
     void nv12_to_nv21(unsigned char *nv12, unsigned char *nv21, int width, int height);
     void yuv_to_rgb16(unsigned char y,unsigned char u, unsigned char v, unsigned char *rgb);

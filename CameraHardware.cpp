@@ -315,13 +315,12 @@ int CameraHardware::previewThread()
                 mAAA->IspSetFd(fd);
 
                 //    int fd = mCamera->get_device_fd();
-                mAAA->SwitchMode(CI_ISP_MODE_PREVIEW);
-
+                mCamera->set_capture_mode(CI_ISP_MODE_PREVIEW);
                 mCamera->captureInit(w, h, mPreviewPixelFormat, 3, mCameraId);
                 mCamera->captureMapFrame();
                 mCamera->captureStart();
                 mCamera->set_zoom_val(mCamera->get_zoom_val());
-
+                mAAA->SwitchMode(CI_ISP_MODE_PREVIEW);
                 mAAA->SetAfEnabled(TRUE);
                 mAAA->SetAeEnabled(TRUE);
                 mAAA->SetAwbEnabled(TRUE);
@@ -431,13 +430,14 @@ status_t CameraHardware::startPreview()
     if (mCamera->captureOpen(&fd) < 0)
         return -1;
 
-    mAAA->IspSetFd(fd);
+
 
     //    int fd = mCamera->get_device_fd();
-    mAAA->SwitchMode(CI_ISP_MODE_PREVIEW);
 
+    mCamera->set_capture_mode(CI_ISP_MODE_PREVIEW);
     mCamera->captureInit(w, h, mPreviewPixelFormat, 3, mCameraId);
-
+    mAAA->IspSetFd(fd);
+    mAAA->SwitchMode(CI_ISP_MODE_PREVIEW);
     mAAA->ModeSpecInit();
 
     mAAA->SetAfEnabled(TRUE);
@@ -689,6 +689,7 @@ status_t CameraHardware::startRecording()
     mRecordingRunning = true;
     mCameraState = CAM_VID_RECORD;
     // TODO: mAAA->SwitchMode(CI_ISP_MODE_VIDEO);
+    mCamera->set_capture_mode(CI_ISP_MODE_PREVIEW);
     mAAA->SwitchMode(CI_ISP_MODE_PREVIEW);
 
 #ifdef ENABLE_BUFFER_SHARE_MODE
@@ -834,7 +835,6 @@ status_t CameraHardware::cancelAutoFocus()
     mAAA->SetAfEnabled(TRUE);
     mAAA->SetAfStillEnabled(FALSE);
     mCameraState = CAM_PREVIEW;
-    mAAA->SwitchMode(CI_ISP_MODE_PREVIEW);
     return NO_ERROR;
 }
 
@@ -883,14 +883,17 @@ int CameraHardware::pictureThread()
         mParameters.getPictureSize(&w, &h);
 		LOGD("%s: picture size is %dx%d\n", __func__, w, h);
         int fd = -1;
+
         mCamera->captureOpen(&fd);
+        mCamera->set_capture_mode(CI_ISP_MODE_CAPTURE);
         mAAA->IspSetFd(fd);
-        mAAA->SwitchMode(CI_ISP_MODE_CAPTURE);
+
         mCamera->captureInit(w, h, mPicturePixelFormat, 1, mCameraId);
         mCamera->captureMapFrame();
         mCamera->captureStart();
         mCamera->set_zoom_val(mCamera->get_zoom_val());
         /* apply the 3A results from the preview */
+        mAAA->SwitchMode(CI_ISP_MODE_CAPTURE);
         mAAA->SetAfEnabled(TRUE);
         mAAA->SetAeEnabled(TRUE);
         mAAA->SetAwbEnabled(TRUE);
@@ -947,7 +950,6 @@ int CameraHardware::pictureThread()
 
         mCamera->captureRecycleFrame();
         mCamera->captureStop();
-        mAAA->SwitchMode(CI_ISP_MODE_PREVIEW);
         mCamera->captureUnmapFrame();
         mCamera->captureFinalize();
 
