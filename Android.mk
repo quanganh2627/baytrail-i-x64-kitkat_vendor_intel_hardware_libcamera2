@@ -15,6 +15,8 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := libcamera
 LOCAL_MODULE_TAGS := optional
 
+ENABLE_BUFFER_SHARE_MODE := false
+
 LOCAL_SHARED_LIBRARIES := \
 	libcamera_client \
 	libutils \
@@ -33,6 +35,10 @@ LOCAL_SRC_FILES += \
 	atomisp_features.c
 
 LOCAL_CFLAGS += -DLOG_NDEBUG=1 -DSTDC99
+
+ifeq ($(ENABLE_BUFFER_SHARE_MODE),true)
+  LOCAL_CFLAGS  += -DENABLE_BUFFER_SHARE_MODE=1
+endif
 
 ifeq ($(BOARD_USES_CAMERA_TEXTURE_STREAMING), true)
 LOCAL_CFLAGS += -DBOARD_USE_CAMERA_TEXTURE_STREAMING
@@ -56,6 +62,10 @@ LOCAL_C_INCLUDES += \
 
 LOCAL_STATIC_LIBRARIES += libcameracc
 LOCAL_SHARED_LIBRARIES += libutils
+
+ifeq ($(ENABLE_BUFFER_SHARE_MODE),true)
+  LOCAL_SHARED_LIBRARIES += libsharedbuffer
+endif
 
 include $(BUILD_SHARED_LIBRARY)
 

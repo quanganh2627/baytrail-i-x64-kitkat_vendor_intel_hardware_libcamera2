@@ -26,6 +26,10 @@
 #include <utils/threads.h>
 #include "CameraAAAProcess.h"
 
+#if ENABLE_BUFFER_SHARE_MODE
+#include <libsharedbuffer/IntelBufferSharing.h>
+#endif
+
 namespace android {
 
 class CameraHardware : public CameraHardwareInterface {
@@ -107,6 +111,10 @@ private:
     int previewThread();
     int recordingThread();
 
+#if ENABLE_BUFFER_SHARE_MODE
+    int getSharedBuffer();
+    bool checkSharedBufferModeOff();
+#endif
     static int beginAutoFocusThread(void *cookie);
     int autoFocusThread();
 
@@ -141,6 +149,9 @@ private:
         sp<MemoryBase>      base[kBufferCount];
         uint8_t             *start[kBufferCount];
         unsigned int        flags[kBufferCount];
+#if ENABLE_BUFFER_SHARE_MODE
+        unsigned char *     pointerArray[kBufferCount];
+#endif
     } mPreviewBuffer, mRecordingBuffer;
 
     enum {
@@ -197,6 +208,11 @@ private:
     int mIsTouchFocus;
     sem_t semAAA;
     AAAProcess *mAAA;
+
+#if ENABLE_BUFFER_SHARE_MODE
+    bool                isRecordingStarted;
+    bool                isCameraTurnOffBufferSharingMode;
+#endif
 };
 
 }; // namespace android

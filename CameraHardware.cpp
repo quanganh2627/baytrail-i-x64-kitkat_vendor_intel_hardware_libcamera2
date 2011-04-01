@@ -80,6 +80,12 @@ CameraHardware::CameraHardware(int cameraId)
     /* Init the 3A library only once */
     mAAA->Init();
     mCameraState = CAM_DEFAULT;
+
+#ifdef ENABLE_BUFFER_SHARE_MODE
+    isRecordingStarted = false;
+    isCameraTurnOffBufferSharingMode = false;
+#endif
+
     LOGD("libcamera version: 2011-03-01 1.0.1");
 }
 
@@ -102,6 +108,9 @@ void CameraHardware::initHeapLocked(int size)
             recordersize = size;
         }
 
+#if ENABLE_BUFFER_SHARE_MODE
+        recordersize = sizeof(unsigned int*);
+#endif
         mPreviewBuffer.heap = new MemoryHeapBase(size * kBufferCount);
         mRecordingBuffer.heap = new MemoryHeapBase(recordersize * kBufferCount);
 
@@ -118,6 +127,12 @@ void CameraHardware::initHeapLocked(int size)
                 new MemoryBase(mRecordingBuffer.heap, i *recordersize, recordersize);
             clrBF(&mRecordingBuffer.flags[i], BF_ENABLED|BF_LOCKED);
             mRecordingBuffer.start[i] = (uint8_t *)mRecordingBuffer.heap->base() + (i * recordersize);
+
+#if ENABLE_BUFFER_SHARE_MODE
+            memset((char*)mRecordingBuffer.start[i], 0, recordersize);
+            mRecordingBuffer.pointerArray[i] = NULL;
+#endif
+
 
         }
         LOGD("%s Re Alloc previewframe size=%d, recordersiz=%d",__func__, size, recordersize);
@@ -507,9 +522,86 @@ bool CameraHardware::previewEnabled()
     return (mPreviewThread != 0);
 }
 
+#if ENABLE_BUFFER_SHARE_MODE
+int CameraHardware::getSharedBuffer()
+{
+   /* block until get the share buffer information*/
+   if (!isRecordingStarted && mRecordingRunning && (mMsgEnabled & CAMERA_MSG_VIDEO_FRAME)) {
+       int bufferCount;
+       unsigned char *pointer;
+       SharedBufferType *pSharedBufferInfoArray = NULL;
+       android::sp<BufferShareRegistry> r = (android::BufferShareRegistry::getInstance());
+
+       LOGE("camera try to get share buffer array information");
+       r->sourceEnterSharingMode();
+       r->sourceGetSharedBuffer(NULL, &bufferCount);
+
+       pSharedBufferInfoArray = (SharedBufferType *)malloc(sizeof(SharedBufferType) * bufferCount);
+       if(!pSharedBufferInfoArray) {
+           LOGE(" pShareBufferInfoArray malloc failed! ");
+           return -1;
+       }
+
+       r->sourceGetSharedBuffer(pSharedBufferInfoArray, &bufferCount);
+       LOGE("camera have already gotten share buffer array information");
+
+       if(bufferCount > kBufferCount) {
+           bufferCount = kBufferCount;
+       }
+
+       for(int i = 0; i < bufferCount; i ++)
+       {
+          mRecordingBuffer.pointerArray[i] = pSharedBufferInfoArray[i].pointer;
+          *(unsigned char**)(mRecordingBuffer.start[i])= pSharedBufferInfoArray[i].pointer;
+          LOGE("pointer[%d] = %p (%dx%d - stride %d) ",
+               i,
+               mRecordingBuffer.start[i],
+               pSharedBufferInfoArray[i].width,
+               pSharedBufferInfoArray[i].height,
+               pSharedBufferInfoArray[i].stride);
+       }
+       delete [] pSharedBufferInfoArray;
+
+       isRecordingStarted = true;
+    }
+
+    return NO_ERROR;
+}
+
+bool CameraHardware::checkSharedBufferModeOff()
+{
+   /* check whether encoder have send signal to stop buffer sharing mode.*/
+   if(isCameraTurnOffBufferSharingMode){
+       LOGE("isCameraTurnOffBufferSharingMode == true");
+       return true;
+    }
+
+    android::sp<BufferShareRegistry> r = (android::BufferShareRegistry::getInstance());
+
+    if(!isCameraTurnOffBufferSharingMode
+        && false == r->isBufferSharingModeSet()){
+      LOGE("buffer sharing mode has been turned off, now de-reference pointer  %s!!", __func__);
+
+      r->sourceExitSharingMode();
+
+      isCameraTurnOffBufferSharingMode = true;
+
+      return true;
+      }
+
+   return false;
+}
+#endif
+
 int CameraHardware::recordingThread()
 {
+#if ENABLE_BUFFER_SHARE_MODE
+    int ret;
+    if(NO_ERROR != getSharedBuffer()){
+        return ret;
+    }
 
+#else
     if (!share_buffer_caps_set) {
         unsigned int *frame_id;
         unsigned int frame_num;
@@ -520,8 +612,14 @@ int CameraHardware::recordingThread()
         delete [] frame_id;
         share_buffer_caps_set=true;
     }
+#endif
 
     if (mRecordingRunning && (mMsgEnabled & CAMERA_MSG_VIDEO_FRAME)) {
+#if ENABLE_BUFFER_SHARE_MODE
+       if(checkSharedBufferModeOff()){
+           return NO_ERROR;
+       }
+#endif
         // Get a recording frame
         int recordingFrame = mRecordingFrame;
         int previewFrame = (mPreviewFrame + 3) % kBufferCount;
@@ -536,10 +634,16 @@ int CameraHardware::recordingThread()
             memcpy(mRecordingBuffer.start[recordingFrame],
                    mPreviewBuffer.start[previewFrame], mPreviewFrameSize);
 #endif
+#if ENABLE_BUFFER_SHARE_MODE
+	    mCamera->captureGetRecordingFrame(mRecordingBuffer.pointerArray[recordingFrame], 0);
+            //LOGE("memcpy from ISP to sharing buffer %p here", mRecordingBuffer.pointerArray[recordingFrame]);
+#else
             if (mParameters.get_buffer_sharing())
                 mCamera->captureGetRecordingFrame(mRecordingBuffer.start[recordingFrame], 1);
             else
                 mCamera->captureGetRecordingFrame(mRecordingBuffer.start[recordingFrame], 0);
+#endif
+
             clrBF(&mRecordingBuffer.flags[recordingFrame], BF_LOCKED);
             clrBF(&mPreviewBuffer.flags[previewFrame], BF_LOCKED);
 #endif
@@ -587,6 +691,11 @@ status_t CameraHardware::startRecording()
     // TODO: mAAA->SwitchMode(CI_ISP_MODE_VIDEO);
     mAAA->SwitchMode(CI_ISP_MODE_PREVIEW);
 
+#ifdef ENABLE_BUFFER_SHARE_MODE
+    isRecordingStarted = false;
+    isCameraTurnOffBufferSharingMode = false;
+#endif
+
     return NO_ERROR;
 }
 
@@ -595,6 +704,12 @@ void CameraHardware::stopRecording()
     mRecordingRunning = false;
     mCameraState = CAM_PREVIEW;
     mAAA->SwitchMode(CI_ISP_MODE_PREVIEW);
+
+#ifdef ENABLE_BUFFER_SHARE_MODE
+    isRecordingStarted = false;
+    isCameraTurnOffBufferSharingMode = false;
+#endif
+
 }
 
 bool CameraHardware::recordingEnabled()
