@@ -100,13 +100,6 @@ void v4l2_capture_unmap_frame(v4l2_struct_t *v4l2_str,
 void v4l2_capture_recycle_frame(v4l2_struct_t *v4l2_str,
                                 unsigned int frame_id);
 
-void v4l2_capture_set_userptr(v4l2_struct_t *v4l2_str,
-                              unsigned int frame_idx,
-                              v4l2_frame_info *buf_info);
-
-void v4l2_capture_unset_userptr(v4l2_struct_t *v4l2_str,
-                                v4l2_frame_info *buf_info);
-
 void v4l2_capture_stop(v4l2_struct_t *v4l2_str);
 
 void v4l2_capture_destroy_frames(v4l2_struct_t *v4l2_str);
@@ -117,14 +110,6 @@ int v4l2_capture_set_capture_mode(int fd, int mode);
 
 /* for camera texture streaming */
 #if defined(ANDROID)
-typedef struct BC_Video_ioctl_package_TAG
-{
-    int ioctl_cmd;
-    int device_id;
-    int inputparam;
-    int outputparam;
-} BC_Video_ioctl_package;
-
 typedef struct bc_buf_ptr {
     unsigned int index;
     int size;
@@ -138,6 +123,7 @@ typedef struct bc_buf_ptr {
 #define BC_Video_ioctl_get_buffer_index	3
 #define BC_Video_ioctl_request_buffers	4
 #define BC_Video_ioctl_set_buffer_phyaddr	5
+#define BC_Video_ioctl_release_buffer_device	6
 
 enum BC_memory {
     BC_MEMORY_MMAP		= 1,
@@ -165,6 +151,7 @@ int ci_isp_register_camera_bcd(v4l2_struct_t *v4l2_str,
                                unsigned int *frame_ids,
                                v4l2_frame_info *frame_info);
 
+int ci_isp_unregister_camera_bcd(v4l2_struct_t *v4l2_str);
 #endif /* ANDROID */
 
 #endif /* _V4L2_H_ */

@@ -479,53 +479,7 @@ int v4l2_capture_set_capture_mode(int fd, int mode)
 }
 
 
-void v4l2_capture_set_userptr(v4l2_struct_t *v4l2_str,
-                              unsigned int frame_idx,
-                              v4l2_frame_info *buf_info)
-{
-    int fd = v4l2_str->dev_fd;
-    unsigned int frame_size = buf_info->mapped_length;
-    unsigned int page_size = getpagesize();
-
-    int ret;
-
-    if (frame_idx >= v4l2_str->frame_num) {
-        LOGE("Invalid frame idx %d", frame_idx);
-        exit(EXIT_FAILURE);
-    }
-
-    buf_info->mapped_addr = memalign(page_size, frame_size);
-    if (buf_info->mapped_addr == 0) {
-        LOGE("no memory for frame idx %d", frame_idx);
-        exit(EXIT_FAILURE);
-    }
-
-    buf_info->width = v4l2_str->fm_width;
-    buf_info->height = v4l2_str->fm_height;
-    buf_info->stride = v4l2_str->fm_width;
-    buf_info->fourcc = v4l2_str->fm_fmt;
-}
-
-void v4l2_capture_unset_userptr(v4l2_struct_t *v4l2_str,
-                                v4l2_frame_info *buf_info)
-{
-    int ret;
-
-    void *mapped_addr = buf_info->mapped_addr;
-
-    unsigned int mapped_length = buf_info->mapped_length;
-
-    free(buf_info->mapped_addr);
-    buf_info->mapped_length = 0;
-    buf_info->width = 0;
-    buf_info->height = 0;
-    buf_info->stride = 0;
-    buf_info->fourcc = 0;
-}
-
 #if defined(ANDROID)
-#define BASE BASE_VIDIOC_PRIVATE
-#define VIDIOC_BC_CAMERA_BRIDGE _IOWR('V', BASE + 8, BC_Video_ioctl_package)
 static BC_Video_ioctl_package ioctl_package;
 static bc_buf_params_t buf_param;
 int ci_isp_register_camera_bcd (v4l2_struct_t *v4l2_str,
@@ -542,14 +496,22 @@ int ci_isp_register_camera_bcd (v4l2_struct_t *v4l2_str,
     buf_param.stride = frame_info[0].stride;
     buf_param.height = frame_info[0].height;
     buf_param.fourcc = frame_info[0].fourcc;
-    buf_param.type = BC_MEMORY_MMAP;
+    // TODO: MMAP type not supported yet
+    if (v4l2_str->mem_type == V4L2_MEMORY_MMAP) {
+        LOGE("mmap texture streaming is not supported yet");
+        return -1;
+    }
+    //buf_param.type = BC_MEMORY_MMAP;
+    buf_param.type = BC_MEMORY_USERPTR;
 
     ioctl_package.ioctl_cmd = BC_Video_ioctl_request_buffers;
     ioctl_package.inputparam = (int)(&buf_param);
-    if (-1 == xioctl(fd, VIDIOC_BC_CAMERA_BRIDGE, &ioctl_package)) {
+    if (-1 == xioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package)) {
         LOGE("Failed to request buffers from buffer class camera driver (errno=%d).", errno);
         return -1;
     }
+    LOG1("request bcd buffers count=%d, width:%d, stride:%d, height:%d, fourcc:%x",
+         buf_param.count, buf_param.width, buf_param.stride, buf_param.height, buf_param.fourcc);
 
     bc_buf_ptr_t buf_pa;
 
@@ -557,14 +519,34 @@ int ci_isp_register_camera_bcd (v4l2_struct_t *v4l2_str,
     for (i = 0; i < num_frames; i++)
     {
         buf_pa.index = frame_ids[i];
+        buf_pa.pa = frame_info[i].mapped_addr;
+        buf_pa.size = frame_info[i].mapped_length;
         ioctl_package.ioctl_cmd = BC_Video_ioctl_set_buffer_phyaddr;
         ioctl_package.inputparam = (int) (&buf_pa);
-        if (-1 == xioctl(fd, VIDIOC_BC_CAMERA_BRIDGE, &ioctl_package)) {
+        if (-1 == xioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package)) {
             LOGE("Failed to set buffer phyaddr from buffer class camera driver (errno=%d).", errno);
             return -1;
         }
 
     }
+
+    ioctl_package.ioctl_cmd = BC_Video_ioctl_get_buffer_count;
+    if (-1 == xioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package))
+        LOGE("check bcd buffer count error");
+    LOG1("check bcd buffer count = %d", ioctl_package.outputparam);
     return ret;
+}
+
+
+int ci_isp_unregister_camera_bcd (v4l2_struct_t *v4l2_str)
+{
+    int fd = v4l2_str->dev_fd;
+    ioctl_package.ioctl_cmd = BC_Video_ioctl_release_buffer_device;
+    if (-1 == xioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package)) {
+        LOGE("Failed to request buffers from buffer class camera driver (errno=%d).", errno);
+        return -1;
+    }
+
+    return 0;
 }
 #endif /* ANDROID */

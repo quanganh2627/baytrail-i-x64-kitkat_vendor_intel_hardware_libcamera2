@@ -198,10 +198,7 @@ void IntelCamera::captureSetPtr(unsigned int frame_size, void **ptrs)
     mCI->frame_size = frame_size;
 
     if (ptrs == NULL) {
-        for(i = 0; i < frame_num; i++) {
-            mFrameInfos[i].mapped_length = frame_size;
-            v4l2_capture_set_userptr(mCI, i, &(mFrameInfos[i]));
-        }
+	LOGE("pointer array is null!");
     } else {
         for(i = 0; i < frame_num; i++) {
             mFrameInfos[i].mapped_length = frame_size;
@@ -226,11 +223,9 @@ void IntelCamera::captureSetPtr(unsigned int frame_size, void **ptrs)
 void IntelCamera::captureUnsetPtr(void)
 {
     unsigned int i, frame_num = mCI->frame_num;
-
-    for(i = 0; i < frame_num; i++) {
-        v4l2_capture_unset_userptr(mCI, &(mFrameInfos[i]));
-        LOGV("%s : mFrameInfos[%u].addr=%p",__func__, i, mFrameInfos[i].mapped_addr);
-    }
+#ifdef BOARD_USE_CAMERA_TEXTURE_STREAMING
+    ci_isp_unregister_camera_bcd(mCI);
+#endif
     delete [] mFrameInfos;
 }
 

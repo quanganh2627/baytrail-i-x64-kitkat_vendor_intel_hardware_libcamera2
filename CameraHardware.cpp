@@ -95,6 +95,8 @@ void CameraHardware::initHeapLocked(int size)
     int recordersize;
     if (size != mPreviewFrameSize) {
         const char *preview_fmt;
+        unsigned int page_size = getpagesize();
+        unsigned int size_aligned = (size + page_size - 1) & ~(page_size - 1);
         preview_fmt = mParameters.getPreviewFormat();
 
         if (strcmp(preview_fmt, "yuv420sp") == 0) {
@@ -111,7 +113,7 @@ void CameraHardware::initHeapLocked(int size)
 #if ENABLE_BUFFER_SHARE_MODE
         recordersize = sizeof(unsigned int*);
 #endif
-        mPreviewBuffer.heap = new MemoryHeapBase(size * kBufferCount);
+        mPreviewBuffer.heap = new MemoryHeapBase(size_aligned * kBufferCount);
         mRecordingBuffer.heap = new MemoryHeapBase(recordersize * kBufferCount);
 
         for (int i=0; i < kBufferCount; i++) {
@@ -119,9 +121,9 @@ void CameraHardware::initHeapLocked(int size)
             mRecordingBuffer.flags[i] = 0;
 
             mPreviewBuffer.base[i] =
-                new MemoryBase(mPreviewBuffer.heap, i * size, size);
+                new MemoryBase(mPreviewBuffer.heap, i * size_aligned, size_aligned);
             clrBF(&mPreviewBuffer.flags[i], BF_ENABLED|BF_LOCKED);
-            mPreviewBuffer.start[i] = (uint8_t *)mPreviewBuffer.heap->base() + (i * size);
+            mPreviewBuffer.start[i] = (uint8_t *)mPreviewBuffer.heap->base() + (i * size_aligned);
 
             mRecordingBuffer.base[i] =
                 new MemoryBase(mRecordingBuffer.heap, i *recordersize, recordersize);
@@ -319,8 +321,16 @@ int CameraHardware::previewThread()
                 mCamera->set_capture_mode(CI_ISP_MODE_PREVIEW);
                 //mCamera->captureInit(w, h, mPreviewPixelFormat, 3, mCameraId);
                 mCamera->captureInit(w, h, mPreviewPixelFormat, 3, V4L2_MEMORY_USERPTR, mCameraId);
+
+                int i;
+                void *ptrs[kBufferCount];
+                for (i = 0; i < kBufferCount; i++) {
+                    ptrs[i] = mPreviewBuffer.start[i];
+LOGD("hongyu: ptr[%d] = %p", i, ptrs[i]);
+                }
+
                 //mCamera->captureMapFrame();
-                mCamera->captureSetPtr(mPreviewFrameSize, NULL);
+                mCamera->captureSetPtr(mPreviewFrameSize, ptrs);
                 mCamera->captureStart();
                 mCamera->set_zoom_val(mCamera->get_zoom_val());
                 mAAA->SwitchMode(CI_ISP_MODE_PREVIEW);
@@ -448,9 +458,15 @@ status_t CameraHardware::startPreview()
     mAAA->SetAeEnabled(TRUE);
     mAAA->SetAwbEnabled(TRUE);
 
+    int i;
+    void *ptrs[kBufferCount];
+    for (i = 0; i < kBufferCount; i++) {
+        ptrs[i] = mPreviewBuffer.start[i];
+LOGD("hongyu: ptr[%d] = %p", i, ptrs[i]);
+    }
 
     //mCamera->captureMapFrame();
-    mCamera->captureSetPtr(mPreviewFrameSize, NULL);
+    mCamera->captureSetPtr(mPreviewFrameSize, ptrs);
     mCamera->captureStart();
     mCamera->set_zoom_val(mCamera->get_zoom_val());
 
