@@ -45,6 +45,7 @@ public:
                      unsigned int height,
                      v4l2_frame_format frame_fmt,
                      unsigned int frame_num,
+                     enum v4l2_memory mem_type,
                      int camera_id);
     void captureFinalize(void);
     void captureStart(void);
@@ -52,6 +53,9 @@ public:
 
     void captureMapFrame(void);
     void captureUnmapFrame(void);
+
+    void captureSetPtr(unsigned int frame_size, void **ptrs);
+    void captureUnsetPtr(void);
 
     unsigned int captureGrabFrame(void);
     unsigned int captureGetFrame(void *buffer);

@@ -143,6 +143,7 @@ void v4l2_capture_create_frames(v4l2_struct_t *v4l2_str,
                                 unsigned int frame_height,
                                 unsigned int frame_fmt,
                                 unsigned int frame_num,
+				enum v4l2_memory mem_type,
                                 unsigned int *frame_ids)
 {
     int ret;
@@ -156,6 +157,7 @@ void v4l2_capture_create_frames(v4l2_struct_t *v4l2_str,
     v4l2_str->fm_width = frame_width;
     v4l2_str->fm_height = frame_height;
     v4l2_str->fm_fmt = frame_fmt;
+    v4l2_str->mem_type = mem_type;
 
     /* set format */
     CLEAR(v4l2_str->fmt);
@@ -175,7 +177,7 @@ void v4l2_capture_create_frames(v4l2_struct_t *v4l2_str,
     CLEAR(v4l2_str->req_buf);
 
     v4l2_str->req_buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    v4l2_str->req_buf.memory = V4L2_MEMORY_MMAP;
+    v4l2_str->req_buf.memory = mem_type;
     v4l2_str->req_buf.count = frame_num;
 
     if (-1 == xioctl(fd, VIDIOC_REQBUFS, &v4l2_str->req_buf)) {
@@ -211,7 +213,7 @@ void v4l2_capture_destroy_frames(v4l2_struct_t *v4l2_str)
     CLEAR(v4l2_str->req_buf);
 
     v4l2_str->req_buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    v4l2_str->req_buf.memory = V4L2_MEMORY_MMAP;
+    v4l2_str->req_buf.memory = v4l2_str->mem_type;
     v4l2_str->req_buf.count = 0;
 
     if (-1 == xioctl(fd, VIDIOC_REQBUFS, &v4l2_str->req_buf)) {
@@ -228,6 +230,8 @@ void v4l2_capture_start(v4l2_struct_t *v4l2_str)
 {
     int ret;
     unsigned int i;
+    unsigned int page_size = getpagesize();
+    unsigned int buffer_size;
     enum v4l2_buf_type type;
 
     assert(v4l2_str);
@@ -239,7 +243,14 @@ void v4l2_capture_start(v4l2_struct_t *v4l2_str)
 
         buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = V4L2_MEMORY_MMAP;
+        buf.memory = v4l2_str->mem_type;
         buf.index = i;
+        if (buf.memory == V4L2_MEMORY_USERPTR) {
+            buf.m.userptr = v4l2_str->fm_infos[i].mapped_addr;
+            buffer_size = v4l2_str->fm_infos[i].mapped_length;
+            buf.length = (buffer_size + page_size - 1) & ~(page_size - 1);
+            LOG2("QBUF: frame size = %d, buffer length = %d", buffer_size, buf.length);
+        }
 
         if (-1 == xioctl(v4l2_str->dev_fd, VIDIOC_QBUF, &buf)) {
             errno_print(v4l2_str, "VIDIOC_QBUF");
@@ -277,7 +288,7 @@ int v4l2_capture_grab_frame(v4l2_struct_t *v4l2_str)
     assert(v4l2_str);
 
     int fd = v4l2_str->dev_fd;
-    int ret;
+    int i, ret;
     struct v4l2_buffer buf;
     struct pollfd pfd[1];
 
@@ -297,7 +308,7 @@ int v4l2_capture_grab_frame(v4l2_struct_t *v4l2_str)
     CLEAR(buf);
 
     buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf.memory = V4L2_MEMORY_MMAP;
+    buf.memory = v4l2_str->mem_type;
 
     ret = xioctl(fd, VIDIOC_DQBUF, &buf);
     if (ret < 0) {
@@ -319,7 +330,19 @@ int v4l2_capture_grab_frame(v4l2_struct_t *v4l2_str)
     LOG2("VIDIOC_DQBUF");
 
     v4l2_str->frame_size = buf.bytesused;
-    v4l2_str->cur_frame = buf.index;
+    if (v4l2_str->mem_type == V4L2_MEMORY_USERPTR) {
+        v4l2_str->cur_userptr = buf.m.userptr;
+        for (i = 0; i < v4l2_str->frame_num; ++i) {
+            if (v4l2_str->fm_infos[i].mapped_addr == buf.m.userptr)
+                break;
+        }
+        if (i >= v4l2_str->frame_num) {
+            LOGE("invalidate frame index: %d, userptr: %x", i, buf.m.userptr);
+            return -1;
+        }
+        v4l2_str->cur_frame = i;
+    } else
+        v4l2_str->cur_frame = buf.index;
 
     return 0;
 }
@@ -331,13 +354,20 @@ void v4l2_capture_recycle_frame(v4l2_struct_t *v4l2_str,
 
     int ret;
     int fd = v4l2_str->dev_fd;
+    unsigned int buffer_size, page_size = getpagesize();
     struct v4l2_buffer buf;
 
     CLEAR(buf);
 
     buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf.memory = V4L2_MEMORY_MMAP;
+    buf.memory = v4l2_str->mem_type;
     buf.index = frame_id;
+    if (buf.memory == V4L2_MEMORY_USERPTR) {
+        buf.m.userptr = v4l2_str->fm_infos[frame_id].mapped_addr;
+        buffer_size = v4l2_str->fm_infos[frame_id].mapped_length;
+        buf.length = (buffer_size + page_size - 1) & ~(page_size - 1);
+        LOG2("QBUF: frame size = %d, buffer length = %d", buffer_size, buf.length);
+    }
 
     /* enqueue the buffer */
     if (-1 == xioctl(fd, VIDIOC_QBUF, &buf))
@@ -448,6 +478,50 @@ int v4l2_capture_set_capture_mode(int fd, int mode)
     return 0;
 }
 
+
+void v4l2_capture_set_userptr(v4l2_struct_t *v4l2_str,
+                              unsigned int frame_idx,
+                              v4l2_frame_info *buf_info)
+{
+    int fd = v4l2_str->dev_fd;
+    unsigned int frame_size = buf_info->mapped_length;
+    unsigned int page_size = getpagesize();
+
+    int ret;
+
+    if (frame_idx >= v4l2_str->frame_num) {
+        LOGE("Invalid frame idx %d", frame_idx);
+        exit(EXIT_FAILURE);
+    }
+
+    buf_info->mapped_addr = memalign(page_size, frame_size);
+    if (buf_info->mapped_addr == 0) {
+        LOGE("no memory for frame idx %d", frame_idx);
+        exit(EXIT_FAILURE);
+    }
+
+    buf_info->width = v4l2_str->fm_width;
+    buf_info->height = v4l2_str->fm_height;
+    buf_info->stride = v4l2_str->fm_width;
+    buf_info->fourcc = v4l2_str->fm_fmt;
+}
+
+void v4l2_capture_unset_userptr(v4l2_struct_t *v4l2_str,
+                                v4l2_frame_info *buf_info)
+{
+    int ret;
+
+    void *mapped_addr = buf_info->mapped_addr;
+
+    unsigned int mapped_length = buf_info->mapped_length;
+
+    free(buf_info->mapped_addr);
+    buf_info->mapped_length = 0;
+    buf_info->width = 0;
+    buf_info->height = 0;
+    buf_info->stride = 0;
+    buf_info->fourcc = 0;
+}
 
 #if defined(ANDROID)
 #define BASE BASE_VIDIOC_PRIVATE

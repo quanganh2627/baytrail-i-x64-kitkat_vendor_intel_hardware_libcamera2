@@ -55,6 +55,8 @@ typedef struct _v4l2_struct {
     unsigned short fm_width;
     unsigned short fm_height;
     unsigned int fm_fmt;
+    enum v4l2_memory mem_type;
+    v4l2_frame_info *fm_infos;
 
     struct v4l2_input input;
     struct v4l2_capability cap;
@@ -64,6 +66,7 @@ typedef struct _v4l2_struct {
     unsigned int frame_num;
     unsigned int frame_size;
     unsigned int cur_frame;
+    void * cur_userptr;
     unsigned int *frame_ids;
     struct v4l2_buffer *bufs;
 
@@ -80,6 +83,7 @@ void v4l2_capture_create_frames(v4l2_struct_t *v4l2_str,
                                 unsigned int frame_height,
                                 unsigned int frame_fmt,
                                 unsigned int frame_num,
+                                enum v4l2_memory mem_type,
                                 unsigned int *frame_ids);
 
 void v4l2_capture_start(v4l2_struct_t *v4l2_str);
@@ -95,6 +99,13 @@ void v4l2_capture_unmap_frame(v4l2_struct_t *v4l2_str,
 
 void v4l2_capture_recycle_frame(v4l2_struct_t *v4l2_str,
                                 unsigned int frame_id);
+
+void v4l2_capture_set_userptr(v4l2_struct_t *v4l2_str,
+                              unsigned int frame_idx,
+                              v4l2_frame_info *buf_info);
+
+void v4l2_capture_unset_userptr(v4l2_struct_t *v4l2_str,
+                                v4l2_frame_info *buf_info);
 
 void v4l2_capture_stop(v4l2_struct_t *v4l2_str);
 

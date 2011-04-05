@@ -300,7 +300,8 @@ int CameraHardware::previewThread()
 
                 /* Stop the camera device */
                 mCamera->captureStop();
-                mCamera->captureUnmapFrame();
+                //mCamera->captureUnmapFrame();
+                mCamera->captureUnsetPtr();
                 mCamera->captureFinalize();
 
                 /* Start the camera device */
@@ -316,8 +317,10 @@ int CameraHardware::previewThread()
 
                 //    int fd = mCamera->get_device_fd();
                 mCamera->set_capture_mode(CI_ISP_MODE_PREVIEW);
-                mCamera->captureInit(w, h, mPreviewPixelFormat, 3, mCameraId);
-                mCamera->captureMapFrame();
+                //mCamera->captureInit(w, h, mPreviewPixelFormat, 3, mCameraId);
+                mCamera->captureInit(w, h, mPreviewPixelFormat, 3, V4L2_MEMORY_USERPTR, mCameraId);
+                //mCamera->captureMapFrame();
+                mCamera->captureSetPtr(mPreviewFrameSize, NULL);
                 mCamera->captureStart();
                 mCamera->set_zoom_val(mCamera->get_zoom_val());
                 mAAA->SwitchMode(CI_ISP_MODE_PREVIEW);
@@ -435,7 +438,8 @@ status_t CameraHardware::startPreview()
     //    int fd = mCamera->get_device_fd();
 
     mCamera->set_capture_mode(CI_ISP_MODE_PREVIEW);
-    mCamera->captureInit(w, h, mPreviewPixelFormat, 3, mCameraId);
+//    mCamera->captureInit(w, h, mPreviewPixelFormat, 3, mCameraId);
+    mCamera->captureInit(w, h, mPreviewPixelFormat, 3, V4L2_MEMORY_USERPTR, mCameraId);
     mAAA->IspSetFd(fd);
     mAAA->SwitchMode(CI_ISP_MODE_PREVIEW);
     mAAA->ModeSpecInit();
@@ -445,7 +449,8 @@ status_t CameraHardware::startPreview()
     mAAA->SetAwbEnabled(TRUE);
 
 
-    mCamera->captureMapFrame();
+    //mCamera->captureMapFrame();
+    mCamera->captureSetPtr(mPreviewFrameSize, NULL);
     mCamera->captureStart();
     mCamera->set_zoom_val(mCamera->get_zoom_val());
 
@@ -510,7 +515,8 @@ void CameraHardware::stopPreview()
     if (mPreviewThread != 0) {
         mPreviewThread.clear();
         mCamera->captureStop();
-        mCamera->captureUnmapFrame();
+//        mCamera->captureUnmapFrame();
+        mCamera->captureUnsetPtr();
         mCamera->captureFinalize();
     }
 
@@ -888,7 +894,8 @@ int CameraHardware::pictureThread()
         mCamera->set_capture_mode(CI_ISP_MODE_CAPTURE);
         mAAA->IspSetFd(fd);
 
-        mCamera->captureInit(w, h, mPicturePixelFormat, 1, mCameraId);
+        //mCamera->captureInit(w, h, mPicturePixelFormat, 1, mCameraId);
+        mCamera->captureInit(w, h, mPicturePixelFormat, 1, V4L2_MEMORY_MMAP, mCameraId);
         mCamera->captureMapFrame();
         mCamera->captureStart();
         mCamera->set_zoom_val(mCamera->get_zoom_val());

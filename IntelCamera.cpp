@@ -81,6 +81,7 @@ void IntelCamera::captureInit(unsigned int width,
                               unsigned int height,
                               v4l2_frame_format frame_fmt,
                               unsigned int frame_num,
+                              enum v4l2_memory mem_type,
                               int camera_id)
 {
     unsigned int w, h;
@@ -99,6 +100,7 @@ void IntelCamera::captureInit(unsigned int width,
     v4l2_capture_create_frames(mCI, w, h,
                                frame_fmt,
                                frame_num,
+                               mem_type,
                                mCI->frame_ids);
 
     mCI->fm_width = w;
@@ -180,6 +182,53 @@ void IntelCamera::captureUnmapFrame(void)
 
     for(i = 0; i < frame_num; i++) {
         v4l2_capture_unmap_frame(mCI, &(mFrameInfos[i]));
+        LOGV("%s : mFrameInfos[%u].addr=%p",__func__, i, mFrameInfos[i].mapped_addr);
+    }
+    delete [] mFrameInfos;
+}
+
+void IntelCamera::captureSetPtr(unsigned int frame_size, void **ptrs)
+{
+    unsigned int i, ret;
+    unsigned int frame_num = mCI->frame_num;
+    unsigned int page_size = getpagesize();
+    mFrameInfos = new v4l2_frame_info[frame_num];
+    mCI->fm_infos = mFrameInfos;
+
+    mCI->frame_size = frame_size;
+
+    if (ptrs == NULL) {
+        for(i = 0; i < frame_num; i++) {
+            mFrameInfos[i].mapped_length = frame_size;
+            v4l2_capture_set_userptr(mCI, i, &(mFrameInfos[i]));
+        }
+    } else {
+        for(i = 0; i < frame_num; i++) {
+            mFrameInfos[i].mapped_length = frame_size;
+            mFrameInfos[i].mapped_addr = ptrs[i];
+            mFrameInfos[i].width = mCI->fm_width;
+            mFrameInfos[i].height = mCI->fm_height;
+            mFrameInfos[i].stride = mCI->fm_width;
+            mFrameInfos[i].fourcc = mCI->fm_fmt;
+        }
+    }
+
+#ifdef BOARD_USE_CAMERA_TEXTURE_STREAMING
+    if (mCurrentFrameFormat != V4L2_PIX_FMT_JPEG) {
+        /* camera bcd stuff */
+        ret = ci_isp_register_camera_bcd(mCI, mCI->frame_num, mCI->frame_ids, mFrameInfos);
+        CHECK_V4L2_RET(ret, "register camera bcd");
+        LOGD("main end of bcd");
+}
+#endif
+}
+
+void IntelCamera::captureUnsetPtr(void)
+{
+    unsigned int i, frame_num = mCI->frame_num;
+
+    for(i = 0; i < frame_num; i++) {
+        v4l2_capture_unset_userptr(mCI, &(mFrameInfos[i]));
         LOGV("%s : mFrameInfos[%u].addr=%p",__func__, i, mFrameInfos[i].mapped_addr);
     }
     delete [] mFrameInfos;
