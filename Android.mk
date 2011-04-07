@@ -5,6 +5,9 @@ ifeq ($(USE_CAMERA_STUB),false)
 # libcamera
 #
 $(shell cp hardware/intel/linux-2.6/include/linux/atomisp.h hardware/intel/include/linux/)
+$(shell cp hardware/intel/linux-2.6/include/linux/videodev2.h hardware/intel/include/linux/)
+
+#ENABLE_BUFFER_SHARE_MODE := true
 
 LOCAL_PATH := $(call my-dir)
 
@@ -14,8 +17,6 @@ include $(CLEAR_VARS)
 
 LOCAL_MODULE := libcamera
 LOCAL_MODULE_TAGS := optional
-
-ENABLE_BUFFER_SHARE_MODE := false
 
 LOCAL_SHARED_LIBRARIES := \
 	libcamera_client \
@@ -27,18 +28,14 @@ LOCAL_SHARED_LIBRARIES := \
 	libmfldadvci
 
 LOCAL_SRC_FILES += \
-	CameraHALBridge.cpp \
 	CameraHardware.cpp \
 	IntelCamera.cpp \
 	CameraAAAProcess.cpp \
 	v4l2.c \
+	atomisp_config.c \
 	atomisp_features.c
 
 LOCAL_CFLAGS += -DLOG_NDEBUG=1 -DSTDC99
-
-ifeq ($(ENABLE_BUFFER_SHARE_MODE),true)
-  LOCAL_CFLAGS  += -DENABLE_BUFFER_SHARE_MODE=1
-endif
 
 ifeq ($(BOARD_USES_CAMERA_TEXTURE_STREAMING), true)
 LOCAL_CFLAGS += -DBOARD_USE_CAMERA_TEXTURE_STREAMING
@@ -56,23 +53,30 @@ LOCAL_C_INCLUDES += \
 	frameworks/base/include/camera \
 	external/skia/include/core \
 	external/skia/include/images \
-	hardware/intel/libcamera/colorconvert/src \
 	hardware/intel/PRIVATE/libmfldadvci/include \
-	hardware/intel/include/
+	hardware/intel/include \
+        $(TARGET_OUT_HEADERS)/libsharedbuffer
 
-LOCAL_STATIC_LIBRARIES += libcameracc
 LOCAL_SHARED_LIBRARIES += libutils
 
 ifeq ($(ENABLE_BUFFER_SHARE_MODE),true)
-  LOCAL_SHARED_LIBRARIES += libsharedbuffer
+    LOCAL_CFLAGS  += -DENABLE_BUFFER_SHARE_MODE=1
+    LOCAL_SHARED_LIBRARIES += libsharedbuffer
 endif
 
 include $(BUILD_SHARED_LIBRARY)
 
-#
-# color convert
-#
-include hardware/intel/libcamera/colorconvert/Android.mk
+dest_dir := $(TARGET_OUT)/etc/atomisp/
 
+files := \
+	atomisp.cfg
+
+copy_to := $(addprefix $(dest_dir)/,$(files))
+
+$(copy_to): PRIVATE_MODULE := libcamera_etcdir
+$(copy_to): $(dest_dir)/%: $(LOCAL_PATH)/% | $(ACP)
+	$(transform-prebuilt-to-target)
+
+ALL_PREBUILT += $(copy_to)
 
 endif

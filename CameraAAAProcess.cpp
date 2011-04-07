@@ -32,11 +32,12 @@ AAAProcess::AAAProcess(unsigned int sensortype)
       mAwbMode(0),
       mAfMode(0),
       mSensorType(~0),
-      mInitied(0),
-      mAfStillFrames(0)
-
+      mAfStillFrames(0),
+      mInitied(0)
 {
     mSensorType = sensortype;
+    mAwbFlashEnabled = false;
+    mAeFlashEnabled = false;
     //Init();
 }
 
@@ -102,7 +103,7 @@ void AAAProcess::AwbProcess(void)
     if(!mInitied)
         return;
 
-    if(!mAwbEnabled)
+    if(!mAwbEnabled && !mAwbFlashEnabled)
         return;
 
     if(ENUM_SENSOR_TYPE_RAW == mSensorType)
@@ -153,12 +154,30 @@ void AAAProcess::AwbApplyResults(void)
     if(!mInitied)
         return;
 
-    if(!mAwbEnabled)
+    if(!mAwbEnabled && !mAwbFlashEnabled)
         return;
 
     if(ENUM_SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_awb_apply_results();
+    }
+    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    {
+
+    }
+}
+
+void AAAProcess::AfApplyResults(void)
+{
+    if(!mInitied)
+        return;
+
+    if(!mAeEnabled)
+        return;
+
+    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    {
+        ci_adv_af_apply_results();
     }
     else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
     {
@@ -185,14 +204,30 @@ int AAAProcess::ModeSpecInit(void)
     return AAA_SUCCESS;
 }
 
-void AAAProcess::SwitchMode(CI_ISP_MODE mode)
+void AAAProcess::SwitchMode(int mode)
 {
     if(!mInitied)
         return;
 
     if(ENUM_SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_switch_mode(mode);
+        CI_ISP_MODE isp_mode;
+        switch (mode) {
+        case PREVIEW_MODE:
+            isp_mode = CI_ISP_MODE_PREVIEW;
+            break;
+        case STILL_IMAGE_MODE:
+            isp_mode = CI_ISP_MODE_CAPTURE;
+            break;
+        case VIDEO_RECORDING_MODE:
+            isp_mode = CI_ISP_MODE_VIDEO;
+            break;
+        default:
+            isp_mode = CI_ISP_MODE_PREVIEW;
+            LOGW("%s: Wrong mode %d\n", __func__, mode);
+            break;
+        }
+        ci_adv_switch_mode(isp_mode);
     }
     else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
     {
@@ -263,7 +298,7 @@ int AAAProcess::AeCalcForFlash(void)
     if(!mInitied)
         return AAA_FAIL;
 
-    if(!mAfEnabled)
+    if(!mAeFlashEnabled)
         return AAA_FAIL;
 
     if(ENUM_SENSOR_TYPE_RAW == mSensorType)
@@ -284,7 +319,7 @@ int AAAProcess::AeCalcWithoutFlash(void)
     if(!mInitied)
         return AAA_FAIL;
 
-    if(!mAfEnabled)
+    if(!mAeFlashEnabled)
         return AAA_FAIL;
 
     if(ENUM_SENSOR_TYPE_RAW == mSensorType)
@@ -304,7 +339,7 @@ int AAAProcess::AeCalcWithFlash(void)
     if(!mInitied)
         return AAA_FAIL;
 
-    if(!mAfEnabled)
+    if(!mAeFlashEnabled)
         return AAA_FAIL;
 
     if(ENUM_SENSOR_TYPE_RAW == mSensorType)
@@ -324,7 +359,7 @@ int AAAProcess::AwbCalcFlash(void)
     if(!mInitied)
         return AAA_FAIL;
 
-    if(!mAfEnabled)
+    if(!mAwbFlashEnabled)
         return AAA_FAIL;
 
     if(ENUM_SENSOR_TYPE_RAW == mSensorType)
@@ -755,6 +790,7 @@ int AAAProcess::AeIsFlashNecessary(bool *used)
     if(!mInitied)
         return AAA_FAIL;
 
+    *used = false;
     if(ENUM_SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_Err ret = ci_adv_AeIsFlashNecessary(used);

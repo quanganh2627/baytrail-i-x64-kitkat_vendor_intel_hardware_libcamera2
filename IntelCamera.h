@@ -24,9 +24,13 @@
 extern "C" {
 #endif
 
+#include <semaphore.h>
 #include "v4l2.h"
-#include "ccrgb16toyuv420sp.h"
 #include "atomisp_features.h"
+#include "CameraAAAProcess.h"
+#include "atomisp_config.h"
+
+    /* Define the default parameter for the camera */
 
 #ifdef __cplusplus
 }
@@ -39,69 +43,152 @@ public:
     IntelCamera();
     ~IntelCamera();
 
-    int captureOpen(int *fd);
+    static IntelCamera* createInstance(void) {
+        static IntelCamera singleton;
+        return &singleton;
+    }
 
-    void captureInit(unsigned int width,
-                     unsigned int height,
-                     v4l2_frame_format frame_fmt,
-                     unsigned int frame_num,
-                     enum v4l2_memory mem_type,
-                     int camera_id);
-    void captureFinalize(void);
-    void captureStart(void);
-    void captureStop(void);
+    int initCamera(int camera_id);
+    int deinitCamera(void);
 
-    void captureMapFrame(void);
-    void captureUnmapFrame(void);
+    //Preview
+    int startCameraPreview();
+    void stopCameraPreview();
+    int getPreview(void **data);
+    int putPreview(int index);
+    int setPreviewSize(int width, int height, int four_cc);
+    int getPreviewSize(int *width, int *height, int *frame_size);
+    int getPreviewPixelFormat(void);
+    void setPreviewUserptr(int index, void *addr);
 
-    void captureSetPtr(unsigned int frame_size, void **ptrs);
-    void captureUnsetPtr(void);
+    //Postview
+    int setPostViewSize(int width, int height, int four_cc);
+    int getPostViewSize(int *width, int *height, int *frame_size);
+    int getPostViewPixelFormat(void);
 
-    unsigned int captureGrabFrame(void);
-    unsigned int captureGetFrame(void *buffer);
-    void captureFlashOff(void);
-    void captureFlashOnCertainDuration(int mode, int smode, int duration, int intensity);
-#ifdef BOARD_USE_CAMERA_TEXTURE_STREAMING
-    unsigned int captureGetFrameID(void);
-#endif
-    unsigned int captureGetRecordingFrame(void *buffer, int buffer_share);
-    void captureRecycleFrame(void);
+    //Snapshot
+    int startSnapshot();
+    void stopSnapshot();
+    int getSnapshot(void **main_out, void *postview);
+    int putSnapshot(int index);
+    int setSnapshotSize(int width, int height, int four_cc);
+    int getSnapshotSize(int *width, int *height, int *frame_size);
+    int getSnapshotPixelFormat(void);
+    void setSnapshotUserptr(void *pic_addr, void *pv_addr);
 
-#ifdef RECYCLE_WHEN_RELEASING_RECORDING_FRAME
-    void captureRecycleFrameWithFrameId(unsigned int id);
-#endif
+    //recorder
+    int startCameraRecording();
+    void stopCameraRecording();
+    int getRecording(void **main_out, void **preview_out);
+    int putRecording(int index);
+    int setRecorderSize(int width, int height, int four_cc);
+    int getRecorderSize(int *width, int *height, int *frame_size);
+    int getRecorderPixelFormat(void);
+    void setRecorderUserptr(int index, void *preview, void *recorder);
 
-    unsigned int get_frame_num(void);
-    void get_frame_id(unsigned int *frame_id, unsigned int frame_num);
+    //3A
+    void runAeAfAwb(void);
+    bool runStillAfSequence();
+    void setStillAfStatus(bool status);
 
-    int get_device_fd(void);
+    int get_num_buffers(void);
+
+    // Flash
+    void setFlash(void);
+    void clearFlash(void);
+    void getFlashStatus(bool *flash_status);
+    void setFlashStatus(bool flash_status);
+
+    // 3A
+    sem_t semAAA;
+
+    // Parameter settings
     int get_zoom_val(void);
     int set_zoom_val(int zoom);
-    int set_capture_mode(int mode);
+    AAAProcess * getmAAA(void);
+	
+	int setColorEffect(unsigned int effect);
 private:
-    void nv12_to_nv21(unsigned char *nv12, unsigned char *nv21, int width, int height);
-    void yuv_to_rgb16(unsigned char y,unsigned char u, unsigned char v, unsigned char *rgb);
-    void yuyv422_to_rgb16(unsigned char *buf, unsigned char *rgb, int width, int height);
-    void yuyv422_to_yuv420sp(unsigned char *bufsrc, unsigned char *bufdest, int width, int height);
+    int     createBufferPool(int device, int buffer_count);
+    void    destroyBufferPool(int device);
+    int     activateBufferPool(int device);
+    int     putDualStreams(int index);
+    void    update3Aresults(void);
+    void    yuv_to_rgb16(unsigned char y,unsigned char u, unsigned char v, unsigned char *rgb);
+    void    yuv420_to_rgb565(int width, int height, unsigned char *src, unsigned short *dst);
 
-    void trimRGB565(unsigned char *src, unsigned char* dst,
-                    int src_width, int src_height,
-                    int dst_width, int dst_height);
-    void trimNV12(unsigned char *src, unsigned char* dst,
-                  int src_width, int src_height,
-                  int dst_width, int dst_height);
+    // Device control
+    int openDevice(int mode);
+    void closeDevice(void);
+    int configureDevice(int device, int w, int h, int fourcc);
+    int startCapture(int device, int buffer_count);
+    void stopCapture(int device);
+    void stopDualStreams(void);
+    int grabFrame(int device);
+    int resetCamera(void);
+    int set_capture_mode(int mode);
 
+    inline int      m_frameSize(int format, int width, int height);
 
-    v4l2_struct_t *mCI;
+    int             m_flag_camera_start[V4L2_DEVICE_NUM];
+    int             m_flag_init;
+    int             m_camera_id;
 
-    v4l2_frame_info *mFrameInfos;
+    // Frame width, hight and size
+    int             m_preview_v4lformat;
+    int             m_preview_width;
+    int             m_preview_height;
+    int             m_preview_max_width;
+    int             m_preview_max_height;
 
-    v4l2_frame_format mCurrentFrameFormat;
+    int             m_postview_v4lformat;
+    int             m_postview_width;
+    int             m_postview_height;
 
-    //color converters
-    ColorConvertBase *ccRGBtoYUV;
-    unsigned char *trimBuffer;
+    int             m_snapshot_v4lformat;
+    int             m_snapshot_width;
+    int             m_snapshot_height;
+    int             m_snapshot_max_width;
+    int             m_snapshot_max_height;
+
+    int             m_recorder_v4lformat;
+    int             m_recorder_width;
+    int             m_recorder_height;
+    int             m_recorder_max_width;
+    int             m_recorder_max_height;
+
+    int             current_w[V4L2_DEVICE_NUM];
+    int             current_h[V4L2_DEVICE_NUM];
+    int             current_v4l2format[V4L2_DEVICE_NUM];
+
+    //For V4l2
+    int             num_buffers; //How many buffer request
+    int             run_mode; //ISP run mode
+    struct v4l2_buffer_pool v4l2_buf_pool[V4L2_DEVICE_NUM]; //pool[0] for device0 pool[1] for device1
+    struct v4l2_buffer_pool v4l2_buf_pool_reserve[V4L2_DEVICE_NUM];
+    struct v4l2_capability cap;
+    struct v4l2_streamparm parm;
+    int             video_fds[V4L2_DEVICE_NUM];
+    int             main_fd;
+
+    //flash
+    void runPreFlashSequence (void);
+    void captureFlashOff(void);
+    void captureFlashOnCertainDuration(int mode, int smode, int duration, int intensity);
+    mutable Mutex       mFlashLock;
+    bool        mFlashNecessary;
+    bool        mFlashForCapture;
+
+    //still AF
+    mutable Mutex       mStillAfLock;
+    bool            mStillAfRunning;
+    static const int mStillAfMaxCount = 100;
+    mutable Condition   mStillAfCondition;
+
+    //Parameters
     int	zoom_val;
+    int set_zoom_val_real(int zoom);
+    AAAProcess *mAAA;
 };
 
 }; // namespace android

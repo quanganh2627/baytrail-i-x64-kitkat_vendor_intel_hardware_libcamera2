@@ -24,11 +24,7 @@
 #include <binder/MemoryBase.h>
 #include <binder/MemoryHeapBase.h>
 #include <utils/threads.h>
-#include "CameraAAAProcess.h"
-
-#if ENABLE_BUFFER_SHARE_MODE
-#include <libsharedbuffer/IntelBufferSharing.h>
-#endif
+#include <atomisp_config.h>
 
 namespace android {
 
@@ -64,6 +60,7 @@ public:
     virtual status_t    takePicture();
     virtual status_t    cancelPicture();
     virtual status_t    dump(int fd, const Vector<String16>& args) const;
+	int flushParameters(const CameraParameters& params);
     virtual status_t    setParameters(const CameraParameters& params);
     virtual CameraParameters  getParameters() const;
     virtual status_t    sendCommand(int32_t command, int32_t arg1,
@@ -94,40 +91,180 @@ private:
             run("CameraPreviewThread", PRIORITY_URGENT_DISPLAY);
         }
         virtual bool threadLoop() {
-            if (mHardware->previewThread() < 0)
-                return false;
+            mHardware->previewThreadWrapper();
             // loop until we need to quit
-            return true;
+            return false;
         }
     };
 
+    class PictureThread : public Thread {
+        CameraHardware* mHardware;
+    public:
+        PictureThread(CameraHardware* hw) :
+            Thread(false),
+            mHardware(hw) { }
+        virtual bool threadLoop() {
+            mHardware->pictureThread();
+            return false;
+        }
+    };
+
+    class AutoFocusThread : public Thread {
+        CameraHardware* mHardware;
+    public:
+        AutoFocusThread(CameraHardware* hw) :
+            Thread(false),
+            mHardware(hw) { }
+        virtual void onFirstRef() {
+            run("CameraAutoFocusThread", PRIORITY_DEFAULT);
+        }
+        virtual bool threadLoop() {
+            mHardware->autoFocusThread();
+            return true;
+        }
+    };
+    class AeAfAwbThread : public Thread {
+        CameraHardware* mHardware;
+    public:
+        AeAfAwbThread(CameraHardware* hw) :
+            Thread(false),
+            mHardware(hw) { }
+        virtual void onFirstRef() {
+            run("CameraAeAfAwbThread", PRIORITY_DEFAULT);
+        }
+        virtual bool threadLoop() {
+            mHardware->aeAfAwbThread();
+            return false;
+        }
+    };
+
+    void setSkipFrame(int frame);
+    // Used by auto focus thread to block until it's told to run
+    mutable Mutex       mFocusLock;
+    mutable Condition   mFocusCondition;
+    bool        mExitAutoFocusThread;
+
+    mutable Mutex       mPreviewFrameLock;
+    mutable Condition   mPreviewFrameCondition;
+    bool        mExitAeAfAwbThread;
+
+    // Used by preview thread to block
+    mutable Mutex       mPreviewLock;
+    mutable Condition   mPreviewCondition;
+    mutable Mutex       mDeviceLock;
+    bool        mPreviewRunning;
+    bool        mExitPreviewThread;
+
     void initHeapLocked(int size);
     void initDefaultParameters();
-    void initPreviewBuffer();
+    void initPreviewBuffer(int size);
     void deInitPreviewBuffer();
-    void initRecordingBuffer();
+    bool checkRecording(int width, int height);
+    void initRecordingBuffer(int size);
     void deInitRecordingBuffer();
+    int  encodeToJpeg(int widht, int height, void *buf, int *jsize);
+    void processPreviewFrame(void *buffer);
+    void processRecordingFrame(void *buffer);
+    void print_snapshot_time();
 
-    int previewThread();
+    bool        mRecordRunning;
+    mutable Mutex       mRecordLock;
+    mutable Condition   mRecordingReleaseCondition;
     int recordingThread();
-
 #if ENABLE_BUFFER_SHARE_MODE
     int getSharedBuffer();
     bool checkSharedBufferModeOff();
+    bool requestEnableSharingMode();
+    bool requestDisableSharingMode();
 #endif
-    static int beginAutoFocusThread(void *cookie);
-    int autoFocusThread();
-
-    static int beginPictureThread(void *cookie);
-    int pictureThread();
-
-    static int beginAaaThread(void *cookie);
-    int aaaThread();
-    unsigned mAaaThreadStarted;  /* 0: not start, not 0: started */
-
     mutable Mutex       mLock;
 
     CameraParameters    mParameters;
+
+    static const int    kBufferCount = 4;
+    static const int    mAFMaxFrames = 20;
+
+    struct frame_buffer {
+        sp<MemoryHeapBase>  heap;
+        sp<MemoryBase>      base[kBufferCount];
+        uint8_t             *start[kBufferCount];
+        unsigned int        flags[kBufferCount];
+#if ENABLE_BUFFER_SHARE_MODE
+        unsigned char *  pointerArray[kBufferCount];
+#endif
+    } mPreviewBuffer, mRecordingBuffer;
+
+    sp<MemoryHeapBase>  mFrameIdHeap;
+    sp<MemoryBase>      mFrameIdBase;
+
+    int 		mCameraId;
+    int                 mPreviewFrame;
+    int                 mPostPreviewFrame;
+
+    int                 mRecordingFrame;
+    int                 mPostRecordingFrame;
+
+    unsigned int        mPreviewPixelFormat;
+    unsigned int        mPicturePixelFormat;
+    bool                mVideoPreviewEnabled;
+
+    sp<MemoryHeapBase>  mRawHeap;
+
+    IntelCamera        *mCamera;
+    //sensor_info_t      *mCurrentSensor;
+
+    int                 mPreviewFrameSize;
+    int                 mRecorderFrameSize;
+
+    // protected by mLock
+    sp<PreviewThread>   mPreviewThread;
+    int previewThread();
+    int previewThreadWrapper();
+
+    sp<AutoFocusThread> mAutoFocusThread;
+    int         autoFocusThread();
+
+    sp<AeAfAwbThread> mAeAfAwbThread;
+    int         aeAfAwbThread();
+    bool        mPreviewAeAfAwbRunning;
+    mutable Condition   mPreviewAeAfAwbCondition;
+
+    sp<PictureThread>   mPictureThread;
+    int         pictureThread();
+    bool        mCaptureInProgress;
+
+    notify_callback    mNotifyCb;
+    data_callback      mDataCb;
+    data_callback_timestamp mDataCbTimestamp;
+
+    void               *mCallbackCookie;
+
+    int32_t             mMsgEnabled;
+
+    // used to guard threading state
+    mutable Mutex       mStateLock;
+
+// only used from PreviewThread
+
+    // fps
+    nsecs_t             mPreviewLastTS;
+    float               mPreviewLastFPS;
+    nsecs_t             mRecordingLastTS;
+    float               mRecordingLastFPS;
+    mutable Mutex       mSkipFrameLock;
+    int                 mSkipFrame;
+
+    //Postpreview
+    int                 mPostViewWidth;
+    int                 mPostViewHeight;
+    int                 mPostViewSize;
+
+    //3A
+    AAAProcess          *mAAA;
+#if ENABLE_BUFFER_SHARE_MODE
+    bool                   isRecordingStarted;
+    bool                   isCameraTurnOffBufferSharingMode;
+#endif
 
     inline void setBF(unsigned int *bufferFlag, unsigned int flag) {
         *bufferFlag |= flag;
@@ -141,77 +278,14 @@ private:
         return (bufferFlag & flag);
     }
 
-    static const int    kBufferCount = 4;
-    static const int    mAFMaxFrames = 20;
-
-    struct frame_buffer {
-        sp<MemoryHeapBase>  heap;
-        sp<MemoryBase>      base[kBufferCount];
-        uint8_t             *start[kBufferCount];
-        unsigned int        flags[kBufferCount];
-#if ENABLE_BUFFER_SHARE_MODE
-        unsigned char *     pointerArray[kBufferCount];
-#endif
-    } mPreviewBuffer, mRecordingBuffer;
-
     enum {
         BF_ENABLED = 0x00000001,
         BF_LOCKED
     };
-
-    enum {
-        CAM_DEFAULT = 0x01,
-        CAM_PREVIEW,
-        CAM_PIC_FOCUS,
-        CAM_PIC_SNAP,
-        CAM_VID_RECORD,
-    } mCameraState;
-
-    int 		mCameraId;
-    int                 mPreviewFrame;
-    int                 mPostPreviewFrame;
-
-    int                 mRecordingFrame;
-    int                 mPostRecordingFrame;
-
-    unsigned int        mPreviewPixelFormat;
-    unsigned int        mPicturePixelFormat;
-
-    sp<MemoryHeapBase>  mRawHeap;
-
-    IntelCamera        *mCamera;
-    //sensor_info_t      *mCurrentSensor;
-
-    bool                mRecordingRunning;
-    int                 mPreviewFrameSize;
-
-    // protected by mLock
-    sp<PreviewThread>   mPreviewThread;
-
-    notify_callback    mNotifyCb;
-    data_callback      mDataCb;
-    data_callback_timestamp mDataCbTimestamp;
-
-    void               *mCallbackCookie;
-
-    int32_t             mMsgEnabled;
-
-// only used from PreviewThread
-
-    // fps
-    nsecs_t             mPreviewLastTS;
-    float               mPreviewLastFPS;
-    nsecs_t             mRecordingLastTS;
-    float               mRecordingLastFPS;
-
-    cam_Window mWinFocus;
-    int mIsTouchFocus;
-    sem_t semAAA;
-    AAAProcess *mAAA;
-
-#if ENABLE_BUFFER_SHARE_MODE
-    bool                isRecordingStarted;
-    bool                isCameraTurnOffBufferSharingMode;
+    //Used for picture taken time calculation
+#ifdef PERFORMANCE_TUNING
+    struct timeval  picture_start, preview_stop, pic_thread_start, snapshot_start, first_frame;
+    struct timeval  second_frame, postview, snapshot_stop, jpeg_encoded, preview_start;
 #endif
 };
 
