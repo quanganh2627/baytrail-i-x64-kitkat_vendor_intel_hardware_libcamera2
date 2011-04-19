@@ -87,6 +87,7 @@ IntelCamera::IntelCamera()
     m_flag_camera_start[0] = 0;
     m_flag_camera_start[1] = 0;
     mStillAfRunning = false;
+    mFlashNecessary = false;
 }
 
 IntelCamera::~IntelCamera()
@@ -321,8 +322,10 @@ int IntelCamera::getSnapshot(void **main_out, void *postview)
 {
     LOG1("%s\n", __func__);
     //Running flash before the snapshot
-    if (mFlashNecessary)
-        captureFlashOnCertainDuration(0, 0, 8, 15);
+    if (mFlashNecessary) {
+       captureFlashOnCertainDuration(0, 500000, 15); // software trigger, 500ms, intensity 15
+        putSnapshot(0);
+    }
 
     int index0 = grabFrame(V4L2_FIRST_DEVICE);
     int index1 = grabFrame(V4L2_SECOND_DEVICE);
@@ -937,10 +940,9 @@ void IntelCamera::captureFlashOff(void)
     cam_driver_led_flash_off (main_fd);
 }
 
-void IntelCamera::captureFlashOnCertainDuration(int mode, int smode,
-                                                int duration, int intensity)
+void IntelCamera::captureFlashOnCertainDuration(int mode,  int duration, int intensity)
 {
-    cam_driver_led_flash_trigger (main_fd, mode, smode, duration, intensity);
+    cam_driver_led_flash_trigger (main_fd, mode, duration, intensity);
 }
 
 void IntelCamera::runPreFlashSequence(void)
@@ -961,36 +963,35 @@ void IntelCamera::runPreFlashSequence(void)
         return ;
     }
     mAAA->GetStatistics();
-    putPreview(index);
-
-    // flash off
     mAAA->AeCalcForFlash();
-    captureFlashOff();
-    index = getPreview(&data);
-    if (index < 0) {
-        LOGE("%s: Error to get frame\n", __func__);
-        return ;
-    }
-    mAAA->GetStatistics();
-    putPreview(index);
 
     // pre-flash
-    mAAA->AeCalcWithoutFlash();
-    captureFlashOnCertainDuration(0, 0, 8, 0);
-    mAAA->AwbApplyResults();
+//    captureFlashOff();
+    putPreview(index);
     index = getPreview(&data);
     if (index < 0) {
         LOGE("%s: Error to get frame\n", __func__);
         return ;
     }
     mAAA->GetStatistics();
-    putPreview(index);
+    mAAA->AeCalcWithoutFlash();
 
     // main flash
+    captureFlashOnCertainDuration(0, 100000, 1);  // software trigger, 100ms, intensity 1
+    mAAA->AwbApplyResults();
+    putPreview(index);
+    index = getPreview(&data);
+    if (index < 0) {
+        LOGE("%s: Error to get frame\n", __func__);
+        return ;
+    }
+    mAAA->GetStatistics();
     mAAA->AeCalcWithFlash();
     mAAA->AwbCalcFlash();
+
     mAAA->SetAeFlashEnabled (false);
     mAAA->SetAwbFlashEnabled (false);
+    putPreview(index);
 }
 
 #define MAX_ZOOM_LEVEL	64

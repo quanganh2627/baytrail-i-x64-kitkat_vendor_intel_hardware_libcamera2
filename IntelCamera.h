@@ -106,7 +106,7 @@ public:
     int get_zoom_val(void);
     int set_zoom_val(int zoom);
     AAAProcess * getmAAA(void);
-	
+
 	int setColorEffect(unsigned int effect);
 private:
     int     createBufferPool(int device, int buffer_count);
@@ -174,7 +174,7 @@ private:
     //flash
     void runPreFlashSequence (void);
     void captureFlashOff(void);
-    void captureFlashOnCertainDuration(int mode, int smode, int duration, int intensity);
+    void captureFlashOnCertainDuration(int mode, int duration, int intensity);
     mutable Mutex       mFlashLock;
     bool        mFlashNecessary;
     bool        mFlashForCapture;

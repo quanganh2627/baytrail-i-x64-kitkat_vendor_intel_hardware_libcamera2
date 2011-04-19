@@ -1053,23 +1053,19 @@ void cam_driver_led_flash_off (int fd)
 
 void cam_driver_led_flash_trigger (int fd,
                                    int mode,
-                                   int smode,
                                    int duration,
                                    int intensity)
 {
-    if (CAM_ERR_NONE != cam_driver_set_led_flash(fd, V4L2_CID_FLASH_STROBE, mode)) {
+    if (CAM_ERR_NONE != cam_driver_set_led_flash(fd, V4L2_CID_FLASH_MODE, mode)) {
         cam_driver_dbg("Error to set flash strobe\n");
     }
-    if (CAM_ERR_NONE != cam_driver_set_led_flash(fd, V4L2_CID_FLASH_STROBE_SENSOR, smode)) {
-        cam_driver_dbg("Error to set flash strobe from sensor\n");
-    }
-    if (CAM_ERR_NONE != cam_driver_set_led_flash(fd, V4L2_CID_FLASH_TIMEOUT, duration)) {
-        cam_driver_dbg("Error to set flash timeout\n");
+
+    if (CAM_ERR_NONE != cam_driver_set_led_flash(fd, V4L2_CID_FLASH_DURATION, duration)) {
+        cam_driver_dbg("Error to set flash duration\n");
     }
     if (CAM_ERR_NONE != cam_driver_set_led_flash(fd, V4L2_CID_FLASH_INTENSITY, intensity)) {
         cam_driver_dbg("Error to set flash intensity\n");
     }
-
     if (CAM_ERR_NONE != cam_driver_set_led_flash(fd, V4L2_CID_FLASH_TRIGGER, 1)) {
         cam_driver_dbg("Error to trigger flash on\n");
     }

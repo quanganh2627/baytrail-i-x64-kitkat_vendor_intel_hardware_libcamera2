@@ -946,22 +946,21 @@ int CameraHardware::pictureThread()
 		flushParameters(mParameters);
 
         //Skip the first frame
-        mSkipFrameLock.lock();
-        for (; mSkipFrame> 0; mSkipFrame--) {
-            //Don't need the flash for the skip frame
-            bool flash_status;
-            mCamera->getFlashStatus(&flash_status);
-            mCamera->setFlashStatus(false); //turn off flash
-            index = mCamera->getSnapshot(&main_out, postview_out);
-            mCamera->setFlashStatus(flash_status);
-            if (index < 0) {
-                mSkipFrameLock.unlock();
-                picHeap.clear();
-                goto get_img_error;
-            }
-            mCamera->putSnapshot(index);
+        //Don't need the flash for the skip frame
+        bool flash_status;
+        mCamera->getFlashStatus(&flash_status);
+        mCamera->setFlashStatus(false); //turn off flash
+        index = mCamera->getSnapshot(&main_out, postview_out);
+        mCamera->setFlashStatus(flash_status);
+        if (index < 0) {
+            picHeap.clear();
+            goto get_img_error;
         }
-        mSkipFrameLock.unlock();
+        //Qbuf only if there is no flash. If with the flash, we qbuf after the
+        //flash
+        if (!flash_status)
+            mCamera->putSnapshot(index);
+
 #ifdef PERFORMANCE_TUNING
         gettimeofday(&first_frame, 0);
 #endif
@@ -1345,7 +1344,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     mCamera->getPreviewSize(&pre_width, &pre_height, &pre_size);
     p.getRecordingSize(&rec_w, &rec_h);
     if(checkRecording(rec_w, rec_h)) {
-        LOGD("line:%d, before setRecorderSize. w:%d, h:%d, format:%d", __LINE__, rec_w, rec_h, mVideoFormat);        
+        LOGD("line:%d, before setRecorderSize. w:%d, h:%d, format:%d", __LINE__, rec_w, rec_h, mVideoFormat);
         mCamera->setRecorderSize(rec_w, rec_h, mVideoFormat);
     }
     else {

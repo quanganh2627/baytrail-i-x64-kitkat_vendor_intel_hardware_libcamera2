@@ -120,7 +120,7 @@ void cam_driver_dbg(const char *format, ...);
 
 cam_err_t cam_driver_get_makernote (int fd, unsigned char *buf, unsigned size);
 
-void cam_driver_led_flash_trigger (int fd, int mode, int smode, int duration, int intensity);
+void cam_driver_led_flash_trigger (int fd, int mode, int duration, int intensity);
 void cam_driver_led_flash_off (int fd);
 int cam_driver_set_capture_mode(int fd, int mode);
 int atomisp_set_cfg_from_file(int fd);
