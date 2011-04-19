@@ -1597,7 +1597,7 @@ static CameraInfo HAL_cameraInfo[MAX_CAMERAS] = {
     },
     {
         CAMERA_FACING_FRONT,
-        0,  /* orientation */
+        90,  /* orientation */
     }
 };
 
