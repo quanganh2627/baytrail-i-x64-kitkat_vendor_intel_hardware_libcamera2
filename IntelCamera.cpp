@@ -262,7 +262,9 @@ int IntelCamera::startSnapshot(void)
     if (ret < 0)
         return ret;
 
-    set_zoom_val_real(zoom_val);
+    //0 is the default. I don't need zoom.
+    if (zoom_val != 0)
+        set_zoom_val_real(zoom_val);
 
     ret = configureDevice(V4L2_FIRST_DEVICE, m_snapshot_width,
                           m_snapshot_height, m_snapshot_v4lformat);
@@ -994,8 +996,9 @@ void IntelCamera::runPreFlashSequence(void)
     putPreview(index);
 }
 
-#define MAX_ZOOM_LEVEL	64
-#define MIN_ZOOM_LEVEL	1
+//limit it to 56 because bigger value easy to cause ISP timeout
+#define MAX_ZOOM_LEVEL	56
+#define MIN_ZOOM_LEVEL	0
 
 //Use flags to detern whether it is called from the snapshot
 int IntelCamera::set_zoom_val_real(int zoom)
@@ -1007,20 +1010,20 @@ int IntelCamera::set_zoom_val_real(int zoom)
         return 0;
     }
 
-    if (zoom == 0)
-        return 0;
     if (zoom < MIN_ZOOM_LEVEL)
         zoom = MIN_ZOOM_LEVEL;
     if (zoom > MAX_ZOOM_LEVEL)
         zoom = MAX_ZOOM_LEVEL;
 
-    zoom = ((zoom - MIN_ZOOM_LEVEL) * 63 /
+    zoom = ((zoom - MIN_ZOOM_LEVEL) * (MAX_ZOOM_LEVEL - 1) /
             (MAX_ZOOM_LEVEL - MIN_ZOOM_LEVEL)) + 1;
     return cam_driver_set_zoom (main_fd, zoom);
 }
 
 int IntelCamera::set_zoom_val(int zoom)
 {
+    if (zoom == zoom_val)
+        return 0;
     zoom_val = zoom;
     if (run_mode == STILL_IMAGE_MODE)
         return 0;
