@@ -185,7 +185,8 @@ int IntelCamera::startCameraPreview(void)
     if (ret < 0)
         return ret;
 
-    set_zoom_val_real(zoom_val);
+    if (zoom_val != 0)
+        set_zoom_val_real(zoom_val);
     ret = configureDevice(device, w, h, fourcc);
     if (ret < 0)
         return ret;
@@ -377,7 +378,8 @@ int IntelCamera::startCameraRecording(void)
     if (ret < 0)
         return ret;
 
-    set_zoom_val_real(zoom_val);
+    if ((zoom_val != 0) && (m_recorder_width != 1920))
+        set_zoom_val_real(zoom_val);
 
     ret = configureDevice(V4L2_FIRST_DEVICE, m_recorder_width,
                           m_recorder_height, m_recorder_v4lformat);
