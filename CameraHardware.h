@@ -198,6 +198,8 @@ private:
 
     sp<MemoryHeapBase>  mFrameIdHeap;
     sp<MemoryBase>      mFrameIdBase;
+    sp<MemoryHeapBase>  mUserptrHeap;
+    sp<MemoryBase>      mUserptrBase[kBufferCount];
 
     int 		mCameraId;
     int                 mPreviewFrame;

@@ -7,7 +7,7 @@ ifeq ($(USE_CAMERA_STUB),false)
 $(shell cp hardware/intel/linux-2.6/include/linux/atomisp.h hardware/intel/include/linux/)
 $(shell cp hardware/intel/linux-2.6/include/linux/videodev2.h hardware/intel/include/linux/)
 
-#ENABLE_BUFFER_SHARE_MODE := true
+ENABLE_BUFFER_SHARE_MODE := true
 
 LOCAL_PATH := $(call my-dir)
 

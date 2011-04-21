@@ -312,12 +312,14 @@ void CameraHardware::initRecordingBuffer(int size, int padded_size)
         deInitRecordingBuffer();
 
     mRecordingBuffer.heap = new MemoryHeapBase(size_aligned * kBufferCount);
+    mUserptrHeap = new MemoryHeapBase(ptr_size * kBufferCount);
     for (int i = 0; i < kBufferCount; i++) {
         mRecordingBuffer.flags[i] = 0;
         mRecordingBuffer.base[i] = new MemoryBase(mRecordingBuffer.heap,
                 i * size_aligned, size);
         mRecordingBuffer.start[i] = (uint8_t *)mRecordingBuffer.heap->base()
                                     + (i * size_aligned);
+        mUserptrBase[i] = new MemoryBase(mUserptrHeap, i * ptr_size, ptr_size);
         clrBF(&mRecordingBuffer.flags[i], BF_ENABLED|BF_LOCKED);
         LOG1("RecordingBufferInfo: num(%d), size(%d), heapsize(%d)\n",
              kBufferCount, size, mRecordingBuffer.heap->getSize());
@@ -334,10 +336,13 @@ void CameraHardware::initRecordingBuffer(int size, int padded_size)
 void CameraHardware::deInitRecordingBuffer()
 {
     if (mRecordingBuffer.heap != NULL) {
-        for (int i = 0; i < kBufferCount; i++)
+        for (int i = 0; i < kBufferCount; i++) {
             mRecordingBuffer.base[i].clear();
+            mUserptrBase[i].clear();
+        }
         mRecordingBuffer.heap->dispose();
         mRecordingBuffer.heap.clear();
+        mUserptrHeap.clear();
     }
 }
 
@@ -400,8 +405,8 @@ void CameraHardware::processPreviewFrame(void *buffer)
             clrBF(&mPreviewBuffer.flags[previewFrame],BF_LOCKED);
         }
         setBF(&mPreviewBuffer.flags[previewFrame],BF_ENABLED);
-        mPreviewFrame = (previewFrame + 1) % kBufferCount;
     }
+    mPreviewFrame = (previewFrame + 1) % kBufferCount;
     // Notify the client of a new preview frame.
     int postPreviewFrame = mPostPreviewFrame;
     if (isBFSet(mPreviewBuffer.flags[postPreviewFrame], BF_ENABLED) &&
@@ -446,8 +451,11 @@ void CameraHardware::processRecordingFrame(void *buffer)
             !isBFSet(mRecordingBuffer.flags[recordingFrame], BF_LOCKED)) {
             setBF(&mRecordingBuffer.flags[recordingFrame], BF_LOCKED);
 #if ENABLE_BUFFER_SHARE_MODE
+            int ptr_size = sizeof(unsigned char *);
             memcpy(mRecordingBuffer.pointerArray[recordingFrame], buffer,
                    mRecorderFrameSize);
+            memcpy(mUserptrHeap->base() + recordingFrame * ptr_size,
+                   &mRecordingBuffer.pointerArray[recordingFrame], ptr_size);
 #else
             memcpy(mRecordingBuffer.start[recordingFrame], buffer,
                    mRecorderFrameSize);
@@ -469,12 +477,18 @@ void CameraHardware::processRecordingFrame(void *buffer)
             mRecordingBuffer.base[postRecordingFrame]->getMemory(&offset, &size);
             LOGV("%s: Post Recording Buffer offset(%d), size(%d)\n", __func__,
                  (int)offset, (int)size);
+
+#if ENABLE_BUFFER_SHARE_MODE
+            mDataCbTimestamp(timestamp, CAMERA_MSG_VIDEO_FRAME,
+                             mUserptrBase[postRecordingFrame], mCallbackCookie);
+#else
             mDataCbTimestamp(timestamp, CAMERA_MSG_VIDEO_FRAME,
                          mRecordingBuffer.base[postRecordingFrame], mCallbackCookie);
-            mPostRecordingFrame = (postRecordingFrame + 1) % kBufferCount;
+#endif
             LOGV("Sending the recording frame, size %d, index %d/%d\n",
                  mRecorderFrameSize, postRecordingFrame, kBufferCount);
         }
+        mPostRecordingFrame = (postRecordingFrame + 1) % kBufferCount;
     }
 }
 
@@ -767,7 +781,6 @@ int CameraHardware::getSharedBuffer()
        for(int i = 0; i < bufferCount; i ++)
        {
           mRecordingBuffer.pointerArray[i] = pSharedBufferInfoArray[i].pointer;
-          *(unsigned char**)(mRecordingBuffer.start[i])= pSharedBufferInfoArray[i].pointer;
           LOGE("pointer[%d] = %p (%dx%d - stride %d) ",
                i,
                mRecordingBuffer.start[i],
