@@ -284,10 +284,14 @@ void CameraHardware::deInitPreviewBuffer()
 */
 bool CameraHardware::checkRecording(int width, int height)
 {
+#define W_480P 768
+#define H_480P 480
 #define W_720P  1280
 #define H_720P  720
 #define W_1080P 1920
 #define H_1080P 1080
+        if ((W_480P == width) && (H_480P == height))
+            return true;
         if ((W_720P == width) && (H_720P == height))
             return true;
         if ((W_1080P == width) && (H_1080P == height))
