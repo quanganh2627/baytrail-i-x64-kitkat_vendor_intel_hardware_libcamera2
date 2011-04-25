@@ -162,7 +162,7 @@ private:
     void initPreviewBuffer(int size);
     void deInitPreviewBuffer();
     bool checkRecording(int width, int height);
-    void initRecordingBuffer(int size);
+    void initRecordingBuffer(int size, int padded_size);
     void deInitRecordingBuffer();
     int  encodeToJpeg(int widht, int height, void *buf, int *jsize);
     void processPreviewFrame(void *buffer);

@@ -56,13 +56,13 @@ public:
     void stopCameraPreview();
     int getPreview(void **data);
     int putPreview(int index);
-    int setPreviewSize(int width, int height, int four_cc);
-    int getPreviewSize(int *width, int *height, int *frame_size);
+    int setPreviewSize(int width, int height, int fourcc);
+    int getPreviewSize(int *width, int *height, int *frame_size, int *padded_size);
     int getPreviewPixelFormat(void);
     void setPreviewUserptr(int index, void *addr);
 
     //Postview
-    int setPostViewSize(int width, int height, int four_cc);
+    int setPostViewSize(int width, int height, int fourcc);
     int getPostViewSize(int *width, int *height, int *frame_size);
     int getPostViewPixelFormat(void);
 
@@ -71,7 +71,7 @@ public:
     void stopSnapshot();
     int getSnapshot(void **main_out, void *postview);
     int putSnapshot(int index);
-    int setSnapshotSize(int width, int height, int four_cc);
+    int setSnapshotSize(int width, int height, int fourcc);
     int getSnapshotSize(int *width, int *height, int *frame_size);
     int getSnapshotPixelFormat(void);
     void setSnapshotUserptr(void *pic_addr, void *pv_addr);
@@ -81,8 +81,8 @@ public:
     void stopCameraRecording();
     int getRecording(void **main_out, void **preview_out);
     int putRecording(int index);
-    int setRecorderSize(int width, int height, int four_cc);
-    int getRecorderSize(int *width, int *height, int *frame_size);
+    int setRecorderSize(int width, int height, int fourcc);
+    int getRecorderSize(int *width, int *height, int *frame_size, int *padded_size);
     int getRecorderPixelFormat(void);
     void setRecorderUserptr(int index, void *preview, void *recorder);
 
@@ -127,8 +127,15 @@ private:
     int grabFrame(int device);
     int resetCamera(void);
     int set_capture_mode(int mode);
+    int trimRecordingBuffer(void *main);
+    void trimNV12(unsigned char *src, unsigned char* dst, int src_width, int src_height,
+                           int dst_width, int dst_height);
+    void trimRGB565(unsigned char *src, unsigned char* dst,
+                             int src_width, int src_height,
+                             int dst_width, int dst_height);
 
     inline int      m_frameSize(int format, int width, int height);
+    int      m_paddingWidth(int format, int width, int height);
 
     int             m_flag_camera_start[V4L2_DEVICE_NUM];
     int             m_flag_init;
@@ -140,6 +147,7 @@ private:
     int             m_preview_height;
     int             m_preview_max_width;
     int             m_preview_max_height;
+    int             m_preview_pad_width;
 
     int             m_postview_v4lformat;
     int             m_postview_width;
@@ -150,12 +158,14 @@ private:
     int             m_snapshot_height;
     int             m_snapshot_max_width;
     int             m_snapshot_max_height;
+    int             m_snapshot_pad_width;
 
     int             m_recorder_v4lformat;
     int             m_recorder_width;
     int             m_recorder_height;
     int             m_recorder_max_width;
     int             m_recorder_max_height;
+    int             m_recorder_pad_width;
 
     int             current_w[V4L2_DEVICE_NUM];
     int             current_h[V4L2_DEVICE_NUM];

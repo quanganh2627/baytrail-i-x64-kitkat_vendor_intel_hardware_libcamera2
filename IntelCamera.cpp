@@ -126,6 +126,7 @@ int IntelCamera::initCamera(int camera_id)
     m_camera_id = camera_id;
 
     m_preview_width = 640;
+    m_preview_pad_width = 640;
     m_preview_height = 480;
     m_preview_v4lformat = V4L2_PIX_FMT_RGB565;
 
@@ -134,10 +135,12 @@ int IntelCamera::initCamera(int camera_id)
     m_postview_v4lformat = V4L2_PIX_FMT_YUV420;
 
     m_snapshot_width = 2560;
+    m_snapshot_pad_width = 2560;
     m_snapshot_height = 1920;
     m_snapshot_v4lformat = V4L2_PIX_FMT_RGB565;
 
     m_recorder_width = 1920;
+    m_recorder_pad_width = 1920;
     m_recorder_height = 1080;
     m_recorder_v4lformat = V4L2_PIX_FMT_NV12;
 
@@ -172,7 +175,7 @@ int IntelCamera::startCameraPreview(void)
 {
     LOG1("%s\n", __func__);
     int ret;
-    int w = m_preview_width;
+    int w = m_preview_pad_width;
     int h = m_preview_height;
     int fourcc = m_preview_v4lformat;
     int device = V4L2_FIRST_DEVICE;
@@ -381,7 +384,8 @@ int IntelCamera::startCameraRecording(void)
     if (ret < 0)
         goto configure1_error;
 
-    ret = configureDevice(V4L2_SECOND_DEVICE, m_preview_width,
+    //176x144 using pad width
+    ret = configureDevice(V4L2_SECOND_DEVICE, m_preview_pad_width,
                           m_preview_height, m_preview_v4lformat);
     if (ret < 0)
         goto configure2_error;
@@ -392,7 +396,7 @@ int IntelCamera::startCameraRecording(void)
         goto start1_error;
 
     if (use_texture_streaming) {
-        int w = m_preview_width;
+        int w = m_preview_pad_width;
         int h = m_preview_height;
         int fourcc = m_preview_v4lformat;
         void *ptrs[VIDEO_NUM_BUFFERS];
@@ -450,6 +454,26 @@ void IntelCamera::stopDualStreams(void)
     closeDevice();
 }
 
+int IntelCamera::trimRecordingBuffer(void *buf)
+{
+    int size = m_frameSize(V4L2_PIX_FMT_NV12, m_recorder_width,
+                           m_recorder_height);
+    int padding_size = m_frameSize(V4L2_PIX_FMT_NV12, m_recorder_pad_width,
+                                   m_recorder_height);
+    void *tmp_buffer = malloc(padding_size);
+    if (tmp_buffer == NULL) {
+        LOGE("%s: Error to allocate memory \n", __func__);
+        return -1;
+    }
+    //The buf should bigger enougth to hold the extra padding
+    memcpy(tmp_buffer, buf, padding_size);
+    trimNV12((unsigned char *)tmp_buffer, (unsigned char *)buf,
+             m_recorder_pad_width, m_recorder_height,
+             m_recorder_width, m_recorder_height);
+    free(tmp_buffer);
+    return 0;
+}
+
 int IntelCamera::getRecording(void **main_out, void **preview_out)
 {
     LOG2("%s\n", __func__);
@@ -471,6 +495,11 @@ int IntelCamera::getRecording(void **main_out, void **preview_out)
         const char *name1 = "record_v1.rgb";
         write_image(*main_out, buf0->length, buf0->width, buf0->height, name0);
         write_image(*preview_out, buf1->length, buf1->width, buf1->height, name1);
+    }
+
+    //Padding remove for 176x144
+    if (m_recorder_width != m_recorder_pad_width) {
+        trimRecordingBuffer(*main_out);
     }
 
     return index0;
@@ -1047,9 +1076,6 @@ int IntelCamera::set_capture_mode(int mode)
 //These are for the frame size and format
 int IntelCamera::setPreviewSize(int width, int height, int fourcc)
 {
-    LOG1("%s(width(%d), height(%d), format(%d))", __func__,
-         width, height, fourcc);
-
     if (width > m_preview_max_width || width <= 0)
         width = m_preview_max_width;
     if (height > m_preview_max_height || height <= 0)
@@ -1057,16 +1083,21 @@ int IntelCamera::setPreviewSize(int width, int height, int fourcc)
     m_preview_width = width;
     m_preview_height = height;
     m_preview_v4lformat = fourcc;
-
+    m_preview_pad_width = m_paddingWidth(fourcc, width, height);
+    LOG1("%s(width(%d), height(%d), pad_width(%d), format(%d))", __func__,
+         width, height, m_preview_pad_width, fourcc);
     return 0;
 }
 
-int IntelCamera::getPreviewSize(int *width, int *height, int *frame_size)
+int IntelCamera::getPreviewSize(int *width, int *height, int *frame_size,
+                                int *padded_size)
 {
     *width = m_preview_width;
     *height = m_preview_height;
     *frame_size = m_frameSize(m_preview_v4lformat, m_preview_width,
                               m_preview_height);
+    *padded_size = m_frameSize(m_preview_v4lformat, m_preview_pad_width,
+                       m_preview_height);
     LOG1("%s:width(%d), height(%d), size(%d)\n", __func__, *width, *height,
          *frame_size);
     return 0;
@@ -1115,7 +1146,6 @@ int IntelCamera::getPostViewPixelFormat(void)
 
 int IntelCamera::setSnapshotSize(int width, int height, int fourcc)
 {
-    LOG1("%s(width(%d), height(%d))", __func__, width, height);
     if (width > m_snapshot_max_width || width <= 0)
         width = m_snapshot_max_width;
     if (height > m_snapshot_max_height || height <= 0)
@@ -1123,6 +1153,9 @@ int IntelCamera::setSnapshotSize(int width, int height, int fourcc)
     m_snapshot_width  = width;
     m_snapshot_height = height;
     m_snapshot_v4lformat = fourcc;
+    m_snapshot_pad_width = m_paddingWidth(fourcc, width, height);
+    LOG1("%s(width(%d), height(%d), pad_width(%d), format(%d))", __func__,
+         width, height, m_snapshot_pad_width, fourcc);
     return 0;
 }
 
@@ -1152,7 +1185,6 @@ void IntelCamera::setSnapshotUserptr(void *pic_addr, void *pv_addr)
 
 int IntelCamera::setRecorderSize(int width, int height, int fourcc)
 {
-    LOG1("%s(width(%d), height(%d))", __func__, width, height);
     LOG1("Max:W %d, MaxH: %d\n", m_recorder_max_width, m_recorder_max_height);
     if (width > m_recorder_max_width || width <= 0)
         width = m_recorder_max_width;
@@ -1161,10 +1193,14 @@ int IntelCamera::setRecorderSize(int width, int height, int fourcc)
     m_recorder_width  = width;
     m_recorder_height = height;
     m_recorder_v4lformat = fourcc;
+    m_recorder_pad_width = m_paddingWidth(fourcc, width, height);
+    LOG1("%s(width(%d), height(%d), pad_width(%d), format(%d))", __func__,
+         width, height, m_recorder_pad_width, fourcc);
     return 0;
 }
 
-int IntelCamera::getRecorderSize(int *width, int *height, int *frame_size)
+int IntelCamera::getRecorderSize(int *width, int *height, int *frame_size,
+                                 int *padded_size)
 {
     *width  = m_recorder_width;
     *height = m_recorder_height;
@@ -1173,6 +1209,8 @@ int IntelCamera::getRecorderSize(int *width, int *height, int *frame_size)
                               m_recorder_height);
     if (*frame_size == 0)
         *frame_size = m_recorder_width * m_recorder_height * BPP;
+    *padded_size = m_frameSize(m_recorder_v4lformat, m_recorder_pad_width,
+                              m_recorder_height);
 
     LOG1("%s(width(%d), height(%d),size (%d))", __func__, *width, *height,
          *frame_size);
@@ -1211,6 +1249,37 @@ inline int IntelCamera::m_frameSize(int format, int width, int height)
 
     return size;
 }
+
+int IntelCamera::m_paddingWidth(int format, int width, int height)
+{
+    int padding = 0;
+    switch (format) {
+    //64bit align for 1.5byte per pixel
+    case V4L2_PIX_FMT_YUV420:
+    case V4L2_PIX_FMT_YVU420:
+    case V4L2_PIX_FMT_NV12:
+    case V4L2_PIX_FMT_NV21:
+    case V4L2_PIX_FMT_YUV411P:
+    case V4L2_PIX_FMT_YUV422P:
+        padding = (width + 63) / 64 * 64;
+        break;
+    //32bit align for 2byte per pixel
+    case V4L2_PIX_FMT_YUYV:
+    case V4L2_PIX_FMT_Y41P:
+    case V4L2_PIX_FMT_UYVY:
+        padding = width;
+        break;
+    case V4L2_PIX_FMT_RGB565:
+        padding = (width + 31) / 32 * 32;
+        break;
+    default:
+        padding = (width + 63) / 64 * 64;
+        LOGE("ERR(%s):Invalid V4L2 pixel format(%d)\n", __func__, format);
+    }
+
+    return padding;
+}
+
 
 //3A processing
 void IntelCamera::update3Aresults(void)
@@ -1292,6 +1361,48 @@ int IntelCamera::setColorEffect(unsigned int effect)
 		LOGE("Error setting color effect:%d, fd:%d\n", effect, main_fd);\
 
 	return ret;
+}
+
+//Remove padding for 176x144 resolution
+void IntelCamera::trimRGB565(unsigned char *src, unsigned char* dst,
+                             int src_width, int src_height,
+                             int dst_width, int dst_height)
+{
+    for (int i=0; i<dst_height; i++) {
+        memcpy( (unsigned char *)dst+i*2*dst_width,
+                (unsigned char *)src+i*src_width,
+                2*dst_width);
+    }
+
+}
+
+void IntelCamera::trimNV12(unsigned char *src, unsigned char* dst,
+                           int src_width, int src_height,
+                           int dst_width, int dst_height)
+{
+    unsigned char *dst_y, *dst_uv;
+    unsigned char *src_y, *src_uv;
+
+    dst_y = dst;
+    src_y = src;
+
+    LOG2("%s:%s:%d", __FILE__, __func__, __LINE__);
+    LOG2("%d:%d:%d:%d", src_width, src_height, dst_width, dst_height);
+
+    for (int i = 0; i < dst_height; i++) {
+        memcpy( (unsigned char *)dst_y + i * dst_width,
+                (unsigned char *)src_y + i * src_width,
+                dst_width);
+    };
+
+    dst_uv = dst_y + dst_width * dst_height;
+    src_uv = src_y + src_width * src_height;
+
+    for (int j=0; j<dst_height / 2; j++) {
+        memcpy( (unsigned char *)dst_uv + j * dst_width,
+                (unsigned char *)src_uv + j * src_width,
+                dst_width);
+    };
 }
 
 }; // namespace android

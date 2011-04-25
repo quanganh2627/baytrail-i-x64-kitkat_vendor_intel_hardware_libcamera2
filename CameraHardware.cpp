@@ -299,16 +299,17 @@ bool CameraHardware::checkRecording(int width, int height)
 
         return false;
 }
-void CameraHardware::initRecordingBuffer(int size)
+void CameraHardware::initRecordingBuffer(int size, int padded_size)
 {
     //Init the preview stream buffer first
-    int w, h, preview_size;
+    int w, h, preview_size, preview_padded_size;
     unsigned int page_size = getpagesize();
-    unsigned int size_aligned = (size + page_size - 1) & ~(page_size - 1);
+    unsigned int size_aligned = (padded_size + page_size - 1) & ~(page_size - 1);
+    unsigned int ptr_size = sizeof(unsigned char*);
     mPreviewFrame = 0;
     mPostPreviewFrame = 0;
-    mCamera->getPreviewSize(&w, &h, &preview_size);
-    initPreviewBuffer(preview_size);
+    mCamera->getPreviewSize(&w, &h, &preview_size, &preview_padded_size);
+    initPreviewBuffer(preview_padded_size);
 
     //Init the video stream buffer
     if (mRecordingBuffer.heap != NULL)
@@ -670,20 +671,20 @@ status_t CameraHardware::startPreview()
 
     //Determine which preview we are in
     if (mVideoPreviewEnabled) {
-        int w, h, size;
+        int w, h, size, padded_size;
         LOGD("Start recording preview\n");
         mRecordingFrame = 0;
         mPostRecordingFrame = 0;
-        mCamera->getRecorderSize(&w, &h, &size);
-        initRecordingBuffer(size);
+        mCamera->getRecorderSize(&w, &h, &size, &padded_size);
+        initRecordingBuffer(size, padded_size);
         ret = mCamera->startCameraRecording();
     } else {
         LOGD("Start normal preview\n");
-        int w, h, size;
+        int w, h, size, padded_size;
         mPreviewFrame = 0;
         mPostPreviewFrame = 0;
-        mCamera->getPreviewSize(&w, &h, &size);
-        initPreviewBuffer(size);
+        mCamera->getPreviewSize(&w, &h, &size, &padded_size);
+        initPreviewBuffer(padded_size);
         ret = mCamera->startCameraPreview();
     }
     if (ret < 0) {
@@ -718,9 +719,9 @@ void CameraHardware::stopPreview()
     }
     mAeAfAwbLock.unlock();
 
+    LOGD("Stopped the 3A now\n");
     //Tell preview to stop
     mPreviewRunning = false;
-    LOGE("Stop the 3A now\n");
 
     //Waiting for DQ to finish
     usleep(100);
@@ -1340,8 +1341,8 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
 
     //Use picture size as the recording size . Video format should can be
     //configured FIXME
-    int pre_width, pre_height, pre_size, rec_w, rec_h;
-    mCamera->getPreviewSize(&pre_width, &pre_height, &pre_size);
+    int pre_width, pre_height, pre_size, pre_padded_size, rec_w, rec_h;
+    mCamera->getPreviewSize(&pre_width, &pre_height, &pre_size, &pre_padded_size);
     p.getRecordingSize(&rec_w, &rec_h);
     if(checkRecording(rec_w, rec_h)) {
         LOGD("line:%d, before setRecorderSize. w:%d, h:%d, format:%d", __LINE__, rec_w, rec_h, mVideoFormat);
