@@ -146,8 +146,8 @@ public:
     int AeSetMeteringMode(ci_adv_AeMeteringMode mode);
     int AeGetMeteringMode(ci_adv_AeMeteringMode *mode);
 
-    int AeSetEv(int bias);
-    int AeGetEv(int *bias);
+    int AeSetEv(float bias);
+    int AeGetEv(float *bias);
 
     int AeLock(bool lock) {
         return ci_adv_AeLock(lock);

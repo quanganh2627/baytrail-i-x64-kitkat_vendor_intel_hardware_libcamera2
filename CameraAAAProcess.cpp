@@ -590,7 +590,7 @@ int AAAProcess::AeGetMeteringMode(ci_adv_AeMeteringMode *mode)
     return AAA_SUCCESS;
 }
 
-int AAAProcess::AeSetEv(int bias)
+int AAAProcess::AeSetEv(float bias)
 {
     if(!mInitied)
         return AAA_FAIL;
@@ -602,7 +602,7 @@ int AAAProcess::AeSetEv(int bias)
     {
         bias = bias > 2 ? 2 : bias;
         bias = bias < -2 ? -2 : bias;
-        ci_adv_Err ret = ci_adv_AeSetBias(bias * 65536);
+        ci_adv_Err ret = ci_adv_AeSetBias((int)(bias * 65536));
         if(ci_adv_Success != ret)
         {
             LOGE("!!!line:%d, in AeSetEv, ret:%d\n", __LINE__, ret);
@@ -617,7 +617,7 @@ int AAAProcess::AeSetEv(int bias)
     return AAA_SUCCESS;
 }
 
-int AAAProcess::AeGetEv(int *bias)
+int AAAProcess::AeGetEv(float *bias)
 {
     if(!mInitied)
         return AAA_FAIL;
@@ -627,7 +627,9 @@ int AAAProcess::AeGetEv(int *bias)
 
     if(ENUM_SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_Err ret = ci_adv_AeGetBias(bias);
+        int ibias;
+        ci_adv_Err ret = ci_adv_AeGetBias(&ibias);
+        *bias = (float) ibias / 65536.0;
         if(ci_adv_Success != ret)
         {
             LOGE("!!!line:%d, in AeGetEv, ret:%d\n", __LINE__, ret);

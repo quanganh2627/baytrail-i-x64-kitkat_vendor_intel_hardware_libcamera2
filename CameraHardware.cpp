@@ -154,9 +154,9 @@ void CameraHardware::initDefaultParameters()
     p.set(CameraParameters::KEY_FOCUS_MODE, "auto");
 
     p.set(CameraParameters::KEY_EXPOSURE_COMPENSATION, "0");
-    p.set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, "2");
-    p.set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION, "-2");
-    p.set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, "1");
+    p.set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, "6");
+    p.set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION, "-6");
+    p.set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, "0.33333333");
 
     p.set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, "auto,50hz,60hz,off");
     p.set(CameraParameters::KEY_ANTIBANDING, "auto");
@@ -194,10 +194,6 @@ void CameraHardware::initDefaultParameters()
     p.set("redeye-mode-values","on,off");
     p.set("exposure-mode","ae");
     p.set("exposure-mode-values","ae,manual");
-    p.set("exposure-compensation","1");
-    p.set("max-exposure-compensation","5");
-    p.set("min-exposure-compensation","0");
-    p.set("exposure-compensation-step","0.5");
     p.set("xnr", "false");
     p.set("xnr-values", "true,false");
     p.set("digital-image-stablization", "off");
@@ -1421,16 +1417,18 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
 
     //EV_compensation
     const char * pexp = CameraParameters::KEY_EXPOSURE_COMPENSATION;
+    const char * pcomp_step = CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP;
     int exposure = p.getInt(pexp);
+    float comp_step = p.getFloat(pcomp_step);
     new_value = p.get(pexp);
     set_value = mParameters.get(pexp);
-    LOG1(" -  = new \"%s\" (%d) / current \"%s\"",new_value, effect, set_value);
+    LOGD(" EV Index  = new \"%s\" (%d) / current \"%s\"",new_value, effect, set_value);
     if (strcmp(set_value, new_value) != 0) {
         p.set(pexp, new_value);
-        mAAA->AeSetEv(atoi(new_value));
-        int ev = 0;
+        mAAA->AeSetEv(atoi(new_value) * comp_step);
+        float ev = 0;
         mAAA->AeGetEv(&ev);
-        LOG1("      ++Changed exposure effect to %s",p.get(pexp));
+        LOGD("      ++Changed exposure effect to index %s, ev valule %f",p.get(pexp), ev);
     }
 
     //process zoom
