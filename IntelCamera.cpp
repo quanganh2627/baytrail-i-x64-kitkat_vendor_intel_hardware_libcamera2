@@ -177,7 +177,7 @@ int IntelCamera::startCameraPreview(void)
     int device = V4L2_FIRST_DEVICE;
 
     run_mode = PREVIEW_MODE;
-    ret = openDevice(PREVIEW_MODE);
+    ret = openDevice(run_mode);
     if (ret < 0)
         return ret;
 

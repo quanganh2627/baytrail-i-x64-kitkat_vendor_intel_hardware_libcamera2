@@ -147,6 +147,8 @@ private:
     mutable Mutex       mPreviewFrameLock;
     mutable Condition   mPreviewFrameCondition;
     bool        mExitAeAfAwbThread;
+    mutable Mutex       mAeAfAwbLock;
+    mutable Condition   mAeAfAwbEndCondition;
 
     // Used by preview thread to block
     mutable Mutex       mPreviewLock;

@@ -588,12 +588,20 @@ int CameraHardware::aeAfAwbThread()
             return 0;
         }
 
+        mAeAfAwbLock.lock();
         while (!mPreviewAeAfAwbRunning) {
             LOGI("%s: previewaeafawb is waiting", __func__);
-            mFocusLock.lock();
-            mPreviewAeAfAwbCondition.wait(mFocusLock);
-            mFocusLock.unlock();
+            //Tell stop preview to continue
+            mAeAfAwbEndCondition.signal();
+            mPreviewAeAfAwbCondition.wait(mAeAfAwbLock);
             LOGI("%s: previewaeafawb return from wait", __func__);
+        }
+        mAeAfAwbLock.unlock();
+        //Check exit. Maybe we are waken up from the release. We don't go to
+        //sleep again.
+        if (mExitAeAfAwbThread) {
+            LOGD("%s Exiting the 3A thread\n", __func__);
+            return 0;
         }
 
         mPreviewFrameLock.lock();
@@ -655,9 +663,9 @@ status_t CameraHardware::startPreview()
     setSkipFrame(INITIAL_SKIP_FRAME);
 
     //Enable the preview 3A
-    mFocusLock.lock();
+    mAeAfAwbLock.lock();
     mPreviewAeAfAwbRunning = true;
-    mFocusLock.unlock();
+    mAeAfAwbLock.unlock();
     mPreviewAeAfAwbCondition.signal();
 
     //Determine which preview we are in
@@ -698,20 +706,28 @@ void CameraHardware::stopPreview()
 {
     LOG1("%s :", __func__);
     // request that the preview thread stop.
-    mPreviewLock.lock();
-    if (mPreviewRunning) {
-        mPreviewRunning = false;
-    } else {
-        LOGV("%s : preview not running, doing nothing", __func__);
+    if (!mPreviewRunning) {
+        LOGI("%s : preview not running, doing nothing", __func__);
+        return ;
     }
-    mPreviewLock.unlock();
+    //Waiting for the 3A to stop if it is running
+    mAeAfAwbLock.lock();
+    if (mPreviewAeAfAwbRunning) {
+        mPreviewAeAfAwbRunning = false;
+        mAeAfAwbEndCondition.wait(mAeAfAwbLock);
+    }
+    mAeAfAwbLock.unlock();
+
+    //Tell preview to stop
+    mPreviewRunning = false;
+    LOGE("Stop the 3A now\n");
 
     //Waiting for DQ to finish
     usleep(100);
     mDeviceLock.lock();
     if(mVideoPreviewEnabled) {
-        deInitRecordingBuffer();
         mCamera->stopCameraRecording();
+        deInitRecordingBuffer();
     } else {
         mCamera->stopCameraPreview();
     }
@@ -870,6 +886,7 @@ status_t CameraHardware::cancelAutoFocus()
     //Add the focus cancel function mCamera->cancelAutofocus here
     Mutex::Autolock lock(mLock);
     mPreviewAeAfAwbRunning = true;
+    mPreviewAeAfAwbCondition.signal();
     return NO_ERROR;
 }
 
@@ -1126,9 +1143,9 @@ int CameraHardware::autoFocusThread()
     mFocusLock.unlock();
 
     //stop the preview 3A thread
-    mFocusLock.lock();
+    mAeAfAwbLock.lock();
     mPreviewAeAfAwbRunning = false;
-    mFocusLock.unlock();
+    mAeAfAwbLock.unlock();
     LOGV("%s: begin do the autofocus\n", __func__);
     //Do something here to call the mCamera->autofocus
     //
@@ -1136,7 +1153,6 @@ int CameraHardware::autoFocusThread()
     af_status = mCamera->runStillAfSequence();
     mCamera->setStillAfStatus(false);
     mFocusLock.lock();
-    mPreviewAeAfAwbRunning = true;
     mFocusLock.unlock();
     //FIXME Always success?
     if (mMsgEnabled & CAMERA_MSG_FOCUS)
@@ -1232,7 +1248,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     Mutex::Autolock lock(mLock);
     // XXX verify params
 
-    params.dump();  // print parameters for debug
+    //params.dump();  // print parameters for debug
 
     CameraParameters p = params;
 
