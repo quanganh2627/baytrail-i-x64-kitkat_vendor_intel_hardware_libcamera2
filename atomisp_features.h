@@ -122,6 +122,8 @@ cam_err_t cam_driver_get_makernote (int fd, unsigned char *buf, unsigned size);
 
 void cam_driver_led_flash_trigger (int fd, int mode, int duration, int intensity);
 void cam_driver_led_flash_off (int fd);
+void cam_driver_led_indicator_trigger (int fd, int intensity);
+
 int cam_driver_set_capture_mode(int fd, int mode);
 int atomisp_set_cfg_from_file(int fd);
 

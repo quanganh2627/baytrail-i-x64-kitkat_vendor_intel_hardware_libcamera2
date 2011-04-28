@@ -98,6 +98,7 @@ public:
     void clearFlash(void);
     void getFlashStatus(bool *flash_status);
     void setFlashStatus(bool flash_status);
+    void setIndicatorIntensity(int intensity);
 
     // 3A
     sem_t semAAA;

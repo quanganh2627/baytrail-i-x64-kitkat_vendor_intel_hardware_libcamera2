@@ -392,7 +392,6 @@ int IntelCamera::startCameraRecording(void)
     if (ret < 0)
         goto configure2_error;
 
-
     ret = startCapture(V4L2_FIRST_DEVICE, VIDEO_NUM_BUFFERS);
     if (ret < 0)
         goto start1_error;
@@ -966,6 +965,12 @@ void IntelCamera::setFlashStatus(bool flash_status)
 {
     Mutex::Autolock lock(mFlashLock);
     mFlashNecessary = flash_status;
+}
+
+void IntelCamera::setIndicatorIntensity(int intensity)
+{
+    Mutex::Autolock lock(mFlashLock);
+    cam_driver_led_indicator_trigger (main_fd, intensity);
 }
 
 void IntelCamera::captureFlashOff(void)

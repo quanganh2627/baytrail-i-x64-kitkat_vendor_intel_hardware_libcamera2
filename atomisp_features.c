@@ -1071,6 +1071,14 @@ void cam_driver_led_flash_trigger (int fd,
     }
 }
 
+void cam_driver_led_indicator_trigger (int fd, int intensity)
+{
+    if (CAM_ERR_NONE != cam_driver_set_led_flash(fd, V4L2_CID_INDICATOR_INTENSITY, intensity)) {
+        cam_driver_dbg("Error to set indicator intensity\n");
+    }
+}
+
+
 int atomisp_set_cfg_from_file(int fd)
 {
 	return atomisp_set_cfg(fd);

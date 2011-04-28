@@ -851,6 +851,7 @@ status_t CameraHardware::startRecording()
     }
 
     mRecordRunning = true;
+    mCamera->setIndicatorIntensity(3);
 #if ENABLE_BUFFER_SHARE_MODE
     requestEnableSharingMode();
 #endif
@@ -862,6 +863,7 @@ void CameraHardware::stopRecording()
     LOGD("%s :", __func__);
     Mutex::Autolock lock(mRecordLock);
     mRecordRunning = false;
+    mCamera->setIndicatorIntensity(0);
 #if ENABLE_BUFFER_SHARE_MODE
     requestDisableSharingMode();
 #endif
@@ -958,6 +960,10 @@ int CameraHardware::pictureThread()
         gettimeofday(&snapshot_start,  0);
 #endif
 		flushParameters(mParameters);
+        bool flash_status_tmp;
+        mCamera->getFlashStatus(&flash_status_tmp);
+        if(!flash_status_tmp)
+            mCamera->setIndicatorIntensity(3);
 
         //Skip the first frame
         //Don't need the flash for the skip frame
@@ -1001,6 +1007,9 @@ int CameraHardware::pictureThread()
 #ifdef PERFORMANCE_TUNING
         gettimeofday(&postview, 0);
 #endif
+
+        mCamera->setIndicatorIntensity(0);
+
         //Stop the Camera Now
         mCamera->putSnapshot(index);
         mCamera->stopSnapshot();
