@@ -20,8 +20,6 @@
 #include <linux/videodev2.h>
 #include <sys/ioctl.h>
 
-#include "ci_adv_pub.h"
-
 #ifndef ON
 #define ON 1
 #define OFF 0
@@ -79,9 +77,6 @@ cam_err_t cam_driver_get_bpd (int fd, int *on);
 /* False Color Correction, Demosaicing */
 cam_err_t cam_driver_set_fcc (int fd, int on);
 
-/* White Balance */
-cam_err_t cam_driver_set_wb (int fd, int on);
-
 /* Edge Enhancement, Sharpness */
 cam_err_t cam_driver_set_ee (int fd, int on);
 
@@ -94,7 +89,6 @@ cam_err_t cam_driver_set_cac (int fd, int on);
 /* GDC : Geometry Distortion Correction */
 cam_err_t cam_driver_set_gdc (int fd, int on);
 
-cam_err_t cam_driver_set_macc (int fd, int on, int effect);
 /* Exposure Value setting */
 cam_err_t cam_driver_set_exposure(int fd, int exposure);
 
@@ -120,11 +114,7 @@ void cam_driver_dbg(const char *format, ...);
 
 cam_err_t cam_driver_get_makernote (int fd, unsigned char *buf, unsigned size);
 
-void cam_driver_led_flash_trigger (int fd, int mode, int duration, int intensity);
+void cam_driver_led_flash_trigger (int fd, int mode, int smode, int duration, int intensity);
 void cam_driver_led_flash_off (int fd);
-void cam_driver_led_indicator_trigger (int fd, int intensity);
-
-int cam_driver_set_capture_mode(int fd, int mode);
-int atomisp_set_cfg_from_file(int fd);
 
 #endif /* _MFLD_DRIVER_H */

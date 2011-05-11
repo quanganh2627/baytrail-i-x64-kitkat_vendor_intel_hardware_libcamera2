@@ -15,24 +15,18 @@
 ** limitations under the License.
 */
 
-#ifndef ANDROID_HARDWARE_CAMERA_HARDWARE_H
-#define ANDROID_HARDWARE_CAMERA_HARDWARE_H
+#ifndef ANDROID_HARDWARE_CAMERA_HARDWARE_SOC_H
+#define ANDROID_HARDWARE_CAMERA_HARDWARE_SOC_H
 
-#include <semaphore.h>
-#include "IntelCamera.h"
+#include "IntelCameraSOC.h"
 #include <CameraHardwareInterface.h>
 #include <binder/MemoryBase.h>
 #include <binder/MemoryHeapBase.h>
 #include <utils/threads.h>
-#include "CameraAAAProcess.h"
-
-#if ENABLE_BUFFER_SHARE_MODE
-#include <libsharedbuffer/IntelBufferSharing.h>
-#endif
 
 namespace android {
 
-class CameraHardware : public CameraHardwareInterface {
+class CameraHardwareSOC : public CameraHardwareInterface {
 public:
     virtual sp<IMemoryHeap> getPreviewHeap() const;
     virtual sp<IMemoryHeap> getRawHeap() const;
@@ -57,10 +51,6 @@ public:
 
     virtual status_t    autoFocus();
     virtual status_t    cancelAutoFocus();
-
-    virtual status_t    touchToFocus(int blockNumber);
-    virtual status_t    cancelTouchToFocus();
-
     virtual status_t    takePicture();
     virtual status_t    cancelPicture();
     virtual status_t    dump(int fd, const Vector<String16>& args) const;
@@ -73,15 +63,15 @@ public:
     static sp<CameraHardwareInterface> createInstance(int cameraId);
 
 private:
-    CameraHardware(int cameraId);
-    virtual             ~CameraHardware();
+                        CameraHardwareSOC(int cameraId);
+    virtual             ~CameraHardwareSOC();
 
     static wp<CameraHardwareInterface> singleton;
 
     class PreviewThread : public Thread {
-        CameraHardware* mHardware;
+        CameraHardwareSOC* mHardware;
     public:
-        PreviewThread(CameraHardware* hw) :
+        PreviewThread(CameraHardwareSOC* hw) :
 #ifdef SINGLE_PROCESS
             // In single process mode this thread needs to be a java thread,
             // since we won't be calling through the binder.
@@ -94,8 +84,7 @@ private:
             run("CameraPreviewThread", PRIORITY_URGENT_DISPLAY);
         }
         virtual bool threadLoop() {
-            if (mHardware->previewThread() < 0)
-                return false;
+            mHardware->previewThread();
             // loop until we need to quit
             return true;
         }
@@ -103,6 +92,11 @@ private:
 
     void initHeapLocked(int size);
     void initDefaultParameters();
+    int initCameraParameters(CameraParameters &p, struct parameters **sensorNow); 
+    //if flag==ture, need init subkey; else, not do just
+    void setCameraParameters(CameraParameters &p, const char *key_supported, const char *key, 
+		    const struct setting_map *map, bool flag);
+
     void initPreviewBuffer();
     void deInitPreviewBuffer();
     void initRecordingBuffer();
@@ -111,19 +105,11 @@ private:
     int previewThread();
     int recordingThread();
 
-#if ENABLE_BUFFER_SHARE_MODE
-    int getSharedBuffer();
-    bool checkSharedBufferModeOff();
-#endif
     static int beginAutoFocusThread(void *cookie);
     int autoFocusThread();
 
     static int beginPictureThread(void *cookie);
     int pictureThread();
-
-    static int beginAaaThread(void *cookie);
-    int aaaThread();
-    unsigned mAaaThreadStarted;  /* 0: not start, not 0: started */
 
     mutable Mutex       mLock;
 
@@ -149,9 +135,6 @@ private:
         sp<MemoryBase>      base[kBufferCount];
         uint8_t             *start[kBufferCount];
         unsigned int        flags[kBufferCount];
-#if ENABLE_BUFFER_SHARE_MODE
-        unsigned char *     pointerArray[kBufferCount];
-#endif
     } mPreviewBuffer, mRecordingBuffer;
 
     enum {
@@ -179,7 +162,10 @@ private:
 
     sp<MemoryHeapBase>  mRawHeap;
 
-    IntelCamera        *mCamera;
+    IntelCameraSOC      *mCamera;
+    struct parameters   **mSensorNow;
+    int                 mBlockNumber; 
+
     //sensor_info_t      *mCurrentSensor;
 
     bool                mRecordingRunning;
@@ -196,23 +182,13 @@ private:
 
     int32_t             mMsgEnabled;
 
-// only used from PreviewThread
+ // only used from PreviewThread
 
     // fps
     nsecs_t             mPreviewLastTS;
     float               mPreviewLastFPS;
     nsecs_t             mRecordingLastTS;
     float               mRecordingLastFPS;
-
-    cam_Window mWinFocus;
-    int mIsTouchFocus;
-    sem_t semAAA;
-    AAAProcess *mAAA;
-
-#if ENABLE_BUFFER_SHARE_MODE
-    bool                isRecordingStarted;
-    bool                isCameraTurnOffBufferSharingMode;
-#endif
 };
 
 }; // namespace android

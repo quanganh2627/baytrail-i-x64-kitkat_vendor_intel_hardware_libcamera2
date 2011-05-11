@@ -40,12 +40,12 @@
 typedef unsigned long v4l2_frame_format;
 
 typedef struct _v4l2_frame_info {
-    void *mapped_addr;
-    unsigned int mapped_length;
-    unsigned short width;
-    unsigned short height;
-    unsigned int stride;
-    unsigned long fourcc;
+	void *mapped_addr;
+	unsigned int mapped_length;
+	unsigned short width;
+	unsigned short height;
+	unsigned int stride;
+	unsigned long fourcc;
 } v4l2_frame_info;
 
 typedef struct _v4l2_struct {
@@ -74,11 +74,10 @@ typedef struct _v4l2_struct {
     int camera_id;
 } v4l2_struct_t;
 
-int v4l2_capture_open(v4l2_struct_t *v4l2_str);
+int v4l2_capture_open_SOC(v4l2_struct_t *v4l2_str);
+void v4l2_capture_init_SOC(v4l2_struct_t *v4l2_str);
 
-void v4l2_capture_init(v4l2_struct_t *v4l2_str);
-
-void v4l2_capture_create_frames(v4l2_struct_t *v4l2_str,
+void v4l2_capture_create_frames_SOC(v4l2_struct_t *v4l2_str,
                                 unsigned int frame_width,
                                 unsigned int frame_height,
                                 unsigned int frame_fmt,
@@ -86,35 +85,35 @@ void v4l2_capture_create_frames(v4l2_struct_t *v4l2_str,
                                 enum v4l2_memory mem_type,
                                 unsigned int *frame_ids);
 
-void v4l2_capture_start(v4l2_struct_t *v4l2_str);
+void v4l2_capture_start_SOC(v4l2_struct_t *v4l2_str);
 
-int v4l2_capture_grab_frame(v4l2_struct_t *v4l2_str);
+int v4l2_capture_grab_frame_SOC(v4l2_struct_t *v4l2_str);
 
-void v4l2_capture_map_frame(v4l2_struct_t *v4l2_str,
-                            unsigned int frame_idx,
-                            v4l2_frame_info *buf_info);
+void v4l2_capture_map_frame_SOC(v4l2_struct_t *v4l2_str,
+			    unsigned int frame_idx,
+			    v4l2_frame_info *buf_info);
 
-void v4l2_capture_unmap_frame(v4l2_struct_t *v4l2_str,
-                              v4l2_frame_info *buf_info);
+void v4l2_capture_unmap_frame_SOC(v4l2_struct_t *v4l2_str,
+			      v4l2_frame_info *buf_info);
 
-void v4l2_capture_recycle_frame(v4l2_struct_t *v4l2_str,
-                                unsigned int frame_id);
+void v4l2_capture_recycle_frame_SOC(v4l2_struct_t *v4l2_str,
+				unsigned int frame_id);
 
-void v4l2_capture_stop(v4l2_struct_t *v4l2_str);
+void v4l2_capture_stop_SOC(v4l2_struct_t *v4l2_str);
 
-void v4l2_capture_destroy_frames(v4l2_struct_t *v4l2_str);
+void v4l2_capture_destroy_frames_SOC(v4l2_struct_t *v4l2_str);
 
-void v4l2_capture_finalize(v4l2_struct_t *v4l2_str);
+void v4l2_capture_finalize_SOC(v4l2_struct_t *v4l2_str);
 
-int v4l2_capture_set_capture_mode(int fd, int mode);
+int xioctl_SOC(int fd, int request, void *arg);
 
 /* for camera texture streaming */
 #if defined(ANDROID)
 typedef struct bc_buf_ptr {
-    unsigned int index;
-    int size;
-    unsigned long pa;
-    unsigned long handle;
+	unsigned int index;
+	int size;
+	unsigned long pa;
+	unsigned long handle;
 } bc_buf_ptr_t;
 
 #define BC_Video_ioctl_fill_buffer	0
@@ -126,8 +125,8 @@ typedef struct bc_buf_ptr {
 #define BC_Video_ioctl_release_buffer_device	6
 
 enum BC_memory {
-    BC_MEMORY_MMAP		= 1,
-    BC_MEMORY_USERPTR	= 2,
+	BC_MEMORY_MMAP		= 1,
+	BC_MEMORY_USERPTR	= 2,
 };
 
 /*
@@ -138,20 +137,21 @@ enum BC_memory {
  *   YUYV
  */
 typedef struct bc_buf_params {
-    int count;	/* number of buffers, [in/out] */
-    int width;
-    int height;
-    int stride;
-    unsigned int fourcc;	/* buffer pixel format */
-    enum BC_memory type;
+	int count;	/* number of buffers, [in/out] */
+	int width;
+	int height;
+	int stride;
+	unsigned int fourcc;	/* buffer pixel format */
+	enum BC_memory type;
 } bc_buf_params_t;
 
-int ci_isp_register_camera_bcd(v4l2_struct_t *v4l2_str,
+int ci_isp_register_camera_bcd_SOC(v4l2_struct_t *v4l2_str,
                                unsigned int num_frames,
                                unsigned int *frame_ids,
                                v4l2_frame_info *frame_info);
 
-int ci_isp_unregister_camera_bcd(v4l2_struct_t *v4l2_str);
+int ci_isp_unregister_camera_bcd_SOC(v4l2_struct_t *v4l2_str);
+
 #endif /* ANDROID */
 
 #endif /* _V4L2_H_ */

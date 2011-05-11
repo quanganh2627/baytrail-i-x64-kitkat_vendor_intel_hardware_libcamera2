@@ -26,7 +26,7 @@ extern "C" {
 
 #include "ci_adv_pub.h"
 #include "ci_adv_property.h"
-#include "atomisp_config.h"
+#include "v4l2.h"
 
 #ifdef __cplusplus
 }
@@ -117,10 +117,9 @@ public:
 
     void AeApplyResults(void);
     void AwbApplyResults(void);
-    void AfApplyResults(void);
 
     int ModeSpecInit(void);    /* Called when switch the resolution */
-    void SwitchMode(int mode);
+    void SwitchMode(CI_ISP_MODE mode);
 
     void AfStillStart(void);
     void AfStillStop(void);
@@ -146,16 +145,8 @@ public:
     int AeSetMeteringMode(ci_adv_AeMeteringMode mode);
     int AeGetMeteringMode(ci_adv_AeMeteringMode *mode);
 
-    int AeSetEv(float bias);
-    int AeGetEv(float *bias);
-
-    int AeLock(bool lock) {
-        return ci_adv_AeLock(lock);
-    }
-
-    int AeIsLocked(bool *lock) {
-        return ci_adv_AeIsLocked(lock);
-    }
+    int AeSetEv(int bias);
+    int AeGetEv(int *bias);
 
     int AeSetSceneMode(int mode);
     int AeGetSceneMode(int *mode);
@@ -183,59 +174,47 @@ public:
     int AfSetWindow(const cam_Window *window);
     int AfGetWindow(cam_Window *window);
 
-    void SetAfEnabled(bool enabled) {
-        mAfEnabled = enabled;
+    void SetAfEnabled(unsigned int enabled) {
+        mAfEnabled = ((enabled > 0) ? 1: 0);
     }
-    void SetAfStillEnabled(bool enabled) {
-        mAfStillEnabled = enabled;
+    void SetAfStillEnabled(unsigned int enabled) {
+        mAfStillEnabled = ((enabled > 0) ? 1: 0);
     }
-    void SetAeEnabled(bool enabled) {
-        mAeEnabled = enabled;
+    void SetAeEnabled(unsigned int enabled) {
+        mAeEnabled = ((enabled > 0) ? 1: 0);
     }
-    void SetAeFlashEnabled(bool enabled) {
-        mAeFlashEnabled = enabled;
+    void SetAwbEnabled(unsigned int enabled) {
+        mAwbEnabled = ((enabled > 0) ? 1: 0);
     }
-    void SetAwbEnabled(bool enabled) {
-        mAwbEnabled = enabled;
+    void SetStillStabilizationEnabled(unsigned int enabled) {
+        mStillStabilizationEnabled = ((enabled > 0) ? 1: 0);
     }
-    void SetAwbFlashEnabled(bool enabled) {
-        mAwbFlashEnabled = enabled;
+    void SetGdcEnabled(unsigned int enabled) {
+        mGdcEnabled = ((enabled > 0) ? 1: 0);
     }
-    void SetStillStabilizationEnabled(bool enabled) {
-        mStillStabilizationEnabled = enabled;
-    }
-    void SetGdcEnabled(bool enabled) {
-        mGdcEnabled = enabled;
-    }
-    void SetRedEyeRemovalEnabled(bool enabled) {
-        mRedEyeRemovalEnabled = enabled;
+    void SetRedEyeRemovalEnabled(unsigned int enabled) {
+        mRedEyeRemovalEnabled = ((enabled > 0) ? 1: 0);
     }
 
-    bool GetAfEnabled(void) {
+    unsigned int GetAfEnabled(void) {
         return mAfEnabled ;
     }
-    bool GetAfStillEnabled(void) {
+    unsigned int GetAfStillEnabled(void) {
         return mAfStillEnabled ;
     }
-    bool GetAeFlashEnabled(void) {
-        return mAeFlashEnabled;
-    }
-    bool GetAeEnabled(void) {
+    unsigned int GetAeEnabled(void) {
         return mAeEnabled;
     }
-    bool GetAwbEnabled(void) {
+    unsigned int GetAwbEnabled(void) {
         return mAwbEnabled;
     }
-    bool GetAwbFlashEnabled(void) {
-        return mAwbFlashEnabled;
-    }
-    bool GetStillStabilizationEnabled(void) {
+    unsigned int GetStillStabilizationEnabled(void) {
         return mStillStabilizationEnabled;
     }
-    bool GetGdcEnabled(void) {
+    unsigned int GetGdcEnabled(void) {
         return mGdcEnabled;
     }
-    bool GetRedEyeRemovalEnabled(void) {
+    unsigned int GetRedEyeRemovalEnabled(void) {
         return mRedEyeRemovalEnabled;
     }
 
@@ -254,15 +233,13 @@ public:
 
 private:
     /* not 0 is enabled, 0 is disabled */
-    bool mAeEnabled;
-    bool mAeFlashEnabled;
-    bool mAfEnabled;    // for preview
-    bool mAfStillEnabled; // still af
-    bool mAwbEnabled;
-    bool mAwbFlashEnabled;
-    bool mRedEyeRemovalEnabled;
-    bool mStillStabilizationEnabled;
-    bool mGdcEnabled;
+    unsigned int mAeEnabled;
+    unsigned int mAfEnabled;    // for preview
+    unsigned int mAfStillEnabled; // still af
+    unsigned int mAwbEnabled;
+    unsigned int mRedEyeRemovalEnabled;
+    unsigned int mStillStabilizationEnabled;
+    unsigned int mGdcEnabled;
 
     unsigned int mAwbMode;
     unsigned int mAfMode;
@@ -272,7 +249,7 @@ private:
     //static const unsigned int mAfStillMaxFrames = 500;
     unsigned int  mAfStillFrames;  // 100 frames will time out
 
-    bool mInitied;    // 0 means not init, not 0 means has been initied.
+    unsigned int mInitied;    // 0 means not init, not 0 means has been initied.
 };
 
 

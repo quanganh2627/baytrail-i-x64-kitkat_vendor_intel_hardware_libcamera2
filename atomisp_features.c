@@ -43,25 +43,14 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <utils/Log.h>
-#include <linux/atomisp.h>
 #include "atomisp_features.h"
-#include "atomisp_config.h"
+#include "linux/atomisp.h"
 
 #undef LOG_TAG
 #define LOG_TAG "ATOMISP abstract layer"
 #define CAM_ISP_IS_OPEN(fd)	(fd > 0)
 #define cam_driver_dbg LOGV
 #define cam_driver_err LOGE
-/*these configs are used to restore configs*/
-struct atomisp_de_config old_de_config;
-struct atomisp_ctc_table old_ctc_table;
-struct atomisp_tnr_config old_tnr_config;
-struct atomisp_nr_config old_nr_config;
-struct atomisp_dp_config old_dp_config;
-struct atomisp_wb_config old_wb_config;
-struct atomisp_morph_table old_gdc_table;
-struct atomisp_macc_config old_macc_config;
-struct atomisp_frame old_fpn_tbl;
 
 static int
 xioctl (int fd, int request, void *arg, const char *name)
@@ -109,38 +98,6 @@ cam_err_print (cam_err_t err)
 
     LOGE ("%s\n", cameralib_error_map[err]);
 }
-
-int cam_driver_set_capture_mode(int fd, int mode)
-{
-    int binary;
-    struct v4l2_streamparm parm;
-
-    switch (mode) {
-    case PREVIEW_MODE:
-        binary = CI_MODE_PREVIEW;
-        break;;
-    case STILL_IMAGE_MODE:
-        binary = CI_MODE_STILL_CAPTURE;
-        break;
-    case VIDEO_RECORDING_MODE:
-        binary = CI_MODE_VIDEO;
-        break;
-    default:
-        binary = CI_MODE_STILL_CAPTURE;
-        break;
-    }
-
-    parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    parm.parm.capture.capturemode = binary;
-
-    if (ioctl(fd, VIDIOC_S_PARM, &parm) < 0) {
-        LOGE("ERR(%s): error %s\n", __func__, strerror(errno));
-        return -1;
-    }
-
-    return 0;
-}
-
 
 /******************************************************
  * cam_driver_get_attribute():
@@ -286,135 +243,6 @@ ctrl_failed3:
     }
 }
 
-static cam_err_t
-cam_driver_get_de_config (int fd, struct atomisp_de_config *de_cfg)
-{
-    int ret;
-    ret = xioctl (fd, ATOMISP_IOC_G_ISP_FALSE_COLOR_CORRECTION,
-	    de_cfg, "Get_DE");
-    if (ret < 0)
-        return CAM_ERR_SYS;
-    else
-        return CAM_ERR_NONE;
-}
-
-static cam_err_t
-cam_driver_get_macc_tbl (int fd, struct atomisp_macc_config *macc_config)
-{
-    int ret;
-    ret = xioctl (fd, ATOMISP_IOC_G_ISP_MACC,macc_config, "Get_Macc_TBL");
-    if (ret < 0)
-        return CAM_ERR_SYS;
-    else
-        return CAM_ERR_NONE;
-}
-
-static cam_err_t
-cam_driver_get_ctc_tbl (int fd, struct atomisp_ctc_table *ctc_tbl)
-{
-    int ret;
-    ret = xioctl (fd, ATOMISP_IOC_G_ISP_CTC, ctc_tbl, "Get_CTC_TBL");
-    if (ret < 0)
-        return CAM_ERR_SYS;
-    else
-        return CAM_ERR_NONE;
-}
-
-static cam_err_t
-cam_driver_get_gdc_tbl (int fd, struct atomisp_morph_table *morph_tbl)
-{
-    int ret;
-    ret = xioctl (fd, ATOMISP_IOC_G_ISP_GDC_TAB, morph_tbl, "Get_GDC_TBL");
-    if (ret < 0)
-        return CAM_ERR_SYS;
-    else
-        return CAM_ERR_NONE;
-}
-
-
-
-static cam_err_t
-cam_driver_get_tnr_config (int fd, struct atomisp_tnr_config *tnr_cfg)
-{
-    int ret;
-    ret = xioctl (fd, ATOMISP_IOC_G_TNR, tnr_cfg,
-	    "Get_TNR");
-
-    if (ret < 0)
-        return CAM_ERR_SYS;
-    else
-        return CAM_ERR_NONE;
-}
-
-
-static cam_err_t
-cam_driver_get_ee_config (int fd, struct atomisp_ee_config *ee_cfg)
-{
-    int ret;
-    ret = xioctl (fd, ATOMISP_IOC_G_EE, ee_cfg,
-	    "Get_EE");
-
-    if (ret < 0)
-        return CAM_ERR_SYS;
-    else
-        return CAM_ERR_NONE;
-}
-
-static cam_err_t
-cam_driver_get_nr_config (int fd, struct atomisp_nr_config *nr_cfg)
-{
-    int ret;
-    ret = xioctl (fd, ATOMISP_IOC_G_BAYER_NR, nr_cfg,
-	    "Get_BAYER_NR");
-
-    if (ret < 0 )
-        return CAM_ERR_SYS;
-    else
-        return CAM_ERR_NONE;
-}
-
-static cam_err_t
-cam_driver_get_dp_config (int fd, struct atomisp_dp_config *dp_cfg)
-{
-    int ret;
-    ret = xioctl (fd, ATOMISP_IOC_G_ISP_BAD_PIXEL_DETECTION, dp_cfg, "Get_PIXEL_DEFECT");
-    if (ret < 0)
-        return CAM_ERR_SYS;
-    else
-        return CAM_ERR_NONE;
-}
-
-static cam_err_t
-cam_driver_get_wb_config (int fd, struct atomisp_wb_config *wb_cfg)
-{
-    int ret;
-    ret = xioctl (fd, ATOMISP_IOC_G_ISP_WHITE_BALANCE, wb_cfg, "Get_WHITE_BALANCE");
-    if (ret < 0)
-        return CAM_ERR_SYS;
-    else
-        return CAM_ERR_NONE;
-}
-static cam_err_t
-cam_driver_get_ob_config (int fd, struct atomisp_ob_config *ob_cfg)
-{
-    int ret;
-    ret = xioctl (fd, ATOMISP_IOC_G_BLACK_LEVEL_COMP, ob_cfg, "Get_Optical_Black");
-    if (ret < 0)
-        return CAM_ERR_SYS;
-    else
-        return CAM_ERR_NONE;
-}
-
-static cam_err_t
-cam_driver_get_fpn_tbl(int fd, struct atomisp_frame* fpn_tbl)
-{
-    int ret;
-    ret = xioctl (fd, ATOMISP_IOC_G_ISP_FPN_TABLE, fpn_tbl, "Get_Fpn_Tbl");
-    if (ret < 0)
-        return CAM_ERR_SYS;
-    else
-        return CAM_ERR_NONE;
-}
 static struct atomisp_gamma_table g_gamma_table;
 
 /* Gamma configuration
@@ -487,49 +315,8 @@ AutoGmLut (unsigned short *pptDst, struct Camera_gm_config *cfg_gm)
 cam_err_t
 cam_driver_set_fpn (int fd, int on)
 {
-    int ret;
-    if (on)
-    {
-        cam_driver_get_fpn_tbl(fd, &old_fpn_tbl);
-        if (ci_adv_cfg_file_loaded())
-        {
-            ret = ci_adv_load_fpn_table();
-            if(ret == 0)
-            {
-                return CAM_ERR_NONE;
-            }
-            else return CAM_ERR_SYS;
-        }
-        else return CAM_ERR_NONE;
-    }
-    else
-    {
-        return xioctl (fd, ATOMISP_IOC_S_ISP_FPN_TABLE, &old_fpn_tbl, "Set FPN Table");
-    }
+    return CAM_ERR_NONE;
 }
-
-cam_err_t
-cam_driver_set_macc (int fd, int on, int effect)
-{
-    int ret;
-    if (on)
-    {
-        cam_driver_get_macc_tbl(fd, &old_macc_config);
-        if (ci_adv_cfg_file_loaded())
-        {
-            ret = ci_adv_load_macc_table(effect);
-            if (ret == 0)
-            {
-                return CAM_ERR_NONE;
-            }
-            else return CAM_ERR_SYS;
-        }
-        else return CAM_ERR_NONE;
-    }
-    else
-        return xioctl (fd, ATOMISP_IOC_S_ISP_MACC,&old_macc_config, "Set_Macc_TBL");
-}
-
 
 cam_err_t
 cam_driver_set_sc (int fd, int on)
@@ -542,108 +329,38 @@ cam_driver_set_sc (int fd, int on)
 cam_err_t
 cam_driver_set_bpd (int fd, int on)
 {
-    cam_err_t ret2;
-    int ret;
-    ret2 = cam_driver_set_attribute (fd, V4L2_CID_ATOMISP_BAD_PIXEL_DETECTION,
-	    on, "Bad Pixel Detection");
-    if (ret2 == CAM_ERR_NONE && on)
-    {
-        if (ci_adv_cfg_file_loaded())
-        {
-            ret = ci_adv_load_dp_config();
-            if (ret == 0)
-            {
-                return CAM_ERR_NONE;
-            }
-            else return CAM_ERR_SYS;
-        }
-        else return CAM_ERR_NONE;
-    }
-    else return ret2;
+    return cam_driver_set_attribute (fd, V4L2_CID_ATOMISP_BAD_PIXEL_DETECTION,
+                                     on, "Bad Pixel Detection");
 }
-
 cam_err_t
 cam_driver_get_bpd (int fd, int *on)
 {
     return cam_driver_get_attribute (fd, V4L2_CID_ATOMISP_BAD_PIXEL_DETECTION,
                                      on, "Bad Pixel Detection");
 }
-cam_err_t
-cam_driver_set_wb (int fd, int on)
-{
-    struct atomisp_wb_config wb_cfg;
-    cam_err_t ret;
 
-    if (on) {
-        if (ci_adv_cfg_file_loaded())
-        {
-            cam_driver_get_wb_config(fd, &old_wb_config);
-            ret = ci_adv_load_wb_config();
-            if (ret == 0)
-            {
-                return CAM_ERR_NONE;
-            }
-            else return CAM_ERR_SYS;
-        }
-    }
-    else
-    {
-        return xioctl (fd, ATOMISP_IOC_S_ISP_WHITE_BALANCE, &old_wb_config, "Set_WHITE_BALANCE");
-    }
-    return CAM_ERR_NONE;
-}
 cam_err_t
 cam_driver_set_bnr (int fd, int on)
 {
     struct atomisp_nr_config bnr;
-    cam_err_t ret;
-
     if (on) {
         bnr.gain = 60000;
         bnr.direction = 3200;
         bnr.threshold_cb = 64;
         bnr.threshold_cr = 64;
-
-        if (ci_adv_cfg_file_loaded())
-        {
-            ret = ci_adv_load_nr_config();
-            if (ret == 0)
-            {
-                return CAM_ERR_NONE;
-            }
-            else return CAM_ERR_SYS;
-        }
-        else
-            return xioctl (fd, ATOMISP_IOC_S_BAYER_NR, &bnr, "Bayer NR");
     } else {
-        memset (&bnr, 0, sizeof(bnr));
-        return xioctl (fd, ATOMISP_IOC_S_BAYER_NR, &bnr, "Bayer NR");
+        memset(&bnr, 0, sizeof(bnr));
     }
+
+    return xioctl (fd, ATOMISP_IOC_S_BAYER_NR, &bnr, "Bayer NR");
 }
 
 /* False Color Correction, Demosaicing */
 cam_err_t
 cam_driver_set_fcc (int fd, int on)
 {
-    cam_err_t ret2;
-    int ret;
-    ret2 = cam_driver_set_attribute (fd, V4L2_CID_ATOMISP_FALSE_COLOR_CORRECTION,
-            on, "False Color Correction");
-    if(ret2 == CAM_ERR_NONE && on)
-    {
-        if (ci_adv_cfg_file_loaded())
-        {
-            ret = ci_adv_load_dp_config();
-            if(ret == 0)
-            {
-                return CAM_ERR_NONE;
-            }
-            else return CAM_ERR_SYS;
-        }
-        else return CAM_ERR_NONE;
-    }
-    else return ret2;
-
+    return cam_driver_set_attribute (fd, V4L2_CID_ATOMISP_FALSE_COLOR_CORRECTION,
+                                     on, "False Color Correction");
 }
 
 cam_err_t
@@ -657,29 +374,16 @@ cam_err_t
 cam_driver_set_ee (int fd, int on)
 {
     struct atomisp_ee_config ee;
-    int ret;
     if (on) {
         ee.gain = 8192;
         ee.threshold = 128;
         ee.detail_gain = 2048;
-        if (ci_adv_cfg_file_loaded())
-        {
-            ret = ci_adv_load_ee_config();
-            if(ret == 0)
-            {
-                return CAM_ERR_NONE;
-            }
-            else return CAM_ERR_SYS;
-        }
-        else{
-            return xioctl (fd, ATOMISP_IOC_S_EE, &ee, "Edege Ehancement");
-        }
     } else {
         ee.gain = 0;
         ee.threshold = 0;
         ee.detail_gain = 0;
-        return xioctl (fd, ATOMISP_IOC_S_EE, &ee, "Edege Ehancement");
     }
+    return xioctl (fd, ATOMISP_IOC_S_EE, &ee, "Edege Ehancement");
 }
 
 /*Black Level Compensation */
@@ -689,8 +393,8 @@ cam_driver_set_blc (int fd, int on)
     static struct atomisp_ob_config ob_off;
     struct atomisp_ob_config ob_on;
     static int current_status = 0;
-    int ret;
 
+    cam_driver_dbg("Set Black Level compensation\n");
     if (on && current_status) {
         cam_driver_dbg("Black Level Compensation Already On\n");
         return CAM_ERR_NONE;
@@ -714,24 +418,9 @@ cam_driver_set_blc (int fd, int on)
             cam_driver_dbg("Error Get black level composition\n");
             return CAM_ERR_SYS;
         }
-        if (ci_adv_cfg_file_loaded())
-        {
-            ret = ci_adv_load_ob_config();
-            if(ret == 0)
-            {
-                current_status = 1;
-                return CAM_ERR_NONE;
-            }
-            else {
-                current_status = 0;
-                return CAM_ERR_SYS;
-            }
-        }
-        else {
-            if (xioctl (fd, ATOMISP_IOC_S_BLACK_LEVEL_COMP, &ob_on, "blc") < 0) {
-                cam_driver_dbg("Error Set black level composition\n");
-                return CAM_ERR_SYS;
-            }
+        if (xioctl (fd, ATOMISP_IOC_S_BLACK_LEVEL_COMP, &ob_on, "blc") < 0) {
+            cam_driver_dbg("Error Set black level composition\n");
+            return CAM_ERR_SYS;
         }
     } else {
         if (xioctl (fd, ATOMISP_IOC_S_BLACK_LEVEL_COMP, &ob_off, "blc") < 0) {
@@ -747,23 +436,8 @@ cam_driver_set_blc (int fd, int on)
 cam_err_t
 cam_driver_set_tnr (int fd, int on)
 {
-    int ret;
-    if (on)
-    {
-        if (ci_adv_cfg_file_loaded())
-        {
-            cam_driver_get_tnr_config(fd,&old_tnr_config);
-            ret = ci_adv_load_tnr_config();
-            if (ret == 0)
-            {
-                return CAM_ERR_NONE;
-            }
-            else return CAM_ERR_SYS;
-        }
-        return CAM_ERR_SYS;
-    }
-    else
-        return xioctl (fd, ATOMISP_IOC_S_TNR, &old_tnr_config, "ATOMISP_IOC_S_TNR");
+    struct atomisp_tnr_config tnr;
+    return xioctl (fd, ATOMISP_IOC_S_TNR, &tnr, "ATOMISP_IOC_S_TNR");
 }
 
 cam_err_t
@@ -775,24 +449,8 @@ cam_driver_set_xnr (int fd, int on)
 cam_err_t
 cam_driver_set_cac (int fd, int on)
 {
-    int ret;
-    if(on)
-    {
-        cam_driver_get_gdc_tbl(fd, &old_gdc_table);
-        if (ci_adv_cfg_file_loaded())
-        {
-            ret = ci_adv_load_gdc_table();
-            if (ret != 0)
-                return CAM_ERR_SYS;
-        }
-        else return CAM_ERR_NONE;
-    }
-    else {
-        xioctl (fd, ATOMISP_IOC_S_ISP_GDC_TAB, &old_gdc_table, "Set_GDC_TBL");
-    }
-
     return cam_driver_set_attribute (fd, V4L2_CID_ATOMISP_POSTPROCESS_GDC_CAC,
-            on, "CAC");
+                                     on, "CAC");
 }
 
 /* Configure the color effect Mode in the kernel
@@ -814,25 +472,11 @@ static cam_err_t
 cam_driver_set_gamma_tbl (int fd, struct atomisp_gamma_table *g_tbl)
 {
     int ret;
-    if (ci_adv_cfg_file_loaded())
-    {
-        ret = ci_adv_load_gamma_table();
-        if (ret == 0)
-        {
-            return CAM_ERR_NONE;
-        }
-        else
-        {
-            return CAM_ERR_SYS;
-        }
-    }
-    else {
-        ret = xioctl (fd, ATOMISP_IOC_S_ISP_GAMMA, g_tbl, "S_GAMMA_TBL");
-        if (ret < 0)
-            return CAM_ERR_SYS;
-        else
-            return CAM_ERR_NONE;
-    }
+    ret = xioctl (fd, ATOMISP_IOC_S_ISP_GAMMA, g_tbl, "S_GAMMA_TBL");
+    if (ret < 0)
+        return CAM_ERR_SYS;
+    else
+        return CAM_ERR_NONE;
 }
 
 cam_err_t
@@ -907,25 +551,8 @@ cam_driver_set_si (int fd, int on)
 cam_err_t
 cam_driver_set_gdc (int fd, int on)
 {
-    cam_err_t ret2;
-    int ret;
-    ret2 = cam_driver_set_attribute (fd, V4L2_CID_ATOMISP_POSTPROCESS_GDC_CAC,
-            on, "GDC");
-    if (on)
-    {
-        if (ci_adv_cfg_file_loaded())
-        {
-            ret = ci_adv_load_gdc_table();
-            if (ret == 0)
-            {
-                return CAM_ERR_NONE;
-            }
-            else
-                return CAM_ERR_SYS;
-        }
-        else return ret2;
-    }
-    else return ret2;
+    return cam_driver_set_attribute (fd, V4L2_CID_ATOMISP_POSTPROCESS_GDC_CAC,
+                                     on, "GDC");
 }
 
 cam_err_t
@@ -1053,33 +680,25 @@ void cam_driver_led_flash_off (int fd)
 
 void cam_driver_led_flash_trigger (int fd,
                                    int mode,
+                                   int smode,
                                    int duration,
                                    int intensity)
 {
-    if (CAM_ERR_NONE != cam_driver_set_led_flash(fd, V4L2_CID_FLASH_MODE, mode)) {
+    if (CAM_ERR_NONE != cam_driver_set_led_flash(fd, V4L2_CID_FLASH_STROBE, mode)) {
         cam_driver_dbg("Error to set flash strobe\n");
     }
-
-    if (CAM_ERR_NONE != cam_driver_set_led_flash(fd, V4L2_CID_FLASH_DURATION, duration)) {
-        cam_driver_dbg("Error to set flash duration\n");
+    if (CAM_ERR_NONE != cam_driver_set_led_flash(fd, V4L2_CID_FLASH_STROBE_SENSOR, smode)) {
+        cam_driver_dbg("Error to set flash strobe from sensor\n");
+    }
+    if (CAM_ERR_NONE != cam_driver_set_led_flash(fd, V4L2_CID_FLASH_TIMEOUT, duration)) {
+        cam_driver_dbg("Error to set flash timeout\n");
     }
     if (CAM_ERR_NONE != cam_driver_set_led_flash(fd, V4L2_CID_FLASH_INTENSITY, intensity)) {
         cam_driver_dbg("Error to set flash intensity\n");
     }
+
     if (CAM_ERR_NONE != cam_driver_set_led_flash(fd, V4L2_CID_FLASH_TRIGGER, 1)) {
         cam_driver_dbg("Error to trigger flash on\n");
     }
 }
 
-void cam_driver_led_indicator_trigger (int fd, int intensity)
-{
-    if (CAM_ERR_NONE != cam_driver_set_led_flash(fd, V4L2_CID_INDICATOR_INTENSITY, intensity)) {
-        cam_driver_dbg("Error to set indicator intensity\n");
-    }
-}
-
-
-int atomisp_set_cfg_from_file(int fd)
-{
-	return atomisp_set_cfg(fd);
-}

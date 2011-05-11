@@ -27,7 +27,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <poll.h>
-#include "v4l2.h"
+#include "v4l2SOC.h"
 #include <linux/atomisp.h>
 #include <ci_adv_pub.h>
 
@@ -44,11 +44,11 @@ static void errno_print(v4l2_struct_t * v4l2_str, const char *s)
     fprintf(stderr, "%s error %d, %s\n",
             s, errno, strerror(errno));
     /* Do the resource cleanup here */
-    v4l2_capture_stop(v4l2_str);
-    v4l2_capture_finalize(v4l2_str);
+    v4l2_capture_stop_SOC(v4l2_str);
+    v4l2_capture_finalize_SOC(v4l2_str);
 }
 
-static int xioctl(int fd, int request, void *arg)
+int xioctl_SOC(int fd, int request, void *arg)
 {
     int r;
 
@@ -61,7 +61,7 @@ static int xioctl(int fd, int request, void *arg)
 
 static char *dev_name = "/dev/video0";
 
-int v4l2_capture_open(v4l2_struct_t *v4l2_str)
+int v4l2_capture_open_SOC(v4l2_struct_t *v4l2_str)
 {
     int fd;
     LOG1("---Open video device %s---", dev_name);
@@ -76,57 +76,61 @@ int v4l2_capture_open(v4l2_struct_t *v4l2_str)
     return 0;
 }
 
-void v4l2_capture_init(v4l2_struct_t *v4l2_str)
+void v4l2_capture_init_SOC(v4l2_struct_t *v4l2_str)
 {
-    int ret;
+	int ret;
 
-    assert(v4l2_str);
+	assert(v4l2_str);
+	
+	int fd;
+	LOGD("%s::Open video device %s", __FUNCTION__, dev_name);
+	fd = open(dev_name, O_RDWR);
 
-    v4l2_str->dev_name = dev_name;
+	if (-1 == fd) {
+		LOGE("Error opening video device %s", dev_name);
+		exit(EXIT_FAILURE);
+	}
 
-    /* query capability */
-    CLEAR(v4l2_str->cap);
+	v4l2_str->dev_fd = fd;
+	v4l2_str->dev_name = dev_name;
 
-    LOG2("VIDIOC_QUERYCAP");
-    if (-1 == xioctl(v4l2_str->dev_fd, VIDIOC_QUERYCAP, &v4l2_str->cap)) {
-        if (EINVAL == errno) {
-            LOGE("%s is no V4L2 device", dev_name);
-            return ;
-        } else {
-            errno_print(v4l2_str, "VIDIOC_QUERYCAP");
-            return ;
-        }
-    }
+	/* query capability */
+	CLEAR(v4l2_str->cap);
 
-    if (!(v4l2_str->cap.capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
-        LOGE("%s is no video capture device", dev_name);
-        return ;
-    }
+	if (-1 == xioctl_SOC(fd, VIDIOC_QUERYCAP, &v4l2_str->cap)) {
+		if (EINVAL == errno) {
+			LOGE("%s is no V4L2 device", dev_name);
+			exit(EXIT_FAILURE);
+		} else
+			errno_print(v4l2_str, "VIDIOC_QUERYCAP");
+	}
 
-    if (!(v4l2_str->cap.capabilities & V4L2_CAP_STREAMING)) {
-        LOGE("%s is no video streaming device", dev_name);
-        return;
-    }
+	if (!(v4l2_str->cap.capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
+		LOGE("%s is no video capture device", dev_name);
+		exit(EXIT_FAILURE);
+	}
 
-    struct v4l2_input input;
+	if (!(v4l2_str->cap.capabilities & V4L2_CAP_STREAMING)) {
+		LOGE("%s is no video streaming device", dev_name);
+		exit(EXIT_FAILURE);
+	}
 
-    CLEAR(input);
+	struct v4l2_input input;
 
-    LOG2("VIDIOC_S_INPUT");
-    input.index = v4l2_str->camera_id;
-    if (-1 == xioctl(v4l2_str->dev_fd, VIDIOC_S_INPUT, &input)) {
-        if (EINVAL == errno)
-            LOGE("input index %d is out of bounds!", input.index);
-        else if (EBUSY == errno)
-            LOGE("I/O is in progress, the input cannot be switched!");
-        return ;
-    } else
-        LOG1("Set %s (index %d) as input", input.name, input.index);
+	CLEAR(input);
 
-    CLEAR(v4l2_str->parm);
+	input.index = v4l2_str->camera_id;
+	if (-1 == xioctl_SOC(fd, VIDIOC_S_INPUT, &input)) {
+		if (EINVAL == errno)
+			LOGE("input index %d is out of bounds!", input.index);
+		else if (EBUSY == errno)
+			LOGE("I/O is in progress, the input cannot be switched!");
+		exit(EXIT_FAILURE);
+	} else
+		LOGI("Set %s (index %d) as input", input.name, input.index);
 }
 
-void v4l2_capture_finalize(v4l2_struct_t *v4l2_str)
+void v4l2_capture_finalize_SOC(v4l2_struct_t *v4l2_str)
 {
     /* close video device */
     LOGD("----close device %s---", dev_name);
@@ -138,12 +142,12 @@ void v4l2_capture_finalize(v4l2_struct_t *v4l2_str)
     v4l2_str->dev_fd = -1;
 }
 
-void v4l2_capture_create_frames(v4l2_struct_t *v4l2_str,
+void v4l2_capture_create_frames_SOC(v4l2_struct_t *v4l2_str,
                                 unsigned int frame_width,
                                 unsigned int frame_height,
                                 unsigned int frame_fmt,
                                 unsigned int frame_num,
-				enum v4l2_memory mem_type,
+				                   enum v4l2_memory mem_type,
                                 unsigned int *frame_ids)
 {
     int ret;
@@ -166,10 +170,10 @@ void v4l2_capture_create_frames(v4l2_struct_t *v4l2_str,
     v4l2_str->fmt.fmt.pix.width = v4l2_str->fm_width;
     v4l2_str->fmt.fmt.pix.height = v4l2_str->fm_height;
 
-    if (-1 == xioctl(fd, VIDIOC_S_FMT, &(v4l2_str->fmt)))
+    if (-1 == xioctl_SOC(fd, VIDIOC_S_FMT, &(v4l2_str->fmt)))
         return;
 
-    LOG2("VIDIOC_S_FMT");
+    LOGD("VIDIOC_S_FMT");
 
     /* Note VIDIOC_S_FMT may change width and height */
 
@@ -180,7 +184,7 @@ void v4l2_capture_create_frames(v4l2_struct_t *v4l2_str,
     v4l2_str->req_buf.memory = mem_type;
     v4l2_str->req_buf.count = frame_num;
 
-    if (-1 == xioctl(fd, VIDIOC_REQBUFS, &v4l2_str->req_buf)) {
+    if (-1 == xioctl_SOC(fd, VIDIOC_REQBUFS, &v4l2_str->req_buf)) {
         if (EINVAL == errno) {
             LOGE("%s does not support "
                  "memory mapping", v4l2_str->dev_name);
@@ -196,7 +200,7 @@ void v4l2_capture_create_frames(v4l2_struct_t *v4l2_str,
         return;
     }
 
-    LOG2("VIDIOC_REQBUFS, count=%d", v4l2_str->req_buf.count);
+    LOGD("VIDIOC_REQBUFS, count=%d", v4l2_str->req_buf.count);
 
     v4l2_str->frame_num = v4l2_str->req_buf.count;
 
@@ -204,7 +208,7 @@ void v4l2_capture_create_frames(v4l2_struct_t *v4l2_str,
         *(frame_ids + i) = i;
 }
 
-void v4l2_capture_destroy_frames(v4l2_struct_t *v4l2_str)
+void v4l2_capture_destroy_frames_SOC(v4l2_struct_t *v4l2_str)
 {
     assert(v4l2_str);
 
@@ -216,7 +220,7 @@ void v4l2_capture_destroy_frames(v4l2_struct_t *v4l2_str)
     v4l2_str->req_buf.memory = v4l2_str->mem_type;
     v4l2_str->req_buf.count = 0;
 
-    if (-1 == xioctl(fd, VIDIOC_REQBUFS, &v4l2_str->req_buf)) {
+    if (-1 == xioctl_SOC(fd, VIDIOC_REQBUFS, &v4l2_str->req_buf)) {
         errno_print(v4l2_str, "VIDIOC_REQBUFS");
         return ;
     }
@@ -226,7 +230,7 @@ void v4l2_capture_destroy_frames(v4l2_struct_t *v4l2_str)
     v4l2_str->frame_num = 0;
 }
 
-void v4l2_capture_start(v4l2_struct_t *v4l2_str)
+void v4l2_capture_start_SOC(v4l2_struct_t *v4l2_str)
 {
     int ret;
     unsigned int i;
@@ -242,7 +246,6 @@ void v4l2_capture_start(v4l2_struct_t *v4l2_str)
         CLEAR(buf);
 
         buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        buf.memory = V4L2_MEMORY_MMAP;
         buf.memory = v4l2_str->mem_type;
         buf.index = i;
         if (buf.memory == V4L2_MEMORY_USERPTR) {
@@ -252,7 +255,7 @@ void v4l2_capture_start(v4l2_struct_t *v4l2_str)
             LOG2("QBUF: frame size = %d, buffer length = %d", buffer_size, buf.length);
         }
 
-        if (-1 == xioctl(v4l2_str->dev_fd, VIDIOC_QBUF, &buf)) {
+        if (-1 == xioctl_SOC(v4l2_str->dev_fd, VIDIOC_QBUF, &buf)) {
             errno_print(v4l2_str, "VIDIOC_QBUF");
             return ;
         }
@@ -262,20 +265,20 @@ void v4l2_capture_start(v4l2_struct_t *v4l2_str)
 
     type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
-    if (-1 == xioctl(v4l2_str->dev_fd, VIDIOC_STREAMON, &type))
+    if (-1 == xioctl_SOC(v4l2_str->dev_fd, VIDIOC_STREAMON, &type))
         errno_print(v4l2_str, "VIDIOC_STREAMON");
 
     LOG2("VIDIOC_STREAMON");
 }
 
-void v4l2_capture_stop(v4l2_struct_t *v4l2_str)
+void v4l2_capture_stop_SOC(v4l2_struct_t *v4l2_str)
 {
     assert(v4l2_str);
 
     int fd = v4l2_str->dev_fd;
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
-    if (-1 == xioctl(fd, VIDIOC_STREAMOFF, &type))
+    if (-1 == xioctl_SOC(fd, VIDIOC_STREAMOFF, &type))
         errno_print(v4l2_str, "VIDIOC_STREAMOFF");
 
     LOG2("VIDIOC_STREAMOFF");
@@ -283,12 +286,13 @@ void v4l2_capture_stop(v4l2_struct_t *v4l2_str)
 
 /* 20 seconds */
 #define LIBCAMERA_POLL_TIMEOUT (20 * 1000)
-int v4l2_capture_grab_frame(v4l2_struct_t *v4l2_str)
+int v4l2_capture_grab_frame_SOC(v4l2_struct_t *v4l2_str)
 {
     assert(v4l2_str);
 
     int fd = v4l2_str->dev_fd;
-    int i, ret;
+    unsigned int i; 
+    int ret;
     struct v4l2_buffer buf;
     struct pollfd pfd[1];
 
@@ -310,7 +314,7 @@ int v4l2_capture_grab_frame(v4l2_struct_t *v4l2_str)
     buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     buf.memory = v4l2_str->mem_type;
 
-    ret = xioctl(fd, VIDIOC_DQBUF, &buf);
+    ret = xioctl_SOC(fd, VIDIOC_DQBUF, &buf);
     if (ret < 0) {
         LOGE("DQ error -- ret is %d\n", ret);
         switch (errno) {
@@ -337,7 +341,7 @@ int v4l2_capture_grab_frame(v4l2_struct_t *v4l2_str)
                 break;
         }
         if (i >= v4l2_str->frame_num) {
-            LOGE("invalidate frame index: %d, userptr: %x", i, buf.m.userptr);
+            LOGE("invalidate frame index: %d, userptr: %lx", i, buf.m.userptr);
             return -1;
         }
         v4l2_str->cur_frame = i;
@@ -347,8 +351,8 @@ int v4l2_capture_grab_frame(v4l2_struct_t *v4l2_str)
     return 0;
 }
 
-void v4l2_capture_recycle_frame(v4l2_struct_t *v4l2_str,
-                                unsigned int frame_id)
+void v4l2_capture_recycle_frame_SOC(v4l2_struct_t *v4l2_str,
+				unsigned int frame_id)
 {
     assert(v4l2_str);
 
@@ -370,15 +374,15 @@ void v4l2_capture_recycle_frame(v4l2_struct_t *v4l2_str,
     }
 
     /* enqueue the buffer */
-    if (-1 == xioctl(fd, VIDIOC_QBUF, &buf))
+    if (-1 == xioctl_SOC(fd, VIDIOC_QBUF, &buf))
         errno_print(v4l2_str, "VIDIOC_QBUF");
 
     LOG2("VIDIOC_QBUF");
 }
 
-void v4l2_capture_map_frame(v4l2_struct_t *v4l2_str,
-                            unsigned int frame_idx,
-                            v4l2_frame_info *buf_info)
+void v4l2_capture_map_frame_SOC(v4l2_struct_t *v4l2_str,
+			    unsigned int frame_idx,
+			    v4l2_frame_info *buf_info)
 {
     int fd = v4l2_str->dev_fd;
 
@@ -399,7 +403,7 @@ void v4l2_capture_map_frame(v4l2_struct_t *v4l2_str,
     buf.memory = V4L2_MEMORY_MMAP;
     buf.index = frame_idx;
 
-    if (-1 == xioctl(fd, VIDIOC_QUERYBUF, &buf))
+    if (-1 == xioctl_SOC(fd, VIDIOC_QUERYBUF, &buf))
         errno_print(v4l2_str, "VIDIOC_QUERYBUF");
 
     LOG2("VIDIOC_QUERYBUF");
@@ -426,8 +430,8 @@ void v4l2_capture_map_frame(v4l2_struct_t *v4l2_str,
     buf_info->fourcc = v4l2_str->fm_fmt;
 }
 
-void v4l2_capture_unmap_frame(v4l2_struct_t *v4l2_str,
-                              v4l2_frame_info *buf_info)
+void v4l2_capture_unmap_frame_SOC(v4l2_struct_t *v4l2_str,
+			      v4l2_frame_info *buf_info)
 {
     int ret;
 
@@ -448,7 +452,7 @@ void v4l2_capture_unmap_frame(v4l2_struct_t *v4l2_str,
     buf_info->fourcc = 0;
 }
 
-int v4l2_capture_set_capture_mode(int fd, int mode)
+int v4l2_capture_set_capture_mode_SOC(int fd, int mode)
 {
     int binary;
     struct v4l2_streamparm parm;
@@ -482,7 +486,7 @@ int v4l2_capture_set_capture_mode(int fd, int mode)
 #if defined(ANDROID)
 static BC_Video_ioctl_package ioctl_package;
 static bc_buf_params_t buf_param;
-int ci_isp_register_camera_bcd (v4l2_struct_t *v4l2_str,
+int ci_isp_register_camera_bcd_SOC (v4l2_struct_t *v4l2_str,
                                 unsigned int num_frames,
                                 unsigned int *frame_ids,
                                 v4l2_frame_info *frame_info)
@@ -506,7 +510,7 @@ int ci_isp_register_camera_bcd (v4l2_struct_t *v4l2_str,
 
     ioctl_package.ioctl_cmd = BC_Video_ioctl_request_buffers;
     ioctl_package.inputparam = (int)(&buf_param);
-    if (-1 == xioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package)) {
+    if (-1 == xioctl_SOC(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package)) {
         LOGE("Failed to request buffers from buffer class camera driver (errno=%d).", errno);
         return -1;
     }
@@ -523,7 +527,7 @@ int ci_isp_register_camera_bcd (v4l2_struct_t *v4l2_str,
         buf_pa.size = frame_info[i].mapped_length;
         ioctl_package.ioctl_cmd = BC_Video_ioctl_set_buffer_phyaddr;
         ioctl_package.inputparam = (int) (&buf_pa);
-        if (-1 == xioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package)) {
+        if (-1 == xioctl_SOC(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package)) {
             LOGE("Failed to set buffer phyaddr from buffer class camera driver (errno=%d).", errno);
             return -1;
         }
@@ -531,18 +535,18 @@ int ci_isp_register_camera_bcd (v4l2_struct_t *v4l2_str,
     }
 
     ioctl_package.ioctl_cmd = BC_Video_ioctl_get_buffer_count;
-    if (-1 == xioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package))
+    if (-1 == xioctl_SOC(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package))
         LOGE("check bcd buffer count error");
     LOG1("check bcd buffer count = %d", ioctl_package.outputparam);
     return ret;
 }
 
 
-int ci_isp_unregister_camera_bcd (v4l2_struct_t *v4l2_str)
+int ci_isp_unregister_camera_bcd_SOC (v4l2_struct_t *v4l2_str)
 {
     int fd = v4l2_str->dev_fd;
     ioctl_package.ioctl_cmd = BC_Video_ioctl_release_buffer_device;
-    if (-1 == xioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package)) {
+    if (-1 == xioctl_SOC(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package)) {
         LOGE("Failed to request buffers from buffer class camera driver (errno=%d).", errno);
         return -1;
     }

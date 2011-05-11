@@ -32,12 +32,11 @@ AAAProcess::AAAProcess(unsigned int sensortype)
       mAwbMode(0),
       mAfMode(0),
       mSensorType(~0),
-      mAfStillFrames(0),
-      mInitied(0)
+      mInitied(0),
+      mAfStillFrames(0)
+
 {
     mSensorType = sensortype;
-    mAwbFlashEnabled = false;
-    mAeFlashEnabled = false;
     //Init();
 }
 
@@ -103,7 +102,7 @@ void AAAProcess::AwbProcess(void)
     if(!mInitied)
         return;
 
-    if(!mAwbEnabled && !mAwbFlashEnabled)
+    if(!mAwbEnabled)
         return;
 
     if(ENUM_SENSOR_TYPE_RAW == mSensorType)
@@ -154,30 +153,12 @@ void AAAProcess::AwbApplyResults(void)
     if(!mInitied)
         return;
 
-    if(!mAwbEnabled && !mAwbFlashEnabled)
+    if(!mAwbEnabled)
         return;
 
     if(ENUM_SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_awb_apply_results();
-    }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
-}
-
-void AAAProcess::AfApplyResults(void)
-{
-    if(!mInitied)
-        return;
-
-    if(!mAeEnabled)
-        return;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
-    {
-        ci_adv_af_apply_results();
     }
     else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
     {
@@ -204,30 +185,14 @@ int AAAProcess::ModeSpecInit(void)
     return AAA_SUCCESS;
 }
 
-void AAAProcess::SwitchMode(int mode)
+void AAAProcess::SwitchMode(CI_ISP_MODE mode)
 {
     if(!mInitied)
         return;
 
     if(ENUM_SENSOR_TYPE_RAW == mSensorType)
     {
-        CI_ISP_MODE isp_mode;
-        switch (mode) {
-        case PREVIEW_MODE:
-            isp_mode = CI_ISP_MODE_PREVIEW;
-            break;
-        case STILL_IMAGE_MODE:
-            isp_mode = CI_ISP_MODE_CAPTURE;
-            break;
-        case VIDEO_RECORDING_MODE:
-            isp_mode = CI_ISP_MODE_VIDEO;
-            break;
-        default:
-            isp_mode = CI_ISP_MODE_PREVIEW;
-            LOGW("%s: Wrong mode %d\n", __func__, mode);
-            break;
-        }
-        ci_adv_switch_mode(isp_mode);
+        ci_adv_switch_mode(mode);
     }
     else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
     {
@@ -298,7 +263,7 @@ int AAAProcess::AeCalcForFlash(void)
     if(!mInitied)
         return AAA_FAIL;
 
-    if(!mAeFlashEnabled)
+    if(!mAfEnabled)
         return AAA_FAIL;
 
     if(ENUM_SENSOR_TYPE_RAW == mSensorType)
@@ -319,7 +284,7 @@ int AAAProcess::AeCalcWithoutFlash(void)
     if(!mInitied)
         return AAA_FAIL;
 
-    if(!mAeFlashEnabled)
+    if(!mAfEnabled)
         return AAA_FAIL;
 
     if(ENUM_SENSOR_TYPE_RAW == mSensorType)
@@ -339,7 +304,7 @@ int AAAProcess::AeCalcWithFlash(void)
     if(!mInitied)
         return AAA_FAIL;
 
-    if(!mAeFlashEnabled)
+    if(!mAfEnabled)
         return AAA_FAIL;
 
     if(ENUM_SENSOR_TYPE_RAW == mSensorType)
@@ -359,7 +324,7 @@ int AAAProcess::AwbCalcFlash(void)
     if(!mInitied)
         return AAA_FAIL;
 
-    if(!mAwbFlashEnabled)
+    if(!mAfEnabled)
         return AAA_FAIL;
 
     if(ENUM_SENSOR_TYPE_RAW == mSensorType)
@@ -590,7 +555,7 @@ int AAAProcess::AeGetMeteringMode(ci_adv_AeMeteringMode *mode)
     return AAA_SUCCESS;
 }
 
-int AAAProcess::AeSetEv(float bias)
+int AAAProcess::AeSetEv(int bias)
 {
     if(!mInitied)
         return AAA_FAIL;
@@ -602,7 +567,7 @@ int AAAProcess::AeSetEv(float bias)
     {
         bias = bias > 2 ? 2 : bias;
         bias = bias < -2 ? -2 : bias;
-        ci_adv_Err ret = ci_adv_AeSetBias((int)(bias * 65536));
+        ci_adv_Err ret = ci_adv_AeSetBias(bias * 65536);
         if(ci_adv_Success != ret)
         {
             LOGE("!!!line:%d, in AeSetEv, ret:%d\n", __LINE__, ret);
@@ -617,7 +582,7 @@ int AAAProcess::AeSetEv(float bias)
     return AAA_SUCCESS;
 }
 
-int AAAProcess::AeGetEv(float *bias)
+int AAAProcess::AeGetEv(int *bias)
 {
     if(!mInitied)
         return AAA_FAIL;
@@ -627,9 +592,7 @@ int AAAProcess::AeGetEv(float *bias)
 
     if(ENUM_SENSOR_TYPE_RAW == mSensorType)
     {
-        int ibias;
-        ci_adv_Err ret = ci_adv_AeGetBias(&ibias);
-        *bias = (float) ibias / 65536.0;
+        ci_adv_Err ret = ci_adv_AeGetBias(bias);
         if(ci_adv_Success != ret)
         {
             LOGE("!!!line:%d, in AeGetEv, ret:%d\n", __LINE__, ret);
@@ -792,7 +755,6 @@ int AAAProcess::AeIsFlashNecessary(bool *used)
     if(!mInitied)
         return AAA_FAIL;
 
-    *used = false;
     if(ENUM_SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_Err ret = ci_adv_AeIsFlashNecessary(used);
