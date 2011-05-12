@@ -4,6 +4,8 @@ ifeq ($(USE_CAMERA_STUB),false)
 #
 # libcamera
 #
+$(shell cp hardware/intel/linux-2.6/include/linux/atomisp.h hardware/intel/include/linux/)
+$(shell cp hardware/intel/linux-2.6/include/linux/videodev2.h hardware/intel/include/linux/)
 
 LOCAL_PATH := $(call my-dir)
 
