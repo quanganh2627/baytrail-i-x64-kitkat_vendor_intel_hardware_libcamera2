@@ -23,10 +23,10 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
+#include "atomisp_features.h"
 #include "ci_adv_pub.h"
 #include "ci_adv_property.h"
-#include "v4l2.h"
+#include "atomisp_config.h"
 
 #ifdef __cplusplus
 }
@@ -43,6 +43,7 @@ typedef enum ENUM_SENSOR_TYPE {
 typedef enum
 {
     CAM_AWB_MODE_AUTO,
+    CAM_AWB_MODE_MANUAL_INPUT,
     CAM_AWB_MODE_DAYLIGHT,
     CAM_AWB_MODE_SUNSET,
     CAM_AWB_MODE_CLOUDY,
@@ -55,37 +56,66 @@ typedef enum
 
 typedef enum
 {
-    CAM_FOCUS_MODE_AUTO,
-    CAM_FOCUS_MODE_MACRO,
-    CAM_FOCUS_MODE_FULL,
-    CAM_FOCUS_MODE_NORM
-} cam_focus_mode_t;
-
-typedef enum {
-    CAM_AEFLICKER_MODE_OFF,
-    CAM_AEFLICKER_MODE_50HZ,
-    CAM_AEFLICKER_MODE_60HZ,
-    CAM_AEFLICKER_MODE_AUTO
-} cam_aeflicker_mode_t;
+    CAM_AWB_MAP_INDOOR,
+    CAM_AWB_MAP_OUTDOOR
+} cam_awb_map_mode;
 
 typedef enum
 {
-    CAM_FLASH_MODE_AUTO,
-    CAM_FLASH_MODE_OFF,
-    CAM_FLASH_MODE_ON,
-    CAM_FLASH_MODE_RED_EYE,
-    CAM_FLASH_MODE_TORCH,
+    CAM_AF_MODE_AUTO,
+    CAM_AF_MODE_MACRO,
+    CAM_AF_MODE_INFINITY,
+    CAM_AF_MODE_MANUAL
+} cam_af_mode_t;
+
+typedef enum
+{
+    CAM_AF_METERING_MODE_AUTO,
+    CAM_AF_METERING_MODE_SPOT,
+} cam_af_metering_mode;
+
+typedef enum {
+    CAM_AE_FLICKER_MODE_OFF,
+    CAM_AE_FLICKER_MODE_50HZ,
+    CAM_AE_FLICKER_MODE_60HZ,
+    CAM_AE_FLICKER_MODE_AUTO
+} cam_ae_flicker_mode_t;
+
+typedef enum
+{
+    CAM_AE_FLASH_MODE_AUTO,
+    CAM_AE_FLASH_MODE_OFF,
+    CAM_AE_FLASH_MODE_ON,
+    CAM_AE_FLASH_MODE_DAY_SYNC,
+    CAM_AE_FLASH_MODE_SLOW_SYNC,
+    CAM_AE_FLASH_MODE_TORCH
 } cam_ae_flash_mode_t;
 
 typedef enum
 {
-    CAM_SCENE_MODE_AUTO,
-    CAM_SCENE_MODE_PORTRAIT,
-    CAM_SCENE_MODE_SPORTS,
-    CAM_SCENE_MODE_LANDSCAPE,
-    CAM_SCENE_MODE_NIGHT,
-    CAM_SCENE_MODE_FIREWORKS
+    CAM_AE_SCENE_MODE_AUTO,
+    CAM_AE_SCENE_MODE_PORTRAIT,
+    CAM_AE_SCENE_MODE_SPORTS,
+    CAM_AE_SCENE_MODE_LANDSCAPE,
+    CAM_AE_SCENE_MODE_NIGHT,
+    CAM_AE_SCENE_MODE_FIREWORKS
 } cam_ae_scene_mode_t;
+
+typedef enum
+{
+    CAM_AE_MODE_AUTO,
+    CAM_AE_MODE_MANUAL,
+    CAM_AE_MODE_SHUTTER_PRIORITY,
+    CAM_AE_MODE_APERTURE_PRIORITY
+} cam_ae_mode;
+
+typedef enum
+{
+    CAM_AE_METERING_MODE_AUTO,
+    CAM_AE_METERING_MODE_SPOT,
+    CAM_AE_METERING_MODE_CENTER,
+    CAM_AE_METERING_MODE_CUSTOMIZED
+} cam_ae_metering_mode;
 
 typedef struct {
     int x_left;
@@ -117,13 +147,15 @@ public:
 
     void AeApplyResults(void);
     void AwbApplyResults(void);
+    void AfApplyResults(void);
 
     int ModeSpecInit(void);    /* Called when switch the resolution */
-    void SwitchMode(CI_ISP_MODE mode);
+    void SwitchMode(int mode, int frm_rt);
 
     void AfStillStart(void);
     void AfStillStop(void);
-    int AfStillIsComplete(void);
+    int AfStillIsComplete(bool *complete);
+
     int AeCalcForFlash(void);
     int AeCalcWithoutFlash(void);
     int AeCalcWithFlash(void);
@@ -136,85 +168,116 @@ public:
     void StillCompose(struct user_buffer *com_buf,
                       struct user_buffer bufs[], int frame_dis, ci_adv_dis_vector vectors[]);
 
-    void DoRedeyeRemoval(struct user_buffer *user_buf); /* TBD */
+    void DoRedeyeRemoval(void *img_buf, int size, int width, int height, int format);
 
     void LoadGdcTable(void);
 
-    int AeSetMode(ci_adv_AeMode mode);
-    int AeGetMode(ci_adv_AeMode *mode);
-    int AeSetMeteringMode(ci_adv_AeMeteringMode mode);
-    int AeGetMeteringMode(ci_adv_AeMeteringMode *mode);
-
-    int AeSetEv(int bias);
-    int AeGetEv(int *bias);
-
+    int AeSetMode(int mode);
+    int AeGetMode(int *mode);
     int AeSetSceneMode(int mode);
     int AeGetSceneMode(int *mode);
+    int AeSetMeteringMode(int mode);
+    int AeGetMeteringMode(int *mode);
+    int AeSetEv(float bias);
+    int AeGetEv(float *bias);
     int AeSetFlashMode(int mode);
     int AeGetFlashMode(int *mode);
     int AeIsFlashNecessary(bool *used);
-
-    int AeSetFlickerMode(cam_aeflicker_mode_t mode);
-    int AeGetFlickerMode(cam_aeflicker_mode_t *mode);
-
-    int AeSetManualIso(int sensitivity);
-    int AeGetManualIso(int *sensitivity);
-
-
+    int AeSetFlickerMode(int mode);
+    int AeGetFlickerMode(int *mode);
+    int AeSetBacklightCorrection(bool en);
+    int AeGetBacklightCorrection(bool *en);
     int AeSetWindow(const cam_Window *window);
     int AeGetWindow(cam_Window *window);
+    int AeLock(bool lock) {
+        return ci_adv_AeLock(lock);
+    }
 
-    int AwbSetMode (int wb_mode);
-    int AwbGetMode(int *wb_mode);
+    int AeIsLocked(bool *lock) {
+        return ci_adv_AeIsLocked(lock);
+    }
+
+    int FlushManualSettings(void);
+    int AeSetManualIso(int sensitivity, bool to_hw);
+    int AeGetManualIso(int *sensitivity);
+    int AeSetManualAperture(float aperture, bool to_hw);
+    int AeGetManualAperture(float *aperture);
+    int AeSetManualShutter(float exp_time, bool to_hw);
+    int AeGetManualShutter(float *exp_time);
+
+    int AfSetManualFocus(int focus, bool to_hw);
+    int AfGetManualFocus(int *focus);
 
     int AfSetMode(int mode);
     int AfGetMode(int *mode);
-    int AfSetMeteringMode(ci_adv_AfMeteringMode mode);
-    int AfGetMeteringMode(ci_adv_AfMeteringMode *mode);
+    int AfSetMeteringMode(int mode);
+    int AfGetMeteringMode(int *mode);
     int AfSetWindow(const cam_Window *window);
     int AfGetWindow(cam_Window *window);
 
-    void SetAfEnabled(unsigned int enabled) {
-        mAfEnabled = ((enabled > 0) ? 1: 0);
+    int AwbSetMode (int wb_mode);
+    int AwbGetMode(int *wb_mode);
+    int AwbSetManualColorTemperature(int ct, bool to_hw);
+    int AwbGetManualColorTemperature(int *ct);
+    int AwbSetMapping(int mode);
+    int AwbGetMapping(int *mode);
+
+    int SetRedEyeRemoval(bool en);
+    int GetRedEyeRemoval(bool *en);
+
+    void SetAfEnabled(bool enabled) {
+        mAfEnabled = enabled;
     }
-    void SetAfStillEnabled(unsigned int enabled) {
-        mAfStillEnabled = ((enabled > 0) ? 1: 0);
+    void SetAfStillEnabled(bool enabled) {
+        mAfStillEnabled = enabled;
     }
-    void SetAeEnabled(unsigned int enabled) {
-        mAeEnabled = ((enabled > 0) ? 1: 0);
+    void SetAeEnabled(bool enabled) {
+        mAeEnabled = enabled;
     }
-    void SetAwbEnabled(unsigned int enabled) {
-        mAwbEnabled = ((enabled > 0) ? 1: 0);
+    void SetAeFlashEnabled(bool enabled) {
+        mAeFlashEnabled = enabled;
     }
-    void SetStillStabilizationEnabled(unsigned int enabled) {
-        mStillStabilizationEnabled = ((enabled > 0) ? 1: 0);
+    void SetAwbEnabled(bool enabled) {
+        mAwbEnabled = enabled;
     }
-    void SetGdcEnabled(unsigned int enabled) {
-        mGdcEnabled = ((enabled > 0) ? 1: 0);
+    void SetAwbFlashEnabled(bool enabled) {
+        mAwbFlashEnabled = enabled;
     }
-    void SetRedEyeRemovalEnabled(unsigned int enabled) {
-        mRedEyeRemovalEnabled = ((enabled > 0) ? 1: 0);
+    void SetStillStabilizationEnabled(bool enabled) {
+        mStillStabilizationEnabled = enabled;
+    }
+    void SetGdcEnabled(bool enabled) {
+        mGdcEnabled = enabled;
+    }
+    void SetRedEyeRemovalEnabled(bool enabled) {
+        mRedEyeRemovalEnabled = enabled;
     }
 
-    unsigned int GetAfEnabled(void) {
+    bool GetAfEnabled(void) {
         return mAfEnabled ;
     }
-    unsigned int GetAfStillEnabled(void) {
+    bool GetAfStillEnabled(void) {
         return mAfStillEnabled ;
     }
-    unsigned int GetAeEnabled(void) {
+    bool GetAeFlashEnabled(void) {
+        return mAeFlashEnabled;
+    }
+    bool GetAeEnabled(void) {
         return mAeEnabled;
     }
-    unsigned int GetAwbEnabled(void) {
+    bool GetAwbEnabled(void) {
         return mAwbEnabled;
     }
-    unsigned int GetStillStabilizationEnabled(void) {
+    bool GetAwbFlashEnabled(void) {
+        return mAwbFlashEnabled;
+    }
+    bool GetStillStabilizationEnabled(void) {
         return mStillStabilizationEnabled;
     }
-    unsigned int GetGdcEnabled(void) {
+    bool GetGdcEnabled(void) {
         return mGdcEnabled;
     }
-    unsigned int GetRedEyeRemovalEnabled(void) {
+    bool GetRedEyeRemovalEnabled(void) {
         return mRedEyeRemovalEnabled;
     }
 
@@ -230,26 +293,36 @@ public:
     unsigned int GetAfStillIsOverFrames() {
         return (mAfStillFrames >= AF_STILL_MAX_FRAMES);
     }
+    ci_adv_dis_vector   dvs_vector;
 
 private:
     /* not 0 is enabled, 0 is disabled */
-    unsigned int mAeEnabled;
-    unsigned int mAfEnabled;    // for preview
-    unsigned int mAfStillEnabled; // still af
-    unsigned int mAwbEnabled;
-    unsigned int mRedEyeRemovalEnabled;
-    unsigned int mStillStabilizationEnabled;
-    unsigned int mGdcEnabled;
+    bool mAeEnabled;
+    bool mAeFlashEnabled;
+    bool mAfEnabled;    // for preview
+    bool mAfStillEnabled; // still af
+    bool mAwbEnabled;
+    bool mAwbFlashEnabled;
+    bool mRedEyeRemovalEnabled;
+    bool mStillStabilizationEnabled;
+    bool mGdcEnabled;
 
+    unsigned int mAeMode;
     unsigned int mAwbMode;
     unsigned int mAfMode;
+    int mFocusPosition;
+    unsigned int mColorTemperature;
+    float mManualAperture;
+    float mManualShutter;
+    int mManualIso;
 
     unsigned int mSensorType;
+    int main_fd;
 
     //static const unsigned int mAfStillMaxFrames = 500;
     unsigned int  mAfStillFrames;  // 100 frames will time out
 
-    unsigned int mInitied;    // 0 means not init, not 0 means has been initied.
+    bool mInitied;    // 0 means not init, not 0 means has been initied.
 };
 
 

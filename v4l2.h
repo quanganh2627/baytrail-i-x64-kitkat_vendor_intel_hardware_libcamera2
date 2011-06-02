@@ -20,96 +20,76 @@
 
 #include <utils/Log.h>
 #include <linux/videodev2.h>
+#include <poll.h>
+#include <ci_adv_pub.h>
+#include <atomisp_config.h>
 
-#define CHECK_RET(ret, cond, msg)					\
-  if((ret) != (cond)) {							\
-    LOGE("%s: %s failed error code = %d", __FUNCTION__, (msg), (ret));	\
-  }									\
-  else {								\
-      LOGV("%s: %s success", __FUNCTION__, (msg));			\
-  }
-#define CHECK_V4L2_RET(ret, msg)			\
-  CHECK_RET(ret, 0, msg)
+struct v4l2_buffer_info {
+    void *data;
+    size_t length;
+    int width;
+    int height;
+    int fourcc;
+    int flags; //You can use to to detern the buf status
+    struct v4l2_buffer vbuffer;
+};
 
-#define V4L2_VM_FRAME_NUM	3
-#define V4L2_IM_FRAME_NUM	1
+struct v4l2_buffer_pool {
+    int active_buffers;
+    struct v4l2_buffer_info bufs [MAX_V4L2_BUFFERS];
+};
 
-#define V4L2_VM_FRAME_FORMAT	V4L2_PIX_FMT_NV12
-#define V4L2_IM_FRAME_FORMAT	V4L2_PIX_FMT_JPEG
+/*Bayer order transfer on the MIPI lane*/
+#define BAYER_ORDER_GRBG        0
+#define BAYER_ORDER_RGGB        1
+#define BAYER_ORDER_BGGR        2
+#define BAYER_ORDER_GBRG        3
+struct file_input {
+    char *name;
+    unsigned int width;
+    unsigned int height;
+    unsigned int size;
+    int format;
+    int bayer_order;
+    char *mapped_addr;
+};
 
-typedef unsigned long v4l2_frame_format;
+int v4l2_capture_open(int device);
 
-typedef struct _v4l2_frame_info {
-    void *mapped_addr;
-    unsigned int mapped_length;
-    unsigned short width;
-    unsigned short height;
-    unsigned int stride;
-    unsigned long fourcc;
-} v4l2_frame_info;
+void v4l2_capture_close(int fd);
 
-typedef struct _v4l2_struct {
-    int dev_fd;
-    char *dev_name;
+int v4l2_capture_querycap(int fd, int device, struct v4l2_capability *cap);
 
-    unsigned short fm_width;
-    unsigned short fm_height;
-    unsigned int fm_fmt;
-    enum v4l2_memory mem_type;
-    v4l2_frame_info *fm_infos;
+int v4l2_capture_s_input(int fd, int index);
 
-    struct v4l2_input input;
-    struct v4l2_capability cap;
-    struct v4l2_format fmt;
-    struct v4l2_streamparm parm;
-    struct v4l2_requestbuffers req_buf;
-    unsigned int frame_num;
-    unsigned int frame_size;
-    unsigned int cur_frame;
-    void * cur_userptr;
-    unsigned int *frame_ids;
-    struct v4l2_buffer *bufs;
+int v4l2_capture_s_format(int fd, int device, int w, int h,
+                          int fourcc);
+int v4l2_capture_g_framerate(int fd, int * framerate);
 
-    unsigned int *buf_status;
-    int camera_id;
-} v4l2_struct_t;
+int v4l2_capture_request_buffers(int fd, int device, uint num_buffers);
 
-int v4l2_capture_open(v4l2_struct_t *v4l2_str);
 
-void v4l2_capture_init(v4l2_struct_t *v4l2_str);
+int v4l2_capture_new_buffer(int fd, int device, int frame_idx,
+                            struct v4l2_buffer_info *buf_info);
+int v4l2_capture_free_buffer(int fd, int device,
+                             struct v4l2_buffer_info *buf_info);
 
-void v4l2_capture_create_frames(v4l2_struct_t *v4l2_str,
-                                unsigned int frame_width,
-                                unsigned int frame_height,
-                                unsigned int frame_fmt,
-                                unsigned int frame_num,
-                                enum v4l2_memory mem_type,
-                                unsigned int *frame_ids);
+int v4l2_capture_streamon(int fd);
+int v4l2_capture_streamoff(int fd);
 
-void v4l2_capture_start(v4l2_struct_t *v4l2_str);
+int v4l2_capture_g_parm(int fd, struct v4l2_streamparm *parm);
+int v4l2_capture_s_parm(int fd, int device, struct v4l2_streamparm *parm);
 
-int v4l2_capture_grab_frame(v4l2_struct_t *v4l2_str);
+int v4l2_capture_release_buffers(int fd, int device);
 
-void v4l2_capture_map_frame(v4l2_struct_t *v4l2_str,
-                            unsigned int frame_idx,
-                            v4l2_frame_info *buf_info);
+int v4l2_capture_qbuf(int fd, int index, struct v4l2_buffer_info *buf);
+int v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf);
+int v4l2_capture_control_dq(int fd, int start);
 
-void v4l2_capture_unmap_frame(v4l2_struct_t *v4l2_str,
-                              v4l2_frame_info *buf_info);
+int read_file(char *file_name, int width, int height, int format, int bayer_order);
 
-void v4l2_capture_recycle_frame(v4l2_struct_t *v4l2_str,
-                                unsigned int frame_id);
-
-void v4l2_capture_stop(v4l2_struct_t *v4l2_str);
-
-void v4l2_capture_destroy_frames(v4l2_struct_t *v4l2_str);
-
-void v4l2_capture_finalize(v4l2_struct_t *v4l2_str);
-
-int v4l2_capture_set_capture_mode(int fd, int mode);
 
 /* for camera texture streaming */
-#if defined(ANDROID)
 typedef struct bc_buf_ptr {
     unsigned int index;
     int size;
@@ -117,17 +97,17 @@ typedef struct bc_buf_ptr {
     unsigned long handle;
 } bc_buf_ptr_t;
 
-#define BC_Video_ioctl_fill_buffer	0
-#define BC_Video_ioctl_get_buffer_count	1
-#define BC_Video_ioctl_get_buffer_phyaddr	2
-#define BC_Video_ioctl_get_buffer_index	3
-#define BC_Video_ioctl_request_buffers	4
-#define BC_Video_ioctl_set_buffer_phyaddr	5
-#define BC_Video_ioctl_release_buffer_device	6
+#define BC_Video_ioctl_fill_buffer           0
+#define BC_Video_ioctl_get_buffer_count      1
+#define BC_Video_ioctl_get_buffer_phyaddr    2
+#define BC_Video_ioctl_get_buffer_index      3
+#define BC_Video_ioctl_request_buffers       4
+#define BC_Video_ioctl_set_buffer_phyaddr    5
+#define BC_Video_ioctl_release_buffer_device 6
 
 enum BC_memory {
-    BC_MEMORY_MMAP		= 1,
-    BC_MEMORY_USERPTR	= 2,
+    BC_MEMORY_MMAP      = 1,
+    BC_MEMORY_USERPTR   = 2,
 };
 
 /*
@@ -146,12 +126,6 @@ typedef struct bc_buf_params {
     enum BC_memory type;
 } bc_buf_params_t;
 
-int ci_isp_register_camera_bcd(v4l2_struct_t *v4l2_str,
-                               unsigned int num_frames,
-                               unsigned int *frame_ids,
-                               v4l2_frame_info *frame_info);
-
-int ci_isp_unregister_camera_bcd(v4l2_struct_t *v4l2_str);
-#endif /* ANDROID */
-
+int v4l2_register_bcd(int fd, int num_frames, void **ptrs, int w, int h, int fourcc, int size);
+int v4l2_release_bcd(int fd);
 #endif /* _V4L2_H_ */

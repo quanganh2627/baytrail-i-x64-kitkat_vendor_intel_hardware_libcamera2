@@ -27,296 +27,524 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <poll.h>
-#include "v4l2.h"
 #include <linux/atomisp.h>
-#include <ci_adv_pub.h>
+#include "v4l2.h"
 
-static volatile int32_t gLogLevel;
-
-#define LOG1(...) LOGD_IF(gLogLevel >= 1, __VA_ARGS__);
-#define LOG2(...) LOGD_IF(gLogLevel >= 2, __VA_ARGS__);
-
+#ifndef LOG_TAG
+#define LOG_TAG "V4L2"
+#endif
 
 #define CLEAR(x) memset (&(x), 0, sizeof (x))
+#define PAGE_ALIGN(x) ((x + 0xfff) & 0xfffff000)
 
-static void errno_print(v4l2_struct_t * v4l2_str, const char *s)
-{
-    fprintf(stderr, "%s error %d, %s\n",
-            s, errno, strerror(errno));
-    /* Do the resource cleanup here */
-    v4l2_capture_stop(v4l2_str);
-    v4l2_capture_finalize(v4l2_str);
-}
+static char *dev_name_array[3] = {"/dev/video0", "/dev/video1", "/dev/video2"};
+static int output_fd = -1; /* file input node, used to distinguish DQ poll timeout */
 
-static int xioctl(int fd, int request, void *arg)
-{
-    int r;
-
-    do
-        r = ioctl(fd, request, arg);
-    while (-1 == r && EINTR == errno);
-
-    return r;
-}
-
-static char *dev_name = "/dev/video0";
-
-int v4l2_capture_open(v4l2_struct_t *v4l2_str)
+int v4l2_capture_open(int device)
 {
     int fd;
+    struct stat st;
+
+    if ((device < V4L2_FIRST_DEVICE) || (device > V4L2_THIRD_DEVICE)) {
+        LOGE("ERR(%s): Wrong device node %d\n", __func__, device);
+        return -1;
+    }
+
+    char *dev_name = dev_name_array[device];
     LOG1("---Open video device %s---", dev_name);
+
+    if (stat (dev_name, &st) == -1) {
+        LOGE("ERR(%s): Error stat video device %s: %s", __func__,
+             dev_name, strerror(errno));
+        return -1;
+    }
+
+    if (!S_ISCHR (st.st_mode)) {
+        LOGE("ERR(%s): %s not a device", __func__, dev_name);
+        return -1;
+    }
+
     fd = open(dev_name, O_RDWR);
 
     if (fd <= 0) {
-        LOGE("Error opening video device %s", dev_name);
+        LOGE("ERR(%s): Error opening video device %s: %s", __func__,
+             dev_name, strerror(errno));
         return -1;
     }
 
-    v4l2_str->dev_fd = fd;
+    if (device == V4L2_THIRD_DEVICE)
+        output_fd = fd;
+
+    return fd;
+}
+
+void v4l2_capture_close(int fd)
+{
+    /* close video device */
+    LOG1("----close device ---");
+    if (fd < 0) {
+        LOGW("W(%s): Not opened\n", __func__);
+        return ;
+    }
+
+    if (close(fd) < 0) {
+        LOGE("ERR(%s): Close video device failed!", __func__);
+        return;
+    }
+
+    if (fd == output_fd)
+        output_fd = -1;
+}
+
+int v4l2_capture_querycap(int fd, int device, struct v4l2_capability *cap)
+{
+    int ret = 0;
+
+    ret = ioctl(fd, VIDIOC_QUERYCAP, cap);
+
+    if (ret < 0) {
+        LOGE("ERR(%s): :VIDIOC_QUERYCAP failed\n", __func__);
+        return ret;
+    }
+
+    if (device == V4L2_THIRD_DEVICE) {
+        if (!(cap->capabilities & V4L2_CAP_VIDEO_OUTPUT)) {
+            LOGE("ERR(%s):  no output devices\n", __func__);
+            return -1;
+        }
+        return ret;
+    }
+
+    if (!(cap->capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
+        LOGE("ERR(%s):  no capture devices\n", __func__);
+        return -1;
+    }
+
+    if (!(cap->capabilities & V4L2_CAP_STREAMING)) {
+        LOGE("ERR(%s): is no video streaming device", __func__);
+        return -1;
+    }
+
+    LOG1( "driver:      '%s'", cap->driver);
+    LOG1( "card:        '%s'", cap->card);
+    LOG1( "bus_info:      '%s'", cap->bus_info);
+    LOG1( "version:      %x", cap->version);
+    LOG1( "capabilities:      %x", cap->capabilities);
+
+    return ret;
+}
+
+int v4l2_capture_s_input(int fd, int index)
+{
+    struct v4l2_input input;
+    int ret;
+
+    LOG1("VIDIOC_S_INPUT");
+    input.index = index;
+
+    ret = ioctl(fd, VIDIOC_S_INPUT, &input);
+
+    if (ret < 0) {
+        LOGE("ERR(%s):VIDIOC_S_INPUT index %d failed\n", __func__,
+             input.index);
+        return ret;
+    }
+    return ret;
+}
+
+struct file_input file_image;
+
+int v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc)
+{
+    int ret;
+    struct v4l2_format v4l2_fmt;
+    CLEAR(v4l2_fmt);
+    LOG1("VIDIOC_S_FMT");
+
+    if (device == V4L2_THIRD_DEVICE) {
+        v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+        v4l2_fmt.fmt.pix.width = file_image.width;
+        v4l2_fmt.fmt.pix.height = file_image.height;
+        v4l2_fmt.fmt.pix.pixelformat = file_image.format;
+        v4l2_fmt.fmt.pix.sizeimage = file_image.size;
+        v4l2_fmt.fmt.pix.priv = file_image.bayer_order;
+
+        LOG2("%s, width: %d, height: %d, format: %x, size: %d, bayer_order: %d\n",
+             __func__,
+             file_image.width,
+             file_image.height,
+             file_image.format,
+             file_image.size,
+             file_image.bayer_order);
+
+        ret = ioctl(fd, VIDIOC_S_FMT, &v4l2_fmt);
+        if (ret < 0) {
+            LOGE("ERR(%s):VIDIOC_S_FMT failed %s\n", __func__, strerror(errno));
+            return -1;
+        }
+        return 0;
+    }
+
+    v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    ret = ioctl (fd,  VIDIOC_G_FMT, &v4l2_fmt);
+    if (ret < 0) {
+        LOGE("ERR(%s):VIDIOC_G_FMT failed %s\n", __func__, strerror(errno));
+        return -1;
+    }
+
+    v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+    v4l2_fmt.fmt.pix.width = w;
+    v4l2_fmt.fmt.pix.height = h;
+    v4l2_fmt.fmt.pix.pixelformat = fourcc;
+    v4l2_fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
+
+    ret = ioctl(fd, VIDIOC_S_FMT, &v4l2_fmt);
+    if (ret < 0) {
+        LOGE("ERR(%s):VIDIOC_S_FMT failed %s\n", __func__, strerror(errno));
+        return -1;
+    }
     return 0;
 }
 
-void v4l2_capture_init(v4l2_struct_t *v4l2_str)
+int v4l2_capture_g_framerate(int fd,int * framerate)
 {
     int ret;
+    struct v4l2_frmivalenum frm_interval;
+    CLEAR(frm_interval);
+    LOG1("VIDIOC_G_FRAMERATE, fd: %x, ioctrl:%x",fd, VIDIOC_ENUM_FRAMEINTERVALS);
 
-    assert(v4l2_str);
+    frm_interval.index = 0;
+    frm_interval.pixel_format = 0;
+    frm_interval.width = 0;
+    frm_interval.height = 0;
+#if 0
+    ret = ioctl(fd, VIDIOC_ENUM_FRAMEINTERVALS, &frm_interval);
+    if (ret < 0) {
+        LOGE("ERR(%s):VIDIOC_ENUM_FRAMEINTERVALS failed %s\n", __func__, strerror(errno));
+        return -1;
+    }
 
-    v4l2_str->dev_name = dev_name;
+    *framerate = frm_interval.discrete.denominator;
+ #endif
+    *framerate = 15;
+    return 0;
+}
 
-    /* query capability */
-    CLEAR(v4l2_str->cap);
+int v4l2_capture_request_buffers(int fd, int device, uint num_buffers)
+{
+    struct v4l2_requestbuffers req_buf;
+    int ret;
+    CLEAR(req_buf);
 
-    LOG2("VIDIOC_QUERYCAP");
-    if (-1 == xioctl(v4l2_str->dev_fd, VIDIOC_QUERYCAP, &v4l2_str->cap)) {
-        if (EINVAL == errno) {
-            LOGE("%s is no V4L2 device", dev_name);
-            return ;
-        } else {
-            errno_print(v4l2_str, "VIDIOC_QUERYCAP");
-            return ;
+    if (memory_userptr)
+        req_buf.memory = V4L2_MEMORY_USERPTR;
+    else
+        req_buf.memory = V4L2_MEMORY_MMAP;
+    req_buf.count = num_buffers;
+    req_buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+    if (device == V4L2_THIRD_DEVICE) {
+        req_buf.memory = V4L2_MEMORY_MMAP;
+        req_buf.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+    }
+
+    LOG1("VIDIOC_REQBUFS, count=%d", req_buf.count);
+    ret = ioctl(fd, VIDIOC_REQBUFS, &req_buf);
+
+    if (ret < 0) {
+        LOGE("ERR(%s): VIDIOC_REQBUFS %d failed %s\n", __func__,
+             num_buffers, strerror(errno));
+        return ret;
+    }
+
+    if (req_buf.count < num_buffers)
+        LOGW("W(%s)Got buffers is less than request\n", __func__);
+
+    return req_buf.count;
+}
+
+/* MMAP the buffer or allocate the userptr */
+int v4l2_capture_new_buffer(int fd, int device, int index, struct v4l2_buffer_info *buf)
+{
+    void *data;
+    int ret;
+    struct v4l2_buffer *vbuf = &buf->vbuffer;
+    vbuf->flags = 0x0;
+
+    LOG1("%s\n", __func__);
+
+    if (device == V4L2_THIRD_DEVICE) {
+        vbuf->index = index;
+        vbuf->type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+        vbuf->memory = V4L2_MEMORY_MMAP;
+
+        ret = ioctl(fd, VIDIOC_QUERYBUF, vbuf);
+        if (ret < 0) {
+            LOGE("ERR(%s):VIDIOC_QUERYBUF failed %s\n", __func__, strerror(errno));
+            return -1;
+        }
+
+        data = mmap(NULL, vbuf->length, PROT_READ | PROT_WRITE, MAP_SHARED, fd,
+                    vbuf->m.offset);
+
+        if (MAP_FAILED == data) {
+            LOGE("ERR(%s):mmap failed %s\n", __func__, strerror(errno));
+            return -1;
+        }
+
+        buf->data = data;
+        buf->length = vbuf->length;
+
+        memcpy(data, file_image.mapped_addr, file_image.size);
+        return 0;
+    }
+
+    /* FIXME: Add the userptr here */
+    if (memory_userptr)
+        vbuf->memory = V4L2_MEMORY_USERPTR;
+    else
+        vbuf->memory = V4L2_MEMORY_MMAP;
+
+    vbuf->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    vbuf->index = index;
+    ret = ioctl(fd , VIDIOC_QUERYBUF, vbuf);
+
+    if (ret < 0) {
+        LOGE("ERR(%s):VIDIOC_QUERYBUF failed %s\n", __func__, strerror(errno));
+        return ret;
+    }
+
+    if (memory_userptr) {
+         vbuf->m.userptr = (unsigned int)(buf->data);
+    } else {
+        data = mmap(NULL, vbuf->length, PROT_READ | PROT_WRITE, MAP_SHARED, fd,
+                    vbuf->m.offset);
+
+        if (MAP_FAILED == data) {
+            LOGE("ERR(%s):mmap failed %s\n", __func__, strerror(errno));
+            return -1;
+        }
+        buf->data = data;
+    }
+
+    buf->length = vbuf->length;
+    LOG2("%s: index %u\n", __func__, vbuf->index);
+    LOG2("%s: type %d\n", __func__, vbuf->type);
+    LOG2("%s: bytesused %u\n", __func__, vbuf->bytesused);
+    LOG2("%s: flags %08x\n", __func__, vbuf->flags);
+    LOG2("%s: memory %u\n", __func__, vbuf->memory);
+    if (memory_userptr) {
+        LOG1("%s: userptr:  %lu", __func__, vbuf->m.userptr);
+    }
+    else {
+        LOG1("%s: MMAP offset:  %u", __func__, vbuf->m.offset);
+    }
+
+    LOG2("%s: length %u\n", __func__, vbuf->length);
+    LOG2("%s: input %u\n", __func__, vbuf->input);
+
+    return ret;
+}
+
+/* Unmap the buffer or free the userptr */
+int v4l2_capture_free_buffer(int fd, int device, struct v4l2_buffer_info *buf_info)
+{
+    int ret = 0;
+    void *addr = buf_info->data;
+    size_t length = buf_info->length;
+
+    LOG1("%s: free buffers\n", __func__);
+
+    if (device == V4L2_THIRD_DEVICE)
+        if ((ret = munmap(addr, length)) < 0) {
+            LOGE("ERR(%s):munmap failed %s\n", __func__, strerror(errno));
+            return ret;
+        }
+
+    if (!memory_userptr) {
+        if ((ret = munmap(addr, length)) < 0) {
+            LOGE("ERR(%s):munmap failed %s\n", __func__, strerror(errno));
+            return ret;
         }
     }
-
-    if (!(v4l2_str->cap.capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
-        LOGE("%s is no video capture device", dev_name);
-        return ;
-    }
-
-    if (!(v4l2_str->cap.capabilities & V4L2_CAP_STREAMING)) {
-        LOGE("%s is no video streaming device", dev_name);
-        return;
-    }
-
-    struct v4l2_input input;
-
-    CLEAR(input);
-
-    LOG2("VIDIOC_S_INPUT");
-    input.index = v4l2_str->camera_id;
-    if (-1 == xioctl(v4l2_str->dev_fd, VIDIOC_S_INPUT, &input)) {
-        if (EINVAL == errno)
-            LOGE("input index %d is out of bounds!", input.index);
-        else if (EBUSY == errno)
-            LOGE("I/O is in progress, the input cannot be switched!");
-        return ;
-    } else
-        LOG1("Set %s (index %d) as input", input.name, input.index);
-
-    CLEAR(v4l2_str->parm);
+    return ret;
 }
 
-void v4l2_capture_finalize(v4l2_struct_t *v4l2_str)
-{
-    /* close video device */
-    LOGD("----close device %s---", dev_name);
-    if (-1 == close(v4l2_str->dev_fd)) {
-        LOGE("Close video device %s failed!",
-             v4l2_str->dev_name);
-        return;
-    }
-    v4l2_str->dev_fd = -1;
-}
-
-void v4l2_capture_create_frames(v4l2_struct_t *v4l2_str,
-                                unsigned int frame_width,
-                                unsigned int frame_height,
-                                unsigned int frame_fmt,
-                                unsigned int frame_num,
-				enum v4l2_memory mem_type,
-                                unsigned int *frame_ids)
+int v4l2_capture_streamon(int fd)
 {
     int ret;
-    int fd;
-    unsigned int i;
-
-    assert(v4l2_str);
-
-    fd = v4l2_str->dev_fd;
-
-    v4l2_str->fm_width = frame_width;
-    v4l2_str->fm_height = frame_height;
-    v4l2_str->fm_fmt = frame_fmt;
-    v4l2_str->mem_type = mem_type;
-
-    /* set format */
-    CLEAR(v4l2_str->fmt);
-    v4l2_str->fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    v4l2_str->fmt.fmt.pix.pixelformat = v4l2_str->fm_fmt;
-    v4l2_str->fmt.fmt.pix.width = v4l2_str->fm_width;
-    v4l2_str->fmt.fmt.pix.height = v4l2_str->fm_height;
-
-    if (-1 == xioctl(fd, VIDIOC_S_FMT, &(v4l2_str->fmt)))
-        return;
-
-    LOG2("VIDIOC_S_FMT");
-
-    /* Note VIDIOC_S_FMT may change width and height */
-
-    /* request buffers */
-    CLEAR(v4l2_str->req_buf);
-
-    v4l2_str->req_buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    v4l2_str->req_buf.memory = mem_type;
-    v4l2_str->req_buf.count = frame_num;
-
-    if (-1 == xioctl(fd, VIDIOC_REQBUFS, &v4l2_str->req_buf)) {
-        if (EINVAL == errno) {
-            LOGE("%s does not support "
-                 "memory mapping", v4l2_str->dev_name);
-            return;
-        } else {
-            errno_print(v4l2_str, "VIDIOC_REQBUFS");
-            return ;
-        }
-    }
-
-    if (v4l2_str->req_buf.count == 0) {
-        LOGE("Insufficient buffer memory on %s", v4l2_str->dev_name);
-        return;
-    }
-
-    LOG2("VIDIOC_REQBUFS, count=%d", v4l2_str->req_buf.count);
-
-    v4l2_str->frame_num = v4l2_str->req_buf.count;
-
-    for (i = 0; i < v4l2_str->frame_num; i++)
-        *(frame_ids + i) = i;
-}
-
-void v4l2_capture_destroy_frames(v4l2_struct_t *v4l2_str)
-{
-    assert(v4l2_str);
-
-    int fd = v4l2_str->dev_fd;
-
-    CLEAR(v4l2_str->req_buf);
-
-    v4l2_str->req_buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    v4l2_str->req_buf.memory = v4l2_str->mem_type;
-    v4l2_str->req_buf.count = 0;
-
-    if (-1 == xioctl(fd, VIDIOC_REQBUFS, &v4l2_str->req_buf)) {
-        errno_print(v4l2_str, "VIDIOC_REQBUFS");
-        return ;
-    }
-
-    LOG2("VIDIOC_REQBUFS, count=%d", v4l2_str->req_buf.count);
-
-    v4l2_str->frame_num = 0;
-}
-
-void v4l2_capture_start(v4l2_struct_t *v4l2_str)
-{
-    int ret;
-    unsigned int i;
-    unsigned int page_size = getpagesize();
-    unsigned int buffer_size;
-    enum v4l2_buf_type type;
-
-    assert(v4l2_str);
-
-    for (i = 0; i < v4l2_str->frame_num; i++) {
-        struct v4l2_buffer buf;
-
-        CLEAR(buf);
-
-        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        buf.memory = V4L2_MEMORY_MMAP;
-        buf.memory = v4l2_str->mem_type;
-        buf.index = i;
-        if (buf.memory == V4L2_MEMORY_USERPTR) {
-            buf.m.userptr = v4l2_str->fm_infos[i].mapped_addr;
-            buffer_size = v4l2_str->fm_infos[i].mapped_length;
-            buf.length = (buffer_size + page_size - 1) & ~(page_size - 1);
-            LOG2("QBUF: frame size = %d, buffer length = %d", buffer_size, buf.length);
-        }
-
-        if (-1 == xioctl(v4l2_str->dev_fd, VIDIOC_QBUF, &buf)) {
-            errno_print(v4l2_str, "VIDIOC_QBUF");
-            return ;
-        }
-
-        LOG2("VIDIOC_QBUF");
-    }
-
-    type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-
-    if (-1 == xioctl(v4l2_str->dev_fd, VIDIOC_STREAMON, &type))
-        errno_print(v4l2_str, "VIDIOC_STREAMON");
-
-    LOG2("VIDIOC_STREAMON");
-}
-
-void v4l2_capture_stop(v4l2_struct_t *v4l2_str)
-{
-    assert(v4l2_str);
-
-    int fd = v4l2_str->dev_fd;
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    LOG1("%s\n", __func__);
 
-    if (-1 == xioctl(fd, VIDIOC_STREAMOFF, &type))
-        errno_print(v4l2_str, "VIDIOC_STREAMOFF");
+    ret = ioctl(fd, VIDIOC_STREAMON, &type);
+    if (ret < 0) {
+        LOGE("ERR(%s):VIDIOC_STREAMON failed %s\n", __func__, strerror(errno));
+        return ret;
+    }
 
-    LOG2("VIDIOC_STREAMOFF");
+    return ret;
 }
 
-/* 20 seconds */
-#define LIBCAMERA_POLL_TIMEOUT (20 * 1000)
-int v4l2_capture_grab_frame(v4l2_struct_t *v4l2_str)
+int v4l2_capture_streamoff(int fd)
 {
-    assert(v4l2_str);
+    int ret;
+    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    LOG1("%s\n", __func__);
 
-    int fd = v4l2_str->dev_fd;
-    int i, ret;
-    struct v4l2_buffer buf;
+    ret = ioctl(fd, VIDIOC_STREAMOFF, &type);
+    if (ret < 0) {
+        LOGE("ERR(%s):VIDIOC_STREAMOFF failed %s\n", __func__, strerror(errno));
+        return ret;
+    }
+
+    return ret;
+}
+
+int v4l2_capture_qbuf(int fd, int index, struct v4l2_buffer_info *buf)
+{
+    struct v4l2_buffer *v4l2_buf = &buf->vbuffer;
+    int ret;
+
+    ret = ioctl(fd, VIDIOC_QBUF, v4l2_buf);
+    if (ret < 0) {
+        LOGE("ERR(%s):VIDIOC_QBUF index %d failed %s\n", __func__,
+             index, strerror(errno));
+        return ret;
+    }
+    LOG2("(%s): VIDIOC_QBUF finsihed", __func__);
+
+    return ret;
+}
+
+int v4l2_capture_control_dq(int fd, int start)
+{
+    struct v4l2_buffer vbuf;
+    int ret;
+    vbuf.memory = V4L2_MEMORY_USERPTR;
+    vbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    vbuf.index = 0;
+
+    if (start) {
+        vbuf.flags &= ~V4L2_BUF_FLAG_BUFFER_INVALID;
+        vbuf.flags |= V4L2_BUF_FLAG_BUFFER_VALID; /* start DQ thread */
+    }
+    else {
+        vbuf.flags &= ~V4L2_BUF_FLAG_BUFFER_VALID;
+        vbuf.flags |= V4L2_BUF_FLAG_BUFFER_INVALID; /* stop DQ thread */
+    }
+    ret = ioctl(fd, VIDIOC_QBUF, &vbuf); /* start DQ thread in driver*/
+    if (ret < 0) {
+        LOGE("ERR(%s):VIDIOC_QBUF index %d failed %s\n", __func__,
+             vbuf.index, strerror(errno));
+        return ret;
+    }
+    LOG1("(%s): VIDIOC_QBUF finsihed", __func__);
+    return 0;
+}
+
+
+int v4l2_capture_g_parm(int fd, struct v4l2_streamparm *parm)
+{
+    int ret;
+    LOG1("%s\n", __func__);
+
+    parm->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+    ret = ioctl(fd, VIDIOC_G_PARM, parm);
+    if (ret < 0) {
+        LOGE("ERR(%s):VIDIOC_G_PARM, failed %s\n", __func__, strerror(errno));
+        return ret;
+    }
+
+    LOG1("%s: timeperframe: numerator %d, denominator %d\n", __func__,
+         parm->parm.capture.timeperframe.numerator,
+         parm->parm.capture.timeperframe.denominator);
+
+    return ret;
+}
+
+int v4l2_capture_s_parm(int fd, int device, struct v4l2_streamparm *parm)
+{
+    int ret;
+    LOG1("%s\n", __func__);
+
+    if (device == V4L2_THIRD_DEVICE) {
+        parm->type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+        parm->parm.output.outputmode = OUTPUT_MODE_FILE;
+    } else
+        parm->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+    ret = ioctl(fd, VIDIOC_S_PARM, parm);
+    if (ret < 0) {
+        LOGE("ERR(%s):VIDIOC_S_PARM, failed %s\n", __func__, strerror(errno));
+        return ret;
+    }
+
+    return ret;
+}
+
+int v4l2_capture_release_buffers(int fd, int device)
+{
+    return v4l2_capture_request_buffers(fd, device, 0);
+}
+
+/*
+ * 5 seconds wait for regular ISP output
+ * 20 seconds wait for file input mode
+ */
+#define LIBCAMERA_POLL_TIMEOUT (5 * 1000)
+#define LIBCAMERA_FILEINPUT_POLL_TIMEOUT (20 * 1000)
+int v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf)
+{
+    int ret, i;
+    int num_tries = 500;
     struct pollfd pfd[1];
+    int timeout = (output_fd == -1) ?
+        LIBCAMERA_POLL_TIMEOUT : LIBCAMERA_FILEINPUT_POLL_TIMEOUT;
+
+    buf->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    if (memory_userptr)
+        buf->memory = V4L2_MEMORY_USERPTR;
+    else
+        buf->memory = V4L2_MEMORY_MMAP;
 
     pfd[0].fd = fd;
-    pfd[0].events = POLLIN;
+    pfd[0].events = POLLIN | POLLERR;
 
-    ret = poll(pfd, 1, LIBCAMERA_POLL_TIMEOUT);
-    if (ret < 0 ) {
-        LOGE("select error in DQ\n");
-        return -1;
-    }
-    if (ret == 0) {
-        LOGE("select timeout in DQ\n");
-        return -1;
-    }
+    for (i = 0; i < num_tries; i++) {
+        ret = poll(pfd, 1, timeout);
 
-    CLEAR(buf);
+        if (ret < 0 ) {
+            LOGE("ERR(%s): select error in DQ\n", __func__);
+            return -1;
+        }
 
-    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf.memory = v4l2_str->mem_type;
+        if (ret == 0) {
+            LOGE("ERR(%s): select timeout in DQ\n", __func__);
+            return -1;
+        }
 
-    ret = xioctl(fd, VIDIOC_DQBUF, &buf);
-    if (ret < 0) {
+        ret = ioctl(fd, VIDIOC_DQBUF, buf);
+
+        if (ret >= 0)
+            break;
         LOGE("DQ error -- ret is %d\n", ret);
         switch (errno) {
-        case EAGAIN:
+        case EINVAL:
+            LOGE("%s: Failed to get frames from device. %s", __func__,
+                 strerror(errno));
             return -1;
+        case EINTR:
+            LOGW("%s: Could not sync the buffer %s\n", __func__,
+                 strerror(errno));
+            break;
+        case EAGAIN:
+            LOGW("%s: No buffer in the queue %s\n", __func__,
+                 strerror(errno));
+            break;
         case EIO:
+            break;
             /* Could ignore EIO, see spec. */
 
             /* fail through */
@@ -325,228 +553,129 @@ int v4l2_capture_grab_frame(v4l2_struct_t *v4l2_str)
         }
     }
 
-    assert(buf.index < v4l2_str->frame_num);
-
-    LOG2("VIDIOC_DQBUF");
-
-    v4l2_str->frame_size = buf.bytesused;
-    if (v4l2_str->mem_type == V4L2_MEMORY_USERPTR) {
-        v4l2_str->cur_userptr = buf.m.userptr;
-        for (i = 0; i < v4l2_str->frame_num; ++i) {
-            if (v4l2_str->fm_infos[i].mapped_addr == buf.m.userptr)
-                break;
-        }
-        if (i >= v4l2_str->frame_num) {
-            LOGE("invalidate frame index: %d, userptr: %x", i, buf.m.userptr);
-            return -1;
-        }
-        v4l2_str->cur_frame = i;
-    } else
-        v4l2_str->cur_frame = buf.index;
-
-    return 0;
-}
-
-void v4l2_capture_recycle_frame(v4l2_struct_t *v4l2_str,
-                                unsigned int frame_id)
-{
-    assert(v4l2_str);
-
-    int ret;
-    int fd = v4l2_str->dev_fd;
-    unsigned int buffer_size, page_size = getpagesize();
-    struct v4l2_buffer buf;
-
-    CLEAR(buf);
-
-    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf.memory = v4l2_str->mem_type;
-    buf.index = frame_id;
-    if (buf.memory == V4L2_MEMORY_USERPTR) {
-        buf.m.userptr = v4l2_str->fm_infos[frame_id].mapped_addr;
-        buffer_size = v4l2_str->fm_infos[frame_id].mapped_length;
-        buf.length = (buffer_size + page_size - 1) & ~(page_size - 1);
-        LOG2("QBUF: frame size = %d, buffer length = %d", buffer_size, buf.length);
-    }
-
-    /* enqueue the buffer */
-    if (-1 == xioctl(fd, VIDIOC_QBUF, &buf))
-        errno_print(v4l2_str, "VIDIOC_QBUF");
-
-    LOG2("VIDIOC_QBUF");
-}
-
-void v4l2_capture_map_frame(v4l2_struct_t *v4l2_str,
-                            unsigned int frame_idx,
-                            v4l2_frame_info *buf_info)
-{
-    int fd = v4l2_str->dev_fd;
-
-    struct v4l2_buffer buf;
-    void *mapped_addr;
-    unsigned int mapped_length;
-
-    int ret;
-
-    if (frame_idx >= v4l2_str->frame_num) {
-        LOGE("Invalid frame idx %d", frame_idx);
-        return ;
-    }
-
-    CLEAR(buf);
-
-    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf.memory = V4L2_MEMORY_MMAP;
-    buf.index = frame_idx;
-
-    if (-1 == xioctl(fd, VIDIOC_QUERYBUF, &buf))
-        errno_print(v4l2_str, "VIDIOC_QUERYBUF");
-
-    LOG2("VIDIOC_QUERYBUF");
-
-    mapped_addr = mmap(NULL,
-                       buf.length,
-                       PROT_READ | PROT_WRITE,
-                       MAP_SHARED,
-                       fd,
-                       buf.m.offset);
-
-    if (MAP_FAILED == mapped_addr)
-        errno_print(v4l2_str, "mmap");
-
-    LOG2("mmap");
-
-    mapped_length = buf.length;
-
-    buf_info->mapped_addr = mapped_addr;
-    buf_info->mapped_length = mapped_length;
-    buf_info->width = v4l2_str->fm_width;
-    buf_info->height = v4l2_str->fm_height;
-    buf_info->stride = v4l2_str->fm_width;
-    buf_info->fourcc = v4l2_str->fm_fmt;
-}
-
-void v4l2_capture_unmap_frame(v4l2_struct_t *v4l2_str,
-                              v4l2_frame_info *buf_info)
-{
-    int ret;
-
-    void *mapped_addr = buf_info->mapped_addr;
-
-    unsigned int mapped_length = buf_info->mapped_length;
-
-    if (-1 == munmap(mapped_addr, mapped_length))
-        errno_print(v4l2_str, "munmap");
-
-    LOG2("munmap");
-
-    buf_info->mapped_addr = NULL;
-    buf_info->mapped_length = 0;
-    buf_info->width = 0;
-    buf_info->height = 0;
-    buf_info->stride = 0;
-    buf_info->fourcc = 0;
-}
-
-int v4l2_capture_set_capture_mode(int fd, int mode)
-{
-    int binary;
-    struct v4l2_streamparm parm;
-    switch (mode) {
-    case CI_ISP_MODE_PREVIEW:
-        binary = CI_MODE_PREVIEW;
-        break;;
-    case CI_ISP_MODE_CAPTURE:
-        binary = CI_MODE_STILL_CAPTURE;
-        break;
-    case CI_ISP_MODE_VIDEO:
-        binary = CI_MODE_VIDEO;
-        break;
-    default:
-        binary = CI_MODE_STILL_CAPTURE;
-        break;
-    }
-
-    parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    parm.parm.capture.capturemode = binary;
-
-    if (ioctl(fd, VIDIOC_S_PARM, &parm) < 0) {
-        LOGE("ERR(%s): error:%s \n", __func__, strerror(errno));
+    if ( i == num_tries) {
+        LOGE("ERR(%s): too many tries\n", __func__);
         return -1;
     }
-
-    return 0;
+    LOG2("(%s): VIDIOC_DQBUF finsihed", __func__);
+    return buf->index;
 }
 
-
-#if defined(ANDROID)
-static BC_Video_ioctl_package ioctl_package;
-static bc_buf_params_t buf_param;
-int ci_isp_register_camera_bcd (v4l2_struct_t *v4l2_str,
-                                unsigned int num_frames,
-                                unsigned int *frame_ids,
-                                v4l2_frame_info *frame_info)
+int v4l2_register_bcd(int fd, int num_frames,
+                      void **ptrs, int w, int h, int fourcc, int size)
 {
     int ret = 0;
-    unsigned int frame_id = 0;
-    int fd = v4l2_str->dev_fd;
+    int i;
+    BC_Video_ioctl_package ioctl_package;
+    bc_buf_params_t buf_param;
 
     buf_param.count = num_frames;
-    buf_param.width = frame_info[0].width;
-    buf_param.stride = frame_info[0].stride;
-    buf_param.height = frame_info[0].height;
-    buf_param.fourcc = frame_info[0].fourcc;
-    // TODO: MMAP type not supported yet
-    if (v4l2_str->mem_type == V4L2_MEMORY_MMAP) {
-        LOGE("mmap texture streaming is not supported yet");
-        return -1;
-    }
-    //buf_param.type = BC_MEMORY_MMAP;
+    buf_param.width = w;
+    buf_param.stride = w;
+    buf_param.height = h;
+    buf_param.fourcc = fourcc;
     buf_param.type = BC_MEMORY_USERPTR;
 
     ioctl_package.ioctl_cmd = BC_Video_ioctl_request_buffers;
     ioctl_package.inputparam = (int)(&buf_param);
-    if (-1 == xioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package)) {
-        LOGE("Failed to request buffers from buffer class camera driver (errno=%d).", errno);
+    ret = ioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package);
+    if (ret < 0) {
+        LOGE("(%s): Failed to request buffers from buffer class"
+             " camera driver (ret=%d).", __func__, ret);
         return -1;
     }
-    LOG1("request bcd buffers count=%d, width:%d, stride:%d, height:%d, fourcc:%x",
-         buf_param.count, buf_param.width, buf_param.stride, buf_param.height, buf_param.fourcc);
+    LOG1("(%s): request bcd buffers count=%d, width:%d, stride:%d,"
+         " height:%d, fourcc:%x", __func__, buf_param.count, buf_param.width,
+         buf_param.stride, buf_param.height, buf_param.fourcc);
 
     bc_buf_ptr_t buf_pa;
 
-    unsigned int i;
     for (i = 0; i < num_frames; i++)
     {
-        buf_pa.index = frame_ids[i];
-        buf_pa.pa = frame_info[i].mapped_addr;
-        buf_pa.size = frame_info[i].mapped_length;
+        buf_pa.index = i;
+        buf_pa.pa = (unsigned long)ptrs[i];
+        buf_pa.size = size;
         ioctl_package.ioctl_cmd = BC_Video_ioctl_set_buffer_phyaddr;
         ioctl_package.inputparam = (int) (&buf_pa);
-        if (-1 == xioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package)) {
-            LOGE("Failed to set buffer phyaddr from buffer class camera driver (errno=%d).", errno);
+        ret = ioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package);
+        if (ret < 0) {
+            LOGE("(%s): Failed to set buffer phyaddr from buffer class"
+                 " camera driver (ret=%d).", __func__, ret);
             return -1;
         }
-
     }
 
     ioctl_package.ioctl_cmd = BC_Video_ioctl_get_buffer_count;
-    if (-1 == xioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package))
-        LOGE("check bcd buffer count error");
-    LOG1("check bcd buffer count = %d", ioctl_package.outputparam);
+    ret = ioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package);
+    if (ret < 0 || ioctl_package.outputparam != num_frames)
+        LOGE("(%s): check bcd buffer count error", __func__);
+    LOG1("(%s): check bcd buffer count = %d",
+         __func__, ioctl_package.outputparam);
+
     return ret;
 }
 
-
-int ci_isp_unregister_camera_bcd (v4l2_struct_t *v4l2_str)
+int v4l2_release_bcd(int fd)
 {
-    int fd = v4l2_str->dev_fd;
+    int ret = 0;
+    BC_Video_ioctl_package ioctl_package;
+    bc_buf_params_t buf_param;
+
     ioctl_package.ioctl_cmd = BC_Video_ioctl_release_buffer_device;
-    if (-1 == xioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package)) {
-        LOGE("Failed to request buffers from buffer class camera driver (errno=%d).", errno);
+    ret = ioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package);
+    if (ret < 0) {
+        LOGE("(%s): Failed to release buffers from buffer class camera"
+             " driver (ret=%d).", __func__, ret);
         return -1;
     }
 
     return 0;
 }
-#endif /* ANDROID */
+
+int read_file(char *file_name, int file_width, int file_height,
+              int format, int bayer_order)
+{
+    int file_fd = -1;
+    int file_size = 0;
+    char *file_buf = NULL;
+    struct stat st;
+
+    /* Open the file we will transfer to kernel */
+    if ((file_fd = open(file_name, O_RDONLY)) == -1) {
+        LOGE("ERR(%s): Failed to open %s\n", __func__, file_name);
+        return -1;
+    }
+
+    CLEAR(st);
+    if (fstat(file_fd, &st) < 0) {
+        LOGE("ERR(%s): fstat %s failed\n", __func__, file_name);
+        return -1;
+    }
+
+    file_size = st.st_size;
+    if (file_size == 0) {
+        LOGE("ERR(%s): empty file %s\n", __func__, file_name);
+        return -1;
+    }
+
+    file_buf = mmap(NULL, PAGE_ALIGN(file_size),
+                    MAP_SHARED, PROT_READ, file_fd, 0);
+    if (file_buf == MAP_FAILED) {
+        LOGE("ERR(%s): mmap failed %s\n", __func__, file_name);
+        return -1;
+    }
+
+    file_image.name = file_name;
+    file_image.size = PAGE_ALIGN(file_size);
+    file_image.mapped_addr = file_buf;
+    file_image.width = file_width;
+    file_image.height = file_height;
+
+    LOG2("%s, mapped_addr=%p, width=%d, height=%d, size=%d\n",
+        __func__, file_buf, file_width, file_height, file_image.size);
+
+    file_image.format = format;
+    file_image.bayer_order = bayer_order;
+
+    return 0;
+}
