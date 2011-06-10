@@ -721,9 +721,24 @@ int IntelCamera::openDevice(int mode)
     flushISPParameters();
 
     //Choose the camera sensor
-    ret = v4l2_capture_s_input(video_fds[device], m_camera_id);
-    if (ret < 0)
-        return ret;
+    //TODO: Following change is not valid and reasonable in normal case, 
+    //if the power sequence of camera sensors is following android request(
+    //0-main camera, 1--secondary camera).
+    //Before we get Intel fw fix for power sequence, we use this as one work
+    //around.
+    if(CAMERA_ID_FRONT == m_camera_id)
+    {
+	    ret = v4l2_capture_s_input(video_fds[device], 0);
+	    if (ret < 0)
+		    return ret;
+    }
+    else
+    {
+	    ret = v4l2_capture_s_input(video_fds[device], 1);
+	    if (ret < 0)
+		    return ret;
+    }
+
     if (mode == PREVIEW_MODE)
         return video_fds[device];
 
