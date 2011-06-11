@@ -918,21 +918,21 @@ cam_driver_set_gdc (int fd, int on)
     int ret;
     ret2 = cam_driver_set_attribute (fd, V4L2_CID_ATOMISP_POSTPROCESS_GDC_CAC,
             on, "GDC");
-    if (on)
-    {
-        if (ci_adv_cfg_file_loaded())
-        {
+    if (on) {
+        if (ci_adv_cfg_file_loaded()) {
+            LOGD("%s: cfg file already loaded\n", __func__);
             ret = ci_adv_load_gdc_table();
             if (ret == 0)
-            {
                 return CAM_ERR_NONE;
-            }
-            else
+            else {
+                ret2 = cam_driver_set_attribute (fd,
+                            V4L2_CID_ATOMISP_POSTPROCESS_GDC_CAC, false, "GDC");
                 return CAM_ERR_SYS;
+            }
         }
-        else return ret2;
     }
-    else return ret2;
+
+    return ret2;
 }
 
 cam_err_t

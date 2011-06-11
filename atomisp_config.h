@@ -43,10 +43,17 @@
 
 #define DEFAULT_XNR             false
 #define DEFAULT_TNR             false
+#define DEFAULT_GDC             false
 #define DEFAULT_NREE            true
 #define DEFAULT_MACC            V4L2_COLORFX_NONE
 #define DEFAULT_COLOR_EFFECT    V4L2_COLORFX_NONE
 
+/*
+ * 5 seconds wait for regular ISP output
+ * 20 seconds wait for file input mode
+ */
+#define LIBCAMERA_POLL_TIMEOUT (5 * 1000)
+#define LIBCAMERA_FILEINPUT_POLL_TIMEOUT (20 * 1000)
 
 #define CAMERA_ID_FRONT 1
 #define CAMERA_ID_BACK  0

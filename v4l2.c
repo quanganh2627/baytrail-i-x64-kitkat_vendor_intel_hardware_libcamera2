@@ -39,6 +39,7 @@
 
 static char *dev_name_array[3] = {"/dev/video0", "/dev/video1", "/dev/video2"};
 static int output_fd = -1; /* file input node, used to distinguish DQ poll timeout */
+static int g_isp_timeout;
 
 int v4l2_capture_open(int device)
 {
@@ -489,12 +490,7 @@ int v4l2_capture_release_buffers(int fd, int device)
     return v4l2_capture_request_buffers(fd, device, 0);
 }
 
-/*
- * 5 seconds wait for regular ISP output
- * 20 seconds wait for file input mode
- */
-#define LIBCAMERA_POLL_TIMEOUT (5 * 1000)
-#define LIBCAMERA_FILEINPUT_POLL_TIMEOUT (20 * 1000)
+
 int v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf)
 {
     int ret, i;
@@ -502,6 +498,8 @@ int v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf)
     struct pollfd pfd[1];
     int timeout = (output_fd == -1) ?
         LIBCAMERA_POLL_TIMEOUT : LIBCAMERA_FILEINPUT_POLL_TIMEOUT;
+    if (g_isp_timeout)
+        timeout = g_isp_timeout;
 
     buf->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (memory_userptr)
@@ -632,7 +630,7 @@ int v4l2_release_bcd(int fd)
     return 0;
 }
 
-int read_file(char *file_name, int file_width, int file_height,
+int v4l2_read_file(char *file_name, int file_width, int file_height,
               int format, int bayer_order)
 {
     int file_fd = -1;
@@ -678,4 +676,9 @@ int read_file(char *file_name, int file_width, int file_height,
     file_image.bayer_order = bayer_order;
 
     return 0;
+}
+
+void v4l2_set_isp_timeout(int timeout)
+{
+    g_isp_timeout = timeout;
 }

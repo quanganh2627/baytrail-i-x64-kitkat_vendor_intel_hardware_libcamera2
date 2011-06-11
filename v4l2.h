@@ -86,8 +86,9 @@ int v4l2_capture_qbuf(int fd, int index, struct v4l2_buffer_info *buf);
 int v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf);
 int v4l2_capture_control_dq(int fd, int start);
 
-int read_file(char *file_name, int width, int height, int format, int bayer_order);
+int v4l2_read_file(char *file_name, int width, int height, int format, int bayer_order);
 
+void v4l2_set_isp_timeout(int timeout);
 
 /* for camera texture streaming */
 typedef struct bc_buf_ptr {

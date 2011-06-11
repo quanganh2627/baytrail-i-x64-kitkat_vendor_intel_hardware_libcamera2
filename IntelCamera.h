@@ -121,6 +121,7 @@ public:
     // ISP related settings
     int setColorEffect(int effect);
     int setXNR(bool on);
+    int setGDC(bool on);
     int setTNR(bool on);
     int setNREE(bool on);
     int setMACC(int macc);
@@ -234,6 +235,7 @@ private:
     int mMacc;
     bool mNrEeOn;
     bool mXnrOn;
+    bool mGDCOn;
     bool mTnrOn;
     int mColorEffect;
 

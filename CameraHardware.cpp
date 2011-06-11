@@ -224,6 +224,8 @@ void CameraHardware::initDefaultParameters()
     p.set("effect-values","none,mono,negative,sepia");
     p.set("xnr", "false");
     p.set("xnr-values", "true,false");
+    p.set("gdc", "false");
+    p.set("gdc-values", "true,false");
     p.set("digital-image-stablization", "off");
     p.set("digital-image-stablization-values", "on,off");
     p.set("temporal-noise-reduction", "off");
@@ -1514,7 +1516,7 @@ int CameraHardware::pictureThread()
             thumbnail_size = thumbnail_size - TIFF_HEADER_SIZE + sizeof(FILE_START) - sizeof(FILE_END);
 
             // fill the attribute
-            if (thumbnail_size >= exif_offset) {
+            if ((unsigned int)thumbnail_size >= exif_offset) {
                 // thumbnail is in the exif, so the size of it must less than exif_offset
                 exifAttribute(exifattribute, cap_width, cap_height, false);
             } else {
@@ -2595,6 +2597,20 @@ int CameraHardware::setISPParameters(
             ret = mCamera->setXNR(true);
         if (!ret) {
             LOGD("Changed xnr to %s", new_params.get("xnr"));
+        }
+    }
+    // gdc/cac
+    int gdc = old_params.getInt("gdc");
+    new_value = new_params.get("gdc");
+    set_value = old_params.get("gdc");
+    LOGD(" - gdc = new \"%s\" (%d) / current \"%s\"",new_value, gdc, set_value);
+    if (strcmp(set_value, new_value) != 0) {
+        if (!strcmp(new_value, "false"))
+            ret = mCamera->setGDC(false);
+        else if (!strcmp(new_value, "true"))
+            ret = mCamera->setGDC(true);
+        if (!ret) {
+            LOGD("Changed gdc to %s", new_params.get("gdc"));
         }
     }
 

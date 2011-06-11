@@ -157,6 +157,7 @@ int IntelCamera::initCamera(int camera_id)
     mTnrOn = DEFAULT_TNR;
     mMacc = DEFAULT_MACC;
     mNrEeOn = DEFAULT_NREE;
+    mGDCOn = DEFAULT_GDC;
 
     // Do the basic init before open here
     if (!m_flag_init) {
@@ -246,7 +247,7 @@ int IntelCamera::configureFileInput(const struct file_input *image)
         return -1;
     }
 
-    if (read_file(image->name,
+    if (v4l2_read_file(image->name,
                   image->width,
                   image->height,
                   image->format,
@@ -400,6 +401,17 @@ int IntelCamera::startSnapshot(void)
                           ptrs, w, h, fourcc, m_frameSize(fourcc, w, h));
     }
 
+    //flush GDC FIXME: Only have effect for 14M now.
+    if (mGDCOn && m_snapshot_width == 4352 && m_snapshot_height == 3264) {
+        LOGD("%s: GDC is enabled now\n", __func__);
+        //Only enable GDC in still image capture mode and 14M
+        ret = cam_driver_set_gdc(main_fd, true);
+        if (ret)
+            LOGE("Error setting gdc:%d, fd:%d\n", true, main_fd);
+        else
+            v4l2_set_isp_timeout(LIBCAMERA_FILEINPUT_POLL_TIMEOUT);
+    }
+
     ret = startCapture(V4L2_FIRST_DEVICE, SNAPSHOT_NUM_BUFFERS);
     if (ret < 0)
         goto start1_error;
@@ -422,6 +434,7 @@ configure1_error:
 void IntelCamera::stopSnapshot(void)
 {
     stopDualStreams();
+    v4l2_set_isp_timeout(0);
 }
 
 void IntelCamera::releasePostviewBcd(void)
@@ -556,6 +569,15 @@ int IntelCamera::startCameraRecording(void)
                           m_preview_height, m_preview_v4lformat);
     if (ret < 0)
         goto configure2_error;
+
+    //flush tnr
+    if (mTnrOn != DEFAULT_TNR){
+        ret = cam_driver_set_tnr(main_fd, mTnrOn);
+        if (ret) {
+            LOGE("Error setting xnr:%d, fd:%d\n", mTnrOn, main_fd);
+            return -1;
+        }
+    }
 
     ret = startCapture(V4L2_FIRST_DEVICE, VIDEO_NUM_BUFFERS);
     if (ret < 0)
@@ -1807,7 +1829,7 @@ int IntelCamera::setColorEffect(int effect)
 int IntelCamera::setXNR(bool on)
 {
     int ret;
-    mXnrOn= on;
+    mXnrOn = on;
     if (main_fd < 0){
         LOGD("%s:Set XNR failed. "
                 "will set after device is open.\n", __FUNCTION__);
@@ -1818,6 +1840,14 @@ int IntelCamera::setXNR(bool on)
         LOGE("Error setting xnr:%d, fd:%d\n", on, main_fd);
         return -1;
     }
+    return 0;
+}
+
+int IntelCamera::setGDC(bool on)
+{
+    int ret;
+    mGDCOn = on;
+    //set the GDC when do the still image capture
     return 0;
 }
 
@@ -1920,16 +1950,8 @@ int IntelCamera::flushISPParameters ()
         }
         mColorEffect = DEFAULT_COLOR_EFFECT;
     }
-    else  LOGD("ignore xnr setting");
-
-    //flush tnr
-    if (mTnrOn != DEFAULT_TNR){
-        ret = cam_driver_set_tnr(main_fd, mTnrOn);
-        if (ret) {
-            LOGE("Error setting xnr:%d, fd:%d\n", mTnrOn, main_fd);
-            return -1;
-        }
-    }
+    else
+        LOGD("ignore xnr setting");
 
     //flush nr/ee
     if (mNrEeOn != DEFAULT_NREE){
