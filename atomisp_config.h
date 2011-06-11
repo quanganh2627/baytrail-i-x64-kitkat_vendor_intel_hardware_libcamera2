@@ -61,6 +61,7 @@
 #define DEFAULT_CONTRAST            256
 #define DEFAULT_BRIGHTNESS        0
 #define DEFAULT_INV_GAMMA           0
+#define DEFAULT_SENSOR_FPS      15
 
 #define LOG1(...) LOGD_IF(gLogLevel >= 1, __VA_ARGS__);
 #define LOG2(...) LOGD_IF(gLogLevel >= 2, __VA_ARGS__);

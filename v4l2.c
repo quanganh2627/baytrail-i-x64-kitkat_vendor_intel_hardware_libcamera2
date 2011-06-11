@@ -219,16 +219,14 @@ int v4l2_capture_g_framerate(int fd,int * framerate)
     frm_interval.pixel_format = 0;
     frm_interval.width = 0;
     frm_interval.height = 0;
-#if 0
+
     ret = ioctl(fd, VIDIOC_ENUM_FRAMEINTERVALS, &frm_interval);
     if (ret < 0) {
-        LOGE("ERR(%s):VIDIOC_ENUM_FRAMEINTERVALS failed %s\n", __func__, strerror(errno));
-        return -1;
-    }
+        LOGW("WARN(%s):VIDIOC_ENUM_FRAMEINTERVALS failed %s\n", __func__, strerror(errno));
+        *framerate = DEFAULT_SENSOR_FPS;
+    } else
+        *framerate = frm_interval.discrete.denominator;
 
-    *framerate = frm_interval.discrete.denominator;
- #endif
-    *framerate = 15;
     return 0;
 }
 
