@@ -87,7 +87,6 @@ IntelCamera::IntelCamera()
     main_fd = -1;
     m_flag_camera_start[0] = 0;
     m_flag_camera_start[1] = 0;
-    mStillAfRunning = false;
     mFlashNecessary = false;
     mInitGamma = false;
 
@@ -330,7 +329,6 @@ void IntelCamera::stopCameraPreview(void)
         return ;
     }
 
-    Mutex::Autolock lock(mFlashLock);
     // If we stop for picture capture, we need do someflash process
     if (mFlashForCapture)
         runPreFlashSequence();
@@ -348,9 +346,6 @@ int IntelCamera::getPreview(void **data)
     int device = V4L2_FIRST_DEVICE;
     int index = grabFrame(device);
     *data = v4l2_buf_pool[device].bufs[index].data;
-    //Tell Still AF that a frame is ready
-    if (mStillAfRunning)
-        mStillAfCondition.signal();
     return index;
 }
 
@@ -1317,25 +1312,21 @@ error:
 
 void IntelCamera::setFlash(void)
 {
-    Mutex::Autolock lock(mFlashLock);
     mFlashForCapture = true;
 }
 
 void IntelCamera::clearFlash(void)
 {
-    Mutex::Autolock lock(mFlashLock);
     mFlashForCapture = false;
 }
 
 void IntelCamera::getFlashStatus(bool *flash_status)
 {
-    Mutex::Autolock lock(mFlashLock);
     *flash_status = mFlashNecessary;
 }
 
 void IntelCamera::setFlashStatus(bool flash_status)
 {
-    Mutex::Autolock lock(mFlashLock);
     mFlashNecessary = flash_status;
 }
 
@@ -1343,7 +1334,6 @@ void IntelCamera::setIndicatorIntensity(int percent_time_100)
 {
 	if(CAMERA_ID_FRONT == m_camera_id) return;
 
-    Mutex::Autolock lock(mFlashLock);
     cam_driver_led_indicator_trigger (main_fd, percent_time_100);
 }
 
@@ -1351,19 +1341,16 @@ void IntelCamera::setAssistIntensity(int percent_time_100)
 {
 	if(CAMERA_ID_FRONT == m_camera_id) return;
 
-    Mutex::Autolock lock(mFlashLock);
     cam_driver_led_assist_trigger (main_fd, percent_time_100);
 }
 
 void IntelCamera::setFlashMode(int mode)
 {
-    Mutex::Autolock lock(mFlashLock);
     mFlashMode=mode;
 }
 
 int IntelCamera::getFlashMode()
 {
-    Mutex::Autolock lock(mFlashLock);
     return mFlashMode;
 }
 
@@ -1386,7 +1373,6 @@ void IntelCamera::captureFlashOnCertainDuration(int mode,  int duration, int per
 
 void IntelCamera::runPreFlashSequence(void)
 {
-    //We hold the mFlashLock here
     int index;
     void *data;
 
@@ -1731,48 +1717,6 @@ void IntelCamera::runAeAfAwb(void)
 
     mAAA->AwbApplyResults();
     mAAA->AeApplyResults();
-}
-
-void IntelCamera::setStillAfStatus(bool status)
-{
-     Mutex::Autolock lock(mStillAfLock);
-     mStillAfRunning = status;
-}
-
-bool IntelCamera::runStillAfSequence(void)
-{
-    //The preview thread is stopped at this point
-    bool af_status = false;
-    mAAA->AeLock(true);
-    mAAA->SetAfEnabled(false);
-    mAAA->SetAeEnabled(false);
-    mAAA->SetAwbEnabled(false);
-    mAAA->SetAfStillEnabled(true);
-    mAAA->AfStillStart();
-    // Do more than 100 time
-    for (int i = 0; i < mStillAfMaxCount; i++) {
-        mStillAfLock.lock();
-        mStillAfCondition.wait(mStillAfLock);
-        mStillAfLock.unlock();
-        mAAA->GetStatistics();
-        mAAA->AfProcess();
-        mAAA->AfStillIsComplete(&af_status);
-        if (af_status)
-        {
-            LOGD("==== still AF converge frame number %d\n", i);
-            break;
-        }
-    }
-    LOGD("==== still Af status (1: success; 0: failed) = %d\n", af_status);
-
-    mAAA->AfStillStop ();
-    mAAA->AeLock(false);
-    mAAA->SetAfEnabled(true);
-    mAAA->SetAeEnabled(true);
-    mAAA->SetAwbEnabled(true);
-
-    mAAA->SetAfStillEnabled(false);
-    return af_status;
 }
 
 AAAProcess *IntelCamera::getmAAA(void) {

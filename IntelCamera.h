@@ -103,8 +103,6 @@ public:
 
     //3A
     void runAeAfAwb(void);
-    bool runStillAfSequence();
-    void setStillAfStatus(bool status);
 
     int get_num_buffers(void);
 
@@ -214,16 +212,9 @@ private:
     void runPreFlashSequence (void);
     void captureFlashOff(void);
     void captureFlashOnCertainDuration(int mode, int duration, int percent_time_100);
-    mutable Mutex       mFlashLock;
     bool        mFlashNecessary;
     bool        mFlashForCapture;
     int mFlashMode;
-
-    //still AF
-    mutable Mutex       mStillAfLock;
-    bool            mStillAfRunning;
-    static const int mStillAfMaxCount = 100;
-    mutable Condition   mStillAfCondition;
 
     //this function will compare saved parameters
     //to default value. Set to isp if they diff since

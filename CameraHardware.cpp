@@ -1698,12 +1698,14 @@ int CameraHardware::autoFocusThread()
 
     //stop the preview 3A thread
     mAeAfAwbLock.lock();
-    mPreviewAeAfAwbRunning = false;
+    if (mPreviewAeAfAwbRunning) {
+        mPreviewAeAfAwbRunning = false;
+        mAeAfAwbEndCondition.wait(mAeAfAwbLock);
+    }
     mAeAfAwbLock.unlock();
     LOGV("%s: begin do the autofocus\n", __func__);
     //Do something here to call the mCamera->autofocus
     //
-    mCamera->setStillAfStatus(true);
     mCamera->calculateLightLevel();
     switch(mCamera->getFlashMode())
     {
@@ -1722,7 +1724,7 @@ int CameraHardware::autoFocusThread()
     mAAA->AfGetMode (&af_mode);
     if (af_mode != CAM_AF_MODE_MANUAL)
     {
-        af_status = mCamera->runStillAfSequence();
+        af_status = runStillAfSequence();
     }
     else
     {
@@ -1731,7 +1733,6 @@ int CameraHardware::autoFocusThread()
     }
 
     mCamera->setAssistIntensity(ASSIST_INTENSITY_OFF);
-    mCamera->setStillAfStatus(false);
     mFocusLock.lock();
     mFocusLock.unlock();
     //FIXME Always success?
@@ -1739,6 +1740,43 @@ int CameraHardware::autoFocusThread()
         mNotifyCb(CAMERA_MSG_FOCUS, af_status , 0, mCallbackCookie);
     LOG1("%s : exiting with no error", __func__);
     return NO_ERROR;
+}
+
+bool CameraHardware::runStillAfSequence(void)
+{
+    //The preview thread is stopped at this point
+    bool af_status = false;
+    mAAA->AeLock(true);
+    mAAA->SetAfEnabled(false);
+    mAAA->SetAeEnabled(false);
+    mAAA->SetAwbEnabled(false);
+    mAAA->SetAfStillEnabled(true);
+    mAAA->AfStillStart();
+    // Do more than 100 time
+    for (int i = 0; i < mStillAfMaxCount; i++) {
+        mPreviewFrameLock.lock();
+        mPreviewFrameCondition.wait(mPreviewFrameLock);
+        LOG2("%s: still AF return from wait", __func__);
+        mPreviewFrameLock.unlock();
+        mAAA->GetStatistics();
+        mAAA->AfProcess();
+        mAAA->AfStillIsComplete(&af_status);
+        if (af_status)
+        {
+            LOGD("==== still AF converge frame number %d\n", i);
+            break;
+        }
+    }
+    LOGD("==== still Af status (1: success; 0: failed) = %d\n", af_status);
+
+    mAAA->AfStillStop ();
+    mAAA->AeLock(false);
+    mAAA->SetAfEnabled(true);
+    mAAA->SetAeEnabled(true);
+    mAAA->SetAwbEnabled(true);
+
+    mAAA->SetAfStillEnabled(false);
+    return af_status;
 }
 
 status_t CameraHardware::sendCommand(int32_t command, int32_t arg1,

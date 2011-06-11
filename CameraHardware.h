@@ -316,6 +316,10 @@ private:
     void exifAttribute(exif_attribute_t& attribute, int cap_w, int cap_h, bool thumbnail_en);
     void exifAttributeOrientation(exif_attribute_t& attribute);
     void exifAttributeGPS(exif_attribute_t& attribute);
+
+    //still af
+    bool runStillAfSequence();
+    static const int mStillAfMaxCount = 100;
 };
 
 }; // namespace android
