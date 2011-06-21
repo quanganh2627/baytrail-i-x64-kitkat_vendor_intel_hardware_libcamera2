@@ -52,8 +52,8 @@
  * 5 seconds wait for regular ISP output
  * 20 seconds wait for file input mode
  */
-#define LIBCAMERA_POLL_TIMEOUT (5 * 1000)
-#define LIBCAMERA_FILEINPUT_POLL_TIMEOUT (20 * 1000)
+#define ATOMISP_POLL_TIMEOUT (5 * 1000)
+#define ATOMISP_FILEINPUT_POLL_TIMEOUT (20 * 1000)
 
 #define CAMERA_ID_FRONT 1
 #define CAMERA_ID_BACK  0
@@ -61,13 +61,13 @@
 #define DEFAULT_CONTRAST            256
 #define DEFAULT_BRIGHTNESS        0
 #define DEFAULT_INV_GAMMA           0
-#define DEFAULT_SENSOR_FPS      15
+#define DEFAULT_SENSOR_FPS      15.0
 
 #define LOG1(...) LOGD_IF(gLogLevel >= 1, __VA_ARGS__);
 #define LOG2(...) LOGD_IF(gLogLevel >= 2, __VA_ARGS__);
 
 
-static int32_t gLogLevel = 0;
+static int32_t gLogLevel = 1;
 static int need_dump_image = 0;
 static int need_dump_recorder = 0;
 static int need_dump_snapshot = 0;
@@ -80,6 +80,4 @@ static int use_texture_streaming = 1;
 static int use_texture_streaming = 0;
 #endif
 
-int atomisp_parse_cfg_file();
-int atomisp_set_cfg(int fd);
 #endif /*_CAMERA_CONFIG__*/

@@ -4,8 +4,6 @@ ifeq ($(USE_CAMERA_STUB),false)
 #
 # libcamera
 #
-$(shell cp hardware/intel/linux-2.6/include/linux/atomisp.h hardware/intel/include/linux/)
-$(shell cp hardware/intel/linux-2.6/include/linux/videodev2.h hardware/intel/include/linux/)
 
 ENABLE_BUFFER_SHARE_MODE := true
 
@@ -31,12 +29,9 @@ LOCAL_SHARED_LIBRARIES := \
 LOCAL_SRC_FILES += \
 	CameraHardware.cpp \
 	IntelCamera.cpp \
-	CameraAAAProcess.cpp \
-	v4l2.c \
-	atomisp_config.c \
-	atomisp_features.c
+	CameraAAAProcess.cpp
 
-LOCAL_CFLAGS += -DLOG_NDEBUG=1 -DSTDC99
+LOCAL_CFLAGS += -DLOG_NDEBUG=1 -DSTDC99 -Wno-write-strings
 
 ifeq ($(BOARD_USES_CAMERA_TEXTURE_STREAMING), true)
 LOCAL_CFLAGS += -DBOARD_USE_CAMERA_TEXTURE_STREAMING
@@ -55,7 +50,6 @@ LOCAL_C_INCLUDES += \
 	external/skia/include/core \
 	external/skia/include/images \
 	hardware/intel/PRIVATE/libmfldadvci/include \
-	hardware/intel/include \
         $(TARGET_OUT_HEADERS)/libsharedbuffer \
 	hardware/intel/libs3cjpeg
 

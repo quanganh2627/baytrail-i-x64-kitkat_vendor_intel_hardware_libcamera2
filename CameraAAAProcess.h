@@ -23,7 +23,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include "atomisp_features.h"
 #include "ci_adv_pub.h"
 #include "ci_adv_property.h"
 #include "atomisp_config.h"
@@ -150,7 +149,7 @@ public:
     void AfApplyResults(void);
 
     int ModeSpecInit(void);    /* Called when switch the resolution */
-    void SwitchMode(int mode, int frm_rt);
+    void SwitchMode(int mode, float frm_rt);
 
     void AfStillStart(void);
     void AfStillStop(void);
@@ -187,6 +186,11 @@ public:
     int AeGetFlickerMode(int *mode);
     int AeSetBacklightCorrection(bool en);
     int AeGetBacklightCorrection(bool *en);
+    int AeGetExpCfg(unsigned short * exp_time,
+                                                    unsigned short * iso_speed,
+                                                    unsigned short * ss_exp_time,
+                                                    unsigned short * ss_iso_speed,
+                                                    unsigned short * aperture);
     int AeSetWindow(const cam_Window *window);
     int AeGetWindow(cam_Window *window);
     int AeLock(bool lock) {
@@ -202,11 +206,13 @@ public:
     int AeGetManualIso(int *sensitivity);
     int AeSetManualAperture(float aperture, bool to_hw);
     int AeGetManualAperture(float *aperture);
+    int AeGetManualBrightness(float *brightness);
     int AeSetManualShutter(float exp_time, bool to_hw);
     int AeGetManualShutter(float *exp_time);
 
     int AfSetManualFocus(int focus, bool to_hw);
     int AfGetManualFocus(int *focus);
+    int AfGetFocus(int *focus);
 
     int AfSetMode(int mode);
     int AfGetMode(int *mode);

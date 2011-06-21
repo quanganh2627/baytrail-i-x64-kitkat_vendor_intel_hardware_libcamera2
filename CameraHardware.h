@@ -20,6 +20,7 @@
 
 #include <semaphore.h>
 #include "IntelCamera.h"
+#include "CameraAAAProcess.h"
 #include <CameraHardwareInterface.h>
 #include <binder/MemoryBase.h>
 #include <binder/MemoryHeapBase.h>
@@ -84,13 +85,7 @@ private:
         CameraHardware* mHardware;
     public:
         PreviewThread(CameraHardware* hw) :
-#ifdef SINGLE_PROCESS
-            // In single process mode this thread needs to be a java thread,
-            // since we won't be calling through the binder.
-            Thread(true),
-#else
             Thread(false),
-#endif
             mHardware(hw) { }
         virtual void onFirstRef() {
             run("CameraPreviewThread", PRIORITY_URGENT_DISPLAY);
@@ -120,14 +115,12 @@ private:
         AutoFocusThread(CameraHardware* hw) :
             Thread(false),
             mHardware(hw) { }
-        virtual void onFirstRef() {
-            run("CameraAutoFocusThread", PRIORITY_DEFAULT);
-        }
         virtual bool threadLoop() {
             mHardware->autoFocusThread();
-            return true;
+            return false;
         }
     };
+
     class AeAfAwbThread : public Thread {
         CameraHardware* mHardware;
     public:
@@ -144,12 +137,7 @@ private:
     };
 
     void setSkipFrame(int frame);
-    // Used by auto focus thread to block until it's told to run
-    mutable Mutex       mFocusLock;
-    mutable Condition   mFocusCondition;
-    bool        mExitAutoFocusThread;
 
-    mutable Mutex       mPreviewFrameLock;
     mutable Condition   mPreviewFrameCondition;
     bool        mExitAeAfAwbThread;
     mutable Mutex       mAeAfAwbLock;
@@ -158,9 +146,9 @@ private:
     // Used by preview thread to block
     mutable Mutex       mPreviewLock;
     mutable Condition   mPreviewCondition;
-    mutable Mutex       mDeviceLock;
     bool        mPreviewRunning;
     bool        mExitPreviewThread;
+
     int setISPParameters(const CameraParameters&
             new_params, const CameraParameters &old_params);
 
@@ -179,8 +167,8 @@ private:
     void print_snapshot_time();
 
     bool        mRecordRunning;
+
     mutable Mutex       mRecordLock;
-    mutable Condition   mRecordingReleaseCondition;
     int recordingThread();
 #if ENABLE_BUFFER_SHARE_MODE
     int getSharedBuffer();
@@ -240,6 +228,7 @@ private:
 
     sp<AutoFocusThread> mAutoFocusThread;
     int         autoFocusThread();
+    bool         mExitAutoFocusThread;
 
     sp<AeAfAwbThread> mAeAfAwbThread;
     int         aeAfAwbThread();
@@ -260,17 +249,11 @@ private:
 
     int32_t             mMsgEnabled;
 
-    // used to guard threading state
-    mutable Mutex       mStateLock;
-
-// only used from PreviewThread
-
     // fps
     nsecs_t             mPreviewLastTS;
     float               mPreviewLastFPS;
     nsecs_t             mRecordingLastTS;
     float               mRecordingLastFPS;
-    mutable Mutex       mSkipFrameLock;
     int                 mSkipFrame;
 
     //Postpreview
@@ -287,6 +270,8 @@ private:
     bool                   isVideoStarted;
     bool                   isCameraTurnOffBufferSharingMode;
 #endif
+
+    int mSensorType;
 
     inline void setBF(unsigned int *bufferFlag, unsigned int flag) {
         *bufferFlag |= flag;
@@ -313,13 +298,25 @@ private:
     // exif part
     static const unsigned exif_offset =  64*1024;  // must page size aligned, exif must less 64KBytes
     static const unsigned thumbnail_offset = 600*1024; // must page size aligned, max is 640*480*2
-    void exifAttribute(exif_attribute_t& attribute, int cap_w, int cap_h, bool thumbnail_en);
+    void exifAttribute(exif_attribute_t& attribute, int cap_w, int cap_h, bool thumbnail_en, bool flash_en);
     void exifAttributeOrientation(exif_attribute_t& attribute);
     void exifAttributeGPS(exif_attribute_t& attribute);
 
     //still af
     bool runStillAfSequence();
     static const int mStillAfMaxCount = 100;
+
+    //3A
+    void runAeAfAwb(void);
+    //flash
+    void runPreFlashSequence (void);
+    int SnapshotPostProcessing(void *img_data, int width, int height);
+    void update3Aresults(void);
+    int calculateLightLevel();
+    bool mFlashNecessary;
+    float mFramerate;
+
+    int checkSensorType(int cameraId);
 };
 
 }; // namespace android

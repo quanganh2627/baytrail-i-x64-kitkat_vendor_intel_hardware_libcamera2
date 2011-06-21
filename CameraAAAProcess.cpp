@@ -218,7 +218,7 @@ int AAAProcess::ModeSpecInit(void)
     return AAA_SUCCESS;
 }
 
-void AAAProcess::SwitchMode(int mode, int frm_rt)
+void AAAProcess::SwitchMode(int mode, float frm_rt)
 {
     if(!mInitied)
         return;
@@ -241,7 +241,7 @@ void AAAProcess::SwitchMode(int mode, int frm_rt)
             LOGW("%s: Wrong mode %d\n", __func__, mode);
             break;
         }
-        ci_adv_switch_mode(isp_mode, frm_rt);
+        ci_adv_switch_mode(isp_mode, CI_ADV_S15_16_FROM_FLOAT(frm_rt));
     }
     else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
     {
@@ -682,7 +682,7 @@ int AAAProcess::AeSetEv(float bias)
     {
         bias = bias > 2 ? 2 : bias;
         bias = bias < -2 ? -2 : bias;
-        ci_adv_Err ret = ci_adv_AeSetBias((int)(bias * 65536));
+        ci_adv_Err ret = ci_adv_AeSetBias(CI_ADV_S15_16_FROM_FLOAT(bias));
         if(ci_adv_Success != ret)
         {
             LOGE("!!!line:%d, in AeSetEv, ret:%d\n", __LINE__, ret);
@@ -705,7 +705,7 @@ int AAAProcess::AeGetEv(float *bias)
     {
         int ibias;
         ci_adv_Err ret = ci_adv_AeGetBias(&ibias);
-        *bias = (float) ibias / 65536.0;
+        *bias = CI_ADV_S15_16_TO_FLOAT(ibias);
         if(ci_adv_Success != ret)
         {
             LOGE("!!!line:%d, in AeGetEv, ret:%d\n", __LINE__, ret);
@@ -994,7 +994,7 @@ int AAAProcess::AeSetManualIso(int sensitivity, bool to_hw)
         if(to_hw)
         {
             fev = log10((float)sensitivity / 3.125) / log10(2.0);
-            ci_adv_Err ret = ci_adv_AeSetManualIso((int)(65536 *fev));
+            ci_adv_Err ret = ci_adv_AeSetManualIso(CI_ADV_S15_16_FROM_FLOAT(fev));
             if(ci_adv_Success != ret)
                 return AAA_FAIL;
 
@@ -1019,7 +1019,7 @@ int AAAProcess::AeGetManualIso(int *sensitivity)
         ci_adv_Err ret = ci_adv_AeGetManualIso(&iev);
         if(ci_adv_Success != ret)
             return AAA_FAIL;
-        *sensitivity = (int)(3.125 * pow(2, ((float) iev / 65536.0)));
+        *sensitivity = (int)(3.125 * pow(2, CI_ADV_S15_16_TO_FLOAT(iev)));
         mManualIso = *sensitivity;
     }
     else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
@@ -1048,7 +1048,7 @@ int AAAProcess::AeSetManualAperture(float aperture, bool to_hw)
         if (to_hw)
         {
             fev = 2.0 * (log10(aperture) / log10(2.0));
-            ci_adv_Err ret = ci_adv_AeSetManualAperture((int)(65536 * fev));
+            ci_adv_Err ret = ci_adv_AeSetManualAperture(CI_ADV_S15_16_FROM_FLOAT(fev));
             if(ci_adv_Success != ret)
                 return AAA_FAIL;
 
@@ -1073,8 +1073,29 @@ int AAAProcess::AeGetManualAperture(float *aperture)
         ci_adv_Err ret = ci_adv_AeGetManualAperture(&iev);
         if(ci_adv_Success != ret)
             return AAA_FAIL;
-        *aperture = pow(2, (float)iev / (2.0 * 65536.0));
+        *aperture = pow(2, CI_ADV_S15_16_TO_FLOAT(iev) / 2.0);
         mManualAperture = *aperture;
+    }
+    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    {
+    }
+
+    return AAA_SUCCESS;
+}
+
+int AAAProcess::AeGetManualBrightness(float *brightness)
+{
+    if(!mInitied)
+        return AAA_FAIL;
+
+    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    {
+        int val;
+        ci_adv_Err ret = ci_adv_AeGetManualBrightness(&val);
+        if (ci_adv_Success != ret)
+            return AAA_FAIL;
+
+        *brightness = (float)((float)val / 65536.0);
     }
     else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
     {
@@ -1102,7 +1123,7 @@ int AAAProcess::AeSetManualShutter(float exp_time, bool to_hw)
         if (to_hw)
         {
             fev = -1.0 * (log10(exp_time) / log10(2.0));
-            ci_adv_Err ret = ci_adv_AeSetManualShutter((int)(65536 * fev));
+            ci_adv_Err ret = ci_adv_AeSetManualShutter(CI_ADV_S15_16_FROM_FLOAT(fev));
             if(ci_adv_Success != ret)
                 return AAA_FAIL;
 
@@ -1127,7 +1148,7 @@ int AAAProcess::AeGetManualShutter(float *exp_time)
         ci_adv_Err ret = ci_adv_AeGetManualShutter(&iev);
         if(ci_adv_Success != ret)
             return AAA_FAIL;
-        *exp_time = pow(2, -1.0 * ((float)iev / 65536));
+        *exp_time = pow(2, -1.0 * CI_ADV_S15_16_TO_FLOAT(iev));
         mManualShutter = *exp_time;
     }
     else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
@@ -1151,7 +1172,14 @@ int AAAProcess::AfSetManualFocus(int focus, bool to_hw)
 
         //fixme: use distance as manual focus control
         //int ret = ci_adv_AfManualFocusAbs(focus);
-        int ret = cam_driver_set_focus_posi (main_fd, focus);
+        struct v4l2_ext_controls controls;
+        struct v4l2_ext_control control;
+        controls.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
+        controls.count = 1;
+        controls.controls = &control;
+        control.id = V4L2_CID_FOCUS_ABSOLUTE;
+        control.value = focus;
+        int ret = ioctl (main_fd, VIDIOC_S_EXT_CTRLS, &controls);
 
             if(0 != ret)
                 return AAA_FAIL;
@@ -1182,6 +1210,32 @@ int AAAProcess::AfGetManualFocus(int *focus)
 
     return AAA_SUCCESS;
 
+}
+
+int AAAProcess::AfGetFocus(int *focus)
+{
+    if(!mInitied)
+        return AAA_FAIL;
+
+    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    {
+        struct v4l2_ext_controls controls;
+        struct v4l2_ext_control control;
+
+        controls.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
+        controls.count = 1;
+        controls.controls = &control;
+        control.id = V4L2_CID_FOCUS_ABSOLUTE;
+        int ret = ioctl (main_fd, VIDIOC_S_EXT_CTRLS, &controls);
+        LOG1("line:%d, ret:%d, focus:%d", __LINE__, ret, *focus);
+        *focus = control.value;
+
+    }
+    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    {
+    }
+
+    return AAA_SUCCESS;
 }
 
 int AAAProcess::AeSetWindow(const cam_Window *window)
@@ -1388,6 +1442,26 @@ int AAAProcess::AeGetBacklightCorrection(bool *en)
             LOGE("%s: get invalid AE backlight correction \n", __func__);
             *en = false;
         }
+    }
+    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    {
+    }
+
+    return AAA_SUCCESS;
+}
+
+int AAAProcess::AeGetExpCfg(unsigned short * exp_time,
+                                                                    unsigned short * iso_speed,
+                                                                    unsigned short * ss_exp_time,
+                                                                    unsigned short * ss_iso_speed,
+                                                                    unsigned short * aperture)
+{
+    if(!mInitied)
+        return AAA_FAIL;
+
+    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    {
+        ci_adv_ae_get_exp_cfg(exp_time, iso_speed, ss_exp_time, ss_iso_speed, aperture);
     }
     else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
     {
