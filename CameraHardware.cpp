@@ -2941,7 +2941,7 @@ static int HAL_cameraType[MAX_CAMERAS];
 static CameraInfo HAL_cameraInfo[MAX_CAMERAS] = {
     {
         CAMERA_FACING_BACK,
-        270,  /* default orientation, we will modify it at other place, ToDo */
+        90,  /* default orientation, we will modify it at other place, ToDo */
     },
     {
         CAMERA_FACING_FRONT,
