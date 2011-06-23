@@ -3435,11 +3435,12 @@ int IntelCamera::atomisp_led_flash_trigger (int fd,
                                                   mode, "flash mode")) {
         LOGE("Error to set flash strobe\n");
     }
-
+#if 0
     if (0 != atomisp_set_attribute(fd,V4L2_CID_FLASH_DURATION,
                                               duration_ms, "flash duration")) {
         LOGE("Error to set flash duration\n");
     }
+#endif
     if (0 != atomisp_set_attribute(fd, V4L2_CID_FLASH_INTENSITY,
                                       percent_time_100, "flash intesity")) {
         LOGE("Error to set flash intensity\n");

@@ -1460,8 +1460,12 @@ int CameraHardware::pictureThread()
         }
 
         //Turn on flash if neccessary before the Qbuf
-        if (mFlashNecessary)
-            mCamera->captureFlashOnCertainDuration(0, 500, 15*625); /* software trigger, 500ms, intensity 15*/
+        if((mCamera->getFlashMode() == CAM_AE_FLASH_MODE_ON)||
+            ((mFlashNecessary)&&(mCamera->getFlashMode() != CAM_AE_FLASH_MODE_OFF)))
+        {
+            //FIXME:hardcode the flash parameter, change it in future. 
+            mCamera->captureFlashOnCertainDuration(3, 500, 5); /* software trigger, 500ms, intensity 15*/
+        } 
         mCamera->putSnapshot(index);
 
 #ifdef PERFORMANCE_TUNING
@@ -1749,6 +1753,8 @@ int CameraHardware::autoFocusThread()
         case CAM_AE_FLASH_MODE_AUTO:
             if(!mFlashNecessary) break;
         case CAM_AE_FLASH_MODE_ON:
+            //Don't calculate for "ON" mode, just flash
+            mFlashNecessary = true;
             mCamera->setAssistIntensity(ASSIST_INTENSITY_WORKING);
             break;
         default:
@@ -2812,8 +2818,8 @@ void CameraHardware::runPreFlashSequence(void)
 {
     int index;
     void *data;
-
-    if (!mFlashNecessary)
+    if((mCamera->getFlashMode() == CAM_AE_FLASH_MODE_OFF)||
+        ((!mFlashNecessary) && (mCamera->getFlashMode() != CAM_AE_FLASH_MODE_ON)))
         return ;
     mAAA->SetAeFlashEnabled (true);
     mAAA->SetAwbFlashEnabled (true);
