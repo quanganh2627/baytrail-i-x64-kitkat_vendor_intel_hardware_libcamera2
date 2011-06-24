@@ -1025,20 +1025,20 @@ void CameraHardware::exifAttributeOrientation(exif_attribute_t& attribute)
         if (0 == rotation)
             attribute.orientation = 1;
         else if (90 == rotation)
-            attribute.orientation = 8;
+            attribute.orientation = 6;
         else if (180 == rotation)
             attribute.orientation = 3;
         else if (270 == rotation)
-            attribute.orientation = 6;
+            attribute.orientation = 8;
     } else if (CAMERA_FACING_FRONT == mCameraId) { // sub sensor
         if (0 == rotation)
             attribute.orientation = 1;
         else if (90 == rotation)
-            attribute.orientation = 6;
+            attribute.orientation = 8;
         else if (180 == rotation)
             attribute.orientation = 3;
         else if (270 == rotation)
-            attribute.orientation = 8;
+            attribute.orientation = 6;
     }
     LOG1("exifAttribute, sensor angle:%d degrees, rotation value:%d degrees, orientation value:%d",
         cam_info.orientation, rotation, attribute.orientation);
