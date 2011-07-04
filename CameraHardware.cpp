@@ -1726,12 +1726,6 @@ int CameraHardware::autoFocusThread()
     int af_status = 0;
     LOG1("%s : starting", __func__);
 
-    if (mSensorType == SENSOR_TYPE_SOC) {
-        if (mMsgEnabled & CAMERA_MSG_FOCUS)
-            mNotifyCb(CAMERA_MSG_FOCUS, 1, 0, mCallbackCookie);
-        return NO_ERROR;
-    }
-
     //stop the preview 3A thread
     mAeAfAwbLock.lock();
     if (mPreviewAeAfAwbRunning) {
@@ -1747,6 +1741,11 @@ int CameraHardware::autoFocusThread()
 
     LOG1("%s: begin do the autofocus\n", __func__);
     //set the mFlashNecessary
+    if (mSensorType == SENSOR_TYPE_SOC) {
+        if (mMsgEnabled & CAMERA_MSG_FOCUS)
+            mNotifyCb(CAMERA_MSG_FOCUS, 1, 0, mCallbackCookie);
+        return NO_ERROR;
+    }
     calculateLightLevel();
     switch(mCamera->getFlashMode())
     {
