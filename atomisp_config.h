@@ -97,8 +97,8 @@ enum {
 };
 
 enum {
-    SECONDARY_MIPI_PORT = 0,
-    PRIMARY_MIPI_PORT
+    PRIMARY_MIPI_PORT = 0,
+    SECONDARY_MIPI_PORT
 };
 
 enum {

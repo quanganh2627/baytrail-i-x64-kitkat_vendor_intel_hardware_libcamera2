@@ -69,11 +69,6 @@ int HWLibjpegWrap::initHwBufferShare(JSAMPLE *jpegbuf, int jpegbuf_size,int widt
         jpeg_destroy_compress(&mCinfo);
         return -1;
     }
-    if(!jpeg_get_userptr_from_surface(&mCinfo,width,height,VA_FOURCC_NV12,(char**)usrptr)) {
-        LOGE("%s- jpeg_get_new_userptr_for_surface_buffer fail",__func__);
-        jpeg_destroy_compress(&mCinfo);
-        return -1;
-    }
     //LOGD("%s- jpeg_get_new_userptr_for_surface_buffer done !",__func__);
     if(NULL == *usrptr) {
         LOGD("%s- NULL == *usrptr",__func__);

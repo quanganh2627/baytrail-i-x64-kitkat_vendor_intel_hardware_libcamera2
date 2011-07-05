@@ -10,7 +10,6 @@ extern "C" {
 #include <stdio.h>
 #include "fcntl.h"
 #include "jpeglib.h"
-#include "jpeglib_ext.h"
 
 #ifdef __cplusplus
 }

@@ -1,6 +1,6 @@
 # Copyright (c) 2009-2010 Wind River Systems, Inc.
 ifeq ($(USE_CAMERA_STUB),false)
-
+ifeq ($(TARGET_DEVICE), mfld_dv09)
 #
 # libcamera
 #
@@ -25,7 +25,9 @@ LOCAL_SHARED_LIBRARIES := \
 	libbinder \
 	libskia \
 	libmfldadvci \
-	libs3cjpeg
+	libs3cjpeg \
+	libandroid \
+	libui \
 
 LOCAL_SRC_FILES += \
 	CameraHardware.cpp \
@@ -53,11 +55,13 @@ LOCAL_CFLAGS += -UBOARD_USE_SOFTWARE_ENCODE
 endif
 
 LOCAL_C_INCLUDES += \
+	frameworks/base/include \
+	frameworks/base/include/binder \
 	frameworks/base/include/camera \
 	external/skia/include/core \
 	external/skia/include/images \
-        $(TARGET_OUT_HEADERS)/libmfldadvci \
-        $(TARGET_OUT_HEADERS)/libsharedbuffer \
+	$(TARGET_OUT_HEADERS)/libmfldadvci \
+	$(TARGET_OUT_HEADERS)/libsharedbuffer \
 	hardware/intel/libs3cjpeg
 
 LOCAL_SHARED_LIBRARIES += libutils
@@ -77,17 +81,5 @@ endif
 
 include $(BUILD_SHARED_LIBRARY)
 
-dest_dir := $(TARGET_OUT)/etc/atomisp/
-
-files := \
-	atomisp.cfg
-
-copy_to := $(addprefix $(dest_dir)/,$(files))
-
-$(copy_to): PRIVATE_MODULE := libcamera_etcdir
-$(copy_to): $(dest_dir)/%: $(LOCAL_PATH)/% | $(ACP)
-	$(transform-prebuilt-to-target)
-
-ALL_PREBUILT += $(copy_to)
-
+endif
 endif

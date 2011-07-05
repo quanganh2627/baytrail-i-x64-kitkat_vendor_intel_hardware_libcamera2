@@ -22,7 +22,7 @@
 #include <utils/threads.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-
+#include <CameraParameters.h>
 #include "SkBitmap.h"
 #include "SkImageEncoder.h"
 #include "SkStream.h"
@@ -32,6 +32,9 @@
 #if ENABLE_BUFFER_SHARE_MODE
 #include <IntelBufferSharing.h>
 #endif
+#include <ui/android_native_buffer.h>
+#include <ui/GraphicBufferMapper.h>
+
 
 #define MAX_CAMERAS 2		// Follow CamreaService.h
 
@@ -53,6 +56,7 @@ static inline long calc_timediff(struct timeval *t0, struct timeval *t1)
 
 CameraHardware::CameraHardware(int cameraId)
     :
+    mPreviewWindow(0),
     mCameraId(cameraId),
     mPreviewFrame(0),
     mPostPreviewFrame(0),
@@ -202,7 +206,7 @@ void CameraHardware::initDefaultParameters()
     else
         p.setPreviewFrameRate(15);
 
-    p.setPreviewFormat(CameraParameters::PIXEL_FORMAT_YUV420SP);
+    p.setPreviewFormat(CameraParameters::PIXEL_FORMAT_RGB565);
 
     p.setPictureFormat(CameraParameters::PIXEL_FORMAT_JPEG);
     p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, "yuv420sp,rgb565,yuv422i-yuyv");
@@ -357,6 +361,19 @@ void CameraHardware::initPreviewBuffer(int size)
     unsigned int size_aligned = (size + page_size - 1) & ~(page_size - 1);
     unsigned int postview_size = size_aligned;
 
+/* If we are reinitialized with a different size, we must also reset the
+ * buffers geometry.
+ */
+    if (mPreviewWindow != 0) {
+        int preview_width, preview_height;
+        mParameters.getPreviewSize(&preview_width, &preview_height);
+        ANativeWindow_setBuffersGeometry(
+            mPreviewWindow.get(),
+            preview_width,
+            preview_height,
+            ANativeWindow_getFormat(mPreviewWindow.get()));
+    }
+
     if (size != mPreviewFrameSize) {
         if (mPreviewBuffer.heap != NULL)
             deInitPreviewBuffer();
@@ -395,6 +412,23 @@ void CameraHardware::deInitPreviewBuffer()
     mRawIdHeap.clear();
     mFrameIdBase.clear();
     mFrameIdHeap.clear();
+    mPreviewWindow = NULL;
+}
+
+status_t CameraHardware::setPreviewWindow(const sp<ANativeWindow>& buf)
+{
+    LOG1("%s(%p)", __FUNCTION__, buf.get());
+    mPreviewWindow = buf;
+    if (mPreviewWindow != 0) {
+        int preview_width, preview_height;
+        mParameters.getPreviewSize(&preview_width, &preview_height);
+        ANativeWindow_setBuffersGeometry(
+            mPreviewWindow.get(),
+            preview_width,
+            preview_height,
+            ANativeWindow_getFormat(mPreviewWindow.get()));
+    }
+    return NO_ERROR;
 }
 
 /*
@@ -541,15 +575,30 @@ void CameraHardware::processPreviewFrame(void *buffer)
             //If we delete the LOGV here, the preview is black
             LOG2("%s: Postpreviwbuffer offset(%u), size(%u)\n", __func__,
                  (int)offset, (int)size);
-        if (mMsgEnabled & CAMERA_MSG_PREVIEW_FRAME) {
-            if (use_texture_streaming) {
-                memcpy(mFrameIdHeap->base(), &postPreviewFrame, sizeof(int));
-                mDataCb(CAMERA_MSG_PREVIEW_FRAME, mFrameIdBase, mCallbackCookie);
-                LOG2("%s: send frame id: %d", __func__, postPreviewFrame);
-            } else {
-                mDataCb(CAMERA_MSG_PREVIEW_FRAME,
-                        mPreviewBuffer.base[postPreviewFrame], mCallbackCookie);
-            }
+            if (mPreviewWindow != 0) {
+
+                int preview_width, preview_height;
+                mParameters.getPreviewSize(&preview_width, &preview_height);
+                LOG2("copying raw image %d x %d  ", preview_width, preview_height);
+
+                android_native_buffer_t *buf;
+                int err;
+                if ((err = mPreviewWindow->dequeueBuffer(mPreviewWindow.get(), &buf)) != 0) {
+                    LOGE("Surface::dequeueBuffer returned error %d", err);
+                } else {
+                    mPreviewWindow->lockBuffer(mPreviewWindow.get(), buf);
+                    GraphicBufferMapper &mapper = GraphicBufferMapper::get();
+                    Rect bounds(preview_width, preview_height);
+                    void *dst;
+                    mapper.lock(buf->handle, GRALLOC_USAGE_SW_WRITE_OFTEN, bounds, &dst);
+                    memcpy(dst, mPreviewBuffer.start[postPreviewFrame], mPreviewFrameSize);
+                    mapper.unlock(buf->handle);
+
+                    if ((err = mPreviewWindow->queueBuffer(mPreviewWindow.get(), buf)) != 0) {
+                        LOGE("Surface::queueBuffer returned error %d", err);
+                    }
+                }
+                buf = NULL;
         }
         clrBF(&mPreviewBuffer.flags[postPreviewFrame],BF_LOCKED|BF_ENABLED);
     }
@@ -920,7 +969,6 @@ void CameraHardware::stopPreview()
 
 bool CameraHardware::previewEnabled()
 {
-    Mutex::Autolock lock(mPreviewLock);
     return mPreviewRunning;
 }
 
@@ -2339,7 +2387,7 @@ get_img_error:
 
 start_error_out:
     mCaptureInProgress = false;
-    mNotifyCb(CAMERA_MSG_ERROR, CAMERA_ERROR_UKNOWN, 0, mCallbackCookie);
+    mNotifyCb(CAMERA_MSG_ERROR, CAMERA_ERROR_UNKNOWN, 0, mCallbackCookie);
     LOGE("%s :end", __func__);
 
     return UNKNOWN_ERROR;
@@ -3378,7 +3426,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     p.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH, new_thumbnail_w);
     p.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT,new_thumbnail_h);
     //Video recording
-    int vfmode = p.getInt("camera-mode");
+    int vfmode = 2;
 	LOG1("vfmode %d",vfmode);
     int mVideoFormat = V4L2_PIX_FMT_NV12;
     //Deternmine the current viewfinder MODE.
@@ -3398,7 +3446,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
 
     int pre_width, pre_height, pre_size, pre_padded_size, rec_w, rec_h;
     mCamera->getPreviewSize(&pre_width, &pre_height, &pre_size, &pre_padded_size);
-    p.getRecordingSize(&rec_w, &rec_h);
+    p.getVideoSize(&rec_w, &rec_h);
 
     if(checkRecording(rec_w, rec_h)) {
         LOGD("line:%d, before setRecorderSize. w:%d, h:%d, format:%d", __LINE__, rec_w, rec_h, mVideoFormat);

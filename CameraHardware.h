@@ -56,6 +56,7 @@ class CameraHardware : public CameraHardwareInterface {
 public:
     virtual sp<IMemoryHeap> getPreviewHeap() const;
     virtual sp<IMemoryHeap> getRawHeap() const;
+    virtual status_t setPreviewWindow(const sp<ANativeWindow>& buf);
 
     virtual void        setCallbacks(notify_callback notify_cb,
                                      data_callback data_cb,
@@ -254,6 +255,7 @@ private:
     sp<MemoryHeapBase>  mUserptrHeap;
     sp<MemoryBase>      mUserptrBase[kBufferCount];
 
+    sp<ANativeWindow>   mPreviewWindow;
     int 		mCameraId;
     int                 mPreviewFrame;
     int                 mPostPreviewFrame;
