@@ -2805,31 +2805,6 @@ int  CameraHardware::update3AParameters(CameraParameters& p, bool flush_only)
         int cur_ae_mode;
         mAAA->AeGetMode (&cur_ae_mode);
 
-        // manual aperture
-        if (cur_ae_mode == CAM_AE_MODE_MANUAL || cur_ae_mode == CAM_AE_MODE_APERTURE_PRIORITY)
-        {
-            const char * paperture = CameraParameters::KEY_APERTURE;
-            new_value = p.get(paperture);
-            if (!flush_only)
-            {
-                set_value = mParameters.get(paperture);
-                LOGD(" -manual aperture = new \"%s\"  / current \"%s\"", new_value, set_value);
-            }
-            else
-            {
-                set_value = new_value;
-            }
-            if (strcmp(set_value, new_value) != 0 || flush_only || ae_to_manual == true || ae_to_aperture_priority == true) {
-                float aperture;
-
-                aperture = atof(new_value + 1);
-                mAAA->AeSetManualAperture(aperture, !flush_only);
-
-                LOGD("     ++ Changed manual aperture to %s, %f\n",p.get(paperture), aperture);
-            }
-        }
-
-
         // manual shutter
         if (cur_ae_mode == CAM_AE_MODE_MANUAL || cur_ae_mode == CAM_AE_MODE_SHUTTER_PRIORITY)
         {
