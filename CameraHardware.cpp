@@ -3085,7 +3085,6 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     LOGD(" - Picture pixel format = new \"%s\"", new_format);
     p.getPictureSize(&new_picture_width, &new_picture_height);
 
-#if 0
     // burst capture
     mBCNumReq = p.getInt(CameraParameters::KEY_BURST_LENGTH);
     mBCEn = (mBCNumReq > 1) ? true : false;
@@ -3099,7 +3098,6 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
         mPicturePixelFormat = V4L2_PIX_FMT_YUV420;
     }
     LOG1("BC, line:%d,burst len, en:%d, reqnum:%d, skipnum:%d", __LINE__, mBCEn, mBCNumReq, mBCNumSkipReq);
-#endif
 #ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
         /*there is limitation for picture resolution with hwlibjpeg buffer share
         if picture resolution below 640*480 , we have to set mPicturePixelFormat
