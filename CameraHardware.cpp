@@ -1535,6 +1535,9 @@ int CameraHardware::compressThread()
             pthumbnail = bcbuf->pdst_thumbnail;
             pmainimage = bcbuf->pdst_main;
 
+            // get RGB565 main data from NV12
+            mCamera->toRGB565(cap_w, cap_h, mPicturePixelFormat, bcbuf->psrc, bcbuf->psrc);
+
             // encode the main image
             if (encodeToJpeg(cap_w, cap_h, bcbuf->psrc, pmainimage, &mainimage_size, main_quality) < 0) {
                 LOGE("BC, line:%d, encodeToJpeg fail for main image", __LINE__);
@@ -3088,7 +3091,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     mBCEn = (mBCNumReq > 1) ? true : false;
     if (mBCEn) {
         mBCNumSkipReq = p.getInt(CameraParameters::KEY_BURST_SKIP_FRAMES);
-        mPicturePixelFormat = V4L2_PIX_FMT_RGB565;
+        mPicturePixelFormat = V4L2_PIX_FMT_NV12;
         // ToDo. we will use the hw jpeg encoder and change the format to YUV420.
     } else {
         mBCNumReq = 1;
@@ -3111,7 +3114,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
 
     // ToDo. removed it next patch.
     if (mBCEn)
-        mPicturePixelFormat = V4L2_PIX_FMT_RGB565;
+        mPicturePixelFormat = V4L2_PIX_FMT_NV12;
     if (0 < new_picture_width && 0 < new_picture_height) {
         if (mCamera->setSnapshotSize(new_picture_width, new_picture_height,
                                      mPicturePixelFormat) < 0) {
