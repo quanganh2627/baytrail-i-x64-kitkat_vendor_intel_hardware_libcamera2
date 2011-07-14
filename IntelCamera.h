@@ -19,6 +19,7 @@
 #define ANDROID_HARDWARE_INTEL_CAMERA_H
 
 #include <utils/threads.h>
+#include "CameraAAAProcess.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -141,8 +142,10 @@ public:
         return &singleton;
     }
 
-    int initCamera(int camera_id);
+    int initCamera(int camera_id, int reald_id, AAAProcess *tmpAAA);
     int deinitCamera(void);
+
+    int getMaxSnapShotResolution();
 
     //File Input
     int initFileInput();
@@ -175,6 +178,8 @@ public:
     void setSnapshotUserptr(int index, void *pic_addr, void *pv_addr);
     void releasePostviewBcd();
     int SnapshotPostProcessing(void *img_data);
+    void setSnapshotNum(int num);
+    void setPostviewNum(int num);
 
     //recorder
     int startCameraRecording();
@@ -199,9 +204,10 @@ public:
     int calculateLightLevel();
     // ISP related settings
     int setColorEffect(int effect);
+    int setShadingCorrection(bool on);
     int setXNR(bool on);
     int setGDC(bool on);
-    void checkGDC(void);
+    int setDVS(bool on);
     int setTNR(bool on);
     int setNREE(bool on);
     int setMACC(int macc);
@@ -215,6 +221,12 @@ public:
     // NV12 color space conversion
     void toNV12(int width, int height, int fourcc, void *src, void *dst);
     int      m_frameSize(int format, int width, int height);
+
+    //focal length, fnumber, fnumber range
+    int getFocusLength(unsigned int *length);
+    int getFnumber(unsigned int *fnumber);
+    int getFnumberRange(unsigned int *fnumber_range);
+    int acheiveEXIFAttributesFromDriver();
 private:
     int     createBufferPool(int device, int buffer_count);
     void    destroyBufferPool(int device);
@@ -231,6 +243,8 @@ private:
     int openDevice(int mode);
     void closeDevice(void);
     int configureDevice(int device, int w, int h, int fourcc);
+    int detectDeviceResolution(int *w, int *h, int run_mode, int
+                                            camera);
     int startCapture(int device, int buffer_count);
     void stopCapture(int device);
     void stopDualStreams(void);
@@ -244,11 +258,13 @@ private:
                              int src_width, int src_height,
                              int dst_width, int dst_height);
 
+    void checkGDC(void);
     int      m_paddingWidth(int format, int width, int height);
 
     int             m_flag_camera_start[V4L2_DEVICE_NUM];
     int             m_flag_init;
     int             m_camera_id;
+    int             m_camera_phy_id;
 
     // Frame width, hight and size
     int             m_preview_v4lformat;
@@ -289,6 +305,8 @@ private:
     struct v4l2_streamparm parm;
     int             video_fds[V4L2_DEVICE_NUM];
     int             main_fd;
+    int num_snapshot; // store request snapshot number
+    int num_postview;  //default just 1 postview buffer
 
     void captureFlashOff(void);
     int mFlashMode;
@@ -305,13 +323,21 @@ private:
     bool mNrEeOn;
     bool mXnrOn;
     bool mGDCOn;
+    bool mDVSOn;
     bool mTnrOn;
     int mColorEffect;
+    int mShadingCorrection;
 
     bool mInitGamma;    // true if Gamma table in user space has been initialized
 
     int set_zoom_val_real(int zoom);
     IspSettings mIspSettings;	// ISP related settings
+
+    struct EXIFAttributes {
+        atomisp_makernote_info AtomispMakeNoteInfo;
+        bool valid;
+    };
+    EXIFAttributes mSomeEXIFAttibutes;
 
     //V4L2 related ioctl wrapper
     int v4l2_capture_open(int device);
@@ -320,6 +346,8 @@ private:
     int v4l2_capture_querycap(int fd, int device, struct v4l2_capability *cap);
     int v4l2_capture_s_input(int fd, int index);
     int v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc);
+    int v4l2_capture_try_format(int fd, int device, int *w, int *h,
+                                         int *fourcc);
 
     int v4l2_capture_g_framerate(int fd, float * framerate, int width,
                             int height, int pix_fmt);
@@ -407,6 +435,7 @@ private:
     int atomisp_set_ev_compensation(int fd, int ev_comp);
     int atomisp_set_iso_speed(int fd, int iso_speed);
     int atomisp_set_focus_posi(int fd, int focus);
+    int atomisp_get_make_note_info(int fd, atomisp_makernote_info *nt);
     int atomisp_set_exposure(int fd, int exposure);
 
     int atomisp_set_zoom(int fd, int zoom);
@@ -486,7 +515,7 @@ private:
     int analyze_cfg_value(unsigned int index, char *value);
     int find_cfg_index(char *in);
     int atomisp_set_cfg(int fd);
-
+    AAAProcess *mAAA;
 };
 
 }; // namespace android

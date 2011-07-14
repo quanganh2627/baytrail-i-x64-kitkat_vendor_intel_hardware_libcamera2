@@ -6,6 +6,7 @@ ifeq ($(USE_CAMERA_STUB),false)
 #
 
 ENABLE_BUFFER_SHARE_MODE := true
+ENABLE_HWLIBJPEG_BUFFER_SHARE :=false
 
 LOCAL_PATH := $(call my-dir)
 
@@ -33,6 +34,12 @@ LOCAL_SRC_FILES += \
 
 LOCAL_CFLAGS += -DLOG_NDEBUG=1 -DSTDC99 -Wno-write-strings
 
+ifeq ($(TARGET_PRODUCT), mfld_cdk)
+LOCAL_CFLAGS += -DMFLD_CDK
+else
+LOCAL_CFLAGS += -DMFLD_PR2
+endif
+
 ifeq ($(BOARD_USES_CAMERA_TEXTURE_STREAMING), true)
 LOCAL_CFLAGS += -DBOARD_USE_CAMERA_TEXTURE_STREAMING
 else
@@ -49,7 +56,7 @@ LOCAL_C_INCLUDES += \
 	frameworks/base/include/camera \
 	external/skia/include/core \
 	external/skia/include/images \
-	hardware/intel/PRIVATE/libmfldadvci/include \
+        $(TARGET_OUT_HEADERS)/libmfldadvci \
         $(TARGET_OUT_HEADERS)/libsharedbuffer \
 	hardware/intel/libs3cjpeg
 
@@ -58,6 +65,14 @@ LOCAL_SHARED_LIBRARIES += libutils
 ifeq ($(ENABLE_BUFFER_SHARE_MODE),true)
     LOCAL_CFLAGS  += -DENABLE_BUFFER_SHARE_MODE=1
     LOCAL_SHARED_LIBRARIES += libsharedbuffer
+endif
+
+ifeq ($(ENABLE_HWLIBJPEG_BUFFER_SHARE),true)
+    LOCAL_SHARED_LIBRARIES += libjpeg
+    LOCAL_SRC_FILES += libjpegwrap.cpp
+    LOCAL_C_INCLUDES += hardware/intel/libva \
+                     external/jpeg
+    LOCAL_CFLAGS += -DENABLE_HWLIBJPEG_BUFFER_SHARE
 endif
 
 include $(BUILD_SHARED_LIBRARY)

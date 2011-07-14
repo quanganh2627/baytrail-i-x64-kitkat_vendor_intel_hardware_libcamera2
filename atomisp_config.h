@@ -2,7 +2,18 @@
 #define _ATOMISP_CONFIG__
 
 #include <linux/videodev2.h>
+#include <ci_adv_pub.h>
 //This file define the general configuration for the atomisp camera
+#define RESOLUTION_14MP_WIDTH	4352
+#define RESOLUTION_14MP_HEIGHT	3264
+#define RESOLUTION_8MP_WIDTH	3264
+#define RESOLUTION_8MP_HEIGHT	2448
+#define RESOLUTION_5MP_WIDTH	2560
+#define RESOLUTION_5MP_HEIGHT	1920
+#define RESOLUTION_1080P_WIDTH	1920
+#define RESOLUTION_1080P_HEIGHT	1080
+#define RESOLUTION_720P_WIDTH	1280
+#define RESOLUTION_720P_HEIGHT	720
 
 #define MAX_BACK_CAMERA_PREVIEW_WIDTH   640
 #define MAX_BACK_CAMERA_PREVIEW_HEIGHT  480
@@ -23,10 +34,10 @@
 #define VIDEO_RECORDING_MODE      2
 
 #define PREVIEW_NUM_BUFFERS 4
-#define SNAPSHOT_NUM_BUFFERS 1
+#define SNAPSHOT_MAX_NUM_BUFFERS 32 // kernel driver's limitation
 #define VIDEO_NUM_BUFFERS   4
 
-#define MAX_V4L2_BUFFERS    (PREVIEW_NUM_BUFFERS + 1)
+#define MAX_V4L2_BUFFERS    SNAPSHOT_MAX_NUM_BUFFERS
 
 #define V4L2_FIRST_DEVICE   0
 #define V4L2_SECOND_DEVICE   1
@@ -44,6 +55,8 @@
 #define DEFAULT_XNR             false
 #define DEFAULT_TNR             false
 #define DEFAULT_GDC             false
+#define DEFAULT_DVS             false
+#define DEFAULT_SHADING_CORRECTION             false
 #define DEFAULT_NREE            true
 #define DEFAULT_MACC            V4L2_COLORFX_NONE
 #define DEFAULT_COLOR_EFFECT    V4L2_COLORFX_NONE
@@ -55,19 +68,57 @@
 #define ATOMISP_POLL_TIMEOUT (5 * 1000)
 #define ATOMISP_FILEINPUT_POLL_TIMEOUT (20 * 1000)
 
-#define CAMERA_ID_FRONT 0
-#define CAMERA_ID_BACK  1
+#define CAMERA_ID_FRONT 1
+#define CAMERA_ID_BACK  0
 #define DEFAULT_GAMMA_VALUE     2.2
 #define DEFAULT_CONTRAST            256
 #define DEFAULT_BRIGHTNESS        0
 #define DEFAULT_INV_GAMMA           0
 #define DEFAULT_SENSOR_FPS      15.0
+#define FOCUS_CANCELD   2
+
+#define ASSIST_INTENSITY_WORKING       (3*2000)
+#define ASSIST_INTENSITY_OFF 0
+
+#define INDICATOR_INTENSITY_WORKING       (3*2500)
+#define INDICATOR_INTENSITY_OFF 0
+
+#define MAX_SENSOR_NAME_LENGTH 32
+#define CDK_PRIMARY_SENSOR_NAME  "dis71430m"
+#define CDK_SECOND_SENSOR_NAME "ov2720"
+#define PR2_PRIMARY_SENSOR_NAME "mt9e013"
+#define PR2_SECOND_SENSOR_NAME "mt9m114"
+
+enum {
+    SENSOR_TYPE_RAW = 1,
+    SENSOR_TYPE_SOC
+};
+
+enum {
+    SECONDARY_MIPI_PORT = 0,
+    PRIMARY_MIPI_PORT
+};
+
+enum {
+    UNKNOWN_PLATFORM = 0,
+    MFLD_CDK_PLATFORM,
+    MFLD_PR2_PLATFORM
+};
+
+typedef struct __cameraInfo
+{
+    int type;
+    int port;
+    int platform;
+    char name[MAX_SENSOR_NAME_LENGTH];
+} cameraInfo;
+
 
 #define LOG1(...) LOGD_IF(gLogLevel >= 1, __VA_ARGS__);
 #define LOG2(...) LOGD_IF(gLogLevel >= 2, __VA_ARGS__);
 
 
-static int32_t gLogLevel = 1;
+static int32_t gLogLevel = 0;
 static int need_dump_image = 0;
 static int need_dump_recorder = 0;
 static int need_dump_snapshot = 0;
@@ -79,5 +130,36 @@ static int use_texture_streaming = 1;
 #else
 static int use_texture_streaming = 0;
 #endif
+
+#define RESOLUTION_14MP_TABLE   \
+        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x2448,3648x2736,4096x3072,4352x3264"
+
+#define RESOLUTION_8MP_TABLE   \
+        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x2448"
+
+#define RESOLUTION_5MP_TABLE   \
+        "320x240,640x480,1024x768,1280x720,\
+         1920x1080,2048x1536,2560x1920"
+
+#define RESOLUTION_1080P_TABLE   \
+        "320x240,640x480,1024x768,1280x720,1920x1080"
+
+#define RESOLUTION_720P_TABLE   \
+        "320x240,640x480,1024x768,1280x720"
+
+enum resolution_index {
+    RESOLUTION_720P = 0,
+    RESOLUTION_1080P,
+    RESOLUTION_5MP,
+    RESOLUTION_8MP,
+    RESOLUTION_14MP,
+};
+
+//Define the sensor specific settings here
+#ifdef MFLD_PR2
+static int atom_sensor_type = ci_adv_sensor_liteon_8m;
+#else
+static int atom_sensor_type = ci_adv_sensor_dis_14m;
+#endif //MFLD_PR2
 
 #endif /*_CAMERA_CONFIG__*/

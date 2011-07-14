@@ -237,6 +237,7 @@ IntelCamera::IntelCamera()
     LOGV("%s() called!\n", __func__);
 
     m_camera_id = DEFAULT_CAMERA_SENSOR;
+    m_camera_phy_id = DEFAULT_CAMERA_SENSOR;
     num_buffers = DEFAULT_NUM_BUFFERS;
 
     video_fds[V4L2_FIRST_DEVICE] = -1;
@@ -252,6 +253,8 @@ IntelCamera::IntelCamera()
     mIspSettings.brightness = 0;
     mIspSettings.inv_gamma = false;		// no inverse
 
+    num_snapshot = 1;
+    num_postview = 1;
 }
 
 IntelCamera::~IntelCamera()
@@ -261,10 +264,58 @@ IntelCamera::~IntelCamera()
     // color converter
 }
 
-int IntelCamera::initCamera(int camera_id)
+int IntelCamera::getMaxSnapShotResolution()
+{
+    int index = RESOLUTION_14MP;
+
+    if (m_snapshot_max_width < RESOLUTION_14MP_WIDTH || m_snapshot_max_height < RESOLUTION_14MP_HEIGHT)
+            index--;
+    if (m_snapshot_max_width < RESOLUTION_8MP_WIDTH || m_snapshot_max_height < RESOLUTION_8MP_HEIGHT)
+            index--;
+    if (m_snapshot_max_width < RESOLUTION_5MP_WIDTH || m_snapshot_max_height < RESOLUTION_5MP_HEIGHT)
+            index--;
+    if (m_snapshot_max_width < RESOLUTION_1080P_WIDTH || m_snapshot_max_height < RESOLUTION_1080P_HEIGHT)
+            index--;
+    if (m_snapshot_max_width < RESOLUTION_720P_WIDTH || m_snapshot_max_height < RESOLUTION_720P_HEIGHT)
+            index--;
+
+    return index;
+}
+
+int IntelCamera::initCamera(int camera_id, int real_id, AAAProcess *tmpAAA)
 {
     int ret = 0;
     LOG1("%s :", __func__);
+
+    mAAA = tmpAAA;
+    /* Detect Maximum still capture resolution */
+    m_snapshot_max_width = 0xffff;
+    m_snapshot_max_height = 0xffff;
+    ret = detectDeviceResolution(&m_snapshot_max_width,
+                                &m_snapshot_max_height,
+                                STILL_IMAGE_MODE,
+                                real_id);
+    if (ret) {
+        LOGE("Faied to detect camera %d, resolution! Use default settings\n",
+             camera_id);
+        switch (camera_id) {
+        case CAMERA_ID_FRONT:
+            m_snapshot_max_width  = MAX_FRONT_CAMERA_SNAPSHOT_WIDTH;
+            m_snapshot_max_height = MAX_FRONT_CAMERA_SNAPSHOT_HEIGHT;
+            break;
+        case CAMERA_ID_BACK:
+            m_snapshot_max_width  = MAX_BACK_CAMERA_SNAPSHOT_WIDTH;
+            m_snapshot_max_height = MAX_BACK_CAMERA_SNAPSHOT_HEIGHT;
+            break;
+        default:
+            LOGE("ERR(%s)::Invalid camera id(%d)\n", __func__, camera_id);
+            return -1;
+        }
+    }
+    else
+        LOGE("Camera %d Max-resolution detect: %dx%d\n", camera_id,
+            m_snapshot_max_width,
+            m_snapshot_max_height);
 
     switch (camera_id) {
     case CAMERA_ID_FRONT:
@@ -272,14 +323,10 @@ int IntelCamera::initCamera(int camera_id)
         m_preview_max_height  = MAX_FRONT_CAMERA_PREVIEW_HEIGHT;
         m_recorder_max_width = MAX_FRONT_CAMERA_VIDEO_WIDTH;
         m_recorder_max_height = MAX_FRONT_CAMERA_VIDEO_HEIGHT;
-        m_snapshot_max_width  = MAX_FRONT_CAMERA_SNAPSHOT_WIDTH;
-        m_snapshot_max_height = MAX_FRONT_CAMERA_SNAPSHOT_HEIGHT;
         break;
     case CAMERA_ID_BACK:
         m_preview_max_width   = MAX_BACK_CAMERA_PREVIEW_WIDTH;
         m_preview_max_height  = MAX_BACK_CAMERA_PREVIEW_HEIGHT;
-        m_snapshot_max_width  = MAX_BACK_CAMERA_SNAPSHOT_WIDTH;
-        m_snapshot_max_height = MAX_BACK_CAMERA_SNAPSHOT_HEIGHT;
         m_recorder_max_width = MAX_BACK_CAMERA_VIDEO_WIDTH;
         m_recorder_max_height = MAX_BACK_CAMERA_VIDEO_HEIGHT;
         break;
@@ -287,7 +334,9 @@ int IntelCamera::initCamera(int camera_id)
         LOGE("ERR(%s)::Invalid camera id(%d)\n", __func__, camera_id);
         return -1;
     }
-    m_camera_id = camera_id;
+
+    m_camera_id = real_id;
+    m_camera_phy_id = camera_id;
     LOGD("%s, m_camera_id = %d\n", __func__, m_camera_id);
 
     m_preview_width = 640;
@@ -310,11 +359,13 @@ int IntelCamera::initCamera(int camera_id)
     m_recorder_v4lformat = V4L2_PIX_FMT_NV12;
 
     mColorEffect = DEFAULT_COLOR_EFFECT;
+    mShadingCorrection = DEFAULT_SHADING_CORRECTION;
     mXnrOn = DEFAULT_XNR;
     mTnrOn = DEFAULT_TNR;
     mMacc = DEFAULT_MACC;
     mNrEeOn = DEFAULT_NREE;
     mGDCOn = DEFAULT_GDC;
+    mDVSOn = DEFAULT_DVS;
 
     // Do the basic init before open here
     if (!m_flag_init) {
@@ -452,8 +503,14 @@ int IntelCamera::startCameraPreview(void)
     if (ret < 0)
         return ret;
 
+    //Move the mAAA out after enable the open/close
+    mAAA->IspSetFd(main_fd);
+    mAAA->SwitchMode(run_mode);
+    mAAA->SetFrameRate (framerate);
+
     if (zoom_val != 0)
         set_zoom_val_real(zoom_val);
+
     ret = configureDevice(device, w, h, fourcc);
     if (ret < 0)
         return ret;
@@ -504,6 +561,11 @@ int IntelCamera::getPreview(void **data)
 {
     int device = V4L2_FIRST_DEVICE;
     int index = grabFrame(device);
+	if(index < 0)
+	{
+		LOGE("%s error\n", __func__);
+		return -1;
+	}
     *data = v4l2_buf_pool[device].bufs[index].data;
     return index;
 }
@@ -539,9 +601,15 @@ int IntelCamera::startSnapshot(void)
     if (ret < 0)
         return ret;
 
+    mAAA->IspSetFd(main_fd);
+    mAAA->SwitchMode(run_mode);
+    mAAA->SetFrameRate (framerate);
+
     //0 is the default. I don't need zoom.
     if (zoom_val != 0)
         set_zoom_val_real(zoom_val);
+
+    checkGDC();
 
     ret = configureDevice(V4L2_FIRST_DEVICE, m_snapshot_width,
                           m_snapshot_height, m_snapshot_v4lformat);
@@ -553,29 +621,35 @@ int IntelCamera::startSnapshot(void)
     if (ret < 0)
         goto configure2_error;
 
+    // for the postview
     if (use_texture_streaming) {
         int device = V4L2_SECOND_DEVICE;
         int w = m_postview_width;
         int h = m_postview_height;
         int fourcc = m_postview_v4lformat;
 
-        void *ptrs[SNAPSHOT_NUM_BUFFERS];
+        if (num_postview > num_snapshot) {
+            LOGE("line:%d, num_postview:%d, num_snapshot:%d", __LINE__, num_postview, num_snapshot);
+            goto registerbcd_error;
+        }
+
+        void *ptrs[SNAPSHOT_MAX_NUM_BUFFERS];
         int i;
-        for (i = 0; i < SNAPSHOT_NUM_BUFFERS; i++) {
+        for (i = 0; i < num_postview; i++) {
             ptrs[i] = v4l2_buf_pool[device].bufs[i].data;
         }
-        ret = v4l2_register_bcd(video_fds[device], SNAPSHOT_NUM_BUFFERS,
+        LOG1("line:%d, num_postview:%d", __LINE__, num_postview);
+        ret = v4l2_register_bcd(video_fds[device], num_postview,
                           ptrs, w, h, fourcc, m_frameSize(fourcc, w, h));
         if (ret < 0)
             goto registerbcd_error;
     }
 
-    ret = startCapture(V4L2_FIRST_DEVICE, SNAPSHOT_NUM_BUFFERS);
+    ret = startCapture(V4L2_FIRST_DEVICE, num_snapshot);
     if (ret < 0)
         goto start1_error;
 
-
-    ret = startCapture(V4L2_SECOND_DEVICE, SNAPSHOT_NUM_BUFFERS);
+    ret = startCapture(V4L2_SECOND_DEVICE, num_snapshot);
     if (ret < 0)
         goto start2_error;
     return main_fd;
@@ -601,6 +675,16 @@ void IntelCamera::releasePostviewBcd(void)
     if (use_texture_streaming) {
         v4l2_release_bcd(video_fds[V4L2_SECOND_DEVICE]);
     }
+}
+
+void IntelCamera::setSnapshotNum(int num)
+{
+    num_snapshot = num;
+}
+
+void IntelCamera::setPostviewNum(int num)
+{
+    num_postview = num;
 }
 
 int IntelCamera::putDualStreams(int index)
@@ -641,7 +725,11 @@ int IntelCamera::getSnapshot(void **main_out, void **postview, void *postview_rg
         return -1;
     }
     if (index0 != index1) {
-        LOGE("%s error\n", __func__);
+        LOGE("%s error, line:%d\n", __func__, __LINE__);
+        return -1;
+    }
+    if (index0 >= MAX_V4L2_BUFFERS) {
+        LOGE("%s error, line:%d\n", __func__, __LINE__);
         return -1;
     }
 
@@ -684,6 +772,12 @@ int IntelCamera::startCameraRecording(void)
     if (ret < 0)
         return ret;
 
+    //Move mAAA out after enable open/close in CameraHardware
+    mAAA->IspSetFd(main_fd);
+    mAAA->SwitchMode(run_mode);
+    mAAA->SetFrameRate (framerate);
+    mAAA->FlushManualSettings ();
+
     if ((zoom_val != 0) && (m_recorder_width != 1920))
         set_zoom_val_real(zoom_val);
 
@@ -699,12 +793,17 @@ int IntelCamera::startCameraRecording(void)
         goto configure2_error;
 
     //flush tnr
-    if (mTnrOn != DEFAULT_TNR){
+    if (mTnrOn != DEFAULT_TNR) {
         ret = atomisp_set_tnr(main_fd, mTnrOn);
-        if (ret) {
+        if (ret)
             LOGE("Error setting xnr:%d, fd:%d\n", mTnrOn, main_fd);
-            return -1;
-        }
+    }
+
+    //check DVS
+    if (mDVSOn != DEFAULT_DVS) {
+        ret = atomisp_set_dvs(main_fd, mDVSOn);
+        if (ret)
+            LOGE("Error setting xnr:%d, fd:%d\n", mTnrOn, main_fd);
     }
 
     ret = startCapture(V4L2_FIRST_DEVICE, VIDEO_NUM_BUFFERS);
@@ -924,6 +1023,54 @@ void IntelCamera::closeDevice(void)
     video_fds[V4L2_SECOND_DEVICE] = -1;
 }
 
+int IntelCamera::detectDeviceResolution(int *w, int *h, int run_mode, int
+                                        camera)
+{
+    int ret = 0;
+    int fourcc = V4L2_PIX_FMT_NV12;
+    int device = V4L2_FIRST_DEVICE;
+
+    if ((*w <= 0) || (*h <= 0)) {
+        LOGE("ERR(%s): Wrong Width %d or Height %d\n", __func__, *w, *h);
+        return -1;
+    }
+
+    video_fds[device] = v4l2_capture_open(device);
+
+    if (video_fds[device] < 0)
+        return -1;
+
+    main_fd = video_fds[device];
+    // Query and check the capabilities
+    if (v4l2_capture_querycap(video_fds[device], device, &cap) < 0)
+        goto error0;
+
+    //Choose the camera sensor
+    ret = v4l2_capture_s_input(video_fds[device], camera);
+    if (ret < 0)
+        goto error0;
+
+    //Switch the Mode before try the format.
+    ret = set_capture_mode(run_mode);
+    if (ret < 0)
+        goto error0;
+
+    //Set the format
+    ret = v4l2_capture_try_format(video_fds[device], device, w, h, &fourcc);
+    if (ret < 0)
+        goto error0;
+
+    v4l2_capture_close(video_fds[device]);
+
+    video_fds[device] = -1;
+
+    return 0;
+
+error0:
+    v4l2_capture_close(video_fds[V4L2_FIRST_DEVICE]);
+    return -1;
+}
+
 int IntelCamera::configureDevice(int device, int w, int h, int fourcc)
 {
     int ret = 0;
@@ -1101,6 +1248,9 @@ void IntelCamera::stopCapture(int device)
     v4l2_capture_streamoff(fd);
 
     destroyBufferPool(device);
+
+    setIndicatorIntensity(INDICATOR_INTENSITY_OFF);
+    setAssistIntensity(ASSIST_INTENSITY_OFF);
 
     m_flag_camera_start[device] = 0;
 }
@@ -1595,14 +1745,14 @@ error:
 
 void IntelCamera::setIndicatorIntensity(int percent_time_100)
 {
-	if(CAMERA_ID_FRONT == m_camera_id) return;
+	if(CAMERA_ID_FRONT == m_camera_phy_id) return;
 
     atomisp_led_indicator_trigger (main_fd, percent_time_100);
 }
 
 void IntelCamera::setAssistIntensity(int percent_time_100)
 {
-	if(CAMERA_ID_FRONT == m_camera_id) return;
+	if(CAMERA_ID_FRONT == m_camera_phy_id) return;
 
     atomisp_led_assist_trigger (main_fd, percent_time_100);
 }
@@ -1624,7 +1774,7 @@ void IntelCamera::captureFlashOff(void)
 
 void IntelCamera::captureFlashOnCertainDuration(int mode,  int duration, int percent_time_100)
 {
-	if(CAMERA_ID_FRONT == m_camera_id) return;
+	if(CAMERA_ID_FRONT == m_camera_phy_id) return;
 
     atomisp_led_flash_trigger (main_fd, mode, duration, percent_time_100);
 }
@@ -1754,7 +1904,7 @@ int IntelCamera::setSnapshotSize(int width, int height, int fourcc)
     if (width > m_snapshot_max_width || width <= 0)
         width = m_snapshot_max_width;
     if (height > m_snapshot_max_height || height <= 0)
-        height = m_snapshot_max_width;
+        height = m_snapshot_max_height;
     m_snapshot_width  = width;
     m_snapshot_height = height;
     m_snapshot_v4lformat = fourcc;
@@ -1784,13 +1934,13 @@ int IntelCamera::getSnapshotPixelFormat(void)
 
 void IntelCamera::setSnapshotUserptr(int index, void *pic_addr, void *pv_addr)
 {
-    if (index > SNAPSHOT_NUM_BUFFERS) {
+    if (index >= num_snapshot) {
         LOGE("%s:index %d is out of range\n", __func__, index);
         return ;
     }
 
-    v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[0].data = pic_addr;
-    v4l2_buf_pool[V4L2_SECOND_DEVICE].bufs[0].data = pv_addr;
+    v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[index].data = pic_addr;
+    v4l2_buf_pool[V4L2_SECOND_DEVICE].bufs[index].data = pv_addr;
 }
 
 int IntelCamera::setRecorderSize(int width, int height, int fourcc)
@@ -1890,13 +2040,24 @@ int IntelCamera::m_paddingWidth(int format, int width, int height)
     return padding;
 }
 
+int IntelCamera::setShadingCorrection(bool on)
+{
+    mShadingCorrection = on;
+    if (main_fd < 0) {
+        LOGD("%s:Set Shading Correction failed. "
+                "will set after device is open.\n", __func__);
+        return 0;
+    }
+    return atomisp_set_sc(main_fd, on);
+}
+
 int IntelCamera::setColorEffect(int effect)
 {
     int ret;
     mColorEffect = effect;
     if (main_fd < 0){
         LOGD("%s:Set Color Effect failed. "
-                "will set after device is open.\n", __FUNCTION__);
+                "will set after device is open.\n", __func__);
         return 0;
     }
     ret = atomisp_set_tone_mode(main_fd,
@@ -1942,7 +2103,7 @@ int IntelCamera::setXNR(bool on)
     mXnrOn = on;
     if (main_fd < 0){
         LOGD("%s:Set XNR failed. "
-                "will set after device is open.\n", __FUNCTION__);
+                "will set after device is open.\n", __func__);
         return 0;
     }
     ret = atomisp_set_xnr(main_fd, on);
@@ -1961,13 +2122,19 @@ int IntelCamera::setGDC(bool on)
     return 0;
 }
 
+int IntelCamera::setDVS(bool on)
+{
+    int ret;
+    mDVSOn = on;
+    return 0;
+}
 int IntelCamera::setTNR(bool on)
 {
     int ret;
     mTnrOn= on;
     if (main_fd < 0){
         LOGD("%s:Set TNR failed."
-                " will set after device is open.\n", __FUNCTION__);
+                " will set after device is open.\n", __func__);
         return 0;
     }
     ret = atomisp_set_tnr(main_fd, on);
@@ -1984,7 +2151,7 @@ int IntelCamera::setNREE(bool on)
     mNrEeOn= on;
     if (main_fd < 0){
         LOGD("%s:Set NR/EE failed."
-                " will set after device is open.\n", __FUNCTION__);
+                " will set after device is open.\n", __func__);
         return 0;
     }
     ret = atomisp_set_ee(main_fd,on);
@@ -2003,7 +2170,7 @@ int IntelCamera::setMACC(int macc)
     mMacc= macc;
     if (main_fd < 0){
         LOGD("%s:Set MACC failed. "
-                "will set after device is open.\n", __FUNCTION__);
+                "will set after device is open.\n", __func__);
         return 0;
     }
     ret = atomisp_set_macc(main_fd,1,macc);
@@ -2020,7 +2187,7 @@ int IntelCamera::flushISPParameters ()
 
     if (main_fd < 0){
         LOGD("%s:flush Color Effect failed."
-                " will set after device is open.\n", __FUNCTION__);
+                " will set after device is open.\n", __func__);
         return 0;
     }
 
@@ -2033,26 +2200,27 @@ int IntelCamera::flushISPParameters ()
                             mColorEffect, main_fd);
         }
         else {
-            LOGE("set color effect success to %d in %s.\n", mColorEffect, __FUNCTION__);
+            LOGE("set color effect success to %d in %s.\n", mColorEffect, __func__);
         }
     }
     else  LOGD("ignore color effect setting");
 
 	// do gamma inverse only if start status is negative effect
-    if (mColorEffect == V4L2_COLORFX_NEGATIVE)
-    {
+    if (mColorEffect == V4L2_COLORFX_NEGATIVE) {
         mIspSettings.inv_gamma = true;
-        ret = atomisp_set_contrast_bright(main_fd, mIspSettings.contrast, mIspSettings.brightness, mIspSettings.inv_gamma);
+        ret = atomisp_set_contrast_bright(main_fd, mIspSettings.contrast,
+                              mIspSettings.brightness, mIspSettings.inv_gamma);
         if (ret != 0)
         {
-            LOGE("Error setting contrast and brightness in color effect flush:%d, fd:%d\n", mColorEffect, main_fd);
+            LOGE("Error setting contrast and brightness in color effect "
+                 "flush:%d, fd:%d\n", mColorEffect, main_fd);
             return -1;
         }
     }
 
 
     //flush xnr
-    if (mXnrOn != DEFAULT_XNR){
+    if (mXnrOn != DEFAULT_XNR) {
         ret = atomisp_set_xnr(main_fd, mXnrOn);
         if (ret) {
             LOGE("Error setting xnr:%d, fd:%d\n",  mXnrOn, main_fd);
@@ -2064,7 +2232,7 @@ int IntelCamera::flushISPParameters ()
         LOGD("ignore xnr setting");
 
     //flush nr/ee
-    if (mNrEeOn != DEFAULT_NREE){
+    if (mNrEeOn != DEFAULT_NREE) {
         ret = atomisp_set_ee(main_fd,mNrEeOn);
         ret2 = atomisp_set_bnr(main_fd,mNrEeOn);
 
@@ -2075,10 +2243,18 @@ int IntelCamera::flushISPParameters ()
     }
 
     //flush macc
-    if (mMacc != DEFAULT_MACC){
+    if (mMacc != DEFAULT_MACC) {
         ret = atomisp_set_macc(main_fd,1,mMacc);
         if (ret) {
             LOGE("Error setting NR/EE:%d, fd:%d\n", mMacc, main_fd);
+        }
+    }
+
+    //flush shading correction
+    if (mShadingCorrection != DEFAULT_SHADING_CORRECTION) {
+        ret = atomisp_set_sc(main_fd, mShadingCorrection);
+        if (ret) {
+            LOGE("Error setting shading correction:%d, fd:%d\n", mShadingCorrection, main_fd);
         }
     }
 
@@ -2126,6 +2302,60 @@ void IntelCamera::trimNV12(unsigned char *src, unsigned char* dst,
                 dst_width);
     };
 }
+
+int IntelCamera::getFocusLength(unsigned int *length)
+{
+    if (mSomeEXIFAttibutes.valid)
+        return *length = mSomeEXIFAttibutes.AtomispMakeNoteInfo.focal_length;
+    else {
+        LOGD("%s: WARNING: invalid EXIF focus length", __func__);
+        return -1;
+    }
+}
+
+int IntelCamera::getFnumber(unsigned int *fnumber)
+{
+    if (mSomeEXIFAttibutes.valid)
+        return *fnumber = mSomeEXIFAttibutes.AtomispMakeNoteInfo.f_number_curr;
+    else {
+        LOGD("%s: WARNING: invalid EXIF fnumber", __func__);
+        return -1;
+    }
+}
+
+int IntelCamera::getFnumberRange(unsigned int *fnumber_range)
+{
+    if (mSomeEXIFAttibutes.valid)
+        return *fnumber_range = mSomeEXIFAttibutes.AtomispMakeNoteInfo.f_number_range;
+    else {
+        LOGD("%s: WARNING: invalid EXIF fnumber range", __func__);
+        return -1;
+    }
+}
+
+int IntelCamera::acheiveEXIFAttributesFromDriver()
+{
+    int ret = 0;
+    int fd = video_fds[V4L2_FIRST_DEVICE];
+
+    mSomeEXIFAttibutes.valid = false;
+
+    if (fd > 0) {
+        ret = atomisp_get_make_note_info(fd, &mSomeEXIFAttibutes.AtomispMakeNoteInfo);
+        if (ret < 0) {
+            LOGD("%s: WARNING: get make note from driver failed", __func__);
+            return -1;
+        }
+
+        mSomeEXIFAttibutes.valid = true;
+        return ret;
+    }
+    else {
+        LOGD("%s: WARNING: invalid file descriptor", __func__);
+        return -1;
+    }
+}
+
 
 int IntelCamera::v4l2_capture_open(int device)
 {
@@ -2290,6 +2520,49 @@ int IntelCamera::v4l2_capture_s_format(int fd, int device, int w, int h, int fou
         LOGE("ERR(%s):VIDIOC_S_FMT failed %s\n", __func__, strerror(errno));
         return -1;
     }
+    return 0;
+}
+
+int IntelCamera::v4l2_capture_try_format(int fd, int device, int *w, int *h,
+                                         int *fourcc)
+{
+    int ret;
+    struct v4l2_format v4l2_fmt;
+    CLEAR(v4l2_fmt);
+    LOG1("VIDIOC_TRY_FMT");
+
+    if (device == V4L2_THIRD_DEVICE) {
+        *w = file_image.width;
+        *h = file_image.height;
+        *fourcc = file_image.format;
+
+        LOG2("%s, width: %d, height: %d, format: %x, size: %d, bayer_order: %d\n",
+             __func__,
+             file_image.width,
+             file_image.height,
+             file_image.format,
+             file_image.size,
+             file_image.bayer_order);
+
+        return 0;
+    }
+
+    v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+    v4l2_fmt.fmt.pix.width = *w;
+    v4l2_fmt.fmt.pix.height = *h;
+    v4l2_fmt.fmt.pix.pixelformat = *fourcc;
+    v4l2_fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
+
+    ret = ioctl(fd, VIDIOC_TRY_FMT, &v4l2_fmt);
+    if (ret < 0) {
+        LOGE("ERR(%s):VIDIOC_S_FMT failed %s\n", __func__, strerror(errno));
+        return -1;
+    }
+
+    *w = v4l2_fmt.fmt.pix.width;
+    *h = v4l2_fmt.fmt.pix.height;
+    *fourcc = v4l2_fmt.fmt.pix.pixelformat;
     return 0;
 }
 
@@ -2485,6 +2758,8 @@ int IntelCamera::v4l2_capture_streamoff(int fd)
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     LOG1("%s\n", __func__);
 
+    if (fd < 0) //Device is closed
+        return 0;
     ret = ioctl(fd, VIDIOC_STREAMOFF, &type);
     if (ret < 0) {
         LOGE("ERR(%s):VIDIOC_STREAMOFF failed %s\n", __func__, strerror(errno));
@@ -2499,6 +2774,8 @@ int IntelCamera::v4l2_capture_qbuf(int fd, int index, struct v4l2_buffer_info *b
     struct v4l2_buffer *v4l2_buf = &buf->vbuffer;
     int ret;
 
+    if (fd < 0) //Device is closed
+        return 0;
     ret = ioctl(fd, VIDIOC_QBUF, v4l2_buf);
     if (ret < 0) {
         LOGE("ERR(%s):VIDIOC_QBUF index %d failed %s\n", __func__,
@@ -2669,8 +2946,8 @@ int IntelCamera::v4l2_register_bcd(int fd, int num_frames,
              " camera driver (ret=%d).", __func__, ret);
         return -1;
     }
-    LOG1("(%s): request bcd buffers count=%d, width:%d, stride:%d,"
-         " height:%d, fourcc:%x", __func__, buf_param.count, buf_param.width,
+    LOG1("(%s): fd:%d, request bcd buffers count=%d, width:%d, stride:%d,"
+         " height:%d, fourcc:%x", __func__, fd, buf_param.count, buf_param.width,
          buf_param.stride, buf_param.height, buf_param.fourcc);
 
     bc_buf_ptr_t buf_pa;
@@ -2710,7 +2987,7 @@ int IntelCamera::v4l2_release_bcd(int fd)
     ret = ioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package);
     if (ret < 0) {
         LOGE("(%s): Failed to release buffers from buffer class camera"
-             " driver (ret=%d).", __func__, ret);
+             " driver (ret=%d).fd:%d", __func__, ret, fd);
         return -1;
     }
 
@@ -3071,18 +3348,7 @@ int IntelCamera::atomisp_set_fpn (int fd, int on)
 
 int IntelCamera::atomisp_set_macc (int fd, int on, int effect)
 {
-    int ret;
-    if (on)
-    {
-        if (atomisp_get_macc_tbl(fd, &old_macc_config) < 0)
-            return -1;
-        if (ci_adv_cfg_file_loaded())
-            return ci_adv_load_macc_table(effect);
-        else
-            return 0;
-    }
-    else
-        return _xioctl (fd, ATOMISP_IOC_S_ISP_MACC,&old_macc_config);
+    return setColorEffect(effect);
 }
 
 
@@ -3410,6 +3676,14 @@ int IntelCamera::atomisp_get_focus_posi (int fd, int *focus)
     return atomisp_get_attribute (fd, V4L2_CID_FOCUS_ABSOLUTE, focus, "Focus");
 }
 
+int IntelCamera::atomisp_get_make_note_info(int fd, atomisp_makernote_info*nt)
+{
+    int ret = 0;
+
+    ret = xioctl (fd, ATOMISP_IOC_ISP_MAKERNOTE, nt, "make_note");
+    return ret;
+}
+
 int IntelCamera::atomisp_set_zoom (int fd, int zoom)
 {
     return atomisp_set_attribute (fd, V4L2_CID_ZOOM_ABSOLUTE, zoom, "zoom");
@@ -3435,12 +3709,11 @@ int IntelCamera::atomisp_led_flash_trigger (int fd,
                                                   mode, "flash mode")) {
         LOGE("Error to set flash strobe\n");
     }
-#if 0
+
     if (0 != atomisp_set_attribute(fd,V4L2_CID_FLASH_DURATION,
                                               duration_ms, "flash duration")) {
         LOGE("Error to set flash duration\n");
     }
-#endif
     if (0 != atomisp_set_attribute(fd, V4L2_CID_FLASH_INTENSITY,
                                       percent_time_100, "flash intesity")) {
         LOGE("Error to set flash intensity\n");
@@ -3508,6 +3781,7 @@ int IntelCamera::analyze_cfg_value(unsigned int index, char *value)
 		case MF:
 		case ME:
 		case MWB:
+        case ISO:
 			default_function_value_list[index] = atoi(value);
 			return 0;
 		default:

@@ -35,12 +35,6 @@
 
 #define MAX_CAMERAS 2		// Follow CamreaService.h
 
-#define ASSIST_INTENSITY_WORKING       (3*2000)
-#define ASSIST_INTENSITY_OFF 0
-
-#define INDICATOR_INTENSITY_WORKING       (3*2500)
-#define INDICATOR_INTENSITY_OFF 0
-
 namespace android {
 
 #define CAMERA_MSG_TOUCH_TO_FOCUS 0x200
@@ -48,21 +42,7 @@ namespace android {
 static const int INITIAL_SKIP_FRAME = 4;
 static const int CAPTURE_SKIP_FRAME = 1;
 
-enum {
-    SENSOR_TYPE_RAW = 1,
-    SENSOR_TYPE_SOC
-};
-
-enum {
-    SECONDARY_MIPI_PORT = 0,
-    PRIMARY_MIPI_PORT
-};
-
-typedef struct __cameraInfo
-{
-    int type;
-    int port;
-} cameraInfo;
+static const int ZOOM_FACTOR = 4;
 
 static cameraInfo camera_info[MAX_CAMERAS];
 static int num_camera = 0;
@@ -101,11 +81,24 @@ CameraHardware::CameraHardware(int cameraId)
         LOGE("ERR(%s):texture streaming set but user pointer unset", __func__);
     }
 
-    mSensorType = checkSensorType(cameraId);
+    setupPlatformType();
+    atom_sensor_type = checkSensorType(cameraId);
+
+    if (atom_sensor_type == ci_adv_sensor_soc)
+        mSensorType = SENSOR_TYPE_SOC;
+    else
+        mSensorType = SENSOR_TYPE_RAW;
 
     cameraId = (cameraId == 0) ? primary_camera_id : secondary_camera_id;
 
-    ret = mCamera->initCamera(cameraId);
+    //Create the 3A object
+    mAAA = new AAAProcess(mSensorType);
+
+    if (cameraId == primary_camera_id)
+        ret = mCamera->initCamera(CAMERA_ID_BACK, primary_camera_id, mAAA);
+    else
+        ret = mCamera->initCamera(CAMERA_ID_FRONT, secondary_camera_id, mAAA);
+
     if (ret < 0) {
         LOGE("ERR(%s):Fail on mCamera init", __func__);
     }
@@ -115,9 +108,14 @@ CameraHardware::CameraHardware(int cameraId)
          "SOC" : "RAW");
 
     initDefaultParameters();
-    mPicturePixelFormat = V4L2_PIX_FMT_RGB565;
+#ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
+    mPicturePixelFormat = V4L2_PIX_FMT_NV12;
+#else
+    mPicturePixelFormat = V4L2_PIX_FMT_YUV420;
+#endif
     mVideoPreviewEnabled = false;
     mFlashNecessary = false;
+    mDVSProcessing = false;
 
     mExitAutoFocusThread = false;
     mExitPreviewThread = false;
@@ -129,17 +127,23 @@ CameraHardware::CameraHardware(int cameraId)
     mAutoFocusThread = new AutoFocusThread(this);
     mPictureThread = new PictureThread(this);
     mAeAfAwbThread = new AeAfAwbThread(this);
+    mCompressThread = new CompressThread(this);
 
-    //Create the 3A object
-    mAAA = new AAAProcess(ENUM_SENSOR_TYPE_RAW);
-
+    LOGD("%s: sensor is %d", __func__, atom_sensor_type);
     // init 3A for RAW sensor only
     if (mSensorType != SENSOR_TYPE_SOC) {
-        mAAA->Init();
+        mAAA->Init(atom_sensor_type);
         mAAA->SetAfEnabled(true);
         mAAA->SetAeEnabled(true);
         mAAA->SetAwbEnabled(true);
     }
+
+    // burst capture initialization
+    if ((ret = sem_init(&sem_bc_captured, 0, 0)) < 0)
+        LOGE("BC, line:%d, sem_init fail, ret:%d", __LINE__, ret);
+    if ((ret = sem_init(&sem_bc_encoded, 0, 0)) < 0)
+        LOGE("BC, line:%d, sem_init fail, ret:%d", __LINE__, ret);
+    burstCaptureInit();
 
 #if ENABLE_BUFFER_SHARE_MODE
     isVideoStarted = false;
@@ -151,6 +155,7 @@ CameraHardware::CameraHardware(int cameraId)
 CameraHardware::~CameraHardware()
 {
     LOGI("%s: Delete the CameraHardware\n", __func__);
+    int ret;
 
     if (mPreviewBuffer.heap != NULL) {
         mPreviewBuffer.heap->dispose();
@@ -166,6 +171,11 @@ CameraHardware::~CameraHardware()
         mRawHeap.clear();
     }
 
+    if ((ret = sem_destroy(&sem_bc_captured)) < 0)
+        LOGE("BC, line:%d, sem_destroy fail, ret:%d", __LINE__, ret);
+    if ((ret = sem_destroy(&sem_bc_encoded)) < 0)
+        LOGE("BC, line:%d, sem_destroy fail, ret:%d", __LINE__, ret);
+
     mAAA->Uninit();
     delete mAAA;
     mCamera->deinitCamera();
@@ -176,6 +186,7 @@ CameraHardware::~CameraHardware()
 void CameraHardware::initDefaultParameters()
 {
     CameraParameters p;
+    int resolution_index;
 
     p.setPreviewSize(640, 480);
     if (use_texture_streaming)
@@ -184,14 +195,14 @@ void CameraHardware::initDefaultParameters()
         p.setPreviewFrameRate(15);
 
     if (mSensorType == SENSOR_TYPE_SOC)
-        p.setPreviewFormat("yuv422i-yuyv");
+        p.setPreviewFormat(CameraParameters::PIXEL_FORMAT_YUV422I);
     else
-        p.setPreviewFormat("yuv420sp");
+        p.setPreviewFormat(CameraParameters::PIXEL_FORMAT_YUV420SP);
 
-    p.setPictureFormat("jpeg");
-    p.set("preview-format-values", "yuv420sp,rgb565,yuv422i-yuyv");
-    p.set("preview-size-values", "640x480,640x360");
-    p.set("picture-format-values", "jpeg");
+    p.setPictureFormat(CameraParameters::PIXEL_FORMAT_JPEG);
+    p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, "yuv420sp,rgb565,yuv422i-yuyv");
+    p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES, "640x480,640x360");
+    p.set(CameraParameters::KEY_SUPPORTED_PICTURE_FORMATS, "jpeg");
 
     char pchar[10];
     sprintf(pchar, "%d", mJpegQualityDefault);
@@ -215,9 +226,6 @@ void CameraHardware::initDefaultParameters()
     p.set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, "6");
     p.set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION, "-6");
     p.set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, "0.33333333");
-    // flash mode
-    p.set(CameraParameters::KEY_FLASH_MODE,"off");
-    p.set(CameraParameters::KEY_SUPPORTED_FLASH_MODES,"auto,off,on,torch,slow-sync,day-sync");
     // flicker mode
     p.set(CameraParameters::KEY_ANTIBANDING, "auto");
     p.set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, "off,50hz,60hz,auto");
@@ -242,12 +250,9 @@ void CameraHardware::initDefaultParameters()
     // manual shutter control
     p.set(CameraParameters::KEY_SHUTTER, "60");
     p.set(CameraParameters::KEY_SUPPORTED_SHUTTER, "2s,1s,2,4,8,15,30,60,125,250,500");
-    // manual aperture control
-    p.set(CameraParameters::KEY_APERTURE, "f2.8");
-    p.set(CameraParameters::KEY_SUPPORTED_APERTURE, "f2.8,f4,f5.6,f8,f11,f16");
     // manual iso control
     p.set(CameraParameters::KEY_ISO, "iso-200");
-    p.set(CameraParameters::KEY_SUPPORTED_ISO, "iso-100,iso-200,iso-400,iso-800");
+    p.set(CameraParameters::KEY_SUPPORTED_ISO, "iso-100,iso-200,iso-400,iso-800,iso-1600");
     // manual color temperature
     p.set(CameraParameters::KEY_COLOR_TEMPERATURE, "5000");
     // manual focus
@@ -255,36 +260,66 @@ void CameraHardware::initDefaultParameters()
     // focus window
     p.set("focus-window", "0,0,0,0");
 
-    p.set("video-frame-format","yuv420sp");
-    p.set("zoom-supported", "true");
-    p.set("max-zoom", "64");
-    p.set("zoom-ratios", "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,"
-          "22,23,24,24,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,"
-          "45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64");
-    p.set("zoom", 0);
+    p.set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,CameraParameters::PIXEL_FORMAT_YUV420SP);
+    p.set(CameraParameters::KEY_ZOOM_SUPPORTED, "true");
+    p.set(CameraParameters::KEY_MAX_ZOOM, "60");
+    p.set(CameraParameters::KEY_ZOOM_RATIOS, "100,125,150,175,200,225,250,275,300,325,350,375,400,425,450,475,500,525,"
+          "550,575,600,625,650,675,700,725,750,775,800,825,850,875,900,925,950,975,1000,1025,1050,1075,1100,"
+          "1125,1150,1175,1200,1225,1250,1275,1300,1325,1350,1375,1400,1425,1450,1475,1500,1525,1550,1575,1600");
+    p.set(CameraParameters::KEY_ZOOM, 0);
 
-    p.set("effect", "none");
-    p.set("effect-values","none,mono,negative,sepia");
-    p.set("xnr", "false");
-    p.set("xnr-values", "true,false");
-    p.set("gdc", "false");
-    p.set("gdc-values", "true,false");
-    p.set("digital-image-stablization", "off");
-    p.set("digital-image-stablization-values", "on,off");
-    p.set("temporal-noise-reduction", "off");
-    p.set("temporal-noise-reduction-values", "on,off");
-    p.set("noise-reduction-and-edge-enhancement", "on");
-    p.set("noise-reduction-and-edge-enhancement-values", "on,off");
-    p.set("multi-access-color-correction", "enhance-none");
-    p.set("multi-access-color-correction-values", "enhance-sky,enhance-grass,enhance-skin,enhance-none");
+    p.set(CameraParameters::KEY_EFFECT, "none");
+    //p.set("effect-values","none,mono,negative,sepia");
+    p.set(CameraParameters::KEY_SUPPORTED_EFFECTS, "none,mono,negative,sepia");
+    p.set(CameraParameters::KEY_XNR, "false");
+    p.set(CameraParameters::KEY_SUPPORTED_XNR, "true,false");
+    p.set(CameraParameters::KEY_GDC, "false");
+    p.set(CameraParameters::KEY_SUPPORTED_GDC, "true,false");
+    p.set(CameraParameters::KEY_DVS, "false");
+    p.set(CameraParameters::KEY_SUPPORTED_DVS, "true,false");
+    p.set(CameraParameters::KEY_DIGITAL_IMAGE_STABILIZATION, "off");
+    p.set(CameraParameters::KEY_SUPPORTED_DIGITAL_IMAGE_STABILIZATION, "on,off");
+    p.set(CameraParameters::KEY_TEMPORAL_NOISE_REDUCTION, "off");
+    p.set(CameraParameters::KEY_SUPPORTED_TEMPORAL_NOISE_REDUCTION, "on,off");
+#ifdef TUNING_EDGE_ENHACNMENT
+    p.set(CameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT, "on");
+    p.set(CameraParameters::KEY_SUPPORTED_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT, "on,off");
+#endif
+    p.set(CameraParameters::KEY_MULTI_ACCESS_COLOR_CORRECTION, "enhance-none");
+    p.set(CameraParameters::KEY_SUPPORTED_MULTI_ACCESS_COLOR_CORRECTIONS,
+          "enhance-sky,enhance-grass,enhance-skin,enhance-none");
+
+    resolution_index = mCamera->getMaxSnapShotResolution();
+    switch (resolution_index) {
+    case RESOLUTION_14MP:
+        p.set("picture-size-values", RESOLUTION_14MP_TABLE);
+        break;
+    case RESOLUTION_8MP:
+        p.set("picture-size-values", RESOLUTION_8MP_TABLE);
+        break;
+    case RESOLUTION_5MP:
+        p.set("picture-size-values", RESOLUTION_5MP_TABLE);
+        break;
+    case RESOLUTION_1080P:
+        p.set("picture-size-values", RESOLUTION_1080P_TABLE);
+        break;
+    case RESOLUTION_720P:
+        p.set("picture-size-values", RESOLUTION_720P_TABLE);
+        break;
+    default:
+        break;
+    }
 
     if (mCameraId == CAMERA_FACING_BACK) {
         // For main back camera
-        p.set("picture-size-values","320x240,640x480,1024x768,1280x720,"
-              "1920x1080,2048x1536,2560x1920,3264x2448,3648x2736,4096x3072,4352x3264");
+        // flash mode option
+        p.set(CameraParameters::KEY_FLASH_MODE,"off");
+        p.set(CameraParameters::KEY_SUPPORTED_FLASH_MODES,"auto,off,on,torch,slow-sync,day-sync");
     } else {
         // For front camera
-        p.set("picture-size-values","320x240,640x480,1280x720,1920x1080");
+        // No flash present
+        p.set(CameraParameters::KEY_FLASH_MODE,"none");
+        p.set(CameraParameters::KEY_SUPPORTED_FLASH_MODES,"none");
     }
 
     mParameters = p;
@@ -565,13 +600,17 @@ int CameraHardware::previewThread()
     //Skip the first several frames from the sensor
     if (mSkipFrame > 0) {
         mSkipFrame--;
+        mPreviewLock.lock();
         mCamera->putPreview(index);
+        mPreviewLock.unlock();
         return NO_ERROR;
     }
     processPreviewFrame(data);
 
     //Qbuf
+    mPreviewLock.lock();
     mCamera->putPreview(index);
+    mPreviewLock.unlock();
 
     return NO_ERROR;
 }
@@ -602,7 +641,9 @@ int CameraHardware::recordingThread()
     //Skip the first several frames from the sensor
     if (mSkipFrame > 0) {
         mSkipFrame--;
+        mPreviewLock.lock();
         mCamera->putRecording(index);
+        mPreviewLock.unlock();
         return NO_ERROR;
     }
 
@@ -612,7 +653,9 @@ int CameraHardware::recordingThread()
     //Process the recording frame when recording started
     if (mRecordRunning && bufferIsReady)
         processRecordingFrame(main_out, index);
+    mPreviewLock.lock();
     mCamera->putRecording(index);
+    mPreviewLock.unlock();
     return NO_ERROR;
 }
 
@@ -688,9 +731,10 @@ int CameraHardware::aeAfAwbThread()
         mPreviewFrameCondition.wait(mAeAfAwbLock);
         LOG2("%s: 3A return from wait", __func__);
         mAeAfAwbLock.unlock();
-        if (mSensorType != SENSOR_TYPE_SOC)
-            runAeAfAwb();
-        LOG2("%s: After run 3A thread", __func__);
+        if (mSensorType != SENSOR_TYPE_SOC) {
+            mAAA->AeAfAwbProcess(true);
+            LOG2("%s: After run 3A thread", __func__);
+        }
     }
 }
 
@@ -743,6 +787,9 @@ status_t CameraHardware::startPreview()
     mAeAfAwbLock.lock();
     mPreviewAeAfAwbRunning = true;
     mAeAfAwbLock.unlock();
+    mAAA->SetAeEnabled (true);
+    mAAA->SetAfEnabled(true);
+    mAAA->SetAwbEnabled(true);
     mPreviewAeAfAwbCondition.signal();
 
     //Determine which preview we are in
@@ -770,20 +817,8 @@ status_t CameraHardware::startPreview()
         LOGE("ERR(%s):Fail on mCamera->startPreview()", __func__);
         return -1;
     }
-    mAAA->IspSetFd(fd);
 
-    if (mSensorType != SENSOR_TYPE_SOC) {
-        if (mAAA->ModeSpecInit() < 0) {
-            LOGE("ModeSpecInit failed from 3A\n");
-            return -1;
-        }
-
-        mFramerate = mCamera->getFramerate();
-        if (mVideoPreviewEnabled)
-            mAAA->SwitchMode(PREVIEW_MODE, mFramerate);
-        else
-            mAAA->SwitchMode(VIDEO_RECORDING_MODE, mFramerate);
-    }
+    mAAA->FlushManualSettings ();
 
     mPreviewRunning = true;
     mPreviewLock.unlock();
@@ -804,6 +839,10 @@ void CameraHardware::stopPreview()
     mAeAfAwbLock.lock();
     if (mPreviewAeAfAwbRunning) {
         mPreviewAeAfAwbRunning = false;
+        mAAA->SetAeEnabled(false);
+        mAAA->SetAfEnabled(false);
+        mAAA->SetAwbEnabled(false);
+        mPreviewFrameCondition.signal();
         mAeAfAwbEndCondition.wait(mAeAfAwbLock);
     }
     mAeAfAwbLock.unlock();
@@ -990,6 +1029,7 @@ status_t CameraHardware::autoFocus()
 {
     LOG1("%s :", __func__);
     //signal autoFocusThread to run once
+    mExitAutoFocusThread = false;
     mAutoFocusThread->run("CameraAutoFocusThread", PRIORITY_DEFAULT);
     return NO_ERROR;
 }
@@ -997,7 +1037,15 @@ status_t CameraHardware::autoFocus()
 status_t CameraHardware::cancelAutoFocus()
 {
     LOG1("%s :", __func__);
-    mAutoFocusThread->requestExitAndWait();
+    mExitAutoFocusThread = true;
+
+    //Wake up the auofocus thread
+    mAeAfAwbEndCondition.signal();
+    mPreviewFrameCondition.signal();
+
+    mPreviewAeAfAwbRunning = true;
+    mPreviewAeAfAwbCondition.signal();
+
     return NO_ERROR;
 }
 
@@ -1025,20 +1073,36 @@ void CameraHardware::exifAttributeOrientation(exif_attribute_t& attribute)
         if (0 == rotation)
             attribute.orientation = 1;
         else if (90 == rotation)
+#ifdef MFLD_CDK
+            attribute.orientation = 8;
+#else
             attribute.orientation = 6;
+#endif
         else if (180 == rotation)
             attribute.orientation = 3;
         else if (270 == rotation)
+#ifdef MFLD_CDK
+            attribute.orientation = 6;
+#else
             attribute.orientation = 8;
+#endif
     } else if (CAMERA_FACING_FRONT == mCameraId) { // sub sensor
         if (0 == rotation)
             attribute.orientation = 1;
         else if (90 == rotation)
+#ifdef MFLD_CDK
+            attribute.orientation = 6;
+#else
             attribute.orientation = 8;
+#endif
         else if (180 == rotation)
             attribute.orientation = 3;
         else if (270 == rotation)
+#ifdef MFLD_CDK
+            attribute.orientation = 8;
+#else
             attribute.orientation = 6;
+#endif
     }
     LOG1("exifAttribute, sensor angle:%d degrees, rotation value:%d degrees, orientation value:%d",
         cam_info.orientation, rotation, attribute.orientation);
@@ -1142,6 +1206,8 @@ void CameraHardware::exifAttribute(exif_attribute_t& attribute, int cap_w, int c
 {
     int ae_mode;
     unsigned short exp_time, iso_speed, ss_exp_time, ss_iso_speed, aperture;
+    int ret;
+    unsigned int focal_length, fnumber;
 
     memset(&attribute, 0, sizeof(attribute));
     // exp_time's unit is 100us
@@ -1190,8 +1256,18 @@ void CameraHardware::exifAttribute(exif_attribute_t& attribute, int cap_w, int c
 
     // fnumber
     // TBD, should get from driver
-    attribute.fnumber.num = EXIF_DEF_FNUMBER_NUM;
-    attribute.fnumber.den = EXIF_DEF_FNUMBER_DEN;
+    ret = mCamera->getFnumber(&fnumber);
+    if (ret < 0) {
+               /*Error handler: if driver does not support Fnumber achieving,
+                        just give the default value.*/
+        attribute.fnumber.num = EXIF_DEF_FNUMBER_NUM;
+        attribute.fnumber.den = EXIF_DEF_FNUMBER_DEN;
+        ret = 0;
+    } else {
+        attribute.fnumber.num = fnumber >> 16;
+        attribute.fnumber.den = fnumber & 0xffff;
+        LOG1("%s: fnumber:%x, num: %d, den: %d", __func__, fnumber, attribute.fnumber.num, attribute.fnumber.den);
+    }
 
     // aperture
     attribute.aperture.num = (int)((((double)attribute.fnumber.num/(double)attribute.fnumber.den)* sqrt(100.0/aperture))*100);
@@ -1368,8 +1444,18 @@ void CameraHardware::exifAttribute(exif_attribute_t& attribute, int cap_w, int c
 
     // the actual focal length of the lens, in mm.
     // there is no API for lens position.
-    attribute.focal_length.num = EXIF_DEF_FOCAL_LEN_NUM;
-    attribute.focal_length.den = EXIF_DEF_FOCAL_LEN_DEN;
+    ret = mCamera->getFocusLength(&focal_length);
+    if (ret < 0) {
+               /*Error handler: if driver does not support focal_length achieving,
+                        just give the default value.*/
+        attribute.focal_length.num = EXIF_DEF_FOCAL_LEN_NUM;
+        attribute.focal_length.den = EXIF_DEF_FOCAL_LEN_DEN;
+        ret = 0;
+    } else {
+        attribute.focal_length.num = focal_length >> 16;
+        attribute.focal_length.den = focal_length & 0xffff;
+        LOG1("%s: focal_length:%x, num: %d, den: %d", __func__, focal_length, attribute.focal_length.num, attribute.focal_length.den);
+    }
 
     // GIS information
     exifAttributeGPS(attribute);
@@ -1386,11 +1472,394 @@ void CameraHardware::exifAttribute(exif_attribute_t& attribute, int cap_w, int c
     attribute.compression_scheme = EXIF_DEF_COMPRESSION;
 }
 
+/* Return true, the thread will loop. Return false, the thread will terminate. */
+int CameraHardware::compressThread()
+{
+    struct BCBuffer *bcbuf;
+    int cap_w, cap_h;
+    int rgb_frame_size, jpeg_buf_size;
+    void *pexif;
+    void *pmainimage;
+    void *pthumbnail;   // first save RGB565 data, then save jpeg encoded data into this pointer
+    int i, j, ret;
+
+    mCompressLock.lock();
+    LOG1("BC, line:%d, before receive mCompressCondition", __LINE__);
+    mCompressCondition.wait(mCompressLock);
+    LOG1("BC, line:%d, received mCompressCondition", __LINE__);
+    mCompressLock.unlock();
+
+    if (mMsgEnabled & CAMERA_MSG_COMPRESSED_IMAGE) {
+        int exif_size = 0;
+        int thumbnail_size = 0; // it will be included in the exif_size
+        int mainimage_size = 0;
+        int jpeg_file_size = 0;
+        int main_quality, thumbnail_quality;
+        unsigned tmp;
+        exif_attribute_t exifattribute;
+        JpegEncoder jpgenc;
+        const unsigned char FILE_START[2] = {0xFF, 0xD8};
+        const unsigned char FILE_END[2] = {0xFF, 0xD9};
+
+        // get the Jpeg Quality setting
+        main_quality = mParameters.getInt(CameraParameters::KEY_JPEG_QUALITY);
+        if (-1 == main_quality) {
+            main_quality = mJpegQualityDefault;
+        }
+        thumbnail_quality = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY);
+        if (-1 == thumbnail_quality) {
+            thumbnail_quality = mJpegQualityDefault;
+        }
+        LOG1("main_quality:%d, thumbnail_quality:%d", main_quality, thumbnail_quality);
+
+        mCamera->getSnapshotSize(&cap_w, &cap_h, &rgb_frame_size);
+
+        // loop and wait to hande all the pictures
+        for (i = 0; i < mBCNumReq; i++) {
+            LOG1("BC, line:%d, before sem_wait:sem_bc_captured, %d", __LINE__, i);
+            if ((ret = sem_wait(&sem_bc_captured)) < 0)
+                LOGE("BC, line:%d, sem_wait fail, ret:%d", __LINE__, ret);
+            bcbuf = mBCBuffer;
+            for (j = 0; j < mBCNumReq; j++) {
+                bcbuf = mBCBuffer + j;
+                if (bcbuf->sequence == i)
+                    break;
+            }
+            if (j == mBCNumReq) {
+                LOGE("BC, line:%d, error, j:%d == mBCNumReq", __LINE__, j);
+                return false;
+            }
+            LOG1("BC, line:%d, after sem_wait:sem_bc_captured, i:%d, j:%d", __LINE__, i, j);
+
+            pexif = bcbuf->pdst_exif;
+            pthumbnail = bcbuf->pdst_thumbnail;
+            pmainimage = bcbuf->pdst_main;
+
+            // encode the main image
+            if (encodeToJpeg(cap_w, cap_h, bcbuf->psrc, pmainimage, &mainimage_size, main_quality) < 0) {
+                LOGE("BC, line:%d, encodeToJpeg fail for main image", __LINE__);
+            }
+
+            // encode the thumbnail
+            void *pdst = pthumbnail;
+            if (encodeToJpeg(mPostViewWidth, mPostViewHeight, pthumbnail, pdst, &thumbnail_size, thumbnail_quality) < 0) {
+                LOGE("BC, line:%d, encodeToJpeg fail for main image", __LINE__);
+            }
+            memcpy(pdst, FILE_START, sizeof(FILE_START));
+            thumbnail_size = thumbnail_size - sizeof(FILE_END);
+
+            // fill the attribute
+            if ((unsigned int)thumbnail_size >= exif_offset) {
+                // thumbnail is in the exif, so the size of it must less than exif_offset
+                exifAttribute(exifattribute, cap_w, cap_h, false, mFlashNecessary);
+            } else {
+                exifAttribute(exifattribute, cap_w, cap_h, true, mFlashNecessary);
+            }
+
+            // set thumbnail data pointer
+            jpgenc.setThumbData((unsigned char *)pdst, thumbnail_size);
+
+            // generate exif, it includes memcpy the thumbnail
+            jpgenc.makeExif((unsigned char*)pexif + sizeof(FILE_START), &exifattribute, &tmp, 0);
+            exif_size = (int)tmp;
+            LOG1("exif sz:0x%x,thumbnail sz:0x%x,main sz:0x%x", exif_size, thumbnail_size, mainimage_size);
+
+            // move data together
+            void *pjpg_start = pexif;
+            void *pjpg_exifend = (void*)((char*)pjpg_start + sizeof(FILE_START) + exif_size);
+            void *pjpg_main = (void*)((char*)pjpg_exifend + sizeof(FILE_END));
+            void *psrc = (void*)((char*)pmainimage + sizeof(FILE_START));
+            memcpy(pjpg_start, FILE_START, sizeof(FILE_START));
+            memcpy(pjpg_exifend, FILE_END, sizeof(FILE_END));
+            memmove(pjpg_main, psrc, mainimage_size - sizeof(FILE_START));
+
+            jpeg_file_size =sizeof(FILE_START) + exif_size + sizeof(FILE_END) + mainimage_size - sizeof(FILE_START);
+            LOG1("jpg file sz:%d", jpeg_file_size);
+
+            bcbuf->encoded = true;
+            bcbuf->jpeg_size = jpeg_file_size;
+
+            // post sem to let the picture thread to send the jpeg pic out
+            if ((ret = sem_post(&sem_bc_encoded)) < 0)
+                LOGE("BC, line:%d, sem_post fail, ret:%d", __LINE__, ret);
+            LOGD("BC, line:%d, encode:%d finished,, sem_post", __LINE__, i);
+        }
+
+        if (i == mBCNumReq) {
+            LOGD("BC, line:%d, leave compressThread", __LINE__);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void CameraHardware::burstCaptureInit(void)
+{
+    mBCNumCur = 0;
+    mBCEn = false;
+    mBCNumReq = 1;
+    mBCNumSkipReq = 0;
+    mBCBuffer = NULL;
+    mBCHeap = NULL;
+}
+
+// call from pictureThread
+int CameraHardware::burstCaptureHandle(void)
+{
+    LOGD("BC, %s :start", __func__);
+    int fd, i, index, ret;
+    int cap_w, cap_h;
+    int rgb_frame_size, jpeg_buf_size, total_size;
+    int skipped;
+    void *main_out, *postview_out;
+    struct BCBuffer *bcbuf;
+    sp<MemoryBase> JpegBuffer;
+
+    // get size
+    mCamera->getPostViewSize(&mPostViewWidth, &mPostViewHeight, &mPostViewSize);
+    mPostViewFormat = mCamera->getPostViewPixelFormat();
+    mCamera->getSnapshotSize(&cap_w, &cap_h, &rgb_frame_size);
+    rgb_frame_size = cap_w * cap_h * 2; // for RGB565 format
+    jpeg_buf_size = cap_w * cap_h * 3 / 10; // for store the encoded jpeg file, experience value
+    total_size = rgb_frame_size + exif_offset + thumbnail_offset + jpeg_buf_size;
+
+    // the first time of calling taking picture
+    if (mBCNumCur == 1) {
+        //get postview's memory base
+        postview_out = mRawHeap->getBase();
+
+        // allocate memory
+        mBCHeap = new MemoryHeapBase(mBCNumReq * sizeof(struct BCBuffer));
+        if (mBCHeap->getHeapID() < 0) {
+            LOGE("BC, line:%d, mBCHeap fail", __LINE__);
+            goto BCHANDLE_ERR;
+        }
+        mBCBuffer = (struct BCBuffer *)mBCHeap->getBase();
+        for (i = 0; i < mBCNumReq; i++) {
+            // the memory part, it follows Jozef's design
+            bcbuf = mBCBuffer + i;
+
+            bcbuf->heap = new MemoryHeapBase(total_size);
+            if (bcbuf->heap->getHeapID() < 0) {
+                LOGE("BC, line:%d, malloc heap fail, i:%d", __LINE__, i);
+                goto BCHANDLE_ERR;
+            }
+
+            bcbuf->total_size = total_size;
+            bcbuf->src_size = rgb_frame_size;
+
+            bcbuf->jpeg_size = 0;
+
+            bcbuf->psrc = bcbuf->heap->getBase();
+            bcbuf->pdst_exif = (char *)bcbuf->psrc + bcbuf->src_size;
+            bcbuf->pdst_thumbnail = (char *)bcbuf->pdst_exif + exif_offset;
+            bcbuf->pdst_main = (char *)bcbuf->pdst_thumbnail + thumbnail_offset;
+
+            bcbuf->ready = false;
+            bcbuf->encoded = false;
+            bcbuf->sequence = ~0;
+            if (memory_userptr) {
+                mCamera->setSnapshotUserptr(i, bcbuf->psrc, postview_out);
+            }
+        }
+
+        //Prepare for the snapshot
+        if ((fd = mCamera->startSnapshot()) < 0) {
+            LOGE("BC, line:%d, startSnapshot fail", __LINE__);
+            goto BCHANDLE_ERR;
+        }
+        mAAA->IspSetFd(fd);
+        if (mSensorType == SENSOR_TYPE_RAW) {
+            mFramerate = mCamera->getFramerate();
+            mAAA->SwitchMode(STILL_IMAGE_MODE);
+        }
+
+        //Flush 3A results
+        mAAA->FlushManualSettings ();
+        update3Aresults();
+
+        //Skip the first frame
+        index = mCamera->getSnapshot(&main_out, &postview_out, NULL);
+        if (index < 0) {
+            LOGE("BC, line:%d, getSnapshot fail", __LINE__);
+            goto BCHANDLE_ERR;
+        }
+
+        if (mCamera->putSnapshot(index) < 0) {
+            LOGE("BC, line:%d, putSnapshot fail", __LINE__);
+            goto BCHANDLE_ERR;
+        }
+
+        for (i = 0; i < mBCNumReq; i++) {
+            // dq buffer and skip request buffer
+            for (skipped = 0; skipped <= mBCNumSkipReq; skipped++) {
+                //dq buffer
+                index = mCamera->getSnapshot(&main_out, &postview_out, NULL);
+                if (index < 0) {
+                    LOGE("BC, line:%d, getSnapshot fail", __LINE__);
+                    goto BCHANDLE_ERR;
+                }
+                if (i == 0) { // we don't need to skip the first frame
+                    LOG1("BC, line:%d, dq buffer, i:%d", __LINE__, i);
+                    break;
+                }
+
+                if(skipped < mBCNumSkipReq) {
+                    mCamera->putSnapshot(index);
+                    LOG1("BC, line:%d, skipped dq buffer, i:%d", __LINE__, i);
+                }
+                else
+                    LOG1("BC, line:%d, dq buffer, i:%d", __LINE__, i);
+            }
+
+            // set buffer sequence
+            bcbuf = mBCBuffer + index;
+            bcbuf->sequence = i;
+
+            // get RGB565 thumbnail data from NV12 postview
+            mCamera->toRGB565(mPostViewWidth, mPostViewHeight, mPostViewFormat,
+                                postview_out, bcbuf->pdst_thumbnail);
+
+            // shutter sound
+            if (mMsgEnabled & CAMERA_MSG_SHUTTER)
+                mNotifyCb(CAMERA_MSG_SHUTTER, 0, 0, mCallbackCookie);
+            LOG1("BC, line:%d, shutter:%d", __LINE__, i);
+
+            // do nothing for RAW message
+            if (mMsgEnabled & CAMERA_MSG_RAW_IMAGE) {
+                LOG1("BC, line:%d,do nothing for CAMERA_MSG_RAW_IMAGE", __LINE__);
+            }
+
+            if (!memory_userptr) {
+                memcpy(bcbuf->psrc, main_out, bcbuf->src_size);
+            }
+
+            // mark the src data ready
+            bcbuf->ready = true;
+            LOG1("BC, line:%d, index:%d, ready:%d, sequence:%d", __LINE__, index, bcbuf->ready, bcbuf->sequence);
+
+            // active the compress thread
+            if (i == 0) {
+                LOG1("BC, line:%d, send the signal to compressthread", __LINE__);
+                mCompressCondition.signal();
+            }
+
+            // let the compress thread to encode the jpeg
+            LOG1("BC, line:%d, before sem_post:sem_bc_captured, %d", __LINE__, i);
+            if ((ret = sem_post(&sem_bc_captured)) < 0)
+                LOGE("BC, line:%d, sem_post fail, ret:%d", __LINE__, ret);
+            LOG1("BC, line:%d, after sem_post:sem_bc_captured, %d", __LINE__, i);
+
+            //Postview
+            if (use_texture_streaming) {
+                int mPostviewId = 0;
+                memcpy(mRawIdHeap->base(), &mPostviewId, sizeof(int));
+                mDataCb(CAMERA_MSG_POSTVIEW_FRAME, mRawIdBase, mCallbackCookie);
+                LOGD("Sent postview frame id: %d", mPostviewId);
+            } else {
+                /* TODO: YUV420->RGB565 */
+                sp<MemoryBase> pv_buffer = new MemoryBase(mRawHeap, 0, mPostViewSize);
+                mDataCb(CAMERA_MSG_POSTVIEW_FRAME, pv_buffer, mCallbackCookie);
+                pv_buffer.clear();
+            }
+
+            // q buf, don't need to do it.
+            //mCamera->putSnapshot(index);
+        }
+        LOG1("BC, line:%d, finished capture", __LINE__);
+    }
+
+    // find the and wait desired buffer
+    bcbuf = mBCBuffer;
+    for (i = 0; i < mBCNumReq; i++) {
+        bcbuf = mBCBuffer + i;
+        if ((bcbuf->sequence + 1) == mBCNumCur) {
+            if ((ret = sem_wait(&sem_bc_encoded)) < 0)
+                LOGE("BC, line:%d, sem_wait fail, ret:%d", __LINE__, ret);
+            LOG1("BC, line:%d, sem_wait sem_bc_encoded, i:%d", __LINE__, i);
+            break;
+        }
+    }
+    if (i == mBCNumReq) {
+        LOGE("BC, line:%d, error, i:%d == mBCNumReq", __LINE__, i);
+        goto BCHANDLE_ERR;
+    }
+
+    if (mBCNumCur == mBCNumReq) {
+        LOG1("BC, line:%d, begin to stop the camera", __LINE__);
+        //clean up bcd
+        mCamera->releasePostviewBcd();
+        //Stop the Camera Now
+        mCamera->stopSnapshot();
+        //Set captureInProgress earlier.
+        mCaptureInProgress = false;
+
+        mAAA->IspSetFd(-1);
+    }
+
+    // send compressed jpeg image to upper
+    JpegBuffer = new MemoryBase(bcbuf->heap, bcbuf->src_size, bcbuf->jpeg_size);
+    mDataCb(CAMERA_MSG_COMPRESSED_IMAGE, JpegBuffer, mCallbackCookie);
+    JpegBuffer.clear();
+    LOGD("BC, line:%d, send the %d, compressed jpeg image", __LINE__, i);
+
+    mCaptureInProgress = false;
+
+    if (mBCNumCur == mBCNumReq) {
+        LOG1("BC, line:%d, begin to clean up the memory", __LINE__);
+        // release the memory
+        for (i = 0; i < mBCNumReq; i++) {
+            bcbuf = mBCBuffer + i;
+            bcbuf->heap.clear();
+        }
+        mBCHeap.clear();
+
+        burstCaptureInit();
+    }
+
+    LOG1("BC, %s :end", __func__);
+    return NO_ERROR;
+
+BCHANDLE_ERR:
+    LOGE("BC, line:%d, got BCHANDLE_ERR in the burstCaptureHandle", __LINE__);
+    if (mBCBuffer) {
+        for (i = 0; i < mBCNumReq; i++) {
+            bcbuf = mBCBuffer + i;
+            bcbuf->heap.clear();
+        }
+    }
+    if (mBCHeap != NULL)
+        mBCHeap.clear();
+
+    mCamera->stopSnapshot();
+
+    mCaptureInProgress = false;
+    return UNKNOWN_ERROR;
+}
+
 #define MAX_FRAME_WAIT 3
 #define FLASH_FRAME_WAIT 4
 int CameraHardware::pictureThread()
 {
     LOGD("%s :start", __func__);
+
+    // ToDo. abstract some functions for both single capture and burst capture.
+    if (mBCEn) {
+        mCamera->setSnapshotNum(mBCNumReq);
+        mBCNumCur++;
+        LOGD("BC, line:%d, BCEn:%d, BCReq:%d, BCCur:%d", __LINE__, mBCEn, mBCNumReq, mBCNumCur);
+        if (mBCNumCur == 1) {
+            if (mCompressThread->run("CameraCompressThread", PRIORITY_DEFAULT) !=
+            NO_ERROR) {
+                LOGE("%s : couldn't run compress thread", __func__);
+                return INVALID_OPERATION;
+            }
+        }
+        return burstCaptureHandle();
+    } else {
+        mCamera->setSnapshotNum(1);
+    }
 
     int ret;
     if (use_file_input) {
@@ -1404,6 +1873,14 @@ int CameraHardware::pictureThread()
     int cap_width, cap_height, cap_frame_size, rgb_frame_size;
     void *pmainimage;
     void *pthumbnail;   // first save RGB565 data, then save jpeg encoded data into this pointer
+#ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
+    HWLibjpegWrap libjpghw;
+    void* usrptr=NULL;
+    bool bHwEncodepath=TRUE;
+    //Although enable hwlibjpeg buffer share, if picture resolution is below 640*480, we have to go software path
+    if(V4L2_PIX_FMT_YUV420 == mPicturePixelFormat)
+        bHwEncodepath=FALSE;
+#endif
     mCamera->getPostViewSize(&mPostViewWidth, &mPostViewHeight, &mPostViewSize);
     mCamera->getSnapshotSize(&cap_width, &cap_height, &cap_frame_size);
     rgb_frame_size = cap_width * cap_height * 2;
@@ -1424,8 +1901,24 @@ int CameraHardware::pictureThread()
         pthumbnail = (void*)((char*)(picHeap->getBase()) + exif_offset);
         pmainimage = (void*)((char*)(picHeap->getBase()) + exif_offset + thumbnail_offset);
 
+#ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
+        if(bHwEncodepath){
+            //initialize buffer share with hardware libjpeg
+            if(libjpghw.initHwBufferShare((JSAMPLE *)pmainimage,capsize_aligned,cap_width,cap_height,(void**)&usrptr) != 0){
+                LOGD("%s- initHwBufferShare Fail!",__func__);
+                goto start_error_out;
+            }
+        }
+        else
+            usrptr =  pmainimage ;//software path, we have to set usrptr to memory allocated in camera hal
+#endif
+
         if (memory_userptr) {
+#ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
+            mCamera->setSnapshotUserptr(0,usrptr, mRawHeap->getBase());
+#else
             mCamera->setSnapshotUserptr(0, pmainimage, mRawHeap->getBase());
+#endif
         }
 
 #ifdef PERFORMANCE_TUNING
@@ -1435,12 +1928,6 @@ int CameraHardware::pictureThread()
         int fd;
         if ((fd = mCamera->startSnapshot()) < 0)
             goto start_error_out;
-        mAAA->IspSetFd(fd);
-        if (mSensorType != SENSOR_TYPE_SOC) {
-            mFramerate = mCamera->getFramerate();
-            mAAA->SwitchMode(STILL_IMAGE_MODE, mFramerate);
-        }
-        mCamera->checkGDC();
 
         //Flush 3A results
         mAAA->FlushManualSettings ();
@@ -1460,12 +1947,8 @@ int CameraHardware::pictureThread()
         }
 
         //Turn on flash if neccessary before the Qbuf
-        if((mCamera->getFlashMode() == CAM_AE_FLASH_MODE_ON)||
-            ((mFlashNecessary)&&(mCamera->getFlashMode() != CAM_AE_FLASH_MODE_OFF)))
-        {
-            //FIXME:hardcode the flash parameter, change it in future. 
-            mCamera->captureFlashOnCertainDuration(3, 500, 5); /* software trigger, 500ms, intensity 15*/
-        } 
+        if (mFlashNecessary)
+            mCamera->captureFlashOnCertainDuration(0, 800, 15*625); /* software trigger, 800ms, intensity 15*/
         mCamera->putSnapshot(index);
 
 #ifdef PERFORMANCE_TUNING
@@ -1490,7 +1973,11 @@ int CameraHardware::pictureThread()
         }
 
         if (!memory_userptr) {
+#ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
+            memcpy(usrptr, main_out, cap_frame_size);
+#else
             memcpy(pmainimage, main_out, rgb_frame_size);
+#endif
         }
 
 #ifdef PERFORMANCE_TUNING
@@ -1513,8 +2000,11 @@ int CameraHardware::pictureThread()
 #endif
         mCamera->setIndicatorIntensity(INDICATOR_INTENSITY_OFF);
 
+        mCamera->acheiveEXIFAttributesFromDriver();
+
         //Stop the Camera Now
         mCamera->putSnapshot(index);
+        mCamera->releasePostviewBcd();
         mCamera->stopSnapshot();
         mAAA->IspSetFd(-1);
 
@@ -1551,19 +2041,48 @@ int CameraHardware::pictureThread()
             }
             LOG1("main_quality:%d, thumbnail_quality:%d", main_quality, thumbnail_quality);
 
-            // RGB565 color space conversion
-            mCamera->toRGB565(cap_width, cap_height, mPicturePixelFormat, pmainimage, pmainimage);
+#ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
+            if(bHwEncodepath){
+                //set parameter for jpeg encode
+                libjpghw.setJpeginfo(cap_width,cap_height,3,JCS_YCbCr,main_quality);
+                if(libjpghw.startJPEGEncodebyHwBufferShare() != 0){
+                      LOGD("%s- jpeg_destroy_compress done !",__func__);
+                      goto get_img_error;
+                }
+                if(libjpghw.getJpegSize() > 0){
+                     //there should jpeg data in pmainimage now
+                     LOGD("%s- jpeg compress size = %d !",__func__,libjpghw.getJpegSize());
+                     mainimage_size = libjpghw.getJpegSize();
+                }
+                else{
+                    LOGD("%s- jpeg compress fail !",__func__);
+                    goto get_img_error;
+                }
+            }
+            else{
+                 //software path
+                 // RGB565 color space conversion
+                 mCamera->toRGB565(cap_width, cap_height, mPicturePixelFormat, pmainimage, pmainimage);
+                 // encode the main image
+                 if (encodeToJpeg(cap_width, cap_height, pmainimage, pmainimage, &mainimage_size, main_quality) < 0)
+                     goto start_error_out;
+            }
+#else
+             // RGB565 color space conversion
+             mCamera->toRGB565(cap_width, cap_height, mPicturePixelFormat, pmainimage, pmainimage);
 
-            // encode the main image
-            if (encodeToJpeg(cap_width, cap_height, pmainimage, pmainimage, &mainimage_size, main_quality) < 0)
-                goto start_error_out;
+             // encode the main image
+             if (encodeToJpeg(cap_width, cap_height, pmainimage, pmainimage, &mainimage_size, main_quality) < 0)
+                 goto start_error_out;
+#endif
 
             // encode the thumbnail
             void *pdst = pthumbnail;
             if (encodeToJpeg(mPostViewWidth, mPostViewHeight, pthumbnail, pdst, &thumbnail_size, thumbnail_quality) < 0)
                 goto start_error_out;
+
+            thumbnail_size = thumbnail_size -  sizeof(FILE_END);
             memcpy(pdst, FILE_START, sizeof(FILE_START));
-            thumbnail_size = thumbnail_size - sizeof(FILE_END);
 
             // fill the attribute
             if ((unsigned int)thumbnail_size >= exif_offset) {
@@ -1585,12 +2104,12 @@ int CameraHardware::pictureThread()
             void *pjpg_start = picHeap->getBase();
             void *pjpg_exifend = (void*)((char*)pjpg_start + sizeof(FILE_START) + exif_size);
             void *pjpg_main = (void*)((char*)pjpg_exifend + sizeof(FILE_END));
-            void *psrc = (void*)((char*)pmainimage + sizeof(FILE_START));
+            void *psrc = (void*)((char*)pmainimage+sizeof(FILE_START));
             memcpy(pjpg_start, FILE_START, sizeof(FILE_START));
             memcpy(pjpg_exifend, FILE_END, sizeof(FILE_END));
-            memmove(pjpg_main, psrc, mainimage_size - sizeof(FILE_START));
+            memmove(pjpg_main, psrc, mainimage_size-sizeof(FILE_START));
+            jpeg_file_size =sizeof(FILE_START) + exif_size + sizeof(FILE_END) + mainimage_size- sizeof(FILE_END);
 
-            jpeg_file_size =sizeof(FILE_START) + exif_size + sizeof(FILE_END) + mainimage_size - sizeof(FILE_START);
             LOG1("jpg file sz:%d", jpeg_file_size);
 
             sp<MemoryBase> JpegBuffer = new MemoryBase(picHeap, 0, jpeg_file_size);
@@ -1602,7 +2121,6 @@ int CameraHardware::pictureThread()
 #endif
 
         //clean up
-        mCamera->releasePostviewBcd();
         pv_buffer.clear();
         picHeap.clear();
     }
@@ -1622,6 +2140,7 @@ get_img_error:
 
 start_error_out:
     mCaptureInProgress = false;
+    mNotifyCb(CAMERA_MSG_ERROR, CAMERA_ERROR_UKNOWN, 0, mCallbackCookie);
     LOGE("%s :end", __func__);
 
     return UNKNOWN_ERROR;
@@ -1726,34 +2245,34 @@ int CameraHardware::autoFocusThread()
     int af_status = 0;
     LOG1("%s : starting", __func__);
 
-    //stop the preview 3A thread
-    mAeAfAwbLock.lock();
-    if (mPreviewAeAfAwbRunning) {
-        mPreviewAeAfAwbRunning = false;
-        mAeAfAwbEndCondition.wait(mAeAfAwbLock);
-    }
-    mAeAfAwbLock.unlock();
-
-    if (mExitAutoFocusThread) {
-        LOGV("%s : exiting on request", __func__);
-        return NO_ERROR;
-    }
-
-    LOG1("%s: begin do the autofocus\n", __func__);
-    //set the mFlashNecessary
     if (mSensorType == SENSOR_TYPE_SOC) {
         if (mMsgEnabled & CAMERA_MSG_FOCUS)
             mNotifyCb(CAMERA_MSG_FOCUS, 1, 0, mCallbackCookie);
         return NO_ERROR;
     }
+
+    //stop the preview 3A thread
+    mAeAfAwbLock.lock();
+    if (mPreviewAeAfAwbRunning) {
+        mPreviewAeAfAwbRunning = false;
+        LOG1("%s : waiting for 3A thread to exit", __func__);
+        mAeAfAwbEndCondition.wait(mAeAfAwbLock);
+    }
+    mAeAfAwbLock.unlock();
+
+    if (mExitAutoFocusThread) {
+        LOG1("%s : exiting on request", __func__);
+        return NO_ERROR;
+    }
+
+    LOG1("%s: begin do the autofocus\n", __func__);
+    //set the mFlashNecessary
     calculateLightLevel();
     switch(mCamera->getFlashMode())
     {
         case CAM_AE_FLASH_MODE_AUTO:
             if(!mFlashNecessary) break;
         case CAM_AE_FLASH_MODE_ON:
-            //Don't calculate for "ON" mode, just flash
-            mFlashNecessary = true;
             mCamera->setAssistIntensity(ASSIST_INTENSITY_WORKING);
             break;
         default:
@@ -1773,6 +2292,16 @@ int CameraHardware::autoFocusThread()
     }
 
     mCamera->setAssistIntensity(ASSIST_INTENSITY_OFF);
+    if (af_status == FOCUS_CANCELD)
+        return NO_ERROR;
+
+    if(CAM_AF_MODE_TOUCH == af_mode) {
+        mAAA->SetAwbEnabled(true);
+        mAAA->SetAeEnabled(true);
+        mPreviewAeAfAwbRunning = true;
+        mPreviewAeAfAwbCondition.signal();
+    }
+
 
     if (mMsgEnabled & CAMERA_MSG_FOCUS)
         mNotifyCb(CAMERA_MSG_FOCUS, af_status , 0, mCallbackCookie);
@@ -1780,24 +2309,29 @@ int CameraHardware::autoFocusThread()
     return NO_ERROR;
 }
 
-bool CameraHardware::runStillAfSequence(void)
+int CameraHardware::runStillAfSequence(void)
 {
     //The preview thread is stopped at this point
     bool af_status = false;
     mAAA->AeLock(true);
-    mAAA->SetAfEnabled(false);
     mAAA->SetAeEnabled(false);
+    mAAA->SetAfEnabled(true);
     mAAA->SetAwbEnabled(false);
-    mAAA->SetAfStillEnabled(true);
     mAAA->AfStillStart();
     // Do more than 100 time
     for (int i = 0; i < mStillAfMaxCount; i++) {
         mAeAfAwbLock.lock();
+        //check whether exit before wait.
+        if (mExitAutoFocusThread) {
+            LOGD("%s : exiting on request", __func__);
+            mAeAfAwbLock.unlock();
+            return FOCUS_CANCELD;//cancel
+        }
+
         mPreviewFrameCondition.wait(mAeAfAwbLock);
         LOG2("%s: still AF return from wait", __func__);
         mAeAfAwbLock.unlock();
-        mAAA->GetStatistics();
-        mAAA->AfProcess();
+        mAAA->AeAfAwbProcess(true);
         mAAA->AfStillIsComplete(&af_status);
         if (af_status)
         {
@@ -1809,11 +2343,8 @@ bool CameraHardware::runStillAfSequence(void)
 
     mAAA->AfStillStop ();
     mAAA->AeLock(false);
-    mAAA->SetAfEnabled(true);
-    mAAA->SetAeEnabled(true);
-    mAAA->SetAwbEnabled(true);
+    mAAA->SetAfEnabled(false);
 
-    mAAA->SetAfStillEnabled(false);
     return af_status;
 }
 
@@ -1826,30 +2357,6 @@ status_t CameraHardware::sendCommand(int32_t command, int32_t arg1,
 void CameraHardware::release()
 {
     LOGD("%s start:", __func__);
-    if (mPreviewThread != NULL) {
-        mPreviewThread->requestExit();
-        mExitPreviewThread = true;
-        mPreviewRunning = true; /* let it run so it can exit */
-        mPreviewCondition.signal();
-        mPreviewThread->requestExitAndWait();
-        mPreviewThread.clear();
-    }
-    LOG1("%s deleted the preview thread:", __func__);
-
-    if (mAutoFocusThread != NULL) {
-        mAutoFocusThread->requestExit();
-        mExitAutoFocusThread = true;
-        mAeAfAwbEndCondition.signal();
-        mAutoFocusThread->requestExitAndWait();
-        mAutoFocusThread.clear();
-    }
-    LOG1("%s deleted the autofocus thread:", __func__);
-
-    if (mPictureThread != NULL) {
-        mPictureThread->requestExitAndWait();
-        mPictureThread.clear();
-    }
-    LOG1("%s deleted the picture thread:", __func__);
 
     if (mAeAfAwbThread != NULL) {
         mAeAfAwbThread->requestExit();
@@ -1861,7 +2368,40 @@ void CameraHardware::release()
         mAeAfAwbThread->requestExitAndWait();
         mAeAfAwbThread.clear();
     }
+
     LOG1("%s deleted the 3A thread:", __func__);
+    if (mPreviewThread != NULL) {
+        mPreviewThread->requestExit();
+        mExitPreviewThread = true;
+        mPreviewRunning = true; /* let it run so it can exit */
+        mPreviewCondition.signal();
+        mPreviewThread->requestExitAndWait();
+        mPreviewThread.clear();
+    }
+
+    LOG1("%s deleted the preview thread:", __func__);
+
+    if (mAutoFocusThread != NULL) {
+        mAutoFocusThread->requestExit();
+        mExitAutoFocusThread = true;
+        mAeAfAwbEndCondition.signal();
+        mPreviewFrameCondition.signal();
+        mAutoFocusThread->requestExitAndWait();
+        mAutoFocusThread.clear();
+    }
+    LOG1("%s deleted the autofocus thread:", __func__);
+
+    if (mPictureThread != NULL) {
+        mPictureThread->requestExitAndWait();
+        mPictureThread.clear();
+    }
+    LOG1("%s deleted the picture thread:", __func__);
+
+    if (mCompressThread != NULL) {
+        mCompressThread->requestExitAndWait();
+        mCompressThread.clear();
+    }
+    LOG1("BC, line:%d, deleted the compress thread:", __LINE__);
 }
 
 status_t CameraHardware::dump(int fd, const Vector<String16>& args) const
@@ -1956,6 +2496,7 @@ int  CameraHardware::update3AParameters(CameraParameters& p, bool flush_only)
             ret = mAAA->AfSetWindow(&win_new);
             LOGD("AfSetWindow, tf, x_left:%d, y_top:%d, x_right:%d, y_bottom:%d, weight%d, result:%d",
                 win_new.x_left, win_new.y_top, win_new.x_right, win_new.y_bottom, win_new.weight, ret);
+            new_value = p.get(CameraParameters::KEY_FOCUS_MODE);
         } else {
             int mode, w, h;
 
@@ -1996,6 +2537,8 @@ int  CameraHardware::update3AParameters(CameraParameters& p, bool flush_only)
                 afmode = CAM_AF_MODE_MANUAL;
                 af_to_manual = true;
             }
+            else if(!strcmp(new_value, CameraParameters::FOCUS_MODE_TOUCH))
+                afmode = CAM_AF_MODE_TOUCH;
             else
                 afmode = CAM_AF_MODE_AUTO;
 
@@ -2552,24 +3095,48 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     int new_picture_width, new_picture_height;
     const char *new_format = p.getPictureFormat();
     if (strcmp(new_format, "jpeg") == 0)
+#ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
+        mPicturePixelFormat = V4L2_PIX_FMT_NV12;
+#else
         mPicturePixelFormat = V4L2_PIX_FMT_YUV420;
+#endif
     else {
-        LOGE("Only jpeg still pictures are supported");
+        LOGE("Only jpeg still pictures are supported, new_format:%s", new_format);
     }
 
     LOGD(" - Picture pixel format = new \"%s\"", new_format);
     p.getPictureSize(&new_picture_width, &new_picture_height);
 
-    /*FIXME: SOC sensor supports up to VGA size at the momement */
-    if ((mSensorType == SENSOR_TYPE_SOC) &&
-        (new_picture_width >= 640 || new_picture_height >=480)) {
-        LOGW("%s, picture size %d x %d not supported, changed to VGA\n",
-             __func__, new_picture_width, new_picture_height);
-        new_picture_width = 640;
-        new_picture_height = 480;
+#if 0
+    // burst capture
+    mBCNumReq = p.getInt(CameraParameters::KEY_BURST_LENGTH);
+    mBCEn = (mBCNumReq > 1) ? true : false;
+    if (mBCEn) {
+        mBCNumSkipReq = p.getInt(CameraParameters::KEY_BURST_SKIP_FRAMES);
+        mPicturePixelFormat = V4L2_PIX_FMT_RGB565;
+        // ToDo. we will use the hw jpeg encoder and change the format to YUV420.
+    } else {
+        mBCNumReq = 1;
+        mBCNumSkipReq = 0;
+        mPicturePixelFormat = V4L2_PIX_FMT_YUV420;
     }
+    LOG1("BC, line:%d,burst len, en:%d, reqnum:%d, skipnum:%d", __LINE__, mBCEn, mBCNumReq, mBCNumSkipReq);
+#endif
+#ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
+        /*there is limitation for picture resolution with hwlibjpeg buffer share
+        if picture resolution below 640*480 , we have to set mPicturePixelFormat
+        back to YUV420 and go through software encode path*/
+        if(new_picture_width <= 640 || new_picture_height <=480)
+            mPicturePixelFormat = V4L2_PIX_FMT_YUV420;
+        else
+            mPicturePixelFormat = V4L2_PIX_FMT_NV12;
+#endif
     LOGD("%s : new_picture_width %d new_picture_height = %d", __func__,
          new_picture_width, new_picture_height);
+
+    // ToDo. removed it next patch.
+    if (mBCEn)
+        mPicturePixelFormat = V4L2_PIX_FMT_RGB565;
     if (0 < new_picture_width && 0 < new_picture_height) {
         if (mCamera->setSnapshotSize(new_picture_width, new_picture_height,
                                      mPicturePixelFormat) < 0) {
@@ -2599,14 +3166,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     int pre_width, pre_height, pre_size, pre_padded_size, rec_w, rec_h;
     mCamera->getPreviewSize(&pre_width, &pre_height, &pre_size, &pre_padded_size);
     p.getRecordingSize(&rec_w, &rec_h);
-    /*FIXME: SOC sensor supports up to VGA size at the momement */
-    if ((mSensorType == SENSOR_TYPE_SOC) &&
-        (rec_w >= 640 || rec_h >=480)) {
-        LOGW("%s, recorder size %d x %d not supported, changed to VGA\n",
-             __func__, rec_w, rec_h);
-        rec_w = 640;
-        rec_h = 480;
-    }
+
     if(checkRecording(rec_w, rec_h)) {
         LOGD("line:%d, before setRecorderSize. w:%d, h:%d, format:%d", __LINE__, rec_w, rec_h, mVideoFormat);
         mCamera->setRecorderSize(rec_w, rec_h, mVideoFormat);
@@ -2647,13 +3207,12 @@ int CameraHardware::setISPParameters(
     ret = ret2 = -1;
 
     //process zoom
-    int zoom = new_params.getInt("zoom");
+    int zoom = new_params.getInt(CameraParameters::KEY_ZOOM);
     mCamera->set_zoom_val(zoom);
-
     // Color Effect
-	int effect = old_params.getInt("effect");
-	new_value = new_params.get("effect");
-	set_value = old_params.get("effect");
+	int effect = old_params.getInt(CameraParameters::KEY_EFFECT);
+	new_value = new_params.get(CameraParameters::KEY_EFFECT);
+	set_value = old_params.get(CameraParameters::KEY_EFFECT);
 	LOGD(" - effect = new \"%s\" (%d) / current \"%s\"",new_value, effect, set_value);
     if (strcmp(set_value, new_value) != 0) {
         if(!strcmp(new_value, CameraParameters::EFFECT_MONO))
@@ -2667,14 +3226,14 @@ int CameraHardware::setISPParameters(
 
         ret = mCamera->setColorEffect(effect);
         if (!ret) {
-            LOGD("Changed effect to %s", new_params.get("effect"));
+            LOGD("Changed effect to %s", new_params.get(CameraParameters::KEY_EFFECT));
         }
     }
 
     // xnr
-    int xnr = old_params.getInt("xnr");
-    new_value = new_params.get("xnr");
-    set_value = old_params.get("xnr");
+    int xnr = old_params.getInt(CameraParameters::KEY_XNR);
+    new_value = new_params.get(CameraParameters::KEY_XNR);
+    set_value = old_params.get(CameraParameters::KEY_XNR);
     LOGD(" - xnr = new \"%s\" (%d) / current \"%s\"",new_value, xnr, set_value);
     if (strcmp(set_value, new_value) != 0) {
         if (!strcmp(new_value, "false"))
@@ -2682,13 +3241,13 @@ int CameraHardware::setISPParameters(
         else if (!strcmp(new_value, "true"))
             ret = mCamera->setXNR(true);
         if (!ret) {
-            LOGD("Changed xnr to %s", new_params.get("xnr"));
+            LOGD("Changed xnr to %s", new_params.get(CameraParameters::KEY_XNR));
         }
     }
     // gdc/cac
-    int gdc = old_params.getInt("gdc");
-    new_value = new_params.get("gdc");
-    set_value = old_params.get("gdc");
+    int gdc = old_params.getInt(CameraParameters::KEY_GDC);
+    new_value = new_params.get(CameraParameters::KEY_GDC);
+    set_value = old_params.get(CameraParameters::KEY_GDC);
     LOGD(" - gdc = new \"%s\" (%d) / current \"%s\"",new_value, gdc, set_value);
     if (strcmp(set_value, new_value) != 0) {
         if (!strcmp(new_value, "false"))
@@ -2696,14 +3255,33 @@ int CameraHardware::setISPParameters(
         else if (!strcmp(new_value, "true"))
             ret = mCamera->setGDC(true);
         if (!ret) {
-            LOGD("Changed gdc to %s", new_params.get("gdc"));
+            LOGD("Changed gdc to %s", new_params.get(CameraParameters::KEY_GDC));
+        }
+    }
+
+    // DVS
+    int dvs = old_params.getInt(CameraParameters::KEY_DVS);
+    new_value = new_params.get(CameraParameters::KEY_DVS);
+    set_value = old_params.get(CameraParameters::KEY_DVS);
+    LOGD(" - dvs = new \"%s\" (%d) / current \"%s\"",new_value, dvs, set_value);
+    if (strcmp(set_value, new_value) != 0) {
+        if (!strcmp(new_value, "false")) {
+            ret = mCamera->setDVS(false);
+            mDVSProcessing = false;
+        }
+        else if (!strcmp(new_value, "true")) {
+            ret = mCamera->setDVS(true);
+            mDVSProcessing = true;
+        }
+        if (!ret) {
+            LOGD("Changed dvs to %s", new_params.get(CameraParameters::KEY_DVS));
         }
     }
 
     // tnr
-    int tnr = old_params.getInt("temporal-noise-reduction");
-    new_value = new_params.get("temporal-noise-reduction");
-    set_value = old_params.get("temporal-noise-reduction");
+    int tnr = old_params.getInt(CameraParameters::KEY_TEMPORAL_NOISE_REDUCTION);
+    new_value = new_params.get(CameraParameters::KEY_TEMPORAL_NOISE_REDUCTION);
+    set_value = old_params.get(CameraParameters::KEY_TEMPORAL_NOISE_REDUCTION);
     LOGD(" - temporal-noise-reduction = new \"%s\" (%d) / current \"%s\"",new_value, tnr, set_value);
     if (strcmp(set_value, new_value) != 0) {
         if (!strcmp(new_value, "on"))
@@ -2712,14 +3290,15 @@ int CameraHardware::setISPParameters(
             ret = mCamera->setTNR(false);
         if (!ret) {
             LOGD("Changed temporal-noise-reduction to %s",
-                    new_params.get("temporal-noise-reduction"));
+                    new_params.get(CameraParameters::KEY_TEMPORAL_NOISE_REDUCTION));
         }
     }
 
+#ifdef TUNING_EDGE_ENHACNMENT
     // nr and ee
-    int nr_ee = old_params.getInt("noise-reduction-and-edge-enhancement");
-    new_value = new_params.get("noise-reduction-and-edge-enhancement");
-    set_value = old_params.get("noise-reduction-and-edge-enhancement");
+    int nr_ee = old_params.getInt(CameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
+    new_value = new_params.get(CameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
+    set_value = old_params.get(CameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
     LOGD(" -  noise-reduction-and-edge-enhancement= new \"%s\" (%d) / current \"%s\"",new_value, nr_ee, set_value);
     if (strcmp(set_value, new_value) != 0) {
         if (!strcmp(new_value, "on")) {
@@ -2730,15 +3309,16 @@ int CameraHardware::setISPParameters(
         }
         if (!ret) {
             LOGD("Changed  noise-reduction-and-edge-enhancement to %s",
-                    new_params.get("noise-reduction-and-edge-enhancement"));
+                    new_params.get(CameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT));
         }
     }
+#endif
 
     //macc
-    int color = 6;
-    int macc = old_params.getInt("multi-access-color-correction");
-    new_value = new_params.get("multi-access-color-correction");
-    set_value = old_params.get("multi-access-color-correction");
+    int color = 0;
+    int macc = old_params.getInt(CameraParameters::KEY_MULTI_ACCESS_COLOR_CORRECTION);
+    new_value = new_params.get(CameraParameters::KEY_MULTI_ACCESS_COLOR_CORRECTION);
+    set_value = old_params.get(CameraParameters::KEY_MULTI_ACCESS_COLOR_CORRECTION);
     LOGD(" - multi-access-color-correction = new \"%s\" (%d) / current \"%s\"",new_value, macc, set_value);
     if (strcmp(set_value, new_value) != 0) {
         if (!strcmp("enhance-none", new_value))
@@ -2756,6 +3336,7 @@ int CameraHardware::setISPParameters(
                     new_params.get("multi-access-color-correction"));
         }
     }
+
     return 0;
 }
 
@@ -2810,18 +3391,22 @@ status_t CameraHardware::configureFileInput(char *file_name, int width, int heig
 
 int CameraHardware::calculateLightLevel()
 {
-    return mAAA->AeIsFlashNecessary (&mFlashNecessary);
+    if (mBCEn) {
+        mFlashNecessary = false;
+        return 0;
+    } else
+        return mAAA->AeIsFlashNecessary (&mFlashNecessary);
 }
 
 void CameraHardware::runPreFlashSequence(void)
 {
     int index;
     void *data;
-    if((mCamera->getFlashMode() == CAM_AE_FLASH_MODE_OFF)||
-        ((!mFlashNecessary) && (mCamera->getFlashMode() != CAM_AE_FLASH_MODE_ON)))
+
+    if (!mFlashNecessary)
         return ;
-    mAAA->SetAeFlashEnabled (true);
-    mAAA->SetAwbFlashEnabled (true);
+    mAAA->SetAeEnabled (true);
+    mAAA->SetAwbEnabled (true);
 
     // pre-flash process
     index = mCamera->getPreview(&data);
@@ -2829,8 +3414,7 @@ void CameraHardware::runPreFlashSequence(void)
         LOGE("%s: Error to get frame\n", __func__);
         return ;
     }
-    mAAA->GetStatistics();
-    mAAA->AeCalcForFlash();
+    mAAA->PreFlashProcess(CAM_FLASH_STAGE_NONE);
 
     // pre-flash
 //    captureFlashOff();
@@ -2840,24 +3424,22 @@ void CameraHardware::runPreFlashSequence(void)
         LOGE("%s: Error to get frame\n", __func__);
         return ;
     }
-    mAAA->GetStatistics();
-    mAAA->AeCalcWithoutFlash();
+
+    mAAA->PreFlashProcess(CAM_FLASH_STAGE_PRE);
 
     // main flash
     mCamera->captureFlashOnCertainDuration(0, 100, 1*625);  /* software trigger, 100ms, intensity 1*/
-    mAAA->AwbApplyResults();
     mCamera->putPreview(index);
     index = mCamera->getPreview(&data);
     if (index < 0) {
         LOGE("%s: Error to get frame\n", __func__);
         return ;
     }
-    mAAA->GetStatistics();
-    mAAA->AeCalcWithFlash();
-    mAAA->AwbCalcFlash();
 
-    mAAA->SetAeFlashEnabled (false);
-    mAAA->SetAwbFlashEnabled (false);
+    mAAA->PreFlashProcess(CAM_FLASH_STAGE_MAIN);
+
+    mAAA->SetAeEnabled (false);
+    mAAA->SetAwbEnabled (false);
     mCamera->putPreview(index);
 }
 
@@ -2865,38 +3447,19 @@ void CameraHardware::runPreFlashSequence(void)
 void CameraHardware::update3Aresults(void)
 {
     LOG1("%s\n", __func__);
+    mAAA->AeLock(true);
+    mAAA->SetAeEnabled (true);
     mAAA->SetAfEnabled(true);
-    mAAA->SetAeEnabled(true);
     mAAA->SetAwbEnabled(true);
-    mAAA->AwbApplyResults();
-    mAAA->AeApplyResults();
+    mAAA->AeAfAwbProcess (false);
     int af_mode;
     mAAA->AfGetMode (&af_mode);
     if (af_mode != CAM_AF_MODE_MANUAL)
         mAAA->AfApplyResults();
-}
-
-void CameraHardware::runAeAfAwb(void)
-{
-    //3A should be initialized
-    mAAA->GetStatistics();
-    //DVS for video
-    if (mRecordRunning) {
-        mAAA->DisReadStatistics();
-        mAAA->DisProcess(&mAAA->dvs_vector);
-        mAAA->UpdateDisResults();
-    }
-
-    mAAA->AeProcess();
-
-    int af_mode;
-    mAAA->AfGetMode (&af_mode);
-    if (af_mode != CAM_AF_MODE_MANUAL)
-        mAAA->AfProcess();
-    mAAA->AwbProcess();
-
-    mAAA->AwbApplyResults();
-    mAAA->AeApplyResults();
+    mAAA->AeLock(false);
+    mAAA->SetAeEnabled (false);
+    mAAA->SetAfEnabled(false);
+    mAAA->SetAwbEnabled(false);
 }
 
 int CameraHardware::SnapshotPostProcessing(void *img_data, int width, int height)
@@ -2924,15 +3487,48 @@ int CameraHardware::SnapshotPostProcessing(void *img_data, int width, int height
 
 int CameraHardware::checkSensorType(int cameraId)
 {
+    int type;
     if (num_camera == 1)
-        return camera_info[0].type;
+        type = camera_info[0].type;
     else {
         if (cameraId == 0)
-            return camera_info[primary_camera_id].type;
+            type = camera_info[primary_camera_id].type;
         else
-            return camera_info[secondary_camera_id].type;
+            type = camera_info[secondary_camera_id].type;
+    }
+    return type;
+}
+
+void CameraHardware::setupPlatformType(void)
+{
+    int i, j;
+    for (i = 0; i < MAX_CAMERAS; i++) {
+        //Remove the blank and i2c name
+        for (j = 0; j < MAX_SENSOR_NAME_LENGTH; j ++) {
+            if (camera_info[i].name[j] == ' ') {
+                camera_info[i].name[j] = '\0';
+                break;
+            }
+        }
+        LOGE("%s: sensor name is %s", __func__, camera_info[i].name);
+
+        if (!strcmp(camera_info[i].name, CDK_PRIMARY_SENSOR_NAME)) {
+            camera_info[i].platform = MFLD_CDK_PLATFORM;
+            camera_info[i].type = ci_adv_sensor_dis_14m;
+        } else if (!strcmp(camera_info[i].name, CDK_SECOND_SENSOR_NAME)) {
+            camera_info[i].platform = MFLD_CDK_PLATFORM;
+            camera_info[i].type = ci_adv_sensor_ov2720_2m;
+        } else if (!strcmp(camera_info[i].name, PR2_PRIMARY_SENSOR_NAME)) {
+            camera_info[i].platform = MFLD_PR2_PLATFORM;
+            camera_info[i].type = ci_adv_sensor_liteon_8m;
+        } else if (!strcmp(camera_info[i].name, PR2_SECOND_SENSOR_NAME)) {
+            camera_info[i].platform = MFLD_PR2_PLATFORM;
+            camera_info[i].type = ci_adv_sensor_soc;
+        } else
+            LOGE("%s: Unknow platform", __func__);
     }
 }
+
 
 //----------------------------------------------------------------------------
 //----------------------------HAL--used for camera service--------------------
@@ -2940,7 +3536,11 @@ static int HAL_cameraType[MAX_CAMERAS];
 static CameraInfo HAL_cameraInfo[MAX_CAMERAS] = {
     {
         CAMERA_FACING_BACK,
-        90,  /* default orientation, we will modify it at other place, ToDo */
+#ifdef MFLD_CDK
+        270,  /* default orientation, we will modify it at other place, ToDo */
+#else
+        90,
+#endif
     },
     {
         CAMERA_FACING_FRONT,
@@ -2979,6 +3579,7 @@ extern "C" int HAL_getNumberOfCameras()
         }
         camera_info[i].type = input.reserved[0];
         camera_info[i].port = input.reserved[1];
+        strncpy(camera_info[i].name, (const char *)input.name, MAX_SENSOR_NAME_LENGTH);
 
         if (camera_info[i].type != SENSOR_TYPE_RAW &&
             camera_info[i].type != SENSOR_TYPE_SOC) {

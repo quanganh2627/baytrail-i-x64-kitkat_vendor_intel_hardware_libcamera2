@@ -33,12 +33,6 @@ extern "C" {
 
 namespace android {
 
-
-typedef enum ENUM_SENSOR_TYPE {
-    ENUM_SENSOR_TYPE_SOC = 0,
-    ENUM_SENSOR_TYPE_RAW = 1
-} ENUM_SENSOR_TYPE;
-
 typedef enum
 {
     CAM_AWB_MODE_AUTO,
@@ -64,6 +58,7 @@ typedef enum
     CAM_AF_MODE_AUTO,
     CAM_AF_MODE_MACRO,
     CAM_AF_MODE_INFINITY,
+    CAM_AF_MODE_TOUCH,
     CAM_AF_MODE_MANUAL
 } cam_af_mode_t;
 
@@ -116,6 +111,13 @@ typedef enum
     CAM_AE_METERING_MODE_CUSTOMIZED
 } cam_ae_metering_mode;
 
+typedef enum
+{
+    CAM_FLASH_STAGE_NONE,
+    CAM_FLASH_STAGE_PRE,
+    CAM_FLASH_STAGE_MAIN
+} cam_flash_stage;
+
 typedef struct {
     int x_left;
     int x_right;
@@ -130,43 +132,36 @@ typedef struct {
 
 class AAAProcess {
 public:
-    AAAProcess(unsigned int sensortype);
+    AAAProcess(int sensortype);
     ~AAAProcess();
 
-    void Init(void);
+    void Init(int sensor);
     void Uninit(void);
 
     void IspSetFd(int fd);
 
-    void AeProcess(void);
-    void AfProcess(void);
-    void AwbProcess(void);
-
-    void GetStatistics(void);
-
-    void AeApplyResults(void);
-    void AwbApplyResults(void);
     void AfApplyResults(void);
 
-    int ModeSpecInit(void);    /* Called when switch the resolution */
-    void SwitchMode(int mode, float frm_rt);
+    void SwitchMode(int mode);
+    void SetFrameRate(float framerate);
+
+    void AeAfAwbProcess(bool read_stats);
 
     void AfStillStart(void);
     void AfStillStop(void);
     int AfStillIsComplete(bool *complete);
 
-    int AeCalcForFlash(void);
-    int AeCalcWithoutFlash(void);
-    int AeCalcWithFlash(void);
-    int AwbCalcFlash(void);
+    int PreFlashProcess(cam_flash_stage stage);
 
-    void DisReadStatistics(void);
-    void DisProcess(ci_adv_dis_vector *dis_vector);
+    void SetStillStabilizationEnabled(bool en);
+    void GetStillStabilizationEnabled (bool * en);
     void DisCalcStill(ci_adv_dis_vector *vector, int frame_number);
-    void UpdateDisResults(void);
-    void StillCompose(struct user_buffer *com_buf,
-                      struct user_buffer bufs[], int frame_dis, ci_adv_dis_vector vectors[]);
+    void StillCompose(ci_adv_user_buffer *com_buf,
+                      ci_adv_user_buffer bufs[], int frame_dis, ci_adv_dis_vector vectors[]);
+    void GetDisVector(ci_adv_dis_vector *vector);
 
+    int SetRedEyeRemoval(bool en);
+    int GetRedEyeRemoval(bool *en);
     void DoRedeyeRemoval(void *img_buf, int size, int width, int height, int format);
 
     void LoadGdcTable(void);
@@ -193,13 +188,8 @@ public:
                                                     unsigned short * aperture);
     int AeSetWindow(const cam_Window *window);
     int AeGetWindow(cam_Window *window);
-    int AeLock(bool lock) {
-        return ci_adv_AeLock(lock);
-    }
-
-    int AeIsLocked(bool *lock) {
-        return ci_adv_AeIsLocked(lock);
-    }
+    int AeLock(bool lock);
+    int AeIsLocked(bool *lock);
 
     int FlushManualSettings(void);
     int AeSetManualIso(int sensitivity, bool to_hw);
@@ -228,63 +218,31 @@ public:
     int AwbSetMapping(int mode);
     int AwbGetMapping(int *mode);
 
-    int SetRedEyeRemoval(bool en);
-    int GetRedEyeRemoval(bool *en);
+    void SetAfEnabled(bool enabled);
+    void SetAeEnabled(bool enabled);
+    void SetAwbEnabled(bool enabled);
 
-    void SetAfEnabled(bool enabled) {
-        mAfEnabled = enabled;
-    }
-    void SetAfStillEnabled(bool enabled) {
-        mAfStillEnabled = enabled;
-    }
-    void SetAeEnabled(bool enabled) {
-        mAeEnabled = enabled;
-    }
-    void SetAeFlashEnabled(bool enabled) {
-        mAeFlashEnabled = enabled;
-    }
-    void SetAwbEnabled(bool enabled) {
-        mAwbEnabled = enabled;
-    }
-    void SetAwbFlashEnabled(bool enabled) {
-        mAwbFlashEnabled = enabled;
-    }
-    void SetStillStabilizationEnabled(bool enabled) {
-        mStillStabilizationEnabled = enabled;
-    }
-    void SetGdcEnabled(bool enabled) {
+    void SetGdcEnabled(bool enabled){
         mGdcEnabled = enabled;
-    }
-    void SetRedEyeRemovalEnabled(bool enabled) {
-        mRedEyeRemovalEnabled = enabled;
     }
 
     bool GetAfEnabled(void) {
-        return mAfEnabled ;
-    }
-    bool GetAfStillEnabled(void) {
-        return mAfStillEnabled ;
-    }
-    bool GetAeFlashEnabled(void) {
-        return mAeFlashEnabled;
+        bool mAfEnabled ;
+        ci_adv_af_is_enabled(&mAfEnabled);
+        return mAfEnabled;
     }
     bool GetAeEnabled(void) {
+        bool mAeEnabled;
+        ci_adv_ae_is_enabled (&mAeEnabled);
         return mAeEnabled;
     }
     bool GetAwbEnabled(void) {
+        bool mAwbEnabled;
+        ci_adv_awb_is_enabled(&mAwbEnabled);
         return mAwbEnabled;
-    }
-    bool GetAwbFlashEnabled(void) {
-        return mAwbFlashEnabled;
-    }
-    bool GetStillStabilizationEnabled(void) {
-        return mStillStabilizationEnabled;
     }
     bool GetGdcEnabled(void) {
         return mGdcEnabled;
-    }
-    bool GetRedEyeRemovalEnabled(void) {
-        return mRedEyeRemovalEnabled;
     }
 
     unsigned int GetAfStillFrames() {
@@ -303,15 +261,8 @@ public:
 
 private:
     /* not 0 is enabled, 0 is disabled */
-    bool mAeEnabled;
-    bool mAeFlashEnabled;
-    bool mAfEnabled;    // for preview
-    bool mAfStillEnabled; // still af
-    bool mAwbEnabled;
-    bool mAwbFlashEnabled;
-    bool mRedEyeRemovalEnabled;
-    bool mStillStabilizationEnabled;
     bool mGdcEnabled;
+    mutable Mutex       mLock;
 
     unsigned int mAeMode;
     unsigned int mAwbMode;

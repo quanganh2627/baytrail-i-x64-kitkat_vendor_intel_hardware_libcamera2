@@ -28,7 +28,29 @@
 #include <atomisp_config.h>
 #include "JpegEncoder.h"
 
+#ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
+#include "libjpegwrap.h"
+#endif
+
 namespace android {
+
+struct BCBuffer {
+    sp<MemoryHeapBase>  heap;
+
+    int total_size;  // the heap size
+    int src_size;   // psrc buffer size
+
+    int jpeg_size;  // the encoded jpeg file size
+
+    void *psrc;    // for YUV/RGB data, comes from ISP
+    void *pdst_exif;  // for exif part
+    void *pdst_thumbnail;   // for thumbnail
+    void *pdst_main;    // for main part
+
+    bool ready; // if the src data is ready, it is true
+    bool encoded;   // if finished encoded, it is true
+    int sequence;   // it is the handling sequence, initialization value is ~0
+};
 
 class CameraHardware : public CameraHardwareInterface {
 public:
@@ -133,6 +155,19 @@ private:
         virtual bool threadLoop() {
             mHardware->aeAfAwbThread();
             return false;
+        }
+    };
+
+    /* for burst capture, it will compress jpeg image in this thread */
+    class CompressThread : public Thread {
+        CameraHardware* mHardware;
+    public:
+        CompressThread(CameraHardware* hw) :
+            Thread(false),
+            mHardware(hw) { }
+        virtual bool threadLoop()
+        {
+            return mHardware->compressThread();
         }
     };
 
@@ -241,6 +276,12 @@ private:
     static const int mJpegQualityDefault = 100; // default Jpeg Quality
     static const int mJpegThumbnailQualityDefault = 50; // default Jpeg thumbnail Quality
 
+    /*for burst capture */
+    sp<CompressThread> mCompressThread;
+    int         compressThread();
+    mutable Mutex       mCompressLock;
+    mutable Condition   mCompressCondition;
+
     notify_callback    mNotifyCb;
     data_callback      mDataCb;
     data_callback_timestamp mDataCbTimestamp;
@@ -260,6 +301,7 @@ private:
     int                 mPostViewWidth;
     int                 mPostViewHeight;
     int                 mPostViewSize;
+    int                 mPostViewFormat;
 
     //3A
     AAAProcess          *mAAA;
@@ -301,13 +343,12 @@ private:
     void exifAttribute(exif_attribute_t& attribute, int cap_w, int cap_h, bool thumbnail_en, bool flash_en);
     void exifAttributeOrientation(exif_attribute_t& attribute);
     void exifAttributeGPS(exif_attribute_t& attribute);
+    bool mDVSProcessing;
 
     //still af
-    bool runStillAfSequence();
+    int runStillAfSequence();
     static const int mStillAfMaxCount = 100;
 
-    //3A
-    void runAeAfAwb(void);
     //flash
     void runPreFlashSequence (void);
     int SnapshotPostProcessing(void *img_data, int width, int height);
@@ -317,6 +358,20 @@ private:
     float mFramerate;
 
     int checkSensorType(int cameraId);
+    void setupPlatformType(void);
+
+    /*for burst capture */
+    sem_t sem_bc_captured;  // +1 if it gets one frame from driver
+    sem_t sem_bc_encoded;   // +1 if  it finishes encoding one frame
+    void burstCaptureInit(void);
+    int burstCaptureHandle(void);
+    bool mBCEn;   // true is enabled, false is disabled.
+    int mBCNumReq; // remember the request capture number
+    int mBCNumCur; // current the sequence capture number
+    int mBCNumSkipReq; // need skipped number
+    sp<MemoryHeapBase> mBCHeap; // for store the structure BCBuffer
+    struct BCBuffer *mBCBuffer; // point to mBCHeap
+
 };
 
 }; // namespace android

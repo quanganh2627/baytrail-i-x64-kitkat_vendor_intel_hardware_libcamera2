@@ -23,13 +23,8 @@
 namespace android {
 
 
-AAAProcess::AAAProcess(unsigned int sensortype)
-    : mAeEnabled(false),
-      mAfEnabled(false),
-      mAwbEnabled(false),
-      mRedEyeRemovalEnabled(false),
-      mStillStabilizationEnabled(false),
-      mGdcEnabled(false),
+AAAProcess::AAAProcess(int sensortype)
+    : mGdcEnabled(false),
       mAwbMode(CAM_AWB_MODE_AUTO),
       mAfMode(CAM_AF_MODE_AUTO),
       mSensorType(~0),
@@ -37,8 +32,6 @@ AAAProcess::AAAProcess(unsigned int sensortype)
       mInitied(false)
 {
     mSensorType = sensortype;
-    mAwbFlashEnabled = false;
-    mAeFlashEnabled = false;
     mAeMode = CAM_AE_MODE_AUTO;
     mFocusPosition = 50;
     mColorTemperature = 5000;
@@ -57,9 +50,39 @@ AAAProcess::~AAAProcess()
     //Uninit();
 }
 
+int AAAProcess::AeLock(bool lock) {
+    if(SENSOR_TYPE_RAW == mSensorType)
+        return ci_adv_ae_lock(lock);
+    else
+        return 0;
+}
+
+int AAAProcess::AeIsLocked(bool *lock) {
+    if(SENSOR_TYPE_RAW == mSensorType)
+        return ci_adv_ae_is_locked(lock);
+    else
+        return 0;
+}
+
+void AAAProcess::SetAfEnabled(bool enabled) {
+    if(SENSOR_TYPE_RAW == mSensorType)
+        ci_adv_af_enable(enabled);
+}
+
+void AAAProcess::SetAeEnabled(bool enabled) {
+    if(SENSOR_TYPE_RAW == mSensorType)
+        ci_adv_ae_enable(enabled);
+}
+
+void AAAProcess::SetAwbEnabled(bool enabled) {
+    if(SENSOR_TYPE_RAW == mSensorType)
+        ci_adv_awb_enable(enabled);
+}
+
 void AAAProcess::IspSetFd(int fd)
 {
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    Mutex::Autolock lock(mLock);
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         if(-1 == fd || !fd)
             ci_adv_isp_set_fd(-1);
@@ -69,113 +92,7 @@ void AAAProcess::IspSetFd(int fd)
         // fixme, for working around manual focus
         main_fd = fd;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
-}
-
-/* public interface */
-void AAAProcess::AfProcess(void)
-{
-    if(!mInitied)
-        return;
-
-    if(!mAfEnabled && !mAfStillEnabled)
-        return;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
-    {
-        ci_adv_af_process();
-    }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
-}
-
-void AAAProcess::AeProcess(void)
-{
-    if(!mInitied)
-        return;
-
-    if(!mAeEnabled)
-        return;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
-    {
-        ci_adv_ae_process();
-    }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
-}
-
-void AAAProcess::AwbProcess(void)
-{
-    if(!mInitied)
-        return;
-
-    if(!mAwbEnabled && !mAwbFlashEnabled)
-        return;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
-    {
-        ci_adv_awb_process();
-    }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
-}
-
-void AAAProcess::GetStatistics(void)
-{
-    if(!mInitied)
-        return;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
-    {
-        ci_adv_get_statistics();
-    }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
-}
-
-void AAAProcess::AeApplyResults(void)
-{
-    if(!mInitied)
-        return;
-
-    if(!mAeEnabled)
-        return;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
-    {
-        ci_adv_ae_apply_results();
-    }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
-}
-
-void AAAProcess::AwbApplyResults(void)
-{
-    if(!mInitied)
-        return;
-
-    if(!mAwbEnabled && !mAwbFlashEnabled)
-        return;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
-    {
-        ci_adv_awb_apply_results();
-    }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
 
     }
@@ -183,67 +100,80 @@ void AAAProcess::AwbApplyResults(void)
 
 void AAAProcess::AfApplyResults(void)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return;
 
-    if(!mAfEnabled)
-        return;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_af_apply_results();
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
 
     }
 }
 
-int AAAProcess::ModeSpecInit(void)
+void AAAProcess::SwitchMode(int mode)
 {
-    if(!mInitied)
-        return AAA_FAIL;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
-    {
-        int ret = ci_adv_mode_spec_init();
-        if(ret)
-            return AAA_FAIL;
-    }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
-
-    return AAA_SUCCESS;
-}
-
-void AAAProcess::SwitchMode(int mode, float frm_rt)
-{
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        CI_ISP_MODE isp_mode;
+        ci_adv_isp_mode isp_mode;
         switch (mode) {
         case PREVIEW_MODE:
-            isp_mode = CI_ISP_MODE_PREVIEW;
+            isp_mode = ci_adv_isp_mode_preview;
             break;
         case STILL_IMAGE_MODE:
-            isp_mode = CI_ISP_MODE_CAPTURE;
+            isp_mode = ci_adv_isp_mode_capture;
             break;
         case VIDEO_RECORDING_MODE:
-            isp_mode = CI_ISP_MODE_VIDEO;
+            isp_mode = ci_adv_isp_mode_video;
             break;
         default:
-            isp_mode = CI_ISP_MODE_PREVIEW;
+            isp_mode = ci_adv_isp_mode_preview;
             LOGW("%s: Wrong mode %d\n", __func__, mode);
             break;
         }
-        ci_adv_switch_mode(isp_mode, CI_ADV_S15_16_FROM_FLOAT(frm_rt));
+        ci_adv_switch_mode(isp_mode);
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
+    {
+
+    }
+}
+
+void AAAProcess::SetFrameRate(float framerate)
+{
+    Mutex::Autolock lock(mLock);
+    if(!mInitied)
+        return;
+
+    if(SENSOR_TYPE_RAW == mSensorType)
+    {
+        ci_adv_set_frame_rate(CI_ADV_S15_16_FROM_FLOAT(framerate));
+    }
+    else if(SENSOR_TYPE_SOC == mSensorType)
+    {
+
+    }
+}
+
+
+void AAAProcess::AeAfAwbProcess(bool read_stats)
+{
+    Mutex::Autolock lock(mLock);
+    if(!mInitied)
+        return;
+
+    if(SENSOR_TYPE_RAW == mSensorType)
+    {
+        ci_adv_process_frame(read_stats);
+    }
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
 
     }
@@ -251,17 +181,15 @@ void AAAProcess::SwitchMode(int mode, float frm_rt)
 
 void AAAProcess::AfStillStart(void)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return;
 
-    if(!mAfStillEnabled)
-        return;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_af_start();
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
 
     }
@@ -269,17 +197,15 @@ void AAAProcess::AfStillStart(void)
 
 void AAAProcess::AfStillStop(void)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return;
 
-    if(!mAfStillEnabled)
-        return;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_af_stop();
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
 
     }
@@ -287,97 +213,49 @@ void AAAProcess::AfStillStop(void)
 
 int AAAProcess::AfStillIsComplete(bool *complete)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(!mAfStillEnabled)
-        return AAA_FAIL;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         *complete = ci_adv_af_is_complete();
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
     return AAA_SUCCESS;
 }
 
-int AAAProcess::AeCalcForFlash(void)
+int AAAProcess::PreFlashProcess(cam_flash_stage stage)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(!mAeFlashEnabled)
-        return AAA_FAIL;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_ae_calc_for_flash ();
+        ci_adv_flash_stage wr_stage;
+        switch (stage)
+        {
+        case CAM_FLASH_STAGE_NONE:
+            wr_stage = ci_adv_flash_stage_none;
+            break;
+        case CAM_FLASH_STAGE_PRE:
+            wr_stage = ci_adv_flash_stage_pre;
+            break;
+        case CAM_FLASH_STAGE_MAIN:
+            wr_stage = ci_adv_flash_stage_main;
+            break;
+        default:
+            LOGE("not defined flash stage in %s", __func__);
+            return AAA_FAIL;
 
+        }
+        ci_adv_process_for_flash (wr_stage);
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
-
-    return AAA_SUCCESS;
-}
-
-int AAAProcess::AeCalcWithoutFlash(void)
-{
-    if(!mInitied)
-        return AAA_FAIL;
-
-    if(!mAeFlashEnabled)
-        return AAA_FAIL;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
-    {
-        ci_adv_ae_calc_without_flash ();
-    }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
-
-    return AAA_SUCCESS;
-}
-
-int AAAProcess::AeCalcWithFlash(void)
-{
-    if(!mInitied)
-        return AAA_FAIL;
-
-    if(!mAeFlashEnabled)
-        return AAA_FAIL;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
-    {
-        ci_adv_ae_calc_with_flash ();
-    }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
-
-    return AAA_SUCCESS;
-}
-
-int AAAProcess::AwbCalcFlash(void)
-{
-    if(!mInitied)
-        return AAA_FAIL;
-
-    if(!mAwbFlashEnabled)
-        return AAA_FAIL;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
-    {
-        ci_adv_awb_calc_flash ();
-    }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
 
     }
@@ -386,55 +264,33 @@ int AAAProcess::AwbCalcFlash(void)
 
 }
 
-void AAAProcess::DisReadStatistics(void)
+void AAAProcess::SetStillStabilizationEnabled(bool en)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return;
 
-    if(!mStillStabilizationEnabled)
-        return;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_dis_read_statistics();
+        ci_adv_dis_enable(en);
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
 
     }
 }
 
-void AAAProcess::UpdateDisResults(void)
+void AAAProcess::GetStillStabilizationEnabled(bool *en)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return;
 
-    if(!mStillStabilizationEnabled)
-        return;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_update_dis_results();
+        ci_adv_dis_is_enabled(en);
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
-}
-
-void AAAProcess::DisProcess(ci_adv_dis_vector *dis_vector)
-{
-    if(!mInitied)
-        return;
-
-    if(!mStillStabilizationEnabled)
-        return;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
-    {
-        ci_adv_dis_process(dis_vector);
-    }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
 
     }
@@ -445,33 +301,45 @@ void AAAProcess::DisCalcStill(ci_adv_dis_vector *vector, int frame_number)
     if(!mInitied)
         return;
 
-    if(!mStillStabilizationEnabled)
-        return;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_dis_calc_still(vector, frame_number);
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
 
     }
 }
 
-void AAAProcess::StillCompose(struct user_buffer *com_buf,
-                              struct user_buffer bufs[], int frame_dis, ci_adv_dis_vector vectors[])
+void AAAProcess::StillCompose(ci_adv_user_buffer *com_buf,
+                              ci_adv_user_buffer bufs[], int frame_dis,
+                              ci_adv_dis_vector vectors[])
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return;
 
-    if(!mStillStabilizationEnabled)
-        return;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_still_compose(com_buf, bufs, frame_dis, vectors);
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
+    {
+
+    }
+}
+
+void AAAProcess::GetDisVector(ci_adv_dis_vector *vector)
+{
+    Mutex::Autolock lock(mLock);
+    if(!mInitied)
+        return;
+
+    if(SENSOR_TYPE_RAW == mSensorType)
+    {
+        ci_adv_get_dis_vector (vector);
+    }
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
 
     }
@@ -479,27 +347,25 @@ void AAAProcess::StillCompose(struct user_buffer *com_buf,
 
 void AAAProcess::DoRedeyeRemoval(void *img_buf, int size, int width, int height, int format)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return;
 
-    if(!mRedEyeRemovalEnabled)
-        return;
-
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_FrameFormat out_format;
+        ci_adv_frame_format out_format;
         switch (format)
         {
         case V4L2_PIX_FMT_YUV420:
-            out_format = ci_adv_FrameFormat_YUV420;
+            out_format = ci_adv_frame_format_yuv420;
             break;
         default:
             LOGE("%s: not supported foramt in red eye removal",  __func__);
             return;
         }
-        ci_adv_do_redeye_removal(img_buf, size, width, height, out_format);
+        ci_adv_correct_redeyes(img_buf, size, width, height, out_format);
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
 
     }
@@ -513,11 +379,11 @@ void AAAProcess::LoadGdcTable(void)
     if(!mGdcEnabled)
         return;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_load_gdc_table();
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
 
     }
@@ -525,36 +391,37 @@ void AAAProcess::LoadGdcTable(void)
 
 int AAAProcess::AeSetMode(int mode)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_AeMode wr_val;
+        ci_adv_ae_mode wr_val;
         switch (mode)
         {
         case CAM_AE_MODE_AUTO:
-            wr_val = ci_adv_AeMode_Auto;
+            wr_val = ci_adv_ae_mode_auto;
             break;
         case CAM_AE_MODE_MANUAL:
-            wr_val = ci_adv_AeMode_Manual;
+            wr_val = ci_adv_ae_mode_manual;
             break;
         case CAM_AE_MODE_SHUTTER_PRIORITY:
-            wr_val = ci_adv_AeMode_ShutterPriority;
+            wr_val = ci_adv_ae_mode_shutter_priority;
             break;
         case CAM_AE_MODE_APERTURE_PRIORITY:
-            wr_val = ci_adv_AeMode_AperturePriority;
+            wr_val = ci_adv_ae_mode_aperture_priority;
             break;
          default:
             LOGE("%s: set invalid AE mode\n", __func__);
-            wr_val = ci_adv_AeMode_Auto;
+            wr_val = ci_adv_ae_mode_auto;
         }
-        ci_adv_Err ret = ci_adv_AeSetMode(wr_val);
-        if(ci_adv_Success != ret)
+        ci_adv_err ret = ci_adv_ae_set_mode(wr_val);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
         mAeMode = mode;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -563,27 +430,28 @@ int AAAProcess::AeSetMode(int mode)
 
 int AAAProcess::AeGetMode(int *mode)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_AeMode rd_val;
-        ci_adv_Err ret = ci_adv_AeGetMode(&rd_val);
-        if(ci_adv_Success != ret)
+        ci_adv_ae_mode rd_val;
+        ci_adv_err ret = ci_adv_ae_get_mode(&rd_val);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
         switch (rd_val)
         {
-        case ci_adv_AeMode_Auto:
+        case ci_adv_ae_mode_auto:
             *mode = CAM_AE_MODE_AUTO;
             break;
-        case ci_adv_AeMode_Manual:
+        case ci_adv_ae_mode_manual:
             *mode = CAM_AE_MODE_MANUAL;
             break;
-        case ci_adv_AeMode_ShutterPriority:
+        case ci_adv_ae_mode_shutter_priority:
             *mode = CAM_AE_MODE_SHUTTER_PRIORITY;
             break;
-        case ci_adv_AeMode_AperturePriority:
+        case ci_adv_ae_mode_aperture_priority:
             *mode = CAM_AE_MODE_APERTURE_PRIORITY;
             break;
         default:
@@ -592,7 +460,7 @@ int AAAProcess::AeGetMode(int *mode)
         }
         mAeMode = *mode;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -601,35 +469,36 @@ int AAAProcess::AeGetMode(int *mode)
 
 int AAAProcess::AeSetMeteringMode(int mode)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_AeMeteringMode wr_val;
+        ci_adv_ae_metering_mode wr_val;
         switch (mode)
         {
         case CAM_AE_METERING_MODE_SPOT:
-            wr_val = ci_adv_AeMeteringMode_Spot;
+            wr_val = ci_adv_ae_metering_mode_spot;
             break;
         case CAM_AE_METERING_MODE_CENTER:
-            wr_val = ci_adv_AeMeteringMode_Center;
+            wr_val = ci_adv_ae_metering_mode_center;
             break;
         case CAM_AE_METERING_MODE_CUSTOMIZED:
-            wr_val = ci_adv_AeMeteringMode_Customized;
+            wr_val = ci_adv_ae_metering_mode_customized;
             break;
         case CAM_AE_METERING_MODE_AUTO:
-            wr_val = ci_adv_AeMeteringMode_Auto;
+            wr_val = ci_adv_ae_metering_mode_auto;
             break;
         default:
             LOGE("%s: set invalid AE meter mode\n", __func__);
-            wr_val = ci_adv_AeMeteringMode_Auto;
+            wr_val = ci_adv_ae_metering_mode_auto;
         }
-        ci_adv_Err ret = ci_adv_AeSetMeteringMode(wr_val);
-        if(ci_adv_Success != ret)
+        ci_adv_err ret = ci_adv_ae_set_metering_mode(wr_val);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -638,27 +507,28 @@ int AAAProcess::AeSetMeteringMode(int mode)
 
 int AAAProcess::AeGetMeteringMode(int *mode)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_AeMeteringMode rd_val;
-        ci_adv_Err ret = ci_adv_AeGetMeteringMode(&rd_val);
-        if(ci_adv_Success != ret)
+        ci_adv_ae_metering_mode rd_val;
+        ci_adv_err ret = ci_adv_ae_get_metering_mode(&rd_val);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
         switch (rd_val)
         {
-        case ci_adv_AeMeteringMode_Spot:
+        case ci_adv_ae_metering_mode_spot:
             *mode = CAM_AE_METERING_MODE_SPOT;
             break;
-        case ci_adv_AeMeteringMode_Center:
+        case ci_adv_ae_metering_mode_center:
             *mode = CAM_AE_METERING_MODE_CENTER;
             break;
-        case ci_adv_AeMeteringMode_Customized:
+        case ci_adv_ae_metering_mode_customized:
             *mode = CAM_AE_METERING_MODE_CUSTOMIZED;
             break;
-        case ci_adv_AeMeteringMode_Auto:
+        case ci_adv_ae_metering_mode_auto:
             *mode = CAM_AE_METERING_MODE_AUTO;
             break;
          default:
@@ -666,7 +536,7 @@ int AAAProcess::AeGetMeteringMode(int *mode)
             *mode = CAM_AE_METERING_MODE_AUTO;
         }
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -675,21 +545,22 @@ int AAAProcess::AeGetMeteringMode(int *mode)
 
 int AAAProcess::AeSetEv(float bias)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         bias = bias > 2 ? 2 : bias;
         bias = bias < -2 ? -2 : bias;
-        ci_adv_Err ret = ci_adv_AeSetBias(CI_ADV_S15_16_FROM_FLOAT(bias));
-        if(ci_adv_Success != ret)
+        ci_adv_err ret = ci_adv_ae_set_bias(CI_ADV_S15_16_FROM_FLOAT(bias));
+        if(ci_adv_success != ret)
         {
             LOGE("!!!line:%d, in AeSetEv, ret:%d\n", __LINE__, ret);
             return AAA_FAIL;
         }
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -698,21 +569,22 @@ int AAAProcess::AeSetEv(float bias)
 
 int AAAProcess::AeGetEv(float *bias)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         int ibias;
-        ci_adv_Err ret = ci_adv_AeGetBias(&ibias);
+        ci_adv_err ret = ci_adv_ae_get_bias(&ibias);
         *bias = CI_ADV_S15_16_TO_FLOAT(ibias);
-        if(ci_adv_Success != ret)
+        if(ci_adv_success != ret)
         {
             LOGE("!!!line:%d, in AeGetEv, ret:%d\n", __LINE__, ret);
             return AAA_FAIL;
         }
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -721,40 +593,41 @@ int AAAProcess::AeGetEv(float *bias)
 
 int AAAProcess::AeSetSceneMode(int mode)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_AeExposureProgram wr_val;
+        ci_adv_ae_exposure_program wr_val;
         switch (mode) {
         case CAM_AE_SCENE_MODE_AUTO:
-            wr_val = ci_adv_AeExposureProgram_Auto;
+            wr_val = ci_adv_ae_exposure_program_auto;
             break;
         case CAM_AE_SCENE_MODE_PORTRAIT:
-            wr_val = ci_adv_AeExposureProgram_Portrait;
+            wr_val = ci_adv_ae_exposure_program_portrait;
             break;
         case CAM_AE_SCENE_MODE_SPORTS:
-            wr_val = ci_adv_AeExposureProgram_Sports;
+            wr_val = ci_adv_ae_exposure_program_sports;
             break;
         case CAM_AE_SCENE_MODE_LANDSCAPE:
-            wr_val = ci_adv_AeExposureProgram_Landscape;
+            wr_val = ci_adv_ae_exposure_program_landscape;
             break;
         case CAM_AE_SCENE_MODE_NIGHT:
-            wr_val = ci_adv_AeExposureProgram_Night;
+            wr_val = ci_adv_ae_exposure_program_night;
             break;
         case CAM_AE_SCENE_MODE_FIREWORKS:
-            wr_val = ci_adv_AeExposureProgram_Fireworks;
+            wr_val = ci_adv_ae_exposure_program_fireworks;
             break;
         default:
             LOGE("%s: set invalid AE scene mode\n", __func__);
-            wr_val = ci_adv_AeExposureProgram_Auto;
+            wr_val = ci_adv_ae_exposure_program_auto;
         }
-        ci_adv_Err ret = ci_adv_AeSetExposureProgram (wr_val);
-        if(ci_adv_Success != ret)
+        ci_adv_err ret = ci_adv_ae_set_exposure_program (wr_val);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -763,32 +636,33 @@ int AAAProcess::AeSetSceneMode(int mode)
 
 int AAAProcess::AeGetSceneMode(int *mode)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_AeExposureProgram rd_val;
-        ci_adv_Err ret = ci_adv_AeGetExposureProgram (&rd_val);
-        if(ci_adv_Success != ret)
+        ci_adv_ae_exposure_program rd_val;
+        ci_adv_err ret = ci_adv_ae_get_exposure_program (&rd_val);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
         switch (rd_val) {
-        case ci_adv_AeExposureProgram_Auto:
+        case ci_adv_ae_exposure_program_auto:
             *mode = CAM_AE_SCENE_MODE_AUTO;
             break;
-        case ci_adv_AeExposureProgram_Portrait:
+        case ci_adv_ae_exposure_program_portrait:
             *mode = CAM_AE_SCENE_MODE_PORTRAIT;
             break;
-        case ci_adv_AeExposureProgram_Sports:
+        case ci_adv_ae_exposure_program_sports:
             *mode = CAM_AE_SCENE_MODE_SPORTS;
             break;
-        case ci_adv_AeExposureProgram_Landscape:
+        case ci_adv_ae_exposure_program_landscape:
             *mode = CAM_AE_SCENE_MODE_LANDSCAPE;
             break;
-        case ci_adv_AeExposureProgram_Night:
+        case ci_adv_ae_exposure_program_night:
             *mode = CAM_AE_SCENE_MODE_NIGHT;
             break;
-        case ci_adv_AeExposureProgram_Fireworks:
+        case ci_adv_ae_exposure_program_fireworks:
             *mode = CAM_AE_SCENE_MODE_FIREWORKS;
             break;
         default:
@@ -796,7 +670,7 @@ int AAAProcess::AeGetSceneMode(int *mode)
             *mode = CAM_AE_SCENE_MODE_AUTO;
         }
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -805,37 +679,38 @@ int AAAProcess::AeGetSceneMode(int *mode)
 
 int AAAProcess::AeSetFlashMode(int mode)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_AeFlashMode wr_val;
+        ci_adv_ae_flash_mode wr_val;
         switch (mode) {
         case CAM_AE_FLASH_MODE_AUTO:
-            wr_val = ci_adv_AeFlashMode_Auto;
+            wr_val = ci_adv_ae_flash_mode_auto;
             break;
         case CAM_AE_FLASH_MODE_OFF:
-            wr_val = ci_adv_AeFlashMode_Off;
+            wr_val = ci_adv_ae_flash_mode_off;
             break;
         case CAM_AE_FLASH_MODE_ON:
-            wr_val = ci_adv_AeFlashMode_On;
+            wr_val = ci_adv_ae_flash_mode_on;
             break;
         case CAM_AE_FLASH_MODE_DAY_SYNC:
-            wr_val = ci_adv_AeFlashMode_DaySync;
+            wr_val = ci_adv_ae_flash_mode_day_sync;
             break;
         case CAM_AE_FLASH_MODE_SLOW_SYNC:
-            wr_val = ci_adv_AeFlashMode_SlowSync;
+            wr_val = ci_adv_ae_flash_mode_slow_sync;
             break;
         default:
             LOGE("%s: set invalid flash mode\n", __func__);
-            wr_val = ci_adv_AeFlashMode_Auto;
+            wr_val = ci_adv_ae_flash_mode_auto;
         }
-        ci_adv_Err ret = ci_adv_AeSetFlashMode(wr_val);
-        if(ci_adv_Success != ret)
+        ci_adv_err ret = ci_adv_ae_set_flash_mode(wr_val);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -844,29 +719,30 @@ int AAAProcess::AeSetFlashMode(int mode)
 
 int AAAProcess::AeGetFlashMode(int *mode)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_AeFlashMode rd_val;
-        ci_adv_Err ret = ci_adv_AeGetFlashMode(&rd_val);
-        if(ci_adv_Success != ret)
+        ci_adv_ae_flash_mode rd_val;
+        ci_adv_err ret = ci_adv_ae_get_flash_mode(&rd_val);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
         switch (rd_val) {
-        case ci_adv_AeFlashMode_Auto:
+        case ci_adv_ae_flash_mode_auto:
             *mode = CAM_AE_FLASH_MODE_AUTO;
             break;
-        case ci_adv_AeFlashMode_Off:
+        case ci_adv_ae_flash_mode_off:
             *mode = CAM_AE_FLASH_MODE_OFF;
             break;
-        case ci_adv_AeFlashMode_On:
+        case ci_adv_ae_flash_mode_on:
             *mode = CAM_AE_FLASH_MODE_ON;
             break;
-        case ci_adv_AeFlashMode_DaySync:
+        case ci_adv_ae_flash_mode_day_sync:
             *mode = CAM_AE_FLASH_MODE_DAY_SYNC;
             break;
-        case ci_adv_AeFlashMode_SlowSync:
+        case ci_adv_ae_flash_mode_slow_sync:
             *mode = CAM_AE_FLASH_MODE_SLOW_SYNC;
             break;
         default:
@@ -874,7 +750,7 @@ int AAAProcess::AeGetFlashMode(int *mode)
             *mode = CAM_AE_FLASH_MODE_AUTO;
         }
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -883,17 +759,18 @@ int AAAProcess::AeGetFlashMode(int *mode)
 
 int AAAProcess::AeIsFlashNecessary(bool *used)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
     *used = false;
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_Err ret = ci_adv_AeIsFlashNecessary(used);
-        if(ci_adv_Success != ret)
+        ci_adv_err ret = ci_adv_ae_is_flash_necessary(used);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
 
     }
@@ -903,35 +780,36 @@ int AAAProcess::AeIsFlashNecessary(bool *used)
 
 int AAAProcess::AeSetFlickerMode(int mode)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_AeFlickerMode wr_val;
+        ci_adv_ae_flicker_mode wr_val;
         switch (mode)
         {
         case CAM_AE_FLICKER_MODE_OFF:
-            wr_val = ci_adv_AeFlickerMode_Off;
+            wr_val = ci_adv_ae_flicker_mode_off;
             break;
         case CAM_AE_FLICKER_MODE_50HZ:
-            wr_val = ci_adv_AeFlickerMode_50Hz;
+            wr_val = ci_adv_ae_flicker_mode_50hz;
             break;
         case CAM_AE_FLICKER_MODE_60HZ:
-            wr_val = ci_adv_AeFlickerMode_60Hz;
+            wr_val = ci_adv_ae_flicker_mode_60hz;
             break;
         case CAM_AE_FLICKER_MODE_AUTO:
-            wr_val = ci_adv_AeFlickerMode_Auto;
+            wr_val = ci_adv_ae_flicker_mode_auto;
             break;
         default:
             LOGE("%s: set invalid flicker mode\n", __func__);
-            wr_val = ci_adv_AeFlickerMode_Auto;
+            wr_val = ci_adv_ae_flicker_mode_auto;
         }
-        ci_adv_Err ret = ci_adv_AeSetFlickerMode(wr_val);
-        if(ci_adv_Success != ret)
+        ci_adv_err ret = ci_adv_ae_set_flicker_mode(wr_val);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -940,27 +818,28 @@ int AAAProcess::AeSetFlickerMode(int mode)
 
 int AAAProcess::AeGetFlickerMode(int *mode)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_AeFlickerMode rd_val;
-        ci_adv_Err ret = ci_adv_AeGetFlickerMode(&rd_val);
-        if(ci_adv_Success != ret)
+        ci_adv_ae_flicker_mode rd_val;
+        ci_adv_err ret = ci_adv_ae_get_flicker_mode(&rd_val);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
         switch (rd_val)
         {
-        case ci_adv_AeFlickerMode_Off:
+        case ci_adv_ae_flicker_mode_off:
             *mode = CAM_AE_FLICKER_MODE_OFF;
             break;
-        case ci_adv_AeFlickerMode_50Hz:
+        case ci_adv_ae_flicker_mode_50hz:
             *mode = CAM_AE_FLICKER_MODE_50HZ;
             break;
-        case ci_adv_AeFlickerMode_60Hz:
+        case ci_adv_ae_flicker_mode_60hz:
             *mode = CAM_AE_FLICKER_MODE_60HZ;
             break;
-        case ci_adv_AeFlickerMode_Auto:
+        case ci_adv_ae_flicker_mode_auto:
             *mode = CAM_AE_FLICKER_MODE_AUTO;
             break;
         default:
@@ -968,7 +847,7 @@ int AAAProcess::AeGetFlickerMode(int *mode)
             *mode = CAM_AE_FLICKER_MODE_AUTO;
         }
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -977,10 +856,11 @@ int AAAProcess::AeGetFlickerMode(int *mode)
 
 int AAAProcess::AeSetManualIso(int sensitivity, bool to_hw)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         float fev;
         if (sensitivity <=0)
@@ -994,14 +874,14 @@ int AAAProcess::AeSetManualIso(int sensitivity, bool to_hw)
         if(to_hw)
         {
             fev = log10((float)sensitivity / 3.125) / log10(2.0);
-            ci_adv_Err ret = ci_adv_AeSetManualIso(CI_ADV_S15_16_FROM_FLOAT(fev));
-            if(ci_adv_Success != ret)
+            ci_adv_err ret = ci_adv_ae_set_manual_iso(CI_ADV_S15_16_FROM_FLOAT(fev));
+            if(ci_adv_success != ret)
                 return AAA_FAIL;
 
             LOGD(" *** manual set iso in EV: %f\n", fev);
         }
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1010,19 +890,20 @@ int AAAProcess::AeSetManualIso(int sensitivity, bool to_hw)
 
 int AAAProcess::AeGetManualIso(int *sensitivity)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         int iev;
-        ci_adv_Err ret = ci_adv_AeGetManualIso(&iev);
-        if(ci_adv_Success != ret)
+        ci_adv_err ret = ci_adv_ae_get_manual_iso(&iev);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
         *sensitivity = (int)(3.125 * pow(2, CI_ADV_S15_16_TO_FLOAT(iev)));
         mManualIso = *sensitivity;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1031,10 +912,11 @@ int AAAProcess::AeGetManualIso(int *sensitivity)
 
 int AAAProcess::AeSetManualAperture(float aperture, bool to_hw)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         float fev;
         if (aperture <=0)
@@ -1048,14 +930,14 @@ int AAAProcess::AeSetManualAperture(float aperture, bool to_hw)
         if (to_hw)
         {
             fev = 2.0 * (log10(aperture) / log10(2.0));
-            ci_adv_Err ret = ci_adv_AeSetManualAperture(CI_ADV_S15_16_FROM_FLOAT(fev));
-            if(ci_adv_Success != ret)
+            ci_adv_err ret = ci_adv_ae_set_manual_aperture(CI_ADV_S15_16_FROM_FLOAT(fev));
+            if(ci_adv_success != ret)
                 return AAA_FAIL;
 
             LOGD(" *** manual set aperture in EV: %f\n", fev);
         }
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1064,19 +946,20 @@ int AAAProcess::AeSetManualAperture(float aperture, bool to_hw)
 
 int AAAProcess::AeGetManualAperture(float *aperture)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         int iev;
-        ci_adv_Err ret = ci_adv_AeGetManualAperture(&iev);
-        if(ci_adv_Success != ret)
+        ci_adv_err ret = ci_adv_ae_get_manual_aperture(&iev);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
         *aperture = pow(2, CI_ADV_S15_16_TO_FLOAT(iev) / 2.0);
         mManualAperture = *aperture;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1085,19 +968,20 @@ int AAAProcess::AeGetManualAperture(float *aperture)
 
 int AAAProcess::AeGetManualBrightness(float *brightness)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         int val;
-        ci_adv_Err ret = ci_adv_AeGetManualBrightness(&val);
-        if (ci_adv_Success != ret)
+        ci_adv_err ret = ci_adv_ae_get_manual_brightness(&val);
+        if (ci_adv_success != ret)
             return AAA_FAIL;
 
         *brightness = (float)((float)val / 65536.0);
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1106,10 +990,11 @@ int AAAProcess::AeGetManualBrightness(float *brightness)
 
 int AAAProcess::AeSetManualShutter(float exp_time, bool to_hw)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         float fev;
         if (exp_time <=0)
@@ -1123,14 +1008,14 @@ int AAAProcess::AeSetManualShutter(float exp_time, bool to_hw)
         if (to_hw)
         {
             fev = -1.0 * (log10(exp_time) / log10(2.0));
-            ci_adv_Err ret = ci_adv_AeSetManualShutter(CI_ADV_S15_16_FROM_FLOAT(fev));
-            if(ci_adv_Success != ret)
+            ci_adv_err ret = ci_adv_ae_set_manual_shutter(CI_ADV_S15_16_FROM_FLOAT(fev));
+            if(ci_adv_success != ret)
                 return AAA_FAIL;
 
             LOGD(" *** manual set shutter in EV: %f\n", fev);
         }
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1139,19 +1024,20 @@ int AAAProcess::AeSetManualShutter(float exp_time, bool to_hw)
 
 int AAAProcess::AeGetManualShutter(float *exp_time)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         int iev;
-        ci_adv_Err ret = ci_adv_AeGetManualShutter(&iev);
-        if(ci_adv_Success != ret)
+        ci_adv_err ret = ci_adv_ae_get_manual_shutter(&iev);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
         *exp_time = pow(2, -1.0 * CI_ADV_S15_16_TO_FLOAT(iev));
         mManualShutter = *exp_time;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1160,10 +1046,11 @@ int AAAProcess::AeGetManualShutter(float *exp_time)
 
 int AAAProcess::AfSetManualFocus(int focus, bool to_hw)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         mFocusPosition = focus;
 
@@ -1171,7 +1058,7 @@ int AAAProcess::AfSetManualFocus(int focus, bool to_hw)
         {
 
         //fixme: use distance as manual focus control
-        //int ret = ci_adv_AfManualFocusAbs(focus);
+        //int ret = ci_adv_af_manual_focus_abs(focus);
         struct v4l2_ext_controls controls;
         struct v4l2_ext_control control;
         controls.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
@@ -1187,7 +1074,7 @@ int AAAProcess::AfSetManualFocus(int focus, bool to_hw)
 
         LOGD(" *** manual set focus distance in cm: %d\n", focus);
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1197,14 +1084,15 @@ int AAAProcess::AfSetManualFocus(int focus, bool to_hw)
 
 int AAAProcess::AfGetManualFocus(int *focus)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         *focus = mFocusPosition;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1214,10 +1102,11 @@ int AAAProcess::AfGetManualFocus(int *focus)
 
 int AAAProcess::AfGetFocus(int *focus)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         struct v4l2_ext_controls controls;
         struct v4l2_ext_control control;
@@ -1231,7 +1120,7 @@ int AAAProcess::AfGetFocus(int *focus)
         *focus = control.value;
 
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1240,16 +1129,17 @@ int AAAProcess::AfGetFocus(int *focus)
 
 int AAAProcess::AeSetWindow(const cam_Window *window)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_Err ret = ci_adv_AeSetWindow((ci_adv_Window *)window);
-        if(ci_adv_Success != ret)
+        ci_adv_err ret = ci_adv_ae_set_window((ci_adv_window *)window);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1258,16 +1148,17 @@ int AAAProcess::AeSetWindow(const cam_Window *window)
 
 int AAAProcess::AeGetWindow(cam_Window *window)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_Err ret = ci_adv_AeGetWindow((ci_adv_Window *)window);
-        if(ci_adv_Success != ret)
+        ci_adv_err ret = ci_adv_ae_get_window((ci_adv_window *)window);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1276,60 +1167,61 @@ int AAAProcess::AeGetWindow(cam_Window *window)
 
 int AAAProcess::AwbSetMode (int wb_mode)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_Err ret = ci_adv_Success;
+        ci_adv_err ret = ci_adv_success;
         switch (wb_mode) {
         case CAM_AWB_MODE_DAYLIGHT:
-            ci_adv_AwbSetMode (ci_adv_AwbMode_Manual);
-            ret = ci_adv_AwbSetLightSource (ci_adv_AwbLightSource_ClearSky);
+            ci_adv_awb_set_mode (ci_adv_awb_mode_manual);
+            ret = ci_adv_awb_set_light_source (ci_adv_awb_light_source_clear_sky);
             break;
         case CAM_AWB_MODE_CLOUDY:
-            ci_adv_AwbSetMode (ci_adv_AwbMode_Manual);
-            ret = ci_adv_AwbSetLightSource (ci_adv_AwbLightSource_Cloudiness);
+            ci_adv_awb_set_mode (ci_adv_awb_mode_manual);
+            ret = ci_adv_awb_set_light_source (ci_adv_awb_light_source_cloudiness);
             break;
         case CAM_AWB_MODE_SUNSET:
-            ci_adv_AwbSetMode (ci_adv_AwbMode_Manual);
-            ret = ci_adv_AwbSetLightSource (ci_adv_AwbLightSource_FilamentLamp);
+            ci_adv_awb_set_mode (ci_adv_awb_mode_manual);
+            ret = ci_adv_awb_set_light_source (ci_adv_awb_light_source_filament_lamp);
             break;
         case CAM_AWB_MODE_TUNGSTEN:
-            ci_adv_AwbSetMode (ci_adv_AwbMode_Manual);
-            ret = ci_adv_AwbSetLightSource (ci_adv_AwbLightSource_FilamentLamp);
+            ci_adv_awb_set_mode (ci_adv_awb_mode_manual);
+            ret = ci_adv_awb_set_light_source (ci_adv_awb_light_source_filament_lamp);
             break;
         case CAM_AWB_MODE_FLUORESCENT:
-            ci_adv_AwbSetMode (ci_adv_AwbMode_Manual);
-            ret = ci_adv_AwbSetLightSource (ci_adv_AwbLightSource_Fluorlamp_N);
+            ci_adv_awb_set_mode (ci_adv_awb_mode_manual);
+            ret = ci_adv_awb_set_light_source (ci_adv_awb_light_source_fluorlamp_n);
             break;
         case CAM_AWB_MODE_WARM_FLUORESCENT:
-            ci_adv_AwbSetMode (ci_adv_AwbMode_Manual);
-            ret = ci_adv_AwbSetLightSource (ci_adv_AwbLightSource_Fluorlamp_W);
+            ci_adv_awb_set_mode (ci_adv_awb_mode_manual);
+            ret = ci_adv_awb_set_light_source (ci_adv_awb_light_source_fluorlamp_w);
             break;
         case CAM_AWB_MODE_WARM_INCANDESCENT:
-            ci_adv_AwbSetMode (ci_adv_AwbMode_Manual);
-            ret = ci_adv_AwbSetLightSource (ci_adv_AwbLightSource_FilamentLamp);
+            ci_adv_awb_set_mode (ci_adv_awb_mode_manual);
+            ret = ci_adv_awb_set_light_source (ci_adv_awb_light_source_filament_lamp);
             break;
         case CAM_AWB_MODE_SHADOW:
-            ci_adv_AwbSetMode (ci_adv_AwbMode_Manual);
-            ret = ci_adv_AwbSetLightSource (ci_adv_AwbLightSource_ShadowArea);
+            ci_adv_awb_set_mode (ci_adv_awb_mode_manual);
+            ret = ci_adv_awb_set_light_source (ci_adv_awb_light_source_shadow_area);
             break;
         case CAM_AWB_MODE_MANUAL_INPUT:
-            ci_adv_AwbSetMode (ci_adv_AwbMode_Manual);
+            ci_adv_awb_set_mode (ci_adv_awb_mode_manual);
             break;
         case CAM_AWB_MODE_AUTO:
-            ret = ci_adv_AwbSetMode (ci_adv_AwbMode_Auto);
+            ret = ci_adv_awb_set_mode (ci_adv_awb_mode_auto);
             break;
         default:
             LOGE("%s: set invalid AWB mode\n", __func__);
-            ret = ci_adv_AwbSetMode (ci_adv_AwbMode_Auto);
+            ret = ci_adv_awb_set_mode (ci_adv_awb_mode_auto);
         }
-        if (ret != ci_adv_Success)
+        if (ret != ci_adv_success)
             return AAA_FAIL;
         mAwbMode = wb_mode;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1338,14 +1230,15 @@ int AAAProcess::AwbSetMode (int wb_mode)
 
 int AAAProcess::AwbGetMode(int *wb_mode)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         *wb_mode = mAwbMode;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1354,22 +1247,23 @@ int AAAProcess::AwbGetMode(int *wb_mode)
 
 int AAAProcess::AwbSetManualColorTemperature(int ct, bool to_hw)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         mColorTemperature = ct;
 
         if (to_hw)
         {
-            ci_adv_Err ret = ci_adv_AwbSetManualColorTemperature(ct);
-            if(ci_adv_Success != ret)
+            ci_adv_err ret = ci_adv_awb_set_manual_color_temperature(ct);
+            if(ci_adv_success != ret)
                 return AAA_FAIL;
         }
         LOGD(" *** manual set color temperture in Kelvin: %d\n", ct);
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1378,14 +1272,15 @@ int AAAProcess::AwbSetManualColorTemperature(int ct, bool to_hw)
 
 int AAAProcess::AwbGetManualColorTemperature(int *ct)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         *ct = mColorTemperature;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1394,25 +1289,26 @@ int AAAProcess::AwbGetManualColorTemperature(int *ct)
 
 int AAAProcess::AeSetBacklightCorrection(bool en)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_AeBacklightCorrectionMode wr_val;
+        ci_adv_ae_backlight_correction_mode wr_val;
         if (en == true)
         {
-            wr_val = ci_adv_AeBacklightCorrectionMode_On;
+            wr_val = ci_adv_ae_backlight_correction_mode_on;
         }
         else
         {
-            wr_val = ci_adv_AeBacklightCorrectionMode_Off;
+            wr_val = ci_adv_ae_backlight_correction_mode_off;
         }
-        ci_adv_Err ret = ci_adv_AeSetBacklightCorrection (wr_val);
-        if(ci_adv_Success != ret)
+        ci_adv_err ret = ci_adv_ae_set_backlight_correction (wr_val);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1421,21 +1317,22 @@ int AAAProcess::AeSetBacklightCorrection(bool en)
 
 int AAAProcess::AeGetBacklightCorrection(bool *en)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_AeBacklightCorrectionMode rd_val;
-        ci_adv_Err ret = ci_adv_AeGetBacklightCorrection(&rd_val);
-        if(ci_adv_Success != ret)
+        ci_adv_ae_backlight_correction_mode rd_val;
+        ci_adv_err ret = ci_adv_ae_get_backlight_correction(&rd_val);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
         switch (rd_val)
         {
-        case ci_adv_AeBacklightCorrectionMode_Off:
+        case ci_adv_ae_backlight_correction_mode_off:
             *en = false;
             break;
-        case ci_adv_AeBacklightCorrectionMode_On:
+        case ci_adv_ae_backlight_correction_mode_on:
             *en = true;
             break;
         default:
@@ -1443,7 +1340,7 @@ int AAAProcess::AeGetBacklightCorrection(bool *en)
             *en = false;
         }
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1456,14 +1353,15 @@ int AAAProcess::AeGetExpCfg(unsigned short * exp_time,
                                                                     unsigned short * ss_iso_speed,
                                                                     unsigned short * aperture)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_ae_get_exp_cfg(exp_time, iso_speed, ss_exp_time, ss_iso_speed, aperture);
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1472,14 +1370,15 @@ int AAAProcess::AeGetExpCfg(unsigned short * exp_time,
 
 int AAAProcess::SetRedEyeRemoval(bool en)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
        return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        mRedEyeRemovalEnabled = en;
+        ci_adv_redeye_enable(en);
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1488,14 +1387,15 @@ int AAAProcess::SetRedEyeRemoval(bool en)
 
 int AAAProcess::GetRedEyeRemoval(bool *en)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        *en = mRedEyeRemovalEnabled;
+        ci_adv_redeye_is_enabled (en);
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1504,29 +1404,30 @@ int AAAProcess::GetRedEyeRemoval(bool *en)
 
 int AAAProcess::AwbSetMapping(int mode)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_AwbMap wr_val;
+        ci_adv_awb_map wr_val;
         switch (mode)
         {
         case CAM_AWB_MAP_INDOOR:
-            wr_val = ci_adv_AwbMap_Indoor;
+            wr_val = ci_adv_awb_map_indoor;
             break;
         case CAM_AWB_MAP_OUTDOOR:
-            wr_val = ci_adv_AwbMap_Outdoor;
+            wr_val = ci_adv_awb_map_outdoor;
             break;
         default:
             LOGE("%s: set invalid AWB map mode\n", __func__);
-            wr_val = ci_adv_AwbMap_Indoor;
+            wr_val = ci_adv_awb_map_indoor;
         }
-        ci_adv_Err ret = ci_adv_AwbSetMap (wr_val);
-        if(ci_adv_Success != ret)
+        ci_adv_err ret = ci_adv_awb_set_map (wr_val);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1535,21 +1436,22 @@ int AAAProcess::AwbSetMapping(int mode)
 
 int AAAProcess::AwbGetMapping(int *mode)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_AwbMap rd_val;
-        ci_adv_Err ret = ci_adv_AwbGetMap (&rd_val);
-        if(ci_adv_Success != ret)
+        ci_adv_awb_map rd_val;
+        ci_adv_err ret = ci_adv_awb_get_map (&rd_val);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
         switch (rd_val)
         {
-        case ci_adv_AwbMap_Indoor:
+        case ci_adv_awb_map_indoor:
             *mode = CAM_AWB_MAP_INDOOR;
             break;
-        case ci_adv_AwbMap_Outdoor:
+        case ci_adv_awb_map_outdoor:
             *mode = CAM_AWB_MAP_OUTDOOR;
             break;
         default:
@@ -1557,7 +1459,7 @@ int AAAProcess::AwbGetMapping(int *mode)
             *mode = CAM_AWB_MAP_INDOOR;
         }
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1567,40 +1469,43 @@ int AAAProcess::AwbGetMapping(int *mode)
 
 int AAAProcess::AfSetMode(int mode)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_Err ret = ci_adv_Success;
+        ci_adv_err ret = ci_adv_success;
 
         switch (mode) {
         case CAM_AF_MODE_AUTO:
-            ret = ci_adv_AfSetMode (ci_adv_AfMode_Auto);
-            ci_adv_AfSetRange (ci_adv_AfRange_Norm);
+        case CAM_AF_MODE_TOUCH:
+            ret = ci_adv_af_set_mode (ci_adv_af_mode_auto);
+            ci_adv_af_set_range (ci_adv_af_range_norm);
             break;
         case CAM_AF_MODE_MACRO:
-            ret = ci_adv_AfSetMode (ci_adv_AfMode_Auto);
-            ci_adv_AfSetRange (ci_adv_AfRange_Macro);
+            ret = ci_adv_af_set_mode (ci_adv_af_mode_auto);
+            ci_adv_af_set_range (ci_adv_af_range_macro);
             break;
         case CAM_AF_MODE_INFINITY:
-            ret = ci_adv_AfSetMode (ci_adv_AfMode_Auto);
-            ci_adv_AfSetRange (ci_adv_AfRange_Full);
+            ret = ci_adv_af_set_mode (ci_adv_af_mode_auto);
+            ci_adv_af_set_range (ci_adv_af_range_full);
             break;
         case CAM_AF_MODE_MANUAL:
-            ret = ci_adv_AfSetMode (ci_adv_AfMode_Manual);
+            ret = ci_adv_af_set_mode (ci_adv_af_mode_manual);
+            ci_adv_af_set_range (ci_adv_af_range_full);
             break;
         default:
             LOGE("%s: set invalid AF mode\n", __func__);
-            ret = ci_adv_AfSetMode (ci_adv_AfMode_Auto);
-            ci_adv_AfSetRange (ci_adv_AfRange_Norm);
+            ret = ci_adv_af_set_mode (ci_adv_af_mode_auto);
+            ci_adv_af_set_range (ci_adv_af_range_norm);
             break;
         }
-        if (ret != ci_adv_Success)
+        if (ret != ci_adv_success)
             return AAA_FAIL;
         mAfMode = mode;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1609,14 +1514,15 @@ int AAAProcess::AfSetMode(int mode)
 
 int AAAProcess::AfGetMode(int *mode)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         *mode = mAfMode;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1625,29 +1531,30 @@ int AAAProcess::AfGetMode(int *mode)
 
 int AAAProcess::AfSetMeteringMode(int mode)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_AfMeteringMode wr_val;
+        ci_adv_af_metering_mode wr_val;
         switch (mode)
         {
         case CAM_AF_METERING_MODE_AUTO:
-            wr_val = ci_adv_AfMeteringMode_Auto;
+            wr_val = ci_adv_af_metering_mode_auto;
             break;
         case CAM_AF_METERING_MODE_SPOT:
-            wr_val = ci_adv_AfMeteringMode_Spot;
+            wr_val = ci_adv_af_metering_mode_spot;
             break;
         default:
             LOGE("%s: set invalid AF meter mode\n", __func__);
-            wr_val = ci_adv_AfMeteringMode_Auto;
+            wr_val = ci_adv_af_metering_mode_auto;
         }
-        ci_adv_Err ret = ci_adv_AfSetMeteringMode(wr_val);
-        if(ci_adv_Success != ret)
+        ci_adv_err ret = ci_adv_af_set_metering_mode(wr_val);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1656,21 +1563,22 @@ int AAAProcess::AfSetMeteringMode(int mode)
 
 int AAAProcess::AfGetMeteringMode(int *mode)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_AfMeteringMode rd_val;
-        ci_adv_Err ret = ci_adv_AfGetMeteringMode(&rd_val);
-        if(ci_adv_Success != ret)
+        ci_adv_af_metering_mode rd_val;
+        ci_adv_err ret = ci_adv_af_get_metering_mode(&rd_val);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
         switch (rd_val)
         {
-        case ci_adv_AfMeteringMode_Auto:
+        case ci_adv_af_metering_mode_auto:
             *mode = CAM_AF_METERING_MODE_AUTO;
             break;
-        case ci_adv_AfMeteringMode_Spot:
+        case ci_adv_af_metering_mode_spot:
             *mode = CAM_AF_METERING_MODE_SPOT;
             break;
         default:
@@ -1678,7 +1586,7 @@ int AAAProcess::AfGetMeteringMode(int *mode)
             *mode = CAM_AF_METERING_MODE_AUTO;
         }
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1687,16 +1595,17 @@ int AAAProcess::AfGetMeteringMode(int *mode)
 
 int AAAProcess::AfSetWindow(const cam_Window *window)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_Err ret = ci_adv_AfSetWindow((ci_adv_Window *)window);
-        if(ci_adv_Success != ret)
+        ci_adv_err ret = ci_adv_af_set_window((ci_adv_window *)window);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1705,16 +1614,17 @@ int AAAProcess::AfSetWindow(const cam_Window *window)
 
 int AAAProcess::AfGetWindow(cam_Window *window)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_Err ret = ci_adv_AfGetWindow((ci_adv_Window *)window);
-        if(ci_adv_Success != ret)
+        ci_adv_err ret = ci_adv_af_get_window((ci_adv_window *)window);
+        if(ci_adv_success != ret)
             return AAA_FAIL;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
     }
 
@@ -1724,39 +1634,6 @@ int AAAProcess::AfGetWindow(cam_Window *window)
 int AAAProcess::FlushManualSettings(void)
 {
     int ret;
-
-    // manual aperture
-    if (mAeMode == CAM_AE_MODE_MANUAL || mAeMode == CAM_AE_MODE_APERTURE_PRIORITY)
-    {
-        ret = AeSetManualAperture (mManualAperture, true);
-        if (ret != AAA_SUCCESS)
-        {
-            LOGE(" error in flush manual aperture\n");
-            return AAA_FAIL;
-        }
-    }
-
-    // manual shutter
-    if (mAeMode == CAM_AE_MODE_MANUAL || mAeMode == CAM_AE_MODE_SHUTTER_PRIORITY)
-    {
-        ret = AeSetManualShutter (mManualShutter, true);
-        if (ret != AAA_SUCCESS)
-        {
-            LOGE(" error in flush manual shutter\n");
-            return AAA_FAIL;
-        }
-    }
-
-    // manual iso
-    if (mAeMode == CAM_AE_MODE_MANUAL)
-    {
-        ret = AeSetManualIso (mManualIso, true);
-        if (ret != AAA_SUCCESS)
-        {
-            LOGE(" error in flush manual iso\n");
-            return AAA_FAIL;
-        }
-    }
 
     // manual focus
     if (mAfMode == CAM_AF_MODE_MANUAL)
@@ -1770,29 +1647,19 @@ int AAAProcess::FlushManualSettings(void)
         }
     }
 
-    // manual color temperature
-    if (mAwbMode == CAM_AWB_MODE_MANUAL_INPUT)
-    {
-        ret = AwbSetManualColorTemperature(mColorTemperature, true);
-        if (ret != AAA_SUCCESS)
-        {
-            LOGE(" error in flush manual color temperature\n");
-            return AAA_FAIL;
-        }
-    }
-
     return AAA_SUCCESS;
 }
 
 /* private interface */
-void AAAProcess::Init(void)
+void AAAProcess::Init(int sensor)
 {
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    Mutex::Autolock lock(mLock);
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_init();
+        ci_adv_init(sensor);
         mInitied = 1;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
 
     }
@@ -1800,15 +1667,16 @@ void AAAProcess::Init(void)
 
 void AAAProcess::Uninit(void)
 {
+    Mutex::Autolock lock(mLock);
     if(!mInitied)
         return;
 
-    if(ENUM_SENSOR_TYPE_RAW == mSensorType)
+    if(SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_uninit();
         mInitied = 0;
     }
-    else if(ENUM_SENSOR_TYPE_SOC == mSensorType)
+    else if(SENSOR_TYPE_SOC == mSensorType)
     {
 
     }
