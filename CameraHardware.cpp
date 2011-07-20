@@ -67,7 +67,8 @@ CameraHardware::CameraHardware(int cameraId)
     mCaptureInProgress(false),
     mNotifyCb(0),
     mDataCb(0),
-    mDataCbTimestamp(0)
+    mDataCbTimestamp(0),
+    awb_to_manual(false)
 {
     int ret;
     LOG2("%s: Create the CameraHardware\n", __func__);
@@ -2278,6 +2279,13 @@ int CameraHardware::autoFocusThread()
         case CAM_AE_FLASH_MODE_ON:
             mCamera->setAssistIntensity(ASSIST_INTENSITY_WORKING);
             break;
+        case CAM_AE_FLASH_MODE_OFF:
+            int scene_mode;
+            mAAA->AeGetSceneMode(&scene_mode);
+            LOG1("%s: scene mode: %x", __func__, scene_mode);
+            if(CAM_AE_SCENE_MODE_NIGHT == scene_mode)
+                mCamera->setAssistIntensity(ASSIST_INTENSITY_WORKING);
+            break;
         default:
             break;
     }
@@ -2430,7 +2438,6 @@ int  CameraHardware::update3AParameters(CameraParameters& p, bool flush_only)
         bool ae_to_aperture_priority = false;
         bool ae_to_shutter_priority = false;
         bool af_to_manual = false;
-        bool awb_to_manual = false;
 
         // ae mode
         const char * pmode = CameraParameters::KEY_AE_MODE;
@@ -2584,12 +2591,14 @@ int  CameraHardware::update3AParameters(CameraParameters& p, bool flush_only)
             else if(!strcmp(new_value, CameraParameters::WHITE_BALANCE_SHADE))
                 wb_mode = CAM_AWB_MODE_SHADOW;
             else if(!strcmp(new_value, "manual"))
-            {
                 wb_mode = CAM_AWB_MODE_MANUAL_INPUT;
-                awb_to_manual = true;
-            }
             else
                 wb_mode = CAM_AWB_MODE_AUTO;
+
+            if(wb_mode == CAM_AWB_MODE_MANUAL_INPUT)
+                awb_to_manual = true;
+            else
+                awb_to_manual = false;
             mAAA->AwbSetMode(wb_mode);
 
             LOGD("     ++ Changed whitebalance to %s, wb_mode:%d\n",p.get(pwb), wb_mode);
@@ -3448,7 +3457,7 @@ int CameraHardware::SnapshotPostProcessing(void *img_data, int width, int height
     // ShRedEye_Remove() is called in 3A library
     // to workaround and make system not crash, maximum resolution for red eye
     // removal is restricted to be 5M
-    if (width > 2560 || height > 1920)
+    if (width > 2560 || height > 1920 || awb_to_manual)
     {
         LOGD(" Bug here: picture size must not more than 5M for red eye removal\n");
         return -1;
