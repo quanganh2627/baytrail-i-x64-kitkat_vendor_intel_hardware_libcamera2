@@ -547,15 +547,15 @@ void IntelCamera::stopCameraPreview(void)
     }
     int fd = video_fds[device];
 
-    if (use_texture_streaming)
-        v4l2_release_bcd(video_fds[V4L2_FIRST_DEVICE]);
-
     if (fd <= 0) {
         LOGD("(%s):Camera was already closed\n", __func__);
         return ;
     }
 
     stopCapture(device);
+
+    if (use_texture_streaming)
+        v4l2_release_bcd(video_fds[V4L2_FIRST_DEVICE]);
 }
 
 int IntelCamera::getPreview(void **data)
@@ -666,9 +666,6 @@ configure1_error:
 
 void IntelCamera::stopSnapshot(void)
 {
-    if (use_texture_streaming)
-        v4l2_release_bcd(video_fds[V4L2_FIRST_DEVICE]);
-
     stopDualStreams();
     v4l2_set_isp_timeout(0);
 }
@@ -839,10 +836,6 @@ void IntelCamera::stopCameraRecording(void)
 {
     LOG1("%s\n", __func__);
 
-    if (use_texture_streaming) {
-        v4l2_release_bcd(video_fds[V4L2_FIRST_DEVICE]);
-    }
-
     stopDualStreams();
 }
 
@@ -862,6 +855,10 @@ void IntelCamera::stopDualStreams(void)
     stopCapture(V4L2_FIRST_DEVICE);
     stopCapture(V4L2_SECOND_DEVICE);
     closeSecondDevice();
+    if (use_texture_streaming) {
+        v4l2_release_bcd(video_fds[V4L2_FIRST_DEVICE]);
+    }
+
 }
 
 int IntelCamera::trimRecordingBuffer(void *buf)

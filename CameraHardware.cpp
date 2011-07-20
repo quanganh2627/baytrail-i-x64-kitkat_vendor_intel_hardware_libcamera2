@@ -1918,14 +1918,6 @@ int CameraHardware::pictureThread()
         bHwEncodepath=FALSE;
 #endif
     mCamera->getSnapshotSize(&cap_width, &cap_height, &cap_frame_size);
-    //FIXME workaround to fix the postview corruption for Soc 720p capture
-    if (mSensorType == SENSOR_TYPE_SOC && cap_height == RESOLUTION_720P_HEIGHT) {
-            LOGD("%s: Fix the postview corruption for 720p", __func__);
-            mPostViewWidth = RESOLUTION_480P_WIDTH;
-            mPostViewHeight = RESOLUTION_480P_HEIGHT;
-            mCamera->setPostViewSize(mPostViewWidth, mPostViewHeight,
-                                     V4L2_PIX_FMT_NV12);
-    }
     mCamera->getPostViewSize(&mPostViewWidth, &mPostViewHeight, &mPostViewSize);
     rgb_frame_size = cap_width * cap_height * 2;
 
