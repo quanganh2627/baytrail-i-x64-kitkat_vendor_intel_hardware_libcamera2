@@ -323,12 +323,16 @@ int IntelCamera::initCamera(int camera_id, int real_id, AAAProcess *tmpAAA)
         m_preview_max_height  = MAX_FRONT_CAMERA_PREVIEW_HEIGHT;
         m_recorder_max_width = MAX_FRONT_CAMERA_VIDEO_WIDTH;
         m_recorder_max_height = MAX_FRONT_CAMERA_VIDEO_HEIGHT;
+        m_snapshot_width = 1920;
+        m_snapshot_height = 1080;
         break;
     case CAMERA_ID_BACK:
         m_preview_max_width   = MAX_BACK_CAMERA_PREVIEW_WIDTH;
         m_preview_max_height  = MAX_BACK_CAMERA_PREVIEW_HEIGHT;
         m_recorder_max_width = MAX_BACK_CAMERA_VIDEO_WIDTH;
         m_recorder_max_height = MAX_BACK_CAMERA_VIDEO_HEIGHT;
+        m_snapshot_width = 2560;
+        m_snapshot_height = 1920;
         break;
     default:
         LOGE("ERR(%s)::Invalid camera id(%d)\n", __func__, camera_id);
@@ -348,9 +352,7 @@ int IntelCamera::initCamera(int camera_id, int real_id, AAAProcess *tmpAAA)
     m_postview_height = 480;
     m_postview_v4lformat = V4L2_PIX_FMT_NV12;
 
-    m_snapshot_width = 2560;
     m_snapshot_pad_width = 2560;
-    m_snapshot_height = 1920;
     m_snapshot_v4lformat = V4L2_PIX_FMT_RGB565;
 
     m_recorder_width = 1920;
@@ -1876,8 +1878,8 @@ int IntelCamera::setPostViewSize(int width, int height, int fourcc)
 
 int IntelCamera::getPostViewSize(int *width, int *height, int *frame_size)
 {
-    m_postview_width = m_preview_width;
-    m_postview_height = m_preview_height;
+    m_postview_width = m_preview_width>>1;
+    m_postview_height = m_preview_height>>1;
 
     //The preview output should be small than the main output
     if (m_postview_width > m_snapshot_width)
@@ -1923,6 +1925,13 @@ int IntelCamera::getSnapshotSize(int *width, int *height, int *frame_size)
     if (*frame_size == 0)
         *frame_size = m_snapshot_width * m_snapshot_height * BPP;
 
+    return 0;
+}
+
+int IntelCamera::getMaxSnapshotSize(int *width, int *height)
+{
+    *width	= m_snapshot_width;
+    *height = m_snapshot_height;
     return 0;
 }
 

@@ -108,12 +108,12 @@ CameraHardware::CameraHardware(int cameraId)
     LOGD("%s sensor\n", (mSensorType == SENSOR_TYPE_SOC) ?
          "SOC" : "RAW");
 
-    initDefaultParameters();
 #ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
     mPicturePixelFormat = V4L2_PIX_FMT_NV12;
 #else
     mPicturePixelFormat = V4L2_PIX_FMT_YUV420;
 #endif
+    initDefaultParameters();
     mVideoPreviewEnabled = false;
     mFlashNecessary = false;
     mDVSProcessing = false;
@@ -257,9 +257,26 @@ void CameraHardware::initDefaultParameters()
     // manual color temperature
     p.set(CameraParameters::KEY_COLOR_TEMPERATURE, "5000");
     // manual focus
-    p.set(CameraParameters::KEY_FOCUS_DISTANCES, "2,2,2");
+    p.set(CameraParameters::KEY_FOCUS_DISTANCES, "2,2,Infinity");
     // focus window
     p.set("focus-window", "0,0,0,0");
+    //focallength
+    if(mCameraId == CAMERA_FACING_BACK)
+        p.set(CameraParameters::KEY_FOCAL_LENGTH,"5.56");
+    else
+        p.set(CameraParameters::KEY_FOCAL_LENGTH,"2.78");
+    //thumbnail size 
+    p.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH,"320");
+    p.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT,"240");
+    p.set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES,"640x480,512x384,320x240,0x0");
+    //for CTS test ...
+    // Vertical angle of view in degrees.
+    p.set(CameraParameters::KEY_VERTICAL_VIEW_ANGLE,"42.5");
+    p.set(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE,"54.8");
+    // Supported number of preview frames per second.
+    p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES,"30,15,10");
+    p.set(CameraParameters::KEY_PREVIEW_FPS_RANGE,"15000,26623");
+    p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FPS_RANGE,"(10500,26623),(15000,26623),(30000,30000)");
 
     p.set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,CameraParameters::PIXEL_FORMAT_YUV420SP);
     p.set(CameraParameters::KEY_ZOOM_SUPPORTED, "true");
@@ -310,6 +327,17 @@ void CameraHardware::initDefaultParameters()
     default:
         break;
     }
+    int ww,hh;
+    mCamera->getMaxSnapshotSize(&ww,&hh);
+#ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
+    if(ww <= 640 || hh <=480)
+        mPicturePixelFormat = V4L2_PIX_FMT_YUV420;
+    else{
+        mPicturePixelFormat = V4L2_PIX_FMT_NV12;
+    }
+#endif
+    mCamera->setSnapshotSize(ww,hh,mPicturePixelFormat);
+    p.setPictureSize(ww,hh);
 
     if (mCameraId == CAMERA_FACING_BACK) {
         // For main back camera
@@ -319,8 +347,8 @@ void CameraHardware::initDefaultParameters()
     } else {
         // For front camera
         // No flash present
-        p.set(CameraParameters::KEY_FLASH_MODE,"none");
-        p.set(CameraParameters::KEY_SUPPORTED_FLASH_MODES,"none");
+        p.set(CameraParameters::KEY_FLASH_MODE,"off");
+        p.set(CameraParameters::KEY_SUPPORTED_FLASH_MODES,"off");
     }
 
     mParameters = p;
@@ -835,6 +863,10 @@ void CameraHardware::stopPreview()
     if (!mPreviewRunning) {
         LOGI("%s : preview not running, doing nothing", __func__);
         return ;
+    }
+    if(!mExitAutoFocusThread) {
+        LOGD("%s start:  cancelAutoFocus", __func__);
+        cancelAutoFocus();
     }
     //Waiting for the 3A to stop if it is running
     mAeAfAwbLock.lock();
@@ -2085,11 +2117,14 @@ int CameraHardware::pictureThread()
             if (encodeToJpeg(mPostViewWidth, mPostViewHeight, pthumbnail, pdst, &thumbnail_size, thumbnail_quality) < 0)
                 goto start_error_out;
 
-            thumbnail_size = thumbnail_size -  sizeof(FILE_END);
             memcpy(pdst, FILE_START, sizeof(FILE_START));
 
             // fill the attribute
-            if ((unsigned int)thumbnail_size >= exif_offset) {
+            int thumbnail_w,thumbnail_h;
+            thumbnail_w = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
+            thumbnail_h = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
+            LOG1("thumbnail_size %d ,exif_offset %d  thumbnail_w * thumbnail_h = %d X%d",thumbnail_size,exif_offset,thumbnail_w ,thumbnail_h);
+            if (((unsigned int)thumbnail_size >= exif_offset) ||!(thumbnail_w * thumbnail_h)) {
                 // thumbnail is in the exif, so the size of it must less than exif_offset
                 exifAttribute(exifattribute, cap_width, cap_height, false, mFlashNecessary);
             } else {
@@ -2372,8 +2407,8 @@ void CameraHardware::release()
     if (mAeAfAwbThread != NULL) {
         mAeAfAwbThread->requestExit();
         mPreviewAeAfAwbRunning = true;
-        mPreviewAeAfAwbCondition.signal();
         mExitAeAfAwbThread = true;
+        mPreviewAeAfAwbCondition.signal();
         mPreviewFrameCondition.signal();
         LOG1("%s waiting 3A thread to exit:", __func__);
         mAeAfAwbThread->requestExitAndWait();
@@ -3024,7 +3059,7 @@ int  CameraHardware::update3AParameters(CameraParameters& p, bool flush_only)
 
 status_t CameraHardware::setParameters(const CameraParameters& params)
 {
-    int ret;
+    int ret = NO_ERROR;
     Mutex::Autolock lock(mLock);
     // XXX verify params
 
@@ -3133,19 +3168,39 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
             p.setPictureFormat(new_value);
         }
     }
+    //process zoom
+    int zoom = p.getInt(CameraParameters::KEY_ZOOM);
+    int max_zoom = p.getInt(CameraParameters::KEY_MAX_ZOOM);
+    if(zoom > max_zoom){
+        zoom = max_zoom;
+        p.set(CameraParameters::KEY_ZOOM,zoom);
+        ret = BAD_VALUE;
+    }
+    //thumbnail
+    int new_thumbnail_w,new_thumbnail_h;
+    new_thumbnail_w = p.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
+    new_thumbnail_h = p.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
+    LOG1("thumbnail size change :new wx: %d x %d",new_thumbnail_w,new_thumbnail_h);
+    p.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH, new_thumbnail_w);
+    p.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT,new_thumbnail_h);
     //Video recording
     int vfmode = p.getInt("camera-mode");
+	LOG1("vfmode %d",vfmode);
     int mVideoFormat = (mSensorType == SENSOR_TYPE_SOC) ?
         V4L2_PIX_FMT_YUV420 : V4L2_PIX_FMT_NV12;
     //Deternmine the current viewfinder MODE.
     if (vfmode == 1) {
         LOG1("%s: Entering the video recorder mode\n", __func__);
         Mutex::Autolock lock(mRecordLock);
-        mVideoPreviewEnabled = true; //viewfinder running in video mode
-    } else {
+        mVideoPreviewEnabled = true; //viewfinder running in preview mode
+    } else if (vfmode == 2) {
         LOG1("%s: Entering the normal preview mode\n", __func__);
         Mutex::Autolock lock(mRecordLock);
-        mVideoPreviewEnabled = false; //viewfinder running in preview mode
+        mVideoPreviewEnabled = false; //viewfinder running in video mode
+    } else {
+        LOG1("%s: Entering the cts preview mode\n", __func__);
+        Mutex::Autolock lock(mRecordLock);
+        mVideoPreviewEnabled = true; //viewfinder running in video mode
     }
 
     int pre_width, pre_height, pre_size, pre_padded_size, rec_w, rec_h;
@@ -3176,7 +3231,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
 
     //Update the parameters
     mParameters = p;
-    return NO_ERROR;
+    return ret;
 }
 /*  this function will compare 2 parameters.
  *  parameters will be set to isp if

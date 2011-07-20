@@ -174,6 +174,7 @@ public:
     int putSnapshot(int index);
     int setSnapshotSize(int width, int height, int fourcc);
     int getSnapshotSize(int *width, int *height, int *frame_size);
+    int getMaxSnapshotSize(int *width, int *height);
     int getSnapshotPixelFormat(void);
     void setSnapshotUserptr(int index, void *pic_addr, void *pv_addr);
     void releasePostviewBcd();

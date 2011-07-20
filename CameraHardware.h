@@ -246,7 +246,7 @@ private:
 
     unsigned int        mPreviewPixelFormat;
     unsigned int        mPicturePixelFormat;
-    bool                mVideoPreviewEnabled;
+	bool                mVideoPreviewEnabled;
 
     sp<MemoryHeapBase>  mRawHeap;
 
@@ -347,7 +347,7 @@ private:
 
     //still af
     int runStillAfSequence();
-    static const int mStillAfMaxCount = 100;
+    static const int mStillAfMaxCount = 40;
 
     //flash
     void runPreFlashSequence (void);
