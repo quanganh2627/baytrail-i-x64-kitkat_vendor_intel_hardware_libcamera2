@@ -305,7 +305,7 @@ private:
 
     //3A
     AAAProcess          *mAAA;
-    bool                awb_to_manual;
+
     //File Input
     struct file_input   mFile;
 #if ENABLE_BUFFER_SHARE_MODE

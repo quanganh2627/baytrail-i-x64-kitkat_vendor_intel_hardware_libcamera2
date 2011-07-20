@@ -581,8 +581,7 @@ int IntelCamera::putPreview(int index)
 //Snapshot and video recorder has the same flow. We can combine them together
 void IntelCamera::checkGDC(void)
 {
-    //flush GDC FIXME: Only have effect for 14M now.
-    if (mGDCOn && m_snapshot_width == 4352 && m_snapshot_height == 3264) {
+    if (mGDCOn) {
         LOGD("%s: GDC is enabled now\n", __func__);
         //Only enable GDC in still image capture mode and 14M
         if (atomisp_set_gdc(main_fd, true))
