@@ -177,7 +177,6 @@ public:
     int getMaxSnapshotSize(int *width, int *height);
     int getSnapshotPixelFormat(void);
     void setSnapshotUserptr(int index, void *pic_addr, void *pv_addr);
-    void releasePostviewBcd();
     int SnapshotPostProcessing(void *img_data);
     void setSnapshotNum(int num);
     void setPostviewNum(int num);
@@ -241,8 +240,11 @@ private:
     void    yuv420_to_yuv420sp(int width, int height, unsigned char *src, unsigned char *dst);
 
     // Device control
-    int openDevice(int mode);
-    void closeDevice(void);
+    int openMainDevice(void);
+    int openSecondDevice(void);
+    void closeMainDevice(void);
+    void closeSecondDevice(void);
+
     int configureDevice(int device, int w, int h, int fourcc);
     int detectDeviceResolution(int *w, int *h, int run_mode, int
                                             camera);
@@ -328,8 +330,6 @@ private:
     bool mTnrOn;
     int mColorEffect;
     int mShadingCorrection;
-
-    bool mInitGamma;    // true if Gamma table in user space has been initialized
 
     int set_zoom_val_real(int zoom);
     IspSettings mIspSettings;	// ISP related settings

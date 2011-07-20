@@ -71,7 +71,7 @@ CameraHardware::CameraHardware(int cameraId)
     awb_to_manual(false)
 {
     int ret;
-    LOG2("%s: Create the CameraHardware\n", __func__);
+    LOG1("%s: Create the CameraHardware\n", __func__);
     mCamera = IntelCamera::createInstance();
 
     if (mCamera == NULL) {
@@ -151,6 +151,11 @@ CameraHardware::CameraHardware(int cameraId)
     isCameraTurnOffBufferSharingMode = false;
 #endif
     LOGD("libcamera version: 2011-06-02 1.0.1");
+#ifdef MFLD_CDK
+    LOGD("%s: initialize on CDK platform", __func__);
+#else
+    LOGD("%s: initialize on PR2 platform", __func__);
+#endif
 }
 
 CameraHardware::~CameraHardware()
@@ -1824,8 +1829,6 @@ int CameraHardware::burstCaptureHandle(void)
 
     if (mBCNumCur == mBCNumReq) {
         LOG1("BC, line:%d, begin to stop the camera", __LINE__);
-        //clean up bcd
-        mCamera->releasePostviewBcd();
         //Stop the Camera Now
         mCamera->stopSnapshot();
         //Set captureInProgress earlier.
@@ -2039,8 +2042,6 @@ int CameraHardware::pictureThread()
         mCamera->acheiveEXIFAttributesFromDriver();
 
         //Stop the Camera Now
-        mCamera->putSnapshot(index);
-        mCamera->releasePostviewBcd();
         mCamera->stopSnapshot();
         mAAA->IspSetFd(-1);
 

@@ -246,7 +246,6 @@ IntelCamera::IntelCamera()
     main_fd = -1;
     m_flag_camera_start[0] = 0;
     m_flag_camera_start[1] = 0;
-    mInitGamma = false;
 
     // init ISP settings
     mIspSettings.contrast = 256;			// 1.0
@@ -285,9 +284,16 @@ int IntelCamera::getMaxSnapShotResolution()
 int IntelCamera::initCamera(int camera_id, int real_id, AAAProcess *tmpAAA)
 {
     int ret = 0;
-    LOG1("%s :", __func__);
+
+    m_camera_id = real_id;
+    m_camera_phy_id = camera_id;
+    LOGD("%s, m_camera_id = %d\n", __func__, m_camera_id);
+
+    // Open the main device first
+    ret = openMainDevice();
 
     mAAA = tmpAAA;
+
     /* Detect Maximum still capture resolution */
     m_snapshot_max_width = 0xffff;
     m_snapshot_max_height = 0xffff;
@@ -338,10 +344,6 @@ int IntelCamera::initCamera(int camera_id, int real_id, AAAProcess *tmpAAA)
         LOGE("ERR(%s)::Invalid camera id(%d)\n", __func__, camera_id);
         return -1;
     }
-
-    m_camera_id = real_id;
-    m_camera_phy_id = camera_id;
-    LOGD("%s, m_camera_id = %d\n", __func__, m_camera_id);
 
     m_preview_width = 640;
     m_preview_pad_width = 640;
@@ -395,6 +397,8 @@ int IntelCamera::deinitCamera(void)
     if (m_flag_init) {
         m_flag_init = 0;
     }
+
+    closeMainDevice();
     LOG1("%s :", __func__);
     return 0;
 }
@@ -501,9 +505,6 @@ int IntelCamera::startCameraPreview(void)
     int device = V4L2_FIRST_DEVICE;
 
     run_mode = PREVIEW_MODE;
-    ret = openDevice(run_mode);
-    if (ret < 0)
-        return ret;
 
     //Move the mAAA out after enable the open/close
     mAAA->IspSetFd(main_fd);
@@ -546,17 +547,15 @@ void IntelCamera::stopCameraPreview(void)
     }
     int fd = video_fds[device];
 
+    if (use_texture_streaming)
+        v4l2_release_bcd(video_fds[V4L2_FIRST_DEVICE]);
+
     if (fd <= 0) {
         LOGD("(%s):Camera was already closed\n", __func__);
         return ;
     }
 
-    if (use_texture_streaming) {
-        v4l2_release_bcd(video_fds[V4L2_FIRST_DEVICE]);
-    }
-
     stopCapture(device);
-    closeDevice();
 }
 
 int IntelCamera::getPreview(void **data)
@@ -598,7 +597,7 @@ int IntelCamera::startSnapshot(void)
     LOG1("%s\n", __func__);
     int ret;
     run_mode = STILL_IMAGE_MODE;
-    ret = openDevice(run_mode);
+    ret = openSecondDevice();
     if (ret < 0)
         return ret;
 
@@ -661,21 +660,17 @@ start1_error:
 registerbcd_error:
 configure2_error:
 configure1_error:
-    closeDevice();
+    closeSecondDevice();
     return ret;
 }
 
 void IntelCamera::stopSnapshot(void)
 {
+    if (use_texture_streaming)
+        v4l2_release_bcd(video_fds[V4L2_FIRST_DEVICE]);
+
     stopDualStreams();
     v4l2_set_isp_timeout(0);
-}
-
-void IntelCamera::releasePostviewBcd(void)
-{
-    if (use_texture_streaming) {
-        v4l2_release_bcd(video_fds[V4L2_SECOND_DEVICE]);
-    }
 }
 
 void IntelCamera::setSnapshotNum(int num)
@@ -769,7 +764,7 @@ int IntelCamera::startCameraRecording(void)
     int ret = 0;
     LOG1("%s\n", __func__);
     run_mode = VIDEO_RECORDING_MODE;
-    ret = openDevice(run_mode);
+    ret = openSecondDevice();
     if (ret < 0)
         return ret;
 
@@ -836,7 +831,7 @@ start2_error:
 start1_error:
 configure2_error:
 configure1_error:
-    closeDevice();
+    closeSecondDevice();
     return ret;
 }
 
@@ -845,7 +840,7 @@ void IntelCamera::stopCameraRecording(void)
     LOG1("%s\n", __func__);
 
     if (use_texture_streaming) {
-        v4l2_release_bcd(video_fds[V4L2_SECOND_DEVICE]);
+        v4l2_release_bcd(video_fds[V4L2_FIRST_DEVICE]);
     }
 
     stopDualStreams();
@@ -866,7 +861,7 @@ void IntelCamera::stopDualStreams(void)
 
     stopCapture(V4L2_FIRST_DEVICE);
     stopCapture(V4L2_SECOND_DEVICE);
-    closeDevice();
+    closeSecondDevice();
 }
 
 int IntelCamera::trimRecordingBuffer(void *buf)
@@ -941,18 +936,17 @@ int IntelCamera::putRecording(int index)
     return putDualStreams(index);
 }
 
-int IntelCamera::openDevice(int mode)
+int IntelCamera::openMainDevice(void)
 {
     LOG1("%s\n", __func__);
     int ret;
+    int device = V4L2_FIRST_DEVICE;
 
-    if (video_fds[V4L2_FIRST_DEVICE] > 0) {
+    if (video_fds[device] > 0) {
         LOGW("%s: Already opened\n", __func__);
-        return video_fds[V4L2_FIRST_DEVICE];
+        return video_fds[device];
     }
 
-    //Open the first device node
-    int device = V4L2_FIRST_DEVICE;
     video_fds[device] = v4l2_capture_open(device);
 
     if (video_fds[device] < 0)
@@ -965,25 +959,28 @@ int IntelCamera::openDevice(int mode)
     main_fd = video_fds[device];
 
     // load init gamma table only once
-    if (mInitGamma == false)
-    {
-        atomisp_init_gamma (main_fd, mIspSettings.contrast,
-                            mIspSettings.brightness, mIspSettings.inv_gamma);
-        mInitGamma = true;
-    }
+    atomisp_init_gamma (main_fd, mIspSettings.contrast,
+                        mIspSettings.brightness, mIspSettings.inv_gamma);
 
     //Do some other intialization here after open
-    flushISPParameters();
+    //flushISPParameters();
 
     //Choose the camera sensor
     ret = v4l2_capture_s_input(video_fds[device], m_camera_id);
     if (ret < 0)
-        return ret;
-    if (mode == PREVIEW_MODE)
-        return video_fds[device];
+        goto error0;
+    return ret;
 
-    //Open the second device node
-    device = V4L2_SECOND_DEVICE;
+error0:
+    v4l2_capture_close(video_fds[V4L2_FIRST_DEVICE]);
+    video_fds[V4L2_FIRST_DEVICE] = -1;
+    return -1;
+}
+
+int IntelCamera::openSecondDevice(void)
+{
+    LOG1("%s\n", __func__);
+    int device = V4L2_SECOND_DEVICE;
     video_fds[device] = v4l2_capture_open(device);
 
     if (video_fds[device] < 0) {
@@ -998,30 +995,36 @@ int IntelCamera::openDevice(int mode)
 error1:
     v4l2_capture_close(video_fds[V4L2_SECOND_DEVICE]);
 error0:
-    v4l2_capture_close(video_fds[V4L2_FIRST_DEVICE]);
-    video_fds[V4L2_FIRST_DEVICE] = -1;
     video_fds[V4L2_SECOND_DEVICE] = -1;
     return -1;
 }
 
-void IntelCamera::closeDevice(void)
+void IntelCamera::closeMainDevice(void)
 {
     LOG1("%s\n", __func__);
-    if (video_fds[V4L2_FIRST_DEVICE] < 0) {
+    int device = V4L2_FIRST_DEVICE;
+
+    if (video_fds[device] < 0) {
         LOGW("%s: Already closed\n", __func__);
         return;
     }
 
-    v4l2_capture_close(video_fds[V4L2_FIRST_DEVICE]);
+    v4l2_capture_close(video_fds[device]);
 
-    video_fds[V4L2_FIRST_DEVICE] = -1;
+    video_fds[device] = -1;
     main_fd = -1;
+}
+
+void IntelCamera::closeSecondDevice(void)
+{
+    LOG1("%s\n", __func__);
+    int device = V4L2_SECOND_DEVICE;
 
     //Close the second device
-    if (video_fds[V4L2_SECOND_DEVICE] < 0)
+    if (video_fds[device] < 0)
         return ;
-    v4l2_capture_close(video_fds[V4L2_SECOND_DEVICE]);
-    video_fds[V4L2_SECOND_DEVICE] = -1;
+    v4l2_capture_close(video_fds[device]);
+    video_fds[device] = -1;
 }
 
 int IntelCamera::detectDeviceResolution(int *w, int *h, int run_mode, int
@@ -1036,40 +1039,17 @@ int IntelCamera::detectDeviceResolution(int *w, int *h, int run_mode, int
         return -1;
     }
 
-    video_fds[device] = v4l2_capture_open(device);
-
-    if (video_fds[device] < 0)
-        return -1;
-
-    main_fd = video_fds[device];
-    // Query and check the capabilities
-    if (v4l2_capture_querycap(video_fds[device], device, &cap) < 0)
-        goto error0;
-
-    //Choose the camera sensor
-    ret = v4l2_capture_s_input(video_fds[device], camera);
-    if (ret < 0)
-        goto error0;
-
     //Switch the Mode before try the format.
     ret = set_capture_mode(run_mode);
     if (ret < 0)
-        goto error0;
+        return ret;;
 
     //Set the format
     ret = v4l2_capture_try_format(video_fds[device], device, w, h, &fourcc);
     if (ret < 0)
-        goto error0;
-
-    v4l2_capture_close(video_fds[device]);
-
-    video_fds[device] = -1;
+        return ret;
 
     return 0;
-
-error0:
-    v4l2_capture_close(video_fds[V4L2_FIRST_DEVICE]);
-    return -1;
 }
 
 int IntelCamera::configureDevice(int device, int w, int h, int fourcc)
