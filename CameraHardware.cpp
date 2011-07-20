@@ -2278,6 +2278,13 @@ int CameraHardware::autoFocusThread()
         case CAM_AE_FLASH_MODE_ON:
             mCamera->setAssistIntensity(ASSIST_INTENSITY_WORKING);
             break;
+        case CAM_AE_FLASH_MODE_OFF:
+            int scene_mode;
+            mAAA->AeGetSceneMode(&scene_mode);
+            LOG1("%s: scene mode: %x", __func__, scene_mode);
+            if(CAM_AE_SCENE_MODE_NIGHT == scene_mode)
+                mCamera->setAssistIntensity(ASSIST_INTENSITY_WORKING);
+            break;
         default:
             break;
     }
