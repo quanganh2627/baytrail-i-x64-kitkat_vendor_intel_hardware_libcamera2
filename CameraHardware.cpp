@@ -200,10 +200,7 @@ void CameraHardware::initDefaultParameters()
     else
         p.setPreviewFrameRate(15);
 
-    if (mSensorType == SENSOR_TYPE_SOC)
-        p.setPreviewFormat(CameraParameters::PIXEL_FORMAT_YUV422I);
-    else
-        p.setPreviewFormat(CameraParameters::PIXEL_FORMAT_YUV420SP);
+    p.setPreviewFormat(CameraParameters::PIXEL_FORMAT_YUV420SP);
 
     p.setPictureFormat(CameraParameters::PIXEL_FORMAT_JPEG);
     p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, "yuv420sp,rgb565,yuv422i-yuyv");
@@ -1920,8 +1917,16 @@ int CameraHardware::pictureThread()
     if(V4L2_PIX_FMT_YUV420 == mPicturePixelFormat)
         bHwEncodepath=FALSE;
 #endif
-    mCamera->getPostViewSize(&mPostViewWidth, &mPostViewHeight, &mPostViewSize);
     mCamera->getSnapshotSize(&cap_width, &cap_height, &cap_frame_size);
+    //FIXME workaround to fix the postview corruption for Soc 720p capture
+    if (mSensorType == SENSOR_TYPE_SOC && cap_height == RESOLUTION_720P_HEIGHT) {
+            LOGD("%s: Fix the postview corruption for 720p", __func__);
+            mPostViewWidth = RESOLUTION_480P_WIDTH;
+            mPostViewHeight = RESOLUTION_480P_HEIGHT;
+            mCamera->setPostViewSize(mPostViewWidth, mPostViewHeight,
+                                     V4L2_PIX_FMT_NV12);
+    }
+    mCamera->getPostViewSize(&mPostViewWidth, &mPostViewHeight, &mPostViewSize);
     rgb_frame_size = cap_width * cap_height * 2;
 
     //For postview
@@ -3187,8 +3192,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     //Video recording
     int vfmode = p.getInt("camera-mode");
 	LOG1("vfmode %d",vfmode);
-    int mVideoFormat = (mSensorType == SENSOR_TYPE_SOC) ?
-        V4L2_PIX_FMT_YUV420 : V4L2_PIX_FMT_NV12;
+    int mVideoFormat = V4L2_PIX_FMT_NV12;
     //Deternmine the current viewfinder MODE.
     if (vfmode == 1) {
         LOG1("%s: Entering the video recorder mode\n", __func__);
@@ -3216,6 +3220,20 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
         LOGD("line:%d, before setRecorderSize. w:%d, h:%d, format:%d", __LINE__, pre_width, pre_height, mVideoFormat);
         mCamera->setRecorderSize(pre_width, pre_height, mVideoFormat);
     }
+
+    //FIXME : Workaround for Soc 720p/480p recording preview corruption
+    //The 640x360 and 384x240 from the ISP is corrupted. We fixed it here
+    if ((mSensorType == SENSOR_TYPE_SOC) && vfmode == 1) {
+        LOGD("%s: Fix the preview size for Soc 720p and 480p", __func__);
+        //fix for 768x480 and 1280x720
+        if (new_preview_height == 360 || new_preview_height == 240) {
+            if (mCamera->setPreviewSize(RESOLUTION_480P_WIDTH,
+                            RESOLUTION_480P_HEIGHT, new_preview_format) < 0) {
+                LOGE("%s: Fix Soc preview size error", __func__);
+            }
+        }
+    }
+    //Workaround end
 
     //touch Focus (focus windows)
     int x_left, x_right, y_top, y_bottom;
