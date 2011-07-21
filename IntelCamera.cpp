@@ -770,9 +770,16 @@ int IntelCamera::startCameraRecording(void)
     mAAA->SwitchMode(run_mode);
     mAAA->SetFrameRate (framerate);
     mAAA->FlushManualSettings ();
+    mAAA->SetDoneStatisticsState(false);
 
     if ((zoom_val != 0) && (m_recorder_width != 1920))
         set_zoom_val_real(zoom_val);
+
+    //set DVS
+    LOG1("dvs,line:%d, set dvs val:%d to driver", __LINE__, mDVSOn);
+    ret = atomisp_set_dvs(main_fd, mDVSOn);
+    if (ret)
+        LOGE("dvs,line:%d, set dvs val:%d to driver fail", __LINE__, mDVSOn);
 
     ret = configureDevice(V4L2_FIRST_DEVICE, m_recorder_pad_width,
                           m_recorder_height, m_recorder_v4lformat);
@@ -788,13 +795,6 @@ int IntelCamera::startCameraRecording(void)
     //flush tnr
     if (mTnrOn != DEFAULT_TNR) {
         ret = atomisp_set_tnr(main_fd, mTnrOn);
-        if (ret)
-            LOGE("Error setting xnr:%d, fd:%d\n", mTnrOn, main_fd);
-    }
-
-    //check DVS
-    if (mDVSOn != DEFAULT_DVS) {
-        ret = atomisp_set_dvs(main_fd, mDVSOn);
         if (ret)
             LOGE("Error setting xnr:%d, fd:%d\n", mTnrOn, main_fd);
     }
@@ -2111,8 +2111,17 @@ int IntelCamera::setDVS(bool on)
 {
     int ret;
     mDVSOn = on;
+    LOG1("dvs,line:%d, set dvs val:%d to 3A", __LINE__, mDVSOn);
+    mAAA->SetStillStabilizationEnabled(mDVSOn); // set 3A
+
     return 0;
 }
+
+bool IntelCamera::getDVS(void)
+{
+    return mDVSOn;
+}
+
 int IntelCamera::setTNR(bool on)
 {
     int ret;

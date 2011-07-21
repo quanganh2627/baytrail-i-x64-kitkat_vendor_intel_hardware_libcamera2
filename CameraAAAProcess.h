@@ -147,6 +147,11 @@ public:
 
     void AeAfAwbProcess(bool read_stats);
 
+    int DisReadStatistics(void);
+    void DisProcess(void);
+    void DisUpdateResults(void);
+    void SetDisVector(void);
+
     void AfStillStart(void);
     void AfStillStop(void);
     int AfStillIsComplete(bool *complete);
@@ -259,6 +264,14 @@ public:
     }
     ci_adv_dis_vector   dvs_vector;
 
+    bool GetDoneStatisticsState(void) {
+        return mDoneStatistics;
+    }
+
+    void SetDoneStatisticsState(bool val) {
+        mDoneStatistics = val;
+    }
+
 private:
     /* not 0 is enabled, 0 is disabled */
     bool mGdcEnabled;
@@ -278,6 +291,8 @@ private:
 
     //static const unsigned int mAfStillMaxFrames = 500;
     unsigned int  mAfStillFrames;  // 100 frames will time out
+
+    bool mDoneStatistics;   // true means the statistics has been get
 
     bool mInitied;    // 0 means not init, not 0 means has been initied.
 };

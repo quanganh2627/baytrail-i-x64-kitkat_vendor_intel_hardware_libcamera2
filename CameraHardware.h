@@ -171,6 +171,22 @@ private:
         }
     };
 
+    /* for DIS DVS, it will get DIS STAT data from ISP driver */
+    class DvsThread : public Thread {
+        CameraHardware* mHardware;
+    public:
+        DvsThread(CameraHardware* hw) :
+            Thread(false),
+            mHardware(hw) { }
+        virtual void onFirstRef() {
+            run("CameraDvsThread", PRIORITY_BACKGROUND);
+        }
+        virtual bool threadLoop()
+        {
+            return mHardware->dvsThread();
+        }
+    };
+
     void setSkipFrame(int frame);
 
     mutable Condition   mPreviewFrameCondition;
@@ -282,6 +298,13 @@ private:
     mutable Mutex       mCompressLock;
     mutable Condition   mCompressCondition;
 
+    // for DIS DVS
+    sp<DvsThread> mDvsThread;
+    int         dvsThread();
+    mutable Mutex       mDvsMutex;
+    mutable Condition   mDvsCondition;
+    bool mExitDvsThread;
+
     notify_callback    mNotifyCb;
     data_callback      mDataCb;
     data_callback_timestamp mDataCbTimestamp;
@@ -343,7 +366,6 @@ private:
     void exifAttribute(exif_attribute_t& attribute, int cap_w, int cap_h, bool thumbnail_en, bool flash_en);
     void exifAttributeOrientation(exif_attribute_t& attribute);
     void exifAttributeGPS(exif_attribute_t& attribute);
-    bool mDVSProcessing;
 
     //still af
     int runStillAfSequence();

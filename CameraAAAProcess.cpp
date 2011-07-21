@@ -29,6 +29,7 @@ AAAProcess::AAAProcess(int sensortype)
       mAfMode(CAM_AF_MODE_AUTO),
       mSensorType(~0),
       mAfStillFrames(0),
+      mDoneStatistics(false),
       mInitied(false)
 {
     mSensorType = sensortype;
@@ -162,7 +163,6 @@ void AAAProcess::SetFrameRate(float framerate)
     }
 }
 
-
 void AAAProcess::AeAfAwbProcess(bool read_stats)
 {
     Mutex::Autolock lock(mLock);
@@ -172,6 +172,95 @@ void AAAProcess::AeAfAwbProcess(bool read_stats)
     if(SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_process_frame(read_stats);
+        mDoneStatistics = true;
+    }
+    else if(SENSOR_TYPE_SOC == mSensorType)
+    {
+
+    }
+}
+
+// this function will be blocked until it gets data from driver
+int AAAProcess::DisReadStatistics(void)
+{
+    int ret;
+    Mutex::Autolock lock(mLock);
+    if(!mInitied)
+        return AAA_FAIL;
+
+    if(SENSOR_TYPE_RAW == mSensorType)
+    {
+        if (true != mDoneStatistics) {
+            LOG1("dvs,line:%d in DisReadStatistics, mDoneStatistics is false", __LINE__);
+            return AAA_FAIL;
+        }
+
+        if (0 != ci_adv_dis_read_statistics())
+            return AAA_FAIL;
+    }
+    else if(SENSOR_TYPE_SOC == mSensorType)
+    {
+
+    }
+    return AAA_SUCCESS;
+}
+
+void AAAProcess::DisProcess(void)
+{
+    Mutex::Autolock lock(mLock);
+    if(!mInitied)
+        return;
+
+    if(SENSOR_TYPE_RAW == mSensorType)
+    {
+        if (true != mDoneStatistics) {
+            LOG1("dvs,line:%d in DisProcess, mDoneStatistics is false", __LINE__);
+            return;
+        }
+
+        ci_adv_dis_process();
+    }
+    else if(SENSOR_TYPE_SOC == mSensorType)
+    {
+
+    }
+}
+
+void AAAProcess::DisUpdateResults(void)
+{
+    Mutex::Autolock lock(mLock);
+    if(!mInitied)
+        return;
+
+    if(SENSOR_TYPE_RAW == mSensorType)
+    {
+        if (true != mDoneStatistics) {
+            LOG1("dvs,line:%d in DisUpdateResults, mDoneStatistics is false", __LINE__);
+            return;
+        }
+
+        ci_adv_update_dis_results();
+    }
+    else if(SENSOR_TYPE_SOC == mSensorType)
+    {
+
+    }
+}
+
+void AAAProcess::SetDisVector(void)
+{
+    Mutex::Autolock lock(mLock);
+    if(!mInitied)
+        return;
+
+    if(SENSOR_TYPE_RAW == mSensorType)
+    {
+        if (true != mDoneStatistics) {
+            LOG1("dvs,line:%d in SetDisVector, mDoneStatistics is false", __LINE__);
+            return;
+        }
+
+        ci_adv_update_dis_vector();
     }
     else if(SENSOR_TYPE_SOC == mSensorType)
     {

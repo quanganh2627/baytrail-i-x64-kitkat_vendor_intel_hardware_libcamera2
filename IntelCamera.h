@@ -208,6 +208,7 @@ public:
     int setXNR(bool on);
     int setGDC(bool on);
     int setDVS(bool on);
+    bool getDVS(void);
     int setTNR(bool on);
     int setNREE(bool on);
     int setMACC(int macc);
@@ -227,6 +228,7 @@ public:
     int getFnumber(unsigned int *fnumber);
     int getFnumberRange(unsigned int *fnumber_range);
     int acheiveEXIFAttributesFromDriver();
+    int resetCamera(void);
 private:
     int     createBufferPool(int device, int buffer_count);
     void    destroyBufferPool(int device);
@@ -252,7 +254,6 @@ private:
     void stopCapture(int device);
     void stopDualStreams(void);
     int grabFrame(int device);
-    int resetCamera(void);
     int set_capture_mode(int mode);
     int trimRecordingBuffer(void *main);
     void trimNV12(unsigned char *src, unsigned char* dst, int src_width, int src_height,

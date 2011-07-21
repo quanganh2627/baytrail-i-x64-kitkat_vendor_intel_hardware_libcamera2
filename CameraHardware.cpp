@@ -116,7 +116,6 @@ CameraHardware::CameraHardware(int cameraId)
     initDefaultParameters();
     mVideoPreviewEnabled = false;
     mFlashNecessary = false;
-    mDVSProcessing = false;
 
     mExitAutoFocusThread = false;
     mExitPreviewThread = false;
@@ -129,6 +128,8 @@ CameraHardware::CameraHardware(int cameraId)
     mPictureThread = new PictureThread(this);
     mAeAfAwbThread = new AeAfAwbThread(this);
     mCompressThread = new CompressThread(this);
+    mDvsThread = new DvsThread(this);
+    mExitDvsThread = false;
 
     LOGD("%s: sensor is %d", __func__, atom_sensor_type);
     // init 3A for RAW sensor only
@@ -832,6 +833,13 @@ status_t CameraHardware::startPreview()
         mCamera->getRecorderSize(&w, &h, &size, &padded_size);
         initRecordingBuffer(size, padded_size);
         fd = mCamera->startCameraRecording();
+        if (fd >= 0) {
+            if (mCamera->getDVS()) {
+                mAAA->SetDoneStatisticsState(false);
+                LOG1("dvs, line:%d, signal thread", __LINE__);
+                mDvsCondition.signal();
+            }
+        }
     } else {
         LOGD("Start normal preview\n");
         int w, h, size, padded_size;
@@ -1094,6 +1102,45 @@ status_t CameraHardware::cancelTouchToFocus()
 {
     LOGD("enter cancelTouchToFocus");
     return cancelAutoFocus();
+}
+
+/* Return true, the thread will loop. Return false, the thread will terminate. */
+int CameraHardware::dvsThread()
+{
+    int dvs_en;
+
+    mDvsMutex.lock();
+    LOG1("dvs, line:%d, before mDvsCondition", __LINE__);
+    mDvsCondition.wait(mDvsMutex);
+    LOG1("dvs, line:%d, after mDvsCondition", __LINE__);
+    mDvsMutex.unlock();
+
+    if (mExitDvsThread) {
+        LOG1("dvs, line:%d, return false from dvsThread", __LINE__);
+        return false;
+    }
+
+    while (mVideoPreviewEnabled) {
+        if (mExitDvsThread) {
+            LOG1("dvs, line:%d, return false from dvsThread", __LINE__);
+            return false;
+        }
+        if (mCamera->getDVS()) {
+            LOG1("dvs, line:%d, read statistics from isp driver", __LINE__);
+            if(AAA_SUCCESS == mAAA->DisReadStatistics()) {
+                mAAA->DisProcess();
+                mAAA->SetDisVector();
+            } else {
+                LOG1("dvs, line:%d, read statistics fail", __LINE__);
+            }
+        } else {
+            LOG1("dvs, line:%d, get DVS false in the dvsThread", __LINE__);
+            return true;
+        }
+    }
+
+    LOG1("dvs, line:%d, return true from dvsThread", __LINE__);
+    return true;
 }
 
 void CameraHardware::exifAttributeOrientation(exif_attribute_t& attribute)
@@ -2446,6 +2493,14 @@ void CameraHardware::release()
         mCompressThread.clear();
     }
     LOG1("BC, line:%d, deleted the compress thread:", __LINE__);
+
+    if (mDvsThread != NULL) {
+        mExitDvsThread = true;
+        mDvsCondition.signal();
+        mDvsThread->requestExitAndWait();
+        mDvsThread.clear();
+    }
+    LOG1("dvs, line:%d, deleted the dvs thread:", __LINE__);
 }
 
 status_t CameraHardware::dump(int fd, const Vector<String16>& args) const
@@ -3318,14 +3373,25 @@ int CameraHardware::setISPParameters(
     if (strcmp(set_value, new_value) != 0) {
         if (!strcmp(new_value, "false")) {
             ret = mCamera->setDVS(false);
-            mDVSProcessing = false;
         }
         else if (!strcmp(new_value, "true")) {
             ret = mCamera->setDVS(true);
-            mDVSProcessing = true;
         }
         if (!ret) {
             LOGD("Changed dvs to %s", new_params.get(CameraParameters::KEY_DVS));
+        }
+
+        // in the video mode and preview is running status
+        if (mVideoPreviewEnabled && mPreviewRunning) {
+            LOGD("dvs,line:%d, resetCamera", __LINE__);
+
+//  ToDo. resetCamera could let the DVS setting valid. dvs set must before fmt setting
+//            mCamera->resetCamera(); // the dvs setting will be enabled in the configuration stage
+//            if (mCamera->getDVS()) {
+//                LOGD("dvs,line:%d, signal thread", __LINE__);
+//                mDvsCondition.signal();
+//            }
+
         }
     }
 
