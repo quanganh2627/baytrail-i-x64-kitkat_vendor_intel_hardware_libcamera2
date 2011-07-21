@@ -184,6 +184,13 @@ unsigned int default_function_value_list[] = {
 
 namespace android {
 
+static char *resolution_tables[] = {
+    RESOLUTION_720P_TABLE,
+    RESOLUTION_1080P_TABLE,
+    RESOLUTION_5MP_TABLE,
+    RESOLUTION_8MP_TABLE,
+    RESOLUTION_14MP_TABLE
+};
 /* Debug Use Only */
 static void write_image(const void *data, const int size, int width, int height,
                        const char *name)
@@ -263,7 +270,7 @@ IntelCamera::~IntelCamera()
     // color converter
 }
 
-int IntelCamera::getMaxSnapShotResolution()
+char * IntelCamera::getMaxSnapShotResolution()
 {
     int index = RESOLUTION_14MP;
 
@@ -278,7 +285,9 @@ int IntelCamera::getMaxSnapShotResolution()
     if (m_snapshot_max_width < RESOLUTION_720P_WIDTH || m_snapshot_max_height < RESOLUTION_720P_HEIGHT)
             index--;
 
-    return index;
+    if (index < 0)
+        index = 0;
+    return resolution_tables[index];
 }
 
 int IntelCamera::initCamera(int camera_id, int real_id, AAAProcess *tmpAAA)

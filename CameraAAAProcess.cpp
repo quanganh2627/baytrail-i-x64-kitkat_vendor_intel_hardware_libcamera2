@@ -1723,6 +1723,8 @@ int AAAProcess::AfGetWindow(cam_Window *window)
 int AAAProcess::FlushManualSettings(void)
 {
     int ret;
+    if(SENSOR_TYPE_SOC == mSensorType)
+        return 0;
 
     // manual focus
     if (mAfMode == CAM_AF_MODE_MANUAL)

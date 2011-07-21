@@ -145,7 +145,7 @@ public:
     int initCamera(int camera_id, int reald_id, AAAProcess *tmpAAA);
     int deinitCamera(void);
 
-    int getMaxSnapShotResolution();
+    char* getMaxSnapShotResolution();
 
     //File Input
     int initFileInput();

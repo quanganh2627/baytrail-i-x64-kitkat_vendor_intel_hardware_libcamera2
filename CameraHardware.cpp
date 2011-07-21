@@ -193,8 +193,8 @@ CameraHardware::~CameraHardware()
 void CameraHardware::initDefaultParameters()
 {
     CameraParameters p;
-    int resolution_index;
 
+    //common features for RAW and Soc
     p.setPreviewSize(640, 480);
     if (use_texture_streaming)
         p.setPreviewFrameRate(30);
@@ -214,122 +214,8 @@ void CameraHardware::initDefaultParameters()
     sprintf(pchar, "%d", mJpegThumbnailQualityDefault);
     p.set(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY, pchar);
 
-    p.set(CameraParameters::KEY_AE_MODE, "auto");
-    p.set(CameraParameters::KEY_SUPPORTED_AE_MODES, "auto,manual,shutter-priority,aperture-priority");
-    // focus mode
-    p.set(CameraParameters::KEY_FOCUS_MODE, "auto");
-    p.set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,infinity,macro,touch,manual");
-    // balance mode
-    p.set(CameraParameters::KEY_WHITE_BALANCE, "auto");
-    p.set(CameraParameters::KEY_SUPPORTED_WHITE_BALANCE, "auto,incandescent,fluorescent,daylight,cloudy-daylight,manual");
-    // scene mode
-    p.set(CameraParameters::KEY_SCENE_MODE, "auto");
-    p.set(CameraParameters::KEY_SUPPORTED_SCENE_MODES, "auto,portrait,sports,landscape,night,fireworks");
-    // exposure compensation
-    p.set(CameraParameters::KEY_EXPOSURE_COMPENSATION, "0");
-    p.set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, "6");
-    p.set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION, "-6");
-    p.set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, "0.33333333");
-    // flicker mode
-    p.set(CameraParameters::KEY_ANTIBANDING, "auto");
-    p.set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, "off,50hz,60hz,auto");
-    // ae metering mode
-    p.set(CameraParameters::KEY_AE_METERING_MODE, "auto");
-    p.set(CameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,spot,center,customized");
-    // af metering mode
-    p.set(CameraParameters::KEY_AF_METERING_MODE,"auto");
-    p.set(CameraParameters::KEY_SUPPORTED_AF_METERING_MODES,"auto,spot");
-    // ae lock mode
-    p.set(CameraParameters::KEY_AE_LOCK_MODE,"unlock");
-    p.set(CameraParameters::KEY_SUPPORTED_AE_LOCK_MODES,"lock,unlock");
-    // back lighting correction
-    p.set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE,"off");
-    p.set(CameraParameters::KEY_SUPPORTED_BACK_LIGHTING_CORRECTION_MODES,"on,off");
-    // red eye removal
-    p.set(CameraParameters::KEY_RED_EYE_MODE,"off");
-    p.set(CameraParameters::KEY_SUPPORTED_RED_EYE_MODES,"on,off");
-    // awb mapping
-    p.set(CameraParameters::KEY_AWB_MAPPING_MODE, "indoor");
-    p.set(CameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES, "indoor,outdoor");
-    // manual shutter control
-    p.set(CameraParameters::KEY_SHUTTER, "60");
-    p.set(CameraParameters::KEY_SUPPORTED_SHUTTER, "2s,1s,2,4,8,15,30,60,125,250,500");
-    // manual iso control
-    p.set(CameraParameters::KEY_ISO, "iso-200");
-    p.set(CameraParameters::KEY_SUPPORTED_ISO, "iso-100,iso-200,iso-400,iso-800,iso-1600");
-    // manual color temperature
-    p.set(CameraParameters::KEY_COLOR_TEMPERATURE, "5000");
-    // manual focus
-    p.set(CameraParameters::KEY_FOCUS_DISTANCES, "2,2,Infinity");
-    // focus window
-    p.set("focus-window", "0,0,0,0");
-    //focallength
-    if(mCameraId == CAMERA_FACING_BACK)
-        p.set(CameraParameters::KEY_FOCAL_LENGTH,"5.56");
-    else
-        p.set(CameraParameters::KEY_FOCAL_LENGTH,"2.78");
-    //thumbnail size 
-    p.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH,"320");
-    p.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT,"240");
-    p.set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES,"640x480,512x384,320x240,0x0");
-    //for CTS test ...
-    // Vertical angle of view in degrees.
-    p.set(CameraParameters::KEY_VERTICAL_VIEW_ANGLE,"42.5");
-    p.set(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE,"54.8");
-    // Supported number of preview frames per second.
-    p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES,"30,15,10");
-    p.set(CameraParameters::KEY_PREVIEW_FPS_RANGE,"15000,26623");
-    p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FPS_RANGE,"(10500,26623),(15000,26623),(30000,30000)");
-
-    p.set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,CameraParameters::PIXEL_FORMAT_YUV420SP);
-    p.set(CameraParameters::KEY_ZOOM_SUPPORTED, "true");
-    p.set(CameraParameters::KEY_MAX_ZOOM, "60");
-    p.set(CameraParameters::KEY_ZOOM_RATIOS, "100,125,150,175,200,225,250,275,300,325,350,375,400,425,450,475,500,525,"
-          "550,575,600,625,650,675,700,725,750,775,800,825,850,875,900,925,950,975,1000,1025,1050,1075,1100,"
-          "1125,1150,1175,1200,1225,1250,1275,1300,1325,1350,1375,1400,1425,1450,1475,1500,1525,1550,1575,1600");
-    p.set(CameraParameters::KEY_ZOOM, 0);
-
-    p.set(CameraParameters::KEY_EFFECT, "none");
-    //p.set("effect-values","none,mono,negative,sepia");
-    p.set(CameraParameters::KEY_SUPPORTED_EFFECTS, "none,mono,negative,sepia");
-    p.set(CameraParameters::KEY_XNR, "false");
-    p.set(CameraParameters::KEY_SUPPORTED_XNR, "true,false");
-    p.set(CameraParameters::KEY_GDC, "false");
-    p.set(CameraParameters::KEY_SUPPORTED_GDC, "true,false");
-    p.set(CameraParameters::KEY_DVS, "false");
-    p.set(CameraParameters::KEY_SUPPORTED_DVS, "true,false");
-    p.set(CameraParameters::KEY_DIGITAL_IMAGE_STABILIZATION, "off");
-    p.set(CameraParameters::KEY_SUPPORTED_DIGITAL_IMAGE_STABILIZATION, "on,off");
-    p.set(CameraParameters::KEY_TEMPORAL_NOISE_REDUCTION, "off");
-    p.set(CameraParameters::KEY_SUPPORTED_TEMPORAL_NOISE_REDUCTION, "on,off");
-#ifdef TUNING_EDGE_ENHACNMENT
-    p.set(CameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT, "on");
-    p.set(CameraParameters::KEY_SUPPORTED_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT, "on,off");
-#endif
-    p.set(CameraParameters::KEY_MULTI_ACCESS_COLOR_CORRECTION, "enhance-none");
-    p.set(CameraParameters::KEY_SUPPORTED_MULTI_ACCESS_COLOR_CORRECTIONS,
-          "enhance-sky,enhance-grass,enhance-skin,enhance-none");
-
-    resolution_index = mCamera->getMaxSnapShotResolution();
-    switch (resolution_index) {
-    case RESOLUTION_14MP:
-        p.set("picture-size-values", RESOLUTION_14MP_TABLE);
-        break;
-    case RESOLUTION_8MP:
-        p.set("picture-size-values", RESOLUTION_8MP_TABLE);
-        break;
-    case RESOLUTION_5MP:
-        p.set("picture-size-values", RESOLUTION_5MP_TABLE);
-        break;
-    case RESOLUTION_1080P:
-        p.set("picture-size-values", RESOLUTION_1080P_TABLE);
-        break;
-    case RESOLUTION_720P:
-        p.set("picture-size-values", RESOLUTION_720P_TABLE);
-        break;
-    default:
-        break;
-    }
+    char *resolution_dec = mCamera->getMaxSnapShotResolution();
+    p.set("picture-size-values", resolution_dec);
     int ww,hh;
     mCamera->getMaxSnapshotSize(&ww,&hh);
 #ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
@@ -341,6 +227,37 @@ void CameraHardware::initDefaultParameters()
 #endif
     mCamera->setSnapshotSize(ww,hh,mPicturePixelFormat);
     p.setPictureSize(ww,hh);
+
+    //thumbnail size
+    p.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH,"320");
+    p.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT,"240");
+    p.set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES,"640x480,512x384,320x240,0x0");
+
+    //focallength
+    if(mCameraId == CAMERA_FACING_BACK)
+        p.set(CameraParameters::KEY_FOCAL_LENGTH,"5.56");
+    else
+        p.set(CameraParameters::KEY_FOCAL_LENGTH,"2.78");
+
+    //for CTS test ...
+    // Vertical angle of view in degrees.
+    p.set(CameraParameters::KEY_VERTICAL_VIEW_ANGLE,"42.5");
+    p.set(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE,"54.8");
+
+    // Supported number of preview frames per second.
+    p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES,"30,15,10");
+    p.set(CameraParameters::KEY_PREVIEW_FPS_RANGE,"15000,26623");
+    p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FPS_RANGE,"(10500,26623),(15000,26623),(30000,30000)");
+
+    p.set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,CameraParameters::PIXEL_FORMAT_YUV420SP);
+
+    //zoom
+    p.set(CameraParameters::KEY_ZOOM_SUPPORTED, "true");
+    p.set(CameraParameters::KEY_MAX_ZOOM, "60");
+    p.set(CameraParameters::KEY_ZOOM_RATIOS, "100,125,150,175,200,225,250,275,300,325,350,375,400,425,450,475,500,525,"
+          "550,575,600,625,650,675,700,725,750,775,800,825,850,875,900,925,950,975,1000,1025,1050,1075,1100,"
+          "1125,1150,1175,1200,1225,1250,1275,1300,1325,1350,1375,1400,1425,1450,1475,1500,1525,1550,1575,1600");
+    p.set(CameraParameters::KEY_ZOOM, 0);
 
     if (mCameraId == CAMERA_FACING_BACK) {
         // For main back camera
@@ -354,8 +271,82 @@ void CameraHardware::initDefaultParameters()
         p.set(CameraParameters::KEY_SUPPORTED_FLASH_MODES,"off");
     }
 
-    mParameters = p;
+    if (mSensorType == SENSOR_TYPE_RAW) {
+        //ISP advanced features
+        p.set(CameraParameters::KEY_EFFECT, "none");
+        p.set(CameraParameters::KEY_SUPPORTED_EFFECTS, "none,mono,negative,sepia");
+        p.set(CameraParameters::KEY_XNR, "false");
+        p.set(CameraParameters::KEY_SUPPORTED_XNR, "true,false");
+        p.set(CameraParameters::KEY_GDC, "false");
+        p.set(CameraParameters::KEY_SUPPORTED_GDC, "true,false");
+        p.set(CameraParameters::KEY_DVS, "false");
+        p.set(CameraParameters::KEY_SUPPORTED_DVS, "true,false");
+        p.set(CameraParameters::KEY_DIGITAL_IMAGE_STABILIZATION, "off");
+        p.set(CameraParameters::KEY_SUPPORTED_DIGITAL_IMAGE_STABILIZATION, "on,off");
+        p.set(CameraParameters::KEY_TEMPORAL_NOISE_REDUCTION, "off");
+        p.set(CameraParameters::KEY_SUPPORTED_TEMPORAL_NOISE_REDUCTION, "on,off");
+#ifdef TUNING_EDGE_ENHACNMENT
+        p.set(CameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT, "on");
+        p.set(CameraParameters::KEY_SUPPORTED_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT, "on,off");
+#endif
+        p.set(CameraParameters::KEY_MULTI_ACCESS_COLOR_CORRECTION, "enhance-none");
+        p.set(CameraParameters::KEY_SUPPORTED_MULTI_ACCESS_COLOR_CORRECTIONS,
+              "enhance-sky,enhance-grass,enhance-skin,enhance-none");
+        // back lighting correction
+        p.set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE,"off");
+        p.set(CameraParameters::KEY_SUPPORTED_BACK_LIGHTING_CORRECTION_MODES,"on,off");
+        // red eye removal
+        p.set(CameraParameters::KEY_RED_EYE_MODE,"off");
+        p.set(CameraParameters::KEY_SUPPORTED_RED_EYE_MODES,"on,off");
 
+        //3A for RAW only
+        // ae mode
+        p.set(CameraParameters::KEY_AE_MODE, "auto");
+        p.set(CameraParameters::KEY_SUPPORTED_AE_MODES, "auto,manual,shutter-priority,aperture-priority");
+        // focus mode
+        p.set(CameraParameters::KEY_FOCUS_MODE, "auto");
+        p.set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,infinity,macro,touch,manual");
+        // balance mode
+        p.set(CameraParameters::KEY_WHITE_BALANCE, "auto");
+        p.set(CameraParameters::KEY_SUPPORTED_WHITE_BALANCE, "auto,incandescent,fluorescent,daylight,cloudy-daylight,manual");
+        // scene mode
+        p.set(CameraParameters::KEY_SCENE_MODE, "auto");
+        p.set(CameraParameters::KEY_SUPPORTED_SCENE_MODES, "auto,portrait,sports,landscape,night,fireworks");
+        // exposure compensation
+        p.set(CameraParameters::KEY_EXPOSURE_COMPENSATION, "0");
+        p.set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, "6");
+        p.set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION, "-6");
+        p.set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, "0.33333333");
+        // flicker mode
+        p.set(CameraParameters::KEY_ANTIBANDING, "auto");
+        p.set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, "off,50hz,60hz,auto");
+        // ae metering mode
+        p.set(CameraParameters::KEY_AE_METERING_MODE, "auto");
+        p.set(CameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,spot,center,customized");
+        // af metering mode
+        p.set(CameraParameters::KEY_AF_METERING_MODE,"auto");
+        p.set(CameraParameters::KEY_SUPPORTED_AF_METERING_MODES,"auto,spot");
+        // ae lock mode
+        p.set(CameraParameters::KEY_AE_LOCK_MODE,"unlock");
+        p.set(CameraParameters::KEY_SUPPORTED_AE_LOCK_MODES,"lock,unlock");
+        // awb mapping
+        p.set(CameraParameters::KEY_AWB_MAPPING_MODE, "indoor");
+        p.set(CameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES, "indoor,outdoor");
+        // manual shutter control
+        p.set(CameraParameters::KEY_SHUTTER, "60");
+        p.set(CameraParameters::KEY_SUPPORTED_SHUTTER, "2s,1s,2,4,8,15,30,60,125,250,500");
+        // manual iso control
+        p.set(CameraParameters::KEY_ISO, "iso-200");
+        p.set(CameraParameters::KEY_SUPPORTED_ISO, "iso-100,iso-200,iso-400,iso-800,iso-1600");
+        // manual color temperature
+        p.set(CameraParameters::KEY_COLOR_TEMPERATURE, "5000");
+        // manual focus
+        p.set(CameraParameters::KEY_FOCUS_DISTANCES, "2,2,Infinity");
+        // focus window
+        p.set("focus-window", "0,0,0,0");
+    }
+
+    mParameters = p;
     mFlush3A = true;
 }
 
@@ -742,6 +733,11 @@ int CameraHardware::previewThreadWrapper()
 
 int CameraHardware::aeAfAwbThread()
 {
+    if (mSensorType == SENSOR_TYPE_SOC) {
+        mPreviewAeAfAwbRunning = false;
+        return 0;
+    }
+
     while (1) {
         if (mExitAeAfAwbThread) {
             LOGD("%s Exiting the 3A thread\n", __func__);
@@ -821,13 +817,15 @@ status_t CameraHardware::startPreview()
     setSkipFrame(INITIAL_SKIP_FRAME);
 
     //Enable the preview 3A
-    mAeAfAwbLock.lock();
-    mPreviewAeAfAwbRunning = true;
-    mAeAfAwbLock.unlock();
-    mAAA->SetAeEnabled (true);
-    mAAA->SetAfEnabled(true);
-    mAAA->SetAwbEnabled(true);
-    mPreviewAeAfAwbCondition.signal();
+    if (mSensorType == SENSOR_TYPE_RAW) {
+        mAeAfAwbLock.lock();
+        mPreviewAeAfAwbRunning = true;
+        mAeAfAwbLock.unlock();
+        mAAA->SetAeEnabled (true);
+        mAAA->SetAfEnabled(true);
+        mAAA->SetAwbEnabled(true);
+        mPreviewAeAfAwbCondition.signal();
+    }
 
     //Determine which preview we are in
     if (mVideoPreviewEnabled) {
@@ -884,18 +882,21 @@ void CameraHardware::stopPreview()
         cancelAutoFocus();
     }
     //Waiting for the 3A to stop if it is running
-    mAeAfAwbLock.lock();
-    if (mPreviewAeAfAwbRunning) {
-        mPreviewAeAfAwbRunning = false;
-        mAAA->SetAeEnabled(false);
-        mAAA->SetAfEnabled(false);
-        mAAA->SetAwbEnabled(false);
-        mPreviewFrameCondition.signal();
-        mAeAfAwbEndCondition.wait(mAeAfAwbLock);
-    }
-    mAeAfAwbLock.unlock();
+    if (mSensorType == SENSOR_TYPE_RAW) {
+        mAeAfAwbLock.lock();
+        if (mPreviewAeAfAwbRunning) {
+            LOG1("%s: Waiting for 3A to finish", __func__);
+            mPreviewAeAfAwbRunning = false;
+            mAAA->SetAeEnabled(false);
+            mAAA->SetAfEnabled(false);
+            mAAA->SetAwbEnabled(false);
+            mPreviewFrameCondition.signal();
+            mAeAfAwbEndCondition.wait(mAeAfAwbLock);
+        }
+        mAeAfAwbLock.unlock();
 
-    LOGD("Stopped the 3A now\n");
+        LOGD("Stopped the 3A now\n");
+    }
     //Tell preview to stop
     mPreviewRunning = false;
 
@@ -1085,6 +1086,9 @@ status_t CameraHardware::autoFocus()
 status_t CameraHardware::cancelAutoFocus()
 {
     LOG1("%s :", __func__);
+    if (mSensorType == SENSOR_TYPE_RAW)
+        return NO_ERROR;
+
     mExitAutoFocusThread = true;
 
     //Wake up the auofocus thread
@@ -1364,18 +1368,6 @@ void CameraHardware::exifAttribute(exif_attribute_t& attribute, int cap_w, int c
     // 1 = Y; 2 = Cb; 3 = Cr; 4 = R; 5 = G; 6 = B; other = reserved
     memset(attribute.components_configuration, 0, sizeof(attribute.components_configuration));
 
-    // brightness, -99.99 to 99.99. FFFFFFFF.H means unknown.
-    float brightness;
-    mAAA->AeGetManualBrightness(&brightness);
-    attribute.brightness.num = (int)(brightness*100);
-    attribute.brightness.den = 100;
-
-    // exposure bias. unit is APEX value. -99.99 to 99.99
-    float bias;
-    mAAA->AeGetEv(&bias);
-    attribute.exposure_bias.num = (int)(bias * 100);
-    attribute.exposure_bias.den = 100;
-    LOG1("exifAttribute, brightness:%f, ev:%f", brightness, bias);
 
     // max aperture. the smallest F number of the lens. unit is APEX value.
     // TBD, should get from driver
@@ -1418,57 +1410,123 @@ void CameraHardware::exifAttribute(exif_attribute_t& attribute, int cap_w, int c
     // the TIFF default is 1 (centered)
     attribute.ycbcr_positioning = EXIF_DEF_YCBCR_POSITIONING;
 
-    // set the exposure program mode
-    int aemode;
-    if (AAA_SUCCESS == mAAA->AeGetMode(&aemode)) {
-        switch (aemode) {
-            case CAM_AE_MODE_MANUAL:
-                attribute.exposure_program = EXIF_EXPOSURE_PROGRAM_MANUAL;
-                break;
-            case CAM_AE_MODE_SHUTTER_PRIORITY:
-                attribute.exposure_program = EXIF_EXPOSURE_PROGRAM_SHUTTER_PRIORITY;
-                break;
-            case CAM_AE_MODE_APERTURE_PRIORITY:
-                attribute.exposure_program = EXIF_EXPOSURE_PROGRAM_APERTURE_PRIORITY;
-                break;
-            case CAM_AE_MODE_AUTO:
-            default:
-                attribute.exposure_program = EXIF_EXPOSURE_PROGRAM_NORMAL;
-                break;
-        }
-    } else {
-        attribute.exposure_program = EXIF_EXPOSURE_PROGRAM_NORMAL;
-    }
+    if (mSensorType == SENSOR_TYPE_RAW) {
+        // brightness, -99.99 to 99.99. FFFFFFFF.H means unknown.
+        float brightness;
+        mAAA->AeGetManualBrightness(&brightness);
+        attribute.brightness.num = (int)(brightness*100);
+        attribute.brightness.den = 100;
 
-    // indicates the ISO speed of the camera
-    int sensitivity;
-    if (AAA_SUCCESS == mAAA->AeGetManualIso(&sensitivity)) {
-        attribute.iso_speed_rating = sensitivity;
-    } else {
-        LOG1("exifAttribute AeGetManualIso fail");
-        attribute.iso_speed_rating = 100;
-    }
+        // exposure bias. unit is APEX value. -99.99 to 99.99
+        float bias;
+        mAAA->AeGetEv(&bias);
+        attribute.exposure_bias.num = (int)(bias * 100);
+        attribute.exposure_bias.den = 100;
+        LOG1("exifAttribute, brightness:%f, ev:%f", brightness, bias);
 
-    // the metering mode.
-    int meteringmode;
-    if (AAA_SUCCESS == mAAA->AeGetMeteringMode(&meteringmode)) {
-        switch (meteringmode) {
-                case CAM_AE_METERING_MODE_AUTO:
-                    attribute.metering_mode = EXIF_METERING_AVERAGE;
+        // set the exposure program mode
+        int aemode;
+        if (AAA_SUCCESS == mAAA->AeGetMode(&aemode)) {
+            switch (aemode) {
+                case CAM_AE_MODE_MANUAL:
+                    attribute.exposure_program = EXIF_EXPOSURE_PROGRAM_MANUAL;
                     break;
-                case CAM_AE_METERING_MODE_SPOT:
-                    attribute.metering_mode = EXIF_METERING_SPOT;
+                case CAM_AE_MODE_SHUTTER_PRIORITY:
+                    attribute.exposure_program = EXIF_EXPOSURE_PROGRAM_SHUTTER_PRIORITY;
                     break;
-                case CAM_AE_METERING_MODE_CENTER:
-                    attribute.metering_mode = EXIF_METERING_CENTER;
+                case CAM_AE_MODE_APERTURE_PRIORITY:
+                    attribute.exposure_program = EXIF_EXPOSURE_PROGRAM_APERTURE_PRIORITY;
                     break;
-                case CAM_AE_METERING_MODE_CUSTOMIZED:
+                case CAM_AE_MODE_AUTO:
                 default:
-                    attribute.metering_mode = EXIF_METERING_OTHER;
+                    attribute.exposure_program = EXIF_EXPOSURE_PROGRAM_NORMAL;
                     break;
             }
-    } else {
-        attribute.metering_mode = EXIF_METERING_OTHER;
+        } else {
+            attribute.exposure_program = EXIF_EXPOSURE_PROGRAM_NORMAL;
+        }
+
+        // indicates the ISO speed of the camera
+        int sensitivity;
+        if (AAA_SUCCESS == mAAA->AeGetManualIso(&sensitivity)) {
+            attribute.iso_speed_rating = sensitivity;
+        } else {
+            LOG1("exifAttribute AeGetManualIso fail");
+            attribute.iso_speed_rating = 100;
+        }
+
+        // the metering mode.
+        int meteringmode;
+        if (AAA_SUCCESS == mAAA->AeGetMeteringMode(&meteringmode)) {
+            switch (meteringmode) {
+                    case CAM_AE_METERING_MODE_AUTO:
+                        attribute.metering_mode = EXIF_METERING_AVERAGE;
+                        break;
+                    case CAM_AE_METERING_MODE_SPOT:
+                        attribute.metering_mode = EXIF_METERING_SPOT;
+                        break;
+                    case CAM_AE_METERING_MODE_CENTER:
+                        attribute.metering_mode = EXIF_METERING_CENTER;
+                        break;
+                    case CAM_AE_METERING_MODE_CUSTOMIZED:
+                    default:
+                        attribute.metering_mode = EXIF_METERING_OTHER;
+                        break;
+                }
+        } else {
+            attribute.metering_mode = EXIF_METERING_OTHER;
+        }
+
+        // exposure mode settting. 0: auto; 1: manual; 2: auto bracket; other: reserved
+        if (AAA_SUCCESS == mAAA->AeGetMode(&ae_mode)) {
+            LOG1("exifAttribute, ae mode:%d success", ae_mode);
+            switch (ae_mode) {
+                case CAM_AE_MODE_MANUAL:
+                    attribute.exposure_mode = EXIF_EXPOSURE_MANUAL;
+                    break;
+                default:
+                    attribute.exposure_mode = EXIF_EXPOSURE_AUTO;
+                    break;
+            }
+        } else {
+            attribute.exposure_mode = EXIF_EXPOSURE_AUTO;
+        }
+
+        // white balance mode. 0: auto; 1: manual
+        int awbmode;
+        if(AAA_SUCCESS == mAAA->AwbGetMode(&awbmode)) {
+            switch (awbmode) {
+                case CAM_AWB_MODE_AUTO:
+                    attribute.white_balance = EXIF_WB_AUTO;
+                    break;
+                default:
+                    attribute.white_balance = EXIF_WB_MANUAL;
+                    break;
+            }
+        } else {
+            attribute.white_balance = EXIF_WB_AUTO;
+        }
+
+        // scene mode
+        int scenemode;
+        if (AAA_SUCCESS == mAAA->AeGetSceneMode(&scenemode)) {
+            switch (scenemode) {
+                case CAM_AE_SCENE_MODE_PORTRAIT:
+                    attribute.scene_capture_type = EXIF_SCENE_PORTRAIT;
+                    break;
+                case CAM_AE_SCENE_MODE_LANDSCAPE:
+                    attribute.scene_capture_type = EXIF_SCENE_LANDSCAPE;
+                    break;
+                case CAM_AE_SCENE_MODE_NIGHT:
+                    attribute.scene_capture_type = EXIF_SCENE_NIGHT;
+                    break;
+                default:
+                    attribute.scene_capture_type = EXIF_SCENE_STANDARD;
+                    break;
+            }
+        } else {
+            attribute.scene_capture_type = EXIF_SCENE_STANDARD;
+        }
     }
 
     // bit 0: flash fired; bit 1 to 2: flash return; bit 3 to 4: flash mode;
@@ -1477,57 +1535,6 @@ void CameraHardware::exifAttribute(exif_attribute_t& attribute, int cap_w, int c
 
     // normally it is sRGB, 1 means sRGB. FFFF.H means uncalibrated
     attribute.color_space = EXIF_DEF_COLOR_SPACE;
-
-    // exposure mode settting. 0: auto; 1: manual; 2: auto bracket; other: reserved
-    if (AAA_SUCCESS == mAAA->AeGetMode(&ae_mode)) {
-        LOG1("exifAttribute, ae mode:%d success", ae_mode);
-        switch (ae_mode) {
-            case CAM_AE_MODE_MANUAL:
-                attribute.exposure_mode = EXIF_EXPOSURE_MANUAL;
-                break;
-            default:
-                attribute.exposure_mode = EXIF_EXPOSURE_AUTO;
-                break;
-        }
-    } else {
-        attribute.exposure_mode = EXIF_EXPOSURE_AUTO;
-    }
-
-    // white balance mode. 0: auto; 1: manual
-    int awbmode;
-    if(AAA_SUCCESS == mAAA->AwbGetMode(&awbmode)) {
-        switch (awbmode) {
-            case CAM_AWB_MODE_AUTO:
-                attribute.white_balance = EXIF_WB_AUTO;
-                break;
-            default:
-                attribute.white_balance = EXIF_WB_MANUAL;
-                break;
-        }
-    } else {
-        attribute.white_balance = EXIF_WB_AUTO;
-    }
-
-    // scene mode
-    int scenemode;
-    if (AAA_SUCCESS == mAAA->AeGetSceneMode(&scenemode)) {
-        switch (scenemode) {
-            case CAM_AE_SCENE_MODE_PORTRAIT:
-                attribute.scene_capture_type = EXIF_SCENE_PORTRAIT;
-                break;
-            case CAM_AE_SCENE_MODE_LANDSCAPE:
-                attribute.scene_capture_type = EXIF_SCENE_LANDSCAPE;
-                break;
-            case CAM_AE_SCENE_MODE_NIGHT:
-                attribute.scene_capture_type = EXIF_SCENE_NIGHT;
-                break;
-            default:
-                attribute.scene_capture_type = EXIF_SCENE_STANDARD;
-                break;
-        }
-    } else {
-        attribute.scene_capture_type = EXIF_SCENE_STANDARD;
-    }
 
     // the actual focal length of the lens, in mm.
     // there is no API for lens position.
@@ -1763,11 +1770,10 @@ int CameraHardware::burstCaptureHandle(void)
         if (mSensorType == SENSOR_TYPE_RAW) {
             mFramerate = mCamera->getFramerate();
             mAAA->SwitchMode(STILL_IMAGE_MODE);
+            //Flush 3A results
+            mAAA->FlushManualSettings ();
+            update3Aresults();
         }
-
-        //Flush 3A results
-        mAAA->FlushManualSettings ();
-        update3Aresults();
 
         //Skip the first frame
         index = mCamera->getSnapshot(&main_out, &postview_out, NULL);
@@ -1939,8 +1945,10 @@ int CameraHardware::pictureThread()
     mCamera->setPostViewSize(pre_width, pre_height, V4L2_PIX_FMT_NV12);
 
     //FIXME: workaround for the postview corruption for the Soc and RAW sensor
-    if (cap_width == 1280 && mSensorType == SENSOR_TYPE_SOC)
+    if (cap_width == 1280 && mSensorType == SENSOR_TYPE_SOC) {
         mCamera->setPostViewSize(704, 396, mPicturePixelFormat);
+        usleep(30);
+    }
 
     // ToDo. abstract some functions for both single capture and burst capture.
     if (mBCEn) {
@@ -2345,6 +2353,7 @@ int CameraHardware::autoFocusThread()
     if (mSensorType == SENSOR_TYPE_SOC) {
         if (mMsgEnabled & CAMERA_MSG_FOCUS)
             mNotifyCb(CAMERA_MSG_FOCUS, 1, 0, mCallbackCookie);
+        mExitAutoFocusThread = true;
         return NO_ERROR;
     }
 
@@ -3234,14 +3243,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
             p.setPictureFormat(new_value);
         }
     }
-    //process zoom
-    int zoom = p.getInt(CameraParameters::KEY_ZOOM);
-    int max_zoom = p.getInt(CameraParameters::KEY_MAX_ZOOM);
-    if(zoom > max_zoom){
-        zoom = max_zoom;
-        p.set(CameraParameters::KEY_ZOOM,zoom);
-        ret = BAD_VALUE;
-    }
+
     //thumbnail
     int new_thumbnail_w,new_thumbnail_h;
     new_thumbnail_w = p.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
@@ -3295,13 +3297,6 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     }
     //Workaround end
 
-    //touch Focus (focus windows)
-    int x_left, x_right, y_top, y_bottom;
-    x_left = p.getInt("touchfocus-x-left");
-    x_right = p.getInt("touchfocus-x-right");
-    y_top = p.getInt("touchfocus-x-top");
-    y_bottom = p.getInt("touchfocus-x-bottom");
-
     // update 3A parameters to mParameters and 3A inside
     if (mSensorType != SENSOR_TYPE_SOC)
         update3AParameters(p, mFlush3A);
@@ -3328,142 +3323,144 @@ int CameraHardware::setISPParameters(
     //process zoom
     int zoom = new_params.getInt(CameraParameters::KEY_ZOOM);
     mCamera->set_zoom_val(zoom);
-    // Color Effect
-	int effect = old_params.getInt(CameraParameters::KEY_EFFECT);
-	new_value = new_params.get(CameraParameters::KEY_EFFECT);
-	set_value = old_params.get(CameraParameters::KEY_EFFECT);
-	LOGD(" - effect = new \"%s\" (%d) / current \"%s\"",new_value, effect, set_value);
-    if (strcmp(set_value, new_value) != 0) {
-        if(!strcmp(new_value, CameraParameters::EFFECT_MONO))
-            effect = V4L2_COLORFX_BW;
-        else if(!strcmp(new_value, CameraParameters::EFFECT_NEGATIVE))
-            effect = V4L2_COLORFX_NEGATIVE;
-        else if(!strcmp(new_value, CameraParameters::EFFECT_SEPIA))
-            effect = V4L2_COLORFX_SEPIA;
-        else
-            effect = V4L2_COLORFX_NONE;
+    if (mSensorType == SENSOR_TYPE_RAW) {
+        // Color Effect
+        int effect = old_params.getInt(CameraParameters::KEY_EFFECT);
+        new_value = new_params.get(CameraParameters::KEY_EFFECT);
+        set_value = old_params.get(CameraParameters::KEY_EFFECT);
+        LOGD(" - effect = new \"%s\" (%d) / current \"%s\"",new_value, effect, set_value);
+        if (strcmp(set_value, new_value) != 0) {
+            if(!strcmp(new_value, CameraParameters::EFFECT_MONO))
+                effect = V4L2_COLORFX_BW;
+            else if(!strcmp(new_value, CameraParameters::EFFECT_NEGATIVE))
+                effect = V4L2_COLORFX_NEGATIVE;
+            else if(!strcmp(new_value, CameraParameters::EFFECT_SEPIA))
+                effect = V4L2_COLORFX_SEPIA;
+            else
+                effect = V4L2_COLORFX_NONE;
 
-        ret = mCamera->setColorEffect(effect);
-        if (!ret) {
-            LOGD("Changed effect to %s", new_params.get(CameraParameters::KEY_EFFECT));
-        }
-    }
-
-    // xnr
-    int xnr = old_params.getInt(CameraParameters::KEY_XNR);
-    new_value = new_params.get(CameraParameters::KEY_XNR);
-    set_value = old_params.get(CameraParameters::KEY_XNR);
-    LOGD(" - xnr = new \"%s\" (%d) / current \"%s\"",new_value, xnr, set_value);
-    if (strcmp(set_value, new_value) != 0) {
-        if (!strcmp(new_value, "false"))
-            ret = mCamera->setXNR(false);
-        else if (!strcmp(new_value, "true"))
-            ret = mCamera->setXNR(true);
-        if (!ret) {
-            LOGD("Changed xnr to %s", new_params.get(CameraParameters::KEY_XNR));
-        }
-    }
-    // gdc/cac
-    int gdc = old_params.getInt(CameraParameters::KEY_GDC);
-    new_value = new_params.get(CameraParameters::KEY_GDC);
-    set_value = old_params.get(CameraParameters::KEY_GDC);
-    LOGD(" - gdc = new \"%s\" (%d) / current \"%s\"",new_value, gdc, set_value);
-    if (strcmp(set_value, new_value) != 0) {
-        if (!strcmp(new_value, "false"))
-            ret = mCamera->setGDC(false);
-        else if (!strcmp(new_value, "true"))
-            ret = mCamera->setGDC(true);
-        if (!ret) {
-            LOGD("Changed gdc to %s", new_params.get(CameraParameters::KEY_GDC));
-        }
-    }
-
-    // DVS
-    int dvs = old_params.getInt(CameraParameters::KEY_DVS);
-    new_value = new_params.get(CameraParameters::KEY_DVS);
-    set_value = old_params.get(CameraParameters::KEY_DVS);
-    LOGD(" - dvs = new \"%s\" (%d) / current \"%s\"",new_value, dvs, set_value);
-    if (strcmp(set_value, new_value) != 0) {
-        if (!strcmp(new_value, "false")) {
-            ret = mCamera->setDVS(false);
-        }
-        else if (!strcmp(new_value, "true")) {
-            ret = mCamera->setDVS(true);
-        }
-        if (!ret) {
-            LOGD("Changed dvs to %s", new_params.get(CameraParameters::KEY_DVS));
+            ret = mCamera->setColorEffect(effect);
+            if (!ret) {
+                LOGD("Changed effect to %s", new_params.get(CameraParameters::KEY_EFFECT));
+            }
         }
 
-        // in the video mode and preview is running status
-        if (mVideoPreviewEnabled && mPreviewRunning) {
-            LOGD("dvs,line:%d, resetCamera", __LINE__);
-
-//  ToDo. resetCamera could let the DVS setting valid. dvs set must before fmt setting
-//            mCamera->resetCamera(); // the dvs setting will be enabled in the configuration stage
-//            if (mCamera->getDVS()) {
-//                LOGD("dvs,line:%d, signal thread", __LINE__);
-//                mDvsCondition.signal();
-//            }
-
+        // xnr
+        int xnr = old_params.getInt(CameraParameters::KEY_XNR);
+        new_value = new_params.get(CameraParameters::KEY_XNR);
+        set_value = old_params.get(CameraParameters::KEY_XNR);
+        LOGD(" - xnr = new \"%s\" (%d) / current \"%s\"",new_value, xnr, set_value);
+        if (strcmp(set_value, new_value) != 0) {
+            if (!strcmp(new_value, "false"))
+                ret = mCamera->setXNR(false);
+            else if (!strcmp(new_value, "true"))
+                ret = mCamera->setXNR(true);
+            if (!ret) {
+                LOGD("Changed xnr to %s", new_params.get(CameraParameters::KEY_XNR));
+            }
         }
-    }
-
-    // tnr
-    int tnr = old_params.getInt(CameraParameters::KEY_TEMPORAL_NOISE_REDUCTION);
-    new_value = new_params.get(CameraParameters::KEY_TEMPORAL_NOISE_REDUCTION);
-    set_value = old_params.get(CameraParameters::KEY_TEMPORAL_NOISE_REDUCTION);
-    LOGD(" - temporal-noise-reduction = new \"%s\" (%d) / current \"%s\"",new_value, tnr, set_value);
-    if (strcmp(set_value, new_value) != 0) {
-        if (!strcmp(new_value, "on"))
-            ret = mCamera->setTNR(true);
-        else if (!strcmp(new_value, "off"))
-            ret = mCamera->setTNR(false);
-        if (!ret) {
-            LOGD("Changed temporal-noise-reduction to %s",
-                    new_params.get(CameraParameters::KEY_TEMPORAL_NOISE_REDUCTION));
+        // gdc/cac
+        int gdc = old_params.getInt(CameraParameters::KEY_GDC);
+        new_value = new_params.get(CameraParameters::KEY_GDC);
+        set_value = old_params.get(CameraParameters::KEY_GDC);
+        LOGD(" - gdc = new \"%s\" (%d) / current \"%s\"",new_value, gdc, set_value);
+        if (strcmp(set_value, new_value) != 0) {
+            if (!strcmp(new_value, "false"))
+                ret = mCamera->setGDC(false);
+            else if (!strcmp(new_value, "true"))
+                ret = mCamera->setGDC(true);
+            if (!ret) {
+                LOGD("Changed gdc to %s", new_params.get(CameraParameters::KEY_GDC));
+            }
         }
-    }
+
+        // DVS
+        int dvs = old_params.getInt(CameraParameters::KEY_DVS);
+        new_value = new_params.get(CameraParameters::KEY_DVS);
+        set_value = old_params.get(CameraParameters::KEY_DVS);
+        LOGD(" - dvs = new \"%s\" (%d) / current \"%s\"",new_value, dvs, set_value);
+        if (strcmp(set_value, new_value) != 0) {
+            if (!strcmp(new_value, "false")) {
+                ret = mCamera->setDVS(false);
+            }
+            else if (!strcmp(new_value, "true")) {
+                ret = mCamera->setDVS(true);
+            }
+            if (!ret) {
+                LOGD("Changed dvs to %s", new_params.get(CameraParameters::KEY_DVS));
+            }
+
+            // in the video mode and preview is running status
+            if (mVideoPreviewEnabled && mPreviewRunning) {
+                LOGD("dvs,line:%d, resetCamera", __LINE__);
+
+    //  ToDo. resetCamera could let the DVS setting valid. dvs set must before fmt setting
+    //            mCamera->resetCamera(); // the dvs setting will be enabled in the configuration stage
+    //            if (mCamera->getDVS()) {
+    //                LOGD("dvs,line:%d, signal thread", __LINE__);
+    //                mDvsCondition.signal();
+    //            }
+
+            }
+        }
+
+        // tnr
+        int tnr = old_params.getInt(CameraParameters::KEY_TEMPORAL_NOISE_REDUCTION);
+        new_value = new_params.get(CameraParameters::KEY_TEMPORAL_NOISE_REDUCTION);
+        set_value = old_params.get(CameraParameters::KEY_TEMPORAL_NOISE_REDUCTION);
+        LOGD(" - temporal-noise-reduction = new \"%s\" (%d) / current \"%s\"",new_value, tnr, set_value);
+        if (strcmp(set_value, new_value) != 0) {
+            if (!strcmp(new_value, "on"))
+                ret = mCamera->setTNR(true);
+            else if (!strcmp(new_value, "off"))
+                ret = mCamera->setTNR(false);
+            if (!ret) {
+                LOGD("Changed temporal-noise-reduction to %s",
+                        new_params.get(CameraParameters::KEY_TEMPORAL_NOISE_REDUCTION));
+            }
+        }
 
 #ifdef TUNING_EDGE_ENHACNMENT
-    // nr and ee
-    int nr_ee = old_params.getInt(CameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
-    new_value = new_params.get(CameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
-    set_value = old_params.get(CameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
-    LOGD(" -  noise-reduction-and-edge-enhancement= new \"%s\" (%d) / current \"%s\"",new_value, nr_ee, set_value);
-    if (strcmp(set_value, new_value) != 0) {
-        if (!strcmp(new_value, "on")) {
-            ret = mCamera->setNREE(true);
+        // nr and ee
+        int nr_ee = old_params.getInt(CameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
+        new_value = new_params.get(CameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
+        set_value = old_params.get(CameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
+        LOGD(" -  noise-reduction-and-edge-enhancement= new \"%s\" (%d) / current \"%s\"",new_value, nr_ee, set_value);
+        if (strcmp(set_value, new_value) != 0) {
+            if (!strcmp(new_value, "on")) {
+                ret = mCamera->setNREE(true);
+            }
+            else if (!strcmp(new_value, "off")) {
+                ret = mCamera->setNREE(false);
+            }
+            if (!ret) {
+                LOGD("Changed  noise-reduction-and-edge-enhancement to %s",
+                        new_params.get(CameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT));
+            }
         }
-        else if (!strcmp(new_value, "off")) {
-            ret = mCamera->setNREE(false);
-        }
-        if (!ret) {
-            LOGD("Changed  noise-reduction-and-edge-enhancement to %s",
-                    new_params.get(CameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT));
-        }
-    }
 #endif
 
-    //macc
-    int color = 0;
-    int macc = old_params.getInt(CameraParameters::KEY_MULTI_ACCESS_COLOR_CORRECTION);
-    new_value = new_params.get(CameraParameters::KEY_MULTI_ACCESS_COLOR_CORRECTION);
-    set_value = old_params.get(CameraParameters::KEY_MULTI_ACCESS_COLOR_CORRECTION);
-    LOGD(" - multi-access-color-correction = new \"%s\" (%d) / current \"%s\"",new_value, macc, set_value);
-    if (strcmp(set_value, new_value) != 0) {
-        if (!strcmp("enhance-none", new_value))
-            color = V4L2_COLORFX_NONE;
-        else if (!strcmp("enhance-sky", new_value))
-            color = V4L2_COLORFX_SKY_BLUE;
-        else if (!strcmp("enhance-grass", new_value))
-            color = V4L2_COLORFX_GRASS_GREEN;
-        else if (!strcmp("enhance-skin", new_value))
-            color = V4L2_COLORFX_SKIN_WHITEN;
-        ret = mCamera->setMACC(color);
+        //macc
+        int color = 0;
+        int macc = old_params.getInt(CameraParameters::KEY_MULTI_ACCESS_COLOR_CORRECTION);
+        new_value = new_params.get(CameraParameters::KEY_MULTI_ACCESS_COLOR_CORRECTION);
+        set_value = old_params.get(CameraParameters::KEY_MULTI_ACCESS_COLOR_CORRECTION);
+        LOGD(" - multi-access-color-correction = new \"%s\" (%d) / current \"%s\"",new_value, macc, set_value);
+        if (strcmp(set_value, new_value) != 0) {
+            if (!strcmp("enhance-none", new_value))
+                color = V4L2_COLORFX_NONE;
+            else if (!strcmp("enhance-sky", new_value))
+                color = V4L2_COLORFX_SKY_BLUE;
+            else if (!strcmp("enhance-grass", new_value))
+                color = V4L2_COLORFX_GRASS_GREEN;
+            else if (!strcmp("enhance-skin", new_value))
+                color = V4L2_COLORFX_SKIN_WHITEN;
+            ret = mCamera->setMACC(color);
 
-        if (!ret) {
-            LOGD("Changed multi-access-color-correction to %s",
-                    new_params.get("multi-access-color-correction"));
+            if (!ret) {
+                LOGD("Changed multi-access-color-correction to %s",
+                        new_params.get("multi-access-color-correction"));
+            }
         }
     }
 
