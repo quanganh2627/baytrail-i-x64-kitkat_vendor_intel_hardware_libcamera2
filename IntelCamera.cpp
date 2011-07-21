@@ -1855,9 +1855,6 @@ int IntelCamera::setPostViewSize(int width, int height, int fourcc)
 
 int IntelCamera::getPostViewSize(int *width, int *height, int *frame_size)
 {
-    m_postview_width = m_preview_width>>1;
-    m_postview_height = m_preview_height>>1;
-
     //The preview output should be small than the main output
     if (m_postview_width > m_snapshot_width)
         m_postview_width = m_snapshot_width;

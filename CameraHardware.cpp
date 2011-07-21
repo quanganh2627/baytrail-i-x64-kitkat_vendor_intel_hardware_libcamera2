@@ -363,12 +363,17 @@ void CameraHardware::initPreviewBuffer(int size)
 {
     unsigned int page_size = getpagesize();
     unsigned int size_aligned = (size + page_size - 1) & ~(page_size - 1);
+    unsigned int postview_size = size_aligned;
+
+    //FIXME workaround for the Soc sensor 720p output
+    if (mSensorType == SENSOR_TYPE_SOC)
+        postview_size = postview_size * 2;
 
     if (size != mPreviewFrameSize) {
         if (mPreviewBuffer.heap != NULL)
             deInitPreviewBuffer();
         mPreviewBuffer.heap = new MemoryHeapBase(size_aligned * kBufferCount);
-        mRawHeap = new MemoryHeapBase(size_aligned);
+        mRawHeap = new MemoryHeapBase(postview_size);
         mRawIdHeap = new MemoryHeapBase(sizeof(int));
         mRawIdBase = new MemoryBase(mRawIdHeap, 0, sizeof(int));
         mFrameIdHeap = new MemoryHeapBase(sizeof(int));
@@ -1926,6 +1931,16 @@ BCHANDLE_ERR:
 int CameraHardware::pictureThread()
 {
     LOGD("%s :start", __func__);
+    int cap_width, cap_height, cap_frame_size, rgb_frame_size;
+    int pre_width, pre_height, pre_frame_size, pre_padded_size;
+    mCamera->getSnapshotSize(&cap_width, &cap_height, &cap_frame_size);
+    mCamera->getPreviewSize(&pre_width, &pre_height, &pre_frame_size, &pre_padded_size);
+
+    mCamera->setPostViewSize(pre_width, pre_height, V4L2_PIX_FMT_NV12);
+
+    //FIXME: workaround for the postview corruption for the Soc and RAW sensor
+    if (cap_width == 1280 && mSensorType == SENSOR_TYPE_SOC)
+        mCamera->setPostViewSize(704, 396, mPicturePixelFormat);
 
     // ToDo. abstract some functions for both single capture and burst capture.
     if (mBCEn) {
@@ -1953,7 +1968,6 @@ int CameraHardware::pictureThread()
         if (ret < 0)
             mCamera->deInitFileInput();
     }
-    int cap_width, cap_height, cap_frame_size, rgb_frame_size;
     void *pmainimage;
     void *pthumbnail;   // first save RGB565 data, then save jpeg encoded data into this pointer
 #ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
@@ -1964,7 +1978,6 @@ int CameraHardware::pictureThread()
     if(V4L2_PIX_FMT_YUV420 == mPicturePixelFormat)
         bHwEncodepath=FALSE;
 #endif
-    mCamera->getSnapshotSize(&cap_width, &cap_height, &cap_frame_size);
     mCamera->getPostViewSize(&mPostViewWidth, &mPostViewHeight, &mPostViewSize);
     rgb_frame_size = cap_width * cap_height * 2;
 
