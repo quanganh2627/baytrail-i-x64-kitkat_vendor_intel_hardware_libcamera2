@@ -3137,8 +3137,8 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     int ret = NO_ERROR;
     Mutex::Autolock lock(mLock);
     // XXX verify params
-
-    //params.dump();  // print parameters for debug
+	LOGD(" setParameters");
+    params.dump();  // print parameters for debug
 
     CameraParameters p = params;
 
@@ -3470,6 +3470,8 @@ int CameraHardware::setISPParameters(
 CameraParameters CameraHardware::getParameters() const
 {
     Mutex::Autolock lock(mLock);
+	LOGD(" getParameters");
+	mParameters.dump();
     return mParameters;
 }
 
