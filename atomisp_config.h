@@ -147,7 +147,7 @@ static int use_texture_streaming = 0;
         "320x240,640x480,1024x768,1280x720,1920x1080"
 
 #define RESOLUTION_720P_TABLE   \
-        "640x480"
+        "1280x720, 640x480"
 
 enum resolution_index {
     RESOLUTION_720P = 0,
