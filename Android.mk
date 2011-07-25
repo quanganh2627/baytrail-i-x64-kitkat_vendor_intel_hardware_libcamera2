@@ -6,7 +6,7 @@ ifeq ($(USE_CAMERA_STUB),false)
 #
 
 ENABLE_BUFFER_SHARE_MODE := true
-ENABLE_HWLIBJPEG_BUFFER_SHARE :=false
+ENABLE_HWLIBJPEG_BUFFER_SHARE :=true
 
 LOCAL_PATH := $(call my-dir)
 
