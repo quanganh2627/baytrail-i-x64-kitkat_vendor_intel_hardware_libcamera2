@@ -369,7 +369,7 @@ private:
 
     //still af
     int runStillAfSequence();
-    static const int mStillAfMaxCount = 40;
+    static const int mStillAfMaxTimeMs = 1700;
 
     //flash
     void runPreFlashSequence (void);

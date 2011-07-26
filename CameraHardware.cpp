@@ -2426,13 +2426,18 @@ int CameraHardware::runStillAfSequence(void)
 {
     //The preview thread is stopped at this point
     bool af_status = false;
+    struct timeval currentTime, stillafstarttime;
+    int i = 0;
+
     mAAA->AeLock(true);
     mAAA->SetAeEnabled(false);
     mAAA->SetAfEnabled(true);
     mAAA->SetAwbEnabled(false);
     mAAA->AfStillStart();
-    // Do more than 100 time
-    for (int i = 0; i < mStillAfMaxCount; i++) {
+    gettimeofday(&stillafstarttime,0);
+
+    //The limit of AF process time is up to mStillAfMaxTimeMs + one frame interval
+    do {
         mAeAfAwbLock.lock();
         //check whether exit before wait.
         if (mExitAutoFocusThread) {
@@ -2446,14 +2451,16 @@ int CameraHardware::runStillAfSequence(void)
         mAeAfAwbLock.unlock();
         mAAA->AeAfAwbProcess(true);
         mAAA->AfStillIsComplete(&af_status);
+        i++;
         if (af_status)
         {
             LOGD("==== still AF converge frame number %d\n", i);
             break;
         }
-    }
-    LOGD("==== still Af status (1: success; 0: failed) = %d\n", af_status);
-
+        gettimeofday(&currentTime,0);
+    } while(calc_timediff(&stillafstarttime, &currentTime) < mStillAfMaxTimeMs);
+    LOGD("==== still Af status (1: success; 0: failed) = %d, time:%ld, Frames:%d\n",
+        af_status, calc_timediff(&stillafstarttime, &currentTime), i);
     mAAA->AfStillStop ();
     mAAA->AeLock(false);
     mAAA->SetAfEnabled(false);
