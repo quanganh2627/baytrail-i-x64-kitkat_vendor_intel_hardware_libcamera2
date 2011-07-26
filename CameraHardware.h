@@ -28,9 +28,7 @@
 #include <atomisp_config.h>
 #include "JpegEncoder.h"
 
-#ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
 #include "libjpegwrap.h"
-#endif
 
 namespace android {
 
@@ -50,6 +48,9 @@ struct BCBuffer {
     bool ready; // if the src data is ready, it is true
     bool encoded;   // if finished encoded, it is true
     int sequence;   // it is the handling sequence, initialization value is ~0
+
+    // below variables only valid when the hardware jpeg buffer sharing is enabled
+    void *usrptr;   // get from libva, it is allocated by libva. to store the src data for jpeg enc.
 };
 
 class CameraHardware : public CameraHardwareInterface {
@@ -416,6 +417,10 @@ private:
     int mBCNumSkipReq; // need skipped number
     int mBCMemState; // true has been allocated, false has been released
     int mBCDeviceState; // true: device has been opened. false: device has been closed.
+    HWLibjpegWrap *mBCLibJpgHw;
+    sp<MemoryHeapBase> mBCHeapHwJpgDst; // the hw jpeg wrapper's limitation. it outputs jpg data to this buffer only.
+    void *mBCHwJpgDst; // point to mBCHeapHwJpgDst
+    bool mHwJpegBufferShareEn;
     sp<MemoryHeapBase> mBCHeap; // for store the structure BCBuffer
     struct BCBuffer *mBCBuffer; // point to mBCHeap
     int mManualFocusPosi;

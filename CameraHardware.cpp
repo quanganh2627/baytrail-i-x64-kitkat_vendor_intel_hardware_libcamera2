@@ -109,8 +109,13 @@ CameraHardware::CameraHardware(int cameraId)
          "SOC" : "RAW");
 
 #ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
+    mHwJpegBufferShareEn = true;
     mPicturePixelFormat = V4L2_PIX_FMT_NV12;
+    if (memory_userptr == 0) {
+        LOGE("ERR(%s):jpeg buffer share set but user pointer unset", __func__);
+    }
 #else
+    mHwJpegBufferShareEn = false;
     mPicturePixelFormat = V4L2_PIX_FMT_YUV420;
 #endif
 
@@ -1703,6 +1708,15 @@ int CameraHardware::compressThread()
 
         mCamera->getSnapshotSize(&cap_w, &cap_h, &rgb_frame_size);
 
+        if (mHwJpegBufferShareEn && (mPicturePixelFormat == V4L2_PIX_FMT_NV12)) {
+            //set parameter for jpeg encode
+            mBCLibJpgHw->setJpeginfo(cap_w, cap_h, 3, JCS_YCbCr, main_quality);
+            if(mBCLibJpgHw->preStartJPEGEncodebyHwBufferShare() < 0) {
+                LOGE("BC, line:%d, call startJPEGEncodebyHwBufferShare fail", __LINE__);
+                return false;
+            }
+        }
+
         // loop and wait to hande all the pictures
         for (i = 0; i < mBCNumReq; i++) {
             if (mBCCancelCompress) {
@@ -1734,12 +1748,28 @@ int CameraHardware::compressThread()
             pthumbnail = bcbuf->pdst_thumbnail;
             pmainimage = bcbuf->pdst_main;
 
-            // get RGB565 main data from NV12
-            mCamera->toRGB565(cap_w, cap_h, mPicturePixelFormat, bcbuf->psrc, bcbuf->psrc);
-
-            // encode the main image
-            if (encodeToJpeg(cap_w, cap_h, bcbuf->psrc, pmainimage, &mainimage_size, main_quality) < 0) {
-                LOGE("BC, line:%d, encodeToJpeg fail for main image", __LINE__);
+            if (mHwJpegBufferShareEn && (mPicturePixelFormat == V4L2_PIX_FMT_NV12)) {
+                // do jpeg encoded
+                if(mBCLibJpgHw->startJPEGEncodebyHwBufferShare(bcbuf->usrptr) < 0){
+                    mainimage_size = 0;
+                    LOGE("BC, line:%d, call startJPEGEncodebyHwBufferShare fail", __LINE__);
+                } else {
+                    mainimage_size = mBCLibJpgHw->getJpegSize();
+                    if(mainimage_size > 0){
+                        memcpy(pmainimage, mBCHwJpgDst, mainimage_size);
+                        // write_image(pmainimage, mainimage_size, 3264, 2448, "snap_v0.jpg");
+                    } else {
+                        LOGE("BC, line:%d, mainimage_size:%d", __LINE__, mainimage_size);
+                    }
+                    LOG1("BC, line:%d, mainimage_size:%d", __LINE__, mainimage_size);
+                }
+            } else {
+                // get RGB565 main data from NV12/YUV420
+                mCamera->toRGB565(cap_w, cap_h, mPicturePixelFormat, bcbuf->psrc, bcbuf->psrc);
+                // encode the main image
+                if (encodeToJpeg(cap_w, cap_h, bcbuf->psrc, pmainimage, &mainimage_size, main_quality) < 0) {
+                    LOGE("BC, line:%d, encodeToJpeg fail for main image", __LINE__);
+                }
             }
 
             // encode the thumbnail
@@ -1783,7 +1813,7 @@ int CameraHardware::compressThread()
             // post sem to let the picture thread to send the jpeg pic out
             if ((ret = sem_post(&sem_bc_encoded)) < 0)
                 LOGE("BC, line:%d, sem_post fail, ret:%d", __LINE__, ret);
-            LOGD("BC, line:%d, encode:%d finished,, sem_post", __LINE__, i);
+            LOGD("BC, line:%d, encode:%d finished, sem_post", __LINE__, i);
         }
 
         if (i == mBCNumReq) {
@@ -1817,6 +1847,42 @@ int CameraHardware::burstCaptureAllocMem(int total_size, int rgb_frame_size,
 {
     struct BCBuffer *bcbuf;
     int i;
+    void *usrptr[MAX_BURST_CAPTURE_NUM];
+    memset(usrptr, 0, sizeof(usrptr));
+
+    if (mBCNumReq > MAX_BURST_CAPTURE_NUM) {
+        LOGE("BC, line:%d, mBCNumReq > MAX_BURST_CAPTURE_NUM", __LINE__);
+        return -1;
+    }
+
+    if (mHwJpegBufferShareEn && (mPicturePixelFormat == V4L2_PIX_FMT_NV12)) {
+        mBCHeapHwJpgDst = new MemoryHeapBase(jpeg_buf_size);
+        if (mBCHeapHwJpgDst->getHeapID() < 0) {
+            LOGE("BC, line:%d, mBCHeap fail", __LINE__);
+            return -1;
+        }
+        mBCHwJpgDst = mBCHeapHwJpgDst->getBase();
+
+        mBCLibJpgHw = NULL;
+        mBCLibJpgHw = new HWLibjpegWrap();
+        if (mBCLibJpgHw == NULL) {
+            LOGE("BC, line:%d, new HWLibjpegWrap fail", __LINE__);
+            return -1;
+        }
+
+        if(mBCLibJpgHw->initHwBufferShare((JSAMPLE *)mBCHwJpgDst,
+            jpeg_buf_size,cap_w,cap_h,(void**)&usrptr, mBCNumReq) != 0) {
+            LOGE("BC, line:%d, initHwBufferShare fail", __LINE__);
+            return -1;
+        }
+
+        for (i = 0; i < mBCNumReq; i++) {
+            LOG1("BC, line:%d, usrptr[%d]:0x%x", __LINE__, i, (int)(usrptr[i]));
+            if (usrptr[i] == NULL) {
+                return -1;
+            }
+        }
+    }
 
     mBCHeap = new MemoryHeapBase(mBCNumReq * sizeof(struct BCBuffer));
     if (mBCHeap->getHeapID() < 0) {
@@ -1846,8 +1912,15 @@ int CameraHardware::burstCaptureAllocMem(int total_size, int rgb_frame_size,
         bcbuf->ready = false;
         bcbuf->encoded = false;
         bcbuf->sequence = ~0;
+
+        bcbuf->usrptr = usrptr[i];
+
         if (memory_userptr) {
-            mCamera->setSnapshotUserptr(i, bcbuf->psrc, postview_out);
+            if (mHwJpegBufferShareEn && (mPicturePixelFormat == V4L2_PIX_FMT_NV12)) {
+                mCamera->setSnapshotUserptr(i, bcbuf->usrptr, postview_out);
+            } else {
+                mCamera->setSnapshotUserptr(i, bcbuf->psrc, postview_out);
+            }
         }
     }
 
@@ -1869,6 +1942,14 @@ void CameraHardware::burstCaptureFreeMem(void)
         bcbuf->heap.clear();
     }
     mBCHeap.clear();
+
+    if (mHwJpegBufferShareEn && (mPicturePixelFormat == V4L2_PIX_FMT_NV12)) {
+        LOG1("BC, line:%d, i:%d, before delete mBCLibJpgHw", __LINE__, i);
+        if (mBCLibJpgHw)
+            delete mBCLibJpgHw;
+
+        mBCHeapHwJpgDst.clear();
+    }
 
     mBCMemState = false;
     LOG1("BC, line:%d, free mem!!!", __LINE__);
@@ -1951,7 +2032,10 @@ int CameraHardware::burstCaptureHandle(void)
     mCamera->getPostViewSize(&mPostViewWidth, &mPostViewHeight, &mPostViewSize);
     mPostViewFormat = mCamera->getPostViewPixelFormat();
     mCamera->getSnapshotSize(&cap_w, &cap_h, &rgb_frame_size);
-    rgb_frame_size = cap_w * cap_h * 2; // for RGB565 format
+    if (mHwJpegBufferShareEn && (mPicturePixelFormat == V4L2_PIX_FMT_NV12))
+        rgb_frame_size = 0;
+    else
+        rgb_frame_size = cap_w * cap_h * 2; // for RGB565 format
     jpeg_buf_size = cap_w * cap_h * 3 / 10; // for store the encoded jpeg file, experience value
     total_size = rgb_frame_size + exif_offset + thumbnail_offset + jpeg_buf_size;
 
@@ -1972,7 +2056,7 @@ int CameraHardware::burstCaptureHandle(void)
             goto BCHANDLE_ERR;
         }
 
-        //Skip the first frame
+        //Skip frames
         snapshotSkipFrames(&main_out, &postview_out);
         for (i = 0; i < mBCNumReq; i++) {
             if (mBCCancelPicture) {
@@ -2010,7 +2094,8 @@ int CameraHardware::burstCaptureHandle(void)
             }
 
             if (!memory_userptr) {
-                memcpy(bcbuf->psrc, main_out, bcbuf->src_size);
+                if (!mHwJpegBufferShareEn)
+                    memcpy(bcbuf->psrc, main_out, bcbuf->src_size);
             }
 
             // mark the src data ready
@@ -3381,11 +3466,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     int new_picture_width, new_picture_height;
     const char *new_format = p.getPictureFormat();
     if (strcmp(new_format, "jpeg") == 0)
-#ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
-        mPicturePixelFormat = V4L2_PIX_FMT_NV12;
-#else
-        mPicturePixelFormat = V4L2_PIX_FMT_YUV420;
-#endif
+        mPicturePixelFormat = mHwJpegBufferShareEn ? V4L2_PIX_FMT_NV12 : V4L2_PIX_FMT_YUV420;
     else {
         LOGE("Only jpeg still pictures are supported, new_format:%s", new_format);
     }
@@ -3398,15 +3479,13 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     mBCEn = (mBCNumReq > 1) ? true : false;
     if (mBCEn) {
         mBCNumSkipReq = p.getInt(CameraParameters::KEY_BURST_SKIP_FRAMES);
-        mPicturePixelFormat = V4L2_PIX_FMT_NV12;
-        // ToDo. we will use the hw jpeg encoder and change the format to YUV420.
     } else {
         mBCNumReq = 1;
         mBCNumSkipReq = 0;
-        mPicturePixelFormat = V4L2_PIX_FMT_YUV420;
     }
     LOG1("BC, line:%d,burst len, en:%d, reqnum:%d, skipnum:%d", __LINE__, mBCEn, mBCNumReq, mBCNumSkipReq);
-#ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
+
+    if (mHwJpegBufferShareEn) {
         /*there is limitation for picture resolution with hwlibjpeg buffer share
         if picture resolution below 640*480 , we have to set mPicturePixelFormat
         back to YUV420 and go through software encode path*/
@@ -3414,13 +3493,11 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
             mPicturePixelFormat = V4L2_PIX_FMT_YUV420;
         else
             mPicturePixelFormat = V4L2_PIX_FMT_NV12;
-#endif
+    }
+
     LOGD("%s : new_picture_width %d new_picture_height = %d", __func__,
          new_picture_width, new_picture_height);
 
-    // ToDo. removed it next patch.
-    if (mBCEn)
-        mPicturePixelFormat = V4L2_PIX_FMT_NV12;
     if (0 < new_picture_width && 0 < new_picture_height) {
         if (mCamera->setSnapshotSize(new_picture_width, new_picture_height,
                                      mPicturePixelFormat) < 0) {

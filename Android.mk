@@ -71,11 +71,11 @@ ifeq ($(ENABLE_BUFFER_SHARE_MODE),true)
     LOCAL_SHARED_LIBRARIES += libsharedbuffer
 endif
 
-ifeq ($(ENABLE_HWLIBJPEG_BUFFER_SHARE),true)
-    LOCAL_SHARED_LIBRARIES += libjpeg
-    LOCAL_SRC_FILES += libjpegwrap.cpp
-    LOCAL_C_INCLUDES += hardware/intel/libva \
+LOCAL_SHARED_LIBRARIES += libjpeg
+LOCAL_SRC_FILES += libjpegwrap.cpp
+LOCAL_C_INCLUDES += hardware/intel/libva \
                      external/jpeg
+ifeq ($(ENABLE_HWLIBJPEG_BUFFER_SHARE),true)
     LOCAL_CFLAGS += -DENABLE_HWLIBJPEG_BUFFER_SHARE
 endif
 
