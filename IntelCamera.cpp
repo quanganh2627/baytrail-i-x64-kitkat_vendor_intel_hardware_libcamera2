@@ -786,7 +786,12 @@ int IntelCamera::startCameraRecording(void)
 
     //set DVS
     LOG1("dvs,line:%d, set dvs val:%d to driver", __LINE__, mDVSOn);
-    ret = atomisp_set_dvs(main_fd, mDVSOn);
+    //Only enable DVS for resolution bigger than 720p
+    if (m_recorder_pad_width >= RESOLUTION_720P_WIDTH && m_recorder_height >=
+        RESOLUTION_720P_HEIGHT)
+        ret = atomisp_set_dvs(main_fd, mDVSOn);
+    else
+        ret = atomisp_set_dvs(main_fd, false);
     if (ret)
         LOGE("dvs,line:%d, set dvs val:%d to driver fail", __LINE__, mDVSOn);
 

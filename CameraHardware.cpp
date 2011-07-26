@@ -39,9 +39,6 @@ namespace android {
 
 #define CAMERA_MSG_TOUCH_TO_FOCUS 0x200
 
-static const int INITIAL_SKIP_FRAME = 4;
-static const int CAPTURE_SKIP_FRAME = 1;
-
 static const int ZOOM_FACTOR = 4;
 
 static cameraInfo camera_info[MAX_CAMERAS];
@@ -116,6 +113,7 @@ CameraHardware::CameraHardware(int cameraId)
     initDefaultParameters();
     mVideoPreviewEnabled = false;
     mFlashNecessary = false;
+    mValidDVSResolution = false;
 
     mExitAutoFocusThread = false;
     mExitPreviewThread = false;
@@ -636,9 +634,11 @@ int CameraHardware::previewThread()
     processPreviewFrame(data);
 
     //Qbuf
-    mPreviewLock.lock();
-    mCamera->putPreview(index);
-    mPreviewLock.unlock();
+    if (!mExitPreviewThread) {
+        mPreviewLock.lock();
+        mCamera->putPreview(index);
+        mPreviewLock.unlock();
+    }
 
     return NO_ERROR;
 }
@@ -681,9 +681,12 @@ int CameraHardware::recordingThread()
     //Process the recording frame when recording started
     if (mRecordRunning && bufferIsReady)
         processRecordingFrame(main_out, index);
-    mPreviewLock.lock();
-    mCamera->putRecording(index);
-    mPreviewLock.unlock();
+
+    if (!mExitPreviewThread) {
+        mPreviewLock.lock();
+        mCamera->putRecording(index);
+        mPreviewLock.unlock();
+    }
     return NO_ERROR;
 }
 
@@ -834,10 +837,16 @@ status_t CameraHardware::startPreview()
         mRecordingFrame = 0;
         mPostRecordingFrame = 0;
         mCamera->getRecorderSize(&w, &h, &size, &padded_size);
+
+        //DVS only valid for 720p or bigger resolution
+        if (h >= RESOLUTION_720P_HEIGHT && w >= RESOLUTION_720P_WIDTH)
+            mValidDVSResolution = true;
+        else
+            mValidDVSResolution = false;
         initRecordingBuffer(size, padded_size);
         fd = mCamera->startCameraRecording();
         if (fd >= 0) {
-            if (mCamera->getDVS()) {
+            if (mCamera->getDVS() && mValidDVSResolution) {
                 mAAA->SetDoneStatisticsState(false);
                 LOG1("dvs, line:%d, signal thread", __LINE__);
                 mDvsCondition.signal();
@@ -1129,7 +1138,7 @@ int CameraHardware::dvsThread()
         return false;
     }
 
-    while (mVideoPreviewEnabled) {
+    while (mVideoPreviewEnabled && mValidDVSResolution) {
         if (mExitDvsThread) {
             LOG1("dvs, line:%d, return false from dvsThread", __LINE__);
             return false;
@@ -1947,7 +1956,6 @@ int CameraHardware::pictureThread()
     //FIXME: workaround for the postview corruption for the Soc and RAW sensor
     if (cap_width == 1280 && mSensorType == SENSOR_TYPE_SOC) {
         mCamera->setPostViewSize(704, 396, mPicturePixelFormat);
-        usleep(30);
     }
 
     // ToDo. abstract some functions for both single capture and burst capture.

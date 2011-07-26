@@ -140,8 +140,7 @@ static int use_texture_streaming = 0;
         "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x2448"
 
 #define RESOLUTION_5MP_TABLE   \
-        "320x240,640x480,1024x768,1280x720,\
-         1920x1080,2048x1536,2560x1920"
+        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920"
 
 #define RESOLUTION_1080P_TABLE   \
         "320x240,640x480,1024x768,1280x720,1920x1080"
@@ -157,11 +156,15 @@ enum resolution_index {
     RESOLUTION_14MP,
 };
 
-//Define the sensor specific settings here
+//Define the platform specific settings here
 #ifdef MFLD_PR2
 static int atom_sensor_type = ci_adv_sensor_liteon_8m;
+#define INITIAL_SKIP_FRAME   0
+#define CAPTURE_SKIP_FRAME   0
 #else
 static int atom_sensor_type = ci_adv_sensor_dis_14m;
+#define INITIAL_SKIP_FRAME   4
+#define CAPTURE_SKIP_FRAME   1
 #endif //MFLD_PR2
 
 #endif /*_CAMERA_CONFIG__*/
