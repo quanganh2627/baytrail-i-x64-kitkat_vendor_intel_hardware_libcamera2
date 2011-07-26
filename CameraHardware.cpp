@@ -2620,6 +2620,7 @@ int  CameraHardware::update3AParameters(CameraParameters& p, bool flush_only)
             win_new.y_bottom = (int)strtol(end+1, &end, 10);
             win_new.weight = 1; // for spot1
 
+            mAAA->AfSetMeteringMode(CAM_AF_METERING_MODE_SPOT);
             ret = mAAA->AfSetWindow(&win_new);
             LOGD("AfSetWindow, tf, x_left:%d, y_top:%d, x_right:%d, y_bottom:%d, weight%d, result:%d",
                 win_new.x_left, win_new.y_top, win_new.x_right, win_new.y_bottom, win_new.weight, ret);
@@ -3563,8 +3564,8 @@ void CameraHardware::runPreFlashSequence(void)
 
     mAAA->PreFlashProcess(CAM_FLASH_STAGE_PRE);
 
-    // main flash
-    mCamera->captureFlashOnCertainDuration(0, 100, 1*625);  /* software trigger, 100ms, intensity 1*/
+    // main flash  software trigger, 100ms, intensity 2*/
+    mCamera->captureFlashOnCertainDuration(0, 100, 2*625);
     mCamera->putPreview(index);
     index = mCamera->getPreview(&data);
     if (index < 0) {
