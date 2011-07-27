@@ -188,6 +188,7 @@ private:
     };
 
     void setSkipFrame(int frame);
+    void setSkipSnapFrame(int frame);
 
     mutable Condition   mPreviewFrameCondition;
     bool        mExitAeAfAwbThread;
@@ -319,7 +320,8 @@ private:
     float               mPreviewLastFPS;
     nsecs_t             mRecordingLastTS;
     float               mRecordingLastFPS;
-    int                 mSkipFrame;
+    int                 mSkipFrame; // skipped preview frames
+    int                 mSkipSnapFrame; // skipped snapshot frames
 
     //Postpreview
     int                 mPostViewWidth;
@@ -383,15 +385,29 @@ private:
     int checkSensorType(int cameraId);
     void setupPlatformType(void);
 
+    // snapshot internal functions
+    int snapshotSkipFrames(void **main, void **postview);
+
     /*for burst capture */
     sem_t sem_bc_captured;  // +1 if it gets one frame from driver
     sem_t sem_bc_encoded;   // +1 if  it finishes encoding one frame
-    void burstCaptureInit(void);
+    void burstCaptureInit(bool init_flags);
+    int burstCaptureAllocMem(int total_size, int rgb_frame_size,
+                            int cap_w, int cap_h, int jpeg_buf_size, void *postview_out);
+    void burstCaptureFreeMem(void);
+    int burstCaptureSkipReqBufs(int i, int *idx, void **main, void **postview);
+    int burstCaptureStart(void);
+    void burstCaptureStop(void);
     int burstCaptureHandle(void);
+    void burstCaptureCancelPic(void);
     bool mBCEn;   // true is enabled, false is disabled.
+    bool mBCCancelCompress;  // cancelPicture has been called
+    bool mBCCancelPicture;  // cancelPicture has been called
     int mBCNumReq; // remember the request capture number
     int mBCNumCur; // current the sequence capture number
     int mBCNumSkipReq; // need skipped number
+    int mBCMemState; // true has been allocated, false has been released
+    int mBCDeviceState; // true: device has been opened. false: device has been closed.
     sp<MemoryHeapBase> mBCHeap; // for store the structure BCBuffer
     struct BCBuffer *mBCBuffer; // point to mBCHeap
 

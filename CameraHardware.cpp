@@ -143,7 +143,7 @@ CameraHardware::CameraHardware(int cameraId)
         LOGE("BC, line:%d, sem_init fail, ret:%d", __LINE__, ret);
     if ((ret = sem_init(&sem_bc_encoded, 0, 0)) < 0)
         LOGE("BC, line:%d, sem_init fail, ret:%d", __LINE__, ret);
-    burstCaptureInit();
+    burstCaptureInit(true);
 
 #if ENABLE_BUFFER_SHARE_MODE
     isVideoStarted = false;
@@ -515,6 +515,11 @@ bool CameraHardware::msgTypeEnabled(int32_t msgType)
 void CameraHardware::setSkipFrame(int frame)
 {
     mSkipFrame = frame;
+}
+
+void CameraHardware::setSkipSnapFrame(int frame)
+{
+    mSkipSnapFrame = frame;
 }
 
 void CameraHardware::processPreviewFrame(void *buffer)
@@ -1575,6 +1580,26 @@ void CameraHardware::exifAttribute(exif_attribute_t& attribute, int cap_w, int c
     attribute.compression_scheme = EXIF_DEF_COMPRESSION;
 }
 
+int CameraHardware::snapshotSkipFrames(void **main, void **postview)
+{
+    int index;
+
+    while (mSkipSnapFrame) {
+        index = mCamera->getSnapshot(main, postview, NULL);
+        if (index < 0) {
+            LOGE("line:%d, getSnapshot fail", __LINE__);
+            return -1;
+        }
+        if (mCamera->putSnapshot(index) < 0) {
+            LOGE("line:%d, putSnapshot fail", __LINE__);
+            return -1;
+        }
+        mSkipSnapFrame--;
+    }
+
+    return 0;
+}
+
 /* Return true, the thread will loop. Return false, the thread will terminate. */
 int CameraHardware::compressThread()
 {
@@ -1585,6 +1610,12 @@ int CameraHardware::compressThread()
     void *pmainimage;
     void *pthumbnail;   // first save RGB565 data, then save jpeg encoded data into this pointer
     int i, j, ret;
+
+    if (mBCCancelCompress) {
+        LOG1("BC, line:%d, int compressThread, mBCCancelCompress is true, terminate", __LINE__);
+        mBCCancelCompress = false;
+        return false;
+    }
 
     mCompressLock.lock();
     LOG1("BC, line:%d, before receive mCompressCondition", __LINE__);
@@ -1619,6 +1650,11 @@ int CameraHardware::compressThread()
 
         // loop and wait to hande all the pictures
         for (i = 0; i < mBCNumReq; i++) {
+            if (mBCCancelCompress) {
+                LOG1("BC, line:%d, int compressThread, mBCCancelCompress is true, terminate", __LINE__);
+                mBCCancelCompress = false;
+                return false;
+            }
             LOG1("BC, line:%d, before sem_wait:sem_bc_captured, %d", __LINE__, i);
             if ((ret = sem_wait(&sem_bc_captured)) < 0)
                 LOGE("BC, line:%d, sem_wait fail, ret:%d", __LINE__, ret);
@@ -1627,6 +1663,11 @@ int CameraHardware::compressThread()
                 bcbuf = mBCBuffer + j;
                 if (bcbuf->sequence == i)
                     break;
+            }
+            if (mBCCancelCompress) {
+                LOG1("BC, line:%d, int compressThread, mBCCancelCompress is true, terminate", __LINE__);
+                mBCCancelCompress = false;
+                return false;
             }
             if (j == mBCNumReq) {
                 LOGE("BC, line:%d, error, j:%d == mBCNumReq", __LINE__, j);
@@ -1652,7 +1693,6 @@ int CameraHardware::compressThread()
                 LOGE("BC, line:%d, encodeToJpeg fail for main image", __LINE__);
             }
             memcpy(pdst, FILE_START, sizeof(FILE_START));
-            thumbnail_size = thumbnail_size - sizeof(FILE_END);
 
             // fill the attribute
             if ((unsigned int)thumbnail_size >= exif_offset) {
@@ -1700,7 +1740,7 @@ int CameraHardware::compressThread()
     return true;
 }
 
-void CameraHardware::burstCaptureInit(void)
+void CameraHardware::burstCaptureInit(bool init_flags)
 {
     mBCNumCur = 0;
     mBCEn = false;
@@ -1708,13 +1748,143 @@ void CameraHardware::burstCaptureInit(void)
     mBCNumSkipReq = 0;
     mBCBuffer = NULL;
     mBCHeap = NULL;
+
+    if (init_flags) {
+        mBCCancelCompress = false;
+        mBCCancelPicture = false;
+        mBCMemState = false;
+        mBCDeviceState = false;
+    }
+}
+
+int CameraHardware::burstCaptureAllocMem(int total_size, int rgb_frame_size,
+                        int cap_w, int cap_h, int jpeg_buf_size, void *postview_out)
+{
+    struct BCBuffer *bcbuf;
+    int i;
+
+    mBCHeap = new MemoryHeapBase(mBCNumReq * sizeof(struct BCBuffer));
+    if (mBCHeap->getHeapID() < 0) {
+        LOGE("BC, line:%d, mBCHeap fail", __LINE__);
+        return -1;
+    }
+    mBCBuffer = (struct BCBuffer *)mBCHeap->getBase();
+    for (i = 0; i < mBCNumReq; i++) {
+        bcbuf = mBCBuffer + i;
+
+        bcbuf->heap = new MemoryHeapBase(total_size);
+        if (bcbuf->heap->getHeapID() < 0) {
+            LOGE("BC, line:%d, malloc heap fail, i:%d", __LINE__, i);
+            return -1;
+        }
+
+        bcbuf->total_size = total_size;
+        bcbuf->src_size = rgb_frame_size;
+
+        bcbuf->jpeg_size = 0;
+
+        bcbuf->psrc = bcbuf->heap->getBase();
+        bcbuf->pdst_exif = (char *)bcbuf->psrc + bcbuf->src_size;
+        bcbuf->pdst_thumbnail = (char *)bcbuf->pdst_exif + exif_offset;
+        bcbuf->pdst_main = (char *)bcbuf->pdst_thumbnail + thumbnail_offset;
+
+        bcbuf->ready = false;
+        bcbuf->encoded = false;
+        bcbuf->sequence = ~0;
+        if (memory_userptr) {
+            mCamera->setSnapshotUserptr(i, bcbuf->psrc, postview_out);
+        }
+    }
+
+    mBCMemState = true;
+    LOG1("BC, line:%d, allocate mem!!!", __LINE__);
+    return 0;
+}
+
+void CameraHardware::burstCaptureFreeMem(void)
+{
+    struct BCBuffer *bcbuf;
+    int i;
+
+    if (mBCMemState == false)
+        return;
+
+    for (i = 0; i < mBCNumReq; i++) {
+        bcbuf = mBCBuffer + i;
+        bcbuf->heap.clear();
+    }
+    mBCHeap.clear();
+
+    mBCMemState = false;
+    LOG1("BC, line:%d, free mem!!!", __LINE__);
+}
+
+// open the device
+int CameraHardware::burstCaptureStart(void)
+{
+    int ret;
+    ret = mCamera->startSnapshot();
+    mBCDeviceState = (ret < 0) ? false : true;
+    return ret;
+}
+
+// close the device
+void CameraHardware::burstCaptureStop(void)
+{
+    if (mBCDeviceState == false)
+        return;
+    mCamera->stopSnapshot();
+    mBCDeviceState = false;
+}
+
+int CameraHardware::burstCaptureSkipReqBufs(int i, int *idx, void **main, void **postview)
+{
+    int skipped, index = 0;
+    void *main_out, *postview_out;
+
+    for (skipped = 0; skipped <= mBCNumSkipReq; skipped++) {
+        if (mBCCancelPicture)
+            return -1;
+
+        //dq buffer
+        index = mCamera->getSnapshot(&main_out, &postview_out, NULL);
+        if (index < 0) {
+            LOGE("BC, line:%d, getSnapshot fail", __LINE__);
+            return -1;
+        }
+        if (i == 0) { // we don't need to skip the first frame
+            LOG1("BC, line:%d, dq buffer, i:%d", __LINE__, i);
+            break;
+        }
+
+        if(skipped < mBCNumSkipReq) {
+            mCamera->putSnapshot(index);
+            LOG1("BC, line:%d, skipped dq buffer, i:%d", __LINE__, i);
+        }
+        else
+            LOG1("BC, line:%d, dq buffer, i:%d", __LINE__, i);
+    }
+
+    *idx = index;
+    *main = main_out;
+    *postview = postview_out;
+    return 0;
+}
+
+// the handling at the time of cancel picture
+void CameraHardware::burstCaptureCancelPic(void)
+{
+    burstCaptureStop();
+    burstCaptureFreeMem();
+    mBCCancelPicture = false;
+    mCaptureInProgress = false;
 }
 
 // call from pictureThread
 int CameraHardware::burstCaptureHandle(void)
 {
     LOGD("BC, %s :start", __func__);
-    int fd, i, index, ret;
+    int fd, i, index = 0, ret;
     int cap_w, cap_h;
     int rgb_frame_size, jpeg_buf_size, total_size;
     int skipped;
@@ -1736,46 +1906,16 @@ int CameraHardware::burstCaptureHandle(void)
         postview_out = mRawHeap->getBase();
 
         // allocate memory
-        mBCHeap = new MemoryHeapBase(mBCNumReq * sizeof(struct BCBuffer));
-        if (mBCHeap->getHeapID() < 0) {
-            LOGE("BC, line:%d, mBCHeap fail", __LINE__);
+        if (burstCaptureAllocMem(total_size, rgb_frame_size,
+                                cap_w, cap_h, jpeg_buf_size, postview_out) < 0) {
             goto BCHANDLE_ERR;
-        }
-        mBCBuffer = (struct BCBuffer *)mBCHeap->getBase();
-        for (i = 0; i < mBCNumReq; i++) {
-            // the memory part, it follows Jozef's design
-            bcbuf = mBCBuffer + i;
-
-            bcbuf->heap = new MemoryHeapBase(total_size);
-            if (bcbuf->heap->getHeapID() < 0) {
-                LOGE("BC, line:%d, malloc heap fail, i:%d", __LINE__, i);
-                goto BCHANDLE_ERR;
-            }
-
-            bcbuf->total_size = total_size;
-            bcbuf->src_size = rgb_frame_size;
-
-            bcbuf->jpeg_size = 0;
-
-            bcbuf->psrc = bcbuf->heap->getBase();
-            bcbuf->pdst_exif = (char *)bcbuf->psrc + bcbuf->src_size;
-            bcbuf->pdst_thumbnail = (char *)bcbuf->pdst_exif + exif_offset;
-            bcbuf->pdst_main = (char *)bcbuf->pdst_thumbnail + thumbnail_offset;
-
-            bcbuf->ready = false;
-            bcbuf->encoded = false;
-            bcbuf->sequence = ~0;
-            if (memory_userptr) {
-                mCamera->setSnapshotUserptr(i, bcbuf->psrc, postview_out);
-            }
         }
 
         //Prepare for the snapshot
-        if ((fd = mCamera->startSnapshot()) < 0) {
-            LOGE("BC, line:%d, startSnapshot fail", __LINE__);
+        if ((fd = burstCaptureStart()) < 0) {
+            LOGE("BC, line:%d, burstCaptureStart fail", __LINE__);
             goto BCHANDLE_ERR;
         }
-        mAAA->IspSetFd(fd);
         if (mSensorType == SENSOR_TYPE_RAW) {
             mFramerate = mCamera->getFramerate();
             mAAA->SwitchMode(STILL_IMAGE_MODE);
@@ -1785,37 +1925,22 @@ int CameraHardware::burstCaptureHandle(void)
         }
 
         //Skip the first frame
-        index = mCamera->getSnapshot(&main_out, &postview_out, NULL);
-        if (index < 0) {
-            LOGE("BC, line:%d, getSnapshot fail", __LINE__);
-            goto BCHANDLE_ERR;
-        }
-
-        if (mCamera->putSnapshot(index) < 0) {
-            LOGE("BC, line:%d, putSnapshot fail", __LINE__);
-            goto BCHANDLE_ERR;
-        }
-
+        snapshotSkipFrames(&main_out, &postview_out);
         for (i = 0; i < mBCNumReq; i++) {
-            // dq buffer and skip request buffer
-            for (skipped = 0; skipped <= mBCNumSkipReq; skipped++) {
-                //dq buffer
-                index = mCamera->getSnapshot(&main_out, &postview_out, NULL);
-                if (index < 0) {
-                    LOGE("BC, line:%d, getSnapshot fail", __LINE__);
-                    goto BCHANDLE_ERR;
-                }
-                if (i == 0) { // we don't need to skip the first frame
-                    LOG1("BC, line:%d, dq buffer, i:%d", __LINE__, i);
-                    break;
-                }
+            if (mBCCancelPicture) {
+                LOG1("BC, line:%d, in burstCaptureHandle, mBCCancelPicture is true, terminate", __LINE__);
+                burstCaptureCancelPic();
+                return NO_ERROR;
+            }
 
-                if(skipped < mBCNumSkipReq) {
-                    mCamera->putSnapshot(index);
-                    LOG1("BC, line:%d, skipped dq buffer, i:%d", __LINE__, i);
+            // dq buffer and skip request buffer
+            if (burstCaptureSkipReqBufs(i, &index, &main_out, &postview_out) < 0 ) {
+                if (mBCCancelPicture) {
+                    LOG1("BC, line:%d, in burstCaptureHandle, mBCCancelPicture is true, terminate", __LINE__);
+                    burstCaptureCancelPic();
+                    return NO_ERROR;
                 }
-                else
-                    LOG1("BC, line:%d, dq buffer, i:%d", __LINE__, i);
+                goto BCHANDLE_ERR;
             }
 
             // set buffer sequence
@@ -1868,14 +1993,11 @@ int CameraHardware::burstCaptureHandle(void)
                 mDataCb(CAMERA_MSG_POSTVIEW_FRAME, pv_buffer, mCallbackCookie);
                 pv_buffer.clear();
             }
-
-            // q buf, don't need to do it.
-            //mCamera->putSnapshot(index);
         }
         LOG1("BC, line:%d, finished capture", __LINE__);
     }
 
-    // find the and wait desired buffer
+    // find and wait the desired buffer
     bcbuf = mBCBuffer;
     for (i = 0; i < mBCNumReq; i++) {
         bcbuf = mBCBuffer + i;
@@ -1891,10 +2013,15 @@ int CameraHardware::burstCaptureHandle(void)
         goto BCHANDLE_ERR;
     }
 
+    if (mBCCancelPicture) {
+        LOG1("BC, line:%d, in burstCaptureHandle, mBCCancelPicture is true, terminate", __LINE__);
+        burstCaptureCancelPic();
+        return NO_ERROR;
+    }
+
     if (mBCNumCur == mBCNumReq) {
         LOG1("BC, line:%d, begin to stop the camera", __LINE__);
-        //Stop the Camera Now
-        mCamera->stopSnapshot();
+        burstCaptureStop();
         //Set captureInProgress earlier.
         mCaptureInProgress = false;
 
@@ -1912,13 +2039,8 @@ int CameraHardware::burstCaptureHandle(void)
     if (mBCNumCur == mBCNumReq) {
         LOG1("BC, line:%d, begin to clean up the memory", __LINE__);
         // release the memory
-        for (i = 0; i < mBCNumReq; i++) {
-            bcbuf = mBCBuffer + i;
-            bcbuf->heap.clear();
-        }
-        mBCHeap.clear();
-
-        burstCaptureInit();
+        burstCaptureFreeMem();
+        burstCaptureInit(false);
     }
 
     LOG1("BC, %s :end", __func__);
@@ -1926,17 +2048,8 @@ int CameraHardware::burstCaptureHandle(void)
 
 BCHANDLE_ERR:
     LOGE("BC, line:%d, got BCHANDLE_ERR in the burstCaptureHandle", __LINE__);
-    if (mBCBuffer) {
-        for (i = 0; i < mBCNumReq; i++) {
-            bcbuf = mBCBuffer + i;
-            bcbuf->heap.clear();
-        }
-    }
-    if (mBCHeap != NULL)
-        mBCHeap.clear();
-
-    mCamera->stopSnapshot();
-
+    burstCaptureStop();
+    burstCaptureFreeMem();
     mCaptureInProgress = false;
     return UNKNOWN_ERROR;
 }
@@ -1964,6 +2077,7 @@ int CameraHardware::pictureThread()
         mBCNumCur++;
         LOGD("BC, line:%d, BCEn:%d, BCReq:%d, BCCur:%d", __LINE__, mBCEn, mBCNumReq, mBCNumCur);
         if (mBCNumCur == 1) {
+            mBCCancelPicture = false;
             if (mCompressThread->run("CameraCompressThread", PRIORITY_DEFAULT) !=
             NO_ERROR) {
                 LOGE("%s : couldn't run compress thread", __func__);
@@ -2050,18 +2164,12 @@ int CameraHardware::pictureThread()
         if(!mFlashNecessary)
             mCamera->setIndicatorIntensity(INDICATOR_INTENSITY_WORKING);
 
-        //Skip the first frame
-        //Don't need the flash for the skip frame
-        index = mCamera->getSnapshot(&main_out, &postview_out, NULL);
-        if (index < 0) {
-            picHeap.clear();
-            goto get_img_error;
-        }
+        //Skip frames
+        snapshotSkipFrames(&main_out, &postview_out);
 
         //Turn on flash if neccessary before the Qbuf
         if (mFlashNecessary)
             mCamera->captureFlashOnCertainDuration(0, 800, 15*625); /* software trigger, 800ms, intensity 15*/
-        mCamera->putSnapshot(index);
 
 #ifdef PERFORMANCE_TUNING
         gettimeofday(&first_frame, 0);
@@ -2326,7 +2434,7 @@ status_t CameraHardware::takePicture()
     gettimeofday(&preview_stop, 0);
 #endif
     enableMsgType(CAMERA_MSG_PREVIEW_FRAME);
-    setSkipFrame(CAPTURE_SKIP_FRAME);
+    setSkipSnapFrame(CAPTURE_SKIP_FRAME);
 #ifdef PERFORMANCE_TUNING
     gettimeofday(&preview_stop, 0);
 #endif
@@ -2348,7 +2456,25 @@ status_t CameraHardware::takePicture()
 status_t CameraHardware::cancelPicture()
 {
     LOG1("%s start\n", __func__);
+    if (mBCEn) {
+        mBCCancelCompress = true;
+        mCompressCondition.signal();
+        sem_post(&sem_bc_captured);
+        mCompressThread->requestExitAndWait();
+        LOG1("BC, line:%d, int cancelPicture, after compress thread end", __LINE__);
+
+        mBCCancelPicture = true;
+        sem_post(&sem_bc_encoded);
+    }
+
     mPictureThread->requestExitAndWait();
+
+    if (mBCEn) {
+        burstCaptureStop();
+        burstCaptureFreeMem();
+    }
+
+    LOG1("%s end\n", __func__);
     return NO_ERROR;
 }
 
