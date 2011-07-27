@@ -1314,6 +1314,9 @@ void CameraHardware::exifAttribute(exif_attribute_t& attribute, int cap_w, int c
     int ret;
     unsigned int focal_length, fnumber;
 
+    // get data from driver
+    mCamera->acheiveEXIFAttributesFromDriver();
+
     memset(&attribute, 0, sizeof(attribute));
     // exp_time's unit is 100us
     mAAA->AeGetExpCfg(&exp_time, &iso_speed, &ss_exp_time, &ss_iso_speed, &aperture);
@@ -1562,7 +1565,7 @@ void CameraHardware::exifAttribute(exif_attribute_t& attribute, int cap_w, int c
     } else {
         attribute.focal_length.num = focal_length >> 16;
         attribute.focal_length.den = focal_length & 0xffff;
-        LOG1("%s: focal_length:%x, num: %d, den: %d", __func__, focal_length, attribute.focal_length.num, attribute.focal_length.den);
+        LOG1("line:%d, focal_length:%x, num: %d, den: %d", __LINE__, focal_length, attribute.focal_length.num, attribute.focal_length.den);
     }
 
     // GIS information
@@ -2219,8 +2222,6 @@ int CameraHardware::pictureThread()
         gettimeofday(&postview, 0);
 #endif
         mCamera->setIndicatorIntensity(INDICATOR_INTENSITY_OFF);
-
-        mCamera->acheiveEXIFAttributesFromDriver();
 
         //Stop the Camera Now
         mCamera->stopSnapshot();
