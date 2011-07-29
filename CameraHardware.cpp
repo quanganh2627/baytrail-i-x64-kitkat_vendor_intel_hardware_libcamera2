@@ -3228,6 +3228,12 @@ int  CameraHardware::update3AParameters(CameraParameters& p, bool flush_only)
                 scene_mode = CAM_AE_SCENE_MODE_AUTO;
                 LOGD("     ++ Not supported scene-mode");
             }
+
+            if (scene_mode != CAM_AE_SCENE_MODE_AUTO) {
+                p.set(CameraParameters::KEY_FOCUS_MODE, "auto");
+                p.set(CameraParameters::KEY_WHITE_BALANCE, "auto");
+            }
+
             mAAA->AeSetSceneMode (scene_mode);
         }
 
