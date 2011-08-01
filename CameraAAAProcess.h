@@ -140,8 +140,6 @@ public:
 
     void IspSetFd(int fd);
 
-    void AfApplyResults(void);
-
     void SwitchMode(int mode);
     void SetFrameRate(float framerate);
 
@@ -163,7 +161,6 @@ public:
     void DisCalcStill(ci_adv_dis_vector *vector, int frame_number);
     void StillCompose(ci_adv_user_buffer *com_buf,
                       ci_adv_user_buffer bufs[], int frame_dis, ci_adv_dis_vector vectors[]);
-    void GetDisVector(ci_adv_dis_vector *vector);
 
     int SetRedEyeRemoval(bool en);
     int GetRedEyeRemoval(bool *en);
@@ -229,19 +226,13 @@ public:
     }
 
     bool GetAfEnabled(void) {
-        bool mAfEnabled ;
-        ci_adv_af_is_enabled(&mAfEnabled);
-        return mAfEnabled;
+        return ci_adv_af_is_enabled();
     }
     bool GetAeEnabled(void) {
-        bool mAeEnabled;
-        ci_adv_ae_is_enabled (&mAeEnabled);
-        return mAeEnabled;
+        return ci_adv_ae_is_enabled();
     }
     bool GetAwbEnabled(void) {
-        bool mAwbEnabled;
-        ci_adv_awb_is_enabled(&mAwbEnabled);
-        return mAwbEnabled;
+        return ci_adv_awb_is_enabled();
     }
     bool GetGdcEnabled(void) {
         return mGdcEnabled;

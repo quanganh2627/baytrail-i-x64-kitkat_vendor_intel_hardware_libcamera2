@@ -95,18 +95,6 @@ void AAAProcess::IspSetFd(int fd)
     }
 }
 
-void AAAProcess::AfApplyResults(void)
-{
-    Mutex::Autolock lock(mLock);
-    if(!mInitied)
-        return;
-
-    if(SENSOR_TYPE_RAW == mSensorType)
-    {
-        ci_adv_af_apply_results();
-    }
-}
-
 void AAAProcess::SwitchMode(int mode)
 {
     Mutex::Autolock lock(mLock);
@@ -323,7 +311,7 @@ void AAAProcess::GetStillStabilizationEnabled(bool *en)
 
     if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_dis_is_enabled(en);
+        *en = ci_adv_dis_is_enabled();
     }
 }
 
@@ -352,18 +340,6 @@ void AAAProcess::StillCompose(ci_adv_user_buffer *com_buf,
     }
 }
 
-void AAAProcess::GetDisVector(ci_adv_dis_vector *vector)
-{
-    Mutex::Autolock lock(mLock);
-    if(!mInitied)
-        return;
-
-    if(SENSOR_TYPE_RAW == mSensorType)
-    {
-        ci_adv_get_dis_vector (vector);
-    }
-}
-
 void AAAProcess::DoRedeyeRemoval(void *img_buf, int size, int width, int height, int format)
 {
     Mutex::Autolock lock(mLock);
@@ -372,17 +348,21 @@ void AAAProcess::DoRedeyeRemoval(void *img_buf, int size, int width, int height,
 
     if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_frame_format out_format;
+        ci_adv_user_buffer user_buf;
         switch (format)
         {
         case V4L2_PIX_FMT_YUV420:
-            out_format = ci_adv_frame_format_yuv420;
+            user_buf.format= ci_adv_frame_format_yuv420;
             break;
         default:
             LOGE("%s: not supported foramt in red eye removal",  __func__);
             return;
         }
-        ci_adv_correct_redeyes(img_buf, size, width, height, out_format);
+        user_buf.addr = img_buf;
+        user_buf.width = width;
+        user_buf.height = height;
+        user_buf.length = size;
+        ci_adv_correct_redeyes(&user_buf);
     }
 }
 
@@ -1284,7 +1264,7 @@ int AAAProcess::GetRedEyeRemoval(bool *en)
 
     if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_redeye_is_enabled (en);
+        *en = ci_adv_redeye_is_enabled ();
     }
 
     return AAA_SUCCESS;
