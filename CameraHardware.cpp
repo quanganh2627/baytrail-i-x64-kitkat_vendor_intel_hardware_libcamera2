@@ -1310,7 +1310,7 @@ void CameraHardware::exifAttribute(exif_attribute_t& attribute, int cap_w, int c
                                                                             bool thumbnail_en, bool flash_en)
 {
     int ae_mode;
-    unsigned short exp_time, iso_speed, ss_exp_time, ss_iso_speed, aperture;
+    unsigned short exp_time, aperture;
     int ret;
     unsigned int focal_length, fnumber;
 
@@ -1319,9 +1319,8 @@ void CameraHardware::exifAttribute(exif_attribute_t& attribute, int cap_w, int c
 
     memset(&attribute, 0, sizeof(attribute));
     // exp_time's unit is 100us
-    mAAA->AeGetExpCfg(&exp_time, &iso_speed, &ss_exp_time, &ss_iso_speed, &aperture);
-    LOG1("exifAttribute, exptime:%d, isospeed:%d, ssexptime:%d, ssisospeed:%d, aperture:%d",
-                exp_time, iso_speed, ss_exp_time, ss_iso_speed, aperture);
+    mAAA->AeGetExpCfg(&exp_time, &aperture);
+    LOG1("exifAttribute, exptime:%d, aperture:%d", exp_time, aperture);
 
     attribute.enableThumb = thumbnail_en;
     LOG1("exifAttribute, thumbnal:%d", thumbnail_en);
@@ -1353,11 +1352,11 @@ void CameraHardware::exifAttribute(exif_attribute_t& attribute, int cap_w, int c
     strftime((char *)attribute.date_time, sizeof(attribute.date_time), "%Y:%m:%d %H:%M:%S", timeinfo);
 
     // exposure time
-    attribute.exposure_time.num = ss_exp_time;
+    attribute.exposure_time.num = exp_time;
     attribute.exposure_time.den = 10000;
 
     // shutter speed, = -log2(exposure time)
-    float exp_t = (float)(ss_exp_time / 10000.0);
+    float exp_t = (float)(exp_time / 10000.0);
     float shutter = -1.0 * (log10(exp_t) / log10(2.0));
     attribute.shutter_speed.num = (shutter * 10000);
     attribute.shutter_speed.den = 10000;

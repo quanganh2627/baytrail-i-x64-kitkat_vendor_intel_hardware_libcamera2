@@ -186,11 +186,8 @@ public:
     int AeGetFlickerMode(int *mode);
     int AeSetBacklightCorrection(bool en);
     int AeGetBacklightCorrection(bool *en);
-    int AeGetExpCfg(unsigned short * exp_time,
-                                                    unsigned short * iso_speed,
-                                                    unsigned short * ss_exp_time,
-                                                    unsigned short * ss_iso_speed,
-                                                    unsigned short * aperture);
+    int AeGetExpCfg(unsigned short *exp_time,
+                    unsigned short *aperture);
     int AeSetWindow(const cam_Window *window);
     int AeGetWindow(cam_Window *window);
     int AeLock(bool lock);

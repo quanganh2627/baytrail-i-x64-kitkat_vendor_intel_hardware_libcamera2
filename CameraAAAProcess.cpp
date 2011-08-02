@@ -1436,11 +1436,7 @@ int AAAProcess::AeGetBacklightCorrection(bool *en)
     return AAA_SUCCESS;
 }
 
-int AAAProcess::AeGetExpCfg(unsigned short * exp_time,
-                                                                    unsigned short * iso_speed,
-                                                                    unsigned short * ss_exp_time,
-                                                                    unsigned short * ss_iso_speed,
-                                                                    unsigned short * aperture)
+int AAAProcess::AeGetExpCfg(unsigned short *exp_time, unsigned short *aperture)
 {
     Mutex::Autolock lock(mLock);
     if(!mInitied)
@@ -1448,10 +1444,7 @@ int AAAProcess::AeGetExpCfg(unsigned short * exp_time,
 
     if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_ae_get_exp_cfg(exp_time, iso_speed, ss_exp_time, ss_iso_speed, aperture);
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
+        ci_adv_ae_get_exp_cfg(exp_time, aperture);
     }
 
     return AAA_SUCCESS;

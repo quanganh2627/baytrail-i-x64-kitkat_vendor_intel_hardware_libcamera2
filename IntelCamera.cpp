@@ -3635,41 +3635,14 @@ int IntelCamera::atomisp_set_dvs (int fd, int on)
                                     on, "Video Stabilization");
 }
 
-int IntelCamera::atomisp_set_exposure (int fd, int exposure)
-{
-    if (exposure == 0)
-        return 0;
-    return atomisp_set_attribute (fd, V4L2_CID_EXPOSURE_ABSOLUTE, exposure,
-                                     "exposure");
-}
-
 int IntelCamera::atomisp_get_exposure (int fd, int *exposure)
 {
     return atomisp_get_attribute (fd, V4L2_CID_EXPOSURE_ABSOLUTE, exposure, "Exposure");
 }
 
-int IntelCamera::atomisp_set_aperture (int fd, int aperture)
-{
-    if (aperture == 0)
-        return 0;
-    return atomisp_set_attribute (fd, V4L2_CID_APERTURE_ABSOLUTE, aperture, "aperture");
-}
-
 int IntelCamera::atomisp_get_aperture (int fd, int *aperture)
 {
-    return atomisp_get_attribute (fd, V4L2_CID_APERTURE_ABSOLUTE, aperture, "Aperture");
-}
-
-int IntelCamera::atomisp_set_iso_speed (int fd, int iso_speed)
-{
-    if (iso_speed == 0)
-        return 0;
-    return atomisp_set_attribute (fd, V4L2_CID_ISO_ABSOLUTE, iso_speed, "iso_speed");
-}
-
-int IntelCamera::atomisp_get_iso_speed (int fd, int *iso_speed)
-{
-    return atomisp_get_attribute (fd, V4L2_CID_ISO_ABSOLUTE, iso_speed, "ISO_SPEED");
+    return atomisp_get_attribute (fd, V4L2_CID_IRIS_ABSOLUTE, aperture, "Aperture");
 }
 
 int IntelCamera::atomisp_set_focus_posi (int fd, int focus)
@@ -3957,12 +3930,6 @@ int IntelCamera::atomisp_set_cfg(int fd)
 				LOGD("mf:%d.\n", value);
 				if(value != 0)
 					err |= atomisp_set_focus_posi(fd, value);
-				break;
-			case ME:
-				LOGD("me:%d.\n", value);
-				if(value != 0)
-					err |= atomisp_set_exposure(fd, value);
-
 				break;
 			case MWB:
 				LOGD("mwb:%d.\n", value);

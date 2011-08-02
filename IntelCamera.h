@@ -434,13 +434,10 @@ private:
     /* Exposure Value setting */
 
     // exposure/focus/aperture settings
-    int atomisp_set_aperture(int fd, int aperture);
     int atomisp_get_aperture (int fd, int *aperture);
     int atomisp_set_ev_compensation(int fd, int ev_comp);
-    int atomisp_set_iso_speed(int fd, int iso_speed);
     int atomisp_set_focus_posi(int fd, int focus);
     int atomisp_get_make_note_info(int fd, atomisp_makernote_info *nt);
-    int atomisp_set_exposure(int fd, int exposure);
 
     int atomisp_set_zoom(int fd, int zoom);
     int atomisp_get_zoom(int fd, int *zoom);
@@ -451,7 +448,6 @@ private:
     int atomisp_set_gamma_from_value (int fd, float gamma,
                                int contrast, int brightness, bool inv_gamma);
     int atomisp_get_exposure(int fd, int *exposure);
-    int atomisp_get_iso_speed(int fd, int *iso_speed);
     int atomisp_get_focus_posi(int fd, int *focus);
 
     int atomisp_set_contrast_bright (int fd, int contrast,
