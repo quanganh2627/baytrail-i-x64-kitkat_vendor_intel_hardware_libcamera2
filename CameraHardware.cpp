@@ -3456,6 +3456,12 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
         mVideoPreviewEnabled = true; //viewfinder running in video mode
     }
 
+    // zoom is not supported in video mode for soc sensor.
+    if (vfmode != 2 && mSensorType == SENSOR_TYPE_SOC)
+	p.set(CameraParameters::KEY_ZOOM_SUPPORTED, "false");
+    else
+	p.set(CameraParameters::KEY_ZOOM_SUPPORTED, "true");
+
     int pre_width, pre_height, pre_size, pre_padded_size, rec_w, rec_h;
     mCamera->getPreviewSize(&pre_width, &pre_height, &pre_size, &pre_padded_size);
     p.getVideoSize(&rec_w, &rec_h);
