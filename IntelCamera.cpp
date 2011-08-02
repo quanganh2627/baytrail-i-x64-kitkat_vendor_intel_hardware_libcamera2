@@ -1280,6 +1280,7 @@ int IntelCamera::grabFrame(int device)
 
 int IntelCamera::resetCamera(void)
 {
+    Mutex::Autolock lock(mIntelCameraAutoLock);
     LOG1("%s\n", __func__);
     int ret = 0;
     if (memory_userptr)

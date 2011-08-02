@@ -3541,15 +3541,13 @@ int CameraHardware::setISPParameters(
 
             // in the video mode and preview is running status
             if (mVideoPreviewEnabled && mPreviewRunning) {
-                LOGD("dvs,line:%d, resetCamera", __LINE__);
-
-    //  ToDo. resetCamera could let the DVS setting valid. dvs set must before fmt setting
-    //            mCamera->resetCamera(); // the dvs setting will be enabled in the configuration stage
-    //            if (mCamera->getDVS()) {
-    //                LOGD("dvs,line:%d, signal thread", __LINE__);
-    //                mDvsCondition.signal();
-    //            }
-
+                LOG1("dvs,line:%d, resetCamera", __LINE__);
+                //resetCamera could let the DVS setting valid. dvs set must before fmt setting
+                mCamera->resetCamera(); // the dvs setting will be enabled in the configuration stage
+                if (mCamera->getDVS()) {
+                    LOG1("dvs,line:%d, signal thread", __LINE__);
+                    mDvsCondition.signal();
+                }
             }
         }
 

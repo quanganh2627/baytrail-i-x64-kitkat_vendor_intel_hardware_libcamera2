@@ -265,6 +265,8 @@ private:
     void checkGDC(void);
     int      m_paddingWidth(int format, int width, int height);
 
+    mutable Mutex mIntelCameraAutoLock;
+
     int             m_flag_camera_start[V4L2_DEVICE_NUM];
     int             m_flag_init;
     int             m_camera_id;
