@@ -1281,6 +1281,9 @@ int AAAProcess::AwbSetMapping(int mode)
         ci_adv_awb_map wr_val;
         switch (mode)
         {
+        case CAM_AWB_MAP_AUTO:
+            wr_val = ci_adv_awb_map_auto;
+            break;
         case CAM_AWB_MAP_INDOOR:
             wr_val = ci_adv_awb_map_indoor;
             break;
@@ -1289,7 +1292,7 @@ int AAAProcess::AwbSetMapping(int mode)
             break;
         default:
             LOGE("%s: set invalid AWB map mode\n", __func__);
-            wr_val = ci_adv_awb_map_indoor;
+            wr_val = ci_adv_awb_map_auto;
         }
         ci_adv_err ret = ci_adv_awb_set_map (wr_val);
         if(ci_adv_success != ret)

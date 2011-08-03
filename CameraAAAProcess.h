@@ -49,6 +49,7 @@ typedef enum
 
 typedef enum
 {
+    CAM_AWB_MAP_AUTO,
     CAM_AWB_MAP_INDOOR,
     CAM_AWB_MAP_OUTDOOR
 } cam_awb_map_mode;

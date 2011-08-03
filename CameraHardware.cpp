@@ -335,8 +335,8 @@ void CameraHardware::initDefaultParameters()
         p.set(CameraParameters::KEY_AE_LOCK_MODE,"unlock");
         p.set(CameraParameters::KEY_SUPPORTED_AE_LOCK_MODES,"lock,unlock");
         // awb mapping
-        p.set(CameraParameters::KEY_AWB_MAPPING_MODE, "indoor");
-        p.set(CameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES, "indoor,outdoor");
+        p.set(CameraParameters::KEY_AWB_MAPPING_MODE, "auto");
+        p.set(CameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES, "auto,indoor,outdoor");
         // manual shutter control
         p.set(CameraParameters::KEY_SHUTTER, "60");
         p.set(CameraParameters::KEY_SUPPORTED_SHUTTER, "2s,1s,2,4,8,15,30,60,125,250,500");
@@ -3042,8 +3042,11 @@ int  CameraHardware::update3AParameters(CameraParameters& p, bool flush_only)
                 awb_mapping = CAM_AWB_MAP_INDOOR;
             else if(!strcmp(new_value, "outdoor"))
                 awb_mapping = CAM_AWB_MAP_OUTDOOR;
+            else if(!strcmp(new_value, "auto"))
+                awb_mapping = CAM_AWB_MAP_AUTO;
             else
-                awb_mapping = CAM_AWB_MAP_INDOOR;
+                awb_mapping = CAM_AWB_MAP_AUTO;
+
             mAAA->AwbSetMapping(awb_mapping);
 
             LOGD("     ++ Changed awb mapping to %s, %d\n",p.get(pawbmap), awb_mapping);
