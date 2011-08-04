@@ -140,7 +140,7 @@ public:
         return &singleton;
     }
 
-    int initCamera(int camera_id, int reald_id, AAAProcess *tmpAAA);
+    int initCamera(int camera_id, int reald_id, int senor_type, AAAProcess *tmpAAA);
     int deinitCamera(void);
 
     char* getMaxSnapShotResolution();
@@ -269,6 +269,7 @@ private:
     int             m_flag_init;
     int             m_camera_phy_id;
     bool             m_bcd_registered;
+    int             m_sensor_type;
 
     // Frame width, hight and size
     int             m_preview_v4lformat;

@@ -16,6 +16,9 @@
 #define RESOLUTION_720P_HEIGHT	720
 #define RESOLUTION_480P_WIDTH	768
 #define RESOLUTION_480P_HEIGHT	480
+#define RESOLUTION_VGA_WIDTH	640
+#define RESOLUTION_VGA_HEIGHT	480
+
 
 #define MAX_BACK_CAMERA_PREVIEW_WIDTH   1280
 #define MAX_BACK_CAMERA_PREVIEW_HEIGHT  720
@@ -63,10 +66,10 @@
 #define DEFAULT_COLOR_EFFECT    V4L2_COLORFX_NONE
 
 /*
- * 5 seconds wait for regular ISP output
+ * 3 seconds wait for regular ISP output
  * 20 seconds wait for file input mode
  */
-#define ATOMISP_POLL_TIMEOUT (5 * 1000)
+#define ATOMISP_POLL_TIMEOUT (3 * 1000)
 #define ATOMISP_FILEINPUT_POLL_TIMEOUT (20 * 1000)
 
 #define DEFAULT_GAMMA_VALUE     2.2
@@ -133,10 +136,14 @@ static int use_texture_streaming = 0;
         "320x240,640x480,1024x768,1280x720,1920x1080"
 
 #define RESOLUTION_720P_TABLE   \
-        "1280x720,640x480"
+        "320x240,640x480,1280x720"
+
+#define RESOLUTION_VGA_TABLE   \
+        "320x240,640x480"
 
 enum resolution_index {
-    RESOLUTION_720P = 0,
+    RESOLUTION_VGA = 0,
+    RESOLUTION_720P,
     RESOLUTION_1080P,
     RESOLUTION_5MP,
     RESOLUTION_8MP,

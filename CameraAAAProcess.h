@@ -142,7 +142,7 @@ public:
     void SwitchMode(int mode);
     void SetFrameRate(float framerate);
 
-    void AeAfAwbProcess(bool read_stats);
+    int AeAfAwbProcess(bool read_stats);
 
     int DisReadStatistics(void);
     void DisProcess(void);

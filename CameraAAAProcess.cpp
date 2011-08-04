@@ -121,17 +121,20 @@ void AAAProcess::SetFrameRate(float framerate)
     }
 }
 
-void AAAProcess::AeAfAwbProcess(bool read_stats)
+int AAAProcess::AeAfAwbProcess(bool read_stats)
 {
     Mutex::Autolock lock(mLock);
     if(!mInitied)
-        return;
+        return 0;
 
     if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_process_frame(read_stats);
+        if (ci_adv_process_frame(read_stats) < 0)
+            return -1;
         mDoneStatistics = true;
     }
+
+    return 0;
 }
 
 // this function will be blocked until it gets data from driver

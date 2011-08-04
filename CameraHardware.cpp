@@ -103,7 +103,7 @@ CameraHardware::CameraHardware(int cameraId)
     mAAA = new AAAProcess();
 
     // Create the ISP object
-    ret = mCamera->initCamera(mCameraId, camera_idx, mAAA);
+    ret = mCamera->initCamera(mCameraId, camera_idx, mSensorType, mAAA);
     if (ret < 0) {
         LOGE("ERR(%s):Failed to initialize camera", __func__);
     }
@@ -727,6 +727,7 @@ int CameraHardware::recordingThread()
     int index = mCamera->getRecording(&main_out, &preview_out);
     mPreviewLock.unlock();
     if (index < 0) {
+        mNotifyCb(CAMERA_MSG_ERROR, CAMERA_ERROR_UKNOWN, 0, mCallbackCookie);
         LOGE("ERR(%s):Fail on mCamera->getRecording()", __func__);
         return -1;
     }
@@ -830,7 +831,11 @@ int CameraHardware::aeAfAwbThread()
         LOG2("%s: 3A return from wait", __func__);
         mAeAfAwbLock.unlock();
 
-        mAAA->AeAfAwbProcess(true);
+        if (mAAA->AeAfAwbProcess(true) < 0) {
+            LOGW("%s: 3A return error", __func__);
+            //mNotifyCb(CAMERA_MSG_ERROR, CAMERA_ERROR_UKNOWN, 0, mCallbackCookie);
+        }
+
         LOG2("%s: After run 3A thread", __func__);
 
         if (mManualFocusPosi) {
@@ -949,7 +954,7 @@ void CameraHardware::stopPreview()
     LOG1("%s :", __func__);
     // request that the preview thread stop.
     if (!mPreviewRunning) {
-        LOGI("%s : preview not running, doing nothing", __func__);
+        LOG1("%s : preview not running, doing nothing", __func__);
         return ;
     }
     mAAA->SetAfEnabled(false);
@@ -1961,6 +1966,7 @@ int CameraHardware::burstCaptureStart(void)
 {
     int ret;
     ret = mCamera->startSnapshot();
+    update3Aresults();
     mBCDeviceState = (ret < 0) ? false : true;
     return ret;
 }
@@ -1971,6 +1977,7 @@ void CameraHardware::burstCaptureStop(void)
     if (mBCDeviceState == false)
         return;
     mCamera->stopSnapshot();
+    mCaptureInProgress = false;
     mBCDeviceState = false;
 }
 
@@ -2282,6 +2289,10 @@ int CameraHardware::pictureThread()
         int fd;
         if ((fd = mCamera->startSnapshot()) < 0)
             goto start_error_out;
+
+        //apply the AE results
+        update3Aresults();
+
 #ifdef PERFORMANCE_TUNING
         gettimeofday(&snapshot_start, 0);
 #endif
@@ -2346,6 +2357,7 @@ int CameraHardware::pictureThread()
 
         //Stop the Camera Now
         mCamera->stopSnapshot();
+        mCaptureInProgress = false;
 
         //De-initialize file input
         if (use_file_input)
@@ -2701,7 +2713,11 @@ int CameraHardware::runStillAfSequence(void)
         mPreviewFrameCondition.wait(mAeAfAwbLock);
         LOG2("%s: still AF return from wait", __func__);
         mAeAfAwbLock.unlock();
-        mAAA->AeAfAwbProcess(true);
+        if (mAAA->AeAfAwbProcess(true) < 0) {
+            //mNotifyCb(CAMERA_MSG_ERROR, CAMERA_ERROR_UKNOWN, 0, mCallbackCookie);
+            LOGW("%s: 3A return error", __func__);
+        }
+
         mAAA->AfStillIsComplete(&af_status);
         i++;
         if (af_status)
@@ -3823,9 +3839,7 @@ void CameraHardware::runPreFlashSequence(void)
 void CameraHardware::update3Aresults(void)
 {
     LOG1("%s\n", __func__);
-    mAAA->AeLock(true);
     mAAA->AeAfAwbProcess (false);
-    mAAA->AeLock(false);
 }
 
 int CameraHardware::SnapshotPostProcessing(void *img_data, int width, int height)

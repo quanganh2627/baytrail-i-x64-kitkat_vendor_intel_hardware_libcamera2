@@ -188,6 +188,7 @@ unsigned int default_function_value_list[] = {
 namespace android {
 
 static char *resolution_tables[] = {
+    RESOLUTION_VGA_TABLE,
     RESOLUTION_720P_TABLE,
     RESOLUTION_1080P_TABLE,
     RESOLUTION_5MP_TABLE,
@@ -248,6 +249,7 @@ IntelCamera::IntelCamera()
 
     m_camera_phy_id = DEFAULT_CAMERA_SENSOR;
     num_buffers = DEFAULT_NUM_BUFFERS;
+    m_sensor_type = SENSOR_TYPE_RAW;
 
     video_fds[V4L2_FIRST_DEVICE] = -1;
     video_fds[V4L2_SECOND_DEVICE] = -1;
@@ -286,18 +288,21 @@ char * IntelCamera::getMaxSnapShotResolution()
             index--;
     if (m_snapshot_max_width < RESOLUTION_720P_WIDTH || m_snapshot_max_height < RESOLUTION_720P_HEIGHT)
             index--;
+    if (m_snapshot_max_width < RESOLUTION_VGA_WIDTH || m_snapshot_max_height < RESOLUTION_VGA_HEIGHT)
+            index--;
 
     if (index < 0)
         index = 0;
     return resolution_tables[index];
 }
 
-int IntelCamera::initCamera(int camera_id, int camera_idx, AAAProcess *tmpAAA)
+int IntelCamera::initCamera(int camera_id, int camera_idx, int sensor_type, AAAProcess *tmpAAA)
 {
     int ret = 0;
 
     m_camera_phy_id = camera_id;
     mAAA = tmpAAA;
+    m_sensor_type = sensor_type;
 
     // Open the main device first
     ret = openMainDevice(camera_idx);
@@ -355,46 +360,52 @@ int IntelCamera::initCamera(int camera_id, int camera_idx, AAAProcess *tmpAAA)
     m_preview_width = 640;
     m_preview_pad_width = 640;
     m_preview_height = 480;
-    m_preview_v4lformat = V4L2_PIX_FMT_RGB565;
+    m_preview_v4lformat = V4L2_PIX_FMT_NV12;
 
     m_postview_width = 640;
     m_postview_height = 480;
     m_postview_v4lformat = V4L2_PIX_FMT_NV12;
 
     m_snapshot_pad_width = 2560;
-    m_snapshot_v4lformat = V4L2_PIX_FMT_RGB565;
+    m_snapshot_v4lformat = V4L2_PIX_FMT_NV12;
 
     m_recorder_width = 1920;
     m_recorder_pad_width = 1920;
     m_recorder_height = 1080;
     m_recorder_v4lformat = V4L2_PIX_FMT_NV12;
 
-    mColorEffect = DEFAULT_COLOR_EFFECT;
-    mShadingCorrection = DEFAULT_SHADING_CORRECTION;
-    mXnrOn = DEFAULT_XNR;
-    mTnrOn = DEFAULT_TNR;
-    mMacc = DEFAULT_MACC;
-    mNrEeOn = DEFAULT_NREE;
-    mGDCOn = DEFAULT_GDC;
-    mDVSOn = DEFAULT_DVS;
-
-    // Do the basic init before open here
-    if (!m_flag_init) {
-        //Parse the configure from file
-        atomisp_parse_cfg_file();
-
-        m_flag_init = 1;
-    }
-
     file_injection = false;
     g_isp_timeout = 0;
-    //Gamma table initialization
-    g_cfg_gm.GmVal = 1.5;
-    g_cfg_gm.GmToe = 123;
-    g_cfg_gm.GmKne = 287;
-    g_cfg_gm.GmDyr = 256;
-    g_cfg_gm.GmLevelMin = 0;
-    g_cfg_gm.GmLevelMax = 255;
+
+    //RAW sensor need this effect. Invalid for Soc sensor
+    if (m_sensor_type == SENSOR_TYPE_RAW) {
+        //Set some default values.
+        mColorEffect = DEFAULT_COLOR_EFFECT;
+        mShadingCorrection = DEFAULT_SHADING_CORRECTION;
+        mXnrOn = DEFAULT_XNR;
+        mTnrOn = DEFAULT_TNR;
+        mMacc = DEFAULT_MACC;
+        mNrEeOn = DEFAULT_NREE;
+        mGDCOn = DEFAULT_GDC;
+        mDVSOn = DEFAULT_DVS;
+
+        // Do the basic init before open here for RAW sensor
+        if (!m_flag_init) {
+            //Parse the configure from file
+            atomisp_parse_cfg_file();
+
+            m_flag_init = 1;
+        }
+
+        //Gamma table initialization for RAW sensor
+        g_cfg_gm.GmVal = 1.5;
+        g_cfg_gm.GmToe = 123;
+        g_cfg_gm.GmKne = 287;
+        g_cfg_gm.GmDyr = 256;
+        g_cfg_gm.GmLevelMin = 0;
+        g_cfg_gm.GmLevelMax = 255;
+    }
+
     return ret;
 }
 
@@ -962,8 +973,9 @@ int IntelCamera::openMainDevice(int camera_idx)
     main_fd = video_fds[device];
 
     // load init gamma table only once
-    atomisp_init_gamma (main_fd, mIspSettings.contrast,
-                        mIspSettings.brightness, mIspSettings.inv_gamma);
+    if (m_sensor_type == SENSOR_TYPE_RAW)
+        atomisp_init_gamma (main_fd, mIspSettings.contrast,
+                            mIspSettings.brightness, mIspSettings.inv_gamma);
 
     //Do some other intialization here after open
     //flushISPParameters();
