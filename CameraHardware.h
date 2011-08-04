@@ -391,7 +391,6 @@ private:
     bool mFlashNecessary;
     float mFramerate;
 
-    int checkSensorType(int cameraId);
     void setupPlatformType(void);
 
     // snapshot internal functions

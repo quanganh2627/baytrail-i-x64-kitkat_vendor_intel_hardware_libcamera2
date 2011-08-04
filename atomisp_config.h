@@ -50,9 +50,6 @@
 
 #define DEFAULT_VIDEO_DEVICE "/dev/video0"
 
-#define PRIMARY_CAMERA_SENSOR   0
-#define SECOND_CAMERA_SENSOR   1
-
 #define DEFAULT_CAMERA_SENSOR   0
 #define DEFAULT_NUM_BUFFERS     4
 
@@ -72,8 +69,6 @@
 #define ATOMISP_POLL_TIMEOUT (5 * 1000)
 #define ATOMISP_FILEINPUT_POLL_TIMEOUT (20 * 1000)
 
-#define CAMERA_ID_FRONT 1
-#define CAMERA_ID_BACK  0
 #define DEFAULT_GAMMA_VALUE     2.2
 #define DEFAULT_CONTRAST            256
 #define DEFAULT_BRIGHTNESS        0
@@ -87,20 +82,15 @@
 #define INDICATOR_INTENSITY_WORKING       (3*2500)
 #define INDICATOR_INTENSITY_OFF 0
 
-#define MAX_SENSOR_NAME_LENGTH 32
-#define CDK_PRIMARY_SENSOR_NAME  "dis71430m"
-#define CDK_SECOND_SENSOR_NAME "ov2720"
+#define MAX_SENSOR_NAME_LENGTH  32
+#define CDK_PRIMARY_SENSOR_NAME "dis71430m"
+#define CDK_SECOND_SENSOR_NAME  "ov2720"
 #define PR2_PRIMARY_SENSOR_NAME "mt9e013"
-#define PR2_SECOND_SENSOR_NAME "mt9m114"
+#define PR2_SECOND_SENSOR_NAME  "mt9m114"
 
 enum {
     SENSOR_TYPE_RAW = 1,
     SENSOR_TYPE_SOC
-};
-
-enum {
-    PRIMARY_MIPI_PORT = 0,
-    SECONDARY_MIPI_PORT
 };
 
 enum {
@@ -109,18 +99,13 @@ enum {
     MFLD_PR2_PLATFORM
 };
 
-typedef struct __cameraInfo
-{
-    int type;
+typedef struct {
     int port;
-    int platform;
     char name[MAX_SENSOR_NAME_LENGTH];
 } cameraInfo;
 
-
 #define LOG1(...) LOGD_IF(gLogLevel >= 1, __VA_ARGS__);
 #define LOG2(...) LOGD_IF(gLogLevel >= 2, __VA_ARGS__);
-
 
 static int32_t gLogLevel = 0;
 static int need_dump_image = 0;
@@ -157,12 +142,5 @@ enum resolution_index {
     RESOLUTION_8MP,
     RESOLUTION_14MP,
 };
-
-//Define the platform specific settings here
-#ifdef MFLD_PR2
-static int atom_sensor_type = ci_adv_sensor_liteon_8m;
-#else
-static int atom_sensor_type = ci_adv_sensor_dis_14m;
-#endif //MFLD_PR2
 
 #endif /*_CAMERA_CONFIG__*/

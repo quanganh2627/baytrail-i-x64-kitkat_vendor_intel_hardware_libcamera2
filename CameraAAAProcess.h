@@ -133,10 +133,10 @@ typedef struct {
 
 class AAAProcess {
 public:
-    AAAProcess(int sensortype);
+    AAAProcess(void);
     ~AAAProcess();
 
-    void Init(int sensor, int fd);
+    int  Init(const char *sensor_id, int fd);
     void Uninit(void);
 
     void SwitchMode(int mode);

@@ -29,8 +29,6 @@ extern "C" {
 #include "atomisp_config.h"
 #include <linux/atomisp.h>
 
-    /* Define the default parameter for the camera */
-
 #ifdef __cplusplus
 }
 #endif
@@ -243,14 +241,13 @@ private:
     void    yuv420_to_yuv420sp(int width, int height, unsigned char *src, unsigned char *dst);
 
     // Device control
-    int openMainDevice(void);
+    int openMainDevice(int camera_idx);
     int openSecondDevice(void);
     void closeMainDevice(void);
     void closeSecondDevice(void);
 
     int configureDevice(int device, int w, int h, int fourcc);
-    int detectDeviceResolution(int *w, int *h, int run_mode, int
-                                            camera);
+    int detectDeviceResolution(int *w, int *h, int run_mode);
     int startCapture(int device, int buffer_count);
     void stopCapture(int device);
     void stopDualStreams(void);
@@ -270,7 +267,6 @@ private:
 
     int             m_flag_camera_start[V4L2_DEVICE_NUM];
     int             m_flag_init;
-    int             m_camera_id;
     int             m_camera_phy_id;
     bool             m_bcd_registered;
 

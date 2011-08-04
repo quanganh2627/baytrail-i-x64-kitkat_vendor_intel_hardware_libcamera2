@@ -20,7 +20,6 @@
 #endif
 #include <utils/Log.h>
 
-#include "IntelCamera.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,6 +35,10 @@
 #include <poll.h>
 #include <math.h>
 #include <sys/mman.h>
+
+#include <Camera.h>
+
+#include "IntelCamera.h"
 #include "CameraAAAProcess.h"
 
 #define BPP 2
@@ -243,7 +246,6 @@ IntelCamera::IntelCamera()
 {
     LOGV("%s() called!\n", __func__);
 
-    m_camera_id = DEFAULT_CAMERA_SENSOR;
     m_camera_phy_id = DEFAULT_CAMERA_SENSOR;
     num_buffers = DEFAULT_NUM_BUFFERS;
 
@@ -290,35 +292,31 @@ char * IntelCamera::getMaxSnapShotResolution()
     return resolution_tables[index];
 }
 
-int IntelCamera::initCamera(int camera_id, int real_id, AAAProcess *tmpAAA)
+int IntelCamera::initCamera(int camera_id, int camera_idx, AAAProcess *tmpAAA)
 {
     int ret = 0;
 
-    m_camera_id = real_id;
     m_camera_phy_id = camera_id;
-    LOGD("%s, m_camera_id = %d\n", __func__, m_camera_id);
+    mAAA = tmpAAA;
 
     // Open the main device first
-    ret = openMainDevice();
-
-    mAAA = tmpAAA;
+    ret = openMainDevice(camera_idx);
 
     /* Detect Maximum still capture resolution */
     m_snapshot_max_width = 0xffff;
     m_snapshot_max_height = 0xffff;
     ret = detectDeviceResolution(&m_snapshot_max_width,
                                 &m_snapshot_max_height,
-                                STILL_IMAGE_MODE,
-                                real_id);
+                                STILL_IMAGE_MODE);
     if (ret) {
         LOGE("Faied to detect camera %d, resolution! Use default settings\n",
              camera_id);
         switch (camera_id) {
-        case CAMERA_ID_FRONT:
+        case CAMERA_FACING_FRONT:
             m_snapshot_max_width  = MAX_FRONT_CAMERA_SNAPSHOT_WIDTH;
             m_snapshot_max_height = MAX_FRONT_CAMERA_SNAPSHOT_HEIGHT;
             break;
-        case CAMERA_ID_BACK:
+        case CAMERA_FACING_BACK:
             m_snapshot_max_width  = MAX_BACK_CAMERA_SNAPSHOT_WIDTH;
             m_snapshot_max_height = MAX_BACK_CAMERA_SNAPSHOT_HEIGHT;
             break;
@@ -333,7 +331,7 @@ int IntelCamera::initCamera(int camera_id, int real_id, AAAProcess *tmpAAA)
             m_snapshot_max_height);
 
     switch (camera_id) {
-    case CAMERA_ID_FRONT:
+    case CAMERA_FACING_FRONT:
         m_preview_max_width   = MAX_FRONT_CAMERA_PREVIEW_WIDTH;
         m_preview_max_height  = MAX_FRONT_CAMERA_PREVIEW_HEIGHT;
         m_recorder_max_width = MAX_FRONT_CAMERA_VIDEO_WIDTH;
@@ -341,7 +339,7 @@ int IntelCamera::initCamera(int camera_id, int real_id, AAAProcess *tmpAAA)
         m_snapshot_width = 1920;
         m_snapshot_height = 1080;
         break;
-    case CAMERA_ID_BACK:
+    case CAMERA_FACING_BACK:
         m_preview_max_width   = MAX_BACK_CAMERA_PREVIEW_WIDTH;
         m_preview_max_height  = MAX_BACK_CAMERA_PREVIEW_HEIGHT;
         m_recorder_max_width = MAX_BACK_CAMERA_VIDEO_WIDTH;
@@ -941,7 +939,7 @@ int IntelCamera::putRecording(int index)
     return putDualStreams(index);
 }
 
-int IntelCamera::openMainDevice(void)
+int IntelCamera::openMainDevice(int camera_idx)
 {
     LOG1("%s\n", __func__);
     int ret;
@@ -971,7 +969,7 @@ int IntelCamera::openMainDevice(void)
     //flushISPParameters();
 
     //Choose the camera sensor
-    ret = v4l2_capture_s_input(video_fds[device], m_camera_id);
+    ret = v4l2_capture_s_input(video_fds[device], camera_idx);
     if (ret < 0)
         goto error0;
     return ret;
@@ -1032,8 +1030,7 @@ void IntelCamera::closeSecondDevice(void)
     video_fds[device] = -1;
 }
 
-int IntelCamera::detectDeviceResolution(int *w, int *h, int run_mode, int
-                                        camera)
+int IntelCamera::detectDeviceResolution(int *w, int *h, int run_mode)
 {
     int ret = 0;
     int fourcc = V4L2_PIX_FMT_NV12;
@@ -1737,14 +1734,14 @@ error:
 
 void IntelCamera::setIndicatorIntensity(int percent_time_100)
 {
-	if(CAMERA_ID_FRONT == m_camera_phy_id) return;
+	if(CAMERA_FACING_FRONT == m_camera_phy_id) return;
 
     atomisp_led_indicator_trigger (main_fd, percent_time_100);
 }
 
 void IntelCamera::setAssistIntensity(int percent_time_100)
 {
-	if(CAMERA_ID_FRONT == m_camera_phy_id) return;
+	if(CAMERA_FACING_FRONT == m_camera_phy_id) return;
 
     atomisp_led_assist_trigger (main_fd, percent_time_100);
 }
@@ -1766,7 +1763,7 @@ void IntelCamera::captureFlashOff(void)
 
 void IntelCamera::captureFlashOnCertainDuration(int mode,  int duration, int percent_time_100)
 {
-	if(CAMERA_ID_FRONT == m_camera_phy_id) return;
+	if(CAMERA_FACING_FRONT == m_camera_phy_id) return;
 
     atomisp_led_flash_trigger (main_fd, mode, duration, percent_time_100);
 }

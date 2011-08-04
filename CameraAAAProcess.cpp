@@ -23,7 +23,7 @@
 namespace android {
 
 
-AAAProcess::AAAProcess(int sensortype)
+AAAProcess::AAAProcess(void)
     : mGdcEnabled(false),
       mAwbMode(CAM_AWB_MODE_AUTO),
       mAfMode(CAM_AF_MODE_AUTO),
@@ -32,7 +32,7 @@ AAAProcess::AAAProcess(int sensortype)
       mDoneStatistics(false),
       mInitied(false)
 {
-    mSensorType = sensortype;
+    mSensorType = SENSOR_TYPE_SOC;
     mAeMode = CAM_AE_MODE_AUTO;
     mFocusPosition = 50;
     mColorTemperature = 5000;
@@ -1489,15 +1489,19 @@ int AAAProcess::FlushManualSettings(void)
 }
 
 /* private interface */
-void AAAProcess::Init(int sensor, int fd)
+int AAAProcess::Init(const char *sensor_id, int fd)
 {
     Mutex::Autolock lock(mLock);
-    if(SENSOR_TYPE_RAW == mSensorType)
-    {
-        main_fd = fd;
-        ci_adv_init(sensor, fd);
-        mInitied = 1;
+
+    main_fd = fd;
+    if (ci_adv_init(sensor_id, fd) == 0) {
+	    mSensorType = SENSOR_TYPE_RAW;
+	    mInitied = 1;
+    } else {
+	    mSensorType = SENSOR_TYPE_SOC;
+	    mInitied = 0;
     }
+    return mSensorType;
 }
 
 void AAAProcess::Uninit(void)

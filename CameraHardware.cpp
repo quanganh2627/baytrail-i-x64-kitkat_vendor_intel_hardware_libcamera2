@@ -45,9 +45,7 @@ namespace android {
 static const int ZOOM_FACTOR = 4;
 
 static cameraInfo camera_info[MAX_CAMERAS];
-static int num_camera = 0;
-static int primary_camera_id = 0;
-static int secondary_camera_id = 1;
+static int num_cameras = 0;
 
 static inline long calc_timediff(struct timeval *t0, struct timeval *t1)
 {
@@ -71,7 +69,8 @@ CameraHardware::CameraHardware(int cameraId)
     mDataCbTimestamp(0),
     awb_to_manual(false)
 {
-    int ret;
+    int i, ret, camera_idx = -1;
+
     LOG1("%s: Create the CameraHardware\n", __func__);
     mCamera = IntelCamera::createInstance();
 
@@ -84,30 +83,32 @@ CameraHardware::CameraHardware(int cameraId)
     }
 
     setupPlatformType();
-    atom_sensor_type = checkSensorType(cameraId);
 
-    if (atom_sensor_type == ci_adv_sensor_soc)
-        mSensorType = SENSOR_TYPE_SOC;
-    else
-        mSensorType = SENSOR_TYPE_RAW;
-
-    cameraId = (cameraId == 0) ? primary_camera_id : secondary_camera_id;
-
-    //Create the 3A object
-    mAAA = new AAAProcess(mSensorType);
-
-    if (cameraId == primary_camera_id)
-        ret = mCamera->initCamera(CAMERA_ID_BACK, primary_camera_id, mAAA);
-    else
-        ret = mCamera->initCamera(CAMERA_ID_FRONT, secondary_camera_id, mAAA);
-
-    if (ret < 0) {
-        LOGE("ERR(%s):Fail on mCamera init", __func__);
+    /* The back facing camera is assumed to be the high resolution camera which
+     * uses the primary MIPI CSI2 port. */
+    for (i = 0; i < num_cameras; i++) {
+        if ((mCameraId == CAMERA_FACING_BACK  && camera_info[i].port == ATOMISP_CAMERA_PORT_PRIMARY) ||
+	    (mCameraId == CAMERA_FACING_FRONT && camera_info[i].port == ATOMISP_CAMERA_PORT_SECONDARY)) {
+		camera_idx = i;
+		break;
+        }
+    }
+    if (camera_idx == -1) {
+	    LOGE("ERR(%s): Did not find %s camera\n", __func__,
+		 mCameraId == CAMERA_FACING_BACK ? "back" : "front");
+	    camera_idx = 0;
     }
 
-    LOGD("%s sensor\n", (mSensorType == SENSOR_TYPE_SOC) ?
-         "SOC" : "RAW");
+    // Create the 3A object
+    mAAA = new AAAProcess();
 
+    // Create the ISP object
+    ret = mCamera->initCamera(mCameraId, camera_idx, mAAA);
+    if (ret < 0) {
+        LOGE("ERR(%s):Failed to initialize camera", __func__);
+    }
+    // Init 3A for RAW sensor only
+    mSensorType = mAAA->Init(camera_info[i].name, mCamera->getFd());
 #ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
     mHwJpegBufferShareEn = true;
     mPicturePixelFormat = V4L2_PIX_FMT_NV12;
@@ -139,17 +140,15 @@ CameraHardware::CameraHardware(int cameraId)
     mExitDvsThread = false;
     mManualFocusPosi = 0;
 
-    LOGD("%s: sensor is %d", __func__, atom_sensor_type);
-
-    //Init 3A for RAW sensor only
     if (mSensorType == SENSOR_TYPE_RAW) {
         mAeAfAwbThread = new AeAfAwbThread(this);
-        mAAA->Init(atom_sensor_type, mCamera->getFd());
         mAAA->SetAfEnabled(true);
         mAAA->SetAeEnabled(true);
         mAAA->SetAwbEnabled(true);
-    } else
+    } else {
         mAeAfAwbThread = NULL;
+    }
+
     // burst capture initialization
     if ((ret = sem_init(&sem_bc_captured, 0, 0)) < 0)
         LOGE("BC, line:%d, sem_init fail, ret:%d", __LINE__, ret);
@@ -161,7 +160,10 @@ CameraHardware::CameraHardware(int cameraId)
     isVideoStarted = false;
     isCameraTurnOffBufferSharingMode = false;
 #endif
-    LOGD("libcamera version: 2011-06-02 1.0.1");
+    LOGD("libcamera version: 2011-08-03 1.0.1");
+    LOGD("Using sensor %s (%s)\n",
+         camera_info[camera_idx].name,
+	 mSensorType == SENSOR_TYPE_RAW ? "RAW" : "SOC");
 #ifdef MFLD_CDK
     LOGD("%s: initialize on CDK platform", __func__);
 #else
@@ -3849,20 +3851,6 @@ int CameraHardware::SnapshotPostProcessing(void *img_data, int width, int height
     return 0;
 }
 
-int CameraHardware::checkSensorType(int cameraId)
-{
-    int type;
-    if (num_camera == 1)
-        type = camera_info[0].type;
-    else {
-        if (cameraId == 0)
-            type = camera_info[primary_camera_id].type;
-        else
-            type = camera_info[secondary_camera_id].type;
-    }
-    return type;
-}
-
 void CameraHardware::setupPlatformType(void)
 {
     int i, j;
@@ -3874,30 +3862,24 @@ void CameraHardware::setupPlatformType(void)
                 break;
             }
         }
-        LOGE("%s: sensor name is %s", __func__, camera_info[i].name);
+        LOGD("Detected sensor %s\n", camera_info[i].name);
 
         if (!strcmp(camera_info[i].name, CDK_PRIMARY_SENSOR_NAME)) {
-            camera_info[i].platform = MFLD_CDK_PLATFORM;
-            camera_info[i].type = ci_adv_sensor_dis_14m;
             mPreviewSkipFrame = 4;
             mSnapshotSkipFrame = 1;
         } else if (!strcmp(camera_info[i].name, CDK_SECOND_SENSOR_NAME)) {
-            camera_info[i].platform = MFLD_CDK_PLATFORM;
-            camera_info[i].type = ci_adv_sensor_ov2720_2m;
             mPreviewSkipFrame = 4;
             mSnapshotSkipFrame = 1;
         } else if (!strcmp(camera_info[i].name, PR2_PRIMARY_SENSOR_NAME)) {
-            camera_info[i].platform = MFLD_PR2_PLATFORM;
-            camera_info[i].type = ci_adv_sensor_liteon_8m;
             mPreviewSkipFrame = 1;
             mSnapshotSkipFrame = 2;
         } else if (!strcmp(camera_info[i].name, PR2_SECOND_SENSOR_NAME)) {
-            camera_info[i].platform = MFLD_PR2_PLATFORM;
-            camera_info[i].type = ci_adv_sensor_soc;
             mPreviewSkipFrame = 1;
             mSnapshotSkipFrame = 2;
-        } else
-            LOGE("%s: Unknow platform", __func__);
+        } else {
+            mPreviewSkipFrame = 0;
+            mSnapshotSkipFrame = 0;
+	}
     }
 }
 
@@ -3945,29 +3927,15 @@ extern "C" int HAL_getNumberOfCameras()
         if (ret < 0) {
             break;
         }
-        camera_info[i].type = input.reserved[0];
         camera_info[i].port = input.reserved[1];
         strncpy(camera_info[i].name, (const char *)input.name, MAX_SENSOR_NAME_LENGTH);
-
-        if (camera_info[i].type != SENSOR_TYPE_RAW &&
-            camera_info[i].type != SENSOR_TYPE_SOC) {
-            break;
-        }
     }
 
     close(fd);
 
-    num_camera = i;
+    num_cameras = i;
 
-    for (i = 0; i < num_camera; i++) {
-        if (camera_info[i].port == PRIMARY_MIPI_PORT) {
-            primary_camera_id = i;
-        } else if (camera_info[i].port == SECONDARY_MIPI_PORT) {
-            secondary_camera_id = i;
-        }
-    }
-
-    return num_camera;
+    return num_cameras;
 }
 
 extern "C" void HAL_getCameraInfo(int cameraId, struct CameraInfo* cameraInfo)
