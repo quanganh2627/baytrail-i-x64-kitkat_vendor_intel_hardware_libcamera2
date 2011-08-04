@@ -41,58 +41,44 @@ AAAProcess::AAAProcess(int sensortype)
     mManualIso = 100;
     dvs_vector.x = 0;
     dvs_vector.y = 0;
-
-    //Init();
-
 }
 
 AAAProcess::~AAAProcess()
 {
-    //Uninit();
 }
 
-int AAAProcess::AeLock(bool lock) {
+int AAAProcess::AeLock(bool lock)
+{
     if(SENSOR_TYPE_RAW == mSensorType)
         return ci_adv_ae_lock(lock);
     else
         return 0;
 }
 
-int AAAProcess::AeIsLocked(bool *lock) {
+int AAAProcess::AeIsLocked(bool *lock)
+{
     if(SENSOR_TYPE_RAW == mSensorType)
         return ci_adv_ae_is_locked(lock);
     else
         return 0;
 }
 
-void AAAProcess::SetAfEnabled(bool enabled) {
+void AAAProcess::SetAfEnabled(bool enabled)
+{
     if(SENSOR_TYPE_RAW == mSensorType)
         ci_adv_af_enable(enabled);
 }
 
-void AAAProcess::SetAeEnabled(bool enabled) {
+void AAAProcess::SetAeEnabled(bool enabled)
+{
     if(SENSOR_TYPE_RAW == mSensorType)
         ci_adv_ae_enable(enabled);
 }
 
-void AAAProcess::SetAwbEnabled(bool enabled) {
+void AAAProcess::SetAwbEnabled(bool enabled)
+{
     if(SENSOR_TYPE_RAW == mSensorType)
         ci_adv_awb_enable(enabled);
-}
-
-void AAAProcess::IspSetFd(int fd)
-{
-    Mutex::Autolock lock(mLock);
-    if(SENSOR_TYPE_RAW == mSensorType)
-    {
-        if(-1 == fd || !fd)
-            ci_adv_isp_set_fd(-1);
-        else
-            ci_adv_isp_set_fd(fd);
-
-        // fixme, for working around manual focus
-        main_fd = fd;
-    }
 }
 
 void AAAProcess::SwitchMode(int mode)
@@ -1503,12 +1489,13 @@ int AAAProcess::FlushManualSettings(void)
 }
 
 /* private interface */
-void AAAProcess::Init(int sensor)
+void AAAProcess::Init(int sensor, int fd)
 {
     Mutex::Autolock lock(mLock);
     if(SENSOR_TYPE_RAW == mSensorType)
     {
-        ci_adv_init(sensor);
+        main_fd = fd;
+        ci_adv_init(sensor, fd);
         mInitied = 1;
     }
 }

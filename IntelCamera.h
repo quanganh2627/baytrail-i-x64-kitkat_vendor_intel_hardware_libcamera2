@@ -192,6 +192,7 @@ public:
     void setRecorderUserptr(int index, void *preview, void *recorder);
     int updateRecorderUserptr(int num, unsigned char *recorder[]);
 
+    int getFd(void);
     int get_num_buffers(void);
     float getFramerate(void);
 

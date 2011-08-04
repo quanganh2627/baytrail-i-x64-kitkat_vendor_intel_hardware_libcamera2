@@ -520,7 +520,6 @@ int IntelCamera::startCameraPreview(void)
     run_mode = PREVIEW_MODE;
 
     //Move the mAAA out after enable the open/close
-    mAAA->IspSetFd(main_fd);
     mAAA->SwitchMode(run_mode);
     mAAA->SetFrameRate (framerate);
 
@@ -611,7 +610,6 @@ int IntelCamera::startSnapshot(void)
     if (ret < 0)
         return ret;
 
-    mAAA->IspSetFd(main_fd);
     mAAA->SwitchMode(run_mode);
     mAAA->SetFrameRate (framerate);
 
@@ -776,7 +774,6 @@ int IntelCamera::startCameraRecording(void)
         return ret;
 
     //Move mAAA out after enable open/close in CameraHardware
-    mAAA->IspSetFd(main_fd);
     mAAA->SwitchMode(run_mode);
     mAAA->SetFrameRate (framerate);
     mAAA->FlushManualSettings ();
@@ -1649,6 +1646,11 @@ void IntelCamera::toNV12(int width, int height, int fourcc, void *src, void *dst
         memcpy(dst, buffer, size);
         free(buffer);
     }
+}
+
+int IntelCamera::getFd(void)
+{
+    return main_fd;
 }
 
 int IntelCamera::get_num_buffers(void)
@@ -2931,7 +2933,7 @@ int IntelCamera::v4l2_register_bcd(int fd, int num_frames,
 {
     int ret = 0;
     int i;
-    struct BC_Video_ioctl_package_TAG ioctl_package;
+    struct atomisp_bc_video_package ioctl_package;
     bc_buf_params_t buf_param;
 
     //release it if it is registered
@@ -2991,7 +2993,7 @@ int IntelCamera::v4l2_register_bcd(int fd, int num_frames,
 int IntelCamera::v4l2_release_bcd(int fd)
 {
     int ret = 0;
-    struct BC_Video_ioctl_package_TAG ioctl_package;
+    struct atomisp_bc_video_package ioctl_package;
     bc_buf_params_t buf_param;
 
     ioctl_package.ioctl_cmd = BC_Video_ioctl_release_buffer_device;

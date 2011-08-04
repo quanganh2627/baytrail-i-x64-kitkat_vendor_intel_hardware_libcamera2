@@ -144,7 +144,7 @@ CameraHardware::CameraHardware(int cameraId)
     //Init 3A for RAW sensor only
     if (mSensorType == SENSOR_TYPE_RAW) {
         mAeAfAwbThread = new AeAfAwbThread(this);
-        mAAA->Init(atom_sensor_type);
+        mAAA->Init(atom_sensor_type, mCamera->getFd());
         mAAA->SetAfEnabled(true);
         mAAA->SetAeEnabled(true);
         mAAA->SetAwbEnabled(true);
@@ -980,7 +980,6 @@ void CameraHardware::stopPreview()
     } else {
         mCamera->stopCameraPreview();
     }
-    mAAA->IspSetFd(-1);
     mPreviewLock.unlock();
 }
 
@@ -2157,8 +2156,6 @@ int CameraHardware::burstCaptureHandle(void)
         burstCaptureStop();
         //Set captureInProgress earlier.
         mCaptureInProgress = false;
-
-        mAAA->IspSetFd(-1);
     }
 
     // send compressed jpeg image to upper
@@ -2347,7 +2344,6 @@ int CameraHardware::pictureThread()
 
         //Stop the Camera Now
         mCamera->stopSnapshot();
-        mAAA->IspSetFd(-1);
 
         //De-initialize file input
         if (use_file_input)

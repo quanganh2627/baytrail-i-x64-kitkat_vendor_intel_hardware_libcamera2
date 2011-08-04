@@ -136,10 +136,8 @@ public:
     AAAProcess(int sensortype);
     ~AAAProcess();
 
-    void Init(int sensor);
+    void Init(int sensor, int fd);
     void Uninit(void);
-
-    void IspSetFd(int fd);
 
     void SwitchMode(int mode);
     void SetFrameRate(float framerate);
