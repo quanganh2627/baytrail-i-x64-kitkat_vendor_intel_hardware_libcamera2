@@ -392,7 +392,6 @@ int IntelCamera::initCamera(int camera_id, int real_id, AAAProcess *tmpAAA)
     g_isp_timeout = 0;
     //Gamma table initialization
     g_cfg_gm.GmVal = 1.5;
-    g_cfg_gm.GmVal = 1.5;
     g_cfg_gm.GmToe = 123;
     g_cfg_gm.GmKne = 287;
     g_cfg_gm.GmDyr = 256;
@@ -405,6 +404,11 @@ int IntelCamera::deinitCamera(void)
 {
     if (m_flag_init) {
         m_flag_init = 0;
+    }
+
+    if (m_bcd_registered) {
+        v4l2_release_bcd(main_fd);
+        m_bcd_registered = false;
     }
 
     closeMainDevice();
@@ -562,9 +566,6 @@ void IntelCamera::stopCameraPreview(void)
     }
 
     stopCapture(device);
-
-    if (use_texture_streaming)
-        v4l2_release_bcd(video_fds[V4L2_FIRST_DEVICE]);
 }
 
 int IntelCamera::getPreview(void **data)
@@ -869,10 +870,6 @@ void IntelCamera::stopDualStreams(void)
     stopCapture(V4L2_FIRST_DEVICE);
     stopCapture(V4L2_SECOND_DEVICE);
     closeSecondDevice();
-    if (use_texture_streaming) {
-        v4l2_release_bcd(video_fds[V4L2_FIRST_DEVICE]);
-    }
-
 }
 
 int IntelCamera::trimRecordingBuffer(void *buf)
@@ -2937,6 +2934,12 @@ int IntelCamera::v4l2_register_bcd(int fd, int num_frames,
     struct BC_Video_ioctl_package_TAG ioctl_package;
     bc_buf_params_t buf_param;
 
+    //release it if it is registered
+    if (m_bcd_registered) {
+        v4l2_release_bcd(fd);
+        m_bcd_registered = false;
+    }
+
     buf_param.count = num_frames;
     buf_param.width = w;
     buf_param.stride = (fourcc == V4L2_PIX_FMT_YUYV) ? w << 1 : w;
@@ -2979,6 +2982,8 @@ int IntelCamera::v4l2_register_bcd(int fd, int num_frames,
         LOGE("(%s): check bcd buffer count error", __func__);
     LOG1("(%s): check bcd buffer count = %d",
          __func__, ioctl_package.outputparam);
+
+    m_bcd_registered = true;
 
     return ret;
 }

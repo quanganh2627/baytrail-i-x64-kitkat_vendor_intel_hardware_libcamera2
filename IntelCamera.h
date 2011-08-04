@@ -271,6 +271,7 @@ private:
     int             m_flag_init;
     int             m_camera_id;
     int             m_camera_phy_id;
+    bool             m_bcd_registered;
 
     // Frame width, hight and size
     int             m_preview_v4lformat;

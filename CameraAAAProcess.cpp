@@ -93,10 +93,6 @@ void AAAProcess::IspSetFd(int fd)
         // fixme, for working around manual focus
         main_fd = fd;
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
 }
 
 void AAAProcess::AfApplyResults(void)
@@ -108,10 +104,6 @@ void AAAProcess::AfApplyResults(void)
     if(SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_af_apply_results();
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
     }
 }
 
@@ -141,10 +133,6 @@ void AAAProcess::SwitchMode(int mode)
         }
         ci_adv_switch_mode(isp_mode);
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
 }
 
 void AAAProcess::SetFrameRate(float framerate)
@@ -156,10 +144,6 @@ void AAAProcess::SetFrameRate(float framerate)
     if(SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_set_frame_rate(CI_ADV_S15_16_FROM_FLOAT(framerate));
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
     }
 }
 
@@ -173,10 +157,6 @@ void AAAProcess::AeAfAwbProcess(bool read_stats)
     {
         ci_adv_process_frame(read_stats);
         mDoneStatistics = true;
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
     }
 }
 
@@ -198,10 +178,7 @@ int AAAProcess::DisReadStatistics(void)
         if (0 != ci_adv_dis_read_statistics())
             return AAA_FAIL;
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
 
-    }
     return AAA_SUCCESS;
 }
 
@@ -220,10 +197,6 @@ void AAAProcess::DisProcess(void)
 
         ci_adv_dis_process();
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
 }
 
 void AAAProcess::DisUpdateResults(void)
@@ -240,10 +213,6 @@ void AAAProcess::DisUpdateResults(void)
         }
 
         ci_adv_update_dis_results();
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
     }
 }
 
@@ -262,10 +231,6 @@ void AAAProcess::SetDisVector(void)
 
         ci_adv_update_dis_vector();
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
 }
 
 void AAAProcess::AfStillStart(void)
@@ -277,10 +242,6 @@ void AAAProcess::AfStillStart(void)
     if(SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_af_start();
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
     }
 }
 
@@ -294,10 +255,6 @@ void AAAProcess::AfStillStop(void)
     {
         ci_adv_af_stop();
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
 }
 
 int AAAProcess::AfStillIsComplete(bool *complete)
@@ -309,9 +266,6 @@ int AAAProcess::AfStillIsComplete(bool *complete)
     if(SENSOR_TYPE_RAW == mSensorType)
     {
         *complete = ci_adv_af_is_complete();
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
     }
 
     return AAA_SUCCESS;
@@ -344,10 +298,6 @@ int AAAProcess::PreFlashProcess(cam_flash_stage stage)
         }
         ci_adv_process_for_flash (wr_stage);
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
 
     return AAA_SUCCESS;
 
@@ -363,10 +313,6 @@ void AAAProcess::SetStillStabilizationEnabled(bool en)
     {
         ci_adv_dis_enable(en);
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
 }
 
 void AAAProcess::GetStillStabilizationEnabled(bool *en)
@@ -379,10 +325,6 @@ void AAAProcess::GetStillStabilizationEnabled(bool *en)
     {
         ci_adv_dis_is_enabled(en);
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
 }
 
 void AAAProcess::DisCalcStill(ci_adv_dis_vector *vector, int frame_number)
@@ -393,10 +335,6 @@ void AAAProcess::DisCalcStill(ci_adv_dis_vector *vector, int frame_number)
     if(SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_dis_calc_still(vector, frame_number);
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
     }
 }
 
@@ -412,10 +350,6 @@ void AAAProcess::StillCompose(ci_adv_user_buffer *com_buf,
     {
         ci_adv_still_compose(com_buf, bufs, frame_dis, vectors);
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
 }
 
 void AAAProcess::GetDisVector(ci_adv_dis_vector *vector)
@@ -427,10 +361,6 @@ void AAAProcess::GetDisVector(ci_adv_dis_vector *vector)
     if(SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_get_dis_vector (vector);
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
     }
 }
 
@@ -454,10 +384,6 @@ void AAAProcess::DoRedeyeRemoval(void *img_buf, int size, int width, int height,
         }
         ci_adv_correct_redeyes(img_buf, size, width, height, out_format);
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
 }
 
 void AAAProcess::LoadGdcTable(void)
@@ -471,10 +397,6 @@ void AAAProcess::LoadGdcTable(void)
     if(SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_load_gdc_table();
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
     }
 }
 
@@ -509,9 +431,6 @@ int AAAProcess::AeSetMode(int mode)
         if(ci_adv_success != ret)
             return AAA_FAIL;
         mAeMode = mode;
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
     }
 
     return AAA_SUCCESS;
@@ -549,9 +468,6 @@ int AAAProcess::AeGetMode(int *mode)
         }
         mAeMode = *mode;
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -586,9 +502,6 @@ int AAAProcess::AeSetMeteringMode(int mode)
         ci_adv_err ret = ci_adv_ae_set_metering_mode(wr_val);
         if(ci_adv_success != ret)
             return AAA_FAIL;
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
     }
 
     return AAA_SUCCESS;
@@ -625,9 +538,6 @@ int AAAProcess::AeGetMeteringMode(int *mode)
             *mode = CAM_AE_METERING_MODE_AUTO;
         }
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -649,9 +559,6 @@ int AAAProcess::AeSetEv(float bias)
             return AAA_FAIL;
         }
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -672,9 +579,6 @@ int AAAProcess::AeGetEv(float *bias)
             LOGE("!!!line:%d, in AeGetEv, ret:%d\n", __LINE__, ret);
             return AAA_FAIL;
         }
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
     }
 
     return AAA_SUCCESS;
@@ -716,9 +620,6 @@ int AAAProcess::AeSetSceneMode(int mode)
         if(ci_adv_success != ret)
             return AAA_FAIL;
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -759,9 +660,6 @@ int AAAProcess::AeGetSceneMode(int *mode)
             *mode = CAM_AE_SCENE_MODE_AUTO;
         }
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -798,9 +696,6 @@ int AAAProcess::AeSetFlashMode(int mode)
         ci_adv_err ret = ci_adv_ae_set_flash_mode(wr_val);
         if(ci_adv_success != ret)
             return AAA_FAIL;
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
     }
 
     return AAA_SUCCESS;
@@ -839,9 +734,6 @@ int AAAProcess::AeGetFlashMode(int *mode)
             *mode = CAM_AE_FLASH_MODE_AUTO;
         }
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -858,10 +750,6 @@ int AAAProcess::AeIsFlashNecessary(bool *used)
         ci_adv_err ret = ci_adv_ae_is_flash_necessary(used);
         if(ci_adv_success != ret)
             return AAA_FAIL;
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
     }
 
     return AAA_SUCCESS;
@@ -898,9 +786,6 @@ int AAAProcess::AeSetFlickerMode(int mode)
         if(ci_adv_success != ret)
             return AAA_FAIL;
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -936,9 +821,6 @@ int AAAProcess::AeGetFlickerMode(int *mode)
             *mode = CAM_AE_FLICKER_MODE_AUTO;
         }
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -970,9 +852,6 @@ int AAAProcess::AeSetManualIso(int sensitivity, bool to_hw)
             LOGD(" *** manual set iso in EV: %f\n", fev);
         }
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -991,9 +870,6 @@ int AAAProcess::AeGetManualIso(int *sensitivity)
             return AAA_FAIL;
         *sensitivity = (int)(3.125 * pow(2, CI_ADV_S15_16_TO_FLOAT(iev)));
         mManualIso = *sensitivity;
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
     }
 
     return AAA_SUCCESS;
@@ -1026,9 +902,6 @@ int AAAProcess::AeSetManualAperture(float aperture, bool to_hw)
             LOGD(" *** manual set aperture in EV: %f\n", fev);
         }
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -1048,9 +921,6 @@ int AAAProcess::AeGetManualAperture(float *aperture)
         *aperture = pow(2, CI_ADV_S15_16_TO_FLOAT(iev) / 2.0);
         mManualAperture = *aperture;
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -1069,9 +939,6 @@ int AAAProcess::AeGetManualBrightness(float *brightness)
             return AAA_FAIL;
 
         *brightness = (float)((float)val / 65536.0);
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
     }
 
     return AAA_SUCCESS;
@@ -1104,9 +971,6 @@ int AAAProcess::AeSetManualShutter(float exp_time, bool to_hw)
             LOGD(" *** manual set shutter in EV: %f\n", fev);
         }
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -1126,9 +990,6 @@ int AAAProcess::AeGetManualShutter(float *exp_time)
         *exp_time = pow(2, -1.0 * CI_ADV_S15_16_TO_FLOAT(iev));
         mManualShutter = *exp_time;
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -1143,32 +1004,13 @@ int AAAProcess::AfSetManualFocus(int focus, bool to_hw)
     {
         mFocusPosition = focus;
 
-        if (to_hw)
-        {
-
-        //fixme: use distance as manual focus control
-        //int ret = ci_adv_af_manual_focus_abs(focus);
-        struct v4l2_ext_controls controls;
-        struct v4l2_ext_control control;
-        controls.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
-        controls.count = 1;
-        controls.controls = &control;
-        control.id = V4L2_CID_FOCUS_ABSOLUTE;
-        control.value = focus;
-        int ret = ioctl (main_fd, VIDIOC_S_EXT_CTRLS, &controls);
-
-            if(0 != ret)
-                return AAA_FAIL;
-        }
+        if (to_hw && ci_adv_af_manual_focus_abs(focus) != 0)
+            return AAA_FAIL;
 
         LOGD(" *** manual set focus distance in cm: %d\n", focus);
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
-
 }
 
 int AAAProcess::AfGetManualFocus(int *focus)
@@ -1180,9 +1022,6 @@ int AAAProcess::AfGetManualFocus(int *focus)
     if(SENSOR_TYPE_RAW == mSensorType)
     {
         *focus = mFocusPosition;
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
     }
 
     return AAA_SUCCESS;
@@ -1209,9 +1048,6 @@ int AAAProcess::AfGetFocus(int *focus)
         *focus = control.value;
 
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -1228,9 +1064,6 @@ int AAAProcess::AeSetWindow(const cam_Window *window)
         if(ci_adv_success != ret)
             return AAA_FAIL;
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -1246,9 +1079,6 @@ int AAAProcess::AeGetWindow(cam_Window *window)
         ci_adv_err ret = ci_adv_ae_get_window((ci_adv_window *)window);
         if(ci_adv_success != ret)
             return AAA_FAIL;
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
     }
 
     return AAA_SUCCESS;
@@ -1310,9 +1140,6 @@ int AAAProcess::AwbSetMode (int wb_mode)
             return AAA_FAIL;
         mAwbMode = wb_mode;
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -1326,9 +1153,6 @@ int AAAProcess::AwbGetMode(int *wb_mode)
     if(SENSOR_TYPE_RAW == mSensorType)
     {
         *wb_mode = mAwbMode;
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
     }
 
     return AAA_SUCCESS;
@@ -1352,9 +1176,6 @@ int AAAProcess::AwbSetManualColorTemperature(int ct, bool to_hw)
         }
         LOGD(" *** manual set color temperture in Kelvin: %d\n", ct);
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -1368,9 +1189,6 @@ int AAAProcess::AwbGetManualColorTemperature(int *ct)
     if(SENSOR_TYPE_RAW == mSensorType)
     {
         *ct = mColorTemperature;
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
     }
 
     return AAA_SUCCESS;
@@ -1396,9 +1214,6 @@ int AAAProcess::AeSetBacklightCorrection(bool en)
         ci_adv_err ret = ci_adv_ae_set_backlight_correction (wr_val);
         if(ci_adv_success != ret)
             return AAA_FAIL;
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
     }
 
     return AAA_SUCCESS;
@@ -1429,9 +1244,6 @@ int AAAProcess::AeGetBacklightCorrection(bool *en)
             *en = false;
         }
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -1460,9 +1272,6 @@ int AAAProcess::SetRedEyeRemoval(bool en)
     {
         ci_adv_redeye_enable(en);
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -1476,9 +1285,6 @@ int AAAProcess::GetRedEyeRemoval(bool *en)
     if(SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_redeye_is_enabled (en);
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
     }
 
     return AAA_SUCCESS;
@@ -1509,9 +1315,6 @@ int AAAProcess::AwbSetMapping(int mode)
         if(ci_adv_success != ret)
             return AAA_FAIL;
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -1540,9 +1343,6 @@ int AAAProcess::AwbGetMapping(int *mode)
             LOGE("%s: get invalid AWB map mode\n", __func__);
             *mode = CAM_AWB_MAP_INDOOR;
         }
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
     }
 
     return AAA_SUCCESS;
@@ -1587,9 +1387,6 @@ int AAAProcess::AfSetMode(int mode)
             return AAA_FAIL;
         mAfMode = mode;
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -1603,9 +1400,6 @@ int AAAProcess::AfGetMode(int *mode)
     if(SENSOR_TYPE_RAW == mSensorType)
     {
         *mode = mAfMode;
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
     }
 
     return AAA_SUCCESS;
@@ -1636,9 +1430,6 @@ int AAAProcess::AfSetMeteringMode(int mode)
         if(ci_adv_success != ret)
             return AAA_FAIL;
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -1668,9 +1459,6 @@ int AAAProcess::AfGetMeteringMode(int *mode)
             *mode = CAM_AF_METERING_MODE_AUTO;
         }
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -1686,9 +1474,6 @@ int AAAProcess::AfSetWindow(const cam_Window *window)
         ci_adv_err ret = ci_adv_af_set_window((ci_adv_window *)window);
         if(ci_adv_success != ret)
             return AAA_FAIL;
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
     }
 
     return AAA_SUCCESS;
@@ -1706,9 +1491,6 @@ int AAAProcess::AfGetWindow(cam_Window *window)
         if(ci_adv_success != ret)
             return AAA_FAIL;
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-    }
 
     return AAA_SUCCESS;
 }
@@ -1716,18 +1498,18 @@ int AAAProcess::AfGetWindow(cam_Window *window)
 int AAAProcess::FlushManualSettings(void)
 {
     int ret;
-    if(SENSOR_TYPE_SOC == mSensorType)
-        return 0;
 
     // manual focus
-    if (mAfMode == CAM_AF_MODE_MANUAL)
-    {
-        ret = AfSetManualFocus (mFocusPosition, true);
-
-        if (ret != AAA_SUCCESS)
+    if (SENSOR_TYPE_RAW == mSensorType) {
+        if (mAfMode == CAM_AF_MODE_MANUAL)
         {
-            LOGE(" error in flush manual focus\n");
-            return AAA_FAIL;
+            ret = AfSetManualFocus (mFocusPosition, true);
+
+            if (ret != AAA_SUCCESS)
+            {
+                LOGE(" error in flush manual focus\n");
+                return AAA_FAIL;
+            }
         }
     }
 
@@ -1743,10 +1525,6 @@ void AAAProcess::Init(int sensor)
         ci_adv_init(sensor);
         mInitied = 1;
     }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
-    }
 }
 
 void AAAProcess::Uninit(void)
@@ -1759,10 +1537,6 @@ void AAAProcess::Uninit(void)
     {
         ci_adv_uninit();
         mInitied = 0;
-    }
-    else if(SENSOR_TYPE_SOC == mSensorType)
-    {
-
     }
 }
 

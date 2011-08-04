@@ -101,7 +101,6 @@ CameraHardware::CameraHardware(int cameraId)
         LOGE("ERR(%s):Fail on mCamera init", __func__);
     }
 
-
     LOGD("%s sensor\n", (mSensorType == SENSOR_TYPE_SOC) ?
          "SOC" : "RAW");
 
@@ -110,12 +109,13 @@ CameraHardware::CameraHardware(int cameraId)
 #else
     mPicturePixelFormat = V4L2_PIX_FMT_YUV420;
 #endif
+
     initDefaultParameters();
     mVideoPreviewEnabled = false;
     mFlashNecessary = false;
     mValidDVSResolution = false;
 
-    mExitAutoFocusThread = false;
+    mExitAutoFocusThread = true;
     mExitPreviewThread = false;
     mExitAeAfAwbThread = false;
     mPreviewRunning = false;
@@ -124,20 +124,23 @@ CameraHardware::CameraHardware(int cameraId)
     mPreviewThread = new PreviewThread(this);
     mAutoFocusThread = new AutoFocusThread(this);
     mPictureThread = new PictureThread(this);
-    mAeAfAwbThread = new AeAfAwbThread(this);
+
     mCompressThread = new CompressThread(this);
     mDvsThread = new DvsThread(this);
     mExitDvsThread = false;
+    mManualFocusPosi = 0;
 
     LOGD("%s: sensor is %d", __func__, atom_sensor_type);
-    // init 3A for RAW sensor only
-    if (mSensorType != SENSOR_TYPE_SOC) {
+
+    //Init 3A for RAW sensor only
+    if (mSensorType == SENSOR_TYPE_RAW) {
+        mAeAfAwbThread = new AeAfAwbThread(this);
         mAAA->Init(atom_sensor_type);
         mAAA->SetAfEnabled(true);
         mAAA->SetAeEnabled(true);
         mAAA->SetAwbEnabled(true);
-    }
-
+    } else
+        mAeAfAwbThread = NULL;
     // burst capture initialization
     if ((ret = sem_init(&sem_bc_captured, 0, 0)) < 0)
         LOGE("BC, line:%d, sem_init fail, ret:%d", __LINE__, ret);
@@ -354,10 +357,6 @@ void CameraHardware::initPreviewBuffer(int size)
     unsigned int size_aligned = (size + page_size - 1) & ~(page_size - 1);
     unsigned int postview_size = size_aligned;
 
-    //FIXME workaround for the Soc sensor 720p output
-    if (mSensorType == SENSOR_TYPE_SOC)
-        postview_size = postview_size * 2;
-
     if (size != mPreviewFrameSize) {
         if (mPreviewBuffer.heap != NULL)
             deInitPreviewBuffer();
@@ -515,11 +514,6 @@ bool CameraHardware::msgTypeEnabled(int32_t msgType)
 void CameraHardware::setSkipFrame(int frame)
 {
     mSkipFrame = frame;
-}
-
-void CameraHardware::setSkipSnapFrame(int frame)
-{
-    mSkipSnapFrame = frame;
 }
 
 void CameraHardware::processPreviewFrame(void *buffer)
@@ -741,11 +735,6 @@ int CameraHardware::previewThreadWrapper()
 
 int CameraHardware::aeAfAwbThread()
 {
-    if (mSensorType == SENSOR_TYPE_SOC) {
-        mPreviewAeAfAwbRunning = false;
-        return 0;
-    }
-
     while (1) {
         if (mExitAeAfAwbThread) {
             LOGD("%s Exiting the 3A thread\n", __func__);
@@ -772,9 +761,13 @@ int CameraHardware::aeAfAwbThread()
         mPreviewFrameCondition.wait(mAeAfAwbLock);
         LOG2("%s: 3A return from wait", __func__);
         mAeAfAwbLock.unlock();
-        if (mSensorType != SENSOR_TYPE_SOC) {
-            mAAA->AeAfAwbProcess(true);
-            LOG2("%s: After run 3A thread", __func__);
+
+        mAAA->AeAfAwbProcess(true);
+        LOG2("%s: After run 3A thread", __func__);
+
+        if (mManualFocusPosi) {
+            if (mAAA->AfSetManualFocus(mManualFocusPosi, true) == AAA_SUCCESS)
+                mManualFocusPosi = 0;
         }
     }
 }
@@ -822,17 +815,15 @@ status_t CameraHardware::startPreview()
         mPreviewLock.unlock();
         return INVALID_OPERATION;
     }
-    setSkipFrame(INITIAL_SKIP_FRAME);
+    setSkipFrame(mPreviewSkipFrame);
 
     //Enable the preview 3A
     if (mSensorType == SENSOR_TYPE_RAW) {
         mAeAfAwbLock.lock();
         mPreviewAeAfAwbRunning = true;
         mAeAfAwbLock.unlock();
-        mAAA->SetAeEnabled (true);
-        mAAA->SetAfEnabled(true);
-        mAAA->SetAwbEnabled(true);
         mPreviewAeAfAwbCondition.signal();
+        mAAA->SetAfEnabled(true);
     }
 
     //Determine which preview we are in
@@ -874,11 +865,13 @@ status_t CameraHardware::startPreview()
         return -1;
     }
 
-    mAAA->FlushManualSettings ();
-
     mPreviewRunning = true;
     mPreviewLock.unlock();
     mPreviewCondition.signal();
+
+    mAAA->SetAfEnabled(true);
+    mAAA->SetAeEnabled(true);
+    mAAA->SetAwbEnabled(true);
 
     return NO_ERROR;
 }
@@ -891,6 +884,9 @@ void CameraHardware::stopPreview()
         LOGI("%s : preview not running, doing nothing", __func__);
         return ;
     }
+    mAAA->SetAfEnabled(false);
+    mAAA->SetAeEnabled(false);
+    mAAA->SetAwbEnabled(false);
     if(!mExitAutoFocusThread) {
         LOGD("%s start:  cancelAutoFocus", __func__);
         cancelAutoFocus();
@@ -901,9 +897,6 @@ void CameraHardware::stopPreview()
         if (mPreviewAeAfAwbRunning) {
             LOG1("%s: Waiting for 3A to finish", __func__);
             mPreviewAeAfAwbRunning = false;
-            mAAA->SetAeEnabled(false);
-            mAAA->SetAfEnabled(false);
-            mAAA->SetAwbEnabled(false);
             mPreviewFrameCondition.signal();
             mAeAfAwbEndCondition.wait(mAeAfAwbLock);
         }
@@ -1100,7 +1093,7 @@ status_t CameraHardware::autoFocus()
 status_t CameraHardware::cancelAutoFocus()
 {
     LOG1("%s :", __func__);
-    if (mSensorType == SENSOR_TYPE_RAW)
+    if (mSensorType == SENSOR_TYPE_SOC)
         return NO_ERROR;
 
     mExitAutoFocusThread = true;
@@ -1586,7 +1579,7 @@ int CameraHardware::snapshotSkipFrames(void **main, void **postview)
 {
     int index;
 
-    while (mSkipSnapFrame) {
+    while (mSkipFrame) {
         index = mCamera->getSnapshot(main, postview, NULL);
         if (index < 0) {
             LOGE("line:%d, getSnapshot fail", __LINE__);
@@ -1596,7 +1589,7 @@ int CameraHardware::snapshotSkipFrames(void **main, void **postview)
             LOGE("line:%d, putSnapshot fail", __LINE__);
             return -1;
         }
-        mSkipSnapFrame--;
+        mSkipFrame--;
     }
 
     return 0;
@@ -1918,13 +1911,6 @@ int CameraHardware::burstCaptureHandle(void)
             LOGE("BC, line:%d, burstCaptureStart fail", __LINE__);
             goto BCHANDLE_ERR;
         }
-        if (mSensorType == SENSOR_TYPE_RAW) {
-            mFramerate = mCamera->getFramerate();
-            mAAA->SwitchMode(STILL_IMAGE_MODE);
-            //Flush 3A results
-            mAAA->FlushManualSettings ();
-            update3Aresults();
-        }
 
         //Skip the first frame
         snapshotSkipFrames(&main_out, &postview_out);
@@ -2066,12 +2052,8 @@ int CameraHardware::pictureThread()
     mCamera->getSnapshotSize(&cap_width, &cap_height, &cap_frame_size);
     mCamera->getPreviewSize(&pre_width, &pre_height, &pre_frame_size, &pre_padded_size);
 
-    mCamera->setPostViewSize(pre_width, pre_height, V4L2_PIX_FMT_NV12);
-
-    //FIXME: workaround for the postview corruption for the Soc and RAW sensor
-    if (cap_width == 1280 && mSensorType == SENSOR_TYPE_SOC) {
-        mCamera->setPostViewSize(704, 396, mPicturePixelFormat);
-    }
+    //Postview size should be smaller
+    mCamera->setPostViewSize(pre_width>>1, pre_height>>1, V4L2_PIX_FMT_NV12);
 
     // ToDo. abstract some functions for both single capture and burst capture.
     if (mBCEn) {
@@ -2156,10 +2138,6 @@ int CameraHardware::pictureThread()
         int fd;
         if ((fd = mCamera->startSnapshot()) < 0)
             goto start_error_out;
-
-        //Flush 3A results
-        mAAA->FlushManualSettings ();
-        update3Aresults();
 #ifdef PERFORMANCE_TUNING
         gettimeofday(&snapshot_start, 0);
 #endif
@@ -2434,7 +2412,7 @@ status_t CameraHardware::takePicture()
     gettimeofday(&preview_stop, 0);
 #endif
     enableMsgType(CAMERA_MSG_PREVIEW_FRAME);
-    setSkipSnapFrame(CAPTURE_SKIP_FRAME);
+    setSkipFrame(mSnapshotSkipFrame);
 #ifdef PERFORMANCE_TUNING
     gettimeofday(&preview_stop, 0);
 #endif
@@ -2506,6 +2484,7 @@ int CameraHardware::autoFocusThread()
     }
 
     LOG1("%s: begin do the autofocus\n", __func__);
+    mAAA->SetAfEnabled(true);
     //set the mFlashNecessary
     calculateLightLevel();
     switch(mCamera->getFlashMode())
@@ -2528,31 +2507,32 @@ int CameraHardware::autoFocusThread()
 
     int af_mode;
     mAAA->AfGetMode (&af_mode);
-    if (af_mode != CAM_AF_MODE_MANUAL)
+    if (af_mode == CAM_AF_MODE_AUTO)
     {
         af_status = runStillAfSequence();
     }
     else
     {
-        //manual focus, just return focused
+        //manual/micro/infini focus, just return focused
         af_status = true;
     }
 
     mCamera->setAssistIntensity(ASSIST_INTENSITY_OFF);
-    if (af_status == FOCUS_CANCELD)
+    mAAA->SetAfEnabled(false);
+    if (af_status == FOCUS_CANCELD) {
+        mExitAutoFocusThread = true;
         return NO_ERROR;
+    }
 
     if(CAM_AF_MODE_TOUCH == af_mode) {
-        mAAA->SetAwbEnabled(true);
-        mAAA->SetAeEnabled(true);
         mPreviewAeAfAwbRunning = true;
         mPreviewAeAfAwbCondition.signal();
     }
 
-
     if (mMsgEnabled & CAMERA_MSG_FOCUS)
         mNotifyCb(CAMERA_MSG_FOCUS, af_status , 0, mCallbackCookie);
     LOG1("%s : exiting with no error", __func__);
+    mExitAutoFocusThread = true;
     return NO_ERROR;
 }
 
@@ -2564,9 +2544,6 @@ int CameraHardware::runStillAfSequence(void)
     int i = 0;
 
     mAAA->AeLock(true);
-    mAAA->SetAeEnabled(false);
-    mAAA->SetAfEnabled(true);
-    mAAA->SetAwbEnabled(false);
     mAAA->AfStillStart();
     gettimeofday(&stillafstarttime,0);
 
@@ -2597,7 +2574,6 @@ int CameraHardware::runStillAfSequence(void)
         af_status, calc_timediff(&stillafstarttime, &currentTime), i);
     mAAA->AfStillStop ();
     mAAA->AeLock(false);
-    mAAA->SetAfEnabled(false);
 
     return af_status;
 }
@@ -2804,6 +2780,7 @@ int  CameraHardware::update3AParameters(CameraParameters& p, bool flush_only)
             else
                 afmode = CAM_AF_MODE_AUTO;
 
+            mAAA->SetAfEnabled(true);
             mAAA->AfSetMode(afmode);
 
             LOGD("     ++ Changed focus-mode to %s, afmode:%d",p.get(pfocusmode), afmode);
@@ -3059,7 +3036,8 @@ int  CameraHardware::update3AParameters(CameraParameters& p, bool flush_only)
                 float focus_pos;
 
                 focus_pos = atof(new_value);
-                mAAA->AfSetManualFocus((int)(100.0 * focus_pos), !flush_only);
+                mAAA->AfSetMode(CAM_AF_MODE_MANUAL);
+                mManualFocusPosi = (int)(100.0 * focus_pos);
 
                 LOGD("     ++ Changed focus position to %s, %f\n",p.get(pfocuspos), focus_pos);
             }
@@ -3431,22 +3409,8 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
         mCamera->setRecorderSize(pre_width, pre_height, mVideoFormat);
     }
 
-    //FIXME : Workaround for Soc 720p/480p recording preview corruption
-    //The 640x360 and 384x240 from the ISP is corrupted. We fixed it here
-    if ((mSensorType == SENSOR_TYPE_SOC) && vfmode == 1) {
-        LOGD("%s: Fix the preview size for Soc 720p and 480p", __func__);
-        //fix for 768x480 and 1280x720
-        if (new_preview_height == 360 || new_preview_height == 240) {
-            if (mCamera->setPreviewSize(RESOLUTION_480P_WIDTH,
-                            RESOLUTION_480P_HEIGHT, new_preview_format) < 0) {
-                LOGE("%s: Fix Soc preview size error", __func__);
-            }
-        }
-    }
-    //Workaround end
-
     // update 3A parameters to mParameters and 3A inside
-    if (mSensorType != SENSOR_TYPE_SOC)
+    if (mSensorType == SENSOR_TYPE_RAW)
         update3AParameters(p, mFlush3A);
 
     setISPParameters(p,mParameters);
@@ -3680,9 +3644,6 @@ void CameraHardware::runPreFlashSequence(void)
 
     if (!mFlashNecessary)
         return ;
-    mAAA->SetAeEnabled (true);
-    mAAA->SetAwbEnabled (true);
-
     // pre-flash process
     index = mCamera->getPreview(&data);
     if (index < 0) {
@@ -3713,8 +3674,6 @@ void CameraHardware::runPreFlashSequence(void)
 
     mAAA->PreFlashProcess(CAM_FLASH_STAGE_MAIN);
 
-    mAAA->SetAeEnabled (false);
-    mAAA->SetAwbEnabled (false);
     mCamera->putPreview(index);
 }
 
@@ -3723,18 +3682,8 @@ void CameraHardware::update3Aresults(void)
 {
     LOG1("%s\n", __func__);
     mAAA->AeLock(true);
-    mAAA->SetAeEnabled (true);
-    mAAA->SetAfEnabled(true);
-    mAAA->SetAwbEnabled(true);
     mAAA->AeAfAwbProcess (false);
-    int af_mode;
-    mAAA->AfGetMode (&af_mode);
-    if (af_mode != CAM_AF_MODE_MANUAL)
-        mAAA->AfApplyResults();
     mAAA->AeLock(false);
-    mAAA->SetAeEnabled (false);
-    mAAA->SetAfEnabled(false);
-    mAAA->SetAwbEnabled(false);
 }
 
 int CameraHardware::SnapshotPostProcessing(void *img_data, int width, int height)
@@ -3790,15 +3739,23 @@ void CameraHardware::setupPlatformType(void)
         if (!strcmp(camera_info[i].name, CDK_PRIMARY_SENSOR_NAME)) {
             camera_info[i].platform = MFLD_CDK_PLATFORM;
             camera_info[i].type = ci_adv_sensor_dis_14m;
+            mPreviewSkipFrame = 4;
+            mSnapshotSkipFrame = 1;
         } else if (!strcmp(camera_info[i].name, CDK_SECOND_SENSOR_NAME)) {
             camera_info[i].platform = MFLD_CDK_PLATFORM;
             camera_info[i].type = ci_adv_sensor_ov2720_2m;
+            mPreviewSkipFrame = 4;
+            mSnapshotSkipFrame = 1;
         } else if (!strcmp(camera_info[i].name, PR2_PRIMARY_SENSOR_NAME)) {
             camera_info[i].platform = MFLD_PR2_PLATFORM;
             camera_info[i].type = ci_adv_sensor_liteon_8m;
+            mPreviewSkipFrame = 1;
+            mSnapshotSkipFrame = 1;
         } else if (!strcmp(camera_info[i].name, PR2_SECOND_SENSOR_NAME)) {
             camera_info[i].platform = MFLD_PR2_PLATFORM;
             camera_info[i].type = ci_adv_sensor_soc;
+            mPreviewSkipFrame = 1;
+            mSnapshotSkipFrame = 1;
         } else
             LOGE("%s: Unknow platform", __func__);
     }

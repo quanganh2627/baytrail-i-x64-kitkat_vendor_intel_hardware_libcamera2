@@ -322,6 +322,8 @@ private:
     float               mRecordingLastFPS;
     int                 mSkipFrame; // skipped preview frames
     int                 mSkipSnapFrame; // skipped snapshot frames
+    int                 mPreviewSkipFrame;
+    int                 mSnapshotSkipFrame;
 
     //Postpreview
     int                 mPostViewWidth;
@@ -410,6 +412,7 @@ private:
     int mBCDeviceState; // true: device has been opened. false: device has been closed.
     sp<MemoryHeapBase> mBCHeap; // for store the structure BCBuffer
     struct BCBuffer *mBCBuffer; // point to mBCHeap
+    int mManualFocusPosi;
 
 };
 

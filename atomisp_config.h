@@ -159,12 +159,8 @@ enum resolution_index {
 //Define the platform specific settings here
 #ifdef MFLD_PR2
 static int atom_sensor_type = ci_adv_sensor_liteon_8m;
-#define INITIAL_SKIP_FRAME   0
-#define CAPTURE_SKIP_FRAME   0
 #else
 static int atom_sensor_type = ci_adv_sensor_dis_14m;
-#define INITIAL_SKIP_FRAME   4
-#define CAPTURE_SKIP_FRAME   1
 #endif //MFLD_PR2
 
 #endif /*_CAMERA_CONFIG__*/
