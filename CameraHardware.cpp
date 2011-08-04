@@ -998,7 +998,7 @@ status_t CameraHardware::startPreview()
     return NO_ERROR;
 }
 
-void CameraHardware::stopPreview()
+void CameraHardware::stopPreviewThread(void)
 {
     LOG1("%s :", __func__);
     // request that the preview thread stop.
@@ -1028,7 +1028,11 @@ void CameraHardware::stopPreview()
     }
     //Tell preview to stop
     mPreviewRunning = false;
+}
 
+void CameraHardware::stopPreview()
+{
+    stopPreviewThread();
     mPreviewLock.lock();
     if(mVideoPreviewEnabled) {
         mCamera->stopCameraRecording();
@@ -2637,8 +2641,9 @@ status_t CameraHardware::takePicture()
     gettimeofday(&picture_start, 0);
 #endif
     disableMsgType(CAMERA_MSG_PREVIEW_FRAME);
-    // Set the Flash
-    runPreFlashSequence();
+    stopPreviewThread();
+    if (mFlashNecessary)
+        runPreFlashSequence();
     stopPreview();
 #ifdef PERFORMANCE_TUNING
     gettimeofday(&preview_stop, 0);
@@ -3872,8 +3877,6 @@ void CameraHardware::runPreFlashSequence(void)
     int index;
     void *data;
 
-    if (!mFlashNecessary)
-        return ;
     // pre-flash process
     index = mCamera->getPreview(&data);
     if (index < 0) {
