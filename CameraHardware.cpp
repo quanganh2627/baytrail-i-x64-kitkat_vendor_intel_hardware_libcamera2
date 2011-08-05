@@ -2652,12 +2652,10 @@ int CameraHardware::autoFocusThread()
 
     int af_mode;
     mAAA->AfGetMode (&af_mode);
-    if (af_mode == CAM_AF_MODE_AUTO)
-    {
+    if (af_mode == CAM_AF_MODE_AUTO || af_mode == CAM_AF_MODE_TOUCH) {
         af_status = runStillAfSequence();
     }
-    else
-    {
+    else {
         //manual/micro/infini focus, just return focused
         af_status = true;
     }

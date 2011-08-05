@@ -1344,9 +1344,12 @@ int AAAProcess::AfSetMode(int mode)
 
         switch (mode) {
         case CAM_AF_MODE_AUTO:
-        case CAM_AF_MODE_TOUCH:
             ret = ci_adv_af_set_mode (ci_adv_af_mode_auto);
             ci_adv_af_set_range (ci_adv_af_range_norm);
+            break;
+        case CAM_AF_MODE_TOUCH:
+            ret = ci_adv_af_set_mode (ci_adv_af_mode_auto);
+            ci_adv_af_set_range (ci_adv_af_range_full);
             break;
         case CAM_AF_MODE_MACRO:
             ret = ci_adv_af_set_mode (ci_adv_af_mode_auto);
