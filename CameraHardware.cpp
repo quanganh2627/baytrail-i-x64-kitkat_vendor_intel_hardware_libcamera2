@@ -2285,6 +2285,19 @@ int CameraHardware::pictureThread()
 #ifdef PERFORMANCE_TUNING
         gettimeofday(&pic_thread_start,  0);
 #endif
+        //Set Flip for sensor
+        bool mCanFlip = false;
+        if(mCameraId == CAMERA_FACING_FRONT) {
+            int rotation = mParameters.getInt(CameraParameters::KEY_ROTATION);
+            if(rotation == 270 || rotation == 90)
+                mFlipMode = FLIP_V;
+            else
+                mFlipMode = FLIP_H;
+
+            mCanFlip = true;
+            mCamera->setSnapshotFlip(true, mFlipMode);
+        }
+
         //Prepare for the snapshot
         int fd;
         if ((fd = mCamera->startSnapshot()) < 0)
@@ -2354,6 +2367,11 @@ int CameraHardware::pictureThread()
         gettimeofday(&postview, 0);
 #endif
         mCamera->setIndicatorIntensity(INDICATOR_INTENSITY_OFF);
+
+        // Reset Flip for sensor
+        if(mCanFlip){
+            mCamera->setSnapshotFlip(false, mFlipMode);
+        }
 
         //Stop the Camera Now
         mCamera->stopSnapshot();

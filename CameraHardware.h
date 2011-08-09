@@ -424,6 +424,8 @@ private:
     struct BCBuffer *mBCBuffer; // point to mBCHeap
     int mManualFocusPosi;
 
+    int mFlipMode;
+
 };
 
 }; // namespace android

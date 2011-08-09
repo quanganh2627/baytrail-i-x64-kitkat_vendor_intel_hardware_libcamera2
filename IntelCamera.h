@@ -108,6 +108,11 @@ enum BC_memory {
     BC_MEMORY_USERPTR   = 2,
 };
 
+enum FLIP_DIR {
+	FLIP_H      = 1,
+	FLIP_V      = 2,
+};
+
 /*
  * the following types are tested for fourcc in struct bc_buf_params_t
  *   NV12
@@ -197,6 +202,7 @@ public:
     // Flash
     void setIndicatorIntensity(int percent_time_100);
     void setAssistIntensity(int percent_time_100);
+    void setSnapshotFlip(int mode, int mflip);
     void captureFlashOnCertainDuration(int mode, int duration, int percent_time_100);
     void setFlashMode(int mode);
     int getFlashMode();
@@ -452,6 +458,7 @@ private:
     int atomisp_set_contrast_bright (int fd, int contrast,
                                               int brightness, bool inv_effect);
 
+    int atomisp_image_flip(int fd, int mode, int mflip);
     //Flash operation
     int atomisp_led_flash_trigger (int fd, int mode, int duration_ms,
                                     int percent_time_100);
