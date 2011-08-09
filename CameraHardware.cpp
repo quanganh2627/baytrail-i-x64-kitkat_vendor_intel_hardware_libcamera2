@@ -3238,7 +3238,7 @@ int  CameraHardware::update3AParameters(CameraParameters& p, bool flush_only)
                 int ct;
 
                 ct = atoi(new_value);
-                mAAA->AwbSetManualColorTemperature(ct, !flush_only);
+                mAAA->AwbSetManualColorTemperature(ct, true);
 
                 LOGD("     ++ Changed color temperature to %s, %d\n",p.get(pct), ct);
             }
@@ -3318,7 +3318,7 @@ int  CameraHardware::update3AParameters(CameraParameters& p, bool flush_only)
                 }
                 if (flag_parsed)
                 {
-                    mAAA->AeSetManualShutter(shutter, !flush_only);
+                    mAAA->AeSetManualShutter(shutter, true);
                     LOGD("     ++ Changed shutter to %s, %f\n",p.get(pshutter), shutter);
                 }
             }
@@ -3342,7 +3342,7 @@ int  CameraHardware::update3AParameters(CameraParameters& p, bool flush_only)
                 float iso;
 
                 iso = atoi(new_value + 4);
-                mAAA->AeSetManualIso(iso, !flush_only);
+                mAAA->AeSetManualIso(iso, true);
 
                 LOGD("     ++ Changed manual iso to %s, %f\n",p.get(piso), iso);
             }
