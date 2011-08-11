@@ -52,6 +52,11 @@ static inline long calc_timediff(struct timeval *t0, struct timeval *t1)
     return ((t1->tv_sec - t0->tv_sec) * 1000000 + t1->tv_usec - t0->tv_usec) / 1000;
 }
 
+static inline long calc_time(struct timeval *t0)
+{
+    return ((t0->tv_sec) * 1000000 + t0->tv_usec)/1000;
+}
+
 CameraHardware::CameraHardware(int cameraId)
     :
     mPreviewWindow(0),
@@ -155,6 +160,10 @@ CameraHardware::CameraHardware(int cameraId)
     if ((ret = sem_init(&sem_bc_encoded, 0, 0)) < 0)
         LOGE("BC, line:%d, sem_init fail, ret:%d", __LINE__, ret);
     burstCaptureInit(true);
+
+    // FPS Ajust initialization
+    mVideoMainPtr = mVideoPreviewPtr = NULL;
+    mVideoTimeOut = DEFAULT_OUT_FRM_INTVAL_MS;
 
 #if ENABLE_BUFFER_SHARE_MODE
     isVideoStarted = false;
@@ -712,10 +721,12 @@ int CameraHardware::previewThread()
 
 int CameraHardware::recordingThread()
 {
-    void *main_out, *preview_out;
     bool bufferIsReady = true;
-    //Check the buffer sharing
+    int ret;
+    struct timeval input_tval;
+    struct timeval out_tval;
 
+    //Check the buffer sharing
 #if ENABLE_BUFFER_SHARE_MODE
     if (mRecordRunning) {
         if(NO_ERROR == getSharedBuffer() && !checkSharedBufferModeOff())
@@ -724,36 +735,74 @@ int CameraHardware::recordingThread()
 #endif
 
     mPreviewLock.lock();
-    int index = mCamera->getRecording(&main_out, &preview_out);
-    mPreviewLock.unlock();
-    if (index < 0) {
+    ret = mCamera->isBufFilled(mVideoTimeOut);
+    if(ret < 0) {
+        /*poll error*/
+        mPreviewLock.unlock();
         mNotifyCb(CAMERA_MSG_ERROR, CAMERA_ERROR_UKNOWN, 0, mCallbackCookie);
         LOGE("ERR(%s):Fail on mCamera->getRecording()", __func__);
         return -1;
     }
-    //Run 3A after each frame
-    mPreviewFrameCondition.signal();
-
-    //Skip the first several frames from the sensor
-    if (mSkipFrame > 0) {
-        mSkipFrame--;
-        mPreviewLock.lock();
-        mCamera->putRecording(index);
+    else if(0 == ret) {
+        /*poll timeout: time to ouput frame to video codec*/
         mPreviewLock.unlock();
-        return NO_ERROR;
+        gettimeofday(&out_tval,0);
+        mVideoOutTValMs = calc_time(&out_tval);
+        /*If the 1st frm not come from driver, must not output FRM*/
+		if(!mVideoTimerInited) {
+            return NO_ERROR;
+        }
+
+        mVideoTimeOut = mOutputFrmItvlMs;
+        // send video frame to video codec
+        if (mRecordRunning && bufferIsReady)
+        {
+            processRecordingFrame(mVideoMainPtr, mVideoIndex);
+            LOG1("%s:OFT: %ld, index:%d", "OUTPUT", mVideoTimeOut, mVideoIndex);
+        }
     }
-
-    //Process the preview frame first
-    processPreviewFrame(preview_out);
-
-    //Process the recording frame when recording started
-    if (mRecordRunning && bufferIsReady)
-        processRecordingFrame(main_out, index);
-
-    if (!mExitPreviewThread) {
-        mPreviewLock.lock();
-        mCamera->putRecording(index);
+    else {
+        /*new frame come from drv*/
+        mVideoIndex = mCamera->getRecording(&mVideoMainPtr, &mVideoPreviewPtr);
         mPreviewLock.unlock();
+        if (mVideoIndex < 0) {
+            LOGE("ERR(%s):Fail on mCamera->getRecording()", __func__);
+            return -1;
+        }
+        //Run 3A after each frame
+        mPreviewFrameCondition.signal();
+
+        if(mVideoPreviewPtr)
+            processPreviewFrame(mVideoPreviewPtr);
+
+        //Skip the first several frames from the sensor
+        if (mSkipFrame > 0) {
+            mSkipFrame--;
+            mPreviewLock.lock();
+            mCamera->putRecording(mVideoIndex);
+            mPreviewLock.unlock();
+            return NO_ERROR;
+        }
+
+        gettimeofday(&input_tval,0);
+        mVideoInTValMs = calc_time(&input_tval);
+        if(!mVideoTimerInited) {
+            mVideoTimerInited = 1;
+            mVideoOutTValMs = mVideoInTValMs;
+        }
+
+        if(mVideoInTValMs - mVideoOutTValMs <mOutputFrmItvlMs)
+            mVideoTimeOut = mOutputFrmItvlMs - (mVideoInTValMs - mVideoOutTValMs);
+        else
+            mVideoTimeOut = 0;
+
+        LOG1("%s:OFT: %ld, index:%d", "INPUT", mVideoTimeOut, mVideoIndex);
+
+        if (!mExitPreviewThread) {
+            mPreviewLock.lock();
+            mCamera->putRecording(mVideoIndex);
+            mPreviewLock.unlock();
+        }
     }
     return NO_ERROR;
 }
@@ -1109,6 +1158,8 @@ status_t CameraHardware::startRecording()
 #if ENABLE_BUFFER_SHARE_MODE
     requestEnableSharingMode();
 #endif
+    mVideoTimeOut = -1;
+    mVideoTimerInited = 0;
     return NO_ERROR;
 }
 
@@ -3489,8 +3540,9 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
         p.setPreviewFrameRate(new_fps);
         LOGD("     ++ Changed FPS to %d",p.getPreviewFrameRate());
     }
-    LOGD("PREVIEW SIZE: %dx%d, FPS: %d", new_preview_width, new_preview_height,
-         new_fps);
+    mOutputFrmItvlMs = (new_fps != 0)? 1000/new_fps: DEFAULT_OUT_FRM_INTVAL_MS - 5;
+    LOGD("PREVIEW SIZE: %dx%d, FPS: %d, Output frame interval:%ld",
+		new_preview_width, new_preview_height, new_fps, mOutputFrmItvlMs);
 
     //Picture format
     int new_picture_width, new_picture_height;

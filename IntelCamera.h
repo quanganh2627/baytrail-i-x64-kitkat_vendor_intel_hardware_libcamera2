@@ -234,6 +234,7 @@ public:
     int getFnumberRange(unsigned int *fnumber_range);
     int acheiveEXIFAttributesFromDriver();
     int resetCamera(void);
+    int isBufFilled(int timeout_ms);
 private:
     int     createBufferPool(int device, int buffer_count);
     void    destroyBufferPool(int device);
@@ -258,6 +259,7 @@ private:
     void stopCapture(int device);
     void stopDualStreams(void);
     int grabFrame(int device);
+    int grabFrame_no_poll(int device);
     int set_capture_mode(int mode);
     int trimRecordingBuffer(void *main);
     void trimNV12(unsigned char *src, unsigned char* dst, int src_width, int src_height,
@@ -377,6 +379,7 @@ private:
 
     int v4l2_capture_qbuf(int fd, int index, struct v4l2_buffer_info *buf);
     int v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf);
+    int v4l2_capture_dqbuf_no_poll(int fd, struct v4l2_buffer *buf);
     //To start/stop the kernel DQ thread
     int v4l2_capture_control_dq(int fd, int start);
 

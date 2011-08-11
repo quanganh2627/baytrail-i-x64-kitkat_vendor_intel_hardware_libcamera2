@@ -901,13 +901,13 @@ int IntelCamera::trimRecordingBuffer(void *buf)
 int IntelCamera::getRecording(void **main_out, void **preview_out)
 {
     LOG2("%s\n", __func__);
-    int index0 = grabFrame(V4L2_FIRST_DEVICE);
+    int index0 = grabFrame_no_poll(V4L2_FIRST_DEVICE);
     if (index0 < 0) {
         LOGE("%s error\n", __func__);
         return -1;
     }
 
-    int index1 = grabFrame(V4L2_SECOND_DEVICE);
+    int index1 = grabFrame_no_poll(V4L2_SECOND_DEVICE);
     if (index1 < 0) {
         LOGE("%s error\n", __func__);
         return -1;
@@ -1249,6 +1249,58 @@ void IntelCamera::stopCapture(int device)
 
     m_flag_camera_start[device] = 0;
 }
+
+int IntelCamera::isBufFilled(int timeout_ms)
+{
+    struct pollfd pfd[1];
+    int ret;
+
+    if (!m_flag_camera_start[V4L2_FIRST_DEVICE])
+        return -1;
+
+    pfd[0].fd = video_fds[V4L2_FIRST_DEVICE];
+    pfd[0].events = POLLIN | POLLERR;
+
+    ret = poll(pfd, 1, timeout_ms);
+
+    if (ret < 0 ) {
+        LOGE("ERR(%s): select error in DQ\n", __func__);
+    }
+
+    return ret;
+}
+
+int IntelCamera::grabFrame_no_poll(int device)
+{
+    int ret;
+    struct v4l2_buffer buf;
+    //Must start first
+    if (!m_flag_camera_start[device])
+        return -1;
+
+    if ((device < V4L2_FIRST_DEVICE) || (device > V4L2_SECOND_DEVICE)) {
+        LOGE("ERR(%s): Wrong device %d\n", __func__, device);
+        return -1;
+    }
+
+    ret = v4l2_capture_dqbuf_no_poll(video_fds[device], &buf);
+
+    if (ret < 0) {
+        LOGD("%s: DQ error, reset the camera\n", __func__);
+        ret = resetCamera();
+        if (ret < 0) {
+            LOGE("ERR(%s): Reset camera error\n", __func__);
+            return ret;
+        }
+        ret = v4l2_capture_dqbuf_no_poll(video_fds[device], &buf);
+        if (ret < 0) {
+            LOGE("ERR(%s): Reset camera error again\n", __func__);
+            return ret;
+        }
+    }
+    return buf.index;
+}
+
 
 int IntelCamera::grabFrame(int device)
 {
@@ -2941,6 +2993,55 @@ int IntelCamera::v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf)
     LOG2("(%s): VIDIOC_DQBUF finsihed", __func__);
     return buf->index;
 }
+
+int IntelCamera::v4l2_capture_dqbuf_no_poll(int fd, struct v4l2_buffer *buf)
+{
+    int ret, i;
+    int num_tries = 500;
+
+    buf->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    if (memory_userptr)
+        buf->memory = V4L2_MEMORY_USERPTR;
+    else
+        buf->memory = V4L2_MEMORY_MMAP;
+
+    for (i = 0; i < num_tries; i++) {
+        ret = ioctl(fd, VIDIOC_DQBUF, buf);
+
+        if (ret >= 0)
+            break;
+        LOGE("DQ error -- ret is %d\n", ret);
+        switch (errno) {
+        case EINVAL:
+            LOGE("%s: Failed to get frames from device. %s", __func__,
+                 strerror(errno));
+            return -1;
+        case EINTR:
+            LOGW("%s: Could not sync the buffer %s\n", __func__,
+                 strerror(errno));
+            break;
+        case EAGAIN:
+            LOGW("%s: No buffer in the queue %s\n", __func__,
+                 strerror(errno));
+            break;
+        case EIO:
+            break;
+            /* Could ignore EIO, see spec. */
+
+            /* fail through */
+        default:
+            return -1;
+        }
+    }
+
+    if ( i == num_tries) {
+        LOGE("ERR(%s): too many tries\n", __func__);
+        return -1;
+    }
+    LOG2("(%s): VIDIOC_DQBUF finsihed", __func__);
+    return buf->index;
+}
+
 
 int IntelCamera::v4l2_register_bcd(int fd, int num_frames,
                       void **ptrs, int w, int h, int fourcc, int size)
