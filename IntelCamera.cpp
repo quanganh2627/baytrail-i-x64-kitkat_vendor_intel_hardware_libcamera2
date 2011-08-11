@@ -1837,15 +1837,13 @@ void IntelCamera::captureFlashOnCertainDuration(int mode,  int duration, int per
     atomisp_led_flash_trigger (main_fd, mode, duration, percent_time_100);
 }
 
-//limit it to 63 because bigger value easy to cause ISP timeout
-#define MAX_ZOOM_LEVEL	63
+//zoom range
+#define MAX_ZOOM_LEVEL	64
 #define MIN_ZOOM_LEVEL	0
 
 //Use flags to detern whether it is called from the snapshot
 int IntelCamera::set_zoom_val_real(int zoom)
 {
-    /* Zoom is 100,150,200,250,300,350,400 */
-    /* AtomISP zoom range is 1 - 64 */
     if (main_fd < 0) {
         LOGV("%s: device not opened\n", __func__);
         return 0;
@@ -1856,8 +1854,6 @@ int IntelCamera::set_zoom_val_real(int zoom)
     if (zoom > MAX_ZOOM_LEVEL)
         zoom = MAX_ZOOM_LEVEL;
 
-    zoom = ((zoom - MIN_ZOOM_LEVEL) * (MAX_ZOOM_LEVEL - 1) /
-            (MAX_ZOOM_LEVEL - MIN_ZOOM_LEVEL)) + 1;
     LOG1("%s: set zoom to %d", __func__, zoom);
     return atomisp_set_zoom (main_fd, zoom);
 }
