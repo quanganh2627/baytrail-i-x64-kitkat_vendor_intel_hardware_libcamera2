@@ -3271,6 +3271,10 @@ int  CameraHardware::update3AParameters(CameraParameters& p, bool flush_only)
                 LOGD("     ++ Changed focus position to %s, %f\n",p.get(pfocuspos), focus_pos);
             }
         }
+        else if (cur_af_mode == CAM_AF_MODE_INFINITY)
+        {
+            mManualFocusPosi = 500;         // 500cm as infinity position
+        }
 
         // manual control for manual exposure
         int cur_ae_mode;

@@ -1345,7 +1345,7 @@ int AAAProcess::AfSetMode(int mode)
             ci_adv_af_set_range (ci_adv_af_range_macro);
             break;
         case CAM_AF_MODE_INFINITY:
-            ret = ci_adv_af_set_mode (ci_adv_af_mode_auto);
+            ret = ci_adv_af_set_mode (ci_adv_af_mode_manual);
             ci_adv_af_set_range (ci_adv_af_range_full);
             break;
         case CAM_AF_MODE_MANUAL:
