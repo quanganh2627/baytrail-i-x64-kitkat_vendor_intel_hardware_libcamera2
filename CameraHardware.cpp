@@ -128,7 +128,6 @@ CameraHardware::CameraHardware(int cameraId)
     initDefaultParameters();
     mVideoPreviewEnabled = false;
     mFlashNecessary = false;
-    mValidDVSResolution = false;
 
     mExitAutoFocusThread = true;
     mExitPreviewThread = false;
@@ -956,15 +955,10 @@ status_t CameraHardware::startPreview()
         mPostRecordingFrame = 0;
         mCamera->getRecorderSize(&w, &h, &size, &padded_size);
 
-        //DVS only valid for 720p or bigger resolution
-        if (h >= RESOLUTION_720P_HEIGHT && w >= RESOLUTION_720P_WIDTH)
-            mValidDVSResolution = true;
-        else
-            mValidDVSResolution = false;
         initRecordingBuffer(size, padded_size);
         fd = mCamera->startCameraRecording();
         if (fd >= 0) {
-            if (mCamera->getDVS() && mValidDVSResolution) {
+            if (mCamera->getDVS()) {
                 mAAA->SetDoneStatisticsState(false);
                 LOG1("dvs, line:%d, signal thread", __LINE__);
                 mDvsCondition.signal();
@@ -1262,7 +1256,7 @@ int CameraHardware::dvsThread()
         return false;
     }
 
-    while (mVideoPreviewEnabled && mValidDVSResolution) {
+    while (mVideoPreviewEnabled ) {
         if (mExitDvsThread) {
             LOG1("dvs, line:%d, return false from dvsThread", __LINE__);
             return false;

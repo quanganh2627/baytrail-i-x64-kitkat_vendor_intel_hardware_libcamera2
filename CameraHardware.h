@@ -313,7 +313,6 @@ private:
     mutable Mutex       mDvsMutex;
     mutable Condition   mDvsCondition;
     bool mExitDvsThread;
-    bool mValidDVSResolution;
 
     notify_callback    mNotifyCb;
     data_callback      mDataCb;
