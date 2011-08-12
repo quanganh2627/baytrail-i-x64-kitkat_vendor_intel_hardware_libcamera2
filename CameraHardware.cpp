@@ -2275,6 +2275,14 @@ int CameraHardware::pictureThread()
         mCamera->setSnapshotNum(1);
     }
 
+    int af_mode;
+    mAAA->AfGetMode (&af_mode);
+    // compute if flash should on/off for auto focus thread has not run
+    if (af_mode == CAM_AF_MODE_INFINITY ||
+        af_mode == CAM_AF_MODE_MANUAL) {
+        calculateLightLevel();
+    }
+
     int ret;
     if (use_file_input) {
         ret = mCamera->initFileInput();
@@ -2711,6 +2719,7 @@ int CameraHardware::autoFocusThread()
     mAAA->SetAfEnabled(true);
     //set the mFlashNecessary
     calculateLightLevel();
+
     switch(mCamera->getFlashMode())
     {
         case CAM_AE_FLASH_MODE_AUTO:
@@ -2719,25 +2728,14 @@ int CameraHardware::autoFocusThread()
             mCamera->setAssistIntensity(ASSIST_INTENSITY_WORKING);
             break;
         case CAM_AE_FLASH_MODE_OFF:
-            int scene_mode;
-            mAAA->AeGetSceneMode(&scene_mode);
-            LOG1("%s: scene mode: %x", __func__, scene_mode);
-            if(CAM_AE_SCENE_MODE_NIGHT == scene_mode)
-                mCamera->setAssistIntensity(ASSIST_INTENSITY_WORKING);
             break;
         default:
             break;
     }
 
+    af_status = runStillAfSequence();
     int af_mode;
-    mAAA->AfGetMode (&af_mode);
-    if (af_mode == CAM_AF_MODE_AUTO || af_mode == CAM_AF_MODE_TOUCH) {
-        af_status = runStillAfSequence();
-    }
-    else {
-        //manual/micro/infini focus, just return focused
-        af_status = true;
-    }
+    mAAA->AfGetMode(&af_mode);
 
     mCamera->setAssistIntensity(ASSIST_INTENSITY_OFF);
     mAAA->SetAfEnabled(false);
