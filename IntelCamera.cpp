@@ -429,9 +429,11 @@ int IntelCamera::deinitCamera(void)
 int IntelCamera::initFileInput()
 {
     int ret;
+    int device = V4L2_FIRST_DEVICE;
+    v4l2_capture_s_input(video_fds[device], 2);
 
     // open the third device
-    int device = V4L2_THIRD_DEVICE;
+    device = V4L2_THIRD_DEVICE;
     video_fds[device] = v4l2_capture_open(device);
 
     if (video_fds[device] < 0)
