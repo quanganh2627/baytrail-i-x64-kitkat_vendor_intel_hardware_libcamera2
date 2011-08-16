@@ -3911,7 +3911,11 @@ void CameraHardware::runPreFlashSequence(void)
 void CameraHardware::update3Aresults(void)
 {
     LOG1("%s\n", __func__);
+    mAAA->SetAeEnabled (true);
+    mAAA->AeLock(true);
     mAAA->AeAfAwbProcess (false);
+    mAAA->AeLock(false);
+    mAAA->SetAeEnabled (false);
 }
 
 int CameraHardware::SnapshotPostProcessing(void *img_data, int width, int height)
