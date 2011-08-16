@@ -210,6 +210,9 @@ public:
     int AfGetMeteringMode(int *mode);
     int AfSetWindow(const cam_Window *window);
     int AfGetWindow(cam_Window *window);
+    int AeSetMeteringWeightMap(ci_adv_weight_map *weightmap);
+    int AeGetMeteringWeightMap(ci_adv_weight_map *weightmap);
+    int AeDestroyMeteringWeightMap(ci_adv_weight_map *weightmap);
 
     int AwbSetMode (int wb_mode);
     int AwbGetMode(int *wb_mode);

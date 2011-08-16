@@ -1416,6 +1416,58 @@ int AAAProcess::AfGetWindow(cam_Window *window)
     return AAA_SUCCESS;
 }
 
+int AAAProcess::AeSetMeteringWeightMap(ci_adv_weight_map *weightmap)
+{
+    if (!mInitied)
+        return AAA_FAIL;
+
+    if (SENSOR_TYPE_RAW == mSensorType)
+    {
+        ci_adv_err ret = ci_adv_ae_set_weight_map((const ci_adv_weight_map*) weightmap);
+        if (ci_adv_success != ret) {
+            LOGE("%s: Failed to set new weight map, ret = %d \n", __func__, ret);
+            return AAA_FAIL;
+        }
+    }
+
+    return AAA_SUCCESS;
+}
+
+// using AeGetMeteringWeight requires to use AeDestroyMeteringWeightMap
+// whenever the weightmap is not used anymore
+
+int AAAProcess::AeGetMeteringWeightMap(ci_adv_weight_map *weightmap)
+{
+    if (!mInitied)
+        return AAA_FAIL;
+    if (SENSOR_TYPE_RAW == mSensorType)
+    {
+        ci_adv_err ret = ci_adv_ae_get_weight_map(&weightmap);
+        if (ci_adv_success != ret) {
+            LOGE("%s: Failed to get ae weight table, ret =%d \n", __func__, ret);
+            return AAA_FAIL;
+       }
+    }
+
+    return AAA_SUCCESS;
+}
+
+int AAAProcess::AeDestroyMeteringWeightMap(ci_adv_weight_map *weightmap)
+{
+    if (!mInitied)
+        return AAA_FAIL;
+    if (SENSOR_TYPE_RAW == mSensorType)
+    {
+        ci_adv_err ret = ci_adv_ae_destroy_weight_map(weightmap);
+        if (ci_adv_success != ret) {
+            LOGE("%s: Failed to destroy ae weight map, ret =%d \n", __func__, ret);
+            return AAA_FAIL;
+       }
+    }
+
+    return AAA_SUCCESS;
+}
+
 int AAAProcess::FlushManualSettings(void)
 {
     int ret;

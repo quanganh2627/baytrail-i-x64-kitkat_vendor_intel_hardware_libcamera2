@@ -151,6 +151,22 @@ CameraHardware::CameraHardware(int cameraId)
         mAeAfAwbThread = NULL;
     }
 
+    // the table is defined in CameraHardware.h
+    // the values should be defined by the application
+    // at the moment they are hard-coded here
+    WeightTable[0] = 1;
+    WeightTable[1] = 2;
+    WeightTable[2] = 1;
+    WeightTable[3] = 2;
+    WeightTable[4] = 3;
+    WeightTable[5] = 2;
+    WeightTable[6] = 1;
+    WeightTable[7] = 2;
+    WeightTable[8] = 1;
+    mAeWeightMap.num_windows_x = 3;
+    mAeWeightMap.num_windows_y = 3;
+    mAeWeightMap.weights = WeightTable;
+
     // burst capture initialization
     if ((ret = sem_init(&sem_bc_captured, 0, 0)) < 0)
         LOGE("BC, line:%d, sem_init fail, ret:%d", __LINE__, ret);
@@ -3080,8 +3096,10 @@ int  CameraHardware::update3AParameters(CameraParameters& p, bool flush_only)
                 ae_metering_mode = CAM_AE_METERING_MODE_SPOT;
             else if(!strcmp(new_value, "center"))
                 ae_metering_mode = CAM_AE_METERING_MODE_CENTER;
-            else if(!strcmp(new_value, "customized"))
+            else if(!strcmp(new_value, "customized")) {
                 ae_metering_mode = CAM_AE_METERING_MODE_CUSTOMIZED;
+                mAAA->AeSetMeteringWeightMap(&mAeWeightMap);
+            }
             else
                 ae_metering_mode = CAM_AE_METERING_MODE_AUTO;
             mAAA->AeSetMeteringMode(ae_metering_mode);

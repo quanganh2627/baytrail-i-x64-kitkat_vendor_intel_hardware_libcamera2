@@ -341,6 +341,11 @@ private:
     //3A
     AAAProcess          *mAAA;
     bool                awb_to_manual;
+
+    //AE Weight Map
+    ci_adv_weight_map   mAeWeightMap;
+    int                 WeightTable[9];
+
     //File Input
     struct file_input   mFile;
 #if ENABLE_BUFFER_SHARE_MODE
