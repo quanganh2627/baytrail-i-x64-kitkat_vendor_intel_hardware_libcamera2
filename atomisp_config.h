@@ -115,6 +115,13 @@ static int need_dump_snapshot = 0;
 static int memory_userptr = 1;
 static int use_file_input = 0;
 
+enum raw_data_format {
+    RAW_NONE = 0,
+    RAW_YUV,
+    RAW_RGB,
+    RAW_BAYER,
+};
+
 #ifdef BOARD_USE_CAMERA_TEXTURE_STREAMING
 static int use_texture_streaming = 1;
 #else

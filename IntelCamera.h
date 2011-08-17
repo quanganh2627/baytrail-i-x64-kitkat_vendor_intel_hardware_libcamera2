@@ -237,6 +237,9 @@ public:
     int acheiveEXIFAttributesFromDriver();
     int resetCamera(void);
     int isBufFilled(int timeout_ms);
+
+    // raw picture dump
+    void setRawFormat(enum raw_data_format format);
 private:
     int     createBufferPool(int device, int buffer_count);
     void    destroyBufferPool(int device);
@@ -255,7 +258,7 @@ private:
     void closeMainDevice(void);
     void closeSecondDevice(void);
 
-    int configureDevice(int device, int w, int h, int fourcc);
+    int configureDevice(int device, int w, int h, int fourcc, bool raw);
     int detectDeviceResolution(int *w, int *h, int run_mode);
     int startCapture(int device, int buffer_count);
     void stopCapture(int device);
@@ -325,6 +328,11 @@ private:
 
     int mFlashMode;
 
+    struct {
+        enum raw_data_format format;
+        unsigned int size;
+    } raw_data_dump;
+
     //this function will compare saved parameters
     //to default value. Set to isp if they diff since
     //isp is reset.
@@ -357,7 +365,7 @@ private:
 
     int v4l2_capture_querycap(int fd, int device, struct v4l2_capability *cap);
     int v4l2_capture_s_input(int fd, int index);
-    int v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc);
+    int v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc, bool raw);
     int v4l2_capture_try_format(int fd, int device, int *w, int *h,
                                          int *fourcc);
 

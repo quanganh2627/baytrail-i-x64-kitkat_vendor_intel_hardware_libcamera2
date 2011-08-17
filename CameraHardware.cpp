@@ -359,6 +359,9 @@ void CameraHardware::initDefaultParameters()
         p.set(CameraParameters::KEY_COLOR_TEMPERATURE, "5000");
         // manual focus
         p.set(CameraParameters::KEY_FOCUS_DISTANCES, "2,2,Infinity");
+        // RAW picture data format
+        p.set(CameraParameters::KEY_RAW_DATA_FORMAT, "none");
+        p.set(CameraParameters::KEY_SUPPORTED_RAW_DATA_FORMATS, "none,yuv,bayer");
         // focus window
         p.set("focus-window", "0,0,0,0");
     }
@@ -3567,6 +3570,21 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
 
     LOGD(" - Picture pixel format = new \"%s\"", new_format);
     p.getPictureSize(&new_picture_width, &new_picture_height);
+
+    // RAW picture data format
+    if (mSensorType == SENSOR_TYPE_RAW) {
+        const char *raw_format = p.get(CameraParameters::KEY_RAW_DATA_FORMAT);
+        LOG1("raw format is %s", raw_format);
+        // FIXME: only support bayer dump now
+        if (strcmp(raw_format, "bayer") == 0) {
+            mCamera->setRawFormat(RAW_BAYER);
+        } else if (strcmp(raw_format, "yuv") == 0) {
+        mCamera->setRawFormat(RAW_YUV);
+        } else {
+            mCamera->setRawFormat(RAW_NONE);
+        }
+    } else
+        mCamera->setRawFormat(RAW_NONE);
 
     // burst capture
     mBCNumReq = p.getInt(CameraParameters::KEY_BURST_LENGTH);

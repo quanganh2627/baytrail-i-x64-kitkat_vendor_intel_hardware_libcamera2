@@ -497,7 +497,7 @@ int IntelCamera::configureFileInput(const struct file_input *image)
         return -1;
 
     //Set the format
-    ret = v4l2_capture_s_format(fd, device, image->width, image->height, image->format);
+    ret = v4l2_capture_s_format(fd, device, image->width, image->height, image->format, false);
     if (ret < 0)
         return ret;
 
@@ -537,7 +537,7 @@ int IntelCamera::startCameraPreview(void)
     if (zoom_val != 0)
         set_zoom_val_real(zoom_val);
 
-    ret = configureDevice(device, w, h, fourcc);
+    ret = configureDevice(device, w, h, fourcc, false);
     if (ret < 0)
         return ret;
 
@@ -631,12 +631,12 @@ int IntelCamera::startSnapshot(void)
     checkGDC();
 
     ret = configureDevice(V4L2_FIRST_DEVICE, m_snapshot_width,
-                          m_snapshot_height, m_snapshot_v4lformat);
+                          m_snapshot_height, m_snapshot_v4lformat, raw_data_dump.format == RAW_BAYER);
     if (ret < 0)
         goto configure1_error;
 
     ret = configureDevice(V4L2_SECOND_DEVICE, m_postview_width,
-                          m_postview_height, m_postview_v4lformat);
+                          m_postview_height, m_postview_v4lformat, false);
     if (ret < 0)
         goto configure2_error;
 
@@ -759,6 +759,25 @@ int IntelCamera::getSnapshot(void **main_out, void **postview,
         write_image(*main_out, buf0->length, buf0->width, buf0->height, name0);
         write_image(*postview, buf1->length, buf1->width, buf1->height, name1);
     }
+    if(raw_data_dump.format == RAW_BAYER) {
+        struct v4l2_buffer_info *buf =
+            &v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[index0];
+        unsigned int length = raw_data_dump.size;
+        LOG1("dumping raw data");
+        void *start = mmap(NULL /* start anywhere */ ,
+                                PAGE_ALIGN(length),
+                                PROT_READ | PROT_WRITE /* required */ ,
+                                MAP_SHARED /* recommended */ ,
+                                video_fds[V4L2_FIRST_DEVICE], 0xfffff000);
+        if (MAP_FAILED == start)
+                LOGE("mmap failed");
+        else {
+            printf("MMAP raw address from kerenl 0x%p\n", start);
+        }
+        write_image(start, length, buf->width, buf->height, "raw");
+        if (-1 == munmap(start, PAGE_ALIGN(length)))
+            LOGE("munmap failed");
+    }
 
     if(postview_rgb565) {
         toRGB565(m_postview_width, m_postview_height, m_postview_v4lformat, (unsigned char *)(*postview),
@@ -802,13 +821,13 @@ int IntelCamera::startCameraRecording(void)
         LOGE("dvs,line:%d, set dvs val:%d to driver fail", __LINE__, mDVSOn);
 
     ret = configureDevice(V4L2_FIRST_DEVICE, m_recorder_pad_width,
-                          m_recorder_height, m_recorder_v4lformat);
+                          m_recorder_height, m_recorder_v4lformat, false);
     if (ret < 0)
         goto configure1_error;
 
     //176x144 using pad width
     ret = configureDevice(V4L2_SECOND_DEVICE, m_preview_pad_width,
-                          m_preview_height, m_preview_v4lformat);
+                          m_preview_height, m_preview_v4lformat, false);
     if (ret < 0)
         goto configure2_error;
 
@@ -1065,7 +1084,7 @@ int IntelCamera::detectDeviceResolution(int *w, int *h, int run_mode)
     return 0;
 }
 
-int IntelCamera::configureDevice(int device, int w, int h, int fourcc)
+int IntelCamera::configureDevice(int device, int w, int h, int fourcc, bool raw)
 {
     int ret = 0;
     LOG1("%s device %d, width:%d, height%d, mode%d format%d\n", __func__, device,
@@ -1098,7 +1117,7 @@ int IntelCamera::configureDevice(int device, int w, int h, int fourcc)
         return ret;
 
     //Set the format
-    ret = v4l2_capture_s_format(fd, device, w, h, fourcc);
+    ret = v4l2_capture_s_format(fd, device, w, h, fourcc, raw);
     if (ret < 0)
         return ret;
 
@@ -1267,6 +1286,12 @@ int IntelCamera::isBufFilled(int timeout_ms)
     }
 
     return ret;
+}
+
+void IntelCamera::setRawFormat(enum raw_data_format format)
+{
+    raw_data_dump.format = format;
+    return;
 }
 
 int IntelCamera::grabFrame_no_poll(int device)
@@ -2553,7 +2578,7 @@ int IntelCamera::v4l2_capture_s_input(int fd, int index)
 }
 
 
-int IntelCamera::v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc)
+int IntelCamera::v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc, bool raw)
 {
     int ret;
     struct v4l2_format v4l2_fmt;
@@ -2592,8 +2617,12 @@ int IntelCamera::v4l2_capture_s_format(int fd, int device, int w, int h, int fou
         LOGE("ERR(%s):VIDIOC_G_FMT failed %s\n", __func__, strerror(errno));
         return -1;
     }
-
-    v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    if (raw) {
+        LOG1("%s, choose raw dump path", __func__);
+        v4l2_fmt.type = V4L2_BUF_TYPE_PRIVATE;
+    }
+    else
+        v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
     v4l2_fmt.fmt.pix.width = w;
     v4l2_fmt.fmt.pix.height = h;
@@ -2605,6 +2634,12 @@ int IntelCamera::v4l2_capture_s_format(int fd, int device, int w, int h, int fou
         LOGE("ERR(%s):VIDIOC_S_FMT failed %s\n", __func__, strerror(errno));
         return -1;
     }
+
+    if (raw) {
+        raw_data_dump.size = v4l2_fmt.fmt.pix.priv;
+        LOG1("raw data size from kernel %d\n", raw_data_dump.size);
+    }
+
     return 0;
 }
 
