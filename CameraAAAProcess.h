@@ -131,6 +131,11 @@ typedef struct {
 #define AAA_FAIL    1
 #define AAA_SUCCESS 0
 
+// TODO: as no interface for 3A library to get the range of manual color temperature, they are defined here
+//             if the range of manual color temperature can be gotten from 3A library, remove them
+#define MIN_MANUAL_CT       1800
+#define MAX_MANUAL_CT      28000
+
 class AAAProcess {
 public:
     AAAProcess(void);

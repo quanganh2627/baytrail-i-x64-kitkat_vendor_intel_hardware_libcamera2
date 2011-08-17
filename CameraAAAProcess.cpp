@@ -1139,7 +1139,10 @@ int AAAProcess::AwbSetManualColorTemperature(int ct, bool to_hw)
 
         if (to_hw)
         {
-            ci_adv_err ret = ci_adv_awb_set_manual_color_temperature(ct);
+            int hw_ct;
+
+            hw_ct = (ct < MIN_MANUAL_CT) ? MIN_MANUAL_CT : ((ct > MAX_MANUAL_CT) ? MAX_MANUAL_CT : ct);
+            ci_adv_err ret = ci_adv_awb_set_manual_color_temperature(hw_ct);
             if(ci_adv_success != ret)
                 return AAA_FAIL;
         }
