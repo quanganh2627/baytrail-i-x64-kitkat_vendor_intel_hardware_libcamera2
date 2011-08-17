@@ -158,7 +158,7 @@ public:
     //Preview
     int startCameraPreview();
     void stopCameraPreview();
-    int getPreview(void **data);
+    int getPreview(void **data, enum atomisp_frame_status *status);
     int putPreview(int index);
     int setPreviewSize(int width, int height, int fourcc);
     int getPreviewSize(int *width, int *height, int *frame_size, int *padded_size);
@@ -173,7 +173,8 @@ public:
     //Snapshot
     int startSnapshot();
     void stopSnapshot();
-    int getSnapshot(void **main_out, void **postview, void *postview_rgb565);
+    int getSnapshot(void **main_out, void **postview, void *postview_rgb565,
+                    enum atomisp_frame_status *status);
     int putSnapshot(int index);
     int setSnapshotSize(int width, int height, int fourcc);
     int getSnapshotSize(int *width, int *height, int *frame_size);
@@ -200,13 +201,14 @@ public:
     float getFramerate(void);
 
     // Flash
-    void setIndicatorIntensity(int percent_time_100);
-    void setAssistIntensity(int percent_time_100);
-    void setSnapshotFlip(int mode, int mflip);
-    void captureFlashOnCertainDuration(int mode, int duration, int percent_time_100);
+    void enableIndicator(int intensity);
+    void enableTorch(int intensity);
+    int  requestFlash(int numFrames);
     void setFlashMode(int mode);
-    int getFlashMode();
-    int calculateLightLevel();
+    int  getFlashMode();
+    int  calculateLightLevel();
+
+    void setSnapshotFlip(int mode, int mflip);
     // ISP related settings
     int setColorEffect(int effect);
     int setShadingCorrection(bool on);
@@ -258,7 +260,7 @@ private:
     int startCapture(int device, int buffer_count);
     void stopCapture(int device);
     void stopDualStreams(void);
-    int grabFrame(int device);
+    int grabFrame(int device, enum atomisp_frame_status *status);
     int grabFrame_no_poll(int device);
     int set_capture_mode(int mode);
     int trimRecordingBuffer(void *main);
@@ -321,7 +323,6 @@ private:
     int num_snapshot; // store request snapshot number
     int num_postview;  //default just 1 postview buffer
 
-    void captureFlashOff(void);
     int mFlashMode;
 
     //this function will compare saved parameters

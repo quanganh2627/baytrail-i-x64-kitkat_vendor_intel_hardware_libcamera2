@@ -384,6 +384,7 @@ private:
     static const int mStillAfMaxTimeMs = 1700;
 
     //flash
+    bool mPreFlashSucceeded;
     void runPreFlashSequence (void);
     int SnapshotPostProcessing(void *img_data, int width, int height);
     void update3Aresults(void);

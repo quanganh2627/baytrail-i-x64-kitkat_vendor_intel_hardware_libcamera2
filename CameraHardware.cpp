@@ -36,13 +36,10 @@
 #include <ui/GraphicBufferMapper.h>
 
 
-#define MAX_CAMERAS 2		// Follow CamreaService.h
+#define MAX_CAMERAS           2    // Follow CameraService.h
+#define FLASH_FRAME_TIMEOUT   5
 
 namespace android {
-
-#define CAMERA_MSG_TOUCH_TO_FOCUS 0x200
-
-static const int ZOOM_FACTOR = 4;
 
 static cameraInfo camera_info[MAX_CAMERAS];
 static int num_cameras = 0;
@@ -687,7 +684,7 @@ int CameraHardware::previewThread()
         mPreviewLock.unlock();
         return 0;
     }
-    int index = mCamera->getPreview(&data);
+    int index = mCamera->getPreview(&data, NULL);
     mPreviewLock.unlock();
 
     if (index < 0) {
@@ -1149,10 +1146,10 @@ status_t CameraHardware::startRecording()
     }
 
     mRecordRunning = true;
-    if(CAM_AE_FLASH_MODE_TORCH== mCamera->getFlashMode())
-        mCamera->setAssistIntensity(ASSIST_INTENSITY_WORKING);
-    else if(CAM_AE_FLASH_MODE_OFF == mCamera->getFlashMode())
-        mCamera->setIndicatorIntensity(INDICATOR_INTENSITY_WORKING);
+    if (CAM_AE_FLASH_MODE_TORCH == mCamera->getFlashMode())
+        mCamera->enableTorch(TORCH_INTENSITY);
+    else if (CAM_AE_FLASH_MODE_OFF == mCamera->getFlashMode())
+        mCamera->enableIndicator(INDICATOR_INTENSITY);
 #if ENABLE_BUFFER_SHARE_MODE
     requestEnableSharingMode();
 #endif
@@ -1166,10 +1163,10 @@ void CameraHardware::stopRecording()
     LOG1("%s :", __func__);
     Mutex::Autolock lock(mRecordLock);
     mRecordRunning = false;
-    if(CAM_AE_FLASH_MODE_TORCH == mCamera->getFlashMode())
-        mCamera->setAssistIntensity(ASSIST_INTENSITY_OFF);
-    else if(CAM_AE_FLASH_MODE_OFF == mCamera->getFlashMode())
-        mCamera->setIndicatorIntensity(INDICATOR_INTENSITY_OFF);
+    if (CAM_AE_FLASH_MODE_TORCH == mCamera->getFlashMode())
+        mCamera->enableTorch(0);
+    else if (CAM_AE_FLASH_MODE_OFF == mCamera->getFlashMode())
+        mCamera->enableIndicator(0);
 
 #if ENABLE_BUFFER_SHARE_MODE
     requestDisableSharingMode();
@@ -1700,7 +1697,7 @@ int CameraHardware::snapshotSkipFrames(void **main, void **postview)
     int index;
 
     while (mSkipFrame) {
-        index = mCamera->getSnapshot(main, postview, NULL);
+        index = mCamera->getSnapshot(main, postview, NULL, NULL);
         if (index < 0) {
             LOGE("line:%d, getSnapshot fail", __LINE__);
             return -1;
@@ -2040,7 +2037,7 @@ int CameraHardware::burstCaptureSkipReqBufs(int i, int *idx, void **main, void *
             return -1;
 
         //dq buffer
-        index = mCamera->getSnapshot(&main_out, &postview_out, NULL);
+        index = mCamera->getSnapshot(&main_out, &postview_out, NULL, NULL);
         if (index < 0) {
             LOGE("BC, line:%d, getSnapshot fail", __LINE__);
             return -1;
@@ -2246,7 +2243,8 @@ BCHANDLE_ERR:
 #define FLASH_FRAME_WAIT 4
 int CameraHardware::pictureThread()
 {
-    LOGD("%s :start", __func__);
+    bool flash = false;
+    int cnt = 0;
     int cap_width, cap_height, cap_frame_size, rgb_frame_size;
     int pre_width, pre_height, pre_frame_size, pre_padded_size;
     mCamera->getSnapshotSize(&cap_width, &cap_height, &cap_frame_size);
@@ -2367,14 +2365,14 @@ int CameraHardware::pictureThread()
         gettimeofday(&snapshot_start, 0);
 #endif
         if(!mFlashNecessary)
-            mCamera->setIndicatorIntensity(INDICATOR_INTENSITY_WORKING);
+            mCamera->enableIndicator(INDICATOR_INTENSITY);
 
         //Skip frames
         snapshotSkipFrames(&main_out, &postview_out);
 
         //Turn on flash if neccessary before the Qbuf
-        if (mFlashNecessary)
-            mCamera->captureFlashOnCertainDuration(0, 800, 15*625); /* software trigger, 800ms, intensity 15*/
+        if (mFlashNecessary && mPreFlashSucceeded)
+            mCamera->requestFlash(1);
 
 #ifdef PERFORMANCE_TUNING
         gettimeofday(&first_frame, 0);
@@ -2385,10 +2383,23 @@ int CameraHardware::pictureThread()
             mNotifyCb(CAMERA_MSG_SHUTTER, 0, 0, mCallbackCookie);
 
         //Get the buffer and copy the buffer out
-        index = mCamera->getSnapshot(&main_out, &postview_out, pthumbnail);
-        if (index < 0)
-            goto get_img_error;
-        LOGD("RAW image got: size %dB", rgb_frame_size);
+	while (1) {
+                enum atomisp_frame_status stat;
+                index = mCamera->getSnapshot(&main_out, &postview_out, pthumbnail, &stat);
+                if (index < 0)
+                        goto get_img_error;
+                if (!flash)
+                        break;
+                if (stat == ATOMISP_FRAME_STATUS_FLASH_EXPOSED ||
+                    stat == ATOMISP_FRAME_STATUS_FLASH_FAILED)
+                        break;
+               /* safety precaution */
+               if (cnt++ == FLASH_FRAME_TIMEOUT) {
+                       LOGE("terminating flash capture, no flashed frame received\n");
+                       break;
+               }
+                mCamera->putSnapshot(index);
+        }
 
         if (mMsgEnabled & CAMERA_MSG_RAW_IMAGE) {
             ssize_t offset = exif_offset + thumbnail_offset;
@@ -2423,7 +2434,7 @@ int CameraHardware::pictureThread()
 #ifdef PERFORMANCE_TUNING
         gettimeofday(&postview, 0);
 #endif
-        mCamera->setIndicatorIntensity(INDICATOR_INTENSITY_OFF);
+        mCamera->enableIndicator(0);
 
         // Reset Flip for sensor
         if(mCanFlip){
@@ -2724,7 +2735,7 @@ int CameraHardware::autoFocusThread()
         case CAM_AE_FLASH_MODE_AUTO:
             if(!mFlashNecessary) break;
         case CAM_AE_FLASH_MODE_ON:
-            mCamera->setAssistIntensity(ASSIST_INTENSITY_WORKING);
+            mCamera->enableTorch(TORCH_INTENSITY);
             break;
         case CAM_AE_FLASH_MODE_OFF:
             break;
@@ -2736,9 +2747,9 @@ int CameraHardware::autoFocusThread()
     int af_mode;
     mAAA->AfGetMode(&af_mode);
 
-    mCamera->setAssistIntensity(ASSIST_INTENSITY_OFF);
+    mCamera->enableTorch(0);
     mAAA->SetAfEnabled(false);
-    if (af_status == FOCUS_CANCELD) {
+    if (af_status == FOCUS_CANCELLED) {
         mExitAutoFocusThread = true;
         return NO_ERROR;
     }
@@ -2773,7 +2784,7 @@ int CameraHardware::runStillAfSequence(void)
         if (mExitAutoFocusThread) {
             LOGD("%s : exiting on request", __func__);
             mAeAfAwbLock.unlock();
-            return FOCUS_CANCELD;//cancel
+            return FOCUS_CANCELLED;//cancel
         }
 
         mPreviewFrameCondition.wait(mAeAfAwbLock);
@@ -3865,43 +3876,76 @@ int CameraHardware::calculateLightLevel()
     } else
         return mAAA->AeIsFlashNecessary (&mFlashNecessary);
 }
-
+/* The pre-flash sequence consists of 3 preview frames.
+ * For each frame the 3A library will run in a specific mode.
+ */
 void CameraHardware::runPreFlashSequence(void)
 {
-    int index;
+    int index, cnt = 0;
     void *data;
+    enum atomisp_frame_status status;
 
-    // pre-flash process
-    index = mCamera->getPreview(&data);
-    if (index < 0) {
-        LOGE("%s: Error to get frame\n", __func__);
-        return ;
-    }
+    mAAA->SetAeEnabled(true);
+    mAAA->SetAwbEnabled(true);
+
+    // Stage 1
+    index = mCamera->getPreview(&data, &status);
+    if (index < 0)
+        goto error;
+    mCamera->putPreview(index);
     mAAA->PreFlashProcess(CAM_FLASH_STAGE_NONE);
 
-    // pre-flash
-//    captureFlashOff();
+    // Skip 1 frame to get exposure from Stage 1
+    index = mCamera->getPreview(&data, &status);
+    if (index < 0)
+        goto error;
     mCamera->putPreview(index);
-    index = mCamera->getPreview(&data);
-    if (index < 0) {
-        LOGE("%s: Error to get frame\n", __func__);
-        return ;
-    }
 
+    // Stage 2
+    index = mCamera->getPreview(&data, &status);
+    if (index < 0)
+        goto error;
+    mCamera->putPreview(index);
     mAAA->PreFlashProcess(CAM_FLASH_STAGE_PRE);
 
-    // main flash  software trigger, 100ms, intensity 2*/
-    mCamera->captureFlashOnCertainDuration(0, 100, 2*625);
+    // Skip 1 frame to get exposure from Stage 2
+    index = mCamera->getPreview(&data, &status);
+    if (index < 0)
+        goto error;
     mCamera->putPreview(index);
-    index = mCamera->getPreview(&data);
-    if (index < 0) {
-        LOGE("%s: Error to get frame\n", __func__);
-        return ;
+
+    // Stage 3: get the flash-exposed preview frame
+    // and let the 3A library calculate the exposure
+    // settings for the flash-exposed still capture.
+    // We check the frame status to make sure we use
+    // the flash-exposed frame.
+    mPreFlashSucceeded = mCamera->requestFlash(1);
+
+    while (1) {
+        index = mCamera->getPreview(&data, &status);
+        if (index < 0)
+            goto error;
+        mCamera->putPreview(index);
+        if (!mPreFlashSucceeded)
+            break;
+        if (status == ATOMISP_FRAME_STATUS_FLASH_EXPOSED ||
+            status == ATOMISP_FRAME_STATUS_FLASH_FAILED)
+            break;
+        /* safety precaution */
+        if (cnt++ == FLASH_FRAME_TIMEOUT) {
+            LOGE("terminating pre-flash loop, no flashed frame received\n");
+            mPreFlashSucceeded = false;
+            break;
+        }
     }
+    if (mPreFlashSucceeded && status == ATOMISP_FRAME_STATUS_FLASH_EXPOSED)
+        mAAA->PreFlashProcess(CAM_FLASH_STAGE_MAIN);
+    else
+        mAAA->AeAfAwbProcess(true);
 
-    mAAA->PreFlashProcess(CAM_FLASH_STAGE_MAIN);
-
-    mCamera->putPreview(index);
+error:
+    mAAA->SetAeEnabled(false);
+    mAAA->SetAwbEnabled(false);
 }
 
 //3A processing

@@ -578,10 +578,10 @@ void IntelCamera::stopCameraPreview(void)
     stopCapture(device);
 }
 
-int IntelCamera::getPreview(void **data)
+int IntelCamera::getPreview(void **data, enum atomisp_frame_status *status)
 {
     int device = V4L2_FIRST_DEVICE;
-    int index = grabFrame(device);
+    int index = grabFrame(device, status);
     if(index < 0)
     {
         LOGE("%s error\n", __func__);
@@ -721,17 +721,18 @@ int IntelCamera::putDualStreams(int index)
 // output from the driver. It is converted to RGB565.
 // postview_rgb565: if it is NULL, we will not output RGB565 postview data
 // postview_rgb565: if it is a pointer, write RGB565 data to this pointer
-int IntelCamera::getSnapshot(void **main_out, void **postview, void *postview_rgb565)
+int IntelCamera::getSnapshot(void **main_out, void **postview,
+                             void *postview_rgb565, enum atomisp_frame_status *status)
 {
     LOG1("%s\n", __func__);
 
-    int index0 = grabFrame(V4L2_FIRST_DEVICE);
+    int index0 = grabFrame(V4L2_FIRST_DEVICE, status);
     if (index0 < 0) {
         LOGE("%s error\n", __func__);
         return -1;
     }
 
-    int index1 = grabFrame(V4L2_SECOND_DEVICE);
+    int index1 = grabFrame(V4L2_SECOND_DEVICE, NULL);
     if (index1 < 0) {
         LOGE("%s error\n", __func__);
         return -1;
@@ -1242,8 +1243,8 @@ void IntelCamera::stopCapture(int device)
 
     destroyBufferPool(device);
 
-    setIndicatorIntensity(INDICATOR_INTENSITY_OFF);
-    setAssistIntensity(ASSIST_INTENSITY_OFF);
+    enableIndicator(0);
+    enableTorch(0);
 
     m_flag_camera_start[device] = 0;
 }
@@ -1300,7 +1301,7 @@ int IntelCamera::grabFrame_no_poll(int device)
 }
 
 
-int IntelCamera::grabFrame(int device)
+int IntelCamera::grabFrame(int device, enum atomisp_frame_status *status)
 {
     int ret;
     struct v4l2_buffer buf;
@@ -1328,6 +1329,8 @@ int IntelCamera::grabFrame(int device)
             return ret;
         }
     }
+    if (status)
+        *status = (enum atomisp_frame_status)buf.reserved;
     return buf.index;
 }
 
@@ -1749,12 +1752,12 @@ int IntelCamera::updateRecorderUserptr(int num, unsigned char *recorder[])
     }
     //DQ all buffer out
     for (i = 0; i < num; i++) {
-        ret = grabFrame(V4L2_FIRST_DEVICE);
+        ret = grabFrame(V4L2_FIRST_DEVICE, NULL);
         if (ret < 0) {
             LOGE("%s error\n", __func__);
             goto error;
         }
-        ret = grabFrame(V4L2_SECOND_DEVICE);
+        ret = grabFrame(V4L2_SECOND_DEVICE, NULL);
         if (ret < 0) {
             LOGE("%s error\n", __func__);
             goto error;
@@ -1794,18 +1797,43 @@ error:
     return -1;
 }
 
-void IntelCamera::setIndicatorIntensity(int percent_time_100)
+void IntelCamera::enableIndicator(int intensity)
 {
-	if(CAMERA_FACING_FRONT == m_camera_phy_id) return;
+    if (CAMERA_FACING_FRONT == m_camera_phy_id)
+        return;
 
-    atomisp_led_indicator_trigger (main_fd, percent_time_100);
+    if (intensity) {
+        atomisp_set_attribute(main_fd, V4L2_CID_FLASH_INDICATOR_INTENSITY, intensity, "torch intensity");
+        atomisp_set_attribute(main_fd, V4L2_CID_FLASH_MODE, ATOMISP_FLASH_MODE_TORCH, "flash mode");
+    } else {
+        atomisp_set_attribute(main_fd, V4L2_CID_FLASH_MODE, ATOMISP_FLASH_MODE_OFF, "flash mode");
+    }
 }
 
-void IntelCamera::setAssistIntensity(int percent_time_100)
+void IntelCamera::enableTorch(int intensity)
 {
-	if(CAMERA_FACING_FRONT == m_camera_phy_id) return;
+    if (CAMERA_FACING_FRONT == m_camera_phy_id)
+        return;
 
-    atomisp_led_assist_trigger (main_fd, percent_time_100);
+    if (intensity) {
+        atomisp_set_attribute(main_fd, V4L2_CID_FLASH_TORCH_INTENSITY, intensity, "torch intensity");
+        atomisp_set_attribute(main_fd, V4L2_CID_FLASH_MODE, ATOMISP_FLASH_MODE_TORCH, "flash mode");
+    } else {
+        atomisp_set_attribute(main_fd, V4L2_CID_FLASH_MODE, ATOMISP_FLASH_MODE_OFF, "flash mode");
+    }
+}
+
+int IntelCamera::requestFlash(int numFrames)
+{
+    if (CAMERA_FACING_FRONT == m_camera_phy_id)
+        return 0;
+
+    /* We don't drive the flash directly, instead we ask the ISP driver
+     * to drive the flash. That way the driver can annotate the output
+     * frames with the flash status. */
+    if (atomisp_set_attribute(main_fd, V4L2_CID_REQUEST_FLASH, numFrames, "request flash"))
+        return 0;
+    return 1;
 }
 
 void IntelCamera::setFlashMode(int mode)
@@ -1818,21 +1846,9 @@ int IntelCamera::getFlashMode()
     return mFlashMode;
 }
 
-void IntelCamera::captureFlashOff(void)
-{
-    atomisp_led_flash_off (main_fd);
-}
-
 void IntelCamera::setSnapshotFlip(int mode, int mflip)
 {
     atomisp_image_flip (main_fd, mode, mflip);
-}
-
-void IntelCamera::captureFlashOnCertainDuration(int mode,  int duration, int percent_time_100)
-{
-	if(CAMERA_FACING_FRONT == m_camera_phy_id) return;
-
-    atomisp_led_flash_trigger (main_fd, mode, duration, percent_time_100);
 }
 
 //zoom range
@@ -3229,6 +3245,8 @@ int IntelCamera::atomisp_get_attribute (int fd, int attribute_num,
                                                  int *value, char *name)
 {
     struct v4l2_control control;
+    struct v4l2_ext_controls controls;
+    struct v4l2_ext_control ext_control;
 
     LOG1 ("getting value of attribute %d: %s\n", attribute_num, name);
 
@@ -3236,61 +3254,31 @@ int IntelCamera::atomisp_get_attribute (int fd, int attribute_num,
         return -1;
 
     control.id = attribute_num;
+    controls.ctrl_class = V4L2_CTRL_CLASS_USER;
+    controls.count = 1;
+    controls.controls = &ext_control;
+    ext_control.id = attribute_num;
 
-    if (ioctl (fd, VIDIOC_G_CTRL, &control) < 0)
-        goto ctrl_fail1;
-
-    *value = control.value;
-
-    return 0;
-
-ctrl_fail1:
-    {
-        struct v4l2_ext_controls controls;
-        struct v4l2_ext_control control;
-
-        controls.ctrl_class = V4L2_CTRL_CLASS_USER;
-        controls.count = 1;
-        controls.controls = &control;
-
-        control.id = attribute_num;
-
-        if (ioctl (fd, VIDIOC_G_EXT_CTRLS, &controls) < 0)
-            goto ctrl_fail2;
-
+    if (ioctl(fd, VIDIOC_G_CTRL, &control) == 0) {
         *value = control.value;
-
-        return 0;
-
+	return 0;
     }
 
-ctrl_fail2:
-    {
-        struct v4l2_ext_controls controls;
-        struct v4l2_ext_control control;
-
-        controls.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
-        controls.count = 1;
-        controls.controls = &control;
-
-        control.id = attribute_num;
-
-        if (ioctl (fd, VIDIOC_G_EXT_CTRLS, &controls) < 0)
-            goto ctrl_fail3;
-
-        *value = control.value;
-
-        return 0;
-
+    if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &controls) == 0) {
+        *value = ext_control.value;
+	return 0;
     }
 
-    /* ERRORS */
-ctrl_fail3:
-    {
-        LOGE ("Failed to get control %d on device '%d'.",
-                        attribute_num, fd);
-        return -1;
+    controls.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
+
+    if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &controls) == 0) {
+        *value = ext_control.value;
+	return 0;
     }
+
+    LOGE("Failed to get value for control %s (%d) on device '%d', %s\n.",
+         name, attribute_num, fd, strerror(errno));
+    return -1;
 }
 
 /******************************************************
@@ -3303,6 +3291,8 @@ int IntelCamera::atomisp_set_attribute (int fd, int attribute_num,
                                              const int value, const char *name)
 {
     struct v4l2_control control;
+    struct v4l2_ext_controls controls;
+    struct v4l2_ext_control ext_control;
 
     LOG1 ("setting attribute [%s] to %d\n", name, value);
 
@@ -3311,54 +3301,25 @@ int IntelCamera::atomisp_set_attribute (int fd, int attribute_num,
 
     control.id = attribute_num;
     control.value = value;
-    if (ioctl (fd, VIDIOC_S_CTRL, &control) < 0)
-        goto ctrl_fail1;
+    controls.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
+    controls.count = 1;
+    controls.controls = &ext_control;
+    ext_control.id = attribute_num;
+    ext_control.value = value;
 
-    return 0;
-
-ctrl_fail1:
-    {
-        struct v4l2_ext_controls controls;
-        struct v4l2_ext_control control;
-
-        controls.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
-        controls.count = 1;
-        controls.controls = &control;
-
-        control.id = attribute_num;
-        control.value = value;
-
-        if (ioctl (fd, VIDIOC_S_EXT_CTRLS, &controls) < 0)
-            goto ctrl_fail2;
-
+    if (ioctl(fd, VIDIOC_S_CTRL, &control) == 0)
         return 0;
-    }
 
-ctrl_fail2:
-    {
-        struct v4l2_ext_controls controls;
-        struct v4l2_ext_control control;
-
-        controls.ctrl_class = V4L2_CTRL_CLASS_USER;
-        controls.count = 1;
-        controls.controls = &control;
-
-        control.id = attribute_num;
-        control.value = value;
-
-        if (ioctl (fd, VIDIOC_S_EXT_CTRLS, &controls) < 0)
-            goto ctrl_fail3;
-
+    if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &controls) == 0)
         return 0;
-    }
 
-    /* ERRORS */
-ctrl_fail3:
-    {
-        LOGE("Failed to set value %d for control %d on device '%d', %s\n.",
-             value, attribute_num, fd, strerror (errno));
-        return -1;
-    }
+    controls.ctrl_class = V4L2_CTRL_CLASS_USER;
+    if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &controls) == 0)
+        return 0;
+
+    LOGE("Failed to set value %d for control %s (%d) on device '%d', %s\n.",
+         value, name, attribute_num, fd, strerror(errno));
+    return -1;
 }
 
 int IntelCamera::atomisp_get_de_config (int fd, struct atomisp_de_config *de_cfg)
@@ -3789,54 +3750,12 @@ int IntelCamera::atomisp_get_zoom (int fd, int *zoom)
     return atomisp_get_attribute (fd, V4L2_CID_ZOOM_ABSOLUTE, zoom, "Zoom");
 }
 
-int IntelCamera::atomisp_led_flash_off (int fd)
-{
-    return atomisp_set_attribute(fd, V4L2_CID_FLASH_TRIGGER, 0,
-                                 "led flash off");
-}
 
 int IntelCamera::atomisp_image_flip (int fd, int mode, int mflip)
 {
     int mflip_attribute_num = (mflip == FLIP_H) ? V4L2_CID_HFLIP : V4L2_CID_VFLIP;
     return atomisp_set_attribute(fd, mflip_attribute_num,
                                  mode, "image flip");
-}
-
-int IntelCamera::atomisp_led_flash_trigger (int fd,
-                                   int mode,
-                                   int duration_ms,
-                                   int percent_time_100)
-{
-    if (0 != atomisp_set_attribute(fd, V4L2_CID_FLASH_MODE,
-                                                  mode, "flash mode")) {
-        LOGE("Error to set flash strobe\n");
-    }
-
-    if (0 != atomisp_set_attribute(fd,V4L2_CID_FLASH_DURATION,
-                                              duration_ms, "flash duration")) {
-        LOGE("Error to set flash duration\n");
-    }
-    if (0 != atomisp_set_attribute(fd, V4L2_CID_FLASH_INTENSITY,
-                                      percent_time_100, "flash intesity")) {
-        LOGE("Error to set flash intensity\n");
-    }
-    if (0 != atomisp_set_attribute(fd, V4L2_CID_FLASH_TRIGGER,
-                                                  1, "flash trigger")) {
-        LOGE("Error to trigger flash on\n");
-    }
-    return 0;
-}
-
-int IntelCamera::atomisp_led_indicator_trigger (int fd, int percent_time_100)
-{
-    return atomisp_set_attribute(fd,V4L2_CID_INDICATOR_INTENSITY,
-                                 percent_time_100, "flash indicator intensity");
-}
-
-int IntelCamera::atomisp_led_assist_trigger (int fd, int percent_time_100)
-{
-    return atomisp_set_attribute(fd, V4L2_CID_TORCH_INTENSITY,
-                                  percent_time_100, "flash torch intesity");
 }
 
 int IntelCamera::atomisp_set_cfg_from_file(int fd)
