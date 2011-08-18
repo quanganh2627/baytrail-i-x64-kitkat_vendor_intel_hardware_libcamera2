@@ -1867,6 +1867,10 @@ int IntelCamera::set_zoom_val_real(int zoom)
         zoom = MIN_ZOOM_LEVEL;
     if (zoom > MAX_ZOOM_LEVEL)
         zoom = MAX_ZOOM_LEVEL;
+    //Map 8x to 56. The real effect is 64/(64 - zoom) in the driver.
+    //Max zoom is 60 because we only support 16x not 64x
+    if (zoom != 0)
+        zoom = 64 - (64 / (((zoom * 16 + 59)/ 60 )));
 
     LOG1("%s: set zoom to %d", __func__, zoom);
     return atomisp_set_zoom (main_fd, zoom);
