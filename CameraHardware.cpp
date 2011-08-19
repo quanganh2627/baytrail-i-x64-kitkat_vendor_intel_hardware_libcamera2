@@ -1263,12 +1263,7 @@ int CameraHardware::dvsThread()
         }
         if (mCamera->getDVS()) {
             LOG1("dvs, line:%d, read statistics from isp driver", __LINE__);
-            if(AAA_SUCCESS == mAAA->DisReadStatistics()) {
-                mAAA->DisProcess();
-                mAAA->SetDisVector();
-            } else {
-                LOG1("dvs, line:%d, read statistics fail", __LINE__);
-            }
+            mAAA->DvsProcess();
         } else {
             LOG1("dvs, line:%d, get DVS false in the dvsThread", __LINE__);
             return true;

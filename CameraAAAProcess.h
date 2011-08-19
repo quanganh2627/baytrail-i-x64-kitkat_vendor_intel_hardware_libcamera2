@@ -149,10 +149,7 @@ public:
 
     int AeAfAwbProcess(bool read_stats);
 
-    int DisReadStatistics(void);
-    void DisProcess(void);
-    void DisUpdateResults(void);
-    void SetDisVector(void);
+    void DvsProcess(void);
 
     void AfStillStart(void);
     void AfStillStop(void);
