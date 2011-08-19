@@ -69,7 +69,8 @@ CameraHardware::CameraHardware(int cameraId)
     mNotifyCb(0),
     mDataCb(0),
     mDataCbTimestamp(0),
-    awb_to_manual(false)
+    awb_to_manual(false),
+    mCanFlip(false)
 {
     int i, ret, camera_idx = -1;
 
@@ -2234,7 +2235,12 @@ BCHANDLE_ERR:
     burstCaptureStop();
     burstCaptureFreeMem();
     mCaptureInProgress = false;
+
+    //reset for sensor
+    resetFlip();
+
     return UNKNOWN_ERROR;
+
 }
 
 #define MAX_FRAME_WAIT 3
@@ -2250,6 +2256,9 @@ int CameraHardware::pictureThread()
 
     //Postview size should be smaller
     mCamera->setPostViewSize(pre_width>>1, pre_height>>1, V4L2_PIX_FMT_NV12);
+
+    //Set Flip for sensor
+    setFlip();
 
     // ToDo. abstract some functions for both single capture and burst capture.
     if (mBCEn) {
@@ -2338,19 +2347,6 @@ int CameraHardware::pictureThread()
 #ifdef PERFORMANCE_TUNING
         gettimeofday(&pic_thread_start,  0);
 #endif
-        //Set Flip for sensor
-        bool mCanFlip = false;
-        if(mCameraId == CAMERA_FACING_FRONT) {
-            int rotation = mParameters.getInt(CameraParameters::KEY_ROTATION);
-            if(rotation == 270 || rotation == 90)
-                mFlipMode = FLIP_V;
-            else
-                mFlipMode = FLIP_H;
-
-            mCanFlip = true;
-            mCamera->setSnapshotFlip(true, mFlipMode);
-        }
-
         //Prepare for the snapshot
         int fd;
         if ((fd = mCamera->startSnapshot()) < 0)
@@ -2435,9 +2431,7 @@ int CameraHardware::pictureThread()
         mCamera->enableIndicator(0);
 
         // Reset Flip for sensor
-        if(mCanFlip){
-            mCamera->setSnapshotFlip(false, mFlipMode);
-        }
+        resetFlip();
 
         //Stop the Camera Now
         mCamera->stopSnapshot();
@@ -3993,6 +3987,26 @@ int CameraHardware::SnapshotPostProcessing(void *img_data, int width, int height
     mAAA->DoRedeyeRemoval (img_data, img_size, width, height, mPicturePixelFormat);
 
     return 0;
+}
+
+void CameraHardware::setFlip(void)
+{
+    if(mCameraId == CAMERA_FACING_FRONT) {
+        int rotation = mParameters.getInt(CameraParameters::KEY_ROTATION);
+        if(rotation == 270 || rotation == 90)
+            mFlipMode = FLIP_V;
+        else
+            mFlipMode = FLIP_H;
+
+        mCanFlip = true;
+        mCamera->setSnapshotFlip(true,mFlipMode);
+    }
+}
+
+void CameraHardware::resetFlip(void)
+{
+    if(mCanFlip)
+        mCamera->setSnapshotFlip(false,mFlipMode);
 }
 
 void CameraHardware::setupPlatformType(void)

@@ -426,6 +426,10 @@ private:
     int mManualFocusPosi;
 
     int mFlipMode;
+    bool mCanFlip;
+
+    void setFlip(void); /*set flip for sensor*/
+    void resetFlip(void);   /*reset flip for sensor*/
 
     /*For Video FPS Ajust*/
     long mOutputFrmItvlMs;

@@ -2723,6 +2723,8 @@ int IntelCamera::v4l2_capture_request_buffers(int fd, int device, uint num_buffe
     int ret;
     CLEAR(req_buf);
 
+    if (fd < 0)
+        return 0;
     if (memory_userptr)
         req_buf.memory = V4L2_MEMORY_USERPTR;
     else
