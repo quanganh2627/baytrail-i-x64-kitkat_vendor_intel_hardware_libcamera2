@@ -3686,6 +3686,7 @@ int CameraHardware::setISPParameters(
 {
     const char *new_value, *set_value;
     int ret,ret2;
+    static int effect = old_params.getInt(CameraParameters::KEY_EFFECT);
 
     ret = ret2 = -1;
 
@@ -3694,7 +3695,6 @@ int CameraHardware::setISPParameters(
     mCamera->set_zoom_val(zoom);
     if (mSensorType == SENSOR_TYPE_RAW) {
         // Color Effect
-        int effect = old_params.getInt(CameraParameters::KEY_EFFECT);
         new_value = new_params.get(CameraParameters::KEY_EFFECT);
         set_value = old_params.get(CameraParameters::KEY_EFFECT);
         LOGD(" - effect = new \"%s\" (%d) / current \"%s\"",new_value, effect, set_value);
@@ -3815,7 +3815,7 @@ int CameraHardware::setISPParameters(
         LOGD(" - multi-access-color-correction = new \"%s\" (%d) / current \"%s\"",new_value, macc, set_value);
         if (strcmp(set_value, new_value) != 0) {
             if (!strcmp("enhance-none", new_value))
-                color = V4L2_COLORFX_NONE;
+                color = effect;
             else if (!strcmp("enhance-sky", new_value))
                 color = V4L2_COLORFX_SKY_BLUE;
             else if (!strcmp("enhance-grass", new_value))
