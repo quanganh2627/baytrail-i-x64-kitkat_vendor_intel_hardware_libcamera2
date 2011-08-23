@@ -264,8 +264,8 @@ void CameraHardware::initDefaultParameters()
 
     // Supported number of preview frames per second.
     p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES,"30,15,10");
-    p.set(CameraParameters::KEY_PREVIEW_FPS_RANGE,"15000,26623");
-    p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FPS_RANGE,"(10500,26623),(15000,26623),(30000,30000)");
+    p.set(CameraParameters::KEY_PREVIEW_FPS_RANGE,"10500,30304");
+    p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FPS_RANGE,"(10500,30304),(11000,30304),(11500,30304)");
 
     p.set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,CameraParameters::PIXEL_FORMAT_YUV420SP);
 
@@ -3636,6 +3636,16 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
         Mutex::Autolock lock(mRecordLock);
         mVideoPreviewEnabled = true; //viewfinder running in video mode
     }
+    //Zoom is a invalid value or not
+    int zoom = p.getInt(CameraParameters::KEY_ZOOM);
+    if(zoom > MAX_ZOOM_LEVEL || zoom < MIN_ZOOM_LEVEL)
+        return BAD_VALUE;
+
+    // preview fps range is a invalid value range or not
+    int min_fps,max_fps;
+    p.getPreviewFpsRange(&min_fps, &max_fps);
+    if(min_fps == max_fps || min_fps > max_fps)
+        return BAD_VALUE;
 
     // zoom is not supported in video mode for soc sensor.
     if (vfmode != 2 && mSensorType == SENSOR_TYPE_SOC)

@@ -925,15 +925,19 @@ int IntelCamera::getRecording(void **main_out, void **preview_out)
         return -1;
     }
 
-    int index1 = grabFrame_no_poll(V4L2_SECOND_DEVICE);
+    int index1 = 0;
+    if(!m_flag_camera_start[V4L2_SECOND_DEVICE])
+        LOGV("%s: camera is preview mode!",__func__);
+    else
+        index1 = grabFrame_no_poll(V4L2_SECOND_DEVICE);
     if (index1 < 0) {
         LOGE("%s error\n", __func__);
         return -1;
     }
 
-    if (index0 != index1) {
-        LOGE("%s error\n", __func__);
-        return -1;
+    if (index1 > 0 && index1 != index0) {
+            LOGE("%s error,index1 = %d, index2 = %d\n", __func__,index0,index1);
+            return -1;
     }
 
     *main_out = v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[index0].data;
@@ -1876,10 +1880,6 @@ void IntelCamera::setSnapshotFlip(int mode, int mflip)
     atomisp_image_flip (main_fd, mode, mflip);
 }
 
-//zoom range
-#define MAX_ZOOM_LEVEL	64
-#define MIN_ZOOM_LEVEL	0
-
 //Use flags to detern whether it is called from the snapshot
 int IntelCamera::set_zoom_val_real(int zoom)
 {
@@ -1888,10 +1888,6 @@ int IntelCamera::set_zoom_val_real(int zoom)
         return 0;
     }
 
-    if (zoom < MIN_ZOOM_LEVEL)
-        zoom = MIN_ZOOM_LEVEL;
-    if (zoom > MAX_ZOOM_LEVEL)
-        zoom = MAX_ZOOM_LEVEL;
     //Map 8x to 56. The real effect is 64/(64 - zoom) in the driver.
     //Max zoom is 60 because we only support 16x not 64x
     if (zoom != 0)
