@@ -209,13 +209,13 @@ static void write_image(const void *data, const int size, int width, int height,
 
     fp = fopen (filename, "w+");
     if (fp == NULL) {
-        LOGE ("open file %s failed %s\n", filename, strerror (errno));
+        LOGE ("open file %s failed %s", filename, strerror (errno));
         return ;
     }
 
-    LOG1 ("Begin write image %s\n", filename);
+    LOG1 ("Begin write image %s", filename);
     if ((bytes = fwrite (data, size, 1, fp)) < (size_t)size)
-        LOGW ("Write less bytes to %s: %d, %d\n", filename, size, bytes);
+        LOGW ("Write less bytes to %s: %d, %d", filename, size, bytes);
     count++;
 
     fclose (fp);
@@ -245,7 +245,7 @@ IntelCamera::IntelCamera()
  /*mAdvanceProcess(NULL),*/
      zoom_val(0)
 {
-    LOGV("%s() called!\n", __func__);
+    LOGV("%s() called!", __func__);
 
     m_camera_phy_id = DEFAULT_CAMERA_SENSOR;
     num_buffers = DEFAULT_NUM_BUFFERS;
@@ -269,12 +269,12 @@ IntelCamera::IntelCamera()
 
 IntelCamera::~IntelCamera()
 {
-    LOGV("%s() called!\n", __func__);
+    LOGV("%s() called!", __func__);
 
     // color converter
 }
 
-char * IntelCamera::getMaxSnapShotResolution()
+char* IntelCamera::getMaxSnapShotResolution()
 {
     int index = RESOLUTION_14MP;
 
@@ -314,7 +314,7 @@ int IntelCamera::initCamera(int camera_id, int camera_idx, int sensor_type, AAAP
                                 &m_snapshot_max_height,
                                 STILL_IMAGE_MODE);
     if (ret) {
-        LOGE("Faied to detect camera %d, resolution! Use default settings\n",
+        LOGE("Faied to detect camera %d, resolution! Use default settings",
              camera_id);
         switch (camera_id) {
         case CAMERA_FACING_FRONT:
@@ -326,12 +326,12 @@ int IntelCamera::initCamera(int camera_id, int camera_idx, int sensor_type, AAAP
             m_snapshot_max_height = MAX_BACK_CAMERA_SNAPSHOT_HEIGHT;
             break;
         default:
-            LOGE("ERR(%s)::Invalid camera id(%d)\n", __func__, camera_id);
+            LOGE("ERR(%s)::Invalid camera id(%d)", __func__, camera_id);
             return -1;
         }
     }
     else
-        LOGE("Camera %d Max-resolution detect: %dx%d\n", camera_id,
+        LOGD("Camera %d Max-resolution detect: %dx%d", camera_id,
             m_snapshot_max_width,
             m_snapshot_max_height);
 
@@ -353,7 +353,7 @@ int IntelCamera::initCamera(int camera_id, int camera_idx, int sensor_type, AAAP
         m_snapshot_height = 1920;
         break;
     default:
-        LOGE("ERR(%s)::Invalid camera id(%d)\n", __func__, camera_id);
+        LOGE("ERR(%s)::Invalid camera id(%d)", __func__, camera_id);
         return -1;
     }
 
@@ -460,7 +460,7 @@ int IntelCamera::deInitFileInput()
     int device = V4L2_THIRD_DEVICE;
 
     if (video_fds[device] < 0) {
-        LOGW("%s: Already closed\n", __func__);
+        LOGW("%s: Already closed", __func__);
         return 0;
     }
 
@@ -480,12 +480,12 @@ int IntelCamera::configureFileInput(const struct file_input *image)
     int buffer_count = 1;
 
     if (NULL == image) {
-        LOGE("%s, struct file_input NULL pointer\n", __func__);
+        LOGE("%s, struct file_input NULL pointer", __func__);
         return -1;
     }
 
     if (NULL == image->name) {
-        LOGE("%s, file_name NULL pointer\n", __func__);
+        LOGE("%s, file_name NULL pointer", __func__);
         return -1;
     }
 
@@ -521,7 +521,7 @@ int IntelCamera::configureFileInput(const struct file_input *image)
 //Preview Control
 int IntelCamera::startCameraPreview(void)
 {
-    LOG1("%s\n", __func__);
+    LOG1("%s", __func__);
     int ret;
     int w = m_preview_pad_width;
     int h = m_preview_height;
@@ -562,7 +562,7 @@ int IntelCamera::startCameraPreview(void)
 
 void IntelCamera::stopCameraPreview(void)
 {
-    LOG1("%s\n", __func__);
+    LOG1("%s", __func__);
     int device = V4L2_FIRST_DEVICE;
     if (!m_flag_camera_start[device]) {
         LOG1("%s: doing nothing because m_flag_camera_start is zero", __func__);
@@ -571,7 +571,7 @@ void IntelCamera::stopCameraPreview(void)
     int fd = video_fds[device];
 
     if (fd <= 0) {
-        LOGD("(%s):Camera was already closed\n", __func__);
+        LOGD("(%s):Camera was already closed", __func__);
         return ;
     }
 
@@ -584,7 +584,7 @@ int IntelCamera::getPreview(void **data, enum atomisp_frame_status *status)
     int index = grabFrame(device, status);
     if(index < 0)
     {
-        LOGE("%s error\n", __func__);
+        LOGE("%s error", __func__);
         return -1;
     }
     *data = v4l2_buf_pool[device].bufs[index].data;
@@ -603,10 +603,10 @@ int IntelCamera::putPreview(int index)
 void IntelCamera::checkGDC(void)
 {
     if (mGDCOn) {
-        LOGD("%s: GDC is enabled now\n", __func__);
+        LOGD("%s: GDC is enabled now", __func__);
         //Only enable GDC in still image capture mode and 14M
         if (atomisp_set_gdc(main_fd, true))
-            LOGE("Error setting gdc:%d, fd:%d\n", true, main_fd);
+            LOGE("Error setting gdc:%d, fd:%d", true, main_fd);
         else
             v4l2_set_isp_timeout(ATOMISP_FILEINPUT_POLL_TIMEOUT);
     }
@@ -614,7 +614,7 @@ void IntelCamera::checkGDC(void)
 
 int IntelCamera::startSnapshot(void)
 {
-    LOG1("%s\n", __func__);
+    LOG1("%s", __func__);
     int ret;
     run_mode = STILL_IMAGE_MODE;
     ret = openSecondDevice();
@@ -701,7 +701,7 @@ void IntelCamera::setPostviewNum(int num)
 
 int IntelCamera::putDualStreams(int index)
 {
-    LOG2("%s index %d\n", __func__, index);
+    LOG2("%s index %d", __func__, index);
     int ret0, ret1, device;
 
     device = V4L2_FIRST_DEVICE;
@@ -724,25 +724,25 @@ int IntelCamera::putDualStreams(int index)
 int IntelCamera::getSnapshot(void **main_out, void **postview,
                              void *postview_rgb565, enum atomisp_frame_status *status)
 {
-    LOG1("%s\n", __func__);
+    LOG1("%s", __func__);
 
     int index0 = grabFrame(V4L2_FIRST_DEVICE, status);
     if (index0 < 0) {
-        LOGE("%s error\n", __func__);
+        LOGE("%s error", __func__);
         return -1;
     }
 
     int index1 = grabFrame(V4L2_SECOND_DEVICE, NULL);
     if (index1 < 0) {
-        LOGE("%s error\n", __func__);
+        LOGE("%s error", __func__);
         return -1;
     }
     if (index0 != index1) {
-        LOGE("%s error, line:%d\n", __func__, __LINE__);
+        LOGE("%s error, line:%d", __func__, __LINE__);
         return -1;
     }
     if (index0 >= MAX_V4L2_BUFFERS) {
-        LOGE("%s error, line:%d\n", __func__, __LINE__);
+        LOGE("%s error, line:%d", __func__, __LINE__);
         return -1;
     }
 
@@ -772,7 +772,7 @@ int IntelCamera::getSnapshot(void **main_out, void **postview,
         if (MAP_FAILED == start)
                 LOGE("mmap failed");
         else {
-            printf("MMAP raw address from kerenl 0x%p\n", start);
+            printf("MMAP raw address from kerenl 0x%p", start);
         }
         write_image(start, length, buf->width, buf->height, "raw");
         if (-1 == munmap(start, PAGE_ALIGN(length)))
@@ -798,7 +798,7 @@ int IntelCamera::putSnapshot(int index)
 int IntelCamera::startCameraRecording(void)
 {
     int ret = 0;
-    LOG1("%s\n", __func__);
+    LOG1("%s", __func__);
     run_mode = VIDEO_RECORDING_MODE;
     ret = openSecondDevice();
     if (ret < 0)
@@ -835,7 +835,7 @@ int IntelCamera::startCameraRecording(void)
     if (mTnrOn != DEFAULT_TNR) {
         ret = atomisp_set_tnr(main_fd, mTnrOn);
         if (ret)
-            LOGE("Error setting xnr:%d, fd:%d\n", mTnrOn, main_fd);
+            LOGE("Error setting xnr:%d, fd:%d", mTnrOn, main_fd);
     }
 
     ret = startCapture(V4L2_FIRST_DEVICE, VIDEO_NUM_BUFFERS);
@@ -873,21 +873,21 @@ configure1_error:
 
 void IntelCamera::stopCameraRecording(void)
 {
-    LOG1("%s\n", __func__);
+    LOG1("%s", __func__);
 
     stopDualStreams();
 }
 
 void IntelCamera::stopDualStreams(void)
 {
-    LOG1("%s\n", __func__);
+    LOG1("%s", __func__);
     if (m_flag_camera_start == 0) {
         LOGD("%s: doing nothing because m_flag_camera_start is 0", __func__);
         return ;
     }
 
     if (main_fd <= 0) {
-        LOGW("%s:Camera was closed\n", __func__);
+        LOGW("%s:Camera was closed", __func__);
         return ;
     }
 
@@ -904,7 +904,7 @@ int IntelCamera::trimRecordingBuffer(void *buf)
                                    m_recorder_height);
     void *tmp_buffer = malloc(padding_size);
     if (tmp_buffer == NULL) {
-        LOGE("%s: Error to allocate memory \n", __func__);
+        LOGE("%s: Error to allocate memory ", __func__);
         return -1;
     }
     //The buf should bigger enougth to hold the extra padding
@@ -918,7 +918,7 @@ int IntelCamera::trimRecordingBuffer(void *buf)
 
 int IntelCamera::getRecording(void **main_out, void **preview_out)
 {
-    LOG2("%s\n", __func__);
+    LOG2("%s", __func__);
     int index0 = grabFrame_no_poll(V4L2_FIRST_DEVICE);
     if (index0 < 0) {
         LOGE("%s error\n", __func__);
@@ -3358,7 +3358,7 @@ int IntelCamera::atomisp_set_attribute (int fd, int attribute_num,
     if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &controls) == 0)
         return 0;
 
-    LOGE("Failed to set value %d for control %s (%d) on device '%d', %s\n.",
+    LOGE("Failed to set value %d for control %s (%d) on device '%d', %s",
          value, name, attribute_num, fd, strerror(errno));
     return -1;
 }
@@ -3581,12 +3581,12 @@ int IntelCamera::atomisp_set_blc (int fd, int on)
     int ret;
 
     if (on && current_status) {
-        LOG1("Black Level Compensation Already On\n");
+        LOG1("Black Level Compensation Already On");
         return 0;
     }
 
     if (!on && !current_status) {
-        LOG1("Black Level Composition Already Off\n");
+        LOG1("Black Level Composition Already Off");
         return 0;
     }
 
@@ -3600,7 +3600,7 @@ int IntelCamera::atomisp_set_blc (int fd, int on)
 
     if (on) {
         if (_xioctl (fd, ATOMISP_IOC_G_BLACK_LEVEL_COMP, &ob_off) < 0 ) {
-            LOG1("Error Get black level composition\n");
+            LOG1("Error Get black level composition");
             return -1;
         }
         if (ci_adv_cfg_file_loaded())
@@ -3618,13 +3618,13 @@ int IntelCamera::atomisp_set_blc (int fd, int on)
         }
         else {
             if (_xioctl (fd, ATOMISP_IOC_S_BLACK_LEVEL_COMP, &ob_on) < 0) {
-                LOG1("Error Set black level composition\n");
+                LOG1("Error Set black level composition");
                 return -1;
             }
         }
     } else {
         if (_xioctl (fd, ATOMISP_IOC_S_BLACK_LEVEL_COMP, &ob_off) < 0) {
-            LOG1("Error Set black level composition\n");
+            LOG1("Error Set black level composition");
             return -1;
         }
     }
@@ -3732,7 +3732,7 @@ int IntelCamera::atomisp_set_gdc (int fd, int on)
             on, "GDC");
     if (on) {
         if (ci_adv_cfg_file_loaded()) {
-            LOGD("%s: cfg file already loaded\n", __func__);
+            LOGD("%s: cfg file already loaded", __func__);
             ret = ci_adv_load_gdc_table();
             if (ret == 0)
                 return 0;
@@ -3871,7 +3871,7 @@ int IntelCamera::atomisp_parse_cfg_file()
 
     fp = fopen(CFG_PATH, "r");
     if (!fp) {
-        LOGE("Error open file:%s\n", CFG_PATH);
+        LOGE("Error open file:%s", CFG_PATH);
         return -1;
     }
     /* anaylize file item */
@@ -3880,14 +3880,14 @@ int IntelCamera::atomisp_parse_cfg_file()
         line_value = strchr(line, '=') + 1;
         param_index = find_cfg_index(line_name);
         if (param_index < 0) {
-            LOGE("Error index in line: %s.\n", line);
+            LOGE("Error index in line: %s", line);
             err = -1;
             continue;
         }
 
         res = analyze_cfg_value(param_index, line_value);
         if (res < 0) {
-            LOGE("Error value in line: %s.\n", line);
+            LOGE("Error value in line: %s", line);
             err = -1;
             continue;
         }
@@ -3905,7 +3905,7 @@ int IntelCamera::atomisp_set_cfg(int fd)
     unsigned int value;
 
     if (default_function_value_list[SWITCH] == FUNC_OFF) {
-        LOGD("Does not using the configuration file.\n");
+        LOGD("Does not using the configuration file");
         return 0;
     }
 
@@ -3934,15 +3934,15 @@ int IntelCamera::atomisp_set_cfg(int fd)
                         V4L2_COLORFX_NONE);
                     break;
                 }
-                LOGD("macc:%s.\n", FunctionOption_Macc[value]);
+                LOGD("macc:%s", FunctionOption_Macc[value]);
                 break;
             case SC:
-                LOGD("sc:%s.\n", FunctionOption_General[value]);
+                LOGD("sc:%s", FunctionOption_General[value]);
                 if(value != FUNC_OFF)
                     err |= atomisp_set_sc(fd, value);
                 break;
             case IE:
-                LOGD("ie:%s.\n", FunctionOption_Ie[value]);
+                LOGD("ie:%s", FunctionOption_Ie[value]);
                 switch (value) {
                 case IE_MONO:
                     err |= atomisp_set_tone_mode(fd,
@@ -3961,7 +3961,7 @@ int IntelCamera::atomisp_set_cfg(int fd)
                 break;
             case GAMMA:
                 //Fix Me! Add setting gamma table here
-                LOGD("gamma:%s.\n", FunctionOption_General[value]);
+                LOGD("gamma:%s", FunctionOption_General[value]);
                 if(value != FUNC_OFF)
                     err |= atomisp_set_gamma_from_value(fd, DEFAULT_GAMMA_VALUE,
                                                         DEFAULT_CONTRAST,
@@ -3969,70 +3969,70 @@ int IntelCamera::atomisp_set_cfg(int fd)
                                                         !!DEFAULT_INV_GAMMA);
                 break;
             case BPC:
-                LOGD("bpc:%s.\n", FunctionOption_General[value]);
+                LOGD("bpc:%s", FunctionOption_General[value]);
                 if(value != FUNC_OFF)
                     err |= atomisp_set_bpd(fd, value);
                 break;
             case FPN:
-                LOGD("fpn:%s.\n", FunctionOption_General[value]);
+                LOGD("fpn:%s", FunctionOption_General[value]);
                 if(value != FUNC_OFF)
                     err |= atomisp_set_fpn(fd, value);
                 break;
             case BLC:
-                LOGD("blc:%s.\n", FunctionOption_General[value]);
+                LOGD("blc:%s", FunctionOption_General[value]);
                 if(value != FUNC_OFF)
                     err |= atomisp_set_blc(fd, value);
                 break;
             case EE:
-                LOGD("ee:%s.\n", FunctionOption_General[value]);
+                LOGD("ee:%s", FunctionOption_General[value]);
                 if(value != FUNC_OFF)
                     err |= atomisp_set_ee(fd, value);
                 break;
             case NR:
-                LOGD("nr:%s.\n", FunctionOption_General[value]);
+                LOGD("nr:%s", FunctionOption_General[value]);
                 if(value != FUNC_OFF) {
                     err |= atomisp_set_bnr(fd, value);
                     err |= atomisp_set_ynr(fd, value);
                 }
                 break;
             case XNR:
-                LOGD("xnr:%s.\n", FunctionOption_General[value]);
+                LOGD("xnr:%s", FunctionOption_General[value]);
                 if(value != FUNC_OFF)
                     err |= atomisp_set_xnr(fd, value);
                 break;
             case BAYERDS:
-                LOGD("bayer-ds:%s.\n", FunctionOption_General[value]);
+                LOGD("bayer-ds:%s", FunctionOption_General[value]);
                 //Needed added new interface
                 break;
             case ZOOM:
-                LOGD("zoom:%d.\n", value);
+                LOGD("zoom:%d", value);
                 if(value != 0)
                     err |= atomisp_set_zoom(fd, value);
                 break;
             case MF:
-                LOGD("mf:%d.\n", value);
+                LOGD("mf:%d", value);
                 if(value != 0)
                     err |= atomisp_set_focus_posi(fd, value);
                 break;
             case MWB:
-                LOGD("mwb:%d.\n", value);
+                LOGD("mwb:%d", value);
                 //Fix Me! Add 3A Lib interface here
                 break;
             case ISO:
-                LOGD("iso:%d.\n", value);
+                LOGD("iso:%d", value);
                 //Fix Me! Add implementatino here
                 break;
             case DIS:
-                LOGD("dis:%s.\n", FunctionOption_General[value]);
+                LOGD("dis:%s", FunctionOption_General[value]);
                 //Fix Me! Add setting DIS Interface
                 break;
             case DVS:
-                LOGD("dvs:%s.\n", FunctionOption_General[value]);
+                LOGD("dvs:%s", FunctionOption_General[value]);
                 if(value != 0)
                     err |= atomisp_set_dvs(fd, value);
                 break;
             case REDEYE:
-                LOGD("red-eye:%s.\n", FunctionOption_General[value]);
+                LOGD("red-eye:%s", FunctionOption_General[value]);
                 //Fix Me! Add red-eye interface here
                 break;
             default:

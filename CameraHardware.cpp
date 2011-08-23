@@ -710,7 +710,7 @@ int CameraHardware::previewThread()
     processPreviewFrame(data);
 
     //Qbuf
-    if (!mExitPreviewThread) {
+    if (!mExitPreviewThread && mPreviewRunning) {
         mPreviewLock.lock();
         mCamera->putPreview(index);
         mPreviewLock.unlock();
@@ -798,7 +798,7 @@ int CameraHardware::recordingThread()
 
         LOG1("%s:OFT: %ld, index:%d", "INPUT", mVideoTimeOut, mVideoIndex);
 
-        if (!mExitPreviewThread) {
+        if (!mExitPreviewThread && mPreviewRunning) {
             mPreviewLock.lock();
             mCamera->putRecording(mVideoIndex);
             mPreviewLock.unlock();
@@ -3554,7 +3554,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     if (strcmp(new_format, "jpeg") == 0)
         mPicturePixelFormat = mHwJpegBufferShareEn ? V4L2_PIX_FMT_NV12 : V4L2_PIX_FMT_YUV420;
     else {
-        LOGE("Only jpeg still pictures are supported, new_format:%s", new_format);
+        LOGD("Only jpeg still pictures are supported, new_format:%s", new_format);
     }
 
     LOGD(" - Picture pixel format = new \"%s\"", new_format);
