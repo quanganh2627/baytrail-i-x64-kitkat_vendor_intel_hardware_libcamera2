@@ -189,7 +189,6 @@ private:
         }
     };
 
-    void stopPreviewThread(void);
     void setSkipFrame(int frame);
     void setSkipSnapFrame(int frame);
 

@@ -1009,7 +1009,7 @@ status_t CameraHardware::startPreview()
     return NO_ERROR;
 }
 
-void CameraHardware::stopPreviewThread(void)
+void CameraHardware::stopPreview(void)
 {
     LOG1("%s :", __func__);
     // request that the preview thread stop.
@@ -1039,11 +1039,7 @@ void CameraHardware::stopPreviewThread(void)
     }
     //Tell preview to stop
     mPreviewRunning = false;
-}
 
-void CameraHardware::stopPreview()
-{
-    stopPreviewThread();
     mPreviewLock.lock();
     if(mVideoPreviewEnabled) {
         mCamera->stopCameraRecording();
@@ -1880,7 +1876,7 @@ int CameraHardware::compressThread()
             // post sem to let the picture thread to send the jpeg pic out
             if ((ret = sem_post(&sem_bc_encoded)) < 0)
                 LOGE("BC, line:%d, sem_post fail, ret:%d", __LINE__, ret);
-            LOGD("BC, line:%d, encode:%d finished, sem_post", __LINE__, i);
+            LOG1("BC, line:%d, encode:%d finished, sem_post", __LINE__, i);
         }
 
         if (i == mBCNumReq) {
@@ -2027,6 +2023,8 @@ int CameraHardware::burstCaptureStart(void)
 {
     int ret;
     ret = mCamera->startSnapshot();
+    if (ret < 0)
+        return ret;
     update3Aresults();
     mBCDeviceState = (ret < 0) ? false : true;
     return ret;
@@ -2188,7 +2186,7 @@ int CameraHardware::burstCaptureHandle(void)
                 int mPostviewId = 0;
                 memcpy(mRawIdHeap->base(), &mPostviewId, sizeof(int));
                 mDataCb(CAMERA_MSG_POSTVIEW_FRAME, mRawIdBase, mCallbackCookie);
-                LOGD("Sent postview frame id: %d", mPostviewId);
+                LOG1("Sent postview frame id: %d", mPostviewId);
             } else {
                 /* TODO: YUV420->RGB565 */
                 sp<MemoryBase> pv_buffer = new MemoryBase(mRawHeap, 0, mPostViewSize);
@@ -2252,11 +2250,10 @@ BCHANDLE_ERR:
     burstCaptureFreeMem();
     mCaptureInProgress = false;
 
-    //reset for sensor
-    resetFlip();
+    mNotifyCb(CAMERA_MSG_ERROR, CAMERA_ERROR_UKNOWN, 0, mCallbackCookie);
+    LOGE("%s :end", __func__);
 
     return UNKNOWN_ERROR;
-
 }
 
 #define MAX_FRAME_WAIT 3
@@ -2654,7 +2651,6 @@ status_t CameraHardware::takePicture()
     gettimeofday(&picture_start, 0);
 #endif
     disableMsgType(CAMERA_MSG_PREVIEW_FRAME);
-    stopPreviewThread();
     if (mFlashNecessary)
         runPreFlashSequence();
     stopPreview();
