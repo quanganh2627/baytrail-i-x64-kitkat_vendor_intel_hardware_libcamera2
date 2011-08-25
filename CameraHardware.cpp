@@ -3426,7 +3426,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     p.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH, new_thumbnail_w);
     p.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT,new_thumbnail_h);
     //Video recording
-    int vfmode = 2;
+    int vfmode = 1;
 	LOG1("vfmode %d",vfmode);
     int mVideoFormat = V4L2_PIX_FMT_NV12;
     //Deternmine the current viewfinder MODE.
@@ -3815,16 +3815,16 @@ void CameraHardware::setupPlatformType(void)
 static int HAL_cameraType[MAX_CAMERAS];
 static CameraInfo HAL_cameraInfo[MAX_CAMERAS] = {
     {
+        CAMERA_FACING_FRONT,
+        270,  /* default orientation, we will modify it at other place, ToDo */
+    },
+    {
         CAMERA_FACING_BACK,
 #ifdef MFLD_CDK
         270,  /* default orientation, we will modify it at other place, ToDo */
 #else
-        90,
+        270,
 #endif
-    },
-    {
-        CAMERA_FACING_FRONT,
-        270,  /* default orientation, we will modify it at other place, ToDo */
     }
 };
 
