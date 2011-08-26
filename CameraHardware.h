@@ -236,7 +236,7 @@ private:
 
     bool mFlush3A;
 
-    static const int    kBufferCount = 7;
+    static const int    kBufferCount = 4;
     static const int    mAFMaxFrames = 20;
 
     struct frame_buffer {
@@ -434,15 +434,6 @@ private:
 
     void setFlip(void); /*set flip for sensor*/
     void resetFlip(void);   /*reset flip for sensor*/
-
-    /*For Video FPS Ajust*/
-    long mOutputFrmItvlMs;
-    long mVideoTimeOut;
-    long mVideoInTValMs;
-    long mVideoOutTValMs;
-    void *mVideoMainPtr, *mVideoPreviewPtr;
-    int mVideoIndex;
-    int mVideoTimerInited;
 };
 
 }; // namespace android

@@ -38,9 +38,9 @@
 #define STILL_IMAGE_MODE        1
 #define VIDEO_RECORDING_MODE      2
 
-#define PREVIEW_NUM_BUFFERS 7
+#define PREVIEW_NUM_BUFFERS 4
 #define SNAPSHOT_MAX_NUM_BUFFERS 32 // kernel driver's limitation
-#define VIDEO_NUM_BUFFERS   7
+#define VIDEO_NUM_BUFFERS   4
 
 #define MAX_V4L2_BUFFERS    SNAPSHOT_MAX_NUM_BUFFERS
 
@@ -80,7 +80,6 @@
 #define DEFAULT_INV_GAMMA           0
 #define DEFAULT_SENSOR_FPS      15.0
 #define FOCUS_CANCELLED   2
-#define DEFAULT_OUT_FRM_INTVAL_MS		33	/*Default Output FPS is 30*/
 
 #define TORCH_INTENSITY        20 /* 20% */
 #define INDICATOR_INTENSITY    20 /* 20% */
