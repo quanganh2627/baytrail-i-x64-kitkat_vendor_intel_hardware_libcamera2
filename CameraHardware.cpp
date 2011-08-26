@@ -3862,8 +3862,13 @@ void CameraHardware::runPreFlashSequence(void)
     int index, cnt = 0;
     void *data;
     enum atomisp_frame_status status;
+    int cur_ae_mode;
 
-    mAAA->SetAeEnabled(true);
+    mAAA->AeGetMode (&cur_ae_mode);
+    if (cur_ae_mode == CAM_AE_MODE_MANUAL)
+        mAAA->SetAeEnabled(false);
+    else
+        mAAA->SetAeEnabled(true);
     mAAA->SetAwbEnabled(true);
 
     // Stage 1
