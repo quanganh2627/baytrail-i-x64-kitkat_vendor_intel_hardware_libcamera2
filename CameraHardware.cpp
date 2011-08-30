@@ -206,7 +206,7 @@ void CameraHardware::initDefaultParameters()
     else
         p.setPreviewFrameRate(15);
 
-    p.setPreviewFormat(CameraParameters::PIXEL_FORMAT_RGB565);
+    p.setPreviewFormat(CameraParameters::PIXEL_FORMAT_YUV420SP);
 
     p.setPictureFormat(CameraParameters::PIXEL_FORMAT_JPEG);
     p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, "yuv420sp,rgb565,yuv422i-yuyv");
@@ -383,6 +383,8 @@ void CameraHardware::initPreviewBuffer(int size)
         mRawIdBase = new MemoryBase(mRawIdHeap, 0, sizeof(int));
         mFrameIdHeap = new MemoryHeapBase(sizeof(int));
         mFrameIdBase = new MemoryBase(mFrameIdHeap, 0, sizeof(int));
+        mPreviewConvertHeap = new MemoryHeapBase(size_aligned * 4 /3);
+        mPreviewConvertBase = new MemoryBase(mPreviewConvertHeap, 0, size_aligned * 4 /3);
 
         for (int i = 0; i < kBufferCount; i++) {
             mPreviewBuffer.flags[i] = 0;
@@ -412,6 +414,8 @@ void CameraHardware::deInitPreviewBuffer()
     mRawIdHeap.clear();
     mFrameIdBase.clear();
     mFrameIdHeap.clear();
+    mPreviewConvertHeap.clear();
+    mPreviewConvertBase.clear();
     mPreviewWindow = NULL;
 }
 
@@ -590,8 +594,13 @@ void CameraHardware::processPreviewFrame(void *buffer)
                     GraphicBufferMapper &mapper = GraphicBufferMapper::get();
                     Rect bounds(preview_width, preview_height);
                     void *dst;
+                    mCamera->toRGB565(preview_width,
+                                      preview_height,V4L2_PIX_FMT_NV12,
+                                      (unsigned char *) mPreviewBuffer.start[postPreviewFrame],
+                                      (unsigned char *) mPreviewConvertHeap->getBase());
+
                     mapper.lock(buf->handle, GRALLOC_USAGE_SW_WRITE_OFTEN, bounds, &dst);
-                    memcpy(dst, mPreviewBuffer.start[postPreviewFrame], mPreviewFrameSize);
+                    memcpy(dst, mPreviewConvertHeap->getBase(), mPreviewFrameSize * 4 / 3);
                     mapper.unlock(buf->handle);
 
                     if ((err = mPreviewWindow->queueBuffer(mPreviewWindow.get(), buf)) != 0) {
