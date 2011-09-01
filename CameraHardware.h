@@ -256,6 +256,8 @@ private:
     sp<MemoryBase>      mUserptrBase[kBufferCount];
     sp<MemoryHeapBase>  mPreviewConvertHeap;
     sp<MemoryBase>      mPreviewConvertBase;
+    sp<MemoryHeapBase>  mRecordConvertHeap;
+    sp<MemoryBase>      mRecordConvertBase;
 
     sp<ANativeWindow>   mPreviewWindow;
     int 		mCameraId;

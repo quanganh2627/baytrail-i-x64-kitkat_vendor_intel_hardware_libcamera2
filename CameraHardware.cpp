@@ -489,6 +489,8 @@ void CameraHardware::initRecordingBuffer(int size, int padded_size)
 
     }
     mRecorderFrameSize = size;
+    mRecordConvertHeap = new MemoryHeapBase(size);
+    mRecordConvertBase = new MemoryBase(mRecordConvertHeap, 0, size);
 
     if (memory_userptr)
         for (int i = 0; i < kBufferCount; i++)
@@ -507,6 +509,8 @@ void CameraHardware::deInitRecordingBuffer()
         mRecordingBuffer.heap.clear();
         mUserptrHeap.clear();
     }
+    mRecordConvertHeap.clear();
+    mRecordConvertBase.clear();
 }
 
 sp<IMemoryHeap> CameraHardware::getPreviewHeap() const
@@ -625,8 +629,7 @@ void CameraHardware::processRecordingFrame(void *buffer, int index)
             setBF(&mRecordingBuffer.flags[recordingFrame], BF_LOCKED);
 #if ENABLE_BUFFER_SHARE_MODE
 #else
-            memcpy(mRecordingBuffer.start[recordingFrame], buffer,
-                   mRecorderFrameSize);
+            memcpy(mRecordConvertHeap->getBase(), buffer, mRecorderFrameSize);
 #endif
             clrBF(&mRecordingBuffer.flags[recordingFrame], BF_LOCKED);
             setBF(&mRecordingBuffer.flags[recordingFrame],BF_ENABLED);
@@ -650,7 +653,7 @@ void CameraHardware::processRecordingFrame(void *buffer, int index)
                              mUserptrBase[postRecordingFrame], mCallbackCookie);
 #else
             mDataCbTimestamp(timestamp, CAMERA_MSG_VIDEO_FRAME,
-                         mRecordingBuffer.base[postRecordingFrame], mCallbackCookie);
+                         mRecordConvertBase, mCallbackCookie);
 #endif
             LOG2("Sending the recording frame, size %d, index %d/%d\n",
                  mRecorderFrameSize, postRecordingFrame, kBufferCount);
@@ -703,7 +706,7 @@ int CameraHardware::previewThread()
 int CameraHardware::recordingThread()
 {
     void *main_out, *preview_out;
-    bool bufferIsReady = false;
+    bool bufferIsReady = true;
     //Check the buffer sharing
 
 #if ENABLE_BUFFER_SHARE_MODE

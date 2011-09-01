@@ -5,7 +5,7 @@ ifeq ($(TARGET_DEVICE), mfld_dv09)
 # libcamera
 #
 
-ENABLE_BUFFER_SHARE_MODE := true
+ENABLE_BUFFER_SHARE_MODE := false
 ENABLE_HWLIBJPEG_BUFFER_SHARE :=true
 
 LOCAL_PATH := $(call my-dir)
