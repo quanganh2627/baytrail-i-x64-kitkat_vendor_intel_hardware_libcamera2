@@ -3810,12 +3810,12 @@ void CameraHardware::setupPlatformType(void)
             camera_info[i].platform = MFLD_PR2_PLATFORM;
             camera_info[i].type = ci_adv_sensor_liteon_8m;
             mPreviewSkipFrame = 1;
-            mSnapshotSkipFrame = 1;
+            mSnapshotSkipFrame = 2;
         } else if (!strcmp(camera_info[i].name, PR2_SECOND_SENSOR_NAME)) {
             camera_info[i].platform = MFLD_PR2_PLATFORM;
             camera_info[i].type = ci_adv_sensor_soc;
             mPreviewSkipFrame = 1;
-            mSnapshotSkipFrame = 1;
+            mSnapshotSkipFrame = 2;
         } else
             LOGE("%s: Unknow platform", __func__);
     }
@@ -3832,11 +3832,7 @@ static CameraInfo HAL_cameraInfo[MAX_CAMERAS] = {
     },
     {
         CAMERA_FACING_BACK,
-#ifdef MFLD_CDK
-        270,  /* default orientation, we will modify it at other place, ToDo */
-#else
         270,
-#endif
     }
 };
 

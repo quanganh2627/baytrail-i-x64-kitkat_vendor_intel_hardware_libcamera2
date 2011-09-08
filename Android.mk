@@ -6,7 +6,7 @@ ifeq ($(TARGET_DEVICE), mfld_dv09)
 #
 
 ENABLE_BUFFER_SHARE_MODE := false
-ENABLE_HWLIBJPEG_BUFFER_SHARE :=true
+ENABLE_HWLIBJPEG_BUFFER_SHARE := false
 
 LOCAL_PATH := $(call my-dir)
 
