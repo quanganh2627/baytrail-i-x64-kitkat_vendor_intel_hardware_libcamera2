@@ -2198,7 +2198,7 @@ BCHANDLE_ERR:
     burstCaptureFreeMem();
     mCaptureInProgress = false;
 
-    mNotifyCb(CAMERA_MSG_ERROR, CAMERA_ERROR_UKNOWN, 0, mCallbackCookie);
+    mNotifyCb(CAMERA_MSG_ERROR, CAMERA_ERROR_UNKNOWN, 0, mCallbackCookie);
     LOGE("%s :end", __func__);
 
     return UNKNOWN_ERROR;
@@ -2260,7 +2260,7 @@ int CameraHardware::pictureThread()
     void *pthumbnail;   // first save RGB565 data, then save jpeg encoded data into this pointer
 #ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
     HWLibjpegWrap libjpghw;
-    void* usrptr=NULL;
+    void* usrptr[1];//you can set usrptr[num] in order to get num usrptr
     bool bHwEncodepath=TRUE;
     //Although enable hwlibjpeg buffer share, if picture resolution is below 640*480, we have to go software path
     if(V4L2_PIX_FMT_YUV420 == mPicturePixelFormat)
@@ -2288,18 +2288,18 @@ int CameraHardware::pictureThread()
 #ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
         if(bHwEncodepath){
             //initialize buffer share with hardware libjpeg
-            if(libjpghw.initHwBufferShare((JSAMPLE *)pmainimage,capsize_aligned,cap_width,cap_height,(void**)&usrptr) != 0){
+            if(libjpghw.initHwBufferShare((JSAMPLE *)pmainimage,capsize_aligned,cap_width,cap_height,(void**)usrptr,1) != 0){
                 LOGD("%s- initHwBufferShare Fail!",__func__);
                 goto start_error_out;
             }
         }
         else
-            usrptr =  pmainimage ;//software path, we have to set usrptr to memory allocated in camera hal
+            usrptr[0] =  pmainimage ;//software path, we have to set usrptr to memory allocated in camera hal
 #endif
 
         if (memory_userptr) {
 #ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
-            mCamera->setSnapshotUserptr(0,usrptr, mRawHeap->getBase());
+            mCamera->setSnapshotUserptr(0,usrptr[0], mRawHeap->getBase());
 #else
             mCamera->setSnapshotUserptr(0, pmainimage, mRawHeap->getBase());
 #endif
@@ -2365,7 +2365,7 @@ int CameraHardware::pictureThread()
 
         if (!memory_userptr) {
 #ifdef ENABLE_HWLIBJPEG_BUFFER_SHARE
-            memcpy(usrptr, main_out, cap_frame_size);
+            memcpy(usrptr[0], main_out, cap_frame_size);
 #else
             memcpy(pmainimage, main_out, rgb_frame_size);
 #endif
@@ -2435,7 +2435,11 @@ int CameraHardware::pictureThread()
             if(bHwEncodepath){
                 //set parameter for jpeg encode
                 libjpghw.setJpeginfo(cap_width,cap_height,3,JCS_YCbCr,main_quality);
-                if(libjpghw.startJPEGEncodebyHwBufferShare() != 0){
+                if(libjpghw.preStartJPEGEncodebyHwBufferShare() != 0){
+                    LOGD("%s- preStartJPEGEncodebyHwBufferShare fail !",__func__);
+                    goto get_img_error;
+                }
+                if(libjpghw.startJPEGEncodebyHwBufferShare(usrptr[0]) != 0){
                       LOGD("%s- jpeg_destroy_compress done !",__func__);
                       goto get_img_error;
                 }

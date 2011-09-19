@@ -19,8 +19,8 @@ HWLibjpegWrap::HWLibjpegWrap() {
     memset(&mJerr , 0, sizeof(mJerr));
     memset(&mDest , 0, sizeof(mDest));
     mJpegsize = 0;
-    mUsrptr = NULL;
     mJpegQuality = 0;
+    mFlagInit=false;
 }
 
 /*
@@ -33,7 +33,10 @@ return:
   none
 */
 HWLibjpegWrap::~HWLibjpegWrap() {
-
+    if(mFlagInit){
+        //initialization successfully , we need to release resource in destructor
+        jpeg_destroy_compress(&mCinfo);
+    }
 }
 
 /*
@@ -44,21 +47,23 @@ Param:
     jpegbuf_size - size of jpegbuf
     width - jpeg picture width
     height - jpeg picture height
-    usrptr - user pointer for share buffer as output
+    usrptr - user pointer array for share buffer as output
+    usrptr_size - user pointer array size
 Return:
    0 - successfully
    -1 - fail
 */
-int HWLibjpegWrap::initHwBufferShare(JSAMPLE *jpegbuf, int jpegbuf_size,int width,int height,void** usrptr) {
-    if(NULL == jpegbuf || jpegbuf_size <= 0 || width <=0 || height <=0 || NULL == usrptr) {
+int HWLibjpegWrap::initHwBufferShare(JSAMPLE *jpegbuf, int jpegbuf_size,int width,int height,void** usrptr,int usrptr_size) {
+    if(NULL == jpegbuf || jpegbuf_size <= 0 || width <=0 || height <=0 || NULL == usrptr || usrptr_size <= 0) {
         LOGE("%s - parameter error !",__func__);
         return -1;
     }
+    if(mFlagInit)//already inilialized, just return successfully
+        return 0;
 #ifdef HWLIBJPEG_TIME_MEASURE
     gettimeofday(&hw_start, 0);
 #endif
     //initialize hw libjpeg
-    mUsrptr = NULL;
     mJpegsize = 0;
     memset(&mCinfo , 0, sizeof(mCinfo));
     mCinfo.err = jpeg_std_error(&mJerr);
@@ -69,33 +74,36 @@ int HWLibjpegWrap::initHwBufferShare(JSAMPLE *jpegbuf, int jpegbuf_size,int widt
         jpeg_destroy_compress(&mCinfo);
         return -1;
     }
-    //LOGD("%s- jpeg_get_new_userptr_for_surface_buffer done !",__func__);
-    if(NULL == *usrptr) {
-        LOGD("%s- NULL == *usrptr",__func__);
-        jpeg_destroy_compress(&mCinfo);
-        return -1;
+    int index;
+    for(index=0;index<usrptr_size;index++){
+        if(NULL == usrptr[index]) {
+            LOGD("%s- NULL == usrptr[%d]",__func__,index);
+            jpeg_destroy_compress(&mCinfo);
+            return -1;
+        }
     }
-    mUsrptr = *usrptr;
+    //LOGD("%s- jpeg_get_new_userptr_for_surface_buffer done !",__func__);
 #ifdef HWLIBJPEG_TIME_MEASURE
     gettimeofday(&hw_end, 0);
     LOGD("%s time - %d ms",__func__,(hw_end.tv_sec-hw_start.tv_sec)*1000+(hw_end.tv_usec-hw_start.tv_usec)/1000);
 #endif
-
+    mFlagInit=true;
     return 0;
 }
 
 /*
-Function: startJPEGEncodebyHwBufferShare
-Description: start jpeg encode with buffer share enable by hwlibjpeg, initHwBufferShare should be
-called & related property should be set before it.
+Function: preStartJPEGEncodebyHwBufferShare
+Description: Do some preparation before start jpeg encode with buffer share enable by hwlibjpeg,
+initHwBufferShare & setJpeginfo should be called & related property should be set before it.
+It can not be called multi-times.
 Param:
    none
 Return:
    0 - successfully
    -1 - fail
 */
-int HWLibjpegWrap::startJPEGEncodebyHwBufferShare() {
-    if(NULL == mUsrptr)// initHwBufferShare not successfully , return error
+int HWLibjpegWrap::preStartJPEGEncodebyHwBufferShare(){
+    if(!mFlagInit)// initHwBufferShare not successfully , return error
         return -1;
     jpeg_set_defaults(&mCinfo);
     jpeg_set_colorspace(&mCinfo,JCS_YCbCr);
@@ -106,6 +114,12 @@ int HWLibjpegWrap::startJPEGEncodebyHwBufferShare() {
     LOGD("%s- jpeg parameters setting done !",__func__);
     gettimeofday(&hw_start, 0);
 #endif
+    mCinfo.comp_info[0].h_samp_factor =
+    mCinfo.comp_info[0].v_samp_factor = 2;
+    mCinfo.comp_info[1].h_samp_factor =
+    mCinfo.comp_info[1].v_samp_factor =
+    mCinfo.comp_info[2].h_samp_factor =
+    mCinfo.comp_info[2].v_samp_factor = 1;
     jpeg_start_compress(&mCinfo, TRUE );
 #ifdef HWLIBJPEG_TIME_MEASURE
     gettimeofday(&hw_end, 0);
@@ -113,6 +127,45 @@ int HWLibjpegWrap::startJPEGEncodebyHwBufferShare() {
     LOGD("jpeg_start_compress time - %d ms",(hw_end.tv_sec-hw_start.tv_sec)*1000+(hw_end.tv_usec-hw_start.tv_usec)/1000);
 #endif
 
+    return 0;
+}
+
+/*
+Function: startJPEGEncodebyHwBufferShare
+Description: start jpeg encode with buffer share enable by hwlibjpeg, preStartJPEGEncodebyHwBufferShare should be
+called before it. It can be called multi-times for different usrptr input.
+Param:
+   void* usrptr - nv12 data usr pointer
+Return:
+   0 - successfully
+   -1 - fail
+*/
+int HWLibjpegWrap::startJPEGEncodebyHwBufferShare(void* usrptr) {
+    if(NULL == usrptr || NULL == mCinfo.dest )
+        return -1;
+    if(mJpegsize > 0){
+        //The standard libjpeg api call flow is : jpeg_start_compress -> jpeg_write_raw_data -> jpeg_finish_compress
+        //In order to use buffer share of hwlibjpeg in burst mode, we break the standard api call flow to jpeg_write_raw_data -> jpeg_finish_compress,
+        //so we have to move init_destination logic to clean output buffer for new jpeg data written to output buffer here
+        //which should be called by jpeg_start_compress in standard flow.
+        jpeg_destmgr_ptr dest;
+        dest = (jpeg_destmgr_ptr) mCinfo.dest;
+        dest->outjpegbufpos = dest->outjpegbuf;/*set JPEG encode data start position in output buffer*/
+        dest->pub.next_output_byte = dest->encodeblock;/*set next JPEG encode data output */
+        dest->pub.free_in_buffer = HWLibjpegWrap::default_block_size;/*set size of next JPEG encode data output */
+        *(dest->datacount)=0;
+        mJpegsize = 0;
+        //LOGD("%s- output buffer clean done !",__func__);
+    }
+#ifdef HWLIBJPEG_TIME_MEASURE
+    gettimeofday(&hw_start, 0);
+#endif
+    jpeg_write_raw_data(&mCinfo,(JSAMPIMAGE)usrptr,mCinfo.image_height);
+#ifdef HWLIBJPEG_TIME_MEASURE
+    gettimeofday(&hw_end, 0);
+    LOGD("%s- jpeg_write_raw_data done !",__func__);
+    LOGD("jpeg_write_raw_data time - %d ms",(hw_end.tv_sec-hw_start.tv_sec)*1000+(hw_end.tv_usec-hw_start.tv_usec)/1000);
+#endif
 #ifdef HWLIBJPEG_TIME_MEASURE
     gettimeofday(&hw_start, 0);
 #endif
@@ -121,16 +174,6 @@ int HWLibjpegWrap::startJPEGEncodebyHwBufferShare() {
     gettimeofday(&hw_end, 0);
     LOGD("%s- jpeg_finish_compress done !",__func__);
     LOGD("jpeg_finish_compress time - %d ms",(hw_end.tv_sec-hw_start.tv_sec)*1000+(hw_end.tv_usec-hw_start.tv_usec)/1000);
-#endif
-
-#ifdef HWLIBJPEG_TIME_MEASURE
-    gettimeofday(&hw_start, 0);
-#endif
-    jpeg_destroy_compress(&mCinfo);
-#ifdef HWLIBJPEG_TIME_MEASURE
-    gettimeofday(&hw_end, 0);
-    LOGD("%s- jpeg_destroy_compress done !",__func__);
-    LOGD("jpeg_destroy_compress times - %d ms",(hw_end.tv_sec-hw_start.tv_sec)*1000+(hw_end.tv_usec-hw_start.tv_usec)/1000);
 #endif
     if( mJpegsize > 0)
         return 0;
@@ -214,7 +257,7 @@ void HWLibjpegWrap::savetofile(JSAMPLE *jpegbuf,int jpegbuf_size,char* filename)
 /*
 Function: init_destination
 Description:
-  initialize to allocate encode block and other members in jpeg_destmgr
+  initialize to allocate encode block and other members in jpeg_destmgr, it will be caled by jpeg_start_compress
 Param:
   cinfo - compress object ptr
 return:
@@ -223,7 +266,9 @@ return:
 void init_destination(j_compress_ptr cinfo) {
     jpeg_destmgr_ptr dest = (jpeg_destmgr_ptr) cinfo->dest;
     /* Allocate the encode block buffer*/
-    dest->encodeblock = (JSAMPLE *)(*cinfo->mem->alloc_small) ((j_common_ptr) cinfo, JPOOL_IMAGE, HWLibjpegWrap::default_block_size * sizeof(JSAMPLE));
+    //LOGD("libjpegwrap init_destination call cinfo->dest 0x%x",cinfo->dest );
+    if(NULL == dest->encodeblock)
+        dest->encodeblock = (JSAMPLE *)(*cinfo->mem->alloc_small) ((j_common_ptr) cinfo, JPOOL_PERMANENT, HWLibjpegWrap::default_block_size * sizeof(JSAMPLE));
     *(dest->datacount) = 0;/* there is no data in JPEG output buffer now*/
     dest->pub.next_output_byte = dest->encodeblock;/*set next JPEG encode data output */
     dest->pub.free_in_buffer = HWLibjpegWrap::default_block_size;/*set size of next JPEG encode data output */
@@ -241,8 +286,7 @@ return:
 boolean empty_output_buffer(j_compress_ptr cinfo)
 {
     jpeg_destmgr_ptr dest = (jpeg_destmgr_ptr) cinfo->dest;
-    dest->outjpegbufsize -= HWLibjpegWrap::default_block_size;
-    if(dest->outjpegbufsize < 0)/*buffer overflow*/
+    if((*(dest->datacount)+HWLibjpegWrap::default_block_size) > dest->outjpegbufsize)/*buffer overflow*/
     {
         LOGE("******empty_output_buffer buffer overflow**********");
         *(dest->datacount) = 0;
@@ -268,9 +312,9 @@ return:
 void term_destination(j_compress_ptr cinfo)
 {
     jpeg_destmgr_ptr dest = (jpeg_destmgr_ptr) cinfo->dest;
+    //LOGD("libjpegwrap term_destination call cinfo->dest " );
     size_t datacount = HWLibjpegWrap::default_block_size - dest->pub.free_in_buffer;
-    dest->outjpegbufsize -= datacount;
-    if(dest->outjpegbufsize < 0)/*buffer overflow*/
+    if( (*(dest->datacount) + datacount ) > dest->outjpegbufsize )/*buffer overflow*/
     {
         *(dest->datacount) = 0;
         return ;
@@ -301,6 +345,7 @@ int HWLibjpegWrap::setup_jpeg_destmgr(j_compress_ptr cinfo, JSAMPLE *jpegbuf, in
         return -1;
     if (cinfo->dest == NULL) {
         cinfo->dest = (struct jpeg_destination_mgr *)(*cinfo->mem->alloc_small) ((j_common_ptr) cinfo, JPOOL_PERMANENT, sizeof(jpeg_destmgr));
+        memset(cinfo->dest,0,sizeof(jpeg_destmgr));
     }
 
     dest = (jpeg_destmgr_ptr) cinfo->dest;

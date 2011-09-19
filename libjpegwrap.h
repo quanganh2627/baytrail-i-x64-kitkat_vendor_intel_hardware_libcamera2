@@ -31,8 +31,8 @@ private:
     struct jpeg_error_mgr mJerr; /* error manager */
     jpeg_destmgr mDest; /* jpeg encode destination manager*/
     int mJpegsize; /* jpeg encode size */
-    void* mUsrptr; /* buffer share user ptr */
     int mJpegQuality; /*jpeg quality*/
+    bool mFlagInit;/*hwlibjpeg initialization flag*/
 
 //    void init_destination(j_compress_ptr cinfo);
 //    boolean empty_output_buffer(j_compress_ptr cinfo);
@@ -44,8 +44,9 @@ public:
     ~HWLibjpegWrap(); /* destructor */
     static const int    default_block_size = 4096; /* default encode block size */
     static const int    default_jpeg_quality =  75; /*defualt jpeg encode quality*/
-    int initHwBufferShare(JSAMPLE *jpegbuf, int jpegbuf_size,int width,int height,void** usrptr);
-    int startJPEGEncodebyHwBufferShare();
+    int initHwBufferShare(JSAMPLE *jpegbuf, int jpegbuf_size,int width,int height,void** usrptr,int usrptr_size);
+    int preStartJPEGEncodebyHwBufferShare();
+    int startJPEGEncodebyHwBufferShare(void* usrptr);
 
     /*property set/get functions*/
     int getJpeqQuality();
