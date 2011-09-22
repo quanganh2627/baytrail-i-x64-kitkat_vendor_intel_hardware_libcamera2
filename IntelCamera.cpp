@@ -813,6 +813,9 @@ int IntelCamera::startCameraRecording(void)
     if ((zoom_val != 0) && (m_recorder_width != 1920))
         set_zoom_val_real(zoom_val);
 
+	//flip image horizontal
+	atomisp_image_flip (main_fd, true, FLIP_V);
+
     //set DVS
     LOG1("dvs,line:%d, set dvs val:%d to driver", __LINE__, mDVSOn);
     ret = atomisp_set_dvs(main_fd, mDVSOn);

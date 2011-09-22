@@ -1272,11 +1272,7 @@ void CameraHardware::exifAttributeOrientation(exif_attribute_t& attribute)
         else if (180 == rotation)
             attribute.orientation = 3;
         else if (270 == rotation)
-#ifdef MFLD_CDK
             attribute.orientation = 8;
-#else
-            attribute.orientation = 6;
-#endif
     }
     LOG1("exifAttribute, sensor angle:%d degrees, rotation value:%d degrees, orientation value:%d",
         cam_info.orientation, rotation, attribute.orientation);
@@ -4015,8 +4011,8 @@ void CameraHardware::setupPlatformType(void)
             mPreviewSkipFrame = 1;
             mSnapshotSkipFrame = 2;
         } else {
-            mPreviewSkipFrame = 0;
-            mSnapshotSkipFrame = 0;
+            mPreviewSkipFrame = 1;
+            mSnapshotSkipFrame = 2;
 	}
     }
 }
