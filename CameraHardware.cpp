@@ -3580,7 +3580,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     p.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH, new_thumbnail_w);
     p.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT,new_thumbnail_h);
     //Video recording
-    int vfmode = 1;
+    int vfmode = p.getInt("camera-mode");
 	LOG1("vfmode %d",vfmode);
     int mVideoFormat = V4L2_PIX_FMT_NV12;
     //Deternmine the current viewfinder MODE.
