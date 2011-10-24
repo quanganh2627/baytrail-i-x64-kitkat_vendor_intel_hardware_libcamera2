@@ -1,6 +1,6 @@
 # Copyright (c) 2009-2010 Wind River Systems, Inc.
 ifeq ($(USE_CAMERA_STUB),false)
-ifeq ($(TARGET_DEVICE), mfld_dv09)
+ifeq ($(CUSTOM_BOARD), medfield)
 #
 # libcamera
 #
