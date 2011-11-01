@@ -2214,8 +2214,10 @@ int CameraHardware::pictureThread()
     //Postview size should be smaller
     mCamera->setPostViewSize(pre_width>>1, pre_height>>1, V4L2_PIX_FMT_NV12);
 
+#ifdef MFLD_DV09
     //Set Flip for sensor
     setFlip();
+#endif
 
     // ToDo. abstract some functions for both single capture and burst capture.
     if (mBCEn) {
@@ -2387,9 +2389,10 @@ int CameraHardware::pictureThread()
 #endif
         mCamera->enableIndicator(0);
 
+#ifdef MFLD_DV09
         // Reset Flip for sensor
         resetFlip();
-
+#endif
         //Stop the Camera Now
         mCamera->stopSnapshot();
         mCaptureInProgress = false;
@@ -4024,11 +4027,19 @@ static int HAL_cameraType[MAX_CAMERAS];
 static CameraInfo HAL_cameraInfo[MAX_CAMERAS] = {
     {
         CAMERA_FACING_FRONT,
+#ifdef MFLD_DV09
         270,  /* default orientation, we will modify it at other place, ToDo */
+#else
+        180,
+#endif
     },
     {
         CAMERA_FACING_BACK,
+#ifdef MFLD_DV09
         270,
+#else
+        0,
+#endif
     }
 };
 
