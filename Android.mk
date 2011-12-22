@@ -14,7 +14,9 @@ LIBCAMERA_TOP := $(LOCAL_PATH)
 
 include $(CLEAR_VARS)
 
-LOCAL_MODULE := libcamera
+
+LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
+LOCAL_MODULE := camera.$(TARGET_BOARD_PLATFORM)
 LOCAL_MODULE_TAGS := optional
 
 LOCAL_SHARED_LIBRARIES := \
@@ -30,9 +32,11 @@ LOCAL_SHARED_LIBRARIES := \
 	libui \
 
 LOCAL_SRC_FILES += \
+	LogHelper.cpp \
 	CameraHardware.cpp \
 	IntelCamera.cpp \
-	CameraAAAProcess.cpp
+	CameraAAAProcess.cpp \
+	IntelCameraHAL.cpp \
 
 LOCAL_CFLAGS += -DLOG_NDEBUG=1 -DSTDC99 -Wno-write-strings
 
@@ -40,10 +44,6 @@ ifeq ($(TARGET_PRODUCT), mfld_cdk)
 LOCAL_CFLAGS += -DMFLD_CDK
 else
 LOCAL_CFLAGS += -DMFLD_PR2
-endif
-
-ifeq ($(TARGET_PRODUCT), mfld_dv09)
-LOCAL_CFLAGS += -DMFLD_DV09
 endif
 
 ifeq ($(BOARD_USES_CAMERA_TEXTURE_STREAMING), true)

@@ -19,11 +19,10 @@
 #define ANDROID_HARDWARE_CAMERA_HARDWARE_H
 
 #include <semaphore.h>
+#include <hardware/camera.h>
+#include <camera/CameraParameters.h>
 #include "IntelCamera.h"
 #include "CameraAAAProcess.h"
-#include <CameraHardwareInterface.h>
-#include <binder/MemoryBase.h>
-#include <binder/MemoryHeapBase.h>
 #include <utils/threads.h>
 #include <atomisp_config.h>
 #include "JpegEncoder.h"
@@ -33,7 +32,7 @@
 namespace android {
 
 struct BCBuffer {
-    sp<MemoryHeapBase>  heap;
+    camera_memory_t*  mem;
 
     int total_size;  // the heap size
     int src_size;   // psrc buffer size
@@ -53,57 +52,60 @@ struct BCBuffer {
     void *usrptr;   // get from libva, it is allocated by libva. to store the src data for jpeg enc.
 };
 
-class CameraHardware : public CameraHardwareInterface {
+class CameraHardware {
 public:
-    virtual sp<IMemoryHeap> getPreviewHeap() const;
-    virtual sp<IMemoryHeap> getRawHeap() const;
-    virtual status_t setPreviewWindow(const sp<ANativeWindow>& buf);
+    CameraHardware(int cameraId);
+    ~CameraHardware();
 
-    virtual void        setCallbacks(notify_callback notify_cb,
-                                     data_callback data_cb,
-                                     data_callback_timestamp data_cb_timestamp,
+    status_t    setPreviewWindow(struct preview_stream_ops *window);
+
+    void        setCallbacks(camera_notify_callback notify_cb,
+                                     camera_data_callback data_cb,
+                                     camera_data_timestamp_callback data_cb_timestamp,
+                                     camera_request_memory get_memory,
                                      void* user);
 
-    virtual void        enableMsgType(int32_t msgType);
-    virtual void        disableMsgType(int32_t msgType);
-    virtual bool        msgTypeEnabled(int32_t msgType);
+    void        enableMsgType(int32_t msgType);
+    void        disableMsgType(int32_t msgType);
+    bool        msgTypeEnabled(int32_t msgType);
 
-    virtual status_t    startPreview();
-    virtual void        stopPreview();
-    virtual bool        previewEnabled();
+    status_t    startPreview();
+    void        stopPreview();
+    bool        previewEnabled();
 
-    virtual status_t    startRecording();
-    virtual void        stopRecording();
-    virtual bool        recordingEnabled();
-    virtual void        releaseRecordingFrame(const sp<IMemory>& mem);
+    status_t    startRecording();
+    void        stopRecording();
+    bool        recordingEnabled();
+    void        releaseRecordingFrame(const void* mem);
 
-    virtual status_t    autoFocus();
-    virtual status_t    cancelAutoFocus();
+    status_t    autoFocus();
+    status_t    cancelAutoFocus();
 
-    virtual status_t    touchToFocus(int blockNumber);
-    virtual status_t    cancelTouchToFocus();
+    status_t    touchToFocus(int blockNumber);
+    status_t    cancelTouchToFocus();
 
-    virtual status_t    takePicture();
-    virtual status_t    cancelPicture();
-    virtual status_t    dump(int fd, const Vector<String16>& args) const;
-    virtual status_t    setParameters(const CameraParameters& params);
-    virtual CameraParameters  getParameters() const;
-    virtual status_t    sendCommand(int32_t command, int32_t arg1,
-                                    int32_t arg2);
-    virtual void release();
+    status_t    takePicture();
+    status_t    cancelPicture();
+    status_t    dump(int fd) const;
+    status_t    setParameters(const char* params);
+    status_t    setParameters(const CameraParameters& params);
+    char*       getParameters() const;
+    void        putParameters(char *params);
+    status_t    sendCommand(int32_t command, int32_t arg1, int32_t arg2);
+    static int  getNumberOfCameras();
+    static int  getCameraInfo(int cameraId, struct camera_info* cameraInfo);
+    status_t    storeMetaDataInBuffers(bool enable);
+    void        release();
 
-    static sp<CameraHardwareInterface> createInstance(int cameraId);
+	static CameraHardware* createInstance(int cameraId);
 
     /* File input interfaces */
-    virtual status_t    setFileInputMode(int enable);
-    virtual status_t    configureFileInput(char *file_name, int width, int height,
+    status_t    setFileInputMode(int enable);
+    status_t    configureFileInput(char *file_name, int width, int height,
                                    int format, int bayer_order);
 
 private:
-    CameraHardware(int cameraId);
-    virtual             ~CameraHardware();
-
-    static wp<CameraHardwareInterface> singleton;
+    static CameraHardware* singleton;
 
     class PreviewThread : public Thread {
         CameraHardware* mHardware;
@@ -236,32 +238,24 @@ private:
 
     bool mFlush3A;
 
-    static const int    kBufferCount = 4;
-    static const int    mAFMaxFrames = 20;
-
     struct frame_buffer {
-        sp<MemoryHeapBase>  heap;
-        sp<MemoryBase>      base[kBufferCount];
-        uint8_t             *start[kBufferCount];
-        unsigned int        flags[kBufferCount];
+        camera_memory_t*    mem;
+        void*               base[PREVIEW_NUM_BUFFERS];
+        size_t              baseSize;
+        uint8_t*            start[PREVIEW_NUM_BUFFERS];
+        unsigned int        flags[PREVIEW_NUM_BUFFERS];
 #if ENABLE_BUFFER_SHARE_MODE
-        unsigned char *  pointerArray[kBufferCount];
+        unsigned char*      pointerArray[PREVIEW_NUM_BUFFERS];
 #endif
     } mPreviewBuffer, mRecordingBuffer;
 
-    sp<MemoryHeapBase>  mFrameIdHeap;
-    sp<MemoryBase>      mFrameIdBase;
-    sp<MemoryHeapBase>  mRawIdHeap;
-    sp<MemoryBase>      mRawIdBase;
-    sp<MemoryHeapBase>  mUserptrHeap;
-    sp<MemoryBase>      mUserptrBase[kBufferCount];
-    sp<MemoryHeapBase>  mPreviewConvertHeap;
-    sp<MemoryBase>      mPreviewConvertBase;
-    sp<MemoryHeapBase>  mRecordConvertHeap;
-    sp<MemoryBase>      mRecordConvertBase;
+    camera_memory_t*    mRawIdMem;
+    camera_memory_t*    mUserptrMem[PREVIEW_NUM_BUFFERS];
+    camera_memory_t*    mPreviewConvertMem;
+    camera_memory_t*    mRecordConvertMem;
 
-    sp<ANativeWindow>   mPreviewWindow;
-    int 		mCameraId;
+    preview_stream_ops_t*   mPreviewWindow;
+    int                 mCameraId;
     int                 mPreviewFrame;
     int                 mPostPreviewFrame;
 
@@ -272,9 +266,9 @@ private:
     unsigned int        mPicturePixelFormat;
 	bool                mVideoPreviewEnabled;
 
-    sp<MemoryHeapBase>  mRawHeap;
+    camera_memory_t*    mRawMem;
 
-    IntelCamera        *mCamera;
+    IntelCamera*        mCamera;
     //sensor_info_t      *mCurrentSensor;
 
     int                 mPreviewFrameSize;
@@ -313,9 +307,10 @@ private:
     mutable Condition   mDvsCondition;
     bool mExitDvsThread;
 
-    notify_callback    mNotifyCb;
-    data_callback      mDataCb;
-    data_callback_timestamp mDataCbTimestamp;
+    camera_notify_callback    mNotifyCb;
+    camera_data_callback      mDataCb;
+    camera_data_timestamp_callback mDataCbTimestamp;
+    camera_request_memory mGetMemory;
 
     void               *mCallbackCookie;
 
@@ -422,15 +417,16 @@ private:
     int mBCMemState; // true has been allocated, false has been released
     int mBCDeviceState; // true: device has been opened. false: device has been closed.
     HWLibjpegWrap *mBCLibJpgHw;
-    sp<MemoryHeapBase> mBCHeapHwJpgDst; // the hw jpeg wrapper's limitation. it outputs jpg data to this buffer only.
+    camera_memory_t* mBCHeapHwJpgDst; // the hw jpeg wrapper's limitation. it outputs jpg data to this buffer only.
     void *mBCHwJpgDst; // point to mBCHeapHwJpgDst
     bool mHwJpegBufferShareEn;
-    sp<MemoryHeapBase> mBCHeap; // for store the structure BCBuffer
+    camera_memory_t* mBCHeap; // for store the structure BCBuffer
     struct BCBuffer *mBCBuffer; // point to mBCHeap
     int mManualFocusPosi;
 
     int mFlipMode;
     bool mCanFlip;
+    static int num_cameras;
 
     void setFlip(void); /*set flip for sensor*/
     void resetFlip(void);   /*reset flip for sensor*/

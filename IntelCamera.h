@@ -140,7 +140,7 @@ public:
     IntelCamera();
     ~IntelCamera();
 
-    static IntelCamera* createInstance(void) {
+    static IntelCamera* createInstance() {
         static IntelCamera singleton;
         return &singleton;
     }

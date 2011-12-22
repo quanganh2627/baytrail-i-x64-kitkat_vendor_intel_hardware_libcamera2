@@ -1,36 +1,37 @@
 /*
-**
-** Copyright 2008, The Android Open Source Project
-**
-** Licensed under the Apache License, Version 2.0 (the "License");
-** you may not use this file except in compliance with the License.
-** You may obtain a copy of the License at
-**
-**     http://www.apache.org/licenses/LICENSE-2.0
-**
-** Unless required by applicable law or agreed to in writing, software
-** distributed under the License is distributed on an "AS IS" BASIS,
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-** See the License for the specific language governing permissions and
-** limitations under the License.
-*/
+ **
+ ** Copyright 2008, The Android Open Source Project
+ **
+ ** Licensed under the Apache License, Version 2.0 (the "License");
+ ** you may not use this file except in compliance with the License.
+ ** You may obtain a copy of the License at
+ **
+ **     http://www.apache.org/licenses/LICENSE-2.0
+ **
+ ** Unless required by applicable law or agreed to in writing, software
+ ** distributed under the License is distributed on an "AS IS" BASIS,
+ ** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ ** See the License for the specific language governing permissions and
+ ** limitations under the License.
+ */
 
 #define LOG_TAG "AAAProcess"
-#include <utils/Log.h>
 #include <math.h>
 #include "CameraAAAProcess.h"
+#include "LogHelper.h"
+
 
 namespace android {
 
 
 AAAProcess::AAAProcess(void)
-    : mGdcEnabled(false),
-      mAwbMode(CAM_AWB_MODE_AUTO),
-      mAfMode(CAM_AF_MODE_AUTO),
-      mSensorType(~0),
-      mAfStillFrames(0),
-      mDoneStatistics(false),
-      mInitied(false)
+: mGdcEnabled(false),
+  mAwbMode(CAM_AWB_MODE_AUTO),
+  mAfMode(CAM_AF_MODE_AUTO),
+  mSensorType(~0),
+  mAfStillFrames(0),
+  mDoneStatistics(false),
+  mInitied(false)
 {
     mSensorType = SENSOR_TYPE_SOC;
     mAeMode = CAM_AE_MODE_AUTO;
@@ -49,6 +50,7 @@ AAAProcess::~AAAProcess()
 
 int AAAProcess::AeLock(bool lock)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if(SENSOR_TYPE_RAW == mSensorType)
         return ci_adv_ae_lock(lock);
     else
@@ -57,6 +59,7 @@ int AAAProcess::AeLock(bool lock)
 
 int AAAProcess::AeIsLocked(bool *lock)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if(SENSOR_TYPE_RAW == mSensorType)
         return ci_adv_ae_is_locked(lock);
     else
@@ -65,24 +68,28 @@ int AAAProcess::AeIsLocked(bool *lock)
 
 void AAAProcess::SetAfEnabled(bool enabled)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if(SENSOR_TYPE_RAW == mSensorType)
         ci_adv_af_enable(enabled);
 }
 
 void AAAProcess::SetAeEnabled(bool enabled)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if(SENSOR_TYPE_RAW == mSensorType)
         ci_adv_ae_enable(enabled);
 }
 
 void AAAProcess::SetAwbEnabled(bool enabled)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if(SENSOR_TYPE_RAW == mSensorType)
         ci_adv_awb_enable(enabled);
 }
 
 void AAAProcess::SwitchMode(int mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return;
@@ -102,7 +109,7 @@ void AAAProcess::SwitchMode(int mode)
             break;
         default:
             isp_mode = ci_adv_isp_mode_preview;
-            LOGW("%s: Wrong mode %d\n", __func__, mode);
+            LogWarning("Wrong sensor mode %d", mode);
             break;
         }
         ci_adv_switch_mode(isp_mode);
@@ -111,6 +118,7 @@ void AAAProcess::SwitchMode(int mode)
 
 void AAAProcess::SetFrameRate(float framerate)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return;
@@ -123,6 +131,7 @@ void AAAProcess::SetFrameRate(float framerate)
 
 int AAAProcess::AeAfAwbProcess(bool read_stats)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return 0;
@@ -139,6 +148,7 @@ int AAAProcess::AeAfAwbProcess(bool read_stats)
 
 void AAAProcess::DvsProcess(void)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return;
@@ -146,7 +156,7 @@ void AAAProcess::DvsProcess(void)
     if(SENSOR_TYPE_RAW == mSensorType)
     {
         if (true != mDoneStatistics) {
-            LOG1("dvs,line:%d in DvsProcess, mDoneStatistics is false", __LINE__);
+            LogDetail("dvs,line:%d in DvsProcess, mDoneStatistics is false", __LINE__);
             return;
         }
         ci_adv_dvs_process();
@@ -155,6 +165,7 @@ void AAAProcess::DvsProcess(void)
 
 void AAAProcess::AfStillStart(void)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return;
@@ -167,6 +178,7 @@ void AAAProcess::AfStillStart(void)
 
 void AAAProcess::AfStillStop(void)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return;
@@ -179,6 +191,7 @@ void AAAProcess::AfStillStop(void)
 
 int AAAProcess::AfStillIsComplete(bool *complete)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -193,6 +206,7 @@ int AAAProcess::AfStillIsComplete(bool *complete)
 
 int AAAProcess::PreFlashProcess(cam_flash_stage stage)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -212,7 +226,7 @@ int AAAProcess::PreFlashProcess(cam_flash_stage stage)
             wr_stage = ci_adv_flash_stage_main;
             break;
         default:
-            LOGE("not defined flash stage in %s", __func__);
+            LogError("Flash stage not defined!");
             return AAA_FAIL;
 
         }
@@ -225,6 +239,7 @@ int AAAProcess::PreFlashProcess(cam_flash_stage stage)
 
 void AAAProcess::SetStillStabilizationEnabled(bool en)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return;
@@ -237,6 +252,7 @@ void AAAProcess::SetStillStabilizationEnabled(bool en)
 
 void AAAProcess::GetStillStabilizationEnabled(bool *en)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return;
@@ -249,6 +265,7 @@ void AAAProcess::GetStillStabilizationEnabled(bool *en)
 
 void AAAProcess::DisCalcStill(ci_adv_dis_vector *vector, int frame_number)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if(!mInitied)
         return;
 
@@ -259,9 +276,10 @@ void AAAProcess::DisCalcStill(ci_adv_dis_vector *vector, int frame_number)
 }
 
 void AAAProcess::StillCompose(ci_adv_user_buffer *com_buf,
-                              ci_adv_user_buffer bufs[], int frame_dis,
-                              ci_adv_dis_vector vectors[])
+        ci_adv_user_buffer bufs[], int frame_dis,
+        ci_adv_dis_vector vectors[])
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return;
@@ -274,6 +292,7 @@ void AAAProcess::StillCompose(ci_adv_user_buffer *com_buf,
 
 void AAAProcess::DoRedeyeRemoval(void *img_buf, int size, int width, int height, int format)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return;
@@ -287,7 +306,7 @@ void AAAProcess::DoRedeyeRemoval(void *img_buf, int size, int width, int height,
             user_buf.format= ci_adv_frame_format_yuv420;
             break;
         default:
-            LOGE("%s: not supported foramt in red eye removal",  __func__);
+            LogError("Unsupported format in red eye removal!");
             return;
         }
         user_buf.addr = img_buf;
@@ -300,6 +319,7 @@ void AAAProcess::DoRedeyeRemoval(void *img_buf, int size, int width, int height,
 
 void AAAProcess::LoadGdcTable(void)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if(!mInitied)
         return;
 
@@ -314,6 +334,7 @@ void AAAProcess::LoadGdcTable(void)
 
 int AAAProcess::AeSetMode(int mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -335,8 +356,8 @@ int AAAProcess::AeSetMode(int mode)
         case CAM_AE_MODE_APERTURE_PRIORITY:
             wr_val = ci_adv_ae_mode_aperture_priority;
             break;
-         default:
-            LOGE("%s: set invalid AE mode\n", __func__);
+        default:
+            LogError("Invalid set AE mode!");
             wr_val = ci_adv_ae_mode_auto;
         }
         ci_adv_err ret = ci_adv_ae_set_mode(wr_val);
@@ -350,6 +371,7 @@ int AAAProcess::AeSetMode(int mode)
 
 int AAAProcess::AeGetMode(int *mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -375,7 +397,7 @@ int AAAProcess::AeGetMode(int *mode)
             *mode = CAM_AE_MODE_APERTURE_PRIORITY;
             break;
         default:
-            LOGE("%s: get invalid AE mode\n", __func__);
+            LogError("Invalid get AE mode!");
             *mode = CAM_AE_MODE_AUTO;
         }
         mAeMode = *mode;
@@ -386,6 +408,7 @@ int AAAProcess::AeGetMode(int *mode)
 
 int AAAProcess::AeSetMeteringMode(int mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -408,7 +431,7 @@ int AAAProcess::AeSetMeteringMode(int mode)
             wr_val = ci_adv_ae_metering_mode_auto;
             break;
         default:
-            LOGE("%s: set invalid AE meter mode\n", __func__);
+            LogError("Invalid set AE metering mode!");
             wr_val = ci_adv_ae_metering_mode_auto;
         }
         ci_adv_err ret = ci_adv_ae_set_metering_mode(wr_val);
@@ -421,6 +444,7 @@ int AAAProcess::AeSetMeteringMode(int mode)
 
 int AAAProcess::AeGetMeteringMode(int *mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -445,8 +469,8 @@ int AAAProcess::AeGetMeteringMode(int *mode)
         case ci_adv_ae_metering_mode_auto:
             *mode = CAM_AE_METERING_MODE_AUTO;
             break;
-         default:
-            LOGE("%s: get invalid AE meter mode", __func__);
+        default:
+            LogError("Invalid get AE metering mode!");
             *mode = CAM_AE_METERING_MODE_AUTO;
         }
     }
@@ -456,6 +480,7 @@ int AAAProcess::AeGetMeteringMode(int *mode)
 
 int AAAProcess::AeSetEv(float bias)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -467,7 +492,7 @@ int AAAProcess::AeSetEv(float bias)
         ci_adv_err ret = ci_adv_ae_set_bias(CI_ADV_S15_16_FROM_FLOAT(bias));
         if(ci_adv_success != ret)
         {
-            LOGE("!!!line:%d, in AeSetEv, ret:%d\n", __LINE__, ret);
+            LogError("!!!line:%d, in AeSetEv, ret:%d", __LINE__, ret);
             return AAA_FAIL;
         }
     }
@@ -477,6 +502,7 @@ int AAAProcess::AeSetEv(float bias)
 
 int AAAProcess::AeGetEv(float *bias)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -488,7 +514,7 @@ int AAAProcess::AeGetEv(float *bias)
         *bias = CI_ADV_S15_16_TO_FLOAT(ibias);
         if(ci_adv_success != ret)
         {
-            LOGE("!!!line:%d, in AeGetEv, ret:%d\n", __LINE__, ret);
+            LogError("!!!line:%d, in AeGetEv, ret:%d", __LINE__, ret);
             return AAA_FAIL;
         }
     }
@@ -498,6 +524,7 @@ int AAAProcess::AeGetEv(float *bias)
 
 int AAAProcess::AeSetSceneMode(int mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -525,7 +552,7 @@ int AAAProcess::AeSetSceneMode(int mode)
             wr_val = ci_adv_ae_exposure_program_fireworks;
             break;
         default:
-            LOGE("%s: set invalid AE scene mode\n", __func__);
+            LogError("Invalid set AE scene mode!");
             wr_val = ci_adv_ae_exposure_program_auto;
         }
         ci_adv_err ret = ci_adv_ae_set_exposure_program (wr_val);
@@ -538,6 +565,7 @@ int AAAProcess::AeSetSceneMode(int mode)
 
 int AAAProcess::AeGetSceneMode(int *mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -568,7 +596,7 @@ int AAAProcess::AeGetSceneMode(int *mode)
             *mode = CAM_AE_SCENE_MODE_FIREWORKS;
             break;
         default:
-            LOGE("%s: get invalid AE scene mode\n", __func__);
+            LogError("Invalid get AE scene mode!");
             *mode = CAM_AE_SCENE_MODE_AUTO;
         }
     }
@@ -578,6 +606,7 @@ int AAAProcess::AeGetSceneMode(int *mode)
 
 int AAAProcess::AeSetFlashMode(int mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -602,7 +631,7 @@ int AAAProcess::AeSetFlashMode(int mode)
             wr_val = ci_adv_ae_flash_mode_slow_sync;
             break;
         default:
-            LOGE("%s: set invalid flash mode\n", __func__);
+            LogError("Invalid set flash mode!");
             wr_val = ci_adv_ae_flash_mode_auto;
         }
         ci_adv_err ret = ci_adv_ae_set_flash_mode(wr_val);
@@ -615,6 +644,7 @@ int AAAProcess::AeSetFlashMode(int mode)
 
 int AAAProcess::AeGetFlashMode(int *mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -642,7 +672,7 @@ int AAAProcess::AeGetFlashMode(int *mode)
             *mode = CAM_AE_FLASH_MODE_SLOW_SYNC;
             break;
         default:
-            LOGE("%s: get invalid flash mode\n", __func__);
+            LogError("Invalid get flash mode!");
             *mode = CAM_AE_FLASH_MODE_AUTO;
         }
     }
@@ -652,6 +682,7 @@ int AAAProcess::AeGetFlashMode(int *mode)
 
 int AAAProcess::AeIsFlashNecessary(bool *used)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -669,6 +700,7 @@ int AAAProcess::AeIsFlashNecessary(bool *used)
 
 int AAAProcess::AeSetFlickerMode(int mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -691,7 +723,7 @@ int AAAProcess::AeSetFlickerMode(int mode)
             wr_val = ci_adv_ae_flicker_mode_auto;
             break;
         default:
-            LOGE("%s: set invalid flicker mode\n", __func__);
+            LogError("Invalid set flicker mode!");
             wr_val = ci_adv_ae_flicker_mode_auto;
         }
         ci_adv_err ret = ci_adv_ae_set_flicker_mode(wr_val);
@@ -704,6 +736,7 @@ int AAAProcess::AeSetFlickerMode(int mode)
 
 int AAAProcess::AeGetFlickerMode(int *mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -729,7 +762,7 @@ int AAAProcess::AeGetFlickerMode(int *mode)
             *mode = CAM_AE_FLICKER_MODE_AUTO;
             break;
         default:
-            LOGE("%s: get invalid flicker mode\n", __func__);
+            LogError("Invalid get flicker mode!");
             *mode = CAM_AE_FLICKER_MODE_AUTO;
         }
     }
@@ -739,6 +772,7 @@ int AAAProcess::AeGetFlickerMode(int *mode)
 
 int AAAProcess::AeSetManualIso(int sensitivity, bool to_hw)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -748,7 +782,7 @@ int AAAProcess::AeSetManualIso(int sensitivity, bool to_hw)
         float fev;
         if (sensitivity <=0)
         {
-            LOGE("error in get log2 math computation in line %d\n", __LINE__);
+            LogError("error in get log2 math computation in line %d", __LINE__);
             return AAA_FAIL;
         }
 
@@ -770,6 +804,7 @@ int AAAProcess::AeSetManualIso(int sensitivity, bool to_hw)
 
 int AAAProcess::AeGetManualIso(int *sensitivity)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -789,6 +824,7 @@ int AAAProcess::AeGetManualIso(int *sensitivity)
 
 int AAAProcess::AeSetManualAperture(float aperture, bool to_hw)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -798,7 +834,7 @@ int AAAProcess::AeSetManualAperture(float aperture, bool to_hw)
         float fev;
         if (aperture <=0)
         {
-            LOGE("error in get log2 math computation in line %d\n", __LINE__);
+            LogError("error in get log2 math computation in line %d\n", __LINE__);
             return AAA_FAIL;
         }
 
@@ -820,6 +856,7 @@ int AAAProcess::AeSetManualAperture(float aperture, bool to_hw)
 
 int AAAProcess::AeGetManualAperture(float *aperture)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -839,6 +876,7 @@ int AAAProcess::AeGetManualAperture(float *aperture)
 
 int AAAProcess::AeGetManualBrightness(float *brightness)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -858,6 +896,7 @@ int AAAProcess::AeGetManualBrightness(float *brightness)
 
 int AAAProcess::AeSetManualShutter(float exp_time, bool to_hw)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -867,7 +906,7 @@ int AAAProcess::AeSetManualShutter(float exp_time, bool to_hw)
         float fev;
         if (exp_time <=0)
         {
-            LOGE("error in get log2 math computation in line %d\n", __LINE__);
+            LogError("error in get log2 math computation in line %d", __LINE__);
             return AAA_FAIL;
         }
 
@@ -889,6 +928,7 @@ int AAAProcess::AeSetManualShutter(float exp_time, bool to_hw)
 
 int AAAProcess::AeGetManualShutter(float *exp_time)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -908,6 +948,7 @@ int AAAProcess::AeGetManualShutter(float *exp_time)
 
 int AAAProcess::AfSetManualFocus(int focus, bool to_hw)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -927,6 +968,7 @@ int AAAProcess::AfSetManualFocus(int focus, bool to_hw)
 
 int AAAProcess::AfGetManualFocus(int *focus)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -942,6 +984,7 @@ int AAAProcess::AfGetManualFocus(int *focus)
 
 int AAAProcess::AfGetFocus(int *focus)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -956,7 +999,7 @@ int AAAProcess::AfGetFocus(int *focus)
         controls.controls = &control;
         control.id = V4L2_CID_FOCUS_ABSOLUTE;
         int ret = ioctl (main_fd, VIDIOC_S_EXT_CTRLS, &controls);
-        LOG1("line:%d, ret:%d, focus:%d", __LINE__, ret, *focus);
+        LogDetail("line:%d, ret:%d, focus:%d", __LINE__, ret, *focus);
         *focus = control.value;
 
     }
@@ -966,6 +1009,7 @@ int AAAProcess::AfGetFocus(int *focus)
 
 int AAAProcess::AeSetWindow(const cam_Window *window)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -982,6 +1026,7 @@ int AAAProcess::AeSetWindow(const cam_Window *window)
 
 int AAAProcess::AeGetWindow(cam_Window *window)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -998,6 +1043,7 @@ int AAAProcess::AeGetWindow(cam_Window *window)
 
 int AAAProcess::AwbSetMode (int wb_mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -1045,7 +1091,7 @@ int AAAProcess::AwbSetMode (int wb_mode)
             ret = ci_adv_awb_set_mode (ci_adv_awb_mode_auto);
             break;
         default:
-            LOGE("%s: set invalid AWB mode\n", __func__);
+            LogError("Invalid set AWB mode!");
             ret = ci_adv_awb_set_mode (ci_adv_awb_mode_auto);
         }
         if (ret != ci_adv_success)
@@ -1058,6 +1104,7 @@ int AAAProcess::AwbSetMode (int wb_mode)
 
 int AAAProcess::AwbGetMode(int *wb_mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -1072,6 +1119,7 @@ int AAAProcess::AwbGetMode(int *wb_mode)
 
 int AAAProcess::AwbSetManualColorTemperature(int ct, bool to_hw)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -1097,6 +1145,7 @@ int AAAProcess::AwbSetManualColorTemperature(int ct, bool to_hw)
 
 int AAAProcess::AwbGetManualColorTemperature(int *ct)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -1111,6 +1160,7 @@ int AAAProcess::AwbGetManualColorTemperature(int *ct)
 
 int AAAProcess::AeSetBacklightCorrection(bool en)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -1136,6 +1186,7 @@ int AAAProcess::AeSetBacklightCorrection(bool en)
 
 int AAAProcess::AeGetBacklightCorrection(bool *en)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -1155,7 +1206,7 @@ int AAAProcess::AeGetBacklightCorrection(bool *en)
             *en = true;
             break;
         default:
-            LOGE("%s: get invalid AE backlight correction \n", __func__);
+            LogError("Invalid get AE backlight correction!");
             *en = false;
         }
     }
@@ -1165,6 +1216,7 @@ int AAAProcess::AeGetBacklightCorrection(bool *en)
 
 int AAAProcess::AeGetExpCfg(unsigned short *exp_time, unsigned short *aperture)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -1179,9 +1231,10 @@ int AAAProcess::AeGetExpCfg(unsigned short *exp_time, unsigned short *aperture)
 
 int AAAProcess::SetRedEyeRemoval(bool en)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
-       return AAA_FAIL;
+        return AAA_FAIL;
 
     if(SENSOR_TYPE_RAW == mSensorType)
     {
@@ -1193,6 +1246,7 @@ int AAAProcess::SetRedEyeRemoval(bool en)
 
 int AAAProcess::GetRedEyeRemoval(bool *en)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -1207,6 +1261,7 @@ int AAAProcess::GetRedEyeRemoval(bool *en)
 
 int AAAProcess::AwbSetMapping(int mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -1226,7 +1281,7 @@ int AAAProcess::AwbSetMapping(int mode)
             wr_val = ci_adv_awb_map_outdoor;
             break;
         default:
-            LOGE("%s: set invalid AWB map mode\n", __func__);
+            LogError("Invalid set AWB map mode!");
             wr_val = ci_adv_awb_map_auto;
         }
         ci_adv_err ret = ci_adv_awb_set_map (wr_val);
@@ -1239,6 +1294,7 @@ int AAAProcess::AwbSetMapping(int mode)
 
 int AAAProcess::AwbGetMapping(int *mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -1258,7 +1314,7 @@ int AAAProcess::AwbGetMapping(int *mode)
             *mode = CAM_AWB_MAP_OUTDOOR;
             break;
         default:
-            LOGE("%s: get invalid AWB map mode\n", __func__);
+            LogError("Invalid get AWB map mode!");
             *mode = CAM_AWB_MAP_INDOOR;
         }
     }
@@ -1269,6 +1325,7 @@ int AAAProcess::AwbGetMapping(int *mode)
 
 int AAAProcess::AfSetMode(int mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -1299,7 +1356,7 @@ int AAAProcess::AfSetMode(int mode)
             ci_adv_af_set_range (ci_adv_af_range_full);
             break;
         default:
-            LOGE("%s: set invalid AF mode\n", __func__);
+            LogError("Invalid set AF mode!");
             ret = ci_adv_af_set_mode (ci_adv_af_mode_auto);
             ci_adv_af_set_range (ci_adv_af_range_norm);
             break;
@@ -1314,6 +1371,7 @@ int AAAProcess::AfSetMode(int mode)
 
 int AAAProcess::AfGetMode(int *mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -1328,6 +1386,7 @@ int AAAProcess::AfGetMode(int *mode)
 
 int AAAProcess::AfSetMeteringMode(int mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -1344,7 +1403,7 @@ int AAAProcess::AfSetMeteringMode(int mode)
             wr_val = ci_adv_af_metering_mode_spot;
             break;
         default:
-            LOGE("%s: set invalid AF meter mode\n", __func__);
+            LogError("Invalid set AF meter mode!");
             wr_val = ci_adv_af_metering_mode_auto;
         }
         ci_adv_err ret = ci_adv_af_set_metering_mode(wr_val);
@@ -1357,6 +1416,7 @@ int AAAProcess::AfSetMeteringMode(int mode)
 
 int AAAProcess::AfGetMeteringMode(int *mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -1376,7 +1436,7 @@ int AAAProcess::AfGetMeteringMode(int *mode)
             *mode = CAM_AF_METERING_MODE_SPOT;
             break;
         default:
-            LOGE("%s: get invalid AF meter mode\n", __func__);
+            LogError("Invalid get AF meter mode!");
             *mode = CAM_AF_METERING_MODE_AUTO;
         }
     }
@@ -1386,6 +1446,7 @@ int AAAProcess::AfGetMeteringMode(int *mode)
 
 int AAAProcess::AfSetWindow(const cam_Window *window)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -1402,6 +1463,7 @@ int AAAProcess::AfSetWindow(const cam_Window *window)
 
 int AAAProcess::AfGetWindow(cam_Window *window)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return AAA_FAIL;
@@ -1418,6 +1480,7 @@ int AAAProcess::AfGetWindow(cam_Window *window)
 
 int AAAProcess::AeSetMeteringWeightMap(ci_adv_weight_map *weightmap)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if (!mInitied)
         return AAA_FAIL;
 
@@ -1425,7 +1488,7 @@ int AAAProcess::AeSetMeteringWeightMap(ci_adv_weight_map *weightmap)
     {
         ci_adv_err ret = ci_adv_ae_set_weight_map((const ci_adv_weight_map*) weightmap);
         if (ci_adv_success != ret) {
-            LOGE("%s: Failed to set new weight map, ret = %d \n", __func__, ret);
+            LogError("Failed to set new weight map, ret = %d", ret);
             return AAA_FAIL;
         }
     }
@@ -1438,15 +1501,16 @@ int AAAProcess::AeSetMeteringWeightMap(ci_adv_weight_map *weightmap)
 
 int AAAProcess::AeGetMeteringWeightMap(ci_adv_weight_map *weightmap)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if (!mInitied)
         return AAA_FAIL;
     if (SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_err ret = ci_adv_ae_get_weight_map(&weightmap);
         if (ci_adv_success != ret) {
-            LOGE("%s: Failed to get ae weight table, ret =%d \n", __func__, ret);
+            LogError("Failed to get ae weight table, ret =%d", ret);
             return AAA_FAIL;
-       }
+        }
     }
 
     return AAA_SUCCESS;
@@ -1454,15 +1518,16 @@ int AAAProcess::AeGetMeteringWeightMap(ci_adv_weight_map *weightmap)
 
 int AAAProcess::AeDestroyMeteringWeightMap(ci_adv_weight_map *weightmap)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if (!mInitied)
         return AAA_FAIL;
     if (SENSOR_TYPE_RAW == mSensorType)
     {
         ci_adv_err ret = ci_adv_ae_destroy_weight_map(weightmap);
         if (ci_adv_success != ret) {
-            LOGE("%s: Failed to destroy ae weight map, ret =%d \n", __func__, ret);
+            LogError("Failed to destroy AE weight map, ret =%d", ret);
             return AAA_FAIL;
-       }
+        }
     }
 
     return AAA_SUCCESS;
@@ -1470,6 +1535,7 @@ int AAAProcess::AeDestroyMeteringWeightMap(ci_adv_weight_map *weightmap)
 
 int AAAProcess::FlushManualSettings(void)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
 
     // manual focus
@@ -1480,7 +1546,7 @@ int AAAProcess::FlushManualSettings(void)
 
             if (ret != AAA_SUCCESS)
             {
-                LOGE(" error in flush manual focus\n");
+                LogError("error in flush manual focus");
                 return AAA_FAIL;
             }
         }
@@ -1492,21 +1558,23 @@ int AAAProcess::FlushManualSettings(void)
 /* private interface */
 int AAAProcess::Init(const char *sensor_id, int fd)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
 
     main_fd = fd;
     if (ci_adv_init(sensor_id, fd) == 0) {
-	    mSensorType = SENSOR_TYPE_RAW;
-	    mInitied = 1;
+        mSensorType = SENSOR_TYPE_RAW;
+        mInitied = 1;
     } else {
-	    mSensorType = SENSOR_TYPE_SOC;
-	    mInitied = 0;
+        mSensorType = SENSOR_TYPE_SOC;
+        mInitied = 0;
     }
     return mSensorType;
 }
 
 void AAAProcess::Uninit(void)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     Mutex::Autolock lock(mLock);
     if(!mInitied)
         return;

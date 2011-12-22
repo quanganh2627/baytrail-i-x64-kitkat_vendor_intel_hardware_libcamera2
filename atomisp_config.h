@@ -90,6 +90,8 @@
 #define PR2_PRIMARY_SENSOR_NAME "mt9e013"
 #define PR2_SECOND_SENSOR_NAME  "mt9m114"
 
+#define MAX_CAMERAS 2
+
 enum {
     SENSOR_TYPE_RAW = 1,
     SENSOR_TYPE_SOC
@@ -106,10 +108,6 @@ typedef struct {
     char name[MAX_SENSOR_NAME_LENGTH];
 } cameraInfo;
 
-#define LOG1(...) LOGD_IF(gLogLevel >= 1, __VA_ARGS__);
-#define LOG2(...) LOGD_IF(gLogLevel >= 2, __VA_ARGS__);
-
-static int32_t gLogLevel = 0;
 static int need_dump_image = 0;
 static int need_dump_recorder = 0;
 static int need_dump_snapshot = 0;
@@ -122,12 +120,6 @@ enum raw_data_format {
     RAW_RGB,
     RAW_BAYER,
 };
-
-#ifdef BOARD_USE_CAMERA_TEXTURE_STREAMING
-static int use_texture_streaming = 1;
-#else
-static int use_texture_streaming = 0;
-#endif
 
 #define RESOLUTION_14MP_TABLE   \
         "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x2448,3648x2736,4096x3072,4352x3264"

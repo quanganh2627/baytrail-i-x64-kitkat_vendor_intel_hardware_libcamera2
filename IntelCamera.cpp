@@ -40,6 +40,7 @@
 
 #include "IntelCamera.h"
 #include "CameraAAAProcess.h"
+#include "LogHelper.h"
 
 #define BPP 2
 
@@ -199,6 +200,7 @@ static char *resolution_tables[] = {
 static void write_image(const void *data, const int size, int width, int height,
                        const char *name)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     char filename[80];
     static unsigned int count = 0;
     size_t bytes;
@@ -213,7 +215,7 @@ static void write_image(const void *data, const int size, int width, int height,
         return ;
     }
 
-    LOG1 ("Begin write image %s", filename);
+    LogDetail("Begin write image %s", filename);
     if ((bytes = fwrite (data, size, 1, fp)) < (size_t)size)
         LOGW ("Write less bytes to %s: %d, %d", filename, size, bytes);
     count++;
@@ -224,6 +226,7 @@ static void write_image(const void *data, const int size, int width, int height,
 static void
 dump_v4l2_buffer(int fd, struct v4l2_buffer *buffer, char *name)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     void *data;
     static unsigned int i = 0;
     int image_width = 640, image_height=480;
@@ -245,7 +248,7 @@ IntelCamera::IntelCamera()
  /*mAdvanceProcess(NULL),*/
      zoom_val(0)
 {
-    LOGV("%s() called!", __func__);
+    LogEntry(LOG_TAG, __FUNCTION__);
 
     m_camera_phy_id = DEFAULT_CAMERA_SENSOR;
     num_buffers = DEFAULT_NUM_BUFFERS;
@@ -269,13 +272,13 @@ IntelCamera::IntelCamera()
 
 IntelCamera::~IntelCamera()
 {
-    LOGV("%s() called!", __func__);
-
+    LogEntry(LOG_TAG, __FUNCTION__);
     // color converter
 }
 
 char* IntelCamera::getMaxSnapShotResolution()
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int index = RESOLUTION_14MP;
 
     if (m_snapshot_max_width < RESOLUTION_14MP_WIDTH || m_snapshot_max_height < RESOLUTION_14MP_HEIGHT)
@@ -298,6 +301,7 @@ char* IntelCamera::getMaxSnapShotResolution()
 
 int IntelCamera::initCamera(int camera_id, int camera_idx, int sensor_type, AAAProcess *tmpAAA)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret = 0;
 
     m_camera_phy_id = camera_id;
@@ -314,7 +318,7 @@ int IntelCamera::initCamera(int camera_id, int camera_idx, int sensor_type, AAAP
                                 &m_snapshot_max_height,
                                 STILL_IMAGE_MODE);
     if (ret) {
-        LOGE("Faied to detect camera %d, resolution! Use default settings",
+        LogError("Faied to detect camera %d, resolution! Use default settings",
              camera_id);
         switch (camera_id) {
         case CAMERA_FACING_FRONT:
@@ -326,12 +330,12 @@ int IntelCamera::initCamera(int camera_id, int camera_idx, int sensor_type, AAAP
             m_snapshot_max_height = MAX_BACK_CAMERA_SNAPSHOT_HEIGHT;
             break;
         default:
-            LOGE("ERR(%s)::Invalid camera id(%d)", __func__, camera_id);
+            LogError("Invalid camera id(%d)", camera_id);
             return -1;
         }
     }
     else
-        LOGD("Camera %d Max-resolution detect: %dx%d", camera_id,
+        LogDetail("Camera %d Max-resolution detect: %dx%d", camera_id,
             m_snapshot_max_width,
             m_snapshot_max_height);
 
@@ -353,7 +357,7 @@ int IntelCamera::initCamera(int camera_id, int camera_idx, int sensor_type, AAAP
         m_snapshot_height = 1920;
         break;
     default:
-        LOGE("ERR(%s)::Invalid camera id(%d)", __func__, camera_id);
+        LogError("Invalid camera id(%d)", camera_id);
         return -1;
     }
 
@@ -411,6 +415,7 @@ int IntelCamera::initCamera(int camera_id, int camera_idx, int sensor_type, AAAP
 
 int IntelCamera::deinitCamera(void)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if (m_flag_init) {
         m_flag_init = 0;
     }
@@ -421,13 +426,13 @@ int IntelCamera::deinitCamera(void)
     }
 
     closeMainDevice();
-    LOG1("%s :", __func__);
     return 0;
 }
 
 //File Input
 int IntelCamera::initFileInput()
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
     int device = V4L2_FIRST_DEVICE;
     v4l2_capture_s_input(video_fds[device], 2);
@@ -457,10 +462,11 @@ error0:
 
 int IntelCamera::deInitFileInput()
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int device = V4L2_THIRD_DEVICE;
 
     if (video_fds[device] < 0) {
-        LOGW("%s: Already closed", __func__);
+        LogWarning("Already closed");
         return 0;
     }
 
@@ -474,18 +480,19 @@ int IntelCamera::deInitFileInput()
 
 int IntelCamera::configureFileInput(const struct file_input *image)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret = 0;
     int device = V4L2_THIRD_DEVICE;
     int fd = video_fds[device];
     int buffer_count = 1;
 
     if (NULL == image) {
-        LOGE("%s, struct file_input NULL pointer", __func__);
+        LogError("struct file_input NULL pointer");
         return -1;
     }
 
     if (NULL == image->name) {
-        LOGE("%s, file_name NULL pointer", __func__);
+        LogError("file_name NULL pointer");
         return -1;
     }
 
@@ -521,7 +528,7 @@ int IntelCamera::configureFileInput(const struct file_input *image)
 //Preview Control
 int IntelCamera::startCameraPreview(void)
 {
-    LOG1("%s", __func__);
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
     int w = m_preview_pad_width;
     int h = m_preview_height;
@@ -540,19 +547,6 @@ int IntelCamera::startCameraPreview(void)
     ret = configureDevice(device, w, h, fourcc, false);
     if (ret < 0)
         return ret;
-
-    if (use_texture_streaming) {
-        void *ptrs[PREVIEW_NUM_BUFFERS];
-        int i;
-        for (i = 0; i < PREVIEW_NUM_BUFFERS; i++) {
-            ptrs[i] = v4l2_buf_pool[device].bufs[i].data;
-        }
-        ret = v4l2_register_bcd(video_fds[device], PREVIEW_NUM_BUFFERS,
-                          ptrs, w, h, fourcc, m_frameSize(fourcc, w, h));
-        if (ret < 0)
-            return ret;
-    }
-
     ret = startCapture(device, PREVIEW_NUM_BUFFERS);
     if (ret < 0)
         return ret;
@@ -562,16 +556,16 @@ int IntelCamera::startCameraPreview(void)
 
 void IntelCamera::stopCameraPreview(void)
 {
-    LOG1("%s", __func__);
+    LogEntry(LOG_TAG, __FUNCTION__);
     int device = V4L2_FIRST_DEVICE;
     if (!m_flag_camera_start[device]) {
-        LOG1("%s: doing nothing because m_flag_camera_start is zero", __func__);
+        LogDetail("doing nothing because m_flag_camera_start is zero");
         return ;
     }
     int fd = video_fds[device];
 
     if (fd <= 0) {
-        LOGD("(%s):Camera was already closed", __func__);
+        LogDetail("Camera was already closed");
         return ;
     }
 
@@ -580,11 +574,12 @@ void IntelCamera::stopCameraPreview(void)
 
 int IntelCamera::getPreview(void **data, enum atomisp_frame_status *status)
 {
+    LogEntry2(LOG_TAG, __FUNCTION__);
     int device = V4L2_FIRST_DEVICE;
     int index = grabFrame(device, status);
     if(index < 0)
     {
-        LOGE("%s error", __func__);
+        LogError("Error in grabbing frame!");
         return -1;
     }
     *data = v4l2_buf_pool[device].bufs[index].data;
@@ -593,6 +588,7 @@ int IntelCamera::getPreview(void **data, enum atomisp_frame_status *status)
 
 int IntelCamera::putPreview(int index)
 {
+    LogEntry2(LOG_TAG, __FUNCTION__);
     int device = V4L2_FIRST_DEVICE;
     int fd = video_fds[device];
     return v4l2_capture_qbuf(fd, index, &v4l2_buf_pool[device].bufs[index]);
@@ -602,11 +598,12 @@ int IntelCamera::putPreview(int index)
 //Snapshot and video recorder has the same flow. We can combine them together
 void IntelCamera::checkGDC(void)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if (mGDCOn) {
-        LOGD("%s: GDC is enabled now", __func__);
+        LogDetail("GDC is enabled now");
         //Only enable GDC in still image capture mode and 14M
         if (atomisp_set_gdc(main_fd, true))
-            LOGE("Error setting gdc:%d, fd:%d", true, main_fd);
+            LogError("Error setting gdc:%d, fd:%d", true, main_fd);
         else
             v4l2_set_isp_timeout(ATOMISP_FILEINPUT_POLL_TIMEOUT);
     }
@@ -614,7 +611,7 @@ void IntelCamera::checkGDC(void)
 
 int IntelCamera::startSnapshot(void)
 {
-    LOG1("%s", __func__);
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
     run_mode = STILL_IMAGE_MODE;
     ret = openSecondDevice();
@@ -640,30 +637,6 @@ int IntelCamera::startSnapshot(void)
     if (ret < 0)
         goto configure2_error;
 
-    // for the postview
-    if (use_texture_streaming) {
-        int device = V4L2_SECOND_DEVICE;
-        int w = m_postview_width;
-        int h = m_postview_height;
-        int fourcc = m_postview_v4lformat;
-
-        if (num_postview > num_snapshot) {
-            LOGE("line:%d, num_postview:%d, num_snapshot:%d", __LINE__, num_postview, num_snapshot);
-            goto registerbcd_error;
-        }
-
-        void *ptrs[SNAPSHOT_MAX_NUM_BUFFERS];
-        int i;
-        for (i = 0; i < num_postview; i++) {
-            ptrs[i] = v4l2_buf_pool[device].bufs[i].data;
-        }
-        LOG1("line:%d, num_postview:%d", __LINE__, num_postview);
-        ret = v4l2_register_bcd(video_fds[device], num_postview,
-                          ptrs, w, h, fourcc, m_frameSize(fourcc, w, h));
-        if (ret < 0)
-            goto registerbcd_error;
-    }
-
     ret = startCapture(V4L2_FIRST_DEVICE, num_snapshot);
     if (ret < 0)
         goto start1_error;
@@ -685,23 +658,27 @@ configure1_error:
 
 void IntelCamera::stopSnapshot(void)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     stopDualStreams();
     v4l2_set_isp_timeout(0);
 }
 
 void IntelCamera::setSnapshotNum(int num)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     num_snapshot = num;
 }
 
 void IntelCamera::setPostviewNum(int num)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     num_postview = num;
 }
 
 int IntelCamera::putDualStreams(int index)
 {
-    LOG2("%s index %d", __func__, index);
+    LogEntry(LOG_TAG, __FUNCTION__);
+    LogDetail("index = %d", index);
     int ret0, ret1, device;
 
     device = V4L2_FIRST_DEVICE;
@@ -724,25 +701,25 @@ int IntelCamera::putDualStreams(int index)
 int IntelCamera::getSnapshot(void **main_out, void **postview,
                              void *postview_rgb565, enum atomisp_frame_status *status)
 {
-    LOG1("%s", __func__);
+    LogEntry(LOG_TAG, __FUNCTION__);
 
     int index0 = grabFrame(V4L2_FIRST_DEVICE, status);
     if (index0 < 0) {
-        LOGE("%s error", __func__);
+        LogError("Error in grabbing frame from 1'st device!");
         return -1;
     }
 
     int index1 = grabFrame(V4L2_SECOND_DEVICE, NULL);
     if (index1 < 0) {
-        LOGE("%s error", __func__);
+        LogError("Error in grabbing frame from 2'nd device!");
         return -1;
     }
     if (index0 != index1) {
-        LOGE("%s error, line:%d", __func__, __LINE__);
+        LogError("Error, line:%d", __LINE__);
         return -1;
     }
     if (index0 >= MAX_V4L2_BUFFERS) {
-        LOGE("%s error, line:%d", __func__, __LINE__);
+        LogError("Error, line:%d", __LINE__);
         return -1;
     }
 
@@ -763,26 +740,26 @@ int IntelCamera::getSnapshot(void **main_out, void **postview,
         struct v4l2_buffer_info *buf =
             &v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[index0];
         unsigned int length = raw_data_dump.size;
-        LOG1("dumping raw data");
+        LogDetail("dumping raw data");
         void *start = mmap(NULL /* start anywhere */ ,
                                 PAGE_ALIGN(length),
                                 PROT_READ | PROT_WRITE /* required */ ,
                                 MAP_SHARED /* recommended */ ,
                                 video_fds[V4L2_FIRST_DEVICE], 0xfffff000);
         if (MAP_FAILED == start)
-                LOGE("mmap failed");
+                LogError("mmap failed");
         else {
             printf("MMAP raw address from kerenl 0x%p", start);
         }
         write_image(start, length, buf->width, buf->height, "raw");
         if (-1 == munmap(start, PAGE_ALIGN(length)))
-            LOGE("munmap failed");
+            LogError("munmap failed");
     }
 
     if(postview_rgb565) {
         toRGB565(m_postview_width, m_postview_height, m_postview_v4lformat, (unsigned char *)(*postview),
             (unsigned char *)postview_rgb565);
-        LOG1("postview w:%d, h:%d, dstaddr:0x%x",
+        LogDetail("postview w:%d, h:%d, dstaddr:0x%x",
             m_postview_width, m_postview_height, (int)postview_rgb565);
     }
 
@@ -791,14 +768,15 @@ int IntelCamera::getSnapshot(void **main_out, void **postview,
 
 int IntelCamera::putSnapshot(int index)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return putDualStreams(index);
 }
 
 //video recording Control
 int IntelCamera::startCameraRecording(void)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret = 0;
-    LOG1("%s", __func__);
     run_mode = VIDEO_RECORDING_MODE;
     ret = openSecondDevice();
     if (ret < 0)
@@ -813,16 +791,12 @@ int IntelCamera::startCameraRecording(void)
     if ((zoom_val != 0) && (m_recorder_width != 1920))
         set_zoom_val_real(zoom_val);
 
-#ifdef MFLD_DV09
-    //flip image horizontal
-    atomisp_image_flip (main_fd, true, FLIP_V);
-#endif
     //set DVS
-    LOG1("dvs,line:%d, set dvs val:%d to driver", __LINE__, mDVSOn);
+    LogDetail("dvs,line:%d, set dvs val:%d to driver", __LINE__, mDVSOn);
     ret = atomisp_set_dvs(main_fd, mDVSOn);
 
     if (ret)
-        LOGE("dvs,line:%d, set dvs val:%d to driver fail", __LINE__, mDVSOn);
+        LogError("dvs,line:%d, set dvs val:%d to driver fail", __LINE__, mDVSOn);
 
     ret = configureDevice(V4L2_FIRST_DEVICE, m_recorder_pad_width,
                           m_recorder_height, m_recorder_v4lformat, false);
@@ -839,26 +813,12 @@ int IntelCamera::startCameraRecording(void)
     if (mTnrOn != DEFAULT_TNR) {
         ret = atomisp_set_tnr(main_fd, mTnrOn);
         if (ret)
-            LOGE("Error setting xnr:%d, fd:%d", mTnrOn, main_fd);
+            LogError("Error setting xnr:%d, fd:%d", mTnrOn, main_fd);
     }
 
     ret = startCapture(V4L2_FIRST_DEVICE, VIDEO_NUM_BUFFERS);
     if (ret < 0)
         goto start1_error;
-
-    if (use_texture_streaming) {
-        int w = m_preview_pad_width;
-        int h = m_preview_height;
-        int fourcc = m_preview_v4lformat;
-        void *ptrs[VIDEO_NUM_BUFFERS];
-        int i, device = V4L2_SECOND_DEVICE;
-
-        for (i = 0; i < VIDEO_NUM_BUFFERS; i++) {
-            ptrs[i] = v4l2_buf_pool[device].bufs[i].data;
-        }
-        v4l2_register_bcd(video_fds[device], PREVIEW_NUM_BUFFERS,
-                          ptrs, w, h, fourcc, m_frameSize(fourcc, w, h));
-    }
 
     ret = startCapture(V4L2_SECOND_DEVICE, VIDEO_NUM_BUFFERS);
     if (ret < 0)
@@ -877,21 +837,20 @@ configure1_error:
 
 void IntelCamera::stopCameraRecording(void)
 {
-    LOG1("%s", __func__);
-
+    LogEntry(LOG_TAG, __FUNCTION__);
     stopDualStreams();
 }
 
 void IntelCamera::stopDualStreams(void)
 {
-    LOG1("%s", __func__);
+    LogEntry(LOG_TAG, __FUNCTION__);
     if (m_flag_camera_start == 0) {
-        LOGD("%s: doing nothing because m_flag_camera_start is 0", __func__);
+        LogDetail("doing nothing because m_flag_camera_start is 0");
         return ;
     }
 
     if (main_fd <= 0) {
-        LOGW("%s:Camera was closed", __func__);
+        LogWarning("Camera was closed");
         return ;
     }
 
@@ -902,13 +861,14 @@ void IntelCamera::stopDualStreams(void)
 
 int IntelCamera::trimRecordingBuffer(void *buf)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int size = m_frameSize(V4L2_PIX_FMT_NV12, m_recorder_width,
                            m_recorder_height);
     int padding_size = m_frameSize(V4L2_PIX_FMT_NV12, m_recorder_pad_width,
                                    m_recorder_height);
     void *tmp_buffer = malloc(padding_size);
     if (tmp_buffer == NULL) {
-        LOGE("%s: Error to allocate memory ", __func__);
+        LogError("Error allocating memory!");
         return -1;
     }
     //The buf should bigger enougth to hold the extra padding
@@ -922,26 +882,26 @@ int IntelCamera::trimRecordingBuffer(void *buf)
 
 int IntelCamera::getRecording(void **main_out, void **preview_out)
 {
-    LOG2("%s", __func__);
+    LogEntry(LOG_TAG, __FUNCTION__);
 	enum atomisp_frame_status status;
     int index0 = grabFrame(V4L2_FIRST_DEVICE, &status);
     if (index0 < 0) {
-        LOGE("%s error\n", __func__);
+        LogError("Error grabbing frame from 1'st device!");
         return -1;
     }
 
     int index1 = 0;
     if(!m_flag_camera_start[V4L2_SECOND_DEVICE])
-        LOGV("%s: camera is preview mode!",__func__);
+        LogDetail("Camera is in preview mode!");
     else
         index1 = grabFrame(V4L2_SECOND_DEVICE, &status);
     if (index1 < 0) {
-        LOGE("%s error\n", __func__);
+        LogError("Error grabbing frame from 2'nd device!");
         return -1;
     }
 
     if (index1 > 0 && index1 != index0) {
-            LOGE("%s error,index1 = %d, index2 = %d\n", __func__,index0,index1);
+            LogError("Error,index1 = %d, index2 = %d", index0, index1);
             return -1;
     }
 
@@ -974,17 +934,18 @@ int IntelCamera::getRecording(void **main_out, void **preview_out)
 
 int IntelCamera::putRecording(int index)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return putDualStreams(index);
 }
 
 int IntelCamera::openMainDevice(int camera_idx)
 {
-    LOG1("%s\n", __func__);
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
     int device = V4L2_FIRST_DEVICE;
 
     if (video_fds[device] > 0) {
-        LOGW("%s: Already opened\n", __func__);
+        LogWarning("Device already opened!");
         return video_fds[device];
     }
 
@@ -1021,7 +982,7 @@ error0:
 
 int IntelCamera::openSecondDevice(void)
 {
-    LOG1("%s\n", __func__);
+    LogEntry(LOG_TAG, __FUNCTION__);
     int device = V4L2_SECOND_DEVICE;
     video_fds[device] = v4l2_capture_open(device);
 
@@ -1043,11 +1004,11 @@ error0:
 
 void IntelCamera::closeMainDevice(void)
 {
-    LOG1("%s\n", __func__);
+    LogEntry(LOG_TAG, __FUNCTION__);
     int device = V4L2_FIRST_DEVICE;
 
     if (video_fds[device] < 0) {
-        LOGW("%s: Already closed\n", __func__);
+        LogWarning("Device already closed");
         return;
     }
 
@@ -1059,7 +1020,7 @@ void IntelCamera::closeMainDevice(void)
 
 void IntelCamera::closeSecondDevice(void)
 {
-    LOG1("%s\n", __func__);
+    LogEntry(LOG_TAG, __FUNCTION__);
     int device = V4L2_SECOND_DEVICE;
 
     //Close the second device
@@ -1071,12 +1032,13 @@ void IntelCamera::closeSecondDevice(void)
 
 int IntelCamera::detectDeviceResolution(int *w, int *h, int run_mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret = 0;
     int fourcc = V4L2_PIX_FMT_NV12;
     int device = V4L2_FIRST_DEVICE;
 
     if ((*w <= 0) || (*h <= 0)) {
-        LOGE("ERR(%s): Wrong Width %d or Height %d\n", __func__, *w, *h);
+        LogError("Wrong Width %d or Height %d", *w, *h);
         return -1;
     }
 
@@ -1095,17 +1057,18 @@ int IntelCamera::detectDeviceResolution(int *w, int *h, int run_mode)
 
 int IntelCamera::configureDevice(int device, int w, int h, int fourcc, bool raw)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret = 0;
-    LOG1("%s device %d, width:%d, height%d, mode%d format%d\n", __func__, device,
+    LogDetail("device: %d, width:%d, height%d, mode%d format%d", device,
          w, h, run_mode, fourcc);
 
     if ((device < V4L2_FIRST_DEVICE) || (device > V4L2_SECOND_DEVICE)) {
-        LOGE("ERR(%s): Wrong device %d\n", __func__, device);
+        LogError("Wrong device %d", device);
         return -1;
     }
 
     if ((w <= 0) || (h <= 0)) {
-        LOGE("ERR(%s): Wrong Width %d or Height %d\n", __func__, w, h);
+        LogError("Wrong Width %d or Height %d", w, h);
         return -1;
     }
 
@@ -1158,7 +1121,8 @@ int IntelCamera::configureDevice(int device, int w, int h, int fourcc, bool raw)
 
 int IntelCamera::createBufferPool(int device, int buffer_count)
 {
-    LOG1("%s device %d\n", __func__, device);
+    LogEntry(LOG_TAG, __FUNCTION__);
+    LogDetail("device = %d", device);
     int i, ret;
 
     int fd = video_fds[device];
@@ -1188,7 +1152,8 @@ error:
 
 void IntelCamera::destroyBufferPool(int device)
 {
-    LOG1("%s device %d\n", __func__, device);
+    LogEntry(LOG_TAG, __FUNCTION__);
+    LogDetail("device = %d", device);
 
     int fd = video_fds[device];
     struct v4l2_buffer_pool *pool = &v4l2_buf_pool[device];
@@ -1200,7 +1165,8 @@ void IntelCamera::destroyBufferPool(int device)
 
 int IntelCamera::activateBufferPool(int device)
 {
-    LOG1("%s device %d\n", __func__, device);
+    LogEntry(LOG_TAG, __FUNCTION__);
+    LogDetail("device = %d", device);
 
     int fd = video_fds[device];
     int ret;
@@ -1216,10 +1182,11 @@ int IntelCamera::activateBufferPool(int device)
 
 int IntelCamera::startCapture(int device, int buffer_count)
 {
-    LOG1("%s device %d\n", __func__, device);
+    LogEntry(LOG_TAG, __FUNCTION__);
+    LogDetail("device = %d", device);
 
     if ((device < V4L2_FIRST_DEVICE) || (device > V4L2_SECOND_DEVICE)) {
-        LOGE("ERR(%s): Wrong device %d\n", __func__, device);
+        LogError("Wrong device %d", device);
         return -1;
     }
 
@@ -1259,9 +1226,10 @@ activate_error:
 
 void IntelCamera::stopCapture(int device)
 {
-    LOG1("%s\n", __func__);
+    LogEntry(LOG_TAG, __FUNCTION__);
+    LogDetail("device = %d", device);
     if ((device < V4L2_FIRST_DEVICE) || (device > V4L2_SECOND_DEVICE)) {
-        LOGE("ERR(%s): Wrong device %d\n", __func__, device);
+        LogError("Wrong device %d", device);
         return;
     }
     int fd = video_fds[device];
@@ -1280,6 +1248,7 @@ void IntelCamera::stopCapture(int device)
 
 void IntelCamera::setRawFormat(enum raw_data_format format)
 {
+    LogEntry2(LOG_TAG, __FUNCTION__);
     raw_data_dump.format = format;
     return;
 }
@@ -1287,6 +1256,7 @@ void IntelCamera::setRawFormat(enum raw_data_format format)
 
 int IntelCamera::grabFrame(int device, enum atomisp_frame_status *status)
 {
+    LogEntry2(LOG_TAG, __FUNCTION__);
     int ret;
     struct v4l2_buffer buf;
     //Must start first
@@ -1294,22 +1264,22 @@ int IntelCamera::grabFrame(int device, enum atomisp_frame_status *status)
         return -1;
 
     if ((device < V4L2_FIRST_DEVICE) || (device > V4L2_SECOND_DEVICE)) {
-        LOGE("ERR(%s): Wrong device %d\n", __func__, device);
+        LogError("Wrong device %d", device);
         return -1;
     }
 
     ret = v4l2_capture_dqbuf(video_fds[device], &buf);
 
     if (ret < 0) {
-        LOGD("%s: DQ error, reset the camera\n", __func__);
+        LogDetail("DQ error, reset the camera");
         ret = resetCamera();
         if (ret < 0) {
-            LOGE("ERR(%s): Reset camera error\n", __func__);
+            LogError("Reset camera error");
             return ret;
         }
         ret = v4l2_capture_dqbuf(video_fds[device], &buf);
         if (ret < 0) {
-            LOGE("ERR(%s): Reset camera error again\n", __func__);
+            LogError("Reset camera error again");
             return ret;
         }
     }
@@ -1321,7 +1291,7 @@ int IntelCamera::grabFrame(int device, enum atomisp_frame_status *status)
 int IntelCamera::resetCamera(void)
 {
     Mutex::Autolock lock(mIntelCameraAutoLock);
-    LOG1("%s\n", __func__);
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret = 0;
     if (memory_userptr)
         memcpy(v4l2_buf_pool_reserve, v4l2_buf_pool, sizeof(v4l2_buf_pool));
@@ -1346,7 +1316,7 @@ int IntelCamera::resetCamera(void)
         ret = startCameraRecording();
         break;
     default:
-        LOGE("%s: Wrong mode\n", __func__);
+        LogError("Wrong run_mode");
         break;
     }
     return ret;
@@ -1357,6 +1327,7 @@ int IntelCamera::resetCamera(void)
 void IntelCamera::yuv420_to_rgb565(int width, int height, unsigned char *src,
                                    unsigned short *dst)
 {
+    LogEntry2(LOG_TAG, __FUNCTION__);
     int line, col, linewidth;
     int y, u, v, yy, vr, ug, vg, ub;
     int r, g, b;
@@ -1414,10 +1385,12 @@ void IntelCamera::yuv420_to_rgb565(int width, int height, unsigned char *src,
 
 float IntelCamera::getFramerate(void)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return framerate;
 }
 
 void IntelCamera::nv12_to_rgb565(int width, int height, unsigned char* yuvs, unsigned char* rgbs) {
+    LogEntry2(LOG_TAG, __FUNCTION__);
     //the end of the luminance data
     int lumEnd = width * height;
     //points to the next luminance value pair
@@ -1471,6 +1444,7 @@ void IntelCamera::nv12_to_rgb565(int width, int height, unsigned char* yuvs, uns
 
 void IntelCamera::yuv420_to_yuv420sp(int width, int height, unsigned char *src, unsigned char *dst)
 {
+    LogEntry2(LOG_TAG, __FUNCTION__);
     unsigned char *y, *u, *v;
     unsigned char *yy, *uv;
     int h,w;
@@ -1498,6 +1472,7 @@ void IntelCamera::yuv420_to_yuv420sp(int width, int height, unsigned char *src, 
 
 void IntelCamera::yuyv422_to_yuv420sp(int width, int height, unsigned char *bufsrc, unsigned char *bufdest)
 {
+    LogEntry2(LOG_TAG, __FUNCTION__);
     unsigned char *ptrsrcy1,*ptrsrcy2;
     unsigned char *ptrsrcy3,*ptrsrcy4;
     unsigned char *ptrsrccb1,*ptrsrccb2;
@@ -1616,18 +1591,19 @@ void IntelCamera::yuyv422_to_yuv420sp(int width, int height, unsigned char *bufs
 
 void IntelCamera::toRGB565(int width, int height, int fourcc, void *src, void *dst)
 {
+    LogEntry2(LOG_TAG, __FUNCTION__);
     void *buffer;
     int size = width * height * 2;
 
     if (src == NULL || dst == NULL) {
-        LOGE("%s, NULL pointer\n", __func__);
+        LogError("NULL data or source pointer");
         return;
     }
 
     if (src == dst) {
         buffer = calloc(1, size);
         if (buffer == NULL) {
-            LOGE("%s, error calloc\n", __func__);
+            LogError("calloc error: %s", strerror(errno));
             return;
         }
     } else
@@ -1635,17 +1611,17 @@ void IntelCamera::toRGB565(int width, int height, int fourcc, void *src, void *d
 
     switch(fourcc) {
     case V4L2_PIX_FMT_YUV420:
-        LOG1("%s, yuv420 to rgb565 conversion\n", __func__);
+        LogDetail("yuv420 to rgb565 conversion");
         yuv420_to_rgb565(width, height, (unsigned char*)src, (unsigned short*)buffer);
         break;
     case V4L2_PIX_FMT_NV12:
-        LOG1("%s, nv12 to rgb565 conversion\n", __func__);
+        LogDetail("nv12 to rgb565 conversion");
         nv12_to_rgb565(width, height, (unsigned char*)src, (unsigned char*)buffer);
         break;
     case V4L2_PIX_FMT_RGB565:
         break;
     default:
-        LOGE("%s, unknown format\n", __func__);
+        LogError("Unknown conversion format!");
         break;
     }
 
@@ -1657,18 +1633,19 @@ void IntelCamera::toRGB565(int width, int height, int fourcc, void *src, void *d
 
 void IntelCamera::toNV12(int width, int height, int fourcc, void *src, void *dst)
 {
+    LogEntry2(LOG_TAG, __FUNCTION__);
     void *buffer;
     int size = width * height * 3 / 2;
 
     if (src == NULL || dst == NULL) {
-        LOGE("%s, NULL pointer\n", __func__);
+        LogError("NULL pointer");
         return;
     }
 
     if (src == dst) {
         buffer = calloc(1, size);
         if (buffer == NULL) {
-            LOGE("%s, error calloc\n", __func__);
+            LogError("Alloc error: %s", strerror(errno));
             return;
         }
     } else
@@ -1676,15 +1653,15 @@ void IntelCamera::toNV12(int width, int height, int fourcc, void *src, void *dst
 
     switch(fourcc) {
     case V4L2_PIX_FMT_YUYV:
-        LOG1("%s, yuyv422 to yuv420sp conversion\n", __func__);
+        LogDetail2("yuyv422 to yuv420sp conversion");
         yuyv422_to_yuv420sp(width, height, (unsigned char*)src, (unsigned char*)buffer);
         break;
     case V4L2_PIX_FMT_YUV420:
-        LOG1("%s, yuv420 to yuv420sp conversion\n", __func__);
+        LogDetail2("yuv420 to yuv420sp conversion");
         yuv420_to_yuv420sp(width, height, (unsigned char*)src, (unsigned char*)buffer);
         break;
     default:
-        LOGE("%s, unknown format\n", __func__);
+        LogError("Unknown conversion format");
         break;
     }
 
@@ -1706,8 +1683,9 @@ int IntelCamera::get_num_buffers(void)
 
 void IntelCamera::setPreviewUserptr(int index, void *addr)
 {
+    LogEntry2(LOG_TAG, __FUNCTION__);
     if (index > PREVIEW_NUM_BUFFERS) {
-        LOGE("%s:index %d is out of range\n", __func__, index);
+        LogError("index %d is out of range", index);
         return ;
     }
     v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[index].data = addr;
@@ -1715,8 +1693,9 @@ void IntelCamera::setPreviewUserptr(int index, void *addr)
 
 void IntelCamera::setRecorderUserptr(int index, void *preview, void *recorder)
 {
+    LogEntry2(LOG_TAG, __FUNCTION__);
     if (index > VIDEO_NUM_BUFFERS) {
-        LOGE("%s:index %d is out of range\n", __func__, index);
+        LogError("index %d is out of range", index);
         return ;
     }
     v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[index].data = recorder;
@@ -1728,22 +1707,22 @@ void IntelCamera::setRecorderUserptr(int index, void *preview, void *recorder)
 //contenstion with preview thread
 int IntelCamera::updateRecorderUserptr(int num, unsigned char *recorder[])
 {
-    LOG1("%s start\n", __func__);
+    LogEntry(LOG_TAG, __FUNCTION__);
     int i, index, ret, last_index = 0;
     if (num > VIDEO_NUM_BUFFERS) {
-        LOGE("%s:buffer number %d is out of range\n", __func__, num);
+        LogError("buffer number %d is out of range", num);
         return -1;
     }
     //DQ all buffer out
     for (i = 0; i < num; i++) {
         ret = grabFrame(V4L2_FIRST_DEVICE, NULL);
         if (ret < 0) {
-            LOGE("%s error\n", __func__);
+            LogError("Error grabbing frame from 1'st device!");
             goto error;
         }
         ret = grabFrame(V4L2_SECOND_DEVICE, NULL);
         if (ret < 0) {
-            LOGE("%s error\n", __func__);
+            LogError("Error grabbing frame from 2'nd device!");
             goto error;
         }
         last_index = ret;
@@ -1762,27 +1741,26 @@ int IntelCamera::updateRecorderUserptr(int num, unsigned char *recorder[])
     for (i = 0; i < num; i++) {
         //Qbuf use the same order as DQ
         index = (i + last_index + 1) % num;
-        LOG1("Update new userptr %p\n", recorder[index]);
+        LogDetail("Update new userptr %p", recorder[index]);
         ret = v4l2_capture_qbuf(video_fds[V4L2_FIRST_DEVICE], index,
                           &v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[index]);
-        LOG1("Update new userptr %p finished\n", recorder[index]);
+        LogDetail("Update new userptr %p finished", recorder[index]);
 
         ret = v4l2_capture_qbuf(video_fds[V4L2_SECOND_DEVICE], index,
                           &v4l2_buf_pool[V4L2_SECOND_DEVICE].bufs[index]);
     }
     //Start the DQ thread
     v4l2_capture_control_dq(main_fd, 1);
-    LOG1("%s done\n", __func__);
     return 0;
 error2:
     v4l2_capture_control_dq(main_fd, 1);
 error:
-    LOGE("%s error\n", __func__);
     return -1;
 }
 
 void IntelCamera::enableIndicator(int intensity)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if (CAMERA_FACING_FRONT == m_camera_phy_id)
         return;
 
@@ -1796,6 +1774,7 @@ void IntelCamera::enableIndicator(int intensity)
 
 void IntelCamera::enableTorch(int intensity)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if (CAMERA_FACING_FRONT == m_camera_phy_id)
         return;
 
@@ -1809,6 +1788,7 @@ void IntelCamera::enableTorch(int intensity)
 
 int IntelCamera::requestFlash(int numFrames)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if (CAMERA_FACING_FRONT == m_camera_phy_id)
         return 0;
 
@@ -1822,24 +1802,28 @@ int IntelCamera::requestFlash(int numFrames)
 
 void IntelCamera::setFlashMode(int mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     mFlashMode = mode;
 }
 
 int IntelCamera::getFlashMode()
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return mFlashMode;
 }
 
 void IntelCamera::setSnapshotFlip(int mode, int mflip)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     atomisp_image_flip (main_fd, mode, mflip);
 }
 
 //Use flags to detern whether it is called from the snapshot
 int IntelCamera::set_zoom_val_real(int zoom)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if (main_fd < 0) {
-        LOGV("%s: device not opened\n", __func__);
+        LogDetail("device not opened!");
         return 0;
     }
 
@@ -1848,12 +1832,13 @@ int IntelCamera::set_zoom_val_real(int zoom)
     if (zoom != 0)
         zoom = 64 - (64 / (((zoom * 16 + 59)/ 60 )));
 
-    LOG1("%s: set zoom to %d", __func__, zoom);
+    LogDetail("set zoom to %d", zoom);
     return atomisp_set_zoom (main_fd, zoom);
 }
 
 int IntelCamera::set_zoom_val(int zoom)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if (zoom == zoom_val)
         return 0;
     zoom_val = zoom;
@@ -1864,13 +1849,15 @@ int IntelCamera::set_zoom_val(int zoom)
 
 int IntelCamera::get_zoom_val(void)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return zoom_val;
 }
 
 int IntelCamera::set_capture_mode(int mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if (main_fd < 0) {
-        LOGW("ERR(%s): not opened\n", __func__);
+        LogWarning("Camera not opened!");
         return -1;
     }
     return atomisp_set_capture_mode(main_fd, mode);
@@ -1879,42 +1866,54 @@ int IntelCamera::set_capture_mode(int mode)
 //These are for the frame size and format
 int IntelCamera::setPreviewSize(int width, int height, int fourcc)
 {
+    LOG1("@%s:%d", __FUNCTION__, __LINE__);
+    LogEntry(LOG_TAG, __FUNCTION__);
+    LOG1("@%s:%d", __FUNCTION__, __LINE__);
     if (width > m_preview_max_width || width <= 0)
         width = m_preview_max_width;
+    LOG1("@%s:%d", __FUNCTION__, __LINE__);
     if (height > m_preview_max_height || height <= 0)
         height = m_preview_max_height;
+    LOG1("@%s:%d", __FUNCTION__, __LINE__);
     m_preview_width = width;
+    LOG1("@%s:%d", __FUNCTION__, __LINE__);
     m_preview_height = height;
+    LOG1("@%s:%d", __FUNCTION__, __LINE__);
     m_preview_v4lformat = fourcc;
+    LOG1("@%s:%d", __FUNCTION__, __LINE__);
     m_preview_pad_width = m_paddingWidth(fourcc, width, height);
-    LOG1("%s(width(%d), height(%d), pad_width(%d), format(%d))", __func__,
+    LogDetail("width(%d), height(%d), pad_width(%d), format(%d)",
          width, height, m_preview_pad_width, fourcc);
+    LOG1("@%s:%d", __FUNCTION__, __LINE__);
     return 0;
 }
 
 int IntelCamera::getPreviewSize(int *width, int *height, int *frame_size,
                                 int *padded_size)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     *width = m_preview_width;
     *height = m_preview_height;
     *frame_size = m_frameSize(m_preview_v4lformat, m_preview_width,
                               m_preview_height);
     *padded_size = m_frameSize(m_preview_v4lformat, m_preview_pad_width,
                        m_preview_height);
-    LOG1("%s:width(%d), height(%d), size(%d)\n", __func__, *width, *height,
+    LogDetail("width(%d), height(%d), size(%d)", *width, *height,
          *frame_size);
     return 0;
 }
 
 int IntelCamera::getPreviewPixelFormat(void)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return m_preview_v4lformat;
 }
 
 //postview
 int IntelCamera::setPostViewSize(int width, int height, int fourcc)
 {
-    LOG1("%s(width(%d), height(%d), format(%d))", __func__,
+    LogEntry(LOG_TAG, __FUNCTION__);
+    LogDetail("width(%d), height(%d), format(%d)",
          width, height, fourcc);
     m_postview_width = width;
     m_postview_height = height;
@@ -1925,6 +1924,7 @@ int IntelCamera::setPostViewSize(int width, int height, int fourcc)
 
 int IntelCamera::getPostViewSize(int *width, int *height, int *frame_size)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     //The preview output should be small than the main output
     if (m_postview_width > m_snapshot_width)
         m_postview_width = m_snapshot_width;
@@ -1941,11 +1941,13 @@ int IntelCamera::getPostViewSize(int *width, int *height, int *frame_size)
 
 int IntelCamera::getPostViewPixelFormat(void)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return m_postview_v4lformat;
 }
 
 int IntelCamera::setSnapshotSize(int width, int height, int fourcc)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if (width > m_snapshot_max_width || width <= 0)
         width = m_snapshot_max_width;
     if (height > m_snapshot_max_height || height <= 0)
@@ -1954,13 +1956,14 @@ int IntelCamera::setSnapshotSize(int width, int height, int fourcc)
     m_snapshot_height = height;
     m_snapshot_v4lformat = fourcc;
     m_snapshot_pad_width = m_paddingWidth(fourcc, width, height);
-    LOG1("%s(width(%d), height(%d), pad_width(%d), format(%d))", __func__,
+    LogDetail("width(%d), height(%d), pad_width(%d), format(%d)",
          width, height, m_snapshot_pad_width, fourcc);
     return 0;
 }
 
 int IntelCamera::getSnapshotSize(int *width, int *height, int *frame_size)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     *width  = m_snapshot_width;
     *height = m_snapshot_height;
 
@@ -1974,6 +1977,7 @@ int IntelCamera::getSnapshotSize(int *width, int *height, int *frame_size)
 
 int IntelCamera::getMaxSnapshotSize(int *width, int *height)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     *width	= m_snapshot_width;
     *height = m_snapshot_height;
     return 0;
@@ -1981,13 +1985,15 @@ int IntelCamera::getMaxSnapshotSize(int *width, int *height)
 
 int IntelCamera::getSnapshotPixelFormat(void)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return m_snapshot_v4lformat;
 }
 
 void IntelCamera::setSnapshotUserptr(int index, void *pic_addr, void *pv_addr)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if (index >= num_snapshot) {
-        LOGE("%s:index %d is out of range\n", __func__, index);
+        LogError("index %d is out of range", index);
         return ;
     }
 
@@ -1997,7 +2003,8 @@ void IntelCamera::setSnapshotUserptr(int index, void *pic_addr, void *pv_addr)
 
 int IntelCamera::setRecorderSize(int width, int height, int fourcc)
 {
-    LOG1("Max:W %d, MaxH: %d\n", m_recorder_max_width, m_recorder_max_height);
+    LogEntry(LOG_TAG, __FUNCTION__);
+    LogDetail("Max:W %d, MaxH: %d", m_recorder_max_width, m_recorder_max_height);
     if (width > m_recorder_max_width || width <= 0)
         width = m_recorder_max_width;
     if ((height > m_recorder_max_height) || (height <= 0))
@@ -2006,7 +2013,7 @@ int IntelCamera::setRecorderSize(int width, int height, int fourcc)
     m_recorder_height = height;
     m_recorder_v4lformat = fourcc;
     m_recorder_pad_width = m_paddingWidth(fourcc, width, height);
-    LOG1("%s(width(%d), height(%d), pad_width(%d), format(%d))", __func__,
+    LogDetail("width(%d), height(%d), pad_width(%d), format(%d)",
          width, height, m_recorder_pad_width, fourcc);
     return 0;
 }
@@ -2014,6 +2021,7 @@ int IntelCamera::setRecorderSize(int width, int height, int fourcc)
 int IntelCamera::getRecorderSize(int *width, int *height, int *frame_size,
                                  int *padded_size)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     *width  = m_recorder_width;
     *height = m_recorder_height;
 
@@ -2024,18 +2032,20 @@ int IntelCamera::getRecorderSize(int *width, int *height, int *frame_size,
     *padded_size = m_frameSize(m_recorder_v4lformat, m_recorder_pad_width,
                               m_recorder_height);
 
-    LOG1("%s(width(%d), height(%d),size (%d))", __func__, *width, *height,
+    LogDetail("width(%d), height(%d),size (%d)", *width, *height,
          *frame_size);
     return 0;
 }
 
 int IntelCamera::getRecorderPixelFormat(void)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return m_recorder_v4lformat;
 }
 
 int IntelCamera::m_frameSize(int format, int width, int height)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int size = 0;
     switch (format) {
     case V4L2_PIX_FMT_YUV420:
@@ -2056,7 +2066,7 @@ int IntelCamera::m_frameSize(int format, int width, int height)
         break;
     default:
         size = (width * height * 2);
-        LOGE("ERR(%s):Invalid V4L2 pixel format(%d)\n", __func__, format);
+        LogError("Invalid V4L2 pixel format(%d)", format);
     }
 
     return size;
@@ -2064,6 +2074,7 @@ int IntelCamera::m_frameSize(int format, int width, int height)
 
 int IntelCamera::m_paddingWidth(int format, int width, int height)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int padding = 0;
     switch (format) {
     //64bit align for 1.5byte per pixel
@@ -2086,7 +2097,7 @@ int IntelCamera::m_paddingWidth(int format, int width, int height)
         break;
     default:
         padding = (width + 63) / 64 * 64;
-        LOGE("ERR(%s):Invalid V4L2 pixel format(%d)\n", __func__, format);
+        LogError("Invalid V4L2 pixel format(%d)", format);
     }
 
     return padding;
@@ -2094,10 +2105,11 @@ int IntelCamera::m_paddingWidth(int format, int width, int height)
 
 int IntelCamera::setShadingCorrection(bool on)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     mShadingCorrection = on;
     if (main_fd < 0) {
-        LOGD("%s:Set Shading Correction failed. "
-                "will set after device is open.\n", __func__);
+        LogDetail("Set Shading Correction failed. "
+                "will set after device is open.");
         return 0;
     }
     return atomisp_set_sc(main_fd, on);
@@ -2105,17 +2117,18 @@ int IntelCamera::setShadingCorrection(bool on)
 
 int IntelCamera::setColorEffect(int effect)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
     mColorEffect = effect;
     if (main_fd < 0){
-        LOGD("%s:Set Color Effect failed. "
-                "will set after device is open.\n", __func__);
+        LogDetail("Set Color Effect failed. "
+                "will set after device is open.");
         return 0;
     }
     ret = atomisp_set_tone_mode(main_fd,
                         (enum v4l2_colorfx)effect);
     if (ret) {
-        LOGE("Error setting color effect:%d, fd:%d\n", effect, main_fd);
+        LogError("Error setting color effect:%d, fd:%d", effect, main_fd);
         return -1;
     }
 
@@ -2141,7 +2154,7 @@ int IntelCamera::setColorEffect(int effect)
         ret = atomisp_set_contrast_bright(main_fd, mIspSettings.contrast, mIspSettings.brightness, mIspSettings.inv_gamma);
         if (ret != 0)
         {
-            LOGE("Error setting contrast and brightness in color effect:%d, fd:%d\n", effect, main_fd);
+            LogError("Error setting contrast and brightness in color effect:%d, fd:%d", effect, main_fd);
             return -1;
         }
     }
@@ -2151,16 +2164,17 @@ int IntelCamera::setColorEffect(int effect)
 
 int IntelCamera::setXNR(bool on)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
     mXnrOn = on;
     if (main_fd < 0){
-        LOGD("%s:Set XNR failed. "
-                "will set after device is open.\n", __func__);
+        LogDetail("Set XNR failed. "
+                "will set after device is open.");
         return 0;
     }
     ret = atomisp_set_xnr(main_fd, on);
     if (ret) {
-        LOGE("Error setting xnr:%d, fd:%d\n", on, main_fd);
+        LogError("Error setting xnr:%d, fd:%d", on, main_fd);
         return -1;
     }
     return 0;
@@ -2168,6 +2182,7 @@ int IntelCamera::setXNR(bool on)
 
 int IntelCamera::setGDC(bool on)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
     mGDCOn = on;
     //set the GDC when do the still image capture
@@ -2176,9 +2191,10 @@ int IntelCamera::setGDC(bool on)
 
 int IntelCamera::setDVS(bool on)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
     mDVSOn = on;
-    LOG1("dvs,line:%d, set dvs val:%d to 3A", __LINE__, mDVSOn);
+    LogDetail("dvs,line:%d, set dvs val:%d to 3A", __LINE__, mDVSOn);
     mAAA->SetStillStabilizationEnabled(mDVSOn); // set 3A
 
     return 0;
@@ -2186,21 +2202,23 @@ int IntelCamera::setDVS(bool on)
 
 bool IntelCamera::getDVS(void)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return mDVSOn;
 }
 
 int IntelCamera::setTNR(bool on)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
     mTnrOn= on;
     if (main_fd < 0){
-        LOGD("%s:Set TNR failed."
-                " will set after device is open.\n", __func__);
+        LogDetail("Set TNR failed."
+                " will set after device is open.");
         return 0;
     }
     ret = atomisp_set_tnr(main_fd, on);
     if (ret) {
-        LOGE("Error setting tnr:%d, fd:%d\n", on, main_fd);
+        LogError("Error setting tnr:%d, fd:%d", on, main_fd);
         return -1;
     }
     return 0;
@@ -2208,18 +2226,19 @@ int IntelCamera::setTNR(bool on)
 
 int IntelCamera::setNREE(bool on)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret, ret2;
     mNrEeOn= on;
     if (main_fd < 0){
-        LOGD("%s:Set NR/EE failed."
-                " will set after device is open.\n", __func__);
+        LogDetail("Set NR/EE failed."
+                " will set after device is open.");
         return 0;
     }
     ret = atomisp_set_ee(main_fd,on);
     ret2 = atomisp_set_bnr(main_fd,on);
 
     if (ret || ret2) {
-        LOGE("Error setting NR/EE:%d, fd:%d\n", on, main_fd);
+        LogError("Error setting NR/EE:%d, fd:%d", on, main_fd);
         return -1;
     }
     return 0;
@@ -2227,16 +2246,17 @@ int IntelCamera::setNREE(bool on)
 
 int IntelCamera::setMACC(int macc)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
     mMacc= macc;
     if (main_fd < 0){
-        LOGD("%s:Set MACC failed. "
-                "will set after device is open.\n", __func__);
+        LogDetail("Set MACC failed. "
+                "will set after device is open.");
         return 0;
     }
     ret = atomisp_set_macc(main_fd,1,macc);
     if (ret) {
-        LOGE("Error setting MACC:%d, fd:%d\n", macc, main_fd);
+        LogError("Error setting MACC:%d, fd:%d", macc, main_fd);
         return -1;
     }
     return 0;
@@ -2244,11 +2264,12 @@ int IntelCamera::setMACC(int macc)
 
 int IntelCamera::flushISPParameters ()
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret, ret2;
 
     if (main_fd < 0){
-        LOGD("%s:flush Color Effect failed."
-                " will set after device is open.\n", __func__);
+        LogDetail("flush Color Effect failed."
+                " will set after device is open.");
         return 0;
     }
 
@@ -2257,14 +2278,14 @@ int IntelCamera::flushISPParameters ()
         ret = atomisp_set_tone_mode(main_fd,
                 (enum v4l2_colorfx)mColorEffect);
         if (ret) {
-            LOGE("Error setting color effect:%d, fd:%d\n",
+            LogError("Error setting color effect:%d, fd:%d",
                             mColorEffect, main_fd);
         }
         else {
-            LOGE("set color effect success to %d in %s.\n", mColorEffect, __func__);
+            LogError("set color effect success to %d.", mColorEffect);
         }
     }
-    else  LOGD("ignore color effect setting");
+    else  LogDetail("ignore color effect setting");
 
     // do gamma inverse only if start status is negative effect
     if (mColorEffect == V4L2_COLORFX_NEGATIVE) {
@@ -2273,8 +2294,8 @@ int IntelCamera::flushISPParameters ()
                               mIspSettings.brightness, mIspSettings.inv_gamma);
         if (ret != 0)
         {
-            LOGE("Error setting contrast and brightness in color effect "
-                 "flush:%d, fd:%d\n", mColorEffect, main_fd);
+            LogError("Error setting contrast and brightness in color effect "
+                 "flush:%d, fd:%d", mColorEffect, main_fd);
             return -1;
         }
     }
@@ -2284,13 +2305,13 @@ int IntelCamera::flushISPParameters ()
     if (mXnrOn != DEFAULT_XNR) {
         ret = atomisp_set_xnr(main_fd, mXnrOn);
         if (ret) {
-            LOGE("Error setting xnr:%d, fd:%d\n",  mXnrOn, main_fd);
+            LogError("Error setting xnr:%d, fd:%d",  mXnrOn, main_fd);
             return -1;
         }
         mColorEffect = DEFAULT_COLOR_EFFECT;
     }
     else
-        LOGD("ignore xnr setting");
+        LogDetail("ignore xnr setting");
 
     //flush nr/ee
     if (mNrEeOn != DEFAULT_NREE) {
@@ -2298,7 +2319,7 @@ int IntelCamera::flushISPParameters ()
         ret2 = atomisp_set_bnr(main_fd,mNrEeOn);
 
         if (ret || ret2) {
-            LOGE("Error setting NR/EE:%d, fd:%d\n", mNrEeOn, main_fd);
+            LogError("Error setting NR/EE:%d, fd:%d", mNrEeOn, main_fd);
             return -1;
         }
     }
@@ -2307,7 +2328,7 @@ int IntelCamera::flushISPParameters ()
     if (mMacc != DEFAULT_MACC) {
         ret = atomisp_set_macc(main_fd,1,mMacc);
         if (ret) {
-            LOGE("Error setting NR/EE:%d, fd:%d\n", mMacc, main_fd);
+            LogError("Error setting NR/EE:%d, fd:%d", mMacc, main_fd);
         }
     }
 
@@ -2315,7 +2336,7 @@ int IntelCamera::flushISPParameters ()
     if (mShadingCorrection != DEFAULT_SHADING_CORRECTION) {
         ret = atomisp_set_sc(main_fd, mShadingCorrection);
         if (ret) {
-            LOGE("Error setting shading correction:%d, fd:%d\n", mShadingCorrection, main_fd);
+            LogError("Error setting shading correction:%d, fd:%d", mShadingCorrection, main_fd);
         }
     }
 
@@ -2327,6 +2348,7 @@ void IntelCamera::trimRGB565(unsigned char *src, unsigned char* dst,
                              int src_width, int src_height,
                              int dst_width, int dst_height)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     for (int i=0; i<dst_height; i++) {
         memcpy( (unsigned char *)dst+i*2*dst_width,
                 (unsigned char *)src+i*src_width,
@@ -2339,14 +2361,14 @@ void IntelCamera::trimNV12(unsigned char *src, unsigned char* dst,
                            int src_width, int src_height,
                            int dst_width, int dst_height)
 {
+    LogEntry2(LOG_TAG, __FUNCTION__);
     unsigned char *dst_y, *dst_uv;
     unsigned char *src_y, *src_uv;
 
     dst_y = dst;
     src_y = src;
 
-    LOG2("%s:%s:%d", __FILE__, __func__, __LINE__);
-    LOG2("%d:%d:%d:%d", src_width, src_height, dst_width, dst_height);
+    LogDetail("%d:%d:%d:%d", src_width, src_height, dst_width, dst_height);
 
     for (int i = 0; i < dst_height; i++) {
         memcpy( (unsigned char *)dst_y + i * dst_width,
@@ -2366,36 +2388,40 @@ void IntelCamera::trimNV12(unsigned char *src, unsigned char* dst,
 
 int IntelCamera::getFocusLength(unsigned int *length)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if (mSomeEXIFAttibutes.valid)
         return *length = mSomeEXIFAttibutes.AtomispMakeNoteInfo.focal_length;
     else {
-        LOGD("%s: WARNING: invalid EXIF focus length", __func__);
+        LogInfo("WARNING: invalid EXIF focus length");
         return -1;
     }
 }
 
 int IntelCamera::getFnumber(unsigned int *fnumber)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if (mSomeEXIFAttibutes.valid)
         return *fnumber = mSomeEXIFAttibutes.AtomispMakeNoteInfo.f_number_curr;
     else {
-        LOGD("%s: WARNING: invalid EXIF fnumber", __func__);
+        LogInfo("WARNING: invalid EXIF fnumber");
         return -1;
     }
 }
 
 int IntelCamera::getFnumberRange(unsigned int *fnumber_range)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     if (mSomeEXIFAttibutes.valid)
         return *fnumber_range = mSomeEXIFAttibutes.AtomispMakeNoteInfo.f_number_range;
     else {
-        LOGD("%s: WARNING: invalid EXIF fnumber range", __func__);
+        LogInfo("WARNING: invalid EXIF fnumber range");
         return -1;
     }
 }
 
 int IntelCamera::acheiveEXIFAttributesFromDriver()
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret = 0;
     int fd = video_fds[V4L2_FIRST_DEVICE];
 
@@ -2404,7 +2430,7 @@ int IntelCamera::acheiveEXIFAttributesFromDriver()
     if (fd > 0) {
         ret = atomisp_get_make_note_info(fd, &mSomeEXIFAttibutes.AtomispMakeNoteInfo);
         if (ret < 0) {
-            LOGD("%s: WARNING: get make note from driver failed", __func__);
+            LogInfo("WARNING: get make note from driver failed");
             return -1;
         }
 
@@ -2412,7 +2438,7 @@ int IntelCamera::acheiveEXIFAttributesFromDriver()
         return ret;
     }
     else {
-        LOGD("%s: WARNING: invalid file descriptor", __func__);
+        LogInfo("WARNING: invalid file descriptor");
         return -1;
     }
 }
@@ -2420,32 +2446,33 @@ int IntelCamera::acheiveEXIFAttributesFromDriver()
 
 int IntelCamera::v4l2_capture_open(int device)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int fd;
     struct stat st;
 
     if ((device < V4L2_FIRST_DEVICE) || (device > V4L2_THIRD_DEVICE)) {
-        LOGE("ERR(%s): Wrong device node %d\n", __func__, device);
+        LogError("Wrong device node %d", device);
         return -1;
     }
 
     char *dev_name = dev_name_array[device];
-    LOG1("---Open video device %s---", dev_name);
+    LogDetail("---Open video device %s---", dev_name);
 
     if (stat (dev_name, &st) == -1) {
-        LOGE("ERR(%s): Error stat video device %s: %s", __func__,
+        LogError("Error stat video device %s: %s",
              dev_name, strerror(errno));
         return -1;
     }
 
     if (!S_ISCHR (st.st_mode)) {
-        LOGE("ERR(%s): %s not a device", __func__, dev_name);
+        LogError("%s is not a device", dev_name);
         return -1;
     }
 
     fd = open(dev_name, O_RDWR);
 
     if (fd <= 0) {
-        LOGE("ERR(%s): Error opening video device %s: %s", __func__,
+        LogError("Error opening video device %s: %s",
              dev_name, strerror(errno));
         return -1;
     }
@@ -2458,15 +2485,16 @@ int IntelCamera::v4l2_capture_open(int device)
 
 void IntelCamera::v4l2_capture_close(int fd)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     /* close video device */
-    LOG1("----close device ---");
+    LogDetail("----close device ---");
     if (fd < 0) {
-        LOGW("W(%s): Not opened\n", __func__);
+        LogWarning("Device not opened!");
         return ;
     }
 
     if (close(fd) < 0) {
-        LOGE("ERR(%s): Close video device failed!", __func__);
+        LogError("Close video device failed!");
         return;
     }
     file_injection = false;
@@ -2474,54 +2502,56 @@ void IntelCamera::v4l2_capture_close(int fd)
 
 int IntelCamera::v4l2_capture_querycap(int fd, int device, struct v4l2_capability *cap)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret = 0;
 
     ret = ioctl(fd, VIDIOC_QUERYCAP, cap);
 
     if (ret < 0) {
-        LOGE("ERR(%s): :VIDIOC_QUERYCAP failed\n", __func__);
+        LogError("VIDIOC_QUERYCAP failed");
         return ret;
     }
 
     if (device == V4L2_THIRD_DEVICE) {
         if (!(cap->capabilities & V4L2_CAP_VIDEO_OUTPUT)) {
-            LOGE("ERR(%s):  no output devices\n", __func__);
+            LogError("No output devices");
             return -1;
         }
         return ret;
     }
 
     if (!(cap->capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
-        LOGE("ERR(%s):  no capture devices\n", __func__);
+        LogError("No capture devices");
         return -1;
     }
 
     if (!(cap->capabilities & V4L2_CAP_STREAMING)) {
-        LOGE("ERR(%s): is no video streaming device", __func__);
+        LogError("Is not a video streaming device");
         return -1;
     }
 
-    LOG1( "driver:      '%s'", cap->driver);
-    LOG1( "card:        '%s'", cap->card);
-    LOG1( "bus_info:      '%s'", cap->bus_info);
-    LOG1( "version:      %x", cap->version);
-    LOG1( "capabilities:      %x", cap->capabilities);
+    LogDetail( "driver:      '%s'", cap->driver);
+    LogDetail( "card:        '%s'", cap->card);
+    LogDetail( "bus_info:      '%s'", cap->bus_info);
+    LogDetail( "version:      %x", cap->version);
+    LogDetail( "capabilities:      %x", cap->capabilities);
 
     return ret;
 }
 
 int IntelCamera::v4l2_capture_s_input(int fd, int index)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     struct v4l2_input input;
     int ret;
 
-    LOG1("VIDIOC_S_INPUT");
+    LogDetail("VIDIOC_S_INPUT");
     input.index = index;
 
     ret = ioctl(fd, VIDIOC_S_INPUT, &input);
 
     if (ret < 0) {
-        LOGE("ERR(%s):VIDIOC_S_INPUT index %d failed\n", __func__,
+        LogError("VIDIOC_S_INPUT index %d failed",
              input.index);
         return ret;
     }
@@ -2531,10 +2561,11 @@ int IntelCamera::v4l2_capture_s_input(int fd, int index)
 
 int IntelCamera::v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc, bool raw)
 {
+    LogEntry2(LOG_TAG, __FUNCTION__);
     int ret;
     struct v4l2_format v4l2_fmt;
     CLEAR(v4l2_fmt);
-    LOG1("VIDIOC_S_FMT");
+    LogDetail("VIDIOC_S_FMT");
 
     if (device == V4L2_THIRD_DEVICE) {
         g_isp_timeout = ATOMISP_FILEINPUT_POLL_TIMEOUT;
@@ -2545,8 +2576,7 @@ int IntelCamera::v4l2_capture_s_format(int fd, int device, int w, int h, int fou
         v4l2_fmt.fmt.pix.sizeimage = file_image.size;
         v4l2_fmt.fmt.pix.priv = file_image.bayer_order;
 
-        LOG2("%s, width: %d, height: %d, format: %x, size: %d, bayer_order: %d\n",
-             __func__,
+        LogDetail("width: %d, height: %d, format: %x, size: %d, bayer_order: %d",
              file_image.width,
              file_image.height,
              file_image.format,
@@ -2555,7 +2585,7 @@ int IntelCamera::v4l2_capture_s_format(int fd, int device, int w, int h, int fou
 
         ret = ioctl(fd, VIDIOC_S_FMT, &v4l2_fmt);
         if (ret < 0) {
-            LOGE("ERR(%s):VIDIOC_S_FMT failed %s\n", __func__, strerror(errno));
+            LogError("VIDIOC_S_FMT failed %s", strerror(errno));
             return -1;
         }
         return 0;
@@ -2565,11 +2595,11 @@ int IntelCamera::v4l2_capture_s_format(int fd, int device, int w, int h, int fou
     v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     ret = ioctl (fd,  VIDIOC_G_FMT, &v4l2_fmt);
     if (ret < 0) {
-        LOGE("ERR(%s):VIDIOC_G_FMT failed %s\n", __func__, strerror(errno));
+        LogError("VIDIOC_G_FMT failed %s", strerror(errno));
         return -1;
     }
     if (raw) {
-        LOG1("%s, choose raw dump path", __func__);
+        LogDetail("Choose raw dump path");
         v4l2_fmt.type = V4L2_BUF_TYPE_PRIVATE;
     }
     else
@@ -2582,13 +2612,13 @@ int IntelCamera::v4l2_capture_s_format(int fd, int device, int w, int h, int fou
 
     ret = ioctl(fd, VIDIOC_S_FMT, &v4l2_fmt);
     if (ret < 0) {
-        LOGE("ERR(%s):VIDIOC_S_FMT failed %s\n", __func__, strerror(errno));
+        LogError("VIDIOC_S_FMT failed %s", strerror(errno));
         return -1;
     }
 
     if (raw) {
         raw_data_dump.size = v4l2_fmt.fmt.pix.priv;
-        LOG1("raw data size from kernel %d\n", raw_data_dump.size);
+        LogDetail("raw data size from kernel %d", raw_data_dump.size);
     }
 
     return 0;
@@ -2597,18 +2627,18 @@ int IntelCamera::v4l2_capture_s_format(int fd, int device, int w, int h, int fou
 int IntelCamera::v4l2_capture_try_format(int fd, int device, int *w, int *h,
                                          int *fourcc)
 {
+    LogEntry2(LOG_TAG, __FUNCTION__);
     int ret;
     struct v4l2_format v4l2_fmt;
     CLEAR(v4l2_fmt);
-    LOG1("VIDIOC_TRY_FMT");
+    LogDetail("VIDIOC_TRY_FMT");
 
     if (device == V4L2_THIRD_DEVICE) {
         *w = file_image.width;
         *h = file_image.height;
         *fourcc = file_image.format;
 
-        LOG2("%s, width: %d, height: %d, format: %x, size: %d, bayer_order: %d\n",
-             __func__,
+        LogDetail("width: %d, height: %d, format: %x, size: %d, bayer_order: %d",
              file_image.width,
              file_image.height,
              file_image.format,
@@ -2627,7 +2657,7 @@ int IntelCamera::v4l2_capture_try_format(int fd, int device, int *w, int *h,
 
     ret = ioctl(fd, VIDIOC_TRY_FMT, &v4l2_fmt);
     if (ret < 0) {
-        LOGE("ERR(%s):VIDIOC_S_FMT failed %s\n", __func__, strerror(errno));
+        LogError("VIDIOC_S_FMT failed %s", strerror(errno));
         return -1;
     }
 
@@ -2640,6 +2670,7 @@ int IntelCamera::v4l2_capture_try_format(int fd, int device, int *w, int *h,
 int IntelCamera::v4l2_capture_g_framerate(int fd, float * framerate, int width,
                                          int height, int pix_fmt)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
     struct v4l2_frmivalenum frm_interval;
 
@@ -2656,7 +2687,7 @@ int IntelCamera::v4l2_capture_g_framerate(int fd, float * framerate, int width,
 
     ret = ioctl(fd, VIDIOC_ENUM_FRAMEINTERVALS, &frm_interval);
     if (ret < 0) {
-        LOGW("WARN(%s):ioctrl failed %s\n", __func__, strerror(errno));
+        LogWarning("ioctl failed: %s", strerror(errno));
         return ret;
     }
 
@@ -2670,6 +2701,7 @@ int IntelCamera::v4l2_capture_g_framerate(int fd, float * framerate, int width,
 
 int IntelCamera::v4l2_capture_request_buffers(int fd, int device, uint num_buffers)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     struct v4l2_requestbuffers req_buf;
     int ret;
     CLEAR(req_buf);
@@ -2688,17 +2720,17 @@ int IntelCamera::v4l2_capture_request_buffers(int fd, int device, uint num_buffe
         req_buf.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
     }
 
-    LOG1("VIDIOC_REQBUFS, count=%d", req_buf.count);
+    LogDetail("VIDIOC_REQBUFS, count=%d", req_buf.count);
     ret = ioctl(fd, VIDIOC_REQBUFS, &req_buf);
 
     if (ret < 0) {
-        LOGE("ERR(%s): VIDIOC_REQBUFS %d failed %s\n", __func__,
+        LogError("VIDIOC_REQBUFS %d failed %s",
              num_buffers, strerror(errno));
         return ret;
     }
 
     if (req_buf.count < num_buffers)
-        LOGW("W(%s)Got buffers is less than request\n", __func__);
+        LogWarning("Got less buffers than requested!");
 
     return req_buf.count;
 }
@@ -2706,12 +2738,11 @@ int IntelCamera::v4l2_capture_request_buffers(int fd, int device, uint num_buffe
 /* MMAP the buffer or allocate the userptr */
 int IntelCamera::v4l2_capture_new_buffer(int fd, int device, int index, struct v4l2_buffer_info *buf)
 {
+    LogEntry2(LOG_TAG, __FUNCTION__);
     void *data;
     int ret;
     struct v4l2_buffer *vbuf = &buf->vbuffer;
     vbuf->flags = 0x0;
-
-    LOG1("%s\n", __func__);
 
     if (device == V4L2_THIRD_DEVICE) {
         vbuf->index = index;
@@ -2720,7 +2751,7 @@ int IntelCamera::v4l2_capture_new_buffer(int fd, int device, int index, struct v
 
         ret = ioctl(fd, VIDIOC_QUERYBUF, vbuf);
         if (ret < 0) {
-            LOGE("ERR(%s):VIDIOC_QUERYBUF failed %s\n", __func__, strerror(errno));
+            LogError("VIDIOC_QUERYBUF failed %s", strerror(errno));
             return -1;
         }
 
@@ -2728,7 +2759,7 @@ int IntelCamera::v4l2_capture_new_buffer(int fd, int device, int index, struct v
                     vbuf->m.offset);
 
         if (MAP_FAILED == data) {
-            LOGE("ERR(%s):mmap failed %s\n", __func__, strerror(errno));
+            LogError("mmap failed: %sn", strerror(errno));
             return -1;
         }
 
@@ -2750,7 +2781,7 @@ int IntelCamera::v4l2_capture_new_buffer(int fd, int device, int index, struct v
     ret = ioctl(fd , VIDIOC_QUERYBUF, vbuf);
 
     if (ret < 0) {
-        LOGE("ERR(%s):VIDIOC_QUERYBUF failed %s\n", __func__, strerror(errno));
+        LogError("VIDIOC_QUERYBUF failed %s", strerror(errno));
         return ret;
     }
 
@@ -2761,27 +2792,27 @@ int IntelCamera::v4l2_capture_new_buffer(int fd, int device, int index, struct v
                     vbuf->m.offset);
 
         if (MAP_FAILED == data) {
-            LOGE("ERR(%s):mmap failed %s\n", __func__, strerror(errno));
+            LogError("mmap failed %s", strerror(errno));
             return -1;
         }
         buf->data = data;
     }
 
     buf->length = vbuf->length;
-    LOG2("%s: index %u\n", __func__, vbuf->index);
-    LOG2("%s: type %d\n", __func__, vbuf->type);
-    LOG2("%s: bytesused %u\n", __func__, vbuf->bytesused);
-    LOG2("%s: flags %08x\n", __func__, vbuf->flags);
-    LOG2("%s: memory %u\n", __func__, vbuf->memory);
+    LogDetail("index %u", vbuf->index);
+    LogDetail("type %d", vbuf->type);
+    LogDetail("bytesused %u", vbuf->bytesused);
+    LogDetail("flags %08x", vbuf->flags);
+    LogDetail("memory %u", vbuf->memory);
     if (memory_userptr) {
-        LOG1("%s: userptr:  %lu", __func__, vbuf->m.userptr);
+        LogDetail("userptr:  %lu", vbuf->m.userptr);
     }
     else {
-        LOG1("%s: MMAP offset:  %u", __func__, vbuf->m.offset);
+        LogDetail("MMAP offset:  %u", vbuf->m.offset);
     }
 
-    LOG2("%s: length %u\n", __func__, vbuf->length);
-    LOG2("%s: input %u\n", __func__, vbuf->input);
+    LogDetail("length %u", vbuf->length);
+    LogDetail("input %u", vbuf->input);
 
     return ret;
 }
@@ -2789,21 +2820,20 @@ int IntelCamera::v4l2_capture_new_buffer(int fd, int device, int index, struct v
 /* Unmap the buffer or free the userptr */
 int IntelCamera::v4l2_capture_free_buffer(int fd, int device, struct v4l2_buffer_info *buf_info)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret = 0;
     void *addr = buf_info->data;
     size_t length = buf_info->length;
 
-    LOG1("%s: free buffers\n", __func__);
-
     if (device == V4L2_THIRD_DEVICE)
         if ((ret = munmap(addr, length)) < 0) {
-            LOGE("ERR(%s):munmap failed %s\n", __func__, strerror(errno));
+            LogError("munmap failed: %s", strerror(errno));
             return ret;
         }
 
     if (!memory_userptr) {
         if ((ret = munmap(addr, length)) < 0) {
-            LOGE("ERR(%s):munmap failed %s\n", __func__, strerror(errno));
+            LogError("munmap failed %s", strerror(errno));
             return ret;
         }
     }
@@ -2812,13 +2842,13 @@ int IntelCamera::v4l2_capture_free_buffer(int fd, int device, struct v4l2_buffer
 
 int IntelCamera::v4l2_capture_streamon(int fd)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    LOG1("%s\n", __func__);
 
     ret = ioctl(fd, VIDIOC_STREAMON, &type);
     if (ret < 0) {
-        LOGE("ERR(%s):VIDIOC_STREAMON failed %s\n", __func__, strerror(errno));
+        LogError("VIDIOC_STREAMON failed: %s", strerror(errno));
         return ret;
     }
 
@@ -2827,15 +2857,15 @@ int IntelCamera::v4l2_capture_streamon(int fd)
 
 int IntelCamera::v4l2_capture_streamoff(int fd)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    LOG1("%s\n", __func__);
 
     if (fd < 0) //Device is closed
         return 0;
     ret = ioctl(fd, VIDIOC_STREAMOFF, &type);
     if (ret < 0) {
-        LOGE("ERR(%s):VIDIOC_STREAMOFF failed %s\n", __func__, strerror(errno));
+        LogError("VIDIOC_STREAMOFF failed %s", strerror(errno));
         return ret;
     }
 
@@ -2844,6 +2874,7 @@ int IntelCamera::v4l2_capture_streamoff(int fd)
 
 int IntelCamera::v4l2_capture_qbuf(int fd, int index, struct v4l2_buffer_info *buf)
 {
+    LogEntry2(LOG_TAG, __FUNCTION__);
     struct v4l2_buffer *v4l2_buf = &buf->vbuffer;
     int ret;
 
@@ -2851,17 +2882,17 @@ int IntelCamera::v4l2_capture_qbuf(int fd, int index, struct v4l2_buffer_info *b
         return 0;
     ret = ioctl(fd, VIDIOC_QBUF, v4l2_buf);
     if (ret < 0) {
-        LOGE("ERR(%s):VIDIOC_QBUF index %d failed %s\n", __func__,
+        LogError("VIDIOC_QBUF index %d failed %s",
              index, strerror(errno));
         return ret;
     }
-    LOG2("(%s): VIDIOC_QBUF finsihed", __func__);
 
     return ret;
 }
 
 int IntelCamera::v4l2_capture_control_dq(int fd, int start)
 {
+    LogEntry2(LOG_TAG, __FUNCTION__);
     struct v4l2_buffer vbuf;
     int ret;
     vbuf.memory = V4L2_MEMORY_USERPTR;
@@ -2878,29 +2909,28 @@ int IntelCamera::v4l2_capture_control_dq(int fd, int start)
     }
     ret = ioctl(fd, VIDIOC_QBUF, &vbuf); /* start DQ thread in driver*/
     if (ret < 0) {
-        LOGE("ERR(%s):VIDIOC_QBUF index %d failed %s\n", __func__,
+        LogError("VIDIOC_QBUF index %d failed %s",
              vbuf.index, strerror(errno));
         return ret;
     }
-    LOG1("(%s): VIDIOC_QBUF finsihed", __func__);
     return 0;
 }
 
 
 int IntelCamera::v4l2_capture_g_parm(int fd, struct v4l2_streamparm *parm)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
-    LOG1("%s\n", __func__);
 
     parm->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
     ret = ioctl(fd, VIDIOC_G_PARM, parm);
     if (ret < 0) {
-        LOGE("ERR(%s):VIDIOC_G_PARM, failed %s\n", __func__, strerror(errno));
+        LogError("VIDIOC_G_PARM, failed %s", strerror(errno));
         return ret;
     }
 
-    LOG1("%s: timeperframe: numerator %d, denominator %d\n", __func__,
+    LogDetail("timeperframe: numerator %d, denominator %d",
          parm->parm.capture.timeperframe.numerator,
          parm->parm.capture.timeperframe.denominator);
 
@@ -2909,8 +2939,8 @@ int IntelCamera::v4l2_capture_g_parm(int fd, struct v4l2_streamparm *parm)
 
 int IntelCamera::v4l2_capture_s_parm(int fd, int device, struct v4l2_streamparm *parm)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
-    LOG1("%s\n", __func__);
 
     if (device == V4L2_THIRD_DEVICE) {
         parm->type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
@@ -2920,7 +2950,7 @@ int IntelCamera::v4l2_capture_s_parm(int fd, int device, struct v4l2_streamparm 
 
     ret = ioctl(fd, VIDIOC_S_PARM, parm);
     if (ret < 0) {
-        LOGE("ERR(%s):VIDIOC_S_PARM, failed %s\n", __func__, strerror(errno));
+        LogError("VIDIOC_S_PARM, failed %s", strerror(errno));
         return ret;
     }
 
@@ -2929,11 +2959,13 @@ int IntelCamera::v4l2_capture_s_parm(int fd, int device, struct v4l2_streamparm 
 
 int IntelCamera::v4l2_capture_release_buffers(int fd, int device)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return v4l2_capture_request_buffers(fd, device, 0);
 }
 
 int IntelCamera::v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf)
 {
+    LogEntry2(LOG_TAG, __FUNCTION__);
     int ret, i;
     int num_tries = 500;
     struct pollfd pfd[1];
@@ -2951,12 +2983,12 @@ int IntelCamera::v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf)
         ret = poll(pfd, 1, g_isp_timeout);
 
         if (ret < 0 ) {
-            LOGE("ERR(%s): select error in DQ\n", __func__);
+            LogError("Select error in DQ");
             return -1;
         }
 
         if (ret == 0) {
-            LOGE("ERR(%s): select timeout in DQ\n", __func__);
+            LogError("Select timeout in DQ");
             return -1;
         }
 
@@ -2964,18 +2996,18 @@ int IntelCamera::v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf)
 
         if (ret >= 0)
             break;
-        LOGE("DQ error -- ret is %d\n", ret);
+        LogError("DQ error -- ret is %d", ret);
         switch (errno) {
         case EINVAL:
-            LOGE("%s: Failed to get frames from device. %s", __func__,
+            LogError("Failed to get frames from device. %s",
                  strerror(errno));
             return -1;
         case EINTR:
-            LOGW("%s: Could not sync the buffer %s\n", __func__,
+            LogWarning("Could not sync the buffer %s",
                  strerror(errno));
             break;
         case EAGAIN:
-            LOGW("%s: No buffer in the queue %s\n", __func__,
+            LogWarning("No buffer in the queue %s",
                  strerror(errno));
             break;
         case EIO:
@@ -2989,10 +3021,9 @@ int IntelCamera::v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf)
     }
 
     if ( i == num_tries) {
-        LOGE("ERR(%s): too many tries\n", __func__);
+        LogError("Too many tries");
         return -1;
     }
-    LOG2("(%s): VIDIOC_DQBUF finsihed", __func__);
     return buf->index;
 }
 
@@ -3000,6 +3031,7 @@ int IntelCamera::v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf)
 int IntelCamera::v4l2_register_bcd(int fd, int num_frames,
                       void **ptrs, int w, int h, int fourcc, int size)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret = 0;
     int i;
     struct atomisp_bc_video_package ioctl_package;
@@ -3022,12 +3054,12 @@ int IntelCamera::v4l2_register_bcd(int fd, int num_frames,
     ioctl_package.inputparam = (int)(&buf_param);
     ret = ioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package);
     if (ret < 0) {
-        LOGE("(%s): Failed to request buffers from buffer class"
-             " camera driver (ret=%d).", __func__, ret);
+        LogError("Failed to request buffers from buffer class"
+             " camera driver (ret=%d).", ret);
         return -1;
     }
-    LOG1("(%s): fd:%d, request bcd buffers count=%d, width:%d, stride:%d,"
-         " height:%d, fourcc:%x", __func__, fd, buf_param.count, buf_param.width,
+    LogDetail("fd:%d, request bcd buffers count=%d, width:%d, stride:%d,"
+         " height:%d, fourcc:%x", fd, buf_param.count, buf_param.width,
          buf_param.stride, buf_param.height, buf_param.fourcc);
 
     bc_buf_ptr_t buf_pa;
@@ -3041,8 +3073,8 @@ int IntelCamera::v4l2_register_bcd(int fd, int num_frames,
         ioctl_package.inputparam = (int) (&buf_pa);
         ret = ioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package);
         if (ret < 0) {
-            LOGE("(%s): Failed to set buffer phyaddr from buffer class"
-                 " camera driver (ret=%d).", __func__, ret);
+            LogError("Failed to set buffer phyaddr from buffer class"
+                 " camera driver (ret=%d).", ret);
             return -1;
         }
     }
@@ -3050,9 +3082,9 @@ int IntelCamera::v4l2_register_bcd(int fd, int num_frames,
     ioctl_package.ioctl_cmd = BC_Video_ioctl_get_buffer_count;
     ret = ioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package);
     if (ret < 0 || ioctl_package.outputparam != num_frames)
-        LOGE("(%s): check bcd buffer count error", __func__);
-    LOG1("(%s): check bcd buffer count = %d",
-         __func__, ioctl_package.outputparam);
+        LogError("Check bcd buffer count error");
+    LogDetail("Check bcd buffer count = %d",
+         ioctl_package.outputparam);
 
     m_bcd_registered = true;
 
@@ -3061,6 +3093,7 @@ int IntelCamera::v4l2_register_bcd(int fd, int num_frames,
 
 int IntelCamera::v4l2_release_bcd(int fd)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret = 0;
     struct atomisp_bc_video_package ioctl_package;
     bc_buf_params_t buf_param;
@@ -3068,8 +3101,8 @@ int IntelCamera::v4l2_release_bcd(int fd)
     ioctl_package.ioctl_cmd = BC_Video_ioctl_release_buffer_device;
     ret = ioctl(fd, ATOMISP_IOC_CAMERA_BRIDGE, &ioctl_package);
     if (ret < 0) {
-        LOGE("(%s): Failed to release buffers from buffer class camera"
-             " driver (ret=%d).fd:%d", __func__, ret, fd);
+        LogError("Failed to release buffers from buffer class camera"
+             " driver (ret=%d).fd:%d", ret, fd);
         return -1;
     }
 
@@ -3079,6 +3112,7 @@ int IntelCamera::v4l2_release_bcd(int fd)
 int IntelCamera::v4l2_read_file(char *file_name, int file_width, int file_height,
               int format, int bayer_order)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int file_fd = -1;
     int file_size = 0;
     void *file_buf = NULL;
@@ -3086,26 +3120,26 @@ int IntelCamera::v4l2_read_file(char *file_name, int file_width, int file_height
 
     /* Open the file we will transfer to kernel */
     if ((file_fd = open(file_name, O_RDONLY)) == -1) {
-        LOGE("ERR(%s): Failed to open %s\n", __func__, file_name);
+        LogError("Failed to open %s", file_name);
         return -1;
     }
 
     CLEAR(st);
     if (fstat(file_fd, &st) < 0) {
-        LOGE("ERR(%s): fstat %s failed\n", __func__, file_name);
+        LogError("fstat %s failed", file_name);
         return -1;
     }
 
     file_size = st.st_size;
     if (file_size == 0) {
-        LOGE("ERR(%s): empty file %s\n", __func__, file_name);
+        LogError("empty file %s", file_name);
         return -1;
     }
 
     file_buf = mmap(NULL, PAGE_ALIGN(file_size),
                     MAP_SHARED, PROT_READ, file_fd, 0);
     if (file_buf == MAP_FAILED) {
-        LOGE("ERR(%s): mmap failed %s\n", __func__, file_name);
+        LogError("mmap failed %s", file_name);
         return -1;
     }
 
@@ -3115,8 +3149,8 @@ int IntelCamera::v4l2_read_file(char *file_name, int file_width, int file_height
     file_image.width = file_width;
     file_image.height = file_height;
 
-    LOG2("%s, mapped_addr=%p, width=%d, height=%d, size=%d\n",
-        __func__, (char *)file_buf, file_width, file_height, file_image.size);
+    LogDetail("mapped_addr=%p, width=%d, height=%d, size=%d",
+        (char *)file_buf, file_width, file_height, file_image.size);
 
     file_image.format = format;
     file_image.bayer_order = bayer_order;
@@ -3126,29 +3160,32 @@ int IntelCamera::v4l2_read_file(char *file_name, int file_width, int file_height
 
 void IntelCamera::v4l2_set_isp_timeout(int timeout)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     g_isp_timeout = timeout;
 }
 
 int IntelCamera::xioctl (int fd, int request, void *arg, const char *name)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
 
-    LOG1 ("ioctl %s ", name);
+    LogDetail ("ioctl %s ", name);
 
     do {
         ret = ioctl (fd, request, arg);
     } while (-1 == ret && EINTR == errno);
 
     if (ret < 0)
-        LOGW ("failed: %s\n", strerror (errno));
+        LOGW ("failed: %s", strerror (errno));
     else
-        LOG1 ("ok\n");
+        LogDetail ("ok");
 
     return ret;
 }
 
 int IntelCamera::atomisp_set_capture_mode(int fd, int mode)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int binary;
     struct v4l2_streamparm parm;
 
@@ -3171,7 +3208,7 @@ int IntelCamera::atomisp_set_capture_mode(int fd, int mode)
     parm.parm.capture.capturemode = binary;
 
     if (ioctl(fd, VIDIOC_S_PARM, &parm) < 0) {
-        LOGE("ERR(%s): error %s\n", __func__, strerror(errno));
+        LogError("error %s", strerror(errno));
         return -1;
     }
 
@@ -3188,11 +3225,12 @@ int IntelCamera::atomisp_set_capture_mode(int fd, int mode)
 int IntelCamera::atomisp_get_attribute (int fd, int attribute_num,
                                                  int *value, char *name)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     struct v4l2_control control;
     struct v4l2_ext_controls controls;
     struct v4l2_ext_control ext_control;
 
-    LOG1 ("getting value of attribute %d: %s\n", attribute_num, name);
+    LogDetail ("getting value of attribute %d: %s", attribute_num, name);
 
     if (fd < 0)
         return -1;
@@ -3220,7 +3258,7 @@ int IntelCamera::atomisp_get_attribute (int fd, int attribute_num,
 	return 0;
     }
 
-    LOGE("Failed to get value for control %s (%d) on device '%d', %s\n.",
+    LogError("Failed to get value for control %s (%d) on device '%d', %s\n.",
          name, attribute_num, fd, strerror(errno));
     return -1;
 }
@@ -3234,11 +3272,12 @@ int IntelCamera::atomisp_get_attribute (int fd, int attribute_num,
 int IntelCamera::atomisp_set_attribute (int fd, int attribute_num,
                                              const int value, const char *name)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     struct v4l2_control control;
     struct v4l2_ext_controls controls;
     struct v4l2_ext_control ext_control;
 
-    LOG1 ("setting attribute [%s] to %d\n", name, value);
+    LogDetail ("setting attribute [%s] to %d", name, value);
 
     if (fd < 0)
         return -1;
@@ -3261,64 +3300,76 @@ int IntelCamera::atomisp_set_attribute (int fd, int attribute_num,
     if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &controls) == 0)
         return 0;
 
-    LOGE("Failed to set value %d for control %s (%d) on device '%d', %s",
+    LogError("Failed to set value %d for control %s (%d) on device '%d', %s",
          value, name, attribute_num, fd, strerror(errno));
     return -1;
 }
 
 int IntelCamera::atomisp_get_de_config (int fd, struct atomisp_de_config *de_cfg)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return _xioctl (fd, ATOMISP_IOC_G_ISP_FALSE_COLOR_CORRECTION, de_cfg);
 }
 
 int IntelCamera::atomisp_get_macc_tbl (int fd, struct atomisp_macc_config *macc_config)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return _xioctl (fd, ATOMISP_IOC_G_ISP_MACC,macc_config);
 }
 
 int IntelCamera::atomisp_get_ctc_tbl (int fd, struct atomisp_ctc_table *ctc_tbl)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return _xioctl (fd, ATOMISP_IOC_G_ISP_CTC, ctc_tbl);
 }
 
 int IntelCamera::atomisp_get_gdc_tbl (int fd, struct atomisp_morph_table *morph_tbl)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return _xioctl (fd, ATOMISP_IOC_G_ISP_GDC_TAB, morph_tbl);
 }
 
 int IntelCamera::atomisp_get_tnr_config (int fd, struct atomisp_tnr_config *tnr_cfg)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return _xioctl (fd, ATOMISP_IOC_G_TNR, tnr_cfg);
 }
 
 
 int IntelCamera::atomisp_get_ee_config (int fd, struct atomisp_ee_config *ee_cfg)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return _xioctl (fd, ATOMISP_IOC_G_EE, ee_cfg);
 
 }
 
-int IntelCamera::atomisp_get_nr_config (int fd, struct atomisp_nr_config *nr_cfg) {
+int IntelCamera::atomisp_get_nr_config (int fd, struct atomisp_nr_config *nr_cfg)
+{
+    LogEntry(LOG_TAG, __FUNCTION__);
     return _xioctl (fd, ATOMISP_IOC_G_BAYER_NR, nr_cfg);
 
 }
 
 int IntelCamera::atomisp_get_dp_config (int fd, struct atomisp_dp_config *dp_cfg)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return _xioctl (fd, ATOMISP_IOC_G_ISP_BAD_PIXEL_DETECTION, dp_cfg);
 }
 
 int IntelCamera::atomisp_get_wb_config (int fd, struct atomisp_wb_config *wb_cfg)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return _xioctl (fd, ATOMISP_IOC_G_ISP_WHITE_BALANCE, wb_cfg);
 }
 int IntelCamera::atomisp_get_ob_config (int fd, struct atomisp_ob_config *ob_cfg)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return _xioctl (fd, ATOMISP_IOC_G_BLACK_LEVEL_COMP, ob_cfg);
 }
 
 int IntelCamera::atomisp_get_fpn_tbl(int fd, struct atomisp_frame* fpn_tbl)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return _xioctl (fd, ATOMISP_IOC_G_ISP_FPN_TABLE, fpn_tbl);
 }
 
@@ -3327,6 +3378,7 @@ int IntelCamera::atomisp_get_fpn_tbl(int fd, struct atomisp_frame* fpn_tbl)
 */
 int IntelCamera::autoGmLut (unsigned short *pptDst, struct atomisp_gm_config *cfg_gm)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     /* cannot use this on cirrus because of missing powf implementation */
     const double adbToe = (double) (cfg_gm->GmToe) / 1024.;       // [u5.11] -> double
     const double adbKnee = (double) (cfg_gm->GmKne) / 1024.;      // [u5.11] -> double
@@ -3360,6 +3412,7 @@ int IntelCamera::autoGmLut (unsigned short *pptDst, struct atomisp_gm_config *cf
 
 int IntelCamera::atomisp_set_fpn (int fd, int on)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
     if (on) {
         if (atomisp_get_fpn_tbl(fd, &old_fpn_tbl) < 0)
@@ -3375,12 +3428,14 @@ int IntelCamera::atomisp_set_fpn (int fd, int on)
 
 int IntelCamera::atomisp_set_macc (int fd, int on, int effect)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return setColorEffect(effect);
 }
 
 
 int IntelCamera::atomisp_set_sc (int fd, int on)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return atomisp_set_attribute (fd, V4L2_CID_ATOMISP_SHADING_CORRECTION, on,
                                      "Shading Correction");
 }
@@ -3388,6 +3443,7 @@ int IntelCamera::atomisp_set_sc (int fd, int on)
 /* Bad Pixel Detection*/
 int IntelCamera::atomisp_set_bpd (int fd, int on)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
     ret = atomisp_set_attribute (fd, V4L2_CID_ATOMISP_BAD_PIXEL_DETECTION,
         on, "Bad Pixel Detection");
@@ -3406,12 +3462,14 @@ int IntelCamera::atomisp_set_bpd (int fd, int on)
 
 int IntelCamera::atomisp_get_bpd (int fd, int *on)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return atomisp_get_attribute (fd, V4L2_CID_ATOMISP_BAD_PIXEL_DETECTION,
                                      on, "Bad Pixel Detection");
 }
 
 int IntelCamera::atomisp_set_bnr (int fd, int on)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     struct atomisp_nr_config bnr;
     int ret;
 
@@ -3435,6 +3493,7 @@ int IntelCamera::atomisp_set_bnr (int fd, int on)
 /* False Color Correction, Demosaicing */
 int IntelCamera::atomisp_set_fcc (int fd, int on)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
     ret = atomisp_set_attribute (fd, V4L2_CID_ATOMISP_FALSE_COLOR_CORRECTION,
             on, "False Color Correction");
@@ -3452,12 +3511,14 @@ int IntelCamera::atomisp_set_fcc (int fd, int on)
 
 int IntelCamera::atomisp_set_ynr (int fd, int on)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     /* YCC NR use the same parameter as Bayer NR */
     return atomisp_set_bnr(fd, on);
 }
 
 int IntelCamera::atomisp_set_ee (int fd, int on)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     struct atomisp_ee_config ee;
     if (on) {
         ee.gain = 8192;
@@ -3478,18 +3539,19 @@ int IntelCamera::atomisp_set_ee (int fd, int on)
 /* Black Level Compensation */
 int IntelCamera::atomisp_set_blc (int fd, int on)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     static struct atomisp_ob_config ob_off;
     struct atomisp_ob_config ob_on;
     static int current_status = 0;
     int ret;
 
     if (on && current_status) {
-        LOG1("Black Level Compensation Already On");
+        LogDetail("Black Level Compensation Already On");
         return 0;
     }
 
     if (!on && !current_status) {
-        LOG1("Black Level Composition Already Off");
+        LogDetail("Black Level Composition Already Off");
         return 0;
     }
 
@@ -3503,7 +3565,7 @@ int IntelCamera::atomisp_set_blc (int fd, int on)
 
     if (on) {
         if (_xioctl (fd, ATOMISP_IOC_G_BLACK_LEVEL_COMP, &ob_off) < 0 ) {
-            LOG1("Error Get black level composition");
+            LogDetail("Error Get black level composition");
             return -1;
         }
         if (ci_adv_cfg_file_loaded())
@@ -3521,13 +3583,13 @@ int IntelCamera::atomisp_set_blc (int fd, int on)
         }
         else {
             if (_xioctl (fd, ATOMISP_IOC_S_BLACK_LEVEL_COMP, &ob_on) < 0) {
-                LOG1("Error Set black level composition");
+                LogDetail("Error Set black level composition");
                 return -1;
             }
         }
     } else {
         if (_xioctl (fd, ATOMISP_IOC_S_BLACK_LEVEL_COMP, &ob_off) < 0) {
-            LOG1("Error Set black level composition");
+            LogDetail("Error Set black level composition");
             return -1;
         }
     }
@@ -3537,6 +3599,7 @@ int IntelCamera::atomisp_set_blc (int fd, int on)
 
 int IntelCamera::atomisp_set_tnr (int fd, int on)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret;
     if (on)
     {
@@ -3553,6 +3616,7 @@ int IntelCamera::atomisp_set_tnr (int fd, int on)
 
 int IntelCamera::atomisp_set_xnr (int fd, int on)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return _xioctl (fd, ATOMISP_IOC_S_XNR, &on);
 }
 
@@ -3561,16 +3625,19 @@ int IntelCamera::atomisp_set_xnr (int fd, int on)
 
 int IntelCamera::atomisp_set_tone_mode (int fd, enum v4l2_colorfx colorfx)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return atomisp_set_attribute (fd, V4L2_CID_COLORFX, colorfx, "Color Effect");
 }
 
 int IntelCamera::atomisp_get_tone_mode (int fd, int *colorfx)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return atomisp_get_attribute (fd, V4L2_CID_COLORFX, colorfx, "Color Effect");
 }
 
 int IntelCamera::atomisp_set_gamma_tbl (int fd, struct atomisp_gamma_table *g_tbl)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return _xioctl (fd, ATOMISP_IOC_S_ISP_GAMMA, g_tbl);
 }
 
@@ -3579,6 +3646,7 @@ int IntelCamera::atomisp_set_gamma_tbl (int fd, struct atomisp_gamma_table *g_tb
 int IntelCamera::atomisp_apply_to_runtime_gamma(int contrast,
                                                  int brightness, bool inv_gamma)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int i, tmp;
     for (i = 0; i < atomisp_gamma_table_size; i++) {
         tmp = (g_gamma_table_original.data[i] * contrast >> 8) + brightness;
@@ -3599,6 +3667,7 @@ int IntelCamera::atomisp_apply_to_runtime_gamma(int contrast,
 
 int IntelCamera::atomisp_init_gamma (int fd, int contrast, int brightness, bool inv_gamma)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret = _xioctl (fd, ATOMISP_IOC_G_ISP_GAMMA, &g_gamma_table_original);
     if (ret < 0)
         return -1;
@@ -3609,6 +3678,7 @@ int IntelCamera::atomisp_init_gamma (int fd, int contrast, int brightness, bool 
 int IntelCamera::atomisp_set_gamma_from_value (int fd, float gamma, int contrast,
                                            int brightness, bool inv_gamma)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     g_cfg_gm.GmVal = gamma;
     autoGmLut (g_gamma_table_original.data, &g_cfg_gm);
 
@@ -3629,13 +3699,14 @@ int IntelCamera::atomisp_set_contrast_bright (int fd, int contrast, int brightne
 
 int IntelCamera::atomisp_set_gdc (int fd, int on)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret2;
     int ret;
     ret2 = atomisp_set_attribute (fd, V4L2_CID_ATOMISP_POSTPROCESS_GDC_CAC,
             on, "GDC");
     if (on) {
         if (ci_adv_cfg_file_loaded()) {
-            LOGD("%s: cfg file already loaded", __func__);
+            LogDetail("cfg file already loaded");
             ret = ci_adv_load_gdc_table();
             if (ret == 0)
                 return 0;
@@ -3652,32 +3723,38 @@ int IntelCamera::atomisp_set_gdc (int fd, int on)
 
 int IntelCamera::atomisp_set_dvs (int fd, int on)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return atomisp_set_attribute(fd, V4L2_CID_ATOMISP_VIDEO_STABLIZATION,
                                     on, "Video Stabilization");
 }
 
 int IntelCamera::atomisp_get_exposure (int fd, int *exposure)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return atomisp_get_attribute (fd, V4L2_CID_EXPOSURE_ABSOLUTE, exposure, "Exposure");
 }
 
 int IntelCamera::atomisp_get_aperture (int fd, int *aperture)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return atomisp_get_attribute (fd, V4L2_CID_IRIS_ABSOLUTE, aperture, "Aperture");
 }
 
 int IntelCamera::atomisp_set_focus_posi (int fd, int focus)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return atomisp_set_attribute (fd, V4L2_CID_FOCUS_ABSOLUTE, focus, "Focus");
 }
 
 int IntelCamera::atomisp_get_focus_posi (int fd, int *focus)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return atomisp_get_attribute (fd, V4L2_CID_FOCUS_ABSOLUTE, focus, "Focus");
 }
 
 int IntelCamera::atomisp_get_make_note_info(int fd, atomisp_makernote_info*nt)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int ret = 0;
 
     ret = xioctl (fd, ATOMISP_IOC_ISP_MAKERNOTE, nt, "make_note");
@@ -3686,17 +3763,20 @@ int IntelCamera::atomisp_get_make_note_info(int fd, atomisp_makernote_info*nt)
 
 int IntelCamera::atomisp_set_zoom (int fd, int zoom)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return atomisp_set_attribute (fd, V4L2_CID_ZOOM_ABSOLUTE, zoom, "zoom");
 }
 
 int IntelCamera::atomisp_get_zoom (int fd, int *zoom)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     return atomisp_get_attribute (fd, V4L2_CID_ZOOM_ABSOLUTE, zoom, "Zoom");
 }
 
 
 int IntelCamera::atomisp_image_flip (int fd, int mode, int mflip)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int mflip_attribute_num = (mflip == FLIP_H) ? V4L2_CID_HFLIP : V4L2_CID_VFLIP;
     return atomisp_set_attribute(fd, mflip_attribute_num,
                                  mode, "image flip");
@@ -3704,11 +3784,13 @@ int IntelCamera::atomisp_image_flip (int fd, int mode, int mflip)
 
 int IntelCamera::atomisp_set_cfg_from_file(int fd)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
    return atomisp_set_cfg(fd);
 }
 
 int IntelCamera::find_cfg_index(char *in)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int i;
 
     for(i = 0; i < NUM_OF_CFG; i++) {
@@ -3721,6 +3803,7 @@ int IntelCamera::find_cfg_index(char *in)
 
 int IntelCamera::analyze_cfg_value(unsigned int index, char *value)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int i;
 
     switch (index) {
@@ -3763,6 +3846,7 @@ int IntelCamera::analyze_cfg_value(unsigned int index, char *value)
 
 int IntelCamera::atomisp_parse_cfg_file()
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     char line[LINE_BUF_SIZE];
     char *line_name;
     char *line_value;
@@ -3774,7 +3858,7 @@ int IntelCamera::atomisp_parse_cfg_file()
 
     fp = fopen(CFG_PATH, "r");
     if (!fp) {
-        LOGE("Error open file:%s", CFG_PATH);
+        LogError("Error open file:%s", CFG_PATH);
         return -1;
     }
     /* anaylize file item */
@@ -3783,14 +3867,14 @@ int IntelCamera::atomisp_parse_cfg_file()
         line_value = strchr(line, '=') + 1;
         param_index = find_cfg_index(line_name);
         if (param_index < 0) {
-            LOGE("Error index in line: %s", line);
+            LogError("Error index in line: %s", line);
             err = -1;
             continue;
         }
 
         res = analyze_cfg_value(param_index, line_value);
         if (res < 0) {
-            LOGE("Error value in line: %s", line);
+            LogError("Error value in line: %s", line);
             err = -1;
             continue;
         }
@@ -3803,12 +3887,13 @@ int IntelCamera::atomisp_parse_cfg_file()
 
 int IntelCamera::atomisp_set_cfg(int fd)
 {
+    LogEntry(LOG_TAG, __FUNCTION__);
     int err = 0;
     int i;
     unsigned int value;
 
     if (default_function_value_list[SWITCH] == FUNC_OFF) {
-        LOGD("Does not using the configuration file");
+        LogDetail("Does not using the configuration file");
         return 0;
     }
 
@@ -3837,15 +3922,15 @@ int IntelCamera::atomisp_set_cfg(int fd)
                         V4L2_COLORFX_NONE);
                     break;
                 }
-                LOGD("macc:%s", FunctionOption_Macc[value]);
+                LogDetail("macc:%s", FunctionOption_Macc[value]);
                 break;
             case SC:
-                LOGD("sc:%s", FunctionOption_General[value]);
+                LogDetail("sc:%s", FunctionOption_General[value]);
                 if(value != FUNC_OFF)
                     err |= atomisp_set_sc(fd, value);
                 break;
             case IE:
-                LOGD("ie:%s", FunctionOption_Ie[value]);
+                LogDetail("ie:%s", FunctionOption_Ie[value]);
                 switch (value) {
                 case IE_MONO:
                     err |= atomisp_set_tone_mode(fd,
@@ -3864,7 +3949,7 @@ int IntelCamera::atomisp_set_cfg(int fd)
                 break;
             case GAMMA:
                 //Fix Me! Add setting gamma table here
-                LOGD("gamma:%s", FunctionOption_General[value]);
+                LogDetail("gamma:%s", FunctionOption_General[value]);
                 if(value != FUNC_OFF)
                     err |= atomisp_set_gamma_from_value(fd, DEFAULT_GAMMA_VALUE,
                                                         DEFAULT_CONTRAST,
@@ -3872,70 +3957,70 @@ int IntelCamera::atomisp_set_cfg(int fd)
                                                         !!DEFAULT_INV_GAMMA);
                 break;
             case BPC:
-                LOGD("bpc:%s", FunctionOption_General[value]);
+                LogDetail("bpc:%s", FunctionOption_General[value]);
                 if(value != FUNC_OFF)
                     err |= atomisp_set_bpd(fd, value);
                 break;
             case FPN:
-                LOGD("fpn:%s", FunctionOption_General[value]);
+                LogDetail("fpn:%s", FunctionOption_General[value]);
                 if(value != FUNC_OFF)
                     err |= atomisp_set_fpn(fd, value);
                 break;
             case BLC:
-                LOGD("blc:%s", FunctionOption_General[value]);
+                LogDetail("blc:%s", FunctionOption_General[value]);
                 if(value != FUNC_OFF)
                     err |= atomisp_set_blc(fd, value);
                 break;
             case EE:
-                LOGD("ee:%s", FunctionOption_General[value]);
+                LogDetail("ee:%s", FunctionOption_General[value]);
                 if(value != FUNC_OFF)
                     err |= atomisp_set_ee(fd, value);
                 break;
             case NR:
-                LOGD("nr:%s", FunctionOption_General[value]);
+                LogDetail("nr:%s", FunctionOption_General[value]);
                 if(value != FUNC_OFF) {
                     err |= atomisp_set_bnr(fd, value);
                     err |= atomisp_set_ynr(fd, value);
                 }
                 break;
             case XNR:
-                LOGD("xnr:%s", FunctionOption_General[value]);
+                LogDetail("xnr:%s", FunctionOption_General[value]);
                 if(value != FUNC_OFF)
                     err |= atomisp_set_xnr(fd, value);
                 break;
             case BAYERDS:
-                LOGD("bayer-ds:%s", FunctionOption_General[value]);
+                LogDetail("bayer-ds:%s", FunctionOption_General[value]);
                 //Needed added new interface
                 break;
             case ZOOM:
-                LOGD("zoom:%d", value);
+                LogDetail("zoom:%d", value);
                 if(value != 0)
                     err |= atomisp_set_zoom(fd, value);
                 break;
             case MF:
-                LOGD("mf:%d", value);
+                LogDetail("mf:%d", value);
                 if(value != 0)
                     err |= atomisp_set_focus_posi(fd, value);
                 break;
             case MWB:
-                LOGD("mwb:%d", value);
+                LogDetail("mwb:%d", value);
                 //Fix Me! Add 3A Lib interface here
                 break;
             case ISO:
-                LOGD("iso:%d", value);
+                LogDetail("iso:%d", value);
                 //Fix Me! Add implementatino here
                 break;
             case DIS:
-                LOGD("dis:%s", FunctionOption_General[value]);
+                LogDetail("dis:%s", FunctionOption_General[value]);
                 //Fix Me! Add setting DIS Interface
                 break;
             case DVS:
-                LOGD("dvs:%s", FunctionOption_General[value]);
+                LogDetail("dvs:%s", FunctionOption_General[value]);
                 if(value != 0)
                     err |= atomisp_set_dvs(fd, value);
                 break;
             case REDEYE:
-                LOGD("red-eye:%s", FunctionOption_General[value]);
+                LogDetail("red-eye:%s", FunctionOption_General[value]);
                 //Fix Me! Add red-eye interface here
                 break;
             default:
