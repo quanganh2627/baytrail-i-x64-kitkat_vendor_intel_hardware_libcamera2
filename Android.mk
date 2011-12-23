@@ -1,89 +1,33 @@
-# Copyright (c) 2009-2010 Wind River Systems, Inc.
-ifeq ($(USE_CAMERA_STUB),false)
-ifeq ($(CUSTOM_BOARD), medfield)
-#
-# libcamera
-#
-
-ENABLE_BUFFER_SHARE_MODE := false
-ENABLE_HWLIBJPEG_BUFFER_SHARE := false
-
-LOCAL_PATH := $(call my-dir)
-
-LIBCAMERA_TOP := $(LOCAL_PATH)
-
+LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
-
-LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
-LOCAL_MODULE := camera.$(TARGET_BOARD_PLATFORM)
-LOCAL_MODULE_TAGS := optional
-
-LOCAL_SHARED_LIBRARIES := \
-	libcamera_client \
-	libutils \
-	libcutils \
-	libdl \
-	libbinder \
-	libskia \
-	libmfldadvci \
-	libs3cjpeg \
-	libandroid \
-	libui \
-
-LOCAL_SRC_FILES += \
-	LogHelper.cpp \
-	CameraHardware.cpp \
-	IntelCamera.cpp \
-	CameraAAAProcess.cpp \
-	IntelCameraHAL.cpp \
-
-LOCAL_CFLAGS += -DLOG_NDEBUG=1 -DSTDC99 -Wno-write-strings
-
-ifeq ($(TARGET_PRODUCT), mfld_cdk)
-LOCAL_CFLAGS += -DMFLD_CDK
-else
-LOCAL_CFLAGS += -DMFLD_PR2
-endif
-
-ifeq ($(BOARD_USES_CAMERA_TEXTURE_STREAMING), true)
-LOCAL_CFLAGS += -DBOARD_USE_CAMERA_TEXTURE_STREAMING
-else
-LOCAL_CFLAGS += -UBOARD_USE_CAMERA_TEXTURE_STREAMING
-endif
-
-ifneq ($(BOARD_USES_WRS_OMXIL_CORE), true)
-LOCAL_CFLAGS += -DBOARD_USE_SOFTWARE_ENCODE
-else
-LOCAL_CFLAGS += -UBOARD_USE_SOFTWARE_ENCODE
-endif
+LOCAL_SRC_FILES := \
+        ControlThread.cpp \
+        PreviewThread.cpp \
+        PictureThread.cpp \
+        AAAThread.cpp \
+        AtomISP.cpp \
+        DebugFrameRate.cpp \
+        Callbacks.cpp \
+        AtomAAA.cpp \
+        AtomHAL.cpp \
 
 LOCAL_C_INCLUDES += \
 	frameworks/base/include \
 	frameworks/base/include/binder \
 	frameworks/base/include/camera \
-	external/skia/include/core \
-	external/skia/include/images \
-	$(TARGET_OUT_HEADERS)/libmfldadvci \
-	$(TARGET_OUT_HEADERS)/libsharedbuffer \
-	hardware/intel/libs3cjpeg
+	hardware/libhardware/include/hardware \
 
-LOCAL_SHARED_LIBRARIES += libutils
+LOCAL_SHARED_LIBRARIES := \
+	libcamera_client \
+	libutils \
+	libcutils \
+	libbinder \
+	libandroid \
+	libui \
 
-ifeq ($(ENABLE_BUFFER_SHARE_MODE),true)
-    LOCAL_CFLAGS  += -DENABLE_BUFFER_SHARE_MODE=1
-    LOCAL_SHARED_LIBRARIES += libsharedbuffer
-endif
-
-LOCAL_SHARED_LIBRARIES += libjpeg
-LOCAL_SRC_FILES += libjpegwrap.cpp
-LOCAL_C_INCLUDES += hardware/intel/libva \
-                     external/jpeg
-ifeq ($(ENABLE_HWLIBJPEG_BUFFER_SHARE),true)
-    LOCAL_CFLAGS += -DENABLE_HWLIBJPEG_BUFFER_SHARE
-endif
+LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
+LOCAL_MODULE := camera.$(TARGET_BOARD_PLATFORM)
+LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_SHARED_LIBRARY)
-
-endif
-endif
