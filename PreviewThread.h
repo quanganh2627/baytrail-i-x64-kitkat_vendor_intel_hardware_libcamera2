@@ -49,9 +49,11 @@ public:
 // public methods
 public:
 
-    void setCallbacks(Callbacks *callbacks);
+    void     setCallbacks(Callbacks *callbacks);
 
     status_t preview(AtomBuffer *buff);
+    status_t setPreviewWindow(struct preview_stream_ops *window);
+    status_t setPreviewSize(int preview_width, int preview_height);
 
     // TODO: need methods to configure preview thread
     // TODO: decide if configuration method should send a message
@@ -64,6 +66,7 @@ private:
 
         MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
         MESSAGE_ID_PREVIEW,
+        MESSAGE_ID_SET_PREVIEW,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -77,11 +80,18 @@ private:
         AtomBuffer *buff;
     };
 
+    struct MessageSetPreview {
+        struct preview_stream_ops *window;
+        int width;
+        int height;
+    };
+
     // union of all message data
     union MessageData {
 
         // MESSAGE_ID_PREVIEW
         MessagePreview preview;
+        MessageSetPreview setPreview;
     };
 
     // message id and message data
@@ -96,6 +106,7 @@ private:
     // thread message execution functions
     status_t handleMessageExit();
     status_t handleMessagePreview(MessagePreview *msg);
+    status_t handleMessageSetPreview(MessageSetPreview *msg);
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -112,6 +123,11 @@ private:
     sp<DebugFrameRate> mDebugFPS;
     ICallbackPreview *mPreviewDoneCallback;
     Callbacks *mCallbacks;
+
+    preview_stream_ops_t* mPreviewWindow;
+
+    int mPreviewWidth;
+    int mPreviewHeight;
 
 }; // class PreviewThread
 

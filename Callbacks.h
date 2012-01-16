@@ -45,7 +45,7 @@ public:
     void previewFrameDone(AtomBuffer *buff);
     void videoFrameDone(AtomBuffer *buff, nsecs_t timstamp);
     void cameraError(int err);
-
+    void autofocusDone(void);
     // TODO: need apis for snapshot
 
     void allocateMemory(AtomBuffer *buff, int size);

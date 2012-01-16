@@ -2,6 +2,7 @@ LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := \
+        LogHelper.cpp \
         ControlThread.cpp \
         PreviewThread.cpp \
         PictureThread.cpp \
@@ -11,6 +12,7 @@ LOCAL_SRC_FILES := \
         Callbacks.cpp \
         AtomAAA.cpp \
         AtomHAL.cpp \
+        ColorConverter.cpp \
 
 LOCAL_C_INCLUDES += \
 	frameworks/base/include \

@@ -18,7 +18,7 @@
 #ifndef ANDROID_LOG_HELPER_H
 #define ANDROID_LOG_HELPER_H
 
-#define DEBUG_HELPER 1
+#define DEBUG_HELPER 0
 
 #include <utils/KeyedVector.h>
 #include <cutils/atomic.h>
@@ -31,6 +31,8 @@ static void setLogLevel(int level) {
 
 #define LOG1(...) LOGD_IF(gLogLevel >= 1, __VA_ARGS__);
 #define LOG2(...) LOGD_IF(gLogLevel >= 2, __VA_ARGS__);
+#define LOG_FUNCTION LogEntry(LOG_TAG, __FUNCTION__);
+#define LOG_FUNCTION2 LogEntry2(LOG_TAG, __FUNCTION__);
 
 #if (DEBUG_HELPER)
 #define LogEntry(t, e)  LogHelper logHelper(1, t, e)
@@ -57,12 +59,17 @@ static void setLogLevel(int level) {
 namespace android {
 
 class LogHelper {
+    static const int MAX_LOG_TAG        = 64;
+    static const int MAX_ENTRY_NAME     = 256;
+    static const int MAX_SPACES         = 256;
+    static const int MAX_TID            = 8;
+
     short logLevel;
-    char logTag[64];
-    char entryName[256];
-    char spaces[256];
+    char logTag[MAX_LOG_TAG];
+    char entryName[MAX_ENTRY_NAME];
+    char spaces[MAX_SPACES];
     unsigned long tid;
-    char sTid[8];
+    char sTid[MAX_TID];
     static KeyedVector<unsigned long, size_t> tracePosMap;
 
     void   DoLog(const char* format, ...);

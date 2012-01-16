@@ -22,11 +22,38 @@
 #include <utils/Vector.h>
 #include <utils/Errors.h>
 #include <utils/threads.h>
-#include <CameraParameters.h>
-#include <camera.h>
 #include "AtomCommon.h"
 
 namespace android {
+
+struct FileInput {
+    char *name;
+    unsigned int width;
+    unsigned int height;
+    unsigned int size;
+    int format;
+    int bayer_order;
+    char *mapped_addr;
+};
+
+//v4l2 buffer in pool
+struct v4l2_buffer_info {
+    void *data;
+    size_t length;
+    int width;
+    int height;
+    int format;
+    int flags; //You can use to to detern the buf status
+    struct v4l2_buffer vbuffer;
+};
+
+struct v4l2_buffer_pool {
+    int active_buffers;
+    int width;
+    int height;
+    int format;
+    struct v4l2_buffer_info bufs [MAX_V4L2_BUFFERS];
+};
 
 class Callbacks;
 
@@ -36,33 +63,26 @@ class AtomISP {
 public:
 
     enum Mode {
-        MODE_NONE,
-        MODE_PREVIEW_STILL,
-        MODE_PREVIEW_VIDEO,
+        MODE_NONE = -1,
+        MODE_PREVIEW = 0,
+        MODE_CAPTURE = 1,
+        MODE_VIDEO = 2,
     };
 
     struct Config {
-
-        // preview
-        int previewWidth;
-        int previewHeight;
-        const char *previewFormat; // see CameraParameters.h
-
-        // recording
-        int recordingWidth;
-        int recordingHeight;
-        const char *recordingFormat; // see CameraParameters.h
-
-        // preview/recording (shared)
-        int fps;
-
-        // snapshot
-        // TODO: add snapshot params
+        int cameraId;         // ID of the selected camera
+        FrameInfo preview;    // preview
+        FrameInfo postview;   // postview (thumbnail for capture)
+        FrameInfo recording;  // recording
+        int       fps;        // preview/recording (shared)
+        FrameInfo snapshot;   // snapshot
+        int num_snapshot;     // number of snapshots to take
+        int zoom;             // zoom value
     };
 
 // constructor/destructor
 public:
-    AtomISP();
+    AtomISP(int camera_id);
     ~AtomISP();
 
 // public methods
@@ -81,6 +101,26 @@ public:
     status_t getRecordingFrame(AtomBuffer **buff, nsecs_t *timestamp);
     status_t putRecordingFrame(void *buff);
 
+    status_t setPreviewFrameFormat(int width, int height, int format);
+    FrameInfo getPreviewFrameFormat();
+
+    status_t setPostviewFrameFormat(int width, int height, int format);
+    FrameInfo getPostviewFrameFormat();
+
+    status_t setSnapshotFrameFormat(int width, int height, int format);
+    FrameInfo getSnapshotFrameFormat();
+    status_t setSnapshotUserptr(int index, void *pic_addr, void *pv_addr);
+
+    status_t setVideoFrameFormat(int width, int height, int format);
+    FrameInfo getVideoFrameFormat();
+
+    status_t setSnapshotNum(int num);
+
+    int getMaxSnapshotSize(int *width, int *height);
+    const char* getMaxSnapShotResolution();
+
+    status_t setZoom(int zoom);
+
     // camera hardware information
     static int getNumberOfCameras();
     static status_t getCameraInfo(int cameraId, camera_info *cameraInfo);
@@ -88,18 +128,54 @@ public:
 // private methods
 private:
 
-    void allocatePreviewBuffers();
-    void allocateRecordingBuffers();
-    void freePreviewBuffers();
-    void freeRecordingBuffers();
+    status_t startPreview();
+    status_t stopPreview();
+    status_t startRecording();
+    status_t stopRecording();
+    status_t startCapture();
+    status_t stopCapture();
+
+    status_t allocatePreviewBuffers();
+    status_t allocateRecordingBuffers();
+    status_t freePreviewBuffers();
+    status_t freeRecordingBuffers();
     AtomBuffer *findBuffer(AtomBuffer buffers[],
                            int numBuffers,
                            void *findMe);
 
+    int  openDevice(int device);
+    void closeDevice(int device);
+    status_t v4l2_capture_open(int device);
+    status_t v4l2_capture_close(int fd);
+    status_t v4l2_capture_querycap(int device, struct v4l2_capability *cap);
+    status_t v4l2_capture_s_input(int fd, int index);
+    int detectDeviceResolutions();
+    int atomisp_set_capture_mode(int deviceMode);
+    int v4l2_capture_try_format(int device, int *w, int *h, int *format);
+    int configureDevice(int device, int deviceMode, int w, int h, int format, bool raw);
+    int v4l2_capture_g_framerate(int fd, float * framerate, int width,
+                                          int height, int pix_fmt);
+    int v4l2_capture_s_format(int fd, int device, int w, int h, int format, bool raw);
+    void stopDevice(int device);
+    int v4l2_capture_streamoff(int fd);
+    void destroyBufferPool(int device);
+    int v4l2_capture_free_buffer(int device, struct v4l2_buffer_info *buf_info);
+    int v4l2_capture_release_buffers(int device);
+    int v4l2_capture_request_buffers(int device, uint num_buffers);
+    int startDevice(int device, int buffer_count);
+    int createBufferPool(int device, int buffer_count);
+    int v4l2_capture_new_buffer(int device, int index, struct v4l2_buffer_info *buf);
+    int activateBufferPool(int device);
+    int v4l2_capture_streamon(int fd);
+    int v4l2_capture_qbuf(int fd, int index, struct v4l2_buffer_info *buf);
+    int grabFrame(int device, enum atomisp_frame_status *status);
+    int v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf);
+    int atomisp_set_attribute (int fd, int attribute_num,
+                               const int value, const char *name);
+    int  atomisp_set_zoom (int fd, int zoom);
 // private members
 private:
 
-    static const int MAX_CAMERAS = 2;
     static const camera_info mCameraInfo[MAX_CAMERAS];
 
     Mode mMode;
@@ -108,8 +184,25 @@ private:
     AtomBuffer mRecordingBuffers[ATOM_RECORDING_BUFFERS];
     Config mConfig;
 
-    int mPreviewCount;
-    int mRecordingCount;
+    int video_fds[V4L2_DEVICE_NUM];
+
+    struct v4l2_capability cap;
+    struct v4l2_buffer_pool v4l2_buf_pool[V4L2_DEVICE_NUM]; //pool[0] for device0 pool[1] for device1
+
+    struct {
+        enum raw_data_format format;
+        unsigned int size;
+    } raw_data_dump;
+
+    float framerate;
+
+    int mIspTimeout;
+    struct FileInput mFileImage;
+
+    int mPreviewDevice;
+    int mRecordingDevice;
+
+    Vector<FrameSize> mSupportedSnapshotSizes;
 
 }; // class AtomISP
 

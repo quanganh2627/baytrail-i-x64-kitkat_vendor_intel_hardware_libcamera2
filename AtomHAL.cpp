@@ -30,7 +30,7 @@ using namespace android;
 
 struct atom_camera {
     int camera_id;
-    ControlThread* control_thread;
+    sp<ControlThread> control_thread;
 };
 
 
@@ -53,6 +53,7 @@ static int ATOM_GetCameraInfo(int camera_id,
 ///////////////////////////////////////////////////////////////////////////////
 
 
+static atom_camera atom_cam;
 static int atom_instances = 0;
 static Mutex atom_instance_lock; // for locking atom_instances only
 
@@ -158,13 +159,6 @@ static int atom_preview_enabled(struct camera_device * device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
     return cam->control_thread->previewEnabled();
-}
-
-static int atom_store_meta_data_in_buffers(struct camera_device * device, int enable)
-{
-    LOGV("%s", __FUNCTION__);
-    // TODO: implement
-    return -EINVAL;
 }
 
 static int atom_start_recording(struct camera_device * device)
@@ -300,29 +294,29 @@ static int atom_dump(struct camera_device * device, int fd)
 // For camera_device_ops_t interface documentation refer to: hardware/camera.h
 //
 static camera_device_ops_t atom_ops = {
-    atom_set_preview_window,
-    atom_set_callbacks,
-    atom_enable_msg_type,
-    atom_disable_msg_type,
-    atom_msg_type_enabled,
-    atom_start_preview,
-    atom_stop_preview,
-    atom_preview_enabled,
-    atom_store_meta_data_in_buffers,
-    atom_start_recording,
-    atom_stop_recording,
-    atom_recording_enabled,
-    atom_release_recording_frame,
-    atom_auto_focus,
-    atom_cancel_auto_focus,
-    atom_take_picture,
-    atom_cancel_picture,
-    atom_set_parameters,
-    atom_get_parameters,
-    atom_put_parameters,
-    atom_send_command,
-    atom_release,
-    atom_dump
+    set_preview_window:         atom_set_preview_window,
+    set_callbacks:              atom_set_callbacks,
+    enable_msg_type:            atom_enable_msg_type,
+    disable_msg_type:           atom_disable_msg_type,
+    msg_type_enabled:           atom_msg_type_enabled,
+    start_preview:              atom_start_preview,
+    stop_preview:               atom_stop_preview,
+    preview_enabled:            atom_preview_enabled,
+    store_meta_data_in_buffers: NULL,
+    start_recording:            atom_start_recording,
+    stop_recording:             atom_stop_recording,
+    recording_enabled:          atom_recording_enabled,
+    release_recording_frame:    atom_release_recording_frame,
+    auto_focus:                 atom_auto_focus,
+    cancel_auto_focus:          atom_cancel_auto_focus,
+    take_picture:               atom_take_picture,
+    cancel_picture:             atom_cancel_picture,
+    set_parameters:             atom_set_parameters,
+    get_parameters:             atom_get_parameters,
+    put_parameters:             atom_put_parameters,
+    send_command:               atom_send_command,
+    release:                    atom_release,
+    dump:                       atom_dump,
 };
 
 
@@ -338,7 +332,6 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
 
     Mutex::Autolock _l(atom_instance_lock);
 
-    atom_camera *cam;
     camera_device_t *camera_dev;
 
     if (atom_instances > 0) {
@@ -346,9 +339,13 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
         return -EINVAL;
     }
 
-    cam = (atom_camera *)malloc(sizeof(atom_camera));
-    cam->camera_id = atoi(name);
-    cam->control_thread = new ControlThread();
+    atom_cam.camera_id = atoi(name);
+    atom_cam.control_thread = new ControlThread(atom_cam.camera_id);
+    if (atom_cam.control_thread == NULL) {
+        LOGE("Memory allocation error!");
+        return NO_MEMORY;
+    }
+    atom_cam.control_thread->run();
 
     camera_dev = (camera_device_t*)malloc(sizeof(*camera_dev));
     memset(camera_dev, 0, sizeof(*camera_dev));
@@ -357,7 +354,7 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
     camera_dev->common.module = (hw_module_t *)(module);
     camera_dev->common.close = ATOM_CloseCameraHardware;
     camera_dev->ops = &atom_ops;
-    camera_dev->priv = cam;
+    camera_dev->priv = &atom_cam;
 
     *device = &camera_dev->common;
 
@@ -376,9 +373,9 @@ static int ATOM_CloseCameraHardware(hw_device_t* device)
 
     camera_device_t *camera_dev = (camera_device_t *)device;
     atom_camera *cam = (atom_camera *)(camera_dev->priv);
+    cam->control_thread->requestExitAndWait();
+    cam->control_thread.clear();
 
-    delete cam->control_thread;
-    free(cam);
     free(camera_dev);
 
     atom_instances--;

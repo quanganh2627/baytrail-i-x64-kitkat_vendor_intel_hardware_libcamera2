@@ -56,10 +56,11 @@ char* LogHelper::GetThreadId() {
 size_t LogHelper::GetTracePos() {
     ssize_t idx = tracePosMap.indexOfKey(tid);
     size_t tracePos = 0;
-    if (idx >= 0)
+    if (idx >= 0) {
         tracePos = tracePosMap.valueFor(tid);
-    else
+    } else {
         tracePosMap.add(tid, tracePos);
+    }
      return tracePos;
 }
 

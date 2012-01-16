@@ -53,6 +53,16 @@ public:
     status_t encode(AtomBuffer *buff);
 
     // TODO: need methods to configure PictureThread
+
+    void setPicturePixelFormat(unsigned int format) {
+        mPicturePixelFormat = format;
+    }
+    unsigned int getPicturePixelFormat() {
+        return mPicturePixelFormat;
+    }
+
+    static int getDefaultJpegQuality() { return defaultJpegQuality; }
+    static int getDefaultThumbnailQuality() { return defaultJpegQuality; }
     // TODO: decide if configuration method should send a message
 
 // private types
@@ -110,6 +120,13 @@ private:
     bool mThreadRunning;
     ICallbackPicture *mPictureDoneCallback;
     Callbacks *mCallbacks;
+
+    unsigned int mPicturePixelFormat;
+    static const int defaultJpegQuality = 100; // default Jpeg Quality
+    static const int defaultThumbnailQuality = 50; // default Jpeg thumbnail Quality
+
+// public data
+public:
 
 }; // class PictureThread
 

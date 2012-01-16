@@ -19,6 +19,7 @@
 
 #include <utils/threads.h>
 #include <camera.h>
+#include <camera/CameraParameters.h>
 #include "MessageQueue.h"
 #include "PreviewThread.h"
 #include "PictureThread.h"
@@ -41,7 +42,7 @@ class ControlThread :
 
 // constructor destructor
 public:
-    ControlThread();
+    ControlThread(int cameraId);
     virtual ~ControlThread();
 
 // Thread overrides
@@ -115,6 +116,8 @@ private:
         MESSAGE_ID_RELEASE_RECORDING_FRAME,
         MESSAGE_ID_PREVIEW_DONE,
         MESSAGE_ID_PICTURE_DONE,
+        MESSAGE_ID_SET_PARAMETERS,
+        MESSAGE_ID_GET_PARAMETERS,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -136,6 +139,14 @@ private:
         AtomBuffer *buff;
     };
 
+    struct MessageSetParameters {
+        char* params;
+    };
+
+    struct MessageGetParameters {
+        char** params;
+    };
+
     // union of all message data
     union MessageData {
 
@@ -147,6 +158,12 @@ private:
 
         // MESSAGE_ID_PICTURE_DONE
         MessagePictureDone pictureDone;
+
+        // MESSAGE_ID_SET_PARAMETERS
+        MessageSetParameters setParameters;
+
+        // MESSAGE_ID_GET_PARAMETERS
+        MessageGetParameters getParameters;
     };
 
     // message id and message data
@@ -161,6 +178,7 @@ private:
         STATE_PREVIEW_STILL,
         STATE_PREVIEW_VIDEO,
         STATE_RECORDING,
+        STATE_CAPTURE,
     };
 
 // private methods
@@ -179,13 +197,23 @@ private:
     status_t handleMessageReleaseRecordingFrame(MessageReleaseRecordingFrame *msg);
     status_t handleMessagePreviewDone(MessagePreviewDone *msg);
     status_t handleMessagePictureDone(MessagePictureDone *msg);
+    status_t handleMessageSetParameters(MessageSetParameters *msg);
+    status_t handleMessageGetParameters(MessageGetParameters *msg);
 
     // main message function
     status_t waitForAndExecuteMessage();
 
+    // make sure there are buffers to dequeue from driver
+    bool ispHasData();
+
     // dequeue buffers from driver and deliver them
     status_t dequeuePreview();
     status_t dequeueRecording();
+
+    // parameters handling functions
+    void initDefaultParameters();
+    void setISPParameters(const CameraParameters &new_params, const CameraParameters &old_params);
+    bool isParameterSet(const char* param);
 
 // inherited from Thread
 private:
@@ -206,6 +234,9 @@ private:
     // number of preview/record frames dequeued from ISP
     int mNumPreviewFramesOut;
     int mNumRecordingFramesOut;
+
+    int mCameraId;
+    CameraParameters mParameters;
 
 }; // class ControlThread
 
