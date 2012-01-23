@@ -88,6 +88,15 @@ void Callbacks::videoFrameDone(AtomBuffer *buff, nsecs_t timestamp)
     }
 }
 
+void Callbacks::compressedFrameDone(AtomBuffer *buff)
+{
+    LogEntry(LOG_TAG, __FUNCTION__);
+    if ((mMessageFlags & CAMERA_MSG_COMPRESSED_IMAGE) && mDataCB != NULL) {
+        LogDetail("Sending message: CAMERA_MSG_COMPRESSED_IMAGE");
+        mDataCB(CAMERA_MSG_COMPRESSED_IMAGE, buff->buff, NULL, 0, mUserToken);
+    }
+}
+
 void Callbacks::cameraError(int err)
 {
     LogEntry(LOG_TAG, __FUNCTION__);
@@ -111,4 +120,12 @@ void Callbacks::autofocusDone(void)
     if (mMessageFlags & CAMERA_MSG_FOCUS)
         mNotifyCB(CAMERA_MSG_FOCUS, 1, 0, mUserToken);
 }
+
+void Callbacks::shutterSound()
+{
+    LogEntry(LOG_TAG, __FUNCTION__);
+    if (mMessageFlags & CAMERA_MSG_SHUTTER)
+        mNotifyCB(CAMERA_MSG_SHUTTER, 1, 0, mUserToken);
+}
+
 };

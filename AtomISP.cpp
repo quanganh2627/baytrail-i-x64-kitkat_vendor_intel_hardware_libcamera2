@@ -46,7 +46,7 @@ const camera_info AtomISP::mCameraInfo[MAX_CAMERAS] = {
     },
     {
         CAMERA_FACING_FRONT,
-        0,
+        180,
     }
 };
 
@@ -139,23 +139,11 @@ AtomISP::AtomISP(int camera_id) :
             LogError("Invalid camera id: %d", camera_id);
     }
 
-    mConfig.preview.width = RESOLUTION_VGA_WIDTH;
-    mConfig.preview.padding = RESOLUTION_VGA_WIDTH;
-    mConfig.preview.height = RESOLUTION_VGA_HEIGHT;
-    mConfig.preview.format = V4L2_PIX_FMT_NV12;
-
-    mConfig.postview.width = RESOLUTION_VGA_WIDTH;
-    mConfig.postview.height = RESOLUTION_VGA_HEIGHT;
-    mConfig.postview.format = V4L2_PIX_FMT_NV12;
-
-    mConfig.snapshot.width = RESOLUTION_5MP_WIDTH;
-    mConfig.snapshot.height = RESOLUTION_5MP_HEIGHT;
-    mConfig.snapshot.format = V4L2_PIX_FMT_NV12;
-
-    mConfig.recording.width = MAX_BACK_CAMERA_VIDEO_WIDTH;
-    mConfig.recording.padding = MAX_BACK_CAMERA_VIDEO_WIDTH;
-    mConfig.recording.height = MAX_BACK_CAMERA_VIDEO_HEIGHT;
-    mConfig.recording.format = V4L2_PIX_FMT_NV12;
+    // Initialize the frame sizes
+    setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
+    setPostviewFrameFormat(RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT, V4L2_PIX_FMT_YUV420);
+    setSnapshotFrameFormat(RESOLUTION_5MP_WIDTH, RESOLUTION_5MP_HEIGHT, V4L2_PIX_FMT_YUV420);
+    setVideoFrameFormat(MAX_BACK_CAMERA_VIDEO_WIDTH, MAX_BACK_CAMERA_VIDEO_HEIGHT, V4L2_PIX_FMT_NV12);
 
     mIspTimeout = 0;
 
@@ -287,7 +275,8 @@ status_t AtomISP::startPreview()
     ret = openDevice(mPreviewDevice);
     if (ret < 0) {
         LogError("Open preview device failed!");
-        return UNKNOWN_ERROR;
+        status = UNKNOWN_ERROR;
+        goto exitFree;
     }
 
     ret = configureDevice(
@@ -299,15 +288,23 @@ status_t AtomISP::startPreview()
             false);
     if (ret < 0) {
         LogError("Configure preview device failed!");
-        return UNKNOWN_ERROR;
+        status = UNKNOWN_ERROR;
+        goto exitClose;
     }
 
     ret = startDevice(mPreviewDevice, ATOM_PREVIEW_BUFFERS);
     if (ret < 0) {
         LogError("Start preview device failed!");
-        return UNKNOWN_ERROR;
+        status = UNKNOWN_ERROR;
+        goto exitClose;
     }
 
+    return status;
+
+exitClose:
+    closeDevice(mPreviewDevice);
+exitFree:
+    freePreviewBuffers();
     return status;
 }
 
@@ -315,9 +312,9 @@ status_t AtomISP::stopPreview()
 {
     LOG_FUNCTION
 
-    freePreviewBuffers();
     stopDevice(mPreviewDevice);
     closeDevice(mPreviewDevice);
+    freePreviewBuffers();
 
     return NO_ERROR;
 }
@@ -333,18 +330,20 @@ status_t AtomISP::startRecording() {
         return status;
 
     if ((status = allocatePreviewBuffers()) != NO_ERROR)
-        return status;
+        goto exitFreeRec;
 
     ret = openDevice(mRecordingDevice);
     if (ret < 0) {
         LogError("Open recording device failed!");
-        return UNKNOWN_ERROR;
+        status = UNKNOWN_ERROR;
+        goto exitFreePrev;
     }
 
     ret = openDevice(mPreviewDevice);
     if (ret < 0) {
         LogError("Open preview device failed!");
-        return UNKNOWN_ERROR;
+        status = UNKNOWN_ERROR;
+        goto exitCloseRec;
     }
 
     ret = configureDevice(
@@ -356,7 +355,8 @@ status_t AtomISP::startRecording() {
             false);
     if (ret < 0) {
         LogError("Configure recording device failed!");
-        return UNKNOWN_ERROR;
+        status = UNKNOWN_ERROR;
+        goto exitClosePrev;
     }
 
     ret = configureDevice(
@@ -368,22 +368,37 @@ status_t AtomISP::startRecording() {
             false);
     if (ret < 0) {
         LogError("Configure recording device failed!");
-        return UNKNOWN_ERROR;
+        status = UNKNOWN_ERROR;
+        goto exitClosePrev;
     }
 
     ret = startDevice(mRecordingDevice, ATOM_RECORDING_BUFFERS);
     if (ret < 0) {
-        LOGE("Start recording device failed");
-        return UNKNOWN_ERROR;
+        LogError("Start recording device failed");
+        status = UNKNOWN_ERROR;
+        goto exitClosePrev;
     }
 
     ret = startDevice(mPreviewDevice, ATOM_PREVIEW_BUFFERS);
     if (ret < 0) {
         LogError("Start preview device failed!");
-        return UNKNOWN_ERROR;
+        status = UNKNOWN_ERROR;
+        goto exitStopRec;
     }
 
-    return NO_ERROR;
+    return status;
+
+exitStopRec:
+    stopDevice(mRecordingDevice);
+exitClosePrev:
+    closeDevice(mPreviewDevice);
+exitCloseRec:
+    closeDevice(mRecordingDevice);
+exitFreePrev:
+    freePreviewBuffers();
+exitFreeRec:
+    freeRecordingBuffers();
+    return status;
 }
 
 status_t AtomISP::stopRecording()
@@ -405,46 +420,85 @@ status_t AtomISP::startCapture()
 {
     LOG_FUNCTION
     int ret;
+    status_t status = NO_ERROR;
+
+    if ((status = allocateSnapshotBuffers()) != NO_ERROR)
+        return status;
+
+    ret = openDevice(V4L2_FIRST_DEVICE);
+    if (ret < 0) {
+        LogError("Open second device failed!");
+        status = UNKNOWN_ERROR;
+        goto errorFreeBuf;
+    }
+    ret = configureDevice(
+            V4L2_FIRST_DEVICE,
+            CI_MODE_STILL_CAPTURE,
+            mConfig.snapshot.width,
+            mConfig.snapshot.height,
+            mConfig.snapshot.format,
+            false);
+    if (ret < 0) {
+        LogError("configure first device failed!");
+        status = UNKNOWN_ERROR;
+        goto errorCloseFirst;
+    }
 
     ret = openDevice(V4L2_SECOND_DEVICE);
     if (ret < 0) {
         LogError("Open second device failed!");
-        return UNKNOWN_ERROR;
-    }
-    ret = configureDevice(V4L2_FIRST_DEVICE, CI_MODE_STILL_CAPTURE, mConfig.snapshot.width,
-            mConfig.snapshot.height, mConfig.snapshot.format, raw_data_dump.format == RAW_BAYER);
-    if (ret < 0) {
-        LogError("configure first device failed!");
-        return UNKNOWN_ERROR;
+        status = UNKNOWN_ERROR;
+        goto errorCloseFirst;
     }
 
-    ret = configureDevice(V4L2_SECOND_DEVICE, CI_MODE_STILL_CAPTURE, mConfig.postview.width,
-            mConfig.postview.height, mConfig.postview.format, false);
+    ret = configureDevice(
+            V4L2_SECOND_DEVICE,
+            CI_MODE_STILL_CAPTURE,
+            mConfig.postview.width,
+            mConfig.postview.height,
+            mConfig.postview.format,
+            false);
     if (ret < 0) {
         LogError("configure second device failed!");
-        return UNKNOWN_ERROR;
+        status = UNKNOWN_ERROR;
+        goto errorCloseSecond;
     }
 
     ret = startDevice(V4L2_FIRST_DEVICE, mConfig.num_snapshot);
     if (ret < 0) {
         LogError("start capture on first device failed!");
-        closeDevice(V4L2_SECOND_DEVICE);
-        return UNKNOWN_ERROR;
+        status = UNKNOWN_ERROR;
+        goto errorCloseSecond;
     }
 
     ret = startDevice(V4L2_SECOND_DEVICE, mConfig.num_snapshot);
     if (ret < 0) {
         LogError("start capture on second device failed!");
-        stopDevice(V4L2_FIRST_DEVICE);
-        return UNKNOWN_ERROR;
+        status = UNKNOWN_ERROR;
+        goto errorStopFirst;
     }
 
-    return NO_ERROR;
+    return status;
+
+errorStopFirst:
+    stopDevice(V4L2_FIRST_DEVICE);
+errorCloseSecond:
+    closeDevice(V4L2_SECOND_DEVICE);
+errorCloseFirst:
+    closeDevice(V4L2_FIRST_DEVICE);
+errorFreeBuf:
+    freeSnapshotBuffers();
+    return status;
 }
 
 status_t AtomISP::stopCapture()
 {
+    LOG_FUNCTION
+    stopDevice(V4L2_SECOND_DEVICE);
+    stopDevice(V4L2_FIRST_DEVICE);
     closeDevice(V4L2_SECOND_DEVICE);
+    closeDevice(V4L2_FIRST_DEVICE);
+    freeSnapshotBuffers();
     return NO_ERROR;
 }
 
@@ -452,8 +506,8 @@ int AtomISP::configureDevice(int device, int deviceMode, int w, int h, int forma
 {
     LOG_FUNCTION
     int ret = 0;
-    LogDetail("device: %d, width:%d, height:%d, deviceMode:%d format:%d", device,
-        w, h, deviceMode, format);
+    LogDetail("device: %d, width:%d, height:%d, deviceMode:%d format:%d raw:%d", device,
+        w, h, deviceMode, format, raw);
 
     if ((device < V4L2_FIRST_DEVICE) || (device > V4L2_SECOND_DEVICE)) {
         LogError("Wrong device: %d", device);
@@ -666,7 +720,7 @@ void AtomISP::closeDevice(int device)
     LOG_FUNCTION
 
     if (video_fds[device] < 0) {
-        LogWarning("Device already closed");
+        LogDetail("Device %d already closed. Do nothing.", device);
         return;
     }
 
@@ -735,22 +789,22 @@ status_t AtomISP::setPreviewFrameFormat(int width, int height, int format)
     mConfig.preview.height = height;
     mConfig.preview.format = format;
     mConfig.preview.padding = paddingWidth(format, width, height);
-    LogDetail("width(%d), height(%d), pad_width(%d), format(%d)",
-        width, height, mConfig.preview.padding, format);
+    mConfig.preview.size = frameSize(format, width, height);
+    if (mConfig.preview.size == 0)
+        mConfig.preview.size = mConfig.preview.width * mConfig.preview.height * BPP;
+    LogDetail("width(%d), height(%d), pad_width(%d), size(%d), format(%d)",
+        width, height, mConfig.preview.padding, mConfig.preview.size, format);
     return status;
 }
 
 FrameInfo AtomISP::getPreviewFrameFormat()
 {
     LOG_FUNCTION
-    if (mConfig.preview.size == 0) {
-        mConfig.preview.size = frameSize(mConfig.preview.format,
-                                        mConfig.preview.width,
-                                        mConfig.preview.height);
-        if (mConfig.preview.size == 0)
-            mConfig.preview.size = mConfig.preview.width * mConfig.preview.height * BPP;
-    }
-
+    LogDetail("w:%d h:%d f:%d s:%d",
+                mConfig.preview.width,
+                mConfig.preview.height,
+                mConfig.preview.format,
+                mConfig.preview.size);
     return mConfig.preview;
 }
 
@@ -764,21 +818,23 @@ status_t AtomISP::setPostviewFrameFormat(int width, int height, int format)
     mConfig.postview.width = width;
     mConfig.postview.height = height;
     mConfig.postview.format = format;
-
+    mConfig.postview.padding = paddingWidth(format, width, height);
+    mConfig.postview.size = frameSize(format, width, height);
+    if (mConfig.postview.size == 0)
+        mConfig.postview.size = mConfig.postview.width * mConfig.postview.height * BPP;
+    LogDetail("width(%d), height(%d), pad_width(%d), size(%d), format(%d)",
+            width, height, mConfig.postview.padding, mConfig.postview.size, format);
     return status;
 }
 
 FrameInfo AtomISP::getPostviewFrameFormat()
 {
     LOG_FUNCTION
-    if (mConfig.postview.size == 0) {
-        mConfig.postview.size = frameSize(mConfig.postview.format,
-                                        mConfig.postview.width,
-                                        mConfig.postview.height);
-        if (mConfig.postview.size == 0)
-            mConfig.postview.size = mConfig.postview.width * mConfig.postview.height * BPP;
-    }
-
+    LogDetail("w:%d h:%d f:%d s:%d",
+            mConfig.postview.width,
+            mConfig.postview.height,
+            mConfig.postview.format,
+            mConfig.postview.size);
     return mConfig.postview;
 }
 
@@ -795,36 +851,23 @@ status_t AtomISP::setSnapshotFrameFormat(int width, int height, int format)
     mConfig.snapshot.height = height;
     mConfig.snapshot.format = format;
     mConfig.snapshot.padding = paddingWidth(format, width, height);
-    LogDetail("width(%d), height(%d), pad_width(%d), format(%d)",
-        width, height, mConfig.snapshot.padding, format);
+    mConfig.snapshot.size = frameSize(format, width, height);;
+    if (mConfig.snapshot.size == 0)
+        mConfig.snapshot.size = mConfig.snapshot.width * mConfig.snapshot.height * BPP;
+    LogDetail("width(%d), height(%d), pad_width(%d), size(%d), format(%d)",
+        width, height, mConfig.snapshot.padding, mConfig.snapshot.size, format);
     return status;
 }
 
 FrameInfo AtomISP::getSnapshotFrameFormat()
 {
     LOG_FUNCTION
-    if (mConfig.snapshot.size == 0) {
-        mConfig.snapshot.size = frameSize(mConfig.snapshot.format,
-                                        mConfig.snapshot.width,
-                                        mConfig.snapshot.height);
-        if (mConfig.snapshot.size == 0)
-            mConfig.snapshot.size = mConfig.snapshot.width * mConfig.snapshot.height * BPP;
-    }
-
+    LogDetail("w:%d h:%d f:%d s:%d",
+                    mConfig.snapshot.width,
+                    mConfig.snapshot.height,
+                    mConfig.snapshot.format,
+                    mConfig.snapshot.size);
     return mConfig.snapshot;
-}
-
-status_t AtomISP::setSnapshotUserptr(int index, void *pic_addr, void *pv_addr)
-{
-    LOG_FUNCTION
-    if (index >= mConfig.num_snapshot) {
-        LogError("index %d is out of range", index);
-        return BAD_INDEX;
-    }
-
-    v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[index].data = pic_addr;
-    v4l2_buf_pool[V4L2_SECOND_DEVICE].bufs[index].data = pv_addr;
-    return NO_ERROR;
 }
 
 status_t AtomISP::setSnapshotNum(int num)
@@ -841,6 +884,13 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
     int ret = 0;
     status_t status = NO_ERROR;
 
+    if (mConfig.recording.width == width &&
+        mConfig.recording.height == height &&
+        mConfig.recording.format == format) {
+        // Do nothing
+        return status;
+    }
+
     if (width > mConfig.recording.maxWidth || width <= 0)
         width = mConfig.recording.maxWidth;
     if (height > mConfig.recording.maxHeight || height <= 0)
@@ -849,6 +899,9 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
     mConfig.recording.height = height;
     mConfig.recording.format = format;
     mConfig.recording.padding = paddingWidth(format, width, height);
+    mConfig.recording.size = frameSize(format, width, height);
+    if (mConfig.recording.size == 0)
+        mConfig.recording.size = mConfig.recording.width * mConfig.recording.height * BPP;
     LogDetail("width(%d), height(%d), pad_width(%d), format(%d)",
             width, height, mConfig.recording.padding, format);
     if (mMode == MODE_VIDEO) {
@@ -866,20 +919,18 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
 FrameInfo AtomISP::getVideoFrameFormat()
 {
     LOG_FUNCTION
-    if (mConfig.recording.size == 0) {
-        mConfig.recording.size = frameSize(mConfig.recording.format,
-                                        mConfig.recording.width,
-                                        mConfig.recording.height);
-        if (mConfig.recording.size == 0)
-            mConfig.recording.size = mConfig.recording.width * mConfig.recording.height * BPP;
-    }
-
+    LogDetail("w:%d h:%d f:%d s:%d",
+            mConfig.recording.width,
+            mConfig.recording.height,
+            mConfig.recording.format,
+            mConfig.recording.size);
     return mConfig.recording;
 }
 
 status_t AtomISP::setZoom(int zoom)
 {
     LOG_FUNCTION
+    LogDetail("zoom = %d", zoom);
     if (zoom == mConfig.zoom)
         return NO_ERROR;
     if (mMode == MODE_CAPTURE)
@@ -1170,8 +1221,9 @@ int AtomISP::v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc,
     if (raw) {
         LogDetail("Choose raw dump path");
         v4l2_fmt.type = V4L2_BUF_TYPE_PRIVATE;
-    }else
+    } else {
         v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    }
 
     v4l2_fmt.fmt.pix.width = w;
     v4l2_fmt.fmt.pix.height = h;
@@ -1186,10 +1238,6 @@ int AtomISP::v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc,
     if (ret < 0) {
         LogError("VIDIOC_S_FMT failed: %s", strerror(errno));
         return -1;
-    }
-    if (raw) {
-        raw_data_dump.size = v4l2_fmt.fmt.pix.priv;
-        LogDetail("raw data size from kernel %d", raw_data_dump.size);
     }
     return 0;
 
@@ -1400,16 +1448,17 @@ int AtomISP::v4l2_capture_try_format(int device, int *w, int *h,
 status_t AtomISP::getPreviewFrame(AtomBuffer **buff)
 {
     LOG_FUNCTION2
-    atomisp_frame_status status;
+    struct v4l2_buffer buf;
 
     if (mMode == MODE_NONE)
         return INVALID_OPERATION;
 
-    int index = grabFrame(mPreviewDevice, &status);
+    int index = grabFrame(mPreviewDevice, &buf);
     if(index < 0){
         LogError("Error in grabbing frame!");
         return BAD_INDEX;
     }
+    LogDetail2("Device: %d. Grabbed frame of size: %d", mPreviewDevice, buf.bytesused);
     (*buff) = &mPreviewBuffers[index];
     (*buff)->id = index;
 
@@ -1422,9 +1471,11 @@ status_t AtomISP::putPreviewFrame(AtomBuffer *buff)
     if (mMode == MODE_NONE)
         return INVALID_OPERATION;
 
-    v4l2_capture_qbuf(video_fds[mPreviewDevice],
+    if (v4l2_capture_qbuf(video_fds[mPreviewDevice],
                       buff->id,
-                      &v4l2_buf_pool[mPreviewDevice].bufs[buff->id]);
+                      &v4l2_buf_pool[mPreviewDevice].bufs[buff->id]) < 0) {
+        return UNKNOWN_ERROR;
+    }
 
     return NO_ERROR;
 }
@@ -1432,16 +1483,18 @@ status_t AtomISP::putPreviewFrame(AtomBuffer *buff)
 status_t AtomISP::getRecordingFrame(AtomBuffer **buff, nsecs_t *timestamp)
 {
     LOG_FUNCTION2
-    atomisp_frame_status status;
+    struct v4l2_buffer buf;
+
     if (mMode != MODE_VIDEO)
         return INVALID_OPERATION;
 
-    int index = grabFrame(mRecordingDevice, &status);
+    int index = grabFrame(mRecordingDevice, &buf);
     LogDetail2("index = %d", index);
     if(index < 0) {
         LogError("Error in grabbing frame!");
         return BAD_INDEX;
     }
+    LogDetail2("Device: %d. Grabbed frame of size: %d", mRecordingDevice, buf.bytesused);
     *buff = &mRecordingBuffers[index];
     (*buff)->id = index;
     *timestamp = systemTime();
@@ -1459,18 +1512,77 @@ status_t AtomISP::putRecordingFrame(void *buff)
             ATOM_RECORDING_BUFFERS,
             buff);
 
-    v4l2_capture_qbuf(video_fds[mRecordingDevice],
+    if (v4l2_capture_qbuf(video_fds[mRecordingDevice],
             abuff->id,
-            &v4l2_buf_pool[mRecordingDevice].bufs[abuff->id]);
+            &v4l2_buf_pool[mRecordingDevice].bufs[abuff->id]) < 0) {
+        return UNKNOWN_ERROR;
+    }
 
     return NO_ERROR;
 }
 
-int AtomISP::grabFrame(int device, enum atomisp_frame_status *status)
+status_t AtomISP::getSnapshot(AtomBuffer **snapshotBuf, AtomBuffer **postviewBuf)
+{
+    LogEntry(LOG_TAG, __FUNCTION__);
+    struct v4l2_buffer buf;
+    int snapshotIndex, postviewIndex;
+
+    snapshotIndex = grabFrame(V4L2_FIRST_DEVICE, &buf);
+    if (snapshotIndex < 0) {
+        LogError("Error in grabbing frame from 1'st device!");
+        return BAD_INDEX;
+    }
+    LogDetail("Device: %d. Grabbed frame of size: %d", V4L2_FIRST_DEVICE, buf.bytesused);
+
+    postviewIndex = grabFrame(V4L2_SECOND_DEVICE, &buf);
+    if (postviewIndex < 0) {
+        LogError("Error in grabbing frame from 2'nd device!");
+        // If we failed with the second device, return the frame to the first device
+        v4l2_capture_qbuf(video_fds[V4L2_FIRST_DEVICE], snapshotIndex,
+                &v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[snapshotIndex]);
+        return BAD_INDEX;
+    }
+    LogDetail("Device: %d. Grabbed frame of size: %d", V4L2_SECOND_DEVICE, buf.bytesused);
+
+    if (snapshotIndex != postviewIndex ||
+            snapshotIndex >= MAX_V4L2_BUFFERS) {
+        LogError("Indexes error! snapshotIndex = %d, postviewIndex = %d", snapshotIndex, postviewIndex);
+        // Return the buffers back to driver
+        v4l2_capture_qbuf(video_fds[V4L2_FIRST_DEVICE], snapshotIndex,
+                &v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[snapshotIndex]);
+        v4l2_capture_qbuf(video_fds[V4L2_SECOND_DEVICE], postviewIndex,
+                &v4l2_buf_pool[V4L2_SECOND_DEVICE].bufs[postviewIndex]);
+        return BAD_INDEX;
+    }
+
+    *snapshotBuf = &mSnapshotBuffers[snapshotIndex];
+    (*snapshotBuf)->id = snapshotIndex;
+    *postviewBuf = &mPostviewBuffers[postviewIndex];
+    (*postviewBuf)->id = postviewIndex;
+
+    return NO_ERROR;
+}
+
+status_t AtomISP::putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf)
+{
+    LogEntry(LOG_TAG, __FUNCTION__);
+    int ret0, ret1;
+
+    ret0 = v4l2_capture_qbuf(video_fds[V4L2_FIRST_DEVICE], snaphotBuf->id,
+                      &v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[snaphotBuf->id]);
+
+    ret1 = v4l2_capture_qbuf(video_fds[V4L2_SECOND_DEVICE], postviewBuf->id,
+                      &v4l2_buf_pool[V4L2_SECOND_DEVICE].bufs[postviewBuf->id]);
+    if (ret0 < 0 || ret1 < 0)
+        return UNKNOWN_ERROR;
+
+    return NO_ERROR;
+}
+
+int AtomISP::grabFrame(int device, struct v4l2_buffer *buf)
 {
     LOG_FUNCTION2
     int ret;
-    struct v4l2_buffer buf;
     //Must start first
     if (main_fd < 0)
         return -1;
@@ -1480,14 +1592,12 @@ int AtomISP::grabFrame(int device, enum atomisp_frame_status *status)
         return -1;
     }
 
-    ret = v4l2_capture_dqbuf(video_fds[device], &buf);
+    ret = v4l2_capture_dqbuf(video_fds[device], buf);
 
     if (ret < 0)
         return ret;
 
-    if (status)
-        *status = (enum atomisp_frame_status)buf.reserved;
-    return buf.index;
+    return buf->index;
 }
 
 int AtomISP::v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf)
@@ -1554,33 +1664,116 @@ int AtomISP::v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf)
 status_t AtomISP::allocatePreviewBuffers()
 {
     LOG_FUNCTION
+    status_t status = NO_ERROR;
+    int allocatedBufs = 0;
     int size = mConfig.preview.width * mConfig.preview.height * 3 / 2;
+    LogDetail("Allocating %d buffers of size %d", ATOM_PREVIEW_BUFFERS, size);
     for (int i = 0; i < ATOM_PREVIEW_BUFFERS; i++) {
          mPreviewBuffers[i].buff = NULL;
          mCallbacks->allocateMemory(&mPreviewBuffers[i], size);
          if (mPreviewBuffers[i].buff == NULL) {
              LogError("Error allocation memory for preview buffers!");
-             return NO_MEMORY;
+             status = NO_MEMORY;
+             goto errorFree;
          }
+         allocatedBufs++;
          v4l2_buf_pool[mPreviewDevice].bufs[i].data = mPreviewBuffers[i].buff->data;
     }
-    return NO_ERROR;
+    return status;
+
+errorFree:
+    // On error, free the allocated buffers
+    for (int i = 0 ; i < allocatedBufs; i++) {
+        if (mRecordingBuffers[i].buff != NULL) {
+            mRecordingBuffers[i].buff->release(mRecordingBuffers[i].buff);
+            mRecordingBuffers[i].buff = NULL;
+        }
+    }
+    return status;
 }
 
 status_t AtomISP::allocateRecordingBuffers()
 {
     LOG_FUNCTION
+    status_t status = NO_ERROR;
+    int allocatedBufs = 0;
     int size = mConfig.recording.width * mConfig.recording.height * 3 / 2;
+    LogDetail("Allocating %d buffers of size %d", ATOM_RECORDING_BUFFERS, size);
     for (int i = 0; i < ATOM_RECORDING_BUFFERS; i++) {
         mRecordingBuffers[i].buff = NULL;
         mCallbacks->allocateMemory(&mRecordingBuffers[i], size);
         if (mRecordingBuffers[i].buff == NULL) {
             LogError("Error allocation memory for recording buffers!");
-            return NO_MEMORY;
+            status = NO_MEMORY;
+            goto errorFree;
         }
+        allocatedBufs++;
         v4l2_buf_pool[mRecordingDevice].bufs[i].data = mRecordingBuffers[i].buff->data;
     }
-    return NO_ERROR;
+    return status;
+
+errorFree:
+    // On error, free the allocated buffers
+    for (int i = 0 ; i < allocatedBufs; i++) {
+        if (mRecordingBuffers[i].buff != NULL) {
+            mRecordingBuffers[i].buff->release(mRecordingBuffers[i].buff);
+            mRecordingBuffers[i].buff = NULL;
+        }
+    }
+    return status;
+}
+
+status_t AtomISP::allocateSnapshotBuffers()
+{
+    LOG_FUNCTION
+    status_t status = NO_ERROR;
+    int allocatedSnaphotBufs = 0;
+    int allocatedPostviewBufs = 0;
+    FrameInfo snapshot = getSnapshotFrameFormat();
+    FrameInfo postview = getPostviewFrameFormat();
+
+    LogDetail("Allocating %d buffers of size: %d (snapshot), %d (postview)",
+            mConfig.num_snapshot,
+            snapshot.size,
+            postview.size);
+    for (int i = 0; i < mConfig.num_snapshot; i++) {
+        mSnapshotBuffers[i].buff = NULL;
+        mCallbacks->allocateMemory(&mSnapshotBuffers[i], snapshot.size);
+        if (mSnapshotBuffers[i].buff == NULL) {
+            LogError("Error allocation memory for snapshot buffers!");
+            status = NO_MEMORY;
+            goto errorFree;
+        }
+        allocatedSnaphotBufs++;
+        v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[i].data = mSnapshotBuffers[i].buff->data;
+
+        mPostviewBuffers[i].buff = NULL;
+        mCallbacks->allocateMemory(&mPostviewBuffers[i], postview.size);
+        if (mPostviewBuffers[i].buff == NULL) {
+            LogError("Error allocation memory for postview buffers!");
+            status = NO_MEMORY;
+            goto errorFree;
+        }
+        allocatedPostviewBufs++;
+        v4l2_buf_pool[V4L2_SECOND_DEVICE].bufs[i].data = mPostviewBuffers[i].buff->data;
+    }
+    return status;
+
+errorFree:
+    // On error, free the allocated buffers
+    for (int i = 0 ; i < allocatedSnaphotBufs; i++) {
+        if (mSnapshotBuffers[i].buff != NULL) {
+            mSnapshotBuffers[i].buff->release(mSnapshotBuffers[i].buff);
+            mSnapshotBuffers[i].buff = NULL;
+        }
+    }
+    for (int i = 0 ; i < allocatedPostviewBufs; i++) {
+        if (mPostviewBuffers[i].buff != NULL) {
+            mPostviewBuffers[i].buff->release(mPostviewBuffers[i].buff);
+            mPostviewBuffers[i].buff = NULL;
+        }
+    }
+    return status;
 }
 
 status_t AtomISP::freePreviewBuffers()
@@ -1602,6 +1795,22 @@ status_t AtomISP::freeRecordingBuffers()
         if (mRecordingBuffers[i].buff != NULL) {
             mRecordingBuffers[i].buff->release(mRecordingBuffers[i].buff);
             mRecordingBuffers[i].buff = NULL;
+        }
+    }
+    return NO_ERROR;
+}
+
+status_t AtomISP::freeSnapshotBuffers()
+{
+    LOG_FUNCTION
+    for (int i = 0 ; i < mConfig.num_snapshot; i++) {
+        if (mSnapshotBuffers[i].buff != NULL) {
+            mSnapshotBuffers[i].buff->release(mSnapshotBuffers[i].buff);
+            mSnapshotBuffers[i].buff = NULL;
+        }
+        if (mPostviewBuffers[i].buff != NULL) {
+            mPostviewBuffers[i].buff->release(mPostviewBuffers[i].buff);
+            mPostviewBuffers[i].buff = NULL;
         }
     }
     return NO_ERROR;

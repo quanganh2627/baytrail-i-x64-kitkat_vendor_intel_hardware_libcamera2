@@ -41,8 +41,6 @@ ControlThread::ControlThread(int cameraId) :
     mCameraId = cameraId;
     LogDetail("mCameraId = %d", mCameraId);
 
-    mPictureThread->setPicturePixelFormat(V4L2_PIX_FMT_YUV420);
-
     initDefaultParameters();
 }
 
@@ -65,27 +63,38 @@ void ControlThread::initDefaultParameters()
     CameraParameters p;
 
     //common features for RAW and Soc
+
+    // Preview specific parameters
     p.setPreviewSize(640, 480);
     p.setPreviewFrameRate(30);
     p.setPreviewFormat(CameraParameters::PIXEL_FORMAT_YUV420SP);
+    char previewFormats[100] = {0};
+    if (snprintf(previewFormats, sizeof(previewFormats),
+            "%s,%s,%s",
+            CameraParameters::PIXEL_FORMAT_YUV420SP,
+            CameraParameters::PIXEL_FORMAT_YUV420P,
+            CameraParameters::PIXEL_FORMAT_RGB565) < 0) {
+        LogError("Could not generate preview formats string: %s", strerror(errno));
+        return;
+    }
+    p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, previewFormats);
+    p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES, "640x480,640x360");
 
     p.setPictureFormat(CameraParameters::PIXEL_FORMAT_JPEG);
-    p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, "yuv420sp,rgb565,yuv422i-yuyv");
-    p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES, "640x480,640x360");
     p.set(CameraParameters::KEY_SUPPORTED_PICTURE_FORMATS, "jpeg");
 
     char pchar[10];
-    sprintf(pchar, "%d", PictureThread::getDefaultJpegQuality());
+    snprintf(pchar, sizeof(pchar), "%d", PictureThread::getDefaultJpegQuality());
     p.set(CameraParameters::KEY_JPEG_QUALITY, pchar);
-    sprintf(pchar, "%d", PictureThread::getDefaultThumbnailQuality());
+    snprintf(pchar, sizeof(pchar), "%d", PictureThread::getDefaultThumbnailQuality());
     p.set(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY, pchar);
 
     const char *resolution_dec = mISP->getMaxSnapShotResolution();
     p.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, resolution_dec);
-    int ww,hh;
-    mISP->getMaxSnapshotSize(&ww,&hh);
-    mISP->setSnapshotFrameFormat(ww, hh, mPictureThread->getPicturePixelFormat());
-    p.setPictureSize(ww,hh);
+    int maxWidth, maxHeight;
+    mISP->getMaxSnapshotSize(&maxWidth, &maxHeight);
+    p.setPictureSize(maxWidth, maxHeight);
+    mISP->setSnapshotFrameFormat(maxWidth, maxHeight, V4L2_PIX_FMT_NV12);
 
     //thumbnail size
     p.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH,"320");
@@ -112,6 +121,7 @@ void ControlThread::initDefaultParameters()
     p.set(CameraParameters::KEY_PREFERRED_PREVIEW_SIZE_FOR_VIDEO, "640x480");
     p.set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, "640x480,1280x720,1920x1080");
     p.set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,CameraParameters::PIXEL_FORMAT_YUV420SP);
+    mISP->setVideoFrameFormat(640, 480, V4L2_PIX_FMT_NV12);
 
     //zoom
     p.set(CameraParameters::KEY_ZOOM_SUPPORTED, "true");
@@ -139,6 +149,7 @@ void ControlThread::initDefaultParameters()
 
     mParameters = p;
 }
+
 
 status_t ControlThread::setPreviewWindow(struct preview_stream_ops *window)
 {
@@ -226,7 +237,7 @@ status_t ControlThread::stopRecording()
 
 bool ControlThread::previewEnabled()
 {
-    return mState == STATE_PREVIEW_VIDEO || mState == STATE_PREVIEW_STILL;
+    return mState != STATE_STOPPED;
 }
 
 bool ControlThread::recordingEnabled()
@@ -334,12 +345,13 @@ void ControlThread::previewDone(AtomBuffer *buff)
     mMessageQueue.send(&msg);
 }
 
-void ControlThread::pictureDone(AtomBuffer *buff)
+void ControlThread::pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 {
     LOG_FUNCTION
     Message msg;
     msg.id = MESSAGE_ID_PICTURE_DONE;
-    msg.data.pictureDone.buff = buff;
+    msg.data.pictureDone.snapshotBuf = snapshotBuf;
+    msg.data.pictureDone.postviewBuf = postviewBuf;
     mMessageQueue.send(&msg);
 }
 
@@ -468,45 +480,43 @@ status_t ControlThread::handleMessageTakePicture()
 {
     LOG_FUNCTION
     status_t status = NO_ERROR;
+    AtomBuffer *snapshotBuffer, *postviewBuffer;
 
-    /* TODO: implement later
-    FrameInfo snapshot;
-    FrameInfo preview;
-    FrameInfo postview;
-
-    snapshot = mISP->getSnapshotFrameFormat();
-    preview = mISP->getPreviewFrameFormat();
-
-    //Postview size should be smaller
-    mISP->setPostviewFrameFormat(preview.width>>1, preview.height>>1, preview.format);
-    postview = mISP->getPostviewFrameFormat();
-
-    if (msgTypeEnabled(CAMERA_MSG_COMPRESSED_IMAGE)) {
-        int index;
-        void *main_out, *postview_out;
-        void *pmainimage;
-        void *pthumbnail; // first save RGB565 data, then save jpeg encoded data into this pointer
-        AtomBuffer mainBuff, postviewBuff;
-        unsigned int page_size = getpagesize();
-        unsigned int size_aligned = (preview.padding + page_size - 1) & ~(page_size - 1);
-        unsigned int postview_size = size_aligned;
-        unsigned int rgb_frame_size = snapshot.width * snapshot.height * 2;
-        unsigned int mainsize_aligned = (rgb_frame_size + page_size - 1) & ~(page_size - 1);
-        static const unsigned exif_offset =  64*1024;  // must page size aligned, exif must less 64KBytes
-        static const unsigned thumbnail_offset = 600*1024; // must page size aligned, max is 640*480*2
-        unsigned total_size = mainsize_aligned + exif_offset + thumbnail_offset;
-
-        mCallbacks->allocateMemory(&postviewBuff, postview_size);
-        mCallbacks->allocateMemory(&mainBuff, total_size);
-        pthumbnail = (void*)((char*)(mainBuff.buff->data) + exif_offset);
-        pmainimage = (void*)((char*)(mainBuff.buff->data) + exif_offset + thumbnail_offset);
-        mISP->setSnapshotUserptr(0, pmainimage, postviewBuff.buff->data);
-        status = mISP->start(AtomISP::MODE_CAPTURE);
-
-        if (status == NO_ERROR)
-            mState = STATE_CAPTURE;
+    if (mState != STATE_STOPPED) {
+        status = mPreviewThread->requestExitAndWait();
+        if (status == NO_ERROR) {
+            status = mISP->stop();
+            if (status == NO_ERROR) {
+                mState = STATE_STOPPED;
+            }
+        } else {
+            LogError("Error stopping preview thread");
+            return status;
+        }
     }
-    */
+
+    if ((status = mISP->start(AtomISP::MODE_CAPTURE)) != NO_ERROR) {
+        LogError("Error starting the ISP driver in CAPTURE mode!");
+        return status;
+    }
+
+    // Get the snapshot
+    if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
+        LogError("Error in grabbing snapshot!");
+        return status;
+    }
+
+    // tell CameraService to play the shutter sound
+    mCallbacks->shutterSound();
+
+    // Start PictureThread
+    status = mPictureThread->run();
+    if (status == NO_ERROR) {
+        status = mPictureThread->encode(snapshotBuffer, postviewBuffer);
+    } else {
+        LogError("Error starting PictureThread!");
+    }
+
     return status;
 }
 
@@ -544,44 +554,83 @@ status_t ControlThread::handleMessageCancelAutoFocus()
 status_t ControlThread::handleMessageReleaseRecordingFrame(MessageReleaseRecordingFrame *msg)
 {
     LOG_FUNCTION2
-    status_t status = mISP->putRecordingFrame(msg->buff);
-    if (status == NO_ERROR)
-        mNumRecordingFramesOut--;
-    else
-        LogError("Error putting recording frame to ISP");
+    status_t status = NO_ERROR;
+    if (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING) {
+        status = mISP->putRecordingFrame(msg->buff);
+        if (status == NO_ERROR) {
+            mNumRecordingFramesOut--;
+        } else {
+            LogError("Error putting recording frame to ISP");
+        }
+    }
     return status;
 }
 
 status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
 {
     LOG_FUNCTION2
-    status_t status = mISP->putPreviewFrame(msg->buff);
-    if (status == NO_ERROR)
-        mNumPreviewFramesOut--;
-    else
-        LogError("Error putting preview frame to ISP");
+    status_t status = NO_ERROR;
+    if (mState != STATE_STOPPED) {
+        status = mISP->putPreviewFrame(msg->buff);
+        if (status == NO_ERROR) {
+            mNumPreviewFramesOut--;
+        } else {
+            LogError("Error putting preview frame to ISP");
+        }
+    }
     return status;
 }
 
 status_t ControlThread::handleMessagePictureDone(MessagePictureDone *msg)
 {
     LOG_FUNCTION
-    // TODO: implement
-    return NO_ERROR;
+    status_t status = NO_ERROR;
+
+    // Return the picture frames back to ISP
+    if ((status = mISP->putSnapshot(msg->snapshotBuf, msg->postviewBuf)) != NO_ERROR) {
+        LogError("Error in putting snapshot!");
+        return status;
+    }
+
+    /*
+     * As Android designed this call flow, it seems that when we are called with takePicture,
+     * are responsible of stopping the preview, but after the picture is done, CamereService
+     * is responsible of starting the preview again. Probably, to allow applications to
+     * customize the posting of the taken picture to preview window (I know that this time
+     * can be customized in an ordinary camera).
+     */
+    // Now, stop the ISP too, so we can start it in startPreview
+    status = mISP->stop();
+    if (status != NO_ERROR) {
+        LogError("Error stopping ISP!");
+        return status;
+    }
+
+    // Stop PictureThread
+    status = mPictureThread->requestExitAndWait();
+    if (status != NO_ERROR) {
+        LogError("Error stopping PictureThread!");
+        return status;
+    }
+
+    return status;
 }
 
 status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
 {
     LOG_FUNCTION
     status_t status = NO_ERROR;
-    int preview_width, preview_height;
-    int picture_width, picture_height;
-    int recording_width, recording_height;
-    int min_fps, max_fps;
+    FrameSize new_preview, old_preview;
     int preview_format = 0;
+    FrameSize new_recording, old_recording;
     int recording_format = 0;
+    FrameSize new_picture, old_picture;
+    int picture_format = 0;
+    int min_fps, max_fps;
+    int new_fps, old_fps;
     int zoom;
-    const char *new_value, *set_value;
+    const char *new_value, *old_value;
+    int len;
     CameraParameters params;
 
     String8 str_params(msg->params);
@@ -590,16 +639,18 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
 
     CameraParameters p = params;
 
-    p.getPreviewSize(&preview_width, &preview_height);
+    p.getPreviewSize(&new_preview.width, &new_preview.height);
+    mParameters.getPreviewSize(&old_preview.width, &old_preview.height);
     new_value = p.getPreviewFormat();
-    set_value = mParameters.getPreviewFormat();
+    old_value = mParameters.getPreviewFormat();
 
     if (new_value == NULL) {
         LogError("Preview format not found!");
-        return UNKNOWN_ERROR;
+        status = UNKNOWN_ERROR;
+        goto exit;
     }
 
-    int len = strlen(new_value);
+    len = strlen(new_value);
     if (strncmp(new_value, CameraParameters::PIXEL_FORMAT_YUV420SP, len) == 0) {
         preview_format = V4L2_PIX_FMT_NV12;
     }  else if (strncmp(new_value, CameraParameters::PIXEL_FORMAT_YUV422I, len) == 0) {
@@ -611,56 +662,47 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
         preview_format = V4L2_PIX_FMT_RGB565;
     }
 
-    if (0 < preview_width && 0 < preview_height) {
-        mPreviewThread->setPreviewSize(preview_width, preview_height);
+    if (new_preview.width > 0 &&
+        new_preview.height > 0) {
+        mPreviewThread->setPreviewSize(new_preview.width, new_preview.height);
         LogDetail(" - Preview pixel format = new \"%s\"  / current \"%s\"",
-            new_value, set_value);
-        if (mISP->setPreviewFrameFormat(preview_width, preview_height,
-                                    preview_format) < 0) {
+            new_value, old_value);
+        if (mISP->setPreviewFrameFormat(new_preview.width, new_preview.height,
+                                    preview_format) != NO_ERROR) {
             LogError("Fail on setPreviewSize(width(%d), height(%d), format(%d))",
-                     preview_width, preview_height, preview_format);
+                     new_preview.width, new_preview.height, preview_format);
         } else {
-            p.setPreviewSize(preview_width, preview_height);
+            p.setPreviewSize(new_preview.width, new_preview.height);
             p.setPreviewFormat(new_value);
             LogDetail("     ++ Changed Preview Pixel Format to %s",p.getPreviewFormat());
         }
     }
 
     // preview frame rate
-    int new_fps = p.getPreviewFrameRate();
-    int set_fps = mParameters.getPreviewFrameRate();
-    LogDetail(" - FPS = new \"%d\" / current \"%d\"",new_fps, set_fps);
-    if (new_fps != set_fps) {
+    new_fps = p.getPreviewFrameRate();
+    old_fps = mParameters.getPreviewFrameRate();
+    LogDetail(" - FPS = new \"%d\" / current \"%d\"",new_fps, old_fps);
+    if (new_fps != old_fps) {
         p.setPreviewFrameRate(new_fps);
         LogDetail("     ++ Changed FPS to %d",p.getPreviewFrameRate());
     }
-    LogDetail("PREVIEW SIZE: %dx%d, FPS: %d", preview_width, preview_height,
+    LogDetail("PREVIEW SIZE: %dx%d, FPS: %d", new_preview.width, new_preview.height,
             new_fps);
 
-    //Picture format
-    const char *new_format = p.getPictureFormat();
-    if (strncmp(new_format, "jpeg", strlen(new_format)) == 0)
-        mPictureThread->setPicturePixelFormat(V4L2_PIX_FMT_YUV420);
-    else {
-        LogDetail("Only jpeg still pictures are supported, new_format:%s", new_format);
-    }
-    LogDetail(" - Picture pixel format = new \"%s\"", new_format);
-    p.getPictureSize(&picture_width, &picture_height);
+    p.getPictureSize(&new_picture.width, &new_picture.height);
+    mParameters.getPictureSize(&old_picture.width, &old_picture.height);
+    LogDetail("Picture width: %d height: %d",
+         new_picture.width, new_picture.height);
 
-    LogDetail("picture_width %d picture_height = %d",
-         picture_width, picture_height);
-
-    if (0 < picture_width && 0 < picture_height) {
-        if (mISP->setSnapshotFrameFormat(picture_width, picture_height,
-                mPictureThread->getPicturePixelFormat()) < 0) {
-            LogError("Fail on mISP->setSnapshotSize(width(%d), height(%d))",
-                picture_width, picture_height);
-            status = UNKNOWN_ERROR;
+    if (new_picture.width > 0 &&
+        new_picture.height > 0 &&
+        (new_picture.width != old_picture.width ||
+        new_picture.width != old_picture.height)) {
+        if ((status = mISP->setSnapshotFrameFormat(new_picture.width, new_picture.height,
+                V4L2_PIX_FMT_NV12)) != NO_ERROR) {
             goto exit;
-        } else {
-            p.setPictureSize(picture_width, picture_height);
-            p.setPictureFormat(new_value);
         }
+        mPictureThread->setPictureFormat(mISP->getSnapshotFrameFormat());
     }
 
     //Zoom is a invalid value or not
@@ -677,8 +719,14 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
         goto exit;
     }
 
-    p.getVideoSize(&recording_width, &recording_height);
-    mISP->setVideoFrameFormat(recording_width, recording_height, V4L2_PIX_FMT_NV12);
+    p.getVideoSize(&new_recording.width, &new_recording.height);
+    mParameters.getVideoSize(&old_recording.width, &old_recording.height);
+    if (new_recording.width > 0 &&
+        new_recording.height > 0 &&
+        (new_recording.width != old_recording.height ||
+        new_recording.height != old_recording.height)) {
+        mISP->setVideoFrameFormat(new_recording.width, new_recording.height, V4L2_PIX_FMT_NV12);
+    }
 
     p.set(CameraParameters::KEY_ZOOM_SUPPORTED, "true");
 

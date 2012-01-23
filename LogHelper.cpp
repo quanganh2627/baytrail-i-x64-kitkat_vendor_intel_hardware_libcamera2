@@ -18,7 +18,6 @@
 #define LOG_TAG logTag
 
 #include "LogHelper.h"
-#include <utils/Log.h>
 #include <utils/threads.h>
 
 namespace android {
@@ -88,8 +87,9 @@ char* LogHelper::BackSpaces() {
 void LogHelper::DoLog(const char* format, ...) {
     va_list arg_ptr;
     va_start(arg_ptr, format);
-    char* tmpMsg = (char*)calloc(strlen(format) + 2048, sizeof(char));
-    vsprintf(tmpMsg, format, arg_ptr);
+    int len = strlen(format) + 2048;
+    char* tmpMsg = (char*)calloc(len, sizeof(char));
+    vsnprintf(tmpMsg, len, format, arg_ptr);
     if (logLevel > 1) {
         LOG2("%s", tmpMsg);
     } else {
@@ -100,8 +100,9 @@ void LogHelper::DoLog(const char* format, ...) {
 void LogHelper::Details(const char* format, ...) {
     va_list arg_ptr;
     va_start(arg_ptr, format);
-    char* tmpMsg = (char*)calloc(strlen(format) + 2048, sizeof(char));
-    vsprintf(tmpMsg, format, arg_ptr);
+    int len = strlen(format) + 2048;
+    char* tmpMsg = (char*)calloc(len, sizeof(char));
+    vsnprintf(tmpMsg, len, format, arg_ptr);
     DoLog("[%s]%s @%s: %s", sTid, spaces, entryName, tmpMsg);
     free(tmpMsg);
 }
@@ -109,8 +110,9 @@ void LogHelper::Details(const char* format, ...) {
 void LogHelper::Details1(const char* format, ...) {
     va_list arg_ptr;
     va_start(arg_ptr, format);
-    char* tmpMsg = (char*)calloc(strlen(format) + 2048, sizeof(char));
-    vsprintf(tmpMsg, format, arg_ptr);
+    int len = strlen(format) + 2048;
+    char* tmpMsg = (char*)calloc(len, sizeof(char));
+    vsnprintf(tmpMsg, len, format, arg_ptr);
     LOG1("[%s]%s @%s: %s", sTid, spaces, entryName, tmpMsg);
     free(tmpMsg);
 }
@@ -118,8 +120,9 @@ void LogHelper::Details1(const char* format, ...) {
 void LogHelper::Details2(const char* format, ...) {
     va_list arg_ptr;
     va_start(arg_ptr, format);
-    char* tmpMsg = (char*)calloc(strlen(format) + 2048, sizeof(char));
-    vsprintf(tmpMsg, format, arg_ptr);
+    int len = strlen(format) + 2048;
+    char* tmpMsg = (char*)calloc(len, sizeof(char));
+    vsnprintf(tmpMsg, len, format, arg_ptr);
     LOG2("[%s]%s @%s: %s", sTid, spaces, entryName, tmpMsg);
     free(tmpMsg);
 }
@@ -127,8 +130,9 @@ void LogHelper::Details2(const char* format, ...) {
 void LogHelper::Error(const char* format, ...) {
     va_list arg_ptr;
     va_start(arg_ptr, format);
-    char* tmpMsg = (char*)calloc(strlen(format) + 2048, sizeof(char));
-    vsprintf(tmpMsg, format, arg_ptr);
+    int len = strlen(format) + 2048;
+    char* tmpMsg = (char*)calloc(len, sizeof(char));
+    vsnprintf(tmpMsg, len, format, arg_ptr);
     LOGE("[%s]%s @%s: %s", sTid, spaces, entryName, tmpMsg);
     free(tmpMsg);
 }
@@ -136,8 +140,9 @@ void LogHelper::Error(const char* format, ...) {
 void LogHelper::Information(const char* format, ...) {
     va_list arg_ptr;
     va_start(arg_ptr, format);
-    char* tmpMsg = (char*)calloc(strlen(format) + 2048, sizeof(char));
-    vsprintf(tmpMsg, format, arg_ptr);
+    int len = strlen(format) + 2048;
+    char* tmpMsg = (char*)calloc(len, sizeof(char));
+    vsnprintf(tmpMsg, len, format, arg_ptr);
     LOGI("[%s]%s @%s: %s", sTid, spaces, entryName, tmpMsg);
     free(tmpMsg);
 }
@@ -145,8 +150,9 @@ void LogHelper::Information(const char* format, ...) {
 void LogHelper::Warning(const char* format, ...) {
     va_list arg_ptr;
     va_start(arg_ptr, format);
-    char* tmpMsg = (char*)calloc(strlen(format) + 2048, sizeof(char));
-    vsprintf(tmpMsg, format, arg_ptr);
+    int len = strlen(format) + 2048;
+    char* tmpMsg = (char*)calloc(len, sizeof(char));
+    vsnprintf(tmpMsg, len, format, arg_ptr);
     LOGW("[%s]%s @%s: %s", sTid, spaces, entryName, tmpMsg);
     free(tmpMsg);
 }

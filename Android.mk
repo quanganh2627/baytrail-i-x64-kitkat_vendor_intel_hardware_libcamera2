@@ -19,12 +19,15 @@ LOCAL_C_INCLUDES += \
 	frameworks/base/include/binder \
 	frameworks/base/include/camera \
 	hardware/libhardware/include/hardware \
+	external/skia/include/core \
+	external/skia/include/images \
 
 LOCAL_SHARED_LIBRARIES := \
 	libcamera_client \
 	libutils \
 	libcutils \
 	libbinder \
+	libskia \
 	libandroid \
 	libui \
 

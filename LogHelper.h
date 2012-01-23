@@ -20,6 +20,7 @@
 
 #define DEBUG_HELPER 0
 
+#include <utils/Log.h>
 #include <utils/KeyedVector.h>
 #include <cutils/atomic.h>
 

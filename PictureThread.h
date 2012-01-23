@@ -31,7 +31,7 @@ class ICallbackPicture {
 public:
     ICallbackPicture() {}
     virtual ~ICallbackPicture() {}
-    virtual void pictureDone(AtomBuffer *memory) = 0;
+    virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf) = 0;
 };
 
 class PictureThread : public Thread {
@@ -50,20 +50,12 @@ public:
 
     void setCallbacks(Callbacks *callbacks);
 
-    status_t encode(AtomBuffer *buff);
-
-    // TODO: need methods to configure PictureThread
-
-    void setPicturePixelFormat(unsigned int format) {
-        mPicturePixelFormat = format;
-    }
-    unsigned int getPicturePixelFormat() {
-        return mPicturePixelFormat;
-    }
+    status_t encode(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
+    void setPictureFormat(const struct FrameInfo &info)
+    { mPictureInfo = info; }
 
     static int getDefaultJpegQuality() { return defaultJpegQuality; }
     static int getDefaultThumbnailQuality() { return defaultJpegQuality; }
-    // TODO: decide if configuration method should send a message
 
 // private types
 private:
@@ -83,7 +75,8 @@ private:
     //
 
     struct MessageEncode {
-        AtomBuffer *buff;
+        AtomBuffer *snaphotBuf;
+        AtomBuffer *postviewBuf;
     };
 
     // union of all message data
@@ -109,6 +102,8 @@ private:
     // main message function
     status_t waitForAndExecuteMessage();
 
+    status_t encodeToJpeg(AtomBuffer *src, AtomBuffer *dst, int quality);
+
 // inherited from Thread
 private:
     virtual bool threadLoop();
@@ -121,7 +116,7 @@ private:
     ICallbackPicture *mPictureDoneCallback;
     Callbacks *mCallbacks;
 
-    unsigned int mPicturePixelFormat;
+    FrameInfo mPictureInfo;
     static const int defaultJpegQuality = 100; // default Jpeg Quality
     static const int defaultThumbnailQuality = 50; // default Jpeg thumbnail Quality
 

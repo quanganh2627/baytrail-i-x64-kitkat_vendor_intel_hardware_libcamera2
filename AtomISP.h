@@ -101,6 +101,9 @@ public:
     status_t getRecordingFrame(AtomBuffer **buff, nsecs_t *timestamp);
     status_t putRecordingFrame(void *buff);
 
+    status_t getSnapshot(AtomBuffer **snaphotBuf, AtomBuffer **postviewBuf);
+    status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
+
     status_t setPreviewFrameFormat(int width, int height, int format);
     FrameInfo getPreviewFrameFormat();
 
@@ -109,7 +112,6 @@ public:
 
     status_t setSnapshotFrameFormat(int width, int height, int format);
     FrameInfo getSnapshotFrameFormat();
-    status_t setSnapshotUserptr(int index, void *pic_addr, void *pv_addr);
 
     status_t setVideoFrameFormat(int width, int height, int format);
     FrameInfo getVideoFrameFormat();
@@ -137,8 +139,10 @@ private:
 
     status_t allocatePreviewBuffers();
     status_t allocateRecordingBuffers();
+    status_t allocateSnapshotBuffers();
     status_t freePreviewBuffers();
     status_t freeRecordingBuffers();
+    status_t freeSnapshotBuffers();
     AtomBuffer *findBuffer(AtomBuffer buffers[],
                            int numBuffers,
                            void *findMe);
@@ -168,7 +172,7 @@ private:
     int activateBufferPool(int device);
     int v4l2_capture_streamon(int fd);
     int v4l2_capture_qbuf(int fd, int index, struct v4l2_buffer_info *buf);
-    int grabFrame(int device, enum atomisp_frame_status *status);
+    int grabFrame(int device, struct v4l2_buffer *buf);
     int v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf);
     int atomisp_set_attribute (int fd, int attribute_num,
                                const int value, const char *name);
@@ -182,17 +186,14 @@ private:
     Callbacks *mCallbacks;
     AtomBuffer mPreviewBuffers[ATOM_PREVIEW_BUFFERS];
     AtomBuffer mRecordingBuffers[ATOM_RECORDING_BUFFERS];
+    AtomBuffer mSnapshotBuffers[SNAPSHOT_MAX_NUM_BUFFERS];
+    AtomBuffer mPostviewBuffers[SNAPSHOT_MAX_NUM_BUFFERS];
     Config mConfig;
 
     int video_fds[V4L2_DEVICE_NUM];
 
     struct v4l2_capability cap;
     struct v4l2_buffer_pool v4l2_buf_pool[V4L2_DEVICE_NUM]; //pool[0] for device0 pool[1] for device1
-
-    struct {
-        enum raw_data_format format;
-        unsigned int size;
-    } raw_data_dump;
 
     float framerate;
 

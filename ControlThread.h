@@ -96,7 +96,7 @@ public:
 // callback methods
 private:
     virtual void previewDone(AtomBuffer *buff);
-    virtual void pictureDone(AtomBuffer *buff);
+    virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
 
 // private types
 private:
@@ -136,7 +136,8 @@ private:
     };
 
     struct MessagePictureDone {
-        AtomBuffer *buff;
+        AtomBuffer *snapshotBuf;
+        AtomBuffer *postviewBuf;
     };
 
     struct MessageSetParameters {
@@ -178,7 +179,6 @@ private:
         STATE_PREVIEW_STILL,
         STATE_PREVIEW_VIDEO,
         STATE_RECORDING,
-        STATE_CAPTURE,
     };
 
 // private methods
