@@ -105,6 +105,7 @@
 struct AtomBuffer {
     camera_memory_t *buff;
     int id;    // id for debugging data flow path
+    int ispPrivate; // Private to the AtomISP class. No other classes should touch this
 };
 
  struct FrameInfo {

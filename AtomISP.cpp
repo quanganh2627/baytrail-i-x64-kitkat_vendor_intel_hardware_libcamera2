@@ -68,6 +68,7 @@ AtomISP::AtomISP(int camera_id) :
     ,mCallbacks(NULL)
     ,mPreviewDevice(V4L2_FIRST_DEVICE)
     ,mRecordingDevice(V4L2_FIRST_DEVICE)
+    ,mSessionId(0)
 {
     LOG_FUNCTION
     int camera_idx = -1;
@@ -227,8 +228,10 @@ status_t AtomISP::start(Mode mode)
         break;
     };
 
-    if (status == NO_ERROR)
+    if (status == NO_ERROR) {
         mMode = mode;
+        mSessionId++;
+    }
 
     return status;
 }
@@ -1461,6 +1464,7 @@ status_t AtomISP::getPreviewFrame(AtomBuffer **buff)
     LogDetail2("Device: %d. Grabbed frame of size: %d", mPreviewDevice, buf.bytesused);
     (*buff) = &mPreviewBuffers[index];
     (*buff)->id = index;
+    (*buff)->ispPrivate = mSessionId;
 
     return NO_ERROR;
 }
@@ -1470,6 +1474,9 @@ status_t AtomISP::putPreviewFrame(AtomBuffer *buff)
     LOG_FUNCTION2
     if (mMode == MODE_NONE)
         return INVALID_OPERATION;
+
+    if (buff->ispPrivate != mSessionId)
+        return DEAD_OBJECT;
 
     if (v4l2_capture_qbuf(video_fds[mPreviewDevice],
                       buff->id,
@@ -1498,6 +1505,7 @@ status_t AtomISP::getRecordingFrame(AtomBuffer **buff, nsecs_t *timestamp)
     *buff = &mRecordingBuffers[index];
     (*buff)->id = index;
     *timestamp = systemTime();
+    (*buff)->ispPrivate = mSessionId;
 
     return NO_ERROR;
 }
@@ -1511,6 +1519,12 @@ status_t AtomISP::putRecordingFrame(void *buff)
     AtomBuffer *abuff = findBuffer(mRecordingBuffers,
             ATOM_RECORDING_BUFFERS,
             buff);
+
+    if (!abuff)
+        return UNKNOWN_ERROR;
+
+    if (abuff->ispPrivate != mSessionId)
+        return DEAD_OBJECT;
 
     if (v4l2_capture_qbuf(video_fds[mRecordingDevice],
             abuff->id,
@@ -1526,6 +1540,9 @@ status_t AtomISP::getSnapshot(AtomBuffer **snapshotBuf, AtomBuffer **postviewBuf
     LogEntry(LOG_TAG, __FUNCTION__);
     struct v4l2_buffer buf;
     int snapshotIndex, postviewIndex;
+
+    if (mMode != MODE_CAPTURE)
+        return INVALID_OPERATION;
 
     snapshotIndex = grabFrame(V4L2_FIRST_DEVICE, &buf);
     if (snapshotIndex < 0) {
@@ -1557,8 +1574,10 @@ status_t AtomISP::getSnapshot(AtomBuffer **snapshotBuf, AtomBuffer **postviewBuf
 
     *snapshotBuf = &mSnapshotBuffers[snapshotIndex];
     (*snapshotBuf)->id = snapshotIndex;
+    (*snapshotBuf)->ispPrivate = mSessionId;
     *postviewBuf = &mPostviewBuffers[postviewIndex];
     (*postviewBuf)->id = postviewIndex;
+    (*postviewBuf)->ispPrivate = mSessionId;
 
     return NO_ERROR;
 }
@@ -1567,6 +1586,12 @@ status_t AtomISP::putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf)
 {
     LogEntry(LOG_TAG, __FUNCTION__);
     int ret0, ret1;
+
+    if (mMode != MODE_CAPTURE)
+        return INVALID_OPERATION;
+
+    if (snaphotBuf->ispPrivate != mSessionId || postviewBuf->ispPrivate != mSessionId)
+        return DEAD_OBJECT;
 
     ret0 = v4l2_capture_qbuf(video_fds[V4L2_FIRST_DEVICE], snaphotBuf->id,
                       &v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[snaphotBuf->id]);

@@ -559,6 +559,8 @@ status_t ControlThread::handleMessageReleaseRecordingFrame(MessageReleaseRecordi
         status = mISP->putRecordingFrame(msg->buff);
         if (status == NO_ERROR) {
             mNumRecordingFramesOut--;
+        } else if (status == DEAD_OBJECT) {
+            LogDetail("Stale recording buffer returned to ISP");
         } else {
             LogError("Error putting recording frame to ISP");
         }
@@ -574,6 +576,8 @@ status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
         status = mISP->putPreviewFrame(msg->buff);
         if (status == NO_ERROR) {
             mNumPreviewFramesOut--;
+        } else if (status == DEAD_OBJECT) {
+            LogDetail("Stale preview buffer returned to ISP");
         } else {
             LogError("Error putting preview frame to ISP");
         }
@@ -587,7 +591,10 @@ status_t ControlThread::handleMessagePictureDone(MessagePictureDone *msg)
     status_t status = NO_ERROR;
 
     // Return the picture frames back to ISP
-    if ((status = mISP->putSnapshot(msg->snapshotBuf, msg->postviewBuf)) != NO_ERROR) {
+    status = mISP->putSnapshot(msg->snapshotBuf, msg->postviewBuf);
+    if (status == DEAD_OBJECT) {
+        LogDetail("Stale snapshot buffer returned to ISP");
+    } else if (status != NO_ERROR) {
         LogError("Error in putting snapshot!");
         return status;
     }
