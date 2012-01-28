@@ -203,9 +203,6 @@ private:
     // main message function
     status_t waitForAndExecuteMessage();
 
-    // make sure there are buffers to dequeue from driver
-    bool ispHasData();
-
     // dequeue buffers from driver and deliver them
     status_t dequeuePreview();
     status_t dequeueRecording();
@@ -230,10 +227,6 @@ private:
     State mState;
     bool mThreadRunning;
     Callbacks *mCallbacks;
-
-    // number of preview/record frames dequeued from ISP
-    int mNumPreviewFramesOut;
-    int mNumRecordingFramesOut;
 
     int mCameraId;
     CameraParameters mParameters;

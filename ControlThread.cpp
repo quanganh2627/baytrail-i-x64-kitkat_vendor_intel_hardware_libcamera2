@@ -33,8 +33,6 @@ ControlThread::ControlThread(int cameraId) :
     ,mState(STATE_STOPPED)
     ,mThreadRunning(false)
     ,mCallbacks(new Callbacks())
-    ,mNumPreviewFramesOut(0)
-    ,mNumRecordingFramesOut(0)
 {
     LOG_FUNCTION
     int ret, camera_idx = -1;
@@ -385,7 +383,6 @@ status_t ControlThread::handleMessageStartPreview()
 
             if (status == NO_ERROR) {
                 mState = preState;
-                mNumPreviewFramesOut = 0;
             }
         } else {
             LogError("Error starting preview thread");
@@ -465,7 +462,6 @@ status_t ControlThread::handleMessageStopRecording()
          * switch back to PREVIEW_VIDEO now since we got a startRecording
          */
         mState = STATE_PREVIEW_VIDEO;
-        mNumRecordingFramesOut = 0;
     } else {
         LogError("Error stopping recording. Invalid state!");
         status = INVALID_OPERATION;
@@ -557,11 +553,9 @@ status_t ControlThread::handleMessageReleaseRecordingFrame(MessageReleaseRecordi
     status_t status = NO_ERROR;
     if (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING) {
         status = mISP->putRecordingFrame(msg->buff);
-        if (status == NO_ERROR) {
-            mNumRecordingFramesOut--;
-        } else if (status == DEAD_OBJECT) {
+        if (status == DEAD_OBJECT) {
             LogDetail("Stale recording buffer returned to ISP");
-        } else {
+        } else if (status != NO_ERROR) {
             LogError("Error putting recording frame to ISP");
         }
     }
@@ -574,11 +568,9 @@ status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
     status_t status = NO_ERROR;
     if (mState != STATE_STOPPED) {
         status = mISP->putPreviewFrame(msg->buff);
-        if (status == NO_ERROR) {
-            mNumPreviewFramesOut--;
-        } else if (status == DEAD_OBJECT) {
+        if (status == DEAD_OBJECT) {
             LogDetail("Stale preview buffer returned to ISP");
-        } else {
+        } else if (status != NO_ERROR) {
             LogError("Error putting preview frame to ISP");
         }
     }
@@ -732,7 +724,56 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
         new_recording.height > 0 &&
         (new_recording.width != old_recording.height ||
         new_recording.height != old_recording.height)) {
-        mISP->setVideoFrameFormat(new_recording.width, new_recording.height, V4L2_PIX_FMT_NV12);
+
+        // if the video format changes while in video mode
+        // we need to stop all buffer flow and reconfigure the ISP
+        // before buffer flow can start again
+        if (mState == STATE_PREVIEW_VIDEO) {
+            LogDetail("reconfiguring video format in video mode. must restart isp");
+
+            // stop thread so it fininshes with all its buffers
+            status = mPreviewThread->requestExitAndWait();
+            if (status != NO_ERROR) {
+                LogError("error stopping preview thread");
+                goto exit;
+            }
+
+            // stop the isp
+            status = mISP->stop();
+            if (status != NO_ERROR) {
+                LogError("error stopping isp");
+                goto exit;
+            }
+
+            // reconfigure the isp
+            status = mISP->setVideoFrameFormat(new_recording.width, new_recording.height, V4L2_PIX_FMT_NV12);
+            if (status != NO_ERROR) {
+                LogError("error setting video format");
+                goto exit;
+            }
+
+            // restart the isp
+            status = mISP->start(AtomISP::MODE_VIDEO);
+            if (status != NO_ERROR) {
+                LogError("error restarting isp");
+                goto exit;
+            }
+
+            // restart preview thread
+            status = mPreviewThread->run();
+            if (status != NO_ERROR) {
+                LogError("error restarting preview thread");
+                goto exit;
+            }
+        } else if (mState == STATE_RECORDING) {
+            LogError("This should not be happning in recording mode");
+        } else {
+            status = mISP->setVideoFrameFormat(new_recording.width, new_recording.height, V4L2_PIX_FMT_NV12);
+            if (status != NO_ERROR) {
+                LogError("error setting video format");
+                goto exit;
+            }
+        }
     }
 
     p.set(CameraParameters::KEY_ZOOM_SUPPORTED, "true");
@@ -839,20 +880,6 @@ status_t ControlThread::waitForAndExecuteMessage()
     return status;
 }
 
-bool ControlThread::ispHasData()
-{
-    // For video/recording, make sure isp has a preview and a recording buffer
-    if (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING)
-        if (mNumRecordingFramesOut == ATOM_RECORDING_BUFFERS)
-            return false;
-
-    // For preview, just make sure we isp has a preview buffer
-    if (mNumPreviewFramesOut == ATOM_PREVIEW_BUFFERS)
-        return false;
-
-    return true;
-}
-
 status_t ControlThread::dequeuePreview()
 {
     LogEntry2(LOG_TAG, __FUNCTION__);
@@ -862,9 +889,7 @@ status_t ControlThread::dequeuePreview()
     status = mISP->getPreviewFrame(&buff);
     if (status == NO_ERROR) {
         status = mPreviewThread->preview(buff);
-        if (status == NO_ERROR)
-            mNumPreviewFramesOut++;
-        else
+        if (status != NO_ERROR)
             LogError("Error sending buffer to preview thread");
     } else {
         LogError("Error gettting preview frame from ISP");
@@ -887,7 +912,6 @@ status_t ControlThread::dequeueRecording()
         // If it hasn't, return the buffer to the driver
         if (mState == STATE_RECORDING) {
             mCallbacks->videoFrameDone(buff, timestamp);
-            mNumRecordingFramesOut++;
         } else {
             mISP->putRecordingFrame(buff->buff->data);
         }
@@ -922,7 +946,7 @@ bool ControlThread::threadLoop()
                 status = waitForAndExecuteMessage();
             } else {
                 // make sure ISP has data before we ask for some
-                if (ispHasData())
+                if (mISP->dataAvailable())
                     status = dequeuePreview();
                 else
                     status = waitForAndExecuteMessage();
@@ -938,7 +962,7 @@ bool ControlThread::threadLoop()
                 status = waitForAndExecuteMessage();
             } else {
                 // make sure ISP has data before we ask for some
-                if (ispHasData()) {
+                if (mISP->dataAvailable()) {
                     status = dequeuePreview();
                     if (status == NO_ERROR)
                         status = dequeueRecording();

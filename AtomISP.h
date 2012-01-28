@@ -104,6 +104,8 @@ public:
     status_t getSnapshot(AtomBuffer **snaphotBuf, AtomBuffer **postviewBuf);
     status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
 
+    bool dataAvailable();
+
     status_t setPreviewFrameFormat(int width, int height, int format);
     FrameInfo getPreviewFrameFormat();
 
@@ -188,6 +190,8 @@ private:
     AtomBuffer mRecordingBuffers[ATOM_RECORDING_BUFFERS];
     AtomBuffer mSnapshotBuffers[SNAPSHOT_MAX_NUM_BUFFERS];
     AtomBuffer mPostviewBuffers[SNAPSHOT_MAX_NUM_BUFFERS];
+    int mNumPreviewBuffersQueued;
+    int mNumRecordingBuffersQueued;
     Config mConfig;
 
     int video_fds[V4L2_DEVICE_NUM];

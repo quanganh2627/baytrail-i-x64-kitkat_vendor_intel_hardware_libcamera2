@@ -66,6 +66,8 @@ static const char *resolution_tables[] = {
 AtomISP::AtomISP(int camera_id) :
     mMode(MODE_NONE)
     ,mCallbacks(NULL)
+    ,mNumPreviewBuffersQueued(0)
+    ,mNumRecordingBuffersQueued(0)
     ,mPreviewDevice(V4L2_FIRST_DEVICE)
     ,mRecordingDevice(V4L2_FIRST_DEVICE)
     ,mSessionId(0)
@@ -302,6 +304,8 @@ status_t AtomISP::startPreview()
         goto exitClose;
     }
 
+    mNumPreviewBuffersQueued = ATOM_PREVIEW_BUFFERS;
+
     return status;
 
 exitClose:
@@ -388,6 +392,9 @@ status_t AtomISP::startRecording() {
         status = UNKNOWN_ERROR;
         goto exitStopRec;
     }
+
+    mNumPreviewBuffersQueued = ATOM_PREVIEW_BUFFERS;
+    mNumRecordingBuffersQueued = ATOM_RECORDING_BUFFERS;
 
     return status;
 
@@ -894,6 +901,11 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
         return status;
     }
 
+    if (mMode == MODE_VIDEO) {
+        LogError("Reconfiguration in video mode unsupported. Stop the ISP first");
+        return INVALID_OPERATION;
+    }
+
     if (width > mConfig.recording.maxWidth || width <= 0)
         width = mConfig.recording.maxWidth;
     if (height > mConfig.recording.maxHeight || height <= 0)
@@ -907,15 +919,7 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
         mConfig.recording.size = mConfig.recording.width * mConfig.recording.height * BPP;
     LogDetail("width(%d), height(%d), pad_width(%d), format(%d)",
             width, height, mConfig.recording.padding, format);
-    if (mMode == MODE_VIDEO) {
-        /* If we already are in VIDEO mode, stop the recording and start it again
-         * with the new parameters.
-         */
-        if ((status = stopRecording()) = NO_ERROR)
-            return status;
-        if ((status = startRecording()) != NO_ERROR)
-            return status;
-    }
+
     return status;
 }
 
@@ -1466,6 +1470,8 @@ status_t AtomISP::getPreviewFrame(AtomBuffer **buff)
     (*buff)->id = index;
     (*buff)->ispPrivate = mSessionId;
 
+    mNumPreviewBuffersQueued--;
+
     return NO_ERROR;
 }
 
@@ -1483,6 +1489,8 @@ status_t AtomISP::putPreviewFrame(AtomBuffer *buff)
                       &v4l2_buf_pool[mPreviewDevice].bufs[buff->id]) < 0) {
         return UNKNOWN_ERROR;
     }
+
+    mNumPreviewBuffersQueued++;
 
     return NO_ERROR;
 }
@@ -1506,6 +1514,8 @@ status_t AtomISP::getRecordingFrame(AtomBuffer **buff, nsecs_t *timestamp)
     (*buff)->id = index;
     *timestamp = systemTime();
     (*buff)->ispPrivate = mSessionId;
+
+    mNumRecordingBuffersQueued--;
 
     return NO_ERROR;
 }
@@ -1531,6 +1541,8 @@ status_t AtomISP::putRecordingFrame(void *buff)
             &v4l2_buf_pool[mRecordingDevice].bufs[abuff->id]) < 0) {
         return UNKNOWN_ERROR;
     }
+
+    mNumRecordingBuffersQueued++;
 
     return NO_ERROR;
 }
@@ -1602,6 +1614,23 @@ status_t AtomISP::putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf)
         return UNKNOWN_ERROR;
 
     return NO_ERROR;
+}
+
+bool AtomISP::dataAvailable()
+{
+    LOG_FUNCTION2
+
+    // For video/recording, make sure isp has a preview and a recording buffer
+    if (mMode == MODE_VIDEO)
+        return mNumRecordingBuffersQueued > 0 && mNumPreviewBuffersQueued > 0;
+
+    // For preview, just make sure we isp has a preview buffer
+    if (mMode == MODE_PREVIEW)
+        return mNumPreviewBuffersQueued > 0;
+
+    LogError("Query for data in invalid mode");
+
+    return false;
 }
 
 int AtomISP::grabFrame(int device, struct v4l2_buffer *buf)
