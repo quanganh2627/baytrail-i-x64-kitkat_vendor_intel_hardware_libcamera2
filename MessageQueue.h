@@ -80,12 +80,24 @@ public:
             LOGE("Atom_MessageQueue error: %s message queue is full\n", mName);
             status = NOT_ENOUGH_DATA;
         }
-        mQueueMutex.unlock();
+        if (replyId != -1) {
+            mReplyStatus[replyId] = WOULD_BLOCK;
+        }
         mQueueCondition.signal();
+        mQueueMutex.unlock();
 
         if (replyId >= 0 && status == NO_ERROR) {
-            mReplyCondition[replyId].wait(mReplyMutex[replyId]);
+            mReplyMutex[replyId].lock();
+            while (mReplyStatus[replyId] == WOULD_BLOCK) {
+                mReplyCondition[replyId].wait(mReplyMutex[replyId]);
+                // wait() should never complete without a new status having
+                // been set, but for diagnostic purposes let's check it.
+                if (mReplyStatus[replyId] == WOULD_BLOCK) {
+                    LOGE("Atom_MessageQueue - woke with WOULD_BLOCK\n");
+                }
+            }
             status = mReplyStatus[replyId];
+            mReplyMutex[replyId].unlock();
         }
 
         return status;
@@ -97,8 +109,14 @@ public:
         status_t status = NO_ERROR;
 
         mQueueMutex.lock();
-        while (mCount == 0)
+        while (mCount == 0) {
             mQueueCondition.wait(mQueueMutex);
+            // wait() should never complete without a message being
+            // available, but for diagnostic purposes let's check it.
+            if (mCount == 0) {
+                LOGE("Atom_MessageQueue - woke with mCount == 0\n");
+            }
+        }
 
         *msg = circularQueue[mHead];
         mHead = (mHead + 1) % MESSAGE_QUEUE_SIZE;
@@ -111,8 +129,10 @@ public:
     // Unblock the caller of send and indicate the status of the received message
     void reply(int replyId, status_t status)
     {
+        mReplyMutex[replyId].lock();
         mReplyStatus[replyId] = status;
         mReplyCondition[replyId].signal();
+        mReplyMutex[replyId].unlock();
     }
 
     // Return true if the queue is empty

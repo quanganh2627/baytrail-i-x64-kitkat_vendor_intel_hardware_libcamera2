@@ -44,7 +44,9 @@ void DebugFrameRate::update()
 
 status_t DebugFrameRate::requestExitAndWait()
 {
+    mMutex.lock();
     mCondition.signal();
+    mMutex.unlock();
 
     return Thread::requestExitAndWait();
 }
