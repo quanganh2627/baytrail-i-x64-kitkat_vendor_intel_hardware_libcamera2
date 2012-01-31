@@ -155,7 +155,7 @@ status_t ControlThread::setPreviewWindow(struct preview_stream_ops *window)
 {
     LOG_FUNCTION
     LogDetail("window = %p", window);
-    if (window != NULL && mPreviewThread != NULL) {
+    if (mPreviewThread != NULL) {
         return mPreviewThread->setPreviewWindow(window);
     }
     return NO_ERROR;

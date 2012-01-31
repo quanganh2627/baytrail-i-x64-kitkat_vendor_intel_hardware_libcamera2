@@ -56,10 +56,8 @@ status_t PreviewThread::setPreviewWindow(struct preview_stream_ops *window)
 {
     LOG_FUNCTION
     Message msg;
-    msg.id = MESSAGE_ID_SET_PREVIEW;
-    msg.data.setPreview.window = window;
-    msg.data.setPreview.width = 0;
-    msg.data.setPreview.height = 0;
+    msg.id = MESSAGE_ID_SET_PREVIEW_WINDOW;
+    msg.data.setPreviewWindow.window = window;
     return mMessageQueue.send(&msg);
 }
 
@@ -67,10 +65,9 @@ status_t PreviewThread::setPreviewSize(int preview_width, int preview_height)
 {
     LOG_FUNCTION
     Message msg;
-    msg.id = MESSAGE_ID_SET_PREVIEW;
-    msg.data.setPreview.window = NULL;
-    msg.data.setPreview.width = preview_width;
-    msg.data.setPreview.height = preview_height;
+    msg.id = MESSAGE_ID_SET_PREVIEW_SIZE;
+    msg.data.setPreviewSize.width = preview_width;
+    msg.data.setPreviewSize.height = preview_height;
     return mMessageQueue.send(&msg);
 }
 
@@ -88,10 +85,6 @@ status_t PreviewThread::handleMessageExit()
     LOG_FUNCTION
     status_t status = NO_ERROR;
     mThreadRunning = false;
-
-    // TODO: any other cleanup that may need to be done
-    mPreviewWindow = NULL;
-
     return status;
 }
 
@@ -145,23 +138,16 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
     return status;
 }
 
-status_t PreviewThread::handleMessageSetPreview(MessageSetPreview *msg)
+status_t PreviewThread::handleMessageSetPreviewWindow(MessageSetPreviewWindow *msg)
 {
     LOG_FUNCTION
     status_t status = NO_ERROR;
 
-    LogDetail2("Preview: window = %p, width = %d, height = %d",
-                msg->window,
-                msg->width,
-                msg->height);
+    LogDetail2("Preview: window = %p", msg->window);
 
-    if (msg->width != 0 && msg->width != 0) {
-        mPreviewWidth = msg->width;
-        mPreviewHeight = msg->height;
-        LogDetail("Setting new preview size: %dx%d", mPreviewWidth, mPreviewHeight);
-    }
-    if (msg->window != NULL) {
-        mPreviewWindow = msg->window;
+    mPreviewWindow = msg->window;
+
+    if (mPreviewWindow != NULL) {
         LogDetail("Setting new preview window %p", mPreviewWindow);
         mPreviewWindow->set_usage(mPreviewWindow, GRALLOC_USAGE_SW_WRITE_OFTEN);
         mPreviewWindow->set_buffers_geometry(
@@ -169,6 +155,24 @@ status_t PreviewThread::handleMessageSetPreview(MessageSetPreview *msg)
                 mPreviewWidth,
                 mPreviewHeight,
                 HAL_PIXEL_FORMAT_RGB_565);
+    }
+
+    return NO_ERROR;
+}
+
+status_t PreviewThread::handleMessageSetPreviewSize(MessageSetPreviewSize *msg)
+{
+    LOG_FUNCTION
+    status_t status = NO_ERROR;
+
+    LogDetail2("Preview: width = %d, height = %d",
+                msg->width,
+                msg->height);
+
+    if (msg->width != 0 && msg->height != 0) {
+        mPreviewWidth = msg->width;
+        mPreviewHeight = msg->height;
+        LogDetail("Setting new preview size: %dx%d", mPreviewWidth, mPreviewHeight);
     }
 
     return NO_ERROR;
@@ -191,8 +195,12 @@ status_t PreviewThread::waitForAndExecuteMessage()
             status = handleMessagePreview(&msg.data.preview);
             break;
 
-        case MESSAGE_ID_SET_PREVIEW:
-            status = handleMessageSetPreview(&msg.data.setPreview);
+        case MESSAGE_ID_SET_PREVIEW_WINDOW:
+            status = handleMessageSetPreviewWindow(&msg.data.setPreviewWindow);
+            break;
+
+        case MESSAGE_ID_SET_PREVIEW_SIZE:
+            status = handleMessageSetPreviewSize(&msg.data.setPreviewSize);
             break;
 
         default:
