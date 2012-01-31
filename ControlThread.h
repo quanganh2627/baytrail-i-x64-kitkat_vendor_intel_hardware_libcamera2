@@ -181,6 +181,13 @@ private:
         STATE_RECORDING,
     };
 
+    struct CoupledBuffer {
+        AtomBuffer *previewBuff;
+        AtomBuffer *recordingBuff;
+        bool previewBuffReturned;
+        bool recordingBuffReturned;
+    };
+
 // private methods
 private:
 
@@ -203,9 +210,12 @@ private:
     // main message function
     status_t waitForAndExecuteMessage();
 
+    AtomBuffer* findRecordingBuffer(void *findMe);
+
     // dequeue buffers from driver and deliver them
     status_t dequeuePreview();
     status_t dequeueRecording();
+    status_t queueCoupledBuffers(int coupledId);
 
     // parameters handling functions
     void initDefaultParameters();
@@ -227,6 +237,8 @@ private:
     State mState;
     bool mThreadRunning;
     Callbacks *mCallbacks;
+
+    CoupledBuffer mCoupledBuffers[NUM_ATOM_BUFFERS];
 
     int mCameraId;
     CameraParameters mParameters;

@@ -99,7 +99,7 @@ public:
     status_t putPreviewFrame(AtomBuffer *buff);
 
     status_t getRecordingFrame(AtomBuffer **buff, nsecs_t *timestamp);
-    status_t putRecordingFrame(void *buff);
+    status_t putRecordingFrame(AtomBuffer *buff);
 
     status_t getSnapshot(AtomBuffer **snaphotBuf, AtomBuffer **postviewBuf);
     status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
@@ -145,9 +145,6 @@ private:
     status_t freePreviewBuffers();
     status_t freeRecordingBuffers();
     status_t freeSnapshotBuffers();
-    AtomBuffer *findBuffer(AtomBuffer buffers[],
-                           int numBuffers,
-                           void *findMe);
 
     int  openDevice(int device);
     void closeDevice(int device);
@@ -186,8 +183,8 @@ private:
 
     Mode mMode;
     Callbacks *mCallbacks;
-    AtomBuffer mPreviewBuffers[ATOM_PREVIEW_BUFFERS];
-    AtomBuffer mRecordingBuffers[ATOM_RECORDING_BUFFERS];
+    AtomBuffer mPreviewBuffers[NUM_ATOM_BUFFERS];
+    AtomBuffer mRecordingBuffers[NUM_ATOM_BUFFERS];
     AtomBuffer mSnapshotBuffers[SNAPSHOT_MAX_NUM_BUFFERS];
     AtomBuffer mPostviewBuffers[SNAPSHOT_MAX_NUM_BUFFERS];
     int mNumPreviewBuffersQueued;

@@ -297,14 +297,14 @@ status_t AtomISP::startPreview()
         goto exitClose;
     }
 
-    ret = startDevice(mPreviewDevice, ATOM_PREVIEW_BUFFERS);
+    ret = startDevice(mPreviewDevice, NUM_ATOM_BUFFERS);
     if (ret < 0) {
         LogError("Start preview device failed!");
         status = UNKNOWN_ERROR;
         goto exitClose;
     }
 
-    mNumPreviewBuffersQueued = ATOM_PREVIEW_BUFFERS;
+    mNumPreviewBuffersQueued = NUM_ATOM_BUFFERS;
 
     return status;
 
@@ -379,22 +379,22 @@ status_t AtomISP::startRecording() {
         goto exitClosePrev;
     }
 
-    ret = startDevice(mRecordingDevice, ATOM_RECORDING_BUFFERS);
+    ret = startDevice(mRecordingDevice, NUM_ATOM_BUFFERS);
     if (ret < 0) {
         LogError("Start recording device failed");
         status = UNKNOWN_ERROR;
         goto exitClosePrev;
     }
 
-    ret = startDevice(mPreviewDevice, ATOM_PREVIEW_BUFFERS);
+    ret = startDevice(mPreviewDevice, NUM_ATOM_BUFFERS);
     if (ret < 0) {
         LogError("Start preview device failed!");
         status = UNKNOWN_ERROR;
         goto exitStopRec;
     }
 
-    mNumPreviewBuffersQueued = ATOM_PREVIEW_BUFFERS;
-    mNumRecordingBuffersQueued = ATOM_RECORDING_BUFFERS;
+    mNumPreviewBuffersQueued = NUM_ATOM_BUFFERS;
+    mNumRecordingBuffersQueued = NUM_ATOM_BUFFERS;
 
     return status;
 
@@ -1520,25 +1520,18 @@ status_t AtomISP::getRecordingFrame(AtomBuffer **buff, nsecs_t *timestamp)
     return NO_ERROR;
 }
 
-status_t AtomISP::putRecordingFrame(void *buff)
+status_t AtomISP::putRecordingFrame(AtomBuffer *buff)
 {
     LOG_FUNCTION2
     if (mMode != MODE_VIDEO)
         return INVALID_OPERATION;
 
-    AtomBuffer *abuff = findBuffer(mRecordingBuffers,
-            ATOM_RECORDING_BUFFERS,
-            buff);
-
-    if (!abuff)
-        return UNKNOWN_ERROR;
-
-    if (abuff->ispPrivate != mSessionId)
+    if (buff->ispPrivate != mSessionId)
         return DEAD_OBJECT;
 
     if (v4l2_capture_qbuf(video_fds[mRecordingDevice],
-            abuff->id,
-            &v4l2_buf_pool[mRecordingDevice].bufs[abuff->id]) < 0) {
+            buff->id,
+            &v4l2_buf_pool[mRecordingDevice].bufs[buff->id]) < 0) {
         return UNKNOWN_ERROR;
     }
 
@@ -1721,8 +1714,8 @@ status_t AtomISP::allocatePreviewBuffers()
     status_t status = NO_ERROR;
     int allocatedBufs = 0;
     int size = mConfig.preview.width * mConfig.preview.height * 3 / 2;
-    LogDetail("Allocating %d buffers of size %d", ATOM_PREVIEW_BUFFERS, size);
-    for (int i = 0; i < ATOM_PREVIEW_BUFFERS; i++) {
+    LogDetail("Allocating %d buffers of size %d", NUM_ATOM_BUFFERS, size);
+    for (int i = 0; i < NUM_ATOM_BUFFERS; i++) {
          mPreviewBuffers[i].buff = NULL;
          mCallbacks->allocateMemory(&mPreviewBuffers[i], size);
          if (mPreviewBuffers[i].buff == NULL) {
@@ -1752,8 +1745,8 @@ status_t AtomISP::allocateRecordingBuffers()
     status_t status = NO_ERROR;
     int allocatedBufs = 0;
     int size = mConfig.recording.width * mConfig.recording.height * 3 / 2;
-    LogDetail("Allocating %d buffers of size %d", ATOM_RECORDING_BUFFERS, size);
-    for (int i = 0; i < ATOM_RECORDING_BUFFERS; i++) {
+    LogDetail("Allocating %d buffers of size %d", NUM_ATOM_BUFFERS, size);
+    for (int i = 0; i < NUM_ATOM_BUFFERS; i++) {
         mRecordingBuffers[i].buff = NULL;
         mCallbacks->allocateMemory(&mRecordingBuffers[i], size);
         if (mRecordingBuffers[i].buff == NULL) {
@@ -1833,7 +1826,7 @@ errorFree:
 status_t AtomISP::freePreviewBuffers()
 {
     LOG_FUNCTION
-    for (int i = 0 ; i < ATOM_PREVIEW_BUFFERS; i++) {
+    for (int i = 0 ; i < NUM_ATOM_BUFFERS; i++) {
         if (mPreviewBuffers[i].buff != NULL) {
             mPreviewBuffers[i].buff->release(mPreviewBuffers[i].buff);
             mPreviewBuffers[i].buff = NULL;
@@ -1845,7 +1838,7 @@ status_t AtomISP::freePreviewBuffers()
 status_t AtomISP::freeRecordingBuffers()
 {
     LOG_FUNCTION
-    for (int i = 0 ; i < ATOM_RECORDING_BUFFERS; i++) {
+    for (int i = 0 ; i < NUM_ATOM_BUFFERS; i++) {
         if (mRecordingBuffers[i].buff != NULL) {
             mRecordingBuffers[i].buff->release(mRecordingBuffers[i].buff);
             mRecordingBuffers[i].buff = NULL;
@@ -1868,20 +1861,6 @@ status_t AtomISP::freeSnapshotBuffers()
         }
     }
     return NO_ERROR;
-}
-
-AtomBuffer *AtomISP::findBuffer(AtomBuffer buffers[],
-                                int numBuffers,
-                                void *findMe)
-{
-    LOG_FUNCTION2
-
-    // This is a small list, so incremental search is not an issue right now
-    for (int i = 0; i < numBuffers; i++) {
-        if (buffers[i].buff->data == findMe)
-            return &buffers[i];
-    }
-    return NULL;
 }
 
 int AtomISP::getNumberOfCameras()

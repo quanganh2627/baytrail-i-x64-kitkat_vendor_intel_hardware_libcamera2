@@ -39,6 +39,8 @@ ControlThread::ControlThread(int cameraId) :
     mCameraId = cameraId;
     LogDetail("mCameraId = %d", mCameraId);
 
+    memset(mCoupledBuffers, 0, sizeof(mCoupledBuffers));
+
     initDefaultParameters();
 }
 
@@ -373,6 +375,7 @@ status_t ControlThread::handleMessageStartPreview()
             State preState;
             if (isParameterSet(CameraParameters::KEY_RECORDING_HINT)) {
                 preState = STATE_PREVIEW_VIDEO;
+                memset(mCoupledBuffers, 0, sizeof(mCoupledBuffers));
                 status = mISP->start(AtomISP::MODE_VIDEO);
                 LogDetail("Starting camera in PREVIEW_VIDEO mode");
             } else {
@@ -433,6 +436,7 @@ status_t ControlThread::handleMessageStartRecording()
          */
         LogDetail("We are in STATE_PREVIEW. Switching to STATE_VIDEO before starting to record.");
         if ((status = mISP->stop()) == NO_ERROR) {
+            memset(mCoupledBuffers, 0, sizeof(mCoupledBuffers));
             if ((status = mISP->start(AtomISP::MODE_VIDEO)) == NO_ERROR) {
                 mState = STATE_RECORDING;
             } else {
@@ -551,12 +555,17 @@ status_t ControlThread::handleMessageReleaseRecordingFrame(MessageReleaseRecordi
 {
     LOG_FUNCTION2
     status_t status = NO_ERROR;
-    if (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING) {
-        status = mISP->putRecordingFrame(msg->buff);
-        if (status == DEAD_OBJECT) {
-            LogDetail("Stale recording buffer returned to ISP");
-        } else if (status != NO_ERROR) {
-            LogError("Error putting recording frame to ISP");
+    if (mState == STATE_RECORDING) {
+        AtomBuffer *recBuff = findRecordingBuffer(msg->buff);
+        if (recBuff == NULL) {
+            // This should NOT happen
+            LogError("Could not find recording buffer: %p", msg->buff);
+            return DEAD_OBJECT;
+        }
+        int curBuff = recBuff->id;
+        mCoupledBuffers[curBuff].recordingBuffReturned = true;
+        if (mCoupledBuffers[curBuff].previewBuffReturned) {
+            status = queueCoupledBuffers(curBuff);
         }
     }
     return status;
@@ -566,14 +575,42 @@ status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
 {
     LOG_FUNCTION2
     status_t status = NO_ERROR;
-    if (mState != STATE_STOPPED) {
+    if (mState == STATE_PREVIEW_STILL) {
         status = mISP->putPreviewFrame(msg->buff);
         if (status == DEAD_OBJECT) {
             LogDetail("Stale preview buffer returned to ISP");
         } else if (status != NO_ERROR) {
             LogError("Error putting preview frame to ISP");
         }
+    } else if (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING) {
+        int curBuff = msg->buff->id;
+        mCoupledBuffers[curBuff].previewBuffReturned = true;
+        if (mCoupledBuffers[curBuff].recordingBuffReturned) {
+            status = queueCoupledBuffers(curBuff);
+        }
     }
+    return status;
+}
+
+status_t ControlThread::queueCoupledBuffers(int coupledId)
+{
+    LOG_FUNCTION
+    status_t status = NO_ERROR;
+
+    status = mISP->putRecordingFrame(mCoupledBuffers[coupledId].recordingBuff);
+    if (status == NO_ERROR) {
+        status = mISP->putPreviewFrame(mCoupledBuffers[coupledId].previewBuff);
+        if (status == DEAD_OBJECT) {
+            LogDetail("Stale preview buffer returned to ISP");
+        } else if (status != NO_ERROR) {
+            LogError("Error putting preview frame to ISP");
+        }
+    } else if (status == DEAD_OBJECT) {
+        LogDetail("Stale recording buffer returned to ISP");
+    } else {
+        LogError("Error putting recording frame to ISP");
+    }
+
     return status;
 }
 
@@ -745,6 +782,8 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
                 goto exit;
             }
 
+            memset(mCoupledBuffers, 0, sizeof(mCoupledBuffers));
+
             // reconfigure the isp
             status = mISP->setVideoFrameFormat(new_recording.width, new_recording.height, V4L2_PIX_FMT_NV12);
             if (status != NO_ERROR) {
@@ -880,6 +919,16 @@ status_t ControlThread::waitForAndExecuteMessage()
     return status;
 }
 
+AtomBuffer* ControlThread::findRecordingBuffer(void *findMe)
+{
+    // This is a small list, so incremental search is not an issue right now
+    for (int i = 0; i < NUM_ATOM_BUFFERS; i++) {
+        if (mCoupledBuffers[i].recordingBuff->buff->data == findMe)
+            return mCoupledBuffers[i].recordingBuff;
+    }
+    return NULL;
+}
+
 status_t ControlThread::dequeuePreview()
 {
     LogEntry2(LOG_TAG, __FUNCTION__);
@@ -888,6 +937,10 @@ status_t ControlThread::dequeuePreview()
 
     status = mISP->getPreviewFrame(&buff);
     if (status == NO_ERROR) {
+        if (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING) {
+            mCoupledBuffers[buff->id].previewBuff = buff;
+            mCoupledBuffers[buff->id].previewBuffReturned = false;
+        }
         status = mPreviewThread->preview(buff);
         if (status != NO_ERROR)
             LogError("Error sending buffer to preview thread");
@@ -906,14 +959,15 @@ status_t ControlThread::dequeueRecording()
 
     status = mISP->getRecordingFrame(&buff, &timestamp);
     if (status == NO_ERROR) {
-
+        mCoupledBuffers[buff->id].recordingBuff = buff;
+        mCoupledBuffers[buff->id].recordingBuffReturned = false;
         // See if recording has started.
         // If it has, process the buffer
         // If it hasn't, return the buffer to the driver
         if (mState == STATE_RECORDING) {
             mCallbacks->videoFrameDone(buff, timestamp);
         } else {
-            mISP->putRecordingFrame(buff->buff->data);
+            mCoupledBuffers[buff->id].recordingBuffReturned = true;
         }
     } else {
         LogError("Error: getting recording from isp\n");
@@ -963,9 +1017,9 @@ bool ControlThread::threadLoop()
             } else {
                 // make sure ISP has data before we ask for some
                 if (mISP->dataAvailable()) {
-                    status = dequeuePreview();
+                    status = dequeueRecording();
                     if (status == NO_ERROR)
-                        status = dequeueRecording();
+                        status = dequeuePreview();
                 } else {
                     status = waitForAndExecuteMessage();
                 }
