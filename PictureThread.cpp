@@ -166,7 +166,8 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
         mPictureInfo.height == 0 ||
         mPictureInfo.format == 0) {
         LogError("Picture information not set yet!");
-        return UNKNOWN_ERROR;
+        status=UNKNOWN_ERROR;
+        goto exit;
     }
     // Encode the image
     // TODO: implement quality passing from ControlThread
@@ -176,7 +177,7 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
     } else {
         LogError("Error encoding JPEG image!");
     }
-
+exit:
     // When the encoding is done, send back the buffers to camera
     mPictureDoneCallback->pictureDone(msg->snaphotBuf, msg->postviewBuf);
 

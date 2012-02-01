@@ -107,7 +107,8 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
             if (mPreviewWindow->lock_buffer(mPreviewWindow, buf) != NO_ERROR) {
                 LogError("Failed to lock preview buffer!");
                 mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
-                return status;
+                status = NO_MEMORY;
+                goto exit;
             }
             GraphicBufferMapper &mapper = GraphicBufferMapper::get();
             const Rect bounds(mPreviewWidth, mPreviewHeight);
@@ -116,7 +117,8 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
             if (mapper.lock(*buf, GRALLOC_USAGE_SW_WRITE_OFTEN, bounds, &dst) != NO_ERROR) {
                 LogError("Failed to lock GraphicBufferMapper!");
                 mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
-                return status;
+                status = NO_MEMORY;
+                goto exit;
             }
             NV12ToRGB565(mPreviewWidth,
                     mPreviewHeight,
@@ -131,8 +133,8 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
     } else {
         mCallbacks->previewFrameDone(msg->buff);
     }
-
     mDebugFPS->update(); // update fps counter
+exit:
     mPreviewDoneCallback->previewDone(msg->buff);
 
     return status;
