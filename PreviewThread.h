@@ -66,7 +66,8 @@ private:
 
         MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
         MESSAGE_ID_PREVIEW,
-        MESSAGE_ID_SET_PREVIEW,
+        MESSAGE_ID_SET_PREVIEW_WINDOW,
+        MESSAGE_ID_SET_PREVIEW_SIZE,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -80,8 +81,11 @@ private:
         AtomBuffer *buff;
     };
 
-    struct MessageSetPreview {
+    struct MessageSetPreviewWindow {
         struct preview_stream_ops *window;
+    };
+
+    struct MessageSetPreviewSize {
         int width;
         int height;
     };
@@ -91,7 +95,12 @@ private:
 
         // MESSAGE_ID_PREVIEW
         MessagePreview preview;
-        MessageSetPreview setPreview;
+
+        // MESSAGE_ID_SET_PREVIEW_WINDOW
+        MessageSetPreviewWindow setPreviewWindow;
+
+        // MESSAGE_ID_SET_PREVIEW_SIZE
+        MessageSetPreviewSize setPreviewSize;
     };
 
     // message id and message data
@@ -106,7 +115,8 @@ private:
     // thread message execution functions
     status_t handleMessageExit();
     status_t handleMessagePreview(MessagePreview *msg);
-    status_t handleMessageSetPreview(MessageSetPreview *msg);
+    status_t handleMessageSetPreviewWindow(MessageSetPreviewWindow *msg);
+    status_t handleMessageSetPreviewSize(MessageSetPreviewSize *msg);
 
     // main message function
     status_t waitForAndExecuteMessage();
