@@ -203,6 +203,8 @@ private:
     int mPreviewDevice;
     int mRecordingDevice;
 
+    int mSessionId; // uniquely identify each session
+
     Vector<FrameSize> mSupportedSnapshotSizes;
 
 }; // class AtomISP
