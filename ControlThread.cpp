@@ -759,7 +759,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     mParameters.getVideoSize(&old_recording.width, &old_recording.height);
     if (new_recording.width > 0 &&
         new_recording.height > 0 &&
-        (new_recording.width != old_recording.height ||
+        (new_recording.width != old_recording.width ||
         new_recording.height != old_recording.height)) {
 
         // if the video format changes while in video mode
