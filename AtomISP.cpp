@@ -1029,6 +1029,19 @@ bool AtomISP::zoomSupported(Mode mode)
     return mode == MODE_PREVIEW;
 }
 
+status_t AtomISP::setFlash(int numFrames)
+{
+    LOG_FUNCTION
+    if (camInfo[mCameraId].port != ATOMISP_CAMERA_PORT_PRIMARY) {
+        LogError("Flash is supported only for primary camera!");
+        return INVALID_OPERATION;
+    }
+    LogDetail("numFrames = %d", numFrames);
+    if (atomisp_set_attribute(main_fd, V4L2_CID_REQUEST_FLASH, numFrames, "request flash") < 0)
+        return UNKNOWN_ERROR;
+    return NO_ERROR;
+}
+
 status_t AtomISP::setZoom(int zoom)
 {
     LOG_FUNCTION

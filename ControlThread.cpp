@@ -464,6 +464,12 @@ status_t ControlThread::handleMessageTakePicture()
         return status;
     }
 
+    const char *flashMode = mParameters.get(CameraParameters::KEY_FLASH_MODE);
+    if (flashMode != NULL && strncmp(flashMode, CameraParameters::FLASH_MODE_ON, 2) == 0) {
+        LOGD("Requesting flash");
+        mISP->setFlash(1);
+    }
+
     // Get the snapshot
     if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
         LogError("Error in grabbing snapshot!");

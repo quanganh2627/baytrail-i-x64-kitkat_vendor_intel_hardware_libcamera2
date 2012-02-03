@@ -110,6 +110,7 @@ public:
 
     bool zoomSupported(Mode mode);
     status_t setZoom(int zoom);
+    status_t setFlash(int numFrames);
 
     // camera hardware information
     static int getNumberOfCameras();
