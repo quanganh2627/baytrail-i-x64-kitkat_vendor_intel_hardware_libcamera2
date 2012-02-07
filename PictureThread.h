@@ -19,6 +19,7 @@
 
 #include <utils/threads.h>
 #include <camera.h>
+#include <camera/CameraParameters.h>
 #include "MessageQueue.h"
 #include "AtomCommon.h"
 
@@ -51,11 +52,13 @@ public:
     void setCallbacks(Callbacks *callbacks);
 
     status_t encode(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
-    void setPictureFormat(const struct FrameInfo &info)
-    { mPictureInfo = info; }
-
-    static int getDefaultJpegQuality() { return defaultJpegQuality; }
-    static int getDefaultThumbnailQuality() { return defaultJpegQuality; }
+    void setPictureFormat(int width, int height, int format)
+    {
+        mWidth = width;
+        mHeight = height;
+        mFormat = format;
+    }
+    void getDefaultParameters(CameraParameters *params);
 
 // private types
 private:
@@ -116,9 +119,9 @@ private:
     ICallbackPicture *mPictureDoneCallback;
     Callbacks *mCallbacks;
 
-    FrameInfo mPictureInfo;
-    static const int defaultJpegQuality = 100; // default Jpeg Quality
-    static const int defaultThumbnailQuality = 50; // default Jpeg thumbnail Quality
+    int mWidth;
+    int mHeight;
+    int mFormat;
 
 // public data
 public:

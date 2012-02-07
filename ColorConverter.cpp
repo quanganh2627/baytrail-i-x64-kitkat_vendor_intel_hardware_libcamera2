@@ -13,7 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#define LOG_TAG "Atom_ColorConverter"
+
+#include <camera/CameraParameters.h>
+#include <linux/atomisp.h>
+#include <linux/videodev2.h>
 #include "ColorConverter.h"
+#include "LogHelper.h"
 
 namespace android {
 
@@ -127,6 +133,46 @@ void NV12ToRGB565(int width, int height, void *src, void *dst)
         rgbs[outPtr++]  = (unsigned char) (((G & 0x3c) << 3) | (B >> 3));
         rgbs[outPtr++]  = (unsigned char) ((R & 0xf8) | (G >> 5));
     }
+}
+
+const char *cameraParametersFormat(int v4l2Format)
+{
+    switch (v4l2Format) {
+    case V4L2_PIX_FMT_YUV420:
+        return CameraParameters::PIXEL_FORMAT_YUV420P;
+    case V4L2_PIX_FMT_NV12:
+        return CameraParameters::PIXEL_FORMAT_YUV420SP;
+    case V4L2_PIX_FMT_YUYV:
+        return CameraParameters::PIXEL_FORMAT_YUV422I;
+    case V4L2_PIX_FMT_JPEG:
+        return CameraParameters::PIXEL_FORMAT_JPEG;
+    default:
+        return NULL;
+    };
+}
+
+int V4L2Format(const char *cameraParamsFormat)
+{
+    LOG_FUNCTION2
+    if (!cameraParamsFormat) {
+        LogError("null cameraParamsFormat");
+        return -1;
+    }
+
+    int len = strlen(CameraParameters::PIXEL_FORMAT_YUV420SP);
+    if (strncmp(cameraParamsFormat, CameraParameters::PIXEL_FORMAT_YUV420SP, len) == 0)
+        return V4L2_PIX_FMT_NV12;
+
+    len = strlen(CameraParameters::PIXEL_FORMAT_YUV420P);
+    if (strncmp(cameraParamsFormat, CameraParameters::PIXEL_FORMAT_YUV420P, len) == 0)
+        return V4L2_PIX_FMT_YUV420;
+
+    len = strlen(CameraParameters::PIXEL_FORMAT_JPEG);
+    if (strncmp(cameraParamsFormat, CameraParameters::PIXEL_FORMAT_JPEG, len) == 0)
+        return V4L2_PIX_FMT_JPEG;
+
+    LogError("invalid format %s", cameraParamsFormat);
+    return -1;
 }
 
 } // namespace android

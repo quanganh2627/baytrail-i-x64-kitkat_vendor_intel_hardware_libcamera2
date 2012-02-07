@@ -18,6 +18,7 @@
 #include "LogHelper.h"
 #include "AtomISP.h"
 #include "Callbacks.h"
+#include "ColorConverter.h"
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -25,6 +26,60 @@
 
 #define CLEAR(x) memset (&(x), 0, sizeof (x))
 #define main_fd video_fds[V4L2_FIRST_DEVICE]
+
+#define DEFAULT_SENSOR_FPS      15.0
+
+#define RESOLUTION_14MP_WIDTH   4352
+#define RESOLUTION_14MP_HEIGHT  3264
+#define RESOLUTION_8MP_WIDTH    3264
+#define RESOLUTION_8MP_HEIGHT   2448
+#define RESOLUTION_5MP_WIDTH    2560
+#define RESOLUTION_5MP_HEIGHT   1920
+#define RESOLUTION_1080P_WIDTH  1920
+#define RESOLUTION_1080P_HEIGHT 1080
+#define RESOLUTION_720P_WIDTH   1280
+#define RESOLUTION_720P_HEIGHT  720
+#define RESOLUTION_480P_WIDTH   768
+#define RESOLUTION_480P_HEIGHT  480
+#define RESOLUTION_VGA_WIDTH    640
+#define RESOLUTION_VGA_HEIGHT   480
+#define RESOLUTION_POSTVIEW_WIDTH    320
+#define RESOLUTION_POSTVIEW_HEIGHT   240
+
+#define RESOLUTION_14MP_TABLE   \
+        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x2448,3648x2736,4096x3072,4352x3264"
+
+#define RESOLUTION_8MP_TABLE   \
+        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x2448"
+
+#define RESOLUTION_5MP_TABLE   \
+        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920"
+
+#define RESOLUTION_1080P_TABLE   \
+        "320x240,640x480,1024x768,1280x720,1920x1080"
+
+#define RESOLUTION_720P_TABLE   \
+        "320x240,640x480,1280x720,1280x960"
+
+#define RESOLUTION_VGA_TABLE   \
+        "320x240,640x480"
+
+#define MAX_BACK_CAMERA_PREVIEW_WIDTH   1280
+#define MAX_BACK_CAMERA_PREVIEW_HEIGHT  720
+#define MAX_BACK_CAMERA_SNAPSHOT_WIDTH  4352
+#define MAX_BACK_CAMERA_SNAPSHOT_HEIGHT 3264
+#define MAX_BACK_CAMERA_VIDEO_WIDTH   1920
+#define MAX_BACK_CAMERA_VIDEO_HEIGHT  1080
+
+#define MAX_FRONT_CAMERA_PREVIEW_WIDTH  1280
+#define MAX_FRONT_CAMERA_PREVIEW_HEIGHT 720
+#define MAX_FRONT_CAMERA_SNAPSHOT_WIDTH 1920
+#define MAX_FRONT_CAMERA_SNAPSHOT_HEIGHT    1080
+#define MAX_FRONT_CAMERA_VIDEO_WIDTH   1920
+#define MAX_FRONT_CAMERA_VIDEO_HEIGHT  1080
+
+#define ATOMISP_POLL_TIMEOUT (3 * 1000)
+#define ATOMISP_FILEINPUT_POLL_TIMEOUT (20 * 1000)
 
 namespace android {
 
@@ -36,8 +91,8 @@ static const char *dev_name_array[3] = {"/dev/video0",
                                   "/dev/video1",
                                   "/dev/video2"};
 
-static cameraInfo camInfo[MAX_CAMERAS];
-static int        num_cameras = 0;
+AtomISP::cameraInfo AtomISP::camInfo[MAX_CAMERAS];
+int AtomISP::numCameras = 0;
 
 const camera_info AtomISP::mCameraInfo[MAX_CAMERAS] = {
     {
@@ -71,6 +126,7 @@ AtomISP::AtomISP(int camera_id) :
     ,mPreviewDevice(V4L2_FIRST_DEVICE)
     ,mRecordingDevice(V4L2_FIRST_DEVICE)
     ,mSessionId(0)
+    ,mCameraId(0)
 {
     LOG_FUNCTION
     int camera_idx = -1;
@@ -97,7 +153,7 @@ AtomISP::AtomISP(int camera_id) :
                 camera_id == CAMERA_FACING_BACK ? "back" : "front");
         camera_idx = 0;
     }
-    mConfig.cameraId = camera_idx;
+    mCameraId = camera_idx;
     // Open the main device first
     int ret = openDevice(V4L2_FIRST_DEVICE);
     if (ret < 0) {
@@ -144,9 +200,9 @@ AtomISP::AtomISP(int camera_id) :
 
     // Initialize the frame sizes
     setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
-    setPostviewFrameFormat(RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT, V4L2_PIX_FMT_YUV420);
-    setSnapshotFrameFormat(RESOLUTION_5MP_WIDTH, RESOLUTION_5MP_HEIGHT, V4L2_PIX_FMT_YUV420);
-    setVideoFrameFormat(MAX_BACK_CAMERA_VIDEO_WIDTH, MAX_BACK_CAMERA_VIDEO_HEIGHT, V4L2_PIX_FMT_NV12);
+    setPostviewFrameFormat(RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT, V4L2_PIX_FMT_NV12);
+    setSnapshotFrameFormat(RESOLUTION_5MP_WIDTH, RESOLUTION_5MP_HEIGHT, V4L2_PIX_FMT_NV12);
+    setVideoFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
 
     mIspTimeout = 0;
 
@@ -164,12 +220,93 @@ void AtomISP::setCallbacks(Callbacks *callbacks)
     mCallbacks = callbacks;
 }
 
-int AtomISP::getMaxSnapshotSize(int *width, int *height)
+void AtomISP::getDefaultParameters(CameraParameters *params)
 {
-    LOG_FUNCTION
-    *width  = mConfig.snapshot.width;
-    *height = mConfig.snapshot.height;
-    return 0;
+    LOG_FUNCTION2
+    if (!params) {
+        LogError("params is null!");
+        return;
+    }
+
+    /**
+     * PREVIEW
+     */
+    params->setPreviewSize(mConfig.preview.width, mConfig.preview.height);
+    params->setPreviewFrameRate(30);
+    params->setPreviewFormat(cameraParametersFormat(mConfig.preview.format));
+    char previewFormats[100] = {0};
+    if (snprintf(previewFormats, sizeof(previewFormats),
+            "%s%s",
+            cameraParametersFormat(V4L2_PIX_FMT_NV12),
+            cameraParametersFormat(V4L2_PIX_FMT_YUV420)) < 0) {
+        LogError("Could not generate preview formats string: %s", strerror(errno));
+        return;
+    }
+    params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, previewFormats);
+    params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES, "640x480,640x360");
+
+    params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES,"30,15,10");
+    params->set(CameraParameters::KEY_PREVIEW_FPS_RANGE,"10500,30304");
+    params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FPS_RANGE,"(10500,30304),(11000,30304),(11500,30304)");
+
+    /**
+     * RECORDING
+     */
+    params->setVideoSize(mConfig.recording.width, mConfig.recording.height);
+    params->set(CameraParameters::KEY_PREFERRED_PREVIEW_SIZE_FOR_VIDEO, "640x480");
+    params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, "640x480,1280x720,1920x1080");
+    params->set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,
+            cameraParametersFormat(V4L2_PIX_FMT_NV12));
+
+    /**
+     * SNAPSHOT
+     */
+    const char *picSizes = getMaxSnapShotResolution();
+    params->set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, picSizes);
+    params->setPictureSize(mConfig.snapshot.width, mConfig.snapshot.height);
+    params->set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH,"320");
+    params->set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT,"240");
+    params->set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES,"640x480,512x384,320x240,0x0");
+
+    /**
+     * ZOOM
+     */
+    params->set(CameraParameters::KEY_ZOOM, 0);
+    params->set(CameraParameters::KEY_ZOOM_SUPPORTED, "true");
+    params->set(CameraParameters::KEY_MAX_ZOOM, "60");
+    params->set(CameraParameters::KEY_ZOOM_RATIOS,
+            "100,125,150,175,200,225,250,275,300,325,350,375,400,425,450,475,500,525,"
+            "550,575,600,625,650,675,700,725,750,775,800,825,850,875,900,925,950,975,"
+            "1000,1025,1050,1075,1100,1125,1150,1175,1200,1225,1250,1275,1300,1325,"
+            "1350,1375,1400,1425,1450,1475,1500,1525,1550,1575,1600");
+
+    /**
+     * FOCUS
+     */
+    if (mCameraId == CAMERA_FACING_BACK) {
+        // For main back camera
+        // flash mode option
+        params->set(CameraParameters::KEY_FLASH_MODE,"off");
+        params->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES,"auto,off,on,torch,slow-sync,day-sync");
+    } else {
+        // For front camera
+        // No flash present
+        params->set(CameraParameters::KEY_FLASH_MODE,"off");
+        params->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES,"off");
+    }
+    params->set(CameraParameters::KEY_FOCUS_MODE, "auto");
+    params->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto");
+
+    /**
+     * MISCELLANEOUS
+     */
+    if(mCameraId == CAMERA_FACING_BACK)
+        params->set(CameraParameters::KEY_FOCAL_LENGTH,"5.56");
+    else
+        params->set(CameraParameters::KEY_FOCAL_LENGTH,"2.78");
+
+    params->set(CameraParameters::KEY_VERTICAL_VIEW_ANGLE,"42.5");
+    params->set(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE,"54.8");
 }
 
 const char* AtomISP::getMaxSnapShotResolution()
@@ -193,15 +330,6 @@ const char* AtomISP::getMaxSnapShotResolution()
             index = 0;
 
     return resolution_tables[index];
-}
-
-
-status_t AtomISP::setConfig(Config *config)
-{
-    // TODO: validate mode
-    status_t status = NO_ERROR;
-    mConfig = *config;
-    return status;
 }
 
 status_t AtomISP::start(Mode mode)
@@ -550,11 +678,11 @@ int AtomISP::configureDevice(int device, int deviceMode, int w, int h, int forma
     /* 3A related initialization*/
     //Reallocate the grid for 3A after format change
     if (device == V4L2_FIRST_DEVICE) {
-        ret = v4l2_capture_g_framerate(fd, &framerate, w, h, format);
+        ret = v4l2_capture_g_framerate(fd, &mConfig.fps, w, h, format);
         if (ret < 0) {
         /*Error handler: if driver does not support FPS achieving,
                        just give the default value.*/
-            framerate = DEFAULT_SENSOR_FPS;
+            mConfig.fps = DEFAULT_SENSOR_FPS;
             ret = 0;
         }
     }
@@ -710,11 +838,11 @@ int AtomISP::openDevice(int device)
         return -1;
     }
 
-    if (device == V4L2_FIRST_DEVICE && mConfig.cameraId != -1) {
+    if (device == V4L2_FIRST_DEVICE && mCameraId != -1) {
 
         //Choose the camera sensor
-        LogDetail("Selecting camera sensor: %d", mConfig.cameraId);
-        ret = v4l2_capture_s_input(video_fds[device], mConfig.cameraId);
+        LogDetail("Selecting camera sensor: %d", mCameraId);
+        ret = v4l2_capture_s_input(video_fds[device], mCameraId);
         if (ret < 0) {
             LogError("V4L2: capture_s_input failed: %s", strerror(errno));
             v4l2_capture_close(video_fds[device]);
@@ -763,7 +891,6 @@ int AtomISP::detectDeviceResolutions()
             break;
         }
         ret++;
-        mSupportedSnapshotSizes.push(FrameSize(frame_size.discrete.width, frame_size.discrete.height));
         float fps = 0;
         v4l2_capture_g_framerate(
                 video_fds[V4L2_FIRST_DEVICE],
@@ -807,17 +934,6 @@ status_t AtomISP::setPreviewFrameFormat(int width, int height, int format)
     return status;
 }
 
-FrameInfo AtomISP::getPreviewFrameFormat()
-{
-    LOG_FUNCTION
-    LogDetail("w:%d h:%d f:%d s:%d",
-                mConfig.preview.width,
-                mConfig.preview.height,
-                mConfig.preview.format,
-                mConfig.preview.size);
-    return mConfig.preview;
-}
-
 status_t AtomISP::setPostviewFrameFormat(int width, int height, int format)
 {
     LOG_FUNCTION
@@ -835,17 +951,6 @@ status_t AtomISP::setPostviewFrameFormat(int width, int height, int format)
     LogDetail("width(%d), height(%d), pad_width(%d), size(%d), format(%d)",
             width, height, mConfig.postview.padding, mConfig.postview.size, format);
     return status;
-}
-
-FrameInfo AtomISP::getPostviewFrameFormat()
-{
-    LOG_FUNCTION
-    LogDetail("w:%d h:%d f:%d s:%d",
-            mConfig.postview.width,
-            mConfig.postview.height,
-            mConfig.postview.format,
-            mConfig.postview.size);
-    return mConfig.postview;
 }
 
 status_t AtomISP::setSnapshotFrameFormat(int width, int height, int format)
@@ -867,17 +972,6 @@ status_t AtomISP::setSnapshotFrameFormat(int width, int height, int format)
     LogDetail("width(%d), height(%d), pad_width(%d), size(%d), format(%d)",
         width, height, mConfig.snapshot.padding, mConfig.snapshot.size, format);
     return status;
-}
-
-FrameInfo AtomISP::getSnapshotFrameFormat()
-{
-    LOG_FUNCTION
-    LogDetail("w:%d h:%d f:%d s:%d",
-                    mConfig.snapshot.width,
-                    mConfig.snapshot.height,
-                    mConfig.snapshot.format,
-                    mConfig.snapshot.size);
-    return mConfig.snapshot;
 }
 
 status_t AtomISP::setSnapshotNum(int num)
@@ -906,10 +1000,14 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
         return INVALID_OPERATION;
     }
 
-    if (width > mConfig.recording.maxWidth || width <= 0)
+    if (width > mConfig.recording.maxWidth || width <= 0) {
+        LogError("invalid recording width %d. override to %d", width, mConfig.recording.maxWidth);
         width = mConfig.recording.maxWidth;
-    if (height > mConfig.recording.maxHeight || height <= 0)
+    }
+    if (height > mConfig.recording.maxHeight || height <= 0) {
+        LogError("invalid recording height %d. override to %d", height, mConfig.recording.maxHeight);
         height = mConfig.recording.maxHeight;
+    }
     mConfig.recording.width = width;
     mConfig.recording.height = height;
     mConfig.recording.format = format;
@@ -921,17 +1019,6 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
             width, height, mConfig.recording.padding, format);
 
     return status;
-}
-
-FrameInfo AtomISP::getVideoFrameFormat()
-{
-    LOG_FUNCTION
-    LogDetail("w:%d h:%d f:%d s:%d",
-            mConfig.recording.width,
-            mConfig.recording.height,
-            mConfig.recording.format,
-            mConfig.recording.size);
-    return mConfig.recording;
 }
 
 status_t AtomISP::setZoom(int zoom)
@@ -1776,16 +1863,14 @@ status_t AtomISP::allocateSnapshotBuffers()
     status_t status = NO_ERROR;
     int allocatedSnaphotBufs = 0;
     int allocatedPostviewBufs = 0;
-    FrameInfo snapshot = getSnapshotFrameFormat();
-    FrameInfo postview = getPostviewFrameFormat();
 
     LogDetail("Allocating %d buffers of size: %d (snapshot), %d (postview)",
             mConfig.num_snapshot,
-            snapshot.size,
-            postview.size);
+            mConfig.snapshot.size,
+            mConfig.postview.size);
     for (int i = 0; i < mConfig.num_snapshot; i++) {
         mSnapshotBuffers[i].buff = NULL;
-        mCallbacks->allocateMemory(&mSnapshotBuffers[i], snapshot.size);
+        mCallbacks->allocateMemory(&mSnapshotBuffers[i], mConfig.snapshot.size);
         if (mSnapshotBuffers[i].buff == NULL) {
             LogError("Error allocation memory for snapshot buffers!");
             status = NO_MEMORY;
@@ -1795,7 +1880,7 @@ status_t AtomISP::allocateSnapshotBuffers()
         v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[i].data = mSnapshotBuffers[i].buff->data;
 
         mPostviewBuffers[i].buff = NULL;
-        mCallbacks->allocateMemory(&mPostviewBuffers[i], postview.size);
+        mCallbacks->allocateMemory(&mPostviewBuffers[i], mConfig.postview.size);
         if (mPostviewBuffers[i].buff == NULL) {
             LogError("Error allocation memory for postview buffers!");
             status = NO_MEMORY;
@@ -1866,8 +1951,8 @@ status_t AtomISP::freeSnapshotBuffers()
 int AtomISP::getNumberOfCameras()
 {
     LOG_FUNCTION
-    if (num_cameras != 0)
-        return num_cameras;
+    if (numCameras != 0)
+        return numCameras;
     int ret;
     struct v4l2_input input;
     int fd = -1;
@@ -1892,8 +1977,8 @@ int AtomISP::getNumberOfCameras()
     }
     close(fd);
 
-    num_cameras = i;
-    return num_cameras;
+    numCameras = i;
+    return numCameras;
 }
 
 status_t AtomISP::getCameraInfo(int cameraId, camera_info *cameraInfo)

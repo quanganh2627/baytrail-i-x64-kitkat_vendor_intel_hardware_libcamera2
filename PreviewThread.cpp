@@ -171,10 +171,19 @@ status_t PreviewThread::handleMessageSetPreviewSize(MessageSetPreviewSize *msg)
                 msg->width,
                 msg->height);
 
-    if (msg->width != 0 && msg->height != 0) {
+    if ((msg->width != 0 && msg->height != 0) &&
+            (mPreviewWidth != msg->width || mPreviewHeight != msg->height)) {
+        LogDetail("Setting new preview size: %dx%d", mPreviewWidth, mPreviewHeight);
+        if (mPreviewWindow != NULL) {
+            // if preview size changed, update the preview window
+            mPreviewWindow->set_buffers_geometry(
+                    mPreviewWindow,
+                    msg->width,
+                    msg->height,
+                    HAL_PIXEL_FORMAT_RGB_565);
+        }
         mPreviewWidth = msg->width;
         mPreviewHeight = msg->height;
-        LogDetail("Setting new preview size: %dx%d", mPreviewWidth, mPreviewHeight);
     }
 
     return NO_ERROR;

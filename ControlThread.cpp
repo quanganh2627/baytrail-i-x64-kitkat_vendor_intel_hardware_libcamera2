@@ -21,6 +21,7 @@
 #include "PictureThread.h"
 #include "AtomISP.h"
 #include "Callbacks.h"
+#include "ColorConverter.h"
 
 namespace android {
 
@@ -36,12 +37,13 @@ ControlThread::ControlThread(int cameraId) :
 {
     LOG_FUNCTION
     int ret, camera_idx = -1;
-    mCameraId = cameraId;
-    LogDetail("mCameraId = %d", mCameraId);
+    LogDetail("cameraId= %d", cameraId);
 
     memset(mCoupledBuffers, 0, sizeof(mCoupledBuffers));
 
-    initDefaultParameters();
+    // get default params from AtomISP and JPEG encoder
+    mISP->getDefaultParameters(&mParameters);
+    mPictureThread->getDefaultParameters(&mParameters);
 }
 
 ControlThread::~ControlThread()
@@ -56,100 +58,6 @@ ControlThread::~ControlThread()
         delete mCallbacks;
     }
 }
-
-void ControlThread::initDefaultParameters()
-{
-    LOG_FUNCTION
-    CameraParameters p;
-
-    //common features for RAW and Soc
-
-    // Preview specific parameters
-    p.setPreviewSize(640, 480);
-    p.setPreviewFrameRate(30);
-    p.setPreviewFormat(CameraParameters::PIXEL_FORMAT_YUV420SP);
-    char previewFormats[100] = {0};
-    if (snprintf(previewFormats, sizeof(previewFormats),
-            "%s,%s,%s",
-            CameraParameters::PIXEL_FORMAT_YUV420SP,
-            CameraParameters::PIXEL_FORMAT_YUV420P,
-            CameraParameters::PIXEL_FORMAT_RGB565) < 0) {
-        LogError("Could not generate preview formats string: %s", strerror(errno));
-        return;
-    }
-    p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, previewFormats);
-    p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES, "640x480,640x360");
-
-    p.setPictureFormat(CameraParameters::PIXEL_FORMAT_JPEG);
-    p.set(CameraParameters::KEY_SUPPORTED_PICTURE_FORMATS, "jpeg");
-
-    char pchar[10];
-    snprintf(pchar, sizeof(pchar), "%d", PictureThread::getDefaultJpegQuality());
-    p.set(CameraParameters::KEY_JPEG_QUALITY, pchar);
-    snprintf(pchar, sizeof(pchar), "%d", PictureThread::getDefaultThumbnailQuality());
-    p.set(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY, pchar);
-
-    const char *resolution_dec = mISP->getMaxSnapShotResolution();
-    p.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, resolution_dec);
-    int maxWidth, maxHeight;
-    mISP->getMaxSnapshotSize(&maxWidth, &maxHeight);
-    p.setPictureSize(maxWidth, maxHeight);
-    mISP->setSnapshotFrameFormat(maxWidth, maxHeight, V4L2_PIX_FMT_NV12);
-
-    //thumbnail size
-    p.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH,"320");
-    p.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT,"240");
-    p.set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES,"640x480,512x384,320x240,0x0");
-
-    //focallength
-    if(mCameraId == CAMERA_FACING_BACK)
-        p.set(CameraParameters::KEY_FOCAL_LENGTH,"5.56");
-    else
-        p.set(CameraParameters::KEY_FOCAL_LENGTH,"2.78");
-
-    //for CTS test ...
-    // Vertical angle of view in degrees.
-    p.set(CameraParameters::KEY_VERTICAL_VIEW_ANGLE,"42.5");
-    p.set(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE,"54.8");
-
-    // Supported number of preview frames per second.
-    p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES,"30,15,10");
-    p.set(CameraParameters::KEY_PREVIEW_FPS_RANGE,"10500,30304");
-    p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FPS_RANGE,"(10500,30304),(11000,30304),(11500,30304)");
-
-    p.setVideoSize(1280,720);
-    p.set(CameraParameters::KEY_PREFERRED_PREVIEW_SIZE_FOR_VIDEO, "640x480");
-    p.set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, "640x480,1280x720,1920x1080");
-    p.set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,CameraParameters::PIXEL_FORMAT_YUV420SP);
-    mISP->setVideoFrameFormat(640, 480, V4L2_PIX_FMT_NV12);
-
-    //zoom
-    p.set(CameraParameters::KEY_ZOOM_SUPPORTED, "true");
-    p.set(CameraParameters::KEY_MAX_ZOOM, "60");
-    p.set(CameraParameters::KEY_ZOOM_RATIOS, "100,125,150,175,200,225,250,275,300,325,350,375,400,425,450,475,500,525,"
-        "550,575,600,625,650,675,700,725,750,775,800,825,850,875,900,925,950,975,1000,1025,1050,1075,1100,"
-        "1125,1150,1175,1200,1225,1250,1275,1300,1325,1350,1375,1400,1425,1450,1475,1500,1525,1550,1575,1600");
-    p.set(CameraParameters::KEY_ZOOM, 0);
-
-    if (mCameraId == CAMERA_FACING_BACK) {
-        // For main back camera
-        // flash mode option
-        p.set(CameraParameters::KEY_FLASH_MODE,"off");
-        p.set(CameraParameters::KEY_SUPPORTED_FLASH_MODES,"auto,off,on,torch,slow-sync,day-sync");
-    } else {
-        // For front camera
-        // No flash present
-        p.set(CameraParameters::KEY_FLASH_MODE,"off");
-        p.set(CameraParameters::KEY_SUPPORTED_FLASH_MODES,"off");
-    }
-
-    //focus mode
-    p.set(CameraParameters::KEY_FOCUS_MODE, "auto");
-    p.set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto");
-
-    mParameters = p;
-}
-
 
 status_t ControlThread::setPreviewWindow(struct preview_stream_ops *window)
 {
@@ -254,18 +162,6 @@ status_t ControlThread::setParameters(const char *params)
     return mMessageQueue.send(&msg, MESSAGE_ID_SET_PARAMETERS);
 }
 
-void ControlThread::setISPParameters(
-        const CameraParameters &new_params,
-        const CameraParameters &old_params)
-{
-    LOG_FUNCTION
-    // TODO: add ISP parameters
-
-    //process zoom
-    int zoom = new_params.getInt(CameraParameters::KEY_ZOOM);
-    mISP->setZoom(zoom);
-}
-
 char* ControlThread::getParameters()
 {
     LOG_FUNCTION
@@ -365,31 +261,98 @@ status_t ControlThread::handleMessageExit()
     return NO_ERROR;
 }
 
+status_t ControlThread::startPreviewCore(bool videoMode)
+{
+    LOG_FUNCTION
+    status_t status = NO_ERROR;
+    int width;
+    int height;
+    int format;
+    State state;
+    AtomISP::Mode mode;
+
+    if (mState != STATE_STOPPED) {
+        LogError("must be in stop state to start preview");
+        return INVALID_OPERATION;
+    }
+
+    if (videoMode) {
+        LogDetail("Starting preview in video mode");
+        state = STATE_PREVIEW_VIDEO;
+        mode = AtomISP::MODE_VIDEO;
+    } else {
+        LogDetail("Starting preview in still mode");
+        state = STATE_PREVIEW_STILL;
+        mode = AtomISP::MODE_PREVIEW;
+    }
+
+    // set preview frame config
+    format = V4L2Format(mParameters.getPreviewFormat());
+    if (format == -1) {
+        LogError("bad preview format");
+        return BAD_VALUE;
+    }
+    mParameters.getPreviewSize(&width, &height);
+    mISP->setPreviewFrameFormat(width, height, format);
+    mPreviewThread->setPreviewSize(width, height);
+
+    // set video frame config
+    if (videoMode) {
+        format = V4L2Format(mParameters.get(CameraParameters::KEY_VIDEO_FRAME_FORMAT));
+        if (format == -1) {
+            LogError("bad video format");
+            return BAD_VALUE;
+        }
+        mParameters.getVideoSize(&width, &height);
+        mISP->setVideoFrameFormat(width, height, format);
+    }
+
+    // start the data flow
+    status = mISP->start(mode);
+    if (status == NO_ERROR) {
+        status = mPreviewThread->run();
+        if (status == NO_ERROR) {
+            memset(mCoupledBuffers, 0, sizeof(mCoupledBuffers));
+            mState = state;
+        } else {
+            LogError("Error starting preview thread");
+            mISP->stop();
+        }
+    } else {
+        LogError("Error starting isp");
+    }
+
+    return status;
+}
+
+status_t ControlThread::stopPreviewCore()
+{
+    LOG_FUNCTION
+    status_t status = NO_ERROR;
+    mPreviewThread->requestExitAndWait();
+    status = mISP->stop();
+    if (status == NO_ERROR)
+        mState = STATE_STOPPED;
+    else
+        LogError("Error stopping isp in preview mode");
+    return status;
+}
+
+status_t ControlThread::restartPreview(bool videoMode)
+{
+    status_t status = stopPreviewCore();
+    if (status == NO_ERROR)
+        status = startPreviewCore(videoMode);
+    return status;
+}
+
 status_t ControlThread::handleMessageStartPreview()
 {
     LOG_FUNCTION
     status_t status;
     if (mState == STATE_STOPPED) {
-        status = mPreviewThread->run();
-        if (status == NO_ERROR) {
-            State preState;
-            if (isParameterSet(CameraParameters::KEY_RECORDING_HINT)) {
-                preState = STATE_PREVIEW_VIDEO;
-                memset(mCoupledBuffers, 0, sizeof(mCoupledBuffers));
-                status = mISP->start(AtomISP::MODE_VIDEO);
-                LogDetail("Starting camera in PREVIEW_VIDEO mode");
-            } else {
-                preState = STATE_PREVIEW_STILL;
-                status = mISP->start(AtomISP::MODE_PREVIEW);
-                LogDetail("Starting camera in PREVIEW_STILL mode");
-            }
-
-            if (status == NO_ERROR) {
-                mState = preState;
-            }
-        } else {
-            LogError("Error starting preview thread");
-        }
+        bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
+        status = startPreviewCore(videoMode);
     } else {
         LogError("Error starting preview. Invalid state!");
         status = INVALID_OPERATION;
@@ -405,14 +368,7 @@ status_t ControlThread::handleMessageStopPreview()
     LOG_FUNCTION
     status_t status;
     if (mState != STATE_STOPPED) {
-        status = mPreviewThread->requestExitAndWait();
-        if (status == NO_ERROR) {
-            status = mISP->stop();
-            if (status == NO_ERROR)
-                mState = STATE_STOPPED;
-        } else {
-            LogError("Error stopping preview thread");
-        }
+        status = stopPreviewCore();
     } else {
         LogError("Error stopping preview. Invalid state!");
         status = INVALID_OPERATION;
@@ -436,7 +392,6 @@ status_t ControlThread::handleMessageStartRecording()
          */
         LogDetail("We are in STATE_PREVIEW. Switching to STATE_VIDEO before starting to record.");
         if ((status = mISP->stop()) == NO_ERROR) {
-            memset(mCoupledBuffers, 0, sizeof(mCoupledBuffers));
             if ((status = mISP->start(AtomISP::MODE_VIDEO)) == NO_ERROR) {
                 mState = STATE_RECORDING;
             } else {
@@ -481,6 +436,9 @@ status_t ControlThread::handleMessageTakePicture()
     LOG_FUNCTION
     status_t status = NO_ERROR;
     AtomBuffer *snapshotBuffer, *postviewBuffer;
+    int width;
+    int height;
+    int format;
 
     if (mState != STATE_STOPPED) {
         status = mPreviewThread->requestExitAndWait();
@@ -494,6 +452,12 @@ status_t ControlThread::handleMessageTakePicture()
             return status;
         }
     }
+
+    // configure snapshot
+    mParameters.getPictureSize(&width, &height);
+    format = mISP->getSnapshotPixelFormat();
+    mISP->setSnapshotFrameFormat(width, height, format);
+    mPictureThread->setPictureFormat(width, height, format);
 
     if ((status = mISP->start(AtomISP::MODE_CAPTURE)) != NO_ERROR) {
         LogError("Error starting the ISP driver in CAPTURE mode!");
@@ -652,175 +616,149 @@ status_t ControlThread::handleMessagePictureDone(MessagePictureDone *msg)
     return status;
 }
 
+status_t ControlThread::validateParameters(const CameraParameters *params)
+{
+    /**
+     * PREVIEW
+     */
+    int previewWidth, previewHeight;
+    params->getPreviewSize(&previewWidth, &previewHeight);
+    if (previewWidth <= 0 || previewHeight <= 0) {
+        LogError("bad preview size");
+        return BAD_VALUE;
+    }
+
+    int minFPS, maxFPS;
+    params->getPreviewFpsRange(&minFPS, &maxFPS);
+    if(minFPS == maxFPS || minFPS > maxFPS) {
+        LogError("invalid fps range [%d,%d]", minFPS, maxFPS);
+        return BAD_VALUE;
+    }
+
+    /**
+     * VIDEO
+     */
+    int videoWidth, videoHeight;
+    params->getPreviewSize(&videoWidth, &videoHeight);
+    if (videoWidth <= 0 || videoHeight <= 0) {
+        LogError("bad video size");
+        return BAD_VALUE;
+    }
+
+    /**
+     * SNAPSHOT
+     */
+    int pictureWidth, pictureHeight;
+    params->getPreviewSize(&pictureWidth, &pictureHeight);
+    if (pictureWidth <= 0 || pictureHeight <= 0) {
+        LogError("bad picture size");
+        return BAD_VALUE;
+    }
+
+    /**
+     * MISCELLANEOUS
+     */
+
+    // TODO: implement validation for other features not listed above
+
+    return NO_ERROR;
+}
+
+status_t ControlThread::processDynamicParameters(const CameraParameters *newParams)
+{
+    status_t status = NO_ERROR;
+    int zoom = newParams->getInt(CameraParameters::KEY_ZOOM);
+    status = mISP->setZoom(zoom);
+
+    return status;
+}
+
+status_t ControlThread::processStaticParameters(const CameraParameters *oldParams,
+        const CameraParameters *newParams)
+{
+    LOG_FUNCTION
+    status_t status = NO_ERROR;
+    bool previewFormatChanged = false;
+    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
+
+    int oldWidth, newWidth;
+    int oldHeight, newHeight;
+    int oldFormat, newFormat;
+
+    // see if preview params have changed
+    newParams->getPreviewSize(&newWidth, &newHeight);
+    oldParams->getPreviewSize(&oldWidth, &oldHeight);
+    newFormat = V4L2Format(newParams->getPreviewFormat());
+    oldFormat = V4L2Format(oldParams->getPreviewFormat());
+    if (newWidth != oldWidth || newHeight != oldHeight ||
+            oldFormat != newFormat) {
+        LogDetail("preview size/format is changing: old=%d,%d,%d; new=%d,%d,%d",
+                oldWidth, oldHeight, oldFormat, newWidth, newHeight, newFormat);
+        previewFormatChanged = true;
+    }
+
+    // see if video params have changed
+    newParams->getVideoSize(&newWidth, &newHeight);
+    oldParams->getVideoSize(&oldWidth, &oldHeight);
+    if (newWidth != oldWidth || newHeight != oldHeight) {
+        LogDetail("video preview size is changing: old=%d,%d; new=%d,%d",
+                oldWidth, oldHeight, newWidth, newHeight);
+        previewFormatChanged = true;
+    }
+
+    // if preview is running and static params have changed, then we need
+    // to stop, reconfigure, and restart the isp and all threads.
+    if (previewFormatChanged) {
+        switch (mState) {
+        case STATE_PREVIEW_VIDEO:
+        case STATE_PREVIEW_STILL:
+            status = restartPreview(videoMode);
+            break;
+        case STATE_STOPPED:
+            break;
+        default:
+            LogError("formats can only be changed while in preview or stop states");
+            break;
+        };
+    }
+
+    return status;
+}
+
 status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
 {
     LOG_FUNCTION
     status_t status = NO_ERROR;
-    FrameSize new_preview, old_preview;
-    int preview_format = 0;
-    FrameSize new_recording, old_recording;
-    int recording_format = 0;
-    FrameSize new_picture, old_picture;
-    int picture_format = 0;
-    int min_fps, max_fps;
-    int new_fps, old_fps;
-    int zoom;
-    const char *new_value, *old_value;
-    int len;
-    CameraParameters params;
-
+    CameraParameters newParams;
+    CameraParameters oldParams = mParameters;
     String8 str_params(msg->params);
-    params.unflatten(str_params);
-    params.dump();  // print parameters for debug
+    newParams.unflatten(str_params);
 
-    CameraParameters p = params;
+    // print all old and new params for comparison (debug)
+    LogDetail("----------BEGIN OLD PARAMS----------");
+    mParameters.dump();
+    LogDetail("----------END OLD PARAMS----------");
+    LogDetail("----------BEGIN NEW PARAMS----------");
+    newParams.dump();
+    LogDetail("----------END NEW PARAMS----------");
 
-    p.getPreviewSize(&new_preview.width, &new_preview.height);
-    mParameters.getPreviewSize(&old_preview.width, &old_preview.height);
-    new_value = p.getPreviewFormat();
-    old_value = mParameters.getPreviewFormat();
-
-    if (new_value == NULL) {
-        LogError("Preview format not found!");
-        status = UNKNOWN_ERROR;
+    status = validateParameters(&newParams);
+    if (status != NO_ERROR)
         goto exit;
-    }
 
-    len = strlen(new_value);
-    if (strncmp(new_value, CameraParameters::PIXEL_FORMAT_YUV420SP, len) == 0) {
-        preview_format = V4L2_PIX_FMT_NV12;
-    }  else if (strncmp(new_value, CameraParameters::PIXEL_FORMAT_YUV422I, len) == 0) {
-        preview_format = V4L2_PIX_FMT_YUYV;
-    } else if (strncmp(new_value, CameraParameters::PIXEL_FORMAT_RGB565, len) == 0) {
-        preview_format = V4L2_PIX_FMT_RGB565;
-    } else {
-        LogDetail("Only yuv420sp, yuv422i-yuyv, rgb565 preview are supported, use rgb565");
-        preview_format = V4L2_PIX_FMT_RGB565;
-    }
+    mParameters = newParams;
 
-    if (new_preview.width > 0 &&
-        new_preview.height > 0) {
-        mPreviewThread->setPreviewSize(new_preview.width, new_preview.height);
-        LogDetail(" - Preview pixel format = new \"%s\"  / current \"%s\"",
-            new_value, old_value);
-        if (mISP->setPreviewFrameFormat(new_preview.width, new_preview.height,
-                                    preview_format) != NO_ERROR) {
-            LogError("Fail on setPreviewSize(width(%d), height(%d), format(%d))",
-                     new_preview.width, new_preview.height, preview_format);
-        } else {
-            p.setPreviewSize(new_preview.width, new_preview.height);
-            p.setPreviewFormat(new_value);
-            LogDetail("     ++ Changed Preview Pixel Format to %s",p.getPreviewFormat());
-        }
-    }
-
-    // preview frame rate
-    new_fps = p.getPreviewFrameRate();
-    old_fps = mParameters.getPreviewFrameRate();
-    LogDetail(" - FPS = new \"%d\" / current \"%d\"",new_fps, old_fps);
-    if (new_fps != old_fps) {
-        p.setPreviewFrameRate(new_fps);
-        LogDetail("     ++ Changed FPS to %d",p.getPreviewFrameRate());
-    }
-    LogDetail("PREVIEW SIZE: %dx%d, FPS: %d", new_preview.width, new_preview.height,
-            new_fps);
-
-    p.getPictureSize(&new_picture.width, &new_picture.height);
-    mParameters.getPictureSize(&old_picture.width, &old_picture.height);
-    LogDetail("Picture width: %d height: %d",
-         new_picture.width, new_picture.height);
-
-    if (new_picture.width > 0 &&
-        new_picture.height > 0 &&
-        (new_picture.width != old_picture.width ||
-        new_picture.width != old_picture.height)) {
-        if ((status = mISP->setSnapshotFrameFormat(new_picture.width, new_picture.height,
-                V4L2_PIX_FMT_NV12)) != NO_ERROR) {
-            goto exit;
-        }
-        mPictureThread->setPictureFormat(mISP->getSnapshotFrameFormat());
-    }
-
-    //Zoom is a invalid value or not
-    zoom = p.getInt(CameraParameters::KEY_ZOOM);
-    if(zoom > MAX_ZOOM_LEVEL || zoom < MIN_ZOOM_LEVEL) {
-        status = BAD_VALUE;
+    // Take care of parameters that need to be set while the ISP is stopped
+    status = processStaticParameters(&oldParams, &newParams);
+    if (status != NO_ERROR)
         goto exit;
-    }
 
-    // preview fps range is a invalid value range or not
-    p.getPreviewFpsRange(&min_fps, &max_fps);
-    if(min_fps == max_fps || min_fps > max_fps) {
-        status = BAD_VALUE;
+    // Take care of parameters that can be set while ISP is running
+    status = processDynamicParameters(&newParams);
+    if (status != NO_ERROR)
         goto exit;
-    }
 
-    p.getVideoSize(&new_recording.width, &new_recording.height);
-    mParameters.getVideoSize(&old_recording.width, &old_recording.height);
-    if (new_recording.width > 0 &&
-        new_recording.height > 0 &&
-        (new_recording.width != old_recording.width ||
-        new_recording.height != old_recording.height)) {
-
-        // if the video format changes while in video mode
-        // we need to stop all buffer flow and reconfigure the ISP
-        // before buffer flow can start again
-        if (mState == STATE_PREVIEW_VIDEO) {
-            LogDetail("reconfiguring video format in video mode. must restart isp");
-
-            // stop thread so it fininshes with all its buffers
-            status = mPreviewThread->requestExitAndWait();
-            if (status != NO_ERROR) {
-                LogError("error stopping preview thread");
-                goto exit;
-            }
-
-            // stop the isp
-            status = mISP->stop();
-            if (status != NO_ERROR) {
-                LogError("error stopping isp");
-                goto exit;
-            }
-
-            memset(mCoupledBuffers, 0, sizeof(mCoupledBuffers));
-
-            // reconfigure the isp
-            status = mISP->setVideoFrameFormat(new_recording.width, new_recording.height, V4L2_PIX_FMT_NV12);
-            if (status != NO_ERROR) {
-                LogError("error setting video format");
-                goto exit;
-            }
-
-            // restart the isp
-            status = mISP->start(AtomISP::MODE_VIDEO);
-            if (status != NO_ERROR) {
-                LogError("error restarting isp");
-                goto exit;
-            }
-
-            // restart preview thread
-            status = mPreviewThread->run();
-            if (status != NO_ERROR) {
-                LogError("error restarting preview thread");
-                goto exit;
-            }
-        } else if (mState == STATE_RECORDING) {
-            LogError("This should not be happning in recording mode");
-        } else {
-            status = mISP->setVideoFrameFormat(new_recording.width, new_recording.height, V4L2_PIX_FMT_NV12);
-            if (status != NO_ERROR) {
-                LogError("error setting video format");
-                goto exit;
-            }
-        }
-    }
-
-    p.set(CameraParameters::KEY_ZOOM_SUPPORTED, "true");
-
-    setISPParameters(p, mParameters);
-
-    //Update the parameters
-    mParameters = p;
+    mParameters = newParams;
 
 exit:
     // return status and unblock message sender

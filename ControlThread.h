@@ -191,6 +191,11 @@ private:
 // private methods
 private:
 
+    // state machine helper functions
+    status_t restartPreview(bool videoMode);
+    status_t startPreviewCore(bool videoMode);
+    status_t stopPreviewCore();
+
     // thread message execution functions
     status_t handleMessageExit();
     status_t handleMessageStartPreview();
@@ -218,9 +223,19 @@ private:
     status_t queueCoupledBuffers(int coupledId);
 
     // parameters handling functions
-    void initDefaultParameters();
-    void setISPParameters(const CameraParameters &new_params, const CameraParameters &old_params);
     bool isParameterSet(const char* param);
+
+    // These are parameters that can be set while the ISP is running (most params can be
+    // set while the isp is stopped as well).
+    status_t processDynamicParameters(const CameraParameters *params);
+
+    // These are params that can only be set while the ISP is stopped. If the parameters
+    // changed while the ISP is running, the ISP will need to be stopped, reconfigured, and
+    // restarted. Static parameters will most likely affect buffer size and/or format so buffers
+    // must be deallocated and reallocated accordingly.
+    status_t processStaticParameters(const CameraParameters *oldParams,
+            const CameraParameters *newParams);
+    status_t validateParameters(const CameraParameters *params);
 
 // inherited from Thread
 private:
@@ -240,7 +255,6 @@ private:
 
     CoupledBuffer mCoupledBuffers[NUM_ATOM_BUFFERS];
 
-    int mCameraId;
     CameraParameters mParameters;
 
 }; // class ControlThread

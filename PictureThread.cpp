@@ -31,11 +31,11 @@ PictureThread::PictureThread(ICallbackPicture *pictureDone) :
     ,mThreadRunning(false)
     ,mPictureDoneCallback(pictureDone)
     ,mCallbacks(NULL)
+    ,mWidth(0)
+    ,mHeight(0)
+    ,mFormat(0)
 {
     LOG_FUNCTION
-    mPictureInfo.width  = 0;
-    mPictureInfo.height = 0;
-    mPictureInfo.format = 0;
 }
 
 PictureThread::~PictureThread()
@@ -58,9 +58,9 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *src, AtomBuffer *dst, int quali
     status_t status = NO_ERROR;
     void *rgb = NULL;
     bool rgbAlloc = false;
-    int w = mPictureInfo.width;
-    int h = mPictureInfo.height;
-    int format = mPictureInfo.format;
+    int w = mWidth;
+    int h = mHeight;
+    int format = mFormat;
 
     LogDetail("w:%d h:%d f:%d", w, h, format);
 
@@ -145,6 +145,21 @@ status_t PictureThread::encode(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf)
     return mMessageQueue.send(&msg);
 }
 
+void PictureThread::getDefaultParameters(CameraParameters *params)
+{
+    LOG_FUNCTION2
+    if (!params) {
+        LogError("null params");
+        return;
+    }
+
+    params->setPictureFormat(CameraParameters::PIXEL_FORMAT_JPEG);
+    params->set(CameraParameters::KEY_SUPPORTED_PICTURE_FORMATS,
+            CameraParameters::PIXEL_FORMAT_JPEG);
+    params->set(CameraParameters::KEY_JPEG_QUALITY, "100");
+    params->set(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY, "50");
+}
+
 status_t PictureThread::handleMessageExit()
 {
     LOG_FUNCTION
@@ -162,9 +177,9 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
     status_t status = NO_ERROR;
     AtomBuffer jpegBuf;
 
-    if (mPictureInfo.width == 0 ||
-        mPictureInfo.height == 0 ||
-        mPictureInfo.format == 0) {
+    if (mWidth == 0 ||
+        mHeight == 0 ||
+        mFormat == 0) {
         LogError("Picture information not set yet!");
         status=UNKNOWN_ERROR;
         goto exit;

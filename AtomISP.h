@@ -22,9 +22,13 @@
 #include <utils/Vector.h>
 #include <utils/Errors.h>
 #include <utils/threads.h>
+#include <camera/CameraParameters.h>
 #include "AtomCommon.h"
 
 namespace android {
+
+#define SNAPSHOT_MAX_NUM_BUFFERS 32
+#define MAX_V4L2_BUFFERS    SNAPSHOT_MAX_NUM_BUFFERS
 
 struct FileInput {
     char *name;
@@ -69,17 +73,6 @@ public:
         MODE_VIDEO = 2,
     };
 
-    struct Config {
-        int cameraId;         // ID of the selected camera
-        FrameInfo preview;    // preview
-        FrameInfo postview;   // postview (thumbnail for capture)
-        FrameInfo recording;  // recording
-        int       fps;        // preview/recording (shared)
-        FrameInfo snapshot;   // snapshot
-        int num_snapshot;     // number of snapshots to take
-        int zoom;             // zoom value
-    };
-
 // constructor/destructor
 public:
     AtomISP(int camera_id);
@@ -90,7 +83,7 @@ public:
 
     void setCallbacks(Callbacks *callbacks);
 
-    status_t setConfig(Config *config);
+    void getDefaultParameters(CameraParameters *params);
 
     status_t start(Mode mode);
     status_t stop();
@@ -107,21 +100,13 @@ public:
     bool dataAvailable();
 
     status_t setPreviewFrameFormat(int width, int height, int format);
-    FrameInfo getPreviewFrameFormat();
-
     status_t setPostviewFrameFormat(int width, int height, int format);
-    FrameInfo getPostviewFrameFormat();
-
     status_t setSnapshotFrameFormat(int width, int height, int format);
-    FrameInfo getSnapshotFrameFormat();
-
     status_t setVideoFrameFormat(int width, int height, int format);
-    FrameInfo getVideoFrameFormat();
+
+    inline int getSnapshotPixelFormat() { return mConfig.snapshot.format; }
 
     status_t setSnapshotNum(int num);
-
-    int getMaxSnapshotSize(int *width, int *height);
-    const char* getMaxSnapShotResolution();
 
     status_t setZoom(int zoom);
 
@@ -145,6 +130,8 @@ private:
     status_t freePreviewBuffers();
     status_t freeRecordingBuffers();
     status_t freeSnapshotBuffers();
+
+    const char* getMaxSnapShotResolution();
 
     int  openDevice(int device);
     void closeDevice(int device);
@@ -176,10 +163,56 @@ private:
     int atomisp_set_attribute (int fd, int attribute_num,
                                const int value, const char *name);
     int  atomisp_set_zoom (int fd, int zoom);
+
+// private types
+private:
+
+    static const int MAX_SENSOR_NAME_LENGTH = 32;
+    static const int V4L2_FIRST_DEVICE   = 0;
+    static const int V4L2_SECOND_DEVICE  = 1;
+    static const int V4L2_THIRD_DEVICE   = 2;
+    static const int V4L2_DEVICE_NUM = V4L2_THIRD_DEVICE + 1;
+
+    struct FrameInfo {
+        int format;     // V4L2 format
+        int width;      // Frame width
+        int height;     // Frame height
+        int padding;    // Frame padding width
+        int maxWidth;   // Frame maximum width
+        int maxHeight;  // Frame maximum height
+        int size;       // Frame size in bytes
+    };
+
+    struct Config {
+        FrameInfo preview;    // preview
+        FrameInfo recording;  // recording
+        FrameInfo snapshot;   // snapshot
+        FrameInfo postview;   // postview (thumbnail for capture)
+        float fps;            // preview/recording (shared)
+        int num_snapshot;     // number of snapshots to take
+        int zoom;             // zoom value
+    };
+
+    struct cameraInfo {
+        int port;
+        char name[MAX_SENSOR_NAME_LENGTH];
+    };
+
+    enum ResolutionIndex {
+        RESOLUTION_VGA = 0,
+        RESOLUTION_720P,
+        RESOLUTION_1080P,
+        RESOLUTION_5MP,
+        RESOLUTION_8MP,
+        RESOLUTION_14MP,
+    };
+
 // private members
 private:
 
     static const camera_info mCameraInfo[MAX_CAMERAS];
+    static cameraInfo camInfo[MAX_CAMERAS];
+    static int numCameras;
 
     Mode mMode;
     Callbacks *mCallbacks;
@@ -196,8 +229,6 @@ private:
     struct v4l2_capability cap;
     struct v4l2_buffer_pool v4l2_buf_pool[V4L2_DEVICE_NUM]; //pool[0] for device0 pool[1] for device1
 
-    float framerate;
-
     int mIspTimeout;
     struct FileInput mFileImage;
 
@@ -206,7 +237,7 @@ private:
 
     int mSessionId; // uniquely identify each session
 
-    Vector<FrameSize> mSupportedSnapshotSizes;
+    int mCameraId;
 
 }; // class AtomISP
 
