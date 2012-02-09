@@ -36,7 +36,6 @@ ControlThread::ControlThread(int cameraId) :
     ,mCallbacks(new Callbacks())
 {
     LOG_FUNCTION
-    int ret, camera_idx = -1;
     LogDetail("cameraId= %d", cameraId);
 
     memset(mCoupledBuffers, 0, sizeof(mCoupledBuffers));
@@ -457,7 +456,8 @@ status_t ControlThread::handleMessageTakePicture()
     mParameters.getPictureSize(&width, &height);
     format = mISP->getSnapshotPixelFormat();
     mISP->setSnapshotFrameFormat(width, height, format);
-    mPictureThread->setPictureFormat(width, height, format);
+    mPictureThread->setPictureFormat(format);
+    mPictureThread->initialize(mParameters, false);
 
     if ((status = mISP->start(AtomISP::MODE_CAPTURE)) != NO_ERROR) {
         LogError("Error starting the ISP driver in CAPTURE mode!");
@@ -469,6 +469,7 @@ status_t ControlThread::handleMessageTakePicture()
         LogError("Error in grabbing snapshot!");
         return status;
     }
+
 
     // tell CameraService to play the shutter sound
     mCallbacks->shutterSound();
