@@ -338,9 +338,6 @@ status_t AtomISP::start(Mode mode)
     LogDetail("mode = %d", mode);
     status_t status = NO_ERROR;
 
-    if (mConfig.zoom != 0)
-        setZoom(mConfig.zoom);
-
     switch (mode) {
     case MODE_PREVIEW:
         status = startPreview();
@@ -424,6 +421,9 @@ status_t AtomISP::startPreview()
         status = UNKNOWN_ERROR;
         goto exitClose;
     }
+
+    // need to resend the current zoom value
+    atomisp_set_zoom(main_fd, mConfig.zoom);
 
     ret = startDevice(mPreviewDevice, NUM_ATOM_BUFFERS);
     if (ret < 0) {
@@ -601,6 +601,9 @@ status_t AtomISP::startCapture()
         status = UNKNOWN_ERROR;
         goto errorCloseSecond;
     }
+
+    // need to resend the current zoom value
+    atomisp_set_zoom(main_fd, mConfig.zoom);
 
     ret = startDevice(V4L2_FIRST_DEVICE, mConfig.num_snapshot);
     if (ret < 0) {
@@ -1021,6 +1024,11 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
     return status;
 }
 
+bool AtomISP::zoomSupported(Mode mode)
+{
+    return mode == MODE_PREVIEW;
+}
+
 status_t AtomISP::setZoom(int zoom)
 {
     LOG_FUNCTION
@@ -1029,11 +1037,13 @@ status_t AtomISP::setZoom(int zoom)
         return NO_ERROR;
     if (mMode == MODE_CAPTURE)
         return NO_ERROR;
+
     int ret = atomisp_set_zoom(main_fd, zoom);
     if (ret < 0) {
         LogError("Error setting zoom to %d", zoom);
         return UNKNOWN_ERROR;
     }
+    mConfig.zoom = zoom;
     return NO_ERROR;
 }
 
@@ -1044,8 +1054,6 @@ int AtomISP::atomisp_set_zoom (int fd, int zoom)
         LogDetail("Device not opened!");
         return 0;
     }
-
-    mConfig.zoom = zoom;
 
     //Map 8x to 56. The real effect is 64/(64 - zoom) in the driver.
     //Max zoom is 60 because we only support 16x not 64x

@@ -664,11 +664,15 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     return NO_ERROR;
 }
 
-status_t ControlThread::processDynamicParameters(const CameraParameters *newParams)
+status_t ControlThread::processDynamicParameters(const CameraParameters *oldParams,
+        const CameraParameters *newParams)
 {
     status_t status = NO_ERROR;
-    int zoom = newParams->getInt(CameraParameters::KEY_ZOOM);
-    status = mISP->setZoom(zoom);
+    int oldZoom = oldParams->getInt(CameraParameters::KEY_ZOOM);
+    int newZoom = newParams->getInt(CameraParameters::KEY_ZOOM);
+
+    if (oldZoom != newZoom)
+        status = mISP->setZoom(newZoom);
 
     return status;
 }
@@ -754,7 +758,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
         goto exit;
 
     // Take care of parameters that can be set while ISP is running
-    status = processDynamicParameters(&newParams);
+    status = processDynamicParameters(&oldParams, &newParams);
     if (status != NO_ERROR)
         goto exit;
 
@@ -772,6 +776,12 @@ status_t ControlThread::handleMessageGetParameters(MessageGetParameters *msg)
     status_t status = BAD_VALUE;
 
     if (msg->params) {
+        // let app know if we support zoom in the preview mode indicated
+        bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
+        AtomISP::Mode mode = videoMode ? AtomISP::MODE_VIDEO : AtomISP::MODE_PREVIEW;
+        mParameters.set(CameraParameters::KEY_ZOOM_SUPPORTED,
+                mISP->zoomSupported(mode) ? CameraParameters::TRUE : CameraParameters::FALSE);
+
         String8 params = mParameters.flatten();
         int len = params.length();
         *msg->params = strndup(params.string(), sizeof(char) * len);

@@ -108,6 +108,7 @@ public:
 
     status_t setSnapshotNum(int num);
 
+    bool zoomSupported(Mode mode);
     status_t setZoom(int zoom);
 
     // camera hardware information

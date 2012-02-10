@@ -227,7 +227,8 @@ private:
 
     // These are parameters that can be set while the ISP is running (most params can be
     // set while the isp is stopped as well).
-    status_t processDynamicParameters(const CameraParameters *params);
+    status_t processDynamicParameters(const CameraParameters *oldParams,
+            const CameraParameters *newParams);
 
     // These are params that can only be set while the ISP is stopped. If the parameters
     // changed while the ISP is running, the ISP will need to be stopped, reconfigured, and

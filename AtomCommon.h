@@ -27,9 +27,6 @@
 
 #define NUM_ATOM_BUFFERS 4
 
-#define MAX_ZOOM_LEVEL  63
-#define MIN_ZOOM_LEVEL  0
-
 #define BPP 2 // bytes per pixel
 
 struct AtomBuffer {
