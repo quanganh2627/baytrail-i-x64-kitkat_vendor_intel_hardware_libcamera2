@@ -22,6 +22,8 @@
 #include <camera/CameraParameters.h>
 #include "MessageQueue.h"
 #include "AtomCommon.h"
+#include "EXIFMaker.h"
+#include "SkImageEncoder.h"
 
 namespace android {
 
@@ -52,13 +54,13 @@ public:
     void setCallbacks(Callbacks *callbacks);
 
     status_t encode(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
-    void setPictureFormat(int width, int height, int format)
+    void setPictureFormat(int format)
     {
-        mWidth = width;
-        mHeight = height;
-        mFormat = format;
+        mPictureFormat = format;
+        mThumbFormat = format;
     }
     void getDefaultParameters(CameraParameters *params);
+    void initialize(const CameraParameters &params, bool flashUsed);
 
 // private types
 private:
@@ -105,7 +107,8 @@ private:
     // main message function
     status_t waitForAndExecuteMessage();
 
-    status_t encodeToJpeg(AtomBuffer *src, AtomBuffer *dst, int quality);
+    status_t convertRawImage(void* src, void** dst, int width, int height, int format);
+    status_t encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, AtomBuffer *destBuf);
 
 // inherited from Thread
 private:
@@ -118,10 +121,17 @@ private:
     bool mThreadRunning;
     ICallbackPicture *mPictureDoneCallback;
     Callbacks *mCallbacks;
+    SkImageEncoder* jpegEncoder;
+    EXIFMaker exifMaker;
 
-    int mWidth;
-    int mHeight;
-    int mFormat;
+    int mPictureWidth;
+    int mPictureHeight;
+    int mPictureFormat;
+    int mThumbWidth;
+    int mThumbHeight;
+    int mThumbFormat;
+    int mPictureQuality;
+    int mThumbnailQuality;
 
 // public data
 public:

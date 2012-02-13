@@ -2,17 +2,18 @@ LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := \
-        LogHelper.cpp \
-        ControlThread.cpp \
-        PreviewThread.cpp \
-        PictureThread.cpp \
-        AAAThread.cpp \
-        AtomISP.cpp \
-        DebugFrameRate.cpp \
-        Callbacks.cpp \
-        AtomAAA.cpp \
-        AtomHAL.cpp \
-        ColorConverter.cpp \
+	LogHelper.cpp \
+	ControlThread.cpp \
+	PreviewThread.cpp \
+	PictureThread.cpp \
+	AAAThread.cpp \
+	AtomISP.cpp \
+	DebugFrameRate.cpp \
+	Callbacks.cpp \
+	AtomAAA.cpp \
+	AtomHAL.cpp \
+	ColorConverter.cpp \
+	EXIFMaker.cpp \
 
 LOCAL_C_INCLUDES += \
 	frameworks/base/include \
@@ -21,6 +22,7 @@ LOCAL_C_INCLUDES += \
 	hardware/libhardware/include/hardware \
 	external/skia/include/core \
 	external/skia/include/images \
+	hardware/intel/libs3cjpeg \
 
 LOCAL_SHARED_LIBRARIES := \
 	libcamera_client \
@@ -30,6 +32,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libskia \
 	libandroid \
 	libui \
+	libs3cjpeg \
 
 LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
 LOCAL_MODULE := camera.$(TARGET_BOARD_PLATFORM)
