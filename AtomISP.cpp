@@ -243,7 +243,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
         return;
     }
     params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, previewFormats);
-    params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES, "640x480,640x360");
+    params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES, "320x240,640x360,640x480,1280x720");
 
     params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES,"30,15,10");
     params->set(CameraParameters::KEY_PREVIEW_FPS_RANGE,"10500,30304");
@@ -254,7 +254,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
      */
     params->setVideoSize(mConfig.recording.width, mConfig.recording.height);
     params->set(CameraParameters::KEY_PREFERRED_PREVIEW_SIZE_FOR_VIDEO, "640x480");
-    params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, "640x480,1280x720,1920x1080");
+    params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, "320x240,640x480,1280x720,1920x1080");
     params->set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,
             cameraParametersFormat(V4L2_PIX_FMT_NV12));
 
