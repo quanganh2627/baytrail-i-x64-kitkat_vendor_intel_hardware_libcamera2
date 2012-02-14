@@ -273,12 +273,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
      */
     params->set(CameraParameters::KEY_ZOOM, 0);
     params->set(CameraParameters::KEY_ZOOM_SUPPORTED, "true");
-    params->set(CameraParameters::KEY_MAX_ZOOM, "60");
-    params->set(CameraParameters::KEY_ZOOM_RATIOS,
-            "100,125,150,175,200,225,250,275,300,325,350,375,400,425,450,475,500,525,"
-            "550,575,600,625,650,675,700,725,750,775,800,825,850,875,900,925,950,975,"
-            "1000,1025,1050,1075,1100,1125,1150,1175,1200,1225,1250,1275,1300,1325,"
-            "1350,1375,1400,1425,1450,1475,1500,1525,1550,1575,1600");
+    getZoomRatios(MODE_PREVIEW, params);
 
     /**
      * FOCUS
@@ -1024,9 +1019,22 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
     return status;
 }
 
-bool AtomISP::zoomSupported(Mode mode)
+void AtomISP::getZoomRatios(Mode mode, CameraParameters *params)
 {
-    return mode == MODE_PREVIEW;
+    if (params) {
+        if (mode == MODE_PREVIEW || mode == MODE_CAPTURE) {
+            params->set(CameraParameters::KEY_MAX_ZOOM, "60"); // max zoom index for 61 raitos is 60
+            params->set(CameraParameters::KEY_ZOOM_RATIOS,
+                    "100,125,150,175,200,225,250,275,300,325,350,375,400,425,450,475,500,525,"
+                    "550,575,600,625,650,675,700,725,750,775,800,825,850,875,900,925,950,975,"
+                    "1000,1025,1050,1075,1100,1125,1150,1175,1200,1225,1250,1275,1300,1325,"
+                    "1350,1375,1400,1425,1450,1475,1500,1525,1550,1575,1600");
+        } else {
+            // zoom is not supported. this is indicated by placing a single zoom ratio in params
+            params->set(CameraParameters::KEY_MAX_ZOOM, "0"); // zoom index 0 indicates first (and only) zoom ratio
+            params->set(CameraParameters::KEY_ZOOM_RATIOS, "100");
+        }
+    }
 }
 
 status_t AtomISP::setZoom(int zoom)

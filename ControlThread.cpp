@@ -780,8 +780,7 @@ status_t ControlThread::handleMessageGetParameters(MessageGetParameters *msg)
         // let app know if we support zoom in the preview mode indicated
         bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
         AtomISP::Mode mode = videoMode ? AtomISP::MODE_VIDEO : AtomISP::MODE_PREVIEW;
-        mParameters.set(CameraParameters::KEY_ZOOM_SUPPORTED,
-                mISP->zoomSupported(mode) ? CameraParameters::TRUE : CameraParameters::FALSE);
+        mISP->getZoomRatios(mode, &mParameters);
 
         String8 params = mParameters.flatten();
         int len = params.length();
