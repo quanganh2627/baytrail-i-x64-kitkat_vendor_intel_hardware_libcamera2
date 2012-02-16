@@ -108,7 +108,7 @@ public:
 
     status_t setSnapshotNum(int num);
 
-    bool zoomSupported(Mode mode);
+    void getZoomRatios(Mode mode, CameraParameters *params);
     status_t setZoom(int zoom);
     status_t setFlash(int numFrames);
 
