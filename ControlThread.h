@@ -29,6 +29,7 @@ namespace android {
 
 class Callbacks;
 class AtomISP;
+class BufferShareRegistry;
 
 //
 // ControlThread implements most of the operations defined
@@ -181,6 +182,52 @@ private:
         STATE_RECORDING,
     };
 
+    // Buffer sharing states listed in the order of transition.
+    // Once we have propagated through all states we cycle back
+    // to the beginning
+    //
+    // The reason for all these states is that the encoder component is loaded
+    // after the camera is put into video recording mode. However, the encoder
+    // component is responsible for allocating the shared buffers. So, once the
+    // encoder component is loaded, we have to do a handshake with the encoder
+    // to establish buffer sharing. Once we have the shared buffers, we have to
+    // stop and restart the ISP with the new buffers.
+    enum BSState {
+        // This is the initial state
+        //
+        // TRIGGER: None
+        BS_STATE_DISABLED,
+
+        // In this state we have enabled buffer sharing
+        // Need to wait for encoder to enable buffer sharing to transition
+        // to the next state.
+        //
+        // TRIGGER: BufferShareRegistry::sourceRequestToEnableSharingMode() succeeds
+        BS_STATE_ENABLE,
+
+        // In this state we have set buffer sharing. Need to wait for
+        // encoder to set buffer sharing before we transition to the next
+        // state
+        //
+        // TRIGGER: BufferShareRegistry::sourceEnterSharingMode() succeeds
+        BS_STATE_SET,
+
+        // In this state encoder has set buffer sharing. We should now
+        // be able to send buffers back and forth. Consider this the
+        // steady state. When encoder has unset buffer sharing we will
+        // need to follow suit and transition to the next state.
+        //
+        // TRIGGER: BufferShareRegistry::isBufferSharingModeSet() returns true
+        BS_STATE_STEADY,
+
+        // In this state we have unset buffer sharing. The cycle has
+        // been completed
+        //
+        // TRIGGER: BufferShareRegistry::isBufferSharingModeSet() returns false and
+        //          BufferShareRegistry::sourceExitSharingMode() succeeds
+        BS_STATE_UNSET,
+    };
+
     struct CoupledBuffer {
         AtomBuffer *previewBuff;
         AtomBuffer *recordingBuff;
@@ -238,6 +285,19 @@ private:
             const CameraParameters *newParams);
     status_t validateParameters(const CameraParameters *params);
 
+    // buffer sharing enable/disable methods
+    bool recordingBSEncoderEnabled();
+    status_t recordingBSEnable();
+    status_t recordingBSDisable();
+
+    // buffer sharing set/unset methods
+    status_t recordingBSSet();
+    status_t recordingBSUnset();
+    bool recordingBSEncoderSet();
+
+    // buffer sharing handshake. see comments for enum BSState
+    status_t recordingBSHandshake();
+
 // inherited from Thread
 private:
     virtual bool threadLoop();
@@ -257,6 +317,10 @@ private:
     CoupledBuffer mCoupledBuffers[NUM_ATOM_BUFFERS];
 
     CameraParameters mParameters;
+
+    sp<BufferShareRegistry> mBSInstance;
+
+    BSState mBSState;
 
 }; // class ControlThread
 

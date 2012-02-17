@@ -121,6 +121,8 @@ static const char *resolution_tables[] = {
 AtomISP::AtomISP(int camera_id) :
     mMode(MODE_NONE)
     ,mCallbacks(NULL)
+    ,mUsingClientRecordingBuffers(false)
+    ,mClientRecordingBuffers(NULL)
     ,mNumPreviewBuffersQueued(0)
     ,mNumRecordingBuffersQueued(0)
     ,mPreviewDevice(V4L2_FIRST_DEVICE)
@@ -1611,6 +1613,29 @@ status_t AtomISP::putPreviewFrame(AtomBuffer *buff)
     return NO_ERROR;
 }
 
+status_t AtomISP::setRecordingBuffers(SharedBufferType *buffs, int numBuffs)
+{
+    if (buffs == NULL || numBuffs <= 0 || numBuffs != NUM_ATOM_BUFFERS)
+        return BAD_VALUE;
+
+    mClientRecordingBuffers = new void*[numBuffs];
+    if (mClientRecordingBuffers == NULL)
+        return NO_MEMORY;
+
+    for (int i = 0; i < numBuffs; i++)
+        mClientRecordingBuffers[i] = (void *) buffs[i].pointer;
+
+    mUsingClientRecordingBuffers = true;
+
+    return NO_ERROR;
+}
+
+void AtomISP::unsetRecordingBuffers()
+{
+    delete [] mClientRecordingBuffers;
+    mUsingClientRecordingBuffers = false;
+}
+
 status_t AtomISP::getRecordingFrame(AtomBuffer **buff, nsecs_t *timestamp)
 {
     LOG_FUNCTION2
@@ -1860,18 +1885,32 @@ status_t AtomISP::allocateRecordingBuffers()
     LOG_FUNCTION
     status_t status = NO_ERROR;
     int allocatedBufs = 0;
-    int size = mConfig.recording.width * mConfig.recording.height * 3 / 2;
-    LogDetail("Allocating %d buffers of size %d", NUM_ATOM_BUFFERS, size);
+    int size;
+
+    if (mUsingClientRecordingBuffers)
+        size = sizeof(void *);
+    else
+        size = mConfig.recording.width * mConfig.recording.height * 3 / 2;
+
     for (int i = 0; i < NUM_ATOM_BUFFERS; i++) {
         mRecordingBuffers[i].buff = NULL;
         mCallbacks->allocateMemory(&mRecordingBuffers[i], size);
+        LogDetail("allocate recording buffer[%d] shared=%d, buff=%p size=%d",
+                i, (int) mUsingClientRecordingBuffers,
+                mRecordingBuffers[i].buff->data,
+                mRecordingBuffers[i].buff->size);
         if (mRecordingBuffers[i].buff == NULL) {
             LogError("Error allocation memory for recording buffers!");
             status = NO_MEMORY;
             goto errorFree;
         }
         allocatedBufs++;
-        v4l2_buf_pool[mRecordingDevice].bufs[i].data = mRecordingBuffers[i].buff->data;
+        if (mUsingClientRecordingBuffers) {
+            v4l2_buf_pool[mRecordingDevice].bufs[i].data = mClientRecordingBuffers[i];
+            memcpy(mRecordingBuffers[i].buff->data, &mClientRecordingBuffers[i], sizeof(void *));
+        } else {
+            v4l2_buf_pool[mRecordingDevice].bufs[i].data = mRecordingBuffers[i].buff->data;
+        }
     }
     return status;
 

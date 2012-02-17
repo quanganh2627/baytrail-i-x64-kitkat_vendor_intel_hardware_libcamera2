@@ -22,6 +22,7 @@
 #include "AtomISP.h"
 #include "Callbacks.h"
 #include "ColorConverter.h"
+#include "IntelBufferSharing.h"
 
 namespace android {
 
@@ -34,11 +35,11 @@ ControlThread::ControlThread(int cameraId) :
     ,mState(STATE_STOPPED)
     ,mThreadRunning(false)
     ,mCallbacks(new Callbacks())
+    ,mBSInstance(BufferShareRegistry::getInstance())
+    ,mBSState(BS_STATE_DISABLED)
 {
     LOG_FUNCTION
     LogDetail("cameraId= %d", cameraId);
-
-    memset(mCoupledBuffers, 0, sizeof(mCoupledBuffers));
 
     // get default params from AtomISP and JPEG encoder
     mISP->getDefaultParameters(&mParameters);
@@ -56,6 +57,7 @@ ControlThread::~ControlThread()
     if (mCallbacks != NULL) {
         delete mCallbacks;
     }
+    mBSInstance.clear();
 }
 
 status_t ControlThread::setPreviewWindow(struct preview_stream_ops *window)
@@ -311,7 +313,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (status == NO_ERROR) {
         status = mPreviewThread->run();
         if (status == NO_ERROR) {
-            memset(mCoupledBuffers, 0, sizeof(mCoupledBuffers));
+            memset(mCoupledBuffers, 0, NUM_ATOM_BUFFERS * sizeof(CoupledBuffer));
             mState = state;
         } else {
             LogError("Error starting preview thread");
@@ -334,6 +336,7 @@ status_t ControlThread::stopPreviewCore()
         mState = STATE_STOPPED;
     else
         LogError("Error stopping isp in preview mode");
+
     return status;
 }
 
@@ -384,6 +387,9 @@ status_t ControlThread::handleMessageStartRecording()
     status_t status = NO_ERROR;
 
     if (mState == STATE_PREVIEW_VIDEO) {
+        if (recordingBSEnable() != NO_ERROR) {
+            LogError("Error voting for buffer sharing");
+        }
         mState = STATE_RECORDING;
     } else if (mState == STATE_PREVIEW_STILL) {
         /* We are in PREVIEW_STILL mode; in order to start recording
@@ -419,6 +425,9 @@ status_t ControlThread::handleMessageStopRecording()
          * Even if startRecording was called from PREVIEW_STILL mode, we can
          * switch back to PREVIEW_VIDEO now since we got a startRecording
          */
+        if (recordingBSDisable() != NO_ERROR) {
+            LogError("Error voting for disable buffer sharing");
+        }
         mState = STATE_PREVIEW_VIDEO;
     } else {
         LogError("Error stopping recording. Invalid state!");
@@ -877,7 +886,8 @@ AtomBuffer* ControlThread::findRecordingBuffer(void *findMe)
 {
     // This is a small list, so incremental search is not an issue right now
     for (int i = 0; i < NUM_ATOM_BUFFERS; i++) {
-        if (mCoupledBuffers[i].recordingBuff->buff->data == findMe)
+        if (mCoupledBuffers[i].recordingBuff &&
+                mCoupledBuffers[i].recordingBuff->buff->data == findMe)
             return mCoupledBuffers[i].recordingBuff;
     }
     return NULL;
@@ -930,6 +940,193 @@ status_t ControlThread::dequeueRecording()
     return status;
 }
 
+bool ControlThread::recordingBSEncoderEnabled()
+{
+    return mBSInstance->isBufferSharingModeEnabled();
+}
+
+status_t ControlThread::recordingBSEnable()
+{
+    LOG_FUNCTION
+    status_t status = NO_ERROR;
+
+    if (mBSInstance->sourceRequestToEnableSharingMode() != BS_SUCCESS) {
+        LogError("error requesting to enable buffer share mode");
+        status = UNKNOWN_ERROR;
+    } else {
+        mBSState = BS_STATE_ENABLE;
+    }
+
+    return status;
+}
+
+status_t ControlThread::recordingBSDisable()
+{
+    LOG_FUNCTION
+    status_t status = NO_ERROR;
+
+    if (mBSInstance->sourceRequestToDisableSharingMode() != BS_SUCCESS) {
+        LogError("error requesting to disable buffer share mode");
+        status = UNKNOWN_ERROR;
+    } else {
+        mBSState = BS_STATE_DISABLED;
+    }
+
+    return status;
+}
+
+status_t ControlThread::recordingBSSet()
+{
+    LOG_FUNCTION
+    status_t status = NO_ERROR;
+    SharedBufferType *buffers;
+    int numBuffers = 0;
+
+    if (mBSInstance->sourceEnterSharingMode() != BS_SUCCESS) {
+        LogError("error entering buffer share mode");
+        status = UNKNOWN_ERROR;
+        goto failGeneric;
+    }
+
+    if (!mBSInstance->isBufferSharingModeSet()) {
+        LogError("sharing is expected to be set but isn't");
+        status = UNKNOWN_ERROR;
+        goto failGeneric;
+    }
+
+    if (mBSInstance->sourceGetSharedBuffer(NULL, &numBuffers) != BS_SUCCESS) {
+        LogError("error getting number of shared buffers");
+        status = UNKNOWN_ERROR;
+        goto failGeneric;
+    }
+
+    buffers = new SharedBufferType[numBuffers];
+    if (buffers == NULL) {
+        LogError("error allocating sharedbuffer array");
+        goto failGeneric;
+    }
+
+    if (mBSInstance->sourceGetSharedBuffer(buffers, NULL) != BS_SUCCESS) {
+        LogError("error getting shared buffers");
+        status = UNKNOWN_ERROR;
+        goto failAlloc;
+    }
+
+    for (int i = 0; i < numBuffers; i++)
+        LogDetail("shared buffer[%d]=%p", i, buffers[i].pointer);
+
+    status = stopPreviewCore();
+    if (status != NO_ERROR) {
+        LogError("error stopping preview for buffer sharing");
+        goto failAlloc;
+    }
+
+    status = mISP->setRecordingBuffers(buffers, numBuffers);
+    if (status != NO_ERROR) {
+        LogError("error setting recording buffers");
+        goto failAlloc;
+    }
+
+    status = startPreviewCore(true);
+    if (status != NO_ERROR) {
+        LogError("error restarting preview for buffer sharing");
+        goto failStart;
+    }
+
+    mState = STATE_RECORDING;
+    mBSState = BS_STATE_SET;
+    return status;
+
+failStart:
+    mISP->unsetRecordingBuffers();
+failAlloc:
+    delete [] buffers;
+failGeneric:
+    return status;
+}
+
+status_t ControlThread::recordingBSUnset()
+{
+    status_t status = NO_ERROR;
+
+    if (mBSInstance->sourceExitSharingMode() != BS_SUCCESS) {
+        LogError("error exiting buffer share mode");
+        return UNKNOWN_ERROR;
+    }
+
+    status = stopPreviewCore();
+    if (status != NO_ERROR) {
+        LogError("error stopping preview for buffer sharing");
+        return status;
+    }
+
+    mISP->unsetRecordingBuffers();
+
+    status = startPreviewCore(true);
+    if (status != NO_ERROR) {
+        LogError("error starting preview for buffer sharing");
+        return status;
+    }
+
+    mState = STATE_RECORDING;
+    mBSState = BS_STATE_UNSET;
+
+    return status;
+}
+
+bool ControlThread::recordingBSEncoderSet()
+{
+    return mBSInstance->isBufferSharingModeSet();
+}
+
+status_t ControlThread::recordingBSHandshake()
+{
+    status_t status = NO_ERROR;
+
+    // see comments for enum BSState
+    switch (mBSState) {
+
+        // if encoder has enabled BS, then set BS
+        case BS_STATE_ENABLE:
+            if (recordingBSEncoderEnabled()) {
+                status = recordingBSSet();
+                if (status != NO_ERROR)
+                    LogError("error setting buffer sharing");
+            }
+            break;
+
+        // if encoder has set BS, the go to steady state
+        // time to start sending buffers!
+        case BS_STATE_SET:
+            if (recordingBSEncoderSet()) {
+                mBSState = BS_STATE_STEADY;
+            }
+            break;
+
+        // if encoder has unset BS, then we need to unset BS
+        // this essentially means that the encoder was torn down
+        // via stopRecording, and the app is about to call stopRecording
+        // on the camera HAL
+        case BS_STATE_STEADY:
+            if (!recordingBSEncoderSet()) {
+                status = recordingBSUnset();
+                if (status != NO_ERROR)
+                    LogError("error unsetting buffer sharing");
+            }
+            break;
+
+        case BS_STATE_UNSET:
+        case BS_STATE_DISABLED:
+            // do nothing
+            break;
+
+        default:
+            LogError("unexpected bs state %d", (int) mBSState);
+    };
+
+    return status;
+}
+
 bool ControlThread::threadLoop()
 {
     LogEntry2(LOG_TAG, __FUNCTION__);
@@ -969,6 +1166,10 @@ bool ControlThread::threadLoop()
             if (!mMessageQueue.isEmpty()) {
                 status = waitForAndExecuteMessage();
             } else {
+
+                if (mState == STATE_RECORDING)
+                    recordingBSHandshake();
+
                 // make sure ISP has data before we ask for some
                 if (mISP->dataAvailable()) {
                     status = dequeueRecording();

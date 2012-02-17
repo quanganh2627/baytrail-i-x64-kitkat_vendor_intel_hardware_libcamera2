@@ -24,6 +24,7 @@
 #include <utils/threads.h>
 #include <camera/CameraParameters.h>
 #include "AtomCommon.h"
+#include "IntelBufferSharing.h"
 
 namespace android {
 
@@ -90,6 +91,9 @@ public:
 
     status_t getPreviewFrame(AtomBuffer **buff);
     status_t putPreviewFrame(AtomBuffer *buff);
+
+    status_t setRecordingBuffers(SharedBufferType *buffs, int numBuffs);
+    void unsetRecordingBuffers();
 
     status_t getRecordingFrame(AtomBuffer **buff, nsecs_t *timestamp);
     status_t putRecordingFrame(AtomBuffer *buff);
@@ -219,7 +223,12 @@ private:
     Mode mMode;
     Callbacks *mCallbacks;
     AtomBuffer mPreviewBuffers[NUM_ATOM_BUFFERS];
+
+    bool mUsingClientRecordingBuffers;
+    int mNumRecordingBuffers;
     AtomBuffer mRecordingBuffers[NUM_ATOM_BUFFERS];
+    void **mClientRecordingBuffers;
+
     AtomBuffer mSnapshotBuffers[SNAPSHOT_MAX_NUM_BUFFERS];
     AtomBuffer mPostviewBuffers[SNAPSHOT_MAX_NUM_BUFFERS];
     int mNumPreviewBuffersQueued;

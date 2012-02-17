@@ -23,6 +23,7 @@ LOCAL_C_INCLUDES += \
 	external/skia/include/core \
 	external/skia/include/images \
 	hardware/intel/libs3cjpeg \
+	$(TARGET_OUT_HEADERS)/libsharedbuffer \
 
 LOCAL_SHARED_LIBRARIES := \
 	libcamera_client \
@@ -33,6 +34,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libandroid \
 	libui \
 	libs3cjpeg \
+	libsharedbuffer \
 
 LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
 LOCAL_MODULE := camera.$(TARGET_BOARD_PLATFORM)
