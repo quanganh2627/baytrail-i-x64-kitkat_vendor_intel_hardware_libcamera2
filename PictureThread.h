@@ -80,8 +80,8 @@ private:
     //
 
     struct MessageEncode {
-        AtomBuffer *snaphotBuf;
-        AtomBuffer *postviewBuf;
+        AtomBuffer snaphotBuf;
+        AtomBuffer postviewBuf;
     };
 
     // union of all message data

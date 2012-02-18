@@ -76,7 +76,7 @@ status_t PreviewThread::preview(AtomBuffer *buff)
     LOG_FUNCTION2
     Message msg;
     msg.id = MESSAGE_ID_PREVIEW;
-    msg.data.preview.buff = buff;
+    msg.data.preview.buff = *buff;
     return mMessageQueue.send(&msg);
 }
 
@@ -94,8 +94,8 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
     status_t status = NO_ERROR;
 
     LogDetail2("Buff: id = %d, data = %p",
-            msg->buff->id,
-            msg->buff->buff->data);
+            msg->buff.id,
+            msg->buff.buff->data);
 
     if (mPreviewWindow != 0) {
         buffer_handle_t *buf;
@@ -122,7 +122,7 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
             }
             NV12ToRGB565(mPreviewWidth,
                     mPreviewHeight,
-                    msg->buff->buff->data,
+                    msg->buff.buff->data,
                     dst);
             if ((err = mPreviewWindow->enqueue_buffer(mPreviewWindow, buf)) != 0) {
                 LogError("Surface::queueBuffer returned error %d", err);
@@ -131,11 +131,11 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
         }
         buf = NULL;
     } else {
-        mCallbacks->previewFrameDone(msg->buff);
+        mCallbacks->previewFrameDone(&msg->buff);
     }
     mDebugFPS->update(); // update fps counter
 exit:
-    mPreviewDoneCallback->previewDone(msg->buff);
+    mPreviewDoneCallback->previewDone(&msg->buff);
 
     return status;
 }

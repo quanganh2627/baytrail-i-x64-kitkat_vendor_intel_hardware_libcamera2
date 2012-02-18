@@ -222,8 +222,8 @@ status_t PictureThread::encode(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf)
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_ENCODE;
-    msg.data.encode.snaphotBuf = snaphotBuf;
-    msg.data.encode.postviewBuf = postviewBuf;
+    msg.data.encode.snaphotBuf = *snaphotBuf;
+    msg.data.encode.postviewBuf = *postviewBuf;
     return mMessageQueue.send(&msg);
 }
 
@@ -284,7 +284,7 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
         return UNKNOWN_ERROR;
     }
     // Encode the image
-    if ((status = encodeToJpeg(msg->snaphotBuf, msg->postviewBuf, &jpegBuf)) == NO_ERROR) {
+    if ((status = encodeToJpeg(&msg->snaphotBuf, &msg->postviewBuf, &jpegBuf)) == NO_ERROR) {
         mCallbacks->compressedFrameDone(&jpegBuf);
     } else {
         LOGE("Error generating JPEG image!");
@@ -295,7 +295,7 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
         jpegBuf.buff->release(jpegBuf.buff);
     }
     // When the encoding is done, send back the buffers to camera
-    mPictureDoneCallback->pictureDone(msg->snaphotBuf, msg->postviewBuf);
+    mPictureDoneCallback->pictureDone(&msg->snaphotBuf, &msg->postviewBuf);
 
     return status;
 }

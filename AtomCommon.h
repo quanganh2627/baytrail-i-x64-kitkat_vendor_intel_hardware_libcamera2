@@ -25,8 +25,6 @@
 
 //This file define the general configuration for the atomisp camera
 
-#define NUM_ATOM_BUFFERS 4
-
 #define BPP 2 // bytes per pixel
 
 struct AtomBuffer {

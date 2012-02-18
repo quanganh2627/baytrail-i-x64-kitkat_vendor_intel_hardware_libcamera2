@@ -78,7 +78,7 @@ private:
     //
 
     struct MessagePreview {
-        AtomBuffer *buff;
+        AtomBuffer buff;
     };
 
     struct MessageSetPreviewWindow {

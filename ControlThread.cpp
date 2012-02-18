@@ -35,6 +35,8 @@ ControlThread::ControlThread(int cameraId) :
     ,mState(STATE_STOPPED)
     ,mThreadRunning(false)
     ,mCallbacks(new Callbacks())
+    ,mCoupledBuffers(NULL)
+    ,mNumBuffers(mISP->getNumBuffers())
     ,mBSInstance(BufferShareRegistry::getInstance())
     ,mBSState(BS_STATE_DISABLED)
 {
@@ -238,7 +240,7 @@ void ControlThread::previewDone(AtomBuffer *buff)
     LOG_FUNCTION2
     Message msg;
     msg.id = MESSAGE_ID_PREVIEW_DONE;
-    msg.data.previewDone.buff = buff;
+    msg.data.previewDone.buff = *buff;
     mMessageQueue.send(&msg);
 }
 
@@ -247,8 +249,8 @@ void ControlThread::pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf
     LOG_FUNCTION
     Message msg;
     msg.id = MESSAGE_ID_PICTURE_DONE;
-    msg.data.pictureDone.snapshotBuf = snapshotBuf;
-    msg.data.pictureDone.postviewBuf = postviewBuf;
+    msg.data.pictureDone.snapshotBuf = *snapshotBuf;
+    msg.data.pictureDone.postviewBuf = *postviewBuf;
     mMessageQueue.send(&msg);
 }
 
@@ -308,12 +310,15 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mISP->setVideoFrameFormat(width, height, format);
     }
 
+    mNumBuffers = mISP->getNumBuffers();
+    mCoupledBuffers = new CoupledBuffer[mNumBuffers];
+    memset(mCoupledBuffers, 0, mNumBuffers * sizeof(CoupledBuffer));
+
     // start the data flow
     status = mISP->start(mode);
     if (status == NO_ERROR) {
         status = mPreviewThread->run();
         if (status == NO_ERROR) {
-            memset(mCoupledBuffers, 0, NUM_ATOM_BUFFERS * sizeof(CoupledBuffer));
             mState = state;
         } else {
             LogError("Error starting preview thread");
@@ -337,6 +342,10 @@ status_t ControlThread::stopPreviewCore()
     else
         LogError("Error stopping isp in preview mode");
 
+    delete [] mCoupledBuffers;
+    // set to null because frames can be returned to hal in stop state
+    // need to check for null in relevant locations
+    mCoupledBuffers = NULL;
     return status;
 }
 
@@ -443,7 +452,7 @@ status_t ControlThread::handleMessageTakePicture()
 {
     LOG_FUNCTION
     status_t status = NO_ERROR;
-    AtomBuffer *snapshotBuffer, *postviewBuffer;
+    AtomBuffer snapshotBuffer, postviewBuffer;
     int width;
     int height;
     int format;
@@ -492,7 +501,7 @@ status_t ControlThread::handleMessageTakePicture()
     // Start PictureThread
     status = mPictureThread->run();
     if (status == NO_ERROR) {
-        status = mPictureThread->encode(snapshotBuffer, postviewBuffer);
+        status = mPictureThread->encode(&snapshotBuffer, &postviewBuffer);
     } else {
         LogError("Error starting PictureThread!");
     }
@@ -535,17 +544,24 @@ status_t ControlThread::handleMessageReleaseRecordingFrame(MessageReleaseRecordi
 {
     LOG_FUNCTION2
     status_t status = NO_ERROR;
+    int cnt = 0;
     if (mState == STATE_RECORDING) {
         AtomBuffer *recBuff = findRecordingBuffer(msg->buff);
         if (recBuff == NULL) {
-            // This should NOT happen
+            // This may happen with buffer sharing. When the omx component is stopped
+            // it disables buffer sharing and deallocates its buffers. Internally we check
+            // to see if sharing was disabled then we restart the ISP with new buffers. In
+            // the mean time, the app is returning us shared buffers when we are no longer
+            // using them.
             LogError("Could not find recording buffer: %p", msg->buff);
             return DEAD_OBJECT;
         }
         int curBuff = recBuff->id;
-        mCoupledBuffers[curBuff].recordingBuffReturned = true;
-        if (mCoupledBuffers[curBuff].previewBuffReturned) {
-            status = queueCoupledBuffers(curBuff);
+        if (mCoupledBuffers && curBuff < mNumBuffers) {
+            mCoupledBuffers[curBuff].recordingBuffReturned = true;
+            if (mCoupledBuffers[curBuff].previewBuffReturned) {
+                status = queueCoupledBuffers(curBuff);
+            }
         }
     }
     return status;
@@ -556,17 +572,19 @@ status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
     LOG_FUNCTION2
     status_t status = NO_ERROR;
     if (mState == STATE_PREVIEW_STILL) {
-        status = mISP->putPreviewFrame(msg->buff);
+        status = mISP->putPreviewFrame(&msg->buff);
         if (status == DEAD_OBJECT) {
             LogDetail("Stale preview buffer returned to ISP");
         } else if (status != NO_ERROR) {
             LogError("Error putting preview frame to ISP");
         }
     } else if (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING) {
-        int curBuff = msg->buff->id;
-        mCoupledBuffers[curBuff].previewBuffReturned = true;
-        if (mCoupledBuffers[curBuff].recordingBuffReturned) {
-            status = queueCoupledBuffers(curBuff);
+        int curBuff = msg->buff.id;
+        if (mCoupledBuffers && curBuff < mNumBuffers) {
+            mCoupledBuffers[curBuff].previewBuffReturned = true;
+            if (mCoupledBuffers[curBuff].recordingBuffReturned) {
+                status = queueCoupledBuffers(curBuff);
+            }
         }
     }
     return status;
@@ -577,9 +595,9 @@ status_t ControlThread::queueCoupledBuffers(int coupledId)
     LOG_FUNCTION
     status_t status = NO_ERROR;
 
-    status = mISP->putRecordingFrame(mCoupledBuffers[coupledId].recordingBuff);
+    status = mISP->putRecordingFrame(&mCoupledBuffers[coupledId].recordingBuff);
     if (status == NO_ERROR) {
-        status = mISP->putPreviewFrame(mCoupledBuffers[coupledId].previewBuff);
+        status = mISP->putPreviewFrame(&mCoupledBuffers[coupledId].previewBuff);
         if (status == DEAD_OBJECT) {
             LogDetail("Stale preview buffer returned to ISP");
         } else if (status != NO_ERROR) {
@@ -600,7 +618,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePictureDone *msg)
     status_t status = NO_ERROR;
 
     // Return the picture frames back to ISP
-    status = mISP->putSnapshot(msg->snapshotBuf, msg->postviewBuf);
+    status = mISP->putSnapshot(&msg->snapshotBuf, &msg->postviewBuf);
     if (status == DEAD_OBJECT) {
         LogDetail("Stale snapshot buffer returned to ISP");
     } else if (status != NO_ERROR) {
@@ -885,10 +903,12 @@ status_t ControlThread::waitForAndExecuteMessage()
 AtomBuffer* ControlThread::findRecordingBuffer(void *findMe)
 {
     // This is a small list, so incremental search is not an issue right now
-    for (int i = 0; i < NUM_ATOM_BUFFERS; i++) {
-        if (mCoupledBuffers[i].recordingBuff &&
-                mCoupledBuffers[i].recordingBuff->buff->data == findMe)
-            return mCoupledBuffers[i].recordingBuff;
+    if (mCoupledBuffers) {
+        for (int i = 0; i < mNumBuffers; i++) {
+            if (mCoupledBuffers[i].recordingBuff.buff &&
+                    mCoupledBuffers[i].recordingBuff.buff->data == findMe)
+                return &mCoupledBuffers[i].recordingBuff;
+        }
     }
     return NULL;
 }
@@ -896,16 +916,16 @@ AtomBuffer* ControlThread::findRecordingBuffer(void *findMe)
 status_t ControlThread::dequeuePreview()
 {
     LogEntry2(LOG_TAG, __FUNCTION__);
-    AtomBuffer *buff;
+    AtomBuffer buff;
     status_t status = NO_ERROR;
 
     status = mISP->getPreviewFrame(&buff);
     if (status == NO_ERROR) {
         if (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING) {
-            mCoupledBuffers[buff->id].previewBuff = buff;
-            mCoupledBuffers[buff->id].previewBuffReturned = false;
+            mCoupledBuffers[buff.id].previewBuff = buff;
+            mCoupledBuffers[buff.id].previewBuffReturned = false;
         }
-        status = mPreviewThread->preview(buff);
+        status = mPreviewThread->preview(&buff);
         if (status != NO_ERROR)
             LogError("Error sending buffer to preview thread");
     } else {
@@ -917,21 +937,21 @@ status_t ControlThread::dequeuePreview()
 status_t ControlThread::dequeueRecording()
 {
     LogEntry2(LOG_TAG, __FUNCTION__);
-    AtomBuffer *buff;
+    AtomBuffer buff;
     nsecs_t timestamp;
     status_t status = NO_ERROR;
 
     status = mISP->getRecordingFrame(&buff, &timestamp);
     if (status == NO_ERROR) {
-        mCoupledBuffers[buff->id].recordingBuff = buff;
-        mCoupledBuffers[buff->id].recordingBuffReturned = false;
+        mCoupledBuffers[buff.id].recordingBuff = buff;
+        mCoupledBuffers[buff.id].recordingBuffReturned = false;
         // See if recording has started.
         // If it has, process the buffer
         // If it hasn't, return the buffer to the driver
         if (mState == STATE_RECORDING) {
-            mCallbacks->videoFrameDone(buff, timestamp);
+            mCallbacks->videoFrameDone(&buff, timestamp);
         } else {
-            mCoupledBuffers[buff->id].recordingBuffReturned = true;
+            mCoupledBuffers[buff.id].recordingBuffReturned = true;
         }
     } else {
         LogError("Error: getting recording from isp\n");

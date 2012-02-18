@@ -121,8 +121,11 @@ static const char *resolution_tables[] = {
 AtomISP::AtomISP(int camera_id) :
     mMode(MODE_NONE)
     ,mCallbacks(NULL)
-    ,mUsingClientRecordingBuffers(false)
+    ,mNumBuffers(NUM_DEFAULT_BUFFERS)
+    ,mPreviewBuffers(NULL)
+    ,mRecordingBuffers(NULL)
     ,mClientRecordingBuffers(NULL)
+    ,mUsingClientRecordingBuffers(false)
     ,mNumPreviewBuffersQueued(0)
     ,mNumRecordingBuffersQueued(0)
     ,mPreviewDevice(V4L2_FIRST_DEVICE)
@@ -422,14 +425,14 @@ status_t AtomISP::startPreview()
     // need to resend the current zoom value
     atomisp_set_zoom(main_fd, mConfig.zoom);
 
-    ret = startDevice(mPreviewDevice, NUM_ATOM_BUFFERS);
+    ret = startDevice(mPreviewDevice, mNumBuffers);
     if (ret < 0) {
         LogError("Start preview device failed!");
         status = UNKNOWN_ERROR;
         goto exitClose;
     }
 
-    mNumPreviewBuffersQueued = NUM_ATOM_BUFFERS;
+    mNumPreviewBuffersQueued = mNumBuffers;
 
     return status;
 
@@ -504,22 +507,22 @@ status_t AtomISP::startRecording() {
         goto exitClosePrev;
     }
 
-    ret = startDevice(mRecordingDevice, NUM_ATOM_BUFFERS);
+    ret = startDevice(mRecordingDevice, mNumBuffers);
     if (ret < 0) {
         LogError("Start recording device failed");
         status = UNKNOWN_ERROR;
         goto exitClosePrev;
     }
 
-    ret = startDevice(mPreviewDevice, NUM_ATOM_BUFFERS);
+    ret = startDevice(mPreviewDevice, mNumBuffers);
     if (ret < 0) {
         LogError("Start preview device failed!");
         status = UNKNOWN_ERROR;
         goto exitStopRec;
     }
 
-    mNumPreviewBuffersQueued = NUM_ATOM_BUFFERS;
-    mNumRecordingBuffersQueued = NUM_ATOM_BUFFERS;
+    mNumPreviewBuffersQueued = mNumBuffers;
+    mNumRecordingBuffersQueued = mNumBuffers;
 
     return status;
 
@@ -1570,7 +1573,7 @@ int AtomISP::v4l2_capture_try_format(int device, int *w, int *h,
     return 0;
 }
 
-status_t AtomISP::getPreviewFrame(AtomBuffer **buff)
+status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
 {
     LOG_FUNCTION2
     struct v4l2_buffer buf;
@@ -1584,9 +1587,9 @@ status_t AtomISP::getPreviewFrame(AtomBuffer **buff)
         return BAD_INDEX;
     }
     LogDetail2("Device: %d. Grabbed frame of size: %d", mPreviewDevice, buf.bytesused);
-    (*buff) = &mPreviewBuffers[index];
-    (*buff)->id = index;
-    (*buff)->ispPrivate = mSessionId;
+    mPreviewBuffers[index].id = index;
+    mPreviewBuffers[index].ispPrivate = mSessionId;
+    *buff = mPreviewBuffers[index];
 
     mNumPreviewBuffersQueued--;
 
@@ -1615,7 +1618,7 @@ status_t AtomISP::putPreviewFrame(AtomBuffer *buff)
 
 status_t AtomISP::setRecordingBuffers(SharedBufferType *buffs, int numBuffs)
 {
-    if (buffs == NULL || numBuffs <= 0 || numBuffs != NUM_ATOM_BUFFERS)
+    if (buffs == NULL || numBuffs <= 0)
         return BAD_VALUE;
 
     mClientRecordingBuffers = new void*[numBuffs];
@@ -1626,6 +1629,7 @@ status_t AtomISP::setRecordingBuffers(SharedBufferType *buffs, int numBuffs)
         mClientRecordingBuffers[i] = (void *) buffs[i].pointer;
 
     mUsingClientRecordingBuffers = true;
+    mNumBuffers = numBuffs;
 
     return NO_ERROR;
 }
@@ -1634,9 +1638,10 @@ void AtomISP::unsetRecordingBuffers()
 {
     delete [] mClientRecordingBuffers;
     mUsingClientRecordingBuffers = false;
+    mNumBuffers = NUM_DEFAULT_BUFFERS;
 }
 
-status_t AtomISP::getRecordingFrame(AtomBuffer **buff, nsecs_t *timestamp)
+status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp)
 {
     LOG_FUNCTION2
     struct v4l2_buffer buf;
@@ -1651,10 +1656,10 @@ status_t AtomISP::getRecordingFrame(AtomBuffer **buff, nsecs_t *timestamp)
         return BAD_INDEX;
     }
     LogDetail2("Device: %d. Grabbed frame of size: %d", mRecordingDevice, buf.bytesused);
-    *buff = &mRecordingBuffers[index];
-    (*buff)->id = index;
+    mRecordingBuffers[index].id = index;
+    mRecordingBuffers[index].ispPrivate = mSessionId;
+    *buff = mRecordingBuffers[index];
     *timestamp = systemTime();
-    (*buff)->ispPrivate = mSessionId;
 
     mNumRecordingBuffersQueued--;
 
@@ -1681,7 +1686,7 @@ status_t AtomISP::putRecordingFrame(AtomBuffer *buff)
     return NO_ERROR;
 }
 
-status_t AtomISP::getSnapshot(AtomBuffer **snapshotBuf, AtomBuffer **postviewBuf)
+status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 {
     LogEntry(LOG_TAG, __FUNCTION__);
     struct v4l2_buffer buf;
@@ -1718,12 +1723,13 @@ status_t AtomISP::getSnapshot(AtomBuffer **snapshotBuf, AtomBuffer **postviewBuf
         return BAD_INDEX;
     }
 
-    *snapshotBuf = &mSnapshotBuffers[snapshotIndex];
-    (*snapshotBuf)->id = snapshotIndex;
-    (*snapshotBuf)->ispPrivate = mSessionId;
-    *postviewBuf = &mPostviewBuffers[postviewIndex];
-    (*postviewBuf)->id = postviewIndex;
-    (*postviewBuf)->ispPrivate = mSessionId;
+    mSnapshotBuffers[snapshotIndex].id = snapshotIndex;
+    mSnapshotBuffers[snapshotIndex].ispPrivate = mSessionId;
+    *snapshotBuf = mSnapshotBuffers[snapshotIndex];
+
+    mPostviewBuffers[postviewIndex].id = postviewIndex;
+    mPostviewBuffers[postviewIndex].ispPrivate = mSessionId;
+    *postviewBuf = mPostviewBuffers[postviewIndex];
 
     return NO_ERROR;
 }
@@ -1855,8 +1861,16 @@ status_t AtomISP::allocatePreviewBuffers()
     status_t status = NO_ERROR;
     int allocatedBufs = 0;
     int size = mConfig.preview.width * mConfig.preview.height * 3 / 2;
-    LogDetail("Allocating %d buffers of size %d", NUM_ATOM_BUFFERS, size);
-    for (int i = 0; i < NUM_ATOM_BUFFERS; i++) {
+
+    mPreviewBuffers = new AtomBuffer[mNumBuffers];
+    if (!mPreviewBuffers) {
+        LOGE("Not enough mem for preview buffer array");
+        status = NO_MEMORY;
+        goto errorFree;
+    }
+
+    LogDetail("Allocating %d buffers of size %d", mNumBuffers, size);
+    for (int i = 0; i < mNumBuffers; i++) {
          mPreviewBuffers[i].buff = NULL;
          mCallbacks->allocateMemory(&mPreviewBuffers[i], size);
          if (mPreviewBuffers[i].buff == NULL) {
@@ -1877,6 +1891,8 @@ errorFree:
             mRecordingBuffers[i].buff = NULL;
         }
     }
+    if (mPreviewBuffers)
+        delete [] mPreviewBuffers;
     return status;
 }
 
@@ -1892,7 +1908,14 @@ status_t AtomISP::allocateRecordingBuffers()
     else
         size = mConfig.recording.width * mConfig.recording.height * 3 / 2;
 
-    for (int i = 0; i < NUM_ATOM_BUFFERS; i++) {
+    mRecordingBuffers = new AtomBuffer[mNumBuffers];
+    if (!mRecordingBuffers) {
+        LOGE("Not enough mem for recording buffer array");
+        status = NO_MEMORY;
+        goto errorFree;
+    }
+
+    for (int i = 0; i < mNumBuffers; i++) {
         mRecordingBuffers[i].buff = NULL;
         mCallbacks->allocateMemory(&mRecordingBuffers[i], size);
         LogDetail("allocate recording buffer[%d] shared=%d, buff=%p size=%d",
@@ -1915,6 +1938,7 @@ status_t AtomISP::allocateRecordingBuffers()
     return status;
 
 errorFree:
+
     // On error, free the allocated buffers
     for (int i = 0 ; i < allocatedBufs; i++) {
         if (mRecordingBuffers[i].buff != NULL) {
@@ -1922,6 +1946,8 @@ errorFree:
             mRecordingBuffers[i].buff = NULL;
         }
     }
+    if (mRecordingBuffers)
+        delete [] mRecordingBuffers;
     return status;
 }
 
@@ -1979,24 +2005,26 @@ errorFree:
 status_t AtomISP::freePreviewBuffers()
 {
     LOG_FUNCTION
-    for (int i = 0 ; i < NUM_ATOM_BUFFERS; i++) {
+    for (int i = 0 ; i < mNumBuffers; i++) {
         if (mPreviewBuffers[i].buff != NULL) {
             mPreviewBuffers[i].buff->release(mPreviewBuffers[i].buff);
             mPreviewBuffers[i].buff = NULL;
         }
     }
+    delete [] mPreviewBuffers;
     return NO_ERROR;
 }
 
 status_t AtomISP::freeRecordingBuffers()
 {
     LOG_FUNCTION
-    for (int i = 0 ; i < NUM_ATOM_BUFFERS; i++) {
+    for (int i = 0 ; i < mNumBuffers; i++) {
         if (mRecordingBuffers[i].buff != NULL) {
             mRecordingBuffers[i].buff->release(mRecordingBuffers[i].buff);
             mRecordingBuffers[i].buff = NULL;
         }
     }
+    delete [] mRecordingBuffers;
     return NO_ERROR;
 }
 

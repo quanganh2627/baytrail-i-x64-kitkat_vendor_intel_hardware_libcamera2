@@ -133,12 +133,12 @@ private:
     };
 
     struct MessagePreviewDone {
-        AtomBuffer *buff;
+        AtomBuffer buff;
     };
 
     struct MessagePictureDone {
-        AtomBuffer *snapshotBuf;
-        AtomBuffer *postviewBuf;
+        AtomBuffer snapshotBuf;
+        AtomBuffer postviewBuf;
     };
 
     struct MessageSetParameters {
@@ -229,8 +229,8 @@ private:
     };
 
     struct CoupledBuffer {
-        AtomBuffer *previewBuff;
-        AtomBuffer *recordingBuff;
+        AtomBuffer previewBuff;
+        AtomBuffer recordingBuff;
         bool previewBuffReturned;
         bool recordingBuffReturned;
     };
@@ -314,7 +314,8 @@ private:
     bool mThreadRunning;
     Callbacks *mCallbacks;
 
-    CoupledBuffer mCoupledBuffers[NUM_ATOM_BUFFERS];
+    CoupledBuffer *mCoupledBuffers;
+    int mNumBuffers;
 
     CameraParameters mParameters;
 

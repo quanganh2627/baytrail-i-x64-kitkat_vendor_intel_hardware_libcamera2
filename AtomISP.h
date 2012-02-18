@@ -89,16 +89,18 @@ public:
     status_t start(Mode mode);
     status_t stop();
 
-    status_t getPreviewFrame(AtomBuffer **buff);
+    inline int getNumBuffers() { return mNumBuffers; }
+
+    status_t getPreviewFrame(AtomBuffer *buff);
     status_t putPreviewFrame(AtomBuffer *buff);
 
     status_t setRecordingBuffers(SharedBufferType *buffs, int numBuffs);
     void unsetRecordingBuffers();
 
-    status_t getRecordingFrame(AtomBuffer **buff, nsecs_t *timestamp);
+    status_t getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp);
     status_t putRecordingFrame(AtomBuffer *buff);
 
-    status_t getSnapshot(AtomBuffer **snaphotBuf, AtomBuffer **postviewBuf);
+    status_t getSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
     status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
 
     bool dataAvailable();
@@ -179,6 +181,8 @@ private:
     static const int V4L2_THIRD_DEVICE   = 2;
     static const int V4L2_DEVICE_NUM = V4L2_THIRD_DEVICE + 1;
 
+    static const int NUM_DEFAULT_BUFFERS = 4;
+
     struct FrameInfo {
         int format;     // V4L2 format
         int width;      // Frame width
@@ -222,12 +226,12 @@ private:
 
     Mode mMode;
     Callbacks *mCallbacks;
-    AtomBuffer mPreviewBuffers[NUM_ATOM_BUFFERS];
 
-    bool mUsingClientRecordingBuffers;
-    int mNumRecordingBuffers;
-    AtomBuffer mRecordingBuffers[NUM_ATOM_BUFFERS];
+    int mNumBuffers;
+    AtomBuffer *mPreviewBuffers;
+    AtomBuffer *mRecordingBuffers;
     void **mClientRecordingBuffers;
+    bool mUsingClientRecordingBuffers;
 
     AtomBuffer mSnapshotBuffers[SNAPSHOT_MAX_NUM_BUFFERS];
     AtomBuffer mPostviewBuffers[SNAPSHOT_MAX_NUM_BUFFERS];
