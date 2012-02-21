@@ -130,9 +130,9 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
             mapper.unlock(*buf);
         }
         buf = NULL;
-    } else {
-        mCallbacks->previewFrameDone(&msg->buff);
     }
+
+    mCallbacks->previewFrameDone(&msg->buff);
     mDebugFPS->update(); // update fps counter
 exit:
     mPreviewDoneCallback->previewDone(&msg->buff);
