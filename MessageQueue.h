@@ -103,6 +103,23 @@ public:
         return status;
     }
 
+    status_t clearAll()
+    {
+        LOGD("@%s", __FUNCTION__);
+        status_t status = NO_ERROR;
+        if(isEmpty())
+            return status;
+
+        mQueueMutex.lock();
+        mCount = 0;
+        mQueueMutex.unlock();
+        // unblock all callers waiting.
+        for(int i=0; i<mNumReply;i++){
+            reply(i, INVALID_OPERATION);
+        }
+
+        return status;
+    }
     // Pop a message from the queue
     status_t receive(MessageType *msg)
     {

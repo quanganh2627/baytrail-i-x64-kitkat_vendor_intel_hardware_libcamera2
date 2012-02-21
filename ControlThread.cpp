@@ -23,6 +23,7 @@
 #include "Callbacks.h"
 #include "ColorConverter.h"
 #include "IntelBufferSharing.h"
+#include "FaceDetectorFactory.h"
 
 namespace android {
 
@@ -42,6 +43,8 @@ ControlThread::ControlThread(int cameraId) :
     ,mCallbacks(Callbacks::getInstance())
     ,mCoupledBuffers(NULL)
     ,mNumBuffers(mISP->getNumBuffers())
+    ,m_pFaceDetector(0)
+    ,mFaceDetectionActive(false)
     ,mBSInstance(BufferShareRegistry::getInstance())
     ,mBSState(BS_STATE_DISABLED)
     ,mLastRecordingBuffIndex(0)
@@ -54,6 +57,13 @@ ControlThread::ControlThread(int cameraId) :
     status_t status = m3AThread->run();
     if (status != NO_ERROR) {
         LOGE("Error starting 3A thread!");
+    }
+    m_pFaceDetector=FaceDetectorFactory::createDetector(mCallbacks);
+    if (m_pFaceDetector != 0){
+        mParameters.set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW,
+                m_pFaceDetector->getMaxFacesDetectable());
+    } else {
+        LOGE("Failed on creating face detector.");
     }
 }
 
@@ -73,6 +83,13 @@ ControlThread::~ControlThread()
     }
     if (mCallbacks != NULL) {
         delete mCallbacks;
+    }
+    if (m_pFaceDetector != 0) {
+        if (!FaceDetectorFactory::destroyDetector(m_pFaceDetector)){
+            LOGE("Failed on destroy face detector thru factory");
+            delete m_pFaceDetector;//should not happen.
+        }
+        m_pFaceDetector = 0;
     }
 }
 
@@ -130,7 +147,7 @@ status_t ControlThread::stopPreview()
 {
     LOG1("@%s", __FUNCTION__);
     // send message and block until thread processes message
-    if(mState == STATE_STOPPED){
+    if (mState == STATE_STOPPED) {
         return NO_ERROR;
     }
 
@@ -256,6 +273,22 @@ void ControlThread::previewDone(AtomBuffer *buff)
     msg.data.previewDone.buff = *buff;
     mMessageQueue.send(&msg);
 }
+void ControlThread::returnBuffer(AtomBuffer *buff)
+{
+    LOG2("@%s: buff = %p, id = %d", __FUNCTION__, buff->buff->data, buff->id);
+    if (buff->type == MODE_PREVIEW) {
+        buff->owner = 0;
+        releasePreviewFrame (buff);
+    }
+}
+void ControlThread::releasePreviewFrame(AtomBuffer *buff)
+{
+    LOG2("release preview frame buffer data %p, id=%d", buff->buff->data, buff->id);
+    Message msg;
+    msg.id = MESSAGE_ID_RELEASE_PREVIEW_FRAME;
+    msg.data.releasePreviewFrame.buff = *buff;
+    mMessageQueue.send(&msg);
+}
 
 void ControlThread::pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 {
@@ -268,6 +301,16 @@ void ControlThread::pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf
     msg.id = MESSAGE_ID_PICTURE_DONE;
     msg.data.pictureDone.snapshotBuf = *snapshotBuf;
     msg.data.pictureDone.postviewBuf = *postviewBuf;
+    mMessageQueue.send(&msg);
+}
+
+void ControlThread::sendCommand(int32_t cmd, int32_t arg1, int32_t arg2)
+{
+    Message msg;
+    msg.id = MESSAGE_ID_COMMAND;
+    msg.data.command.cmd_id = cmd;
+    msg.data.command.arg1 = arg1;
+    msg.data.command.arg2 = arg2;
     mMessageQueue.send(&msg);
 }
 
@@ -417,6 +460,9 @@ status_t ControlThread::handleMessageStartPreview()
     LOG1("@%s", __FUNCTION__);
     status_t status;
     if (mState == STATE_STOPPED) {
+        // API says apps should call startFaceDetection when resuming preview
+        // stop FD here to avoid accidental FD.
+        stopFaceDetection();
         bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
         status = startPreviewCore(videoMode);
     } else {
@@ -433,13 +479,13 @@ status_t ControlThread::handleMessageStopPreview()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status;
+    stopFaceDetection();
     if (mState != STATE_STOPPED) {
         status = stopPreviewCore();
     } else {
         LOGE("Error stopping preview. Invalid state!");
         status = INVALID_OPERATION;
     }
-
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_STOP_PREVIEW, status);
     return status;
@@ -467,7 +513,7 @@ status_t ControlThread::handleMessageStartRecording()
         /* We are in PREVIEW_STILL mode; in order to start recording
          * we first need to stop AtomISP and restart it with MODE_VIDEO
          */
-        LOGD("We are in STATE_PREVIEW. Switching to STATE_VIDEO before starting to record.");
+        LOG2("We are in STATE_PREVIEW. Switching to STATE_VIDEO before starting to record.");
         if ((status = mISP->stop()) == NO_ERROR) {
             if ((status = mISP->start(MODE_VIDEO)) == NO_ERROR) {
                 mState = STATE_RECORDING;
@@ -603,7 +649,7 @@ status_t ControlThread::handleMessageTakePicture()
         LOGE("we only support snapshot in still preview and recording modes");
         return INVALID_OPERATION;
     }
-
+    stopFaceDetection();
     // Do flash processing and stop preview thread
     if (origState == STATE_PREVIEW_STILL) {
         const char *pFlashMode = mParameters.get(CameraParameters::KEY_FLASH_MODE);
@@ -789,6 +835,13 @@ status_t ControlThread::handleMessageAutoFocus()
         }
     }
 
+    //If the apps call autoFocus(AutoFocusCallback), the camera will stop sending face callbacks.
+    // The last face callback indicates the areas used to do autofocus. After focus completes,
+    // face detection will resume sending face callbacks.
+    //If the apps call cancelAutoFocus(), the face callbacks will also resume.
+    LOG2("auto focus is on");
+    if (mFaceDetectionActive)
+        disableMsgType(CAMERA_MSG_PREVIEW_METADATA);
     // Auto-focus should be done in AAAThread, so send a message directly to it
     status = m3AThread->autoFocus();
 
@@ -804,8 +857,10 @@ status_t ControlThread::handleMessageCancelAutoFocus()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-
     status = m3AThread->cancelAutoFocus();
+    LOG2("auto focus is off");
+    if (mFaceDetectionActive)
+        enableMsgType(CAMERA_MSG_PREVIEW_METADATA);
 
     return status;
 }
@@ -836,7 +891,30 @@ status_t ControlThread::handleMessageReleaseRecordingFrame(MessageReleaseRecordi
 
 status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
 {
-    LOG2("@%s", __FUNCTION__);
+
+    LOG2("handle preview frame  done buffer %p", &(msg->buff));
+    status_t status = NO_ERROR;
+    if (m_pFaceDetector !=0 && mFaceDetectionActive) {
+        LOG2("m_pFace = 0x%p, active=%s", m_pFaceDetector, mFaceDetectionActive?"true":"false");
+        int width, height;
+        mParameters.getPreviewSize(&width, &height);
+        LOG2("sending frame data = %p", msg->buff.buff->data);
+        msg->buff.owner = this;
+        msg->buff.type = MODE_PREVIEW;
+        if (m_pFaceDetector->sendFrame(&msg->buff, width, height) < 0) {
+            msg->buff.owner = 0;
+            releasePreviewFrame(&msg->buff);
+        }
+    }else
+    {
+       releasePreviewFrame(&msg->buff);
+    }
+    return NO_ERROR;
+}
+
+status_t ControlThread::handleMessageReleasePreviewFrame(MessageReleasePreviewFrame *msg)
+{
+    LOG2("handle preview frame reelease buffer %p", msg->buff.buff->data);
     status_t status = NO_ERROR;
     if (mState == STATE_PREVIEW_STILL) {
         status = mISP->putPreviewFrame(&msg->buff);
@@ -942,7 +1020,8 @@ status_t ControlThread::handleMessageAutoFocusDone()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-
+    if (mFaceDetectionActive)
+        enableMsgType(CAMERA_MSG_PREVIEW_METADATA);
     // Implement post auto-focus functions
     mISP->setFlashIndicator(0);
 
@@ -962,7 +1041,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
 
     int minFPS, maxFPS;
     params->getPreviewFpsRange(&minFPS, &maxFPS);
-    if(minFPS == maxFPS || minFPS > maxFPS) {
+    if (minFPS == maxFPS || minFPS > maxFPS) {
         LOGE("invalid fps range [%d,%d]", minFPS, maxFPS);
         return BAD_VALUE;
     }
@@ -1022,7 +1101,7 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             status = processParamFocusMode(oldParams, newParams);
         }
 
-        if (status == NO_ERROR) {
+        if (status == NO_ERROR || !mFaceDetectionActive) {
             // white balance
             status = processParamWhiteBalance(oldParams, newParams);
         }
@@ -1047,7 +1126,7 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             status = processParamAWBLock(oldParams, newParams);
         }
 
-        if (status == NO_ERROR) {
+        if (!mFaceDetectionActive && status == NO_ERROR) {
             // customize metering
             status = processParamSetMeteringAreas(oldParams, newParams);
         }
@@ -1392,7 +1471,7 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
         size_t winCount = 0;
         CameraWindow focusWindows[maxWindows];
 
-        if (pFocusWindows && (maxWindows > 0) && (strlen(pFocusWindows) > 0)) {
+        if (!mFaceDetectionActive && pFocusWindows && (maxWindows > 0) && (strlen(pFocusWindows) > 0)) {
             LOG1("Scanning AF windows from params: %s", pFocusWindows);
             const char *argTail = pFocusWindows;
             while (argTail && winCount < maxWindows) {
@@ -1660,7 +1739,6 @@ exit:
 
 status_t ControlThread::handleMessageGetParameters(MessageGetParameters *msg)
 {
-    LOG1("@%s", __FUNCTION__);
     status_t status = BAD_VALUE;
 
     if (msg->params) {
@@ -1676,6 +1754,79 @@ status_t ControlThread::handleMessageGetParameters(MessageGetParameters *msg)
     }
     mMessageQueue.reply(MESSAGE_ID_GET_PARAMETERS, status);
     return status;
+}
+status_t ControlThread::handleMessageCommand(MessageCommand* msg)
+{
+    status_t status = BAD_VALUE;
+    switch (msg->cmd_id)
+    {
+    case CAMERA_CMD_START_FACE_DETECTION:
+        status = startFaceDetection();
+        break;
+    case CAMERA_CMD_STOP_FACE_DETECTION:
+        status = stopFaceDetection();
+        break;
+    default:
+        break;
+    }
+    return status;
+}
+/**
+ * From Android API:
+ * Starts the face detection. This should be called after preview is started.
+ * The camera will notify Camera.FaceDetectionListener
+ *  of the detected faces in the preview frame. The detected faces may be the same as
+ *  the previous ones.
+ *
+ *  Applications should call stopFaceDetection() to stop the face detection.
+ *
+ *  This method is supported if getMaxNumDetectedFaces() returns a number larger than 0.
+ *  If the face detection has started, apps should not call this again.
+ *  When the face detection is running, setWhiteBalance(String), setFocusAreas(List),
+ *  and setMeteringAreas(List) have no effect.
+ *  The camera uses the detected faces to do auto-white balance, auto exposure, and autofocus.
+ *
+ *  If the apps call autoFocus(AutoFocusCallback), the camera will stop sending face callbacks.
+ *
+ *  The last face callback indicates the areas used to do autofocus.
+ *  After focus completes, face detection will resume sending face callbacks.
+ *
+ *  If the apps call cancelAutoFocus(), the face callbacks will also resume.
+ *
+ *  After calling takePicture(Camera.ShutterCallback, Camera.PictureCallback, Camera.PictureCallback)
+ *  or stopPreview(), and then resuming preview with startPreview(),
+ *  the apps should call this method again to resume face detection.
+ *
+ */
+status_t ControlThread::startFaceDetection()
+{
+    LOG2("@%s", __FUNCTION__);
+    if (mState == STATE_STOPPED || mFaceDetectionActive) {
+        return INVALID_OPERATION;
+    }
+    if (m_pFaceDetector != 0) {
+        m_pFaceDetector->start();
+        mFaceDetectionActive = true;
+        enableMsgType(CAMERA_MSG_PREVIEW_METADATA);
+        return NO_ERROR;
+    } else{
+        return INVALID_OPERATION;
+    }
+}
+
+status_t ControlThread::stopFaceDetection()
+{
+    LOG2("@%s", __FUNCTION__);
+    if( !mFaceDetectionActive )
+        return NO_ERROR;
+    mFaceDetectionActive = false;
+    disableMsgType(CAMERA_MSG_PREVIEW_METADATA);
+    if (m_pFaceDetector != 0) {
+        m_pFaceDetector->stop();
+        return NO_ERROR;
+    } else{
+        return INVALID_OPERATION;
+    }
 }
 
 status_t ControlThread::waitForAndExecuteMessage()
@@ -1706,7 +1857,10 @@ status_t ControlThread::waitForAndExecuteMessage()
         case MESSAGE_ID_STOP_RECORDING:
             status = handleMessageStopRecording();
             break;
-
+        case MESSAGE_ID_RELEASE_PREVIEW_FRAME:
+            status = handleMessageReleasePreviewFrame(
+                &msg.data.releasePreviewFrame);
+            break;
         case MESSAGE_ID_TAKE_PICTURE:
             status = handleMessageTakePicture();
             break;
@@ -1750,7 +1904,9 @@ status_t ControlThread::waitForAndExecuteMessage()
         case MESSAGE_ID_GET_PARAMETERS:
             status = handleMessageGetParameters(&msg.data.getParameters);
             break;
-
+        case MESSAGE_ID_COMMAND:
+            status = handleMessageCommand(&msg.data.command);
+            break;
         default:
             LOGE("Invalid message");
             status = BAD_VALUE;

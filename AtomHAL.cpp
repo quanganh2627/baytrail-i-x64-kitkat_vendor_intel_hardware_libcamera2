@@ -267,7 +267,11 @@ static int atom_send_command(struct camera_device * device,
             int32_t cmd, int32_t arg1, int32_t arg2)
 {
     LOGV("%s", __FUNCTION__);
-    // TODO: implement
+    if (!device)
+        return -EINVAL;
+    atom_camera *cam = (atom_camera *)(device->priv);
+    if (cam)
+        cam->control_thread->sendCommand(cmd, arg1, arg2);
     return 0;
 }
 

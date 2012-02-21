@@ -18,8 +18,10 @@
 
 #include "LogHelper.h"
 #include "Callbacks.h"
-
+#include "AtomAAA.h"
 namespace android {
+
+static void useFacesForAAA(const camera_frame_metadata_t& face_metadata);
 
 Callbacks* Callbacks::mInstance = NULL;
 
@@ -29,6 +31,7 @@ Callbacks::Callbacks() :
     ,mDataCBTimestamp(NULL)
     ,mGetMemoryCB(NULL)
     ,mUserToken(NULL)
+    ,mDummyByte(NULL)
 {
     LOG1("@%s", __FUNCTION__);
 }
@@ -37,6 +40,7 @@ Callbacks::~Callbacks()
 {
     LOG1("@%s", __FUNCTION__);
     mInstance = NULL;
+    if (mDummyByte != NULL) mDummyByte->release(mDummyByte);
 }
 
 void Callbacks::setCallbacks(camera_notify_callback notify_cb,
@@ -79,7 +83,6 @@ void Callbacks::previewFrameDone(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_PREVIEW_FRAME) && mDataCB != NULL) {
-        // TODO: may need to make a memcpy
         LOG2("Sending message: CAMERA_MSG_PREVIEW_FRAME");
         mDataCB(CAMERA_MSG_PREVIEW_FRAME, buff->buff, 0, NULL, mUserToken);
     }
@@ -110,6 +113,62 @@ void Callbacks::cameraError(int err)
         LOG1("Sending message: CAMERA_MSG_ERROR");
         mNotifyCB(CAMERA_MSG_ERROR, err, 0, mUserToken);
     }
+}
+void Callbacks::facesDetected(camera_frame_metadata_t &face_metadata, AtomBuffer* buff)
+{
+ /*If the Call back is enabled for meta data and face detection is
+    * active, inform about faces.*/
+    if ((mMessageFlags & CAMERA_MSG_PREVIEW_METADATA)){
+        // We can't pass NULL to camera service, otherwise it
+        // will handle it as notification callback. So we need a dummy.
+        // Another bad design from Google.
+        if (mDummyByte == NULL) mDummyByte = mGetMemoryCB(-1, 1, 1, NULL);
+        mDataCB(CAMERA_MSG_PREVIEW_METADATA,
+             mDummyByte,
+             0,
+             &face_metadata,
+             mUserToken);
+    }
+    useFacesForAAA(face_metadata);
+    if (buff->owner != 0) {
+        buff->owner->returnBuffer(buff);
+    }
+}
+static void setFocusAreas(const CameraWindow* windows, size_t winCount)
+{
+    AfMode newAfMode = CAM_AF_MODE_TOUCH;
+
+    AtomAAA* aaa = AtomAAA::getInstance();
+    if (aaa->setAfWindows(windows, winCount) == NO_ERROR) {
+        // See if we have to change the actual mode (it could be correct already)
+        AfMode curAfMode = aaa->getAfMode();
+        if (curAfMode != newAfMode)
+            aaa->setAfMode(newAfMode);
+    }
+    return;
+}
+
+void useFacesForAAA(const camera_frame_metadata_t& face_metadata)
+{
+    if (face_metadata.number_of_faces <=0) return;
+    CameraWindow * windows = new CameraWindow[face_metadata.number_of_faces];
+    for (int i=0; i<face_metadata.number_of_faces;i++) {
+         camera_face_t& face =face_metadata.faces[i];
+         LOG2("face id=%d, score =%d", face.id, face.score);
+         LOG2("rect = (%d, %d, %d, %d)",face.rect[0],face.rect[1],
+                 face.rect[2],face.rect[3]);
+         windows[i].x_left = face.rect[0];
+         windows[i].y_top = face.rect[1];
+         windows[i].x_right = face.rect[2];
+         windows[i].y_bottom = face.rect[3];
+         LOG2("mouth: (%d, %d)",face.mouth[0], face.mouth[1]);
+         LOG2("left eye: (%d, %d)", face.left_eye[0], face.left_eye[1]);
+         LOG2("right eye: (%d, %d)", face.right_eye[0], face.right_eye[1]);
+     }
+
+    //TODO: spec says we need also do AWB and AE. Currently no support.
+    //JIRA created:ANDROID-1838
+    setFocusAreas(windows, face_metadata.number_of_faces);
 }
 
 void Callbacks::allocateMemory(AtomBuffer *buff, int size)

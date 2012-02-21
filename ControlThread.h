@@ -27,7 +27,7 @@
 #include "AtomCommon.h"
 #include "AAAThread.h"
 #include "AtomAAA.h"
-
+#include "IFaceDetectionListener.h"
 namespace android {
 
 #define FLASH_FRAME_TIMEOUT 5
@@ -35,7 +35,7 @@ namespace android {
 class Callbacks;
 class AtomISP;
 class BufferShareRegistry;
-
+class IFaceDetector;
 //
 // ControlThread implements most of the operations defined
 // by camera_device_ops_t. Refer to hardware/camera.h
@@ -45,7 +45,8 @@ class ControlThread :
     public Thread,
     public ICallbackPreview,
     public ICallbackPicture,
-    public ICallbackAAA{
+    public ICallbackAAA,
+    public IBufferOwner{
 
 // constructor destructor
 public:
@@ -77,6 +78,8 @@ public:
     status_t startRecording();
     status_t stopRecording();
 
+    void sendCommand( int32_t cmd, int32_t arg1, int32_t arg2);
+
     // return true if preview or recording is enabled
     bool previewEnabled();
     bool recordingEnabled();
@@ -106,6 +109,7 @@ private:
     virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void redEyeRemovalDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void autoFocusDone();
+    virtual void returnBuffer(AtomBuffer *buff);
 
 // private types
 private:
@@ -123,12 +127,18 @@ private:
         MESSAGE_ID_AUTO_FOCUS,
         MESSAGE_ID_CANCEL_AUTO_FOCUS,
         MESSAGE_ID_RELEASE_RECORDING_FRAME,
+        MESSAGE_ID_RELEASE_PREVIEW_FRAME,//This is only a callback from other
+                                         // HAL threads to signal preview buffer
+                                         // is not used and is free to queue back
+                                         // AtomISP.
         MESSAGE_ID_PREVIEW_DONE,
         MESSAGE_ID_PICTURE_DONE,
         MESSAGE_ID_SET_PARAMETERS,
         MESSAGE_ID_GET_PARAMETERS,
         MESSAGE_ID_REDEYE_REMOVAL_DONE,
         MESSAGE_ID_AUTO_FOCUS_DONE,
+        MESSAGE_ID_COMMAND,
+        MESSAGE_ID_FACES_DETECTED,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -141,7 +151,9 @@ private:
     struct MessageReleaseRecordingFrame {
         void *buff;
     };
-
+    struct MessageReleasePreviewFrame {
+        AtomBuffer buff;
+    };
     struct MessagePreviewDone {
         AtomBuffer buff;
     };
@@ -159,11 +171,25 @@ private:
         char** params;
     };
 
+    struct MessageCommand{
+        int32_t cmd_id;
+        int32_t arg1;
+        int32_t arg2;
+    };
+
+    struct MessageFacesDetected {
+        camera_frame_metadata_t* meta;
+        AtomBuffer buf;
+    };
+
     // union of all message data
     union MessageData {
 
         // MESSAGE_ID_RELEASE_RECORDING_FRAME
         MessageReleaseRecordingFrame releaseRecordingFrame;
+
+        // MESSAGE_ID_RELEASE_PREVIEW_FRAME
+        MessageReleasePreviewFrame releasePreviewFrame;
 
         // MESSAGE_ID_PREVIEW_DONE
         MessagePreviewDone previewDone;
@@ -179,6 +205,10 @@ private:
 
         // MESSAGE_ID_REDEYE_REMOVAL_DONE
         MessagePicture redEyeRemovalDone;
+        // MESSAGE_ID_COMMAND
+        MessageCommand command;
+        //MESSAGE_ID_FACES_DETECTED
+        MessageFacesDetected FacesDetected;
     };
 
     // message id and message data
@@ -269,12 +299,18 @@ private:
     status_t handleMessageAutoFocus();
     status_t handleMessageCancelAutoFocus();
     status_t handleMessageReleaseRecordingFrame(MessageReleaseRecordingFrame *msg);
+    status_t handleMessageReleasePreviewFrame(MessageReleasePreviewFrame *msg);
     status_t handleMessagePreviewDone(MessagePreviewDone *msg);
     status_t handleMessagePictureDone(MessagePicture *msg);
     status_t handleMessageSetParameters(MessageSetParameters *msg);
     status_t handleMessageGetParameters(MessageGetParameters *msg);
     status_t handleMessageRedEyeRemovalDone(MessagePicture *msg);
     status_t handleMessageAutoFocusDone();
+    status_t handleMessageCommand(MessageCommand* msg);
+    status_t startFaceDetection();
+    status_t stopFaceDetection();
+    status_t handleMessageFacesDetected(MessageFacesDetected* msg);
+    void releasePreviewFrame(AtomBuffer* buff);
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -364,6 +400,9 @@ private:
     int mNumBuffers;
 
     CameraParameters mParameters;
+    IFaceDetector* m_pFaceDetector;
+    bool mFaceDetectionActive;
+    bool mAutoFocusActive;
 
     sp<BufferShareRegistry> mBSInstance;
 

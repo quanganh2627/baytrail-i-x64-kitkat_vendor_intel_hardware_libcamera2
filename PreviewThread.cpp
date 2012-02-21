@@ -233,7 +233,7 @@ status_t PreviewThread::requestExitAndWait()
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_EXIT;
-
+    mMessageQueue.clearAll();
     // tell thread to exit
     // send message asynchronously
     mMessageQueue.send(&msg);

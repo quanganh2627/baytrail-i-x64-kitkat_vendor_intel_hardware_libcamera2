@@ -28,12 +28,13 @@
 #define BPP 2 // bytes per pixel
 #define MAX_PARAM_VALUE_LENGTH 32
 #define MAX_BURST_BUFFERS 32
-
-struct AtomBuffer {
-    camera_memory_t *buff;
-    int id;    // id for debugging data flow path
-    int ispPrivate; // Private to the AtomISP class. No other classes should touch this
-    bool shared; // buffer sharing
+namespace android {
+struct AtomBuffer;
+class IBufferOwner
+{
+public:
+    virtual void returnBuffer(AtomBuffer* buff) =0;
+    virtual ~IBufferOwner(){};
 };
 
 enum AtomMode {
@@ -42,6 +43,17 @@ enum AtomMode {
     MODE_CAPTURE = 1,
     MODE_VIDEO = 2,
 };
+
+struct AtomBuffer {
+    camera_memory_t *buff;
+    int id;                 // id for debugging data flow path
+    int ispPrivate;         // Private to the AtomISP class.
+                            // No other classes should touch this
+    bool shared;            // buffer sharing
+    AtomMode type;          // type
+    IBufferOwner* owner;    //owner who is responsible to enqueue back to AtomISP
+};
+
 
 enum SensorType {
     SENSOR_TYPE_NONE = 0,
@@ -121,4 +133,5 @@ static const char* v4l2Fmt2Str(int format)
     return &fourccBuf[0];
 }
 
+}
 #endif // ANDROID_LIBCAMERA_COMMON_H

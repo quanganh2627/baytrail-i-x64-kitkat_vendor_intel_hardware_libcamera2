@@ -21,10 +21,10 @@
 #include <utils/threads.h>
 #include <utils/Timers.h>
 #include "AtomCommon.h"
-
+#include "IFaceDetectionListener.h"
 namespace android {
 
-class Callbacks {
+class Callbacks : public IFaceDetectionListener {
 
     static Callbacks* mInstance;
     Callbacks();
@@ -35,7 +35,7 @@ public:
         }
         return mInstance;
     }
-    ~Callbacks();
+    virtual ~Callbacks();
 
 public:
 
@@ -57,6 +57,7 @@ public:
     void shutterSound();
 
     void allocateMemory(AtomBuffer *buff, int size);
+    virtual void facesDetected(camera_frame_metadata_t &face_metadata, AtomBuffer* buffer);
 
 private:
     camera_notify_callback mNotifyCB;
@@ -65,6 +66,7 @@ private:
     camera_request_memory mGetMemoryCB;
     void *mUserToken;
     uint32_t mMessageFlags;
+    camera_memory_t* mDummyByte;
 };
 
 };
