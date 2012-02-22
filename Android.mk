@@ -2,7 +2,6 @@ LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := \
-	LogHelper.cpp \
 	ControlThread.cpp \
 	PreviewThread.cpp \
 	PictureThread.cpp \
@@ -24,6 +23,7 @@ LOCAL_C_INCLUDES += \
 	external/skia/include/images \
 	hardware/intel/libs3cjpeg \
 	$(TARGET_OUT_HEADERS)/libsharedbuffer \
+	$(TARGET_OUT_HEADERS)/libmfldadvci \
 
 LOCAL_SHARED_LIBRARIES := \
 	libcamera_client \
@@ -35,6 +35,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libui \
 	libs3cjpeg \
 	libsharedbuffer \
+	libmfldadvci \
 
 LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
 LOCAL_MODULE := camera.$(TARGET_BOARD_PLATFORM)

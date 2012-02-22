@@ -18,9 +18,20 @@
 #define ANDROID_LIBCAMERA_AAA_THREAD_H
 
 #include <utils/threads.h>
+#include "AtomAAA.h"
 #include "MessageQueue.h"
 
 namespace android {
+
+    class Callbacks;
+
+// callback for when AAA thread is done with redeye removed data
+    class ICallbackAAA {
+    public:
+        ICallbackAAA() {}
+        virtual ~ICallbackAAA() {}
+        virtual void redEyeRemovalDone(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer) = 0;
+    };
 
 class AtomAAA;
 
@@ -28,7 +39,7 @@ class AAAThread : public Thread {
 
 // constructor destructor
 public:
-    AAAThread();
+    AAAThread(ICallbackAAA *aaaDone);
     virtual ~AAAThread();
 
 // Thread overrides
@@ -38,13 +49,12 @@ public:
 // public methods
 public:
 
+    status_t enable3A();
+    status_t enableDVS();
     status_t autoFocus();
     status_t cancelAutoFocus();
-    status_t runAAA(); // TODO: make sure we want this message
-    status_t runDVS(); // TODO: make sure we want this message
-
-    // TODO: need methods to configure AAA
-    // TODO: decide if configuration method should send a message
+    status_t newFrame();
+    status_t applyRedEyeRemoval(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer, int width, int height, int format);
 
 // private types
 private:
@@ -53,10 +63,12 @@ private:
     enum MessageId {
 
         MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
+        MESSAGE_ID_ENABLE_AAA,
+        MESSAGE_ID_ENABLE_DVS,
+        MESSAGE_ID_REMOVE_REDEYE,
         MESSAGE_ID_AUTO_FOCUS,
         MESSAGE_ID_CANCEL_AUTO_FOCUS,
-        MESSAGE_ID_RUN_AAA,
-        MESSAGE_ID_RUN_DVS,
+        MESSAGE_ID_NEW_FRAME,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -66,9 +78,17 @@ private:
     // message data structures
     //
 
+    struct MessagePicture {
+        AtomBuffer snaphotBuf;
+        AtomBuffer postviewBuf;
+        int width;
+        int height;
+        int format;
+    };
+
     // union of all message data
     union MessageData {
-        void *placeHolder; // TODO: add message data if necessary
+        MessagePicture picture;
     };
 
     // message id and message data
@@ -82,10 +102,12 @@ private:
 
     // thread message execution functions
     status_t handleMessageExit();
+    status_t handleMessageEnable3A();
+    status_t handleMessageEnableDVS();
     status_t handleMessageAutoFocus();
     status_t handleMessageCancelAutoFocus();
-    status_t handleMessageRunAAA();
-    status_t handleMessageRunDVS();
+    status_t handleMessageNewFrame();
+    status_t handleMessageRemoveRedEye(MessagePicture* msg);
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -100,7 +122,10 @@ private:
     MessageQueue<Message> mMessageQueue;
     bool mThreadRunning;
     AtomAAA *mAAA;
+    ICallbackAAA* mAAADoneCallback;
 
+    bool m3ARunning;
+    bool mDVSRunning;
 }; // class AAAThread
 
 }; // namespace android

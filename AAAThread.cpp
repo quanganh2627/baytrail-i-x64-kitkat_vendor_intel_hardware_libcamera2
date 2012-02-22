@@ -15,27 +15,51 @@
  */
 #define LOG_TAG "Atom_AAAThread"
 
+#include "LogHelper.h"
 #include "AAAThread.h"
-#include <utils/Log.h>
 #include "AtomAAA.h"
 
 namespace android {
 
-AAAThread::AAAThread() :
+AAAThread::AAAThread(ICallbackAAA *aaaDone) :
     Thread(false)
-    ,mMessageQueue("AAAThread")
+    ,mMessageQueue("AAAThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
-    ,mAAA(new AtomAAA())
+    ,mAAA(AtomAAA::getInstance())
+    ,mAAADoneCallback(aaaDone)
+    ,m3ARunning(false)
+    ,mDVSRunning(false)
 {
+    LOG1("@%s", __FUNCTION__);
 }
 
 AAAThread::~AAAThread()
 {
-    delete mAAA;
+    LOG1("@%s", __FUNCTION__);
+}
+
+status_t AAAThread::enable3A()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    Message msg;
+    msg.id = MESSAGE_ID_ENABLE_AAA;
+    return mMessageQueue.send(&msg, MESSAGE_ID_ENABLE_AAA);
+}
+
+status_t AAAThread::enableDVS()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    Message msg;
+    msg.id = MESSAGE_ID_ENABLE_DVS;
+    return mMessageQueue.send(&msg);
 }
 
 status_t AAAThread::autoFocus()
 {
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
     Message msg;
     msg.id = MESSAGE_ID_AUTO_FOCUS;
     return mMessageQueue.send(&msg);
@@ -43,37 +67,72 @@ status_t AAAThread::autoFocus()
 
 status_t AAAThread::cancelAutoFocus()
 {
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
     Message msg;
     msg.id = MESSAGE_ID_CANCEL_AUTO_FOCUS;
     return mMessageQueue.send(&msg);
 }
 
-status_t AAAThread::runAAA()
+status_t AAAThread::newFrame()
 {
+    LOG2("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
     Message msg;
-    msg.id = MESSAGE_ID_RUN_AAA;
-    return mMessageQueue.send(&msg);
+    msg.id = MESSAGE_ID_NEW_FRAME;
+    status = mMessageQueue.send(&msg);
+    return status;
 }
 
-status_t AAAThread::runDVS()
+status_t AAAThread::applyRedEyeRemoval(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer, int width, int height, int format)
 {
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    if (snapshotBuffer == NULL || snapshotBuffer->buff == NULL)
+        return INVALID_OPERATION;
+
     Message msg;
-    msg.id = MESSAGE_ID_RUN_DVS;
-    return mMessageQueue.send(&msg);
+    msg.id = MESSAGE_ID_REMOVE_REDEYE;
+    msg.data.picture.snaphotBuf = *snapshotBuffer;
+    msg.data.picture.postviewBuf = *postviewBuffer;
+    msg.data.picture.format = format;
+    msg.data.picture.height = height;
+    msg.data.picture.width = width;
+    status = mMessageQueue.send(&msg);
+    return status;
 }
 
 status_t AAAThread::handleMessageExit()
 {
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     mThreadRunning = false;
+    m3ARunning = false;
+    mDVSRunning = false;
 
-    // TODO: any other cleanup that may need to be done
+    return status;
+}
 
+status_t AAAThread::handleMessageEnable3A()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    m3ARunning = true;
+    mMessageQueue.reply(MESSAGE_ID_ENABLE_AAA, status);
+    return status;
+}
+
+status_t AAAThread::handleMessageEnableDVS()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mDVSRunning = true;
     return status;
 }
 
 status_t AAAThread::handleMessageAutoFocus()
 {
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     // TODO: implement
@@ -83,6 +142,7 @@ status_t AAAThread::handleMessageAutoFocus()
 
 status_t AAAThread::handleMessageCancelAutoFocus()
 {
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     // TODO: implement
@@ -90,26 +150,37 @@ status_t AAAThread::handleMessageCancelAutoFocus()
     return status;
 }
 
-status_t AAAThread::handleMessageRunAAA()
+status_t AAAThread::handleMessageNewFrame()
 {
+    LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    if (!mDVSRunning && !m3ARunning)
+        return status;
 
-    // TODO: implement
+    if(m3ARunning){
+        status = mAAA->apply3AProcess();
+    }
 
+    if(mDVSRunning){
+        status = mAAA->applyDvsProcess();
+    }
     return status;
 }
 
-status_t AAAThread::handleMessageRunDVS()
+status_t AAAThread::handleMessageRemoveRedEye(MessagePicture* msg)
 {
     status_t status = NO_ERROR;
 
-    // TODO: implement
+    status = mAAA->applyRedEyeRemoval(msg->snaphotBuf, msg->width, msg->height, msg->format);
 
+    // When the red-eye removal is done, send back the buffers to ControlThread to encode picture.
+    mAAADoneCallback->redEyeRemovalDone(&msg->snaphotBuf, &msg->postviewBuf);
     return status;
 }
 
 status_t AAAThread::waitForAndExecuteMessage()
 {
+    LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     Message msg;
     mMessageQueue.receive(&msg);
@@ -117,32 +188,34 @@ status_t AAAThread::waitForAndExecuteMessage()
     switch (msg.id) {
 
         case MESSAGE_ID_EXIT:
-            LOGD("handleMessageExit...\n");
             status = handleMessageExit();
             break;
 
+        case MESSAGE_ID_ENABLE_AAA:
+            status = handleMessageEnable3A();
+            break;
+
+        case MESSAGE_ID_ENABLE_DVS:
+            status = handleMessageEnableDVS();
+            break;
+
         case MESSAGE_ID_AUTO_FOCUS:
-            LOGD("handleMessageAutoFocus...\n");
             status = handleMessageAutoFocus();
             break;
 
         case MESSAGE_ID_CANCEL_AUTO_FOCUS:
-            LOGD("handleMessageCancelAutoFocus...\n");
             status = handleMessageCancelAutoFocus();
             break;
 
-        case MESSAGE_ID_RUN_AAA:
-            LOGD("handleMessageRunAAA...\n");
-            status = handleMessageRunAAA();
+        case MESSAGE_ID_NEW_FRAME:
+            status = handleMessageNewFrame();
             break;
 
-        case MESSAGE_ID_RUN_DVS:
-            LOGD("handleMessageRunDVS...\n");
-            status = handleMessageRunDVS();
+    case MESSAGE_ID_REMOVE_REDEYE:
+            status = handleMessageRemoveRedEye(&msg.data.picture);
             break;
 
         default:
-            LOGE("invalid message\n");
             status = BAD_VALUE;
             break;
     };
@@ -151,7 +224,7 @@ status_t AAAThread::waitForAndExecuteMessage()
 
 bool AAAThread::threadLoop()
 {
-    LOGD("threadLoop\n");
+    LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     mThreadRunning = true;
@@ -163,7 +236,7 @@ bool AAAThread::threadLoop()
 
 status_t AAAThread::requestExitAndWait()
 {
-    LOGD("requestExit...\n");
+    LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_EXIT;
 

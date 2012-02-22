@@ -24,6 +24,8 @@
 #include "PreviewThread.h"
 #include "PictureThread.h"
 #include "AtomCommon.h"
+#include "AAAThread.h"
+#include "AtomAAA.h"
 
 namespace android {
 
@@ -39,7 +41,8 @@ class BufferShareRegistry;
 class ControlThread :
     public Thread,
     public ICallbackPreview,
-    public ICallbackPicture {
+    public ICallbackPicture,
+    public ICallbackAAA{
 
 // constructor destructor
 public:
@@ -98,6 +101,7 @@ public:
 private:
     virtual void previewDone(AtomBuffer *buff);
     virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
+    virtual void redEyeRemovalDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
 
 // private types
 private:
@@ -119,6 +123,7 @@ private:
         MESSAGE_ID_PICTURE_DONE,
         MESSAGE_ID_SET_PARAMETERS,
         MESSAGE_ID_GET_PARAMETERS,
+        MESSAGE_ID_REDEYE_REMOVAL_DONE,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -136,7 +141,7 @@ private:
         AtomBuffer buff;
     };
 
-    struct MessagePictureDone {
+    struct MessagePicture {
         AtomBuffer snapshotBuf;
         AtomBuffer postviewBuf;
     };
@@ -159,13 +164,16 @@ private:
         MessagePreviewDone previewDone;
 
         // MESSAGE_ID_PICTURE_DONE
-        MessagePictureDone pictureDone;
+        MessagePicture pictureDone;
 
         // MESSAGE_ID_SET_PARAMETERS
         MessageSetParameters setParameters;
 
         // MESSAGE_ID_GET_PARAMETERS
         MessageGetParameters getParameters;
+
+        // MESSAGE_ID_REDEYE_REMOVAL_DONE
+        MessagePicture redEyeRemovalDone;
     };
 
     // message id and message data
@@ -255,9 +263,10 @@ private:
     status_t handleMessageCancelAutoFocus();
     status_t handleMessageReleaseRecordingFrame(MessageReleaseRecordingFrame *msg);
     status_t handleMessagePreviewDone(MessagePreviewDone *msg);
-    status_t handleMessagePictureDone(MessagePictureDone *msg);
+    status_t handleMessagePictureDone(MessagePicture *msg);
     status_t handleMessageSetParameters(MessageSetParameters *msg);
     status_t handleMessageGetParameters(MessageGetParameters *msg);
+    status_t handleMessageRedEyeRemovalDone(MessagePicture *msg);
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -275,7 +284,17 @@ private:
     // These are parameters that can be set while the ISP is running (most params can be
     // set while the isp is stopped as well).
     status_t processDynamicParameters(const CameraParameters *oldParams,
-            const CameraParameters *newParams);
+            CameraParameters *newParams);
+    status_t processParamEffect(const CameraParameters *oldParams,
+            CameraParameters *newParams);
+    status_t processParamSceneMode(const CameraParameters *oldParams,
+            CameraParameters *newParams);
+    status_t processParamFocusMode(const CameraParameters *oldParams,
+            CameraParameters *newParams);
+    status_t processParamWhiteBalance(const CameraParameters *oldParams,
+            CameraParameters *newParams);
+    status_t processParamRedEyeMode(const CameraParameters *oldParams,
+            CameraParameters *newParams);
 
     // These are params that can only be set while the ISP is stopped. If the parameters
     // changed while the ISP is running, the ISP will need to be stopped, reconfigured, and
@@ -306,8 +325,10 @@ private:
 private:
 
     AtomISP *mISP;
+    AtomAAA *mAAA;
     sp<PreviewThread> mPreviewThread;
     sp<PictureThread> mPictureThread;
+    sp<AAAThread>     m3AThread;
 
     MessageQueue<Message> mMessageQueue;
     State mState;

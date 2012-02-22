@@ -153,9 +153,9 @@ const char *cameraParametersFormat(int v4l2Format)
 
 int V4L2Format(const char *cameraParamsFormat)
 {
-    LOG_FUNCTION2
+    LOG1("@%s", __FUNCTION__);
     if (!cameraParamsFormat) {
-        LogError("null cameraParamsFormat");
+        LOGE("null cameraParamsFormat");
         return -1;
     }
 
@@ -171,7 +171,7 @@ int V4L2Format(const char *cameraParamsFormat)
     if (strncmp(cameraParamsFormat, CameraParameters::PIXEL_FORMAT_JPEG, len) == 0)
         return V4L2_PIX_FMT_JPEG;
 
-    LogError("invalid format %s", cameraParamsFormat);
+    LOGE("invalid format %s", cameraParamsFormat);
     return -1;
 }
 

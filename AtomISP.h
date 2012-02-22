@@ -25,6 +25,7 @@
 #include <camera/CameraParameters.h>
 #include "AtomCommon.h"
 #include "IntelBufferSharing.h"
+#include "AtomAAA.h"
 
 namespace android {
 
@@ -67,13 +68,6 @@ class AtomISP {
 // public types
 public:
 
-    enum Mode {
-        MODE_NONE = -1,
-        MODE_PREVIEW = 0,
-        MODE_CAPTURE = 1,
-        MODE_VIDEO = 2,
-    };
-
 // constructor/destructor
 public:
     AtomISP(int camera_id);
@@ -86,7 +80,7 @@ public:
 
     void getDefaultParameters(CameraParameters *params);
 
-    status_t start(Mode mode);
+    status_t start(AtomMode mode);
     status_t stop();
 
     inline int getNumBuffers() { return mNumBuffers; }
@@ -114,13 +108,17 @@ public:
 
     status_t setSnapshotNum(int num);
 
-    void getZoomRatios(Mode mode, CameraParameters *params);
+    void getZoomRatios(AtomMode mode, CameraParameters *params);
     status_t setZoom(int zoom);
     status_t setFlash(int numFrames);
+    status_t setColorEffect(v4l2_colorfx effect);
 
     // camera hardware information
     static int getNumberOfCameras();
     static status_t getCameraInfo(int cameraId, camera_info *cameraInfo);
+
+    bool is3ASupported() { return mHas3A; }
+    float getFrameRate() { return mConfig.fps; }
 
 // private methods
 private:
@@ -171,6 +169,9 @@ private:
     int atomisp_set_attribute (int fd, int attribute_num,
                                const int value, const char *name);
     int  atomisp_set_zoom (int fd, int zoom);
+
+    status_t selectCameraSensor();
+    size_t setupCameraInfo();
 
 // private types
 private:
@@ -224,7 +225,7 @@ private:
     static cameraInfo camInfo[MAX_CAMERAS];
     static int numCameras;
 
-    Mode mMode;
+    AtomMode mMode;
     Callbacks *mCallbacks;
 
     int mNumBuffers;
@@ -253,6 +254,9 @@ private:
     int mSessionId; // uniquely identify each session
 
     int mCameraId;
+    SensorType mSensorType;
+    AtomAAA *mAAA;
+    bool mHas3A;
 
 }; // class AtomISP
 

@@ -37,24 +37,24 @@ PreviewThread::PreviewThread(ICallbackPreview *previewDone) :
     ,mPreviewWidth(640)
     ,mPreviewHeight(480)
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
 }
 
 PreviewThread::~PreviewThread()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     mDebugFPS.clear();
 }
 
 void PreviewThread::setCallbacks(Callbacks *callbacks)
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     mCallbacks = callbacks;
 }
 
 status_t PreviewThread::setPreviewWindow(struct preview_stream_ops *window)
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_SET_PREVIEW_WINDOW;
     msg.data.setPreviewWindow.window = window;
@@ -63,7 +63,7 @@ status_t PreviewThread::setPreviewWindow(struct preview_stream_ops *window)
 
 status_t PreviewThread::setPreviewSize(int preview_width, int preview_height)
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_SET_PREVIEW_SIZE;
     msg.data.setPreviewSize.width = preview_width;
@@ -73,7 +73,7 @@ status_t PreviewThread::setPreviewSize(int preview_width, int preview_height)
 
 status_t PreviewThread::preview(AtomBuffer *buff)
 {
-    LOG_FUNCTION2
+    LOG2("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_PREVIEW;
     msg.data.preview.buff = *buff;
@@ -82,7 +82,7 @@ status_t PreviewThread::preview(AtomBuffer *buff)
 
 status_t PreviewThread::handleMessageExit()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     mThreadRunning = false;
     return status;
@@ -90,10 +90,10 @@ status_t PreviewThread::handleMessageExit()
 
 status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
 {
-    LOG_FUNCTION2
+    LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    LogDetail2("Buff: id = %d, data = %p",
+    LOG2("Buff: id = %d, data = %p",
             msg->buff.id,
             msg->buff.buff->data);
 
@@ -102,10 +102,10 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
         int err;
         int stride;
         if ((err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride)) != 0) {
-            LogError("Surface::dequeueBuffer returned error %d", err);
+            LOGE("Surface::dequeueBuffer returned error %d", err);
         } else {
             if (mPreviewWindow->lock_buffer(mPreviewWindow, buf) != NO_ERROR) {
-                LogError("Failed to lock preview buffer!");
+                LOGE("Failed to lock preview buffer!");
                 mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
                 status = NO_MEMORY;
                 goto exit;
@@ -115,7 +115,7 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
             void *dst;
 
             if (mapper.lock(*buf, GRALLOC_USAGE_SW_WRITE_OFTEN, bounds, &dst) != NO_ERROR) {
-                LogError("Failed to lock GraphicBufferMapper!");
+                LOGE("Failed to lock GraphicBufferMapper!");
                 mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
                 status = NO_MEMORY;
                 goto exit;
@@ -125,7 +125,7 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
                     msg->buff.buff->data,
                     dst);
             if ((err = mPreviewWindow->enqueue_buffer(mPreviewWindow, buf)) != 0) {
-                LogError("Surface::queueBuffer returned error %d", err);
+                LOGE("Surface::queueBuffer returned error %d", err);
             }
             mapper.unlock(*buf);
         }
@@ -142,15 +142,13 @@ exit:
 
 status_t PreviewThread::handleMessageSetPreviewWindow(MessageSetPreviewWindow *msg)
 {
-    LOG_FUNCTION
+    LOG1("@%s: window = %p", __FUNCTION__, msg->window);
     status_t status = NO_ERROR;
-
-    LogDetail2("Preview: window = %p", msg->window);
 
     mPreviewWindow = msg->window;
 
     if (mPreviewWindow != NULL) {
-        LogDetail("Setting new preview window %p", mPreviewWindow);
+        LOG1("Setting new preview window %p", mPreviewWindow);
         mPreviewWindow->set_usage(mPreviewWindow, GRALLOC_USAGE_SW_WRITE_OFTEN);
         mPreviewWindow->set_buffers_geometry(
                 mPreviewWindow,
@@ -164,16 +162,12 @@ status_t PreviewThread::handleMessageSetPreviewWindow(MessageSetPreviewWindow *m
 
 status_t PreviewThread::handleMessageSetPreviewSize(MessageSetPreviewSize *msg)
 {
-    LOG_FUNCTION
+    LOG1("@%s: width = %d, height = %d", __FUNCTION__, msg->width, msg->height);
     status_t status = NO_ERROR;
-
-    LogDetail2("Preview: width = %d, height = %d",
-                msg->width,
-                msg->height);
 
     if ((msg->width != 0 && msg->height != 0) &&
             (mPreviewWidth != msg->width || mPreviewHeight != msg->height)) {
-        LogDetail("Setting new preview size: %dx%d", mPreviewWidth, mPreviewHeight);
+        LOG1("Setting new preview size: %dx%d", mPreviewWidth, mPreviewHeight);
         if (mPreviewWindow != NULL) {
             // if preview size changed, update the preview window
             mPreviewWindow->set_buffers_geometry(
@@ -191,7 +185,7 @@ status_t PreviewThread::handleMessageSetPreviewSize(MessageSetPreviewSize *msg)
 
 status_t PreviewThread::waitForAndExecuteMessage()
 {
-    LOG_FUNCTION2
+    LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     Message msg;
     mMessageQueue.receive(&msg);
@@ -224,7 +218,7 @@ status_t PreviewThread::waitForAndExecuteMessage()
 
 bool PreviewThread::threadLoop()
 {
-    LOG_FUNCTION2
+    LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     // start gathering frame rate stats
@@ -242,7 +236,7 @@ bool PreviewThread::threadLoop()
 
 status_t PreviewThread::requestExitAndWait()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_EXIT;
 

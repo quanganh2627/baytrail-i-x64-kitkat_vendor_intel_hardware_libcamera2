@@ -29,8 +29,10 @@ namespace android {
 ControlThread::ControlThread(int cameraId) :
     Thread(true) // callbacks may call into java
     ,mISP(new AtomISP(cameraId))
+    ,mAAA(AtomAAA::getInstance())
     ,mPreviewThread(new PreviewThread((ICallbackPreview *) this))
     ,mPictureThread(new PictureThread((ICallbackPicture *) this))
+    ,m3AThread(new AAAThread((ICallbackAAA *) this))
     ,mMessageQueue("ControlThread", (int) MESSAGE_ID_MAX)
     ,mState(STATE_STOPPED)
     ,mThreadRunning(false)
@@ -40,8 +42,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mBSInstance(BufferShareRegistry::getInstance())
     ,mBSState(BS_STATE_DISABLED)
 {
-    LOG_FUNCTION
-    LogDetail("cameraId= %d", cameraId);
+    LOG1("@%s: cameraId = %d", __FUNCTION__, cameraId);
 
     // get default params from AtomISP and JPEG encoder
     mISP->getDefaultParameters(&mParameters);
@@ -50,9 +51,10 @@ ControlThread::ControlThread(int cameraId) :
 
 ControlThread::~ControlThread()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     mPreviewThread.clear();
     mPictureThread.clear();
+    m3AThread.clear();
     if (mISP != NULL) {
         delete mISP;
     }
@@ -64,8 +66,7 @@ ControlThread::~ControlThread()
 
 status_t ControlThread::setPreviewWindow(struct preview_stream_ops *window)
 {
-    LOG_FUNCTION
-    LogDetail("window = %p", window);
+    LOG1("@%s: window = %p", __FUNCTION__, window);
     if (mPreviewThread != NULL) {
         return mPreviewThread->setPreviewWindow(window);
     }
@@ -78,7 +79,7 @@ void ControlThread::setCallbacks(camera_notify_callback notify_cb,
                                  camera_request_memory get_memory,
                                  void* user)
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     mCallbacks->setCallbacks(notify_cb,
             data_cb,
             data_cb_timestamp,
@@ -91,24 +92,25 @@ void ControlThread::setCallbacks(camera_notify_callback notify_cb,
 
 void ControlThread::enableMsgType(int32_t msgType)
 {
-    LOG_FUNCTION
+    LOG2("@%s", __FUNCTION__);
     mCallbacks->enableMsgType(msgType);
 }
 
 void ControlThread::disableMsgType(int32_t msgType)
 {
-    LOG_FUNCTION
+    LOG2("@%s", __FUNCTION__);
     mCallbacks->disableMsgType(msgType);
 }
 
 bool ControlThread::msgTypeEnabled(int32_t msgType)
 {
+    LOG2("@%s", __FUNCTION__);
     return mCallbacks->msgTypeEnabled(msgType);
 }
 
 status_t ControlThread::startPreview()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     // send message and block until thread processes message
     Message msg;
     msg.id = MESSAGE_ID_START_PREVIEW;
@@ -117,7 +119,7 @@ status_t ControlThread::startPreview()
 
 status_t ControlThread::stopPreview()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     // send message and block until thread processes message
     if(mState == STATE_STOPPED){
         return NO_ERROR;
@@ -130,7 +132,7 @@ status_t ControlThread::stopPreview()
 
 status_t ControlThread::startRecording()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     // send message and block until thread processes message
     Message msg;
     msg.id = MESSAGE_ID_START_RECORDING;
@@ -139,7 +141,7 @@ status_t ControlThread::startRecording()
 
 status_t ControlThread::stopRecording()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     // send message and block until thread processes message
     Message msg;
     msg.id = MESSAGE_ID_STOP_RECORDING;
@@ -148,17 +150,19 @@ status_t ControlThread::stopRecording()
 
 bool ControlThread::previewEnabled()
 {
+    LOG2("@%s", __FUNCTION__);
     return mState != STATE_STOPPED;
 }
 
 bool ControlThread::recordingEnabled()
 {
+    LOG2("@%s", __FUNCTION__);
     return mState == STATE_RECORDING;
 }
 
 status_t ControlThread::setParameters(const char *params)
 {
-    LOG_FUNCTION
+    LOG1("@%s: params = %p", __FUNCTION__, params);
     Message msg;
     msg.id = MESSAGE_ID_SET_PARAMETERS;
     msg.data.setParameters.params = const_cast<char*>(params); // We swear we won't modify params :)
@@ -167,7 +171,7 @@ status_t ControlThread::setParameters(const char *params)
 
 char* ControlThread::getParameters()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
 
     char *params = NULL;
     Message msg;
@@ -179,7 +183,7 @@ char* ControlThread::getParameters()
 
 void ControlThread::putParameters(char* params)
 {
-    LOG_FUNCTION
+    LOG1("@%s: params = %p", __FUNCTION__, params);
     if (params)
         free(params);
 }
@@ -196,7 +200,7 @@ bool ControlThread::isParameterSet(const char* param)
 
 status_t ControlThread::takePicture()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_TAKE_PICTURE;
     return mMessageQueue.send(&msg);
@@ -204,7 +208,7 @@ status_t ControlThread::takePicture()
 
 status_t ControlThread::cancelPicture()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_CANCEL_PICTURE;
     return mMessageQueue.send(&msg);
@@ -212,7 +216,7 @@ status_t ControlThread::cancelPicture()
 
 status_t ControlThread::autoFocus()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_AUTO_FOCUS;
     return mMessageQueue.send(&msg);
@@ -220,7 +224,7 @@ status_t ControlThread::autoFocus()
 
 status_t ControlThread::cancelAutoFocus()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_CANCEL_AUTO_FOCUS;
     return mMessageQueue.send(&msg);
@@ -228,7 +232,7 @@ status_t ControlThread::cancelAutoFocus()
 
 status_t ControlThread::releaseRecordingFrame(void *buff)
 {
-    LOG_FUNCTION
+    LOG1("@%s: buff = %p", __FUNCTION__, buff);
     Message msg;
     msg.id = MESSAGE_ID_RELEASE_RECORDING_FRAME;
     msg.data.releaseRecordingFrame.buff = buff;
@@ -237,7 +241,7 @@ status_t ControlThread::releaseRecordingFrame(void *buff)
 
 void ControlThread::previewDone(AtomBuffer *buff)
 {
-    LOG_FUNCTION2
+    LOG2("@%s: buff = %p, id = %d", __FUNCTION__, buff->buff->data, buff->id);
     Message msg;
     msg.id = MESSAGE_ID_PREVIEW_DONE;
     msg.data.previewDone.buff = *buff;
@@ -246,7 +250,11 @@ void ControlThread::previewDone(AtomBuffer *buff)
 
 void ControlThread::pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 {
-    LOG_FUNCTION
+    LOG2("@%s: snapshotBuf = %p, postviewBuf = %p, id = %d",
+            __FUNCTION__,
+            snapshotBuf->buff->data,
+            postviewBuf->buff->data,
+            snapshotBuf->id);
     Message msg;
     msg.id = MESSAGE_ID_PICTURE_DONE;
     msg.data.pictureDone.snapshotBuf = *snapshotBuf;
@@ -254,9 +262,23 @@ void ControlThread::pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf
     mMessageQueue.send(&msg);
 }
 
+void ControlThread::redEyeRemovalDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
+{
+    LOG1("@%s: snapshotBuf = %p, postviewBuf = %p, id = %d",
+            __FUNCTION__,
+            snapshotBuf->buff->data,
+            postviewBuf->buff->data,
+            snapshotBuf->id);
+    Message msg;
+    msg.id = MESSAGE_ID_REDEYE_REMOVAL_DONE;
+    msg.data.redEyeRemovalDone.snapshotBuf = *snapshotBuf;
+    msg.data.redEyeRemovalDone.postviewBuf = *postviewBuf;
+    mMessageQueue.send(&msg);
+}
+
 status_t ControlThread::handleMessageExit()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     mThreadRunning = false;
 
     // TODO: any other cleanup that may need to be done
@@ -266,35 +288,36 @@ status_t ControlThread::handleMessageExit()
 
 status_t ControlThread::startPreviewCore(bool videoMode)
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     int width;
     int height;
     int format;
     State state;
-    AtomISP::Mode mode;
+    AtomMode mode;
 
     if (mState != STATE_STOPPED) {
-        LogError("must be in stop state to start preview");
+        LOGE("Must be in STATE_STOPPED to start preview");
         return INVALID_OPERATION;
     }
 
     if (videoMode) {
-        LogDetail("Starting preview in video mode");
+        LOG1("Starting preview in video mode");
         state = STATE_PREVIEW_VIDEO;
-        mode = AtomISP::MODE_VIDEO;
+        mode = MODE_VIDEO;
     } else {
-        LogDetail("Starting preview in still mode");
+        LOG1("Starting preview in still mode");
         state = STATE_PREVIEW_STILL;
-        mode = AtomISP::MODE_PREVIEW;
+        mode = MODE_PREVIEW;
     }
 
     // set preview frame config
     format = V4L2Format(mParameters.getPreviewFormat());
     if (format == -1) {
-        LogError("bad preview format");
+        LOGE("Bad preview format. Cannot start the preview!");
         return BAD_VALUE;
     }
+    LOG1("Using preview format: %s", v4l2Fmt2Str(format));
     mParameters.getPreviewSize(&width, &height);
     mISP->setPreviewFrameFormat(width, height, format);
     mPreviewThread->setPreviewSize(width, height);
@@ -303,9 +326,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (videoMode) {
         format = V4L2Format(mParameters.get(CameraParameters::KEY_VIDEO_FRAME_FORMAT));
         if (format == -1) {
-            LogError("bad video format");
+            LOGE("Bad video format. Cannot start the video preview!");
             return BAD_VALUE;
         }
+        LOG1("Using video format: %s", v4l2Fmt2Str(format));
         mParameters.getVideoSize(&width, &height);
         mISP->setVideoFrameFormat(width, height, format);
     }
@@ -319,13 +343,22 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (status == NO_ERROR) {
         status = mPreviewThread->run();
         if (status == NO_ERROR) {
+            memset(mCoupledBuffers, 0, sizeof(mCoupledBuffers));
             mState = state;
         } else {
-            LogError("Error starting preview thread");
+            LOGE("Error starting preview thread!");
             mISP->stop();
         }
+        if (mISP->is3ASupported()) {
+            status = m3AThread->run();
+            if (status == NO_ERROR) {
+                m3AThread->enable3A();
+            } else {
+                LOGE("Error starting 3A thread!");
+            }
+        }
     } else {
-        LogError("Error starting isp");
+        LOGE("Error starting ISP!");
     }
 
     return status;
@@ -333,15 +366,16 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
 status_t ControlThread::stopPreviewCore()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     mPreviewThread->requestExitAndWait();
+    m3AThread->requestExitAndWait();
     status = mISP->stop();
-    if (status == NO_ERROR)
+    if (status == NO_ERROR) {
         mState = STATE_STOPPED;
-    else
-        LogError("Error stopping isp in preview mode");
-
+    } else {
+        LOGE("Error stopping ISP in preview mode!");
+    }
     delete [] mCoupledBuffers;
     // set to null because frames can be returned to hal in stop state
     // need to check for null in relevant locations
@@ -351,6 +385,7 @@ status_t ControlThread::stopPreviewCore()
 
 status_t ControlThread::restartPreview(bool videoMode)
 {
+    LOG1("@%s: mode = %s", __FUNCTION__, videoMode?"VIDEO":"STILL");
     status_t status = stopPreviewCore();
     if (status == NO_ERROR)
         status = startPreviewCore(videoMode);
@@ -359,13 +394,13 @@ status_t ControlThread::restartPreview(bool videoMode)
 
 status_t ControlThread::handleMessageStartPreview()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     status_t status;
     if (mState == STATE_STOPPED) {
         bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
         status = startPreviewCore(videoMode);
     } else {
-        LogError("Error starting preview. Invalid state!");
+        LOGE("Error starting preview. Invalid state!");
         status = INVALID_OPERATION;
     }
 
@@ -376,12 +411,12 @@ status_t ControlThread::handleMessageStartPreview()
 
 status_t ControlThread::handleMessageStopPreview()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     status_t status;
     if (mState != STATE_STOPPED) {
         status = stopPreviewCore();
     } else {
-        LogError("Error stopping preview. Invalid state!");
+        LOGE("Error stopping preview. Invalid state!");
         status = INVALID_OPERATION;
     }
 
@@ -392,30 +427,30 @@ status_t ControlThread::handleMessageStopPreview()
 
 status_t ControlThread::handleMessageStartRecording()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     if (mState == STATE_PREVIEW_VIDEO) {
         if (recordingBSEnable() != NO_ERROR) {
-            LogError("Error voting for buffer sharing");
+            LOGE("Error voting for buffer sharing");
         }
         mState = STATE_RECORDING;
     } else if (mState == STATE_PREVIEW_STILL) {
         /* We are in PREVIEW_STILL mode; in order to start recording
          * we first need to stop AtomISP and restart it with MODE_VIDEO
          */
-        LogDetail("We are in STATE_PREVIEW. Switching to STATE_VIDEO before starting to record.");
+        LOGD("We are in STATE_PREVIEW. Switching to STATE_VIDEO before starting to record.");
         if ((status = mISP->stop()) == NO_ERROR) {
-            if ((status = mISP->start(AtomISP::MODE_VIDEO)) == NO_ERROR) {
+            if ((status = mISP->start(MODE_VIDEO)) == NO_ERROR) {
                 mState = STATE_RECORDING;
             } else {
-                LogError("Error starting ISP in VIDEO mode!");
+                LOGE("Error starting ISP in VIDEO mode!");
             }
         } else {
-            LogError("Error stopping ISP!");
+            LOGE("Error stopping ISP!");
         }
     } else {
-        LogError("Error starting recording. Invalid state!");
+        LOGE("Error starting recording. Invalid state!");
         status = INVALID_OPERATION;
     }
 
@@ -426,7 +461,7 @@ status_t ControlThread::handleMessageStartRecording()
 
 status_t ControlThread::handleMessageStopRecording()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     if (mState == STATE_RECORDING) {
@@ -435,11 +470,11 @@ status_t ControlThread::handleMessageStopRecording()
          * switch back to PREVIEW_VIDEO now since we got a startRecording
          */
         if (recordingBSDisable() != NO_ERROR) {
-            LogError("Error voting for disable buffer sharing");
+            LOGE("Error voting for disable buffer sharing");
         }
         mState = STATE_PREVIEW_VIDEO;
     } else {
-        LogError("Error stopping recording. Invalid state!");
+        LOGE("Error stopping recording. Invalid state!");
         status = INVALID_OPERATION;
     }
 
@@ -450,7 +485,7 @@ status_t ControlThread::handleMessageStopRecording()
 
 status_t ControlThread::handleMessageTakePicture()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
     int width;
@@ -458,16 +493,7 @@ status_t ControlThread::handleMessageTakePicture()
     int format;
 
     if (mState != STATE_STOPPED) {
-        status = mPreviewThread->requestExitAndWait();
-        if (status == NO_ERROR) {
-            status = mISP->stop();
-            if (status == NO_ERROR) {
-                mState = STATE_STOPPED;
-            }
-        } else {
-            LogError("Error stopping preview thread");
-            return status;
-        }
+        status = stopPreviewCore();
     }
 
     // configure snapshot
@@ -477,8 +503,8 @@ status_t ControlThread::handleMessageTakePicture()
     mPictureThread->setPictureFormat(format);
     mPictureThread->initialize(mParameters, false);
 
-    if ((status = mISP->start(AtomISP::MODE_CAPTURE)) != NO_ERROR) {
-        LogError("Error starting the ISP driver in CAPTURE mode!");
+    if ((status = mISP->start(MODE_CAPTURE)) != NO_ERROR) {
+        LOGE("Error starting the ISP driver in CAPTURE mode!");
         return status;
     }
 
@@ -490,28 +516,43 @@ status_t ControlThread::handleMessageTakePicture()
 
     // Get the snapshot
     if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
-        LogError("Error in grabbing snapshot!");
+        LOGE("Error in grabbing snapshot!");
         return status;
     }
-
 
     // tell CameraService to play the shutter sound
     mCallbacks->shutterSound();
 
     // Start PictureThread
     status = mPictureThread->run();
-    if (status == NO_ERROR) {
-        status = mPictureThread->encode(&snapshotBuffer, &postviewBuffer);
-    } else {
-        LogError("Error starting PictureThread!");
+    if (status != NO_ERROR) {
+        LOGE("Error starting PictureThread!");
+        return status;
     }
+
+    /*
+     * Handle Red-Eye removal. The Red-Eye removal should be done in a separate thread, so if we are
+     * in burst-capture mode, we can do: grab frames in ControlThread, Red-Eye removal in AAAThread
+     * and JPEG encoding in Picture thread, all in parallel.
+     */
+    if (mISP->is3ASupported() && mAAA->getRedEyeRemoval()) {
+        // tell 3A thread to remove red-eye
+        status = m3AThread->applyRedEyeRemoval(&snapshotBuffer, &postviewBuffer, width, height, format);
+        if (status == NO_ERROR) {
+            return status;
+        } else {
+            LOGE("Red-Eye removal failed! Continue to encode picture...");
+        }
+    }
+
+    status = mPictureThread->encode(&snapshotBuffer, &postviewBuffer);
 
     return status;
 }
 
 status_t ControlThread::handleMessageCancelPicture()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     // TODO: implement
@@ -521,7 +562,7 @@ status_t ControlThread::handleMessageCancelPicture()
 
 status_t ControlThread::handleMessageAutoFocus()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     // TODO: implement
@@ -531,7 +572,7 @@ status_t ControlThread::handleMessageAutoFocus()
 
 status_t ControlThread::handleMessageCancelAutoFocus()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     void *buff;
 
@@ -542,9 +583,8 @@ status_t ControlThread::handleMessageCancelAutoFocus()
 
 status_t ControlThread::handleMessageReleaseRecordingFrame(MessageReleaseRecordingFrame *msg)
 {
-    LOG_FUNCTION2
+    LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    int cnt = 0;
     if (mState == STATE_RECORDING) {
         AtomBuffer *recBuff = findRecordingBuffer(msg->buff);
         if (recBuff == NULL) {
@@ -553,7 +593,7 @@ status_t ControlThread::handleMessageReleaseRecordingFrame(MessageReleaseRecordi
             // to see if sharing was disabled then we restart the ISP with new buffers. In
             // the mean time, the app is returning us shared buffers when we are no longer
             // using them.
-            LogError("Could not find recording buffer: %p", msg->buff);
+            LOGE("Could not find recording buffer: %p", msg->buff);
             return DEAD_OBJECT;
         }
         int curBuff = recBuff->id;
@@ -569,14 +609,14 @@ status_t ControlThread::handleMessageReleaseRecordingFrame(MessageReleaseRecordi
 
 status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
 {
-    LOG_FUNCTION2
+    LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     if (mState == STATE_PREVIEW_STILL) {
         status = mISP->putPreviewFrame(&msg->buff);
         if (status == DEAD_OBJECT) {
-            LogDetail("Stale preview buffer returned to ISP");
+            LOG2("Stale preview buffer returned to ISP");
         } else if (status != NO_ERROR) {
-            LogError("Error putting preview frame to ISP");
+            LOGE("Error putting preview frame to ISP");
         }
     } else if (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING) {
         int curBuff = msg->buff.id;
@@ -592,37 +632,37 @@ status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
 
 status_t ControlThread::queueCoupledBuffers(int coupledId)
 {
-    LOG_FUNCTION
+    LOG2("@%s: coupledId = %d", __FUNCTION__, coupledId);
     status_t status = NO_ERROR;
 
     status = mISP->putRecordingFrame(&mCoupledBuffers[coupledId].recordingBuff);
     if (status == NO_ERROR) {
         status = mISP->putPreviewFrame(&mCoupledBuffers[coupledId].previewBuff);
         if (status == DEAD_OBJECT) {
-            LogDetail("Stale preview buffer returned to ISP");
+            LOG2("Stale preview buffer returned to ISP");
         } else if (status != NO_ERROR) {
-            LogError("Error putting preview frame to ISP");
+            LOGE("Error putting preview frame to ISP");
         }
     } else if (status == DEAD_OBJECT) {
-        LogDetail("Stale recording buffer returned to ISP");
+        LOG2("Stale recording buffer returned to ISP");
     } else {
-        LogError("Error putting recording frame to ISP");
+        LOGE("Error putting recording frame to ISP");
     }
 
     return status;
 }
 
-status_t ControlThread::handleMessagePictureDone(MessagePictureDone *msg)
+status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     // Return the picture frames back to ISP
     status = mISP->putSnapshot(&msg->snapshotBuf, &msg->postviewBuf);
     if (status == DEAD_OBJECT) {
-        LogDetail("Stale snapshot buffer returned to ISP");
+        LOG1("Stale snapshot buffer returned to ISP");
     } else if (status != NO_ERROR) {
-        LogError("Error in putting snapshot!");
+        LOGE("Error in putting snapshot!");
         return status;
     }
 
@@ -636,71 +676,74 @@ status_t ControlThread::handleMessagePictureDone(MessagePictureDone *msg)
     // Now, stop the ISP too, so we can start it in startPreview
     status = mISP->stop();
     if (status != NO_ERROR) {
-        LogError("Error stopping ISP!");
+        LOGE("Error stopping ISP!");
         return status;
     }
 
     // Stop PictureThread
     status = mPictureThread->requestExitAndWait();
     if (status != NO_ERROR) {
-        LogError("Error stopping PictureThread!");
+        LOGE("Error stopping PictureThread!");
         return status;
     }
 
     return status;
 }
 
+status_t ControlThread::handleMessageRedEyeRemovalDone(MessagePicture *msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    status = mPictureThread->encode(&msg->snapshotBuf, &msg->postviewBuf);
+
+    return status;
+}
+
 status_t ControlThread::validateParameters(const CameraParameters *params)
 {
-    /**
-     * PREVIEW
-     */
+    LOG1("@%s: params = %p", __FUNCTION__, params);
+    // PREVIEW
     int previewWidth, previewHeight;
     params->getPreviewSize(&previewWidth, &previewHeight);
     if (previewWidth <= 0 || previewHeight <= 0) {
-        LogError("bad preview size");
+        LOGE("bad preview size");
         return BAD_VALUE;
     }
 
     int minFPS, maxFPS;
     params->getPreviewFpsRange(&minFPS, &maxFPS);
     if(minFPS == maxFPS || minFPS > maxFPS) {
-        LogError("invalid fps range [%d,%d]", minFPS, maxFPS);
+        LOGE("invalid fps range [%d,%d]", minFPS, maxFPS);
         return BAD_VALUE;
     }
 
-    /**
-     * VIDEO
-     */
+    // VIDEO
     int videoWidth, videoHeight;
     params->getPreviewSize(&videoWidth, &videoHeight);
     if (videoWidth <= 0 || videoHeight <= 0) {
-        LogError("bad video size");
+        LOGE("bad video size");
         return BAD_VALUE;
     }
 
-    /**
-     * SNAPSHOT
-     */
+    // SNAPSHOT
     int pictureWidth, pictureHeight;
     params->getPreviewSize(&pictureWidth, &pictureHeight);
     if (pictureWidth <= 0 || pictureHeight <= 0) {
-        LogError("bad picture size");
+        LOGE("bad picture size");
         return BAD_VALUE;
     }
 
-    /**
-     * MISCELLANEOUS
-     */
-
+    // MISCELLANEOUS
     // TODO: implement validation for other features not listed above
 
     return NO_ERROR;
 }
 
 status_t ControlThread::processDynamicParameters(const CameraParameters *oldParams,
-        const CameraParameters *newParams)
+        CameraParameters *newParams)
 {
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     int oldZoom = oldParams->getInt(CameraParameters::KEY_ZOOM);
     int newZoom = newParams->getInt(CameraParameters::KEY_ZOOM);
@@ -708,13 +751,313 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     if (oldZoom != newZoom)
         status = mISP->setZoom(newZoom);
 
+    // We won't take care of the status returned by the following calls since
+    // failure of setting one parameter should not stop us setting the other parameters
+
+    // Colour effect
+    status = processParamEffect(oldParams, newParams);
+
+    if (mISP->is3ASupported()) {
+        if (status == NO_ERROR) {
+            // Scene Mode
+            status = processParamSceneMode(oldParams, newParams);
+        }
+
+        if (status == NO_ERROR) {
+            //Focus Mode
+            status = processParamFocusMode(oldParams, newParams);
+        }
+
+        if (status == NO_ERROR) {
+            // white balance
+            status = processParamWhiteBalance(oldParams, newParams);
+        }
+
+        if (status == NO_ERROR) {
+            // red-eye removal
+            status = processParamRedEyeMode(oldParams, newParams);
+        }
+    }
+    return status;
+}
+
+status_t ControlThread::processParamEffect(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    const char* oldEffect = oldParams->get(CameraParameters::KEY_EFFECT);
+    const char* newEffect = newParams->get(CameraParameters::KEY_EFFECT);
+    if (newEffect && oldEffect && strncmp(newEffect, oldEffect, MAX_PARAM_VALUE_LENGTH) != 0) {
+        v4l2_colorfx effect = V4L2_COLORFX_NONE;
+        if(!strncmp(newEffect, CameraParameters::EFFECT_MONO, strlen(CameraParameters::EFFECT_MONO)))
+            effect = V4L2_COLORFX_BW;
+        else if(!strncmp(newEffect, CameraParameters::EFFECT_NEGATIVE, strlen(CameraParameters::EFFECT_NEGATIVE)))
+            effect = V4L2_COLORFX_NEGATIVE;
+        else if(!strncmp(newEffect, CameraParameters::EFFECT_SEPIA, strlen(CameraParameters::EFFECT_SEPIA)))
+            effect = V4L2_COLORFX_SEPIA;
+
+        status = mISP->setColorEffect(effect);
+        if (status == NO_ERROR) {
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_EFFECT, newEffect);
+        }
+    }
+    return status;
+}
+
+status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    const char* oldScene = oldParams->get(CameraParameters::KEY_SCENE_MODE);
+    const char* newScene = newParams->get(CameraParameters::KEY_SCENE_MODE);
+    if (newScene && oldScene && strncmp(newScene, oldScene, MAX_PARAM_VALUE_LENGTH) != 0) {
+        SceneMode sceneMode = CAM_AE_SCENE_MODE_AUTO;
+        if (!strncmp (newScene, CameraParameters::SCENE_MODE_PORTRAIT, strlen(CameraParameters::SCENE_MODE_PORTRAIT))) {
+            sceneMode = CAM_AE_SCENE_MODE_PORTRAIT;
+            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+            newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
+            newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
+        } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_SPORTS, strlen(CameraParameters::SCENE_MODE_SPORTS))) {
+            sceneMode = CAM_AE_SCENE_MODE_SPORTS;
+            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
+            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
+            newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
+            newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
+        } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_LANDSCAPE, strlen(CameraParameters::SCENE_MODE_LANDSCAPE))) {
+            sceneMode = CAM_AE_SCENE_MODE_LANDSCAPE;
+            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
+            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
+            newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_OUTDOOR);
+            newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
+        } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_NIGHT, strlen(CameraParameters::SCENE_MODE_NIGHT))) {
+            sceneMode = CAM_AE_SCENE_MODE_NIGHT;
+            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
+            newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
+            newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
+        } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_NIGHT_PORTRAIT, strlen(CameraParameters::SCENE_MODE_NIGHT_PORTRAIT))) {
+            sceneMode = CAM_AE_SCENE_MODE_NIGHT_PORTRAIT;
+            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_ON);
+            newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
+            newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
+        } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_FIREWORKS, strlen(CameraParameters::SCENE_MODE_FIREWORKS))) {
+            sceneMode = CAM_AE_SCENE_MODE_FIREWORKS;
+            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
+            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
+            newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
+            newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
+        } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_TEXT, strlen(CameraParameters::SCENE_MODE_TEXT))) {
+            sceneMode = CAM_AE_SCENE_MODE_TEXT;
+            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_MACRO);
+            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+            newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
+            newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
+        } else {
+            if (strncmp (newScene, CameraParameters::SCENE_MODE_AUTO, strlen(CameraParameters::SCENE_MODE_AUTO))) {
+                LOG1("Unsupported %s: %s. Using AUTO!", CameraParameters::KEY_SCENE_MODE, newScene);
+            }
+            sceneMode = CAM_AE_SCENE_MODE_AUTO;
+            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+            newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
+            newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
+        }
+
+        mAAA->setAeSceneMode(sceneMode);
+        if (status == NO_ERROR) {
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_SCENE_MODE, newScene);
+        }
+    }
+    return status;
+}
+
+status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    const char* oldFocus = oldParams->get(CameraParameters::KEY_FOCUS_MODE);
+    const char* newFocus = newParams->get(CameraParameters::KEY_FOCUS_MODE);
+    if (newFocus && oldFocus && strncmp(newFocus, oldFocus, MAX_PARAM_VALUE_LENGTH) != 0) {
+        AfMode afMode = CAM_AF_MODE_AUTO;
+
+        if(!strncmp(newFocus, CameraParameters::FOCUS_MODE_AUTO, strlen(CameraParameters::FOCUS_MODE_AUTO))) {
+            afMode = CAM_AF_MODE_AUTO;
+        } else if(!strncmp(newFocus, CameraParameters::FOCUS_MODE_INFINITY, strlen(CameraParameters::FOCUS_MODE_INFINITY))) {
+            afMode = CAM_AF_MODE_INFINITY;
+        } else if(!strncmp(newFocus, CameraParameters::FOCUS_MODE_MACRO, strlen(CameraParameters::FOCUS_MODE_MACRO))) {
+            afMode = CAM_AF_MODE_MACRO;
+        } else if(!strncmp(newFocus, CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO, strlen(CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO))) {
+            afMode = CAM_AF_MODE_AUTO;
+        } else if(!strncmp(newFocus, CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO, strlen(CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO))) {
+            afMode = CAM_AF_MODE_MANUAL;
+        }
+
+        status = mAAA->setAfEnabled(true);
+        if (status == NO_ERROR) {
+            status = mAAA->setAfMode(afMode);
+        }
+        if (status == NO_ERROR) {
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_FOCUS_MODE, newFocus);
+        }
+    }
+
+    // Handling the window information in auto, macro and continuous video mode.
+    // If focus window is set, we will actually use the touch mode!
+    if ((!strncmp(newFocus, CameraParameters::FOCUS_MODE_AUTO, strlen(CameraParameters::FOCUS_MODE_AUTO))) ||
+            (!strncmp(newFocus, CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO, strlen(CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO))) ||
+            (!strncmp(newFocus, CameraParameters::FOCUS_MODE_MACRO, strlen(CameraParameters::FOCUS_MODE_MACRO)))) {
+
+        // By default we will use auto or macro mode
+        AfMode newAfMode = CAM_AF_MODE_AUTO;
+        if (!strncmp(newFocus, CameraParameters::FOCUS_MODE_MACRO, strlen(CameraParameters::FOCUS_MODE_MACRO)))
+            newAfMode = CAM_AF_MODE_MACRO;
+
+        // See if any focus windows are set
+        const char *pFocusWindows = newParams->get(CameraParameters::KEY_FOCUS_AREAS);
+        const size_t maxWindows = mAAA->getAfMaxNumWindows();
+        size_t winCount = 0;
+        CameraWindow focusWindows[maxWindows];
+
+        if (pFocusWindows && (maxWindows > 0) && (strlen(pFocusWindows) > 0)) {
+            LOG1("Scanning AF windows from params: %s", pFocusWindows);
+            const char *argTail = pFocusWindows;
+            while (argTail && winCount < maxWindows) {
+                // String format: "(topleftx,toplefty,bottomrightx,bottomrighty,weight),(...)"
+                int i = sscanf(argTail, "(%d,%d,%d,%d,%d)",
+                        &focusWindows[winCount].x_left,
+                        &focusWindows[winCount].y_top,
+                        &focusWindows[winCount].x_right,
+                        &focusWindows[winCount].y_bottom,
+                        &focusWindows[winCount].weight);
+                if (i != 5)
+                    break;
+                LOG1("\tWindow %d (%d,%d,%d,%d,%d)",
+                        winCount,
+                        focusWindows[winCount].x_left,
+                        focusWindows[winCount].y_top,
+                        focusWindows[winCount].x_right,
+                        focusWindows[winCount].y_bottom,
+                        focusWindows[winCount].weight);
+                argTail = strchr(argTail + 1, '(');
+                winCount++;
+            }
+            // Looks like focus window(s) were set, so should use touch focus mode
+            if (winCount > 0) {
+                newAfMode = CAM_AF_MODE_TOUCH;
+            }
+        }
+
+        // See if we have to change the actual mode (it could be correct already)
+        AfMode curAfMode = mAAA->getAfMode();
+        if (curAfMode != newAfMode)
+            mAAA->setAfMode(newAfMode);
+
+        // If in touch mode, we set the focus windows now
+        if (newAfMode == CAM_AF_MODE_TOUCH) {
+            if (mAAA->setAfWindows(focusWindows, winCount) != NO_ERROR) {
+                // If focus windows couldn't be set, auto mode is used
+                // (AfSetWindowMulti has its own safety checks for coordinates)
+                LOGE("Could not set AF windows. Resseting the AF back to %d", curAfMode);
+                mAAA->setAfMode(curAfMode);
+            }
+        }
+    }
+    return status;
+}
+
+status_t ControlThread::processParamWhiteBalance(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    const char* oldWb = oldParams->get(CameraParameters::KEY_WHITE_BALANCE);
+    const char* newWb = newParams->get(CameraParameters::KEY_WHITE_BALANCE);
+    if (newWb && oldWb && strncmp(newWb, oldWb, MAX_PARAM_VALUE_LENGTH) != 0) {
+        AwbMode wbMode = CAM_AWB_MODE_AUTO;
+
+        if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_AUTO, strlen(CameraParameters::WHITE_BALANCE_AUTO))) {
+            wbMode = CAM_AWB_MODE_AUTO;
+        } else if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_INCANDESCENT, strlen(CameraParameters::WHITE_BALANCE_INCANDESCENT))) {
+            wbMode = CAM_AWB_MODE_WARM_INCANDESCENT;
+        } else if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_FLUORESCENT, strlen(CameraParameters::WHITE_BALANCE_FLUORESCENT))) {
+            wbMode = CAM_AWB_MODE_FLUORESCENT;
+        } else if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_WARM_FLUORESCENT, strlen(CameraParameters::WHITE_BALANCE_WARM_FLUORESCENT))) {
+            wbMode = CAM_AWB_MODE_WARM_FLUORESCENT;
+        } else if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_DAYLIGHT, strlen(CameraParameters::WHITE_BALANCE_DAYLIGHT))) {
+            wbMode = CAM_AWB_MODE_DAYLIGHT;
+        } else if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT, strlen(CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT))) {
+            wbMode = CAM_AWB_MODE_CLOUDY;
+        } else if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_TWILIGHT, strlen(CameraParameters::WHITE_BALANCE_TWILIGHT))) {
+            wbMode = CAM_AWB_MODE_SUNSET;
+        } else if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_SHADE, strlen(CameraParameters::WHITE_BALANCE_SHADE))) {
+            wbMode = CAM_AWB_MODE_SHADOW;
+        } else if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_MANUAL, strlen(CameraParameters::WHITE_BALANCE_MANUAL))) {
+            wbMode = CAM_AWB_MODE_MANUAL_INPUT;
+        }
+
+        status = mAAA->setAwbMode(wbMode);
+
+        if (status == NO_ERROR) {
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_WHITE_BALANCE, newWb);
+        }
+    }
+    return status;
+}
+
+status_t ControlThread::processParamRedEyeMode(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    const char* oldRedEye = oldParams->get(CameraParameters::KEY_RED_EYE_MODE);
+    const char* newRedEye = newParams->get(CameraParameters::KEY_RED_EYE_MODE);
+    if (newRedEye && oldRedEye && strncmp(newRedEye, oldRedEye, MAX_PARAM_VALUE_LENGTH) != 0) {
+        bool doRedEyeRemoval = true;
+
+        if(!strncmp(newRedEye, CameraParameters::RED_EYE_REMOVAL_OFF, strlen(CameraParameters::RED_EYE_REMOVAL_OFF)))
+            doRedEyeRemoval= false;
+
+        status = mAAA->setRedEyeRemoval(doRedEyeRemoval);
+        if (status == NO_ERROR) {
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_RED_EYE_MODE, newRedEye);
+        }
+    }
     return status;
 }
 
 status_t ControlThread::processStaticParameters(const CameraParameters *oldParams,
         const CameraParameters *newParams)
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     bool previewFormatChanged = false;
     bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
@@ -730,8 +1073,8 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
     oldFormat = V4L2Format(oldParams->getPreviewFormat());
     if (newWidth != oldWidth || newHeight != oldHeight ||
             oldFormat != newFormat) {
-        LogDetail("preview size/format is changing: old=%d,%d,%d; new=%d,%d,%d",
-                oldWidth, oldHeight, oldFormat, newWidth, newHeight, newFormat);
+        LOG1("preview size/format is changing: old=%dx%d %s; new=%dx%d %s",
+                oldWidth, oldHeight, v4l2Fmt2Str(oldFormat), newWidth, newHeight, v4l2Fmt2Str(newFormat));
         previewFormatChanged = true;
     }
 
@@ -739,7 +1082,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
     newParams->getVideoSize(&newWidth, &newHeight);
     oldParams->getVideoSize(&oldWidth, &oldHeight);
     if (newWidth != oldWidth || newHeight != oldHeight) {
-        LogDetail("video preview size is changing: old=%d,%d; new=%d,%d",
+        LOG1("video preview size is changing: old=%dx%d; new=%dx%d",
                 oldWidth, oldHeight, newWidth, newHeight);
         previewFormatChanged = true;
     }
@@ -755,7 +1098,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
         case STATE_STOPPED:
             break;
         default:
-            LogError("formats can only be changed while in preview or stop states");
+            LOGE("formats can only be changed while in preview or stop states");
             break;
         };
     }
@@ -765,7 +1108,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
 
 status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     CameraParameters newParams;
     CameraParameters oldParams = mParameters;
@@ -773,12 +1116,12 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     newParams.unflatten(str_params);
 
     // print all old and new params for comparison (debug)
-    LogDetail("----------BEGIN OLD PARAMS----------");
+    LOG1("----------BEGIN OLD PARAMS----------");
     mParameters.dump();
-    LogDetail("----------END OLD PARAMS----------");
-    LogDetail("----------BEGIN NEW PARAMS----------");
+    LOG1("---------- END OLD PARAMS ----------");
+    LOG1("----------BEGIN NEW PARAMS----------");
     newParams.dump();
-    LogDetail("----------END NEW PARAMS----------");
+    LOG1("---------- END NEW PARAMS ----------");
 
     status = validateParameters(&newParams);
     if (status != NO_ERROR)
@@ -806,13 +1149,13 @@ exit:
 
 status_t ControlThread::handleMessageGetParameters(MessageGetParameters *msg)
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     status_t status = BAD_VALUE;
 
     if (msg->params) {
         // let app know if we support zoom in the preview mode indicated
         bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-        AtomISP::Mode mode = videoMode ? AtomISP::MODE_VIDEO : AtomISP::MODE_PREVIEW;
+        AtomMode mode = videoMode ? MODE_VIDEO : MODE_PREVIEW;
         mISP->getZoomRatios(mode, &mParameters);
 
         String8 params = mParameters.flatten();
@@ -826,7 +1169,7 @@ status_t ControlThread::handleMessageGetParameters(MessageGetParameters *msg)
 
 status_t ControlThread::waitForAndExecuteMessage()
 {
-    LOG_FUNCTION2
+    LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     Message msg;
     mMessageQueue.receive(&msg);
@@ -880,6 +1223,9 @@ status_t ControlThread::waitForAndExecuteMessage()
         case MESSAGE_ID_PICTURE_DONE:
             status = handleMessagePictureDone(&msg.data.pictureDone);
             break;
+        case MESSAGE_ID_REDEYE_REMOVAL_DONE:
+            status = handleMessageRedEyeRemovalDone(&msg.data.redEyeRemovalDone);
+            break;
 
         case MESSAGE_ID_SET_PARAMETERS:
             status = handleMessageSetParameters(&msg.data.setParameters);
@@ -890,13 +1236,13 @@ status_t ControlThread::waitForAndExecuteMessage()
             break;
 
         default:
-            LogError("Invalid message");
+            LOGE("Invalid message");
             status = BAD_VALUE;
             break;
     };
 
     if (status != NO_ERROR)
-        LogError("Error handling message %d", (int) msg.id);
+        LOGE("Error handling message: %d", (int) msg.id);
     return status;
 }
 
@@ -915,7 +1261,7 @@ AtomBuffer* ControlThread::findRecordingBuffer(void *findMe)
 
 status_t ControlThread::dequeuePreview()
 {
-    LogEntry2(LOG_TAG, __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     AtomBuffer buff;
     status_t status = NO_ERROR;
 
@@ -925,18 +1271,23 @@ status_t ControlThread::dequeuePreview()
             mCoupledBuffers[buff.id].previewBuff = buff;
             mCoupledBuffers[buff.id].previewBuffReturned = false;
         }
+        if (mISP->is3ASupported()) {
+            status = m3AThread->newFrame();
+            if (status != NO_ERROR)
+                LOGW("Error notifying new frame to 3A thread!");
+        }
         status = mPreviewThread->preview(&buff);
         if (status != NO_ERROR)
-            LogError("Error sending buffer to preview thread");
+            LOGE("Error sending buffer to preview thread");
     } else {
-        LogError("Error gettting preview frame from ISP");
+        LOGE("Error gettting preview frame from ISP");
     }
     return status;
 }
 
 status_t ControlThread::dequeueRecording()
 {
-    LogEntry2(LOG_TAG, __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     AtomBuffer buff;
     nsecs_t timestamp;
     status_t status = NO_ERROR;
@@ -954,7 +1305,7 @@ status_t ControlThread::dequeueRecording()
             mCoupledBuffers[buff.id].recordingBuffReturned = true;
         }
     } else {
-        LogError("Error: getting recording from isp\n");
+        LOGE("Error: getting recording from isp\n");
     }
 
     return status;
@@ -967,11 +1318,11 @@ bool ControlThread::recordingBSEncoderEnabled()
 
 status_t ControlThread::recordingBSEnable()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     if (mBSInstance->sourceRequestToEnableSharingMode() != BS_SUCCESS) {
-        LogError("error requesting to enable buffer share mode");
+        LOGE("error requesting to enable buffer share mode");
         status = UNKNOWN_ERROR;
     } else {
         mBSState = BS_STATE_ENABLE;
@@ -982,11 +1333,11 @@ status_t ControlThread::recordingBSEnable()
 
 status_t ControlThread::recordingBSDisable()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     if (mBSInstance->sourceRequestToDisableSharingMode() != BS_SUCCESS) {
-        LogError("error requesting to disable buffer share mode");
+        LOGE("error requesting to disable buffer share mode");
         status = UNKNOWN_ERROR;
     } else {
         mBSState = BS_STATE_DISABLED;
@@ -997,59 +1348,59 @@ status_t ControlThread::recordingBSDisable()
 
 status_t ControlThread::recordingBSSet()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     SharedBufferType *buffers;
     int numBuffers = 0;
 
     if (mBSInstance->sourceEnterSharingMode() != BS_SUCCESS) {
-        LogError("error entering buffer share mode");
+        LOGE("error entering buffer share mode");
         status = UNKNOWN_ERROR;
         goto failGeneric;
     }
 
     if (!mBSInstance->isBufferSharingModeSet()) {
-        LogError("sharing is expected to be set but isn't");
+        LOGE("sharing is expected to be set but isn't");
         status = UNKNOWN_ERROR;
         goto failGeneric;
     }
 
     if (mBSInstance->sourceGetSharedBuffer(NULL, &numBuffers) != BS_SUCCESS) {
-        LogError("error getting number of shared buffers");
+        LOGE("error getting number of shared buffers");
         status = UNKNOWN_ERROR;
         goto failGeneric;
     }
 
     buffers = new SharedBufferType[numBuffers];
     if (buffers == NULL) {
-        LogError("error allocating sharedbuffer array");
+        LOGE("error allocating sharedbuffer array");
         goto failGeneric;
     }
 
     if (mBSInstance->sourceGetSharedBuffer(buffers, NULL) != BS_SUCCESS) {
-        LogError("error getting shared buffers");
+        LOGE("error getting shared buffers");
         status = UNKNOWN_ERROR;
         goto failAlloc;
     }
 
     for (int i = 0; i < numBuffers; i++)
-        LogDetail("shared buffer[%d]=%p", i, buffers[i].pointer);
+        LOG1("shared buffer[%d]=%p", i, buffers[i].pointer);
 
     status = stopPreviewCore();
     if (status != NO_ERROR) {
-        LogError("error stopping preview for buffer sharing");
+        LOGE("error stopping preview for buffer sharing");
         goto failAlloc;
     }
 
     status = mISP->setRecordingBuffers(buffers, numBuffers);
     if (status != NO_ERROR) {
-        LogError("error setting recording buffers");
+        LOGE("error setting recording buffers");
         goto failAlloc;
     }
 
     status = startPreviewCore(true);
     if (status != NO_ERROR) {
-        LogError("error restarting preview for buffer sharing");
+        LOGE("error restarting preview for buffer sharing");
         goto failStart;
     }
 
@@ -1067,16 +1418,17 @@ failGeneric:
 
 status_t ControlThread::recordingBSUnset()
 {
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     if (mBSInstance->sourceExitSharingMode() != BS_SUCCESS) {
-        LogError("error exiting buffer share mode");
+        LOGE("error exiting buffer share mode");
         return UNKNOWN_ERROR;
     }
 
     status = stopPreviewCore();
     if (status != NO_ERROR) {
-        LogError("error stopping preview for buffer sharing");
+        LOGE("error stopping preview for buffer sharing");
         return status;
     }
 
@@ -1084,7 +1436,7 @@ status_t ControlThread::recordingBSUnset()
 
     status = startPreviewCore(true);
     if (status != NO_ERROR) {
-        LogError("error starting preview for buffer sharing");
+        LOGE("error starting preview for buffer sharing");
         return status;
     }
 
@@ -1101,6 +1453,7 @@ bool ControlThread::recordingBSEncoderSet()
 
 status_t ControlThread::recordingBSHandshake()
 {
+    LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     // see comments for enum BSState
@@ -1111,7 +1464,7 @@ status_t ControlThread::recordingBSHandshake()
             if (recordingBSEncoderEnabled()) {
                 status = recordingBSSet();
                 if (status != NO_ERROR)
-                    LogError("error setting buffer sharing");
+                    LOGE("error setting buffer sharing");
             }
             break;
 
@@ -1131,7 +1484,7 @@ status_t ControlThread::recordingBSHandshake()
             if (!recordingBSEncoderSet()) {
                 status = recordingBSUnset();
                 if (status != NO_ERROR)
-                    LogError("error unsetting buffer sharing");
+                    LOGE("error unsetting buffer sharing");
             }
             break;
 
@@ -1141,7 +1494,7 @@ status_t ControlThread::recordingBSHandshake()
             break;
 
         default:
-            LogError("unexpected bs state %d", (int) mBSState);
+            LOGE("unexpected bs state %d", (int) mBSState);
     };
 
     return status;
@@ -1149,7 +1502,7 @@ status_t ControlThread::recordingBSHandshake()
 
 bool ControlThread::threadLoop()
 {
-    LogEntry2(LOG_TAG, __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     mThreadRunning = true;
@@ -1158,13 +1511,13 @@ bool ControlThread::threadLoop()
         switch (mState) {
 
         case STATE_STOPPED:
-            LogDetail2("In STATE_STOPPED...");
+            LOG2("In STATE_STOPPED...");
             // in the stop state all we do is wait for messages
             status = waitForAndExecuteMessage();
             break;
 
         case STATE_PREVIEW_STILL:
-            LogDetail2("In STATE_PREVIEW_STILL...");
+            LOG2("In STATE_PREVIEW_STILL...");
             // message queue always has priority over getting data from the
             // isp driver no matter what state we are in
             if (!mMessageQueue.isEmpty()) {
@@ -1180,7 +1533,7 @@ bool ControlThread::threadLoop()
 
         case STATE_PREVIEW_VIDEO:
         case STATE_RECORDING:
-            LogDetail2("In %s...", mState == STATE_PREVIEW_VIDEO ? "STATE_PREVIEW_VIDEO" : "STATE_RECORDING");
+            LOG2("In %s...", mState == STATE_PREVIEW_VIDEO ? "STATE_PREVIEW_VIDEO" : "STATE_RECORDING");
             // message queue always has priority over getting data from the
             // isp driver no matter what state we are in
             if (!mMessageQueue.isEmpty()) {
@@ -1211,7 +1564,7 @@ bool ControlThread::threadLoop()
 
 status_t ControlThread::requestExitAndWait()
 {
-    LOG_FUNCTION
+    LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_EXIT;
 

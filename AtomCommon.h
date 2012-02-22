@@ -26,11 +26,33 @@
 //This file define the general configuration for the atomisp camera
 
 #define BPP 2 // bytes per pixel
+#define MAX_PARAM_VALUE_LENGTH 32
 
 struct AtomBuffer {
     camera_memory_t *buff;
     int id;    // id for debugging data flow path
     int ispPrivate; // Private to the AtomISP class. No other classes should touch this
+};
+
+enum AtomMode {
+    MODE_NONE = -1,
+    MODE_PREVIEW = 0,
+    MODE_CAPTURE = 1,
+    MODE_VIDEO = 2,
+};
+
+enum SensorType {
+    SENSOR_TYPE_NONE = 0,
+    SENSOR_TYPE_RAW,
+    SENSOR_TYPE_SOC
+};
+
+struct CameraWindow {
+    int x_left;
+    int x_right;
+    int y_top;
+    int y_bottom;
+    int weight;
 };
 
 static int frameSize(int format, int width, int height)
@@ -86,6 +108,15 @@ static int paddingWidth(int format, int width, int height)
         padding = (width + 63) / 64 * 64;
     }
     return padding;
+}
+
+static const char* v4l2Fmt2Str(int format)
+{
+    static char fourccBuf[5];
+    memset(&fourccBuf[0], 0, sizeof(fourccBuf));
+    char *fourccPtr = (char*) &format;
+    snprintf(fourccBuf, sizeof(fourccBuf), "%c%c%c%c", *fourccPtr, *(fourccPtr+1), *(fourccPtr+2), *(fourccPtr+3));
+    return &fourccBuf[0];
 }
 
 #endif // ANDROID_LIBCAMERA_COMMON_H

@@ -28,12 +28,12 @@ Callbacks::Callbacks() :
     ,mGetMemoryCB(NULL)
     ,mUserToken(NULL)
 {
-    LogEntry(LOG_TAG, __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
 }
 
 Callbacks::~Callbacks()
 {
-    LogEntry(LOG_TAG, __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
 }
 
 void Callbacks::setCallbacks(camera_notify_callback notify_cb,
@@ -42,7 +42,7 @@ void Callbacks::setCallbacks(camera_notify_callback notify_cb,
                              camera_request_memory get_memory,
                              void* user)
 {
-    LogEntry(LOG_TAG, __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     mNotifyCB = notify_cb;
     mDataCB = data_cb;
     mDataCBTimestamp = data_cb_timestamp;
@@ -52,15 +52,13 @@ void Callbacks::setCallbacks(camera_notify_callback notify_cb,
 
 void Callbacks::enableMsgType(int32_t msgType)
 {
-    LogEntry(LOG_TAG, __FUNCTION__);
-    LogDetail("msgType = %d", msgType);
+    LOG1("@%s: msgType = %d", __FUNCTION__, msgType);
     mMessageFlags |= msgType;
 }
 
 void Callbacks::disableMsgType(int32_t msgType)
 {
-    LogEntry(LOG_TAG, __FUNCTION__);
-    LogDetail("msgType = %d", msgType);
+    LOG1("@%s: msgType = %d", __FUNCTION__, msgType);
     mMessageFlags &= ~msgType;
 }
 
@@ -71,44 +69,44 @@ bool Callbacks::msgTypeEnabled(int32_t msgType)
 
 void Callbacks::previewFrameDone(AtomBuffer *buff)
 {
-    LogEntry(LOG_TAG, __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_PREVIEW_FRAME) && mDataCB != NULL) {
         // TODO: may need to make a memcpy
-        LogDetail("Sending message: CAMERA_MSG_PREVIEW_FRAME");
+        LOG2("Sending message: CAMERA_MSG_PREVIEW_FRAME");
         mDataCB(CAMERA_MSG_PREVIEW_FRAME, buff->buff, 0, NULL, mUserToken);
     }
 }
 
 void Callbacks::videoFrameDone(AtomBuffer *buff, nsecs_t timestamp)
 {
-    LogEntry(LOG_TAG, __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_VIDEO_FRAME) && mDataCBTimestamp != NULL) {
-        LogDetail("Sending message: CAMERA_MSG_VIDEO_FRAME");
+        LOG2("Sending message: CAMERA_MSG_VIDEO_FRAME");
         mDataCBTimestamp(timestamp, CAMERA_MSG_VIDEO_FRAME, buff->buff, 0, mUserToken);
     }
 }
 
 void Callbacks::compressedFrameDone(AtomBuffer *buff)
 {
-    LogEntry(LOG_TAG, __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_COMPRESSED_IMAGE) && mDataCB != NULL) {
-        LogDetail("Sending message: CAMERA_MSG_COMPRESSED_IMAGE");
+        LOG1("Sending message: CAMERA_MSG_COMPRESSED_IMAGE");
         mDataCB(CAMERA_MSG_COMPRESSED_IMAGE, buff->buff, NULL, 0, mUserToken);
     }
 }
 
 void Callbacks::cameraError(int err)
 {
-    LogEntry(LOG_TAG, __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_ERROR) && mNotifyCB != NULL) {
-        LogDetail("Sending message: CAMERA_MSG_ERROR");
+        LOG1("Sending message: CAMERA_MSG_ERROR");
         mNotifyCB(CAMERA_MSG_ERROR, err, 0, mUserToken);
     }
 }
 
 void Callbacks::allocateMemory(AtomBuffer *buff, int size)
 {
-    LogEntry(LOG_TAG, __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     buff->buff = NULL;
     if (mGetMemoryCB != NULL)
         buff->buff = mGetMemoryCB(-1, size, 1, mUserToken);
@@ -116,14 +114,14 @@ void Callbacks::allocateMemory(AtomBuffer *buff, int size)
 
 void Callbacks::autofocusDone(void)
 {
-    LogEntry(LOG_TAG, __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     if (mMessageFlags & CAMERA_MSG_FOCUS)
         mNotifyCB(CAMERA_MSG_FOCUS, 1, 0, mUserToken);
 }
 
 void Callbacks::shutterSound()
 {
-    LogEntry(LOG_TAG, __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     if (mMessageFlags & CAMERA_MSG_SHUTTER)
         mNotifyCB(CAMERA_MSG_SHUTTER, 1, 0, mUserToken);
 }
