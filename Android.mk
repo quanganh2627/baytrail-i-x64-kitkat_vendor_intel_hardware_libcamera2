@@ -5,6 +5,7 @@ LOCAL_SRC_FILES := \
 	ControlThread.cpp \
 	PreviewThread.cpp \
 	PictureThread.cpp \
+	VideoThread.cpp \
 	AAAThread.cpp \
 	AtomISP.cpp \
 	DebugFrameRate.cpp \

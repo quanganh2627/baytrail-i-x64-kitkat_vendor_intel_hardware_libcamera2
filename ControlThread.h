@@ -23,6 +23,7 @@
 #include "MessageQueue.h"
 #include "PreviewThread.h"
 #include "PictureThread.h"
+#include "VideoThread.h"
 #include "AtomCommon.h"
 #include "AAAThread.h"
 #include "AtomAAA.h"
@@ -343,6 +344,7 @@ private:
     AtomAAA *mAAA;
     sp<PreviewThread> mPreviewThread;
     sp<PictureThread> mPictureThread;
+    sp<VideoThread> mVideoThread;
     sp<AAAThread>     m3AThread;
 
     MessageQueue<Message> mMessageQueue;

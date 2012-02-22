@@ -32,6 +32,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mAAA(AtomAAA::getInstance())
     ,mPreviewThread(new PreviewThread((ICallbackPreview *) this))
     ,mPictureThread(new PictureThread((ICallbackPicture *) this))
+    ,mVideoThread(new VideoThread())
     ,m3AThread(new AAAThread((ICallbackAAA *) this))
     ,mMessageQueue("ControlThread", (int) MESSAGE_ID_MAX)
     ,mState(STATE_STOPPED)
@@ -58,6 +59,7 @@ ControlThread::~ControlThread()
     LOG1("@%s", __FUNCTION__);
     mPreviewThread.clear();
     mPictureThread.clear();
+    mVideoThread.clear();
     m3AThread.clear();
     mBSInstance.clear();
     if (mISP != NULL) {
@@ -446,10 +448,15 @@ status_t ControlThread::handleMessageStartRecording()
     bool flashNeeded = false;
 
     if (mState == STATE_PREVIEW_VIDEO) {
-        if (recordingBSEnable() != NO_ERROR) {
-            LOGE("Error voting for buffer sharing");
+        status = mVideoThread->run();
+        if (status == NO_ERROR) {
+            if (recordingBSEnable() != NO_ERROR) {
+                LOGE("Error voting for buffer sharing");
+            }
+            mState = STATE_RECORDING;
+        } else {
+            LOGE("Error starting video thread");
         }
-        mState = STATE_RECORDING;
     } else if (mState == STATE_PREVIEW_STILL) {
         /* We are in PREVIEW_STILL mode; in order to start recording
          * we first need to stop AtomISP and restart it with MODE_VIDEO
@@ -490,6 +497,9 @@ status_t ControlThread::handleMessageStopRecording()
          * Even if startRecording was called from PREVIEW_STILL mode, we can
          * switch back to PREVIEW_VIDEO now since we got a startRecording
          */
+        status = mVideoThread->requestExitAndWait();
+        if (status != NO_ERROR)
+            LOGE("Error stopping video thread");
         if (recordingBSDisable() != NO_ERROR) {
             LOGE("Error voting for disable buffer sharing");
         }
@@ -1601,7 +1611,7 @@ status_t ControlThread::dequeueRecording()
         // If it has, process the buffer
         // If it hasn't, return the buffer to the driver
         if (mState == STATE_RECORDING) {
-            mCallbacks->videoFrameDone(&buff, timestamp);
+            mVideoThread->video(&buff, timestamp);
         } else {
             mCoupledBuffers[buff.id].recordingBuffReturned = true;
         }
