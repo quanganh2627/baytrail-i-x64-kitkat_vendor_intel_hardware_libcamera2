@@ -32,7 +32,7 @@ PreviewThread::PreviewThread(ICallbackPreview *previewDone) :
     ,mThreadRunning(false)
     ,mDebugFPS(new DebugFrameRate())
     ,mPreviewDoneCallback(previewDone)
-    ,mCallbacks(NULL)
+    ,mCallbacks(Callbacks::getInstance())
     ,mPreviewWindow(NULL)
     ,mPreviewWidth(640)
     ,mPreviewHeight(480)
@@ -44,12 +44,6 @@ PreviewThread::~PreviewThread()
 {
     LOG1("@%s", __FUNCTION__);
     mDebugFPS.clear();
-}
-
-void PreviewThread::setCallbacks(Callbacks *callbacks)
-{
-    LOG1("@%s", __FUNCTION__);
-    mCallbacks = callbacks;
 }
 
 status_t PreviewThread::setPreviewWindow(struct preview_stream_ops *window)

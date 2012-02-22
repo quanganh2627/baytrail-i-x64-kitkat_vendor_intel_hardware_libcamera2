@@ -51,8 +51,6 @@ public:
 // public methods
 public:
 
-    void setCallbacks(Callbacks *callbacks);
-
     status_t encode(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
     void setPictureFormat(int format)
     {

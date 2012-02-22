@@ -29,6 +29,8 @@
 
 namespace android {
 
+#define FLASH_FRAME_TIMEOUT 5
+
 class Callbacks;
 class AtomISP;
 class BufferShareRegistry;
@@ -102,6 +104,7 @@ private:
     virtual void previewDone(AtomBuffer *buff);
     virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void redEyeRemovalDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
+    virtual void autoFocusDone();
 
 // private types
 private:
@@ -124,6 +127,7 @@ private:
         MESSAGE_ID_SET_PARAMETERS,
         MESSAGE_ID_GET_PARAMETERS,
         MESSAGE_ID_REDEYE_REMOVAL_DONE,
+        MESSAGE_ID_AUTO_FOCUS_DONE,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -267,6 +271,7 @@ private:
     status_t handleMessageSetParameters(MessageSetParameters *msg);
     status_t handleMessageGetParameters(MessageGetParameters *msg);
     status_t handleMessageRedEyeRemovalDone(MessagePicture *msg);
+    status_t handleMessageAutoFocusDone();
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -278,12 +283,16 @@ private:
     status_t dequeueRecording();
     status_t queueCoupledBuffers(int coupledId);
 
+    bool runPreFlashSequence();
+
     // parameters handling functions
     bool isParameterSet(const char* param);
 
     // These are parameters that can be set while the ISP is running (most params can be
     // set while the isp is stopped as well).
     status_t processDynamicParameters(const CameraParameters *oldParams,
+            CameraParameters *newParams);
+    status_t processParamFlash(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamEffect(const CameraParameters *oldParams,
             CameraParameters *newParams);

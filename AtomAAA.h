@@ -83,6 +83,12 @@ enum FlashMode
     CAM_AE_FLASH_MODE_TORCH
 };
 
+// DetermineFlash: returns true if flash should be determined according to current exposure
+#define DetermineFlash(x) (x == CAM_AE_FLASH_MODE_AUTO || \
+                           x == CAM_AE_FLASH_MODE_ON || \
+                           x == CAM_AE_FLASH_MODE_DAY_SYNC || \
+                           x == CAM_AE_FLASH_MODE_SLOW_SYNC) \
+
 enum SceneMode
 {
     CAM_AE_SCENE_MODE_NOT_SET = -1,
@@ -124,6 +130,8 @@ enum FlashStage
 
 #define DEFAULT_GBCE            true
 #define DEFAULT_GBCE_STRENGTH   0
+#define MAX_TIME_FOR_AF         2000 // milliseconds
+#define TORCH_INTENSITY         20   // 20%
 
 struct IspSettings
 {
@@ -147,6 +155,8 @@ public:
     }
     ~AtomAAA();
 
+    bool is3ASupported() { return mHas3A; }
+
     // Initialization functions
     status_t init(const char *sensor_id, int fd);
     status_t unInit();
@@ -159,12 +169,16 @@ public:
     status_t setAfWindow(const CameraWindow *window);
     status_t setAfEnabled(bool en);
     status_t setAeSceneMode(SceneMode mode);
-    status_t setAeMode(int mode);
+    status_t setAeMode(AeMode mode);
+    AeMode getAeMode();
     status_t setAfMode(AfMode mode);
     AfMode getAfMode();
-    status_t setAwbMode (AwbMode mode);
+    status_t setAeFlashMode(FlashMode mode);
+    FlashMode getAeFlashMode();
+    bool getAeFlashNecessary();
+    status_t setAwbMode(AwbMode mode);
     AwbMode getAwbMode();
-    status_t setAeMeteringMode(int mode);
+    status_t setAeMeteringMode(MeteringMode mode);
     status_t setAeBacklightCorrection(bool en);
     status_t setAeLock(bool en);
     bool     getAeLock();
@@ -184,6 +198,12 @@ public:
     status_t applyRedEyeRemoval(const AtomBuffer &snapshotBuffer, int width, int height, int format);
     status_t applyDvsProcess();
     status_t apply3AProcess(bool read_stats = true);
+
+    status_t startStillAf();
+    status_t stopStillAf();
+    ci_adv_af_status isStillAfComplete();
+    status_t applyPreFlashProcess(FlashStage stage);
+
 // private methods
 private:
 
@@ -191,11 +211,14 @@ private:
 private:
 
     struct IspSettings mIspSettings;   // ISP related settings
-    Mutex        m3aLock;
+    Mutex m3aLock;
     int mIspFd;
+    bool mHas3A;
     SensorType mSensorType;
     AfMode mAfMode;
+    FlashMode mFlashMode;
     AwbMode mAwbMode;
+    nsecs_t mStillAfStart;
 }; // class AtomAAA
 
 }; // namespace android

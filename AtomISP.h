@@ -76,8 +76,6 @@ public:
 // public methods
 public:
 
-    void setCallbacks(Callbacks *callbacks);
-
     void getDefaultParameters(CameraParameters *params);
 
     status_t start(AtomMode mode);
@@ -85,7 +83,7 @@ public:
 
     inline int getNumBuffers() { return mNumBuffers; }
 
-    status_t getPreviewFrame(AtomBuffer *buff);
+    status_t getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameStatus = NULL);
     status_t putPreviewFrame(AtomBuffer *buff);
 
     status_t setRecordingBuffers(SharedBufferType *buffs, int numBuffs);
@@ -111,13 +109,14 @@ public:
     void getZoomRatios(AtomMode mode, CameraParameters *params);
     status_t setZoom(int zoom);
     status_t setFlash(int numFrames);
+    status_t setFlashIndicator(int intensity);
+    status_t setTorch(int intensity);
     status_t setColorEffect(v4l2_colorfx effect);
 
     // camera hardware information
     static int getNumberOfCameras();
     static status_t getCameraInfo(int cameraId, camera_info *cameraInfo);
 
-    bool is3ASupported() { return mHas3A; }
     float getFrameRate() { return mConfig.fps; }
 
 // private methods
@@ -256,7 +255,6 @@ private:
     int mCameraId;
     SensorType mSensorType;
     AtomAAA *mAAA;
-    bool mHas3A;
 
 }; // class AtomISP
 

@@ -26,8 +26,15 @@ namespace android {
 
 class Callbacks {
 
-public:
+    static Callbacks* mInstance;
     Callbacks();
+public:
+    static Callbacks* getInstance() {
+        if (mInstance == NULL) {
+            mInstance = new Callbacks();
+        }
+        return mInstance;
+    }
     ~Callbacks();
 
 public:
@@ -46,7 +53,7 @@ public:
     void videoFrameDone(AtomBuffer *buff, nsecs_t timstamp);
     void compressedFrameDone(AtomBuffer *buff);
     void cameraError(int err);
-    void autofocusDone(void);
+    void autofocusDone(bool status);
     void shutterSound();
 
     void allocateMemory(AtomBuffer *buff, int size);

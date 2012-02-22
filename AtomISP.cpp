@@ -120,7 +120,7 @@ static const char *resolution_tables[] = {
 
 AtomISP::AtomISP(int camera_id) :
     mMode(MODE_NONE)
-    ,mCallbacks(NULL)
+    ,mCallbacks(Callbacks::getInstance())
     ,mNumBuffers(NUM_DEFAULT_BUFFERS)
     ,mPreviewBuffers(NULL)
     ,mRecordingBuffers(NULL)
@@ -133,7 +133,6 @@ AtomISP::AtomISP(int camera_id) :
     ,mSessionId(0)
     ,mCameraId(0)
     ,mAAA(AtomAAA::getInstance())
-    ,mHas3A(false)
 {
     LOG1("@%s", __FUNCTION__);
     int camera_idx = -1;
@@ -172,21 +171,17 @@ AtomISP::AtomISP(int camera_id) :
     mSensorType = (camInfo[mCameraId].port == ATOMISP_CAMERA_PORT_PRIMARY)?SENSOR_TYPE_RAW:SENSOR_TYPE_SOC;
 
     LOG1("Sensor type detected: %s", (mSensorType == SENSOR_TYPE_RAW)?"RAW":"SOC");
-    mHas3A = (mSensorType == SENSOR_TYPE_RAW);
 
-    if (selectCameraSensor() != NO_ERROR) {
-        LOGE("Could not select camera: %s (sensor ID: %d)", camInfo[mCameraId].name, mCameraId);
-        mHas3A = false;
-    }
-
-    if (mHas3A) {
-        status_t s = mAAA->init(camInfo[mCameraId].name, main_fd);
-        if (s == NO_ERROR) {
-            LOG1("3A initialized");
-        } else {
-            LOGE("Error initializing 3A on RAW sensor!");
-            mHas3A = false;
+    if (selectCameraSensor() == NO_ERROR) {
+        if (mSensorType == SENSOR_TYPE_RAW) {
+            if (mAAA->init(camInfo[mCameraId].name, main_fd) == NO_ERROR) {
+                LOG1("3A initialized");
+            } else {
+                LOGE("Error initializing 3A on RAW sensor!");
+            }
         }
+    } else {
+        LOGE("Could not select camera: %s (sensor ID: %d)", camInfo[mCameraId].name, mCameraId);
     }
 
     ret = detectDeviceResolutions();
@@ -240,12 +235,6 @@ AtomISP::~AtomISP()
     LOG1("@%s", __FUNCTION__);
     mAAA->unInit();
     closeDevice(V4L2_FIRST_DEVICE);
-}
-
-void AtomISP::setCallbacks(Callbacks *callbacks)
-{
-    LOG1("@%s", __FUNCTION__);
-    mCallbacks = callbacks;
 }
 
 void AtomISP::getDefaultParameters(CameraParameters *params)
@@ -343,7 +332,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
     params->set(CameraParameters::KEY_VERTICAL_VIEW_ANGLE,"42.5");
     params->set(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE,"54.8");
 
-    if(mHas3A){
+    if(mAAA->is3ASupported()){
         // effect modes
         params->set(CameraParameters::KEY_EFFECT, CameraParameters::EFFECT_NONE);
         char effectModes[100] = {0};
@@ -523,10 +512,9 @@ status_t AtomISP::startPreview()
         goto exitClose;
     }
 
-    if (mHas3A) {
+    if (mAAA->is3ASupported()) {
         if (mAAA->switchMode(MODE_PREVIEW) != NO_ERROR) {
             LOGW("Could not switch 3A to MODE_PREVIEW!");
-            mHas3A = false;
         } else {
             LOG1("3A mode switched to MODE_PREVIEW");
             if (mAAA->setFrameRate(mConfig.fps) == NO_ERROR) {
@@ -615,10 +603,9 @@ status_t AtomISP::startRecording() {
         goto exitClosePrev;
     }
 
-    if (mHas3A) {
+    if (mAAA->is3ASupported()) {
         if (mAAA->switchMode(MODE_VIDEO) != NO_ERROR) {
             LOGW("Could not switch 3A to MODE_PREVIEW!");
-            mHas3A = false;
         } else {
             LOG1("3A mode switched to MODE_VIDEO");
             if (mAAA->setFrameRate(mConfig.fps) == NO_ERROR) {
@@ -716,12 +703,11 @@ status_t AtomISP::startCapture()
         goto errorCloseSecond;
     }
 
-    if (mHas3A) {
+    if (mAAA->is3ASupported()) {
         if (mAAA->switchMode(MODE_CAPTURE) != NO_ERROR) {
             LOGW("Could not switch 3A to MODE_CAPTURE!");
-            mHas3A = false;
         } else {
-            LOG1("3A mode switched to MODE_PREVIEW");
+            LOG1("3A mode switched to MODE_CAPTURE");
             if (mAAA->setFrameRate(mConfig.fps) == NO_ERROR) {
                 LOG1("Set: 3A frame rate to %.2f", mConfig.fps);
             } else {
@@ -835,10 +821,9 @@ int AtomISP::startDevice(int device, int buffer_count)
     LOG1(" startDevice fd = %d", fd);
 
     if (device == V4L2_FIRST_DEVICE &&
-        mHas3A &&
+        mAAA->is3ASupported() &&
         mAAA->applyIspSettings() != NO_ERROR) {
         LOGE("Failed to apply 3A ISP settings. Disabling 3A!");
-        mHas3A = false;
     } else {
         LOG1("Applied 3A ISP settings!");
     }
@@ -1188,6 +1173,46 @@ status_t AtomISP::setFlash(int numFrames)
     return NO_ERROR;
 }
 
+status_t AtomISP::setFlashIndicator(int intensity)
+{
+    LOG1("@%s: intensity = %d", __FUNCTION__, intensity);
+    if (camInfo[mCameraId].port != ATOMISP_CAMERA_PORT_PRIMARY) {
+        LOGE("Indicator intensity is supported only for primary camera!");
+        return INVALID_OPERATION;
+    }
+
+    if (intensity) {
+        if (atomisp_set_attribute(main_fd, V4L2_CID_FLASH_INDICATOR_INTENSITY, intensity, "Indicator Intensity") < 0)
+            return UNKNOWN_ERROR;
+        if (atomisp_set_attribute(main_fd, V4L2_CID_FLASH_MODE, ATOMISP_FLASH_MODE_INDICATOR, "Flash Mode") < 0)
+            return UNKNOWN_ERROR;
+    } else {
+        if (atomisp_set_attribute(main_fd, V4L2_CID_FLASH_MODE, ATOMISP_FLASH_MODE_OFF, "Flash Mode") < 0)
+            return UNKNOWN_ERROR;
+    }
+    return NO_ERROR;
+}
+
+status_t AtomISP::setTorch(int intensity)
+{
+    LOG1("@%s: intensity = %d", __FUNCTION__, intensity);
+    if (camInfo[mCameraId].port != ATOMISP_CAMERA_PORT_PRIMARY) {
+        LOGE("Indicator intensity is supported only for primary camera!");
+        return INVALID_OPERATION;
+    }
+
+    if (intensity) {
+        if (atomisp_set_attribute(main_fd, V4L2_CID_FLASH_TORCH_INTENSITY, intensity, "Torch Intensity") < 0)
+            return UNKNOWN_ERROR;
+        if (atomisp_set_attribute(main_fd, V4L2_CID_FLASH_MODE, ATOMISP_FLASH_MODE_TORCH, "Flash Mode") < 0)
+            return UNKNOWN_ERROR;
+    } else {
+        if (atomisp_set_attribute(main_fd, V4L2_CID_FLASH_MODE, ATOMISP_FLASH_MODE_OFF, "Flash Mode") < 0)
+            return UNKNOWN_ERROR;
+    }
+    return NO_ERROR;
+}
+
 status_t AtomISP::setColorEffect(v4l2_colorfx effect)
 {
     LOG1("@%s: effect = %d", __FUNCTION__, effect);
@@ -1196,7 +1221,7 @@ status_t AtomISP::setColorEffect(v4l2_colorfx effect)
         return INVALID_OPERATION;
     if (atomisp_set_attribute (main_fd, V4L2_CID_COLORFX, effect, "Colour Effect") < 0)
         return UNKNOWN_ERROR;
-    if (mHas3A) {
+    if (mAAA->is3ASupported()) {
         switch(effect) {
         case V4L2_COLORFX_NEGATIVE:
             status = mAAA->setNegativeEffect(true);
@@ -1728,7 +1753,7 @@ int AtomISP::v4l2_capture_try_format(int device, int *w, int *h,
     return 0;
 }
 
-status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
+status_t AtomISP::getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameStatus)
 {
     LOG2("@%s", __FUNCTION__);
     struct v4l2_buffer buf;
@@ -1745,6 +1770,9 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
     mPreviewBuffers[index].id = index;
     mPreviewBuffers[index].ispPrivate = mSessionId;
     *buff = mPreviewBuffers[index];
+
+    if (frameStatus)
+        *frameStatus = (atomisp_frame_status)buf.reserved;
 
     mNumPreviewBuffersQueued--;
 

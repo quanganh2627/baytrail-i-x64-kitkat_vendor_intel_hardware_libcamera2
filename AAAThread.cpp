@@ -16,6 +16,7 @@
 #define LOG_TAG "Atom_AAAThread"
 
 #include "LogHelper.h"
+#include "Callbacks.h"
 #include "AAAThread.h"
 #include "AtomAAA.h"
 
@@ -26,9 +27,12 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone) :
     ,mMessageQueue("AAAThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
     ,mAAA(AtomAAA::getInstance())
+    ,mCallbacks(Callbacks::getInstance())
     ,mAAADoneCallback(aaaDone)
     ,m3ARunning(false)
     ,mDVSRunning(false)
+    ,mStartAF(false)
+    ,mStopAF(false)
 {
     LOG1("@%s", __FUNCTION__);
 }
@@ -135,7 +139,17 @@ status_t AAAThread::handleMessageAutoFocus()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    // TODO: implement
+    if (mAAA->is3ASupported()) {
+        mAAA->setAfEnabled(true);
+        mAAA->setAeLock(true);
+        mAAA->setAwbLock(true);
+        mAAA->startStillAf();
+        mFramesTillAfComplete = 0;
+        mStartAF = true;
+        mStopAF = false;
+    } else {
+        mCallbacks->autofocusDone(true);
+    }
 
     return status;
 }
@@ -145,7 +159,9 @@ status_t AAAThread::handleMessageCancelAutoFocus()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    // TODO: implement
+    if (mStartAF) {
+        mStopAF = true;
+    }
 
     return status;
 }
@@ -158,7 +174,46 @@ status_t AAAThread::handleMessageNewFrame()
         return status;
 
     if(m3ARunning){
+        // Run 3A statistics
         status = mAAA->apply3AProcess();
+
+        // If auto-focus was requested, run auto-focus sequence
+        if (status == NO_ERROR && mStartAF) {
+            // Check for cancel-focus
+            ci_adv_af_status afStatus = ci_adv_af_status_error;
+            if (mStopAF) {
+                afStatus = ci_adv_af_status_canceled;
+            } else {
+                afStatus = mAAA->isStillAfComplete();
+                mFramesTillAfComplete++;
+            }
+            bool stopStillAf = false;
+            if (afStatus == ci_adv_af_status_busy) {
+                LOG1("StillAF@Frame %d: BUSY    (continuing...)", mFramesTillAfComplete);
+            } else if (afStatus == ci_adv_af_status_success) {
+                LOG1("StillAF@Frame %d: SUCCESS (stopping...)", mFramesTillAfComplete);
+                stopStillAf = true;
+            } else if (afStatus == ci_adv_af_status_error) {
+                LOG1("StillAF@Frame %d: FAIL    (stopping...)", mFramesTillAfComplete);
+                stopStillAf = true;
+            } else if (afStatus == ci_adv_af_status_canceled) {
+                LOG1("StillAF@Frame %d: CANCEL  (stopping...)", mFramesTillAfComplete);
+                stopStillAf = true;
+            }
+
+            if (stopStillAf) {
+                mAAA->stopStillAf();
+                mAAA->setAeLock(false);
+                mAAA->setAwbLock(false);
+                mAAA->setAfEnabled(false);
+                mStartAF = false;
+                mStopAF = false;
+                mFramesTillAfComplete = 0;
+                mCallbacks->autofocusDone(afStatus == ci_adv_af_status_success);
+                // Also notify ControlThread that the auto-focus is finished
+                mAAADoneCallback->autoFocusDone();
+            }
+        }
     }
 
     if(mDVSRunning){

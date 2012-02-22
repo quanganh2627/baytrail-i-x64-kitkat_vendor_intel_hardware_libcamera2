@@ -25,9 +25,12 @@ AtomAAA* AtomAAA::mInstance = NULL;
 
 AtomAAA::AtomAAA() :
     mIspFd(-1)
+    ,mHas3A(false)
     ,mSensorType(SENSOR_TYPE_NONE)
     ,mAfMode(CAM_AF_MODE_NOT_SET)
+    ,mFlashMode(CAM_AE_FLASH_MODE_NOT_SET)
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
+    ,mStillAfStart(0)
 {
     LOG1("@%s", __FUNCTION__);
     mIspSettings.GBCE_strength = DEFAULT_GBCE_STRENGTH;
@@ -38,6 +41,7 @@ AtomAAA::AtomAAA() :
 AtomAAA::~AtomAAA()
 {
     LOG1("@%s", __FUNCTION__);
+    mInstance = NULL;
 }
 
 status_t AtomAAA::init(const char *sensor_id, int fd)
@@ -46,6 +50,7 @@ status_t AtomAAA::init(const char *sensor_id, int fd)
     LOG1("@%s: sensor_id = %s, fd = %d", __FUNCTION__, sensor_id, fd);
     if (ci_adv_init(sensor_id, fd) == 0) {
         mSensorType = SENSOR_TYPE_RAW;
+        mHas3A = true;
     } else {
         mSensorType = SENSOR_TYPE_SOC;
     }
@@ -57,13 +62,15 @@ status_t AtomAAA::unInit()
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
     ci_adv_uninit();
     mSensorType = SENSOR_TYPE_NONE;
     mIspFd = -1;
+    mHas3A = false;
     mAfMode = CAM_AF_MODE_NOT_SET;
     mAwbMode = CAM_AWB_MODE_NOT_SET;
+    mFlashMode = CAM_AE_FLASH_MODE_NOT_SET;
     return NO_ERROR;
 }
 
@@ -71,11 +78,13 @@ status_t AtomAAA::applyIspSettings()
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
     ci_adv_set_gbce_strength(mIspSettings.GBCE_strength);
-    if (ci_adv_set_gamma_effect(mIspSettings.GBCE_enabled, mIspSettings.inv_gamma) != 0)
+    if (ci_adv_set_gamma_effect(mIspSettings.GBCE_enabled, mIspSettings.inv_gamma) != 0) {
+        mHas3A = false;
         return UNKNOWN_ERROR;
+    }
     return NO_ERROR;
 }
 
@@ -83,7 +92,7 @@ status_t AtomAAA::switchMode(AtomMode mode)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
 
     ci_adv_isp_mode isp_mode;
@@ -111,7 +120,7 @@ status_t AtomAAA::setFrameRate(float fps)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: fps = %.2f", __FUNCTION__, fps);
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
     ci_adv_set_frame_rate(CI_ADV_S15_16_FROM_FLOAT(fps));
     return NO_ERROR;
@@ -127,7 +136,7 @@ status_t AtomAAA::setAeWindow(const CameraWindow *window)
             window->x_right,
             window->y_bottom,
             window->weight);
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
     if(ci_adv_ae_set_window((ci_adv_window *)window) != ci_adv_success)
         return UNKNOWN_ERROR;
@@ -144,7 +153,7 @@ status_t AtomAAA::setAfWindow(const CameraWindow *window)
             window->x_right,
             window->y_bottom,
             window->weight);
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
     if(ci_adv_af_set_window((ci_adv_window *)window) != ci_adv_success)
         return UNKNOWN_ERROR;
@@ -155,7 +164,7 @@ status_t AtomAAA::setAfEnabled(bool en)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: en = %d", __FUNCTION__, en);
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
     ci_adv_af_enable(en);
     return NO_ERROR;
@@ -165,7 +174,7 @@ status_t AtomAAA::setAeSceneMode(SceneMode mode)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
 
     ci_adv_ae_exposure_program wr_val;
@@ -213,11 +222,11 @@ status_t AtomAAA::setAeSceneMode(SceneMode mode)
     return NO_ERROR;
 }
 
-status_t AtomAAA::setAeMode(int mode)
+status_t AtomAAA::setAeMode(AeMode mode)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
 
     ci_adv_ae_mode wr_val;
@@ -243,6 +252,38 @@ status_t AtomAAA::setAeMode(int mode)
         return UNKNOWN_ERROR;
 
     return NO_ERROR;
+}
+
+AeMode AtomAAA::getAeMode()
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    AeMode mode = CAM_AE_MODE_NOT_SET;
+    if(!mHas3A)
+        return mode;
+
+    ci_adv_ae_mode rd_val;
+    if(ci_adv_ae_get_mode(&rd_val) != ci_adv_success)
+        return mode;
+    switch (rd_val) {
+    case ci_adv_ae_mode_auto:
+        mode = CAM_AE_MODE_AUTO;
+        break;
+    case ci_adv_ae_mode_manual:
+        mode = CAM_AE_MODE_MANUAL;
+        break;
+    case ci_adv_ae_mode_shutter_priority:
+        mode = CAM_AE_MODE_SHUTTER_PRIORITY;
+        break;
+    case ci_adv_ae_mode_aperture_priority:
+        mode = CAM_AE_MODE_APERTURE_PRIORITY;
+        break;
+    default:
+        LOGE("Get: invalid AE mode: %d. Using AUTO!", rd_val);
+        mode = CAM_AE_MODE_AUTO;
+    }
+
+    return mode;
 }
 
 status_t AtomAAA::setAfMode(AfMode mode)
@@ -298,17 +339,82 @@ AfMode AtomAAA::getAfMode()
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return CAM_AF_MODE_NOT_SET;
 
     return mAfMode;
+}
+
+status_t AtomAAA::setAeFlashMode(FlashMode mode)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s: mode = %d", __FUNCTION__, mode);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    ci_adv_ae_flash_mode wr_val;
+    switch (mode) {
+    case CAM_AE_FLASH_MODE_AUTO:
+        wr_val = ci_adv_ae_flash_mode_auto;
+        break;
+    case CAM_AE_FLASH_MODE_OFF:
+        wr_val = ci_adv_ae_flash_mode_off;
+        break;
+    case CAM_AE_FLASH_MODE_ON:
+        wr_val = ci_adv_ae_flash_mode_on;
+        break;
+    case CAM_AE_FLASH_MODE_DAY_SYNC:
+        wr_val = ci_adv_ae_flash_mode_day_sync;
+        break;
+    case CAM_AE_FLASH_MODE_SLOW_SYNC:
+        wr_val = ci_adv_ae_flash_mode_slow_sync;
+        break;
+    case CAM_AE_FLASH_MODE_TORCH:
+        wr_val = ci_adv_ae_flash_mode_off;
+        break;
+    default:
+        LOGE("Set: invalid flash mode: %d. Using AUTO!", mode);
+        mode = CAM_AE_FLASH_MODE_AUTO;
+        wr_val = ci_adv_ae_flash_mode_auto;
+    }
+    if(ci_adv_ae_set_flash_mode(wr_val) != ci_adv_success)
+        return UNKNOWN_ERROR;
+
+    mFlashMode = mode;
+
+    return NO_ERROR;
+}
+
+FlashMode AtomAAA::getAeFlashMode()
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    if(!mHas3A)
+        return CAM_AE_FLASH_MODE_NOT_SET;
+
+    return mFlashMode;
+}
+
+bool AtomAAA::getAeFlashNecessary()
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    if(!mHas3A)
+        return false;
+
+    bool en;
+    if(ci_adv_ae_is_flash_necessary(&en) != ci_adv_success)
+        return false;
+
+    LOG1("%s returning %d", __FUNCTION__, en);
+    return en;
 }
 
 status_t AtomAAA::setAwbMode (AwbMode mode)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
 
     ci_adv_err ret = ci_adv_success;
@@ -368,17 +474,17 @@ AwbMode AtomAAA::getAwbMode()
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return CAM_AWB_MODE_NOT_SET;
 
     return mAwbMode;
 }
 
-status_t AtomAAA::setAeMeteringMode(int mode)
+status_t AtomAAA::setAeMeteringMode(MeteringMode mode)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
 
     ci_adv_ae_metering_mode wr_val;
@@ -410,7 +516,7 @@ status_t AtomAAA::setAeLock(bool en)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: en = %d", __FUNCTION__, en);
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
     ci_adv_ae_lock(en);
     return NO_ERROR;
@@ -468,7 +574,7 @@ status_t AtomAAA::setAeBacklightCorrection(bool en)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: en = %d", __FUNCTION__, en);
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
 
     ci_adv_ae_backlight_correction_mode wr_val;
@@ -488,7 +594,7 @@ status_t AtomAAA::setRedEyeRemoval(bool en)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: en = %d", __FUNCTION__, en);
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
     ci_adv_redeye_enable(en);
     return NO_ERROR;
@@ -498,19 +604,16 @@ bool AtomAAA::getRedEyeRemoval()
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
-
-    if(mSensorType == SENSOR_TYPE_RAW) {
-        return ci_adv_redeye_is_enabled();
-    }
-
-    return false;
+    if(!mHas3A)
+        return false;
+   return ci_adv_redeye_is_enabled();
 }
 
 status_t AtomAAA::setAwbMapping(AwbMapping mode)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
 
     ci_adv_awb_map wr_val;
@@ -568,7 +671,7 @@ size_t AtomAAA::getAfMaxNumWindows()
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
     size_t ret = 0;
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return 0;
     int numWin = ci_adv_af_maxnum_windows();
     if (numWin > 0)
@@ -581,7 +684,7 @@ status_t AtomAAA::setAfWindows(const CameraWindow *windows, size_t numWindows)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: windows = %p, num = %u", __FUNCTION__, windows, numWindows);
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
     if (ci_adv_af_set_window_multi(numWindows, (ci_adv_window*)windows) != ci_adv_success)
         return UNKNOWN_ERROR;
@@ -598,13 +701,85 @@ status_t AtomAAA::setNegativeEffect(bool en)
     return NO_ERROR;
 }
 
+status_t AtomAAA::startStillAf()
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    ci_adv_af_start();
+    mStillAfStart = systemTime();
+    return NO_ERROR;
+}
+
+status_t AtomAAA::stopStillAf()
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    ci_adv_af_stop();
+    mStillAfStart = 0;
+    return NO_ERROR;
+}
+
+ci_adv_af_status AtomAAA::isStillAfComplete()
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    if(!mHas3A)
+        return ci_adv_af_status_error;
+
+    if (mStillAfStart == 0) {
+        // startStillAf wasn't called? return error
+        LOGE("Call startStillAf before calling %s!", __FUNCTION__);
+        return ci_adv_af_status_error;
+    }
+    if (((systemTime() - mStillAfStart) / 1000000) > MAX_TIME_FOR_AF) {
+        LOGW("Auto-focus sequence for still capture is taking too long. Cancelling!");
+        return ci_adv_af_status_canceled;
+    }
+
+    return ci_adv_af_is_complete();
+}
+
+status_t AtomAAA::applyPreFlashProcess(FlashStage stage)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    ci_adv_flash_stage wr_stage;
+    switch (stage) {
+    case CAM_FLASH_STAGE_NONE:
+        wr_stage = ci_adv_flash_stage_none;
+        break;
+    case CAM_FLASH_STAGE_PRE:
+        wr_stage = ci_adv_flash_stage_pre;
+        break;
+    case CAM_FLASH_STAGE_MAIN:
+        wr_stage = ci_adv_flash_stage_main;
+        break;
+    default:
+        LOGE("Unknown flash stage: %d", stage);
+        return UNKNOWN_ERROR;
+    }
+    ci_adv_process_for_flash(wr_stage);
+
+    return NO_ERROR;
+
+}
+
 status_t AtomAAA::applyRedEyeRemoval(const AtomBuffer &snapshotBuffer, int width, int height, int format) {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: buffer = %p, w = %d, h = %d, f = %d", __FUNCTION__, &snapshotBuffer, width, height, format);
     status_t status = NO_ERROR;
     ci_adv_user_buffer user_buf;
 
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
 
     switch (format) {
@@ -633,7 +808,7 @@ status_t AtomAAA::applyDvsProcess()
     Mutex::Autolock lock(m3aLock);
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
     ci_adv_dvs_process();
     return status;
@@ -644,7 +819,7 @@ int AtomAAA::apply3AProcess(bool read_stats)
     Mutex::Autolock lock(m3aLock);
     LOG2("@%s: read_stats = %d", __FUNCTION__, read_stats);
     status_t status = NO_ERROR;
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
     if (ci_adv_process_frame(read_stats) != 0) {
         status = UNKNOWN_ERROR;

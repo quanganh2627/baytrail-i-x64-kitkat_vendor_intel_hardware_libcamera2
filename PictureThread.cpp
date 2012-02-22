@@ -33,7 +33,7 @@ PictureThread::PictureThread(ICallbackPicture *pictureDone) :
     ,mMessageQueue("PictureThread")
     ,mThreadRunning(false)
     ,mPictureDoneCallback(pictureDone)
-    ,mCallbacks(NULL)
+    ,mCallbacks(Callbacks::getInstance())
     ,mPictureWidth(0)
     ,mPictureHeight(0)
     ,mPictureFormat(0)
@@ -58,12 +58,6 @@ PictureThread::~PictureThread()
         LOG1("Deleting JPEG encoder...");
         delete jpegEncoder;
     }
-}
-
-void PictureThread::setCallbacks(Callbacks *callbacks)
-{
-    LOG1("@%s", __FUNCTION__);
-    mCallbacks = callbacks;
 }
 
 status_t PictureThread::convertRawImage(void* src, void** dst, int width, int height, int format)
@@ -121,6 +115,11 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     }
     LOG1("Temp buffer: @%p (%d bytes)", tempBuf.buff->data, tempBuf.buff->size);
     // Convert and encode the thumbnail, if present and EXIF maker is initialized
+#ifdef ANDROID_1732
+    /*
+     * Fix for ANDROID-1714: don't include thumbnail in EXIF because the viewers will show the thumbnail
+     * instead of main picture as being the main picture.
+     */
     if (exifMaker.isInitialized() &&
         thumbBuf != NULL &&
         thumbBuf->buff != NULL &&
@@ -146,6 +145,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
             }
         }
     }
+#endif
     int totalSize = 0;
     unsigned char* currentPtr = (unsigned char*)tempBuf.buff->data;
     unsigned char* exifEnd = NULL;
@@ -156,9 +156,11 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         memcpy(currentPtr, JPEG_SOI, sizeof(JPEG_SOI));
         currentPtr += sizeof(JPEG_SOI);
         totalSize += sizeof(JPEG_SOI);
+
         size_t exifSize = exifMaker.makeExif(&currentPtr);
         currentPtr += exifSize;
         totalSize += exifSize;
+
         exifEnd = currentPtr;
         copyTime += (systemTime() - tEnd);
     }

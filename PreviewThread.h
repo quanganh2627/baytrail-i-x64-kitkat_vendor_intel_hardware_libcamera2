@@ -49,8 +49,6 @@ public:
 // public methods
 public:
 
-    void     setCallbacks(Callbacks *callbacks);
-
     status_t preview(AtomBuffer *buff);
     status_t setPreviewWindow(struct preview_stream_ops *window);
     status_t setPreviewSize(int preview_width, int preview_height);

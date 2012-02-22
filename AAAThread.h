@@ -31,6 +31,7 @@ namespace android {
         ICallbackAAA() {}
         virtual ~ICallbackAAA() {}
         virtual void redEyeRemovalDone(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer) = 0;
+        virtual void autoFocusDone() = 0;
     };
 
 class AtomAAA;
@@ -122,10 +123,14 @@ private:
     MessageQueue<Message> mMessageQueue;
     bool mThreadRunning;
     AtomAAA *mAAA;
+    Callbacks *mCallbacks;
     ICallbackAAA* mAAADoneCallback;
 
     bool m3ARunning;
     bool mDVSRunning;
+    bool mStartAF;
+    bool mStopAF;
+    size_t mFramesTillAfComplete; // used for debugging only
 }; // class AAAThread
 
 }; // namespace android

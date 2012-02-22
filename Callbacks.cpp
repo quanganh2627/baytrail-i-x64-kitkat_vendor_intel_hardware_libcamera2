@@ -21,6 +21,8 @@
 
 namespace android {
 
+Callbacks* Callbacks::mInstance = NULL;
+
 Callbacks::Callbacks() :
     mNotifyCB(NULL)
     ,mDataCB(NULL)
@@ -34,6 +36,7 @@ Callbacks::Callbacks() :
 Callbacks::~Callbacks()
 {
     LOG1("@%s", __FUNCTION__);
+    mInstance = NULL;
 }
 
 void Callbacks::setCallbacks(camera_notify_callback notify_cb,
@@ -42,7 +45,12 @@ void Callbacks::setCallbacks(camera_notify_callback notify_cb,
                              camera_request_memory get_memory,
                              void* user)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s: Notify = %p, Data = %p, DataTimestamp = %p, GetMemory = %p",
+            __FUNCTION__,
+            notify_cb,
+            data_cb,
+            data_cb_timestamp,
+            get_memory);
     mNotifyCB = notify_cb;
     mDataCB = data_cb;
     mDataCBTimestamp = data_cb_timestamp;
@@ -112,11 +120,11 @@ void Callbacks::allocateMemory(AtomBuffer *buff, int size)
         buff->buff = mGetMemoryCB(-1, size, 1, mUserToken);
 }
 
-void Callbacks::autofocusDone(void)
+void Callbacks::autofocusDone(bool status)
 {
     LOG1("@%s", __FUNCTION__);
     if (mMessageFlags & CAMERA_MSG_FOCUS)
-        mNotifyCB(CAMERA_MSG_FOCUS, 1, 0, mUserToken);
+        mNotifyCB(CAMERA_MSG_FOCUS, status, 0, mUserToken);
 }
 
 void Callbacks::shutterSound()

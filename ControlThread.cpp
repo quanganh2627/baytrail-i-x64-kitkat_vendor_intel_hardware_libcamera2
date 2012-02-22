@@ -36,7 +36,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mMessageQueue("ControlThread", (int) MESSAGE_ID_MAX)
     ,mState(STATE_STOPPED)
     ,mThreadRunning(false)
-    ,mCallbacks(new Callbacks())
+    ,mCallbacks(Callbacks::getInstance())
     ,mCoupledBuffers(NULL)
     ,mNumBuffers(mISP->getNumBuffers())
     ,mBSInstance(BufferShareRegistry::getInstance())
@@ -47,6 +47,10 @@ ControlThread::ControlThread(int cameraId) :
     // get default params from AtomISP and JPEG encoder
     mISP->getDefaultParameters(&mParameters);
     mPictureThread->getDefaultParameters(&mParameters);
+    status_t status = m3AThread->run();
+    if (status != NO_ERROR) {
+        LOGE("Error starting 3A thread!");
+    }
 }
 
 ControlThread::~ControlThread()
@@ -55,13 +59,16 @@ ControlThread::~ControlThread()
     mPreviewThread.clear();
     mPictureThread.clear();
     m3AThread.clear();
+    mBSInstance.clear();
     if (mISP != NULL) {
         delete mISP;
+    }
+    if (mAAA != NULL) {
+        delete mAAA;
     }
     if (mCallbacks != NULL) {
         delete mCallbacks;
     }
-    mBSInstance.clear();
 }
 
 status_t ControlThread::setPreviewWindow(struct preview_stream_ops *window)
@@ -85,9 +92,6 @@ void ControlThread::setCallbacks(camera_notify_callback notify_cb,
             data_cb_timestamp,
             get_memory,
             user);
-    mISP->setCallbacks(mCallbacks);
-    mPreviewThread->setCallbacks(mCallbacks);
-    mPictureThread->setCallbacks(mCallbacks);
 }
 
 void ControlThread::enableMsgType(int32_t msgType)
@@ -276,6 +280,14 @@ void ControlThread::redEyeRemovalDone(AtomBuffer *snapshotBuf, AtomBuffer *postv
     mMessageQueue.send(&msg);
 }
 
+void ControlThread::autoFocusDone()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_AUTO_FOCUS_DONE;
+    mMessageQueue.send(&msg);
+}
+
 status_t ControlThread::handleMessageExit()
 {
     LOG1("@%s", __FUNCTION__);
@@ -349,13 +361,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             LOGE("Error starting preview thread!");
             mISP->stop();
         }
-        if (mISP->is3ASupported()) {
-            status = m3AThread->run();
-            if (status == NO_ERROR) {
-                m3AThread->enable3A();
-            } else {
-                LOGE("Error starting 3A thread!");
-            }
+        if (mAAA->is3ASupported()) {
+            m3AThread->enable3A();
         }
     } else {
         LOGE("Error starting ISP!");
@@ -369,7 +376,6 @@ status_t ControlThread::stopPreviewCore()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     mPreviewThread->requestExitAndWait();
-    m3AThread->requestExitAndWait();
     status = mISP->stop();
     if (status == NO_ERROR) {
         mState = STATE_STOPPED;
@@ -429,6 +435,9 @@ status_t ControlThread::handleMessageStartRecording()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    FlashMode flashMode = CAM_AE_FLASH_MODE_NOT_SET;
+    AeMode aeMode = CAM_AE_MODE_NOT_SET;
+    bool flashNeeded = false;
 
     if (mState == STATE_PREVIEW_VIDEO) {
         if (recordingBSEnable() != NO_ERROR) {
@@ -454,6 +463,12 @@ status_t ControlThread::handleMessageStartRecording()
         status = INVALID_OPERATION;
     }
 
+    const char *pFlashMode = mParameters.get(CameraParameters::KEY_FLASH_MODE);
+    if (pFlashMode != NULL && strncmp(pFlashMode, CameraParameters::FLASH_MODE_TORCH, strlen(CameraParameters::FLASH_MODE_TORCH)) == 0) {
+        LOG1("Using Flash for recording!");
+        status = mISP->setTorch(TORCH_INTENSITY);
+    }
+
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_START_RECORDING, status);
     return status;
@@ -473,6 +488,7 @@ status_t ControlThread::handleMessageStopRecording()
             LOGE("Error voting for disable buffer sharing");
         }
         mState = STATE_PREVIEW_VIDEO;
+        mISP->setTorch(0);
     } else {
         LOGE("Error stopping recording. Invalid state!");
         status = INVALID_OPERATION;
@@ -483,6 +499,71 @@ status_t ControlThread::handleMessageStopRecording()
     return status;
 }
 
+bool ControlThread::runPreFlashSequence()
+{
+    size_t framesTillFlashComplete = 0;
+    AtomBuffer buff;
+    bool ret = false;
+    status_t status = NO_ERROR;
+    atomisp_frame_status frameStatus = ATOMISP_FRAME_STATUS_OK;
+
+    // Stage 1
+    status = mISP->getPreviewFrame(&buff);
+    if (status == NO_ERROR) {
+        mISP->putPreviewFrame(&buff);
+        mAAA->applyPreFlashProcess(CAM_FLASH_STAGE_NONE);
+    } else {
+        return ret;
+    }
+
+    // Stage 2
+    status = mISP->getPreviewFrame(&buff);
+    if (status == NO_ERROR) {
+        mISP->putPreviewFrame(&buff);
+        mAAA->applyPreFlashProcess(CAM_FLASH_STAGE_PRE);
+    } else {
+        return ret;
+    }
+
+    // Stage 3: get the flash-exposed preview frame
+    // and let the 3A library calculate the exposure
+    // settings for the flash-exposed still capture.
+    // We check the frame status to make sure we use
+    // the flash-exposed frame.
+    status = mISP->setFlash(1);
+
+    if (status != NO_ERROR) {
+        LOGE("Failed to request pre-flash frame");
+        return false;
+    }
+
+    while (++framesTillFlashComplete < FLASH_FRAME_TIMEOUT) {
+        status = mISP->getPreviewFrame(&buff, &frameStatus);
+        if (status == NO_ERROR) {
+            mISP->putPreviewFrame(&buff);
+        } else {
+            return ret;
+        }
+        if (frameStatus == ATOMISP_FRAME_STATUS_FLASH_EXPOSED) {
+            LOG1("PreFlash@Frame %d: SUCCESS    (stopping...)", framesTillFlashComplete);
+            ret = true;
+            break;
+        }
+        if (frameStatus == ATOMISP_FRAME_STATUS_FLASH_FAILED) {
+            LOG1("PreFlash@Frame %d: FAILED     (stopping...)", framesTillFlashComplete);
+            break;
+        }
+    }
+
+    if (ret) {
+        mAAA->applyPreFlashProcess(CAM_FLASH_STAGE_MAIN);
+    } else {
+        mAAA->apply3AProcess(true);
+    }
+
+    return ret;
+}
+
 status_t ControlThread::handleMessageTakePicture()
 {
     LOG1("@%s", __FUNCTION__);
@@ -491,8 +572,30 @@ status_t ControlThread::handleMessageTakePicture()
     int width;
     int height;
     int format;
+    FlashMode flashMode = CAM_AE_FLASH_MODE_NOT_SET;
+    AeMode aeMode = CAM_AE_MODE_NOT_SET;
+    bool flashNeeded = false;
 
-    if (mState != STATE_STOPPED) {
+    const char *pFlashMode = mParameters.get(CameraParameters::KEY_FLASH_MODE);
+    if (pFlashMode != NULL && strncmp(pFlashMode, CameraParameters::FLASH_MODE_ON, strlen(CameraParameters::FLASH_MODE_ON)) == 0) {
+        flashNeeded = true;
+    }
+
+    if (mState == STATE_PREVIEW_STILL) {
+        // If flash mode is not ON, check for other modes: AUTO, DAY_SYNC, SLOW_SYNC
+        if (!flashNeeded && mAAA->is3ASupported()) {
+            flashMode = mAAA->getAeFlashMode();
+            if (DetermineFlash(flashMode)) {
+                flashNeeded = mAAA->getAeFlashNecessary();
+                LOG1("In flash-mode: %d, determined flashNeeded: %d", flashMode, flashNeeded);
+            } else {
+                flashNeeded = false;
+            }
+            aeMode = mAAA->getAeMode();
+            if (flashNeeded && aeMode != CAM_AE_MODE_MANUAL) {
+                flashNeeded = runPreFlashSequence();
+            }
+        }
         status = stopPreviewCore();
     }
 
@@ -508,10 +611,13 @@ status_t ControlThread::handleMessageTakePicture()
         return status;
     }
 
-    const char *flashMode = mParameters.get(CameraParameters::KEY_FLASH_MODE);
-    if (flashMode != NULL && strncmp(flashMode, CameraParameters::FLASH_MODE_ON, 2) == 0) {
-        LOGD("Requesting flash");
-        mISP->setFlash(1);
+    if (flashNeeded) {
+        LOG1("Requesting flash");
+        if (mISP->setFlash(1) != NO_ERROR) {
+            LOGE("Failed to enable the Flash!");
+        }
+    } else if (DetermineFlash(flashMode)) {
+        mISP->setFlashIndicator(TORCH_INTENSITY);
     }
 
     // Get the snapshot
@@ -519,6 +625,11 @@ status_t ControlThread::handleMessageTakePicture()
         LOGE("Error in grabbing snapshot!");
         return status;
     }
+
+    if (!flashNeeded && DetermineFlash(flashMode)) {
+        mISP->setFlashIndicator(0);
+    }
+
 
     // tell CameraService to play the shutter sound
     mCallbacks->shutterSound();
@@ -535,7 +646,7 @@ status_t ControlThread::handleMessageTakePicture()
      * in burst-capture mode, we can do: grab frames in ControlThread, Red-Eye removal in AAAThread
      * and JPEG encoding in Picture thread, all in parallel.
      */
-    if (mISP->is3ASupported() && mAAA->getRedEyeRemoval()) {
+    if (mAAA->is3ASupported() && mAAA->getRedEyeRemoval()) {
         // tell 3A thread to remove red-eye
         status = m3AThread->applyRedEyeRemoval(&snapshotBuffer, &postviewBuffer, width, height, format);
         if (status == NO_ERROR) {
@@ -564,9 +675,37 @@ status_t ControlThread::handleMessageAutoFocus()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    bool flashNeeded = false;
+    // Implement pre auto-focus functions
+    if (mAAA->is3ASupported()) {
+        const char *pFlashMode = mParameters.get(CameraParameters::KEY_FLASH_MODE);
+        if (pFlashMode != NULL && strncmp(pFlashMode, CameraParameters::FLASH_MODE_ON, strlen(CameraParameters::FLASH_MODE_ON)) == 0) {
+            flashNeeded = true;
+        }
 
-    // TODO: implement
-    mCallbacks->autofocusDone();
+        FlashMode flashMode = mAAA->getAeFlashMode();
+        if (!flashNeeded && DetermineFlash(flashMode)) {
+            // Check the other modes
+            LOG1("Flash mode = %d", flashMode);
+            if (mAAA->getAeFlashNecessary()) {
+                flashNeeded = true;
+            }
+        }
+
+        if (flashNeeded) {
+            LOG1("Using Torch for auto-focus");
+            mISP->setTorch(TORCH_INTENSITY);
+        }
+    }
+
+    // Auto-focus should be done in AAAThread, so send a message directly to it
+    status = m3AThread->autoFocus();
+
+    // If start auto-focus failed and we enabled torch, disable it now
+    if (status != NO_ERROR && flashNeeded) {
+        mISP->setTorch(0);
+    }
+
     return status;
 }
 
@@ -574,9 +713,8 @@ status_t ControlThread::handleMessageCancelAutoFocus()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    void *buff;
 
-    // TODO: implement
+    status = m3AThread->cancelAutoFocus();
 
     return status;
 }
@@ -700,6 +838,17 @@ status_t ControlThread::handleMessageRedEyeRemovalDone(MessagePicture *msg)
     return status;
 }
 
+status_t ControlThread::handleMessageAutoFocusDone()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    // Implement post auto-focus functions
+    mISP->setFlashIndicator(0);
+
+    return status;
+}
+
 status_t ControlThread::validateParameters(const CameraParameters *params)
 {
     LOG1("@%s: params = %p", __FUNCTION__, params);
@@ -757,7 +906,12 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     // Colour effect
     status = processParamEffect(oldParams, newParams);
 
-    if (mISP->is3ASupported()) {
+    if (mAAA->is3ASupported()) {
+        if (status == NO_ERROR) {
+            // Scene Mode
+            status = processParamFlash(oldParams, newParams);
+        }
+
         if (status == NO_ERROR) {
             // Scene Mode
             status = processParamSceneMode(oldParams, newParams);
@@ -776,6 +930,36 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         if (status == NO_ERROR) {
             // red-eye removal
             status = processParamRedEyeMode(oldParams, newParams);
+        }
+    }
+    return status;
+}
+
+status_t ControlThread::processParamFlash(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    const char* oldValue = oldParams->get(CameraParameters::KEY_FLASH_MODE);
+    const char* newValue = newParams->get(CameraParameters::KEY_FLASH_MODE);
+    if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+        FlashMode flash = CAM_AE_FLASH_MODE_AUTO;
+        if(!strncmp(newValue, CameraParameters::FLASH_MODE_AUTO, strlen(CameraParameters::FLASH_MODE_AUTO)))
+            flash = CAM_AE_FLASH_MODE_AUTO;
+        else if(!strncmp(newValue, CameraParameters::FLASH_MODE_OFF, strlen(CameraParameters::FLASH_MODE_OFF)))
+            flash = CAM_AE_FLASH_MODE_OFF;
+        else if(!strncmp(newValue, CameraParameters::FLASH_MODE_ON, strlen(CameraParameters::FLASH_MODE_ON)))
+            flash = CAM_AE_FLASH_MODE_ON;
+        else if(!strncmp(newValue, CameraParameters::FLASH_MODE_TORCH, strlen(CameraParameters::FLASH_MODE_TORCH)))
+            flash = CAM_AE_FLASH_MODE_TORCH;
+        else if(!strncmp(newValue, CameraParameters::FLASH_MODE_SLOW_SYNC, strlen(CameraParameters::FLASH_MODE_SLOW_SYNC)))
+            flash = CAM_AE_FLASH_MODE_SLOW_SYNC;
+        else if(!strncmp(newValue, CameraParameters::FLASH_MODE_DAY_SYNC, strlen(CameraParameters::FLASH_MODE_DAY_SYNC)))
+            flash = CAM_AE_FLASH_MODE_DAY_SYNC;
+
+        status = mAAA->setAeFlashMode(flash);
+        if (status == NO_ERROR) {
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_FLASH_MODE, newValue);
         }
     }
     return status;
@@ -1223,8 +1407,13 @@ status_t ControlThread::waitForAndExecuteMessage()
         case MESSAGE_ID_PICTURE_DONE:
             status = handleMessagePictureDone(&msg.data.pictureDone);
             break;
+
         case MESSAGE_ID_REDEYE_REMOVAL_DONE:
             status = handleMessageRedEyeRemovalDone(&msg.data.redEyeRemovalDone);
+            break;
+
+        case MESSAGE_ID_AUTO_FOCUS_DONE:
+            status = handleMessageAutoFocusDone();
             break;
 
         case MESSAGE_ID_SET_PARAMETERS:
@@ -1271,7 +1460,7 @@ status_t ControlThread::dequeuePreview()
             mCoupledBuffers[buff.id].previewBuff = buff;
             mCoupledBuffers[buff.id].previewBuffReturned = false;
         }
-        if (mISP->is3ASupported()) {
+        if (mAAA->is3ASupported()) {
             status = m3AThread->newFrame();
             if (status != NO_ERROR)
                 LOGW("Error notifying new frame to 3A thread!");
