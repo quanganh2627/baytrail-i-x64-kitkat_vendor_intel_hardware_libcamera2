@@ -293,6 +293,12 @@ private:
     status_t processDynamicParameters(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamFlash(const CameraParameters *oldParams,
+                CameraParameters *newParams);
+    status_t processParamAELock(const CameraParameters *oldParams,
+                CameraParameters *newParams);
+    status_t processParamAFLock(const CameraParameters *oldParams,
+                CameraParameters *newParams);
+    status_t processParamAWBLock(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamEffect(const CameraParameters *oldParams,
             CameraParameters *newParams);

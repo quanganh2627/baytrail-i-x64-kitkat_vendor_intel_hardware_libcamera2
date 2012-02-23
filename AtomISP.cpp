@@ -403,6 +403,40 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
             return;
         }
         params->set(CameraParameters::KEY_SUPPORTED_RED_EYE_MODES, redEyeModes);
+
+        // 3a lock: auto-exposure lock
+        params->set(CameraParameters::KEY_AUTO_EXPOSURE_LOCK,CameraParameters::AE_LOCK_UNLOCK);
+        char aelock[100] = {0};
+        if (snprintf(aelock, sizeof(aelock)
+                ,"%s,%s"
+                ,CameraParameters::AE_LOCK_LOCK
+                ,CameraParameters::AE_LOCK_UNLOCK) < 0) {
+            LOGE("Could not generate %s string: %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK_SUPPORTED, strerror(errno));
+            return;
+        }
+        params->set(CameraParameters::KEY_AUTO_EXPOSURE_LOCK_SUPPORTED,aelock);
+        // 3a lock: auto-focus lock
+        params->set(CameraParameters::KEY_AUTO_FOCUS_LOCK,CameraParameters::AF_LOCK_UNLOCK);
+        char aflock[100] = {0};
+        if (snprintf(aflock, sizeof(aflock)
+                ,"%s,%s"
+                ,CameraParameters::AF_LOCK_LOCK
+                ,CameraParameters::AF_LOCK_UNLOCK) < 0) {
+            LOGE("Could not generate %s string: %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK_SUPPORTED, strerror(errno));
+            return;
+        }
+        params->set(CameraParameters::KEY_AUTO_FOCUS_LOCK_SUPPORTED,aflock);
+        // 3a lock: auto-whitebalance lock
+        params->set(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK,CameraParameters::AWB_LOCK_UNLOCK);
+        char awblock[100] = {0};
+        if (snprintf(awblock, sizeof(awblock)
+                ,"%s,%s"
+                ,CameraParameters::AWB_LOCK_LOCK
+                ,CameraParameters::AWB_LOCK_UNLOCK) < 0) {
+            LOGE("Could not generate %s string: %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK_SUPPORTED, strerror(errno));
+            return;
+        }
+        params->set(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK_SUPPORTED,awblock);
     }
 }
 

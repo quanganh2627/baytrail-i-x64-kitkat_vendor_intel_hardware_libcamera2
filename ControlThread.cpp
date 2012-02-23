@@ -937,7 +937,113 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             // red-eye removal
             status = processParamRedEyeMode(oldParams, newParams);
         }
+
+        if (status == NO_ERROR) {
+            // ae lock
+            status = processParamAELock(oldParams, newParams);
+        }
+
+        if (status == NO_ERROR) {
+            // af lock
+            status = processParamAFLock(oldParams, newParams);
+        }
+
+        if (status == NO_ERROR) {
+            // awb lock
+            status = processParamAWBLock(oldParams, newParams);
+        }
     }
+    return status;
+}
+
+status_t ControlThread::processParamAFLock(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    // af lock mode
+    const char* oldValue = oldParams->get(CameraParameters::KEY_AUTO_FOCUS_LOCK);
+    const char* newValue = newParams->get(CameraParameters::KEY_AUTO_FOCUS_LOCK);
+    if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+        bool af_lock;
+
+        if(!strncmp(newValue, CameraParameters::AF_LOCK_LOCK, strlen(CameraParameters::AF_LOCK_LOCK))) {
+            af_lock = true;
+        } else if(!strncmp(newValue, CameraParameters::AF_LOCK_UNLOCK, strlen(CameraParameters::AF_LOCK_UNLOCK))) {
+            af_lock = false;
+        } else {
+            LOGW("Invalid value received for %s: %s", CameraParameters::KEY_AUTO_FOCUS_LOCK, newValue);
+            return INVALID_OPERATION;
+        }
+        status = mAAA->setAfLock(af_lock);
+
+        if (status == NO_ERROR) {
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_AUTO_FOCUS_LOCK, newValue);
+        }
+    }
+
+    return status;
+}
+
+status_t ControlThread::processParamAWBLock(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    // awb lock mode
+    const char* oldValue = oldParams->get(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK);
+    const char* newValue = newParams->get(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK);
+    if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+        bool awb_lock;
+
+        if(!strncmp(newValue, CameraParameters::AWB_LOCK_LOCK, strlen(CameraParameters::AWB_LOCK_LOCK))) {
+            awb_lock = true;
+        } else if(!strncmp(newValue, CameraParameters::AWB_LOCK_UNLOCK, strlen(CameraParameters::AWB_LOCK_UNLOCK))) {
+            awb_lock = false;
+        } else {
+            LOGW("Invalid value received for %s: %s", CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, newValue);
+            return INVALID_OPERATION;
+        }
+        status = mAAA->setAwbLock(awb_lock);
+
+        if (status == NO_ERROR) {
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, newValue);
+        }
+    }
+
+    return status;
+}
+
+status_t ControlThread::processParamAELock(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    // ae lock mode
+    const char* oldValue = oldParams->get(CameraParameters::KEY_AUTO_EXPOSURE_LOCK);
+    const char* newValue = newParams->get(CameraParameters::KEY_AUTO_EXPOSURE_LOCK);
+
+    if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+        bool ae_lock;
+
+        if(!strncmp(newValue, CameraParameters::AE_LOCK_LOCK, strlen(CameraParameters::AE_LOCK_LOCK))) {
+            ae_lock = true;
+        } else  if(!strncmp(newValue, CameraParameters::AE_LOCK_UNLOCK, strlen(CameraParameters::AE_LOCK_UNLOCK))) {
+            ae_lock = false;
+        } else {
+            LOGW("Invalid value received for %s: %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK, newValue);
+            return INVALID_OPERATION;
+        }
+
+        status =  mAAA->setAeLock(ae_lock);
+        if (status == NO_ERROR) {
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK, newValue);
+        }
+    }
+
     return status;
 }
 
