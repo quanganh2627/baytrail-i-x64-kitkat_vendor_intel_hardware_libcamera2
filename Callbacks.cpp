@@ -77,7 +77,7 @@ bool Callbacks::msgTypeEnabled(int32_t msgType)
 
 void Callbacks::previewFrameDone(AtomBuffer *buff)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_PREVIEW_FRAME) && mDataCB != NULL) {
         // TODO: may need to make a memcpy
         LOG2("Sending message: CAMERA_MSG_PREVIEW_FRAME");

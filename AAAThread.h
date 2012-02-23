@@ -51,7 +51,7 @@ public:
 public:
 
     status_t enable3A();
-    status_t enableDVS();
+    status_t enableDVS(bool en);
     status_t autoFocus();
     status_t cancelAutoFocus();
     status_t newFrame();
@@ -79,6 +79,10 @@ private:
     // message data structures
     //
 
+    struct MessageEnable {
+        bool enable;
+    };
+
     struct MessagePicture {
         AtomBuffer snaphotBuf;
         AtomBuffer postviewBuf;
@@ -89,6 +93,7 @@ private:
 
     // union of all message data
     union MessageData {
+        MessageEnable enable;
         MessagePicture picture;
     };
 
@@ -104,7 +109,7 @@ private:
     // thread message execution functions
     status_t handleMessageExit();
     status_t handleMessageEnable3A();
-    status_t handleMessageEnableDVS();
+    status_t handleMessageEnableDVS(MessageEnable* msg);
     status_t handleMessageAutoFocus();
     status_t handleMessageCancelAutoFocus();
     status_t handleMessageNewFrame();

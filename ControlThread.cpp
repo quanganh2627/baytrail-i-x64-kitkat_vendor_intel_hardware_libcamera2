@@ -363,6 +363,9 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         }
         if (mAAA->is3ASupported()) {
             m3AThread->enable3A();
+            if (videoMode) {
+                m3AThread->enableDVS(true);
+            }
         }
     } else {
         LOGE("Error starting ISP!");
@@ -376,6 +379,9 @@ status_t ControlThread::stopPreviewCore()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     mPreviewThread->requestExitAndWait();
+    if (mState == STATE_PREVIEW_VIDEO && mAAA->is3ASupported()) {
+        m3AThread->enableDVS(false);
+    }
     status = mISP->stop();
     if (status == NO_ERROR) {
         mState = STATE_STOPPED;

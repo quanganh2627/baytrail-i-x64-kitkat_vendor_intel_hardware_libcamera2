@@ -51,12 +51,13 @@ status_t AAAThread::enable3A()
     return mMessageQueue.send(&msg, MESSAGE_ID_ENABLE_AAA);
 }
 
-status_t AAAThread::enableDVS()
+status_t AAAThread::enableDVS(bool en)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     Message msg;
     msg.id = MESSAGE_ID_ENABLE_DVS;
+    msg.data.enable.enable = en;
     return mMessageQueue.send(&msg);
 }
 
@@ -126,11 +127,11 @@ status_t AAAThread::handleMessageEnable3A()
     return status;
 }
 
-status_t AAAThread::handleMessageEnableDVS()
+status_t AAAThread::handleMessageEnableDVS(MessageEnable* msg)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    mDVSRunning = true;
+    mDVSRunning = msg->enable;
     return status;
 }
 
@@ -251,7 +252,7 @@ status_t AAAThread::waitForAndExecuteMessage()
             break;
 
         case MESSAGE_ID_ENABLE_DVS:
-            status = handleMessageEnableDVS();
+            status = handleMessageEnableDVS(&msg.data.enable);
             break;
 
         case MESSAGE_ID_AUTO_FOCUS:
