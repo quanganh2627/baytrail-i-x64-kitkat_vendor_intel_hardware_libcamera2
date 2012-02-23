@@ -246,6 +246,8 @@ private:
         AtomBuffer recordingBuff;
         bool previewBuffReturned;
         bool recordingBuffReturned;
+        bool videoSnapshotBuff;
+        bool videoSnapshotBuffReturned;
     };
 
 // private methods
@@ -360,6 +362,8 @@ private:
     sp<BufferShareRegistry> mBSInstance;
 
     BSState mBSState;
+
+    int mLastRecordingBuffIndex;
 
 }; // class ControlThread
 

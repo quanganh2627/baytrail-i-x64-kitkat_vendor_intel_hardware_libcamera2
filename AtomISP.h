@@ -103,6 +103,7 @@ public:
     status_t setVideoFrameFormat(int width, int height, int format);
 
     inline int getSnapshotPixelFormat() { return mConfig.snapshot.format; }
+    void getVideoSize(int *width, int *height);
 
     status_t setSnapshotNum(int num);
 

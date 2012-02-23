@@ -51,7 +51,7 @@ public:
 // public methods
 public:
 
-    status_t encode(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
+    status_t encode(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf = NULL);
     void setPictureFormat(int format)
     {
         mPictureFormat = format;

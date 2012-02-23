@@ -274,6 +274,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
     params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, "320x240,640x480,1280x720,1920x1080");
     params->set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,
             cameraParametersFormat(V4L2_PIX_FMT_NV12));
+    params->set(CameraParameters::KEY_VIDEO_SNAPSHOT_SUPPORTED, CameraParameters::TRUE);
 
     /**
      * SNAPSHOT
@@ -1127,6 +1128,14 @@ status_t AtomISP::setSnapshotFrameFormat(int width, int height, int format)
     LOG1("width(%d), height(%d), pad_width(%d), size(%d), format(%d)",
         width, height, mConfig.snapshot.padding, mConfig.snapshot.size, format);
     return status;
+}
+
+void AtomISP::getVideoSize(int *width, int *height)
+{
+    if (width && height) {
+        *width = mConfig.recording.width;
+        *height = mConfig.recording.height;
+    }
 }
 
 status_t AtomISP::setSnapshotNum(int num)
@@ -2099,6 +2108,7 @@ status_t AtomISP::allocatePreviewBuffers()
          }
          allocatedBufs++;
          v4l2_buf_pool[mPreviewDevice].bufs[i].data = mPreviewBuffers[i].buff->data;
+        mPreviewBuffers[i].shared = false;
     }
     return status;
 
@@ -2150,8 +2160,10 @@ status_t AtomISP::allocateRecordingBuffers()
         if (mUsingClientRecordingBuffers) {
             v4l2_buf_pool[mRecordingDevice].bufs[i].data = mClientRecordingBuffers[i];
             memcpy(mRecordingBuffers[i].buff->data, &mClientRecordingBuffers[i], sizeof(void *));
+            mRecordingBuffers[i].shared = true;
         } else {
             v4l2_buf_pool[mRecordingDevice].bufs[i].data = mRecordingBuffers[i].buff->data;
+            mRecordingBuffers[i].shared = false;
         }
     }
     return status;
@@ -2200,6 +2212,8 @@ status_t AtomISP::allocateSnapshotBuffers()
         }
         allocatedPostviewBufs++;
         v4l2_buf_pool[V4L2_SECOND_DEVICE].bufs[i].data = mPostviewBuffers[i].buff->data;
+        mSnapshotBuffers[i].shared = false;
+        mPostviewBuffers[i].shared = false;
     }
     return status;
 

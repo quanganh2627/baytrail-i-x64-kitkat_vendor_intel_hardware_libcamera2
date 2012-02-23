@@ -97,6 +97,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     nsecs_t encodingTime;
     nsecs_t copyTime;
     nsecs_t processTime;
+    void *mainData;
 
     tStart = systemTime();
     encodingTime = 0;
@@ -165,8 +166,14 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         copyTime += (systemTime() - tEnd);
     }
 
+    if (mainBuf->shared)
+        mainData = (void *) *((char **)mainBuf->buff->data);
+    else
+        mainData = mainBuf->buff->data;
+
     // Convert and encode the main picture image
-    status = convertRawImage(mainBuf->buff->data, (void**)&currentPtr, mPictureWidth, mPictureHeight, mPictureFormat);
+    status = convertRawImage(mainData, (void**)&currentPtr, mPictureWidth, mPictureHeight, mPictureFormat);
+
     if (status == NO_ERROR) {
         bitmap.setConfig(SkBitmap::kRGB_565_Config, mPictureWidth, mPictureHeight);
         bitmap.setPixels(currentPtr, NULL);
@@ -185,6 +192,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
             status = UNKNOWN_ERROR;
         }
     }
+
     if (status == NO_ERROR) {
         if (exifEnd != NULL) {
             // Copy the EOI marker
@@ -225,7 +233,12 @@ status_t PictureThread::encode(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf)
     Message msg;
     msg.id = MESSAGE_ID_ENCODE;
     msg.data.encode.snaphotBuf = *snaphotBuf;
-    msg.data.encode.postviewBuf = *postviewBuf;
+    if (postviewBuf) {
+        msg.data.encode.postviewBuf = *postviewBuf;
+    } else {
+        // thumbnail is optional
+        msg.data.encode.postviewBuf.buff = NULL;
+    }
     return mMessageQueue.send(&msg);
 }
 
@@ -286,7 +299,8 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
         return UNKNOWN_ERROR;
     }
     // Encode the image
-    if ((status = encodeToJpeg(&msg->snaphotBuf, &msg->postviewBuf, &jpegBuf)) == NO_ERROR) {
+    AtomBuffer *postviewBuf = msg->postviewBuf.buff == NULL ? NULL : &msg->postviewBuf;
+    if ((status = encodeToJpeg(&msg->snaphotBuf, postviewBuf, &jpegBuf)) == NO_ERROR) {
         mCallbacks->compressedFrameDone(&jpegBuf);
     } else {
         LOGE("Error generating JPEG image!");
