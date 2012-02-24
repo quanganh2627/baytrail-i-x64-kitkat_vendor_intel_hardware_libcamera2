@@ -87,7 +87,7 @@ void Callbacks::previewFrameDone(AtomBuffer *buff)
 
 void Callbacks::videoFrameDone(AtomBuffer *buff, nsecs_t timestamp)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_VIDEO_FRAME) && mDataCBTimestamp != NULL) {
         LOG2("Sending message: CAMERA_MSG_VIDEO_FRAME");
         mDataCBTimestamp(timestamp, CAMERA_MSG_VIDEO_FRAME, buff->buff, 0, mUserToken);

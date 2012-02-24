@@ -241,7 +241,7 @@ status_t ControlThread::cancelAutoFocus()
 
 status_t ControlThread::releaseRecordingFrame(void *buff)
 {
-    LOG1("@%s: buff = %p", __FUNCTION__, buff);
+    LOG2("@%s: buff = %p", __FUNCTION__, buff);
     Message msg;
     msg.id = MESSAGE_ID_RELEASE_RECORDING_FRAME;
     msg.data.releaseRecordingFrame.buff = buff;
