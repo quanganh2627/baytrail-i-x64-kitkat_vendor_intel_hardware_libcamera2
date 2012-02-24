@@ -29,8 +29,7 @@
 
 namespace android {
 
-#define SNAPSHOT_MAX_NUM_BUFFERS 32
-#define MAX_V4L2_BUFFERS    SNAPSHOT_MAX_NUM_BUFFERS
+#define MAX_V4L2_BUFFERS    MAX_BURST_BUFFERS
 
 struct FileInput {
     char *name;
@@ -234,8 +233,8 @@ private:
     void **mClientRecordingBuffers;
     bool mUsingClientRecordingBuffers;
 
-    AtomBuffer mSnapshotBuffers[SNAPSHOT_MAX_NUM_BUFFERS];
-    AtomBuffer mPostviewBuffers[SNAPSHOT_MAX_NUM_BUFFERS];
+    AtomBuffer mSnapshotBuffers[MAX_BURST_BUFFERS];
+    AtomBuffer mPostviewBuffers[MAX_BURST_BUFFERS];
     int mNumPreviewBuffersQueued;
     int mNumRecordingBuffersQueued;
     Config mConfig;

@@ -16,17 +16,14 @@
 #define LOG_TAG "Atom_PictureThread"
 
 #include "PictureThread.h"
-#include "ColorConverter.h"
 #include "LogHelper.h"
 #include "Callbacks.h"
-#include "SkBitmap.h"
-#include "SkStream.h"
 #include <utils/Timers.h>
 
 namespace android {
 
-static const unsigned char JPEG_SOI[2] = {0xFF, 0xD8}; // JPEG StartOfImage marker
-static const unsigned char JPEG_EOI[2] = {0xFF, 0xD9}; // JPEG EndOfImage marker
+static const unsigned char JPEG_MARKER_SOI[2] = {0xFF, 0xD8}; // JPEG StartOfImage marker
+static const unsigned char JPEG_MARKER_EOI[2] = {0xFF, 0xD9}; // JPEG EndOfImage marker
 
 PictureThread::PictureThread(ICallbackPicture *pictureDone) :
     Thread(true) // callbacks may call into java
@@ -44,40 +41,11 @@ PictureThread::PictureThread(ICallbackPicture *pictureDone) :
     ,mThumbnailQuality(50)
 {
     LOG1("@%s", __FUNCTION__);
-    LOG1("Creating JPEG encoder...");
-    jpegEncoder = SkImageEncoder::Create(SkImageEncoder::kJPEG_Type);
-    if (jpegEncoder == NULL) {
-        LOGE("No memory for JPEG encoder!");
-    }
 }
 
 PictureThread::~PictureThread()
 {
     LOG1("@%s", __FUNCTION__);
-    if (jpegEncoder != NULL) {
-        LOG1("Deleting JPEG encoder...");
-        delete jpegEncoder;
-    }
-}
-
-status_t PictureThread::convertRawImage(void* src, void** dst, int width, int height, int format)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    switch (format) {
-    case V4L2_PIX_FMT_NV12:
-        LOG1("Converting frame from NV12 to RGB565");
-        NV12ToRGB565(width, height, src, *dst);
-        break;
-    case V4L2_PIX_FMT_YUV420:
-        LOG1("Converting frame from YUV420 to RGB565");
-        YUV420ToRGB565(width, height, src, *dst);
-        break;
-    default:
-        LOGE("Unsupported color format: %d", format);
-        status = UNKNOWN_ERROR;
-    }
-    return status;
 }
 
 /*
@@ -90,23 +58,11 @@ status_t PictureThread::convertRawImage(void* src, void** dst, int width, int he
 status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, AtomBuffer *destBuf)
 {
     LOG1("@%s", __FUNCTION__);
-    SkBitmap bitmap;
-    SkDynamicMemoryWStream stream;
     status_t status = NO_ERROR;
-    nsecs_t tStart, tEnd;
-    nsecs_t encodingTime;
-    nsecs_t copyTime;
-    nsecs_t processTime;
-    void *mainData;
+    JpegCompressor::InputBuffer inBuf;
+    JpegCompressor::OutputBuffer outBuf;
+    nsecs_t startTime = systemTime();
 
-    tStart = systemTime();
-    encodingTime = 0;
-    processTime = 0;
-    copyTime = 0;
-    if (jpegEncoder == NULL) {
-        LOGE("JPEG encoder not created!");
-        return NO_MEMORY;
-    }
     AtomBuffer tempBuf;
     size_t bufferSize = (mPictureWidth * mPictureHeight * 2) + MAX_EXIF_SIZE;
     mCallbacks->allocateMemory(&tempBuf, bufferSize);
@@ -126,24 +82,26 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         thumbBuf->buff != NULL &&
         thumbBuf->buff->data != NULL &&
         thumbBuf->buff->size > 0) {
-        status = convertRawImage(thumbBuf->buff->data, &tempBuf.buff->data, mThumbWidth, mThumbHeight, mThumbFormat);
-        if (status == NO_ERROR) {
-            bitmap.setConfig(SkBitmap::kRGB_565_Config, mThumbWidth, mThumbHeight);
-            bitmap.setPixels(tempBuf.buff->data, NULL);
-            LOG1("Encoding thumbnail stream...");
-            tEnd = systemTime();
-            if (jpegEncoder->encodeStream(&stream, bitmap, mThumbnailQuality)) {
-                encodingTime += (systemTime() - tEnd);
-                int size = stream.getOffset();
-                LOG1("Thumbnail JPEG size: %d", size);
-                tEnd = systemTime();
-                // getStream does actually a copy
-                exifMaker.setThumbnail((unsigned char*)stream.getStream(), size);
-                copyTime += (systemTime() - tEnd);
-            } else {
-                // This is not critical, we can continue with main picture image
-                LOGE("Could not encode thumbnail stream!");
-            }
+        // setup the JpegCompressor input and output buffers
+        inBuf.clear();
+        inBuf.buf = (unsigned char*)thumbBuf->buff->data;
+        inBuf.width = mThumbWidth;
+        inBuf.height = mThumbHeight;
+        inBuf.format = mThumbFormat;
+        inBuf.size = frameSize(mThumbFormat, mThumbWidth, mThumbHeight);
+        outBuf.clear();
+        outBuf.buf = unsigned char*)tempBuf.buff->data + MAX_EXIF_SIZE;
+        outBuf.width = mThumbWidth;
+        outBuf.height = mThumbHeight;
+        outBuf.quality = mThumbnailQuality;
+        outBuf.size = bufferSize - MAX_EXIF_SIZE
+        int size = compressor.encode(inBuf, outBuf);
+        LOG1("Thumbnail JPEG size: %d", size);
+        if (size > 0) {
+            exifMaker.setThumbnail(thumbPtr, size);
+        } else {
+            // This is not critical, we can continue with main picture image
+            LOGE("Could not encode thumbnail stream!");
         }
     }
 #endif
@@ -151,54 +109,48 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     unsigned char* currentPtr = (unsigned char*)tempBuf.buff->data;
     unsigned char* exifEnd = NULL;
     if (exifMaker.isInitialized()) {
-        tEnd = systemTime();
         // We can include makeExif in copyTime because what it actually does is a bunch of memcpy's
         // Copy the SOI marker
-        memcpy(currentPtr, JPEG_SOI, sizeof(JPEG_SOI));
-        currentPtr += sizeof(JPEG_SOI);
-        totalSize += sizeof(JPEG_SOI);
-
+        memcpy(currentPtr, JPEG_MARKER_SOI, sizeof(JPEG_MARKER_SOI));
+        currentPtr += sizeof(JPEG_MARKER_SOI);
+        totalSize += sizeof(JPEG_MARKER_SOI);
         size_t exifSize = exifMaker.makeExif(&currentPtr);
         currentPtr += exifSize;
         totalSize += exifSize;
-
         exifEnd = currentPtr;
-        copyTime += (systemTime() - tEnd);
     }
 
-    if (mainBuf->shared)
-        mainData = (void *) *((char **)mainBuf->buff->data);
-    else
-        mainData = mainBuf->buff->data;
-
     // Convert and encode the main picture image
-    status = convertRawImage(mainData, (void**)&currentPtr, mPictureWidth, mPictureHeight, mPictureFormat);
-
-    if (status == NO_ERROR) {
-        bitmap.setConfig(SkBitmap::kRGB_565_Config, mPictureWidth, mPictureHeight);
-        bitmap.setPixels(currentPtr, NULL);
-        LOG1("Encoding picture stream...");
-        tEnd = systemTime();
-        if (jpegEncoder->encodeStream(&stream, bitmap, mPictureQuality)) {
-            encodingTime += (systemTime() - tEnd);
-            int size = stream.getOffset();
-            LOG1("Picture JPEG size: %d", size);
-            tEnd = systemTime();
-            stream.copyTo(currentPtr);
-            copyTime += (systemTime() - tEnd);
-            totalSize += size;
-        } else {
-            LOGE("Could not encode picture stream!");
-            status = UNKNOWN_ERROR;
-        }
+    // setup the JpegCompressor input and output buffers
+    inBuf.clear();
+    if (mainBuf->shared) {
+        inBuf.buf = (unsigned char *) *((char **)mainBuf->buff->data);;
+    } else {
+        inBuf.buf = (unsigned char *) mainBuf->buff->data;
+    }
+    inBuf.width = mPictureWidth;
+    inBuf.height = mPictureHeight;
+    inBuf.format = mPictureFormat;
+    inBuf.size = frameSize(mPictureFormat, mPictureWidth, mPictureHeight);
+    outBuf.clear();
+    outBuf.buf = currentPtr;
+    outBuf.width = mPictureWidth;
+    outBuf.height = mPictureHeight;
+    outBuf.quality = mPictureQuality;
+    outBuf.size = bufferSize - totalSize;
+    int size = compressor.encode(inBuf, outBuf);
+    LOG1("Picture JPEG size: %d", size);
+    if (size > 0) {
+        totalSize += size;
+    } else {
+        LOGE("Could not encode picture stream!");
+        status = UNKNOWN_ERROR;
     }
 
     if (status == NO_ERROR) {
         if (exifEnd != NULL) {
             // Copy the EOI marker
-            tEnd = systemTime();
-            memcpy(exifEnd, JPEG_EOI, sizeof(JPEG_EOI));
-            copyTime += (systemTime() - tEnd);
+            memcpy(exifEnd, (void*)JPEG_MARKER_EOI, sizeof(JPEG_MARKER_EOI));
         }
         mCallbacks->allocateMemory(destBuf, totalSize);
         if (destBuf->buff == NULL) {
@@ -207,22 +159,12 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         }
     }
     if (status == NO_ERROR) {
-        tEnd = systemTime();
+        // Copy the final JPEG stream into the final destination buffer, which MUST have the same size as the encoded JPEG
         memcpy(destBuf->buff->data, tempBuf.buff->data, totalSize);
-        copyTime += (systemTime() - tEnd);
     }
-    tEnd = systemTime();
-    processTime = (tEnd - tStart);
-    nsecs_t totalTime = processTime;
-    processTime -= encodingTime;
-    processTime -= copyTime;
-    LOG1("Time spent (ms): [Total: %d] [Process: %d] [Encoding: %d] [MemCpy: %d]"
-            ,(int)(totalTime / 1000000)
-            ,(int)(processTime / 1000000)
-            ,(int)(encodingTime / 1000000)
-            ,(int)(copyTime / 1000000));
 
     tempBuf.buff->release(tempBuf.buff);
+    LOG1("Time spent encoding JPEG file: %ums", (unsigned)((systemTime() - startTime) / 1000000));
     return status;
 }
 
