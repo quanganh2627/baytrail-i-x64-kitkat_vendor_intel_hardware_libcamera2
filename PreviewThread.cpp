@@ -23,6 +23,7 @@
 #include <ui/android_native_buffer.h>
 #include <ui/GraphicBuffer.h>
 #include <ui/GraphicBufferMapper.h>
+#include "AtomCommon.h"
 
 namespace android {
 
@@ -114,10 +115,10 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
                 status = NO_MEMORY;
                 goto exit;
             }
-            NV12ToRGB565(mPreviewWidth,
-                    mPreviewHeight,
+            memcpy(dst,
                     msg->buff.buff->data,
-                    dst);
+                    stride*mPreviewHeight*3/2
+                    );
             if ((err = mPreviewWindow->enqueue_buffer(mPreviewWindow, buf)) != 0) {
                 LOGE("Surface::queueBuffer returned error %d", err);
             }
@@ -143,12 +144,13 @@ status_t PreviewThread::handleMessageSetPreviewWindow(MessageSetPreviewWindow *m
 
     if (mPreviewWindow != NULL) {
         LOG1("Setting new preview window %p", mPreviewWindow);
+        int previewWidthPadded =  paddingWidth(V4L2_PIX_FMT_NV12,mPreviewWidth,mPreviewHeight);
         mPreviewWindow->set_usage(mPreviewWindow, GRALLOC_USAGE_SW_WRITE_OFTEN);
         mPreviewWindow->set_buffers_geometry(
                 mPreviewWindow,
-                mPreviewWidth,
+                previewWidthPadded,
                 mPreviewHeight,
-                HAL_PIXEL_FORMAT_RGB_565);
+                HAL_PIXEL_FORMAT_NV12_CAMERA);
     }
 
     return NO_ERROR;
@@ -163,12 +165,13 @@ status_t PreviewThread::handleMessageSetPreviewSize(MessageSetPreviewSize *msg)
             (mPreviewWidth != msg->width || mPreviewHeight != msg->height)) {
         LOG1("Setting new preview size: %dx%d", mPreviewWidth, mPreviewHeight);
         if (mPreviewWindow != NULL) {
+            int previewWidthPadded = paddingWidth(V4L2_PIX_FMT_NV12, msg->width, msg->height);
             // if preview size changed, update the preview window
             mPreviewWindow->set_buffers_geometry(
                     mPreviewWindow,
-                    msg->width,
+                    previewWidthPadded,
                     msg->height,
-                    HAL_PIXEL_FORMAT_RGB_565);
+                    HAL_PIXEL_FORMAT_NV12_CAMERA);
         }
         mPreviewWidth = msg->width;
         mPreviewHeight = msg->height;

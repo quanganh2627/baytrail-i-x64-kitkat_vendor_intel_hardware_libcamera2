@@ -1071,9 +1071,7 @@ status_t AtomISP::setPreviewFrameFormat(int width, int height, int format)
     mConfig.preview.height = height;
     mConfig.preview.format = format;
     mConfig.preview.padding = paddingWidth(format, width, height);
-    mConfig.preview.size = frameSize(format, width, height);
-    if (mConfig.preview.size == 0)
-        mConfig.preview.size = mConfig.preview.width * mConfig.preview.height * BPP;
+    mConfig.preview.size = frameSize(format, mConfig.preview.padding, height);
     LOG1("width(%d), height(%d), pad_width(%d), size(%d), format(%d)",
         width, height, mConfig.preview.padding, mConfig.preview.size, format);
     return status;
@@ -2093,7 +2091,10 @@ status_t AtomISP::allocatePreviewBuffers()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     int allocatedBufs = 0;
-    int size = mConfig.preview.width * mConfig.preview.height * 3 / 2;
+
+    int size = frameSize(mConfig.preview.format,
+            mConfig.preview.padding,
+            mConfig.preview.height);
 
     mPreviewBuffers = new AtomBuffer[mNumBuffers];
     if (!mPreviewBuffers) {
@@ -2105,7 +2106,7 @@ status_t AtomISP::allocatePreviewBuffers()
     LOG1("Allocating %d buffers of size %d", mNumBuffers, size);
     for (int i = 0; i < mNumBuffers; i++) {
          mPreviewBuffers[i].buff = NULL;
-         mCallbacks->allocateMemory(&mPreviewBuffers[i], size);
+         mCallbacks->allocateMemory(&mPreviewBuffers[i],  mConfig.preview.size);
          if (mPreviewBuffers[i].buff == NULL) {
              LOGE("Error allocation memory for preview buffers!");
              status = NO_MEMORY;
