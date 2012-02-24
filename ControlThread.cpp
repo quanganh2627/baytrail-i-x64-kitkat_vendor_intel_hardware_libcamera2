@@ -26,6 +26,8 @@
 
 namespace android {
 
+#define NUM_WARMUP_FRAMES 4
+
 ControlThread::ControlThread(int cameraId) :
     Thread(true) // callbacks may call into java
     ,mISP(new AtomISP(cameraId))
@@ -672,6 +674,26 @@ status_t ControlThread::handleMessageTakePicture()
         if ((status = mISP->start(MODE_CAPTURE)) != NO_ERROR) {
             LOGE("Error starting the ISP driver in CAPTURE mode!");
             return status;
+        }
+
+        /*
+         *  If the current camera does not have 3A, then we should skip the first
+         *  frames in order to allow the sensor to warm up.
+         */
+        if (!mAAA->is3ASupported()) {
+            for (size_t i = 0; i < NUM_WARMUP_FRAMES; i++) {
+                if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
+                    LOGE("Error in grabbing warm-up frame %d!", i);
+                    return status;
+                }
+                status = mISP->putSnapshot(&snapshotBuffer, &postviewBuffer);
+                if (status == DEAD_OBJECT) {
+                    LOG1("Stale snapshot buffer returned to ISP");
+                } else if (status != NO_ERROR) {
+                    LOGE("Error in putting warm-up frame %d!", i);
+                    return status;
+                }
+            }
         }
 
         // Turn on flash
