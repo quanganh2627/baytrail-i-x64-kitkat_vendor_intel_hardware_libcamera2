@@ -1040,12 +1040,12 @@ status_t ControlThread::processParamAFLock(const CameraParameters *oldParams,
     if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
         bool af_lock;
 
-        if(!strncmp(newValue, CameraParameters::AF_LOCK_LOCK, strlen(CameraParameters::AF_LOCK_LOCK))) {
+        if(!strncmp(newValue, CameraParameters::TRUE, strlen(CameraParameters::TRUE))) {
             af_lock = true;
-        } else if(!strncmp(newValue, CameraParameters::AF_LOCK_UNLOCK, strlen(CameraParameters::AF_LOCK_UNLOCK))) {
+        } else if(!strncmp(newValue, CameraParameters::FALSE, strlen(CameraParameters::FALSE))) {
             af_lock = false;
         } else {
-            LOGW("Invalid value received for %s: %s", CameraParameters::KEY_AUTO_FOCUS_LOCK, newValue);
+            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_AUTO_FOCUS_LOCK, newValue);
             return INVALID_OPERATION;
         }
         status = mAAA->setAfLock(af_lock);
@@ -1070,12 +1070,12 @@ status_t ControlThread::processParamAWBLock(const CameraParameters *oldParams,
     if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
         bool awb_lock;
 
-        if(!strncmp(newValue, CameraParameters::AWB_LOCK_LOCK, strlen(CameraParameters::AWB_LOCK_LOCK))) {
+        if(!strncmp(newValue, CameraParameters::TRUE, strlen(CameraParameters::TRUE))) {
             awb_lock = true;
-        } else if(!strncmp(newValue, CameraParameters::AWB_LOCK_UNLOCK, strlen(CameraParameters::AWB_LOCK_UNLOCK))) {
+        } else if(!strncmp(newValue, CameraParameters::FALSE, strlen(CameraParameters::FALSE))) {
             awb_lock = false;
         } else {
-            LOGW("Invalid value received for %s: %s", CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, newValue);
+            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, newValue);
             return INVALID_OPERATION;
         }
         status = mAAA->setAwbLock(awb_lock);
@@ -1101,12 +1101,12 @@ status_t ControlThread::processParamAELock(const CameraParameters *oldParams,
     if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
         bool ae_lock;
 
-        if(!strncmp(newValue, CameraParameters::AE_LOCK_LOCK, strlen(CameraParameters::AE_LOCK_LOCK))) {
+        if(!strncmp(newValue, CameraParameters::TRUE, strlen(CameraParameters::TRUE))) {
             ae_lock = true;
-        } else  if(!strncmp(newValue, CameraParameters::AE_LOCK_UNLOCK, strlen(CameraParameters::AE_LOCK_UNLOCK))) {
+        } else  if(!strncmp(newValue, CameraParameters::FALSE, strlen(CameraParameters::FALSE))) {
             ae_lock = false;
         } else {
-            LOGW("Invalid value received for %s: %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK, newValue);
+            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK, newValue);
             return INVALID_OPERATION;
         }
 
