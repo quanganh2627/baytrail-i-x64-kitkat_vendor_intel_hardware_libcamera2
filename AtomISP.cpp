@@ -387,7 +387,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
                 ,CameraParameters::FOCUS_MODE_AUTO
                 ,CameraParameters::FOCUS_MODE_INFINITY
                 ,CameraParameters::FOCUS_MODE_MACRO
-                ,CameraParameters::FOCUS_MODE_TOUCH) < 0) {
+                ,CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO) < 0) {
             LOGE("Could not generate %s string: %s", CameraParameters::KEY_SUPPORTED_FOCUS_MODES, strerror(errno));
             return;
         }
@@ -414,6 +414,13 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
         // 3a lock: auto-whitebalance lock
         params->set(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, CameraParameters::FALSE);
         params->set(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK_SUPPORTED, CameraParameters::TRUE);
+
+        // manual focus
+        params->set(CameraParameters::KEY_FOCUS_DISTANCES, "2,2,Infinity");
+        // multipoint focus
+        params->set(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS, mAAA->getAfMaxNumWindows());
+        // set empty area
+        params->set(CameraParameters::KEY_FOCUS_AREAS, "");
     }
 }
 

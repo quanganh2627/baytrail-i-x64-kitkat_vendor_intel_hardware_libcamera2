@@ -1289,6 +1289,55 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
     return status;
 }
 
+bool ControlThread::verifyCameraWindow(const CameraWindow &win)
+{
+    if (win.x_right <= win.x_left ||
+        win.y_bottom <= win.y_top)
+        return false;
+    return true;
+}
+
+void ControlThread::preSetFocusWindows(CameraWindow* focusWindows, size_t winCount)
+{
+    // Camera KEY_FOCUS_AREAS Coordinates range from -1000 to 1000.
+    if (winCount > 0) {
+        int width;
+        int height;
+        const int FOCUS_AREAS_X_OFFSET = 1000;
+        const int FOCUS_AREAS_Y_OFFSET = 1000;
+        const int FOCUS_AREAS_WIDTH = 2000;
+        const int FOCUS_AREAS_HEIGHT = 2000;
+        const int WINDOWS_TOTAL_WEIGHT = 16;
+        mParameters.getPreviewSize(&width, &height);
+        size_t windowsWeight = 0;
+        for(size_t i = 0; i < winCount; i++){
+            windowsWeight += focusWindows[i].weight;
+        }
+        if(!windowsWeight)
+            windowsWeight = 1;
+
+        size_t weight_sum = 0;
+        for(int i =0; i < winCount; i++) {
+            // skip all zero value
+            focusWindows[i].x_left = (focusWindows[i].x_left + FOCUS_AREAS_X_OFFSET) * (width - 1) / FOCUS_AREAS_WIDTH;
+            focusWindows[i].x_right = (focusWindows[i].x_right + FOCUS_AREAS_X_OFFSET) * (width - 1) / FOCUS_AREAS_WIDTH;
+            focusWindows[i].y_top = (focusWindows[i].y_top + FOCUS_AREAS_Y_OFFSET) * (height - 1) / FOCUS_AREAS_HEIGHT;
+            focusWindows[i].y_bottom = (focusWindows[i].y_bottom + FOCUS_AREAS_Y_OFFSET) * (height - 1) / FOCUS_AREAS_HEIGHT;
+            focusWindows[i].weight = focusWindows[i].weight * WINDOWS_TOTAL_WEIGHT / windowsWeight;
+            weight_sum += focusWindows[i].weight;
+            LOG1("Preset focus area %d: (%d,%d,%d,%d,%d)",
+                    i,
+                    focusWindows[i].x_left,
+                    focusWindows[i].y_top,
+                    focusWindows[i].x_right,
+                    focusWindows[i].y_bottom,
+                    focusWindows[i].weight);
+        }
+        //weight sum value should be WINDOWS_TOTAL_WEIGHT
+        focusWindows[winCount-1].weight += WINDOWS_TOTAL_WEIGHT - weight_sum;
+    }
+}
+
 status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
         CameraParameters *newParams)
 {
@@ -1307,7 +1356,7 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             afMode = CAM_AF_MODE_MACRO;
         } else if(!strncmp(newFocus, CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO, strlen(CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO))) {
             afMode = CAM_AF_MODE_AUTO;
-        } else if(!strncmp(newFocus, CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO, strlen(CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO))) {
+        } else {
             afMode = CAM_AF_MODE_MANUAL;
         }
 
@@ -1350,15 +1399,26 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
                         &focusWindows[winCount].weight);
                 if (i != 5)
                     break;
-                LOG1("\tWindow %d (%d,%d,%d,%d,%d)",
+                bool verified = verifyCameraWindow(focusWindows[winCount]);
+                LOG1("\tWindow %d (%d,%d,%d,%d,%d) [%s]",
                         winCount,
                         focusWindows[winCount].x_left,
                         focusWindows[winCount].y_top,
                         focusWindows[winCount].x_right,
                         focusWindows[winCount].y_bottom,
-                        focusWindows[winCount].weight);
+                        focusWindows[winCount].weight,
+                        (verified)?"GOOD":"IGNORED");
                 argTail = strchr(argTail + 1, '(');
-                winCount++;
+                if (verified) {
+                    winCount++;
+                } else {
+                    LOGW("Ignoring invalid focus area: (%d,%d,%d,%d,%d)",
+                            focusWindows[winCount].x_left,
+                            focusWindows[winCount].y_top,
+                            focusWindows[winCount].x_right,
+                            focusWindows[winCount].y_bottom,
+                            focusWindows[winCount].weight);
+                }
             }
             // Looks like focus window(s) were set, so should use touch focus mode
             if (winCount > 0) {
@@ -1373,6 +1433,7 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
 
         // If in touch mode, we set the focus windows now
         if (newAfMode == CAM_AF_MODE_TOUCH) {
+            preSetFocusWindows(focusWindows, winCount);
             if (mAAA->setAfWindows(focusWindows, winCount) != NO_ERROR) {
                 // If focus windows couldn't be set, auto mode is used
                 // (AfSetWindowMulti has its own safety checks for coordinates)
