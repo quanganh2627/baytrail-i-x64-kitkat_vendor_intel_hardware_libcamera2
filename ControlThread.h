@@ -313,8 +313,12 @@ private:
             CameraParameters *newParams);
     status_t processParamRedEyeMode(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    status_t processParamSetMeteringAreas(const CameraParameters * oldParams,
+            CameraParameters * newParams);
+
     bool verifyCameraWindow(const CameraWindow &win);
-    void preSetFocusWindows(CameraWindow* focusWindows, size_t winCount);
+    void preSetCameraWindows(CameraWindow* focusWindows, size_t winCount);
+
 
     // These are params that can only be set while the ISP is stopped. If the parameters
     // changed while the ISP is running, the ISP will need to be stopped, reconfigured, and

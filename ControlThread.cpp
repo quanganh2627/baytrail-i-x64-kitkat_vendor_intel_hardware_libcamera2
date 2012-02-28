@@ -723,7 +723,7 @@ status_t ControlThread::handleMessageTakePicture()
      * in burst-capture mode, we can do: grab frames in ControlThread, Red-Eye removal in AAAThread
      * and JPEG encoding in Picture thread, all in parallel.
      */
-    if (mAAA->is3ASupported() && mAAA->getRedEyeRemoval()) {
+    if (mAAA->is3ASupported() && flashNeeded && mAAA->getRedEyeRemoval()) {
         // tell 3A thread to remove red-eye
         if (origState == STATE_PREVIEW_STILL) {
             status = m3AThread->applyRedEyeRemoval(&snapshotBuffer, &postviewBuffer, width, height, format);
@@ -1046,6 +1046,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             // awb lock
             status = processParamAWBLock(oldParams, newParams);
         }
+
+        if (status == NO_ERROR) {
+            // customize metering
+            status = processParamSetMeteringAreas(oldParams, newParams);
+        }
     }
     return status;
 }
@@ -1297,8 +1302,9 @@ bool ControlThread::verifyCameraWindow(const CameraWindow &win)
     return true;
 }
 
-void ControlThread::preSetFocusWindows(CameraWindow* focusWindows, size_t winCount)
+void ControlThread::preSetCameraWindows(CameraWindow* focusWindows, size_t winCount)
 {
+    LOG1("@%s", __FUNCTION__);
     // Camera KEY_FOCUS_AREAS Coordinates range from -1000 to 1000.
     if (winCount > 0) {
         int width;
@@ -1325,7 +1331,7 @@ void ControlThread::preSetFocusWindows(CameraWindow* focusWindows, size_t winCou
             focusWindows[i].y_bottom = (focusWindows[i].y_bottom + FOCUS_AREAS_Y_OFFSET) * (height - 1) / FOCUS_AREAS_HEIGHT;
             focusWindows[i].weight = focusWindows[i].weight * WINDOWS_TOTAL_WEIGHT / windowsWeight;
             weight_sum += focusWindows[i].weight;
-            LOG1("Preset focus area %d: (%d,%d,%d,%d,%d)",
+            LOG1("Preset camera window %d: (%d,%d,%d,%d,%d)",
                     i,
                     focusWindows[i].x_left,
                     focusWindows[i].y_top,
@@ -1433,12 +1439,66 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
 
         // If in touch mode, we set the focus windows now
         if (newAfMode == CAM_AF_MODE_TOUCH) {
-            preSetFocusWindows(focusWindows, winCount);
+            preSetCameraWindows(focusWindows, winCount);
             if (mAAA->setAfWindows(focusWindows, winCount) != NO_ERROR) {
                 // If focus windows couldn't be set, auto mode is used
                 // (AfSetWindowMulti has its own safety checks for coordinates)
                 LOGE("Could not set AF windows. Resseting the AF back to %d", curAfMode);
                 mAAA->setAfMode(curAfMode);
+            }
+        }
+    }
+    return status;
+}
+
+status_t ControlThread:: processParamSetMeteringAreas(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    const size_t maxWindows = mAAA->getAfMaxNumWindows();
+    CameraWindow meteringWindows[maxWindows];
+    const char *pMeteringWindows = newParams->get(CameraParameters::KEY_METERING_AREAS);
+    if (pMeteringWindows && (maxWindows > 0) && (strlen(pMeteringWindows) > 0)) {
+        LOG1("Scanning AE metering from params: %s", pMeteringWindows);
+        const char *argTail = pMeteringWindows;
+        size_t winCount = 0;
+        while (argTail && winCount < maxWindows) {
+            // String format: "(topleftx,toplefty,bottomrightx,bottomrighty,weight),(...)"
+            int len = sscanf(argTail, "(%d,%d,%d,%d,%d)",
+                    &meteringWindows[winCount].x_left,
+                    &meteringWindows[winCount].y_top,
+                    &meteringWindows[winCount].x_right,
+                    &meteringWindows[winCount].y_bottom,
+                    &meteringWindows[winCount].weight);
+            if (len != 5)
+                break;
+            bool verified = verifyCameraWindow(meteringWindows[winCount]);
+            LOG1("\tWindow %d (%d,%d,%d,%d,%d) [%s]",
+                    winCount,
+                    meteringWindows[winCount].x_left,
+                    meteringWindows[winCount].y_top,
+                    meteringWindows[winCount].x_right,
+                    meteringWindows[winCount].y_bottom,
+                    meteringWindows[winCount].weight,
+                    (verified)?"GOOD":"IGNORED");
+            argTail = strchr(argTail + 1, '(');
+            if (verified) {
+                winCount++;
+            } else {
+                LOGW("Ignoring invalid metering area: (%d,%d,%d,%d,%d)",
+                        meteringWindows[winCount].x_left,
+                        meteringWindows[winCount].y_top,
+                        meteringWindows[winCount].x_right,
+                        meteringWindows[winCount].y_bottom,
+                        meteringWindows[winCount].weight);
+            }
+        }
+        // Looks like metering window(s) were set
+        if (winCount > 0) {
+            preSetCameraWindows(meteringWindows, winCount);
+            if (mAAA->setAfWindows(meteringWindows, winCount) != NO_ERROR) {
+                mAAA->setAeMeteringMode(CAM_AE_METERING_MODE_SPOT);
             }
         }
     }

@@ -225,8 +225,8 @@ status_t AAAThread::handleMessageNewFrame()
 
 status_t AAAThread::handleMessageRemoveRedEye(MessagePicture* msg)
 {
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-
     status = mAAA->applyRedEyeRemoval(msg->snaphotBuf, msg->width, msg->height, msg->format);
 
     // When the red-eye removal is done, send back the buffers to ControlThread to encode picture.

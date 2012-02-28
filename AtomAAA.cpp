@@ -797,9 +797,7 @@ status_t AtomAAA::applyRedEyeRemoval(const AtomBuffer &snapshotBuffer, int width
     user_buf.width = width;
     user_buf.height = height;
     user_buf.length = snapshotBuffer.buff->size;
-    user_buf.format = format;
     ci_adv_correct_redeyes(&user_buf);
-
     return status;
 }
 
@@ -826,4 +824,5 @@ int AtomAAA::apply3AProcess(bool read_stats)
     }
     return status;
 }
+
 } //  namespace android

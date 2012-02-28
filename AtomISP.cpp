@@ -421,6 +421,10 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
         params->set(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS, mAAA->getAfMaxNumWindows());
         // set empty area
         params->set(CameraParameters::KEY_FOCUS_AREAS, "");
+
+        // metering areas
+        params->set(CameraParameters::KEY_MAX_NUM_METERING_AREAS, mAAA->getAfMaxNumWindows());
+
     }
 }
 
