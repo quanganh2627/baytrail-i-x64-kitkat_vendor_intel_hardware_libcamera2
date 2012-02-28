@@ -407,37 +407,13 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
 
         // 3a lock: auto-exposure lock
         params->set(CameraParameters::KEY_AUTO_EXPOSURE_LOCK, CameraParameters::FALSE);
-        char aelock[100] = {0};
-        if (snprintf(aelock, sizeof(aelock)
-                ,"%s,%s"
-                ,CameraParameters::TRUE
-                ,CameraParameters::FALSE) < 0) {
-            LOGE("Could not generate %s string: %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK_SUPPORTED, strerror(errno));
-            return;
-        }
-        params->set(CameraParameters::KEY_AUTO_EXPOSURE_LOCK_SUPPORTED, aelock);
+        params->set(CameraParameters::KEY_AUTO_EXPOSURE_LOCK_SUPPORTED, CameraParameters::TRUE);
         // 3a lock: auto-focus lock
         params->set(CameraParameters::KEY_AUTO_FOCUS_LOCK, CameraParameters::FALSE);
-        char aflock[100] = {0};
-        if (snprintf(aflock, sizeof(aflock)
-                ,"%s,%s"
-                ,CameraParameters::TRUE
-                ,CameraParameters::FALSE) < 0) {
-            LOGE("Could not generate %s string: %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK_SUPPORTED, strerror(errno));
-            return;
-        }
-        params->set(CameraParameters::KEY_AUTO_FOCUS_LOCK_SUPPORTED, aflock);
+        params->set(CameraParameters::KEY_AUTO_FOCUS_LOCK_SUPPORTED, CameraParameters::TRUE);
         // 3a lock: auto-whitebalance lock
         params->set(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, CameraParameters::FALSE);
-        char awblock[100] = {0};
-        if (snprintf(awblock, sizeof(awblock)
-                ,"%s,%s"
-                ,CameraParameters::TRUE
-                ,CameraParameters::FALSE) < 0) {
-            LOGE("Could not generate %s string: %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK_SUPPORTED, strerror(errno));
-            return;
-        }
-        params->set(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK_SUPPORTED, awblock);
+        params->set(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK_SUPPORTED, CameraParameters::TRUE);
     }
 }
 
