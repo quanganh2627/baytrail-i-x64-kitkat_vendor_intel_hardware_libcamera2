@@ -27,6 +27,7 @@
 
 #define BPP 2 // bytes per pixel
 #define MAX_PARAM_VALUE_LENGTH 32
+#define MAX_BURST_BUFFERS 32
 
 struct AtomBuffer {
     camera_memory_t *buff;

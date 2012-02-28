@@ -23,7 +23,7 @@
 #include "MessageQueue.h"
 #include "AtomCommon.h"
 #include "EXIFMaker.h"
-#include "SkImageEncoder.h"
+#include "JpegCompressor.h"
 
 namespace android {
 
@@ -105,7 +105,6 @@ private:
     // main message function
     status_t waitForAndExecuteMessage();
 
-    status_t convertRawImage(void* src, void** dst, int width, int height, int format);
     status_t encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, AtomBuffer *destBuf);
 
 // inherited from Thread
@@ -119,7 +118,7 @@ private:
     bool mThreadRunning;
     ICallbackPicture *mPictureDoneCallback;
     Callbacks *mCallbacks;
-    SkImageEncoder* jpegEncoder;
+    JpegCompressor compressor;
     EXIFMaker exifMaker;
 
     int mPictureWidth;

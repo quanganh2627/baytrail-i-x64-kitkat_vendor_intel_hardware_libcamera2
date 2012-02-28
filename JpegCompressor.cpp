@@ -1,0 +1,275 @@
+/*
+ * Copyright (C) 2011 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#define LOG_TAG "Atom_JpegCompressor"
+
+#define JPEG_BLOCK_SIZE 4096
+
+#include "JpegCompressor.h"
+#include "ColorConverter.h"
+#include "LogHelper.h"
+#include "SkBitmap.h"
+#include "SkStream.h"
+#include <string.h>
+
+#include <va/va.h>
+extern "C" {
+    #include "jpeglib.h"
+    #include "jpeglib_ext.h"
+}
+
+namespace android {
+/*
+ * START: jpeglib interface functions
+ */
+
+// jpeg destination manager structure
+struct JpegDestinationManager {
+    struct jpeg_destination_mgr pub; // public fields
+    JSAMPLE *encodeBlock;            // encode block buffer
+    JSAMPLE *outJpegBuf;             // JPEG output buffer
+    JSAMPLE *outJpegBufPos;          // JPEG output buffer current ptr
+    int outJpegBufSize;              // JPEG output buffer size
+    int *dataCount;                  // JPEG output buffer data written count
+};
+
+// initialize the jpeg compression destination buffer (passed to libjpeg as function pointer)
+static void init_destination(j_compress_ptr cinfo)
+{
+    LOG1("@%s", __FUNCTION__);
+    JpegDestinationManager *dest = (JpegDestinationManager*) cinfo->dest;
+    dest->encodeBlock = (JSAMPLE *)(*cinfo->mem->alloc_small) \
+            ((j_common_ptr) cinfo, JPOOL_IMAGE, JPEG_BLOCK_SIZE * sizeof(JSAMPLE));
+    dest->pub.next_output_byte = dest->encodeBlock;
+    dest->pub.free_in_buffer = JPEG_BLOCK_SIZE;
+}
+
+// handle the jpeg output buffers (passed to libjpeg as function pointer)
+static boolean empty_output_buffer(j_compress_ptr cinfo)
+{
+    LOG2("@%s", __FUNCTION__);
+    JpegDestinationManager *dest = (JpegDestinationManager*) cinfo->dest;
+    if(dest->outJpegBufSize < JPEG_BLOCK_SIZE)
+    {
+        LOGE("JPEGLIB: empty_output_buffer overflow!");
+        *(dest->dataCount) = 0;
+        return FALSE;
+    }
+    dest->outJpegBufSize -= JPEG_BLOCK_SIZE;
+    memcpy(dest->outJpegBufPos, dest->encodeBlock, JPEG_BLOCK_SIZE);
+    dest->outJpegBufPos += JPEG_BLOCK_SIZE;
+    *(dest->dataCount) += JPEG_BLOCK_SIZE;
+    dest->pub.next_output_byte = dest->encodeBlock;
+    dest->pub.free_in_buffer = JPEG_BLOCK_SIZE;
+    return TRUE;
+}
+
+// terminate the compression destination buffer (passed to libjpeg as function pointer)
+static void term_destination(j_compress_ptr cinfo)
+{
+    LOG1("@%s", __FUNCTION__);
+    JpegDestinationManager *dest = (JpegDestinationManager*) cinfo->dest;
+    unsigned dataCount = JPEG_BLOCK_SIZE - dest->pub.free_in_buffer;
+    dest->outJpegBufSize -= dataCount;
+    if(dest->outJpegBufSize < 0)
+    {
+        *(dest->dataCount) = 0;
+        return ;
+    }
+    memcpy(dest->outJpegBufPos, dest->encodeBlock, dataCount);
+    dest->outJpegBufPos += dataCount;
+    *(dest->dataCount) += dataCount;
+}
+
+// setup the destination manager in j_compress_ptr handle
+static int setup_jpeg_destmgr(j_compress_ptr cinfo, JSAMPLE *outBuf, int jpegBufSize, int *jpegSizePtr)
+{
+    LOG1("@%s", __FUNCTION__);
+    JpegDestinationManager *dest;
+
+    if(NULL == outBuf || jpegBufSize <= 0 )
+        return -1;
+    if (cinfo->dest == NULL) {
+        cinfo->dest = (struct jpeg_destination_mgr *)(*cinfo->mem->alloc_small) ((j_common_ptr) cinfo, JPOOL_PERMANENT, sizeof(JpegDestinationManager));
+    }
+
+    LOG1("Setting up JPEG destination manager...");
+    dest = (JpegDestinationManager*) cinfo->dest;
+    dest->pub.init_destination = init_destination;
+    dest->pub.empty_output_buffer = empty_output_buffer;
+    dest->pub.term_destination = term_destination;
+    dest->outJpegBuf= outBuf;
+    dest->outJpegBufSize= jpegBufSize;
+    dest->outJpegBufPos= outBuf;
+    dest->dataCount = jpegSizePtr;
+    return 0;
+}
+
+/*
+ * END: jpeglib interface functions
+ */
+
+JpegCompressor::JpegCompressor() :
+    mVaInputSurfacesNum(0)
+{
+    LOG1("@%s", __FUNCTION__);
+    mJpegEncoder = SkImageEncoder::Create(SkImageEncoder::kJPEG_Type);
+    if (mJpegEncoder == NULL) {
+        LOGE("No memory for Skia JPEG encoder!");
+    }
+}
+
+JpegCompressor::~JpegCompressor()
+{
+    LOG1("@%s", __FUNCTION__);
+    if (mJpegEncoder != NULL) {
+        LOG1("Deleting Skia JPEG encoder...");
+        delete mJpegEncoder;
+    }
+}
+
+bool JpegCompressor::convertRawImage(void* src, void* dst, size_t width, size_t height, int format)
+{
+    LOG1("@%s", __FUNCTION__);
+    bool ret = true;
+    switch (format) {
+    case V4L2_PIX_FMT_NV12:
+        LOG1("Converting frame from NV12 to RGB565");
+        NV12ToRGB565(width, height, src, dst);
+        break;
+    case V4L2_PIX_FMT_YUV420:
+        LOG1("Converting frame from YUV420 to RGB565");
+        YUV420ToRGB565(width, height, src, dst);
+        break;
+    default:
+        LOGE("Unsupported color format: %s", v4l2Fmt2Str(format));
+        ret = false;
+    }
+    return ret;
+}
+
+// Takes YUV data (NV12 or YUV420) and outputs JPEG encoded stream
+int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
+{
+    LOG1("@%s:\n\t IN  = {buf:%p, w:%u, h:%u, sz:%u, f:%s}" \
+             "\n\t OUT = {buf:%p, w:%u, h:%u, sz:%u, q:%d}",
+            __FUNCTION__,
+            in.buf, in.width, in.height, in.size, v4l2Fmt2Str(in.format),
+            out.buf, out.width, out.height, out.size, out.quality);
+    // For SW path
+    SkBitmap skBitmap;
+    SkDynamicMemoryWStream skStream;
+    // For HW path
+    struct jpeg_compress_struct mCinfo;
+    struct jpeg_error_mgr jerr;
+    JSAMPROW row_pointer[1];
+
+    if (in.width == 0 || in.height == 0 || in.format == 0) {
+        LOGE("Invalid input received!");
+        mJpegSize = -1;
+        goto exit;
+    }
+    // Decide the encoding path: Skia or libjpeg
+    /*
+     * jpeglib can encode images using libva only if the image format is NV12 and
+     * image sizes are greater than 512. If the image does not meet this criteria,
+     * then encode it using Skia. For Skia, it is required an additional step:
+     * the color conversion of the image to RGB565.
+     */
+    if ((in.width < 512 && in.width < 512) || in.format != V4L2_PIX_FMT_NV12) {
+        // Choose Skia
+        LOG1("Choosing Skia for JPEG encoding");
+        if (mJpegEncoder == NULL) {
+            LOGE("Skia JpegEncoder not created, cannot encode to JPEG!");
+            mJpegSize = -1;
+            goto exit;
+        }
+        bool success = convertRawImage((void*)in.buf, (void*)out.buf, in.width, in.height, in.format);
+        if (!success) {
+            LOGE("Could not convert the raw image!");
+            mJpegSize = -1;
+            goto exit;
+        }
+        skBitmap.setConfig(SkBitmap::kRGB_565_Config, in.width, in.height);
+        skBitmap.setPixels(out.buf, NULL);
+        LOG1("Encoding stream using Skia...");
+        if (mJpegEncoder->encodeStream(&skStream, skBitmap, out.quality)) {
+            mJpegSize = skStream.getOffset();
+            skStream.copyTo(out.buf);
+        } else {
+            LOGE("Skia could not encode the stream!");
+            mJpegSize = -1;
+            goto exit;
+        }
+    } else {
+        // Choose jpeglib
+        LOG1("Choosing jpeglib for JPEG encoding");
+        mCinfo.err = jpeg_std_error (&jerr);
+        jpeg_create_compress (&mCinfo);
+        mJpegSize = 0;
+        setup_jpeg_destmgr(&mCinfo, static_cast<JSAMPLE*>(out.buf), out.size, &mJpegSize);
+
+        char *vaSurface = NULL;
+        // Verify the validity of input buffer (it MUST be a VA surface)
+        for (size_t i = 0; i < mVaInputSurfacesNum; i++) {
+            if ((char*)in.buf == mVaInputSurfacesPtr[i]) {
+                vaSurface = mVaInputSurfacesPtr[i];
+                break;
+            }
+        }
+
+        // If the input pointer is not a VA surface, then copy it to a valid VA surface
+        if (vaSurface == NULL) {
+            LOG1("Get a VA surface from JPEG encoder...");
+            if(!jpeg_get_userptr_from_surface(&mCinfo, in.width, in.height, VA_FOURCC_NV12, &vaSurface)) {
+                LOGE("Failed to get user pointer");
+                jpeg_destroy_compress(&mCinfo);
+                mJpegSize = -1;
+                goto exit;
+            }
+
+            LOG1("Copy NV12 image to VA surface @%p: %d bytes", vaSurface, in.size);
+            memcpy(vaSurface, in.buf, in.size);
+        }
+
+        mCinfo.image_width = in.width;
+        mCinfo.image_height = in.height;
+        mCinfo.input_components = 3;
+        mCinfo.in_color_space = JCS_YCbCr;
+        jpeg_set_defaults (&mCinfo);
+        jpeg_set_colorspace(&mCinfo, JCS_YCbCr);
+        jpeg_set_quality (&mCinfo, out.quality, TRUE);
+        mCinfo.raw_data_in = TRUE;
+        mCinfo.dct_method = JDCT_FLOAT;
+        mCinfo.comp_info[0].h_samp_factor = mCinfo.comp_info[0].v_samp_factor = 2;
+        mCinfo.comp_info[1].h_samp_factor = mCinfo.comp_info[1].v_samp_factor = 1;
+        mCinfo.comp_info[2].h_samp_factor = mCinfo.comp_info[2].v_samp_factor = 1;
+
+        LOG1("Start compression...");
+        jpeg_start_compress (&mCinfo, TRUE);
+
+        LOG1("Compressing...");
+        jpeg_write_raw_data(&mCinfo, (JSAMPIMAGE)vaSurface, mCinfo.image_height);
+
+        LOG1("Finish compression...");
+        jpeg_finish_compress (&mCinfo);
+        jpeg_destroy_compress (&mCinfo);
+    }
+
+exit:
+    return mJpegSize;
+}
+
+}

@@ -14,23 +14,27 @@ LOCAL_SRC_FILES := \
 	AtomHAL.cpp \
 	ColorConverter.cpp \
 	EXIFMaker.cpp \
+	JpegCompressor.cpp \
 
 LOCAL_C_INCLUDES += \
 	frameworks/base/include \
 	frameworks/base/include/binder \
 	frameworks/base/include/camera \
+	external/jpeg \
 	hardware/libhardware/include/hardware \
 	external/skia/include/core \
 	external/skia/include/images \
 	hardware/intel/libs3cjpeg \
 	$(TARGET_OUT_HEADERS)/libsharedbuffer \
 	$(TARGET_OUT_HEADERS)/libmfldadvci \
+        hardware/intel/libva \
 
 LOCAL_SHARED_LIBRARIES := \
 	libcamera_client \
 	libutils \
 	libcutils \
 	libbinder \
+	libjpeg \
 	libskia \
 	libandroid \
 	libui \
