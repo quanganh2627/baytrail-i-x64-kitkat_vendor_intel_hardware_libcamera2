@@ -41,7 +41,7 @@ public:
         return sMaxDetectable;
     };
     virtual void start();
-    virtual void stop();
+    virtual void stop(bool wait=false);
     virtual int sendFrame(AtomBuffer *img, int width, int height);
 
 private:

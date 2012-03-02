@@ -40,19 +40,19 @@ OlaFaceDetect::OlaFaceDetect(IFaceDetectionListener *pListener) :
 
 OlaFaceDetect::~OlaFaceDetect()
 {
-    LOGD("%s: Destroy the OlaFaceDetec\n", __func__);
+    LOGV("%s: Destroy the OlaFaceDetec\n", __func__);
 
     mbRunning = false;
     if (mFaceDetectionStruct)
         CameraFaceDetection_Destroy(&mFaceDetectionStruct);
     mFaceDetectionStruct = 0;
 
-    LOGD("%s: Destroy the OlaFaceDetec DONE.\n", __func__);
+    LOGV("%s: Destroy the OlaFaceDetec DONE.\n", __func__);
 }
 
 void OlaFaceDetect::start()
 {
-    LOGD("%s: START Face Detection mFaceDetectionStruct 0x%p\n", __func__, mFaceDetectionStruct);
+    LOGV("%s: START Face Detection mFaceDetectionStruct 0x%p\n", __func__, mFaceDetectionStruct);
     int ret = 0;
     mMessageQueue.clearAll();//make sure no message left over from last run
     if (!mFaceDetectionStruct) {
@@ -61,26 +61,29 @@ void OlaFaceDetect::start()
             mbRunning = true;
             run();
         }
-        LOGD("%s: Ola Face Detection struct Created. Ret: %d struct: 0x%p", __func__,ret, mFaceDetectionStruct);
+        LOGV("%s: Ola Face Detection struct Created. Ret: %d struct: 0x%p", __func__,ret, mFaceDetectionStruct);
     }else{
         mbRunning = true;
         run();//restart thread
     }
 }
 
-void OlaFaceDetect::stop()
+void OlaFaceDetect::stop(bool wait)
 {
-    LOGD("%s: STOP Face DEtection mFaceDetectionStruct 0x%p\n", __func__, mFaceDetectionStruct);
+    LOGV("%s: STOP Face DEtection mFaceDetectionStruct 0x%p\n", __func__, mFaceDetectionStruct);
     Message msg;
     msg.id = MESSAGE_ID_EXIT;
     mMessageQueue.clearAll(); // flush out all previous messages.
     mMessageQueue.send( &msg );
-    requestExit();//no need to wait because API is asynchronous
+    if (wait) {
+        requestExitAndWait();
+    }else
+        requestExit();
 }
 
 status_t OlaFaceDetect::handleExit()
 {
-    LOGD("%s: Stop Face Detection\n", __func__);
+    LOGV("%s: Stop Face Detection\n", __func__);
     int ret = 0;
     mbRunning = false;
     return NO_ERROR;
@@ -152,6 +155,7 @@ status_t OlaFaceDetect::handleFrame(MessageFrame frame)
         LOGV("right eye: (%d, %d)", face.right_eye[0], face.right_eye[1]);
     }
     //blocking call
+    LOGV("%s calling listener", __func__);
     mpListener->facesDetected(face_metadata, &frame.img);
     LOGV("%s returned from listener", __func__);
 

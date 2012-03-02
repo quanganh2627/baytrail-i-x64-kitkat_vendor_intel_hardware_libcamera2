@@ -27,8 +27,17 @@ public:
     virtual ~IFaceDetector() {};
     virtual int getMaxFacesDetectable() = 0;
     virtual void start(void) = 0;
-    virtual void stop(void) = 0;
     /**
+    * This stops face detector. Face detector may still process buffer data passed
+    * in previously via sendFame. Wait should be used with care because it may cause deadlock.
+    * Wait is needed only if client needs confirmation FD done with the buffer received.
+    */
+    virtual void stop(bool wait = false) = 0;
+    /**
+     * Face detector will process the buffer as soon as possible and callback listener
+     * Client can safely de-allocate the buffer after callback received, or -1 is receied
+     * as return value of this method.
+     * However, before callback received, the face detector may still use the buffer.
      * returns -1 if the buffer is not accepted.
      * otherwise return 0.
      */

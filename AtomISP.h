@@ -96,6 +96,7 @@ public:
     status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
 
     bool dataAvailable();
+    bool isBufferValid(const AtomBuffer * buffer) const;
 
     status_t setPreviewFrameFormat(int width, int height, int format);
     status_t setPostviewFrameFormat(int width, int height, int format);

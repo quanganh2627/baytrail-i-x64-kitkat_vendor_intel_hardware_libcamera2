@@ -308,7 +308,7 @@ private:
     status_t handleMessageAutoFocusDone();
     status_t handleMessageCommand(MessageCommand* msg);
     status_t startFaceDetection();
-    status_t stopFaceDetection();
+    status_t stopFaceDetection(bool wait=false);
     status_t handleMessageFacesDetected(MessageFacesDetected* msg);
     void releasePreviewFrame(AtomBuffer* buff);
 

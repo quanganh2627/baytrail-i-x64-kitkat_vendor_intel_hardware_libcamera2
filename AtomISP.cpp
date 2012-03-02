@@ -2036,6 +2036,11 @@ bool AtomISP::dataAvailable()
     return false;
 }
 
+bool AtomISP::isBufferValid(const AtomBuffer* buffer) const
+{
+    return buffer->ispPrivate == this->mSessionId;
+}
+
 int AtomISP::grabFrame(int device, struct v4l2_buffer *buf)
 {
     LOG2("@%s", __FUNCTION__);

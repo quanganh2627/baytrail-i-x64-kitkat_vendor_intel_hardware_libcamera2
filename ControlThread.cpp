@@ -450,9 +450,13 @@ status_t ControlThread::stopPreviewCore()
 status_t ControlThread::restartPreview(bool videoMode)
 {
     LOG1("@%s: mode = %s", __FUNCTION__, videoMode?"VIDEO":"STILL");
+    bool faceActive = mFaceDetectionActive;
+    stopFaceDetection(true);
     status_t status = stopPreviewCore();
     if (status == NO_ERROR)
         status = startPreviewCore(videoMode);
+    if (faceActive)
+        startFaceDetection();
     return status;
 }
 
@@ -480,7 +484,7 @@ status_t ControlThread::handleMessageStopPreview()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status;
-    stopFaceDetection();
+    stopFaceDetection(true);
     if (mState != STATE_STOPPED) {
         status = stopPreviewCore();
     } else {
@@ -925,6 +929,8 @@ status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
 {
 
     LOG2("handle preview frame  done buffer %p", &(msg->buff));
+    if (!mISP->isBufferValid(&msg->buff))
+        return DEAD_OBJECT;
     status_t status = NO_ERROR;
     if (m_pFaceDetector !=0 && mFaceDetectionActive) {
         LOG2("m_pFace = 0x%p, active=%s", m_pFaceDetector, mFaceDetectionActive?"true":"false");
@@ -1846,7 +1852,7 @@ status_t ControlThread::startFaceDetection()
     }
 }
 
-status_t ControlThread::stopFaceDetection()
+status_t ControlThread::stopFaceDetection(bool wait)
 {
     LOG2("@%s", __FUNCTION__);
     if( !mFaceDetectionActive )
@@ -1854,7 +1860,7 @@ status_t ControlThread::stopFaceDetection()
     mFaceDetectionActive = false;
     disableMsgType(CAMERA_MSG_PREVIEW_METADATA);
     if (m_pFaceDetector != 0) {
-        m_pFaceDetector->stop();
+        m_pFaceDetector->stop(wait);
         return NO_ERROR;
     } else{
         return INVALID_OPERATION;
