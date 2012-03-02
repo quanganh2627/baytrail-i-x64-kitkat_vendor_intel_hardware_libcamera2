@@ -73,6 +73,7 @@ ControlThread::~ControlThread()
     mPreviewThread.clear();
     mPictureThread.clear();
     mVideoThread.clear();
+    m3AThread->requestExitAndWait();
     m3AThread.clear();
     mBSInstance.clear();
     if (mISP != NULL) {
