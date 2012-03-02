@@ -126,6 +126,8 @@ AtomISP::AtomISP(int camera_id) :
     ,mRecordingBuffers(NULL)
     ,mClientRecordingBuffers(NULL)
     ,mUsingClientRecordingBuffers(false)
+    ,mClientSnapshotBuffers(NULL)
+    ,mUsingClientSnapshotBuffers(false)
     ,mNumPreviewBuffersQueued(0)
     ,mNumRecordingBuffersQueued(0)
     ,mPreviewDevice(V4L2_FIRST_DEVICE)
@@ -1901,6 +1903,22 @@ status_t AtomISP::putRecordingFrame(AtomBuffer *buff)
     return NO_ERROR;
 }
 
+status_t AtomISP::setSnapshotBuffers(void *buffs, int numBuffs)
+{
+    LOG1("@%s: buffs = %p, numBuffs = %d", __FUNCTION__, buffs, numBuffs);
+    if (buffs == NULL || numBuffs <= 0)
+        return BAD_VALUE;
+
+    mClientSnapshotBuffers = (void**)buffs;
+    mConfig.num_snapshot = numBuffs;
+    mUsingClientSnapshotBuffers = true;
+    for (int i = 0; i < numBuffs; i++) {
+        LOG1("Snapshot buffer %d = %p", i, mClientSnapshotBuffers[i]);
+    }
+
+    return NO_ERROR;
+}
+
 status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 {
     LOG1("@%s", __FUNCTION__);
@@ -2174,21 +2192,33 @@ status_t AtomISP::allocateSnapshotBuffers()
     status_t status = NO_ERROR;
     int allocatedSnaphotBufs = 0;
     int allocatedPostviewBufs = 0;
+    int snapshotSize = mConfig.snapshot.size;
+
+    if (mUsingClientSnapshotBuffers)
+        snapshotSize = sizeof(void*);
 
     LOG1("Allocating %d buffers of size: %d (snapshot), %d (postview)",
             mConfig.num_snapshot,
-            mConfig.snapshot.size,
+            snapshotSize,
             mConfig.postview.size);
     for (int i = 0; i < mConfig.num_snapshot; i++) {
         mSnapshotBuffers[i].buff = NULL;
-        mCallbacks->allocateMemory(&mSnapshotBuffers[i], mConfig.snapshot.size);
+        mCallbacks->allocateMemory(&mSnapshotBuffers[i], snapshotSize);
         if (mSnapshotBuffers[i].buff == NULL) {
             LOGE("Error allocation memory for snapshot buffers!");
             status = NO_MEMORY;
             goto errorFree;
         }
         allocatedSnaphotBufs++;
-        v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[i].data = mSnapshotBuffers[i].buff->data;
+        if (mUsingClientSnapshotBuffers) {
+            v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[i].data = mClientSnapshotBuffers[i];
+            memcpy(mSnapshotBuffers[i].buff->data, &mClientSnapshotBuffers[i], sizeof(void *));
+            mSnapshotBuffers[i].shared = true;
+
+        } else {
+            v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[i].data = mSnapshotBuffers[i].buff->data;
+            mSnapshotBuffers[i].shared = false;
+        }
 
         mPostviewBuffers[i].buff = NULL;
         mCallbacks->allocateMemory(&mPostviewBuffers[i], mConfig.postview.size);
@@ -2199,7 +2229,6 @@ status_t AtomISP::allocateSnapshotBuffers()
         }
         allocatedPostviewBufs++;
         v4l2_buf_pool[V4L2_SECOND_DEVICE].bufs[i].data = mPostviewBuffers[i].buff->data;
-        mSnapshotBuffers[i].shared = false;
         mPostviewBuffers[i].shared = false;
     }
     return status;

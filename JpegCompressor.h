@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include "SkImageEncoder.h"
 #include "AtomCommon.h"
+#include <utils/Errors.h>
 
 namespace android {
 
@@ -28,11 +29,13 @@ class JpegCompressor {
 
     // For buffer sharing
     char* mVaInputSurfacesPtr[MAX_BURST_BUFFERS];
-    size_t mVaInputSurfacesNum;
+    int mVaInputSurfacesNum;
 
     SkImageEncoder* mJpegEncoder; // used for small images (< 512x512)
+    void *mJpegCompressStruct;
+    bool mStartSharedBuffersEncode;
 
-    bool convertRawImage(void* src, void* dst, size_t width, size_t height, int format);
+    bool convertRawImage(void* src, void* dst, int width, int height, int format);
 
 public:
     JpegCompressor();
@@ -41,10 +44,10 @@ public:
 
     struct InputBuffer {
         unsigned char *buf;
-        size_t width;
-        size_t height;
-        int    format;
-        size_t size;
+        int width;
+        int height;
+        int format;
+        int size;
 
         void clear()
         {
@@ -58,9 +61,9 @@ public:
 
     struct OutputBuffer {
         unsigned char *buf;
-        size_t width;
-        size_t height;
-        size_t size;
+        int width;
+        int height;
+        int size;
         int quality;
 
         void clear()
@@ -75,6 +78,18 @@ public:
 
     // Encoder functions
     int encode(const InputBuffer &in, const OutputBuffer &out);
+
+    /*
+     * Shared buffers encoding
+     * In order to use the shared buffers encoding, the caller must follow this call-flow:
+     * - startSharedBuffersEncode
+     * - getSharedBuffers
+     * - encode (using buffers obtained from getSharedBuffers)
+     * - stopSharedBuffersEncode
+     */
+    status_t startSharedBuffersEncode(void *outBuf, int outSize);
+    status_t stopSharedBuffersEncode();
+    status_t getSharedBuffers(int width, int height, void** sharedBuffersPtr, int sharedBuffersNum);
 };
 
 }; // namespace android

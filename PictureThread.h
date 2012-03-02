@@ -59,6 +59,8 @@ public:
     }
     void getDefaultParameters(CameraParameters *params);
     void initialize(const CameraParameters &params, bool flashUsed);
+    void setNumberOfShots(int num);
+    status_t getSharedBuffers(int width, int height, void** sharedBuffersPtr, int sharedBuffersNum);
 
 // private types
 private:
@@ -120,6 +122,8 @@ private:
     Callbacks *mCallbacks;
     JpegCompressor compressor;
     EXIFMaker exifMaker;
+    AtomBuffer mExifBuf;
+    AtomBuffer mOutBuf;
 
     int mPictureWidth;
     int mPictureHeight;
@@ -129,6 +133,9 @@ private:
     int mThumbFormat;
     int mPictureQuality;
     int mThumbnailQuality;
+    int mNumShots; // number of snapshots expected to encode
+    int mCurrentShots;
+    bool mUsingSharedBuffers;
 
 // public data
 public:

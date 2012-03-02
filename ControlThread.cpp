@@ -710,13 +710,33 @@ status_t ControlThread::handleMessageTakePicture()
         return status;
     }
 
-    // tell CameraService to play the shutter sound
-    mCallbacks->shutterSound();
-
     if (origState == STATE_PREVIEW_STILL) {
+        /*
+         *  TODO: for burst-capture mode, numberOfSnapshots should be the camera parameter used to define
+         *  number of pictures to take in burst-capture mode.
+         */
+        int numberOfSnapshots = 1;
+        mPictureThread->setNumberOfShots(numberOfSnapshots);
 
         // Configure and start the ISP
         mISP->setSnapshotFrameFormat(width, height, format);
+        if (format == V4L2_PIX_FMT_NV12) {
+            // Try to use buffer sharing
+            void* snapshotBufferPtr;
+            status = mPictureThread->getSharedBuffers(width, height, &snapshotBufferPtr, numberOfSnapshots);
+            if (status == NO_ERROR) {
+                status = mISP->setSnapshotBuffers(snapshotBufferPtr, numberOfSnapshots);
+                if (status == NO_ERROR) {
+                    LOG1("Using shared buffers for snapshot");
+                } else {
+                    LOGW("Cannot set shared buffers in atomisp, using internal buffers!");
+                }
+            } else {
+                LOGW("Cannot get shared buffers from libjpeg, using internal buffers!");
+            }
+        } else {
+            LOG1("Using internal buffers for snapshot");
+        }
         if ((status = mISP->start(MODE_CAPTURE)) != NO_ERROR) {
             LOGE("Error starting the ISP driver in CAPTURE mode!");
             return status;
@@ -745,7 +765,7 @@ status_t ControlThread::handleMessageTakePicture()
         // Turn on flash
         if (flashNeeded) {
             LOG1("Requesting flash");
-            if (mISP->setFlash(1) != NO_ERROR) {
+            if (mISP->setFlash(numberOfSnapshots) != NO_ERROR) {
                 LOGE("Failed to enable the Flash!");
             }
         } else if (DetermineFlash(flashMode)) {
@@ -757,6 +777,11 @@ status_t ControlThread::handleMessageTakePicture()
             LOGE("Error in grabbing snapshot!");
             return status;
         }
+
+        // tell CameraService to play the shutter sound
+        mCallbacks->shutterSound();
+
+        // TODO: here we should display the picture using PreviewThread
 
         // Turn off flash
         if (!flashNeeded && DetermineFlash(flashMode)) {

@@ -99,20 +99,23 @@ static int setup_jpeg_destmgr(j_compress_ptr cinfo, JSAMPLE *outBuf, int jpegBuf
     LOG1("@%s", __FUNCTION__);
     JpegDestinationManager *dest;
 
-    if(NULL == outBuf || jpegBufSize <= 0 )
+    if(outBuf == NULL || jpegBufSize <= 0 )
         return -1;
-    if (cinfo->dest == NULL) {
-        cinfo->dest = (struct jpeg_destination_mgr *)(*cinfo->mem->alloc_small) ((j_common_ptr) cinfo, JPOOL_PERMANENT, sizeof(JpegDestinationManager));
-    }
 
     LOG1("Setting up JPEG destination manager...");
     dest = (JpegDestinationManager*) cinfo->dest;
-    dest->pub.init_destination = init_destination;
-    dest->pub.empty_output_buffer = empty_output_buffer;
-    dest->pub.term_destination = term_destination;
-    dest->outJpegBuf= outBuf;
-    dest->outJpegBufSize= jpegBufSize;
-    dest->outJpegBufPos= outBuf;
+    if (cinfo->dest == NULL) {
+        LOG1("Create destination manager...");
+        cinfo->dest = (struct jpeg_destination_mgr *)(*cinfo->mem->alloc_small) ((j_common_ptr) cinfo, JPOOL_PERMANENT, sizeof(JpegDestinationManager));
+        dest = (JpegDestinationManager*) cinfo->dest;
+        dest->pub.init_destination = init_destination;
+        dest->pub.empty_output_buffer = empty_output_buffer;
+        dest->pub.term_destination = term_destination;
+        dest->outJpegBuf = outBuf;
+    }
+    LOG1("Out: bufPos = %p, bufSize = %d, dataCount = %d", outBuf, jpegBufSize, *jpegSizePtr);
+    dest->outJpegBufSize = jpegBufSize;
+    dest->outJpegBufPos = outBuf;
     dest->dataCount = jpegSizePtr;
     return 0;
 }
@@ -123,12 +126,15 @@ static int setup_jpeg_destmgr(j_compress_ptr cinfo, JSAMPLE *outBuf, int jpegBuf
 
 JpegCompressor::JpegCompressor() :
     mVaInputSurfacesNum(0)
+    ,mJpegCompressStruct(NULL)
+    ,mStartSharedBuffersEncode(false)
 {
     LOG1("@%s", __FUNCTION__);
     mJpegEncoder = SkImageEncoder::Create(SkImageEncoder::kJPEG_Type);
     if (mJpegEncoder == NULL) {
         LOGE("No memory for Skia JPEG encoder!");
     }
+    memset(mVaInputSurfacesPtr, 0, sizeof(mVaInputSurfacesPtr));
 }
 
 JpegCompressor::~JpegCompressor()
@@ -140,7 +146,7 @@ JpegCompressor::~JpegCompressor()
     }
 }
 
-bool JpegCompressor::convertRawImage(void* src, void* dst, size_t width, size_t height, int format)
+bool JpegCompressor::convertRawImage(void* src, void* dst, int width, int height, int format)
 {
     LOG1("@%s", __FUNCTION__);
     bool ret = true;
@@ -172,7 +178,8 @@ int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
     SkBitmap skBitmap;
     SkDynamicMemoryWStream skStream;
     // For HW path
-    struct jpeg_compress_struct mCinfo;
+    struct jpeg_compress_struct cinfo;
+    struct jpeg_compress_struct* pCinfo;
     struct jpeg_error_mgr jerr;
     JSAMPROW row_pointer[1];
 
@@ -188,7 +195,7 @@ int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
      * then encode it using Skia. For Skia, it is required an additional step:
      * the color conversion of the image to RGB565.
      */
-    if ((in.width < 512 && in.width < 512) || in.format != V4L2_PIX_FMT_NV12) {
+    if ((in.width < 512 && in.height < 512) || in.format != V4L2_PIX_FMT_NV12) {
         // Choose Skia
         LOG1("Choosing Skia for JPEG encoding");
         if (mJpegEncoder == NULL) {
@@ -216,26 +223,39 @@ int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
     } else {
         // Choose jpeglib
         LOG1("Choosing jpeglib for JPEG encoding");
-        mCinfo.err = jpeg_std_error (&jerr);
-        jpeg_create_compress (&mCinfo);
-        mJpegSize = 0;
-        setup_jpeg_destmgr(&mCinfo, static_cast<JSAMPLE*>(out.buf), out.size, &mJpegSize);
 
         char *vaSurface = NULL;
+        bool sharedBufferCompress = false;
         // Verify the validity of input buffer (it MUST be a VA surface)
-        for (size_t i = 0; i < mVaInputSurfacesNum; i++) {
+        for (int i = 0; i < mVaInputSurfacesNum && mJpegCompressStruct != NULL; i++) {
             if ((char*)in.buf == mVaInputSurfacesPtr[i]) {
                 vaSurface = mVaInputSurfacesPtr[i];
+                LOG1("Using shared buffer %u @%p as input buffer", i, vaSurface);
+                sharedBufferCompress = true;
                 break;
             }
         }
 
+        if (sharedBufferCompress) {
+            // If this is a shared buffer, no need for create compress, this is already done
+            pCinfo = (struct jpeg_compress_struct*)mJpegCompressStruct;
+        } else {
+            memset(&cinfo , 0, sizeof(cinfo));
+            memset(&jerr , 0, sizeof(jerr));
+            pCinfo = &cinfo;
+            pCinfo->err = jpeg_std_error (&jerr);
+            jpeg_create_compress(pCinfo);
+        }
+
+        mJpegSize = 0;
+        setup_jpeg_destmgr(pCinfo, static_cast<JSAMPLE*>(out.buf), out.size, &mJpegSize);
+
         // If the input pointer is not a VA surface, then copy it to a valid VA surface
         if (vaSurface == NULL) {
             LOG1("Get a VA surface from JPEG encoder...");
-            if(!jpeg_get_userptr_from_surface(&mCinfo, in.width, in.height, VA_FOURCC_NV12, &vaSurface)) {
+            if(!jpeg_get_userptr_from_surface(pCinfo, in.width, in.height, VA_FOURCC_NV12, &vaSurface)) {
                 LOGE("Failed to get user pointer");
-                jpeg_destroy_compress(&mCinfo);
+                jpeg_destroy_compress(pCinfo);
                 mJpegSize = -1;
                 goto exit;
             }
@@ -244,32 +264,98 @@ int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
             memcpy(vaSurface, in.buf, in.size);
         }
 
-        mCinfo.image_width = in.width;
-        mCinfo.image_height = in.height;
-        mCinfo.input_components = 3;
-        mCinfo.in_color_space = JCS_YCbCr;
-        jpeg_set_defaults (&mCinfo);
-        jpeg_set_colorspace(&mCinfo, JCS_YCbCr);
-        jpeg_set_quality (&mCinfo, out.quality, TRUE);
-        mCinfo.raw_data_in = TRUE;
-        mCinfo.dct_method = JDCT_FLOAT;
-        mCinfo.comp_info[0].h_samp_factor = mCinfo.comp_info[0].v_samp_factor = 2;
-        mCinfo.comp_info[1].h_samp_factor = mCinfo.comp_info[1].v_samp_factor = 1;
-        mCinfo.comp_info[2].h_samp_factor = mCinfo.comp_info[2].v_samp_factor = 1;
+        pCinfo->image_width = in.width;
+        pCinfo->image_height = in.height;
+        pCinfo->input_components = 3;
+        pCinfo->in_color_space = JCS_YCbCr;
+        jpeg_set_defaults (pCinfo);
+        jpeg_set_colorspace(pCinfo, JCS_YCbCr);
+        jpeg_set_quality (pCinfo, out.quality, TRUE);
+        pCinfo->raw_data_in = TRUE;
+        pCinfo->dct_method = JDCT_FLOAT;
+        pCinfo->comp_info[0].h_samp_factor = pCinfo->comp_info[0].v_samp_factor = 2;
+        pCinfo->comp_info[1].h_samp_factor = pCinfo->comp_info[1].v_samp_factor = 1;
+        pCinfo->comp_info[2].h_samp_factor = pCinfo->comp_info[2].v_samp_factor = 1;
 
         LOG1("Start compression...");
-        jpeg_start_compress (&mCinfo, TRUE);
+        jpeg_start_compress (pCinfo, TRUE);
 
         LOG1("Compressing...");
-        jpeg_write_raw_data(&mCinfo, (JSAMPIMAGE)vaSurface, mCinfo.image_height);
+        jpeg_write_raw_data(pCinfo, (JSAMPIMAGE)vaSurface, pCinfo->image_height);
 
         LOG1("Finish compression...");
-        jpeg_finish_compress (&mCinfo);
-        jpeg_destroy_compress (&mCinfo);
+        jpeg_finish_compress (pCinfo);
+
+        if (!sharedBufferCompress) {
+            jpeg_destroy_compress (pCinfo);
+        }
     }
 
 exit:
     return mJpegSize;
+}
+
+// Starts encoding of multiple shared buffers
+status_t JpegCompressor::startSharedBuffersEncode(void *outBuf, int outSize)
+{
+    LOG1("@%s", __FUNCTION__);
+    static struct jpeg_compress_struct cinfo;
+    static struct jpeg_error_mgr jerr;
+    memset(&cinfo , 0, sizeof(cinfo));
+    memset(&jerr , 0, sizeof(jerr));
+    cinfo.err = jpeg_std_error (&jerr);
+    jpeg_create_compress(&cinfo);
+    mJpegSize = 0;
+    setup_jpeg_destmgr(&cinfo, static_cast<JSAMPLE*>(outBuf), outSize, &mJpegSize);
+    mJpegCompressStruct = &cinfo;
+    mStartSharedBuffersEncode = true;
+    return NO_ERROR;
+}
+
+// Stops encoding of multiple shared buffers
+status_t JpegCompressor::stopSharedBuffersEncode()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    struct jpeg_compress_struct *pCinfo = NULL;
+    if (!mStartSharedBuffersEncode) {
+        // already stopped, nothing to do
+        return NO_ERROR;
+    }
+    pCinfo = (struct jpeg_compress_struct*)mJpegCompressStruct;
+    jpeg_destroy_compress(pCinfo);
+    mJpegCompressStruct = NULL;
+    mStartSharedBuffersEncode = false;
+    return NO_ERROR;
+}
+
+status_t JpegCompressor::getSharedBuffers(int width, int height, void** sharedBuffersPtr, int sharedBuffersNum)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    struct jpeg_compress_struct *pCinfo = NULL;
+    if (!mStartSharedBuffersEncode) {
+        LOGE("Shared buffer encoding session is not started!");
+        return INVALID_OPERATION;
+    }
+    pCinfo = (struct jpeg_compress_struct*)mJpegCompressStruct;
+    for (int i = 0; i < sharedBuffersNum; i++) {
+        LOG1("Get a VA surface from JPEG encoder...");
+        if(!jpeg_get_userptr_from_surface(pCinfo, width, height, VA_FOURCC_NV12, &mVaInputSurfacesPtr[i])) {
+            LOGE("Failed to get user pointer");
+            status = NO_MEMORY;
+            break;
+        }
+        LOG1("Got VA surface @%p as shared buffer %d", mVaInputSurfacesPtr[i], i);
+    }
+    if (status == NO_ERROR) {
+        mVaInputSurfacesNum = sharedBuffersNum;
+        *sharedBuffersPtr = mVaInputSurfacesPtr;
+    } else {
+        *sharedBuffersPtr = NULL;
+        stopSharedBuffersEncode();
+    }
+    return status;
 }
 
 }

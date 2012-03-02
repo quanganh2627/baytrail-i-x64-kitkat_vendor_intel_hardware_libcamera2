@@ -91,6 +91,7 @@ public:
     status_t getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp);
     status_t putRecordingFrame(AtomBuffer *buff);
 
+    status_t setSnapshotBuffers(void *buffs, int numBuffs);
     status_t getSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
     status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
 
@@ -232,6 +233,8 @@ private:
     AtomBuffer *mRecordingBuffers;
     void **mClientRecordingBuffers;
     bool mUsingClientRecordingBuffers;
+    void **mClientSnapshotBuffers;
+    bool mUsingClientSnapshotBuffers;
 
     AtomBuffer mSnapshotBuffers[MAX_BURST_BUFFERS];
     AtomBuffer mPostviewBuffers[MAX_BURST_BUFFERS];
