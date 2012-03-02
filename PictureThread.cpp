@@ -72,11 +72,6 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     }
     LOG1("Temp buffer: @%p (%d bytes)", tempBuf.buff->data, tempBuf.buff->size);
     // Convert and encode the thumbnail, if present and EXIF maker is initialized
-#ifdef ANDROID_1732
-    /*
-     * Fix for ANDROID-1714: don't include thumbnail in EXIF because the viewers will show the thumbnail
-     * instead of main picture as being the main picture.
-     */
     if (exifMaker.isInitialized() &&
         thumbBuf != NULL &&
         thumbBuf->buff != NULL &&
@@ -90,21 +85,21 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         inBuf.format = mThumbFormat;
         inBuf.size = frameSize(mThumbFormat, mThumbWidth, mThumbHeight);
         outBuf.clear();
-        outBuf.buf = unsigned char*)tempBuf.buff->data + MAX_EXIF_SIZE;
+        outBuf.buf = (unsigned char*)tempBuf.buff->data + MAX_EXIF_SIZE;
         outBuf.width = mThumbWidth;
         outBuf.height = mThumbHeight;
         outBuf.quality = mThumbnailQuality;
-        outBuf.size = bufferSize - MAX_EXIF_SIZE
+        outBuf.size = bufferSize - MAX_EXIF_SIZE;
         int size = compressor.encode(inBuf, outBuf);
         LOG1("Thumbnail JPEG size: %d", size);
         if (size > 0) {
-            exifMaker.setThumbnail(thumbPtr, size);
+            exifMaker.setThumbnail(outBuf.buf, size);
         } else {
             // This is not critical, we can continue with main picture image
             LOGE("Could not encode thumbnail stream!");
         }
     }
-#endif
+
     int totalSize = 0;
     unsigned char* currentPtr = (unsigned char*)tempBuf.buff->data;
     unsigned char* exifEnd = NULL;
