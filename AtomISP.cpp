@@ -97,11 +97,11 @@ int AtomISP::numCameras = 0;
 const camera_info AtomISP::mCameraInfo[MAX_CAMERAS] = {
     {
         CAMERA_FACING_BACK,
-        180,
+        0,
     },
     {
         CAMERA_FACING_FRONT,
-        180,
+        0,
     }
 };
 
