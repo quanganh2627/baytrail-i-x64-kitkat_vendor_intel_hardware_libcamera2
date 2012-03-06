@@ -18,6 +18,7 @@
 #include "LogHelper.h"
 #include "AtomAAA.h"
 #include "AtomCommon.h"
+#include <math.h>
 
 namespace android {
 
@@ -222,6 +223,47 @@ status_t AtomAAA::setAeSceneMode(SceneMode mode)
     return NO_ERROR;
 }
 
+SceneMode AtomAAA::getAeSceneMode()
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    SceneMode mode = CAM_AE_SCENE_MODE_NOT_SET;
+    if(!mHas3A)
+        return mode;
+
+    ci_adv_ae_exposure_program rd_val;
+    if(ci_adv_ae_get_exposure_program (&rd_val) != ci_adv_success)
+        return mode;
+    switch (rd_val) {
+    case ci_adv_ae_exposure_program_auto:
+        mode = CAM_AE_SCENE_MODE_AUTO;
+        break;
+    case ci_adv_ae_exposure_program_portrait:
+        mode = CAM_AE_SCENE_MODE_PORTRAIT;
+        break;
+    case ci_adv_ae_exposure_program_sports:
+        mode = CAM_AE_SCENE_MODE_SPORTS;
+        break;
+    case ci_adv_ae_exposure_program_landscape:
+        mode = CAM_AE_SCENE_MODE_LANDSCAPE;
+        break;
+    case ci_adv_ae_exposure_program_night:
+        mode = CAM_AE_SCENE_MODE_NIGHT;
+        break;
+    case ci_adv_ae_exposure_program_fireworks:
+        mode = CAM_AE_SCENE_MODE_FIREWORKS;
+        break;
+    case ci_adv_ae_exposure_program_text:
+        mode = CAM_AE_SCENE_MODE_TEXT;
+        break;
+    default:
+        LOGE("Get: invalid AE scene mode: %d. Using AUTO!", rd_val);
+        mode = CAM_AE_SCENE_MODE_AUTO;
+    }
+
+    return mode;
+}
+
 status_t AtomAAA::setAeMode(AeMode mode)
 {
     Mutex::Autolock lock(m3aLock);
@@ -290,7 +332,7 @@ status_t AtomAAA::setAfMode(AfMode mode)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
-    if(mSensorType != SENSOR_TYPE_RAW)
+    if(!mHas3A)
         return INVALID_OPERATION;
 
     ci_adv_err ret = ci_adv_success;
@@ -510,6 +552,38 @@ status_t AtomAAA::setAeMeteringMode(MeteringMode mode)
         return UNKNOWN_ERROR;
 
     return NO_ERROR;
+}
+
+MeteringMode AtomAAA::getAeMeteringMode()
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    MeteringMode mode = CAM_AE_METERING_MODE_NOT_SET;
+    if(!mHas3A)
+        return mode;
+
+    ci_adv_ae_metering_mode rd_val;
+    if(ci_adv_ae_get_metering_mode(&rd_val) != ci_adv_success)
+        return mode;
+    switch (rd_val) {
+    case ci_adv_ae_metering_mode_spot:
+        mode = CAM_AE_METERING_MODE_SPOT;
+        break;
+    case ci_adv_ae_metering_mode_center:
+        mode = CAM_AE_METERING_MODE_CENTER;
+        break;
+    case ci_adv_ae_metering_mode_customized:
+        mode = CAM_AE_METERING_MODE_CUSTOMIZED;
+        break;
+    case ci_adv_ae_metering_mode_auto:
+        mode = CAM_AE_METERING_MODE_AUTO;
+        break;
+    default:
+        LOGE("Get: invalid AE metering mode: %d. Using AUTO!", rd_val);
+        mode = CAM_AE_METERING_MODE_AUTO;
+    }
+
+    return mode;
 }
 
 status_t AtomAAA::setAeLock(bool en)
@@ -743,6 +817,69 @@ ci_adv_af_status AtomAAA::isStillAfComplete()
     }
 
     return ci_adv_af_is_complete();
+}
+
+status_t AtomAAA::getExposureInfo(unsigned short *expTime, unsigned short *aperture,
+        int* aecApexTv, int* aecApexSv, int* aecApexAv)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    *expTime = 0;
+    *aperture = 0;
+    *aecApexTv = 0;
+    *aecApexSv = 0;
+    *aecApexAv = 0;
+    ci_adv_ae_get_exp_cfg(expTime, aperture, aecApexTv, aecApexSv, aecApexAv);
+
+    return NO_ERROR;
+}
+
+status_t AtomAAA::getAeManualBrightness(float *ret)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    int val;
+    if (ci_adv_ae_get_manual_brightness(&val) != ci_adv_success)
+        return UNKNOWN_ERROR;
+
+    *ret = CI_ADV_S15_16_TO_FLOAT(val);
+    return NO_ERROR;
+}
+
+status_t AtomAAA::getEv(float *ret)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    int bias;
+    if(ci_adv_ae_get_bias(&bias) != ci_adv_success)
+        return UNKNOWN_ERROR;
+
+    *ret = CI_ADV_S15_16_TO_FLOAT(bias);
+    return NO_ERROR;
+}
+
+status_t AtomAAA::getManualIso(int *ret)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    int ev;
+    if(ci_adv_ae_get_manual_iso(&ev) != ci_adv_success)
+        return UNKNOWN_ERROR;
+
+    *ret = (int)(3.125 * pow(2, CI_ADV_S15_16_TO_FLOAT(ev)));
+    return NO_ERROR;
 }
 
 status_t AtomAAA::applyPreFlashProcess(FlashStage stage)

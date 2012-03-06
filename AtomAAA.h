@@ -169,6 +169,7 @@ public:
     status_t setAfWindow(const CameraWindow *window);
     status_t setAfEnabled(bool en);
     status_t setAeSceneMode(SceneMode mode);
+    SceneMode getAeSceneMode();
     status_t setAeMode(AeMode mode);
     AeMode getAeMode();
     status_t setAfMode(AfMode mode);
@@ -179,6 +180,7 @@ public:
     status_t setAwbMode(AwbMode mode);
     AwbMode getAwbMode();
     status_t setAeMeteringMode(MeteringMode mode);
+    MeteringMode getAeMeteringMode();
     status_t setAeBacklightCorrection(bool en);
     status_t setAeLock(bool en);
     bool     getAeLock();
@@ -193,6 +195,11 @@ public:
     size_t   getAfMaxNumWindows();
     status_t setAfWindows(const CameraWindow *windows, size_t numWindows);
     status_t setNegativeEffect(bool en);
+    status_t getExposureInfo(unsigned short *expTime, unsigned short *aperture,
+                             int* aecApexTv, int* aecApexSv, int* aecApexAv);
+    status_t getAeManualBrightness(float *ret);
+    status_t getEv(float *ret);
+    status_t getManualIso(int *ret);
 
     // ISP processing functions
     status_t applyRedEyeRemoval(const AtomBuffer &snapshotBuffer, int width, int height, int format);

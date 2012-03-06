@@ -24,8 +24,11 @@
 
 namespace android {
 
+#define DEFAULT_ISO_SPEED 100
+
 EXIFMaker::EXIFMaker() :
-        initialized(false)
+    mAAA(AtomAAA::getInstance())
+    ,initialized(false)
 {
     LOG1("@%s", __FUNCTION__);
 }
@@ -35,7 +38,7 @@ EXIFMaker::~EXIFMaker()
     LOG1("@%s", __FUNCTION__);
 }
 
-void EXIFMaker::initialize(const CameraParameters &params)
+void EXIFMaker::initialize(const CameraParameters &params, const atomisp_makernote_info &makerNote)
 {
     LOG1("@%s: params = %p", __FUNCTION__, &params);
 
@@ -94,7 +97,7 @@ void EXIFMaker::initialize(const CameraParameters &params)
     LOG1("EXIF: rotation value:%d degrees, orientation value:%d",
             rotation, exifAttributes.orientation);
 
-    initializeHWSpecific();
+    initializeHWSpecific(makerNote);
     initializeLocation(params);
 
     initialized = true;
@@ -112,9 +115,7 @@ void EXIFMaker::initializeLocation(const CameraParameters &params)
     const char *pprocmethod = params.get(CameraParameters::KEY_GPS_PROCESSING_METHOD);
 
     // check whether the GIS Information is valid
-    if((NULL == platitude) || (NULL == plongitude)
-            || (NULL == paltitude) || (NULL == ptimestamp)
-            || (NULL == pprocmethod))
+    if((NULL == platitude) || (NULL == plongitude))
         gpsEnabled = false;
 
     exifAttributes.enableGps = gpsEnabled;
@@ -164,208 +165,211 @@ void EXIFMaker::initializeLocation(const CameraParameters &params)
                 exifAttributes.gps_longitude_ref, exifAttributes.gps_longitude[0].num,
                 exifAttributes.gps_longitude[1].num, exifAttributes.gps_longitude[2].num);
 
-        // altitude, sea level or above sea level, set it to 0; below sea level, set it to 1
-        altitude = atof(paltitude);
-        exifAttributes.gps_altitude_ref = ((altitude > 0) ? 0 : 1);
-        altitude = fabs(altitude);
-        exifAttributes.gps_altitude.num = (uint32_t)altitude;
-        exifAttributes.gps_altitude.den = 1;
-        LOG1("EXIF: altitude, ref:%d, height:%d",
-                exifAttributes.gps_altitude_ref, exifAttributes.gps_altitude.num);
+        if (paltitude != NULL) {
+            // altitude, sea level or above sea level, set it to 0; below sea level, set it to 1
+            altitude = atof(paltitude);
+            exifAttributes.gps_altitude_ref = ((altitude > 0) ? 0 : 1);
+            altitude = fabs(altitude);
+            exifAttributes.gps_altitude.num = (uint32_t)altitude;
+            exifAttributes.gps_altitude.den = 1;
+            LOG1("EXIF: altitude, ref:%d, height:%d",
+                    exifAttributes.gps_altitude_ref, exifAttributes.gps_altitude.num);
+        }
 
-        // timestampe
-        timestamp = atol(ptimestamp);
-        gmtime_r(&timestamp, &time);
-        time.tm_year += 1900;
-        time.tm_mon += 1;
-        exifAttributes.gps_timestamp[0].num = time.tm_hour;
-        exifAttributes.gps_timestamp[0].den = 1;
-        exifAttributes.gps_timestamp[1].num = time.tm_min;
-        exifAttributes.gps_timestamp[1].den = 1;
-        exifAttributes.gps_timestamp[2].num = time.tm_sec;
-        exifAttributes.gps_timestamp[2].den = 1;
-        snprintf((char *)exifAttributes.gps_datestamp, sizeof(exifAttributes.gps_datestamp), "%04d:%02d:%02d",
-                time.tm_year, time.tm_mon, time.tm_mday);
-        LOG1("EXIF: timestamp, year:%d,mon:%d,day:%d,hour:%d,min:%d,sec:%d",
-                time.tm_year, time.tm_mon, time.tm_mday, time.tm_hour, time.tm_min, time.tm_sec);
+        if (ptimestamp != NULL) {
+            // timestamp
+            timestamp = atol(ptimestamp);
+            gmtime_r(&timestamp, &time);
+            time.tm_year += 1900;
+            time.tm_mon += 1;
+            exifAttributes.gps_timestamp[0].num = time.tm_hour;
+            exifAttributes.gps_timestamp[0].den = 1;
+            exifAttributes.gps_timestamp[1].num = time.tm_min;
+            exifAttributes.gps_timestamp[1].den = 1;
+            exifAttributes.gps_timestamp[2].num = time.tm_sec;
+            exifAttributes.gps_timestamp[2].den = 1;
+            snprintf((char *)exifAttributes.gps_datestamp, sizeof(exifAttributes.gps_datestamp), "%04d:%02d:%02d",
+                    time.tm_year, time.tm_mon, time.tm_mday);
+            LOG1("EXIF: timestamp, year:%d,mon:%d,day:%d,hour:%d,min:%d,sec:%d",
+                    time.tm_year, time.tm_mon, time.tm_mday, time.tm_hour, time.tm_min, time.tm_sec);
+        }
 
-        // processing method
-        if(strlen(pprocmethod) + 1 >= sizeof(exifAttributes.gps_processing_method))
-            len = sizeof(exifAttributes.gps_processing_method);
-        else
-            len = strlen(pprocmethod) + 1;
-        memcpy(exifAttributes.gps_processing_method, pprocmethod, len);
-        LOG1("EXIF: GPS processing method:%s", exifAttributes.gps_processing_method);
+        if (pprocmethod != NULL) {
+            // processing method
+            if(strlen(pprocmethod) + 1 >= sizeof(exifAttributes.gps_processing_method))
+                len = sizeof(exifAttributes.gps_processing_method);
+            else
+                len = strlen(pprocmethod) + 1;
+            memcpy(exifAttributes.gps_processing_method, pprocmethod, len);
+            LOG1("EXIF: GPS processing method:%s", exifAttributes.gps_processing_method);
+        }
     }
 }
 
-void EXIFMaker::initializeHWSpecific()
+void EXIFMaker::initializeHWSpecific(const atomisp_makernote_info &makerNote)
 {
     LOG1("@%s", __FUNCTION__);
-#ifdef ANDROID_1598
-    // exp_time's unit is 100us
-    mAAA->AeGetExpCfg(&exp_time, &aperture);
-    // exposure time
-    exifAttributes.exposure_time.num = exp_time;
-    exifAttributes.exposure_time.den = 10000;
+    unsigned short expTime = 0, aperture = 0;
+    int aecApexTv = 0, aecApexSv = 0, aecApexAv = 0;
 
-    // shutter speed, = -log2(exposure time)
-    float exp_t = (float)(exp_time / 10000.0);
-    float shutter = -1.0 * (log10(exp_t) / log10(2.0));
-    exifAttributes.shutter_speed.num = (shutter * 10000);
-    exifAttributes.shutter_speed.den = 10000;
-
-    // fnumber
-    // TBD, should get from driver
-    ret = mCamera->getFnumber(&fnumber);
-    if (ret < 0) {
+    // f number
+    if (makerNote.f_number_curr > 0) {
         // Error handler: if driver does not support Fnumber achieving, just give the default value.
         exifAttributes.fnumber.num = EXIF_DEF_FNUMBER_NUM;
         exifAttributes.fnumber.den = EXIF_DEF_FNUMBER_DEN;
-        ret = 0;
     } else {
-        exifAttributes.fnumber.num = fnumber >> 16;
-        exifAttributes.fnumber.den = fnumber & 0xffff;
-        LogDetail("fnumber:%x, num: %d, den: %d", fnumber, exifAttributes.fnumber.num, exifAttributes.fnumber.den);
+        exifAttributes.fnumber.num = makerNote.f_number_curr >> 16;
+        exifAttributes.fnumber.den = makerNote.f_number_curr & 0xffff;
     }
+    LOG1("EXIF: fnumber=%u (num=%d, den=%d)", makerNote.f_number_curr, exifAttributes.fnumber.num, exifAttributes.fnumber.den);
 
-    // aperture
-    exifAttributes.aperture.num = 100*(int)((1.0*exifAttributes.fnumber.num/exifAttributes.fnumber.den) * sqrt(100.0/aperture));
-    exifAttributes.aperture.den = 100;
+    exifAttributes.max_aperture.num = exifAttributes.fnumber.num;
+    exifAttributes.max_aperture.den = exifAttributes.fnumber.den;
 
-    if (mSensorType == SENSOR_TYPE_RAW) {
+    if (mAAA->is3ASupported()) {
+        // exp_time's unit is 100us
+        mAAA->getExposureInfo(&expTime, &aperture, &aecApexTv, &aecApexSv, &aecApexAv);
+        // exposure time
+        exifAttributes.exposure_time.num = expTime;
+        exifAttributes.exposure_time.den = 10000;
+        LOG1("EXIF: exposure time=%u", expTime);
+
+        // shutter speed, = -log2(exposure time)
+        float exp_t = (float)(expTime / 10000.0);
+        float shutter = -1.0 * (log10(exp_t) / log10(2.0));
+        exifAttributes.shutter_speed.num = (shutter * 10000);
+        exifAttributes.shutter_speed.den = 10000;
+        LOG1("EXIF: shutter speed=%.2f", shutter);
+
+        // aperture
+        exifAttributes.aperture.num = 100*(int)((1.0*exifAttributes.fnumber.num/exifAttributes.fnumber.den) * sqrt(100.0/aperture));
+        exifAttributes.aperture.den = 100;
+        LOG1("EXIF: aperture=%u", aperture);
+
         // brightness, -99.99 to 99.99. FFFFFFFF.H means unknown.
         float brightness;
-        mAAA->AeGetManualBrightness(&brightness);
-        attribute.brightness.num = (int)(brightness*100);
-        attribute.brightness.den = 100;
+        if (mAAA->getAeManualBrightness(&brightness) == NO_ERROR) {
+            exifAttributes.brightness.num = (int)(brightness * 100);
+            exifAttributes.brightness.den = 100;
+            LOG1("EXIF: brightness = %.2f", brightness);
+        } else {
+            LOGW("EXIF: Could not query brightness!");
+        }
 
         // exposure bias. unit is APEX value. -99.99 to 99.99
         float bias;
-        mAAA->AeGetEv(&bias);
-        attribute.exposure_bias.num = (int)(bias * 100);
-        attribute.exposure_bias.den = 100;
-        LogDetail("brightness:%f, ev:%f", brightness, bias);
+        if (mAAA->getEv(&bias) == NO_ERROR) {
+            exifAttributes.exposure_bias.num = (int)(bias * 100);
+            exifAttributes.exposure_bias.den = 100;
+            LOG1("EXIF: Ev = %.2f", bias);
+        } else {
+            LOGW("EXIF: Could not query Ev!");
+        }
 
         // set the exposure program mode
-        int aemode;
-        if (AAA_SUCCESS == mAAA->AeGetMode(&aemode)) {
-            switch (aemode) {
-            case CAM_AE_MODE_MANUAL:
-                attribute.exposure_program = EXIF_EXPOSURE_PROGRAM_MANUAL;
-                break;
-            case CAM_AE_MODE_SHUTTER_PRIORITY:
-                attribute.exposure_program = EXIF_EXPOSURE_PROGRAM_SHUTTER_PRIORITY;
-                break;
-            case CAM_AE_MODE_APERTURE_PRIORITY:
-                attribute.exposure_program = EXIF_EXPOSURE_PROGRAM_APERTURE_PRIORITY;
-                break;
-            case CAM_AE_MODE_AUTO:
-            default:
-                attribute.exposure_program = EXIF_EXPOSURE_PROGRAM_NORMAL;
-                break;
-            }
-        } else {
-            attribute.exposure_program = EXIF_EXPOSURE_PROGRAM_NORMAL;
+        AeMode aeMode = mAAA->getAeMode();
+        switch (aeMode) {
+        case CAM_AE_MODE_MANUAL:
+            exifAttributes.exposure_program = EXIF_EXPOSURE_PROGRAM_MANUAL;
+            LOG1("EXIF: Exposure Program = Manual");
+            exifAttributes.exposure_mode = EXIF_EXPOSURE_MANUAL;
+            LOG1("EXIF: Exposure Mode = Manual");
+            break;
+        case CAM_AE_MODE_SHUTTER_PRIORITY:
+            exifAttributes.exposure_program = EXIF_EXPOSURE_PROGRAM_SHUTTER_PRIORITY;
+            LOG1("EXIF: Exposure Program = Shutter Priority");
+            break;
+        case CAM_AE_MODE_APERTURE_PRIORITY:
+            exifAttributes.exposure_program = EXIF_EXPOSURE_PROGRAM_APERTURE_PRIORITY;
+            LOG1("EXIF: Exposure Program = Aperture Priority");
+            break;
+        case CAM_AE_MODE_AUTO:
+        default:
+            exifAttributes.exposure_program = EXIF_EXPOSURE_PROGRAM_NORMAL;
+            LOG1("EXIF: Exposure Program = Normal");
+            exifAttributes.exposure_mode = EXIF_EXPOSURE_AUTO;
+            LOG1("EXIF: Exposure Mode = Auto");
+            break;
         }
 
         // indicates the ISO speed of the camera
-        int sensitivity;
-        if (AAA_SUCCESS == mAAA->AeGetManualIso(&sensitivity)) {
-            attribute.iso_speed_rating = sensitivity;
+        int isoSpeed;
+        if (mAAA->getManualIso(&isoSpeed) == NO_ERROR) {
+            exifAttributes.iso_speed_rating = isoSpeed;
         } else {
-            LogDetail("AeGetManualIso failed!");
-            attribute.iso_speed_rating = 100;
+            LOGW("EXIF: Could not query ISO speed!");
+            exifAttributes.iso_speed_rating = DEFAULT_ISO_SPEED;
         }
+        LOG1("EXIF: ISO=%d", isoSpeed);
 
         // the metering mode.
-        int meteringmode;
-        if (AAA_SUCCESS == mAAA->AeGetMeteringMode(&meteringmode)) {
-            switch (meteringmode) {
-            case CAM_AE_METERING_MODE_AUTO:
-                attribute.metering_mode = EXIF_METERING_AVERAGE;
-                break;
-            case CAM_AE_METERING_MODE_SPOT:
-                attribute.metering_mode = EXIF_METERING_SPOT;
-                break;
-            case CAM_AE_METERING_MODE_CENTER:
-                attribute.metering_mode = EXIF_METERING_CENTER;
-                break;
-            case CAM_AE_METERING_MODE_CUSTOMIZED:
-            default:
-                attribute.metering_mode = EXIF_METERING_OTHER;
-                break;
-            }
-        } else {
-            attribute.metering_mode = EXIF_METERING_OTHER;
-        }
-
-        // exposure mode settting. 0: auto; 1: manual; 2: auto bracket; other: reserved
-        if (AAA_SUCCESS == mAAA->AeGetMode(&ae_mode)) {
-            LogDetail("exifAttribute, ae mode:%d success", ae_mode);
-            switch (ae_mode) {
-            case CAM_AE_MODE_MANUAL:
-                attribute.exposure_mode = EXIF_EXPOSURE_MANUAL;
-                break;
-            default:
-                attribute.exposure_mode = EXIF_EXPOSURE_AUTO;
-                break;
-            }
-        } else {
-            attribute.exposure_mode = EXIF_EXPOSURE_AUTO;
+        MeteringMode meteringMode  = mAAA->getAeMeteringMode();
+        switch (meteringMode) {
+        case CAM_AE_METERING_MODE_AUTO:
+            exifAttributes.metering_mode = EXIF_METERING_AVERAGE;
+            LOG1("EXIF: Metering Mode = Average");
+            break;
+        case CAM_AE_METERING_MODE_SPOT:
+            exifAttributes.metering_mode = EXIF_METERING_SPOT;
+            LOG1("EXIF: Metering Mode = Spot");
+            break;
+        case CAM_AE_METERING_MODE_CENTER:
+            exifAttributes.metering_mode = EXIF_METERING_CENTER;
+            LOG1("EXIF: Metering Mode = Center");
+            break;
+        case CAM_AE_METERING_MODE_CUSTOMIZED:
+        default:
+            exifAttributes.metering_mode = EXIF_METERING_OTHER;
+            LOG1("EXIF: Metering Mode = Other");
+            break;
         }
 
         // white balance mode. 0: auto; 1: manual
-        int awbmode;
-        if(AAA_SUCCESS == mAAA->AwbGetMode(&awbmode)) {
-            switch (awbmode) {
-            case CAM_AWB_MODE_AUTO:
-                attribute.white_balance = EXIF_WB_AUTO;
-                break;
-            default:
-                attribute.white_balance = EXIF_WB_MANUAL;
-                break;
-            }
-        } else {
-            attribute.white_balance = EXIF_WB_AUTO;
+        AwbMode awbMode = mAAA->getAwbMode();
+        switch (awbMode) {
+        case CAM_AWB_MODE_AUTO:
+        case CAM_AWB_MODE_NOT_SET:
+            exifAttributes.white_balance = EXIF_WB_AUTO;
+            LOG1("EXIF: Whitebalance = Auto");
+            break;
+        default:
+            exifAttributes.white_balance = EXIF_WB_MANUAL;
+            LOG1("EXIF: Whitebalance = Manual");
+            break;
         }
 
         // scene mode
-        int scenemode;
-        if (AAA_SUCCESS == mAAA->AeGetSceneMode(&scenemode)) {
-            switch (scenemode) {
-            case CAM_AE_SCENE_MODE_PORTRAIT:
-                attribute.scene_capture_type = EXIF_SCENE_PORTRAIT;
-                break;
-            case CAM_AE_SCENE_MODE_LANDSCAPE:
-                attribute.scene_capture_type = EXIF_SCENE_LANDSCAPE;
-                break;
-            case CAM_AE_SCENE_MODE_NIGHT:
-                attribute.scene_capture_type = EXIF_SCENE_NIGHT;
-                break;
-            default:
-                attribute.scene_capture_type = EXIF_SCENE_STANDARD;
-                break;
-            }
-        } else {
-            attribute.scene_capture_type = EXIF_SCENE_STANDARD;
+        SceneMode sceneMode = mAAA->getAeSceneMode();
+        switch (sceneMode) {
+        case CAM_AE_SCENE_MODE_PORTRAIT:
+            exifAttributes.scene_capture_type = EXIF_SCENE_PORTRAIT;
+            LOG1("EXIF: Scene Mode = Portrait");
+            break;
+        case CAM_AE_SCENE_MODE_LANDSCAPE:
+            exifAttributes.scene_capture_type = EXIF_SCENE_LANDSCAPE;
+            LOG1("EXIF: Scene Mode = Landscape");
+            break;
+        case CAM_AE_SCENE_MODE_NIGHT:
+            exifAttributes.scene_capture_type = EXIF_SCENE_NIGHT;
+            LOG1("EXIF: Scene Mode = Night");
+            break;
+        default:
+            exifAttributes.scene_capture_type = EXIF_SCENE_STANDARD;
+            LOG1("EXIF: Scene Mode = Standard");
+            break;
         }
     }
 
     // the actual focal length of the lens, in mm.
     // there is no API for lens position.
-    ret = mCamera->getFocusLength(&focal_length);
-    if (ret < 0) {
-        // Error handler: if driver does not support focal_length achieving, just give the default value.
+    if (makerNote.focal_length > 0) {
+        exifAttributes.focal_length.num = makerNote.focal_length >> 16;
+        exifAttributes.focal_length.den = makerNote.focal_length & 0xffff;
+    } else {
         exifAttributes.focal_length.num = EXIF_DEF_FOCAL_LEN_NUM;
         exifAttributes.focal_length.den = EXIF_DEF_FOCAL_LEN_DEN;
-        ret = 0;
-    } else {
-        exifAttributes.focal_length.num = focal_length >> 16;
-        exifAttributes.focal_length.den = focal_length & 0xffff;
-        LogDetail("line:%d, focal_length:%x, num: %d, den: %d", __LINE__, focal_length, exifAttributes.focal_length.num, exifAttributes.focal_length.den);
     }
-#endif
+    LOG1("EXIF: focal length=%u (num=%d, den=%d)", makerNote.focal_length, exifAttributes.focal_length.num, exifAttributes.focal_length.den);
 }
 
 void EXIFMaker::clear()

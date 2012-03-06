@@ -15,6 +15,7 @@
  */
 
 #include "JpegEncoder.h"
+#include "AtomAAA.h"
 #include <camera/CameraParameters.h>
 
 #ifndef EXIFMAKER_H_
@@ -27,6 +28,7 @@ namespace android {
 class EXIFMaker {
 private:
     JpegEncoder encoder;
+    AtomAAA *mAAA;
     exif_attribute_t exifAttributes;
     int thumbWidth;
     int thumbHeight;
@@ -34,13 +36,13 @@ private:
     bool initialized;
 
     void initializeLocation(const CameraParameters &params);
-    void initializeHWSpecific();
+    void initializeHWSpecific(const atomisp_makernote_info &makerNote);
     void clear();
 public:
     EXIFMaker();
     ~EXIFMaker();
 
-    void initialize(const CameraParameters &params);
+    void initialize(const CameraParameters &params, const atomisp_makernote_info &makerNote);
     bool isInitialized() { return initialized; }
     void enableFlash();
     void setThumbnail(unsigned char *data, size_t size);

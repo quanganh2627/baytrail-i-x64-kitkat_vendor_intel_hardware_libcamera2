@@ -212,9 +212,9 @@ void PictureThread::getDefaultParameters(CameraParameters *params)
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY, "50");
 }
 
-void PictureThread::initialize(const CameraParameters &params, bool flashUsed)
+void PictureThread::initialize(const CameraParameters &params, const atomisp_makernote_info &makerNote, bool flashUsed)
 {
-    exifMaker.initialize(params);
+    exifMaker.initialize(params, makerNote);
     if (flashUsed)
         exifMaker.enableFlash();
     params.getPictureSize(&mPictureWidth, &mPictureHeight);

@@ -20,6 +20,7 @@
 #include <camera.h>
 #include <linux/atomisp.h>
 #include <linux/videodev2.h>
+#include <stdio.h>
 
 #define MAX_CAMERAS 2
 

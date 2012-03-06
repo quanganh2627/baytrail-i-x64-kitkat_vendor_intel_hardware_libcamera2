@@ -113,6 +113,7 @@ public:
     status_t setFlashIndicator(int intensity);
     status_t setTorch(int intensity);
     status_t setColorEffect(v4l2_colorfx effect);
+    status_t getMakerNote(atomisp_makernote_info *info);
 
     // camera hardware information
     static int getNumberOfCameras();
@@ -168,7 +169,8 @@ private:
     int v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf);
     int atomisp_set_attribute (int fd, int attribute_num,
                                const int value, const char *name);
-    int  atomisp_set_zoom (int fd, int zoom);
+    int atomisp_set_zoom (int fd, int zoom);
+    int xioctl(int fd, int request, void *arg);
 
     status_t selectCameraSensor();
     size_t setupCameraInfo();

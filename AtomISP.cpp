@@ -1283,6 +1283,24 @@ status_t AtomISP::setZoom(int zoom)
     return NO_ERROR;
 }
 
+status_t AtomISP::getMakerNote(atomisp_makernote_info *info)
+{
+    LOG1("@%s: info = %p", __FUNCTION__, info);
+    int fd = video_fds[V4L2_FIRST_DEVICE];
+
+    if (fd < 0) {
+        return INVALID_OPERATION;
+    }
+    info->focal_length = 0;
+    info->f_number_curr = 0;
+    info->f_number_range = 0;
+    if (xioctl(fd, ATOMISP_IOC_ISP_MAKERNOTE, info) < 0) {
+        LOGW("WARNING: get maker note from driver failed!");
+        return UNKNOWN_ERROR;
+    }
+    return NO_ERROR;
+}
+
 int AtomISP::atomisp_set_zoom (int fd, int zoom)
 {
     LOG1("@%s", __FUNCTION__);
@@ -1334,6 +1352,20 @@ int AtomISP::atomisp_set_attribute (int fd, int attribute_num,
     LOGE("Failed to set value %d for control %s (%d) on device '%d', %s",
         value, name, attribute_num, fd, strerror(errno));
     return -1;
+}
+
+int AtomISP::xioctl(int fd, int request, void *arg)
+{
+    int ret;
+
+    do {
+        ret = ioctl (fd, request, arg);
+    } while (-1 == ret && EINTR == errno);
+
+    if (ret < 0)
+        LOGW ("Request %d failed: %s", request, strerror(errno));
+
+    return ret;
 }
 
 int AtomISP::v4l2_capture_streamon(int fd)

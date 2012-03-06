@@ -645,6 +645,7 @@ status_t ControlThread::handleMessageTakePicture()
     FlashMode flashMode = CAM_AE_FLASH_MODE_NOT_SET;
     AeMode aeMode = CAM_AE_MODE_NOT_SET;
     bool flashNeeded = false;
+    atomisp_makernote_info makerNote;
 
     if (origState != STATE_PREVIEW_STILL && origState != STATE_RECORDING) {
         LOGE("we only support snapshot in still preview and recording modes");
@@ -690,10 +691,15 @@ status_t ControlThread::handleMessageTakePicture()
         }
     }
 
+    status = mISP->getMakerNote(&makerNote);
+    if (status != NO_ERROR) {
+        LOGW("Could not get maker note information!");
+    }
+
     // Configure PictureThread
     mPictureThread->setPictureFormat(format);
     if (origState == STATE_PREVIEW_STILL) {
-        mPictureThread->initialize(mParameters, false);
+        mPictureThread->initialize(mParameters, makerNote, flashNeeded);
 
     } else { // STATE_RECORDING
 
@@ -701,7 +707,7 @@ status_t ControlThread::handleMessageTakePicture()
         // if in recording mode we need to override snapshot with video-size.
         CameraParameters copyParams = mParameters;
         copyParams.setPictureSize(width, height); // make sure picture size is same as video size
-        mPictureThread->initialize(copyParams, false);
+        mPictureThread->initialize(copyParams, makerNote, false);
     }
 
     // Start PictureThread

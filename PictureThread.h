@@ -58,7 +58,7 @@ public:
         mThumbFormat = format;
     }
     void getDefaultParameters(CameraParameters *params);
-    void initialize(const CameraParameters &params, bool flashUsed);
+    void initialize(const CameraParameters &params, const atomisp_makernote_info &makerNote, bool flashUsed);
     void setNumberOfShots(int num);
     status_t getSharedBuffers(int width, int height, void** sharedBuffersPtr, int sharedBuffersNum);
 
