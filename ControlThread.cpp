@@ -1428,7 +1428,7 @@ void ControlThread::preSetCameraWindows(CameraWindow* focusWindows, size_t winCo
             windowsWeight = 1;
 
         size_t weight_sum = 0;
-        for(int i =0; i < winCount; i++) {
+        for(size_t i =0; i < winCount; i++) {
             // skip all zero value
             focusWindows[i].x_left = (focusWindows[i].x_left + FOCUS_AREAS_X_OFFSET) * (width - 1) / FOCUS_AREAS_WIDTH;
             focusWindows[i].x_right = (focusWindows[i].x_right + FOCUS_AREAS_X_OFFSET) * (width - 1) / FOCUS_AREAS_WIDTH;
