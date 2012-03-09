@@ -287,7 +287,7 @@ bool AAAThread::threadLoop()
     while (mThreadRunning)
         status = waitForAndExecuteMessage();
 
-    return status == NO_ERROR;
+    return false;
 }
 
 status_t AAAThread::requestExitAndWait()
