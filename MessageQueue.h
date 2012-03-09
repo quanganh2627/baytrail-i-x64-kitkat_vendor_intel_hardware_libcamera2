@@ -21,6 +21,7 @@
 #include <utils/Timers.h>
 #include <utils/threads.h>
 #include <utils/Log.h>
+#include <utils/List.h>
 
 namespace android {
 
@@ -32,8 +33,6 @@ public:
     MessageQueue(const char *name, // for debugging
             int numReply = 0) :    // set numReply only if you need synchronous messages
         mName(name)
-        ,mCount(0)
-        ,mHead(0)
         ,mNumReply(numReply)
         ,mReplyMutex(NULL)
         ,mReplyCondition(NULL)
@@ -72,14 +71,8 @@ public:
         }
 
         mQueueMutex.lock();
-        if (mCount < MESSAGE_QUEUE_SIZE) {
-            int tail = (mHead + mCount) % MESSAGE_QUEUE_SIZE;
-            circularQueue[tail] = *msg;
-            mCount++;
-        } else {
-            LOGE("Atom_MessageQueue error: %s message queue is full\n", mName);
-            status = NOT_ENOUGH_DATA;
-        }
+        MessageType data = *msg;
+        mList.push_back(data);
         if (replyId != -1) {
             mReplyStatus[replyId] = WOULD_BLOCK;
         }
@@ -111,7 +104,7 @@ public:
             return status;
 
         mQueueMutex.lock();
-        mCount = 0;
+        mList.clear();
         mQueueMutex.unlock();
         // unblock all callers waiting.
         for(int i=0; i<mNumReply;i++){
@@ -120,24 +113,24 @@ public:
 
         return status;
     }
+
     // Pop a message from the queue
     status_t receive(MessageType *msg)
     {
         status_t status = NO_ERROR;
 
         mQueueMutex.lock();
-        while (mCount == 0) {
+        while (isEmpty()) {
             mQueueCondition.wait(mQueueMutex);
             // wait() should never complete without a message being
             // available, but for diagnostic purposes let's check it.
-            if (mCount == 0) {
+            if (isEmpty()) {
                 LOGE("Atom_MessageQueue - woke with mCount == 0\n");
             }
         }
 
-        *msg = circularQueue[mHead];
-        mHead = (mHead + 1) % MESSAGE_QUEUE_SIZE;
-        mCount--;
+        *msg = *(--mList.end());
+        mList.erase(--mList.end());
         mQueueMutex.unlock();
 
         return status;
@@ -153,18 +146,15 @@ public:
     }
 
     // Return true if the queue is empty
-    inline bool isEmpty() { return mCount == 0; }
+    inline bool isEmpty() { return size() == 0; }
+    inline bool size() { return mList.size(); }
 
 private:
-
-    static const int MESSAGE_QUEUE_SIZE = 32;
 
     const char *mName;
     Mutex mQueueMutex;
     Condition mQueueCondition;
-    int mCount;
-    int mHead;
-    MessageType circularQueue[MESSAGE_QUEUE_SIZE];
+    List<MessageType> mList;
 
     int mNumReply;
     Mutex *mReplyMutex;
