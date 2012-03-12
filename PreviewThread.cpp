@@ -146,6 +146,7 @@ status_t PreviewThread::handleMessageSetPreviewWindow(MessageSetPreviewWindow *m
         LOG1("Setting new preview window %p", mPreviewWindow);
         int previewWidthPadded =  paddingWidth(V4L2_PIX_FMT_NV12,mPreviewWidth,mPreviewHeight);
         mPreviewWindow->set_usage(mPreviewWindow, GRALLOC_USAGE_SW_WRITE_OFTEN);
+        mPreviewWindow->set_buffer_count(mPreviewWindow, 4);
         mPreviewWindow->set_buffers_geometry(
                 mPreviewWindow,
                 previewWidthPadded,
