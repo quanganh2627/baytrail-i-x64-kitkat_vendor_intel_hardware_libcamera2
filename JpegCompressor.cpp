@@ -128,6 +128,9 @@ JpegCompressor::JpegCompressor() :
     ,mVaSurfaceHeight(0)
     ,mJpegCompressStruct(NULL)
     ,mStartSharedBuffersEncode(false)
+#ifndef ANDROID_1998
+    ,mStartCompressDone(false)
+#endif
 {
     LOG1("@%s", __FUNCTION__);
     mJpegEncoder = SkImageEncoder::Create(SkImageEncoder::kJPEG_Type);
@@ -280,6 +283,9 @@ int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
 
         LOG1("Start compression...");
         jpeg_start_compress(pCinfo, TRUE);
+#ifndef ANDROID_1998
+        mStartCompressDone = true;
+#endif
 
         LOG1("Compressing...");
         jpeg_write_raw_data(pCinfo, (JSAMPIMAGE)vaSurface, pCinfo->image_height);
@@ -324,6 +330,9 @@ status_t JpegCompressor::startSharedBuffersEncode(void *outBuf, int outSize)
     setup_jpeg_destmgr(&cinfo, static_cast<JSAMPLE*>(outBuf), outSize, &mJpegSize);
     mJpegCompressStruct = &cinfo;
     mStartSharedBuffersEncode = true;
+#ifndef ANDROID_1998
+    mStartCompressDone = false;
+#endif
     return NO_ERROR;
 }
 
@@ -339,6 +348,19 @@ status_t JpegCompressor::stopSharedBuffersEncode()
     }
     pCinfo = (struct jpeg_compress_struct*)mJpegCompressStruct;
     LOG1("Stopping shared buffers compress on: %p", pCinfo);
+#ifndef ANDROID_1998
+    if (!mStartCompressDone) {
+        /*
+         * Before calling destroy_compress, make fake calls to start_compress
+         * so the libjpeg will initialize the hw_path and free the libva memory
+         * in destroy_compress. Without calling start_compress, hw_path from
+         * libjpeg is not initialized, therefore libva resources WON'T be freed
+         * in destroy_compress.
+         */
+        LOG1("Fake Start compression...");
+        jpeg_start_compress(pCinfo, TRUE);
+    }
+#endif
     jpeg_destroy_compress(pCinfo);
     mJpegCompressStruct = NULL;
     mStartSharedBuffersEncode = false;
