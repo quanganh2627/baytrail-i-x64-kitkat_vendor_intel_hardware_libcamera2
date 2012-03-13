@@ -86,7 +86,7 @@ camera_module_t HAL_MODULE_INFO_SYM = {
 static int atom_set_preview_window(struct camera_device * device,
         struct preview_stream_ops *window)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -100,7 +100,7 @@ static void atom_set_callbacks(struct camera_device * device,
         camera_request_memory get_memory,
         void *user)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     if(!device)
         return;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -109,7 +109,7 @@ static void atom_set_callbacks(struct camera_device * device,
 
 static void atom_enable_msg_type(struct camera_device * device, int32_t msg_type)
 {
-    LOGV("%s msg_type=0x%08x", __FUNCTION__, msg_type);
+    LOGD("%s msg_type=0x%08x", __FUNCTION__, msg_type);
     if(!device)
         return;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -118,7 +118,7 @@ static void atom_enable_msg_type(struct camera_device * device, int32_t msg_type
 
 static void atom_disable_msg_type(struct camera_device * device, int32_t msg_type)
 {
-    LOGV("%s msg_type=0x%08x", __FUNCTION__, msg_type);
+    LOGD("%s msg_type=0x%08x", __FUNCTION__, msg_type);
     if(!device)
         return;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -127,7 +127,7 @@ static void atom_disable_msg_type(struct camera_device * device, int32_t msg_typ
 
 static int atom_msg_type_enabled(struct camera_device * device, int32_t msg_type)
 {
-    LOGV("%s msg_type=0x%08x", __FUNCTION__, msg_type);
+    LOGD("%s msg_type=0x%08x", __FUNCTION__, msg_type);
     if(!device)
         return 0;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -136,7 +136,7 @@ static int atom_msg_type_enabled(struct camera_device * device, int32_t msg_type
 
 static int atom_start_preview(struct camera_device * device)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -145,7 +145,7 @@ static int atom_start_preview(struct camera_device * device)
 
 static void atom_stop_preview(struct camera_device * device)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     if(!device)
         return;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -154,7 +154,7 @@ static void atom_stop_preview(struct camera_device * device)
 
 static int atom_preview_enabled(struct camera_device * device)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -163,7 +163,7 @@ static int atom_preview_enabled(struct camera_device * device)
 
 static int atom_start_recording(struct camera_device * device)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -172,7 +172,7 @@ static int atom_start_recording(struct camera_device * device)
 
 static void atom_stop_recording(struct camera_device * device)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     if(!device)
         return;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -181,7 +181,7 @@ static void atom_stop_recording(struct camera_device * device)
 
 static int atom_recording_enabled(struct camera_device * device)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -200,7 +200,7 @@ static void atom_release_recording_frame(struct camera_device * device,
 
 static int atom_auto_focus(struct camera_device * device)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -209,7 +209,7 @@ static int atom_auto_focus(struct camera_device * device)
 
 static int atom_cancel_auto_focus(struct camera_device * device)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -218,7 +218,7 @@ static int atom_cancel_auto_focus(struct camera_device * device)
 
 static int atom_take_picture(struct camera_device * device)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -227,7 +227,7 @@ static int atom_take_picture(struct camera_device * device)
 
 static int atom_cancel_picture(struct camera_device * device)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -236,7 +236,7 @@ static int atom_cancel_picture(struct camera_device * device)
 
 static int atom_set_parameters(struct camera_device * device, const char *params)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -246,7 +246,7 @@ static int atom_set_parameters(struct camera_device * device, const char *params
 static char *atom_get_parameters(struct camera_device * device)
 {
     char* params = NULL;
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     if(!device)
         return NULL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -256,7 +256,7 @@ static char *atom_get_parameters(struct camera_device * device)
 
 static void atom_put_parameters(struct camera_device *device, char *parms)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     if(!device)
         return;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -266,7 +266,7 @@ static void atom_put_parameters(struct camera_device *device, char *parms)
 static int atom_send_command(struct camera_device * device,
             int32_t cmd, int32_t arg1, int32_t arg2)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     if (!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -277,13 +277,13 @@ static int atom_send_command(struct camera_device * device,
 
 static void atom_release(struct camera_device * device)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     // TODO: implement
 }
 
 static int atom_dump(struct camera_device * device, int fd)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     // TODO: implement
     return 0;
 }
@@ -332,7 +332,7 @@ static camera_device_ops_t atom_ops = {
 static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
                 hw_device_t** device)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
 
     Mutex::Autolock _l(atom_instance_lock);
 
@@ -368,7 +368,7 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
 
 static int ATOM_CloseCameraHardware(hw_device_t* device)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
 
     Mutex::Autolock _l(atom_instance_lock);
 
@@ -388,12 +388,12 @@ static int ATOM_CloseCameraHardware(hw_device_t* device)
 
 static int ATOM_GetNumberOfCameras(void)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     return AtomISP::getNumberOfCameras();
 }
 
 static int ATOM_GetCameraInfo(int camera_id, struct camera_info *info)
 {
-    LOGV("%s", __FUNCTION__);
+    LOGD("%s", __FUNCTION__);
     return AtomISP::getCameraInfo(camera_id, info);
 }
