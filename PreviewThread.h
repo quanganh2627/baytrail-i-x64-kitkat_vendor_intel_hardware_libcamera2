@@ -122,6 +122,10 @@ private:
     // main message function
     status_t waitForAndExecuteMessage();
 
+    // buffer helper
+    void freePreviewBuf(void);
+    void allocatePreviewBuf(void);
+
 // inherited from Thread
 private:
     virtual bool threadLoop();
@@ -139,6 +143,8 @@ private:
 
     int mPreviewWidth;
     int mPreviewHeight;
+
+    AtomBuffer mPreviewBuf;
 
 }; // class PreviewThread
 

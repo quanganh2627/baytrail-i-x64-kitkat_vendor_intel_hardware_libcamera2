@@ -39,12 +39,14 @@ PreviewThread::PreviewThread(ICallbackPreview *previewDone) :
     ,mPreviewHeight(480)
 {
     LOG1("@%s", __FUNCTION__);
+    mPreviewBuf.buff = 0;
 }
 
 PreviewThread::~PreviewThread()
 {
     LOG1("@%s", __FUNCTION__);
     mDebugFPS.clear();
+    freePreviewBuf();
 }
 
 status_t PreviewThread::setPreviewWindow(struct preview_stream_ops *window)
@@ -136,7 +138,13 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
         buf = NULL;
     }
 
-    mCallbacks->previewFrameDone(&msg->buff);
+    if(!mPreviewBuf.buff) {
+        allocatePreviewBuf();
+    }
+    if(mPreviewBuf.buff) {
+        NV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.buff->data, mPreviewBuf.buff->data);
+        mCallbacks->previewFrameDone(&mPreviewBuf);
+    }
     mDebugFPS->update(); // update fps counter
 exit:
     mPreviewDoneCallback->previewDone(&msg->buff);
@@ -185,6 +193,8 @@ status_t PreviewThread::handleMessageSetPreviewSize(MessageSetPreviewSize *msg)
         }
         mPreviewWidth = msg->width;
         mPreviewHeight = msg->height;
+
+        allocatePreviewBuf();
     }
 
     return NO_ERROR;
@@ -265,6 +275,25 @@ status_t PreviewThread::requestExitAndWait()
 
     // propagate call to base class
     return Thread::requestExitAndWait();
+}
+
+void PreviewThread::freePreviewBuf(void)
+{
+    if (mPreviewBuf.buff) {
+        LOG1("releasing existing preview buffer\n");
+        mPreviewBuf.buff->release(mPreviewBuf.buff);
+        mPreviewBuf.buff = 0;
+    }
+}
+
+void PreviewThread::allocatePreviewBuf(void)
+{
+    LOG1("allocating the preview buffer\n");
+    freePreviewBuf();
+    mCallbacks->allocateMemory(&mPreviewBuf, mPreviewWidth*mPreviewHeight*3/2);
+    if(!mPreviewBuf.buff) {
+        LOGE("getting memory failed\n");
+    }
 }
 
 } // namespace android
