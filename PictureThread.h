@@ -28,6 +28,7 @@
 namespace android {
 
 class Callbacks;
+class CallbacksThread;
 
 // callback for when Picture thread is done with yuv data
 class ICallbackPicture {
@@ -61,6 +62,9 @@ public:
     void initialize(const CameraParameters &params, const atomisp_makernote_info &makerNote, bool flashUsed);
     void setNumberOfShots(int num);
     status_t getSharedBuffers(int width, int height, void** sharedBuffersPtr, int sharedBuffersNum);
+    status_t allocSharedBuffers(int width, int height, int sharedBuffersNum);
+    status_t wait(); // wait to finish queued messages (sync)
+    status_t flushMessages(); // clear current queued messages, finish ongoing message and exit synchronously
 
 // private types
 private:
@@ -70,6 +74,9 @@ private:
 
         MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
         MESSAGE_ID_ENCODE,
+        MESSAGE_ID_ALLOC_BUFS,
+        MESSAGE_ID_WAIT,
+        MESSAGE_ID_FLUSH,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -78,6 +85,12 @@ private:
     //
     // message data structures
     //
+
+    struct MessageAllocBufs {
+        int width;
+        int height;
+        int numBufs;
+    };
 
     struct MessageEncode {
         AtomBuffer snaphotBuf;
@@ -89,6 +102,7 @@ private:
 
         // MESSAGE_ID_ENCODE
         MessageEncode encode;
+        MessageAllocBufs alloc;
     };
 
     // message id and message data
@@ -103,6 +117,9 @@ private:
     // thread message execution functions
     status_t handleMessageExit();
     status_t handleMessageEncode(MessageEncode *encode);
+    status_t handleMessageAllocBufs(MessageAllocBufs *alloc);
+    status_t handleMessageWait();
+    status_t handleMessageFlush();
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -120,6 +137,7 @@ private:
     bool mThreadRunning;
     ICallbackPicture *mPictureDoneCallback;
     Callbacks *mCallbacks;
+    CallbacksThread *mCallbacksThread;
     JpegCompressor compressor;
     EXIFMaker exifMaker;
     AtomBuffer mExifBuf;
@@ -133,8 +151,6 @@ private:
     int mThumbFormat;
     int mPictureQuality;
     int mThumbnailQuality;
-    int mNumShots; // number of snapshots expected to encode
-    int mCurrentShots;
     bool mUsingSharedBuffers;
 
 // public data

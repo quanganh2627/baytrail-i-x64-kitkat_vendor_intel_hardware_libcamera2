@@ -130,6 +130,7 @@ AtomISP::AtomISP(int camera_id) :
     ,mUsingClientSnapshotBuffers(false)
     ,mNumPreviewBuffersQueued(0)
     ,mNumRecordingBuffersQueued(0)
+    ,mNumCapturegBuffersQueued(0)
     ,mPreviewDevice(V4L2_FIRST_DEVICE)
     ,mRecordingDevice(V4L2_FIRST_DEVICE)
     ,mSessionId(0)
@@ -235,6 +236,17 @@ AtomISP::AtomISP(int camera_id) :
 AtomISP::~AtomISP()
 {
     LOG1("@%s", __FUNCTION__);
+    /*
+     * The destructor is called when the hw_module close mehod is called. The close method is called
+     * in general by the camera client when it's done with the camera device, but it is also called by
+     * System Server when the camera application crashes. System Server calls close in order to release
+     * the camera hardware module. So, if we are not in MODE_NONE, it means that we are in the middle of
+     * somthing when the close function was called. So it's our duty to stop first, then close the
+     * camera device.
+     */
+    if (mMode != MODE_NONE) {
+        stop();
+    }
     mAAA->unInit();
     closeDevice(V4L2_FIRST_DEVICE);
 }
@@ -758,6 +770,8 @@ status_t AtomISP::startCapture()
         goto errorStopFirst;
     }
 
+    mNumCapturegBuffersQueued = mConfig.num_snapshot;
+
     return status;
 
 errorStopFirst:
@@ -776,6 +790,7 @@ status_t AtomISP::stopCapture()
     stopDevice(V4L2_FIRST_DEVICE);
     closeDevice(V4L2_SECOND_DEVICE);
     freeSnapshotBuffers();
+    mUsingClientSnapshotBuffers = false;
     return NO_ERROR;
 }
 
@@ -1994,6 +2009,8 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
     mPostviewBuffers[postviewIndex].ispPrivate = mSessionId;
     *postviewBuf = mPostviewBuffers[postviewIndex];
 
+    mNumCapturegBuffersQueued--;
+
     return NO_ERROR;
 }
 
@@ -2016,6 +2033,8 @@ status_t AtomISP::putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf)
     if (ret0 < 0 || ret1 < 0)
         return UNKNOWN_ERROR;
 
+    mNumCapturegBuffersQueued++;
+
     return NO_ERROR;
 }
 
@@ -2027,7 +2046,11 @@ bool AtomISP::dataAvailable()
     if (mMode == MODE_VIDEO)
         return mNumRecordingBuffersQueued > 0 && mNumPreviewBuffersQueued > 0;
 
-    // For preview, just make sure we isp has a preview buffer
+    // For capture, just make sure isp has a capture buffer
+    if (mMode == MODE_CAPTURE)
+        return mNumCapturegBuffersQueued > 0;
+
+    // For preview, just make sure isp has a preview buffer
     if (mMode == MODE_PREVIEW)
         return mNumPreviewBuffersQueued > 0;
 

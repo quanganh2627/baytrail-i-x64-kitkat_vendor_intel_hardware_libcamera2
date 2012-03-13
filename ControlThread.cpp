@@ -21,13 +21,28 @@
 #include "PictureThread.h"
 #include "AtomISP.h"
 #include "Callbacks.h"
+#include "CallbacksThread.h"
 #include "ColorConverter.h"
 #include "IntelBufferSharing.h"
 #include "FaceDetectorFactory.h"
 
 namespace android {
 
+/*
+ * NUM_WARMUP_FRAMES: used for front camera only
+ * Since front camera does not 3A, it actually has 2A (auto-exposure and auto-whitebalance),
+ * it needs about 4 for internal 2A from driver to gather enough information and establish
+ * the correct values for 2A.
+ */
 #define NUM_WARMUP_FRAMES 4
+/*
+ * NUM_BURST_BUFFERS: used for burst captures
+ */
+#define NUM_BURST_BUFFERS 10
+/*
+ * MAX_JPEG_BUFFERS: the maximum numbers of queued JPEG buffers
+ */
+#define MAX_JPEG_BUFFERS 4
 
 ControlThread::ControlThread(int cameraId) :
     Thread(true) // callbacks may call into java
@@ -41,10 +56,12 @@ ControlThread::ControlThread(int cameraId) :
     ,mState(STATE_STOPPED)
     ,mThreadRunning(false)
     ,mCallbacks(Callbacks::getInstance())
+    ,mCallbacksThread(CallbacksThread::getInstance())
     ,mCoupledBuffers(NULL)
     ,mNumBuffers(mISP->getNumBuffers())
     ,m_pFaceDetector(0)
     ,mFaceDetectionActive(false)
+    ,mFlashNeeded(false)
     ,mBSInstance(BufferShareRegistry::getInstance())
     ,mBSState(BS_STATE_DISABLED)
     ,mLastRecordingBuffIndex(0)
@@ -58,6 +75,22 @@ ControlThread::ControlThread(int cameraId) :
     if (status != NO_ERROR) {
         LOGE("Error starting 3A thread!");
     }
+    status = mPreviewThread->run();
+    if (status != NO_ERROR) {
+        LOGE("Error starting preview thread!");
+    }
+    status = mPictureThread->run();
+    if (status != NO_ERROR) {
+        LOGW("Error starting picture thread!");
+    }
+    status = mCallbacksThread->run();
+    if (status != NO_ERROR) {
+        LOGW("Error starting callbacks thread!");
+    }
+    status = mVideoThread->run();
+    if (status != NO_ERROR) {
+        LOGW("Error starting video thread!");
+    }
     m_pFaceDetector=FaceDetectorFactory::createDetector(mCallbacks);
     if (m_pFaceDetector != 0){
         mParameters.set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW,
@@ -70,11 +103,22 @@ ControlThread::ControlThread(int cameraId) :
 ControlThread::~ControlThread()
 {
     LOG1("@%s", __FUNCTION__);
+
+    mPreviewThread->requestExitAndWait();
     mPreviewThread.clear();
+
+    mPictureThread->requestExitAndWait();
     mPictureThread.clear();
+
+    mCallbacksThread->requestExitAndWait();
+    mCallbacksThread.clear();
+
+    mVideoThread->requestExitAndWait();
     mVideoThread.clear();
+
     m3AThread->requestExitAndWait();
     m3AThread.clear();
+
     mBSInstance.clear();
     if (mISP != NULL) {
         delete mISP;
@@ -178,7 +222,10 @@ status_t ControlThread::stopRecording()
 bool ControlThread::previewEnabled()
 {
     LOG2("@%s", __FUNCTION__);
-    return mState != STATE_STOPPED;
+    bool enabled = (mState == STATE_PREVIEW_STILL ||
+            mState == STATE_PREVIEW_VIDEO ||
+            mState == STATE_RECORDING);
+    return enabled;
 }
 
 bool ControlThread::recordingEnabled()
@@ -405,14 +452,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     // start the data flow
     status = mISP->start(mode);
     if (status == NO_ERROR) {
-        status = mPreviewThread->run();
-        if (status == NO_ERROR) {
-            memset(mCoupledBuffers, 0, sizeof(mCoupledBuffers));
-            mState = state;
-        } else {
-            LOGE("Error starting preview thread!");
-            mISP->stop();
-        }
+        memset(mCoupledBuffers, 0, sizeof(mCoupledBuffers));
+        mState = state;
         if (mAAA->is3ASupported()) {
             m3AThread->enable3A();
             if (videoMode) {
@@ -430,7 +471,7 @@ status_t ControlThread::stopPreviewCore()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    mPreviewThread->requestExitAndWait();
+    status = mPreviewThread->flushMessages();
     if (mState == STATE_PREVIEW_VIDEO && mAAA->is3ASupported()) {
         m3AThread->enableDVS(false);
     }
@@ -444,6 +485,32 @@ status_t ControlThread::stopPreviewCore()
     // set to null because frames can be returned to hal in stop state
     // need to check for null in relevant locations
     mCoupledBuffers = NULL;
+    return status;
+}
+
+status_t ControlThread::stopCapture()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    if (mState != STATE_CAPTURE) {
+        LOGE("Must be in STATE_CAPTURE to stop capture");
+        return INVALID_OPERATION;
+    }
+
+    status = mPictureThread->flushMessages();
+    if (status != NO_ERROR) {
+        LOGE("Error flushing PictureThread!");
+        return status;
+    }
+
+    status = mISP->stop();
+    if (status != NO_ERROR) {
+        LOGE("Error stopping ISP!");
+        return status;
+    }
+
+    mState = STATE_STOPPED;
     return status;
 }
 
@@ -464,6 +531,13 @@ status_t ControlThread::handleMessageStartPreview()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status;
+    if (mState == STATE_CAPTURE) {
+        status = stopCapture();
+        if (status != NO_ERROR) {
+            LOGE("Could not stop capture before start preview!");
+            return status;
+        }
+    }
     if (mState == STATE_STOPPED) {
         // API says apps should call startFaceDetection when resuming preview
         // stop FD here to avoid accidental FD.
@@ -483,13 +557,16 @@ status_t ControlThread::handleMessageStartPreview()
 status_t ControlThread::handleMessageStopPreview()
 {
     LOG1("@%s", __FUNCTION__);
-    status_t status;
-    stopFaceDetection(true);
-    if (mState != STATE_STOPPED) {
-        status = stopPreviewCore();
-    } else {
-        LOGE("Error stopping preview. Invalid state!");
-        status = INVALID_OPERATION;
+    status_t status = NO_ERROR;
+    // In STATE_CAPTURE, preview is already stopped, nothing to do
+    if (mState != STATE_CAPTURE) {
+        stopFaceDetection(true);
+        if (mState != STATE_STOPPED) {
+            status = stopPreviewCore();
+        } else {
+            LOGE("Error stopping preview. Invalid state!");
+            status = INVALID_OPERATION;
+        }
     }
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_STOP_PREVIEW, status);
@@ -502,18 +579,13 @@ status_t ControlThread::handleMessageStartRecording()
     status_t status = NO_ERROR;
     FlashMode flashMode = CAM_AE_FLASH_MODE_NOT_SET;
     AeMode aeMode = CAM_AE_MODE_NOT_SET;
-    bool flashNeeded = false;
+    mFlashNeeded = false;
 
     if (mState == STATE_PREVIEW_VIDEO) {
-        status = mVideoThread->run();
-        if (status == NO_ERROR) {
-            if (recordingBSEnable() != NO_ERROR) {
-                LOGE("Error voting for buffer sharing");
-            }
-            mState = STATE_RECORDING;
-        } else {
-            LOGE("Error starting video thread");
+        if (recordingBSEnable() != NO_ERROR) {
+            LOGE("Error voting for buffer sharing");
         }
+        mState = STATE_RECORDING;
     } else if (mState == STATE_PREVIEW_STILL) {
         /* We are in PREVIEW_STILL mode; in order to start recording
          * we first need to stop AtomISP and restart it with MODE_VIDEO
@@ -536,6 +608,7 @@ status_t ControlThread::handleMessageStartRecording()
     const char *pFlashMode = mParameters.get(CameraParameters::KEY_FLASH_MODE);
     if (pFlashMode != NULL && strncmp(pFlashMode, CameraParameters::FLASH_MODE_TORCH, strlen(CameraParameters::FLASH_MODE_TORCH)) == 0) {
         LOG1("Using Flash for recording!");
+        mFlashNeeded = true;
         status = mISP->setTorch(TORCH_INTENSITY);
     }
 
@@ -554,14 +627,17 @@ status_t ControlThread::handleMessageStopRecording()
          * Even if startRecording was called from PREVIEW_STILL mode, we can
          * switch back to PREVIEW_VIDEO now since we got a startRecording
          */
-        status = mVideoThread->requestExitAndWait();
+        status = mVideoThread->flushMessages();
         if (status != NO_ERROR)
-            LOGE("Error stopping video thread");
+            LOGE("Error flushing video thread");
         if (recordingBSDisable() != NO_ERROR) {
             LOGE("Error voting for disable buffer sharing");
         }
         mState = STATE_PREVIEW_VIDEO;
-        mISP->setTorch(0);
+        if (mFlashNeeded) {
+            mISP->setTorch(0);
+            mFlashNeeded = false;
+        }
     } else {
         LOGE("Error stopping recording. Invalid state!");
         status = INVALID_OPERATION;
@@ -637,9 +713,9 @@ bool ControlThread::runPreFlashSequence()
     return ret;
 }
 
-status_t ControlThread::handleMessageTakePicture()
+status_t ControlThread::handleMessageTakePicture(bool clientRequest)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s: clientRequest = %d", __FUNCTION__, clientRequest);
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
     State origState = mState;
@@ -647,37 +723,73 @@ status_t ControlThread::handleMessageTakePicture()
     int height;
     int format;
     FlashMode flashMode = CAM_AE_FLASH_MODE_NOT_SET;
-    AeMode aeMode = CAM_AE_MODE_NOT_SET;
-    bool flashNeeded = false;
     atomisp_makernote_info makerNote;
 
-    if (origState != STATE_PREVIEW_STILL && origState != STATE_RECORDING) {
-        LOGE("we only support snapshot in still preview and recording modes");
+    if (clientRequest) {
+        if (origState == STATE_CAPTURE) {
+            // Subsequent calls to takePicture, we will use previous frames, send shutter sound now
+            mCallbacksThread->shutterSound();
+        }
+        // Notify CallbacksThread that a picture was requested, so grab one from queue
+        mCallbacksThread->requestTakePicture();
+        /*
+         *  If the CallbacksThread has already JPEG buffers in queue, make sure we use them, before
+         *  continuing to dequeue frames from ISP and encode them
+         */
+        if (origState == STATE_CAPTURE) {
+            if (mCallbacksThread->getQueuedBuffersNum() > MAX_JPEG_BUFFERS) {
+                return NO_ERROR;
+            }
+            // Check if ISP has free buffers we can use
+            if (!mISP->dataAvailable()) {
+                // If ISP has no data, do nothing and return
+                return NO_ERROR;
+            }
+        }
+    }
+
+    if (origState != STATE_PREVIEW_STILL && origState != STATE_RECORDING && origState != STATE_CAPTURE) {
+        LOGE("we only support snapshot in still preview, recording and capture modes");
         return INVALID_OPERATION;
     }
-    stopFaceDetection();
-    // Do flash processing and stop preview thread
+    if (origState != STATE_CAPTURE) {
+        stopFaceDetection();
+    }
+
+    if (origState != STATE_RECORDING) {
+        // Disable flash by default for other states than STATE_RECORDING
+        mFlashNeeded = false;
+    }
+
     if (origState == STATE_PREVIEW_STILL) {
+        // This is the first call to takePicture
+        // Do flash processing and stop ISP from preview mode
         const char *pFlashMode = mParameters.get(CameraParameters::KEY_FLASH_MODE);
         if (pFlashMode != NULL && strncmp(pFlashMode, CameraParameters::FLASH_MODE_ON, strlen(CameraParameters::FLASH_MODE_ON)) == 0) {
-            flashNeeded = true;
+            mFlashNeeded = true;
         }
 
         // If flash mode is not ON, check for other modes: AUTO, DAY_SYNC, SLOW_SYNC
-        if (!flashNeeded && mAAA->is3ASupported()) {
+        if (!mFlashNeeded && mAAA->is3ASupported()) {
             flashMode = mAAA->getAeFlashMode();
             if (DetermineFlash(flashMode)) {
-                flashNeeded = mAAA->getAeFlashNecessary();
-                LOG1("In flash-mode: %d, determined flashNeeded: %d", flashMode, flashNeeded);
+                mFlashNeeded = mAAA->getAeFlashNecessary();
+                LOG1("In flash-mode: %d, determined flashNeeded: %d", flashMode, mFlashNeeded);
             } else {
-                flashNeeded = false;
+                mFlashNeeded = false;
             }
-            aeMode = mAAA->getAeMode();
-            if (flashNeeded && aeMode != CAM_AE_MODE_MANUAL) {
-                flashNeeded = runPreFlashSequence();
+            if (mFlashNeeded) {
+                if (mAAA->getAeMode() != CAM_AE_MODE_MANUAL) {
+                    mFlashNeeded = runPreFlashSequence();
+                }
             }
         }
         status = stopPreviewCore();
+        if (status != NO_ERROR) {
+            LOGE("Error stopping preview!");
+            return status;
+        }
+        mState = STATE_CAPTURE;
     }
 
     // Get the current params
@@ -703,40 +815,28 @@ status_t ControlThread::handleMessageTakePicture()
     // Configure PictureThread
     mPictureThread->setPictureFormat(format);
     if (origState == STATE_PREVIEW_STILL) {
-        mPictureThread->initialize(mParameters, makerNote, flashNeeded);
+        mPictureThread->initialize(mParameters, makerNote, mFlashNeeded);
 
-    } else { // STATE_RECORDING
+    } else if (origState == STATE_RECORDING) { // STATE_RECORDING
 
         // Picture thread uses snapshot-size to configure itself. However,
         // if in recording mode we need to override snapshot with video-size.
         CameraParameters copyParams = mParameters;
         copyParams.setPictureSize(width, height); // make sure picture size is same as video size
-        mPictureThread->initialize(copyParams, makerNote, false);
-    }
-
-    // Start PictureThread
-    status = mPictureThread->run();
-    if (status != NO_ERROR) {
-        LOGE("Error starting PictureThread!");
-        return status;
+        // mFlashNeeded is set in handleMessageStartRecording for STATE_RECORDING
+        mPictureThread->initialize(copyParams, makerNote, mFlashNeeded);
     }
 
     if (origState == STATE_PREVIEW_STILL) {
-        /*
-         *  TODO: for burst-capture mode, numberOfSnapshots should be the camera parameter used to define
-         *  number of pictures to take in burst-capture mode.
-         */
-        int numberOfSnapshots = 1;
-        mPictureThread->setNumberOfShots(numberOfSnapshots);
-
         // Configure and start the ISP
         mISP->setSnapshotFrameFormat(width, height, format);
+        mISP->setSnapshotNum(NUM_BURST_BUFFERS);
         if (format == V4L2_PIX_FMT_NV12) {
             // Try to use buffer sharing
             void* snapshotBufferPtr;
-            status = mPictureThread->getSharedBuffers(width, height, &snapshotBufferPtr, numberOfSnapshots);
+            status = mPictureThread->getSharedBuffers(width, height, &snapshotBufferPtr, NUM_BURST_BUFFERS);
             if (status == NO_ERROR) {
-                status = mISP->setSnapshotBuffers(snapshotBufferPtr, numberOfSnapshots);
+                status = mISP->setSnapshotBuffers(snapshotBufferPtr, NUM_BURST_BUFFERS);
                 if (status == NO_ERROR) {
                     LOG1("Using shared buffers for snapshot");
                 } else {
@@ -772,11 +872,13 @@ status_t ControlThread::handleMessageTakePicture()
                 }
             }
         }
+    }
 
+    if (mState == STATE_CAPTURE) {
         // Turn on flash
-        if (flashNeeded) {
+        if (mFlashNeeded) {
             LOG1("Requesting flash");
-            if (mISP->setFlash(numberOfSnapshots) != NO_ERROR) {
+            if (mISP->setFlash(1) != NO_ERROR) {
                 LOGE("Failed to enable the Flash!");
             }
         } else if (DetermineFlash(flashMode)) {
@@ -789,13 +891,15 @@ status_t ControlThread::handleMessageTakePicture()
             return status;
         }
 
-        // tell CameraService to play the shutter sound
-        mCallbacks->shutterSound();
+        if (origState != STATE_CAPTURE) {
+            // First time call: send request to play the Shutter Sound
+            mCallbacksThread->shutterSound();
+        }
 
         // TODO: here we should display the picture using PreviewThread
 
         // Turn off flash
-        if (!flashNeeded && DetermineFlash(flashMode)) {
+        if (!mFlashNeeded && DetermineFlash(flashMode)) {
             mISP->setFlashIndicator(0);
         }
     }
@@ -805,9 +909,9 @@ status_t ControlThread::handleMessageTakePicture()
      * in burst-capture mode, we can do: grab frames in ControlThread, Red-Eye removal in AAAThread
      * and JPEG encoding in Picture thread, all in parallel.
      */
-    if (mAAA->is3ASupported() && flashNeeded && mAAA->getRedEyeRemoval()) {
+    if (mAAA->is3ASupported() && mFlashNeeded && mAAA->getRedEyeRemoval()) {
         // tell 3A thread to remove red-eye
-        if (origState == STATE_PREVIEW_STILL) {
+        if (mState == STATE_CAPTURE) {
             status = m3AThread->applyRedEyeRemoval(&snapshotBuffer, &postviewBuffer, width, height, format);
         } else {
             mCoupledBuffers[mLastRecordingBuffIndex].videoSnapshotBuff = true;
@@ -822,7 +926,7 @@ status_t ControlThread::handleMessageTakePicture()
     }
 
     // Do jpeg encoding
-    if (origState == STATE_PREVIEW_STILL) {
+    if (mState == STATE_CAPTURE) {
         status = mPictureThread->encode(&snapshotBuffer, &postviewBuffer);
     } else {
         // If we are in video mode we simply use the recording buffer for picture encoding
@@ -848,24 +952,24 @@ status_t ControlThread::handleMessageAutoFocus()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    bool flashNeeded = false;
+    mFlashNeeded = false;
     // Implement pre auto-focus functions
     if (mAAA->is3ASupported()) {
         const char *pFlashMode = mParameters.get(CameraParameters::KEY_FLASH_MODE);
         if (pFlashMode != NULL && strncmp(pFlashMode, CameraParameters::FLASH_MODE_ON, strlen(CameraParameters::FLASH_MODE_ON)) == 0) {
-            flashNeeded = true;
+            mFlashNeeded = true;
         }
 
         FlashMode flashMode = mAAA->getAeFlashMode();
-        if (!flashNeeded && DetermineFlash(flashMode)) {
+        if (!mFlashNeeded && DetermineFlash(flashMode)) {
             // Check the other modes
             LOG1("Flash mode = %d", flashMode);
             if (mAAA->getAeFlashNecessary()) {
-                flashNeeded = true;
+                mFlashNeeded = true;
             }
         }
 
-        if (flashNeeded) {
+        if (mFlashNeeded) {
             LOG1("Using Torch for auto-focus");
             mISP->setTorch(TORCH_INTENSITY);
         }
@@ -882,8 +986,9 @@ status_t ControlThread::handleMessageAutoFocus()
     status = m3AThread->autoFocus();
 
     // If start auto-focus failed and we enabled torch, disable it now
-    if (status != NO_ERROR && flashNeeded) {
+    if (status != NO_ERROR && mFlashNeeded) {
         mISP->setTorch(0);
+        mFlashNeeded = false;
     }
 
     return status;
@@ -897,7 +1002,10 @@ status_t ControlThread::handleMessageCancelAutoFocus()
     LOG2("auto focus is off");
     if (mFaceDetectionActive)
         enableMsgType(CAMERA_MSG_PREVIEW_METADATA);
-
+    if (mFlashNeeded) {
+        mISP->setTorch(0);
+        mFlashNeeded = false;
+    }
     return status;
 }
 
@@ -1012,7 +1120,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             mCoupledBuffers[curBuff].videoSnapshotBuffReturned = false;
             mCoupledBuffers[curBuff].videoSnapshotBuff = false;
         }
-    } else {
+    } else if (mState == STATE_CAPTURE) {
         // Return the picture frames back to ISP
         status = mISP->putSnapshot(&msg->snapshotBuf, &msg->postviewBuf);
         if (status == DEAD_OBJECT) {
@@ -1021,24 +1129,6 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             LOGE("Error in putting snapshot!");
             return status;
         }
-
-        /*
-         * If we were in preview mode before takePicture was called, the app will
-         * put us back into preview mode when it receives the encoded picture.
-         */
-        // Now, stop the ISP too, so we can start it in startPreview
-        status = mISP->stop();
-        if (status != NO_ERROR) {
-            LOGE("Error stopping ISP!");
-            return status;
-        }
-    }
-
-    // Stop PictureThread
-    status = mPictureThread->requestExitAndWait();
-    if (status != NO_ERROR) {
-        LOGE("Error stopping PictureThread!");
-        return status;
     }
 
     return status;
@@ -1061,7 +1151,10 @@ status_t ControlThread::handleMessageAutoFocusDone()
     if (mFaceDetectionActive)
         enableMsgType(CAMERA_MSG_PREVIEW_METADATA);
     // Implement post auto-focus functions
-    mISP->setFlashIndicator(0);
+    if (mFlashNeeded) {
+        mISP->setTorch(0);
+        mFlashNeeded = false;
+    }
 
     return status;
 }
@@ -1116,6 +1209,14 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
 
     if (oldZoom != newZoom)
         status = mISP->setZoom(newZoom);
+
+    // Pre-allocate picture buffers
+    int picWidth, picHeight;
+    mParameters.getPictureSize(&picWidth, &picHeight);
+    status = mPictureThread->allocSharedBuffers(picWidth, picHeight, NUM_BURST_BUFFERS);
+    if (status != NO_ERROR) {
+        LOGW("Could not pre-allocate picture buffers!");
+    }
 
     // We won't take care of the status returned by the following calls since
     // failure of setting one parameter should not stop us setting the other parameters
@@ -2225,6 +2326,21 @@ bool ControlThread::threadLoop()
             LOG2("In STATE_STOPPED...");
             // in the stop state all we do is wait for messages
             status = waitForAndExecuteMessage();
+            break;
+
+        case STATE_CAPTURE:
+            LOG2("In STATE_CAPTURE...");
+            // message queue always has priority over getting data from the
+            // isp driver no matter what state we are in
+            if (!mMessageQueue.isEmpty()) {
+                status = waitForAndExecuteMessage();
+            } else {
+                // make sure ISP has data before we ask for some
+                if (mISP->dataAvailable())
+                    status = handleMessageTakePicture(false);
+                else
+                    status = waitForAndExecuteMessage();
+            }
             break;
 
         case STATE_PREVIEW_STILL:

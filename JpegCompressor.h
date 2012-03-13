@@ -30,6 +30,8 @@ class JpegCompressor {
     // For buffer sharing
     char* mVaInputSurfacesPtr[MAX_BURST_BUFFERS];
     int mVaInputSurfacesNum;
+    int mVaSurfaceWidth;
+    int mVaSurfaceHeight;
 
     SkImageEncoder* mJpegEncoder; // used for small images (< 512x512)
     void *mJpegCompressStruct;

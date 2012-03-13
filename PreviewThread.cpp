@@ -29,7 +29,7 @@ namespace android {
 
 PreviewThread::PreviewThread(ICallbackPreview *previewDone) :
     Thread(true) // callbacks may call into java
-    ,mMessageQueue("PreviewThread")
+    ,mMessageQueue("PreviewThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
     ,mDebugFPS(new DebugFrameRate())
     ,mPreviewDoneCallback(previewDone)
@@ -73,6 +73,15 @@ status_t PreviewThread::preview(AtomBuffer *buff)
     msg.id = MESSAGE_ID_PREVIEW;
     msg.data.preview.buff = *buff;
     return mMessageQueue.send(&msg);
+}
+
+status_t PreviewThread::flushMessages()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_FLUSH;
+    mMessageQueue.clearAll();
+    return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
 }
 
 status_t PreviewThread::handleMessageExit()
@@ -181,6 +190,14 @@ status_t PreviewThread::handleMessageSetPreviewSize(MessageSetPreviewSize *msg)
     return NO_ERROR;
 }
 
+status_t PreviewThread::handleMessageFlush()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mMessageQueue.reply(MESSAGE_ID_FLUSH, status);
+    return status;
+}
+
 status_t PreviewThread::waitForAndExecuteMessage()
 {
     LOG2("@%s", __FUNCTION__);
@@ -204,6 +221,10 @@ status_t PreviewThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_SET_PREVIEW_SIZE:
             status = handleMessageSetPreviewSize(&msg.data.setPreviewSize);
+            break;
+
+        case MESSAGE_ID_FLUSH:
+            status = handleMessageFlush();
             break;
 
         default:

@@ -16,6 +16,7 @@ LOCAL_SRC_FILES := \
 	EXIFMaker.cpp \
 	JpegCompressor.cpp \
 	OlaFaceDetect.cpp \
+	CallbacksThread.cpp \
 
 LOCAL_C_INCLUDES += \
 	frameworks/base/include \

@@ -85,7 +85,6 @@ enum FlashMode
 
 // DetermineFlash: returns true if flash should be determined according to current exposure
 #define DetermineFlash(x) (x == CAM_AE_FLASH_MODE_AUTO || \
-                           x == CAM_AE_FLASH_MODE_ON || \
                            x == CAM_AE_FLASH_MODE_DAY_SYNC || \
                            x == CAM_AE_FLASH_MODE_SLOW_SYNC) \
 

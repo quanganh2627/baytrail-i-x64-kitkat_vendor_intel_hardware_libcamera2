@@ -52,6 +52,7 @@ public:
     status_t preview(AtomBuffer *buff);
     status_t setPreviewWindow(struct preview_stream_ops *window);
     status_t setPreviewSize(int preview_width, int preview_height);
+    status_t flushMessages(); // clear current queued messages, finish ongoing message and exit synchronously
 
     // TODO: need methods to configure preview thread
     // TODO: decide if configuration method should send a message
@@ -66,6 +67,7 @@ private:
         MESSAGE_ID_PREVIEW,
         MESSAGE_ID_SET_PREVIEW_WINDOW,
         MESSAGE_ID_SET_PREVIEW_SIZE,
+        MESSAGE_ID_FLUSH,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -115,6 +117,7 @@ private:
     status_t handleMessagePreview(MessagePreview *msg);
     status_t handleMessageSetPreviewWindow(MessageSetPreviewWindow *msg);
     status_t handleMessageSetPreviewSize(MessageSetPreviewSize *msg);
+    status_t handleMessageFlush();
 
     // main message function
     status_t waitForAndExecuteMessage();

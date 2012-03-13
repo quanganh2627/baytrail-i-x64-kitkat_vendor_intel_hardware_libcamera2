@@ -21,7 +21,7 @@
 #include <utils/Log.h>
 #include <cutils/atomic.h>
 
-static int32_t gLogLevel = 0;
+static int32_t gLogLevel = 1;
 
 static void setLogLevel(int level) {
     android_atomic_write(level, &gLogLevel);

@@ -243,6 +243,7 @@ private:
     AtomBuffer mPostviewBuffers[MAX_BURST_BUFFERS];
     int mNumPreviewBuffersQueued;
     int mNumRecordingBuffersQueued;
+    int mNumCapturegBuffersQueued;
     Config mConfig;
 
     int video_fds[V4L2_DEVICE_NUM];

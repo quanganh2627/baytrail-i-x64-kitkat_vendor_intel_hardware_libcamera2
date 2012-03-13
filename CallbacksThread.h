@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-#ifndef ANDROID_LIBCAMERA_VIDEO_THREAD_H
-#define ANDROID_LIBCAMERA_VIDEO_THREAD_H
+#ifndef ANDROID_LIBCAMERA_CALLBACKS_THREAD_H
+#define ANDROID_LIBCAMERA_CALLBACKS_THREAD_H
 
-#include <utils/Timers.h>
 #include <utils/threads.h>
+#include <utils/Vector.h>
 #include "MessageQueue.h"
 #include "AtomCommon.h"
 
@@ -26,12 +26,20 @@ namespace android {
 
 class Callbacks;
 
-class VideoThread : public Thread {
+class CallbacksThread : public Thread {
 
+private:
+    static CallbacksThread* mInstance;
+    CallbacksThread();
 // constructor destructor
 public:
-    VideoThread();
-    virtual ~VideoThread();
+    static CallbacksThread* getInstance() {
+        if (mInstance == NULL) {
+            mInstance = new CallbacksThread();
+        }
+        return mInstance;
+    }
+    virtual ~CallbacksThread();
 
 // Thread overrides
 public:
@@ -40,8 +48,11 @@ public:
 // public methods
 public:
 
-    status_t video(AtomBuffer *buff, nsecs_t timestamp);
-    status_t flushMessages(); // clear current queued messages, finish ongoing message and exit synchronously
+    status_t shutterSound();
+    status_t compressedFrameDone(AtomBuffer* jpegBuf);
+    status_t requestTakePicture();
+    status_t flushPictures();
+    size_t   getQueuedBuffersNum() { return mJpegBuffers.size(); }
 
 // private types
 private:
@@ -50,7 +61,9 @@ private:
     enum MessageId {
 
         MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
-        MESSAGE_ID_VIDEO,
+        MESSAGE_ID_CALLBACK_SHUTTER,    // send the shutter callback
+        MESSAGE_ID_JPEG_DATA_READY,     // we have a JPEG image ready
+        MESSAGE_ID_JPEG_DATA_REQUEST,   // a JPEG image was requested
         MESSAGE_ID_FLUSH,
 
         // max number of messages
@@ -61,16 +74,15 @@ private:
     // message data structures
     //
 
-    struct MessageVideo {
+    struct MessageCompressedFrame {
         AtomBuffer buff;
-        nsecs_t timestamp;
     };
 
     // union of all message data
     union MessageData {
 
-        // MESSAGE_ID_VIDEO
-        MessageVideo video;
+        //MESSAGE_ID_JPEG_DATA_READY
+        MessageCompressedFrame compressedFrame;
     };
 
     // message id and message data
@@ -84,11 +96,15 @@ private:
 
     // thread message execution functions
     status_t handleMessageExit();
-    status_t handleMessageVideo(MessageVideo *msg);
+    status_t handleMessageCallbackShutter();
+    status_t handleMessageJpegDataReady(MessageCompressedFrame *msg);
+    status_t handleMessageJpegDataRequest();
     status_t handleMessageFlush();
 
     // main message function
     status_t waitForAndExecuteMessage();
+
+    void clearJpegBuffers();
 
 // inherited from Thread
 private:
@@ -100,9 +116,14 @@ private:
     MessageQueue<Message> mMessageQueue;
     bool mThreadRunning;
     Callbacks *mCallbacks;
+    bool mJpegRequested;
+    Vector<AtomBuffer> mJpegBuffers;
 
-}; // class VideoThread
+// public data
+public:
+
+}; // class CallbacksThread
 
 }; // namespace android
 
-#endif // ANDROID_LIBCAMERA_VIDEO_THREAD_H
+#endif // ANDROID_LIBCAMERA_CALLBACKS_THREAD_H

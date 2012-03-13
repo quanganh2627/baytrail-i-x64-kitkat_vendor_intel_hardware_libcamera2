@@ -18,6 +18,7 @@
 #include "PictureThread.h"
 #include "LogHelper.h"
 #include "Callbacks.h"
+#include "CallbacksThread.h"
 #include <utils/Timers.h>
 
 namespace android {
@@ -27,10 +28,11 @@ static const unsigned char JPEG_MARKER_EOI[2] = {0xFF, 0xD9}; // JPEG EndOfImage
 
 PictureThread::PictureThread(ICallbackPicture *pictureDone) :
     Thread(true) // callbacks may call into java
-    ,mMessageQueue("PictureThread")
+    ,mMessageQueue("PictureThread", MESSAGE_ID_MAX)
     ,mThreadRunning(false)
     ,mPictureDoneCallback(pictureDone)
     ,mCallbacks(Callbacks::getInstance())
+    ,mCallbacksThread(CallbacksThread::getInstance())
     ,mPictureWidth(0)
     ,mPictureHeight(0)
     ,mPictureFormat(0)
@@ -39,8 +41,6 @@ PictureThread::PictureThread(ICallbackPicture *pictureDone) :
     ,mThumbFormat(0)
     ,mPictureQuality(80)
     ,mThumbnailQuality(50)
-    ,mNumShots(1)
-    ,mCurrentShots(0)
     ,mUsingSharedBuffers(false)
 {
     LOG1("@%s", __FUNCTION__);
@@ -51,6 +51,10 @@ PictureThread::PictureThread(ICallbackPicture *pictureDone) :
 PictureThread::~PictureThread()
 {
     LOG1("@%s", __FUNCTION__);
+    if (mUsingSharedBuffers) {
+        // Keep the shared buffers until we die
+        compressor.stopSharedBuffersEncode();
+    }
     if (mOutBuf.buff != NULL) {
         mOutBuf.buff->release(mOutBuf.buff);
     }
@@ -73,6 +77,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     JpegCompressor::InputBuffer inBuf;
     JpegCompressor::OutputBuffer outBuf;
     nsecs_t startTime = systemTime();
+    nsecs_t endTime;
 
     if (mOutBuf.buff == NULL || mOutBuf.buff->data == NULL || mOutBuf.buff->size <= 0) {
         int bufferSize = (mPictureWidth * mPictureHeight * 2);
@@ -106,8 +111,9 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         outBuf.height = mThumbHeight;
         outBuf.quality = mThumbnailQuality;
         outBuf.size = mOutBuf.buff->size;
+        endTime = systemTime();
         int size = compressor.encode(inBuf, outBuf);
-        LOG1("Thumbnail JPEG size: %d", size);
+        LOG1("Thumbnail JPEG size: %d (time to encode: %ums)", size, (unsigned)((systemTime() - endTime) / 1000000));
         if (size > 0) {
             exifMaker.setThumbnail(outBuf.buf, size);
         } else {
@@ -151,8 +157,9 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     outBuf.height = mPictureHeight;
     outBuf.quality = mPictureQuality;
     outBuf.size = mOutBuf.buff->size;
+    endTime = systemTime();
     int mainSize = compressor.encode(inBuf, outBuf);
-    LOG1("Picture JPEG size: %d", mainSize);
+    LOG1("Picture JPEG size: %d (time to encode: %ums)", mainSize, (unsigned)((systemTime() - endTime) / 1000000));
     if (mainSize > 0) {
         // We will skip SOI marker from final file
         totalSize += (mainSize - sizeof(JPEG_MARKER_SOI));
@@ -176,8 +183,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         char *copyFrom = (char*)mOutBuf.buff->data + sizeof(JPEG_MARKER_SOI);
         memcpy(copyTo, copyFrom, mainSize - sizeof(JPEG_MARKER_SOI));
     }
-
-    LOG1("Time spent encoding JPEG file: %ums", (unsigned)((systemTime() - startTime) / 1000000));
+    LOG1("Total JPEG size: %d (time to encode: %ums)", totalSize, (unsigned)((systemTime() - startTime) / 1000000));
     return status;
 }
 
@@ -227,27 +233,32 @@ void PictureThread::initialize(const CameraParameters &params, const atomisp_mak
     if (q != 0)
         mThumbnailQuality = q;
     mUsingSharedBuffers = false;
-    mCurrentShots = 0;
 }
 
 void PictureThread::setNumberOfShots(int num)
 {
     LOG1("@%s: num = %u", __FUNCTION__, num);
-    mNumShots = num;
 }
 
 status_t PictureThread::getSharedBuffers(int width, int height, void** sharedBuffersPtr, int sharedBuffersNum)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    size_t bufferSize = (width * height * 2);
+    bool allocBuf = true;
     if (mOutBuf.buff != NULL) {
-        mOutBuf.buff->release(mOutBuf.buff);
+        if (bufferSize != mOutBuf.buff->size) {
+            mOutBuf.buff->release(mOutBuf.buff);
+        } else {
+            allocBuf = false;
+        }
     }
-    int bufferSize = (width * height * 2);
-    mCallbacks->allocateMemory(&mOutBuf, bufferSize);
-    if (mOutBuf.buff == NULL || mOutBuf.buff->data == NULL) {
-        LOGE("Could not allocate memory for output buffer!");
-        return NO_MEMORY;
+    if (allocBuf) {
+        mCallbacks->allocateMemory(&mOutBuf, bufferSize);
+        if (mOutBuf.buff == NULL || mOutBuf.buff->data == NULL) {
+            LOGE("Could not allocate memory for output buffer!");
+            return NO_MEMORY;
+        }
     }
     status = compressor.startSharedBuffersEncode(mOutBuf.buff->data, mOutBuf.buff->size);
     if (status == NO_ERROR) {
@@ -259,14 +270,39 @@ status_t PictureThread::getSharedBuffers(int width, int height, void** sharedBuf
     return status;
 }
 
+status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuffersNum)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_ALLOC_BUFS;
+    msg.data.alloc.width = width;
+    msg.data.alloc.height = height;
+    msg.data.alloc.numBufs = sharedBuffersNum;
+    return mMessageQueue.send(&msg);
+}
+
+status_t PictureThread::wait()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_WAIT;
+    return mMessageQueue.send(&msg, MESSAGE_ID_WAIT);
+}
+
+status_t PictureThread::flushMessages()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_FLUSH;
+    mMessageQueue.clearAll();
+    return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
+}
+
 status_t PictureThread::handleMessageExit()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     mThreadRunning = false;
-
-    // TODO: any other cleanup that may need to be done
-
     return status;
 }
 
@@ -284,26 +320,51 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
         LOGE("Picture information not set yet!");
         return UNKNOWN_ERROR;
     }
+
     // Encode the image
     AtomBuffer *postviewBuf = msg->postviewBuf.buff == NULL ? NULL : &msg->postviewBuf;
     if ((status = encodeToJpeg(&msg->snaphotBuf, postviewBuf, &jpegBuf)) == NO_ERROR) {
-        mCallbacks->compressedFrameDone(&jpegBuf);
-        mCurrentShots++;
+        mCallbacksThread->compressedFrameDone(&jpegBuf);
     } else {
         LOGE("Error generating JPEG image!");
+        if (jpegBuf.buff != NULL && jpegBuf.buff->data != NULL) {
+            LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
+            jpegBuf.buff->release(jpegBuf.buff);
+        }
     }
 
-    if (jpegBuf.buff != NULL && jpegBuf.buff->data != NULL) {
-        LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
-        jpegBuf.buff->release(jpegBuf.buff);
-    }
     // When the encoding is done, send back the buffers to camera
     mPictureDoneCallback->pictureDone(&msg->snaphotBuf, &msg->postviewBuf);
 
-    if (mUsingSharedBuffers && mCurrentShots == mNumShots) {
-        compressor.stopSharedBuffersEncode();
-    }
+    return status;
+}
 
+status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
+{
+    LOG1("@%s: width = %d, height = %d, numBufs = %d",
+            __FUNCTION__,
+            msg->width,
+            msg->height,
+            msg->numBufs);
+    // Send NULL as buffer pointer: don't care about the buffers now, just allocate them
+    return getSharedBuffers(msg->width, msg->height, NULL, msg->numBufs);
+}
+
+status_t PictureThread::handleMessageWait()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mMessageQueue.reply(MESSAGE_ID_WAIT, status);
+    return status;
+}
+
+status_t PictureThread::handleMessageFlush()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    // Now, flush the queued JPEG buffers from CallbacksThread
+    status = mCallbacksThread->flushPictures();
+    mMessageQueue.reply(MESSAGE_ID_FLUSH, status);
     return status;
 }
 
@@ -322,6 +383,18 @@ status_t PictureThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_ENCODE:
             status = handleMessageEncode(&msg.data.encode);
+            break;
+
+        case MESSAGE_ID_ALLOC_BUFS:
+            status = handleMessageAllocBufs(&msg.data.alloc);
+            break;
+
+        case MESSAGE_ID_WAIT:
+            status = handleMessageWait();
+            break;
+
+        case MESSAGE_ID_FLUSH:
+            status = handleMessageFlush();
             break;
 
         default:

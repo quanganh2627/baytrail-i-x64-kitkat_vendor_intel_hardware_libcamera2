@@ -33,6 +33,7 @@ namespace android {
 #define FLASH_FRAME_TIMEOUT 5
 
 class Callbacks;
+class CallbacksThread;
 class AtomISP;
 class BufferShareRegistry;
 class IFaceDetector;
@@ -223,6 +224,7 @@ private:
         STATE_PREVIEW_STILL,
         STATE_PREVIEW_VIDEO,
         STATE_RECORDING,
+        STATE_CAPTURE,
     };
 
     // Buffer sharing states listed in the order of transition.
@@ -294,7 +296,7 @@ private:
     status_t handleMessageStopPreview();
     status_t handleMessageStartRecording();
     status_t handleMessageStopRecording();
-    status_t handleMessageTakePicture();
+    status_t handleMessageTakePicture(bool clientRequest = true);
     status_t handleMessageCancelPicture();
     status_t handleMessageAutoFocus();
     status_t handleMessageCancelAutoFocus();
@@ -377,6 +379,9 @@ private:
     // buffer sharing handshake. see comments for enum BSState
     status_t recordingBSHandshake();
 
+    status_t stopCapture();
+
+
 // inherited from Thread
 private:
     virtual bool threadLoop();
@@ -395,6 +400,7 @@ private:
     State mState;
     bool mThreadRunning;
     Callbacks *mCallbacks;
+    sp<CallbacksThread> mCallbacksThread;
 
     CoupledBuffer *mCoupledBuffers;
     int mNumBuffers;
@@ -403,6 +409,7 @@ private:
     IFaceDetector* m_pFaceDetector;
     bool mFaceDetectionActive;
     bool mAutoFocusActive;
+    bool mFlashNeeded;
 
     sp<BufferShareRegistry> mBSInstance;
 
