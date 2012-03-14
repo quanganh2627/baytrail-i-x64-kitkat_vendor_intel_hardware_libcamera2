@@ -374,6 +374,7 @@ status_t JpegCompressor::getSharedBuffers(int width, int height, void** sharedBu
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    int vaSurfacesNum = 0;
     struct jpeg_compress_struct *pCinfo = NULL;
     if (!mStartSharedBuffersEncode) {
         LOGE("Shared buffer encoding session is not started!");
@@ -393,14 +394,14 @@ status_t JpegCompressor::getSharedBuffers(int width, int height, void** sharedBu
         return NO_ERROR;
     }
     pCinfo = (struct jpeg_compress_struct*)mJpegCompressStruct;
-    for (int i = 0; i < sharedBuffersNum; i++) {
+    for (vaSurfacesNum = 0; vaSurfacesNum < sharedBuffersNum; vaSurfacesNum++) {
         LOG1("Get a VA surface from JPEG encoder...");
-        if(!jpeg_get_userptr_from_surface(pCinfo, width, height, VA_FOURCC_NV12, &mVaInputSurfacesPtr[i])) {
+        if(!jpeg_get_userptr_from_surface(pCinfo, width, height, VA_FOURCC_NV12, &mVaInputSurfacesPtr[vaSurfacesNum])) {
             LOGE("Failed to get user pointer");
             status = NO_MEMORY;
             break;
         }
-        LOG1("Got VA surface @%p as shared buffer %d", mVaInputSurfacesPtr[i], i);
+        LOG1("Got VA surface @%p as shared buffer %d", mVaInputSurfacesPtr[vaSurfacesNum], vaSurfacesNum);
     }
     if (status == NO_ERROR) {
         // Initialize cinfo
@@ -422,7 +423,15 @@ status_t JpegCompressor::getSharedBuffers(int width, int height, void** sharedBu
             *sharedBuffersPtr = mVaInputSurfacesPtr;
         }
     } else {
-        *sharedBuffersPtr = NULL;
+        if (sharedBuffersPtr != NULL) {
+            *sharedBuffersPtr = NULL;
+        }
+#ifndef ANDROID_1998
+        if (vaSurfacesNum == 0) {
+            // No need for fake start compress
+            mStartCompressDone = true;
+        }
+#endif
         stopSharedBuffersEncode();
     }
     return status;
