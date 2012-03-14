@@ -23,7 +23,7 @@ namespace android {
 
 VideoThread::VideoThread() :
     Thread(true) // callbacks may call into java
-    ,mMessageQueue("VideoThread")
+    ,mMessageQueue("VideoThread", MESSAGE_ID_MAX)
     ,mThreadRunning(false)
     ,mCallbacks(Callbacks::getInstance())
 {
