@@ -455,6 +455,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         memset(mCoupledBuffers, 0, sizeof(mCoupledBuffers));
         mState = state;
         if (mAAA->is3ASupported()) {
+            // Enable auto-focus by default
+            mAAA->setAfEnabled(true);
             m3AThread->enable3A();
             if (videoMode) {
                 m3AThread->enableDVS(true);
@@ -1005,6 +1007,19 @@ status_t ControlThread::handleMessageCancelAutoFocus()
     if (mFlashNeeded) {
         mISP->setTorch(0);
         mFlashNeeded = false;
+    }
+    /*
+     * The normal autoFocus sequence is:
+     * - camera client is calling autoFocus (we run the AF sequence and lock AF)
+     * - camera client is calling:
+     *     - takePicture: AF is locked, so the picture will have the focus established
+     *       in previous step. In this case, we have to reset the auto-focus to enabled
+     *       when the camera client will call startPreview.
+     *     - cancelAutoFocus: AF is locked, camera client no longer wants this focus position
+     *       so we should switch back to auto-focus in 3A library
+     */
+    if (mAAA->is3ASupported()) {
+        mAAA->setAfEnabled(true);
     }
     return status;
 }
