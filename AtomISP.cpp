@@ -266,12 +266,17 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
     params->setPreviewFrameRate(30);
     params->setPreviewFormat(cameraParametersFormat(mConfig.preview.format));
     char previewFormats[100] = {0};
-    if (snprintf(previewFormats, sizeof(previewFormats),
-            "%s,%s",
-            cameraParametersFormat(V4L2_PIX_FMT_NV12),
-            cameraParametersFormat(V4L2_PIX_FMT_YUV420)) < 0) {
-        LOGE("Could not generate %s string: %s", CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, strerror(errno));
-        return;
+    const char *camParamFormatNv21 = cameraParametersFormat(V4L2_PIX_FMT_NV21);
+    if (camParamFormatNv21)
+    {
+        if (snprintf(previewFormats, sizeof(previewFormats),
+            "%s", camParamFormatNv21) < 0) {
+            LOGE("Could not generate %s string: %s", CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, strerror(errno));
+            return;
+        }
+        else {
+            LOG1("preview format %s\n", previewFormats);
+        }
     }
     params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, previewFormats);
     params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES, "320x240,640x360,640x480,1280x720");

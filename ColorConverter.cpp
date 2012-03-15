@@ -135,12 +135,32 @@ void NV12ToRGB565(int width, int height, void *src, void *dst)
     }
 }
 
+void NV12ToNV21(int width, int height, void *src, void *dst)
+{
+    int planeSizeY = width * height;
+    int planeSizeUV = planeSizeY / 2;
+    int i = 0;
+    unsigned char *srcPtr = (unsigned char *) src;
+    unsigned char *dstPtr = (unsigned char *) dst;
+
+    // copy the entire Y plane
+    memcpy(dstPtr, src, planeSizeY);
+
+    // byte swap the UV data
+    for(i=planeSizeY; i<(planeSizeY+planeSizeUV); i=i+2)
+    {
+        dstPtr[i] = srcPtr[i + 1];
+        dstPtr[i + 1] = srcPtr[i];
+    }
+}
+
 const char *cameraParametersFormat(int v4l2Format)
 {
     switch (v4l2Format) {
     case V4L2_PIX_FMT_YUV420:
         return CameraParameters::PIXEL_FORMAT_YUV420P;
     case V4L2_PIX_FMT_NV12:
+    case V4L2_PIX_FMT_NV21:
         return CameraParameters::PIXEL_FORMAT_YUV420SP;
     case V4L2_PIX_FMT_YUYV:
         return CameraParameters::PIXEL_FORMAT_YUV422I;
