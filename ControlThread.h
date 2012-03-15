@@ -363,7 +363,7 @@ private:
     // restarted. Static parameters will most likely affect buffer size and/or format so buffers
     // must be deallocated and reallocated accordingly.
     status_t processStaticParameters(const CameraParameters *oldParams,
-            const CameraParameters *newParams);
+            CameraParameters *newParams);
     status_t validateParameters(const CameraParameters *params);
 
     // buffer sharing enable/disable methods

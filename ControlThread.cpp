@@ -25,6 +25,7 @@
 #include "ColorConverter.h"
 #include "IntelBufferSharing.h"
 #include "FaceDetectorFactory.h"
+#include <utils/Vector.h>
 
 namespace android {
 
@@ -43,6 +44,11 @@ namespace android {
  * MAX_JPEG_BUFFERS: the maximum numbers of queued JPEG buffers
  */
 #define MAX_JPEG_BUFFERS 4
+
+/*
+ * ASPECT_TOLERANCE: the tolerance between aspect ratios to consider them the same
+ */
+#define ASPECT_TOLERANCE 0.001
 
 ControlThread::ControlThread(int cameraId) :
     Thread(true) // callbacks may call into java
@@ -1221,16 +1227,20 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     status_t status = NO_ERROR;
     int oldZoom = oldParams->getInt(CameraParameters::KEY_ZOOM);
     int newZoom = newParams->getInt(CameraParameters::KEY_ZOOM);
+    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
 
     if (oldZoom != newZoom)
         status = mISP->setZoom(newZoom);
 
-    // Pre-allocate picture buffers
-    int picWidth, picHeight;
-    mParameters.getPictureSize(&picWidth, &picHeight);
-    status = mPictureThread->allocSharedBuffers(picWidth, picHeight, NUM_BURST_BUFFERS);
-    if (status != NO_ERROR) {
-        LOGW("Could not pre-allocate picture buffers!");
+
+    if (!videoMode) {
+        // Pre-allocate picture buffers only when not recording
+        int picWidth, picHeight;
+        mParameters.getPictureSize(&picWidth, &picHeight);
+        status = mPictureThread->allocSharedBuffers(picWidth, picHeight, NUM_BURST_BUFFERS);
+        if (status != NO_ERROR) {
+            LOGW("Could not pre-allocate picture buffers!");
+        }
     }
 
     // We won't take care of the status returned by the following calls since
@@ -1799,15 +1809,19 @@ status_t ControlThread::processParamRedEyeMode(const CameraParameters *oldParams
 }
 
 status_t ControlThread::processStaticParameters(const CameraParameters *oldParams,
-        const CameraParameters *newParams)
+        CameraParameters *newParams)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     bool previewFormatChanged = false;
+    float previewAspectRatio = 0.0f;
+    float videoAspectRatio = 0.0f;
+    Vector<Size> sizes;
     bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
 
     int oldWidth, newWidth;
     int oldHeight, newHeight;
+    int previewWidth, previewHeight;
     int oldFormat, newFormat;
 
     // see if preview params have changed
@@ -1815,20 +1829,78 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
     oldParams->getPreviewSize(&oldWidth, &oldHeight);
     newFormat = V4L2Format(newParams->getPreviewFormat());
     oldFormat = V4L2Format(oldParams->getPreviewFormat());
+    previewWidth = oldWidth;
+    previewHeight = oldHeight;
     if (newWidth != oldWidth || newHeight != oldHeight ||
             oldFormat != newFormat) {
-        LOG1("preview size/format is changing: old=%dx%d %s; new=%dx%d %s",
-                oldWidth, oldHeight, v4l2Fmt2Str(oldFormat), newWidth, newHeight, v4l2Fmt2Str(newFormat));
+        previewWidth = newWidth;
+        previewHeight = newHeight;
+        previewAspectRatio = newWidth / newHeight;
+        LOG1("Preview size/format is changing: old=%dx%d %s; new=%dx%d %s; ratio=%.3f",
+                oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
+                newWidth, newHeight, v4l2Fmt2Str(newFormat),
+                previewAspectRatio);
         previewFormatChanged = true;
+    } else {
+        previewAspectRatio = oldWidth / oldHeight;
+        LOG1("Preview size/format is unchanged: old=%dx%d %s; ratio=%.3f",
+                oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
+                previewAspectRatio);
     }
 
     // see if video params have changed
     newParams->getVideoSize(&newWidth, &newHeight);
     oldParams->getVideoSize(&oldWidth, &oldHeight);
     if (newWidth != oldWidth || newHeight != oldHeight) {
-        LOG1("video preview size is changing: old=%dx%d; new=%dx%d",
-                oldWidth, oldHeight, newWidth, newHeight);
+        videoAspectRatio = newWidth / newHeight;
+        LOG1("Video size is changing: old=%dx%d; new=%dx%d; ratio=%.3f",
+                oldWidth, oldHeight,
+                newWidth, newHeight,
+                videoAspectRatio);
         previewFormatChanged = true;
+        /*
+         *  Camera client requested a new video size, so make sure that requested
+         *  video size matches requested preview size. If it does not, then select
+         *  a corresponding preview size to match the aspect ratio with video
+         *  aspect ratio. Also, the video size must be at least as preview size
+         */
+        if (abs(videoAspectRatio - previewAspectRatio) > ASPECT_TOLERANCE) {
+            LOGW("Requested video (%dx%d) aspect ratio does not match preview \
+                 (%dx%d) aspect ratio! The preview will be stretched!",
+                    newWidth, newHeight,
+                    previewWidth, previewHeight);
+        }
+    } else {
+        videoAspectRatio = oldWidth / oldHeight;
+        LOG1("Video size is unchanged: old=%dx%d; ratio=%.3f",
+                oldWidth, oldHeight,
+                videoAspectRatio);
+        /*
+         *  Camera client did not specify any video size, so make sure that
+         *  requested preview size matches our default video size. If it does
+         *  not, then select a corresponding video size to match the aspect
+         *  ratio with preview aspect ratio.
+         */
+        if (abs(videoAspectRatio - previewAspectRatio) > ASPECT_TOLERANCE) {
+            LOG1("Our video (%dx%d) aspect ratio does not match preview (%dx%d) aspect ratio!",
+                    newWidth, newHeight,
+                    previewWidth, previewHeight);
+            newParams->getSupportedVideoSizes(sizes);
+            for (size_t i = 0; i < sizes.size(); i++) {
+                float thisSizeAspectRatio = sizes[i].width / sizes[i].height;
+                if (abs(thisSizeAspectRatio - previewAspectRatio) <= ASPECT_TOLERANCE) {
+                    if (sizes[i].width < previewWidth || sizes[i].height < previewHeight) {
+                        // This video size is smaller than preview, can't use it
+                        continue;
+                    }
+                    newWidth = sizes[i].width;
+                    newHeight = sizes[i].height;
+                    LOG1("Forcing video to %dx%d to match preview aspect ratio!", newWidth, newHeight);
+                    newParams->setVideoSize(newWidth, newHeight);
+                    break;
+                }
+            }
+        }
     }
 
     // if preview is running and static params have changed, then we need
