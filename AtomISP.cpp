@@ -1204,8 +1204,9 @@ void AtomISP::getZoomRatios(AtomMode mode, CameraParameters *params)
                     "1000,1025,1050,1075,1100,1125,1150,1175,1200,1225,1250,1275,1300,1325,"
                     "1350,1375,1400,1425,1450,1475,1500,1525,1550,1575,1600");
         } else {
-            // zoom is not supported in video mode
-            params->set(CameraParameters::KEY_ZOOM_SUPPORTED, CameraParameters::FALSE);
+            // zoom is not supported. this is indicated by placing a single zoom ratio in params
+            params->set(CameraParameters::KEY_MAX_ZOOM, "0"); // zoom index 0 indicates first (and only) zoom ratio
+            params->set(CameraParameters::KEY_ZOOM_RATIOS, "100");
         }
     }
 }
