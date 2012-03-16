@@ -19,6 +19,7 @@
 
 #include <utils/threads.h>
 #include <camera.h>
+#include <camera/CameraParameters.h>
 #include "MessageQueue.h"
 #include "AtomCommon.h"
 
@@ -48,10 +49,12 @@ public:
 
 // public methods
 public:
+    void getDefaultParameters(CameraParameters *params);
 
     status_t preview(AtomBuffer *buff);
     status_t setPreviewWindow(struct preview_stream_ops *window);
-    status_t setPreviewSize(int preview_width, int preview_height);
+    status_t setPreviewConfig(int preview_width, int preview_height,
+                              int preview_format);
     status_t flushMessages(); // clear current queued messages, finish ongoing message and exit synchronously
 
     // TODO: need methods to configure preview thread
@@ -66,7 +69,7 @@ private:
         MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
         MESSAGE_ID_PREVIEW,
         MESSAGE_ID_SET_PREVIEW_WINDOW,
-        MESSAGE_ID_SET_PREVIEW_SIZE,
+        MESSAGE_ID_SET_PREVIEW_CONFIG,
         MESSAGE_ID_FLUSH,
 
         // max number of messages
@@ -85,9 +88,10 @@ private:
         struct preview_stream_ops *window;
     };
 
-    struct MessageSetPreviewSize {
+    struct MessageSetPreviewConfig {
         int width;
         int height;
+        int format;
     };
 
     // union of all message data
@@ -99,8 +103,8 @@ private:
         // MESSAGE_ID_SET_PREVIEW_WINDOW
         MessageSetPreviewWindow setPreviewWindow;
 
-        // MESSAGE_ID_SET_PREVIEW_SIZE
-        MessageSetPreviewSize setPreviewSize;
+        // MESSAGE_ID_SET_PREVIEW_CONFIG
+        MessageSetPreviewConfig setPreviewConfig;
     };
 
     // message id and message data
@@ -116,7 +120,7 @@ private:
     status_t handleMessageExit();
     status_t handleMessagePreview(MessagePreview *msg);
     status_t handleMessageSetPreviewWindow(MessageSetPreviewWindow *msg);
-    status_t handleMessageSetPreviewSize(MessageSetPreviewSize *msg);
+    status_t handleMessageSetPreviewConfig(MessageSetPreviewConfig *msg);
     status_t handleMessageFlush();
 
     // main message function
@@ -143,6 +147,7 @@ private:
 
     int mPreviewWidth;
     int mPreviewHeight;
+    int mPreviewFormat;
 
     AtomBuffer mPreviewBuf;
 

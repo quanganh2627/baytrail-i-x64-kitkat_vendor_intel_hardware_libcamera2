@@ -37,6 +37,7 @@ PreviewThread::PreviewThread(ICallbackPreview *previewDone) :
     ,mPreviewWindow(NULL)
     ,mPreviewWidth(640)
     ,mPreviewHeight(480)
+    ,mPreviewFormat(V4L2_PIX_FMT_NV21)
 {
     LOG1("@%s", __FUNCTION__);
     mPreviewBuf.buff = 0;
@@ -49,6 +50,33 @@ PreviewThread::~PreviewThread()
     freePreviewBuf();
 }
 
+void PreviewThread::getDefaultParameters(CameraParameters *params)
+{
+    LOG2("@%s", __FUNCTION__);
+    if (!params) {
+        LOGE("params is null!");
+        return;
+    }
+
+    /**
+     * PREVIEW
+     */
+    params->setPreviewFormat(cameraParametersFormat(mPreviewFormat));
+
+    char previewFormats[100] = {0};
+    if (snprintf(previewFormats, sizeof(previewFormats), "%s,%s",
+                 CameraParameters::PIXEL_FORMAT_YUV420SP,
+                 CameraParameters::PIXEL_FORMAT_YUV420P) < 0) {
+        LOGE("Could not generate %s string: %s", CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, strerror(errno));
+        return;
+    }
+    else {
+        LOG1("preview format %s\n", previewFormats);
+    }
+     params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, previewFormats);
+
+}
+
 status_t PreviewThread::setPreviewWindow(struct preview_stream_ops *window)
 {
     LOG1("@%s", __FUNCTION__);
@@ -58,13 +86,15 @@ status_t PreviewThread::setPreviewWindow(struct preview_stream_ops *window)
     return mMessageQueue.send(&msg);
 }
 
-status_t PreviewThread::setPreviewSize(int preview_width, int preview_height)
+status_t PreviewThread::setPreviewConfig(int preview_width, int preview_height,
+                                         int preview_format)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
-    msg.id = MESSAGE_ID_SET_PREVIEW_SIZE;
-    msg.data.setPreviewSize.width = preview_width;
-    msg.data.setPreviewSize.height = preview_height;
+    msg.id = MESSAGE_ID_SET_PREVIEW_CONFIG;
+    msg.data.setPreviewConfig.width = preview_width;
+    msg.data.setPreviewConfig.height = preview_height;
+    msg.data.setPreviewConfig.format = preview_format;
     return mMessageQueue.send(&msg);
 }
 
@@ -142,7 +172,18 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
         allocatePreviewBuf();
     }
     if(mPreviewBuf.buff) {
-        NV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.buff->data, mPreviewBuf.buff->data);
+        switch(mPreviewFormat) {
+
+        case V4L2_PIX_FMT_YUV420:
+            NV12ToYV12(mPreviewWidth, mPreviewHeight, msg->buff.buff->data, mPreviewBuf.buff->data);
+            break;
+
+        case V4L2_PIX_FMT_NV21:
+            NV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.buff->data, mPreviewBuf.buff->data);
+            break;
+
+        // mPreviewFormat is checked when set
+        }
         mCallbacks->previewFrameDone(&mPreviewBuf);
     }
     mDebugFPS->update(); // update fps counter
@@ -174,9 +215,10 @@ status_t PreviewThread::handleMessageSetPreviewWindow(MessageSetPreviewWindow *m
     return NO_ERROR;
 }
 
-status_t PreviewThread::handleMessageSetPreviewSize(MessageSetPreviewSize *msg)
+status_t PreviewThread::handleMessageSetPreviewConfig(MessageSetPreviewConfig *msg)
 {
-    LOG1("@%s: width = %d, height = %d", __FUNCTION__, msg->width, msg->height);
+    LOG1("@%s: width = %d, height = %d, format = %x", __FUNCTION__,
+         msg->width, msg->height, msg->format);
     status_t status = NO_ERROR;
 
     if ((msg->width != 0 && msg->height != 0) &&
@@ -195,6 +237,20 @@ status_t PreviewThread::handleMessageSetPreviewSize(MessageSetPreviewSize *msg)
         mPreviewHeight = msg->height;
 
         allocatePreviewBuf();
+    }
+
+    if ((msg->format != 0) && (mPreviewFormat != msg->format)) {
+        switch(msg->format) {
+        case V4L2_PIX_FMT_YUV420:
+        case V4L2_PIX_FMT_NV21:
+            mPreviewFormat = msg->format;
+            LOG1("Setting new preview format: %s", v4l2Fmt2Str(mPreviewFormat));
+            break;
+
+        default:
+            LOGE("Invalid preview format: %x:%s", msg->format, v4l2Fmt2Str(msg->format));
+            status = -1;
+        }
     }
 
     return NO_ERROR;
@@ -229,8 +285,8 @@ status_t PreviewThread::waitForAndExecuteMessage()
             status = handleMessageSetPreviewWindow(&msg.data.setPreviewWindow);
             break;
 
-        case MESSAGE_ID_SET_PREVIEW_SIZE:
-            status = handleMessageSetPreviewSize(&msg.data.setPreviewSize);
+        case MESSAGE_ID_SET_PREVIEW_CONFIG:
+            status = handleMessageSetPreviewConfig(&msg.data.setPreviewConfig);
             break;
 
         case MESSAGE_ID_FLUSH:

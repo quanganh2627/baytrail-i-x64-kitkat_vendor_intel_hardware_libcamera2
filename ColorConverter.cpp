@@ -135,6 +135,8 @@ void NV12ToRGB565(int width, int height, void *src, void *dst)
     }
 }
 
+// covert NV12 (Y plane, interlaced UV bytes) to
+// NV21 (Y plane, interlaced VU bytes)
 void NV12ToNV21(int width, int height, void *src, void *dst)
 {
     int planeSizeY = width * height;
@@ -154,12 +156,35 @@ void NV12ToNV21(int width, int height, void *src, void *dst)
     }
 }
 
+// covert NV12 (Y plane, interlaced UV bytes) to
+// YV12 (Y plane, V plane, U plane)
+void NV12ToYV12(int width, int height, void *src, void *dst)
+{
+    int planeSizeY = width * height;
+    int planeSizeUV = planeSizeY / 2;
+    int planeUOffset = planeSizeUV / 2;
+    int i = 0;
+    unsigned char *srcPtr = (unsigned char *) src;
+    unsigned char *dstPtr = (unsigned char *) dst;
+    unsigned char *dstPtrV = (unsigned char *) dst + planeSizeY;
+    unsigned char *dstPtrU = (unsigned char *) dst + planeSizeY + planeUOffset;
+
+    // copy the entire Y plane
+    memcpy(dstPtr, src, planeSizeY);
+
+    // deinterlace the UV data
+    for(i=planeSizeY; i<(planeSizeY+planeSizeUV); i=i+2)
+    {
+        *dstPtrV++ = srcPtr[i + 1];
+        *dstPtrU++ = srcPtr[i];
+    }
+}
+
 const char *cameraParametersFormat(int v4l2Format)
 {
     switch (v4l2Format) {
     case V4L2_PIX_FMT_YUV420:
         return CameraParameters::PIXEL_FORMAT_YUV420P;
-    case V4L2_PIX_FMT_NV12:
     case V4L2_PIX_FMT_NV21:
         return CameraParameters::PIXEL_FORMAT_YUV420SP;
     case V4L2_PIX_FMT_YUYV:
@@ -167,6 +192,7 @@ const char *cameraParametersFormat(int v4l2Format)
     case V4L2_PIX_FMT_JPEG:
         return CameraParameters::PIXEL_FORMAT_JPEG;
     default:
+        LOGE("failed to map format %x to a PIXEL_FORMAT\n", v4l2Format);
         return NULL;
     };
 }
@@ -181,7 +207,7 @@ int V4L2Format(const char *cameraParamsFormat)
 
     int len = strlen(CameraParameters::PIXEL_FORMAT_YUV420SP);
     if (strncmp(cameraParamsFormat, CameraParameters::PIXEL_FORMAT_YUV420SP, len) == 0)
-        return V4L2_PIX_FMT_NV12;
+        return V4L2_PIX_FMT_NV21;
 
     len = strlen(CameraParameters::PIXEL_FORMAT_YUV420P);
     if (strncmp(cameraParamsFormat, CameraParameters::PIXEL_FORMAT_YUV420P, len) == 0)

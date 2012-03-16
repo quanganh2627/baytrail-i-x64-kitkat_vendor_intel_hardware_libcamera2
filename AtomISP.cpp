@@ -258,21 +258,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
      */
     params->setPreviewSize(mConfig.preview.width, mConfig.preview.height);
     params->setPreviewFrameRate(30);
-    params->setPreviewFormat(cameraParametersFormat(mConfig.preview.format));
-    char previewFormats[100] = {0};
-    const char *camParamFormatNv21 = cameraParametersFormat(V4L2_PIX_FMT_NV21);
-    if (camParamFormatNv21)
-    {
-        if (snprintf(previewFormats, sizeof(previewFormats),
-            "%s", camParamFormatNv21) < 0) {
-            LOGE("Could not generate %s string: %s", CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, strerror(errno));
-            return;
-        }
-        else {
-            LOG1("preview format %s\n", previewFormats);
-        }
-    }
-    params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, previewFormats);
+
     params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES, "320x240,640x360,640x480,1280x720");
 
     params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES,"30,15,10");
@@ -286,7 +272,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
     params->set(CameraParameters::KEY_PREFERRED_PREVIEW_SIZE_FOR_VIDEO, "1280x720");
     params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, "176x144,320x240,352x288,640x480,1280x720,1920x1080");
     params->set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,
-            cameraParametersFormat(V4L2_PIX_FMT_NV12));
+                CameraParameters::PIXEL_FORMAT_YUV420SP);
 #ifndef ANDROID_2036
     params->set(CameraParameters::KEY_VIDEO_SNAPSHOT_SUPPORTED, CameraParameters::FALSE);
 #else
@@ -1081,6 +1067,8 @@ status_t AtomISP::setPreviewFrameFormat(int width, int height, int format)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
+    if(format == 0)
+         format = mConfig.preview.format;
     if (width > mConfig.preview.maxWidth || width <= 0)
         width = mConfig.preview.maxWidth;
     if (height > mConfig.preview.maxHeight || height <= 0)
@@ -1090,7 +1078,7 @@ status_t AtomISP::setPreviewFrameFormat(int width, int height, int format)
     mConfig.preview.format = format;
     mConfig.preview.padding = paddingWidth(format, width, height);
     mConfig.preview.size = frameSize(format, mConfig.preview.padding, height);
-    LOG1("width(%d), height(%d), pad_width(%d), size(%d), format(%d)",
+    LOG1("width(%d), height(%d), pad_width(%d), size(%d), format(%x)",
         width, height, mConfig.preview.padding, mConfig.preview.size, format);
     return status;
 }
@@ -1100,7 +1088,7 @@ status_t AtomISP::setPostviewFrameFormat(int width, int height, int format)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    LOG1("width(%d), height(%d), format(%d)",
+    LOG1("width(%d), height(%d), format(%x)",
          width, height, format);
     mConfig.postview.width = width;
     mConfig.postview.height = height;
@@ -1109,7 +1097,7 @@ status_t AtomISP::setPostviewFrameFormat(int width, int height, int format)
     mConfig.postview.size = frameSize(format, width, height);
     if (mConfig.postview.size == 0)
         mConfig.postview.size = mConfig.postview.width * mConfig.postview.height * BPP;
-    LOG1("width(%d), height(%d), pad_width(%d), size(%d), format(%d)",
+    LOG1("width(%d), height(%d), pad_width(%d), size(%d), format(%x)",
             width, height, mConfig.postview.padding, mConfig.postview.size, format);
     return status;
 }
@@ -1130,7 +1118,7 @@ status_t AtomISP::setSnapshotFrameFormat(int width, int height, int format)
     mConfig.snapshot.size = frameSize(format, width, height);;
     if (mConfig.snapshot.size == 0)
         mConfig.snapshot.size = mConfig.snapshot.width * mConfig.snapshot.height * BPP;
-    LOG1("width(%d), height(%d), pad_width(%d), size(%d), format(%d)",
+    LOG1("width(%d), height(%d), pad_width(%d), size(%d), format(%x)",
         width, height, mConfig.snapshot.padding, mConfig.snapshot.size, format);
     return status;
 }
@@ -1157,6 +1145,8 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
     int ret = 0;
     status_t status = NO_ERROR;
 
+    if(format == 0)
+         format = mConfig.recording.format;
     if (mConfig.recording.width == width &&
         mConfig.recording.height == height &&
         mConfig.recording.format == format) {
@@ -1184,7 +1174,7 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
     mConfig.recording.size = frameSize(format, width, height);
     if (mConfig.recording.size == 0)
         mConfig.recording.size = mConfig.recording.width * mConfig.recording.height * BPP;
-    LOG1("width(%d), height(%d), pad_width(%d), format(%d)",
+    LOG1("width(%d), height(%d), pad_width(%d), format(%x)",
             width, height, mConfig.recording.padding, format);
 
     return status;

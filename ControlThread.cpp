@@ -78,6 +78,8 @@ ControlThread::ControlThread(int cameraId) :
     // get default params from AtomISP and JPEG encoder
     mISP->getDefaultParameters(&mParameters);
     mPictureThread->getDefaultParameters(&mParameters);
+    mPreviewThread->getDefaultParameters(&mParameters);
+
     status_t status = m3AThread->run();
     if (status != NO_ERROR) {
         LOGE("Error starting 3A thread!");
@@ -437,19 +439,13 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     }
     LOG1("Using preview format: %s", v4l2Fmt2Str(format));
     mParameters.getPreviewSize(&width, &height);
-    mISP->setPreviewFrameFormat(width, height, format);
-    mPreviewThread->setPreviewSize(width, height);
+    mISP->setPreviewFrameFormat(width, height);
+    mPreviewThread->setPreviewConfig(width, height, format);
 
     // set video frame config
     if (videoMode) {
-        format = V4L2Format(mParameters.get(CameraParameters::KEY_VIDEO_FRAME_FORMAT));
-        if (format == -1) {
-            LOGE("Bad video format. Cannot start the video preview!");
-            return BAD_VALUE;
-        }
-        LOG1("Using video format: %s", v4l2Fmt2Str(format));
         mParameters.getVideoSize(&width, &height);
-        mISP->setVideoFrameFormat(width, height, format);
+        mISP->setVideoFrameFormat(width, height);
     }
 
     mNumBuffers = mISP->getNumBuffers();

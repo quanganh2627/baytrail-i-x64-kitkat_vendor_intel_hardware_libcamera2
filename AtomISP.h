@@ -98,10 +98,10 @@ public:
     bool dataAvailable();
     bool isBufferValid(const AtomBuffer * buffer) const;
 
-    status_t setPreviewFrameFormat(int width, int height, int format);
+    status_t setPreviewFrameFormat(int width, int height, int format = 0);
     status_t setPostviewFrameFormat(int width, int height, int format);
     status_t setSnapshotFrameFormat(int width, int height, int format);
-    status_t setVideoFrameFormat(int width, int height, int format);
+    status_t setVideoFrameFormat(int width, int height, int format = 0);
 
     inline int getSnapshotPixelFormat() { return mConfig.snapshot.format; }
     void getVideoSize(int *width, int *height);
