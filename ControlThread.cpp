@@ -26,6 +26,7 @@
 #include "IntelBufferSharing.h"
 #include "FaceDetectorFactory.h"
 #include <utils/Vector.h>
+#include <math.h>
 
 namespace android {
 
@@ -1835,14 +1836,14 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
             oldFormat != newFormat) {
         previewWidth = newWidth;
         previewHeight = newHeight;
-        previewAspectRatio = newWidth / newHeight;
+        previewAspectRatio = 1.0 * newWidth / newHeight;
         LOG1("Preview size/format is changing: old=%dx%d %s; new=%dx%d %s; ratio=%.3f",
                 oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
                 newWidth, newHeight, v4l2Fmt2Str(newFormat),
                 previewAspectRatio);
         previewFormatChanged = true;
     } else {
-        previewAspectRatio = oldWidth / oldHeight;
+        previewAspectRatio = 1.0 * oldWidth / oldHeight;
         LOG1("Preview size/format is unchanged: old=%dx%d %s; ratio=%.3f",
                 oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
                 previewAspectRatio);
@@ -1852,7 +1853,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
     newParams->getVideoSize(&newWidth, &newHeight);
     oldParams->getVideoSize(&oldWidth, &oldHeight);
     if (newWidth != oldWidth || newHeight != oldHeight) {
-        videoAspectRatio = newWidth / newHeight;
+        videoAspectRatio = 1.0 * newWidth / newHeight;
         LOG1("Video size is changing: old=%dx%d; new=%dx%d; ratio=%.3f",
                 oldWidth, oldHeight,
                 newWidth, newHeight,
@@ -1864,14 +1865,14 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
          *  a corresponding preview size to match the aspect ratio with video
          *  aspect ratio. Also, the video size must be at least as preview size
          */
-        if (abs(videoAspectRatio - previewAspectRatio) > ASPECT_TOLERANCE) {
+        if (fabsf(videoAspectRatio - previewAspectRatio) > ASPECT_TOLERANCE) {
             LOGW("Requested video (%dx%d) aspect ratio does not match preview \
                  (%dx%d) aspect ratio! The preview will be stretched!",
                     newWidth, newHeight,
                     previewWidth, previewHeight);
         }
     } else {
-        videoAspectRatio = oldWidth / oldHeight;
+        videoAspectRatio = 1.0 * oldWidth / oldHeight;
         LOG1("Video size is unchanged: old=%dx%d; ratio=%.3f",
                 oldWidth, oldHeight,
                 videoAspectRatio);
@@ -1881,14 +1882,14 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
          *  not, then select a corresponding video size to match the aspect
          *  ratio with preview aspect ratio.
          */
-        if (abs(videoAspectRatio - previewAspectRatio) > ASPECT_TOLERANCE) {
+        if (fabsf(videoAspectRatio - previewAspectRatio) > ASPECT_TOLERANCE) {
             LOG1("Our video (%dx%d) aspect ratio does not match preview (%dx%d) aspect ratio!",
                     newWidth, newHeight,
                     previewWidth, previewHeight);
             newParams->getSupportedVideoSizes(sizes);
             for (size_t i = 0; i < sizes.size(); i++) {
-                float thisSizeAspectRatio = sizes[i].width / sizes[i].height;
-                if (abs(thisSizeAspectRatio - previewAspectRatio) <= ASPECT_TOLERANCE) {
+                float thisSizeAspectRatio = 1.0 * sizes[i].width / sizes[i].height;
+                if (fabsf(thisSizeAspectRatio - previewAspectRatio) <= ASPECT_TOLERANCE) {
                     if (sizes[i].width < previewWidth || sizes[i].height < previewHeight) {
                         // This video size is smaller than preview, can't use it
                         continue;
