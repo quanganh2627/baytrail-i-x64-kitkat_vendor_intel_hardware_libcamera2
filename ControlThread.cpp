@@ -338,7 +338,7 @@ void ControlThread::returnBuffer(AtomBuffer *buff)
 }
 void ControlThread::releasePreviewFrame(AtomBuffer *buff)
 {
-    LOG2("release preview frame buffer data %p, id=%d", buff->buff->data, buff->id);
+    LOG2("release preview frame buffer data %p, id = %d", buff->buff->data, buff->id);
     Message msg;
     msg.id = MESSAGE_ID_RELEASE_PREVIEW_FRAME;
     msg.data.releasePreviewFrame.buff = *buff;
@@ -1054,6 +1054,7 @@ status_t ControlThread::handleMessageReleaseRecordingFrame(MessageReleaseRecordi
             return DEAD_OBJECT;
         }
         int curBuff = recBuff->id;
+        LOG2("Recording buffer released from encoder, buff id = %d", curBuff);
         if (mCoupledBuffers && curBuff < mNumBuffers) {
             mCoupledBuffers[curBuff].recordingBuffReturned = true;
             status = queueCoupledBuffers(curBuff);
@@ -1065,7 +1066,7 @@ status_t ControlThread::handleMessageReleaseRecordingFrame(MessageReleaseRecordi
 status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
 {
 
-    LOG2("handle preview frame  done buffer %p", &(msg->buff));
+    LOG2("handle preview frame done buff id = %d", msg->buff.id);
     if (!mISP->isBufferValid(&msg->buff))
         return DEAD_OBJECT;
     status_t status = NO_ERROR;
@@ -1089,7 +1090,7 @@ status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
 
 status_t ControlThread::handleMessageReleasePreviewFrame(MessageReleasePreviewFrame *msg)
 {
-    LOG2("handle preview frame reelease buffer %p", msg->buff.buff->data);
+    LOG2("handle preview frame release buff id = %d", msg->buff.id);
     status_t status = NO_ERROR;
     if (mState == STATE_PREVIEW_STILL) {
         status = mISP->putPreviewFrame(&msg->buff);
@@ -1118,7 +1119,7 @@ status_t ControlThread::queueCoupledBuffers(int coupledId)
     if (!buff->previewBuffReturned || !buff->recordingBuffReturned ||
             (buff->videoSnapshotBuff && !buff->videoSnapshotBuffReturned))
         return NO_ERROR;
-
+    LOG2("Putting buffer back to ISP, coupledId = %d",  coupledId);
     status = mISP->putRecordingFrame(&buff->recordingBuff);
     if (status == NO_ERROR) {
         status = mISP->putPreviewFrame(&buff->previewBuff);

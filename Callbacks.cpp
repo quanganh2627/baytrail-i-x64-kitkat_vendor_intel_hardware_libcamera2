@@ -83,7 +83,7 @@ void Callbacks::previewFrameDone(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_PREVIEW_FRAME) && mDataCB != NULL) {
-        LOG2("Sending message: CAMERA_MSG_PREVIEW_FRAME");
+        LOG2("Sending message: CAMERA_MSG_PREVIEW_FRAME, buff id = %d", buff->id);
         mDataCB(CAMERA_MSG_PREVIEW_FRAME, buff->buff, 0, NULL, mUserToken);
     }
 }
@@ -92,7 +92,7 @@ void Callbacks::videoFrameDone(AtomBuffer *buff, nsecs_t timestamp)
 {
     LOG2("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_VIDEO_FRAME) && mDataCBTimestamp != NULL) {
-        LOG2("Sending message: CAMERA_MSG_VIDEO_FRAME");
+        LOG2("Sending message: CAMERA_MSG_VIDEO_FRAME, buff id = %d", buff->id);
         mDataCBTimestamp(timestamp, CAMERA_MSG_VIDEO_FRAME, buff->buff, 0, mUserToken);
     }
 }
@@ -101,7 +101,7 @@ void Callbacks::compressedFrameDone(AtomBuffer *buff)
 {
     LOG1("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_COMPRESSED_IMAGE) && mDataCB != NULL) {
-        LOG1("Sending message: CAMERA_MSG_COMPRESSED_IMAGE");
+        LOG1("Sending message: CAMERA_MSG_COMPRESSED_IMAGE, buff id = %d", buff->id);
         mDataCB(CAMERA_MSG_COMPRESSED_IMAGE, buff->buff, NULL, 0, mUserToken);
     }
 }
@@ -110,7 +110,7 @@ void Callbacks::cameraError(int err)
 {
     LOG1("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_ERROR) && mNotifyCB != NULL) {
-        LOG1("Sending message: CAMERA_MSG_ERROR");
+        LOG1("Sending message: CAMERA_MSG_ERROR, err # = %d", err);
         mNotifyCB(CAMERA_MSG_ERROR, err, 0, mUserToken);
     }
 }
