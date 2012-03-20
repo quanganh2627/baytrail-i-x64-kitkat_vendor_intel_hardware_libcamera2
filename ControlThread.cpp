@@ -734,6 +734,13 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
     FlashMode flashMode = CAM_AE_FLASH_MODE_NOT_SET;
     atomisp_makernote_info makerNote;
 
+#ifndef ANDROID_2036
+    if (origState == STATE_RECORDING) {
+        LOGE("Video snapshot not supported!");
+        return INVALID_OPERATION;
+    }
+#endif
+
     if (clientRequest) {
         if (origState == STATE_CAPTURE) {
             // Subsequent calls to takePicture, we will use previous frames, send shutter sound now

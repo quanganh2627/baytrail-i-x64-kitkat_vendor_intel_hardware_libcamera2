@@ -293,7 +293,11 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
     params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, "176x144,320x240,352x288,640x480,1280x720,1920x1080");
     params->set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,
             cameraParametersFormat(V4L2_PIX_FMT_NV12));
+#ifndef ANDROID_2036
+    params->set(CameraParameters::KEY_VIDEO_SNAPSHOT_SUPPORTED, CameraParameters::FALSE);
+#else
     params->set(CameraParameters::KEY_VIDEO_SNAPSHOT_SUPPORTED, CameraParameters::TRUE);
+#endif
 
     /**
      * SNAPSHOT
