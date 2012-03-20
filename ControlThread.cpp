@@ -1939,6 +1939,25 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     String8 str_params(msg->params);
     newParams.unflatten(str_params);
 
+    // Workaround: The camera firmware doesn't support preview dimensions that
+    // are bigger than video dimensions. If a single preview dimension is larger
+    // than the video dimension then the FW will downscale the preview resolution
+    // to that of the video resolution.
+    if (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING) {
+
+        int pWidth, pHeight;
+        int vWidth, vHeight;
+
+        newParams.getPreviewSize(&pWidth, &pHeight);
+        newParams.getVideoSize(&vWidth, &vHeight);
+        if (vWidth < pWidth || vHeight < pHeight) {
+            LOGW("Warning: Video dimension(s) is smaller than preview dimension(s). "
+                    "Overriding preview resolution to video resolution [%d, %d] --> [%d, %d]",
+                    pWidth, pHeight, vWidth, vHeight);
+            newParams.setPreviewSize(vWidth, vHeight);
+        }
+    }
+
     // print all old and new params for comparison (debug)
     LOG1("----------BEGIN OLD PARAMS----------");
     mParameters.dump();
