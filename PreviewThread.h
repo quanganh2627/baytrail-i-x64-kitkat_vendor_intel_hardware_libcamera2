@@ -133,7 +133,7 @@ private:
 // private data
 private:
 
-    MessageQueue<Message> mMessageQueue;
+    MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
     sp<DebugFrameRate> mDebugFPS;
     ICallbackPreview *mPreviewDoneCallback;

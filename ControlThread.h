@@ -396,7 +396,7 @@ private:
     sp<VideoThread> mVideoThread;
     sp<AAAThread>     m3AThread;
 
-    MessageQueue<Message> mMessageQueue;
+    MessageQueue<Message, MessageId> mMessageQueue;
     State mState;
     bool mThreadRunning;
     Callbacks *mCallbacks;

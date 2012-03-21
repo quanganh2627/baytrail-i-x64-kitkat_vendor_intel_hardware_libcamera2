@@ -22,10 +22,11 @@
 #include <utils/threads.h>
 #include <utils/Log.h>
 #include <utils/List.h>
+#include <utils/Vector.h>
 
 namespace android {
 
-template <class MessageType>
+template <class MessageType, class MessageId>
 class MessageQueue {
 
     // constructor / destructor
@@ -60,7 +61,7 @@ public:
     // Push a message onto the queue. If replyId is not -1 function will block until
     // the caller is signalled with a reply. Caller is unblocked when reply method is
     // called with the corresponding message id.
-    status_t send(MessageType *msg, int replyId = -1)
+    status_t send(MessageType *msg, MessageId replyId = (MessageId) -1)
     {
         status_t status = NO_ERROR;
 
@@ -108,7 +109,36 @@ public:
         mQueueMutex.unlock();
         // unblock all callers waiting.
         for(int i=0; i<mNumReply;i++){
-            reply(i, INVALID_OPERATION);
+            reply((MessageId) i, INVALID_OPERATION);
+        }
+
+        return status;
+    }
+
+    status_t remove(MessageId id, Vector<MessageType> *vect = NULL)
+    {
+        status_t status = NO_ERROR;
+        if(isEmpty())
+            return status;
+
+        mQueueMutex.lock();
+        class List<MessageType>::iterator it = mList.begin();
+        while (it != mList.end()) {
+            MessageType msg = *it;
+            if (msg.id == id) {
+                if (vect) {
+                    vect->push(msg);
+                }
+                it = mList.erase(it); // returns pointer to next item in list
+            } else {
+                it++;
+            }
+        }
+        mQueueMutex.unlock();
+
+        // unblock caller if waiting
+        if (mNumReply > 0) {
+            reply(id, INVALID_OPERATION);
         }
 
         return status;
@@ -137,7 +167,7 @@ public:
     }
 
     // Unblock the caller of send and indicate the status of the received message
-    void reply(int replyId, status_t status)
+    void reply(MessageId replyId, status_t status)
     {
         mReplyMutex[replyId].lock();
         mReplyStatus[replyId] = status;

@@ -87,7 +87,7 @@ private:
 // private data
 private:
 
-    MessageQueue<Message> mMessageQueue;
+    MessageQueue<Message, MessageId> mMessageQueue;
     CameraFaceDetection * mFaceDetectionStruct;
     volatile bool mbRunning;
 };

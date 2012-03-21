@@ -125,7 +125,7 @@ private:
 // private data
 private:
 
-    MessageQueue<Message> mMessageQueue;
+    MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
     AtomAAA *mAAA;
     Callbacks *mCallbacks;
