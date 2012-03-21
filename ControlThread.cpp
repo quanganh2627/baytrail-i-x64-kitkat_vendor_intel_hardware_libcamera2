@@ -476,7 +476,7 @@ status_t ControlThread::stopPreviewCore()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    status = mPreviewThread->flushMessages();
+    status = mPreviewThread->flushBuffers();
     if (mState == STATE_PREVIEW_VIDEO && mAAA->is3ASupported()) {
         m3AThread->enableDVS(false);
     }
@@ -503,7 +503,7 @@ status_t ControlThread::stopCapture()
         return INVALID_OPERATION;
     }
 
-    status = mPictureThread->flushMessages();
+    status = mPictureThread->flushBuffers();
     if (status != NO_ERROR) {
         LOGE("Error flushing PictureThread!");
         return status;
@@ -632,7 +632,7 @@ status_t ControlThread::handleMessageStopRecording()
          * Even if startRecording was called from PREVIEW_STILL mode, we can
          * switch back to PREVIEW_VIDEO now since we got a startRecording
          */
-        status = mVideoThread->flushMessages();
+        status = mVideoThread->flushBuffers();
         if (status != NO_ERROR)
             LOGE("Error flushing video thread");
         if (recordingBSDisable() != NO_ERROR) {

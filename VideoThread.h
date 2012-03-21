@@ -41,7 +41,7 @@ public:
 public:
 
     status_t video(AtomBuffer *buff, nsecs_t timestamp);
-    status_t flushMessages(); // clear current queued messages, finish ongoing message and exit synchronously
+    status_t flushBuffers();
 
 // private types
 private:

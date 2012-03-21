@@ -55,7 +55,7 @@ public:
     status_t setPreviewWindow(struct preview_stream_ops *window);
     status_t setPreviewConfig(int preview_width, int preview_height,
                               int preview_format);
-    status_t flushMessages(); // clear current queued messages, finish ongoing message and exit synchronously
+    status_t flushBuffers();
 
     // TODO: need methods to configure preview thread
     // TODO: decide if configuration method should send a message

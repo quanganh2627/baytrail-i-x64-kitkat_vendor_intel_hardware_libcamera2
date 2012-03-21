@@ -104,8 +104,6 @@ private:
     // main message function
     status_t waitForAndExecuteMessage();
 
-    void clearJpegBuffers();
-
 // inherited from Thread
 private:
     virtual bool threadLoop();
