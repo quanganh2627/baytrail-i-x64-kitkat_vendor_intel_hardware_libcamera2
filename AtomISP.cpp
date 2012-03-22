@@ -22,7 +22,6 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <poll.h>
 
 #define CLEAR(x) memset (&(x), 0, sizeof (x))
 #define main_fd video_fds[V4L2_FIRST_DEVICE]
@@ -77,9 +76,6 @@
 #define MAX_FRONT_CAMERA_SNAPSHOT_HEIGHT    1080
 #define MAX_FRONT_CAMERA_VIDEO_WIDTH   1920
 #define MAX_FRONT_CAMERA_VIDEO_HEIGHT  1080
-
-#define ATOMISP_POLL_TIMEOUT (3 * 1000)
-#define ATOMISP_FILEINPUT_POLL_TIMEOUT (20 * 1000)
 
 namespace android {
 
@@ -229,8 +225,6 @@ AtomISP::AtomISP(int camera_id) :
     setPostviewFrameFormat(RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT, V4L2_PIX_FMT_NV12);
     setSnapshotFrameFormat(RESOLUTION_5MP_WIDTH, RESOLUTION_5MP_HEIGHT, V4L2_PIX_FMT_NV12);
     setVideoFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
-
-    mIspTimeout = 0;
 }
 
 AtomISP::~AtomISP()
@@ -1591,7 +1585,6 @@ int AtomISP::v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc,
     CLEAR(v4l2_fmt);
 
     if (device == V4L2_THIRD_DEVICE) {
-        mIspTimeout = ATOMISP_FILEINPUT_POLL_TIMEOUT;
         v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
         v4l2_fmt.fmt.pix.width = mFileImage.width;
         v4l2_fmt.fmt.pix.height = mFileImage.height;
@@ -1613,7 +1606,6 @@ int AtomISP::v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc,
         return 0;
     }
 
-    mIspTimeout = ATOMISP_POLL_TIMEOUT;
     v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     LOG1("VIDIOC_G_FMT");
     ret = ioctl (fd,  VIDIOC_G_FMT, &v4l2_fmt);
@@ -2106,57 +2098,18 @@ int AtomISP::grabFrame(int device, struct v4l2_buffer *buf)
 int AtomISP::v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf)
 {
     LOG2("@%s", __FUNCTION__);
-    int ret, i;
-    int num_tries = 500;
-    struct pollfd pfd[1];
+    int ret;
 
     buf->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     buf->memory = V4L2_MEMORY_USERPTR;
 
-    pfd[0].fd = fd;
-    pfd[0].events = POLLIN | POLLERR;
+    ret = ioctl(fd, VIDIOC_DQBUF, buf);
 
-    for (i = 0; i < num_tries; i++) {
-        ret = poll(pfd, 1, mIspTimeout);
-
-        if (ret < 0 ) {
-            LOGE("Select error in DQ");
-            return -1;
-        }
-        if (ret == 0) {
-            LOGE("Select timeout in DQ");
-            return -1;
-        }
-        ret = ioctl(fd, VIDIOC_DQBUF, buf);
-
-        if (ret >= 0)
-            break;
-        LOGE("DQBUF returned: %d", ret);
-        switch (errno) {
-        case EINVAL:
-            LOGE("Failed to get frames from device: %s",
-                 strerror(errno));
-            return -1;
-        case EINTR:
-            LOGW("Could not sync the buffer: %s",
-                 strerror(errno));
-            break;
-        case EAGAIN:
-            LOGW("No buffer in the queue: %s",
-                 strerror(errno));
-            break;
-        case EIO:
-            break;
-            /* Could ignore EIO, see spec. */
-            /* fail through */
-        default:
-           return -1;
-        }
+    if (ret < 0) {
+        LOGE("error dequeuing buffers");
+        return ret;
     }
-    if ( i == num_tries) {
-        LOGE("Too many tries");
-        return -1;
-    }
+
     return buf->index;
 }
 
