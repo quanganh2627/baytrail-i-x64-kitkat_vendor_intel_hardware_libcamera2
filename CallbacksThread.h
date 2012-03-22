@@ -113,7 +113,7 @@ private:
 // private data
 private:
 
-    MessageQueue<Message> mMessageQueue;
+    MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
     Callbacks *mCallbacks;
     bool mJpegRequested;
