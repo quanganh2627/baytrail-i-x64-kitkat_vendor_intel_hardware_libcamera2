@@ -105,24 +105,6 @@ public:
         return status;
     }
 
-    status_t clearAll()
-    {
-        LOGD("@%s", __FUNCTION__);
-        status_t status = NO_ERROR;
-        if(isEmpty())
-            return status;
-
-        mQueueMutex.lock();
-        mList.clear();
-        mQueueMutex.unlock();
-        // unblock all callers waiting.
-        for(int i=0; i<mNumReply;i++){
-            reply((MessageId) i, INVALID_OPERATION);
-        }
-
-        return status;
-    }
-
     status_t remove(MessageId id, Vector<MessageType> *vect = NULL)
     {
         status_t status = NO_ERROR;
