@@ -24,7 +24,9 @@
 #include "SkStream.h"
 #include <string.h>
 
+#ifdef USE_INTEL_JPEG
 #include <va/va.h>
+#endif
 extern "C" {
     #include "jpeglib.h"
     #include "jpeglib_ext.h"
@@ -199,7 +201,10 @@ int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
      * the color conversion of the image to RGB565.
      * The 320x240 size was found in external/jpeg/jcapistd.c:27,28
      */
-    if ((in.width <= 320 && in.height <= 240) || in.format != V4L2_PIX_FMT_NV12) {
+#ifdef USE_INTEL_JPEG
+    if ((in.width <= 320 && in.height <= 240) || in.format != V4L2_PIX_FMT_NV12)
+#endif
+    {
         // Choose Skia
         LOG1("Choosing Skia for JPEG encoding");
         if (mJpegEncoder == NULL) {
@@ -224,7 +229,10 @@ int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
             mJpegSize = -1;
             goto exit;
         }
-    } else {
+    }
+#ifdef USE_INTEL_JPEG
+    else
+    {
         // Choose jpeglib
         LOG1("Choosing jpeglib for JPEG encoding");
 
@@ -297,6 +305,7 @@ int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
             jpeg_destroy_compress(pCinfo);
         }
     }
+#endif
 
 exit:
     return mJpegSize;
@@ -306,6 +315,7 @@ exit:
 status_t JpegCompressor::startSharedBuffersEncode(void *outBuf, int outSize)
 {
     LOG1("@%s", __FUNCTION__);
+#ifdef USE_INTEL_JPEG
     static struct jpeg_compress_struct cinfo;
     static struct jpeg_error_mgr jerr;
     if (mStartSharedBuffersEncode && mJpegCompressStruct != NULL) {
@@ -333,6 +343,7 @@ status_t JpegCompressor::startSharedBuffersEncode(void *outBuf, int outSize)
 #ifndef ANDROID_1998
     mStartCompressDone = false;
 #endif
+#endif
     return NO_ERROR;
 }
 
@@ -346,6 +357,7 @@ status_t JpegCompressor::stopSharedBuffersEncode()
         // already stopped, nothing to do
         return NO_ERROR;
     }
+#ifdef USE_INTEL_JPEG
     pCinfo = (struct jpeg_compress_struct*)mJpegCompressStruct;
     LOG1("Stopping shared buffers compress on: %p", pCinfo);
 #ifndef ANDROID_1998
@@ -367,6 +379,7 @@ status_t JpegCompressor::stopSharedBuffersEncode()
     mVaInputSurfacesNum = 0;
     mVaSurfaceWidth = 0;
     mVaSurfaceHeight = 0;
+#endif
     return NO_ERROR;
 }
 
@@ -394,6 +407,7 @@ status_t JpegCompressor::getSharedBuffers(int width, int height, void** sharedBu
         return NO_ERROR;
     }
     pCinfo = (struct jpeg_compress_struct*)mJpegCompressStruct;
+#ifdef USE_INTEL_JPEG
     for (vaSurfacesNum = 0; vaSurfacesNum < sharedBuffersNum; vaSurfacesNum++) {
         LOG1("Get a VA surface from JPEG encoder...");
         if(!jpeg_get_userptr_from_surface(pCinfo, width, height, VA_FOURCC_NV12, &mVaInputSurfacesPtr[vaSurfacesNum])) {
@@ -435,6 +449,9 @@ status_t JpegCompressor::getSharedBuffers(int width, int height, void** sharedBu
         stopSharedBuffersEncode();
     }
     return status;
+#else
+    return NO_ERROR;
+#endif
 }
 
 }

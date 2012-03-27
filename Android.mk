@@ -29,15 +29,19 @@ LOCAL_C_INCLUDES += \
 	hardware/intel/libs3cjpeg \
 	$(TARGET_OUT_HEADERS)/libsharedbuffer \
 	$(TARGET_OUT_HEADERS)/libmfldadvci \
-	hardware/intel/libva \
 	$(TARGET_OUT_HEADERS)/libCameraFaceDetection \
+
+ifeq ($(USE_INTEL_JPEG), true)
+LOCAL_C_INCLUDES += \
+	hardware/intel/libva \
+
+endif
 
 LOCAL_SHARED_LIBRARIES := \
 	libcamera_client \
 	libutils \
 	libcutils \
 	libbinder \
-	libjpeg \
 	libskia \
 	libandroid \
 	libui \
@@ -45,6 +49,14 @@ LOCAL_SHARED_LIBRARIES := \
 	libsharedbuffer \
 	libmfldadvci \
 	libCameraFaceDetection \
+
+ifeq ($(USE_INTEL_JPEG), true)
+LOCAL_SHARED_LIBRARIES += \
+	libjpeg \
+
+LOCAL_CFLAGS += -DUSE_INTEL_JPEG
+
+endif
 
 LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
 LOCAL_MODULE := camera.$(TARGET_BOARD_PLATFORM)
