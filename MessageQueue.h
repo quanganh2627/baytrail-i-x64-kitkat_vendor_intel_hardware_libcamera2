@@ -73,7 +73,7 @@ public:
 
         mQueueMutex.lock();
         MessageType data = *msg;
-        mList.push_back(data);
+        mList.push_front(data);
         if (replyId != -1) {
             mReplyStatus[replyId] = WOULD_BLOCK;
         }
