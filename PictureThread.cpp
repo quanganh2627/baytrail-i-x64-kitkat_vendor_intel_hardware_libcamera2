@@ -289,12 +289,12 @@ status_t PictureThread::wait()
     return mMessageQueue.send(&msg, MESSAGE_ID_WAIT);
 }
 
-status_t PictureThread::flushMessages()
+status_t PictureThread::flushBuffers()
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_FLUSH;
-    mMessageQueue.clearAll();
+    mMessageQueue.remove(MESSAGE_ID_ENCODE);
     return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
 }
 

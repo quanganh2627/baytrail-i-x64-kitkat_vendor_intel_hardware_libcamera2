@@ -37,19 +37,6 @@ CallbacksThread::~CallbacksThread()
 {
     LOG1("@%s", __FUNCTION__);
     mInstance = NULL;
-    clearJpegBuffers();
-}
-
-void CallbacksThread::clearJpegBuffers()
-{
-    LOG1("@%s", __FUNCTION__);
-    mJpegRequested = false;
-    for (size_t i = 0; i < mJpegBuffers.size(); i++) {
-        AtomBuffer jpegBuf = mJpegBuffers[i];
-        LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
-        jpegBuf.buff->release(jpegBuf.buff);
-    }
-    mJpegBuffers.clear();
 }
 
 status_t CallbacksThread::shutterSound()
@@ -82,7 +69,18 @@ status_t CallbacksThread::flushPictures()
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_FLUSH;
-    mMessageQueue.clearAll();
+
+    Vector<Message> vect;
+    mMessageQueue.remove(MESSAGE_ID_JPEG_DATA_READY, &vect);
+    mMessageQueue.remove(MESSAGE_ID_JPEG_DATA_REQUEST, NULL); // there is no data for this message
+
+    // deallocate all the buffers we are flushing
+    for (size_t i = 0; i < vect.size(); i++) {
+        LOG1("Caught a mem leak. Woohoo!");
+        AtomBuffer buff = vect[i].data.compressedFrame.buff;
+        buff.buff->release(buff.buff);
+    }
+
     return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
 }
 
@@ -91,7 +89,6 @@ status_t CallbacksThread::handleMessageExit()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     mThreadRunning = false;
-    clearJpegBuffers();
     return status;
 }
 
@@ -137,7 +134,13 @@ status_t CallbacksThread::handleMessageFlush()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    clearJpegBuffers();
+    mJpegRequested = false;
+    for (size_t i = 0; i < mJpegBuffers.size(); i++) {
+        AtomBuffer jpegBuf = mJpegBuffers[i];
+        LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
+        jpegBuf.buff->release(jpegBuf.buff);
+    }
+    mJpegBuffers.clear();
     mMessageQueue.reply(MESSAGE_ID_FLUSH, status);
     return status;
 }

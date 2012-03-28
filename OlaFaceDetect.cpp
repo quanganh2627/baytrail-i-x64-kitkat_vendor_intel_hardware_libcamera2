@@ -54,7 +54,12 @@ void OlaFaceDetect::start()
 {
     LOGV("%s: START Face Detection mFaceDetectionStruct 0x%p\n", __func__, mFaceDetectionStruct);
     int ret = 0;
-    mMessageQueue.clearAll();//make sure no message left over from last run
+
+    // Since clients can stop the thread asynchronously with stop(wait=false)
+    // there is a chance that the thread didn't wake up to process MESSAGE_ID_EXIT.
+    // In that case, let's just remove the MESSAGE_ID_EXIT message from the queue
+    // and let it keep running.
+    mMessageQueue.remove(MESSAGE_ID_EXIT);
     if (!mFaceDetectionStruct) {
         ret = CameraFaceDetection_Create(&mFaceDetectionStruct);
         if (!ret) {
@@ -73,7 +78,7 @@ void OlaFaceDetect::stop(bool wait)
     LOGV("%s: STOP Face DEtection mFaceDetectionStruct 0x%p\n", __func__, mFaceDetectionStruct);
     Message msg;
     msg.id = MESSAGE_ID_EXIT;
-    mMessageQueue.clearAll(); // flush out all previous messages.
+    mMessageQueue.remove(MESSAGE_ID_FRAME); // flush all buffers
     mMessageQueue.send( &msg );
     if (wait) {
         requestExitAndWait();

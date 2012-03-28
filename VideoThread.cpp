@@ -45,12 +45,12 @@ status_t VideoThread::video(AtomBuffer *buff, nsecs_t timestamp)
     return mMessageQueue.send(&msg);
 }
 
-status_t VideoThread::flushMessages()
+status_t VideoThread::flushBuffers()
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_FLUSH;
-    mMessageQueue.clearAll();
+    mMessageQueue.remove(MESSAGE_ID_VIDEO);
     return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
 }
 

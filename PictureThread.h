@@ -64,7 +64,7 @@ public:
     status_t getSharedBuffers(int width, int height, void** sharedBuffersPtr, int sharedBuffersNum);
     status_t allocSharedBuffers(int width, int height, int sharedBuffersNum);
     status_t wait(); // wait to finish queued messages (sync)
-    status_t flushMessages(); // clear current queued messages, finish ongoing message and exit synchronously
+    status_t flushBuffers();
 
 // private types
 private:

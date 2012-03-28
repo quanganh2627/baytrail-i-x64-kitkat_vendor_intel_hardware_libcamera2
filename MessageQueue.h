@@ -48,6 +48,14 @@ public:
 
     ~MessageQueue()
     {
+        if (size() > 0) {
+            // The last message a thread should receive is EXIT.
+            // If for some reason a thread is sent a message after
+            // the thread has exited then there is a race condition
+            // or design issue.
+            LOGE("Atom_MessageQueue error: %s queue should be empty. Find the bug.", mName);
+        }
+
         if (mNumReply > 0) {
             delete [] mReplyMutex;
             delete [] mReplyCondition;

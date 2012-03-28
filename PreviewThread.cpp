@@ -107,12 +107,12 @@ status_t PreviewThread::preview(AtomBuffer *buff)
     return mMessageQueue.send(&msg);
 }
 
-status_t PreviewThread::flushMessages()
+status_t PreviewThread::flushBuffers()
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_FLUSH;
-    mMessageQueue.clearAll();
+    mMessageQueue.remove(MESSAGE_ID_PREVIEW);
     return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
 }
 
@@ -324,7 +324,6 @@ status_t PreviewThread::requestExitAndWait()
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_EXIT;
-    mMessageQueue.clearAll();
     // tell thread to exit
     // send message asynchronously
     mMessageQueue.send(&msg);
