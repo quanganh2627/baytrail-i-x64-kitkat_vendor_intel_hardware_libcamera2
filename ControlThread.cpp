@@ -1219,6 +1219,114 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
+    // ZOOM
+    int zoom = params->getInt(CameraParameters::KEY_ZOOM);
+    int maxZoom = params->getInt(CameraParameters::KEY_MAX_ZOOM);
+    if (zoom > maxZoom) {
+        LOGE("bad zoom index");
+        return BAD_VALUE;
+    }
+
+    // FLASH
+    const char* flashMode = params->get(CameraParameters::KEY_FLASH_MODE);
+    const char* flashModes = params->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
+    if (strstr(flashModes, flashMode) == NULL) {
+        LOGE("bad flash mode");
+        return BAD_VALUE;
+    }
+
+    // FOCUS
+    const char* focusMode = params->get(CameraParameters::KEY_FOCUS_MODE);
+    const char* focusModes = params->get(CameraParameters::KEY_SUPPORTED_FOCUS_MODES);
+    if (strstr(focusModes, focusMode) == NULL) {
+        LOGE("bad focus mode");
+        return BAD_VALUE;
+    }
+
+    // FOCUS WINDOWS
+    int maxWindows = params->getInt(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS);
+    if (maxWindows > 0) {
+        const char *pFocusWindows = params->get(CameraParameters::KEY_FOCUS_AREAS);
+        if (pFocusWindows && (strlen(pFocusWindows) > 0)) {
+            LOG1("Scanning AF windows from params: %s", pFocusWindows);
+            const char *argTail = pFocusWindows;
+            int winCount = 0;
+            CameraWindow focusWindow;
+            while (argTail && winCount < maxWindows) {
+                // String format: "(topleftx,toplefty,bottomrightx,bottomrighty,weight),(...)"
+                int i = sscanf(argTail, "(%d,%d,%d,%d,%d)",
+                        &focusWindow.x_left,
+                        &focusWindow.y_top,
+                        &focusWindow.x_right,
+                        &focusWindow.y_bottom,
+                        &focusWindow.weight);
+                argTail = strchr(argTail + 1, '(');
+                // Camera app sets invalid window 0,0,0,0,0 - let it slide
+                if ( !focusWindow.x_left && !focusWindow.y_top &&
+                    !focusWindow.x_right && !focusWindow.y_bottom &&
+                    !focusWindow.weight) {
+                  continue;
+                }
+                if (i != 5) {
+                    LOGE("bad focus window format");
+                    return BAD_VALUE;
+                }
+                bool verified = verifyCameraWindow(focusWindow);
+                if (!verified) {
+                    LOGE("bad focus window");
+                    return BAD_VALUE;
+                }
+            }
+            // make sure not too many windows defined (to pass CTS)
+            if (argTail) {
+                LOGE("bad - too many focus windows or bad format for focus window string");
+                return BAD_VALUE;
+            }
+        }
+    }
+
+    // METERING AREAS
+    maxWindows = params->getInt(CameraParameters::KEY_MAX_NUM_METERING_AREAS);
+    if (maxWindows > 0) {
+        const char *pMeteringWindows = params->get(CameraParameters::KEY_METERING_AREAS);
+        if (pMeteringWindows && (strlen(pMeteringWindows) > 0)) {
+            LOG1("Scanning Metering windows from params: %s", pMeteringWindows);
+            const char *argTail = pMeteringWindows;
+            int winCount = 0;
+            CameraWindow meteringWindow;
+            while (argTail && winCount < maxWindows) {
+                // String format: "(topleftx,toplefty,bottomrightx,bottomrighty,weight),(...)"
+                int i = sscanf(argTail, "(%d,%d,%d,%d,%d)",
+                        &meteringWindow.x_left,
+                        &meteringWindow.y_top,
+                        &meteringWindow.x_right,
+                        &meteringWindow.y_bottom,
+                        &meteringWindow.weight);
+                argTail = strchr(argTail + 1, '(');
+                // Camera app sets invalid window 0,0,0,0,0 - let it slide
+                if ( !meteringWindow.x_left && !meteringWindow.y_top &&
+                    !meteringWindow.x_right && !meteringWindow.y_bottom &&
+                    !meteringWindow.weight) {
+                  continue;
+                }
+                if (i != 5) {
+                    LOGE("bad metering window format");
+                    return BAD_VALUE;
+                }
+                bool verified = verifyCameraWindow(meteringWindow);
+                if (!verified) {
+                    LOGE("bad metering window");
+                    return BAD_VALUE;
+                }
+            }
+            // make sure not too many windows defined (to pass CTS)
+            if (argTail) {
+                LOGE("bad - too many metering windows or bad format for metering window string");
+                return BAD_VALUE;
+            }
+        }
+    }
+
     // MISCELLANEOUS
     // TODO: implement validation for other features not listed above
 
@@ -1547,6 +1655,11 @@ bool ControlThread::verifyCameraWindow(const CameraWindow &win)
     if (win.x_right <= win.x_left ||
         win.y_bottom <= win.y_top)
         return false;
+    if ( (win.y_top < -1000) || (win.y_top > 1000) ) return false;
+    if ( (win.y_bottom < -1000) || (win.y_bottom > 1000) ) return false;
+    if ( (win.x_right < -1000) || (win.x_right > 1000) ) return false;
+    if ( (win.x_left < -1000) || (win.x_left > 1000) ) return false;
+    if ( (win.weight < 1) || (win.weight > 1000) ) return false;
     return true;
 }
 
@@ -1996,6 +2109,7 @@ status_t ControlThread::handleMessageGetParameters(MessageGetParameters *msg)
         bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
         AtomMode mode = videoMode ? MODE_VIDEO : MODE_PREVIEW;
         mISP->getZoomRatios(mode, &mParameters);
+        mISP->getFocusDistances(&mParameters);
 
         String8 params = mParameters.flatten();
         int len = params.length();

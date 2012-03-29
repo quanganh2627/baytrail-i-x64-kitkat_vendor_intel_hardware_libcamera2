@@ -109,6 +109,7 @@ public:
     status_t setSnapshotNum(int num);
 
     void getZoomRatios(AtomMode mode, CameraParameters *params);
+    void getFocusDistances(CameraParameters *params);
     status_t setZoom(int zoom);
     status_t setFlash(int numFrames);
     status_t setFlashIndicator(int intensity);

@@ -22,6 +22,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <math.h>
 
 #define CLEAR(x) memset (&(x), 0, sizeof (x))
 #define main_fd video_fds[V4L2_FIRST_DEVICE]
@@ -297,7 +298,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
     getZoomRatios(MODE_PREVIEW, params);
 
     /**
-     * FOCUS
+     * FLASH
      */
     if (camInfo[mCameraId].port == ATOMISP_CAMERA_PORT_PRIMARY) {
         // For main back camera
@@ -322,19 +323,64 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
         params->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
         params->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, CameraParameters::FLASH_MODE_OFF);
     }
-    params->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
-    params->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, CameraParameters::FOCUS_MODE_AUTO);
+
+    /**
+     * FOCUS
+     */
+    if(camInfo[mCameraId].port == ATOMISP_CAMERA_PORT_PRIMARY) {
+        params->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
+
+        char focusModes[100] = {0};
+        if (snprintf(focusModes, sizeof(focusModes)
+                ,"%s,%s,%s,%s"
+                ,CameraParameters::FOCUS_MODE_AUTO
+                ,CameraParameters::FOCUS_MODE_INFINITY
+                ,CameraParameters::FOCUS_MODE_MACRO
+                ,CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO) < 0) {
+            LOGE("Could not generate %s string: %s",
+                CameraParameters::KEY_SUPPORTED_FOCUS_MODES, strerror(errno));
+            return;
+        }
+        params->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, focusModes);
+    }
+    else {
+        params->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_FIXED);
+        params->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, CameraParameters::FOCUS_MODE_FIXED);
+    }
+
+    /**
+     * FOCAL LENGTH
+     */
+    atomisp_makernote_info makerNote;
+    getMakerNote(&makerNote);
+    float focal_length = ((float)((makerNote.focal_length>>16) & 0xFFFF)) /
+        ((float)(makerNote.focal_length & 0xFFFF));
+    char focalLength[100] = {0};
+    if (snprintf(focalLength, sizeof(focalLength),"%f", focal_length) < 0) {
+        LOGE("Could not generate %s string: %s",
+            CameraParameters::KEY_FOCAL_LENGTH, strerror(errno));
+        return;
+    }
+    params->set(CameraParameters::KEY_FOCAL_LENGTH,focalLength);
+
+    /**
+     * FOCUS DISTANCES
+     */
+    getFocusDistances(params);
 
     /**
      * MISCELLANEOUS
      */
-    if(camInfo[mCameraId].port == ATOMISP_CAMERA_PORT_PRIMARY)
-        params->set(CameraParameters::KEY_FOCAL_LENGTH,"5.56");
-    else
-        params->set(CameraParameters::KEY_FOCAL_LENGTH,"2.78");
-
     params->set(CameraParameters::KEY_VERTICAL_VIEW_ANGLE,"42.5");
     params->set(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE,"54.8");
+
+    /**
+     * EXPOSURE
+     */
+    params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION,0);
+    params->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION,0);
+    params->set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION,0);
+    params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP,0);
 
     if(mAAA->is3ASupported()){
         // effect modes
@@ -382,20 +428,6 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
         }
         params->set(CameraParameters::KEY_SUPPORTED_SCENE_MODES, sceneModes);
 
-        // focus mode
-        params->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
-        char focusModes[100] = {0};
-        if (snprintf(focusModes, sizeof(focusModes)
-                ,"%s,%s,%s,%s"
-                ,CameraParameters::FOCUS_MODE_AUTO
-                ,CameraParameters::FOCUS_MODE_INFINITY
-                ,CameraParameters::FOCUS_MODE_MACRO
-                ,CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO) < 0) {
-            LOGE("Could not generate %s string: %s", CameraParameters::KEY_SUPPORTED_FOCUS_MODES, strerror(errno));
-            return;
-        }
-        params->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, focusModes);
-
         // red-eye mode
         params->set(CameraParameters::KEY_RED_EYE_MODE, CameraParameters::RED_EYE_REMOVAL_OFF);
         char redEyeModes[100] = {0};
@@ -418,8 +450,6 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
         params->set(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, CameraParameters::FALSE);
         params->set(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK_SUPPORTED, CameraParameters::TRUE);
 
-        // manual focus
-        params->set(CameraParameters::KEY_FOCUS_DISTANCES, "2,2,Infinity");
         // multipoint focus
         params->set(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS, mAAA->getAfMaxNumWindows());
         // set empty area
@@ -1206,6 +1236,45 @@ void AtomISP::getZoomRatios(AtomMode mode, CameraParameters *params)
             params->set(CameraParameters::KEY_ZOOM_RATIOS, "100");
         }
     }
+}
+
+void AtomISP::getFocusDistances(CameraParameters *params)
+{
+    LOG1("@%s", __FUNCTION__);
+    char focusDistance[100] = {0};
+    float fDistances[3] = {0};  // 3 distances: near, optimal, and far
+
+    // would be better if we could get these from driver instead of hard-coding
+    if(camInfo[mCameraId].port == ATOMISP_CAMERA_PORT_PRIMARY) {
+        fDistances[0] = 2.0;
+        fDistances[1] = 2.0;
+        fDistances[2] = INFINITY;
+    }
+    else {
+        fDistances[0] = 0.3;
+        fDistances[1] = 0.65;
+        fDistances[2] = INFINITY;
+    }
+
+    for (int i = 0; i < sizeof(fDistances)/sizeof(fDistances[0]); i++) {
+        int left = sizeof(focusDistance) - strlen(focusDistance);
+        int res;
+
+        // use CameraParameters::FOCUS_DISTANCE_INFINITY for value of infinity
+        if (fDistances[i] == INFINITY) {
+            res = snprintf(focusDistance + strlen(focusDistance), left, "%s%s",
+                    i ? "," : "", CameraParameters::FOCUS_DISTANCE_INFINITY);
+        } else {
+            res = snprintf(focusDistance + strlen(focusDistance), left, "%s%g",
+                    i ? "," : "", fDistances[i]);
+        }
+        if (res < 0) {
+            LOGE("Could not generate %s string: %s",
+                CameraParameters::KEY_FOCUS_DISTANCES, strerror(errno));
+            return;
+        }
+    }
+    params->set(CameraParameters::KEY_FOCUS_DISTANCES, focusDistance);
 }
 
 status_t AtomISP::setFlash(int numFrames)
