@@ -82,7 +82,7 @@ static void term_destination(j_compress_ptr cinfo)
 {
     LOG1("@%s", __FUNCTION__);
     JpegDestinationManager *dest = (JpegDestinationManager*) cinfo->dest;
-    unsigned dataCount = JPEG_BLOCK_SIZE - dest->pub.free_in_buffer;
+    int dataCount = JPEG_BLOCK_SIZE - dest->pub.free_in_buffer;
     if(dest->outJpegBufSize < dataCount)
     {
         *(dest->dataCount) = 0;
