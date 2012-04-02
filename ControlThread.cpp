@@ -595,16 +595,14 @@ status_t ControlThread::handleMessageStartRecording()
         /* We are in PREVIEW_STILL mode; in order to start recording
          * we first need to stop AtomISP and restart it with MODE_VIDEO
          */
-        LOG2("We are in STATE_PREVIEW. Switching to STATE_VIDEO before starting to record.");
-        if ((status = mISP->stop()) == NO_ERROR) {
-            if ((status = mISP->start(MODE_VIDEO)) == NO_ERROR) {
-                mState = STATE_RECORDING;
-            } else {
-                LOGE("Error starting ISP in VIDEO mode!");
-            }
-        } else {
-            LOGE("Error stopping ISP!");
+        status = restartPreview(true);
+        if (status != NO_ERROR) {
+            LOGE("Error restarting preview in video mode");
         }
+        if (recordingBSEnable() != NO_ERROR) {
+            LOGE("Error voting for buffer sharing");
+        }
+        mState = STATE_RECORDING;
     } else {
         LOGE("Error starting recording. Invalid state!");
         status = INVALID_OPERATION;
@@ -760,8 +758,9 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
         }
     }
 
-    if (origState != STATE_PREVIEW_STILL && origState != STATE_RECORDING && origState != STATE_CAPTURE) {
-        LOGE("we only support snapshot in still preview, recording and capture modes");
+    if (origState != STATE_PREVIEW_STILL && origState != STATE_PREVIEW_VIDEO &&
+        origState != STATE_RECORDING && origState != STATE_CAPTURE) {
+        LOGE("we only support snapshot in preview, recording, and capture modes");
         return INVALID_OPERATION;
     }
     if (origState != STATE_CAPTURE) {
@@ -773,7 +772,7 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
         mFlashNeeded = false;
     }
 
-    if (origState == STATE_PREVIEW_STILL) {
+    if (origState == STATE_PREVIEW_STILL || origState == STATE_PREVIEW_VIDEO) {
         // This is the first call to takePicture
         // Do flash processing and stop ISP from preview mode
         const char *pFlashMode = mParameters.get(CameraParameters::KEY_FLASH_MODE);
@@ -826,7 +825,7 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
 
     // Configure PictureThread
     mPictureThread->setPictureFormat(format);
-    if (origState == STATE_PREVIEW_STILL) {
+    if (origState == STATE_PREVIEW_STILL || origState == STATE_PREVIEW_VIDEO) {
         mPictureThread->initialize(mParameters, makerNote, mFlashNeeded);
 
     } else if (origState == STATE_RECORDING) { // STATE_RECORDING
@@ -839,7 +838,7 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
         mPictureThread->initialize(copyParams, makerNote, mFlashNeeded);
     }
 
-    if (origState == STATE_PREVIEW_STILL) {
+    if (origState == STATE_PREVIEW_STILL || origState == STATE_PREVIEW_VIDEO) {
         // Configure and start the ISP
         mISP->setSnapshotFrameFormat(width, height, format);
         mISP->setSnapshotNum(NUM_BURST_BUFFERS);
