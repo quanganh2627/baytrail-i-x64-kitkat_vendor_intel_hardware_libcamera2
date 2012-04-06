@@ -1256,7 +1256,7 @@ void AtomISP::getFocusDistances(CameraParameters *params)
         fDistances[2] = INFINITY;
     }
 
-    for (int i = 0; i < sizeof(fDistances)/sizeof(fDistances[0]); i++) {
+    for (int i = 0; i < (int) (sizeof(fDistances)/sizeof(fDistances[0])); i++) {
         int left = sizeof(focusDistance) - strlen(focusDistance);
         int res;
 
