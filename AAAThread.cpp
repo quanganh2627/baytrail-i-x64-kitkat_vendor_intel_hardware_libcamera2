@@ -15,6 +15,7 @@
  */
 #define LOG_TAG "Atom_AAAThread"
 
+#include <time.h>
 #include "LogHelper.h"
 #include "Callbacks.h"
 #include "AAAThread.h"
@@ -79,12 +80,13 @@ status_t AAAThread::cancelAutoFocus()
     return mMessageQueue.send(&msg);
 }
 
-status_t AAAThread::newFrame()
+status_t AAAThread::newFrame(struct timeval capture_timestamp)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     Message msg;
     msg.id = MESSAGE_ID_NEW_FRAME;
+    msg.data.frame.capture_timestamp = capture_timestamp;
     status = mMessageQueue.send(&msg);
     return status;
 }
@@ -167,7 +169,7 @@ status_t AAAThread::handleMessageCancelAutoFocus()
     return status;
 }
 
-status_t AAAThread::handleMessageNewFrame()
+status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -176,7 +178,7 @@ status_t AAAThread::handleMessageNewFrame()
 
     if(m3ARunning){
         // Run 3A statistics
-        status = mAAA->apply3AProcess();
+        status = mAAA->apply3AProcess(true, capture_timestamp);
 
         // If auto-focus was requested, run auto-focus sequence
         if (status == NO_ERROR && mStartAF) {
@@ -264,7 +266,7 @@ status_t AAAThread::waitForAndExecuteMessage()
             break;
 
         case MESSAGE_ID_NEW_FRAME:
-            status = handleMessageNewFrame();
+            status = handleMessageNewFrame(msg.data.frame.capture_timestamp);
             break;
 
     case MESSAGE_ID_REMOVE_REDEYE:

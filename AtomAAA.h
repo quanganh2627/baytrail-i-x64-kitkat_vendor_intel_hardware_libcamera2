@@ -19,6 +19,7 @@
 
 #include <utils/Errors.h>
 #include <utils/threads.h>
+#include <time.h>
 #include "AtomCommon.h"
 #ifdef __cplusplus
 extern "C" {
@@ -160,8 +161,7 @@ public:
     status_t init(const char *sensor_id, int fd);
     status_t unInit();
     status_t applyIspSettings();
-    status_t switchMode(AtomMode mode);
-    status_t setFrameRate(float fps);
+    status_t switchModeAndRate(AtomMode mode, float fps);
 
     // Getters and Setters
     status_t setAeWindow(const CameraWindow *window);
@@ -203,7 +203,8 @@ public:
     // ISP processing functions
     status_t applyRedEyeRemoval(const AtomBuffer &snapshotBuffer, int width, int height, int format);
     status_t applyDvsProcess();
-    status_t apply3AProcess(bool read_stats = true);
+    status_t apply3AProcess(bool read_stats,
+        struct timeval capture_timestamp);
 
     status_t startStillAf();
     status_t stopStillAf();
@@ -225,6 +226,7 @@ private:
     FlashMode mFlashMode;
     AwbMode mAwbMode;
     nsecs_t mStillAfStart;
+    bool mRedeyeEnabled;
 }; // class AtomAAA
 
 }; // namespace android

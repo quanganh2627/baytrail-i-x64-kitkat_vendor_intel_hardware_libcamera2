@@ -21,6 +21,7 @@
 #include <linux/atomisp.h>
 #include <linux/videodev2.h>
 #include <stdio.h>
+#include <time.h>
 
 #define MAX_CAMERAS 2
 
@@ -53,6 +54,9 @@ struct AtomBuffer {
     bool shared;            // buffer sharing
     AtomMode type;          // type
     IBufferOwner* owner;    //owner who is responsible to enqueue back to AtomISP
+    struct timeval  capture_timestamp;
+                            // system timestamp from when the frame was
+                            // captured
 };
 
 

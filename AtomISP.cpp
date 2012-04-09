@@ -568,16 +568,12 @@ status_t AtomISP::startPreview()
     }
 
     if (mAAA->is3ASupported()) {
-        if (mAAA->switchMode(MODE_PREVIEW) != NO_ERROR) {
-            LOGW("Could not switch 3A to MODE_PREVIEW!");
+        if (mAAA->switchModeAndRate(MODE_PREVIEW, mConfig.fps) == NO_ERROR) {
+            LOG1("Switched 3A to MODE_PREVIEW at %.2f fps",
+                 mConfig.fps);
         } else {
-            LOG1("3A mode switched to MODE_PREVIEW");
-            if (mAAA->setFrameRate(mConfig.fps) == NO_ERROR) {
-                LOG1("Set: 3A frame rate to %.2f", mConfig.fps);
-            } else {
-                // In this situation we can still continue with 3A
-                LOGW("Could not set 3A frame rate!");
-            }
+            LOGW("Failed switching 3A to MODE_PREVIEW at %.2f fps",
+                 mConfig.fps);
         }
     }
 
@@ -659,16 +655,12 @@ status_t AtomISP::startRecording() {
     }
 
     if (mAAA->is3ASupported()) {
-        if (mAAA->switchMode(MODE_VIDEO) != NO_ERROR) {
-            LOGW("Could not switch 3A to MODE_PREVIEW!");
+        if (mAAA->switchModeAndRate(MODE_VIDEO, mConfig.fps) == NO_ERROR) {
+            LOG1("Switched 3A to MODE_VIDEO at %.2f fps",
+                 mConfig.fps);
         } else {
-            LOG1("3A mode switched to MODE_VIDEO");
-            if (mAAA->setFrameRate(mConfig.fps) == NO_ERROR) {
-                LOG1("Set: 3A frame rate to %.2f", mConfig.fps);
-            } else {
-                // In this situation we can still continue with 3A
-                LOGW("Could not set 3A frame rate!");
-            }
+            LOGW("Failed switching 3A to MODE_VIDEO at %.2f fps",
+                 mConfig.fps);
         }
     }
 
@@ -759,16 +751,12 @@ status_t AtomISP::startCapture()
     }
 
     if (mAAA->is3ASupported()) {
-        if (mAAA->switchMode(MODE_CAPTURE) != NO_ERROR) {
-            LOGW("Could not switch 3A to MODE_CAPTURE!");
+        if (mAAA->switchModeAndRate(MODE_CAPTURE, mConfig.fps) == NO_ERROR) {
+            LOG1("Switched 3A to MODE_CAPTURE at %.2f fps",
+                 mConfig.fps);
         } else {
-            LOG1("3A mode switched to MODE_CAPTURE");
-            if (mAAA->setFrameRate(mConfig.fps) == NO_ERROR) {
-                LOG1("Set: 3A frame rate to %.2f", mConfig.fps);
-            } else {
-                // In this situation we can still continue with 3A
-                LOGW("Could not set 3A frame rate!");
-            }
+            LOGW("Failed switching 3A to MODE_CAPTURE at %.2f fps",
+                 mConfig.fps);
         }
     }
 
@@ -1915,6 +1903,7 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameS
     LOG2("Device: %d. Grabbed frame of size: %d", mPreviewDevice, buf.bytesused);
     mPreviewBuffers[index].id = index;
     mPreviewBuffers[index].ispPrivate = mSessionId;
+    mPreviewBuffers[index].capture_timestamp = buf.timestamp;
     *buff = mPreviewBuffers[index];
 
     if (frameStatus)
@@ -1989,6 +1978,7 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp)
     LOG2("Device: %d. Grabbed frame of size: %d", mRecordingDevice, buf.bytesused);
     mRecordingBuffers[index].id = index;
     mRecordingBuffers[index].ispPrivate = mSessionId;
+    mRecordingBuffers[index].capture_timestamp = buf.timestamp;
     *buff = mRecordingBuffers[index];
     *timestamp = systemTime();
 
@@ -2048,6 +2038,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
         return BAD_INDEX;
     }
     LOG1("Device: %d. Grabbed frame of size: %d", V4L2_FIRST_DEVICE, buf.bytesused);
+    mSnapshotBuffers[snapshotIndex].capture_timestamp = buf.timestamp;
 
     postviewIndex = grabFrame(V4L2_SECOND_DEVICE, &buf);
     if (postviewIndex < 0) {
@@ -2058,6 +2049,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
         return BAD_INDEX;
     }
     LOG1("Device: %d. Grabbed frame of size: %d", V4L2_SECOND_DEVICE, buf.bytesused);
+    mPostviewBuffers[postviewIndex].capture_timestamp = buf.timestamp;
 
     if (snapshotIndex != postviewIndex ||
             snapshotIndex >= MAX_V4L2_BUFFERS) {

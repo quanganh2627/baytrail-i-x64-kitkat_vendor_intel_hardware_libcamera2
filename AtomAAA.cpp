@@ -19,6 +19,7 @@
 #include "AtomAAA.h"
 #include "AtomCommon.h"
 #include <math.h>
+#include <time.h>
 
 namespace android {
 
@@ -32,6 +33,7 @@ AtomAAA::AtomAAA() :
     ,mFlashMode(CAM_AE_FLASH_MODE_NOT_SET)
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
     ,mStillAfStart(0)
+    ,mRedeyeEnabled(false)
 {
     LOG1("@%s", __FUNCTION__);
     mIspSettings.GBCE_strength = DEFAULT_GBCE_STRENGTH;
@@ -49,7 +51,9 @@ status_t AtomAAA::init(const char *sensor_id, int fd)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: sensor_id = %s, fd = %d", __FUNCTION__, sensor_id, fd);
-    if (ci_adv_init(sensor_id, fd) == 0) {
+    int init_result;
+    init_result = ci_adv_init(sensor_id, fd, NULL);
+    if (init_result == 0) {
         mSensorType = SENSOR_TYPE_RAW;
         mHas3A = true;
     } else {
@@ -72,6 +76,7 @@ status_t AtomAAA::unInit()
     mAfMode = CAM_AF_MODE_NOT_SET;
     mAwbMode = CAM_AWB_MODE_NOT_SET;
     mFlashMode = CAM_AE_FLASH_MODE_NOT_SET;
+    mRedeyeEnabled = false;
     return NO_ERROR;
 }
 
@@ -89,7 +94,7 @@ status_t AtomAAA::applyIspSettings()
     return NO_ERROR;
 }
 
-status_t AtomAAA::switchMode(AtomMode mode)
+status_t AtomAAA::switchModeAndRate(AtomMode mode, float fps)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
@@ -112,18 +117,7 @@ status_t AtomAAA::switchMode(AtomMode mode)
         LOGW("SwitchMode: Wrong sensor mode %d", mode);
         break;
     }
-    ci_adv_switch_isp_config(isp_mode);
-    ci_adv_switch_mode(isp_mode);
-    return NO_ERROR;
-}
-
-status_t AtomAAA::setFrameRate(float fps)
-{
-    Mutex::Autolock lock(m3aLock);
-    LOG1("@%s: fps = %.2f", __FUNCTION__, fps);
-    if(!mHas3A)
-        return INVALID_OPERATION;
-    ci_adv_set_frame_rate(CI_ADV_S15_16_FROM_FLOAT(fps));
+    ci_adv_configure(isp_mode, fps);
     return NO_ERROR;
 }
 
@@ -670,7 +664,7 @@ status_t AtomAAA::setRedEyeRemoval(bool en)
     LOG1("@%s: en = %d", __FUNCTION__, en);
     if(!mHas3A)
         return INVALID_OPERATION;
-    ci_adv_redeye_enable(en);
+    mRedeyeEnabled = en;
     return NO_ERROR;
 }
 
@@ -680,7 +674,7 @@ bool AtomAAA::getRedEyeRemoval()
     LOG1("@%s", __FUNCTION__);
     if(!mHas3A)
         return false;
-   return ci_adv_redeye_is_enabled();
+   return mRedeyeEnabled;
 }
 
 status_t AtomAAA::setAwbMapping(AwbMapping mode)
@@ -949,14 +943,15 @@ status_t AtomAAA::applyDvsProcess()
     return status;
 }
 
-int AtomAAA::apply3AProcess(bool read_stats)
+int AtomAAA::apply3AProcess(bool read_stats,
+    const struct timeval capture_timestamp)
 {
     Mutex::Autolock lock(m3aLock);
     LOG2("@%s: read_stats = %d", __FUNCTION__, read_stats);
     status_t status = NO_ERROR;
     if(!mHas3A)
         return INVALID_OPERATION;
-    if (ci_adv_process_frame(read_stats) != 0) {
+    if (ci_adv_process_frame(read_stats, &capture_timestamp) != 0) {
         status = UNKNOWN_ERROR;
     }
     return status;

@@ -710,7 +710,7 @@ bool ControlThread::runPreFlashSequence()
     if (ret) {
         mAAA->applyPreFlashProcess(CAM_FLASH_STAGE_MAIN);
     } else {
-        mAAA->apply3AProcess(true);
+        mAAA->apply3AProcess(true, buff.capture_timestamp);
     }
 
     return ret;
@@ -2307,7 +2307,7 @@ status_t ControlThread::dequeuePreview()
             mCoupledBuffers[buff.id].previewBuffReturned = false;
         }
         if (mAAA->is3ASupported()) {
-            status = m3AThread->newFrame();
+            status = m3AThread->newFrame(buff.capture_timestamp);
             if (status != NO_ERROR)
                 LOGW("Error notifying new frame to 3A thread!");
         }

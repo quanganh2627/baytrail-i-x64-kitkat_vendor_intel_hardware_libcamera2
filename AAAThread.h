@@ -18,6 +18,7 @@
 #define ANDROID_LIBCAMERA_AAA_THREAD_H
 
 #include <utils/threads.h>
+#include <time.h>
 #include "AtomAAA.h"
 #include "MessageQueue.h"
 
@@ -54,7 +55,7 @@ public:
     status_t enableDVS(bool en);
     status_t autoFocus();
     status_t cancelAutoFocus();
-    status_t newFrame();
+    status_t newFrame(struct timeval capture_timestamp);
     status_t applyRedEyeRemoval(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer, int width, int height, int format);
 
 // private types
@@ -91,10 +92,16 @@ private:
         int format;
     };
 
+    // for MESSAGE_ID_NEW_FRAME
+    struct MessageNewFrame {
+        struct timeval capture_timestamp;
+    };
+
     // union of all message data
     union MessageData {
         MessageEnable enable;
         MessagePicture picture;
+        MessageNewFrame frame;
     };
 
     // message id and message data
@@ -112,7 +119,7 @@ private:
     status_t handleMessageEnableDVS(MessageEnable* msg);
     status_t handleMessageAutoFocus();
     status_t handleMessageCancelAutoFocus();
-    status_t handleMessageNewFrame();
+    status_t handleMessageNewFrame(struct timeval capture_timestamp);
     status_t handleMessageRemoveRedEye(MessagePicture* msg);
 
     // main message function
