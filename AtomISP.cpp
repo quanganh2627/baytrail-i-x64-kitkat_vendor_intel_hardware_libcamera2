@@ -83,19 +83,21 @@
  * */
 #ifdef MFLD_PR2
 
+#define PREFERRED_PREVIEW_SIZE_FOR_VIDEO    "640x480"
 #define FRONT_CAMERA_ROTATION    90
 #define BACK_CAMERA_ROTATION     90
 
 #elif MFLD_DV10
 
+#define PREFERRED_PREVIEW_SIZE_FOR_VIDEO    "1280x720"
 #define FRONT_CAMERA_ROTATION    180
 #define BACK_CAMERA_ROTATION     180
 
 #else
 
+#define PREFERRED_PREVIEW_SIZE_FOR_VIDEO    "640x480"
 #define FRONT_CAMERA_ROTATION    0
 #define BACK_CAMERA_ROTATION     0
-
 #endif
 
 namespace android {
@@ -288,7 +290,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
      * RECORDING
      */
     params->setVideoSize(mConfig.recording.width, mConfig.recording.height);
-    params->set(CameraParameters::KEY_PREFERRED_PREVIEW_SIZE_FOR_VIDEO, "1280x720");
+    params->set(CameraParameters::KEY_PREFERRED_PREVIEW_SIZE_FOR_VIDEO, PREFERRED_PREVIEW_SIZE_FOR_VIDEO);
     params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, "176x144,320x240,352x288,640x480,1280x720,1920x1080");
     params->set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,
                 CameraParameters::PIXEL_FORMAT_YUV420SP);
