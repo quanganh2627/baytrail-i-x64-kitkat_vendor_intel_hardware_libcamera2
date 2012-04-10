@@ -26,7 +26,7 @@
 #endif
 #define LOG_TAG "OlaFaceDetect"
 //#define LOG_NDEBUG 0
-#include <utils/Log.h>
+#include "LogHelper.h"
 
 namespace android {
 
