@@ -448,6 +448,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
         }
         params->set(CameraParameters::KEY_SUPPORTED_SCENE_MODES, sceneModes);
 
+#ifdef RED_EYE_MODE_SUPPORT
         // red-eye mode
         params->set(CameraParameters::KEY_RED_EYE_MODE, CameraParameters::RED_EYE_REMOVAL_OFF);
         char redEyeModes[100] = {0};
@@ -459,7 +460,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
             return;
         }
         params->set(CameraParameters::KEY_SUPPORTED_RED_EYE_MODES, redEyeModes);
-
+#endif
         // 3a lock: auto-exposure lock
         params->set(CameraParameters::KEY_AUTO_EXPOSURE_LOCK, CameraParameters::FALSE);
         params->set(CameraParameters::KEY_AUTO_EXPOSURE_LOCK_SUPPORTED, CameraParameters::TRUE);

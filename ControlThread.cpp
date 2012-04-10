@@ -1909,6 +1909,7 @@ status_t ControlThread::processParamRedEyeMode(const CameraParameters *oldParams
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+#ifdef RED_EYE_MODE_SUPPORT
     const char* oldRedEye = oldParams->get(CameraParameters::KEY_RED_EYE_MODE);
     const char* newRedEye = newParams->get(CameraParameters::KEY_RED_EYE_MODE);
     if (newRedEye && oldRedEye && strncmp(newRedEye, oldRedEye, MAX_PARAM_VALUE_LENGTH) != 0) {
@@ -1922,6 +1923,7 @@ status_t ControlThread::processParamRedEyeMode(const CameraParameters *oldParams
             LOG1("Changed: %s -> %s", CameraParameters::KEY_RED_EYE_MODE, newRedEye);
         }
     }
+#endif
     return status;
 }
 
