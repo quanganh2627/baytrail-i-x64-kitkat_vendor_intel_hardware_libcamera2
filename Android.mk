@@ -58,14 +58,18 @@ LOCAL_CFLAGS += -DUSE_INTEL_JPEG
 
 endif
 
-# Setup a conditional so that the camera can be upright on both platforms that
-# have "normal" (e.g., DV2) and "upside-down" (e.g., DV1) cameras.
-define select_180_rotation
-  $(eval LOCAL_CFLAGS += -DCAMERA_180_ROTATION)
-endef
-ifeq ($(TARGET_PRODUCT),mfld_dv10)
-  $(eval $(call $(select_180_rotation)))
+ifeq ($(TARGET_PRODUCT), mfld_cdk)
+LOCAL_CFLAGS += -DMFLD_CDK
+else ifeq ($(TARGET_PRODUCT),mfld_gi)
+LOCAL_CFLAGS += -DMFLD_GI
+else ifeq ($(TARGET_PRODUCT), mfld_dv10)
+LOCAL_CFLAGS += -DMFLD_DV10
+else ifeq ($(TARGET_PRODUCT), ctp_pr0)
+LOCAL_CFLAGS += -DCTP_PR0
+else
+LOCAL_CFLAGS += -DMFLD_PR2
 endif
+
 
 # The camera.<TARGET_DEVICE>.so will be built for each platform
 # (which should be unique to the TARGET_DEVICE environment)

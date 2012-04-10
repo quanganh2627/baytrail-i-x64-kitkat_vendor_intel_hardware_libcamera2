@@ -78,6 +78,26 @@
 #define MAX_FRONT_CAMERA_VIDEO_WIDTH   1920
 #define MAX_FRONT_CAMERA_VIDEO_HEIGHT  1080
 
+/**
+ * Platform specific defines
+ * */
+#ifdef MFLD_PR2
+
+#define FRONT_CAMERA_ROTATION    90
+#define BACK_CAMERA_ROTATION     90
+
+#elif MFLD_DV10
+
+#define FRONT_CAMERA_ROTATION    180
+#define BACK_CAMERA_ROTATION     180
+
+#else
+
+#define FRONT_CAMERA_ROTATION    0
+#define BACK_CAMERA_ROTATION     0
+
+#endif
+
 namespace android {
 
 ////////////////////////////////////////////////////////////////////
@@ -93,20 +113,10 @@ int AtomISP::numCameras = 0;
 
 const camera_info AtomISP::mCameraInfo[MAX_CAMERAS] = {
     {
-        CAMERA_FACING_BACK,
-#ifdef CAMERA_180_ROTATION
-        180,
-#else
-        0,
-#endif
+        CAMERA_FACING_BACK, BACK_CAMERA_ROTATION
     },
     {
-        CAMERA_FACING_FRONT,
-#ifdef CAMERA_180_ROTATION
-        180,
-#else
-        0,
-#endif
+        CAMERA_FACING_FRONT,FRONT_CAMERA_ROTATION
     }
 };
 
