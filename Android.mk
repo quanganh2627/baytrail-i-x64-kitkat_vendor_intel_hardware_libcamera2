@@ -67,8 +67,23 @@ ifeq ($(TARGET_PRODUCT),mfld_dv10)
   $(eval $(call $(select_180_rotation)))
 endif
 
+# The camera.<TARGET_DEVICE>.so will be built for each platform
+# (which should be unique to the TARGET_DEVICE environment)
+# to use Camera Imaging(CI) supported by intel.
+# If a platform does not support camera the USE_CAMERA_STUB 
+# should be set to "true" in BoardConfig.mk
+# LOCAL_MODULE := camera.$(TARGET_DEVICE)
+ 
+ifeq ($(TARGET_PRODUCT),mfld_gi)
+LOCAL_MODULE := camera.mfld_gi
+else ifeq ($(TARGET_PRODUCT), mfld_dv10)
+LOCAL_MODULE := camera.mfld_dv10
+else ifeq ($(TARGET_PRODUCT), ctp_pr0)
+LOCAL_MODULE := camera.ctp_pr0
+else
+LOCAL_MODULE := camera.mfld_pr2
+endif
 LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
-LOCAL_MODULE := camera.$(TARGET_BOARD_PLATFORM)
 LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_SHARED_LIBRARY)
