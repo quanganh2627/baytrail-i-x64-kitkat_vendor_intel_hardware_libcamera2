@@ -102,7 +102,7 @@ ControlThread::ControlThread(int cameraId) :
     }
     m_pFaceDetector=FaceDetectorFactory::createDetector(mCallbacks);
     if (m_pFaceDetector != 0){
-        mParameters.set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW,
+        mParameters.set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_SW,
                 m_pFaceDetector->getMaxFacesDetectable());
     } else {
         LOGE("Failed on creating face detector.");
