@@ -479,6 +479,16 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
         // metering areas
         params->set(CameraParameters::KEY_MAX_NUM_METERING_AREAS, mAAA->getAfMaxNumWindows());
 
+        // No HDR imaging
+        params->set(CameraParameters::KEY_HDR_IMAGING, "off");
+        params->set(CameraParameters::KEY_SUPPORTED_HDR_IMAGING, "off");
+        params->set(CameraParameters::KEY_HDR_VIVIDNESS, "none");
+        params->set(CameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none");
+        params->set(CameraParameters::KEY_HDR_SHARPENING, "none");
+        params->set(CameraParameters::KEY_SUPPORTED_HDR_SHARPENING, "none");
+        params->set(CameraParameters::KEY_HDR_SAVE_ORIGINAL, "off");
+        params->set(CameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL, "off");
+
     }
 }
 
