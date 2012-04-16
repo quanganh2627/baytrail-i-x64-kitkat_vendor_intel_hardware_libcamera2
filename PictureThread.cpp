@@ -332,7 +332,8 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
             jpegBuf.buff->release(jpegBuf.buff);
         }
     }
-
+    // Send the postview picture callback now
+    mCallbacks->postviewFrameDone(&msg->postviewBuf);
     // When the encoding is done, send back the buffers to camera
     mPictureDoneCallback->pictureDone(&msg->snaphotBuf, &msg->postviewBuf);
 

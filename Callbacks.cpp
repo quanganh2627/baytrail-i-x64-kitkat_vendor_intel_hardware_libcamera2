@@ -106,6 +106,15 @@ void Callbacks::compressedFrameDone(AtomBuffer *buff)
     }
 }
 
+void Callbacks::postviewFrameDone(AtomBuffer *buff)
+{
+    LOG1("@%s", __FUNCTION__);
+    if ((mMessageFlags & CAMERA_MSG_POSTVIEW_FRAME) && mDataCB != NULL) {
+        LOGD("Sending message: CAMERA_MSG_POSTVIEW_FRAME, buff id = %d", buff->id);
+        mDataCB(CAMERA_MSG_POSTVIEW_FRAME, buff->buff, NULL, 0, mUserToken);
+    }
+}
+
 void Callbacks::cameraError(int err)
 {
     LOG1("@%s", __FUNCTION__);

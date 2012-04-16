@@ -1146,6 +1146,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             mCoupledBuffers[curBuff].videoSnapshotBuff = false;
         }
     } else if (mState == STATE_CAPTURE) {
+
         // Return the picture frames back to ISP
         status = mISP->putSnapshot(&msg->snapshotBuf, &msg->postviewBuf);
         if (status == DEAD_OBJECT) {
