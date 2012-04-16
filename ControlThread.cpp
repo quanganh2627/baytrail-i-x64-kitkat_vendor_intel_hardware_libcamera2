@@ -1418,23 +1418,23 @@ status_t ControlThread::processParamAFLock(const CameraParameters *oldParams,
     status_t status = NO_ERROR;
 
     // af lock mode
-    const char* oldValue = oldParams->get(CameraParameters::KEY_AUTO_FOCUS_LOCK);
-    const char* newValue = newParams->get(CameraParameters::KEY_AUTO_FOCUS_LOCK);
+    const char* oldValue = oldParams->get(CameraParameters::KEY_AF_LOCK_MODE);
+    const char* newValue = newParams->get(CameraParameters::KEY_AF_LOCK_MODE);
     if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
         bool af_lock;
 
-        if(!strncmp(newValue, CameraParameters::TRUE, strlen(CameraParameters::TRUE))) {
+        if(!strcmp(newValue, "lock")) {
             af_lock = true;
-        } else if(!strncmp(newValue, CameraParameters::FALSE, strlen(CameraParameters::FALSE))) {
+        } else if(!strcmp(newValue, "unlock")) {
             af_lock = false;
         } else {
-            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_AUTO_FOCUS_LOCK, newValue);
+            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_AF_LOCK_MODE, newValue);
             return INVALID_OPERATION;
         }
         status = mAAA->setAfLock(af_lock);
 
         if (status == NO_ERROR) {
-            LOG1("Changed: %s -> %s", CameraParameters::KEY_AUTO_FOCUS_LOCK, newValue);
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_AF_LOCK_MODE, newValue);
         }
     }
 
