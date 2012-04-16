@@ -1892,7 +1892,7 @@ status_t ControlThread::processParamWhiteBalance(const CameraParameters *oldPara
             wbMode = CAM_AWB_MODE_SUNSET;
         } else if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_SHADE, strlen(CameraParameters::WHITE_BALANCE_SHADE))) {
             wbMode = CAM_AWB_MODE_SHADOW;
-        } else if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_MANUAL, strlen(CameraParameters::WHITE_BALANCE_MANUAL))) {
+        } else if(!strcmp(newWb, "manual" )) {
             wbMode = CAM_AWB_MODE_MANUAL_INPUT;
         }
 
