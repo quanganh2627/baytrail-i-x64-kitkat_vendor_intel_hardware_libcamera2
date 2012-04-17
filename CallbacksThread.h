@@ -21,12 +21,15 @@
 #include <utils/Vector.h>
 #include "MessageQueue.h"
 #include "AtomCommon.h"
+#include "IFaceDetectionListener.h"
 
 namespace android {
 
 class Callbacks;
 
-class CallbacksThread : public Thread {
+class CallbacksThread :
+    public Thread,
+    public IFaceDetectionListener {
 
 private:
     static CallbacksThread* mInstance;
@@ -53,6 +56,7 @@ public:
     status_t requestTakePicture();
     status_t flushPictures();
     size_t   getQueuedBuffersNum() { return mJpegBuffers.size(); }
+    virtual void facesDetected(camera_frame_metadata_t &face_metadata);
 
 // private types
 private:
@@ -65,6 +69,7 @@ private:
         MESSAGE_ID_JPEG_DATA_READY,     // we have a JPEG image ready
         MESSAGE_ID_JPEG_DATA_REQUEST,   // a JPEG image was requested
         MESSAGE_ID_FLUSH,
+        MESSAGE_ID_FACES,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -78,11 +83,18 @@ private:
         AtomBuffer buff;
     };
 
+    struct MessageFaces {
+        camera_frame_metadata_t meta_data;
+    };
+
     // union of all message data
     union MessageData {
 
         //MESSAGE_ID_JPEG_DATA_READY
         MessageCompressedFrame compressedFrame;
+
+        // MESSAGE_ID_FACES
+        MessageFaces faces;
     };
 
     // message id and message data
@@ -100,6 +112,7 @@ private:
     status_t handleMessageJpegDataReady(MessageCompressedFrame *msg);
     status_t handleMessageJpegDataRequest();
     status_t handleMessageFlush();
+    status_t handleMessageFaces(MessageFaces *msg);
 
     // main message function
     status_t waitForAndExecuteMessage();

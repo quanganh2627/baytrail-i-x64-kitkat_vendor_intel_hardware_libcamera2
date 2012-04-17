@@ -84,6 +84,15 @@ status_t CallbacksThread::flushPictures()
     return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
 }
 
+void CallbacksThread::facesDetected(camera_frame_metadata_t &face_metadata)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_FACES;
+    msg.data.faces.meta_data= face_metadata;
+    mMessageQueue.send(&msg);
+}
+
 status_t CallbacksThread::handleMessageExit()
 {
     LOG1("@%s", __FUNCTION__);
@@ -145,6 +154,12 @@ status_t CallbacksThread::handleMessageFlush()
     return status;
 }
 
+status_t CallbacksThread::handleMessageFaces(MessageFaces *msg)
+{
+    mCallbacks->facesDetected(msg->meta_data);
+    return NO_ERROR;
+}
+
 status_t CallbacksThread::waitForAndExecuteMessage()
 {
     LOG2("@%s", __FUNCTION__);
@@ -172,6 +187,10 @@ status_t CallbacksThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_FLUSH:
             status = handleMessageFlush();
+            break;
+
+        case MESSAGE_ID_FACES:
+            status = handleMessageFaces(&msg.data.faces);
             break;
 
         default:

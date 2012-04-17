@@ -100,7 +100,7 @@ ControlThread::ControlThread(int cameraId) :
     if (status != NO_ERROR) {
         LOGW("Error starting video thread!");
     }
-    m_pFaceDetector=FaceDetectorFactory::createDetector(mCallbacks);
+    m_pFaceDetector=FaceDetectorFactory::createDetector(mCallbacksThread.get());
     if (m_pFaceDetector != 0){
         mParameters.set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_SW,
                 m_pFaceDetector->getMaxFacesDetectable());

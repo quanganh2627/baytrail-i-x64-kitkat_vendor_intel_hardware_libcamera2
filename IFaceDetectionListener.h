@@ -22,7 +22,6 @@
 #include <hardware/camera.h>
 
 namespace android {
-class AtomBuffer;
 class IFaceDetectionListener
 {
 public:
@@ -30,7 +29,7 @@ public:
     /**
      * @param
      */
-    virtual void facesDetected(camera_frame_metadata_t &face_metadata, AtomBuffer* buf) = 0;
+    virtual void facesDetected(camera_frame_metadata_t &face_metadata) = 0;
 };
 
 }
