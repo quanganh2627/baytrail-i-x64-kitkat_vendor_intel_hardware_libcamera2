@@ -51,54 +51,133 @@ namespace android {
  */
 #define ASPECT_TOLERANCE 0.001
 
-ControlThread::ControlThread(int cameraId) :
+ControlThread::ControlThread() :
     Thread(true) // callbacks may call into java
-    ,mISP(new AtomISP(cameraId))
-    ,mAAA(AtomAAA::getInstance())
-    ,mPreviewThread(new PreviewThread((ICallbackPreview *) this))
-    ,mPictureThread(new PictureThread((ICallbackPicture *) this))
-    ,mVideoThread(new VideoThread())
-    ,m3AThread(new AAAThread((ICallbackAAA *) this))
+    ,mISP(NULL)
+    ,mAAA(NULL)
+    ,mPreviewThread(NULL)
+    ,mPictureThread(NULL)
+    ,mVideoThread(NULL)
+    ,m3AThread(NULL)
     ,mMessageQueue("ControlThread", (int) MESSAGE_ID_MAX)
     ,mState(STATE_STOPPED)
     ,mThreadRunning(false)
-    ,mCallbacks(Callbacks::getInstance())
-    ,mCallbacksThread(CallbacksThread::getInstance())
+    ,mCallbacks(NULL)
+    ,mCallbacksThread(NULL)
     ,mCoupledBuffers(NULL)
-    ,mNumBuffers(mISP->getNumBuffers())
+    ,mNumBuffers(0)
     ,m_pFaceDetector(0)
     ,mFaceDetectionActive(false)
     ,mFlashNeeded(false)
-    ,mBSInstance(BufferShareRegistry::getInstance())
+    ,mBSInstance(NULL)
     ,mBSState(BS_STATE_DISABLED)
     ,mLastRecordingBuffIndex(0)
 {
+    // DO NOT PUT ANY CODE IN THIS METHOD!!!
+    // Put all init code in the init() method.
+    // This is a workaround for an issue with Thread reference counting.
+    LOG1("@%s", __FUNCTION__);
+}
+
+ControlThread::~ControlThread()
+{
+    // DO NOT PUT ANY CODE IN THIS METHOD!!!
+    // Put all deinit code in the deinit() method.
+    // This is a workaround for an issue with Thread reference counting.
+    LOG1("@%s", __FUNCTION__);
+}
+
+status_t ControlThread::init(int cameraId)
+{
     LOG1("@%s: cameraId = %d", __FUNCTION__, cameraId);
+
+    status_t status = UNKNOWN_ERROR;
+
+    mISP = new AtomISP(cameraId);
+    if (mISP == NULL) {
+        LOGE("error creating ISP");
+        goto bail;
+    }
+
+    mNumBuffers = mISP->getNumBuffers();
+
+    mAAA = AtomAAA::getInstance();
+    if (mAAA == NULL) {
+        LOGE("error creating AAA");
+        goto bail;
+    }
+
+    mPreviewThread = new PreviewThread((ICallbackPreview *) this);
+    if (mPreviewThread == NULL) {
+        LOGE("error creating PreviewThread");
+        goto bail;
+    }
+
+    mPictureThread = new PictureThread((ICallbackPicture *) this);
+    if (mPictureThread == NULL) {
+        LOGE("error creating PictureThread");
+        goto bail;
+    }
+
+    mVideoThread = new VideoThread();
+    if (mVideoThread == NULL) {
+        LOGE("error creating VideoThread");
+        goto bail;
+    }
+
+    m3AThread = new AAAThread((ICallbackAAA *) this);
+    if (m3AThread == NULL) {
+        LOGE("error creating 3AThread");
+        goto bail;
+    }
+
+    mCallbacks = Callbacks::getInstance();
+    if (mCallbacks == NULL) {
+        LOGE("error creating Callbacks");
+        goto bail;
+    }
+
+    mCallbacksThread = CallbacksThread::getInstance();
+    if (mCallbacksThread == NULL) {
+        LOGE("error creating CallbacksThread");
+        goto bail;
+    }
+
+    mBSInstance = BufferShareRegistry::getInstance();
+    if (mBSInstance == NULL) {
+        LOGE("error creating BSInstance");
+        goto bail;
+    }
 
     // get default params from AtomISP and JPEG encoder
     mISP->getDefaultParameters(&mParameters);
     mPictureThread->getDefaultParameters(&mParameters);
     mPreviewThread->getDefaultParameters(&mParameters);
 
-    status_t status = m3AThread->run();
+    status = m3AThread->run();
     if (status != NO_ERROR) {
         LOGE("Error starting 3A thread!");
+        goto bail;
     }
     status = mPreviewThread->run();
     if (status != NO_ERROR) {
         LOGE("Error starting preview thread!");
+        goto bail;
     }
     status = mPictureThread->run();
     if (status != NO_ERROR) {
         LOGW("Error starting picture thread!");
+        goto bail;
     }
     status = mCallbacksThread->run();
     if (status != NO_ERROR) {
         LOGW("Error starting callbacks thread!");
+        goto bail;
     }
     status = mVideoThread->run();
     if (status != NO_ERROR) {
         LOGW("Error starting video thread!");
+        goto bail;
     }
     m_pFaceDetector=FaceDetectorFactory::createDetector(mCallbacksThread.get());
     if (m_pFaceDetector != 0){
@@ -106,29 +185,60 @@ ControlThread::ControlThread(int cameraId) :
                 m_pFaceDetector->getMaxFacesDetectable());
     } else {
         LOGE("Failed on creating face detector.");
+        goto bail;
     }
+
+    return NO_ERROR;
+
+bail:
+
+    // this should clean up only what NEEDS to be cleaned up
+    deinit();
+
+    return status;
 }
 
-ControlThread::~ControlThread()
+void ControlThread::deinit()
 {
+
+    // NOTE: This method should clean up only what NEEDS to be cleaned up.
+    //       Refer to ControlThread::init(). This method will be called if
+    //       even if only partial or no initialization was successful.
+    //       Therefore it is important that each specific deinit step
+    //       is checked for successful initialization before proceeding 
+    //       with deinit (eg. check for NULL / non-NULL).
+
     LOG1("@%s", __FUNCTION__);
 
-    mPreviewThread->requestExitAndWait();
-    mPreviewThread.clear();
+    if (mPreviewThread != NULL) {
+        mPreviewThread->requestExitAndWait();
+        mPreviewThread.clear();
+    }
 
-    mPictureThread->requestExitAndWait();
-    mPictureThread.clear();
+    if (mPictureThread != NULL) {
+        mPictureThread->requestExitAndWait();
+        mPictureThread.clear();
+    }
 
-    mCallbacksThread->requestExitAndWait();
-    mCallbacksThread.clear();
+    if (mCallbacksThread != NULL) {
+        mCallbacksThread->requestExitAndWait();
+        mCallbacksThread.clear();
+    }
 
-    mVideoThread->requestExitAndWait();
-    mVideoThread.clear();
+    if (mVideoThread != NULL) {
+        mVideoThread->requestExitAndWait();
+        mVideoThread.clear();
+    }
 
-    m3AThread->requestExitAndWait();
-    m3AThread.clear();
+    if (m3AThread != NULL) {
+        m3AThread->requestExitAndWait();
+        m3AThread.clear();
+    }
 
-    mBSInstance.clear();
+    if (mBSInstance != NULL) {
+        mBSInstance.clear();
+    }
+
     if (mISP != NULL) {
         delete mISP;
     }

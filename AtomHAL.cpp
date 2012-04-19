@@ -344,11 +344,19 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
     }
 
     atom_cam.camera_id = atoi(name);
-    atom_cam.control_thread = new ControlThread(atom_cam.camera_id);
+    atom_cam.control_thread = new ControlThread();
     if (atom_cam.control_thread == NULL) {
         LOGE("Memory allocation error!");
         return NO_MEMORY;
     }
+
+    int status = atom_cam.control_thread->init(atom_cam.camera_id);
+    if (status != NO_ERROR) {
+        LOGE("Error initializing ControlThread");
+        atom_cam.control_thread.clear();
+        return status;
+    }
+
     atom_cam.control_thread->run();
 
     camera_dev = (camera_device_t*)malloc(sizeof(*camera_dev));
@@ -378,6 +386,7 @@ static int ATOM_CloseCameraHardware(hw_device_t* device)
     camera_device_t *camera_dev = (camera_device_t *)device;
     atom_camera *cam = (atom_camera *)(camera_dev->priv);
     cam->control_thread->requestExitAndWait();
+    cam->control_thread->deinit();
     cam->control_thread.clear();
 
     free(camera_dev);

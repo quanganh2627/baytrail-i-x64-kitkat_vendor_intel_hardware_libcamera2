@@ -51,7 +51,7 @@ class ControlThread :
 
 // constructor destructor
 public:
-    ControlThread(int cameraId);
+    ControlThread();
     virtual ~ControlThread();
 
 // Thread overrides
@@ -60,6 +60,9 @@ public:
 
 // public methods
 public:
+
+    status_t init(int cameraId);
+    void deinit();
 
     status_t setPreviewWindow(struct preview_stream_ops *window);
 
