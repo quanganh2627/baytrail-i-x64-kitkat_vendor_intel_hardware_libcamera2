@@ -145,8 +145,8 @@ struct IspSettings
 struct SensorParams
 {
     float evBias;
-    unsigned short expTime;
-    unsigned short aperture;
+    int expTime;
+    int aperture;
     int aecApexTv;
     int aecApexSv;
     int aecApexAv;
@@ -206,7 +206,7 @@ public:
     size_t   getAfMaxNumWindows();
     status_t setAfWindows(const CameraWindow *windows, size_t numWindows);
     status_t setNegativeEffect(bool en);
-    status_t getExposureInfo(unsigned short *expTime, unsigned short *aperture,
+    status_t getExposureInfo(int *expTime, int *aperture,
                              int* aecApexTv, int* aecApexSv, int* aecApexAv);
     status_t getAeManualBrightness(float *ret);
     status_t setManualFocus(int focus, bool applyNow);

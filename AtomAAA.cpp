@@ -152,7 +152,7 @@ status_t AtomAAA::setAfWindow(const CameraWindow *window)
             window->weight);
     if(!mHas3A)
         return INVALID_OPERATION;
-    if(ci_adv_af_set_window((ci_adv_window *)window) != ci_adv_success)
+    if(ci_adv_af_set_windows(1,(ci_adv_window *)window) != ci_adv_success)
         return UNKNOWN_ERROR;
     return NO_ERROR;
 }
@@ -756,7 +756,7 @@ status_t AtomAAA::setAfWindows(const CameraWindow *windows, size_t numWindows)
     LOG1("@%s: windows = %p, num = %u", __FUNCTION__, windows, numWindows);
     if(!mHas3A)
         return INVALID_OPERATION;
-    if (ci_adv_af_set_window_multi(numWindows, (ci_adv_window*)windows) != ci_adv_success)
+    if (ci_adv_af_set_windows(numWindows, (ci_adv_window*)windows) != ci_adv_success)
         return UNKNOWN_ERROR;
     return NO_ERROR;
 }
@@ -812,10 +812,10 @@ ci_adv_af_status AtomAAA::isStillAfComplete()
         return ci_adv_af_status_canceled;
     }
 
-    return ci_adv_af_is_complete();
+    return ci_adv_af_get_status();
 }
 
-status_t AtomAAA::getExposureInfo(unsigned short *expTime, unsigned short *aperture,
+status_t AtomAAA::getExposureInfo(int *expTime, int *aperture,
         int* aecApexTv, int* aecApexSv, int* aecApexAv)
 {
     Mutex::Autolock lock(m3aLock);
@@ -840,11 +840,11 @@ status_t AtomAAA::getAeManualBrightness(float *ret)
     if(!mHas3A)
         return INVALID_OPERATION;
 
-    int val;
+    float val;
     if (ci_adv_ae_get_manual_brightness(&val) != ci_adv_success)
         return UNKNOWN_ERROR;
 
-    *ret = CI_ADV_S15_16_TO_FLOAT(val);
+    *ret = val;
     return NO_ERROR;
 }
 
@@ -944,7 +944,7 @@ status_t AtomAAA::applyEv(float bias)
     if(!mHas3A)
         return INVALID_OPERATION;
 
-    ci_adv_err ret = ci_adv_ae_apply_bias(CI_ADV_S15_16_FROM_FLOAT(bias));
+    ci_adv_err ret = ci_adv_ae_apply_bias(bias);
     if(ci_adv_success != ret) {
         LOGE("Error applying EV: %.2f; ret=%d", bias, ret);
         return UNKNOWN_ERROR;
@@ -962,7 +962,7 @@ status_t AtomAAA::setEv(float bias)
 
     bias = bias > 2 ? 2 : bias;
     bias = bias < -2 ? -2 : bias;
-    ci_adv_err ret = ci_adv_ae_set_bias(CI_ADV_S15_16_FROM_FLOAT(bias));
+    ci_adv_err ret = ci_adv_ae_set_bias(bias);
     if(ci_adv_success != ret) {
         LOGE("Error setting EV: %.2f; ret=%d", bias, ret);
         return UNKNOWN_ERROR;
@@ -978,11 +978,10 @@ status_t AtomAAA::getEv(float *ret)
     if(!mHas3A)
         return INVALID_OPERATION;
 
-    int bias;
-    if(ci_adv_ae_get_bias(&bias) != ci_adv_success)
+
+    if(ci_adv_ae_get_bias(ret) != ci_adv_success)
         return UNKNOWN_ERROR;
 
-    *ret = CI_ADV_S15_16_TO_FLOAT(bias);
     return NO_ERROR;
 }
 
@@ -993,11 +992,11 @@ status_t AtomAAA::getManualIso(int *ret)
     if(!mHas3A)
         return INVALID_OPERATION;
 
-    int ev;
+    float ev;
     if(ci_adv_ae_get_manual_iso(&ev) != ci_adv_success)
         return UNKNOWN_ERROR;
 
-    *ret = (int)(3.125 * pow(2, CI_ADV_S15_16_TO_FLOAT(ev)));
+    *ret = (int)(3.125 * pow(2, ev));
     return NO_ERROR;
 }
 

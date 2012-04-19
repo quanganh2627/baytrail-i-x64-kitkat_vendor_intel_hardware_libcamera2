@@ -240,7 +240,6 @@ void EXIFMaker::setSensorParams(const SensorParams& sensorParams)
 void EXIFMaker::initializeHWSpecific(const atomisp_makernote_info &makerNote)
 {
     LOG1("@%s", __FUNCTION__);
-
     // f number
     if (makerNote.f_number_curr > 0) {
         // Error handler: if driver does not support Fnumber achieving, just give the default value.
