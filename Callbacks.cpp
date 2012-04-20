@@ -163,15 +163,19 @@ void Callbacks::allocateMemory(AtomBuffer *buff, int size)
 void Callbacks::autofocusDone(bool status)
 {
     LOG1("@%s", __FUNCTION__);
-    if (mMessageFlags & CAMERA_MSG_FOCUS)
+    if (mMessageFlags & CAMERA_MSG_FOCUS) {
+        LOG1("Sending message: CAMERA_MSG_FOCUS");
         mNotifyCB(CAMERA_MSG_FOCUS, status, 0, mUserToken);
+    }
 }
 
 void Callbacks::shutterSound()
 {
     LOG1("@%s", __FUNCTION__);
-    if (mMessageFlags & CAMERA_MSG_SHUTTER)
+    if (mMessageFlags & CAMERA_MSG_SHUTTER) {
+        LOG1("Sending message: CAMERA_MSG_SHUTTER");
         mNotifyCB(CAMERA_MSG_SHUTTER, 1, 0, mUserToken);
+    }
 }
 
 };

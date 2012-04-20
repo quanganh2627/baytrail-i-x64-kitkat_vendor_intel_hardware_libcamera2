@@ -326,6 +326,8 @@ private:
     status_t dequeueRecording();
     status_t queueCoupledBuffers(int coupledId);
 
+    status_t skipFrames(size_t numFrames);
+
     bool runPreFlashSequence();
 
     // parameters handling functions
@@ -414,6 +416,10 @@ private:
     bool mFaceDetectionActive;
     bool mAutoFocusActive;
     bool mFlashAutoFocus;
+    int  mBurstSkipFrames;
+    int  mBurstLength;
+    int  mBurstCaptureNum;
+    nsecs_t mLastBurstCaptureTime;
 
     sp<BufferShareRegistry> mBSInstance;
 

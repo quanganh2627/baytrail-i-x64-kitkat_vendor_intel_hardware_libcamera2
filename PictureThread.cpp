@@ -181,6 +181,8 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         char *copyTo = (char*)destBuf->buff->data + exifSize;
         char *copyFrom = (char*)mOutBuf.buff->data + sizeof(JPEG_MARKER_SOI);
         memcpy(copyTo, copyFrom, mainSize - sizeof(JPEG_MARKER_SOI));
+
+        destBuf->id = mainBuf->id;
     }
     LOG1("Total JPEG size: %d (time to encode: %ums)", totalSize, (unsigned)((systemTime() - startTime) / 1000000));
     return status;

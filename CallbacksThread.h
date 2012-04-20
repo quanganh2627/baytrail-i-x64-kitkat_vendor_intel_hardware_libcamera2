@@ -154,7 +154,6 @@ private:
     bool mJpegRequested;
     bool mPostviewRequested;
     bool mRawRequested;
-
     Vector<AtomBuffer> mJpegBuffers;
     Vector<AtomBuffer> mPostviewBuffers;
     Vector<AtomBuffer> mRawBuffers;

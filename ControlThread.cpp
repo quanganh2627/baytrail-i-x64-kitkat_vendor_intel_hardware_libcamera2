@@ -69,7 +69,10 @@ ControlThread::ControlThread() :
     ,m_pFaceDetector(0)
     ,mFaceDetectionActive(false)
     ,mFlashAutoFocus(false)
-    ,mBSInstance(NULL)
+    ,mBurstSkipFrames(0)
+    ,mBurstLength(0)
+    ,mBurstCaptureNum(0)
+    ,mBSInstance(BufferShareRegistry::getInstance())
     ,mBSState(BS_STATE_DISABLED)
     ,mLastRecordingBuffIndex(0)
 {
@@ -640,6 +643,7 @@ status_t ControlThread::stopCapture()
     }
 
     mState = STATE_STOPPED;
+    mBurstCaptureNum = 0;
     return status;
 }
 
@@ -827,6 +831,28 @@ bool ControlThread::runPreFlashSequence()
     return ret;
 }
 
+status_t ControlThread::skipFrames(size_t numFrames)
+{
+    LOG1("@%s: numFrames = %d", __FUNCTION__, numFrames);
+    status_t status = NO_ERROR;
+    AtomBuffer snapshotBuffer, postviewBuffer;
+
+    for (size_t i = 0; i < numFrames; i++) {
+        if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
+            LOGE("Error in grabbing warm-up frame %d!", i);
+            return status;
+        }
+        status = mISP->putSnapshot(&snapshotBuffer, &postviewBuffer);
+        if (status == DEAD_OBJECT) {
+            LOG1("Stale snapshot buffer returned to ISP");
+        } else if (status != NO_ERROR) {
+            LOGE("Error in putting warm-up frame %d!", i);
+            return status;
+        }
+    }
+    return status;
+}
+
 status_t ControlThread::handleMessageTakePicture(bool clientRequest)
 {
     LOG1("@%s: clientRequest = %d", __FUNCTION__, clientRequest);
@@ -849,8 +875,8 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
 #endif
 
     if (clientRequest) {
-        if (origState == STATE_CAPTURE) {
-            // Subsequent calls to takePicture, we will use previous frames, send shutter sound now
+        if (origState == STATE_CAPTURE && mBurstLength <= 1) {
+            // If burst-length is NOT specified, but more pictures are requested, call the shutter sound now
             mCallbacksThread->shutterSound();
         }
         // Notify CallbacksThread that a picture was requested, so grab one from queue
@@ -869,6 +895,11 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
                 return NO_ERROR;
             }
         }
+
+        // If burst length was specified stop capturing when reached the requested burst captures
+        if (mBurstLength > 1 && mBurstCaptureNum >= mBurstLength) {
+            return NO_ERROR;
+        }
     }
 
     if (origState != STATE_PREVIEW_STILL && origState != STATE_PREVIEW_VIDEO &&
@@ -881,14 +912,15 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
     }
 
     if (origState == STATE_PREVIEW_STILL || origState == STATE_PREVIEW_VIDEO) {
-
-        // If flash mode is not ON or TORCH, check for other modes: AUTO, DAY_SYNC, SLOW_SYNC
-        if (!flashOn && mAAA->is3ASupported()) {
-            if (DetermineFlash(flashMode)) {
-                flashOn = mAAA->getAeFlashNecessary();
-                if (flashOn) {
-                    if (mAAA->getAeMode() != CAM_AE_MODE_MANUAL) {
-                        flashOn = runPreFlashSequence();
+        if (mBurstLength <= 1) {
+            // If flash mode is not ON or TORCH, check for other modes: AUTO, DAY_SYNC, SLOW_SYNC
+            if (!flashOn && mAAA->is3ASupported()) {
+                if (DetermineFlash(flashMode)) {
+                    flashOn = mAAA->getAeFlashNecessary();
+                    if (flashOn) {
+                        if (mAAA->getAeMode() != CAM_AE_MODE_MANUAL) {
+                            flashOn = runPreFlashSequence();
+                        }
                     }
                 }
             }
@@ -899,6 +931,7 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
             return status;
         }
         mState = STATE_CAPTURE;
+        mBurstCaptureNum = 0;
     }
 
     // Get the current params
@@ -966,18 +999,9 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
          *  frames in order to allow the sensor to warm up.
          */
         if (!mAAA->is3ASupported()) {
-            for (size_t i = 0; i < NUM_WARMUP_FRAMES; i++) {
-                if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
-                    LOGE("Error in grabbing warm-up frame %d!", i);
-                    return status;
-                }
-                status = mISP->putSnapshot(&snapshotBuffer, &postviewBuffer);
-                if (status == DEAD_OBJECT) {
-                    LOG1("Stale snapshot buffer returned to ISP");
-                } else if (status != NO_ERROR) {
-                    LOGE("Error in putting warm-up frame %d!", i);
-                    return status;
-                }
+            if ((status = skipFrames(NUM_WARMUP_FRAMES)) != NO_ERROR) {
+                LOGE("Error skipping warm-up frames!");
+                return status;
             }
         }
     }
@@ -993,14 +1017,24 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
             mISP->setFlashIndicator(TORCH_INTENSITY);
         }
 
+        if (mBurstLength > 1 && mBurstSkipFrames > 0) {
+            LOG1("Skipping %d burst frames", mBurstSkipFrames);
+            if ((status = skipFrames(mBurstSkipFrames)) != NO_ERROR) {
+                LOGE("Error skipping burst frames!");
+                return status;
+            }
+        }
+
         // Get the snapshot
         if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
             LOGE("Error in grabbing snapshot!");
             return status;
         }
 
-        if (origState != STATE_CAPTURE) {
-            // First time call: send request to play the Shutter Sound
+        mBurstCaptureNum++;
+
+        if (origState != STATE_CAPTURE || mBurstLength > 1) {
+            // Send request to play the Shutter Sound: in single shots or when burst-length is specified
             mCallbacksThread->shutterSound();
         }
 
@@ -1036,7 +1070,7 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
     // Do jpeg encoding
     if (mState == STATE_CAPTURE) {
         status = mPictureThread->encode(&snapshotBuffer, &postviewBuffer);
-        if (status == NO_ERROR)
+        if (status == NO_ERROR )
             status = mCallbacksThread->postCaptureFrames(&snapshotBuffer, &postviewBuffer);
     } else {
         // If we are in video mode we simply use the recording buffer for picture encoding
@@ -1446,14 +1480,25 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     if (oldZoom != newZoom)
         status = mISP->setZoom(newZoom);
 
+    int picWidth, picHeight;
+    mParameters.getPictureSize(&picWidth, &picHeight);
+    status = mPictureThread->allocSharedBuffers(picWidth, picHeight, NUM_BURST_BUFFERS);
+    if (status != NO_ERROR) {
+        LOGW("Could not pre-allocate picture buffers!");
+    }
 
-    if (!videoMode) {
-        // Pre-allocate picture buffers only when not recording
-        int picWidth, picHeight;
-        mParameters.getPictureSize(&picWidth, &picHeight);
-        status = mPictureThread->allocSharedBuffers(picWidth, picHeight, NUM_BURST_BUFFERS);
-        if (status != NO_ERROR) {
-            LOGW("Could not pre-allocate picture buffers!");
+    // Burst mode
+    // Get the burst length
+    mBurstLength = newParams->getInt(CameraParameters::KEY_BURST_LENGTH);
+    if (mBurstLength <= 0) {
+        // Parameter not set, leave it as 0
+         mBurstLength = 0;
+    } else {
+        // Get the burst framerate
+        mBurstSkipFrames = newParams->getInt(CameraParameters::KEY_BURST_SKIP_FRAMES);
+        if (mBurstSkipFrames < 0 || mBurstSkipFrames >= MAX_BURST_FRAMERATE) {
+            LOGE("Invalid value received for %s: %d", CameraParameters::KEY_BURST_SKIP_FRAMES, mBurstSkipFrames);
+            return BAD_VALUE;
         }
     }
 
@@ -2748,10 +2793,12 @@ bool ControlThread::threadLoop()
                 status = waitForAndExecuteMessage();
             } else {
                 // make sure ISP has data before we ask for some
-                if (mISP->dataAvailable())
+                if (mISP->dataAvailable() &&
+                    (mBurstLength <= 1 || (mBurstLength > 1 && mBurstCaptureNum < mBurstLength))) {
                     status = handleMessageTakePicture(false);
-                else
+                } else {
                     status = waitForAndExecuteMessage();
+                }
             }
             break;
 

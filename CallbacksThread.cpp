@@ -51,12 +51,13 @@ status_t CallbacksThread::shutterSound()
 
 status_t CallbacksThread::compressedFrameDone(AtomBuffer* jpegBuf)
 {
-    LOG1("@%s: ID %d", __FUNCTION__, jpegBuf->id);
+    LOG1("@%s: ID = %d", __FUNCTION__, jpegBuf->id);
     Message msg;
     msg.id = MESSAGE_ID_JPEG_DATA_READY;
     msg.data.compressedFrame.buff = *jpegBuf;
     return mMessageQueue.send(&msg);
 }
+
 
 status_t CallbacksThread::requestTakePicture()
 {
@@ -94,6 +95,8 @@ status_t CallbacksThread::flushPictures()
     vect.clear();
 
     mMessageQueue.remove(MESSAGE_ID_POSTCAPTURE_READY, &vect);
+
+    mMessageQueue.remove(MESSAGE_ID_JPEG_DATA_REQUEST, NULL); // there is no data for this message
 
     return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
 }
@@ -157,7 +160,6 @@ justReturn:
     mPictureDoneCallback->pictureDone(&rawBuf, &postviewBuf);
     mRawBuffers.removeAt(0);
     mPostviewBuffers.removeAt(0);
-
     return NO_ERROR;
 }
 
@@ -167,7 +169,6 @@ status_t CallbacksThread::handleMessagePostCaptureDataReady(MessagePostCaptureFr
     AtomBuffer pvBuf = msg->postView;
     AtomBuffer snapshotBuf = msg->snapshot;
 
-
 /*    if (mPostviewRequested) {
         mCallbacks->postviewFrameDone(&pvBuf);
         mPostviewRequested = false;
@@ -176,6 +177,7 @@ status_t CallbacksThread::handleMessagePostCaptureDataReady(MessagePostCaptureFr
         mCallbacks->rawFrameDone(&snapshotBuf);
         mRawRequested = false;
     }
+
     // Insert the buffers on the top
     mPostviewBuffers.push(pvBuf);
     mRawBuffers.push(snapshotBuf);
@@ -195,6 +197,7 @@ status_t CallbacksThread::handleMessageJpegDataRequest()
     } else {
         mJpegRequested = true;
     }
+
     mPostviewRequested = true;
     mRawRequested = true;
     return NO_ERROR;
@@ -213,7 +216,6 @@ status_t CallbacksThread::handleMessageFlush()
     mJpegBuffers.clear();
     mPostviewBuffers.clear();
     mRawBuffers.clear();
-
     mMessageQueue.reply(MESSAGE_ID_FLUSH, status);
     return status;
 }
