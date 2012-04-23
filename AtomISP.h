@@ -269,6 +269,8 @@ private:
 
     bool mLowLight;
 
+    char *mZoomRatios;
+
 }; // class AtomISP
 
 }; // namespace android

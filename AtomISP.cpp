@@ -78,6 +78,12 @@
 #define MAX_FRONT_CAMERA_VIDEO_WIDTH   1920
 #define MAX_FRONT_CAMERA_VIDEO_HEIGHT  1080
 
+#define MAX_ZOOM_LEVEL          150     // How many levels we have from 1x -> max zoom
+#define MIN_ZOOM_LEVEL          0
+#define MIN_SUPPORT_ZOOM        100     // Support 1x at least
+#define MAX_SUPPORT_ZOOM        1600    // Support upto 16x and should not bigger than 99x
+#define ZOOM_RATIO              100     // Conversion between zoom to really zoom effect
+
 /**
  * Platform specific defines
  * */
@@ -131,6 +137,31 @@ static const char *resolution_tables[] = {
     RESOLUTION_14MP_TABLE
 };
 
+// Generated the string like "100,110,120, ...,1580,1590,1600"
+// The string is determined by MAX_ZOOM_LEVEL and MAX_SUPPORT_ZOOM
+static void computeZoomRatios(char *zoom_ratio, int max_count){
+
+    //set up zoom ratio according to MAX_ZOOM_LEVEL
+    int zoom_step = (MAX_SUPPORT_ZOOM - MIN_SUPPORT_ZOOM)/MAX_ZOOM_LEVEL;
+    int ratio = MIN_SUPPORT_ZOOM;
+    int pos = 0;
+    int i = 0;
+
+    //Get zoom from MIN_SUPPORT_ZOOM to MAX_SUPPORT_ZOOM
+    while((ratio <= MAX_SUPPORT_ZOOM) && (pos < max_count)){
+        sprintf(zoom_ratio + pos,"%d,",ratio);
+        if (ratio < 1000)
+            pos += 4;
+        else
+            pos += 5;
+        ratio += zoom_step;
+    }
+
+    //Overwrite the last ',' with '\0'
+    if (pos > 0)
+        *(zoom_ratio + pos -1 ) = '\0';
+}
+
 ////////////////////////////////////////////////////////////////////
 //                          PUBLIC METHODS
 ////////////////////////////////////////////////////////////////////
@@ -154,6 +185,7 @@ AtomISP::AtomISP(int camera_id) :
     ,mCameraId(0)
     ,mAAA(AtomAAA::getInstance())
     ,mLowLight(false)
+    ,mZoomRatios(NULL)
 {
     LOG1("@%s", __FUNCTION__);
     int camera_idx = -1;
@@ -247,6 +279,15 @@ AtomISP::AtomISP(int camera_id) :
     setPostviewFrameFormat(RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT, V4L2_PIX_FMT_NV12);
     setSnapshotFrameFormat(RESOLUTION_5MP_WIDTH, RESOLUTION_5MP_HEIGHT, V4L2_PIX_FMT_NV12);
     setVideoFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
+
+    /*
+       Zoom is describled as 100, 200, each level has less memory than 5 bytes
+       We don't support zoom bigger than 9999
+       The last byte is used to store '\0'
+     */
+    static const int zoomBytes = MAX_ZOOM_LEVEL * 5 + 1;
+    mZoomRatios = new char[zoomBytes];
+    computeZoomRatios(mZoomRatios, zoomBytes);
 }
 
 AtomISP::~AtomISP()
@@ -265,6 +306,9 @@ AtomISP::~AtomISP()
     }
     mAAA->unInit();
     closeDevice(V4L2_FIRST_DEVICE);
+
+    if (mZoomRatios)
+        delete mZoomRatios;
 }
 
 void AtomISP::getDefaultParameters(CameraParameters *params)
@@ -316,7 +360,6 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
      */
     params->set(CameraParameters::KEY_ZOOM, 0);
     params->set(CameraParameters::KEY_ZOOM_SUPPORTED, CameraParameters::TRUE);
-    getZoomRatios(MODE_PREVIEW, params);
 
     /**
      * FLASH
@@ -1259,22 +1302,11 @@ void AtomISP::getZoomRatios(AtomMode mode, CameraParameters *params)
 {
     LOG1("@%s", __FUNCTION__);
     if (params) {
-        if (mode == MODE_PREVIEW || mode == MODE_CAPTURE) {
-
-            if (camInfo[mCameraId].port == ATOMISP_CAMERA_PORT_PRIMARY) {
-                params->set(CameraParameters::KEY_MAX_ZOOM, "60"); // max zoom index for 61 raitos is 60
-                params->set(CameraParameters::KEY_ZOOM_RATIOS,
-                        "100,125,150,175,200,225,250,275,300,325,350,375,400,425,450,475,500,525,"
-                        "550,575,600,625,650,675,700,725,750,775,800,825,850,875,900,925,950,975,"
-                        "1000,1025,1050,1075,1100,1125,1150,1175,1200,1225,1250,1275,1300,1325,"
-                        "1350,1375,1400,1425,1450,1475,1500,1525,1550,1575,1600");
-            } else {
-                params->set(CameraParameters::KEY_MAX_ZOOM, "20");
-                params->set(CameraParameters::KEY_ZOOM_RATIOS,
-                        "100,115,130,145,160,175,190,205,220,235,"
-                        "250,265,280,295,310,325,340,355,370,385,"
-                        "400");
-            }
+        if ((mode == MODE_PREVIEW) ||
+                (mode == MODE_CAPTURE) ||
+                (mode == MODE_VIDEO && mSensorType == SENSOR_TYPE_RAW)) {
+            params->set(CameraParameters::KEY_MAX_ZOOM, MAX_ZOOM_LEVEL);
+            params->set(CameraParameters::KEY_ZOOM_RATIOS, mZoomRatios);
         } else {
             // zoom is not supported. this is indicated by placing a single zoom ratio in params
             params->set(CameraParameters::KEY_MAX_ZOOM, "0"); // zoom index 0 indicates first (and only) zoom ratio
@@ -1461,13 +1493,37 @@ int AtomISP::atomisp_set_zoom (int fd, int zoom)
         return 0;
     }
 
-    //Map 8x to 56. The real effect is 64/(64 - zoom) in the driver.
-    //Max zoom is 60 because we only support 16x not 64x
-    if (zoom != 0)
-        zoom = 64 - (64 / (((zoom * 16 + 59)/ 60 )));
+    int zoom_driver = 0;
+    float zoom_real = 0.0;
 
-    LOG1("set zoom to %d", zoom);
-    return atomisp_set_attribute (fd, V4L2_CID_ZOOM_ABSOLUTE, zoom, "zoom");
+    if (zoom != 0) {
+
+        /*
+           The zoom value passed to HAL is from 0 to MAX_ZOOM_LEVEL to match 1x
+           to 16x of real zoom effect. The equation between zoom_real and zoom_hal is:
+
+           (zoom_hal - MIN_ZOOM_LEVEL)                   MAX_ZOOM_LEVEL - MIN_ZOOM_LEVEL
+           ------------------------------------------ = ------------------------------------
+           zoom_real * ZOOM_RATIO - MIN_SUPPORT_ZOOM     MAX_SUPPORT_ZOOM - MIN_SUPPORT_ZOOM
+         */
+
+        float x = ((MAX_SUPPORT_ZOOM - MIN_SUPPORT_ZOOM) / (MAX_ZOOM_LEVEL - MIN_ZOOM_LEVEL)) *
+            ((float) zoom - MIN_ZOOM_LEVEL);
+        zoom_real = (x + MIN_SUPPORT_ZOOM) / ZOOM_RATIO;
+
+        /*
+           The real zoom effect is 64/(64-zoom_driver) in the driver.
+           Add 0.5 to get the more accurate result
+           Calculate the zoom value should set to driver using the equation
+           We want to get 3 if the zoom_driver is 2.9, so add 0.5 for compensation
+         */
+
+        zoom_driver = (64.0 - (64.0 / zoom_real) + 0.5);
+
+    }
+
+    LOG1("set zoom %f to driver with %d", zoom_real, zoom_driver);
+    return atomisp_set_attribute (fd, V4L2_CID_ZOOM_ABSOLUTE, zoom_driver, "zoom");
 }
 
 int AtomISP::atomisp_set_attribute (int fd, int attribute_num,
