@@ -153,6 +153,7 @@ AtomISP::AtomISP(int camera_id) :
     ,mSessionId(0)
     ,mCameraId(0)
     ,mAAA(AtomAAA::getInstance())
+    ,mLowLight(false)
 {
     LOG1("@%s", __FUNCTION__);
     int camera_idx = -1;
@@ -395,6 +396,14 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
     params->set(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE,"54.8");
 
     /**
+     * XNR/ANR
+     */
+    params->set(CameraParameters::KEY_SUPPORTED_XNR, "true,false");
+    params->set(CameraParameters::KEY_XNR, CameraParameters::FALSE);
+    params->set(CameraParameters::KEY_SUPPORTED_ANR, "true,false");
+    params->set(CameraParameters::KEY_ANR, CameraParameters::FALSE);
+
+    /**
      * EXPOSURE
      */
     params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION,0);
@@ -516,6 +525,18 @@ const char* AtomISP::getMaxSnapShotResolution()
             index = 0;
 
     return resolution_tables[index];
+}
+
+status_t AtomISP::updateLowLight()
+{
+    status_t status = NO_ERROR;
+    if (mSensorType == SENSOR_TYPE_RAW) {
+        if (atomisp_set_attribute(main_fd, V4L2_CID_ATOMISP_LOW_LIGHT, mLowLight, "Low Light") < 0) {
+            LOGE("set low light failure");
+            status = UNKNOWN_ERROR;
+        }
+    }
+    return status;
 }
 
 status_t AtomISP::start(AtomMode mode)
@@ -750,6 +771,8 @@ status_t AtomISP::startCapture()
 
     if ((status = allocateSnapshotBuffers()) != NO_ERROR)
         return status;
+
+    updateLowLight();
 
     ret = configureDevice(
             V4L2_FIRST_DEVICE,
@@ -1406,6 +1429,27 @@ status_t AtomISP::getMakerNote(atomisp_makernote_info *info)
         LOGW("WARNING: get maker note from driver failed!");
         return UNKNOWN_ERROR;
     }
+    return NO_ERROR;
+}
+
+status_t AtomISP::setXNR(bool enable)
+{
+    LOG1("@%s: %d", __FUNCTION__, (int) enable);
+    status_t status = NO_ERROR;
+    if (mSensorType == SENSOR_TYPE_RAW) {
+        int en = (int) enable;
+        if (xioctl(main_fd, ATOMISP_IOC_S_XNR, &en) < 0) {
+            LOGE("set XNR failure");
+            status = UNKNOWN_ERROR;
+        }
+    }
+    return status;
+}
+
+status_t AtomISP::setLowLight(bool enable)
+{
+    LOG1("@%s: %d", __FUNCTION__, (int) enable);
+    mLowLight = enable;
     return NO_ERROR;
 }
 

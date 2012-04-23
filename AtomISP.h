@@ -116,6 +116,8 @@ public:
     status_t setTorch(int intensity);
     status_t setColorEffect(v4l2_colorfx effect);
     status_t getMakerNote(atomisp_makernote_info *info);
+    status_t setXNR(bool enable);
+    status_t setLowLight(bool enable);
 
     // camera hardware information
     static int getNumberOfCameras();
@@ -141,6 +143,8 @@ private:
     status_t freeSnapshotBuffers();
 
     const char* getMaxSnapShotResolution();
+
+    status_t updateLowLight();
 
     int  openDevice(int device);
     void closeDevice(int device);
@@ -262,6 +266,8 @@ private:
     int mCameraId;
     SensorType mSensorType;
     AtomAAA *mAAA;
+
+    bool mLowLight;
 
 }; // class AtomISP
 

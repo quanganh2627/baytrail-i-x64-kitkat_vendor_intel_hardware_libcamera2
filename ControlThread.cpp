@@ -1513,6 +1513,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             status = processParamAWBLock(oldParams, newParams);
         }
 
+        if (status == NO_ERROR) {
+            // xnr/anr
+            status = processParamXNR_ANR(oldParams, newParams);
+        }
+
         if (!mFaceDetectionActive && status == NO_ERROR) {
             // customize metering
             status = processParamSetMeteringAreas(oldParams, newParams);
@@ -1576,6 +1581,35 @@ status_t ControlThread::processParamAWBLock(const CameraParameters *oldParams,
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, newValue);
         }
+    }
+
+    return status;
+}
+
+status_t ControlThread::processParamXNR_ANR(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    // XNR
+    const char* oldValue = oldParams->get(CameraParameters::KEY_XNR);
+    const char* newValue = newParams->get(CameraParameters::KEY_XNR);
+    if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+        if (!strncmp(newValue, CameraParameters::TRUE, MAX_PARAM_VALUE_LENGTH))
+            status = mISP->setXNR(true);
+        else
+            status = mISP->setXNR(false);
+    }
+
+    // ANR
+    oldValue = oldParams->get(CameraParameters::KEY_ANR);
+    newValue = newParams->get(CameraParameters::KEY_ANR);
+    if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+        if (!strncmp(newValue, CameraParameters::TRUE, MAX_PARAM_VALUE_LENGTH))
+            status = mISP->setLowLight(true);
+        else
+            status = mISP->setLowLight(false);
     }
 
     return status;
@@ -1684,6 +1718,10 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
             newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
+            newParams->set(CameraParameters::KEY_SUPPORTED_XNR, "true,false");
+            newParams->set(CameraParameters::KEY_XNR, CameraParameters::FALSE);
+            newParams->set(CameraParameters::KEY_SUPPORTED_ANR, "false");
+            newParams->set(CameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_SPORTS, strlen(CameraParameters::SCENE_MODE_SPORTS))) {
             sceneMode = CAM_AE_SCENE_MODE_SPORTS;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
@@ -1693,6 +1731,10 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
             newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
+            newParams->set(CameraParameters::KEY_SUPPORTED_XNR, "true,false");
+            newParams->set(CameraParameters::KEY_XNR, CameraParameters::FALSE);
+            newParams->set(CameraParameters::KEY_SUPPORTED_ANR, "false");
+            newParams->set(CameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_LANDSCAPE, strlen(CameraParameters::SCENE_MODE_LANDSCAPE))) {
             sceneMode = CAM_AE_SCENE_MODE_LANDSCAPE;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
@@ -1702,6 +1744,10 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_OUTDOOR);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
             newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
+            newParams->set(CameraParameters::KEY_SUPPORTED_XNR, "true,false");
+            newParams->set(CameraParameters::KEY_XNR, CameraParameters::FALSE);
+            newParams->set(CameraParameters::KEY_SUPPORTED_ANR, "false");
+            newParams->set(CameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_NIGHT, strlen(CameraParameters::SCENE_MODE_NIGHT))) {
             sceneMode = CAM_AE_SCENE_MODE_NIGHT;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
@@ -1711,6 +1757,10 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
             newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
+            newParams->set(CameraParameters::KEY_SUPPORTED_XNR, "true");
+            newParams->set(CameraParameters::KEY_XNR, CameraParameters::TRUE);
+            newParams->set(CameraParameters::KEY_SUPPORTED_ANR, "true");
+            newParams->set(CameraParameters::KEY_ANR, CameraParameters::TRUE);
         } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_NIGHT_PORTRAIT, strlen(CameraParameters::SCENE_MODE_NIGHT_PORTRAIT))) {
             sceneMode = CAM_AE_SCENE_MODE_NIGHT_PORTRAIT;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
@@ -1720,6 +1770,10 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
             newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
+            newParams->set(CameraParameters::KEY_SUPPORTED_XNR, "true");
+            newParams->set(CameraParameters::KEY_XNR, CameraParameters::TRUE);
+            newParams->set(CameraParameters::KEY_SUPPORTED_ANR, "true");
+            newParams->set(CameraParameters::KEY_ANR, CameraParameters::TRUE);
         } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_FIREWORKS, strlen(CameraParameters::SCENE_MODE_FIREWORKS))) {
             sceneMode = CAM_AE_SCENE_MODE_FIREWORKS;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
@@ -1729,6 +1783,10 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
             newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
+            newParams->set(CameraParameters::KEY_SUPPORTED_XNR, "true,false");
+            newParams->set(CameraParameters::KEY_XNR, CameraParameters::FALSE);
+            newParams->set(CameraParameters::KEY_SUPPORTED_ANR, "false");
+            newParams->set(CameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_TEXT, strlen(CameraParameters::SCENE_MODE_TEXT))) {
             sceneMode = CAM_AE_SCENE_MODE_TEXT;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_MACRO);
@@ -1738,6 +1796,10 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
             newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
+            newParams->set(CameraParameters::KEY_SUPPORTED_XNR, "true,false");
+            newParams->set(CameraParameters::KEY_XNR, CameraParameters::FALSE);
+            newParams->set(CameraParameters::KEY_SUPPORTED_ANR, "false");
+            newParams->set(CameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else {
             if (strncmp (newScene, CameraParameters::SCENE_MODE_AUTO, strlen(CameraParameters::SCENE_MODE_AUTO))) {
                 LOG1("Unsupported %s: %s. Using AUTO!", CameraParameters::KEY_SCENE_MODE, newScene);
@@ -1750,6 +1812,10 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
             newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
+            newParams->set(CameraParameters::KEY_SUPPORTED_XNR, "true,false");
+            newParams->set(CameraParameters::KEY_XNR, CameraParameters::FALSE);
+            newParams->set(CameraParameters::KEY_SUPPORTED_ANR, "true,false");
+            newParams->set(CameraParameters::KEY_ANR, CameraParameters::FALSE);
         }
 
         mAAA->setAeSceneMode(sceneMode);

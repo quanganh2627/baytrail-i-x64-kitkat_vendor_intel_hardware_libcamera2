@@ -348,6 +348,8 @@ private:
             CameraParameters *newParams);
     status_t processParamSceneMode(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    status_t processParamXNR_ANR(const CameraParameters *oldParams,
+            CameraParameters *newParams);
     status_t processParamFocusMode(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamWhiteBalance(const CameraParameters *oldParams,
