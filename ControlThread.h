@@ -25,6 +25,7 @@
 #include "PictureThread.h"
 #include "VideoThread.h"
 #include "AtomCommon.h"
+#include "CallbacksThread.h"
 #include "AAAThread.h"
 #include "AtomAAA.h"
 #include "IFaceDetectionListener.h"
@@ -32,8 +33,6 @@ namespace android {
 
 #define FLASH_FRAME_TIMEOUT 5
 
-class Callbacks;
-class CallbacksThread;
 class AtomISP;
 class BufferShareRegistry;
 class IFaceDetector;

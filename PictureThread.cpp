@@ -26,11 +26,10 @@ namespace android {
 static const unsigned char JPEG_MARKER_SOI[2] = {0xFF, 0xD8}; // JPEG StartOfImage marker
 static const unsigned char JPEG_MARKER_EOI[2] = {0xFF, 0xD9}; // JPEG EndOfImage marker
 
-PictureThread::PictureThread(ICallbackPicture *pictureDone) :
+PictureThread::PictureThread() :
     Thread(true) // callbacks may call into java
     ,mMessageQueue("PictureThread", MESSAGE_ID_MAX)
     ,mThreadRunning(false)
-    ,mPictureDoneCallback(pictureDone)
     ,mCallbacks(Callbacks::getInstance())
     ,mCallbacksThread(CallbacksThread::getInstance())
     ,mPictureWidth(0)
@@ -323,20 +322,18 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 
     // Encode the image
     AtomBuffer *postviewBuf = msg->postviewBuf.buff == NULL ? NULL : &msg->postviewBuf;
-    if ((status = encodeToJpeg(&msg->snaphotBuf, postviewBuf, &jpegBuf)) == NO_ERROR) {
-        mCallbacksThread->compressedFrameDone(&jpegBuf);
-    } else {
+    status = encodeToJpeg(&msg->snaphotBuf, postviewBuf, &jpegBuf);
+    if (status != NO_ERROR) {
         LOGE("Error generating JPEG image!");
         if (jpegBuf.buff != NULL && jpegBuf.buff->data != NULL) {
             LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
             jpegBuf.buff->release(jpegBuf.buff);
         }
+        jpegBuf.buff = NULL;
     }
-    // Send the postview picture callback now
-    mCallbacks->postviewFrameDone(&msg->postviewBuf);
-    // When the encoding is done, send back the buffers to camera
-    mPictureDoneCallback->pictureDone(&msg->snaphotBuf, &msg->postviewBuf);
 
+    jpegBuf.id = msg->snaphotBuf.id;
+    mCallbacksThread->compressedFrameDone(&jpegBuf);
     return status;
 }
 

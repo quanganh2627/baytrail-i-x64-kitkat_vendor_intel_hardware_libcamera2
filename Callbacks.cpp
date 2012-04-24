@@ -112,6 +112,20 @@ void Callbacks::postviewFrameDone(AtomBuffer *buff)
     }
 }
 
+void Callbacks::rawFrameDone(AtomBuffer *buff)
+{
+    LOG1("@%s", __FUNCTION__);
+    if ((mMessageFlags & CAMERA_MSG_RAW_IMAGE_NOTIFY) && mNotifyCB != NULL) {
+        LOGD("Sending message: CAMERA_MSG_RAW_IMAGE_NOTIFY, buff id = %d", buff->id);
+        mNotifyCB(CAMERA_MSG_RAW_IMAGE_NOTIFY, 0, 0, mUserToken);
+    }
+
+    if ((mMessageFlags & CAMERA_MSG_RAW_IMAGE) && mNotifyCB != NULL) {
+        LOGD("Sending message: CAMERA_MSG_RAW_IMAGE, buff id = %d", buff->id);
+        mDataCB(CAMERA_MSG_RAW_IMAGE, buff->buff, NULL, 0, mUserToken);
+    }
+}
+
 void Callbacks::cameraError(int err)
 {
     LOG1("@%s", __FUNCTION__);

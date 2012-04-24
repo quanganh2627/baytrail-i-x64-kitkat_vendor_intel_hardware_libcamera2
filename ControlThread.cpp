@@ -113,7 +113,7 @@ status_t ControlThread::init(int cameraId)
         goto bail;
     }
 
-    mPictureThread = new PictureThread((ICallbackPicture *) this);
+    mPictureThread = new PictureThread();
     if (mPictureThread == NULL) {
         LOGE("error creating PictureThread");
         goto bail;
@@ -137,7 +137,7 @@ status_t ControlThread::init(int cameraId)
         goto bail;
     }
 
-    mCallbacksThread = CallbacksThread::getInstance();
+    mCallbacksThread = CallbacksThread::getInstance((ICallbackPicture *) this);
     if (mCallbacksThread == NULL) {
         LOGE("error creating CallbacksThread");
         goto bail;
@@ -619,6 +619,20 @@ status_t ControlThread::stopCapture()
         return status;
     }
 
+    Vector<Message> vect;
+    /*
+     * Before stopping the capture make sure that all
+     * the incoming raw buffers are returned to the ISP
+     * */
+    mMessageQueue.remove(MESSAGE_ID_PICTURE_DONE, &vect);
+    for (size_t i = 0; i < vect.size(); i++) {
+        MessagePicture msg = vect[i].data.pictureDone;
+        status = handleMessagePictureDone(&msg);
+        if (status != NO_ERROR) {
+            LOGW("Error returning pictures done to ISP!");
+        }
+    }
+
     status = mISP->stop();
     if (status != NO_ERROR) {
         LOGE("Error stopping ISP!");
@@ -1022,6 +1036,8 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
     // Do jpeg encoding
     if (mState == STATE_CAPTURE) {
         status = mPictureThread->encode(&snapshotBuffer, &postviewBuffer);
+        if (status == NO_ERROR)
+            status = mCallbacksThread->postCaptureFrames(&snapshotBuffer, &postviewBuffer);
     } else {
         // If we are in video mode we simply use the recording buffer for picture encoding
         // No need to stop, reconfigure, and restart the ISP
@@ -1228,7 +1244,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             mCoupledBuffers[curBuff].videoSnapshotBuff = false;
         }
     } else if (mState == STATE_CAPTURE) {
-
+        LOG2("@%s: returning post and raw frames id:%d", __FUNCTION__, msg->snapshotBuf.id);
         // Return the picture frames back to ISP
         status = mISP->putSnapshot(&msg->snapshotBuf, &msg->postviewBuf);
         if (status == DEAD_OBJECT) {
@@ -1237,7 +1253,10 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             LOGE("Error in putting snapshot!");
             return status;
         }
+    } else {
+        LOGW("Received a picture Done during invalid state %d; buf id:%d, ptr=%p", mState, msg->snapshotBuf.id, msg->snapshotBuf.buff);
     }
+
 
     return status;
 }

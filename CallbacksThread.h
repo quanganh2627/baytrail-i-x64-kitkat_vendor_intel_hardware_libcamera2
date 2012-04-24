@@ -27,6 +27,14 @@ namespace android {
 
 class Callbacks;
 
+// callback for when callback thread is done with yuv data
+class ICallbackPicture {
+public:
+    ICallbackPicture() {}
+    virtual ~ICallbackPicture() {}
+    virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf) = 0;
+};
+
 class CallbacksThread :
     public Thread,
     public IFaceDetectionListener {
@@ -36,10 +44,12 @@ private:
     CallbacksThread();
 // constructor destructor
 public:
-    static CallbacksThread* getInstance() {
+    static CallbacksThread* getInstance(ICallbackPicture *pictureDone = 0) {
         if (mInstance == NULL) {
             mInstance = new CallbacksThread();
         }
+        if(mInstance && pictureDone)
+            mInstance->setPictureDoneCallback(pictureDone);
         return mInstance;
     }
     virtual ~CallbacksThread();
@@ -55,6 +65,7 @@ public:
     status_t compressedFrameDone(AtomBuffer* jpegBuf);
     status_t requestTakePicture();
     status_t flushPictures();
+    status_t postCaptureFrames(AtomBuffer* postviewBuf, AtomBuffer* snapshotBuf);
     size_t   getQueuedBuffersNum() { return mJpegBuffers.size(); }
     virtual void facesDetected(camera_frame_metadata_t &face_metadata);
 
@@ -68,6 +79,7 @@ private:
         MESSAGE_ID_CALLBACK_SHUTTER,    // send the shutter callback
         MESSAGE_ID_JPEG_DATA_READY,     // we have a JPEG image ready
         MESSAGE_ID_JPEG_DATA_REQUEST,   // a JPEG image was requested
+        MESSAGE_ID_POSTCAPTURE_READY,   // post view and raw ready to be offered to the user via callback
         MESSAGE_ID_FLUSH,
         MESSAGE_ID_FACES,
 
@@ -79,8 +91,12 @@ private:
     // message data structures
     //
 
-    struct MessageCompressedFrame {
+    struct MessageFrame {
         AtomBuffer buff;
+    };
+    struct MessagePostCaptureFrame {
+        AtomBuffer postView;
+        AtomBuffer snapshot;
     };
 
     struct MessageFaces {
@@ -91,7 +107,10 @@ private:
     union MessageData {
 
         //MESSAGE_ID_JPEG_DATA_READY
-        MessageCompressedFrame compressedFrame;
+        MessageFrame compressedFrame;
+
+        //MESSAGE_ID_POSTCAPTURE_READY
+        MessagePostCaptureFrame postCaptureFrame;
 
         // MESSAGE_ID_FACES
         MessageFaces faces;
@@ -109,13 +128,17 @@ private:
     // thread message execution functions
     status_t handleMessageExit();
     status_t handleMessageCallbackShutter();
-    status_t handleMessageJpegDataReady(MessageCompressedFrame *msg);
+    status_t handleMessageJpegDataReady(MessageFrame *msg);
+    status_t handleMessagePostCaptureDataReady(MessagePostCaptureFrame *msg);
     status_t handleMessageJpegDataRequest();
     status_t handleMessageFlush();
     status_t handleMessageFaces(MessageFaces *msg);
 
     // main message function
     status_t waitForAndExecuteMessage();
+
+    // Intialization of Ctrl thread callback
+    void setPictureDoneCallback(ICallbackPicture *pictureDone) { mPictureDoneCallback = pictureDone; };
 
 // inherited from Thread
 private:
@@ -124,11 +147,17 @@ private:
 // private data
 private:
 
+    ICallbackPicture *mPictureDoneCallback;
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
     Callbacks *mCallbacks;
     bool mJpegRequested;
+    bool mPostviewRequested;
+    bool mRawRequested;
+
     Vector<AtomBuffer> mJpegBuffers;
+    Vector<AtomBuffer> mPostviewBuffers;
+    Vector<AtomBuffer> mRawBuffers;
 
 // public data
 public:

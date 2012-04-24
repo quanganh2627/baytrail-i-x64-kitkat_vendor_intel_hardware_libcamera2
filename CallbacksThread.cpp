@@ -29,6 +29,8 @@ CallbacksThread::CallbacksThread() :
     ,mThreadRunning(false)
     ,mCallbacks(Callbacks::getInstance())
     ,mJpegRequested(false)
+    ,mPostviewRequested(false)
+    ,mRawRequested(false)
 {
     LOG1("@%s", __FUNCTION__);
 }
@@ -49,7 +51,7 @@ status_t CallbacksThread::shutterSound()
 
 status_t CallbacksThread::compressedFrameDone(AtomBuffer* jpegBuf)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s: ID %d", __FUNCTION__, jpegBuf->id);
     Message msg;
     msg.id = MESSAGE_ID_JPEG_DATA_READY;
     msg.data.compressedFrame.buff = *jpegBuf;
@@ -64,6 +66,16 @@ status_t CallbacksThread::requestTakePicture()
     return mMessageQueue.send(&msg);
 }
 
+status_t CallbacksThread::postCaptureFrames(AtomBuffer* postviewBuf, AtomBuffer* snapshotBuf)
+{
+    LOG1("@%s: ID post %d : ID raw %d", __FUNCTION__, postviewBuf->id, snapshotBuf->id);
+    Message msg;
+    msg.id = MESSAGE_ID_POSTCAPTURE_READY;
+    msg.data.postCaptureFrame.postView = *postviewBuf;
+    msg.data.postCaptureFrame.snapshot = *snapshotBuf;
+    return mMessageQueue.send(&msg);
+}
+
 status_t CallbacksThread::flushPictures()
 {
     LOG1("@%s", __FUNCTION__);
@@ -72,7 +84,6 @@ status_t CallbacksThread::flushPictures()
 
     Vector<Message> vect;
     mMessageQueue.remove(MESSAGE_ID_JPEG_DATA_READY, &vect);
-    mMessageQueue.remove(MESSAGE_ID_JPEG_DATA_REQUEST, NULL); // there is no data for this message
 
     // deallocate all the buffers we are flushing
     for (size_t i = 0; i < vect.size(); i++) {
@@ -80,6 +91,9 @@ status_t CallbacksThread::flushPictures()
         AtomBuffer buff = vect[i].data.compressedFrame.buff;
         buff.buff->release(buff.buff);
     }
+    vect.clear();
+
+    mMessageQueue.remove(MESSAGE_ID_POSTCAPTURE_READY, &vect);
 
     return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
 }
@@ -108,10 +122,18 @@ status_t CallbacksThread::handleMessageCallbackShutter()
     return NO_ERROR;
 }
 
-status_t CallbacksThread::handleMessageJpegDataReady(MessageCompressedFrame *msg)
+status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
 {
     LOG1("@%s: JPEG buffers queued: %d, mJpegRequested = %d", __FUNCTION__, mJpegBuffers.size(), mJpegRequested);
     AtomBuffer jpegBuf = msg->buff;
+    AtomBuffer rawBuf = mRawBuffers[0];
+    AtomBuffer postviewBuf= mPostviewBuffers[0];
+
+    if (jpegBuf.buff == NULL) {
+        LOGW("@%s: returning raw frames used in failed encoding", __FUNCTION__);
+        goto justReturn;
+    }
+
     if (mJpegRequested) {
         mCallbacks->compressedFrameDone(&jpegBuf);
         LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
@@ -121,6 +143,37 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageCompressedFrame *msg
         // Insert the buffer on the top
         mJpegBuffers.push(jpegBuf);
     }
+
+    if(jpegBuf.id != postviewBuf.id)
+        LOGW("@%s: received jpeg buf id does not match the raw frames id... find the bug", __FUNCTION__);
+
+justReturn:
+    // When the encoding is done, send back the buffers to Control thread
+    mPictureDoneCallback->pictureDone(&rawBuf, &postviewBuf);
+    mRawBuffers.removeAt(0);
+    mPostviewBuffers.removeAt(0);
+
+    return NO_ERROR;
+}
+
+status_t CallbacksThread::handleMessagePostCaptureDataReady(MessagePostCaptureFrame *msg)
+{
+    LOG1("@%s: ID: %d",__FUNCTION__, msg->postView.id);
+    AtomBuffer pvBuf = msg->postView;
+    AtomBuffer snapshotBuf = msg->snapshot;
+
+    if (mPostviewRequested) {
+        mCallbacks->postviewFrameDone(&pvBuf);
+        mPostviewRequested = false;
+    }
+    if (mRawRequested) {
+        mCallbacks->rawFrameDone(&snapshotBuf);
+        mRawRequested = false;
+    }
+    // Insert the buffers on the top
+    mPostviewBuffers.push(pvBuf);
+    mRawBuffers.push(snapshotBuf);
+
     return NO_ERROR;
 }
 
@@ -136,6 +189,8 @@ status_t CallbacksThread::handleMessageJpegDataRequest()
     } else {
         mJpegRequested = true;
     }
+    mPostviewRequested = true;
+    mRawRequested = true;
     return NO_ERROR;
 }
 
@@ -150,6 +205,9 @@ status_t CallbacksThread::handleMessageFlush()
         jpegBuf.buff->release(jpegBuf.buff);
     }
     mJpegBuffers.clear();
+    mPostviewBuffers.clear();
+    mRawBuffers.clear();
+
     mMessageQueue.reply(MESSAGE_ID_FLUSH, status);
     return status;
 }
@@ -183,6 +241,10 @@ status_t CallbacksThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_JPEG_DATA_REQUEST:
             status = handleMessageJpegDataRequest();
+            break;
+
+        case MESSAGE_ID_POSTCAPTURE_READY:
+            status = handleMessagePostCaptureDataReady(&msg.data.postCaptureFrame);
             break;
 
         case MESSAGE_ID_FLUSH:
