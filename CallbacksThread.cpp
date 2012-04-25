@@ -144,6 +144,11 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
         mJpegBuffers.push(jpegBuf);
     }
 
+    if (mPostviewRequested) {
+        mCallbacks->postviewFrameDone(&postviewBuf);
+        mPostviewRequested = false;
+    }
+
     if(jpegBuf.id != postviewBuf.id)
         LOGW("@%s: received jpeg buf id does not match the raw frames id... find the bug", __FUNCTION__);
 
@@ -162,10 +167,11 @@ status_t CallbacksThread::handleMessagePostCaptureDataReady(MessagePostCaptureFr
     AtomBuffer pvBuf = msg->postView;
     AtomBuffer snapshotBuf = msg->snapshot;
 
-    if (mPostviewRequested) {
+
+/*    if (mPostviewRequested) {
         mCallbacks->postviewFrameDone(&pvBuf);
         mPostviewRequested = false;
-    }
+    }*/
     if (mRawRequested) {
         mCallbacks->rawFrameDone(&snapshotBuf);
         mRawRequested = false;
