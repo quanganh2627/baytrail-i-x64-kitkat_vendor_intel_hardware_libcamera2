@@ -2357,7 +2357,7 @@ status_t AtomISP::allocateRecordingBuffers()
     if (mUsingClientRecordingBuffers)
         size = sizeof(void *);
     else
-        size = mConfig.recording.width * mConfig.recording.height * 3 / 2;
+        size = mConfig.recording.padding * mConfig.recording.height * 3 / 2;
 
     mRecordingBuffers = new AtomBuffer[mNumBuffers];
     if (!mRecordingBuffers) {
