@@ -2153,10 +2153,14 @@ status_t ControlThread::processParamAFLock(const CameraParameters *oldParams,
     const char* newValue = newParams->get(CameraParameters::KEY_AF_LOCK_MODE);
     if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
         bool af_lock;
+        // TODO: once available, use the definitions in Intel
+        //       parameter namespace, see UMG BZ26264
+        const char* PARAM_LOCK = "lock";
+        const char* PARAM_UNLOCK = "unlock";
 
-        if(!strcmp(newValue, "lock")) {
+        if(!strncmp(newValue, PARAM_LOCK, strlen(PARAM_LOCK))) {
             af_lock = true;
-        } else if(!strcmp(newValue, "unlock")) {
+        } else if(!strncmp(newValue, PARAM_UNLOCK, strlen(PARAM_UNLOCK))) {
             af_lock = false;
         } else {
             LOGE("Invalid value received for %s: %s", CameraParameters::KEY_AF_LOCK_MODE, newValue);
@@ -3046,6 +3050,9 @@ status_t ControlThread::processParamWhiteBalance(const CameraParameters *oldPara
     const char* newWb = newParams->get(CameraParameters::KEY_WHITE_BALANCE);
     if (newWb && oldWb && strncmp(newWb, oldWb, MAX_PARAM_VALUE_LENGTH) != 0) {
         AwbMode wbMode = CAM_AWB_MODE_AUTO;
+        // TODO: once available, use the definitions in Intel
+        //       parameter namespace, see UMG BZ26264
+        const char* PARAM_MANUAL = "manual";
 
         if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_AUTO, strlen(CameraParameters::WHITE_BALANCE_AUTO))) {
             wbMode = CAM_AWB_MODE_AUTO;
@@ -3063,7 +3070,7 @@ status_t ControlThread::processParamWhiteBalance(const CameraParameters *oldPara
             wbMode = CAM_AWB_MODE_SUNSET;
         } else if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_SHADE, strlen(CameraParameters::WHITE_BALANCE_SHADE))) {
             wbMode = CAM_AWB_MODE_SHADOW;
-        } else if(!strcmp(newWb, "manual" )) {
+        } else if(!strncmp(newWb, PARAM_MANUAL, strlen(PARAM_MANUAL))) {
             wbMode = CAM_AWB_MODE_MANUAL_INPUT;
         }
 
