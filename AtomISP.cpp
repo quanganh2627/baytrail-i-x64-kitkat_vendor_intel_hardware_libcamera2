@@ -519,10 +519,10 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
         params->set(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK_SUPPORTED, CameraParameters::TRUE);
 
         // Intel/UMG parameters for 3A locks
-        // XXX: only needed until upstream key is available for AF lock
+        // TODO: only needed until upstream key is available for AF lock
         params->set(CameraParameters::KEY_AF_LOCK_MODE, "unlock");
         params->set(CameraParameters::KEY_SUPPORTED_AF_LOCK_MODES, "lock,unlock");
-        // XXX: add UMG-style AE/AWB locking for Test Camera?
+        // TODO: add UMG-style AE/AWB locking for Test Camera?
 
         // multipoint focus
         params->set(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS, mAAA->getAfMaxNumWindows());
