@@ -17,6 +17,7 @@ LOCAL_SRC_FILES := \
 	JpegCompressor.cpp \
 	OlaFaceDetect.cpp \
 	CallbacksThread.cpp \
+	LogHelper.cpp
 
 LOCAL_C_INCLUDES += \
 	frameworks/base/include \
