@@ -16,4 +16,4 @@
 
 #include <utils/Log.h>
 
-int32_t gLogLevel = 1;
+int32_t gLogLevel = 0;
