@@ -414,7 +414,7 @@ private:
     IFaceDetector* m_pFaceDetector;
     bool mFaceDetectionActive;
     bool mAutoFocusActive;
-    bool mFlashNeeded;
+    bool mFlashAutoFocus;
 
     sp<BufferShareRegistry> mBSInstance;
 

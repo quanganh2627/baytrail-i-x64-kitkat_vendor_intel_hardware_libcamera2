@@ -370,13 +370,11 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
         params->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
         char flashModes[100] = {0};
         if (snprintf(flashModes, sizeof(flashModes)
-                ,"%s,%s,%s,%s,%s,%s"
+                ,"%s,%s,%s,%s"
                 ,CameraParameters::FLASH_MODE_AUTO
                 ,CameraParameters::FLASH_MODE_OFF
                 ,CameraParameters::FLASH_MODE_ON
-                ,CameraParameters::FLASH_MODE_TORCH
-                ,CameraParameters::FLASH_MODE_SLOW_SYNC
-                ,CameraParameters::FLASH_MODE_DAY_SYNC) < 0) {
+                ,CameraParameters::FLASH_MODE_TORCH) < 0) {
             LOGE("Could not generate %s string: %s", CameraParameters::KEY_SUPPORTED_FLASH_MODES, strerror(errno));
             return;
         }

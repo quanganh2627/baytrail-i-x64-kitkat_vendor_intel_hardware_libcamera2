@@ -68,7 +68,7 @@ ControlThread::ControlThread() :
     ,mNumBuffers(0)
     ,m_pFaceDetector(0)
     ,mFaceDetectionActive(false)
-    ,mFlashNeeded(false)
+    ,mFlashAutoFocus(false)
     ,mBSInstance(NULL)
     ,mBSState(BS_STATE_DISABLED)
     ,mLastRecordingBuffIndex(0)
@@ -692,9 +692,7 @@ status_t ControlThread::handleMessageStartRecording()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    FlashMode flashMode = CAM_AE_FLASH_MODE_NOT_SET;
     AeMode aeMode = CAM_AE_MODE_NOT_SET;
-    mFlashNeeded = false;
 
     if (mState == STATE_PREVIEW_VIDEO) {
         if (recordingBSEnable() != NO_ERROR) {
@@ -716,13 +714,6 @@ status_t ControlThread::handleMessageStartRecording()
     } else {
         LOGE("Error starting recording. Invalid state!");
         status = INVALID_OPERATION;
-    }
-
-    const char *pFlashMode = mParameters.get(CameraParameters::KEY_FLASH_MODE);
-    if (pFlashMode != NULL && strncmp(pFlashMode, CameraParameters::FLASH_MODE_TORCH, strlen(CameraParameters::FLASH_MODE_TORCH)) == 0) {
-        LOG1("Using Flash for recording!");
-        mFlashNeeded = true;
-        status = mISP->setTorch(TORCH_INTENSITY);
     }
 
     // return status and unblock message sender
@@ -747,10 +738,6 @@ status_t ControlThread::handleMessageStopRecording()
             LOGE("Error voting for disable buffer sharing");
         }
         mState = STATE_PREVIEW_VIDEO;
-        if (mFlashNeeded) {
-            mISP->setTorch(0);
-            mFlashNeeded = false;
-        }
     } else {
         LOGE("Error stopping recording. Invalid state!");
         status = INVALID_OPERATION;
@@ -835,7 +822,9 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
     int width;
     int height;
     int format;
-    FlashMode flashMode = CAM_AE_FLASH_MODE_NOT_SET;
+    FlashMode flashMode = mAAA->getAeFlashMode();
+    bool flashOn = (flashMode == CAM_AE_FLASH_MODE_TORCH ||
+        flashMode == CAM_AE_FLASH_MODE_ON);
     atomisp_makernote_info makerNote;
 
 #ifndef ANDROID_2036
@@ -877,31 +866,16 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
         stopFaceDetection();
     }
 
-    if (origState != STATE_RECORDING) {
-        // Disable flash by default for other states than STATE_RECORDING
-        mFlashNeeded = false;
-    }
-
     if (origState == STATE_PREVIEW_STILL || origState == STATE_PREVIEW_VIDEO) {
-        // This is the first call to takePicture
-        // Do flash processing and stop ISP from preview mode
-        const char *pFlashMode = mParameters.get(CameraParameters::KEY_FLASH_MODE);
-        if (pFlashMode != NULL && strncmp(pFlashMode, CameraParameters::FLASH_MODE_ON, strlen(CameraParameters::FLASH_MODE_ON)) == 0) {
-            mFlashNeeded = true;
-        }
 
-        // If flash mode is not ON, check for other modes: AUTO, DAY_SYNC, SLOW_SYNC
-        if (!mFlashNeeded && mAAA->is3ASupported()) {
-            flashMode = mAAA->getAeFlashMode();
+        // If flash mode is not ON or TORCH, check for other modes: AUTO, DAY_SYNC, SLOW_SYNC
+        if (!flashOn && mAAA->is3ASupported()) {
             if (DetermineFlash(flashMode)) {
-                mFlashNeeded = mAAA->getAeFlashNecessary();
-                LOG1("In flash-mode: %d, determined flashNeeded: %d", flashMode, mFlashNeeded);
-            } else {
-                mFlashNeeded = false;
-            }
-            if (mFlashNeeded) {
-                if (mAAA->getAeMode() != CAM_AE_MODE_MANUAL) {
-                    mFlashNeeded = runPreFlashSequence();
+                flashOn = mAAA->getAeFlashNecessary();
+                if (flashOn) {
+                    if (mAAA->getAeMode() != CAM_AE_MODE_MANUAL) {
+                        flashOn = runPreFlashSequence();
+                    }
                 }
             }
         }
@@ -936,7 +910,7 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
     // Configure PictureThread
     mPictureThread->setPictureFormat(format);
     if (origState == STATE_PREVIEW_STILL || origState == STATE_PREVIEW_VIDEO) {
-        mPictureThread->initialize(mParameters, makerNote, mFlashNeeded);
+        mPictureThread->initialize(mParameters, makerNote, flashOn);
 
     } else if (origState == STATE_RECORDING) { // STATE_RECORDING
 
@@ -944,8 +918,7 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
         // if in recording mode we need to override snapshot with video-size.
         CameraParameters copyParams = mParameters;
         copyParams.setPictureSize(width, height); // make sure picture size is same as video size
-        // mFlashNeeded is set in handleMessageStartRecording for STATE_RECORDING
-        mPictureThread->initialize(copyParams, makerNote, mFlashNeeded);
+        mPictureThread->initialize(copyParams, makerNote, flashOn);
     }
 
     if (origState == STATE_PREVIEW_STILL || origState == STATE_PREVIEW_VIDEO) {
@@ -996,8 +969,8 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
     }
 
     if (mState == STATE_CAPTURE) {
-        // Turn on flash
-        if (mFlashNeeded) {
+        // Turn on flash. If flash mode is torch, then torch is already on
+        if (flashOn && flashMode != CAM_AE_FLASH_MODE_TORCH) {
             LOG1("Requesting flash");
             if (mISP->setFlash(1) != NO_ERROR) {
                 LOGE("Failed to enable the Flash!");
@@ -1020,7 +993,7 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
         // TODO: here we should display the picture using PreviewThread
 
         // Turn off flash
-        if (!mFlashNeeded && DetermineFlash(flashMode)) {
+        if (!flashOn && DetermineFlash(flashMode)) {
             mISP->setFlashIndicator(0);
         }
     }
@@ -1030,7 +1003,7 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
      * in burst-capture mode, we can do: grab frames in ControlThread, Red-Eye removal in AAAThread
      * and JPEG encoding in Picture thread, all in parallel.
      */
-    if (mAAA->is3ASupported() && mFlashNeeded && mAAA->getRedEyeRemoval()) {
+    if (mAAA->is3ASupported() && flashOn && mAAA->getRedEyeRemoval()) {
         // tell 3A thread to remove red-eye
         if (mState == STATE_CAPTURE) {
             status = m3AThread->applyRedEyeRemoval(&snapshotBuffer, &postviewBuffer, width, height, format);
@@ -1073,24 +1046,23 @@ status_t ControlThread::handleMessageAutoFocus()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    mFlashNeeded = false;
+    FlashMode flashMode = mAAA->getAeFlashMode();
     // Implement pre auto-focus functions
-    if (mAAA->is3ASupported()) {
-        const char *pFlashMode = mParameters.get(CameraParameters::KEY_FLASH_MODE);
-        if (pFlashMode != NULL && strncmp(pFlashMode, CameraParameters::FLASH_MODE_ON, strlen(CameraParameters::FLASH_MODE_ON)) == 0) {
-            mFlashNeeded = true;
+    if (flashMode != CAM_AE_FLASH_MODE_TORCH && mAAA->is3ASupported()) {
+
+        if (flashMode == CAM_AE_FLASH_MODE_ON) {
+            mFlashAutoFocus = true;
         }
 
-        FlashMode flashMode = mAAA->getAeFlashMode();
-        if (!mFlashNeeded && DetermineFlash(flashMode)) {
+        if (!mFlashAutoFocus && DetermineFlash(flashMode)) {
             // Check the other modes
             LOG1("Flash mode = %d", flashMode);
             if (mAAA->getAeFlashNecessary()) {
-                mFlashNeeded = true;
+                mFlashAutoFocus = true;
             }
         }
 
-        if (mFlashNeeded) {
+        if (mFlashAutoFocus) {
             LOG1("Using Torch for auto-focus");
             mISP->setTorch(TORCH_INTENSITY);
         }
@@ -1107,9 +1079,9 @@ status_t ControlThread::handleMessageAutoFocus()
     status = m3AThread->autoFocus();
 
     // If start auto-focus failed and we enabled torch, disable it now
-    if (status != NO_ERROR && mFlashNeeded) {
+    if (status != NO_ERROR && mFlashAutoFocus) {
         mISP->setTorch(0);
-        mFlashNeeded = false;
+        mFlashAutoFocus = false;
     }
 
     return status;
@@ -1123,9 +1095,9 @@ status_t ControlThread::handleMessageCancelAutoFocus()
     LOG2("auto focus is off");
     if (mFaceDetectionActive)
         enableMsgType(CAMERA_MSG_PREVIEW_METADATA);
-    if (mFlashNeeded) {
+    if (mFlashAutoFocus) {
         mISP->setTorch(0);
-        mFlashNeeded = false;
+        mFlashAutoFocus = false;
     }
     /*
      * The normal autoFocus sequence is:
@@ -1287,9 +1259,9 @@ status_t ControlThread::handleMessageAutoFocusDone()
     if (mFaceDetectionActive)
         enableMsgType(CAMERA_MSG_PREVIEW_METADATA);
     // Implement post auto-focus functions
-    if (mFlashNeeded) {
+    if (mFlashAutoFocus) {
         mISP->setTorch(0);
-        mFlashNeeded = false;
+        mFlashAutoFocus = false;
     }
 
     return status;
@@ -1668,6 +1640,14 @@ status_t ControlThread::processParamFlash(const CameraParameters *oldParams,
         else if(!strncmp(newValue, CameraParameters::FLASH_MODE_DAY_SYNC, strlen(CameraParameters::FLASH_MODE_DAY_SYNC)))
             flash = CAM_AE_FLASH_MODE_DAY_SYNC;
 
+        if (flash == CAM_AE_FLASH_MODE_TORCH && mAAA->getAeFlashMode() != CAM_AE_FLASH_MODE_TORCH) {
+            mISP->setTorch(TORCH_INTENSITY);
+        }
+
+        if (flash != CAM_AE_FLASH_MODE_TORCH && mAAA->getAeFlashMode() == CAM_AE_FLASH_MODE_TORCH) {
+            mISP->setTorch(0);
+        }
+
         status = mAAA->setAeFlashMode(flash);
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_FLASH_MODE, newValue);
@@ -1714,6 +1694,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "auto,off,on,torch");
             newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
@@ -1727,6 +1708,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
             newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
@@ -1740,6 +1722,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
             newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_OUTDOOR);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
@@ -1753,6 +1736,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
             newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
@@ -1766,6 +1750,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "on");
             newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_ON);
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
@@ -1779,6 +1764,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
             newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
@@ -1792,6 +1778,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_MACRO);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "auto,off,on,torch");
             newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
@@ -1804,10 +1791,12 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (strncmp (newScene, CameraParameters::SCENE_MODE_AUTO, strlen(CameraParameters::SCENE_MODE_AUTO))) {
                 LOG1("Unsupported %s: %s. Using AUTO!", CameraParameters::KEY_SCENE_MODE, newScene);
             }
+
             sceneMode = CAM_AE_SCENE_MODE_AUTO;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "auto,off,on,torch");
             newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
@@ -2293,6 +2282,7 @@ status_t ControlThread::handleMessageGetParameters(MessageGetParameters *msg)
         int len = params.length();
         *msg->params = strndup(params.string(), sizeof(char) * len);
         status = NO_ERROR;
+
     }
     mMessageQueue.reply(MESSAGE_ID_GET_PARAMETERS, status);
     return status;
