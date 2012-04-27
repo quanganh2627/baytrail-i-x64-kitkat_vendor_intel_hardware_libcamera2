@@ -622,20 +622,6 @@ status_t ControlThread::stopCapture()
         return status;
     }
 
-    Vector<Message> vect;
-    /*
-     * Before stopping the capture make sure that all
-     * the incoming raw buffers are returned to the ISP
-     * */
-    mMessageQueue.remove(MESSAGE_ID_PICTURE_DONE, &vect);
-    for (size_t i = 0; i < vect.size(); i++) {
-        MessagePicture msg = vect[i].data.pictureDone;
-        status = handleMessagePictureDone(&msg);
-        if (status != NO_ERROR) {
-            LOGW("Error returning pictures done to ISP!");
-        }
-    }
-
     status = mISP->stop();
     if (status != NO_ERROR) {
         LOGE("Error stopping ISP!");
@@ -875,12 +861,21 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
 #endif
 
     if (clientRequest) {
+        bool requestPostviewCallback = true;
+        bool requestRawCallback = true;
         if (origState == STATE_CAPTURE && mBurstLength <= 1) {
             // If burst-length is NOT specified, but more pictures are requested, call the shutter sound now
             mCallbacksThread->shutterSound();
         }
+        // TODO: Fix the TestCamera application bug and remove this workaround
+        // WORKAROUND BEGIN: Due to a TesCamera application bug send the POSTVIEW and RAW callbacks only for single shots
+        if (origState == STATE_CAPTURE || mBurstLength > 1) {
+            requestPostviewCallback = false;
+            requestRawCallback = false;
+        }
+        // WORKAROUND END
         // Notify CallbacksThread that a picture was requested, so grab one from queue
-        mCallbacksThread->requestTakePicture();
+        mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback);
         /*
          *  If the CallbacksThread has already JPEG buffers in queue, make sure we use them, before
          *  continuing to dequeue frames from ISP and encode them
@@ -1070,8 +1065,6 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
     // Do jpeg encoding
     if (mState == STATE_CAPTURE) {
         status = mPictureThread->encode(&snapshotBuffer, &postviewBuffer);
-        if (status == NO_ERROR )
-            status = mCallbacksThread->postCaptureFrames(&snapshotBuffer, &postviewBuffer);
     } else {
         // If we are in video mode we simply use the recording buffer for picture encoding
         // No need to stop, reconfigure, and restart the ISP

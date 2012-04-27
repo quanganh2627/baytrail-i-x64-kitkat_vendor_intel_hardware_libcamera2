@@ -62,11 +62,10 @@ public:
 public:
 
     status_t shutterSound();
-    status_t compressedFrameDone(AtomBuffer* jpegBuf);
-    status_t requestTakePicture();
+    status_t compressedFrameDone(AtomBuffer* jpegBuf, AtomBuffer* snapshotBuf, AtomBuffer* postviewBuf);
+    status_t requestTakePicture(bool postviewCallback = false, bool rawCallback = false);
     status_t flushPictures();
-    status_t postCaptureFrames(AtomBuffer* postviewBuf, AtomBuffer* snapshotBuf);
-    size_t   getQueuedBuffersNum() { return mJpegBuffers.size(); }
+    size_t   getQueuedBuffersNum() { return mBuffers.size(); }
     virtual void facesDetected(camera_frame_metadata_t &face_metadata);
 
 // private types
@@ -79,7 +78,6 @@ private:
         MESSAGE_ID_CALLBACK_SHUTTER,    // send the shutter callback
         MESSAGE_ID_JPEG_DATA_READY,     // we have a JPEG image ready
         MESSAGE_ID_JPEG_DATA_REQUEST,   // a JPEG image was requested
-        MESSAGE_ID_POSTCAPTURE_READY,   // post view and raw ready to be offered to the user via callback
         MESSAGE_ID_FLUSH,
         MESSAGE_ID_FACES,
 
@@ -92,15 +90,18 @@ private:
     //
 
     struct MessageFrame {
-        AtomBuffer buff;
-    };
-    struct MessagePostCaptureFrame {
-        AtomBuffer postView;
-        AtomBuffer snapshot;
+        AtomBuffer jpegBuff;
+        AtomBuffer postviewBuff;
+        AtomBuffer snapshotBuff;
     };
 
     struct MessageFaces {
         camera_frame_metadata_t meta_data;
+    };
+
+    struct MessageDataRequest {
+        bool postviewCallback;
+        bool rawCallback;
     };
 
     // union of all message data
@@ -109,8 +110,8 @@ private:
         //MESSAGE_ID_JPEG_DATA_READY
         MessageFrame compressedFrame;
 
-        //MESSAGE_ID_POSTCAPTURE_READY
-        MessagePostCaptureFrame postCaptureFrame;
+        //MESSAGE_ID_JPEG_DATA_REQUEST
+        MessageDataRequest dataRequest;
 
         // MESSAGE_ID_FACES
         MessageFaces faces;
@@ -129,8 +130,7 @@ private:
     status_t handleMessageExit();
     status_t handleMessageCallbackShutter();
     status_t handleMessageJpegDataReady(MessageFrame *msg);
-    status_t handleMessagePostCaptureDataReady(MessagePostCaptureFrame *msg);
-    status_t handleMessageJpegDataRequest();
+    status_t handleMessageJpegDataRequest(MessageDataRequest *msg);
     status_t handleMessageFlush();
     status_t handleMessageFaces(MessageFaces *msg);
 
@@ -154,9 +154,13 @@ private:
     bool mJpegRequested;
     bool mPostviewRequested;
     bool mRawRequested;
-    Vector<AtomBuffer> mJpegBuffers;
-    Vector<AtomBuffer> mPostviewBuffers;
-    Vector<AtomBuffer> mRawBuffers;
+
+    /*
+     * This vector contains not only the JPEG buffers, but also their corresponding
+     * MAIN and POSTVIEW raw buffers. They need to be returned back to ISP when the
+     * JPEG, RAW and POSTIVEW callbacks are sent to the camera client.
+     */
+    Vector<MessageFrame> mBuffers;
 
 // public data
 public:

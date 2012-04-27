@@ -334,8 +334,7 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
         jpegBuf.buff = NULL;
     }
 
-    jpegBuf.id = msg->snaphotBuf.id;
-    mCallbacksThread->compressedFrameDone(&jpegBuf);
+    mCallbacksThread->compressedFrameDone(&jpegBuf, &msg->snaphotBuf, &msg->postviewBuf);
     return status;
 }
 
