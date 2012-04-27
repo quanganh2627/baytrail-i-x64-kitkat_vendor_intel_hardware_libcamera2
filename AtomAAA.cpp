@@ -32,6 +32,7 @@ AtomAAA::AtomAAA() :
     ,mAfMode(CAM_AF_MODE_NOT_SET)
     ,mFlashMode(CAM_AE_FLASH_MODE_NOT_SET)
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
+    ,mFocusPosition(0)
     ,mStillAfStart(0)
     ,mRedeyeEnabled(false)
 {
@@ -77,6 +78,7 @@ status_t AtomAAA::unInit()
     mAwbMode = CAM_AWB_MODE_NOT_SET;
     mFlashMode = CAM_AE_FLASH_MODE_NOT_SET;
     mRedeyeEnabled = false;
+    mFocusPosition = 0;
     return NO_ERROR;
 }
 
@@ -843,6 +845,129 @@ status_t AtomAAA::getAeManualBrightness(float *ret)
         return UNKNOWN_ERROR;
 
     *ret = CI_ADV_S15_16_TO_FLOAT(val);
+    return NO_ERROR;
+}
+
+// Focus operations
+status_t AtomAAA::setManualFocus(int focus, bool applyNow)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s: focus=%d, applyNow=%d", __FUNCTION__, focus, applyNow);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    mFocusPosition = focus;
+
+    if (applyNow && ci_adv_af_manual_focus_abs(focus) != 0)
+        return UNKNOWN_ERROR;
+    LOG1("Set manual focus distance: %dcm", focus);
+
+    return NO_ERROR;
+}
+
+status_t AtomAAA::setManualFocusIncrement(int step)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s: step=%d", __FUNCTION__, step);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    if (ci_adv_set_manual_focus_inc(step))
+        return UNKNOWN_ERROR;
+
+    mFocusPosition += step;
+    LOG1("Set manual focus increment: %d; current focus distance: %dcm", step, mFocusPosition);
+
+    return NO_ERROR;
+}
+
+status_t AtomAAA::updateManualFocus()
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    if (ci_adv_update_manual_focus_pos())
+        return UNKNOWN_ERROR;
+
+    return NO_ERROR;
+}
+
+status_t AtomAAA::getAfLensPosRange(ci_adv_lens_range *lens_range)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    if (ci_adv_get_lens_range(lens_range))
+        return UNKNOWN_ERROR;
+
+    return NO_ERROR;
+}
+
+// Get Next position of Lens from the 3a lib
+status_t AtomAAA::getNextFocusPosition(int *pos)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    if(ci_adv_get_focus_next_pos(pos))
+        return UNKNOWN_ERROR;
+
+    return NO_ERROR;
+}
+
+// Get Current position of Lens from the 3a lib (0 < pos < 255)
+status_t AtomAAA::getCurrentFocusPosition(int *pos)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    if(ci_adv_get_focus_current_pos(pos))
+        return UNKNOWN_ERROR;
+
+    mFocusPosition = *pos;
+    return NO_ERROR;
+}
+
+// Exposure operations
+status_t AtomAAA::applyEv(float bias)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s: bias=%.2f", __FUNCTION__, bias);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    ci_adv_err ret = ci_adv_ae_apply_bias(CI_ADV_S15_16_FROM_FLOAT(bias));
+    if(ci_adv_success != ret) {
+        LOGE("Error applying EV: %.2f; ret=%d", bias, ret);
+        return UNKNOWN_ERROR;
+    }
+
+    return NO_ERROR;
+}
+
+status_t AtomAAA::setEv(float bias)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s: bias=%.2f", __FUNCTION__, bias);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    bias = bias > 2 ? 2 : bias;
+    bias = bias < -2 ? -2 : bias;
+    ci_adv_err ret = ci_adv_ae_set_bias(CI_ADV_S15_16_FROM_FLOAT(bias));
+    if(ci_adv_success != ret) {
+        LOGE("Error setting EV: %.2f; ret=%d", bias, ret);
+        return UNKNOWN_ERROR;
+    }
+
     return NO_ERROR;
 }
 

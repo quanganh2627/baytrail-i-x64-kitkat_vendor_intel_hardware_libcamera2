@@ -30,6 +30,8 @@
 namespace android {
 
 #define MAX_V4L2_BUFFERS    MAX_BURST_BUFFERS
+#define EV_MIN -2
+#define EV_MAX  2
 
 struct FileInput {
     char *name;

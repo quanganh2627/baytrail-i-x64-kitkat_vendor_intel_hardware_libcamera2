@@ -189,11 +189,18 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
 }
 
 
-status_t PictureThread::encode(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf)
+status_t PictureThread::encode(SensorParams *sensorParams, AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_ENCODE;
+    if (sensorParams == NULL) {
+        sensorParams = &defaultSensorParams;
+    } else {
+        // Update default SensorParams
+        defaultSensorParams = *sensorParams;
+    }
+    msg.data.encode.sensorParams = *sensorParams;
     msg.data.encode.snaphotBuf = *snaphotBuf;
     if (postviewBuf) {
         msg.data.encode.postviewBuf = *postviewBuf;
@@ -222,6 +229,7 @@ void PictureThread::getDefaultParameters(CameraParameters *params)
 void PictureThread::initialize(const CameraParameters &params, const atomisp_makernote_info &makerNote, bool flashUsed)
 {
     exifMaker.initialize(params, makerNote);
+    defaultSensorParams = exifMaker.getSensorParams();
     if (flashUsed)
         exifMaker.enableFlash();
     params.getPictureSize(&mPictureWidth, &mPictureHeight);
@@ -324,6 +332,7 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 
     // Encode the image
     AtomBuffer *postviewBuf = msg->postviewBuf.buff == NULL ? NULL : &msg->postviewBuf;
+    exifMaker.setSensorParams(msg->sensorParams);
     status = encodeToJpeg(&msg->snaphotBuf, postviewBuf, &jpegBuf);
     if (status != NO_ERROR) {
         LOGE("Error generating JPEG image!");

@@ -452,6 +452,20 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
     params->set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION,0);
     params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP,0);
 
+    // No Capture bracketing
+    params->set(CameraParameters::KEY_CAPTURE_BRACKET, "none");
+    params->set(CameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET, "none");
+
+    // No HDR imaging
+    params->set(CameraParameters::KEY_HDR_IMAGING, "off");
+    params->set(CameraParameters::KEY_SUPPORTED_HDR_IMAGING, "off");
+    params->set(CameraParameters::KEY_HDR_VIVIDNESS, "none");
+    params->set(CameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none");
+    params->set(CameraParameters::KEY_HDR_SHARPENING, "none");
+    params->set(CameraParameters::KEY_SUPPORTED_HDR_SHARPENING, "none");
+    params->set(CameraParameters::KEY_HDR_SAVE_ORIGINAL, "off");
+    params->set(CameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL, "off");
+
     if(mAAA->is3ASupported()){
         // effect modes
         params->set(CameraParameters::KEY_EFFECT, CameraParameters::EFFECT_NONE);
@@ -532,16 +546,9 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
         // metering areas
         params->set(CameraParameters::KEY_MAX_NUM_METERING_AREAS, mAAA->getAfMaxNumWindows());
 
-        // No HDR imaging
-        params->set(CameraParameters::KEY_HDR_IMAGING, "off");
-        params->set(CameraParameters::KEY_SUPPORTED_HDR_IMAGING, "off");
-        params->set(CameraParameters::KEY_HDR_VIVIDNESS, "none");
-        params->set(CameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none");
-        params->set(CameraParameters::KEY_HDR_SHARPENING, "none");
-        params->set(CameraParameters::KEY_SUPPORTED_HDR_SHARPENING, "none");
-        params->set(CameraParameters::KEY_HDR_SAVE_ORIGINAL, "off");
-        params->set(CameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL, "off");
-
+        // Capture bracketing
+        params->set(CameraParameters::KEY_CAPTURE_BRACKET, "none");
+        params->set(CameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET, "none,exposure,focus");
     }
 }
 

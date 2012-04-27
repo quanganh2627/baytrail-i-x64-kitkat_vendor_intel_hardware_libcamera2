@@ -206,11 +206,40 @@ void EXIFMaker::initializeLocation(const CameraParameters &params)
     }
 }
 
+void EXIFMaker::setSensorParams(const SensorParams& sensorParams)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    // exposure time
+    exifAttributes.exposure_time.num = sensorParams.expTime;
+    exifAttributes.exposure_time.den = 10000;
+    LOG1("EXIF: exposure time=%u", sensorParams.expTime);
+
+    // shutter speed, = -log2(exposure time)
+    float exp_t = (float)(sensorParams.expTime / 10000.0);
+    float shutter = -1.0 * (log10(exp_t) / log10(2.0));
+    exifAttributes.shutter_speed.num = (shutter * 10000);
+    exifAttributes.shutter_speed.den = 10000;
+    LOG1("EXIF: shutter speed=%.2f", shutter);
+
+    // aperture
+    exifAttributes.aperture.num = 100*(int)((1.0*exifAttributes.fnumber.num/exifAttributes.fnumber.den) * sqrt(100.0/sensorParams.aperture));
+    exifAttributes.aperture.den = 100;
+    LOG1("EXIF: aperture=%u", sensorParams.aperture);
+
+    // exposure bias. unit is APEX value. -99.99 to 99.99
+    if (sensorParams.evBias > EV_LOWER_BOUND && sensorParams.evBias < EV_UPPER_BOUND) {
+        exifAttributes.exposure_bias.num = (int)(sensorParams.evBias * 100);
+        exifAttributes.exposure_bias.den = 100;
+        LOG1("EXIF: Ev = %.2f", sensorParams.evBias);
+    } else {
+        LOGW("EXIF: Invalid Ev!");
+    }
+}
+
 void EXIFMaker::initializeHWSpecific(const atomisp_makernote_info &makerNote)
 {
     LOG1("@%s", __FUNCTION__);
-    unsigned short expTime = 0, aperture = 0;
-    int aecApexTv = 0, aecApexSv = 0, aecApexAv = 0;
 
     // f number
     if (makerNote.f_number_curr > 0) {
@@ -228,23 +257,13 @@ void EXIFMaker::initializeHWSpecific(const atomisp_makernote_info &makerNote)
 
     if (mAAA->is3ASupported()) {
         // exp_time's unit is 100us
-        mAAA->getExposureInfo(&expTime, &aperture, &aecApexTv, &aecApexSv, &aecApexAv);
-        // exposure time
-        exifAttributes.exposure_time.num = expTime;
-        exifAttributes.exposure_time.den = 10000;
-        LOG1("EXIF: exposure time=%u", expTime);
-
-        // shutter speed, = -log2(exposure time)
-        float exp_t = (float)(expTime / 10000.0);
-        float shutter = -1.0 * (log10(exp_t) / log10(2.0));
-        exifAttributes.shutter_speed.num = (shutter * 10000);
-        exifAttributes.shutter_speed.den = 10000;
-        LOG1("EXIF: shutter speed=%.2f", shutter);
-
-        // aperture
-        exifAttributes.aperture.num = 100*(int)((1.0*exifAttributes.fnumber.num/exifAttributes.fnumber.den) * sqrt(100.0/aperture));
-        exifAttributes.aperture.den = 100;
-        LOG1("EXIF: aperture=%u", aperture);
+        mAAA->getExposureInfo(&sensorParams.expTime, &sensorParams.aperture, &sensorParams.aecApexTv, &sensorParams.aecApexSv, &sensorParams.aecApexAv);
+        // exposure bias. unit is APEX value. -99.99 to 99.99
+        if (mAAA->getEv(&sensorParams.evBias) != NO_ERROR) {
+            sensorParams.evBias = EV_UPPER_BOUND;
+            LOGW("EXIF: Could not query Ev!");
+        }
+        setSensorParams(sensorParams);
 
         // brightness, -99.99 to 99.99. FFFFFFFF.H means unknown.
         float brightness;
@@ -254,16 +273,6 @@ void EXIFMaker::initializeHWSpecific(const atomisp_makernote_info &makerNote)
             LOG1("EXIF: brightness = %.2f", brightness);
         } else {
             LOGW("EXIF: Could not query brightness!");
-        }
-
-        // exposure bias. unit is APEX value. -99.99 to 99.99
-        float bias;
-        if (mAAA->getEv(&bias) == NO_ERROR) {
-            exifAttributes.exposure_bias.num = (int)(bias * 100);
-            exifAttributes.exposure_bias.den = 100;
-            LOG1("EXIF: Ev = %.2f", bias);
-        } else {
-            LOGW("EXIF: Could not query Ev!");
         }
 
         // set the exposure program mode

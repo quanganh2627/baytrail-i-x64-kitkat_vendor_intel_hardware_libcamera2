@@ -132,12 +132,24 @@ enum FlashStage
 #define DEFAULT_GBCE_STRENGTH   0
 #define MAX_TIME_FOR_AF         2000 // milliseconds
 #define TORCH_INTENSITY         20   // 20%
+#define EV_LOWER_BOUND         -100
+#define EV_UPPER_BOUND          100
 
 struct IspSettings
 {
     int  GBCE_strength; // default: 0,  >0 -> stronger GBCE
     bool GBCE_enabled;
     bool inv_gamma;    // inversed gamma flag, used in negative effect
+};
+
+struct SensorParams
+{
+    float evBias;
+    unsigned short expTime;
+    unsigned short aperture;
+    int aecApexTv;
+    int aecApexSv;
+    int aecApexAv;
 };
 
 class AtomAAA {
@@ -197,6 +209,14 @@ public:
     status_t getExposureInfo(unsigned short *expTime, unsigned short *aperture,
                              int* aecApexTv, int* aecApexSv, int* aecApexAv);
     status_t getAeManualBrightness(float *ret);
+    status_t setManualFocus(int focus, bool applyNow);
+    status_t setManualFocusIncrement(int step);
+    status_t updateManualFocus();
+    status_t getAfLensPosRange(ci_adv_lens_range *lens_range);
+    status_t getNextFocusPosition(int *pos);
+    status_t getCurrentFocusPosition(int *pos);
+    status_t applyEv(float bias);
+    status_t setEv(float bias);
     status_t getEv(float *ret);
     status_t getManualIso(int *ret);
 
@@ -225,6 +245,7 @@ private:
     AfMode mAfMode;
     FlashMode mFlashMode;
     AwbMode mAwbMode;
+    int mFocusPosition;
     nsecs_t mStillAfStart;
     bool mRedeyeEnabled;
 }; // class AtomAAA

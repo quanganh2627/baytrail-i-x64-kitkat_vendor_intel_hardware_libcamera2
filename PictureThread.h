@@ -45,7 +45,7 @@ public:
 // public methods
 public:
 
-    status_t encode(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf = NULL);
+    status_t encode(SensorParams *sensorParams, AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf = NULL);
     void setPictureFormat(int format)
     {
         mPictureFormat = format;
@@ -86,6 +86,7 @@ private:
     };
 
     struct MessageEncode {
+        SensorParams sensorParams;
         AtomBuffer snaphotBuf;
         AtomBuffer postviewBuf;
     };
@@ -131,6 +132,7 @@ private:
     Callbacks *mCallbacks;
     CallbacksThread *mCallbacksThread;
     JpegCompressor compressor;
+    SensorParams defaultSensorParams;
     EXIFMaker exifMaker;
     AtomBuffer mExifBuf;
     AtomBuffer mOutBuf;

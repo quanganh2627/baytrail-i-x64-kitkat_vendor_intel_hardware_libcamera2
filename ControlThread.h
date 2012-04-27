@@ -20,6 +20,7 @@
 #include <utils/threads.h>
 #include <camera.h>
 #include <camera/CameraParameters.h>
+#include <utils/List.h>
 #include "MessageQueue.h"
 #include "PreviewThread.h"
 #include "PictureThread.h"
@@ -284,6 +285,20 @@ private:
         bool videoSnapshotBuffReturned;
     };
 
+    enum BracketingMode {
+        BRACKET_NONE = 0,
+        BRACKET_EXPOSURE,
+        BRACKET_FOCUS,
+    };
+
+    struct BracketingType {
+        BracketingMode mode;
+        float minValue;
+        float maxValue;
+        float currentValue;
+        float step;
+    };
+
 // private methods
 private:
 
@@ -326,7 +341,9 @@ private:
     status_t dequeueRecording();
     status_t queueCoupledBuffers(int coupledId);
 
-    status_t skipFrames(size_t numFrames);
+    status_t skipFrames(size_t numFrames, size_t doBracket = 0);
+    status_t initBracketing();
+    status_t applyBracketing();
 
     bool runPreFlashSequence();
 
@@ -359,6 +376,8 @@ private:
             CameraParameters *newParams);
     status_t processParamSetMeteringAreas(const CameraParameters * oldParams,
             CameraParameters * newParams);
+    status_t processParamBracket(const CameraParameters *oldParams,
+                CameraParameters *newParams);
 
     bool verifyCameraWindow(const CameraWindow &win);
     void preSetCameraWindows(CameraWindow* focusWindows, size_t winCount);
@@ -419,7 +438,8 @@ private:
     int  mBurstSkipFrames;
     int  mBurstLength;
     int  mBurstCaptureNum;
-    nsecs_t mLastBurstCaptureTime;
+    BracketingType mBracketing;
+    List<SensorParams> mBracketingParams;
 
     sp<BufferShareRegistry> mBSInstance;
 

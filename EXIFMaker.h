@@ -29,6 +29,7 @@ class EXIFMaker {
 private:
     JpegEncoder encoder;
     AtomAAA *mAAA;
+    SensorParams sensorParams;
     exif_attribute_t exifAttributes;
     int thumbWidth;
     int thumbHeight;
@@ -47,6 +48,8 @@ public:
     void enableFlash();
     void setThumbnail(unsigned char *data, size_t size);
     size_t makeExif(unsigned char **data);
+    const SensorParams& getSensorParams() { return sensorParams; }
+    void setSensorParams(const SensorParams& sensorParams);
 };
 
 }; // namespace android
