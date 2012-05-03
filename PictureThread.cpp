@@ -32,12 +32,6 @@ PictureThread::PictureThread() :
     ,mThreadRunning(false)
     ,mCallbacks(Callbacks::getInstance())
     ,mCallbacksThread(CallbacksThread::getInstance())
-    ,mPictureWidth(0)
-    ,mPictureHeight(0)
-    ,mPictureFormat(0)
-    ,mThumbWidth(0)
-    ,mThumbHeight(0)
-    ,mThumbFormat(0)
     ,mPictureQuality(80)
     ,mThumbnailQuality(50)
     ,mUsingSharedBuffers(false)
@@ -79,7 +73,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     nsecs_t endTime;
 
     if (mOutBuf.buff == NULL || mOutBuf.buff->data == NULL || mOutBuf.buff->size <= 0) {
-        int bufferSize = (mPictureWidth * mPictureHeight * 2);
+        int bufferSize = (mainBuf->width * mainBuf->height * 2);
         mCallbacks->allocateMemory(&mOutBuf, bufferSize);
     }
     if (mExifBuf.buff == NULL || mExifBuf.buff->data == NULL || mExifBuf.buff->size <= 0) {
@@ -100,14 +94,14 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         // setup the JpegCompressor input and output buffers
         inBuf.clear();
         inBuf.buf = (unsigned char*)thumbBuf->buff->data;
-        inBuf.width = mThumbWidth;
-        inBuf.height = mThumbHeight;
-        inBuf.format = mThumbFormat;
-        inBuf.size = frameSize(mThumbFormat, mThumbWidth, mThumbHeight);
+        inBuf.width = thumbBuf->width;
+        inBuf.height = thumbBuf->height;
+        inBuf.format = thumbBuf->format;
+        inBuf.size = frameSize(thumbBuf->format, thumbBuf->width, thumbBuf->height);
         outBuf.clear();
         outBuf.buf = (unsigned char*)mOutBuf.buff->data;
-        outBuf.width = mThumbWidth;
-        outBuf.height = mThumbHeight;
+        outBuf.width = thumbBuf->width;
+        outBuf.height = thumbBuf->height;
         outBuf.quality = mThumbnailQuality;
         outBuf.size = mOutBuf.buff->size;
         endTime = systemTime();
@@ -146,14 +140,14 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     } else {
         inBuf.buf = (unsigned char *) mainBuf->buff->data;
     }
-    inBuf.width = mPictureWidth;
-    inBuf.height = mPictureHeight;
-    inBuf.format = mPictureFormat;
-    inBuf.size = frameSize(mPictureFormat, mPictureWidth, mPictureHeight);
+    inBuf.width = mainBuf->width;
+    inBuf.height = mainBuf->height;
+    inBuf.format = mainBuf->format;
+    inBuf.size = frameSize(mainBuf->format, mainBuf->width, mainBuf->height);
     outBuf.clear();
     outBuf.buf = (unsigned char*)mOutBuf.buff->data;
-    outBuf.width = mPictureWidth;
-    outBuf.height = mPictureHeight;
+    outBuf.width = mainBuf->width;
+    outBuf.height = mainBuf->height;
     outBuf.quality = mPictureQuality;
     outBuf.size = mOutBuf.buff->size;
     endTime = systemTime();
@@ -232,9 +226,6 @@ void PictureThread::initialize(const CameraParameters &params, const atomisp_mak
     defaultSensorParams = exifMaker.getSensorParams();
     if (flashUsed)
         exifMaker.enableFlash();
-    params.getPictureSize(&mPictureWidth, &mPictureHeight);
-    mThumbWidth = params.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
-    mThumbHeight = params.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
     int q = params.getInt(CameraParameters::KEY_JPEG_QUALITY);
     if (q != 0)
         mPictureQuality = q;
@@ -290,6 +281,14 @@ status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuff
     return mMessageQueue.send(&msg);
 }
 
+status_t PictureThread::releaseSharedBuffers()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_RELEASE_BUFS;
+    return mMessageQueue.send(&msg);
+}
+
 status_t PictureThread::wait()
 {
     LOG1("@%s", __FUNCTION__);
@@ -323,12 +322,14 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
     int totalSize = 0;
     AtomBuffer jpegBuf;
 
-    if (mPictureWidth == 0 ||
-        mPictureHeight == 0 ||
-        mPictureFormat == 0) {
+    if (msg->snaphotBuf.width == 0 ||
+        msg->snaphotBuf.height == 0 ||
+        msg->snaphotBuf.format == 0) {
         LOGE("Picture information not set yet!");
         return UNKNOWN_ERROR;
     }
+
+    jpegBuf.buff = NULL;
 
     // Encode the image
     AtomBuffer *postviewBuf = msg->postviewBuf.buff == NULL ? NULL : &msg->postviewBuf;
@@ -356,6 +357,17 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
             msg->numBufs);
     // Send NULL as buffer pointer: don't care about the buffers now, just allocate them
     return getSharedBuffers(msg->width, msg->height, NULL, msg->numBufs);
+}
+
+status_t PictureThread::handleMessageReleaseBufs()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    if (mUsingSharedBuffers) {
+        status = compressor.stopSharedBuffersEncode();
+        mUsingSharedBuffers = false;
+    }
+    return status;
 }
 
 status_t PictureThread::handleMessageWait()
@@ -395,6 +407,10 @@ status_t PictureThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_ALLOC_BUFS:
             status = handleMessageAllocBufs(&msg.data.alloc);
+            break;
+
+        case MESSAGE_ID_RELEASE_BUFS:
+            status = handleMessageReleaseBufs();
             break;
 
         case MESSAGE_ID_WAIT:

@@ -151,9 +151,9 @@ private:
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
     Callbacks *mCallbacks;
-    bool mJpegRequested;
-    bool mPostviewRequested;
-    bool mRawRequested;
+    unsigned mJpegRequested;
+    unsigned mPostviewRequested;
+    unsigned mRawRequested;
 
     /*
      * This vector contains not only the JPEG buffers, but also their corresponding

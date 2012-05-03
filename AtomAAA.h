@@ -153,6 +153,13 @@ struct SensorParams
     float digitalGain;
 };
 
+struct CiUserBuffer {
+    ci_adv_user_buffer *ciMainBuf;
+    ci_adv_user_buffer *ciPostviewBuf;
+    int **cdf;
+    size_t ciBufNum;
+};
+
 class AtomAAA {
 
 // constructor/destructor
@@ -225,6 +232,8 @@ public:
     status_t applyDvsProcess();
     status_t apply3AProcess(bool read_stats,
         struct timeval capture_timestamp);
+    status_t computeCDF(const CiUserBuffer& inputBuf, size_t bufIndex);
+    status_t composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& outputBuf, unsigned vividness, unsigned sharpening);
 
     status_t startStillAf();
     status_t stopStillAf();

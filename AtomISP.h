@@ -81,6 +81,7 @@ public:
 
     status_t start(AtomMode mode);
     status_t stop();
+    status_t releaseCaptureBuffers();
 
     inline int getNumBuffers() { return mNumBuffers; }
 

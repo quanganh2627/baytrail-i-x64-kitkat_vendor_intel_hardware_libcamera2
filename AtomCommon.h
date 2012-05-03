@@ -54,6 +54,10 @@ struct AtomBuffer {
     int ispPrivate;         // Private to the AtomISP class.
                             // No other classes should touch this
     bool shared;            // buffer sharing
+    int width;
+    int height;
+    int format;
+    int size;
     AtomMode type;          // type
     IBufferOwner* owner;    //owner who is responsible to enqueue back to AtomISP
     struct timeval  capture_timestamp;

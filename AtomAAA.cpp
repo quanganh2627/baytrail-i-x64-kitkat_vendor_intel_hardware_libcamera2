@@ -1072,7 +1072,7 @@ status_t AtomAAA::applyDvsProcess()
     return status;
 }
 
-int AtomAAA::apply3AProcess(bool read_stats,
+status_t AtomAAA::apply3AProcess(bool read_stats,
     const struct timeval capture_timestamp)
 {
     Mutex::Autolock lock(m3aLock);
@@ -1084,6 +1084,45 @@ int AtomAAA::apply3AProcess(bool read_stats,
         status = UNKNOWN_ERROR;
     }
     return status;
+}
+
+status_t AtomAAA::computeCDF(const CiUserBuffer& inputBuf, size_t bufIndex)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s: inputBuf=%p, bufIndex=%u", __FUNCTION__, &inputBuf, bufIndex);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    if (bufIndex > inputBuf.ciBufNum)
+        return BAD_VALUE;
+
+    LOG1("Using input CI postview buff %d @%p: (addr=%p, length=%d, width=%d, height=%d, format=%d)",
+            bufIndex,
+            &inputBuf.ciPostviewBuf[bufIndex],
+            inputBuf.ciPostviewBuf[bufIndex].addr,
+            inputBuf.ciPostviewBuf[bufIndex].length,
+            inputBuf.ciPostviewBuf[bufIndex].width,
+            inputBuf.ciPostviewBuf[bufIndex].height,
+            inputBuf.ciPostviewBuf[bufIndex].format);
+    ci_adv_compute_cdf(&inputBuf.ciPostviewBuf[bufIndex], &inputBuf.cdf[bufIndex]);
+    if (inputBuf.cdf[bufIndex] != NULL) {
+        LOG1("CDF obtained: %d", *inputBuf.cdf[bufIndex]);
+    } else {
+        LOG1("CDF obtained: NULL");
+    }
+    return NO_ERROR;
+}
+
+status_t AtomAAA::composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& outputBuf, unsigned vividness, unsigned sharpening)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s: inputBuf=%p, outputBuf=%p, vividness=%u, sharpening=%u", __FUNCTION__, &inputBuf, &outputBuf, vividness, sharpening);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    ci_adv_hdr_compose (&outputBuf.ciMainBuf[0], &outputBuf.ciPostviewBuf[0], inputBuf.ciMainBuf, inputBuf.ciBufNum, sharpening, vividness, inputBuf.cdf);
+
+    return NO_ERROR;
 }
 
 } //  namespace android

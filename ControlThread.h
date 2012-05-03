@@ -299,6 +299,32 @@ private:
         float step;
     };
 
+    struct HdrImaging {
+        enum HdrSharpening {
+            NO_SHARPENING = 0,
+            NORMAL_SHARPENING,
+            STRONG_SHARPENING
+        };
+
+        enum HdrVividness {
+            NO_VIVIDNESS = 0,
+            GAUSSIAN_VIVIDNESS,
+            GAMMA_VIVIDNESS
+        };
+
+        BracketingMode bracketMode;
+        int  bracketNum;
+        bool enabled;
+        bool saveOrig;
+        bool saveOrigRequest;
+        HdrSharpening sharpening;
+        HdrVividness vividness;
+        AtomBuffer outMainBuf;
+        AtomBuffer outPostviewBuf;
+        CiUserBuffer ciBufIn;
+        CiUserBuffer ciBufOut;
+    };
+
 // private methods
 private:
 
@@ -378,6 +404,8 @@ private:
             CameraParameters * newParams);
     status_t processParamBracket(const CameraParameters *oldParams,
                 CameraParameters *newParams);
+    status_t processParamHDR(const CameraParameters *oldParams,
+            CameraParameters *newParams);
 
     bool verifyCameraWindow(const CameraWindow &win);
     void preSetCameraWindows(CameraWindow* focusWindows, size_t winCount);
@@ -440,6 +468,7 @@ private:
     int  mBurstCaptureNum;
     BracketingType mBracketing;
     List<SensorParams> mBracketingParams;
+    HdrImaging mHdr;
 
     sp<BufferShareRegistry> mBSInstance;
 

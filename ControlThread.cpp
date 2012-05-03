@@ -51,6 +51,12 @@ namespace android {
  */
 #define ASPECT_TOLERANCE 0.001
 
+/*
+ * DEFAULT_HDR_BRACKETING: the number of bracketed captures to be made in order to compose
+ * a HDR image.
+ */
+#define DEFAULT_HDR_BRACKETING 3
+
 ControlThread::ControlThread() :
     Thread(true) // callbacks may call into java
     ,mISP(NULL)
@@ -190,6 +196,12 @@ status_t ControlThread::init(int cameraId)
         LOGE("Failed on creating face detector.");
         goto bail;
     }
+
+    // Disable bracketing by default
+    mBracketing.mode = BRACKET_NONE;
+
+    // Disable HDR by default
+    mHdr.enabled = false;
 
     return NO_ERROR;
 
@@ -627,9 +639,39 @@ status_t ControlThread::stopCapture()
         LOGE("Error stopping ISP!");
         return status;
     }
+    status = mISP->releaseCaptureBuffers();
 
     mState = STATE_STOPPED;
     mBurstCaptureNum = 0;
+
+    // Reset AE and AF
+    mAAA->setAeMode(CAM_AE_MODE_AUTO);
+    mAAA->setAfMode(CAM_AF_MODE_AUTO);
+
+    if (mHdr.enabled) {
+        // Deallocate memory
+        if (mHdr.outMainBuf.buff != NULL) {
+            mHdr.outMainBuf.buff->release(mHdr.outMainBuf.buff);
+        }
+        if (mHdr.outPostviewBuf.buff != NULL) {
+            mHdr.outPostviewBuf.buff->release(mHdr.outPostviewBuf.buff);
+        }
+        if (mHdr.ciBufIn.ciMainBuf != NULL) {
+            delete[] mHdr.ciBufIn.ciMainBuf;
+        }
+        if (mHdr.ciBufIn.ciPostviewBuf != NULL) {
+            delete[] mHdr.ciBufIn.ciPostviewBuf;
+        }
+        if (mHdr.ciBufIn.cdf != NULL) {
+            delete[] mHdr.ciBufIn.cdf;
+        }
+        if (mHdr.ciBufOut.ciMainBuf != NULL) {
+            delete[] mHdr.ciBufOut.ciMainBuf;
+        }
+        if (mHdr.ciBufOut.ciPostviewBuf != NULL) {
+            delete[] mHdr.ciBufOut.ciPostviewBuf;
+        }
+    }
     return status;
 }
 
@@ -1013,9 +1055,8 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
     State origState = mState;
-    int width;
-    int height;
-    int format;
+    int width, height, format, size;
+    int pvWidth, pvHeight, pvFormat, pvSize;
     FlashMode flashMode = mAAA->getAeFlashMode();
     bool flashOn = (flashMode == CAM_AE_FLASH_MODE_TORCH ||
         flashMode == CAM_AE_FLASH_MODE_ON);
@@ -1029,7 +1070,7 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
     }
 #endif
 
-    if (clientRequest) {
+    if (clientRequest || (mHdr.enabled && mHdr.saveOrigRequest)) {
         bool requestPostviewCallback = true;
         bool requestRawCallback = true;
         if (origState == STATE_CAPTURE && mBurstLength <= 1) {
@@ -1045,6 +1086,11 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
         // WORKAROUND END
         // Notify CallbacksThread that a picture was requested, so grab one from queue
         mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback);
+        if (mHdr.enabled && mHdr.saveOrigRequest) {
+            // After we requested a picture from CallbackThread, disable saveOrigRequest (we need just one picture for original)
+            mHdr.saveOrigRequest = false;
+        }
+
         /*
          *  If the CallbacksThread has already JPEG buffers in queue, make sure we use them, before
          *  continuing to dequeue frames from ISP and encode them
@@ -1100,7 +1146,12 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
 
     // Get the current params
     mParameters.getPictureSize(&width, &height);
+    pvWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
+    pvHeight= mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
     format = mISP->getSnapshotPixelFormat();
+    size = frameSize(format, width, height);
+    pvSize = frameSize(format, pvWidth, pvHeight);
+
     if (origState == STATE_RECORDING) {
         // override picture size to video size if recording
         int vidWidth, vidHeight;
@@ -1119,7 +1170,6 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
     }
 
     // Configure PictureThread
-    mPictureThread->setPictureFormat(format);
     if (origState == STATE_PREVIEW_STILL || origState == STATE_PREVIEW_VIDEO) {
         mPictureThread->initialize(mParameters, makerNote, flashOn);
 
@@ -1135,8 +1185,20 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
     if (origState == STATE_PREVIEW_STILL || origState == STATE_PREVIEW_VIDEO) {
         // Configure and start the ISP
         mISP->setSnapshotFrameFormat(width, height, format);
-        mISP->setSnapshotNum(NUM_BURST_BUFFERS);
-        if (format == V4L2_PIX_FMT_NV12) {
+        if (mHdr.enabled) {
+            mHdr.outMainBuf.buff = NULL;
+            mHdr.outPostviewBuf.buff = NULL;
+            mISP->setSnapshotNum(mHdr.bracketNum);
+        } else {
+            mISP->setSnapshotNum(NUM_BURST_BUFFERS);
+        }
+
+        /*
+         * Use buffers sharing only if the pixel format is NV12 and HDR is not enabled.
+         * HDR shared buffers cannot be accessed from multiresolution fw, so we need user-space
+         * buffers when doing HDR composition.
+         */
+        if (format == V4L2_PIX_FMT_NV12 && !mHdr.enabled) {
             // Try to use buffer sharing
             void* snapshotBufferPtr;
             status = mPictureThread->getSharedBuffers(width, height, &snapshotBufferPtr, NUM_BURST_BUFFERS);
@@ -1153,9 +1215,82 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
         } else {
             LOG1("Using internal buffers for snapshot");
         }
+
         if ((status = mISP->start(MODE_CAPTURE)) != NO_ERROR) {
             LOGE("Error starting the ISP driver in CAPTURE mode!");
             return status;
+        }
+
+        // HDR init
+        if (mHdr.enabled) {
+            // Initialize the HDR output buffers
+            // Main output buffer
+            mCallbacks->allocateMemory(&mHdr.outMainBuf, size);
+            if (mHdr.outMainBuf.buff == NULL) {
+                LOGE("HDR: Error allocating memory for HDR main buffer!");
+                status = NO_MEMORY;
+                return status;
+            }
+            mHdr.outMainBuf.shared = false;
+            LOG1("HDR: using %p as HDR main output buffer", mHdr.outMainBuf.buff->data);
+            // Postview output buffer
+            mCallbacks->allocateMemory(&mHdr.outPostviewBuf, pvSize);
+            if (mHdr.outPostviewBuf.buff == NULL) {
+                LOGE("HDR: Error allocating memory for HDR postview buffer!");
+                status = NO_MEMORY;
+                return status;
+            }
+            LOG1("HDR: using %p as HDR postview output buffer", mHdr.outPostviewBuf.buff->data);
+
+            // Initialize the CI input buffers (will be initialized later, when snapshots are taken)
+            mHdr.ciBufIn.ciBufNum = mHdr.bracketNum;
+            mHdr.ciBufIn.ciMainBuf = new ci_adv_user_buffer[mHdr.ciBufIn.ciBufNum];
+            mHdr.ciBufIn.ciPostviewBuf = new ci_adv_user_buffer[mHdr.ciBufIn.ciBufNum];
+            mHdr.ciBufIn.cdf = new int*[mHdr.ciBufIn.ciBufNum];
+
+            // Initialize the CI output buffers
+            mHdr.ciBufOut.ciBufNum = mHdr.bracketNum;
+            mHdr.ciBufOut.ciMainBuf = new ci_adv_user_buffer[1];
+            mHdr.ciBufOut.ciPostviewBuf = new ci_adv_user_buffer[1];
+            mHdr.ciBufOut.cdf = NULL;
+
+            if (mHdr.ciBufIn.ciMainBuf == NULL ||
+                mHdr.ciBufIn.ciPostviewBuf == NULL ||
+                mHdr.ciBufIn.cdf == NULL ||
+                mHdr.ciBufOut.ciMainBuf == NULL ||
+                mHdr.ciBufOut.ciPostviewBuf == NULL) {
+                LOGE("HDR: Error allocating memory for HDR CI buffers!");
+                status = NO_MEMORY;
+                return status;
+            }
+
+            mHdr.ciBufOut.ciMainBuf->addr = mHdr.outMainBuf.buff->data;
+            mHdr.ciBufOut.ciMainBuf[0].width = mHdr.outMainBuf.width = width;
+            mHdr.ciBufOut.ciMainBuf[0].height = mHdr.outMainBuf.height = height;
+            mHdr.ciBufOut.ciMainBuf[0].format = mHdr.outMainBuf.format = format;
+            mHdr.ciBufOut.ciMainBuf[0].length = mHdr.outMainBuf.size = size;
+
+            LOG1("HDR: Initialized output CI main     buff @%p: (addr=%p, length=%d, width=%d, height=%d, format=%d)",
+                    &mHdr.ciBufOut.ciMainBuf[0],
+                    mHdr.ciBufOut.ciMainBuf[0].addr,
+                    mHdr.ciBufOut.ciMainBuf[0].length,
+                    mHdr.ciBufOut.ciMainBuf[0].width,
+                    mHdr.ciBufOut.ciMainBuf[0].height,
+                    mHdr.ciBufOut.ciMainBuf[0].format);
+
+            mHdr.ciBufOut.ciPostviewBuf[0].addr = mHdr.outPostviewBuf.buff->data;
+            mHdr.ciBufOut.ciPostviewBuf[0].width = mHdr.outPostviewBuf.width = pvWidth;
+            mHdr.ciBufOut.ciPostviewBuf[0].height = mHdr.outPostviewBuf.height = pvHeight;
+            mHdr.ciBufOut.ciPostviewBuf[0].format = mHdr.outPostviewBuf.format = format;
+            mHdr.ciBufOut.ciPostviewBuf[0].length = mHdr.outPostviewBuf.size = pvSize;
+
+            LOG1("HDR: Initialized output CI postview buff @%p: (addr=%p, length=%d, width=%d, height=%d, format=%d)",
+                    &mHdr.ciBufOut.ciPostviewBuf[0],
+                    mHdr.ciBufOut.ciPostviewBuf[0].addr,
+                    mHdr.ciBufOut.ciPostviewBuf[0].length,
+                    mHdr.ciBufOut.ciPostviewBuf[0].width,
+                    mHdr.ciBufOut.ciPostviewBuf[0].height,
+                    mHdr.ciBufOut.ciPostviewBuf[0].format);
         }
 
         /*
@@ -1216,6 +1351,51 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
             return status;
         }
 
+        if (mHdr.enabled) {
+            // Initialize the HDR CI input buffers (main/postview) for this capture
+            if (snapshotBuffer.shared) {
+                mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].addr = (void *) *((char **)snapshotBuffer.buff->data);
+                LOGW("HDR: Warning: shared buffer detected in HDR composing. The composition might fail!");
+            } else {
+                mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].addr = snapshotBuffer.buff->data;
+            }
+            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].addr = snapshotBuffer.buff->data;
+            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].width = width;
+            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height = height;
+            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].format = format;
+            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].length = size;
+
+            LOG1("HDR: Initialized input CI main     buff %d @%p: (addr=%p, length=%d, width=%d, height=%d, format=%d)",
+                    mBurstCaptureNum,
+                    &mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum],
+                    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].addr,
+                    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].length,
+                    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].width,
+                    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height,
+                    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].format);
+
+            mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].addr = postviewBuffer.buff->data;
+            mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].width = pvWidth;
+            mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height = pvHeight;
+            mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].format = format;
+            mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].length = pvSize;
+
+            LOG1("HDR: Initialized input CI postview buff %d @%p: (addr=%p, length=%d, width=%d, height=%d, format=%d)",
+                    mBurstCaptureNum,
+                    &mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum],
+                    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].addr,
+                    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].length,
+                    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].width,
+                    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height,
+                    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].format);
+
+            status = mAAA->computeCDF(mHdr.ciBufIn, mBurstCaptureNum);
+            if (status != NO_ERROR) {
+                LOGE("HDR: Error in compute CDF for capture %d in HDR sequence!", mBurstCaptureNum);
+                return status;
+            }
+        }
+
         mBurstCaptureNum++;
 
         mAAA->getExposureInfo(sensorParams);
@@ -1223,7 +1403,8 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
             sensorParams.evBias = EV_UPPER_BOUND;
         }
 
-        if (origState != STATE_CAPTURE || mBurstLength > 1) {
+        if ((!mHdr.enabled || (mHdr.enabled && mBurstCaptureNum == 1)) &&
+            (origState != STATE_CAPTURE || mBurstLength > 1)) {
             // Send request to play the Shutter Sound: in single shots or when burst-length is specified
             mCallbacksThread->shutterSound();
         }
@@ -1241,7 +1422,7 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
      * in burst-capture mode, we can do: grab frames in ControlThread, Red-Eye removal in AAAThread
      * and JPEG encoding in Picture thread, all in parallel.
      */
-    if (mAAA->is3ASupported() && flashOn && mAAA->getRedEyeRemoval()) {
+    if (!mHdr.enabled && mAAA->is3ASupported() && flashOn && mAAA->getRedEyeRemoval()) {
         // tell 3A thread to remove red-eye
         if (mState == STATE_CAPTURE) {
             status = m3AThread->applyRedEyeRemoval(&snapshotBuffer, &postviewBuffer, width, height, format);
@@ -1264,7 +1445,46 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
             sensorParams = *(--mBracketingParams.end());
             mBracketingParams.erase(--mBracketingParams.end());
         }
-        status = mPictureThread->encode(&sensorParams, &snapshotBuffer, &postviewBuffer);
+        if (!mHdr.enabled || (mHdr.enabled && mHdr.saveOrig)) {
+            bool doEncode = false;
+            if (mHdr.enabled) {
+                // In HDR mode, if saveOrig flag is set, save only the EV0 snapshot
+                if (mHdr.saveOrig && sensorParams.evBias == 0) {
+                    LOG1("Sending EV0 original picture to JPEG encoder (id=%d)", snapshotBuffer.id);
+                    doEncode = true;
+                    // Disable the saveOrig flag once we encode the EV0 original snapshot
+                    mHdr.saveOrig = false;
+                }
+            } else {
+                doEncode = true;
+            }
+            if (doEncode) {
+                status = mPictureThread->encode(&sensorParams, &snapshotBuffer, &postviewBuffer);
+            }
+        }
+        if (mHdr.enabled && mBurstCaptureNum == mHdr.bracketNum) {
+            // This was the last capture in HDR sequence, compose the final HDR image
+            LOG1("HDR: last capture, composing HDR image...");
+
+            /*
+             * Stop ISP before composing HDR since standalone acceleration requires ISP to be stopped.
+             * The below call won't release the capture buffers since they are needed by HDR compose
+             * method. The capture buffers will be released in stopCapture method.
+             */
+            status = mISP->stop();
+            if (status != NO_ERROR) {
+                LOGE("Error stopping ISP!");
+                return status;
+            }
+            status = mAAA->composeHDR(mHdr.ciBufIn, mHdr.ciBufOut, mHdr.vividness, mHdr.sharpening);
+            if (status == NO_ERROR) {
+                mHdr.outMainBuf.width = mHdr.ciBufOut.ciMainBuf->width;
+                mHdr.outMainBuf.height = mHdr.ciBufOut.ciMainBuf->height;
+                mHdr.outMainBuf.format = mHdr.ciBufOut.ciMainBuf->format;
+                mHdr.outMainBuf.size = mHdr.ciBufOut.ciMainBuf->length;
+                status = mPictureThread->encode(&sensorParams, &mHdr.outMainBuf, &mHdr.outPostviewBuf);
+            }
+        }
     } else {
         // If we are in video mode we simply use the recording buffer for picture encoding
         // No need to stop, reconfigure, and restart the ISP
@@ -1471,14 +1691,20 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             mCoupledBuffers[curBuff].videoSnapshotBuff = false;
         }
     } else if (mState == STATE_CAPTURE) {
-        LOG2("@%s: returning post and raw frames id:%d", __FUNCTION__, msg->snapshotBuf.id);
-        // Return the picture frames back to ISP
-        status = mISP->putSnapshot(&msg->snapshotBuf, &msg->postviewBuf);
-        if (status == DEAD_OBJECT) {
-            LOG1("Stale snapshot buffer returned to ISP");
-        } else if (status != NO_ERROR) {
-            LOGE("Error in putting snapshot!");
-            return status;
+        /*
+         * If HDR is enabled, don't return the buffers. we need them to compose HDR
+         * image. The buffers will be discarded after HDR is done in stopCapture().
+         */
+        if (!mHdr.enabled) {
+            LOG2("@%s: returning post and raw frames id:%d", __FUNCTION__, msg->snapshotBuf.id);
+            // Return the picture frames back to ISP
+            status = mISP->putSnapshot(&msg->snapshotBuf, &msg->postviewBuf);
+            if (status == DEAD_OBJECT) {
+                LOG1("Stale snapshot buffer returned to ISP");
+            } else if (status != NO_ERROR) {
+                LOGE("Error in putting snapshot!");
+                return status;
+            }
         }
     } else {
         LOGW("Received a picture Done during invalid state %d; buf id:%d, ptr=%p", mState, msg->snapshotBuf.id, msg->snapshotBuf.buff);
@@ -1673,13 +1899,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     if (oldZoom != newZoom)
         status = mISP->setZoom(newZoom);
 
-    int picWidth, picHeight;
-    mParameters.getPictureSize(&picWidth, &picHeight);
-    status = mPictureThread->allocSharedBuffers(picWidth, picHeight, NUM_BURST_BUFFERS);
-    if (status != NO_ERROR) {
-        LOGW("Could not pre-allocate picture buffers!");
-    }
-
     // Burst mode
     // Get the burst length
     mBurstLength = newParams->getInt(CameraParameters::KEY_BURST_LENGTH);
@@ -1699,10 +1918,7 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         }
     }
 
-    // We won't take care of the status returned by the following calls since
-    // failure of setting one parameter should not stop us setting the other parameters
-
-    // Colour effect
+    // Color effect
     status = processParamEffect(oldParams, newParams);
 
     if (mAAA->is3ASupported()) {
@@ -1756,11 +1972,34 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             status = processParamBracket(oldParams, newParams);
         }
 
+        if (status == NO_ERROR) {
+            // hdr
+            status = processParamHDR(oldParams, newParams);
+        }
+
         if (!mFaceDetectionActive && status == NO_ERROR) {
             // customize metering
             status = processParamSetMeteringAreas(oldParams, newParams);
         }
     }
+
+    if (status == NO_ERROR) {
+        if (mHdr.enabled) {
+            /*
+             * When doing HDR, we cannot use shared buffers, so we need to release any previously
+             * allocated shared buffers before we use the libjpeg to encode user-space buffers.
+             */
+            status = mPictureThread->releaseSharedBuffers();
+        } else {
+            int picWidth, picHeight;
+            mParameters.getPictureSize(&picWidth, &picHeight);
+            status = mPictureThread->allocSharedBuffers(picWidth, picHeight, NUM_BURST_BUFFERS);
+            if (status != NO_ERROR) {
+                LOGW("Could not pre-allocate picture buffers!");
+            }
+        }
+    }
+
     return status;
 }
 
@@ -1968,6 +2207,96 @@ status_t ControlThread::processParamBracket(const CameraParameters *oldParams,
             LOG1("Changed: %s -> %s", CameraParameters::KEY_CAPTURE_BRACKET, newBracket);
         }
     }
+    return status;
+}
+
+status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    // Check the HDR parameters
+    const char* oldValue = oldParams->get(CameraParameters::KEY_HDR_IMAGING);
+    const char* newValue = newParams->get(CameraParameters::KEY_HDR_IMAGING);
+    if (oldValue && newValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+        if(!strncmp(newValue, "on", strlen("on"))) {
+            mHdr.enabled = true;
+            mHdr.bracketMode = BRACKET_EXPOSURE;
+            mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
+            mHdr.saveOrig = false;
+            mHdr.saveOrigRequest = false;
+        } else if(!strncmp(newValue, "off", strlen("off"))) {
+            mHdr.enabled = false;
+        } else {
+            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_HDR_IMAGING, newValue);
+            status = BAD_VALUE;
+        }
+        if (status == NO_ERROR) {
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_HDR_IMAGING, newValue);
+        }
+    }
+
+    if (mHdr.enabled) {
+        // Dependency parameters
+        mBurstLength = mHdr.bracketNum;
+        mBracketing.mode = mHdr.bracketMode;
+    }
+
+    oldValue = oldParams->get(CameraParameters::KEY_HDR_SHARPENING);
+    newValue = newParams->get(CameraParameters::KEY_HDR_SHARPENING);
+    if (oldValue && newValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+        if(!strncmp(newValue, "normal", strlen("normal"))) {
+            mHdr.sharpening = HdrImaging::NORMAL_SHARPENING;
+        } else if(!strncmp(newValue, "strong", strlen("strong"))) {
+            mHdr.sharpening = HdrImaging::STRONG_SHARPENING;
+        } else if(!strncmp(newValue, "none", strlen("none"))) {
+            mHdr.sharpening = HdrImaging::NO_SHARPENING;
+        } else {
+            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_HDR_SHARPENING, newValue);
+            status = BAD_VALUE;
+        }
+        if (status == NO_ERROR) {
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_HDR_SHARPENING, newValue);
+        }
+    }
+
+    oldValue = oldParams->get(CameraParameters::KEY_HDR_VIVIDNESS);
+    newValue = newParams->get(CameraParameters::KEY_HDR_VIVIDNESS);
+    if (oldValue && newValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+        if(!strncmp(newValue, "gaussian", strlen("gaussian"))) {
+            mHdr.vividness = HdrImaging::GAUSSIAN_VIVIDNESS;
+        } else if(!strncmp(newValue, "gamma", strlen("gamma"))) {
+            mHdr.vividness = HdrImaging::GAMMA_VIVIDNESS;
+        } else if(!strncmp(newValue, "none", strlen("none"))) {
+            mHdr.vividness = HdrImaging::NO_VIVIDNESS;
+        } else {
+            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_HDR_VIVIDNESS, newValue);
+            status = BAD_VALUE;
+        }
+        if (status == NO_ERROR) {
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_HDR_VIVIDNESS, newValue);
+        }
+    }
+
+    oldValue = oldParams->get(CameraParameters::KEY_HDR_SAVE_ORIGINAL);
+    newValue = newParams->get(CameraParameters::KEY_HDR_SAVE_ORIGINAL);
+    if (oldValue && newValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+        if(!strncmp(newValue, "on", strlen("on"))) {
+            mHdr.saveOrig = true;
+            mHdr.saveOrigRequest = true;
+        } else if(!strncmp(newValue, "off", strlen("off"))) {
+            mHdr.saveOrig = false;
+            mHdr.saveOrigRequest = false;
+        } else {
+            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_HDR_SAVE_ORIGINAL, newValue);
+            status = BAD_VALUE;
+        }
+        if (status == NO_ERROR) {
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_HDR_SAVE_ORIGINAL, newValue);
+        }
+    }
+
     return status;
 }
 

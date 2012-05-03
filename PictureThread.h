@@ -46,16 +46,13 @@ public:
 public:
 
     status_t encode(SensorParams *sensorParams, AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf = NULL);
-    void setPictureFormat(int format)
-    {
-        mPictureFormat = format;
-        mThumbFormat = format;
-    }
+
     void getDefaultParameters(CameraParameters *params);
     void initialize(const CameraParameters &params, const atomisp_makernote_info &makerNote, bool flashUsed);
     void setNumberOfShots(int num);
     status_t getSharedBuffers(int width, int height, void** sharedBuffersPtr, int sharedBuffersNum);
     status_t allocSharedBuffers(int width, int height, int sharedBuffersNum);
+    status_t releaseSharedBuffers();
     status_t wait(); // wait to finish queued messages (sync)
     status_t flushBuffers();
 
@@ -68,6 +65,7 @@ private:
         MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
         MESSAGE_ID_ENCODE,
         MESSAGE_ID_ALLOC_BUFS,
+        MESSAGE_ID_RELEASE_BUFS,
         MESSAGE_ID_WAIT,
         MESSAGE_ID_FLUSH,
 
@@ -112,6 +110,7 @@ private:
     status_t handleMessageExit();
     status_t handleMessageEncode(MessageEncode *encode);
     status_t handleMessageAllocBufs(MessageAllocBufs *alloc);
+    status_t handleMessageReleaseBufs();
     status_t handleMessageWait();
     status_t handleMessageFlush();
 
@@ -137,12 +136,6 @@ private:
     AtomBuffer mExifBuf;
     AtomBuffer mOutBuf;
 
-    int mPictureWidth;
-    int mPictureHeight;
-    int mPictureFormat;
-    int mThumbWidth;
-    int mThumbHeight;
-    int mThumbFormat;
     int mPictureQuality;
     int mThumbnailQuality;
     bool mUsingSharedBuffers;

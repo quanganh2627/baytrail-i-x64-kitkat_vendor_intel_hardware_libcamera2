@@ -325,7 +325,13 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
     params->setPreviewSize(mConfig.preview.width, mConfig.preview.height);
     params->setPreviewFrameRate(30);
 
-    params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES, "320x240,640x360,640x480,1024x580,1280x720");
+    if (camInfo[mCameraId].port == ATOMISP_CAMERA_PORT_PRIMARY) {
+        params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES,
+            "1024x580,1024x576,800x600,720x576,720x480,640x480,640x360,416x312,352x288,320x240,176x144");
+    } else {
+        params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES,
+            "720x576,720x480,640x480,640x360,352x288,320x240,176x144");
+    }
 
     params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES,"30,15,10");
     params->set(CameraParameters::KEY_PREVIEW_FPS_RANGE,"10500,30304");
@@ -336,7 +342,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
      */
     params->setVideoSize(mConfig.recording.width, mConfig.recording.height);
     params->set(CameraParameters::KEY_PREFERRED_PREVIEW_SIZE_FOR_VIDEO, PREFERRED_PREVIEW_SIZE_FOR_VIDEO);
-    params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, "176x144,320x240,352x288,640x480,1280x720,1920x1088");
+    params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, "176x144,320x240,352x288,640x480,1280x720,1920x1080");
     params->set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,
                 CameraParameters::PIXEL_FORMAT_YUV420SP);
 #ifndef ANDROID_2036
@@ -353,7 +359,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
     params->setPictureSize(mConfig.snapshot.width, mConfig.snapshot.height);
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH,"320");
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT,"240");
-    params->set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES,"640x480,512x384,320x240,0x0");
+    params->set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES,"320x240,240x320,320x180,180x320,160x120,120x160,0x0");
 
     /**
      * ZOOM
@@ -555,6 +561,15 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
         // Capture bracketing
         params->set(CameraParameters::KEY_CAPTURE_BRACKET, "none");
         params->set(CameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET, "none,exposure,focus");
+
+        params->set(CameraParameters::KEY_HDR_IMAGING, "off");
+        params->set(CameraParameters::KEY_SUPPORTED_HDR_IMAGING, "on,off");
+        params->set(CameraParameters::KEY_HDR_VIVIDNESS, "none");
+        params->set(CameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none,gaussian,gamma");
+        params->set(CameraParameters::KEY_HDR_SHARPENING, "none");
+        params->set(CameraParameters::KEY_SUPPORTED_HDR_SHARPENING, "none,normal,strong");
+        params->set(CameraParameters::KEY_HDR_SAVE_ORIGINAL, "off");
+        params->set(CameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL, "on,off");
     }
 }
 
@@ -907,9 +922,14 @@ status_t AtomISP::stopCapture()
     stopDevice(V4L2_SECOND_DEVICE);
     stopDevice(V4L2_FIRST_DEVICE);
     closeDevice(V4L2_SECOND_DEVICE);
-    freeSnapshotBuffers();
     mUsingClientSnapshotBuffers = false;
     return NO_ERROR;
+}
+
+status_t AtomISP::releaseCaptureBuffers()
+{
+    LOG1("@%s", __FUNCTION__);
+    return freeSnapshotBuffers();
 }
 
 int AtomISP::configureDevice(int device, int deviceMode, int w, int h, int format, bool raw)
@@ -1069,9 +1089,11 @@ void AtomISP::stopDevice(int device)
     }
     int fd = video_fds[device];
 
-    //stream off
-    v4l2_capture_streamoff(fd);
-    destroyBufferPool(device);
+    if (fd >= 0) {
+        //stream off
+        v4l2_capture_streamoff(fd);
+        destroyBufferPool(device);
+    }
 }
 
 void AtomISP::destroyBufferPool(int device)
@@ -2210,10 +2232,18 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
     mSnapshotBuffers[snapshotIndex].id = snapshotIndex;
     mSnapshotBuffers[snapshotIndex].ispPrivate = mSessionId;
     *snapshotBuf = mSnapshotBuffers[snapshotIndex];
+    snapshotBuf->width = mConfig.snapshot.width;
+    snapshotBuf->height = mConfig.snapshot.height;
+    snapshotBuf->format = mConfig.snapshot.format;
+    snapshotBuf->size = mConfig.snapshot.size;
 
     mPostviewBuffers[postviewIndex].id = postviewIndex;
     mPostviewBuffers[postviewIndex].ispPrivate = mSessionId;
     *postviewBuf = mPostviewBuffers[postviewIndex];
+    postviewBuf->width = mConfig.postview.width;
+    postviewBuf->height = mConfig.postview.height;
+    postviewBuf->format = mConfig.postview.format;
+    postviewBuf->size = mConfig.postview.size;
 
     mNumCapturegBuffersQueued--;
 

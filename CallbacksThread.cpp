@@ -28,9 +28,9 @@ CallbacksThread::CallbacksThread() :
     ,mMessageQueue("CallbacksThread", MESSAGE_ID_MAX)
     ,mThreadRunning(false)
     ,mCallbacks(Callbacks::getInstance())
-    ,mJpegRequested(false)
-    ,mPostviewRequested(false)
-    ,mRawRequested(false)
+    ,mJpegRequested(0)
+    ,mPostviewRequested(0)
+    ,mRawRequested(0)
 {
     LOG1("@%s", __FUNCTION__);
 }
@@ -128,7 +128,12 @@ status_t CallbacksThread::handleMessageCallbackShutter()
 
 status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
 {
-    LOG1("@%s: JPEG buffers queued: %d, mJpegRequested = %d", __FUNCTION__, mBuffers.size(), mJpegRequested);
+    LOG1("@%s: JPEG buffers queued: %d, mJpegRequested = %u, mPostviewRequested = %u, mRawRequested = %u",
+            __FUNCTION__,
+            mBuffers.size(),
+            mJpegRequested,
+            mPostviewRequested,
+            mRawRequested);
     AtomBuffer jpegBuf = msg->jpegBuff;
     AtomBuffer snapshotBuf = msg->snapshotBuff;
     AtomBuffer postviewBuf= msg->postviewBuff;
@@ -139,19 +144,19 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
         return NO_ERROR;
     }
 
-    if (mJpegRequested) {
+    if (mJpegRequested > 0) {
+        if (mPostviewRequested > 0) {
+            mCallbacks->postviewFrameDone(&postviewBuf);
+            mPostviewRequested--;
+        }
+        if (mRawRequested > 0) {
+            mCallbacks->rawFrameDone(&snapshotBuf);
+            mRawRequested--;
+        }
         mCallbacks->compressedFrameDone(&jpegBuf);
         LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
         jpegBuf.buff->release(jpegBuf.buff);
-        mJpegRequested = false;
-        if (mPostviewRequested) {
-            mCallbacks->postviewFrameDone(&postviewBuf);
-            mPostviewRequested = false;
-        }
-        if (mRawRequested) {
-            mCallbacks->rawFrameDone(&snapshotBuf);
-            mRawRequested = false;
-        }
+        mJpegRequested--;
         if (snapshotBuf.buff != NULL && postviewBuf.buff != NULL) {
             // Return the raw buffers back to ISP
             mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
@@ -166,29 +171,38 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
 
 status_t CallbacksThread::handleMessageJpegDataRequest(MessageDataRequest *msg)
 {
-    LOG1("@%s: JPEG buffers queued: %d, mJpegRequested = %d", __FUNCTION__, mBuffers.size(), mJpegRequested);
+    LOG1("@%s: JPEG buffers queued: %d, mJpegRequested = %u, mPostviewRequested = %u, mRawRequested = %u",
+            __FUNCTION__,
+            mBuffers.size(),
+            mJpegRequested,
+            mPostviewRequested,
+            mRawRequested);
     if (!mBuffers.isEmpty()) {
         AtomBuffer jpegBuf = mBuffers[0].jpegBuff;
         AtomBuffer snapshotBuf = mBuffers[0].snapshotBuff;
         AtomBuffer postviewBuf = mBuffers[0].postviewBuff;
-        mCallbacks->compressedFrameDone(&jpegBuf);
-        LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
-        jpegBuf.buff->release(jpegBuf.buff);
         if (msg->postviewCallback) {
             mCallbacks->postviewFrameDone(&postviewBuf);
         }
         if (msg->rawCallback) {
             mCallbacks->rawFrameDone(&snapshotBuf);
         }
+        mCallbacks->compressedFrameDone(&jpegBuf);
+        LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
+        jpegBuf.buff->release(jpegBuf.buff);
         if (snapshotBuf.buff != NULL && postviewBuf.buff != NULL) {
             // Return the raw buffers back to ISP
             mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
         }
         mBuffers.removeAt(0);
     } else {
-        mJpegRequested = true;
-        mPostviewRequested = msg->postviewCallback;
-        mRawRequested = msg->rawCallback;
+        mJpegRequested++;
+        if (msg->postviewCallback) {
+            mPostviewRequested++;
+        }
+        if (msg->rawCallback) {
+            mRawRequested++;
+        }
     }
 
     return NO_ERROR;
@@ -198,7 +212,9 @@ status_t CallbacksThread::handleMessageFlush()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    mJpegRequested = false;
+    mJpegRequested = 0;
+    mPostviewRequested = 0;
+    mRawRequested = 0;
     for (size_t i = 0; i < mBuffers.size(); i++) {
         AtomBuffer jpegBuf = mBuffers[i].jpegBuff;
         LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
