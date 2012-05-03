@@ -978,7 +978,7 @@ status_t ControlThread::applyBracketing()
     case BRACKET_EXPOSURE:
         LOG1("Applying Exposure Bracketing: %.2f", mBracketing.currentValue);
         status = mAAA->applyEv(mBracketing.currentValue);
-        mAAA->getExposureInfo(&sensorParams.expTime, &sensorParams.aperture, &sensorParams.aecApexTv, &sensorParams.aecApexSv, &sensorParams.aecApexAv);
+        mAAA->getExposureInfo(sensorParams);
         sensorParams.evBias = mBracketing.currentValue;
         LOG1("Adding sensorParams to list (size=%d+1)", mBracketingParams.size());
         mBracketingParams.push_front(sensorParams);
@@ -1218,7 +1218,7 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
 
         mBurstCaptureNum++;
 
-        mAAA->getExposureInfo(&sensorParams.expTime, &sensorParams.aperture, &sensorParams.aecApexTv, &sensorParams.aecApexSv, &sensorParams.aecApexAv);
+        mAAA->getExposureInfo(sensorParams);
         if (mAAA->getEv(&sensorParams.evBias) != NO_ERROR) {
             sensorParams.evBias = EV_UPPER_BOUND;
         }
@@ -1683,15 +1683,19 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     // Burst mode
     // Get the burst length
     mBurstLength = newParams->getInt(CameraParameters::KEY_BURST_LENGTH);
+    mBurstSkipFrames = 0;
     if (mBurstLength <= 0) {
         // Parameter not set, leave it as 0
          mBurstLength = 0;
     } else {
         // Get the burst framerate
-        mBurstSkipFrames = newParams->getInt(CameraParameters::KEY_BURST_SKIP_FRAMES);
-        if (mBurstSkipFrames < 0 || mBurstSkipFrames >= MAX_BURST_FRAMERATE) {
-            LOGE("Invalid value received for %s: %d", CameraParameters::KEY_BURST_SKIP_FRAMES, mBurstSkipFrames);
+        int fps = newParams->getInt(CameraParameters::KEY_BURST_FPS);
+        if (fps > MAX_BURST_FRAMERATE) {
+            LOGE("Invalid value received for %s: %d", CameraParameters::KEY_BURST_FPS, mBurstSkipFrames);
             return BAD_VALUE;
+        }
+        if (fps > 0) {
+            mBurstSkipFrames = (MAX_BURST_FRAMERATE / fps) - 1;
         }
     }
 

@@ -89,7 +89,7 @@ status_t AtomAAA::applyIspSettings()
     if(!mHas3A)
         return INVALID_OPERATION;
     ci_adv_set_gbce_strength(mIspSettings.GBCE_strength);
-    if (ci_adv_set_gamma_effect(mIspSettings.GBCE_enabled, mIspSettings.inv_gamma) != 0) {
+    if (ci_adv_set_gamma_effect(mIspSettings.inv_gamma) != 0) {
         mHas3A = false;
         return UNKNOWN_ERROR;
     }
@@ -815,20 +815,25 @@ ci_adv_af_status AtomAAA::isStillAfComplete()
     return ci_adv_af_get_status();
 }
 
-status_t AtomAAA::getExposureInfo(int *expTime, int *aperture,
-        int* aecApexTv, int* aecApexSv, int* aecApexAv)
+status_t AtomAAA::getExposureInfo(SensorParams& sensorParams)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
     if(!mHas3A)
         return INVALID_OPERATION;
 
-    *expTime = 0;
-    *aperture = 0;
-    *aecApexTv = 0;
-    *aecApexSv = 0;
-    *aecApexAv = 0;
-    ci_adv_ae_get_exp_cfg(expTime, aperture, aecApexTv, aecApexSv, aecApexAv);
+    sensorParams.expTime = 0;
+    sensorParams.aperture = 0;
+    sensorParams.aecApexTv = 0;
+    sensorParams.aecApexSv = 0;
+    sensorParams.aecApexAv = 0;
+    sensorParams.digitalGain = 0;
+    ci_adv_ae_get_exp_cfg(&sensorParams.expTime,
+            &sensorParams.aperture,
+            &sensorParams.aecApexTv,
+            &sensorParams.aecApexSv,
+            &sensorParams.aecApexAv,
+            &sensorParams.digitalGain);
 
     return NO_ERROR;
 }

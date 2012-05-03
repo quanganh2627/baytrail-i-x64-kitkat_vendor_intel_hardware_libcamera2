@@ -256,7 +256,7 @@ void EXIFMaker::initializeHWSpecific(const atomisp_makernote_info &makerNote)
 
     if (mAAA->is3ASupported()) {
         // exp_time's unit is 100us
-        mAAA->getExposureInfo(&sensorParams.expTime, &sensorParams.aperture, &sensorParams.aecApexTv, &sensorParams.aecApexSv, &sensorParams.aecApexAv);
+        mAAA->getExposureInfo(sensorParams);
         // exposure bias. unit is APEX value. -99.99 to 99.99
         if (mAAA->getEv(&sensorParams.evBias) != NO_ERROR) {
             sensorParams.evBias = EV_UPPER_BOUND;

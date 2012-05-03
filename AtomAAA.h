@@ -150,6 +150,7 @@ struct SensorParams
     int aecApexTv;
     int aecApexSv;
     int aecApexAv;
+    float digitalGain;
 };
 
 class AtomAAA {
@@ -206,8 +207,7 @@ public:
     size_t   getAfMaxNumWindows();
     status_t setAfWindows(const CameraWindow *windows, size_t numWindows);
     status_t setNegativeEffect(bool en);
-    status_t getExposureInfo(int *expTime, int *aperture,
-                             int* aecApexTv, int* aecApexSv, int* aecApexAv);
+    status_t getExposureInfo(SensorParams& sensorParams);
     status_t getAeManualBrightness(float *ret);
     status_t setManualFocus(int focus, bool applyNow);
     status_t setManualFocusIncrement(int step);

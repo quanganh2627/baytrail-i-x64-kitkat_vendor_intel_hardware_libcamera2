@@ -466,6 +466,12 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
     params->set(CameraParameters::KEY_HDR_SAVE_ORIGINAL, "off");
     params->set(CameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL, "off");
 
+    /**
+     * Burst-mode
+     */
+    params->set(CameraParameters::KEY_BURST_FPS, "1");
+    params->set(CameraParameters::KEY_SUPPORTED_BURST_FPS, "1,3,5,7,15");
+
     if(mAAA->is3ASupported()){
         // effect modes
         params->set(CameraParameters::KEY_EFFECT, CameraParameters::EFFECT_NONE);
