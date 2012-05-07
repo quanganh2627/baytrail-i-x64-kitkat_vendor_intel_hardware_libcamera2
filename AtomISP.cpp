@@ -1241,6 +1241,15 @@ status_t AtomISP::setPostviewFrameFormat(int width, int height, int format)
 
     LOG1("width(%d), height(%d), format(%x)",
          width, height, format);
+    if (width < 0 || height < 0) {
+        LOGE("Invalid postview size requested!");
+        return BAD_VALUE;
+    }
+    if (width == 0 || height == 0) {
+        // No thumbnail requested, we should anyway use postview to dequeue frames from ISP
+        width = RESOLUTION_POSTVIEW_WIDTH;
+        height = RESOLUTION_POSTVIEW_HEIGHT;
+    }
     mConfig.postview.width = width;
     mConfig.postview.height = height;
     mConfig.postview.format = format;

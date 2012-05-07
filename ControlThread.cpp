@@ -1185,6 +1185,7 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
     if (origState == STATE_PREVIEW_STILL || origState == STATE_PREVIEW_VIDEO) {
         // Configure and start the ISP
         mISP->setSnapshotFrameFormat(width, height, format);
+        mISP->setPostviewFrameFormat(pvWidth, pvHeight, format);
         if (mHdr.enabled) {
             mHdr.outMainBuf.buff = NULL;
             mHdr.outPostviewBuf.buff = NULL;
@@ -1459,6 +1460,8 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
                 doEncode = true;
             }
             if (doEncode) {
+                postviewBuffer.width = pvWidth;
+                postviewBuffer.height = pvHeight;
                 status = mPictureThread->encode(&sensorParams, &snapshotBuffer, &postviewBuffer);
             }
         }

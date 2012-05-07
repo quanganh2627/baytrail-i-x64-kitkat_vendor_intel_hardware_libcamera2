@@ -90,7 +90,9 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         thumbBuf != NULL &&
         thumbBuf->buff != NULL &&
         thumbBuf->buff->data != NULL &&
-        thumbBuf->buff->size > 0) {
+        thumbBuf->buff->size > 0 &&
+        thumbBuf->width > 0 &&
+        thumbBuf->height > 0) {
         // setup the JpegCompressor input and output buffers
         inBuf.clear();
         inBuf.buf = (unsigned char*)thumbBuf->buff->data;
