@@ -1833,6 +1833,9 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
                     LOGE("bad focus window");
                     return BAD_VALUE;
                 }
+                if (verified) {
+                    winCount++;
+                }
             }
             // make sure not too many windows defined (to pass CTS)
             if (argTail) {
@@ -1874,6 +1877,9 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
                 if (!verified) {
                     LOGE("bad metering window");
                     return BAD_VALUE;
+                }
+                if (verified) {
+                    winCount++;
                 }
             }
             // make sure not too many windows defined (to pass CTS)
