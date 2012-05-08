@@ -26,6 +26,7 @@ extern "C" {
 #endif
 #include "ci_adv_pub.h"
 #include "ci_adv_property.h"
+
 #ifdef __cplusplus
 }
 #endif
@@ -46,13 +47,6 @@ enum AwbMode
     CAM_AWB_MODE_WARM_INCANDESCENT
 };
 
-enum AwbMapping
-{
-    CAM_AWB_MAP_NOT_SET = -1,
-    CAM_AWB_MAP_AUTO,
-    CAM_AWB_MAP_INDOOR,
-    CAM_AWB_MAP_OUTDOOR
-};
 
 enum AfMode
 {
@@ -209,8 +203,8 @@ public:
     bool     getAwbLock();
     status_t setRedEyeRemoval(bool en);
     bool     getRedEyeRemoval();
-    status_t setAwbMapping(AwbMapping mode);
-    AwbMapping getAwbMapping();
+    status_t setAwbMapping(ia_3a_awb_map mode);
+    ia_3a_awb_map getAwbMapping();
     size_t   getAfMaxNumWindows();
     status_t setAfWindows(const CameraWindow *windows, size_t numWindows);
     status_t setNegativeEffect(bool en);
@@ -219,7 +213,7 @@ public:
     status_t setManualFocus(int focus, bool applyNow);
     status_t setManualFocusIncrement(int step);
     status_t updateManualFocus();
-    status_t getAfLensPosRange(ci_adv_lens_range *lens_range);
+    status_t getAfLensPosRange(ia_3a_af_lens_range *lens_range);
     status_t getNextFocusPosition(int *pos);
     status_t getCurrentFocusPosition(int *pos);
     status_t applyEv(float bias);
@@ -237,7 +231,7 @@ public:
 
     status_t startStillAf();
     status_t stopStillAf();
-    ci_adv_af_status isStillAfComplete();
+    ia_3a_af_status isStillAfComplete();
     status_t applyPreFlashProcess(FlashStage stage);
 
 // private methods

@@ -923,7 +923,7 @@ status_t ControlThread::initBracketing()
 {
     LOG1("@%s: mode = %d", __FUNCTION__, mBracketing.mode);
     status_t status = NO_ERROR;
-    ci_adv_lens_range lensRange;
+    ia_3a_af_lens_range lensRange;
     int currentFocusPos;
 
     switch (mBracketing.mode) {
@@ -955,10 +955,10 @@ status_t ControlThread::initBracketing()
             if (status == NO_ERROR) {
                 mAAA->setAfMode(CAM_AF_MODE_MANUAL);
             }
-            mBracketing.currentValue = lensRange.afLibMacro;
-            mBracketing.minValue = lensRange.afLibMacro;
-            mBracketing.maxValue = lensRange.afLibInf;
-            mBracketing.step = (lensRange.afLibInf - lensRange.afLibMacro) / (mBurstLength - 1);
+            mBracketing.currentValue = lensRange.macro;
+            mBracketing.minValue = lensRange.macro;
+            mBracketing.maxValue = lensRange.infinity;
+            mBracketing.step = (lensRange.infinity - lensRange.macro) / (mBurstLength - 1);
             // Initialize the current focus position and increment
             if (status == NO_ERROR) {
                 /*

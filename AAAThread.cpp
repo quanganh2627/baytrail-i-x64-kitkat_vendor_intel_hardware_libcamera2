@@ -183,23 +183,23 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
         // If auto-focus was requested, run auto-focus sequence
         if (status == NO_ERROR && mStartAF) {
             // Check for cancel-focus
-            ci_adv_af_status afStatus = ci_adv_af_status_error;
+            ia_3a_af_status afStatus = ia_3a_af_status_error;
             if (mStopAF) {
-                afStatus = ci_adv_af_status_canceled;
+                afStatus = ia_3a_af_status_cancelled;
             } else {
                 afStatus = mAAA->isStillAfComplete();
                 mFramesTillAfComplete++;
             }
             bool stopStillAf = false;
-            if (afStatus == ci_adv_af_status_busy) {
+            if (afStatus == ia_3a_af_status_busy) {
                 LOG1("StillAF@Frame %d: BUSY    (continuing...)", mFramesTillAfComplete);
-            } else if (afStatus == ci_adv_af_status_success) {
+            } else if (afStatus == ia_3a_af_status_success) {
                 LOG1("StillAF@Frame %d: SUCCESS (stopping...)", mFramesTillAfComplete);
                 stopStillAf = true;
-            } else if (afStatus == ci_adv_af_status_error) {
+            } else if (afStatus == ia_3a_af_status_error) {
                 LOG1("StillAF@Frame %d: FAIL    (stopping...)", mFramesTillAfComplete);
                 stopStillAf = true;
-            } else if (afStatus == ci_adv_af_status_canceled) {
+            } else if (afStatus == ia_3a_af_status_cancelled) {
                 LOG1("StillAF@Frame %d: CANCEL  (stopping...)", mFramesTillAfComplete);
                 stopStillAf = true;
             }
@@ -212,7 +212,7 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
                 mStartAF = false;
                 mStopAF = false;
                 mFramesTillAfComplete = 0;
-                mCallbacks->autofocusDone(afStatus == ci_adv_af_status_success);
+                mCallbacks->autofocusDone(afStatus == ia_3a_af_status_success);
                 // Also notify ControlThread that the auto-focus is finished
                 mAAADoneCallback->autoFocusDone();
             }

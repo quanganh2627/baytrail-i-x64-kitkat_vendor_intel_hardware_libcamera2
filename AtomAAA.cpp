@@ -103,19 +103,19 @@ status_t AtomAAA::switchModeAndRate(AtomMode mode, float fps)
     if(!mHas3A)
         return INVALID_OPERATION;
 
-    ci_adv_isp_mode isp_mode;
+    ia_3a_isp_mode isp_mode;
     switch (mode) {
     case MODE_PREVIEW:
-        isp_mode = ci_adv_isp_mode_preview;
+        isp_mode = ia_3a_isp_mode_preview;
         break;
     case MODE_CAPTURE:
-        isp_mode = ci_adv_isp_mode_capture;
+        isp_mode = ia_3a_isp_mode_capture;
         break;
     case MODE_VIDEO:
-        isp_mode = ci_adv_isp_mode_video;
+        isp_mode = ia_3a_isp_mode_video;
         break;
     default:
-        isp_mode = ci_adv_isp_mode_preview;
+        isp_mode = ia_3a_isp_mode_preview;
         LOGW("SwitchMode: Wrong sensor mode %d", mode);
         break;
     }
@@ -135,7 +135,7 @@ status_t AtomAAA::setAeWindow(const CameraWindow *window)
             window->weight);
     if(!mHas3A)
         return INVALID_OPERATION;
-    if(ci_adv_ae_set_window((ci_adv_window *)window) != ci_adv_success)
+    if(ci_adv_ae_set_window((ia_3a_window *)window) != ci_adv_success)
         return UNKNOWN_ERROR;
     return NO_ERROR;
 }
@@ -152,7 +152,7 @@ status_t AtomAAA::setAfWindow(const CameraWindow *window)
             window->weight);
     if(!mHas3A)
         return INVALID_OPERATION;
-    if(ci_adv_af_set_windows(1,(ci_adv_window *)window) != ci_adv_success)
+    if(ci_adv_af_set_windows(1,(ia_3a_window *)window) != ci_adv_success)
         return UNKNOWN_ERROR;
     return NO_ERROR;
 }
@@ -174,28 +174,28 @@ status_t AtomAAA::setAeSceneMode(SceneMode mode)
     if(!mHas3A)
         return INVALID_OPERATION;
 
-    ci_adv_ae_exposure_program wr_val;
+    ia_3a_ae_exposure_program wr_val;
     switch (mode) {
     case CAM_AE_SCENE_MODE_AUTO:
-        wr_val = ci_adv_ae_exposure_program_auto;
+        wr_val = ia_3a_ae_exposure_program_auto;
         break;
     case CAM_AE_SCENE_MODE_PORTRAIT:
-        wr_val = ci_adv_ae_exposure_program_portrait;
+        wr_val = ia_3a_ae_exposure_program_portrait;
         break;
     case CAM_AE_SCENE_MODE_SPORTS:
-        wr_val = ci_adv_ae_exposure_program_sports;
+        wr_val = ia_3a_ae_exposure_program_sports;
         break;
     case CAM_AE_SCENE_MODE_LANDSCAPE:
-        wr_val = ci_adv_ae_exposure_program_landscape;
+        wr_val = ia_3a_ae_exposure_program_landscape;
         break;
     case CAM_AE_SCENE_MODE_NIGHT:
-        wr_val = ci_adv_ae_exposure_program_night;
+        wr_val = ia_3a_ae_exposure_program_night;
         break;
     case CAM_AE_SCENE_MODE_NIGHT_PORTRAIT:
-        wr_val = ci_adv_ae_exposure_program_night;
+        wr_val = ia_3a_ae_exposure_program_night;
         break;
     case CAM_AE_SCENE_MODE_FIREWORKS:
-        wr_val = ci_adv_ae_exposure_program_fireworks;
+        wr_val = ia_3a_ae_exposure_program_fireworks;
         break;
     case CAM_AE_SCENE_MODE_TEXT:
         /* This work-around was decided based on : BZ ID: 11915
@@ -205,12 +205,12 @@ status_t AtomAAA::setAeSceneMode(SceneMode mode)
          */
 
         //TODO BZ ID: 13566 should fix this issue properly
-        //wr_val = ci_adv_ae_exposure_program_text;
-        wr_val = ci_adv_ae_exposure_program_auto;
+        //wr_val = ia_3a_ae_exposure_program_text;
+        wr_val = ia_3a_ae_exposure_program_auto;
         break;
     default:
         LOGE("Set: invalid AE scene mode: %d. Using AUTO!", mode);
-        wr_val = ci_adv_ae_exposure_program_auto;
+        wr_val = ia_3a_ae_exposure_program_auto;
     }
     ci_adv_err ret = ci_adv_ae_set_exposure_program (wr_val);
     if(ci_adv_success != ret)
@@ -227,30 +227,27 @@ SceneMode AtomAAA::getAeSceneMode()
     if(!mHas3A)
         return mode;
 
-    ci_adv_ae_exposure_program rd_val;
+    ia_3a_ae_exposure_program rd_val;
     if(ci_adv_ae_get_exposure_program (&rd_val) != ci_adv_success)
         return mode;
     switch (rd_val) {
-    case ci_adv_ae_exposure_program_auto:
+    case ia_3a_ae_exposure_program_auto:
         mode = CAM_AE_SCENE_MODE_AUTO;
         break;
-    case ci_adv_ae_exposure_program_portrait:
+    case ia_3a_ae_exposure_program_portrait:
         mode = CAM_AE_SCENE_MODE_PORTRAIT;
         break;
-    case ci_adv_ae_exposure_program_sports:
+    case ia_3a_ae_exposure_program_sports:
         mode = CAM_AE_SCENE_MODE_SPORTS;
         break;
-    case ci_adv_ae_exposure_program_landscape:
+    case ia_3a_ae_exposure_program_landscape:
         mode = CAM_AE_SCENE_MODE_LANDSCAPE;
         break;
-    case ci_adv_ae_exposure_program_night:
+    case ia_3a_ae_exposure_program_night:
         mode = CAM_AE_SCENE_MODE_NIGHT;
         break;
-    case ci_adv_ae_exposure_program_fireworks:
+    case ia_3a_ae_exposure_program_fireworks:
         mode = CAM_AE_SCENE_MODE_FIREWORKS;
-        break;
-    case ci_adv_ae_exposure_program_text:
-        mode = CAM_AE_SCENE_MODE_TEXT;
         break;
     default:
         LOGE("Get: invalid AE scene mode: %d. Using AUTO!", rd_val);
@@ -267,23 +264,23 @@ status_t AtomAAA::setAeMode(AeMode mode)
     if(!mHas3A)
         return INVALID_OPERATION;
 
-    ci_adv_ae_mode wr_val;
+    ia_3a_ae_mode wr_val;
     switch (mode) {
     case CAM_AE_MODE_AUTO:
-        wr_val = ci_adv_ae_mode_auto;
+        wr_val = ia_3a_ae_mode_auto;
         break;
     case CAM_AE_MODE_MANUAL:
-        wr_val = ci_adv_ae_mode_manual;
+        wr_val = ia_3a_ae_mode_manual;
         break;
     case CAM_AE_MODE_SHUTTER_PRIORITY:
-        wr_val = ci_adv_ae_mode_shutter_priority;
+        wr_val = ia_3a_ae_mode_shutter_priority;
         break;
     case CAM_AE_MODE_APERTURE_PRIORITY:
-        wr_val = ci_adv_ae_mode_aperture_priority;
+        wr_val = ia_3a_ae_mode_aperture_priority;
         break;
     default:
         LOGE("Set: invalid AE mode: %d. Using AUTO!", mode);
-        wr_val = ci_adv_ae_mode_auto;
+        wr_val = ia_3a_ae_mode_auto;
     }
     ci_adv_err ret = ci_adv_ae_set_mode(wr_val);
     if(ci_adv_success != ret)
@@ -300,20 +297,20 @@ AeMode AtomAAA::getAeMode()
     if(!mHas3A)
         return mode;
 
-    ci_adv_ae_mode rd_val;
+    ia_3a_ae_mode rd_val;
     if(ci_adv_ae_get_mode(&rd_val) != ci_adv_success)
         return mode;
     switch (rd_val) {
-    case ci_adv_ae_mode_auto:
+    case ia_3a_ae_mode_auto:
         mode = CAM_AE_MODE_AUTO;
         break;
-    case ci_adv_ae_mode_manual:
+    case ia_3a_ae_mode_manual:
         mode = CAM_AE_MODE_MANUAL;
         break;
-    case ci_adv_ae_mode_shutter_priority:
+    case ia_3a_ae_mode_shutter_priority:
         mode = CAM_AE_MODE_SHUTTER_PRIORITY;
         break;
-    case ci_adv_ae_mode_aperture_priority:
+    case ia_3a_ae_mode_aperture_priority:
         mode = CAM_AE_MODE_APERTURE_PRIORITY;
         break;
     default:
@@ -335,34 +332,34 @@ status_t AtomAAA::setAfMode(AfMode mode)
 
     switch (mode) {
     case CAM_AF_MODE_AUTO:
-        ret = ci_adv_af_set_mode (ci_adv_af_mode_auto);
-        ci_adv_af_set_range (ci_adv_af_range_norm);
-        ci_adv_af_set_metering_mode (ci_adv_af_metering_mode_auto);
+        ret = ci_adv_af_set_mode (ia_3a_af_mode_auto);
+        ci_adv_af_set_range (ia_3a_af_range_norm);
+        ci_adv_af_set_metering_mode (ia_3a_af_metering_mode_auto);
         break;
     case CAM_AF_MODE_TOUCH:
-        ret = ci_adv_af_set_mode (ci_adv_af_mode_auto);
-        ci_adv_af_set_range (ci_adv_af_range_full);
-        ci_adv_af_set_metering_mode (ci_adv_af_metering_mode_spot);
+        ret = ci_adv_af_set_mode (ia_3a_af_mode_auto);
+        ci_adv_af_set_range (ia_3a_af_range_full);
+        ci_adv_af_set_metering_mode (ia_3a_af_metering_mode_spot);
         break;
     case CAM_AF_MODE_MACRO:
-        ret = ci_adv_af_set_mode (ci_adv_af_mode_auto);
-        ci_adv_af_set_range (ci_adv_af_range_macro);
-        ci_adv_af_set_metering_mode (ci_adv_af_metering_mode_auto);
+        ret = ci_adv_af_set_mode (ia_3a_af_mode_auto);
+        ci_adv_af_set_range (ia_3a_af_range_macro);
+        ci_adv_af_set_metering_mode (ia_3a_af_metering_mode_auto);
         break;
     case CAM_AF_MODE_INFINITY:
-        ret = ci_adv_af_set_mode (ci_adv_af_mode_manual);
-        ci_adv_af_set_range (ci_adv_af_range_full);
+        ret = ci_adv_af_set_mode (ia_3a_af_mode_manual);
+        ci_adv_af_set_range (ia_3a_af_range_full);
         break;
     case CAM_AF_MODE_MANUAL:
-        ret = ci_adv_af_set_mode (ci_adv_af_mode_manual);
-        ci_adv_af_set_range (ci_adv_af_range_full);
+        ret = ci_adv_af_set_mode (ia_3a_af_mode_manual);
+        ci_adv_af_set_range (ia_3a_af_range_full);
         break;
     default:
         LOGE("Set: invalid AF mode: %d. Using AUTO!", mode);
         mode = CAM_AF_MODE_AUTO;
-        ret = ci_adv_af_set_mode (ci_adv_af_mode_auto);
-        ci_adv_af_set_range (ci_adv_af_range_norm);
-        ci_adv_af_set_metering_mode (ci_adv_af_metering_mode_auto);
+        ret = ci_adv_af_set_mode (ia_3a_af_mode_auto);
+        ci_adv_af_set_range (ia_3a_af_range_norm);
+        ci_adv_af_set_metering_mode (ia_3a_af_metering_mode_auto);
         break;
     }
     if (ret != ci_adv_success)
@@ -390,30 +387,30 @@ status_t AtomAAA::setAeFlashMode(FlashMode mode)
     if(!mHas3A)
         return INVALID_OPERATION;
 
-    ci_adv_ae_flash_mode wr_val;
+    ia_3a_ae_flash_mode wr_val;
     switch (mode) {
     case CAM_AE_FLASH_MODE_AUTO:
-        wr_val = ci_adv_ae_flash_mode_auto;
+        wr_val = ia_3a_ae_flash_mode_auto;
         break;
     case CAM_AE_FLASH_MODE_OFF:
-        wr_val = ci_adv_ae_flash_mode_off;
+        wr_val = ia_3a_ae_flash_mode_off;
         break;
     case CAM_AE_FLASH_MODE_ON:
-        wr_val = ci_adv_ae_flash_mode_on;
+        wr_val = ia_3a_ae_flash_mode_on;
         break;
     case CAM_AE_FLASH_MODE_DAY_SYNC:
-        wr_val = ci_adv_ae_flash_mode_day_sync;
+        wr_val = ia_3a_ae_flash_mode_day_sync;
         break;
     case CAM_AE_FLASH_MODE_SLOW_SYNC:
-        wr_val = ci_adv_ae_flash_mode_slow_sync;
+        wr_val = ia_3a_ae_flash_mode_slow_sync;
         break;
     case CAM_AE_FLASH_MODE_TORCH:
-        wr_val = ci_adv_ae_flash_mode_off;
+        wr_val = ia_3a_ae_flash_mode_off;
         break;
     default:
         LOGE("Set: invalid flash mode: %d. Using AUTO!", mode);
         mode = CAM_AE_FLASH_MODE_AUTO;
-        wr_val = ci_adv_ae_flash_mode_auto;
+        wr_val = ia_3a_ae_flash_mode_auto;
     }
     if(ci_adv_ae_set_flash_mode(wr_val) != ci_adv_success)
         return UNKNOWN_ERROR;
@@ -458,47 +455,47 @@ status_t AtomAAA::setAwbMode (AwbMode mode)
     ci_adv_err ret = ci_adv_success;
     switch (mode) {
     case CAM_AWB_MODE_DAYLIGHT:
-        ci_adv_awb_set_mode (ci_adv_awb_mode_manual);
-        ret = ci_adv_awb_set_light_source (ci_adv_awb_light_source_clear_sky);
+        ci_adv_awb_set_mode (ia_3a_awb_mode_manual);
+        ret = ci_adv_awb_set_light_source (ia_3a_awb_light_source_clear_sky);
         break;
     case CAM_AWB_MODE_CLOUDY:
-        ci_adv_awb_set_mode (ci_adv_awb_mode_manual);
-        ret = ci_adv_awb_set_light_source (ci_adv_awb_light_source_cloudiness);
+        ci_adv_awb_set_mode (ia_3a_awb_mode_manual);
+        ret = ci_adv_awb_set_light_source (ia_3a_awb_light_source_cloudiness);
         break;
     case CAM_AWB_MODE_SUNSET:
-        ci_adv_awb_set_mode (ci_adv_awb_mode_manual);
-        ret = ci_adv_awb_set_light_source (ci_adv_awb_light_source_filament_lamp);
+        ci_adv_awb_set_mode (ia_3a_awb_mode_manual);
+        ret = ci_adv_awb_set_light_source (ia_3a_awb_light_source_filament_lamp);
         break;
     case CAM_AWB_MODE_TUNGSTEN:
-        ci_adv_awb_set_mode (ci_adv_awb_mode_manual);
-        ret = ci_adv_awb_set_light_source (ci_adv_awb_light_source_filament_lamp);
+        ci_adv_awb_set_mode (ia_3a_awb_mode_manual);
+        ret = ci_adv_awb_set_light_source (ia_3a_awb_light_source_filament_lamp);
         break;
     case CAM_AWB_MODE_FLUORESCENT:
-        ci_adv_awb_set_mode (ci_adv_awb_mode_manual);
-        ret = ci_adv_awb_set_light_source (ci_adv_awb_light_source_fluorlamp_n);
+        ci_adv_awb_set_mode (ia_3a_awb_mode_manual);
+        ret = ci_adv_awb_set_light_source (ia_3a_awb_light_source_fluorlamp_n);
         break;
     case CAM_AWB_MODE_WARM_FLUORESCENT:
-        ci_adv_awb_set_mode (ci_adv_awb_mode_manual);
-        ret = ci_adv_awb_set_light_source (ci_adv_awb_light_source_fluorlamp_w);
+        ci_adv_awb_set_mode (ia_3a_awb_mode_manual);
+        ret = ci_adv_awb_set_light_source (ia_3a_awb_light_source_fluorlamp_w);
         break;
     case CAM_AWB_MODE_WARM_INCANDESCENT:
-        ci_adv_awb_set_mode (ci_adv_awb_mode_manual);
-        ret = ci_adv_awb_set_light_source (ci_adv_awb_light_source_filament_lamp);
+        ci_adv_awb_set_mode (ia_3a_awb_mode_manual);
+        ret = ci_adv_awb_set_light_source (ia_3a_awb_light_source_filament_lamp);
         break;
     case CAM_AWB_MODE_SHADOW:
-        ci_adv_awb_set_mode (ci_adv_awb_mode_manual);
-        ret = ci_adv_awb_set_light_source (ci_adv_awb_light_source_shadow_area);
+        ci_adv_awb_set_mode (ia_3a_awb_mode_manual);
+        ret = ci_adv_awb_set_light_source (ia_3a_awb_light_source_shadow_area);
         break;
     case CAM_AWB_MODE_MANUAL_INPUT:
-        ci_adv_awb_set_mode (ci_adv_awb_mode_manual);
+        ci_adv_awb_set_mode (ia_3a_awb_mode_manual);
         break;
     case CAM_AWB_MODE_AUTO:
-        ret = ci_adv_awb_set_mode (ci_adv_awb_mode_auto);
+        ret = ci_adv_awb_set_mode (ia_3a_awb_mode_auto);
         break;
     default:
         LOGE("Set: invalid AWB mode: %d. Using AUTO!", mode);
         mode = CAM_AWB_MODE_AUTO;
-        ret = ci_adv_awb_set_mode (ci_adv_awb_mode_auto);
+        ret = ci_adv_awb_set_mode (ia_3a_awb_mode_auto);
     }
     if (ret != ci_adv_success)
         return UNKNOWN_ERROR;
@@ -525,23 +522,23 @@ status_t AtomAAA::setAeMeteringMode(MeteringMode mode)
     if(!mHas3A)
         return INVALID_OPERATION;
 
-    ci_adv_ae_metering_mode wr_val;
+    ia_3a_ae_metering_mode wr_val;
     switch (mode) {
     case CAM_AE_METERING_MODE_SPOT:
-        wr_val = ci_adv_ae_metering_mode_spot;
+        wr_val = ia_3a_ae_metering_mode_spot;
         break;
     case CAM_AE_METERING_MODE_CENTER:
-        wr_val = ci_adv_ae_metering_mode_center;
+        wr_val = ia_3a_ae_metering_mode_center;
         break;
     case CAM_AE_METERING_MODE_CUSTOMIZED:
-        wr_val = ci_adv_ae_metering_mode_customized;
+        wr_val = ia_3a_ae_metering_mode_customized;
         break;
     case CAM_AE_METERING_MODE_AUTO:
-        wr_val = ci_adv_ae_metering_mode_auto;
+        wr_val = ia_3a_ae_metering_mode_auto;
         break;
     default:
         LOGE("Set: invalid AE metering mode: %d. Using AUTO!", mode);
-        wr_val = ci_adv_ae_metering_mode_auto;
+        wr_val = ia_3a_ae_metering_mode_auto;
     }
     ci_adv_err ret = ci_adv_ae_set_metering_mode(wr_val);
     if(ci_adv_success != ret)
@@ -558,20 +555,20 @@ MeteringMode AtomAAA::getAeMeteringMode()
     if(!mHas3A)
         return mode;
 
-    ci_adv_ae_metering_mode rd_val;
+    ia_3a_ae_metering_mode rd_val;
     if(ci_adv_ae_get_metering_mode(&rd_val) != ci_adv_success)
         return mode;
     switch (rd_val) {
-    case ci_adv_ae_metering_mode_spot:
+    case ia_3a_ae_metering_mode_spot:
         mode = CAM_AE_METERING_MODE_SPOT;
         break;
-    case ci_adv_ae_metering_mode_center:
+    case ia_3a_ae_metering_mode_center:
         mode = CAM_AE_METERING_MODE_CENTER;
         break;
-    case ci_adv_ae_metering_mode_customized:
+    case ia_3a_ae_metering_mode_customized:
         mode = CAM_AE_METERING_MODE_CUSTOMIZED;
         break;
-    case ci_adv_ae_metering_mode_auto:
+    case ia_3a_ae_metering_mode_auto:
         mode = CAM_AE_METERING_MODE_AUTO;
         break;
     default:
@@ -647,13 +644,7 @@ status_t AtomAAA::setAeBacklightCorrection(bool en)
     if(!mHas3A)
         return INVALID_OPERATION;
 
-    ci_adv_ae_backlight_correction_mode wr_val;
-    if (en) {
-        wr_val = ci_adv_ae_backlight_correction_mode_on;
-    } else {
-        wr_val = ci_adv_ae_backlight_correction_mode_off;
-    }
-    ci_adv_err ret = ci_adv_ae_set_backlight_correction (wr_val);
+    ci_adv_err ret = ci_adv_ae_set_backlight_correction (en);
     if(ci_adv_success != ret)
         return UNKNOWN_ERROR;
 
@@ -679,57 +670,30 @@ bool AtomAAA::getRedEyeRemoval()
    return mRedeyeEnabled;
 }
 
-status_t AtomAAA::setAwbMapping(AwbMapping mode)
+status_t AtomAAA::setAwbMapping(ia_3a_awb_map mode)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
     if(!mHas3A)
         return INVALID_OPERATION;
 
-    ci_adv_awb_map wr_val;
-    switch (mode) {
-    case CAM_AWB_MAP_AUTO:
-        wr_val = ci_adv_awb_map_auto;
-        break;
-    case CAM_AWB_MAP_INDOOR:
-        wr_val = ci_adv_awb_map_indoor;
-        break;
-    case CAM_AWB_MAP_OUTDOOR:
-        wr_val = ci_adv_awb_map_outdoor;
-        break;
-    default:
-        LOGE("Set: invalid AWB map mode: %d. Using AUTO!", mode);
-        wr_val = ci_adv_awb_map_auto;
-    }
-    ci_adv_err ret = ci_adv_awb_set_map (wr_val);
+    ci_adv_err ret = ci_adv_awb_set_map (mode);
     if(ci_adv_success != ret)
         return UNKNOWN_ERROR;
 
     return NO_ERROR;
 }
 
-AwbMapping AtomAAA::getAwbMapping()
+ia_3a_awb_map AtomAAA::getAwbMapping()
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
-    AwbMapping ret = CAM_AWB_MAP_AUTO;
+    ia_3a_awb_map ret = ia_3a_awb_map_auto;
 
     if(mSensorType == SENSOR_TYPE_RAW) {
-        ci_adv_awb_map rd_val;
+        ia_3a_awb_map rd_val;
         if(ci_adv_awb_get_map (&rd_val) != ci_adv_success)
             return ret;
-        switch (rd_val)
-        {
-        case ci_adv_awb_map_indoor:
-            ret = CAM_AWB_MAP_INDOOR;
-            break;
-        case ci_adv_awb_map_outdoor:
-            ret = CAM_AWB_MAP_OUTDOOR;
-            break;
-        default:
-            LOGE("Get: Invalid AWB map mode");
-            ret = CAM_AWB_MAP_INDOOR;
-        }
     }
 
     return ret;
@@ -756,7 +720,7 @@ status_t AtomAAA::setAfWindows(const CameraWindow *windows, size_t numWindows)
     LOG1("@%s: windows = %p, num = %u", __FUNCTION__, windows, numWindows);
     if(!mHas3A)
         return INVALID_OPERATION;
-    if (ci_adv_af_set_windows(numWindows, (ci_adv_window*)windows) != ci_adv_success)
+    if (ci_adv_af_set_windows(numWindows, (ia_3a_window*)windows) != ci_adv_success)
         return UNKNOWN_ERROR;
     return NO_ERROR;
 }
@@ -795,21 +759,21 @@ status_t AtomAAA::stopStillAf()
     return NO_ERROR;
 }
 
-ci_adv_af_status AtomAAA::isStillAfComplete()
+ia_3a_af_status AtomAAA::isStillAfComplete()
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
     if(!mHas3A)
-        return ci_adv_af_status_error;
+        return ia_3a_af_status_error;
 
     if (mStillAfStart == 0) {
         // startStillAf wasn't called? return error
         LOGE("Call startStillAf before calling %s!", __FUNCTION__);
-        return ci_adv_af_status_error;
+        return ia_3a_af_status_error;
     }
     if (((systemTime() - mStillAfStart) / 1000000) > MAX_TIME_FOR_AF) {
         LOGW("Auto-focus sequence for still capture is taking too long. Cancelling!");
-        return ci_adv_af_status_canceled;
+        return ia_3a_af_status_cancelled;
     }
 
     return ci_adv_af_get_status();
@@ -899,7 +863,7 @@ status_t AtomAAA::updateManualFocus()
     return NO_ERROR;
 }
 
-status_t AtomAAA::getAfLensPosRange(ci_adv_lens_range *lens_range)
+status_t AtomAAA::getAfLensPosRange(ia_3a_af_lens_range *lens_range)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
@@ -1012,16 +976,16 @@ status_t AtomAAA::applyPreFlashProcess(FlashStage stage)
     if(!mHas3A)
         return INVALID_OPERATION;
 
-    ci_adv_flash_stage wr_stage;
+    ia_3a_flash_stage wr_stage;
     switch (stage) {
     case CAM_FLASH_STAGE_NONE:
-        wr_stage = ci_adv_flash_stage_none;
+        wr_stage = ia_3a_flash_stage_none;
         break;
     case CAM_FLASH_STAGE_PRE:
-        wr_stage = ci_adv_flash_stage_pre;
+        wr_stage = ia_3a_flash_stage_pre;
         break;
     case CAM_FLASH_STAGE_MAIN:
-        wr_stage = ci_adv_flash_stage_main;
+        wr_stage = ia_3a_flash_stage_main;
         break;
     default:
         LOGE("Unknown flash stage: %d", stage);
