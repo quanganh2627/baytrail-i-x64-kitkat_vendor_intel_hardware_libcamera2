@@ -2864,6 +2864,15 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
         }
     }
 
+    if (mState == STATE_CAPTURE) {
+        LOG1("Stopping ISP from CAPTURE mode, in order to handle setParameters");
+        status = stopCapture();
+        if (status != NO_ERROR) {
+            LOGE("Error stopping ISP from capture mode!");
+            return status;
+        }
+    }
+
     // print all old and new params for comparison (debug)
     LOG1("----------BEGIN OLD PARAMS----------");
     mParameters.dump();
