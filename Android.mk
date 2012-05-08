@@ -67,6 +67,10 @@ else ifeq ($(TARGET_PRODUCT), mfld_dv10)
 LOCAL_CFLAGS += -DMFLD_DV10
 else ifeq ($(TARGET_PRODUCT), ctp_pr0)
 LOCAL_CFLAGS += -DCTP_PR0
+else ifeq ($(TARGET_PRODUCT), ctp_pr1)
+LOCAL_CFLAGS += -DCTP_PR1
+else ifeq ($(TARGET_PRODUCT), mrfl_vp)
+LOCAL_CFLAGS += -DMRFL_VP
 else
 LOCAL_CFLAGS += -DMFLD_PR2
 endif
@@ -78,16 +82,19 @@ endif
 # If a platform does not support camera the USE_CAMERA_STUB 
 # should be set to "true" in BoardConfig.mk
 # LOCAL_MODULE := camera.$(TARGET_DEVICE)
- 
+
 ifeq ($(TARGET_PRODUCT),mfld_gi)
 LOCAL_MODULE := camera.mfld_gi
 else ifeq ($(TARGET_PRODUCT), mfld_dv10)
 LOCAL_MODULE := camera.mfld_dv10
 else ifeq ($(TARGET_PRODUCT), ctp_pr0)
 LOCAL_MODULE := camera.ctp_pr0
+else ifeq ($(TARGET_PRODUCT), ctp_pr1)
+LOCAL_MODULE := camera.ctp_pr1
 else
 LOCAL_MODULE := camera.mfld_pr2
 endif
+
 LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
 LOCAL_MODULE_TAGS := optional
 
