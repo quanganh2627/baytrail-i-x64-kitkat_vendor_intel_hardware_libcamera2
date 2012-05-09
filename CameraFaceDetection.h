@@ -3,7 +3,7 @@
  * FaceDetection Interface for native android.
  *
  * @file CameraFaceDetection.h
- * @version 1.01
+ * @version 1.03
  * @date 2012-MAR-26
  * @brief APIs for Face detection, combined with eye detection and mouth detection
  * @author Olaworks Inc. ( kyom@olaworks.com, cbheo@olaworks.com )
@@ -35,6 +35,8 @@ enum {
 #define PARAM_ORIENTATION 0x03 /**<  the orientation of input image, may be one of IMAGE_ORIENTATION_XXXX      */
 #define PARAM_FACESIZE_MIN 0x04 /**<  the mininum size of detectable face. This should be bigger than 22 at least.         */
 #define PARAM_FACESIZE_MAX 0x05 /**<  the maximum size of detectable face. Not supported yet.        */
+#define PARAM_LIMIT_NFACE   0x06    /**<  the limit of number of faces detectable concurrently. Support up to 32 faces.         */
+#define PARAM_ENABLE_EYEDETECTION   0x07    /**<  the flag for Eyedetection, if true, it would find eyes for each faces found. Please make sure that ED requires more computational resources. Default is false. */
 
 /* FORWARDING DECLARATION from system/core/include/Camera.h */
 /**
