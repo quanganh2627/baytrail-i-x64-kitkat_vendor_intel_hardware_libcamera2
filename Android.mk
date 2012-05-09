@@ -1,6 +1,20 @@
 LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
+# USE_INTEL_FACE_DETECTION_IN_CAMERAHAL flag is controlled from
+# InteFace.inc. If this file missing means, intel face
+# detection is not supported.
+# So -include will ignore if this file is not found.
+-include $(TARGET_OUT_HEADERS)/cameralibs/IntelFace.inc
+
+# if Intel face detection is included, select FD method to be used.
+# face detection alternatives: ola, none
+ifeq ($(USE_INTEL_FACE_DETECTION_IN_CAMERAHAL),true)
+FACE_DETECTION_TYPE :=ola
+else
+FACE_DETECTION_TYPE :=none
+endif
+
 LOCAL_SRC_FILES := \
 	ControlThread.cpp \
 	PreviewThread.cpp \
@@ -15,9 +29,13 @@ LOCAL_SRC_FILES := \
 	ColorConverter.cpp \
 	EXIFMaker.cpp \
 	JpegCompressor.cpp \
-	OlaFaceDetect.cpp \
 	CallbacksThread.cpp \
 	LogHelper.cpp
+
+ifeq ($(FACE_DETECTION_TYPE),ola)
+LOCAL_SRC_FILES += OlaFaceDetect.cpp 
+LOCAL_CFLAGS 	+= -DOLA_FACEDETECTION
+endif
 
 LOCAL_C_INCLUDES += \
 	frameworks/base/include \
@@ -31,6 +49,7 @@ LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/libsharedbuffer \
 	$(TARGET_OUT_HEADERS)/libmfldadvci \
 	$(TARGET_OUT_HEADERS)/libCameraFaceDetection \
+	
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_C_INCLUDES += \
@@ -49,7 +68,10 @@ LOCAL_SHARED_LIBRARIES := \
 	libs3cjpeg \
 	libsharedbuffer \
 	libmfldadvci \
-	libCameraFaceDetection \
+	
+ifeq ($(FACE_DETECTION_TYPE),ola)
+LOCAL_SHARED_LIBRARIES +=libCameraFaceDetection
+endif
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SHARED_LIBRARIES += \

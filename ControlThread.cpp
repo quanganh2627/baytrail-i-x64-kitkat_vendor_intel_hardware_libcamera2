@@ -193,8 +193,7 @@ status_t ControlThread::init(int cameraId)
         mParameters.set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_SW,
                 m_pFaceDetector->getMaxFacesDetectable());
     } else {
-        LOGE("Failed on creating face detector.");
-        goto bail;
+        LOGI("Face detector not available !!");
     }
 
     // Disable bracketing by default

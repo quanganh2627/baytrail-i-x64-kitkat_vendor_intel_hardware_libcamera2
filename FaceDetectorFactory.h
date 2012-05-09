@@ -30,8 +30,10 @@ public:
      */
     static IFaceDetector* createDetector(IFaceDetectionListener* listener)
     {
+#ifdef OLA_FACEDETECTION
         if (theInstance == 0)
             theInstance = new OlaFaceDetect(listener);
+#endif
         return theInstance.get();
     }
 
