@@ -27,6 +27,7 @@
 #include "FaceDetectorFactory.h"
 #include <utils/Vector.h>
 #include <math.h>
+#include <cutils/properties.h>
 
 namespace android {
 
@@ -201,6 +202,11 @@ status_t ControlThread::init(int cameraId)
 
     // Disable HDR by default
     mHdr.enabled = false;
+
+    // Set property to inform system what camera is in use
+    char facing[PROPERTY_VALUE_MAX];
+    snprintf(facing, PROPERTY_VALUE_MAX, "%d", cameraId);
+    property_set("media.camera.facing", facing);
 
     return NO_ERROR;
 
