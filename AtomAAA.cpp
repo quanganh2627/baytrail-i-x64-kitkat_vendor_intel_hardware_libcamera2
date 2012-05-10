@@ -1008,10 +1008,10 @@ status_t AtomAAA::applyRedEyeRemoval(const AtomBuffer &snapshotBuffer, int width
 
     switch (format) {
     case V4L2_PIX_FMT_NV12:
-        user_buf.format = ci_adv_frame_format_nv12;
+        user_buf.format = ia_frame_format_nv12;
         break;
     case V4L2_PIX_FMT_YUV420:
-        user_buf.format = ci_adv_frame_format_yuv420;
+        user_buf.format = ia_frame_format_yuv420;
         break;
     default:
         LOGE("RedEyeRemoval: unsupported frame format: %s", v4l2Fmt2Str(format));
@@ -1021,7 +1021,7 @@ status_t AtomAAA::applyRedEyeRemoval(const AtomBuffer &snapshotBuffer, int width
     user_buf.width = width;
     user_buf.height = height;
     user_buf.length = snapshotBuffer.buff->size;
-    ci_adv_correct_redeyes(&user_buf);
+    ia_redeye_correct(&user_buf);
     return status;
 }
 
@@ -1068,7 +1068,7 @@ status_t AtomAAA::computeCDF(const CiUserBuffer& inputBuf, size_t bufIndex)
             inputBuf.ciPostviewBuf[bufIndex].width,
             inputBuf.ciPostviewBuf[bufIndex].height,
             inputBuf.ciPostviewBuf[bufIndex].format);
-    ci_adv_compute_cdf(&inputBuf.ciPostviewBuf[bufIndex], &inputBuf.cdf[bufIndex]);
+    ia_hdr_compute_cdf(&inputBuf.ciPostviewBuf[bufIndex], &inputBuf.cdf[bufIndex]);
     if (inputBuf.cdf[bufIndex] != NULL) {
         LOG1("CDF obtained: %d", *inputBuf.cdf[bufIndex]);
     } else {
@@ -1084,7 +1084,7 @@ status_t AtomAAA::composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& o
     if(!mHas3A)
         return INVALID_OPERATION;
 
-    ci_adv_hdr_compose (&outputBuf.ciMainBuf[0], &outputBuf.ciPostviewBuf[0], inputBuf.ciMainBuf, inputBuf.ciBufNum, sharpening, vividness, inputBuf.cdf);
+    ia_hdr_compose (&outputBuf.ciMainBuf[0], &outputBuf.ciPostviewBuf[0], inputBuf.ciMainBuf, inputBuf.ciBufNum, sharpening, vividness, inputBuf.cdf);
 
     return NO_ERROR;
 }
