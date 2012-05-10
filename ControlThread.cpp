@@ -1250,14 +1250,14 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
 
             // Initialize the CI input buffers (will be initialized later, when snapshots are taken)
             mHdr.ciBufIn.ciBufNum = mHdr.bracketNum;
-            mHdr.ciBufIn.ciMainBuf = new ci_adv_user_buffer[mHdr.ciBufIn.ciBufNum];
-            mHdr.ciBufIn.ciPostviewBuf = new ci_adv_user_buffer[mHdr.ciBufIn.ciBufNum];
+            mHdr.ciBufIn.ciMainBuf = new ia_frame[mHdr.ciBufIn.ciBufNum];
+            mHdr.ciBufIn.ciPostviewBuf = new ia_frame[mHdr.ciBufIn.ciBufNum];
             mHdr.ciBufIn.cdf = new int*[mHdr.ciBufIn.ciBufNum];
 
             // Initialize the CI output buffers
             mHdr.ciBufOut.ciBufNum = mHdr.bracketNum;
-            mHdr.ciBufOut.ciMainBuf = new ci_adv_user_buffer[1];
-            mHdr.ciBufOut.ciPostviewBuf = new ci_adv_user_buffer[1];
+            mHdr.ciBufOut.ciMainBuf = new ia_frame[1];
+            mHdr.ciBufOut.ciPostviewBuf = new ia_frame[1];
             mHdr.ciBufOut.cdf = NULL;
 
             if (mHdr.ciBufIn.ciMainBuf == NULL ||

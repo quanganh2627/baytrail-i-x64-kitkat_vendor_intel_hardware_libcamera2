@@ -1001,7 +1001,7 @@ status_t AtomAAA::applyRedEyeRemoval(const AtomBuffer &snapshotBuffer, int width
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: buffer = %p, w = %d, h = %d, f = %d", __FUNCTION__, &snapshotBuffer, width, height, format);
     status_t status = NO_ERROR;
-    ci_adv_user_buffer user_buf;
+    ia_frame user_buf;
 
     if(!mHas3A)
         return INVALID_OPERATION;
