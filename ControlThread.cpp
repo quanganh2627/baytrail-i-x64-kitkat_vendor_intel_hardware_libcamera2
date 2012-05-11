@@ -805,6 +805,17 @@ status_t ControlThread::handleMessageStopRecording()
         status = INVALID_OPERATION;
     }
 
+    /*
+     *  Also, release snapshot shared buffers allocated before video recording.
+     *  It seems that there is a bug in the HW JPEG encoder: if we use preallocated buffers
+     *  after a video recording, those preallocated buffers for JPEG encoding are causing
+     *  a hang in HW JPEG encoder. Therefore, a workaround is to deallocate the shared JPEG
+     *  buffers after a video recording session.
+     *  The shared JPEG buffers will be reallocated with the next setParameters or takePicture
+     *  call.
+     */
+    mPictureThread->releaseSharedBuffers();
+
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_STOP_RECORDING, status);
     return status;
