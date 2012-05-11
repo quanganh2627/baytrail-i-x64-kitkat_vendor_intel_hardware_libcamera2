@@ -83,9 +83,20 @@ ControlThread::ControlThread() :
     ,mBSState(BS_STATE_DISABLED)
     ,mLastRecordingBuffIndex(0)
 {
-    // DO NOT PUT ANY CODE IN THIS METHOD!!!
+    // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
     // This is a workaround for an issue with Thread reference counting.
+
+    // Set the log level from property
+    char gLogLevelProp[PROPERTY_VALUE_MAX];
+    if (property_get("camera.hal.debug", gLogLevelProp, NULL)) {
+        gLogLevel = atoi(gLogLevelProp);
+        // Check that the property value is a valid integer
+        if (gLogLevel > MAX_LOG_LEVEL || gLogLevel < MIN_LOG_LEVEL) {
+            LOGE("Invalid camera.hal.debug property integer value: %s",gLogLevelProp);
+            gLogLevel = 0;
+        }
+    }
     LOG1("@%s", __FUNCTION__);
 }
 

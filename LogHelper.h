@@ -27,6 +27,9 @@ static void setLogLevel(int level) {
     android_atomic_write(level, &gLogLevel);
 }
 
+#define MIN_LOG_LEVEL   0
+#define MAX_LOG_LEVEL   2
+
 #define LOG1(...) LOGD_IF(gLogLevel >= 1, __VA_ARGS__);
 #define LOG2(...) LOGD_IF(gLogLevel >= 2, __VA_ARGS__);
 
