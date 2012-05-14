@@ -20,6 +20,8 @@
 
 #include <utils/Log.h>
 #include <cutils/atomic.h>
+#include <utils/KeyedVector.h>
+#include <utils/String8.h>
 
 extern int32_t gLogLevel;
 
@@ -33,4 +35,28 @@ static void setLogLevel(int level) {
 #define LOG1(...) LOGD_IF(gLogLevel >= 1, __VA_ARGS__);
 #define LOG2(...) LOGD_IF(gLogLevel >= 2, __VA_ARGS__);
 
+namespace android {
+
+class CameraParamsLogger {
+
+public:
+    CameraParamsLogger(const char * params);
+    ~CameraParamsLogger();
+
+    void dump();
+    void dumpDifference(CameraParamsLogger &otherParams);
+
+private:
+    int splitParam(String8 &inParam , String8  &aKey, String8 &aValue);
+    void fillMap(KeyedVector<String8,String8> &aMap, String8 &aString);
+
+private:
+    String8                         mString;
+    KeyedVector<String8,String8>    mPropMap;
+
+    static const char ParamsDelimiter[];
+    static const char ValueDelimiter[];
+
+};
+} // namespace android;
 #endif /* LOGHELPER_H_ */

@@ -2893,8 +2893,24 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     status_t status = NO_ERROR;
     CameraParameters newParams;
     CameraParameters oldParams = mParameters;
+    CameraParamsLogger newParamLogger (msg->params);
+    CameraParamsLogger oldParamLogger (mParameters.flatten().string());
+
     String8 str_params(msg->params);
     newParams.unflatten(str_params);
+
+    // print all old and new params for comparison (debug)
+    LOG1("----------BEGIN PARAM DIFERENCE----------");
+    newParamLogger.dumpDifference(oldParamLogger);
+    LOG1("----------END PARAM DIFERENCE----------");
+
+    LOG2("----------- BEGIN OLD PARAMS -------- ");
+    oldParamLogger.dump();
+    LOG2("----------- END OLD PARAMS -------- ");
+
+    LOG2("----------- BEGIN NEW PARAMS -------- ");
+    newParamLogger.dump();
+    LOG2("----------- END NEW PARAMS -------- ");
 
     // Workaround: The camera firmware doesn't support preview dimensions that
     // are bigger than video dimensions. If a single preview dimension is larger
@@ -2923,14 +2939,6 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
             return status;
         }
     }
-
-    // print all old and new params for comparison (debug)
-    LOG1("----------BEGIN OLD PARAMS----------");
-    mParameters.dump();
-    LOG1("---------- END OLD PARAMS ----------");
-    LOG1("----------BEGIN NEW PARAMS----------");
-    newParams.dump();
-    LOG1("---------- END NEW PARAMS ----------");
 
     status = validateParameters(&newParams);
     if (status != NO_ERROR)
