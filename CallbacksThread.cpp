@@ -85,20 +85,6 @@ status_t CallbacksThread::flushPictures()
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_FLUSH;
-
-    Vector<Message> vect;
-    mMessageQueue.remove(MESSAGE_ID_JPEG_DATA_READY, &vect);
-
-    // deallocate all the buffers we are flushing
-    for (size_t i = 0; i < vect.size(); i++) {
-        LOG1("Caught a mem leak. Woohoo!");
-        AtomBuffer buff = vect[i].data.compressedFrame.jpegBuff;
-        buff.buff->release(buff.buff);
-    }
-    vect.clear();
-
-    mMessageQueue.remove(MESSAGE_ID_JPEG_DATA_REQUEST, NULL); // there is no data for this message
-
     return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
 }
 
