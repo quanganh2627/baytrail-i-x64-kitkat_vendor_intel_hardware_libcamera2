@@ -2932,11 +2932,21 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     }
 
     if (mState == STATE_CAPTURE) {
-        LOG1("Stopping ISP from CAPTURE mode, in order to handle setParameters");
-        status = stopCapture();
-        if (status != NO_ERROR) {
-            LOGE("Error stopping ISP from capture mode!");
-            return status;
+        int newWidth, newHeight;
+        int oldWidth, oldHeight;
+        newParams.getPictureSize(&newWidth, &newHeight);
+        oldParams.getPictureSize(&oldWidth, &oldHeight);
+        // Check the picture size to see if changed. If changed, we need to stop the capture
+        if (newWidth != oldWidth || newHeight != oldHeight) {
+            LOG1("Picture size has changed! Requesting stopCapture, in order to handle setParameters");
+            /*
+             * We need to put a message to stop the capture since stopCapture can lead to a callback to
+             * CameraService, which can in turn lead to a dead-lock if it's done inside the thread that
+             * is processing a call from CameraService (like this one for example).
+             */
+            Message msg;
+            msg.id = MESSAGE_ID_STOP_CAPTURE;
+            mMessageQueue.send(&msg);
         }
     }
 
@@ -2997,6 +3007,16 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
         break;
     default:
         break;
+    }
+    return status;
+}
+
+status_t ControlThread::handleMessageStopCapture()
+{
+    status_t status = NO_ERROR;
+    status = stopCapture();
+    if (status != NO_ERROR) {
+        LOGE("Error stopping ISP from capture mode!");
     }
     return status;
 }
@@ -3133,9 +3153,15 @@ status_t ControlThread::waitForAndExecuteMessage()
         case MESSAGE_ID_GET_PARAMETERS:
             status = handleMessageGetParameters(&msg.data.getParameters);
             break;
+
         case MESSAGE_ID_COMMAND:
             status = handleMessageCommand(&msg.data.command);
             break;
+
+        case MESSAGE_ID_STOP_CAPTURE:
+            status = handleMessageStopCapture();
+            break;
+
         default:
             LOGE("Invalid message");
             status = BAD_VALUE;

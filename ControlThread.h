@@ -143,6 +143,7 @@ private:
         MESSAGE_ID_AUTO_FOCUS_DONE,
         MESSAGE_ID_COMMAND,
         MESSAGE_ID_FACES_DETECTED,
+        MESSAGE_ID_STOP_CAPTURE,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -355,6 +356,7 @@ private:
     status_t startFaceDetection();
     status_t stopFaceDetection(bool wait=false);
     status_t handleMessageFacesDetected(MessageFacesDetected* msg);
+    status_t handleMessageStopCapture();
     void releasePreviewFrame(AtomBuffer* buff);
 
     // main message function
