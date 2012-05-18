@@ -2017,6 +2017,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             // customize metering
             status = processParamSetMeteringAreas(oldParams, newParams);
         }
+
+        if (status == NO_ERROR) {
+            // exposure compensation
+            status = processParamExposureCompensation(oldParams, newParams);
+        }
     }
 
     if (status == NO_ERROR) {
@@ -2683,6 +2688,25 @@ status_t ControlThread:: processParamSetMeteringAreas(const CameraParameters *ol
                 mAAA->setAeMeteringMode(CAM_AE_METERING_MODE_SPOT);
             }
         }
+    }
+    return status;
+}
+
+status_t ControlThread::processParamExposureCompensation(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    const char* oldEv = oldParams->get(CameraParameters::KEY_EXPOSURE_COMPENSATION);
+    const char* newEv = newParams->get(CameraParameters::KEY_EXPOSURE_COMPENSATION);
+    if (newEv && oldEv && strncmp(newEv, oldEv, MAX_PARAM_VALUE_LENGTH) != 0) {
+        int exposure = newParams->getInt(CameraParameters::KEY_EXPOSURE_COMPENSATION);
+        float comp_step = newParams->getFloat(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP);
+        status = mAAA->setEv(exposure * comp_step);
+        float ev = 0;
+        mAAA->getEv(&ev);
+        LOGD("exposure compensation to \"%s\" (%d), ev value %f, res %d",
+             newEv, exposure, ev, status);
     }
     return status;
 }

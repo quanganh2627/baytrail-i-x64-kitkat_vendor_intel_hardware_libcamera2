@@ -406,6 +406,8 @@ private:
                 CameraParameters *newParams);
     status_t processParamHDR(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    status_t processParamExposureCompensation(const CameraParameters *oldParams,
+            CameraParameters *newParams);
 
     bool verifyCameraWindow(const CameraWindow &win);
     void preSetCameraWindows(CameraWindow* focusWindows, size_t winCount);
