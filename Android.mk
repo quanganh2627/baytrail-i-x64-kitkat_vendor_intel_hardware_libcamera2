@@ -1,3 +1,4 @@
+ifdef USE_CAMERA_HAL2
 LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
@@ -121,3 +122,5 @@ LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
 LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_SHARED_LIBRARY)
+
+endif  #ifdef $(USE_CAMERA_HAL2))
