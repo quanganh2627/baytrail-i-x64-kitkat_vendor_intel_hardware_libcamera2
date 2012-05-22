@@ -477,6 +477,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
      */
     params->set(CameraParameters::KEY_BURST_FPS, "1");
     params->set(CameraParameters::KEY_SUPPORTED_BURST_FPS, "1,3,5,7,15");
+    params->set(CameraParameters::KEY_SUPPORTED_BURST_LENGTH, "1,3,5,10");
+    params->set(CameraParameters::KEY_BURST_LENGTH, "1");
 
     if(mAAA->is3ASupported()){
         // effect modes
