@@ -28,9 +28,12 @@
 #include <utils/Vector.h>
 #include <math.h>
 #include <cutils/properties.h>
+#include <binder/IServiceManager.h>
 
 namespace android {
 
+#define PERMISSION_INTELTEST_CAMERA  "com.inteltest.permission.CAMERAEX"
+#define PERMISSION_INTEL_CAMERA  "com.intel.permission.CAMERAEX"
 /*
  * NUM_WARMUP_FRAMES: used for front camera only
  * Since front camera does not 3A, it actually has 2A (auto-exposure and auto-whitebalance),
@@ -74,6 +77,7 @@ ControlThread::ControlThread() :
     ,mCoupledBuffers(NULL)
     ,mNumBuffers(0)
     ,m_pFaceDetector(0)
+    ,mIntelParamsAllowed(false)
     ,mFaceDetectionActive(false)
     ,mFlashAutoFocus(false)
     ,mBurstSkipFrames(0)
@@ -97,6 +101,11 @@ ControlThread::ControlThread() :
             gLogLevel = 0;
         }
     }
+
+    if (checkCallingPermission(String16(PERMISSION_INTELTEST_CAMERA)) ||
+        checkCallingPermission(String16(PERMISSION_INTEL_CAMERA)))
+       mIntelParamsAllowed   = true;
+
     LOG1("@%s", __FUNCTION__);
 }
 
@@ -286,6 +295,7 @@ void ControlThread::deinit()
         }
         m_pFaceDetector = 0;
     }
+
 }
 
 status_t ControlThread::setPreviewWindow(struct preview_stream_ops *window)

@@ -464,6 +464,7 @@ private:
 
     CameraParameters mParameters;
     IFaceDetector* m_pFaceDetector;
+    bool mIntelParamsAllowed;           /*<! Flag that signals whether the caller is allowed to use Intel extended paramters*/
     bool mFaceDetectionActive;
     bool mAutoFocusActive;
     bool mFlashAutoFocus;
