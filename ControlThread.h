@@ -18,6 +18,8 @@
 #define ANDROID_LIBCAMERA_CONTROL_THREAD_H
 
 #include <utils/threads.h>
+#include <limits.h>
+
 #include <camera.h>
 #include <camera/CameraParameters.h>
 #include <utils/List.h>
@@ -104,6 +106,9 @@ public:
     // return recording frame to driver (asynchronous)
     status_t releaseRecordingFrame(void *buff);
 
+    // Intel extension for file injection/input
+    status_t configureFileInject(const char *file_name, int width, int height, int format, int bayer_order);
+
     // TODO: need methods to configure control thread
     // TODO: decide if configuration method should send a message
 
@@ -144,6 +149,7 @@ private:
         MESSAGE_ID_COMMAND,
         MESSAGE_ID_FACES_DETECTED,
         MESSAGE_ID_STOP_CAPTURE,
+        MESSAGE_ID_CONFIGURE_FILE_INJECT,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -187,6 +193,14 @@ private:
         AtomBuffer buf;
     };
 
+    struct MessageConfigureFileInject {
+        char fileName[PATH_MAX];
+        int width;
+        int height;
+        int format;
+        int bayerOrder;
+    };
+
     // union of all message data
     union MessageData {
 
@@ -214,6 +228,9 @@ private:
         MessageCommand command;
         //MESSAGE_ID_FACES_DETECTED
         MessageFacesDetected FacesDetected;
+
+        // MESSAGE_ID_CONFIGURE_FILE_INJECT
+        MessageConfigureFileInject configureFileInject;
     };
 
     // message id and message data
@@ -353,6 +370,8 @@ private:
     status_t handleMessageRedEyeRemovalDone(MessagePicture *msg);
     status_t handleMessageAutoFocusDone();
     status_t handleMessageCommand(MessageCommand* msg);
+    status_t handleMessageConfigureFileInject(MessageConfigureFileInject *msg);
+
     status_t startFaceDetection();
     status_t stopFaceDetection(bool wait=false);
     status_t handleMessageFacesDetected(MessageFacesDetected* msg);

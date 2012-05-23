@@ -22,6 +22,7 @@
 #include <utils/Vector.h>
 #include <utils/Errors.h>
 #include <utils/threads.h>
+#include <utils/String8.h>
 #include <camera/CameraParameters.h>
 #include "AtomCommon.h"
 #include "IntelBufferSharing.h"
@@ -30,18 +31,9 @@
 namespace android {
 
 #define MAX_V4L2_BUFFERS    MAX_BURST_BUFFERS
+#define MAX_CAMERA_NODES    MAX_CAMERAS + 1
 #define EV_MIN -2
 #define EV_MAX  2
-
-struct FileInput {
-    char *name;
-    unsigned int width;
-    unsigned int height;
-    unsigned int size;
-    int format;
-    int bayer_order;
-    char *mapped_addr;
-};
 
 //v4l2 buffer in pool
 struct v4l2_buffer_info {
@@ -123,6 +115,10 @@ public:
     status_t setLightFrequency(FlickerMode flickerMode);
     status_t setLowLight(bool enable);
 
+    // file input/injection API
+    int configureFileInject(const char* fileName, int width, int height, int format, int bayerOrder);
+    bool isFileInjectConfigured(void) const { return mFileInject.active; }
+
     // camera hardware information
     static int getNumberOfCameras();
     static status_t getCameraInfo(int cameraId, camera_info *cameraInfo);
@@ -131,6 +127,11 @@ public:
 
 // private methods
 private:
+
+    void init3A(void);
+    void initFrameConfig(void);
+    void initCameraId(int camera_id);
+    void initFileInject(void);
 
     status_t startPreview();
     status_t stopPreview();
@@ -182,8 +183,13 @@ private:
     int atomisp_set_zoom (int fd, int zoom);
     int xioctl(int fd, int request, void *arg);
 
+    int startFileInject(void);
+    int stopFileInject(void);
+    status_t fileInjectSetSize(void);
+
     status_t selectCameraSensor();
     size_t setupCameraInfo();
+    int getPrimaryCameraIndex(void) const;
 
 // private types
 private:
@@ -233,8 +239,8 @@ private:
 // private members
 private:
 
-    static const camera_info mCameraInfo[MAX_CAMERAS];
-    static cameraInfo camInfo[MAX_CAMERAS];
+    static const camera_info mCameraInfo[MAX_CAMERA_NODES];
+    static cameraInfo camInfo[MAX_CAMERA_NODES];
     static int numCameras;
 
     AtomMode mMode;
@@ -257,10 +263,18 @@ private:
 
     int video_fds[V4L2_DEVICE_NUM];
 
-    struct v4l2_capability cap;
     struct v4l2_buffer_pool v4l2_buf_pool[V4L2_DEVICE_NUM]; //pool[0] for device0 pool[1] for device1
 
-    struct FileInput mFileImage;
+    struct FileInject {
+        String8 fileName;
+        bool active;
+        unsigned int width;
+        unsigned int height;
+        unsigned int size;
+        int format;
+        int bayerOrder;
+        char *mappedAddr;
+    } mFileInject;
 
     int mPreviewDevice;
     int mRecordingDevice;

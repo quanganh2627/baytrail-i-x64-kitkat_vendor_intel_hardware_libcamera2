@@ -288,6 +288,17 @@ static int atom_dump(struct camera_device * device, int fd)
     return 0;
 }
 
+static int atom_configure_file_input(struct camera_device *device, char *file_name, int width, int height, int format, int bayer_order)
+{
+    LOGD("%s", __FUNCTION__);
+    if(!device)
+        return -EINVAL;
+    atom_camera *cam = (atom_camera *)(device->priv);
+    // note: 'file input' is deprecated, 'file inject' is the proper
+    //       name for the feature
+    cam->control_thread->configureFileInject(file_name, width, height, format, bayer_order);
+    return 0;
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 //                              HAL OPERATIONS TABLE
@@ -321,6 +332,7 @@ static camera_device_ops_t atom_ops = {
     send_command:               atom_send_command,
     release:                    atom_release,
     dump:                       atom_dump,
+    configure_file_input:       atom_configure_file_input,
 };
 
 

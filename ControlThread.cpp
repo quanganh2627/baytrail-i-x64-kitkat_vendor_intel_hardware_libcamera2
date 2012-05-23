@@ -503,6 +503,21 @@ status_t ControlThread::releaseRecordingFrame(void *buff)
     return mMessageQueue.send(&msg);
 }
 
+status_t ControlThread::configureFileInject(const char *fileName, int width, int height, int format, int bayerOrder)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_CONFIGURE_FILE_INJECT;
+    strncpy(msg.data.configureFileInject.fileName,
+            fileName,
+            sizeof(msg.data.configureFileInject.fileName) - 1);
+    msg.data.configureFileInject.width = width;
+    msg.data.configureFileInject.height = height;
+    msg.data.configureFileInject.format = format;
+    msg.data.configureFileInject.bayerOrder = bayerOrder;
+    return mMessageQueue.send(&msg);
+}
+
 void ControlThread::previewDone(AtomBuffer *buff)
 {
     LOG2("@%s: buff = %p, id = %d", __FUNCTION__, buff->buff->data, buff->id);
@@ -3331,6 +3346,15 @@ status_t ControlThread::handleMessageStopCapture()
     }
     return status;
 }
+
+status_t ControlThread::handleMessageConfigureFileInject(MessageConfigureFileInject *c)
+{
+    status_t status = NO_ERROR;
+    mISP->configureFileInject(c->fileName, c->width, c->height, c->format, c->bayerOrder);
+    mMessageQueue.reply(MESSAGE_ID_CONFIGURE_FILE_INJECT, status);
+    return status;
+}
+
 /**
  * From Android API:
  * Starts the face detection. This should be called after preview is started.
@@ -3471,6 +3495,10 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_STOP_CAPTURE:
             status = handleMessageStopCapture();
+            break;
+
+        case MESSAGE_ID_CONFIGURE_FILE_INJECT:
+            status = handleMessageConfigureFileInject(&msg.data.configureFileInject);
             break;
 
         default:

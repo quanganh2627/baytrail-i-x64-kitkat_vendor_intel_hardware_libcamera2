@@ -172,7 +172,7 @@ public:
     bool is3ASupported() { return mHas3A; }
 
     // Initialization functions
-    status_t init(const char *sensor_id, int fd);
+    status_t init(const char *sensor_id, int fd, const char *otpInjectFile = NULL);
     status_t unInit();
     status_t applyIspSettings();
     status_t switchModeAndRate(AtomMode mode, float fps);

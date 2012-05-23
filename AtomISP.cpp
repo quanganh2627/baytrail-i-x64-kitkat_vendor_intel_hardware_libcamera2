@@ -25,6 +25,7 @@
 #include <math.h>
 
 #define CLEAR(x) memset (&(x), 0, sizeof (x))
+#define PAGE_ALIGN(x) ((x + 0xfff) & 0xfffff000)
 #define main_fd video_fds[V4L2_FIRST_DEVICE]
 
 #define DEFAULT_SENSOR_FPS      15.0
@@ -78,6 +79,13 @@
 #define MAX_FRONT_CAMERA_VIDEO_WIDTH   1920
 #define MAX_FRONT_CAMERA_VIDEO_HEIGHT  1088
 
+#define MAX_FILE_INJECTION_SNAPSHOT_WIDTH    3264
+#define MAX_FILE_INJECTION_SNAPSHOT_HEIGHT   2448
+#define MAX_FILE_INJECTION_PREVIEW_WIDTH     1280
+#define MAX_FILE_INJECTION_PREVIEW_HEIGHT    720
+#define MAX_FILE_INJECTION_RECORDING_WIDTH   1920
+#define MAX_FILE_INJECTION_RECORDING_HEIGHT  1088
+
 #define MAX_ZOOM_LEVEL          150     // How many levels we have from 1x -> max zoom
 #define MIN_ZOOM_LEVEL          0
 #define MIN_SUPPORT_ZOOM        100     // Support 1x at least
@@ -106,6 +114,8 @@
 #define BACK_CAMERA_ROTATION     0
 #endif
 
+#define INTEL_FILE_INJECT_CAMERA_ID 2
+
 namespace android {
 
 ////////////////////////////////////////////////////////////////////
@@ -116,15 +126,27 @@ static const char *dev_name_array[3] = {"/dev/video0",
                                   "/dev/video1",
                                   "/dev/video2"};
 
-AtomISP::cameraInfo AtomISP::camInfo[MAX_CAMERAS];
+/**
+ * When image data injection is used, read OTP data from
+ * this file.
+ *
+ * Note: camera HAL working directory is "/data" (at least upto ICS)
+ */
+static const char *privateOtpInjectFileName = "otp_data.bin";
+
+AtomISP::cameraInfo AtomISP::camInfo[MAX_CAMERA_NODES];
 int AtomISP::numCameras = 0;
 
-const camera_info AtomISP::mCameraInfo[MAX_CAMERAS] = {
+const camera_info AtomISP::mCameraInfo[] = {
     {
         CAMERA_FACING_BACK, BACK_CAMERA_ROTATION
     },
     {
         CAMERA_FACING_FRONT,FRONT_CAMERA_ROTATION
+    },
+    {
+        // file injection/input device
+        CAMERA_FACING_BACK, BACK_CAMERA_ROTATION
     }
 };
 
@@ -188,7 +210,6 @@ AtomISP::AtomISP(int camera_id) :
     ,mZoomRatios(NULL)
 {
     LOG1("@%s", __FUNCTION__);
-    int camera_idx = -1;
 
     video_fds[V4L2_FIRST_DEVICE] = -1;
     video_fds[V4L2_SECOND_DEVICE] = -1;
@@ -205,39 +226,66 @@ AtomISP::AtomISP(int camera_id) :
         return;
     }
 
-    size_t numCameras = setupCameraInfo();
+    initCameraId(camera_id);
 
-    for (size_t i = 0; i < numCameras; i++) {
-        if ((camera_id == CAMERA_FACING_BACK  && camInfo[i].port == ATOMISP_CAMERA_PORT_PRIMARY) ||
-                (camera_id == CAMERA_FACING_FRONT && camInfo[i].port == ATOMISP_CAMERA_PORT_SECONDARY)) {
-            camera_idx = i;
+    mSensorType = (camInfo[mCameraId].port == ATOMISP_CAMERA_PORT_PRIMARY)?SENSOR_TYPE_RAW:SENSOR_TYPE_SOC;
+    LOG1("Sensor type detected: %s", (mSensorType == SENSOR_TYPE_RAW)?"RAW":"SOC");
+
+    init3A();
+    initFrameConfig();
+    initFileInject();
+
+    // Initialize the frame sizes
+    setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
+    setPostviewFrameFormat(RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT, V4L2_PIX_FMT_NV12);
+    setSnapshotFrameFormat(RESOLUTION_5MP_WIDTH, RESOLUTION_5MP_HEIGHT, V4L2_PIX_FMT_NV12);
+    setVideoFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
+
+    /*
+       Zoom is describled as 100, 200, each level has less memory than 5 bytes
+       We don't support zoom bigger than 9999
+       The last byte is used to store '\0'
+     */
+    static const int zoomBytes = MAX_ZOOM_LEVEL * 5 + 1;
+    mZoomRatios = new char[zoomBytes];
+    computeZoomRatios(mZoomRatios, zoomBytes);
+}
+
+int AtomISP::getPrimaryCameraIndex(void) const
+{
+    int res = 0;
+    int items = sizeof(camInfo) / sizeof(cameraInfo);
+    for (int i = 0; i < items; i++) {
+        if (camInfo[i].port == ATOMISP_CAMERA_PORT_PRIMARY) {
+            res = i;
             break;
         }
     }
-    if (camera_idx == -1) {
-        LOGE("Didn't find %s camera. Using default camera!",
-                camera_id == CAMERA_FACING_BACK ? "back" : "front");
-        camera_idx = 0;
+    return res;
+}
+
+
+/**
+ * Only to be called from contructor
+ */
+void AtomISP::initFrameConfig(void)
+{
+    int ret;
+
+    if (mCameraId == INTEL_FILE_INJECT_CAMERA_ID) {
+        mConfig.snapshot.maxWidth = MAX_FILE_INJECTION_SNAPSHOT_WIDTH;
+        mConfig.snapshot.maxHeight = MAX_FILE_INJECTION_SNAPSHOT_HEIGHT;
+        mConfig.preview.maxWidth = MAX_FILE_INJECTION_PREVIEW_WIDTH;
+        mConfig.preview.maxHeight = MAX_FILE_INJECTION_PREVIEW_HEIGHT;
+        mConfig.recording.maxWidth = MAX_FILE_INJECTION_RECORDING_WIDTH;
+        mConfig.recording.maxHeight = MAX_FILE_INJECTION_RECORDING_HEIGHT;
+        ret = 0;
     }
-    mCameraId = camera_idx;
-
-    mSensorType = (camInfo[mCameraId].port == ATOMISP_CAMERA_PORT_PRIMARY)?SENSOR_TYPE_RAW:SENSOR_TYPE_SOC;
-
-    LOG1("Sensor type detected: %s", (mSensorType == SENSOR_TYPE_RAW)?"RAW":"SOC");
-
-    if (selectCameraSensor() == NO_ERROR) {
-        if (mSensorType == SENSOR_TYPE_RAW) {
-            if (mAAA->init(camInfo[mCameraId].name, main_fd) == NO_ERROR) {
-                LOG1("3A initialized");
-            } else {
-                LOGE("Error initializing 3A on RAW sensor!");
-            }
-        }
-    } else {
-        LOGE("Could not select camera: %s (sensor ID: %d)", camInfo[mCameraId].name, mCameraId);
+    else {
+        // query the V4L2 device
+        ret = detectDeviceResolutions();
     }
 
-    ret = detectDeviceResolutions();
     if (ret) {
         LOGE("Failed to detect camera %s, resolution! Use default settings", camInfo[mCameraId].name);
         switch (camInfo[mCameraId].port) {
@@ -273,21 +321,72 @@ AtomISP::AtomISP(int camera_id) :
     default:
         LOGE("Invalid camera id: %d", mCameraId);
     }
+}
 
-    // Initialize the frame sizes
-    setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
-    setPostviewFrameFormat(RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT, V4L2_PIX_FMT_NV12);
-    setSnapshotFrameFormat(RESOLUTION_5MP_WIDTH, RESOLUTION_5MP_HEIGHT, V4L2_PIX_FMT_NV12);
-    setVideoFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
+/**
+ * Only to be called from contructor
+ */
+void AtomISP::initCameraId(int camera_id)
+{
+    int camera_idx = -1;
+    size_t numCameras = setupCameraInfo();
 
-    /*
-       Zoom is describled as 100, 200, each level has less memory than 5 bytes
-       We don't support zoom bigger than 9999
-       The last byte is used to store '\0'
-     */
-    static const int zoomBytes = MAX_ZOOM_LEVEL * 5 + 1;
-    mZoomRatios = new char[zoomBytes];
-    computeZoomRatios(mZoomRatios, zoomBytes);
+    for (size_t i = 0; i < numCameras; i++) {
+        if ((camera_id == CAMERA_FACING_BACK  && camInfo[i].port == ATOMISP_CAMERA_PORT_PRIMARY) ||
+                (camera_id == CAMERA_FACING_FRONT && camInfo[i].port == ATOMISP_CAMERA_PORT_SECONDARY)) {
+            camera_idx = i;
+            break;
+        }
+    }
+
+    if (camera_idx == -1 &&
+        camera_id == INTEL_FILE_INJECT_CAMERA_ID) {
+        LOG1("AtomISP opened with file inject camera id");
+        camera_idx = INTEL_FILE_INJECT_CAMERA_ID;
+    }
+    else if (camera_idx == -1) {
+        LOGE("Didn't find %s camera. Using default camera!",
+                camera_id == CAMERA_FACING_BACK ? "back" : "front");
+        camera_idx = 0;
+    }
+
+    mCameraId = camera_idx;
+}
+
+/**
+ * Only to be called from contructor
+ */
+void AtomISP::init3A(void)
+{
+    if (selectCameraSensor() == NO_ERROR) {
+        if (mCameraId == INTEL_FILE_INJECT_CAMERA_ID) {
+            const char* otp_file = privateOtpInjectFileName;
+            int maincam = getPrimaryCameraIndex();
+            if (mAAA->init(camInfo[maincam].name, main_fd, otp_file) == NO_ERROR) {
+                LOG1("3A initialized for file inject");
+            }
+            else {
+                LOGE("Unable to initialize 3A for file inject");
+            }
+        }
+        else if (mSensorType == SENSOR_TYPE_RAW) {
+            if (mAAA->init(camInfo[mCameraId].name, main_fd, NULL) == NO_ERROR) {
+                LOG1("3A initialized");
+            } else {
+                LOGE("Error initializing 3A on RAW sensor!");
+            }
+        }
+    } else {
+        LOGE("Could not select camera: %s (sensor ID: %d)", camInfo[mCameraId].name, mCameraId);
+    }
+}
+
+/**
+ * Only to be called from contructor
+ */
+void AtomISP::initFileInject(void)
+{
+    mFileInject.active = false;
 }
 
 AtomISP::~AtomISP()
@@ -717,6 +816,9 @@ status_t AtomISP::startPreview()
     if ((status = allocatePreviewBuffers()) != NO_ERROR)
         return status;
 
+    if (mFileInject.active == true)
+        startFileInject();
+
     ret = configureDevice(
             mPreviewDevice,
             CI_MODE_PREVIEW,
@@ -758,6 +860,8 @@ exitClose:
     stopDevice(mPreviewDevice);
 exitFree:
     freePreviewBuffers();
+    if (mFileInject.active == true)
+        stopFileInject();
     return status;
 }
 
@@ -767,6 +871,9 @@ status_t AtomISP::stopPreview()
 
     stopDevice(mPreviewDevice);
     freePreviewBuffers();
+
+    if (mFileInject.active == true)
+        stopFileInject();
 
     return NO_ERROR;
 }
@@ -780,6 +887,9 @@ status_t AtomISP::startRecording() {
 
     if ((status = allocateRecordingBuffers()) != NO_ERROR)
         return status;
+
+    if (mFileInject.active == true)
+        startFileInject();
 
     if ((status = allocatePreviewBuffers()) != NO_ERROR)
         goto exitFreeRec;
@@ -854,6 +964,8 @@ exitFreePrev:
     freePreviewBuffers();
 exitFreeRec:
     freeRecordingBuffers();
+    if (mFileInject.active == true)
+        stopFileInject();
     return status;
 }
 
@@ -868,6 +980,9 @@ status_t AtomISP::stopRecording()
     stopDevice(mPreviewDevice);
     closeDevice(mPreviewDevice);
 
+    if (mFileInject.active == true)
+        stopFileInject();
+
     return NO_ERROR;
 }
 
@@ -879,6 +994,9 @@ status_t AtomISP::startCapture()
 
     if ((status = allocateSnapshotBuffers()) != NO_ERROR)
         return status;
+
+    if (mFileInject.active == true)
+        startFileInject();
 
     updateLowLight();
 
@@ -952,6 +1070,9 @@ errorCloseSecond:
     closeDevice(V4L2_SECOND_DEVICE);
 errorFreeBuf:
     freeSnapshotBuffers();
+    if (mFileInject.active == true)
+        stopFileInject();
+
     return status;
 }
 
@@ -1016,6 +1137,12 @@ int AtomISP::configureDevice(int device, int deviceMode, int w, int h, int forma
             mConfig.fps = DEFAULT_SENSOR_FPS;
             ret = 0;
         }
+    }
+
+    // reduce FPS for still capture
+    if (mFileInject.active == true) {
+        if (deviceMode == CI_MODE_STILL_CAPTURE)
+            mConfig.fps = 15;
     }
 
     //We need apply all the parameter settings when do the camera reset
@@ -1164,6 +1291,7 @@ int AtomISP::openDevice(int device)
     }
 
     // Query and check the capabilities
+    struct v4l2_capability cap;
     if (v4l2_capture_querycap(device, &cap) < 0) {
         LOGE("V4L2: capture_querycap failed: %s", strerror(errno));
         v4l2_capture_close(video_fds[device]);
@@ -1691,6 +1819,153 @@ int AtomISP::xioctl(int fd, int request, void *arg)
     return ret;
 }
 
+/**
+ * Start inject image data from a file using the special-purpose
+ * V4L2 device node.
+ */
+int AtomISP::startFileInject(void)
+{
+    LOG1("%s: enter", __FUNCTION__);
+
+    int ret = 0;
+    int device = V4L2_THIRD_DEVICE;
+    int buffer_count = 1;
+
+    if (mFileInject.active != true) {
+        LOGE("%s: no input file set",  __func__);
+        return -1;
+    }
+
+    video_fds[device] = v4l2_capture_open(device);
+    if (video_fds[device] < 0)
+        goto error1;
+
+    // Query and check the capabilities
+    struct v4l2_capability cap;
+    if (v4l2_capture_querycap(device, &cap) < 0)
+        goto error1;
+
+    struct v4l2_streamparm parm;
+    memset(&parm, 0, sizeof(parm));
+    parm.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+    parm.parm.output.outputmode = OUTPUT_MODE_FILE;
+    if (ioctl(video_fds[device], VIDIOC_S_PARM, &parm) < 0) {
+        LOGE("error %s", strerror(errno));
+        return -1;
+    }
+
+    if (fileInjectSetSize() != NO_ERROR)
+        goto error1;
+
+    //Set the format
+    ret = v4l2_capture_s_format(video_fds[device], device, mFileInject.width,
+                                mFileInject.height, mFileInject.format, false);
+    if (ret < 0)
+        goto error1;
+
+    v4l2_buf_pool[device].width = mFileInject.width;
+    v4l2_buf_pool[device].height = mFileInject.height;
+    v4l2_buf_pool[device].format = mFileInject.format;
+
+    //request, query and mmap the buffer and save to the pool
+    ret = createBufferPool(device, buffer_count);
+    if (ret < 0)
+        goto error1;
+
+    // QBUF
+    ret = activateBufferPool(device);
+    if (ret < 0)
+        goto error0;
+
+    return 0;
+
+error0:
+    destroyBufferPool(device);
+error1:
+    v4l2_capture_close(video_fds[device]);
+    video_fds[device] = -1;
+    return -1;
+}
+
+/**
+ * Stops file injection.
+ *
+ * Closes the kernel resources needed for file injection and
+ * other resources.
+ */
+int AtomISP::stopFileInject(void)
+{
+    LOG1("%s: enter", __FUNCTION__);
+    int device;
+    device = V4L2_THIRD_DEVICE;
+    if (video_fds[device] < 0)
+        LOGW("%s: Already closed", __func__);
+    destroyBufferPool(device);
+    v4l2_capture_close(video_fds[device]);
+    video_fds[device] = -1;
+    return 0;
+}
+
+/**
+ * Configures image data injection.
+ *
+ * If 'fileName' is non-NULL, file injection is enabled with the given
+ * settings. Once enabled, file injection will be performend when
+ * start() is issued, and stopped when stop() is issued. Injection
+ * applies to all device modes.
+ */
+int AtomISP::configureFileInject(const char *fileName, int width, int height, int format, int bayerOrder)
+{
+    LOG1("%s: enter", __FUNCTION__);
+    mFileInject.fileName = String8(fileName);
+    if (mFileInject.fileName.isEmpty() != true) {
+        LOGD("Enabling file injection from %s", mFileInject.fileName.string());
+        mFileInject.active = true;
+        mFileInject.width = width;
+        mFileInject.height = height;
+        mFileInject.format = format;
+        mFileInject.bayerOrder = bayerOrder;
+    }
+    else {
+        mFileInject.active = false;
+        LOGD("Disabling file injection");
+    }
+    return 0;
+}
+
+status_t AtomISP::fileInjectSetSize(void)
+{
+    int fileFd = -1;
+    int fileSize = 0;
+    struct stat st;
+    const char* fileName = mFileInject.fileName.string();
+
+    /* Open the file we will transfer to kernel */
+    if ((fileFd = open(mFileInject.fileName.string(), O_RDONLY)) == -1) {
+        LOGE("ERR(%s): Failed to open %s\n", __FUNCTION__, fileName);
+        return INVALID_OPERATION;
+    }
+
+    CLEAR(st);
+    if (fstat(fileFd, &st) < 0) {
+        LOGE("ERR(%s): fstat %s failed\n", __func__, fileName);
+        return INVALID_OPERATION;
+    }
+
+    fileSize = st.st_size;
+    if (fileSize == 0) {
+        LOGE("ERR(%s): empty file %s\n", __func__, fileName);
+        return -1;
+    }
+
+    LOG1("%s: file %s size of %u", __FUNCTION__, fileName, fileSize);
+
+    mFileInject.size = fileSize;
+
+    close(fileFd);
+    return NO_ERROR;
+}
+
 int AtomISP::v4l2_capture_streamon(int fd)
 {
     LOG1("@%s", __FUNCTION__);
@@ -1814,7 +2089,14 @@ int AtomISP::v4l2_capture_new_buffer(int device, int index, struct v4l2_buffer_i
         buf->data = data;
         buf->length = vbuf->length;
 
-        memcpy(data, mFileImage.mapped_addr, mFileImage.size);
+        // fill buffer with image data from file
+        FILE *file;
+        if (!(file = fopen(mFileInject.fileName.string(), "r"))) {
+            LOGE("ERR(%s): Failed to open %s\n", __func__, mFileInject.fileName.string());
+            return -1;
+        }
+        fread(data, 1,  mFileInject.size, file);
+        fclose(file);
         return 0;
     }
 
@@ -1882,18 +2164,19 @@ int AtomISP::v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc,
 
     if (device == V4L2_THIRD_DEVICE) {
         v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
-        v4l2_fmt.fmt.pix.width = mFileImage.width;
-        v4l2_fmt.fmt.pix.height = mFileImage.height;
-        v4l2_fmt.fmt.pix.pixelformat = mFileImage.format;
-        v4l2_fmt.fmt.pix.sizeimage = mFileImage.size;
-        v4l2_fmt.fmt.pix.priv = mFileImage.bayer_order;
+        v4l2_fmt.fmt.pix.width = mFileInject.width;
+        v4l2_fmt.fmt.pix.height = mFileInject.height;
+        v4l2_fmt.fmt.pix.pixelformat = mFileInject.format;
+        v4l2_fmt.fmt.pix.sizeimage = PAGE_ALIGN(mFileInject.size);
+        v4l2_fmt.fmt.pix.priv = mFileInject.bayerOrder;
 
-        LOG1("VIDIOC_S_FMT: width: %d, height: %d, format: %x, size: %d, bayer_order: %d",
-                mFileImage.width,
-                mFileImage.height,
-                mFileImage.format,
-                mFileImage.size,
-                mFileImage.bayer_order);
+        LOG1("VIDIOC_S_FMT: device %d, width: %d, height: %d, format: %x, size: %d, bayer_order: %d",
+                device,
+                mFileInject.width,
+                mFileInject.height,
+                mFileInject.format,
+                mFileInject.size,
+                mFileInject.bayerOrder);
         ret = ioctl(fd, VIDIOC_S_FMT, &v4l2_fmt);
         if (ret < 0) {
             LOGE("VIDIOC_S_FMT failed: %s", strerror(errno));
@@ -2102,16 +2385,16 @@ int AtomISP::v4l2_capture_try_format(int device, int *w, int *h,
     CLEAR(v4l2_fmt);
 
     if (device == V4L2_THIRD_DEVICE) {
-        *w = mFileImage.width;
-        *h = mFileImage.height;
-        *fourcc = mFileImage.format;
+        *w = mFileInject.width;
+        *h = mFileInject.height;
+        *fourcc = mFileInject.format;
 
         LOG1("width: %d, height: %d, format: %x, size: %d, bayer_order: %d",
-             mFileImage.width,
-             mFileImage.height,
-             mFileImage.format,
-             mFileImage.size,
-             mFileImage.bayer_order);
+             mFileInject.width,
+             mFileInject.height,
+             mFileInject.format,
+             mFileInject.size,
+             mFileInject.bayerOrder);
 
         return 0;
     }
@@ -2635,7 +2918,12 @@ status_t AtomISP::freeSnapshotBuffers()
 int AtomISP::getNumberOfCameras()
 {
     LOG1("@%s", __FUNCTION__);
-    return sizeof(mCameraInfo)/sizeof(struct camera_info);
+    // note: hide the file inject device node, so do
+    //       not allow to get info for MAX_CAMERA_NODES
+    int nodes = sizeof(mCameraInfo)/sizeof(struct camera_info);
+    if (nodes > MAX_CAMERAS)
+        nodes = MAX_CAMERAS;
+    return nodes;
 }
 
 size_t AtomISP::setupCameraInfo()
@@ -2648,7 +2936,7 @@ size_t AtomISP::setupCameraInfo()
     if (main_fd < 0)
         return numCameras;
 
-    for (size_t i = 0; i < MAX_CAMERAS; i++) {
+    for (size_t i = 0; i < MAX_CAMERA_NODES; i++) {
         memset(&input, 0, sizeof(input));
         input.index = i;
         ret = ioctl(main_fd, VIDIOC_ENUMINPUT, &input);
@@ -2675,7 +2963,7 @@ size_t AtomISP::setupCameraInfo()
 status_t AtomISP::getCameraInfo(int cameraId, camera_info *cameraInfo)
 {
     LOG1("@%s: cameraId = %d", __FUNCTION__, cameraId);
-    if (cameraId >= MAX_CAMERAS)
+    if (cameraId >= MAX_CAMERA_NODES)
         return BAD_VALUE;
 
     memcpy(cameraInfo, &mCameraInfo[cameraId], sizeof(camera_info));

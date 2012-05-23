@@ -48,12 +48,12 @@ AtomAAA::~AtomAAA()
     mInstance = NULL;
 }
 
-status_t AtomAAA::init(const char *sensor_id, int fd)
+status_t AtomAAA::init(const char *sensor_id, int fd, const char *otpInjectFile)
 {
     Mutex::Autolock lock(m3aLock);
-    LOG1("@%s: sensor_id = %s, fd = %d", __FUNCTION__, sensor_id, fd);
+    LOG1("@%s: sensor_id = %s, fd = %d, otp-inj %s", __FUNCTION__, sensor_id, fd, otpInjectFile);
     int init_result;
-    init_result = ci_adv_init(sensor_id, fd, NULL);
+    init_result = ci_adv_init(sensor_id, fd, otpInjectFile);
     if (init_result == 0) {
         mSensorType = SENSOR_TYPE_RAW;
         mHas3A = true;
