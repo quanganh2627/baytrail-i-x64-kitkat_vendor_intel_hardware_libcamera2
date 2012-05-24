@@ -432,6 +432,34 @@ bool ControlThread::isParameterSet(const char* param)
     return false;
 }
 
+/**
+ * Returns value of 'key' in newParams, but only if it is different
+ * from its value, or not defined, in oldParams.
+ */
+String8 ControlThread::paramsReturnNewIfChanged(
+        const CameraParameters *oldParams,
+        CameraParameters *newParams,
+        const char *key)
+{
+    // note: CameraParameters::get() returns a NULL, but internally it
+    //       does not distinguish between a param that is not set,
+    //       from a param that is zero length, so we do not make
+    //       the disctinction either.
+
+    const char* o = oldParams->get(key);
+    const char* n = newParams->get(key);
+
+    // note: String8 segfaults if given a NULL, so thus check
+    //      for that here
+    String8 oldVal (o, (o == NULL ? 0 : strlen(o)));
+    String8 newVal (n, (n == NULL ? 0 : strlen(n)));
+
+    if (oldVal != newVal)
+        return newVal;
+
+    return String8::empty();
+}
+
 status_t ControlThread::takePicture()
 {
     LOG1("@%s", __FUNCTION__);
@@ -2032,6 +2060,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             // exposure compensation
             status = processParamExposureCompensation(oldParams, newParams);
         }
+
+        if (status == NO_ERROR) {
+            // ae mode
+            status = processParamAutoExposureMode(oldParams, newParams);
+        }
     }
 
     if (status == NO_ERROR) {
@@ -2717,6 +2750,43 @@ status_t ControlThread::processParamExposureCompensation(const CameraParameters 
         mAAA->getEv(&ev);
         LOGD("exposure compensation to \"%s\" (%d), ev value %f, res %d",
              newEv, exposure, ev, status);
+    }
+    return status;
+}
+
+/**
+ * Sets AutoExposure mode
+
+ * Note, this is an Intel extension, so the values are not defined in
+ * Android documentation.
+ */
+status_t ControlThread::processParamAutoExposureMode(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              CameraParameters::KEY_AE_MODE);
+    if (newVal.isEmpty() != true) {
+        AeMode ae_mode (CAM_AE_MODE_AUTO);
+
+        if (newVal == "auto") {
+            ae_mode = CAM_AE_MODE_AUTO;
+        } else if (newVal == "manual") {
+            ae_mode = CAM_AE_MODE_MANUAL;
+        } else if (newVal == "shutter-priority") {
+            ae_mode = CAM_AE_MODE_SHUTTER_PRIORITY;
+            // antibanding cannot be supported when shutter-priority
+            // is selected, so turning antibanding off (see BZ17480)
+            mParameters.set(CameraParameters::KEY_ANTIBANDING, "off");
+        } else if (newVal == "aperture-priority") {
+            ae_mode = CAM_AE_MODE_APERTURE_PRIORITY;
+        } else {
+            LOGW("unknown AE_MODE \"%s\", falling back to AUTO", newVal.string());
+            ae_mode = CAM_AE_MODE_AUTO;
+        }
+        mAAA->setAeMode(ae_mode);
+        LOGD("Changed ae mode to \"%s\" (%d)", newVal.string(), ae_mode);
     }
     return status;
 }

@@ -377,6 +377,9 @@ private:
 
     // parameters handling functions
     bool isParameterSet(const char* param);
+    String8 paramsReturnNewIfChanged(const CameraParameters *oldParams,
+            CameraParameters *newParams,
+            const char *key);
 
     // These are parameters that can be set while the ISP is running (most params can be
     // set while the isp is stopped as well).
@@ -409,6 +412,8 @@ private:
     status_t processParamHDR(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamExposureCompensation(const CameraParameters *oldParams,
+            CameraParameters *newParams);
+    status_t processParamAutoExposureMode(const CameraParameters *oldParams,
             CameraParameters *newParams);
 
     bool verifyCameraWindow(const CameraWindow &win);

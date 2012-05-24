@@ -539,6 +539,11 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
         }
         params->set(CameraParameters::KEY_SUPPORTED_RED_EYE_MODES, redEyeModes);
 #endif
+
+        // ae mode
+        params->set(CameraParameters::KEY_AE_MODE, "auto");
+        params->set(CameraParameters::KEY_SUPPORTED_AE_MODES, "auto,manual,shutter-priority,aperture-priority");
+
         // 3a lock: auto-exposure lock
         params->set(CameraParameters::KEY_AUTO_EXPOSURE_LOCK, CameraParameters::FALSE);
         params->set(CameraParameters::KEY_AUTO_EXPOSURE_LOCK_SUPPORTED, CameraParameters::TRUE);
