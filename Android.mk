@@ -1,4 +1,4 @@
-ifdef USE_CAMERA_HAL2
+ifeq ($(USE_CAMERA_HAL2),true)
 LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
@@ -123,4 +123,4 @@ LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_SHARED_LIBRARY)
 
-endif  #ifdef $(USE_CAMERA_HAL2))
+endif  #ifeq ($(USE_CAMERA_HAL2),true)
