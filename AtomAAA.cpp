@@ -289,6 +289,37 @@ status_t AtomAAA::setAeMode(AeMode mode)
     return NO_ERROR;
 }
 
+status_t AtomAAA::setAeFlickerMode(FlickerMode mode)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s: mode = %d", __FUNCTION__, mode);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+    ia_3a_ae_flicker_mode theMode;
+
+    switch(mode) {
+    case CAM_AE_FLICKER_MODE_50HZ:
+        theMode = ia_3a_ae_flicker_mode_50hz;
+        break;
+    case CAM_AE_FLICKER_MODE_60HZ:
+        theMode = ia_3a_ae_flicker_mode_60hz;
+        break;
+    case CAM_AE_FLICKER_MODE_AUTO:
+        theMode = ia_3a_ae_flicker_mode_auto;
+        break;
+    case CAM_AE_FLICKER_MODE_OFF:
+    default:
+        theMode = ia_3a_ae_flicker_mode_off;
+        break;
+    }
+
+    ci_adv_err ret = ci_adv_ae_set_flicker_mode(theMode);
+    if(ci_adv_success != ret)
+        return UNKNOWN_ERROR;
+
+    return NO_ERROR;
+}
+
 AeMode AtomAAA::getAeMode()
 {
     Mutex::Autolock lock(m3aLock);

@@ -1963,6 +1963,14 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // MISCELLANEOUS
     // TODO: implement validation for other features not listed above
 
+    // ANTI FLICKER
+    const char* flickerMode = params->get(CameraParameters::KEY_ANTIBANDING);
+    const char* flickerModes = params->get(CameraParameters::KEY_SUPPORTED_ANTIBANDING);
+    if (strstr(flickerModes, flickerMode) == NULL) {
+        LOGE("bad anti flicker mode");
+        return BAD_VALUE;
+    }
+
     return NO_ERROR;
 }
 
@@ -1999,6 +2007,10 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
 
     // Color effect
     status = processParamEffect(oldParams, newParams);
+    // anti flicker
+    if (status == NO_ERROR) {
+        status = processParamAntiBanding(oldParams, newParams);
+    }
 
     if (mAAA->is3ASupported()) {
         if (status == NO_ERROR) {
@@ -2045,6 +2057,8 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             // xnr/anr
             status = processParamXNR_ANR(oldParams, newParams);
         }
+
+
 
         if (status == NO_ERROR) {
             // Capture bracketing
@@ -2176,6 +2190,49 @@ status_t ControlThread::processParamXNR_ANR(const CameraParameters *oldParams,
             status = mISP->setLowLight(true);
         else
             status = mISP->setLowLight(false);
+    }
+
+    return status;
+}
+/**
+ * Processing of antibanding parameters
+ * it checks if the parameter changed and then it selects the correct
+ * FlickerMode
+ * If 3A is supported by the sensor (i.e is a raw sensor) then configure
+ * 3A library,
+ * if it is a SOC sensor then the auto-exposure is controled via the sensor driver
+ * so configure ISP
+ * @param oldParams old parameters
+ * @param newParams new parameters
+ * @return NO_ERROR: everything went fine. settigns are applied
+ * @return UNKNOWN_ERROR: error configuring 3A or V4L2
+ */
+status_t ControlThread::processParamAntiBanding(const CameraParameters *oldParams,
+                                                      CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    FlickerMode lightFrequency;
+
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              CameraParameters::KEY_ANTIBANDING);
+    if (newVal.isEmpty() != true) {
+
+        if (newVal == CameraParameters::ANTIBANDING_50HZ)
+            lightFrequency = CAM_AE_FLICKER_MODE_50HZ;
+        else if (newVal == CameraParameters::ANTIBANDING_60HZ)
+            lightFrequency = CAM_AE_FLICKER_MODE_60HZ;
+        else if (newVal == CameraParameters::ANTIBANDING_AUTO)
+            lightFrequency = CAM_AE_FLICKER_MODE_AUTO;
+        else
+            lightFrequency = CAM_AE_FLICKER_MODE_OFF;
+
+        if(mAAA->is3ASupported()) {
+            status = mAAA->setAeFlickerMode(lightFrequency);
+        } else {
+            status = mISP->setLightFrequency(lightFrequency);
+        }
+
     }
 
     return status;
@@ -2402,6 +2459,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             sceneMode = CAM_AE_SCENE_MODE_PORTRAIT;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "auto,off,on,torch");
             newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);
@@ -2416,6 +2474,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             sceneMode = CAM_AE_SCENE_MODE_SPORTS;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
             newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
@@ -2430,6 +2489,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             sceneMode = CAM_AE_SCENE_MODE_LANDSCAPE;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
             newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
@@ -2444,6 +2504,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             sceneMode = CAM_AE_SCENE_MODE_NIGHT;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
             newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
@@ -2458,6 +2519,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             sceneMode = CAM_AE_SCENE_MODE_NIGHT_PORTRAIT;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "on");
             newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_ON);
@@ -2472,6 +2534,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             sceneMode = CAM_AE_SCENE_MODE_FIREWORKS;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
             newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
@@ -2487,6 +2550,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_MACRO);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "auto,off,on,torch");
             newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
@@ -2504,6 +2568,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             sceneMode = CAM_AE_SCENE_MODE_AUTO;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, "off,50hz,60hz,auto");
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "auto,off,on,torch");
             newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);

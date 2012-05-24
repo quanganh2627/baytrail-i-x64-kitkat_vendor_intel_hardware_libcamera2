@@ -120,6 +120,7 @@ public:
     status_t setColorEffect(v4l2_colorfx effect);
     status_t getMakerNote(atomisp_makernote_info *info);
     status_t setXNR(bool enable);
+    status_t setLightFrequency(FlickerMode flickerMode);
     status_t setLowLight(bool enable);
 
     // camera hardware information

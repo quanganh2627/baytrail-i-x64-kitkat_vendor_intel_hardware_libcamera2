@@ -443,6 +443,17 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
     params->set(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE,"54.8");
 
     /**
+     * flicker mode
+     */
+    if(camInfo[mCameraId].port == ATOMISP_CAMERA_PORT_PRIMARY) {
+        params->set(CameraParameters::KEY_ANTIBANDING, "auto");
+        params->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, "off,50hz,60hz,auto");
+    } else {
+        params->set(CameraParameters::KEY_ANTIBANDING, "50hz");
+        params->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, "50hz,60hz");
+    }
+
+    /**
      * XNR/ANR
      */
     params->set(CameraParameters::KEY_SUPPORTED_XNR, "true,false");
@@ -1527,6 +1538,40 @@ status_t AtomISP::setXNR(bool enable)
         int en = (int) enable;
         if (xioctl(main_fd, ATOMISP_IOC_S_XNR, &en) < 0) {
             LOGE("set XNR failure");
+            status = UNKNOWN_ERROR;
+        }
+    }
+    return status;
+}
+
+status_t AtomISP::setLightFrequency(FlickerMode mode) {
+
+    LOG1("@%s: %d", __FUNCTION__, (int) mode);
+    status_t status = NO_ERROR;
+    int ret = 0;
+    ia_3a_ae_flicker_mode theMode;
+
+    if (mSensorType != SENSOR_TYPE_RAW) {
+
+        switch(mode) {
+        case CAM_AE_FLICKER_MODE_50HZ:
+            theMode = ia_3a_ae_flicker_mode_50hz;
+            break;
+        case CAM_AE_FLICKER_MODE_60HZ:
+            theMode = ia_3a_ae_flicker_mode_60hz;
+            break;
+        case CAM_AE_FLICKER_MODE_AUTO:
+            theMode = ia_3a_ae_flicker_mode_auto;
+            break;
+        case CAM_AE_FLICKER_MODE_OFF:
+        default:
+            theMode = ia_3a_ae_flicker_mode_off;
+            break;
+        }
+        ret = atomisp_set_attribute(main_fd, V4L2_CID_POWER_LINE_FREQUENCY,
+                                    theMode, "light frequency");
+        if (ret < 0) {
+            LOGE("setting light frequency failed");
             status = UNKNOWN_ERROR;
         }
     }
