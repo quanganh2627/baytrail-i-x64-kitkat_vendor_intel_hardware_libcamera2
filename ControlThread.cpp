@@ -2900,9 +2900,9 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     newParams.unflatten(str_params);
 
     // print all old and new params for comparison (debug)
-    LOG1("----------BEGIN PARAM DIFERENCE----------");
+    LOG1("----------BEGIN PARAM DIFFERENCE----------");
     newParamLogger.dumpDifference(oldParamLogger);
-    LOG1("----------END PARAM DIFERENCE----------");
+    LOG1("----------END PARAM DIFFERENCE----------");
 
     LOG2("----------- BEGIN OLD PARAMS -------- ");
     oldParamLogger.dump();
