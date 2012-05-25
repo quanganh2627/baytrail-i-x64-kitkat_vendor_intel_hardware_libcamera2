@@ -2084,6 +2084,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             // ae mode
             status = processParamAutoExposureMode(oldParams, newParams);
         }
+
+        if (status == NO_ERROR) {
+            // ae mode
+            status = processParamAutoExposureMeteringMode(oldParams, newParams);
+        }
     }
 
     if (status == NO_ERROR) {
@@ -2464,7 +2469,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "auto,off,on,torch");
             newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
             newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
             newParams->set(CameraParameters::KEY_SUPPORTED_XNR, "true,false");
             newParams->set(CameraParameters::KEY_XNR, CameraParameters::FALSE);
@@ -2862,6 +2867,36 @@ status_t ControlThread::processParamAutoExposureMode(const CameraParameters *old
         mAAA->setAeMode(ae_mode);
         LOGD("Changed ae mode to \"%s\" (%d)", newVal.string(), ae_mode);
     }
+    return status;
+}
+
+/**
+ * Sets Auto Exposure Metering Mode
+ *
+ * Note, this is an Intel extension, so the values are not defined in
+ * Android documentation.
+ */
+status_t ControlThread::processParamAutoExposureMeteringMode(
+        const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              CameraParameters::KEY_AE_METERING_MODE);
+    if (newVal.isEmpty() != true) {
+        MeteringMode mode (CAM_AE_METERING_MODE_AUTO);
+
+        if (newVal == "auto") {
+            mode = CAM_AE_METERING_MODE_AUTO;
+        } else if(newVal == "center") {
+            mode = CAM_AE_METERING_MODE_CENTER;
+        }
+
+        mAAA->setAeMeteringMode(mode);
+        LOGD("Changed ae metering mode to \"%s\" (%d)", newVal.string(), mode);
+    }
+
     return status;
 }
 
