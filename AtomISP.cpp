@@ -577,6 +577,14 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
         params->set(CameraParameters::KEY_SUPPORTED_AF_LOCK_MODES, "lock,unlock");
         // TODO: add UMG-style AE/AWB locking for Test Camera?
 
+        // manual shutter control (Intel extension)
+        params->set(CameraParameters::KEY_SHUTTER, "60");
+        params->set(CameraParameters::KEY_SUPPORTED_SHUTTER, "1s,2,4,8,15,30,60,125,250,500");
+
+        // manual iso control (Intel extension)
+        params->set(CameraParameters::KEY_ISO, "iso-200");
+        params->set(CameraParameters::KEY_SUPPORTED_ISO, "iso-100,iso-200,iso-400,iso-800");
+
         // multipoint focus
         params->set(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS, mAAA->getAfMaxNumWindows());
         // set empty area

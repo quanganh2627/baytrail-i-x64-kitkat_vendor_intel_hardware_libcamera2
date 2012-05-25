@@ -220,7 +220,10 @@ public:
     status_t applyEv(float bias);
     status_t setEv(float bias);
     status_t getEv(float *ret);
+    status_t setManualIso(int ret);
     status_t getManualIso(int *ret);
+    status_t setManualShutter(float expTime);
+    status_t getManualShutter(float *expTime);
 
     // ISP processing functions
     status_t applyRedEyeRemoval(const AtomBuffer &snapshotBuffer, int width, int height, int format);

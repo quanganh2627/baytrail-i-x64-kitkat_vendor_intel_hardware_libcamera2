@@ -2089,6 +2089,16 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             // ae mode
             status = processParamAutoExposureMeteringMode(oldParams, newParams);
         }
+
+        if (status == NO_ERROR) {
+            // ISO manual setting (Intel extension)
+            status = processParamIso(oldParams, newParams);
+        }
+
+        if (status == NO_ERROR) {
+            // shutter manual setting (Intel extension)
+            status = processParamShutter(oldParams, newParams);
+        }
     }
 
     if (status == NO_ERROR) {
@@ -2895,6 +2905,80 @@ status_t ControlThread::processParamAutoExposureMeteringMode(
 
         mAAA->setAeMeteringMode(mode);
         LOGD("Changed ae metering mode to \"%s\" (%d)", newVal.string(), mode);
+    }
+
+    return status;
+}
+
+/**
+ * Sets manual ISO sensitivity value
+ *
+ * Note, this is an Intel extension, so the values are not defined in
+ * Android documentation.
+ */
+status_t ControlThread::processParamIso(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              CameraParameters::KEY_ISO);
+    if (newVal.isEmpty() != true &&
+        mAAA->getAeMode() == CAM_AE_MODE_MANUAL) {
+        // note: value format is 'iso-NNN'
+        const size_t iso_prefix_len = 4;
+        if (newVal.length() > iso_prefix_len) {
+            const char* isostr = newVal.string() + iso_prefix_len;
+            int iso = atoi(isostr);
+            mAAA->setManualIso(iso);
+            LOGD("Changed manual iso to \"%s\" (%d)", newVal.string(), iso);
+        }
+    }
+
+    return status;
+}
+
+/**
+ * Sets manual shutter time value
+ *
+ * Note, this is an Intel extension, so the values are not defined in
+ * Android documentation.
+ */
+status_t ControlThread::processParamShutter(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              CameraParameters::KEY_SHUTTER);
+    if (newVal.isEmpty() != true &&
+        (mAAA->getAeMode() == CAM_AE_MODE_MANUAL ||
+         (mAAA->getAeMode() == CAM_AE_MODE_SHUTTER_PRIORITY))) {
+
+        float shutter = -1;
+        bool flagParsed = false;
+
+        if (strchr(newVal.string(), 's') != NULL) {
+            // ns: n seconds
+            shutter = atof(newVal.string());
+            flagParsed = true;
+        } else if (strchr(newVal.string(), 'm') != NULL) {
+            // nm: n minutes
+            shutter = atof(newVal.string()) * 60;
+            flagParsed = true;
+        } else {
+            // n: 1/n second
+            float tmp = atof(newVal.string());
+            if (tmp > 0) {
+                shutter = 1.0 / atof(newVal.string());
+                flagParsed = true;
+            }
+        }
+
+        if (flagParsed) {
+            mAAA->setManualShutter(shutter);
+            LOGD("Changed shutter to \"%s\" (%f)", newVal.string(), shutter);
+        }
     }
 
     return status;

@@ -985,6 +985,67 @@ status_t AtomAAA::getEv(float *ret)
     return NO_ERROR;
 }
 
+status_t AtomAAA::setManualShutter(float expTime)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    if (!mHas3A)
+        return INVALID_OPERATION;
+
+    float tv;
+    if (expTime <=0) {
+        LOGE("invalid shutter setting");
+        return INVALID_OPERATION;
+    }
+
+    tv = -1.0 * (log10(expTime) / log10(2.0));
+    ci_adv_err ret = ci_adv_ae_set_manual_shutter(tv);
+    if(ci_adv_success != ret)
+        return UNKNOWN_ERROR;
+
+    LOGD(" *** manual set shutter in EV: %f\n", tv);
+    return NO_ERROR;
+}
+
+status_t AtomAAA::getManualShutter(float *expTime)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    float tv;
+    ci_adv_err ret = ci_adv_ae_get_manual_shutter(&tv);
+    if(ci_adv_success != ret)
+        return UNKNOWN_ERROR;
+
+    *expTime = pow(2, -1.0 * tv);
+    return NO_ERROR;
+}
+
+status_t AtomAAA::setManualIso(int sensitivity)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    if (!mHas3A)
+        return INVALID_OPERATION;
+
+    float sv;
+    if(sensitivity <= 0)
+    {
+        LOGE("invalid ISO value");
+        return INVALID_OPERATION;
+    }
+
+    sv = log10((float)sensitivity / 3.125) / log10(2.0);
+    ci_adv_err ret = ci_adv_ae_set_manual_iso(sv);
+    if(ci_adv_success != ret)
+        return UNKNOWN_ERROR;
+
+    LOGD(" *** manual set iso in EV: %f\n", sv);
+    return NO_ERROR;
+}
+
 status_t AtomAAA::getManualIso(int *ret)
 {
     Mutex::Autolock lock(m3aLock);
