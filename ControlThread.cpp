@@ -83,6 +83,8 @@ ControlThread::ControlThread() :
     ,mBurstSkipFrames(0)
     ,mBurstLength(0)
     ,mBurstCaptureNum(0)
+    ,mPublicAeMode(CAM_AE_MODE_AUTO)
+    ,mPublicAfMode(CAM_AF_MODE_AUTO)
     ,mBSInstance(BufferShareRegistry::getInstance())
     ,mBSState(BS_STATE_DISABLED)
     ,mLastRecordingBuffIndex(0)
@@ -698,9 +700,12 @@ status_t ControlThread::stopCapture()
     mState = STATE_STOPPED;
     mBurstCaptureNum = 0;
 
-    // Reset AE and AF
-    mAAA->setAeMode(CAM_AE_MODE_AUTO);
-    mAAA->setAfMode(CAM_AF_MODE_AUTO);
+    // Reset AE and AF in case HDR/bracketing was used (these features
+    // manually configure AE and AF during takePicture)
+    if (mBracketing.mode == BRACKET_EXPOSURE)
+        mAAA->setAeMode(mPublicAeMode);
+    if (mBracketing.mode == BRACKET_FOCUS)
+        mAAA->setAfMode(mPublicAfMode);
 
     if (mHdr.enabled) {
         // Deallocate memory
@@ -2601,6 +2606,7 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             status = mAAA->setAfMode(afMode);
         }
         if (status == NO_ERROR) {
+            mPublicAfMode = afMode;
             LOG1("Changed: %s -> %s", CameraParameters::KEY_FOCUS_MODE, newFocus);
         }
     }
@@ -2664,8 +2670,10 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
 
         // See if we have to change the actual mode (it could be correct already)
         AfMode curAfMode = mAAA->getAfMode();
-        if (curAfMode != newAfMode)
+        if (curAfMode != newAfMode) {
+            mPublicAfMode = newAfMode;
             mAAA->setAfMode(newAfMode);
+        }
 
         // If in touch mode, we set the focus windows now
         if (newAfMode == CAM_AF_MODE_TOUCH) {
@@ -2785,6 +2793,7 @@ status_t ControlThread::processParamAutoExposureMode(const CameraParameters *old
             LOGW("unknown AE_MODE \"%s\", falling back to AUTO", newVal.string());
             ae_mode = CAM_AE_MODE_AUTO;
         }
+        mPublicAeMode = ae_mode;
         mAAA->setAeMode(ae_mode);
         LOGD("Changed ae mode to \"%s\" (%d)", newVal.string(), ae_mode);
     }

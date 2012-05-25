@@ -479,6 +479,8 @@ private:
     BracketingType mBracketing;
     List<SensorParams> mBracketingParams;
     HdrImaging mHdr;
+    AeMode mPublicAeMode;    /* AE mode set by application */
+    AfMode mPublicAfMode;    /* AF mode set by application */
 
     sp<BufferShareRegistry> mBSInstance;
 
