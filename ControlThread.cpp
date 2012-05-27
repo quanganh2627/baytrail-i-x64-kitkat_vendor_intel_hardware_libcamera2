@@ -315,10 +315,11 @@ void ControlThread::deinit()
 status_t ControlThread::setPreviewWindow(struct preview_stream_ops *window)
 {
     LOG1("@%s: window = %p", __FUNCTION__, window);
-    if (mPreviewThread != NULL) {
-        return mPreviewThread->setPreviewWindow(window);
-    }
-    return NO_ERROR;
+
+    Message msg;
+    msg.id = MESSAGE_ID_SET_PREVIEW_WINDOW;
+    msg.data.previewWin.window = window;
+    return mMessageQueue.send(&msg);
 }
 
 void ControlThread::setCallbacks(camera_notify_callback notify_cb,
@@ -826,6 +827,30 @@ status_t ControlThread::handleMessageStopPreview()
     }
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_STOP_PREVIEW, status);
+    return status;
+}
+
+/**
+ *  Message Handler for setPreviewWindow HAL call
+ *  Actual configuration is taken care of by PreviewThread
+ *  Preview restart is done if preview is enabled
+ */
+status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    if (mPreviewThread != NULL) {
+        status = mPreviewThread->setPreviewWindow(msg->window);
+    }
+
+    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
+
+    // Only restart preview if preview is active
+    if (previewEnabled()) {
+       restartPreview(videoMode);
+    }
+
     return status;
 }
 
@@ -3525,6 +3550,10 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_CONFIGURE_FILE_INJECT:
             status = handleMessageConfigureFileInject(&msg.data.configureFileInject);
+
+        case MESSAGE_ID_SET_PREVIEW_WINDOW:
+            status = handleMessageSetPreviewWindow(&msg.data.previewWin);
+
             break;
 
         default:

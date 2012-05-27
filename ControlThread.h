@@ -147,6 +147,7 @@ private:
         MESSAGE_ID_FACES_DETECTED,
         MESSAGE_ID_STOP_CAPTURE,
         MESSAGE_ID_CONFIGURE_FILE_INJECT,
+        MESSAGE_ID_SET_PREVIEW_WINDOW,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -198,6 +199,10 @@ private:
         int bayerOrder;
     };
 
+    struct MessagePreviewWindow {
+        struct preview_stream_ops *window;
+    };
+
     // union of all message data
     union MessageData {
 
@@ -226,6 +231,9 @@ private:
 
         // MESSAGE_ID_CONFIGURE_FILE_INJECT
         MessageConfigureFileInject configureFileInject;
+
+        // MESSAGE_ID_SET_PREVIEW_WINDOW
+        MessagePreviewWindow    previewWin;
     };
 
     // message id and message data
@@ -367,7 +375,7 @@ private:
     status_t handleMessageAutoFocusDone();
     status_t handleMessageCommand(MessageCommand* msg);
     status_t handleMessageConfigureFileInject(MessageConfigureFileInject *msg);
-
+    status_t handleMessageSetPreviewWindow(MessagePreviewWindow *msg);
     status_t startFaceDetection();
     status_t stopFaceDetection(bool wait=false);
     status_t handleMessageFacesDetected(MessageFacesDetected* msg);
