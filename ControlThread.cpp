@@ -2099,6 +2099,12 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             // shutter manual setting (Intel extension)
             status = processParamShutter(oldParams, newParams);
         }
+
+        if (status == NO_ERROR) {
+            // back lighting correction (Intel extension)
+            status = processParamBackLightingCorrectionMode(oldParams, newParams);
+        }
+
     }
 
     if (status == NO_ERROR) {
@@ -2979,6 +2985,38 @@ status_t ControlThread::processParamShutter(const CameraParameters *oldParams,
             mAAA->setManualShutter(shutter);
             LOGD("Changed shutter to \"%s\" (%f)", newVal.string(), shutter);
         }
+    }
+
+    return status;
+}
+
+/**
+ * Sets Back Lighting Correction Mode
+ *
+ * Note, this is an Intel extension, so the values are not defined in
+ * Android documentation.
+ */
+status_t ControlThread::processParamBackLightingCorrectionMode(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+            CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE);
+    if (newVal.isEmpty() != true) {
+        bool backlightCorrection;
+
+        if (newVal == "on") {
+            backlightCorrection= true;
+        } else if (newVal == "off") {
+            backlightCorrection= false;
+        } else {
+            backlightCorrection = true;
+        }
+
+        mAAA->setAeBacklightCorrection(backlightCorrection);
+        LOGD("Changed ae backlight correction to \"%s\" (%d)",
+             newVal.string(), backlightCorrection);
     }
 
     return status;

@@ -605,6 +605,10 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
         params->set(CameraParameters::KEY_SUPPORTED_HDR_SHARPENING, "none,normal,strong");
         params->set(CameraParameters::KEY_HDR_SAVE_ORIGINAL, "off");
         params->set(CameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL, "on,off");
+
+        // back lighting correction mode
+        params->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, "off");
+        params->set(CameraParameters::KEY_SUPPORTED_BACK_LIGHTING_CORRECTION_MODES, "on,off");
     }
 }
 

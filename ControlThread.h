@@ -423,6 +423,8 @@ private:
             CameraParameters *newParams);
     status_t processParamShutter(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    status_t processParamBackLightingCorrectionMode(const CameraParameters *oldParams,
+            CameraParameters *newParams);
 
     bool verifyCameraWindow(const CameraWindow &win);
     void preSetCameraWindows(CameraWindow* focusWindows, size_t winCount);
