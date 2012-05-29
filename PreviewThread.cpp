@@ -42,6 +42,7 @@ PreviewThread::PreviewThread(ICallbackPreview *previewDone) :
 {
     LOG1("@%s", __FUNCTION__);
     mPreviewBuffers.setCapacity(MAX_NUMBER_PREVIEW_GFX_BUFFERS);
+    mPreviewInClient.setCapacity(MAX_NUMBER_PREVIEW_GFX_BUFFERS);
     mPreviewBuf.buff = 0;
 }
 
@@ -90,7 +91,7 @@ status_t PreviewThread::setPreviewWindow(struct preview_stream_ops *window)
 }
 
 status_t PreviewThread::setPreviewConfig(int preview_width, int preview_height,
-                                         int preview_format)
+                                         int preview_format, int buffer_count)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
@@ -98,9 +99,46 @@ status_t PreviewThread::setPreviewConfig(int preview_width, int preview_height,
     msg.data.setPreviewConfig.width = preview_width;
     msg.data.setPreviewConfig.height = preview_height;
     msg.data.setPreviewConfig.format = preview_format;
+    msg.data.setPreviewConfig.bufferCount = buffer_count;
     return mMessageQueue.send(&msg);
 }
 
+/**
+ * Retrieve the GFx Preview buffers
+ *
+ * This is done sending a synchronous message to make sure
+ * that the previewThread has processed all previous messages
+ */
+status_t PreviewThread::fetchPreviewBuffers(AtomBuffer **pvBufs, int *count)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_FETCH_PREVIEW_BUFS;
+
+    status_t status;
+    status = mMessageQueue.send(&msg, MESSAGE_ID_FETCH_PREVIEW_BUFS);
+
+    *pvBufs = mPreviewBuffers.editArray();
+    *count = mPreviewBuffers.size();
+
+    LOG1("@%s: got [%d] buffers @ %p", __FUNCTION__, *count, *pvBufs);
+    return status;
+}
+
+/**
+ * Returns the GFx Preview buffers to the window
+ * There is no need for parameters since the PreviewThread
+ * keeps track of the buffers already
+ *
+ */
+status_t PreviewThread::returnPreviewBuffers()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_RETURN_PREVIEW_BUFS;
+
+    return mMessageQueue.send(&msg);
+}
 status_t PreviewThread::preview(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
@@ -127,6 +165,61 @@ status_t PreviewThread::handleMessageExit()
     return status;
 }
 
+/**
+ * Calls previewDone callback if data is available
+ *
+ * Handles both internally and externally allocated preview
+ * frames.
+ */
+status_t PreviewThread::callPreviewDone(MessagePreview *msg)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    if (msg->buff.type == ATOM_BUFFER_PREVIEW) {
+        mPreviewDoneCallback->previewDone(&(msg->buff));
+        return NO_ERROR;
+    }
+
+    // mMinUndequeued is a constraint set by native window and
+    // it controls when we can dequeue a frame and call previewDone.
+    // Typically at least two frames must be kept in native window
+    // when streaming.
+    if(mBuffersInWindow > mMinUndequeued) {
+        int err, stride;
+        buffer_handle_t *buf;
+
+        err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride);
+        if (err != 0) {
+            LOGW("Error dequeuing preview buffer");
+        } else {
+            size_t i = 0;
+            for(; i < mPreviewBuffers.size(); i++) {
+                if (buf == mPreviewBuffers[i].mNativeBufPtr) {
+                    mBuffersInWindow--;
+                    mPreviewInClient.push(i);
+                    mPreviewDoneCallback->previewDone(&(mPreviewBuffers.editItemAt(i)));
+                    break;
+                }
+            }
+            if (i == mPreviewBuffers.size()) {
+                LOGW("unknown gfx buffer dequeued, i %d, ptr %p",
+                     i, mPreviewBuffers[i].mNativeBufPtr);
+                mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
+            }
+        }
+    }
+    else {
+        LOG2("@%s: %d buffers in window, not enough, need %d",
+             __FUNCTION__, mBuffersInWindow, mMinUndequeued);
+    }
+
+    return NO_ERROR;
+}
+
+/**
+ *  handler for each preview frame
+ *
+ * */
 status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
 {
     LOG2("@%s", __FUNCTION__);
@@ -134,64 +227,58 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
 
     LOG2("Buff: id = %d, data = %p",
             msg->buff.id,
-            msg->buff.buff->data);
+            msg->buff.gfxData);
 
-    if (mPreviewWindow != 0) {
-        buffer_handle_t *buf;
+    if ((mPreviewWindow != 0) && (msg->buff.type == ATOM_BUFFER_PREVIEW_GFX)){
         int err;
-        int stride;
-        if ((err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride)) != 0) {
-            LOGE("Surface::dequeueBuffer returned error %d", err);
-        } else {
-            if (mPreviewWindow->lock_buffer(mPreviewWindow, buf) != NO_ERROR) {
-                LOGE("Failed to lock preview buffer!");
-                mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
-                status = NO_MEMORY;
-                goto exit;
-            }
-            GraphicBufferMapper &mapper = GraphicBufferMapper::get();
-            const Rect bounds(mPreviewWidth, mPreviewHeight);
-            void *dst;
 
-            if (mapper.lock(*buf, GRALLOC_USAGE_SW_WRITE_OFTEN, bounds, &dst) != NO_ERROR) {
-                LOGE("Failed to lock GraphicBufferMapper!");
-                mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
-                status = NO_MEMORY;
-                goto exit;
-            }
-            memcpy(dst,
-                    msg->buff.buff->data,
-                    stride*mPreviewHeight*3/2
-                    );
-            if ((err = mPreviewWindow->enqueue_buffer(mPreviewWindow, buf)) != 0) {
-                LOGE("Surface::queueBuffer returned error %d", err);
-            }
-            mapper.unlock(*buf);
+        if ((err = mPreviewWindow->enqueue_buffer(mPreviewWindow, msg->buff.mNativeBufPtr)) != 0) {
+            LOGE("Surface::queueBuffer returned error %d", err);
         }
-        buf = NULL;
+        else {
+            for (size_t i = 0; i< mPreviewInClient.size(); i++) {
+                buffer_handle_t *bufHandle =
+                    mPreviewBuffers[mPreviewInClient[i]].mNativeBufPtr;
+                if (msg->buff.mNativeBufPtr == bufHandle) {
+                    mPreviewInClient.removeAt(i);
+                    break;
+                }
+            }
+            mBuffersInWindow++;
+        }
     }
 
     if(!mPreviewBuf.buff) {
         allocateLocalPreviewBuf();
     }
-    if(mPreviewBuf.buff) {
+
+    if(mCallbacks->msgTypeEnabled(CAMERA_MSG_PREVIEW_FRAME) && mPreviewBuf.buff) {
+        void *src;
+        if(msg->buff.type == ATOM_BUFFER_PREVIEW)
+            src = msg->buff.buff->data;
+        else
+            src = msg->buff.gfxData;
+
         switch(mPreviewFormat) {
 
         case V4L2_PIX_FMT_YUV420:
-            NV12ToYV12(mPreviewWidth, mPreviewHeight, msg->buff.buff->data, mPreviewBuf.buff->data);
+            NV12ToYV12(mPreviewWidth, mPreviewHeight, src, mPreviewBuf.buff->data);
             break;
 
         case V4L2_PIX_FMT_NV21:
-            NV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.buff->data, mPreviewBuf.buff->data);
+            NV12ToNV21(mPreviewWidth, mPreviewHeight, src, mPreviewBuf.buff->data);
             break;
 
-        // mPreviewFormat is checked when set
+        default:
+            memcpy(mPreviewBuf.buff->data,  src,  msg->buff.size);
+            break;
         }
         mCallbacks->previewFrameDone(&mPreviewBuf);
     }
+
     mDebugFPS->update(); // update fps counter
-exit:
-    mPreviewDoneCallback->previewDone(&msg->buff);
+
+    status = callPreviewDone(msg);
 
     return status;
 }
@@ -201,6 +288,9 @@ status_t PreviewThread::handleMessageSetPreviewWindow(MessageSetPreviewWindow *m
     LOG1("@%s: window = %p", __FUNCTION__, msg->window);
     status_t status = NO_ERROR;
 
+    if (mPreviewWindow != NULL) {
+        freeGfxPreviewBuffers();
+    }
     mPreviewWindow = msg->window;
 
     if (mPreviewWindow != NULL) {
@@ -235,17 +325,19 @@ status_t PreviewThread::handleMessageSetPreviewConfig(MessageSetPreviewConfig *m
         if (mPreviewWindow != NULL) {
             int previewWidthPadded = paddingWidth(V4L2_PIX_FMT_NV12, msg->width, msg->height);
             // if preview size changed, update the preview window
-            mPreviewWindow->set_buffers_geometry(
-                    mPreviewWindow,
-                    previewWidthPadded,
-                    msg->height,
-                    HAL_PIXEL_FORMAT_YV12);
+            mPreviewWindow->set_buffers_geometry(mPreviewWindow,
+                                                 previewWidthPadded,
+                                                 msg->height,
+                                                 HAL_PIXEL_FORMAT_YV12);
+
         }
         mPreviewWidth = msg->width;
         mPreviewHeight = msg->height;
 
         allocateLocalPreviewBuf();
     }
+
+    status = allocateGfxPreviewBuffers(msg->bufferCount);
 
     if ((msg->format != 0) && (mPreviewFormat != msg->format)) {
         switch(msg->format) {
@@ -261,7 +353,23 @@ status_t PreviewThread::handleMessageSetPreviewConfig(MessageSetPreviewConfig *m
         }
     }
 
-    return NO_ERROR;
+    return status;
+}
+
+status_t PreviewThread::handleMessageFetchPreviewBuffers()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    mMessageQueue.reply(MESSAGE_ID_FETCH_PREVIEW_BUFS, status);
+    return status;
+}
+
+status_t PreviewThread::handleMessageReturnPreviewBuffers()
+{
+    LOG1("@%s", __FUNCTION__);
+
+    return freeGfxPreviewBuffers();
 }
 
 status_t PreviewThread::handleMessageFlush()
@@ -300,6 +408,13 @@ status_t PreviewThread::waitForAndExecuteMessage()
         case MESSAGE_ID_FLUSH:
             status = handleMessageFlush();
             break;
+
+        case MESSAGE_ID_FETCH_PREVIEW_BUFS:
+            status = handleMessageFetchPreviewBuffers();
+            break;
+        case MESSAGE_ID_RETURN_PREVIEW_BUFS:
+           status = handleMessageReturnPreviewBuffers();
+           break;
 
         default:
             LOGE("Invalid message");
@@ -382,7 +497,18 @@ status_t PreviewThread::allocateGfxPreviewBuffers(int numberOfBuffers) {
         if(numberOfBuffers > MAX_NUMBER_PREVIEW_GFX_BUFFERS)
             return NO_MEMORY;
 
-        mPreviewWindow->set_buffer_count(mPreviewWindow, numberOfBuffers);
+        int res = mPreviewWindow->set_buffer_count(mPreviewWindow, numberOfBuffers);
+        if (res != 0) {
+            LOGW("Surface::set_buffer_count returned %d", res);
+            return NO_MEMORY;
+        }
+
+        mPreviewWindow->get_min_undequeued_buffer_count(mPreviewWindow, &mMinUndequeued);
+        LOG1("Surface::get_min_undequeued_buffer_count buffers %d", mMinUndequeued);
+        if (mMinUndequeued < 0 || mMinUndequeued > numberOfBuffers - 1) {
+            LOGE("unexpected min undeueued requirement %d", mMinUndequeued);
+            return INVALID_OPERATION;
+        }
 
         AtomBuffer tmpBuf;
         int err, stride;
@@ -414,6 +540,7 @@ status_t PreviewThread::allocateGfxPreviewBuffers(int numberOfBuffers) {
 
             tmpBuf.gfxData = dst;
             mPreviewBuffers.push(tmpBuf);
+            mPreviewInClient.push(i);
         } // for
 
         mBuffersInWindow = 0;
@@ -429,6 +556,7 @@ freeDeQueued:
         mPreviewWindow->cancel_buffer(mPreviewWindow, mPreviewBuffers[i].mNativeBufPtr);
     }
     mPreviewBuffers.clear();
+    mPreviewInClient.clear();
     return status;
 }
 
@@ -449,16 +577,27 @@ status_t PreviewThread::freeGfxPreviewBuffers() {
 
     if ((mPreviewWindow != NULL) && (!mPreviewBuffers.isEmpty())) {
 
-        for( i = 0; i < mPreviewBuffers.size(); i++)
-            mapper.unlock(*(mPreviewBuffers[i].mNativeBufPtr));
+        for( i = 0; i < mPreviewBuffers.size(); i++) {
+            int res = mapper.unlock(*(mPreviewBuffers[i].mNativeBufPtr));
+            if (res != 0) {
+                LOGW("%s: unlocking gfx buffer %d failed!", __FUNCTION__, i);
+            }
+        }
+
+        for( i = 0; i < mPreviewInClient.size(); i++) {
+            buffer_handle_t *bufHandle =
+                mPreviewBuffers[mPreviewInClient[i]].mNativeBufPtr;
+            int res = mPreviewWindow->cancel_buffer(mPreviewWindow, bufHandle);
+            if (res != 0)
+                LOGW("%s: canceling gfx buffer %d failed!", __FUNCTION__, i);
+        }
 
         mPreviewBuffers.clear();
+        mPreviewInClient.clear();
         mBuffersInWindow = 0;
-    } else{
-        LOGW("Trying to free preview buffers while window or buffer store are NULL");
     }
-    return NO_ERROR;
 
+    return NO_ERROR;
 }
 
 } // namespace android

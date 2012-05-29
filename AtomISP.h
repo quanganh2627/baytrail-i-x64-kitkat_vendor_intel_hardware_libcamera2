@@ -81,6 +81,7 @@ public:
     status_t getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameStatus = NULL);
     status_t putPreviewFrame(AtomBuffer *buff);
 
+    status_t setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs);
     status_t setRecordingBuffers(SharedBufferType *buffs, int numBuffs);
     void unsetRecordingBuffers();
 
@@ -201,7 +202,7 @@ private:
     static const int V4L2_THIRD_DEVICE   = 2;
     static const int V4L2_DEVICE_NUM = V4L2_THIRD_DEVICE + 1;
 
-    static const int NUM_DEFAULT_BUFFERS = 4;
+    static const int NUM_DEFAULT_BUFFERS = 6;
 
     struct FrameInfo {
         int format;     // V4L2 format
@@ -247,6 +248,7 @@ private:
     Callbacks *mCallbacks;
 
     int mNumBuffers;
+    int mNumPreviewBuffers;
     AtomBuffer *mPreviewBuffers;
     AtomBuffer *mRecordingBuffers;
     void **mClientRecordingBuffers;

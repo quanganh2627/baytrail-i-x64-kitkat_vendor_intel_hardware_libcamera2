@@ -544,7 +544,7 @@ status_t ControlThread::releaseRecordingFrame(void *buff)
 
 void ControlThread::previewDone(AtomBuffer *buff)
 {
-    LOG2("@%s: buff = %p, id = %d", __FUNCTION__, buff->buff->data, buff->id);
+    LOG2("@%s: buff = %p, id = %d", __FUNCTION__, buff, buff->id);
     Message msg;
     msg.id = MESSAGE_ID_PREVIEW_DONE;
     msg.data.previewDone.buff = *buff;
@@ -552,7 +552,8 @@ void ControlThread::previewDone(AtomBuffer *buff)
 }
 void ControlThread::returnBuffer(AtomBuffer *buff)
 {
-    LOG2("@%s: buff = %p, id = %d", __FUNCTION__, buff->buff->data, buff->id);
+    LOG2("@%s: buff = %p, id = %d", __FUNCTION__, buff, buff->id);
+
     if ((buff->type == ATOM_BUFFER_PREVIEW_GFX) ||
         (buff->type == ATOM_BUFFER_PREVIEW)) {
         buff->owner = 0;
@@ -561,7 +562,7 @@ void ControlThread::returnBuffer(AtomBuffer *buff)
 }
 void ControlThread::releasePreviewFrame(AtomBuffer *buff)
 {
-    LOG2("release preview frame buffer data %p, id = %d", buff->buff->data, buff->id);
+    LOG2("release preview frame buffer data %p, id = %d", buff, buff->id);
     Message msg;
     msg.id = MESSAGE_ID_RELEASE_PREVIEW_FRAME;
     msg.data.releasePreviewFrame.buff = *buff;
@@ -641,10 +642,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOGE("Bad preview format. Cannot start the preview!");
         return BAD_VALUE;
     }
-    LOG1("Using preview format: %s", v4l2Fmt2Str(format));
-    mParameters.getPreviewSize(&width, &height);
-    mISP->setPreviewFrameFormat(width, height);
-    mPreviewThread->setPreviewConfig(width, height, format);
 
     // set video frame config
     if (videoMode) {
@@ -653,8 +650,21 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     }
 
     mNumBuffers = mISP->getNumBuffers();
+
+    LOG1("Using preview format: %s", v4l2Fmt2Str(format));
+    mParameters.getPreviewSize(&width, &height);
+    mISP->setPreviewFrameFormat(width, height);
+    mPreviewThread->setPreviewConfig(width, height, format, mNumBuffers);
+
     mCoupledBuffers = new CoupledBuffer[mNumBuffers];
     memset(mCoupledBuffers, 0, mNumBuffers * sizeof(CoupledBuffer));
+
+    AtomBuffer *pvBufs;
+    int count;
+    status = mPreviewThread->fetchPreviewBuffers(&pvBufs, &count);
+    if ( (status == NO_ERROR) && (count == mNumBuffers)){
+        mISP->setGraphicPreviewBuffers(pvBufs, mNumBuffers);
+    }
 
     // start the data flow
     status = mISP->start(mode);
@@ -701,6 +711,9 @@ status_t ControlThread::stopPreviewCore()
     } else {
         LOGE("Error stopping ISP in preview mode!");
     }
+
+    status = mPreviewThread->returnPreviewBuffers();
+
     delete [] mCoupledBuffers;
     // set to null because frames can be returned to hal in stop state
     // need to check for null in relevant locations
@@ -847,7 +860,7 @@ status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
     bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
 
     // Only restart preview if preview is active
-    if (previewEnabled()) {
+    if (previewEnabled() && (msg->window != NULL)) {
        restartPreview(videoMode);
     }
 
@@ -1725,11 +1738,11 @@ status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
     if (!mISP->isBufferValid(&msg->buff))
         return DEAD_OBJECT;
     status_t status = NO_ERROR;
+
     if (m_pFaceDetector !=0 && mFaceDetectionActive) {
         LOG2("m_pFace = 0x%p, active=%s", m_pFaceDetector, mFaceDetectionActive?"true":"false");
         int width, height;
         mParameters.getPreviewSize(&width, &height);
-        LOG2("sending frame data = %p", msg->buff.buff->data);
         msg->buff.owner = this;
         if (m_pFaceDetector->sendFrame(&msg->buff, width, height) < 0) {
             msg->buff.owner = 0;
@@ -1749,7 +1762,7 @@ status_t ControlThread::handleMessageReleasePreviewFrame(MessageReleasePreviewFr
     if (mState == STATE_PREVIEW_STILL) {
         status = mISP->putPreviewFrame(&msg->buff);
         if (status == DEAD_OBJECT) {
-            LOG2("Stale preview buffer returned to ISP");
+            LOG1("Stale preview buffer returned to ISP");
         } else if (status != NO_ERROR) {
             LOGE("Error putting preview frame to ISP");
         }
@@ -1778,12 +1791,12 @@ status_t ControlThread::queueCoupledBuffers(int coupledId)
     if (status == NO_ERROR) {
         status = mISP->putPreviewFrame(&buff->previewBuff);
         if (status == DEAD_OBJECT) {
-            LOG1("Stale preview buffer returned to ISP");
+            LOGW("Stale preview buffer returned to ISP");
         } else if (status != NO_ERROR) {
             LOGE("Error putting preview frame to ISP");
         }
     } else if (status == DEAD_OBJECT) {
-        LOG1("Stale recording buffer returned to ISP");
+        LOGW("Stale recording buffer returned to ISP");
     } else {
         LOGE("Error putting recording frame to ISP");
     }
@@ -3550,10 +3563,10 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_CONFIGURE_FILE_INJECT:
             status = handleMessageConfigureFileInject(&msg.data.configureFileInject);
+            break;
 
         case MESSAGE_ID_SET_PREVIEW_WINDOW:
             status = handleMessageSetPreviewWindow(&msg.data.previewWin);
-
             break;
 
         default:
@@ -3601,7 +3614,7 @@ status_t ControlThread::dequeuePreview()
         if (status != NO_ERROR)
             LOGE("Error sending buffer to preview thread");
     } else {
-        LOGE("Error gettting preview frame from ISP");
+        LOGE("Error getting preview frame from ISP");
     }
     return status;
 }

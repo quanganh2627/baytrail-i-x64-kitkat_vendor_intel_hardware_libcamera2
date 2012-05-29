@@ -100,7 +100,7 @@ status_t OlaFaceDetect::handleExit()
 
 int OlaFaceDetect::sendFrame(AtomBuffer *img, int width, int height)
 {
-    LOGV("%s: sendFrame, data =%p, width=%d height=%d\n", __func__, img->buff->data, width, height);
+    LOGV("%s: sendFrame, buf=%p, width=%d height=%d\n", __func__, img, width, height);
     Message msg;
     msg.id = MESSAGE_ID_FRAME;
     msg.data.frame.img = *img;
@@ -144,11 +144,15 @@ status_t OlaFaceDetect::handleFrame(MessageFrame frame)
 {
     LOGV("%s: Face detection executing\n", __func__);
     if (mFaceDetectionStruct == 0) return INVALID_OPERATION;
-
-    LOGV("%s: data =%p, width=%d height=%d\n", __func__, frame.img.buff->data, frame.width, frame.height);
-    int faces = CameraFaceDetection_FindFace(mFaceDetectionStruct,
-            (unsigned char*) (frame.img.buff->data),
-            frame.width, frame.height);
+    unsigned char *src;
+    if(frame.img.type == ATOM_BUFFER_PREVIEW) {
+        src = (unsigned char*) frame.img.buff->data;
+    }else {
+        src = (unsigned char*) frame.img.gfxData;
+    }
+    LOGV("%s: data =%p, width=%d height=%d\n", __func__, src, frame.width, frame.height);
+    int faces = CameraFaceDetection_FindFace(mFaceDetectionStruct, src,
+                                             frame.img.stride, frame.height);
     LOGV("%s CameraFaceDetection_FindFace faces %d, %d\n", __func__, faces, mFaceDetectionStruct->numDetected);
 
     camera_frame_metadata_t face_metadata;

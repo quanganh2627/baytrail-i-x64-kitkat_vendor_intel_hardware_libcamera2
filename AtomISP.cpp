@@ -158,6 +158,7 @@ AtomISP::AtomISP(int cameraId) :
     mMode(MODE_NONE)
     ,mCallbacks(Callbacks::getInstance())
     ,mNumBuffers(NUM_DEFAULT_BUFFERS)
+    ,mNumPreviewBuffers(NUM_DEFAULT_BUFFERS)
     ,mPreviewBuffers(NULL)
     ,mRecordingBuffers(NULL)
     ,mClientRecordingBuffers(NULL)
@@ -787,6 +788,7 @@ status_t AtomISP::startPreview()
     if ((status = allocatePreviewBuffers()) != NO_ERROR)
         return status;
 
+
     if (mFileInject.active == true)
         startFileInject();
 
@@ -816,14 +818,14 @@ status_t AtomISP::startPreview()
     // need to resend the current zoom value
     atomisp_set_zoom(main_fd, mConfig.zoom);
 
-    ret = startDevice(mPreviewDevice, mNumBuffers);
+    ret = startDevice(mPreviewDevice, mNumPreviewBuffers);
     if (ret < 0) {
         LOGE("Start preview device failed!");
         status = UNKNOWN_ERROR;
         goto exitClose;
     }
 
-    mNumPreviewBuffersQueued = mNumBuffers;
+    mNumPreviewBuffersQueued = mNumPreviewBuffers;
 
     return status;
 
@@ -864,6 +866,7 @@ status_t AtomISP::startRecording() {
 
     if ((status = allocatePreviewBuffers()) != NO_ERROR)
         goto exitFreeRec;
+
 
     ret = openDevice(mPreviewDevice);
     if (ret < 0) {
@@ -915,14 +918,14 @@ status_t AtomISP::startRecording() {
         goto exitClosePrev;
     }
 
-    ret = startDevice(mPreviewDevice, mNumBuffers);
+    ret = startDevice(mPreviewDevice, mNumPreviewBuffers);
     if (ret < 0) {
         LOGE("Start preview device failed!");
         status = UNKNOWN_ERROR;
         goto exitStopRec;
     }
 
-    mNumPreviewBuffersQueued = mNumBuffers;
+    mNumPreviewBuffersQueued = mNumPreviewBuffers;
     mNumRecordingBuffersQueued = mNumBuffers;
 
     return status;
@@ -944,11 +947,13 @@ status_t AtomISP::stopRecording()
 {
     LOG1("@%s", __FUNCTION__);
 
-    freeRecordingBuffers();
-    stopDevice(mRecordingDevice);
 
-    freePreviewBuffers();
+    stopDevice(mRecordingDevice);
+    freeRecordingBuffers();
+
+
     stopDevice(mPreviewDevice);
+    freePreviewBuffers();
     closeDevice(mPreviewDevice);
 
     if (mFileInject.active == true)
@@ -2423,7 +2428,7 @@ status_t AtomISP::putPreviewFrame(AtomBuffer *buff)
     if (mMode == MODE_NONE)
         return INVALID_OPERATION;
 
-    if (buff->ispPrivate != mSessionId)
+    if ((buff->type == ATOM_BUFFER_PREVIEW) && (buff->ispPrivate != mSessionId))
         return DEAD_OBJECT;
 
     if (v4l2_capture_qbuf(video_fds[mPreviewDevice],
@@ -2452,6 +2457,7 @@ status_t AtomISP::setRecordingBuffers(SharedBufferType *buffs, int numBuffs)
 
     mUsingClientRecordingBuffers = true;
     mNumBuffers = numBuffs;
+    mNumPreviewBuffers = numBuffs;
 
     return NO_ERROR;
 }
@@ -2463,6 +2469,33 @@ void AtomISP::unsetRecordingBuffers()
     mUsingClientRecordingBuffers = false;
     mNumBuffers = NUM_DEFAULT_BUFFERS;
 }
+
+/**
+ * Sets the externally allocated graphic buffers to be used
+ * for the preview stream
+ */
+status_t AtomISP::setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs)
+{
+    LOG1("@%s: buffs = %p, numBuffs = %d", __FUNCTION__, buffs, numBuffs);
+    if (buffs == NULL || numBuffs <= 0)
+        return BAD_VALUE;
+
+    if(mPreviewBuffers != NULL)
+        freePreviewBuffers();
+
+    mPreviewBuffers = new AtomBuffer[numBuffs];
+    if (mPreviewBuffers == NULL)
+        return NO_MEMORY;
+
+    for (int i = 0; i < numBuffs; i++) {
+        mPreviewBuffers[i] = buffs[i];
+    }
+
+    mNumPreviewBuffers = numBuffs;
+
+    return NO_ERROR;
+}
+
 
 status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp)
 {
@@ -2633,6 +2666,9 @@ bool AtomISP::dataAvailable()
 
 bool AtomISP::isBufferValid(const AtomBuffer* buffer) const
 {
+    if(buffer->type == ATOM_BUFFER_PREVIEW_GFX)
+        return true;
+
     return buffer->ispPrivate == this->mSessionId;
 }
 
@@ -2685,46 +2721,52 @@ status_t AtomISP::allocatePreviewBuffers()
     status_t status = NO_ERROR;
     int allocatedBufs = 0;
 
-    int size = frameSize(mConfig.preview.format,
-            mConfig.preview.padding,
-            mConfig.preview.height);
+    if (mPreviewBuffers == NULL) {
+        mPreviewBuffers = new AtomBuffer[mNumPreviewBuffers];
+        if (!mPreviewBuffers) {
+            LOGE("Not enough mem for preview buffer array");
+            status = NO_MEMORY;
+            goto errorFree;
+        }
 
-    mPreviewBuffers = new AtomBuffer[mNumBuffers];
-    if (!mPreviewBuffers) {
-        LOGE("Not enough mem for preview buffer array");
-        status = NO_MEMORY;
-        goto errorFree;
+        LOG1("Allocating %d buffers of size %d", mNumPreviewBuffers, mConfig.preview.size);
+        for (int i = 0; i < mNumPreviewBuffers; i++) {
+             mPreviewBuffers[i].buff = NULL;
+             mPreviewBuffers[i].type = ATOM_BUFFER_PREVIEW;
+             mPreviewBuffers[i].width = mConfig.preview.width;
+             mPreviewBuffers[i].height = mConfig.preview.height;
+             mPreviewBuffers[i].stride = mConfig.preview.padding;
+             mCallbacks->allocateMemory(&mPreviewBuffers[i],  mConfig.preview.size);
+             if (mPreviewBuffers[i].buff == NULL) {
+                 LOGE("Error allocation memory for preview buffers!");
+                 status = NO_MEMORY;
+                 goto errorFree;
+             }
+
+             allocatedBufs++;
+             v4l2_buf_pool[mPreviewDevice].bufs[i].data = mPreviewBuffers[i].buff->data;
+             mPreviewBuffers[i].shared = false;
+        }
+
+    } else {
+        for (int i = 0; i < mNumPreviewBuffers; i++) {
+            v4l2_buf_pool[mPreviewDevice].bufs[i].data = mPreviewBuffers[i].gfxData;
+            mPreviewBuffers[i].shared = true;
+        }
     }
 
-    LOG1("Allocating %d buffers of size %d", mNumBuffers, size);
-    for (int i = 0; i < mNumBuffers; i++) {
-         mPreviewBuffers[i].buff = NULL;
-         mPreviewBuffers[i].type = ATOM_BUFFER_PREVIEW;
-         mPreviewBuffers[i].width = mConfig.preview.width;
-         mPreviewBuffers[i].height = mConfig.preview.height;
-         mPreviewBuffers[i].stride = mConfig.preview.padding;
-         mCallbacks->allocateMemory(&mPreviewBuffers[i],  mConfig.preview.size);
-         if (mPreviewBuffers[i].buff == NULL) {
-             LOGE("Error allocation memory for preview buffers!");
-             status = NO_MEMORY;
-             goto errorFree;
-         }
-         allocatedBufs++;
-         v4l2_buf_pool[mPreviewDevice].bufs[i].data = mPreviewBuffers[i].buff->data;
-         mPreviewBuffers[i].shared = false;
-    }
     return status;
-
 errorFree:
     // On error, free the allocated buffers
     for (int i = 0 ; i < allocatedBufs; i++) {
-        if (mRecordingBuffers[i].buff != NULL) {
-            mRecordingBuffers[i].buff->release(mRecordingBuffers[i].buff);
-            mRecordingBuffers[i].buff = NULL;
+        if (mPreviewBuffers[i].buff != NULL) {
+            mPreviewBuffers[i].buff->release(mPreviewBuffers[i].buff);
+            mPreviewBuffers[i].buff = NULL;
         }
     }
     if (mPreviewBuffers)
         delete [] mPreviewBuffers;
+
     return status;
 }
 
@@ -2851,13 +2893,14 @@ errorFree:
 status_t AtomISP::freePreviewBuffers()
 {
     LOG1("@%s", __FUNCTION__);
-    for (int i = 0 ; i < mNumBuffers; i++) {
+    for (int i = 0 ; i < mNumPreviewBuffers; i++) {
         if (mPreviewBuffers[i].buff != NULL) {
             mPreviewBuffers[i].buff->release(mPreviewBuffers[i].buff);
             mPreviewBuffers[i].buff = NULL;
         }
     }
     delete [] mPreviewBuffers;
+    mPreviewBuffers = NULL;
     return NO_ERROR;
 }
 

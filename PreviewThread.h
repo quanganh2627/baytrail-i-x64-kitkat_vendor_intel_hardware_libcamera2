@@ -58,7 +58,9 @@ public:
     status_t preview(AtomBuffer *buff);
     status_t setPreviewWindow(struct preview_stream_ops *window);
     status_t setPreviewConfig(int preview_width, int preview_height,
-                              int preview_format);
+                              int preview_format, int bufferCount);
+    status_t fetchPreviewBuffers(AtomBuffer ** pvBufs, int *count);
+    status_t returnPreviewBuffers();
     status_t flushBuffers();
 
     // TODO: need methods to configure preview thread
@@ -74,6 +76,8 @@ private:
         MESSAGE_ID_PREVIEW,
         MESSAGE_ID_SET_PREVIEW_WINDOW,
         MESSAGE_ID_SET_PREVIEW_CONFIG,
+        MESSAGE_ID_FETCH_PREVIEW_BUFS,
+        MESSAGE_ID_RETURN_PREVIEW_BUFS,
         MESSAGE_ID_FLUSH,
 
         // max number of messages
@@ -96,6 +100,7 @@ private:
         int width;
         int height;
         int format;
+        int bufferCount;
     };
 
     // union of all message data
@@ -109,6 +114,7 @@ private:
 
         // MESSAGE_ID_SET_PREVIEW_CONFIG
         MessageSetPreviewConfig setPreviewConfig;
+
     };
 
     // message id and message data
@@ -125,6 +131,8 @@ private:
     status_t handleMessagePreview(MessagePreview *msg);
     status_t handleMessageSetPreviewWindow(MessageSetPreviewWindow *msg);
     status_t handleMessageSetPreviewConfig(MessageSetPreviewConfig *msg);
+    status_t handleMessageFetchPreviewBuffers();
+    status_t handleMessageReturnPreviewBuffers();
     status_t handleMessageFlush();
 
     // main message function
@@ -135,6 +143,9 @@ private:
     void allocateLocalPreviewBuf(void);
     status_t allocateGfxPreviewBuffers(int numberOfBuffers);
     status_t freeGfxPreviewBuffers();
+
+    // handler helpers
+    status_t callPreviewDone(MessagePreview *msg);
 
 // inherited from Thread
 private:
@@ -155,11 +166,12 @@ private:
     int mPreviewHeight;
     int mPreviewFormat;
 
-    AtomBuffer   mPreviewBuf;       /*!< Local preview buffer to give to the user */
-    Vector<AtomBuffer>  mPreviewBuffers;
-
-    int          mBuffersInWindow;
-
+    AtomBuffer          mPreviewBuf;        /*!< Local preview buffer to give to the user */
+    Vector<AtomBuffer>  mPreviewBuffers;    /*!< Vector with the buffers retrieved from window */
+    Vector<int>         mPreviewInClient;   /*!< Vector with indexes to mPreviewBuffers*/
+    int                 mBuffersInWindow;   /*!< Number of buffers currently in the preview window */
+    int                 mMinUndequeued;     /*!< Minimum number frames
+                                                 tokeep in window */
 }; // class PreviewThread
 
 }; // namespace android
