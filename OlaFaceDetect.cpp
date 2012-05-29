@@ -37,7 +37,8 @@ OlaFaceDetect::OlaFaceDetect(IFaceDetectionListener *pListener) :
             IFaceDetector(pListener),
             mMessageQueue("OlaFaceDetector"),
             mFaceDetectionStruct(0),
-            mbRunning(false)
+            mbRunning(false),
+            mLastReportedNumberOfFaces(0)
 {
 }
 
@@ -164,7 +165,13 @@ status_t OlaFaceDetect::handleFrame(MessageFrame frame)
     }
     //blocking call
     LOGV("%s calling listener", __func__);
-    mpListener->facesDetected(face_metadata);
+    if((face_metadata.number_of_faces > 0) ||
+       (mLastReportedNumberOfFaces != 0)) {
+
+        mLastReportedNumberOfFaces = face_metadata.number_of_faces;
+        mpListener->facesDetected(face_metadata);
+    }
+
     LOGV("%s returned from listener", __func__);
 
     useFacesForAAA(face_metadata);

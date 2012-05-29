@@ -90,6 +90,7 @@ private:
     MessageQueue<Message, MessageId> mMessageQueue;
     CameraFaceDetection * mFaceDetectionStruct;
     volatile bool mbRunning;
+    int mLastReportedNumberOfFaces;
 };
 
 }
