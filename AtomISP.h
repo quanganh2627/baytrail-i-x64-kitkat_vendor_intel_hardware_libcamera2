@@ -128,9 +128,9 @@ public:
 // private methods
 private:
 
-    void init3A(void);
-    void initFrameConfig(void);
-    void initCameraId(int camera_id);
+    void init3A(int cameraId);
+    void initFrameConfig(int cameraId);
+    void initCameraInput(int cameraId);
     void initFileInject(void);
 
     status_t startPreview();
@@ -223,7 +223,8 @@ private:
     };
 
     struct cameraInfo {
-        int port;
+        int port;            //!< AtomISP port type
+        uint32_t index;      //!< V4L2 index
         char name[MAX_SENSOR_NAME_LENGTH];
     };
 
@@ -239,9 +240,8 @@ private:
 // private members
 private:
 
-    static const camera_info mCameraInfo[MAX_CAMERA_NODES];
-    static cameraInfo camInfo[MAX_CAMERA_NODES];
-    static int numCameras;
+    static const camera_info sCameraInfo[MAX_CAMERA_NODES];
+    static cameraInfo sCamInfo[MAX_CAMERA_NODES];
 
     AtomMode mMode;
     Callbacks *mCallbacks;
@@ -281,9 +281,9 @@ private:
 
     int mSessionId; // uniquely identify each session
 
-    int mCameraId;
     SensorType mSensorType;
     AtomAAA *mAAA;
+    struct cameraInfo *mCameraInput;
 
     bool mLowLight;
 

@@ -134,10 +134,9 @@ static const char *dev_name_array[3] = {"/dev/video0",
  */
 static const char *privateOtpInjectFileName = "otp_data.bin";
 
-AtomISP::cameraInfo AtomISP::camInfo[MAX_CAMERA_NODES];
-int AtomISP::numCameras = 0;
+AtomISP::cameraInfo AtomISP::sCamInfo[MAX_CAMERA_NODES];
 
-const camera_info AtomISP::mCameraInfo[] = {
+const camera_info AtomISP::sCameraInfo[] = {
     {
         CAMERA_FACING_BACK, BACK_CAMERA_ROTATION
     },
@@ -188,7 +187,7 @@ static void computeZoomRatios(char *zoom_ratio, int max_count){
 //                          PUBLIC METHODS
 ////////////////////////////////////////////////////////////////////
 
-AtomISP::AtomISP(int camera_id) :
+AtomISP::AtomISP(int cameraId) :
     mMode(MODE_NONE)
     ,mCallbacks(Callbacks::getInstance())
     ,mNumBuffers(NUM_DEFAULT_BUFFERS)
@@ -204,7 +203,6 @@ AtomISP::AtomISP(int camera_id) :
     ,mPreviewDevice(V4L2_FIRST_DEVICE)
     ,mRecordingDevice(V4L2_FIRST_DEVICE)
     ,mSessionId(0)
-    ,mCameraId(0)
     ,mAAA(AtomAAA::getInstance())
     ,mLowLight(false)
     ,mZoomRatios(NULL)
@@ -226,13 +224,13 @@ AtomISP::AtomISP(int camera_id) :
         return;
     }
 
-    initCameraId(camera_id);
+    initCameraInput(cameraId);
 
-    mSensorType = (camInfo[mCameraId].port == ATOMISP_CAMERA_PORT_PRIMARY)?SENSOR_TYPE_RAW:SENSOR_TYPE_SOC;
+    mSensorType = (mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY)?SENSOR_TYPE_RAW:SENSOR_TYPE_SOC;
     LOG1("Sensor type detected: %s", (mSensorType == SENSOR_TYPE_RAW)?"RAW":"SOC");
 
-    init3A();
-    initFrameConfig();
+    init3A(cameraId);
+    initFrameConfig(cameraId);
     initFileInject();
 
     // Initialize the frame sizes
@@ -254,9 +252,9 @@ AtomISP::AtomISP(int camera_id) :
 int AtomISP::getPrimaryCameraIndex(void) const
 {
     int res = 0;
-    int items = sizeof(camInfo) / sizeof(cameraInfo);
+    int items = sizeof(sCamInfo) / sizeof(cameraInfo);
     for (int i = 0; i < items; i++) {
-        if (camInfo[i].port == ATOMISP_CAMERA_PORT_PRIMARY) {
+        if (sCamInfo[i].port == ATOMISP_CAMERA_PORT_PRIMARY) {
             res = i;
             break;
         }
@@ -268,11 +266,11 @@ int AtomISP::getPrimaryCameraIndex(void) const
 /**
  * Only to be called from contructor
  */
-void AtomISP::initFrameConfig(void)
+void AtomISP::initFrameConfig(int cameraId)
 {
     int ret;
 
-    if (mCameraId == INTEL_FILE_INJECT_CAMERA_ID) {
+    if (cameraId == INTEL_FILE_INJECT_CAMERA_ID) {
         mConfig.snapshot.maxWidth = MAX_FILE_INJECTION_SNAPSHOT_WIDTH;
         mConfig.snapshot.maxHeight = MAX_FILE_INJECTION_SNAPSHOT_HEIGHT;
         mConfig.preview.maxWidth = MAX_FILE_INJECTION_PREVIEW_WIDTH;
@@ -287,8 +285,8 @@ void AtomISP::initFrameConfig(void)
     }
 
     if (ret) {
-        LOGE("Failed to detect camera %s, resolution! Use default settings", camInfo[mCameraId].name);
-        switch (camInfo[mCameraId].port) {
+        LOGE("Failed to detect camera %s, resolution! Use default settings", mCameraInput->name);
+        switch (mCameraInput->port) {
         case ATOMISP_CAMERA_PORT_SECONDARY:
             mConfig.snapshot.maxWidth  = MAX_FRONT_CAMERA_SNAPSHOT_WIDTH;
             mConfig.snapshot.maxHeight = MAX_FRONT_CAMERA_SNAPSHOT_HEIGHT;
@@ -300,12 +298,12 @@ void AtomISP::initFrameConfig(void)
         }
     }
     else {
-        LOG1("Camera %s: Max-resolution detected: %dx%d", camInfo[mCameraId].name,
+        LOG1("Camera %s: Max-resolution detected: %dx%d", mCameraInput->name,
                 mConfig.snapshot.maxWidth,
                 mConfig.snapshot.maxHeight);
     }
 
-    switch (camInfo[mCameraId].port) {
+    switch (mCameraInput->port) {
     case ATOMISP_CAMERA_PORT_SECONDARY:
         mConfig.preview.maxWidth   = MAX_FRONT_CAMERA_PREVIEW_WIDTH;
         mConfig.preview.maxHeight  = MAX_FRONT_CAMERA_PREVIEW_HEIGHT;
@@ -319,50 +317,55 @@ void AtomISP::initFrameConfig(void)
         mConfig.recording.maxHeight = MAX_BACK_CAMERA_VIDEO_HEIGHT;
         break;
     default:
-        LOGE("Invalid camera id: %d", mCameraId);
+        LOGE("Invalid camera id: %d", cameraId);
     }
 }
 
 /**
+ * Maps the requested 'cameraId' to a V4L2 input.
+ *
  * Only to be called from contructor
  */
-void AtomISP::initCameraId(int camera_id)
+void AtomISP::initCameraInput(int cameraId)
 {
-    int camera_idx = -1;
     size_t numCameras = setupCameraInfo();
+    mCameraInput = 0;
 
     for (size_t i = 0; i < numCameras; i++) {
-        if ((camera_id == CAMERA_FACING_BACK  && camInfo[i].port == ATOMISP_CAMERA_PORT_PRIMARY) ||
-                (camera_id == CAMERA_FACING_FRONT && camInfo[i].port == ATOMISP_CAMERA_PORT_SECONDARY)) {
-            camera_idx = i;
+        // 0 refers to the static table order used in
+        // mCameraInput
+        if ((sCameraInfo[cameraId].facing == CAMERA_FACING_BACK &&
+             sCamInfo[i].port == ATOMISP_CAMERA_PORT_PRIMARY) ||
+            (sCameraInfo[cameraId].facing == CAMERA_FACING_FRONT &&
+             sCamInfo[i].port == ATOMISP_CAMERA_PORT_SECONDARY)) {
+            mCameraInput = &sCamInfo[i];
             break;
         }
     }
 
-    if (camera_idx == -1 &&
-        camera_id == INTEL_FILE_INJECT_CAMERA_ID) {
-        LOG1("AtomISP opened with file inject camera id");
-        camera_idx = INTEL_FILE_INJECT_CAMERA_ID;
+    if (mCameraInput == 0) {
+        if (cameraId == INTEL_FILE_INJECT_CAMERA_ID) {
+            LOG1("AtomISP opened with file inject camera id");
+            mCameraInput = &sCamInfo[INTEL_FILE_INJECT_CAMERA_ID];
+        }
+        else {
+            LOGE("Didn't find %d camera. Using default camera!",
+                 cameraId);
+            mCameraInput = &sCamInfo[0];
+        }
     }
-    else if (camera_idx == -1) {
-        LOGE("Didn't find %s camera. Using default camera!",
-                camera_id == CAMERA_FACING_BACK ? "back" : "front");
-        camera_idx = 0;
-    }
-
-    mCameraId = camera_idx;
 }
 
 /**
  * Only to be called from contructor
  */
-void AtomISP::init3A(void)
+void AtomISP::init3A(int cameraId)
 {
     if (selectCameraSensor() == NO_ERROR) {
-        if (mCameraId == INTEL_FILE_INJECT_CAMERA_ID) {
+        if (cameraId == INTEL_FILE_INJECT_CAMERA_ID) {
             const char* otp_file = privateOtpInjectFileName;
             int maincam = getPrimaryCameraIndex();
-            if (mAAA->init(camInfo[maincam].name, main_fd, otp_file) == NO_ERROR) {
+            if (mAAA->init(sCamInfo[maincam].name, main_fd, otp_file) == NO_ERROR) {
                 LOG1("3A initialized for file inject");
             }
             else {
@@ -370,14 +373,14 @@ void AtomISP::init3A(void)
             }
         }
         else if (mSensorType == SENSOR_TYPE_RAW) {
-            if (mAAA->init(camInfo[mCameraId].name, main_fd, NULL) == NO_ERROR) {
+            if (mAAA->init(mCameraInput->name, main_fd, NULL) == NO_ERROR) {
                 LOG1("3A initialized");
             } else {
                 LOGE("Error initializing 3A on RAW sensor!");
             }
         }
     } else {
-        LOGE("Could not select camera: %s (sensor ID: %d)", camInfo[mCameraId].name, mCameraId);
+        LOGE("Could not select camera: %s (sensor ID: %d)", mCameraInput->name, cameraId);
     }
 }
 
@@ -424,7 +427,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
     params->setPreviewSize(mConfig.preview.width, mConfig.preview.height);
     params->setPreviewFrameRate(30);
 
-    if (camInfo[mCameraId].port == ATOMISP_CAMERA_PORT_PRIMARY) {
+    if (mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
         params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES,
             "1024x580,1024x576,800x600,720x576,720x480,640x480,640x360,416x312,352x288,320x240,176x144");
     } else {
@@ -469,7 +472,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
     /**
      * FLASH
      */
-    if (camInfo[mCameraId].port == ATOMISP_CAMERA_PORT_PRIMARY) {
+    if (mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
         // For main back camera
         // flash mode option
         params->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
@@ -494,7 +497,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
     /**
      * FOCUS
      */
-    if(camInfo[mCameraId].port == ATOMISP_CAMERA_PORT_PRIMARY) {
+    if(mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
         params->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
 
         char focusModes[100] = {0};
@@ -544,7 +547,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
     /**
      * flicker mode
      */
-    if(camInfo[mCameraId].port == ATOMISP_CAMERA_PORT_PRIMARY) {
+    if(mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
         params->set(CameraParameters::KEY_ANTIBANDING, "auto");
         params->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, "off,50hz,60hz,auto");
     } else {
@@ -1319,12 +1322,12 @@ void AtomISP::closeDevice(int device)
 status_t AtomISP::selectCameraSensor()
 {
     LOG1("@%s", __FUNCTION__);
-    int ret = 0, camera_idx = -1;
+    int ret = 0;
     int device = V4L2_FIRST_DEVICE;
 
     //Choose the camera sensor
-    LOG1("Selecting camera sensor: %d", mCameraId);
-    ret = v4l2_capture_s_input(video_fds[device], mCameraId);
+    LOG1("Selecting camera sensor: %s", mCameraInput->name);
+    ret = v4l2_capture_s_input(video_fds[device], mCameraInput->index);
     if (ret < 0) {
         LOGE("V4L2: capture_s_input failed: %s", strerror(errno));
         v4l2_capture_close(video_fds[device]);
@@ -1531,7 +1534,7 @@ void AtomISP::getFocusDistances(CameraParameters *params)
     float fDistances[3] = {0};  // 3 distances: near, optimal, and far
 
     // would be better if we could get these from driver instead of hard-coding
-    if(camInfo[mCameraId].port == ATOMISP_CAMERA_PORT_PRIMARY) {
+    if(mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
         fDistances[0] = 2.0;
         fDistances[1] = 2.0;
         fDistances[2] = INFINITY;
@@ -1566,7 +1569,7 @@ void AtomISP::getFocusDistances(CameraParameters *params)
 status_t AtomISP::setFlash(int numFrames)
 {
     LOG1("@%s: numFrames = %d", __FUNCTION__, numFrames);
-    if (camInfo[mCameraId].port != ATOMISP_CAMERA_PORT_PRIMARY) {
+    if (mCameraInput->port != ATOMISP_CAMERA_PORT_PRIMARY) {
         LOGE("Flash is supported only for primary camera!");
         return INVALID_OPERATION;
     }
@@ -1578,7 +1581,7 @@ status_t AtomISP::setFlash(int numFrames)
 status_t AtomISP::setFlashIndicator(int intensity)
 {
     LOG1("@%s: intensity = %d", __FUNCTION__, intensity);
-    if (camInfo[mCameraId].port != ATOMISP_CAMERA_PORT_PRIMARY) {
+    if (mCameraInput->port != ATOMISP_CAMERA_PORT_PRIMARY) {
         LOGE("Indicator intensity is supported only for primary camera!");
         return INVALID_OPERATION;
     }
@@ -1598,7 +1601,7 @@ status_t AtomISP::setFlashIndicator(int intensity)
 status_t AtomISP::setTorch(int intensity)
 {
     LOG1("@%s: intensity = %d", __FUNCTION__, intensity);
-    if (camInfo[mCameraId].port != ATOMISP_CAMERA_PORT_PRIMARY) {
+    if (mCameraInput->port != ATOMISP_CAMERA_PORT_PRIMARY) {
         LOGE("Indicator intensity is supported only for primary camera!");
         return INVALID_OPERATION;
     }
@@ -2920,7 +2923,7 @@ int AtomISP::getNumberOfCameras()
     LOG1("@%s", __FUNCTION__);
     // note: hide the file inject device node, so do
     //       not allow to get info for MAX_CAMERA_NODES
-    int nodes = sizeof(mCameraInfo)/sizeof(struct camera_info);
+    int nodes = sizeof(sCameraInfo)/sizeof(struct camera_info);
     if (nodes > MAX_CAMERAS)
         nodes = MAX_CAMERAS;
     return nodes;
@@ -2943,7 +2946,8 @@ size_t AtomISP::setupCameraInfo()
         if (ret < 0) {
             break;
         }
-        camInfo[i].port = input.reserved[1];
+        sCamInfo[i].port = input.reserved[1];
+        sCamInfo[i].index = i;
         /*
          * Workaround for current libmfldadvci.so library which needs the sensor name
          * in init function. But that function looks only to the first word of the sensor name.
@@ -2953,8 +2957,8 @@ size_t AtomISP::setupCameraInfo()
         if (pos > name) {
             name[pos - name] = '\0';
         }
-        strncpy(camInfo[i].name, (const char *)input.name, MAX_SENSOR_NAME_LENGTH);
-        LOG1("Detected sensor %s", camInfo[i].name);
+        strncpy(sCamInfo[i].name, (const char *)input.name, MAX_SENSOR_NAME_LENGTH);
+        LOG1("Detected sensor %s", sCamInfo[i].name);
         numCameras++;
     }
     return numCameras;
@@ -2966,7 +2970,7 @@ status_t AtomISP::getCameraInfo(int cameraId, camera_info *cameraInfo)
     if (cameraId >= MAX_CAMERA_NODES)
         return BAD_VALUE;
 
-    memcpy(cameraInfo, &mCameraInfo[cameraId], sizeof(camera_info));
+    memcpy(cameraInfo, &sCameraInfo[cameraId], sizeof(camera_info));
     return NO_ERROR;
 }
 
