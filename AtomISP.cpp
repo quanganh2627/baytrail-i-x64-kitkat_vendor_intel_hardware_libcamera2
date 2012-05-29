@@ -19,6 +19,7 @@
 #include "AtomISP.h"
 #include "Callbacks.h"
 #include "ColorConverter.h"
+#include "PlatformData.h"
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -92,28 +93,6 @@
 #define MAX_SUPPORT_ZOOM        1600    // Support upto 16x and should not bigger than 99x
 #define ZOOM_RATIO              100     // Conversion between zoom to really zoom effect
 
-/**
- * Platform specific defines
- * */
-#ifdef MFLD_PR2
-
-#define PREFERRED_PREVIEW_SIZE_FOR_VIDEO    "1024x580"
-#define FRONT_CAMERA_ROTATION    90
-#define BACK_CAMERA_ROTATION     90
-
-#elif MFLD_DV10
-
-#define PREFERRED_PREVIEW_SIZE_FOR_VIDEO    "720x576"
-#define FRONT_CAMERA_ROTATION    180
-#define BACK_CAMERA_ROTATION     180
-
-#else
-
-#define PREFERRED_PREVIEW_SIZE_FOR_VIDEO    "640x480"
-#define FRONT_CAMERA_ROTATION    0
-#define BACK_CAMERA_ROTATION     0
-#endif
-
 #define INTEL_FILE_INJECT_CAMERA_ID 2
 
 namespace android {
@@ -135,19 +114,6 @@ static const char *dev_name_array[3] = {"/dev/video0",
 static const char *privateOtpInjectFileName = "otp_data.bin";
 
 AtomISP::cameraInfo AtomISP::sCamInfo[MAX_CAMERA_NODES];
-
-const camera_info AtomISP::sCameraInfo[] = {
-    {
-        CAMERA_FACING_BACK, BACK_CAMERA_ROTATION
-    },
-    {
-        CAMERA_FACING_FRONT,FRONT_CAMERA_ROTATION
-    },
-    {
-        // file injection/input device
-        CAMERA_FACING_BACK, BACK_CAMERA_ROTATION
-    }
-};
 
 static const char *resolution_tables[] = {
     RESOLUTION_VGA_TABLE,
@@ -332,11 +298,13 @@ void AtomISP::initCameraInput(int cameraId)
     mCameraInput = 0;
 
     for (size_t i = 0; i < numCameras; i++) {
-        // 0 refers to the static table order used in
-        // mCameraInput
-        if ((sCameraInfo[cameraId].facing == CAMERA_FACING_BACK &&
+
+        // BACK camera -> AtomISP/V4L2 primary port
+        // FRONT camera -> AomISP/V4L2 secondary port
+
+        if ((PlatformData::cameraFacing(cameraId) == CAMERA_FACING_BACK &&
              sCamInfo[i].port == ATOMISP_CAMERA_PORT_PRIMARY) ||
-            (sCameraInfo[cameraId].facing == CAMERA_FACING_FRONT &&
+            (PlatformData::cameraFacing(cameraId) == CAMERA_FACING_FRONT &&
              sCamInfo[i].port == ATOMISP_CAMERA_PORT_SECONDARY)) {
             mCameraInput = &sCamInfo[i];
             break;
@@ -344,7 +312,8 @@ void AtomISP::initCameraInput(int cameraId)
     }
 
     if (mCameraInput == 0) {
-        if (cameraId == INTEL_FILE_INJECT_CAMERA_ID) {
+        if (PlatformData::supportsFileInject() == true &&
+                cameraId == INTEL_FILE_INJECT_CAMERA_ID) {
             LOG1("AtomISP opened with file inject camera id");
             mCameraInput = &sCamInfo[INTEL_FILE_INJECT_CAMERA_ID];
         }
@@ -443,7 +412,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
      * RECORDING
      */
     params->setVideoSize(mConfig.recording.width, mConfig.recording.height);
-    params->set(CameraParameters::KEY_PREFERRED_PREVIEW_SIZE_FOR_VIDEO, PREFERRED_PREVIEW_SIZE_FOR_VIDEO);
+    params->set(CameraParameters::KEY_PREFERRED_PREVIEW_SIZE_FOR_VIDEO, PlatformData::preferredPreviewSizeForVideo());
     params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1088");
     params->set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,
                 CameraParameters::PIXEL_FORMAT_YUV420SP);
@@ -472,7 +441,9 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
     /**
      * FLASH
      */
-    if (mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
+    if (PlatformData::supportsBackFlash() == true &&
+        mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
+
         // For main back camera
         // flash mode option
         params->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
@@ -487,11 +458,6 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
             return;
         }
         params->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, flashModes);
-    } else {
-        // For front camera
-        // No flash present
-        params->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
-        params->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, CameraParameters::FLASH_MODE_OFF);
     }
 
     /**
@@ -2923,7 +2889,7 @@ int AtomISP::getNumberOfCameras()
     LOG1("@%s", __FUNCTION__);
     // note: hide the file inject device node, so do
     //       not allow to get info for MAX_CAMERA_NODES
-    int nodes = sizeof(sCameraInfo)/sizeof(struct camera_info);
+    int nodes = PlatformData::numberOfCameras();
     if (nodes > MAX_CAMERAS)
         nodes = MAX_CAMERAS;
     return nodes;
@@ -2939,7 +2905,7 @@ size_t AtomISP::setupCameraInfo()
     if (main_fd < 0)
         return numCameras;
 
-    for (size_t i = 0; i < MAX_CAMERA_NODES; i++) {
+    for (int i = 0; i < PlatformData::numberOfCameras(); i++) {
         memset(&input, 0, sizeof(input));
         input.index = i;
         ret = ioctl(main_fd, VIDIOC_ENUMINPUT, &input);
@@ -2967,10 +2933,19 @@ size_t AtomISP::setupCameraInfo()
 status_t AtomISP::getCameraInfo(int cameraId, camera_info *cameraInfo)
 {
     LOG1("@%s: cameraId = %d", __FUNCTION__, cameraId);
-    if (cameraId >= MAX_CAMERA_NODES)
+    if (cameraId >= PlatformData::numberOfCameras())
         return BAD_VALUE;
 
-    memcpy(cameraInfo, &sCameraInfo[cameraId], sizeof(camera_info));
+    cameraInfo->facing = PlatformData::cameraFacing(cameraId);
+    cameraInfo->orientation = PlatformData::cameraOrientation(cameraId);
+
+    LOG1("@%s: %d: facing %s, orientation %d",
+         __FUNCTION__,
+         cameraId,
+         ((cameraInfo->facing == CAMERA_FACING_BACK) ?
+          "back" : "front/other"),
+         cameraInfo->orientation);
+
     return NO_ERROR;
 }
 

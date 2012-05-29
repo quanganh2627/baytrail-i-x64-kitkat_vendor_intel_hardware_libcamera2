@@ -25,6 +25,7 @@
 #include "ColorConverter.h"
 #include "IntelBufferSharing.h"
 #include "FaceDetectorFactory.h"
+#include "PlatformData.h"
 #include <utils/Vector.h>
 #include <math.h>
 #include <cutils/properties.h>
@@ -1872,7 +1873,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // FLASH
     const char* flashMode = params->get(CameraParameters::KEY_FLASH_MODE);
     const char* flashModes = params->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
-    if (strstr(flashModes, flashMode) == NULL) {
+    if (flashMode && flashModes && strstr(flashModes, flashMode) == NULL) {
         LOGE("bad flash mode");
         return BAD_VALUE;
     }
@@ -2501,8 +2502,10 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "auto,off,on,torch");
-            newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);
+            if (PlatformData::supportsBackFlash()) {
+                newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "auto,off,on,torch");
+            }
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
             newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
@@ -2516,8 +2519,10 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
-            newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
+            if (PlatformData::supportsBackFlash()) {
+                newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
+                newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
+            }
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
             newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
@@ -2531,8 +2536,10 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
-            newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
+            if (PlatformData::supportsBackFlash()) {
+                newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
+                newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
+            }
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_OUTDOOR);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
             newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
@@ -2546,8 +2553,10 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
-            newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
+            if (PlatformData::supportsBackFlash()) {
+                newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
+                newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
+            }
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
             newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
@@ -2561,8 +2570,10 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "on");
-            newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_ON);
+            if (PlatformData::supportsBackFlash()) {
+                newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "on");
+                newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_ON);
+            }
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
             newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
@@ -2576,8 +2587,10 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
-            newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
+            if (PlatformData::supportsBackFlash()) {
+                newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
+                newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
+            }
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
             newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
@@ -2591,8 +2604,10 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "auto,off,on,torch");
-            newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);
+            if (PlatformData::supportsBackFlash()) {
+                newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "auto,off,on,torch");
+                newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);
+            }
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
             newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
@@ -2610,8 +2625,10 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, "off,50hz,60hz,auto");
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "auto,off,on,torch");
-            newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);
+            if (PlatformData::supportsBackFlash()) {
+                newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "auto,off,on,torch");
+                newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);
+            }
             newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
             newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
             newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);

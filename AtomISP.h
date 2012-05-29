@@ -240,7 +240,6 @@ private:
 // private members
 private:
 
-    static const camera_info sCameraInfo[MAX_CAMERA_NODES];
     static cameraInfo sCamInfo[MAX_CAMERA_NODES];
 
     AtomMode mMode;

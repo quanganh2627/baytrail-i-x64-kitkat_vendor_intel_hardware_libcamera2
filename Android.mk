@@ -31,7 +31,8 @@ LOCAL_SRC_FILES := \
 	EXIFMaker.cpp \
 	JpegCompressor.cpp \
 	CallbacksThread.cpp \
-	LogHelper.cpp
+	LogHelper.cpp \
+	PlatformData.cpp
 
 ifeq ($(FACE_DETECTION_TYPE),ola)
 LOCAL_SRC_FILES += OlaFaceDetect.cpp 
