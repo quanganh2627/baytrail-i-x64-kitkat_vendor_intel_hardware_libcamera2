@@ -38,8 +38,10 @@ PreviewThread::PreviewThread(ICallbackPreview *previewDone) :
     ,mPreviewWidth(640)
     ,mPreviewHeight(480)
     ,mPreviewFormat(V4L2_PIX_FMT_NV21)
+    ,mBuffersInWindow(0)
 {
     LOG1("@%s", __FUNCTION__);
+    mPreviewBuffers.setCapacity(MAX_NUMBER_PREVIEW_GFX_BUFFERS);
     mPreviewBuf.buff = 0;
 }
 
@@ -47,7 +49,8 @@ PreviewThread::~PreviewThread()
 {
     LOG1("@%s", __FUNCTION__);
     mDebugFPS.clear();
-    freePreviewBuf();
+    freeLocalPreviewBuf();
+    freeGfxPreviewBuffers();
 }
 
 void PreviewThread::getDefaultParameters(CameraParameters *params)
@@ -169,7 +172,7 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
     }
 
     if(!mPreviewBuf.buff) {
-        allocatePreviewBuf();
+        allocateLocalPreviewBuf();
     }
     if(mPreviewBuf.buff) {
         switch(mPreviewFormat) {
@@ -202,9 +205,14 @@ status_t PreviewThread::handleMessageSetPreviewWindow(MessageSetPreviewWindow *m
 
     if (mPreviewWindow != NULL) {
         LOG1("Setting new preview window %p", mPreviewWindow);
-        int previewWidthPadded =  paddingWidth(V4L2_PIX_FMT_NV12,mPreviewWidth,mPreviewHeight);
-        mPreviewWindow->set_usage(mPreviewWindow, GRALLOC_USAGE_SW_WRITE_OFTEN);
-        mPreviewWindow->set_buffer_count(mPreviewWindow, 4);
+        int previewWidthPadded =
+            paddingWidth(V4L2_PIX_FMT_NV12, mPreviewWidth, mPreviewHeight);
+
+        // write-often: main use-case, stream image data to window
+        // read-rarely: 2nd use-case, memcpy to application data callback
+        mPreviewWindow->set_usage(mPreviewWindow,
+                                  (GRALLOC_USAGE_SW_READ_RARELY |
+                                   GRALLOC_USAGE_SW_WRITE_OFTEN));
         mPreviewWindow->set_buffers_geometry(
                 mPreviewWindow,
                 previewWidthPadded,
@@ -236,7 +244,7 @@ status_t PreviewThread::handleMessageSetPreviewConfig(MessageSetPreviewConfig *m
         mPreviewWidth = msg->width;
         mPreviewHeight = msg->height;
 
-        allocatePreviewBuf();
+        allocateLocalPreviewBuf();
     }
 
     if ((msg->format != 0) && (mPreviewFormat != msg->format)) {
@@ -332,7 +340,7 @@ status_t PreviewThread::requestExitAndWait()
     return Thread::requestExitAndWait();
 }
 
-void PreviewThread::freePreviewBuf(void)
+void PreviewThread::freeLocalPreviewBuf(void)
 {
     if (mPreviewBuf.buff) {
         LOG1("releasing existing preview buffer\n");
@@ -341,14 +349,116 @@ void PreviewThread::freePreviewBuf(void)
     }
 }
 
-void PreviewThread::allocatePreviewBuf(void)
+void PreviewThread::allocateLocalPreviewBuf(void)
 {
     LOG1("allocating the preview buffer\n");
-    freePreviewBuf();
+    freeLocalPreviewBuf();
     mCallbacks->allocateMemory(&mPreviewBuf, mPreviewWidth*mPreviewHeight*3/2);
     if(!mPreviewBuf.buff) {
         LOGE("getting memory failed\n");
     }
+}
+
+/**
+ * Allocates preview buffers from native window.
+ *
+ * @param numberOfBuffers:[IN]: Number of requested buffers to allocate
+ *
+ * @return NO_MEMORY: If it could not allocate or dequeue the required buffers
+ * @return INVALID_OPERATION: if it couldn't allocate the buffers because lack of preview window
+ */
+status_t PreviewThread::allocateGfxPreviewBuffers(int numberOfBuffers) {
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    GraphicBufferMapper &mapper = GraphicBufferMapper::get();
+
+    if(!mPreviewBuffers.isEmpty()) {
+        LOGW("Preview buffers already allocated size=[%d] -- this should not happen",mPreviewBuffers.size());
+        freeGfxPreviewBuffers();
+    }
+
+    if (mPreviewWindow != 0) {
+
+        if(numberOfBuffers > MAX_NUMBER_PREVIEW_GFX_BUFFERS)
+            return NO_MEMORY;
+
+        mPreviewWindow->set_buffer_count(mPreviewWindow, numberOfBuffers);
+
+        AtomBuffer tmpBuf;
+        int err, stride;
+        buffer_handle_t *buf;
+        void *dst;
+        int lockMode = GRALLOC_USAGE_SW_READ_OFTEN | GRALLOC_USAGE_SW_WRITE_NEVER;
+        const Rect bounds(mPreviewWidth, mPreviewHeight);
+
+        for (int i = 0; i < numberOfBuffers; i++) {
+            err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride);
+            if(err != 0) {
+                LOGE("Surface::dequeueBuffer returned error %d", err);
+                status = UNKNOWN_ERROR;
+                goto freeDeQueued;
+            }
+            tmpBuf.buff = NULL;     // We do not allocate a normal camera_memory_t
+            tmpBuf.id = i;
+            tmpBuf.type = ATOM_BUFFER_PREVIEW_GFX;
+            tmpBuf.mNativeBufPtr = buf;
+            tmpBuf.stride = stride;
+            tmpBuf.width = mPreviewWidth;
+            tmpBuf.height = mPreviewHeight;
+
+            status = mapper.lock(*buf, lockMode, bounds, &dst);
+            if(status != NO_ERROR) {
+               LOGE("Failed to lock GraphicBufferMapper!");
+               goto freeDeQueued;
+            }
+
+            tmpBuf.gfxData = dst;
+            mPreviewBuffers.push(tmpBuf);
+        } // for
+
+        mBuffersInWindow = 0;
+    } else {
+        status = INVALID_OPERATION;
+    }
+
+    return status;
+
+freeDeQueued:
+    for( size_t i = 0; i < mPreviewBuffers.size(); i++) {
+        mapper.unlock(*(mPreviewBuffers[i].mNativeBufPtr));
+        mPreviewWindow->cancel_buffer(mPreviewWindow, mPreviewBuffers[i].mNativeBufPtr);
+    }
+    mPreviewBuffers.clear();
+    return status;
+}
+
+/**
+ * Frees the  preview buffers taken from native window.
+ * Goes through the list of GFx preview buffers and unlocks them all
+ * using the Graphic Buffer Mapper
+ * it does cancel only the ones currently not used by the window
+ *
+ *
+ * @return NO_ERROR
+ *
+ */
+status_t PreviewThread::freeGfxPreviewBuffers() {
+    LOG1("@%s", __FUNCTION__);
+    size_t i;
+    GraphicBufferMapper &mapper = GraphicBufferMapper::get();
+
+    if ((mPreviewWindow != NULL) && (!mPreviewBuffers.isEmpty())) {
+
+        for( i = 0; i < mPreviewBuffers.size(); i++)
+            mapper.unlock(*(mPreviewBuffers[i].mNativeBufPtr));
+
+        mPreviewBuffers.clear();
+        mBuffersInWindow = 0;
+    } else{
+        LOGW("Trying to free preview buffers while window or buffer store are NULL");
+    }
+    return NO_ERROR;
+
 }
 
 } // namespace android

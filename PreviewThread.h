@@ -18,6 +18,7 @@
 #define ANDROID_LIBCAMERA_PREVIEW_THREAD_H
 
 #include <utils/threads.h>
+#include <utils/Vector.h>
 #include <camera.h>
 #include <camera/CameraParameters.h>
 #include "MessageQueue.h"
@@ -27,6 +28,9 @@ namespace android {
 
 class DebugFrameRate;
 class Callbacks;
+
+#define MAX_NUMBER_PREVIEW_GFX_BUFFERS      10  /*!< Maximum capacity of the vector where we store the
+                                                     Gfx Preview Buffers*/
 
 // callback for when Preview thread is done with yuv data
 class ICallbackPreview {
@@ -127,8 +131,10 @@ private:
     status_t waitForAndExecuteMessage();
 
     // buffer helper
-    void freePreviewBuf(void);
-    void allocatePreviewBuf(void);
+    void freeLocalPreviewBuf(void);
+    void allocateLocalPreviewBuf(void);
+    status_t allocateGfxPreviewBuffers(int numberOfBuffers);
+    status_t freeGfxPreviewBuffers();
 
 // inherited from Thread
 private:
@@ -149,7 +155,10 @@ private:
     int mPreviewHeight;
     int mPreviewFormat;
 
-    AtomBuffer mPreviewBuf;
+    AtomBuffer   mPreviewBuf;       /*!< Local preview buffer to give to the user */
+    Vector<AtomBuffer>  mPreviewBuffers;
+
+    int          mBuffersInWindow;
 
 }; // class PreviewThread
 
