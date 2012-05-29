@@ -2699,6 +2699,10 @@ status_t AtomISP::allocatePreviewBuffers()
     LOG1("Allocating %d buffers of size %d", mNumBuffers, size);
     for (int i = 0; i < mNumBuffers; i++) {
          mPreviewBuffers[i].buff = NULL;
+         mPreviewBuffers[i].type = ATOM_BUFFER_PREVIEW;
+         mPreviewBuffers[i].width = mConfig.preview.width;
+         mPreviewBuffers[i].height = mConfig.preview.height;
+         mPreviewBuffers[i].stride = mConfig.preview.padding;
          mCallbacks->allocateMemory(&mPreviewBuffers[i],  mConfig.preview.size);
          if (mPreviewBuffers[i].buff == NULL) {
              LOGE("Error allocation memory for preview buffers!");
@@ -2707,7 +2711,7 @@ status_t AtomISP::allocatePreviewBuffers()
          }
          allocatedBufs++;
          v4l2_buf_pool[mPreviewDevice].bufs[i].data = mPreviewBuffers[i].buff->data;
-        mPreviewBuffers[i].shared = false;
+         mPreviewBuffers[i].shared = false;
     }
     return status;
 

@@ -48,23 +48,53 @@ enum AtomMode {
     MODE_VIDEO = 2,
 };
 
+/*!\enum AtomBufferType
+ *
+ * Different buffer types that AtomBuffer can encapsulate
+ * Type relates to the usage of the buffer
+ */
+enum AtomBufferType {
+    ATOM_BUFFER_PREVIEW_GFX,        /*!< Buffer contains a preview frame allocated from GFx HW */
+    ATOM_BUFFER_PREVIEW,            /*!< Buffer contains a preview frame allocated from AtomISP */
+    ATOM_BUFFER_SNAPSHOT,           /*!< Buffer contains a full resolution snapshot image (uncompressed) */
+    ATOM_BUFFER_SNAPSHOT_JPEG,      /*!< Buffer contains a full resolution snapshot image compressed */
+    ATOM_BUFFER_POSTVIEW,           /*!< Buffer contains a postview image (uncompressed) */
+    ATOM_BUFFER_POSTVIEW_JPEG,      /*!< Buffer contains a postview image (JPEG) */
+    ATOM_BUFFER_VIDEO,              /*!< Buffer contains a video frame  */
+};
+
+/*! \struct AtomBuffer
+ *
+ * Container struct for buffers passed to/from Atom ISP
+ *
+ * The buffer type determines how the actual data is accessed
+ * for all buffer types except ATOM_BUFFER_PREVIEW_GFX data is in *buff
+ * for ATOM_BUFFER_PREVIEW_GFX the data is accessed via gfxData
+ *
+ * Please note that this struct must be kept as POC type.
+ * so not possible to add methods.
+ *
+ */
 struct AtomBuffer {
-    camera_memory_t *buff;
-    int id;                 // id for debugging data flow path
-    int ispPrivate;         // Private to the AtomISP class.
-                            // No other classes should touch this
-    bool shared;            // buffer sharing
+    camera_memory_t *buff;  /*!< Pointer to the memory allocated via the client provided callback */
+    int id;                 /*!< id for debugging data flow path */
+    int ispPrivate;         /*!< Private to the AtomISP class.
+                                 No other classes should touch this */
+    bool shared;            /*!< Flag signaling whether the data is allocated by other components to
+                                 prevent ISP to de-allocate it */
     int width;
     int height;
     int format;
+    int stride;             /*!< stride of the buffer*/
     int size;
-    AtomMode type;          // type
-    IBufferOwner* owner;    //owner who is responsible to enqueue back to AtomISP
-    struct timeval  capture_timestamp;
-                            // system timestamp from when the frame was
-                            // captured
-};
+    AtomBufferType type;                /*!< context in which the buffer is used */
+    IBufferOwner* owner;                /*!< owner who is responsible to enqueue back to AtomISP*/
+    struct timeval  capture_timestamp;  /*!< system timestamp from when the frame was captured */
+    void    *gfxData;                   /*!< pointer to the actual data mapped from the gfx buffer
+                                             only used for PREVIEW_GFX type */
+    buffer_handle_t *mNativeBufPtr;     /*!< native buffer handle from which the gfx data is derived by mapping */
 
+};
 
 enum SensorType {
     SENSOR_TYPE_NONE = 0,

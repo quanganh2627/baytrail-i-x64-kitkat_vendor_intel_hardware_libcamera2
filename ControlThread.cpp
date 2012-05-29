@@ -552,7 +552,8 @@ void ControlThread::previewDone(AtomBuffer *buff)
 void ControlThread::returnBuffer(AtomBuffer *buff)
 {
     LOG2("@%s: buff = %p, id = %d", __FUNCTION__, buff->buff->data, buff->id);
-    if (buff->type == MODE_PREVIEW) {
+    if ((buff->type == ATOM_BUFFER_PREVIEW_GFX) ||
+        (buff->type == ATOM_BUFFER_PREVIEW)) {
         buff->owner = 0;
         releasePreviewFrame (buff);
     }
@@ -1705,7 +1706,6 @@ status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
         mParameters.getPreviewSize(&width, &height);
         LOG2("sending frame data = %p", msg->buff.buff->data);
         msg->buff.owner = this;
-        msg->buff.type = MODE_PREVIEW;
         if (m_pFaceDetector->sendFrame(&msg->buff, width, height) < 0) {
             msg->buff.owner = 0;
             releasePreviewFrame(&msg->buff);
