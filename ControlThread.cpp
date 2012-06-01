@@ -1880,7 +1880,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // FOCUS
     const char* focusMode = params->get(CameraParameters::KEY_FOCUS_MODE);
     const char* focusModes = params->get(CameraParameters::KEY_SUPPORTED_FOCUS_MODES);
-    if (strstr(focusModes, focusMode) == NULL) {
+    if (focusMode && strstr(focusModes, focusMode) == NULL) {
         LOGE("bad focus mode");
         return BAD_VALUE;
     }
@@ -1981,7 +1981,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // ANTI FLICKER
     const char* flickerMode = params->get(CameraParameters::KEY_ANTIBANDING);
     const char* flickerModes = params->get(CameraParameters::KEY_SUPPORTED_ANTIBANDING);
-    if (strstr(flickerModes, flickerMode) == NULL) {
+    if (flickerMode && strstr(flickerModes, flickerMode) == NULL) {
         LOGE("bad anti flicker mode");
         return BAD_VALUE;
     }
@@ -2716,8 +2716,9 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
         }
     }
 
-    // Handling the window information in auto, macro and continuous video mode.
-    // If focus window is set, we will actually use the touch mode!
+    if (!newFocus)
+        return status;
+
     if ((!strncmp(newFocus, CameraParameters::FOCUS_MODE_AUTO, strlen(CameraParameters::FOCUS_MODE_AUTO))) ||
             (!strncmp(newFocus, CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO, strlen(CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO))) ||
             (!strncmp(newFocus, CameraParameters::FOCUS_MODE_MACRO, strlen(CameraParameters::FOCUS_MODE_MACRO)))) {
