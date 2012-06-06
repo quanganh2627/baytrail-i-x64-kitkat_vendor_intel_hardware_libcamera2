@@ -16,7 +16,9 @@
 #define LOG_TAG "Camera_HAL"
 
 #include "ControlThread.h"
+#include "LogHelper.h"
 #include "AtomISP.h"
+#include "PerformanceTraces.h"
 #include <utils/Log.h>
 #include <utils/threads.h>
 
@@ -341,6 +343,12 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
                 hw_device_t** device)
 {
     LOGD("%s", __FUNCTION__);
+
+    // debug/trace setup (done as early as possible, can be called
+    // without taking the instance lock
+    LogHelper::setDebugLevel();
+
+    PerformanceTraces::Launch2Preview::start();
 
     Mutex::Autolock _l(atom_instance_lock);
 

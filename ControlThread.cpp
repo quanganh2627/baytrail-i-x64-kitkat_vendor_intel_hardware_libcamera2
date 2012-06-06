@@ -17,6 +17,7 @@
 
 #include "ControlThread.h"
 #include "LogHelper.h"
+#include "PerformanceTraces.h"
 #include "PreviewThread.h"
 #include "PictureThread.h"
 #include "AtomISP.h"
@@ -91,17 +92,6 @@ ControlThread::ControlThread() :
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
     // This is a workaround for an issue with Thread reference counting.
-
-    // Set the log level from property
-    char gLogLevelProp[PROPERTY_VALUE_MAX];
-    if (property_get("camera.hal.debug", gLogLevelProp, NULL)) {
-        gLogLevel = atoi(gLogLevelProp);
-        // Check that the property value is a valid integer
-        if (gLogLevel > MAX_LOG_LEVEL || gLogLevel < MIN_LOG_LEVEL) {
-            LOGE("Invalid camera.hal.debug property integer value: %s",gLogLevelProp);
-            gLogLevel = 0;
-        }
-    }
 
     LOG1("@%s", __FUNCTION__);
 }
@@ -351,6 +341,7 @@ bool ControlThread::msgTypeEnabled(int32_t msgType)
 status_t ControlThread::startPreview()
 {
     LOG1("@%s", __FUNCTION__);
+    PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
     // send message and block until thread processes message
     Message msg;
     msg.id = MESSAGE_ID_START_PREVIEW;
@@ -515,6 +506,8 @@ status_t ControlThread::cancelPicture()
 status_t ControlThread::autoFocus()
 {
     LOG1("@%s", __FUNCTION__);
+    // track shot2shot stats for frame number #1
+    PerformanceTraces::Shot2Shot::start(1);
     Message msg;
     msg.id = MESSAGE_ID_AUTO_FOCUS;
     return mMessageQueue.send(&msg);
@@ -614,6 +607,7 @@ void ControlThread::sendCommand(int32_t cmd, int32_t arg1, int32_t arg2)
 void ControlThread::autoFocusDone()
 {
     LOG1("@%s", __FUNCTION__);
+    PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
     Message msg;
     msg.id = MESSAGE_ID_AUTO_FOCUS_DONE;
     mMessageQueue.send(&msg);
@@ -705,6 +699,9 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOGE("Error starting ISP!");
         mPreviewThread->returnPreviewBuffers();
     }
+
+    // ISP started so frame counter will be 1
+    PERFORMANCE_TRACES_SHOT2SHOT_STEP("started preview", 1);
 
     return status;
 }
@@ -1233,6 +1230,8 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
     atomisp_makernote_info makerNote;
     SensorParams sensorParams;
 
+    PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
+
     // TODO: temporary, video snapshot needs to be supported, but
     //       implementation is not ready yet
     if (origState == STATE_RECORDING) {
@@ -1387,6 +1386,8 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
             LOG1("Using internal buffers for snapshot");
         }
 
+        PERFORMANCE_TRACES_SHOT2SHOT_STEP("start ISP", -1);
+
         if ((status = mISP->start(MODE_CAPTURE)) != NO_ERROR) {
             LOGE("Error starting the ISP driver in CAPTURE mode!");
             return status;
@@ -1403,6 +1404,8 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
                 return status;
             }
             mHdr.outMainBuf.shared = false;
+            // merging multiple images from ISP, so just set counter to 1
+            mHdr.outMainBuf.frameCounter = 1;
             LOG1("HDR: using %p as HDR main output buffer", mHdr.outMainBuf.buff->data);
             // Postview output buffer
             mCallbacks->allocateMemory(&mHdr.outPostviewBuf, pvSize);
@@ -1530,6 +1533,9 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
             LOGE("Error in grabbing snapshot!");
             return status;
         }
+
+        PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
+                                          snapshotBuffer.frameCounter);
 
         if (mHdr.enabled) {
             // Initialize the HDR CI input buffers (main/postview) for this capture
@@ -1672,6 +1678,9 @@ status_t ControlThread::handleMessageAutoFocus()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     FlashMode flashMode = mAAA->getAeFlashMode();
+
+    PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
+
     // Implement pre auto-focus functions
     if (flashMode != CAM_AE_FLASH_MODE_TORCH && mAAA->is3ASupported()) {
 

@@ -26,6 +26,7 @@ LOCAL_SRC_FILES := \
 	AAAThread.cpp \
 	AtomISP.cpp \
 	DebugFrameRate.cpp \
+	PerformanceTraces.cpp \
 	Callbacks.cpp \
 	AtomAAA.cpp \
 	AtomHAL.cpp \
@@ -44,6 +45,7 @@ LOCAL_SRC_FILES := \
 	PostProcThread.cpp \
 	FaceDetector.cpp
 
+
 LOCAL_C_INCLUDES += \
 	frameworks/base/include \
 	frameworks/base/include/binder \
@@ -58,11 +60,9 @@ LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/pvr/hal \
 	$(TARGET_OUT_HEADERS)/libva 
 	
-
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_C_INCLUDES += \
-	hardware/intel/libva \
-
+	hardware/intel/libva
 endif
 
 LOCAL_SHARED_LIBRARIES := \
@@ -77,15 +77,12 @@ LOCAL_SHARED_LIBRARIES := \
 	libintelmetadatabuffer \
 	libva \
 	libva-tpi \
-	libva-android \
-	
+	libva-android 
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SHARED_LIBRARIES += \
-	libjpeg \
-
+	libjpeg
 LOCAL_CFLAGS += -DUSE_INTEL_JPEG
-
 endif
 
 ifeq ($(TARGET_PRODUCT), mfld_cdk)
@@ -104,6 +101,10 @@ else
 LOCAL_CFLAGS += -DMFLD_PR2
 endif
 
+# enable R&D features only in R&D builds
+ifneq ($(filter userdebug eng tests, $(TARGET_BUILD_VARIANT)),)
+LOCAL_CFLAGS += -DLIBCAMERA_RD_FEATURES
+endif
 
 # The camera.<TARGET_DEVICE>.so will be built for each platform
 # (which should be unique to the TARGET_DEVICE environment)

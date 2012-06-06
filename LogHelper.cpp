@@ -14,8 +14,13 @@
  * limitations under the License.
  */
 
+#include <stdint.h> // INT_MAX, INT_MIN
+#include <stdlib.h> // atoi.h
 #include <utils/Log.h>
+#include <cutils/properties.h>
+
 #include "LogHelper.h"
+#include "PerformanceTraces.h"
 
 int32_t gLogLevel = 0;
 
@@ -23,6 +28,36 @@ using namespace android;
 
 const char CameraParamsLogger::ParamsDelimiter[] = ";";
 const char CameraParamsLogger::ValueDelimiter[]  = "=";
+
+void android::LogHelper::setDebugLevel(void)
+{
+    char gLogLevelProp[PROPERTY_VALUE_MAX];
+    if (property_get("camera.hal.debug", gLogLevelProp, NULL)) {
+        gLogLevel = atoi(gLogLevelProp);
+        LOGD("Debug level is %d", gLogLevel);
+
+        // Check that the property value is a valid integer
+        if (gLogLevel >= INT_MAX || gLogLevel <= INT_MIN) {
+            LOGE("Invalid camera.hal.debug property integer value: %s",gLogLevelProp);
+            gLogLevel = 0;
+        }
+
+        // legacy support: "setprop camera.hal.debug 2" is expected
+        // to enable both LOG1 and LOG2 traces
+        if (gLogLevel & CAMERA_DEBUG_LOG_LEVEL2)
+            gLogLevel |= CAMERA_DEBUG_LOG_LEVEL1;
+
+        // bitmask of tracing categories
+        if (gLogLevel & CAMERA_DEBUG_LOG_PERF_TRACES) {
+            PerformanceTraces::Launch2Preview::enable(true);
+            PerformanceTraces::Shot2Shot::enable(true);
+        }
+        if (gLogLevel & CAMERA_DEBUG_LOG_PERF_TRACES_BREAKDOWN) {
+            PerformanceTraces::Shot2Shot::enableBreakdown(true);
+        }
+    }
+
+}
 
 CameraParamsLogger::CameraParamsLogger(const char * params):mString(params) {
 

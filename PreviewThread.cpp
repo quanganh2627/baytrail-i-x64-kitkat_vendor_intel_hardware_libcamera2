@@ -22,6 +22,7 @@
 #include "ColorConverter.h"
 #include <hal_public.h>
 #include <gui/Surface.h>
+#include "PerformanceTraces.h"
 #include <ui/GraphicBuffer.h>
 #include <ui/GraphicBufferMapper.h>
 #include "AtomCommon.h"
@@ -255,6 +256,10 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
                 }
             }
             mBuffersInWindow++;
+
+            // preview frame shown, update perf traces
+            PerformanceTraces::Launch2Preview::stop();
+            PerformanceTraces::Shot2Shot::stop(msg->buff.frameCounter);
         }
     }
 

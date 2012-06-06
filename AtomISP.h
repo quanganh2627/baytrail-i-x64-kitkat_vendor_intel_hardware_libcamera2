@@ -283,6 +283,7 @@ private:
     Config mConfig;
 
     int video_fds[V4L2_DEVICE_NUM];
+    unsigned int mFrameCounter[V4L2_DEVICE_NUM];
 
     struct v4l2_buffer_pool v4l2_buf_pool[V4L2_DEVICE_NUM]; //pool[0] for device0 pool[1] for device1
 

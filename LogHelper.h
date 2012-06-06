@@ -29,11 +29,32 @@ static void setLogLevel(int level) {
     android_atomic_write(level, &gLogLevel);
 }
 
-#define MIN_LOG_LEVEL   0
-#define MAX_LOG_LEVEL   2
+enum  {
 
-#define LOG1(...) LOGD_IF(gLogLevel >= 1, __VA_ARGS__);
-#define LOG2(...) LOGD_IF(gLogLevel >= 2, __VA_ARGS__);
+    CAMERA_DEBUG_LOG_LEVEL1 = 1,
+    CAMERA_DEBUG_LOG_LEVEL2 = 2,
+
+    // bitmask of debug features
+    // -------------------------
+
+    /* Emit well-formed performance traces */
+    CAMERA_DEBUG_LOG_PERF_TRACES = 1<<7,
+
+    /* Print out detailed timing analysis */
+    CAMERA_DEBUG_LOG_PERF_TRACES_BREAKDOWN = 1<<8,
+
+#if NOTUSED_LIBCAMERA1_LOGLEVELS
+    CAMERA_DEBUG_DUMP_RAW = 1<<2,
+    CAMERA_DEBUG_DUMP_YUV = 1<<3,
+    CAMERA_DEBUG_DUMP_PREVIEW = 1<<4,
+    CAMERA_DEBUG_DUMP_VIDEO = 1<<5,
+    CAMERA_DEBUG_DUMP_SNAPSHOT = 1<<6,
+    CAMERA_DEBUG_DUMP_3A_STATISTICS = 1<<9
+#endif
+};
+
+#define LOG1(...) LOGD_IF(gLogLevel & CAMERA_DEBUG_LOG_LEVEL1, __VA_ARGS__);
+#define LOG2(...) LOGD_IF(gLogLevel & CAMERA_DEBUG_LOG_LEVEL2, __VA_ARGS__);
 
 namespace android {
 
@@ -58,5 +79,14 @@ private:
     static const char ValueDelimiter[];
 
 };
+
+namespace LogHelper {
+
+/**
+ * Runtime selection of debugging level.
+ */
+void setDebugLevel(void);
+
+} // namespace LogHelper
 } // namespace android;
 #endif /* LOGHELPER_H_ */

@@ -1209,6 +1209,9 @@ int AtomISP::startDevice(int device, int buffer_count)
         LOG1("Applied 3A ISP settings!");
     }
 
+    // reset frame counter
+    mFrameCounter[device] = 0;
+
     //parameter intialized before the streamon
     //request, query and mmap the buffer and save to the pool
     ret = createBufferPool(device, buffer_count);
@@ -2507,6 +2510,7 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameS
     }
     LOG2("Device: %d. Grabbed frame of size: %d", mPreviewDevice, buf.bytesused);
     mPreviewBuffers[index].id = index;
+    mPreviewBuffers[index].frameCounter = mFrameCounter[mPreviewDevice];
     mPreviewBuffers[index].ispPrivate = mSessionId;
     mPreviewBuffers[index].capture_timestamp = buf.timestamp;
     *buff = mPreviewBuffers[index];
@@ -2581,6 +2585,7 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp)
     }
     LOG2("Device: %d. Grabbed frame of size: %d", mRecordingDevice, buf.bytesused);
     mRecordingBuffers[index].id = index;
+    mRecordingBuffers[index].frameCounter = mFrameCounter[mRecordingDevice];
     mRecordingBuffers[index].ispPrivate = mSessionId;
     mRecordingBuffers[index].capture_timestamp = buf.timestamp;
     *buff = mRecordingBuffers[index];
@@ -2667,6 +2672,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
     }
 
     mSnapshotBuffers[snapshotIndex].id = snapshotIndex;
+    mSnapshotBuffers[snapshotIndex].frameCounter = mFrameCounter[V4L2_FIRST_DEVICE];
     mSnapshotBuffers[snapshotIndex].ispPrivate = mSessionId;
     *snapshotBuf = mSnapshotBuffers[snapshotIndex];
     snapshotBuf->width = mConfig.snapshot.width;
@@ -2675,6 +2681,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
     snapshotBuf->size = mConfig.snapshot.size;
 
     mPostviewBuffers[postviewIndex].id = postviewIndex;
+    mPostviewBuffers[postviewIndex].frameCounter = mFrameCounter[V4L2_SECOND_DEVICE];
     mPostviewBuffers[postviewIndex].ispPrivate = mSessionId;
     *postviewBuf = mPostviewBuffers[postviewIndex];
     postviewBuf->width = mConfig.postview.width;
@@ -2757,6 +2764,10 @@ int AtomISP::grabFrame(int device, struct v4l2_buffer *buf)
 
     if (ret < 0)
         return ret;
+
+    // inc frame counter but do no wrap to negative numbers
+    ++mFrameCounter[device];
+    mFrameCounter[device] &= INT_MAX;
 
     return buf->index;
 }

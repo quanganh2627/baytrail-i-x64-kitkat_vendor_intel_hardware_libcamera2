@@ -79,6 +79,7 @@ struct AtomBuffer {
     camera_memory_t *buff;  /*!< Pointer to the memory allocated via the client provided callback */
     camera_memory_t *metadata_buff; /*!< Pointer to the memory allocated by callback, used to store metadata info for recording */
     int id;                 /*!< id for debugging data flow path */
+    int frameCounter;       /*!< monotonic frame counter set by AtomISP */
     int ispPrivate;         /*!< Private to the AtomISP class.
                                  No other classes should touch this */
     bool shared;            /*!< Flag signaling whether the data is allocated by other components to

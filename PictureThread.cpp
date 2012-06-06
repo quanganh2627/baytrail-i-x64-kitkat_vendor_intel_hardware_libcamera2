@@ -15,6 +15,7 @@
  */
 #define LOG_TAG "Camera_PictureThread"
 
+#include "PerformanceTraces.h"
 #include "PictureThread.h"
 #include "LogHelper.h"
 #include "Callbacks.h"
@@ -345,6 +346,8 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 
     jpegBuf.buff = NULL;
 
+    PERFORMANCE_TRACES_SHOT2SHOT_STEP("encoding frame", msg->snaphotBuf.frameCounter);
+
     // Encode the image
     AtomBuffer *postviewBuf = msg->postviewBuf.buff == NULL ? NULL : &msg->postviewBuf;
     exifMaker.setSensorParams(msg->sensorParams);
@@ -357,6 +360,8 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
         }
         jpegBuf.buff = NULL;
     }
+
+    PERFORMANCE_TRACES_SHOT2SHOT_STEP("frame encoded", msg->snaphotBuf.frameCounter);
 
     mCallbacksThread->compressedFrameDone(&jpegBuf, &msg->snaphotBuf, &msg->postviewBuf);
     return status;
