@@ -746,6 +746,9 @@ status_t ControlThread::stopCapture()
         if (mHdr.ciBufOut.ciPostviewBuf != NULL) {
             delete[] mHdr.ciBufOut.ciPostviewBuf;
         }
+        // restore HDR save original settings as requested by the application
+        mHdr.saveOrig = mHdr.appSaveOrig;
+        mHdr.saveOrigRequest = mHdr.appSaveOrigRequest;
     }
     return status;
 }
@@ -2413,8 +2416,6 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
             mHdr.enabled = true;
             mHdr.bracketMode = BRACKET_EXPOSURE;
             mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
-            mHdr.saveOrig = false;
-            mHdr.saveOrigRequest = false;
         } else if(!strncmp(newValue, "off", strlen("off"))) {
             mHdr.enabled = false;
         } else {
@@ -2472,11 +2473,11 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
     newValue = newParams->get(CameraParameters::KEY_HDR_SAVE_ORIGINAL);
     if (oldValue && newValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
         if(!strncmp(newValue, "on", strlen("on"))) {
-            mHdr.saveOrig = true;
-            mHdr.saveOrigRequest = true;
+            mHdr.appSaveOrig = mHdr.saveOrig = true;
+            mHdr.appSaveOrigRequest = mHdr.saveOrigRequest = true;
         } else if(!strncmp(newValue, "off", strlen("off"))) {
-            mHdr.saveOrig = false;
-            mHdr.saveOrigRequest = false;
+            mHdr.appSaveOrig = mHdr.saveOrig = false;
+            mHdr.appSaveOrigRequest = mHdr.saveOrigRequest = false;
         } else {
             LOGE("Invalid value received for %s: %s", CameraParameters::KEY_HDR_SAVE_ORIGINAL, newValue);
             status = BAD_VALUE;
