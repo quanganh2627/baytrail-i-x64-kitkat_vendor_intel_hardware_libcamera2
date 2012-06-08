@@ -1104,16 +1104,18 @@ status_t ControlThread::applyBracketing()
 
     switch (mBracketing.mode) {
     case BRACKET_EXPOSURE:
-        LOG1("Applying Exposure Bracketing: %.2f", mBracketing.currentValue);
-        status = mAAA->applyEv(mBracketing.currentValue);
-        mAAA->getExposureInfo(sensorParams);
-        sensorParams.evBias = mBracketing.currentValue;
-        LOG1("Adding sensorParams to list (size=%d+1)", mBracketingParams.size());
-        mBracketingParams.push_front(sensorParams);
-        if (status == NO_ERROR &&
-            mBracketing.currentValue + mBracketing.step <= mBracketing.maxValue) {
-            LOG1("Exposure Bracketing: incrementing exposure value with: %.2f", mBracketing.step);
-            mBracketing.currentValue += mBracketing.step;
+        if (mBracketing.currentValue <= mBracketing.maxValue) {
+            LOG1("Applying Exposure Bracketing: %.2f", mBracketing.currentValue);
+            status = mAAA->applyEv(mBracketing.currentValue);
+            mAAA->getExposureInfo(sensorParams);
+            sensorParams.evBias = mBracketing.currentValue;
+
+            LOG1("Adding sensorParams to list (size=%d+1)", mBracketingParams.size());
+            mBracketingParams.push_front(sensorParams);
+            if (status == NO_ERROR) {
+                LOG1("Exposure Bracketing: incrementing exposure value with: %.2f", mBracketing.step);
+                mBracketing.currentValue += mBracketing.step;
+            }
         }
         break;
     case BRACKET_FOCUS:
