@@ -3410,6 +3410,12 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
     case CAMERA_CMD_STOP_FACE_DETECTION:
         status = stopFaceDetection();
         break;
+    case CAMERA_CMD_START_SCENE_DETECTION:
+        status = startSmartSceneDetection();
+        break;
+    case CAMERA_CMD_STOP_SCENE_DETECTION:
+        status = stopSmartSceneDetection();
+        break;
     default:
         break;
     }
@@ -3432,6 +3438,31 @@ status_t ControlThread::handleMessageConfigureFileInject(MessageConfigureFileInj
     mISP->configureFileInject(c->fileName, c->width, c->height, c->format, c->bayerOrder);
     mMessageQueue.reply(MESSAGE_ID_CONFIGURE_FILE_INJECT, status);
     return status;
+}
+
+/**
+ * Start Smart scene detection. This should be called after preview is started.
+ * The camera will notify Camera.SmartSceneDetectionListener when a new scene
+ * is detected.
+ */
+status_t ControlThread::startSmartSceneDetection()
+{
+    LOG2("@%s", __FUNCTION__);
+    if (mState == STATE_STOPPED || mAAA->getSmartSceneDetection()) {
+        return INVALID_OPERATION;
+    }
+    mAAA->setSmartSceneDetection(true);
+    return NO_ERROR;
+}
+
+status_t ControlThread::stopSmartSceneDetection()
+{
+    LOG2("@%s", __FUNCTION__);
+    if (mState == STATE_STOPPED || !mAAA->getSmartSceneDetection()) {
+        return INVALID_OPERATION;
+    }
+    mAAA->setSmartSceneDetection(false);
+    return NO_ERROR;
 }
 
 /**

@@ -379,6 +379,8 @@ private:
     status_t startFaceDetection();
     status_t stopFaceDetection(bool wait=false);
     status_t handleMessageFacesDetected(MessageFacesDetected* msg);
+    status_t startSmartSceneDetection();
+    status_t stopSmartSceneDetection();
     status_t handleMessageStopCapture();
     void releasePreviewFrame(AtomBuffer* buff);
 

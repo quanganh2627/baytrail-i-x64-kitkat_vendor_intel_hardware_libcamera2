@@ -243,6 +243,8 @@ public:
     status_t getManualIso(int *ret);
     status_t setManualShutter(float expTime);
     status_t getManualShutter(float *expTime);
+    status_t setSmartSceneDetection(bool en);
+    bool     getSmartSceneDetection();
 
     // ISP processing functions
     status_t applyDvsProcess();

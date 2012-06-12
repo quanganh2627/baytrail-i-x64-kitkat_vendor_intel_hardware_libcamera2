@@ -1133,4 +1133,24 @@ status_t AtomAAA::composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& o
     return NO_ERROR;
 }
 
+status_t AtomAAA::setSmartSceneDetection(bool en)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s: en = %d", __FUNCTION__, en);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+    ci_adv_dsd_enable(en);
+    return NO_ERROR;
+}
+
+bool AtomAAA::getSmartSceneDetection()
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    bool ret = false;
+    if(mHas3A)
+        ret = ci_adv_dsd_is_enabled();
+    return ret;
+}
+
 } //  namespace android
