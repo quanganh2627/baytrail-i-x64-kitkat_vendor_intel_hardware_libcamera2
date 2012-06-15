@@ -153,6 +153,28 @@ struct CiUserBuffer {
     size_t ciBufNum;
 };
 
+/**
+ * \class AtomAAA
+ *
+ * AtomAAA is a singleton interface to Intel Advanced Camera Imaging
+ * Library (formerly known as libmfldadvci).
+ *
+ * While AAA is the main big module offered by the imaging library,
+ * it also provides other functionality. Due to this, in addition
+ * to AAAThread that handles actual AAA processing, many other
+ * subcomponents of HAL need to use AtomAAA.
+ *
+ * Due to the non-reentrant design, it is critical that all access
+ * to the imaging library go via AtomAAA. To encapsulate the
+ * interface, care should be also taken that data types and other
+ * definitions in the imaging library are not directly used outside
+ * AtomAAA implementation.
+ *
+ * TODO: The imaging library is being refactorer and will in the
+ *       longer term offer object-based interface to different
+ *       imaging modules. Once this is complete, the singleton model
+ *       will no longer be needed.
+ */
 class AtomAAA {
 
 // constructor/destructor

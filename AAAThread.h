@@ -35,6 +35,22 @@ namespace android {
 
 class AtomAAA;
 
+/**
+ * \class AAAThread
+ *
+ * AAAThread runs the actual 3A process for preview frames. In video
+ * mode it also handles DVS.
+ *
+ * The implementation is done using AtomAAA singleton class,
+ * but note that AtomAAA offers a much wider set of features and not
+ * just 3A, so the two classes should not be confused. Please refer to
+ * AtomAAA class documentation for more information.
+ *
+ * TODO: In long term, the goal is to get rid of AtomAAA singleton
+ *       and use instance of Intel 3A libraries directly from
+ *       AAAThread. But this is not yet supported by the underlying
+ *       libraries so for now AtomAAA is used.
+ */
 class AAAThread : public Thread {
 
 // constructor destructor
