@@ -568,23 +568,6 @@ void ControlThread::sendCommand(int32_t cmd, int32_t arg1, int32_t arg2)
     mMessageQueue.send(&msg);
 }
 
-void ControlThread::redEyeRemovalDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
-{
-    LOG1("@%s: snapshotBuf = %p, postviewBuf = %p, id = %d",
-            __FUNCTION__,
-            snapshotBuf->buff->data,
-            postviewBuf->buff->data,
-            snapshotBuf->id);
-    Message msg;
-    msg.id = MESSAGE_ID_REDEYE_REMOVAL_DONE;
-    msg.data.redEyeRemovalDone.snapshotBuf = *snapshotBuf;
-    if (postviewBuf)
-        msg.data.redEyeRemovalDone.postviewBuf = *postviewBuf;
-    else
-        msg.data.redEyeRemovalDone.postviewBuf.buff->data = NULL; // optional
-    mMessageQueue.send(&msg);
-}
-
 void ControlThread::autoFocusDone()
 {
     LOG1("@%s", __FUNCTION__);
@@ -1509,27 +1492,6 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
         }
     }
 
-    /*
-     * Handle Red-Eye removal. The Red-Eye removal should be done in a separate thread, so if we are
-     * in burst-capture mode, we can do: grab frames in ControlThread, Red-Eye removal in AAAThread
-     * and JPEG encoding in Picture thread, all in parallel.
-     */
-    if (!mHdr.enabled && mAAA->is3ASupported() && flashOn && mAAA->getRedEyeRemoval()) {
-        // tell 3A thread to remove red-eye
-        if (mState == STATE_CAPTURE) {
-            status = m3AThread->applyRedEyeRemoval(&snapshotBuffer, &postviewBuffer, width, height, format);
-        } else {
-            mCoupledBuffers[mLastRecordingBuffIndex].videoSnapshotBuff = true;
-            status = m3AThread->applyRedEyeRemoval(&snapshotBuffer, NULL, width, height, format);
-        }
-
-        if (status == NO_ERROR) {
-            return status;
-        } else {
-            LOGE("Red-Eye removal failed! Continue to encode picture...");
-        }
-    }
-
     // Do jpeg encoding
     if (mState == STATE_CAPTURE) {
         if (!mBracketingParams.empty()) {
@@ -1808,16 +1770,6 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
     return status;
 }
 
-status_t ControlThread::handleMessageRedEyeRemovalDone(MessagePicture *msg)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-
-    status = mPictureThread->encode(NULL, &msg->snapshotBuf, &msg->postviewBuf);
-
-    return status;
-}
-
 status_t ControlThread::handleMessageAutoFocusDone()
 {
     LOG1("@%s", __FUNCTION__);
@@ -2052,11 +2004,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         if (status == NO_ERROR || !mFaceDetectionActive) {
             // white balance
             status = processParamWhiteBalance(oldParams, newParams);
-        }
-
-        if (status == NO_ERROR) {
-            // red-eye removal
-            status = processParamRedEyeMode(oldParams, newParams);
         }
 
         if (status == NO_ERROR) {
@@ -3104,29 +3051,6 @@ status_t ControlThread::processParamWhiteBalance(const CameraParameters *oldPara
     return status;
 }
 
-status_t ControlThread::processParamRedEyeMode(const CameraParameters *oldParams,
-        CameraParameters *newParams)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-#ifdef RED_EYE_MODE_SUPPORT
-    const char* oldRedEye = oldParams->get(CameraParameters::KEY_RED_EYE_MODE);
-    const char* newRedEye = newParams->get(CameraParameters::KEY_RED_EYE_MODE);
-    if (newRedEye && oldRedEye && strncmp(newRedEye, oldRedEye, MAX_PARAM_VALUE_LENGTH) != 0) {
-        bool doRedEyeRemoval = true;
-
-        if(!strncmp(newRedEye, CameraParameters::RED_EYE_REMOVAL_OFF, strlen(CameraParameters::RED_EYE_REMOVAL_OFF)))
-            doRedEyeRemoval= false;
-
-        status = mAAA->setRedEyeRemoval(doRedEyeRemoval);
-        if (status == NO_ERROR) {
-            LOG1("Changed: %s -> %s", CameraParameters::KEY_RED_EYE_MODE, newRedEye);
-        }
-    }
-#endif
-    return status;
-}
-
 status_t ControlThread::processStaticParameters(const CameraParameters *oldParams,
         CameraParameters *newParams)
 {
@@ -3499,10 +3423,6 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_PICTURE_DONE:
             status = handleMessagePictureDone(&msg.data.pictureDone);
-            break;
-
-        case MESSAGE_ID_REDEYE_REMOVAL_DONE:
-            status = handleMessageRedEyeRemovalDone(&msg.data.redEyeRemovalDone);
             break;
 
         case MESSAGE_ID_AUTO_FOCUS_DONE:

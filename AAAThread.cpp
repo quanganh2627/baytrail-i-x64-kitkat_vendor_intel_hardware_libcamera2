@@ -91,24 +91,6 @@ status_t AAAThread::newFrame(struct timeval capture_timestamp)
     return status;
 }
 
-status_t AAAThread::applyRedEyeRemoval(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer, int width, int height, int format)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    if (snapshotBuffer == NULL || snapshotBuffer->buff == NULL)
-        return INVALID_OPERATION;
-
-    Message msg;
-    msg.id = MESSAGE_ID_REMOVE_REDEYE;
-    msg.data.picture.snaphotBuf = *snapshotBuffer;
-    msg.data.picture.postviewBuf = *postviewBuffer;
-    msg.data.picture.format = format;
-    msg.data.picture.height = height;
-    msg.data.picture.width = width;
-    status = mMessageQueue.send(&msg);
-    return status;
-}
-
 status_t AAAThread::handleMessageExit()
 {
     LOG1("@%s", __FUNCTION__);
@@ -225,17 +207,6 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
     return status;
 }
 
-status_t AAAThread::handleMessageRemoveRedEye(MessagePicture* msg)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    status = mAAA->applyRedEyeRemoval(msg->snaphotBuf, msg->width, msg->height, msg->format);
-
-    // When the red-eye removal is done, send back the buffers to ControlThread to encode picture.
-    mAAADoneCallback->redEyeRemovalDone(&msg->snaphotBuf, &msg->postviewBuf);
-    return status;
-}
-
 status_t AAAThread::waitForAndExecuteMessage()
 {
     LOG2("@%s", __FUNCTION__);
@@ -267,10 +238,6 @@ status_t AAAThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_NEW_FRAME:
             status = handleMessageNewFrame(msg.data.frame.capture_timestamp);
-            break;
-
-    case MESSAGE_ID_REMOVE_REDEYE:
-            status = handleMessageRemoveRedEye(&msg.data.picture);
             break;
 
         default:

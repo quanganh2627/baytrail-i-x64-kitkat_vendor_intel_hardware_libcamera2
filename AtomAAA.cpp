@@ -34,7 +34,6 @@ AtomAAA::AtomAAA() :
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
     ,mFocusPosition(0)
     ,mStillAfStart(0)
-    ,mRedeyeEnabled(false)
 {
     LOG1("@%s", __FUNCTION__);
     mIspSettings.GBCE_strength = DEFAULT_GBCE_STRENGTH;
@@ -77,7 +76,6 @@ status_t AtomAAA::unInit()
     mAfMode = CAM_AF_MODE_NOT_SET;
     mAwbMode = CAM_AWB_MODE_NOT_SET;
     mFlashMode = CAM_AE_FLASH_MODE_NOT_SET;
-    mRedeyeEnabled = false;
     mFocusPosition = 0;
     return NO_ERROR;
 }
@@ -682,25 +680,6 @@ status_t AtomAAA::setAeBacklightCorrection(bool en)
     return NO_ERROR;
 }
 
-status_t AtomAAA::setRedEyeRemoval(bool en)
-{
-    Mutex::Autolock lock(m3aLock);
-    LOG1("@%s: en = %d", __FUNCTION__, en);
-    if(!mHas3A)
-        return INVALID_OPERATION;
-    mRedeyeEnabled = en;
-    return NO_ERROR;
-}
-
-bool AtomAAA::getRedEyeRemoval()
-{
-    Mutex::Autolock lock(m3aLock);
-    LOG1("@%s", __FUNCTION__);
-    if(!mHas3A)
-        return false;
-   return mRedeyeEnabled;
-}
-
 status_t AtomAAA::setAwbMapping(ia_3a_awb_map mode)
 {
     Mutex::Autolock lock(m3aLock);
@@ -1087,34 +1066,6 @@ status_t AtomAAA::applyPreFlashProcess(FlashStage stage)
 
     return NO_ERROR;
 
-}
-
-status_t AtomAAA::applyRedEyeRemoval(const AtomBuffer &snapshotBuffer, int width, int height, int format) {
-    Mutex::Autolock lock(m3aLock);
-    LOG1("@%s: buffer = %p, w = %d, h = %d, f = %d", __FUNCTION__, &snapshotBuffer, width, height, format);
-    status_t status = NO_ERROR;
-    ia_frame user_buf;
-
-    if(!mHas3A)
-        return INVALID_OPERATION;
-
-    switch (format) {
-    case V4L2_PIX_FMT_NV12:
-        user_buf.format = ia_frame_format_nv12;
-        break;
-    case V4L2_PIX_FMT_YUV420:
-        user_buf.format = ia_frame_format_yuv420;
-        break;
-    default:
-        LOGE("RedEyeRemoval: unsupported frame format: %s", v4l2Fmt2Str(format));
-        return INVALID_OPERATION;
-    }
-    user_buf.addr = snapshotBuffer.buff->data;
-    user_buf.width = width;
-    user_buf.height = height;
-    user_buf.length = snapshotBuffer.buff->size;
-    ia_redeye_correct(&user_buf);
-    return status;
 }
 
 status_t AtomAAA::applyDvsProcess()

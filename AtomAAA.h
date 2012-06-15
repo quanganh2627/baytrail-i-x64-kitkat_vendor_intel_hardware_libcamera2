@@ -26,7 +26,6 @@ extern "C" {
 #endif
 #include "ci_adv_pub.h"
 #include "ci_adv_property.h"
-
 #ifdef __cplusplus
 }
 #endif
@@ -202,8 +201,6 @@ public:
     bool     getAfLock();
     status_t setAwbLock(bool en);
     bool     getAwbLock();
-    status_t setRedEyeRemoval(bool en);
-    bool     getRedEyeRemoval();
     status_t setAwbMapping(ia_3a_awb_map mode);
     ia_3a_awb_map getAwbMapping();
     size_t   getAfMaxNumWindows();
@@ -226,7 +223,6 @@ public:
     status_t getManualShutter(float *expTime);
 
     // ISP processing functions
-    status_t applyRedEyeRemoval(const AtomBuffer &snapshotBuffer, int width, int height, int format);
     status_t applyDvsProcess();
     status_t apply3AProcess(bool read_stats,
         struct timeval capture_timestamp);
@@ -254,7 +250,6 @@ private:
     AwbMode mAwbMode;
     int mFocusPosition;
     nsecs_t mStillAfStart;
-    bool mRedeyeEnabled;
 }; // class AtomAAA
 
 }; // namespace android

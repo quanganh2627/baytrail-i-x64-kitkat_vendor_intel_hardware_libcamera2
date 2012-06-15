@@ -116,7 +116,6 @@ public:
 private:
     virtual void previewDone(AtomBuffer *buff);
     virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
-    virtual void redEyeRemovalDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void autoFocusDone();
     virtual void returnBuffer(AtomBuffer *buff);
 
@@ -144,7 +143,6 @@ private:
         MESSAGE_ID_PICTURE_DONE,
         MESSAGE_ID_SET_PARAMETERS,
         MESSAGE_ID_GET_PARAMETERS,
-        MESSAGE_ID_REDEYE_REMOVAL_DONE,
         MESSAGE_ID_AUTO_FOCUS_DONE,
         MESSAGE_ID_COMMAND,
         MESSAGE_ID_FACES_DETECTED,
@@ -222,8 +220,6 @@ private:
         // MESSAGE_ID_GET_PARAMETERS
         MessageGetParameters getParameters;
 
-        // MESSAGE_ID_REDEYE_REMOVAL_DONE
-        MessagePicture redEyeRemovalDone;
         // MESSAGE_ID_COMMAND
         MessageCommand command;
         //MESSAGE_ID_FACES_DETECTED
@@ -369,7 +365,6 @@ private:
     status_t handleMessagePictureDone(MessagePicture *msg);
     status_t handleMessageSetParameters(MessageSetParameters *msg);
     status_t handleMessageGetParameters(MessageGetParameters *msg);
-    status_t handleMessageRedEyeRemovalDone(MessagePicture *msg);
     status_t handleMessageAutoFocusDone();
     status_t handleMessageCommand(MessageCommand* msg);
     status_t handleMessageConfigureFileInject(MessageConfigureFileInject *msg);
@@ -425,8 +420,6 @@ private:
     status_t processParamFocusMode(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamWhiteBalance(const CameraParameters *oldParams,
-            CameraParameters *newParams);
-    status_t processParamRedEyeMode(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamSetMeteringAreas(const CameraParameters * oldParams,
             CameraParameters * newParams);

@@ -26,12 +26,10 @@ namespace android {
 
     class Callbacks;
 
-// callback for when AAA thread is done with redeye removed data
     class ICallbackAAA {
     public:
         ICallbackAAA() {}
         virtual ~ICallbackAAA() {}
-        virtual void redEyeRemovalDone(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer) = 0;
         virtual void autoFocusDone() = 0;
     };
 
