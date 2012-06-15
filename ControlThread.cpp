@@ -140,7 +140,9 @@ status_t ControlThread::init(int cameraId)
         goto bail;
     }
 
-    mPreviewThread = new PreviewThread((ICallbackPreview *) this);
+    // we implement the ICallbackPreview interface, so pass
+    // this as argument
+    mPreviewThread = new PreviewThread(this);
     if (mPreviewThread == NULL) {
         LOGE("error creating PreviewThread");
         goto bail;
@@ -158,7 +160,8 @@ status_t ControlThread::init(int cameraId)
         goto bail;
     }
 
-    m3AThread = new AAAThread((ICallbackAAA *) this);
+    // we implement ICallbackAAA interface
+    m3AThread = new AAAThread(this);
     if (m3AThread == NULL) {
         LOGE("error creating 3AThread");
         goto bail;
@@ -170,7 +173,8 @@ status_t ControlThread::init(int cameraId)
         goto bail;
     }
 
-    mCallbacksThread = CallbacksThread::getInstance((ICallbackPicture *) this);
+    // we implement ICallbackPicture interface
+    mCallbacksThread = CallbacksThread::getInstance(this);
     if (mCallbacksThread == NULL) {
         LOGE("error creating CallbacksThread");
         goto bail;
