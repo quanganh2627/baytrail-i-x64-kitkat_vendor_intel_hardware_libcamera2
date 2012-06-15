@@ -1137,12 +1137,12 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
     atomisp_makernote_info makerNote;
     SensorParams sensorParams;
 
-#ifndef ANDROID_2036
+    // TODO: temporary, video snapshot needs to be supported, but
+    //       implementation is not ready yet
     if (origState == STATE_RECORDING) {
         LOGE("Video snapshot not supported!");
         return INVALID_OPERATION;
     }
-#endif
 
     if (clientRequest || (mHdr.enabled && mHdr.saveOrigRequest)) {
         bool requestPostviewCallback = true;

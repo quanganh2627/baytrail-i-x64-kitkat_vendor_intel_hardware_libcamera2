@@ -36,9 +36,7 @@ class JpegCompressor {
     SkImageEncoder* mJpegEncoder; // used for small images (< 512x512)
     void *mJpegCompressStruct;
     bool mStartSharedBuffersEncode;
-#ifndef ANDROID_1998
     bool mStartCompressDone;
-#endif
 
     bool convertRawImage(void* src, void* dst, int width, int height, int format);
 
