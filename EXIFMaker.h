@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "JpegEncoder.h"
+#include "exif/ExifCreater.h"
 #include "AtomAAA.h"
 #include <camera/CameraParameters.h>
 
@@ -27,7 +27,7 @@ namespace android {
 
 class EXIFMaker {
 private:
-    JpegEncoder encoder;
+    ExifCreater encoder;
     AtomAAA *mAAA;
     SensorParams sensorParams;
     exif_attribute_t exifAttributes;

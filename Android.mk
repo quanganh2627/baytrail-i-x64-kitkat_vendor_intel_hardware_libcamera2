@@ -32,7 +32,8 @@ LOCAL_SRC_FILES := \
 	JpegCompressor.cpp \
 	CallbacksThread.cpp \
 	LogHelper.cpp \
-	PlatformData.cpp
+	PlatformData.cpp \
+	exif/ExifCreater.cpp
 
 ifeq ($(FACE_DETECTION_TYPE),ola)
 LOCAL_SRC_FILES += OlaFaceDetect.cpp 
@@ -47,7 +48,6 @@ LOCAL_C_INCLUDES += \
 	hardware/libhardware/include/hardware \
 	external/skia/include/core \
 	external/skia/include/images \
-	hardware/intel/libs3cjpeg \
 	$(TARGET_OUT_HEADERS)/libsharedbuffer \
 	$(TARGET_OUT_HEADERS)/libmfldadvci \
 	$(TARGET_OUT_HEADERS)/libCameraFaceDetection \
@@ -67,7 +67,6 @@ LOCAL_SHARED_LIBRARIES := \
 	libskia \
 	libandroid \
 	libui \
-	libs3cjpeg \
 	libsharedbuffer \
 	libmfldadvci \
 	

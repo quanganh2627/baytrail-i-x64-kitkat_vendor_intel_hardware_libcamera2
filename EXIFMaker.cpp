@@ -443,7 +443,7 @@ size_t EXIFMaker::makeExif(unsigned char **data)
         LOGE("NULL pointer passed for EXIF. Cannot generate EXIF!");
         return 0;
     }
-    if (encoder.makeExif(*data, &exifAttributes, &exifSize, false) == JPG_SUCCESS) {
+    if (encoder.makeExif(*data, &exifAttributes, &exifSize) == EXIF_SUCCESS) {
         LOG1("Generated EXIF (@%p) of size: %u", *data, exifSize);
         return exifSize;
     }
