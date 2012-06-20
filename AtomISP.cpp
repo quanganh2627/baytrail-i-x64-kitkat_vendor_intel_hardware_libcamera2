@@ -2910,17 +2910,8 @@ size_t AtomISP::setupCameraInfo()
         }
         sCamInfo[i].port = input.reserved[1];
         sCamInfo[i].index = i;
-        /*
-         * Workaround for current libmfldadvci.so library which needs the sensor name
-         * in init function. But that function looks only to the first word of the sensor name.
-         */
-        char *name = (char*)input.name;
-        char *pos = strchr(name, ' ');
-        if (pos > name) {
-            name[pos - name] = '\0';
-        }
         strncpy(sCamInfo[i].name, (const char *)input.name, MAX_SENSOR_NAME_LENGTH);
-        LOG1("Detected sensor %s", sCamInfo[i].name);
+        LOG1("Detected sensor \"%s\"", sCamInfo[i].name);
         numCameras++;
     }
     return numCameras;
