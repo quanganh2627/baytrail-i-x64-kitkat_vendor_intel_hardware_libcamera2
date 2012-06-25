@@ -157,6 +157,8 @@ private:
     bool mStartAF;
     bool mStopAF;
     size_t mFramesTillAfComplete; // used for debugging only
+    int mSmartSceneMode; // Current detected scene mode, as defined in ia_aiq_external_toolbox.h
+    bool mSmartSceneHdr; // Indicates whether the detected scene is valid for HDR
 }; // class AAAThread
 
 }; // namespace android

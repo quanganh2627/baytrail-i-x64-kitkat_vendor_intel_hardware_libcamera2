@@ -34,6 +34,8 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone) :
     ,mDVSRunning(false)
     ,mStartAF(false)
     ,mStopAF(false)
+    ,mSmartSceneMode(0)
+    ,mSmartSceneHdr(false)
 {
     LOG1("@%s", __FUNCTION__);
 }
@@ -155,6 +157,9 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    int sceneMode = 0;
+    bool sceneHdr = false;
+
     if (!mDVSRunning && !m3ARunning)
         return status;
 
@@ -197,6 +202,18 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
                 mCallbacks->autofocusDone(afStatus == ia_3a_af_status_success);
                 // Also notify ControlThread that the auto-focus is finished
                 mAAADoneCallback->autoFocusDone();
+            }
+        }
+
+        // Query the detected scene and notify the application
+        if (mAAA->getSmartSceneDetection()) {
+            mAAA->getSmartSceneMode(&sceneMode, &sceneHdr);
+
+            if ((sceneMode != mSmartSceneMode) || (sceneHdr != mSmartSceneHdr)) {
+                LOG1("SmartScene: new scene detected: %d, HDR: %d", sceneMode, sceneHdr);
+                mSmartSceneMode = sceneMode;
+                mSmartSceneHdr = sceneHdr;
+                mCallbacks->sceneDetected(sceneMode, sceneHdr);
             }
         }
     }

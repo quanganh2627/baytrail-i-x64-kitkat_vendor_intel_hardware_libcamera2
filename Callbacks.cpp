@@ -152,6 +152,17 @@ void Callbacks::facesDetected(camera_frame_metadata_t &face_metadata)
     }
 }
 
+void Callbacks::sceneDetected(int sceneMode, bool sceneHdr)
+{
+    LOG1("@%s", __FUNCTION__);
+#if 0
+    if ((mMessageFlags & CAMERA_MSG_SCENE_DETECT) && mNotifyCB != NULL) {
+        LOG1("Sending message: CAMERA_MSG_SCENE_DETECT, scene = %d, HDR = %d", sceneMode, (int) sceneHdr);
+        mNotifyCB(CAMERA_MSG_SCENE_DETECT, sceneMode, (int) sceneHdr, mUserToken);
+    }
+#endif
+}
+
 void Callbacks::allocateMemory(AtomBuffer *buff, int size)
 {
     LOG1("@%s", __FUNCTION__);

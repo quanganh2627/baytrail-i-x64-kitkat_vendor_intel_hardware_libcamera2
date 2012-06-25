@@ -3410,12 +3410,15 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
     case CAMERA_CMD_STOP_FACE_DETECTION:
         status = stopFaceDetection();
         break;
+        //[FIXME]   comment SMART SCENE DETECTION
+#if 0
     case CAMERA_CMD_START_SCENE_DETECTION:
         status = startSmartSceneDetection();
         break;
     case CAMERA_CMD_STOP_SCENE_DETECTION:
         status = stopSmartSceneDetection();
         break;
+#endif
     default:
         break;
     }

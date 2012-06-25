@@ -1153,4 +1153,14 @@ bool AtomAAA::getSmartSceneDetection()
     return ret;
 }
 
+status_t AtomAAA::getSmartSceneMode(int *sceneMode, bool *sceneHdr)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG2("@%s", __FUNCTION__);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+    ci_adv_dsd_get_scene((ia_aiq_scene_mode*) sceneMode, sceneHdr);
+    return NO_ERROR;
+}
+
 } //  namespace android

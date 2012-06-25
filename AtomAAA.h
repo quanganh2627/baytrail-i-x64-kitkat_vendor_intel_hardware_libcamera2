@@ -245,6 +245,7 @@ public:
     status_t getManualShutter(float *expTime);
     status_t setSmartSceneDetection(bool en);
     bool     getSmartSceneDetection();
+    status_t getSmartSceneMode(int *sceneMode, bool *sceneHdr);
 
     // ISP processing functions
     status_t applyDvsProcess();

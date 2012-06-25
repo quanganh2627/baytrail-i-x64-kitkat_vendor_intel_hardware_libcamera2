@@ -59,6 +59,7 @@ public:
 
     void allocateMemory(AtomBuffer *buff, int size);
     void facesDetected(camera_frame_metadata_t &face_metadata);
+    void sceneDetected(int sceneMode, bool sceneHdr);
 
 private:
     camera_notify_callback mNotifyCB;
