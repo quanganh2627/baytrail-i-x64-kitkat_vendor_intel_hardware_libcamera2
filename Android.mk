@@ -55,7 +55,7 @@ LOCAL_C_INCLUDES += \
 	hardware/libhardware/include/hardware \
 	external/skia/include/core \
 	external/skia/include/images \
-	$(TARGET_OUT_HEADERS)/libsharedbuffer \
+	hardware/intel/PRIVATE/libmix/videoencoder \
 	$(TARGET_OUT_HEADERS)/libmfldadvci \
 	$(TARGET_OUT_HEADERS)/libCameraFaceDetection \
 	$(TARGET_OUT_HEADERS)/pvr/hal \
@@ -75,8 +75,8 @@ LOCAL_SHARED_LIBRARIES := \
 	libskia \
 	libandroid \
 	libui \
-	libsharedbuffer \
 	libmfldadvci \
+	libintelmetadatabuffer
 	
 ifeq ($(FACE_DETECTION_TYPE),ola)
 LOCAL_SHARED_LIBRARIES +=libCameraFaceDetection

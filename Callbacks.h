@@ -58,8 +58,10 @@ public:
     void shutterSound();
 
     void allocateMemory(AtomBuffer *buff, int size);
+    void allocateMemory(camera_memory_t **buff, int size);
     void facesDetected(camera_frame_metadata_t &face_metadata);
     void sceneDetected(int sceneMode, bool sceneHdr);
+    status_t storeMetaDataInBuffers(bool enabled);
 
 private:
     camera_notify_callback mNotifyCB;
@@ -69,6 +71,7 @@ private:
     void *mUserToken;
     uint32_t mMessageFlags;
     camera_memory_t* mDummyByte;
+    bool mStoreMetaDataInBuffers;
 };
 
 };

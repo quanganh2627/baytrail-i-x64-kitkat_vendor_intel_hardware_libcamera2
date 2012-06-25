@@ -29,6 +29,7 @@ Callbacks::Callbacks() :
     ,mGetMemoryCB(NULL)
     ,mUserToken(NULL)
     ,mDummyByte(NULL)
+    ,mStoreMetaDataInBuffers(false)
 {
     LOG1("@%s", __FUNCTION__);
 }
@@ -90,7 +91,11 @@ void Callbacks::videoFrameDone(AtomBuffer *buff, nsecs_t timestamp)
     LOG2("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_VIDEO_FRAME) && mDataCBTimestamp != NULL) {
         LOG2("Sending message: CAMERA_MSG_VIDEO_FRAME, buff id = %d", buff->id);
-        mDataCBTimestamp(timestamp, CAMERA_MSG_VIDEO_FRAME, buff->buff, 0, mUserToken);
+        if(mStoreMetaDataInBuffers) {
+            mDataCBTimestamp(timestamp, CAMERA_MSG_VIDEO_FRAME, buff->metadata_buff, 0, mUserToken);
+        } else {
+            mDataCBTimestamp(timestamp, CAMERA_MSG_VIDEO_FRAME, buff->buff, 0, mUserToken);
+        }
     }
 }
 
@@ -171,6 +176,14 @@ void Callbacks::allocateMemory(AtomBuffer *buff, int size)
         buff->buff = mGetMemoryCB(-1, size, 1, mUserToken);
 }
 
+void Callbacks::allocateMemory(camera_memory_t **buff, int size)
+{
+    LOG1("@%s", __FUNCTION__);
+    *buff = NULL;
+    if (mGetMemoryCB != NULL)
+        *buff = mGetMemoryCB(-1, size, 1, mUserToken);
+}
+
 void Callbacks::autofocusDone(bool status)
 {
     LOG1("@%s", __FUNCTION__);
@@ -187,6 +200,14 @@ void Callbacks::shutterSound()
         LOG1("Sending message: CAMERA_MSG_SHUTTER");
         mNotifyCB(CAMERA_MSG_SHUTTER, 1, 0, mUserToken);
     }
+}
+
+status_t Callbacks::storeMetaDataInBuffers(bool enabled)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mStoreMetaDataInBuffers = enabled;
+    return status;
 }
 
 };

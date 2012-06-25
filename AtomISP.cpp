@@ -161,10 +161,9 @@ AtomISP::AtomISP(int cameraId) :
     ,mNumPreviewBuffers(NUM_DEFAULT_BUFFERS)
     ,mPreviewBuffers(NULL)
     ,mRecordingBuffers(NULL)
-    ,mClientRecordingBuffers(NULL)
-    ,mUsingClientRecordingBuffers(false)
     ,mClientSnapshotBuffers(NULL)
     ,mUsingClientSnapshotBuffers(false)
+    ,mStoreMetaDataInBuffers(false)
     ,mNumPreviewBuffersQueued(0)
     ,mNumRecordingBuffersQueued(0)
     ,mNumCapturegBuffersQueued(0)
@@ -883,6 +882,11 @@ status_t AtomISP::startRecording() {
 
     if ((status = allocatePreviewBuffers()) != NO_ERROR)
         goto exitFreeRec;
+
+    if (mStoreMetaDataInBuffers) {
+      if ((status = allocateMetaDataBuffers()) != NO_ERROR)
+          goto exitFreeRec;
+    }
 
     ret = openDevice(mPreviewDevice);
     if (ret < 0) {
@@ -2465,34 +2469,6 @@ status_t AtomISP::putPreviewFrame(AtomBuffer *buff)
     return NO_ERROR;
 }
 
-status_t AtomISP::setRecordingBuffers(SharedBufferType *buffs, int numBuffs)
-{
-    LOG1("@%s: buffs = %p, numBuffs = %d", __FUNCTION__, buffs, numBuffs);
-    if (buffs == NULL || numBuffs <= 0)
-        return BAD_VALUE;
-
-    mClientRecordingBuffers = new void*[numBuffs];
-    if (mClientRecordingBuffers == NULL)
-        return NO_MEMORY;
-
-    for (int i = 0; i < numBuffs; i++)
-        mClientRecordingBuffers[i] = (void *) buffs[i].pointer;
-
-    mUsingClientRecordingBuffers = true;
-    mNumBuffers = numBuffs;
-    mNumPreviewBuffers = numBuffs;
-
-    return NO_ERROR;
-}
-
-void AtomISP::unsetRecordingBuffers()
-{
-    LOG1("@%s", __FUNCTION__);
-    delete [] mClientRecordingBuffers;
-    mUsingClientRecordingBuffers = false;
-    mNumBuffers = NUM_DEFAULT_BUFFERS;
-}
-
 /**
  * Sets the externally allocated graphic buffers to be used
  * for the preview stream
@@ -2518,7 +2494,6 @@ status_t AtomISP::setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs
 
     return NO_ERROR;
 }
-
 
 status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp)
 {
@@ -2800,10 +2775,7 @@ status_t AtomISP::allocateRecordingBuffers()
     int allocatedBufs = 0;
     int size;
 
-    if (mUsingClientRecordingBuffers)
-        size = sizeof(void *);
-    else
-        size = mConfig.recording.padding * mConfig.recording.height * 3 / 2;
+    size = mConfig.recording.padding * mConfig.recording.height * 3 / 2;
 
     mRecordingBuffers = new AtomBuffer[mNumBuffers];
     if (!mRecordingBuffers) {
@@ -2814,25 +2786,18 @@ status_t AtomISP::allocateRecordingBuffers()
 
     for (int i = 0; i < mNumBuffers; i++) {
         mRecordingBuffers[i].buff = NULL;
+        mRecordingBuffers[i].metadata_buff = NULL;
         mCallbacks->allocateMemory(&mRecordingBuffers[i], size);
-        LOG1("allocate recording buffer[%d] shared=%d, buff=%p size=%d",
-                i, (int) mUsingClientRecordingBuffers,
-                mRecordingBuffers[i].buff->data,
-                mRecordingBuffers[i].buff->size);
+        LOG1("allocate recording buffer[%d], buff=%p size=%d",
+                i, mRecordingBuffers[i].buff->data, mRecordingBuffers[i].buff->size);
         if (mRecordingBuffers[i].buff == NULL) {
             LOGE("Error allocation memory for recording buffers!");
             status = NO_MEMORY;
             goto errorFree;
         }
         allocatedBufs++;
-        if (mUsingClientRecordingBuffers) {
-            v4l2_buf_pool[mRecordingDevice].bufs[i].data = mClientRecordingBuffers[i];
-            memcpy(mRecordingBuffers[i].buff->data, &mClientRecordingBuffers[i], sizeof(void *));
-            mRecordingBuffers[i].shared = true;
-        } else {
-            v4l2_buf_pool[mRecordingDevice].bufs[i].data = mRecordingBuffers[i].buff->data;
-            mRecordingBuffers[i].shared = false;
-        }
+        v4l2_buf_pool[mRecordingDevice].bufs[i].data = mRecordingBuffers[i].buff->data;
+        mRecordingBuffers[i].shared = false;
     }
     return status;
 
@@ -2921,6 +2886,86 @@ errorFree:
     return status;
 }
 
+void AtomISP::initMetaDataBuf(IntelMetadataBuffer* metaDatabuf)
+{
+    ValueInfo* vinfo = new ValueInfo;
+    vinfo->mode = MEM_MODE_MALLOC;
+    vinfo->handle = 0;
+    vinfo->width = mConfig.recording.width;
+    vinfo->height = mConfig.recording.height;
+    vinfo->size = mConfig.recording.size;
+    //stride need to fill
+    vinfo->lumaStride = mConfig.recording.padding;
+    vinfo->chromStride = mConfig.recording.padding;
+    LOG2("weight:%d  height:%d size:%d padding:%d ", vinfo->width,
+          vinfo->height, vinfo->size, vinfo->lumaStride);
+    vinfo->format = STRING_TO_FOURCC("NV12");
+    vinfo->s3dformat = 0xFFFFFFFF;
+    metaDatabuf->SetValueInfo(vinfo);
+    delete vinfo;
+
+}
+
+status_t AtomISP::allocateMetaDataBuffers()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    int allocatedBufs = 0;
+    uint8_t* meta_data_prt;
+    uint32_t meta_data_size;
+    IntelMetadataBuffer* metaDataBuf = NULL;
+
+    if(mRecordingBuffers) {
+        for (int i = 0 ; i < mNumBuffers; i++) {
+            if (mRecordingBuffers[i].metadata_buff != NULL) {
+                mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
+                mRecordingBuffers[i].metadata_buff = NULL;
+            }
+        }
+    } else {
+        // mRecordingBuffers is not ready, so it's invalid to allocate metadata buffers
+        return INVALID_OPERATION;
+    }
+
+    for (int i = 0; i < mNumBuffers; i++) {
+        metaDataBuf = new IntelMetadataBuffer();
+        initMetaDataBuf(metaDataBuf);
+
+        metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].buff->data);
+        metaDataBuf->GetBytes(meta_data_prt, meta_data_size);
+        mRecordingBuffers[i].metadata_buff = NULL;
+        mCallbacks->allocateMemory(&mRecordingBuffers[i].metadata_buff, meta_data_size);
+        LOG1("allocate metadata buffer[%d]  buff=%p size=%d",
+               i, mRecordingBuffers[i].metadata_buff->data,
+               mRecordingBuffers[i].metadata_buff->size);
+        if (mRecordingBuffers[i].metadata_buff == NULL) {
+            LOGE("Error allocation memory for metadata buffers!");
+            status = NO_MEMORY;
+            goto errorFree;
+        }
+        memcpy(mRecordingBuffers[i].metadata_buff->data, meta_data_prt, meta_data_size);
+        allocatedBufs++;
+
+        if(metaDataBuf)
+           delete metaDataBuf;
+    }
+    return status;
+
+errorFree:
+    // On error, free the allocated buffers
+    if (mRecordingBuffers) {
+        for (int i = 0 ; i < allocatedBufs; i++) {
+            if (mRecordingBuffers[i].metadata_buff != NULL) {
+                mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
+                mRecordingBuffers[i].metadata_buff = NULL;
+            }
+        }
+    }
+    if (metaDataBuf)
+        delete metaDataBuf;
+    return status;
+}
+
 status_t AtomISP::freePreviewBuffers()
 {
     LOG1("@%s", __FUNCTION__);
@@ -2942,6 +2987,10 @@ status_t AtomISP::freeRecordingBuffers()
         if (mRecordingBuffers[i].buff != NULL) {
             mRecordingBuffers[i].buff->release(mRecordingBuffers[i].buff);
             mRecordingBuffers[i].buff = NULL;
+        }
+        if (mRecordingBuffers[i].metadata_buff != NULL) {
+            mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
+            mRecordingBuffers[i].metadata_buff = NULL;
         }
     }
     delete [] mRecordingBuffers;
@@ -3019,7 +3068,6 @@ status_t AtomISP::getCameraInfo(int cameraId, camera_info *cameraInfo)
 
     return NO_ERROR;
 }
-
 
 /* ===================  ACCELERATION API EXTENSIONS ====================== */
 /*
@@ -3133,5 +3181,27 @@ int AtomISP::unsetFirmwareArgument(unsigned int fwHandle, unsigned int num)
     return ret;
 }
 
+status_t AtomISP::storeMetaDataInBuffers(bool enabled)
+{
+    status_t status = NO_ERROR;
+    mStoreMetaDataInBuffers = enabled;
+    LOG1("@%s: enabled = %d", __FUNCTION__, mStoreMetaDataInBuffers);
+    if (mStoreMetaDataInBuffers) {
+      if ((status = allocateMetaDataBuffers()) != NO_ERROR)
+          goto exitFreeRec;
+    }
+    return status;
+
+exitFreeRec:
+    if(mRecordingBuffers) {
+        for (int i = 0 ; i < mNumBuffers; i++) {
+            if (mRecordingBuffers[i].metadata_buff != NULL) {
+                mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
+                mRecordingBuffers[i].metadata_buff = NULL;
+            }
+        }
+    }
+    return status;
+}
 
 } // namespace android

@@ -161,6 +161,15 @@ static int atom_preview_enabled(struct camera_device * device)
     return cam->control_thread->previewEnabled();
 }
 
+static int atom_store_meta_data_in_buffers(struct camera_device * device, int32_t enabled)
+{
+    LOGD("%s", __FUNCTION__);
+    if(!device)
+        return -EINVAL;
+    atom_camera *cam = (atom_camera *)(device->priv);
+    return cam->control_thread->storeMetaDataInBuffers(enabled);
+}
+
 static int atom_start_recording(struct camera_device * device)
 {
     LOGD("%s", __FUNCTION__);
@@ -305,7 +314,7 @@ static camera_device_ops_t atom_ops = {
     start_preview:              atom_start_preview,
     stop_preview:               atom_stop_preview,
     preview_enabled:            atom_preview_enabled,
-    store_meta_data_in_buffers: NULL,
+    store_meta_data_in_buffers: atom_store_meta_data_in_buffers,
     start_recording:            atom_start_recording,
     stop_recording:             atom_stop_recording,
     recording_enabled:          atom_recording_enabled,

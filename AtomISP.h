@@ -26,7 +26,7 @@
 #include <camera/CameraParameters.h>
 #include "IntelParameters.h"
 #include "AtomCommon.h"
-#include "IntelBufferSharing.h"
+#include "IntelMetadataBuffer.h"
 #include "AtomAAA.h"
 
 namespace android {
@@ -82,9 +82,6 @@ public:
     status_t putPreviewFrame(AtomBuffer *buff);
 
     status_t setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs);
-    status_t setRecordingBuffers(SharedBufferType *buffs, int numBuffs);
-    void unsetRecordingBuffers();
-
     status_t getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp);
     status_t putRecordingFrame(AtomBuffer *buff);
 
@@ -134,6 +131,9 @@ public:
                            void *val, size_t size);
    int unsetFirmwareArgument(unsigned int fwHandle, unsigned int num);
 
+   // Enable metadata buffer mode API
+   status_t storeMetaDataInBuffers(bool enabled);
+
 // private methods
 private:
 
@@ -152,9 +152,12 @@ private:
     status_t allocatePreviewBuffers();
     status_t allocateRecordingBuffers();
     status_t allocateSnapshotBuffers();
+    status_t allocateMetaDataBuffers();
     status_t freePreviewBuffers();
     status_t freeRecordingBuffers();
     status_t freeSnapshotBuffers();
+
+    void initMetaDataBuf(IntelMetadataBuffer* metaDatabuf);
 
     const char* getMaxSnapShotResolution();
 
@@ -258,10 +261,10 @@ private:
     int mNumPreviewBuffers;
     AtomBuffer *mPreviewBuffers;
     AtomBuffer *mRecordingBuffers;
-    void **mClientRecordingBuffers;
-    bool mUsingClientRecordingBuffers;
+
     void **mClientSnapshotBuffers;
     bool mUsingClientSnapshotBuffers;
+    bool mStoreMetaDataInBuffers;
 
     AtomBuffer mSnapshotBuffers[MAX_BURST_BUFFERS];
     AtomBuffer mPostviewBuffers[MAX_BURST_BUFFERS];

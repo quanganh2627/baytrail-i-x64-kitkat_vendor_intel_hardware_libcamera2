@@ -40,7 +40,6 @@ namespace android {
 #define FLASH_FRAME_TIMEOUT 5
 
 class AtomISP;
-class BufferShareRegistry;
 class IFaceDetector;
 //
 // ControlThread implements most of the operations defined
@@ -91,6 +90,7 @@ public:
 
     // return true if preview or recording is enabled
     bool previewEnabled();
+    status_t storeMetaDataInBuffers(bool enabled);
     bool recordingEnabled();
 
     // parameter APIs
@@ -156,6 +156,9 @@ private:
         MESSAGE_ID_UNLOAD_FIRMWARE,
         MESSAGE_ID_SET_FIRMWARE_ARGUMENT,
         MESSAGE_ID_UNSET_FIRMWARE_ARGUMENT,
+
+        // Message for enabling metadata buffer mode
+        MESSAGE_ID_STORE_METADATA_IN_BUFFER,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -227,6 +230,11 @@ private:
         void *value;
         size_t size;
     };
+
+    struct MessageStoreMetaDataInBuffers {
+        bool enabled;
+    };
+
     // union of all message data
     union MessageData {
 
@@ -267,6 +275,9 @@ private:
 
         //MESSAGE_ID_SET_FIRMWARE_ARGUMENT
         MessageSetFwArg     setFwArg;
+
+        // MESSAGE_ID_STORE_METADATA_IN_BUFFER
+        MessageStoreMetaDataInBuffers storeMetaDataInBuffers;
     };
 
     // message id and message data
@@ -282,52 +293,6 @@ private:
         STATE_PREVIEW_VIDEO,
         STATE_RECORDING,
         STATE_CAPTURE,
-    };
-
-    // Buffer sharing states listed in the order of transition.
-    // Once we have propagated through all states we cycle back
-    // to the beginning
-    //
-    // The reason for all these states is that the encoder component is loaded
-    // after the camera is put into video recording mode. However, the encoder
-    // component is responsible for allocating the shared buffers. So, once the
-    // encoder component is loaded, we have to do a handshake with the encoder
-    // to establish buffer sharing. Once we have the shared buffers, we have to
-    // stop and restart the ISP with the new buffers.
-    enum BSState {
-        // This is the initial state
-        //
-        // TRIGGER: None
-        BS_STATE_DISABLED,
-
-        // In this state we have enabled buffer sharing
-        // Need to wait for encoder to enable buffer sharing to transition
-        // to the next state.
-        //
-        // TRIGGER: BufferShareRegistry::sourceRequestToEnableSharingMode() succeeds
-        BS_STATE_ENABLE,
-
-        // In this state we have set buffer sharing. Need to wait for
-        // encoder to set buffer sharing before we transition to the next
-        // state
-        //
-        // TRIGGER: BufferShareRegistry::sourceEnterSharingMode() succeeds
-        BS_STATE_SET,
-
-        // In this state encoder has set buffer sharing. We should now
-        // be able to send buffers back and forth. Consider this the
-        // steady state. When encoder has unset buffer sharing we will
-        // need to follow suit and transition to the next state.
-        //
-        // TRIGGER: BufferShareRegistry::isBufferSharingModeSet() returns true
-        BS_STATE_STEADY,
-
-        // In this state we have unset buffer sharing. The cycle has
-        // been completed
-        //
-        // TRIGGER: BufferShareRegistry::isBufferSharingModeSet() returns false and
-        //          BufferShareRegistry::sourceExitSharingMode() succeeds
-        BS_STATE_UNSET,
     };
 
     struct CoupledBuffer {
@@ -409,6 +374,8 @@ private:
     status_t handleMessageCommand(MessageCommand* msg);
     status_t handleMessageConfigureFileInject(MessageConfigureFileInject *msg);
     status_t handleMessageSetPreviewWindow(MessagePreviewWindow *msg);
+    status_t handleMessageStoreMetaDataInBuffers(MessageStoreMetaDataInBuffers *msg);
+
     status_t startFaceDetection();
     status_t stopFaceDetection(bool wait=false);
     status_t handleMessageFacesDetected(MessageFacesDetected* msg);
@@ -499,19 +466,6 @@ private:
             CameraParameters *newParams);
     status_t validateParameters(const CameraParameters *params);
 
-    // buffer sharing enable/disable methods
-    bool recordingBSEncoderEnabled();
-    status_t recordingBSEnable();
-    status_t recordingBSDisable();
-
-    // buffer sharing set/unset methods
-    status_t recordingBSSet();
-    status_t recordingBSUnset();
-    bool recordingBSEncoderSet();
-
-    // buffer sharing handshake. see comments for enum BSState
-    status_t recordingBSHandshake();
-
     status_t stopCapture();
 
 
@@ -556,14 +510,11 @@ private:
     AeMode mPublicAeMode;    /* AE mode set by application */
     AfMode mPublicAfMode;    /* AF mode set by application */
 
-    sp<BufferShareRegistry> mBSInstance;
-
-    BSState mBSState;
-
     Mutex mParamCacheLock;
     char* mParamCache;
 
     int mLastRecordingBuffIndex;
+    bool mStoreMetaDataInBuffers;
 
 }; // class ControlThread
 
