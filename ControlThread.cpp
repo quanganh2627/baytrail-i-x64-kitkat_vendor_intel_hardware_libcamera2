@@ -678,10 +678,21 @@ status_t ControlThread::stopPreviewCore()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    status = mPreviewThread->flushBuffers();
+
     if (mState == STATE_PREVIEW_VIDEO && mAAA->is3ASupported()) {
         m3AThread->enableDVS(false);
     }
+
+    // Before stopping the ISP, flush any buffers in picture
+    // and video threads. This is needed as AtomISP::stop() may
+    // deallocate buffers and the picture/video threads might
+    // otherwise hold invalid references.
+    status = mPreviewThread->flushBuffers();
+    if (mState == STATE_PREVIEW_VIDEO ||
+        mState == STATE_RECORDING) {
+        status = mVideoThread->flushBuffers();
+    }
+
     status = mISP->stop();
     if (status == NO_ERROR) {
         mState = STATE_STOPPED;
