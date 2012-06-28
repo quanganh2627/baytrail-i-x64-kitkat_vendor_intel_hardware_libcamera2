@@ -88,6 +88,7 @@ ControlThread::ControlThread() :
     ,mPublicAfMode(CAM_AF_MODE_AUTO)
     ,mBSInstance(BufferShareRegistry::getInstance())
     ,mBSState(BS_STATE_DISABLED)
+    ,mParamCache(NULL)
     ,mLastRecordingBuffIndex(0)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
@@ -190,6 +191,7 @@ status_t ControlThread::init(int cameraId)
     mISP->getDefaultParameters(&mParameters);
     mPictureThread->getDefaultParameters(&mParameters);
     mPreviewThread->getDefaultParameters(&mParameters);
+    updateParameterCache();
 
     status = m3AThread->run();
     if (status != NO_ERROR) {
@@ -220,6 +222,7 @@ status_t ControlThread::init(int cameraId)
     if (m_pFaceDetector != 0){
         mParameters.set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_SW,
                 m_pFaceDetector->getMaxFacesDetectable());
+        updateParameterCache();
     } else {
         LOGI("Face detector not available !!");
     }
@@ -285,6 +288,9 @@ void ControlThread::deinit()
     if (mBSInstance != NULL) {
         mBSInstance.clear();
     }
+
+    if (mParamCache != NULL)
+        free(mParamCache);
 
     if (mISP != NULL) {
         delete mISP;
@@ -414,11 +420,37 @@ char* ControlThread::getParameters()
 {
     LOG1("@%s", __FUNCTION__);
 
+    // Fast path. Just return the static copy right away.
+    //
+    // This is needed as some applications call getParameters()
+    // from various HAL callbacks, causing deadlocks like the following:
+    //   A. HAL is flushing picture/video thread and message loop
+    //      is blocked until the operation finishes
+    //   B. one of the pending picture/video messages, which was
+    //      processed just before the flush, has called an app
+    //      callback, which again calls HAL getParameters()
+    //   C. the app call to getParameters() is synchronous
+    //   D. deadlock results, as HAL/ControlThread is blocked on the
+    //      flush call of step (A), and cannot process getParameters()
+    //
+    // Solution: implement getParameters so that it can be called
+    //           even when ControlThread's message loop is blocked.
     char *params = NULL;
-    Message msg;
-    msg.id = MESSAGE_ID_GET_PARAMETERS;
-    msg.data.getParameters.params = &params; // let control thread allocate and set pointer
-    mMessageQueue.send(&msg, MESSAGE_ID_GET_PARAMETERS);
+    mParamCacheLock.lock();
+    if (mParamCache)
+        params = strdup(mParamCache);
+    mParamCacheLock.unlock();
+
+    // Slow path. If cache was empty, send a message.
+    //
+    // The above case will not get triggered when param cache is NULL
+    // (only happens when initially starting).
+    if (params == NULL) {
+        Message msg;
+        msg.id = MESSAGE_ID_GET_PARAMETERS;
+        msg.data.getParameters.params = &params; // let control thread allocate and set pointer
+        mMessageQueue.send(&msg, MESSAGE_ID_GET_PARAMETERS);
+    }
     return params;
 }
 
@@ -2848,7 +2880,7 @@ status_t ControlThread::processParamAutoExposureMode(const CameraParameters *old
             ae_mode = CAM_AE_MODE_SHUTTER_PRIORITY;
             // antibanding cannot be supported when shutter-priority
             // is selected, so turning antibanding off (see BZ17480)
-            mParameters.set(CameraParameters::KEY_ANTIBANDING, "off");
+            newParams->set(CameraParameters::KEY_ANTIBANDING, "off");
         } else if (newVal == "aperture-priority") {
             ae_mode = CAM_AE_MODE_APERTURE_PRIORITY;
         } else {
@@ -3154,6 +3186,34 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
     return status;
 }
 
+/**
+ * Update public parameter cache
+ *
+ * To implement a fast-path for GetParameters HAL call, update
+ * a cached copy of parameters every time a modification is done.
+ */
+status_t ControlThread::updateParameterCache()
+{
+    status_t status = BAD_VALUE;
+
+    mParamCacheLock.lock();
+
+    // let app know if we support zoom in the preview mode indicated
+    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
+    AtomMode mode = videoMode ? MODE_VIDEO : MODE_PREVIEW;
+    mISP->getZoomRatios(mode, &mParameters);
+    mISP->getFocusDistances(&mParameters);
+
+    String8 params = mParameters.flatten();
+    int len = params.length();
+    mParamCache = strndup(params.string(), sizeof(char) * len);
+    status = NO_ERROR;
+
+    mParamCacheLock.unlock();
+
+    return status;
+}
+
 status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
 {
     LOG1("@%s", __FUNCTION__);
@@ -3234,6 +3294,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
         goto exit;
 
     mParameters = newParams;
+    updateParameterCache();
 
 exit:
     // return status and unblock message sender

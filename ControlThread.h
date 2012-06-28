@@ -95,6 +95,7 @@ public:
     status_t setParameters(const char *params);
     char *getParameters();
     void putParameters(char *params);
+    status_t updateParameterCache(void);
 
     // snapshot (asynchronous)
     status_t takePicture();
@@ -507,6 +508,9 @@ private:
     sp<BufferShareRegistry> mBSInstance;
 
     BSState mBSState;
+
+    Mutex mParamCacheLock;
+    char* mParamCache;
 
     int mLastRecordingBuffIndex;
 
