@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define LOG_TAG "Atom_HAL"
+#define LOG_TAG "Camera_HAL"
 
 #include "ControlThread.h"
 #include "AtomISP.h"

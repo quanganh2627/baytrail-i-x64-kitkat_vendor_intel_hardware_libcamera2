@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define LOG_TAG "Atom_PreviewThread"
+#define LOG_TAG "Camera_PreviewThread"
 
 #include "PreviewThread.h"
 #include "LogHelper.h"

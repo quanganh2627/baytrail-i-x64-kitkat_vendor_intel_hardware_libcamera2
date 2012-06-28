@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define LOG_TAG "Atom_DebugFrameRate"
+#define LOG_TAG "Camera_DebugFrameRate"
 
 #include <utils/threads.h>
 #include <utils/Log.h>

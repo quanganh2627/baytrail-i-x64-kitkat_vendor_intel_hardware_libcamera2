@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define LOG_TAG "Atom_ColorConverter"
+#define LOG_TAG "Camera_ColorConverter"
 
 #include <camera/CameraParameters.h>
 #include <linux/atomisp.h>

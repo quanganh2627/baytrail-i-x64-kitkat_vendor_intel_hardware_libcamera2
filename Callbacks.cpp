@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "Atom_Callbacks"
+#define LOG_TAG "Camera_Callbacks"
 
 #include "LogHelper.h"
 #include "Callbacks.h"

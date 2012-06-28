@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define LOG_TAG "Atom_ControlThread"
+#define LOG_TAG "Camera_ControlThread"
 
 #include "ControlThread.h"
 #include "LogHelper.h"

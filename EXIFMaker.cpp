@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "Atom_EXIFMaker"
+#define LOG_TAG "Camera_EXIFMaker"
 
 #include "EXIFMaker.h"
 #include "LogHelper.h"

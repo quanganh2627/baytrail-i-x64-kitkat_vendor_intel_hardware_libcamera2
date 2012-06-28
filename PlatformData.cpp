@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "Atom_CamPlatformData"
+#define LOG_TAG "Camera_PlatformData"
 #include "LogHelper.h"
 
 #include <assert.h>

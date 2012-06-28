@@ -25,7 +25,7 @@
 #ifdef LOG_TAG
 #undef LOG_TAG
 #endif
-#define LOG_TAG "OlaFaceDetect"
+#define LOG_TAG "Camera_OlaFaceDetect"
 //#define LOG_NDEBUG 0
 #include "LogHelper.h"
 

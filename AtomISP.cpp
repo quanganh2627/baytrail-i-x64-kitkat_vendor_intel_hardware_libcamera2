@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define LOG_TAG "Atom_ISP"
+#define LOG_TAG "Camera_ISP"
 
 #include "LogHelper.h"
 #include "AtomISP.h"
