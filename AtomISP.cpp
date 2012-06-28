@@ -20,6 +20,7 @@
 #include "Callbacks.h"
 #include "ColorConverter.h"
 #include "PlatformData.h"
+#include "IntelParameters.h"
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -560,11 +561,16 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
         params->set(CameraParameters::KEY_EFFECT, CameraParameters::EFFECT_NONE);
         char effectModes[100] = {0};
         if (snprintf(effectModes, sizeof(effectModes)
-                ,"%s,%s,%s,%s"
+                ,"%s,%s,%s,%s,%s,%s,%s,%s,%s"
                 ,CameraParameters::EFFECT_NONE
                 ,CameraParameters::EFFECT_MONO
                 ,CameraParameters::EFFECT_NEGATIVE
-                ,CameraParameters::EFFECT_SEPIA) < 0) {
+                ,CameraParameters::EFFECT_SEPIA
+                ,IntelCameraParameters::EFFECT_STILL_SKY_BLUE
+                ,IntelCameraParameters::EFFECT_STILL_GRASS_GREEN
+                ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_LOW
+                ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_MEDIUM
+                ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_HIGH) < 0) {
             LOGE("Could not generate %s string: %s", CameraParameters::KEY_SUPPORTED_EFFECTS, strerror(errno));
             return;
         }

@@ -25,7 +25,6 @@ LOCAL_SRC_FILES := \
 	VideoThread.cpp \
 	AAAThread.cpp \
 	AtomISP.cpp \
-	IntelCamera.cpp \
 	DebugFrameRate.cpp \
 	Callbacks.cpp \
 	AtomAAA.cpp \
@@ -36,6 +35,7 @@ LOCAL_SRC_FILES := \
 	CallbacksThread.cpp \
 	LogHelper.cpp \
 	PlatformData.cpp \
+	IntelParameters.cpp \
 	exif/ExifCreater.cpp
 
 ifeq ($(FACE_DETECTION_TYPE),ola)

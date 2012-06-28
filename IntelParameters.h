@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,17 +14,21 @@
  * limitations under the License.
  */
 
-#ifndef ANDROID_HARDWARE_INTEL_CAMERA_H
-#define ANDROID_HARDWARE_INTEL_CAMERA_H
+/**
+ *\file IntelParameters.h
+ *
+ * Define and document Intel specific HAL parameters.
+ *
+ * The standard Android Camera HAL parameters are defined in
+ * frameworks/base/include/camera/CameraParameters.h
+ */
 
-#include <camera/CameraParameters.h>
+#ifndef INTELPARAMETERS_H_
+#define INTELPARAMETERS_H_
 
 namespace android {
-
-
-class IntelCameraParameters : public CameraParameters
-{
-public:
+  class IntelCameraParameters {
+  public:
 
     static const char KEY_XNR[];
     static const char KEY_SUPPORTED_XNR[];
@@ -136,10 +140,17 @@ public:
     static const char KEY_HDR_SAVE_ORIGINAL[];
     static const char KEY_SUPPORTED_HDR_SAVE_ORIGINAL[];
 
-// Intel enhancement end
+    //MACC effect
+    static const char EFFECT_STILL_SKY_BLUE[];
+    static const char EFFECT_STILL_GRASS_GREEN[];
+    static const char EFFECT_STILL_SKIN_WHITEN_LOW[];
+    static const char EFFECT_STILL_SKIN_WHITEN_MEDIUM[];
+    static const char EFFECT_STILL_SKIN_WHITEN_HIGH[];
 
-};
-
-}; // namespace android
+  private:
+      IntelCameraParameters(void) {}
+  };
+}; // ns android
 
 #endif
+

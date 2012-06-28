@@ -26,6 +26,7 @@
 #include "IntelBufferSharing.h"
 #include "FaceDetectorFactory.h"
 #include "PlatformData.h"
+#include "IntelParameters.h"
 #include <utils/Vector.h>
 #include <math.h>
 #include <cutils/properties.h>
@@ -2326,20 +2327,36 @@ status_t ControlThread::processParamEffect(const CameraParameters *oldParams,
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    const char* oldEffect = oldParams->get(CameraParameters::KEY_EFFECT);
-    const char* newEffect = newParams->get(CameraParameters::KEY_EFFECT);
-    if (newEffect && oldEffect && strncmp(newEffect, oldEffect, MAX_PARAM_VALUE_LENGTH) != 0) {
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              CameraParameters::KEY_EFFECT);
+
+    if (newVal.isEmpty() != true) {
+
         v4l2_colorfx effect = V4L2_COLORFX_NONE;
-        if(!strncmp(newEffect, CameraParameters::EFFECT_MONO, strlen(CameraParameters::EFFECT_MONO)))
+        if (newVal == CameraParameters::EFFECT_MONO)
             effect = V4L2_COLORFX_BW;
-        else if(!strncmp(newEffect, CameraParameters::EFFECT_NEGATIVE, strlen(CameraParameters::EFFECT_NEGATIVE)))
+        else if (newVal == CameraParameters::EFFECT_NEGATIVE)
             effect = V4L2_COLORFX_NEGATIVE;
-        else if(!strncmp(newEffect, CameraParameters::EFFECT_SEPIA, strlen(CameraParameters::EFFECT_SEPIA)))
+        else if (newVal == CameraParameters::EFFECT_SEPIA)
             effect = V4L2_COLORFX_SEPIA;
+        else if (newVal == IntelCameraParameters::EFFECT_STILL_SKY_BLUE)
+            effect = V4L2_COLORFX_SKY_BLUE;
+        else if (newVal == IntelCameraParameters::EFFECT_STILL_GRASS_GREEN)
+            effect = V4L2_COLORFX_GRASS_GREEN;
+        else if (newVal == IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_MEDIUM)
+            effect = V4L2_COLORFX_SKIN_WHITEN;
+
+        // following two values need a explicit cast as the
+        // definitions in hardware/intel/linux-2.6/include/linux/atomisp.h
+        // have incorrect type (properly defined values are in videodev2.h)
+        else if (newVal == IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_LOW)
+            effect = (v4l2_colorfx)V4L2_COLORFX_SKIN_WHITEN_LOW;
+        else if (newVal == IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_HIGH)
+            effect = (v4l2_colorfx)V4L2_COLORFX_SKIN_WHITEN_HIGH;
 
         status = mISP->setColorEffect(effect);
         if (status == NO_ERROR) {
-            LOG1("Changed: %s -> %s", CameraParameters::KEY_EFFECT, newEffect);
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_EFFECT, newVal.string());
         }
     }
     return status;
