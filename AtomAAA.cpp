@@ -1112,7 +1112,7 @@ status_t AtomAAA::computeCDF(const CiUserBuffer& inputBuf, size_t bufIndex)
             inputBuf.ciPostviewBuf[bufIndex].width,
             inputBuf.ciPostviewBuf[bufIndex].height,
             inputBuf.ciPostviewBuf[bufIndex].format);
-    ia_hdr_compute_cdf(&inputBuf.ciPostviewBuf[bufIndex], &inputBuf.cdf[bufIndex]);
+    ia_cp_compute_cdf(&inputBuf.ciPostviewBuf[bufIndex], &inputBuf.cdf[bufIndex]);
     if (inputBuf.cdf[bufIndex] != NULL) {
         LOG1("CDF obtained: %d", *inputBuf.cdf[bufIndex]);
     } else {
@@ -1128,7 +1128,7 @@ status_t AtomAAA::composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& o
     if(!mHas3A)
         return INVALID_OPERATION;
 
-    ia_hdr_compose (&outputBuf.ciMainBuf[0], &outputBuf.ciPostviewBuf[0], inputBuf.ciMainBuf, inputBuf.ciBufNum, sharpening, vividness, inputBuf.cdf);
+    ia_cp_hdr_compose (&outputBuf.ciMainBuf[0], &outputBuf.ciPostviewBuf[0], inputBuf.ciMainBuf, inputBuf.ciBufNum, sharpening, vividness, inputBuf.cdf);
 
     return NO_ERROR;
 }
