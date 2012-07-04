@@ -99,7 +99,7 @@ void Callbacks::compressedFrameDone(AtomBuffer *buff)
     LOG1("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_COMPRESSED_IMAGE) && mDataCB != NULL) {
         LOG1("Sending message: CAMERA_MSG_COMPRESSED_IMAGE, buff id = %d", buff->id);
-        mDataCB(CAMERA_MSG_COMPRESSED_IMAGE, buff->buff, NULL, 0, mUserToken);
+        mDataCB(CAMERA_MSG_COMPRESSED_IMAGE, buff->buff, 0, NULL, mUserToken);
     }
 }
 
@@ -108,7 +108,7 @@ void Callbacks::postviewFrameDone(AtomBuffer *buff)
     LOG1("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_POSTVIEW_FRAME) && mDataCB != NULL) {
         LOGD("Sending message: CAMERA_MSG_POSTVIEW_FRAME, buff id = %d", buff->id);
-        mDataCB(CAMERA_MSG_POSTVIEW_FRAME, buff->buff, NULL, 0, mUserToken);
+        mDataCB(CAMERA_MSG_POSTVIEW_FRAME, buff->buff, 0, NULL, mUserToken);
     }
 }
 
@@ -122,7 +122,7 @@ void Callbacks::rawFrameDone(AtomBuffer *buff)
 
     if ((mMessageFlags & CAMERA_MSG_RAW_IMAGE) && mNotifyCB != NULL) {
         LOGD("Sending message: CAMERA_MSG_RAW_IMAGE, buff id = %d", buff->id);
-        mDataCB(CAMERA_MSG_RAW_IMAGE, buff->buff, NULL, 0, mUserToken);
+        mDataCB(CAMERA_MSG_RAW_IMAGE, buff->buff, 0, NULL, mUserToken);
     }
 }
 
