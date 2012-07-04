@@ -403,7 +403,9 @@ status_t JpegCompressor::getSharedBuffers(int width, int height, void** sharedBu
         return NO_ERROR;
     }
     pCinfo = (struct jpeg_compress_struct*)mJpegCompressStruct;
+
 #ifdef USE_INTEL_JPEG
+
     for (vaSurfacesNum = 0; vaSurfacesNum < sharedBuffersNum; vaSurfacesNum++) {
         LOG1("Get a VA surface from JPEG encoder...");
         if(!jpeg_get_userptr_from_surface(pCinfo, width, height, VA_FOURCC_NV12, &mVaInputSurfacesPtr[vaSurfacesNum])) {

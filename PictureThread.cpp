@@ -248,6 +248,13 @@ status_t PictureThread::getSharedBuffers(int width, int height, void** sharedBuf
     status_t status = NO_ERROR;
     size_t bufferSize = (width * height * 2);
     bool allocBuf = true;
+
+    // Due to MCG/PSI BZ 45098, jpeglib cannot support more than one
+    // mapped buffer. Until that BZ is resolved, limit shared buffer
+    // mode to one buffer.
+    if (sharedBuffersNum > 1)
+        return INVALID_OPERATION;
+
     if (mOutBuf.buff != NULL) {
         if (bufferSize != mOutBuf.buff->size) {
             mOutBuf.buff->release(mOutBuf.buff);
