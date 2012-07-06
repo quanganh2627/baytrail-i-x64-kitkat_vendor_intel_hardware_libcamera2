@@ -321,7 +321,7 @@ status_t PreviewThread::handleMessageSetPreviewConfig(MessageSetPreviewConfig *m
 
     if ((msg->width != 0 && msg->height != 0) &&
             (mPreviewWidth != msg->width || mPreviewHeight != msg->height)) {
-        LOG1("Setting new preview size: %dx%d", mPreviewWidth, mPreviewHeight);
+        LOG1("Setting new preview size: %dx%d", msg->width, msg->height);
         if (mPreviewWindow != NULL) {
             int previewWidthPadded = paddingWidth(V4L2_PIX_FMT_NV12, msg->width, msg->height);
             // if preview size changed, update the preview window
@@ -483,7 +483,7 @@ void PreviewThread::allocateLocalPreviewBuf(void)
  * @return INVALID_OPERATION: if it couldn't allocate the buffers because lack of preview window
  */
 status_t PreviewThread::allocateGfxPreviewBuffers(int numberOfBuffers) {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s: num buf: %d", __FUNCTION__, numberOfBuffers);
     status_t status = NO_ERROR;
     GraphicBufferMapper &mapper = GraphicBufferMapper::get();
 
@@ -541,6 +541,8 @@ status_t PreviewThread::allocateGfxPreviewBuffers(int numberOfBuffers) {
             tmpBuf.gfxData = dst;
             mPreviewBuffers.push(tmpBuf);
             mPreviewInClient.push(i);
+            LOG1("%s: got Gfx Buffer: native_ptr %p, size:(%dx%d), stride: %d ", __FUNCTION__,
+                 buf, mPreviewWidth, mPreviewHeight, tmpBuf.stride);
         } // for
 
         mBuffersInWindow = 0;
@@ -571,27 +573,31 @@ freeDeQueued:
  *
  */
 status_t PreviewThread::freeGfxPreviewBuffers() {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s: preview buffer: %d, in user: %d", __FUNCTION__, mPreviewBuffers.size(),
+                                                               mPreviewInClient.size());
     size_t i;
+    int res;
     GraphicBufferMapper &mapper = GraphicBufferMapper::get();
 
     if ((mPreviewWindow != NULL) && (!mPreviewBuffers.isEmpty())) {
 
         for( i = 0; i < mPreviewBuffers.size(); i++) {
-            int res = mapper.unlock(*(mPreviewBuffers[i].mNativeBufPtr));
+            res = mapper.unlock(*(mPreviewBuffers[i].mNativeBufPtr));
             if (res != 0) {
                 LOGW("%s: unlocking gfx buffer %d failed!", __FUNCTION__, i);
             }
+
         }
 
         for( i = 0; i < mPreviewInClient.size(); i++) {
             buffer_handle_t *bufHandle =
                 mPreviewBuffers[mPreviewInClient[i]].mNativeBufPtr;
-            int res = mPreviewWindow->cancel_buffer(mPreviewWindow, bufHandle);
+            LOG1("%s: canceling gfx buffer[%d]: %p (value = %p)", __FUNCTION__, i, bufHandle, *bufHandle);
+            res = mPreviewWindow->cancel_buffer(mPreviewWindow, bufHandle);
             if (res != 0)
                 LOGW("%s: canceling gfx buffer %d failed!", __FUNCTION__, i);
         }
-
+        LOG1("%s: clearing vectors !",__FUNCTION__);
         mPreviewBuffers.clear();
         mPreviewInClient.clear();
         mBuffersInWindow = 0;
