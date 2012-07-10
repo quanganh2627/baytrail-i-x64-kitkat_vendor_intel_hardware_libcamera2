@@ -3233,6 +3233,15 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
                 }
             }
         }
+        /* Checking if preview is still  bigger than video, this is not supported by the ISP */
+        if(videoMode) {
+            newParams->getPreviewSize(&previewWidth, &previewHeight);
+            newParams->getVideoSize(&newWidth, &newHeight);
+            if((previewWidth*previewHeight) > (newWidth*newHeight)) {
+                /* clamping preview to video resolution so that we keep same AR */
+                newParams->setPreviewSize(newWidth, newHeight);
+            }
+        }
     }
 
     // if preview is running and static params have changed, then we need
