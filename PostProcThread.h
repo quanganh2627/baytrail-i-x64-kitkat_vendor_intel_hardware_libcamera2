@@ -59,6 +59,8 @@ public:
     virtual void startFaceDetection();
     virtual void stopFaceDetection(bool wait=false);
     virtual int sendFrame(AtomBuffer *img, int width, int height);
+    virtual void startSmartShutter();
+    virtual void stopSmartShutter();
 
 // private types
 private:
@@ -70,6 +72,8 @@ private:
         MESSAGE_ID_FRAME,
         MESSAGE_ID_START_FACE_DETECTION,
         MESSAGE_ID_STOP_FACE_DETECTION,
+        MESSAGE_ID_START_SMART_SHUTTER,
+        MESSAGE_ID_STOP_SMART_SHUTTER,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -106,6 +110,8 @@ private:
     status_t handleExit();
     status_t handleMessageStartFaceDetection();
     status_t handleMessageStopFaceDetection();
+    status_t handleMessageStartSmartShutter();
+    status_t handleMessageStopSmartShutter();
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -122,6 +128,7 @@ private:
     ICallbackPostProc* mPostProcDoneCallback;
     bool mThreadRunning;
     bool mFaceDetectionRunning;
+    bool mSmartShutterRunning;
 }; // class PostProcThread
 
 }; // namespace android

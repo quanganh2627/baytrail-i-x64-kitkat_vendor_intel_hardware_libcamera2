@@ -37,6 +37,7 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone) :
     ,mPostProcDoneCallback(postProcDone)
     ,mThreadRunning(false)
     ,mFaceDetectionRunning(false)
+    ,mSmartShutterRunning(false)
 {
     LOG1("@%s", __FUNCTION__);
 }
@@ -102,6 +103,38 @@ status_t PostProcThread::handleMessageStopFaceDetection()
     return status;
 }
 
+void PostProcThread::startSmartShutter()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_START_SMART_SHUTTER;
+    mMessageQueue.send(&msg);
+}
+
+status_t PostProcThread::handleMessageStartSmartShutter()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mSmartShutterRunning = true;
+    return status;
+}
+
+void PostProcThread::stopSmartShutter()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_STOP_SMART_SHUTTER;
+    mMessageQueue.send(&msg);
+}
+
+status_t PostProcThread::handleMessageStopSmartShutter()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mSmartShutterRunning = false;
+    return status;
+}
+
 status_t PostProcThread::handleExit()
 {
     LOG1("@%s", __FUNCTION__);
@@ -156,6 +189,12 @@ status_t PostProcThread::waitForAndExecuteMessage()
         case MESSAGE_ID_STOP_FACE_DETECTION:
             status = handleMessageStopFaceDetection();
             break;
+        case MESSAGE_ID_START_SMART_SHUTTER:
+            status = handleMessageStartSmartShutter();
+            break;
+        case MESSAGE_ID_STOP_SMART_SHUTTER:
+            status = handleMessageStopSmartShutter();
+            break;
         default:
             status = INVALID_OPERATION;
             break;
@@ -187,6 +226,7 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
     if (mFaceDetectionRunning) {
         LOG1("%s: Face detection executing", __FUNCTION__);
         int num_faces;
+        bool smile, blink;
         unsigned char *src;
         if (frame.img.type == ATOM_BUFFER_PREVIEW) {
             src = (unsigned char*) frame.img.buff->data;
@@ -200,6 +240,11 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         frameData.height = frame.height;
         frameData.stride = frame.img.stride;
         num_faces = mFaceDetector->faceDetect(&frameData);
+
+        if (mSmartShutterRunning) {
+            smile = mFaceDetector->smileDetect(&frameData);
+            blink = mFaceDetector->blinkDetect(&frameData);
+        }
 
         camera_face_t faces[num_faces];
         camera_frame_metadata_t face_metadata;

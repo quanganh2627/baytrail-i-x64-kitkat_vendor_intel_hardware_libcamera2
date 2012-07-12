@@ -42,6 +42,10 @@ public:
      * otherwise return 0.
      */
     virtual int sendFrame(AtomBuffer *img, int width, int height) = 0;
+
+    virtual void startSmartShutter() = 0;
+    virtual void stopSmartShutter() = 0;
+
 protected:
     IFaceDetectionListener *mpListener;
 };
