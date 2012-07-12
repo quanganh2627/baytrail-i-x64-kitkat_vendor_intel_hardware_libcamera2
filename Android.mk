@@ -36,7 +36,11 @@ LOCAL_SRC_FILES := \
 	LogHelper.cpp \
 	PlatformData.cpp \
 	IntelParameters.cpp \
-	exif/ExifCreater.cpp
+	exif/ExifCreater.cpp \
+	OlaService/IOlaBuffer.cpp \
+	OlaService/IOlaBuffer.h  \
+	OlaService/OlaBufferService.cpp \
+	OlaService/HalProxyOla.cpp
 
 ifeq ($(FACE_DETECTION_TYPE),ola)
 LOCAL_SRC_FILES += OlaFaceDetect.cpp 

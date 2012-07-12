@@ -71,6 +71,7 @@ ControlThread::ControlThread() :
     ,mPictureThread(NULL)
     ,mVideoThread(NULL)
     ,m3AThread(NULL)
+    ,mProxyToOlaService(NULL)
     ,mMessageQueue("ControlThread", (int) MESSAGE_ID_MAX)
     ,mState(STATE_STOPPED)
     ,mThreadRunning(false)
@@ -188,6 +189,13 @@ status_t ControlThread::init(int cameraId)
         goto bail;
     }
 
+    mProxyToOlaService = new HalProxyOla(this);
+    if(mProxyToOlaService == NULL) {
+        LOGE("error creating Proxy for OLA Buffer Service");
+        goto bail;
+    }
+    mPreviewThread->setServiceProxy(mProxyToOlaService.get());
+
     // get default params from AtomISP and JPEG encoder
     mISP->getDefaultParameters(&mParameters);
     mPictureThread->getDefaultParameters(&mParameters);
@@ -288,6 +296,10 @@ void ControlThread::deinit()
 
     if (mBSInstance != NULL) {
         mBSInstance.clear();
+    }
+
+    if (mProxyToOlaService != NULL) {
+        mProxyToOlaService.clear();
     }
 
     if (mParamCache != NULL)

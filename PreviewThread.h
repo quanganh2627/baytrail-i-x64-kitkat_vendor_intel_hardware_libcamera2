@@ -23,6 +23,7 @@
 #include <camera/CameraParameters.h>
 #include "MessageQueue.h"
 #include "AtomCommon.h"
+#include "OlaService/HalProxyOla.h"
 
 namespace android {
 
@@ -63,6 +64,7 @@ public:
     status_t returnPreviewBuffers();
     status_t flushBuffers();
 
+    status_t setServiceProxy(HalProxyOla *aHal){mHALProxy = aHal; return NO_ERROR;};
     // TODO: need methods to configure preview thread
     // TODO: decide if configuration method should send a message
 
@@ -172,6 +174,7 @@ private:
     int                 mBuffersInWindow;   /*!< Number of buffers currently in the preview window */
     int                 mMinUndequeued;     /*!< Minimum number frames
                                                  tokeep in window */
+    HalProxyOla*        mHALProxy;
 }; // class PreviewThread
 
 }; // namespace android

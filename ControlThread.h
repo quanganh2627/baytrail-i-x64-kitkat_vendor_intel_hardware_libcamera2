@@ -33,6 +33,8 @@
 #include "AAAThread.h"
 #include "AtomAAA.h"
 #include "IFaceDetectionListener.h"
+#include "OlaService/HalProxyOla.h"
+
 namespace android {
 
 #define FLASH_FRAME_TIMEOUT 5
@@ -490,6 +492,7 @@ private:
     sp<PictureThread> mPictureThread;
     sp<VideoThread> mVideoThread;
     sp<AAAThread>     m3AThread;
+    sp<HalProxyOla>   mProxyToOlaService;
 
     MessageQueue<Message, MessageId> mMessageQueue;
     State mState;
