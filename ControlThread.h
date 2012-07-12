@@ -34,6 +34,7 @@
 #include "AtomAAA.h"
 #include "IFaceDetectionListener.h"
 #include "OlaService/HalProxyOla.h"
+#include "PostProcThread.h"
 
 namespace android {
 
@@ -51,6 +52,7 @@ class ControlThread :
     public ICallbackPreview,
     public ICallbackPicture,
     public ICallbackAAA,
+    public ICallbackPostProc,
     public IBufferOwner{
 
 // constructor destructor
@@ -493,6 +495,7 @@ private:
     sp<PictureThread> mPictureThread;
     sp<VideoThread> mVideoThread;
     sp<AAAThread>     m3AThread;
+    sp<PostProcThread> mPostProcThread;
     sp<HalProxyOla>   mProxyToOlaService;
     friend class HalProxyOla;
 

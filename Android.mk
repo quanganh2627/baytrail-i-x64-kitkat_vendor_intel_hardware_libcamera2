@@ -40,7 +40,9 @@ LOCAL_SRC_FILES := \
 	OlaService/IOlaBuffer.cpp \
 	OlaService/IOlaBuffer.h  \
 	OlaService/OlaBufferService.cpp \
-	OlaService/HalProxyOla.cpp
+	OlaService/HalProxyOla.cpp \
+	PostProcThread.cpp \
+	FaceDetector.cpp
 
 ifeq ($(FACE_DETECTION_TYPE),ola)
 LOCAL_SRC_FILES += OlaFaceDetect.cpp 
@@ -137,3 +139,4 @@ include $(BUILD_SHARED_LIBRARY)
 
 endif  #ifeq ($(USE_CAMERA_HAL2),true)
 endif #ifeq ($(USE_CAMERA_STUB),false)
+

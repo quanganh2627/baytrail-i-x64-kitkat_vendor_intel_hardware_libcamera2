@@ -176,6 +176,12 @@ status_t ControlThread::init(int cameraId)
         goto bail;
     }
 
+    mPostProcThread = new PostProcThread(this);
+    if (mPostProcThread == NULL) {
+        LOGE("error creating PostProcThread");
+        goto bail;
+    }
+
     mProxyToOlaService = new HalProxyOla(this);
     if(mProxyToOlaService == NULL) {
         LOGE("error creating Proxy for OLA Buffer Service");
@@ -212,6 +218,11 @@ status_t ControlThread::init(int cameraId)
     status = mVideoThread->run();
     if (status != NO_ERROR) {
         LOGW("Error starting video thread!");
+        goto bail;
+    }
+    status = mPostProcThread->run();
+    if (status != NO_ERROR) {
+        LOGW("Error starting Post Processing thread!");
         goto bail;
     }
     m_pFaceDetector=FaceDetectorFactory::createDetector(mCallbacksThread.get());
@@ -255,6 +266,11 @@ void ControlThread::deinit()
     //       with deinit (eg. check for NULL / non-NULL).
 
     LOG1("@%s", __FUNCTION__);
+
+    if (mPostProcThread != NULL) {
+        mPostProcThread->requestExitAndWait();
+        mPostProcThread.clear();
+    }
 
     if (mPreviewThread != NULL) {
         mPreviewThread->requestExitAndWait();
