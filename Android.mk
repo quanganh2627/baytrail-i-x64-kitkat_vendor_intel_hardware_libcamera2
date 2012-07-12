@@ -44,11 +44,6 @@ LOCAL_SRC_FILES := \
 	PostProcThread.cpp \
 	FaceDetector.cpp
 
-ifeq ($(FACE_DETECTION_TYPE),ola)
-LOCAL_SRC_FILES += OlaFaceDetect.cpp 
-LOCAL_CFLAGS 	+= -DOLA_FACEDETECTION
-endif
-
 LOCAL_C_INCLUDES += \
 	frameworks/base/include \
 	frameworks/base/include/binder \
@@ -61,7 +56,7 @@ LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/libmfldadvci \
 	$(TARGET_OUT_HEADERS)/libCameraFaceDetection \
 	$(TARGET_OUT_HEADERS)/pvr/hal \
-	$(TARGET_OUT_HEADERS)/libva \
+	$(TARGET_OUT_HEADERS)/libva 
 	
 
 ifeq ($(USE_INTEL_JPEG), true)
@@ -84,9 +79,6 @@ LOCAL_SHARED_LIBRARIES := \
 	libva-tpi \
 	libva-android \
 	
-ifeq ($(FACE_DETECTION_TYPE),ola)
-LOCAL_SHARED_LIBRARIES +=libCameraFaceDetection
-endif
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SHARED_LIBRARIES += \

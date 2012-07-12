@@ -23,7 +23,6 @@
 #include "Callbacks.h"
 #include "CallbacksThread.h"
 #include "ColorConverter.h"
-#include "FaceDetectorFactory.h"
 #include "PlatformData.h"
 #include "IntelParameters.h"
 #include <utils/Vector.h>
@@ -77,7 +76,6 @@ ControlThread::ControlThread() :
     ,mCallbacksThread(NULL)
     ,mCoupledBuffers(NULL)
     ,mNumBuffers(0)
-    ,m_pFaceDetector(0)
     ,mIntelParamsAllowed(false)
     ,mFaceDetectionActive(false)
     ,mFlashAutoFocus(false)
@@ -193,6 +191,7 @@ status_t ControlThread::init(int cameraId)
     mISP->getDefaultParameters(&mParameters, &mIntelParameters);
     mPictureThread->getDefaultParameters(&mParameters);
     mPreviewThread->getDefaultParameters(&mParameters);
+    mPostProcThread->getDefaultParameters(&mParameters);
     updateParameterCache();
 
     status = m3AThread->run();
@@ -224,14 +223,6 @@ status_t ControlThread::init(int cameraId)
     if (status != NO_ERROR) {
         LOGW("Error starting Post Processing thread!");
         goto bail;
-    }
-    m_pFaceDetector=FaceDetectorFactory::createDetector(mCallbacksThread.get());
-    if (m_pFaceDetector != 0){
-        mParameters.set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_SW,
-                m_pFaceDetector->getMaxFacesDetectable());
-        updateParameterCache();
-    } else {
-        LOGI("Face detector not available !!");
     }
 
     // Disable bracketing by default
@@ -313,14 +304,6 @@ void ControlThread::deinit()
     if (mCallbacks != NULL) {
         delete mCallbacks;
     }
-    if (m_pFaceDetector != 0) {
-        if (!FaceDetectorFactory::destroyDetector(m_pFaceDetector)){
-            LOGE("Failed on destroy face detector thru factory");
-            delete m_pFaceDetector;//should not happen.
-        }
-        m_pFaceDetector = 0;
-    }
-
 }
 
 status_t ControlThread::setPreviewWindow(struct preview_stream_ops *window)
@@ -1764,23 +1747,21 @@ status_t ControlThread::handleMessageReleaseRecordingFrame(MessageReleaseRecordi
 
 status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
 {
-
-    LOG2("handle preview frame done buff id = %d", msg->buff.id);
+    LOG2("@%s, buffer id = %d", __FUNCTION__, msg->buff.id);
     if (!mISP->isBufferValid(&msg->buff))
         return DEAD_OBJECT;
     status_t status = NO_ERROR;
 
-    if (m_pFaceDetector !=0 && mFaceDetectionActive) {
-        LOG2("m_pFace = 0x%p, active=%s", m_pFaceDetector, mFaceDetectionActive?"true":"false");
+    if (mFaceDetectionActive) {
+        LOG2("@%s: face detection active", __FUNCTION__);
         int width, height;
         mParameters.getPreviewSize(&width, &height);
         msg->buff.owner = this;
-        if (m_pFaceDetector->sendFrame(&msg->buff, width, height) < 0) {
+        if (mPostProcThread->sendFrame(&msg->buff, width, height) < 0) {
             msg->buff.owner = 0;
             releasePreviewFrame(&msg->buff);
         }
-    }else
-    {
+    } else {
        releasePreviewFrame(&msg->buff);
     }
     return NO_ERROR;
@@ -3632,8 +3613,8 @@ status_t ControlThread::startFaceDetection()
     if (mState == STATE_STOPPED || mFaceDetectionActive) {
         return INVALID_OPERATION;
     }
-    if (m_pFaceDetector != 0) {
-        m_pFaceDetector->start();
+    if (mPostProcThread != 0) {
+        mPostProcThread->start();
         mFaceDetectionActive = true;
         enableMsgType(CAMERA_MSG_PREVIEW_METADATA);
         return NO_ERROR;
@@ -3649,8 +3630,8 @@ status_t ControlThread::stopFaceDetection(bool wait)
         return NO_ERROR;
     mFaceDetectionActive = false;
     disableMsgType(CAMERA_MSG_PREVIEW_METADATA);
-    if (m_pFaceDetector != 0) {
-        m_pFaceDetector->stop(wait);
+    if (mPostProcThread != 0) {
+        mPostProcThread->stop(wait);
         return NO_ERROR;
     } else{
         return INVALID_OPERATION;
