@@ -172,6 +172,7 @@ private:
      * JPEG, RAW and POSTIVEW callbacks are sent to the camera client.
      */
     Vector<MessageFrame> mBuffers;
+    camera_frame_metadata_t mFaceMetadata;
 
 // public data
 public:

@@ -18,6 +18,7 @@
 #include "CallbacksThread.h"
 #include "LogHelper.h"
 #include "Callbacks.h"
+#include "FaceDetector.h"
 
 namespace android {
 
@@ -33,11 +34,16 @@ CallbacksThread::CallbacksThread() :
     ,mRawRequested(0)
 {
     LOG1("@%s", __FUNCTION__);
+    mFaceMetadata.faces = new camera_face_t[MAX_FACES_DETECTABLE];
+    memset(mFaceMetadata.faces, 0, MAX_FACES_DETECTABLE * sizeof(camera_face_t));
+    mFaceMetadata.number_of_faces = 0;
 }
 
 CallbacksThread::~CallbacksThread()
 {
     LOG1("@%s", __FUNCTION__);
+    delete [] mFaceMetadata.faces;
+    mFaceMetadata.faces = NULL;
     mInstance = NULL;
 }
 
@@ -91,9 +97,20 @@ status_t CallbacksThread::flushPictures()
 void CallbacksThread::facesDetected(camera_frame_metadata_t &face_metadata)
 {
     LOG1("@%s", __FUNCTION__);
+    int num_faces;
+    if (face_metadata.number_of_faces > MAX_FACES_DETECTABLE) {
+        LOGW("@%s: %d faces detected, limiting to %d", __FUNCTION__,
+            face_metadata.number_of_faces, MAX_FACES_DETECTABLE);
+        num_faces = MAX_FACES_DETECTABLE;
+    } else {
+        num_faces = face_metadata.number_of_faces;
+    }
+    mFaceMetadata.number_of_faces = num_faces;
+    memcpy(mFaceMetadata.faces, face_metadata.faces, mFaceMetadata.number_of_faces * sizeof(camera_face_t));
+
     Message msg;
     msg.id = MESSAGE_ID_FACES;
-    msg.data.faces.meta_data= face_metadata;
+    msg.data.faces.meta_data = mFaceMetadata;
     mMessageQueue.send(&msg);
 }
 
@@ -223,6 +240,7 @@ status_t CallbacksThread::handleMessageFlush()
 
 status_t CallbacksThread::handleMessageFaces(MessageFaces *msg)
 {
+    LOG1("@%s", __FUNCTION__);
     mCallbacks->facesDetected(msg->meta_data);
     return NO_ERROR;
 }
