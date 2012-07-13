@@ -788,7 +788,6 @@ status_t AtomISP::startPreview()
     if ((status = allocatePreviewBuffers()) != NO_ERROR)
         return status;
 
-
     if (mFileInject.active == true)
         startFileInject();
 
@@ -866,7 +865,6 @@ status_t AtomISP::startRecording() {
 
     if ((status = allocatePreviewBuffers()) != NO_ERROR)
         goto exitFreeRec;
-
 
     ret = openDevice(mPreviewDevice);
     if (ret < 0) {
@@ -947,10 +945,8 @@ status_t AtomISP::stopRecording()
 {
     LOG1("@%s", __FUNCTION__);
 
-
     stopDevice(mRecordingDevice);
     freeRecordingBuffers();
-
 
     stopDevice(mPreviewDevice);
     freePreviewBuffers();

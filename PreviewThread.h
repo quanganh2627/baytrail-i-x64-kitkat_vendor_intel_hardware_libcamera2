@@ -116,7 +116,6 @@ private:
 
         // MESSAGE_ID_SET_PREVIEW_CONFIG
         MessageSetPreviewConfig setPreviewConfig;
-
     };
 
     // message id and message data

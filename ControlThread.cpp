@@ -674,7 +674,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     AtomBuffer *pvBufs;
     int count;
     status = mPreviewThread->fetchPreviewBuffers(&pvBufs, &count);
-    if ( (status == NO_ERROR) && (count == mNumBuffers)){
+    if ((status == NO_ERROR) && (count == mNumBuffers)){
         mISP->setGraphicPreviewBuffers(pvBufs, mNumBuffers);
     }
 
