@@ -213,7 +213,7 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
                 LOG1("SmartScene: new scene detected: %d, HDR: %d", sceneMode, sceneHdr);
                 mSmartSceneMode = sceneMode;
                 mSmartSceneHdr = sceneHdr;
-                mCallbacks->sceneDetected(sceneMode, sceneHdr);
+                mAAADoneCallback->sceneDetected(sceneMode, sceneHdr);
             }
         }
     }

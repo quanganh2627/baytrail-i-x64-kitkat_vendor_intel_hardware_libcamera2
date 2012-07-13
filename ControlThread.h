@@ -119,6 +119,7 @@ private:
     virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void autoFocusDone();
     virtual void returnBuffer(AtomBuffer *buff);
+    virtual void sceneDetected(int sceneMode, bool sceneHdr);
 
 // private types
 private:
@@ -150,6 +151,7 @@ private:
         MESSAGE_ID_STOP_CAPTURE,
         MESSAGE_ID_CONFIGURE_FILE_INJECT,
         MESSAGE_ID_SET_PREVIEW_WINDOW,
+        MESSAGE_ID_SCENE_DETECTED,
 
         // Messages for the Acceleration API temporary HACK
         MESSAGE_ID_LOAD_FIRMWARE,
@@ -235,6 +237,11 @@ private:
         bool enabled;
     };
 
+    struct MessageSceneDetected {
+        int sceneMode;
+        bool sceneHdr;
+    };
+
     // union of all message data
     union MessageData {
 
@@ -278,6 +285,9 @@ private:
 
         // MESSAGE_ID_STORE_METADATA_IN_BUFFER
         MessageStoreMetaDataInBuffers storeMetaDataInBuffers;
+
+        // MESSAGE_ID_SCENE_DETECTED
+        MessageSceneDetected    sceneDetected;
     };
 
     // message id and message data
@@ -388,6 +398,7 @@ private:
     status_t handleMessageUnsetFirmwareArgument(MessageSetFwArg* msg);
     status_t enableIntelParameters();
     void releasePreviewFrame(AtomBuffer* buff);
+    status_t handleMessageSceneDetected(MessageSceneDetected *msg);
 
     // main message function
     status_t waitForAndExecuteMessage();

@@ -67,6 +67,7 @@ public:
     status_t flushPictures();
     size_t   getQueuedBuffersNum() { return mBuffers.size(); }
     virtual void facesDetected(camera_frame_metadata_t &face_metadata);
+    status_t sceneDetected(int sceneMode, bool sceneHdr);
 
 // private types
 private:
@@ -80,6 +81,7 @@ private:
         MESSAGE_ID_JPEG_DATA_REQUEST,   // a JPEG image was requested
         MESSAGE_ID_FLUSH,
         MESSAGE_ID_FACES,
+        MESSAGE_ID_SCENE_DETECTED,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -104,6 +106,11 @@ private:
         bool rawCallback;
     };
 
+    struct MessageSceneDetected {
+        int sceneMode;
+        bool sceneHdr;
+    };
+
     // union of all message data
     union MessageData {
 
@@ -115,6 +122,9 @@ private:
 
         // MESSAGE_ID_FACES
         MessageFaces faces;
+
+        // MESSAGE_ID_SCENE_DETECTED
+        MessageSceneDetected    sceneDetected;
     };
 
     // message id and message data
@@ -133,6 +143,7 @@ private:
     status_t handleMessageJpegDataRequest(MessageDataRequest *msg);
     status_t handleMessageFlush();
     status_t handleMessageFaces(MessageFaces *msg);
+    status_t handleMessageSceneDetected(MessageSceneDetected *msg);
 
     // main message function
     status_t waitForAndExecuteMessage();

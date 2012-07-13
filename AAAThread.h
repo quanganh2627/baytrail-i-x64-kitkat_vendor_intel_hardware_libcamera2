@@ -31,6 +31,7 @@ namespace android {
         ICallbackAAA() {}
         virtual ~ICallbackAAA() {}
         virtual void autoFocusDone() = 0;
+        virtual void sceneDetected(int sceneMode, bool sceneHdr) = 0;
     };
 
 class AtomAAA;

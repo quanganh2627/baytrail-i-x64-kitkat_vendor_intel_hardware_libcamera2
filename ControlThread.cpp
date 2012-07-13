@@ -565,6 +565,15 @@ void ControlThread::returnBuffer(AtomBuffer *buff)
         releasePreviewFrame (buff);
     }
 }
+void ControlThread::sceneDetected(int sceneMode, bool sceneHdr)
+{
+    LOG2("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_SCENE_DETECTED;
+    msg.data.sceneDetected.sceneMode = sceneMode;
+    msg.data.sceneDetected.sceneHdr = sceneHdr;
+    mMessageQueue.send(&msg);
+}
 void ControlThread::releasePreviewFrame(AtomBuffer *buff)
 {
     LOG2("release preview frame buffer data %p, id = %d", buff, buff->id);
@@ -3520,6 +3529,15 @@ status_t ControlThread::handleMessageUnsetFirmwareArgument(MessageSetFwArg* msg)
 
     return status;
 }
+
+status_t ControlThread::handleMessageSceneDetected(MessageSceneDetected *msg)
+{
+    LOG2("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    status = mCallbacksThread->sceneDetected(msg->sceneMode, msg->sceneHdr);
+    return status;
+}
+
 /**
  * Start Smart scene detection. This should be called after preview is started.
  * The camera will notify Camera.SmartSceneDetectionListener when a new scene
@@ -3744,6 +3762,10 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_STORE_METADATA_IN_BUFFER:
             status = handleMessageStoreMetaDataInBuffers(&msg.data.storeMetaDataInBuffers);
+            break;
+
+        case MESSAGE_ID_SCENE_DETECTED:
+            status = handleMessageSceneDetected(&msg.data.sceneDetected);
             break;
 
         default:

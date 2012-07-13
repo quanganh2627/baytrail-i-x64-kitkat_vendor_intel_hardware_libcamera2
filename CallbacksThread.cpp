@@ -97,6 +97,16 @@ void CallbacksThread::facesDetected(camera_frame_metadata_t &face_metadata)
     mMessageQueue.send(&msg);
 }
 
+status_t CallbacksThread::sceneDetected(int sceneMode, bool sceneHdr)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_SCENE_DETECTED;
+    msg.data.sceneDetected.sceneMode = sceneMode;
+    msg.data.sceneDetected.sceneHdr = sceneHdr;
+    return mMessageQueue.send(&msg);
+}
+
 status_t CallbacksThread::handleMessageExit()
 {
     LOG1("@%s", __FUNCTION__);
@@ -217,6 +227,14 @@ status_t CallbacksThread::handleMessageFaces(MessageFaces *msg)
     return NO_ERROR;
 }
 
+status_t CallbacksThread::handleMessageSceneDetected(MessageSceneDetected *msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mCallbacks->sceneDetected(msg->sceneMode, msg->sceneHdr);
+    return status;
+}
+
 status_t CallbacksThread::waitForAndExecuteMessage()
 {
     LOG2("@%s", __FUNCTION__);
@@ -248,6 +266,10 @@ status_t CallbacksThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_FACES:
             status = handleMessageFaces(&msg.data.faces);
+            break;
+
+        case MESSAGE_ID_SCENE_DETECTED:
+            status = handleMessageSceneDetected(&msg.data.sceneDetected);
             break;
 
         default:
