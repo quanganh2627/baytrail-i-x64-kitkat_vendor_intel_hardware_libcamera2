@@ -66,7 +66,7 @@ int OlaBufferService::configLoadFirmware()
 {
 	if( gHAL != NULL ) {
 		LOGI("[%s] configLoadFirmware called in server side", __FUNCTION__);
-		return 0;//gHAL->configLoadFirmware();
+		return gHAL->configLoadFirmware();
 	}
 	return -100;
 }
@@ -75,7 +75,7 @@ void OlaBufferService::configUnLoadFirmware()
 {
 	if( gHAL != NULL ) {
 		LOGI("[%s] configUnLoadFirmware called in server side", __FUNCTION__);
-		//gHAL->configUnloadFirmware();
+		gHAL->configUnloadFirmware();
 	}
 }
 

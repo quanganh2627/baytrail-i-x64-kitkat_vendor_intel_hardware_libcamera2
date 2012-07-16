@@ -24,6 +24,8 @@
 
 namespace android {
 
+#define FACE_ACCELERATION_FIRMWARE "system/etc/firmware/fa_extension.bin"
+
 class ControlThread;
 /**
  * \class HalProxyOla
@@ -41,7 +43,7 @@ public:
 
 
       /*
-       * Wrapper to standard accerletaion API for face acceleration.
+       * Wrapper to standard acceleration API for face acceleration.
        * In case of face acceleration, Camera HAL maintains acceleration
        * firmware and handle to the firmware when loaded. This function
        * reads the internally maintained firmware file and calls the
@@ -51,7 +53,7 @@ public:
        int configLoadFirmware(void);
 
       /*
-       * Wrapper to standard accerletaion API for face acceleration.
+       * Wrapper to standard acceleration API for face acceleration.
        * This function triggers unloading firmware from ISP and uses the
        * handle stored at the time loading the firmware. This function
        * calls the standard "closeFirmware" API for unloading the firmware.
@@ -72,9 +74,55 @@ public:
        * acceleration API destabilizeFirmwareArg with the face acceleration handle.
        */
        int configDestabilizeArgFirmware(const unsigned int arg_ID);
+private:
+       /*
+        * Opens the face acceleration firmware file and loads the firmware
+        * to the memory. Used only for the face acceleration support.
+        * @param fw_name [IN]pointer to the name of the firmware file
+        * @param size [OUT] reference to an int where to store the size of the firmware file
+        * @return pointer to the malloc'ed memory where the firmware is store
+        *         returns NULL if it could not allocate
+        */
+       void *host_load_firmware (const char *fw_name, unsigned int& size);
+
+       int  configRegisterFirmware( const char *fw_name);
+
+      /*
+       * Loads the acceleration firmware to ISP.
+       * Expects the fwData to be following the "atomisp_acc_fw" structure.
+       * Driver fills "fw_handle" and HAL copies this fw_handle and
+       * returns it. HAL does not store that value. Application needs to
+       * maintain that handle in order to identify a firmware loaded until
+       * the firmware is unloaded.
+       */
+       virtual status_t load_firmware(void *fwData, size_t size,
+                                      unsigned int& fwHandle);
+
+      /*
+       * Triggers unloading the acceleration firmware from the ISP.
+       * Acceleration firmware to be unloaded is identified by the fwHandle.
+       * As Camera HAL do not maintain any handles, it do not check the
+       * authenticity of the firmware handle.
+       */
+       status_t unload_firmware(unsigned int fwHandle);
 
 private:
        ControlThread *mHAL;
+
+       void * mFaAccFirmware;   /**< Pointer to the face acceleration firmware binary in host memory */
+
+      /*
+       * Handle to the face acceleration firmware loaded to the ISP.
+       * Handle value ranges from 0 to Max value. 0 is a valid handle.
+       */
+       unsigned int mFaAccFirmwareHandle;
+
+      /*
+       * Size of the face acceleration firmware. This information is
+       * needed for the firmware loading. This is the size of the firmware
+       * file.
+       */
+       size_t mFaAccFirmwareSize;
 
 };
 } //namespace android
