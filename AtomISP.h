@@ -127,6 +127,10 @@ public:
 
     float getFrameRate() { return mConfig.fps; }
 
+    /* Acceleration API extensions */
+   int loadAccFirmware(void *fw, size_t size, unsigned int *fwHandle);
+   int unloadAccFirmware(unsigned int fwHandle);
+
 // private methods
 private:
 

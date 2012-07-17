@@ -1,4 +1,4 @@
-/*
+    /*
  * Copyright (C) 2011 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -2983,6 +2983,66 @@ status_t AtomISP::getCameraInfo(int cameraId, camera_info *cameraInfo)
          cameraInfo->orientation);
 
     return NO_ERROR;
+}
+
+
+/* ===================  ACCELERATION API EXTENSIONS ====================== */
+/*
+* Loads the acceleration firmware to ISP. Calls the appropriate
+* Driver IOCTL calls. Driver checks the validity of the firmware
+* and fills the "fw_handle"
+*/
+int AtomISP::loadAccFirmware(void *fw, size_t size,
+                             unsigned int *fwHandle)
+{
+    LOG1("@%s\n", __FUNCTION__);
+    int ret = -1;
+
+    //Load the IOCTL struct
+    atomisp_acc_fw_load fwData;
+    fwData.size = size;
+    fwData.fw_handle = 0;
+    fwData.data = fw;
+    LOG2("fwData : 0x%x fwData->data : 0x%x",
+        (unsigned int)&fwData, (unsigned int)fwData.data );
+
+
+
+    if ( main_fd ){
+        ret = ioctl(main_fd, ATOMISP_IOC_ACC_LOAD, &fwData);
+        LOG1("%s IOCTL ATOMISP_IOC_ACC_LOAD ret : %d fwData->fw_handle: %d \n"\
+                , __FUNCTION__, ret, fwData.fw_handle);
+    }
+
+    //If IOCTRL call was returned successfully, get the firmware handle
+    //from the structure and return it to the application.
+    if(!ret){
+        *fwHandle = fwData.fw_handle;
+        LOG1("%s IOCTL Call returned : %d Handle: %ud\n",
+                __FUNCTION__, ret, *fwHandle );
+    }
+
+    return ret;
+}
+
+/*
+* Unloads the acceleration firmware from ISP.
+* Atomisp driver checks the validity of the handles and schedules
+* unloading the firmware on the current frame complete. After this
+* call handle is not valid any more.
+*/
+int AtomISP::unloadAccFirmware(unsigned int fwHandle)
+{
+    LOG1("@ %s fw_Handle: %d\n",__FUNCTION__, fwHandle);
+    int ret = -1;
+
+    if ( main_fd ){
+        ret = ioctl(main_fd, ATOMISP_IOC_ACC_UNLOAD, &fwHandle);
+        LOG1("%s IOCTL ATOMISP_IOC_ACC_UNLOAD ret: %d \n",
+                __FUNCTION__,ret);
+    }
+
+    return ret;
 }
 
 } // namespace android

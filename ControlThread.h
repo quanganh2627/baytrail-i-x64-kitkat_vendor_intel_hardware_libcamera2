@@ -405,7 +405,7 @@ private:
     status_t stopSmartSceneDetection();
     status_t handleMessageStopCapture();
     status_t handleMessageLoadFirmware(MessageLoadFirmware* msg);
-    status_t handleMessageUnloadFirmware();
+    status_t handleMessageUnloadFirmware(MessageUnloadFirmware* msg);
     void releasePreviewFrame(AtomBuffer* buff);
 
     // main message function

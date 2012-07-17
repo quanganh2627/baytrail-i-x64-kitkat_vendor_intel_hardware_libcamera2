@@ -3462,7 +3462,7 @@ status_t ControlThread::handleMessageLoadFirmware(MessageLoadFirmware* msg)
     status_t status = NO_ERROR;
 
     if(mState == STATE_PREVIEW_STILL || mState == STATE_PREVIEW_VIDEO) {
-
+        mISP->loadAccFirmware(msg->fwData, msg->size, msg->fwHandle);
     } else {
         status = INVALID_OPERATION;
         LOGW("@%s: invalid state to load FW", __FUNCTION__);
@@ -3473,13 +3473,13 @@ status_t ControlThread::handleMessageLoadFirmware(MessageLoadFirmware* msg)
     return status;
 }
 
-status_t ControlThread::handleMessageUnloadFirmware()
+status_t ControlThread::handleMessageUnloadFirmware(MessageUnloadFirmware* msg)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     if(mState == STATE_PREVIEW_STILL || mState == STATE_PREVIEW_VIDEO) {
-
+        mISP->unloadAccFirmware(msg->fwHandle);
     } else {
         status = INVALID_OPERATION;
         LOGW("@%s: invalid state to load FW", __FUNCTION__);
@@ -3663,7 +3663,7 @@ status_t ControlThread::waitForAndExecuteMessage()
             break;
 
         case MESSAGE_ID_UNLOAD_FIRMWARE:
-            status = handleMessageUnloadFirmware();
+            status = handleMessageUnloadFirmware(&msg.data.unloadFW);
             break;
 
         default:
