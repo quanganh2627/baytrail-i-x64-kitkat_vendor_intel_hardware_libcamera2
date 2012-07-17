@@ -20,7 +20,7 @@
 #include "DebugFrameRate.h"
 #include "Callbacks.h"
 #include "ColorConverter.h"
-#include <ui/android_native_buffer.h>
+#include <gui/Surface.h>
 #include <ui/GraphicBuffer.h>
 #include <ui/GraphicBufferMapper.h>
 #include "AtomCommon.h"

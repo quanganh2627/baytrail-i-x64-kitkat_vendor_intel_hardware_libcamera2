@@ -43,7 +43,7 @@ endif
 LOCAL_C_INCLUDES += \
 	frameworks/base/include \
 	frameworks/base/include/binder \
-	frameworks/base/include/camera \
+	frameworks/av/include/camera \
 	external/jpeg \
 	hardware/libhardware/include/hardware \
 	external/skia/include/core \
