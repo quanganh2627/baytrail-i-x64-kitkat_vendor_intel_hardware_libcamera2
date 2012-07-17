@@ -1,7 +1,9 @@
+ifeq ($(USE_CAMERA_STUB),false)
 ifeq ($(USE_CAMERA_HAL2),true)
 LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
+USE_INTEL_JPEG :=false
 # USE_INTEL_FACE_DETECTION_IN_CAMERAHAL flag is controlled from
 # InteFace.inc. If this file missing means, intel face
 # detection is not supported.
@@ -124,3 +126,4 @@ LOCAL_MODULE_TAGS := optional
 include $(BUILD_SHARED_LIBRARY)
 
 endif  #ifeq ($(USE_CAMERA_HAL2),true)
+endif #ifeq ($(USE_CAMERA_STUB),false)

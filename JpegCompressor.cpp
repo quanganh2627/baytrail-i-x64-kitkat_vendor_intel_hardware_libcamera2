@@ -26,10 +26,13 @@
 
 #ifdef USE_INTEL_JPEG
 #include <va/va.h>
+extern "C" {
+    #include "jpeglib_ext.h"
+}
 #endif
+
 extern "C" {
     #include "jpeglib.h"
-    #include "jpeglib_ext.h"
 }
 
 namespace android {

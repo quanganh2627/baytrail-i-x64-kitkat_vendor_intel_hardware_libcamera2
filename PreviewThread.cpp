@@ -209,7 +209,7 @@ status_t PreviewThread::handleMessageSetPreviewWindow(MessageSetPreviewWindow *m
                 mPreviewWindow,
                 previewWidthPadded,
                 mPreviewHeight,
-                HAL_PIXEL_FORMAT_NV12);
+                HAL_PIXEL_FORMAT_YV12);
     }
 
     return NO_ERROR;
@@ -231,7 +231,7 @@ status_t PreviewThread::handleMessageSetPreviewConfig(MessageSetPreviewConfig *m
                     mPreviewWindow,
                     previewWidthPadded,
                     msg->height,
-                    HAL_PIXEL_FORMAT_NV12);
+                    HAL_PIXEL_FORMAT_YV12);
         }
         mPreviewWidth = msg->width;
         mPreviewHeight = msg->height;
