@@ -96,7 +96,7 @@ private:
        * the firmware is unloaded.
        */
        virtual status_t load_firmware(void *fwData, size_t size,
-                                      unsigned int& fwHandle);
+                                      unsigned int *fwHandle);
 
       /*
        * Triggers unloading the acceleration firmware from the ISP.

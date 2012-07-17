@@ -151,6 +151,10 @@ private:
         MESSAGE_ID_CONFIGURE_FILE_INJECT,
         MESSAGE_ID_SET_PREVIEW_WINDOW,
 
+        // Messages for the Acceleration API temporary HACK
+        MESSAGE_ID_LOAD_FIRMWARE,
+        MESSAGE_ID_UNLOAD_FIRMWARE,
+
         // max number of messages
         MESSAGE_ID_MAX
     };
@@ -205,6 +209,16 @@ private:
         struct preview_stream_ops *window;
     };
 
+    struct MessageLoadFirmware {
+        void *fwData;
+        size_t size;
+        unsigned int *fwHandle;
+    };
+
+    struct MessageUnloadFirmware {
+        unsigned int fwHandle;
+    };
+
     // union of all message data
     union MessageData {
 
@@ -236,6 +250,12 @@ private:
 
         // MESSAGE_ID_SET_PREVIEW_WINDOW
         MessagePreviewWindow    previewWin;
+
+        //MESSAGE_ID_LOAD_FIRMWARE
+        MessageLoadFirmware     loadFW;
+
+        //MESSAGE_ID_UNLOAD_FIRMWARE
+        MessageUnloadFirmware     unloadFW;
     };
 
     // message id and message data
@@ -384,6 +404,8 @@ private:
     status_t startSmartSceneDetection();
     status_t stopSmartSceneDetection();
     status_t handleMessageStopCapture();
+    status_t handleMessageLoadFirmware(MessageLoadFirmware* msg);
+    status_t handleMessageUnloadFirmware();
     void releasePreviewFrame(AtomBuffer* buff);
 
     // main message function
@@ -493,6 +515,7 @@ private:
     sp<VideoThread> mVideoThread;
     sp<AAAThread>     m3AThread;
     sp<HalProxyOla>   mProxyToOlaService;
+    friend class HalProxyOla;
 
     MessageQueue<Message, MessageId> mMessageQueue;
     State mState;

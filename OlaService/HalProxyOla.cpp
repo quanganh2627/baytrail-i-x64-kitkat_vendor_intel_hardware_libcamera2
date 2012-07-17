@@ -109,7 +109,7 @@ int HalProxyOla::configLoadFirmware(void)
     if ( !ret ){
         ret = load_firmware(mFaAccFirmware,
                             mFaAccFirmwareSize,
-                            mFaAccFirmwareHandle);
+                            &mFaAccFirmwareHandle);
         LOG1("%s configRegisterFirmware ret: %d handle: %d\n", __func__, ret, mFaAccFirmwareHandle);
     }
 
@@ -137,14 +137,28 @@ void HalProxyOla::configUnloadFirmware(void)
 /*=== Helper methods ===*/
 
 status_t HalProxyOla::load_firmware(void *fwData, size_t size,
-                                    unsigned int& fwHandle) {
+                                    unsigned int *fwHandle)
+{
     LOG1("%s \n", __func__);
-    return NO_ERROR;
+
+    ControlThread::Message msg;
+    msg.id = ControlThread::MESSAGE_ID_LOAD_FIRMWARE;
+    msg.data.loadFW.fwData = fwData;
+    msg.data.loadFW.size = size;
+    msg.data.loadFW.fwHandle = fwHandle;
+
+    return mHAL->mMessageQueue.send(&msg, ControlThread::MESSAGE_ID_LOAD_FIRMWARE);
 }
 
-status_t HalProxyOla::unload_firmware(unsigned int fwHandle) {
+status_t HalProxyOla::unload_firmware(unsigned int fwHandle)
+{
     LOG1("%s \n", __func__);
-    return NO_ERROR;
+
+    ControlThread::Message msg;
+    msg.id = ControlThread::MESSAGE_ID_UNLOAD_FIRMWARE;
+    msg.data.unloadFW.fwHandle = fwHandle;
+
+    return mHAL->mMessageQueue.send(&msg);
 }
 /*
  * Reads the firmware file and loads it to the memory

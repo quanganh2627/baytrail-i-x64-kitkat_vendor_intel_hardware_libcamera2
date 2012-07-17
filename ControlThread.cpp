@@ -3455,6 +3455,38 @@ status_t ControlThread::handleMessageConfigureFileInject(MessageConfigureFileInj
     return status;
 }
 
+
+status_t ControlThread::handleMessageLoadFirmware(MessageLoadFirmware* msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    if(mState == STATE_PREVIEW_STILL || mState == STATE_PREVIEW_VIDEO) {
+
+    } else {
+        status = INVALID_OPERATION;
+        LOGW("@%s: invalid state to load FW", __FUNCTION__);
+    }
+
+    // return status and unblock message sender
+    mMessageQueue.reply(MESSAGE_ID_LOAD_FIRMWARE, status);
+    return status;
+}
+
+status_t ControlThread::handleMessageUnloadFirmware()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    if(mState == STATE_PREVIEW_STILL || mState == STATE_PREVIEW_VIDEO) {
+
+    } else {
+        status = INVALID_OPERATION;
+        LOGW("@%s: invalid state to load FW", __FUNCTION__);
+    }
+    return status;
+
+}
 /**
  * Start Smart scene detection. This should be called after preview is started.
  * The camera will notify Camera.SmartSceneDetectionListener when a new scene
@@ -3624,6 +3656,14 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_SET_PREVIEW_WINDOW:
             status = handleMessageSetPreviewWindow(&msg.data.previewWin);
+            break;
+
+        case MESSAGE_ID_LOAD_FIRMWARE:
+            status = handleMessageLoadFirmware(&msg.data.loadFW);
+            break;
+
+        case MESSAGE_ID_UNLOAD_FIRMWARE:
+            status = handleMessageUnloadFirmware();
             break;
 
         default:
