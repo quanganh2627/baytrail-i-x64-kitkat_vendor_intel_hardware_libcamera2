@@ -3294,6 +3294,8 @@ status_t ControlThread::updateParameterCache()
 
     String8 params = mParameters.flatten();
     int len = params.length();
+    if (mParamCache)
+        free(mParamCache);
     mParamCache = strndup(params.string(), sizeof(char) * len);
     status = NO_ERROR;
 
