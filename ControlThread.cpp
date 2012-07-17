@@ -508,21 +508,6 @@ status_t ControlThread::releaseRecordingFrame(void *buff)
     return mMessageQueue.send(&msg);
 }
 
-status_t ControlThread::configureFileInject(const char *fileName, int width, int height, int format, int bayerOrder)
-{
-    LOG1("@%s", __FUNCTION__);
-    Message msg;
-    msg.id = MESSAGE_ID_CONFIGURE_FILE_INJECT;
-    strncpy(msg.data.configureFileInject.fileName,
-            fileName,
-            sizeof(msg.data.configureFileInject.fileName) - 1);
-    msg.data.configureFileInject.width = width;
-    msg.data.configureFileInject.height = height;
-    msg.data.configureFileInject.format = format;
-    msg.data.configureFileInject.bayerOrder = bayerOrder;
-    return mMessageQueue.send(&msg);
-}
-
 void ControlThread::previewDone(AtomBuffer *buff)
 {
     LOG2("@%s: buff = %p, id = %d", __FUNCTION__, buff->buff->data, buff->id);

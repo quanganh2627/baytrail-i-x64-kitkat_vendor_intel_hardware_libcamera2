@@ -106,9 +106,6 @@ public:
     // return recording frame to driver (asynchronous)
     status_t releaseRecordingFrame(void *buff);
 
-    // Intel extension for file injection/input
-    status_t configureFileInject(const char *file_name, int width, int height, int format, int bayer_order);
-
     // TODO: need methods to configure control thread
     // TODO: decide if configuration method should send a message
 
