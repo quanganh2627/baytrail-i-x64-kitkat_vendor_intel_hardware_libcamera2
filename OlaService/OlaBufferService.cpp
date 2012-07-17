@@ -218,7 +218,7 @@ extern "C" char* Ola_BufferService_GetBufferMemPointer(void)
 
 	//return (char*) receiverMemBasePreview->getBase();
 	ret_ptr = (((int)receiverMemBasePreview->getBase()) + 2*pageSize) & ~(pageSize-1) ;
-	LOG1("@%s, got %p",__FUNCTION__, ret_ptr);
+	LOG1("@%s, got %p",__FUNCTION__, (void*)ret_ptr);
 	return (char*)ret_ptr;
 }
 

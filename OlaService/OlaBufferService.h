@@ -55,15 +55,15 @@ extern "C" {
 #endif
 
 extern char*    Ola_BufferService_GetBufferMemPointer(void);
-extern char*	Ola_BufferService_RequestBuffer(int bufferId, int size);
+extern char*	Ola_BufferService_RequestBuffer(int bufferId, size_t size);
 extern int	    Ola_BufferService_ReleaseBuffer(int bufferId);
 extern int      Ola_BufferService_Initiate();
-extern char*    Ola_BufferService_DeInitialize();
+extern void     Ola_BufferService_DeInitialize();
 
 extern int  Ola_BufferService_ConfigLoadFirmware();
 extern void Ola_BufferService_ConfigUnLoadFirmware();
 extern int  Ola_BufferService_ConfigStartFirmware();
-extern int  Ola_BufferService_ConfigDoneFirmware();
+extern void Ola_BufferService_ConfigDoneFirmware();
 extern void Ola_BufferService_ConfigAbortFirmware();
 extern int  Ola_BufferService_ConfigSetArgFirmware(const int arg_ID, const void *arg, const size_t size);
 extern int  Ola_BufferService_ConfigDestabilizeArgFirmware(const int arg_ID);
