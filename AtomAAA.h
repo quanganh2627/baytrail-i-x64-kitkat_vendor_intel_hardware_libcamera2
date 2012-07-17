@@ -148,7 +148,7 @@ struct SensorParams
 struct CiUserBuffer {
     ia_frame *ciMainBuf;
     ia_frame *ciPostviewBuf;
-    int **cdf;
+    ia_cp_histogram *hist;
     size_t ciBufNum;
 };
 

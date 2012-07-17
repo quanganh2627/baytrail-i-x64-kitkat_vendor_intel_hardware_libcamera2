@@ -791,8 +791,8 @@ status_t ControlThread::stopCapture()
         if (mHdr.ciBufIn.ciPostviewBuf != NULL) {
             delete[] mHdr.ciBufIn.ciPostviewBuf;
         }
-        if (mHdr.ciBufIn.cdf != NULL) {
-            delete[] mHdr.ciBufIn.cdf;
+        if (mHdr.ciBufIn.hist != NULL) {
+            delete[] mHdr.ciBufIn.hist;
         }
         if (mHdr.ciBufOut.ciMainBuf != NULL) {
             delete[] mHdr.ciBufOut.ciMainBuf;
@@ -1417,17 +1417,17 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
             mHdr.ciBufIn.ciBufNum = mHdr.bracketNum;
             mHdr.ciBufIn.ciMainBuf = new ia_frame[mHdr.ciBufIn.ciBufNum];
             mHdr.ciBufIn.ciPostviewBuf = new ia_frame[mHdr.ciBufIn.ciBufNum];
-            mHdr.ciBufIn.cdf = new int*[mHdr.ciBufIn.ciBufNum];
+            mHdr.ciBufIn.hist = new ia_cp_histogram[mHdr.ciBufIn.ciBufNum];
 
             // Initialize the CI output buffers
             mHdr.ciBufOut.ciBufNum = mHdr.bracketNum;
             mHdr.ciBufOut.ciMainBuf = new ia_frame[1];
             mHdr.ciBufOut.ciPostviewBuf = new ia_frame[1];
-            mHdr.ciBufOut.cdf = NULL;
+            mHdr.ciBufOut.hist = NULL;
 
             if (mHdr.ciBufIn.ciMainBuf == NULL ||
                 mHdr.ciBufIn.ciPostviewBuf == NULL ||
-                mHdr.ciBufIn.cdf == NULL ||
+                mHdr.ciBufIn.hist == NULL ||
                 mHdr.ciBufOut.ciMainBuf == NULL ||
                 mHdr.ciBufOut.ciPostviewBuf == NULL) {
                 LOGE("HDR: Error allocating memory for HDR CI buffers!");
