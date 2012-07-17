@@ -381,7 +381,7 @@ AtomISP::~AtomISP()
     closeDevice(V4L2_FIRST_DEVICE);
 
     if (mZoomRatios)
-        delete mZoomRatios;
+        delete[] mZoomRatios;
 }
 
 void AtomISP::getDefaultParameters(CameraParameters *params)
