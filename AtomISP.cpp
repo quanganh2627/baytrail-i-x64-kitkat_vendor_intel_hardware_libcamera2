@@ -3026,11 +3026,11 @@ int AtomISP::loadAccFirmware(void *fw, size_t size,
 }
 
 /*
-* Unloads the acceleration firmware from ISP.
-* Atomisp driver checks the validity of the handles and schedules
-* unloading the firmware on the current frame complete. After this
-* call handle is not valid any more.
-*/
+ * Unloads the acceleration firmware from ISP.
+ * Atomisp driver checks the validity of the handles and schedules
+ * unloading the firmware on the current frame complete. After this
+ * call handle is not valid any more.
+ */
 int AtomISP::unloadAccFirmware(unsigned int fwHandle)
 {
     LOG1("@ %s fw_Handle: %d\n",__FUNCTION__, fwHandle);
@@ -3044,5 +3044,59 @@ int AtomISP::unloadAccFirmware(unsigned int fwHandle)
 
     return ret;
 }
+
+/*
+ * Sets the arguments for the firmware loaded.
+ * The loaded firmware is identified with the firmware handle.
+ * Atomisp driver checks the validity of the handle.
+ */
+int AtomISP::setFirmwareArgument(unsigned int fwHandle, unsigned int num,
+                                 void *val, size_t size)
+{
+    LOG1("@ %s fwHandle:%d\n", __FUNCTION__, fwHandle);
+    int ret = -1;
+
+    atomisp_acc_fw_arg arg;
+    arg.fw_handle = fwHandle;
+    arg.index = num;
+    arg.value = val;
+    arg.size = size;
+
+    if ( main_fd ){
+        ret = ioctl(main_fd, ATOMISP_IOC_ACC_S_ARG, &arg);
+        LOG1("%s IOCTL ATOMISP_IOC_ACC_S_ARG ret: %d \n",
+                __FUNCTION__, ret);
+    }
+
+    return ret;
+}
+
+/*
+ * For a stable argument, mark it is destabilized, i.e. flush it
+ * was changed from user space and needs flushing from the cache
+ * to provide CSS access to it.
+ * The loaded firmware is identified with the firmware handle.
+ * Atomisp driver checks the validity of the handle.
+ */
+int AtomISP::unsetFirmwareArgument(unsigned int fwHandle, unsigned int num)
+{
+    LOG1("@ %s fwHandle:%d", __FUNCTION__, fwHandle);
+    int ret = -1;
+
+    atomisp_acc_fw_arg arg;
+    arg.fw_handle = fwHandle;
+    arg.index = num;
+    arg.value = NULL;
+    arg.size = 0;
+
+    if ( main_fd ){
+        ret = ioctl(main_fd, ATOMISP_IOC_ACC_DESTAB, &arg);
+        LOG1("%s IOCTL ATOMISP_IOC_ACC_DESTAB ret: %d \n",
+                __FUNCTION__, ret);
+    }
+
+    return ret;
+}
+
 
 } // namespace android

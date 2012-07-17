@@ -108,7 +108,7 @@ int OlaBufferService::configSetArgFirmware(const int arg_ID, const void *arg, co
 {
 	if( gHAL != NULL ) {
 		LOGI("[SERVER::%s] configSetArgFirmware called with arg_ID (%d)", __FUNCTION__, arg_ID);
-		return 0;//gHAL->configSetArgFirmware( arg_ID, arg, size);
+		return gHAL->configSetArgFirmware( arg_ID, arg, size);
 	}
 	return -100;
 }
@@ -117,7 +117,7 @@ int OlaBufferService::configDestabilizeArgFirmware(const int arg_ID)
 {
 	if( gHAL != NULL ) {
 		LOGI("[SERVER::%s] configSetArgFirmware called with arg_ID (%d)", __FUNCTION__, arg_ID);
-		return 0;//gHAL->configDestabilizeArgFirmware( arg_ID);
+		return gHAL->configDestabilizeArgFirmware( arg_ID);
 	}
 	return -100;
 }
@@ -129,7 +129,7 @@ int OlaBufferService::configSetArgSharedBufferFirmware(const int arg_ID, int buf
 
 		void* arg = Ola_BufferService_RequestBuffer(bufferId ,size);
 		LOGW("[SERVER::%s] content bufferId[%d]: int* [%d]:%x, [%d]:%x, [%d]:%x, [%d]:%x", __FUNCTION__, bufferId, 0, ((int*)arg)[0], 1, ((int*)arg)[1], 2, ((int*)arg)[2], 3, ((int*)arg)[3]);
-		return 0;//gHAL->configSetArgFirmware( arg_ID, arg, size);
+		return gHAL->configSetArgFirmware( arg_ID, arg, size);
 	}
 	return -100;
 }

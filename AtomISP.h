@@ -130,6 +130,9 @@ public:
     /* Acceleration API extensions */
    int loadAccFirmware(void *fw, size_t size, unsigned int *fwHandle);
    int unloadAccFirmware(unsigned int fwHandle);
+   int setFirmwareArgument(unsigned int fwHandle, unsigned int num,
+                           void *val, size_t size);
+   int unsetFirmwareArgument(unsigned int fwHandle, unsigned int num);
 
 // private methods
 private:

@@ -66,7 +66,7 @@ public:
        * acceleration API setFirmwareArg with the face acceleration handle.
        */
        int configSetArgFirmware(const unsigned int arg_ID, const void *arg,
-                              const size_t size);
+                                const size_t size);
 
       /*
        * Wrapper to standard acceleration API for face acceleration.

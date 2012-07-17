@@ -154,6 +154,8 @@ private:
         // Messages for the Acceleration API temporary HACK
         MESSAGE_ID_LOAD_FIRMWARE,
         MESSAGE_ID_UNLOAD_FIRMWARE,
+        MESSAGE_ID_SET_FIRMWARE_ARGUMENT,
+        MESSAGE_ID_UNSET_FIRMWARE_ARGUMENT,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -219,6 +221,12 @@ private:
         unsigned int fwHandle;
     };
 
+    struct MessageSetFwArg {
+        unsigned int fwHandle;
+        unsigned int argIndex;
+        void *value;
+        size_t size;
+    };
     // union of all message data
     union MessageData {
 
@@ -256,6 +264,9 @@ private:
 
         //MESSAGE_ID_UNLOAD_FIRMWARE
         MessageUnloadFirmware     unloadFW;
+
+        //MESSAGE_ID_SET_FIRMWARE_ARGUMENT
+        MessageSetFwArg     setFwArg;
     };
 
     // message id and message data
@@ -406,6 +417,8 @@ private:
     status_t handleMessageStopCapture();
     status_t handleMessageLoadFirmware(MessageLoadFirmware* msg);
     status_t handleMessageUnloadFirmware(MessageUnloadFirmware* msg);
+    status_t handleMessageSetFirmwareArgument(MessageSetFwArg* msg);
+    status_t handleMessageUnsetFirmwareArgument(MessageSetFwArg* msg);
     void releasePreviewFrame(AtomBuffer* buff);
 
     // main message function

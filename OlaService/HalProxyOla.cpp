@@ -78,19 +78,9 @@ void HalProxyOla::copyPreview(void* src, int width, int height) {
     }
 }
 
-
-
-/*
-* Wrapper to standard acceleration API for face acceleration.
-* In case of face acceleration, Camera HAL maintains acceleration
-* firmware and handle to the firmware when loaded. This function
-* reads the internally maintained firmware file and calls the
-* standard "open_firmware" API for loading the firmware to ISP.
-* The returned handle is maintained inside HAL.
-*/
 int HalProxyOla::configLoadFirmware(void)
 {
-    LOG1("%s \n", __func__);
+    LOG1("%s \n", __FUNCTION__);
     int ret = 0;
 
     //If the face acceleration is loaded already, return the client
@@ -116,15 +106,9 @@ int HalProxyOla::configLoadFirmware(void)
     return ret;
 }
 
-/*
-* Wrapper to standard acceleration API for face acceleration.
-* This function triggers unloading firmware from ISP and uses the
-* handle stored at the time loading the firmware. This function
-* calls the standard "closeFirmware" API for unloading the firmware.
-*/
 void HalProxyOla::configUnloadFirmware(void)
 {
-    LOG1("%s \n", __func__);
+    LOG1("%s \n", __FUNCTION__);
     int ret = unload_firmware(mFaAccFirmwareHandle);
     LOG1("%s ret : %d\n", __func__, ret);
     mFaAccFirmwareHandle = 0;
@@ -134,7 +118,33 @@ void HalProxyOla::configUnloadFirmware(void)
     mFaAccFirmwareSize = 0;
 }
 
-/*=== Helper methods ===*/
+int HalProxyOla::configSetArgFirmware(const unsigned int arg_ID, const void *arg,
+                                      const size_t size)
+{
+    LOG1("%s arg ID: %d arg: 0x%x size: %d",__FUNCTION__, arg_ID,
+                           (unsigned int)arg, size );
+
+    ControlThread::Message msg;
+    msg.id = ControlThread::MESSAGE_ID_SET_FIRMWARE_ARGUMENT;
+    msg.data.setFwArg.argIndex = arg_ID;
+    msg.data.setFwArg.value = const_cast<void*> (arg);
+    msg.data.setFwArg.size = size;
+    msg.data.setFwArg.fwHandle = mFaAccFirmwareHandle;
+
+    return mHAL->mMessageQueue.send(&msg, ControlThread::MESSAGE_ID_SET_FIRMWARE_ARGUMENT);
+}
+
+int HalProxyOla::configDestabilizeArgFirmware(const unsigned int arg_ID)
+{
+   LOG1("%s arg ID: %d",__FUNCTION__, arg_ID);
+   ControlThread::Message msg;
+   msg.id = ControlThread::MESSAGE_ID_UNSET_FIRMWARE_ARGUMENT;
+   msg.data.setFwArg.argIndex = arg_ID;
+   msg.data.setFwArg.fwHandle = mFaAccFirmwareHandle;
+
+   return mHAL->mMessageQueue.send(&msg);
+}
+/*============================ Helper methods ===============================*/
 
 status_t HalProxyOla::load_firmware(void *fwData, size_t size,
                                     unsigned int *fwHandle)
