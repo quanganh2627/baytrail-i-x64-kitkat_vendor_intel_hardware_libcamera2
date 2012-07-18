@@ -137,7 +137,7 @@ status_t PreviewThread::returnPreviewBuffers()
     Message msg;
     msg.id = MESSAGE_ID_RETURN_PREVIEW_BUFS;
 
-    return mMessageQueue.send(&msg);
+    return mMessageQueue.send(&msg, MESSAGE_ID_RETURN_PREVIEW_BUFS);
 }
 status_t PreviewThread::preview(AtomBuffer *buff)
 {
@@ -377,8 +377,10 @@ status_t PreviewThread::handleMessageFetchPreviewBuffers()
 status_t PreviewThread::handleMessageReturnPreviewBuffers()
 {
     LOG1("@%s", __FUNCTION__);
-
-    return freeGfxPreviewBuffers();
+    status_t status = NO_ERROR;
+    status = freeGfxPreviewBuffers();
+    mMessageQueue.reply(MESSAGE_ID_RETURN_PREVIEW_BUFS, status);
+    return status;
 }
 
 status_t PreviewThread::handleMessageFlush()

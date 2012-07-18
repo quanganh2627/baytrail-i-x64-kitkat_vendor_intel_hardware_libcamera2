@@ -694,7 +694,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     } else {
         LOGE("Error starting ISP!");
         mPreviewThread->returnPreviewBuffers();
-        mPreviewThread->flushBuffers();
     }
 
     return status;
