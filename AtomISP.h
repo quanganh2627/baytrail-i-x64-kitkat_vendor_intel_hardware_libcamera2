@@ -24,6 +24,7 @@
 #include <utils/threads.h>
 #include <utils/String8.h>
 #include <camera/CameraParameters.h>
+#include "IntelCamera.h"
 #include "AtomCommon.h"
 #include "IntelBufferSharing.h"
 #include "AtomAAA.h"

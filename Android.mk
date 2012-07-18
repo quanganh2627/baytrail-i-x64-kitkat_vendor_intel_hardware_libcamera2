@@ -25,6 +25,7 @@ LOCAL_SRC_FILES := \
 	VideoThread.cpp \
 	AAAThread.cpp \
 	AtomISP.cpp \
+	IntelCamera.cpp \
 	DebugFrameRate.cpp \
 	Callbacks.cpp \
 	AtomAAA.cpp \

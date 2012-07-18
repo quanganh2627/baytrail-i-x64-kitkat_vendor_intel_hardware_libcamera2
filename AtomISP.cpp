@@ -520,10 +520,10 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
     /**
      * XNR/ANR
      */
-    params->set(CameraParameters::KEY_SUPPORTED_XNR, "true,false");
-    params->set(CameraParameters::KEY_XNR, CameraParameters::FALSE);
-    params->set(CameraParameters::KEY_SUPPORTED_ANR, "true,false");
-    params->set(CameraParameters::KEY_ANR, CameraParameters::FALSE);
+    params->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+    params->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+    params->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true,false");
+    params->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
 
     /**
      * EXPOSURE
@@ -534,26 +534,26 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
     params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP,0);
 
     // No Capture bracketing
-    params->set(CameraParameters::KEY_CAPTURE_BRACKET, "none");
-    params->set(CameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET, "none");
+    params->set(IntelCameraParameters::KEY_CAPTURE_BRACKET, "none");
+    params->set(IntelCameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET, "none");
 
     // No HDR imaging
-    params->set(CameraParameters::KEY_HDR_IMAGING, "off");
-    params->set(CameraParameters::KEY_SUPPORTED_HDR_IMAGING, "off");
-    params->set(CameraParameters::KEY_HDR_VIVIDNESS, "none");
-    params->set(CameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none");
-    params->set(CameraParameters::KEY_HDR_SHARPENING, "none");
-    params->set(CameraParameters::KEY_SUPPORTED_HDR_SHARPENING, "none");
-    params->set(CameraParameters::KEY_HDR_SAVE_ORIGINAL, "off");
-    params->set(CameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL, "off");
+    params->set(IntelCameraParameters::KEY_HDR_IMAGING, "off");
+    params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, "off");
+    params->set(IntelCameraParameters::KEY_HDR_VIVIDNESS, "none");
+    params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none");
+    params->set(IntelCameraParameters::KEY_HDR_SHARPENING, "none");
+    params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SHARPENING, "none");
+    params->set(IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, "off");
+    params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL, "off");
 
     /**
      * Burst-mode
      */
-    params->set(CameraParameters::KEY_BURST_FPS, "1");
-    params->set(CameraParameters::KEY_SUPPORTED_BURST_FPS, "1,3,5,7,15");
-    params->set(CameraParameters::KEY_SUPPORTED_BURST_LENGTH, "1,3,5,10");
-    params->set(CameraParameters::KEY_BURST_LENGTH, "1");
+    params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
+    params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS, "1,3,5,7,15");
+    params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, "1,3,5,10");
+    params->set(IntelCameraParameters::KEY_BURST_LENGTH, "1");
 
     if(mAAA->is3ASupported()){
         // effect modes
@@ -603,21 +603,21 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
 
 #ifdef RED_EYE_MODE_SUPPORT
         // red-eye mode
-        params->set(CameraParameters::KEY_RED_EYE_MODE, CameraParameters::RED_EYE_REMOVAL_OFF);
+        params->set(CameraParameters::KEY_RED_EYE_MODE, IntelCameraParameters::RED_EYE_REMOVAL_OFF);
         char redEyeModes[100] = {0};
         if (snprintf(redEyeModes, sizeof(redEyeModes)
                 ,"%s,%s"
-                ,CameraParameters::RED_EYE_REMOVAL_ON
-                ,CameraParameters::RED_EYE_REMOVAL_OFF) < 0) {
-            LOGE("Could not generate %s string: %s", CameraParameters::KEY_SUPPORTED_RED_EYE_MODES, strerror(errno));
+                ,IntelCameraParameters::RED_EYE_REMOVAL_ON
+                ,IntelCameraParameters::RED_EYE_REMOVAL_OFF) < 0) {
+            LOGE("Could not generate %s string: %s", IntelCameraParameters::KEY_SUPPORTED_RED_EYE_MODES, strerror(errno));
             return;
         }
         params->set(CameraParameters::KEY_SUPPORTED_RED_EYE_MODES, redEyeModes);
 #endif
 
         // ae mode
-        params->set(CameraParameters::KEY_AE_MODE, "auto");
-        params->set(CameraParameters::KEY_SUPPORTED_AE_MODES, "auto,manual,shutter-priority,aperture-priority");
+        params->set(IntelCameraParameters::KEY_AE_MODE, "auto");
+        params->set(IntelCameraParameters::KEY_SUPPORTED_AE_MODES, "auto,manual,shutter-priority,aperture-priority");
 
         // 3a lock: auto-exposure lock
         params->set(CameraParameters::KEY_AUTO_EXPOSURE_LOCK, CameraParameters::FALSE);
@@ -633,21 +633,21 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
         params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, "0.33333333");
 
         // ae metering mode (Intel extension)
-        params->set(CameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
+        params->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
 
         // Intel/UMG parameters for 3A locks
         // TODO: only needed until upstream key is available for AF lock
-        params->set(CameraParameters::KEY_AF_LOCK_MODE, "unlock");
-        params->set(CameraParameters::KEY_SUPPORTED_AF_LOCK_MODES, "lock,unlock");
+        params->set(IntelCameraParameters::KEY_AF_LOCK_MODE, "unlock");
+        params->set(IntelCameraParameters::KEY_SUPPORTED_AF_LOCK_MODES, "lock,unlock");
         // TODO: add UMG-style AE/AWB locking for Test Camera?
 
         // manual shutter control (Intel extension)
-        params->set(CameraParameters::KEY_SHUTTER, "60");
-        params->set(CameraParameters::KEY_SUPPORTED_SHUTTER, "1s,2,4,8,15,30,60,125,250,500");
+        params->set(IntelCameraParameters::KEY_SHUTTER, "60");
+        params->set(IntelCameraParameters::KEY_SUPPORTED_SHUTTER, "1s,2,4,8,15,30,60,125,250,500");
 
         // manual iso control (Intel extension)
-        params->set(CameraParameters::KEY_ISO, "iso-200");
-        params->set(CameraParameters::KEY_SUPPORTED_ISO, "iso-100,iso-200,iso-400,iso-800");
+        params->set(IntelCameraParameters::KEY_ISO, "iso-200");
+        params->set(IntelCameraParameters::KEY_SUPPORTED_ISO, "iso-100,iso-200,iso-400,iso-800");
 
         // multipoint focus
         params->set(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS, mAAA->getAfMaxNumWindows());
@@ -658,21 +658,21 @@ void AtomISP::getDefaultParameters(CameraParameters *params)
         params->set(CameraParameters::KEY_MAX_NUM_METERING_AREAS, mAAA->getAfMaxNumWindows());
 
         // Capture bracketing
-        params->set(CameraParameters::KEY_CAPTURE_BRACKET, "none");
-        params->set(CameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET, "none,exposure,focus");
+        params->set(IntelCameraParameters::KEY_CAPTURE_BRACKET, "none");
+        params->set(IntelCameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET, "none,exposure,focus");
 
-        params->set(CameraParameters::KEY_HDR_IMAGING, "off");
-        params->set(CameraParameters::KEY_SUPPORTED_HDR_IMAGING, "on,off");
-        params->set(CameraParameters::KEY_HDR_VIVIDNESS, "none");
-        params->set(CameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none,gaussian,gamma");
-        params->set(CameraParameters::KEY_HDR_SHARPENING, "none");
-        params->set(CameraParameters::KEY_SUPPORTED_HDR_SHARPENING, "none,normal,strong");
-        params->set(CameraParameters::KEY_HDR_SAVE_ORIGINAL, "off");
-        params->set(CameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL, "on,off");
+        params->set(IntelCameraParameters::KEY_HDR_IMAGING, "off");
+        params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, "on,off");
+        params->set(IntelCameraParameters::KEY_HDR_VIVIDNESS, "none");
+        params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none,gaussian,gamma");
+        params->set(IntelCameraParameters::KEY_HDR_SHARPENING, "none");
+        params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SHARPENING, "none,normal,strong");
+        params->set(IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, "off");
+        params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL, "on,off");
 
         // back lighting correction mode
-        params->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, "off");
-        params->set(CameraParameters::KEY_SUPPORTED_BACK_LIGHTING_CORRECTION_MODES, "on,off");
+        params->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, "off");
+        params->set(IntelCameraParameters::KEY_SUPPORTED_BACK_LIGHTING_CORRECTION_MODES, "on,off");
     }
 }
 

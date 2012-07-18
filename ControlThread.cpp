@@ -1950,16 +1950,16 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
 
     // Burst mode
     // Get the burst length
-    mBurstLength = newParams->getInt(CameraParameters::KEY_BURST_LENGTH);
+    mBurstLength = newParams->getInt(IntelCameraParameters::KEY_BURST_LENGTH);
     mBurstSkipFrames = 0;
     if (mBurstLength <= 0) {
         // Parameter not set, leave it as 0
          mBurstLength = 0;
     } else {
         // Get the burst framerate
-        int fps = newParams->getInt(CameraParameters::KEY_BURST_FPS);
+        int fps = newParams->getInt(IntelCameraParameters::KEY_BURST_FPS);
         if (fps > MAX_BURST_FRAMERATE) {
-            LOGE("Invalid value received for %s: %d", CameraParameters::KEY_BURST_FPS, mBurstSkipFrames);
+            LOGE("Invalid value received for %s: %d", IntelCameraParameters::KEY_BURST_FPS, mBurstSkipFrames);
             return BAD_VALUE;
         }
         if (fps > 0) {
@@ -2091,8 +2091,8 @@ status_t ControlThread::processParamAFLock(const CameraParameters *oldParams,
     status_t status = NO_ERROR;
 
     // af lock mode
-    const char* oldValue = oldParams->get(CameraParameters::KEY_AF_LOCK_MODE);
-    const char* newValue = newParams->get(CameraParameters::KEY_AF_LOCK_MODE);
+    const char* oldValue = oldParams->get(IntelCameraParameters::KEY_AF_LOCK_MODE);
+    const char* newValue = newParams->get(IntelCameraParameters::KEY_AF_LOCK_MODE);
     if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
         bool af_lock;
         // TODO: once available, use the definitions in Intel
@@ -2105,13 +2105,13 @@ status_t ControlThread::processParamAFLock(const CameraParameters *oldParams,
         } else if(!strncmp(newValue, PARAM_UNLOCK, strlen(PARAM_UNLOCK))) {
             af_lock = false;
         } else {
-            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_AF_LOCK_MODE, newValue);
+            LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_AF_LOCK_MODE, newValue);
             return INVALID_OPERATION;
         }
         status = mAAA->setAfLock(af_lock);
 
         if (status == NO_ERROR) {
-            LOG1("Changed: %s -> %s", CameraParameters::KEY_AF_LOCK_MODE, newValue);
+            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_AF_LOCK_MODE, newValue);
         }
     }
 
@@ -2155,8 +2155,8 @@ status_t ControlThread::processParamXNR_ANR(const CameraParameters *oldParams,
     status_t status = NO_ERROR;
 
     // XNR
-    const char* oldValue = oldParams->get(CameraParameters::KEY_XNR);
-    const char* newValue = newParams->get(CameraParameters::KEY_XNR);
+    const char* oldValue = oldParams->get(IntelCameraParameters::KEY_XNR);
+    const char* newValue = newParams->get(IntelCameraParameters::KEY_XNR);
     if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
         if (!strncmp(newValue, CameraParameters::TRUE, MAX_PARAM_VALUE_LENGTH))
             status = mISP->setXNR(true);
@@ -2165,8 +2165,8 @@ status_t ControlThread::processParamXNR_ANR(const CameraParameters *oldParams,
     }
 
     // ANR
-    oldValue = oldParams->get(CameraParameters::KEY_ANR);
-    newValue = newParams->get(CameraParameters::KEY_ANR);
+    oldValue = oldParams->get(IntelCameraParameters::KEY_ANR);
+    newValue = newParams->get(IntelCameraParameters::KEY_ANR);
     if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
         if (!strncmp(newValue, CameraParameters::TRUE, MAX_PARAM_VALUE_LENGTH))
             status = mISP->setLowLight(true);
@@ -2268,9 +2268,9 @@ status_t ControlThread::processParamFlash(const CameraParameters *oldParams,
             flash = CAM_AE_FLASH_MODE_ON;
         else if(!strncmp(newValue, CameraParameters::FLASH_MODE_TORCH, strlen(CameraParameters::FLASH_MODE_TORCH)))
             flash = CAM_AE_FLASH_MODE_TORCH;
-        else if(!strncmp(newValue, CameraParameters::FLASH_MODE_SLOW_SYNC, strlen(CameraParameters::FLASH_MODE_SLOW_SYNC)))
+        else if(!strncmp(newValue, IntelCameraParameters::FLASH_MODE_SLOW_SYNC, strlen(IntelCameraParameters::FLASH_MODE_SLOW_SYNC)))
             flash = CAM_AE_FLASH_MODE_SLOW_SYNC;
-        else if(!strncmp(newValue, CameraParameters::FLASH_MODE_DAY_SYNC, strlen(CameraParameters::FLASH_MODE_DAY_SYNC)))
+        else if(!strncmp(newValue, IntelCameraParameters::FLASH_MODE_DAY_SYNC, strlen(IntelCameraParameters::FLASH_MODE_DAY_SYNC)))
             flash = CAM_AE_FLASH_MODE_DAY_SYNC;
 
         if (flash == CAM_AE_FLASH_MODE_TORCH && mAAA->getAeFlashMode() != CAM_AE_FLASH_MODE_TORCH) {
@@ -2318,8 +2318,8 @@ status_t ControlThread::processParamBracket(const CameraParameters *oldParams,
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    const char* oldBracket = oldParams->get(CameraParameters::KEY_CAPTURE_BRACKET);
-    const char* newBracket = newParams->get(CameraParameters::KEY_CAPTURE_BRACKET);
+    const char* oldBracket = oldParams->get(IntelCameraParameters::KEY_CAPTURE_BRACKET);
+    const char* newBracket = newParams->get(IntelCameraParameters::KEY_CAPTURE_BRACKET);
     if (oldBracket && newBracket && strncmp(newBracket, oldBracket, MAX_PARAM_VALUE_LENGTH) != 0) {
         if(!strncmp(newBracket, "exposure", strlen("exposure"))) {
             mBracketing.mode = BRACKET_EXPOSURE;
@@ -2328,11 +2328,11 @@ status_t ControlThread::processParamBracket(const CameraParameters *oldParams,
         } else if(!strncmp(newBracket, "none", strlen("none"))) {
             mBracketing.mode = BRACKET_NONE;
         } else {
-            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_CAPTURE_BRACKET, newBracket);
+            LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_CAPTURE_BRACKET, newBracket);
             status = BAD_VALUE;
         }
         if (status == NO_ERROR) {
-            LOG1("Changed: %s -> %s", CameraParameters::KEY_CAPTURE_BRACKET, newBracket);
+            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_CAPTURE_BRACKET, newBracket);
         }
     }
     return status;
@@ -2345,8 +2345,8 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
     status_t status = NO_ERROR;
 
     // Check the HDR parameters
-    const char* oldValue = oldParams->get(CameraParameters::KEY_HDR_IMAGING);
-    const char* newValue = newParams->get(CameraParameters::KEY_HDR_IMAGING);
+    const char* oldValue = oldParams->get(IntelCameraParameters::KEY_HDR_IMAGING);
+    const char* newValue = newParams->get(IntelCameraParameters::KEY_HDR_IMAGING);
     if (oldValue && newValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
         if(!strncmp(newValue, "on", strlen("on"))) {
             mHdr.enabled = true;
@@ -2355,11 +2355,11 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         } else if(!strncmp(newValue, "off", strlen("off"))) {
             mHdr.enabled = false;
         } else {
-            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_HDR_IMAGING, newValue);
+            LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_IMAGING, newValue);
             status = BAD_VALUE;
         }
         if (status == NO_ERROR) {
-            LOG1("Changed: %s -> %s", CameraParameters::KEY_HDR_IMAGING, newValue);
+            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_IMAGING, newValue);
         }
     }
 
@@ -2369,8 +2369,8 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         mBracketing.mode = mHdr.bracketMode;
     }
 
-    oldValue = oldParams->get(CameraParameters::KEY_HDR_SHARPENING);
-    newValue = newParams->get(CameraParameters::KEY_HDR_SHARPENING);
+    oldValue = oldParams->get(IntelCameraParameters::KEY_HDR_SHARPENING);
+    newValue = newParams->get(IntelCameraParameters::KEY_HDR_SHARPENING);
     if (oldValue && newValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
         if(!strncmp(newValue, "normal", strlen("normal"))) {
             mHdr.sharpening = HdrImaging::NORMAL_SHARPENING;
@@ -2379,16 +2379,16 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         } else if(!strncmp(newValue, "none", strlen("none"))) {
             mHdr.sharpening = HdrImaging::NO_SHARPENING;
         } else {
-            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_HDR_SHARPENING, newValue);
+            LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_SHARPENING, newValue);
             status = BAD_VALUE;
         }
         if (status == NO_ERROR) {
-            LOG1("Changed: %s -> %s", CameraParameters::KEY_HDR_SHARPENING, newValue);
+            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_SHARPENING, newValue);
         }
     }
 
-    oldValue = oldParams->get(CameraParameters::KEY_HDR_VIVIDNESS);
-    newValue = newParams->get(CameraParameters::KEY_HDR_VIVIDNESS);
+    oldValue = oldParams->get(IntelCameraParameters::KEY_HDR_VIVIDNESS);
+    newValue = newParams->get(IntelCameraParameters::KEY_HDR_VIVIDNESS);
     if (oldValue && newValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
         if(!strncmp(newValue, "gaussian", strlen("gaussian"))) {
             mHdr.vividness = HdrImaging::GAUSSIAN_VIVIDNESS;
@@ -2397,16 +2397,16 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         } else if(!strncmp(newValue, "none", strlen("none"))) {
             mHdr.vividness = HdrImaging::NO_VIVIDNESS;
         } else {
-            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_HDR_VIVIDNESS, newValue);
+            LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_VIVIDNESS, newValue);
             status = BAD_VALUE;
         }
         if (status == NO_ERROR) {
-            LOG1("Changed: %s -> %s", CameraParameters::KEY_HDR_VIVIDNESS, newValue);
+            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_VIVIDNESS, newValue);
         }
     }
 
-    oldValue = oldParams->get(CameraParameters::KEY_HDR_SAVE_ORIGINAL);
-    newValue = newParams->get(CameraParameters::KEY_HDR_SAVE_ORIGINAL);
+    oldValue = oldParams->get(IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL);
+    newValue = newParams->get(IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL);
     if (oldValue && newValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
         if(!strncmp(newValue, "on", strlen("on"))) {
             mHdr.appSaveOrig = mHdr.saveOrig = true;
@@ -2415,11 +2415,11 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
             mHdr.appSaveOrig = mHdr.saveOrig = false;
             mHdr.appSaveOrigRequest = mHdr.saveOrigRequest = false;
         } else {
-            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_HDR_SAVE_ORIGINAL, newValue);
+            LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, newValue);
             status = BAD_VALUE;
         }
         if (status == NO_ERROR) {
-            LOG1("Changed: %s -> %s", CameraParameters::KEY_HDR_SAVE_ORIGINAL, newValue);
+            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, newValue);
         }
     }
 
@@ -2445,13 +2445,13 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);
                 newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "auto,off,on,torch");
             }
-            newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
-            newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(CameraParameters::KEY_SUPPORTED_XNR, "true,false");
-            newParams->set(CameraParameters::KEY_XNR, CameraParameters::FALSE);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANR, "false");
-            newParams->set(CameraParameters::KEY_ANR, CameraParameters::FALSE);
+            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+            newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
+            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
+            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_SPORTS, strlen(CameraParameters::SCENE_MODE_SPORTS))) {
             sceneMode = CAM_AE_SCENE_MODE_SPORTS;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
@@ -2462,13 +2462,13 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
                 newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
             }
-            newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(CameraParameters::KEY_SUPPORTED_XNR, "true,false");
-            newParams->set(CameraParameters::KEY_XNR, CameraParameters::FALSE);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANR, "false");
-            newParams->set(CameraParameters::KEY_ANR, CameraParameters::FALSE);
+            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
+            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_LANDSCAPE, strlen(CameraParameters::SCENE_MODE_LANDSCAPE))) {
             sceneMode = CAM_AE_SCENE_MODE_LANDSCAPE;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
@@ -2479,13 +2479,13 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
                 newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
             }
-            newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_OUTDOOR);
-            newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(CameraParameters::KEY_SUPPORTED_XNR, "true,false");
-            newParams->set(CameraParameters::KEY_XNR, CameraParameters::FALSE);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANR, "false");
-            newParams->set(CameraParameters::KEY_ANR, CameraParameters::FALSE);
+            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_OUTDOOR);
+            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
+            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_NIGHT, strlen(CameraParameters::SCENE_MODE_NIGHT))) {
             sceneMode = CAM_AE_SCENE_MODE_NIGHT;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
@@ -2496,13 +2496,13 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
                 newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
             }
-            newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(CameraParameters::KEY_SUPPORTED_XNR, "true");
-            newParams->set(CameraParameters::KEY_XNR, CameraParameters::TRUE);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANR, "true");
-            newParams->set(CameraParameters::KEY_ANR, CameraParameters::TRUE);
+            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true");
+            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
+            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
+            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::TRUE);
         } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_NIGHT_PORTRAIT, strlen(CameraParameters::SCENE_MODE_NIGHT_PORTRAIT))) {
             sceneMode = CAM_AE_SCENE_MODE_NIGHT_PORTRAIT;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
@@ -2513,13 +2513,13 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "on");
                 newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_ON);
             }
-            newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(CameraParameters::KEY_SUPPORTED_XNR, "true");
-            newParams->set(CameraParameters::KEY_XNR, CameraParameters::TRUE);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANR, "true");
-            newParams->set(CameraParameters::KEY_ANR, CameraParameters::TRUE);
+            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true");
+            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
+            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
+            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::TRUE);
         } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_FIREWORKS, strlen(CameraParameters::SCENE_MODE_FIREWORKS))) {
             sceneMode = CAM_AE_SCENE_MODE_FIREWORKS;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
@@ -2530,14 +2530,14 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
                 newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
             }
-            newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(CameraParameters::KEY_SUPPORTED_XNR, "true,false");
-            newParams->set(CameraParameters::KEY_XNR, CameraParameters::FALSE);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANR, "false");
-            newParams->set(CameraParameters::KEY_ANR, CameraParameters::FALSE);
-        } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_TEXT, strlen(CameraParameters::SCENE_MODE_TEXT))) {
+            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
+            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
+        } else if (!strncmp (newScene, IntelCameraParameters::SCENE_MODE_TEXT, strlen(IntelCameraParameters::SCENE_MODE_TEXT))) {
             sceneMode = CAM_AE_SCENE_MODE_TEXT;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_MACRO);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
@@ -2547,13 +2547,13 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "auto,off,on,torch");
                 newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);
             }
-            newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(CameraParameters::KEY_SUPPORTED_XNR, "true,false");
-            newParams->set(CameraParameters::KEY_XNR, CameraParameters::FALSE);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANR, "false");
-            newParams->set(CameraParameters::KEY_ANR, CameraParameters::FALSE);
+            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
+            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else {
             if (strncmp (newScene, CameraParameters::SCENE_MODE_AUTO, strlen(CameraParameters::SCENE_MODE_AUTO))) {
                 LOG1("Unsupported %s: %s. Using AUTO!", CameraParameters::KEY_SCENE_MODE, newScene);
@@ -2568,13 +2568,13 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "auto,off,on,torch");
                 newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);
             }
-            newParams->set(CameraParameters::KEY_AWB_MAPPING_MODE, CameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(CameraParameters::KEY_AE_METERING_MODE, CameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, CameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(CameraParameters::KEY_SUPPORTED_XNR, "true,false");
-            newParams->set(CameraParameters::KEY_XNR, CameraParameters::FALSE);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANR, "true,false");
-            newParams->set(CameraParameters::KEY_ANR, CameraParameters::FALSE);
+            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true,false");
+            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         }
 
         mAAA->setAeSceneMode(sceneMode);
@@ -2836,7 +2836,7 @@ status_t ControlThread::processParamAutoExposureMode(const CameraParameters *old
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
-                                              CameraParameters::KEY_AE_MODE);
+                                              IntelCameraParameters::KEY_AE_MODE);
     if (newVal.isEmpty() != true) {
         AeMode ae_mode (CAM_AE_MODE_AUTO);
 
@@ -2875,7 +2875,7 @@ status_t ControlThread::processParamAutoExposureMeteringMode(
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
-                                              CameraParameters::KEY_AE_METERING_MODE);
+                                              IntelCameraParameters::KEY_AE_METERING_MODE);
     if (newVal.isEmpty() != true) {
         MeteringMode mode (CAM_AE_METERING_MODE_AUTO);
 
@@ -2904,7 +2904,7 @@ status_t ControlThread::processParamIso(const CameraParameters *oldParams,
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
-                                              CameraParameters::KEY_ISO);
+                                              IntelCameraParameters::KEY_ISO);
     if (newVal.isEmpty() != true &&
         mAAA->getAeMode() == CAM_AE_MODE_MANUAL) {
         // note: value format is 'iso-NNN'
@@ -2932,7 +2932,7 @@ status_t ControlThread::processParamShutter(const CameraParameters *oldParams,
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
-                                              CameraParameters::KEY_SHUTTER);
+                                              IntelCameraParameters::KEY_SHUTTER);
     if (newVal.isEmpty() != true &&
         (mAAA->getAeMode() == CAM_AE_MODE_MANUAL ||
          (mAAA->getAeMode() == CAM_AE_MODE_SHUTTER_PRIORITY))) {
@@ -2978,7 +2978,7 @@ status_t ControlThread::processParamBackLightingCorrectionMode(const CameraParam
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
-            CameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE);
+            IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE);
     if (newVal.isEmpty() != true) {
         bool backlightCorrection;
 

@@ -23,6 +23,7 @@
 #include <camera.h>
 #include <camera/CameraParameters.h>
 #include <utils/List.h>
+#include "IntelCamera.h"
 #include "MessageQueue.h"
 #include "PreviewThread.h"
 #include "PictureThread.h"
