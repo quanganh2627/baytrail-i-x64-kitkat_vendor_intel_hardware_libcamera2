@@ -25,7 +25,6 @@
 extern "C" {
 #endif
 #include "ci_adv_pub.h"
-#include "ci_adv_property.h"
 #ifdef __cplusplus
 }
 #endif
