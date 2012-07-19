@@ -56,8 +56,8 @@ public:
     virtual int getMaxFacesDetectable(){
         return MAX_FACES_DETECTABLE;
     };
-    virtual void start();
-    virtual void stop(bool wait=false);
+    virtual void startFaceDetection();
+    virtual void stopFaceDetection(bool wait=false);
     virtual int sendFrame(AtomBuffer *img, int width, int height);
 
 // private types

@@ -57,7 +57,7 @@ void PostProcThread::getDefaultParameters(CameraParameters *params)
     params->set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_SW, MAX_FACES_DETECTABLE);
 }
 
-void PostProcThread::start()
+void PostProcThread::startFaceDetection()
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
@@ -76,7 +76,7 @@ status_t PostProcThread::handleMessageStartFaceDetection()
     return status;
 }
 
-void PostProcThread::stop(bool wait)
+void PostProcThread::stopFaceDetection(bool wait)
 {
     LOG1("@%s", __FUNCTION__);
     if (mFaceDetectionRunning) {

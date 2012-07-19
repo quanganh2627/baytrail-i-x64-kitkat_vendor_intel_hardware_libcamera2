@@ -3614,7 +3614,7 @@ status_t ControlThread::startFaceDetection()
         return INVALID_OPERATION;
     }
     if (mPostProcThread != 0) {
-        mPostProcThread->start();
+        mPostProcThread->startFaceDetection();
         mFaceDetectionActive = true;
         enableMsgType(CAMERA_MSG_PREVIEW_METADATA);
         return NO_ERROR;
@@ -3631,7 +3631,7 @@ status_t ControlThread::stopFaceDetection(bool wait)
     mFaceDetectionActive = false;
     disableMsgType(CAMERA_MSG_PREVIEW_METADATA);
     if (mPostProcThread != 0) {
-        mPostProcThread->stop(wait);
+        mPostProcThread->stopFaceDetection(wait);
         return NO_ERROR;
     } else{
         return INVALID_OPERATION;
