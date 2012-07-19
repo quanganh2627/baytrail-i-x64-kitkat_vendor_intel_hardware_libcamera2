@@ -32,6 +32,7 @@ class ICallbackPostProc {
 public:
     ICallbackPostProc() {}
     virtual ~ICallbackPostProc() {}
+    virtual void facesDetected(camera_frame_metadata_t *face_metadata) = 0;
 };
 
 

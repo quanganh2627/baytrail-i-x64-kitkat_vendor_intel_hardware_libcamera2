@@ -122,6 +122,7 @@ private:
     virtual void autoFocusDone();
     virtual void returnBuffer(AtomBuffer *buff);
     virtual void sceneDetected(int sceneMode, bool sceneHdr);
+    virtual void facesDetected(camera_frame_metadata_t *face_metadata);
 
 // private types
 private:

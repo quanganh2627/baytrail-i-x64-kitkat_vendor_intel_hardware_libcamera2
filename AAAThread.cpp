@@ -20,6 +20,7 @@
 #include "Callbacks.h"
 #include "AAAThread.h"
 #include "AtomAAA.h"
+#include "FaceDetector.h"
 
 namespace android {
 
@@ -36,13 +37,19 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone) :
     ,mStopAF(false)
     ,mSmartSceneMode(0)
     ,mSmartSceneHdr(false)
+    ,mCurrentZoom(0)
 {
     LOG1("@%s", __FUNCTION__);
+    mFaceMetadata.faces = new camera_face_t[MAX_FACES_DETECTABLE];
+    memset(mFaceMetadata.faces, 0, MAX_FACES_DETECTABLE * sizeof(camera_face_t));
+    mFaceMetadata.number_of_faces = 0;
 }
 
 AAAThread::~AAAThread()
 {
     LOG1("@%s", __FUNCTION__);
+    delete [] mFaceMetadata.faces;
+    mFaceMetadata.faces = NULL;
 }
 
 status_t AAAThread::enable3A()
@@ -90,6 +97,24 @@ status_t AAAThread::newFrame(struct timeval capture_timestamp)
     msg.id = MESSAGE_ID_NEW_FRAME;
     msg.data.frame.capture_timestamp = capture_timestamp;
     status = mMessageQueue.send(&msg);
+    return status;
+}
+
+status_t AAAThread::setFaces(camera_frame_metadata_t *face_metadata, int zoom)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    int num_faces;
+    if (face_metadata->number_of_faces > MAX_FACES_DETECTABLE) {
+        LOGW("@%s: %d faces detected, limiting to %d", __FUNCTION__,
+            face_metadata->number_of_faces, MAX_FACES_DETECTABLE);
+        num_faces = MAX_FACES_DETECTABLE;
+    } else {
+        num_faces = face_metadata->number_of_faces;
+    }
+    mFaceMetadata.number_of_faces = num_faces;
+    memcpy(mFaceMetadata.faces, face_metadata->faces, mFaceMetadata.number_of_faces * sizeof(camera_face_t));
+    mCurrentZoom = zoom;
     return status;
 }
 
@@ -207,6 +232,8 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
 
         // Query the detected scene and notify the application
         if (mAAA->getSmartSceneDetection()) {
+            if (mFaceMetadata.number_of_faces > 0)
+                mAAA->setFaces(&mFaceMetadata, mCurrentZoom);
             mAAA->getSmartSceneMode(&sceneMode, &sceneHdr);
 
             if ((sceneMode != mSmartSceneMode) || (sceneHdr != mSmartSceneHdr)) {

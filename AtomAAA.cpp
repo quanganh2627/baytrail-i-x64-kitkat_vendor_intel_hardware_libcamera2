@@ -1191,4 +1191,51 @@ status_t AtomAAA::getSmartSceneMode(int *sceneMode, bool *sceneHdr)
     return NO_ERROR;
 }
 
+status_t AtomAAA::setFaces(camera_frame_metadata_t *face_metadata, int zoom)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    ia_aiq_faces_t ia_faces;
+    int i, j, num_faces;
+    const int num_of_elements = 1; //only face element
+    const int gmax_relative_coordinates = 2000; // Android max relative coordinates for preview
+
+    camera_face_t *faces = face_metadata->faces;
+
+    if (face_metadata->number_of_faces > IA_AIQ_MAX_NUM_OF_FACES)
+        num_faces = IA_AIQ_MAX_NUM_OF_FACES;
+    else
+        num_faces = face_metadata->number_of_faces;
+
+    ia_faces.digital_zoom_factor = (float) zoom;
+    ia_faces.num_of_faces = (unsigned int) num_faces;
+
+    for (i = 0; i < num_faces; i++) {
+        ia_faces.face_data[i].face_id = i;
+        ia_faces.face_data[i].num_of_elements = num_of_elements;
+        for (j = 0; j < num_of_elements; j++) {
+            ia_faces.face_data[i].face_elements[j].element_type = ElementFace;
+            ia_faces.face_data[i].face_elements[j].element_rect.width =
+                (unsigned int)(faces[i].rect[2] - faces[i].rect[0]) * IA_AIQ_MAX_RELATIVE_SIZE_OF_FACE / gmax_relative_coordinates;
+            ia_faces.face_data[i].face_elements[j].element_rect.height =
+                (unsigned int)(faces[i].rect[3] - faces[i].rect[1]) * IA_AIQ_MAX_RELATIVE_SIZE_OF_FACE / gmax_relative_coordinates;
+            ia_faces.face_data[i].face_elements[j].element_rect.left =
+                (faces[i].rect[0] + gmax_relative_coordinates / 2) * IA_AIQ_MAX_RELATIVE_SIZE_OF_FACE / gmax_relative_coordinates;
+            ia_faces.face_data[i].face_elements[j].element_rect.top =
+                (faces[i].rect[1] + gmax_relative_coordinates / 2) * IA_AIQ_MAX_RELATIVE_SIZE_OF_FACE / gmax_relative_coordinates;
+
+            LOG2("zoom = %f faces = %d, element type = %d, left = %d, top = %d, width = %d, height = %d",
+                ia_faces.digital_zoom_factor, ia_faces.num_of_faces,
+                ia_faces.face_data[i].face_elements[j].element_type,
+                ia_faces.face_data[i].face_elements[j].element_rect.left,
+                ia_faces.face_data[i].face_elements[j].element_rect.top,
+                ia_faces.face_data[i].face_elements[j].element_rect.width,
+                ia_faces.face_data[i].face_elements[j].element_rect.height);
+        }
+    }
+    ci_adv_set_faces(&ia_faces);
+
+    return NO_ERROR;
+}
+
 } //  namespace android

@@ -251,11 +251,12 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         face_metadata.number_of_faces = mFaceDetector->getFaces(faces, frame.width, frame.height);
         face_metadata.faces = faces;
 
-        // call face detection listener and pass faces for 3A (AF)
+        // call face detection listener and pass faces for 3A (AF) and smart scene detection
         if ((face_metadata.number_of_faces > 0) || (mLastReportedNumberOfFaces != 0)) {
             mLastReportedNumberOfFaces = face_metadata.number_of_faces;
             mpListener->facesDetected(face_metadata);
             useFacesForAAA(face_metadata);
+            mPostProcDoneCallback->facesDetected(&face_metadata);
         }
     }
 

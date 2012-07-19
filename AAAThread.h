@@ -72,6 +72,7 @@ public:
     status_t cancelAutoFocus();
     status_t newFrame(struct timeval capture_timestamp);
     status_t applyRedEyeRemoval(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer, int width, int height, int format);
+    status_t setFaces(camera_frame_metadata_t *face_metadata, int zoom);
 
 // private types
 private:
@@ -86,6 +87,7 @@ private:
         MESSAGE_ID_AUTO_FOCUS,
         MESSAGE_ID_CANCEL_AUTO_FOCUS,
         MESSAGE_ID_NEW_FRAME,
+        MESSAGE_ID_FACES,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -160,6 +162,8 @@ private:
     size_t mFramesTillAfComplete; // used for debugging only
     int mSmartSceneMode; // Current detected scene mode, as defined in ia_aiq_external_toolbox.h
     bool mSmartSceneHdr; // Indicates whether the detected scene is valid for HDR
+    camera_frame_metadata_t mFaceMetadata; // face metadata for smart scene detection
+    int mCurrentZoom; // current zoom level for smart scene detection
 }; // class AAAThread
 
 }; // namespace android

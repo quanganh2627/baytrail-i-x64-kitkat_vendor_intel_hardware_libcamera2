@@ -572,6 +572,14 @@ void ControlThread::sceneDetected(int sceneMode, bool sceneHdr)
     msg.data.sceneDetected.sceneHdr = sceneHdr;
     mMessageQueue.send(&msg);
 }
+
+void ControlThread::facesDetected(camera_frame_metadata_t *face_metadata)
+{
+    LOG2("@%s", __FUNCTION__);
+    int zoom = (mParameters.getInt(CameraParameters::KEY_ZOOM) + 10) / 10;
+    m3AThread->setFaces(face_metadata, zoom);
+}
+
 void ControlThread::releasePreviewFrame(AtomBuffer *buff)
 {
     LOG2("release preview frame buffer data %p, id = %d", buff, buff->id);

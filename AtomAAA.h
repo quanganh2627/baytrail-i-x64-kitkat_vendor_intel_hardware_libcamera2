@@ -258,6 +258,7 @@ public:
     status_t setSmartSceneDetection(bool en);
     bool     getSmartSceneDetection();
     status_t getSmartSceneMode(int *sceneMode, bool *sceneHdr);
+    status_t setFaces(camera_frame_metadata_t *face_metadata, int zoom);
 
     // ISP processing functions
     status_t applyDvsProcess();
