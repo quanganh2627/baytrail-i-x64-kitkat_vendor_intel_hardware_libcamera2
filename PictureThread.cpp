@@ -72,8 +72,13 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     nsecs_t startTime = systemTime();
     nsecs_t endTime;
 
+    size_t bufferSize = (mainBuf->width * mainBuf->height * 2);
+    if (mOutBuf.buff != NULL && bufferSize != mOutBuf.buff->size) {
+        mOutBuf.buff->release(mOutBuf.buff);
+        mOutBuf.buff = NULL;
+    }
+
     if (mOutBuf.buff == NULL || mOutBuf.buff->data == NULL || mOutBuf.buff->size <= 0) {
-        int bufferSize = (mainBuf->width * mainBuf->height * 2);
         mCallbacks->allocateMemory(&mOutBuf, bufferSize);
     }
     if (mExifBuf.buff == NULL || mExifBuf.buff->data == NULL || mExifBuf.buff->size <= 0) {
