@@ -181,6 +181,9 @@ AtomISP::AtomISP(int cameraId) :
     video_fds[V4L2_SECOND_DEVICE] = -1;
     video_fds[V4L2_THIRD_DEVICE] = -1;
 
+    CLEAR(mSnapshotBuffers);
+    CLEAR(mPostviewBuffers);
+
     mConfig.fps = 30;
     mConfig.num_snapshot = 1;
     mConfig.zoom = 0;
@@ -376,6 +379,11 @@ AtomISP::~AtomISP()
      */
     if (mMode != MODE_NONE) {
         stop();
+
+        // note: AtomISP allows to stop capture without freeing, so
+        //       we need to make sure we free them here.
+        //       This is not needed for preview and recording buffers.
+        freeSnapshotBuffers();
     }
     mAAA->unInit();
     closeDevice(V4L2_FIRST_DEVICE);
@@ -1433,6 +1441,15 @@ void AtomISP::getVideoSize(int *width, int *height)
 status_t AtomISP::setSnapshotNum(int num)
 {
     LOG1("@%s", __FUNCTION__);
+
+    if (mMode != MODE_NONE)
+        return INVALID_OPERATION;
+
+    // 'num_snapshot' is used when freeing the buffers, so to keep track,
+    // deallocate with old value here
+    if (mConfig.num_snapshot != num)
+        freeSnapshotBuffers();
+
     mConfig.num_snapshot = num;
     LOG1("mConfig.num_snapshot = %d", mConfig.num_snapshot);
     return NO_ERROR;
@@ -2832,6 +2849,14 @@ status_t AtomISP::allocateSnapshotBuffers()
 
     if (mUsingClientSnapshotBuffers)
         snapshotSize = sizeof(void*);
+
+    // note: make sure client has called releaseCaptureBuffers()
+    //       at this point (clients may hold on to snapshot buffers
+    //       after capture has been stopped)
+    if (mSnapshotBuffers[0].buff != NULL) {
+        LOGW("Client has not freed snapshot buffers!");
+        freeSnapshotBuffers();
+    }
 
     LOG1("Allocating %d buffers of size: %d (snapshot), %d (postview)",
             mConfig.num_snapshot,
