@@ -150,6 +150,9 @@ private:
     status_t startCapture();
     status_t stopCapture();
 
+    void runStartISPActions();
+    void runStopISPActions();
+
     status_t allocatePreviewBuffers();
     status_t allocateRecordingBuffers();
     status_t allocateSnapshotBuffers();
@@ -163,6 +166,7 @@ private:
     const char* getMaxSnapShotResolution();
 
     status_t updateLowLight();
+    status_t setTorchHelper(int intensity);
 
     int  openDevice(int device);
     void closeDevice(int device);
@@ -275,6 +279,7 @@ private:
     int mNumPreviewBuffersQueued;
     int mNumRecordingBuffersQueued;
     int mNumCapturegBuffersQueued;
+    int mFlashTorchSetting;
     Config mConfig;
 
     int video_fds[V4L2_DEVICE_NUM];

@@ -167,6 +167,7 @@ AtomISP::AtomISP(int cameraId) :
     ,mNumPreviewBuffersQueued(0)
     ,mNumRecordingBuffersQueued(0)
     ,mNumCapturegBuffersQueued(0)
+    ,mFlashTorchSetting(0)
     ,mPreviewDevice(V4L2_FIRST_DEVICE)
     ,mRecordingDevice(V4L2_FIRST_DEVICE)
     ,mSessionId(0)
@@ -774,6 +775,8 @@ status_t AtomISP::start(AtomMode mode)
         break;
     };
 
+    runStartISPActions();
+
     if (status == NO_ERROR) {
         mMode = mode;
         mSessionId++;
@@ -782,10 +785,35 @@ status_t AtomISP::start(AtomMode mode)
     return status;
 }
 
+/**
+ * Perform actions after ISP kernel device has
+ * been started.
+ */
+void AtomISP::runStartISPActions()
+{
+    LOG1("@%s", __FUNCTION__);
+    if (mFlashTorchSetting > 0) {
+        setTorchHelper(mFlashTorchSetting);
+    }
+}
+
+/**
+ * Perform actions before ISP kernel device is closed.
+ */
+void AtomISP::runStopISPActions()
+{
+    LOG1("@%s", __FUNCTION__);
+    if (mFlashTorchSetting > 0) {
+        setTorchHelper(0);
+    }
+}
+
 status_t AtomISP::stop()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+
+    runStopISPActions();
 
     switch (mMode) {
     case MODE_PREVIEW:
@@ -1614,14 +1642,8 @@ status_t AtomISP::setFlashIndicator(int intensity)
     return NO_ERROR;
 }
 
-status_t AtomISP::setTorch(int intensity)
+status_t AtomISP::setTorchHelper(int intensity)
 {
-    LOG1("@%s: intensity = %d", __FUNCTION__, intensity);
-    if (mCameraInput->port != ATOMISP_CAMERA_PORT_PRIMARY) {
-        LOGE("Indicator intensity is supported only for primary camera!");
-        return INVALID_OPERATION;
-    }
-
     if (intensity) {
         if (atomisp_set_attribute(main_fd, V4L2_CID_FLASH_TORCH_INTENSITY, intensity, "Torch Intensity") < 0)
             return UNKNOWN_ERROR;
@@ -1631,6 +1653,24 @@ status_t AtomISP::setTorch(int intensity)
         if (atomisp_set_attribute(main_fd, V4L2_CID_FLASH_MODE, ATOMISP_FLASH_MODE_OFF, "Flash Mode") < 0)
             return UNKNOWN_ERROR;
     }
+    return NO_ERROR;
+}
+
+status_t AtomISP::setTorch(int intensity)
+{
+    LOG1("@%s: intensity = %d", __FUNCTION__, intensity);
+
+    if (mCameraInput->port != ATOMISP_CAMERA_PORT_PRIMARY) {
+        LOGE("Indicator intensity is supported only for primary camera!");
+        return INVALID_OPERATION;
+    }
+
+    setTorchHelper(intensity);
+
+    // closing the kernel device will not automatically turn off
+    // flash light, so need to keep track in user-space
+    mFlashTorchSetting = intensity;
+
     return NO_ERROR;
 }
 
