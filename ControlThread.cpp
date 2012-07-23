@@ -3246,20 +3246,32 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
                 }
             }
         }
-        /* Checking if preview is still  bigger than video, this is not supported by the ISP */
-        if(videoMode) {
-            newParams->getPreviewSize(&previewWidth, &previewHeight);
-            newParams->getVideoSize(&newWidth, &newHeight);
-            if((previewWidth*previewHeight) > (newWidth*newHeight)) {
-                /* clamping preview to video resolution so that we keep same AR */
-                newParams->setPreviewSize(newWidth, newHeight);
-            }
+    }
+
+    /**
+     *  Workaround: The camera firmware doesn't support preview dimensions that
+     * are bigger than video dimensions. If a single preview dimension is larger
+     * than the video dimension then the FW will downscale the preview resolution
+     * to that of the video resolution.
+     * Checking if preview is still  bigger than video, this is not supported by the ISP
+     */
+    if(videoMode) {
+        newParams->getPreviewSize(&previewWidth, &previewHeight);
+        newParams->getVideoSize(&newWidth, &newHeight);
+        if((previewWidth*previewHeight) > (newWidth*newHeight)) {
+
+            newParams->setPreviewSize(newWidth, newHeight);
+            LOGW("Warning: Video dimension(s) is smaller than preview dimension(s). "
+                 "Overriding preview resolution to video resolution [%d, %d] --> [%d, %d]",
+                 previewWidth, previewHeight, newWidth, newHeight);
         }
     }
 
     // if preview is running and static params have changed, then we need
     // to stop, reconfigure, and restart the isp and all threads.
+    // Update the current params before we re-start
     if (previewFormatChanged) {
+        mParameters = *newParams;
         switch (mState) {
         case STATE_PREVIEW_VIDEO:
         case STATE_PREVIEW_STILL:
@@ -3330,25 +3342,6 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     LOG2("----------- BEGIN NEW PARAMS -------- ");
     newParamLogger.dump();
     LOG2("----------- END NEW PARAMS -------- ");
-
-    // Workaround: The camera firmware doesn't support preview dimensions that
-    // are bigger than video dimensions. If a single preview dimension is larger
-    // than the video dimension then the FW will downscale the preview resolution
-    // to that of the video resolution.
-    if (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING) {
-
-        int pWidth, pHeight;
-        int vWidth, vHeight;
-
-        newParams.getPreviewSize(&pWidth, &pHeight);
-        newParams.getVideoSize(&vWidth, &vHeight);
-        if (vWidth < pWidth || vHeight < pHeight) {
-            LOGW("Warning: Video dimension(s) is smaller than preview dimension(s). "
-                    "Overriding preview resolution to video resolution [%d, %d] --> [%d, %d]",
-                    pWidth, pHeight, vWidth, vHeight);
-            newParams.setPreviewSize(vWidth, vHeight);
-        }
-    }
 
     if (mState == STATE_CAPTURE) {
         int newWidth, newHeight;
