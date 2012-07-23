@@ -181,7 +181,7 @@ status_t PreviewThread::callPreviewDone(MessagePreview *msg)
         src = msg->buff.buff->data;
     else
         src = msg->buff.gfxData;
-    mHALProxy->copyPreview(src, msg->buff.stride, mPreviewHeight);
+    //mHALProxy->copyPreview(src, msg->buff.stride, mPreviewHeight);
     /* end of HACK */
 
     if (msg->buff.type == ATOM_BUFFER_PREVIEW) {
