@@ -20,6 +20,7 @@
 #include "DebugFrameRate.h"
 #include "Callbacks.h"
 #include "ColorConverter.h"
+#include <hal_public.h>
 #include <gui/Surface.h>
 #include <ui/GraphicBuffer.h>
 #include <ui/GraphicBufferMapper.h>
@@ -316,7 +317,7 @@ status_t PreviewThread::handleMessageSetPreviewWindow(MessageSetPreviewWindow *m
                 mPreviewWindow,
                 previewWidthPadded,
                 mPreviewHeight,
-                HAL_PIXEL_FORMAT_YV12);
+                HAL_PIXEL_FORMAT_NV12);
     }
 
     return NO_ERROR;
@@ -337,7 +338,7 @@ status_t PreviewThread::handleMessageSetPreviewConfig(MessageSetPreviewConfig *m
             mPreviewWindow->set_buffers_geometry(mPreviewWindow,
                                                  previewWidthPadded,
                                                  msg->height,
-                                                 HAL_PIXEL_FORMAT_YV12);
+                                                 HAL_PIXEL_FORMAT_NV12);
 
         }
         mPreviewWidth = msg->width;

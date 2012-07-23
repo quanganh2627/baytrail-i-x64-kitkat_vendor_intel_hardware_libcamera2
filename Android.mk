@@ -58,6 +58,7 @@ LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/libsharedbuffer \
 	$(TARGET_OUT_HEADERS)/libmfldadvci \
 	$(TARGET_OUT_HEADERS)/libCameraFaceDetection \
+	$(TARGET_OUT_HEADERS)/pvr/hal \
 	
 
 ifeq ($(USE_INTEL_JPEG), true)
