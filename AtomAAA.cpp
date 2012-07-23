@@ -1081,7 +1081,7 @@ status_t AtomAAA::setSmartSceneDetection(bool en)
 bool AtomAAA::getSmartSceneDetection()
 {
     Mutex::Autolock lock(m3aLock);
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     bool ret = false;
     if(mHas3A)
         ret = ci_adv_dsd_is_enabled();
