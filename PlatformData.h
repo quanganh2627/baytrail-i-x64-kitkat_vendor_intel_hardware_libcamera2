@@ -77,6 +77,9 @@ class PlatformBase {
     bool mFileInject;
 
     const char* mVideoPreviewSizePref;
+
+    bool mBackDVS;
+    bool mFrontDVS;
 };
 
 /**
@@ -148,6 +151,15 @@ class PlatformData {
      * \return string following getParameter value notation
      */
     static const char* preferredPreviewSizeForVideo(void);
+
+    /**
+     * Whether the camera supports Digital Video Stabilization or not
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return true if it is supported
+     */
+    static bool supportsDVS(int cameraId);
+
 
 };
 

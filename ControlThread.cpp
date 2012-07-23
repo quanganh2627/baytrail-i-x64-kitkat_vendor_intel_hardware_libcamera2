@@ -682,6 +682,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (videoMode) {
         mParameters.getVideoSize(&width, &height);
         mISP->setVideoFrameFormat(width, height);
+        if(isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION))
+            mISP->setDVS(true);
+        else
+            mISP->setDVS(false);
     }
 
     mNumBuffers = mISP->getNumBuffers();

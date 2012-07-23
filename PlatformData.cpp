@@ -136,4 +136,18 @@ bool PlatformData::supportsFileInject(void)
     return i->mFileInject;
 }
 
+bool PlatformData::supportsDVS(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    bool res;
+    switch(cameraId)
+    {
+    case INTEL_CAMERA_ID_FRONT:
+        res = i->mFrontDVS;
+        break;
+    default:
+        res = i->mBackDVS;
+    }
+    return res;
+}
 }; // namespace android

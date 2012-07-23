@@ -113,6 +113,7 @@ public:
     status_t setXNR(bool enable);
     status_t setLightFrequency(FlickerMode flickerMode);
     status_t setLowLight(bool enable);
+    status_t setDVS(bool enable);
 
     // file input/injection API
     int configureFileInject(const char* fileName, int width, int height, int format, int bayerOrder);

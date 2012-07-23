@@ -510,6 +510,15 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     getFocusDistances(params);
 
     /**
+     * DIGITAL VIDEO STABILIZATION
+     */
+    if(PlatformData::supportsDVS(mCameraInput->androidId))
+    {
+        params->set(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED,"true,false");
+        params->set(CameraParameters::KEY_VIDEO_STABILIZATION,"true");
+    }
+
+    /**
      * MISCELLANEOUS
      */
     params->set(CameraParameters::KEY_VERTICAL_VIEW_ANGLE,"42.5");
@@ -1690,6 +1699,20 @@ status_t AtomISP::setXNR(bool enable)
     return status;
 }
 
+status_t AtomISP::setDVS(bool enable)
+{
+    LOG1("@%s: %d", __FUNCTION__, enable);
+    status_t status = NO_ERROR;
+    status = atomisp_set_attribute(main_fd, V4L2_CID_ATOMISP_VIDEO_STABLIZATION,
+                                    enable, "Video Stabilization");
+    if(status != 0)
+    {
+        LOGE("Error setting DVS in the driver");
+        status = INVALID_OPERATION;
+    }
+
+    return status;
+}
 status_t AtomISP::setLightFrequency(FlickerMode mode) {
 
     LOG1("@%s: %d", __FUNCTION__, (int) mode);

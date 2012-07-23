@@ -38,6 +38,8 @@ public:
         mBackFlash = true;
         mFileInject = true;
         mVideoPreviewSizePref = "1024x580";
+        mBackDVS = true;
+        mFrontDVS = false;
     }
 };
 
