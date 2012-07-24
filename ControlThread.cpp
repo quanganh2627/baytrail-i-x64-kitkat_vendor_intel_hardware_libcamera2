@@ -2069,14 +2069,20 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     }
 
     if (mAAA->is3ASupported()) {
-        if (status == NO_ERROR) {
-            // Scene Mode
-            status = processParamFlash(oldParams, newParams);
-        }
+
+        // Changing the scene may change many parameters, including
+        // flash, awb. Thus the order of how processParamFoo() are
+        // called is important for the parameter changes to take
+        // effect, and processParamSceneMode needs to be called first.
 
         if (status == NO_ERROR) {
             // Scene Mode
             status = processParamSceneMode(oldParams, newParams);
+        }
+
+        if (status == NO_ERROR) {
+            // flash settings
+            status = processParamFlash(oldParams, newParams);
         }
 
         if (status == NO_ERROR) {
