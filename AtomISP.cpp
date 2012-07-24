@@ -294,7 +294,13 @@ void AtomISP::initFrameConfig(int cameraId)
 /**
  * Maps the requested 'cameraId' to a V4L2 input.
  *
- * Only to be called from contructor
+ * Only to be called from constructor
+ * @param cameraId: Id passed to the HAL to identify a particular camera
+ *                  This id maps always 0 to back camera and 1 to front
+ *                  whereas the index in the sCamInfo is filled from V4L2
+ *                  The order how front and back camera are returned
+ *                  may be different. This Android camera id will be used
+ *                  to select parameters from back or front camera
  */
 void AtomISP::initCameraInput(int cameraId)
 {
@@ -311,6 +317,7 @@ void AtomISP::initCameraInput(int cameraId)
             (PlatformData::cameraFacing(cameraId) == CAMERA_FACING_FRONT &&
              sCamInfo[i].port == ATOMISP_CAMERA_PORT_SECONDARY)) {
             mCameraInput = &sCamInfo[i];
+            mCameraInput->androidCameraId = cameraId;
             break;
         }
     }
@@ -512,7 +519,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * DIGITAL VIDEO STABILIZATION
      */
-    if(PlatformData::supportsDVS(mCameraInput->androidId))
+    if(PlatformData::supportsDVS(mCameraInput->androidCameraId))
     {
         params->set(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED,"true,false");
         params->set(CameraParameters::KEY_VIDEO_STABILIZATION,"true");

@@ -236,6 +236,9 @@ private:
     };
 
     struct cameraInfo {
+        int androidCameraId; /*!< Index used by android to select this camera. This index is passed
+                              *   when the camera HAL is open. Used to differentiate back and front camera
+                              */
         int port;            //!< AtomISP port type
         uint32_t index;      //!< V4L2 index
         char name[MAX_SENSOR_NAME_LENGTH];
