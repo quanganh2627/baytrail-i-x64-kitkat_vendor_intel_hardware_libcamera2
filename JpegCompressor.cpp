@@ -24,108 +24,260 @@
 #include "SkStream.h"
 #include <string.h>
 
-#ifdef USE_INTEL_JPEG
-#include <va/va.h>
-extern "C" {
-    #include "jpeglib_ext.h"
-}
-#endif
-
-extern "C" {
-    #include "jpeglib.h"
-}
-
 namespace android {
-/*
- * START: jpeglib interface functions
- */
 
-// jpeg destination manager structure
-struct JpegDestinationManager {
-    struct jpeg_destination_mgr pub; // public fields
-    JSAMPLE *encodeBlock;            // encode block buffer
-    JSAMPLE *outJpegBuf;             // JPEG output buffer
-    JSAMPLE *outJpegBufPos;          // JPEG output buffer current ptr
-    int outJpegBufSize;              // JPEG output buffer size
-    int *dataCount;                  // JPEG output buffer data written count
-};
-
-// initialize the jpeg compression destination buffer (passed to libjpeg as function pointer)
-static void init_destination(j_compress_ptr cinfo)
+JpegCompressor::WrapperLibVA::WrapperLibVA() :
+    mVaDpy(0),
+    mConfigId(0),
+    mSurfaceId(0),
+    mContextId(0),
+    mCodedBuf(0),
+    mPicParamBuf(0),
+    mPicWidth(0),
+    mPicHeight(0),
+    mMaxWidth(0),
+    mMaxHeight(0),
+    mMaxOutJpegBufSize(0)
 {
-    LOG1("@%s", __FUNCTION__);
-    JpegDestinationManager *dest = (JpegDestinationManager*) cinfo->dest;
-    dest->encodeBlock = (JSAMPLE *)(*cinfo->mem->alloc_small) \
-            ((j_common_ptr) cinfo, JPOOL_IMAGE, JPEG_BLOCK_SIZE * sizeof(JSAMPLE));
-    dest->pub.next_output_byte = dest->encodeBlock;
-    dest->pub.free_in_buffer = JPEG_BLOCK_SIZE;
+    LOG1("@%s, line:%d", __FUNCTION__, __LINE__);
+    memset(&mSurfaceImage, 0, sizeof(mSurfaceImage));
 }
 
-// handle the jpeg output buffers (passed to libjpeg as function pointer)
-static boolean empty_output_buffer(j_compress_ptr cinfo)
+JpegCompressor::WrapperLibVA::~WrapperLibVA()
 {
-    LOG2("@%s", __FUNCTION__);
-    JpegDestinationManager *dest = (JpegDestinationManager*) cinfo->dest;
-    if(dest->outJpegBufSize < *(dest->dataCount) + JPEG_BLOCK_SIZE)
-    {
-        LOGE("JPEGLIB: empty_output_buffer overflow!");
-        *(dest->dataCount) = 0;
-        return FALSE;
+    LOG1("@%s", __FUNCTION__);
+}
+
+int JpegCompressor::WrapperLibVA::init(void)
+{
+    LOG1("@%s", __FUNCTION__);
+    VAStatus status;
+    int display_num, major_ver, minor_ver;
+    const char *driver = NULL;
+    VAEntrypoint entrypoints[VAEntrypointMax];
+    int num_entrypoints, i;
+    VAConfigAttrib attrib;
+    int maxNum;
+
+    mVaDpy = vaGetDisplay(&display_num);
+    status = vaInitialize(mVaDpy, &major_ver, &minor_ver);
+    CHECK_STATUS(status, "vaInitialize", __LINE__)
+
+    driver = vaQueryVendorString(mVaDpy);
+    maxNum = vaMaxNumEntrypoints(mVaDpy);
+    status = vaQueryConfigEntrypoints(mVaDpy, VAProfileJPEGBaseline, entrypoints, &num_entrypoints);
+    CHECK_STATUS(status, "vaQueryConfigEntrypoints", __LINE__)
+    for(i = 0; i < num_entrypoints; i++) {
+        if (entrypoints[i] == VAEntrypointEncPicture)
+            break;
     }
-    memcpy(dest->outJpegBufPos, dest->encodeBlock, JPEG_BLOCK_SIZE);
-    dest->outJpegBufPos += JPEG_BLOCK_SIZE;
-    *(dest->dataCount) += JPEG_BLOCK_SIZE;
-    dest->pub.next_output_byte = dest->encodeBlock;
-    dest->pub.free_in_buffer = JPEG_BLOCK_SIZE;
-    return TRUE;
-}
-
-// terminate the compression destination buffer (passed to libjpeg as function pointer)
-static void term_destination(j_compress_ptr cinfo)
-{
-    LOG1("@%s", __FUNCTION__);
-    JpegDestinationManager *dest = (JpegDestinationManager*) cinfo->dest;
-    int dataCount = JPEG_BLOCK_SIZE - dest->pub.free_in_buffer;
-    if(dest->outJpegBufSize < dataCount)
-    {
-        *(dest->dataCount) = 0;
-        return;
-    }
-    memcpy(dest->outJpegBufPos, dest->encodeBlock, dataCount);
-    dest->outJpegBufPos += dataCount;
-    *(dest->dataCount) += dataCount;
-}
-
-// setup the destination manager in j_compress_ptr handle
-static int setup_jpeg_destmgr(j_compress_ptr cinfo, JSAMPLE *outBuf, int jpegBufSize, int *jpegSizePtr)
-{
-    LOG1("@%s", __FUNCTION__);
-    JpegDestinationManager *dest;
-
-    if(outBuf == NULL || jpegBufSize <= 0 )
+    if (i == num_entrypoints) {
+        LOGE("@%s, line:%d, not find Slice entry point, num:%d", __FUNCTION__, __LINE__, num_entrypoints);
         return -1;
-
-    LOG1("Setting up JPEG destination manager...");
-    dest = (JpegDestinationManager*) cinfo->dest;
-    if (cinfo->dest == NULL) {
-        LOG1("Create destination manager...");
-        cinfo->dest = (struct jpeg_destination_mgr *)(*cinfo->mem->alloc_small) ((j_common_ptr) cinfo, JPOOL_PERMANENT, sizeof(JpegDestinationManager));
-        dest = (JpegDestinationManager*) cinfo->dest;
-        dest->pub.init_destination = init_destination;
-        dest->pub.empty_output_buffer = empty_output_buffer;
-        dest->pub.term_destination = term_destination;
-        dest->outJpegBuf = outBuf;
     }
-    LOG1("Out: bufPos = %p, bufSize = %d, dataCount = %d", outBuf, jpegBufSize, *jpegSizePtr);
-    dest->outJpegBufSize = jpegBufSize;
-    dest->outJpegBufPos = outBuf;
-    dest->dataCount = jpegSizePtr;
+
+    attrib.type = VAConfigAttribRTFormat;
+    attrib.value = mSupportedFormat;
+    status = vaCreateConfig(mVaDpy, VAProfileJPEGBaseline, VAEntrypointEncPicture,
+                              &attrib, 1, &mConfigId);
+    CHECK_STATUS(status, "vaCreateConfig", __LINE__)
+
     return 0;
 }
 
-/*
- * END: jpeglib interface functions
- */
+int JpegCompressor::WrapperLibVA::doJpegEncoding(void)
+{
+    LOG1("@%s", __FUNCTION__);
+    VAStatus status;
+
+    status = vaBeginPicture(mVaDpy, mContextId, mSurfaceId);
+    CHECK_STATUS(status, "vaBeginPicture", __LINE__)
+
+    status = vaRenderPicture(mVaDpy, mContextId, &mPicParamBuf, 1);
+    CHECK_STATUS(status, "vaRenderPicture", __LINE__)
+
+    status = vaEndPicture(mVaDpy, mContextId);
+    CHECK_STATUS(status, "vaEndPicture", __LINE__)
+
+    status = vaSyncSurface(mVaDpy, mSurfaceId);
+    CHECK_STATUS(status, "vaSyncSurface", __LINE__)
+
+    return 0;
+}
+
+int JpegCompressor::WrapperLibVA::getJpegData(void *pdst, int dstSize, int *jpegSize)
+{
+    LOG1("@%s", __FUNCTION__);
+    VAStatus status;
+    VACodedBufferSegment *buf_list = NULL;
+    int write_size = 0;
+    unsigned char *p = (unsigned char *)pdst;
+
+    if (NULL == pdst || NULL == jpegSize) {
+        LOGE("@%s, line:%d, pdst:%p, jpegSize:%p", __FUNCTION__, __LINE__, pdst, jpegSize);
+        return -1;
+    }
+
+    status = vaMapBuffer(mVaDpy, mCodedBuf, (void **)&buf_list);
+    CHECK_STATUS(status, "vaMapBuffer", __LINE__)
+
+    // copy jpeg buffer data from libva to out buffer
+    while (buf_list != NULL) {
+        write_size += buf_list->size;
+        if (write_size > dstSize) {
+            LOGE("@%s, line:%d, generated JPEG size(%d) is too big > provided buffer(%d)", __FUNCTION__, __LINE__, write_size, dstSize);
+            return -1;
+        }
+        memcpy(p, buf_list->buf, buf_list->size);
+        p += buf_list->size;
+        buf_list = (VACodedBufferSegment *)buf_list->next;
+    }
+
+    *jpegSize = write_size;
+    LOG1("@%s, line:%d, jpeg size:%d", __FUNCTION__, __LINE__, write_size);
+
+    status = vaUnmapBuffer(mVaDpy, mCodedBuf);
+    CHECK_STATUS(status, "vaUnmapBuffer", __LINE__)
+
+    return 0;
+}
+
+int JpegCompressor::WrapperLibVA::setJpegDimensions(int width, int height)
+{
+    LOG1("@%s, width:%d, height:%d", __FUNCTION__, width, height);
+    if (height % 2) {
+        LOG1("@%s, line:%d, height:%d, we can't support", __FUNCTION__, __LINE__, height);
+        return -1;
+    }
+
+    mPicWidth = width;
+    mPicHeight = height;
+
+    return 0;
+}
+
+int JpegCompressor::WrapperLibVA::configSurface(int maxWidth, int maxHeight, int bufNum)
+{
+    LOG1("@%s, bufNum:%d", __FUNCTION__, bufNum);
+    VAStatus status;
+    void *surface_p = NULL;
+    VAEncPictureParameterBufferJPEG pic_jpeg;
+
+    if (maxHeight % 2) {
+        LOG1("@%s, line:%d, maxHeight:%d, we can't support", __FUNCTION__, __LINE__, maxHeight);
+        return -1;
+    }
+
+    mMaxWidth = maxWidth;
+    mMaxHeight = maxHeight;
+    mMaxOutJpegBufSize = (maxWidth * maxHeight * 3 / 2);
+    status = vaCreateSurfaces(mVaDpy, mSupportedFormat, mMaxWidth, mMaxHeight, &mSurfaceId, bufNum, NULL, 0);
+    CHECK_STATUS(status, "vaCreateSurfaces", __LINE__)
+
+    status = vaCreateContext(mVaDpy, mConfigId, mMaxWidth, mMaxHeight,
+                                VA_PROGRESSIVE, &mSurfaceId, bufNum, &mContextId);
+    CHECK_STATUS(status, "vaCreateContext", __LINE__)
+
+    status = vaCreateBuffer(mVaDpy, mContextId, VAEncCodedBufferType, mMaxOutJpegBufSize, 1, NULL, &mCodedBuf);
+    CHECK_STATUS(status, "vaCreateBuffer", __LINE__)
+
+    return 0;
+}
+
+int JpegCompressor::WrapperLibVA::getJpegSrcData(void *pRaw)
+{
+    LOG1("@%s", __FUNCTION__);
+    VAStatus status;
+    void *surface_p = NULL;
+    VAEncPictureParameterBufferJPEG pic_jpeg;
+
+    if (mapJpegSrcBuffers(&surface_p) < 0)
+        return -1;
+    if(copySrcDataToLibVA(pRaw, surface_p) < 0)
+        return -1;
+    if (unmapJpegSrcBuffers() < 0)
+        return -1;
+
+    pic_jpeg.picture_width  = mPicWidth;
+    pic_jpeg.picture_height = mPicHeight;
+    pic_jpeg.reconstructed_picture = 0;
+    pic_jpeg.coded_buf = mCodedBuf;
+    status = vaCreateBuffer(mVaDpy, mContextId, VAEncPictureParameterBufferType,
+            sizeof(pic_jpeg), 1, &pic_jpeg, &mPicParamBuf);
+    CHECK_STATUS(status, "vaCreateBuffer", __LINE__)
+
+    return 0;
+}
+
+int JpegCompressor::WrapperLibVA::copySrcDataToLibVA(void *psrc, void *pdst)
+{
+    LOG1("@%s", __FUNCTION__);
+    int i;
+    unsigned char *ydata, *uvdata; // src
+    unsigned char *row_start, *uv_start; // dst
+
+    if (NULL == psrc || NULL == pdst) {
+        LOGE("@%s, line:%d, psrc:%p, pdst:%p", __FUNCTION__, __LINE__, psrc, pdst);
+        return -1;
+    }
+
+    /* copy Y plane */
+    ydata = (unsigned char *)psrc;
+    for (i = 0; i < mPicHeight; i++) {
+        row_start = (unsigned char *)pdst + i * mSurfaceImage.pitches[0];
+        memcpy(row_start, ydata, mPicWidth);
+        ydata += mPicWidth;
+    }
+
+    /* copy UV data */ /* src is NV12 */
+    uvdata = (unsigned char *)psrc + mPicWidth * mPicHeight;
+    uv_start = (unsigned char *)pdst + mSurfaceImage.offsets[1];
+    for(i = 0; i < (mPicHeight / 2); i++) {
+        row_start = (unsigned char *)uv_start + i * mSurfaceImage.pitches[1];
+        memcpy(row_start, uvdata, mPicWidth);
+        uvdata += mPicWidth;
+    }
+
+    LOG1("@%s, line:%d, pitches[0]:%d, pitches[1]:%d, offsets[1]:%d",
+        __FUNCTION__, __LINE__, mSurfaceImage.pitches[0],
+        mSurfaceImage.pitches[1], mSurfaceImage.offsets[1]);
+
+    return 0;
+}
+
+int JpegCompressor::WrapperLibVA::mapJpegSrcBuffers(void **pbuf)
+{
+    LOG1("@%s", __FUNCTION__);
+    VAStatus status;
+    status = vaDeriveImage(mVaDpy, mSurfaceId, &mSurfaceImage);
+    CHECK_STATUS(status, "vaDeriveImage", __LINE__)
+    status = vaMapBuffer(mVaDpy, mSurfaceImage.buf, pbuf);
+    CHECK_STATUS(status, "vaMapBuffer", __LINE__)
+
+    return 0;
+}
+
+int JpegCompressor::WrapperLibVA::unmapJpegSrcBuffers(void)
+{
+    LOG1("@%s", __FUNCTION__);
+    VAStatus status;
+    status = vaUnmapBuffer(mVaDpy, mSurfaceImage.buf);
+    CHECK_STATUS(status, "vaUnmapBuffer", __LINE__)
+
+    status = vaDestroyImage(mVaDpy, mSurfaceImage.image_id);
+    CHECK_STATUS(status, "vaDestroyImage", __LINE__)
+
+    return 0;
+}
+
+void JpegCompressor::WrapperLibVA::deInit()
+{
+    LOG1("@%s", __FUNCTION__);
+    vaDestroyContext(mVaDpy, mContextId);
+    vaDestroyConfig(mVaDpy, mConfigId);
+    vaDestroySurfaces(mVaDpy, &mSurfaceId, 1);
+    vaTerminate(mVaDpy);
+}
 
 JpegCompressor::JpegCompressor() :
     mVaInputSurfacesNum(0)
@@ -172,6 +324,41 @@ bool JpegCompressor::convertRawImage(void* src, void* dst, int width, int height
     return ret;
 }
 
+int JpegCompressor::hwEncode(const InputBuffer &in, const OutputBuffer &out)
+{
+    LOG1("@%s", __FUNCTION__);
+    int status;
+
+    status = mLibVA.init();
+    if (status)
+        return -1;
+
+    status = mLibVA.configSurface(in.width, in.height, 1);
+    if (status)
+        return -1;
+
+    status = mLibVA.setJpegDimensions(out.width, out.height);
+    if (status)
+        return -1;
+
+    status = mLibVA.getJpegSrcData(in.buf);
+    if (status)
+        return -1;
+
+    status = mLibVA.doJpegEncoding();
+    if (status)
+        return -1;
+
+    status = mLibVA.getJpegData(out.buf, out.size, &mJpegSize);
+    if (status)
+        return -1;
+
+    mStartCompressDone = true;
+    mLibVA.deInit();
+
+    return 0;
+}
+
 // Takes YUV data (NV12 or YUV420) and outputs JPEG encoded stream
 int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
 {
@@ -180,21 +367,13 @@ int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
             __FUNCTION__,
             in.buf, in.width, in.height, in.size, v4l2Fmt2Str(in.format),
             out.buf, out.width, out.height, out.size, out.quality);
-    // For SW path
-    SkBitmap skBitmap;
-    SkDynamicMemoryWStream skStream;
-    // For HW path
-    struct jpeg_compress_struct cinfo;
-    struct jpeg_compress_struct* pCinfo;
-    struct jpeg_error_mgr jerr;
-    JSAMPROW row_pointer[1];
 
     if (in.width == 0 || in.height == 0 || in.format == 0) {
         LOGE("Invalid input received!");
         mJpegSize = -1;
         goto exit;
     }
-    // Decide the encoding path: Skia or libjpeg
+    // Decide the encoding path: Skia or libva
     /*
      * jpeglib can encode images using libva only if the image format is NV12 and
      * image sizes are greater than 320x240. If the image does not meet this criteria,
@@ -202,10 +381,11 @@ int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
      * the color conversion of the image to RGB565.
      * The 320x240 size was found in external/jpeg/jcapistd.c:27,28
      */
-#ifdef USE_INTEL_JPEG
-    if ((in.width <= 320 && in.height <= 240) || in.format != V4L2_PIX_FMT_NV12)
-#endif
-    {
+    if ((in.width <= 320 && in.height <= 240) || in.format != V4L2_PIX_FMT_NV12) {
+        // For SW path
+        SkBitmap skBitmap;
+        SkDynamicMemoryWStream skStream;
+
         // Choose Skia
         LOG1("Choosing Skia for JPEG encoding");
         if (mJpegEncoder == NULL) {
@@ -230,117 +410,22 @@ int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
             mJpegSize = -1;
             goto exit;
         }
+    } else {
+        LOG1("Choosing libva for HW JPEG encoding");
+        if (hwEncode(in, out) < 0)
+            goto exit;
     }
-#ifdef USE_INTEL_JPEG
-    else
-    {
-        // Choose jpeglib
-        LOG1("Choosing jpeglib for JPEG encoding");
 
-        char *vaSurface = NULL;
-        bool sharedBufferCompress = false;
-        // Verify the validity of input buffer (it MUST be a VA surface)
-        for (int i = 0; i < mVaInputSurfacesNum && mJpegCompressStruct != NULL; i++) {
-            if ((char*)in.buf == mVaInputSurfacesPtr[i]) {
-                vaSurface = mVaInputSurfacesPtr[i];
-                LOG1("Using shared buffer %u @%p as input buffer", i, vaSurface);
-                sharedBufferCompress = true;
-                break;
-            }
-        }
-
-        if (sharedBufferCompress) {
-            // If this is a shared buffer, no need for create compress, this is already done
-            pCinfo = (struct jpeg_compress_struct*)mJpegCompressStruct;
-        } else {
-            memset(&cinfo, 0, sizeof(cinfo));
-            memset(&jerr, 0, sizeof(jerr));
-            pCinfo = &cinfo;
-            pCinfo->err = jpeg_std_error (&jerr);
-            jpeg_create_compress(pCinfo);
-        }
-
-        mJpegSize = 0;
-        setup_jpeg_destmgr(pCinfo, static_cast<JSAMPLE*>(out.buf), out.size, &mJpegSize);
-
-        // If the input pointer is not a VA surface, then copy it to a valid VA surface
-        if (vaSurface == NULL) {
-            LOG1("Get a VA surface from JPEG encoder...");
-            if(!jpeg_get_userptr_from_surface(pCinfo, in.width, in.height, VA_FOURCC_NV12, &vaSurface)) {
-                LOGE("Failed to get user pointer");
-                jpeg_destroy_compress(pCinfo);
-                mJpegSize = -1;
-                goto exit;
-            }
-
-            LOG1("Copy NV12 image to VA surface @%p: %d bytes", vaSurface, in.size);
-            memcpy(vaSurface, in.buf, in.size);
-        }
-
-        pCinfo->image_width = in.width;
-        pCinfo->image_height = in.height;
-        pCinfo->input_components = 3;
-        pCinfo->in_color_space = JCS_YCbCr;
-        jpeg_set_defaults(pCinfo);
-        jpeg_set_colorspace(pCinfo, JCS_YCbCr);
-        jpeg_set_quality(pCinfo, out.quality, TRUE);
-        pCinfo->raw_data_in = TRUE;
-        pCinfo->dct_method = JDCT_FLOAT;
-        pCinfo->comp_info[0].h_samp_factor = pCinfo->comp_info[0].v_samp_factor = 2;
-        pCinfo->comp_info[1].h_samp_factor = pCinfo->comp_info[1].v_samp_factor = 1;
-        pCinfo->comp_info[2].h_samp_factor = pCinfo->comp_info[2].v_samp_factor = 1;
-
-        LOG1("Start compression...");
-        jpeg_start_compress(pCinfo, TRUE);
-        mStartCompressDone = true;
-
-        LOG1("Compressing...");
-        jpeg_write_raw_data(pCinfo, (JSAMPIMAGE)vaSurface, pCinfo->image_height);
-
-        LOG1("Finish compression...");
-        jpeg_finish_compress(pCinfo);
-
-        if (!sharedBufferCompress) {
-            jpeg_destroy_compress(pCinfo);
-        }
-    }
-#endif
-
-exit:
     return mJpegSize;
+exit:
+    return (mJpegSize = -1);
 }
 
 // Starts encoding of multiple shared buffers
 status_t JpegCompressor::startSharedBuffersEncode(void *outBuf, int outSize)
 {
     LOG1("@%s", __FUNCTION__);
-#ifdef USE_INTEL_JPEG
-    static struct jpeg_compress_struct cinfo;
-    static struct jpeg_error_mgr jerr;
-    if (mStartSharedBuffersEncode && mJpegCompressStruct != NULL) {
-        JpegDestinationManager* dest = (JpegDestinationManager*) cinfo.dest;
-        LOG1("Our output buffer: %p (sz: %d), received output buffer: %p (sz: %d)",
-                dest->outJpegBuf, dest->outJpegBufSize,
-                outBuf, outSize);
-        if (dest->outJpegBuf == outBuf && dest->outJpegBufSize == outSize) {
-            // Nothing to do, we already started with this configuration
-            return NO_ERROR;
-        } else {
-            // Free previous allocated buffers
-            stopSharedBuffersEncode();
-        }
-    }
-    memset(&cinfo , 0, sizeof(cinfo));
-    memset(&jerr , 0, sizeof(jerr));
-    cinfo.err = jpeg_std_error (&jerr);
-    LOG1("Starting new shared buffers compress on: %p", &cinfo);
-    jpeg_create_compress(&cinfo);
-    mJpegSize = 0;
-    setup_jpeg_destmgr(&cinfo, static_cast<JSAMPLE*>(outBuf), outSize, &mJpegSize);
-    mJpegCompressStruct = &cinfo;
-    mStartSharedBuffersEncode = true;
-    mStartCompressDone = false;
-#endif
+
     return NO_ERROR;
 }
 
@@ -348,106 +433,15 @@ status_t JpegCompressor::startSharedBuffersEncode(void *outBuf, int outSize)
 status_t JpegCompressor::stopSharedBuffersEncode()
 {
     LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    struct jpeg_compress_struct *pCinfo = NULL;
-    if (!mStartSharedBuffersEncode) {
-        // already stopped, nothing to do
-        return NO_ERROR;
-    }
-#ifdef USE_INTEL_JPEG
-    pCinfo = (struct jpeg_compress_struct*)mJpegCompressStruct;
-    LOG1("Stopping shared buffers compress on: %p", pCinfo);
-    if (!mStartCompressDone) {
-        /*
-         * Before calling destroy_compress, make fake calls to start_compress
-         * so the libjpeg will initialize the hw_path and free the libva memory
-         * in destroy_compress. Without calling start_compress, hw_path from
-         * libjpeg is not initialized, therefore libva resources WON'T be freed
-         * in destroy_compress.
-         */
-        LOG1("Fake Start compression...");
-        jpeg_start_compress(pCinfo, TRUE);
-    }
 
-    jpeg_destroy_compress(pCinfo);
-    mJpegCompressStruct = NULL;
-    mStartSharedBuffersEncode = false;
-    mVaInputSurfacesNum = 0;
-    mVaSurfaceWidth = 0;
-    mVaSurfaceHeight = 0;
-#endif
     return NO_ERROR;
 }
 
 status_t JpegCompressor::getSharedBuffers(int width, int height, void** sharedBuffersPtr, int sharedBuffersNum)
 {
     LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    int vaSurfacesNum = 0;
-    struct jpeg_compress_struct *pCinfo = NULL;
-    if (!mStartSharedBuffersEncode) {
-        LOGE("Shared buffer encoding session is not started!");
-        return INVALID_OPERATION;
-    }
-    LOG1("Our shared buffers: %dx%d (num: %d), requested buffers: %dx%d (num: %d)",
-            mVaSurfaceWidth, mVaSurfaceHeight, mVaInputSurfacesNum,
-            width, height, sharedBuffersNum);
-    if (mJpegCompressStruct != NULL &&
-            mVaInputSurfacesNum == sharedBuffersNum &&
-            mVaSurfaceWidth == width &&
-            mVaSurfaceHeight == height) {
-        // Nothing to do, we already have these shared buffers
-        if (sharedBuffersPtr != NULL) {
-            *sharedBuffersPtr = mVaInputSurfacesPtr;
-        }
-        return NO_ERROR;
-    }
-    pCinfo = (struct jpeg_compress_struct*)mJpegCompressStruct;
 
-#ifdef USE_INTEL_JPEG
-
-    for (vaSurfacesNum = 0; vaSurfacesNum < sharedBuffersNum; vaSurfacesNum++) {
-        LOG1("Get a VA surface from JPEG encoder...");
-        if(!jpeg_get_userptr_from_surface(pCinfo, width, height, VA_FOURCC_NV12, &mVaInputSurfacesPtr[vaSurfacesNum])) {
-            LOGE("Failed to get user pointer");
-            status = NO_MEMORY;
-            break;
-        }
-        LOG1("Got VA surface @%p as shared buffer %d", mVaInputSurfacesPtr[vaSurfacesNum], vaSurfacesNum);
-    }
-    if (status == NO_ERROR) {
-        // Initialize cinfo
-        pCinfo->image_width = width;
-        pCinfo->image_height = height;
-        pCinfo->input_components = 3;
-        pCinfo->in_color_space = JCS_YCbCr;
-        jpeg_set_defaults(pCinfo);
-        jpeg_set_colorspace(pCinfo, JCS_YCbCr);
-        pCinfo->raw_data_in = TRUE;
-        pCinfo->dct_method = JDCT_FLOAT;
-        pCinfo->comp_info[0].h_samp_factor = pCinfo->comp_info[0].v_samp_factor = 2;
-        pCinfo->comp_info[1].h_samp_factor = pCinfo->comp_info[1].v_samp_factor = 1;
-        pCinfo->comp_info[2].h_samp_factor = pCinfo->comp_info[2].v_samp_factor = 1;
-        mVaInputSurfacesNum = sharedBuffersNum;
-        mVaSurfaceWidth = width;
-        mVaSurfaceHeight = height;
-        if (sharedBuffersPtr != NULL) {
-            *sharedBuffersPtr = mVaInputSurfacesPtr;
-        }
-    } else {
-        if (sharedBuffersPtr != NULL) {
-            *sharedBuffersPtr = NULL;
-        }
-        if (vaSurfacesNum == 0) {
-            // No need for fake start compress
-            mStartCompressDone = true;
-        }
-        stopSharedBuffersEncode();
-    }
-    return status;
-#else
     return NO_ERROR;
-#endif
 }
 
 }

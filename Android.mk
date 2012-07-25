@@ -59,6 +59,7 @@ LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/libmfldadvci \
 	$(TARGET_OUT_HEADERS)/libCameraFaceDetection \
 	$(TARGET_OUT_HEADERS)/pvr/hal \
+	$(TARGET_OUT_HEADERS)/libva \
 	
 
 ifeq ($(USE_INTEL_JPEG), true)
@@ -76,7 +77,10 @@ LOCAL_SHARED_LIBRARIES := \
 	libandroid \
 	libui \
 	libmfldadvci \
-	libintelmetadatabuffer
+	libintelmetadatabuffer \
+	libva \
+	libva-tpi \
+	libva-android \
 	
 ifeq ($(FACE_DETECTION_TYPE),ola)
 LOCAL_SHARED_LIBRARIES +=libCameraFaceDetection

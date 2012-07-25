@@ -21,29 +21,16 @@
 #include "SkImageEncoder.h"
 #include "AtomCommon.h"
 #include <utils/Errors.h>
+#include <va/va.h>
+#include <va/va_tpi.h>
+#include <va/va_android.h>
 
 namespace android {
 
 class JpegCompressor {
-    int mJpegSize;
-
-    // For buffer sharing
-    char* mVaInputSurfacesPtr[MAX_BURST_BUFFERS];
-    int mVaInputSurfacesNum;
-    int mVaSurfaceWidth;
-    int mVaSurfaceHeight;
-
-    SkImageEncoder* mJpegEncoder; // used for small images (< 512x512)
-    void *mJpegCompressStruct;
-    bool mStartSharedBuffersEncode;
-    bool mStartCompressDone;
-
-    bool convertRawImage(void* src, void* dst, int width, int height, int format);
-
 public:
     JpegCompressor();
     ~JpegCompressor();
-
 
     struct InputBuffer {
         unsigned char *buf;
@@ -93,6 +80,96 @@ public:
     status_t startSharedBuffersEncode(void *outBuf, int outSize);
     status_t stopSharedBuffersEncode();
     status_t getSharedBuffers(int width, int height, void** sharedBuffersPtr, int sharedBuffersNum);
+
+private:
+    int mJpegSize;
+
+    // For buffer sharing
+    char* mVaInputSurfacesPtr[MAX_BURST_BUFFERS];
+    int mVaInputSurfacesNum;
+    int mVaSurfaceWidth;
+    int mVaSurfaceHeight;
+
+    SkImageEncoder* mJpegEncoder; // used for small images (< 512x512)
+    void *mJpegCompressStruct;
+    bool mStartSharedBuffersEncode;
+    bool mStartCompressDone;
+
+    bool convertRawImage(void* src, void* dst, int width, int height, int format);
+    int hwEncode(const InputBuffer &in, const OutputBuffer &out);
+
+    class WrapperLibVA {
+    public:
+        WrapperLibVA();
+        ~WrapperLibVA();
+        int init(void);
+        /*
+            configure and create several surface with the max width/height
+            bufNum: created surface numbers
+            for example, we can set the maxWidth and maxHeight to 8M. although
+            the real picture size is 5M. we can create the max size surface to
+            avoid to create new surface for performance.
+        */
+        int configSurface(int maxWidth, int maxHeight, int bufNum);
+        /*
+            set the current encoding jpeg width and height
+        */
+        int setJpegDimensions(int width, int height);
+        /*
+            copy RAW NV12 data to the internal of libva
+            pRaw: point to the RAW NV12 data
+        */
+        int getJpegSrcData(void *pRaw);
+        /*
+            implement the jpeg encoding
+        */
+        int doJpegEncoding(void);
+        /*
+            copy jpeg data from libva to outer
+            pdst: the buffer which we will copy jpeg to.
+            dstSize: the pdst buffer size
+            jpegSize: the real jpeg size
+        */
+        int getJpegData(void *pdst, int dstSize, int *jpegSize);
+        void deInit(void);
+    private:
+        VADisplay mVaDpy;
+        VAConfigID mConfigId;
+        VASurfaceID mSurfaceId;
+        VAContextID mContextId;
+        VABufferID mCodedBuf;
+        VAImage mSurfaceImage;
+        VABufferID mPicParamBuf;
+        // the picture dimensions
+        int mPicWidth;
+        int mPicHeight;
+        // we can use the max w/h to avoid re create the surface
+        int mMaxWidth;
+        int mMaxHeight;
+        int mMaxOutJpegBufSize; // the max JPEG Buffer Size
+        // only support NV12
+        static const unsigned int mSupportedFormat = VA_RT_FORMAT_YUV420;
+
+        // check the return value for libva functions
+        #define CHECK_STATUS(status,func, line)                                    \
+                if (status != VA_STATUS_SUCCESS) {                                 \
+                    LOGE("@%s, line:%d, call %s failed", __FUNCTION__, line, func);\
+                    return -1;                                                     \
+                }
+        /*
+            pbuf: we will get mapped buffer from the libva for RAW NV12 data
+        */
+        int mapJpegSrcBuffers(void **pbuf);
+        /*
+            it is used to copy the RAW NV12 data from psrc to the internal
+            buffer in the libva
+            psrc: RAW NV12 data buffer
+            pdst: mapped out buffer from libva
+        */
+        int copySrcDataToLibVA(void *psrc, void *pdst);
+        int unmapJpegSrcBuffers(void);
+    };
+    class WrapperLibVA mLibVA;
 };
 
 }; // namespace android
