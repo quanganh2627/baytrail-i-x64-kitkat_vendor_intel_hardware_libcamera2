@@ -414,10 +414,10 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
 
     if (mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
         params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES,
-            "1024x580,1024x576,800x600,720x576,720x480,640x480,640x360,416x312,352x288,320x240,176x144");
+            "1024x580,1024x576,800x600,720x480,640x480,640x360,416x312,352x288,320x240,176x144");
     } else {
         params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES,
-            "1024x580,720x576,720x480,640x480,640x360,352x288,320x240,176x144");
+            "1024x580,720x480,640x480,640x360,352x288,320x240,176x144");
     }
 
     params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES,"30,15,10");
