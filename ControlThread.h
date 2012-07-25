@@ -419,6 +419,7 @@ private:
     status_t handleMessageUnloadFirmware(MessageUnloadFirmware* msg);
     status_t handleMessageSetFirmwareArgument(MessageSetFwArg* msg);
     status_t handleMessageUnsetFirmwareArgument(MessageSetFwArg* msg);
+    status_t enableIntelParameters();
     void releasePreviewFrame(AtomBuffer* buff);
 
     // main message function
@@ -540,6 +541,7 @@ private:
     int mNumBuffers;
 
     CameraParameters mParameters;
+    CameraParameters mIntelParameters;
     IFaceDetector* m_pFaceDetector;
     bool mIntelParamsAllowed;           /*<! Flag that signals whether the caller is allowed to use Intel extended paramters*/
     bool mFaceDetectionActive;

@@ -99,9 +99,6 @@ namespace android {
     const char IntelCameraParameters::AE_MODE_SHUTTER_PRIORITY[] = "shutter-priority";
     const char IntelCameraParameters::AE_MODE_APERTURE_PRIORITY[] = "aperture-priority";
 
-    // Values for scene mode settings.
-    const char IntelCameraParameters::SCENE_MODE_TEXT[] = "text";
-
     // Values for focus mode settings.
     const char IntelCameraParameters::FOCUS_MODE_MANUAL[] = "manual";
     const char IntelCameraParameters::FOCUS_MODE_TOUCH[] = "touch";

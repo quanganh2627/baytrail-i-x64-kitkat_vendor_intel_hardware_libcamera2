@@ -27,6 +27,7 @@
 #define INTELPARAMETERS_H_
 
 namespace android {
+
   class IntelCameraParameters {
   public:
 
@@ -94,8 +95,6 @@ namespace android {
     // Flash mode
     static const char FLASH_MODE_DAY_SYNC[];
     static const char FLASH_MODE_SLOW_SYNC[];
-    // Scene mode
-    static const char SCENE_MODE_TEXT[];
     // control focus distance directly.
     static const char FOCUS_MODE_MANUAL[];
     // used for touch focus

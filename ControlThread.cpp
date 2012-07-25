@@ -31,11 +31,10 @@
 #include <math.h>
 #include <cutils/properties.h>
 #include <binder/IServiceManager.h>
+#include "cameralibs/intel_camera_extensions.h"
 
 namespace android {
 
-#define PERMISSION_INTELTEST_CAMERA  "com.inteltest.permission.CAMERAEX"
-#define PERMISSION_INTEL_CAMERA  "com.intel.permission.CAMERAEX"
 /*
  * NUM_WARMUP_FRAMES: used for front camera only
  * Since front camera does not 3A, it actually has 2A (auto-exposure and auto-whitebalance),
@@ -107,10 +106,6 @@ ControlThread::ControlThread() :
             gLogLevel = 0;
         }
     }
-
-    if (checkCallingPermission(String16(PERMISSION_INTELTEST_CAMERA)) ||
-        checkCallingPermission(String16(PERMISSION_INTEL_CAMERA)))
-       mIntelParamsAllowed   = true;
 
     LOG1("@%s", __FUNCTION__);
 }
@@ -197,7 +192,7 @@ status_t ControlThread::init(int cameraId)
     mPreviewThread->setServiceProxy(mProxyToOlaService.get());
 
     // get default params from AtomISP and JPEG encoder
-    mISP->getDefaultParameters(&mParameters);
+    mISP->getDefaultParameters(&mParameters, &mIntelParameters);
     mPictureThread->getDefaultParameters(&mParameters);
     mPreviewThread->getDefaultParameters(&mParameters);
     updateParameterCache();
@@ -465,6 +460,7 @@ char* ControlThread::getParameters()
         msg.data.getParameters.params = &params; // let control thread allocate and set pointer
         mMessageQueue.send(&msg, MESSAGE_ID_GET_PARAMETERS);
     }
+
     return params;
 }
 
@@ -602,7 +598,12 @@ void ControlThread::sendCommand(int32_t cmd, int32_t arg1, int32_t arg2)
     msg.data.command.cmd_id = cmd;
     msg.data.command.arg1 = arg1;
     msg.data.command.arg2 = arg2;
-    mMessageQueue.send(&msg);
+
+    // App should wait here until ENABLE_INTEL_PARAMETERS command finish.
+    if (cmd == CAMERA_CMD_ENABLE_INTEL_PARAMETERS)
+        mMessageQueue.send(&msg, MESSAGE_ID_COMMAND);
+    else
+        mMessageQueue.send(&msg);
 }
 
 void ControlThread::autoFocusDone()
@@ -2648,7 +2649,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
             newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
             newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
-        } else if (!strncmp (newScene, IntelCameraParameters::SCENE_MODE_TEXT, strlen(IntelCameraParameters::SCENE_MODE_TEXT))) {
+        } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_BARCODE, strlen(CameraParameters::SCENE_MODE_BARCODE))) {
             sceneMode = CAM_AE_SCENE_MODE_TEXT;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_MACRO);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
@@ -2691,6 +2692,19 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
         mAAA->setAeSceneMode(sceneMode);
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_SCENE_MODE, newScene);
+        }
+        // If Intel params are not allowed,
+        // we should update Intel params setting to HW, and remove them here.
+        if (!mIntelParamsAllowed) {
+            processParamBackLightingCorrectionMode(oldParams, newParams);
+            processParamXNR_ANR(oldParams, newParams);
+            newParams->remove(IntelCameraParameters::KEY_AWB_MAPPING_MODE);
+            newParams->remove(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES);
+            newParams->remove(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE);
+            newParams->remove(IntelCameraParameters::KEY_SUPPORTED_XNR);
+            newParams->remove(IntelCameraParameters::KEY_XNR);
+            newParams->remove(IntelCameraParameters::KEY_SUPPORTED_ANR);
+            newParams->remove(IntelCameraParameters::KEY_ANR);
         }
     }
     return status;
@@ -3432,9 +3446,14 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
         status = stopSmartSceneDetection();
         break;
 #endif
+    case CAMERA_CMD_ENABLE_INTEL_PARAMETERS:
+        status = enableIntelParameters();
+        mMessageQueue.reply(MESSAGE_ID_COMMAND, status);
+        break;
     default:
         break;
     }
+
     return status;
 }
 
@@ -3602,6 +3621,25 @@ status_t ControlThread::stopFaceDetection(bool wait)
     } else{
         return INVALID_OPERATION;
     }
+}
+
+status_t ControlThread::enableIntelParameters()
+{
+    // intel parameters support more effects
+    // so use supported effects list stored in mIntelParameters.
+    mParameters.remove(CameraParameters::KEY_SUPPORTED_EFFECTS);
+
+    String8 params(mParameters.flatten());
+    String8 intel_params(mIntelParameters.flatten());
+    String8 delimiter(";");
+    params += delimiter;
+    params += intel_params;
+    mParameters.unflatten(params);
+    updateParameterCache();
+
+    mIntelParamsAllowed = true;
+
+    return NO_ERROR;
 }
 
 status_t ControlThread::waitForAndExecuteMessage()

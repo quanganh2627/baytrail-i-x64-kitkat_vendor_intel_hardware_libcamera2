@@ -70,7 +70,7 @@ public:
 // public methods
 public:
 
-    void getDefaultParameters(CameraParameters *params);
+    void getDefaultParameters(CameraParameters *params, CameraParameters *intel_params);
 
     status_t start(AtomMode mode);
     status_t stop();
