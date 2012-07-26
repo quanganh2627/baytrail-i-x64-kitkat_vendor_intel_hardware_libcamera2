@@ -112,7 +112,7 @@ public:
             return status;
 
         mQueueMutex.lock();
-        class List<MessageType>::iterator it = mList.begin();
+        typename List<MessageType>::iterator it = mList.begin();
         while (it != mList.end()) {
             MessageType msg = *it;
             if (msg.id == id) {
