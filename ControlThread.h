@@ -469,6 +469,12 @@ private:
 
     status_t stopCapture();
 
+    // HDR helper functions
+    status_t hdrInit(int size, int pvSize, int format,
+                     int width, int height,
+                     int pvWidth, int pvHeight);
+    status_t hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* postviewBuffer);
+
 
 // inherited from Thread
 private:

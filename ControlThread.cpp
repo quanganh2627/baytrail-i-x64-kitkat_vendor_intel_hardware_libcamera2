@@ -1394,86 +1394,10 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
         }
 
         // HDR init
-        if (mHdr.enabled) {
-            // Initialize the HDR output buffers
-            // Main output buffer
-            mCallbacks->allocateMemory(&mHdr.outMainBuf, size);
-            if (mHdr.outMainBuf.buff == NULL) {
-                LOGE("HDR: Error allocating memory for HDR main buffer!");
-                status = NO_MEMORY;
-                return status;
-            }
-            mHdr.outMainBuf.shared = false;
-            // merging multiple images from ISP, so just set counter to 1
-            mHdr.outMainBuf.frameCounter = 1;
-            LOG1("HDR: using %p as HDR main output buffer", mHdr.outMainBuf.buff->data);
-            // Postview output buffer
-            mCallbacks->allocateMemory(&mHdr.outPostviewBuf, pvSize);
-            if (mHdr.outPostviewBuf.buff == NULL) {
-                LOGE("HDR: Error allocating memory for HDR postview buffer!");
-                status = NO_MEMORY;
-                return status;
-            }
-            LOG1("HDR: using %p as HDR postview output buffer", mHdr.outPostviewBuf.buff->data);
-
-            // Initialize the CI input buffers (will be initialized later, when snapshots are taken)
-            mHdr.ciBufIn.ciBufNum = mHdr.bracketNum;
-            mHdr.ciBufIn.ciMainBuf = new ia_frame[mHdr.ciBufIn.ciBufNum];
-            mHdr.ciBufIn.ciPostviewBuf = new ia_frame[mHdr.ciBufIn.ciBufNum];
-            mHdr.ciBufIn.hist = new ia_cp_histogram[mHdr.ciBufIn.ciBufNum];
-
-            // Initialize the CI output buffers
-            mHdr.ciBufOut.ciBufNum = mHdr.bracketNum;
-            mHdr.ciBufOut.ciMainBuf = new ia_frame[1];
-            mHdr.ciBufOut.ciPostviewBuf = new ia_frame[1];
-            mHdr.ciBufOut.hist = NULL;
-
-            if (mHdr.ciBufIn.ciMainBuf == NULL ||
-                mHdr.ciBufIn.ciPostviewBuf == NULL ||
-                mHdr.ciBufIn.hist == NULL ||
-                mHdr.ciBufOut.ciMainBuf == NULL ||
-                mHdr.ciBufOut.ciPostviewBuf == NULL) {
-                LOGE("HDR: Error allocating memory for HDR CI buffers!");
-                status = NO_MEMORY;
-                return status;
-            }
-
-            status = AtomAAA::setIaFrameFormat(&mHdr.ciBufOut.ciMainBuf[0], format);
-            if (status != NO_ERROR) {
-                LOGE("HDR: pixel format %d not supported", format);
-                return status;
-            }
-
-            mHdr.ciBufOut.ciMainBuf->data = mHdr.outMainBuf.buff->data;
-            mHdr.ciBufOut.ciMainBuf[0].width = mHdr.outMainBuf.width = width;
-            mHdr.ciBufOut.ciMainBuf[0].stride = mHdr.outMainBuf.stride = width;
-            mHdr.ciBufOut.ciMainBuf[0].height = mHdr.outMainBuf.height = height;
-            mHdr.outMainBuf.format = format;
-            mHdr.ciBufOut.ciMainBuf[0].size = mHdr.outMainBuf.size = size;
-
-            LOG1("HDR: Initialized output CI main     buff @%p: (data=%p, size=%d, width=%d, height=%d, format=%d)",
-                    &mHdr.ciBufOut.ciMainBuf[0],
-                    mHdr.ciBufOut.ciMainBuf[0].data,
-                    mHdr.ciBufOut.ciMainBuf[0].size,
-                    mHdr.ciBufOut.ciMainBuf[0].width,
-                    mHdr.ciBufOut.ciMainBuf[0].height,
-                    mHdr.ciBufOut.ciMainBuf[0].format);
-
-            mHdr.ciBufOut.ciPostviewBuf[0].data = mHdr.outPostviewBuf.buff->data;
-            mHdr.ciBufOut.ciPostviewBuf[0].width = mHdr.outPostviewBuf.width = pvWidth;
-            mHdr.ciBufOut.ciPostviewBuf[0].stride = mHdr.outPostviewBuf.stride = pvWidth;
-            mHdr.ciBufOut.ciPostviewBuf[0].height = mHdr.outPostviewBuf.height = pvHeight;
-            AtomAAA::setIaFrameFormat(&mHdr.ciBufOut.ciPostviewBuf[0], format);
-            mHdr.outPostviewBuf.format = format;
-            mHdr.ciBufOut.ciPostviewBuf[0].size = mHdr.outPostviewBuf.size = pvSize;
-
-            LOG1("HDR: Initialized output CI postview buff @%p: (data=%p, size=%d, width=%d, height=%d, format=%d)",
-                    &mHdr.ciBufOut.ciPostviewBuf[0],
-                    mHdr.ciBufOut.ciPostviewBuf[0].data,
-                    mHdr.ciBufOut.ciPostviewBuf[0].size,
-                    mHdr.ciBufOut.ciPostviewBuf[0].width,
-                    mHdr.ciBufOut.ciPostviewBuf[0].height,
-                    mHdr.ciBufOut.ciPostviewBuf[0].format);
+        if (mHdr.enabled &&
+            (status = hdrInit( size, pvSize, format, width, height, pvWidth, pvHeight)) != NO_ERROR) {
+            LOGE("Error initializing HDR!");
+            return status;
         }
 
         /*
@@ -1537,50 +1461,11 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
         PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
                                           snapshotBuffer.frameCounter);
 
-        if (mHdr.enabled) {
-            // Initialize the HDR CI input buffers (main/postview) for this capture
-            if (snapshotBuffer.shared) {
-                mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data= (void *) *((char **)snapshotBuffer.buff->data);
-                LOGW("HDR: Warning: shared buffer detected in HDR composing. The composition might fail!");
-            } else {
-                mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer.buff->data;
-            }
-            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer.buff->data;
-            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].width = width;
-            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].stride = width;
-            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height = height;
-            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].size = size;
-            AtomAAA::setIaFrameFormat(&mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum], format);
-
-            LOG1("HDR: Initialized input CI main     buff %d @%p: (data=%p, size=%d, width=%d, height=%d, format=%d)",
-                    mBurstCaptureNum,
-                    &mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum],
-                    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data,
-                    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].size,
-                    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].width,
-                    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height,
-                    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].format);
-
-            mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].data = postviewBuffer.buff->data;
-            mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].width = pvWidth;
-            mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height = pvHeight;
-            mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].size = pvSize;
-            AtomAAA::setIaFrameFormat(&mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum], format);
-
-            LOG1("HDR: Initialized input CI postview buff %d @%p: (data=%p, size=%d, width=%d, height=%d, format=%d)",
-                    mBurstCaptureNum,
-                    &mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum],
-                    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].data,
-                    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].size,
-                    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].width,
-                    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height,
-                    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].format);
-
-            status = mAAA->computeCDF(mHdr.ciBufIn, mBurstCaptureNum);
-            if (status != NO_ERROR) {
-                LOGE("HDR: Error in compute CDF for capture %d in HDR sequence!", mBurstCaptureNum);
-                return status;
-            }
+        // HDR Processing
+        if (mHdr.enabled &&
+            (status = hdrProcess(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
+            LOGE("HDR: Error in compute CDF for capture %d in HDR sequence!", mBurstCaptureNum);
+            return status;
         }
 
         mBurstCaptureNum++;
@@ -3615,6 +3500,138 @@ status_t ControlThread::handleMessageStoreMetaDataInBuffers(MessageStoreMetaData
 
     mMessageQueue.reply(MESSAGE_ID_STORE_METADATA_IN_BUFFER, status);
     return status;
+}
+
+status_t ControlThread::hdrInit(int size, int pvSize, int format,
+                                int width, int height,
+                                int pvWidth, int pvHeight)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    // Initialize the HDR output buffers
+    // Main output buffer
+    mCallbacks->allocateMemory(&mHdr.outMainBuf, size);
+    if (mHdr.outMainBuf.buff == NULL) {
+        LOGE("HDR: Error allocating memory for HDR main buffer!");
+        return NO_MEMORY;
+    }
+    mHdr.outMainBuf.shared = false;
+    // merging multiple images from ISP, so just set counter to 1
+    mHdr.outMainBuf.frameCounter = 1;
+    LOG1("HDR: using %p as HDR main output buffer", mHdr.outMainBuf.buff->data);
+    // Postview output buffer
+    mCallbacks->allocateMemory(&mHdr.outPostviewBuf, pvSize);
+    if (mHdr.outPostviewBuf.buff == NULL) {
+        LOGE("HDR: Error allocating memory for HDR postview buffer!");
+        return NO_MEMORY;
+    }
+    LOG1("HDR: using %p as HDR postview output buffer", mHdr.outPostviewBuf.buff->data);
+
+    // Initialize the CI input buffers (will be initialized later, when snapshots are taken)
+    mHdr.ciBufIn.ciBufNum = mHdr.bracketNum;
+    mHdr.ciBufIn.ciMainBuf = new ia_frame[mHdr.ciBufIn.ciBufNum];
+    mHdr.ciBufIn.ciPostviewBuf = new ia_frame[mHdr.ciBufIn.ciBufNum];
+    mHdr.ciBufIn.hist = new ia_cp_histogram[mHdr.ciBufIn.ciBufNum];
+
+    // Initialize the CI output buffers
+    mHdr.ciBufOut.ciBufNum = mHdr.bracketNum;
+    mHdr.ciBufOut.ciMainBuf = new ia_frame[1];
+    mHdr.ciBufOut.ciPostviewBuf = new ia_frame[1];
+    mHdr.ciBufOut.hist = NULL;
+
+    if (mHdr.ciBufIn.ciMainBuf == NULL ||
+        mHdr.ciBufIn.ciPostviewBuf == NULL ||
+        mHdr.ciBufIn.hist == NULL ||
+        mHdr.ciBufOut.ciMainBuf == NULL ||
+        mHdr.ciBufOut.ciPostviewBuf == NULL) {
+        LOGE("HDR: Error allocating memory for HDR CI buffers!");
+        return NO_MEMORY;
+    }
+
+    status = AtomAAA::setIaFrameFormat(&mHdr.ciBufOut.ciMainBuf[0], format);
+    if (status != NO_ERROR) {
+        LOGE("HDR: pixel format %d not supported", format);
+        return status;
+    }
+
+    mHdr.ciBufOut.ciMainBuf->data = mHdr.outMainBuf.buff->data;
+    mHdr.ciBufOut.ciMainBuf[0].width = mHdr.outMainBuf.width = width;
+    mHdr.ciBufOut.ciMainBuf[0].stride = mHdr.outMainBuf.stride = width;
+    mHdr.ciBufOut.ciMainBuf[0].height = mHdr.outMainBuf.height = height;
+    mHdr.outMainBuf.format = format;
+    mHdr.ciBufOut.ciMainBuf[0].size = mHdr.outMainBuf.size = size;
+
+    LOG1("HDR: Initialized output CI main     buff @%p: (data=%p, size=%d, width=%d, height=%d, format=%d)",
+            &mHdr.ciBufOut.ciMainBuf[0],
+            mHdr.ciBufOut.ciMainBuf[0].data,
+            mHdr.ciBufOut.ciMainBuf[0].size,
+            mHdr.ciBufOut.ciMainBuf[0].width,
+            mHdr.ciBufOut.ciMainBuf[0].height,
+            mHdr.ciBufOut.ciMainBuf[0].format);
+
+    mHdr.ciBufOut.ciPostviewBuf[0].data = mHdr.outPostviewBuf.buff->data;
+    mHdr.ciBufOut.ciPostviewBuf[0].width = mHdr.outPostviewBuf.width = pvWidth;
+    mHdr.ciBufOut.ciPostviewBuf[0].stride = mHdr.outPostviewBuf.stride = pvWidth;
+    mHdr.ciBufOut.ciPostviewBuf[0].height = mHdr.outPostviewBuf.height = pvHeight;
+    AtomAAA::setIaFrameFormat(&mHdr.ciBufOut.ciPostviewBuf[0], format);
+    mHdr.outPostviewBuf.format = format;
+    mHdr.ciBufOut.ciPostviewBuf[0].size = mHdr.outPostviewBuf.size = pvSize;
+
+    LOG1("HDR: Initialized output CI postview buff @%p: (data=%p, size=%d, width=%d, height=%d, format=%d)",
+            &mHdr.ciBufOut.ciPostviewBuf[0],
+            mHdr.ciBufOut.ciPostviewBuf[0].data,
+            mHdr.ciBufOut.ciPostviewBuf[0].size,
+            mHdr.ciBufOut.ciPostviewBuf[0].width,
+            mHdr.ciBufOut.ciPostviewBuf[0].height,
+            mHdr.ciBufOut.ciPostviewBuf[0].format);
+
+    return status;
+}
+
+status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* postviewBuffer)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    // Initialize the HDR CI input buffers (main/postview) for this capture
+    if (snapshotBuffer->shared) {
+        mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = (void *) *((char **)snapshotBuffer->buff->data);
+        LOGW("HDR: Warning: shared buffer detected in HDR composing. The composition might fail!");
+    } else {
+        mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer->buff->data;
+    }
+    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer->buff->data;
+    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].width = snapshotBuffer->width;
+    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].stride = snapshotBuffer->width;
+    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height = snapshotBuffer->height;
+    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].size = snapshotBuffer->size;
+    AtomAAA::setIaFrameFormat(&mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum], snapshotBuffer->format);
+
+    LOG1("HDR: Initialized input CI main     buff %d @%p: (addr=%p, length=%d, width=%d, height=%d, format=%d)",
+            mBurstCaptureNum,
+            &mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum],
+            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data,
+            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].size,
+            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].width,
+            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height,
+            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].format);
+
+    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].data = postviewBuffer->buff->data;
+    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].width = postviewBuffer->width;
+    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height = postviewBuffer->height;
+    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].size = postviewBuffer->size;
+    AtomAAA::setIaFrameFormat(&mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum], postviewBuffer->format);
+
+    LOG1("HDR: Initialized input CI postview buff %d @%p: (addr=%p, length=%d, width=%d, height=%d, format=%d)",
+            mBurstCaptureNum,
+            &mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum],
+            mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].data,
+            mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].size,
+            mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].width,
+            mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height,
+            mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].format);
+
+    return mAAA->computeCDF(mHdr.ciBufIn, mBurstCaptureNum);
 }
 
 /**
