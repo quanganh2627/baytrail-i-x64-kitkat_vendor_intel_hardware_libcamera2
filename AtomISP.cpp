@@ -3106,6 +3106,7 @@ size_t AtomISP::setupCameraInfo()
 
     for (int i = 0; i < PlatformData::numberOfCameras(); i++) {
         memset(&input, 0, sizeof(input));
+        memset(&sCamInfo[i].name, 0, sizeof(sCamInfo[i].name));
         input.index = i;
         ret = ioctl(main_fd, VIDIOC_ENUMINPUT, &input);
         if (ret < 0) {
@@ -3113,7 +3114,7 @@ size_t AtomISP::setupCameraInfo()
         }
         sCamInfo[i].port = input.reserved[1];
         sCamInfo[i].index = i;
-        strncpy(sCamInfo[i].name, (const char *)input.name, MAX_SENSOR_NAME_LENGTH);
+        strncpy(sCamInfo[i].name, (const char *)input.name, sizeof(sCamInfo[i].name)-1);
         LOG1("Detected sensor \"%s\"", sCamInfo[i].name);
         numCameras++;
     }
