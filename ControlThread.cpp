@@ -775,31 +775,7 @@ status_t ControlThread::stopCapture()
         mAAA->setAfMode(mPublicAfMode);
 
     if (mHdr.enabled) {
-        // Deallocate memory
-        if (mHdr.outMainBuf.buff != NULL) {
-            mHdr.outMainBuf.buff->release(mHdr.outMainBuf.buff);
-        }
-        if (mHdr.outPostviewBuf.buff != NULL) {
-            mHdr.outPostviewBuf.buff->release(mHdr.outPostviewBuf.buff);
-        }
-        if (mHdr.ciBufIn.ciMainBuf != NULL) {
-            delete[] mHdr.ciBufIn.ciMainBuf;
-        }
-        if (mHdr.ciBufIn.ciPostviewBuf != NULL) {
-            delete[] mHdr.ciBufIn.ciPostviewBuf;
-        }
-        if (mHdr.ciBufIn.hist != NULL) {
-            delete[] mHdr.ciBufIn.hist;
-        }
-        if (mHdr.ciBufOut.ciMainBuf != NULL) {
-            delete[] mHdr.ciBufOut.ciMainBuf;
-        }
-        if (mHdr.ciBufOut.ciPostviewBuf != NULL) {
-            delete[] mHdr.ciBufOut.ciPostviewBuf;
-        }
-        // restore HDR save original settings as requested by the application
-        mHdr.saveOrig = mHdr.appSaveOrig;
-        mHdr.saveOrigRequest = mHdr.appSaveOrigRequest;
+        hdrRelease();
     }
     return status;
 }
@@ -1518,24 +1494,9 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
         if (mHdr.enabled && mBurstCaptureNum == mHdr.bracketNum) {
             // This was the last capture in HDR sequence, compose the final HDR image
             LOG1("HDR: last capture, composing HDR image...");
-
-            /*
-             * Stop ISP before composing HDR since standalone acceleration requires ISP to be stopped.
-             * The below call won't release the capture buffers since they are needed by HDR compose
-             * method. The capture buffers will be released in stopCapture method.
-             */
-            status = mISP->stop();
-            if (status != NO_ERROR) {
-                LOGE("Error stopping ISP!");
+            if((status = hdrCompose(&sensorParams)) != NO_ERROR) {
+                LOGE("Error composing HDR picture");
                 return status;
-            }
-            status = mAAA->composeHDR(mHdr.ciBufIn, mHdr.ciBufOut, mHdr.vividness, mHdr.sharpening);
-            if (status == NO_ERROR) {
-                mHdr.outMainBuf.width = mHdr.ciBufOut.ciMainBuf->width;
-                mHdr.outMainBuf.height = mHdr.ciBufOut.ciMainBuf->height;
-                mHdr.outMainBuf.format = mHdr.ciBufOut.ciMainBuf->format;
-                mHdr.outMainBuf.size = mHdr.ciBufOut.ciMainBuf->size;
-                status = mPictureThread->encode(&sensorParams, &mHdr.outMainBuf, &mHdr.outPostviewBuf);
             }
         }
     } else {
@@ -3634,6 +3595,62 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
     return mAAA->computeCDF(mHdr.ciBufIn, mBurstCaptureNum);
 }
 
+void ControlThread::hdrRelease()
+{
+    // Deallocate memory
+    if (mHdr.outMainBuf.buff != NULL) {
+        mHdr.outMainBuf.buff->release(mHdr.outMainBuf.buff);
+    }
+    if (mHdr.outPostviewBuf.buff != NULL) {
+        mHdr.outPostviewBuf.buff->release(mHdr.outPostviewBuf.buff);
+    }
+    if (mHdr.ciBufIn.ciMainBuf != NULL) {
+        delete[] mHdr.ciBufIn.ciMainBuf;
+    }
+    if (mHdr.ciBufIn.ciPostviewBuf != NULL) {
+        delete[] mHdr.ciBufIn.ciPostviewBuf;
+    }
+    if (mHdr.ciBufIn.hist != NULL) {
+        delete[] mHdr.ciBufIn.hist;
+    }
+    if (mHdr.ciBufOut.ciMainBuf != NULL) {
+        delete[] mHdr.ciBufOut.ciMainBuf;
+    }
+    if (mHdr.ciBufOut.ciPostviewBuf != NULL) {
+        delete[] mHdr.ciBufOut.ciPostviewBuf;
+    }
+    // restore HDR save original settings as requested by the application
+    mHdr.saveOrig = mHdr.appSaveOrig;
+    mHdr.saveOrigRequest = mHdr.appSaveOrigRequest;
+}
+
+status_t ControlThread::hdrCompose(SensorParams* sensorParams)
+{
+   LOG1("%s",__FUNCTION__);
+   status_t status = NO_ERROR;
+
+    /*
+     * Stop ISP before composing HDR since standalone acceleration requires ISP to be stopped.
+     * The below call won't release the capture buffers since they are needed by HDR compose
+     * method. The capture buffers will be released in stopCapture method.
+     */
+    status = mISP->stop();
+    if (status != NO_ERROR) {
+        LOGE("Error stopping ISP!");
+        return status;
+    }
+
+    status = mAAA->composeHDR(mHdr.ciBufIn, mHdr.ciBufOut, mHdr.vividness, mHdr.sharpening);
+    if (status == NO_ERROR) {
+        mHdr.outMainBuf.width = mHdr.ciBufOut.ciMainBuf->width;
+        mHdr.outMainBuf.height = mHdr.ciBufOut.ciMainBuf->height;
+        mHdr.outMainBuf.format = mHdr.ciBufOut.ciMainBuf->format;
+        mHdr.outMainBuf.size = mHdr.ciBufOut.ciMainBuf->size;
+        status = mPictureThread->encode(sensorParams, &mHdr.outMainBuf, &mHdr.outPostviewBuf);
+    }
+
+    return status;
+}
 /**
  * From Android API:
  * Starts the face detection. This should be called after preview is started.

@@ -474,6 +474,8 @@ private:
                      int width, int height,
                      int pvWidth, int pvHeight);
     status_t hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* postviewBuffer);
+    status_t hdrCompose(SensorParams *sensorParams);
+    void     hdrRelease();
 
 
 // inherited from Thread
