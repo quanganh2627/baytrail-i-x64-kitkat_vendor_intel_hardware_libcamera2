@@ -146,7 +146,7 @@ status_t PostProcThread::handleExit()
 
 int PostProcThread::sendFrame(AtomBuffer *img, int width, int height)
 {
-    LOG1("@%s: buf=%p, width=%d height=%d", __FUNCTION__, img, width, height);
+    LOG2("@%s: buf=%p, width=%d height=%d", __FUNCTION__, img, width, height);
     Message msg;
     msg.id = MESSAGE_ID_FRAME;
     msg.data.frame.img = *img;
@@ -220,11 +220,11 @@ status_t PostProcThread::requestExitAndWait()
 
 status_t PostProcThread::handleFrame(MessageFrame frame)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     if (mFaceDetectionRunning) {
-        LOG1("%s: Face detection executing", __FUNCTION__);
+        LOG2("%s: Face detection executing", __FUNCTION__);
         int num_faces;
         bool smile, blink;
         unsigned char *src;

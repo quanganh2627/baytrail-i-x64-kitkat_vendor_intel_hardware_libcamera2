@@ -36,20 +36,20 @@ FaceDetector::~FaceDetector()
 
 int FaceDetector::faceDetect(ia_frame *frame)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     ia_face_detect(mContext, frame);
     return mContext->num_faces;
 }
 
 void FaceDetector::eyeDetect(ia_frame *frame)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     ia_face_eye_detect(mContext, frame);
 }
 
 bool FaceDetector::smileDetect(ia_frame *frame)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     ia_face_smile_detect(mContext, frame);
 
     // All detected faces have to smile for positive detection
@@ -99,7 +99,7 @@ bool FaceDetector::blinkDetect(ia_frame *frame)
  */
 int FaceDetector::getFaces(camera_face_t *faces_out, int width, int height)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
 
     // Coordinate range defined in camera_face_t: [-1000 ... 1000]
     const int coord_range = 2000;
