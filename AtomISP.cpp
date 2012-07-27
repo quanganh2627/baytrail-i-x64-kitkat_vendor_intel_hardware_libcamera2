@@ -173,6 +173,7 @@ AtomISP::AtomISP(int cameraId) :
     ,mSessionId(0)
     ,mAAA(AtomAAA::getInstance())
     ,mLowLight(false)
+    ,mXnr(0)
     ,mZoomRatios(NULL)
 {
     LOG1("@%s", __FUNCTION__);
@@ -740,7 +741,14 @@ const char* AtomISP::getMaxSnapShotResolution()
     return resolution_tables[index];
 }
 
-status_t AtomISP::updateLowLight()
+/**
+ * Applies ISP capture mode parameters to hardware
+ *
+ * Set latest requested values for capture mode parameters, and
+ * pass them to kernel. These parameters cannot be set during
+ * processing and are set only when starting capture.
+ */
+status_t AtomISP::updateCaptureParams()
 {
     status_t status = NO_ERROR;
     if (mSensorType == SENSOR_TYPE_RAW) {
@@ -748,7 +756,15 @@ status_t AtomISP::updateLowLight()
             LOGE("set low light failure");
             status = UNKNOWN_ERROR;
         }
+
+        if (xioctl(main_fd, ATOMISP_IOC_S_XNR, &mXnr) < 0) {
+            LOGE("set XNR failure");
+            status = UNKNOWN_ERROR;
+        }
+
+        LOG2("capture params: xnr %d, anr %d", mXnr, mLowLight);
     }
+
     return status;
 }
 
@@ -1036,7 +1052,7 @@ status_t AtomISP::startCapture()
     if (mFileInject.active == true)
         startFileInject();
 
-    updateLowLight();
+    updateCaptureParams();
 
     ret = configureDevice(
             V4L2_FIRST_DEVICE,
@@ -1738,15 +1754,8 @@ status_t AtomISP::getMakerNote(atomisp_makernote_info *info)
 status_t AtomISP::setXNR(bool enable)
 {
     LOG1("@%s: %d", __FUNCTION__, (int) enable);
-    status_t status = NO_ERROR;
-    if (mSensorType == SENSOR_TYPE_RAW) {
-        int en = (int) enable;
-        if (xioctl(main_fd, ATOMISP_IOC_S_XNR, &en) < 0) {
-            LOGE("set XNR failure");
-            status = UNKNOWN_ERROR;
-        }
-    }
-    return status;
+    mXnr = enable;
+    return NO_ERROR;
 }
 
 status_t AtomISP::setDVS(bool enable)

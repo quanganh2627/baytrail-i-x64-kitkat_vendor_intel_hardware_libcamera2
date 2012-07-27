@@ -167,6 +167,7 @@ private:
 
     status_t updateLowLight();
     status_t setTorchHelper(int intensity);
+    status_t updateCaptureParams();
 
     int  openDevice(int device);
     void closeDevice(int device);
@@ -308,6 +309,7 @@ private:
     struct cameraInfo *mCameraInput;
 
     bool mLowLight;
+    int mXnr;
 
     char *mZoomRatios;
 
