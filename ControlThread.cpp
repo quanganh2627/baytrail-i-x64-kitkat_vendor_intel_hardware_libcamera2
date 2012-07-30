@@ -1339,28 +1339,7 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
             mISP->setSnapshotNum(NUM_BURST_BUFFERS);
         }
 
-        /*
-         * Use buffers sharing only if the pixel format is NV12 and HDR is not enabled.
-         * HDR shared buffers cannot be accessed from multiresolution fw, so we need user-space
-         * buffers when doing HDR composition.
-         */
-        if (format == V4L2_PIX_FMT_NV12 && !mHdr.enabled) {
-            // Try to use buffer sharing
-            void* snapshotBufferPtr;
-            status = mPictureThread->getSharedBuffers(width, height, &snapshotBufferPtr, NUM_BURST_BUFFERS);
-            if (status == NO_ERROR) {
-                status = mISP->setSnapshotBuffers(snapshotBufferPtr, NUM_BURST_BUFFERS);
-                if (status == NO_ERROR) {
-                    LOG1("Using shared buffers for snapshot");
-                } else {
-                    LOGW("Cannot set shared buffers in atomisp, using internal buffers!");
-                }
-            } else {
-                LOGW("Cannot get shared buffers from libjpeg, using internal buffers!");
-            }
-        } else {
-            LOG1("Using internal buffers for snapshot");
-        }
+        setExternalSnapshotBuffers(format, width, height);
 
         PERFORMANCE_TRACES_SHOT2SHOT_STEP("start ISP", -1);
 
@@ -3651,6 +3630,43 @@ status_t ControlThread::hdrCompose(SensorParams* sensorParams)
 
     return status;
 }
+
+/*
+ * Helper methods used during the takePicture sequence
+ * If possible it retrieves the  buffers allocated by the HW JPEG encoder
+ * and passes them to the ISP to be used
+ * If the operation fails we default to internally (by AtomISP) allocated buffers
+ * Use buffers sharing only if the pixel format is NV12 and HDR is not enabled.
+ * HDR shared buffers cannot be accessed from multiresolution fw, so we need user-space
+ * buffers when doing HDR composition.
+ * @param[in] format V4L2 color space format of the frame
+ * @param[in] width width in pixels
+ * @param[in] height height in lines
+ */
+void ControlThread::setExternalSnapshotBuffers(int format, int width, int height)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    if (format == V4L2_PIX_FMT_NV12 && !mHdr.enabled) {
+        // Try to use buffer sharing
+        void* snapshotBufferPtr;
+        status = mPictureThread->getSharedBuffers(width, height, &snapshotBufferPtr, NUM_BURST_BUFFERS);
+        if (status == NO_ERROR) {
+            status = mISP->setSnapshotBuffers(snapshotBufferPtr, NUM_BURST_BUFFERS);
+            if (status == NO_ERROR) {
+                LOG1("Using shared buffers for snapshot");
+            } else {
+                LOGW("Cannot set shared buffers in atomisp, using internal buffers!");
+            }
+        } else {
+            LOGW("Cannot get shared buffers from libjpeg, using internal buffers!");
+        }
+    } else {
+        LOG1("Using internal buffers for snapshot");
+    }
+}
+
 /**
  * From Android API:
  * Starts the face detection. This should be called after preview is started.

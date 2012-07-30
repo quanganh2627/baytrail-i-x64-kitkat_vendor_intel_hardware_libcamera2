@@ -476,6 +476,7 @@ private:
     status_t hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* postviewBuffer);
     status_t hdrCompose(SensorParams *sensorParams);
     void     hdrRelease();
+    void     setExternalSnapshotBuffers(int format, int width, int heigth);
 
 
 // inherited from Thread
