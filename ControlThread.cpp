@@ -1192,43 +1192,264 @@ status_t ControlThread::applyBracketing()
     return status;
 }
 
-status_t ControlThread::handleMessageTakePicture(bool clientRequest)
+status_t ControlThread::handleMessageTakePicture() {
+    LOG1("@%s:", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    switch(mState) {
+
+        case STATE_PREVIEW_STILL:
+        case STATE_PREVIEW_VIDEO:
+            status = captureStillPic();
+            break;
+        case STATE_CAPTURE:
+            status = captureBurstPic(true);
+            break;
+
+        case STATE_RECORDING:
+        default:
+            LOGE("Taking picture when recording is not supported!");
+            status = INVALID_OPERATION;
+            break;
+    }
+
+    return status;
+}
+
+status_t ControlThread::captureStillPic()
 {
-    LOG1("@%s: clientRequest = %d", __FUNCTION__, clientRequest);
+    LOG1("@%s: ", __FUNCTION__);
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
-    State origState = mState;
     int width, height, format, size;
     int pvWidth, pvHeight, pvFormat, pvSize;
     FlashMode flashMode = mAAA->getAeFlashMode();
     bool flashOn = (flashMode == CAM_AE_FLASH_MODE_TORCH ||
-        flashMode == CAM_AE_FLASH_MODE_ON);
+                    flashMode == CAM_AE_FLASH_MODE_ON);
     atomisp_makernote_info makerNote;
     SensorParams sensorParams;
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
 
-    // TODO: temporary, video snapshot needs to be supported, but
-    //       implementation is not ready yet
-    if (origState == STATE_RECORDING) {
-        LOGE("Video snapshot not supported!");
-        return INVALID_OPERATION;
+    bool requestPostviewCallback = true;
+    bool requestRawCallback = true;
+
+    // TODO: Fix the TestCamera application bug and remove this workaround
+    // WORKAROUND BEGIN: Due to a TesCamera application bug send the POSTVIEW and RAW callbacks only for single shots
+    if ( mBurstLength > 1) {
+        requestPostviewCallback = false;
+        requestRawCallback = false;
     }
+    // WORKAROUND END
+    // Notify CallbacksThread that a picture was requested, so grab one from queue
+    mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback);
+    if (mHdr.enabled && mHdr.saveOrigRequest) {
+        // After we requested a picture from CallbackThread, disable saveOrigRequest (we need just one picture for original)
+        mHdr.saveOrigRequest = false;
+    }
+
+    stopFaceDetection();
+
+    if (mBurstLength <= 1) {
+        // If flash mode is not ON or TORCH, check for other modes: AUTO, DAY_SYNC, SLOW_SYNC
+        if (!flashOn && mAAA->is3ASupported()) {
+            if (DetermineFlash(flashMode)) {
+                flashOn = mAAA->getAeFlashNecessary();
+                if (flashOn) {
+                    if (mAAA->getAeMode() != CAM_AE_MODE_MANUAL) {
+                        flashOn = runPreFlashSequence();
+                    }
+                }
+            }
+        }
+    }
+
+    status = stopPreviewCore();
+    if (status != NO_ERROR) {
+        LOGE("Error stopping preview!");
+        return status;
+    }
+    mState = STATE_CAPTURE;
+    mBurstCaptureNum = 0;
+
+    // Get the current params
+    mParameters.getPictureSize(&width, &height);
+    pvWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
+    pvHeight= mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
+    format = mISP->getSnapshotPixelFormat();
+    size = frameSize(format, width, height);
+    pvSize = frameSize(format, pvWidth, pvHeight);
+
+    status = mISP->getMakerNote(&makerNote);
+    if (status != NO_ERROR) {
+        LOGW("Could not get maker note information!");
+    }
+
+    // Configure PictureThread
+    mPictureThread->initialize(mParameters, makerNote, flashOn);
+
+    // Configure and start the ISP
+    mISP->setSnapshotFrameFormat(width, height, format);
+    mISP->setPostviewFrameFormat(pvWidth, pvHeight, format);
+    if (mHdr.enabled) {
+        mHdr.outMainBuf.buff = NULL;
+        mHdr.outPostviewBuf.buff = NULL;
+        mISP->setSnapshotNum(mHdr.bracketNum);
+    } else {
+        mISP->setSnapshotNum(NUM_BURST_BUFFERS);
+    }
+
+    setExternalSnapshotBuffers(format, width, height);
+
+    PERFORMANCE_TRACES_SHOT2SHOT_STEP("start ISP", -1);
+
+    if ((status = mISP->start(MODE_CAPTURE)) != NO_ERROR) {
+        LOGE("Error starting the ISP driver in CAPTURE mode!");
+        return status;
+    }
+
+    // HDR init
+    if (mHdr.enabled &&
+       (status = hdrInit( size, pvSize, format, width, height, pvWidth, pvHeight)) != NO_ERROR) {
+        LOGE("Error initializing HDR!");
+        return status;
+    }
+
+    /*
+     *  If the current camera does not have 3A, then we should skip the first
+     *  frames in order to allow the sensor to warm up.
+     */
+    if (!mAAA->is3ASupported()) {
+        if ((status = skipFrames(NUM_WARMUP_FRAMES)) != NO_ERROR) {
+            LOGE("Error skipping warm-up frames!");
+            return status;
+        }
+    }
+
+    if (mBurstLength > 1 && mBracketing.mode != BRACKET_NONE) {
+        initBracketing();
+    }
+
+    // Turn on flash. If flash mode is torch, then torch is already on
+    if (flashOn && flashMode != CAM_AE_FLASH_MODE_TORCH) {
+        LOG1("Requesting flash");
+        if (mISP->setFlash(1) != NO_ERROR) {
+            LOGE("Failed to enable the Flash!");
+        }
+    } else if (DetermineFlash(flashMode)) {
+        mISP->setFlashIndicator(TORCH_INTENSITY);
+    }
+
+    if (mBurstLength > 1 && mBurstSkipFrames > 0) {
+        LOG1("Skipping %d burst frames", mBurstSkipFrames);
+        int doBracketNum = 0;
+        if (mBracketing.mode == BRACKET_EXPOSURE && mBurstSkipFrames >= 2) {
+            // In Exposure Bracket, if mBurstSkipFrames >= 2 apply bracketing every first skipped frame
+            // This is because, exposure needs 2 frames for the exposure value to take effect
+            doBracketNum = 1;
+        } else if (mBracketing.mode == BRACKET_FOCUS && mBurstSkipFrames >= 1) {
+            // In Focus Bracket, if mBurstSkipFrames >= 1 apply bracketing every first skipped frame
+            // This is because focus needs only 1 frame for the focus position to take effect
+            doBracketNum = 1;
+        }
+        if ((status = skipFrames(mBurstSkipFrames, doBracketNum)) != NO_ERROR) {
+            LOGE("Error skipping burst frames!");
+            return status;
+
+        }
+    }
+
+    // If mBurstSkipFrames < 2, apply exposure bracketing every real frame
+    // If mBurstSkipFrames < 1, apply focus bracketing every real frame
+    if ((mBurstSkipFrames < 2 && mBracketing.mode == BRACKET_EXPOSURE) ||
+        (mBurstSkipFrames < 1 && mBracketing.mode == BRACKET_FOCUS)) {
+        applyBracketing();
+    }
+
+    // Get the snapshot
+    if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
+        LOGE("Error in grabbing snapshot!");
+        return status;
+    }
+
+    PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
+                                       snapshotBuffer.frameCounter);
+    // HDR Processing
+    if (mHdr.enabled &&
+       (status = hdrProcess(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
+        LOGE("HDR: Error in compute CDF for capture %d in HDR sequence!", mBurstCaptureNum);
+        return status;
+    }
+
+    mBurstCaptureNum++;
+
+    mAAA->getExposureInfo(sensorParams);
+    if (mAAA->getEv(&sensorParams.evBias) != NO_ERROR) {
+        sensorParams.evBias = EV_UPPER_BOUND;
+    }
+
+    if (!mHdr.enabled || (mHdr.enabled && mBurstCaptureNum == 1)){
+        // Send request to play the Shutter Sound: in single shots or when burst-length is specified
+        mCallbacksThread->shutterSound();
+    }
+
+    // Turn off flash
+    if (!flashOn && DetermineFlash(flashMode)) {
+        mISP->setFlashIndicator(0);
+    }
+
+    // Do jpeg encoding
+    if (!mBracketingParams.empty()) {
+        LOG1("Popping sensorParams from list (size=%d-1)", mBracketingParams.size());
+        sensorParams = *(--mBracketingParams.end());
+        mBracketingParams.erase(--mBracketingParams.end());
+    }
+
+    bool doEncode = false;
+    if (mHdr.enabled && mHdr.saveOrig) {
+        // In HDR mode, if saveOrig flag is set, save only the EV0 snapshot
+        if (sensorParams.evBias == 0) {
+            LOG1("Sending EV0 original picture to JPEG encoder (id=%d)", snapshotBuffer.id);
+            doEncode = true;
+            // Disable the saveOrig flag once we encode the EV0 original snapshot
+            mHdr.saveOrig = false;
+        }
+
+    } else {
+        doEncode = true;
+    }
+
+    if (doEncode) {
+        postviewBuffer.width = pvWidth;
+        postviewBuffer.height = pvHeight;
+        status = mPictureThread->encode(&sensorParams, &snapshotBuffer, &postviewBuffer);
+    }
+
+    return status;
+}
+
+status_t ControlThread::captureBurstPic(bool clientRequest = false)
+{
+    LOG1("@%s: ", __FUNCTION__);
+    status_t status = NO_ERROR;
+    AtomBuffer snapshotBuffer, postviewBuffer;
+    int width, height, format, size;
+    int pvWidth, pvHeight, pvFormat, pvSize;
+    FlashMode flashMode = mAAA->getAeFlashMode();
+    bool flashOn = (flashMode == CAM_AE_FLASH_MODE_TORCH ||
+                    flashMode == CAM_AE_FLASH_MODE_ON);
+    atomisp_makernote_info makerNote;
+    SensorParams sensorParams;
+
+    PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
 
     if (clientRequest || (mHdr.enabled && mHdr.saveOrigRequest)) {
         bool requestPostviewCallback = true;
         bool requestRawCallback = true;
-        if (origState == STATE_CAPTURE && mBurstLength <= 1) {
-            // If burst-length is NOT specified, but more pictures are requested, call the shutter sound now
+
+        if(clientRequest)
             mCallbacksThread->shutterSound();
-        }
-        // TODO: Fix the TestCamera application bug and remove this workaround
-        // WORKAROUND BEGIN: Due to a TesCamera application bug send the POSTVIEW and RAW callbacks only for single shots
-        if (origState == STATE_CAPTURE || mBurstLength > 1) {
-            requestPostviewCallback = false;
-            requestRawCallback = false;
-        }
-        // WORKAROUND END
+
         // Notify CallbacksThread that a picture was requested, so grab one from queue
         mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback);
         if (mHdr.enabled && mHdr.saveOrigRequest) {
@@ -1240,53 +1461,20 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
          *  If the CallbacksThread has already JPEG buffers in queue, make sure we use them, before
          *  continuing to dequeue frames from ISP and encode them
          */
-        if (origState == STATE_CAPTURE) {
-            if (mCallbacksThread->getQueuedBuffersNum() > MAX_JPEG_BUFFERS) {
-                return NO_ERROR;
-            }
-            // Check if ISP has free buffers we can use
-            if (!mISP->dataAvailable()) {
-                // If ISP has no data, do nothing and return
-                return NO_ERROR;
-            }
+
+        if (mCallbacksThread->getQueuedBuffersNum() > MAX_JPEG_BUFFERS) {
+            return NO_ERROR;
+        }
+        // Check if ISP has free buffers we can use
+        if (!mISP->dataAvailable()) {
+            // If ISP has no data, do nothing and return
+            return NO_ERROR;
         }
 
         // If burst length was specified stop capturing when reached the requested burst captures
         if (mBurstLength > 1 && mBurstCaptureNum >= mBurstLength) {
             return NO_ERROR;
         }
-    }
-
-    if (origState != STATE_PREVIEW_STILL && origState != STATE_PREVIEW_VIDEO &&
-        origState != STATE_RECORDING && origState != STATE_CAPTURE) {
-        LOGE("we only support snapshot in preview, recording, and capture modes");
-        return INVALID_OPERATION;
-    }
-    if (origState != STATE_CAPTURE) {
-        stopFaceDetection();
-    }
-
-    if (origState == STATE_PREVIEW_STILL || origState == STATE_PREVIEW_VIDEO) {
-        if (mBurstLength <= 1) {
-            // If flash mode is not ON or TORCH, check for other modes: AUTO, DAY_SYNC, SLOW_SYNC
-            if (!flashOn && mAAA->is3ASupported()) {
-                if (DetermineFlash(flashMode)) {
-                    flashOn = mAAA->getAeFlashNecessary();
-                    if (flashOn) {
-                        if (mAAA->getAeMode() != CAM_AE_MODE_MANUAL) {
-                            flashOn = runPreFlashSequence();
-                        }
-                    }
-                }
-            }
-        }
-        status = stopPreviewCore();
-        if (status != NO_ERROR) {
-            LOGE("Error stopping preview!");
-            return status;
-        }
-        mState = STATE_CAPTURE;
-        mBurstCaptureNum = 0;
     }
 
     // Get the current params
@@ -1297,197 +1485,112 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
     size = frameSize(format, width, height);
     pvSize = frameSize(format, pvWidth, pvHeight);
 
-    if (origState == STATE_RECORDING) {
-        // override picture size to video size if recording
-        int vidWidth, vidHeight;
-        mISP->getVideoSize(&vidWidth, &vidHeight);
-        if (width != vidWidth || height != vidHeight) {
-            LOGW("Warning overriding snapshot size=%d,%d to %d,%d",
-                    width, height, vidWidth, vidHeight);
-            width = vidWidth;
-            height = vidHeight;
-        }
-    }
-
     status = mISP->getMakerNote(&makerNote);
     if (status != NO_ERROR) {
         LOGW("Could not get maker note information!");
     }
 
-    // Configure PictureThread
-    if (origState == STATE_PREVIEW_STILL || origState == STATE_PREVIEW_VIDEO) {
-        mPictureThread->initialize(mParameters, makerNote, flashOn);
-
-    } else if (origState == STATE_RECORDING) { // STATE_RECORDING
-
-        // Picture thread uses snapshot-size to configure itself. However,
-        // if in recording mode we need to override snapshot with video-size.
-        CameraParameters copyParams = mParameters;
-        copyParams.setPictureSize(width, height); // make sure picture size is same as video size
-        mPictureThread->initialize(copyParams, makerNote, flashOn);
+    // Turn on flash. If flash mode is torch, then torch is already on
+    if (flashOn && flashMode != CAM_AE_FLASH_MODE_TORCH) {
+        LOG1("Requesting flash");
+        if (mISP->setFlash(1) != NO_ERROR) {
+            LOGE("Failed to enable the Flash!");
+        }
+    } else if (DetermineFlash(flashMode)) {
+        mISP->setFlashIndicator(TORCH_INTENSITY);
     }
 
-    if (origState == STATE_PREVIEW_STILL || origState == STATE_PREVIEW_VIDEO) {
-        // Configure and start the ISP
-        mISP->setSnapshotFrameFormat(width, height, format);
-        mISP->setPostviewFrameFormat(pvWidth, pvHeight, format);
-        if (mHdr.enabled) {
-            mHdr.outMainBuf.buff = NULL;
-            mHdr.outPostviewBuf.buff = NULL;
-            mISP->setSnapshotNum(mHdr.bracketNum);
-        } else {
-            mISP->setSnapshotNum(NUM_BURST_BUFFERS);
+    if (mBurstLength > 1 && mBurstSkipFrames > 0) {
+        LOG1("Skipping %d burst frames", mBurstSkipFrames);
+        int doBracketNum = 0;
+        if (mBracketing.mode == BRACKET_EXPOSURE && mBurstSkipFrames >= 2) {
+            // In Exposure Bracket, if mBurstSkipFrames >= 2 apply bracketing every first skipped frame
+            // This is because, exposure needs 2 frames for the exposure value to take effect
+            doBracketNum = 1;
+        } else if (mBracketing.mode == BRACKET_FOCUS && mBurstSkipFrames >= 1) {
+            // In Focus Bracket, if mBurstSkipFrames >= 1 apply bracketing every first skipped frame
+            // This is because focus needs only 1 frame for the focus position to take effect
+            doBracketNum = 1;
         }
-
-        setExternalSnapshotBuffers(format, width, height);
-
-        PERFORMANCE_TRACES_SHOT2SHOT_STEP("start ISP", -1);
-
-        if ((status = mISP->start(MODE_CAPTURE)) != NO_ERROR) {
-            LOGE("Error starting the ISP driver in CAPTURE mode!");
+        if ((status = skipFrames(mBurstSkipFrames, doBracketNum)) != NO_ERROR) {
+            LOGE("Error skipping burst frames!");
             return status;
-        }
-
-        // HDR init
-        if (mHdr.enabled &&
-            (status = hdrInit( size, pvSize, format, width, height, pvWidth, pvHeight)) != NO_ERROR) {
-            LOGE("Error initializing HDR!");
-            return status;
-        }
-
-        /*
-         *  If the current camera does not have 3A, then we should skip the first
-         *  frames in order to allow the sensor to warm up.
-         */
-        if (!mAAA->is3ASupported()) {
-            if ((status = skipFrames(NUM_WARMUP_FRAMES)) != NO_ERROR) {
-                LOGE("Error skipping warm-up frames!");
-                return status;
-            }
-        }
-
-        if (mBurstLength > 1 && mBracketing.mode != BRACKET_NONE) {
-            initBracketing();
         }
     }
 
-    if (mState == STATE_CAPTURE) {
-        // Turn on flash. If flash mode is torch, then torch is already on
-        if (flashOn && flashMode != CAM_AE_FLASH_MODE_TORCH) {
-            LOG1("Requesting flash");
-            if (mISP->setFlash(1) != NO_ERROR) {
-                LOGE("Failed to enable the Flash!");
-            }
-        } else if (DetermineFlash(flashMode)) {
-            mISP->setFlashIndicator(TORCH_INTENSITY);
-        }
+    // If mBurstSkipFrames < 2, apply exposure bracketing every real frame
+    // If mBurstSkipFrames < 1, apply focus bracketing every real frame
+    if ((mBurstSkipFrames < 2 && mBracketing.mode == BRACKET_EXPOSURE) ||
+        (mBurstSkipFrames < 1 && mBracketing.mode == BRACKET_FOCUS)) {
+        applyBracketing();
+    }
 
-        if (mBurstLength > 1 && mBurstSkipFrames > 0) {
-            LOG1("Skipping %d burst frames", mBurstSkipFrames);
-            int doBracketNum = 0;
-            if (mBracketing.mode == BRACKET_EXPOSURE && mBurstSkipFrames >= 2) {
-                // In Exposure Bracket, if mBurstSkipFrames >= 2 apply bracketing every first skipped frame
-                // This is because, exposure needs 2 frames for the exposure value to take effect
-                doBracketNum = 1;
-            } else if (mBracketing.mode == BRACKET_FOCUS && mBurstSkipFrames >= 1) {
-                // In Focus Bracket, if mBurstSkipFrames >= 1 apply bracketing every first skipped frame
-                // This is because focus needs only 1 frame for the focus position to take effect
-                doBracketNum = 1;
-            }
-            if ((status = skipFrames(mBurstSkipFrames, doBracketNum)) != NO_ERROR) {
-                LOGE("Error skipping burst frames!");
-                return status;
-            }
-        }
+    // Get the snapshot
+    if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
+        LOGE("Error in grabbing snapshot!");
+        return status;
+    }
 
-        // If mBurstSkipFrames < 2, apply exposure bracketing every real frame
-        // If mBurstSkipFrames < 1, apply focus bracketing every real frame
-        if ((mBurstSkipFrames < 2 && mBracketing.mode == BRACKET_EXPOSURE) ||
-            (mBurstSkipFrames < 1 && mBracketing.mode == BRACKET_FOCUS)) {
-            applyBracketing();
-        }
+    PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
+                                       snapshotBuffer.frameCounter);
+   // HDR Processing
+    if ( mHdr.enabled &&
+        (status = hdrProcess(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
+        LOGE("Error processing HDR!");
+        return status;
+    }
 
-        // Get the snapshot
-        if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
-            LOGE("Error in grabbing snapshot!");
-            return status;
-        }
+    mBurstCaptureNum++;
 
-        PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
-                                          snapshotBuffer.frameCounter);
+    mAAA->getExposureInfo(sensorParams);
+    if (mAAA->getEv(&sensorParams.evBias) != NO_ERROR) {
+        sensorParams.evBias = EV_UPPER_BOUND;
+    }
 
-        // HDR Processing
-        if (mHdr.enabled &&
-            (status = hdrProcess(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
-            LOGE("HDR: Error in compute CDF for capture %d in HDR sequence!", mBurstCaptureNum);
-            return status;
-        }
-
-        mBurstCaptureNum++;
-
-        mAAA->getExposureInfo(sensorParams);
-        if (mAAA->getEv(&sensorParams.evBias) != NO_ERROR) {
-            sensorParams.evBias = EV_UPPER_BOUND;
-        }
-
-        if ((!mHdr.enabled || (mHdr.enabled && mBurstCaptureNum == 1)) &&
-            (origState != STATE_CAPTURE || mBurstLength > 1)) {
-            // Send request to play the Shutter Sound: in single shots or when burst-length is specified
-            mCallbacksThread->shutterSound();
-        }
-
-        // TODO: here we should display the picture using PreviewThread
-
-        // Turn off flash
-        if (!flashOn && DetermineFlash(flashMode)) {
-            mISP->setFlashIndicator(0);
-        }
+    // Turn off flash
+    if (!flashOn && DetermineFlash(flashMode)) {
+        mISP->setFlashIndicator(0);
     }
 
     // Do jpeg encoding
-    if (mState == STATE_CAPTURE) {
-        if (!mBracketingParams.empty()) {
-            LOG1("Popping sensorParams from list (size=%d-1)", mBracketingParams.size());
-            sensorParams = *(--mBracketingParams.end());
-            mBracketingParams.erase(--mBracketingParams.end());
-        }
-        if (!mHdr.enabled || (mHdr.enabled && mHdr.saveOrig)) {
-            bool doEncode = false;
-            if (mHdr.enabled) {
-                // In HDR mode, if saveOrig flag is set, save only the EV0 snapshot
-                if (mHdr.saveOrig && sensorParams.evBias == 0) {
-                    LOG1("Sending EV0 original picture to JPEG encoder (id=%d)", snapshotBuffer.id);
-                    doEncode = true;
-                    // Disable the saveOrig flag once we encode the EV0 original snapshot
-                    mHdr.saveOrig = false;
-                }
-            } else {
-                doEncode = true;
-            }
-            if (doEncode) {
-                postviewBuffer.width = pvWidth;
-                postviewBuffer.height = pvHeight;
-                status = mPictureThread->encode(&sensorParams, &snapshotBuffer, &postviewBuffer);
-            }
-        }
-        if (mHdr.enabled && mBurstCaptureNum == mHdr.bracketNum) {
-            // This was the last capture in HDR sequence, compose the final HDR image
-            LOG1("HDR: last capture, composing HDR image...");
-            if((status = hdrCompose(&sensorParams)) != NO_ERROR) {
-                LOGE("Error composing HDR picture");
-                return status;
-            }
-        }
-    } else {
-        // If we are in video mode we simply use the recording buffer for picture encoding
-        // No need to stop, reconfigure, and restart the ISP
-        mCoupledBuffers[mLastRecordingBuffIndex].videoSnapshotBuff = true;
-        status = mPictureThread->encode(NULL, &mCoupledBuffers[mLastRecordingBuffIndex].recordingBuff);
+
+    if (!mBracketingParams.empty()) {
+        LOG1("Popping sensorParams from list (size=%d-1)", mBracketingParams.size());
+        sensorParams = *(--mBracketingParams.end());
+        mBracketingParams.erase(--mBracketingParams.end());
     }
+    if (!mHdr.enabled || (mHdr.enabled && mHdr.saveOrig)) {
+        bool doEncode = false;
+        if (mHdr.enabled) {
+            // In HDR mode, if saveOrig flag is set, save only the EV0 snapshot
+            if (mHdr.saveOrig && sensorParams.evBias == 0) {
+                LOG1("Sending EV0 original picture to JPEG encoder (id=%d)", snapshotBuffer.id);
+                doEncode = true;
+                // Disable the saveOrig flag once we encode the EV0 original snapshot
+                mHdr.saveOrig = false;
+            }
+        } else {
+            doEncode = true;
+        }
+        if (doEncode) {
+            postviewBuffer.width = pvWidth;
+            postviewBuffer.height = pvHeight;
+            status = mPictureThread->encode(&sensorParams, &snapshotBuffer, &postviewBuffer);
+        }
+    }
+    if (mHdr.enabled && mBurstCaptureNum == mHdr.bracketNum) {
+        // This was the last capture in HDR sequence, compose the final HDR image
+        LOG1("HDR: last capture, composing HDR image...");
+
+        if((status = hdrCompose(&sensorParams)) != NO_ERROR) {
+            LOGE("Error composing HDR picture");
+            return status;
+        }
+    }
+
 
     return status;
 }
-
 status_t ControlThread::handleMessageCancelPicture()
 {
     LOG1("@%s", __FUNCTION__);
@@ -3967,7 +4070,7 @@ bool ControlThread::threadLoop()
                 // make sure ISP has data before we ask for some
                 if (mISP->dataAvailable() &&
                     (mBurstLength <= 1 || (mBurstLength > 1 && mBurstCaptureNum < mBurstLength))) {
-                    status = handleMessageTakePicture(false);
+                    status = captureBurstPic();
                 } else {
                     status = waitForAndExecuteMessage();
                 }

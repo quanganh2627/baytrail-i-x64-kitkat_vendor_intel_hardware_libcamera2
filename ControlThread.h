@@ -360,7 +360,7 @@ private:
     status_t handleMessageStopPreview();
     status_t handleMessageStartRecording();
     status_t handleMessageStopRecording();
-    status_t handleMessageTakePicture(bool clientRequest = true);
+    status_t handleMessageTakePicture();
     status_t handleMessageCancelPicture();
     status_t handleMessageAutoFocus();
     status_t handleMessageCancelAutoFocus();
@@ -478,6 +478,9 @@ private:
     void     hdrRelease();
     void     setExternalSnapshotBuffers(int format, int width, int heigth);
 
+    // Capture Flow helpers
+    status_t captureStillPic();
+    status_t captureBurstPic(bool clientRequest);
 
 // inherited from Thread
 private:
