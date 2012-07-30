@@ -1029,6 +1029,7 @@ status_t AtomAAA::apply3AProcess(bool read_stats,
     return status;
 }
 
+#ifdef ENABLE_HDR
 status_t AtomAAA::computeCDF(const CiUserBuffer& inputBuf, size_t bufIndex)
 {
     Mutex::Autolock lock(m3aLock);
@@ -1123,6 +1124,31 @@ status_t AtomAAA::setIaFrameFormat(ia_frame* iaFrame, int v4l2Format)
 
     return NO_ERROR;
 }
+#else
+status_t AtomAAA::computeCDF(const CiUserBuffer& inputBuf, size_t bufIndex)
+{
+    (void)inputBuf;
+    (void)bufIndex;
+    return INVALID_OPERATION;
+}
+
+status_t AtomAAA::composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& outputBuf, unsigned vividness, unsigned sharpening)
+{
+
+    (void)inputBuf;
+    (void)outputBuf;
+    (void)vividness;
+    (void)sharpening;
+    return INVALID_OPERATION;
+}
+
+status_t AtomAAA::setIaFrameFormat(ia_frame* iaFrame, int v4l2Format)
+{
+    (void)iaFrame;
+    (void)v4l2Format;
+    return INVALID_OPERATION;
+}
+#endif
 
 status_t AtomAAA::setSmartSceneDetection(bool en)
 {

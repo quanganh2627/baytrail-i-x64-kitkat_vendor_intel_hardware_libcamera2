@@ -18,6 +18,11 @@ else
 FACE_DETECTION_TYPE :=none
 endif
 
+#if Intel HDR is included.
+ifeq ($(USE_INTEL_HDR),true)
+LOCAL_CFLAGS  += -DENABLE_HDR
+endif
+
 LOCAL_SRC_FILES := \
 	ControlThread.cpp \
 	PreviewThread.cpp \
