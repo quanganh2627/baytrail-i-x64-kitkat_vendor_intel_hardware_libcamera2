@@ -234,8 +234,8 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
             src = (unsigned char*) frame.img.gfxData;
         }
         ia_frame frameData;
-        frameData.addr = src;
-        frameData.length = frame.img.size;
+        frameData.data = src;
+        frameData.size = frame.img.size;
         frameData.width = frame.width;
         frameData.height = frame.height;
         frameData.stride = frame.img.stride;

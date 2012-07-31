@@ -120,6 +120,18 @@ enum FlashStage
     CAM_FLASH_STAGE_MAIN
 };
 
+enum HdrSharpening {
+    NO_SHARPENING = 0,
+    NORMAL_SHARPENING,
+    STRONG_SHARPENING
+};
+
+enum HdrVividness {
+    NO_VIVIDNESS = 0,
+    GAUSSIAN_VIVIDNESS,
+    GAMMA_VIVIDNESS
+};
+
 #define DEFAULT_GBCE            true
 #define DEFAULT_GBCE_STRENGTH   0
 #define MAX_TIME_FOR_AF         2000 // milliseconds
@@ -252,14 +264,12 @@ public:
         struct timeval capture_timestamp);
     status_t computeCDF(const CiUserBuffer& inputBuf, size_t bufIndex);
     status_t composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& outputBuf, unsigned vividness, unsigned sharpening);
+    static status_t setIaFrameFormat(ia_frame *inputBuf, int v4l2Format);
 
     status_t startStillAf();
     status_t stopStillAf();
     ia_3a_af_status isStillAfComplete();
     status_t applyPreFlashProcess(FlashStage stage);
-
-// private methods
-private:
 
 // private members
 private:

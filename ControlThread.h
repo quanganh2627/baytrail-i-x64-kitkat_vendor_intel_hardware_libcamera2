@@ -331,18 +331,6 @@ private:
     };
 
     struct HdrImaging {
-        enum HdrSharpening {
-            NO_SHARPENING = 0,
-            NORMAL_SHARPENING,
-            STRONG_SHARPENING
-        };
-
-        enum HdrVividness {
-            NO_VIVIDNESS = 0,
-            GAUSSIAN_VIVIDNESS,
-            GAMMA_VIVIDNESS
-        };
-
         BracketingMode bracketMode;
         int  bracketNum;
         bool enabled;

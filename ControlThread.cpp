@@ -1435,30 +1435,39 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
                 return status;
             }
 
-            mHdr.ciBufOut.ciMainBuf->addr = mHdr.outMainBuf.buff->data;
-            mHdr.ciBufOut.ciMainBuf[0].width = mHdr.outMainBuf.width = width;
-            mHdr.ciBufOut.ciMainBuf[0].height = mHdr.outMainBuf.height = height;
-            mHdr.ciBufOut.ciMainBuf[0].format = mHdr.outMainBuf.format = format;
-            mHdr.ciBufOut.ciMainBuf[0].length = mHdr.outMainBuf.size = size;
+            status = AtomAAA::setIaFrameFormat(&mHdr.ciBufOut.ciMainBuf[0], format);
+            if (status != NO_ERROR) {
+                LOGE("HDR: pixel format %d not supported", format);
+                return status;
+            }
 
-            LOG1("HDR: Initialized output CI main     buff @%p: (addr=%p, length=%d, width=%d, height=%d, format=%d)",
+            mHdr.ciBufOut.ciMainBuf->data = mHdr.outMainBuf.buff->data;
+            mHdr.ciBufOut.ciMainBuf[0].width = mHdr.outMainBuf.width = width;
+            mHdr.ciBufOut.ciMainBuf[0].stride = mHdr.outMainBuf.stride = width;
+            mHdr.ciBufOut.ciMainBuf[0].height = mHdr.outMainBuf.height = height;
+            mHdr.outMainBuf.format = format;
+            mHdr.ciBufOut.ciMainBuf[0].size = mHdr.outMainBuf.size = size;
+
+            LOG1("HDR: Initialized output CI main     buff @%p: (data=%p, size=%d, width=%d, height=%d, format=%d)",
                     &mHdr.ciBufOut.ciMainBuf[0],
-                    mHdr.ciBufOut.ciMainBuf[0].addr,
-                    mHdr.ciBufOut.ciMainBuf[0].length,
+                    mHdr.ciBufOut.ciMainBuf[0].data,
+                    mHdr.ciBufOut.ciMainBuf[0].size,
                     mHdr.ciBufOut.ciMainBuf[0].width,
                     mHdr.ciBufOut.ciMainBuf[0].height,
                     mHdr.ciBufOut.ciMainBuf[0].format);
 
-            mHdr.ciBufOut.ciPostviewBuf[0].addr = mHdr.outPostviewBuf.buff->data;
+            mHdr.ciBufOut.ciPostviewBuf[0].data = mHdr.outPostviewBuf.buff->data;
             mHdr.ciBufOut.ciPostviewBuf[0].width = mHdr.outPostviewBuf.width = pvWidth;
+            mHdr.ciBufOut.ciPostviewBuf[0].stride = mHdr.outPostviewBuf.stride = pvWidth;
             mHdr.ciBufOut.ciPostviewBuf[0].height = mHdr.outPostviewBuf.height = pvHeight;
-            mHdr.ciBufOut.ciPostviewBuf[0].format = mHdr.outPostviewBuf.format = format;
-            mHdr.ciBufOut.ciPostviewBuf[0].length = mHdr.outPostviewBuf.size = pvSize;
+            AtomAAA::setIaFrameFormat(&mHdr.ciBufOut.ciPostviewBuf[0], format);
+            mHdr.outPostviewBuf.format = format;
+            mHdr.ciBufOut.ciPostviewBuf[0].size = mHdr.outPostviewBuf.size = pvSize;
 
-            LOG1("HDR: Initialized output CI postview buff @%p: (addr=%p, length=%d, width=%d, height=%d, format=%d)",
+            LOG1("HDR: Initialized output CI postview buff @%p: (data=%p, size=%d, width=%d, height=%d, format=%d)",
                     &mHdr.ciBufOut.ciPostviewBuf[0],
-                    mHdr.ciBufOut.ciPostviewBuf[0].addr,
-                    mHdr.ciBufOut.ciPostviewBuf[0].length,
+                    mHdr.ciBufOut.ciPostviewBuf[0].data,
+                    mHdr.ciBufOut.ciPostviewBuf[0].size,
                     mHdr.ciBufOut.ciPostviewBuf[0].width,
                     mHdr.ciBufOut.ciPostviewBuf[0].height,
                     mHdr.ciBufOut.ciPostviewBuf[0].format);
@@ -1525,37 +1534,38 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
         if (mHdr.enabled) {
             // Initialize the HDR CI input buffers (main/postview) for this capture
             if (snapshotBuffer.shared) {
-                mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].addr = (void *) *((char **)snapshotBuffer.buff->data);
+                mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data= (void *) *((char **)snapshotBuffer.buff->data);
                 LOGW("HDR: Warning: shared buffer detected in HDR composing. The composition might fail!");
             } else {
-                mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].addr = snapshotBuffer.buff->data;
+                mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer.buff->data;
             }
-            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].addr = snapshotBuffer.buff->data;
+            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer.buff->data;
             mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].width = width;
+            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].stride = width;
             mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height = height;
-            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].format = format;
-            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].length = size;
+            mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].size = size;
+            AtomAAA::setIaFrameFormat(&mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum], format);
 
-            LOG1("HDR: Initialized input CI main     buff %d @%p: (addr=%p, length=%d, width=%d, height=%d, format=%d)",
+            LOG1("HDR: Initialized input CI main     buff %d @%p: (data=%p, size=%d, width=%d, height=%d, format=%d)",
                     mBurstCaptureNum,
                     &mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum],
-                    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].addr,
-                    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].length,
+                    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data,
+                    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].size,
                     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].width,
                     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height,
                     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].format);
 
-            mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].addr = postviewBuffer.buff->data;
+            mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].data = postviewBuffer.buff->data;
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].width = pvWidth;
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height = pvHeight;
-            mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].format = format;
-            mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].length = pvSize;
+            mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].size = pvSize;
+            AtomAAA::setIaFrameFormat(&mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum], format);
 
-            LOG1("HDR: Initialized input CI postview buff %d @%p: (addr=%p, length=%d, width=%d, height=%d, format=%d)",
+            LOG1("HDR: Initialized input CI postview buff %d @%p: (data=%p, size=%d, width=%d, height=%d, format=%d)",
                     mBurstCaptureNum,
                     &mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum],
-                    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].addr,
-                    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].length,
+                    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].data,
+                    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].size,
                     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].width,
                     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height,
                     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].format);
@@ -1633,7 +1643,7 @@ status_t ControlThread::handleMessageTakePicture(bool clientRequest)
                 mHdr.outMainBuf.width = mHdr.ciBufOut.ciMainBuf->width;
                 mHdr.outMainBuf.height = mHdr.ciBufOut.ciMainBuf->height;
                 mHdr.outMainBuf.format = mHdr.ciBufOut.ciMainBuf->format;
-                mHdr.outMainBuf.size = mHdr.ciBufOut.ciMainBuf->length;
+                mHdr.outMainBuf.size = mHdr.ciBufOut.ciMainBuf->size;
                 status = mPictureThread->encode(&sensorParams, &mHdr.outMainBuf, &mHdr.outPostviewBuf);
             }
         }
@@ -2499,11 +2509,11 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
     newValue = newParams->get(IntelCameraParameters::KEY_HDR_SHARPENING);
     if (oldValue && newValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
         if(!strncmp(newValue, "normal", strlen("normal"))) {
-            mHdr.sharpening = HdrImaging::NORMAL_SHARPENING;
+            mHdr.sharpening = NORMAL_SHARPENING;
         } else if(!strncmp(newValue, "strong", strlen("strong"))) {
-            mHdr.sharpening = HdrImaging::STRONG_SHARPENING;
+            mHdr.sharpening = STRONG_SHARPENING;
         } else if(!strncmp(newValue, "none", strlen("none"))) {
-            mHdr.sharpening = HdrImaging::NO_SHARPENING;
+            mHdr.sharpening = NO_SHARPENING;
         } else {
             LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_SHARPENING, newValue);
             status = BAD_VALUE;
@@ -2517,11 +2527,11 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
     newValue = newParams->get(IntelCameraParameters::KEY_HDR_VIVIDNESS);
     if (oldValue && newValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
         if(!strncmp(newValue, "gaussian", strlen("gaussian"))) {
-            mHdr.vividness = HdrImaging::GAUSSIAN_VIVIDNESS;
+            mHdr.vividness = GAUSSIAN_VIVIDNESS;
         } else if(!strncmp(newValue, "gamma", strlen("gamma"))) {
-            mHdr.vividness = HdrImaging::GAMMA_VIVIDNESS;
+            mHdr.vividness = GAMMA_VIVIDNESS;
         } else if(!strncmp(newValue, "none", strlen("none"))) {
-            mHdr.vividness = HdrImaging::NO_VIVIDNESS;
+            mHdr.vividness = NO_VIVIDNESS;
         } else {
             LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_VIVIDNESS, newValue);
             status = BAD_VALUE;
