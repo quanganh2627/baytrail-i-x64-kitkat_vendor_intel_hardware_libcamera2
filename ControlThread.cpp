@@ -947,6 +947,16 @@ status_t ControlThread::handleMessageStopRecording()
      */
     mPictureThread->releaseSharedBuffers();
 
+    // release buffers owned by encoder since it is not going to return them
+    if (mCoupledBuffers) {
+        for (int i = 0; i < mNumBuffers; i++) {
+            if (!mCoupledBuffers[i].recordingBuffReturned) {
+               mCoupledBuffers[i].recordingBuffReturned = true;
+               queueCoupledBuffers(i);
+            }
+        }
+    }
+
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_STOP_RECORDING, status);
     return status;
