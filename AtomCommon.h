@@ -32,6 +32,9 @@
 #define MAX_BURST_BUFFERS 32
 #define MAX_BURST_FRAMERATE 15
 
+// macro CLIP is used to clip the Number value to between the Min and Max
+#define CLIP(Number, Max, Min)    ((Number) > (Max) ? (Max) : ((Number) < (Min) ? (Min) : (Number)))
+
 namespace android {
 struct AtomBuffer;
 class IBufferOwner

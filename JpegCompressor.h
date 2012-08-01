@@ -121,6 +121,11 @@ private:
         */
         int getJpegSrcData(void *pRaw);
         /*
+            this function is used to set the jpeg quality
+            quality: one value from 0 to 100
+        */
+        int setJpegQuality(int quality);
+        /*
             implement the jpeg encoding
         */
         int doJpegEncoding(void);
@@ -140,6 +145,8 @@ private:
         VABufferID mCodedBuf;
         VAImage mSurfaceImage;
         VABufferID mPicParamBuf;
+        VAQMatrixBufferJPEG mQMatrix;
+        VABufferID mQMatrixBuf;
         // the picture dimensions
         int mPicWidth;
         int mPicHeight;

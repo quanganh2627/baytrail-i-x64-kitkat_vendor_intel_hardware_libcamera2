@@ -33,14 +33,16 @@ JpegCompressor::WrapperLibVA::WrapperLibVA() :
     mContextId(0),
     mCodedBuf(0),
     mPicParamBuf(0),
+    mQMatrixBuf(0),
     mPicWidth(0),
     mPicHeight(0),
     mMaxWidth(0),
     mMaxHeight(0),
     mMaxOutJpegBufSize(0)
 {
-    LOG1("@%s, line:%d", __FUNCTION__, __LINE__);
+    LOG1("@%s", __FUNCTION__);
     memset(&mSurfaceImage, 0, sizeof(mSurfaceImage));
+    memset(&mQMatrix, 0, sizeof(mQMatrix));
 }
 
 JpegCompressor::WrapperLibVA::~WrapperLibVA()
@@ -92,6 +94,9 @@ int JpegCompressor::WrapperLibVA::doJpegEncoding(void)
 
     status = vaBeginPicture(mVaDpy, mContextId, mSurfaceId);
     CHECK_STATUS(status, "vaBeginPicture", __LINE__)
+
+    status = vaRenderPicture(mVaDpy, mContextId, &mQMatrixBuf, 1);
+    CHECK_STATUS(status, "vaRenderPicture", __LINE__)
 
     status = vaRenderPicture(mVaDpy, mContextId, &mPicParamBuf, 1);
     CHECK_STATUS(status, "vaRenderPicture", __LINE__)
@@ -205,6 +210,68 @@ int JpegCompressor::WrapperLibVA::getJpegSrcData(void *pRaw)
     status = vaCreateBuffer(mVaDpy, mContextId, VAEncPictureParameterBufferType,
             sizeof(pic_jpeg), 1, &pic_jpeg, &mPicParamBuf);
     CHECK_STATUS(status, "vaCreateBuffer", __LINE__)
+
+    return 0;
+}
+
+int JpegCompressor::WrapperLibVA::setJpegQuality(int quality)
+{
+    LOG1("@%s, quality:%d", __FUNCTION__, quality);
+    VAStatus status;
+    unsigned char *luma_matrix = mQMatrix.lum_quantiser_matrix;
+    unsigned char *chroma_matrix = mQMatrix.chroma_quantiser_matrix;
+    /*
+        the below are optimal quantization steps for JPEG encoder
+        Those values are provided by JPEG standard
+    */
+    mQMatrix.load_lum_quantiser_matrix = 1;
+    mQMatrix.load_chroma_quantiser_matrix = 1;
+
+static const unsigned char StandardQuantLuma[64] = {
+    16, 11, 10, 16, 24, 40, 51, 61,
+    12, 12, 14, 19, 26, 58, 60, 55,
+    14, 13, 16, 24, 40, 57, 69, 56,
+    14, 17, 22, 29, 51, 87, 80, 62,
+    18, 22, 37, 56, 68, 109, 103, 77,
+    24, 35, 55, 64, 81, 104, 113, 92,
+    49, 64, 78, 87, 103, 121, 120, 101,
+    72, 92, 95, 98, 112, 100, 103, 99
+};
+static const unsigned char StandardQuantChroma[64] = {
+    17, 18, 24, 47, 99, 99, 99, 99,
+    18, 21, 26, 66, 99, 99, 99, 99,
+    24, 26, 56, 99, 99, 99, 99, 99,
+    47, 66, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99
+};
+
+    uint32_t uc_qVal;
+    uint32_t uc_j;
+    unsigned short ui16_q_factor;
+    // Only use 2 tables
+    // set the quality to the same as libjpeg, libjpeg support from 1 to 100
+    ui16_q_factor = CLIP(quality, 100, 1); // set the quality to [1 to 100]
+    /*
+        This formula is provided by IJG which is the owner of the libjpeg.
+        JPEG standard doesn't have the concept "quality" at all.
+        Every encoder can design their own quality formula,
+        But most of them follow libjpeg's formula, a widely accepted one.
+    */
+    ui16_q_factor = (ui16_q_factor < 50) ? (5000 / ui16_q_factor) : (200 - ui16_q_factor * 2);
+    for(uc_j = 0; uc_j < 64; uc_j++) {
+        uc_qVal = (StandardQuantLuma[uc_j] * ui16_q_factor + 50) / 100;
+        luma_matrix[uc_j] = (unsigned char)CLIP(uc_qVal, 255, 1);
+    }
+    for(uc_j = 0; uc_j < 64; uc_j++) {
+        uc_qVal = (StandardQuantChroma[uc_j] * ui16_q_factor + 50) / 100;
+        chroma_matrix[uc_j] = (unsigned char)CLIP(uc_qVal, 255, 1);
+    }
+
+    status = vaCreateBuffer(mVaDpy, mContextId, VAQMatrixBufferType,
+                sizeof(mQMatrix), 1, &mQMatrix, &mQMatrixBuf);
 
     return 0;
 }
@@ -342,6 +409,10 @@ int JpegCompressor::hwEncode(const InputBuffer &in, const OutputBuffer &out)
         return -1;
 
     status = mLibVA.getJpegSrcData(in.buf);
+    if (status)
+        return -1;
+
+    status = mLibVA.setJpegQuality(out.quality);
     if (status)
         return -1;
 
