@@ -1573,19 +1573,20 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
     return status;
 }
 
-void AtomISP::getZoomRatios(AtomMode mode, CameraParameters *params)
+void AtomISP::getZoomRatios(bool videoMode, CameraParameters *params)
 {
     LOG1("@%s", __FUNCTION__);
     if (params) {
-        if ((mode == MODE_PREVIEW) ||
-                (mode == MODE_CAPTURE) ||
-                (mode == MODE_VIDEO && mSensorType == SENSOR_TYPE_RAW)) {
-            params->set(CameraParameters::KEY_MAX_ZOOM, MAX_ZOOM_LEVEL);
-            params->set(CameraParameters::KEY_ZOOM_RATIOS, mZoomRatios);
-        } else {
+        if (videoMode && mSensorType == SENSOR_TYPE_SOC) {
             // zoom is not supported. this is indicated by placing a single zoom ratio in params
+            params->set(CameraParameters::KEY_ZOOM, "0");
             params->set(CameraParameters::KEY_MAX_ZOOM, "0"); // zoom index 0 indicates first (and only) zoom ratio
             params->set(CameraParameters::KEY_ZOOM_RATIOS, "100");
+            params->set(CameraParameters::KEY_ZOOM_SUPPORTED, CameraParameters::FALSE);
+        } else {
+            params->set(CameraParameters::KEY_MAX_ZOOM, MAX_ZOOM_LEVEL);
+            params->set(CameraParameters::KEY_ZOOM_RATIOS, mZoomRatios);
+            params->set(CameraParameters::KEY_ZOOM_SUPPORTED, CameraParameters::TRUE);
         }
     }
 }

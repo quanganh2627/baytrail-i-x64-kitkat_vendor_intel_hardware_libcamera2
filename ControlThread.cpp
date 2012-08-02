@@ -2064,12 +2064,13 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    int oldZoom = oldParams->getInt(CameraParameters::KEY_ZOOM);
-    int newZoom = newParams->getInt(CameraParameters::KEY_ZOOM);
-    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
 
-    if (oldZoom != newZoom)
+    int newZoom = newParams->getInt(CameraParameters::KEY_ZOOM);
+    bool zoomSupported = isParameterSet(CameraParameters::KEY_ZOOM_SUPPORTED) ? true : false;
+    if (zoomSupported)
         status = mISP->setZoom(newZoom);
+    else
+        LOGD("not supported zoom setting");
 
     // Burst mode
     // Get the burst length
@@ -2091,7 +2092,10 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     }
 
     // Color effect
-    status = processParamEffect(oldParams, newParams);
+    if (status == NO_ERROR) {
+        status = processParamEffect(oldParams, newParams);
+    }
+
     // anti flicker
     if (status == NO_ERROR) {
         status = processParamAntiBanding(oldParams, newParams);
@@ -3347,8 +3351,7 @@ status_t ControlThread::updateParameterCache()
 
     // let app know if we support zoom in the preview mode indicated
     bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-    AtomMode mode = videoMode ? MODE_VIDEO : MODE_PREVIEW;
-    mISP->getZoomRatios(mode, &mParameters);
+    mISP->getZoomRatios(videoMode, &mParameters);
     mISP->getFocusDistances(&mParameters);
 
     String8 params = mParameters.flatten();
@@ -3439,8 +3442,7 @@ status_t ControlThread::handleMessageGetParameters(MessageGetParameters *msg)
     if (msg->params) {
         // let app know if we support zoom in the preview mode indicated
         bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-        AtomMode mode = videoMode ? MODE_VIDEO : MODE_PREVIEW;
-        mISP->getZoomRatios(mode, &mParameters);
+        mISP->getZoomRatios(videoMode, &mParameters);
         mISP->getFocusDistances(&mParameters);
 
         String8 params = mParameters.flatten();
