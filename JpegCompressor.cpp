@@ -26,6 +26,7 @@
 
 namespace android {
 
+#ifdef USE_INTEL_JPEG
 JpegCompressor::WrapperLibVA::WrapperLibVA() :
     mVaDpy(0),
     mConfigId(0),
@@ -345,6 +346,7 @@ void JpegCompressor::WrapperLibVA::deInit()
     vaDestroySurfaces(mVaDpy, &mSurfaceId, 1);
     vaTerminate(mVaDpy);
 }
+#endif // USE_INTEL_JPEG
 
 JpegCompressor::JpegCompressor() :
     mVaInputSurfacesNum(0)
@@ -391,6 +393,40 @@ bool JpegCompressor::convertRawImage(void* src, void* dst, int width, int height
     return ret;
 }
 
+int JpegCompressor::swEncode(const InputBuffer &in, const OutputBuffer &out)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    // For SW path
+    SkBitmap skBitmap;
+    SkDynamicMemoryWStream skStream;
+
+    // Choose Skia
+    LOG1("Choosing Skia for JPEG encoding");
+    if (mJpegEncoder == NULL) {
+        LOGE("Skia JpegEncoder not created, cannot encode to JPEG!");
+        return -1;
+    }
+    bool success = convertRawImage((void*)in.buf, (void*)out.buf, in.width, in.height, in.format);
+    if (!success) {
+        LOGE("Could not convert the raw image!");
+        return -1;
+    }
+    skBitmap.setConfig(SkBitmap::kRGB_565_Config, in.width, in.height);
+    skBitmap.setPixels(out.buf, NULL);
+    LOG1("Encoding stream using Skia...");
+    if (mJpegEncoder->encodeStream(&skStream, skBitmap, out.quality)) {
+        mJpegSize = skStream.getOffset();
+        skStream.copyTo(out.buf);
+    } else {
+        LOGE("Skia could not encode the stream!");
+        return -1;
+    }
+
+    return 0;
+}
+
+#ifdef USE_INTEL_JPEG
 int JpegCompressor::hwEncode(const InputBuffer &in, const OutputBuffer &out)
 {
     LOG1("@%s", __FUNCTION__);
@@ -429,6 +465,7 @@ int JpegCompressor::hwEncode(const InputBuffer &in, const OutputBuffer &out)
 
     return 0;
 }
+#endif // USE_INTEL_JPEG
 
 // Takes YUV data (NV12 or YUV420) and outputs JPEG encoded stream
 int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
@@ -453,38 +490,19 @@ int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
      * The 320x240 size was found in external/jpeg/jcapistd.c:27,28
      */
     if ((in.width <= 320 && in.height <= 240) || in.format != V4L2_PIX_FMT_NV12) {
-        // For SW path
-        SkBitmap skBitmap;
-        SkDynamicMemoryWStream skStream;
-
-        // Choose Skia
-        LOG1("Choosing Skia for JPEG encoding");
-        if (mJpegEncoder == NULL) {
-            LOGE("Skia JpegEncoder not created, cannot encode to JPEG!");
-            mJpegSize = -1;
+        if (swEncode(in, out) < 0)
             goto exit;
-        }
-        bool success = convertRawImage((void*)in.buf, (void*)out.buf, in.width, in.height, in.format);
-        if (!success) {
-            LOGE("Could not convert the raw image!");
-            mJpegSize = -1;
-            goto exit;
-        }
-        skBitmap.setConfig(SkBitmap::kRGB_565_Config, in.width, in.height);
-        skBitmap.setPixels(out.buf, NULL);
-        LOG1("Encoding stream using Skia...");
-        if (mJpegEncoder->encodeStream(&skStream, skBitmap, out.quality)) {
-            mJpegSize = skStream.getOffset();
-            skStream.copyTo(out.buf);
-        } else {
-            LOGE("Skia could not encode the stream!");
-            mJpegSize = -1;
-            goto exit;
-        }
     } else {
+#ifdef USE_INTEL_JPEG
         LOG1("Choosing libva for HW JPEG encoding");
-        if (hwEncode(in, out) < 0)
+        if (hwEncode(in, out) < 0) {
+            if (swEncode(in, out) < 0)
+                goto exit;
+        }
+#else
+        if (swEncode(in, out) < 0)
             goto exit;
+#endif
     }
 
     return mJpegSize;

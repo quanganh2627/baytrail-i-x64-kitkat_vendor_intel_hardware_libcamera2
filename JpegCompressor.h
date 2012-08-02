@@ -21,9 +21,12 @@
 #include "SkImageEncoder.h"
 #include "AtomCommon.h"
 #include <utils/Errors.h>
+
+#ifdef USE_INTEL_JPEG
 #include <va/va.h>
 #include <va/va_tpi.h>
 #include <va/va_android.h>
+#endif
 
 namespace android {
 
@@ -96,6 +99,8 @@ private:
     bool mStartCompressDone;
 
     bool convertRawImage(void* src, void* dst, int width, int height, int format);
+    int swEncode(const InputBuffer &in, const OutputBuffer &out);
+#ifdef USE_INTEL_JPEG
     int hwEncode(const InputBuffer &in, const OutputBuffer &out);
 
     class WrapperLibVA {
@@ -177,6 +182,7 @@ private:
         int unmapJpegSrcBuffers(void);
     };
     class WrapperLibVA mLibVA;
+#endif
 };
 
 }; // namespace android
