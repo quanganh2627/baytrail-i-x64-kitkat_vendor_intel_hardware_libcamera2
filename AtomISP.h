@@ -313,6 +313,9 @@ private:
 
     char *mZoomRatios;
 
+    // systemTime(SYSTEM_TIME_REALTIME) - systemTime(SYSTEM_TIME_MONOTONIC)
+    nsecs_t mTimeRealMonoInterval;
+
 }; // class AtomISP
 
 }; // namespace android

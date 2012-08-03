@@ -219,6 +219,9 @@ AtomISP::AtomISP(int cameraId) :
     static const int zoomBytes = MAX_ZOOM_LEVEL * 5 + 1;
     mZoomRatios = new char[zoomBytes];
     computeZoomRatios(mZoomRatios, zoomBytes);
+
+    mTimeRealMonoInterval = systemTime(SYSTEM_TIME_REALTIME) - systemTime(SYSTEM_TIME_MONOTONIC);
+    LOG1("%s:(mTimeRealMonoInterval-SYSTEM_TIME_MONOTONIC):%lld", __func__, mTimeRealMonoInterval);
 }
 
 int AtomISP::getPrimaryCameraIndex(void) const
@@ -2599,7 +2602,9 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp)
     mRecordingBuffers[index].ispPrivate = mSessionId;
     mRecordingBuffers[index].capture_timestamp = buf.timestamp;
     *buff = mRecordingBuffers[index];
-    *timestamp = systemTime();
+    // time is get from ISP driver, it's realtime
+    *timestamp = (buf.timestamp.tv_sec)*1000000000LL + (buf.timestamp.tv_usec)*1000LL
+                    - mTimeRealMonoInterval;
 
     mNumRecordingBuffersQueued--;
 
