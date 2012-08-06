@@ -55,7 +55,7 @@ void PostProcThread::getDefaultParameters(CameraParameters *params)
         return;
     }
     // Set maximum number of detectable faces
-    params->set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_SW, MAX_FACES_DETECTABLE);
+    params->set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW, MAX_FACES_DETECTABLE);
 }
 
 void PostProcThread::startFaceDetection()
