@@ -1206,6 +1206,39 @@ status_t ControlThread::applyBracketing()
     return status;
 }
 
+/* If smart scene detection is enabled and user scene is set to "Auto",
+ * change settings based on the detected scene
+ */
+status_t ControlThread::setSmartSceneParams(void)
+{
+    const char *scene_mode = mParameters.get(CameraParameters::KEY_SCENE_MODE);
+
+    // Exit if IntelParams are not supported (xnr and anr)
+    if (!mIntelParamsAllowed)
+        return INVALID_OPERATION;
+
+    if (scene_mode && !strcmp(scene_mode, CameraParameters::SCENE_MODE_AUTO)) {
+        if (mAAA->is3ASupported() && mAAA->getSmartSceneDetection()) {
+            int sceneMode = 0;
+            bool sceneHdr = false;
+            m3AThread->getCurrentSmartScene(sceneMode, sceneHdr);
+            // Force XNR and ANR in case of lowlight scene
+            if (sceneMode == ia_aiq_scene_mode_lowlight_portrait ||
+                sceneMode == ia_aiq_scene_mode_low_light) {
+                LOG1("Low-light scene detected, forcing XNR and ANR");
+                mISP->setXNR(true);
+                // Forcing mParameters to true, to be in sync with app update.
+                mParameters.set(IntelCameraParameters::KEY_XNR, "true");
+
+                mISP->setLowLight(true);
+                // Forcing mParameters to true, to be in sync with app update.
+                mParameters.set(IntelCameraParameters::KEY_ANR, "true");
+            }
+        }
+    }
+    return NO_ERROR;
+}
+
 status_t ControlThread::handleMessageTakePicture() {
     LOG1("@%s:", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -1301,6 +1334,10 @@ status_t ControlThread::captureStillPic()
 
     // Configure PictureThread
     mPictureThread->initialize(mParameters, makerNote, flashOn);
+
+    // Possible smart scene parameter changes (XNR, ANR)
+    if ((status = setSmartSceneParams()) != NO_ERROR)
+        LOG1("set smart scene parameters failed");
 
     // Configure and start the ISP
     mISP->setSnapshotFrameFormat(width, height, format);
@@ -2237,6 +2274,7 @@ status_t ControlThread::processParamXNR_ANR(const CameraParameters *oldParams,
     // XNR
     const char* oldValue = oldParams->get(IntelCameraParameters::KEY_XNR);
     const char* newValue = newParams->get(IntelCameraParameters::KEY_XNR);
+    LOG2("XNR value previous %s new %s ", oldValue, newValue);
     if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
         if (!strncmp(newValue, CameraParameters::TRUE, MAX_PARAM_VALUE_LENGTH))
             status = mISP->setXNR(true);
@@ -2247,6 +2285,7 @@ status_t ControlThread::processParamXNR_ANR(const CameraParameters *oldParams,
     // ANR
     oldValue = oldParams->get(IntelCameraParameters::KEY_ANR);
     newValue = newParams->get(IntelCameraParameters::KEY_ANR);
+    LOG2("ANR value previous %s new %s ", oldValue, newValue);
     if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
         if (!strncmp(newValue, CameraParameters::TRUE, MAX_PARAM_VALUE_LENGTH))
             status = mISP->setLowLight(true);

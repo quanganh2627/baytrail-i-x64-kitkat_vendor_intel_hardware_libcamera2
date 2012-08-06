@@ -404,6 +404,8 @@ private:
     status_t skipFrames(size_t numFrames, size_t doBracket = 0);
     status_t initBracketing();
     status_t applyBracketing();
+    status_t skipPreviewFrames(int numFrames, AtomBuffer* buff);
+    status_t setSmartSceneParams();
 
     bool runPreFlashSequence();
 

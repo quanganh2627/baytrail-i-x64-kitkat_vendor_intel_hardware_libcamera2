@@ -251,6 +251,13 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
     return status;
 }
 
+void AAAThread::getCurrentSmartScene(int &sceneMode, bool &sceneHdr)
+{
+    LOG1("@%s", __FUNCTION__);
+    sceneMode = mSmartSceneMode;
+    sceneHdr = mSmartSceneHdr;
+}
+
 status_t AAAThread::waitForAndExecuteMessage()
 {
     LOG2("@%s", __FUNCTION__);

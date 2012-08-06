@@ -73,6 +73,7 @@ public:
     status_t newFrame(struct timeval capture_timestamp);
     status_t applyRedEyeRemoval(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer, int width, int height, int format);
     status_t setFaces(camera_frame_metadata_t *face_metadata, int zoom);
+    void getCurrentSmartScene(int &sceneMode, bool &sceneHdr);
 
 // private types
 private:
