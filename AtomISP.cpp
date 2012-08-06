@@ -3280,16 +3280,24 @@ int AtomISP::unsetFirmwareArgument(unsigned int fwHandle, unsigned int num)
 
 status_t AtomISP::storeMetaDataInBuffers(bool enabled)
 {
+    LOG1("@%s: enabled = %d", __FUNCTION__, enabled);
     status_t status = NO_ERROR;
     mStoreMetaDataInBuffers = enabled;
-    LOG1("@%s: enabled = %d", __FUNCTION__, mStoreMetaDataInBuffers);
-    if (mStoreMetaDataInBuffers) {
+
+    /**
+     * if we are not in video mode we just store the value
+     * it will be used during preview start
+     * if we are in video mode we can allocate the buffers
+     * now and start using them
+     */
+    if (mStoreMetaDataInBuffers && mMode == MODE_VIDEO) {
       if ((status = allocateMetaDataBuffers()) != NO_ERROR)
           goto exitFreeRec;
     }
     return status;
 
 exitFreeRec:
+    LOGE("Error allocating metadata buffers!");
     if(mRecordingBuffers) {
         for (int i = 0 ; i < mNumBuffers; i++) {
             if (mRecordingBuffers[i].metadata_buff != NULL) {

@@ -3531,15 +3531,20 @@ status_t ControlThread::stopSmartSceneDetection()
 
 status_t ControlThread::handleMessageStoreMetaDataInBuffers(MessageStoreMetaDataInBuffers *msg)
 {
+    LOG1("@%s. state = %d", __FUNCTION__, mState);
     status_t status = NO_ERROR;
-    //Prohibit to enable metadata mode if state of HAL isn't equal STATE_STOPPED and STATE_PREVIEW_VIDEO
-    if (mState != STATE_STOPPED && mState != STATE_PREVIEW_VIDEO)
+    //Prohibit to enable metadata mode if state of HAL isn't equal stopped or in preview
+    if (mState != STATE_STOPPED && mState != STATE_PREVIEW_VIDEO && mState != STATE_PREVIEW_STILL){
+        LOGE("Cannot configure metadata buffers in this state: %d", mState);
         return BAD_VALUE;
+    }
 
     mStoreMetaDataInBuffers = msg->enabled;
     status = mISP->storeMetaDataInBuffers(msg->enabled);
     if(status == NO_ERROR)
         status = mCallbacks->storeMetaDataInBuffers(msg->enabled);
+    else
+        LOGE("Error configuring metadatabuffers in ISP!");
 
     mMessageQueue.reply(MESSAGE_ID_STORE_METADATA_IN_BUFFER, status);
     return status;
