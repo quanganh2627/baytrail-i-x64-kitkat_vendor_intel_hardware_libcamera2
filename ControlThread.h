@@ -535,6 +535,8 @@ private:
     int mLastRecordingBuffIndex;
     bool mStoreMetaDataInBuffers;
 
+    bool mPreviewForceChanged;
+
 }; // class ControlThread
 
 }; // namespace android

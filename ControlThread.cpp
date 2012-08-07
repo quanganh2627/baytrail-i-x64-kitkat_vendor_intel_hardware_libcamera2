@@ -88,6 +88,7 @@ ControlThread::ControlThread() :
     ,mParamCache(NULL)
     ,mLastRecordingBuffIndex(0)
     ,mStoreMetaDataInBuffers(false)
+    ,mPreviewForceChanged(false)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -3222,6 +3223,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
     float videoAspectRatio = 0.0f;
     Vector<Size> sizes;
     bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
+    bool dvsEnabled = isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION) ?  true : false;
 
     int oldWidth, newWidth;
     int oldHeight, newHeight;
@@ -3245,6 +3247,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
                 newWidth, newHeight, v4l2Fmt2Str(newFormat),
                 previewAspectRatio);
         previewFormatChanged = true;
+        mPreviewForceChanged = false;
     } else {
         previewAspectRatio = 1.0 * oldWidth / oldHeight;
         LOG1("Preview size/format is unchanged: old=%dx%d %s; ratio=%.3f",
@@ -3285,10 +3288,10 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
          *  not, then select a corresponding video size to match the aspect
          *  ratio with preview aspect ratio.
          */
-        if (fabsf(videoAspectRatio - previewAspectRatio) > ASPECT_TOLERANCE) {
+        if (fabsf(videoAspectRatio - previewAspectRatio) > ASPECT_TOLERANCE
+            && !mPreviewForceChanged) {
             LOG1("Our video (%dx%d) aspect ratio does not match preview (%dx%d) aspect ratio!",
-                    newWidth, newHeight,
-                    previewWidth, previewHeight);
+                  newWidth, newHeight, previewWidth, previewHeight);
             newParams->getSupportedVideoSizes(sizes);
             for (size_t i = 0; i < sizes.size(); i++) {
                 float thisSizeAspectRatio = 1.0 * sizes[i].width / sizes[i].height;
@@ -3307,24 +3310,21 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
         }
     }
 
-    /**
-     *  Workaround: The camera firmware doesn't support preview dimensions that
-     * are bigger than video dimensions. If a single preview dimension is larger
-     * than the video dimension then the FW will downscale the preview resolution
-     * to that of the video resolution.
-     * Checking if preview is still  bigger than video, this is not supported by the ISP
-     */
-    if(videoMode) {
-        newParams->getPreviewSize(&previewWidth, &previewHeight);
-        newParams->getVideoSize(&newWidth, &newHeight);
-        if((previewWidth*previewHeight) > (newWidth*newHeight)) {
-
-            newParams->setPreviewSize(newWidth, newHeight);
-            LOGW("Warning: Video dimension(s) is smaller than preview dimension(s). "
-                 "Overriding preview resolution to video resolution [%d, %d] --> [%d, %d]",
-                 previewWidth, previewHeight, newWidth, newHeight);
+     /**
+      * There are 2 workarounds due to ISP limitation, so need check the preview size
+      * via the function * "applyISPLimitations()"
+      * workaround 1: the fps in 1080p can't reach 30fps with DVS enable due to
+      * ISP performance limitation, so change to VGA resolution for preview
+      * BZ: 49330
+      * Workaround 2: The camera firmware doesn't support preview dimensions that
+      * are bigger than video dimensions. If a single preview dimension is larger
+      * than the video dimension then the FW will downscale the preview resolution
+      * to that of the video resolution.
+      * Checking if preview is still  bigger than video, this is not supported by the ISP
+      */
+        if(videoMode && mISP->applyISPLimitations(newParams, dvsEnabled)) {
+            mPreviewForceChanged = true;
         }
-    }
 
     // if preview is running and static params have changed, then we need
     // to stop, reconfigure, and restart the isp and all threads.

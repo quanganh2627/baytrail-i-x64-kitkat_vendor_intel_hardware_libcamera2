@@ -1588,6 +1588,64 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
     return status;
 }
 
+/**
+ * update preview size in parameters according to ISP limitation
+ * there are 2 workarounds as below:
+ *
+ * Workaround 1: with DVS enable, the fps in 1080p recording can't reach 30fps, so check if
+ * the preview size is corresponding to 1080p recording, if yes, then change preview
+ * size to 640x360.
+ * We cannot check the video size since application may have not sent it yet. We use
+ * the preview size and aspect ratio to detect this scenario
+ * BZ: 49330
+ *
+ * Workaround 2: The camera firmware doesn't support preview dimensions that
+ * are bigger than video dimensions. If a single preview dimension is larger
+ * than the video dimension then the FW will downscale the preview resolution
+ * to that of the video resolution.
+ * Checking if preview is still  bigger than video, this is not supported by the ISP
+ *
+ * @param params
+ * @param dvsEabled
+ * @return true: updated preview size
+ * @return false: not need to update preview size
+ */
+bool  AtomISP::applyISPLimitations(CameraParameters *params, bool dvsEnabled)
+{
+    LOG1("@%s", __FUNCTION__);
+    bool ret = false;
+    float AspectRatio_1080P = 1.0 * RESOLUTION_1080P_WIDTH / RESOLUTION_1080P_HEIGHT;
+    int previewWidth, previewHeight;
+    int videoWidth, videoHeight;
+
+    params->getPreviewSize(&previewWidth, &previewHeight);
+    // Workaround 1, detail refer to the function description
+    if (dvsEnabled) {
+        if (previewWidth > RESOLUTION_VGA_WIDTH || previewHeight > RESOLUTION_VGA_HEIGHT) {
+            float previewAspectRatio = 1.0 * previewWidth / previewHeight;
+            if(fabsf(AspectRatio_1080P - previewAspectRatio) < 0.001) {
+                ret = true;
+                params->setPreviewSize(640, 360);
+                LOG1("change preview size to 640x360 due to DVS on");
+            } else {
+                LOG1("no match preview size: %dx%d", previewWidth, previewHeight);
+            }
+        }
+    }
+    //Workaround 2, detail refer to the function description
+    params->getPreviewSize(&previewWidth, &previewHeight);
+    params->getVideoSize(&videoWidth, &videoHeight);
+    if((previewWidth*previewHeight) > (videoWidth*videoHeight)) {
+            ret = true;
+            params->setPreviewSize(videoWidth, videoHeight);
+            LOGW("Warning: Video dimension(s) is smaller than preview dimension(s). "
+                 "Overriding preview resolution to video resolution [%d, %d] --> [%d, %d]",
+                 previewWidth, previewHeight, videoWidth, videoHeight);
+    }
+
+    return ret;
+}
+
 void AtomISP::getZoomRatios(bool videoMode, CameraParameters *params)
 {
     LOG1("@%s", __FUNCTION__);
