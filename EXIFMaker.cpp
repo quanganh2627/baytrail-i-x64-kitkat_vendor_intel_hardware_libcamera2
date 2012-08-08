@@ -179,7 +179,8 @@ void EXIFMaker::initializeLocation(const CameraParameters &params)
         if (ptimestamp != NULL) {
             // timestamp
             timestamp = atol(ptimestamp);
-            if(timestamp < 0){
+            if (timestamp >= LONG_MAX || timestamp <= LONG_MIN)
+            {
                 timestamp = 0;
                 LOGW("invalid timestamp was provided, defaulting to 0 (i.e. 1970)");
             }
