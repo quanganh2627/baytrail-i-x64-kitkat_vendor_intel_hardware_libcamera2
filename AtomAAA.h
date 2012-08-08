@@ -264,7 +264,6 @@ public:
     status_t setFaces(camera_frame_metadata_t *face_metadata, int zoom);
 
     // ISP processing functions
-    status_t applyDvsProcess();
     status_t apply3AProcess(bool read_stats,
         struct timeval capture_timestamp);
     status_t computeCDF(const CiUserBuffer& inputBuf, size_t bufIndex);

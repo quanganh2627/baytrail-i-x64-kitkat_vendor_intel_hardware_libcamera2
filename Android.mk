@@ -34,6 +34,7 @@ LOCAL_SRC_FILES := \
 	PerformanceTraces.cpp \
 	Callbacks.cpp \
 	AtomAAA.cpp \
+        AtomDvs.cpp \
 	AtomHAL.cpp \
 	ColorConverter.cpp \
 	EXIFMaker.cpp \
@@ -113,6 +114,8 @@ LOCAL_CFLAGS += -DMRFL_VP
 else
 LOCAL_CFLAGS += -DMFLD_PR2
 endif
+
+LOCAL_STATIC_LIBRARIES := libia_dvs
 
 # enable R&D features only in R&D builds
 ifneq ($(filter userdebug eng tests, $(TARGET_BUILD_VARIANT)),)

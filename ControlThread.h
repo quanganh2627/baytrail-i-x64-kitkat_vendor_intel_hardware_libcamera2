@@ -511,6 +511,7 @@ private:
 
     AtomISP *mISP;
     AtomAAA *mAAA;
+    AtomDvs *mDvs;
     sp<PreviewThread> mPreviewThread;
     sp<PictureThread> mPictureThread;
     sp<VideoThread> mVideoThread;

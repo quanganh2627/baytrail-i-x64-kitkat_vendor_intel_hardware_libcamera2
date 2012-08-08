@@ -1055,17 +1055,6 @@ status_t AtomAAA::applyPreFlashProcess(FlashStage stage)
 
 }
 
-status_t AtomAAA::applyDvsProcess()
-{
-    Mutex::Autolock lock(m3aLock);
-    LOG2("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    if(!mHas3A)
-        return INVALID_OPERATION;
-    ci_adv_dvs_process();
-    return status;
-}
-
 status_t AtomAAA::apply3AProcess(bool read_stats,
     const struct timeval capture_timestamp)
 {

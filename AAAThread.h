@@ -20,6 +20,7 @@
 #include <utils/threads.h>
 #include <time.h>
 #include "AtomAAA.h"
+#include "AtomDvs.h"
 #include "MessageQueue.h"
 
 namespace android {
@@ -56,7 +57,7 @@ class AAAThread : public Thread {
 
 // constructor destructor
 public:
-    AAAThread(ICallbackAAA *aaaDone);
+    AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs);
     virtual ~AAAThread();
 
 // Thread overrides
@@ -160,6 +161,7 @@ private:
     bool mThreadRunning;
     AtomAAA *mAAA;
     CallbacksThread *mCallbacks;
+    AtomDvs *mDvs;
     ICallbackAAA* mAAADoneCallback;
 
     bool m3ARunning;

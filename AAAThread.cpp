@@ -24,12 +24,13 @@
 
 namespace android {
 
-AAAThread::AAAThread(ICallbackAAA *aaaDone) :
+AAAThread::AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs) :
     Thread(false)
     ,mMessageQueue("AAAThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
     ,mAAA(AtomAAA::getInstance())
     ,mCallbacks(CallbacksThread::getInstance())
+    ,mDvs(dvs)
     ,mAAADoneCallback(aaaDone)
     ,m3ARunning(false)
     ,mDVSRunning(false)
@@ -313,8 +314,8 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
         }
     }
 
-    if(mDVSRunning){
-        status = mAAA->applyDvsProcess();
+    if (mDVSRunning) {
+        status = mDvs->run();
     }
     return status;
 }

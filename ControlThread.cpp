@@ -134,6 +134,13 @@ status_t ControlThread::init(int cameraId)
 
     mNumBuffers = mISP->getNumBuffers();
 
+    mDvs = new AtomDvs(mISP);
+    if (mDvs == NULL) {
+        LOGE("error creating DVS");
+        goto bail;
+    }
+    mISP->setDvs(mDvs);
+
     mAAA = AtomAAA::getInstance();
     if (mAAA == NULL) {
         LOGE("error creating AAA");
@@ -170,7 +177,7 @@ status_t ControlThread::init(int cameraId)
     }
 
     // we implement ICallbackAAA interface
-    m3AThread = new AAAThread(this);
+    m3AThread = new AAAThread(this, mDvs);
     if (m3AThread == NULL) {
         LOGE("error creating 3AThread");
         goto bail;
@@ -316,8 +323,13 @@ void ControlThread::deinit()
     if (mAAA != NULL) {
         delete mAAA;
     }
+
     if (mCameraDump != NULL) {
         delete mCameraDump;
+    }
+
+    if (mDvs != NULL) {
+        delete mDvs;
     }
     if (mCallbacks != NULL) {
         delete mCallbacks;
@@ -777,9 +789,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             // Enable auto-focus by default
             mAAA->setAfEnabled(true);
             m3AThread->enable3A();
-            if (videoMode) {
-                m3AThread->enableDVS(true);
-            }
+            m3AThread->enableDVS(isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION));
         }
     } else {
         LOGE("Error starting ISP!");
@@ -797,7 +807,7 @@ status_t ControlThread::stopPreviewCore()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if (mState == STATE_PREVIEW_VIDEO && mAAA->is3ASupported()) {
+    if ((mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING) && mAAA->is3ASupported()) {
         m3AThread->enableDVS(false);
     }
 

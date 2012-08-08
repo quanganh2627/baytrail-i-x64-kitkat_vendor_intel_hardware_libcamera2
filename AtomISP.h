@@ -30,6 +30,12 @@
 #include "AtomAAA.h"
 
 namespace android {
+class AtomISP;
+};
+
+#include "AtomDvs.h"
+
+namespace android {
 
 #define MAX_V4L2_BUFFERS    MAX_BURST_BUFFERS
 #define MAX_CAMERA_NODES    MAX_CAMERAS + 1
@@ -117,8 +123,14 @@ public:
     status_t setXNR(bool enable);
     status_t setLightFrequency(FlickerMode flickerMode);
     status_t setLowLight(bool enable);
-    status_t setDVS(bool enable);
     status_t setGDC(bool enable);
+
+    status_t setDVS(bool enable);
+    status_t getDvsStatistics(struct atomisp_dis_statistics *stats,
+                              bool *tryAgain) const;
+    status_t setMotionVector(const struct atomisp_dis_vector *vector) const;
+    status_t setDvsCoefficients(const struct atomisp_dis_coefficients *coefs) const;
+    status_t getIspParameters(struct atomisp_parm *isp_param) const;
 
     // file input/injection API
     int configureFileInject(const char* fileName, int width, int height, int format, int bayerOrder);
@@ -140,6 +152,7 @@ public:
    // Enable metadata buffer mode API
    status_t storeMetaDataInBuffers(bool enabled);
 
+   void setDvs(AtomDvs *dvs);
 // private methods
 private:
 
@@ -204,7 +217,7 @@ private:
     int atomisp_set_attribute (int fd, int attribute_num,
                                const int value, const char *name);
     int atomisp_set_zoom (int fd, int zoom);
-    int xioctl(int fd, int request, void *arg);
+    int xioctl(int fd, int request, void *arg) const;
 
     int startFileInject(void);
     int stopFileInject(void);
@@ -316,6 +329,7 @@ private:
 
     SensorType mSensorType;
     AtomAAA *mAAA;
+    AtomDvs *mDvs;
     struct cameraInfo *mCameraInput;
 
     bool mLowLight;

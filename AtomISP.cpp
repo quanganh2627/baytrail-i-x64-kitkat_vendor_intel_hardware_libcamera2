@@ -173,6 +173,7 @@ AtomISP::AtomISP() :
     ,mRecordingDevice(V4L2_FIRST_DEVICE)
     ,mSessionId(0)
     ,mAAA(AtomAAA::getInstance())
+    ,mDvs(NULL)
     ,mLowLight(false)
     ,mXnr(0)
     ,mZoomRatios(NULL)
@@ -244,6 +245,11 @@ status_t AtomISP::init(int cameraId)
 errorexit:
     closeDevice(V4L2_FIRST_DEVICE);
     return NO_INIT;
+}
+
+void AtomISP::setDvs(AtomDvs *dvs)
+{
+    mDvs = dvs;
 }
 
 int AtomISP::getPrimaryCameraIndex(void) const
@@ -820,6 +826,56 @@ status_t AtomISP::updateCaptureParams()
     return status;
 }
 
+status_t AtomISP::getDvsStatistics(struct atomisp_dis_statistics *stats,
+                                   bool *tryAgain) const
+{
+    /* This is a blocking call, so we do not lock a mutex here. The method
+       is const, so the mutex is not needed anyway. */
+    status_t status = NO_ERROR;
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_G_DIS_STAT, stats);
+    if (tryAgain)
+        *tryAgain = (errno == EAGAIN);
+    if (errno == EAGAIN)
+        return NO_ERROR;
+
+    if (ret < 0) {
+        LOGE("failed to get DVS statistics");
+        status = UNKNOWN_ERROR;
+    }
+    return status;
+}
+
+status_t AtomISP::setMotionVector(const struct atomisp_dis_vector *vector) const
+{
+    status_t status = NO_ERROR;
+    if (xioctl(main_fd, ATOMISP_IOC_S_DIS_VECTOR, (struct atomisp_dis_vector *)vector) < 0) {
+        LOGE("failed to set motion vector");
+        status = UNKNOWN_ERROR;
+    }
+    return status;
+}
+
+status_t AtomISP::setDvsCoefficients(const struct atomisp_dis_coefficients *coefs) const
+{
+    status_t status = NO_ERROR;
+    if (xioctl(main_fd, ATOMISP_IOC_S_DIS_COEFS, (struct atomisp_dis_coefficients *)coefs) < 0) {
+        LOGE("failed to set dvs coefficients");
+        status = UNKNOWN_ERROR;
+    }
+    return status;
+}
+
+status_t AtomISP::getIspParameters(struct atomisp_parm *isp_param) const
+{
+    status_t status = NO_ERROR;
+    if (xioctl(main_fd, ATOMISP_IOC_G_ISP_PARM, isp_param) < 0) {
+        LOGE("failed to get ISP parameters");
+        status = UNKNOWN_ERROR;
+    }
+    return status;
+}
+
 status_t AtomISP::start(AtomMode mode)
 {
     LOG1("@%s", __FUNCTION__);
@@ -1040,6 +1096,9 @@ status_t AtomISP::startRecording() {
         } else {
             LOGW("Failed switching 3A to MODE_VIDEO at %.2f fps",
                  mConfig.fps);
+        }
+        if (mDvs && mDvs->reconfigure() != NO_ERROR) {
+            LOGE("Failed to reconfigure DVS grid");
         }
     }
 
@@ -2022,7 +2081,7 @@ int AtomISP::atomisp_set_attribute (int fd, int attribute_num,
     return -1;
 }
 
-int AtomISP::xioctl(int fd, int request, void *arg)
+int AtomISP::xioctl(int fd, int request, void *arg) const
 {
     int ret;
 
