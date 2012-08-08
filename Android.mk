@@ -60,6 +60,7 @@ LOCAL_C_INCLUDES += \
 	external/skia/include/core \
 	external/skia/include/images \
 	hardware/intel/PRIVATE/libmix/videoencoder \
+	hardware/intel/PRIVATE/camera_extension/include \
 	$(TARGET_OUT_HEADERS)/libmfldadvci \
 	$(TARGET_OUT_HEADERS)/libCameraFaceDetection \
 	$(TARGET_OUT_HEADERS)/pvr/hal \

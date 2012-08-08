@@ -30,7 +30,7 @@
 #include <math.h>
 #include <cutils/properties.h>
 #include <binder/IServiceManager.h>
-#include "cameralibs/intel_camera_extensions.h"
+#include "intel_camera_extensions.h"
 
 namespace android {
 
@@ -3433,15 +3433,12 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
     case CAMERA_CMD_STOP_FACE_DETECTION:
         status = stopFaceDetection();
         break;
-        //[FIXME]   comment SMART SCENE DETECTION
-#if 0
     case CAMERA_CMD_START_SCENE_DETECTION:
         status = startSmartSceneDetection();
         break;
     case CAMERA_CMD_STOP_SCENE_DETECTION:
         status = stopSmartSceneDetection();
         break;
-#endif
     case CAMERA_CMD_ENABLE_INTEL_PARAMETERS:
         status = enableIntelParameters();
         mMessageQueue.reply(MESSAGE_ID_COMMAND, status);
@@ -3555,6 +3552,7 @@ status_t ControlThread::startSmartSceneDetection()
     if (mState == STATE_STOPPED || mAAA->getSmartSceneDetection()) {
         return INVALID_OPERATION;
     }
+    enableMsgType(CAMERA_MSG_SCENE_DETECT);
     mAAA->setSmartSceneDetection(true);
     return NO_ERROR;
 }
@@ -3565,6 +3563,7 @@ status_t ControlThread::stopSmartSceneDetection()
     if (mState == STATE_STOPPED || !mAAA->getSmartSceneDetection()) {
         return INVALID_OPERATION;
     }
+    disableMsgType(CAMERA_MSG_SCENE_DETECT);
     mAAA->setSmartSceneDetection(false);
     return NO_ERROR;
 }
