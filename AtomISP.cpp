@@ -531,7 +531,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
      */
     if(PlatformData::supportsDVS(mCameraInput->androidCameraId))
     {
-        params->set(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED,"true,false");
+        params->set(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED,"true");
         params->set(CameraParameters::KEY_VIDEO_STABILIZATION,"true");
     }
 
