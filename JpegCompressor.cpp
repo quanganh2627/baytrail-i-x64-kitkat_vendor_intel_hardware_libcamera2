@@ -35,15 +35,15 @@ JpegCompressor::WrapperLibVA::WrapperLibVA() :
     mCodedBuf(0),
     mPicParamBuf(0),
     mQMatrixBuf(0),
+    mBuffers(0),
     mPicWidth(0),
     mPicHeight(0),
-    mMaxWidth(0),
-    mMaxHeight(0),
     mMaxOutJpegBufSize(0)
 {
     LOG1("@%s", __FUNCTION__);
     memset(&mSurfaceImage, 0, sizeof(mSurfaceImage));
     memset(&mQMatrix, 0, sizeof(mQMatrix));
+    memset(&mSurfaceAttrib, 0, sizeof(mSurfaceAttrib));
 }
 
 JpegCompressor::WrapperLibVA::~WrapperLibVA()
@@ -148,39 +148,46 @@ int JpegCompressor::WrapperLibVA::getJpegData(void *pdst, int dstSize, int *jpeg
     return 0;
 }
 
-int JpegCompressor::WrapperLibVA::setJpegDimensions(int width, int height)
+int JpegCompressor::WrapperLibVA::configSurface(int width, int height, int bufNum, bool useCameraBuf, void *cameraBuf)
 {
-    LOG1("@%s, width:%d, height:%d", __FUNCTION__, width, height);
+    LOG1("@%s, bufNum:%d, useCameraBuf:%d, cameraBuf:%p", __FUNCTION__, bufNum, useCameraBuf, cameraBuf);
+    VAStatus status;
+    void *surface_p = NULL;
+    VAEncPictureParameterBufferJPEG pic_jpeg;
+
     if (height % 2) {
         LOG1("@%s, line:%d, height:%d, we can't support", __FUNCTION__, __LINE__, height);
         return -1;
     }
 
-    mPicWidth = width;
-    mPicHeight = height;
-
-    return 0;
-}
-
-int JpegCompressor::WrapperLibVA::configSurface(int maxWidth, int maxHeight, int bufNum)
-{
-    LOG1("@%s, bufNum:%d", __FUNCTION__, bufNum);
-    VAStatus status;
-    void *surface_p = NULL;
-    VAEncPictureParameterBufferJPEG pic_jpeg;
-
-    if (maxHeight % 2) {
-        LOG1("@%s, line:%d, maxHeight:%d, we can't support", __FUNCTION__, __LINE__, maxHeight);
+    if (useCameraBuf && (NULL == cameraBuf)) {
+        LOG1("@%s, line:%d, cameraBuf is NULL", __FUNCTION__, __LINE__);
         return -1;
     }
 
-    mMaxWidth = maxWidth;
-    mMaxHeight = maxHeight;
-    mMaxOutJpegBufSize = (maxWidth * maxHeight * 3 / 2);
-    status = vaCreateSurfaces(mVaDpy, mSupportedFormat, mMaxWidth, mMaxHeight, &mSurfaceId, bufNum, NULL, 0);
-    CHECK_STATUS(status, "vaCreateSurfaces", __LINE__)
+    mPicWidth = width;
+    mPicHeight = height;
+    mMaxOutJpegBufSize = (width * height * 3 / 2);
 
-    status = vaCreateContext(mVaDpy, mConfigId, mMaxWidth, mMaxHeight,
+    if (useCameraBuf) {
+        mBuffers = (unsigned int)cameraBuf;
+
+        mSurfaceAttrib.buffers = &mBuffers;
+        mSurfaceAttrib.count = bufNum;
+        mSurfaceAttrib.luma_stride = mPicWidth;
+        mSurfaceAttrib.pixel_format = VA_FOURCC_NV12;
+        mSurfaceAttrib.width = mPicWidth;
+        mSurfaceAttrib.height = mPicHeight;
+        mSurfaceAttrib.type = VAExternalMemoryUserPointer;
+        status = vaCreateSurfacesWithAttribute(mVaDpy, mPicWidth, mPicHeight,
+                        mSupportedFormat, bufNum, &mSurfaceId, &mSurfaceAttrib);
+        CHECK_STATUS(status, "vaCreateSurfacesWithAttribute", __LINE__)
+    } else {
+        status = vaCreateSurfaces(mVaDpy, mSupportedFormat, mPicWidth, mPicHeight, &mSurfaceId, bufNum, NULL, 0);
+        CHECK_STATUS(status, "vaCreateSurfaces", __LINE__)
+    }
+
+    status = vaCreateContext(mVaDpy, mConfigId, mPicWidth, mPicHeight,
                                 VA_PROGRESSIVE, &mSurfaceId, bufNum, &mContextId);
     CHECK_STATUS(status, "vaCreateContext", __LINE__)
 
@@ -190,19 +197,34 @@ int JpegCompressor::WrapperLibVA::configSurface(int maxWidth, int maxHeight, int
     return 0;
 }
 
-int JpegCompressor::WrapperLibVA::getJpegSrcData(void *pRaw)
+void JpegCompressor::WrapperLibVA::destroySurface(void)
 {
     LOG1("@%s", __FUNCTION__);
+    if (mVaDpy && mContextId)
+        vaDestroyContext(mVaDpy, mContextId);
+    if (mVaDpy && mSurfaceId)
+        vaDestroySurfaces(mVaDpy, &mSurfaceId, 1);
+}
+
+int JpegCompressor::WrapperLibVA::getJpegSrcData(void *pRaw, bool useCameraBuf)
+{
+    LOG1("@%s, useCameraBuf:%d", __FUNCTION__, useCameraBuf);
     VAStatus status;
     void *surface_p = NULL;
     VAEncPictureParameterBufferJPEG pic_jpeg;
 
-    if (mapJpegSrcBuffers(&surface_p) < 0)
-        return -1;
-    if(copySrcDataToLibVA(pRaw, surface_p) < 0)
-        return -1;
-    if (unmapJpegSrcBuffers() < 0)
-        return -1;
+    if (!useCameraBuf) {
+        if (NULL == pRaw) {
+            LOG1("@%s, line:%d, pRaw is NULL", __FUNCTION__, __LINE__);
+            return -1;
+        }
+        if (mapJpegSrcBuffers(&surface_p) < 0)
+            return -1;
+        if(copySrcDataToLibVA(pRaw, surface_p) < 0)
+            return -1;
+        if (unmapJpegSrcBuffers() < 0)
+            return -1;
+    }
 
     pic_jpeg.picture_width  = mPicWidth;
     pic_jpeg.picture_height = mPicHeight;
@@ -341,10 +363,10 @@ int JpegCompressor::WrapperLibVA::unmapJpegSrcBuffers(void)
 void JpegCompressor::WrapperLibVA::deInit()
 {
     LOG1("@%s", __FUNCTION__);
-    vaDestroyContext(mVaDpy, mContextId);
-    vaDestroyConfig(mVaDpy, mConfigId);
-    vaDestroySurfaces(mVaDpy, &mSurfaceId, 1);
-    vaTerminate(mVaDpy);
+    if (mVaDpy && mConfigId)
+        vaDestroyConfig(mVaDpy, mConfigId);
+    if (mVaDpy)
+        vaTerminate(mVaDpy);
 }
 #endif // USE_INTEL_JPEG
 
@@ -431,39 +453,37 @@ int JpegCompressor::hwEncode(const InputBuffer &in, const OutputBuffer &out)
 {
     LOG1("@%s", __FUNCTION__);
     int status;
+    const bool use_camera_buf = true;  // true:use camera buf,false:use video buf
 
     status = mLibVA.init();
     if (status)
-        return -1;
+        goto exit;
 
-    status = mLibVA.configSurface(in.width, in.height, 1);
+    status = mLibVA.configSurface(in.width, in.height, 1, use_camera_buf, in.buf);
     if (status)
-        return -1;
+        goto exit;
 
-    status = mLibVA.setJpegDimensions(out.width, out.height);
+    status = mLibVA.getJpegSrcData(in.buf, use_camera_buf);
     if (status)
-        return -1;
-
-    status = mLibVA.getJpegSrcData(in.buf);
-    if (status)
-        return -1;
+        goto exit;
 
     status = mLibVA.setJpegQuality(out.quality);
     if (status)
-        return -1;
+        goto exit;
 
     status = mLibVA.doJpegEncoding();
     if (status)
-        return -1;
+        goto exit;
 
     status = mLibVA.getJpegData(out.buf, out.size, &mJpegSize);
     if (status)
-        return -1;
+        goto exit;
 
-    mStartCompressDone = true;
+exit:
+    mLibVA.destroySurface();
     mLibVA.deInit();
 
-    return 0;
+    return (status ? -1 : 0);
 }
 #endif // USE_INTEL_JPEG
 

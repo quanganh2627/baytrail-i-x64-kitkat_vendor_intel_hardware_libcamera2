@@ -109,22 +109,25 @@ private:
         ~WrapperLibVA();
         int init(void);
         /*
-            configure and create several surface with the max width/height
+            configure and create one or several surfaces with the width/height
             bufNum: created surface numbers
-            for example, we can set the maxWidth and maxHeight to 8M. although
-            the real picture size is 5M. we can create the max size surface to
-            avoid to create new surface for performance.
+            useCameraBuf: if true, we will pass camera buffer to libva
+                          if false, we will create buffer in the libva
+            cameraBuf: if useCameraBuf is true, this is used to pass the buffer
         */
-        int configSurface(int maxWidth, int maxHeight, int bufNum);
+        int configSurface(int width, int height, int bufNum, bool useCameraBuf, void *cameraBuf);
         /*
-            set the current encoding jpeg width and height
+            destroy context and surfaces
         */
-        int setJpegDimensions(int width, int height);
+        void destroySurface(void);
         /*
             copy RAW NV12 data to the internal of libva
-            pRaw: point to the RAW NV12 data
+            pRaw: point to the RAW NV12 data.
+                  it can be null if useCameraBuf is true
+            useCameraBuf: if true, copy camera buffer data to libva
+                          if false, no need to copy
         */
-        int getJpegSrcData(void *pRaw);
+        int getJpegSrcData(void *pRaw, bool useCameraBuf);
         /*
             this function is used to set the jpeg quality
             quality: one value from 0 to 100
@@ -152,12 +155,14 @@ private:
         VABufferID mPicParamBuf;
         VAQMatrixBufferJPEG mQMatrix;
         VABufferID mQMatrixBuf;
+
+        // for using camera buffer mode
+        VASurfaceAttributeTPI mSurfaceAttrib; // use it if camera buffer is used
+        unsigned int mBuffers; // it's used to store camera buffers address
+
         // the picture dimensions
         int mPicWidth;
         int mPicHeight;
-        // we can use the max w/h to avoid re create the surface
-        int mMaxWidth;
-        int mMaxHeight;
         int mMaxOutJpegBufSize; // the max JPEG Buffer Size
         // only support NV12
         static const unsigned int mSupportedFormat = VA_RT_FORMAT_YUV420;
