@@ -3028,7 +3028,7 @@ status_t AtomISP::allocateMetaDataBuffers()
         initMetaDataBuf(metaDataBuf);
 
         metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].buff->data);
-        metaDataBuf->GetBytes(meta_data_prt, meta_data_size);
+        metaDataBuf->Serialize(meta_data_prt, meta_data_size);
         mRecordingBuffers[i].metadata_buff = NULL;
         mCallbacks->allocateMemory(&mRecordingBuffers[i].metadata_buff, meta_data_size);
         LOG1("allocate metadata buffer[%d]  buff=%p size=%d",
