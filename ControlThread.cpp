@@ -139,7 +139,6 @@ status_t ControlThread::init(int cameraId)
         LOGE("error creating DVS");
         goto bail;
     }
-    mISP->setDvs(mDvs);
 
     mAAA = AtomAAA::getInstance();
     if (mAAA == NULL) {
@@ -781,7 +780,20 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     }
 
     // start the data flow
-    status = mISP->start(mode);
+    status = mISP->configure(mode);
+    if (status != NO_ERROR) {
+        LOGE("Error configuring ISP");
+        return status;
+    }
+
+    if (mAAA->is3ASupported()) {
+        if (mAAA->switchModeAndRate(mode, mISP->getFrameRate()) != NO_ERROR)
+            LOGE("Failed switching 3A at %.2f fps", mISP->getFrameRate());
+        if (mode == MODE_VIDEO && mDvs->reconfigure() != NO_ERROR)
+            LOGE("Failed to reconfigure DVS grid");
+    }
+
+    status = mISP->start();
     if (status == NO_ERROR) {
         memset(mCoupledBuffers, 0, sizeof(mCoupledBuffers));
         mState = state;
@@ -1552,8 +1564,17 @@ status_t ControlThread::captureStillPic()
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("start ISP", -1);
 
-    if ((status = mISP->start(MODE_CAPTURE)) != NO_ERROR) {
-        LOGE("Error starting the ISP driver in CAPTURE mode!");
+    if ((status = mISP->configure(MODE_CAPTURE)) != NO_ERROR) {
+        LOGE("Error configuring the ISP driver for CAPTURE mode");
+        return status;
+    }
+
+    if (mAAA->is3ASupported())
+        if (mAAA->switchModeAndRate(MODE_CAPTURE, mISP->getFrameRate()) != NO_ERROR)
+            LOGE("Failed to switch 3A to capture mode at %.2f fps", mISP->getFrameRate());
+
+    if ((status = mISP->start()) != NO_ERROR) {
+        LOGE("Error starting the ISP driver in CAPTURE mode");
         return status;
     }
 

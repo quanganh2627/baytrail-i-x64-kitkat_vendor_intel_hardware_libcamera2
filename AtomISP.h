@@ -30,12 +30,6 @@
 #include "AtomAAA.h"
 
 namespace android {
-class AtomISP;
-};
-
-#include "AtomDvs.h"
-
-namespace android {
 
 #define MAX_V4L2_BUFFERS    MAX_BURST_BUFFERS
 #define MAX_CAMERA_NODES    MAX_CAMERAS + 1
@@ -80,7 +74,8 @@ public:
 
     void getDefaultParameters(CameraParameters *params, CameraParameters *intel_params);
 
-    status_t start(AtomMode mode);
+    status_t configure(AtomMode mode);
+    status_t start();
     status_t stop();
     status_t releaseCaptureBuffers();
 
@@ -152,7 +147,6 @@ public:
    // Enable metadata buffer mode API
    status_t storeMetaDataInBuffers(bool enabled);
 
-   void setDvs(AtomDvs *dvs);
 // private methods
 private:
 
@@ -161,10 +155,13 @@ private:
     status_t initCameraInput(int cameraId);
     void initFileInject(void);
 
+    status_t configurePreview();
     status_t startPreview();
     status_t stopPreview();
+    status_t configureRecording();
     status_t startRecording();
     status_t stopRecording();
+    status_t configureCapture();
     status_t startCapture();
     status_t stopCapture();
 
@@ -329,7 +326,6 @@ private:
 
     SensorType mSensorType;
     AtomAAA *mAAA;
-    AtomDvs *mDvs;
     struct cameraInfo *mCameraInput;
 
     bool mLowLight;

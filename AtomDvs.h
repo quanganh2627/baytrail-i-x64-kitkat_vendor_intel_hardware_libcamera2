@@ -18,16 +18,12 @@
 #define ANDROID_LIBCAMERA_ATOM_DVS
 
 #include <utils/Errors.h>
+#include "AtomISP.h"
+
 extern "C" {
 #include <stdlib.h>
 #include <linux/atomisp.h>
 }
-
-namespace android {
-class AtomDvs;
-};
-
-#include "AtomISP.h"
 
 namespace android {
 

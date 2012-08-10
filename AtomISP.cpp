@@ -173,7 +173,6 @@ AtomISP::AtomISP() :
     ,mRecordingDevice(V4L2_FIRST_DEVICE)
     ,mSessionId(0)
     ,mAAA(AtomAAA::getInstance())
-    ,mDvs(NULL)
     ,mLowLight(false)
     ,mXnr(0)
     ,mZoomRatios(NULL)
@@ -245,11 +244,6 @@ status_t AtomISP::init(int cameraId)
 errorexit:
     closeDevice(V4L2_FIRST_DEVICE);
     return NO_INIT;
-}
-
-void AtomISP::setDvs(AtomDvs *dvs)
-{
-    mDvs = dvs;
 }
 
 int AtomISP::getPrimaryCameraIndex(void) const
@@ -876,7 +870,7 @@ status_t AtomISP::getIspParameters(struct atomisp_parm *isp_param) const
     return status;
 }
 
-status_t AtomISP::start(AtomMode mode)
+status_t AtomISP::configure(AtomMode mode)
 {
     LOG1("@%s", __FUNCTION__);
     LOG1("mode = %d", mode);
@@ -884,25 +878,47 @@ status_t AtomISP::start(AtomMode mode)
 
     switch (mode) {
     case MODE_PREVIEW:
+        status = configurePreview();
+        break;
+    case MODE_VIDEO:
+        status = configureRecording();
+        break;
+    case MODE_CAPTURE:
+        status = configureCapture();
+        break;
+    default:
+        status = UNKNOWN_ERROR;
+        break;
+    }
+
+    if (status == NO_ERROR)
+        mMode = mode;
+    return status;
+}
+
+status_t AtomISP::start()
+{
+    LOG1("@%s", __FUNCTION__);
+    LOG1("mode = %d", mMode);
+    status_t status = NO_ERROR;
+
+    switch (mMode) {
+    case MODE_PREVIEW:
         status = startPreview();
         break;
-
     case MODE_VIDEO:
         status = startRecording();
         break;
-
     case MODE_CAPTURE:
         status = startCapture();
         break;
-
     default:
+        status = UNKNOWN_ERROR;
         break;
     };
 
-    runStartISPActions();
-
     if (status == NO_ERROR) {
-        mMode = mode;
+        runStartISPActions();
         mSessionId++;
     }
 
@@ -962,7 +978,7 @@ status_t AtomISP::stop()
     return status;
 }
 
-status_t AtomISP::startPreview()
+status_t AtomISP::configurePreview()
 {
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
@@ -984,41 +1000,38 @@ status_t AtomISP::startPreview()
             mConfig.preview.format,
             false);
     if (ret < 0) {
-        LOGE("Configure preview device failed!");
         status = UNKNOWN_ERROR;
-        goto exitClose;
-    }
-
-    if (mAAA->is3ASupported()) {
-        if (mAAA->switchModeAndRate(MODE_PREVIEW, mConfig.fps) == NO_ERROR) {
-            LOG1("Switched 3A to MODE_PREVIEW at %.2f fps",
-                 mConfig.fps);
-        } else {
-            LOGW("Failed switching 3A to MODE_PREVIEW at %.2f fps",
-                 mConfig.fps);
-        }
+        goto err;
     }
 
     // need to resend the current zoom value
     atomisp_set_zoom(main_fd, mConfig.zoom);
+    return status;
+
+err:
+    stopDevice(mPreviewDevice);
+    return status;
+}
+
+status_t AtomISP::startPreview()
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret = 0;
+    status_t status = NO_ERROR;
 
     ret = startDevice(mPreviewDevice, mNumPreviewBuffers);
     if (ret < 0) {
         LOGE("Start preview device failed!");
         status = UNKNOWN_ERROR;
-        goto exitClose;
+        goto err;
     }
 
     mNumPreviewBuffersQueued = mNumPreviewBuffers;
 
     return status;
 
-exitClose:
-    stopDevice(mPreviewDevice);
-exitFree:
-    freePreviewBuffers();
-    if (mFileInject.active == true)
-        stopFileInject();
+err:
+    stopPreview();
     return status;
 }
 
@@ -1035,7 +1048,8 @@ status_t AtomISP::stopPreview()
     return NO_ERROR;
 }
 
-status_t AtomISP::startRecording() {
+status_t AtomISP::configureRecording()
+{
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
     status_t status = NO_ERROR;
@@ -1049,18 +1063,18 @@ status_t AtomISP::startRecording() {
         startFileInject();
 
     if ((status = allocatePreviewBuffers()) != NO_ERROR)
-        goto exitFreeRec;
+        goto err;
 
     if (mStoreMetaDataInBuffers) {
       if ((status = allocateMetaDataBuffers()) != NO_ERROR)
-          goto exitFreeRec;
+          goto err;
     }
 
     ret = openDevice(mPreviewDevice);
     if (ret < 0) {
         LOGE("Open preview device failed!");
         status = UNKNOWN_ERROR;
-        goto exitFreePrev;
+        goto err;
     }
 
     ret = configureDevice(
@@ -1073,7 +1087,7 @@ status_t AtomISP::startRecording() {
     if (ret < 0) {
         LOGE("Configure recording device failed!");
         status = UNKNOWN_ERROR;
-        goto exitClosePrev;
+        goto err;
     }
 
     ret = configureDevice(
@@ -1086,34 +1100,34 @@ status_t AtomISP::startRecording() {
     if (ret < 0) {
         LOGE("Configure recording device failed!");
         status = UNKNOWN_ERROR;
-        goto exitClosePrev;
+        goto err;
     }
 
-    if (mAAA->is3ASupported()) {
-        if (mAAA->switchModeAndRate(MODE_VIDEO, mConfig.fps) == NO_ERROR) {
-            LOG1("Switched 3A to MODE_VIDEO at %.2f fps",
-                 mConfig.fps);
-        } else {
-            LOGW("Failed switching 3A to MODE_VIDEO at %.2f fps",
-                 mConfig.fps);
-        }
-        if (mDvs && mDvs->reconfigure() != NO_ERROR) {
-            LOGE("Failed to reconfigure DVS grid");
-        }
-    }
+    return status;
+
+err:
+    stopRecording();
+    return status;
+}
+
+status_t AtomISP::startRecording()
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret = 0;
+    status_t status = NO_ERROR;
 
     ret = startDevice(mRecordingDevice, mNumBuffers);
     if (ret < 0) {
         LOGE("Start recording device failed");
         status = UNKNOWN_ERROR;
-        goto exitClosePrev;
+        goto err;
     }
 
     ret = startDevice(mPreviewDevice, mNumPreviewBuffers);
     if (ret < 0) {
         LOGE("Start preview device failed!");
         status = UNKNOWN_ERROR;
-        goto exitStopRec;
+        goto err;
     }
 
     mNumPreviewBuffersQueued = mNumPreviewBuffers;
@@ -1121,16 +1135,8 @@ status_t AtomISP::startRecording() {
 
     return status;
 
-exitStopRec:
-    stopDevice(mRecordingDevice);
-exitClosePrev:
-    closeDevice(mPreviewDevice);
-exitFreePrev:
-    freePreviewBuffers();
-exitFreeRec:
-    freeRecordingBuffers();
-    if (mFileInject.active == true)
-        stopFileInject();
+err:
+    stopRecording();
     return status;
 }
 
@@ -1151,7 +1157,7 @@ status_t AtomISP::stopRecording()
     return NO_ERROR;
 }
 
-status_t AtomISP::startCapture()
+status_t AtomISP::configureCapture()
 {
     LOG1("@%s", __FUNCTION__);
     int ret;
@@ -1198,20 +1204,24 @@ status_t AtomISP::startCapture()
         goto errorCloseSecond;
     }
 
-    if (mAAA->is3ASupported()) {
-        if (mAAA->switchModeAndRate(MODE_CAPTURE, mConfig.fps) == NO_ERROR) {
-            LOG1("Switched 3A to MODE_CAPTURE at %.2f fps",
-                 mConfig.fps);
-        } else {
-            LOGW("Failed switching 3A to MODE_CAPTURE at %.2f fps",
-                 mConfig.fps);
-        }
-    }
-
     // need to resend the current zoom value
     atomisp_set_zoom(main_fd, mConfig.zoom);
+    return status;
 
+errorCloseSecond:
+    closeDevice(V4L2_SECOND_DEVICE);
+errorFreeBuf:
+    freeSnapshotBuffers();
+    if (mFileInject.active == true)
+        stopFileInject();
 
+    return status;
+}
+
+status_t AtomISP::startCapture()
+{
+    int ret;
+    status_t status = NO_ERROR;
     // Limited by driver, raw bayer image dump can support only 1 frame when setting
     // snapshot number. Otherwise, the raw dump image would be corrupted.
     int snapNum;
@@ -1224,7 +1234,7 @@ status_t AtomISP::startCapture()
     if (ret < 0) {
         LOGE("start capture on first device failed!");
         status = UNKNOWN_ERROR;
-        goto errorCloseSecond;
+        goto end;
     }
 
     ret = startDevice(V4L2_SECOND_DEVICE, snapNum);
@@ -1234,19 +1244,13 @@ status_t AtomISP::startCapture()
         goto errorStopFirst;
     }
 
-    mNumCapturegBuffersQueued = mConfig.num_snapshot;
-
+    mNumCapturegBuffersQueued = snapNum;
     return status;
 
 errorStopFirst:
     stopDevice(V4L2_FIRST_DEVICE);
-errorCloseSecond:
-    closeDevice(V4L2_SECOND_DEVICE);
-errorFreeBuf:
-    freeSnapshotBuffers();
-    if (mFileInject.active == true)
-        stopFileInject();
 
+end:
     return status;
 }
 
