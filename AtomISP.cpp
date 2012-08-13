@@ -154,7 +154,7 @@ static void computeZoomRatios(char *zoom_ratio, int max_count){
 //                          PUBLIC METHODS
 ////////////////////////////////////////////////////////////////////
 
-AtomISP::AtomISP(int cameraId) :
+AtomISP::AtomISP() :
     mMode(MODE_NONE)
     ,mCallbacks(Callbacks::getInstance())
     ,mNumBuffers(NUM_DEFAULT_BUFFERS)
@@ -184,7 +184,10 @@ AtomISP::AtomISP(int cameraId) :
 
     CLEAR(mSnapshotBuffers);
     CLEAR(mPostviewBuffers);
+}
 
+status_t AtomISP::init(int cameraId)
+{
     mConfig.fps = 30;
     mConfig.num_snapshot = 1;
     mConfig.zoom = 0;
@@ -193,7 +196,7 @@ AtomISP::AtomISP(int cameraId) :
     int ret = openDevice(V4L2_FIRST_DEVICE);
     if (ret < 0) {
         LOGE("Failed to open first device!");
-        return;
+        return NO_INIT;
     }
 
     initCameraInput(cameraId);
@@ -222,6 +225,8 @@ AtomISP::AtomISP(int cameraId) :
 
     mTimeRealMonoInterval = systemTime(SYSTEM_TIME_REALTIME) - systemTime(SYSTEM_TIME_MONOTONIC);
     LOG1("%s:(mTimeRealMonoInterval-SYSTEM_TIME_MONOTONIC):%lld", __func__, mTimeRealMonoInterval);
+
+    return NO_ERROR;
 }
 
 int AtomISP::getPrimaryCameraIndex(void) const

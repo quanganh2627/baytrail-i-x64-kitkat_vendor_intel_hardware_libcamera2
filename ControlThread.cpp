@@ -110,9 +110,15 @@ status_t ControlThread::init(int cameraId)
 
     status_t status = UNKNOWN_ERROR;
 
-    mISP = new AtomISP(cameraId);
+    mISP = new AtomISP();
     if (mISP == NULL) {
         LOGE("error creating ISP");
+        goto bail;
+    }
+
+    status = mISP->init(cameraId);
+    if (status != NO_ERROR) {
+        LOGE("Error initializing ISP with id %d", cameraId);
         goto bail;
     }
 

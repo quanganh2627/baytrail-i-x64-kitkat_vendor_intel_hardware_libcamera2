@@ -64,8 +64,10 @@ public:
 
 // constructor/destructor
 public:
-    AtomISP(int camera_id);
+    AtomISP(void);
     ~AtomISP();
+
+    status_t init(int camera_id);
 
 // public methods
 public:
