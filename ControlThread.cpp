@@ -2725,6 +2725,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_AUTO);
             }
             newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+            newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
             newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
             newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
             newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
@@ -3050,8 +3051,10 @@ status_t ControlThread::processParamAutoExposureMeteringMode(
 
         if (newVal == "auto") {
             mode = CAM_AE_METERING_MODE_AUTO;
-        } else if(newVal == "center") {
+        } else if (newVal == "center") {
             mode = CAM_AE_METERING_MODE_CENTER;
+        } else if (newVal == "spot") {
+            mode = CAM_AE_METERING_MODE_SPOT;
         }
 
         mAAA->setAeMeteringMode(mode);

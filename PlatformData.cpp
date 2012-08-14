@@ -20,6 +20,7 @@
 
 #include <assert.h>
 #include <camera.h>
+#include <camera/CameraParameters.h>
 #include "PlatformData.h"
 #include "PlatformMedfield.h"
 #include "PlatformClovertrail.h"
@@ -150,4 +151,48 @@ bool PlatformData::supportsDVS(int cameraId)
     }
     return res;
 }
+
+String8 PlatformData::supportedSceneModes()
+{
+    // TODO: Figure out a way to do product-specific configuration properly
+    // This is not actually a HW platform restriction as such, but a product config.
+
+    PlatformBase *i = getInstance();
+    int status = 0;
+    char modes[100];
+
+    // This is the basic set of scene modes, supported on all
+    // platforms:
+    status = snprintf(modes, sizeof(modes)
+            ,"%s,%s,%s,%s,%s,%s,%s"
+            ,CameraParameters::SCENE_MODE_AUTO
+            ,CameraParameters::SCENE_MODE_PORTRAIT
+            ,CameraParameters::SCENE_MODE_SPORTS
+            ,CameraParameters::SCENE_MODE_LANDSCAPE
+            ,CameraParameters::SCENE_MODE_NIGHT
+            ,CameraParameters::SCENE_MODE_FIREWORKS
+            ,CameraParameters::SCENE_MODE_BARCODE);
+    if (status < 0 || status >= sizeof(modes)) {
+        LOGE("Could not generate scene mode string. status = %d, error: %s",
+             status, strerror(errno));
+        return String8::empty();
+    }
+
+    // Generally the flash is supported, so let's add the rest of the
+    // supported scene modes that require flash:
+    if (i->mBackFlash) {
+        status = snprintf(modes, sizeof(modes)
+                ,"%s,%s"
+                ,modes
+                ,CameraParameters::SCENE_MODE_NIGHT_PORTRAIT);
+        if (status < 0 || status >= sizeof(modes)) {
+            LOGE("Could not generate scene mode string. status = %d, error: %s",
+                 status, strerror(errno));
+            return String8::empty();
+        }
+    }
+
+    return String8(modes);
+}
+
 }; // namespace android

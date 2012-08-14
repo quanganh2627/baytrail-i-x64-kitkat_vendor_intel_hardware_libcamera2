@@ -599,18 +599,25 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     if(mAAA->is3ASupported()){
         // effect modes
         params->set(CameraParameters::KEY_EFFECT, CameraParameters::EFFECT_NONE);
-        char effectModes[100] = {0};
-        if (snprintf(effectModes, sizeof(effectModes)
+        char effectModes[200] = {0};
+        int status = snprintf(effectModes, sizeof(effectModes)
                 ,"%s,%s,%s,%s"
                 ,CameraParameters::EFFECT_NONE
                 ,CameraParameters::EFFECT_MONO
                 ,CameraParameters::EFFECT_NEGATIVE
-                ,CameraParameters::EFFECT_SEPIA) < 0) {
-            LOGE("Could not generate %s string: %s", CameraParameters::KEY_SUPPORTED_EFFECTS, strerror(errno));
+                ,CameraParameters::EFFECT_SEPIA);
+
+        if (status < 0) {
+            LOGE("Could not generate %s string: %s",
+                 CameraParameters::KEY_SUPPORTED_EFFECTS, strerror(errno));
+            return;
+        } else if (static_cast<unsigned>(status) >= sizeof(effectModes)) {
+            LOGE("Truncated %s string. Reserved length: %d",
+                 CameraParameters::KEY_SUPPORTED_EFFECTS, sizeof(effectModes));
             return;
         }
         params->set(CameraParameters::KEY_SUPPORTED_EFFECTS, effectModes);
-        if (snprintf(effectModes, sizeof(effectModes)
+        status = snprintf(effectModes, sizeof(effectModes)
                 ,"%s,%s,%s,%s, %s,%s,%s,%s,%s"
                 ,CameraParameters::EFFECT_NONE
                 ,CameraParameters::EFFECT_MONO
@@ -620,8 +627,15 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
                 ,IntelCameraParameters::EFFECT_STILL_GRASS_GREEN
                 ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_LOW
                 ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_MEDIUM
-                ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_HIGH) < 0) {
-            LOGE("Could not generate %s string: %s", CameraParameters::KEY_SUPPORTED_EFFECTS, strerror(errno));
+                ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_HIGH);
+
+        if (status < 0) {
+            LOGE("Could not generate %s string: %s",
+                 CameraParameters::KEY_SUPPORTED_EFFECTS, strerror(errno));
+            return;
+        } else if (static_cast<unsigned>(status) >= sizeof(effectModes)) {
+            LOGE("Truncated %s string for Intel params. Reserved length: %d",
+                 CameraParameters::KEY_SUPPORTED_EFFECTS, sizeof(effectModes));
             return;
         }
         intel_params->set(CameraParameters::KEY_SUPPORTED_EFFECTS, effectModes);
@@ -629,47 +643,34 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
         // white-balance mode
         params->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
         char wbModes[100] = {0};
-        if (snprintf(wbModes, sizeof(wbModes)
+        status = snprintf(wbModes, sizeof(wbModes)
                 ,"%s,%s,%s,%s,%s"
                 ,CameraParameters::WHITE_BALANCE_AUTO
                 ,CameraParameters::WHITE_BALANCE_INCANDESCENT
                 ,CameraParameters::WHITE_BALANCE_FLUORESCENT
                 ,CameraParameters::WHITE_BALANCE_DAYLIGHT
-                ,CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT) < 0) {
-            LOGE("Could not generate %s string: %s", CameraParameters::KEY_SUPPORTED_WHITE_BALANCE, strerror(errno));
+                ,CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT);
+        if (status < 0) {
+            LOGE("Could not generate %s string: %s",
+                 CameraParameters::KEY_SUPPORTED_WHITE_BALANCE, strerror(errno));
+            return;
+        } else if (static_cast<unsigned>(status) >= sizeof(wbModes)) {
+            LOGE("Truncated %s string. Reserved length: %d",
+                 CameraParameters::KEY_SUPPORTED_WHITE_BALANCE, sizeof(wbModes));
             return;
         }
         params->set(CameraParameters::KEY_SUPPORTED_WHITE_BALANCE, wbModes);
 
         // scene mode
         params->set(CameraParameters::KEY_SCENE_MODE, CameraParameters::SCENE_MODE_AUTO);
-        char sceneModes[100] = {0};
-        if (snprintf(sceneModes, sizeof(sceneModes)
-                ,"%s,%s,%s,%s,%s,%s"
-                ,CameraParameters::SCENE_MODE_AUTO
-                ,CameraParameters::SCENE_MODE_PORTRAIT
-                ,CameraParameters::SCENE_MODE_SPORTS
-                ,CameraParameters::SCENE_MODE_LANDSCAPE
-                ,CameraParameters::SCENE_MODE_NIGHT
-                ,CameraParameters::SCENE_MODE_FIREWORKS) < 0) {
-            LOGE("Could not generate %s string: %s", CameraParameters::KEY_SUPPORTED_SCENE_MODES, strerror(errno));
-            return;
-        }
-        params->set(CameraParameters::KEY_SUPPORTED_SCENE_MODES, sceneModes);
+        String8 sceneModes = PlatformData::supportedSceneModes();
 
-#ifdef RED_EYE_MODE_SUPPORT
-        // red-eye mode
-        intel_params->set(CameraParameters::KEY_RED_EYE_MODE, IntelCameraParameters::RED_EYE_REMOVAL_OFF);
-        char redEyeModes[100] = {0};
-        if (snprintf(redEyeModes, sizeof(redEyeModes)
-                ,"%s,%s"
-                ,IntelCameraParameters::RED_EYE_REMOVAL_ON
-                ,IntelCameraParameters::RED_EYE_REMOVAL_OFF) < 0) {
-            LOGE("Could not generate %s string: %s", IntelCameraParameters::KEY_SUPPORTED_RED_EYE_MODES, strerror(errno));
+        if (sceneModes.isEmpty()) {
+            LOGE("Error in getting supported scene modes.");
             return;
         }
-        intel_params->set(CameraParameters::KEY_SUPPORTED_RED_EYE_MODES, redEyeModes);
-#endif
+
+        params->set(CameraParameters::KEY_SUPPORTED_SCENE_MODES, sceneModes.string());
 
         // ae mode
         intel_params->set(IntelCameraParameters::KEY_AE_MODE, "auto");

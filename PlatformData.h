@@ -160,7 +160,12 @@ class PlatformData {
      */
     static bool supportsDVS(int cameraId);
 
-
+    /**
+     * Returns the supported scene modes for the platform
+     * \return Supported scene mode string, or empty string (String8::isEmpty() == true)
+     *  upon error.
+     */
+    static String8 supportedSceneModes();
 };
 
 } /* namespace android */
