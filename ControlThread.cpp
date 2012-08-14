@@ -1426,6 +1426,7 @@ status_t ControlThread::captureStillPic()
     }
 
     if (doEncode) {
+        LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
         postviewBuffer.width = pvWidth;
         postviewBuffer.height = pvHeight;
         status = mPictureThread->encode(&sensorParams, &snapshotBuffer, &postviewBuffer);
@@ -1579,6 +1580,7 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
             doEncode = true;
         }
         if (doEncode) {
+            LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
             postviewBuffer.width = pvWidth;
             postviewBuffer.height = pvHeight;
             status = mPictureThread->encode(&sensorParams, &snapshotBuffer, &postviewBuffer);
