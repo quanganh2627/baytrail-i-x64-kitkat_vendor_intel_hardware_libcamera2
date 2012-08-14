@@ -484,6 +484,7 @@ private:
     void     setExternalSnapshotBuffers(int format, int width, int heigth);
 
     // Capture Flow helpers
+    status_t getFlashExposedSnapshot(AtomBuffer *snaphotBuffer, AtomBuffer *postviewBuffer);
     status_t captureStillPic();
     status_t captureBurstPic(bool clientRequest);
 

@@ -2728,7 +2728,8 @@ status_t AtomISP::setSnapshotBuffers(void *buffs, int numBuffs)
     return NO_ERROR;
 }
 
-status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
+status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
+                              atomisp_frame_status *snapshotStatus)
 {
     LOG1("@%s", __FUNCTION__);
     struct v4l2_buffer buf;
@@ -2744,6 +2745,9 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
     }
     LOG1("Device: %d. Grabbed frame of size: %d", V4L2_FIRST_DEVICE, buf.bytesused);
     mSnapshotBuffers[snapshotIndex].capture_timestamp = buf.timestamp;
+
+    if (snapshotStatus)
+        *snapshotStatus = (atomisp_frame_status)buf.reserved;
 
     postviewIndex = grabFrame(V4L2_SECOND_DEVICE, &buf);
     if (postviewIndex < 0) {

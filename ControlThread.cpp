@@ -49,7 +49,11 @@ namespace android {
  * MAX_JPEG_BUFFERS: the maximum numbers of queued JPEG buffers
  */
 #define MAX_JPEG_BUFFERS 4
-
+/*
+ * FLASH_TIMEOUT_FRAMES: maximum number of frames to wait for
+ * a correctly exposed frame
+ */
+#define FLASH_TIMEOUT_FRAMES 5
 /*
  * ASPECT_TOLERANCE: the tolerance between aspect ratios to consider them the same
  */
@@ -1267,6 +1271,46 @@ status_t ControlThread::handleMessageTakePicture() {
     return status;
 }
 
+/**
+ * Gets a snapshot/postview frame pair from ISP when
+ * using flash.
+ *
+ * To ensure flash sync, the function fetches frames in
+ * a loop until a properly exposed frame is available.
+ */
+status_t ControlThread::getFlashExposedSnapshot(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer)
+{
+    LOG2("@%s:", __FUNCTION__);
+    status_t status = NO_ERROR;
+    for (int cnt = 0;;) {
+        enum atomisp_frame_status stat;
+
+        status = mISP->getSnapshot(snapshotBuffer, postviewBuffer, &stat);
+        if (status != NO_ERROR) {
+            LOGE("%s: Error in grabbing snapshot!", __FUNCTION__);
+            break;
+        }
+
+        if (stat == ATOMISP_FRAME_STATUS_FLASH_EXPOSED) {
+            LOG2("flash exposed, frame %d", cnt);
+            break;
+        }
+        else if (stat == ATOMISP_FRAME_STATUS_FLASH_FAILED) {
+            LOGE("%s: flash fail, frame %d", __FUNCTION__, cnt);
+            break;
+        }
+
+        if (cnt++ == FLASH_TIMEOUT_FRAMES) {
+            LOGE("%s: unexpected flash timeout, frame %d", __FUNCTION__, cnt);
+            break;
+        }
+
+        mISP->putSnapshot(snapshotBuffer, postviewBuffer);;
+    }
+
+    return status;
+}
+
 status_t ControlThread::captureStillPic()
 {
     LOG1("@%s: ", __FUNCTION__);
@@ -1277,6 +1321,7 @@ status_t ControlThread::captureStillPic()
     FlashMode flashMode = mAAA->getAeFlashMode();
     bool flashOn = (flashMode == CAM_AE_FLASH_MODE_TORCH ||
                     flashMode == CAM_AE_FLASH_MODE_ON);
+    bool flashFired = false;
     atomisp_makernote_info makerNote;
     SensorParams sensorParams;
 
@@ -1391,6 +1436,9 @@ status_t ControlThread::captureStillPic()
         if (mISP->setFlash(1) != NO_ERROR) {
             LOGE("Failed to enable the Flash!");
         }
+        else {
+            flashFired = true;
+        }
     } else if (DetermineFlash(flashMode)) {
         mISP->setFlashIndicator(TORCH_INTENSITY);
     }
@@ -1422,7 +1470,12 @@ status_t ControlThread::captureStillPic()
     }
 
     // Get the snapshot
-    if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
+    if (flashFired)
+        status = getFlashExposedSnapshot(&snapshotBuffer, &postviewBuffer);
+    else
+        status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
+
+    if (status != NO_ERROR) {
         LOGE("Error in grabbing snapshot!");
         return status;
     }

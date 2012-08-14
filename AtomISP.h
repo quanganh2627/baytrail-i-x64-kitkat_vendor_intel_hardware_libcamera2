@@ -88,7 +88,8 @@ public:
     status_t putRecordingFrame(AtomBuffer *buff);
 
     status_t setSnapshotBuffers(void *buffs, int numBuffs);
-    status_t getSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
+    status_t getSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf,
+                         atomisp_frame_status *snapshotStatus = NULL);
     status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
 
     bool dataAvailable();
