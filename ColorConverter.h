@@ -29,6 +29,8 @@ void NV12ToNV21(int width, int height, void *src, void *dst);
 
 void NV12ToYV12(int width, int height, void *src, void *dst);
 
+void NV12ToP411(int width, int height, void *src, void *dst);
+
 const char *cameraParametersFormat(int v4l2Format);
 int V4L2Format(const char *cameraParamsFormat);
 

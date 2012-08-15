@@ -38,6 +38,7 @@ LOCAL_SRC_FILES := \
 	ColorConverter.cpp \
 	EXIFMaker.cpp \
 	JpegCompressor.cpp \
+	SWJpegEncoder.cpp \
 	CallbacksThread.cpp \
 	LogHelper.cpp \
 	PlatformData.cpp \
@@ -64,8 +65,8 @@ LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/libmfldadvci \
 	$(TARGET_OUT_HEADERS)/libCameraFaceDetection \
 	$(TARGET_OUT_HEADERS)/pvr/hal \
-	$(TARGET_OUT_HEADERS)/libva 
-	
+	$(TARGET_OUT_HEADERS)/libva
+
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_C_INCLUDES += \
 	hardware/intel/libva
@@ -76,7 +77,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libutils \
 	libcutils \
 	libbinder \
-	libskia \
+	libjpeg \
 	libandroid \
 	libui \
 	libmfldadvci \
@@ -86,8 +87,6 @@ LOCAL_SHARED_LIBRARIES := \
 	libva-android 
 
 ifeq ($(USE_INTEL_JPEG), true)
-LOCAL_SHARED_LIBRARIES += \
-	libjpeg
 LOCAL_CFLAGS += -DUSE_INTEL_JPEG
 endif
 

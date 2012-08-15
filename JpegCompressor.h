@@ -18,7 +18,6 @@
 #define ANDROID_LIBCAMERA_JPEG_COMPRESSOR_H
 
 #include <stdio.h>
-#include "SkImageEncoder.h"
 #include "AtomCommon.h"
 #include <utils/Errors.h>
 
@@ -29,6 +28,8 @@
 #endif
 
 namespace android {
+
+class SWJpegEncoder;
 
 class JpegCompressor {
 public:
@@ -92,17 +93,16 @@ private:
     int mVaInputSurfacesNum;
     int mVaSurfaceWidth;
     int mVaSurfaceHeight;
+    // If the picture dimension is <= the below w x h
+    // We should use the software jpeg encoder
+    static const int MIN_HW_ENCODING_WIDTH = 640;
+    static const int MIN_HW_ENCODING_HEIGHT = 480;
 
-    SkImageEncoder* mJpegEncoder; // used for small images (< 512x512)
-    void *mJpegCompressStruct;
-    bool mStartSharedBuffersEncode;
-    bool mStartCompressDone;
-
-    bool convertRawImage(void* src, void* dst, int width, int height, int format);
     int swEncode(const InputBuffer &in, const OutputBuffer &out);
-#ifdef USE_INTEL_JPEG
     int hwEncode(const InputBuffer &in, const OutputBuffer &out);
 
+#ifdef USE_INTEL_JPEG
+    // for hw jpeg encoder
     class WrapperLibVA {
     public:
         WrapperLibVA();
@@ -187,7 +187,9 @@ private:
         int unmapJpegSrcBuffers(void);
     };
     class WrapperLibVA mLibVA;
-#endif
+#endif  // USE_INTEL_JPEG
+
+    SWJpegEncoder *mSWEncoder;
 };
 
 }; // namespace android

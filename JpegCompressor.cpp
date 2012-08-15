@@ -15,14 +15,10 @@
  */
 #define LOG_TAG "Camera_JpegCompressor"
 
-#define JPEG_BLOCK_SIZE 4096
-
 #include "JpegCompressor.h"
-#include "ColorConverter.h"
 #include "LogHelper.h"
-#include "SkBitmap.h"
-#include "SkStream.h"
 #include <string.h>
+#include "SWJpegEncoder.h"
 
 namespace android {
 
@@ -374,87 +370,66 @@ JpegCompressor::JpegCompressor() :
     mVaInputSurfacesNum(0)
     ,mVaSurfaceWidth(0)
     ,mVaSurfaceHeight(0)
-    ,mJpegCompressStruct(NULL)
-    ,mStartSharedBuffersEncode(false)
-    ,mStartCompressDone(false)
+    ,mSWEncoder(NULL)
 {
     LOG1("@%s", __FUNCTION__);
-    mJpegEncoder = SkImageEncoder::Create(SkImageEncoder::kJPEG_Type);
-    if (mJpegEncoder == NULL) {
-        LOGE("No memory for Skia JPEG encoder!");
-    }
     memset(mVaInputSurfacesPtr, 0, sizeof(mVaInputSurfacesPtr));
+    mSWEncoder = new SWJpegEncoder();
 }
 
 JpegCompressor::~JpegCompressor()
 {
     LOG1("@%s", __FUNCTION__);
-    if (mJpegEncoder != NULL) {
-        LOG1("Deleting Skia JPEG encoder...");
-        delete mJpegEncoder;
-    }
-}
 
-bool JpegCompressor::convertRawImage(void* src, void* dst, int width, int height, int format)
-{
-    LOG1("@%s", __FUNCTION__);
-    bool ret = true;
-    switch (format) {
-    case V4L2_PIX_FMT_NV12:
-        LOG1("Converting frame from NV12 to RGB565");
-        NV12ToRGB565(width, height, src, dst);
-        break;
-    case V4L2_PIX_FMT_YUV420:
-        LOG1("Converting frame from YUV420 to RGB565");
-        YUV420ToRGB565(width, height, src, dst);
-        break;
-    default:
-        LOGE("Unsupported color format: %s", v4l2Fmt2Str(format));
-        ret = false;
-    }
-    return ret;
+    if (mSWEncoder != NULL)
+        delete mSWEncoder;
 }
 
 int JpegCompressor::swEncode(const InputBuffer &in, const OutputBuffer &out)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s, use the libjpeg to do sw jpeg encoding", __FUNCTION__);
+    int status = 0;
 
-    // For SW path
-    SkBitmap skBitmap;
-    SkDynamicMemoryWStream skStream;
-
-    // Choose Skia
-    LOG1("Choosing Skia for JPEG encoding");
-    if (mJpegEncoder == NULL) {
-        LOGE("Skia JpegEncoder not created, cannot encode to JPEG!");
-        return -1;
-    }
-    bool success = convertRawImage((void*)in.buf, (void*)out.buf, in.width, in.height, in.format);
-    if (!success) {
-        LOGE("Could not convert the raw image!");
-        return -1;
-    }
-    skBitmap.setConfig(SkBitmap::kRGB_565_Config, in.width, in.height);
-    skBitmap.setPixels(out.buf, NULL);
-    LOG1("Encoding stream using Skia...");
-    if (mJpegEncoder->encodeStream(&skStream, skBitmap, out.quality)) {
-        mJpegSize = skStream.getOffset();
-        skStream.copyTo(out.buf);
-    } else {
-        LOGE("Skia could not encode the stream!");
+    if (NULL == mSWEncoder) {
+        LOGE("@%s, line:%d, mSWEncoder is NULL", __FUNCTION__, __LINE__);
+        mJpegSize = -1;
         return -1;
     }
 
-    return 0;
+    mSWEncoder->init();
+    mSWEncoder->setJpegQuality(out.quality);
+    status = mSWEncoder->configEncoding(in.width, in.height, (JSAMPLE *)out.buf, out.size);
+    if (status)
+        goto exit;
+
+    status = mSWEncoder->doJpegEncoding(in.buf);
+    if (status)
+        goto exit;
+
+exit:
+    mSWEncoder->deInit();
+
+    if (status)
+        mJpegSize = -1;
+    else
+        mSWEncoder->getJpegSize(&mJpegSize);
+
+    return (status ? -1 : 0);
 }
 
-#ifdef USE_INTEL_JPEG
 int JpegCompressor::hwEncode(const InputBuffer &in, const OutputBuffer &out)
 {
-    LOG1("@%s", __FUNCTION__);
-    int status;
+    LOG1("@%s, use the libva to do hw jpeg encoding", __FUNCTION__);
+    int status = -1;
     const bool use_camera_buf = true;  // true:use camera buf,false:use video buf
 
+    if ((in.width <= MIN_HW_ENCODING_WIDTH && in.height <= MIN_HW_ENCODING_HEIGHT)
+            || in.format != V4L2_PIX_FMT_NV12) {
+        LOG1("@%s, line:%d, not use the hw jpeg encoder", __FUNCTION__, __LINE__);
+        return -1;
+    }
+
+#ifdef USE_INTEL_JPEG
     status = mLibVA.init();
     if (status)
         goto exit;
@@ -482,10 +457,11 @@ int JpegCompressor::hwEncode(const InputBuffer &in, const OutputBuffer &out)
 exit:
     mLibVA.destroySurface();
     mLibVA.deInit();
+#endif // USE_INTEL_JPEG
 
     return (status ? -1 : 0);
 }
-#endif // USE_INTEL_JPEG
+
 
 // Takes YUV data (NV12 or YUV420) and outputs JPEG encoded stream
 int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
@@ -501,28 +477,12 @@ int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
         mJpegSize = -1;
         goto exit;
     }
-    // Decide the encoding path: Skia or libva
-    /*
-     * jpeglib can encode images using libva only if the image format is NV12 and
-     * image sizes are greater than 320x240. If the image does not meet this criteria,
-     * then encode it using Skia. For Skia, it is required an additional step:
-     * the color conversion of the image to RGB565.
-     * The 320x240 size was found in external/jpeg/jcapistd.c:27,28
-     */
-    if ((in.width <= 320 && in.height <= 240) || in.format != V4L2_PIX_FMT_NV12) {
+
+    // If the picture dimension <= MIN_HW_ENCODING_WIDTH x MIN_HW_ENCODING_HEIGHT
+    // The hwEncode will return -1
+    if (hwEncode(in, out) < 0) {
         if (swEncode(in, out) < 0)
             goto exit;
-    } else {
-#ifdef USE_INTEL_JPEG
-        LOG1("Choosing libva for HW JPEG encoding");
-        if (hwEncode(in, out) < 0) {
-            if (swEncode(in, out) < 0)
-                goto exit;
-        }
-#else
-        if (swEncode(in, out) < 0)
-            goto exit;
-#endif
     }
 
     return mJpegSize;
