@@ -438,7 +438,9 @@ void EXIFMaker::setThumbnail(unsigned char *data, size_t size)
     exifAttributes.enableThumb = true;
     exifAttributes.widthThumb = thumbWidth;
     exifAttributes.heightThumb = thumbHeight;
-    encoder.setThumbData(data, size);
+    if (encoder.setThumbData(data, size) != EXIF_SUCCESS) {
+        LOGE("Error in setting EXIF thumbnail");
+    }
 }
 
 size_t EXIFMaker::makeExif(unsigned char **data)

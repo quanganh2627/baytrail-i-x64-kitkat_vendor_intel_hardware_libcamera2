@@ -112,9 +112,18 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         outBuf.height = thumbBuf->height;
         outBuf.quality = mThumbnailQuality;
         outBuf.size = mOutBuf.buff->size;
-        endTime = systemTime();
-        int size = compressor.encode(inBuf, outBuf);
-        LOG1("Thumbnail JPEG size: %d (time to encode: %ums)", size, (unsigned)((systemTime() - endTime) / 1000000));
+        int size(0);
+        do {
+            endTime = systemTime();
+            size = compressor.encode(inBuf, outBuf);
+            LOG1("Thumbnail JPEG size: %d (time to encode: %ums)", size, (unsigned)((systemTime() - endTime) / 1000000));
+
+            if (size > MAX_EXIF_SIZE) {
+                outBuf.quality = outBuf.quality - 5;
+                LOGD("Thumbnail JPEG size(%d) is too big. Recode with lower quality: %d", size, outBuf.quality);
+            }
+        } while (size > MAX_EXIF_SIZE);
+
         if (size > 0) {
             exifMaker.setThumbnail(outBuf.buf, size);
         } else {
