@@ -556,6 +556,12 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
 
     /**
+     * GDC
+     */
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_GDC, "true,false");
+    intel_params->set(IntelCameraParameters::KEY_GDC, CameraParameters::FALSE);
+
+    /**
      * EXPOSURE
      */
     params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION,0);
@@ -1776,6 +1782,17 @@ status_t AtomISP::setDVS(bool enable)
 
     return status;
 }
+
+status_t AtomISP::setGDC(bool enable)
+{
+    LOG1("@%s: %d", __FUNCTION__, enable);
+    status_t status;
+    status = atomisp_set_attribute(main_fd, V4L2_CID_ATOMISP_POSTPROCESS_GDC_CAC,
+                                   enable, "GDC");
+
+    return status;
+}
+
 status_t AtomISP::setLightFrequency(FlickerMode mode) {
 
     LOG1("@%s: %d", __FUNCTION__, (int) mode);

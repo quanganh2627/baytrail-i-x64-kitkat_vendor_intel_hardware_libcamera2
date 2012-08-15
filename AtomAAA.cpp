@@ -909,6 +909,17 @@ status_t AtomAAA::getEv(float *ret)
     return NO_ERROR;
 }
 
+status_t AtomAAA::setGDC(bool en)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s: en = %d", __FUNCTION__, en);
+
+    if(!mHas3A || ci_adv_enable_gdc(en) != 0)
+        return INVALID_OPERATION;
+
+    return NO_ERROR;
+}
+
 status_t AtomAAA::setManualShutter(float expTime)
 {
     Mutex::Autolock lock(m3aLock);

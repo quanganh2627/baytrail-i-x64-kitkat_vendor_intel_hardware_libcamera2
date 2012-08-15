@@ -2076,7 +2076,10 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             status = processParamXNR_ANR(oldParams, newParams);
         }
 
-
+        if (status == NO_ERROR) {
+            // GDC
+            status = processParamGDC(oldParams, newParams);
+        }
 
         if (status == NO_ERROR) {
             // Capture bracketing
@@ -2237,6 +2240,27 @@ status_t ControlThread::processParamXNR_ANR(const CameraParameters *oldParams,
 
     return status;
 }
+
+status_t ControlThread::processParamGDC(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, IntelCameraParameters::KEY_GDC);
+
+    if (newVal.isEmpty() != true) {
+        bool enable = (newVal == CameraParameters::TRUE);
+        status = mAAA->setGDC(enable);
+        if (status != NO_ERROR)
+            return status;
+        status = mISP->setGDC(enable);
+        LOG1("%s: mISP->setGDC(%d): status=%d", __FUNCTION__, enable, status);
+    }
+
+    return status;
+}
+
 /**
  * Processing of antibanding parameters
  * it checks if the parameter changed and then it selects the correct

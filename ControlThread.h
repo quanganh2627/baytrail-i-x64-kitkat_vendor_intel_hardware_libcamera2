@@ -430,6 +430,8 @@ private:
             CameraParameters *newParams);
     status_t processParamXNR_ANR(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    status_t processParamGDC(const CameraParameters *oldParams,
+            CameraParameters *newParams);
     status_t processParamAntiBanding(const CameraParameters *oldParams,
                                            CameraParameters *newParams);
     status_t processParamFocusMode(const CameraParameters *oldParams,

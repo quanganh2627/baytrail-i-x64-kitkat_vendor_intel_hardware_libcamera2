@@ -250,6 +250,7 @@ public:
     status_t applyEv(float bias);
     status_t setEv(float bias);
     status_t getEv(float *ret);
+    status_t setGDC(bool en);
     status_t setManualIso(int ret);
     status_t getManualIso(int *ret);
     status_t setManualShutter(float expTime);
