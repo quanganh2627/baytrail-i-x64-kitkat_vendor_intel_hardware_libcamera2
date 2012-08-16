@@ -957,8 +957,25 @@ status_t ControlThread::handleMessageStopRecording()
     return status;
 }
 
+status_t ControlThread::skipPreviewFrames(int numFrames, AtomBuffer* buff)
+{
+    LOG1("@%s: numFrames=%d", __FUNCTION__, numFrames);
+
+    for (int i = 0; i < numFrames; i++) {
+        status_t status = mISP->getPreviewFrame(buff);
+        if (status == NO_ERROR)
+            mISP->putPreviewFrame(buff);
+        else
+            return INVALID_OPERATION;
+    }
+    return NO_ERROR;
+}
+
+
 bool ControlThread::runPreFlashSequence()
 {
+    LOG2("@%s", __FUNCTION__);
+
     size_t framesTillFlashComplete = 0;
     AtomBuffer buff;
     bool ret = false;
@@ -974,6 +991,13 @@ bool ControlThread::runPreFlashSequence()
         return ret;
     }
 
+    // Stage 1.5: Skip 2 frames to get exposure from Stage 1.
+    //            First frame is for sensor to pick up the new value
+    //            and second for sensor to apply it.
+    status = skipPreviewFrames(2, &buff);
+    if (status != NO_ERROR)
+        return ret;
+
     // Stage 2
     status = mISP->getPreviewFrame(&buff);
     if (status == NO_ERROR) {
@@ -982,6 +1006,11 @@ bool ControlThread::runPreFlashSequence()
     } else {
         return ret;
     }
+
+    // Stage 2.5: Same as above, but for Stage 2.
+    status = skipPreviewFrames(2, &buff);
+    if (status != NO_ERROR)
+        return ret;
 
     // Stage 3: get the flash-exposed preview frame
     // and let the 3A library calculate the exposure
