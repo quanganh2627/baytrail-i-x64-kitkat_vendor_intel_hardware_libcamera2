@@ -1599,15 +1599,8 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
         LOGW("Could not get maker note information!");
     }
 
-    // Turn on flash. If flash mode is torch, then torch is already on
-    if (flashOn && flashMode != CAM_AE_FLASH_MODE_TORCH) {
-        LOG1("Requesting flash");
-        if (mISP->setFlash(1) != NO_ERROR) {
-            LOGE("Failed to enable the Flash!");
-        }
-    } else if (DetermineFlash(flashMode)) {
-        mISP->setFlashIndicator(TORCH_INTENSITY);
-    }
+    // note: flash is not supported in burst and continuous shooting
+    //       modes (this would be the place to enable it)
 
     if (mBurstLength > 1 && mBurstSkipFrames > 0) {
         LOG1("Skipping %d burst frames", mBurstSkipFrames);
@@ -1654,11 +1647,6 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     mAAA->getExposureInfo(sensorParams);
     if (mAAA->getEv(&sensorParams.evBias) != NO_ERROR) {
         sensorParams.evBias = EV_UPPER_BOUND;
-    }
-
-    // Turn off flash
-    if (!flashOn && DetermineFlash(flashMode)) {
-        mISP->setFlashIndicator(0);
     }
 
     // Do jpeg encoding
