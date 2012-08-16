@@ -127,14 +127,14 @@ private:
 private:
 
     MessageQueue<Message, MessageId> mMessageQueue;
-    bool mThreadRunning;
-    Callbacks *mCallbacks;
+    bool        mThreadRunning;
+    Callbacks       *mCallbacks;
     CallbacksThread *mCallbacksThread;
-    JpegCompressor compressor;
-    SensorParams defaultSensorParams;
-    EXIFMaker exifMaker;
-    AtomBuffer mExifBuf;
-    AtomBuffer mOutBuf;
+    JpegCompressor   mCompressor;
+    SensorParams    mDefaultSensorParams;
+    EXIFMaker       mExifMaker;
+    AtomBuffer      mExifBuf;
+    AtomBuffer      mOutBuf;
 
     int mPictureQuality;
     int mThumbnailQuality;

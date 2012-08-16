@@ -47,7 +47,7 @@ PictureThread::~PictureThread()
     LOG1("@%s", __FUNCTION__);
     if (mUsingSharedBuffers) {
         // Keep the shared buffers until we die
-        compressor.stopSharedBuffersEncode();
+        mCompressor.stopSharedBuffersEncode();
     }
     if (mOutBuf.buff != NULL) {
         mOutBuf.buff->release(mOutBuf.buff);
@@ -92,7 +92,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     LOG1("Out buffer: @%p (%d bytes)", mOutBuf.buff->data, mOutBuf.buff->size);
     LOG1("Exif buffer: @%p (%d bytes)", mExifBuf.buff->data, mExifBuf.buff->size);
     // Convert and encode the thumbnail, if present and EXIF maker is initialized
-    if (exifMaker.isInitialized() &&
+    if (mExifMaker.isInitialized() &&
         thumbBuf != NULL &&
         thumbBuf->buff != NULL &&
         thumbBuf->buff->data != NULL &&
@@ -115,7 +115,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         int size(0);
         do {
             endTime = systemTime();
-            size = compressor.encode(inBuf, outBuf);
+            size = mCompressor.encode(inBuf, outBuf);
             LOG1("Thumbnail JPEG size: %d (time to encode: %ums)", size, (unsigned)((systemTime() - endTime) / 1000000));
 
             if (size > MAX_EXIF_SIZE) {
@@ -125,7 +125,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         } while (size > MAX_EXIF_SIZE);
 
         if (size > 0) {
-            exifMaker.setThumbnail(outBuf.buf, size);
+            mExifMaker.setThumbnail(outBuf.buf, size);
         } else {
             // This is not critical, we can continue with main picture image
             LOGE("Could not encode thumbnail stream!");
@@ -133,13 +133,13 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     }
     int totalSize = 0;
     int exifSize = 0;
-    if (exifMaker.isInitialized()) {
+    if (mExifMaker.isInitialized()) {
         // Copy the SOI marker
         unsigned char* currentPtr = (unsigned char*)mExifBuf.buff->data;
         memcpy(currentPtr, JPEG_MARKER_SOI, sizeof(JPEG_MARKER_SOI));
         totalSize += sizeof(JPEG_MARKER_SOI);
         currentPtr += sizeof(JPEG_MARKER_SOI);
-        exifSize = exifMaker.makeExif(&currentPtr);
+        exifSize = mExifMaker.makeExif(&currentPtr);
         currentPtr += exifSize;
         totalSize += exifSize;
         // Copy the EOI marker
@@ -168,7 +168,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     outBuf.quality = mPictureQuality;
     outBuf.size = mOutBuf.buff->size;
     endTime = systemTime();
-    int mainSize = compressor.encode(inBuf, outBuf);
+    int mainSize = mCompressor.encode(inBuf, outBuf);
     LOG1("Picture JPEG size: %d (time to encode: %ums)", mainSize, (unsigned)((systemTime() - endTime) / 1000000));
     if (mainSize > 0) {
         // We will skip SOI marker from final file
@@ -206,10 +206,10 @@ status_t PictureThread::encode(SensorParams *sensorParams, AtomBuffer *snaphotBu
     Message msg;
     msg.id = MESSAGE_ID_ENCODE;
     if (sensorParams == NULL) {
-        sensorParams = &defaultSensorParams;
+        sensorParams = &mDefaultSensorParams;
     } else {
         // Update default SensorParams
-        defaultSensorParams = *sensorParams;
+        mDefaultSensorParams = *sensorParams;
     }
     msg.data.encode.sensorParams = *sensorParams;
     msg.data.encode.snaphotBuf = *snaphotBuf;
@@ -239,17 +239,16 @@ void PictureThread::getDefaultParameters(CameraParameters *params)
 
 void PictureThread::initialize(const CameraParameters &params, const atomisp_makernote_info &makerNote, bool flashUsed)
 {
-    exifMaker.initialize(params, makerNote);
-    defaultSensorParams = exifMaker.getSensorParams();
+    mExifMaker.initialize(params, makerNote);
+    mDefaultSensorParams = mExifMaker.getSensorParams();
     if (flashUsed)
-        exifMaker.enableFlash();
+        mExifMaker.enableFlash();
     int q = params.getInt(CameraParameters::KEY_JPEG_QUALITY);
     if (q != 0)
         mPictureQuality = q;
     q = params.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY);
     if (q != 0)
         mThumbnailQuality = q;
-    mUsingSharedBuffers = false;
 }
 
 void PictureThread::setNumberOfShots(int num)
@@ -284,9 +283,9 @@ status_t PictureThread::getSharedBuffers(int width, int height, void** sharedBuf
             return NO_MEMORY;
         }
     }
-    status = compressor.startSharedBuffersEncode(mOutBuf.buff->data, mOutBuf.buff->size);
+    status = mCompressor.startSharedBuffersEncode(mOutBuf.buff->data, mOutBuf.buff->size);
     if (status == NO_ERROR) {
-        status = compressor.getSharedBuffers(width, height, sharedBuffersPtr, sharedBuffersNum);
+        status = mCompressor.getSharedBuffers(width, height, sharedBuffersPtr, sharedBuffersNum);
         if (status == NO_ERROR) {
             mUsingSharedBuffers = true;
         }
@@ -359,7 +358,7 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 
     // Encode the image
     AtomBuffer *postviewBuf = msg->postviewBuf.buff == NULL ? NULL : &msg->postviewBuf;
-    exifMaker.setSensorParams(msg->sensorParams);
+    mExifMaker.setSensorParams(msg->sensorParams);
     status = encodeToJpeg(&msg->snaphotBuf, postviewBuf, &jpegBuf);
     if (status != NO_ERROR) {
         LOGE("Error generating JPEG image!");
@@ -392,7 +391,7 @@ status_t PictureThread::handleMessageReleaseBufs()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     if (mUsingSharedBuffers) {
-        status = compressor.stopSharedBuffersEncode();
+        status = mCompressor.stopSharedBuffersEncode();
         mUsingSharedBuffers = false;
     }
     return status;
