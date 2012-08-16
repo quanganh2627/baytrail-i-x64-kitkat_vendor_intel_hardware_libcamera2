@@ -1347,20 +1347,23 @@ status_t ControlThread::captureStillPic()
     stopFaceDetection();
 
     if (mBurstLength <= 1) {
-        // If flash mode is not ON or TORCH, check for other modes: AUTO, DAY_SYNC, SLOW_SYNC
-        if (!flashOn && mAAA->is3ASupported()) {
-            if (DetermineFlash(flashMode)) {
+        if (mAAA->is3ASupported()) {
+            // If flash mode is not ON or TORCH, check for other
+            // modes: AUTO, DAY_SYNC, SLOW_SYNC
 
+            if (!flashOn && DetermineFlash(flashMode)) {
                 // note: getAeFlashNecessary() should not be called when
                 //       assist light (or TORCH) is on.
                 if (mFlashAutoFocus)
                     LOGW("Assist light on when running pre-flash sequence");
 
                 flashOn = mAAA->getAeFlashNecessary();
-                if (flashOn) {
-                    if (mAAA->getAeMode() != CAM_AE_MODE_MANUAL) {
-                        flashOn = runPreFlashSequence();
-                    }
+            }
+
+            if (flashOn) {
+                if (mAAA->getAeMode() != CAM_AE_MODE_MANUAL &&
+                        flashMode != CAM_AE_FLASH_MODE_TORCH) {
+                    flashOn = runPreFlashSequence();
                 }
             }
         }
