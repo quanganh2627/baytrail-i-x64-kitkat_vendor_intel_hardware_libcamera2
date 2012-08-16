@@ -152,6 +152,8 @@ status_t AAAThread::handleMessageAutoFocus()
     status_t status = NO_ERROR;
 
     if (mAAA->is3ASupported()) {
+        mAfAeWasLocked = mAAA->getAeLock();
+        mAfAwbWasLocked = mAAA->getAwbLock();
         mAAA->setAfEnabled(true);
         mAAA->setAeLock(true);
         mAAA->setAwbLock(true);
@@ -218,8 +220,8 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
 
             if (stopStillAf) {
                 mAAA->stopStillAf();
-                mAAA->setAeLock(false);
-                mAAA->setAwbLock(false);
+                mAAA->setAeLock(mAfAeWasLocked);
+                mAAA->setAwbLock(mAfAwbWasLocked);
                 mAAA->setAfEnabled(false);
                 mStartAF = false;
                 mStopAF = false;
