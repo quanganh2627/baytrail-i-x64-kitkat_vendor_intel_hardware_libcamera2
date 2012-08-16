@@ -1350,6 +1350,12 @@ status_t ControlThread::captureStillPic()
         // If flash mode is not ON or TORCH, check for other modes: AUTO, DAY_SYNC, SLOW_SYNC
         if (!flashOn && mAAA->is3ASupported()) {
             if (DetermineFlash(flashMode)) {
+
+                // note: getAeFlashNecessary() should not be called when
+                //       assist light (or TORCH) is on.
+                if (mFlashAutoFocus)
+                    LOGW("Assist light on when running pre-flash sequence");
+
                 flashOn = mAAA->getAeFlashNecessary();
                 if (flashOn) {
                     if (mAAA->getAeMode() != CAM_AE_MODE_MANUAL) {
@@ -1717,7 +1723,7 @@ status_t ControlThread::handleMessageAutoFocus()
         if (!mFlashAutoFocus && DetermineFlash(flashMode)) {
             // Check the other modes
             LOG1("Flash mode = %d", flashMode);
-            if (mAAA->getAeFlashNecessary()) {
+            if (mAAA->getAfNeedAssistLight()) {
                 mFlashAutoFocus = true;
             }
         }

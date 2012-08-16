@@ -441,6 +441,19 @@ FlashMode AtomAAA::getAeFlashMode()
     return mFlashMode;
 }
 
+bool AtomAAA::getAfNeedAssistLight()
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    if(!mHas3A)
+        return false;
+
+    bool en = ia_3a_af_need_assist_light();
+
+    LOG1("%s returning %d", __FUNCTION__, en);
+    return en;
+}
+
 bool AtomAAA::getAeFlashNecessary()
 {
     Mutex::Autolock lock(m3aLock);

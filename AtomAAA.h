@@ -220,6 +220,7 @@ public:
     AeMode getAeMode();
     status_t setAfMode(AfMode mode);
     AfMode getAfMode();
+    bool getAfNeedAssistLight();
     status_t setAeFlashMode(FlashMode mode);
     FlashMode getAeFlashMode();
     bool getAeFlashNecessary();
