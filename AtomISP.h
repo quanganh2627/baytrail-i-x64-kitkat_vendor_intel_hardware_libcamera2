@@ -156,6 +156,7 @@ public:
 // private methods
 private:
 
+    void initDriverVersion(void);
     status_t init3A(int cameraId);
     void initFrameConfig(int cameraId);
     status_t initCameraInput(int cameraId);
@@ -234,10 +235,17 @@ private:
 private:
 
     static const int MAX_SENSOR_NAME_LENGTH = 32;
-    static const int V4L2_FIRST_DEVICE   = 0;
-    static const int V4L2_SECOND_DEVICE  = 1;
-    static const int V4L2_THIRD_DEVICE   = 2;
-    static const int V4L2_DEVICE_NUM = V4L2_THIRD_DEVICE + 1;
+
+    static const int V4L2_MAIN_DEVICE       = 0;
+    static const int V4L2_POSTVIEW_DEVICE   = 1;
+    static const int V4L2_PREVIEW_DEVICE    = 2;
+    static const int V4L2_INJECT_DEVICE     = 3;
+    static const int V4L2_LEGACY_VIDEO_PREVIEW_DEVICE = 1;
+
+    /**
+     * Maximum number of V4L2 devices node we support
+     */
+    static const int V4L2_MAX_DEVICE_COUNT  = V4L2_INJECT_DEVICE + 1;
 
     static const int NUM_DEFAULT_BUFFERS = 6;
 
@@ -304,8 +312,8 @@ private:
     int mFlashTorchSetting;
     Config mConfig;
 
-    int video_fds[V4L2_DEVICE_NUM];
-    unsigned int mFrameCounter[V4L2_DEVICE_NUM];
+    int video_fds[V4L2_MAX_DEVICE_COUNT];
+    unsigned int mFrameCounter[V4L2_MAX_DEVICE_COUNT];
 
     int dumpPreviewFrame(int previewIndex);
     int dumpRecordingFrame(int recordingIndex);
@@ -313,7 +321,7 @@ private:
     int dumpRawImageFlush(void);
     bool isDumpRawImageReady(void);
 
-    struct v4l2_buffer_pool v4l2_buf_pool[V4L2_DEVICE_NUM]; //pool[0] for device0 pool[1] for device1
+    struct v4l2_buffer_pool v4l2_buf_pool[V4L2_MAX_DEVICE_COUNT]; //pool[0] for device0 pool[1] for device1
 
     struct FileInject {
         String8 fileName;
@@ -326,6 +334,9 @@ private:
         char *mappedAddr;
     } mFileInject;
 
+    int mConfigSnapshotPreviewDevice;
+    int mConfigRecordingPreviewDevice;
+    int mConfigLastDevice;
     int mPreviewDevice;
     int mRecordingDevice;
 

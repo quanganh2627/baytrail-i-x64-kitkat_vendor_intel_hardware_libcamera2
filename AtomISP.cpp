@@ -30,7 +30,7 @@
 
 #define CLEAR(x) memset (&(x), 0, sizeof (x))
 #define PAGE_ALIGN(x) ((x + 0xfff) & 0xfffff000)
-#define main_fd video_fds[V4L2_FIRST_DEVICE]
+#define main_fd video_fds[V4L2_MAIN_DEVICE]
 
 #define DEFAULT_SENSOR_FPS      15.0
 
@@ -104,9 +104,10 @@ namespace android {
 //                          STATIC DATA
 ////////////////////////////////////////////////////////////////////
 
-static const char *dev_name_array[3] = {"/dev/video0",
-                                  "/dev/video1",
-                                  "/dev/video2"};
+static const char *dev_name_array[] = {"/dev/video0",
+                                       "/dev/video1",
+                                       "/dev/video2",
+                                       "/dev/video3" };
 
 /**
  * When image data injection is used, read OTP data from
@@ -170,8 +171,10 @@ AtomISP::AtomISP() :
     ,mNumRecordingBuffersQueued(0)
     ,mNumCapturegBuffersQueued(0)
     ,mFlashTorchSetting(0)
-    ,mPreviewDevice(V4L2_FIRST_DEVICE)
-    ,mRecordingDevice(V4L2_FIRST_DEVICE)
+    ,mConfigSnapshotPreviewDevice(V4L2_MAIN_DEVICE)
+    ,mConfigLastDevice(V4L2_PREVIEW_DEVICE)
+    ,mPreviewDevice(V4L2_MAIN_DEVICE)
+    ,mRecordingDevice(V4L2_MAIN_DEVICE)
     ,mSessionId(0)
     ,mAAA(AtomAAA::getInstance())
     ,mLowLight(false)
@@ -181,9 +184,8 @@ AtomISP::AtomISP() :
 {
     LOG1("@%s", __FUNCTION__);
 
-    video_fds[V4L2_FIRST_DEVICE] = -1;
-    video_fds[V4L2_SECOND_DEVICE] = -1;
-    video_fds[V4L2_THIRD_DEVICE] = -1;
+    for(int i = 0; i < V4L2_MAX_DEVICE_COUNT; i++)
+        video_fds[i] = -1;
 
     CLEAR(mSnapshotBuffers);
     CLEAR(mPostviewBuffers);
@@ -197,8 +199,10 @@ status_t AtomISP::init(int cameraId)
     mConfig.num_snapshot = 1;
     mConfig.zoom = 0;
 
+    initDriverVersion();
+
     // Open the main device first, this device will remain open during object life span
-    int ret = openDevice(V4L2_FIRST_DEVICE);
+    int ret = openDevice(V4L2_MAIN_DEVICE);
     if (ret < 0) {
         LOGE("Failed to open first device!");
         goto errorexit;
@@ -241,7 +245,7 @@ status_t AtomISP::init(int cameraId)
     return NO_ERROR;
 
 errorexit:
-    closeDevice(V4L2_FIRST_DEVICE);
+    closeDevice(V4L2_MAIN_DEVICE);
     return NO_INIT;
 }
 
@@ -258,6 +262,40 @@ int AtomISP::getPrimaryCameraIndex(void) const
     return res;
 }
 
+/**
+ * Detects which AtomISP kernel driver is used in the system
+ *
+ * Only to be called from 2nd stage contructor AtomISP::init().
+ */
+void AtomISP::initDriverVersion(void)
+{
+    struct stat buf;
+
+    /*
+     * This version of AtomISP supports two kernel driver variants:
+     *
+     *  1) driver that uses four distinct /dev/video device nodes and
+     *     has a separate device node for preview, and
+     *  2) driver that uses three /dev/video device nodes and uses
+     *     the first/main device both for snapshot preview and actual
+     *     main capture
+     */
+    int res = stat("/dev/video3", &buf);
+    if (!res) {
+        LOGD("Kernel with separate preview device node detected");
+
+        mConfigSnapshotPreviewDevice = V4L2_PREVIEW_DEVICE;
+        mConfigRecordingPreviewDevice = V4L2_PREVIEW_DEVICE;
+        mConfigLastDevice = 3;
+    }
+    else {
+        LOGD("Kernel with multiplexed preview and main devices detected");
+
+        mConfigSnapshotPreviewDevice = V4L2_MAIN_DEVICE;
+        mConfigRecordingPreviewDevice = V4L2_LEGACY_VIDEO_PREVIEW_DEVICE;
+        mConfigLastDevice = 2;
+    }
+}
 
 /**
  * Only to be called from 2nd stage contructor AtomISP::init().
@@ -425,7 +463,7 @@ AtomISP::~AtomISP()
         freeSnapshotBuffers();
     }
     mAAA->unInit();
-    closeDevice(V4L2_FIRST_DEVICE);
+    closeDevice(V4L2_MAIN_DEVICE);
 
     if (mZoomRatios)
         delete[] mZoomRatios;
@@ -1002,13 +1040,22 @@ status_t AtomISP::configurePreview()
     int ret = 0;
     status_t status = NO_ERROR;
 
-    mPreviewDevice = V4L2_FIRST_DEVICE;
+    mPreviewDevice = mConfigSnapshotPreviewDevice;
 
     if ((status = allocatePreviewBuffers()) != NO_ERROR)
         return status;
 
     if (mFileInject.active == true)
         startFileInject();
+
+    if (mPreviewDevice != V4L2_MAIN_DEVICE) {
+        ret = openDevice(mPreviewDevice);
+        if (ret < 0) {
+            LOGE("Open preview device failed!");
+            status = UNKNOWN_ERROR;
+            return status;
+        }
+    }
 
     ret = configureDevice(
             mPreviewDevice,
@@ -1060,6 +1107,9 @@ status_t AtomISP::stopPreview()
     stopDevice(mPreviewDevice);
     freePreviewBuffers();
 
+    if (mPreviewDevice != V4L2_MAIN_DEVICE)
+        closeDevice(mPreviewDevice);
+
     if (mFileInject.active == true)
         stopFileInject();
 
@@ -1072,7 +1122,7 @@ status_t AtomISP::configureRecording()
     int ret = 0;
     status_t status = NO_ERROR;
 
-    mPreviewDevice = V4L2_SECOND_DEVICE;
+    mPreviewDevice = mConfigRecordingPreviewDevice;
 
     if ((status = allocateRecordingBuffers()) != NO_ERROR)
         return status;
@@ -1190,7 +1240,7 @@ status_t AtomISP::configureCapture()
     updateCaptureParams();
 
     ret = configureDevice(
-            V4L2_FIRST_DEVICE,
+            V4L2_MAIN_DEVICE,
             CI_MODE_STILL_CAPTURE,
             mConfig.snapshot.width,
             mConfig.snapshot.height,
@@ -1202,7 +1252,7 @@ status_t AtomISP::configureCapture()
         goto errorFreeBuf;
     }
 
-    ret = openDevice(V4L2_SECOND_DEVICE);
+    ret = openDevice(V4L2_POSTVIEW_DEVICE);
     if (ret < 0) {
         LOGE("Open second device failed!");
         status = UNKNOWN_ERROR;
@@ -1210,7 +1260,7 @@ status_t AtomISP::configureCapture()
     }
 
     ret = configureDevice(
-            V4L2_SECOND_DEVICE,
+            V4L2_POSTVIEW_DEVICE,
             CI_MODE_STILL_CAPTURE,
             mConfig.postview.width,
             mConfig.postview.height,
@@ -1227,7 +1277,7 @@ status_t AtomISP::configureCapture()
     return status;
 
 errorCloseSecond:
-    closeDevice(V4L2_SECOND_DEVICE);
+    closeDevice(V4L2_POSTVIEW_DEVICE);
 errorFreeBuf:
     freeSnapshotBuffers();
     if (mFileInject.active == true)
@@ -1248,14 +1298,14 @@ status_t AtomISP::startCapture()
     else
         snapNum = mConfig.num_snapshot;
 
-    ret = startDevice(V4L2_FIRST_DEVICE, snapNum);
+    ret = startDevice(V4L2_MAIN_DEVICE, snapNum);
     if (ret < 0) {
         LOGE("start capture on first device failed!");
         status = UNKNOWN_ERROR;
         goto end;
     }
 
-    ret = startDevice(V4L2_SECOND_DEVICE, snapNum);
+    ret = startDevice(V4L2_POSTVIEW_DEVICE, snapNum);
     if (ret < 0) {
         LOGE("start capture on second device failed!");
         status = UNKNOWN_ERROR;
@@ -1266,7 +1316,13 @@ status_t AtomISP::startCapture()
     return status;
 
 errorStopFirst:
-    stopDevice(V4L2_FIRST_DEVICE);
+    stopDevice(V4L2_MAIN_DEVICE);
+errorCloseSecond:
+    closeDevice(V4L2_POSTVIEW_DEVICE);
+errorFreeBuf:
+    freeSnapshotBuffers();
+    if (mFileInject.active == true)
+        stopFileInject();
 
 end:
     return status;
@@ -1275,9 +1331,10 @@ end:
 status_t AtomISP::stopCapture()
 {
     LOG1("@%s", __FUNCTION__);
-    stopDevice(V4L2_SECOND_DEVICE);
-    stopDevice(V4L2_FIRST_DEVICE);
-    closeDevice(V4L2_SECOND_DEVICE);
+    stopDevice(V4L2_POSTVIEW_DEVICE);
+    stopDevice(V4L2_MAIN_DEVICE);
+    // note: MAIN device is kept open on purpose
+    closeDevice(V4L2_POSTVIEW_DEVICE);
     if (mFileInject.active == true)
         stopFileInject();
     mUsingClientSnapshotBuffers = false;
@@ -1298,7 +1355,7 @@ int AtomISP::configureDevice(int device, int deviceMode, int w, int h, int forma
     LOG1("device: %d, width:%d, height:%d, deviceMode:%d format:%d raw:%d", device,
         w, h, deviceMode, format, raw);
 
-    if ((device < V4L2_FIRST_DEVICE) || (device > V4L2_SECOND_DEVICE)) {
+    if ((device < V4L2_MAIN_DEVICE) || (device > mConfigLastDevice)) {
         LOGE("Wrong device: %d", device);
         return -1;
     }
@@ -1328,7 +1385,8 @@ int AtomISP::configureDevice(int device, int deviceMode, int w, int h, int forma
 
     /* 3A related initialization*/
     //Reallocate the grid for 3A after format change
-    if (device == V4L2_FIRST_DEVICE) {
+    if (device == V4L2_MAIN_DEVICE ||
+        device == V4L2_PREVIEW_DEVICE) {
         ret = v4l2_capture_g_framerate(fd, &mConfig.fps, w, h, format);
         if (ret < 0) {
         /*Error handler: if driver does not support FPS achieving,
@@ -1353,7 +1411,7 @@ int AtomISP::startDevice(int device, int buffer_count)
     LOG1("@%s", __FUNCTION__);
     LOG1("device = %d", device);
 
-    if ((device < V4L2_FIRST_DEVICE) || (device > V4L2_SECOND_DEVICE)) {
+    if (device < V4L2_MAIN_DEVICE || device > mConfigLastDevice) {
         LOGE("Wrong device: %d", device);
         return -1;
     }
@@ -1362,7 +1420,7 @@ int AtomISP::startDevice(int device, int buffer_count)
     int fd = video_fds[device];
     LOG1(" startDevice fd = %d", fd);
 
-    if (device == V4L2_FIRST_DEVICE &&
+    if (device == V4L2_MAIN_DEVICE &&
         mAAA->is3ASupported() &&
         mAAA->applyIspSettings() != NO_ERROR) {
         LOGE("Failed to apply 3A ISP settings. Disabling 3A!");
@@ -1451,10 +1509,12 @@ error:
 void AtomISP::stopDevice(int device)
 {
     LOG1("@%s: device = %d", __FUNCTION__, device);
-    if ((device < V4L2_FIRST_DEVICE) || (device > V4L2_SECOND_DEVICE)) {
+
+    if (device < V4L2_MAIN_DEVICE || device > mConfigLastDevice) {
         LOGE("Wrong device: %d", device);
         return;
     }
+
     int fd = video_fds[device];
 
     if (fd >= 0) {
@@ -1486,6 +1546,8 @@ int AtomISP::openDevice(int device)
     }
 
     video_fds[device] = v4l2_capture_open(device);
+
+    LOGW("Open device %d with fd %d", device, video_fds[device]);
 
     if (video_fds[device] < 0) {
         LOGE("V4L2: capture_open failed: %s", strerror(errno));
@@ -1522,7 +1584,7 @@ status_t AtomISP::selectCameraSensor()
 {
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
-    int device = V4L2_FIRST_DEVICE;
+    int device = V4L2_MAIN_DEVICE;
 
     //Choose the camera sensor
     LOG1("Selecting camera sensor: %s", mCameraInput->name);
@@ -1541,7 +1603,7 @@ int AtomISP::detectDeviceResolutions()
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
     struct v4l2_frmsizeenum frame_size;
-    int device = V4L2_FIRST_DEVICE;
+    int device = V4L2_MAIN_DEVICE;
 
     //Switch the Mode before try the format.
     ret = atomisp_set_capture_mode(MODE_CAPTURE);
@@ -1556,13 +1618,13 @@ int AtomISP::detectDeviceResolutions()
         /* TODO: Currently VIDIOC_ENUM_FRAMESIZES is returning with Invalid argument
          * Need to know why the driver is not supporting this V4L2 API call
          */
-        if (ioctl(video_fds[V4L2_FIRST_DEVICE], VIDIOC_ENUM_FRAMESIZES, &frame_size) < 0) {
+        if (ioctl(video_fds[V4L2_MAIN_DEVICE], VIDIOC_ENUM_FRAMESIZES, &frame_size) < 0) {
             break;
         }
         ret++;
         float fps = 0;
         v4l2_capture_g_framerate(
-                video_fds[V4L2_FIRST_DEVICE],
+                video_fds[V4L2_MAIN_DEVICE],
                 &fps,
                 frame_size.discrete.width,
                 frame_size.discrete.height,
@@ -1576,7 +1638,7 @@ int AtomISP::detectDeviceResolutions()
     // Get the maximum format supported
     mConfig.snapshot.maxWidth = 0xffff;
     mConfig.snapshot.maxHeight = 0xffff;
-    ret = v4l2_capture_try_format(V4L2_FIRST_DEVICE, &mConfig.snapshot.maxWidth, &mConfig.snapshot.maxHeight, &mConfig.snapshot.format);
+    ret = v4l2_capture_try_format(V4L2_MAIN_DEVICE, &mConfig.snapshot.maxWidth, &mConfig.snapshot.maxHeight, &mConfig.snapshot.format);
     if (ret < 0)
         return ret;
     return 0;
@@ -1946,7 +2008,7 @@ status_t AtomISP::setZoom(int zoom)
 status_t AtomISP::getMakerNote(atomisp_makernote_info *info)
 {
     LOG1("@%s: info = %p", __FUNCTION__, info);
-    int fd = video_fds[V4L2_FIRST_DEVICE];
+    int fd = video_fds[V4L2_MAIN_DEVICE];
 
     if (fd < 0) {
         return INVALID_OPERATION;
@@ -2135,7 +2197,7 @@ int AtomISP::startFileInject(void)
     LOG1("%s: enter", __FUNCTION__);
 
     int ret = 0;
-    int device = V4L2_THIRD_DEVICE;
+    int device = V4L2_INJECT_DEVICE;
     int buffer_count = 1;
 
     if (mFileInject.active != true) {
@@ -2144,6 +2206,7 @@ int AtomISP::startFileInject(void)
     }
 
     video_fds[device] = v4l2_capture_open(device);
+
     if (video_fds[device] < 0)
         goto error1;
 
@@ -2204,7 +2267,7 @@ int AtomISP::stopFileInject(void)
 {
     LOG1("%s: enter", __FUNCTION__);
     int device;
-    device = V4L2_THIRD_DEVICE;
+    device = V4L2_INJECT_DEVICE;
     if (video_fds[device] < 0)
         LOGW("%s: Already closed", __func__);
     destroyBufferPool(device);
@@ -2314,7 +2377,7 @@ int AtomISP::v4l2_capture_free_buffer(int device, struct v4l2_buffer_info *buf_i
     void *addr = buf_info->data;
     size_t length = buf_info->length;
 
-    if (device == V4L2_THIRD_DEVICE &&
+    if (device == V4L2_INJECT_DEVICE &&
         (ret = munmap(addr, length)) < 0) {
             LOGE("munmap returned: %d (%s)", ret, strerror(errno));
             return ret;
@@ -2345,7 +2408,7 @@ int AtomISP::v4l2_capture_request_buffers(int device, uint num_buffers)
     req_buf.count = num_buffers;
     req_buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
-    if (device == V4L2_THIRD_DEVICE) {
+    if (device == V4L2_INJECT_DEVICE) {
         req_buf.memory = V4L2_MEMORY_MMAP;
         req_buf.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
     }
@@ -2374,7 +2437,7 @@ int AtomISP::v4l2_capture_new_buffer(int device, int index, struct v4l2_buffer_i
     struct v4l2_buffer *vbuf = &buf->vbuffer;
     vbuf->flags = 0x0;
 
-    if (device == V4L2_THIRD_DEVICE) {
+    if (device == V4L2_INJECT_DEVICE) {
         vbuf->index = index;
         vbuf->type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
         vbuf->memory = V4L2_MEMORY_MMAP;
@@ -2469,7 +2532,7 @@ int AtomISP::v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc,
     struct v4l2_format v4l2_fmt;
     CLEAR(v4l2_fmt);
 
-    if (device == V4L2_THIRD_DEVICE) {
+    if (device == V4L2_INJECT_DEVICE) {
         v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
         v4l2_fmt.fmt.pix.width = mFileInject.width;
         v4l2_fmt.fmt.pix.height = mFileInject.height;
@@ -2553,7 +2616,7 @@ status_t AtomISP::v4l2_capture_open(int device)
     int fd;
     struct stat st;
 
-    if ((device < V4L2_FIRST_DEVICE) || (device > V4L2_THIRD_DEVICE)) {
+    if (device < V4L2_MAIN_DEVICE || device > mConfigLastDevice) {
         LOGE("Wrong device node %d", device);
         return -1;
     }
@@ -2613,7 +2676,7 @@ status_t AtomISP::v4l2_capture_querycap(int device, struct v4l2_capability *cap)
         return ret;
     }
 
-    if (device == V4L2_THIRD_DEVICE) {
+    if (device == V4L2_INJECT_DEVICE) {
         if (!(cap->capabilities & V4L2_CAP_VIDEO_OUTPUT)) {
             LOGE("No output devices");
             return -1;
@@ -2697,7 +2760,7 @@ int AtomISP::v4l2_capture_try_format(int device, int *w, int *h,
     struct v4l2_format v4l2_fmt;
     CLEAR(v4l2_fmt);
 
-    if (device == V4L2_THIRD_DEVICE) {
+    if (device == V4L2_INJECT_DEVICE) {
         *w = mFileInject.width;
         *h = mFileInject.height;
         *fourcc = mFileInject.format;
@@ -2884,41 +2947,41 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
     if (mMode != MODE_CAPTURE)
         return INVALID_OPERATION;
 
-    snapshotIndex = grabFrame(V4L2_FIRST_DEVICE, &buf);
+    snapshotIndex = grabFrame(V4L2_MAIN_DEVICE, &buf);
     if (snapshotIndex < 0) {
         LOGE("Error in grabbing frame from 1'st device!");
         return BAD_INDEX;
     }
-    LOG1("Device: %d. Grabbed frame of size: %d", V4L2_FIRST_DEVICE, buf.bytesused);
+    LOG1("Device: %d. Grabbed frame of size: %d", V4L2_MAIN_DEVICE, buf.bytesused);
     mSnapshotBuffers[snapshotIndex].capture_timestamp = buf.timestamp;
 
     if (snapshotStatus)
         *snapshotStatus = (atomisp_frame_status)buf.reserved;
 
-    postviewIndex = grabFrame(V4L2_SECOND_DEVICE, &buf);
+    postviewIndex = grabFrame(V4L2_POSTVIEW_DEVICE, &buf);
     if (postviewIndex < 0) {
         LOGE("Error in grabbing frame from 2'nd device!");
         // If we failed with the second device, return the frame to the first device
-        v4l2_capture_qbuf(video_fds[V4L2_FIRST_DEVICE], snapshotIndex,
-                &v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[snapshotIndex]);
+        v4l2_capture_qbuf(video_fds[V4L2_MAIN_DEVICE], snapshotIndex,
+                &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[snapshotIndex]);
         return BAD_INDEX;
     }
-    LOG1("Device: %d. Grabbed frame of size: %d", V4L2_SECOND_DEVICE, buf.bytesused);
+    LOG1("Device: %d. Grabbed frame of size: %d", V4L2_POSTVIEW_DEVICE, buf.bytesused);
     mPostviewBuffers[postviewIndex].capture_timestamp = buf.timestamp;
 
     if (snapshotIndex != postviewIndex ||
             snapshotIndex >= MAX_V4L2_BUFFERS) {
         LOGE("Indexes error! snapshotIndex = %d, postviewIndex = %d", snapshotIndex, postviewIndex);
         // Return the buffers back to driver
-        v4l2_capture_qbuf(video_fds[V4L2_FIRST_DEVICE], snapshotIndex,
-                &v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[snapshotIndex]);
-        v4l2_capture_qbuf(video_fds[V4L2_SECOND_DEVICE], postviewIndex,
-                &v4l2_buf_pool[V4L2_SECOND_DEVICE].bufs[postviewIndex]);
+        v4l2_capture_qbuf(video_fds[V4L2_MAIN_DEVICE], snapshotIndex,
+                &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[snapshotIndex]);
+        v4l2_capture_qbuf(video_fds[V4L2_POSTVIEW_DEVICE], postviewIndex,
+                &v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[postviewIndex]);
         return BAD_INDEX;
     }
 
     mSnapshotBuffers[snapshotIndex].id = snapshotIndex;
-    mSnapshotBuffers[snapshotIndex].frameCounter = mFrameCounter[V4L2_FIRST_DEVICE];
+    mSnapshotBuffers[snapshotIndex].frameCounter = mFrameCounter[V4L2_MAIN_DEVICE];
     mSnapshotBuffers[snapshotIndex].ispPrivate = mSessionId;
     *snapshotBuf = mSnapshotBuffers[snapshotIndex];
     snapshotBuf->width = mConfig.snapshot.width;
@@ -2927,7 +2990,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
     snapshotBuf->size = mConfig.snapshot.size;
 
     mPostviewBuffers[postviewIndex].id = postviewIndex;
-    mPostviewBuffers[postviewIndex].frameCounter = mFrameCounter[V4L2_SECOND_DEVICE];
+    mPostviewBuffers[postviewIndex].frameCounter = mFrameCounter[V4L2_POSTVIEW_DEVICE];
     mPostviewBuffers[postviewIndex].ispPrivate = mSessionId;
     *postviewBuf = mPostviewBuffers[postviewIndex];
     postviewBuf->width = mConfig.postview.width;
@@ -2953,11 +3016,11 @@ status_t AtomISP::putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf)
     if (snaphotBuf->ispPrivate != mSessionId || postviewBuf->ispPrivate != mSessionId)
         return DEAD_OBJECT;
 
-    ret0 = v4l2_capture_qbuf(video_fds[V4L2_FIRST_DEVICE], snaphotBuf->id,
-                      &v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[snaphotBuf->id]);
+    ret0 = v4l2_capture_qbuf(video_fds[V4L2_MAIN_DEVICE], snaphotBuf->id,
+                      &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[snaphotBuf->id]);
 
-    ret1 = v4l2_capture_qbuf(video_fds[V4L2_SECOND_DEVICE], postviewBuf->id,
-                      &v4l2_buf_pool[V4L2_SECOND_DEVICE].bufs[postviewBuf->id]);
+    ret1 = v4l2_capture_qbuf(video_fds[V4L2_POSTVIEW_DEVICE], postviewBuf->id,
+                      &v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[postviewBuf->id]);
     if (ret0 < 0 || ret1 < 0)
         return UNKNOWN_ERROR;
 
@@ -3003,7 +3066,7 @@ int AtomISP::grabFrame(int device, struct v4l2_buffer *buf)
     if (main_fd < 0)
         return -1;
 
-    if ((device < V4L2_FIRST_DEVICE) || (device > V4L2_SECOND_DEVICE)) {
+    if (device < V4L2_MAIN_DEVICE || device > mConfigLastDevice) {
         LOGE("Wrong device %d", device);
         return -1;
     }
@@ -3177,12 +3240,12 @@ status_t AtomISP::allocateSnapshotBuffers()
         mSnapshotBuffers[i].type = ATOM_BUFFER_SNAPSHOT;
         allocatedSnaphotBufs++;
         if (mUsingClientSnapshotBuffers) {
-            v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[i].data = mClientSnapshotBuffers[i];
+            v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i].data = mClientSnapshotBuffers[i];
             memcpy(mSnapshotBuffers[i].buff->data, &mClientSnapshotBuffers[i], sizeof(void *));
             mSnapshotBuffers[i].shared = true;
 
         } else {
-            v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[i].data = mSnapshotBuffers[i].buff->data;
+            v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i].data = mSnapshotBuffers[i].buff->data;
             mSnapshotBuffers[i].shared = false;
         }
 
@@ -3194,7 +3257,7 @@ status_t AtomISP::allocateSnapshotBuffers()
             goto errorFree;
         }
         allocatedPostviewBufs++;
-        v4l2_buf_pool[V4L2_SECOND_DEVICE].bufs[i].data = mPostviewBuffers[i].buff->data;
+        v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[i].data = mPostviewBuffers[i].buff->data;
         mPostviewBuffers[i].shared = false;
     }
     return status;
@@ -3551,7 +3614,7 @@ int AtomISP::dumpPreviewFrame(int previewIndex)
         CameraDump *cameraDump = CameraDump::getInstance();
         const struct v4l2_buffer_info *buf =
             &v4l2_buf_pool[mPreviewDevice].bufs[previewIndex];
-        if (V4L2_FIRST_DEVICE == mPreviewDevice)
+        if (mConfigRecordingPreviewDevice == mPreviewDevice)
             cameraDump->dumpImage2File(buf->data, mConfig.preview.size, mConfig.preview.width,
                                        mConfig.preview.height, DUMPIMAGE_RECORD_PREVIEW_FILENAME);
         else
@@ -3584,9 +3647,9 @@ int AtomISP::dumpSnapshot(int snapshotIndex, int postviewIndex)
         CameraDump *cameraDump = CameraDump::getInstance();
         if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_SNAPSHOT)) {
            const struct v4l2_buffer_info *buf0 =
-               &v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[snapshotIndex];
+               &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[snapshotIndex];
            const struct v4l2_buffer_info *buf1 =
-               &v4l2_buf_pool[V4L2_SECOND_DEVICE].bufs[postviewIndex];
+               &v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[postviewIndex];
            const char *name0 = "snap_v0.nv12";
            const char *name1 = "snap_v1.nv12";
            cameraDump->dumpImage2File(buf0->data, mConfig.snapshot.size, mConfig.snapshot.width,
@@ -3597,7 +3660,7 @@ int AtomISP::dumpSnapshot(int snapshotIndex, int postviewIndex)
 
         if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_YUV)) {
             const struct v4l2_buffer_info *buf =
-                &v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[snapshotIndex];
+                &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[snapshotIndex];
             cameraDump->dumpImage2Buf(buf->data, mConfig.snapshot.size, mConfig.snapshot.width,
                                       mConfig.snapshot.height);
         }
@@ -3608,7 +3671,7 @@ int AtomISP::dumpSnapshot(int snapshotIndex, int postviewIndex)
                                PAGE_ALIGN(mRawDataDumpSize),
                                PROT_READ | PROT_WRITE /* required */ ,
                                MAP_SHARED /* recommended */ ,
-                               video_fds[V4L2_FIRST_DEVICE], 0xfffff000);
+                               video_fds[V4L2_MAIN_DEVICE], 0xfffff000);
             if (MAP_FAILED == start)
                     LOGE("mmap failed");
             else {
