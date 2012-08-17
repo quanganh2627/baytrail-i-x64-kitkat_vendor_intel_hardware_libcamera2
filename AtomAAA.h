@@ -229,6 +229,7 @@ public:
     status_t setAeMeteringMode(MeteringMode mode);
     MeteringMode getAeMeteringMode();
     status_t setAeBacklightCorrection(bool en);
+    status_t setTNR(bool en);
     status_t setAeLock(bool en);
     bool     getAeLock();
     status_t setAfLock(bool en);

@@ -2262,6 +2262,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             status = processParamBackLightingCorrectionMode(oldParams, newParams);
         }
 
+        if (status == NO_ERROR) {
+            // temporal noise reduction (Intel extension)
+            status = processParamTNR(oldParams, newParams);
+        }
+
     }
 
     if (status == NO_ERROR) {
@@ -3250,6 +3255,23 @@ status_t ControlThread::processParamBackLightingCorrectionMode(const CameraParam
              newVal.string(), backlightCorrection);
     }
 
+    return status;
+}
+
+status_t ControlThread::processParamTNR(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+            IntelCameraParameters::KEY_TEMPORAL_NOISE_REDUCTION);
+    if (newVal.isEmpty() != true) {
+        // here we disable tnr when newVal == "off" or others unknow string.
+        bool tnr = (newVal == "on") ? true : false;
+
+        mAAA->setTNR(tnr);
+        LOGD("Changed tnr to \"%s\" (%d)", newVal.string(), tnr);
+    }
     return status;
 }
 

@@ -730,6 +730,10 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
         // back lighting correction mode
         intel_params->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, "off");
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BACK_LIGHTING_CORRECTION_MODES, "on,off");
+
+        // temporal noise reduction
+        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_TEMPORAL_NOISE_REDUCTION, "on,off");
+        intel_params->set(IntelCameraParameters::KEY_TEMPORAL_NOISE_REDUCTION, "off");
     }
 }
 

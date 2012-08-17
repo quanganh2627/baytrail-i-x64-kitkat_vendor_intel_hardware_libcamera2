@@ -664,6 +664,18 @@ status_t AtomAAA::setAeBacklightCorrection(bool en)
     return NO_ERROR;
 }
 
+status_t AtomAAA::setTNR(bool en)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s: en = %d", __FUNCTION__, en);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    ci_adv_enable_tnr(en);
+
+    return NO_ERROR;
+}
+
 status_t AtomAAA::setAwbMapping(ia_3a_awb_map mode)
 {
     Mutex::Autolock lock(m3aLock);
