@@ -215,17 +215,26 @@ void EXIFMaker::setSensorParams(const SensorParams& sensorParams)
 {
     LOG1("@%s", __FUNCTION__);
 
-    // exposure time
-    exifAttributes.exposure_time.num = sensorParams.expTime;
-    exifAttributes.exposure_time.den = 10000;
-    LOG1("EXIF: exposure time=%u", sensorParams.expTime);
+    if (sensorParams.expTime != 0) {
+        // exposure time
+        exifAttributes.exposure_time.num = sensorParams.expTime;
+        exifAttributes.exposure_time.den = 10000;
+        LOG1("EXIF: exposure time=%u (%d/%d)", sensorParams.expTime, exifAttributes.exposure_time.num, exifAttributes.exposure_time.den);
 
-    // shutter speed, = -log2(exposure time)
-    float exp_t = (float)(sensorParams.expTime / 10000.0);
-    float shutter = -1.0 * (log10(exp_t) / log10(2.0));
-    exifAttributes.shutter_speed.num = (shutter * 10000);
-    exifAttributes.shutter_speed.den = 10000;
-    LOG1("EXIF: shutter speed=%.2f", shutter);
+        // shutter speed, = -log2(exposure time)
+        float exp_t = (float)(sensorParams.expTime / 10000.0);
+        float shutter = -1.0 * (log10(exp_t) / log10(2.0));
+        exifAttributes.shutter_speed.num = (shutter * 10000);
+        exifAttributes.shutter_speed.den = 10000;
+        LOG1("EXIF: shutter speed=%.2f (%d/%d)", shutter, exifAttributes.shutter_speed.num, exifAttributes.shutter_speed.den);
+
+    } else {
+        exifAttributes.exposure_time.num = 0;
+        exifAttributes.exposure_time.den = 0;
+
+        exifAttributes.shutter_speed.num = 0;
+        exifAttributes.shutter_speed.den = 0;
+    }
 
     // aperture
     exifAttributes.aperture.num = 100*(int)((1.0*exifAttributes.fnumber.num/exifAttributes.fnumber.den) * sqrt(100.0/sensorParams.aperture));

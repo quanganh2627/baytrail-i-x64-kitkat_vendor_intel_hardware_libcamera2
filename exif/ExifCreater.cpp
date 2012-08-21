@@ -127,8 +127,10 @@ exif_status ExifCreater::makeExif (void *exifOut,
     pCur += NUM_SIZE;
 
     LongerTagOffset += NUM_SIZE + NUM_0TH_IFD_EXIF*IFD_SIZE + OFFSET_SIZE;
-    writeExifIfd(&pCur, EXIF_TAG_EXPOSURE_TIME, EXIF_TYPE_RATIONAL,
-                 1, &exifInfo->exposure_time, &LongerTagOffset, pIfdStart);
+    if (exifInfo->exposure_time.den != 0) {
+        writeExifIfd(&pCur, EXIF_TAG_EXPOSURE_TIME, EXIF_TYPE_RATIONAL,
+                     1, &exifInfo->exposure_time, &LongerTagOffset, pIfdStart);
+    }
     writeExifIfd(&pCur, EXIF_TAG_FNUMBER, EXIF_TYPE_RATIONAL,
                  1, &exifInfo->fnumber, &LongerTagOffset, pIfdStart);
     writeExifIfd(&pCur, EXIF_TAG_EXPOSURE_PROGRAM, EXIF_TYPE_SHORT,
@@ -143,8 +145,10 @@ exif_status ExifCreater::makeExif (void *exifOut,
                  20, exifInfo->date_time, &LongerTagOffset, pIfdStart);
     writeExifIfd(&pCur, EXIF_TAG_COMPONENTS_CONFIGURATION, EXIF_TYPE_UNDEFINED,
                  4, exifInfo->components_configuration);
-    writeExifIfd(&pCur, EXIF_TAG_SHUTTER_SPEED, EXIF_TYPE_SRATIONAL,
-                 1, (rational_t *)&exifInfo->shutter_speed, &LongerTagOffset, pIfdStart);
+    if (exifInfo->shutter_speed.den != 0) {
+        writeExifIfd(&pCur, EXIF_TAG_SHUTTER_SPEED, EXIF_TYPE_SRATIONAL,
+                     1, (rational_t *)&exifInfo->shutter_speed, &LongerTagOffset, pIfdStart);
+    }
     writeExifIfd(&pCur, EXIF_TAG_APERTURE, EXIF_TYPE_RATIONAL,
                  1, &exifInfo->aperture, &LongerTagOffset, pIfdStart);
     writeExifIfd(&pCur, EXIF_TAG_BRIGHTNESS, EXIF_TYPE_SRATIONAL,

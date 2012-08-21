@@ -1206,7 +1206,7 @@ status_t ControlThread::applyBracketing()
     LOG1("@%s: mode = %d", __FUNCTION__, mBracketing.mode);
     status_t status = NO_ERROR;
     int currentFocusPos;
-    SensorParams sensorParams;
+    SensorParams sensorParams({0, 0, 0, 0, 0, 0, 0});
 
     switch (mBracketing.mode) {
     case BRACKET_EXPOSURE:
@@ -1352,7 +1352,7 @@ status_t ControlThread::captureStillPic()
                     flashMode == CAM_AE_FLASH_MODE_ON);
     bool flashFired = false;
     atomisp_makernote_info makerNote;
-    SensorParams sensorParams;
+    SensorParams sensorParams({0, 0, 0, 0, 0, 0, 0});
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
 
@@ -1572,7 +1572,7 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     bool flashOn = (flashMode == CAM_AE_FLASH_MODE_TORCH ||
                     flashMode == CAM_AE_FLASH_MODE_ON);
     atomisp_makernote_info makerNote;
-    SensorParams sensorParams;
+    SensorParams sensorParams({0, 0, 0, 0, 0, 0, 0});
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
 
