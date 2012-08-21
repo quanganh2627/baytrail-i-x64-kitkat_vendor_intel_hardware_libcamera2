@@ -2343,8 +2343,7 @@ status_t ControlThread::processParamAWBLock(const CameraParameters *oldParams,
             LOGE("Invalid value received for %s: %s", CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, newValue);
             return INVALID_OPERATION;
         }
-        status = mAAA->setAwbLock(awb_lock);
-
+        status = m3AThread->lockAwb(awb_lock);
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, newValue);
         }
@@ -2470,7 +2469,7 @@ status_t ControlThread::processParamAELock(const CameraParameters *oldParams,
             return INVALID_OPERATION;
         }
 
-        status =  mAAA->setAeLock(ae_lock);
+        status = m3AThread->lockAe(ae_lock);
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK, newValue);
         }

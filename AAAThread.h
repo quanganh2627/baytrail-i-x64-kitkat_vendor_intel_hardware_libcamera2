@@ -68,6 +68,8 @@ public:
 
     status_t enable3A();
     status_t enableDVS(bool en);
+    status_t lockAe(bool en);
+    status_t lockAwb(bool en);
     status_t autoFocus();
     status_t cancelAutoFocus();
     status_t newFrame(struct timeval capture_timestamp);
@@ -89,6 +91,8 @@ private:
         MESSAGE_ID_CANCEL_AUTO_FOCUS,
         MESSAGE_ID_NEW_FRAME,
         MESSAGE_ID_FACES,
+        MESSAGE_ID_ENABLE_AE_LOCK,
+        MESSAGE_ID_ENABLE_AWB_LOCK,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -139,6 +143,8 @@ private:
     status_t handleMessageCancelAutoFocus();
     status_t handleMessageNewFrame(struct timeval capture_timestamp);
     status_t handleMessageRemoveRedEye(MessagePicture* msg);
+    status_t handleMessageEnableAeLock(MessageEnable* msg);
+    status_t handleMessageEnableAwbLock(MessageEnable* msg);
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -160,8 +166,8 @@ private:
     bool mDVSRunning;
     bool mStartAF;
     bool mStopAF;
-    bool mAfAeWasLocked;
-    bool mAfAwbWasLocked;
+    bool mForceAeLock;
+    bool mForceAwbLock;
     size_t mFramesTillAfComplete; // used for debugging only
     int mSmartSceneMode; // Current detected scene mode, as defined in ia_aiq_external_toolbox.h
     bool mSmartSceneHdr; // Indicates whether the detected scene is valid for HDR

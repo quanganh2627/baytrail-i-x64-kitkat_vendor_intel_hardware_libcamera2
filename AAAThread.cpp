@@ -35,6 +35,8 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone) :
     ,mDVSRunning(false)
     ,mStartAF(false)
     ,mStopAF(false)
+    ,mForceAeLock(false)
+    ,mForceAwbLock(false)
     ,mSmartSceneMode(0)
     ,mSmartSceneHdr(false)
     ,mCurrentZoom(0)
@@ -69,6 +71,38 @@ status_t AAAThread::enableDVS(bool en)
     msg.id = MESSAGE_ID_ENABLE_DVS;
     msg.data.enable.enable = en;
     return mMessageQueue.send(&msg);
+}
+
+/**
+ * Sets AE lock status.
+ *
+ * This lock status is maintained also outside the autofocus
+ * sequence.
+ */
+status_t AAAThread::lockAe(bool en)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    Message msg;
+    msg.id = MESSAGE_ID_ENABLE_AE_LOCK;
+    msg.data.enable.enable = en;
+    return mMessageQueue.send(&msg, MESSAGE_ID_ENABLE_AE_LOCK);
+}
+
+/**
+ * Sets AWB lock status.
+ *
+ * This lock status is maintained also outside the autofocus
+ * sequence.
+ */
+status_t AAAThread::lockAwb(bool en)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    Message msg;
+    msg.id = MESSAGE_ID_ENABLE_AWB_LOCK;
+    msg.data.enable.enable = en;
+    return mMessageQueue.send(&msg, MESSAGE_ID_ENABLE_AWB_LOCK);
 }
 
 status_t AAAThread::autoFocus()
@@ -146,17 +180,49 @@ status_t AAAThread::handleMessageEnableDVS(MessageEnable* msg)
     return status;
 }
 
+status_t AAAThread::handleMessageEnableAeLock(MessageEnable* msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mForceAeLock = msg->enable;
+
+    // during AF, AE lock is controlled by AF, otherwise
+    // set the value here
+    if (mStartAF != true)
+        mAAA->setAeLock(msg->enable);
+
+    mMessageQueue.reply(MESSAGE_ID_ENABLE_AE_LOCK, status);
+    return status;
+}
+
+status_t AAAThread::handleMessageEnableAwbLock(MessageEnable* msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mForceAwbLock = msg->enable;
+
+    // during AF, AWB lock is controlled by AF, otherwise
+    // set the value here
+    if (mStartAF != true)
+        mAAA->setAwbLock(msg->enable);
+
+    mMessageQueue.reply(MESSAGE_ID_ENABLE_AWB_LOCK, status);
+    return status;
+}
+
 status_t AAAThread::handleMessageAutoFocus()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     if (mAAA->is3ASupported()) {
-        mAfAeWasLocked = mAAA->getAeLock();
-        mAfAwbWasLocked = mAAA->getAwbLock();
         mAAA->setAfEnabled(true);
+
+        // state of client requested 3A locks is kept, so it
+        // is safe to override the values here
         mAAA->setAeLock(true);
         mAAA->setAwbLock(true);
+
         mAAA->startStillAf();
         mFramesTillAfComplete = 0;
         mStartAF = true;
@@ -220,8 +286,8 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
 
             if (stopStillAf) {
                 mAAA->stopStillAf();
-                mAAA->setAeLock(mAfAeWasLocked);
-                mAAA->setAwbLock(mAfAwbWasLocked);
+                mAAA->setAeLock(mForceAeLock);
+                mAAA->setAwbLock(mForceAwbLock);
                 mAAA->setAfEnabled(false);
                 mStartAF = false;
                 mStopAF = false;
@@ -291,6 +357,14 @@ status_t AAAThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_NEW_FRAME:
             status = handleMessageNewFrame(msg.data.frame.capture_timestamp);
+            break;
+
+        case MESSAGE_ID_ENABLE_AE_LOCK:
+            status = handleMessageEnableAeLock(&msg.data.enable);
+            break;
+
+        case MESSAGE_ID_ENABLE_AWB_LOCK:
+            status = handleMessageEnableAwbLock(&msg.data.enable);
             break;
 
         default:
