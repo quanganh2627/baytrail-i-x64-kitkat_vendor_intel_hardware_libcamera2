@@ -4259,7 +4259,7 @@ bool ControlThread::threadLoop()
             } else {
                 // make sure ISP has data before we ask for some
                 if (mISP->dataAvailable() &&
-                    (mBurstLength <= 1 || (mBurstLength > 1 && mBurstCaptureNum < mBurstLength))) {
+                    (mBurstLength > 1 && mBurstCaptureNum < mBurstLength)) {
                     status = captureBurstPic();
                 } else {
                     status = waitForAndExecuteMessage();
