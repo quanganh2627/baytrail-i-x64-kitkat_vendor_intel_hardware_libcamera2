@@ -42,13 +42,24 @@ public:
 public:
     status_t requestExitAndWait();
 
+// public types
+    class MetaData {
+    public:
+      bool flashFired;                       /*!< whether flash was fired */
+      SensorAeConfig *aeConfig;              /*!< defined in AtomAAA.h */
+      atomisp_makernote_info *atomispMkNote; /*!< kernel provided metadata, defined linux/atomisp.h */
+      ia_3a_mknote *ia3AMkNote;              /*!< defined in ia_3a_types.h */
+
+      void free();
+    };
+
 // public methods
 public:
 
-    status_t encode(SensorParams *sensorParams, AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf = NULL);
+    status_t encode(MetaData &metaData, AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf = NULL);
 
     void getDefaultParameters(CameraParameters *params);
-    void initialize(const CameraParameters &params, const atomisp_makernote_info &makerNote, bool flashUsed);
+    void initialize(const CameraParameters &params);
     void setNumberOfShots(int num);
     status_t getSharedBuffers(int width, int height, void** sharedBuffersPtr, int sharedBuffersNum);
     status_t allocSharedBuffers(int width, int height, int sharedBuffersNum);
@@ -84,9 +95,9 @@ private:
     };
 
     struct MessageEncode {
-        SensorParams sensorParams;
         AtomBuffer snaphotBuf;
         AtomBuffer postviewBuf;
+        MetaData metaData;
     };
 
     // union of all message data
@@ -117,6 +128,7 @@ private:
     // main message function
     status_t waitForAndExecuteMessage();
 
+    void setupExifWithMetaData(const MetaData &metaData);
     status_t encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, AtomBuffer *destBuf);
 
 // inherited from Thread
@@ -131,7 +143,6 @@ private:
     Callbacks       *mCallbacks;
     CallbacksThread *mCallbacksThread;
     JpegCompressor   mCompressor;
-    SensorParams    mDefaultSensorParams;
     EXIFMaker       mExifMaker;
     AtomBuffer      mExifBuf;
     AtomBuffer      mOutBuf;

@@ -29,7 +29,6 @@ class EXIFMaker {
 private:
     ExifCreater encoder;
     AtomAAA *mAAA;
-    SensorParams sensorParams;
     exif_attribute_t exifAttributes;
     int thumbWidth;
     int thumbHeight;
@@ -37,19 +36,20 @@ private:
     bool initialized;
 
     void initializeLocation(const CameraParameters &params);
-    void initializeHWSpecific(const atomisp_makernote_info &makerNote);
     void clear();
 public:
     EXIFMaker();
     ~EXIFMaker();
 
-    void initialize(const CameraParameters &params, const atomisp_makernote_info &makerNote);
+    void initialize(const CameraParameters &params);
     bool isInitialized() { return initialized; }
+    void setMakerNote(const ia_3a_mknote &aaaMkNoteData);
+    void setDriverData(const atomisp_makernote_info &ispData);
+    void setSensorAeConfig(const SensorAeConfig &sensorParams);
+    void pictureTaken();
     void enableFlash();
     void setThumbnail(unsigned char *data, size_t size);
     size_t makeExif(unsigned char **data);
-    const SensorParams& getSensorParams() { return sensorParams; }
-    void setSensorParams(const SensorParams& sensorParams);
 };
 
 }; // namespace android

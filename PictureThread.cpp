@@ -200,18 +200,12 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
 }
 
 
-status_t PictureThread::encode(SensorParams *sensorParams, AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf)
+status_t PictureThread::encode(MetaData &metaData, AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_ENCODE;
-    if (sensorParams == NULL) {
-        sensorParams = &mDefaultSensorParams;
-    } else {
-        // Update default SensorParams
-        mDefaultSensorParams = *sensorParams;
-    }
-    msg.data.encode.sensorParams = *sensorParams;
+    msg.data.encode.metaData = metaData;
     msg.data.encode.snaphotBuf = *snaphotBuf;
     if (postviewBuf) {
         msg.data.encode.postviewBuf = *postviewBuf;
@@ -237,12 +231,9 @@ void PictureThread::getDefaultParameters(CameraParameters *params)
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY, "50");
 }
 
-void PictureThread::initialize(const CameraParameters &params, const atomisp_makernote_info &makerNote, bool flashUsed)
+void PictureThread::initialize(const CameraParameters &params)
 {
-    mExifMaker.initialize(params, makerNote);
-    mDefaultSensorParams = mExifMaker.getSensorParams();
-    if (flashUsed)
-        mExifMaker.enableFlash();
+    mExifMaker.initialize(params);
     int q = params.getInt(CameraParameters::KEY_JPEG_QUALITY);
     if (q != 0)
         mPictureQuality = q;
@@ -325,7 +316,16 @@ status_t PictureThread::flushBuffers()
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_FLUSH;
-    mMessageQueue.remove(MESSAGE_ID_ENCODE);
+
+    // we own the dynamically allocated MetaData, so free
+    // data of pending message before flushing them
+    Vector<Message> pending;
+    mMessageQueue.remove(MESSAGE_ID_ENCODE, &pending);
+    Vector<Message>::iterator it;
+    for(it = pending.begin(); it != pending.end(); ++it) {
+      it->data.encode.metaData.free();
+    }
+
     return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
 }
 
@@ -337,12 +337,38 @@ status_t PictureThread::handleMessageExit()
     return status;
 }
 
+/**
+ * Frees resources tired to metaData object.
+ */
+void PictureThread::MetaData::free()
+{
+    if (ia3AMkNote)
+        AtomAAA::getInstance()->put3aMakerNote(ia3AMkNote);
+
+    if (aeConfig)
+        delete aeConfig;
+}
+
+/**
+ * Passes the picture metadata to EXIFMaker.
+ */
+void PictureThread::setupExifWithMetaData(const PictureThread::MetaData &metaData)
+{
+    mExifMaker.pictureTaken();
+    if (metaData.atomispMkNote)
+        mExifMaker.setDriverData(*metaData.atomispMkNote);
+    if (metaData.ia3AMkNote)
+        mExifMaker.setMakerNote(*metaData.ia3AMkNote);
+    if (metaData.aeConfig)
+        mExifMaker.setSensorAeConfig(*metaData.aeConfig);
+    if (metaData.flashFired)
+        mExifMaker.enableFlash();
+}
+
 status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 {
     LOG1("@%s: snapshot ID = %d", __FUNCTION__, msg->snaphotBuf.id);
     status_t status = NO_ERROR;
-    int exifSize = 0;
-    int totalSize = 0;
     AtomBuffer jpegBuf;
 
     if (msg->snaphotBuf.width == 0 ||
@@ -356,9 +382,11 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("encoding frame", msg->snaphotBuf.frameCounter);
 
+    // prepare EXIF data
+    setupExifWithMetaData(msg->metaData);
+
     // Encode the image
     AtomBuffer *postviewBuf = msg->postviewBuf.buff == NULL ? NULL : &msg->postviewBuf;
-    mExifMaker.setSensorParams(msg->sensorParams);
     status = encodeToJpeg(&msg->snaphotBuf, postviewBuf, &jpegBuf);
     if (status != NO_ERROR) {
         LOGE("Error generating JPEG image!");
@@ -368,6 +396,10 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
         }
         jpegBuf.buff = NULL;
     }
+
+    // ownership was transferred to us from ControlThread, so we need
+    // to free resources here after encoding
+    msg->metaData.free();
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("frame encoded", msg->snaphotBuf.frameCounter);
 

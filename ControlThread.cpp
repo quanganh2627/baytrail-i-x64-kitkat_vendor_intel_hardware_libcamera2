@@ -1207,18 +1207,19 @@ status_t ControlThread::applyBracketing()
     LOG1("@%s: mode = %d", __FUNCTION__, mBracketing.mode);
     status_t status = NO_ERROR;
     int currentFocusPos;
-    SensorParams sensorParams({0, 0, 0, 0, 0, 0, 0});
+    SensorAeConfig aeConfig;
+    memset(&aeConfig, 0, sizeof(aeConfig));
 
     switch (mBracketing.mode) {
     case BRACKET_EXPOSURE:
         if (mBracketing.currentValue <= mBracketing.maxValue) {
             LOG1("Applying Exposure Bracketing: %.2f", mBracketing.currentValue);
             status = mAAA->applyEv(mBracketing.currentValue);
-            mAAA->getExposureInfo(sensorParams);
-            sensorParams.evBias = mBracketing.currentValue;
+            mAAA->getExposureInfo(aeConfig);
+            aeConfig.evBias = mBracketing.currentValue;
 
-            LOG1("Adding sensorParams to list (size=%d+1)", mBracketingParams.size());
-            mBracketingParams.push_front(sensorParams);
+            LOG1("Adding aeConfig to list (size=%d+1)", mBracketingParams.size());
+            mBracketingParams.push_front(aeConfig);
             if (status == NO_ERROR) {
                 LOG1("Exposure Bracketing: incrementing exposure value with: %.2f", mBracketing.step);
                 mBracketing.currentValue += mBracketing.step;
@@ -1341,6 +1342,61 @@ status_t ControlThread::getFlashExposedSnapshot(AtomBuffer *snapshotBuffer, Atom
     return status;
 }
 
+/**
+ * Fetches meta data from 3A, ISP and sensors and fills
+ * the data into struct that can be sent to PictureThread.
+ *
+ * The caller is responsible for freeing the data.
+ */
+void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flashFired)
+{
+    LOG1("@%s: ", __FUNCTION__);
+
+    ia_3a_mknote *aaaMkNote = 0;
+    atomisp_makernote_info *atomispMkNote = 0;
+    SensorAeConfig *aeConfig = 0;
+
+    if (mAAA->is3ASupported()) {
+        aeConfig = new SensorAeConfig;
+        mAAA->getExposureInfo(*aeConfig);
+        if (mAAA->getEv(&aeConfig->evBias) != NO_ERROR) {
+            aeConfig->evBias = EV_UPPER_BOUND;
+        }
+    }
+    // TODO: for SoC/secondary camera, we have no means to get
+    //       SensorAeConfig information, so setting as NULL on purpose
+
+    if (!mBracketingParams.empty()) {
+        LOG1("Popping sensorAeConfig from list (size=%d-1)", mBracketingParams.size());
+        if (aeConfig)
+            *aeConfig = *(--mBracketingParams.end());
+        mBracketingParams.erase(--mBracketingParams.end());
+    }
+
+    if (mAAA->is3ASupported()) {
+        // TODO: add support for raw mknote
+        aaaMkNote = mAAA->get3aMakerNote(ia_3a_mknote_mode_jpeg);
+        if (!aaaMkNote)
+            LOGW("No 3A makernote data available");
+    }
+
+    atomisp_makernote_info tmp;
+    status_t status = mISP->getMakerNote(&tmp);
+    if (status == NO_ERROR) {
+        atomispMkNote = new atomisp_makernote_info;
+        *atomispMkNote = tmp;
+    }
+    else {
+        LOGW("Could not get AtomISP makernote information!");
+    }
+
+    metaData.flashFired = flashFired;
+    // note: the following may be null, if info not available
+    metaData.aeConfig = aeConfig;
+    metaData.ia3AMkNote = aaaMkNote;
+    metaData.atomispMkNote = atomispMkNote;
+}
+
 status_t ControlThread::captureStillPic()
 {
     LOG1("@%s: ", __FUNCTION__);
@@ -1352,8 +1408,6 @@ status_t ControlThread::captureStillPic()
     bool flashOn = (flashMode == CAM_AE_FLASH_MODE_TORCH ||
                     flashMode == CAM_AE_FLASH_MODE_ON);
     bool flashFired = false;
-    atomisp_makernote_info makerNote;
-    SensorParams sensorParams({0, 0, 0, 0, 0, 0, 0});
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
 
@@ -1415,13 +1469,8 @@ status_t ControlThread::captureStillPic()
     size = frameSize(format, width, height);
     pvSize = frameSize(format, pvWidth, pvHeight);
 
-    status = mISP->getMakerNote(&makerNote);
-    if (status != NO_ERROR) {
-        LOGW("Could not get maker note information!");
-    }
-
     // Configure PictureThread
-    mPictureThread->initialize(mParameters, makerNote, flashOn);
+    mPictureThread->initialize(mParameters);
 
     // Possible smart scene parameter changes (XNR, ANR)
     if ((status = setSmartSceneParams()) != NO_ERROR)
@@ -1521,19 +1570,19 @@ status_t ControlThread::captureStillPic()
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
                                        snapshotBuffer.frameCounter);
+
+    PictureThread::MetaData picMetaData;
+    fillPicMetaData(picMetaData, flashFired);
+
     // HDR Processing
     if (mHdr.enabled &&
        (status = hdrProcess(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
         LOGE("HDR: Error in compute CDF for capture %d in HDR sequence!", mBurstCaptureNum);
+        picMetaData.free();
         return status;
     }
 
     mBurstCaptureNum++;
-
-    mAAA->getExposureInfo(sensorParams);
-    if (mAAA->getEv(&sensorParams.evBias) != NO_ERROR) {
-        sensorParams.evBias = EV_UPPER_BOUND;
-    }
 
     if (!mHdr.enabled || (mHdr.enabled && mBurstCaptureNum == 1)){
         // Send request to play the Shutter Sound: in single shots or when burst-length is specified
@@ -1545,18 +1594,22 @@ status_t ControlThread::captureStillPic()
         mISP->setFlashIndicator(0);
     }
 
-    if (!mBracketingParams.empty()) {
-        LOG1("Popping sensorParams from list (size=%d-1)", mBracketingParams.size());
-        sensorParams = *(--mBracketingParams.end());
-        mBracketingParams.erase(--mBracketingParams.end());
-    }
-
     // Do jpeg encoding in other cases except HDR. Encoding HDR will be done later.
+    bool doEncode = false;
     if (!mHdr.enabled) {
         LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
         postviewBuffer.width = pvWidth;
         postviewBuffer.height = pvHeight;
-        status = mPictureThread->encode(&sensorParams, &snapshotBuffer, &postviewBuffer);
+        status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
+        if (status == NO_ERROR) {
+            doEncode = true;
+        }
+    }
+
+    if (doEncode == false) {
+        // normally this is done by PictureThread, but as no
+        // encoding was done, free the allocated metadata
+        picMetaData.free();
     }
 
     return status;
@@ -1572,8 +1625,6 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     FlashMode flashMode = mAAA->getAeFlashMode();
     bool flashOn = (flashMode == CAM_AE_FLASH_MODE_TORCH ||
                     flashMode == CAM_AE_FLASH_MODE_ON);
-    atomisp_makernote_info makerNote;
-    SensorParams sensorParams({0, 0, 0, 0, 0, 0, 0});
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
 
@@ -1619,11 +1670,6 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     size = frameSize(format, width, height);
     pvSize = frameSize(format, pvWidth, pvHeight);
 
-    status = mISP->getMakerNote(&makerNote);
-    if (status != NO_ERROR) {
-        LOGW("Could not get maker note information!");
-    }
-
     // note: flash is not supported in burst and continuous shooting
     //       modes (this would be the place to enable it)
 
@@ -1660,32 +1706,27 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
                                        snapshotBuffer.frameCounter);
+
+    PictureThread::MetaData picMetaData;
+    fillPicMetaData(picMetaData, false);
+
    // HDR Processing
     if ( mHdr.enabled &&
         (status = hdrProcess(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
         LOGE("Error processing HDR!");
+        picMetaData.free();
         return status;
     }
 
     mBurstCaptureNum++;
 
-    mAAA->getExposureInfo(sensorParams);
-    if (mAAA->getEv(&sensorParams.evBias) != NO_ERROR) {
-        sensorParams.evBias = EV_UPPER_BOUND;
-    }
-
     // Do jpeg encoding
 
-    if (!mBracketingParams.empty()) {
-        LOG1("Popping sensorParams from list (size=%d-1)", mBracketingParams.size());
-        sensorParams = *(--mBracketingParams.end());
-        mBracketingParams.erase(--mBracketingParams.end());
-    }
+    bool doEncode = false;
     if (!mHdr.enabled || (mHdr.enabled && mHdr.saveOrig)) {
-        bool doEncode = false;
         if (mHdr.enabled) {
             // In HDR mode, if saveOrig flag is set, save only the EV0 snapshot
-            if (mHdr.saveOrig && sensorParams.evBias == 0) {
+            if (mHdr.saveOrig && picMetaData.aeConfig->evBias == 0) {
                 LOG1("Sending EV0 original picture to JPEG encoder (id=%d)", snapshotBuffer.id);
                 doEncode = true;
                 // Disable the saveOrig flag once we encode the EV0 original snapshot
@@ -1698,19 +1739,23 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
             LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
             postviewBuffer.width = pvWidth;
             postviewBuffer.height = pvHeight;
-            status = mPictureThread->encode(&sensorParams, &snapshotBuffer, &postviewBuffer);
+            status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
         }
     }
     if (mHdr.enabled && mBurstCaptureNum == mHdr.bracketNum) {
         // This was the last capture in HDR sequence, compose the final HDR image
         LOG1("HDR: last capture, composing HDR image...");
 
-        if((status = hdrCompose(&sensorParams)) != NO_ERROR) {
+        status = hdrCompose();
+        if (status != NO_ERROR)
             LOGE("Error composing HDR picture");
-            return status;
-        }
     }
 
+    if (doEncode == false) {
+        // normally this is done by PictureThread, but as no
+        // encoding was done, free the allocated metadata
+        picMetaData.free();
+    }
 
     return status;
 }
@@ -3953,10 +3998,15 @@ void ControlThread::hdrRelease()
     mHdr.saveOrigRequest = mHdr.appSaveOrigRequest;
 }
 
-status_t ControlThread::hdrCompose(SensorParams* sensorParams)
+status_t ControlThread::hdrCompose()
 {
-   LOG1("%s",__FUNCTION__);
-   status_t status = NO_ERROR;
+    LOG1("%s",__FUNCTION__);
+    status_t status = NO_ERROR;
+
+    // initialize the meta data with last picture of
+    // the HDR sequence
+    PictureThread::MetaData hdrPicMetaData;
+    fillPicMetaData(hdrPicMetaData, false);
 
     /*
      * Stop ISP before composing HDR since standalone acceleration requires ISP to be stopped.
@@ -3969,15 +4019,25 @@ status_t ControlThread::hdrCompose(SensorParams* sensorParams)
         return status;
     }
 
+    bool doEncode = false;
     status = mAAA->composeHDR(mHdr.ciBufIn, mHdr.ciBufOut, mHdr.vividness, mHdr.sharpening);
     if (status == NO_ERROR) {
         mHdr.outMainBuf.width = mHdr.ciBufOut.ciMainBuf->width;
         mHdr.outMainBuf.height = mHdr.ciBufOut.ciMainBuf->height;
         mHdr.outMainBuf.size = mHdr.ciBufOut.ciMainBuf->size;
-        status = mPictureThread->encode(sensorParams, &mHdr.outMainBuf, &mHdr.outPostviewBuf);
+        if (hdrPicMetaData.aeConfig) {
+            hdrPicMetaData.aeConfig->evBias = 0.0;
+        }
+        status = mPictureThread->encode(hdrPicMetaData, &mHdr.outMainBuf, &mHdr.outPostviewBuf);
+        if (status == NO_ERROR) {
+            doEncode = true;
+        }
     } else {
         LOGE("HDR Composition failed !");
     }
+
+    if (doEncode == false)
+        hdrPicMetaData.free();
 
     return status;
 }

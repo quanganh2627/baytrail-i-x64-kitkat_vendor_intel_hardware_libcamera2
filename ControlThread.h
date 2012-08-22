@@ -485,12 +485,14 @@ private:
                      int width, int height,
                      int pvWidth, int pvHeight);
     status_t hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* postviewBuffer);
-    status_t hdrCompose(SensorParams *sensorParams);
+    status_t hdrCompose();
     void     hdrRelease();
     void     setExternalSnapshotBuffers(int format, int width, int heigth);
 
     // Capture Flow helpers
     status_t getFlashExposedSnapshot(AtomBuffer *snaphotBuffer, AtomBuffer *postviewBuffer);
+    void fillPicMetaData(PictureThread::MetaData &metadata, bool flashFired);
+
     status_t captureStillPic();
     status_t captureBurstPic(bool clientRequest);
 
@@ -531,7 +533,7 @@ private:
     int  mBurstLength;
     int  mBurstCaptureNum;
     BracketingType mBracketing;
-    List<SensorParams> mBracketingParams;
+    List<SensorAeConfig> mBracketingParams;
     HdrImaging mHdr;
     AeMode mPublicAeMode;    /* AE mode set by application */
     AfMode mPublicAfMode;    /* AF mode set by application */

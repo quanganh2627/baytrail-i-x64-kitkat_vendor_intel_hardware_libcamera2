@@ -778,25 +778,26 @@ ia_3a_af_status AtomAAA::isStillAfComplete()
     return ia_3a_af_get_still_status();
 }
 
-status_t AtomAAA::getExposureInfo(SensorParams& sensorParams)
+status_t AtomAAA::getExposureInfo(SensorAeConfig& aeConfig)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
     if(!mHas3A)
         return INVALID_OPERATION;
 
-    sensorParams.expTime = 0;
-    sensorParams.aperture = 0;
-    sensorParams.aecApexTv = 0;
-    sensorParams.aecApexSv = 0;
-    sensorParams.aecApexAv = 0;
-    sensorParams.digitalGain = 0;
-    ci_adv_ae_get_exp_cfg(&sensorParams.expTime,
-            &sensorParams.aperture,
-            &sensorParams.aecApexTv,
-            &sensorParams.aecApexSv,
-            &sensorParams.aecApexAv,
-            &sensorParams.digitalGain);
+    // evBias not reset, so not using memset
+    aeConfig.expTime = 0;
+    aeConfig.aperture = 0;
+    aeConfig.aecApexTv = 0;
+    aeConfig.aecApexSv = 0;
+    aeConfig.aecApexAv = 0;
+    aeConfig.digitalGain = 0;
+    ci_adv_ae_get_exp_cfg(&aeConfig.expTime,
+            &aeConfig.aperture,
+            &aeConfig.aecApexTv,
+            &aeConfig.aecApexSv,
+            &aeConfig.aecApexAv,
+            &aeConfig.digitalGain);
 
     return NO_ERROR;
 }
@@ -1261,6 +1262,27 @@ status_t AtomAAA::setFaces(camera_frame_metadata_t *face_metadata, int zoom)
     ci_adv_set_faces(&ia_faces);
 
     return NO_ERROR;
+}
+
+ia_3a_mknote *AtomAAA::get3aMakerNote(ia_3a_mknote_mode mknMode)
+{
+    Mutex::Autolock lock(m3aLock);
+    return ia_3a_mknote_get(mknMode);
+}
+
+void AtomAAA::put3aMakerNote(ia_3a_mknote *mknData)
+{
+    Mutex::Autolock lock(m3aLock);
+    if (mknData != NULL)
+    {
+        ia_3a_mknote_put(mknData);
+    }
+}
+
+void AtomAAA::reset3aMakerNote(void)
+{
+    Mutex::Autolock lock(m3aLock);
+    ia_3a_mknote_reset();
 }
 
 } //  namespace android

@@ -146,7 +146,7 @@ struct IspSettings
     bool inv_gamma;    // inversed gamma flag, used in negative effect
 };
 
-struct SensorParams
+struct SensorAeConfig
 {
     float evBias;
     int expTime;
@@ -241,7 +241,7 @@ public:
     size_t   getAfMaxNumWindows();
     status_t setAfWindows(const CameraWindow *windows, size_t numWindows);
     status_t setNegativeEffect(bool en);
-    status_t getExposureInfo(SensorParams& sensorParams);
+    status_t getExposureInfo(SensorAeConfig& sensorAeConfig);
     status_t getAeManualBrightness(float *ret);
     status_t setManualFocus(int focus, bool applyNow);
     status_t setManualFocusIncrement(int step);
@@ -274,6 +274,11 @@ public:
     status_t stopStillAf();
     ia_3a_af_status isStillAfComplete();
     status_t applyPreFlashProcess(FlashStage stage);
+
+    // Makernote
+    ia_3a_mknote *get3aMakerNote(ia_3a_mknote_mode mode);
+    void put3aMakerNote(ia_3a_mknote *mknData);
+    void reset3aMakerNote(void);
 
 // private members
 private:
