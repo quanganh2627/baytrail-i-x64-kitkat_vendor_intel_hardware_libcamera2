@@ -19,6 +19,8 @@
 #include "LogHelper.h"
 #include "Callbacks.h"
 #include "intel_camera_extensions.h"
+#include "PerformanceTraces.h"
+
 namespace android {
 
 Callbacks* Callbacks::mInstance = NULL;
@@ -186,6 +188,7 @@ void Callbacks::allocateMemory(camera_memory_t **buff, int size)
 void Callbacks::autofocusDone(bool status)
 {
     LOG1("@%s", __FUNCTION__);
+    PERFORMANCE_TRACES_SHOT2SHOT_AUTO_FOCUS_DONE(status);
     if (mMessageFlags & CAMERA_MSG_FOCUS) {
         LOG1("Sending message: CAMERA_MSG_FOCUS");
         mNotifyCB(CAMERA_MSG_FOCUS, status, 0, mUserToken);

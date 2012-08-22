@@ -93,6 +93,8 @@ static PerformanceTimer gLaunch2Preview;
 static PerformanceTimer gShot2Shot;
 static bool gShot2ShotBreakdown = false;
 static int gShot2ShotFrame = -1;
+static bool gShot2ShotTakePictureCalled = false;
+static bool gShot2ShotAutoFocusDone = false;
 
 /**
  * Controls trace state
@@ -147,10 +149,48 @@ void Shot2Shot::enableBreakdown(bool set)
  */
 void Shot2Shot::start(int frameCounter)
 {
+    // In JellyBean, autofocus may start right after start preview
+    // and may occur before the first preview frame is displayed.
+    // As two shot2shot measurements cannot overlap with current
+    // definiton of shot2shot, we must stop the previous measurement here.
+    if (gShot2Shot.isRunning()) {
+        Shot2Shot::stop(gShot2ShotFrame);
+    }
+
     if (gShot2Shot.isRequested()) {
         gShot2Shot.start();
         gShot2ShotFrame = frameCounter;
+        gShot2ShotTakePictureCalled = false;
+        gShot2ShotAutoFocusDone = false;
         gShot2Shot.formattedTrace("Shot2Shot", __FUNCTION__);
+    }
+}
+
+/**
+ * Marks takePicture HAL call has been issued.
+ *
+ * This is needed to reliably detect start and end of shot2shot
+ * sequences.
+ */
+void Shot2Shot::takePictureCalled(void)
+{
+    if (gShot2Shot.isRunning() == false) {
+        // application has skipped AF
+        start(1);
+    }
+    gShot2ShotTakePictureCalled = true;
+}
+
+/**
+ * Marks that AF has completed.
+ *
+ * This is needed to reliably filter out test sequences
+ * where AF was not run, or where AF failed.
+*/
+void Shot2Shot::autoFocusDone(void)
+{
+    if (gShot2Shot.isRunning()) {
+        gShot2ShotAutoFocusDone = true;
     }
 }
 
@@ -180,8 +220,20 @@ void Shot2Shot::step(const char* func, const char* note, int frameCounter)
 void Shot2Shot::stop(int frameCounter)
 {
     if (gShot2Shot.isRunning() &&
-        frameCounter == gShot2ShotFrame) {
-        LOGD("shot2shot latency: %lld us, frame %d", gShot2Shot.timeUs(), frameCounter);
+            frameCounter == gShot2ShotFrame &&
+            gShot2ShotTakePictureCalled == true) {
+
+        if (gShot2ShotAutoFocusDone) {
+            // This trace is only printed for the strict
+            // definition of shot2shot metric, which requires
+            // that AF has run and has succeeded.
+            LOGD("shot2shot latency: %lld us, frame %d",
+                 gShot2Shot.timeUs(), frameCounter);
+        }
+        else {
+            LOGW("shot2shot not calculated, AF failed or not in use");
+        }
+
         gShot2Shot.formattedTrace("Shot2Shot", __FUNCTION__);
         gShot2Shot.stop();
     }

@@ -258,8 +258,7 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
             mBuffersInWindow++;
 
             // preview frame shown, update perf traces
-            PerformanceTraces::Launch2Preview::stop();
-            PerformanceTraces::Shot2Shot::stop(msg->buff.frameCounter);
+            PERFORMANCE_TRACES_PREVIEW_SHOWN(msg->buff.frameCounter);
         }
     }
 

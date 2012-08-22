@@ -56,6 +56,8 @@ namespace PerformanceTraces {
     static void enable(bool set) STUB_BODY
     static void enableBreakdown(bool set) STUB_BODY
     static void start(int frameCounter = -1) STUB_BODY
+    static void takePictureCalled(void) STUB_BODY
+    static void autoFocusDone(void) STUB_BODY
     static void step(const char *func, const char* note = 0, int frameCounter = -1) STUB_BODY
     static void stop(int frameCounter = -1) STUB_BODY
   };
@@ -78,6 +80,42 @@ namespace PerformanceTraces {
    */
   #define PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM() \
     PerformanceTraces::Shot2Shot::step(__FUNCTION__)
+
+  /**
+   * Helper macro to call PerformanceTraces::Shot2Shot::takePictureCalled() with
+   * the proper function name.
+   */
+  #define PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_CALLED() \
+      do { \
+          PerformanceTraces::Shot2Shot::takePictureCalled(); \
+          PerformanceTraces::Shot2Shot::step(__FUNCTION__);  \
+      } while(0)
+
+  /**
+   * Helper macro to call PerformanceTraces::Shot2Shot::autoFocusDone() with
+   * the proper function name.
+   *
+   * @param ok true if AF was succesful
+   */
+  #define PERFORMANCE_TRACES_SHOT2SHOT_AUTO_FOCUS_DONE(ok) \
+      do { \
+          if (ok) PerformanceTraces::Shot2Shot::autoFocusDone();   \
+          PerformanceTraces::Shot2Shot::step(__FUNCTION__);  \
+      } while(0)
+
+  /**
+   * Helper macro to call when preview frame has been sent
+   * to display subsystem. This step is used in multiple metrics.
+   *
+   * @param x preview frame counter
+   */
+  #define PERFORMANCE_TRACES_PREVIEW_SHOWN(x) \
+      if (x == 1) {  \
+          PerformanceTraces::Launch2Preview::stop(); \
+          PerformanceTraces::Shot2Shot::step(__FUNCTION__);  \
+          PerformanceTraces::Shot2Shot::stop(x); \
+      }
+
 
 }; // ns PerformanceTraces
 }; // ns android

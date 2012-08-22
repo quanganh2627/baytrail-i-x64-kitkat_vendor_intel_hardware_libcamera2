@@ -627,7 +627,6 @@ void ControlThread::sendCommand(int32_t cmd, int32_t arg1, int32_t arg2)
 void ControlThread::autoFocusDone()
 {
     LOG1("@%s", __FUNCTION__);
-    PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
     Message msg;
     msg.id = MESSAGE_ID_AUTO_FOCUS_DONE;
     mMessageQueue.send(&msg);
@@ -1409,7 +1408,7 @@ status_t ControlThread::captureStillPic()
                     flashMode == CAM_AE_FLASH_MODE_ON);
     bool flashFired = false;
 
-    PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
+    PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_CALLED();
 
     bool requestPostviewCallback = true;
     bool requestRawCallback = true;
@@ -1556,6 +1555,8 @@ status_t ControlThread::captureStillPic()
         (mBurstSkipFrames < 1 && mBracketing.mode == BRACKET_FOCUS)) {
         applyBracketing();
     }
+
+    PERFORMANCE_TRACES_SHOT2SHOT_STEP("get frame", 1);
 
     // Get the snapshot
     if (flashFired)
