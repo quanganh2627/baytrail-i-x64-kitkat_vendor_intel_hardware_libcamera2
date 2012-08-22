@@ -473,6 +473,8 @@ private:
     status_t processStaticParameters(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t validateParameters(const CameraParameters *params);
+    // validation helpers
+    bool validateSize(int width, int height, Vector<Size> &supportedSizes) const;
 
     status_t stopCapture();
 

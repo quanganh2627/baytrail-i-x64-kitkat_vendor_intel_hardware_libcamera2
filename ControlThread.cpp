@@ -1961,13 +1961,27 @@ status_t ControlThread::handleMessageAutoFocusDone()
     return status;
 }
 
+bool ControlThread::validateSize(int width, int height, Vector<Size> &supportedSizes) const
+{
+    if (width <= 0 || height <= 0)
+        return false;
+
+    for (Vector<Size>::iterator it = supportedSizes.begin(); it != supportedSizes.end(); ++it)
+        if (width == it->width && height == it->height)
+            return true;
+
+    return false;
+}
+
 status_t ControlThread::validateParameters(const CameraParameters *params)
 {
     LOG1("@%s: params = %p", __FUNCTION__, params);
     // PREVIEW
-    int previewWidth, previewHeight;
-    params->getPreviewSize(&previewWidth, &previewHeight);
-    if (previewWidth <= 0 || previewHeight <= 0) {
+    int width, height;
+    Vector<Size> supportedSizes;
+    params->getSupportedPreviewSizes(supportedSizes);
+    params->getPreviewSize(&width, &height);
+    if (!validateSize(width, height, supportedSizes)) {
         LOGE("bad preview size");
         return BAD_VALUE;
     }
@@ -1980,17 +1994,19 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     }
 
     // VIDEO
-    int videoWidth, videoHeight;
-    params->getPreviewSize(&videoWidth, &videoHeight);
-    if (videoWidth <= 0 || videoHeight <= 0) {
+    params->getVideoSize(&width, &height);
+    supportedSizes.clear();
+    params->getSupportedVideoSizes(supportedSizes);
+    if (!validateSize(width, height, supportedSizes)) {
         LOGE("bad video size");
         return BAD_VALUE;
     }
 
     // SNAPSHOT
-    int pictureWidth, pictureHeight;
-    params->getPreviewSize(&pictureWidth, &pictureHeight);
-    if (pictureWidth <= 0 || pictureHeight <= 0) {
+    params->getPictureSize(&width, &height);
+    supportedSizes.clear();
+    params->getSupportedPictureSizes(supportedSizes);
+    if (!validateSize(width, height, supportedSizes)) {
         LOGE("bad picture size");
         return BAD_VALUE;
     }
