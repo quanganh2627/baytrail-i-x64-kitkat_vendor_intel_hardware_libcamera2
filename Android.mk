@@ -51,6 +51,10 @@ LOCAL_SRC_FILES := \
 	PostProcThread.cpp \
 	FaceDetector.cpp
 
+ifeq ($(USE_INTEL_JPEG), true)
+LOCAL_SRC_FILES += \
+	JpegHwEncoder.cpp
+endif
 
 LOCAL_C_INCLUDES += \
 	frameworks/base/include \
