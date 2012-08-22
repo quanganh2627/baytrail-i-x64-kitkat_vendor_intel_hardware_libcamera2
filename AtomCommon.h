@@ -20,6 +20,7 @@
 #include <camera.h>
 #include <linux/atomisp.h>
 #include <linux/videodev2.h>
+#include <math.h>
 #include <stdio.h>
 #include <time.h>
 
@@ -177,6 +178,47 @@ static const char* v4l2Fmt2Str(int format)
     char *fourccPtr = (char*) &format;
     snprintf(fourccBuf, sizeof(fourccBuf), "%c%c%c%c", *fourccPtr, *(fourccPtr+1), *(fourccPtr+2), *(fourccPtr+3));
     return &fourccBuf[0];
+}
+
+
+// Helpers for converting AE metering areas
+// from Android coordinates to user coordinates for usage with AAA.
+/**
+ * Converts window from Android coordinate system [-1000, 1000] to user defined width
+ * and height coordinates [0, width], [0, height].
+ *
+ * @param srcWindow the CameraWindow with Android coordinates
+ * @param toWindow the destination CameraWindow with new coordinates
+ * @param maxX the maximum for x values in the window (min is implicitly 0)
+ * @param maxY the maximum for y values in the window (min is implicitly 0)
+ */
+static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
+        CameraWindow &toWindow, int maxX, int maxY)
+{
+    toWindow.x_left = ((srcWindow.x_left + 1000) * maxX) / 2000;
+    toWindow.x_right = ((srcWindow.x_right + 1000) * maxX) / 2000;
+    toWindow.y_top = ((srcWindow.y_top + 1000) * maxY) / 2000;
+    toWindow.y_bottom = ((srcWindow.y_bottom + 1000) * maxY) / 2000;
+}
+
+/**
+ * Converts window from Android coordinate system [-1000, 1000] to user defined width
+ * and height coordinates [0, width], [0, height], and google weight [1, 1000] to
+ * user defined weight [minWeight, maxWeight]
+ *
+ * @param srcWindow the CameraWindow with Android coordinates
+ * @param toWindow the destination CameraWindow with new coordinates
+ * @param maxX the maximum for x values in the window (min is implicitly 0)
+ * @param maxY the maximum for y values in the window (min is implicitly 0)
+ * @param minWeight the minimum for weight
+ * @param maxWeight the maximum for weight
+ */
+static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
+        CameraWindow &toWindow, int maxX, int maxY, int minWeight, int maxWeight)
+{
+    convertFromAndroidCoordinates(srcWindow, toWindow, maxX, maxY);
+    int weightWidth = maxWeight - minWeight;
+    toWindow.weight = minWeight + roundf(weightWidth * srcWindow.weight / 1000.0f);
 }
 
 }

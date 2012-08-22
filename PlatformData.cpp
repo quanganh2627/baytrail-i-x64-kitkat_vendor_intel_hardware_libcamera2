@@ -172,7 +172,7 @@ String8 PlatformData::supportedSceneModes()
             ,CameraParameters::SCENE_MODE_NIGHT
             ,CameraParameters::SCENE_MODE_FIREWORKS
             ,CameraParameters::SCENE_MODE_BARCODE);
-    if (status < 0 || status >= sizeof(modes)) {
+    if (status < 0 || static_cast<size_t>(status) >= sizeof(modes)) {
         LOGE("Could not generate scene mode string. status = %d, error: %s",
              status, strerror(errno));
         return String8::empty();
@@ -185,7 +185,7 @@ String8 PlatformData::supportedSceneModes()
                 ,"%s,%s"
                 ,modes
                 ,CameraParameters::SCENE_MODE_NIGHT_PORTRAIT);
-        if (status < 0 || status >= sizeof(modes)) {
+        if (status < 0 || static_cast<size_t>(status) >= sizeof(modes)) {
             LOGE("Could not generate scene mode string. status = %d, error: %s",
                  status, strerror(errno));
             return String8::empty();

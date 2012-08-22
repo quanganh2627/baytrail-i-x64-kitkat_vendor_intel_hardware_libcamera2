@@ -496,6 +496,10 @@ private:
     status_t captureStillPic();
     status_t captureBurstPic(bool clientRequest);
 
+    status_t updateSpotWindow(const int &width, const int &height);
+
+    MeteringMode aeMeteringModeFromString(String8 modeStr);
+
 // inherited from Thread
 private:
     virtual bool threadLoop();
@@ -546,6 +550,8 @@ private:
     bool mStoreMetaDataInBuffers;
 
     bool mPreviewForceChanged;
+
+    bool mAeMeteringSpotForced;
 
 }; // class ControlThread
 

@@ -618,7 +618,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
         }
         params->set(CameraParameters::KEY_SUPPORTED_EFFECTS, effectModes);
         status = snprintf(effectModes, sizeof(effectModes)
-                ,"%s,%s,%s,%s, %s,%s,%s,%s,%s"
+                ,"%s,%s,%s,%s,%s,%s,%s,%s,%s,%s"
                 ,CameraParameters::EFFECT_NONE
                 ,CameraParameters::EFFECT_MONO
                 ,CameraParameters::EFFECT_NEGATIVE
@@ -692,7 +692,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
 
         // ae metering mode (Intel extension)
         intel_params->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
+        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center,spot");
 
         // Intel/UMG parameters for 3A locks
         // TODO: only needed until upstream key is available for AF lock
