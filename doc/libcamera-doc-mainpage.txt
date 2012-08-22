@@ -57,6 +57,49 @@ HAL, towards this goal.
 This is achieved by having a centralized platform specification that
 the libcamera2 can query for HW specific information.
 
+\section jpegbufflow JPEG encoder buffer flow
+
+\subsection input  Encoder input buffer flow
+The snapshot buffers are allocated currently by the Picture Thread
+An allocation request is sent from ControlThread to the PictureThread everytime
+the snapshot resolution changes.
+After allocation the PictureThread initializes the HW encoder with the pre-allocated
+buffer. At this stage the HW encoder creates surfaces from those buffers and also
+creates the libVA encoding context
+
+During the take_picture sequence the ControlThread retrieves the current snapshot
+buffers from the PictureThread and passes those to the AtomISP class to start
+the device for capture.
+
+There is no need to return the buffers to the PictureThread when going back to
+the preview state. The PictureThread will de-allocate the buffers when it is
+destroyed.
+
+\subsection output Encoder output buffer flow
+The PictureThread instance allocates a couple of buffers used to store the
+Thumbnail image (if there is one) and the EXIF data. The allocation of both buffers
+is done before encode. They belong to the PictureThread and will be freed in the
+desctructor
+
+When an encode request arrives to PicThread it allocates the buffer that will
+contain the final EXIF data plus the main JPEG. This allocation is done once
+the size of each element is known.
+The contents of the HW encoding process are copied directly to this buffer from
+the internal VACoded buffer. This memcopy is currenly unavoidable.
+
+The JPEG buffer is sent to the callback thread that will release the memory
+once the user callback has completed
+
+\subsection interencode Interleaved encoding
+The encoding process of thumbnail(a.k.a. postview) and main image (a.k.a. snapshot)
+is currently interleaved. The HW encoder is configured to start the main image
+encoding first and then the thumbnail is encoded using the SW encoder.
+Once the thumbnail is completed we wait for the HW encoder to finish and compose
+the final buffer (EXIF+JPEG).
+
+In this way the thumbnail encoding time is not affecting the overall JPEG encoding
+
+
 \section contcapture Continuous Capture Design
 
 \subsection ccoverview Overview
