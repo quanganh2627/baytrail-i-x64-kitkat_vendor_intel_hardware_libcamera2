@@ -2555,6 +2555,8 @@ status_t ControlThread::processParamEffect(const CameraParameters *oldParams,
             effect = V4L2_COLORFX_GRASS_GREEN;
         else if (newVal == IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_MEDIUM)
             effect = V4L2_COLORFX_SKIN_WHITEN;
+        else if (newVal == IntelCameraParameters::EFFECT_VIVID)
+            effect = V4L2_COLORFX_VIVID;
 
         // following two values need a explicit cast as the
         // definitions in hardware/intel/linux-2.6/include/linux/atomisp.h

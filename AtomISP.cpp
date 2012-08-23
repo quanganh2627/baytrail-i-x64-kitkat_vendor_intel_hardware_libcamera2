@@ -623,6 +623,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
                 ,CameraParameters::EFFECT_MONO
                 ,CameraParameters::EFFECT_NEGATIVE
                 ,CameraParameters::EFFECT_SEPIA
+                ,IntelCameraParameters::EFFECT_VIVID
                 ,IntelCameraParameters::EFFECT_STILL_SKY_BLUE
                 ,IntelCameraParameters::EFFECT_STILL_GRASS_GREEN
                 ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_LOW
