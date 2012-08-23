@@ -3933,9 +3933,10 @@ status_t ControlThread::hdrCompose(SensorParams* sensorParams)
     if (status == NO_ERROR) {
         mHdr.outMainBuf.width = mHdr.ciBufOut.ciMainBuf->width;
         mHdr.outMainBuf.height = mHdr.ciBufOut.ciMainBuf->height;
-        mHdr.outMainBuf.format = mHdr.ciBufOut.ciMainBuf->format;
         mHdr.outMainBuf.size = mHdr.ciBufOut.ciMainBuf->size;
         status = mPictureThread->encode(sensorParams, &mHdr.outMainBuf, &mHdr.outPostviewBuf);
+    } else {
+        LOGE("HDR Composition failed !");
     }
 
     return status;
