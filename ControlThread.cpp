@@ -2269,6 +2269,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             status = processParamTNR(oldParams, newParams);
         }
 
+        if (status == NO_ERROR) {
+            // AWB mapping mode (Intel extension)
+            status = processParamAwbMappingMode(oldParams, newParams);
+        }
+
     }
 
     if (status == NO_ERROR) {
@@ -2833,8 +2838,10 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
         // we should update Intel params setting to HW, and remove them here.
         if (!mIntelParamsAllowed) {
             processParamBackLightingCorrectionMode(oldParams, newParams);
+            processParamAwbMappingMode(oldParams, newParams);
             processParamXNR_ANR(oldParams, newParams);
             newParams->remove(IntelCameraParameters::KEY_AWB_MAPPING_MODE);
+            newParams->remove(IntelCameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES);
             newParams->remove(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_XNR);
@@ -3256,6 +3263,44 @@ status_t ControlThread::processParamBackLightingCorrectionMode(const CameraParam
         mAAA->setAeBacklightCorrection(backlightCorrection);
         LOGD("Changed ae backlight correction to \"%s\" (%d)",
              newVal.string(), backlightCorrection);
+    }
+
+    return status;
+}
+/**
+ * Sets AWB Mapping Mode
+ *
+ * Note, this is an Intel extension, so the values are not defined in
+ * Android documentation.
+ */
+status_t ControlThread::processParamAwbMappingMode(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status(NO_ERROR);
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+            IntelCameraParameters::KEY_AWB_MAPPING_MODE);
+    if (newVal.isEmpty() != true) {
+        ia_3a_awb_map awbMappingMode(ia_3a_awb_map_auto);
+
+        if (newVal == IntelCameraParameters::AWB_MAPPING_AUTO) {
+            awbMappingMode = ia_3a_awb_map_auto;
+        } else if (newVal == IntelCameraParameters::AWB_MAPPING_INDOOR) {
+            awbMappingMode = ia_3a_awb_map_indoor;
+        } else if (newVal == IntelCameraParameters::AWB_MAPPING_OUTDOOR) {
+            awbMappingMode = ia_3a_awb_map_outdoor;
+        } else {
+            awbMappingMode = ia_3a_awb_map_auto;
+        }
+
+        status = mAAA->setAwbMapping(awbMappingMode);
+        if (status ==  NO_ERROR) {
+            LOGD("Changed AWB mapping mode to \"%s\" (%d)",
+                 newVal.string(), awbMappingMode);
+        } else {
+            LOGE("Error setting AWB mapping mode (\"%s\" (%d))",
+                 newVal.string(), awbMappingMode);
+        }
     }
 
     return status;
