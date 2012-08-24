@@ -691,6 +691,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
         params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, "0.33333333");
 
         // ae metering mode (Intel extension)
+        intel_params->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
 
         // Intel/UMG parameters for 3A locks
