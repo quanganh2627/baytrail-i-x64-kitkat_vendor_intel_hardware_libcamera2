@@ -89,6 +89,7 @@ ControlThread::ControlThread() :
     ,mBurstCaptureNum(0)
     ,mPublicAeMode(CAM_AE_MODE_AUTO)
     ,mPublicAfMode(CAM_AF_MODE_AUTO)
+    ,mPublicShutter(-1)
     ,mParamCache(NULL)
     ,mLastRecordingBuffIndex(0)
     ,mStoreMetaDataInBuffers(false)
@@ -3126,6 +3127,13 @@ status_t ControlThread::processParamAutoExposureMode(const CameraParameters *old
         mPublicAeMode = ae_mode;
         mAAA->setAeMode(ae_mode);
         LOGD("Changed ae mode to \"%s\" (%d)", newVal.string(), ae_mode);
+
+        if (mPublicShutter >= 0 &&
+                (ae_mode == CAM_AE_MODE_SHUTTER_PRIORITY ||
+                ae_mode == CAM_AE_MODE_MANUAL)) {
+            mAAA->setManualShutter(mPublicShutter);
+            LOGD("Changed shutter to %f", mPublicShutter);
+        }
     }
     return status;
 }
@@ -3203,10 +3211,7 @@ status_t ControlThread::processParamShutter(const CameraParameters *oldParams,
     status_t status = NO_ERROR;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_SHUTTER);
-    if (newVal.isEmpty() != true &&
-        (mAAA->getAeMode() == CAM_AE_MODE_MANUAL ||
-         (mAAA->getAeMode() == CAM_AE_MODE_SHUTTER_PRIORITY))) {
-
+    if (newVal.isEmpty() != true) {
         float shutter = -1;
         bool flagParsed = false;
 
@@ -3228,8 +3233,12 @@ status_t ControlThread::processParamShutter(const CameraParameters *oldParams,
         }
 
         if (flagParsed) {
-            mAAA->setManualShutter(shutter);
-            LOGD("Changed shutter to \"%s\" (%f)", newVal.string(), shutter);
+            mPublicShutter = shutter;
+            if (mAAA->getAeMode() == CAM_AE_MODE_MANUAL ||
+                (mAAA->getAeMode() == CAM_AE_MODE_SHUTTER_PRIORITY)) {
+                mAAA->setManualShutter(mPublicShutter);
+                LOGD("Changed shutter to \"%s\" (%f)", newVal.string(), shutter);
+            }
         }
     }
 
