@@ -1544,28 +1544,14 @@ status_t ControlThread::captureStillPic()
         mISP->setFlashIndicator(0);
     }
 
-    // Do jpeg encoding
     if (!mBracketingParams.empty()) {
         LOG1("Popping sensorParams from list (size=%d-1)", mBracketingParams.size());
         sensorParams = *(--mBracketingParams.end());
         mBracketingParams.erase(--mBracketingParams.end());
     }
 
-    bool doEncode = false;
-    if (mHdr.enabled && mHdr.saveOrig) {
-        // In HDR mode, if saveOrig flag is set, save only the EV0 snapshot
-        if (sensorParams.evBias == 0) {
-            LOG1("Sending EV0 original picture to JPEG encoder (id=%d)", snapshotBuffer.id);
-            doEncode = true;
-            // Disable the saveOrig flag once we encode the EV0 original snapshot
-            mHdr.saveOrig = false;
-        }
-
-    } else {
-        doEncode = true;
-    }
-
-    if (doEncode) {
+    // Do jpeg encoding in other cases except HDR. Encoding HDR will be done later.
+    if (!mHdr.enabled) {
         LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
         postviewBuffer.width = pvWidth;
         postviewBuffer.height = pvHeight;
