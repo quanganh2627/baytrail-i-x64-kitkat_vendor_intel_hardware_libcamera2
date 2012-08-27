@@ -17,7 +17,9 @@
 #define PLATFORMDATA_H_
 
 #include <utils/String8.h>
+#include <utils/Vector.h>
 
+#include <camera.h>
 namespace android {
 
 /**
@@ -49,7 +51,6 @@ namespace android {
  */
 
 // Forward declarations
-
 class PlatformData;
 
 /**
@@ -66,20 +67,26 @@ class PlatformBase {
 
  protected:
 
+    /**
+     * Camera feature info that is specific to camera id
+     */
+    class CameraInfo {
+    public:
+       int facing;
+       int orientation;
+       bool dvs;
+    };
+
     // note: Android NDK does not yet support C++11 and
     //       initializer lists, so avoiding structs for now
     //       in these definitions (2012/May)
 
-    int mBackRotation;
-    int mFrontRotation;
+    Vector<CameraInfo> mCameras;
 
     bool mBackFlash;
     bool mFileInject;
 
     const char* mVideoPreviewSizePref;
-
-    bool mBackDVS;
-    bool mFrontDVS;
 };
 
 /**

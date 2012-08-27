@@ -17,6 +17,7 @@
 #include "PlatformData.h"
 #include <camera.h>
 #include <cutils/properties.h>
+#include <utils/Log.h>
 
 /**
  * \file PlatformMedfield.h
@@ -33,13 +34,27 @@ class PlatformBlackbay : public PlatformBase {
 
 public:
     PlatformBlackbay(void) {
-        mBackRotation = 90;
-        mFrontRotation = 90;
-        mBackFlash = true;
+        CameraInfo cam;
+
+        // back camera
+        cam.facing = CAMERA_FACING_BACK;
+        cam.orientation = 90;
+        cam.dvs = true;
+        mCameras.push(cam);
+
+        // front camera
+        cam.facing = CAMERA_FACING_FRONT;
+        cam.orientation = 90;
+        cam.dvs = false;
+        mCameras.push(cam);
+
+        // inject device
+        mCameras.push(mCameras[0]);
         mFileInject = true;
+
+        // other params
+        mBackFlash = true;
         mVideoPreviewSizePref = "1024x580";
-        mBackDVS = true;
-        mFrontDVS = false;
     }
 };
 
@@ -65,13 +80,15 @@ public:
         char bid[PROPERTY_VALUE_MAX] = "";
         property_get("ro.board.id", bid, "");
 
+        mCameras.editItemAt(1).orientation = 0;
+
         if (!strcmp(bid, "redridge_dv10") || !strcmp(bid,"joki_ev20")) {
-            mBackRotation = 180;
-            mFrontRotation = 0;
+            mCameras.editItemAt(0).orientation = 180;
+            mCameras.editItemAt(1).orientation = 0;
         }
         else if (!strcmp(bid,"redridge_dv20") || !strcmp(bid,"redridge_dv21")) {
-            mBackRotation = 0;
-            mFrontRotation = 0;
+            mCameras.editItemAt(0).orientation = 0;
+            mCameras.editItemAt(1).orientation = 0;
         }
         mVideoPreviewSizePref = "720x576";
     }

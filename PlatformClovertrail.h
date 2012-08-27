@@ -32,14 +32,27 @@ class PlatformCtp : public PlatformBase {
 
 public:
     PlatformCtp(void) {
+        CameraInfo cam;
 
-        mBackRotation = 90;
-        mFrontRotation = 270;
-        mBackFlash = true;
+        // back camera
+        cam.facing = CAMERA_FACING_BACK;
+        cam.orientation = 90;
+        cam.dvs = true;
+        mCameras.push(cam);
+
+        // front camera
+        cam.facing = CAMERA_FACING_FRONT;
+        cam.orientation = 270;
+        cam.dvs = false;
+        mCameras.push(cam);
+
+        // file inject device
+        mCameras.push(mCameras[0]);
         mFileInject = true;
+
+        // generic parameters
+        mBackFlash = true;
         mVideoPreviewSizePref = "720x576";
-        mBackDVS = true;
-        mFrontDVS = false;
     }
 };
 

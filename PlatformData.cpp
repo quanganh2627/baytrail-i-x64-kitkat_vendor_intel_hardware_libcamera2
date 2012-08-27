@@ -25,21 +25,8 @@
 #include "PlatformMedfield.h"
 #include "PlatformClovertrail.h"
 #include "PlatformMerrifield.h"
-
+#include <utils/Log.h>
 namespace android {
-
-/**
- * \enum Define camera id assignment on Intel Atom platforms
- *
- * These numbers are not directly mapped to V4L2 input
- * index values, but are just arbitrarily chosen values in
- * the HAL.
- */
-enum IntelCameraIds {
-    INTEL_CAMERA_ID_BACK = 0,
-    INTEL_CAMERA_ID_FRONT = 1,
-    INTEL_CAMERA_ID_INJECT = 2
-};
 
 PlatformBase* PlatformData::mInstance = 0;
 
@@ -74,48 +61,27 @@ PlatformBase* PlatformData::getInstance(void)
 int PlatformData::cameraFacing(int cameraId)
 {
     PlatformBase *i = getInstance();
-    int res;
-
-    assert(cameraId < sMaxCameraIds);
-    switch(cameraId)
-    {
-    case INTEL_CAMERA_ID_FRONT:
-        res = CAMERA_FACING_FRONT;
-        break;
-    default:
-        res = CAMERA_FACING_BACK;;
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return -1;
     }
-
-    return res;
+    return i->mCameras[cameraId].facing;
 }
 
 int PlatformData::cameraOrientation(int cameraId)
 {
     PlatformBase *i = getInstance();
-    int res;
-    assert(cameraId < sMaxCameraIds);
-
-    switch(cameraId)
-    {
-    case INTEL_CAMERA_ID_FRONT:
-        res = i->mFrontRotation;
-        break;
-    default:
-        res = i->mBackRotation;
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return -1;
     }
-
-    return res;
+    return i->mCameras[cameraId].orientation;
 }
 
 int PlatformData::numberOfCameras(void)
 {
     PlatformBase *i = getInstance();
-    int res;
-    if (i->mFileInject)
-        res = INTEL_CAMERA_ID_INJECT + 1;
-    else
-        res = INTEL_CAMERA_ID_FRONT + 1;
-
+    int res = i->mCameras.size();
     return res;
 }
 
@@ -140,16 +106,11 @@ bool PlatformData::supportsFileInject(void)
 bool PlatformData::supportsDVS(int cameraId)
 {
     PlatformBase *i = getInstance();
-    bool res;
-    switch(cameraId)
-    {
-    case INTEL_CAMERA_ID_FRONT:
-        res = i->mFrontDVS;
-        break;
-    default:
-        res = i->mBackDVS;
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return false;
     }
-    return res;
+    return i->mCameras[cameraId].dvs;
 }
 
 String8 PlatformData::supportedSceneModes()
