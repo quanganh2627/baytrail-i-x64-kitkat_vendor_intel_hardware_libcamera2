@@ -2764,11 +2764,11 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    const char* oldScene = oldParams->get(CameraParameters::KEY_SCENE_MODE);
-    const char* newScene = newParams->get(CameraParameters::KEY_SCENE_MODE);
-    if (newScene && oldScene && strncmp(newScene, oldScene, MAX_PARAM_VALUE_LENGTH) != 0) {
+    String8 newScene = paramsReturnNewIfChanged(oldParams, newParams, CameraParameters::KEY_SCENE_MODE);
+
+    if (!newScene.isEmpty()) {
         SceneMode sceneMode = CAM_AE_SCENE_MODE_AUTO;
-        if (!strncmp (newScene, CameraParameters::SCENE_MODE_PORTRAIT, strlen(CameraParameters::SCENE_MODE_PORTRAIT))) {
+        if (newScene == CameraParameters::SCENE_MODE_PORTRAIT) {
             sceneMode = CAM_AE_SCENE_MODE_PORTRAIT;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
@@ -2785,7 +2785,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
             newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
             newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
-        } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_SPORTS, strlen(CameraParameters::SCENE_MODE_SPORTS))) {
+        } else if (newScene == CameraParameters::SCENE_MODE_SPORTS) {
             sceneMode = CAM_AE_SCENE_MODE_SPORTS;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
@@ -2802,7 +2802,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
             newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
             newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
-        } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_LANDSCAPE, strlen(CameraParameters::SCENE_MODE_LANDSCAPE))) {
+        } else if (newScene == CameraParameters::SCENE_MODE_LANDSCAPE) {
             sceneMode = CAM_AE_SCENE_MODE_LANDSCAPE;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
@@ -2819,7 +2819,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
             newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
             newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
-        } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_NIGHT, strlen(CameraParameters::SCENE_MODE_NIGHT))) {
+        } else if (newScene == CameraParameters::SCENE_MODE_NIGHT) {
             sceneMode = CAM_AE_SCENE_MODE_NIGHT;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
@@ -2836,7 +2836,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
             newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
             newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::TRUE);
-        } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_NIGHT_PORTRAIT, strlen(CameraParameters::SCENE_MODE_NIGHT_PORTRAIT))) {
+        } else if (newScene == CameraParameters::SCENE_MODE_NIGHT_PORTRAIT) {
             sceneMode = CAM_AE_SCENE_MODE_NIGHT_PORTRAIT;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
@@ -2853,7 +2853,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
             newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
             newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::TRUE);
-        } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_FIREWORKS, strlen(CameraParameters::SCENE_MODE_FIREWORKS))) {
+        } else if (newScene == CameraParameters::SCENE_MODE_FIREWORKS) {
             sceneMode = CAM_AE_SCENE_MODE_FIREWORKS;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
@@ -2870,7 +2870,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
             newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
             newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
-        } else if (!strncmp (newScene, CameraParameters::SCENE_MODE_BARCODE, strlen(CameraParameters::SCENE_MODE_BARCODE))) {
+        } else if (newScene == CameraParameters::SCENE_MODE_BARCODE) {
             sceneMode = CAM_AE_SCENE_MODE_TEXT;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_MACRO);
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
@@ -2888,8 +2888,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
             newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else {
-            if (strncmp (newScene, CameraParameters::SCENE_MODE_AUTO, strlen(CameraParameters::SCENE_MODE_AUTO))) {
-                LOG1("Unsupported %s: %s. Using AUTO!", CameraParameters::KEY_SCENE_MODE, newScene);
+            if (newScene != CameraParameters::SCENE_MODE_AUTO) {
+                LOG1("Unsupported %s: %s. Using AUTO!", CameraParameters::KEY_SCENE_MODE, newScene.string());
             }
 
             sceneMode = CAM_AE_SCENE_MODE_AUTO;
@@ -2913,7 +2913,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
 
         mAAA->setAeSceneMode(sceneMode);
         if (status == NO_ERROR) {
-            LOG1("Changed: %s -> %s", CameraParameters::KEY_SCENE_MODE, newScene);
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_SCENE_MODE, newScene.string());
         }
         // If Intel params are not allowed,
         // we should update Intel params setting to HW, and remove them here.
