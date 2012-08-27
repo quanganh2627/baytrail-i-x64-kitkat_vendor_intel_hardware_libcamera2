@@ -143,9 +143,9 @@ public:
 // private methods
 private:
 
-    void init3A(int cameraId);
+    status_t init3A(int cameraId);
     void initFrameConfig(int cameraId);
-    void initCameraInput(int cameraId);
+    status_t initCameraInput(int cameraId);
     void initFileInject(void);
 
     status_t startPreview();

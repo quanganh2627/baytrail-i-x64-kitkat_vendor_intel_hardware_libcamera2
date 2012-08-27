@@ -188,6 +188,8 @@ AtomISP::AtomISP() :
 
 status_t AtomISP::init(int cameraId)
 {
+    status_t status = NO_ERROR;
+
     mConfig.fps = 30;
     mConfig.num_snapshot = 1;
     mConfig.zoom = 0;
@@ -196,15 +198,24 @@ status_t AtomISP::init(int cameraId)
     int ret = openDevice(V4L2_FIRST_DEVICE);
     if (ret < 0) {
         LOGE("Failed to open first device!");
-        return NO_INIT;
+        goto errorexit;
     }
 
-    initCameraInput(cameraId);
+    // Select the input port to use
+    status = initCameraInput(cameraId);
+    if (status != NO_ERROR) {
+        LOGE("Unable to initialize camera input %d", cameraId);
+        goto errorexit;
+    }
 
     mSensorType = (mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY)?SENSOR_TYPE_RAW:SENSOR_TYPE_SOC;
     LOG1("Sensor type detected: %s", (mSensorType == SENSOR_TYPE_RAW)?"RAW":"SOC");
 
-    init3A(cameraId);
+    status = init3A(cameraId);
+    if (status != NO_ERROR) {
+        goto errorexit;
+    }
+
     initFrameConfig(cameraId);
     initFileInject();
 
@@ -227,6 +238,10 @@ status_t AtomISP::init(int cameraId)
     LOG1("%s:(mTimeRealMonoInterval-SYSTEM_TIME_MONOTONIC):%lld", __func__, mTimeRealMonoInterval);
 
     return NO_ERROR;
+
+errorexit:
+    closeDevice(V4L2_FIRST_DEVICE);
+    return NO_INIT;
 }
 
 int AtomISP::getPrimaryCameraIndex(void) const
@@ -244,7 +259,7 @@ int AtomISP::getPrimaryCameraIndex(void) const
 
 
 /**
- * Only to be called from contructor
+ * Only to be called from 2nd stage contructor AtomISP::init().
  */
 void AtomISP::initFrameConfig(int cameraId)
 {
@@ -312,8 +327,9 @@ void AtomISP::initFrameConfig(int cameraId)
  *                  may be different. This Android camera id will be used
  *                  to select parameters from back or front camera
  */
-void AtomISP::initCameraInput(int cameraId)
+status_t AtomISP::initCameraInput(int cameraId)
 {
+    status_t status = NO_INIT;
     size_t numCameras = setupCameraInfo();
     mCameraInput = 0;
 
@@ -328,6 +344,8 @@ void AtomISP::initCameraInput(int cameraId)
              sCamInfo[i].port == ATOMISP_CAMERA_PORT_SECONDARY)) {
             mCameraInput = &sCamInfo[i];
             mCameraInput->androidCameraId = cameraId;
+            LOG1("Camera found, v4l2 dev %d, android cameraId %d", i, cameraId);
+            status = NO_ERROR;
             break;
         }
     }
@@ -337,20 +355,20 @@ void AtomISP::initCameraInput(int cameraId)
                 cameraId == INTEL_FILE_INJECT_CAMERA_ID) {
             LOG1("AtomISP opened with file inject camera id");
             mCameraInput = &sCamInfo[INTEL_FILE_INJECT_CAMERA_ID];
-        }
-        else {
-            LOGE("Didn't find %d camera. Using default camera!",
-                 cameraId);
-            mCameraInput = &sCamInfo[0];
+            status = NO_ERROR;
         }
     }
+
+    return status;
 }
 
 /**
- * Only to be called from contructor
+ * Only to be called from 2nd stage contructor AtomISP::init().
  */
-void AtomISP::init3A(int cameraId)
+status_t AtomISP::init3A(int cameraId)
 {
+    status_t status = NO_ERROR;
+
     if (selectCameraSensor() == NO_ERROR) {
         if (cameraId == INTEL_FILE_INJECT_CAMERA_ID) {
             const char* otp_file = privateOtpInjectFileName;
@@ -360,6 +378,7 @@ void AtomISP::init3A(int cameraId)
             }
             else {
                 LOGE("Unable to initialize 3A for file inject");
+                status = NO_INIT;
             }
         }
         else if (mSensorType == SENSOR_TYPE_RAW) {
@@ -367,15 +386,19 @@ void AtomISP::init3A(int cameraId)
                 LOG1("3A initialized");
             } else {
                 LOGE("Error initializing 3A on RAW sensor!");
+                status = NO_INIT;
             }
         }
     } else {
         LOGE("Could not select camera: %s (sensor ID: %d)", mCameraInput->name, cameraId);
+        status = NO_INIT;
     }
+
+    return status;
 }
 
 /**
- * Only to be called from contructor
+ * Only to be called from 2nd stage contructor AtomISP::init().
  */
 void AtomISP::initFileInject(void)
 {
@@ -3227,16 +3250,18 @@ size_t AtomISP::setupCameraInfo()
 
     for (int i = 0; i < PlatformData::numberOfCameras(); i++) {
         memset(&input, 0, sizeof(input));
-        memset(&sCamInfo[i].name, 0, sizeof(sCamInfo[i].name));
+        memset(&sCamInfo[i], 0, sizeof(sCamInfo[i]));
         input.index = i;
         ret = ioctl(main_fd, VIDIOC_ENUMINPUT, &input);
         if (ret < 0) {
-            break;
+            sCamInfo[i].port = -1;
+            LOGE("VIDIOC_ENUMINPUT failed for sensor input %d", i);
+        } else {
+            sCamInfo[i].port = input.reserved[1];
+            sCamInfo[i].index = i;
+            strncpy(sCamInfo[i].name, (const char *)input.name, sizeof(sCamInfo[i].name)-1);
+            LOG1("Detected sensor \"%s\"", sCamInfo[i].name);
         }
-        sCamInfo[i].port = input.reserved[1];
-        sCamInfo[i].index = i;
-        strncpy(sCamInfo[i].name, (const char *)input.name, sizeof(sCamInfo[i].name)-1);
-        LOG1("Detected sensor \"%s\"", sCamInfo[i].name);
         numCameras++;
     }
     return numCameras;
