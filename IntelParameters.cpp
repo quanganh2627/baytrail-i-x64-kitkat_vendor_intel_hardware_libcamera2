@@ -144,4 +144,10 @@ namespace android {
 
     const char IntelCameraParameters::EFFECT_VIVID[] = "vivid";
 
+    const char IntelCameraParameters::KEY_FILE_INJECT_FILENAME[] = "file-inject-name";
+    const char IntelCameraParameters::KEY_FILE_INJECT_WIDTH[] = "file-inject-width";
+    const char IntelCameraParameters::KEY_FILE_INJECT_HEIGHT[] = "file-inject-height";
+    const char IntelCameraParameters::KEY_FILE_INJECT_BAYER_ORDER[] = "file-inject-bayer-order";
+    const char IntelCameraParameters::KEY_FILE_INJECT_FORMAT[] = "file-inject-format";
+
 }; // ns android

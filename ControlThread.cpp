@@ -2391,7 +2391,27 @@ status_t ControlThread::allocateSnapshotBuffers()
 
     return status;
 }
+void ControlThread::processParamFileInject(CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    bool updated = false;
+    unsigned int width = 0, height = 0, bayerOrder = 0, format = 0;
+    const char *fileName = newParams->get(IntelCameraParameters::KEY_FILE_INJECT_FILENAME);
 
+    if (!fileName || !strncmp(fileName, "off", sizeof("off")))
+        return;
+
+    width = newParams->getInt(IntelCameraParameters::KEY_FILE_INJECT_WIDTH);
+    height = newParams->getInt(IntelCameraParameters::KEY_FILE_INJECT_HEIGHT);
+    bayerOrder = newParams->getInt(IntelCameraParameters::KEY_FILE_INJECT_BAYER_ORDER);
+    format = newParams->getInt(IntelCameraParameters::KEY_FILE_INJECT_FORMAT);
+
+    LOG1("FILE INJECTION new parameter dumping:");
+    LOG1("file name=%s,width=%d,height=%d,format=%d,bayer-order=%d.",
+          fileName, width, height, format, bayerOrder);
+    mISP->configureFileInject(fileName, width, height, format, bayerOrder);
+
+}
 status_t ControlThread::processParamAFLock(const CameraParameters *oldParams,
         CameraParameters *newParams)
 {
@@ -3555,6 +3575,11 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
             mPreviewForceChanged = true;
         }
 
+        // if file injection is enabled, get file injection parameters and save
+        // them in AtomISP
+        if(mISP->isFileInjectionEnabled())
+            processParamFileInject(newParams);
+
     // if preview is running and static params have changed, then we need
     // to stop, reconfigure, and restart the isp and all threads.
     // Update the current params before we re-start
@@ -3750,13 +3775,6 @@ status_t ControlThread::handleMessageStopCapture()
     return status;
 }
 
-status_t ControlThread::handleMessageConfigureFileInject(MessageConfigureFileInject *c)
-{
-    status_t status = NO_ERROR;
-    mISP->configureFileInject(c->fileName, c->width, c->height, c->format, c->bayerOrder);
-    mMessageQueue.reply(MESSAGE_ID_CONFIGURE_FILE_INJECT, status);
-    return status;
-}
 
 status_t ControlThread::handleMessageLoadFirmware(MessageLoadFirmware* msg)
 {
@@ -4274,10 +4292,6 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_STOP_CAPTURE:
             status = handleMessageStopCapture();
-            break;
-
-        case MESSAGE_ID_CONFIGURE_FILE_INJECT:
-            status = handleMessageConfigureFileInject(&msg.data.configureFileInject);
             break;
 
         case MESSAGE_ID_SET_PREVIEW_WINDOW:

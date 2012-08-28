@@ -203,6 +203,8 @@ status_t AtomISP::init(int cameraId)
         goto errorexit;
     }
 
+    initFileInject();
+
     // Select the input port to use
     status = initCameraInput(cameraId);
     if (status != NO_ERROR) {
@@ -219,7 +221,6 @@ status_t AtomISP::init(int cameraId)
     }
 
     initFrameConfig(cameraId);
-    initFileInject();
 
     // Initialize the frame sizes
     setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
@@ -352,13 +353,12 @@ status_t AtomISP::initCameraInput(int cameraId)
         }
     }
 
-    if (mCameraInput == 0) {
-        if (PlatformData::supportsFileInject() == true &&
-                cameraId == INTEL_FILE_INJECT_CAMERA_ID) {
-            LOG1("AtomISP opened with file inject camera id");
-            mCameraInput = &sCamInfo[INTEL_FILE_INJECT_CAMERA_ID];
-            status = NO_ERROR;
-        }
+    if (PlatformData::supportsFileInject() == true &&
+            cameraId == INTEL_FILE_INJECT_CAMERA_ID) {
+        LOG1("AtomISP opened with file inject camera id");
+        mCameraInput = &sCamInfo[INTEL_FILE_INJECT_CAMERA_ID];
+        mFileInject.active = true;
+        status = NO_ERROR;
     }
 
     return status;
@@ -620,6 +620,13 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS, "1,3,5,7,15");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, "1,3,5,10");
     intel_params->set(IntelCameraParameters::KEY_BURST_LENGTH, "1");
+
+    intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_FILENAME, "off");
+    intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_WIDTH, "0");
+    intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_HEIGHT, "0");
+    intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_BAYER_ORDER, "0");
+    intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_FORMAT,"0");
+
 
     if(mAAA->is3ASupported()){
         // effect modes
@@ -1260,6 +1267,8 @@ status_t AtomISP::stopCapture()
     stopDevice(V4L2_SECOND_DEVICE);
     stopDevice(V4L2_FIRST_DEVICE);
     closeDevice(V4L2_SECOND_DEVICE);
+    if (mFileInject.active == true)
+        stopFileInject();
     mUsingClientSnapshotBuffers = false;
     dumpRawImageFlush();
     return NO_ERROR;
@@ -2199,7 +2208,7 @@ int AtomISP::configureFileInject(const char *fileName, int width, int height, in
     LOG1("%s: enter", __FUNCTION__);
     mFileInject.fileName = String8(fileName);
     if (mFileInject.fileName.isEmpty() != true) {
-        LOGD("Enabling file injection from %s", mFileInject.fileName.string());
+        LOG1("Enabling file injection, image file=%s", mFileInject.fileName.string());
         mFileInject.active = true;
         mFileInject.width = width;
         mFileInject.height = height;
@@ -2208,7 +2217,7 @@ int AtomISP::configureFileInject(const char *fileName, int width, int height, in
     }
     else {
         mFileInject.active = false;
-        LOGD("Disabling file injection");
+        LOG1("Disabling file injection");
     }
     return 0;
 }

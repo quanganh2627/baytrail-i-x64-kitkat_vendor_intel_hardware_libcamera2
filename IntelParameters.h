@@ -146,6 +146,13 @@ namespace android {
     static const char EFFECT_STILL_SKIN_WHITEN_MEDIUM[];
     static const char EFFECT_STILL_SKIN_WHITEN_HIGH[];
 
+    // File injection
+    static const char KEY_FILE_INJECT_FILENAME[];
+    static const char KEY_FILE_INJECT_WIDTH[];
+    static const char KEY_FILE_INJECT_HEIGHT[];
+    static const char KEY_FILE_INJECT_BAYER_ORDER[];
+    static const char KEY_FILE_INJECT_FORMAT[];
+
   private:
       IntelCameraParameters(void) {}
   };

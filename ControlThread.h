@@ -154,7 +154,6 @@ private:
         MESSAGE_ID_COMMAND,
         MESSAGE_ID_FACES_DETECTED,
         MESSAGE_ID_STOP_CAPTURE,
-        MESSAGE_ID_CONFIGURE_FILE_INJECT,
         MESSAGE_ID_SET_PREVIEW_WINDOW,
         MESSAGE_ID_SCENE_DETECTED,
 
@@ -207,14 +206,6 @@ private:
     struct MessageFacesDetected {
         camera_frame_metadata_t* meta;
         AtomBuffer buf;
-    };
-
-    struct MessageConfigureFileInject {
-        char fileName[PATH_MAX];
-        int width;
-        int height;
-        int format;
-        int bayerOrder;
     };
 
     struct MessagePreviewWindow {
@@ -272,9 +263,6 @@ private:
         MessageCommand command;
         //MESSAGE_ID_FACES_DETECTED
         MessageFacesDetected FacesDetected;
-
-        // MESSAGE_ID_CONFIGURE_FILE_INJECT
-        MessageConfigureFileInject configureFileInject;
 
         // MESSAGE_ID_SET_PREVIEW_WINDOW
         MessagePreviewWindow    previewWin;
@@ -375,7 +363,6 @@ private:
     status_t handleMessageGetParameters(MessageGetParameters *msg);
     status_t handleMessageAutoFocusDone();
     status_t handleMessageCommand(MessageCommand* msg);
-    status_t handleMessageConfigureFileInject(MessageConfigureFileInject *msg);
     status_t handleMessageSetPreviewWindow(MessagePreviewWindow *msg);
     status_t handleMessageStoreMetaDataInBuffers(MessageStoreMetaDataInBuffers *msg);
 
@@ -465,6 +452,7 @@ private:
             CameraParameters *newParams);
     status_t processParamTNR(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    void processParamFileInject(CameraParameters *newParams);
 
     void preSetCameraWindows(CameraWindow* focusWindows, size_t winCount);
 

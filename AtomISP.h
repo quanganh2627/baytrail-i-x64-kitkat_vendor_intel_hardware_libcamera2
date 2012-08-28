@@ -129,7 +129,7 @@ public:
 
     // file input/injection API
     int configureFileInject(const char* fileName, int width, int height, int format, int bayerOrder);
-    bool isFileInjectConfigured(void) const { return mFileInject.active; }
+    bool isFileInjectionEnabled(void) const { return mFileInject.active; }
 
     // camera hardware information
     static int getNumberOfCameras();
