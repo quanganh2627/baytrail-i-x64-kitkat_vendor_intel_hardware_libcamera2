@@ -940,17 +940,6 @@ status_t ControlThread::handleMessageStopRecording()
         status = INVALID_OPERATION;
     }
 
-    /*
-     *  Also, release snapshot shared buffers allocated before video recording.
-     *  It seems that there is a bug in the HW JPEG encoder: if we use preallocated buffers
-     *  after a video recording, those preallocated buffers for JPEG encoding are causing
-     *  a hang in HW JPEG encoder. Therefore, a workaround is to deallocate the shared JPEG
-     *  buffers after a video recording session.
-     *  The shared JPEG buffers will be reallocated with the next setParameters or takePicture
-     *  call.
-     */
-    mPictureThread->releaseSharedBuffers();
-
     // release buffers owned by encoder since it is not going to return them
     if (mCoupledBuffers) {
         for (int i = 0; i < mNumBuffers; i++) {
@@ -1490,9 +1479,6 @@ status_t ControlThread::captureStillPic()
     if (mHdr.enabled) {
         mHdr.outMainBuf.buff = NULL;
         mHdr.outPostviewBuf.buff = NULL;
-        mISP->setSnapshotNum(mHdr.bracketNum);
-    } else {
-        mISP->setSnapshotNum(NUM_BURST_BUFFERS);
     }
 
     setExternalSnapshotBuffers(format, width, height);
@@ -2358,20 +2344,14 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     }
 
     if (status == NO_ERROR) {
-        if (mHdr.enabled) {
-            /*
-             * When doing HDR, we cannot use shared buffers, so we need to release any previously
-             * allocated shared buffers before we use the libjpeg to encode user-space buffers.
-             */
-            status = mPictureThread->releaseSharedBuffers();
-        } else {
-            int picWidth, picHeight;
-            mParameters.getPictureSize(&picWidth, &picHeight);
-            status = mPictureThread->allocSharedBuffers(picWidth, picHeight, NUM_BURST_BUFFERS);
-            if (status != NO_ERROR) {
-                LOGW("Could not pre-allocate picture buffers!");
-            }
+        int picWidth, picHeight;
+
+        mParameters.getPictureSize(&picWidth, &picHeight);
+        status = mPictureThread->allocSharedBuffers(picWidth, picHeight, NUM_BURST_BUFFERS);
+        if (status != NO_ERROR) {
+            LOGW("Could not pre-allocate picture buffers!");
         }
+
     }
 
     return status;
@@ -4022,11 +4002,10 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
     // Initialize the HDR CI input buffers (main/postview) for this capture
     if (snapshotBuffer->shared) {
         mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = (void *) *((char **)snapshotBuffer->buff->data);
-        LOGW("HDR: Warning: shared buffer detected in HDR composing. The composition might fail!");
     } else {
         mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer->buff->data;
     }
-    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer->buff->data;
+
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].width = snapshotBuffer->width;
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].stride = snapshotBuffer->width;
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height = snapshotBuffer->height;
@@ -4042,7 +4021,7 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
             mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height,
             mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].format);
 
-    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].data = postviewBuffer->buff->data;
+    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].data = postviewBuffer->buff->data;  /* postview buffers are never shared (i.e. coming from the PictureThread) */
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].width = postviewBuffer->width;
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height = postviewBuffer->height;
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].size = postviewBuffer->size;
@@ -4138,9 +4117,7 @@ status_t ControlThread::hdrCompose()
  * If possible it retrieves the  buffers allocated by the HW JPEG encoder
  * and passes them to the ISP to be used
  * If the operation fails we default to internally (by AtomISP) allocated buffers
- * Use buffers sharing only if the pixel format is NV12 and HDR is not enabled.
- * HDR shared buffers cannot be accessed from multiresolution fw, so we need user-space
- * buffers when doing HDR composition.
+ * Use buffers sharing only if the pixel format is NV12
  * @param[in] format V4L2 color space format of the frame
  * @param[in] width width in pixels
  * @param[in] height height in lines
@@ -4150,12 +4127,13 @@ void ControlThread::setExternalSnapshotBuffers(int format, int width, int height
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if (format == V4L2_PIX_FMT_NV12 && !mHdr.enabled) {
+    if (format == V4L2_PIX_FMT_NV12) {
         // Try to use buffer sharing
-        void* snapshotBufferPtr;
-        status = mPictureThread->getSharedBuffers(width, height, &snapshotBufferPtr, NUM_BURST_BUFFERS);
+        char* snapshotBufferPtr;
+        int numberOfSnapshots;
+        status = mPictureThread->getSharedBuffers(width, height, &snapshotBufferPtr, &numberOfSnapshots);
         if (status == NO_ERROR) {
-            status = mISP->setSnapshotBuffers(snapshotBufferPtr, NUM_BURST_BUFFERS);
+            status = mISP->setSnapshotBuffers((void*)snapshotBufferPtr, numberOfSnapshots);
             if (status == NO_ERROR) {
                 LOG1("Using shared buffers for snapshot");
             } else {

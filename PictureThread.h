@@ -60,10 +60,9 @@ public:
 
     void getDefaultParameters(CameraParameters *params);
     void initialize(const CameraParameters &params);
-    void setNumberOfShots(int num);
-    status_t getSharedBuffers(int width, int height, void** sharedBuffersPtr, int sharedBuffersNum);
+    status_t getSharedBuffers(int width, int height, char** sharedBuffersPtr, int *sharedBuffersNum);
     status_t allocSharedBuffers(int width, int height, int sharedBuffersNum);
-    status_t releaseSharedBuffers();
+
     status_t wait(); // wait to finish queued messages (sync)
     status_t flushBuffers();
 
@@ -76,7 +75,7 @@ private:
         MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
         MESSAGE_ID_ENCODE,
         MESSAGE_ID_ALLOC_BUFS,
-        MESSAGE_ID_RELEASE_BUFS,
+        MESSAGE_ID_FETCH_BUFS,
         MESSAGE_ID_WAIT,
         MESSAGE_ID_FLUSH,
 
@@ -121,7 +120,7 @@ private:
     status_t handleMessageExit();
     status_t handleMessageEncode(MessageEncode *encode);
     status_t handleMessageAllocBufs(MessageAllocBufs *alloc);
-    status_t handleMessageReleaseBufs();
+    status_t handleMessageFetchBuffers(MessageAllocBufs *alloc);
     status_t handleMessageWait();
     status_t handleMessageFlush();
 
@@ -130,6 +129,8 @@ private:
 
     void setupExifWithMetaData(const MetaData &metaData);
     status_t encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, AtomBuffer *destBuf);
+    status_t allocateInputBuffers(int width, int height, int numBufs);
+    void     freeInputBuffers();
 
 // inherited from Thread
 private:
@@ -149,11 +150,11 @@ private:
 
     int mPictureQuality;
     int mThumbnailQuality;
-    bool mUsingSharedBuffers;
 
-// public data
-public:
-
+    /* Input buffers */
+    AtomBuffer *mInputBufferArray;
+    char       **mInputBuffDataArray;   /*!< Convenience variable. TODO remove and use mInputBufferArray */
+    int        mInputBuffers;
 }; // class PictureThread
 
 }; // namespace android

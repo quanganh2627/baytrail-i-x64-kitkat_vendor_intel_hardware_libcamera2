@@ -35,26 +35,27 @@ PictureThread::PictureThread() :
     ,mCallbacksThread(CallbacksThread::getInstance())
     ,mPictureQuality(80)
     ,mThumbnailQuality(50)
-    ,mUsingSharedBuffers(false)
+    ,mInputBuffers(0)
 {
     LOG1("@%s", __FUNCTION__);
     mOutBuf.buff = NULL;
     mExifBuf.buff = NULL;
+    mInputBufferArray = NULL;
+    mInputBuffDataArray = NULL;
 }
 
 PictureThread::~PictureThread()
 {
     LOG1("@%s", __FUNCTION__);
-    if (mUsingSharedBuffers) {
-        // Keep the shared buffers until we die
-        mCompressor.stopSharedBuffersEncode();
-    }
+
     if (mOutBuf.buff != NULL) {
         mOutBuf.buff->release(mOutBuf.buff);
     }
     if (mExifBuf.buff != NULL) {
         mExifBuf.buff->release(mExifBuf.buff);
     }
+
+    freeInputBuffers();
 }
 
 /*
@@ -242,45 +243,37 @@ void PictureThread::initialize(const CameraParameters &params)
         mThumbnailQuality = q;
 }
 
-void PictureThread::setNumberOfShots(int num)
-{
-    LOG1("@%s: num = %u", __FUNCTION__, num);
-}
 
-status_t PictureThread::getSharedBuffers(int width, int height, void** sharedBuffersPtr, int sharedBuffersNum)
+status_t PictureThread::getSharedBuffers(int width, int height, char** sharedBuffersPtr, int *sharedBuffersNum)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s mInputBuffers %d", __FUNCTION__, mInputBuffers);
     status_t status = NO_ERROR;
-    size_t bufferSize = (width * height * 2);
-    bool allocBuf = true;
+    Message msg;
 
-    // Due to MCG/PSI BZ 45098, jpeglib cannot support more than one
-    // mapped buffer. Until that BZ is resolved, limit shared buffer
-    // mode to one buffer.
-    if (sharedBuffersNum > 1)
-        return INVALID_OPERATION;
+    if(sharedBuffersPtr == NULL || sharedBuffersNum == NULL) {
+        LOGE("invalid parameters passed to %s", __FUNCTION__);
+        return BAD_VALUE;
+    }
 
-    if (mOutBuf.buff != NULL) {
-        if (bufferSize != mOutBuf.buff->size) {
-            mOutBuf.buff->release(mOutBuf.buff);
-        } else {
-            allocBuf = false;
-        }
+
+    msg.id = MESSAGE_ID_FETCH_BUFS;
+    msg.data.alloc.width = width;
+    msg.data.alloc.height = height;
+
+    status = mMessageQueue.send(&msg,MESSAGE_ID_FETCH_BUFS);
+
+    if(  status == NO_ERROR &&
+         mInputBufferArray[0].width ==  width &&
+         mInputBufferArray[0].height ==  height ) {
+
+        *sharedBuffersPtr = (char *)mInputBuffDataArray;
+        *sharedBuffersNum = mInputBuffers;
+    } else {
+        status = BAD_VALUE;
+        LOGE("Picture thread did not had any buffers, or it had with wrong dimensions." \
+              " This should not happen!!");
     }
-    if (allocBuf) {
-        mCallbacks->allocateMemory(&mOutBuf, bufferSize);
-        if (mOutBuf.buff == NULL || mOutBuf.buff->data == NULL) {
-            LOGE("Could not allocate memory for output buffer!");
-            return NO_MEMORY;
-        }
-    }
-    status = mCompressor.startSharedBuffersEncode(mOutBuf.buff->data, mOutBuf.buff->size);
-    if (status == NO_ERROR) {
-        status = mCompressor.getSharedBuffers(width, height, sharedBuffersPtr, sharedBuffersNum);
-        if (status == NO_ERROR) {
-            mUsingSharedBuffers = true;
-        }
-    }
+
     return status;
 }
 
@@ -292,14 +285,6 @@ status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuff
     msg.data.alloc.width = width;
     msg.data.alloc.height = height;
     msg.data.alloc.numBufs = sharedBuffersNum;
-    return mMessageQueue.send(&msg);
-}
-
-status_t PictureThread::releaseSharedBuffers()
-{
-    LOG1("@%s", __FUNCTION__);
-    Message msg;
-    msg.id = MESSAGE_ID_RELEASE_BUFS;
     return mMessageQueue.send(&msg);
 }
 
@@ -414,19 +399,109 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
             msg->width,
             msg->height,
             msg->numBufs);
-    // Send NULL as buffer pointer: don't care about the buffers now, just allocate them
-    return getSharedBuffers(msg->width, msg->height, NULL, msg->numBufs);
+    status_t status = NO_ERROR;
+
+    /* check if re-allocation is needed */
+    if( (mInputBufferArray != NULL) &&
+        (mInputBuffers == msg->numBufs) &&
+        (mInputBufferArray[0].width == msg->width) &&
+        (mInputBufferArray[0].height == msg->height)) {
+        LOG1("Trying to allocate same number of buffers with same resolution... skipping");
+        return NO_ERROR;
+    }
+
+    /* Free old buffers if already allocated */
+    size_t bufferSize = (msg->width * msg->height * 2);
+    if (mOutBuf.buff != NULL && bufferSize != mOutBuf.buff->size) {
+        mOutBuf.buff->release(mOutBuf.buff);
+        mOutBuf.buff = NULL;
+    }
+
+    /* Allocate Output buffer : JPEG and EXIF */
+    if (mOutBuf.buff == NULL || mOutBuf.buff->data == NULL || mOutBuf.buff->size <= 0) {
+        mCallbacks->allocateMemory(&mOutBuf, bufferSize);
+    }
+    if (mExifBuf.buff == NULL || mExifBuf.buff->data == NULL || mExifBuf.buff->size <= 0) {
+        mCallbacks->allocateMemory(&mExifBuf, MAX_EXIF_SIZE);
+    }
+    if ((mOutBuf.buff == NULL || mOutBuf.buff->data == NULL) ||
+        (mExifBuf.buff == NULL || mExifBuf.buff->data == NULL) ){
+        LOGE("Could not allocate memory for output buffers!");
+        return NO_MEMORY;
+    }
+
+    /* re-allocates array of input buffers into mInputBufferArray */
+    freeInputBuffers();
+    status = allocateInputBuffers(msg->width, msg->height, msg->numBufs);
+    if(status != NO_ERROR)
+        return status;
+
+    return NO_ERROR;
 }
 
-status_t PictureThread::handleMessageReleaseBufs()
+status_t PictureThread::handleMessageFetchBuffers(MessageAllocBufs *msg)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    if (mUsingSharedBuffers) {
-        status = mCompressor.stopSharedBuffersEncode();
-        mUsingSharedBuffers = false;
+    if(mInputBuffers == 0) {
+        LOGW("trying to get shared buffers before being allocated");
+        msg->numBufs = 1;
+        status = handleMessageAllocBufs(msg);
     }
+    mMessageQueue.reply(MESSAGE_ID_FETCH_BUFS, status);
     return status;
+}
+
+status_t PictureThread::allocateInputBuffers(int width, int height, int numBufs)
+{
+    LOG1("@%s size (%dx%d) num %d", __FUNCTION__, width, height, numBufs);
+    status_t status = NO_ERROR;
+    size_t bufferSize = frameSize(V4L2_PIX_FMT_NV12, width, height);
+
+    mInputBufferArray = new AtomBuffer[numBufs];
+    mInputBuffDataArray = new char*[numBufs];
+    if((mInputBufferArray == NULL) || mInputBuffDataArray == NULL)
+        goto bailout;
+
+    mInputBuffers = numBufs;
+
+    for (int i = 0; i < mInputBuffers; i++) {
+        mCallbacks->allocateMemory(&mInputBufferArray[i].buff, bufferSize);
+        if(mInputBufferArray[i].buff == NULL || mInputBufferArray[i].buff->data == NULL) {
+            mInputBuffers = i;
+            goto bailout;
+        }
+        mInputBufferArray[i].width = width;
+        mInputBufferArray[i].height = height;
+        mInputBufferArray[i].format = V4L2_PIX_FMT_NV12;
+        mInputBufferArray[i].size = bufferSize;
+        mInputBuffDataArray[i] = (char *) mInputBufferArray[i].buff->data;
+        LOG2("Snapshot buffer[%d] allocated, ptr = %p",i,mInputBufferArray[i].buff->data);
+    }
+    return NO_ERROR;
+
+bailout:
+    LOGE("Error allocating input buffers");
+    freeInputBuffers();
+    return NO_MEMORY;
+}
+
+void PictureThread::freeInputBuffers()
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if(mInputBufferArray != NULL) {
+       for (int i = 0; i < mInputBuffers; i++)
+           mInputBufferArray[i].buff->release(mInputBufferArray[i].buff);
+       delete [] mInputBufferArray;
+       mInputBufferArray = NULL;
+       mInputBuffers = 0;
+    }
+
+    if(mInputBuffDataArray != NULL) {
+       delete [] mInputBuffDataArray;
+       mInputBufferArray = NULL;
+    }
 }
 
 status_t PictureThread::handleMessageWait()
@@ -468,8 +543,8 @@ status_t PictureThread::waitForAndExecuteMessage()
             status = handleMessageAllocBufs(&msg.data.alloc);
             break;
 
-        case MESSAGE_ID_RELEASE_BUFS:
-            status = handleMessageReleaseBufs();
+        case MESSAGE_ID_FETCH_BUFS:
+            status = handleMessageFetchBuffers(&msg.data.alloc);
             break;
 
         case MESSAGE_ID_WAIT:
