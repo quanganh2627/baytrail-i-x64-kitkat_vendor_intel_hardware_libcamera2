@@ -16,7 +16,6 @@
 #define LOG_TAG "Camera_JpegCompressor"
 
 #include "JpegCompressor.h"
-#include "JpegHwEncoder.h"
 #include "LogHelper.h"
 #include <string.h>
 #include "SWJpegEncoder.h"
@@ -30,21 +29,11 @@ JpegCompressor::JpegCompressor() :
     LOG1("@%s", __FUNCTION__);
     mSWEncoder = new SWJpegEncoder();
 
-#ifdef USE_INTEL_JPEG
-    mHwEncoder = new JpegHwEncoder();
-#endif
-
 }
 
 JpegCompressor::~JpegCompressor()
 {
     LOG1("@%s", __FUNCTION__);
-
-#ifdef USE_INTEL_JPEG
-    if(mHwEncoder != NULL) {
-        delete mHwEncoder;
-    }
-#endif
 
     if(mSWEncoder != NULL)
         delete mSWEncoder;
@@ -82,35 +71,6 @@ exit:
     return (status ? -1 : 0);
 }
 
-int JpegCompressor::hwEncode(const InputBuffer &in, const OutputBuffer &out)
-{
-    LOG1("@%s", __FUNCTION__);
-    int status = 1;
-    if ((in.width <= MIN_HW_ENCODING_WIDTH && in.height <= MIN_HW_ENCODING_HEIGHT)
-      || in.format != V4L2_PIX_FMT_NV12) {
-        LOG1("@%s, line:%d, do not use the hw jpeg encoder", __FUNCTION__, __LINE__);
-        return -1;
-    }
-#ifdef USE_INTEL_JPEG
-    status = mHwEncoder->init();
-    if (status)
-        goto exit;
-
-   status = mHwEncoder->setInputBuffer(in);
-   if (status)
-       goto exit;
-
-   status = mHwEncoder->encode(in,(OutputBuffer&)out);
-   mJpegSize = out.length;
-
-exit:
-    mHwEncoder->deInit();
-#endif
-
-    return (status ? -1 : 0);
-}
-
-
 // Takes YUV data (NV12 or YUV420) and outputs JPEG encoded stream
 int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
 {
@@ -125,40 +85,13 @@ int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
         mJpegSize = -1;
         goto exit;
     }
-
-    // If the picture dimension <= MIN_HW_ENCODING_WIDTH x MIN_HW_ENCODING_HEIGHT
-    // The hwEncode will return -1
-    if (hwEncode(in, out) < 0) {
-        if (swEncode(in, out) < 0)
-            goto exit;
-    }
+    if (swEncode(in, out) < 0)
+        goto exit;
 
     return mJpegSize;
 exit:
     return (mJpegSize = -1);
 }
 
-// Starts encoding of multiple shared buffers
-status_t JpegCompressor::startSharedBuffersEncode(void *outBuf, int outSize)
-{
-    LOG1("@%s", __FUNCTION__);
 
-    return NO_ERROR;
-}
-
-// Stops encoding of multiple shared buffers
-status_t JpegCompressor::stopSharedBuffersEncode()
-{
-    LOG1("@%s", __FUNCTION__);
-
-    return NO_ERROR;
-}
-
-status_t JpegCompressor::getSharedBuffers(int width, int height, void** sharedBuffersPtr, int sharedBuffersNum)
-{
-    LOG1("@%s", __FUNCTION__);
-
-    return NO_ERROR;
-}
-
-}
+} // namespace android

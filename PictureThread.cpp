@@ -42,6 +42,7 @@ PictureThread::PictureThread() :
     mExifBuf.buff = NULL;
     mInputBufferArray = NULL;
     mInputBuffDataArray = NULL;
+    mHwCompressor = new JpegHwEncoder();
 }
 
 PictureThread::~PictureThread()
@@ -56,10 +57,15 @@ PictureThread::~PictureThread()
     }
 
     freeInputBuffers();
+
+    if(mHwCompressor)
+        delete mHwCompressor;
 }
 
 /*
  * encodeToJpeg: encodes the given buffer and creates the final JPEG file
+ * It allocates the memory for the final JPEG that contains EXIF(with thumbnail)
+ * plus main picture
  * Input:  mainBuf  - buffer containing the main picture image
  *         thumbBuf - buffer containing the thumbnail image (optional, can be NULL)
  * Output: destBuf  - buffer containing the final JPEG image including EXIF header
@@ -169,11 +175,11 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     outBuf.quality = mPictureQuality;
     outBuf.size = mOutBuf.buff->size;
     endTime = systemTime();
-    int mainSize = mCompressor.encode(inBuf, outBuf);
+    status = mHwCompressor->encode(inBuf, outBuf);
+    int mainSize = outBuf.length;
     LOG1("Picture JPEG size: %d (time to encode: %ums)", mainSize, (unsigned)((systemTime() - endTime) / 1000000));
     if (mainSize > 0) {
-        // We will skip SOI marker from final file
-        totalSize += (mainSize - sizeof(JPEG_MARKER_SOI));
+        totalSize += mainSize;
     } else {
         LOGE("Could not encode picture stream!");
         status = UNKNOWN_ERROR;
@@ -187,12 +193,12 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         }
     }
     if (status == NO_ERROR) {
-        // Copy EXIF (it will also have the SOI and EOI markers
+        // Copy EXIF (it will also have the SOI and EOI markers)
         memcpy(destBuf->buff->data, mExifBuf.buff->data, exifSize);
-        // Copy the final JPEG stream into the final destination buffer, but exclude the SOI marker
+        // Copy the final JPEG stream into the final destination buffer
         char *copyTo = (char*)destBuf->buff->data + exifSize;
-        char *copyFrom = (char*)mOutBuf.buff->data + sizeof(JPEG_MARKER_SOI);
-        memcpy(copyTo, copyFrom, mainSize - sizeof(JPEG_MARKER_SOI));
+        char *copyFrom = (char*)mOutBuf.buff->data;
+        memcpy(copyTo, copyFrom, mainSize);
 
         destBuf->id = mainBuf->id;
     }
@@ -435,6 +441,13 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
     status = allocateInputBuffers(msg->width, msg->height, msg->numBufs);
     if(status != NO_ERROR)
         return status;
+
+    /* Now let the encoder know about the new buffers for the surfaces*/
+    if(mHwCompressor) {
+        status = mHwCompressor->setInputBuffers(mInputBufferArray, mInputBuffers);
+        if(status)
+            LOGW("HW Encoder cannot use pre-allocate buffers");
+    }
 
     return NO_ERROR;
 }

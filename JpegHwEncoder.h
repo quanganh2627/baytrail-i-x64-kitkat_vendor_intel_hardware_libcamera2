@@ -88,7 +88,7 @@ public:
      *  if an encode command comes with a pointer belonging to this set
      *  the encoding process is faster.
      */
-    status_t setInputBuffer(const JpegCompressor::InputBuffer &inBuf);
+    int setInputBuffers(AtomBuffer* inputBuffersArray, int inputBuffersNum);
 
     /**
      *  Set the JPEG Q factor
@@ -152,14 +152,24 @@ public:
 
 private:
 
+    int configSurfaces(AtomBuffer* inputBuffersArray, int inputBuffersNum);
     void destroySurfaces(void);
     int startJpegEncoding(unsigned int aSurface);
     int getJpegData(void *pdst, int dstSize, int *jpegSize);
     int getJpegSize(int *jpegSize);
-
+    int resetContext(const JpegCompressor::InputBuffer &in, unsigned int* aSurface);
+    int restoreContext();
 private:
+    // If the picture dimension is <= the below w x h
+    // We should use the software jpeg encoder
+    static const int MIN_HW_ENCODING_WIDTH = 640;
+    static const int MIN_HW_ENCODING_HEIGHT = 480;
+
     vaJpegContext*  mVaEncoderContext;
     bool            mHWInitialized;
+    bool            mContextRestoreNeeded;
+    int             mVaInputSurfacesNum;
+    unsigned int    mBuffers[MAX_BURST_BUFFERS]; // it's used to store camera buffers addresses
 
     int mPicWidth;          /*!< Input frame width  */
     int mPicHeight;         /*!< Input frame height */

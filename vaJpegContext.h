@@ -32,8 +32,12 @@
             LOGE("@%s, line:%d, call %s failed", __FUNCTION__, line, func);\
             return -1;                                                     \
         }
-
-
+/**
+ * \define ERROR_POINTER_NOT_FOUND
+ * \brief default value used to detect that a buffer address does not have an
+ *  assigned VA Surface
+ */
+#define ERROR_POINTER_NOT_FOUND 0xDEADBEEF
 namespace android {
 
 
@@ -46,7 +50,7 @@ namespace android {
  * JpegHwEncoder class
  */
 struct vaJpegContext {
-    vaJpegContext() {
+    vaJpegContext():mBuff2SurfId(ERROR_POINTER_NOT_FOUND) {
         memset(&mSurfaceImage, 0, sizeof(mSurfaceImage));
         memset(&mQMatrix, 0, sizeof(mQMatrix));
         mBuff2SurfId.setCapacity(MAX_BURST_BUFFERS);
@@ -72,7 +76,7 @@ struct vaJpegContext {
 
     VAImage mSurfaceImage;
     VASurfaceID mSurfaceIds[MAX_BURST_BUFFERS];
-    KeyedVector<unsigned int, VASurfaceID> mBuff2SurfId;
+    DefaultKeyedVector<unsigned int, VASurfaceID> mBuff2SurfId;
     VASurfaceID mCurrentSurface;
     // only support NV12
     static const unsigned int mSupportedFormat = VA_RT_FORMAT_YUV420;

@@ -23,6 +23,7 @@
 #include "MessageQueue.h"
 #include "AtomCommon.h"
 #include "EXIFMaker.h"
+#include "JpegHwEncoder.h"
 #include "JpegCompressor.h"
 
 namespace android {
@@ -144,6 +145,7 @@ private:
     Callbacks       *mCallbacks;
     CallbacksThread *mCallbacksThread;
     JpegCompressor   mCompressor;
+    JpegHwEncoder   *mHwCompressor;
     EXIFMaker       mExifMaker;
     AtomBuffer      mExifBuf;
     AtomBuffer      mOutBuf;

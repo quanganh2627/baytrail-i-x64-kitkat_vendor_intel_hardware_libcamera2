@@ -25,6 +25,8 @@ namespace android {
 JpegHwEncoder::JpegHwEncoder() :
     mVaEncoderContext(NULL),
     mHWInitialized(false),
+    mContextRestoreNeeded(false),
+    mVaInputSurfacesNum(0),
     mPicWidth(0),
     mPicHeight(0),
     mMaxOutJpegBufSize(0)
@@ -107,57 +109,24 @@ void JpegHwEncoder::deInit()
     mHWInitialized = false;
 }
 
-status_t JpegHwEncoder::setInputBuffer(const JpegCompressor::InputBuffer &inBuf)
+status_t JpegHwEncoder::setInputBuffers(AtomBuffer* inputBuffersArray, int inputBuffersNum)
 {
     LOG1("@%s", __FUNCTION__);
 
-    VAStatus status;
-    void *surface_p = NULL;
-    vaJpegContext *va = mVaEncoderContext;
-    VAEncPictureParameterBufferJPEG pic_jpeg;
-    VASurfaceAttributeTPI           surfaceAttrib;
-    memset(&surfaceAttrib, 0, sizeof(surfaceAttrib));
+    if(isInitialized())
+       deInit();
 
-    if(va->mBuff2SurfId.size() != 0)
-        destroySurfaces();
-
-    mPicWidth = inBuf.width;
-    mPicHeight = inBuf.height;
-    mMaxOutJpegBufSize = inBuf.size;
-
-    if (mPicHeight % 2) {
-        LOG1("@%s, line:%d, height:%d, we can't support", __FUNCTION__, __LINE__, mPicHeight);
+    if (init() < 0) {
+        LOGE("HW encoder failed to initialize when setting the input buffers");
         return -1;
     }
 
-    surfaceAttrib.buffers = (unsigned int *)&inBuf.buf;
-    surfaceAttrib.count = 1;
-    surfaceAttrib.luma_stride = mPicWidth;
-    surfaceAttrib.pixel_format = VA_FOURCC_NV12;
-    surfaceAttrib.width = mPicWidth;
-    surfaceAttrib.height = mPicHeight;
-    surfaceAttrib.type = VAExternalMemoryUserPointer;
-    status = vaCreateSurfacesWithAttribute(va->mDpy, mPicWidth, mPicHeight, va->mSupportedFormat,
-                                           1, va->mSurfaceIds, &surfaceAttrib);
-    CHECK_STATUS(status, "vaCreateSurfacesWithAttribute", __LINE__)
+    if(configSurfaces(inputBuffersArray, inputBuffersNum) < 0) {
+        LOGE("HW encoder coudl  not create the libVA context");
+        return -1;
+    }
 
-
-    status = vaCreateContext(va->mDpy, va->mConfigId, mPicWidth, mPicHeight,
-                             VA_PROGRESSIVE, va->mSurfaceIds, 1, &va->mContextId);
-    CHECK_STATUS(status, "vaCreateContext", __LINE__)
-
-    /* Create mapping vector from buffer address to surface id */
-    va->mBuff2SurfId.add((unsigned int)inBuf.buf, va->mSurfaceIds[0]);
-
-
-    /* Allocate buffer for compressed  output. It is stored in mCodedBuf */
-    status = vaCreateBuffer(va->mDpy, va->mContextId, VAEncCodedBufferType,
-                            mMaxOutJpegBufSize, 1, NULL, &va->mCodedBuf);
-    CHECK_STATUS(status, "vaCreateBuffer", __LINE__)
-
-    va->mCurrentSurface = 0;
-
-    return NO_ERROR;
+    return 0;
 }
 
 int JpegHwEncoder::encode(const JpegCompressor::InputBuffer &in, JpegCompressor::OutputBuffer &out)
@@ -168,12 +137,23 @@ int JpegHwEncoder::encode(const JpegCompressor::InputBuffer &in, JpegCompressor:
     VAEncPictureParameterBufferJPEG pic_jpeg;
     vaJpegContext *va = mVaEncoderContext;
 
+    if ((in.width <= MIN_HW_ENCODING_WIDTH && in.height <= MIN_HW_ENCODING_HEIGHT)
+       || in.format != V4L2_PIX_FMT_NV12) {
+         LOG1("@%s, line:%d, do not use the hw jpeg encoder", __FUNCTION__, __LINE__);
+         return -1;
+     }
+
     LOG1("input buffer address: %p", in.buf);
 
     aSurface = va->mBuff2SurfId.valueFor((unsigned int)in.buf);
-    if(aSurface == 0) {
+    if(aSurface == ERROR_POINTER_NOT_FOUND) {
         LOGW("Received buffer does not map to any surface");
-        return -1;
+        status = resetContext(in, &aSurface);
+        mContextRestoreNeeded = true;
+        if(status) {
+            LOGE("Encoder failed to reset the libVA context");
+            return -1;
+        }
     }
 
     pic_jpeg.picture_width  = mPicWidth;
@@ -197,6 +177,10 @@ int JpegHwEncoder::encode(const JpegCompressor::InputBuffer &in, JpegCompressor:
 
     status = getJpegData(out.buf, out.size, &out.length);
 
+    if(mContextRestoreNeeded) {
+        restoreContext();
+        mContextRestoreNeeded = false;
+    }
 exit:
     return (status ? -1 : 0);
 }
@@ -208,17 +192,22 @@ int JpegHwEncoder::encodeAsync(const JpegCompressor::InputBuffer &in, JpegCompre
     VASurfaceID aSurface = 0;
     VAEncPictureParameterBufferJPEG pic_jpeg;
     vaJpegContext *va = mVaEncoderContext;
-
+    mContextRestoreNeeded = false;
     LOG1("input buffer address: %p", in.buf);
 
     aSurface = va->mBuff2SurfId.valueFor((unsigned int)in.buf);
-    if(aSurface == 0) {
+    if(aSurface == ERROR_POINTER_NOT_FOUND) {
         LOGW("Received buffer does not map to any surface");
-        return -1;
+        status = resetContext(in, &aSurface);
+        mContextRestoreNeeded = true;
+        if(status) {
+            LOGE("Encoder failed to reset the libVA context");
+            return -1;
+        }
     }
 
-    pic_jpeg.picture_width  = mPicWidth;    //TODO: Here we should get the dimensions from OutputBuffer
-    pic_jpeg.picture_height = mPicHeight;
+    pic_jpeg.picture_width  = out.width;
+    pic_jpeg.picture_height = out.height;
     pic_jpeg.reconstructed_picture = 0;
     pic_jpeg.coded_buf = va->mCodedBuf;
     status = vaCreateBuffer(va->mDpy, va->mContextId, VAEncPictureParameterBufferType,
@@ -259,14 +248,84 @@ int JpegHwEncoder::waitToComplete(int *jpegSize)
 int JpegHwEncoder::getOutput(JpegCompressor::OutputBuffer &out)
 {
     LOG1("@%s", __FUNCTION__);
+    int status = 0;
 
-    return getJpegData(out.buf, out.size, &out.length);
+    status = getJpegData(out.buf, out.size, &out.length);
+    if(status) {
+        LOGE("Could not retrieved compressed data!");
+        return status;
+    }
+
+    if(mContextRestoreNeeded) {
+        status = restoreContext();
+        mContextRestoreNeeded = false;
+    }
+    return status;
 }
 
 /****************************************************************************
  *  PRIVATE METHODS
  ****************************************************************************/
 
+int JpegHwEncoder::configSurfaces(AtomBuffer* inputBuffersArray, int inputBuffersNum)
+{
+    LOG1("@%s, bufNum:%d, cameraBufArray:%p",
+          __FUNCTION__, inputBuffersNum, inputBuffersArray);
+
+    VAStatus status;
+    void *surface_p = NULL;
+    vaJpegContext *va = mVaEncoderContext;
+    VAEncPictureParameterBufferJPEG pic_jpeg;
+    VASurfaceAttributeTPI           surfaceAttrib;
+    memset(&surfaceAttrib, 0, sizeof(surfaceAttrib));
+
+    if(mVaInputSurfacesNum != 0)
+        destroySurfaces();
+
+    mPicWidth = inputBuffersArray[0].width;
+    mPicHeight = inputBuffersArray[0].height;
+    mMaxOutJpegBufSize = inputBuffersArray[0].size;
+    mVaInputSurfacesNum = inputBuffersNum;
+    if (mPicHeight % 2) {
+        LOG1("@%s, line:%d, height:%d, we can't support", __FUNCTION__, __LINE__, mPicHeight);
+        return -1;
+    }
+
+    CLIP(mVaInputSurfacesNum, MAX_BURST_BUFFERS, 1);
+
+    for (int i = 0 ; i < mVaInputSurfacesNum; i++) {
+        mBuffers[i] = (unsigned int) inputBuffersArray[i].buff->data;
+    }
+
+    surfaceAttrib.buffers = mBuffers;
+    surfaceAttrib.count = mVaInputSurfacesNum;
+    surfaceAttrib.luma_stride = mPicWidth;
+    surfaceAttrib.pixel_format = VA_FOURCC_NV12;
+    surfaceAttrib.width = mPicWidth;
+    surfaceAttrib.height = mPicHeight;
+    surfaceAttrib.type = VAExternalMemoryUserPointer;
+    status = vaCreateSurfacesWithAttribute(va->mDpy, mPicWidth, mPicHeight, va->mSupportedFormat,
+                                          mVaInputSurfacesNum, va->mSurfaceIds, &surfaceAttrib);
+    CHECK_STATUS(status, "vaCreateSurfacesWithAttribute", __LINE__)
+
+
+    status = vaCreateContext(va->mDpy, va->mConfigId, mPicWidth, mPicHeight,
+                             VA_PROGRESSIVE, va->mSurfaceIds, mVaInputSurfacesNum, &va->mContextId);
+    CHECK_STATUS(status, "vaCreateContext", __LINE__)
+
+    /* Create mapping vector from buffer address to surface id */
+    for (int i = 0 ; i < mVaInputSurfacesNum; i++) {
+        va->mBuff2SurfId.add(mBuffers[i], va->mSurfaceIds[i]);
+    }
+
+    /* Allocate buffer for compressed  output. It is stored in mCodedBuf */
+    status = vaCreateBuffer(va->mDpy, va->mContextId, VAEncCodedBufferType,
+                            mMaxOutJpegBufSize, 1, NULL, &va->mCodedBuf);
+    CHECK_STATUS(status, "vaCreateBuffer", __LINE__)
+
+    va->mCurrentSurface = 0;
+    return 0;
+}
 
 int JpegHwEncoder::setJpegQuality(int quality)
 {
@@ -385,7 +444,13 @@ int JpegHwEncoder::getJpegSize(int *jpegSize)
  * It copies the JPEG bitstream from the VA buffer (mCodedBuf)
  * to the user provided buffer dstPtr
  *
+ * HW encoder provides the bitstream with the SOI and EOI markers
+ * Since we used Exif metadata we need to remove those from the beginning and
+ * end of the bitstream
+ *
  * It also returns the size of the actual JPEG bitstream
+ * Although we are currently reporting the size with the markers
+ * otherwise the resulting JPEG's are not valid
  *
  * \param pdst [in] pointer to the user provided
  * \param dstSize [in] size of the user provided buffer
@@ -419,9 +484,15 @@ int JpegHwEncoder::getJpegData(void *dstPtr, int dstSize, int *jpegSize)
 
     bufferList = va->mCodedBufList;
 
+    // copy jpeg buffer data from libva to out buffer but skip the JPEG SOI Marker
+    src = (unsigned char *)bufferList->buf + SIZE_OF_JPEG_MARKER;
+    segmentSize = bufferList->size - SIZE_OF_JPEG_MARKER;
+
     while (bufferList != NULL) {
-        src = (unsigned char *) bufferList->buf;
-        segmentSize = bufferList->size;
+
+        if(bufferList->next == NULL)    // Do not copy EOI marker at the end
+            segmentSize -=  SIZE_OF_JPEG_MARKER;
+
         writtenSize += segmentSize;
 
         if (writtenSize > dstSize) {
@@ -433,9 +504,15 @@ int JpegHwEncoder::getJpegData(void *dstPtr, int dstSize, int *jpegSize)
 
         p +=  segmentSize;
         bufferList = (VACodedBufferSegment *)bufferList->next;
+        if(bufferList != NULL) {
+            src = (unsigned char *) bufferList->buf;
+            segmentSize = bufferList->size;
+        }
     }
 
-    *jpegSize = writtenSize;
+    // Apparently we need to report the size with the markers even if now we do
+    // not copy them anymore.
+    *jpegSize = writtenSize + 2*SIZE_OF_JPEG_MARKER;
     LOG1("@%s, line:%d, jpeg size:%d", __FUNCTION__, __LINE__, writtenSize);
 
     status = vaUnmapBuffer(va->mDpy, va->mCodedBuf);
@@ -449,14 +526,102 @@ void JpegHwEncoder::destroySurfaces(void)
 {
     LOG1("@%s", __FUNCTION__);
     vaJpegContext *va = mVaEncoderContext;
+
     if (va->mDpy && va->mContextId)
         vaDestroyContext(va->mDpy, va->mContextId);
     if (va->mDpy && va->mSurfaceIds)
-        vaDestroySurfaces(va->mDpy, va->mSurfaceIds, 1);
+        vaDestroySurfaces(va->mDpy, va->mSurfaceIds, va->mBuff2SurfId.size());
 
     va->mBuff2SurfId.clear();
 }
 
+int JpegHwEncoder::resetContext(const JpegCompressor::InputBuffer &in, unsigned int* aSurface)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    VAStatus status;
+    vaJpegContext *va = mVaEncoderContext;
+    VASurfaceAttributeTPI  surfaceAttrib;
+    memset(&surfaceAttrib, 0, sizeof(surfaceAttrib));
+
+    deInit();
+    init();
+
+    mMaxOutJpegBufSize = in.size;
+
+    if (mPicHeight % 2) {
+        LOG1("@%s, line:%d, height:%d, we can't support", __FUNCTION__, __LINE__, mPicHeight);
+        return -1;
+    }
+
+    surfaceAttrib.buffers = (unsigned int*)&(in.buf);
+    surfaceAttrib.count = 1;
+    surfaceAttrib.luma_stride = in.width;
+    surfaceAttrib.pixel_format = VA_FOURCC_NV12;
+    surfaceAttrib.width = in.width;
+    surfaceAttrib.height = in.height;
+    surfaceAttrib.type = VAExternalMemoryUserPointer;
+    status = vaCreateSurfacesWithAttribute(va->mDpy, in.width, in.height, va->mSupportedFormat,
+                                          1, (VASurfaceID*)aSurface, &surfaceAttrib);
+    CHECK_STATUS(status, "vaCreateSurfacesWithAttribute", __LINE__)
 
 
+    status = vaCreateContext(va->mDpy, va->mConfigId, in.width, in.height,
+                             VA_PROGRESSIVE, aSurface, 1, &va->mContextId);
+    CHECK_STATUS(status, "vaCreateContext", __LINE__)
+
+    va->mBuff2SurfId.add((unsigned int)in.buf, *aSurface);
+
+    /* Allocate buffer for compressed  output. It is stored in mCodedBuf */
+    status = vaCreateBuffer(va->mDpy, va->mContextId, VAEncCodedBufferType,
+                            in.size, 1, NULL, &va->mCodedBuf);
+    CHECK_STATUS(status, "vaCreateBuffer", __LINE__)
+
+    va->mCurrentSurface = 0;
+    return 0;
+}
+
+int JpegHwEncoder::restoreContext()
+{
+    LOG1("@%s", __FUNCTION__);
+
+    VAStatus status = 0;
+    vaJpegContext *va = mVaEncoderContext;
+    VASurfaceAttributeTPI  surfaceAttrib;
+    memset(&surfaceAttrib, 0, sizeof(surfaceAttrib));
+
+    deInit();
+    init();
+
+    surfaceAttrib.buffers = mBuffers;
+    surfaceAttrib.count = mVaInputSurfacesNum;
+    surfaceAttrib.luma_stride = mPicWidth;
+    surfaceAttrib.pixel_format = VA_FOURCC_NV12;
+    surfaceAttrib.width = mPicWidth;
+    surfaceAttrib.height = mPicHeight;
+    surfaceAttrib.type = VAExternalMemoryUserPointer;
+    status = vaCreateSurfacesWithAttribute(va->mDpy, mPicWidth, mPicHeight, va->mSupportedFormat,
+                                        mVaInputSurfacesNum, va->mSurfaceIds, &surfaceAttrib);
+    CHECK_STATUS(status, "vaCreateSurfacesWithAttribute", __LINE__)
+
+
+    status = vaCreateContext(va->mDpy, va->mConfigId, mPicWidth, mPicHeight,
+                           VA_PROGRESSIVE, va->mSurfaceIds, mVaInputSurfacesNum, &va->mContextId);
+    CHECK_STATUS(status, "vaCreateContext", __LINE__)
+
+    /* Create mapping vector from buffer address to surface id */
+    for (int i = 0 ; i < mVaInputSurfacesNum; i++) {
+      va->mBuff2SurfId.add(mBuffers[i], va->mSurfaceIds[i]);
+    }
+
+    /* Allocate buffer for compressed  output. It is stored in mCodedBuf */
+    mMaxOutJpegBufSize = mPicWidth * mPicHeight * 2;
+    status = vaCreateBuffer(va->mDpy, va->mContextId, VAEncCodedBufferType,
+                          mMaxOutJpegBufSize, 1, NULL, &va->mCodedBuf);
+    CHECK_STATUS(status, "vaCreateBuffer", __LINE__)
+
+    va->mCurrentSurface = 0;
+
+    return status;
+}
 }

@@ -24,7 +24,6 @@
 
 namespace android {
 // Forward declarations
-class JpegHwEncoder;
 class SWJpegEncoder;
 
 class JpegCompressor {
@@ -55,7 +54,7 @@ public:
         int height;
         int size;
         int quality;
-        int length;
+        int length;     /*>! amount of the data actually written to the buffer. Always smaller than size field*/
 
         void clear()
         {
@@ -70,34 +69,12 @@ public:
     // Encoder functions
     int encode(const InputBuffer &in, const OutputBuffer &out);
 
-    /*
-     * Shared buffers encoding
-     * In order to use the shared buffers encoding, the caller must follow this call-flow:
-     * - startSharedBuffersEncode
-     * - getSharedBuffers
-     * - encode (using buffers obtained from getSharedBuffers)
-     * - stopSharedBuffersEncode
-     */
-    status_t startSharedBuffersEncode(void *outBuf, int outSize);
-    status_t stopSharedBuffersEncode();
-    status_t getSharedBuffers(int width, int height, void** sharedBuffersPtr, int sharedBuffersNum);
-
 private:
     int mJpegSize;
 
-    // If the picture dimension is <= the below w x h
-    // We should use the software jpeg encoder
-    static const int MIN_HW_ENCODING_WIDTH = 640;
-    static const int MIN_HW_ENCODING_HEIGHT = 480;
-
     int swEncode(const InputBuffer &in, const OutputBuffer &out);
-    int hwEncode(const InputBuffer &in, const OutputBuffer &out);
 
     SWJpegEncoder *mSWEncoder;
-#ifdef USE_INTEL_JPEG
-    JpegHwEncoder   *mHwEncoder;
-#endif
-
 };
 
 }; // namespace android
