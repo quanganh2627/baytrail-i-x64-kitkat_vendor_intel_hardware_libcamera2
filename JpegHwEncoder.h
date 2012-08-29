@@ -57,96 +57,15 @@ public:
     JpegHwEncoder();
     virtual ~JpegHwEncoder();
 
-    /**
-     * Initialize the HW encoder
-     *
-     * Initializes the libVA library
-     * \return 0 success
-     * \return -1 failure
-     */
     int init(void);
-
-    /**
-     * deInit the HW encoder
-     *
-     * de-initializes the libVA library
-     */
     void deInit(void);
-
-    /**
-     * Returns the status of the HW encoder
-     *
-     * \return true if libVA is initialized
-     * \return false if not.
-     */
     bool isInitialized() {return mHWInitialized;};
-
-    /**
-     *  Configure pre-allocated input buffer
-     *
-     *  Prepares the encoder to use a set of pre-allocated input buffers
-     *  if an encode command comes with a pointer belonging to this set
-     *  the encoding process is faster.
-     */
     int setInputBuffers(AtomBuffer* inputBuffersArray, int inputBuffersNum);
-
-    /**
-     *  Set the JPEG Q factor
-     *
-     * This function is used to set the jpeg quality
-     *
-     * \param quality: one value from 0 to 100
-     */
     int setJpegQuality(int quality);
-
-    /**
-     * Encodes the input buffer placing the  resulting JPEG bitstream in the
-     * output buffer. The encoding operation is synchronous
-     *
-     * \param in: input buffer description
-     * \param out: output param description
-     * \return 0 if encoding was successful
-     * \return -1 if encoding failed
-     */
     int encode(const JpegCompressor::InputBuffer &in, JpegCompressor::OutputBuffer &out);
-
-    /**
-     * Starts the HW encoding process.
-     * After it returns the JPEG is not encoded yet
-     * The following steps are:
-     * - waitToComplete()
-     * - getOutput()
-     *
-     * \param in  [in]: input buffer descriptor structure
-     * \param out [in]: output buffer descriptor. It contains details like
-     *                  quality and buffer size
-     */
+    /* Async encode */
     int encodeAsync(const JpegCompressor::InputBuffer &in, JpegCompressor::OutputBuffer &out);
-
-    /**
-     *  Wait for the HW to finish encoding
-     *
-     *  Part of the asynchronous encoding process.
-     *  This call has to be issued after a encodeAsync()
-     *  After this call returns the jpeg encoding is complete and the jpeg
-     *  bitstream is ready to be retrieved.
-     *  At this point usually the destination buffer is allocated with the
-     *  correct size
-     *
-     *  \param jpegSize [out] pointer to an allocated int where the size of the
-     *                  encoded jpeg will be stored
-     */
     int waitToComplete(int *jpegSize);
-
-    /**
-     *  Retrieve the encoded bitstream
-     *
-     *  Part of the asynchronous encoding process.
-     *  Copies the jpeg bistream from the internal buffer allocated by libVA
-     *  to the one provided inside the outputBuffer struct
-     *
-     *  \param out [in] buffer descriptor for the output of the encoding process
-     */
     int getOutput(JpegCompressor::OutputBuffer &out);
 
 
@@ -167,9 +86,10 @@ private:
 
     vaJpegContext*  mVaEncoderContext;
     bool            mHWInitialized;
-    bool            mContextRestoreNeeded;
-    int             mVaInputSurfacesNum;
-    unsigned int    mBuffers[MAX_BURST_BUFFERS]; // it's used to store camera buffers addresses
+    bool            mContextRestoreNeeded;       /*!< flags the need for a libVA context restore */
+    int             mVaInputSurfacesNum;         /*!< number of input surface created from buffers
+                                                      allocated by PictureThread */
+    unsigned int    mBuffers[MAX_BURST_BUFFERS]; /*!< it's used to store camera buffers addresses*/
 
     int mPicWidth;          /*!< Input frame width  */
     int mPicHeight;         /*!< Input frame height */

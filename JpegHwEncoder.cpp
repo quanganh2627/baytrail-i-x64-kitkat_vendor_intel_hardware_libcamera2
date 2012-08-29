@@ -45,6 +45,13 @@ JpegHwEncoder::~JpegHwEncoder()
         delete mVaEncoderContext;
 }
 
+/**
+ * Initialize the HW encoder
+ *
+ * Initializes the libVA library
+ * \return 0 success
+ * \return -1 failure
+ */
 int JpegHwEncoder::init(void)
 {
     LOG1("@%s", __FUNCTION__);
@@ -93,6 +100,11 @@ int JpegHwEncoder::init(void)
     return 0;
 }
 
+/**
+ * deInit the HW encoder
+ *
+ * de-initializes the libVA library
+ */
 void JpegHwEncoder::deInit()
 {
     LOG1("@%s", __FUNCTION__);
@@ -109,6 +121,13 @@ void JpegHwEncoder::deInit()
     mHWInitialized = false;
 }
 
+/**
+ *  Configure pre-allocated input buffer
+ *
+ *  Prepares the encoder to use a set of pre-allocated input buffers
+ *  if an encode command comes with a pointer belonging to this set
+ *  the encoding process is faster.
+ */
 status_t JpegHwEncoder::setInputBuffers(AtomBuffer* inputBuffersArray, int inputBuffersNum)
 {
     LOG1("@%s", __FUNCTION__);
@@ -129,6 +148,15 @@ status_t JpegHwEncoder::setInputBuffers(AtomBuffer* inputBuffersArray, int input
     return 0;
 }
 
+/**
+ * Encodes the input buffer placing the  resulting JPEG bitstream in the
+ * output buffer. The encoding operation is synchronous
+ *
+ * \param in: input buffer description
+ * \param out: output param description
+ * \return 0 if encoding was successful
+ * \return -1 if encoding failed
+ */
 int JpegHwEncoder::encode(const JpegCompressor::InputBuffer &in, JpegCompressor::OutputBuffer &out)
 {
     LOG1("@%s", __FUNCTION__);
@@ -185,6 +213,17 @@ exit:
     return (status ? -1 : 0);
 }
 
+/**
+ * Starts the HW encoding process.
+ * After it returns the JPEG is not encoded yet
+ * The following steps are:
+ * - waitToComplete()
+ * - getOutput()
+ *
+ * \param in  [in]: input buffer descriptor structure
+ * \param out [in]: output buffer descriptor. It contains details like
+ *                  quality and buffer size
+ */
 int JpegHwEncoder::encodeAsync(const JpegCompressor::InputBuffer &in, JpegCompressor::OutputBuffer &out)
 {
     LOG1("@%s", __FUNCTION__);
@@ -228,6 +267,19 @@ exit:
     return (status ? -1 : 0);
 }
 
+/**
+ *  Wait for the HW to finish encoding
+ *
+ *  Part of the asynchronous encoding process.
+ *  This call has to be issued after a encodeAsync()
+ *  After this call returns the jpeg encoding is complete and the jpeg
+ *  bitstream is ready to be retrieved.
+ *  At this point usually the destination buffer is allocated with the
+ *  correct size
+ *
+ *  \param jpegSize [out] pointer to an allocated int where the size of the
+ *                  encoded jpeg will be stored
+ */
 int JpegHwEncoder::waitToComplete(int *jpegSize)
 {
     LOG1("@%s", __FUNCTION__);
@@ -245,6 +297,15 @@ int JpegHwEncoder::waitToComplete(int *jpegSize)
     return (status ? -1 : 0);
 }
 
+/**
+ *  Retrieve the encoded bitstream
+ *
+ *  Part of the asynchronous encoding process.
+ *  Copies the jpeg bistream from the internal buffer allocated by libVA
+ *  to the one provided inside the outputBuffer struct
+ *
+ *  \param out [in] buffer descriptor for the output of the encoding process
+ */
 int JpegHwEncoder::getOutput(JpegCompressor::OutputBuffer &out)
 {
     LOG1("@%s", __FUNCTION__);
@@ -327,6 +388,13 @@ int JpegHwEncoder::configSurfaces(AtomBuffer* inputBuffersArray, int inputBuffer
     return 0;
 }
 
+/**
+ *  Set the JPEG Q factor
+ *
+ * This function is used to set the jpeg quality
+ *
+ * \param quality: one value from 0 to 100
+ */
 int JpegHwEncoder::setJpegQuality(int quality)
 {
     LOG1("@%s, quality:%d", __FUNCTION__, quality);
@@ -535,6 +603,19 @@ void JpegHwEncoder::destroySurfaces(void)
     va->mBuff2SurfId.clear();
 }
 
+/**
+ *  Resets the current libVA context and creates a new one with only 1 surface
+ *  This is used when the encoder receives an input frame pointer to encode
+ *  that is not mapped to a surface.
+ *  A call to restoreContext is needed to revert this operation
+ *
+ *  \param in Input image buffer descriptor
+ *  \param aSurface VASurfaceID of the new surface created in the new context
+ *
+ *  \return 0 on success
+ *  \return -1 on failure
+ *  \return Other VAStatus values in case of failure
+ */
 int JpegHwEncoder::resetContext(const JpegCompressor::InputBuffer &in, unsigned int* aSurface)
 {
     LOG1("@%s", __FUNCTION__);
@@ -581,6 +662,15 @@ int JpegHwEncoder::resetContext(const JpegCompressor::InputBuffer &in, unsigned 
     return 0;
 }
 
+/**
+ *  Restores the libVA context with the buffers originally allocated by PictureThread
+ *  that were passed to encoder in setInputBuffers()
+ *  This method is only needed if a context was reset. This is track by the boolean
+ *  member mContextRestoreNeeded.
+ *
+ *  \return 0 on success
+ *  \return -1 on failure
+ */
 int JpegHwEncoder::restoreContext()
 {
     LOG1("@%s", __FUNCTION__);

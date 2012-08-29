@@ -55,60 +55,13 @@ public:
     SWJpegEncoder();
     ~SWJpegEncoder();
 
-    /**
-     * Init the SW jpeg encoder
-     *
-     * It will init the libjpeg library
-     */
     void init(void);
-
-    /**
-     * deInit the SW jpeg encoder
-     *
-     * It will deinit the libjpeg library
-     */
     void deInit(void);
-
-    /**
-     * Set the jpeg quality
-     *
-     * \param quality: one value from 0 to 100
-     *
-     */
     void setJpegQuality(int quality);
-
-    /**
-     * Config the SW jpeg encoder.
-     *
-     * mainly, it will set the destination buffer manager, color space, quality.
-     *
-     * \param width: the width of the jpeg dimentions.
-     * \param height: the height of the jpeg dimentions.
-     * \param jpegBuf: the dest buffer to store the jpeg data
-     * \param jpegBufSize: the size of jpegBuf buffer
-     *
-     * \return 0 if the configuration is right.
-     * \return -1 if the configuration fails.
-    */
     int configEncoding(int width, int height, void *jpegBuf, int jpegBufSize);
-
-    /**
-     * Do the SW jpeg encoding.
-     *
-     * it will convert the NV12 data to P411 and then do jpeg encoding.
-     *
-     * \param nv12_buf: the source buffer for NV12 data
-     * \return 0 if the encoding is successful.
-     * \return -1 if the encoding fails.
-     */
     int doJpegEncoding(const void* nv12_buf);
-
-    /**
-     * Get the jpeg size.
-     *
-     * \param jpegSize: get the real jpeg size, it will be -1, if encoding fails
-     */
     void getJpegSize(int *jpegSize);
+
 private:
     typedef struct {
         struct jpeg_destination_mgr pub;

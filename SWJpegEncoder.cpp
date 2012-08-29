@@ -34,6 +34,11 @@ SWJpegEncoder::~SWJpegEncoder()
     LOG1("@%s", __FUNCTION__);
 }
 
+/**
+ * Init the SW jpeg encoder
+ *
+ * It will init the libjpeg library
+ */
 void SWJpegEncoder::init(void)
 {
     LOG1("@%s", __FUNCTION__);
@@ -42,18 +47,42 @@ void SWJpegEncoder::init(void)
     jpeg_create_compress(&mCInfo);
 }
 
+/**
+ * deInit the SW jpeg encoder
+ *
+ * It will deinit the libjpeg library
+ */
 void SWJpegEncoder::deInit(void)
 {
     LOG1("@%s", __FUNCTION__);
     jpeg_destroy_compress(&mCInfo);
 }
 
+/**
+ * Set the jpeg quality
+ *
+ * \param quality: one value from 0 to 100
+ *
+ */
 void SWJpegEncoder::setJpegQuality(int quality)
 {
     LOG1("@%s, quality:%d", __FUNCTION__, quality);
     mJpegQuality = CLIP(quality, 100, 1);
 }
 
+/**
+ * Config the SW jpeg encoder.
+ *
+ * mainly, it will set the destination buffer manager, color space, quality.
+ *
+ * \param width: the width of the jpeg dimentions.
+ * \param height: the height of the jpeg dimentions.
+ * \param jpegBuf: the dest buffer to store the jpeg data
+ * \param jpegBufSize: the size of jpegBuf buffer
+ *
+ * \return 0 if the configuration is right.
+ * \return -1 if the configuration fails.
+*/
 int SWJpegEncoder::configEncoding(int width, int height, void *jpegBuf, int jpegBufSize)
 {
     LOG1("@%s", __FUNCTION__);
@@ -84,6 +113,15 @@ int SWJpegEncoder::configEncoding(int width, int height, void *jpegBuf, int jpeg
     return 0;
 }
 
+/**
+ * Do the SW jpeg encoding.
+ *
+ * it will convert the NV12 data to P411 and then do jpeg encoding.
+ *
+ * \param nv12_buf: the source buffer for NV12 data
+ * \return 0 if the encoding is successful.
+ * \return -1 if the encoding fails.
+ */
 int SWJpegEncoder::doJpegEncoding(const void* nv12_buf)
 {
     LOG1("@%s", __FUNCTION__);
@@ -126,6 +164,11 @@ int SWJpegEncoder::doJpegEncoding(const void* nv12_buf)
     return 0;
 }
 
+/**
+ * Get the jpeg size.
+ *
+ * \param jpegSize: get the real jpeg size, it will be -1, if encoding fails
+ */
 void SWJpegEncoder::getJpegSize(int *jpegSize)
 {
     LOG1("@%s", __FUNCTION__);
