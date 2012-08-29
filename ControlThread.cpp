@@ -418,7 +418,7 @@ status_t ControlThread::setParameters(const char *params)
 
 char* ControlThread::getParameters()
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
 
     // Fast path. Just return the static copy right away.
     //
@@ -457,7 +457,7 @@ char* ControlThread::getParameters()
 
 void ControlThread::putParameters(char* params)
 {
-    LOG1("@%s: params = %p", __FUNCTION__, params);
+    LOG2("@%s: params = %p", __FUNCTION__, params);
     if (params)
         free(params);
 }

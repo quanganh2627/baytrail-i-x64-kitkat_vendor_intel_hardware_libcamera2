@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#define LOG_TAG "Camera_LogHelper"
+
 #include <stdint.h> // INT_MAX, INT_MIN
 #include <stdlib.h> // atoi.h
 #include <utils/Log.h>
