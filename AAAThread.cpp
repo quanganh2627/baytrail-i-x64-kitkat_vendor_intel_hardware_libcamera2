@@ -17,7 +17,7 @@
 
 #include <time.h>
 #include "LogHelper.h"
-#include "Callbacks.h"
+#include "CallbacksThread.h"
 #include "AAAThread.h"
 #include "AtomAAA.h"
 #include "FaceDetector.h"
@@ -29,7 +29,7 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone) :
     ,mMessageQueue("AAAThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
     ,mAAA(AtomAAA::getInstance())
-    ,mCallbacks(Callbacks::getInstance())
+    ,mCallbacks(CallbacksThread::getInstance())
     ,mAAADoneCallback(aaaDone)
     ,m3ARunning(false)
     ,mDVSRunning(false)

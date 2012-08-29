@@ -159,7 +159,7 @@ private:
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
     AtomAAA *mAAA;
-    Callbacks *mCallbacks;
+    CallbacksThread *mCallbacks;
     ICallbackAAA* mAAADoneCallback;
 
     bool m3ARunning;

@@ -68,6 +68,7 @@ public:
     size_t   getQueuedBuffersNum() { return mBuffers.size(); }
     virtual void facesDetected(camera_frame_metadata_t &face_metadata);
     status_t sceneDetected(int sceneMode, bool sceneHdr);
+    void autofocusDone(bool status);
 
 // private types
 private:
@@ -79,6 +80,7 @@ private:
         MESSAGE_ID_CALLBACK_SHUTTER,    // send the shutter callback
         MESSAGE_ID_JPEG_DATA_READY,     // we have a JPEG image ready
         MESSAGE_ID_JPEG_DATA_REQUEST,   // a JPEG image was requested
+        MESSAGE_ID_AUTO_FOCUS_DONE,
         MESSAGE_ID_FLUSH,
         MESSAGE_ID_FACES,
         MESSAGE_ID_SCENE_DETECTED,
@@ -101,6 +103,10 @@ private:
         camera_frame_metadata_t meta_data;
     };
 
+    struct MessageAutoFocusDone {
+        bool status;
+    };
+
     struct MessageDataRequest {
         bool postviewCallback;
         bool rawCallback;
@@ -119,6 +125,9 @@ private:
 
         //MESSAGE_ID_JPEG_DATA_REQUEST
         MessageDataRequest dataRequest;
+
+        //MESSAGE_ID_AUTO_FOCUS_DONE
+        MessageAutoFocusDone autoFocusDone;
 
         // MESSAGE_ID_FACES
         MessageFaces faces;
@@ -141,6 +150,7 @@ private:
     status_t handleMessageCallbackShutter();
     status_t handleMessageJpegDataReady(MessageFrame *msg);
     status_t handleMessageJpegDataRequest(MessageDataRequest *msg);
+    status_t handleMessageAutoFocusDone(MessageAutoFocusDone *msg);
     status_t handleMessageFlush();
     status_t handleMessageFaces(MessageFaces *msg);
     status_t handleMessageSceneDetected(MessageSceneDetected *msg);
