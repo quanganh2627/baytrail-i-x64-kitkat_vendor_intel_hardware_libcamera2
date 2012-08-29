@@ -462,7 +462,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
      */
     params->setVideoSize(mConfig.recording.width, mConfig.recording.height);
     params->set(CameraParameters::KEY_PREFERRED_PREVIEW_SIZE_FOR_VIDEO, PlatformData::preferredPreviewSizeForVideo());
-    params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1088");
+    params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1080,1920x1088");
     params->set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,
                 CameraParameters::PIXEL_FORMAT_YUV420SP);
     params->set(CameraParameters::KEY_VIDEO_SNAPSHOT_SUPPORTED, CameraParameters::FALSE);
@@ -1683,6 +1683,16 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
     int ret = 0;
     status_t status = NO_ERROR;
 
+    /**
+     * Workaround: When video size is 1080P(1920x1080), because video HW codec
+     * requests 16x16 pixel block as sub-block to encode, So whatever apps set recording
+     * size to 1920x1080 or 1920x1088 in 1080P, ISP always outputs 1920x1088
+     * for encoder.
+     * In current supported list of video size, only height 1080(1920x1080) isn't multiple of 16
+     */
+    if(height % 16)
+        height = (height + 15) / 16 * 16;
+
     if(format == 0)
          format = mConfig.recording.format;
     if (mConfig.recording.width == width &&
@@ -1722,12 +1732,10 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
  * update preview size in parameters according to ISP limitation
  * there are 2 workarounds as below:
  *
- * Workaround 1: with DVS enable, the fps in 1080p recording can't reach 30fps, so check if
- * the preview size is corresponding to 1080p recording, if yes, then change preview
- * size to 640x360.
- * We cannot check the video size since application may have not sent it yet. We use
- * the preview size and aspect ratio to detect this scenario
- * BZ: 49330
+ * Workaround 1: with DVS enable, the fps in 1080p recording can't reach 30fps,
+ * so check if the preview size is corresponding to 1080p(1920x1080) or
+ * (1920x1088) recording, if yes, then change preview size to 640x360
+ * BZ: 49330 51853
  *
  * Workaround 2: The camera firmware doesn't support preview dimensions that
  * are bigger than video dimensions. If a single preview dimension is larger
@@ -1744,23 +1752,21 @@ bool  AtomISP::applyISPLimitations(CameraParameters *params, bool dvsEnabled)
 {
     LOG1("@%s", __FUNCTION__);
     bool ret = false;
-    float AspectRatio_1080P = 1.0 * RESOLUTION_1080P_WIDTH / RESOLUTION_1080P_HEIGHT;
     int previewWidth, previewHeight;
     int videoWidth, videoHeight;
 
     params->getPreviewSize(&previewWidth, &previewHeight);
+    params->getVideoSize(&videoWidth, &videoHeight);
     // Workaround 1, detail refer to the function description
     if (dvsEnabled) {
-        if (previewWidth > RESOLUTION_VGA_WIDTH || previewHeight > RESOLUTION_VGA_HEIGHT) {
-            float previewAspectRatio = 1.0 * previewWidth / previewHeight;
-            if(fabsf(AspectRatio_1080P - previewAspectRatio) < 0.001) {
+        if ((previewWidth > RESOLUTION_VGA_WIDTH || previewHeight > RESOLUTION_VGA_HEIGHT) &&
+            (videoWidth > RESOLUTION_720P_WIDTH || videoHeight > RESOLUTION_720P_HEIGHT)) {
                 ret = true;
                 params->setPreviewSize(640, 360);
                 LOG1("change preview size to 640x360 due to DVS on");
             } else {
-                LOG1("no match preview size: %dx%d", previewWidth, previewHeight);
+                LOG1("no need change preview size: %dx%d", previewWidth, previewHeight);
             }
-        }
     }
     //Workaround 2, detail refer to the function description
     params->getPreviewSize(&previewWidth, &previewHeight);
