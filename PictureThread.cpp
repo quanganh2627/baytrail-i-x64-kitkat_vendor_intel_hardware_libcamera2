@@ -79,6 +79,10 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     JpegCompressor::OutputBuffer outBuf;
     nsecs_t startTime = systemTime();
     nsecs_t endTime;
+    int totalSize = 0;
+    int exifSize = 0;
+    int mainSize = 0;
+    bool failback = false;
 
     size_t bufferSize = (mainBuf->width * mainBuf->height * 2);
     if (mOutBuf.buff != NULL && bufferSize != mOutBuf.buff->size) {
@@ -98,6 +102,30 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     }
     LOG1("Out buffer: @%p (%d bytes)", mOutBuf.buff->data, mOutBuf.buff->size);
     LOG1("Exif buffer: @%p (%d bytes)", mExifBuf.buff->data, mExifBuf.buff->size);
+
+    // Start encoding main picture using HW encoder
+    inBuf.clear();
+    if (mainBuf->shared) {
+       inBuf.buf = (unsigned char *) *((char **)mainBuf->buff->data);
+    } else {
+       inBuf.buf = (unsigned char *) mainBuf->buff->data;
+    }
+    inBuf.width = mainBuf->width;
+    inBuf.height = mainBuf->height;
+    inBuf.format = mainBuf->format;
+    inBuf.size = frameSize(mainBuf->format, mainBuf->width, mainBuf->height);
+    outBuf.clear();
+    outBuf.width = mainBuf->width;
+    outBuf.height = mainBuf->height;
+    outBuf.quality = mPictureQuality;
+    endTime = systemTime();
+    if(mHwCompressor->encodeAsync(inBuf, outBuf) < 0) {
+        LOGW("JPEG HW encoding failed, falling back to SW");
+        failback = true;
+    } else {
+        LOG1("Picture JPEG (time to start encode: %ums)", (unsigned)((systemTime() - endTime) / 1000000));
+    }
+
     // Convert and encode the thumbnail, if present and EXIF maker is initialized
     if (mExifMaker.isInitialized() &&
         thumbBuf != NULL &&
@@ -124,7 +152,6 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
             endTime = systemTime();
             size = mCompressor.encode(inBuf, outBuf);
             LOG1("Thumbnail JPEG size: %d (time to encode: %ums)", size, (unsigned)((systemTime() - endTime) / 1000000));
-
             if (size > MAX_EXIF_SIZE) {
                 outBuf.quality = outBuf.quality - 5;
                 LOGD("Thumbnail JPEG size(%d) is too big. Recode with lower quality: %d", size, outBuf.quality);
@@ -138,8 +165,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
             LOGE("Could not encode thumbnail stream!");
         }
     }
-    int totalSize = 0;
-    int exifSize = 0;
+
     if (mExifMaker.isInitialized()) {
         // Copy the SOI marker
         unsigned char* currentPtr = (unsigned char*)mExifBuf.buff->data;
@@ -156,56 +182,87 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         exifSize = totalSize;
     }
 
-    // Convert and encode the main picture image
-    // setup the JpegCompressor input and output buffers
-    inBuf.clear();
-    if (mainBuf->shared) {
-        inBuf.buf = (unsigned char *) *((char **)mainBuf->buff->data);
-    } else {
-        inBuf.buf = (unsigned char *) mainBuf->buff->data;
-    }
-    inBuf.width = mainBuf->width;
-    inBuf.height = mainBuf->height;
-    inBuf.format = mainBuf->format;
-    inBuf.size = frameSize(mainBuf->format, mainBuf->width, mainBuf->height);
-    outBuf.clear();
-    outBuf.buf = (unsigned char*)mOutBuf.buff->data;
-    outBuf.width = mainBuf->width;
-    outBuf.height = mainBuf->height;
-    outBuf.quality = mPictureQuality;
-    outBuf.size = mOutBuf.buff->size;
-    endTime = systemTime();
-    status = mHwCompressor->encode(inBuf, outBuf);
-    int mainSize = outBuf.length;
-    LOG1("Picture JPEG size: %d (time to encode: %ums)", mainSize, (unsigned)((systemTime() - endTime) / 1000000));
-    if (mainSize > 0) {
-        totalSize += mainSize;
-    } else {
-        LOGE("Could not encode picture stream!");
-        status = UNKNOWN_ERROR;
-    }
+    if (failback) {  // Encode main picture with SW encoder
+        inBuf.clear();
+        if (mainBuf->shared) {
+           inBuf.buf = (unsigned char *) *((char **)mainBuf->buff->data);
+       } else {
+           inBuf.buf = (unsigned char *) mainBuf->buff->data;
+       }
+       inBuf.width = mainBuf->width;
+       inBuf.height = mainBuf->height;
+       inBuf.format = mainBuf->format;
+       inBuf.size = frameSize(mainBuf->format, mainBuf->width, mainBuf->height);
+       outBuf.clear();
+       outBuf.buf = (unsigned char*)mOutBuf.buff->data;
+       outBuf.width = mainBuf->width;
+       outBuf.height = mainBuf->height;
+       outBuf.quality = mPictureQuality;
+       outBuf.size = mOutBuf.buff->size;
+       endTime = systemTime();
+       int mainSize = mCompressor.encode(inBuf, outBuf);
+       LOG1("Picture JPEG size: %d (time to encode: %ums)", mainSize, (unsigned)((systemTime() - endTime) / 1000000));
+       if (mainSize > 0) {
+          totalSize += mainSize;
+       } else {
+          LOGE("Could not encode picture stream!");
+          status = UNKNOWN_ERROR;
+       }
 
-    if (status == NO_ERROR) {
-        mCallbacks->allocateMemory(destBuf, totalSize);
-        if (destBuf->buff == NULL) {
-            LOGE("No memory for final JPEG file!");
-            status = NO_MEMORY;
+       if (status == NO_ERROR) {
+          mCallbacks->allocateMemory(destBuf, totalSize);
+          if (destBuf->buff == NULL) {
+              LOGE("No memory for final JPEG file!");
+              status = NO_MEMORY;
+          }
+       }
+       if (status == NO_ERROR) {
+          // Copy EXIF (it will also have the SOI and EOI markers)
+          memcpy(destBuf->buff->data, mExifBuf.buff->data, exifSize);
+          // Copy the final JPEG stream into the final destination buffer
+          // avoid the copying the SOI and SOF markers
+          char *copyTo = (char*)destBuf->buff->data + exifSize;
+          char *copyFrom = (char*)mOutBuf.buff->data + 2 * sizeof(JPEG_MARKER_SOI);
+          memcpy(copyTo, copyFrom, mainSize);
+
+          destBuf->id = mainBuf->id;
+       }
+
+    } else {
+        endTime = systemTime();
+        mHwCompressor->waitToComplete(&mainSize);
+        if (mainSize > 0) {
+            totalSize += mainSize;
+        }
+        LOG1("Picture JPEG size: %d (waited for encode to finish: %ums)", mainSize, (unsigned)((systemTime() - endTime) / 1000000));
+        if (status == NO_ERROR) {
+            mCallbacks->allocateMemory(destBuf, totalSize);
+            if (destBuf->buff == NULL) {
+                LOGE("No memory for final JPEG file!");
+                status = NO_MEMORY;
+            }
+        }
+
+        if (status == NO_ERROR) {
+            // Copy EXIF (it will also have the SOI and EOI markers
+            memcpy(destBuf->buff->data, mExifBuf.buff->data, exifSize);
+            destBuf->id = mainBuf->id;
+        }
+        outBuf.clear();
+        outBuf.buf = (unsigned char*)destBuf->buff->data + exifSize;
+        outBuf.width = mainBuf->width;
+        outBuf.height = mainBuf->height;
+        outBuf.quality = mPictureQuality;
+        outBuf.size = mainSize;
+        if(mHwCompressor->getOutput(outBuf) < 0) {
+            LOGE("Could not encode picture stream!");
+            status = UNKNOWN_ERROR;
         }
     }
-    if (status == NO_ERROR) {
-        // Copy EXIF (it will also have the SOI and EOI markers)
-        memcpy(destBuf->buff->data, mExifBuf.buff->data, exifSize);
-        // Copy the final JPEG stream into the final destination buffer
-        char *copyTo = (char*)destBuf->buff->data + exifSize;
-        char *copyFrom = (char*)mOutBuf.buff->data;
-        memcpy(copyTo, copyFrom, mainSize);
 
-        destBuf->id = mainBuf->id;
-    }
     LOG1("Total JPEG size: %d (time to encode: %ums)", totalSize, (unsigned)((systemTime() - startTime) / 1000000));
     return status;
 }
-
 
 status_t PictureThread::encode(MetaData &metaData, AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf)
 {
