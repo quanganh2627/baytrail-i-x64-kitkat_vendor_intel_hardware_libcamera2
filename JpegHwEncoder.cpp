@@ -105,20 +105,27 @@ int JpegHwEncoder::init(void)
  *
  * de-initializes the libVA library
  */
-void JpegHwEncoder::deInit()
+int JpegHwEncoder::deInit()
 {
     LOG1("@%s", __FUNCTION__);
+    VAStatus status;
     vaJpegContext *va = mVaEncoderContext;
 
     if(va->mBuff2SurfId.size() != 0)
         destroySurfaces();
 
-    if (va->mDpy && va->mConfigId)
-        vaDestroyConfig(va->mDpy, va->mConfigId);
-    if (va->mDpy)
-        vaTerminate(va->mDpy);
-
+    if (va->mDpy && va->mConfigId) {
+        status = vaDestroyConfig(va->mDpy, va->mConfigId);
+        CHECK_STATUS(status, "vaDestroyConfig", __LINE__)
+    }
+    if (va->mDpy) {
+        status = vaTerminate(va->mDpy);
+        CHECK_STATUS(status, "vaTerminate", __LINE__)
+    }
+    va->mDpy = 0;
+    va->mConfigId = 0;
     mHWInitialized = false;
+    return 0;
 }
 
 /**
@@ -134,6 +141,17 @@ status_t JpegHwEncoder::setInputBuffers(AtomBuffer* inputBuffersArray, int input
 
     if(isInitialized())
        deInit();
+
+    /**
+     * if we want to create and destroy the libVA context for each capture we may be
+     * configured like this. This happens in video mode where the video encoder
+     * context also needs to exist
+     */
+    if(inputBuffersNum == 0) {
+        LOG1("HW encoder configured with 0 pre-allocated buffers");
+        mVaInputSurfacesNum = 0;
+        return NO_ERROR;
+    }
 
     if (init() < 0) {
         LOGE("HW encoder failed to initialize when setting the input buffers");
@@ -590,17 +608,24 @@ int JpegHwEncoder::getJpegData(void *dstPtr, int dstSize, int *jpegSize)
     return 0;
 }
 
-void JpegHwEncoder::destroySurfaces(void)
+int JpegHwEncoder::destroySurfaces(void)
 {
     LOG1("@%s", __FUNCTION__);
+    VAStatus status;
     vaJpegContext *va = mVaEncoderContext;
 
-    if (va->mDpy && va->mContextId)
-        vaDestroyContext(va->mDpy, va->mContextId);
-    if (va->mDpy && va->mSurfaceIds)
-        vaDestroySurfaces(va->mDpy, va->mSurfaceIds, va->mBuff2SurfId.size());
+    if (va->mDpy && va->mContextId) {
+        status = vaDestroyContext(va->mDpy, va->mContextId);
+        CHECK_STATUS(status, "vaDestroyContext", __LINE__)
+    }
+    if (va->mDpy && va->mBuff2SurfId.size() != 0) {
+        status = vaDestroySurfaces(va->mDpy, va->mSurfaceIds, va->mBuff2SurfId.size());
+        CHECK_STATUS(status, "vaDestroyContext", __LINE__)
+    }
 
     va->mBuff2SurfId.clear();
+    va->mContextId = 0;
+    return 0;
 }
 
 /**

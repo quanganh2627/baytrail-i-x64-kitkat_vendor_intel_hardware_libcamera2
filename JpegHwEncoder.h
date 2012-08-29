@@ -58,7 +58,7 @@ public:
     virtual ~JpegHwEncoder();
 
     int init(void);
-    void deInit(void);
+    int deInit(void);
     bool isInitialized() {return mHWInitialized;};
     int setInputBuffers(AtomBuffer* inputBuffersArray, int inputBuffersNum);
     int setJpegQuality(int quality);
@@ -72,7 +72,7 @@ public:
 private:
 
     int configSurfaces(AtomBuffer* inputBuffersArray, int inputBuffersNum);
-    void destroySurfaces(void);
+    int destroySurfaces(void);
     int startJpegEncoding(unsigned int aSurface);
     int getJpegData(void *pdst, int dstSize, int *jpegSize);
     int getJpegSize(int *jpegSize);

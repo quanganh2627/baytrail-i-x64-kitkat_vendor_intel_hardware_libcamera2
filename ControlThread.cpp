@@ -2345,13 +2345,24 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
 
     if (status == NO_ERROR) {
         int picWidth, picHeight;
+        bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
 
         mParameters.getPictureSize(&picWidth, &picHeight);
-        status = mPictureThread->allocSharedBuffers(picWidth, picHeight, NUM_BURST_BUFFERS);
+        if(videoMode){
+            /**
+             * In video mode we configure the Picture thread not to pre-allocate
+             * the snapshot buffers. This means that there will be no active libVA
+             * context created. we cannot have more than one libVA (encoder) context active
+             * and in video mode the video encoder already creates one.
+             */
+            status = mPictureThread->allocSharedBuffers(picWidth, picHeight, 0);
+        } else {
+            status = mPictureThread->allocSharedBuffers(picWidth, picHeight, NUM_BURST_BUFFERS);
+        }
+
         if (status != NO_ERROR) {
             LOGW("Could not pre-allocate picture buffers!");
         }
-
     }
 
     return status;

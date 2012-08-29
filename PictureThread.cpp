@@ -528,6 +528,9 @@ status_t PictureThread::allocateInputBuffers(int width, int height, int numBufs)
     status_t status = NO_ERROR;
     size_t bufferSize = frameSize(V4L2_PIX_FMT_NV12, width, height);
 
+    if(numBufs == 0)
+        return NO_ERROR;
+
     mInputBufferArray = new AtomBuffer[numBufs];
     mInputBuffDataArray = new char*[numBufs];
     if((mInputBufferArray == NULL) || mInputBuffDataArray == NULL)
@@ -570,7 +573,7 @@ void PictureThread::freeInputBuffers()
 
     if(mInputBuffDataArray != NULL) {
        delete [] mInputBuffDataArray;
-       mInputBufferArray = NULL;
+       mInputBuffDataArray = NULL;
     }
 }
 
