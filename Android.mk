@@ -50,7 +50,8 @@ LOCAL_SRC_FILES := \
 	OlaService/HalProxyOla.cpp \
 	PostProcThread.cpp \
 	FaceDetector.cpp \
-	CameraDump.cpp
+	CameraDump.cpp \
+	CameraAreas.cpp
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SRC_FILES += \

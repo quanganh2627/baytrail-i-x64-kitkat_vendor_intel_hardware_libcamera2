@@ -36,6 +36,7 @@
 #include "OlaService/HalProxyOla.h"
 #include "PostProcThread.h"
 #include "CameraDump.h"
+#include "CameraAreas.h"
 
 namespace android {
 
@@ -555,6 +556,8 @@ private:
     bool mAeMeteringSpotForced;
 
     CameraDump *mCameraDump;
+
+    CameraAreas mFocusAreas;
 
 }; // class ControlThread
 

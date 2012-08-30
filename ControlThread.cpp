@@ -96,6 +96,7 @@ ControlThread::ControlThread() :
     ,mPreviewForceChanged(false)
     ,mAeMeteringSpotForced(false)
     ,mCameraDump(NULL)
+    ,mFocusAreas()
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -2112,53 +2113,8 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
-    // FOCUS WINDOWS
-    int maxWindows = params->getInt(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS);
-    if (maxWindows > 0) {
-        const char *pFocusWindows = params->get(CameraParameters::KEY_FOCUS_AREAS);
-        if (pFocusWindows && (strlen(pFocusWindows) > 0)) {
-            LOG1("Scanning AF windows from params: %s", pFocusWindows);
-            const char *argTail = pFocusWindows;
-            int winCount = 0;
-            CameraWindow focusWindow;
-            while (argTail && winCount < maxWindows) {
-                // String format: "(topleftx,toplefty,bottomrightx,bottomrighty,weight),(...)"
-                int i = sscanf(argTail, "(%d,%d,%d,%d,%d)",
-                        &focusWindow.x_left,
-                        &focusWindow.y_top,
-                        &focusWindow.x_right,
-                        &focusWindow.y_bottom,
-                        &focusWindow.weight);
-                argTail = strchr(argTail + 1, '(');
-                // Camera app sets invalid window 0,0,0,0,0 - let it slide
-                if ( !focusWindow.x_left && !focusWindow.y_top &&
-                    !focusWindow.x_right && !focusWindow.y_bottom &&
-                    !focusWindow.weight) {
-                  continue;
-                }
-                if (i != 5) {
-                    LOGE("bad focus window format");
-                    return BAD_VALUE;
-                }
-                bool verified = verifyCameraWindow(focusWindow);
-                if (!verified) {
-                    LOGE("bad focus window");
-                    return BAD_VALUE;
-                }
-                if (verified) {
-                    winCount++;
-                }
-            }
-            // make sure not too many windows defined (to pass CTS)
-            if (argTail) {
-                LOGE("bad - too many focus windows or bad format for focus window string");
-                return BAD_VALUE;
-            }
-        }
-    }
-
     // METERING AREAS
-    maxWindows = params->getInt(CameraParameters::KEY_MAX_NUM_METERING_AREAS);
+    int maxWindows = params->getInt(CameraParameters::KEY_MAX_NUM_METERING_AREAS);
     if (maxWindows > 0) {
         const char *pMeteringWindows = params->get(CameraParameters::KEY_METERING_AREAS);
         if (pMeteringWindows && (strlen(pMeteringWindows) > 0)) {
@@ -3039,79 +2995,47 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
     if (!newFocus)
         return status;
 
-    if ((!strncmp(newFocus, CameraParameters::FOCUS_MODE_AUTO, strlen(CameraParameters::FOCUS_MODE_AUTO))) ||
+    if (!mFaceDetectionActive) {
+
+        if ((!strncmp(newFocus, CameraParameters::FOCUS_MODE_AUTO, strlen(CameraParameters::FOCUS_MODE_AUTO))) ||
             (!strncmp(newFocus, CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO, strlen(CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO))) ||
             (!strncmp(newFocus, CameraParameters::FOCUS_MODE_MACRO, strlen(CameraParameters::FOCUS_MODE_MACRO)))) {
 
-        // By default we will use auto or macro mode
-        AfMode newAfMode = CAM_AF_MODE_AUTO;
-        if (!strncmp(newFocus, CameraParameters::FOCUS_MODE_MACRO, strlen(CameraParameters::FOCUS_MODE_MACRO)))
-            newAfMode = CAM_AF_MODE_MACRO;
+            // By default we will use auto or macro mode
+            AfMode newAfMode = CAM_AF_MODE_AUTO;
+            if (!strncmp(newFocus, CameraParameters::FOCUS_MODE_MACRO, strlen(CameraParameters::FOCUS_MODE_MACRO)))
+                newAfMode = CAM_AF_MODE_MACRO;
 
-        // See if any focus windows are set
-        const char *pFocusWindows = newParams->get(CameraParameters::KEY_FOCUS_AREAS);
-        const size_t maxWindows = mAAA->getAfMaxNumWindows();
-        size_t winCount = 0;
-        CameraWindow focusWindows[maxWindows];
-
-        if (!mFaceDetectionActive && pFocusWindows && (maxWindows > 0) && (strlen(pFocusWindows) > 0)) {
-            LOG1("Scanning AF windows from params: %s", pFocusWindows);
-            const char *argTail = pFocusWindows;
-            while (argTail && winCount < maxWindows) {
-                // String format: "(topleftx,toplefty,bottomrightx,bottomrighty,weight),(...)"
-                int i = sscanf(argTail, "(%d,%d,%d,%d,%d)",
-                        &focusWindows[winCount].x_left,
-                        &focusWindows[winCount].y_top,
-                        &focusWindows[winCount].x_right,
-                        &focusWindows[winCount].y_bottom,
-                        &focusWindows[winCount].weight);
-                if (i != 5)
-                    break;
-                bool verified = verifyCameraWindow(focusWindows[winCount]);
-                LOG1("\tWindow %d (%d,%d,%d,%d,%d) [%s]",
-                        winCount,
-                        focusWindows[winCount].x_left,
-                        focusWindows[winCount].y_top,
-                        focusWindows[winCount].x_right,
-                        focusWindows[winCount].y_bottom,
-                        focusWindows[winCount].weight,
-                        (verified)?"GOOD":"IGNORED");
-                argTail = strchr(argTail + 1, '(');
-                if (verified) {
-                    winCount++;
-                } else {
-                    LOGW("Ignoring invalid focus area: (%d,%d,%d,%d,%d)",
-                            focusWindows[winCount].x_left,
-                            focusWindows[winCount].y_top,
-                            focusWindows[winCount].x_right,
-                            focusWindows[winCount].y_bottom,
-                            focusWindows[winCount].weight);
-                }
-            }
-            // Looks like focus window(s) were set, so should use touch focus mode
-            if (winCount > 0) {
+            // See if any focus areas are set
+            if (!mFocusAreas.isEmpty()) {
                 newAfMode = CAM_AF_MODE_TOUCH;
             }
-        }
 
-        // See if we have to change the actual mode (it could be correct already)
-        AfMode curAfMode = mAAA->getAfMode();
-        if (curAfMode != newAfMode) {
-            mPublicAfMode = newAfMode;
-            mAAA->setAfMode(newAfMode);
-        }
+            // See if we have to change the actual mode (it could be correct already)
+            AfMode curAfMode = mAAA->getAfMode();
+            if (curAfMode != newAfMode) {
+                mPublicAfMode = newAfMode;
+                mAAA->setAfMode(newAfMode);
+            }
 
-        // If in touch mode, we set the focus windows now
-        if (newAfMode == CAM_AF_MODE_TOUCH) {
-            preSetCameraWindows(focusWindows, winCount);
-            if (mAAA->setAfWindows(focusWindows, winCount) != NO_ERROR) {
-                // If focus windows couldn't be set, auto mode is used
-                // (AfSetWindowMulti has its own safety checks for coordinates)
-                LOGE("Could not set AF windows. Resseting the AF back to %d", curAfMode);
-                mAAA->setAfMode(curAfMode);
+            // If in touch mode, we set the focus windows now
+            if (newAfMode == CAM_AF_MODE_TOUCH) {
+                size_t winCount(mFocusAreas.numOfAreas());
+                CameraWindow *focusWindows = new CameraWindow[winCount];
+                mFocusAreas.toWindows(focusWindows);
+                preSetCameraWindows(focusWindows, winCount);
+                if (mAAA->setAfWindows(focusWindows, winCount) != NO_ERROR) {
+                    // If focus windows couldn't be set, auto mode is used
+                    // (AfSetWindowMulti has its own safety checks for coordinates)
+                    LOGE("Could not set AF windows. Resseting the AF back to %d", curAfMode);
+                    mAAA->setAfMode(curAfMode);
+                }
+                delete[] focusWindows;
+                focusWindows = NULL;
             }
         }
     }
+
     return status;
 }
 
@@ -3697,6 +3621,8 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     CameraParamsLogger newParamLogger (msg->params);
     CameraParamsLogger oldParamLogger (mParameters.flatten().string());
 
+    CameraAreas newFocusAreas;
+
     String8 str_params(msg->params);
     newParams.unflatten(str_params);
 
@@ -3716,6 +3642,13 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     status = validateParameters(&newParams);
     if (status != NO_ERROR)
         goto exit;
+    LOG1("scanning AF focus areas");
+    status = newFocusAreas.scan(newParams.get(CameraParameters::KEY_FOCUS_AREAS),
+                                mParameters.getInt(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS));
+    if (status != NO_ERROR) {
+        LOGE("bad focus area");
+        goto exit;
+    }
 
     if (mState == STATE_CAPTURE) {
         int newWidth, newHeight;
@@ -3737,6 +3670,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     }
 
     mParameters = newParams;
+    mFocusAreas.swap(newFocusAreas); // use swap instead of copying to avoid memory copy
 
     // Take care of parameters that need to be set while the ISP is stopped
     status = processStaticParameters(&oldParams, &newParams);
