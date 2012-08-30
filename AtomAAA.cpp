@@ -1285,4 +1285,13 @@ void AtomAAA::reset3aMakerNote(void)
     ia_3a_mknote_reset();
 }
 
+int AtomAAA::add3aMakerNoteRecord(ia_3a_mknote_field_type mkn_format_id,
+                                   ia_3a_mknote_field_name mkn_name_id,
+                                   const void *record,
+                                   unsigned short record_size)
+{
+    ia_3a_mknote_add(mkn_format_id, mkn_name_id, record, record_size);
+    return 0;
+}
+
 } //  namespace android

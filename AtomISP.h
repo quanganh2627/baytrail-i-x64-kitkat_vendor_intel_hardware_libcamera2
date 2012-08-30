@@ -291,6 +291,11 @@ private:
     int video_fds[V4L2_DEVICE_NUM];
     unsigned int mFrameCounter[V4L2_DEVICE_NUM];
 
+    int dumpPreviewFrame(int previewIndex);
+    int dumpRecordingFrame(int recordingIndex);
+    int dumpSnapshot(int snapshotIndex, int postviewIndex);
+    int dumpRawImageFlush();
+
     struct v4l2_buffer_pool v4l2_buf_pool[V4L2_DEVICE_NUM]; //pool[0] for device0 pool[1] for device1
 
     struct FileInject {
@@ -320,6 +325,8 @@ private:
 
     // systemTime(SYSTEM_TIME_REALTIME) - systemTime(SYSTEM_TIME_MONOTONIC)
     nsecs_t mTimeRealMonoInterval;
+
+    int mRawDataDumpSize;
 
 }; // class AtomISP
 

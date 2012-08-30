@@ -21,6 +21,7 @@
 #include "ColorConverter.h"
 #include "PlatformData.h"
 #include "IntelParameters.h"
+#include "CameraDump.h"
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -175,6 +176,7 @@ AtomISP::AtomISP() :
     ,mLowLight(false)
     ,mXnr(0)
     ,mZoomRatios(NULL)
+    ,mRawDataDumpSize(0)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -1108,7 +1110,7 @@ status_t AtomISP::startCapture()
             mConfig.snapshot.width,
             mConfig.snapshot.height,
             mConfig.snapshot.format,
-            false);
+            CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW));
     if (ret < 0) {
         LOGE("configure first device failed!");
         status = UNKNOWN_ERROR;
@@ -1148,14 +1150,23 @@ status_t AtomISP::startCapture()
     // need to resend the current zoom value
     atomisp_set_zoom(main_fd, mConfig.zoom);
 
-    ret = startDevice(V4L2_FIRST_DEVICE, mConfig.num_snapshot);
+
+    // Limited by driver, raw bayer image dump can support only 1 frame when setting
+    // snapshot number. Otherwise, the raw dump image would be corrupted.
+    int snapNum;
+    if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW))
+        snapNum = 1;
+    else
+        snapNum = mConfig.num_snapshot;
+
+    ret = startDevice(V4L2_FIRST_DEVICE, snapNum);
     if (ret < 0) {
         LOGE("start capture on first device failed!");
         status = UNKNOWN_ERROR;
         goto errorCloseSecond;
     }
 
-    ret = startDevice(V4L2_SECOND_DEVICE, mConfig.num_snapshot);
+    ret = startDevice(V4L2_SECOND_DEVICE, snapNum);
     if (ret < 0) {
         LOGE("start capture on second device failed!");
         status = UNKNOWN_ERROR;
@@ -1185,6 +1196,7 @@ status_t AtomISP::stopCapture()
     stopDevice(V4L2_FIRST_DEVICE);
     closeDevice(V4L2_SECOND_DEVICE);
     mUsingClientSnapshotBuffers = false;
+    dumpRawImageFlush();
     return NO_ERROR;
 }
 
@@ -2416,6 +2428,12 @@ int AtomISP::v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc,
         LOGE("VIDIOC_S_FMT failed: %s", strerror(errno));
         return -1;
     }
+
+    if (raw) {
+        mRawDataDumpSize = v4l2_fmt.fmt.pix.priv;
+        LOG1("raw data size from kernel %d\n", mRawDataDumpSize);
+    }
+
     return 0;
 
 }
@@ -2647,6 +2665,8 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameS
 
     mNumPreviewBuffersQueued--;
 
+    dumpPreviewFrame(index);
+
     return NO_ERROR;
 }
 
@@ -2721,6 +2741,8 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp)
                     - mTimeRealMonoInterval;
 
     mNumRecordingBuffersQueued--;
+
+    dumpRecordingFrame(index);
 
     return NO_ERROR;
 }
@@ -2823,6 +2845,8 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
     postviewBuf->size = mConfig.postview.size;
 
     mNumCapturegBuffersQueued--;
+
+    dumpSnapshot(snapshotIndex, postviewIndex);
 
     return NO_ERROR;
 }
@@ -3427,6 +3451,97 @@ exitFreeRec:
         }
     }
     return status;
+}
+
+int AtomISP::dumpPreviewFrame(int previewIndex)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_PREVIEW)) {
+        CameraDump *cameraDump = CameraDump::getInstance();
+        const struct v4l2_buffer_info *buf =
+            &v4l2_buf_pool[mPreviewDevice].bufs[previewIndex];
+        if (V4L2_FIRST_DEVICE == mPreviewDevice)
+            cameraDump->dumpImage2File(buf->data, mConfig.preview.size, mConfig.preview.width,
+                                       mConfig.preview.height, DUMPIMAGE_RECORD_PREVIEW_FILENAME);
+        else
+            cameraDump->dumpImage2File(buf->data, mConfig.preview.size, mConfig.preview.width,
+                                       mConfig.preview.height, DUMPIMAGE_PREVIEW_FILENAME);
+    }
+
+    return 0;
+}
+
+int AtomISP::dumpRecordingFrame(int recordingIndex)
+{
+    LOG1("@%s", __FUNCTION__);
+    if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_VIDEO)) {
+        CameraDump *cameraDump = CameraDump::getInstance();
+        const struct v4l2_buffer_info *buf =
+            &v4l2_buf_pool[mRecordingDevice].bufs[recordingIndex];
+        const char *name = DUMPIMAGE_RECORD_STORE_FILENAME;
+        cameraDump->dumpImage2File(buf->data, mConfig.recording.size, mConfig.recording.width,
+                                   mConfig.recording.height, name);
+    }
+
+    return 0;
+}
+
+int AtomISP::dumpSnapshot(int snapshotIndex, int postviewIndex)
+{
+    LOG1("@%s", __FUNCTION__);
+    if (CameraDump::isDumpImageEnable()) {
+        CameraDump *cameraDump = CameraDump::getInstance();
+        if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_SNAPSHOT)) {
+           const struct v4l2_buffer_info *buf0 =
+               &v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[snapshotIndex];
+           const struct v4l2_buffer_info *buf1 =
+               &v4l2_buf_pool[V4L2_SECOND_DEVICE].bufs[postviewIndex];
+           const char *name0 = "snap_v0.nv12";
+           const char *name1 = "snap_v1.nv12";
+           cameraDump->dumpImage2File(buf0->data, mConfig.snapshot.size, mConfig.snapshot.width,
+                                      mConfig.snapshot.height, name0);
+           cameraDump->dumpImage2File(buf1->data, mConfig.postview.size, mConfig.postview.width,
+                                      mConfig.postview.height, name1);
+        }
+
+        if(CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_YUV)) {
+            const struct v4l2_buffer_info *buf =
+                &v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[snapshotIndex];
+            cameraDump->dumpImage2Buf(buf->data, mConfig.snapshot.size, mConfig.snapshot.width,
+                                      mConfig.snapshot.height);
+        }
+
+        if(CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
+            LOG1("dumping raw data");
+            void *start = mmap(NULL /* start anywhere */ ,
+                               PAGE_ALIGN(mRawDataDumpSize),
+                               PROT_READ | PROT_WRITE /* required */ ,
+                               MAP_SHARED /* recommended */ ,
+                               video_fds[V4L2_FIRST_DEVICE], 0xfffff000);
+            if (MAP_FAILED == start)
+                    LOGE("mmap failed");
+            else {
+                printf("MMAP raw address from kerenl 0x%p", start);
+            }
+            cameraDump->dumpImage2Buf(start, mRawDataDumpSize, mConfig.snapshot.padding,
+                                      mConfig.snapshot.height);
+            if (-1 == munmap(start, PAGE_ALIGN(mRawDataDumpSize)))
+                LOGE("munmap failed");
+        }
+    }
+
+    return 0;
+}
+
+int AtomISP::dumpRawImageFlush()
+{
+    LOG1("@%s", __FUNCTION__);
+    if (CameraDump::isDumpImage2FileFlush()) {
+        CameraDump *cameraDump = CameraDump::getInstance();
+        cameraDump->dumpImage2FileFlush();
+    }
+    return 0;
 }
 
 } // namespace android

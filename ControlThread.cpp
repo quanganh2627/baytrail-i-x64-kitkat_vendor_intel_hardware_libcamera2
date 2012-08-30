@@ -95,6 +95,7 @@ ControlThread::ControlThread() :
     ,mStoreMetaDataInBuffers(false)
     ,mPreviewForceChanged(false)
     ,mAeMeteringSpotForced(false)
+    ,mCameraDump(NULL)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -135,6 +136,15 @@ status_t ControlThread::init(int cameraId)
     if (mAAA == NULL) {
         LOGE("error creating AAA");
         goto bail;
+    }
+
+    CameraDump::setDumpDataFlag();
+    if (CameraDump::isDumpImageEnable()) {
+        mCameraDump = CameraDump::getInstance();
+        if (mCameraDump == NULL) {
+            LOGE("error creating CameraDump");
+            goto bail;
+        }
     }
 
     // we implement the ICallbackPreview interface, so pass
@@ -303,6 +313,9 @@ void ControlThread::deinit()
     }
     if (mAAA != NULL) {
         delete mAAA;
+    }
+    if (mCameraDump != NULL) {
+        delete mCameraDump;
     }
     if (mCallbacks != NULL) {
         delete mCallbacks;

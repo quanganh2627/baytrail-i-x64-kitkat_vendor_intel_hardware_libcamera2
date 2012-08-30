@@ -35,6 +35,7 @@
 #include "IFaceDetectionListener.h"
 #include "OlaService/HalProxyOla.h"
 #include "PostProcThread.h"
+#include "CameraDump.h"
 
 namespace android {
 
@@ -552,6 +553,8 @@ private:
     bool mPreviewForceChanged;
 
     bool mAeMeteringSpotForced;
+
+    CameraDump *mCameraDump;
 
 }; // class ControlThread
 

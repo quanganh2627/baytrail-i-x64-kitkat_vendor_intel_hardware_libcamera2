@@ -279,6 +279,10 @@ public:
     ia_3a_mknote *get3aMakerNote(ia_3a_mknote_mode mode);
     void put3aMakerNote(ia_3a_mknote *mknData);
     void reset3aMakerNote(void);
+    int add3aMakerNoteRecord(ia_3a_mknote_field_type mkn_format_id,
+                             ia_3a_mknote_field_name mkn_name_id,
+                             const void *record,
+                             unsigned short record_size);
 
 // private members
 private:

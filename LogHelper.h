@@ -43,12 +43,14 @@ enum  {
     /* Print out detailed timing analysis */
     CAMERA_DEBUG_LOG_PERF_TRACES_BREAKDOWN = 1<<8,
 
-#if NOTUSED_LIBCAMERA1_LOGLEVELS
+    /* following 5 need to be used by CameraDump module */
     CAMERA_DEBUG_DUMP_RAW = 1<<2,
     CAMERA_DEBUG_DUMP_YUV = 1<<3,
     CAMERA_DEBUG_DUMP_PREVIEW = 1<<4,
     CAMERA_DEBUG_DUMP_VIDEO = 1<<5,
     CAMERA_DEBUG_DUMP_SNAPSHOT = 1<<6,
+
+#if NOTUSED_LIBCAMERA1_LOGLEVELS
     CAMERA_DEBUG_DUMP_3A_STATISTICS = 1<<9
 #endif
 };
