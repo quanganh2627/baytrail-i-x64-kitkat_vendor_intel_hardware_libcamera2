@@ -3713,6 +3713,10 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     newParamLogger.dump();
     LOG2("----------- END NEW PARAMS -------- ");
 
+    status = validateParameters(&newParams);
+    if (status != NO_ERROR)
+        goto exit;
+
     if (mState == STATE_CAPTURE) {
         int newWidth, newHeight;
         int oldWidth, oldHeight;
@@ -3731,10 +3735,6 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
             mMessageQueue.send(&msg);
         }
     }
-
-    status = validateParameters(&newParams);
-    if (status != NO_ERROR)
-        goto exit;
 
     mParameters = newParams;
 
