@@ -740,6 +740,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
 
         // metering areas
         params->set(CameraParameters::KEY_MAX_NUM_METERING_AREAS, mAAA->getAfMaxNumWindows());
+        // set empty area
+        params->set(CameraParameters::KEY_METERING_AREAS, "(0,0,0,0,0)");
 
         // Capture bracketing
         intel_params->set(IntelCameraParameters::KEY_CAPTURE_BRACKET, "none");

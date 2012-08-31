@@ -466,7 +466,6 @@ private:
     status_t processParamTNR(const CameraParameters *oldParams,
             CameraParameters *newParams);
 
-    bool verifyCameraWindow(const CameraWindow &win);
     void preSetCameraWindows(CameraWindow* focusWindows, size_t winCount);
 
 
@@ -500,7 +499,7 @@ private:
 
     status_t updateSpotWindow(const int &width, const int &height);
 
-    MeteringMode aeMeteringModeFromString(String8 modeStr);
+    MeteringMode aeMeteringModeFromString(const String8& modeStr);
 
 // inherited from Thread
 private:
@@ -553,11 +552,10 @@ private:
 
     bool mPreviewForceChanged;
 
-    bool mAeMeteringSpotForced;
-
     CameraDump *mCameraDump;
 
     CameraAreas mFocusAreas;
+    CameraAreas mMeteringAreas;
 
 }; // class ControlThread
 

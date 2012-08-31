@@ -94,9 +94,9 @@ ControlThread::ControlThread() :
     ,mLastRecordingBuffIndex(0)
     ,mStoreMetaDataInBuffers(false)
     ,mPreviewForceChanged(false)
-    ,mAeMeteringSpotForced(false)
     ,mCameraDump(NULL)
     ,mFocusAreas()
+    ,mMeteringAreas()
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -729,9 +729,25 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     }
 
     // Update the spot mode window for the proper window size.
-    if (mAeMeteringSpotForced && mAAA->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT) {
+    if (mAAA->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT && mMeteringAreas.isEmpty()) {
+        // Update for the "fixed" AE spot window (Intel extension):
         LOG1("%s: setting forced spot window.", __FUNCTION__);
         updateSpotWindow(width, height);
+    } else if (mAAA->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT) {
+        // This update is when the AE metering is internally set to
+        // "spot" mode by the HAL, when user has set the AE metering window.
+        LOG1("%s: setting metering area with spot window.", __FUNCTION__);
+        size_t winCount(mMeteringAreas.numOfAreas());
+        CameraWindow *meteringWindows = new CameraWindow[winCount];
+        CameraWindow aeWindow;
+        mMeteringAreas.toWindows(meteringWindows);
+        convertFromAndroidCoordinates(meteringWindows[0], aeWindow, width, height, 50, 255);
+
+        if (mAAA->setAeWindow(&aeWindow) != NO_ERROR) {
+            LOGW("Error setting AE metering window. Metering will not work");
+        }
+        delete[] meteringWindows;
+        meteringWindows = NULL;
     }
 
     mNumBuffers = mISP->getNumBuffers();
@@ -1802,7 +1818,7 @@ status_t ControlThread::updateSpotWindow(const int &width, const int &height)
     return mAAA->setAeWindow(&spotWin);
 }
 
-MeteringMode ControlThread::aeMeteringModeFromString(String8 modeStr)
+MeteringMode ControlThread::aeMeteringModeFromString(const String8& modeStr)
 {
     LOG1("@%s", __FUNCTION__);
     MeteringMode mode(CAM_AE_METERING_MODE_AUTO);
@@ -2126,51 +2142,6 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     if (focusMode && strstr(focusModes, focusMode) == NULL) {
         LOGE("bad focus mode");
         return BAD_VALUE;
-    }
-
-    // METERING AREAS
-    int maxWindows = params->getInt(CameraParameters::KEY_MAX_NUM_METERING_AREAS);
-    if (maxWindows > 0) {
-        const char *pMeteringWindows = params->get(CameraParameters::KEY_METERING_AREAS);
-        if (pMeteringWindows && (strlen(pMeteringWindows) > 0)) {
-            LOG1("Scanning Metering windows from params: %s", pMeteringWindows);
-            const char *argTail = pMeteringWindows;
-            int winCount = 0;
-            CameraWindow meteringWindow;
-            while (argTail && winCount < maxWindows) {
-                // String format: "(topleftx,toplefty,bottomrightx,bottomrighty,weight),(...)"
-                int i = sscanf(argTail, "(%d,%d,%d,%d,%d)",
-                        &meteringWindow.x_left,
-                        &meteringWindow.y_top,
-                        &meteringWindow.x_right,
-                        &meteringWindow.y_bottom,
-                        &meteringWindow.weight);
-                argTail = strchr(argTail + 1, '(');
-                // Camera app sets invalid window 0,0,0,0,0 - let it slide
-                if ( !meteringWindow.x_left && !meteringWindow.y_top &&
-                    !meteringWindow.x_right && !meteringWindow.y_bottom &&
-                    !meteringWindow.weight) {
-                  continue;
-                }
-                if (i != 5) {
-                    LOGE("bad metering window format");
-                    return BAD_VALUE;
-                }
-                bool verified = verifyCameraWindow(meteringWindow);
-                if (!verified) {
-                    LOGE("bad metering window");
-                    return BAD_VALUE;
-                }
-                if (verified) {
-                    winCount++;
-                }
-            }
-            // make sure not too many windows defined (to pass CTS)
-            if (argTail) {
-                LOGE("bad - too many metering windows or bad format for metering window string");
-                return BAD_VALUE;
-            }
-        }
     }
 
     // MISCELLANEOUS
@@ -2920,19 +2891,6 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
     return status;
 }
 
-bool ControlThread::verifyCameraWindow(const CameraWindow &win)
-{
-    if (win.x_right <= win.x_left ||
-        win.y_bottom <= win.y_top)
-        return false;
-    if ( (win.y_top < -1000) || (win.y_top > 1000) ) return false;
-    if ( (win.y_bottom < -1000) || (win.y_bottom > 1000) ) return false;
-    if ( (win.x_right < -1000) || (win.x_right > 1000) ) return false;
-    if ( (win.x_left < -1000) || (win.x_left > 1000) ) return false;
-    if ( (win.weight < 1) || (win.weight > 1000) ) return false;
-    return true;
-}
-
 void ControlThread::preSetCameraWindows(CameraWindow* focusWindows, size_t winCount)
 {
     LOG1("@%s", __FUNCTION__);
@@ -3059,96 +3017,61 @@ status_t ControlThread:: processParamSetMeteringAreas(const CameraParameters *ol
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    // FIXME: We should have getter for max num of METERING areas...
-    // At the moment KEY_MAX_NUM_METERING_AREAS == AtomAAA::getAfMaxNumWindows()
-    const size_t maxWindows = mAAA->getAfMaxNumWindows();
-    CameraWindow meteringWindows[maxWindows];
-    const char *pMeteringWindows = newParams->get(CameraParameters::KEY_METERING_AREAS);
-    bool isNullWindow = true;
-    // If window list has a single zeroes entry, the window list was null (empty)
-    // in application. FW passes us a single zeroes window
 
-    if (pMeteringWindows && (maxWindows > 0) && (strlen(pMeteringWindows) > 0)) {
-        LOG1("Scanning AE metering from params: %s", pMeteringWindows);
-        const char *argTail = pMeteringWindows;
-        size_t winCount = 0;
-        // If null-window was set and that was the only window:
-        if (strlen(pMeteringWindows) == 11 && strcmp(pMeteringWindows, "(0,0,0,0,0)") == 0) {
-            isNullWindow = true;
-            LOG1("Got null window from FW");
+    // TODO: Support for more windows. At the moment we only support one?
+    if (!mMeteringAreas.isEmpty()) {
+        int w, h;
+        size_t winCount(mMeteringAreas.numOfAreas());
+        CameraWindow *meteringWindows = new CameraWindow[winCount];
+        CameraWindow aeWindow;
+
+        mMeteringAreas.toWindows(meteringWindows);
+
+        mParameters.getPreviewSize(&w, &h);
+        //in our AE bg weight is 1, max is 255, thus working values are inside [2, 255].
+        //Google probably expects bg weight to be zero, therefore sending happily 1 from
+        //default camera app. To have some kind of visual effect, we start our range from 5
+        // FIXME: In MFLD the weight value of 5 was enough, for now in CTP it seems not.
+
+        convertFromAndroidCoordinates(meteringWindows[0], aeWindow, w, h, 50, 255);
+
+        if (mAAA->setAeMeteringMode(CAM_AE_METERING_MODE_SPOT) == NO_ERROR) {
+            LOG1("@%s, Got metering area, and \"spot\" mode set. Setting window.", __FUNCTION__ );
+            if (mAAA->setAeWindow(&aeWindow) != NO_ERROR) {
+                LOGW("Error setting AE metering window. Metering will not work");
+            }
         } else {
-            // Otherwise verify the other windows.
-            while (argTail && winCount < maxWindows) {
-                // String format: "(topleftx,toplefty,bottomrightx,bottomrighty,weight),(...)"
-                int len = sscanf(argTail, "(%d,%d,%d,%d,%d)",
-                        &meteringWindows[winCount].x_left,
-                        &meteringWindows[winCount].y_top,
-                        &meteringWindows[winCount].x_right,
-                        &meteringWindows[winCount].y_bottom,
-                        &meteringWindows[winCount].weight);
-                if (len != 5)
-                    break;
-                bool verified = verifyCameraWindow(meteringWindows[winCount]);
-                LOG1("\tWindow %d (%d,%d,%d,%d,%d) [%s]",
-                        winCount,
-                        meteringWindows[winCount].x_left,
-                        meteringWindows[winCount].y_top,
-                        meteringWindows[winCount].x_right,
-                        meteringWindows[winCount].y_bottom,
-                        meteringWindows[winCount].weight,
-                        (verified)?"GOOD":"IGNORED");
-                argTail = strchr(argTail + 1, '(');
-                if (verified) {
-                    winCount++;
-                } else {
-                    LOGW("Ignoring invalid metering area: (%d,%d,%d,%d,%d)",
-                            meteringWindows[winCount].x_left,
-                            meteringWindows[winCount].y_top,
-                            meteringWindows[winCount].x_right,
-                            meteringWindows[winCount].y_bottom,
-                            meteringWindows[winCount].weight);
-                }
-            }
+                LOGW("Error setting AE metering mode to \"spot\". Metering will not work");
         }
-        LOG1("@%s, Wincount = %d.", __FUNCTION__, winCount);
-        // Looks like metering window(s) were set
-        // TODO: Support for more windows. At the moment we only support one?
-        if (winCount > 0) {
-            // We got the metering area (weight != 0), so set to "spot" mode.
-            if (meteringWindows[0].weight != 0) {
-                int w, h;
-                CameraWindow aeWindow;
-                mParameters.getPreviewSize(&w, &h);
-                //in our AE bg weight is 1, max is 255, thus working values are inside [2, 255].
-                //Google probably expects bg weight to be zero, therefore sending happily 1 from
-                //default camera app. To have some kind of visual effect, we start our range from 5
-                // FIXME: In MFLD the weight value of 5 was enough, for now in CTP it seems not.
-                convertFromAndroidCoordinates(meteringWindows[0], aeWindow, w, h, 50, 255);
 
-                if (mAAA->setAeMeteringMode(CAM_AE_METERING_MODE_SPOT) == NO_ERROR) {
-                    LOG1("@%s, Got metering area, and \"spot\" mode set. Setting window.", __FUNCTION__ );
-                    if (mAAA->setAeWindow(&aeWindow) != NO_ERROR) {
-                        LOGW("Error setting AE metering window. Metering will not work");
-                    }
-                    // Mark this 'false' so we won't update spot window in startPreviewCore()
-                    mAeMeteringSpotForced = false;
-                } else {
-                    LOGW("Error setting AE metering mode to \"spot\". Metering will not work");
-                }
-            }
-        } else if (isNullWindow) {
-            // Resetting back to previous AE metering mode, if it was set (Intel extension, so
-            // Google std app won't be using "previous mode")
-            const char* modeStr = newParams->get(IntelCameraParameters::KEY_AE_METERING_MODE);
-            MeteringMode oldMode = CAM_AE_METERING_MODE_AUTO;
-            if (modeStr != NULL) {
-                oldMode = aeMeteringModeFromString(String8(modeStr));
-            }
+        delete[] meteringWindows;
+        meteringWindows = NULL;
+    } else {
+        // Resetting back to previous AE metering mode, if it was set (Intel extension, so
+        // standard app won't be using "previous mode")
+        const char* modeStr = newParams->get(IntelCameraParameters::KEY_AE_METERING_MODE);
+        MeteringMode oldMode = CAM_AE_METERING_MODE_AUTO;
+        if (modeStr != NULL) {
+            oldMode = aeMeteringModeFromString(String8(modeStr));
+        }
+
+        if (oldMode != mAAA->getAeMeteringMode()) {
             LOG1("Resetting from \"spot\" to (previous) AE metering mode (%d).", oldMode);
             mAAA->setAeMeteringMode(oldMode);
+        }
 
+        if (oldMode == CAM_AE_METERING_MODE_SPOT) {
+            int width = 0, height = 0;
+            bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
+            if (videoMode)
+                mParameters.getVideoSize(&width, &height);
+            else
+                mParameters.getPreviewSize(&width, &height);
+
+            updateSpotWindow(width, height);
         }
     }
+
     return status;
 }
 
@@ -3234,25 +3157,22 @@ status_t ControlThread::processParamAutoExposureMeteringMode(
     if (newVal.isEmpty() != true) {
         MeteringMode mode = aeMeteringModeFromString(newVal);
 
-        if (mode == CAM_AE_METERING_MODE_SPOT) {
-            mode = CAM_AE_METERING_MODE_SPOT;
+        // The fixed "spot" metering mode (and area) should be set only when user has set the
+        // AE metering area to null (isEmpty() == true)
+        if (mode == CAM_AE_METERING_MODE_SPOT && mMeteringAreas.isEmpty()) {
             int width = 0, height = 0;
             bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
             if (videoMode)
                 mParameters.getVideoSize(&width, &height);
             else
                 mParameters.getPreviewSize(&width, &height);
-            // Lets set metering area to fixed position here. We will also get arbitrary area
+            // Let's set metering area to fixed position here. We will also get arbitrary area
             // when using touch AE, which is handled in processParamSetMeteringAreas().
             updateSpotWindow(width, height);
+        } else if (mode == CAM_AE_METERING_MODE_SPOT) {
+            LOGE("User trying to set AE metering mode \"spot\" with an AE metering area.");
         }
 
-        // Keep record for set metering mode, as this is now "forcing" the metering mode.
-        // This is because, e.g., touch AE (the Google std app) needs spot mode also, but in
-        // that case we use user-provided window, but for Intel custom spot mode we force
-        // the small center-screen window
-        // See: updateSpotWindow()
-        mAeMeteringSpotForced = (mode == CAM_AE_METERING_MODE_SPOT);
         mAAA->setAeMeteringMode(mode);
         LOGD("Changed ae metering mode to \"%s\" (%d)", newVal.string(), mode);
     }
@@ -3637,6 +3557,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     CameraParamsLogger oldParamLogger (mParameters.flatten().string());
 
     CameraAreas newFocusAreas;
+    CameraAreas newMeteringAreas;
 
     String8 str_params(msg->params);
     newParams.unflatten(str_params);
@@ -3664,6 +3585,13 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
         LOGE("bad focus area");
         goto exit;
     }
+    LOG1("scanning AE metering areas");
+    status = newMeteringAreas.scan(newParams.get(CameraParameters::KEY_METERING_AREAS),
+                                   mParameters.getInt(CameraParameters::KEY_MAX_NUM_METERING_AREAS));
+    if (status != NO_ERROR) {
+        LOGE("bad metering area");
+        goto exit;
+    }
 
     if (mState == STATE_CAPTURE) {
         int newWidth, newHeight;
@@ -3686,6 +3614,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
 
     mParameters = newParams;
     mFocusAreas.swap(newFocusAreas); // use swap instead of copying to avoid memory copy
+    mMeteringAreas.swap(newMeteringAreas);
 
     // Take care of parameters that need to be set while the ISP is stopped
     status = processStaticParameters(&oldParams, &newParams);
