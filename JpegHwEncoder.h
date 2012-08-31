@@ -43,6 +43,8 @@ struct vaJpegContext;
  * size of the JPEG markers (SOI or EOI) in bytes
  */
 #define SIZE_OF_JPEG_MARKER 2
+
+#ifdef USE_INTEL_JPEG
 /**
  * \class JpegHwEncoder
  *
@@ -96,7 +98,25 @@ private:
     int mMaxOutJpegBufSize; /*!< the max JPEG Buffer Size. This is initialized to
                                  the size of the input YUV buffer*/
 };
+#else  //USE_INTEL_JPEG
+//Stub implementation if HW encoder is disabled
 
+class JpegHwEncoder {
+
+public:
+    JpegHwEncoder(){};
+    virtual ~JpegHwEncoder(){};
+
+    int init(void){return -1;};
+    int deInit(void){return -1;};
+    bool isInitialized() {return false;};
+    int setInputBuffers(AtomBuffer* inputBuffersArray, int inputBuffersNum){return -1;};
+    int encode(const JpegCompressor::InputBuffer &in, JpegCompressor::OutputBuffer &out){return -1;};
+    int encodeAsync(const JpegCompressor::InputBuffer &in, JpegCompressor::OutputBuffer &out){return -1;};
+    int waitToComplete(int *jpegSize){return -1;};
+    int getOutput(JpegCompressor::OutputBuffer &out){return -1;};
+};
+#endif
 }; // namespace android
 
 #endif /* JPEGHWENCODER_H_ */

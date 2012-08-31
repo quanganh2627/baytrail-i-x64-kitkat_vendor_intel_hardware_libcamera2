@@ -119,11 +119,13 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     outBuf.height = mainBuf->height;
     outBuf.quality = mPictureQuality;
     endTime = systemTime();
-    if(mHwCompressor->encodeAsync(inBuf, outBuf) < 0) {
+
+    if(mHwCompressor && mHwCompressor->isInitialized() &&
+       mHwCompressor->encodeAsync(inBuf, outBuf) == 0) {
+        LOG1("Picture JPEG (time to start encode: %ums)", (unsigned)((systemTime() - endTime) / 1000000));
+    } else {
         LOGW("JPEG HW encoding failed, falling back to SW");
         failback = true;
-    } else {
-        LOG1("Picture JPEG (time to start encode: %ums)", (unsigned)((systemTime() - endTime) / 1000000));
     }
 
     // Convert and encode the thumbnail, if present and EXIF maker is initialized
