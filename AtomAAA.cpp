@@ -699,6 +699,20 @@ ia_3a_awb_map AtomAAA::getAwbMapping()
     return ret;
 }
 
+// How many metering windows are supported
+size_t AtomAAA::getAeMaxNumWindows()
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+
+    if(!mHas3A)
+        return 0;
+
+    // TODO: add ask from 3A, if there is added support for that
+
+    return 1;
+}
+
 // How many focus windows are supported
 size_t AtomAAA::getAfMaxNumWindows()
 {

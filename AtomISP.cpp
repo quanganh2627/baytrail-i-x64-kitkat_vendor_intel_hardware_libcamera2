@@ -739,7 +739,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
         params->set(CameraParameters::KEY_FOCUS_AREAS, "(0,0,0,0,0)");
 
         // metering areas
-        params->set(CameraParameters::KEY_MAX_NUM_METERING_AREAS, mAAA->getAfMaxNumWindows());
+        params->set(CameraParameters::KEY_MAX_NUM_METERING_AREAS, mAAA->getAeMaxNumWindows());
         // set empty area
         params->set(CameraParameters::KEY_METERING_AREAS, "(0,0,0,0,0)");
 

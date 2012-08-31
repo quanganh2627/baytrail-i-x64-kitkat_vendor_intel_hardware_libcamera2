@@ -238,6 +238,7 @@ public:
     bool     getAwbLock();
     status_t setAwbMapping(ia_3a_awb_map mode);
     ia_3a_awb_map getAwbMapping();
+    size_t   getAeMaxNumWindows();
     size_t   getAfMaxNumWindows();
     status_t setAfWindows(const CameraWindow *windows, size_t numWindows);
     status_t setNegativeEffect(bool en);
