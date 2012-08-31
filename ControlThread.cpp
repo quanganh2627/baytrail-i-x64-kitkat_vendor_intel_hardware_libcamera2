@@ -713,6 +713,21 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mParameters.getPreviewSize(&width, &height);
     }
 
+
+    // Update focus areas for the proper window size
+    if (!mFaceDetectionActive && !mFocusAreas.isEmpty()) {
+        size_t winCount(mFocusAreas.numOfAreas());
+        CameraWindow *focusWindows = new CameraWindow[winCount];
+        mFocusAreas.toWindows(focusWindows);
+        preSetCameraWindows(focusWindows, winCount);
+        if (mAAA->setAfWindows(focusWindows, winCount) != NO_ERROR) {
+            LOGE("Could not set AF windows. Resseting the AF to %d", CAM_AF_MODE_AUTO);
+            mAAA->setAfMode(CAM_AF_MODE_AUTO);
+        }
+        delete[] focusWindows;
+        focusWindows = NULL;
+    }
+
     // Update the spot mode window for the proper window size.
     if (mAeMeteringSpotForced && mAAA->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT) {
         LOG1("%s: setting forced spot window.", __FUNCTION__);
