@@ -488,6 +488,7 @@ private:
     status_t hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* postviewBuffer);
     status_t hdrCompose();
     void     hdrRelease();
+    status_t allocateSnapshotBuffers();
     void     setExternalSnapshotBuffers(int format, int width, int heigth);
 
     // Capture Flow helpers
@@ -557,6 +558,10 @@ private:
     CameraAreas mFocusAreas;
     CameraAreas mMeteringAreas;
 
+    bool mIsPreviewStartComplete;   /*!< Flag that signals the completion of the start preview process
+                                         set to false when we receive the start preview command
+                                         set to true when the first preview frame is returned to
+                                         ControlThread */
 }; // class ControlThread
 
 }; // namespace android

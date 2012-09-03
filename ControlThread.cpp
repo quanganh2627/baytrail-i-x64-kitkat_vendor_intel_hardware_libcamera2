@@ -97,6 +97,7 @@ ControlThread::ControlThread() :
     ,mCameraDump(NULL)
     ,mFocusAreas()
     ,mMeteringAreas()
+    ,mIsPreviewStartComplete(false)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -899,6 +900,8 @@ status_t ControlThread::handleMessageStartPreview()
         LOGE("Error starting preview. Invalid state!");
         status = INVALID_OPERATION;
     }
+
+    mIsPreviewStartComplete = false;
 
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_START_PREVIEW, status);
@@ -1966,6 +1969,20 @@ status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
     } else {
        releasePreviewFrame(&msg->buff);
     }
+
+    if(!mIsPreviewStartComplete) {
+        mIsPreviewStartComplete = true;
+        /**
+         * First preview frame was rendered.
+         * Now preview is ongoing. Complete now any initialization that is not
+         * strictly needed to do, before preview is started so it doesn't
+         * impact launch to preview time.
+         *
+         * In this case we send the request to the PictureThread to allocate
+         * the snapshot buffers
+         */
+        allocateSnapshotBuffers();
+    }
     return NO_ERROR;
 }
 
@@ -2309,26 +2326,36 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
 
     }
 
-    if (status == NO_ERROR) {
-        int picWidth, picHeight;
-        bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
+    if ((status == NO_ERROR) && (mState != STATE_STOPPED)) {
+        // Request PictureThread to allocate snapshot buffers
+        allocateSnapshotBuffers();
+    }
 
-        mParameters.getPictureSize(&picWidth, &picHeight);
-        if(videoMode){
-            /**
-             * In video mode we configure the Picture thread not to pre-allocate
-             * the snapshot buffers. This means that there will be no active libVA
-             * context created. we cannot have more than one libVA (encoder) context active
-             * and in video mode the video encoder already creates one.
-             */
-            status = mPictureThread->allocSharedBuffers(picWidth, picHeight, 0);
-        } else {
-            status = mPictureThread->allocSharedBuffers(picWidth, picHeight, NUM_BURST_BUFFERS);
-        }
+    return status;
+}
 
-        if (status != NO_ERROR) {
-            LOGW("Could not pre-allocate picture buffers!");
-        }
+status_t ControlThread::allocateSnapshotBuffers()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    int picWidth, picHeight;
+    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
+
+    mParameters.getPictureSize(&picWidth, &picHeight);
+    if(videoMode){
+       /**
+        * In video mode we configure the Picture thread not to pre-allocate
+        * the snapshot buffers. This means that there will be no active libVA
+        * context created. we cannot have more than one libVA (encoder) context active
+        * and in video mode the video encoder already creates one.
+        */
+       status = mPictureThread->allocSharedBuffers(picWidth, picHeight, 0);
+    } else {
+       status = mPictureThread->allocSharedBuffers(picWidth, picHeight, NUM_BURST_BUFFERS);
+    }
+
+    if (status != NO_ERROR) {
+       LOGW("Could not pre-allocate picture buffers!");
     }
 
     return status;
