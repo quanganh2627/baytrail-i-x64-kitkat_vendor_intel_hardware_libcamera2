@@ -91,6 +91,7 @@ struct AtomBuffer {
                                  prevent ISP to de-allocate it */
     int width;
     int height;
+    int rotation;
     int format;
     int stride;             /*!< stride of the buffer*/
     int size;
@@ -110,6 +111,7 @@ public:
                            int format = V4L2_PIX_FMT_NV12,
                            int width = 0,
                            int height = 0,
+                           int rotation = 0,
                            int stride = 0,
                            int size = 0,
                            IBufferOwner *owner = NULL,

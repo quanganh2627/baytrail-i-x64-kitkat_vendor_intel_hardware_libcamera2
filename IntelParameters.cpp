@@ -92,6 +92,12 @@ namespace android {
     const char IntelCameraParameters::KEY_SUPPORTED_BURST_FPS[] = "burst-fps-values";
     const char IntelCameraParameters::KEY_BURST_FPS[] = "burst-fps";
 
+    // smart shutter
+    const char IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD[] = "smile-shutter-threshold";
+    const char IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER[] = "smile-shutter";
+    const char IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD[] = "blink-shutter-threshold";
+    const char IntelCameraParameters::KEY_SUPPORTED_BLINK_SHUTTER[] = "blink-shutter";
+
     // for 3A
     // Values for ae mode settings
     const char IntelCameraParameters::AE_MODE_AUTO[] = "auto";

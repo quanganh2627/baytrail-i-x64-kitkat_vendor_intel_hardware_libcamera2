@@ -33,8 +33,19 @@ namespace android {
  * the maximum number of faces detectable at the same time
  */
 #define MAX_FACES_DETECTABLE (32)
+#define SMILE_THRESHOLD_MAX (100)
+#define BLINK_THRESHOLD_MAX (100)
 #define SMILE_THRESHOLD (70)
 #define BLINK_THRESHOLD (30)
+#define SMILE_SHUTTER_SUPPORTED "on,off"
+#define BLINK_SHUTTER_SUPPORTED "on,off"
+
+// Smart Shutter Parameters
+enum SmartShutterMode {
+    SMILE_MODE = 0,
+    BLINK_MODE
+};
+
 
 class FaceDetector {
 
@@ -47,12 +58,16 @@ public:
     int getFaces(camera_face_t *faces, int width, int height);
     int faceDetect(ia_frame *frame);
     void eyeDetect(ia_frame *frame);
+    void setSmileThreshold(int threshold);
     bool smileDetect(ia_frame *frame);
+    void setBlinkThreshold(int threshold);
     bool blinkDetect(ia_frame *frame);
 
 
 private:
     ia_face_state* mContext;
+    int mSmileThreshold;
+    int mBlinkThreshold;
 
 #else
     FaceDetector() {}
@@ -61,8 +76,10 @@ private:
     int getFaces(camera_face_t *faces, int width, int height) { return 0; }
     int faceDetect(ia_frame *frame) { return 0; }
     void eyeDetect(ia_frame *frame) {}
+    void setSmileThreshold(int threshold) {};
     bool smileDetect(ia_frame *frame) { return false; }
     bool blinkDetect(ia_frame *frame) { return true; }
+    void setBlinkThreshold(int threshold) {};
 #endif
 
 }; // class FaceDetector

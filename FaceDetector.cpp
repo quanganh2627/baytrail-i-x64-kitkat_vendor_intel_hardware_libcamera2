@@ -23,7 +23,10 @@
 
 namespace android {
 
-FaceDetector::FaceDetector()
+FaceDetector::FaceDetector():
+
+    mSmileThreshold(0)
+    ,mBlinkThreshold(0)
 {
     LOG1("@%s", __FUNCTION__);
     mContext = ia_face_init(NULL);
@@ -49,6 +52,13 @@ void FaceDetector::eyeDetect(ia_frame *frame)
     ia_face_eye_detect(mContext, frame);
 }
 
+void FaceDetector::setSmileThreshold(int threshold)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    mSmileThreshold = threshold;
+}
+
 bool FaceDetector::smileDetect(ia_frame *frame)
 {
     LOG2("@%s", __FUNCTION__);
@@ -59,7 +69,7 @@ bool FaceDetector::smileDetect(ia_frame *frame)
     for (int i = 0; i < mContext->num_faces; i++)
     {
         ia_face face = mContext->faces[i];
-        if (face.smile_state != 0 && face.smile_score > SMILE_THRESHOLD) {
+    if (face.smile_state != 0 && face.smile_score > mSmileThreshold) {
             smile = true;
         } else {
             smile = false;
@@ -69,9 +79,16 @@ bool FaceDetector::smileDetect(ia_frame *frame)
     return smile;
 }
 
-bool FaceDetector::blinkDetect(ia_frame *frame)
+void FaceDetector::setBlinkThreshold(int threshold)
 {
     LOG1("@%s", __FUNCTION__);
+    if (threshold > 0)
+        mBlinkThreshold = threshold;
+}
+
+bool FaceDetector::blinkDetect(ia_frame *frame)
+{
+    LOG2("@%s", __FUNCTION__);
     ia_face_blink_detect(mContext, frame);
 
     // None of the detected faces should have eyes blinked
@@ -79,8 +96,8 @@ bool FaceDetector::blinkDetect(ia_frame *frame)
     for (int i = 0; i < mContext->num_faces; i++)
     {
         ia_face face = mContext->faces[i];
-        if (face.left_eye.blink_confidence < BLINK_THRESHOLD  &&
-            face.right_eye.blink_confidence < BLINK_THRESHOLD) {
+        if (face.left_eye.blink_confidence < mBlinkThreshold  &&
+            face.right_eye.blink_confidence < mBlinkThreshold) {
             blink = false;
         } else {
             blink = true;
@@ -132,11 +149,11 @@ int FaceDetector::getFaces(camera_face_t *faces_out, int width, int height)
         LOG2("face id: %d, score: %d", face.id, face.score);
         LOG2("coordinates: (%d, %d, %d, %d)",face.rect[0],face.rect[1], face.rect[2],face.rect[3]);
         LOG2("mouth: (%d, %d)",face.mouth[0], face.mouth[1]);
-        LOG2("left eye: (%d, %d), blink confidence: %d", face.left_eye[0], face.left_eye[1],
-            iaFace.left_eye.blink_confidence);
-        LOG2("right eye: (%d, %d), blink confidence: %d", face.right_eye[0], face.right_eye[1],
-            iaFace.right_eye.blink_confidence);
-        LOG2("smile state: %d, score: %d", iaFace.smile_state, iaFace.smile_score);
+        LOG2("left eye: (%d, %d), blink confidence: %d, threshold %d", face.left_eye[0], face.left_eye[1],
+            iaFace.left_eye.blink_confidence, mBlinkThreshold);
+        LOG2("right eye: (%d, %d), blink confidence: %d, threshold %d", face.right_eye[0], face.right_eye[1],
+            iaFace.right_eye.blink_confidence, mBlinkThreshold);
+        LOG2("smile state: %d, score: %d, threshold %d", iaFace.smile_state, iaFace.smile_score, mSmileThreshold);
     }
     return mContext->num_faces;
 }

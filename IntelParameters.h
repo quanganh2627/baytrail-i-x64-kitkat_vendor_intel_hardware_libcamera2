@@ -138,6 +138,11 @@ namespace android {
     // HDR save original
     static const char KEY_HDR_SAVE_ORIGINAL[];
     static const char KEY_SUPPORTED_HDR_SAVE_ORIGINAL[];
+    // Smart Shutter
+    static const char KEY_SMILE_SHUTTER_THRESHOLD[];
+    static const char KEY_SUPPORTED_SMILE_SHUTTER[];
+    static const char KEY_BLINK_SHUTTER_THRESHOLD[];
+    static const char KEY_SUPPORTED_BLINK_SHUTTER[];
 
     //Panorama live preview size
     static const char KEY_PANORAMA_LIVE_PREVIEW_SIZE[];

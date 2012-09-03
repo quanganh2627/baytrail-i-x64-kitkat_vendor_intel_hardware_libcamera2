@@ -83,6 +83,8 @@ ControlThread::ControlThread() :
     ,mNumBuffers(0)
     ,mIntelParamsAllowed(false)
     ,mFaceDetectionActive(false)
+    ,mSmileThreshold(0)
+    ,mBlinkThreshold(0)
     ,mFlashAutoFocus(false)
     ,mBurstSkipFrames(0)
     ,mBurstLength(0)
@@ -222,7 +224,7 @@ status_t ControlThread::init(int cameraId)
     mISP->getDefaultParameters(&mParameters, &mIntelParameters);
     mPictureThread->getDefaultParameters(&mParameters);
     mPreviewThread->getDefaultParameters(&mParameters);
-    mPostProcThread->getDefaultParameters(&mParameters);
+    mPostProcThread->getDefaultParameters(&mParameters, &mIntelParameters);
     updateParameterCache();
 
     status = m3AThread->run();
@@ -553,10 +555,14 @@ status_t ControlThread::takePicture()
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
-    if (mPanoramaThread->getState() != PANORAMA_STOPPED) {
+
+    if (mPanoramaThread->getState() != PANORAMA_STOPPED)
         msg.id = MESSAGE_ID_PANORAMA_PICTURE;
-    } else
+    else if (mPostProcThread->isSmartRunning()) // delaying capture for smart shutter case
+        msg.id = MESSAGE_ID_SMART_SHUTTER_PICTURE;
+    else
         msg.id = MESSAGE_ID_TAKE_PICTURE;
+
     return mMessageQueue.send(&msg);
 }
 
@@ -701,6 +707,14 @@ void ControlThread::autoFocusDone()
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_AUTO_FOCUS_DONE;
+    mMessageQueue.send(&msg);
+}
+
+void ControlThread::postProcCaptureTrigger()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_POST_PROC_CAPTURE_TRIGGER;
     mMessageQueue.send(&msg);
 }
 
@@ -950,6 +964,7 @@ status_t ControlThread::handleMessageStartPreview()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status;
+
     if (mState == STATE_CAPTURE) {
         status = stopCapture();
         if (status != NO_ERROR) {
@@ -2033,6 +2048,17 @@ MeteringMode ControlThread::aeMeteringModeFromString(const String8& modeStr)
     return mode;
 }
 
+status_t ControlThread::handleMessageTakeSmartShutterPicture()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    State origState = mState;
+    mPostProcThread->captureOnTrigger();
+    mState = STATE_PREVIEW_STILL;
+
+    return status;
+}
+
 status_t ControlThread::handleMessageCancelPicture()
 {
     LOG1("@%s", __FUNCTION__);
@@ -2155,6 +2181,7 @@ status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
 
     if (mFaceDetectionActive || mPanoramaThread->getState() == PANORAMA_DETECTING_OVERLAP) {
         LOG2("@%s: face detection active", __FUNCTION__);
+        msg->buff.rotation = mParameters.getInt(CameraParameters::KEY_ROTATION);
         msg->buff.owner = this;
         if (mPostProcThread->sendFrame(&msg->buff) < 0) {
             msg->buff.owner = 0;
@@ -2481,6 +2508,10 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             status = processParamBracket(oldParams, newParams);
         }
 
+        if (status == NO_ERROR) {
+            // Smart Shutter Capture
+            status = processParamSmartShutter(oldParams, newParams);
+        }
         if (status == NO_ERROR) {
             // hdr
             status = processParamHDR(oldParams, newParams);
@@ -2904,6 +2935,37 @@ status_t ControlThread::processParamBracket(const CameraParameters *oldParams,
         }
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_CAPTURE_BRACKET, newBracket);
+        }
+    }
+    return status;
+}
+
+status_t ControlThread::processParamSmartShutter(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    //smile shutter threshold
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD);
+    if (newVal.isEmpty() != true) {
+        mSmileThreshold = newParams->getInt(IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD);
+        if (mSmileThreshold < 0 || mSmileThreshold > SMILE_THRESHOLD_MAX) {
+            LOGE("Invalid value received for %s: %d, set to default %d",
+                IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD, mSmileThreshold, SMILE_THRESHOLD);
+            mSmileThreshold = SMILE_THRESHOLD;
+        }
+    }
+
+    //blink shutter threshold
+    newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                      IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD);
+    if (newVal.isEmpty() != true) {
+        mBlinkThreshold = newParams->getInt(IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD);
+        if (mBlinkThreshold < 0 || mBlinkThreshold > BLINK_THRESHOLD_MAX) {
+            LOGE("Invalid value received for %s: %d, set to default %d",
+                IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD, mBlinkThreshold, BLINK_THRESHOLD);
+            mBlinkThreshold = BLINK_THRESHOLD;
         }
     }
     return status;
@@ -3967,6 +4029,21 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
     case CAMERA_CMD_STOP_SCENE_DETECTION:
         status = stopSmartSceneDetection();
         break;
+    case CAMERA_CMD_START_SMILE_SHUTTER:
+        status = startSmartShutter(SMILE_MODE);
+        break;
+    case CAMERA_CMD_START_BLINK_SHUTTER:
+        status = startSmartShutter(BLINK_MODE);
+        break;
+    case CAMERA_CMD_STOP_SMILE_SHUTTER:
+        status = stopSmartShutter(SMILE_MODE);
+        break;
+    case CAMERA_CMD_STOP_BLINK_SHUTTER:
+        status = stopSmartShutter(BLINK_MODE);
+        break;
+    case CAMERA_CMD_CANCEL_TAKE_PICTURE:
+        status = cancelCaptureOnTrigger();
+        break;
     case CAMERA_CMD_ENABLE_INTEL_PARAMETERS:
         status = enableIntelParameters();
         mMessageQueue.reply(MESSAGE_ID_COMMAND, status);
@@ -4402,16 +4479,49 @@ status_t ControlThread::startFaceDetection()
 status_t ControlThread::stopFaceDetection(bool wait)
 {
     LOG2("@%s", __FUNCTION__);
-    if( !mFaceDetectionActive )
+    if(!mFaceDetectionActive) {
         return NO_ERROR;
+    }
+
     mFaceDetectionActive = false;
     disableMsgType(CAMERA_MSG_PREVIEW_METADATA);
     if (mPostProcThread != 0) {
         mPostProcThread->stopFaceDetection(wait);
         return NO_ERROR;
-    } else{
+    } else {
         return INVALID_OPERATION;
     }
+}
+
+status_t ControlThread::startSmartShutter(SmartShutterMode mode)
+{
+    LOG2("@%s", __FUNCTION__);
+    if (mState == STATE_STOPPED)
+        return INVALID_OPERATION;
+
+    int level = 0;
+
+    if (mode == SMILE_MODE && !mPostProcThread->isSmileRunning()) {
+        level = mSmileThreshold;
+    } else if (mode == BLINK_MODE && !mPostProcThread->isBlinkRunning()) {
+        level = mBlinkThreshold;
+    } else {
+        return INVALID_OPERATION;
+    }
+
+    mPostProcThread->startSmartShutter(mode, level);
+    LOG1("%s: mode: %d Active Mode: (smile %d (%d) , blink %d (%d), smart %d)", __FUNCTION__, mode, mPostProcThread->isSmileRunning(), mSmileThreshold, mPostProcThread->isBlinkRunning(), mBlinkThreshold, mPostProcThread->isSmartRunning());
+
+    return NO_ERROR;
+}
+
+status_t ControlThread::stopSmartShutter(SmartShutterMode mode)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    mPostProcThread->stopSmartShutter(mode);
+    LOG1("%s: mode: %d Active Mode: (smile %d (%d) , blink %d (%d), smart %d)", __FUNCTION__, mode, mPostProcThread->isSmileRunning(),  mSmileThreshold, mPostProcThread->isBlinkRunning(), mBlinkThreshold, mPostProcThread->isSmartRunning());
+    return NO_ERROR;
 }
 
 status_t ControlThread::enableIntelParameters()
@@ -4429,7 +4539,16 @@ status_t ControlThread::enableIntelParameters()
     updateParameterCache();
 
     mIntelParamsAllowed = true;
+    return NO_ERROR;
+}
 
+status_t ControlThread::cancelCaptureOnTrigger()
+{
+    LOG1("@%s", __FUNCTION__);
+    if( !mPostProcThread->isSmartRunning())
+        return NO_ERROR;
+    if(mPostProcThread != 0)
+        mPostProcThread->stopCaptureOnTrigger();
     return NO_ERROR;
 }
 
@@ -4488,6 +4607,7 @@ status_t ControlThread::waitForAndExecuteMessage()
         case MESSAGE_ID_STOP_RECORDING:
             status = handleMessageStopRecording();
             break;
+
         case MESSAGE_ID_RELEASE_PREVIEW_FRAME:
             status = handleMessageReleasePreviewFrame(
                 &msg.data.releasePreviewFrame);
@@ -4499,6 +4619,10 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_TAKE_PICTURE:
             status = handleMessageTakePicture();
+            break;
+
+        case MESSAGE_ID_SMART_SHUTTER_PICTURE:
+            status = handleMessageTakeSmartShutterPicture();
             break;
 
         case MESSAGE_ID_CANCEL_PICTURE:
@@ -4575,6 +4699,11 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_PANORAMA_CAPTURE_TRIGGER:
             status = handleMessagePanoramaCaptureTrigger();
+            break;
+
+        case MESSAGE_ID_POST_PROC_CAPTURE_TRIGGER:
+            stopFaceDetection(true);
+            status = handleMessageTakePicture();
             break;
 
         default:

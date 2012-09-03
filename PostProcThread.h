@@ -21,6 +21,7 @@
 #include <time.h>
 #include <camera/CameraParameters.h>
 #include "AtomAAA.h"
+#include "IntelParameters.h"
 #include "FaceDetector.h"
 #include "MessageQueue.h"
 #include "IFaceDetector.h"
@@ -35,6 +36,7 @@ public:
     ICallbackPostProc() {}
     virtual ~ICallbackPostProc() {}
     virtual void facesDetected(camera_frame_metadata_t *face_metadata) = 0;
+    virtual void postProcCaptureTrigger() = 0;
 };
 
 
@@ -48,11 +50,15 @@ public:
     virtual ~PostProcThread();
 
 // Common methods
-    void getDefaultParameters(CameraParameters *params);
+    void getDefaultParameters(CameraParameters *params, CameraParameters *intel_parameters);
 
 // Thread overrides
 public:
     status_t requestExitAndWait();
+
+public:
+    SmartShutterMode mode;
+    int level;
 
 // IFaceDetector overrides
 public:
@@ -62,11 +68,26 @@ public:
     virtual void startFaceDetection();
     virtual void stopFaceDetection(bool wait=false);
     virtual int sendFrame(AtomBuffer *img);
-    virtual void startSmartShutter();
-    virtual void stopSmartShutter();
+    virtual void startSmartShutter(SmartShutterMode mode, int level);
+    virtual void stopSmartShutter(SmartShutterMode mode);
+    virtual bool isSmartRunning();
+    virtual bool isSmileRunning();
+    virtual bool isBlinkRunning();
+    virtual void captureOnTrigger();
+    virtual void stopCaptureOnTrigger();
 
 // private types
 private:
+
+    //smart shutter parameters structure
+    struct SmartShutterParams {
+        bool smartRunning;
+        bool smileRunning;
+        bool blinkRunning;
+        bool captureOnTrigger;
+        int smileThreshold;
+        int blinkThreshold;
+    };
 
     // thread message id's
     enum MessageId {
@@ -77,6 +98,11 @@ private:
         MESSAGE_ID_STOP_FACE_DETECTION,
         MESSAGE_ID_START_SMART_SHUTTER,
         MESSAGE_ID_STOP_SMART_SHUTTER,
+        MESSAGE_ID_CAPTURE_ON_TRIGGER,
+        MESSAGE_ID_STOP_CAPTURE_ON_TRIGGER,
+        MESSAGE_ID_IS_SMART_RUNNING,
+        MESSAGE_ID_IS_SMILE_RUNNING,
+        MESSAGE_ID_IS_BLINK_RUNNING,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -89,10 +115,19 @@ private:
         AtomBuffer img;
     };
 
+    struct MessageSmartShutter {
+        int mode;
+        int level;
+    };
+
     // union of all message data
     union MessageData {
         // MESSAGE_ID_FRAME
         MessageFrame frame;
+
+        // MESSAGE_START_SMART_SHUTTER
+        // MESSAGE_STOP_SMART_SHUTTER
+        MessageSmartShutter smartShutterParam;
     };
 
     // message id and message data
@@ -111,8 +146,13 @@ private:
     status_t handleExit();
     status_t handleMessageStartFaceDetection();
     status_t handleMessageStopFaceDetection();
-    status_t handleMessageStartSmartShutter();
-    status_t handleMessageStopSmartShutter();
+    status_t handleMessageStartSmartShutter(MessageSmartShutter params);
+    status_t handleMessageStopSmartShutter(MessageSmartShutter params);
+    status_t handleMessageCaptureOnTrigger();
+    status_t handleMessageStopCaptureOnTrigger();
+    status_t handleMessageIsSmartRunning();
+    status_t handleMessageIsSmileRunning();
+    status_t handleMessageIsBlinkRunning();
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -131,12 +171,11 @@ private:
     ICallbackPostProc* mPostProcDoneCallback;
     bool mThreadRunning;
     bool mFaceDetectionRunning;
-    bool mSmartShutterRunning;
     AfMode mOldAfMode;
     MeteringMode mOldAeMeteringMode;
     int mPreviewWidth;
     int mPreviewHeight;
-
+    SmartShutterParams mSmartShutter;
 }; // class PostProcThread
 
 }; // namespace android

@@ -37,13 +37,20 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     ,mPostProcDoneCallback(postProcDone)
     ,mThreadRunning(false)
     ,mFaceDetectionRunning(false)
-    ,mSmartShutterRunning(false)
     ,mOldAfMode(CAM_AF_MODE_NOT_SET)
     ,mOldAeMeteringMode(CAM_AE_METERING_MODE_NOT_SET)
     ,mPreviewWidth(0)
     ,mPreviewHeight(0)
 {
     LOG1("@%s", __FUNCTION__);
+
+    //init SmartShutter, must match defaultParams
+    mSmartShutter.smartRunning = false;
+    mSmartShutter.smileRunning = false;
+    mSmartShutter.blinkRunning = false;
+    mSmartShutter.captureOnTrigger = false;
+    mSmartShutter.smileThreshold = 0;
+    mSmartShutter.blinkThreshold = 0;
 }
 
 PostProcThread::~PostProcThread()
@@ -53,7 +60,7 @@ PostProcThread::~PostProcThread()
         delete mFaceDetector;
 }
 
-void PostProcThread::getDefaultParameters(CameraParameters *params)
+void PostProcThread::getDefaultParameters(CameraParameters *params, CameraParameters *intel_params)
 {
     LOG1("@%s", __FUNCTION__);
     if (!params) {
@@ -62,6 +69,10 @@ void PostProcThread::getDefaultParameters(CameraParameters *params)
     }
     // Set maximum number of detectable faces
     params->set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW, MAX_FACES_DETECTABLE);
+    intel_params->set(IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD, "0");
+    intel_params->set(IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD, "0");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER, SMILE_SHUTTER_SUPPORTED);
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BLINK_SHUTTER, BLINK_SHUTTER_SUPPORTED);
 }
 
 void PostProcThread::startFaceDetection()
@@ -80,6 +91,11 @@ status_t PostProcThread::handleMessageStartFaceDetection()
         mFaceDetector = new FaceDetector();
         mFaceDetectionRunning = true;
     }
+    if (mSmartShutter.smartRunning && mSmartShutter.smileRunning)
+        mFaceDetector->setSmileThreshold(mSmartShutter.smileThreshold);
+    if (mSmartShutter.smartRunning && mSmartShutter.blinkRunning)
+        mFaceDetector->setBlinkThreshold(mSmartShutter.blinkThreshold);
+
     return status;
 }
 
@@ -111,39 +127,149 @@ status_t PostProcThread::handleMessageStopFaceDetection()
     mMessageQueue.reply(MESSAGE_ID_STOP_FACE_DETECTION, status);
     return status;
 }
+// SMART SHUTTER
+void PostProcThread::captureOnTrigger()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_CAPTURE_ON_TRIGGER;
+    mMessageQueue.send(&msg);
+}
 
-void PostProcThread::startSmartShutter()
+status_t PostProcThread::handleMessageCaptureOnTrigger()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mSmartShutter.captureOnTrigger = true;
+    return status;
+}
+
+void PostProcThread::stopCaptureOnTrigger()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_STOP_CAPTURE_ON_TRIGGER;
+    mMessageQueue.send(&msg);
+}
+
+status_t PostProcThread::handleMessageStopCaptureOnTrigger()
+{
+    status_t status = NO_ERROR;
+    LOG1("@%s", __FUNCTION__);
+    mSmartShutter.captureOnTrigger = false;
+    return status;
+}
+
+void PostProcThread::startSmartShutter(SmartShutterMode mode, int level)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_START_SMART_SHUTTER;
+    msg.data.smartShutterParam.mode = mode;
+    msg.data.smartShutterParam.level = level;
     mMessageQueue.send(&msg);
 }
 
-status_t PostProcThread::handleMessageStartSmartShutter()
+status_t PostProcThread::handleMessageStartSmartShutter(MessageSmartShutter params)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    mSmartShutterRunning = true;
+    if (params.mode == SMILE_MODE) {
+        mFaceDetector->setSmileThreshold(params.level);
+        mSmartShutter.smileRunning = true;
+        mSmartShutter.smileThreshold = params.level;
+    } else if (params.mode == BLINK_MODE) {
+        mFaceDetector->setBlinkThreshold(params.level);
+        mSmartShutter.blinkRunning = true;
+        mSmartShutter.blinkThreshold = params.level;
+    } else {
+        return INVALID_OPERATION;
+    }
+    if (mSmartShutter.smileRunning || mSmartShutter.blinkRunning)
+        mSmartShutter.smartRunning = true;
+
+    LOG1("%s: mode: %d Active Mode: (smile %d (%d) , blink %d (%d), smart %d)", __FUNCTION__, params.mode, mSmartShutter.smileRunning, mSmartShutter.smileThreshold, mSmartShutter.blinkRunning, mSmartShutter.blinkThreshold, mSmartShutter.smartRunning);
+
     return status;
 }
 
-void PostProcThread::stopSmartShutter()
+void PostProcThread::stopSmartShutter(SmartShutterMode mode)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_STOP_SMART_SHUTTER;
+    msg.data.smartShutterParam.mode = mode;
+    msg.data.smartShutterParam.level = 0;
     mMessageQueue.send(&msg);
 }
 
-status_t PostProcThread::handleMessageStopSmartShutter()
+status_t PostProcThread::handleMessageStopSmartShutter(MessageSmartShutter params)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    mSmartShutterRunning = false;
+    if (params.mode == SMILE_MODE)
+        mSmartShutter.smileRunning = false;
+    else if (params.mode == BLINK_MODE)
+        mSmartShutter.blinkRunning = false;
+    else
+        return INVALID_OPERATION;
+    if (!mSmartShutter.smileRunning && !mSmartShutter.blinkRunning)
+        mSmartShutter.smartRunning = false;
     return status;
 }
 
+bool PostProcThread::isSmartRunning()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_IS_SMART_RUNNING;
+    mMessageQueue.send(&msg, MESSAGE_ID_IS_SMART_RUNNING); // waiting for reply
+    return mSmartShutter.smartRunning;
+}
+
+status_t PostProcThread::handleMessageIsSmartRunning()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mMessageQueue.reply(MESSAGE_ID_IS_SMART_RUNNING, status);
+    return status;
+}
+
+bool PostProcThread::isSmileRunning()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_IS_SMILE_RUNNING;
+    mMessageQueue.send(&msg, MESSAGE_ID_IS_SMILE_RUNNING);
+    return mSmartShutter.smileRunning;
+}
+
+status_t PostProcThread::handleMessageIsSmileRunning()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mMessageQueue.reply(MESSAGE_ID_IS_SMILE_RUNNING, status);
+    return status;
+}
+
+bool PostProcThread::isBlinkRunning()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_IS_BLINK_RUNNING;
+    mMessageQueue.send(&msg, MESSAGE_ID_IS_BLINK_RUNNING);
+    return mSmartShutter.blinkRunning;
+}
+
+status_t PostProcThread::handleMessageIsBlinkRunning()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mMessageQueue.reply(MESSAGE_ID_IS_BLINK_RUNNING, status);
+    return status;
+}
+
+// END SMART SHUTTER
 status_t PostProcThread::handleExit()
 {
     LOG1("@%s", __FUNCTION__);
@@ -155,7 +281,7 @@ status_t PostProcThread::handleExit()
 
 int PostProcThread::sendFrame(AtomBuffer *img)
 {
-    LOG2("@%s: buf=%p, width=%d height=%d", __FUNCTION__, img, img->width , img->height);
+    LOG2("@%s: buf=%p, width=%d height=%d rotation=%d", __FUNCTION__, img, img->width , img->height, img->rotation);
     Message msg;
     msg.id = MESSAGE_ID_FRAME;
 
@@ -202,11 +328,26 @@ status_t PostProcThread::waitForAndExecuteMessage()
         case MESSAGE_ID_STOP_FACE_DETECTION:
             status = handleMessageStopFaceDetection();
             break;
+        case MESSAGE_ID_CAPTURE_ON_TRIGGER:
+            status = handleMessageCaptureOnTrigger();
+            break;
+        case MESSAGE_ID_STOP_CAPTURE_ON_TRIGGER:
+            status = handleMessageStopCaptureOnTrigger();
+            break;
         case MESSAGE_ID_START_SMART_SHUTTER:
-            status = handleMessageStartSmartShutter();
+            status = handleMessageStartSmartShutter(msg.data.smartShutterParam);
             break;
         case MESSAGE_ID_STOP_SMART_SHUTTER:
-            status = handleMessageStopSmartShutter();
+            status = handleMessageStopSmartShutter(msg.data.smartShutterParam);
+            break;
+        case MESSAGE_ID_IS_SMART_RUNNING:
+            status = handleMessageIsSmartRunning();
+            break;
+        case MESSAGE_ID_IS_SMILE_RUNNING:
+            status = handleMessageIsSmileRunning();
+            break;
+        case MESSAGE_ID_IS_BLINK_RUNNING:
+            status = handleMessageIsBlinkRunning();
             break;
         default:
             status = INVALID_OPERATION;
@@ -239,7 +380,8 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
     if (mFaceDetectionRunning) {
         LOG2("%s: Face detection executing", __FUNCTION__);
         int num_faces;
-        bool smile, blink;
+        bool smile = false;
+        bool blink = true;
         unsigned char *src;
         if (frame.img.type == ATOM_BUFFER_PREVIEW) {
             src = (unsigned char*) frame.img.buff->data;
@@ -255,12 +397,22 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         // We need the preview size for convertFromAndroidCoordinates():
         mPreviewHeight = frameData.height;
         mPreviewWidth = frameData.width;
+        // frame rotation is counter clock wise in libia_face,
+        // while it is clock wise for android (valid for CTP)
+        if (frame.img.rotation == 90)
+            frameData.rotation = 270;
+        else if (frame.img.rotation == 270)
+            frameData.rotation = 90;
+        else
+            frameData.rotation = frame.img.rotation;
 
         num_faces = mFaceDetector->faceDetect(&frameData);
 
-        if (mSmartShutterRunning) {
-            smile = mFaceDetector->smileDetect(&frameData);
-            blink = mFaceDetector->blinkDetect(&frameData);
+        if (mSmartShutter.smartRunning) {
+            if (mSmartShutter.smileRunning)
+                smile = mFaceDetector->smileDetect(&frameData);
+            if (mSmartShutter.blinkRunning)
+                blink = mFaceDetector->blinkDetect(&frameData);
         }
 
         camera_face_t faces[num_faces];
@@ -274,6 +426,17 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
             mpListener->facesDetected(face_metadata);
             useFacesForAAA(face_metadata);
             mPostProcDoneCallback->facesDetected(&face_metadata);
+        }
+
+    // trigger for smart shutter
+        if (mSmartShutter.captureOnTrigger) {
+            if (((smile && mSmartShutter.smileRunning) && (!blink && mSmartShutter.blinkRunning))
+                || ((smile && mSmartShutter.smileRunning) && !mSmartShutter.blinkRunning)
+                || ((!blink && mSmartShutter.blinkRunning) && !mSmartShutter.smileRunning)) {
+                mSmartShutter.captureOnTrigger = false;
+                mPostProcDoneCallback->postProcCaptureTrigger();
+
+            }
         }
     }
     // panorama detection, running synchronously

@@ -122,6 +122,7 @@ private:
     virtual void previewDone(AtomBuffer *buff);
     virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void autoFocusDone();
+    virtual void postProcCaptureTrigger();
     virtual void returnBuffer(AtomBuffer *buff);
     virtual void sceneDetected(int sceneMode, bool sceneHdr);
     virtual void facesDetected(camera_frame_metadata_t *face_metadata);
@@ -140,6 +141,7 @@ private:
         MESSAGE_ID_START_RECORDING,
         MESSAGE_ID_STOP_RECORDING,
         MESSAGE_ID_TAKE_PICTURE,
+        MESSAGE_ID_SMART_SHUTTER_PICTURE,
         MESSAGE_ID_CANCEL_PICTURE,
         MESSAGE_ID_AUTO_FOCUS,
         MESSAGE_ID_CANCEL_AUTO_FOCUS,
@@ -160,6 +162,7 @@ private:
         MESSAGE_ID_SCENE_DETECTED,
         MESSAGE_ID_PANORAMA_PICTURE,
         MESSAGE_ID_PANORAMA_CAPTURE_TRIGGER,
+        MESSAGE_ID_POST_PROC_CAPTURE_TRIGGER,
 
         // Messages for the Acceleration API temporary HACK
         MESSAGE_ID_LOAD_FIRMWARE,
@@ -299,7 +302,7 @@ private:
         STATE_PREVIEW_STILL,
         STATE_PREVIEW_VIDEO,
         STATE_RECORDING,
-        STATE_CAPTURE,
+        STATE_CAPTURE
     };
 
     struct CoupledBuffer {
@@ -356,6 +359,7 @@ private:
     status_t handleMessageStartRecording();
     status_t handleMessageStopRecording();
     status_t handleMessageTakePicture();
+    status_t handleMessageTakeSmartShutterPicture();
     status_t handleMessageCancelPicture();
     status_t handleMessageAutoFocus();
     status_t handleMessageCancelAutoFocus();
@@ -374,6 +378,9 @@ private:
 
     status_t startFaceDetection();
     status_t stopFaceDetection(bool wait=false);
+    status_t startSmartShutter(SmartShutterMode mode);
+    status_t stopSmartShutter(SmartShutterMode mode);
+    status_t cancelCaptureOnTrigger();
     status_t handleMessageFacesDetected(MessageFacesDetected* msg);
     status_t startSmartSceneDetection();
     status_t stopSmartSceneDetection();
@@ -441,6 +448,8 @@ private:
     status_t processParamSetMeteringAreas(const CameraParameters * oldParams,
             CameraParameters * newParams);
     status_t processParamBracket(const CameraParameters *oldParams,
+                CameraParameters *newParams);
+    status_t processParamSmartShutter(const CameraParameters *oldParams,
                 CameraParameters *newParams);
     status_t processParamHDR(const CameraParameters *oldParams,
             CameraParameters *newParams);
@@ -537,6 +546,8 @@ private:
     bool mIntelParamsAllowed;           /*<! Flag that signals whether the caller is allowed to use Intel extended paramters*/
 
     bool mFaceDetectionActive;
+    int  mSmileThreshold;
+    int  mBlinkThreshold;
     bool mAutoFocusActive;
     bool mFlashAutoFocus;
     int  mBurstSkipFrames;

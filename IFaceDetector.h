@@ -43,8 +43,8 @@ public:
      */
     virtual int sendFrame(AtomBuffer *img) = 0;
 
-    virtual void startSmartShutter() = 0;
-    virtual void stopSmartShutter() = 0;
+    virtual void startSmartShutter(SmartShutterMode mode, int level) = 0;
+    virtual void stopSmartShutter(SmartShutterMode mode) = 0;
 
 protected:
     IFaceDetectionListener *mpListener;
