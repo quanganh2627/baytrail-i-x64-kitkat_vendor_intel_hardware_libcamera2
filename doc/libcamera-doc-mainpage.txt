@@ -61,10 +61,12 @@ the libcamera2 can query for HW specific information.
 
 \subsection input  Encoder input buffer flow
 The snapshot buffers are allocated currently by the Picture Thread
-An allocation request is sent from ControlThread to the PictureThread everytime
-the snapshot resolution changes.
+An allocation request is sent from ControlThread to the PictureThread in 
+either of these two situations:
+- after preview has started.
+- when the snapshot resolution changes
 After allocation the PictureThread initializes the HW encoder with the pre-allocated
-buffer. At this stage the HW encoder creates surfaces from those buffers and also
+buffers. At this stage the HW encoder creates surfaces from those buffers and also
 creates the libVA encoding context
 
 During the take_picture sequence the ControlThread retrieves the current snapshot
@@ -79,13 +81,13 @@ destroyed.
 The PictureThread instance allocates a couple of buffers used to store the
 Thumbnail image (if there is one) and the EXIF data. The allocation of both buffers
 is done before encode. They belong to the PictureThread and will be freed in the
-desctructor
+destructor
 
 When an encode request arrives to PicThread it allocates the buffer that will
 contain the final EXIF data plus the main JPEG. This allocation is done once
 the size of each element is known.
 The contents of the HW encoding process are copied directly to this buffer from
-the internal VACoded buffer. This memcopy is currenly unavoidable.
+the internal VACoded buffer. This memcopy is currently unavoidable.
 
 The JPEG buffer is sent to the callback thread that will release the memory
 once the user callback has completed
