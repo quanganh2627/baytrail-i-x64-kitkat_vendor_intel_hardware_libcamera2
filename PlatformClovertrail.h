@@ -52,7 +52,7 @@ public:
 
         // generic parameters
         mBackFlash = true;
-        mVideoPreviewSizePref = "720x576";
+        mVideoPreviewSizePref = "1024x580";
     }
 };
 
