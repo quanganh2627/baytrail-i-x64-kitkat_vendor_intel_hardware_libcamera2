@@ -83,14 +83,15 @@ void PostProcThread::stopFaceDetection(bool wait)
 {
     LOG1("@%s", __FUNCTION__);
     if (mFaceDetectionRunning) {
-        if (!wait) {
-            mFaceDetectionRunning = false;
-            mMessageQueue.remove(MESSAGE_ID_FRAME); // flush all buffers
-        }
-
         Message msg;
         msg.id = MESSAGE_ID_STOP_FACE_DETECTION;
-        mMessageQueue.send(&msg, MESSAGE_ID_STOP_FACE_DETECTION); // wait for reply
+        mMessageQueue.remove(MESSAGE_ID_FRAME); // flush all buffers
+
+        if (wait) {
+            mMessageQueue.send(&msg, MESSAGE_ID_STOP_FACE_DETECTION); // wait for reply
+        } else {
+            mMessageQueue.send(&msg);
+        }
     }
 }
 
@@ -98,7 +99,9 @@ status_t PostProcThread::handleMessageStopFaceDetection()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+
     mFaceDetectionRunning = false;
+
     delete mFaceDetector;
     mFaceDetector = NULL;
     mMessageQueue.reply(MESSAGE_ID_STOP_FACE_DETECTION, status);
