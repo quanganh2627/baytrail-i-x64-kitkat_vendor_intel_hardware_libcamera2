@@ -201,12 +201,14 @@ status_t ControlThread::init(int cameraId)
         goto bail;
     }
 
+#ifdef ENABLE_INTEL_EXTRAS
     mProxyToOlaService = new HalProxyOla(this);
     if(mProxyToOlaService == NULL) {
         LOGE("error creating Proxy for OLA Buffer Service");
         goto bail;
     }
     mPreviewThread->setServiceProxy(mProxyToOlaService.get());
+#endif
 
     // get default params from AtomISP and JPEG encoder
     mISP->getDefaultParameters(&mParameters, &mIntelParameters);

@@ -1069,7 +1069,7 @@ status_t AtomAAA::apply3AProcess(bool read_stats,
     return status;
 }
 
-#ifdef ENABLE_HDR
+#ifdef ENABLE_INTEL_EXTRAS
 status_t AtomAAA::computeCDF(const CiUserBuffer& inputBuf, size_t bufIndex)
 {
     Mutex::Autolock lock(m3aLock);
@@ -1188,7 +1188,7 @@ status_t AtomAAA::setIaFrameFormat(ia_frame* iaFrame, int v4l2Format)
     (void)v4l2Format;
     return INVALID_OPERATION;
 }
-#endif
+#endif // ENABLE_INTEL_EXTRAS
 
 status_t AtomAAA::setSmartSceneDetection(bool en)
 {

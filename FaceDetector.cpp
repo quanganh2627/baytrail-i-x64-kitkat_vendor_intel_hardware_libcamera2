@@ -16,6 +16,8 @@
 #define LOG_TAG "Camera_FaceDetector"
 //#define LOG_NDEBUG 0
 
+#ifdef ENABLE_INTEL_EXTRAS
+
 #include "FaceDetector.h"
 #include "LogHelper.h"
 
@@ -140,3 +142,5 @@ int FaceDetector::getFaces(camera_face_t *faces_out, int width, int height)
 }
 
 }; // namespace android
+
+#endif // ENABLE_INTEL_EXTRAS

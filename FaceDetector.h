@@ -40,6 +40,7 @@ class FaceDetector {
 
 // constructor/destructor
 public:
+#ifdef ENABLE_INTEL_EXTRAS
     FaceDetector();
     ~FaceDetector();
 
@@ -52,6 +53,17 @@ public:
 
 private:
     ia_face_state* mContext;
+
+#else
+    FaceDetector() {}
+    ~FaceDetector() {}
+
+    int getFaces(camera_face_t *faces, int width, int height) { return 0; }
+    int faceDetect(ia_frame *frame) { return 0; }
+    void eyeDetect(ia_frame *frame) {}
+    bool smileDetect(ia_frame *frame) { return false; }
+    bool blinkDetect(ia_frame *frame) { return true; }
+#endif
 
 }; // class FaceDetector
 

@@ -4,23 +4,10 @@ LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
 USE_INTEL_JPEG :=true
-# USE_INTEL_FACE_DETECTION_IN_CAMERAHAL flag is controlled from
-# InteFace.inc. If this file missing means, intel face
-# detection is not supported.
-# So -include will ignore if this file is not found.
--include $(TARGET_OUT_HEADERS)/cameralibs/IntelFace.inc
 
-# if Intel face detection is included, select FD method to be used.
-# face detection alternatives: ola, none
-ifeq ($(USE_INTEL_FACE_DETECTION_IN_CAMERAHAL),true)
-FACE_DETECTION_TYPE :=ola
-else
-FACE_DETECTION_TYPE :=none
-endif
-
-#if Intel HDR is included.
-ifeq ($(USE_INTEL_HDR),true)
-LOCAL_CFLAGS  += -DENABLE_HDR
+# Intel camera extras (HDR, face detection, etc.)
+ifeq ($(USE_INTEL_CAMERA_EXTRAS),true)
+LOCAL_CFLAGS += -DENABLE_INTEL_EXTRAS
 endif
 
 LOCAL_SRC_FILES := \
