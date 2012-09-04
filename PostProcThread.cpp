@@ -45,6 +45,8 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone) :
 PostProcThread::~PostProcThread()
 {
     LOG1("@%s", __FUNCTION__);
+    if (mFaceDetector)
+        delete mFaceDetector;
 }
 
 void PostProcThread::getDefaultParameters(CameraParameters *params)
