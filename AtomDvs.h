@@ -23,6 +23,7 @@
 extern "C" {
 #include <stdlib.h>
 #include <linux/atomisp.h>
+#include <ia_dvs.h>
 }
 
 namespace android {
@@ -40,6 +41,7 @@ private:
     AtomISP *mIsp;
     Mutex mLock;
     struct atomisp_dis_statistics *mStatistics;
+    ia_dvs_state *mState;
 };
 
 };

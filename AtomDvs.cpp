@@ -24,14 +24,17 @@ AtomDvs::AtomDvs(AtomISP *isp)
 {
     mIsp = isp;
     mStatistics = NULL;
-    ia_dvs_init();
+    mState = ia_dvs_create();
+    if (!mState)
+        LOGE("Failed to create DVS state, DVS will be disabled\n");
 }
 
 AtomDvs::~AtomDvs()
 {
     if (mStatistics)
         ia_dvs_free_statistics(mStatistics);
-    ia_dvs_uninit();
+    if (mState)
+        ia_dvs_destroy(mState);
 }
 
 status_t AtomDvs::reconfigure()
@@ -46,16 +49,18 @@ status_t AtomDvs::reconfigureNoLock()
     struct atomisp_parm isp_params;
     const struct atomisp_dis_coefficients *coefs;
 
+    if (!mState)
+        return status;
     status = mIsp->getIspParameters(&isp_params);
     if (status != NO_ERROR)
         return status;
 
-    coefs = ia_dvs_set_grid_info(&isp_params.info);
+    coefs = ia_dvs_set_grid_info(mState, &isp_params.info);
     if (coefs) {
         status = mIsp->setDvsCoefficients(coefs);
         if (mStatistics)
             ia_dvs_free_statistics(mStatistics);
-        mStatistics = ia_dvs_allocate_statistics();
+        mStatistics = ia_dvs_allocate_statistics(mState);
     }
     return status;
 }
@@ -67,7 +72,7 @@ status_t AtomDvs::run()
     struct atomisp_dis_vector vector;
     bool try_again = false;
 
-    if (!mStatistics)
+    if (!mStatistics || !mState)
         goto end;
 
     status = mIsp->getDvsStatistics(mStatistics, &try_again);
@@ -84,7 +89,7 @@ status_t AtomDvs::run()
             goto end;
     }
 
-    if (!ia_dvs_process(mStatistics, &vector)) {
+    if (!ia_dvs_process(mState, mStatistics, &vector)) {
         status = UNKNOWN_ERROR;
         goto end;
     }
