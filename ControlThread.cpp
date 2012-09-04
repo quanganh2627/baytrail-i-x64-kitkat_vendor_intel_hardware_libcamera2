@@ -1916,8 +1916,10 @@ status_t ControlThread::handleMessageReleaseRecordingFrame(MessageReleaseRecordi
 status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
 {
     LOG2("@%s, buffer id = %d", __FUNCTION__, msg->buff.id);
-    if (!mISP->isBufferValid(&msg->buff))
+    if (!mISP->isBufferValid(&msg->buff)) {
+        LOGE("Invalid preview buffer returned by preview Thread");
         return DEAD_OBJECT;
+    }
     status_t status = NO_ERROR;
 
     if (mFaceDetectionActive) {
@@ -4211,6 +4213,7 @@ status_t ControlThread::startFaceDetection()
 {
     LOG2("@%s", __FUNCTION__);
     if (mState == STATE_STOPPED || mFaceDetectionActive) {
+        LOGE("starting FD in stop state");
         return INVALID_OPERATION;
     }
     if (mPostProcThread != 0) {
