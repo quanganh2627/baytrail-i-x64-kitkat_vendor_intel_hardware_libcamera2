@@ -693,7 +693,16 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mParameters.getVideoSize(&width, &height);
         mISP->setVideoFrameFormat(width, height);
         if (isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED)) {
+            // Temporarily disable DVS for 1080P video recording cases only for CTP
+            // as ISP is not able to process that for 30FPS in CTP.
+            // There is a bug for ISP to track this restriction. Bz: 54607. Once that bug is fixed
+            // this restriction can be removed from HAL.
+            // TODO! Revisit when the ISP fixes the issue.
+#if defined(CTP_PR1) || defined(CTP_PR0) || defined(CTP_VV1)
+            if(isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION) && width < 1920)
+#else
             if(isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION))
+#endif
                 mISP->setDVS(true);
             else
                 mISP->setDVS(false);
