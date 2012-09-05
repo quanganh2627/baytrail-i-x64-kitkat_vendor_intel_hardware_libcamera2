@@ -407,6 +407,8 @@ private:
     status_t handleMessageSceneDetected(MessageSceneDetected *msg);
     status_t startPanorama();
     status_t stopPanorama();
+    status_t startFaceRecognition();
+    status_t stopFaceRecognition();
 
     // main message function
     status_t waitForAndExecuteMessage();

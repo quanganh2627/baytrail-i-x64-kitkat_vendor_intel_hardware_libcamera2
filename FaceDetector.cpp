@@ -20,16 +20,23 @@
 
 #include "FaceDetector.h"
 #include "LogHelper.h"
+#include "sqlite3.h"
+
+// HACK: This should be in ia_face.h
+extern "C" int ia_face_register_feature(ia_face_state* fs, char* new_feature, int new_person_id,
+                                        int new_feature_id, int time_stamp, int condition, int checksum, int version);
 
 namespace android {
 
-FaceDetector::FaceDetector():
-
-    mSmileThreshold(0)
+FaceDetector::FaceDetector() : Thread()
+    ,mContext(ia_face_init(NULL))
+    ,mMessageQueue("FaceDetector", (int) MESSAGE_ID_MAX)
+    ,mSmileThreshold(0)
     ,mBlinkThreshold(0)
+    ,mFaceRecognitionRunning(false)
+    ,mThreadRunning(false)
 {
     LOG1("@%s", __FUNCTION__);
-    mContext = ia_face_init(NULL);
 }
 
 FaceDetector::~FaceDetector()
@@ -107,6 +114,106 @@ bool FaceDetector::blinkDetect(ia_frame *frame)
     return blink;
 }
 
+status_t FaceDetector::startFaceRecognition()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    Message msg;
+    msg.id = MESSAGE_ID_START_FACE_RECOGNITION;
+    mMessageQueue.send(&msg);
+    return status;
+}
+
+status_t FaceDetector::handleMessageStartFaceRecognition()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    if (mFaceRecognitionRunning) {
+        LOGE("@%s: face recognition already running", __FUNCTION__);
+        return INVALID_OPERATION;
+    }
+
+    status = loadFaceDb();
+    if (status == NO_ERROR) {
+        mFaceRecognitionRunning = true;
+    } else {
+        LOGE("loadFaceDb() failed: %x", status);
+        status = UNKNOWN_ERROR;
+    }
+    return status;
+}
+
+status_t FaceDetector::stopFaceRecognition()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    Message msg;
+    msg.id = MESSAGE_ID_STOP_FACE_RECOGNITION;
+    mMessageQueue.send(&msg);
+    return status;
+}
+
+status_t FaceDetector::handleMessageStopFaceRecognition()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mFaceRecognitionRunning = false;
+    return status;
+}
+
+void FaceDetector::faceRecognize(ia_frame *frame)
+{
+    LOG2("@%s", __FUNCTION__);
+    if (mFaceRecognitionRunning && mContext->num_faces > 0)
+        ia_face_recognize(mContext, frame);
+}
+
+status_t FaceDetector::loadFaceDb()
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret;
+    sqlite3 *pDb;
+    sqlite3_stmt *pStmt;
+    int featureId, version, personId, timeStamp;
+    const void* feature;
+    int featureCount = 0;
+
+    ret = sqlite3_open(PERSONDB_PATH, &pDb);
+    if (ret != SQLITE_OK) {
+        LOGE("sqlite3_open error : %s", sqlite3_errmsg(pDb));
+        return UNKNOWN_ERROR;
+    }
+
+    const char *select_query = "SELECT featureId, version, personId, feature, timeStamp FROM Feature";
+    ret = sqlite3_prepare_v2(pDb, select_query, -1, &pStmt, NULL);
+    if (ret != SQLITE_OK) {
+        LOGE("sqlite3_prepare_v2 error : %s", sqlite3_errmsg(pDb));
+        sqlite3_close(pDb);
+        return UNKNOWN_ERROR;
+    }
+
+    while (sqlite3_step(pStmt) == SQLITE_ROW) {
+        featureId = sqlite3_column_int(pStmt, 0);
+        version   = sqlite3_column_int(pStmt, 1);
+        personId  = sqlite3_column_int(pStmt, 2);
+        feature   = sqlite3_column_blob(pStmt, 3);
+        timeStamp = sqlite3_column_int(pStmt, 4);
+        ret = ia_face_register_feature(mContext, (char*)feature, personId, featureId, timeStamp, 0, 0, version);
+        LOG2("Register feature (%d): face ID: %d, feature ID: %d, timestamp: %d, version: %d", featureCount, personId, featureId, timeStamp, version);
+        if (ret < 0) {
+            LOGE("Error on loading feature data(%d) : %d", featureCount, ret);
+        }
+        featureCount++;
+    }
+
+    sqlite3_finalize(pStmt);
+    sqlite3_close(pDb);
+
+    return NO_ERROR;
+}
+
+
 /**
  * Converts the detected faces from ia_face format to Google format.
  *
@@ -156,6 +263,65 @@ int FaceDetector::getFaces(camera_face_t *faces_out, int width, int height)
         LOG2("smile state: %d, score: %d, threshold %d", iaFace.smile_state, iaFace.smile_score, mSmileThreshold);
     }
     return mContext->num_faces;
+}
+
+bool FaceDetector::threadLoop()
+{
+    LOG2("@%s", __FUNCTION__);
+    mThreadRunning = true;
+    while (mThreadRunning)
+        waitForAndExecuteMessage();
+
+    return false;
+}
+
+status_t FaceDetector::waitForAndExecuteMessage()
+{
+    LOG2("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    Message msg;
+    mMessageQueue.receive(&msg);
+
+    switch (msg.id)
+    {
+        case MESSAGE_ID_EXIT:
+            status = handleExit();
+            break;
+        case MESSAGE_ID_START_FACE_RECOGNITION:
+            status = handleMessageStartFaceRecognition();
+            break;
+        case MESSAGE_ID_STOP_FACE_RECOGNITION:
+            status = handleMessageStopFaceRecognition();
+            break;
+        default:
+            status = INVALID_OPERATION;
+            break;
+    }
+    if (status != NO_ERROR) {
+        LOGE("operation failed, ID = %d, status = %d", msg.id, status);
+    }
+    return status;
+}
+
+status_t FaceDetector::handleExit()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mThreadRunning = false;
+    return status;
+}
+
+status_t FaceDetector::requestExitAndWait()
+{
+    LOG2("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_EXIT;
+    // tell thread to exit
+    // send message asynchronously
+    mMessageQueue.send(&msg);
+
+    // propagate call to base class
+    return Thread::requestExitAndWait();
 }
 
 }; // namespace android

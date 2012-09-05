@@ -58,6 +58,9 @@ public:
      */
     virtual void setFaceAAA(AAAFlags flags) = 0;
 
+    virtual void startFaceRecognition() = 0;
+    virtual void stopFaceRecognition() = 0;
+
 protected:
     IFaceDetectionListener *mpListener;
 };

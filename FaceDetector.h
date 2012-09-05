@@ -19,6 +19,7 @@
 
 #include <utils/threads.h>
 #include <system/camera.h>
+#include "MessageQueue.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -47,8 +48,10 @@ enum SmartShutterMode {
     BLINK_MODE
 };
 
+// TODO: Database path should be a system property
+#define PERSONDB_PATH "/sdcard/DCIM/.PersonDB.db"
 
-class FaceDetector {
+class FaceDetector : public Thread {
 
 // constructor/destructor
 public:
@@ -63,13 +66,56 @@ public:
     bool smileDetect(ia_frame *frame);
     void setBlinkThreshold(int threshold);
     bool blinkDetect(ia_frame *frame);
+    status_t startFaceRecognition();
+    status_t stopFaceRecognition();
+    void faceRecognize(ia_frame *frame);
 
+// Thread overrides
+public:
+    status_t requestExitAndWait();
 
 private:
+    status_t loadFaceDb();
+    status_t handleExit();
+    status_t handleMessageStartFaceRecognition();
+    status_t handleMessageStopFaceRecognition();
+
+    // main message function
+    status_t waitForAndExecuteMessage();
+
+// inherited from Thread
+private:
+    virtual bool threadLoop();
+
+// private types
+private:
+    // thread message id's
+    enum MessageId {
+
+        MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
+        MESSAGE_ID_START_FACE_RECOGNITION,
+        MESSAGE_ID_STOP_FACE_RECOGNITION,
+
+        // max number of messages
+        MESSAGE_ID_MAX
+    };
+
+    // message id and message data
+    struct Message {
+        MessageId id;
+    };
+
+// private data
+private:
     ia_face_state* mContext;
+    MessageQueue<Message, MessageId> mMessageQueue;
     int mSmileThreshold;
     int mBlinkThreshold;
+    bool mFaceRecognitionRunning;
+    bool mThreadRunning;
 
+
+// function stubs for building without Intel extra features
 #else
     FaceDetector() {}
     ~FaceDetector() {}
@@ -77,10 +123,21 @@ private:
     int getFaces(camera_face_t *faces, int width, int height) { return 0; }
     int faceDetect(ia_frame *frame) { return 0; }
     void eyeDetect(ia_frame *frame) {}
-    void setSmileThreshold(int threshold) {};
+    void setSmileThreshold(int threshold) {}
     bool smileDetect(ia_frame *frame) { return false; }
     bool blinkDetect(ia_frame *frame) { return true; }
-    void setBlinkThreshold(int threshold) {};
+    void setBlinkThreshold(int threshold) {}
+    status_t startFaceRecognition() { return UNKNOWN_ERROR; }
+    status_t stopFaceRecognition() { return UNKNOWN_ERROR; }
+    void faceRecognize(ia_frame *frame) {}
+
+// Thread overrides
+public:
+    status_t requestExitAndWait() { return UNKNOWN_ERROR; }
+
+// inherited from Thread
+private:
+    virtual bool threadLoop() { return false; }
 #endif
 
 }; // class FaceDetector

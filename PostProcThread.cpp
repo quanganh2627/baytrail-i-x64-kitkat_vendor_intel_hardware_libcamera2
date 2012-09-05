@@ -29,7 +29,6 @@ namespace android {
 PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread) :
     IFaceDetector(CallbacksThread::getInstance())
     ,Thread(true) // callbacks may call into java
-    ,mFaceDetector(NULL)
     ,mPanoramaThread(panoramaThread)
     ,mMessageQueue("PostProcThread", (int) MESSAGE_ID_MAX)
     ,mLastReportedNumberOfFaces(0)
@@ -37,6 +36,7 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     ,mPostProcDoneCallback(postProcDone)
     ,mThreadRunning(false)
     ,mFaceDetectionRunning(false)
+    ,mFaceRecognitionRunning(false)
     ,mSmartShutterRunning(false)
     ,mAAAFlags(AAA_FLAG_ALL)
     ,mOldAfMode(CAM_AF_MODE_NOT_SET)
@@ -53,13 +53,22 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     mSmartShutter.captureOnTrigger = false;
     mSmartShutter.smileThreshold = SMILE_THRESHOLD;
     mSmartShutter.blinkThreshold = BLINK_THRESHOLD;
+    mSmartShutter.smileThreshold = 0;
+    mSmartShutter.blinkThreshold = 0;
+
+    mFaceDetector = new FaceDetector();
+    if (mFaceDetector->run() != NO_ERROR) {
+        LOGW("Error starting FaceDetector thread!");
+    }
 }
 
 PostProcThread::~PostProcThread()
 {
     LOG1("@%s", __FUNCTION__);
-    if (mFaceDetector)
-        delete mFaceDetector;
+    if (mFaceDetector != NULL) {
+        mFaceDetector->requestExitAndWait();
+        mFaceDetector.clear();
+    }
 }
 
 void PostProcThread::getDefaultParameters(CameraParameters *params, CameraParameters *intel_params)
@@ -89,15 +98,13 @@ status_t PostProcThread::handleMessageStartFaceDetection()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    if (!mFaceDetectionRunning) {
-        mFaceDetector = new FaceDetector();
-        mFaceDetectionRunning = true;
-    }
+
     if (mSmartShutter.smartRunning && mSmartShutter.smileRunning)
         mFaceDetector->setSmileThreshold(mSmartShutter.smileThreshold);
     if (mSmartShutter.smartRunning && mSmartShutter.blinkRunning)
         mFaceDetector->setBlinkThreshold(mSmartShutter.blinkThreshold);
 
+    mFaceDetectionRunning = true;
     return status;
 }
 
@@ -122,10 +129,6 @@ status_t PostProcThread::handleMessageStopFaceDetection()
     status_t status = NO_ERROR;
 
     mFaceDetectionRunning = false;
-
-    delete mFaceDetector;
-    mFaceDetector = NULL;
-
     mAAAFlags = AAA_FLAG_ALL;
     mOldAfMode = CAM_AF_MODE_NOT_SET;
     mOldAeMeteringMode = CAM_AE_METERING_MODE_NOT_SET;
@@ -325,6 +328,59 @@ status_t PostProcThread::handleMessageGetBlinkThreshold()
     return status;
 }
 
+void PostProcThread::startFaceRecognition()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_START_FACE_RECOGNITION;
+    mMessageQueue.send(&msg);
+}
+
+status_t PostProcThread::handleMessageStartFaceRecognition()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    status = mFaceDetector->startFaceRecognition();
+    mFaceRecognitionRunning = true;
+    return status;
+}
+
+void PostProcThread::stopFaceRecognition()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_STOP_FACE_RECOGNITION;
+    mMessageQueue.send(&msg);
+}
+
+status_t PostProcThread::handleMessageStopFaceRecognition()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    status = mFaceDetector->stopFaceRecognition();
+    mFaceRecognitionRunning = false;
+    return status;
+}
+
+bool PostProcThread::isFaceRecognitionRunning()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_IS_FACE_RECOGNITION_RUNNING;
+    mMessageQueue.send(&msg, MESSAGE_ID_IS_FACE_RECOGNITION_RUNNING);
+    return mFaceRecognitionRunning;
+}
+
+status_t PostProcThread::handleMessageIsFaceRecognitionRunning()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mMessageQueue.reply(MESSAGE_ID_IS_FACE_RECOGNITION_RUNNING, status);
+    return status;
+}
+
 status_t PostProcThread::handleExit()
 {
     LOG1("@%s", __FUNCTION__);
@@ -440,6 +496,15 @@ status_t PostProcThread::waitForAndExecuteMessage()
         case MESSAGE_ID_FACE_AAA:
             status = handleMessageSetFaceAAA(msg.data.faceAAA);
             break;
+        case MESSAGE_ID_START_FACE_RECOGNITION:
+            status = handleMessageStartFaceRecognition();
+            break;
+        case MESSAGE_ID_STOP_FACE_RECOGNITION:
+            status = handleMessageStopFaceRecognition();
+            break;
+        case MESSAGE_ID_IS_FACE_RECOGNITION_RUNNING:
+            status = handleMessageIsFaceRecognitionRunning();
+            break;
         default:
             status = INVALID_OPERATION;
             break;
@@ -504,6 +569,10 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
                 smile = mFaceDetector->smileDetect(&frameData);
             if (mSmartShutter.blinkRunning)
                 blink = mFaceDetector->blinkDetect(&frameData);
+        }
+
+        if (mFaceRecognitionRunning) {
+            mFaceDetector->faceRecognize(&frameData);
         }
 
         camera_face_t faces[num_faces];

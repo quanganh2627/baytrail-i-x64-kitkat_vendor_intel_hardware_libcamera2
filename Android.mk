@@ -56,6 +56,7 @@ LOCAL_C_INCLUDES += \
 	hardware/libhardware/include/hardware \
 	external/skia/include/core \
 	external/skia/include/images \
+	external/sqlite/dist \
 	$(TARGET_OUT_HEADERS)/libmix_videoencoder \
 	$(TARGET_OUT_HEADERS)/cameralibs \
 	$(TARGET_OUT_HEADERS)/libmfldadvci \
@@ -80,7 +81,8 @@ LOCAL_SHARED_LIBRARIES := \
 	libintelmetadatabuffer \
 	libva \
 	libva-tpi \
-	libva-android 
+	libva-android \
+	libsqlite
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_CFLAGS += -DUSE_INTEL_JPEG

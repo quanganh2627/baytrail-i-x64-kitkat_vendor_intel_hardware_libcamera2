@@ -77,8 +77,10 @@ public:
     virtual int getBlinkThreshold();
     virtual void captureOnTrigger();
     virtual void stopCaptureOnTrigger();
-
     virtual void setFaceAAA(AAAFlags flags);
+    virtual void startFaceRecognition();
+    virtual void stopFaceRecognition();
+    bool isFaceRecognitionRunning();
 
 // private types
 private:
@@ -110,6 +112,10 @@ private:
         MESSAGE_ID_IS_BLINK_RUNNING,
         MESSAGE_ID_GET_BLINK_THRESHOLD,
         MESSAGE_ID_FACE_AAA,
+        MESSAGE_ID_START_FACE_RECOGNITION,
+        MESSAGE_ID_STOP_FACE_RECOGNITION,
+        MESSAGE_ID_IS_FACE_RECOGNITION_RUNNING,
+
         // max number of messages
         MESSAGE_ID_MAX
     };
@@ -169,6 +175,9 @@ private:
     status_t handleMessageStopSmartShutter();
     status_t handleMessageGetBlinkThreshold();
     status_t handleMessageSetFaceAAA(const MessageFaceAAA& msg);
+    status_t handleMessageStartFaceRecognition();
+    status_t handleMessageStopFaceRecognition();
+    status_t handleMessageIsFaceRecognitionRunning();
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -180,7 +189,7 @@ private:
 
 // private data
 private:
-    FaceDetector* mFaceDetector;
+    sp<FaceDetector> mFaceDetector;
     PanoramaThread *mPanoramaThread;
     MessageQueue<Message, MessageId> mMessageQueue;
     int mLastReportedNumberOfFaces;
@@ -188,6 +197,7 @@ private:
     ICallbackPostProc* mPostProcDoneCallback;
     bool mThreadRunning;
     bool mFaceDetectionRunning;
+    bool mFaceRecognitionRunning;
     bool mSmartShutterRunning;
     AAAFlags mAAAFlags;
     AfMode mOldAfMode;

@@ -4248,6 +4248,12 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
     case CAMERA_CMD_STOP_PANORAMA:
         status = stopPanorama();
         break;
+    case CAMERA_CMD_START_FACE_RECOGNITION:
+        status = startFaceRecognition();
+        break;
+    case CAMERA_CMD_STOP_FACE_RECOGNITION:
+        status = stopFaceRecognition();
+        break;
     default:
         break;
     }
@@ -4724,6 +4730,26 @@ status_t ControlThread::stopSmartShutter(SmartShutterMode mode)
          mPostProcThread->isBlinkRunning(), mPostProcThread->getBlinkThreshold(),
          mPostProcThread->isSmartRunning());
 
+    return NO_ERROR;
+}
+
+status_t ControlThread::startFaceRecognition()
+{
+    LOG1("@%s", __FUNCTION__);
+    if (mPostProcThread->isFaceRecognitionRunning()) {
+        LOGE("@%s: face recognition already started", __FUNCTION__);
+        return INVALID_OPERATION;
+    }
+    mPostProcThread->startFaceRecognition();
+    return NO_ERROR;
+}
+
+status_t ControlThread::stopFaceRecognition()
+{
+    LOG1("@%s", __FUNCTION__);
+    if (mPostProcThread->isFaceRecognitionRunning()) {
+        mPostProcThread->stopFaceRecognition();
+    }
     return NO_ERROR;
 }
 
