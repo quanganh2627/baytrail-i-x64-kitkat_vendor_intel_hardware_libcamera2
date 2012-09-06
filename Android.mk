@@ -106,6 +106,8 @@ else ifeq ($(TARGET_PRODUCT), ctp_pr0)
 LOCAL_CFLAGS += -DCTP_PR0
 else ifeq ($(TARGET_PRODUCT), ctp_pr1)
 LOCAL_CFLAGS += -DCTP_PR1
+else ifeq ($(TARGET_PRODUCT), ctp_nomodem)
+LOCAL_CFLAGS += -DCTP_NOMODEM
 else ifeq ($(TARGET_PRODUCT), mrfl_vp)
 LOCAL_CFLAGS += -DMRFL_VP
 else
@@ -132,6 +134,8 @@ else ifeq ($(TARGET_PRODUCT), ctp_pr0)
 LOCAL_MODULE := camera.ctp_pr0
 else ifeq ($(TARGET_PRODUCT), ctp_pr1)
 LOCAL_MODULE := camera.ctp_pr1
+else ifeq ($(TARGET_PRODUCT), ctp_nomodem)
+LOCAL_MODULE := camera.ctp_nomodem
 else
 LOCAL_MODULE := camera.mfld_pr2
 endif

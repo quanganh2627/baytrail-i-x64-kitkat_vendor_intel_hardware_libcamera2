@@ -44,7 +44,7 @@ PlatformBase* PlatformData::getInstance(void)
 #elif   MFLD_GI
         mInstance = new PlatformLexington();
 
-#elif   defined(CTP_PR0) || defined(CTP_PR1)
+#elif   defined(CTP_PR0) || defined(CTP_PR1) || defined(CTP_NOMODEM)
         mInstance = new PlatformCtp();
 
 
