@@ -32,7 +32,6 @@
 #include "CallbacksThread.h"
 #include "AAAThread.h"
 #include "AtomAAA.h"
-#include "IFaceDetectionListener.h"
 #include "OlaService/HalProxyOla.h"
 #include "PostProcThread.h"
 #include "PanoramaThread.h"
@@ -44,7 +43,6 @@ namespace android {
 #define FLASH_FRAME_TIMEOUT 5
 
 class AtomISP;
-class IFaceDetector;
 //
 // ControlThread implements most of the operations defined
 // by camera_device_ops_t. Refer to hardware/camera.h

@@ -509,23 +509,29 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * FOCUS
      */
-    if(mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
+    if (mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
         params->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
 
         char focusModes[100] = {0};
-        if (snprintf(focusModes, sizeof(focusModes)
-                ,"%s,%s,%s,%s"
+        int status = snprintf(focusModes, sizeof(focusModes)
+                ,"%s,%s,%s,%s,%s"
                 ,CameraParameters::FOCUS_MODE_AUTO
                 ,CameraParameters::FOCUS_MODE_INFINITY
                 ,CameraParameters::FOCUS_MODE_MACRO
-                ,CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO) < 0) {
+                ,CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO
+                ,CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
+
+        if (status < 0) {
             LOGE("Could not generate %s string: %s",
-                CameraParameters::KEY_SUPPORTED_FOCUS_MODES, strerror(errno));
+                 CameraParameters::KEY_SUPPORTED_FOCUS_MODES, strerror(errno));
+            return;
+        } else if (static_cast<size_t>(status) >= sizeof(focusModes)) {
+            LOGE("Truncated %s string. Reserved length: %d",
+                 CameraParameters::KEY_SUPPORTED_FOCUS_MODES, sizeof(focusModes));
             return;
         }
         params->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, focusModes);
-    }
-    else {
+    } else {
         params->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_FIXED);
         params->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, CameraParameters::FOCUS_MODE_FIXED);
     }

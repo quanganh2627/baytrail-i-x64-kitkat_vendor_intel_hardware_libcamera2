@@ -2345,7 +2345,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char* focusMode = params->get(CameraParameters::KEY_FOCUS_MODE);
     const char* focusModes = params->get(CameraParameters::KEY_SUPPORTED_FOCUS_MODES);
     if (focusMode && strstr(focusModes, focusMode) == NULL) {
-        LOGE("bad focus mode");
+        LOGE("bad focus mode: %s; supported: %s", focusMode, focusModes);
         return BAD_VALUE;
     }
 
@@ -2999,7 +2999,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
         SceneMode sceneMode = CAM_AE_SCENE_MODE_AUTO;
         if (newScene == CameraParameters::SCENE_MODE_PORTRAIT) {
             sceneMode = CAM_AE_SCENE_MODE_PORTRAIT;
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
+            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
@@ -3017,6 +3018,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
         } else if (newScene == CameraParameters::SCENE_MODE_SPORTS) {
             sceneMode = CAM_AE_SCENE_MODE_SPORTS;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
+            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
@@ -3034,6 +3036,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
         } else if (newScene == CameraParameters::SCENE_MODE_LANDSCAPE) {
             sceneMode = CAM_AE_SCENE_MODE_LANDSCAPE;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
+            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
@@ -3050,7 +3053,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else if (newScene == CameraParameters::SCENE_MODE_NIGHT) {
             sceneMode = CAM_AE_SCENE_MODE_NIGHT;
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
+            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
@@ -3067,7 +3071,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::TRUE);
         } else if (newScene == CameraParameters::SCENE_MODE_NIGHT_PORTRAIT) {
             sceneMode = CAM_AE_SCENE_MODE_NIGHT_PORTRAIT;
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
+            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
@@ -3085,6 +3090,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
         } else if (newScene == CameraParameters::SCENE_MODE_FIREWORKS) {
             sceneMode = CAM_AE_SCENE_MODE_FIREWORKS;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
+            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
@@ -3102,6 +3108,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
         } else if (newScene == CameraParameters::SCENE_MODE_BARCODE) {
             sceneMode = CAM_AE_SCENE_MODE_TEXT;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_MACRO);
+            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "macro,continuous-picture");
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
@@ -3122,7 +3129,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             }
 
             sceneMode = CAM_AE_SCENE_MODE_AUTO;
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
+            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
+            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,infinity,macro,continuous-video,continuous-picture");
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, "off,50hz,60hz,auto");
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
@@ -3210,19 +3218,20 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    const char* oldFocus = oldParams->get(CameraParameters::KEY_FOCUS_MODE);
-    const char* newFocus = newParams->get(CameraParameters::KEY_FOCUS_MODE);
-    if (newFocus && oldFocus && strncmp(newFocus, oldFocus, MAX_PARAM_VALUE_LENGTH) != 0) {
-        AfMode afMode = CAM_AF_MODE_AUTO;
 
-        if(!strncmp(newFocus, CameraParameters::FOCUS_MODE_AUTO, strlen(CameraParameters::FOCUS_MODE_AUTO))) {
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, CameraParameters::KEY_FOCUS_MODE);
+    AfMode afMode = CAM_AF_MODE_NOT_SET;
+
+    if (newVal.isEmpty() != true) {
+        if (newVal == CameraParameters::FOCUS_MODE_AUTO) {
             afMode = CAM_AF_MODE_AUTO;
-        } else if(!strncmp(newFocus, CameraParameters::FOCUS_MODE_INFINITY, strlen(CameraParameters::FOCUS_MODE_INFINITY))) {
+        } else if (newVal == CameraParameters::FOCUS_MODE_INFINITY) {
             afMode = CAM_AF_MODE_INFINITY;
-        } else if(!strncmp(newFocus, CameraParameters::FOCUS_MODE_MACRO, strlen(CameraParameters::FOCUS_MODE_MACRO))) {
+        } else if (newVal == CameraParameters::FOCUS_MODE_MACRO) {
             afMode = CAM_AF_MODE_MACRO;
-        } else if(!strncmp(newFocus, CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO, strlen(CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO))) {
-            afMode = CAM_AF_MODE_AUTO;
+        } else if (newVal == CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO ||
+                   newVal == CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE) {
+            afMode = CAM_AF_MODE_CONTINUOUS;
         } else {
             afMode = CAM_AF_MODE_MANUAL;
         }
@@ -3233,46 +3242,43 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
         }
         if (status == NO_ERROR) {
             mPublicAfMode = afMode;
-            LOG1("Changed: %s -> %s", CameraParameters::KEY_FOCUS_MODE, newFocus);
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_FOCUS_MODE, newVal.string());
         }
     }
 
-    if (!newFocus)
-        return status;
-
     if (!mFaceDetectionActive) {
 
-        if ((!strncmp(newFocus, CameraParameters::FOCUS_MODE_AUTO, strlen(CameraParameters::FOCUS_MODE_AUTO))) ||
-            (!strncmp(newFocus, CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO, strlen(CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO))) ||
-            (!strncmp(newFocus, CameraParameters::FOCUS_MODE_MACRO, strlen(CameraParameters::FOCUS_MODE_MACRO)))) {
+        // Based on Google specs, the focus area is effective only for modes:
+        // (framework side constants:) FOCUS_MODE_AUTO, FOCUS_MODE_MACRO, FOCUS_MODE_CONTINUOUS_VIDEO
+        // or FOCUS_MODE_CONTINUOUS_PICTURE.
+        if (afMode == CAM_AF_MODE_AUTO ||
+            afMode == CAM_AF_MODE_CONTINUOUS ||
+            afMode == CAM_AF_MODE_MACRO) {
 
-            // By default we will use auto or macro mode
-            AfMode newAfMode = CAM_AF_MODE_AUTO;
-            if (!strncmp(newFocus, CameraParameters::FOCUS_MODE_MACRO, strlen(CameraParameters::FOCUS_MODE_MACRO)))
-                newAfMode = CAM_AF_MODE_MACRO;
-
-            // See if any focus areas are set
+            // See if any focus areas are set.
+            // NOTE: CAM_AF_MODE_TOUCH is for HAL internal use only
             if (!mFocusAreas.isEmpty()) {
-                newAfMode = CAM_AF_MODE_TOUCH;
+                LOG1("Focus areas set, using AF mode \"touch \"");
+                afMode = CAM_AF_MODE_TOUCH;
             }
 
             // See if we have to change the actual mode (it could be correct already)
             AfMode curAfMode = mAAA->getAfMode();
-            if (curAfMode != newAfMode) {
-                mPublicAfMode = newAfMode;
-                mAAA->setAfMode(newAfMode);
+            if (afMode != curAfMode) {
+                mPublicAfMode = afMode;
+                mAAA->setAfMode(afMode);
             }
 
             // If in touch mode, we set the focus windows now
-            if (newAfMode == CAM_AF_MODE_TOUCH) {
+            if (afMode == CAM_AF_MODE_TOUCH) {
                 size_t winCount(mFocusAreas.numOfAreas());
                 CameraWindow *focusWindows = new CameraWindow[winCount];
                 mFocusAreas.toWindows(focusWindows);
                 preSetCameraWindows(focusWindows, winCount);
                 if (mAAA->setAfWindows(focusWindows, winCount) != NO_ERROR) {
-                    // If focus windows couldn't be set, auto mode is used
+                    // If focus windows couldn't be set, previous AF mode is used
                     // (AfSetWindowMulti has its own safety checks for coordinates)
-                    LOGE("Could not set AF windows. Resseting the AF back to %d", curAfMode);
+                    LOGE("Could not set AF windows. Resetting the AF back to %d", curAfMode);
                     mAAA->setAfMode(curAfMode);
                 }
                 delete[] focusWindows;

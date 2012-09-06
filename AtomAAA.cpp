@@ -346,6 +346,7 @@ status_t AtomAAA::setAfMode(AfMode mode)
         return INVALID_OPERATION;
 
     switch (mode) {
+    case CAM_AF_MODE_CONTINUOUS:
     case CAM_AF_MODE_AUTO:
         ia_3a_af_set_focus_mode(ia_3a_af_mode_auto);
         ia_3a_af_set_focus_range(ia_3a_af_range_norm);
