@@ -237,9 +237,6 @@ status_t AtomISP::init(int cameraId)
     mZoomRatios = new char[zoomBytes];
     computeZoomRatios(mZoomRatios, zoomBytes);
 
-    mTimeRealMonoInterval = systemTime(SYSTEM_TIME_REALTIME) - systemTime(SYSTEM_TIME_MONOTONIC);
-    LOG1("%s:(mTimeRealMonoInterval-SYSTEM_TIME_MONOTONIC):%lld", __func__, mTimeRealMonoInterval);
-
     return NO_ERROR;
 
 errorexit:
@@ -2811,8 +2808,7 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp)
     mRecordingBuffers[index].capture_timestamp = buf.timestamp;
     *buff = mRecordingBuffers[index];
     // time is get from ISP driver, it's realtime
-    *timestamp = (buf.timestamp.tv_sec)*1000000000LL + (buf.timestamp.tv_usec)*1000LL
-                    - mTimeRealMonoInterval;
+    *timestamp = (buf.timestamp.tv_sec)*1000000000LL + (buf.timestamp.tv_usec)*1000LL;
 
     mNumRecordingBuffersQueued--;
 
