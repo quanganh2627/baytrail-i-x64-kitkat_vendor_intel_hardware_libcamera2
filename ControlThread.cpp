@@ -2410,6 +2410,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         status = processParamAntiBanding(oldParams, newParams);
     }
 
+    // raw data format for snapshot
+    if (status == NO_ERROR) {
+        status = processParamRawDataFormat(oldParams, newParams);
+    }
+
     if (mAAA->is3ASupported()) {
 
         // Changing the scene may change many parameters, including
@@ -3649,6 +3654,25 @@ status_t ControlThread::processParamWhiteBalance(const CameraParameters *oldPara
         }
     }
     return status;
+}
+
+status_t ControlThread::processParamRawDataFormat(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+            IntelCameraParameters::KEY_RAW_DATA_FORMAT);
+    if (newVal.isEmpty() != true) {
+        if (newVal == "bayer") {
+            CameraDump::setDumpDataFlag(CAMERA_DEBUG_DUMP_RAW);
+            mCameraDump = CameraDump::getInstance();
+        } else if (newVal == "yuv") {
+            CameraDump::setDumpDataFlag(CAMERA_DEBUG_DUMP_YUV);
+            mCameraDump = CameraDump::getInstance();
+        } else
+            CameraDump::setDumpDataFlag(RAW_NONE);
+    }
+    return NO_ERROR;
 }
 
 status_t ControlThread::processStaticParameters(const CameraParameters *oldParams,

@@ -464,6 +464,9 @@ private:
             CameraParameters *newParams);
     status_t processParamTNR(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    status_t processParamRawDataFormat(const CameraParameters *oldParams,
+            CameraParameters *newParams);
+
     void processParamFileInject(CameraParameters *newParams);
 
     void preSetCameraWindows(CameraWindow* focusWindows, size_t winCount);

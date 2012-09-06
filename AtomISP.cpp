@@ -626,6 +626,9 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_BAYER_ORDER, "0");
     intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_FORMAT,"0");
 
+    // raw data format for snapshot
+    intel_params->set(IntelCameraParameters::KEY_RAW_DATA_FORMAT, "none");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_RAW_DATA_FORMATS, "none,yuv,bayer");
 
     if(mAAA->is3ASupported()){
         // effect modes
@@ -1186,7 +1189,7 @@ status_t AtomISP::configureCapture()
             mConfig.snapshot.width,
             mConfig.snapshot.height,
             mConfig.snapshot.format,
-            CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW));
+            isDumpRawImageReady());
     if (ret < 0) {
         LOGE("configure first device failed!");
         status = UNKNOWN_ERROR;
@@ -3531,8 +3534,6 @@ exitFreeRec:
 
 int AtomISP::dumpPreviewFrame(int previewIndex)
 {
-    LOG1("@%s", __FUNCTION__);
-
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_PREVIEW)) {
         CameraDump *cameraDump = CameraDump::getInstance();
         const struct v4l2_buffer_info *buf =
@@ -3581,14 +3582,14 @@ int AtomISP::dumpSnapshot(int snapshotIndex, int postviewIndex)
                                       mConfig.postview.height, name1);
         }
 
-        if(CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_YUV)) {
+        if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_YUV)) {
             const struct v4l2_buffer_info *buf =
                 &v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[snapshotIndex];
             cameraDump->dumpImage2Buf(buf->data, mConfig.snapshot.size, mConfig.snapshot.width,
                                       mConfig.snapshot.height);
         }
 
-        if(CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
+        if (isDumpRawImageReady()) {
             LOG1("dumping raw data");
             void *start = mmap(NULL /* start anywhere */ ,
                                PAGE_ALIGN(mRawDataDumpSize),
@@ -3598,7 +3599,7 @@ int AtomISP::dumpSnapshot(int snapshotIndex, int postviewIndex)
             if (MAP_FAILED == start)
                     LOGE("mmap failed");
             else {
-                printf("MMAP raw address from kerenl 0x%p", start);
+                LOG1("MMAP raw address from kernel 0x%p", start);
             }
             cameraDump->dumpImage2Buf(start, mRawDataDumpSize, mConfig.snapshot.padding,
                                       mConfig.snapshot.height);
@@ -3610,14 +3611,20 @@ int AtomISP::dumpSnapshot(int snapshotIndex, int postviewIndex)
     return 0;
 }
 
-int AtomISP::dumpRawImageFlush()
+int AtomISP::dumpRawImageFlush(void)
 {
     LOG1("@%s", __FUNCTION__);
-    if (CameraDump::isDumpImage2FileFlush()) {
+    if (CameraDump::isDumpImageEnable()) {
         CameraDump *cameraDump = CameraDump::getInstance();
         cameraDump->dumpImage2FileFlush();
     }
     return 0;
+}
+
+bool AtomISP::isDumpRawImageReady(void)
+{
+    LOG1("@%s", __FUNCTION__);
+    return (mSensorType == SENSOR_TYPE_RAW) && CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW);
 }
 
 } // namespace android

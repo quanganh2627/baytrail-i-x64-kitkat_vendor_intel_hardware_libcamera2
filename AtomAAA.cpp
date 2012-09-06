@@ -1293,6 +1293,7 @@ int AtomAAA::add3aMakerNoteRecord(ia_3a_mknote_field_type mkn_format_id,
                                    const void *record,
                                    unsigned short record_size)
 {
+    Mutex::Autolock lock(m3aLock);
     ia_3a_mknote_add(mkn_format_id, mkn_name_id, record, record_size);
     return 0;
 }

@@ -50,9 +50,9 @@ namespace android {
     }raw_data_format_E;
     typedef struct camera_delay_dump {
         void * buffer_raw;
-        int buffer_size;
-        int width;
-        int height;
+        unsigned int buffer_size;
+        unsigned int width;
+        unsigned int height;
     } camera_delay_dumpImage_T;
 
     class CameraDump {
@@ -65,15 +65,13 @@ namespace android {
             return sInstance;
         }
         static void setDumpDataFlag(void);
-        static bool isDumpImageEnable(int dumpflag);
+        static void setDumpDataFlag(int dumpFlag);
+        static bool isDumpImageEnable(int dumpFlag);
         static bool isDumpImageEnable(void) {
             bool ret = false;
             ret = (sRawDataFormat == RAW_BAYER) || (sRawDataFormat == RAW_YUV)
                    || sNeedDumpPreview || sNeedDumpVideo || sNeedDumpSnapshot;
             return ret;
-        }
-        static bool isDumpImage2FileFlush(void) {
-            return sNeedDumpFlush;
         }
         int dumpImage2Buf(void *buffer, unsigned int size, unsigned int width, unsigned int height);
         int dumpImage2File(const void *data, const unsigned int size, unsigned int width,
@@ -89,7 +87,7 @@ namespace android {
         static bool sNeedDumpPreview;
         static bool sNeedDumpSnapshot;
         static bool sNeedDumpVideo;
-        static bool sNeedDumpFlush;
+        bool mNeedDumpFlush;
         AtomAAA *mAAA;
         camera_delay_dumpImage_T mDelayDump;
     };// class CameraDump

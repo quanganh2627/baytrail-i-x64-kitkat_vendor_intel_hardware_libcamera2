@@ -101,7 +101,6 @@ raw_data_format_E CameraDump::sRawDataFormat = RAW_NONE;
 bool CameraDump::sNeedDumpPreview = false;
 bool CameraDump::sNeedDumpSnapshot = false;
 bool CameraDump::sNeedDumpVideo = false;
-bool CameraDump::sNeedDumpFlush = false;
 
 CameraDump::CameraDump() : mAAA(AtomAAA::getInstance())
 {
@@ -110,6 +109,7 @@ CameraDump::CameraDump() : mAAA(AtomAAA::getInstance())
     mDelayDump.buffer_size = 0;
     mDelayDump.width = 0;
     mDelayDump.height = 0;
+    mNeedDumpFlush = false;
 }
 
 CameraDump::~CameraDump()
@@ -120,15 +120,21 @@ CameraDump::~CameraDump()
     sNeedDumpPreview = false;
     sNeedDumpVideo = false;
     sNeedDumpSnapshot = false;
-    sNeedDumpFlush = false;
-    if(mDelayDump.buffer_raw)
+    if (mDelayDump.buffer_raw) {
         free(mDelayDump.buffer_raw);
+        mDelayDump.buffer_raw = NULL;
+    }
 }
 
 void CameraDump::setDumpDataFlag(void)
 {
     LOG1("@%s", __FUNCTION__);
     char DumpLevelProp[PROPERTY_VALUE_MAX];
+
+    sRawDataFormat = RAW_NONE;
+    sNeedDumpPreview = false;
+    sNeedDumpVideo = false;
+    sNeedDumpSnapshot = false;
 
     // Set the dump debug level from property:
     if (property_get("camera.hal.debug", DumpLevelProp, NULL)) {
@@ -158,11 +164,22 @@ void CameraDump::setDumpDataFlag(void)
          sRawDataFormat, sNeedDumpPreview, sNeedDumpVideo, sNeedDumpSnapshot);
 }
 
-bool CameraDump::isDumpImageEnable(int dumpflag)
+void CameraDump::setDumpDataFlag(int dumpFlag)
 {
     LOG1("@%s", __FUNCTION__);
+
+    if (dumpFlag == CAMERA_DEBUG_DUMP_RAW)
+        sRawDataFormat = RAW_BAYER;
+    else if (dumpFlag == CAMERA_DEBUG_DUMP_YUV)
+        sRawDataFormat = RAW_YUV;
+    else
+        sRawDataFormat = RAW_NONE;
+}
+
+bool CameraDump::isDumpImageEnable(int dumpFlag)
+{
     bool ret = false;
-    switch (dumpflag) {
+    switch (dumpFlag) {
         case CAMERA_DEBUG_DUMP_RAW:
             ret = (sRawDataFormat == RAW_BAYER);
             break;
@@ -192,18 +209,27 @@ int CameraDump::dumpImage2Buf(void *buffer, unsigned int size, unsigned int widt
         LOGE("value is err(size=%d,width=%d,height=%d)", size, width, height);
         return -ERR_D2F_EVALUE;
     }
+    if ((mDelayDump.buffer_raw != NULL) && (size > mDelayDump.buffer_size)) {
+        free(mDelayDump.buffer_raw);
+        mDelayDump.buffer_raw = NULL;
+    }
     if (!mDelayDump.buffer_raw) {
+        LOG1 ("Buffer allocate needed %d", size);
         mDelayDump.buffer_raw = malloc(size);
         if (mDelayDump.buffer_raw  == NULL) {
             LOGE("Buffer allocate failure");
+            mDelayDump.buffer_size = 0;
+            mDelayDump.width = 0;
+            mDelayDump.height = 0;
+            mNeedDumpFlush = false;
             return -ERR_D2F_NOMEM;
         }
-        mDelayDump.buffer_size = size;
-        mDelayDump.width = width;
-        mDelayDump.height = height;
     }
+    mDelayDump.buffer_size = size;
+    mDelayDump.width = width;
+    mDelayDump.height = height;
     memcpy(mDelayDump.buffer_raw, buffer, size);
-    sNeedDumpFlush = true;
+    mNeedDumpFlush = true;
 
     return ERR_D2F_SUCESS;
 }
@@ -318,30 +344,33 @@ int CameraDump::dumpImage2File(const void *data, const unsigned int size, unsign
 int CameraDump::dumpImage2FileFlush(bool bufflag)
 {
     LOG1("@%s", __FUNCTION__);
-    int ret, nameID;
+    int ret = ERR_D2F_SUCESS;
+    int nameID;
 
-    if ((NULL == mDelayDump.buffer_raw) || (0 == mDelayDump.buffer_size)
-        || (0 == mDelayDump.width) || (0 == mDelayDump.height))
-        return -ERR_D2F_EVALUE;
+    if (mNeedDumpFlush == true) {
+        if ((NULL == mDelayDump.buffer_raw) || (0 == mDelayDump.buffer_size)
+            || (0 == mDelayDump.width) || (0 == mDelayDump.height))
+            return -ERR_D2F_EVALUE;
 
-    if (isDumpImageEnable(CAMERA_DEBUG_DUMP_YUV))
-        nameID = RAW_YUV;
-    else if (isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW))
-        nameID = RAW_BAYER;
-    else
-        nameID = RAW_NONE;
+        if (isDumpImageEnable(CAMERA_DEBUG_DUMP_YUV))
+            nameID = RAW_YUV;
+        else if (isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW))
+            nameID = RAW_BAYER;
+        else
+            nameID = RAW_NONE;
 
-    ret = dumpImage2File(mDelayDump.buffer_raw, mDelayDump.buffer_size, mDelayDump.width,
-                     mDelayDump.height,filename[nameID]);
+        ret = dumpImage2File(mDelayDump.buffer_raw, mDelayDump.buffer_size, mDelayDump.width,
+                         mDelayDump.height,filename[nameID]);
 
-    if(bufflag){
-        free(mDelayDump.buffer_raw);
-        mDelayDump.buffer_raw = NULL;
-        mDelayDump.buffer_size = 0;
-        mDelayDump.width = 0;
-        mDelayDump.height = 0;
+        if(bufflag){
+            free(mDelayDump.buffer_raw);
+            mDelayDump.buffer_raw = NULL;
+            mDelayDump.buffer_size = 0;
+            mDelayDump.width = 0;
+            mDelayDump.height = 0;
+        }
+        mNeedDumpFlush = false;
     }
-    sNeedDumpFlush = false;
 
     return ret;
 }
