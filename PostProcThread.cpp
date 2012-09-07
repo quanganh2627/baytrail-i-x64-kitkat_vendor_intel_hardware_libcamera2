@@ -22,7 +22,6 @@
 #include "CallbacksThread.h"
 #include "PostProcThread.h"
 #include "IFaceDetectionListener.h"
-#include "AtomAAA.h"
 #include <system/camera.h>
 
 namespace android {
@@ -39,6 +38,7 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     ,mThreadRunning(false)
     ,mFaceDetectionRunning(false)
     ,mSmartShutterRunning(false)
+    ,mOldAfMode(CAM_AF_MODE_NOT_SET)
 {
     LOG1("@%s", __FUNCTION__);
 }
@@ -281,14 +281,17 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
 void PostProcThread::setFocusAreas(const CameraWindow* windows, size_t winCount)
 {
     LOG1("@%s", __FUNCTION__);
-    AfMode newAfMode = CAM_AF_MODE_TOUCH;
+    AfMode newAfMode = CAM_AF_MODE_FACE;
 
     AtomAAA* aaa = AtomAAA::getInstance();
     if (aaa->setAfWindows(windows, winCount) == NO_ERROR) {
         // See if we have to change the actual mode (it could be correct already)
         AfMode curAfMode = aaa->getAfMode();
-        if (curAfMode != newAfMode)
+        if (curAfMode != newAfMode) {
+            mOldAfMode = curAfMode;
             aaa->setAfMode(newAfMode);
+            LOG2("Set to face focus mode (%d) from current (%d)", newAfMode, curAfMode);
+        }
     }
     return;
 }
@@ -296,7 +299,17 @@ void PostProcThread::setFocusAreas(const CameraWindow* windows, size_t winCount)
 void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata)
 {
     LOG1("@%s", __FUNCTION__);
-    if (face_metadata.number_of_faces <= 0) return;
+    if (face_metadata.number_of_faces <= 0) {
+       if (mOldAfMode != CAM_AF_MODE_NOT_SET) {
+            // No faces detected, return to old focus mode.
+            LOG2("Reset to old focus mode (%d)", mOldAfMode);
+            AtomAAA* aaa = AtomAAA::getInstance();
+            aaa->setAfMode(mOldAfMode);
+            mOldAfMode = CAM_AF_MODE_NOT_SET;
+        }
+        return;
+    }
+
     CameraWindow *windows = new CameraWindow[face_metadata.number_of_faces];
     for (int i = 0; i < face_metadata.number_of_faces; i++) {
         camera_face_t face = face_metadata.faces[i];

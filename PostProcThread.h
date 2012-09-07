@@ -20,6 +20,7 @@
 #include <utils/threads.h>
 #include <time.h>
 #include <camera/CameraParameters.h>
+#include "AtomAAA.h"
 #include "FaceDetector.h"
 #include "MessageQueue.h"
 #include "IFaceDetector.h"
@@ -132,6 +133,7 @@ private:
     bool mThreadRunning;
     bool mFaceDetectionRunning;
     bool mSmartShutterRunning;
+    AfMode mOldAfMode;
 }; // class PostProcThread
 
 }; // namespace android
