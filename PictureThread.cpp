@@ -290,6 +290,7 @@ void PictureThread::getDefaultParameters(CameraParameters *params)
         return;
     }
 
+    params->set(CameraParameters::KEY_ROTATION, "0");
     params->setPictureFormat(CameraParameters::PIXEL_FORMAT_JPEG);
     params->set(CameraParameters::KEY_SUPPORTED_PICTURE_FORMATS,
             CameraParameters::PIXEL_FORMAT_JPEG);
