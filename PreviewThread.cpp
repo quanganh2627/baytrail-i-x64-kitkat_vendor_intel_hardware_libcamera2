@@ -279,22 +279,23 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
         switch(mPreviewFormat) {
 
         case V4L2_PIX_FMT_YUV420:
-            NV12ToYV12(mPreviewWidth, mPreviewHeight, src, mPreviewBuf.buff->data);
+            trimConvertNV12ToYV12(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
             break;
 
         case V4L2_PIX_FMT_NV21:
-            NV12ToNV21(mPreviewWidth, mPreviewHeight, src, mPreviewBuf.buff->data);
+            trimConvertNV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
             break;
 
         default:
-            memcpy(mPreviewBuf.buff->data,  src,  msg->buff.size);
+            LOGE("invalid foramt: %d", mPreviewFormat);
+            status = -1;
             break;
         }
-        mCallbacks->previewFrameDone(&mPreviewBuf);
+        if (status == NO_ERROR)
+            mCallbacks->previewFrameDone(&mPreviewBuf);
     }
 
     mDebugFPS->update(); // update fps counter
-
     status = callPreviewDone(msg);
 
     return status;
@@ -350,25 +351,12 @@ status_t PreviewThread::handleMessageSetPreviewConfig(MessageSetPreviewConfig *m
         }
         mPreviewWidth = msg->width;
         mPreviewHeight = msg->height;
+        mPreviewFormat = msg->format;
 
         allocateLocalPreviewBuf();
     }
 
     status = allocateGfxPreviewBuffers(msg->bufferCount);
-
-    if ((msg->format != 0) && (mPreviewFormat != msg->format)) {
-        switch(msg->format) {
-        case V4L2_PIX_FMT_YUV420:
-        case V4L2_PIX_FMT_NV21:
-            mPreviewFormat = msg->format;
-            LOG1("Setting new preview format: %s", v4l2Fmt2Str(mPreviewFormat));
-            break;
-
-        default:
-            LOGE("Invalid preview format: %x:%s", msg->format, v4l2Fmt2Str(msg->format));
-            status = -1;
-        }
-    }
 
     return status;
 }

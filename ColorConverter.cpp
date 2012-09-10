@@ -136,47 +136,151 @@ void NV12ToRGB565(int width, int height, void *src, void *dst)
 }
 
 // covert NV12 (Y plane, interlaced UV bytes) to
-// NV21 (Y plane, interlaced VU bytes)
-void NV12ToNV21(int width, int height, void *src, void *dst)
+// NV21 (Y plane, interlaced VU bytes) and trim stride width to real width
+void trimConvertNV12ToNV21(int width, int height, int src_stride, void *src, void *dst)
 {
-    int planeSizeY = width * height;
-    int planeSizeUV = planeSizeY / 2;
-    int i = 0;
-    unsigned char *srcPtr = (unsigned char *) src;
-    unsigned char *dstPtr = (unsigned char *) dst;
+    const int ysize = width * height;
+    unsigned const char *pSrc = (unsigned char *)src;
+    unsigned char *pDst = (unsigned char *)dst;
 
-    // copy the entire Y plane
-    memcpy(dstPtr, src, planeSizeY);
+    // Copy Y component
+    if (src_stride == width) {
+        memcpy(pDst, pSrc, ysize);
+    } else if (src_stride > width) {
+        int j = height;
+        while(j--) {
+            memcpy(pDst, pSrc, width);
+            pSrc += src_stride;
+            pDst += width;
+        }
+    } else {
+        LOGE("bad stride value");
+        return;
+    }
 
-    // byte swap the UV data
-    for(i=planeSizeY; i<(planeSizeY+planeSizeUV); i=i+2)
-    {
-        dstPtr[i] = srcPtr[i + 1];
-        dstPtr[i + 1] = srcPtr[i];
+    // Convert UV to VU
+    pSrc = (unsigned char *)src + src_stride * height;
+    pDst = (unsigned char *)dst + width * height;
+    for (int j = 0; j < height / 2; j++) {
+        if (width >= 16) {
+            const uint32_t *ptr0 = (const uint32_t *)(pSrc);
+            uint32_t *ptr1 = (uint32_t *)(pDst);
+            int bNotLastLine = ((j+1) == (height/2)) ? 0 : 1;
+            int width_16 = (width + 15 * bNotLastLine) & ~0xf;
+            if ((((uint32_t)(pSrc)) & 0xf) == 0 && (((uint32_t)(pDst)) & 0xf) == 0) { // 16 bytes aligned for both src and dest
+                __asm__ volatile(\
+                                 "movl       %0,  %%eax      \n\t"
+                                 "movl       %1,  %%edx      \n\t"
+                                 "movl       %2,  %%ecx      \n\t"
+                                 "NEXT_16BYTES:     \n\t"
+                                 "movdqa (%%eax), %%xmm1     \n\t"
+                                 "movdqa  %%xmm1, %%xmm0     \n\t"
+                                 "psllw       $8, %%xmm1     \n\t"
+                                 "psrlw       $8, %%xmm0     \n\t"
+                                 "por     %%xmm0, %%xmm1     \n\t"
+                                 "movdqa  %%xmm1, (%%edx)    \n\t"
+                                 "add        $16, %%eax      \n\t"
+                                 "add        $16, %%edx      \n\t"
+                                 "sub        $16, %%ecx      \n\t"
+                                 "jnz   NEXT_16BYTES \n\t"
+                                 : "+m"(ptr0), "+m"(ptr1), "+m"(width_16)
+                                 :
+                                 : "eax", "ecx", "edx", "xmm0", "xmm1"
+                                );
+            }
+            else { // either src or dest is not 16-bytes aligned
+                __asm__ volatile(\
+                                 "movl       %0,  %%eax      \n\t"
+                                 "movl       %1,  %%edx      \n\t"
+                                 "movl       %2,  %%ecx      \n\t"
+                                 "NEXT_16BYTES_1:     \n\t"
+                                 "lddqu  (%%eax), %%xmm1     \n\t"
+                                 "movdqa  %%xmm1, %%xmm0     \n\t"
+                                 "psllw       $8, %%xmm1     \n\t"
+                                 "psrlw       $8, %%xmm0     \n\t"
+                                 "por     %%xmm0, %%xmm1     \n\t"
+                                 "movdqu  %%xmm1, (%%edx)    \n\t"
+                                 "add        $16, %%eax      \n\t"
+                                 "add        $16, %%edx      \n\t"
+                                 "sub        $16, %%ecx      \n\t"
+                                 "jnz   NEXT_16BYTES_1 \n\t"
+                                 : "+m"(ptr0), "+m"(ptr1), "+m"(width_16)
+                                 :
+                                 : "eax", "ecx", "edx", "xmm0", "xmm1"
+                                );
+            }
+
+            // process remaining data of less than 16 bytes of last row
+            for (int i = width_16; i < width; i += 2) {
+                pDst[i] = pSrc[i + 1];
+                pDst[i + 1] = pSrc[i];
+            }
+        }
+        else if ((((uint32_t)(pSrc)) & 0x3) == 0 && (((uint32_t)(pDst)) & 0x3) == 0){  // 4 bytes aligned for both src and dest
+            const uint32_t *ptr0 = (const uint32_t *)(pSrc);
+            uint32_t *ptr1 = (uint32_t *)(pDst);
+            int width_4 = width & ~3;
+            for (int i = 0; i < width_4; i += 4) {
+                uint32_t data0 = *ptr0++;
+                uint32_t data1 = (data0 >> 8) & 0x00ff00ff;
+                uint32_t data2 = (data0 << 8) & 0xff00ff00;
+                *ptr1++ = data1 | data2;
+            }
+            // process remaining data of less than 4 bytes at end of each row
+            for (int i = width_4; i < width; i += 2) {
+                pDst[i] = pSrc[i + 1];
+                pDst[i + 1] = pSrc[i];
+            }
+        }
+        else {
+            unsigned const char *ptr0 = pSrc;
+            unsigned char *ptr1 = pDst;
+            for (int i = 0; i < width; i += 2) {
+                *ptr1++ = ptr0[1];
+                *ptr1++ = ptr0[0];
+                ptr0 += 2;
+            }
+        }
+        pDst += width;
+        pSrc += src_stride;
     }
 }
 
 // covert NV12 (Y plane, interlaced UV bytes) to
-// YV12 (Y plane, V plane, U plane)
-void NV12ToYV12(int width, int height, void *src, void *dst)
+// YV12 (Y plane, V plane, U plane) and trim stride width to real width
+void trimConvertNV12ToYV12(int width, int height, int src_stride, void *src, void *dst)
 {
     int planeSizeY = width * height;
     int planeSizeUV = planeSizeY / 2;
     int planeUOffset = planeSizeUV / 2;
-    int i = 0;
+    int i = 0, j = 0;
     unsigned char *srcPtr = (unsigned char *) src;
     unsigned char *dstPtr = (unsigned char *) dst;
     unsigned char *dstPtrV = (unsigned char *) dst + planeSizeY;
     unsigned char *dstPtrU = (unsigned char *) dst + planeSizeY + planeUOffset;
 
     // copy the entire Y plane
-    memcpy(dstPtr, src, planeSizeY);
+    if (src_stride == width)
+        memcpy(dstPtr, src, planeSizeY);
+    else if (src_stride > width) {
+        i = height;
+        while (i--) {
+            memcpy(dstPtr, srcPtr, width);
+            srcPtr += src_stride;
+            dstPtr += width;
+        }
+    } else {
+        LOGE("bad stride value");
+        return;
+    }
 
     // deinterlace the UV data
-    for(i=planeSizeY; i<(planeSizeY+planeSizeUV); i=i+2)
-    {
-        *dstPtrV++ = srcPtr[i + 1];
-        *dstPtrU++ = srcPtr[i];
+    for ( i = 0; i < height / 2; i++) {
+        for ( j = 0; j < width; j += 2) {
+            *dstPtrV++ = srcPtr[j + 1];
+            *dstPtrU++ = srcPtr[j];
+        }
+        srcPtr += src_stride;
     }
 }
 
