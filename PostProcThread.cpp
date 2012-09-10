@@ -39,6 +39,7 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     ,mFaceDetectionRunning(false)
     ,mSmartShutterRunning(false)
     ,mOldAfMode(CAM_AF_MODE_NOT_SET)
+    ,mOldAeMeteringMode(CAM_AE_METERING_MODE_NOT_SET)
     ,mPreviewWidth(0)
     ,mPreviewHeight(0)
 {
@@ -306,21 +307,49 @@ void PostProcThread::setFocusAreas(const CameraWindow* windows, size_t winCount)
     return;
 }
 
+void PostProcThread::setAeMeteringArea(const CameraWindow* window)
+{
+    LOG1("@%s", __FUNCTION__);
+    AtomAAA* aaa = AtomAAA::getInstance();
+
+    if (aaa->setAeWindow(window) == NO_ERROR) {
+        MeteringMode curAeMeteringMode = aaa->getAeMeteringMode();
+        if (curAeMeteringMode != CAM_AE_METERING_MODE_SPOT) {
+            LOG2("Setting AE metering mode to spot for face exposure");
+            mOldAeMeteringMode = aaa->getAeMeteringMode();
+            aaa->setAeMeteringMode(CAM_AE_METERING_MODE_SPOT);
+        }
+    }
+}
+
 void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata)
 {
     LOG1("@%s", __FUNCTION__);
     if (face_metadata.number_of_faces <= 0) {
-       if (mOldAfMode != CAM_AF_MODE_NOT_SET) {
-            // No faces detected, return to old focus mode.
+        // No faces detected, reset to previous 3A values:
+        AtomAAA* aaa = AtomAAA::getInstance();
+
+        // Auto-focus:
+        if (mOldAfMode != CAM_AF_MODE_NOT_SET) {
             LOG2("Reset to old focus mode (%d)", mOldAfMode);
-            AtomAAA* aaa = AtomAAA::getInstance();
             aaa->setAfMode(mOldAfMode);
             mOldAfMode = CAM_AF_MODE_NOT_SET;
         }
+
+        // Auto-exposure metering mode:
+        if (mOldAeMeteringMode != CAM_AE_METERING_MODE_NOT_SET) {
+            LOG2("Reset to old AE metering mode (%d)", mOldAeMeteringMode);
+            aaa->setAeMeteringMode(mOldAeMeteringMode);
+            mOldAeMeteringMode = CAM_AE_METERING_MODE_NOT_SET;
+        }
+
+        // TODO: Reset AWB also, once taken into use below.
+
         return;
     }
 
     CameraWindow *windows = new CameraWindow[face_metadata.number_of_faces];
+    int highestScoreInd = 0;
     for (int i = 0; i < face_metadata.number_of_faces; i++) {
         camera_face_t face = face_metadata.faces[i];
         windows[i].x_left = face.rect[0];
@@ -333,10 +362,23 @@ void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata
              windows[i].y_top,
              windows[i].x_right,
              windows[i].y_bottom);
+
+        // Get the highest scored face window index:
+        if (i > 0 && face.score > face_metadata.faces[i - 1].score) {
+            highestScoreInd = i;
+        }
     }
 
-    //TODO: spec says we need also do AWB and AE. Currently no support.
     setFocusAreas(windows, face_metadata.number_of_faces);
+    // Use the highest score window for AE metering:
+    // TODO: Better logic needed for picking face AE metering area..?
+    CameraWindow aeWindow = windows[highestScoreInd];
+    aeWindow.weight = 50;
+    setAeMeteringArea(&aeWindow);
+
+    //TODO: spec says we need also do AWB. Currently no support.
 }
+
+
 
 }

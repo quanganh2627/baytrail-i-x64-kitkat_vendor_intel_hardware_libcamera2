@@ -118,6 +118,7 @@ private:
     status_t waitForAndExecuteMessage();
 
     void setFocusAreas(const CameraWindow* windows, size_t winCount);
+    void setAeMeteringArea(const CameraWindow* window);
     void useFacesForAAA(const camera_frame_metadata_t& face_metadata);
 
 // private data
@@ -132,6 +133,7 @@ private:
     bool mFaceDetectionRunning;
     bool mSmartShutterRunning;
     AfMode mOldAfMode;
+    MeteringMode mOldAeMeteringMode;
     int mPreviewWidth;
     int mPreviewHeight;
 
