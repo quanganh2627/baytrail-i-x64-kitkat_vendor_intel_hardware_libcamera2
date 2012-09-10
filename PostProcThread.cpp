@@ -39,6 +39,8 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     ,mFaceDetectionRunning(false)
     ,mSmartShutterRunning(false)
     ,mOldAfMode(CAM_AF_MODE_NOT_SET)
+    ,mPreviewWidth(0)
+    ,mPreviewHeight(0)
 {
     LOG1("@%s", __FUNCTION__);
 }
@@ -150,14 +152,18 @@ status_t PostProcThread::handleExit()
     return status;
 }
 
-int PostProcThread::sendFrame(AtomBuffer *img, int width, int height)
+int PostProcThread::sendFrame(AtomBuffer *img)
 {
-    LOG2("@%s: buf=%p, width=%d height=%d", __FUNCTION__, img, width, height);
+    LOG2("@%s: buf=%p, width=%d height=%d", __FUNCTION__, img, img->width , img->height);
     Message msg;
     msg.id = MESSAGE_ID_FRAME;
-    msg.data.frame.img = *img;
-    msg.data.frame.height = height;
-    msg.data.frame.width = width;
+
+    if (img != NULL) {
+        msg.data.frame.img = *img;
+    } else {
+        LOGW("@%s: NULL AtomBuffer frame", __FUNCTION__);
+    }
+
     if (mMessageQueue.send(&msg) == NO_ERROR)
         return 0;
     else
@@ -242,9 +248,13 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         ia_frame frameData;
         frameData.data = src;
         frameData.size = frame.img.size;
-        frameData.width = frame.width;
-        frameData.height = frame.height;
+        frameData.width = frame.img.width;
+        frameData.height = frame.img.height;
         frameData.stride = frame.img.stride;
+        // We need the preview size for convertFromAndroidCoordinates():
+        mPreviewHeight = frameData.height;
+        mPreviewWidth = frameData.width;
+
         num_faces = mFaceDetector->faceDetect(&frameData);
 
         if (mSmartShutterRunning) {
@@ -254,7 +264,7 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
 
         camera_face_t faces[num_faces];
         camera_frame_metadata_t face_metadata;
-        face_metadata.number_of_faces = mFaceDetector->getFaces(faces, frame.width, frame.height);
+        face_metadata.number_of_faces = mFaceDetector->getFaces(faces, mPreviewWidth, mPreviewHeight);
         face_metadata.faces = faces;
 
         // call face detection listener and pass faces for 3A (AF) and smart scene detection
@@ -317,6 +327,12 @@ void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata
         windows[i].y_top = face.rect[1];
         windows[i].x_right = face.rect[2];
         windows[i].y_bottom = face.rect[3];
+        convertFromAndroidCoordinates(windows[i], windows[i], mPreviewWidth, mPreviewHeight);
+        LOG2("Face window: (%d,%d,%d,%d)",
+             windows[i].x_left,
+             windows[i].y_top,
+             windows[i].x_right,
+             windows[i].y_bottom);
     }
 
     //TODO: spec says we need also do AWB and AE. Currently no support.

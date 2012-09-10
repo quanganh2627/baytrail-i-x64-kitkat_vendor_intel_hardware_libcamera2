@@ -2144,10 +2144,8 @@ status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
 
     if (mFaceDetectionActive || mPanoramaThread->getState() == PANORAMA_DETECTING_OVERLAP) {
         LOG2("@%s: face detection active", __FUNCTION__);
-        int width, height;
-        mParameters.getPreviewSize(&width, &height);
         msg->buff.owner = this;
-        if (mPostProcThread->sendFrame(&msg->buff, width, height) < 0) {
+        if (mPostProcThread->sendFrame(&msg->buff) < 0) {
             msg->buff.owner = 0;
             releasePreviewFrame(&msg->buff);
         }

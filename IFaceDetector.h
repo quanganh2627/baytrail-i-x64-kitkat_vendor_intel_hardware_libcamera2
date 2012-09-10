@@ -26,7 +26,7 @@ public:
     IFaceDetector(IFaceDetectionListener *pListener) : mpListener(pListener) {};
     virtual ~IFaceDetector() {};
     virtual int getMaxFacesDetectable() = 0;
-    virtual void startFaceDetection(void) = 0;
+    virtual void startFaceDetection() = 0;
     /**
     * This stops face detector. Face detector may still process buffer data passed
     * in previously via sendFame. Wait should be used with care because it may cause deadlock.
@@ -41,7 +41,7 @@ public:
      * returns -1 if the buffer is not accepted.
      * otherwise return 0.
      */
-    virtual int sendFrame(AtomBuffer *img, int width, int height) = 0;
+    virtual int sendFrame(AtomBuffer *img) = 0;
 
     virtual void startSmartShutter() = 0;
     virtual void stopSmartShutter() = 0;

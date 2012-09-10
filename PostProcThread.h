@@ -61,7 +61,7 @@ public:
     };
     virtual void startFaceDetection();
     virtual void stopFaceDetection(bool wait=false);
-    virtual int sendFrame(AtomBuffer *img, int width, int height);
+    virtual int sendFrame(AtomBuffer *img);
     virtual void startSmartShutter();
     virtual void stopSmartShutter();
 
@@ -87,8 +87,6 @@ private:
     //
     struct MessageFrame {
         AtomBuffer img;
-        int width;
-        int height;
     };
 
     // union of all message data
@@ -134,6 +132,9 @@ private:
     bool mFaceDetectionRunning;
     bool mSmartShutterRunning;
     AfMode mOldAfMode;
+    int mPreviewWidth;
+    int mPreviewHeight;
+
 }; // class PostProcThread
 
 }; // namespace android
