@@ -28,21 +28,18 @@ public:
     CameraAreas();
     ~CameraAreas();
 
+    CameraAreas(const CameraAreas& other);
+    CameraAreas& operator=(const CameraAreas& other);
+
     bool operator==(const CameraAreas& other) const;
     bool operator!=(const CameraAreas& other) const;
 
     status_t scan(const char* stringArea, int maxSize);
-    void swap(CameraAreas& other);
 
     bool isEmpty() const;
     int numOfAreas() const;
 
     void toWindows(CameraWindow *windows) const;
-
-// prevent copy constructor and assignment operator
-private:
-    CameraAreas(const CameraAreas& other);
-    CameraAreas& operator=(const CameraAreas& other);
 
 // private types
 private:

@@ -47,6 +47,21 @@ bool CameraAreas::operator==(const CameraAreas& other) const
     return true;
 }
 
+CameraAreas::CameraAreas(const CameraAreas& other)
+    :
+    mAreas(other.mAreas)
+{
+}
+
+CameraAreas& CameraAreas::operator=(const CameraAreas& other)
+{
+    if (this != &other) {
+        mAreas = other.mAreas;
+    }
+    return *this;
+}
+
+
 bool CameraAreas::operator!=(const CameraAreas& other) const
 {
     LOG1("@%s", __FUNCTION__);
@@ -134,13 +149,6 @@ status_t CameraAreas::scan(const char* stringArea, int maxSize)
     LOG1("Scanning areas success (%d areas)", mAreas.size());
 
     return NO_ERROR;
-}
-
-void CameraAreas::swap(CameraAreas& other)
-{
-    Vector<CameraAreaItem> tmpAreas(mAreas);
-    mAreas = other.mAreas;
-    other.mAreas = tmpAreas;
 }
 
 bool CameraAreas::isEmpty() const

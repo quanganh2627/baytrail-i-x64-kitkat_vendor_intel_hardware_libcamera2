@@ -3909,8 +3909,8 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     }
 
     mParameters = newParams;
-    mFocusAreas.swap(newFocusAreas); // use swap instead of copying to avoid memory copy
-    mMeteringAreas.swap(newMeteringAreas);
+    mFocusAreas = newFocusAreas;
+    mMeteringAreas = newMeteringAreas;
 
     // Take care of parameters that need to be set while the ISP is stopped
     status = processStaticParameters(&oldParams, &newParams);
