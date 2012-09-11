@@ -81,6 +81,11 @@ status_t CameraAreas::scan(const char* stringArea, int maxSize)
     const char *argTail = stringArea;
     int areaCount = 0;
 
+    if (newAreas.setCapacity(maxSize) == NO_MEMORY) {
+        LOGE("Memory allocation failed");
+        return NO_MEMORY;
+    }
+
     while (argTail && areaCount < maxSize) {
         // String format: "(topleftx,toplefty,bottomrightx,bottomrighty,weight),(...)"
         int i = sscanf(argTail, "(%d,%d,%d,%d,%d)",
