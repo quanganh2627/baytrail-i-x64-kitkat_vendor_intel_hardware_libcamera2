@@ -36,6 +36,7 @@ public:
     status_t reconfigure();
 
 private:
+    status_t reconfigureNoLock();
     AtomISP *mIsp;
     Mutex mLock;
     struct atomisp_dis_statistics *mStatistics;

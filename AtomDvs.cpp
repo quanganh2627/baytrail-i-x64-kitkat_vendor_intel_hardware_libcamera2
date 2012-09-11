@@ -37,6 +37,11 @@ AtomDvs::~AtomDvs()
 status_t AtomDvs::reconfigure()
 {
     Mutex::Autolock lock(mLock);
+    return reconfigureNoLock();
+}
+
+status_t AtomDvs::reconfigureNoLock()
+{
     status_t status = NO_ERROR;
     struct atomisp_parm isp_params;
     const struct atomisp_dis_coefficients *coefs;
@@ -73,7 +78,7 @@ status_t AtomDvs::run()
        has changed. Because of this, we reconfigure the DVS engine
        which will use the updated grid information. */
     if (try_again) {
-        reconfigure();
+        reconfigureNoLock();
         status = mIsp->getDvsStatistics(mStatistics, NULL);
         if (status != NO_ERROR)
             goto end;
