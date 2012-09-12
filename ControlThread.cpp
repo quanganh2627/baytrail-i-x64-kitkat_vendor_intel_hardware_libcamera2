@@ -3172,42 +3172,21 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
 void ControlThread::preSetCameraWindows(CameraWindow* focusWindows, size_t winCount)
 {
     LOG1("@%s", __FUNCTION__);
-    // Camera KEY_FOCUS_AREAS Coordinates range from -1000 to 1000.
     if (winCount > 0) {
         int width;
         int height;
-        const int FOCUS_AREAS_X_OFFSET = 1000;
-        const int FOCUS_AREAS_Y_OFFSET = 1000;
-        const int FOCUS_AREAS_WIDTH = 2000;
-        const int FOCUS_AREAS_HEIGHT = 2000;
-        const int WINDOWS_TOTAL_WEIGHT = 16;
         mParameters.getPreviewSize(&width, &height);
-        size_t windowsWeight = 0;
-        for(size_t i = 0; i < winCount; i++){
-            windowsWeight += focusWindows[i].weight;
-        }
-        if(!windowsWeight)
-            windowsWeight = 1;
 
-        size_t weight_sum = 0;
-        for(size_t i =0; i < winCount; i++) {
-            // skip all zero value
-            focusWindows[i].x_left = (focusWindows[i].x_left + FOCUS_AREAS_X_OFFSET) * (width - 1) / FOCUS_AREAS_WIDTH;
-            focusWindows[i].x_right = (focusWindows[i].x_right + FOCUS_AREAS_X_OFFSET) * (width - 1) / FOCUS_AREAS_WIDTH;
-            focusWindows[i].y_top = (focusWindows[i].y_top + FOCUS_AREAS_Y_OFFSET) * (height - 1) / FOCUS_AREAS_HEIGHT;
-            focusWindows[i].y_bottom = (focusWindows[i].y_bottom + FOCUS_AREAS_Y_OFFSET) * (height - 1) / FOCUS_AREAS_HEIGHT;
-            focusWindows[i].weight = focusWindows[i].weight * WINDOWS_TOTAL_WEIGHT / windowsWeight;
-            weight_sum += focusWindows[i].weight;
-            LOG1("Preset camera window %d: (%d,%d,%d,%d,%d)",
+        for (size_t i = 0; i < winCount; i++) {
+            // Camera KEY_FOCUS_AREAS Coordinates range from -1000 to 1000. Let's convert..
+            convertFromAndroidCoordinates(focusWindows[i], focusWindows[i], width, height);
+            LOG1("Preset camera window %d: (%d,%d,%d,%d)",
                     i,
                     focusWindows[i].x_left,
                     focusWindows[i].y_top,
                     focusWindows[i].x_right,
-                    focusWindows[i].y_bottom,
-                    focusWindows[i].weight);
+                    focusWindows[i].y_bottom);
         }
-        //weight sum value should be WINDOWS_TOTAL_WEIGHT
-        focusWindows[winCount-1].weight += WINDOWS_TOTAL_WEIGHT - weight_sum;
     }
 }
 
