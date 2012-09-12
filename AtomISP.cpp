@@ -764,9 +764,9 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
 
         intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, "off");
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, "on,off");
-        intel_params->set(IntelCameraParameters::KEY_HDR_VIVIDNESS, "none");
+        intel_params->set(IntelCameraParameters::KEY_HDR_VIVIDNESS, "gaussian");
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none,gaussian,gamma");
-        intel_params->set(IntelCameraParameters::KEY_HDR_SHARPENING, "none");
+        intel_params->set(IntelCameraParameters::KEY_HDR_SHARPENING, "normal");
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SHARPENING, "none,normal,strong");
         intel_params->set(IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, "off");
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL, "on,off");

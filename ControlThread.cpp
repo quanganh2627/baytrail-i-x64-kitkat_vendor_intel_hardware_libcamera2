@@ -266,6 +266,9 @@ status_t ControlThread::init(int cameraId)
 
     // Disable HDR by default
     mHdr.enabled = false;
+    mHdr.sharpening = NORMAL_SHARPENING;
+    mHdr.vividness = GAUSSIAN_VIVIDNESS;
+    mHdr.appSaveOrig = mHdr.saveOrig = false;
 
     // Set property to inform system what camera is in use
     char facing[PROPERTY_VALUE_MAX];
@@ -2903,6 +2906,7 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    status_t localStatus = NO_ERROR;
 
     // Check the HDR parameters
     const char* oldValue = oldParams->get(IntelCameraParameters::KEY_HDR_IMAGING);
@@ -2932,6 +2936,7 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
     oldValue = oldParams->get(IntelCameraParameters::KEY_HDR_SHARPENING);
     newValue = newParams->get(IntelCameraParameters::KEY_HDR_SHARPENING);
     if (oldValue && newValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+        localStatus = NO_ERROR;
         if(!strncmp(newValue, "normal", strlen("normal"))) {
             mHdr.sharpening = NORMAL_SHARPENING;
         } else if(!strncmp(newValue, "strong", strlen("strong"))) {
@@ -2939,10 +2944,10 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         } else if(!strncmp(newValue, "none", strlen("none"))) {
             mHdr.sharpening = NO_SHARPENING;
         } else {
-            LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_SHARPENING, newValue);
-            status = BAD_VALUE;
+            LOGW("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_SHARPENING, newValue);
+            localStatus = BAD_VALUE;
         }
-        if (status == NO_ERROR) {
+        if (localStatus == NO_ERROR) {
             LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_SHARPENING, newValue);
         }
     }
@@ -2950,6 +2955,7 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
     oldValue = oldParams->get(IntelCameraParameters::KEY_HDR_VIVIDNESS);
     newValue = newParams->get(IntelCameraParameters::KEY_HDR_VIVIDNESS);
     if (oldValue && newValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+        localStatus = NO_ERROR;
         if(!strncmp(newValue, "gaussian", strlen("gaussian"))) {
             mHdr.vividness = GAUSSIAN_VIVIDNESS;
         } else if(!strncmp(newValue, "gamma", strlen("gamma"))) {
@@ -2957,10 +2963,11 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         } else if(!strncmp(newValue, "none", strlen("none"))) {
             mHdr.vividness = NO_VIVIDNESS;
         } else {
-            LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_VIVIDNESS, newValue);
-            status = BAD_VALUE;
+            // the default value is kept
+            LOGW("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_VIVIDNESS, newValue);
+            localStatus = BAD_VALUE;
         }
-        if (status == NO_ERROR) {
+        if (localStatus == NO_ERROR) {
             LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_VIVIDNESS, newValue);
         }
     }
@@ -2968,6 +2975,7 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
     oldValue = oldParams->get(IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL);
     newValue = newParams->get(IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL);
     if (oldValue && newValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+        localStatus = NO_ERROR;
         if(!strncmp(newValue, "on", strlen("on"))) {
             mHdr.appSaveOrig = mHdr.saveOrig = true;
             mHdr.appSaveOrigRequest = mHdr.saveOrigRequest = true;
@@ -2975,10 +2983,11 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
             mHdr.appSaveOrig = mHdr.saveOrig = false;
             mHdr.appSaveOrigRequest = mHdr.saveOrigRequest = false;
         } else {
-            LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, newValue);
-            status = BAD_VALUE;
+            // the default value is kept
+            LOGW("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, newValue);
+            localStatus = BAD_VALUE;
         }
-        if (status == NO_ERROR) {
+        if (localStatus == NO_ERROR) {
             LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, newValue);
         }
     }
