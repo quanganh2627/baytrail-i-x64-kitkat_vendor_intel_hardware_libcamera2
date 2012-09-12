@@ -22,17 +22,30 @@
 
 namespace android {
 
-#ifdef ATOM_LIBCAMERA_DEBUG
+#ifdef LIBCAMERA_RD_FEATURES
 
 DebugFrameRate::DebugFrameRate() :
     Thread(false)
     ,mCount(0)
     ,mStartTime(0)
+    ,mActive(false)
 {
+
+    if (gLogLevel & CAMERA_DEBUG_LOG_PERF_TRACES) {
+        mActive = true;
+    }
 }
 
 DebugFrameRate::~DebugFrameRate()
 {
+}
+
+status_t DebugFrameRate::run()
+{
+   if(mActive)
+       return Thread::run();
+
+   return NO_ERROR;
 }
 
 void DebugFrameRate::update()
@@ -44,6 +57,9 @@ void DebugFrameRate::update()
 
 status_t DebugFrameRate::requestExitAndWait()
 {
+    if(!mActive)
+        return NO_ERROR;
+
     mMutex.lock();
     mCondition.signal();
     mMutex.unlock();

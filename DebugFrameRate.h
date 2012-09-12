@@ -19,10 +19,11 @@
 
 #include <utils/threads.h>
 #include <utils/Timers.h>
+#include "LogHelper.h"
 
 namespace android {
 
-#ifdef ATOM_LIBCAMERA_DEBUG
+#ifdef LIBCAMERA_RD_FEATURES
 
 class DebugFrameRate : public Thread {
 
@@ -31,7 +32,8 @@ public:
     ~DebugFrameRate();
 
     void update();
-    status_t requestExitAndWait(); // override
+    status_t requestExitAndWait();  // override
+    status_t run();                 // override
 
 private:
     virtual bool threadLoop();
@@ -44,6 +46,7 @@ private:
     nsecs_t mStartTime;
     Condition mCondition;
     Mutex mMutex;
+    bool mActive;
 };
 
 #else // ATOM_LIBCAMERA_DEBUG
