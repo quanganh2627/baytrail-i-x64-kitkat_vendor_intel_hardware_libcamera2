@@ -36,6 +36,12 @@ namespace android {
 #define EV_MIN -2
 #define EV_MAX  2
 
+#define LARGEST_THUMBNAIL_WIDTH 320
+#define LARGEST_THUMBNAIL_HEIGHT 240
+#define CAM_STR(s) #s
+#define CAM_WXH_STR(w,h) CAM_STR(w##x##h)
+#define CAM_RESO_STR(w,h) CAM_WXH_STR(w,h) // example: CAM_RESO_STR(VGA_WIDTH,VGA_HEIGHT) -> "640x480"
+
 //v4l2 buffer in pool
 struct v4l2_buffer_info {
     void *data;

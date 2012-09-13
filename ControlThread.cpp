@@ -94,6 +94,8 @@ ControlThread::ControlThread() :
     ,mLastRecordingBuffIndex(0)
     ,mStoreMetaDataInBuffers(false)
     ,mPreviewForceChanged(false)
+    ,mPanoramaLivePreviewWidth(PANORAMA_DEF_PREV_WIDTH)
+    ,mPanoramaLivePreviewHeight(PANORAMA_DEF_PREV_HEIGHT)
     ,mCameraDump(NULL)
     ,mFocusAreas()
     ,mMeteringAreas()
@@ -195,7 +197,13 @@ status_t ControlThread::init(int cameraId)
         goto bail;
     }
 
-    mPostProcThread = new PostProcThread(this);
+    mPanoramaThread = new PanoramaThread(this);
+    if (mPanoramaThread == NULL) {
+        LOGE("error creating PanoramaThread");
+        goto bail;
+    }
+
+    mPostProcThread = new PostProcThread(this, mPanoramaThread.get());
     if (mPostProcThread == NULL) {
         LOGE("error creating PostProcThread");
         goto bail;
@@ -247,6 +255,11 @@ status_t ControlThread::init(int cameraId)
         LOGW("Error starting Post Processing thread!");
         goto bail;
     }
+    status = mPanoramaThread->run();
+    if (status != NO_ERROR) {
+        LOGW("Error Starting Panorama Thread!");
+        goto bail;
+    }
 
     // Disable bracketing by default
     mBracketing.mode = BRACKET_NONE;
@@ -284,6 +297,11 @@ void ControlThread::deinit()
     if (mPostProcThread != NULL) {
         mPostProcThread->requestExitAndWait();
         mPostProcThread.clear();
+    }
+
+    if (mPanoramaThread != NULL) {
+        mPanoramaThread->requestExitAndWait();
+        mPanoramaThread.clear();
     }
 
     if (mPreviewThread != NULL) {
@@ -532,7 +550,10 @@ status_t ControlThread::takePicture()
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
-    msg.id = MESSAGE_ID_TAKE_PICTURE;
+    if (mPanoramaThread->getState() != PANORAMA_STOPPED) {
+        msg.id = MESSAGE_ID_PANORAMA_PICTURE;
+    } else
+        msg.id = MESSAGE_ID_TAKE_PICTURE;
     return mMessageQueue.send(&msg);
 }
 
@@ -613,6 +634,25 @@ void ControlThread::facesDetected(camera_frame_metadata_t *face_metadata)
     LOG2("@%s", __FUNCTION__);
     int zoom = (mParameters.getInt(CameraParameters::KEY_ZOOM) + 10) / 10;
     m3AThread->setFaces(face_metadata, zoom);
+}
+
+void ControlThread::panoramaFinalized(AtomBuffer *buff)
+{
+    LOG2("@%s", __FUNCTION__);
+    mCallbacksThread->requestTakePicture(false, false);
+
+    PictureThread::MetaData picMetaData;
+    fillPicMetaData(picMetaData, false);
+
+    mPictureThread->encode(picMetaData, buff, NULL);
+}
+
+void ControlThread::panoramaCaptureTrigger()
+{
+    LOG2("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_PANORAMA_CAPTURE_TRIGGER;
+    mMessageQueue.send(&msg);
 }
 
 void ControlThread::releasePreviewFrame(AtomBuffer *buff)
@@ -1356,6 +1396,44 @@ status_t ControlThread::setSmartSceneParams(void)
     return NO_ERROR;
 }
 
+status_t ControlThread::handleMessagePanoramaCaptureTrigger()
+{
+    LOG1("@%s:", __FUNCTION__);
+    status_t status = NO_ERROR;
+    AtomBuffer snapshotBuffer, postviewBuffer;
+
+    status = capturePanoramaPic(snapshotBuffer, postviewBuffer);
+    if (status != NO_ERROR) {
+        LOGE("Error %d capturing panorama picture.", status);
+        return status;
+    }
+
+    mPanoramaThread->stitch(&snapshotBuffer, &postviewBuffer); // synchronous
+    // we can return buffers now that panorama has (synchronously) processed (copied) the buffers
+    status = mISP->putSnapshot(&snapshotBuffer, &postviewBuffer);
+    if (status != NO_ERROR)
+        LOGE("error returning panorama capture buffers");
+
+    //restart preview
+    Message msg;
+    msg.id = MESSAGE_ID_START_PREVIEW;
+    mMessageQueue.send(&msg);
+
+    return status;
+}
+
+status_t ControlThread::handleMessagePanoramaPicture() {
+    LOG1("@%s:", __FUNCTION__);
+    status_t status = NO_ERROR;
+    if (mPanoramaThread->getState() == PANORAMA_STARTED) {
+        mPanoramaThread->startPanoramaCapture();
+    } else {
+        mPanoramaThread->finalize();
+    }
+
+    return status;
+}
+
 status_t ControlThread::handleMessageTakePicture() {
     LOG1("@%s:", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -1473,6 +1551,80 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
     metaData.aeConfig = aeConfig;
     metaData.ia3AMkNote = aaaMkNote;
     metaData.atomispMkNote = atomispMkNote;
+}
+
+status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffer &postviewBuffer)
+{
+    LOG1("@%s: ", __FUNCTION__);
+    status_t status = NO_ERROR;
+    int format, size, width, height;
+    int pvWidth, pvHeight, pvFormat, pvSize;
+    atomisp_makernote_info makerNote;
+
+    postviewBuffer.owner = this;
+    stopFaceDetection();
+    status = stopPreviewCore();
+    if (status != NO_ERROR) {
+        LOGE("Error stopping preview!");
+        return status;
+    }
+    mState = STATE_CAPTURE;
+    mBurstCaptureNum = 0;
+
+    // Get the current params
+    mParameters.getPictureSize(&width, &height);
+    pvWidth = mPanoramaLivePreviewWidth;
+    pvHeight= mPanoramaLivePreviewHeight;
+    format = mISP->getSnapshotPixelFormat();
+    size = frameSize(format, width, height);
+    pvSize = frameSize(format, pvWidth, pvHeight);
+
+    // Configure PictureThread
+    mPictureThread->initialize(mParameters);
+
+    // Configure and start the ISP
+    mISP->setSnapshotFrameFormat(width, height, format);
+    mISP->setPostviewFrameFormat(pvWidth, pvHeight, format);
+
+    if ((status = mISP->configure(MODE_CAPTURE)) != NO_ERROR) {
+        LOGE("Error configuring the ISP driver for CAPTURE mode");
+        return status;
+    }
+
+    if (mAAA->is3ASupported())
+        if (mAAA->switchModeAndRate(MODE_CAPTURE, mISP->getFrameRate()) != NO_ERROR)
+            LOGE("Failed to switch 3A to capture mode at %.2f fps", mISP->getFrameRate());
+
+    if ((status = mISP->start()) != NO_ERROR) {
+        LOGE("Error starting the ISP driver in CAPTURE mode!");
+        return status;
+    }
+
+    /*
+     *  If the current camera does not have 3A, then we should skip the first
+     *  frames in order to allow the sensor to warm up.
+     */
+    if (!mAAA->is3ASupported()) {
+        if ((status = skipFrames(NUM_WARMUP_FRAMES)) != NO_ERROR) {
+            LOGE("Error skipping warm-up frames!");
+            return status;
+        }
+    }
+
+    // Turn off flash
+    mISP->setFlashIndicator(0);
+
+    // Get the snapshot
+    if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
+        LOGE("Error in grabbing snapshot!");
+        return status;
+    }
+
+    snapshotBuffer.owner = this;
+
+    mCallbacksThread->shutterSound();
+
+    return status;
 }
 
 status_t ControlThread::captureStillPic()
@@ -1990,7 +2142,7 @@ status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
     }
     status_t status = NO_ERROR;
 
-    if (mFaceDetectionActive) {
+    if (mFaceDetectionActive || mPanoramaThread->getState() == PANORAMA_DETECTING_OVERLAP) {
         LOG2("@%s: face detection active", __FUNCTION__);
         int width, height;
         mParameters.getPreviewSize(&width, &height);
@@ -2072,8 +2224,11 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-
-    if (mState == STATE_RECORDING) {
+    if (msg->snapshotBuf.type == ATOM_BUFFER_PANORAMA) {
+        // panorama pictures are special, they use the panorama engine memory.
+        // we return them to panorama for releasing
+        msg->snapshotBuf.owner->returnBuffer(&msg->snapshotBuf);
+    } else if (mState == STATE_RECORDING) {
         int curBuff = msg->snapshotBuf.id;
         if (mCoupledBuffers && curBuff < mNumBuffers) {
             mCoupledBuffers[curBuff].videoSnapshotBuffReturned = true;
@@ -2238,6 +2393,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         if (fps > 0) {
             mBurstSkipFrames = (MAX_BURST_FRAMERATE / fps) - 1;
         }
+    }
+
+    // Panorama
+    if (status == NO_ERROR) {
+        status = processParamPanorama(oldParams, newParams);
     }
 
     // Color effect
@@ -2570,6 +2730,33 @@ status_t ControlThread::processParamAntiBanding(const CameraParameters *oldParam
     }
 
     return status;
+}
+
+status_t ControlThread::processParamPanorama(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE);
+
+    if (newVal.isEmpty() != true) {
+        char *xptr = NULL, *endptr = NULL;
+        mPanoramaLivePreviewWidth = (int) strtol(newVal.string(), &xptr, 10);
+        if (xptr == NULL || *xptr != 'x') // strtol stores location of x into xptr
+            goto errror;
+
+        xptr++;
+        endptr = xptr;
+        mPanoramaLivePreviewHeight = (int) strtol(xptr, &endptr, 10);
+        if (*xptr == '\0' || *endptr != '\0') {
+            goto errror;
+        }
+    }
+    return OK;
+
+    errror:
+    LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE, newVal.string());
+    return INVALID_OPERATION;
 }
 
 status_t ControlThread::processParamAELock(const CameraParameters *oldParams,
@@ -3760,6 +3947,12 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
         status = enableIntelParameters();
         mMessageQueue.reply(MESSAGE_ID_COMMAND, status);
         break;
+    case CAMERA_CMD_START_PANORAMA:
+        status = startPanorama();
+        break;
+    case CAMERA_CMD_STOP_PANORAMA:
+        status = stopPanorama();
+        break;
     default:
         break;
     }
@@ -4216,6 +4409,33 @@ status_t ControlThread::enableIntelParameters()
     return NO_ERROR;
 }
 
+status_t ControlThread::startPanorama()
+{
+    LOG2("@%s", __FUNCTION__);
+    if (mPanoramaThread->getState() != PANORAMA_STOPPED) {
+        return INVALID_OPERATION;
+    }
+    if (mPanoramaThread != 0) {
+        mPanoramaThread->startPanorama();
+        return NO_ERROR;
+    } else {
+        return INVALID_OPERATION;
+    }
+}
+
+status_t ControlThread::stopPanorama()
+{
+    LOG2("@%s", __FUNCTION__);
+    if (mPanoramaThread->getState() == PANORAMA_STOPPED)
+        return NO_ERROR;
+    if (mPanoramaThread != 0) {
+        mPanoramaThread->stopPanorama();
+        return NO_ERROR;
+    } else{
+        return INVALID_OPERATION;
+    }
+}
+
 status_t ControlThread::waitForAndExecuteMessage()
 {
     LOG2("@%s", __FUNCTION__);
@@ -4248,6 +4468,11 @@ status_t ControlThread::waitForAndExecuteMessage()
             status = handleMessageReleasePreviewFrame(
                 &msg.data.releasePreviewFrame);
             break;
+
+        case MESSAGE_ID_PANORAMA_PICTURE:
+            status = handleMessagePanoramaPicture();
+            break;
+
         case MESSAGE_ID_TAKE_PICTURE:
             status = handleMessageTakePicture();
             break;
@@ -4322,6 +4547,10 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_SCENE_DETECTED:
             status = handleMessageSceneDetected(&msg.data.sceneDetected);
+            break;
+
+        case MESSAGE_ID_PANORAMA_CAPTURE_TRIGGER:
+            status = handleMessagePanoramaCaptureTrigger();
             break;
 
         default:

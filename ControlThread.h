@@ -35,6 +35,7 @@
 #include "IFaceDetectionListener.h"
 #include "OlaService/HalProxyOla.h"
 #include "PostProcThread.h"
+#include "PanoramaThread.h"
 #include "CameraDump.h"
 #include "CameraAreas.h"
 
@@ -55,6 +56,7 @@ class ControlThread :
     public ICallbackPicture,
     public ICallbackAAA,
     public ICallbackPostProc,
+    public ICallbackPanorama,
     public IBufferOwner{
 
 // constructor destructor
@@ -125,6 +127,8 @@ private:
     virtual void returnBuffer(AtomBuffer *buff);
     virtual void sceneDetected(int sceneMode, bool sceneHdr);
     virtual void facesDetected(camera_frame_metadata_t *face_metadata);
+    virtual void panoramaCaptureTrigger();
+    virtual void panoramaFinalized(AtomBuffer *buff);
 
 // private types
 private:
@@ -156,6 +160,8 @@ private:
         MESSAGE_ID_STOP_CAPTURE,
         MESSAGE_ID_SET_PREVIEW_WINDOW,
         MESSAGE_ID_SCENE_DETECTED,
+        MESSAGE_ID_PANORAMA_PICTURE,
+        MESSAGE_ID_PANORAMA_CAPTURE_TRIGGER,
 
         // Messages for the Acceleration API temporary HACK
         MESSAGE_ID_LOAD_FIRMWARE,
@@ -365,6 +371,8 @@ private:
     status_t handleMessageCommand(MessageCommand* msg);
     status_t handleMessageSetPreviewWindow(MessagePreviewWindow *msg);
     status_t handleMessageStoreMetaDataInBuffers(MessageStoreMetaDataInBuffers *msg);
+    status_t handleMessagePanoramaPicture();
+    status_t handleMessagePanoramaCaptureTrigger();
 
     status_t startFaceDetection();
     status_t stopFaceDetection(bool wait=false);
@@ -379,6 +387,8 @@ private:
     status_t enableIntelParameters();
     void releasePreviewFrame(AtomBuffer* buff);
     status_t handleMessageSceneDetected(MessageSceneDetected *msg);
+    status_t startPanorama();
+    status_t stopPanorama();
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -448,6 +458,8 @@ private:
             CameraParameters *newParams);
     status_t processParamBackLightingCorrectionMode(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    status_t processParamPanorama(const CameraParameters *oldParams,
+            CameraParameters *newParams);
     status_t processParamAwbMappingMode(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamTNR(const CameraParameters *oldParams,
@@ -485,6 +497,7 @@ private:
 
     status_t captureStillPic();
     status_t captureBurstPic(bool clientRequest);
+    status_t capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffer &postviewBuffer);
 
     status_t updateSpotWindow(const int &width, const int &height);
 
@@ -505,6 +518,7 @@ private:
     sp<VideoThread> mVideoThread;
     sp<AAAThread>     m3AThread;
     sp<PostProcThread> mPostProcThread;
+    sp<PanoramaThread> mPanoramaThread;
     sp<HalProxyOla>   mProxyToOlaService;
     friend class HalProxyOla;
 
@@ -541,6 +555,9 @@ private:
     bool mStoreMetaDataInBuffers;
 
     bool mPreviewForceChanged;
+
+    int mPanoramaLivePreviewWidth;
+    int mPanoramaLivePreviewHeight;
 
     CameraDump *mCameraDump;
 

@@ -139,6 +139,9 @@ namespace android {
     static const char KEY_HDR_SAVE_ORIGINAL[];
     static const char KEY_SUPPORTED_HDR_SAVE_ORIGINAL[];
 
+    //Panorama live preview size
+    static const char KEY_PANORAMA_LIVE_PREVIEW_SIZE[];
+
     //MACC effect
     static const char EFFECT_STILL_SKY_BLUE[];
     static const char EFFECT_STILL_GRASS_GREEN[];

@@ -32,6 +32,7 @@ Callbacks::Callbacks() :
     ,mGetMemoryCB(NULL)
     ,mUserToken(NULL)
     ,mDummyByte(NULL)
+    ,mPanoramaMetadata(NULL)
     ,mStoreMetaDataInBuffers(false)
 {
     LOG1("@%s", __FUNCTION__);
@@ -42,6 +43,8 @@ Callbacks::~Callbacks()
     LOG1("@%s", __FUNCTION__);
     mInstance = NULL;
     if (mDummyByte != NULL) mDummyByte->release(mDummyByte);
+    if (mPanoramaMetadata != NULL)
+        mPanoramaMetadata->release(mPanoramaMetadata);
 }
 
 void Callbacks::setCallbacks(camera_notify_callback notify_cb,
@@ -78,6 +81,21 @@ void Callbacks::disableMsgType(int32_t msgType)
 bool Callbacks::msgTypeEnabled(int32_t msgType)
 {
     return (mMessageFlags & msgType) != 0;
+}
+
+void Callbacks::panoramaSnapshot(AtomBuffer &livePreview)
+{
+    LOG2("@%s", __FUNCTION__);
+    mDataCB(CAMERA_MSG_PANORAMA_SNAPSHOT, livePreview.buff, 0, NULL, mUserToken);
+}
+
+void Callbacks::panoramaDisplUpdate(camera_panorama_metadata &metadata)
+{
+    LOG2("@%s", __FUNCTION__);
+    if (mPanoramaMetadata == NULL)
+        mPanoramaMetadata = mGetMemoryCB(-1, sizeof(camera_panorama_metadata), 1, NULL);
+    memcpy(mPanoramaMetadata->data, &metadata, sizeof(camera_panorama_metadata));
+    mDataCB(CAMERA_MSG_PANORAMA_METADATA, mPanoramaMetadata, 0, NULL, mUserToken);
 }
 
 void Callbacks::previewFrameDone(AtomBuffer *buff)

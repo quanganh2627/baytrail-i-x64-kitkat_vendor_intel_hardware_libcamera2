@@ -21,6 +21,7 @@
 #include "ColorConverter.h"
 #include "PlatformData.h"
 #include "IntelParameters.h"
+#include "PanoramaThread.h"
 #include "CameraDump.h"
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -474,7 +475,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     params->setPictureSize(mConfig.snapshot.width, mConfig.snapshot.height);
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH,"320");
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT,"240");
-    params->set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES,"320x240,240x320,320x180,180x320,160x120,120x160,0x0");
+    params->set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES, CAM_RESO_STR(LARGEST_THUMBNAIL_WIDTH,LARGEST_THUMBNAIL_HEIGHT)
+                ",240x320,320x180,180x320,160x120,120x160,0x0");
 
     /**
      * ZOOM
@@ -767,6 +769,9 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
         // AWB mapping mode
         intel_params->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES, "auto,indoor,outdoor");
+
+        // panorama
+        intel_params->set(IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE, CAM_RESO_STR(PANORAMA_DEF_PREV_WIDTH,PANORAMA_DEF_PREV_HEIGHT));
 
         // temporal noise reduction
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_TEMPORAL_NOISE_REDUCTION, "on,off");
@@ -3153,6 +3158,7 @@ status_t AtomISP::allocateSnapshotBuffers()
             status = NO_MEMORY;
             goto errorFree;
         }
+        mSnapshotBuffers[i].type = ATOM_BUFFER_SNAPSHOT;
         allocatedSnaphotBufs++;
         if (mUsingClientSnapshotBuffers) {
             v4l2_buf_pool[V4L2_FIRST_DEVICE].bufs[i].data = mClientSnapshotBuffers[i];

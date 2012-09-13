@@ -137,6 +137,9 @@ namespace android {
     const char IntelCameraParameters::RED_EYE_REMOVAL_ON[] = "on";
     const char IntelCameraParameters::RED_EYE_REMOVAL_OFF[] = "off";
 
+    //Panorama live preview size
+    const char IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE[] = "panorama-live-preview-size";
+
     //values for awb mapping
     const char IntelCameraParameters::AWB_MAPPING_AUTO[] = "auto";
     const char IntelCameraParameters::AWB_MAPPING_INDOOR[] = "indoor";

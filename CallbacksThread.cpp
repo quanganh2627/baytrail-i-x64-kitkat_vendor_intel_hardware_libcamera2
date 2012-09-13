@@ -55,6 +55,38 @@ status_t CallbacksThread::shutterSound()
     return mMessageQueue.send(&msg);
 }
 
+void CallbacksThread::panoramaDisplUpdate(camera_panorama_metadata_t &metadata)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_PANORAMA_DISPL_UPDATE;
+    msg.data.panoramaDisplUpdate.metadata = metadata;
+    mMessageQueue.send(&msg);
+}
+
+status_t CallbacksThread::handleMessagePanoramaDisplUpdate(MessagePanoramaDisplUpdate *msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    mCallbacks->panoramaDisplUpdate(msg->metadata);
+    return OK;
+}
+
+void CallbacksThread::panoramaSnapshot(AtomBuffer &livePreview)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_PANORAMA_SNAPSHOT;
+    msg.data.panoramaSnapshot.snapshot = livePreview;
+    mMessageQueue.send(&msg);
+}
+
+status_t CallbacksThread::handleMessagePanoramaSnapshot(MessagePanoramaSnapshot *msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    mCallbacks->panoramaSnapshot(msg->snapshot);
+    return OK;
+}
+
 status_t CallbacksThread::compressedFrameDone(AtomBuffer* jpegBuf, AtomBuffer* snapshotBuf, AtomBuffer* postviewBuf)
 {
     LOG1("@%s: ID = %d", __FUNCTION__, jpegBuf->id);
@@ -186,8 +218,9 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
         LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
         jpegBuf.buff->release(jpegBuf.buff);
         mJpegRequested--;
-        if (snapshotBuf.buff != NULL && postviewBuf.buff != NULL) {
-            // Return the raw buffers back to ISP
+        if ((snapshotBuf.buff != NULL && postviewBuf.buff != NULL) ||
+            snapshotBuf.type == ATOM_BUFFER_PANORAMA) {
+            // Return the raw buffers back to ControlThread
             mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
         }
     } else {
@@ -308,6 +341,14 @@ status_t CallbacksThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_SCENE_DETECTED:
             status = handleMessageSceneDetected(&msg.data.sceneDetected);
+            break;
+
+        case MESSAGE_ID_PANORAMA_DISPL_UPDATE:
+            status = handleMessagePanoramaDisplUpdate(&msg.data.panoramaDisplUpdate);
+            break;
+
+        case MESSAGE_ID_PANORAMA_SNAPSHOT:
+            status = handleMessagePanoramaSnapshot(&msg.data.panoramaSnapshot);
             break;
 
         default:

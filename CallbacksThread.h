@@ -22,6 +22,7 @@
 #include "MessageQueue.h"
 #include "AtomCommon.h"
 #include "IFaceDetectionListener.h"
+#include "intel_camera_extensions.h"
 
 namespace android {
 
@@ -69,6 +70,8 @@ public:
     virtual void facesDetected(camera_frame_metadata_t &face_metadata);
     status_t sceneDetected(int sceneMode, bool sceneHdr);
     void autofocusDone(bool status);
+    void panoramaDisplUpdate(camera_panorama_metadata_t &metadata);
+    void panoramaSnapshot(AtomBuffer &livePreview);
 
 // private types
 private:
@@ -84,6 +87,10 @@ private:
         MESSAGE_ID_FLUSH,
         MESSAGE_ID_FACES,
         MESSAGE_ID_SCENE_DETECTED,
+
+        // panorama callbacks
+        MESSAGE_ID_PANORAMA_SNAPSHOT,
+        MESSAGE_ID_PANORAMA_DISPL_UPDATE,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -117,6 +124,14 @@ private:
         bool sceneHdr;
     };
 
+    struct MessagePanoramaDisplUpdate {
+        camera_panorama_metadata_t metadata;
+    };
+
+    struct MessagePanoramaSnapshot {
+        AtomBuffer snapshot;
+    };
+
     // union of all message data
     union MessageData {
 
@@ -134,6 +149,12 @@ private:
 
         // MESSAGE_ID_SCENE_DETECTED
         MessageSceneDetected    sceneDetected;
+
+        // MESSAGE_ID_PANORAMA_SNAPSHOT
+        MessagePanoramaSnapshot panoramaSnapshot;
+
+        // MESSAGE_ID_PANORAMA_DISPL_UPDATE
+        MessagePanoramaDisplUpdate panoramaDisplUpdate;
     };
 
     // message id and message data
@@ -154,6 +175,8 @@ private:
     status_t handleMessageFlush();
     status_t handleMessageFaces(MessageFaces *msg);
     status_t handleMessageSceneDetected(MessageSceneDetected *msg);
+    status_t handleMessagePanoramaDisplUpdate(MessagePanoramaDisplUpdate *msg);
+    status_t handleMessagePanoramaSnapshot(MessagePanoramaSnapshot *msg);
 
     // main message function
     status_t waitForAndExecuteMessage();

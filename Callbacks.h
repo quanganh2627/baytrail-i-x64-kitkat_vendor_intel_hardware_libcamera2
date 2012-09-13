@@ -17,6 +17,7 @@
 #ifndef ANDROID_LIBCAMERA_CALLBACKS
 #define ANDROID_LIBCAMERA_CALLBACKS
 
+#include "intel_camera_extensions.h"
 #include <camera.h>
 #include <utils/threads.h>
 #include <utils/Timers.h>
@@ -61,6 +62,8 @@ public:
     void allocateMemory(camera_memory_t **buff, int size);
     void facesDetected(camera_frame_metadata_t &face_metadata);
     void sceneDetected(int sceneMode, bool sceneHdr);
+    void panoramaDisplUpdate(camera_panorama_metadata &metadata);
+    void panoramaSnapshot(AtomBuffer &livePreview);
     status_t storeMetaDataInBuffers(bool enabled);
 
 private:
@@ -71,6 +74,7 @@ private:
     void *mUserToken;
     uint32_t mMessageFlags;
     camera_memory_t* mDummyByte;
+    camera_memory_t* mPanoramaMetadata;
     bool mStoreMetaDataInBuffers;
 };
 

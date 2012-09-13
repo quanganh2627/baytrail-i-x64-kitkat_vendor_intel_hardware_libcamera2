@@ -65,6 +65,7 @@ enum AtomBufferType {
     ATOM_BUFFER_POSTVIEW,           /*!< Buffer contains a postview image (uncompressed) */
     ATOM_BUFFER_POSTVIEW_JPEG,      /*!< Buffer contains a postview image (JPEG) */
     ATOM_BUFFER_VIDEO,              /*!< Buffer contains a video frame  */
+    ATOM_BUFFER_PANORAMA,           /*!< Buffer contains a panorama image */
 };
 
 /*! \struct AtomBuffer
@@ -100,6 +101,27 @@ struct AtomBuffer {
                                              only used for PREVIEW_GFX type */
     buffer_handle_t *mNativeBufPtr;     /*!< native buffer handle from which the gfx data is derived by mapping */
 
+};
+
+extern timeval AtomBufferFactory_AtomBufDefTS; // default timestamp
+class AtomBufferFactory {
+public:
+    static AtomBuffer createAtomBuffer(AtomBufferType type = ATOM_BUFFER_PREVIEW_GFX,
+                           int format = V4L2_PIX_FMT_NV12,
+                           int width = 0,
+                           int height = 0,
+                           int stride = 0,
+                           int size = 0,
+                           IBufferOwner *owner = NULL,
+                           camera_memory_t *buff = NULL,
+                           camera_memory_t *metadata_buff = NULL,
+                           int id = 0,
+                           int frameCounter = 0,
+                           int ispPrivate = 0,
+                           bool shared = false,
+                           struct timeval capture_timestamp = AtomBufferFactory_AtomBufDefTS,
+                           void *gfxData = NULL,
+                           buffer_handle_t *mNativeBufPtr = NULL);
 };
 
 enum SensorType {

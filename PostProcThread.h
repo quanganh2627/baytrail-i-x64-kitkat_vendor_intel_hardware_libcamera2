@@ -23,6 +23,7 @@
 #include "FaceDetector.h"
 #include "MessageQueue.h"
 #include "IFaceDetector.h"
+#include "PanoramaThread.h"
 
 namespace android {
 
@@ -42,7 +43,7 @@ class PostProcThread : public IFaceDetector,
 
 // constructor/destructor
 public:
-    PostProcThread(ICallbackPostProc *postProcDone);
+    PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread);
     virtual ~PostProcThread();
 
 // Common methods
@@ -123,6 +124,7 @@ private:
 // private data
 private:
     FaceDetector* mFaceDetector;
+    PanoramaThread *mPanoramaThread;
     MessageQueue<Message, MessageId> mMessageQueue;
     int mLastReportedNumberOfFaces;
     Callbacks *mCallbacks;

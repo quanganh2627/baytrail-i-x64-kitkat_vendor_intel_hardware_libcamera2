@@ -27,10 +27,11 @@
 
 namespace android {
 
-PostProcThread::PostProcThread(ICallbackPostProc *postProcDone) :
+PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread) :
     IFaceDetector(CallbacksThread::getInstance())
     ,Thread(true) // callbacks may call into java
     ,mFaceDetector(NULL)
+    ,mPanoramaThread(panoramaThread)
     ,mMessageQueue("PostProcThread", (int) MESSAGE_ID_MAX)
     ,mLastReportedNumberOfFaces(0)
     ,mCallbacks(Callbacks::getInstance())
@@ -263,6 +264,10 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
             useFacesForAAA(face_metadata);
             mPostProcDoneCallback->facesDetected(&face_metadata);
         }
+    }
+    // panorama detection, running synchronously
+    if (mPanoramaThread->getState() == PANORAMA_DETECTING_OVERLAP) {
+        mPanoramaThread->sendFrame(frame.img);
     }
 
     // return buffer

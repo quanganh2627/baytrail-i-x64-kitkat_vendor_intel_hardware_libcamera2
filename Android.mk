@@ -21,7 +21,7 @@ LOCAL_SRC_FILES := \
 	PerformanceTraces.cpp \
 	Callbacks.cpp \
 	AtomAAA.cpp \
-        AtomDvs.cpp \
+	AtomDvs.cpp \
 	AtomHAL.cpp \
 	ColorConverter.cpp \
 	EXIFMaker.cpp \
@@ -37,6 +37,8 @@ LOCAL_SRC_FILES := \
 	OlaService/OlaBufferService.cpp \
 	OlaService/HalProxyOla.cpp \
 	PostProcThread.cpp \
+	PanoramaThread.cpp \
+	AtomCommon.cpp \
 	FaceDetector.cpp \
 	CameraDump.cpp \
 	CameraAreas.cpp
