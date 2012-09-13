@@ -739,6 +739,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     int format;
     State state;
     AtomMode mode;
+    bool isDVSActive = false;
 
     if (mState != STATE_STOPPED) {
         LOGE("Must be in STATE_STOPPED to start preview");
@@ -749,6 +750,9 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOG1("Starting preview in video mode");
         state = STATE_PREVIEW_VIDEO;
         mode = MODE_VIDEO;
+        if(isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED) &&
+           isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION))
+            isDVSActive = true;
     } else {
         LOG1("Starting preview in still mode");
         state = STATE_PREVIEW_STILL;
@@ -766,22 +770,19 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (videoMode) {
         mParameters.getVideoSize(&width, &height);
         mISP->setVideoFrameFormat(width, height);
-        if (isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED)) {
-            // Temporarily disable DVS for 1080P video recording cases only for CTP
-            // as ISP is not able to process that for 30FPS in CTP.
-            // There is a bug for ISP to track this restriction. Bz: 54607. Once that bug is fixed
-            // this restriction can be removed from HAL.
-            // TODO! Revisit when the ISP fixes the issue.
-#if defined(CTP_PR1) || defined(CTP_PR0) || defined(CTP_VV1)
-            if(isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION) && width < 1920)
-#else
-            if(isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION))
+        // Temporarily disable DVS for 1080P video recording cases only for CTP
+        // as ISP is not able to process that for 30FPS in CTP.
+        // There is a bug for ISP to track this restriction. Bz: 54607. Once that bug is fixed
+        // this restriction can be removed from HAL.
+        // TODO! Revisit when the ISP fixes the issue.
+#if defined(CTP_PR1) || defined(CTP_PR0) || defined(CTP_NOMODEM)
+        if(isDVSActive && width >= 1920)
+            isDVSActive = false;
 #endif
-                mISP->setDVS(true);
-            else
-                mISP->setDVS(false);
-        } else
-            LOGD("not supported video stabilization setting");
+
+        mISP->setDVS(isDVSActive);
+
+
     } else {
         mParameters.getPreviewSize(&width, &height);
     }
@@ -850,7 +851,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (mAAA->is3ASupported()) {
         if (mAAA->switchModeAndRate(mode, mISP->getFrameRate()) != NO_ERROR)
             LOGE("Failed switching 3A at %.2f fps", mISP->getFrameRate());
-        if (mode == MODE_VIDEO && mDvs->reconfigure() != NO_ERROR)
+        if (isDVSActive && mDvs->reconfigure() != NO_ERROR)
             LOGE("Failed to reconfigure DVS grid");
     }
 
@@ -862,7 +863,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             // Enable auto-focus by default
             mAAA->setAfEnabled(true);
             m3AThread->enable3A();
-            m3AThread->enableDVS(isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION));
+            m3AThread->enableDVS(isDVSActive);
         }
     } else {
         LOGE("Error starting ISP!");
