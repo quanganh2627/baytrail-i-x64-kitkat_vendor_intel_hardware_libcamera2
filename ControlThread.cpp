@@ -1202,7 +1202,7 @@ status_t ControlThread::skipFrames(size_t numFrames, size_t doBracket)
     return status;
 }
 
-/*
+/**
  *  For Exposure Bracketing, the applied exposure value will be available in
  *  current frame + 2. Therefore, in order to do a correct exposure bracketing
  *  we need to skip 2 frames. But, when burst-skip-frames parameter is set
@@ -1231,6 +1231,14 @@ status_t ControlThread::skipFrames(size_t numFrames, size_t doBracket)
  *  Explanation: for burst-skip-frames >= 2, it's enough to apply the exposure
  *  bracketing in the first skipped frame in order to get the applied exposure
  *  in the next real frame (see the timeline above).
+ *
+ *  Exposure Bracketing and HDR:
+ *  Currently there is an assumption in the HDR firmware in the ISP
+ *  that the order how the frames are presented to the algorithm have the following
+ *  exposures: MIN,0,MAX
+ *  If the order of the exposure bracketing changes HDR firmware needs to be
+ *  modified.
+ *  This was noticed when this changed from libcamera to libcamera2.
  */
 
 status_t ControlThread::initBracketing()
