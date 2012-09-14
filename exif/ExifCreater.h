@@ -80,6 +80,8 @@ public:
 
     exif_status setThumbData(const void *thumbBuf, unsigned int thumbSize);
 
+    bool isThumbDataSet() const;
+
     exif_status makeExif(void *exifOut,
                                exif_attribute_t *exifIn,
                                unsigned int *size);

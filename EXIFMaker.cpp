@@ -523,6 +523,11 @@ void EXIFMaker::setThumbnail(unsigned char *data, size_t size)
     }
 }
 
+bool EXIFMaker::isThumbnailSet() const {
+    LOG1("@%s", __FUNCTION__);
+    return encoder.isThumbDataSet();
+}
+
 size_t EXIFMaker::makeExif(unsigned char **data)
 {
     LOG1("@%s", __FUNCTION__);

@@ -128,53 +128,48 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         failback = true;
     }
 
-    // Convert and encode the thumbnail, if present and EXIF maker is initialized
-    if (mExifMaker.isInitialized() &&
-        thumbBuf != NULL &&
-        thumbBuf->buff != NULL &&
-        thumbBuf->buff->data != NULL &&
-        thumbBuf->buff->size > 0 &&
-        thumbBuf->width > 0 &&
-        thumbBuf->height > 0) {
-        // setup the JpegCompressor input and output buffers
-        inBuf.clear();
-        inBuf.buf = (unsigned char*)thumbBuf->buff->data;
-        inBuf.width = thumbBuf->width;
-        inBuf.height = thumbBuf->height;
-        inBuf.format = thumbBuf->format;
-        inBuf.size = frameSize(thumbBuf->format, thumbBuf->width, thumbBuf->height);
-        outBuf.clear();
-        outBuf.buf = (unsigned char*)mOutBuf.buff->data;
-        outBuf.width = thumbBuf->width;
-        outBuf.height = thumbBuf->height;
-        outBuf.quality = mThumbnailQuality;
-        outBuf.size = mOutBuf.buff->size;
-        int size(0);
-        do {
-            endTime = systemTime();
-            size = mCompressor.encode(inBuf, outBuf);
-            LOG1("Thumbnail JPEG size: %d (time to encode: %ums)", size, (unsigned)((systemTime() - endTime) / 1000000));
-            if (size > MAX_EXIF_SIZE) {
-                outBuf.quality = outBuf.quality - 5;
-                LOGD("Thumbnail JPEG size(%d) is too big. Recode with lower quality: %d", size, outBuf.quality);
-            }
-        } while (size > MAX_EXIF_SIZE);
-
-        if (size > 0) {
-            mExifMaker.setThumbnail(outBuf.buf, size);
-        } else {
-            // This is not critical, we can continue with main picture image
-            LOGE("Could not encode thumbnail stream!");
-        }
-    }
-
     if (mExifMaker.isInitialized()) {
         // Copy the SOI marker
         unsigned char* currentPtr = (unsigned char*)mExifBuf.buff->data;
         memcpy(currentPtr, JPEG_MARKER_SOI, sizeof(JPEG_MARKER_SOI));
         totalSize += sizeof(JPEG_MARKER_SOI);
         currentPtr += sizeof(JPEG_MARKER_SOI);
-        exifSize = mExifMaker.makeExif(&currentPtr);
+        // Convert and encode the thumbnail, if present
+        if (thumbBuf != NULL && thumbBuf->buff != NULL &&
+            thumbBuf->buff->data != NULL && thumbBuf->buff->size > 0 &&
+            thumbBuf->width > 0 && thumbBuf->height > 0) {
+            // setup the JpegCompressor input and output buffers
+            inBuf.clear();
+            inBuf.buf = (unsigned char*)thumbBuf->buff->data;
+            inBuf.width = thumbBuf->width;
+            inBuf.height = thumbBuf->height;
+            inBuf.format = thumbBuf->format;
+            inBuf.size = frameSize(thumbBuf->format, thumbBuf->width, thumbBuf->height);
+            outBuf.clear();
+            outBuf.buf = (unsigned char*)mOutBuf.buff->data;
+            outBuf.width = thumbBuf->width;
+            outBuf.height = thumbBuf->height;
+            outBuf.quality = mThumbnailQuality;
+            outBuf.size = mOutBuf.buff->size;
+            int size(0);
+
+            do {
+                endTime = systemTime();
+                size = mCompressor.encode(inBuf, outBuf);
+                LOG1("Thumbnail JPEG size: %d (time to encode: %ums)", size, (unsigned)((systemTime() - endTime) / 1000000));
+
+                if (size > 0) {
+                    mExifMaker.setThumbnail(outBuf.buf, size);
+                } else {
+                    // This is not critical, we can continue with main picture image
+                    LOGE("Could not encode thumbnail stream!");
+                }
+                exifSize = mExifMaker.makeExif(&currentPtr);
+                outBuf.quality = outBuf.quality - 5;
+            } while (exifSize > 0 && size > 0 && outBuf.quality > 0  && !mExifMaker.isThumbnailSet());
+        } else {
+            exifSize = mExifMaker.makeExif(&currentPtr);
+        }
         currentPtr += exifSize;
         totalSize += exifSize;
         // Copy the EOI marker

@@ -49,6 +49,7 @@ public:
     void pictureTaken();
     void enableFlash();
     void setThumbnail(unsigned char *data, size_t size);
+    bool isThumbnailSet() const;
     size_t makeExif(unsigned char **data);
 };
 

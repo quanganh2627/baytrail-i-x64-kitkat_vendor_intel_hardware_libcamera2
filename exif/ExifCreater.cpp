@@ -42,12 +42,20 @@ ExifCreater::~ExifCreater()
 
 exif_status ExifCreater::setThumbData (const void *thumbBuf, unsigned int thumbSize)
 {
-    if (thumbSize >= EXIF_SIZE_LIMITATION)
+    if (thumbSize >= EXIF_SIZE_LIMITATION) {
+        m_thumbBuf = NULL;
+        m_thumbSize = 0;
         return EXIF_FAIL;
+    }
 
     m_thumbBuf = (unsigned char *)thumbBuf;
     m_thumbSize = thumbSize;
     return EXIF_SUCCESS;
+}
+
+bool ExifCreater::isThumbDataSet() const
+{
+    return m_thumbBuf != NULL;
 }
 
 // if exif tags size + thumbnail size is > 64K, it will disable thumbnail
