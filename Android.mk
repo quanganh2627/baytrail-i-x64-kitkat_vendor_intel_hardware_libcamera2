@@ -104,8 +104,6 @@ else
 LOCAL_CFLAGS += -DMFLD_PR2
 endif
 
-LOCAL_STATIC_LIBRARIES := libia_dvs
-
 # enable R&D features only in R&D builds
 ifneq ($(filter userdebug eng tests, $(TARGET_BUILD_VARIANT)),)
 LOCAL_CFLAGS += -DLIBCAMERA_RD_FEATURES
