@@ -23,6 +23,8 @@
 #include <binder/MemoryHeapBase.h>
 #include <OlaService/IOlaBuffer.h>
 
+#define LOG_TAG "Camera_IOlaBuffer"
+
 namespace android {
 
 /* --- Client side --- */

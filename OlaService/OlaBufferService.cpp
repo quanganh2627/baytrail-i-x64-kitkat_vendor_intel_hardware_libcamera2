@@ -25,6 +25,7 @@
 #include "HalProxyOla.h"
 #include "OlaBufferService.h"
 
+#define LOG_TAG "Camera_OlaBufferService"
 
 android::HalProxyOla* gHAL = NULL;
 
