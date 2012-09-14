@@ -3610,6 +3610,8 @@ exitFreeRec:
 
 int AtomISP::dumpPreviewFrame(int previewIndex)
 {
+    LOG2("@%s", __FUNCTION__);
+
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_PREVIEW)) {
         CameraDump *cameraDump = CameraDump::getInstance();
         const struct v4l2_buffer_info *buf =
@@ -3627,7 +3629,7 @@ int AtomISP::dumpPreviewFrame(int previewIndex)
 
 int AtomISP::dumpRecordingFrame(int recordingIndex)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_VIDEO)) {
         CameraDump *cameraDump = CameraDump::getInstance();
         const struct v4l2_buffer_info *buf =
@@ -3642,7 +3644,7 @@ int AtomISP::dumpRecordingFrame(int recordingIndex)
 
 int AtomISP::dumpSnapshot(int snapshotIndex, int postviewIndex)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     if (CameraDump::isDumpImageEnable()) {
         CameraDump *cameraDump = CameraDump::getInstance();
         if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_SNAPSHOT)) {
