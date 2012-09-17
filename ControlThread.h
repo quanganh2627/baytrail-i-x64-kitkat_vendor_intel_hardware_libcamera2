@@ -37,6 +37,7 @@
 #include "PanoramaThread.h"
 #include "CameraDump.h"
 #include "CameraAreas.h"
+#include "AtomCP.h"
 
 namespace android {
 
@@ -541,6 +542,7 @@ private:
     AtomISP *mISP;
     AtomAAA *mAAA;
     AtomDvs *mDvs;
+    AtomCP  *mCP;
     sp<PreviewThread> mPreviewThread;
     sp<PictureThread> mPictureThread;
     sp<VideoThread> mVideoThread;

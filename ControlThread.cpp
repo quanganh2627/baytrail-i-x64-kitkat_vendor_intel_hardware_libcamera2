@@ -156,6 +156,12 @@ status_t ControlThread::init(int cameraId)
         goto bail;
     }
 
+    mCP = new AtomCP(mISP);
+    if (mCP == NULL) {
+        LOGE("error creating CP");
+        goto bail;
+    }
+
     CameraDump::setDumpDataFlag();
     if (CameraDump::isDumpImageEnable()) {
         mCameraDump = CameraDump::getInstance();
@@ -350,8 +356,13 @@ void ControlThread::deinit()
     if (mISP != NULL) {
         delete mISP;
     }
+
     if (mAAA != NULL) {
         delete mAAA;
+    }
+
+    if (mCP != NULL) {
+        delete mCP;
     }
 
     if (mCameraDump != NULL) {
@@ -4440,7 +4451,7 @@ status_t ControlThread::hdrInit(int size, int pvSize, int format,
         return NO_MEMORY;
     }
 
-    status = AtomAAA::setIaFrameFormat(&mHdr.ciBufOut.ciMainBuf[0], format);
+    status = AtomCP::setIaFrameFormat(&mHdr.ciBufOut.ciMainBuf[0], format);
     if (status != NO_ERROR) {
         LOGE("HDR: pixel format %d not supported", format);
         return status;
@@ -4465,7 +4476,7 @@ status_t ControlThread::hdrInit(int size, int pvSize, int format,
     mHdr.ciBufOut.ciPostviewBuf[0].width = mHdr.outPostviewBuf.width = pvWidth;
     mHdr.ciBufOut.ciPostviewBuf[0].stride = mHdr.outPostviewBuf.stride = pvWidth;
     mHdr.ciBufOut.ciPostviewBuf[0].height = mHdr.outPostviewBuf.height = pvHeight;
-    AtomAAA::setIaFrameFormat(&mHdr.ciBufOut.ciPostviewBuf[0], format);
+    AtomCP::setIaFrameFormat(&mHdr.ciBufOut.ciPostviewBuf[0], format);
     mHdr.outPostviewBuf.format = format;
     mHdr.ciBufOut.ciPostviewBuf[0].size = mHdr.outPostviewBuf.size = pvSize;
 
@@ -4495,7 +4506,7 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].stride = snapshotBuffer->width;
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height = snapshotBuffer->height;
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].size = snapshotBuffer->size;
-    AtomAAA::setIaFrameFormat(&mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum], snapshotBuffer->format);
+    AtomCP::setIaFrameFormat(&mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum], snapshotBuffer->format);
 
     LOG1("HDR: Initialized input CI main     buff %d @%p: (addr=%p, length=%d, width=%d, height=%d, format=%d)",
             mBurstCaptureNum,
@@ -4510,7 +4521,7 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].width = postviewBuffer->width;
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height = postviewBuffer->height;
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].size = postviewBuffer->size;
-    AtomAAA::setIaFrameFormat(&mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum], postviewBuffer->format);
+    AtomCP::setIaFrameFormat(&mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum], postviewBuffer->format);
 
     LOG1("HDR: Initialized input CI postview buff %d @%p: (addr=%p, length=%d, width=%d, height=%d, format=%d)",
             mBurstCaptureNum,
@@ -4521,7 +4532,7 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height,
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].format);
 
-    return mAAA->computeCDF(mHdr.ciBufIn, mBurstCaptureNum);
+    return mCP->computeCDF(mHdr.ciBufIn, mBurstCaptureNum);
 }
 
 void ControlThread::hdrRelease()
@@ -4575,7 +4586,7 @@ status_t ControlThread::hdrCompose()
     }
 
     bool doEncode = false;
-    status = mAAA->composeHDR(mHdr.ciBufIn, mHdr.ciBufOut, mHdr.vividness, mHdr.sharpening);
+    status = mCP->composeHDR(mHdr.ciBufIn, mHdr.ciBufOut, mHdr.vividness, mHdr.sharpening);
     if (status == NO_ERROR) {
         mHdr.outMainBuf.width = mHdr.ciBufOut.ciMainBuf->width;
         mHdr.outMainBuf.height = mHdr.ciBufOut.ciMainBuf->height;

@@ -3599,6 +3599,35 @@ int AtomISP::unsetFirmwareArgument(unsigned int fwHandle, unsigned int num)
     return ret;
 }
 
+int AtomISP::startFirmware(unsigned int fwHandle)
+{
+    int ret;
+    ret = ioctl(main_fd, ATOMISP_IOC_ACC_START, &fwHandle);
+    LOG1("%s IOCTL ATOMISP_IOC_ACC_START ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::waitForFirmware(unsigned int fwHandle)
+{
+    int ret;
+    ret = ioctl(main_fd, ATOMISP_IOC_ACC_WAIT, &fwHandle);
+    LOG1("%s IOCTL ATOMISP_IOC_ACC_WAIT ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::abortFirmware(unsigned int fwHandle, unsigned int timeout)
+{
+    int ret;
+    atomisp_acc_fw_abort abort;
+
+    abort.fw_handle = fwHandle;
+    abort.timeout = timeout;
+
+    ret = ioctl(main_fd, ATOMISP_IOC_ACC_ABORT, &abort);
+    LOG1("%s IOCTL ATOMISP_IOC_ACC_ABORT ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
 status_t AtomISP::storeMetaDataInBuffers(bool enabled)
 {
     LOG1("@%s: enabled = %d", __FUNCTION__, enabled);

@@ -48,6 +48,10 @@ LOCAL_SRC_FILES += \
 	JpegHwEncoder.cpp
 endif
 
+ifeq ($(USE_INTEL_CAMERA_EXTRAS),true)
+LOCAL_SRC_FILES += AtomCP.cpp
+endif
+
 LOCAL_C_INCLUDES += \
 	frameworks/base/include \
 	frameworks/base/include/binder \

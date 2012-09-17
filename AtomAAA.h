@@ -122,18 +122,6 @@ enum FlashStage
     CAM_FLASH_STAGE_MAIN
 };
 
-enum HdrSharpening {
-    NO_SHARPENING = 0,
-    NORMAL_SHARPENING,
-    STRONG_SHARPENING
-};
-
-enum HdrVividness {
-    NO_VIVIDNESS = 0,
-    GAUSSIAN_VIVIDNESS,
-    GAMMA_VIVIDNESS
-};
-
 #define DEFAULT_GBCE            true
 #define DEFAULT_GBCE_STRENGTH   0
 #define MAX_TIME_FOR_AF         2000 // milliseconds
@@ -157,13 +145,6 @@ struct SensorAeConfig
     int aecApexSv;
     int aecApexAv;
     float digitalGain;
-};
-
-struct CiUserBuffer {
-    ia_frame *ciMainBuf;
-    ia_frame *ciPostviewBuf;
-    ia_cp_histogram *hist;
-    size_t ciBufNum;
 };
 
 /**
@@ -268,9 +249,6 @@ public:
     // ISP processing functions
     status_t apply3AProcess(bool read_stats,
         struct timeval capture_timestamp);
-    status_t computeCDF(const CiUserBuffer& inputBuf, size_t bufIndex);
-    status_t composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& outputBuf, unsigned vividness, unsigned sharpening);
-    static status_t setIaFrameFormat(ia_frame *inputBuf, int v4l2Format);
 
     status_t startStillAf();
     status_t stopStillAf();

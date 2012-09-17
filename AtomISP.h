@@ -154,6 +154,9 @@ public:
    int setFirmwareArgument(unsigned int fwHandle, unsigned int num,
                            void *val, size_t size);
    int unsetFirmwareArgument(unsigned int fwHandle, unsigned int num);
+   int startFirmware(unsigned int fwHandle);
+   int waitForFirmware(unsigned int fwHandle);
+   int abortFirmware(unsigned int fwHandle, unsigned int timeout);
 
    // Enable metadata buffer mode API
    status_t storeMetaDataInBuffers(bool enabled);
