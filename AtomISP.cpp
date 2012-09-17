@@ -3190,6 +3190,11 @@ status_t AtomISP::allocateRecordingBuffers()
         allocatedBufs++;
         v4l2_buf_pool[mRecordingDevice].bufs[i].data = mRecordingBuffers[i].buff->data;
         mRecordingBuffers[i].shared = false;
+        mRecordingBuffers[i].width = mConfig.recording.width;
+        mRecordingBuffers[i].height = mConfig.recording.height;
+        mRecordingBuffers[i].size = mConfig.recording.size;
+        mRecordingBuffers[i].stride = mConfig.recording.padding;
+        mRecordingBuffers[i].format = mConfig.recording.format;
     }
     return status;
 
@@ -3256,6 +3261,7 @@ status_t AtomISP::allocateSnapshotBuffers()
             status = NO_MEMORY;
             goto errorFree;
         }
+        mPostviewBuffers[i].type = ATOM_BUFFER_POSTVIEW;
         allocatedPostviewBufs++;
         v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[i].data = mPostviewBuffers[i].buff->data;
         mPostviewBuffers[i].shared = false;
