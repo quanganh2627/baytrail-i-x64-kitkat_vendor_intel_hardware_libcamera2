@@ -132,6 +132,7 @@ private:
     status_t encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, AtomBuffer *destBuf);
     status_t allocateInputBuffers(int width, int height, int numBufs);
     void     freeInputBuffers();
+    int      encodeExifAndThumbnail(AtomBuffer *thumbnail, unsigned char* exifDst);
 
 // inherited from Thread
 private:

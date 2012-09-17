@@ -128,48 +128,22 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         failback = true;
     }
 
-    if (mExifMaker.isInitialized()) {
+    // Convert and encode the thumbnail, if present and EXIF maker is initialized
+    if (mExifMaker.isInitialized())
+    {
         // Copy the SOI marker
         unsigned char* currentPtr = (unsigned char*)mExifBuf.buff->data;
         memcpy(currentPtr, JPEG_MARKER_SOI, sizeof(JPEG_MARKER_SOI));
         totalSize += sizeof(JPEG_MARKER_SOI);
         currentPtr += sizeof(JPEG_MARKER_SOI);
-        // Convert and encode the thumbnail, if present
-        if (thumbBuf != NULL && thumbBuf->buff != NULL &&
-            thumbBuf->buff->data != NULL && thumbBuf->buff->size > 0 &&
-            thumbBuf->width > 0 && thumbBuf->height > 0) {
-            // setup the JpegCompressor input and output buffers
-            inBuf.clear();
-            inBuf.buf = (unsigned char*)thumbBuf->buff->data;
-            inBuf.width = thumbBuf->width;
-            inBuf.height = thumbBuf->height;
-            inBuf.format = thumbBuf->format;
-            inBuf.size = frameSize(thumbBuf->format, thumbBuf->width, thumbBuf->height);
-            outBuf.clear();
-            outBuf.buf = (unsigned char*)mOutBuf.buff->data;
-            outBuf.width = thumbBuf->width;
-            outBuf.height = thumbBuf->height;
-            outBuf.quality = mThumbnailQuality;
-            outBuf.size = mOutBuf.buff->size;
-            int size(0);
 
-            do {
-                endTime = systemTime();
-                size = mCompressor.encode(inBuf, outBuf);
-                LOG1("Thumbnail JPEG size: %d (time to encode: %ums)", size, (unsigned)((systemTime() - endTime) / 1000000));
-
-                if (size > 0) {
-                    mExifMaker.setThumbnail(outBuf.buf, size);
-                } else {
-                    // This is not critical, we can continue with main picture image
-                    LOGE("Could not encode thumbnail stream!");
-                }
-                exifSize = mExifMaker.makeExif(&currentPtr);
-                outBuf.quality = outBuf.quality - 5;
-            } while (exifSize > 0 && size > 0 && outBuf.quality > 0  && !mExifMaker.isThumbnailSet());
-        } else {
+        exifSize = encodeExifAndThumbnail(thumbBuf, currentPtr);
+        if (exifSize == 0) {
+            // This is not critical, we can continue with main picture image
+            LOGW("Could not encode thumbnail stream!");
             exifSize = mExifMaker.makeExif(&currentPtr);
         }
+
         currentPtr += exifSize;
         totalSize += exifSize;
         // Copy the EOI marker
@@ -573,6 +547,77 @@ void PictureThread::freeInputBuffers()
        delete [] mInputBuffDataArray;
        mInputBuffDataArray = NULL;
     }
+}
+
+/**
+ * Encode Thumbnail picture into mOutBuf
+ * and encode the Exif data into buffer exifDst
+ * returns encoded size if successful or
+ * zero if encoding failed
+ */
+int PictureThread::encodeExifAndThumbnail(AtomBuffer *thumbBuf, unsigned char* exifDst)
+{
+    LOG1("@%s", __FUNCTION__);
+    int size = 0;
+    int exifSize = 0;
+    nsecs_t endTime;
+    JpegCompressor::InputBuffer inBuf;
+    JpegCompressor::OutputBuffer outBuf;
+
+    if (thumbBuf == NULL || exifDst == NULL)
+        goto exit;
+
+    if (thumbBuf->type == ATOM_BUFFER_PREVIEW_GFX)
+    {
+        if (thumbBuf->gfxData == NULL) {
+           LOGW("Emtpy preview buffer was sent as thumbnail");
+           goto exit;
+        } else {
+           inBuf.buf = (unsigned char*)thumbBuf->gfxData;
+        }
+    } else
+    {
+        if (thumbBuf->buff != NULL &&
+            thumbBuf->buff->data == NULL) {
+            LOGW("Emtpy buffer was sent for thumbnail");
+            goto exit;
+        } else {
+            inBuf.buf = (unsigned char*)thumbBuf->buff->data;
+        }
+    }
+
+    if (thumbBuf->width > 0 &&
+        thumbBuf->height > 0) {
+
+        // setup the JpegCompressor input and output buffers
+        inBuf.width = thumbBuf->width;
+        inBuf.height = thumbBuf->height;
+        inBuf.format = thumbBuf->format;
+        inBuf.size = frameSize(thumbBuf->format, thumbBuf->width, thumbBuf->height);
+
+        outBuf.buf = (unsigned char*)mOutBuf.buff->data;
+        outBuf.width = thumbBuf->width;
+        outBuf.height = thumbBuf->height;
+        outBuf.quality = mThumbnailQuality;
+        outBuf.size = mOutBuf.buff->size;
+
+        do {
+            endTime = systemTime();
+            size = mCompressor.encode(inBuf, outBuf);
+            LOG1("Thumbnail JPEG size: %d (time to encode: %ums)", size, (unsigned)((systemTime() - endTime) / 1000000));
+            if (size > 0) {
+                mExifMaker.setThumbnail(outBuf.buf, size);
+            } else {
+                // This is not critical, we can continue with main picture image
+                LOGE("Could not encode thumbnail stream!");
+            }
+            exifSize = mExifMaker.makeExif(&exifDst);
+            outBuf.quality = outBuf.quality - 5;
+
+        } while (exifSize > 0 && size > 0 && outBuf.quality > 0  && !mExifMaker.isThumbnailSet());
+    }
+exit:
+    return exifSize;
 }
 
 status_t PictureThread::handleMessageWait()
