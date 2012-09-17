@@ -1996,26 +1996,27 @@ status_t AtomISP::setGDC(bool enable)
 status_t AtomISP::setLightFrequency(FlickerMode mode) {
 
     LOG1("@%s: %d", __FUNCTION__, (int) mode);
-    status_t status = NO_ERROR;
-    int ret = 0;
-    ia_3a_ae_flicker_mode theMode;
+    status_t status(NO_ERROR);
+    int ret(0);
+    v4l2_power_line_frequency theMode(V4L2_CID_POWER_LINE_FREQUENCY_DISABLED);
 
     if (mSensorType != SENSOR_TYPE_RAW) {
 
         switch(mode) {
         case CAM_AE_FLICKER_MODE_50HZ:
-            theMode = ia_3a_ae_flicker_mode_50hz;
+            theMode = V4L2_CID_POWER_LINE_FREQUENCY_50HZ;
             break;
         case CAM_AE_FLICKER_MODE_60HZ:
-            theMode = ia_3a_ae_flicker_mode_60hz;
-            break;
-        case CAM_AE_FLICKER_MODE_AUTO:
-            theMode = ia_3a_ae_flicker_mode_auto;
+            theMode = V4L2_CID_POWER_LINE_FREQUENCY_60HZ;
             break;
         case CAM_AE_FLICKER_MODE_OFF:
-        default:
-            theMode = ia_3a_ae_flicker_mode_off;
+            theMode = V4L2_CID_POWER_LINE_FREQUENCY_DISABLED;
             break;
+        case CAM_AE_FLICKER_MODE_AUTO: //no corresponding v4l2_power_line_frequency
+        default:
+            LOGE("unsupported light frequency mode(%d)", (int) mode);
+            status = BAD_VALUE;
+            return status;
         }
         ret = atomisp_set_attribute(main_fd, V4L2_CID_POWER_LINE_FREQUENCY,
                                     theMode, "light frequency");
