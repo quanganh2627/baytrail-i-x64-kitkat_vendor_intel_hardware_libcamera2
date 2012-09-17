@@ -503,11 +503,13 @@ private:
 
     // Capture Flow helpers
     status_t getFlashExposedSnapshot(AtomBuffer *snaphotBuffer, AtomBuffer *postviewBuffer);
-    void fillPicMetaData(PictureThread::MetaData &metadata, bool flashFired);
+    void     fillPicMetaData(PictureThread::MetaData &metadata, bool flashFired);
 
     status_t captureStillPic();
     status_t captureBurstPic(bool clientRequest);
     status_t capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffer &postviewBuffer);
+    status_t captureVideoSnap(void);
+    void     encodeVideoSnapshot(int buffId);
 
     status_t updateSpotWindow(const int &width, const int &height);
 
@@ -582,6 +584,7 @@ private:
                                          set to false when we receive the start preview command
                                          set to true when the first preview frame is returned to
                                          ControlThread */
+    int mVideoSnapshotrequested;    /*!< number of video snapshots requested */
 }; // class ControlThread
 
 }; // namespace android

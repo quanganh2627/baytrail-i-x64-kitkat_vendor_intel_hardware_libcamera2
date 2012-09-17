@@ -218,7 +218,7 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
         LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
         jpegBuf.buff->release(jpegBuf.buff);
         mJpegRequested--;
-        if ((snapshotBuf.buff != NULL && postviewBuf.buff != NULL) ||
+        if ((snapshotBuf.buff != NULL && (postviewBuf.buff != NULL || postviewBuf.gfxData != NULL)) ||
             snapshotBuf.type == ATOM_BUFFER_PANORAMA) {
             // Return the raw buffers back to ControlThread
             mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);

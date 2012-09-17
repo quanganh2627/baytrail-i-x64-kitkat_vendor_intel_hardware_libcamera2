@@ -26,6 +26,10 @@ namespace android {
 
 static const unsigned char JPEG_MARKER_SOI[2] = {0xFF, 0xD8}; // JPEG StartOfImage marker
 static const unsigned char JPEG_MARKER_EOI[2] = {0xFF, 0xD9}; // JPEG EndOfImage marker
+static const int SIZE_OF_APP0_MARKER = 18;      /* Size of the JFIF App0 marker
+                                                 * This is introduced by SW encoder after
+                                                 * SOI. And sometimes needs to be removed
+                                                 */
 
 PictureThread::PictureThread() :
     Thread(true) // callbacks may call into java
@@ -191,9 +195,10 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
           // Copy EXIF (it will also have the SOI and EOI markers)
           memcpy(destBuf->buff->data, mExifBuf.buff->data, exifSize);
           // Copy the final JPEG stream into the final destination buffer
-          // avoid the copying the SOI and SOF markers
+          // avoid the copying the SOI and APP0
           char *copyTo = (char*)destBuf->buff->data + exifSize;
-          char *copyFrom = (char*)mOutBuf.buff->data + 2 * sizeof(JPEG_MARKER_SOI);
+          char *copyFrom = (char*)mOutBuf.buff->data + sizeof(JPEG_MARKER_SOI) + SIZE_OF_APP0_MARKER;
+          int copyBytes = mainSize - sizeof(JPEG_MARKER_SOI) - SIZE_OF_APP0_MARKER;
           memcpy(copyTo, copyFrom, mainSize);
 
           destBuf->id = mainBuf->id;
@@ -246,7 +251,9 @@ status_t PictureThread::encode(MetaData &metaData, AtomBuffer *snaphotBuf, AtomB
         msg.data.encode.postviewBuf = *postviewBuf;
     } else {
         // thumbnail is optional
+        LOG1("@%s, encoding without Thumbnail", __FUNCTION__);
         msg.data.encode.postviewBuf.buff = NULL;
+        msg.data.encode.postviewBuf.gfxData = NULL;
     }
     return mMessageQueue.send(&msg);
 }
@@ -406,7 +413,12 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
     setupExifWithMetaData(msg->metaData);
 
     // Encode the image
-    AtomBuffer *postviewBuf = msg->postviewBuf.buff == NULL ? NULL : &msg->postviewBuf;
+    AtomBuffer *postviewBuf;
+    if(msg->postviewBuf.buff == NULL && msg->postviewBuf.gfxData == NULL)
+        postviewBuf = NULL;
+    else
+        postviewBuf = &msg->postviewBuf;
+
     status = encodeToJpeg(&msg->snaphotBuf, postviewBuf, &jpegBuf);
     if (status != NO_ERROR) {
         LOGE("Error generating JPEG image!");
@@ -611,6 +623,7 @@ int PictureThread::encodeExifAndThumbnail(AtomBuffer *thumbBuf, unsigned char* e
                 // This is not critical, we can continue with main picture image
                 LOGE("Could not encode thumbnail stream!");
             }
+
             exifSize = mExifMaker.makeExif(&exifDst);
             outBuf.quality = outBuf.quality - 5;
 

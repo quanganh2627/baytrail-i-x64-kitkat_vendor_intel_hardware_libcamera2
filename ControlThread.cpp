@@ -104,6 +104,7 @@ ControlThread::ControlThread() :
     ,mMeteringAreas()
     ,mAAAFlags(AAA_FLAG_ALL)
     ,mIsPreviewStartComplete(false)
+    ,mVideoSnapshotrequested(0)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -1038,6 +1039,8 @@ status_t ControlThread::handleMessageStartRecording()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     AeMode aeMode = CAM_AE_MODE_NOT_SET;
+    int width,height;
+    char sizes[25];
 
     if (mState == STATE_PREVIEW_VIDEO) {
         mState = STATE_RECORDING;
@@ -1054,6 +1057,26 @@ status_t ControlThread::handleMessageStartRecording()
         LOGE("Error starting recording. Invalid state!");
         status = INVALID_OPERATION;
     }
+
+   /* Change the snapshot size and thumbnail size as per current video
+    * snapshot limitations.
+    * Only supported size is the size of the video
+    * and thumbnail size is the size of preview.
+    */
+    mParameters.getVideoSize(&width, &height);
+    mParameters.setPictureSize(width, height);
+    allocateSnapshotBuffers();
+    snprintf(sizes, 25, "%dx%d", width,height);
+    mParameters.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, sizes);
+
+    LOG1("video snapshot size %dx%d", width, height);
+    mParameters.getPreviewSize(&width, &height);
+    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH, width);
+    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT, height);
+
+    snprintf(sizes, 25, "%dx%d,0x0", width,height);
+    mParameters.set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES, sizes);
+    updateParameterCache();
 
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_START_RECORDING, status);
@@ -1475,6 +1498,9 @@ status_t ControlThread::handleMessageTakePicture() {
             break;
 
         case STATE_RECORDING:
+            status = captureVideoSnap();
+            break;
+
         default:
             LOGE("Taking picture when recording is not supported!");
             status = INVALID_OPERATION;
@@ -2022,6 +2048,57 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     }
 
     return status;
+}
+
+status_t ControlThread::captureVideoSnap()
+{
+    LOG1("@%s: ", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    mCallbacksThread->requestTakePicture(true, true);
+
+    // Configure PictureThread
+    mPictureThread->initialize(mParameters);
+
+    /* Request a new video snapshot in the next capture cycle
+     * In the next call of dequeuePreview we will send the preview
+     * and recording frame to encode
+     */
+    mVideoSnapshotrequested++;
+
+    return status;
+}
+
+void ControlThread::encodeVideoSnapshot(int buffId)
+{
+    LOG1("@%s: ", __FUNCTION__);
+    PictureThread::MetaData aDummyMetaData;
+    int pvWidth,pvHeight;
+    AtomBuffer* postViewBuf;
+
+    fillPicMetaData(aDummyMetaData, false);
+    LOG1("Encoding a video snapshot couple buf id:%d", buffId);
+    LOG2("snapshot size %dx%d stride %d format %d", mCoupledBuffers[buffId].recordingBuff.width
+            ,mCoupledBuffers[buffId].recordingBuff.height
+            ,mCoupledBuffers[buffId].recordingBuff.stride
+            ,mCoupledBuffers[buffId].recordingBuff.format);
+
+    mCoupledBuffers[buffId].videoSnapshotBuff = true;
+    mCoupledBuffers[buffId].videoSnapshotBuffReturned = false;
+    mCallbacksThread->shutterSound();
+
+    pvWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
+    pvHeight= mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
+    if ((pvWidth == 0) && (pvHeight == 0)) {
+        postViewBuf = NULL;
+    }  else {
+        postViewBuf =  &(mCoupledBuffers[buffId].previewBuff);
+    }
+
+    mPictureThread->encode(aDummyMetaData,
+                           &(mCoupledBuffers[buffId].recordingBuff),
+                           postViewBuf);
+
 }
 
 status_t ControlThread::updateSpotWindow(const int &width, const int &height)
@@ -4791,6 +4868,10 @@ status_t ControlThread::dequeuePreview()
         if (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING) {
             mCoupledBuffers[buff.id].previewBuff = buff;
             mCoupledBuffers[buff.id].previewBuffReturned = false;
+            if(mVideoSnapshotrequested) {
+                mVideoSnapshotrequested--;
+                encodeVideoSnapshot(buff.id);
+            }
         }
         if (mAAA->is3ASupported()) {
             status = m3AThread->newFrame(buff.capture_timestamp);
