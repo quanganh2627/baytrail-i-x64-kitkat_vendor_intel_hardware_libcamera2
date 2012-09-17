@@ -288,6 +288,10 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
             trimConvertNV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
             break;
 
+        case V4L2_PIX_FMT_RGB565:
+            trimConvertNV12ToRGB565(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+            break;
+
         default:
             LOGE("invalid foramt: %d", mPreviewFormat);
             status = -1;

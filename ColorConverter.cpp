@@ -79,78 +79,73 @@ void YUV420ToRGB565(int width, int height, void *src, void *dst)
     }
 }
 
-void NV12ToRGB565(int width, int height, void *src, void *dst)
+void trimConvertNV12ToRGB565(int width, int height, int padding_width, void *src, void *dst)
 {
 
     unsigned char *yuvs = (unsigned char *) src;
     unsigned char *rgbs = (unsigned char *) dst;
 
     //the end of the luminance data
-    int lumEnd = width * height;
+    int lumEnd = padding_width * height;
     //points to the next luminance value pair
     int lumPtr = 0;
     //points to the next chromiance value pair
-    int chrPtr = lumEnd;
-    //points to the next byte output pair of RGB565 value
-    int outPtr = 0;
-    //the end of the current luminance scanline
-    int lineEnd = width;
+    int chrPtr = 0;
 
-    while (true) {
-        //skip back to the start of the chromiance values when necessary
-        if (lumPtr == lineEnd) {
-            if (lumPtr == lumEnd) break; //we've reached the end
-            //division here is a bit expensive, but's only done once per scanline
-            chrPtr = lumEnd + ((lumPtr  >> 1) / width) * width;
-            lineEnd += width;
+    int i = 0, j = 0;
+
+    for( i=0; i < height; i++) {
+        lumPtr = i * padding_width;
+        chrPtr = i / 2 * padding_width + lumEnd;
+        for ( j=0; j < width; j+=2 ) {
+            //read the luminance and chromiance values
+            int Y1 = yuvs[lumPtr++] & 0xff;
+            int Y2 = yuvs[lumPtr++] & 0xff;
+            int Cb = (yuvs[chrPtr++] & 0xff) - 128;
+            int Cr = (yuvs[chrPtr++] & 0xff) - 128;
+            int R, G, B;
+
+            //generate first RGB components
+            B = Y1 + ((454 * Cb) >> 8);
+            if(B < 0) B = 0; else if(B > 255) B = 255;
+            G = Y1 - ((88 * Cb + 183 * Cr) >> 8);
+            if(G < 0) G = 0; else if(G > 255) G = 255;
+            R = Y1 + ((359 * Cr) >> 8);
+            if(R < 0) R = 0; else if(R > 255) R = 255;
+            //NOTE: this assume little-endian encoding
+            *rgbs++ = (unsigned char) (((G & 0x3c) << 3) | (B >> 3));
+            *rgbs++ = (unsigned char) ((R & 0xf8) | (G >> 5));
+
+            //generate second RGB components
+            B = Y2 + ((454 * Cb) >> 8);
+            if(B < 0) B = 0; else if(B > 255) B = 255;
+            G = Y2 - ((88 * Cb + 183 * Cr) >> 8);
+            if(G < 0) G = 0; else if(G > 255) G = 255;
+            R = Y2 + ((359 * Cr) >> 8);
+            if(R < 0) R = 0; else if(R > 255) R = 255;
+            //NOTE: this assume little-endian encoding
+            *rgbs++ = (unsigned char) (((G & 0x3c) << 3) | (B >> 3));
+            *rgbs++ = (unsigned char) ((R & 0xf8) | (G >> 5));
         }
-        //read the luminance and chromiance values
-        int Y1 = yuvs[lumPtr++] & 0xff;
-        int Y2 = yuvs[lumPtr++] & 0xff;
-        int Cb = (yuvs[chrPtr++] & 0xff) - 128;
-        int Cr = (yuvs[chrPtr++] & 0xff) - 128;
-        int R, G, B;
-
-        //generate first RGB components
-        B = Y1 + ((454 * Cb) >> 8);
-        if(B < 0) B = 0; else if(B > 255) B = 255;
-        G = Y1 - ((88 * Cb + 183 * Cr) >> 8);
-        if(G < 0) G = 0; else if(G > 255) G = 255;
-        R = Y1 + ((359 * Cr) >> 8);
-        if(R < 0) R = 0; else if(R > 255) R = 255;
-        //NOTE: this assume little-endian encoding
-        rgbs[outPtr++]  = (unsigned char) (((G & 0x3c) << 3) | (B >> 3));
-        rgbs[outPtr++]  = (unsigned char) ((R & 0xf8) | (G >> 5));
-
-        //generate second RGB components
-        B = Y2 + ((454 * Cb) >> 8);
-        if(B < 0) B = 0; else if(B > 255) B = 255;
-        G = Y2 - ((88 * Cb + 183 * Cr) >> 8);
-        if(G < 0) G = 0; else if(G > 255) G = 255;
-        R = Y2 + ((359 * Cr) >> 8);
-        if(R < 0) R = 0; else if(R > 255) R = 255;
-        //NOTE: this assume little-endian encoding
-        rgbs[outPtr++]  = (unsigned char) (((G & 0x3c) << 3) | (B >> 3));
-        rgbs[outPtr++]  = (unsigned char) ((R & 0xf8) | (G >> 5));
     }
 }
 
 // covert NV12 (Y plane, interlaced UV bytes) to
 // NV21 (Y plane, interlaced VU bytes) and trim stride width to real width
-void trimConvertNV12ToNV21(int width, int height, int src_stride, void *src, void *dst)
+void trimConvertNV12ToNV21(int width, int height, int padding_width, void *src, void *dst)
 {
     const int ysize = width * height;
     unsigned const char *pSrc = (unsigned char *)src;
     unsigned char *pDst = (unsigned char *)dst;
 
     // Copy Y component
-    if (src_stride == width) {
+    if (padding_width == width) {
         memcpy(pDst, pSrc, ysize);
-    } else if (src_stride > width) {
+    } else if (padding_width > width) {
         int j = height;
         while(j--) {
             memcpy(pDst, pSrc, width);
-            pSrc += src_stride;
+            pSrc += padding_width;
             pDst += width;
         }
     } else {
@@ -159,7 +154,7 @@ void trimConvertNV12ToNV21(int width, int height, int src_stride, void *src, voi
     }
 
     // Convert UV to VU
-    pSrc = (unsigned char *)src + src_stride * height;
+    pSrc = (unsigned char *)src + padding_width * height;
     pDst = (unsigned char *)dst + width * height;
     for (int j = 0; j < height / 2; j++) {
         if (width >= 16) {
@@ -242,13 +237,13 @@ void trimConvertNV12ToNV21(int width, int height, int src_stride, void *src, voi
             }
         }
         pDst += width;
-        pSrc += src_stride;
+        pSrc += padding_width;
     }
 }
 
 // covert NV12 (Y plane, interlaced UV bytes) to
 // YV12 (Y plane, V plane, U plane) and trim stride width to real width
-void trimConvertNV12ToYV12(int width, int height, int src_stride, void *src, void *dst)
+void trimConvertNV12ToYV12(int width, int height, int padding_width, void *src, void *dst)
 {
     int planeSizeY = width * height;
     int planeSizeUV = planeSizeY / 2;
@@ -260,13 +255,13 @@ void trimConvertNV12ToYV12(int width, int height, int src_stride, void *src, voi
     unsigned char *dstPtrU = (unsigned char *) dst + planeSizeY + planeUOffset;
 
     // copy the entire Y plane
-    if (src_stride == width)
+    if (padding_width == width)
         memcpy(dstPtr, src, planeSizeY);
-    else if (src_stride > width) {
+    else if (padding_width > width) {
         i = height;
         while (i--) {
             memcpy(dstPtr, srcPtr, width);
-            srcPtr += src_stride;
+            srcPtr += padding_width;
             dstPtr += width;
         }
     } else {
@@ -280,7 +275,7 @@ void trimConvertNV12ToYV12(int width, int height, int src_stride, void *src, voi
             *dstPtrV++ = srcPtr[j + 1];
             *dstPtrU++ = srcPtr[j];
         }
-        srcPtr += src_stride;
+        srcPtr += padding_width;
     }
 }
 
@@ -343,6 +338,10 @@ int V4L2Format(const char *cameraParamsFormat)
     len = strlen(CameraParameters::PIXEL_FORMAT_YUV420P);
     if (strncmp(cameraParamsFormat, CameraParameters::PIXEL_FORMAT_YUV420P, len) == 0)
         return V4L2_PIX_FMT_YUV420;
+
+    len = strlen(CameraParameters::PIXEL_FORMAT_RGB565);
+    if (strncmp(cameraParamsFormat, CameraParameters::PIXEL_FORMAT_RGB565, len) == 0)
+        return V4L2_PIX_FMT_RGB565;
 
     len = strlen(CameraParameters::PIXEL_FORMAT_JPEG);
     if (strncmp(cameraParamsFormat, CameraParameters::PIXEL_FORMAT_JPEG, len) == 0)
