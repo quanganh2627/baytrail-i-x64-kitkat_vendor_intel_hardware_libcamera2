@@ -118,6 +118,12 @@ ControlThread::~ControlThread()
     // Put all deinit code in the deinit() method.
     // This is a workaround for an issue with Thread reference counting.
     LOG1("@%s", __FUNCTION__);
+    if(mMessageQueue.size() > 0) {
+        Message msg;
+        LOGE("At this point Message Q should be empty, found %d message(s)",mMessageQueue.size());
+        mMessageQueue.receive(&msg);
+        LOGE(" Id of first message is %d",msg.id);
+    }
 }
 
 status_t ControlThread::init(int cameraId)
