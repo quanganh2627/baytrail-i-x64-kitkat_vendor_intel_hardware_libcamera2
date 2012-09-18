@@ -174,6 +174,10 @@ status_t PostProcThread::handleMessageStartSmartShutter(MessageSmartShutter para
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    if (!mFaceDetectionRunning) {
+        LOGE("%s: Face Detection must be running", __FUNCTION__);
+        return INVALID_OPERATION;
+    }
     if (params.mode == SMILE_MODE) {
         mFaceDetector->setSmileThreshold(params.level);
         mSmartShutter.smileRunning = true;
