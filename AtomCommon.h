@@ -132,6 +132,14 @@ enum SensorType {
     SENSOR_TYPE_SOC
 };
 
+enum AAAFlags {
+    AAA_FLAG_NONE = 0x0,
+    AAA_FLAG_AE = 0x1,
+    AAA_FLAG_AF = 0x2,
+    AAA_FLAG_AWB = 0x4,
+    AAA_FLAG_ALL = AAA_FLAG_AE | AAA_FLAG_AF | AAA_FLAG_AWB
+};
+
 struct CameraWindow {
     int x_left;
     int x_right;

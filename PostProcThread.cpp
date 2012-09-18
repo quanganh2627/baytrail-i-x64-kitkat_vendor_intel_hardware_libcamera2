@@ -37,6 +37,8 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     ,mPostProcDoneCallback(postProcDone)
     ,mThreadRunning(false)
     ,mFaceDetectionRunning(false)
+    ,mSmartShutterRunning(false)
+    ,mAAAFlags(AAA_FLAG_ALL)
     ,mOldAfMode(CAM_AF_MODE_NOT_SET)
     ,mOldAeMeteringMode(CAM_AE_METERING_MODE_NOT_SET)
     ,mPreviewWidth(0)
@@ -124,6 +126,11 @@ status_t PostProcThread::handleMessageStopFaceDetection()
 
     delete mFaceDetector;
     mFaceDetector = NULL;
+
+    mAAAFlags = AAA_FLAG_ALL;
+    mOldAfMode = CAM_AF_MODE_NOT_SET;
+    mOldAeMeteringMode = CAM_AE_METERING_MODE_NOT_SET;
+
     mMessageQueue.reply(MESSAGE_ID_STOP_FACE_DETECTION, status);
     return status;
 }
@@ -301,6 +308,33 @@ int PostProcThread::sendFrame(AtomBuffer *img)
         return -1;
 }
 
+void PostProcThread::setFaceAAA(AAAFlags flags)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_FACE_AAA;
+    msg.data.faceAAA.flags = flags;
+
+    mMessageQueue.send(&msg);
+}
+
+status_t PostProcThread::handleMessageSetFaceAAA(const MessageFaceAAA& msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mAAAFlags = msg.flags;
+
+    // Reset the state flags here, when the given AAA function is set disabled.
+    if (!(mAAAFlags & AAA_FLAG_AF))
+        mOldAfMode = CAM_AF_MODE_NOT_SET;
+    if (!(mAAAFlags & AAA_FLAG_AE))
+        mOldAeMeteringMode = CAM_AE_METERING_MODE_NOT_SET;
+
+    // TODO: Add AWB flag reset, when functionality added
+
+    return status;
+}
+
 bool PostProcThread::threadLoop()
 {
     LOG2("@%s", __FUNCTION__);
@@ -353,6 +387,8 @@ status_t PostProcThread::waitForAndExecuteMessage()
         case MESSAGE_ID_IS_BLINK_RUNNING:
             status = handleMessageIsBlinkRunning();
             break;
+        case MESSAGE_ID_FACE_AAA:
+            status = handleMessageSetFaceAAA(msg.data.faceAAA);
         default:
             status = INVALID_OPERATION;
             break;
@@ -427,8 +463,8 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         // call face detection listener and pass faces for 3A (AF) and smart scene detection
         if ((face_metadata.number_of_faces > 0) || (mLastReportedNumberOfFaces != 0)) {
             mLastReportedNumberOfFaces = face_metadata.number_of_faces;
-            mpListener->facesDetected(face_metadata);
             useFacesForAAA(face_metadata);
+            mpListener->facesDetected(face_metadata);
             mPostProcDoneCallback->facesDetected(&face_metadata);
         }
 
@@ -463,8 +499,8 @@ void PostProcThread::setFocusAreas(const CameraWindow* windows, size_t winCount)
 
     AtomAAA* aaa = AtomAAA::getInstance();
     if (aaa->setAfWindows(windows, winCount) == NO_ERROR) {
-        // See if we have to change the actual mode (it could be correct already)
         AfMode curAfMode = aaa->getAfMode();
+        // See if we have to change the actual mode (it could be correct already)
         if (curAfMode != newAfMode) {
             mOldAfMode = curAfMode;
             aaa->setAfMode(newAfMode);
@@ -493,59 +529,67 @@ void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata
 {
     LOG1("@%s", __FUNCTION__);
     if (face_metadata.number_of_faces <= 0) {
+        resetToOldAAAValues();
+        return;
+    }
+
+    if (mAAAFlags & AAA_FLAG_AF || mAAAFlags & AAA_FLAG_AE) {
+        CameraWindow *windows = new CameraWindow[face_metadata.number_of_faces];
+        int highestScoreInd = 0;
+        for (int i = 0; i < face_metadata.number_of_faces; i++) {
+            camera_face_t face = face_metadata.faces[i];
+            windows[i].x_left = face.rect[0];
+            windows[i].y_top = face.rect[1];
+            windows[i].x_right = face.rect[2];
+            windows[i].y_bottom = face.rect[3];
+            convertFromAndroidCoordinates(windows[i], windows[i], mPreviewWidth, mPreviewHeight);
+            LOG2("Face window: (%d,%d,%d,%d)",
+                windows[i].x_left,
+                windows[i].y_top,
+                windows[i].x_right,
+                windows[i].y_bottom);
+
+            // Get the highest scored face window index:
+            if (i > 0 && face.score > face_metadata.faces[i - 1].score) {
+                highestScoreInd = i;
+            }
+        }
+        // Apply AF window, if needed:
+        if (mAAAFlags & AAA_FLAG_AF)
+            setFocusAreas(windows, face_metadata.number_of_faces);
+        // Apply AE window if needed:
+        if (mAAAFlags & AAA_FLAG_AE) {
+            // Use the highest score window for AE metering:
+            // TODO: Better logic needed for picking face AE metering area..?
+            CameraWindow aeWindow = windows[highestScoreInd];
+            aeWindow.weight = 50;
+            setAeMeteringArea(&aeWindow);
+        }
+    }
+
+    //TODO: spec says we need also do AWB. Currently no support.
+}
+
+void PostProcThread::resetToOldAAAValues()
+{
         // No faces detected, reset to previous 3A values:
         AtomAAA* aaa = AtomAAA::getInstance();
 
         // Auto-focus:
-        if (mOldAfMode != CAM_AF_MODE_NOT_SET) {
+        if ((mAAAFlags & AAA_FLAG_AF) && mOldAfMode != CAM_AF_MODE_NOT_SET) {
             LOG2("Reset to old focus mode (%d)", mOldAfMode);
             aaa->setAfMode(mOldAfMode);
             mOldAfMode = CAM_AF_MODE_NOT_SET;
         }
 
         // Auto-exposure metering mode:
-        if (mOldAeMeteringMode != CAM_AE_METERING_MODE_NOT_SET) {
+        if ((mAAAFlags & AAA_FLAG_AE) && mOldAeMeteringMode != CAM_AE_METERING_MODE_NOT_SET) {
             LOG2("Reset to old AE metering mode (%d)", mOldAeMeteringMode);
             aaa->setAeMeteringMode(mOldAeMeteringMode);
             mOldAeMeteringMode = CAM_AE_METERING_MODE_NOT_SET;
         }
 
-        // TODO: Reset AWB also, once taken into use below.
-
-        return;
-    }
-
-    CameraWindow *windows = new CameraWindow[face_metadata.number_of_faces];
-    int highestScoreInd = 0;
-    for (int i = 0; i < face_metadata.number_of_faces; i++) {
-        camera_face_t face = face_metadata.faces[i];
-        windows[i].x_left = face.rect[0];
-        windows[i].y_top = face.rect[1];
-        windows[i].x_right = face.rect[2];
-        windows[i].y_bottom = face.rect[3];
-        convertFromAndroidCoordinates(windows[i], windows[i], mPreviewWidth, mPreviewHeight);
-        LOG2("Face window: (%d,%d,%d,%d)",
-             windows[i].x_left,
-             windows[i].y_top,
-             windows[i].x_right,
-             windows[i].y_bottom);
-
-        // Get the highest scored face window index:
-        if (i > 0 && face.score > face_metadata.faces[i - 1].score) {
-            highestScoreInd = i;
-        }
-    }
-
-    setFocusAreas(windows, face_metadata.number_of_faces);
-    // Use the highest score window for AE metering:
-    // TODO: Better logic needed for picking face AE metering area..?
-    CameraWindow aeWindow = windows[highestScoreInd];
-    aeWindow.weight = 50;
-    setAeMeteringArea(&aeWindow);
-
-    //TODO: spec says we need also do AWB. Currently no support.
+        // TODO: Reset AWB also, once taken into use above.
 }
-
-
 
 }

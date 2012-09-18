@@ -556,9 +556,10 @@ private:
     BracketingType mBracketing;
     List<SensorAeConfig> mBracketingParams;
     HdrImaging mHdr;
-    AeMode mPublicAeMode;    /* AE mode set by application */
-    AfMode mPublicAfMode;    /* AF mode set by application */
-    float mPublicShutter;    /* Shutter set by application */
+    AeMode mPublicAeMode;       /* AE mode set by application */
+    AfMode mPublicAfMode;       /* AF mode set by application */
+    SceneMode mPublicSceneMode; /* Scene mode set by application */
+    float mPublicShutter;       /* Shutter set by application */
 
     Mutex mParamCacheLock;
     char* mParamCache;
@@ -576,6 +577,7 @@ private:
     CameraAreas mFocusAreas;
     CameraAreas mMeteringAreas;
 
+    AAAFlags mAAAFlags;         /* 3A flags to set to mPostProcThread */
     bool mIsPreviewStartComplete;   /*!< Flag that signals the completion of the start preview process
                                          set to false when we receive the start preview command
                                          set to true when the first preview frame is returned to

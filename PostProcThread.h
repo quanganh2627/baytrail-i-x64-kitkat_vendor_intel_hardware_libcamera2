@@ -76,6 +76,8 @@ public:
     virtual void captureOnTrigger();
     virtual void stopCaptureOnTrigger();
 
+    virtual void setFaceAAA(AAAFlags flags);
+
 // private types
 private:
 
@@ -103,7 +105,7 @@ private:
         MESSAGE_ID_IS_SMART_RUNNING,
         MESSAGE_ID_IS_SMILE_RUNNING,
         MESSAGE_ID_IS_BLINK_RUNNING,
-
+        MESSAGE_ID_FACE_AAA,
         // max number of messages
         MESSAGE_ID_MAX
     };
@@ -120,14 +122,19 @@ private:
         int level;
     };
 
+    struct MessageFaceAAA {
+        AAAFlags flags;
+    };
+
     // union of all message data
     union MessageData {
         // MESSAGE_ID_FRAME
         MessageFrame frame;
-
         // MESSAGE_START_SMART_SHUTTER
         // MESSAGE_STOP_SMART_SHUTTER
         MessageSmartShutter smartShutterParam;
+        //MESSAGE_ID_FACE_AAA
+        MessageFaceAAA faceAAA;
     };
 
     // message id and message data
@@ -153,6 +160,9 @@ private:
     status_t handleMessageIsSmartRunning();
     status_t handleMessageIsSmileRunning();
     status_t handleMessageIsBlinkRunning();
+    status_t handleMessageStartSmartShutter();
+    status_t handleMessageStopSmartShutter();
+    status_t handleMessageSetFaceAAA(const MessageFaceAAA& msg);
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -160,6 +170,7 @@ private:
     void setFocusAreas(const CameraWindow* windows, size_t winCount);
     void setAeMeteringArea(const CameraWindow* window);
     void useFacesForAAA(const camera_frame_metadata_t& face_metadata);
+    void resetToOldAAAValues();
 
 // private data
 private:
@@ -171,6 +182,8 @@ private:
     ICallbackPostProc* mPostProcDoneCallback;
     bool mThreadRunning;
     bool mFaceDetectionRunning;
+    bool mSmartShutterRunning;
+    AAAFlags mAAAFlags;
     AfMode mOldAfMode;
     MeteringMode mOldAeMeteringMode;
     int mPreviewWidth;
