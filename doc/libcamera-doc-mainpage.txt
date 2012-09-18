@@ -151,4 +151,51 @@ User-kernel interaction when picture is taken:
 
 \endmsc
 
+Panorama capture sequence (simplified logical sequence, omitting much of message handling)
+
+\msc
+  hscale="3", width="1024";
+  client [ label="Client app"], controlthread [ label="ControlThread"], postprocthread [label="PostProcThread"], panoramathread [label="PanoramaThread"], picturethread [label="PictureThread"], callbacksthread [label="CallbackThread"];
+  --- [ label = "preview is running" ];
+  client=>>controlthread [ label = "startPanorama" ];
+  controlthread=>>panoramathread [ label = "startPanorama" ];
+  client=>>controlthread [ label = "takePicture" ];
+  controlthread=>>panoramathread [ label = "startPanoramaCapture" ];
+  --- [ label = "first capture" ];
+  controlthread=>>postprocthread [ label = "sendFrame(preview)" ];
+  postprocthread=>>panoramathread [ label = "sendFrame(preview)" ];
+  panoramathread=>panoramathread [ label = "handleFrame(preview)" ];
+  panoramathread=>>controlthread [ label = "panoramaCaptureTrigger" ];
+  controlthread=>controlthread [ label = "capturePanoramaPic" ];
+  controlthread=>panoramathread [ label = "stitch(snapshot)" ];
+  panoramathread=>>callbacksthread [ label = "panoramaSnapshot" ];
+  callbacksthread=>>client [ label = "onSnapshotTaken" ];
+  --- [ label = "loop start - these continue until max count of snapshots is taken or takePicture is called again" ];
+  --- [ label = "loop start - these continue until overlap is sufficient" ];
+  controlthread=>postprocthread [ label = "sendFrame(preview)" ];
+  postprocthread=>>panoramathread [ label = "sendFrame(preview)" ];
+  panoramathread=>panoramathread [ label = "handleFrame(preview)" ];
+  panoramathread=>panoramathread [ label = "detectOverlap" ];
+  panoramathread=>>callbacksthread [ label = "panoramaDisplUpdate" ];
+  callbacksthread=>>client [ label = "onDisplacementChange" ];
+  --- [ label = "loop end (overlap detection)" ];
+  panoramathread=>>controlthread [ label = "panoramaCaptureTrigger" ];
+  controlthread=>controlthread [ label = "capturePanoramaPic" ];
+  controlthread=>panoramathread [ label = "stitch(snapshot)" ];
+  panoramathread=>>callbacksthread [ label = "panoramaSnapshot" ];
+  callbacksthread=>>client [ label = "onSnapshotTaken" ];
+  --- [ label = "loop end (panorama capturing)" ];
+  client=>>controlthread [ label = "takePicture" ];
+  controlthread=>>panoramathread [ label = "finalize" ];
+  panoramathread=>controlthread [ label = "panoramaFinalized" ];
+  controlthread=>>picturethread [ label = "encode(panorama)" ];
+  --- [ label = "jpeg encoding parts omitted from sequence" ];
+  callbacksthread=>>client [ label = "onPictureTaken" ];
+  callbacksthread=>>controlthread [ label = "pictureDone" ];
+  controlthread=>panoramathread [ label = "returnBuffer" ];
+  --- [ label = "after user chooses to stop taking panorama images" ];
+  client=>>controlthread [ label = "stopPanorama" ];
+  controlthread=>>panoramathread [ label = "stopPanorama" ];
+\endmsc
+
 */
