@@ -46,6 +46,10 @@ namespace android {
  */
 #define NUM_BURST_BUFFERS 10
 /*
+ * NUM_BURST_BUFFERS: used for single still capture
+ */
+#define NUM_SINGLE_STILL_BUFFERS 1
+/*
  * MAX_JPEG_BUFFERS: the maximum numbers of queued JPEG buffers
  */
 #define MAX_JPEG_BUFFERS 4
@@ -2732,8 +2736,11 @@ status_t ControlThread::allocateSnapshotBuffers()
         * and in video mode the video encoder already creates one.
         */
        status = mPictureThread->allocSharedBuffers(picWidth, picHeight, 0);
+    } else if (mBurstLength > 1){
+       int bufCount = mBurstLength > NUM_BURST_BUFFERS ? NUM_BURST_BUFFERS : mBurstLength;
+       status = mPictureThread->allocSharedBuffers(picWidth, picHeight, bufCount);
     } else {
-       status = mPictureThread->allocSharedBuffers(picWidth, picHeight, NUM_BURST_BUFFERS);
+       status = mPictureThread->allocSharedBuffers(picWidth, picHeight, NUM_SINGLE_STILL_BUFFERS);
     }
 
     if (status != NO_ERROR) {
