@@ -740,6 +740,16 @@ status_t AtomAAA::setAfWindows(const CameraWindow *windows, size_t numWindows)
     LOG1("@%s: windows = %p, num = %u", __FUNCTION__, windows, numWindows);
     if(!mHas3A)
         return INVALID_OPERATION;
+
+    for (size_t i = 0; i < numWindows; ++i) {
+        LOG2("@%s: window(%u) = (%d,%d,%d,%d,%d)", __FUNCTION__, i,
+             windows[i].x_left,
+             windows[i].y_top,
+             windows[i].x_right,
+             windows[i].y_bottom,
+             windows[i].weight);
+    }
+
     ia_3a_af_set_windows(numWindows, (const ia_3a_window*)windows);
     return NO_ERROR;
 }
