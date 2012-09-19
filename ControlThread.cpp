@@ -3435,9 +3435,11 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
         // Based on Google specs, the focus area is effective only for modes:
         // (framework side constants:) FOCUS_MODE_AUTO, FOCUS_MODE_MACRO, FOCUS_MODE_CONTINUOUS_VIDEO
         // or FOCUS_MODE_CONTINUOUS_PICTURE.
-        if (afMode == CAM_AF_MODE_AUTO ||
-            afMode == CAM_AF_MODE_CONTINUOUS ||
-            afMode == CAM_AF_MODE_MACRO) {
+        if (mPublicAfMode == CAM_AF_MODE_AUTO ||
+            mPublicAfMode == CAM_AF_MODE_CONTINUOUS ||
+            mPublicAfMode == CAM_AF_MODE_MACRO) {
+
+            afMode = mPublicAfMode;
 
             // See if any focus areas are set.
             // NOTE: CAM_AF_MODE_TOUCH is for HAL internal use only
