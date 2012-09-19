@@ -17,13 +17,13 @@
 ** limitations under the License.
 */
 
+#define LOG_TAG "Camera_IOlaBuffer"
+
 #include <utils/Log.h>
 #include <stdint.h>
 #include <sys/types.h>
 #include <binder/MemoryHeapBase.h>
 #include <OlaService/IOlaBuffer.h>
-
-#define LOG_TAG "Camera_IOlaBuffer"
 
 namespace android {
 

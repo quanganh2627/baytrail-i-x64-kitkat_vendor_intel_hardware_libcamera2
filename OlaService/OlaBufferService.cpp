@@ -17,6 +17,8 @@
 ** limitations under the License.
 */
 
+#define LOG_TAG "Camera_OlaBufferService"
+
 #include "OlaService/IOlaBuffer.h"
 #include <binder/MemoryHeapBase.h>
 #include <binder/IServiceManager.h>
@@ -24,8 +26,6 @@
 
 #include "HalProxyOla.h"
 #include "OlaBufferService.h"
-
-#define LOG_TAG "Camera_OlaBufferService"
 
 android::HalProxyOla* gHAL = NULL;
 

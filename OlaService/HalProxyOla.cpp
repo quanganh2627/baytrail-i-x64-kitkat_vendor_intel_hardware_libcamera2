@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
+#define LOG_TAG "Camera_HalProxyOla"
+
 #include "OlaService/HalProxyOla.h"
 #include "OlaService/OlaBufferService.h"
 #include "ControlThread.h"
-
-#define LOG_TAG "Camera_HalProxyOla"
 
 #define OLABUFFER_STATUS_BEFORECOPY (0)
 #define OLABUFFER_STATUS_DIDCOPY    (1)
