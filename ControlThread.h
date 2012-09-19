@@ -344,6 +344,19 @@ private:
         CiUserBuffer ciBufOut;
     };
 
+    struct StillPicParamsCtx {
+        int    snapshotWidth;
+        int    snapshotHeight;
+        int    thumbnailWidth;
+        int    thumbnailHeigth;
+        String8 supportedSnapshotSizes;
+        String8 suportedThumnailSizes;
+        void clear() {
+            supportedSnapshotSizes.clear();
+            suportedThumnailSizes.clear();
+        };
+    };
+
 // private methods
 private:
 
@@ -515,6 +528,9 @@ private:
 
     MeteringMode aeMeteringModeFromString(const String8& modeStr);
 
+    void storeCurrentPictureParams();
+    void restoreCurrentPictureParams();
+
 // inherited from Thread
 private:
     virtual bool threadLoop();
@@ -585,6 +601,11 @@ private:
                                          set to true when the first preview frame is returned to
                                          ControlThread */
     int mVideoSnapshotrequested;    /*!< number of video snapshots requested */
+
+    struct StillPicParamsCtx mStillPictContext; /*!< we store the current still image parameters
+                                                    It is used when video recording starts so the settings
+                                                    can be restore when video recording stops
+                                                 */
 }; // class ControlThread
 
 }; // namespace android

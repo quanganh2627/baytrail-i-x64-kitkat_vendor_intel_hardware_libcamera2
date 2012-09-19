@@ -1063,6 +1063,7 @@ status_t ControlThread::handleMessageStartRecording()
     * Only supported size is the size of the video
     * and thumbnail size is the size of preview.
     */
+    storeCurrentPictureParams();
     mParameters.getVideoSize(&width, &height);
     mParameters.setPictureSize(width, height);
     allocateSnapshotBuffers();
@@ -1073,7 +1074,6 @@ status_t ControlThread::handleMessageStartRecording()
     mParameters.getPreviewSize(&width, &height);
     mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH, width);
     mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT, height);
-
     snprintf(sizes, 25, "%dx%d,0x0", width,height);
     mParameters.set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES, sizes);
     updateParameterCache();
@@ -1111,6 +1111,13 @@ status_t ControlThread::handleMessageStopRecording()
             }
         }
     }
+
+    /**
+     * Restore the actual still picture parameters before we started video
+     * In this way we lift the restrictions that we imposed because of
+     * video snapshot implementation
+     */
+    restoreCurrentPictureParams();
 
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_STOP_RECORDING, status);
@@ -4022,6 +4029,63 @@ status_t ControlThread::updateParameterCache()
     mParamCacheLock.unlock();
 
     return status;
+}
+
+/**
+ * Save the current context of camera parameters that describe:
+ * - picture size
+ * - thumbnail size
+ * - supported picture sizes
+ * - supported thumbnail sizes
+ *
+ * This is used when we start video recording because we need to impose restric
+ * tions on these values to implement video snapshot feature
+ * When recording is stopped a reciprocal call to restoreCurrentPictureParams
+ * will be done
+ */
+void ControlThread::storeCurrentPictureParams()
+{
+    const char* tmp;
+    int length;
+    mStillPictContext.clear();
+
+    mParameters.getPictureSize(&mStillPictContext.snapshotWidth,
+                               &mStillPictContext.snapshotHeight);
+    mStillPictContext.thumbnailWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
+    mStillPictContext.thumbnailHeigth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
+
+    mStillPictContext.supportedSnapshotSizes = mParameters.get(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES);
+
+    mStillPictContext.suportedThumnailSizes = mParameters.get(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES);
+}
+
+/**
+ * Restores from the member variable mStillPictContext the following camera
+ * parameters:
+ * - picture size
+ * - thumbnail size
+ * - supported picture sizes
+ * - supported thumbnail sizes
+ * This is used when video recording stops to restore the state before video
+ * recording started and to lift the limitations of the current video snapshot
+ */
+void ControlThread::restoreCurrentPictureParams()
+{
+    mParameters.setPictureSize(mStillPictContext.snapshotWidth,
+                               mStillPictContext.snapshotHeight);
+    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH,
+                    mStillPictContext.thumbnailWidth);
+    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT,
+                    mStillPictContext.thumbnailHeigth);
+
+    mParameters.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES,
+                    mStillPictContext.supportedSnapshotSizes.string());
+    mParameters.set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES,
+                    mStillPictContext.suportedThumnailSizes.string());
+
+    mStillPictContext.clear();
+    updateParameterCache();
+    allocateSnapshotBuffers();
 }
 
 status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
