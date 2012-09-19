@@ -162,6 +162,8 @@ private:
     Callbacks *mCallbacks;
     AtomBuffer mPostviewBuf;
     PanoramaState mState;
+    int mPreviewWidth;
+    int mPreviewHeight;
 
 }; // class Panorama
 

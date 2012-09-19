@@ -41,6 +41,8 @@ PanoramaThread::PanoramaThread(ICallbackPanorama *panoramaCallback) :
     ,mCallbacks(Callbacks::getInstance()) // for memory allocation
     ,mPostviewBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW))
     ,mState(PANORAMA_STOPPED)
+    ,mPreviewWidth(0)
+    ,mPreviewHeight(0)
 {
     LOG1("@%s", __FUNCTION__);
     mCurrentMetadata.direction = 0;
@@ -346,6 +348,8 @@ status_t PanoramaThread::handleFrame(MessageFrame frame)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    mPreviewWidth = frame.frame.width;
+    mPreviewHeight = frame.frame.height;
     if (mState == PANORAMA_DETECTING_OVERLAP) {
         if (mPanoramaTotalCount == 0 || detectOverlap(&frame.frame)) {
             mState = PANORAMA_WAITING_FOR_SNAPSHOT;
@@ -379,9 +383,13 @@ status_t PanoramaThread::handleStitch(MessageStitch stitch)
         iaFrame.stride = iaFrame.width;
     }
 
+    // convert displacement to reflect PV image size
+    camera_panorama_metadata metadata = mCurrentMetadata;
+    metadata.horizontal_displacement = roundf((float) metadata.horizontal_displacement / mPreviewWidth * stitch.pv.width);
+    metadata.vertical_displacement = roundf((float) metadata.vertical_displacement / mPreviewHeight * stitch.pv.height);
     // space for the metadata is reserved in the beginning of the buffer
-    memcpy(mPostviewBuf.buff->data, &mCurrentMetadata, sizeof(camera_panorama_metadata));
-    // copy PV imager
+    memcpy(mPostviewBuf.buff->data, &metadata, sizeof(camera_panorama_metadata));
+    // copy PV image
     memcpy((char *)mPostviewBuf.buff->data + sizeof(camera_panorama_metadata), stitch.pv.buff->data, stitch.pv.size);
     // set rest of PV fields
     mPostviewBuf.width = stitch.pv.width;
