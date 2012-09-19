@@ -389,6 +389,7 @@ status_t PostProcThread::waitForAndExecuteMessage()
             break;
         case MESSAGE_ID_FACE_AAA:
             status = handleMessageSetFaceAAA(msg.data.faceAAA);
+            break;
         default:
             status = INVALID_OPERATION;
             break;
