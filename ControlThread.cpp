@@ -83,8 +83,6 @@ ControlThread::ControlThread() :
     ,mNumBuffers(0)
     ,mIntelParamsAllowed(false)
     ,mFaceDetectionActive(false)
-    ,mSmileThreshold(0)
-    ,mBlinkThreshold(0)
     ,mFlashAutoFocus(false)
     ,mBurstSkipFrames(0)
     ,mBurstLength(0)
@@ -3032,24 +3030,30 @@ status_t ControlThread::processParamSmartShutter(const CameraParameters *oldPara
     //smile shutter threshold
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD);
-    if (newVal.isEmpty() != true) {
-        mSmileThreshold = newParams->getInt(IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD);
-        if (mSmileThreshold < 0 || mSmileThreshold > SMILE_THRESHOLD_MAX) {
+    if (newVal.isEmpty() == false) {
+        int value = newParams->getInt(IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD);
+        if (value < 0 || value > SMILE_THRESHOLD_MAX) {
             LOGE("Invalid value received for %s: %d, set to default %d",
-                IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD, mSmileThreshold, SMILE_THRESHOLD);
-            mSmileThreshold = SMILE_THRESHOLD;
+                IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD, value, SMILE_THRESHOLD);
+            status = BAD_VALUE;
+        }
+        if (status == NO_ERROR) {
+            LOG1("Changed: %s -> %d", IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD, value);
         }
     }
 
     //blink shutter threshold
     newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                       IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD);
-    if (newVal.isEmpty() != true) {
-        mBlinkThreshold = newParams->getInt(IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD);
-        if (mBlinkThreshold < 0 || mBlinkThreshold > BLINK_THRESHOLD_MAX) {
+    if (newVal.isEmpty() == false) {
+        int value = newParams->getInt(IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD);
+        if (value < 0 || value > BLINK_THRESHOLD_MAX) {
             LOGE("Invalid value received for %s: %d, set to default %d",
-                IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD, mBlinkThreshold, BLINK_THRESHOLD);
-            mBlinkThreshold = BLINK_THRESHOLD;
+                IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD, value, BLINK_THRESHOLD);
+            status = BAD_VALUE;
+        }
+        if (status == NO_ERROR) {
+            LOG1("Changed: %s -> %d", IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD, value);
         }
     }
     return status;
@@ -4678,32 +4682,41 @@ status_t ControlThread::stopFaceDetection(bool wait)
 
 status_t ControlThread::startSmartShutter(SmartShutterMode mode)
 {
-    LOG2("@%s", __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     if (mState == STATE_STOPPED)
         return INVALID_OPERATION;
 
     int level = 0;
 
     if (mode == SMILE_MODE && !mPostProcThread->isSmileRunning()) {
-        level = mSmileThreshold;
+        level = mParameters.getInt(IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD);
     } else if (mode == BLINK_MODE && !mPostProcThread->isBlinkRunning()) {
-        level = mBlinkThreshold;
+        level = mParameters.getInt(IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD);
     } else {
         return INVALID_OPERATION;
     }
 
     mPostProcThread->startSmartShutter(mode, level);
-    LOG1("%s: mode: %d Active Mode: (smile %d (%d) , blink %d (%d), smart %d)", __FUNCTION__, mode, mPostProcThread->isSmileRunning(), mSmileThreshold, mPostProcThread->isBlinkRunning(), mBlinkThreshold, mPostProcThread->isSmartRunning());
+    LOG1("%s: mode: %d Active Mode: (smile %d (%d) , blink %d (%d), smart %d)",
+         __FUNCTION__, mode,
+         mPostProcThread->isSmileRunning(), mPostProcThread->getSmileThreshold(),
+         mPostProcThread->isBlinkRunning(), mPostProcThread->getBlinkThreshold(),
+         mPostProcThread->isSmartRunning());
 
     return NO_ERROR;
 }
 
 status_t ControlThread::stopSmartShutter(SmartShutterMode mode)
 {
-    LOG2("@%s", __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
 
     mPostProcThread->stopSmartShutter(mode);
-    LOG1("%s: mode: %d Active Mode: (smile %d (%d) , blink %d (%d), smart %d)", __FUNCTION__, mode, mPostProcThread->isSmileRunning(),  mSmileThreshold, mPostProcThread->isBlinkRunning(), mBlinkThreshold, mPostProcThread->isSmartRunning());
+    LOG1("%s: mode: %d Active Mode: (smile %d (%d) , blink %d (%d), smart %d)",
+         __FUNCTION__, mode,
+         mPostProcThread->isSmileRunning(), mPostProcThread->getSmileThreshold(),
+         mPostProcThread->isBlinkRunning(), mPostProcThread->getBlinkThreshold(),
+         mPostProcThread->isSmartRunning());
+
     return NO_ERROR;
 }
 
@@ -4885,7 +4898,6 @@ status_t ControlThread::waitForAndExecuteMessage()
             break;
 
         case MESSAGE_ID_POST_PROC_CAPTURE_TRIGGER:
-            stopFaceDetection(true);
             status = handleMessageTakePicture();
             break;
 

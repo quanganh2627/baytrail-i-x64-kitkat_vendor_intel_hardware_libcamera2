@@ -32,11 +32,12 @@ namespace android {
 /**
  * the maximum number of faces detectable at the same time
  */
-#define MAX_FACES_DETECTABLE (32)
-#define SMILE_THRESHOLD_MAX (100)
-#define BLINK_THRESHOLD_MAX (100)
-#define SMILE_THRESHOLD (70)
-#define BLINK_THRESHOLD (30)
+#define MAX_FACES_DETECTABLE 32
+#define SMILE_THRESHOLD_MAX 100
+#define BLINK_THRESHOLD_MAX 100
+#define SMILE_THRESHOLD 70
+#define BLINK_THRESHOLD 30
+
 #define SMILE_SHUTTER_SUPPORTED "on,off"
 #define BLINK_SHUTTER_SUPPORTED "on,off"
 

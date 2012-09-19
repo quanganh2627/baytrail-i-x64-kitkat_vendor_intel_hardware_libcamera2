@@ -72,7 +72,9 @@ public:
     virtual void stopSmartShutter(SmartShutterMode mode);
     virtual bool isSmartRunning();
     virtual bool isSmileRunning();
+    virtual int getSmileThreshold();
     virtual bool isBlinkRunning();
+    virtual int getBlinkThreshold();
     virtual void captureOnTrigger();
     virtual void stopCaptureOnTrigger();
 
@@ -104,7 +106,9 @@ private:
         MESSAGE_ID_STOP_CAPTURE_ON_TRIGGER,
         MESSAGE_ID_IS_SMART_RUNNING,
         MESSAGE_ID_IS_SMILE_RUNNING,
+        MESSAGE_ID_GET_SMILE_THRESHOLD,
         MESSAGE_ID_IS_BLINK_RUNNING,
+        MESSAGE_ID_GET_BLINK_THRESHOLD,
         MESSAGE_ID_FACE_AAA,
         // max number of messages
         MESSAGE_ID_MAX
@@ -159,9 +163,11 @@ private:
     status_t handleMessageStopCaptureOnTrigger();
     status_t handleMessageIsSmartRunning();
     status_t handleMessageIsSmileRunning();
+    status_t handleMessageGetSmileThreshold();
     status_t handleMessageIsBlinkRunning();
     status_t handleMessageStartSmartShutter();
     status_t handleMessageStopSmartShutter();
+    status_t handleMessageGetBlinkThreshold();
     status_t handleMessageSetFaceAAA(const MessageFaceAAA& msg);
 
     // main message function

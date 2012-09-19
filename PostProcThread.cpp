@@ -51,8 +51,8 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     mSmartShutter.smileRunning = false;
     mSmartShutter.blinkRunning = false;
     mSmartShutter.captureOnTrigger = false;
-    mSmartShutter.smileThreshold = 0;
-    mSmartShutter.blinkThreshold = 0;
+    mSmartShutter.smileThreshold = SMILE_THRESHOLD;
+    mSmartShutter.blinkThreshold = BLINK_THRESHOLD;
 }
 
 PostProcThread::~PostProcThread()
@@ -71,8 +71,8 @@ void PostProcThread::getDefaultParameters(CameraParameters *params, CameraParame
     }
     // Set maximum number of detectable faces
     params->set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW, MAX_FACES_DETECTABLE);
-    intel_params->set(IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD, "0");
-    intel_params->set(IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD, "0");
+    intel_params->set(IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD, STRINGIFY(SMILE_THRESHOLD));
+    intel_params->set(IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD, STRINGIFY(BLINK_THRESHOLD));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER, SMILE_SHUTTER_SUPPORTED);
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BLINK_SHUTTER, BLINK_SHUTTER_SUPPORTED);
 }
@@ -134,7 +134,7 @@ status_t PostProcThread::handleMessageStopFaceDetection()
     mMessageQueue.reply(MESSAGE_ID_STOP_FACE_DETECTION, status);
     return status;
 }
-// SMART SHUTTER
+
 void PostProcThread::captureOnTrigger()
 {
     LOG1("@%s", __FUNCTION__);
@@ -263,6 +263,23 @@ status_t PostProcThread::handleMessageIsSmileRunning()
     return status;
 }
 
+int PostProcThread::getSmileThreshold()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_GET_SMILE_THRESHOLD;
+    mMessageQueue.send(&msg, MESSAGE_ID_GET_SMILE_THRESHOLD);
+    return mSmartShutter.smileThreshold;
+}
+
+status_t PostProcThread::handleMessageGetSmileThreshold()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mMessageQueue.reply(MESSAGE_ID_GET_SMILE_THRESHOLD, status);
+    return status;
+}
+
 bool PostProcThread::isBlinkRunning()
 {
     LOG1("@%s", __FUNCTION__);
@@ -280,7 +297,23 @@ status_t PostProcThread::handleMessageIsBlinkRunning()
     return status;
 }
 
-// END SMART SHUTTER
+int PostProcThread::getBlinkThreshold()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_GET_BLINK_THRESHOLD;
+    mMessageQueue.send(&msg, MESSAGE_ID_GET_BLINK_THRESHOLD);
+    return mSmartShutter.blinkThreshold;
+}
+
+status_t PostProcThread::handleMessageGetBlinkThreshold()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mMessageQueue.reply(MESSAGE_ID_GET_BLINK_THRESHOLD, status);
+    return status;
+}
+
 status_t PostProcThread::handleExit()
 {
     LOG1("@%s", __FUNCTION__);
@@ -384,8 +417,14 @@ status_t PostProcThread::waitForAndExecuteMessage()
         case MESSAGE_ID_IS_SMILE_RUNNING:
             status = handleMessageIsSmileRunning();
             break;
+        case MESSAGE_ID_GET_SMILE_THRESHOLD:
+            status = handleMessageGetSmileThreshold();
+            break;
         case MESSAGE_ID_IS_BLINK_RUNNING:
             status = handleMessageIsBlinkRunning();
+            break;
+        case MESSAGE_ID_GET_BLINK_THRESHOLD:
+            status = handleMessageGetBlinkThreshold();
             break;
         case MESSAGE_ID_FACE_AAA:
             status = handleMessageSetFaceAAA(msg.data.faceAAA);
@@ -471,6 +510,12 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
 
     // trigger for smart shutter
         if (mSmartShutter.captureOnTrigger) {
+            // if
+            // smile and blink detection runnning and both detected
+            // or
+            // only smile detection running and detected
+            // or
+            // only blink detection running and detected
             if (((smile && mSmartShutter.smileRunning) && (!blink && mSmartShutter.blinkRunning))
                 || ((smile && mSmartShutter.smileRunning) && !mSmartShutter.blinkRunning)
                 || ((!blink && mSmartShutter.blinkRunning) && !mSmartShutter.smileRunning)) {

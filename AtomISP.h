@@ -44,8 +44,7 @@ namespace android {
 #define MIN_DVS_HEIGHT  384
 #define LARGEST_THUMBNAIL_WIDTH 320
 #define LARGEST_THUMBNAIL_HEIGHT 240
-#define CAM_STR(s) #s
-#define CAM_WXH_STR(w,h) CAM_STR(w##x##h)
+#define CAM_WXH_STR(w,h) STRINGIFY_(w##x##h)
 #define CAM_RESO_STR(w,h) CAM_WXH_STR(w,h) // example: CAM_RESO_STR(VGA_WIDTH,VGA_HEIGHT) -> "640x480"
 
 //v4l2 buffer in pool
