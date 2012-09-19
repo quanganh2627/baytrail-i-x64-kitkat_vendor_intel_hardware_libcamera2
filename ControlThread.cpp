@@ -937,8 +937,16 @@ status_t ControlThread::stopCapture()
     // manually configure AE and AF during takePicture)
     if (mBracketing.mode == BRACKET_EXPOSURE)
         mAAA->setAeMode(mPublicAeMode);
-    if (mBracketing.mode == BRACKET_FOCUS)
-        mAAA->setAfMode(mPublicAfMode);
+    if (mBracketing.mode == BRACKET_FOCUS) {
+        if (!mFocusAreas.isEmpty() &&
+            (mPublicAfMode == CAM_AF_MODE_AUTO ||
+             mPublicAfMode == CAM_AF_MODE_CONTINUOUS ||
+             mPublicAfMode == CAM_AF_MODE_MACRO)) {
+            mAAA->setAfMode(CAM_AF_MODE_TOUCH);
+        } else {
+            mAAA->setAfMode(mPublicAfMode);
+        }
+    }
 
     if (mHdr.enabled) {
         hdrRelease();
