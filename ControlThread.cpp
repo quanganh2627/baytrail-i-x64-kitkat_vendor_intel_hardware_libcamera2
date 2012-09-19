@@ -3451,9 +3451,6 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             // See if we have to change the actual mode (it could be correct already)
             AfMode curAfMode = mAAA->getAfMode();
             if (afMode != curAfMode) {
-                // Touch is not a "public" AF mode
-                if (afMode != CAM_AF_MODE_TOUCH)
-                    mPublicAfMode = afMode;
                 mAAA->setAfMode(afMode);
             }
 
