@@ -2479,6 +2479,22 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
+    // BURST LENGTH
+    const char* burstLength = params->get(IntelCameraParameters::KEY_BURST_LENGTH);
+    const char* burstLengths = params->get(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH);
+    if (burstLength && burstLengths && strstr(burstLengths, burstLength) == NULL) {
+        LOGE("bad burst length: %s; supported: %s", burstLength, burstLengths);
+        return BAD_VALUE;
+    }
+
+    // BURST FPS
+    const char* burstFps = params->get(IntelCameraParameters::KEY_BURST_FPS);
+    const char* burstFpss = params->get(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS);
+    if (burstFps && burstFpss && strstr(burstFpss, burstFps) == NULL) {
+        LOGE("bad burst FPS: %s; supported: %s", burstFps, burstFpss);
+        return BAD_VALUE;
+    }
+
     // MISCELLANEOUS
     const char *size = params->get(IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE);
     const char *livePreviewSizes = IntelCameraParameters::getSupportedPanoramaLivePreviewSizes(*params);
