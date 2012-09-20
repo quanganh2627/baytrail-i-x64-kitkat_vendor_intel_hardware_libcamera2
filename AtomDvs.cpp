@@ -61,6 +61,10 @@ status_t AtomDvs::reconfigureNoLock()
         if (mStatistics)
             ia_dvs_free_statistics(mStatistics);
         mStatistics = ia_dvs_allocate_statistics(mState);
+        if(mStatistics == NULL) {
+            LOGE("Failed to allocate DVS statistics");
+            status = NO_MEMORY;
+        }
     }
     return status;
 }
@@ -76,8 +80,10 @@ status_t AtomDvs::run()
         goto end;
 
     status = mIsp->getDvsStatistics(mStatistics, &try_again);
-    if (status != NO_ERROR)
+    if (status != NO_ERROR) {
+        LOGW("%s : Failed to get DVS statistics", __FUNCTION__);
         goto end;
+    }
 
     /* When the driver tells us to try again, it means the grid
        has changed. Because of this, we reconfigure the DVS engine
@@ -85,12 +91,15 @@ status_t AtomDvs::run()
     if (try_again) {
         reconfigureNoLock();
         status = mIsp->getDvsStatistics(mStatistics, NULL);
-        if (status != NO_ERROR)
+        if (status != NO_ERROR) {
+            LOGW("%s : Failed to get DVS statistics (again)", __FUNCTION__);
             goto end;
+        }
     }
 
     if (!ia_dvs_process(mState, mStatistics, &vector)) {
         status = UNKNOWN_ERROR;
+        LOGE("%s : Failed to process DVS ", __FUNCTION__);
         goto end;
     }
 

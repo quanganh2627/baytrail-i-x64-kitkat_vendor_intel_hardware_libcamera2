@@ -36,6 +36,12 @@ namespace android {
 #define EV_MIN -2
 #define EV_MAX  2
 
+/**
+ *  Minimum resolution of video frames to have DVS ON.
+ *  Under this it will be disabled
+ **/
+#define MIN_DVS_WIDTH   384
+#define MIN_DVS_HEIGHT  384
 #define LARGEST_THUMBNAIL_WIDTH 320
 #define LARGEST_THUMBNAIL_HEIGHT 240
 #define CAM_STR(s) #s

@@ -770,6 +770,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (videoMode) {
         mParameters.getVideoSize(&width, &height);
         mISP->setVideoFrameFormat(width, height);
+        if(width < MIN_DVS_WIDTH && height < MIN_DVS_HEIGHT)
+            isDVSActive = false;
         mISP->setDVS(isDVSActive);
 
     } else {
