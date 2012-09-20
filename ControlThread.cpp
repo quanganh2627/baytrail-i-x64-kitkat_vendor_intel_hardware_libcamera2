@@ -2473,6 +2473,14 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
+    // SCENE MODE
+    const char* sceneMode = params->get(CameraParameters::KEY_SCENE_MODE);
+    const char* sceneModes = params->get(CameraParameters::KEY_SUPPORTED_SCENE_MODES);
+     if (sceneMode && sceneModes && strstr(sceneModes, sceneMode) == NULL) {
+        LOGE("bad scene mode: %s; supported: %s", sceneMode, sceneModes);
+        return BAD_VALUE;
+    }
+
     // FOCUS
     const char* focusMode = params->get(CameraParameters::KEY_FOCUS_MODE);
     const char* focusModes = params->get(CameraParameters::KEY_SUPPORTED_FOCUS_MODES);
