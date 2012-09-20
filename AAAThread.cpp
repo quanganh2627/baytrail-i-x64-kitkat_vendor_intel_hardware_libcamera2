@@ -36,6 +36,7 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs) :
     ,mDVSRunning(false)
     ,mStartAF(false)
     ,mStopAF(false)
+    ,mPreviousCafStatus(ia_3a_af_status_idle)
     ,mForceAeLock(false)
     ,mForceAwbLock(false)
     ,mSmartSceneMode(0)
@@ -301,6 +302,18 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
                 mCallbacks->autofocusDone(afStatus == ia_3a_af_status_success);
                 // Also notify ControlThread that the auto-focus is finished
                 mAAADoneCallback->autoFocusDone();
+            }
+        }
+
+        AfMode currAfMode = mAAA->getAfMode();
+        if (currAfMode == CAM_AF_MODE_CONTINUOUS) {
+            ia_3a_af_status cafStatus = mAAA->getCAFStatus();
+            LOG2("CAF move lens status: %d", cafStatus);
+            if (cafStatus != mPreviousCafStatus) {
+                LOG2("CAF move: %d", cafStatus == ia_3a_af_status_busy);
+                // Send the callback to upper layer and inform about the CAF status.
+                mCallbacks->focusMove(cafStatus == ia_3a_af_status_busy);
+                mPreviousCafStatus = cafStatus;
             }
         }
 

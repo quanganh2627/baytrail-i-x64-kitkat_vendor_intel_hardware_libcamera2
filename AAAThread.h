@@ -168,6 +168,7 @@ private:
     bool mDVSRunning;
     bool mStartAF;
     bool mStopAF;
+    ia_3a_af_status mPreviousCafStatus;
     bool mForceAeLock;
     bool mForceAwbLock;
     size_t mFramesTillAfComplete; // used for debugging only

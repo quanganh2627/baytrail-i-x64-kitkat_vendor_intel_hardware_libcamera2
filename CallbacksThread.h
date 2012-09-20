@@ -70,6 +70,7 @@ public:
     virtual void facesDetected(camera_frame_metadata_t &face_metadata);
     status_t sceneDetected(int sceneMode, bool sceneHdr);
     void autofocusDone(bool status);
+    void focusMove(bool start);
     void panoramaDisplUpdate(camera_panorama_metadata_t &metadata);
     void panoramaSnapshot(AtomBuffer &livePreview);
 
@@ -84,6 +85,7 @@ private:
         MESSAGE_ID_JPEG_DATA_READY,     // we have a JPEG image ready
         MESSAGE_ID_JPEG_DATA_REQUEST,   // a JPEG image was requested
         MESSAGE_ID_AUTO_FOCUS_DONE,
+        MESSAGE_ID_FOCUS_MOVE,
         MESSAGE_ID_FLUSH,
         MESSAGE_ID_FACES,
         MESSAGE_ID_SCENE_DETECTED,
@@ -112,6 +114,10 @@ private:
 
     struct MessageAutoFocusDone {
         bool status;
+    };
+
+    struct MessageFocusMove {
+        bool start;
     };
 
     struct MessageDataRequest {
@@ -144,6 +150,9 @@ private:
         //MESSAGE_ID_AUTO_FOCUS_DONE
         MessageAutoFocusDone autoFocusDone;
 
+        // MESSAGE_ID_FOCUS_MOVE
+        MessageFocusMove focusMove;
+
         // MESSAGE_ID_FACES
         MessageFaces faces;
 
@@ -172,6 +181,7 @@ private:
     status_t handleMessageJpegDataReady(MessageFrame *msg);
     status_t handleMessageJpegDataRequest(MessageDataRequest *msg);
     status_t handleMessageAutoFocusDone(MessageAutoFocusDone *msg);
+    status_t handleMessageFocusMove(MessageFocusMove *msg);
     status_t handleMessageFlush();
     status_t handleMessageFaces(MessageFaces *msg);
     status_t handleMessageSceneDetected(MessageSceneDetected *msg);

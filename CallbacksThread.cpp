@@ -135,12 +135,29 @@ void CallbacksThread::autofocusDone(bool status)
     mMessageQueue.send(&msg);
 }
 
+void CallbacksThread::focusMove(bool start)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_FOCUS_MOVE;
+    msg.data.focusMove.start = start;
+    mMessageQueue.send(&msg);
+}
+
 status_t CallbacksThread::handleMessageAutoFocusDone(MessageAutoFocusDone *msg)
 {
     LOG1("@%s", __FUNCTION__);
     mCallbacks->autofocusDone(msg->status);
     return NO_ERROR;
 }
+
+status_t CallbacksThread::handleMessageFocusMove(CallbacksThread::MessageFocusMove *msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    mCallbacks->focusMove(msg->start);
+    return NO_ERROR;
+}
+
 
 void CallbacksThread::facesDetected(camera_frame_metadata_t &face_metadata)
 {
@@ -329,6 +346,10 @@ status_t CallbacksThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_AUTO_FOCUS_DONE:
             status = handleMessageAutoFocusDone(&msg.data.autoFocusDone);
+            break;
+
+        case MESSAGE_ID_FOCUS_MOVE:
+            status = handleMessageFocusMove(&msg.data.focusMove);
             break;
 
         case MESSAGE_ID_FLUSH:

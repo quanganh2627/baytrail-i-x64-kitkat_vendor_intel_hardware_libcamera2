@@ -56,6 +56,7 @@ public:
     void rawFrameDone(AtomBuffer *buff);
     void cameraError(int err);
     void autofocusDone(bool status);
+    void focusMove(bool start);
     void shutterSound();
 
     void allocateMemory(AtomBuffer *buff, int size);

@@ -213,6 +213,15 @@ void Callbacks::autofocusDone(bool status)
     }
 }
 
+void Callbacks::focusMove(bool start)
+{
+    LOG1("@%s", __FUNCTION__);
+    if (mMessageFlags & CAMERA_MSG_FOCUS_MOVE) {
+        LOG2("Sending message: CAMERA_MSG_FOCUS_MOVE");
+        mNotifyCB(CAMERA_MSG_FOCUS_MOVE, start, 0, mUserToken);
+    }
+}
+
 void Callbacks::shutterSound()
 {
     LOG1("@%s", __FUNCTION__);

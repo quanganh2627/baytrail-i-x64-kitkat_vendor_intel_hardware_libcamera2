@@ -218,6 +218,7 @@ public:
     bool     getAeLock();
     status_t setAfLock(bool en);
     bool     getAfLock();
+    ia_3a_af_status getCAFStatus();
     status_t setAwbLock(bool en);
     bool     getAwbLock();
     status_t setAwbMapping(ia_3a_awb_map mode);

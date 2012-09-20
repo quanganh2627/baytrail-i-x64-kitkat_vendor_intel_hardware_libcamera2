@@ -654,6 +654,14 @@ bool AtomAAA::getAfLock()
     return ret;
 }
 
+ia_3a_af_status AtomAAA::getCAFStatus()
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG2("@%s", __FUNCTION__);
+
+    return ia_3a_af_get_still_status();
+}
+
 status_t AtomAAA::setAwbLock(bool en)
 {
     Mutex::Autolock lock(m3aLock);
