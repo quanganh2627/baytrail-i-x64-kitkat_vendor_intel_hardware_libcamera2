@@ -49,6 +49,7 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     mSmartShutter.smileRunning = false;
     mSmartShutter.blinkRunning = false;
     mSmartShutter.captureOnTrigger = false;
+    mSmartShutter.captureTriggered = false;
     mSmartShutter.smileThreshold = SMILE_THRESHOLD;
     mSmartShutter.blinkThreshold = BLINK_THRESHOLD;
     mSmartShutter.smileThreshold = 0;
@@ -237,6 +238,39 @@ status_t PostProcThread::handleMessageStopSmartShutter(MessageSmartShutter param
         return INVALID_OPERATION;
     if (!mSmartShutter.smileRunning && !mSmartShutter.blinkRunning)
         mSmartShutter.smartRunning = false;
+    return status;
+}
+
+bool PostProcThread::isSmartCaptureTriggered()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_IS_SMART_CAPTURE_TRIGGERED;
+    mMessageQueue.send(&msg, MESSAGE_ID_IS_SMART_CAPTURE_TRIGGERED);
+    return mSmartShutter.captureTriggered;
+}
+
+status_t PostProcThread::handleMessageIsSmartCaptureTriggered()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mMessageQueue.reply(MESSAGE_ID_IS_SMART_CAPTURE_TRIGGERED, status);
+    return status;
+}
+
+void PostProcThread::resetSmartCaptureTrigger()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_RESET_SMART_CAPTURE_TRIGGER;
+    mMessageQueue.send(&msg);
+}
+
+status_t PostProcThread::handleMessageResetSmartCaptureTrigger()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mSmartShutter.captureTriggered = false;
     return status;
 }
 
@@ -498,6 +532,12 @@ status_t PostProcThread::waitForAndExecuteMessage()
         case MESSAGE_ID_GET_BLINK_THRESHOLD:
             status = handleMessageGetBlinkThreshold();
             break;
+        case MESSAGE_ID_IS_SMART_CAPTURE_TRIGGERED:
+            status = handleMessageIsSmartCaptureTriggered();
+            break;
+        case MESSAGE_ID_RESET_SMART_CAPTURE_TRIGGER:
+            status = handleMessageResetSmartCaptureTrigger();
+            break;
         case MESSAGE_ID_ENABLE_FACE_AAA:
             status = handleMessageEnableFaceAAA(msg.data.faceAAA);
             break;
@@ -607,7 +647,7 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
                 || ((!blink && mSmartShutter.blinkRunning) && !mSmartShutter.smileRunning)) {
                 mSmartShutter.captureOnTrigger = false;
                 mPostProcDoneCallback->postProcCaptureTrigger();
-
+                mSmartShutter.captureTriggered = true;
             }
         }
     }

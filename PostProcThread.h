@@ -76,6 +76,8 @@ public:
     virtual bool isBlinkRunning();
     virtual int getBlinkThreshold();
     virtual void captureOnTrigger();
+    virtual bool isSmartCaptureTriggered();
+    virtual void resetSmartCaptureTrigger();
     virtual void stopCaptureOnTrigger();
     virtual void enableFaceAAA(AAAFlags flags);
     virtual void disableFaceAAA(AAAFlags flags);
@@ -91,7 +93,8 @@ private:
         bool smartRunning;
         bool smileRunning;
         bool blinkRunning;
-        bool captureOnTrigger;
+        bool captureOnTrigger;  // true when capture on event is necessary (smile or blink)
+        bool captureTriggered;  // true when capture on event has happened already
         int smileThreshold;
         int blinkThreshold;
     };
@@ -109,6 +112,8 @@ private:
         MESSAGE_ID_STOP_CAPTURE_ON_TRIGGER,
         MESSAGE_ID_IS_SMART_RUNNING,
         MESSAGE_ID_IS_SMILE_RUNNING,
+        MESSAGE_ID_IS_SMART_CAPTURE_TRIGGERED,
+        MESSAGE_ID_RESET_SMART_CAPTURE_TRIGGER,
         MESSAGE_ID_GET_SMILE_THRESHOLD,
         MESSAGE_ID_IS_BLINK_RUNNING,
         MESSAGE_ID_GET_BLINK_THRESHOLD,
@@ -173,6 +178,8 @@ private:
     status_t handleMessageIsSmileRunning();
     status_t handleMessageGetSmileThreshold();
     status_t handleMessageIsBlinkRunning();
+    status_t handleMessageIsSmartCaptureTriggered();
+    status_t handleMessageResetSmartCaptureTrigger();
     status_t handleMessageStartSmartShutter();
     status_t handleMessageStopSmartShutter();
     status_t handleMessageGetBlinkThreshold();

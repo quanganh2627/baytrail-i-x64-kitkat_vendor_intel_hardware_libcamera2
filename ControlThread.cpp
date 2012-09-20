@@ -2202,8 +2202,14 @@ status_t ControlThread::handleMessageTakeSmartShutterPicture()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     State origState = mState;
-    mPostProcThread->captureOnTrigger();
-    mState = STATE_PREVIEW_STILL;
+    // In case of smart shutter with HDR, we need to trigger save orig as a normal capture.
+    if (mHdr.enabled && mHdr.appSaveOrig && mPostProcThread->isSmartCaptureTriggered()) {
+        mPostProcThread->resetSmartCaptureTrigger();
+        status = handleMessageTakePicture();
+    } else {   //normal smart shutter capture
+        mPostProcThread->captureOnTrigger();
+        mState = STATE_PREVIEW_STILL;
+    }
 
     return status;
 }
@@ -4868,7 +4874,7 @@ status_t ControlThread::waitForAndExecuteMessage()
             break;
 
         case MESSAGE_ID_SMART_SHUTTER_PICTURE:
-            status = handleMessageTakeSmartShutterPicture();
+                status = handleMessageTakeSmartShutterPicture();
             break;
 
         case MESSAGE_ID_CANCEL_PICTURE:
@@ -4949,6 +4955,10 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_POST_PROC_CAPTURE_TRIGGER:
             status = handleMessageTakePicture();
+            // in Smart Shutter with HDR, we need to reset the flag in case no save original
+            // to have a clean flag for new capture sequence.
+            if (!mHdr.enabled || !mHdr.saveOrig)
+                mPostProcThread->resetSmartCaptureTrigger();
             break;
 
         default:
