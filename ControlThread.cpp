@@ -95,8 +95,6 @@ ControlThread::ControlThread() :
     ,mLastRecordingBuffIndex(0)
     ,mStoreMetaDataInBuffers(false)
     ,mPreviewForceChanged(false)
-    ,mPanoramaLivePreviewWidth(PANORAMA_DEF_PREV_WIDTH)
-    ,mPanoramaLivePreviewHeight(PANORAMA_DEF_PREV_HEIGHT)
     ,mCameraDump(NULL)
     ,mFocusAreas()
     ,mMeteringAreas()
@@ -1641,8 +1639,7 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
 
     // Get the current params
     mParameters.getPictureSize(&width, &height);
-    pvWidth = mPanoramaLivePreviewWidth;
-    pvHeight= mPanoramaLivePreviewHeight;
+    IntelCameraParameters::getPanoramaLivePreviewSize(pvWidth, pvHeight, mParameters);
     format = mISP->getSnapshotPixelFormat();
     size = frameSize(format, width, height);
     pvSize = frameSize(format, pvWidth, pvHeight);
@@ -2488,7 +2485,12 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     }
 
     // MISCELLANEOUS
-    // TODO: implement validation for other features not listed above
+    const char *size = params->get(IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE);
+    const char *livePreviewSizes = IntelCameraParameters::getSupportedPanoramaLivePreviewSizes(*params);
+    if (size && strstr(livePreviewSizes, size) == NULL) {
+        LOGE("bad panorama live preview size");
+        return BAD_VALUE;
+    }
 
     // ANTI FLICKER
     const char* flickerMode = params->get(CameraParameters::KEY_ANTIBANDING);
@@ -2531,11 +2533,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         if (fps > 0) {
             mBurstSkipFrames = (MAX_BURST_FRAMERATE / fps) - 1;
         }
-    }
-
-    // Panorama
-    if (status == NO_ERROR) {
-        status = processParamPanorama(oldParams, newParams);
     }
 
     // Color effect
@@ -2877,33 +2874,6 @@ status_t ControlThread::processParamAntiBanding(const CameraParameters *oldParam
     }
 
     return status;
-}
-
-status_t ControlThread::processParamPanorama(const CameraParameters *oldParams,
-        CameraParameters *newParams)
-{
-    LOG1("@%s", __FUNCTION__);
-
-    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE);
-
-    if (newVal.isEmpty() != true) {
-        char *xptr = NULL, *endptr = NULL;
-        mPanoramaLivePreviewWidth = (int) strtol(newVal.string(), &xptr, 10);
-        if (xptr == NULL || *xptr != 'x') // strtol stores location of x into xptr
-            goto errror;
-
-        xptr++;
-        endptr = xptr;
-        mPanoramaLivePreviewHeight = (int) strtol(xptr, &endptr, 10);
-        if (*xptr == '\0' || *endptr != '\0') {
-            goto errror;
-        }
-    }
-    return OK;
-
-    errror:
-    LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE, newVal.string());
-    return INVALID_OPERATION;
 }
 
 status_t ControlThread::processParamAELock(const CameraParameters *oldParams,

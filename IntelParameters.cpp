@@ -15,6 +15,7 @@
  */
 
 #include "IntelParameters.h"
+#include <stdlib.h>
 
 namespace android {
 
@@ -158,5 +159,34 @@ namespace android {
     const char IntelCameraParameters::KEY_FILE_INJECT_HEIGHT[] = "file-inject-height";
     const char IntelCameraParameters::KEY_FILE_INJECT_BAYER_ORDER[] = "file-inject-bayer-order";
     const char IntelCameraParameters::KEY_FILE_INJECT_FORMAT[] = "file-inject-format";
+
+    void IntelCameraParameters::getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params)
+    {
+        width = height = -1;
+        // Get the current string, if it doesn't exist, leave the -1x-1
+        const char *p = params.get(KEY_PANORAMA_LIVE_PREVIEW_SIZE);
+        if (p == 0)
+            return;
+
+        parseResolution(p, width, height);
+    }
+
+    void IntelCameraParameters::parseResolution(const char *p, int &width, int &height)
+    {
+        char *xptr = NULL, *endptr = NULL;
+        width = (int) strtol(p, &xptr, 10);
+        if (xptr == NULL || *xptr != 'x') // strtol stores location of x into xptr
+            return;
+
+        xptr++;
+        endptr = xptr;
+        height = (int) strtol(xptr, &endptr, 10);
+    }
+
+    const char* IntelCameraParameters::getSupportedPanoramaLivePreviewSizes(const CameraParameters &params)
+    {
+        // live preview images are implemented with the thumbnails
+        return params.get(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES);
+    }
 
 }; // ns android

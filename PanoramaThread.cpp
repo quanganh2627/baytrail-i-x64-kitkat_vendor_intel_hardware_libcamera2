@@ -382,6 +382,7 @@ status_t PanoramaThread::handleStitch(MessageStitch stitch)
         LOGW("panorama stitch hack - snapshot frame stride zero, replacing with width %d", iaFrame.width);
         iaFrame.stride = iaFrame.width;
     }
+    assert(stitch.pv.size <= frameSize(V4L2_PIX_FMT_NV12, LARGEST_THUMBNAIL_WIDTH, LARGEST_THUMBNAIL_HEIGHT));
 
     // convert displacement to reflect PV image size
     camera_panorama_metadata metadata = mCurrentMetadata;

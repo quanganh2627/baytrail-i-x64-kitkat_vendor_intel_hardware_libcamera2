@@ -26,6 +26,8 @@
 #ifndef INTELPARAMETERS_H_
 #define INTELPARAMETERS_H_
 
+#include <camera/CameraParameters.h>
+
 namespace android {
 
   class IntelCameraParameters {
@@ -161,8 +163,13 @@ namespace android {
     static const char KEY_FILE_INJECT_BAYER_ORDER[];
     static const char KEY_FILE_INJECT_FORMAT[];
 
+    static void getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params);
+    static const char* getSupportedPanoramaLivePreviewSizes(const CameraParameters &params);
+
   private:
       IntelCameraParameters(void) {}
+
+      static void parseResolution(const char *p, int &width, int &height);
   };
 }; // ns android
 

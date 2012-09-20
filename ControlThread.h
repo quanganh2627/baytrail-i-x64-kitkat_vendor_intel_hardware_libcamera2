@@ -478,8 +478,6 @@ private:
             CameraParameters *newParams);
     status_t processParamBackLightingCorrectionMode(const CameraParameters *oldParams,
             CameraParameters *newParams);
-    status_t processParamPanorama(const CameraParameters *oldParams,
-            CameraParameters *newParams);
     status_t processParamAwbMappingMode(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamTNR(const CameraParameters *oldParams,
@@ -584,9 +582,6 @@ private:
     bool mStoreMetaDataInBuffers;
 
     bool mPreviewForceChanged;
-
-    int mPanoramaLivePreviewWidth;
-    int mPanoramaLivePreviewHeight;
 
     CameraDump *mCameraDump;
 
