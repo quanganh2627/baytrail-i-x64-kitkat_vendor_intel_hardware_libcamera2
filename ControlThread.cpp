@@ -770,18 +770,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (videoMode) {
         mParameters.getVideoSize(&width, &height);
         mISP->setVideoFrameFormat(width, height);
-        // Temporarily disable DVS for 1080P video recording cases only for CTP
-        // as ISP is not able to process that for 30FPS in CTP.
-        // There is a bug for ISP to track this restriction. Bz: 54607. Once that bug is fixed
-        // this restriction can be removed from HAL.
-        // TODO! Revisit when the ISP fixes the issue.
-#if defined(CTP_PR1) || defined(CTP_PR0) || defined(CTP_NOMODEM)
-        if(isDVSActive && width >= 1920)
-            isDVSActive = false;
-#endif
-
         mISP->setDVS(isDVSActive);
-
 
     } else {
         mParameters.getPreviewSize(&width, &height);
