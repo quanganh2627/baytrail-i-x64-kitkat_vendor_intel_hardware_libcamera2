@@ -1908,8 +1908,15 @@ status_t AtomISP::setFlash(int numFrames)
         LOGE("Flash is supported only for primary camera!");
         return INVALID_OPERATION;
     }
-    if (atomisp_set_attribute(main_fd, V4L2_CID_REQUEST_FLASH, numFrames, "Request Flash") < 0)
-        return UNKNOWN_ERROR;
+    if (numFrames) {
+        if (atomisp_set_attribute(main_fd, V4L2_CID_FLASH_MODE, ATOMISP_FLASH_MODE_FLASH, "Flash Mode flash") < 0)
+            return UNKNOWN_ERROR;
+        if (atomisp_set_attribute(main_fd, V4L2_CID_REQUEST_FLASH, numFrames, "Request Flash") < 0)
+            return UNKNOWN_ERROR;
+    } else {
+        if (atomisp_set_attribute(main_fd, V4L2_CID_FLASH_MODE, ATOMISP_FLASH_MODE_OFF, "Flash Mode flash") < 0)
+            return UNKNOWN_ERROR;
+    }
     return NO_ERROR;
 }
 

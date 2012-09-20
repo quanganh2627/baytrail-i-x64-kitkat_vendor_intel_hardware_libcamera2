@@ -301,7 +301,7 @@ void ControlThread::deinit()
     //       Refer to ControlThread::init(). This method will be called if
     //       even if only partial or no initialization was successful.
     //       Therefore it is important that each specific deinit step
-    //       is checked for successful initialization before proceeding 
+    //       is checked for successful initialization before proceeding
     //       with deinit (eg. check for NULL / non-NULL).
 
     LOG1("@%s", __FUNCTION__);
@@ -1215,6 +1215,9 @@ bool ControlThread::runPreFlashSequence()
         }
     }
 
+    // Set flash off
+    mISP->setFlash(0);
+
     if (ret) {
         mAAA->applyPreFlashProcess(CAM_FLASH_STAGE_MAIN);
     } else {
@@ -1861,9 +1864,12 @@ status_t ControlThread::captureStillPic()
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("get frame", 1);
 
     // Get the snapshot
-    if (flashFired)
+    if (flashFired) {
         status = getFlashExposedSnapshot(&snapshotBuffer, &postviewBuffer);
-    else
+        // Set flash off only if torch is not used
+        if (flashMode != CAM_AE_FLASH_MODE_TORCH)
+            mISP->setFlash(0);
+    } else
         status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
 
     if (status != NO_ERROR) {
