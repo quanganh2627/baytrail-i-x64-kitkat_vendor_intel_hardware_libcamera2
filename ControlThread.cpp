@@ -4146,14 +4146,14 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
         goto exit;
     LOG1("scanning AF focus areas");
     status = newFocusAreas.scan(newParams.get(CameraParameters::KEY_FOCUS_AREAS),
-                                mParameters.getInt(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS));
+                                mAAA->getAfMaxNumWindows());
     if (status != NO_ERROR) {
         LOGE("bad focus area");
         goto exit;
     }
     LOG1("scanning AE metering areas");
     status = newMeteringAreas.scan(newParams.get(CameraParameters::KEY_METERING_AREAS),
-                                   mParameters.getInt(CameraParameters::KEY_MAX_NUM_METERING_AREAS));
+                                   mAAA->getAeMaxNumWindows());
     if (status != NO_ERROR) {
         LOGE("bad metering area");
         goto exit;
