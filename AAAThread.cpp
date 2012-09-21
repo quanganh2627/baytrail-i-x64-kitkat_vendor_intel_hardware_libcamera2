@@ -292,6 +292,11 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
                 mAAA->setAfEnabled(false);
                 mStartAF = false;
                 mStopAF = false;
+                // ****** workaround begin, BZ: 58489 ******
+                // we need to refresh 3A AF settings because it seems 3A forgets its mode
+                // after still af sequence is run
+                mAAA->setAfMode(mAAA->getAfMode());
+                // ****** workaround end *******************
                 mFramesTillAfComplete = 0;
                 mCallbacks->autofocusDone(afStatus == ia_3a_af_status_success);
                 // Also notify ControlThread that the auto-focus is finished

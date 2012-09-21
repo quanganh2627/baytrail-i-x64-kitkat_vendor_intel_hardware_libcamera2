@@ -347,9 +347,13 @@ status_t AtomAAA::setAfMode(AfMode mode)
 
     switch (mode) {
     case CAM_AF_MODE_CONTINUOUS:
-    case CAM_AF_MODE_AUTO:
         ia_3a_af_set_focus_mode(ia_3a_af_mode_auto);
         ia_3a_af_set_focus_range(ia_3a_af_range_norm);
+        ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_auto);
+        break;
+    case CAM_AF_MODE_AUTO:
+        ia_3a_af_set_focus_mode(ia_3a_af_mode_manual);
+        ia_3a_af_set_focus_range(ia_3a_af_range_full);
         ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_auto);
         break;
     case CAM_AF_MODE_TOUCH:
