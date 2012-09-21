@@ -593,12 +593,15 @@ private:
                                          set to false when we receive the start preview command
                                          set to true when the first preview frame is returned to
                                          ControlThread */
+
     int mVideoSnapshotrequested;    /*!< number of video snapshots requested */
 
     struct StillPicParamsCtx mStillPictContext; /*!< we store the current still image parameters
                                                     It is used when video recording starts so the settings
                                                     can be restore when video recording stops
                                                  */
+    Vector<MessagePicture> mUnqueuedPicBuf; /* store the buffers that have not been returned to ISP in capturing*/
+
 }; // class ControlThread
 
 }; // namespace android

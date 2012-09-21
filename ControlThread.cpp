@@ -952,7 +952,7 @@ status_t ControlThread::stopCapture()
         LOGE("Must be in STATE_CAPTURE to stop capture");
         return INVALID_OPERATION;
     }
-
+    mUnqueuedPicBuf.clear();
     status = mPictureThread->flushBuffers();
     if (status != NO_ERROR) {
         LOGE("Error flushing PictureThread!");
@@ -2019,6 +2019,33 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
         }
     }
 
+    /**
+     * Time to return the used frames to ISP, we do not do this in the function
+     * "handleMessagePictureDone".
+     * If HDR is enabled, don't return the buffers. we need them to compose HDR
+     * image. The buffers will be discarded after HDR is done in stopCapture().
+     * When HAL is in still single burst capture or burst capture, no need to
+     * return picture frames back to ISP, because the buffers allocated are enough,
+     * but for continuous capture, ControlThread will qbuf back to ISP before next capture.
+     */
+    if ((!mHdr.enabled) && (mBurstLength < 1) && (!mUnqueuedPicBuf.isEmpty())) {
+        // Return the last picture frames back to ISP
+        LOG1("return snapshot buffer to ISP");
+        for (size_t i = 0; i < mUnqueuedPicBuf.size(); i++) {
+            AtomBuffer snapshotBuf = mUnqueuedPicBuf[i].snapshotBuf;
+            AtomBuffer postviewBuf = mUnqueuedPicBuf[i].postviewBuf;
+            status = mISP->putSnapshot(&snapshotBuf, &postviewBuf);
+            if (status == NO_ERROR) {
+                mUnqueuedPicBuf.removeAt(i);
+            } else if (status == DEAD_OBJECT) {
+                mUnqueuedPicBuf.removeAt(i);
+                LOG1("Stale snapshot buffer returned to ISP");
+            } else if (status != NO_ERROR) {
+                LOGE("Error in putting snapshot!");
+            }
+        }
+    }
+
     // Get the current params
     mParameters.getPictureSize(&width, &height);
     pvWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
@@ -2414,20 +2441,12 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
         }
     } else if (mState == STATE_CAPTURE) {
         /*
-         * If HDR is enabled, don't return the buffers. we need them to compose HDR
-         * image. The buffers will be discarded after HDR is done in stopCapture().
+         * Store the buffer that has not been returned to ISP, and it shall be returned
+         * when next capturing happen
+         * The reason is to save S2S time, don't need to qbuf back to ISP in still
+         * and burst capture
          */
-        if (!mHdr.enabled) {
-            LOG2("@%s: returning post and raw frames id:%d", __FUNCTION__, msg->snapshotBuf.id);
-            // Return the picture frames back to ISP
-            status = mISP->putSnapshot(&msg->snapshotBuf, &msg->postviewBuf);
-            if (status == DEAD_OBJECT) {
-                LOG1("Stale snapshot buffer returned to ISP");
-            } else if (status != NO_ERROR) {
-                LOGE("Error in putting snapshot!");
-                return status;
-            }
-        }
+        mUnqueuedPicBuf.push(*msg);
     } else {
         LOGW("Received a picture Done during invalid state %d; buf id:%d, ptr=%p", mState, msg->snapshotBuf.id, msg->snapshotBuf.buff);
     }
