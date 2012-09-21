@@ -252,7 +252,7 @@ private:
      */
     static const int V4L2_MAX_DEVICE_COUNT  = V4L2_INJECT_DEVICE + 1;
 
-    static const int NUM_DEFAULT_BUFFERS = 6;
+    static const int NUM_DEFAULT_BUFFERS = 9;
 
     struct FrameInfo {
         int format;     // V4L2 format
