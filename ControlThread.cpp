@@ -399,7 +399,7 @@ void ControlThread::deinit()
 
 status_t ControlThread::setPreviewWindow(struct preview_stream_ops *window)
 {
-    LOG1("@%s: window = %p", __FUNCTION__, window);
+    LOG1("@%s: window = %p, state %d", __FUNCTION__, window, mState);
 
     Message msg;
     msg.id = MESSAGE_ID_SET_PREVIEW_WINDOW;
@@ -484,6 +484,7 @@ bool ControlThread::previewEnabled()
 {
     LOG2("@%s", __FUNCTION__);
     bool enabled = (mState == STATE_PREVIEW_STILL ||
+            mState == STATE_PREVIEW_NO_WINDOW ||
             mState == STATE_PREVIEW_VIDEO ||
             mState == STATE_RECORDING);
     return enabled;
@@ -777,8 +778,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     AtomMode mode;
     bool isDVSActive = false;
 
-    if (mState != STATE_STOPPED) {
-        LOGE("Must be in STATE_STOPPED to start preview");
+    if (mState != STATE_STOPPED && mState != STATE_PREVIEW_NO_WINDOW) {
+        LOGE("Must be in STATE_STOPPED or PREVIEW_NO_WINDOW to start preview");
         return INVALID_OPERATION;
     }
 
@@ -1030,8 +1031,13 @@ status_t ControlThread::handleMessageStartPreview()
         // API says apps should call startFaceDetection when resuming preview
         // stop FD here to avoid accidental FD.
         stopFaceDetection();
-        bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-        status = startPreviewCore(videoMode);
+        if (mPreviewThread->isWindowConfigured()) {
+            bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT);
+            status = startPreviewCore(videoMode);
+        } else {
+            LOGI("Preview window not set deferring start preview until then");
+            mState = STATE_PREVIEW_NO_WINDOW;
+        }
     } else {
         LOGE("Error starting preview. Invalid state!");
         status = INVALID_OPERATION;
@@ -1070,7 +1076,7 @@ status_t ControlThread::handleMessageStopPreview()
  */
 status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s state = %d window %p", __FUNCTION__, mState, msg->window);
     status_t status = NO_ERROR;
 
     if (mPreviewThread != NULL) {
@@ -1079,9 +1085,9 @@ status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
 
     bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
 
-    // Only restart preview if preview is active
-    if (previewEnabled() && (msg->window != NULL)) {
-       restartPreview(videoMode);
+    // Only start preview if it was already requested by user
+    if ((mState == STATE_PREVIEW_NO_WINDOW) && (msg->window != NULL)) {
+        startPreviewCore(videoMode);
     }
 
     return status;
@@ -4287,6 +4293,8 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
         break;
     }
 
+    if (status != NO_ERROR)
+        LOGE("@%s command id %d failed", __FUNCTION__, msg->cmd_id);
     return status;
 }
 
@@ -5084,8 +5092,9 @@ bool ControlThread::threadLoop()
         switch (mState) {
 
         case STATE_STOPPED:
-            LOG2("In STATE_STOPPED...");
-            // in the stop state all we do is wait for messages
+        case STATE_PREVIEW_NO_WINDOW:
+            LOG2("In %s...", mState == STATE_STOPPED ? "STATE_STOPPED" : "STATE_PREVIEW_NO_WINDOW");
+            // in these states all we do is wait for messages
             status = waitForAndExecuteMessage();
             break;
 

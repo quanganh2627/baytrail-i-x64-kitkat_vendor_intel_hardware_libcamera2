@@ -169,6 +169,30 @@ status_t PreviewThread::handleMessageExit()
     mThreadRunning = false;
     return status;
 }
+/**
+ * Synchronous query to check if a valid native window
+ * has been received.
+ *
+ * First we send a synchronous message (handler does nothing)
+ * when it is processed we are sure that all previous commands have
+ * been processed so we can check the mPreviewWindow variable.
+ **/
+bool PreviewThread::isWindowConfigured()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_WINDOW_QUERY;
+    mMessageQueue.send(&msg, MESSAGE_ID_WINDOW_QUERY);
+    return (mPreviewWindow != NULL);
+}
+
+status_t PreviewThread::handleMessageIsWindowConfigured()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mMessageQueue.reply(MESSAGE_ID_WINDOW_QUERY, status);
+    return status;
+}
 
 /**
  * Calls previewDone callback if data is available
@@ -419,6 +443,10 @@ status_t PreviewThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_SET_PREVIEW_WINDOW:
             status = handleMessageSetPreviewWindow(&msg.data.setPreviewWindow);
+            break;
+
+        case MESSAGE_ID_WINDOW_QUERY:
+            status = handleMessageIsWindowConfigured();
             break;
 
         case MESSAGE_ID_SET_PREVIEW_CONFIG:

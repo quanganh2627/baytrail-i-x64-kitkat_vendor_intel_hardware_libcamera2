@@ -300,6 +300,7 @@ private:
     // thread states
     enum State {
         STATE_STOPPED,
+        STATE_PREVIEW_NO_WINDOW,
         STATE_PREVIEW_STILL,
         STATE_PREVIEW_VIDEO,
         STATE_RECORDING,

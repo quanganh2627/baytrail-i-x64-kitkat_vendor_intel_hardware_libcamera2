@@ -55,7 +55,7 @@ public:
 // public methods
 public:
     void getDefaultParameters(CameraParameters *params);
-
+    bool isWindowConfigured();
     status_t preview(AtomBuffer *buff);
     status_t setPreviewWindow(struct preview_stream_ops *window);
     status_t setPreviewConfig(int preview_width, int preview_height, int preview_stride,
@@ -81,6 +81,7 @@ private:
         MESSAGE_ID_FETCH_PREVIEW_BUFS,
         MESSAGE_ID_RETURN_PREVIEW_BUFS,
         MESSAGE_ID_FLUSH,
+        MESSAGE_ID_WINDOW_QUERY,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -136,6 +137,7 @@ private:
     status_t handleMessageFetchPreviewBuffers();
     status_t handleMessageReturnPreviewBuffers();
     status_t handleMessageFlush();
+    status_t handleMessageIsWindowConfigured();
 
     // main message function
     status_t waitForAndExecuteMessage();
