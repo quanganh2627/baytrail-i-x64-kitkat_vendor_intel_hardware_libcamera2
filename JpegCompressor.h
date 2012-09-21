@@ -69,6 +69,11 @@ public:
     // Encoder functions
     int encode(const InputBuffer &in, const OutputBuffer &out);
 
+// prevent copy constructor and assignment operator
+private:
+    JpegCompressor(const JpegCompressor& other);
+    JpegCompressor& operator=(const JpegCompressor& other);
+
 private:
     int mJpegSize;
 
