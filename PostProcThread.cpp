@@ -107,7 +107,6 @@ void PostProcThread::stopFaceDetection(bool wait)
     if (mFaceDetectionRunning) {
         Message msg;
         msg.id = MESSAGE_ID_STOP_FACE_DETECTION;
-        mMessageQueue.remove(MESSAGE_ID_FRAME); // flush all buffers
 
         if (wait) {
             mMessageQueue.send(&msg, MESSAGE_ID_STOP_FACE_DETECTION); // wait for reply
@@ -134,6 +133,18 @@ status_t PostProcThread::handleMessageStopFaceDetection()
     mMessageQueue.reply(MESSAGE_ID_STOP_FACE_DETECTION, status);
     return status;
 }
+
+/**
+ * Flushes the message Q from messages containing new frames
+ *
+ */
+void PostProcThread::flushFrames()
+{
+    LOG1("@%s", __FUNCTION__);
+    mMessageQueue.remove(MESSAGE_ID_FRAME); // flush all buffers
+
+}
+// SMART SHUTTER
 
 void PostProcThread::captureOnTrigger()
 {

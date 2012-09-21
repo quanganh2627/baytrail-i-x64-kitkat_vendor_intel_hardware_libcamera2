@@ -883,7 +883,14 @@ status_t ControlThread::stopPreviewCore()
     // and video threads. This is needed as AtomISP::stop() may
     // deallocate buffers and the picture/video threads might
     // otherwise hold invalid references.
-    status = mPreviewThread->flushBuffers();
+    mPreviewThread->flushBuffers();
+
+    // Flush also the messages coming from PreviewThread to CtrlThread
+    // with preview frames ready to be sent to PostProcThread
+    mMessageQueue.remove(MESSAGE_ID_PREVIEW_DONE);
+
+    mPostProcThread->flushFrames();
+
     if (mState == STATE_PREVIEW_VIDEO ||
         mState == STATE_RECORDING) {
         status = mVideoThread->flushBuffers();

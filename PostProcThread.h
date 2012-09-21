@@ -51,7 +51,7 @@ public:
 
 // Common methods
     void getDefaultParameters(CameraParameters *params, CameraParameters *intel_parameters);
-
+    void flushFrames();
 // Thread overrides
 public:
     status_t requestExitAndWait();
