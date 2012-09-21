@@ -72,6 +72,10 @@ public:
     int waitToComplete(int *jpegSize);
     int getOutput(JpegCompressor::OutputBuffer &out);
 
+// prevent copy constructor and assignment operator
+private:
+    JpegHwEncoder(const JpegHwEncoder& other);
+    JpegHwEncoder& operator=(const JpegHwEncoder& other);
 
 private:
 
@@ -117,6 +121,11 @@ public:
     int encodeAsync(const JpegCompressor::InputBuffer &in, JpegCompressor::OutputBuffer &out){return -1;};
     int waitToComplete(int *jpegSize){return -1;};
     int getOutput(JpegCompressor::OutputBuffer &out){return -1;};
+
+// prevent copy constructor and assignment operator
+private:
+    JpegHwEncoder(const JpegHwEncoder& other);
+    JpegHwEncoder& operator=(const JpegHwEncoder& other);
 };
 #endif
 }; // namespace android
