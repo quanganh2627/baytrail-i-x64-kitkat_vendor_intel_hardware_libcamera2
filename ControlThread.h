@@ -570,6 +570,7 @@ private:
     BracketingType mBracketing;
     List<SensorAeConfig> mBracketingParams;
     HdrImaging mHdr;
+    bool mAELockFlashNeed;
     AeMode mPublicAeMode;       /* AE mode set by application */
     AfMode mPublicAfMode;       /* AF mode set by application */
     SceneMode mPublicSceneMode; /* Scene mode set by application */

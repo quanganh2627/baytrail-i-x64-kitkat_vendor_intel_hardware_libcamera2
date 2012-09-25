@@ -87,6 +87,7 @@ ControlThread::ControlThread() :
     ,mBurstSkipFrames(0)
     ,mBurstLength(0)
     ,mBurstCaptureNum(0)
+    ,mAELockFlashNeed(false)
     ,mPublicAeMode(CAM_AE_MODE_AUTO)
     ,mPublicAfMode(CAM_AF_MODE_AUTO)
     ,mPublicSceneMode(CAM_AE_SCENE_MODE_AUTO)
@@ -1743,7 +1744,13 @@ status_t ControlThread::captureStillPic()
                 if (mFlashAutoFocus)
                     LOGW("Assist light on when running pre-flash sequence");
 
-                flashOn = mAAA->getAeFlashNecessary();
+                if (mAAA->getAeLock()) {
+                    LOG1("AE was locked in %s, using old flash decision from AE "
+                         "locking time (%s)", __FUNCTION__, mAELockFlashNeed ? "ON" : "OFF");
+                    flashOn = mAELockFlashNeed;
+                }
+                else
+                    flashOn = mAAA->getAeFlashNecessary();
             }
 
             if (flashOn) {
@@ -2908,6 +2915,10 @@ status_t ControlThread::processParamAELock(const CameraParameters *oldParams,
         status = m3AThread->lockAe(ae_lock);
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK, newValue);
+            if (ae_lock) {
+                mAELockFlashNeed = mAAA->getAeFlashNecessary();
+                LOG1("AE locked, storing flash necessity decision (%s)", mAELockFlashNeed ? "ON" : "OFF");
+            }
         }
     }
 
