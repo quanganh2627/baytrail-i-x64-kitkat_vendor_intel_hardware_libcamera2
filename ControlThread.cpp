@@ -1941,9 +1941,6 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
         bool requestPostviewCallback = true;
         bool requestRawCallback = true;
 
-        if(clientRequest)
-            mCallbacksThread->shutterSound();
-
         // Notify CallbacksThread that a picture was requested, so grab one from queue
         mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback);
         if (mHdr.enabled && mHdr.saveOrigRequest) {
@@ -2045,6 +2042,7 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
             doEncode = true;
         }
         if (doEncode) {
+            mCallbacksThread->shutterSound();
             LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
             postviewBuffer.width = pvWidth;
             postviewBuffer.height = pvHeight;
