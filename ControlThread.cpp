@@ -752,6 +752,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     int width;
     int height;
     int format;
+    int stride;
     State state;
     AtomMode mode;
     bool isDVSActive = false;
@@ -833,12 +834,20 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         meteringWindows = NULL;
     }
 
-    mNumBuffers = mISP->getNumBuffers();
-
     LOG1("Using preview format: %s", v4l2Fmt2Str(format));
     mParameters.getPreviewSize(&width, &height);
     mISP->setPreviewFrameFormat(width, height);
-    mPreviewThread->setPreviewConfig(width, height, format, mNumBuffers);
+
+    // start the data flow
+    status = mISP->configure(mode);
+    if (status != NO_ERROR) {
+        LOGE("Error configuring ISP");
+        return status;
+    }
+
+    mISP->getPreviewSize(&width, &height,&stride);
+    mNumBuffers = mISP->getNumBuffers();
+    mPreviewThread->setPreviewConfig(width, height, stride, format, mNumBuffers);
 
     mCoupledBuffers = new CoupledBuffer[mNumBuffers];
     memset(mCoupledBuffers, 0, mNumBuffers * sizeof(CoupledBuffer));
@@ -850,10 +859,9 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mISP->setGraphicPreviewBuffers(pvBufs, mNumBuffers);
     }
 
-    // start the data flow
-    status = mISP->configure(mode);
+    status = mISP->allocateBuffers(mode);
     if (status != NO_ERROR) {
-        LOGE("Error configuring ISP");
+        LOGE("Error allocate buffers in ISP");
         return status;
     }
 
@@ -1684,6 +1692,12 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
         return status;
     }
 
+    status = mISP->allocateBuffers(MODE_CAPTURE);
+    if (status != NO_ERROR) {
+        LOGE("Error allocate buffers in ISP");
+        return status;
+    }
+
     if (mAAA->is3ASupported())
         if (mAAA->switchModeAndRate(MODE_CAPTURE, mISP->getFrameRate()) != NO_ERROR)
             LOGE("Failed to switch 3A to capture mode at %.2f fps", mISP->getFrameRate());
@@ -1819,6 +1833,12 @@ status_t ControlThread::captureStillPic()
 
     if ((status = mISP->configure(MODE_CAPTURE)) != NO_ERROR) {
         LOGE("Error configuring the ISP driver for CAPTURE mode");
+        return status;
+    }
+
+    status = mISP->allocateBuffers(MODE_CAPTURE);
+    if (status != NO_ERROR) {
+        LOGE("Error allocate buffers in ISP");
         return status;
     }
 

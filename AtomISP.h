@@ -86,6 +86,7 @@ public:
     void getDefaultParameters(CameraParameters *params, CameraParameters *intel_params);
 
     status_t configure(AtomMode mode);
+    status_t allocateBuffers(AtomMode mode);
     status_t start();
     status_t stop();
     status_t releaseCaptureBuffers();
@@ -115,6 +116,7 @@ public:
 
     inline int getSnapshotPixelFormat() { return mConfig.snapshot.format; }
     void getVideoSize(int *width, int *height, int *stride);
+    void getPreviewSize(int *width, int *height, int *stride);
 
     status_t setSnapshotNum(int num);
 
@@ -160,6 +162,62 @@ public:
 
    // Enable metadata buffer mode API
    status_t storeMetaDataInBuffers(bool enabled);
+
+// private types
+private:
+
+    static const int MAX_SENSOR_NAME_LENGTH = 32;
+
+    static const int V4L2_MAIN_DEVICE       = 0;
+    static const int V4L2_POSTVIEW_DEVICE   = 1;
+    static const int V4L2_PREVIEW_DEVICE    = 2;
+    static const int V4L2_INJECT_DEVICE     = 3;
+    static const int V4L2_LEGACY_VIDEO_PREVIEW_DEVICE = 1;
+
+    /**
+     * Maximum number of V4L2 devices node we support
+     */
+    static const int V4L2_MAX_DEVICE_COUNT  = V4L2_INJECT_DEVICE + 1;
+
+    static const int NUM_DEFAULT_BUFFERS = 9;
+
+    struct FrameInfo {
+        int format;     // V4L2 format
+        int width;      // Frame width
+        int height;     // Frame height
+        int stride;     // Frame stride (can be bigger than width)
+        int maxWidth;   // Frame maximum width
+        int maxHeight;  // Frame maximum height
+        int size;       // Frame size in bytes
+    };
+
+    struct Config {
+        FrameInfo preview;    // preview
+        FrameInfo recording;  // recording
+        FrameInfo snapshot;   // snapshot
+        FrameInfo postview;   // postview (thumbnail for capture)
+        float fps;            // preview/recording (shared)
+        int num_snapshot;     // number of snapshots to take
+        int zoom;             // zoom value
+    };
+
+    struct cameraInfo {
+        int androidCameraId; /*!< Index used by android to select this camera. This index is passed
+                              *   when the camera HAL is open. Used to differentiate back and front camera
+                              */
+        int port;            //!< AtomISP port type
+        uint32_t index;      //!< V4L2 index
+        char name[MAX_SENSOR_NAME_LENGTH];
+    };
+
+    enum ResolutionIndex {
+        RESOLUTION_VGA = 0,
+        RESOLUTION_720P,
+        RESOLUTION_1080P,
+        RESOLUTION_5MP,
+        RESOLUTION_8MP,
+        RESOLUTION_14MP,
+    };
 
 // private methods
 private:
@@ -208,10 +266,10 @@ private:
     int detectDeviceResolutions();
     int atomisp_set_capture_mode(int deviceMode);
     int v4l2_capture_try_format(int device, int *w, int *h, int *format);
-    int configureDevice(int device, int deviceMode, int w, int h, int format, bool raw);
+    int configureDevice(int device, int deviceMode, FrameInfo* fInfo, bool raw);
     int v4l2_capture_g_framerate(int fd, float * framerate, int width,
                                           int height, int pix_fmt);
-    int v4l2_capture_s_format(int fd, int device, int w, int h, int format, bool raw);
+    int v4l2_capture_s_format(int fd, int device, int w, int h, int format, bool raw, int* stride);
     void stopDevice(int device);
     int v4l2_capture_streamoff(int fd);
     void destroyBufferPool(int device);
@@ -238,62 +296,6 @@ private:
     status_t selectCameraSensor();
     size_t setupCameraInfo();
     int getPrimaryCameraIndex(void) const;
-
-// private types
-private:
-
-    static const int MAX_SENSOR_NAME_LENGTH = 32;
-
-    static const int V4L2_MAIN_DEVICE       = 0;
-    static const int V4L2_POSTVIEW_DEVICE   = 1;
-    static const int V4L2_PREVIEW_DEVICE    = 2;
-    static const int V4L2_INJECT_DEVICE     = 3;
-    static const int V4L2_LEGACY_VIDEO_PREVIEW_DEVICE = 1;
-
-    /**
-     * Maximum number of V4L2 devices node we support
-     */
-    static const int V4L2_MAX_DEVICE_COUNT  = V4L2_INJECT_DEVICE + 1;
-
-    static const int NUM_DEFAULT_BUFFERS = 9;
-
-    struct FrameInfo {
-        int format;     // V4L2 format
-        int width;      // Frame width
-        int height;     // Frame height
-        int padding;    // Frame padding width
-        int maxWidth;   // Frame maximum width
-        int maxHeight;  // Frame maximum height
-        int size;       // Frame size in bytes
-    };
-
-    struct Config {
-        FrameInfo preview;    // preview
-        FrameInfo recording;  // recording
-        FrameInfo snapshot;   // snapshot
-        FrameInfo postview;   // postview (thumbnail for capture)
-        float fps;            // preview/recording (shared)
-        int num_snapshot;     // number of snapshots to take
-        int zoom;             // zoom value
-    };
-
-    struct cameraInfo {
-        int androidCameraId; /*!< Index used by android to select this camera. This index is passed
-                              *   when the camera HAL is open. Used to differentiate back and front camera
-                              */
-        int port;            //!< AtomISP port type
-        uint32_t index;      //!< V4L2 index
-        char name[MAX_SENSOR_NAME_LENGTH];
-    };
-
-    enum ResolutionIndex {
-        RESOLUTION_VGA = 0,
-        RESOLUTION_720P,
-        RESOLUTION_1080P,
-        RESOLUTION_5MP,
-        RESOLUTION_8MP,
-        RESOLUTION_14MP,
-    };
 
 // private members
 private:
@@ -337,6 +339,7 @@ private:
         unsigned int width;
         unsigned int height;
         unsigned int size;
+        int stride;
         int format;
         int bayerOrder;
         char *mappedAddr;

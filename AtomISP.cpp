@@ -961,6 +961,46 @@ status_t AtomISP::configure(AtomMode mode)
     return status;
 }
 
+status_t AtomISP::allocateBuffers(AtomMode mode)
+{
+    LOG1("@%s", __FUNCTION__);
+    LOG1("mode = %d", mode);
+    status_t status = NO_ERROR;
+
+    switch (mode) {
+    case MODE_PREVIEW:
+        mPreviewDevice = mConfigSnapshotPreviewDevice;
+        if ((status = allocatePreviewBuffers()) != NO_ERROR)
+            stopDevice(mPreviewDevice);
+        if (mFileInject.active == true)
+            startFileInject();
+        break;
+    case MODE_VIDEO:
+        if ((status = allocateRecordingBuffers()) != NO_ERROR)
+            return status;
+        if (mFileInject.active == true)
+            startFileInject();
+        if ((status = allocatePreviewBuffers()) != NO_ERROR)
+            stopRecording();
+        if (mStoreMetaDataInBuffers) {
+          if ((status = allocateMetaDataBuffers()) != NO_ERROR)
+              stopRecording();
+        }
+        break;
+    case MODE_CAPTURE:
+        if ((status = allocateSnapshotBuffers()) != NO_ERROR)
+            return status;
+        if (mFileInject.active == true)
+            startFileInject();
+        break;
+    default:
+        status = UNKNOWN_ERROR;
+        break;
+    }
+
+    return status;
+}
+
 status_t AtomISP::start()
 {
     LOG1("@%s", __FUNCTION__);
@@ -1051,12 +1091,6 @@ status_t AtomISP::configurePreview()
 
     mPreviewDevice = mConfigSnapshotPreviewDevice;
 
-    if ((status = allocatePreviewBuffers()) != NO_ERROR)
-        return status;
-
-    if (mFileInject.active == true)
-        startFileInject();
-
     if (mPreviewDevice != V4L2_MAIN_DEVICE) {
         ret = openDevice(mPreviewDevice);
         if (ret < 0) {
@@ -1069,9 +1103,7 @@ status_t AtomISP::configurePreview()
     ret = configureDevice(
             mPreviewDevice,
             CI_MODE_PREVIEW,
-            mConfig.preview.padding,
-            mConfig.preview.height,
-            mConfig.preview.format,
+            &(mConfig.preview),
             false);
     if (ret < 0) {
         status = UNKNOWN_ERROR;
@@ -1080,6 +1112,7 @@ status_t AtomISP::configurePreview()
 
     // need to resend the current zoom value
     atomisp_set_zoom(main_fd, mConfig.zoom);
+
     return status;
 
 err:
@@ -1133,20 +1166,6 @@ status_t AtomISP::configureRecording()
 
     mPreviewDevice = mConfigRecordingPreviewDevice;
 
-    if ((status = allocateRecordingBuffers()) != NO_ERROR)
-        return status;
-
-    if (mFileInject.active == true)
-        startFileInject();
-
-    if ((status = allocatePreviewBuffers()) != NO_ERROR)
-        goto err;
-
-    if (mStoreMetaDataInBuffers) {
-      if ((status = allocateMetaDataBuffers()) != NO_ERROR)
-          goto err;
-    }
-
     ret = openDevice(mPreviewDevice);
     if (ret < 0) {
         LOGE("Open preview device failed!");
@@ -1157,9 +1176,7 @@ status_t AtomISP::configureRecording()
     ret = configureDevice(
             mRecordingDevice,
             CI_MODE_VIDEO,
-            mConfig.recording.padding,
-            mConfig.recording.height,
-            mConfig.recording.format,
+            &(mConfig.recording),
             false);
     if (ret < 0) {
         LOGE("Configure recording device failed!");
@@ -1170,9 +1187,7 @@ status_t AtomISP::configureRecording()
     ret = configureDevice(
             mPreviewDevice,
             CI_MODE_VIDEO,
-            mConfig.preview.padding,
-            mConfig.preview.height,
-            mConfig.preview.format,
+            &(mConfig.preview),
             false);
     if (ret < 0) {
         LOGE("Configure recording device failed!");
@@ -1240,20 +1255,12 @@ status_t AtomISP::configureCapture()
     int ret;
     status_t status = NO_ERROR;
 
-    if ((status = allocateSnapshotBuffers()) != NO_ERROR)
-        return status;
-
-    if (mFileInject.active == true)
-        startFileInject();
-
     updateCaptureParams();
 
     ret = configureDevice(
             V4L2_MAIN_DEVICE,
             CI_MODE_STILL_CAPTURE,
-            mConfig.snapshot.width,
-            mConfig.snapshot.height,
-            mConfig.snapshot.format,
+            &(mConfig.snapshot),
             isDumpRawImageReady());
     if (ret < 0) {
         LOGE("configure first device failed!");
@@ -1271,9 +1278,7 @@ status_t AtomISP::configureCapture()
     ret = configureDevice(
             V4L2_POSTVIEW_DEVICE,
             CI_MODE_STILL_CAPTURE,
-            mConfig.postview.width,
-            mConfig.postview.height,
-            mConfig.postview.format,
+            &(mConfig.postview),
             false);
     if (ret < 0) {
         LOGE("configure second device failed!");
@@ -1283,6 +1288,7 @@ status_t AtomISP::configureCapture()
 
     // need to resend the current zoom value
     atomisp_set_zoom(main_fd, mConfig.zoom);
+
     return status;
 
 errorCloseSecond:
@@ -1357,10 +1363,23 @@ status_t AtomISP::releaseCaptureBuffers()
     return freeSnapshotBuffers();
 }
 
-int AtomISP::configureDevice(int device, int deviceMode, int w, int h, int format, bool raw)
+/**
+ * Configures a particular device with a mode (preview, video or capture)
+ *
+ * The FrameInfo struct contains information about the frame dimensions that
+ * we are requesting to ISP
+ * the field stride of the FrameInfo struct will be updated with the actual
+ * width that the buffers need to have to meet the ISP constrains.
+ * In effect the FrameInfo struct is an IN/OUT parameter.
+ */
+int AtomISP::configureDevice(int device, int deviceMode, FrameInfo *fInfo, bool raw)
 {
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
+    int w,h,format;
+    w = fInfo->width;
+    h = fInfo->height;
+    format = fInfo->format;
     LOG1("device: %d, width:%d, height:%d, deviceMode:%d format:%d raw:%d", device,
         w, h, deviceMode, format, raw);
 
@@ -1384,10 +1403,11 @@ int AtomISP::configureDevice(int device, int deviceMode, int w, int h, int forma
         return ret;
 
     //Set the format
-    ret = v4l2_capture_s_format(fd, device, w, h, format, raw);
+    ret = v4l2_capture_s_format(fd, device, w, h, format, raw, &(fInfo->stride));
     if (ret < 0)
         return ret;
-
+    // update the size according to the stride from ISP
+    fInfo->size = frameSize(fInfo->format, fInfo->stride, fInfo->height);
     v4l2_buf_pool[device].width = w;
     v4l2_buf_pool[device].height = h;
     v4l2_buf_pool[device].format = format;
@@ -1667,10 +1687,10 @@ status_t AtomISP::setPreviewFrameFormat(int width, int height, int format)
     mConfig.preview.width = width;
     mConfig.preview.height = height;
     mConfig.preview.format = format;
-    mConfig.preview.padding = paddingWidth(format, width, height);
-    mConfig.preview.size = frameSize(format, mConfig.preview.padding, height);
+    mConfig.preview.stride = width;
+    mConfig.preview.size = frameSize(format, mConfig.preview.stride, height);
     LOG1("width(%d), height(%d), pad_width(%d), size(%d), format(%x)",
-        width, height, mConfig.preview.padding, mConfig.preview.size, format);
+        width, height, mConfig.preview.stride, mConfig.preview.size, format);
     return status;
 }
 
@@ -1693,12 +1713,12 @@ status_t AtomISP::setPostviewFrameFormat(int width, int height, int format)
     mConfig.postview.width = width;
     mConfig.postview.height = height;
     mConfig.postview.format = format;
-    mConfig.postview.padding = paddingWidth(format, width, height);
+    mConfig.postview.stride = width;
     mConfig.postview.size = frameSize(format, width, height);
     if (mConfig.postview.size == 0)
         mConfig.postview.size = mConfig.postview.width * mConfig.postview.height * BPP;
     LOG1("width(%d), height(%d), pad_width(%d), size(%d), format(%x)",
-            width, height, mConfig.postview.padding, mConfig.postview.size, format);
+            width, height, mConfig.postview.stride, mConfig.postview.size, format);
     return status;
 }
 
@@ -1714,12 +1734,12 @@ status_t AtomISP::setSnapshotFrameFormat(int width, int height, int format)
     mConfig.snapshot.width  = width;
     mConfig.snapshot.height = height;
     mConfig.snapshot.format = format;
-    mConfig.snapshot.padding = paddingWidth(format, width, height);
+    mConfig.snapshot.stride = width;
     mConfig.snapshot.size = frameSize(format, width, height);;
     if (mConfig.snapshot.size == 0)
         mConfig.snapshot.size = mConfig.snapshot.width * mConfig.snapshot.height * BPP;
     LOG1("width(%d), height(%d), pad_width(%d), size(%d), format(%x)",
-        width, height, mConfig.snapshot.padding, mConfig.snapshot.size, format);
+        width, height, mConfig.snapshot.stride, mConfig.snapshot.size, format);
     return status;
 }
 
@@ -1730,7 +1750,17 @@ void AtomISP::getVideoSize(int *width, int *height, int *stride = NULL)
         *height = mConfig.recording.height;
     }
     if (stride)
-        *stride = mConfig.recording.padding;
+        *stride = mConfig.recording.stride;
+}
+
+void AtomISP::getPreviewSize(int *width, int *height, int *stride = NULL)
+{
+    if (width && height) {
+        *width = mConfig.preview.width;
+        *height = mConfig.preview.height;
+    }
+    if (stride)
+        *stride = mConfig.preview.stride;
 }
 
 status_t AtomISP::setSnapshotNum(int num)
@@ -1791,12 +1821,12 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
     mConfig.recording.width = width;
     mConfig.recording.height = height;
     mConfig.recording.format = format;
-    mConfig.recording.padding = paddingWidth(format, width, height);
+    mConfig.recording.stride = width;
     mConfig.recording.size = frameSize(format, width, height);
     if (mConfig.recording.size == 0)
         mConfig.recording.size = mConfig.recording.width * mConfig.recording.height * BPP;
     LOG1("width(%d), height(%d), pad_width(%d), format(%x)",
-            width, height, mConfig.recording.padding, format);
+            width, height, mConfig.recording.stride, format);
 
     return status;
 }
@@ -2247,7 +2277,7 @@ int AtomISP::startFileInject(void)
 
     //Set the format
     ret = v4l2_capture_s_format(video_fds[device], device, mFileInject.width,
-                                mFileInject.height, mFileInject.format, false);
+                                mFileInject.height, mFileInject.format, false, &(mFileInject.stride));
     if (ret < 0)
         goto error1;
 
@@ -2543,7 +2573,7 @@ int AtomISP::v4l2_capture_g_framerate(int fd, float *framerate, int width,
     return 0;
 }
 
-int AtomISP::v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc, bool raw)
+int AtomISP::v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc, bool raw, int* stride)
 {
     LOG1("@%s", __FUNCTION__);
     int ret;
@@ -2602,6 +2632,9 @@ int AtomISP::v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc,
         return -1;
     }
 
+    //get stride from ISP
+    *stride = bytesPerLineToWidth(fourcc,v4l2_fmt.fmt.pix.bytesperline);
+    LOG1("stride: %d from ISP", *stride);
     if (raw) {
         mRawDataDumpSize = v4l2_fmt.fmt.pix.priv;
         LOG1("raw data size from kernel %d\n", mRawDataDumpSize);
@@ -3143,7 +3176,7 @@ status_t AtomISP::allocatePreviewBuffers()
              mPreviewBuffers[i].type = ATOM_BUFFER_PREVIEW;
              mPreviewBuffers[i].width = mConfig.preview.width;
              mPreviewBuffers[i].height = mConfig.preview.height;
-             mPreviewBuffers[i].stride = mConfig.preview.padding;
+             mPreviewBuffers[i].stride = mConfig.preview.stride;
              mCallbacks->allocateMemory(&mPreviewBuffers[i],  mConfig.preview.size);
              if (mPreviewBuffers[i].buff == NULL) {
                  LOGE("Error allocation memory for preview buffers!");
@@ -3185,7 +3218,7 @@ status_t AtomISP::allocateRecordingBuffers()
     int allocatedBufs = 0;
     int size;
 
-    size = mConfig.recording.padding * mConfig.recording.height * 3 / 2;
+    size = mConfig.recording.stride * mConfig.recording.height * 3 / 2;
 
     mRecordingBuffers = new AtomBuffer[mNumBuffers];
     if (!mRecordingBuffers) {
@@ -3211,7 +3244,7 @@ status_t AtomISP::allocateRecordingBuffers()
         mRecordingBuffers[i].width = mConfig.recording.width;
         mRecordingBuffers[i].height = mConfig.recording.height;
         mRecordingBuffers[i].size = mConfig.recording.size;
-        mRecordingBuffers[i].stride = mConfig.recording.padding;
+        mRecordingBuffers[i].stride = mConfig.recording.stride;
         mRecordingBuffers[i].format = mConfig.recording.format;
     }
     return status;
@@ -3312,9 +3345,9 @@ void AtomISP::initMetaDataBuf(IntelMetadataBuffer* metaDatabuf)
     vinfo->height = mConfig.recording.height;
     vinfo->size = mConfig.recording.size;
     //stride need to fill
-    vinfo->lumaStride = mConfig.recording.padding;
-    vinfo->chromStride = mConfig.recording.padding;
-    LOG2("weight:%d  height:%d size:%d padding:%d ", vinfo->width,
+    vinfo->lumaStride = mConfig.recording.stride;
+    vinfo->chromStride = mConfig.recording.stride;
+    LOG2("weight:%d  height:%d size:%d stride:%d ", vinfo->width,
           vinfo->height, vinfo->size, vinfo->lumaStride);
     vinfo->format = STRING_TO_FOURCC("NV12");
     vinfo->s3dformat = 0xFFFFFFFF;
@@ -3732,7 +3765,7 @@ int AtomISP::dumpSnapshot(int snapshotIndex, int postviewIndex)
             else {
                 LOG1("MMAP raw address from kernel 0x%p", start);
             }
-            cameraDump->dumpImage2Buf(start, mRawDataDumpSize, mConfig.snapshot.padding,
+            cameraDump->dumpImage2Buf(start, mRawDataDumpSize, mConfig.snapshot.stride,
                                       mConfig.snapshot.height);
             if (-1 == munmap(start, PAGE_ALIGN(mRawDataDumpSize)))
                 LOGE("munmap failed");

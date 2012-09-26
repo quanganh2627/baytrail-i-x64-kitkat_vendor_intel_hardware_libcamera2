@@ -39,6 +39,7 @@ PreviewThread::PreviewThread(ICallbackPreview *previewDone) :
     ,mPreviewWindow(NULL)
     ,mPreviewWidth(640)
     ,mPreviewHeight(480)
+    ,mPreviewStride(640)
     ,mPreviewFormat(V4L2_PIX_FMT_NV21)
     ,mBuffersInWindow(0)
     ,mHALProxy(NULL)
@@ -93,7 +94,7 @@ status_t PreviewThread::setPreviewWindow(struct preview_stream_ops *window)
     return mMessageQueue.send(&msg);
 }
 
-status_t PreviewThread::setPreviewConfig(int preview_width, int preview_height,
+status_t PreviewThread::setPreviewConfig(int preview_width, int preview_height, int preview_stride,
                                          int preview_format, int buffer_count)
 {
     LOG1("@%s", __FUNCTION__);
@@ -101,6 +102,7 @@ status_t PreviewThread::setPreviewConfig(int preview_width, int preview_height,
     msg.id = MESSAGE_ID_SET_PREVIEW_CONFIG;
     msg.data.setPreviewConfig.width = preview_width;
     msg.data.setPreviewConfig.height = preview_height;
+    msg.data.setPreviewConfig.stride = preview_stride;
     msg.data.setPreviewConfig.format = preview_format;
     msg.data.setPreviewConfig.bufferCount = buffer_count;
     return mMessageQueue.send(&msg);
@@ -313,8 +315,7 @@ status_t PreviewThread::handleMessageSetPreviewWindow(MessageSetPreviewWindow *m
 
     if (mPreviewWindow != NULL) {
         LOG1("Setting new preview window %p", mPreviewWindow);
-        int previewWidthPadded =
-            paddingWidth(V4L2_PIX_FMT_NV12, mPreviewWidth, mPreviewHeight);
+        int previewWidthPadded = mPreviewWidth;
 
         // write-often: main use-case, stream image data to window
         // read-rarely: 2nd use-case, memcpy to application data callback
@@ -338,19 +339,28 @@ status_t PreviewThread::handleMessageSetPreviewConfig(MessageSetPreviewConfig *m
     status_t status = NO_ERROR;
 
     if ((msg->width != 0 && msg->height != 0) &&
-            (mPreviewWidth != msg->width || mPreviewHeight != msg->height)) {
-        LOG1("Setting new preview size: %dx%d", msg->width, msg->height);
+        (mPreviewWidth != msg->width || mPreviewHeight != msg->height)) {
+        LOG1("Setting new preview size: %dx%d, stride:%d", msg->width, msg->height, msg->stride);
         if (mPreviewWindow != NULL) {
-            int previewWidthPadded = paddingWidth(V4L2_PIX_FMT_NV12, msg->width, msg->height);
+
             // if preview size changed, update the preview window
             mPreviewWindow->set_buffers_geometry(mPreviewWindow,
-                                                 previewWidthPadded,
+                                                 msg->width,
                                                  msg->height,
                                                  HAL_PIXEL_FORMAT_NV12);
 
+            int stride = getGfxBufferStride();
+            if(stride != msg->stride) {
+                LOG1("the stride %d in GFX is different from stride %d in ISP:", stride, msg->stride)
+                mPreviewWindow->set_buffers_geometry(mPreviewWindow,
+                                                     msg->stride,
+                                                     msg->height,
+                                                     HAL_PIXEL_FORMAT_NV12);
+            }
         }
         mPreviewWidth = msg->width;
         mPreviewHeight = msg->height;
+        mPreviewStride = msg->stride;
         mPreviewFormat = msg->format;
 
         allocateLocalPreviewBuf();
@@ -614,4 +624,22 @@ status_t PreviewThread::freeGfxPreviewBuffers() {
     return NO_ERROR;
 }
 
+/**
+ * getGfxBufferStride
+ * returns the stride of the buffers dequeued by the current window
+ *
+ * Please NOTE:
+ *  It is the caller responsibility to ensure mPreviewWindow is initialized
+ */
+int PreviewThread::getGfxBufferStride(void)
+{
+    int stride = 0;
+    buffer_handle_t *buf;
+
+    mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride);
+    mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
+
+    return stride;
+
+}
 } // namespace android

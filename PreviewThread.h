@@ -58,7 +58,7 @@ public:
 
     status_t preview(AtomBuffer *buff);
     status_t setPreviewWindow(struct preview_stream_ops *window);
-    status_t setPreviewConfig(int preview_width, int preview_height,
+    status_t setPreviewConfig(int preview_width, int preview_height, int preview_stride,
                               int preview_format, int bufferCount);
     status_t fetchPreviewBuffers(AtomBuffer ** pvBufs, int *count);
     status_t returnPreviewBuffers();
@@ -101,6 +101,7 @@ private:
     struct MessageSetPreviewConfig {
         int width;
         int height;
+        int stride;
         int format;
         int bufferCount;
     };
@@ -144,6 +145,7 @@ private:
     void allocateLocalPreviewBuf(void);
     status_t allocateGfxPreviewBuffers(int numberOfBuffers);
     status_t freeGfxPreviewBuffers();
+    int getGfxBufferStride();
 
     // handler helpers
     status_t callPreviewDone(MessagePreview *msg);
@@ -165,6 +167,7 @@ private:
 
     int mPreviewWidth;
     int mPreviewHeight;
+    int mPreviewStride;
     int mPreviewFormat;
 
     AtomBuffer          mPreviewBuf;        /*!< Local preview buffer to give to the user */

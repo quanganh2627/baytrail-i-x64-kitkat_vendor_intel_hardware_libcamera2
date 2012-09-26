@@ -189,32 +189,31 @@ static int frameSize(int format, int width, int height)
     return size;
 }
 
-static int paddingWidth(int format, int width, int height)
+static int bytesPerLineToWidth(int format, int bytesperline)
 {
-    int padding = 0;
+    int width = 0;
     switch (format) {
-    //64bit align for 1.5byte per pixel
     case V4L2_PIX_FMT_YUV420:
     case V4L2_PIX_FMT_YVU420:
     case V4L2_PIX_FMT_NV12:
     case V4L2_PIX_FMT_NV21:
     case V4L2_PIX_FMT_YUV411P:
     case V4L2_PIX_FMT_YUV422P:
-        padding = (width + 63) / 64 * 64;
+        width = (bytesperline * 2 / 3);
         break;
-    //32bit align for 2byte per pixel
     case V4L2_PIX_FMT_YUYV:
     case V4L2_PIX_FMT_Y41P:
     case V4L2_PIX_FMT_UYVY:
-        padding = width;
+        width = (bytesperline / 2);
         break;
     case V4L2_PIX_FMT_RGB565:
-        padding = (width + 31) / 32 * 32;
+        width = (bytesperline / 2);
         break;
     default:
-        padding = (width + 63) / 64 * 64;
+        width = (bytesperline / 2);
     }
-    return padding;
+
+    return width;
 }
 
 static const char* v4l2Fmt2Str(int format)
