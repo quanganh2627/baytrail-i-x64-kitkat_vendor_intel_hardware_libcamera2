@@ -90,7 +90,6 @@ ControlThread::ControlThread() :
     ,mAELockFlashNeed(false)
     ,mPublicAeMode(CAM_AE_MODE_AUTO)
     ,mPublicAfMode(CAM_AF_MODE_AUTO)
-    ,mPublicSceneMode(CAM_AE_SCENE_MODE_AUTO)
     ,mPublicShutter(-1)
     ,mParamCache(NULL)
     ,mLastRecordingBuffIndex(0)
@@ -99,7 +98,6 @@ ControlThread::ControlThread() :
     ,mCameraDump(NULL)
     ,mFocusAreas()
     ,mMeteringAreas()
-    ,mAAAFlags(AAA_FLAG_ALL)
     ,mIsPreviewStartComplete(false)
     ,mVideoSnapshotrequested(0)
 {
@@ -3370,7 +3368,6 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
         }
 
         mAAA->setAeSceneMode(sceneMode);
-        mPublicSceneMode = sceneMode;
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_SCENE_MODE, newScene.string());
         }
@@ -3392,20 +3389,6 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
         }
     }
 
-    mAAAFlags = AAA_FLAG_ALL;
-    // Disable some 3A uses from PostProcThread, depending on scene mode:
-    if (mPublicSceneMode == CAM_AE_SCENE_MODE_LANDSCAPE ||
-        mPublicSceneMode == CAM_AE_SCENE_MODE_NIGHT ||
-        mPublicSceneMode == CAM_AE_SCENE_MODE_SPORTS) {
-        // For landscape, night, sports and fireworks scene mode, apply face AAA info for WB and AE.
-        // AF is fixed to infinity.
-        mAAAFlags = static_cast<AAAFlags>(AAA_FLAG_AE | AAA_FLAG_AWB);
-    } else if (mPublicSceneMode == CAM_AE_SCENE_MODE_FIREWORKS) {
-        // Fireworks uses fixed AWB and AF, so from face info we can use AE:
-        mAAAFlags = AAA_FLAG_AE;
-    }
-
-    mPostProcThread->setFaceAAA(mAAAFlags);
     return status;
 }
 
@@ -3455,6 +3438,13 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             afMode = CAM_AF_MODE_MANUAL;
         }
 
+        // If the focus mode was explicitly set to infinity, disable AF
+        if (afMode == CAM_AF_MODE_INFINITY) {
+            mPostProcThread->disableFaceAAA(AAA_FLAG_AF);
+        } else {
+            mPostProcThread->enableFaceAAA(AAA_FLAG_AF);
+        }
+
         status = mAAA->setAfEnabled(true);
         if (status == NO_ERROR) {
             status = mAAA->setAfMode(afMode);
@@ -3463,29 +3453,6 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             mPublicAfMode = afMode;
             LOG1("Changed: %s -> %s", CameraParameters::KEY_FOCUS_MODE, newVal.string());
         }
-    }
-
-    // If setting AF mode above succeeded, and infinity AF was requested, set the manual
-    // focus value now
-    // TODO: Also manual mode and "focal" mode need manual focus setting, add them as well.
-    if (mPublicAfMode == CAM_AF_MODE_INFINITY) {
-        // If the focus mode was explicitly set to infinity, disable AF from
-        // face AAA functions:
-        mAAAFlags = static_cast<AAAFlags>(mAAAFlags & ~AAA_FLAG_AF);
-        mPostProcThread->setFaceAAA(mAAAFlags);
-
-        ia_3a_af_lens_range lensRange;
-        status = mAAA->setAfMode(mPublicAfMode);
-        if (status != NO_ERROR)
-            LOGE("Error in setting focus mode to infinity (%d)", mPublicAfMode);
-
-        // Get the lens infinity lens position from 3A:
-        status = mAAA->getAfLensPosRange(&lensRange);
-        if (status != NO_ERROR)
-            LOGE("Error in getting lens position from 3A");
-
-        LOG1("Setting infinity focus (manual value: %d)", lensRange.infinity);
-        mAAA->setManualFocus(lensRange.infinity, true);
     }
 
     if (!mFaceDetectionActive) {
@@ -3812,6 +3779,12 @@ status_t ControlThread::processParamAwbMappingMode(const CameraParameters *oldPa
             IntelCameraParameters::KEY_AWB_MAPPING_MODE);
     if (!newVal.isEmpty()) {
         ia_3a_awb_map awbMappingMode(ia_3a_awb_map_auto);
+
+        if (newVal == IntelCameraParameters::AWB_MAPPING_OUTDOOR) {
+            mPostProcThread->disableFaceAAA(AAA_FLAG_AWB);
+        } else {
+            mPostProcThread->enableFaceAAA(AAA_FLAG_AWB);
+        }
 
         if (newVal == IntelCameraParameters::AWB_MAPPING_AUTO) {
             awbMappingMode = ia_3a_awb_map_auto;

@@ -38,7 +38,7 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     ,mFaceDetectionRunning(false)
     ,mFaceRecognitionRunning(false)
     ,mSmartShutterRunning(false)
-    ,mAAAFlags(AAA_FLAG_ALL)
+    ,mFaceAAAFlags(AAA_FLAG_ALL)
     ,mOldAfMode(CAM_AF_MODE_NOT_SET)
     ,mOldAeMeteringMode(CAM_AE_METERING_MODE_NOT_SET)
 {
@@ -127,7 +127,6 @@ status_t PostProcThread::handleMessageStopFaceDetection()
     status_t status = NO_ERROR;
 
     mFaceDetectionRunning = false;
-    mAAAFlags = AAA_FLAG_ALL;
     mOldAfMode = CAM_AF_MODE_NOT_SET;
     mOldAeMeteringMode = CAM_AE_METERING_MODE_NOT_SET;
 
@@ -406,31 +405,39 @@ int PostProcThread::sendFrame(AtomBuffer *img)
         return -1;
 }
 
-void PostProcThread::setFaceAAA(AAAFlags flags)
+void PostProcThread::enableFaceAAA(AAAFlags flags)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s: flags = %d" , __FUNCTION__, (int)flags);
     Message msg;
-    msg.id = MESSAGE_ID_FACE_AAA;
+    msg.id = MESSAGE_ID_ENABLE_FACE_AAA;
     msg.data.faceAAA.flags = flags;
 
     mMessageQueue.send(&msg);
 }
 
-status_t PostProcThread::handleMessageSetFaceAAA(const MessageFaceAAA& msg)
+void PostProcThread::disableFaceAAA(AAAFlags flags)
 {
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    mAAAFlags = msg.flags;
+    LOG1("@%s: flags = %d", __FUNCTION__, (int)flags);
+    Message msg;
+    msg.id = MESSAGE_ID_DISABLE_FACE_AAA;
+    msg.data.faceAAA.flags = flags;
 
-    // Reset the state flags here, when the given AAA function is set disabled.
-    if (!(mAAAFlags & AAA_FLAG_AF))
-        mOldAfMode = CAM_AF_MODE_NOT_SET;
-    if (!(mAAAFlags & AAA_FLAG_AE))
-        mOldAeMeteringMode = CAM_AE_METERING_MODE_NOT_SET;
+    mMessageQueue.send(&msg);
+}
 
-    // TODO: Add AWB flag reset, when functionality added
+status_t PostProcThread::handleMessageEnableFaceAAA(const MessageFaceAAA& msg)
+{
+    mFaceAAAFlags = mFaceAAAFlags | msg.flags;
+    LOG1("@%s: enabled %d flags, after mFaceAAAFlags is %d", __FUNCTION__,  (int)msg.flags, (int)mFaceAAAFlags);
 
-    return status;
+    return NO_ERROR;
+}
+
+status_t PostProcThread::handleMessageDisableFaceAAA(const MessageFaceAAA& msg)
+{
+    mFaceAAAFlags = mFaceAAAFlags & ~msg.flags;
+    LOG1("@%s: disabled %d flags, after mFaceAAAFlags is %d", __FUNCTION__, (int)msg.flags, (int)mFaceAAAFlags);
+    return NO_ERROR;
 }
 
 bool PostProcThread::threadLoop()
@@ -491,8 +498,11 @@ status_t PostProcThread::waitForAndExecuteMessage()
         case MESSAGE_ID_GET_BLINK_THRESHOLD:
             status = handleMessageGetBlinkThreshold();
             break;
-        case MESSAGE_ID_FACE_AAA:
-            status = handleMessageSetFaceAAA(msg.data.faceAAA);
+        case MESSAGE_ID_ENABLE_FACE_AAA:
+            status = handleMessageEnableFaceAAA(msg.data.faceAAA);
+            break;
+        case MESSAGE_ID_DISABLE_FACE_AAA:
+            status = handleMessageDisableFaceAAA(msg.data.faceAAA);
             break;
         case MESSAGE_ID_START_FACE_RECOGNITION:
             status = handleMessageStartFaceRecognition();
@@ -655,7 +665,7 @@ void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata
         return;
     }
 
-    if (mAAAFlags & AAA_FLAG_AF || mAAAFlags & AAA_FLAG_AE) {
+    if (mFaceAAAFlags & AAA_FLAG_AF || mFaceAAAFlags & AAA_FLAG_AE) {
         CameraWindow *windows = new CameraWindow[face_metadata.number_of_faces];
         int highestScoreInd = 0;
         AtomAAA *aaa = AtomAAA::getInstance();
@@ -680,10 +690,10 @@ void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata
             }
         }
         // Apply AF window, if needed:
-        if (mAAAFlags & AAA_FLAG_AF)
+        if (mFaceAAAFlags & AAA_FLAG_AF)
             setFocusAreas(windows, face_metadata.number_of_faces);
         // Apply AE window if needed:
-        if (mAAAFlags & AAA_FLAG_AE) {
+        if (mFaceAAAFlags & AAA_FLAG_AE) {
             // Use the highest score window for AE metering:
             // TODO: Better logic needed for picking face AE metering area..?
             CameraWindow aeWindow = windows[highestScoreInd];
@@ -701,14 +711,14 @@ void PostProcThread::resetToOldAAAValues()
         AtomAAA* aaa = AtomAAA::getInstance();
 
         // Auto-focus:
-        if ((mAAAFlags & AAA_FLAG_AF) && mOldAfMode != CAM_AF_MODE_NOT_SET) {
+        if ((mFaceAAAFlags & AAA_FLAG_AF) && mOldAfMode != CAM_AF_MODE_NOT_SET) {
             LOG2("Reset to old focus mode (%d)", mOldAfMode);
             aaa->setAfMode(mOldAfMode);
             mOldAfMode = CAM_AF_MODE_NOT_SET;
         }
 
         // Auto-exposure metering mode:
-        if ((mAAAFlags & AAA_FLAG_AE) && mOldAeMeteringMode != CAM_AE_METERING_MODE_NOT_SET) {
+        if ((mFaceAAAFlags & AAA_FLAG_AE) && mOldAeMeteringMode != CAM_AE_METERING_MODE_NOT_SET) {
             LOG2("Reset to old AE metering mode (%d)", mOldAeMeteringMode);
             aaa->setAeMeteringMode(mOldAeMeteringMode);
             mOldAeMeteringMode = CAM_AE_METERING_MODE_NOT_SET;

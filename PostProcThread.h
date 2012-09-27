@@ -77,7 +77,8 @@ public:
     virtual int getBlinkThreshold();
     virtual void captureOnTrigger();
     virtual void stopCaptureOnTrigger();
-    virtual void setFaceAAA(AAAFlags flags);
+    virtual void enableFaceAAA(AAAFlags flags);
+    virtual void disableFaceAAA(AAAFlags flags);
     virtual void startFaceRecognition();
     virtual void stopFaceRecognition();
     bool isFaceRecognitionRunning();
@@ -111,7 +112,8 @@ private:
         MESSAGE_ID_GET_SMILE_THRESHOLD,
         MESSAGE_ID_IS_BLINK_RUNNING,
         MESSAGE_ID_GET_BLINK_THRESHOLD,
-        MESSAGE_ID_FACE_AAA,
+        MESSAGE_ID_ENABLE_FACE_AAA,
+        MESSAGE_ID_DISABLE_FACE_AAA,
         MESSAGE_ID_START_FACE_RECOGNITION,
         MESSAGE_ID_STOP_FACE_RECOGNITION,
         MESSAGE_ID_IS_FACE_RECOGNITION_RUNNING,
@@ -174,7 +176,8 @@ private:
     status_t handleMessageStartSmartShutter();
     status_t handleMessageStopSmartShutter();
     status_t handleMessageGetBlinkThreshold();
-    status_t handleMessageSetFaceAAA(const MessageFaceAAA& msg);
+    status_t handleMessageEnableFaceAAA(const MessageFaceAAA& msg);
+    status_t handleMessageDisableFaceAAA(const MessageFaceAAA& msg);
     status_t handleMessageStartFaceRecognition();
     status_t handleMessageStopFaceRecognition();
     status_t handleMessageIsFaceRecognitionRunning();
@@ -199,7 +202,7 @@ private:
     bool mFaceDetectionRunning;
     bool mFaceRecognitionRunning;
     bool mSmartShutterRunning;
-    AAAFlags mAAAFlags;
+    int mFaceAAAFlags;
     AfMode mOldAfMode;
     MeteringMode mOldAeMeteringMode;
     SmartShutterParams mSmartShutter;

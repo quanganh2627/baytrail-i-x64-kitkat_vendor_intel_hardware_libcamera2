@@ -345,6 +345,8 @@ status_t AtomAAA::setAfMode(AfMode mode)
     if(!mHas3A)
         return INVALID_OPERATION;
 
+    ia_3a_af_lens_range lensRange;
+
     switch (mode) {
     case CAM_AF_MODE_CONTINUOUS:
         ia_3a_af_set_focus_mode(ia_3a_af_mode_auto);
@@ -367,8 +369,11 @@ status_t AtomAAA::setAfMode(AfMode mode)
         ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_auto);
         break;
     case CAM_AF_MODE_INFINITY:
+        // TODO: change to ia_3a_af_mode_infinity after that is added to 3A
         ia_3a_af_set_focus_mode(ia_3a_af_mode_manual);
         ia_3a_af_set_focus_range(ia_3a_af_range_full);
+        ia_3a_af_get_lens_range(&lensRange);
+        ia_3a_af_set_manual_focus_position(lensRange.infinity);
         break;
     case CAM_AF_MODE_MANUAL:
         ia_3a_af_set_focus_mode(ia_3a_af_mode_manual);
