@@ -102,7 +102,7 @@ void Callbacks::previewFrameDone(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_PREVIEW_FRAME) && mDataCB != NULL) {
-        LOG2("Sending message: CAMERA_MSG_PREVIEW_FRAME, buff id = %d", buff->id);
+        LOG2("Sending message: CAMERA_MSG_PREVIEW_FRAME, buff id = %d, size = %zu", buff->id,  buff->buff->size);
         mDataCB(CAMERA_MSG_PREVIEW_FRAME, buff->buff, 0, NULL, mUserToken);
     }
 }
@@ -124,7 +124,7 @@ void Callbacks::compressedFrameDone(AtomBuffer *buff)
 {
     LOG1("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_COMPRESSED_IMAGE) && mDataCB != NULL) {
-        LOG1("Sending message: CAMERA_MSG_COMPRESSED_IMAGE, buff id = %d", buff->id);
+        LOG1("Sending message: CAMERA_MSG_COMPRESSED_IMAGE, buff id = %d, size = %zu", buff->id, buff->buff->size);
         mDataCB(CAMERA_MSG_COMPRESSED_IMAGE, buff->buff, 0, NULL, mUserToken);
     }
 }
@@ -133,7 +133,7 @@ void Callbacks::postviewFrameDone(AtomBuffer *buff)
 {
     LOG1("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_POSTVIEW_FRAME) && mDataCB != NULL) {
-        LOGD("Sending message: CAMERA_MSG_POSTVIEW_FRAME, buff id = %d", buff->id);
+        LOGD("Sending message: CAMERA_MSG_POSTVIEW_FRAME, buff id = %d, size = %zu", buff->id,  buff->buff->size);
         mDataCB(CAMERA_MSG_POSTVIEW_FRAME, buff->buff, 0, NULL, mUserToken);
     }
 }
@@ -147,7 +147,7 @@ void Callbacks::rawFrameDone(AtomBuffer *buff)
     }
 
     if ((mMessageFlags & CAMERA_MSG_RAW_IMAGE) && mNotifyCB != NULL) {
-        LOGD("Sending message: CAMERA_MSG_RAW_IMAGE, buff id = %d", buff->id);
+        LOGD("Sending message: CAMERA_MSG_RAW_IMAGE, buff id = %d, size = %zu", buff->id, buff->buff->size);
         mDataCB(CAMERA_MSG_RAW_IMAGE, buff->buff, 0, NULL, mUserToken);
     }
 }
@@ -156,7 +156,7 @@ void Callbacks::cameraError(int err)
 {
     LOG1("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_ERROR) && mNotifyCB != NULL) {
-        LOG1("Sending message: CAMERA_MSG_ERROR, err # = %d", err);
+        LOGD("Sending message: CAMERA_MSG_ERROR, err # = %d", err);
         mNotifyCB(CAMERA_MSG_ERROR, err, 0, mUserToken);
     }
 }
