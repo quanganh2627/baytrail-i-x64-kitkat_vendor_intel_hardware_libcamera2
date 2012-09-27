@@ -35,10 +35,6 @@ LOCAL_SRC_FILES := \
 	PlatformData.cpp \
 	IntelParameters.cpp \
 	exif/ExifCreater.cpp \
-	OlaService/IOlaBuffer.cpp \
-	OlaService/IOlaBuffer.h  \
-	OlaService/OlaBufferService.cpp \
-	OlaService/HalProxyOla.cpp \
 	PostProcThread.cpp \
 	PanoramaThread.cpp \
 	AtomCommon.cpp \

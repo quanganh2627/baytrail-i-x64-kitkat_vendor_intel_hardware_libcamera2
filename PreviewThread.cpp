@@ -42,7 +42,6 @@ PreviewThread::PreviewThread(ICallbackPreview *previewDone) :
     ,mPreviewStride(640)
     ,mPreviewFormat(V4L2_PIX_FMT_NV21)
     ,mBuffersInWindow(0)
-    ,mHALProxy(NULL)
 {
     LOG1("@%s", __FUNCTION__);
     mPreviewBuffers.setCapacity(MAX_NUMBER_PREVIEW_GFX_BUFFERS);
@@ -204,17 +203,6 @@ status_t PreviewThread::callPreviewDone(MessagePreview *msg)
 {
     LOG2("@%s", __FUNCTION__);
 
-    /* HACK to copy the preview frame to a new location for Social Camera*/
-    if (mHALProxy) {
-        void *src;
-        if(msg->buff.type == ATOM_BUFFER_PREVIEW)
-            src = msg->buff.buff->data;
-        else
-            src = msg->buff.gfxData;
-        mHALProxy->copyPreview(src, msg->buff.stride, mPreviewHeight);
-    }
-    /* end of HACK */
-
     if (msg->buff.type == ATOM_BUFFER_PREVIEW) {
         mPreviewDoneCallback->previewDone(&(msg->buff));
         return NO_ERROR;
@@ -346,7 +334,7 @@ status_t PreviewThread::handleMessageSetPreviewWindow(MessageSetPreviewWindow *m
         // write-often: main use-case, stream image data to window
         // read-rarely: 2nd use-case, memcpy to application data callback
         mPreviewWindow->set_usage(mPreviewWindow,
-                                  (GRALLOC_USAGE_SW_READ_OFTEN |
+                                  (GRALLOC_USAGE_SW_READ_RARELY |
                                    GRALLOC_USAGE_SW_WRITE_OFTEN));
         mPreviewWindow->set_buffers_geometry(
                 mPreviewWindow,

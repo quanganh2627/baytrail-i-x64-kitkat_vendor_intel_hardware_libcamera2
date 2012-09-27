@@ -32,7 +32,6 @@
 #include "CallbacksThread.h"
 #include "AAAThread.h"
 #include "AtomAAA.h"
-#include "OlaService/HalProxyOla.h"
 #include "PostProcThread.h"
 #include "PanoramaThread.h"
 #include "CameraDump.h"
@@ -542,8 +541,6 @@ private:
     sp<AAAThread>     m3AThread;
     sp<PostProcThread> mPostProcThread;
     sp<PanoramaThread> mPanoramaThread;
-    sp<HalProxyOla>   mProxyToOlaService;
-    friend class HalProxyOla;
     sp<BracketManager> mBracketManager;
 
     MessageQueue<Message, MessageId> mMessageQueue;
