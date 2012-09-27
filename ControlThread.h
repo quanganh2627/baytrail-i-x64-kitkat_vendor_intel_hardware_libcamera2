@@ -166,12 +166,6 @@ private:
         MESSAGE_ID_PANORAMA_CAPTURE_TRIGGER,
         MESSAGE_ID_POST_PROC_CAPTURE_TRIGGER,
 
-        // Messages for the Acceleration API temporary HACK
-        MESSAGE_ID_LOAD_FIRMWARE,
-        MESSAGE_ID_UNLOAD_FIRMWARE,
-        MESSAGE_ID_SET_FIRMWARE_ARGUMENT,
-        MESSAGE_ID_UNSET_FIRMWARE_ARGUMENT,
-
         // Message for enabling metadata buffer mode
         MESSAGE_ID_STORE_METADATA_IN_BUFFER,
 
@@ -222,23 +216,6 @@ private:
         struct preview_stream_ops *window;
     };
 
-    struct MessageLoadFirmware {
-        void *fwData;
-        size_t size;
-        unsigned int *fwHandle;
-    };
-
-    struct MessageUnloadFirmware {
-        unsigned int fwHandle;
-    };
-
-    struct MessageSetFwArg {
-        unsigned int fwHandle;
-        unsigned int argIndex;
-        void *value;
-        size_t size;
-    };
-
     struct MessageStoreMetaDataInBuffers {
         bool enabled;
     };
@@ -276,15 +253,6 @@ private:
 
         // MESSAGE_ID_SET_PREVIEW_WINDOW
         MessagePreviewWindow    previewWin;
-
-        //MESSAGE_ID_LOAD_FIRMWARE
-        MessageLoadFirmware     loadFW;
-
-        //MESSAGE_ID_UNLOAD_FIRMWARE
-        MessageUnloadFirmware     unloadFW;
-
-        //MESSAGE_ID_SET_FIRMWARE_ARGUMENT
-        MessageSetFwArg     setFwArg;
 
         // MESSAGE_ID_STORE_METADATA_IN_BUFFER
         MessageStoreMetaDataInBuffers storeMetaDataInBuffers;
@@ -386,10 +354,6 @@ private:
     status_t startSmartSceneDetection();
     status_t stopSmartSceneDetection();
     status_t handleMessageStopCapture();
-    status_t handleMessageLoadFirmware(MessageLoadFirmware* msg);
-    status_t handleMessageUnloadFirmware(MessageUnloadFirmware* msg);
-    status_t handleMessageSetFirmwareArgument(MessageSetFwArg* msg);
-    status_t handleMessageUnsetFirmwareArgument(MessageSetFwArg* msg);
     status_t enableIntelParameters();
     void releasePreviewFrame(AtomBuffer* buff);
     status_t handleMessageSceneDetected(MessageSceneDetected *msg);
