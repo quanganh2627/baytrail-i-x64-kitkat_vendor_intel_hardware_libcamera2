@@ -1087,10 +1087,16 @@ status_t ControlThread::handleMessageStartRecording()
     * and thumbnail size is the size of preview.
     */
     storeCurrentPictureParams();
-    mParameters.getVideoSize(&width, &height);
-    mParameters.setPictureSize(width, height);
+    /**
+     * in video mode we may allocate bigger buffers to satisfy encoder or
+     * ISP stride requirements. We need to be honest about the real size
+     * towards the user.
+     */
+    int stride;
+    mISP->getVideoSize(&width, &height, &stride);
+    mParameters.setPictureSize(stride, height);
     allocateSnapshotBuffers();
-    snprintf(sizes, 25, "%dx%d", width,height);
+    snprintf(sizes, 25, "%dx%d", stride,height);
     mParameters.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, sizes);
 
     LOG1("video snapshot size %dx%d", width, height);

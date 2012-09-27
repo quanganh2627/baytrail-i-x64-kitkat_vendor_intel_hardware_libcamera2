@@ -164,13 +164,15 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
        } else {
            inBuf.buf = (unsigned char *) mainBuf->buff->data;
        }
-       inBuf.width = mainBuf->width;
+       int realWidth = (mainBuf->stride > mainBuf->width)? mainBuf->stride:
+                                                           mainBuf->width;
+       inBuf.width = realWidth;
        inBuf.height = mainBuf->height;
        inBuf.format = mainBuf->format;
        inBuf.size = frameSize(mainBuf->format, mainBuf->width, mainBuf->height);
        outBuf.clear();
        outBuf.buf = (unsigned char*)mOutBuf.buff->data;
-       outBuf.width = mainBuf->width;
+       outBuf.width = realWidth;
        outBuf.height = mainBuf->height;
        outBuf.quality = mPictureQuality;
        outBuf.size = mOutBuf.buff->size;

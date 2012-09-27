@@ -114,7 +114,7 @@ public:
     bool applyISPLimitations(CameraParameters *params, bool dvsEnabled);
 
     inline int getSnapshotPixelFormat() { return mConfig.snapshot.format; }
-    void getVideoSize(int *width, int *height);
+    void getVideoSize(int *width, int *height, int *stride);
 
     status_t setSnapshotNum(int num);
 

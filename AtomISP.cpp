@@ -1723,12 +1723,14 @@ status_t AtomISP::setSnapshotFrameFormat(int width, int height, int format)
     return status;
 }
 
-void AtomISP::getVideoSize(int *width, int *height)
+void AtomISP::getVideoSize(int *width, int *height, int *stride = NULL)
 {
     if (width && height) {
         *width = mConfig.recording.width;
         *height = mConfig.recording.height;
     }
+    if (stride)
+        *stride = mConfig.recording.padding;
 }
 
 status_t AtomISP::setSnapshotNum(int num)
