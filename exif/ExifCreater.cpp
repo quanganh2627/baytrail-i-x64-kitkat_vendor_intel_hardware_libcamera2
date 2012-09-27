@@ -229,12 +229,18 @@ exif_status ExifCreater::makeExif (void *exifOut,
 
         pCur = pIfdStart + LongerTagOffset;
 
-        if (exifInfo->gps_processing_method[0] == 0) {
-            // don't create GPS_PROCESSING_METHOD tag if there isn't any
-            tmp = NUM_0TH_IFD_GPS - 1;
-        } else {
-            tmp = NUM_0TH_IFD_GPS;
-        }
+        tmp = NUM_0TH_IFD_GPS;
+        if ((exifInfo->enableGps & EXIF_GPS_LATITUDE) == 0)
+            tmp -= 2;
+        if ((exifInfo->enableGps & EXIF_GPS_LONGITUDE) == 0)
+            tmp -= 2;
+        if ((exifInfo->enableGps & EXIF_GPS_ALTITUDE) == 0)
+            tmp -= 2;
+        if ((exifInfo->enableGps & EXIF_GPS_TIMESTAMP) == 0)
+            tmp -= 1;
+        if ((exifInfo->enableGps & EXIF_GPS_PROCMETHOD) == 0)
+            tmp -= 1;
+
         memcpy(pCur, &tmp, NUM_SIZE);
         pCur += NUM_SIZE;
 
@@ -242,31 +248,45 @@ exif_status ExifCreater::makeExif (void *exifOut,
 
         writeExifIfd(&pCur, EXIF_TAG_GPS_VERSION_ID, EXIF_TYPE_BYTE,
                      4, exifInfo->gps_version_id);
-        writeExifIfd(&pCur, EXIF_TAG_GPS_LATITUDE_REF, EXIF_TYPE_ASCII,
-                     2, exifInfo->gps_latitude_ref);
-        writeExifIfd(&pCur, EXIF_TAG_GPS_LATITUDE, EXIF_TYPE_RATIONAL,
-                     3, exifInfo->gps_latitude, &LongerTagOffset, pIfdStart);
-        writeExifIfd(&pCur, EXIF_TAG_GPS_LONGITUDE_REF, EXIF_TYPE_ASCII,
-                     2, exifInfo->gps_longitude_ref);
-        writeExifIfd(&pCur, EXIF_TAG_GPS_LONGITUDE, EXIF_TYPE_RATIONAL,
-                     3, exifInfo->gps_longitude, &LongerTagOffset, pIfdStart);
-        writeExifIfd(&pCur, EXIF_TAG_GPS_ALTITUDE_REF, EXIF_TYPE_BYTE,
-                     1, exifInfo->gps_altitude_ref);
-        writeExifIfd(&pCur, EXIF_TAG_GPS_ALTITUDE, EXIF_TYPE_RATIONAL,
-                     1, &exifInfo->gps_altitude, &LongerTagOffset, pIfdStart);
-        writeExifIfd(&pCur, EXIF_TAG_GPS_TIMESTAMP, EXIF_TYPE_RATIONAL,
-                     3, exifInfo->gps_timestamp, &LongerTagOffset, pIfdStart);
-        tmp = strlen((char*)exifInfo->gps_processing_method);
-        if (tmp > 0) {
-            if (tmp > 100) {
-                tmp = 100;
+        if (exifInfo->enableGps & EXIF_GPS_LATITUDE) {
+            writeExifIfd(&pCur, EXIF_TAG_GPS_LATITUDE_REF, EXIF_TYPE_ASCII,
+                         2, exifInfo->gps_latitude_ref);
+            writeExifIfd(&pCur, EXIF_TAG_GPS_LATITUDE, EXIF_TYPE_RATIONAL,
+                         3, exifInfo->gps_latitude, &LongerTagOffset, pIfdStart);
+        }
+
+        if (exifInfo->enableGps & EXIF_GPS_LONGITUDE) {
+            writeExifIfd(&pCur, EXIF_TAG_GPS_LONGITUDE_REF, EXIF_TYPE_ASCII,
+                         2, exifInfo->gps_longitude_ref);
+            writeExifIfd(&pCur, EXIF_TAG_GPS_LONGITUDE, EXIF_TYPE_RATIONAL,
+                         3, exifInfo->gps_longitude, &LongerTagOffset, pIfdStart);
+        }
+
+        if (exifInfo->enableGps & EXIF_GPS_ALTITUDE) {
+            writeExifIfd(&pCur, EXIF_TAG_GPS_ALTITUDE_REF, EXIF_TYPE_BYTE,
+                         1, exifInfo->gps_altitude_ref);
+            writeExifIfd(&pCur, EXIF_TAG_GPS_ALTITUDE, EXIF_TYPE_RATIONAL,
+                         1, &exifInfo->gps_altitude, &LongerTagOffset, pIfdStart);
+        }
+
+        if (exifInfo->enableGps & EXIF_GPS_TIMESTAMP) {
+            writeExifIfd(&pCur, EXIF_TAG_GPS_TIMESTAMP, EXIF_TYPE_RATIONAL,
+                         3, exifInfo->gps_timestamp, &LongerTagOffset, pIfdStart);
+        }
+
+        if (exifInfo->enableGps & EXIF_GPS_PROCMETHOD) {
+            tmp = strlen((char*)exifInfo->gps_processing_method);
+            if (tmp > 0) {
+                if (tmp > 100) {
+                    tmp = 100;
+                }
+                unsigned char tmp_buf[100+sizeof(ExifAsciiPrefix)];
+                memcpy(tmp_buf, ExifAsciiPrefix, sizeof(ExifAsciiPrefix));
+                memcpy(&tmp_buf[sizeof(ExifAsciiPrefix)], exifInfo->gps_processing_method, tmp);
+                writeExifIfd(&pCur, EXIF_TAG_GPS_PROCESSING_METHOD, EXIF_TYPE_UNDEFINED,
+                             tmp+sizeof(ExifAsciiPrefix), tmp_buf, &LongerTagOffset, pIfdStart);
             }
-            unsigned char tmp_buf[100+sizeof(ExifAsciiPrefix)];
-            memcpy(tmp_buf, ExifAsciiPrefix, sizeof(ExifAsciiPrefix));
-            memcpy(&tmp_buf[sizeof(ExifAsciiPrefix)], exifInfo->gps_processing_method, tmp);
-            writeExifIfd(&pCur, EXIF_TAG_GPS_PROCESSING_METHOD, EXIF_TYPE_UNDEFINED,
-                         tmp+sizeof(ExifAsciiPrefix), tmp_buf, &LongerTagOffset, pIfdStart);
-            }
+        }
         writeExifIfd(&pCur, EXIF_TAG_GPS_DATESTAMP, EXIF_TYPE_ASCII,
                      11, exifInfo->gps_datestamp, &LongerTagOffset, pIfdStart);
         tmp = 0;

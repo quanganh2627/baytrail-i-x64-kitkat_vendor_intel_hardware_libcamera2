@@ -298,7 +298,7 @@ void EXIFMaker::initializeLocation(const CameraParameters &params)
 {
     LOG1("@%s", __FUNCTION__);
     // GIS information
-    bool gpsEnabled = true;
+    bool gpsEnabled = false;
     const char *platitude = params.get(CameraParameters::KEY_GPS_LATITUDE);
     const char *plongitude = params.get(CameraParameters::KEY_GPS_LONGITUDE);
     const char *paltitude = params.get(CameraParameters::KEY_GPS_ALTITUDE);
@@ -306,24 +306,24 @@ void EXIFMaker::initializeLocation(const CameraParameters &params)
     const char *pprocmethod = params.get(CameraParameters::KEY_GPS_PROCESSING_METHOD);
 
     // check whether the GIS Information is valid
-    if((NULL == platitude) || (NULL == plongitude))
-        gpsEnabled = false;
+    if((NULL != platitude) || (NULL != plongitude) || (NULL != paltitude)
+       || (NULL != ptimestamp) || (NULL != pprocmethod))
+        gpsEnabled = true;
 
-    exifAttributes.enableGps = gpsEnabled;
+    exifAttributes.enableGps = 0;
     LOG1("EXIF: gpsEnabled: %d", gpsEnabled);
 
+    // the version is given as 2.2.0.0, it is mandatory when GPSInfo tag is present
     if(gpsEnabled) {
-        float latitude, longitude, altitude;
-        long timestamp;
-        unsigned len;
-        struct tm time;
-
-        // the version is given as 2.2.0.0, it is mandatory when GPSInfo tag is present
         const unsigned char gpsversion[4] = {0x02, 0x02, 0x00, 0x00};
         memcpy(exifAttributes.gps_version_id, gpsversion, sizeof(gpsversion));
+    } else {
+        return;
+    }
 
-        // latitude, for example, 39.904214 degrees, N
-        latitude = atof(platitude);
+    // latitude, for example, 39.904214 degrees, N
+    if (platitude) {
+        double latitude = atof(platitude);
         if(latitude > 0)
             memcpy(exifAttributes.gps_latitude_ref, "N", sizeof(exifAttributes.gps_latitude_ref));
         else
@@ -335,12 +335,15 @@ void EXIFMaker::initializeLocation(const CameraParameters &params)
         exifAttributes.gps_latitude[1].den = 1;
         exifAttributes.gps_latitude[2].num = (uint32_t)(((latitude - exifAttributes.gps_latitude[0].num) * 60 - exifAttributes.gps_latitude[1].num) * 60 * 100);
         exifAttributes.gps_latitude[2].den = 100;
+        exifAttributes.enableGps |= EXIF_GPS_LATITUDE;
         LOG1("EXIF: latitude, ref:%s, dd:%d, mm:%d, ss:%d",
                 exifAttributes.gps_latitude_ref, exifAttributes.gps_latitude[0].num,
                 exifAttributes.gps_latitude[1].num, exifAttributes.gps_latitude[2].num);
+    }
 
-        // longitude, for example, 116.407413 degrees, E
-        longitude = atof(plongitude);
+    // longitude, for example, 116.407413 degrees, E
+    if (plongitude) {
+        double longitude = atof(plongitude);
         if(longitude > 0)
             memcpy(exifAttributes.gps_longitude_ref, "E", sizeof(exifAttributes.gps_longitude_ref));
         else
@@ -352,53 +355,60 @@ void EXIFMaker::initializeLocation(const CameraParameters &params)
         exifAttributes.gps_longitude[1].den = 1;
         exifAttributes.gps_longitude[2].num = (uint32_t)(((longitude - exifAttributes.gps_longitude[0].num) * 60 - exifAttributes.gps_longitude[1].num) * 60 * 100);
         exifAttributes.gps_longitude[2].den = 100;
+        exifAttributes.enableGps |= EXIF_GPS_LONGITUDE;
         LOG1("EXIF: longitude, ref:%s, dd:%d, mm:%d, ss:%d",
                 exifAttributes.gps_longitude_ref, exifAttributes.gps_longitude[0].num,
                 exifAttributes.gps_longitude[1].num, exifAttributes.gps_longitude[2].num);
+    }
 
-        if (paltitude != NULL) {
-            // altitude, sea level or above sea level, set it to 0; below sea level, set it to 1
-            altitude = atof(paltitude);
-            exifAttributes.gps_altitude_ref = ((altitude > 0) ? 0 : 1);
-            altitude = fabs(altitude);
-            exifAttributes.gps_altitude.num = (uint32_t)altitude;
-            exifAttributes.gps_altitude.den = 1;
-            LOG1("EXIF: altitude, ref:%d, height:%d",
-                    exifAttributes.gps_altitude_ref, exifAttributes.gps_altitude.num);
-        }
+    // altitude
+    if (paltitude) {
+        // altitude, sea level or above sea level, set it to 0; below sea level, set it to 1
+        float altitude = atof(paltitude);
+        exifAttributes.gps_altitude_ref = ((altitude > 0) ? 0 : 1);
+        altitude = fabs(altitude);
+        exifAttributes.gps_altitude.num = (uint32_t)altitude;
+        exifAttributes.gps_altitude.den = 1;
+        exifAttributes.enableGps |= EXIF_GPS_ALTITUDE;
+        LOG1("EXIF: altitude, ref:%d, height:%d",
+                exifAttributes.gps_altitude_ref, exifAttributes.gps_altitude.num);
+    }
 
-        if (ptimestamp != NULL) {
-            // timestamp
-            timestamp = atol(ptimestamp);
-            if (timestamp >= LONG_MAX || timestamp <= LONG_MIN)
-            {
-                timestamp = 0;
-                LOGW("invalid timestamp was provided, defaulting to 0 (i.e. 1970)");
-            }
-            gmtime_r(&timestamp, &time);
-            time.tm_year += 1900;
-            time.tm_mon += 1;
-            exifAttributes.gps_timestamp[0].num = time.tm_hour;
-            exifAttributes.gps_timestamp[0].den = 1;
-            exifAttributes.gps_timestamp[1].num = time.tm_min;
-            exifAttributes.gps_timestamp[1].den = 1;
-            exifAttributes.gps_timestamp[2].num = time.tm_sec;
-            exifAttributes.gps_timestamp[2].den = 1;
-            snprintf((char *)exifAttributes.gps_datestamp, sizeof(exifAttributes.gps_datestamp), "%04d:%02d:%02d",
-                    time.tm_year, time.tm_mon, time.tm_mday);
-            LOG1("EXIF: timestamp, year:%d,mon:%d,day:%d,hour:%d,min:%d,sec:%d",
-                    time.tm_year, time.tm_mon, time.tm_mday, time.tm_hour, time.tm_min, time.tm_sec);
+    // timestamp
+    if (ptimestamp != NULL) {
+        long timestamp = atol(ptimestamp);
+        struct tm time;
+        if (timestamp >= LONG_MAX || timestamp <= LONG_MIN)
+        {
+            timestamp = 0;
+            LOGW("invalid timestamp was provided, defaulting to 0 (i.e. 1970)");
         }
+        gmtime_r(&timestamp, &time);
+        time.tm_year += 1900;
+        time.tm_mon += 1;
+        exifAttributes.gps_timestamp[0].num = time.tm_hour;
+        exifAttributes.gps_timestamp[0].den = 1;
+        exifAttributes.gps_timestamp[1].num = time.tm_min;
+        exifAttributes.gps_timestamp[1].den = 1;
+        exifAttributes.gps_timestamp[2].num = time.tm_sec;
+        exifAttributes.gps_timestamp[2].den = 1;
+        exifAttributes.enableGps |= EXIF_GPS_TIMESTAMP;
+        snprintf((char *)exifAttributes.gps_datestamp, sizeof(exifAttributes.gps_datestamp), "%04d:%02d:%02d",
+                time.tm_year, time.tm_mon, time.tm_mday);
+        LOG1("EXIF: timestamp, year:%d,mon:%d,day:%d,hour:%d,min:%d,sec:%d",
+                time.tm_year, time.tm_mon, time.tm_mday, time.tm_hour, time.tm_min, time.tm_sec);
+    }
 
-        if (pprocmethod != NULL) {
-            // processing method
-            if(strlen(pprocmethod) + 1 >= sizeof(exifAttributes.gps_processing_method))
-                len = sizeof(exifAttributes.gps_processing_method);
-            else
-                len = strlen(pprocmethod) + 1;
-            memcpy(exifAttributes.gps_processing_method, pprocmethod, len);
-            LOG1("EXIF: GPS processing method:%s", exifAttributes.gps_processing_method);
-        }
+    // processing method
+    if (pprocmethod) {
+        unsigned len;
+        if(strlen(pprocmethod) + 1 >= sizeof(exifAttributes.gps_processing_method))
+            len = sizeof(exifAttributes.gps_processing_method);
+        else
+            len = strlen(pprocmethod) + 1;
+        memcpy(exifAttributes.gps_processing_method, pprocmethod, len);
+        exifAttributes.enableGps |= EXIF_GPS_PROCMETHOD;
+        LOG1("EXIF: GPS processing method:%s", exifAttributes.gps_processing_method);
     }
 }
 

@@ -163,6 +163,13 @@ typedef enum {
     EXIF_EXPOSURE_PROGRAM_SHUTTER_PRIORITY = 4
 } CamExifExposureProgramType;
 
+/* define the flag of enable gps info */
+const uint8_t   EXIF_GPS_LATITUDE       = 0x01;
+const uint8_t   EXIF_GPS_LONGITUDE      = 0x02;
+const uint8_t   EXIF_GPS_ALTITUDE       = 0x04;
+const uint8_t   EXIF_GPS_TIMESTAMP      = 0x08;
+const uint8_t   EXIF_GPS_PROCMETHOD     = 0x10;
+
 /* Values */
 #define EXIF_DEF_IMAGE_DESCRIPTION          "Jpeg"
 #define EXIF_DEF_MAKER          "  "
@@ -201,7 +208,6 @@ typedef struct {
 } srational_t;
 
 typedef struct {
-    bool enableGps;
     bool enableThumb;
 
     uint8_t image_description[32];
@@ -245,6 +251,9 @@ typedef struct {
     srational_t brightness;
     srational_t exposure_bias;
 
+    //bit 0~4 indicate whether Gps items latitude, longitude, altitude, timestamp,
+    //datastamp exist or not.
+    uint8_t enableGps;
     uint8_t gps_latitude_ref[2];
     uint8_t gps_longitude_ref[2];
 
