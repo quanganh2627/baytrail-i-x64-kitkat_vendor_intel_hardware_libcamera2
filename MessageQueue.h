@@ -167,7 +167,7 @@ public:
 
     // Return true if the queue is empty
     inline bool isEmpty() { return size() == 0; }
-    inline bool size() { return mList.size(); }
+    inline int size() { return mList.size(); }
 
 private:
 
