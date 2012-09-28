@@ -821,7 +821,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         CameraWindow *meteringWindows = new CameraWindow[winCount];
         CameraWindow aeWindow;
         mMeteringAreas.toWindows(meteringWindows);
-        convertFromAndroidCoordinates(meteringWindows[0], aeWindow, width, height, 50, 255);
+
+        AAAWindowInfo aaaWindow;
+        mAAA->getGridWindow(aaaWindow);
+        convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
 
         if (mAAA->setAeWindow(&aeWindow) != NO_ERROR) {
             LOGW("Error setting AE metering window. Metering will not work");
@@ -3385,10 +3388,12 @@ void ControlThread::preSetCameraWindows(CameraWindow* focusWindows, size_t winCo
         int width;
         int height;
         mParameters.getPreviewSize(&width, &height);
+        AAAWindowInfo aaaWindow;
+        mAAA->getGridWindow(aaaWindow);
 
         for (size_t i = 0; i < winCount; i++) {
             // Camera KEY_FOCUS_AREAS Coordinates range from -1000 to 1000. Let's convert..
-            convertFromAndroidCoordinates(focusWindows[i], focusWindows[i], width, height);
+            convertFromAndroidCoordinates(focusWindows[i], focusWindows[i], aaaWindow);
             LOG1("Preset camera window %d: (%d,%d,%d,%d)",
                     i,
                     focusWindows[i].x_left,
@@ -3508,20 +3513,19 @@ status_t ControlThread:: processParamSetMeteringAreas(const CameraParameters *ol
 
     // TODO: Support for more windows. At the moment we only support one?
     if (!mMeteringAreas.isEmpty()) {
-        int w, h;
+        //int w, h;
         size_t winCount(mMeteringAreas.numOfAreas());
         CameraWindow *meteringWindows = new CameraWindow[winCount];
         CameraWindow aeWindow;
+        AAAWindowInfo aaaWindow;
 
         mMeteringAreas.toWindows(meteringWindows);
 
-        mParameters.getPreviewSize(&w, &h);
+        mAAA->getGridWindow(aaaWindow);
         //in our AE bg weight is 1, max is 255, thus working values are inside [2, 255].
         //Google probably expects bg weight to be zero, therefore sending happily 1 from
         //default camera app. To have some kind of visual effect, we start our range from 5
-        // FIXME: In MFLD the weight value of 5 was enough, for now in CTP it seems not.
-
-        convertFromAndroidCoordinates(meteringWindows[0], aeWindow, w, h, 50, 255);
+        convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
 
         if (mAAA->setAeMeteringMode(CAM_AE_METERING_MODE_SPOT) == NO_ERROR) {
             LOG1("@%s, Got metering area, and \"spot\" mode set. Setting window.", __FUNCTION__ );

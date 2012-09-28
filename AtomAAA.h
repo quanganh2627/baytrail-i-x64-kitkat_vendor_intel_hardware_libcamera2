@@ -246,6 +246,8 @@ public:
     status_t getSmartSceneMode(int *sceneMode, bool *sceneHdr);
     status_t setFaces(camera_frame_metadata_t *face_metadata, int zoom);
 
+    status_t getGridWindow(AAAWindowInfo& window);
+
     // ISP processing functions
     status_t apply3AProcess(bool read_stats,
         struct timeval capture_timestamp);

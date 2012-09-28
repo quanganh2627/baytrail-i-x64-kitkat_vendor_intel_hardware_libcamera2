@@ -1197,4 +1197,23 @@ int AtomAAA::add3aMakerNoteRecord(ia_3a_mknote_field_type mkn_format_id,
     return 0;
 }
 
+status_t AtomAAA::getGridWindow(AAAWindowInfo& window)
+{
+    unsigned int width_3a = 0, height_3a = 0;
+    struct atomisp_grid_info gridInfo;
+
+    // Get the 3A grid info
+    m3aLock.lock();
+    ci_adv_get_3a_grid_info(&gridInfo);
+    m3aLock.unlock();
+
+    // This is how the 3A library defines the statistics grid window measurements
+    // BQ = bar-quad = 2x2 pixels
+    window.width = gridInfo.s3a_width * gridInfo.s3a_bqs_per_grid_cell * 2;
+    window.height = gridInfo.s3a_height * gridInfo.s3a_bqs_per_grid_cell * 2;
+
+    return NO_ERROR;
+}
+
+
 } //  namespace android

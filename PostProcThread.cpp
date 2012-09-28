@@ -662,13 +662,16 @@ void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata
     if (mAAAFlags & AAA_FLAG_AF || mAAAFlags & AAA_FLAG_AE) {
         CameraWindow *windows = new CameraWindow[face_metadata.number_of_faces];
         int highestScoreInd = 0;
+        AtomAAA *aaa = AtomAAA::getInstance();
+        AAAWindowInfo aaaWindow;
+        aaa->getGridWindow(aaaWindow);
         for (int i = 0; i < face_metadata.number_of_faces; i++) {
             camera_face_t face = face_metadata.faces[i];
             windows[i].x_left = face.rect[0];
             windows[i].y_top = face.rect[1];
             windows[i].x_right = face.rect[2];
             windows[i].y_bottom = face.rect[3];
-            convertFromAndroidCoordinates(windows[i], windows[i], mPreviewWidth, mPreviewHeight);
+            convertFromAndroidCoordinates(windows[i], windows[i], aaaWindow);
             LOG2("Face window: (%d,%d,%d,%d)",
                 windows[i].x_left,
                 windows[i].y_top,
@@ -688,7 +691,7 @@ void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata
             // Use the highest score window for AE metering:
             // TODO: Better logic needed for picking face AE metering area..?
             CameraWindow aeWindow = windows[highestScoreInd];
-            aeWindow.weight = 50;
+            aeWindow.weight = 5;
             setAeMeteringArea(&aeWindow);
         }
     }

@@ -13,9 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #ifndef ANDROID_LIBCAMERA_COMMON_H
 #define ANDROID_LIBCAMERA_COMMON_H
+
+// Unless LOG_TAG not defined by including files, use this log tag:
+#ifndef LOG_TAG
+#define LOG_TAG "Camera_AtomCommon"
+#endif
 
 #include <camera.h>
 #include <linux/atomisp.h>
@@ -23,6 +27,8 @@
 #include <math.h>
 #include <stdio.h>
 #include <time.h>
+
+#include "LogHelper.h"
 
 #define MAX_CAMERAS 2
 
@@ -105,6 +111,11 @@ struct AtomBuffer {
                                              only used for PREVIEW_GFX type */
     buffer_handle_t *mNativeBufPtr;     /*!< native buffer handle from which the gfx data is derived by mapping */
 
+};
+
+struct AAAWindowInfo {
+    unsigned width;
+    unsigned height;
 };
 
 extern timeval AtomBufferFactory_AtomBufDefTS; // default timestamp
@@ -224,16 +235,47 @@ static const char* v4l2Fmt2Str(int format)
  *
  * @param srcWindow the CameraWindow with Android coordinates
  * @param toWindow the destination CameraWindow with new coordinates
- * @param maxX the maximum for x values in the window (min is implicitly 0)
- * @param maxY the maximum for y values in the window (min is implicitly 0)
+ * @param convWindow User defined conversion info: width and height will be converted
+ * in ratio to the Android coordinate system
  */
-static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
-        CameraWindow &toWindow, int maxX, int maxY)
+inline static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
+        CameraWindow &toWindow, const AAAWindowInfo& convWindow)
 {
-    toWindow.x_left = ((srcWindow.x_left + 1000) * maxX) / 2000;
-    toWindow.x_right = ((srcWindow.x_right + 1000) * maxX) / 2000;
-    toWindow.y_top = ((srcWindow.y_top + 1000) * maxY) / 2000;
-    toWindow.y_bottom = ((srcWindow.y_bottom + 1000) * maxY) / 2000;
+    // Ratios for width and height in reference to Android coordinates [-1000,1000]
+    float ratioW = float(convWindow.width) / 2000.0;
+    float ratioH = float(convWindow.height) / 2000.0;
+
+    // Transform from the Android coordinates to the target coordinates.
+    // The +1000 comes from translation to [0,2000] coordinates from [-1000,1000]
+    float left = (srcWindow.x_left + 1000.0) * ratioW;
+    float top = (srcWindow.y_top + 1000.0) * ratioH;
+    float right = (srcWindow.x_right + 1000.0) * ratioW;
+    float bottom = (srcWindow.y_bottom + 1000.0) * ratioH;
+
+    // Calculate the width and height for the target window.
+    // This is needed in case the transformation goes off the grid.
+    float rectW = float(right - left) * ratioW;
+    float rectH = float(bottom - top) * ratioH;
+
+    // Right side of the window is off the grid, so use the
+    // grid max. value for right side:
+    if (right > int(convWindow.width - 1)) {
+        LOG2("@%s: Right side of target window off the grid after conversion", __FUNCTION__);
+        right = convWindow.width - 1;
+        left = right - rectW;
+    }
+
+    // Window bottom-side off the grid; use grid max. value:
+    if (bottom > int(convWindow.height - 1)) {
+        LOG2("@%s: Bottom side of target window off the grid after conversion", __FUNCTION__);
+        bottom = convWindow.height - 1;
+        top = bottom - rectH;
+    }
+
+    toWindow.x_left = left;
+    toWindow.x_right = right;
+    toWindow.y_top = top;
+    toWindow.y_bottom = bottom;
 }
 
 /**
@@ -243,15 +285,15 @@ static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
  *
  * @param srcWindow the CameraWindow with Android coordinates
  * @param toWindow the destination CameraWindow with new coordinates
- * @param maxX the maximum for x values in the window (min is implicitly 0)
- * @param maxY the maximum for y values in the window (min is implicitly 0)
+ * @param convWindow User defined conversion info: width and height will be converted
+ * in ratio to the Android coordinate system
  * @param minWeight the minimum for weight
  * @param maxWeight the maximum for weight
  */
-static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
-        CameraWindow &toWindow, int maxX, int maxY, int minWeight, int maxWeight)
+inline static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
+        CameraWindow &toWindow, const AAAWindowInfo& convWindow, int minWeight, int maxWeight)
 {
-    convertFromAndroidCoordinates(srcWindow, toWindow, maxX, maxY);
+    convertFromAndroidCoordinates(srcWindow, toWindow, convWindow);
     int weightWidth = maxWeight - minWeight;
     toWindow.weight = minWeight + roundf(weightWidth * srcWindow.weight / 1000.0f);
 }
