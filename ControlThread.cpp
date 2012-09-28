@@ -91,7 +91,7 @@ ControlThread::ControlThread() :
     ,mIntelParamsAllowed(false)
     ,mFaceDetectionActive(false)
     ,mFlashAutoFocus(false)
-    ,mBurstSkipFrames(0)
+    ,mFpsAdaptSkip(0)
     ,mBurstLength(0)
     ,mBurstCaptureNum(0)
     ,mAELockFlashNeed(false)
@@ -237,6 +237,12 @@ status_t ControlThread::init(int cameraId)
         goto bail;
     }
 
+    mBracketManager = new BracketManager(mISP);
+    if (mBracketManager == NULL) {
+        LOGE("error creating BracketManager");
+        goto bail;
+    }
+
 #ifdef ENABLE_INTEL_EXTRAS
     mProxyToOlaService = new HalProxyOla(this);
     if(mProxyToOlaService == NULL) {
@@ -288,9 +294,14 @@ status_t ControlThread::init(int cameraId)
         LOGW("Error Starting Panorama Thread!");
         goto bail;
     }
+    status = mBracketManager->run();
+    if (status != NO_ERROR) {
+        LOGW("Error Starting Bracketing Manager!");
+        goto bail;
+    }
 
     // Disable bracketing by default
-    mBracketing.mode = BRACKET_NONE;
+    mBracketManager->setBracketMode(BRACKET_NONE);
 
     // Disable HDR by default
     mHdr.enabled = false;
@@ -330,6 +341,11 @@ void ControlThread::deinit()
     //       with deinit (eg. check for NULL / non-NULL).
 
     LOG1("@%s", __FUNCTION__);
+
+    if (mBracketManager != NULL) {
+        mBracketManager->requestExitAndWait();
+        mBracketManager.clear();
+    }
 
     if (mPostProcThread != NULL) {
         mPostProcThread->requestExitAndWait();
@@ -1066,9 +1082,9 @@ status_t ControlThread::stopCapture()
 
     // Reset AE and AF in case HDR/bracketing was used (these features
     // manually configure AE and AF during takePicture)
-    if (mBracketing.mode == BRACKET_EXPOSURE)
+    if (mBracketManager->getBracketMode() == BRACKET_EXPOSURE)
         mAAA->setAeMode(mPublicAeMode);
-    if (mBracketing.mode == BRACKET_FOCUS) {
+    if (mBracketManager->getBracketMode() == BRACKET_FOCUS) {
         if (!mFocusAreas.isEmpty() &&
             (mPublicAfMode == CAM_AF_MODE_AUTO ||
              mPublicAfMode == CAM_AF_MODE_CONTINUOUS ||
@@ -1369,20 +1385,13 @@ bool ControlThread::runPreFlashSequence()
     return ret;
 }
 
-status_t ControlThread::skipFrames(size_t numFrames, size_t doBracket)
+status_t ControlThread::skipFrames(size_t numFrames)
 {
-    LOG1("@%s: numFrames=%d, doBracket=%d", __FUNCTION__, numFrames, doBracket);
+    LOG1("@%s: numFrames=%d", __FUNCTION__, numFrames);
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
 
     for (size_t i = 0; i < numFrames; i++) {
-        if (i < doBracket) {
-            status = applyBracketing();
-            if (status != NO_ERROR) {
-                LOGE("Error applying bracketing in skip frame %d!", i);
-                return status;
-            }
-        }
         if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
             LOGE("Error in grabbing warm-up frame %d!", i);
             return status;
@@ -1395,178 +1404,6 @@ status_t ControlThread::skipFrames(size_t numFrames, size_t doBracket)
             return status;
         }
     }
-    return status;
-}
-
-/**
- *  For Exposure Bracketing, the applied exposure value will be available in
- *  current frame + 2. Therefore, in order to do a correct exposure bracketing
- *  we need to skip 2 frames. But, when burst-skip-frames parameter is set
- *  (>0) we have some special cases, described below.
- *
- *  We apply bracketing only for the first skipped frames, so the
- *  desired result will be available in the real needed frame.
- *  Below is the explanation:
- *  (S stands for skipped frame)
- *  (F stands for forced skipped frame, in order to get the desired exposure
- *   in the next real frame)
- *
- *  For burst-skip-frames=1
- *  Applied exposure value   EV0     EV1     EV2     EV3     EV4     EV5
- *  Frame number             FS0  S1   2  S3   4  S5   6  S7   8  S9  10 S11
- *  Output exposure value            EV0 EV0 EV1 EV1 EV2 EV2 EV3 EV3 EV4 EV4
- *  Explanation: in the beginning, we need to force one frame skipping, so
- *  that the applied exposure will be available in frame 2. Continuing the
- *  burst, we don't need to force skip frames, because we will apply the
- *  bracketing exposure in burst sequence (see the timeline above).
- *
- *  For burst-skip-frames=3
- *  Applied exposure value   EV0             EV1             EV2
- *  Frame number              S0  S1  S2   3  S4  S5  S6   7  S8  S9 S10  11
- *  Output exposure value            EV0 EV0 EV0 EV0 EV1 EV1 EV1 EV1 EV2 EV2
- *  Explanation: for burst-skip-frames >= 2, it's enough to apply the exposure
- *  bracketing in the first skipped frame in order to get the applied exposure
- *  in the next real frame (see the timeline above).
- *
- *  Exposure Bracketing and HDR:
- *  Currently there is an assumption in the HDR firmware in the ISP
- *  that the order how the frames are presented to the algorithm have the following
- *  exposures: MIN,0,MAX
- *  If the order of the exposure bracketing changes HDR firmware needs to be
- *  modified.
- *  This was noticed when this changed from libcamera to libcamera2.
- */
-
-status_t ControlThread::initBracketing()
-{
-    LOG1("@%s: mode = %d", __FUNCTION__, mBracketing.mode);
-    status_t status = NO_ERROR;
-    ia_3a_af_lens_range lensRange;
-    int currentFocusPos;
-
-    switch (mBracketing.mode) {
-    case BRACKET_EXPOSURE:
-        if (mBurstLength > 1) {
-            mAAA->setAeMode(CAM_AE_MODE_MANUAL);
-            mBracketing.currentValue = EV_MIN;
-            mBracketing.minValue = EV_MIN;
-            mBracketing.maxValue = EV_MAX;
-            mBracketing.step = (mBracketing.maxValue - mBracketing.minValue) / (mBurstLength - 1);
-            LOG1("Initialized Exposure Bracketing to: (min: %.2f, max:%.2f, step:%.2f)",
-                    mBracketing.minValue,
-                    mBracketing.maxValue,
-                    mBracketing.step);
-        } else {
-            LOG1("Can't do bracketing with only one capture, disable bracketing!");
-            mBracketing.mode = BRACKET_NONE;
-        }
-        break;
-    case BRACKET_FOCUS:
-        if (mBurstLength > 1) {
-            status = mAAA->getAfLensPosRange(&lensRange);
-            if (status == NO_ERROR) {
-                status = mAAA->getCurrentFocusPosition(&currentFocusPos);
-            }
-            if (status == NO_ERROR) {
-                status = mAAA->setAeMode(CAM_AE_MODE_MANUAL);
-            }
-            if (status == NO_ERROR) {
-                mAAA->setAfMode(CAM_AF_MODE_MANUAL);
-            }
-            mBracketing.currentValue = lensRange.macro;
-            mBracketing.minValue = lensRange.macro;
-            mBracketing.maxValue = lensRange.infinity;
-            mBracketing.step = (lensRange.infinity - lensRange.macro) / (mBurstLength - 1);
-            // Initialize the current focus position and increment
-            if (status == NO_ERROR) {
-                /*
-                 * For focus we need to bring the focus position
-                 * to the initial position in the bracketing sequence.
-                 */
-                status = mAAA->getCurrentFocusPosition(&currentFocusPos);
-                if (status == NO_ERROR) {
-                    status = mAAA->setManualFocusIncrement(mBracketing.minValue - currentFocusPos);
-                }
-                if (status == NO_ERROR) {
-                    status = mAAA->updateManualFocus();
-                }
-            }
-            if (status == NO_ERROR) {
-                LOG1("Initialized Focus Bracketing to: (min: %.2f, max:%.2f, step:%.2f)",
-                        mBracketing.minValue,
-                        mBracketing.maxValue,
-                        mBracketing.step);
-            }
-        } else {
-            LOG1("Can't do bracketing with only one capture, disable bracketing!");
-            mBracketing.mode = BRACKET_NONE;
-        }
-        break;
-    case BRACKET_NONE:
-        // Do nothing here
-        break;
-    }
-
-    if (mBracketing.mode == BRACKET_EXPOSURE && mBurstSkipFrames < 2) {
-        /*
-         *  If we are in Exposure Bracketing, and mBurstSkipFrames < 2, we need to
-         *  skip some initial frames and apply bracketing (explanation above):
-         *  2 frames for mBurstSkipFrames == 0
-         *  1 frame  for mBurstSkipFrames == 1
-         */
-        skipFrames(2 - mBurstSkipFrames, 2 - mBurstSkipFrames);
-    } else if (mBracketing.mode == BRACKET_FOCUS && mBurstSkipFrames < 1) {
-        /*
-         *  If we are in Focus Bracketing, and mBurstSkipFrames < 1, we need to
-         *  skip one initial frame w/o apply bracketing so that the focus will be
-         *  positioned in the initial position.
-         */
-        skipFrames(1, 0);
-    }
-
-    return status;
-}
-
-status_t ControlThread::applyBracketing()
-{
-    LOG1("@%s: mode = %d", __FUNCTION__, mBracketing.mode);
-    status_t status = NO_ERROR;
-    int currentFocusPos;
-    SensorAeConfig aeConfig;
-    memset(&aeConfig, 0, sizeof(aeConfig));
-
-    switch (mBracketing.mode) {
-    case BRACKET_EXPOSURE:
-        if (mBracketing.currentValue <= mBracketing.maxValue) {
-            LOG1("Applying Exposure Bracketing: %.2f", mBracketing.currentValue);
-            status = mAAA->applyEv(mBracketing.currentValue);
-            mAAA->getExposureInfo(aeConfig);
-            aeConfig.evBias = mBracketing.currentValue;
-
-            LOG1("Adding aeConfig to list (size=%d+1)", mBracketingParams.size());
-            mBracketingParams.push_front(aeConfig);
-            if (status == NO_ERROR) {
-                LOG1("Exposure Bracketing: incrementing exposure value with: %.2f", mBracketing.step);
-                mBracketing.currentValue += mBracketing.step;
-            }
-        }
-        break;
-    case BRACKET_FOCUS:
-        if (mBracketing.currentValue + mBracketing.step <= mBracketing.maxValue) {
-            status = mAAA->setManualFocusIncrement(mBracketing.step);
-        }
-        if (status == NO_ERROR) {
-            mBracketing.currentValue += mBracketing.step;
-            status = mAAA->updateManualFocus();
-            mAAA->getCurrentFocusPosition(&currentFocusPos);
-            LOG1("Applying Focus Bracketing: %d", currentFocusPos);
-        }
-        break;
-    case BRACKET_NONE:
-        // Do nothing here
-        break;
-    }
-
     return status;
 }
 
@@ -1731,14 +1568,7 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
     }
     // TODO: for SoC/secondary camera, we have no means to get
     //       SensorAeConfig information, so setting as NULL on purpose
-
-    if (!mBracketingParams.empty()) {
-        LOG1("Popping sensorAeConfig from list (size=%d-1)", mBracketingParams.size());
-        if (aeConfig)
-            *aeConfig = *(--mBracketingParams.end());
-        mBracketingParams.erase(--mBracketingParams.end());
-    }
-
+    mBracketManager->getNextAeConfig(aeConfig);
     if (mAAA->is3ASupported()) {
         // TODO: add support for raw mknote
         aaaMkNote = mAAA->get3aMakerNote(ia_3a_mknote_mode_jpeg);
@@ -1934,6 +1764,11 @@ status_t ControlThread::captureStillPic()
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("start ISP", -1);
 
+    // Initialize bracketing manager before streaming starts
+    if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE) {
+        mBracketManager->initBracketing(mBurstLength, mFpsAdaptSkip);
+    }
+
     if ((status = mISP->configure(MODE_CAPTURE)) != NO_ERROR) {
         LOGE("Error configuring the ISP driver for CAPTURE mode");
         return status;
@@ -1954,6 +1789,11 @@ status_t ControlThread::captureStillPic()
         return status;
     }
 
+    // Start the actual bracketing sequence
+    if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE) {
+        mBracketManager->startBracketing();
+    }
+
     // HDR init
     if (mHdr.enabled &&
        (status = hdrInit( size, pvSize, format, width, height, pvWidth, pvHeight)) != NO_ERROR) {
@@ -1972,10 +1812,6 @@ status_t ControlThread::captureStillPic()
         }
     }
 
-    if (mBurstLength > 1 && mBracketing.mode != BRACKET_NONE) {
-        initBracketing();
-    }
-
     // Turn on flash. If flash mode is torch, then torch is already on
     if (flashOn && flashMode != CAM_AE_FLASH_MODE_TORCH && mBurstLength <= 1) {
         LOG1("Requesting flash");
@@ -1989,30 +1825,12 @@ status_t ControlThread::captureStillPic()
         mISP->setFlashIndicator(TORCH_INTENSITY);
     }
 
-    if (mBurstLength > 1 && mBurstSkipFrames > 0) {
-        LOG1("Skipping %d burst frames", mBurstSkipFrames);
-        int doBracketNum = 0;
-        if (mBracketing.mode == BRACKET_EXPOSURE && mBurstSkipFrames >= 2) {
-            // In Exposure Bracket, if mBurstSkipFrames >= 2 apply bracketing every first skipped frame
-            // This is because, exposure needs 2 frames for the exposure value to take effect
-            doBracketNum = 1;
-        } else if (mBracketing.mode == BRACKET_FOCUS && mBurstSkipFrames >= 1) {
-            // In Focus Bracket, if mBurstSkipFrames >= 1 apply bracketing every first skipped frame
-            // This is because focus needs only 1 frame for the focus position to take effect
-            doBracketNum = 1;
-        }
-        if ((status = skipFrames(mBurstSkipFrames, doBracketNum)) != NO_ERROR) {
+    if (mBurstLength > 1 && mFpsAdaptSkip > 0 && mBracketManager->getBracketMode() == BRACKET_NONE) {
+        LOG1("Skipping %d burst frames", mFpsAdaptSkip);
+        if ((status = skipFrames(mFpsAdaptSkip)) != NO_ERROR) {
             LOGE("Error skipping burst frames!");
             return status;
-
         }
-    }
-
-    // If mBurstSkipFrames < 2, apply exposure bracketing every real frame
-    // If mBurstSkipFrames < 1, apply focus bracketing every real frame
-    if ((mBurstSkipFrames < 2 && mBracketing.mode == BRACKET_EXPOSURE) ||
-        (mBurstSkipFrames < 1 && mBracketing.mode == BRACKET_FOCUS)) {
-        applyBracketing();
     }
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("get frame", 1);
@@ -2023,8 +1841,13 @@ status_t ControlThread::captureStillPic()
         // Set flash off only if torch is not used
         if (flashMode != CAM_AE_FLASH_MODE_TORCH)
             mISP->setFlash(0);
-    } else
-        status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
+    } else {
+        if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE) {
+            status = mBracketManager->getSnapshot(snapshotBuffer, postviewBuffer);
+        } else {
+            status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
+        }
+    }
 
     if (status != NO_ERROR) {
         LOGE("Error in grabbing snapshot!");
@@ -2154,33 +1977,22 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     // note: flash is not supported in burst and continuous shooting
     //       modes (this would be the place to enable it)
 
-    if (mBurstLength > 1 && mBurstSkipFrames > 0) {
-        LOG1("Skipping %d burst frames", mBurstSkipFrames);
-        int doBracketNum = 0;
-        if (mBracketing.mode == BRACKET_EXPOSURE && mBurstSkipFrames >= 2) {
-            // In Exposure Bracket, if mBurstSkipFrames >= 2 apply bracketing every first skipped frame
-            // This is because, exposure needs 2 frames for the exposure value to take effect
-            doBracketNum = 1;
-        } else if (mBracketing.mode == BRACKET_FOCUS && mBurstSkipFrames >= 1) {
-            // In Focus Bracket, if mBurstSkipFrames >= 1 apply bracketing every first skipped frame
-            // This is because focus needs only 1 frame for the focus position to take effect
-            doBracketNum = 1;
-        }
-        if ((status = skipFrames(mBurstSkipFrames, doBracketNum)) != NO_ERROR) {
+    if (mBurstLength > 1 && mFpsAdaptSkip > 0 && mBracketManager->getBracketMode() == BRACKET_NONE) {
+        LOG1("Skipping %d burst frames", mFpsAdaptSkip);
+        if ((status = skipFrames(mFpsAdaptSkip)) != NO_ERROR) {
             LOGE("Error skipping burst frames!");
             return status;
         }
     }
 
-    // If mBurstSkipFrames < 2, apply exposure bracketing every real frame
-    // If mBurstSkipFrames < 1, apply focus bracketing every real frame
-    if ((mBurstSkipFrames < 2 && mBracketing.mode == BRACKET_EXPOSURE) ||
-        (mBurstSkipFrames < 1 && mBracketing.mode == BRACKET_FOCUS)) {
-        applyBracketing();
+    // Get the snapshot
+    if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE) {
+        status = mBracketManager->getSnapshot(snapshotBuffer, postviewBuffer);
+    } else {
+        status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
     }
 
-    // Get the snapshot
-    if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
+    if (status != NO_ERROR) {
         LOGE("Error in grabbing snapshot!");
         return status;
     }
@@ -2226,6 +2038,11 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
         // normally this is done by PictureThread, but as no
         // encoding was done, free the allocated metadata
         picMetaData.free();
+    }
+
+    if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE && (mBurstCaptureNum == mBurstLength)) {
+        LOGI("@%s: Bracketing done, got all %d snapshots", __FUNCTION__, mBurstLength);
+        mBracketManager->stopBracketing();
     }
 
     return status;
@@ -2682,7 +2499,7 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     // Burst mode
     // Get the burst length
     mBurstLength = newParams->getInt(IntelCameraParameters::KEY_BURST_LENGTH);
-    mBurstSkipFrames = 0;
+    mFpsAdaptSkip = 0;
     if (mBurstLength <= 0) {
         // Parameter not set, leave it as 0
          mBurstLength = 0;
@@ -2690,11 +2507,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         // Get the burst framerate
         int fps = newParams->getInt(IntelCameraParameters::KEY_BURST_FPS);
         if (fps > MAX_BURST_FRAMERATE) {
-            LOGE("Invalid value received for %s: %d", IntelCameraParameters::KEY_BURST_FPS, mBurstSkipFrames);
+            LOGE("Invalid value received for %s: %d", IntelCameraParameters::KEY_BURST_FPS, mFpsAdaptSkip);
             return BAD_VALUE;
         }
         if (fps > 0) {
-            mBurstSkipFrames = (MAX_BURST_FRAMERATE / fps) - 1;
+            mFpsAdaptSkip = (MAX_BURST_FRAMERATE / fps) - 1;
         }
     }
 
@@ -3166,13 +2983,14 @@ status_t ControlThread::processParamBracket(const CameraParameters *oldParams,
     status_t status = NO_ERROR;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_CAPTURE_BRACKET);
+
     if (!newVal.isEmpty()) {
         if(newVal == "exposure") {
-            mBracketing.mode = BRACKET_EXPOSURE;
+            mBracketManager->setBracketMode(BRACKET_EXPOSURE);
         } else if(newVal == "focus") {
-            mBracketing.mode = BRACKET_FOCUS;
+            mBracketManager->setBracketMode(BRACKET_FOCUS);
         } else if(newVal == "none") {
-            mBracketing.mode = BRACKET_NONE;
+            mBracketManager->setBracketMode(BRACKET_NONE);
         } else {
             LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_CAPTURE_BRACKET, newVal.string());
             status = BAD_VALUE;
@@ -3250,7 +3068,7 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
     if (mHdr.enabled) {
         // Dependency parameters
         mBurstLength = mHdr.bracketNum;
-        mBracketing.mode = mHdr.bracketMode;
+        mBracketManager->setBracketMode(mHdr.bracketMode);
     }
 
     newVal = paramsReturnNewIfChanged(oldParams, newParams,

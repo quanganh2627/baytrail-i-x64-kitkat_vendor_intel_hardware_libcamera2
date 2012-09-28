@@ -43,7 +43,8 @@ LOCAL_SRC_FILES := \
 	AtomCommon.cpp \
 	FaceDetector.cpp \
 	CameraDump.cpp \
-	CameraAreas.cpp
+	CameraAreas.cpp \
+	BracketManager.cpp
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SRC_FILES += \

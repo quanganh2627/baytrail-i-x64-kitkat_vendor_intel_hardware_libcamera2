@@ -38,6 +38,7 @@
 #include "CameraDump.h"
 #include "CameraAreas.h"
 #include "AtomCP.h"
+#include "BracketManager.h"
 
 namespace android {
 
@@ -318,20 +319,6 @@ private:
         bool videoSnapshotBuffReturned;
     };
 
-    enum BracketingMode {
-        BRACKET_NONE = 0,
-        BRACKET_EXPOSURE,
-        BRACKET_FOCUS,
-    };
-
-    struct BracketingType {
-        BracketingMode mode;
-        float minValue;
-        float maxValue;
-        float currentValue;
-        float step;
-    };
-
     struct HdrImaging {
         BracketingMode bracketMode;
         int  bracketNum;
@@ -422,7 +409,7 @@ private:
     status_t dequeueRecording();
     status_t queueCoupledBuffers(int coupledId);
 
-    status_t skipFrames(size_t numFrames, size_t doBracket = 0);
+    status_t skipFrames(size_t numFrames);
     status_t initBracketing();
     status_t applyBracketing();
     status_t skipPreviewFrames(int numFrames, AtomBuffer* buff);
@@ -553,6 +540,7 @@ private:
     sp<PanoramaThread> mPanoramaThread;
     sp<HalProxyOla>   mProxyToOlaService;
     friend class HalProxyOla;
+    sp<BracketManager> mBracketManager;
 
     MessageQueue<Message, MessageId> mMessageQueue;
     State mState;
@@ -570,11 +558,9 @@ private:
     bool mFaceDetectionActive;
     bool mAutoFocusActive;
     bool mFlashAutoFocus;
-    int  mBurstSkipFrames;
+    int  mFpsAdaptSkip;
     int  mBurstLength;
     int  mBurstCaptureNum;
-    BracketingType mBracketing;
-    List<SensorAeConfig> mBracketingParams;
     HdrImaging mHdr;
     bool mAELockFlashNeed;
     AeMode mPublicAeMode;       /* AE mode set by application */

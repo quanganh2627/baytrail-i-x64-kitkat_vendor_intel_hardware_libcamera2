@@ -1,0 +1,131 @@
+/*
+ * Copyright (C) 2012 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#ifndef ANDROID_LIBCAMERA_BRACKETMANAGER_H
+#define ANDROID_LIBCAMERA_BRACKETMANAGER_H
+
+#include <utils/threads.h>
+#include <system/camera.h>
+#include <utils/List.h>
+#include "AtomAAA.h"
+#include "AtomISP.h"
+#include "MessageQueue.h"
+
+namespace android {
+
+enum BracketingMode {
+    BRACKET_NONE = 0,
+    BRACKET_EXPOSURE,
+    BRACKET_FOCUS,
+};
+
+struct BracketingType {
+    BracketingMode mode;
+    float minValue;
+    float maxValue;
+    float currentValue;
+    float step;
+    float *values;
+};
+
+class BracketManager : public Thread {
+
+// constructor destructor
+public:
+    BracketManager(AtomISP *isp);
+    virtual ~BracketManager();
+
+// Thread overrides
+public:
+    status_t requestExitAndWait();
+
+// public methods
+public:
+    status_t initBracketing(int length, int skip, float *bracketValues = NULL);
+    void setBracketMode(BracketingMode mode);
+    BracketingMode getBracketMode();
+    void getNextAeConfig(SensorAeConfig *aeConfig);
+    status_t startBracketing();
+    status_t stopBracketing();
+    // wrapper for AtomISP getSnapShot()
+    status_t getSnapshot(AtomBuffer &snapshotBuf, AtomBuffer &postviewBuf);
+
+// inherited from Thread
+private:
+    virtual bool threadLoop();
+
+
+// private types
+private:
+    // thread message id's
+    enum MessageId {
+
+        MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
+        MESSAGE_ID_START_BRACKETING,
+        MESSAGE_ID_STOP_BRACKETING,
+        MESSAGE_ID_GET_SNAPSHOT,
+
+        // max number of messages
+        MESSAGE_ID_MAX
+    };
+
+    // message structure
+    struct Message {
+        MessageId id;
+    };
+
+    // thread states
+    enum State {
+        STATE_STOPPED,
+        STATE_BRACKETING,
+        STATE_CAPTURE
+    };
+
+// private methods
+private:
+    status_t applyBracketing();
+    status_t applyBracketingParams();
+    status_t skipFrames(size_t numFrames, size_t doBracket = 0);
+
+    // main message function and message handlers
+    status_t waitForAndExecuteMessage();
+    status_t handleMessageStartBracketing();
+    status_t handleMessageStopBracketing();
+    status_t handleMessageGetSnapshot();
+    status_t handleExit();
+
+// private data
+private:
+    AtomAAA *mAAA;
+    AtomISP *mISP;
+    int  mFpsAdaptSkip;
+    int  mBurstLength;
+    int  mBurstCaptureNum;
+    int  mSnapshotReqNum;
+    int  mBracketNum;
+    BracketingType mBracketing;
+    List<SensorAeConfig> mBracketingParams;
+    State mState;
+    MessageQueue<Message, MessageId> mMessageQueue;
+    bool mThreadRunning;
+    AtomBuffer *mSnapshotBufs;
+    AtomBuffer *mPostviewBufs;
+
+}; // class BracketManager
+
+} // namespace android
+
+#endif // ANDROID_LIBCAMERA_BRACKETMANAGER_H
