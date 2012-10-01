@@ -18,27 +18,121 @@
 #include "LogHelper.h"
 #include "AtomAAA.h"
 #include "AtomCommon.h"
+#include "PlatformData.h"
+#include "PerformanceTraces.h"
 #include <math.h>
 #include <time.h>
+#include <dlfcn.h>
+#include <ia_3a.h>
 
 namespace android {
+static AtomISP *gISP; // See BZ 61293
+
+#if ENABLE_PROFILING
+    #define PERFORMANCE_TRACES_AAA_PROFILER_START() \
+        do { \
+            PerformanceTraces::AAAProfiler::enable(true); \
+            PerformanceTraces::AAAProfiler::start(); \
+           } while(0)
+
+    #define PERFORMANCE_TRACES_AAA_PROFILER_STOP() \
+        do {\
+            PerformanceTraces::AAAProfiler::stop(); \
+           } while(0)
+#else
+     #define PERFORMANCE_TRACES_AAA_PROFILER_START()
+     #define PERFORMANCE_TRACES_AAA_PROFILER_STOP()
+#endif
+
+extern "C" {
+static void vdebug(const char *fmt, va_list ap)
+{
+    LOG_PRI_VA(ANDROID_LOG_DEBUG, LOG_TAG, fmt, ap);
+}
+
+static void verror(const char *fmt, va_list ap)
+{
+    LOG_PRI_VA(ANDROID_LOG_ERROR, LOG_TAG, fmt, ap);
+}
+
+static void vinfo(const char *fmt, va_list ap)
+{
+    LOG_PRI_VA(ANDROID_LOG_INFO, LOG_TAG, fmt, ap);
+}
+
+static ia_3a_status cb_focus_drive_to_pos(short position, short absolute_pos)
+{
+    ia_3a_af_update_timestamp();
+
+    if (absolute_pos)
+        gISP->sensorMoveFocusToPosition(position);
+    else
+        gISP->sensorMoveFocusToBySteps(position);
+
+    return ia_3a_status_okay;
+}
+
+static ia_3a_af_lens_status cb_focus_status(void)
+{
+    ia_3a_af_lens_status stat;
+    if (ia_3a_af_get_status(&stat) < 0) {
+            int status;
+            gISP->sensorGetFocusStatus(&status);
+
+            if (status & ATOMISP_FOCUS_STATUS_MOVING)
+                    stat = ia_3a_af_lens_status_move;
+            else
+                    stat = ia_3a_af_lens_status_stop;
+    }
+    return stat;
+}
+
+static bool cb_focus_ready(void)
+{
+    int status;
+    gISP->sensorGetFocusStatus(&status);
+    return status & ATOMISP_FOCUS_STATUS_ACCEPTS_NEW_MOVE;
+}
+
+static ia_3a_af_hp_status cb_focus_home_position(void)
+{
+    int status;
+
+    gISP->sensorGetFocusStatus(&status);
+    status &= ATOMISP_FOCUS_STATUS_HOME_POSITION;
+
+    if (status == ATOMISP_FOCUS_HP_IN_PROGRESS)
+        return ia_3a_af_hp_status_incomplete;
+    else if (status == ATOMISP_FOCUS_HP_FAILED)
+        return ia_3a_af_hp_status_error;
+
+    return ia_3a_af_hp_status_complete;
+}
+
+} // extern "C"
 
 AtomAAA* AtomAAA::mInstance = NULL;
 
 AtomAAA::AtomAAA() :
-    mIspFd(-1)
-    ,mHas3A(false)
+    mHas3A(false)
     ,mSensorType(SENSOR_TYPE_NONE)
     ,mAfMode(CAM_AF_MODE_NOT_SET)
     ,mFlashMode(CAM_AE_FLASH_MODE_NOT_SET)
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
     ,mFocusPosition(0)
     ,mStillAfStart(0)
+    ,mISP(NULL)
 {
     LOG1("@%s", __FUNCTION__);
+    mPrintFunctions.vdebug = vdebug;
+    mPrintFunctions.verror = verror;
+    mPrintFunctions.vinfo  = vinfo;
     mIspSettings.GBCE_strength = DEFAULT_GBCE_STRENGTH;
     mIspSettings.GBCE_enabled = DEFAULT_GBCE;
     mIspSettings.inv_gamma = false;
+
+    gISP = NULL;
+    memset(&m3ALibState, 0, sizeof(AAALibState));
 }
 
 AtomAAA::~AtomAAA()
@@ -47,20 +141,21 @@ AtomAAA::~AtomAAA()
     mInstance = NULL;
 }
 
-status_t AtomAAA::init(const char *sensor_id, int fd, const void *aiqConf, const char *otpInjectFile)
+status_t AtomAAA::init(const SensorParams *sensorParameters, AtomISP *isp, const void *aiqConf, const char *otpInjectFile)
 {
     Mutex::Autolock lock(m3aLock);
     int init_result;
-    init_result = ci_adv_init(sensor_id, fd, aiqConf, otpInjectFile);
+    mISP = isp;
+    gISP = isp;
+    init_result = ciAdvInit(sensorParameters, aiqConf, otpInjectFile);
     if (init_result == 0) {
         mSensorType = SENSOR_TYPE_RAW;
         mHas3A = true;
     } else {
         mSensorType = SENSOR_TYPE_SOC;
     }
-    LOG1("@%s: sensor_id = \"%s\", has3a %d, initRes %d, fd = %d, otpInj %s",
-         __FUNCTION__, sensor_id, mHas3A, init_result, fd, otpInjectFile);
-    mIspFd = fd;
+    LOG1("@%s: tuning_3a_file = \"%s\", has3a %d, initRes %d, otpInj %s",
+         __FUNCTION__, sensorParameters->tuning3aFile, mHas3A, init_result, otpInjectFile);
     return NO_ERROR;
 }
 
@@ -70,9 +165,10 @@ status_t AtomAAA::unInit()
     LOG1("@%s", __FUNCTION__);
     if(!mHas3A)
         return INVALID_OPERATION;
-    ci_adv_uninit();
+    ciAdvUninit();
+    mISP = NULL;
+    gISP = NULL;
     mSensorType = SENSOR_TYPE_NONE;
-    mIspFd = -1;
     mHas3A = false;
     mAfMode = CAM_AF_MODE_NOT_SET;
     mAwbMode = CAM_AWB_MODE_NOT_SET;
@@ -88,7 +184,7 @@ status_t AtomAAA::applyIspSettings()
     if(!mHas3A)
         return INVALID_OPERATION;
     ia_3a_gbce_set_strength(mIspSettings.GBCE_strength);
-    if (ci_adv_set_gamma_effect(mIspSettings.inv_gamma) != 0) {
+    if (setGammaEffect(mIspSettings.inv_gamma) != 0) {
         mHas3A = false;
         return UNKNOWN_ERROR;
     }
@@ -118,7 +214,7 @@ status_t AtomAAA::switchModeAndRate(AtomMode mode, float fps)
         LOGW("SwitchMode: Wrong sensor mode %d", mode);
         break;
     }
-    ci_adv_configure(isp_mode, fps);
+    ciAdvConfigure(isp_mode, fps);
     return NO_ERROR;
 }
 
@@ -697,12 +793,17 @@ status_t AtomAAA::setTNR(bool en)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: en = %d", __FUNCTION__, en);
+    int ret;
     if(!mHas3A)
         return INVALID_OPERATION;
 
-    ci_adv_enable_tnr(en);
+    ia_3a_prm_enable_tnr(en, &m3ALibState.results);
+    ret = applyResults();
 
-    return NO_ERROR;
+    if (ret != 0)
+        return UNKNOWN_ERROR;
+    else
+        return NO_ERROR;
 }
 
 status_t AtomAAA::setAwbMapping(ia_3a_awb_map mode)
@@ -845,7 +946,7 @@ status_t AtomAAA::getExposureInfo(SensorAeConfig& aeConfig)
     aeConfig.aecApexSv = 0;
     aeConfig.aecApexAv = 0;
     aeConfig.digitalGain = 0;
-    ci_adv_ae_get_exp_cfg(&aeConfig.expTime,
+    getAeExpCfg(&aeConfig.expTime,
             &aeConfig.aperture,
             &aeConfig.aecApexTv,
             &aeConfig.aecApexSv,
@@ -954,12 +1055,20 @@ status_t AtomAAA::applyEv(float bias)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: bias=%.2f", __FUNCTION__, bias);
+    int ret;
     if(!mHas3A)
         return INVALID_OPERATION;
 
-    ci_adv_ae_apply_bias(bias);
+    ia_3a_ae_apply_bias(bias, &m3ALibState.results);
+    ret = applyResults();
+    /* we should set everytime for bias */
+    if (!m3ALibState.results.exposure_changed)
+      mISP->sensorSetExposure(&m3ALibState.results.exposure);
 
-    return NO_ERROR;
+    if (ret != 0)
+        return UNKNOWN_ERROR;
+    else
+        return NO_ERROR;
 }
 
 status_t AtomAAA::setEv(float bias)
@@ -993,7 +1102,7 @@ status_t AtomAAA::setGDC(bool en)
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: en = %d", __FUNCTION__, en);
 
-    if(!mHas3A || ci_adv_enable_gdc(en) != 0)
+    if(!mHas3A || enableGdc(en) != 0)
         return INVALID_OPERATION;
 
     return NO_ERROR;
@@ -1088,7 +1197,7 @@ status_t AtomAAA::applyPreFlashProcess(FlashStage stage)
         LOGE("Unknown flash stage: %d", stage);
         return UNKNOWN_ERROR;
     }
-    ci_adv_process_for_flash(wr_stage);
+    processForFlash(wr_stage);
 
     return NO_ERROR;
 
@@ -1102,7 +1211,7 @@ status_t AtomAAA::apply3AProcess(bool read_stats,
     status_t status = NO_ERROR;
     if(!mHas3A)
         return INVALID_OPERATION;
-    if (ci_adv_process_frame(read_stats, &capture_timestamp) != 0) {
+    if (ciAdvProcessFrame(read_stats, &capture_timestamp) != 0) {
         status = UNKNOWN_ERROR;
     }
     return status;
@@ -1114,7 +1223,7 @@ status_t AtomAAA::setSmartSceneDetection(bool en)
     LOG1("@%s: en = %d", __FUNCTION__, en);
     if(!mHas3A)
         return INVALID_OPERATION;
-    ci_adv_dsd_enable(en);
+    ia_3a_dsd_enable(en);
     return NO_ERROR;
 }
 
@@ -1124,7 +1233,7 @@ bool AtomAAA::getSmartSceneDetection()
     LOG2("@%s", __FUNCTION__);
     bool ret = false;
     if(mHas3A)
-        ret = ci_adv_dsd_is_enabled();
+        ret = ia_3a_dsd_is_enabled();
     return ret;
 }
 
@@ -1134,7 +1243,7 @@ status_t AtomAAA::getSmartSceneMode(int *sceneMode, bool *sceneHdr)
     LOG2("@%s", __FUNCTION__);
     if(!mHas3A)
         return INVALID_OPERATION;
-    ci_adv_dsd_get_scene((ia_aiq_scene_mode*) sceneMode, sceneHdr);
+    ia_3a_dsd_get_scene((ia_aiq_scene_mode*) sceneMode, sceneHdr);
     return NO_ERROR;
 }
 
@@ -1180,7 +1289,7 @@ status_t AtomAAA::setFaces(camera_frame_metadata_t *face_metadata, int zoom)
                 ia_faces.face_data[i].face_elements[j].element_rect.height);
         }
     }
-    ci_adv_set_faces(&ia_faces);
+    ia_3a_set_faces(&ia_faces);
 
     return NO_ERROR;
 }
@@ -1222,7 +1331,7 @@ status_t AtomAAA::getGridWindow(AAAWindowInfo& window)
 
     // Get the 3A grid info
     m3aLock.lock();
-    ci_adv_get_3a_grid_info(&gridInfo);
+    get3aGridInfo(&gridInfo);
     m3aLock.unlock();
 
     // This is how the 3A library defines the statistics grid window measurements
@@ -1238,8 +1347,8 @@ int AtomAAA::dumpCurrent3aStatToFile(void)
     Mutex::Autolock lock(m3aLock);
 
      if (SENSOR_TYPE_RAW == mSensorType) {
-         ci_adv_3a_stat cur_stat;
-         ci_adv_get_3a_stat (&cur_stat);
+         AAAStatistics cur_stat;
+         get3aStat(&cur_stat);
          if (NULL != pFile3aStatDump)
              fprintf(pFile3aStatDump, "%8.3f, %8.3f, %8.3f, %8.3f, %8d, %8.3f, %8.3f, %8.3f\n",
                  cur_stat.bv,
@@ -1289,6 +1398,468 @@ int AtomAAA::deinit3aStatDump(void)
     }
 
     return NO_ERROR;
+}
+
+int AtomAAA::setFpnTable(const ia_frame *fpn_table)
+{
+    LOG1("@%s", __FUNCTION__);
+    struct v4l2_framebuffer fb;
+    fb.fmt.width        = fpn_table->width;
+    fb.fmt.height       = fpn_table->height;
+    fb.fmt.pixelformat  = V4L2_PIX_FMT_SBGGR16;
+    fb.fmt.bytesperline = fpn_table->stride * 2;
+    fb.fmt.sizeimage    = fb.fmt.height * fb.fmt.sizeimage;
+    fb.base             = fpn_table->data;
+
+    return mISP->setFpnTable(&fb);
+}
+
+int AtomAAA::ciAdvInit(const SensorParams *paramFiles, const void *cpf_file, const char *sensorOtpFile)
+{
+    LOG1("@%s", __FUNCTION__);
+    ia_3a_params param;
+    ia_3a_private_data *aicNvm = NULL;
+
+    ia_3a_private_data aic_cpf;
+    aic_cpf.data = (void *)cpf_file;
+    aic_cpf.data = NULL; /* TODO: Should remove this line to allow using cpf */
+    aic_cpf.size = 0; /* TODO: Should use size from cpf_file here */
+
+    m3ALibState.boot_events = ci_adv_init_state;
+    if (!paramFiles)
+      return -1;
+
+    m3ALibState.boot_events = paramFiles->bootEvent;
+    param.param_module = open3aParamFile(paramFiles->tuning3aFile);
+    if (!param.param_module)
+        return -1;
+
+    if (sensorOtpFile) {
+        mISP->getSensorDataFromFile(sensorOtpFile, reinterpret_cast<sensorPrivateData *>(&m3ALibState.sensor_data));
+        if (m3ALibState.sensor_data.size > 0  && m3ALibState.sensor_data.data != NULL)
+            m3ALibState.boot_events |= ci_adv_file_sensor_data;
+    } else {
+        mISP->sensorGetSensorData(reinterpret_cast<sensorPrivateData *>(&m3ALibState.sensor_data));
+        if (m3ALibState.sensor_data.size > 0  && m3ALibState.sensor_data.data != NULL)
+            m3ALibState.boot_events |= ci_adv_cam_sensor_data;
+    }
+
+    mISP->sensorGetMotorData(reinterpret_cast<sensorPrivateData *>(&m3ALibState.motor_data));
+    if (m3ALibState.motor_data.size > 0 && m3ALibState.motor_data.data != NULL)
+        m3ALibState.boot_events |= ci_adv_cam_motor_data;
+
+    param.cb_move_focus_position = cb_focus_drive_to_pos;
+    param.cb_get_focus_status    = cb_focus_status;
+    param.cb_focus_req_ready     = cb_focus_ready;
+    param.cb_get_hp_status       = cb_focus_home_position;
+    param.param_calibration      = &m3ALibState.sensor_data;
+    param.motor_calibration      = &m3ALibState.motor_data;
+
+    if (paramFiles->hasMotorData)
+      aicNvm = &m3ALibState.motor_data;
+
+    if (ia_3a_init(&param,
+        &paramFiles->prmFiles,
+        &mPrintFunctions,
+        sensorOtpFile != NULL,
+        &(paramFiles->cpfData),
+        aicNvm) < 0) {
+        if (m3ALibState.sh3a_params) {
+            dlclose(m3ALibState.sh3a_params);
+            m3ALibState.sh3a_params = NULL;
+        }
+        return -1;
+    }
+
+    m3ALibState.fpn_table_loaded = false;
+    m3ALibState.gdc_table_loaded = false;
+    m3ALibState.stats_valid = false;
+    m3ALibState.stats = NULL;
+    m3ALibState.stats_valid = false;
+    memset(&m3ALibState.results, 0, sizeof(m3ALibState.results));
+
+    LOGD("Initialized 3A library with sensor tuning file %s\n", paramFiles->tuning3aFile);
+    return 0;
+}
+
+void AtomAAA::ciAdvUninit(void)
+{
+    LOG1("@%s", __FUNCTION__);
+    if (m3ALibState.sensor_data.data) {
+        free(m3ALibState.sensor_data.data);
+        m3ALibState.sensor_data.data = NULL;
+    }
+    ia_3a_free_statistics(m3ALibState.stats);
+    if (m3ALibState.sh3a_params) {
+        dlclose(m3ALibState.sh3a_params);
+        m3ALibState.sh3a_params = NULL;
+    }
+
+    ia_3a_uninit();
+}
+
+/*! \fn  enableEe
+ * \brief enable edge enhancement ISP parameter
+ * @param enable - enable/disble EE
+ */
+int AtomAAA::enableEe(bool enable)
+{
+    LOG1("@%s", __FUNCTION__);
+    ia_3a_prm_enable_ee(enable, &m3ALibState.results);
+    return applyResults();
+}
+
+/*! \fn  enableNr
+ * \brief enable noise reduction ISP parameter
+ * @param enable - enable/disble NR
+ */
+int AtomAAA::enableNr(bool enable)
+{
+    LOG1("@%s", __FUNCTION__);
+    ia_3a_prm_enable_nr(enable, &m3ALibState.results);
+    return applyResults();
+}
+
+/*! \fn  enableDp
+ * \brief enable DP ISP parameter
+ * @param enable - enable/disble DP
+ */
+int AtomAAA::enableDp(bool enable)
+{
+    LOG1("@%s", __FUNCTION__);
+    ia_3a_prm_enable_dp(enable, &m3ALibState.results);
+    return applyResults();
+}
+
+/*! \fn  enableOb
+ * \brief enable OB ISP parameter
+ * @param enable - enable/disble OB
+ */
+int AtomAAA::enableOb(bool enable)
+{
+    LOG1("@%s", __FUNCTION__);
+    ia_3a_prm_enable_ob(enable, &m3ALibState.results);
+    return applyResults();
+}
+
+int AtomAAA::enableShadingCorrection(bool enable)
+{
+    LOG1("@%s", __FUNCTION__);
+    ia_3a_asc_enable(enable, &m3ALibState.results);
+    return applyResults();
+}
+
+int AtomAAA::setGammaEffect(bool inv_gamma)
+{
+    LOG1("@%s", __FUNCTION__);
+    ia_3a_gbce_set_inverse_gamma(inv_gamma, &m3ALibState.results);
+    return applyResults();
+}
+
+int AtomAAA::enableGbce(bool enable)
+{
+    LOG1("@%s", __FUNCTION__);
+    ia_3a_gbce_enable(enable, &m3ALibState.results);
+    return applyResults();
+}
+
+void AtomAAA::ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate)
+{
+    LOG1("@%s", __FUNCTION__);
+    if(mode == ia_3a_isp_mode_capture)
+        ia_3a_mknote_add_uint(ia_3a_mknote_field_name_boot_events, m3ALibState.boot_events);
+    /* usually the grid changes as well when the mode changes. */
+    reconfigureGrid();
+    ia_3a_reconfigure(mode, frame_rate, m3ALibState.stats, &m3ALibState.results);
+    applyResults();
+}
+
+int AtomAAA::applyResults(void)
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret = 0;
+
+    PERFORMANCE_TRACES_AAA_PROFILER_START();
+
+    /* Apply ISP settings */
+    if (m3ALibState.results.gamma_changed) {
+        if (m3ALibState.results.gamma_table)
+            ret |= mISP->setGammaTable(m3ALibState.results.gamma_table);
+        if (m3ALibState.results.ctc_table)
+            ret |= mISP->setCtcTable(m3ALibState.results.ctc_table);
+        m3ALibState.results.gamma_changed = false;
+    }
+    if (m3ALibState.results.macc_table_changed) {
+        struct atomisp_macc_config cfg;
+        cfg.color_effect = ia_3a_image_effect_none;
+        cfg.table = *m3ALibState.results.macc_table;
+        ret |= mISP->setMaccConfig(&cfg);
+        m3ALibState.results.macc_table_changed = false;
+    }
+    if (m3ALibState.results.isp_params_changed) {
+        ret |= mISP->setIspParameter(&m3ALibState.results.isp_params);
+        m3ALibState.results.isp_params_changed = false;
+    }
+    if (m3ALibState.results.s3a_config_changed) {
+        ret |= mISP->set3aConfig(&m3ALibState.results.s3a_config);
+        m3ALibState.results.s3a_config_changed = false;
+    }
+    if (m3ALibState.results.gc_config_changed) {
+        ret |= mISP->setGcConfig(&m3ALibState.results.gc_config);
+        m3ALibState.results.gc_config_changed = false;
+    }
+#ifndef MRFL_VP
+    if (m3ALibState.results.shading_table_changed) {
+        ret |= mISP->setShadingTable(&m3ALibState.results.shading_table);
+        m3ALibState.results.shading_table_changed = false;
+    }
+#endif
+
+    /* Apply Sensor settings */
+    if (m3ALibState.results.exposure_changed) {
+        ret |= mISP->sensorSetExposure(&m3ALibState.results.exposure);
+        m3ALibState.results.exposure_changed = false;
+    }
+
+    /* Apply Flash settings */
+    if (m3ALibState.results.flash_intensity_changed) {
+        ret |= mISP->setFlashIntensity(m3ALibState.results.flash_intensity);
+        m3ALibState.results.flash_intensity_changed = false;
+    }
+
+    PERFORMANCE_TRACES_AAA_PROFILER_STOP();
+    return ret;
+}
+
+/* returns false for error, true for success */
+bool AtomAAA::reconfigureGrid(void)
+{
+    LOG1("@%s", __FUNCTION__);
+    mISP->sensorGetModeInfo(&m3ALibState.sensor_mode_data);
+    if (mISP->getIspParameters(&m3ALibState.results.isp_params) < 0)
+        return false;
+
+    /* Reconfigure 3A grid */
+    ia_3a_set_grid_info(&m3ALibState.results.isp_params.info, &m3ALibState.sensor_mode_data);
+    if (m3ALibState.stats)
+        ia_3a_free_statistics(m3ALibState.stats);
+    m3ALibState.stats = ia_3a_allocate_statistics();
+    m3ALibState.stats_valid  = false;
+
+    return true;
+}
+
+int AtomAAA::getStatistics(void)
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret;
+
+    PERFORMANCE_TRACES_AAA_PROFILER_START();
+    ret = mISP->getIspStatistics(m3ALibState.stats);
+    if (ret == EAGAIN) {
+        LOGV("buffer for isp statistics reallocated according resolution changing\n");
+        if (reconfigureGrid() == false)
+            LOGE("error in calling reconfigureGrid()\n");
+        ret = mISP->getIspStatistics(m3ALibState.stats);
+    }
+    PERFORMANCE_TRACES_AAA_PROFILER_STOP();
+
+    if (ret == 0) {
+        m3ALibState.stats_valid = true;
+        return 0;
+    }
+
+    return -1;
+}
+
+void *AtomAAA::open3aParamFile(const char *modulename)
+{
+    void **ptr;
+    const char *symbolname = "SensorParameters";
+
+    if (m3ALibState.sh3a_params) {
+        LOGE( "*** ERROR: Tried to call open3aParamFile() twice!\n");
+        return NULL;
+    }
+
+    m3ALibState.sh3a_params = dlopen(modulename, RTLD_NOW);
+    if (m3ALibState.sh3a_params == NULL) {
+        LOGE("*** ERROR: dlopen('%s') failed! (%s)\n", modulename, dlerror());
+        goto err;
+    }
+
+    ptr = (void **)dlsym(m3ALibState.sh3a_params, symbolname);
+    if (ptr == NULL) {
+        LOGE("*** ERROR: dlsym('%s') failed! (%s)\n", symbolname, dlerror());
+        goto err;
+    }
+
+     if (*ptr == NULL) {
+         LOGE( "*** ERROR: module parameter pointer contents is NULL!\n");
+         goto err;
+    }
+
+    return *ptr;
+err:
+    if (m3ALibState.sh3a_params) {
+        dlclose(m3ALibState.sh3a_params);
+        m3ALibState.sh3a_params = NULL;
+    }
+        return NULL;
+}
+
+int AtomAAA::ciAdvProcessFrame(bool read_stats, const struct timeval *frame_timestamp)
+{
+    LOG1("@%s", __FUNCTION__);
+#ifndef MRFL_VP
+    int ret;
+    ia_3a_aperture aperture;
+
+    if (read_stats && ia_3a_need_statistics()) {
+        ret = getStatistics();
+        if (ret < 0)
+            return -1;
+    } else if (!read_stats) {
+        /* TODO: find out why we do this here, this looks very strange. */
+        reconfigureGrid();
+    }
+
+    mISP->sensorGetFNumber(&aperture.num, &aperture.denum);
+
+    if (m3ALibState.stats_valid) {
+        ia_3a_main(frame_timestamp, m3ALibState.stats, &aperture, &m3ALibState.results);
+        applyResults();
+    }
+#else
+    (void)(read_stats);
+    (void)(frame_timestamp);
+#endif
+    return 0;
+}
+
+int AtomAAA::processForFlash(ia_3a_flash_stage stage)
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret;
+
+    if (ia_3a_need_statistics()) {
+        ret = getStatistics();
+        if (ret < 0)
+            return -1;
+    }
+    if (m3ALibState.stats_valid) {
+        ia_3a_main_for_flash(m3ALibState.stats, stage, &m3ALibState.results);
+        applyResults();
+    }
+
+    return 0;
+}
+
+void AtomAAA::get3aGridInfo(struct atomisp_grid_info *pgrid)
+{
+    LOG1("@%s", __FUNCTION__);
+    *pgrid = m3ALibState.results.isp_params.info;
+}
+
+void AtomAAA::get3aStat(AAAStatistics *pstat)
+{
+    LOG1("@%s", __FUNCTION__);
+    ia_3a_awb_gain digital_gain;
+    ia_3a_awb_get_digital_gain(&digital_gain);
+
+    pstat->bv        = ia_3a_ae_get_manual_brightness();
+    pstat->tv        = ia_3a_ae_get_manual_shutter_speed();
+    pstat->av        = ia_3a_ae_get_manual_aperture();
+    pstat->sv        = ia_3a_ae_get_manual_iso();
+    pstat->focus_pos = ia_3a_af_get_current_focus_position();
+    pstat->wb_gain_r = IA_3A_S15_16_TO_FLOAT(digital_gain.r);
+    pstat->wb_gain_g = IA_3A_S15_16_TO_FLOAT(digital_gain.g);
+    pstat->wb_gain_b = IA_3A_S15_16_TO_FLOAT(digital_gain.b);
+}
+
+/*! \fn  getAfScore
+ *  \brief Returns focus score, calculated from the window with size,
+ *  selected by ci_adv_set_af_score_window().
+ *  @param average_enabled - when TRUE, score is an average from window
+ *  grid cells, otherwise score is a sum.
+ */
+int AtomAAA::getAfScore(bool average_enabled)
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret;
+    ret = getStatistics();
+    if (ret != -1)
+       ret = ia_3a_af_get_score(m3ALibState.stats, average_enabled);
+    return ret;
+}
+
+int AtomAAA::enableFpn(bool enable)
+{
+    LOG1("@%s", __FUNCTION__);
+    //Mutex::Autolock lock(m3aLock); necessary?
+    int ret;
+    const ia_frame *black_frame;
+
+    if (m3ALibState.fpn_table_loaded || !enable)
+        return 0;
+
+    black_frame = ia_3a_prm_get_black_frame();
+    if (!black_frame)
+        return -1;
+
+    ret = setFpnTable(black_frame);
+    if (ret == 0)
+        m3ALibState.fpn_table_loaded = true;
+
+    return ret;
+}
+
+int AtomAAA::enableGdc(bool enable)
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret;
+    const struct atomisp_morph_table *table;
+
+    if (m3ALibState.gdc_table_loaded || !enable)
+            return 0;
+
+    table = ia_3a_prm_get_morph_table();
+    if (!table)
+            return -1;
+
+    ret = mISP->setGdcConfig(table);
+    if (ret == 0)
+            m3ALibState.gdc_table_loaded = true;
+    return ret;
+}
+
+/*! \fn  getAEExpCfg
+ * \brief Get sensor's configuration for AE
+ * exp_time: Preview exposure time
+ * aperture: Aperture
+ * Get the AEC outputs (which we hope are used by the sensor)
+ * @param exp_time - exposure time
+ * @param aperture - aperture
+ * @param aec_apex_Tv - Shutter speed
+ * @param aec_apex_Sv - Sensitivity
+ * @param aec_apex_Av - Aperture
+ * @param digital_gain - digital_gain
+ */
+void AtomAAA::getAeExpCfg(int *exp_time, int *aperture,
+                     int *aec_apex_Tv, int *aec_apex_Sv, int *aec_apex_Av,
+                     float *digital_gain)
+{
+    LOG1("@%s", __FUNCTION__);
+    ia_3a_ae_result ae_res;
+
+    mISP->sensorGetExposureTime(exp_time);
+    mISP->sensorGetAperture(aperture);
+    ia_3a_ae_get_generic_result(&ae_res);
+
+    *digital_gain = IA_3A_S15_16_TO_FLOAT(ae_res.global_digital_gain);
+    *aec_apex_Tv = ae_res.tv;
+    *aec_apex_Sv = ae_res.sv;
+    *aec_apex_Av = ae_res.av;
 }
 
 } //  namespace android

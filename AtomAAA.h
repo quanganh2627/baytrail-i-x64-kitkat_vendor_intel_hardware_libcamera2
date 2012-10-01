@@ -17,17 +17,31 @@
 #ifndef ANDROID_LIBCAMERA_ATOM_AAA
 #define ANDROID_LIBCAMERA_ATOM_AAA
 
+// Forward declaration needed to resolve circular reference between AtomAAA
+// and AtomISP objects.
+namespace android {
+
+enum FlickerMode
+{
+    CAM_AE_FLICKER_MODE_NOT_SET = -1,
+    CAM_AE_FLICKER_MODE_OFF,
+    CAM_AE_FLICKER_MODE_50HZ,
+    CAM_AE_FLICKER_MODE_60HZ,
+    CAM_AE_FLICKER_MODE_AUTO
+};
+  class AtomAAA;
+};
+
 #include <utils/Errors.h>
 #include <utils/threads.h>
 #include <time.h>
 #include "AtomCommon.h"
-#ifdef __cplusplus
-extern "C" {
-#endif
-#include "ci_adv_pub.h"
-#ifdef __cplusplus
-}
-#endif
+#include "PlatformData.h"
+#include "AtomISP.h"
+#include <ia_3a_types.h>
+#include <ia_types.h>
+#include <ia_aiq_types.h>
+
 namespace android {
 
 enum AwbMode
@@ -57,15 +71,6 @@ enum AfMode
     CAM_AF_MODE_MANUAL,
     CAM_AF_MODE_FACE,
     CAM_AF_MODE_CONTINUOUS
-};
-
-enum FlickerMode
-{
-    CAM_AE_FLICKER_MODE_NOT_SET = -1,
-    CAM_AE_FLICKER_MODE_OFF,
-    CAM_AE_FLICKER_MODE_50HZ,
-    CAM_AE_FLICKER_MODE_60HZ,
-    CAM_AE_FLICKER_MODE_AUTO
 };
 
 enum FlashMode
@@ -148,6 +153,35 @@ struct SensorAeConfig
     float digitalGain;
 };
 
+struct AAAStatistics
+{
+    // AE related statistics
+    float bv;
+    float tv;
+    float av;
+    float sv;
+    // AF related statistics
+    int focus_pos;
+    // AWB related statistics
+    float wb_gain_r;
+    float wb_gain_g;
+    float wb_gain_b;
+};
+
+struct AAALibState
+{
+    void                           *sh3a_params;
+    ia_3a_private_data              sensor_data;
+    ia_3a_private_data              motor_data;
+    struct atomisp_sensor_mode_data sensor_mode_data;
+    bool                            fpn_table_loaded;
+    bool                            gdc_table_loaded;
+    struct atomisp_3a_statistics   *stats;
+    bool                            stats_valid;
+    ia_3a_results                   results;
+    int                             boot_events;
+};
+
 /**
  * \class AtomAAA
  *
@@ -176,6 +210,43 @@ class AtomAAA {
 private:
     static AtomAAA* mInstance;
     AtomAAA();
+    int setFpnTable(const ia_frame *fpn_table);
+
+    // Common functions for 3A, GBCE, AF etc.
+    int applyResults();
+    bool reconfigureGrid(void);
+    int getStatistics(void);
+
+    // GBCE
+    int setGammaEffect(bool inv_gamma);
+    int enableGbce(bool enable);
+
+    // 3A control
+    int ciAdvInit(const SensorParams *paramFiles, const void *cpf_file, const char *sensorOtpFile);
+    void ciAdvUninit(void);
+    void ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate);
+    void *open3aParamFile(const char *modulename);
+    int ciAdvProcessFrame(bool read_stats, const struct timeval *frame_timestamp);
+    int processForFlash(ia_3a_flash_stage stage);
+    void get3aGridInfo(struct atomisp_grid_info *pgrid);
+    void get3aStat(AAAStatistics *pstat);
+
+    // AF
+    int getAfScore(bool average_enabled);
+
+    //ISP parameters
+    int enableGdc(bool enable);
+    int enableFpn(bool enable);
+    int enableEe(bool enable);
+    int enableNr(bool enable);
+    int enableDp(bool enable);
+    int enableOb(bool enable);
+    int enableShadingCorrection(bool enable);
+
+    // Get exposure time for AE
+    void getAeExpCfg(int *exp_time, int *aperture,
+                     int *aec_apex_Tv, int *aec_apex_Sv, int *aec_apex_Av,
+                     float *digital_gain);
 public:
     static AtomAAA* getInstance() {
         if (mInstance == NULL) {
@@ -188,7 +259,7 @@ public:
     bool is3ASupported() { return mHas3A; }
 
     // Initialization functions
-    status_t init(const char *sensor_id, int fd, const void *aiqConf, const char *otpInjectFile = NULL);
+    status_t init(const SensorParams *param_files, AtomISP *isp, const void *aiqConf, const char *otpInjectFile = NULL);
     status_t unInit();
     status_t applyIspSettings();
     status_t switchModeAndRate(AtomMode mode, float fps);
@@ -277,7 +348,6 @@ private:
 
     struct IspSettings mIspSettings;   // ISP related settings
     Mutex m3aLock;
-    int mIspFd;
     bool mHas3A;
     SensorType mSensorType;
     AfMode mAfMode;
@@ -286,6 +356,9 @@ private:
     int mFocusPosition;
     nsecs_t mStillAfStart;
     FILE *pFile3aStatDump;
+    AtomISP *mISP;
+    ia_env mPrintFunctions;
+    AAALibState m3ALibState;
 }; // class AtomAAA
 
 }; // namespace android

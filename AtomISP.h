@@ -17,6 +17,13 @@
 #ifndef ANDROID_LIBCAMERA_ATOM_ISP
 #define ANDROID_LIBCAMERA_ATOM_ISP
 
+// Forward declaration needed to resolve circular reference between AtomAAA
+// and AtomISP objects.
+namespace android {
+
+class AtomISP;
+};
+
 #include <utils/Timers.h>
 #include <utils/Errors.h>
 #include <utils/Vector.h>
@@ -28,6 +35,7 @@
 #include "AtomCommon.h"
 #include "IntelMetadataBuffer.h"
 #include "AtomAAA.h"
+#include "PlatformData.h"
 
 namespace android {
 
@@ -64,6 +72,12 @@ struct v4l2_buffer_pool {
     int height;
     int format;
     struct v4l2_buffer_info bufs [MAX_V4L2_BUFFERS];
+};
+
+struct sensorPrivateData
+{
+    void *data;
+    unsigned int size;
 };
 
 class Callbacks;
@@ -168,6 +182,41 @@ public:
 
     // Enable metadata buffer mode API
     status_t storeMetaDataInBuffers(bool enabled);
+
+    /* Sensor related controls */
+    int  sensorGetGocusStatus(int *status);
+    int  sensorSetExposure(struct atomisp_exposure *exposure);
+    int  sensorMoveFocusToPosition(int position);
+    int  sensorMoveFocusToBySteps(int steps);
+    void sensorGetMotorData(sensorPrivateData *sensor_data);
+    void sensorGetSensorData(sensorPrivateData *sensor_data);
+    int  sensorGetFocusStatus(int *status);
+    int  sensorGetModeInfo(struct atomisp_sensor_mode_data *mode_data);
+    int  sensorGetExposureTime(int *exposure_time);
+    int  sensorGetAperture(int *aperture);
+    int  sensorGetFNumber(unsigned short  *fnum_num, unsigned short *fnum_denom);
+    /* ISP related controls */
+    int setIspParameter(struct atomisp_parm *isp_params);
+    int getIspStatistics(struct atomisp_3a_statistics *statistics);
+    int setGdcConfig(const struct atomisp_morph_table *tbl);
+    int setShadingTable(struct atomisp_shading_table *table);
+    int setMaccConfig(struct atomisp_macc_config *macc_cfg);
+    int setCtcTable(const struct atomisp_ctc_table *ctc_tbl);
+    int setDeConfig(struct atomisp_de_config *de_cfg);
+    int setTnrConfig(struct atomisp_tnr_config *tnr_cfg);
+    int setEeConfig(struct atomisp_ee_config *ee_cfg);
+    int setNrConfig(struct atomisp_nr_config *nr_cfg);
+    int setDpConfig(struct atomisp_dp_config *dp_cfg);
+    int setWbConfig(struct atomisp_wb_config *wb_cfg);
+    int setObConfig(struct atomisp_ob_config *ob_cfg);
+    int set3aConfig(const struct atomisp_3a_config *cfg);
+    int setGammaTable(const struct atomisp_gamma_table *gamma_tbl);
+    int setFpnTable(struct v4l2_framebuffer *fb);
+    int setGcConfig(const struct atomisp_gc_config *gc_cfg);
+    /* Flash related controls */
+    int setFlashIntensity(int intensity);
+    /* file injection controls */
+    void getSensorDataFromFile(const char *file_name, sensorPrivateData *sensor_data);
 
 // private types
 private:
@@ -305,6 +354,9 @@ private:
     int getNumOfSkipFrames(void);
     int getPrimaryCameraIndex(void) const;
     status_t applySensorFlip(void);
+
+    int getv4l2Control(int id, int *value, const char *name);
+    int setv4l2Control(int id, int value, const char *name);
 
 // private members
 private:

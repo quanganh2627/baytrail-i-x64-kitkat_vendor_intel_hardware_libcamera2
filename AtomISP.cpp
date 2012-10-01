@@ -368,7 +368,8 @@ status_t AtomISP::init3A(int cameraId, const void *aiqConf)
         if (cameraId == INTEL_FILE_INJECT_CAMERA_ID) {
             const char* otp_file = privateOtpInjectFileName;
             int maincam = getPrimaryCameraIndex();
-            if (mAAA->init(sCamInfo[maincam].name, main_fd, aiqConf, otp_file) == NO_ERROR) {
+            const SensorParams *paramFiles = PlatformData::getSensorParamsFile(sCamInfo[maincam].name);
+            if (mAAA->init(paramFiles, this, aiqConf, otp_file) == NO_ERROR) {
                 LOG1("3A initialized for file inject");
             }
             else {
@@ -377,7 +378,8 @@ status_t AtomISP::init3A(int cameraId, const void *aiqConf)
             }
         }
         else if (mSensorType == SENSOR_TYPE_RAW) {
-            if (mAAA->init(mCameraInput->name, main_fd, aiqConf, NULL) == NO_ERROR) {
+            const SensorParams *paramFiles = PlatformData::getSensorParamsFile(mCameraInput->name);
+            if (mAAA->init(paramFiles, this, aiqConf, NULL) == NO_ERROR) {
                 LOG1("3A initialized");
             } else {
                 LOGE("Error initializing 3A on RAW sensor!");
@@ -3876,6 +3878,392 @@ bool AtomISP::isDumpRawImageReady(void)
 {
     LOG1("@%s", __FUNCTION__);
     return (mSensorType == SENSOR_TYPE_RAW) && CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW);
+}
+
+int AtomISP::getv4l2Control(int id, int *value, const char *name)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    struct v4l2_ext_controls controls;
+    struct v4l2_ext_control control;
+
+    controls.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
+    controls.count = 1;
+    controls.controls = &control;
+    control.id = id;
+
+    ret = xioctl(main_fd, VIDIOC_G_EXT_CTRLS, &controls);
+    LOG2("%s IOCTL VIDIOC_G_EXT_CTRLS ret: %d\n", __FUNCTION__, ret);
+    if (ret == 0)
+        *value = control.value;
+
+    return ret;
+}
+
+int AtomISP::setv4l2Control(int id, int value, const char *name)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    struct v4l2_ext_controls controls;
+    struct v4l2_ext_control control;
+
+    controls.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
+    controls.count = 1;
+    controls.controls = &control;
+    control.id = id;
+    control.value = value;
+
+    ret = xioctl(main_fd, VIDIOC_S_EXT_CTRLS, &controls);
+    LOG2("%s IOCTL VIDIOC_S_EXT_CTRLS ret: %d\n", __FUNCTION__, ret);
+
+    return ret;
+}
+
+int AtomISP::sensorMoveFocusToPosition(int position)
+{
+    LOG2("@%s", __FUNCTION__);
+    return setv4l2Control(V4L2_CID_FOCUS_ABSOLUTE, position, "Set focus position");
+}
+
+int AtomISP::sensorMoveFocusToBySteps(int steps)
+{
+    LOG2("@%s", __FUNCTION__);
+    return setv4l2Control(V4L2_CID_FOCUS_RELATIVE, steps, "Set focus steps");
+}
+
+int AtomISP::sensorGetFocusStatus(int *status)
+{
+    LOG2("@%s", __FUNCTION__);
+    return getv4l2Control(V4L2_CID_FOCUS_STATUS, status, "Get focus status");
+}
+
+int AtomISP::sensorGetModeInfo(struct atomisp_sensor_mode_data *mode_data)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_G_SENSOR_MODE_DATA, mode_data);
+    LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_MODE_DATA ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::sensorSetExposure(struct atomisp_exposure *exposure)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_S_EXPOSURE, exposure);
+    LOG2("%s IOCTL ATOMISP_IOC_S_EXPOSURE ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::sensorGetExposureTime(int *time)
+{
+    LOG2("@%s", __FUNCTION__);
+    return getv4l2Control(V4L2_CID_EXPOSURE_ABSOLUTE, time, "Get exposure time");
+}
+
+int AtomISP::sensorGetAperture(int *aperture)
+{
+    LOG2("@%s", __FUNCTION__);
+    return getv4l2Control(V4L2_CID_IRIS_ABSOLUTE, aperture, "Get aperture");
+}
+
+int AtomISP::sensorGetFNumber(unsigned short *fnum_num, unsigned short *fnum_denom)
+{
+    LOG2("@%s", __FUNCTION__);
+    int fnum = 0, ret;
+
+    ret = getv4l2Control(V4L2_CID_FNUMBER_ABSOLUTE, &fnum, "Get fnumber");
+
+    *fnum_num = (unsigned short)(fnum >> 16);
+    *fnum_denom = (unsigned short)(fnum & 0xFFFF);
+    return ret;
+}
+
+void AtomISP::getSensorDataFromFile(const char *file_name, sensorPrivateData *sensor_data)
+{
+    LOG2("@%s", __FUNCTION__);
+    int otp_fd = -1;
+    struct stat st;
+    struct v4l2_private_int_data otpdata;
+
+    otpdata.size = 0;
+    otpdata.data = NULL;
+    otpdata.reserved[0] = 0;
+    otpdata.reserved[1] = 0;
+
+    sensor_data->data = NULL;
+    sensor_data->size = 0;
+
+    /* Open the otp data file */
+    if ((otp_fd = open(file_name, O_RDONLY)) == -1) {
+        LOGE("ERR(%s): Failed to open %s\n", __func__, file_name);
+        return;
+    }
+
+    memset(&st, 0, sizeof (st));
+    if (fstat(otp_fd, &st) < 0) {
+        LOGE("ERR(%s): fstat %s failed\n", __func__, file_name);
+        return;
+    }
+
+    otpdata.size = st.st_size;
+    otpdata.data = malloc(otpdata.size);
+    if (otpdata.data == NULL) {
+        LOGD("Failed to allocate memory for OTP data.");
+        return;
+    }
+
+    if ( (read(otp_fd, otpdata.data, otpdata.size)) == -1) {
+        LOGD("Failed to read OTP data\n");
+        free(otpdata.data);
+        close(otp_fd);
+        return;
+    }
+
+    sensor_data->data = otpdata.data;
+    sensor_data->size = otpdata.size;
+    close(otp_fd);
+}
+
+void AtomISP::sensorGetMotorData(sensorPrivateData *sensor_data)
+{
+    LOG2("@%s", __FUNCTION__);
+    int rc;
+    struct v4l2_private_int_data motorPrivateData;
+
+    motorPrivateData.size = 0;
+    motorPrivateData.data = NULL;
+    motorPrivateData.reserved[0] = 0;
+    motorPrivateData.reserved[1] = 0;
+
+    sensor_data->data = NULL;
+    sensor_data->size = 0;
+    // First call with size = 0 will return motor private data size.
+    rc = xioctl (main_fd, ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA, &motorPrivateData);
+    LOG2("%s IOCTL ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA to get motor private data size ret: %d\n", __FUNCTION__, rc);
+    if (rc != 0 || motorPrivateData.size == 0) {
+        LOGD("Failed to get motor private data size. Error: %d", rc);
+        return;
+    }
+
+    motorPrivateData.data = malloc(motorPrivateData.size);
+    if (motorPrivateData.data == NULL) {
+        LOGD("Failed to allocate memory for motor private data.");
+        return;
+    }
+
+    // Second call with correct size will return motor private data.
+    rc = xioctl (main_fd, ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA, &motorPrivateData);
+    LOG2("%s IOCTL ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA to get motor private data ret: %d\n", __FUNCTION__, rc);
+
+    if (rc != 0 || motorPrivateData.size == 0) {
+        LOGD("Failed to read motor private data. Error: %d", rc);
+        free(motorPrivateData.data);
+        return;
+    }
+
+    sensor_data->data = motorPrivateData.data;
+    sensor_data->size = motorPrivateData.size;
+}
+
+void AtomISP::sensorGetSensorData(sensorPrivateData *sensor_data)
+{
+    LOG2("@%s", __FUNCTION__);
+    int rc;
+    struct v4l2_private_int_data otpdata;
+
+    otpdata.size = 0;
+    otpdata.data = NULL;
+    otpdata.reserved[0] = 0;
+    otpdata.reserved[1] = 0;
+
+    sensor_data->data = NULL;
+    sensor_data->size = 0;
+    // First call with size = 0 will return OTP data size.
+    rc = xioctl (main_fd, ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
+    LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data size ret: %d\n", __FUNCTION__, rc);
+    if (rc != 0 || otpdata.size == 0) {
+        LOGD("Failed to get OTP size. Error: %d", rc);
+        return;
+    }
+
+    otpdata.data = malloc(otpdata.size);
+    if (otpdata.data == NULL) {
+        LOGD("Failed to allocate memory for OTP data.");
+        return;
+    }
+
+    // Second call with correct size will return OTP data.
+    rc = xioctl (main_fd, ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
+    LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data ret: %d\n", __FUNCTION__, rc);
+
+    if (rc != 0 || otpdata.size == 0) {
+        LOGD("Failed to read OTP data. Error: %d", rc);
+        free(otpdata.data);
+        return;
+    }
+
+    sensor_data->data = otpdata.data;
+    sensor_data->size = otpdata.size;
+}
+
+int AtomISP::setIspParameter(struct atomisp_parm *isp_param)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_S_ISP_PARM, isp_param);
+    LOG2("%s IOCTL ATOMISP_IOC_S_ISP_PARM ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::getIspStatistics(struct atomisp_3a_statistics *statistics)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_G_3A_STAT, statistics);
+    LOG2("%s IOCTL ATOMISP_IOC_G_3A_STAT ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::setMaccConfig(struct atomisp_macc_config *macc_tbl)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_S_ISP_MACC,macc_tbl);
+    LOG2("%s IOCTL ATOMISP_IOC_S_ISP_MACC ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::setFpnTable(struct v4l2_framebuffer *fb)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_S_ISP_FPN_TABLE, fb);
+    LOG2("%s IOCTL ATOMISP_IOC_S_ISP_FPN_TABLE ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::setGammaTable(const struct atomisp_gamma_table *gamma_tbl)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_S_ISP_GAMMA, (struct atomisp_gamma_table *)gamma_tbl);
+    LOG2("%s IOCTL ATOMISP_IOC_S_ISP_GAMMA ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::setCtcTable(const struct atomisp_ctc_table *ctc_tbl)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_S_ISP_CTC, (struct atomisp_ctc_table *)ctc_tbl);
+    LOG2("%s IOCTL ATOMISP_IOC_S_ISP_CTC ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::setGdcConfig(const struct atomisp_morph_table *tbl)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_S_ISP_GDC_TAB, (struct atomisp_morph_table *)tbl);
+    LOG2("%s IOCTL ATOMISP_IOC_S_ISP_GDC_TAB ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::setShadingTable(struct atomisp_shading_table *table)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_S_ISP_SHD_TAB, table);
+    LOG2("%s IOCTL ATOMISP_IOC_S_ISP_SHD_TAB ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::setDeConfig(struct atomisp_de_config *de_cfg)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd,ATOMISP_IOC_S_ISP_FALSE_COLOR_CORRECTION, de_cfg);
+    LOG2("%s IOCTL ATOMISP_IOC_S_ISP_FALSE_COLOR_CORRECTION ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::setTnrConfig(struct atomisp_tnr_config *tnr_cfg)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_S_TNR, tnr_cfg);
+    LOG2("%s IOCTL ATOMISP_IOC_S_TNR ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::setEeConfig(struct atomisp_ee_config *ee_cfg)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_S_EE, ee_cfg);
+    LOG2("%s IOCTL ATOMISP_IOC_S_EE ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::setNrConfig(struct atomisp_nr_config *nr_cfg)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_S_NR, nr_cfg);
+    LOG2("%s IOCTL ATOMISP_IOC_S_NR ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::setDpConfig(struct atomisp_dp_config *dp_cfg)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_S_ISP_BAD_PIXEL_DETECTION, dp_cfg);
+    LOG2("%s IOCTL ATOMISP_IOC_S_ISP_BAD_PIXEL_DETECTION ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::setWbConfig(struct atomisp_wb_config *wb_cfg)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_S_ISP_WHITE_BALANCE, wb_cfg);
+    LOG2("%s IOCTL ATOMISP_IOC_S_ISP_WHITE_BALANCE ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::set3aConfig(const struct atomisp_3a_config *cfg)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_S_3A_CONFIG, (struct atomisp_3a_config *)cfg);
+    LOG2("%s IOCTL ATOMISP_IOC_S_3A_CONFIG ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::setObConfig(struct atomisp_ob_config *ob_cfg)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_S_BLACK_LEVEL_COMP, ob_cfg);
+    LOG2("%s IOCTL ATOMISP_IOC_S_BLACK_LEVEL_COMP ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::setGcConfig(const struct atomisp_gc_config *gc_cfg)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_S_ISP_GAMMA_CORRECTION, (struct atomisp_gc_config *)gc_cfg);
+    LOG2("%s IOCTL ATOMISP_IOC_S_ISP_GAMMA_CORRECTION ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::setFlashIntensity(int intensity)
+{
+    LOG2("@%s", __FUNCTION__);
+    return setv4l2Control(V4L2_CID_FLASH_INTENSITY, intensity, "Set flash intensity");
 }
 
 } // namespace android

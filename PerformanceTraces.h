@@ -69,6 +69,13 @@ namespace PerformanceTraces {
     static void snapshotTaken(struct timeval *ts) STUB_BODY
   };
 
+  class AAAProfiler {
+  public:
+    static void enable(bool set) STUB_BODY
+    static void start(void) STUB_BODY
+    static void stop(void) STUB_BODY
+  };
+
   /**
    * Helper macro to call PerformanceTraces::Shot2Shot::step() with
    * the proper function name, and pass additional arguments.
@@ -122,7 +129,6 @@ namespace PerformanceTraces {
           PerformanceTraces::Shot2Shot::step(__FUNCTION__);  \
           PerformanceTraces::Shot2Shot::stop(x); \
       }
-
 
 }; // ns PerformanceTraces
 }; // ns android

@@ -96,7 +96,7 @@ static bool gShot2ShotBreakdown = false;
 static int gShot2ShotFrame = -1;
 static bool gShot2ShotTakePictureCalled = false;
 static bool gShot2ShotAutoFocusDone = false;
-
+static PerformanceTimer gAAAProfiler;
 /**
  * Controls trace state
  */
@@ -267,6 +267,37 @@ void Shot2Shot::stop(int frameCounter)
 
         gShot2Shot.formattedTrace("Shot2Shot", __FUNCTION__);
         gShot2Shot.stop();
+    }
+}
+
+/**
+ * Controls trace state
+ */
+void AAAProfiler::enable(bool set)
+{
+    gAAAProfiler.mRequested = set;
+}
+
+/**
+ * Starts the AAAprofiler trace.
+ */
+void AAAProfiler::start(void)
+{
+    if (gAAAProfiler.isRequested()) {
+        gAAAProfiler.formattedTrace("gAAAProfiler", __FUNCTION__);
+        gAAAProfiler.start();
+    }
+}
+
+/**
+ * Stops the AAAprofiler trace and prints out results.
+ */
+void AAAProfiler::stop(void)
+{
+    if (gAAAProfiler.isRunning()) {
+        LOGD("3A profiling time::\t%lldms\n",
+             gAAAProfiler.timeUs() / 1000);
+        gAAAProfiler.stop();
     }
 }
 

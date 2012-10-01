@@ -39,6 +39,8 @@
 #define RESOLUTION_POSTVIEW_HEIGHT   240
 
 #include <camera.h>
+#include "AtomCommon.h"
+
 namespace android {
 
 /**
@@ -239,6 +241,15 @@ class PlatformData {
      * \return string with product manufacturer
      */
     static const char* manufacturerName(void);
+
+    /**
+     * Returns sensor parameter files for input sensor
+     *
+     * \param sensor_id identifier to sensor
+     * \return pointer to sensor parameter file
+    */
+    static const SensorParams *getSensorParamsFile(char *sensorId);
+
 };
 
 } /* namespace android */

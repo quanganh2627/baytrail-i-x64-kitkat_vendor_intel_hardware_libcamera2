@@ -89,7 +89,8 @@ LOCAL_SHARED_LIBRARIES := \
 	libva \
 	libva-tpi \
 	libva-android \
-	libsqlite
+	libsqlite \
+	libdl
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_CFLAGS += -DUSE_INTEL_JPEG

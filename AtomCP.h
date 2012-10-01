@@ -20,6 +20,7 @@
 #include <utils/Errors.h>
 #include <utils/threads.h>
 #include "AtomISP.h"
+#include <ia_cp_types.h>
 
 extern "C" {
 #include <stdlib.h>
