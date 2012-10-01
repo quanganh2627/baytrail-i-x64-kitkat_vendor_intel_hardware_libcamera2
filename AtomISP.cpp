@@ -1125,12 +1125,25 @@ status_t AtomISP::startPreview()
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
     status_t status = NO_ERROR;
+    int i, initialSkips;
 
     ret = startDevice(mPreviewDevice, mNumPreviewBuffers);
     if (ret < 0) {
         LOGE("Start preview device failed!");
         status = UNKNOWN_ERROR;
         goto err;
+    }
+
+    /**
+     * Some sensors produce corrupted first frames
+     * If this sensor needs it then we skip
+     */
+    initialSkips = getNumOfSkipFrames();
+    for (i = 0; i < initialSkips; i++) {
+        AtomBuffer p;
+        ret = getPreviewFrame(&p);
+        if (ret == NO_ERROR)
+            ret = putPreviewFrame(&p);
     }
 
     mNumPreviewBuffersQueued = mNumPreviewBuffers;
@@ -1305,6 +1318,7 @@ status_t AtomISP::startCapture()
 {
     int ret;
     status_t status = NO_ERROR;
+    int i, initialSkips;
     // Limited by driver, raw bayer image dump can support only 1 frame when setting
     // snapshot number. Otherwise, the raw dump image would be corrupted.
     int snapNum;
@@ -1325,6 +1339,18 @@ status_t AtomISP::startCapture()
         LOGE("start capture on second device failed!");
         status = UNKNOWN_ERROR;
         goto errorStopFirst;
+    }
+
+    /**
+     * Some sensors produce corrupted first frames
+     * If this sensor needs it then we skip
+     */
+    initialSkips = getNumOfSkipFrames();
+    for (i = 0; i < initialSkips; i++) {
+        AtomBuffer s,p;
+        ret = getSnapshot(&s,&p);
+        if (ret == NO_ERROR)
+            ret = putSnapshot(&s,&p);
     }
 
     mNumCapturegBuffersQueued = snapNum;
@@ -2219,6 +2245,50 @@ int AtomISP::atomisp_set_attribute (int fd, int attribute_num,
 
     LOGE("Failed to set value %d for control %s (%d) on device '%d', %s",
         value, name, attribute_num, fd, strerror(errno));
+    return -1;
+}
+
+/**
+ * atomisp_get_attribute():
+ * Try to get the value of one specific attribute
+ * return value: 0 for success
+ *               others are errors
+ */
+int AtomISP::atomisp_get_attribute (int fd, int attribute_num,
+                                    int *value)
+{
+    struct v4l2_control control;
+    struct v4l2_ext_controls controls;
+    struct v4l2_ext_control ext_control;
+
+    if (fd < 0)
+        return -1;
+
+    control.id = attribute_num;
+    controls.ctrl_class = V4L2_CTRL_CLASS_USER;
+    controls.count = 1;
+    controls.controls = &ext_control;
+    ext_control.id = attribute_num;
+
+    if (ioctl(fd, VIDIOC_G_CTRL, &control) == 0) {
+        *value = control.value;
+        return 0;
+    }
+
+    if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &controls) == 0) {
+        *value = ext_control.value;
+    return 0;
+    }
+
+    controls.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
+
+    if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &controls) == 0) {
+        *value = ext_control.value;
+    return 0;
+    }
+
+    LOGE("Failed to get value for control (%d) on device '%d', %s\n.",
+          attribute_num, fd, strerror(errno));
     return -1;
 }
 
@@ -3520,6 +3590,21 @@ status_t AtomISP::getCameraInfo(int cameraId, camera_info *cameraInfo)
          cameraInfo->orientation);
 
     return NO_ERROR;
+}
+
+int AtomISP::getNumOfSkipFrames(void)
+{
+    int ret = 0;
+    int num_skipframes = 0;
+
+    ret = atomisp_get_attribute(main_fd, V4L2_CID_G_SKIP_FRAMES,
+                                &num_skipframes);
+
+    LOG1("%s: returns %d skip frame needed %d",__FUNCTION__, ret, num_skipframes);
+    if (ret < 0)
+        return ret;
+    else
+        return num_skipframes;
 }
 
 /* ===================  ACCELERATION API EXTENSIONS ====================== */

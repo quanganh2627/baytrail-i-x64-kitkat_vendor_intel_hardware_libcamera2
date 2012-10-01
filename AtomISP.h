@@ -286,6 +286,7 @@ private:
     int v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf);
     int atomisp_set_attribute (int fd, int attribute_num,
                                const int value, const char *name);
+    int atomisp_get_attribute (int fd, int attribute_num, int *value);
     int atomisp_set_zoom (int fd, int zoom);
     int xioctl(int fd, int request, void *arg) const;
 
@@ -295,6 +296,7 @@ private:
 
     status_t selectCameraSensor();
     size_t setupCameraInfo();
+    int getNumOfSkipFrames(void);
     int getPrimaryCameraIndex(void) const;
 
 // private members
