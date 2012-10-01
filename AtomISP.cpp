@@ -529,7 +529,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
         mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
 
         // For main back camera
-        // flash mode option
+        // flash mode option, cts mandates default to be off
         params->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
         char flashModes[100] = {0};
         if (snprintf(flashModes, sizeof(flashModes)

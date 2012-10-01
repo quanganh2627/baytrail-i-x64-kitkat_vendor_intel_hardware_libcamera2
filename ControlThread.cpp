@@ -289,6 +289,11 @@ status_t ControlThread::init(int cameraId)
     snprintf(facing, PROPERTY_VALUE_MAX, "%d", cameraId);
     property_set("media.camera.facing", facing);
 
+    // Set default parameters so that settings propagate to 3A
+    MessageSetParameters msg;
+    msg.params = mParamCache;
+    handleMessageSetParameters(&msg);
+
     return NO_ERROR;
 
 bail:
@@ -562,7 +567,7 @@ String8 ControlThread::paramsReturnNewIfChanged(
     String8 oldVal (o, (o == NULL ? 0 : strlen(o)));
     String8 newVal (n, (n == NULL ? 0 : strlen(n)));
 
-    if (oldVal != newVal)
+    if (oldVal != newVal || !mThreadRunning) // return if changed or if set during init() (thread not running yet)
         return newVal;
 
     return String8::empty();
@@ -3209,7 +3214,9 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
     status_t status = NO_ERROR;
     String8 newScene = paramsReturnNewIfChanged(oldParams, newParams, CameraParameters::KEY_SCENE_MODE);
 
-    if (!newScene.isEmpty()) {
+    // we can't run this during init() because CTS mandates flash to be off. Thus we will initially be in auto
+    // scene mode with flash off, thanks to CTS. Therefore we check mThreadRunning which is off during init().
+    if (!newScene.isEmpty() && mThreadRunning) {
         SceneMode sceneMode = CAM_AE_SCENE_MODE_AUTO;
         if (newScene == CameraParameters::SCENE_MODE_PORTRAIT) {
             sceneMode = CAM_AE_SCENE_MODE_PORTRAIT;
