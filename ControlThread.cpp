@@ -2778,27 +2778,27 @@ status_t ControlThread::processParamAFLock(const CameraParameters *oldParams,
     status_t status = NO_ERROR;
 
     // af lock mode
-    const char* oldValue = oldParams->get(IntelCameraParameters::KEY_AF_LOCK_MODE);
-    const char* newValue = newParams->get(IntelCameraParameters::KEY_AF_LOCK_MODE);
-    if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_AF_LOCK_MODE);
+    if (!newVal.isEmpty()) {
         bool af_lock;
         // TODO: once available, use the definitions in Intel
         //       parameter namespace, see UMG BZ26264
         const char* PARAM_LOCK = "lock";
         const char* PARAM_UNLOCK = "unlock";
 
-        if(!strncmp(newValue, PARAM_LOCK, strlen(PARAM_LOCK))) {
+        if(newVal == PARAM_LOCK) {
             af_lock = true;
-        } else if(!strncmp(newValue, PARAM_UNLOCK, strlen(PARAM_UNLOCK))) {
+        } else if(newVal == PARAM_UNLOCK) {
             af_lock = false;
         } else {
-            LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_AF_LOCK_MODE, newValue);
+            LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_AF_LOCK_MODE, newVal.string());
             return INVALID_OPERATION;
         }
         status = mAAA->setAfLock(af_lock);
 
         if (status == NO_ERROR) {
-            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_AF_LOCK_MODE, newValue);
+            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_AF_LOCK_MODE, newVal.string());
         }
     }
 
@@ -2812,22 +2812,23 @@ status_t ControlThread::processParamAWBLock(const CameraParameters *oldParams,
     status_t status = NO_ERROR;
 
     // awb lock mode
-    const char* oldValue = oldParams->get(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK);
-    const char* newValue = newParams->get(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK);
-    if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK);
+
+    if (!newVal.isEmpty()) {
         bool awb_lock;
 
-        if(!strncmp(newValue, CameraParameters::TRUE, strlen(CameraParameters::TRUE))) {
+        if(newVal == CameraParameters::TRUE) {
             awb_lock = true;
-        } else if(!strncmp(newValue, CameraParameters::FALSE, strlen(CameraParameters::FALSE))) {
+        } else if(newVal == CameraParameters::FALSE) {
             awb_lock = false;
         } else {
-            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, newValue);
+            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, newVal.string());
             return INVALID_OPERATION;
         }
         status = m3AThread->lockAwb(awb_lock);
         if (status == NO_ERROR) {
-            LOG1("Changed: %s -> %s", CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, newValue);
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, newVal.string());
         }
     }
 
@@ -2841,22 +2842,22 @@ status_t ControlThread::processParamXNR_ANR(const CameraParameters *oldParams,
     status_t status = NO_ERROR;
 
     // XNR
-    const char* oldValue = oldParams->get(IntelCameraParameters::KEY_XNR);
-    const char* newValue = newParams->get(IntelCameraParameters::KEY_XNR);
-    LOG2("XNR value previous %s new %s ", oldValue, newValue);
-    if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
-        if (!strncmp(newValue, CameraParameters::TRUE, MAX_PARAM_VALUE_LENGTH))
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_XNR);
+    LOG2("XNR value new %s ", newVal.string());
+    if (!newVal.isEmpty()) {
+        if (newVal == CameraParameters::TRUE)
             status = mISP->setXNR(true);
         else
             status = mISP->setXNR(false);
     }
 
     // ANR
-    oldValue = oldParams->get(IntelCameraParameters::KEY_ANR);
-    newValue = newParams->get(IntelCameraParameters::KEY_ANR);
-    LOG2("ANR value previous %s new %s ", oldValue, newValue);
-    if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
-        if (!strncmp(newValue, CameraParameters::TRUE, MAX_PARAM_VALUE_LENGTH))
+    newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_ANR);
+    LOG2("ANR value new %s ", newVal.string());
+    if (!newVal.isEmpty()) {
+        if (newVal == CameraParameters::TRUE)
             status = mISP->setLowLight(true);
         else
             status = mISP->setLowLight(false);
@@ -2873,7 +2874,7 @@ status_t ControlThread::processParamGDC(const CameraParameters *oldParams,
 
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, IntelCameraParameters::KEY_GDC);
 
-    if (newVal.isEmpty() != true) {
+    if (!newVal.isEmpty()) {
         bool enable = (newVal == CameraParameters::TRUE);
         status = mAAA->setGDC(enable);
         if (status != NO_ERROR)
@@ -2907,7 +2908,7 @@ status_t ControlThread::processParamAntiBanding(const CameraParameters *oldParam
 
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               CameraParameters::KEY_ANTIBANDING);
-    if (newVal.isEmpty() != true) {
+    if (!newVal.isEmpty()) {
 
         if (newVal == CameraParameters::ANTIBANDING_50HZ)
             lightFrequency = CAM_AE_FLICKER_MODE_50HZ;
@@ -2936,24 +2937,24 @@ status_t ControlThread::processParamAELock(const CameraParameters *oldParams,
     status_t status = NO_ERROR;
 
     // ae lock mode
-    const char* oldValue = oldParams->get(CameraParameters::KEY_AUTO_EXPOSURE_LOCK);
-    const char* newValue = newParams->get(CameraParameters::KEY_AUTO_EXPOSURE_LOCK);
 
-    if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              CameraParameters::KEY_AUTO_EXPOSURE_LOCK);
+    if (!newVal.isEmpty()) {
         bool ae_lock;
 
-        if(!strncmp(newValue, CameraParameters::TRUE, strlen(CameraParameters::TRUE))) {
+        if(newVal == CameraParameters::TRUE) {
             ae_lock = true;
-        } else  if(!strncmp(newValue, CameraParameters::FALSE, strlen(CameraParameters::FALSE))) {
+        } else  if(newVal == CameraParameters::FALSE) {
             ae_lock = false;
         } else {
-            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK, newValue);
+            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK, newVal.string());
             return INVALID_OPERATION;
         }
 
         status = m3AThread->lockAe(ae_lock);
         if (status == NO_ERROR) {
-            LOG1("Changed: %s -> %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK, newValue);
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK, newVal.string());
             if (ae_lock) {
                 mAELockFlashNeed = mAAA->getAeFlashNecessary();
                 LOG1("AE locked, storing flash necessity decision (%s)", mAELockFlashNeed ? "ON" : "OFF");
@@ -2969,21 +2970,22 @@ status_t ControlThread::processParamFlash(const CameraParameters *oldParams,
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    const char* oldValue = oldParams->get(CameraParameters::KEY_FLASH_MODE);
-    const char* newValue = newParams->get(CameraParameters::KEY_FLASH_MODE);
-    if (newValue && oldValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              CameraParameters::KEY_FLASH_MODE);
+
+    if (!newVal.isEmpty()) {
         FlashMode flash = CAM_AE_FLASH_MODE_AUTO;
-        if(!strncmp(newValue, CameraParameters::FLASH_MODE_AUTO, strlen(CameraParameters::FLASH_MODE_AUTO)))
+        if(newVal == CameraParameters::FLASH_MODE_AUTO)
             flash = CAM_AE_FLASH_MODE_AUTO;
-        else if(!strncmp(newValue, CameraParameters::FLASH_MODE_OFF, strlen(CameraParameters::FLASH_MODE_OFF)))
+        else if(newVal == CameraParameters::FLASH_MODE_OFF)
             flash = CAM_AE_FLASH_MODE_OFF;
-        else if(!strncmp(newValue, CameraParameters::FLASH_MODE_ON, strlen(CameraParameters::FLASH_MODE_ON)))
+        else if(newVal == CameraParameters::FLASH_MODE_ON)
             flash = CAM_AE_FLASH_MODE_ON;
-        else if(!strncmp(newValue, CameraParameters::FLASH_MODE_TORCH, strlen(CameraParameters::FLASH_MODE_TORCH)))
+        else if(newVal == CameraParameters::FLASH_MODE_TORCH)
             flash = CAM_AE_FLASH_MODE_TORCH;
-        else if(!strncmp(newValue, IntelCameraParameters::FLASH_MODE_SLOW_SYNC, strlen(IntelCameraParameters::FLASH_MODE_SLOW_SYNC)))
+        else if(newVal == IntelCameraParameters::FLASH_MODE_SLOW_SYNC)
             flash = CAM_AE_FLASH_MODE_SLOW_SYNC;
-        else if(!strncmp(newValue, IntelCameraParameters::FLASH_MODE_DAY_SYNC, strlen(IntelCameraParameters::FLASH_MODE_DAY_SYNC)))
+        else if(newVal == IntelCameraParameters::FLASH_MODE_DAY_SYNC)
             flash = CAM_AE_FLASH_MODE_DAY_SYNC;
 
         if (flash == CAM_AE_FLASH_MODE_TORCH && mAAA->getAeFlashMode() != CAM_AE_FLASH_MODE_TORCH) {
@@ -2996,7 +2998,7 @@ status_t ControlThread::processParamFlash(const CameraParameters *oldParams,
 
         status = mAAA->setAeFlashMode(flash);
         if (status == NO_ERROR) {
-            LOG1("Changed: %s -> %s", CameraParameters::KEY_FLASH_MODE, newValue);
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_FLASH_MODE, newVal.string());
         }
     }
     return status;
@@ -3010,7 +3012,7 @@ status_t ControlThread::processParamEffect(const CameraParameters *oldParams,
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               CameraParameters::KEY_EFFECT);
 
-    if (newVal.isEmpty() != true) {
+    if (!newVal.isEmpty()) {
 
         v4l2_colorfx effect = V4L2_COLORFX_NONE;
         if (newVal == CameraParameters::EFFECT_MONO)
@@ -3049,21 +3051,21 @@ status_t ControlThread::processParamBracket(const CameraParameters *oldParams,
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    const char* oldBracket = oldParams->get(IntelCameraParameters::KEY_CAPTURE_BRACKET);
-    const char* newBracket = newParams->get(IntelCameraParameters::KEY_CAPTURE_BRACKET);
-    if (oldBracket && newBracket && strncmp(newBracket, oldBracket, MAX_PARAM_VALUE_LENGTH) != 0) {
-        if(!strncmp(newBracket, "exposure", strlen("exposure"))) {
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_CAPTURE_BRACKET);
+    if (!newVal.isEmpty()) {
+        if(newVal == "exposure") {
             mBracketing.mode = BRACKET_EXPOSURE;
-        } else if(!strncmp(newBracket, "focus", strlen("focus"))) {
+        } else if(newVal == "focus") {
             mBracketing.mode = BRACKET_FOCUS;
-        } else if(!strncmp(newBracket, "none", strlen("none"))) {
+        } else if(newVal == "none") {
             mBracketing.mode = BRACKET_NONE;
         } else {
-            LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_CAPTURE_BRACKET, newBracket);
+            LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_CAPTURE_BRACKET, newVal.string());
             status = BAD_VALUE;
         }
         if (status == NO_ERROR) {
-            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_CAPTURE_BRACKET, newBracket);
+            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_CAPTURE_BRACKET, newVal.string());
         }
     }
     return status;
@@ -3077,7 +3079,7 @@ status_t ControlThread::processParamSmartShutter(const CameraParameters *oldPara
     //smile shutter threshold
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD);
-    if (newVal.isEmpty() == false) {
+    if (!newVal.isEmpty()) {
         int value = newParams->getInt(IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD);
         if (value < 0 || value > SMILE_THRESHOLD_MAX) {
             LOGE("Invalid value received for %s: %d, set to default %d",
@@ -3092,7 +3094,7 @@ status_t ControlThread::processParamSmartShutter(const CameraParameters *oldPara
     //blink shutter threshold
     newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                       IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD);
-    if (newVal.isEmpty() == false) {
+    if (!newVal.isEmpty()) {
         int value = newParams->getInt(IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD);
         if (value < 0 || value > BLINK_THRESHOLD_MAX) {
             LOGE("Invalid value received for %s: %d, set to default %d",
@@ -3114,21 +3116,21 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
     status_t localStatus = NO_ERROR;
 
     // Check the HDR parameters
-    const char* oldValue = oldParams->get(IntelCameraParameters::KEY_HDR_IMAGING);
-    const char* newValue = newParams->get(IntelCameraParameters::KEY_HDR_IMAGING);
-    if (oldValue && newValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
-        if(!strncmp(newValue, "on", strlen("on"))) {
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_HDR_IMAGING);
+    if (!newVal.isEmpty()) {
+        if(newVal == "on") {
             mHdr.enabled = true;
             mHdr.bracketMode = BRACKET_EXPOSURE;
             mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
-        } else if(!strncmp(newValue, "off", strlen("off"))) {
+        } else if(newVal == "off") {
             mHdr.enabled = false;
         } else {
-            LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_IMAGING, newValue);
+            LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_IMAGING, newVal.string());
             status = BAD_VALUE;
         }
         if (status == NO_ERROR) {
-            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_IMAGING, newValue);
+            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_IMAGING, newVal.string());
         }
     }
 
@@ -3138,62 +3140,62 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         mBracketing.mode = mHdr.bracketMode;
     }
 
-    oldValue = oldParams->get(IntelCameraParameters::KEY_HDR_SHARPENING);
-    newValue = newParams->get(IntelCameraParameters::KEY_HDR_SHARPENING);
-    if (oldValue && newValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+    newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_HDR_SHARPENING);
+    if (!newVal.isEmpty()) {
         localStatus = NO_ERROR;
-        if(!strncmp(newValue, "normal", strlen("normal"))) {
+        if(newVal == "normal") {
             mHdr.sharpening = NORMAL_SHARPENING;
-        } else if(!strncmp(newValue, "strong", strlen("strong"))) {
+        } else if(newVal == "strong") {
             mHdr.sharpening = STRONG_SHARPENING;
-        } else if(!strncmp(newValue, "none", strlen("none"))) {
+        } else if(newVal == "none") {
             mHdr.sharpening = NO_SHARPENING;
         } else {
-            LOGW("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_SHARPENING, newValue);
+            LOGW("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_SHARPENING, newVal.string());
             localStatus = BAD_VALUE;
         }
         if (localStatus == NO_ERROR) {
-            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_SHARPENING, newValue);
+            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_SHARPENING, newVal.string());
         }
     }
 
-    oldValue = oldParams->get(IntelCameraParameters::KEY_HDR_VIVIDNESS);
-    newValue = newParams->get(IntelCameraParameters::KEY_HDR_VIVIDNESS);
-    if (oldValue && newValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+    newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_HDR_VIVIDNESS);
+    if (!newVal.isEmpty()) {
         localStatus = NO_ERROR;
-        if(!strncmp(newValue, "gaussian", strlen("gaussian"))) {
+        if(newVal == "gaussian") {
             mHdr.vividness = GAUSSIAN_VIVIDNESS;
-        } else if(!strncmp(newValue, "gamma", strlen("gamma"))) {
+        } else if(newVal == "gamma") {
             mHdr.vividness = GAMMA_VIVIDNESS;
-        } else if(!strncmp(newValue, "none", strlen("none"))) {
+        } else if(newVal == "none") {
             mHdr.vividness = NO_VIVIDNESS;
         } else {
             // the default value is kept
-            LOGW("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_VIVIDNESS, newValue);
+            LOGW("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_VIVIDNESS, newVal.string());
             localStatus = BAD_VALUE;
         }
         if (localStatus == NO_ERROR) {
-            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_VIVIDNESS, newValue);
+            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_VIVIDNESS, newVal.string());
         }
     }
 
-    oldValue = oldParams->get(IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL);
-    newValue = newParams->get(IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL);
-    if (oldValue && newValue && strncmp(newValue, oldValue, MAX_PARAM_VALUE_LENGTH) != 0) {
+    newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL);
+    if (!newVal.isEmpty()) {
         localStatus = NO_ERROR;
-        if(!strncmp(newValue, "on", strlen("on"))) {
+        if(newVal == "on") {
             mHdr.appSaveOrig = mHdr.saveOrig = true;
             mHdr.appSaveOrigRequest = mHdr.saveOrigRequest = true;
-        } else if(!strncmp(newValue, "off", strlen("off"))) {
+        } else if(newVal == "off") {
             mHdr.appSaveOrig = mHdr.saveOrig = false;
             mHdr.appSaveOrigRequest = mHdr.saveOrigRequest = false;
         } else {
             // the default value is kept
-            LOGW("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, newValue);
+            LOGW("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, newVal.string());
             localStatus = BAD_VALUE;
         }
         if (localStatus == NO_ERROR) {
-            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, newValue);
+            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, newVal.string());
         }
     }
 
@@ -3432,7 +3434,7 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, CameraParameters::KEY_FOCUS_MODE);
     AfMode afMode = CAM_AF_MODE_NOT_SET;
 
-    if (newVal.isEmpty() != true) {
+    if (!newVal.isEmpty()) {
         if (newVal == CameraParameters::FOCUS_MODE_AUTO) {
             afMode = CAM_AF_MODE_AUTO;
         } else if (newVal == CameraParameters::FOCUS_MODE_INFINITY) {
@@ -3586,16 +3588,16 @@ status_t ControlThread::processParamExposureCompensation(const CameraParameters 
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    const char* oldEv = oldParams->get(CameraParameters::KEY_EXPOSURE_COMPENSATION);
-    const char* newEv = newParams->get(CameraParameters::KEY_EXPOSURE_COMPENSATION);
-    if (newEv && oldEv && strncmp(newEv, oldEv, MAX_PARAM_VALUE_LENGTH) != 0) {
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              CameraParameters::KEY_EXPOSURE_COMPENSATION);
+    if (!newVal.isEmpty()) {
         int exposure = newParams->getInt(CameraParameters::KEY_EXPOSURE_COMPENSATION);
         float comp_step = newParams->getFloat(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP);
         status = mAAA->setEv(exposure * comp_step);
         float ev = 0;
         mAAA->getEv(&ev);
         LOGD("exposure compensation to \"%s\" (%d), ev value %f, res %d",
-             newEv, exposure, ev, status);
+             newVal.string(), exposure, ev, status);
     }
     return status;
 }
@@ -3613,7 +3615,7 @@ status_t ControlThread::processParamAutoExposureMode(const CameraParameters *old
     status_t status = NO_ERROR;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_AE_MODE);
-    if (newVal.isEmpty() != true) {
+    if (!newVal.isEmpty()) {
         AeMode ae_mode (CAM_AE_MODE_AUTO);
 
         if (newVal == "auto") {
@@ -3660,7 +3662,7 @@ status_t ControlThread::processParamAutoExposureMeteringMode(
 
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_AE_METERING_MODE);
-    if (newVal.isEmpty() != true) {
+    if (!newVal.isEmpty()) {
         MeteringMode mode = aeMeteringModeFromString(newVal);
 
         // The fixed "spot" metering mode (and area) should be set only when user has set the
@@ -3696,8 +3698,7 @@ status_t ControlThread::processParamIso(const CameraParameters *oldParams,
     status_t status = NO_ERROR;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_ISO);
-    if (newVal.isEmpty() != true &&
-        mAAA->getAeMode() == CAM_AE_MODE_MANUAL) {
+    if (!newVal.isEmpty() && mAAA->getAeMode() == CAM_AE_MODE_MANUAL) {
         // note: value format is 'iso-NNN'
         const size_t iso_prefix_len = 4;
         if (newVal.length() > iso_prefix_len) {
@@ -3724,7 +3725,7 @@ status_t ControlThread::processParamShutter(const CameraParameters *oldParams,
     status_t status = NO_ERROR;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_SHUTTER);
-    if (newVal.isEmpty() != true) {
+    if (!newVal.isEmpty()) {
         float shutter = -1;
         bool flagParsed = false;
 
@@ -3771,7 +3772,7 @@ status_t ControlThread::processParamBackLightingCorrectionMode(const CameraParam
     status_t status = NO_ERROR;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
             IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE);
-    if (newVal.isEmpty() != true) {
+    if (!newVal.isEmpty()) {
         bool backlightCorrection;
 
         if (newVal == "on") {
@@ -3802,7 +3803,7 @@ status_t ControlThread::processParamAwbMappingMode(const CameraParameters *oldPa
     status_t status(NO_ERROR);
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
             IntelCameraParameters::KEY_AWB_MAPPING_MODE);
-    if (newVal.isEmpty() != true) {
+    if (!newVal.isEmpty()) {
         ia_3a_awb_map awbMappingMode(ia_3a_awb_map_auto);
 
         if (newVal == IntelCameraParameters::AWB_MAPPING_AUTO) {
@@ -3835,7 +3836,7 @@ status_t ControlThread::processParamTNR(const CameraParameters *oldParams,
     status_t status = NO_ERROR;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
             IntelCameraParameters::KEY_TEMPORAL_NOISE_REDUCTION);
-    if (newVal.isEmpty() != true) {
+    if (!newVal.isEmpty()) {
         // here we disable tnr when newVal == "off" or others unknow string.
         bool tnr = (newVal == "on") ? true : false;
 
@@ -3850,38 +3851,38 @@ status_t ControlThread::processParamWhiteBalance(const CameraParameters *oldPara
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    const char* oldWb = oldParams->get(CameraParameters::KEY_WHITE_BALANCE);
-    const char* newWb = newParams->get(CameraParameters::KEY_WHITE_BALANCE);
-    if (newWb && oldWb && strncmp(newWb, oldWb, MAX_PARAM_VALUE_LENGTH) != 0) {
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              CameraParameters::KEY_WHITE_BALANCE);
+    if (!newVal.isEmpty()) {
         AwbMode wbMode = CAM_AWB_MODE_AUTO;
         // TODO: once available, use the definitions in Intel
         //       parameter namespace, see UMG BZ26264
         const char* PARAM_MANUAL = "manual";
 
-        if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_AUTO, strlen(CameraParameters::WHITE_BALANCE_AUTO))) {
+        if(newVal == CameraParameters::WHITE_BALANCE_AUTO) {
             wbMode = CAM_AWB_MODE_AUTO;
-        } else if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_INCANDESCENT, strlen(CameraParameters::WHITE_BALANCE_INCANDESCENT))) {
+        } else if(newVal == CameraParameters::WHITE_BALANCE_INCANDESCENT) {
             wbMode = CAM_AWB_MODE_WARM_INCANDESCENT;
-        } else if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_FLUORESCENT, strlen(CameraParameters::WHITE_BALANCE_FLUORESCENT))) {
+        } else if(newVal == CameraParameters::WHITE_BALANCE_FLUORESCENT) {
             wbMode = CAM_AWB_MODE_FLUORESCENT;
-        } else if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_WARM_FLUORESCENT, strlen(CameraParameters::WHITE_BALANCE_WARM_FLUORESCENT))) {
+        } else if(newVal == CameraParameters::WHITE_BALANCE_WARM_FLUORESCENT) {
             wbMode = CAM_AWB_MODE_WARM_FLUORESCENT;
-        } else if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_DAYLIGHT, strlen(CameraParameters::WHITE_BALANCE_DAYLIGHT))) {
+        } else if(newVal == CameraParameters::WHITE_BALANCE_DAYLIGHT) {
             wbMode = CAM_AWB_MODE_DAYLIGHT;
-        } else if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT, strlen(CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT))) {
+        } else if(newVal == CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT) {
             wbMode = CAM_AWB_MODE_CLOUDY;
-        } else if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_TWILIGHT, strlen(CameraParameters::WHITE_BALANCE_TWILIGHT))) {
+        } else if(newVal == CameraParameters::WHITE_BALANCE_TWILIGHT) {
             wbMode = CAM_AWB_MODE_SUNSET;
-        } else if(!strncmp(newWb, CameraParameters::WHITE_BALANCE_SHADE, strlen(CameraParameters::WHITE_BALANCE_SHADE))) {
+        } else if(newVal == CameraParameters::WHITE_BALANCE_SHADE) {
             wbMode = CAM_AWB_MODE_SHADOW;
-        } else if(!strncmp(newWb, PARAM_MANUAL, strlen(PARAM_MANUAL))) {
+        } else if(newVal == PARAM_MANUAL) {
             wbMode = CAM_AWB_MODE_MANUAL_INPUT;
         }
 
         status = mAAA->setAwbMode(wbMode);
 
         if (status == NO_ERROR) {
-            LOG1("Changed: %s -> %s", CameraParameters::KEY_WHITE_BALANCE, newWb);
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_WHITE_BALANCE, newVal.string());
         }
     }
     return status;
@@ -3892,8 +3893,8 @@ status_t ControlThread::processParamRawDataFormat(const CameraParameters *oldPar
 {
     LOG1("@%s", __FUNCTION__);
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
-            IntelCameraParameters::KEY_RAW_DATA_FORMAT);
-    if (newVal.isEmpty() != true) {
+                                              IntelCameraParameters::KEY_RAW_DATA_FORMAT);
+    if (!newVal.isEmpty()) {
         if (newVal == "bayer") {
             CameraDump::setDumpDataFlag(CAMERA_DEBUG_DUMP_RAW);
             mCameraDump = CameraDump::getInstance();
