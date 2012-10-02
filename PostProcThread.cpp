@@ -41,8 +41,6 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     ,mAAAFlags(AAA_FLAG_ALL)
     ,mOldAfMode(CAM_AF_MODE_NOT_SET)
     ,mOldAeMeteringMode(CAM_AE_METERING_MODE_NOT_SET)
-    ,mPreviewWidth(0)
-    ,mPreviewHeight(0)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -550,9 +548,7 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         frameData.width = frame.img.width;
         frameData.height = frame.img.height;
         frameData.stride = frame.img.stride;
-        // We need the preview size for convertFromAndroidCoordinates():
-        mPreviewHeight = frameData.height;
-        mPreviewWidth = frameData.width;
+
         // frame rotation is counter clock wise in libia_face,
         // while it is clock wise for android (valid for CTP)
         if (frame.img.rotation == 90)
@@ -577,7 +573,7 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
 
         camera_face_t faces[num_faces];
         camera_frame_metadata_t face_metadata;
-        face_metadata.number_of_faces = mFaceDetector->getFaces(faces, mPreviewWidth, mPreviewHeight);
+        face_metadata.number_of_faces = mFaceDetector->getFaces(faces, frameData.width, frameData.height);
         face_metadata.faces = faces;
 
         // call face detection listener and pass faces for 3A (AF) and smart scene detection

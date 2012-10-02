@@ -202,8 +202,6 @@ private:
     AAAFlags mAAAFlags;
     AfMode mOldAfMode;
     MeteringMode mOldAeMeteringMode;
-    int mPreviewWidth;
-    int mPreviewHeight;
     SmartShutterParams mSmartShutter;
 }; // class PostProcThread
 
