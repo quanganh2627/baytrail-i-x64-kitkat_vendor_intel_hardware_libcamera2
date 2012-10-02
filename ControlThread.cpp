@@ -789,9 +789,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         if(width < MIN_DVS_WIDTH && height < MIN_DVS_HEIGHT)
             isDVSActive = false;
         mISP->setDVS(isDVSActive);
-
-    } else {
-        mParameters.getPreviewSize(&width, &height);
     }
 
 
@@ -813,7 +810,9 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (mAAA->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT && mMeteringAreas.isEmpty()) {
         // Update for the "fixed" AE spot window (Intel extension):
         LOG1("%s: setting forced spot window.", __FUNCTION__);
-        updateSpotWindow(width, height);
+        AAAWindowInfo aaaWindow;
+        mAAA->getGridWindow(aaaWindow);
+        updateSpotWindow(aaaWindow.width, aaaWindow.height);
     } else if (mAAA->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT) {
         // This update is when the AE metering is internally set to
         // "spot" mode by the HAL, when user has set the AE metering window.
@@ -3573,14 +3572,9 @@ status_t ControlThread:: processParamSetMeteringAreas(const CameraParameters *ol
         }
 
         if (oldMode == CAM_AE_METERING_MODE_SPOT) {
-            int width = 0, height = 0;
-            bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-            if (videoMode)
-                mParameters.getVideoSize(&width, &height);
-            else
-                mParameters.getPreviewSize(&width, &height);
-
-            updateSpotWindow(width, height);
+            AAAWindowInfo aaaWindow;
+            mAAA->getGridWindow(aaaWindow);
+            updateSpotWindow(aaaWindow.width, aaaWindow.height);
         }
     }
 
@@ -3673,14 +3667,11 @@ status_t ControlThread::processParamAutoExposureMeteringMode(
         // AE metering area to null (isEmpty() == true)
         if (mode == CAM_AE_METERING_MODE_SPOT && mMeteringAreas.isEmpty()) {
             int width = 0, height = 0;
-            bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-            if (videoMode)
-                mParameters.getVideoSize(&width, &height);
-            else
-                mParameters.getPreviewSize(&width, &height);
+            AAAWindowInfo aaaWindow;
+            mAAA->getGridWindow(aaaWindow);
             // Let's set metering area to fixed position here. We will also get arbitrary area
             // when using touch AE, which is handled in processParamSetMeteringAreas().
-            updateSpotWindow(width, height);
+            updateSpotWindow(aaaWindow.width, aaaWindow.height);
         } else if (mode == CAM_AE_METERING_MODE_SPOT) {
             LOGE("User trying to set AE metering mode \"spot\" with an AE metering area.");
         }
