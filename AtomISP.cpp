@@ -552,9 +552,10 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
 
         char focusModes[100] = {0};
         int status = snprintf(focusModes, sizeof(focusModes)
-                ,"%s,%s,%s,%s,%s"
+                ,"%s,%s,%s,%s,%s,%s"
                 ,CameraParameters::FOCUS_MODE_AUTO
                 ,CameraParameters::FOCUS_MODE_INFINITY
+                ,CameraParameters::FOCUS_MODE_FIXED
                 ,CameraParameters::FOCUS_MODE_MACRO
                 ,CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO
                 ,CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);

@@ -3349,7 +3349,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
 
             sceneMode = CAM_AE_SCENE_MODE_AUTO;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,infinity,macro,continuous-video,continuous-picture");
+            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,infinity,fixed,macro,continuous-video,continuous-picture");
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
             newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, "off,50hz,60hz,auto");
             newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
@@ -3429,6 +3429,8 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             afMode = CAM_AF_MODE_AUTO;
         } else if (newVal == CameraParameters::FOCUS_MODE_INFINITY) {
             afMode = CAM_AF_MODE_INFINITY;
+        } else if (newVal == CameraParameters::FOCUS_MODE_FIXED) {
+            afMode = CAM_AF_MODE_FIXED;
         } else if (newVal == CameraParameters::FOCUS_MODE_MACRO) {
             afMode = CAM_AF_MODE_MACRO;
         } else if (newVal == CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO ||
@@ -3438,8 +3440,8 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             afMode = CAM_AF_MODE_MANUAL;
         }
 
-        // If the focus mode was explicitly set to infinity, disable AF
-        if (afMode == CAM_AF_MODE_INFINITY) {
+        // If the focus mode was explicitly set to infinity or fixed, disable AF
+        if (afMode == CAM_AF_MODE_INFINITY || afMode == CAM_AF_MODE_FIXED) {
             mPostProcThread->disableFaceAAA(AAA_FLAG_AF);
         } else {
             mPostProcThread->enableFaceAAA(AAA_FLAG_AF);
