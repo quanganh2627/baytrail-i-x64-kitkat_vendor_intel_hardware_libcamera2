@@ -37,7 +37,7 @@ public:
         // back camera
         cam.facing = CAMERA_FACING_BACK;
         cam.orientation = 90;
-        cam.dvs = true;
+        cam.dvs = false;
         mCameras.push(cam);
 
         // front camera
