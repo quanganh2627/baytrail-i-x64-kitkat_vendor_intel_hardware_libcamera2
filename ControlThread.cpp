@@ -4974,25 +4974,45 @@ status_t ControlThread::dequeuePreview()
     LOG2("@%s", __FUNCTION__);
     AtomBuffer buff;
     status_t status = NO_ERROR;
+    atomisp_frame_status frameStatus;
 
-    status = mISP->getPreviewFrame(&buff);
+    status = mISP->getPreviewFrame(&buff, &frameStatus);
     if (status == NO_ERROR) {
-        if (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING) {
+        bool videoMode =
+            (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING);
+
+        if (videoMode) {
             mCoupledBuffers[buff.id].previewBuff = buff;
             mCoupledBuffers[buff.id].previewBuffReturned = false;
-            if(mVideoSnapshotrequested) {
+        }
+
+        if (frameStatus != ATOMISP_FRAME_STATUS_CORRUPTED) {
+            if (mVideoSnapshotrequested && videoMode) {
                 mVideoSnapshotrequested--;
                 encodeVideoSnapshot(buff.id);
             }
+            if (mAAA->is3ASupported()) {
+                status = m3AThread->newFrame(buff.capture_timestamp);
+                if (status != NO_ERROR)
+                    LOGW("Error notifying new frame to 3A thread!");
+            }
+            status = mPreviewThread->preview(&buff);
+            if (status != NO_ERROR) {
+                LOGE("Error sending buffer to preview thread");
+                mISP->putPreviewFrame(&buff);
+            }
         }
-        if (mAAA->is3ASupported()) {
-            status = m3AThread->newFrame(buff.capture_timestamp);
-            if (status != NO_ERROR)
-                LOGW("Error notifying new frame to 3A thread!");
+        else {
+            LOGW("Preview frame %d corrupted, ignoring", buff.id);
+            if (videoMode) {
+                mCoupledBuffers[buff.id].previewBuffReturned = true;
+                queueCoupledBuffers(buff.id);
+            } else {
+                // If not in video mode (mCoupledBuffers not used), we can put
+                // the frame back immediately to ISP.
+                mISP->putPreviewFrame(&buff);
+            }
         }
-        status = mPreviewThread->preview(&buff);
-        if (status != NO_ERROR)
-            LOGE("Error sending buffer to preview thread");
     } else {
         LOGE("Error getting preview frame from ISP");
     }

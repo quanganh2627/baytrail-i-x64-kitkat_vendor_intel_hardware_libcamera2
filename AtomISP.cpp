@@ -2958,8 +2958,14 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameS
     mPreviewBuffers[index].capture_timestamp = buf.timestamp;
     *buff = mPreviewBuffers[index];
 
-    if (frameStatus)
-        *frameStatus = (atomisp_frame_status)buf.reserved;
+    if (frameStatus) {
+      *frameStatus = (atomisp_frame_status)buf.reserved;
+
+      // atom flag is an extended set of flags, so map V4L2 flags
+      // we are interested into atomisp_frame_status
+      if (buf.flags & V4L2_BUF_FLAG_ERROR)
+        *frameStatus = ATOMISP_FRAME_STATUS_CORRUPTED;
+    }
 
     mNumPreviewBuffersQueued--;
 
