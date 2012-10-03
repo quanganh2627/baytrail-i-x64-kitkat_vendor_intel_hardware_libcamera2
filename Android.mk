@@ -26,6 +26,7 @@ LOCAL_SRC_FILES := \
 	AtomHAL.cpp \
 	CameraConf.cpp \
 	ColorConverter.cpp \
+	ImageScaler.cpp \
 	EXIFMaker.cpp \
 	JpegCompressor.cpp \
 	SWJpegEncoder.cpp \
