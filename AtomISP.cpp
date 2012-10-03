@@ -3473,6 +3473,7 @@ status_t AtomISP::allocateSnapshotBuffers()
         allocatedPostviewBufs++;
         v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[i].data = mPostviewBuffers[i].buff->data;
         mPostviewBuffers[i].shared = false;
+        mPostviewBuffers[i].stride = mConfig.postview.stride;
     }
     return status;
 

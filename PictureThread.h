@@ -150,6 +150,7 @@ private:
     EXIFMaker       mExifMaker;
     AtomBuffer      mExifBuf;
     AtomBuffer      mOutBuf;
+    AtomBuffer      mThumbBuf;
 
     int mPictureQuality;
     int mThumbnailQuality;

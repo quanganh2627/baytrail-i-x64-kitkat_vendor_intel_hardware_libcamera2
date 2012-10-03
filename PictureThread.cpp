@@ -20,6 +20,7 @@
 #include "LogHelper.h"
 #include "Callbacks.h"
 #include "CallbacksThread.h"
+#include "ImageScaler.h"
 #include <utils/Timers.h>
 
 namespace android {
@@ -37,6 +38,7 @@ PictureThread::PictureThread() :
     ,mThreadRunning(false)
     ,mCallbacks(Callbacks::getInstance())
     ,mCallbacksThread(CallbacksThread::getInstance())
+    ,mThumbBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW))
     ,mPictureQuality(80)
     ,mThumbnailQuality(50)
     ,mInputBuffers(0)
@@ -58,6 +60,9 @@ PictureThread::~PictureThread()
     }
     if (mExifBuf.buff != NULL) {
         mExifBuf.buff->release(mExifBuf.buff);
+    }
+    if (mThumbBuf.buff != NULL) {
+        mThumbBuf.buff->release(mThumbBuf.buff);
     }
 
     freeInputBuffers();
@@ -135,6 +140,22 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     // Convert and encode the thumbnail, if present and EXIF maker is initialized
     if (mExifMaker.isInitialized())
     {
+        // Downscale postview 2 thumbnail when needed
+        if (mThumbBuf.size == 0) {
+            // thumbnail off, postview gets discarded
+            thumbBuf = &mThumbBuf;
+        } else if (thumbBuf &&
+            (mThumbBuf.width < thumbBuf->width ||
+             mThumbBuf.height < thumbBuf->height)) {
+            LOG1("Downscaling postview2thumbnail : %dx%d (%d) -> %dx%d (%d)",
+                    thumbBuf->width, thumbBuf->height, thumbBuf->stride,
+                    mThumbBuf.width, mThumbBuf.height, mThumbBuf.stride);
+            if (mThumbBuf.buff == NULL)
+                mCallbacks->allocateMemory(&mThumbBuf,mThumbBuf.size);
+            ImageScaler::downScaleImage(thumbBuf, &mThumbBuf);
+            thumbBuf = &mThumbBuf;
+        }
+
         // Copy the SOI marker
         unsigned char* currentPtr = (unsigned char*)mExifBuf.buff->data;
         memcpy(currentPtr, JPEG_MARKER_SOI, sizeof(JPEG_MARKER_SOI));
@@ -144,7 +165,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         exifSize = encodeExifAndThumbnail(thumbBuf, currentPtr);
         if (exifSize == 0) {
             // This is not critical, we can continue with main picture image
-            LOGW("Could not encode thumbnail stream!");
+            LOGI("Exif created without thumbnail stream!");
             exifSize = mExifMaker.makeExif(&currentPtr);
         }
 
@@ -284,6 +305,15 @@ void PictureThread::initialize(const CameraParameters &params)
     q = params.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY);
     if (q != 0)
         mThumbnailQuality = q;
+
+    mThumbBuf.width = params.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
+    mThumbBuf.height = params.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
+    mThumbBuf.size = frameSize(mThumbBuf.format, mThumbBuf.width, mThumbBuf.height);
+    mThumbBuf.stride = mThumbBuf.width;
+    if (mThumbBuf.buff != NULL) {
+        mThumbBuf.buff->release(mThumbBuf.buff);
+        mThumbBuf.buff = NULL;
+    }
 }
 
 
@@ -579,6 +609,11 @@ int PictureThread::encodeExifAndThumbnail(AtomBuffer *thumbBuf, unsigned char* e
     if (thumbBuf == NULL || exifDst == NULL)
         goto exit;
 
+    // Size 0x0 is not an error, handled as thumbnail off
+    if (thumbBuf->width == 0 &&
+        thumbBuf->height == 0)
+        goto exit;
+
     if (thumbBuf->type == ATOM_BUFFER_PREVIEW_GFX)
     {
         if (thumbBuf->gfxData == NULL) {
@@ -589,7 +624,7 @@ int PictureThread::encodeExifAndThumbnail(AtomBuffer *thumbBuf, unsigned char* e
         }
     } else
     {
-        if (thumbBuf->buff != NULL &&
+        if (thumbBuf->buff == NULL ||
             thumbBuf->buff->data == NULL) {
             LOGW("Emtpy buffer was sent for thumbnail");
             goto exit;
@@ -598,37 +633,33 @@ int PictureThread::encodeExifAndThumbnail(AtomBuffer *thumbBuf, unsigned char* e
         }
     }
 
-    if (thumbBuf->width > 0 &&
-        thumbBuf->height > 0) {
+    // setup the JpegCompressor input and output buffers
+    inBuf.width = thumbBuf->width;
+    inBuf.height = thumbBuf->height;
+    inBuf.format = thumbBuf->format;
+    inBuf.size = frameSize(thumbBuf->format, thumbBuf->width, thumbBuf->height);
 
-        // setup the JpegCompressor input and output buffers
-        inBuf.width = thumbBuf->width;
-        inBuf.height = thumbBuf->height;
-        inBuf.format = thumbBuf->format;
-        inBuf.size = frameSize(thumbBuf->format, thumbBuf->width, thumbBuf->height);
+    outBuf.buf = (unsigned char*)mOutBuf.buff->data;
+    outBuf.width = thumbBuf->width;
+    outBuf.height = thumbBuf->height;
+    outBuf.quality = mThumbnailQuality;
+    outBuf.size = mOutBuf.buff->size;
 
-        outBuf.buf = (unsigned char*)mOutBuf.buff->data;
-        outBuf.width = thumbBuf->width;
-        outBuf.height = thumbBuf->height;
-        outBuf.quality = mThumbnailQuality;
-        outBuf.size = mOutBuf.buff->size;
+    do {
+        endTime = systemTime();
+        size = mCompressor.encode(inBuf, outBuf);
+        LOG1("Thumbnail JPEG size: %d (time to encode: %ums)", size, (unsigned)((systemTime() - endTime) / 1000000));
+        if (size > 0) {
+            mExifMaker.setThumbnail(outBuf.buf, size);
+        } else {
+            // This is not critical, we can continue with main picture image
+            LOGE("Could not encode thumbnail stream!");
+        }
 
-        do {
-            endTime = systemTime();
-            size = mCompressor.encode(inBuf, outBuf);
-            LOG1("Thumbnail JPEG size: %d (time to encode: %ums)", size, (unsigned)((systemTime() - endTime) / 1000000));
-            if (size > 0) {
-                mExifMaker.setThumbnail(outBuf.buf, size);
-            } else {
-                // This is not critical, we can continue with main picture image
-                LOGE("Could not encode thumbnail stream!");
-            }
+        exifSize = mExifMaker.makeExif(&exifDst);
+        outBuf.quality = outBuf.quality - 5;
 
-            exifSize = mExifMaker.makeExif(&exifDst);
-            outBuf.quality = outBuf.quality - 5;
-
-        } while (exifSize > 0 && size > 0 && outBuf.quality > 0  && !mExifMaker.isThumbnailSet());
-    }
+    } while (exifSize > 0 && size > 0 && outBuf.quality > 0  && !mExifMaker.isThumbnailSet());
 exit:
     return exifSize;
 }
