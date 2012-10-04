@@ -298,6 +298,7 @@ private:
     size_t setupCameraInfo();
     int getNumOfSkipFrames(void);
     int getPrimaryCameraIndex(void) const;
+    status_t applySensorFlip(void);
 
 // private members
 private:

@@ -78,6 +78,17 @@ int PlatformData::cameraOrientation(int cameraId)
     return i->mCameras[cameraId].orientation;
 }
 
+int PlatformData::sensorFlipping(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return -1;
+    }
+    return i->mCameras[cameraId].flipping;
+}
+
+
 int PlatformData::numberOfCameras(void)
 {
     PlatformBase *i = getInstance();

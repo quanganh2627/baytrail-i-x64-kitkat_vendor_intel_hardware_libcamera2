@@ -38,12 +38,14 @@ public:
         cam.facing = CAMERA_FACING_BACK;
         cam.orientation = 90;
         cam.dvs = false;
+        cam.flipping = PlatformData::SENSOR_FLIP_NA;
         mCameras.push(cam);
 
         // front camera
         cam.facing = CAMERA_FACING_FRONT;
         cam.orientation = 270;
         cam.dvs = false;
+        cam.flipping = PlatformData::SENSOR_FLIP_NA;
         mCameras.push(cam);
 
         // file inject device

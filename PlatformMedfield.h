@@ -40,12 +40,15 @@ public:
         cam.facing = CAMERA_FACING_BACK;
         cam.orientation = 90;
         cam.dvs = true;
+        cam.flipping = PlatformData::SENSOR_FLIP_NA;
         mCameras.push(cam);
 
         // front camera
         cam.facing = CAMERA_FACING_FRONT;
-        cam.orientation = 90;
+        cam.orientation = 270;
         cam.dvs = false;
+        cam.flipping = PlatformData::SENSOR_FLIP_H |
+                       PlatformData::SENSOR_FLIP_V;
         mCameras.push(cam);
 
         // inject device
@@ -84,11 +87,11 @@ public:
 
         if (!strcmp(bid, "redridge_dv10") || !strcmp(bid,"joki_ev20")) {
             mCameras.editItemAt(0).orientation = 180;
-            mCameras.editItemAt(1).orientation = 0;
+            mCameras.editItemAt(1).orientation = 180;
         }
         else if (!strcmp(bid,"redridge_dv20") || !strcmp(bid,"redridge_dv21")) {
             mCameras.editItemAt(0).orientation = 0;
-            mCameras.editItemAt(1).orientation = 0;
+            mCameras.editItemAt(1).orientation = 180;
         }
         mVideoPreviewSizePref = "720x576";
     }

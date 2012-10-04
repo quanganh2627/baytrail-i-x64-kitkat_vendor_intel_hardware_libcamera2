@@ -935,6 +935,24 @@ status_t AtomISP::getIspParameters(struct atomisp_parm *isp_param) const
     return status;
 }
 
+status_t AtomISP::applySensorFlip(void)
+{
+    int sensorFlip = PlatformData::sensorFlipping(mCameraInput->androidCameraId);
+
+    if (sensorFlip == PlatformData::SENSOR_FLIP_NA)
+        return NO_ERROR;
+
+    if (atomisp_set_attribute(main_fd, V4L2_CID_VFLIP,
+        (sensorFlip & PlatformData::SENSOR_FLIP_V)?1:0, "vertical image flip"))
+        return UNKNOWN_ERROR;
+
+    if (atomisp_set_attribute(main_fd, V4L2_CID_HFLIP,
+        (sensorFlip & PlatformData::SENSOR_FLIP_H)?1:0, "horizontal image flip"))
+        return UNKNOWN_ERROR;
+
+    return NO_ERROR;
+}
+
 status_t AtomISP::configure(AtomMode mode)
 {
     LOG1("@%s", __FUNCTION__);
@@ -1427,6 +1445,9 @@ int AtomISP::configureDevice(int device, int deviceMode, FrameInfo *fInfo, bool 
     ret = atomisp_set_capture_mode(deviceMode);
     if (ret < 0)
         return ret;
+
+    if (device == V4L2_MAIN_DEVICE)
+        applySensorFlip();
 
     //Set the format
     ret = v4l2_capture_s_format(fd, device, w, h, format, raw, &(fInfo->stride));

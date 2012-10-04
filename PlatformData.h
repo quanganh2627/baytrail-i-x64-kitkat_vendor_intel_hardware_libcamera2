@@ -74,6 +74,7 @@ class PlatformBase {
     public:
        int facing;
        int orientation;
+       int flipping;
        bool dvs;
     };
 
@@ -111,6 +112,13 @@ class PlatformData {
     static PlatformBase* getInstance(void);
 
  public:
+
+    enum SensorFlip {
+        SENSOR_FLIP_NA     = -1,   // Support Not-Available
+        SENSOR_FLIP_OFF    = 0x00, // Both flip ctrls set to 0
+        SENSOR_FLIP_H      = 0x01, // V4L2_CID_HFLIP 1
+        SENSOR_FLIP_V      = 0x02, // V4L2_CID_VFLIP 1
+    };
 
     /**
      * Number of cameras
@@ -173,6 +181,14 @@ class PlatformData {
      *  upon error.
      */
     static String8 supportedSceneModes();
+
+    /**
+     * Flipping controls to set for camera id
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return int value as defined in PlatformData::SENSOR_FLIP_FLAGS
+     */
+    static int sensorFlipping(int cameraId);
 };
 
 } /* namespace android */
