@@ -3658,7 +3658,7 @@ int AtomISP::loadAccFirmware(void *fw, size_t size,
 
 
     if ( main_fd ){
-        ret = ioctl(main_fd, ATOMISP_IOC_ACC_LOAD, &fwData);
+        ret = xioctl(main_fd, ATOMISP_IOC_ACC_LOAD, &fwData);
         LOG1("%s IOCTL ATOMISP_IOC_ACC_LOAD ret : %d fwData->fw_handle: %d \n"\
                 , __FUNCTION__, ret, fwData.fw_handle);
     }
@@ -3686,7 +3686,7 @@ int AtomISP::unloadAccFirmware(unsigned int fwHandle)
     int ret = -1;
 
     if ( main_fd ){
-        ret = ioctl(main_fd, ATOMISP_IOC_ACC_UNLOAD, &fwHandle);
+        ret = xioctl(main_fd, ATOMISP_IOC_ACC_UNLOAD, &fwHandle);
         LOG1("%s IOCTL ATOMISP_IOC_ACC_UNLOAD ret: %d \n",
                 __FUNCTION__,ret);
     }
@@ -3712,7 +3712,7 @@ int AtomISP::setFirmwareArgument(unsigned int fwHandle, unsigned int num,
     arg.size = size;
 
     if ( main_fd ){
-        ret = ioctl(main_fd, ATOMISP_IOC_ACC_S_ARG, &arg);
+        ret = xioctl(main_fd, ATOMISP_IOC_ACC_S_ARG, &arg);
         LOG1("%s IOCTL ATOMISP_IOC_ACC_S_ARG ret: %d \n",
                 __FUNCTION__, ret);
     }
@@ -3739,7 +3739,7 @@ int AtomISP::unsetFirmwareArgument(unsigned int fwHandle, unsigned int num)
     arg.size = 0;
 
     if ( main_fd ){
-        ret = ioctl(main_fd, ATOMISP_IOC_ACC_DESTAB, &arg);
+        ret = xioctl(main_fd, ATOMISP_IOC_ACC_DESTAB, &arg);
         LOG1("%s IOCTL ATOMISP_IOC_ACC_DESTAB ret: %d \n",
                 __FUNCTION__, ret);
     }
@@ -3750,7 +3750,7 @@ int AtomISP::unsetFirmwareArgument(unsigned int fwHandle, unsigned int num)
 int AtomISP::startFirmware(unsigned int fwHandle)
 {
     int ret;
-    ret = ioctl(main_fd, ATOMISP_IOC_ACC_START, &fwHandle);
+    ret = xioctl(main_fd, ATOMISP_IOC_ACC_START, &fwHandle);
     LOG1("%s IOCTL ATOMISP_IOC_ACC_START ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -3758,7 +3758,7 @@ int AtomISP::startFirmware(unsigned int fwHandle)
 int AtomISP::waitForFirmware(unsigned int fwHandle)
 {
     int ret;
-    ret = ioctl(main_fd, ATOMISP_IOC_ACC_WAIT, &fwHandle);
+    ret = xioctl(main_fd, ATOMISP_IOC_ACC_WAIT, &fwHandle);
     LOG1("%s IOCTL ATOMISP_IOC_ACC_WAIT ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -3771,7 +3771,7 @@ int AtomISP::abortFirmware(unsigned int fwHandle, unsigned int timeout)
     abort.fw_handle = fwHandle;
     abort.timeout = timeout;
 
-    ret = ioctl(main_fd, ATOMISP_IOC_ACC_ABORT, &abort);
+    ret = xioctl(main_fd, ATOMISP_IOC_ACC_ABORT, &abort);
     LOG1("%s IOCTL ATOMISP_IOC_ACC_ABORT ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
