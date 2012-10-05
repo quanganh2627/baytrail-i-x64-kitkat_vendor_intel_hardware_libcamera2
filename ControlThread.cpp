@@ -69,6 +69,8 @@ ControlThread::ControlThread() :
     Thread(true) // callbacks may call into java
     ,mISP(NULL)
     ,mAAA(NULL)
+    ,mDvs(NULL)
+    ,mCP(NULL)
     ,mPreviewThread(NULL)
     ,mPictureThread(NULL)
     ,mVideoThread(NULL)
