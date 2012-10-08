@@ -1878,7 +1878,7 @@ status_t ControlThread::captureStillPic()
     }
 
     // Turn on flash. If flash mode is torch, then torch is already on
-    if (flashOn && flashMode != CAM_AE_FLASH_MODE_TORCH) {
+    if (flashOn && flashMode != CAM_AE_FLASH_MODE_TORCH && mBurstLength <= 1) {
         LOG1("Requesting flash");
         if (mISP->setFlash(1) != NO_ERROR) {
             LOGE("Failed to enable the Flash!");
@@ -1954,7 +1954,7 @@ status_t ControlThread::captureStillPic()
     }
 
     // Turn off flash
-    if (!flashOn && DetermineFlash(flashMode)) {
+    if (!flashOn && DetermineFlash(flashMode) && mBurstLength <= 1) {
         mISP->setFlashIndicator(0);
     }
 
@@ -2245,7 +2245,7 @@ status_t ControlThread::handleMessageAutoFocus()
     PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
 
     // Implement pre auto-focus functions
-    if (flashMode != CAM_AE_FLASH_MODE_TORCH && mAAA->is3ASupported()) {
+    if (flashMode != CAM_AE_FLASH_MODE_TORCH && mAAA->is3ASupported() && mBurstLength <= 1) {
 
         if (flashMode == CAM_AE_FLASH_MODE_ON) {
             mFlashAutoFocus = true;
