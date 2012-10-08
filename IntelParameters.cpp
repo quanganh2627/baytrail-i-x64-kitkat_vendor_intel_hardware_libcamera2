@@ -93,6 +93,9 @@ namespace android {
     const char IntelCameraParameters::KEY_SUPPORTED_BURST_FPS[] = "burst-fps-values";
     const char IntelCameraParameters::KEY_BURST_FPS[] = "burst-fps";
 
+    // preview keep-alive
+    const char IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE[] = "preview-keep-alive";
+
     // smart shutter
     const char IntelCameraParameters::KEY_SMILE_SHUTTER[] = "smile-shutter";
     const char IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER[] = "smile-shutter-values";
