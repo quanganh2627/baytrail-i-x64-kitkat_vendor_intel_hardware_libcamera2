@@ -282,7 +282,7 @@ status_t ControlThread::init(int cameraId)
     mHdr.enabled = false;
     mHdr.sharpening = NORMAL_SHARPENING;
     mHdr.vividness = GAUSSIAN_VIVIDNESS;
-    mHdr.appSaveOrig = mHdr.saveOrig = false;
+    mHdr.saveOrig = false;
 
     // Set property to inform system what camera is in use
     char facing[PROPERTY_VALUE_MAX];
@@ -1764,10 +1764,6 @@ status_t ControlThread::captureStillPic()
     // WORKAROUND END
     // Notify CallbacksThread that a picture was requested, so grab one from queue
     mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback);
-    if (mHdr.enabled && mHdr.saveOrigRequest) {
-        // After we requested a picture from CallbackThread, disable saveOrigRequest (we need just one picture for original)
-        mHdr.saveOrigRequest = false;
-    }
 
     stopFaceDetection();
 
@@ -1992,16 +1988,12 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
 
-    if (clientRequest || (mHdr.enabled && mHdr.saveOrigRequest)) {
+    if (clientRequest) {
         bool requestPostviewCallback = true;
         bool requestRawCallback = true;
 
         // Notify CallbacksThread that a picture was requested, so grab one from queue
         mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback);
-        if (mHdr.enabled && mHdr.saveOrigRequest) {
-            // After we requested a picture from CallbackThread, disable saveOrigRequest (we need just one picture for original)
-            mHdr.saveOrigRequest = false;
-        }
 
         /*
          *  If the CallbacksThread has already JPEG buffers in queue, make sure we use them, before
@@ -2084,26 +2076,15 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     // Do jpeg encoding
 
     bool doEncode = false;
-    if (!mHdr.enabled || (mHdr.enabled && mHdr.saveOrig)) {
-        if (mHdr.enabled) {
-            // In HDR mode, if saveOrig flag is set, save only the EV0 snapshot
-            if (mHdr.saveOrig && picMetaData.aeConfig->evBias == 0) {
-                LOG1("Sending EV0 original picture to JPEG encoder (id=%d)", snapshotBuffer.id);
-                doEncode = true;
-                // Disable the saveOrig flag once we encode the EV0 original snapshot
-                mHdr.saveOrig = false;
-            }
-        } else {
-            doEncode = true;
-        }
-        if (doEncode) {
-            mCallbacksThread->shutterSound();
-            LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
-            postviewBuffer.width = pvWidth;
-            postviewBuffer.height = pvHeight;
-            status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
-        }
+    if (!mHdr.enabled || (mHdr.enabled && mHdr.saveOrig && picMetaData.aeConfig->evBias == 0)) {
+        doEncode = true;
+        mCallbacksThread->shutterSound();
+        LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
+        postviewBuffer.width = pvWidth;
+        postviewBuffer.height = pvHeight;
+        status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
     }
+
     if (mHdr.enabled && mBurstCaptureNum == mHdr.bracketNum) {
         // This was the last capture in HDR sequence, compose the final HDR image
         LOG1("HDR: last capture, composing HDR image...");
@@ -2203,7 +2184,7 @@ status_t ControlThread::handleMessageTakeSmartShutterPicture()
     status_t status = NO_ERROR;
     State origState = mState;
     // In case of smart shutter with HDR, we need to trigger save orig as a normal capture.
-    if (mHdr.enabled && mHdr.appSaveOrig && mPostProcThread->isSmartCaptureTriggered()) {
+    if (mHdr.enabled && mHdr.saveOrig && mPostProcThread->isSmartCaptureTriggered()) {
         mPostProcThread->resetSmartCaptureTrigger();
         status = handleMessageTakePicture();
     } else {   //normal smart shutter capture
@@ -3195,11 +3176,9 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
     if (!newVal.isEmpty()) {
         localStatus = NO_ERROR;
         if(newVal == "on") {
-            mHdr.appSaveOrig = mHdr.saveOrig = true;
-            mHdr.appSaveOrigRequest = mHdr.saveOrigRequest = true;
+            mHdr.saveOrig = true;
         } else if(newVal == "off") {
-            mHdr.appSaveOrig = mHdr.saveOrig = false;
-            mHdr.appSaveOrigRequest = mHdr.saveOrigRequest = false;
+            mHdr.saveOrig = false;
         } else {
             // the default value is kept
             LOGW("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, newVal.string());
@@ -4571,9 +4550,6 @@ void ControlThread::hdrRelease()
     if (mHdr.ciBufOut.ciPostviewBuf != NULL) {
         delete[] mHdr.ciBufOut.ciPostviewBuf;
     }
-    // restore HDR save original settings as requested by the application
-    mHdr.saveOrig = mHdr.appSaveOrig;
-    mHdr.saveOrigRequest = mHdr.appSaveOrigRequest;
 }
 
 status_t ControlThread::hdrCompose()

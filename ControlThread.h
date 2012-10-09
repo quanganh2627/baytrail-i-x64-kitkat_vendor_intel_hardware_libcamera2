@@ -333,10 +333,7 @@ private:
         BracketingMode bracketMode;
         int  bracketNum;
         bool enabled;
-        bool appSaveOrig;
-        bool appSaveOrigRequest;
         bool saveOrig;
-        bool saveOrigRequest;
         HdrSharpening sharpening;
         HdrVividness vividness;
         AtomBuffer outMainBuf;
