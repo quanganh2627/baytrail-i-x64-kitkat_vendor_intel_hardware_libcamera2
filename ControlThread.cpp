@@ -4020,10 +4020,10 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
         mPreviewForceChanged = true;
     }
 
-        // if file injection is enabled, get file injection parameters and save
-        // them in AtomISP
-        if(mISP->isFileInjectionEnabled())
-            processParamFileInject(newParams);
+    // if file injection is enabled, get file injection parameters and save
+    // them in AtomISP
+    if (mISP->isFileInjectionEnabled())
+        processParamFileInject(newParams);
 
     // if preview is running and static params have changed, then we need
     // to stop, reconfigure, and restart the isp and all threads.
