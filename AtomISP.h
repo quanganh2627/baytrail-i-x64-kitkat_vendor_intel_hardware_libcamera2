@@ -112,7 +112,7 @@ public:
     status_t setPostviewFrameFormat(int width, int height, int format);
     status_t setSnapshotFrameFormat(int width, int height, int format);
     status_t setVideoFrameFormat(int width, int height, int format = 0);
-    bool applyISPLimitations(CameraParameters *params, bool dvsEnabled);
+    bool applyISPVideoLimitations(CameraParameters *params, bool dvsEnabled);
 
     inline int getSnapshotPixelFormat() { return mConfig.snapshot.format; }
     void getVideoSize(int *width, int *height, int *stride);

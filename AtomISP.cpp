@@ -1873,8 +1873,7 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
 }
 
 /**
- * update preview size in parameters according to ISP limitation
- * there are 2 workarounds as below:
+ * Apply ISP limitations related to supported preview sizes when in video mode.
  *
  * Workaround 1: with DVS enable, the fps in 1080p recording can't reach 30fps,
  * so check if the preview size is corresponding to 1080p(1920x1080) or
@@ -1887,22 +1886,39 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
  * to that of the video resolution.
  * Checking if preview is still  bigger than video, this is not supported by the ISP
  *
+ * Workaround 3: With some sensors, the configuration for 1080p
+ * recording does not give enough processing time (blanking time) to
+ * the ISP, so the viewfinder resolution must be limited.
+ * BZ: 55640 59636
+ *
  * @param params
  * @param dvsEabled
  * @return true: updated preview size
  * @return false: not need to update preview size
  */
-bool  AtomISP::applyISPLimitations(CameraParameters *params, bool dvsEnabled)
+bool  AtomISP::applyISPVideoLimitations(CameraParameters *params, bool dvsEnabled)
 {
     LOG1("@%s", __FUNCTION__);
     bool ret = false;
     int previewWidth, previewHeight;
     int videoWidth, videoHeight;
+    bool reducedVf = false;
 
     params->getPreviewSize(&previewWidth, &previewHeight);
     params->getVideoSize(&videoWidth, &videoHeight);
-    // Workaround 1, detail refer to the function description
-    if (dvsEnabled) {
+
+    // Workaround 3: with some sensors the VF resolution must be
+    //               limited high-resolution video recordiing
+    // TODO: if we get more cases like this, move to PlatformData.h
+    const char* sensorName = "ov8830";
+    if (mCameraInput &&
+        strncmp(mCameraInput->name, sensorName, sizeof(sensorName) - 1) == 0) {
+        LOG1("Quirk for sensor %s, limiting video preview size", mCameraInput->name);
+        reducedVf = true;
+    }
+
+    // Workaround 1+3, detail refer to the function description
+    if (reducedVf || dvsEnabled) {
         if ((previewWidth > RESOLUTION_VGA_WIDTH || previewHeight > RESOLUTION_VGA_HEIGHT) &&
             (videoWidth > RESOLUTION_720P_WIDTH || videoHeight > RESOLUTION_720P_HEIGHT)) {
                 ret = true;

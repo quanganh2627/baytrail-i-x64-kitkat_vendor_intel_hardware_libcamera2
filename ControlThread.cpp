@@ -4008,21 +4008,17 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
         }
     }
 
-     /**
-      * There are 2 workarounds due to ISP limitation, so need check the preview size
-      * via the function * "applyISPLimitations()"
-      * workaround 1: the fps in 1080p can't reach 30fps with DVS enable due to
-      * ISP performance limitation, so change to VGA resolution for preview
-      * BZ: 49330
-      * Workaround 2: The camera firmware doesn't support preview dimensions that
-      * are bigger than video dimensions. If a single preview dimension is larger
-      * than the video dimension then the FW will downscale the preview resolution
-      * to that of the video resolution.
-      * Checking if preview is still  bigger than video, this is not supported by the ISP
-      */
-        if(videoMode && mISP->applyISPLimitations(newParams, dvsEnabled)) {
-            mPreviewForceChanged = true;
-        }
+    /**
+     * There are multiple workarounds related to what preview and video
+     * size combinations can be supported by ISP (also impacted by
+     * sensor configuration).
+     *
+     * Check the inline documentation for applyISPvideoLimitations()
+     * in AtomISP.cpp to see detailed description of the limitations.
+     */
+    if (videoMode && mISP->applyISPVideoLimitations(newParams, dvsEnabled)) {
+        mPreviewForceChanged = true;
+    }
 
         // if file injection is enabled, get file injection parameters and save
         // them in AtomISP
