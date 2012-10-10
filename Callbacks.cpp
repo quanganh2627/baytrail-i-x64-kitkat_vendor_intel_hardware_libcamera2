@@ -195,7 +195,7 @@ void Callbacks::allocateMemory(AtomBuffer *buff, int size)
         buff->buff = mGetMemoryCB(-1, size, 1, mUserToken);
 }
 
-void Callbacks::allocateMemory(camera_memory_t **buff, int size)
+void Callbacks::allocateMemory(camera_memory_t **buff, size_t size)
 {
     LOG1("@%s", __FUNCTION__);
     *buff = NULL;
