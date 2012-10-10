@@ -242,44 +242,6 @@ void trimConvertNV12ToNV21(int width, int height, int padding_width, void *src, 
     }
 }
 
-// covert NV12 (Y plane, interlaced UV bytes) to
-// YV12 (Y plane, V plane, U plane) and trim stride width to real width
-void trimConvertNV12ToYV12(int width, int height, int padding_width, void *src, void *dst)
-{
-    int planeSizeY = width * height;
-    int planeSizeUV = planeSizeY / 2;
-    int planeUOffset = planeSizeUV / 2;
-    int i = 0, j = 0;
-    unsigned char *srcPtr = (unsigned char *) src;
-    unsigned char *dstPtr = (unsigned char *) dst;
-    unsigned char *dstPtrV = (unsigned char *) dst + planeSizeY;
-    unsigned char *dstPtrU = (unsigned char *) dst + planeSizeY + planeUOffset;
-
-    // copy the entire Y plane
-    if (padding_width == width)
-        memcpy(dstPtr, src, planeSizeY);
-    else if (padding_width > width) {
-        i = height;
-        while (i--) {
-            memcpy(dstPtr, srcPtr, width);
-            srcPtr += padding_width;
-            dstPtr += width;
-        }
-    } else {
-        LOGE("bad stride value");
-        return;
-    }
-
-    // deinterlace the UV data
-    for ( i = 0; i < height / 2; i++) {
-        for ( j = 0; j < width; j += 2) {
-            *dstPtrV++ = srcPtr[j + 1];
-            *dstPtrU++ = srcPtr[j];
-        }
-        srcPtr += padding_width;
-    }
-}
-
 // covert NV12 (Y plane, interlaced UV bytes) to YV12 (Y plane, V plane, U plane)
 void align16ConvertNV12ToYV12(int width, int height, int srcStride, void *src, void *dst)
 {
