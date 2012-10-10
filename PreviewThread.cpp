@@ -293,7 +293,7 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
             break;
 
         default:
-            LOGE("invalid foramt: %d", mPreviewFormat);
+            LOGE("invalid format: %d", mPreviewFormat);
             status = -1;
             break;
         }
