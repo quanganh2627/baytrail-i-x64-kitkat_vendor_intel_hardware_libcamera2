@@ -20,6 +20,7 @@
 #include <linux/videodev2.h>
 #include "ColorConverter.h"
 #include "LogHelper.h"
+#include "AtomCommon.h"
 
 namespace android {
 
@@ -276,6 +277,46 @@ void trimConvertNV12ToYV12(int width, int height, int padding_width, void *src, 
             *dstPtrU++ = srcPtr[j];
         }
         srcPtr += padding_width;
+    }
+}
+
+// covert NV12 (Y plane, interlaced UV bytes) to YV12 (Y plane, V plane, U plane)
+void align16ConvertNV12ToYV12(int width, int height, int srcStride, void *src, void *dst)
+{
+    int yStride = ALIGN16(width);
+    size_t ySize = yStride * height;
+    int cStride = ALIGN16(yStride/2);
+    size_t cSize = cStride * height/2;
+
+    unsigned char *srcPtr = (unsigned char *) src;
+    unsigned char *dstPtr = (unsigned char *) dst;
+    unsigned char *dstPtrV = (unsigned char *) dst + ySize;
+    unsigned char *dstPtrU = (unsigned char *) dst + ySize + cSize;
+
+    // copy the entire Y plane
+    if (srcStride == yStride) {
+        memcpy(dstPtr, srcPtr, ySize);
+        srcPtr += ySize;
+    } else if (srcStride > width) {
+        for (int i = 0; i < height; i++) {
+            memcpy(dstPtr, srcPtr, width);
+            srcPtr += srcStride;
+            dstPtr += yStride;
+        }
+    } else {
+        LOGE("bad src stride value");
+        return;
+    }
+
+    // deinterlace the UV data
+    for ( int i = 0; i < height / 2; ++i) {
+        for ( int j = 0; j < width / 2; ++j) {
+            dstPtrV[j] = srcPtr[j * 2 + 1];
+            dstPtrU[j] = srcPtr[j * 2];
+        }
+        srcPtr += srcStride;
+        dstPtrV += cStride;
+        dstPtrU += cStride;
     }
 }
 

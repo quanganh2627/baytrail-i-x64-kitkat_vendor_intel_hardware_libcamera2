@@ -44,6 +44,8 @@
 #define STRINGIFY_(s) #s
 // macro CLIP is used to clip the Number value to between the Min and Max
 #define CLIP(Number, Max, Min)    ((Number) > (Max) ? (Max) : ((Number) < (Min) ? (Min) : (Number)))
+// macro ALIGN16 root value to value that is divisible by 16
+#define ALIGN16(x) (((x) + 15) & ~15)
 
 namespace android {
 struct AtomBuffer;

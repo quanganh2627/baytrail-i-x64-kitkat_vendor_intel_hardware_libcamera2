@@ -281,7 +281,7 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
         switch(mPreviewFormat) {
 
         case V4L2_PIX_FMT_YUV420:
-            trimConvertNV12ToYV12(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+            align16ConvertNV12ToYV12(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
             break;
 
         case V4L2_PIX_FMT_NV21:
@@ -365,10 +365,11 @@ status_t PreviewThread::handleMessageSetPreviewConfig(MessageSetPreviewConfig *m
         mPreviewWidth = msg->width;
         mPreviewHeight = msg->height;
         mPreviewStride = msg->stride;
-        mPreviewFormat = msg->format;
-
-        allocateLocalPreviewBuf();
     }
+
+    mPreviewFormat = msg->format;
+
+    allocateLocalPreviewBuf();
 
     status = allocateGfxPreviewBuffers(msg->bufferCount);
 
@@ -487,9 +488,38 @@ void PreviewThread::freeLocalPreviewBuf(void)
 
 void PreviewThread::allocateLocalPreviewBuf(void)
 {
+    size_t size(0);
+    int stride(0);
+    size_t ySize(0);
+    int cStride(0);
+    size_t cSize(0);
+
     LOG1("allocating the preview buffer\n");
     freeLocalPreviewBuf();
-    mCallbacks->allocateMemory(&mPreviewBuf, mPreviewWidth*mPreviewHeight*3/2);
+
+    switch(mPreviewFormat) {
+    case V4L2_PIX_FMT_YUV420:
+        stride = ALIGN16(mPreviewWidth);
+        ySize = stride * mPreviewHeight;
+        cStride = ALIGN16(stride/2);
+        cSize = cStride * mPreviewHeight/2;
+        size = ySize + cSize * 2;
+        break;
+
+    case V4L2_PIX_FMT_NV21:
+        size = mPreviewWidth*mPreviewHeight*3/2;
+        break;
+
+    case V4L2_PIX_FMT_RGB565:
+        size = mPreviewWidth*mPreviewHeight*2;
+        break;
+
+    default:
+        LOGE("invalid preview format: %d", mPreviewFormat);
+        break;
+    }
+
+    mCallbacks->allocateMemory(&mPreviewBuf, size);
     if(!mPreviewBuf.buff) {
         LOGE("getting memory failed\n");
     }
