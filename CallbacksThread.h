@@ -214,6 +214,7 @@ private:
 
     // Intialization of Ctrl thread callback
     void setPictureDoneCallback(ICallbackPicture *pictureDone) { mPictureDoneCallback = pictureDone; };
+    void convertGfx2Regular(AtomBuffer* aGfxBuf, AtomBuffer* aRegularBuf);
 
 // inherited from Thread
 private:

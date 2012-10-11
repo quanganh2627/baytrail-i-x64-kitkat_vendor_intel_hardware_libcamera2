@@ -254,27 +254,55 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
     AtomBuffer jpegBuf = msg->jpegBuff;
     AtomBuffer snapshotBuf = msg->snapshotBuff;
     AtomBuffer postviewBuf= msg->postviewBuff;
+    AtomBuffer tmpCopy = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_PREVIEW);
+    bool    releaseTmp = false;
 
     if (jpegBuf.buff == NULL && snapshotBuf.buff != NULL && postviewBuf.buff != NULL) {
         LOGW("@%s: returning raw frames used in failed encoding", __FUNCTION__);
         mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
         return NO_ERROR;
     }
-
     if (mJpegRequested > 0) {
         if (mPostviewRequested > 0) {
-            mCallbacks->postviewFrameDone(&postviewBuf);
+            if (postviewBuf.type == ATOM_BUFFER_PREVIEW_GFX) {
+                convertGfx2Regular(&postviewBuf, &tmpCopy);
+                releaseTmp = true;
+            } else {
+                tmpCopy = postviewBuf;
+            }
+            mCallbacks->postviewFrameDone(&tmpCopy);
             mPostviewRequested--;
         }
+        if (tmpCopy.buff != NULL && releaseTmp) {
+            tmpCopy.buff->size = 0;     // we only allocated the camera_memory_t no any actual memory
+            tmpCopy.buff->data = NULL;
+            tmpCopy.buff->release(tmpCopy.buff);
+            releaseTmp = false;
+        }
+
         if (mRawRequested > 0) {
-            mCallbacks->rawFrameDone(&snapshotBuf);
+            if (snapshotBuf.type == ATOM_BUFFER_PREVIEW_GFX) {
+                convertGfx2Regular(&snapshotBuf, &tmpCopy);
+                releaseTmp = true;
+            } else {
+                tmpCopy = snapshotBuf;
+            }
+            mCallbacks->rawFrameDone(&tmpCopy);
             mRawRequested--;
         }
+        if (tmpCopy.buff != NULL && releaseTmp) {
+            tmpCopy.buff->size = 0;
+            tmpCopy.buff->data = NULL;
+            tmpCopy.buff->release(tmpCopy.buff);
+        }
+
         mCallbacks->compressedFrameDone(&jpegBuf);
         LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
         jpegBuf.buff->release(jpegBuf.buff);
         mJpegRequested--;
-        if ((snapshotBuf.buff != NULL && (postviewBuf.buff != NULL || postviewBuf.gfxData != NULL)) ||
+
+        if (((snapshotBuf.buff != NULL || snapshotBuf.gfxData != NULL) &&
+             (postviewBuf.buff != NULL || postviewBuf.gfxData != NULL)) ||
             snapshotBuf.type == ATOM_BUFFER_PANORAMA) {
             // Return the raw buffers back to ControlThread
             mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
@@ -467,4 +495,23 @@ status_t CallbacksThread::requestExitAndWait()
     return Thread::requestExitAndWait();
 }
 
+/**
+ * Converts a Preview Gfx buffer into a regular buffer to be given to the user
+ * The caller is responsible of freeing the memory allocated to the
+ * regular buffer.
+ * This is actually only allocating the struct camera_memory_t.
+ * The actual image memory is re-used from the Gfx buffer.
+ * Please remember that this memory is own by the native window and not the HAL
+ * so we cannot de-allocate it.
+ * Here we just present it to the client like any other buffer.
+ *
+ */
+void CallbacksThread::convertGfx2Regular(AtomBuffer* aGfxBuf, AtomBuffer* aRegularBuf)
+{
+    LOG1("%s", __FUNCTION__);
+
+    mCallbacks->allocateMemory(aRegularBuf, 0);
+    aRegularBuf->buff->data = aGfxBuf->gfxData;
+    aRegularBuf->buff->size = aGfxBuf->size;
+}
 } // namespace android
