@@ -828,7 +828,7 @@ void ControlThread::pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf
 {
     LOG2("@%s: snapshotBuf = %p, postviewBuf = %p, id = %d",
             __FUNCTION__,
-            snapshotBuf->buff->data,
+            (snapshotBuf->buff)?snapshotBuf->buff->data:snapshotBuf->gfxData,
             (postviewBuf->buff)?postviewBuf->buff->data:postviewBuf->gfxData,
             snapshotBuf->id);
     Message msg;

@@ -133,6 +133,10 @@ private:
     status_t allocateInputBuffers(int width, int height, int numBufs);
     void     freeInputBuffers();
     int      encodeExifAndThumbnail(AtomBuffer *thumbnail, unsigned char* exifDst);
+    status_t startHwEncoding(AtomBuffer *mainBuf);
+    status_t completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBuf);
+    void     encodeExif(AtomBuffer *thumBuf);
+    status_t doSwEncode(AtomBuffer *mainBuf, AtomBuffer* destBuf);
 
 // inherited from Thread
 private:
