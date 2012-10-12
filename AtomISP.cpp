@@ -3702,6 +3702,46 @@ int AtomISP::unloadAccFirmware(unsigned int fwHandle)
     return ret;
 }
 
+int AtomISP::mapFirmwareArgument(void *val, size_t size, unsigned long *ptr)
+{
+    int ret = -1;
+    struct atomisp_acc_map map;
+
+    memset(&map, 0, sizeof(map));
+
+    map.length = size;
+    map.user_ptr = val;
+
+    if ( main_fd ) {
+        ret = ioctl(main_fd, ATOMISP_IOC_ACC_MAP, &map);
+        LOG1("%s ATOMISP_IOC_ACC_MAP ret: %d\n",
+                __FUNCTION__, ret);
+    }
+
+    *ptr = map.css_ptr;
+
+    return ret;
+}
+
+int AtomISP::unmapFirmwareArgument(unsigned long val, size_t size)
+{
+    int ret = -1;
+    struct atomisp_acc_map map;
+
+    memset(&map, 0, sizeof(map));
+
+    map.css_ptr = val;
+    map.length = size;
+
+    if ( main_fd ) {
+        ret = ioctl(main_fd, ATOMISP_IOC_ACC_UNMAP, &map);
+        LOG1("%s ATOMISP_IOC_ACC_UNMAP ret: %d\n",
+                __func__, ret);
+    }
+
+    return ret;
+}
+
 /*
  * Sets the arguments for the firmware loaded.
  * The loaded firmware is identified with the firmware handle.
@@ -3723,6 +3763,28 @@ int AtomISP::setFirmwareArgument(unsigned int fwHandle, unsigned int num,
         ret = xioctl(main_fd, ATOMISP_IOC_ACC_S_ARG, &arg);
         LOG1("%s IOCTL ATOMISP_IOC_ACC_S_ARG ret: %d \n",
                 __FUNCTION__, ret);
+    }
+
+    return ret;
+}
+
+int AtomISP::setMappedFirmwareArgument(unsigned int fwHandle, unsigned int mem,
+                                       unsigned long val, size_t size)
+{
+    int ret = -1;
+    struct atomisp_acc_s_mapped_arg arg;
+
+    memset(&arg, 0, sizeof(arg));
+
+    arg.fw_handle = fwHandle;
+    arg.memory = mem;
+    arg.css_ptr = val;
+    arg.length = size;
+
+    if ( main_fd ) {
+        ret = ioctl(main_fd, ATOMISP_IOC_ACC_S_MAPPED_ARG, &arg);
+        LOG1("%s IOCTL ATOMISP_IOC_ACC_S_MAPPED_ARG ret: %d \n",
+                __func__, ret);
     }
 
     return ret;

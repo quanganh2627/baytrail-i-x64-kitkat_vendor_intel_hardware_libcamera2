@@ -151,17 +151,23 @@ public:
     float getFrameRate() { return mConfig.fps; }
 
     /* Acceleration API extensions */
-   int loadAccFirmware(void *fw, size_t size, unsigned int *fwHandle);
-   int unloadAccFirmware(unsigned int fwHandle);
-   int setFirmwareArgument(unsigned int fwHandle, unsigned int num,
-                           void *val, size_t size);
-   int unsetFirmwareArgument(unsigned int fwHandle, unsigned int num);
-   int startFirmware(unsigned int fwHandle);
-   int waitForFirmware(unsigned int fwHandle);
-   int abortFirmware(unsigned int fwHandle, unsigned int timeout);
+    int loadAccFirmware(void *fw, size_t size, unsigned int *fwHandle);
+    int unloadAccFirmware(unsigned int fwHandle);
+    int mapFirmwareArgument(void *val, size_t size, unsigned long *ptr);
+    int unmapFirmwareArgument(unsigned long val, size_t size);
+    int setFirmwareArgument(unsigned int fwHandle, unsigned int num,
+                            void *val, size_t size);
+    int setMappedFirmwareArgument(unsigned int fwHandle, unsigned int mem,
+                                  unsigned long val, size_t size);
+    int unsetFirmwareArgument(unsigned int fwHandle, unsigned int num);
+    int startFirmware(unsigned int fwHandle);
+    int waitForFirmware(unsigned int fwHandle);
+    int abortFirmware(unsigned int fwHandle, unsigned int timeout);
 
-   // Enable metadata buffer mode API
-   status_t storeMetaDataInBuffers(bool enabled);
+    int getLastDevice() { return mConfigLastDevice; }
+
+    // Enable metadata buffer mode API
+    status_t storeMetaDataInBuffers(bool enabled);
 
 // private types
 private:

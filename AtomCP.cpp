@@ -107,11 +107,32 @@ static int unload_firmware(void *isp, unsigned handle)
     return ISP->unloadAccFirmware(handle);
 }
 
+static int map_firmware_arg (void *isp, void *val, size_t size, unsigned long *ptr)
+{
+    AtomISP *ISP = (AtomISP*)isp;
+    LOG1("@%s", __FUNCTION__);
+    return ISP->mapFirmwareArgument(val, size, ptr);
+}
+
+static int unmap_firmware_arg (void *isp, unsigned long val, size_t size)
+{
+    AtomISP *ISP = (AtomISP*)isp;
+    LOG1("@%s", __FUNCTION__);
+    return ISP->unmapFirmwareArgument(val, size);
+}
+
 static int set_firmware_arg(void *isp, unsigned handle, unsigned num, void *val, size_t size)
 {
     AtomISP *ISP = (AtomISP*)isp;
     LOG1("@%s", __FUNCTION__);
     return ISP->setFirmwareArgument(handle, num, val, size);
+}
+
+static int set_mapped_arg(void *isp, unsigned handle, unsigned mem, unsigned long val, size_t size)
+{
+    AtomISP *ISP = (AtomISP*)isp;
+    LOG1("@%s", __FUNCTION__);
+    return ISP->setMappedFirmwareArgument(handle, mem, val, size);
 }
 
 static int start_firmware(void *isp, unsigned handle)
@@ -154,6 +175,20 @@ AtomCP::AtomCP(AtomISP *isp)
     mAccAPI.start_firmware    = start_firmware;
     mAccAPI.wait_for_firmware = wait_for_firmware;
     mAccAPI.abort_firmware    = abort_firmware;
+
+    /* Differentiate between CSS 1.5 and CSS 1.0.
+     * If Acceleration API v1.5 specific functions stay NULL,
+     * then Acceleration API v1.0 shall be called. */
+    if (isp->getLastDevice() == 3) {
+        mAccAPI.map_firmware_arg   = map_firmware_arg;
+        mAccAPI.unmap_firmware_arg = unmap_firmware_arg;
+        mAccAPI.set_mapped_arg     = set_mapped_arg;
+    }
+    else {
+        mAccAPI.map_firmware_arg   = NULL;
+        mAccAPI.unmap_firmware_arg = NULL;
+        mAccAPI.set_mapped_arg     = NULL;
+    }
 
     ia_cp_init(&mAccAPI, &mPrintFunctions);
 }
