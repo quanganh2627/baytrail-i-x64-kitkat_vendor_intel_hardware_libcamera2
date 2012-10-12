@@ -137,6 +137,7 @@ private:
     status_t completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBuf);
     void     encodeExif(AtomBuffer *thumBuf);
     status_t doSwEncode(AtomBuffer *mainBuf, AtomBuffer* destBuf);
+    status_t scaleMainPic(AtomBuffer *mainBuf);
 
 // inherited from Thread
 private:
@@ -155,7 +156,16 @@ private:
     AtomBuffer      mExifBuf;
     AtomBuffer      mOutBuf;
     AtomBuffer      mThumbBuf;
+    AtomBuffer      mScaledPic; /*!< Temporary local buffer where we scale the main
+                                     picture (snapshot) in case is of a different
+                                     resolution than the image requested by the client */
 
+    /*
+     * The resolution below is set up during initialize in case the receiving buffer
+     * is of a different resolution so we know we have to scale
+     */
+    int mPictWidth;     /*!< Width of the main snapshot to encode */
+    int mPictHeight;    /*!< Height of the main snapshot to encode */
     int mPictureQuality;
     int mThumbnailQuality;
 

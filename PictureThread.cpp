@@ -39,6 +39,7 @@ PictureThread::PictureThread() :
     ,mCallbacks(Callbacks::getInstance())
     ,mCallbacksThread(CallbacksThread::getInstance())
     ,mThumbBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW))
+    ,mScaledPic(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT))
     ,mPictureQuality(80)
     ,mThumbnailQuality(50)
     ,mInputBuffers(0)
@@ -63,6 +64,9 @@ PictureThread::~PictureThread()
     }
     if (mThumbBuf.buff != NULL) {
         mThumbBuf.buff->release(mThumbBuf.buff);
+    }
+    if (mScaledPic.buff != NULL) {
+        mScaledPic.buff->release(mScaledPic.buff);
     }
 
     freeInputBuffers();
@@ -105,6 +109,11 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     }
     LOG1("Out buffer: @%p (%d bytes)", mOutBuf.buff->data, mOutBuf.buff->size);
     LOG1("Exif buffer: @%p (%d bytes)", mExifBuf.buff->data, mExifBuf.buff->size);
+
+    status = scaleMainPic(mainBuf);
+    if (status == NO_ERROR) {
+       mainBuf = &mScaledPic;
+    }
 
     // Start encoding main picture using HW encoder
     status = startHwEncoding(mainBuf);
@@ -182,6 +191,10 @@ void PictureThread::initialize(const CameraParameters &params)
         mThumbBuf.buff->release(mThumbBuf.buff);
         mThumbBuf.buff = NULL;
     }
+
+    params.getPictureSize(&mScaledPic.width, &mScaledPic.height);
+    mScaledPic.stride = mScaledPic.width;
+    mScaledPic.size = frameSize(mScaledPic.format, mScaledPic.stride, mScaledPic.height);
 }
 
 
@@ -642,6 +655,7 @@ status_t PictureThread::startHwEncoding(AtomBuffer* mainBuf)
     if(mainBuf->type == ATOM_BUFFER_PREVIEW_GFX)
         inBuf.buf = (unsigned char *) mainBuf->gfxData;
 
+
     inBuf.width = mainBuf->width;
     inBuf.height = mainBuf->height;
     inBuf.format = mainBuf->format;
@@ -854,4 +868,44 @@ status_t PictureThread::completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBu
 
     return status;
 }
+
+/**
+ * Scales the main picture to the resolution setup to the mScaledPic buffer
+ * in case both resolutions are the same no scaling is done
+ * mScaledPic resolution is setup during initialize()
+ * The scled image is stored in the local buffer mScaledPic
+ *
+ * \param  mainBuf snapshot buffer to be scaled
+ *
+ * \return NO_ERROR in case the scale was done and successful
+ * \return INVALID_OPERATION in case there was no need to scale
+ * \return NO_MEMORY in case it could not allocate the scaled buffer.
+ *
+ */
+status_t PictureThread::scaleMainPic(AtomBuffer *mainBuf)
+{
+    LOG1("%s",__FUNCTION__);
+    status_t status = NO_ERROR;
+
+    if ((mainBuf->width > mScaledPic.width) ||
+        (mainBuf->height > mScaledPic.height)) {
+        LOG1("Need to Scale from (%dx%d) --> (%d,%d)",mainBuf->width, mainBuf->height,
+                                                      mScaledPic.width, mScaledPic.height);
+
+        if (mScaledPic.buff != NULL)
+            mScaledPic.buff->release(mScaledPic.buff);
+
+        mCallbacks->allocateMemory(&mScaledPic, mScaledPic.size);
+        if (mScaledPic.buff == NULL)
+            goto exit;
+
+        ImageScaler::downScaleImage(mainBuf, &mScaledPic);
+    } else {
+        LOG1("No need to scale");
+        status = INVALID_OPERATION;
+    }
+exit:
+    return status;
+}
+
 } // namespace android
