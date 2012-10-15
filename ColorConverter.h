@@ -23,9 +23,9 @@ namespace android {
 
 void YUV420ToRGB565(int width, int height, void *src, void *dst);
 
-void trimConvertNV12ToRGB565(int width, int height, int stride_width, void *src, void *dst);
+void trimConvertNV12ToRGB565(int width, int height, int srcStride, void *src, void *dst);
 
-void trimConvertNV12ToNV21(int width, int height, int stride_width, void *src, void *dst);
+void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void *dst);
 
 void align16ConvertNV12ToYV12(int width, int height, int srcStride, void *src, void *dst);
 

@@ -80,14 +80,14 @@ void YUV420ToRGB565(int width, int height, void *src, void *dst)
     }
 }
 
-void trimConvertNV12ToRGB565(int width, int height, int padding_width, void *src, void *dst)
+void trimConvertNV12ToRGB565(int width, int height, int srcStride, void *src, void *dst)
 {
 
     unsigned char *yuvs = (unsigned char *) src;
     unsigned char *rgbs = (unsigned char *) dst;
 
     //the end of the luminance data
-    int lumEnd = padding_width * height;
+    int lumEnd = srcStride * height;
     //points to the next luminance value pair
     int lumPtr = 0;
     //points to the next chromiance value pair
@@ -96,8 +96,8 @@ void trimConvertNV12ToRGB565(int width, int height, int padding_width, void *src
     int i = 0, j = 0;
 
     for( i=0; i < height; i++) {
-        lumPtr = i * padding_width;
-        chrPtr = i / 2 * padding_width + lumEnd;
+        lumPtr = i * srcStride;
+        chrPtr = i / 2 * srcStride + lumEnd;
         for ( j=0; j < width; j+=2 ) {
             //read the luminance and chromiance values
             int Y1 = yuvs[lumPtr++] & 0xff;
@@ -133,20 +133,20 @@ void trimConvertNV12ToRGB565(int width, int height, int padding_width, void *src
 
 // covert NV12 (Y plane, interlaced UV bytes) to
 // NV21 (Y plane, interlaced VU bytes) and trim stride width to real width
-void trimConvertNV12ToNV21(int width, int height, int padding_width, void *src, void *dst)
+void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void *dst)
 {
     const int ysize = width * height;
     unsigned const char *pSrc = (unsigned char *)src;
     unsigned char *pDst = (unsigned char *)dst;
 
     // Copy Y component
-    if (padding_width == width) {
+    if (srcStride == width) {
         memcpy(pDst, pSrc, ysize);
-    } else if (padding_width > width) {
+    } else if (srcStride > width) {
         int j = height;
         while(j--) {
             memcpy(pDst, pSrc, width);
-            pSrc += padding_width;
+            pSrc += srcStride;
             pDst += width;
         }
     } else {
@@ -155,7 +155,7 @@ void trimConvertNV12ToNV21(int width, int height, int padding_width, void *src, 
     }
 
     // Convert UV to VU
-    pSrc = (unsigned char *)src + padding_width * height;
+    pSrc = (unsigned char *)src + srcStride * height;
     pDst = (unsigned char *)dst + width * height;
     for (int j = 0; j < height / 2; j++) {
         if (width >= 16) {
@@ -238,7 +238,7 @@ void trimConvertNV12ToNV21(int width, int height, int padding_width, void *src, 
             }
         }
         pDst += width;
-        pSrc += padding_width;
+        pSrc += srcStride;
     }
 }
 
