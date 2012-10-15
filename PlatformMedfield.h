@@ -58,6 +58,8 @@ public:
         // other params
         mBackFlash = true;
         mVideoPreviewSizePref = "1024x580";
+        mProductName = "ExampleModel";
+        mManufacturerName = "ExampleMaker";
     }
 };
 

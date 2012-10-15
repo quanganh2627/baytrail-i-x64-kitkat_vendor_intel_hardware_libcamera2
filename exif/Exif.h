@@ -172,8 +172,6 @@ const uint8_t   EXIF_GPS_PROCMETHOD     = 0x10;
 
 /* Values */
 #define EXIF_DEF_IMAGE_DESCRIPTION          "Jpeg"
-#define EXIF_DEF_MAKER          "  "
-#define EXIF_DEF_MODEL          "  "
 #define EXIF_DEF_SOFTWARE       "Android"
 #define EXIF_DEF_EXIF_VERSION   "0220"
 #define EXIF_DEF_USERCOMMENTS   "  "

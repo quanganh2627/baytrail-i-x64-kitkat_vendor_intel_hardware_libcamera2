@@ -19,6 +19,7 @@
 #include "EXIFMaker.h"
 #include "LogHelper.h"
 #include "AtomISP.h"
+#include "PlatformData.h"
 #include <camera.h>
 
 
@@ -488,8 +489,8 @@ void EXIFMaker::clear()
     // Initialize the common values
     exifAttributes.enableThumb = false;
     strncpy((char*)exifAttributes.image_description, EXIF_DEF_IMAGE_DESCRIPTION, sizeof(exifAttributes.image_description));
-    strncpy((char*)exifAttributes.maker, EXIF_DEF_MAKER, sizeof(exifAttributes.maker));
-    strncpy((char*)exifAttributes.model, EXIF_DEF_MODEL, sizeof(exifAttributes.model));
+    strncpy((char*)exifAttributes.maker, PlatformData::manufacturerName(), sizeof(exifAttributes.maker));
+    strncpy((char*)exifAttributes.model, PlatformData::productName(), sizeof(exifAttributes.model));
     strncpy((char*)exifAttributes.software, EXIF_DEF_SOFTWARE, sizeof(exifAttributes.software));
 
     memcpy(exifAttributes.exif_version, EXIF_DEF_EXIF_VERSION, sizeof(exifAttributes.exif_version));

@@ -88,6 +88,9 @@ class PlatformBase {
     bool mFileInject;
 
     const char* mVideoPreviewSizePref;
+    /* For EXIF Metadata */
+    const char* mProductName;
+    const char* mManufacturerName;
 };
 
 /**
@@ -189,6 +192,22 @@ class PlatformData {
      * \return int value as defined in PlatformData::SENSOR_FLIP_FLAGS
      */
     static int sensorFlipping(int cameraId);
+
+    /**
+     * Returns the name of the product
+     * This is meant to be used in the EXIF metadata
+     *
+     * \return string with product name
+     */
+    static const char* productName(void);
+
+    /**
+     * Returns the name of the manufacturer
+     * This is meant to be used in the EXIF metadata
+     *
+     * \return string with product manufacturer
+     */
+    static const char* manufacturerName(void);
 };
 
 } /* namespace android */

@@ -167,4 +167,15 @@ String8 PlatformData::supportedSceneModes()
     return String8(modes);
 }
 
+const char* PlatformData::productName(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mProductName;
+}
+
+const char* PlatformData::manufacturerName(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mManufacturerName;
+}
 }; // namespace android
