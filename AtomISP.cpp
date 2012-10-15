@@ -191,7 +191,7 @@ AtomISP::AtomISP() :
     CLEAR(mPostviewBuffers);
 }
 
-status_t AtomISP::init(int cameraId)
+status_t AtomISP::init(int cameraId, const void *aiqConf)
 {
     status_t status = NO_ERROR;
 
@@ -220,7 +220,7 @@ status_t AtomISP::init(int cameraId)
     mSensorType = (mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY)?SENSOR_TYPE_RAW:SENSOR_TYPE_SOC;
     LOG1("Sensor type detected: %s", (mSensorType == SENSOR_TYPE_RAW)?"RAW":"SOC");
 
-    status = init3A(cameraId);
+    status = init3A(cameraId, aiqConf);
     if (status != NO_ERROR) {
         goto errorexit;
     }
@@ -403,7 +403,7 @@ status_t AtomISP::initCameraInput(int cameraId)
 /**
  * Only to be called from 2nd stage contructor AtomISP::init().
  */
-status_t AtomISP::init3A(int cameraId)
+status_t AtomISP::init3A(int cameraId, const void *aiqConf)
 {
     status_t status = NO_ERROR;
 
@@ -411,7 +411,7 @@ status_t AtomISP::init3A(int cameraId)
         if (cameraId == INTEL_FILE_INJECT_CAMERA_ID) {
             const char* otp_file = privateOtpInjectFileName;
             int maincam = getPrimaryCameraIndex();
-            if (mAAA->init(sCamInfo[maincam].name, main_fd, otp_file) == NO_ERROR) {
+            if (mAAA->init(sCamInfo[maincam].name, main_fd, aiqConf, otp_file) == NO_ERROR) {
                 LOG1("3A initialized for file inject");
             }
             else {
@@ -420,7 +420,7 @@ status_t AtomISP::init3A(int cameraId)
             }
         }
         else if (mSensorType == SENSOR_TYPE_RAW) {
-            if (mAAA->init(mCameraInput->name, main_fd, NULL) == NO_ERROR) {
+            if (mAAA->init(mCameraInput->name, main_fd, aiqConf, NULL) == NO_ERROR) {
                 LOG1("3A initialized");
             } else {
                 LOGE("Error initializing 3A on RAW sensor!");

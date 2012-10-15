@@ -23,6 +23,7 @@ LOCAL_SRC_FILES := \
 	AtomAAA.cpp \
 	AtomDvs.cpp \
 	AtomHAL.cpp \
+	CameraConf.cpp \
 	ColorConverter.cpp \
 	EXIFMaker.cpp \
 	JpegCompressor.cpp \
@@ -61,6 +62,7 @@ LOCAL_C_INCLUDES += \
 	external/skia/include/core \
 	external/skia/include/images \
 	external/sqlite/dist \
+	$(TARGET_OUT_HEADERS)/libtbd \
 	$(TARGET_OUT_HEADERS)/libmix_videoencoder \
 	$(TARGET_OUT_HEADERS)/cameralibs \
 	$(TARGET_OUT_HEADERS)/libmfldadvci \
@@ -83,6 +85,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libui \
 	libmfldadvci \
 	libintelmetadatabuffer \
+	libtbd \
 	libva \
 	libva-tpi \
 	libva-android \
@@ -114,7 +117,7 @@ endif
 # The camera.<TARGET_DEVICE>.so will be built for each platform
 # (which should be unique to the TARGET_DEVICE environment)
 # to use Camera Imaging(CI) supported by intel.
-# If a platform does not support camera the USE_CAMERA_STUB 
+# If a platform does not support camera the USE_CAMERA_STUB
 # should be set to "true" in BoardConfig.mk
 LOCAL_MODULE := camera.$(TARGET_DEVICE)
 

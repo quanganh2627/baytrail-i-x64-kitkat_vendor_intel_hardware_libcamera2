@@ -18,6 +18,7 @@
 #include "ControlThread.h"
 #include "LogHelper.h"
 #include "PerformanceTraces.h"
+#include "CameraConf.h"
 #include "PreviewThread.h"
 #include "PictureThread.h"
 #include "AtomISP.h"
@@ -134,13 +135,23 @@ status_t ControlThread::init(int cameraId)
 
     status_t status = UNKNOWN_ERROR;
 
+    sp<CameraBlob> aiqConf, drvConf, halConf;
+    status = cpf::init(aiqConf, drvConf, halConf);
+    if (status != NO_ERROR) {
+        // FIXME: "File not found" should be treated as an error...
+        if (status != NAME_NOT_FOUND) {
+            LOGE("Error in CPF initialization with id %d", cameraId);
+            goto bail;
+        }
+    }
+
     mISP = new AtomISP();
     if (mISP == NULL) {
         LOGE("error creating ISP");
         goto bail;
     }
 
-    status = mISP->init(cameraId);
+    status = mISP->init(cameraId, aiqConf->getPtr());
     if (status != NO_ERROR) {
         LOGE("Error initializing ISP with id %d", cameraId);
         goto bail;

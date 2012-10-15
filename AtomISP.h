@@ -78,7 +78,7 @@ public:
     AtomISP(void);
     ~AtomISP();
 
-    status_t init(int camera_id);
+    status_t init(int camera_id, const void *aiqConf);
 
 // public methods
 public:
@@ -223,7 +223,7 @@ private:
 private:
 
     void initDriverVersion(void);
-    status_t init3A(int cameraId);
+    status_t init3A(int cameraId, const void *aiqConf);
     void initFrameConfig(int cameraId);
     status_t initCameraInput(int cameraId);
     void initFileInject(void);
