@@ -21,6 +21,7 @@
 #include "FaceDetector.h"
 #include "LogHelper.h"
 #include "sqlite3.h"
+#include "cutils/properties.h"
 
 #include "ia_coordinate.h"
 
@@ -176,8 +177,15 @@ status_t FaceDetector::loadFaceDb()
     int featureId, version, personId, timeStamp;
     const void* feature;
     int featureCount = 0;
+    char dbPath[150];
 
-    ret = sqlite3_open(PERSONDB_PATH, &pDb);
+    // Get face DB path from system property if available, or use the default path
+    property_get("gallery.dbpath", dbPath, PERSONDB_DEFAULT_PATH);
+    strcat(dbPath, "/");
+    strcat(dbPath, PERSONDB_FILENAME);
+    LOG1("@%s: Opening face DB from: %s", __FUNCTION__, dbPath);
+
+    ret = sqlite3_open(dbPath, &pDb);
     if (ret != SQLITE_OK) {
         LOGE("sqlite3_open error : %s", sqlite3_errmsg(pDb));
         return UNKNOWN_ERROR;
@@ -193,9 +201,9 @@ status_t FaceDetector::loadFaceDb()
 
     while (sqlite3_step(pStmt) == SQLITE_ROW) {
         featureId = sqlite3_column_int(pStmt, 0);
-        version   = sqlite3_column_int(pStmt, 1);
-        personId  = sqlite3_column_int(pStmt, 2);
-        feature   = sqlite3_column_blob(pStmt, 3);
+        version = sqlite3_column_int(pStmt, 1);
+        personId = sqlite3_column_int(pStmt, 2);
+        feature = sqlite3_column_blob(pStmt, 3);
         timeStamp = sqlite3_column_int(pStmt, 4);
         ret = ia_face_register_feature(mContext, (uint8_t*)feature, personId, featureId, timeStamp, 0, 0, version);
         LOG2("Register feature (%d): face ID: %d, feature ID: %d, timestamp: %d, version: %d", featureCount, personId, featureId, timeStamp, version);

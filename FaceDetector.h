@@ -43,8 +43,8 @@ enum SmartShutterMode {
     BLINK_MODE
 };
 
-// TODO: Database path should be a system property
-#define PERSONDB_PATH "/sdcard/DCIM/.PersonDB.db"
+#define PERSONDB_FILENAME   ".PersonDB.db"
+#define PERSONDB_DEFAULT_PATH   "/sdcard/DCIM"
 
 class FaceDetector : public Thread {
 
