@@ -98,6 +98,8 @@ else ifeq ($(TARGET_PRODUCT),mfld_gi)
 LOCAL_CFLAGS += -DMFLD_GI
 else ifeq ($(TARGET_PRODUCT), mfld_dv10)
 LOCAL_CFLAGS += -DMFLD_DV10
+else ifeq ($(TARGET_PRODUCT), salitpa)
+LOCAL_CFLAGS += -DMFLD_DV10
 else ifeq ($(TARGET_PRODUCT), ctp_pr0)
 LOCAL_CFLAGS += -DCTP_PR0
 else ifeq ($(TARGET_PRODUCT), ctp_pr1)
@@ -126,6 +128,8 @@ ifeq ($(TARGET_PRODUCT),mfld_gi)
 LOCAL_MODULE := camera.mfld_gi
 else ifeq ($(TARGET_PRODUCT), mfld_dv10)
 LOCAL_MODULE := camera.mfld_dv10
+else ifeq ($(TARGET_PRODUCT), salitpa)
+LOCAL_MODULE := camera.salitpa
 else ifeq ($(TARGET_PRODUCT), ctp_pr0)
 LOCAL_MODULE := camera.ctp_pr0
 else ifeq ($(TARGET_PRODUCT), ctp_pr1)
