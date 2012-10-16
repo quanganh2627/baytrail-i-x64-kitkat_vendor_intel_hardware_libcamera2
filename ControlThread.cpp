@@ -1975,8 +1975,13 @@ status_t ControlThread::captureStillPic()
 
     // Get the current params
     mParameters.getPictureSize(&width, &height);
-    pvWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
-    pvHeight= mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
+    mParameters.getPreviewSize(&pvWidth, &pvHeight);
+    if (pvWidth > width || pvHeight > height) {
+        // we can't configure postview to be bigger than picture size,
+        // the same driver/ISP limitation as with video-sizes
+        pvWidth = width;
+        pvHeight = height;
+    }
     format = mISP->getSnapshotPixelFormat();
     size = frameSize(format, width, height);
     pvSize = frameSize(format, pvWidth, pvHeight);
@@ -2123,8 +2128,6 @@ status_t ControlThread::captureStillPic()
     bool doEncode = false;
     if (!mHdr.enabled) {
         LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
-        postviewBuffer.width = pvWidth;
-        postviewBuffer.height = pvHeight;
         status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
         if (status == NO_ERROR) {
             doEncode = true;
@@ -2208,8 +2211,13 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
 
     // Get the current params
     mParameters.getPictureSize(&width, &height);
-    pvWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
-    pvHeight= mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
+    mParameters.getPreviewSize(&pvWidth, &pvHeight);
+    if (pvWidth > width || pvHeight > height) {
+        // we can't configure postview to be bigger than picture size,
+        // the same driver/ISP limitation as with video-sizes
+        pvWidth = width;
+        pvHeight = height;
+    }
     format = mISP->getSnapshotPixelFormat();
     size = frameSize(format, width, height);
     pvSize = frameSize(format, pvWidth, pvHeight);
@@ -2260,8 +2268,6 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
         doEncode = true;
         mCallbacksThread->shutterSound();
         LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
-        postviewBuffer.width = pvWidth;
-        postviewBuffer.height = pvHeight;
         status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
     }
 
