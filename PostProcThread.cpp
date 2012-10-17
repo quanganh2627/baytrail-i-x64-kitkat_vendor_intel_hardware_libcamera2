@@ -29,6 +29,7 @@ namespace android {
 PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread) :
     IFaceDetector(CallbacksThread::getInstance())
     ,Thread(true) // callbacks may call into java
+    ,mFaceDetector(NULL)
     ,mPanoramaThread(panoramaThread)
     ,mMessageQueue("PostProcThread", (int) MESSAGE_ID_MAX)
     ,mLastReportedNumberOfFaces(0)
@@ -54,11 +55,6 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     mSmartShutter.blinkThreshold = BLINK_THRESHOLD;
     mSmartShutter.smileThreshold = 0;
     mSmartShutter.blinkThreshold = 0;
-
-    mFaceDetector = new FaceDetector();
-    if (mFaceDetector->run() != NO_ERROR) {
-        LOGW("Error starting FaceDetector thread!");
-    }
 }
 
 PostProcThread::~PostProcThread()
@@ -97,6 +93,19 @@ status_t PostProcThread::handleMessageStartFaceDetection()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+
+    // Create and init FD when starting for the first time
+    if (mFaceDetector == NULL) {
+        mFaceDetector = new FaceDetector();
+        if (mFaceDetector == NULL) {
+            LOGE("Error creating FaceDetector");
+            return UNKNOWN_ERROR;
+        }
+        if (mFaceDetector->run() != NO_ERROR) {
+            LOGW("Error starting FaceDetector thread!");
+            return UNKNOWN_ERROR;
+        }
+    }
 
     if (mSmartShutter.smartRunning && mSmartShutter.smileRunning)
         mFaceDetector->setSmileThreshold(mSmartShutter.smileThreshold);
