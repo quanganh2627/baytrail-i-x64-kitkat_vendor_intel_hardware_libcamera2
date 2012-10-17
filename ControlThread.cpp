@@ -4390,6 +4390,8 @@ status_t ControlThread::startSmartSceneDetection()
         return INVALID_OPERATION;
     }
     enableMsgType(CAMERA_MSG_SCENE_DETECT);
+    if (m3AThread != NULL)
+        m3AThread->resetSmartSceneValues();
     mAAA->setSmartSceneDetection(true);
     return NO_ERROR;
 }

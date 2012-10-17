@@ -339,6 +339,13 @@ void AAAThread::getCurrentSmartScene(int &sceneMode, bool &sceneHdr)
     sceneHdr = mSmartSceneHdr;
 }
 
+void AAAThread::resetSmartSceneValues()
+{
+    LOG1("@%s", __FUNCTION__);
+    mSmartSceneMode = 0;
+    mSmartSceneHdr = false;
+}
+
 status_t AAAThread::waitForAndExecuteMessage()
 {
     LOG2("@%s", __FUNCTION__);
