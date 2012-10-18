@@ -1091,7 +1091,6 @@ status_t ControlThread::handleMessageStartRecording()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    AeMode aeMode = CAM_AE_MODE_NOT_SET;
     int width,height;
     char sizes[25];
 
@@ -1679,8 +1678,7 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     LOG1("@%s: ", __FUNCTION__);
     status_t status = NO_ERROR;
     int format, size, width, height;
-    int pvWidth, pvHeight, pvFormat, pvSize;
-    atomisp_makernote_info makerNote;
+    int pvWidth, pvHeight, pvSize;
 
     postviewBuffer.owner = this;
     stopFaceDetection();
@@ -1759,7 +1757,7 @@ status_t ControlThread::captureStillPic()
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
     int width, height, format, size;
-    int pvWidth, pvHeight, pvFormat, pvSize;
+    int pvWidth, pvHeight, pvSize;
     FlashMode flashMode = mAAA->getAeFlashMode();
     bool flashOn = (flashMode == CAM_AE_FLASH_MODE_TORCH ||
                     flashMode == CAM_AE_FLASH_MODE_ON);
@@ -1996,10 +1994,7 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
     int width, height, format, size;
-    int pvWidth, pvHeight, pvFormat, pvSize;
-    FlashMode flashMode = mAAA->getAeFlashMode();
-    bool flashOn = (flashMode == CAM_AE_FLASH_MODE_TORCH ||
-                    flashMode == CAM_AE_FLASH_MODE_ON);
+    int pvWidth, pvHeight, pvSize;
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
 
@@ -2224,7 +2219,6 @@ status_t ControlThread::handleMessageTakeSmartShutterPicture()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    State origState = mState;
     // In case of smart shutter with HDR, we need to trigger save orig as a normal capture.
     if (mHdr.enabled && mHdr.saveOrig && mPostProcThread->isSmartCaptureTriggered()) {
         mPostProcThread->resetSmartCaptureTrigger();
@@ -2355,7 +2349,6 @@ status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
         LOGE("Invalid preview buffer returned by preview Thread");
         return DEAD_OBJECT;
     }
-    status_t status = NO_ERROR;
 
     if (mFaceDetectionActive || mPanoramaThread->getState() == PANORAMA_DETECTING_OVERLAP) {
         LOG2("@%s: face detection active", __FUNCTION__);
@@ -2782,7 +2775,7 @@ status_t ControlThread::allocateSnapshotBuffers()
 void ControlThread::processParamFileInject(CameraParameters *newParams)
 {
     LOG1("@%s", __FUNCTION__);
-    bool updated = false;
+
     unsigned int width = 0, height = 0, bayerOrder = 0, format = 0;
     const char *fileName = newParams->get(IntelCameraParameters::KEY_FILE_INJECT_FILENAME);
 
@@ -3668,7 +3661,6 @@ status_t ControlThread::processParamAutoExposureMeteringMode(
         // The fixed "spot" metering mode (and area) should be set only when user has set the
         // AE metering area to null (isEmpty() == true)
         if (mode == CAM_AE_METERING_MODE_SPOT && mMeteringAreas.isEmpty()) {
-            int width = 0, height = 0;
             AAAWindowInfo aaaWindow;
             mAAA->getGridWindow(aaaWindow);
             // Let's set metering area to fixed position here. We will also get arbitrary area
@@ -4095,8 +4087,6 @@ status_t ControlThread::updateParameterCache()
  */
 void ControlThread::storeCurrentPictureParams()
 {
-    const char* tmp;
-    int length;
     mStillPictContext.clear();
 
     mParameters.getPictureSize(&mStillPictContext.snapshotWidth,

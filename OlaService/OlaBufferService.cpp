@@ -226,7 +226,6 @@ extern "C" char* Ola_BufferService_GetBufferMemPointer(void)
 extern "C" int Ola_BufferService_ReleaseBuffer(int bufferId)
 {
 	LOGI("[%s] called", __FUNCTION__);
-	int ret;
 	sp<IOlaBuffer> olaBuffer;
 	olaBuffer = _getOlaBufferService();
 	if (olaBuffer == NULL)

@@ -200,7 +200,6 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
           // avoid the copying the SOI and APP0
           char *copyTo = (char*)destBuf->buff->data + exifSize;
           char *copyFrom = (char*)mOutBuf.buff->data + sizeof(JPEG_MARKER_SOI) + SIZE_OF_APP0_MARKER;
-          int copyBytes = mainSize - sizeof(JPEG_MARKER_SOI) - SIZE_OF_APP0_MARKER;
           memcpy(copyTo, copyFrom, mainSize);
 
           destBuf->id = mainBuf->id;
@@ -511,7 +510,6 @@ status_t PictureThread::handleMessageFetchBuffers(MessageAllocBufs *msg)
 status_t PictureThread::allocateInputBuffers(int width, int height, int numBufs)
 {
     LOG1("@%s size (%dx%d) num %d", __FUNCTION__, width, height, numBufs);
-    status_t status = NO_ERROR;
     size_t bufferSize = frameSize(V4L2_PIX_FMT_NV12, width, height);
 
     if(numBufs == 0)

@@ -353,9 +353,7 @@ int JpegHwEncoder::configSurfaces(AtomBuffer* inputBuffersArray, int inputBuffer
           __FUNCTION__, inputBuffersNum, inputBuffersArray);
 
     VAStatus status;
-    void *surface_p = NULL;
     vaJpegContext *va = mVaEncoderContext;
-    VAEncPictureParameterBufferJPEG pic_jpeg;
     VASurfaceAttributeTPI           surfaceAttrib;
     memset(&surfaceAttrib, 0, sizeof(surfaceAttrib));
 

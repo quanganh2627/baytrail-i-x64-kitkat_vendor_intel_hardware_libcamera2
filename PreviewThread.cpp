@@ -310,8 +310,6 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
 status_t PreviewThread::handleMessageSetPreviewWindow(MessageSetPreviewWindow *msg)
 {
     LOG1("@%s: window = %p", __FUNCTION__, msg->window);
-    status_t status = NO_ERROR;
-
     if (mPreviewWindow != NULL) {
         freeGfxPreviewBuffers();
     }

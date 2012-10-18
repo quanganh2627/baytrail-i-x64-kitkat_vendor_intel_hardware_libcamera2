@@ -240,7 +240,6 @@ int CameraDump::dumpImage2File(const void *data, const unsigned int size, unsign
     LOG1("@%s", __FUNCTION__);
     char filename[80];
     static unsigned int count = 0;
-    unsigned int i;
     size_t bytes;
     FILE *fp;
     ia_3a_mknote * uMknData = NULL;

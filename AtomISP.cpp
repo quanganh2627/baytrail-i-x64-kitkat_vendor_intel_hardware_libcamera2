@@ -136,8 +136,6 @@ static void computeZoomRatios(char *zoom_ratio, int max_count){
     int zoom_step = (MAX_SUPPORT_ZOOM - MIN_SUPPORT_ZOOM)/MAX_ZOOM_LEVEL;
     int ratio = MIN_SUPPORT_ZOOM;
     int pos = 0;
-    int i = 0;
-
     //Get zoom from MIN_SUPPORT_ZOOM to MAX_SUPPORT_ZOOM
     while((ratio <= MAX_SUPPORT_ZOOM) && (pos < max_count)){
         sprintf(zoom_ratio + pos,"%d,",ratio);
@@ -1493,7 +1491,7 @@ int AtomISP::startDevice(int device, int buffer_count)
         return -1;
     }
 
-    int i, ret;
+    int ret;
     int fd = video_fds[device];
     LOG1(" startDevice fd = %d", fd);
 
@@ -1556,7 +1554,6 @@ int AtomISP::createBufferPool(int device, int buffer_count)
     LOG1("@%s: device = %d", __FUNCTION__, device);
     int i, ret;
 
-    int fd = video_fds[device];
     struct v4l2_buffer_pool *pool = &v4l2_buf_pool[device];
     int num_buffers = v4l2_capture_request_buffers(device, buffer_count);
     LOG1("num_buffers = %d", num_buffers);
@@ -1605,7 +1602,6 @@ void AtomISP::destroyBufferPool(int device)
 {
     LOG1("@%s: device = %d", __FUNCTION__, device);
 
-    int fd = video_fds[device];
     struct v4l2_buffer_pool *pool = &v4l2_buf_pool[device];
 
     for (int i = 0; i < pool->active_buffers; i++)
@@ -1680,8 +1676,6 @@ int AtomISP::detectDeviceResolutions()
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
     struct v4l2_frmsizeenum frame_size;
-    int device = V4L2_MAIN_DEVICE;
-
     //Switch the Mode before try the format.
     ret = atomisp_set_capture_mode(MODE_CAPTURE);
     if (ret < 0)
@@ -1831,7 +1825,6 @@ status_t AtomISP::setSnapshotNum(int num)
 status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
 {
     LOG1("@%s", __FUNCTION__);
-    int ret = 0;
     status_t status = NO_ERROR;
 
     /**

@@ -1218,7 +1218,6 @@ int AtomAAA::add3aMakerNoteRecord(ia_3a_mknote_field_type mkn_format_id,
 
 status_t AtomAAA::getGridWindow(AAAWindowInfo& window)
 {
-    unsigned int width_3a = 0, height_3a = 0;
     struct atomisp_grid_info gridInfo;
 
     // Get the 3A grid info

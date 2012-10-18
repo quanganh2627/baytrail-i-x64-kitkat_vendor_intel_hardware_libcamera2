@@ -130,7 +130,7 @@ int SWJpegEncoder::doJpegEncoding(const void* nv12_buf)
     unsigned char * p411 = NULL;
     JSAMPROW y[16],u[16],v[16];
     JSAMPARRAY data[3];
-    int i, j, count,width,height;
+    int i, j, width, height;
 
     width= mCInfo.image_width;
     height=mCInfo.image_height;

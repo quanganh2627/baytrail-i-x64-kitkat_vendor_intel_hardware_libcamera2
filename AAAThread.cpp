@@ -59,7 +59,6 @@ AAAThread::~AAAThread()
 status_t AAAThread::enable3A()
 {
     LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
     Message msg;
     msg.id = MESSAGE_ID_ENABLE_AAA;
     return mMessageQueue.send(&msg, MESSAGE_ID_ENABLE_AAA);
@@ -68,7 +67,6 @@ status_t AAAThread::enable3A()
 status_t AAAThread::enableDVS(bool en)
 {
     LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
     Message msg;
     msg.id = MESSAGE_ID_ENABLE_DVS;
     msg.data.enable.enable = en;
@@ -84,7 +82,6 @@ status_t AAAThread::enableDVS(bool en)
 status_t AAAThread::lockAe(bool en)
 {
     LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
     Message msg;
     msg.id = MESSAGE_ID_ENABLE_AE_LOCK;
     msg.data.enable.enable = en;
@@ -100,7 +97,6 @@ status_t AAAThread::lockAe(bool en)
 status_t AAAThread::lockAwb(bool en)
 {
     LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
     Message msg;
     msg.id = MESSAGE_ID_ENABLE_AWB_LOCK;
     msg.data.enable.enable = en;
@@ -110,7 +106,6 @@ status_t AAAThread::lockAwb(bool en)
 status_t AAAThread::autoFocus()
 {
     LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
     Message msg;
     msg.id = MESSAGE_ID_AUTO_FOCUS;
     return mMessageQueue.send(&msg);
@@ -119,7 +114,6 @@ status_t AAAThread::autoFocus()
 status_t AAAThread::cancelAutoFocus()
 {
     LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
     Message msg;
     msg.id = MESSAGE_ID_CANCEL_AUTO_FOCUS;
     return mMessageQueue.send(&msg);
