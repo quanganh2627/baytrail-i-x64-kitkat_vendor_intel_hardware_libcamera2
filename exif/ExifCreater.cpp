@@ -196,8 +196,8 @@ exif_status ExifCreater::makeExif (void *exifOut,
                  1, exifInfo->exposure_mode);
     writeExifIfd(&pCur, EXIF_TAG_WHITE_BALANCE, EXIF_TYPE_SHORT,
                  1, exifInfo->white_balance);
-    writeExifIfd(&pCur, EXIF_TAG_JPEG_ZOOM_RATIO, EXIF_TYPE_SHORT,
-                 1, exifInfo->zoom_ratio);
+    writeExifIfd(&pCur, EXIF_TAG_JPEG_ZOOM_RATIO, EXIF_TYPE_RATIONAL,
+                1, &exifInfo->zoom_ratio, &LongerTagOffset, pIfdStart);
     writeExifIfd(&pCur, EXIF_TAG_SCENCE_CAPTURE_TYPE, EXIF_TYPE_SHORT,
                  1, exifInfo->scene_capture_type);
     writeExifIfd(&pCur, EXIF_TAG_GAIN_CONTROL, EXIF_TYPE_SHORT,

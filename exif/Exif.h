@@ -234,7 +234,7 @@ typedef struct {
     uint16_t color_space;
     uint16_t exposure_mode;
     uint16_t white_balance;
-    uint16_t zoom_ratio;
+    rational_t zoom_ratio;
     uint16_t scene_capture_type;
     uint16_t light_source;
     uint16_t gain_control;
