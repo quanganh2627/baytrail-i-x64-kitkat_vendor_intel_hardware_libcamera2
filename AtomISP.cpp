@@ -2640,7 +2640,6 @@ int AtomISP::v4l2_capture_new_buffer(int device, int index, struct v4l2_buffer_i
     LOG1("memory %u", vbuf->memory);
     LOG1("userptr:  %lu", vbuf->m.userptr);
     LOG1("length %u", vbuf->length);
-    LOG1("input %u", vbuf->input);
     return ret;
 }
 
