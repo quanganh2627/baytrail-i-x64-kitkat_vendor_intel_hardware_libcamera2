@@ -96,9 +96,7 @@ ifeq ($(TARGET_PRODUCT), mfld_cdk)
 LOCAL_CFLAGS += -DMFLD_CDK
 else ifeq ($(TARGET_PRODUCT),mfld_gi)
 LOCAL_CFLAGS += -DMFLD_GI
-else ifeq ($(TARGET_PRODUCT), mfld_dv10)
-LOCAL_CFLAGS += -DMFLD_DV10
-else ifeq ($(TARGET_PRODUCT), salitpa)
+else ifneq (,$(findstring $(TARGET_PRODUCT),mfld_dv10 redridge salitpa))
 LOCAL_CFLAGS += -DMFLD_DV10
 else ifeq ($(TARGET_PRODUCT), ctp_pr0)
 LOCAL_CFLAGS += -DCTP_PR0
@@ -122,23 +120,7 @@ endif
 # to use Camera Imaging(CI) supported by intel.
 # If a platform does not support camera the USE_CAMERA_STUB 
 # should be set to "true" in BoardConfig.mk
-# LOCAL_MODULE := camera.$(TARGET_DEVICE)
-
-ifeq ($(TARGET_PRODUCT),mfld_gi)
-LOCAL_MODULE := camera.mfld_gi
-else ifeq ($(TARGET_PRODUCT), mfld_dv10)
-LOCAL_MODULE := camera.mfld_dv10
-else ifeq ($(TARGET_PRODUCT), salitpa)
-LOCAL_MODULE := camera.salitpa
-else ifeq ($(TARGET_PRODUCT), ctp_pr0)
-LOCAL_MODULE := camera.ctp_pr0
-else ifeq ($(TARGET_PRODUCT), ctp_pr1)
-LOCAL_MODULE := camera.ctp_pr1
-else ifeq ($(TARGET_PRODUCT), ctp_nomodem)
-LOCAL_MODULE := camera.ctp_nomodem
-else
-LOCAL_MODULE := camera.mfld_pr2
-endif
+LOCAL_MODULE := camera.$(TARGET_DEVICE)
 
 LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
 LOCAL_MODULE_TAGS := optional
