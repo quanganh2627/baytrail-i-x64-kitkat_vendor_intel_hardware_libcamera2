@@ -98,12 +98,8 @@ else ifeq ($(TARGET_PRODUCT),mfld_gi)
 LOCAL_CFLAGS += -DMFLD_GI
 else ifneq (,$(findstring $(TARGET_PRODUCT),mfld_dv10 redridge salitpa))
 LOCAL_CFLAGS += -DMFLD_DV10
-else ifeq ($(TARGET_PRODUCT), ctp_pr0)
-LOCAL_CFLAGS += -DCTP_PR0
-else ifeq ($(TARGET_PRODUCT), ctp_pr1)
-LOCAL_CFLAGS += -DCTP_PR1
-else ifeq ($(TARGET_PRODUCT), ctp_nomodem)
-LOCAL_CFLAGS += -DCTP_NOMODEM
+else ifneq (,$(findstring $(TARGET_PRODUCT),victoriabay ctp_pr1 ctp_nomodem))
+LOCAL_CFLAGS += -DCLVT
 else ifeq ($(TARGET_PRODUCT), mrfl_vp)
 LOCAL_CFLAGS += -DMRFL_VP
 else
