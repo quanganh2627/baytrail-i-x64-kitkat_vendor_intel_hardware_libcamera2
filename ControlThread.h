@@ -390,6 +390,7 @@ private:
 
     status_t startFaceDetection();
     status_t stopFaceDetection(bool wait=false);
+    status_t enableFocusMoveMsg(bool enable);
     status_t startSmartShutter(SmartShutterMode mode);
     status_t stopSmartShutter(SmartShutterMode mode);
     status_t cancelCaptureOnTrigger();

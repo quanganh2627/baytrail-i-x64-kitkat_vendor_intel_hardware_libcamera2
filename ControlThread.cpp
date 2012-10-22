@@ -4285,6 +4285,8 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
     case CAMERA_CMD_STOP_FACE_RECOGNITION:
         status = stopFaceRecognition();
         break;
+    case CAMERA_CMD_ENABLE_FOCUS_MOVE_MSG:
+        status = enableFocusMoveMsg(static_cast<bool>(msg->arg1));
     default:
         break;
     }
@@ -4782,6 +4784,18 @@ status_t ControlThread::stopFaceRecognition()
     if (mPostProcThread->isFaceRecognitionRunning()) {
         mPostProcThread->stopFaceRecognition();
     }
+    return NO_ERROR;
+}
+
+status_t ControlThread::enableFocusMoveMsg(bool enable)
+{
+    LOG1("@%s", __FUNCTION__);
+    if (enable) {
+        enableMsgType(CAMERA_MSG_FOCUS_MOVE);
+    } else {
+        disableMsgType(CAMERA_MSG_FOCUS_MOVE);
+    }
+
     return NO_ERROR;
 }
 
