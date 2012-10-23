@@ -407,7 +407,7 @@ status_t AtomAAA::setAfMode(AfMode mode)
 AfMode AtomAAA::getAfMode()
 {
     Mutex::Autolock lock(m3aLock);
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     if(!mHas3A)
         return CAM_AF_MODE_NOT_SET;
 
