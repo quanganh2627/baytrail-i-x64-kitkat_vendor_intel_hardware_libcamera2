@@ -92,11 +92,17 @@ public:
 static PerformanceTimer gLaunch2Preview;
 static PerformanceTimer gShot2Shot;
 static PerformanceTimer gShutterLag;
+static PerformanceTimer gSwitchCameras;
 static bool gShot2ShotBreakdown = false;
 static int gShot2ShotFrame = -1;
 static bool gShot2ShotTakePictureCalled = false;
 static bool gShot2ShotAutoFocusDone = false;
 static PerformanceTimer gAAAProfiler;
+static bool gSwitchCamerasCalled = false;
+static bool gSwitchCamerasOriginalVideoMode = false;
+static bool gSwitchCamerasVideoMode = false;
+static int gSwitchCamerasOriginalCameraId = 0;
+
 /**
  * Controls trace state
  */
@@ -273,6 +279,7 @@ void Shot2Shot::stop(int frameCounter)
 /**
  * Controls trace state
  */
+
 void AAAProfiler::enable(bool set)
 {
     gAAAProfiler.mRequested = set;
@@ -298,6 +305,73 @@ void AAAProfiler::stop(void)
         LOGD("3A profiling time::\t%lldms\n",
              gAAAProfiler.timeUs() / 1000);
         gAAAProfiler.stop();
+    }
+}
+
+/**
+ * Controls trace state
+ */
+void SwitchCameras::enable(bool set)
+{
+    gSwitchCameras.mRequested = set;
+}
+
+/**
+ * Starts the SwitchCameras trace.
+ */
+void SwitchCameras::start(int cameraid)
+{
+    if (gSwitchCameras.isRequested()) {
+        gSwitchCameras.formattedTrace("SwitchCameras", __FUNCTION__);
+        gSwitchCamerasCalled = false;
+        gSwitchCamerasOriginalVideoMode = false;
+        gSwitchCamerasVideoMode = false;
+        gSwitchCamerasOriginalCameraId = cameraid;
+        gSwitchCameras.start();
+    }
+}
+
+/**
+ * Get the original mode
+ */
+void SwitchCameras::getOriginalMode(bool videomode)
+{
+    if (gSwitchCameras.isRequested())
+        gSwitchCamerasOriginalVideoMode = videomode;
+}
+
+/**
+ * This function will be called at the time of start preview.
+ */
+void SwitchCameras::called(bool videomode)
+{
+    if (gSwitchCameras.isRequested()) {
+        gSwitchCamerasCalled = true;
+        gSwitchCamerasVideoMode = videomode;
+    }
+}
+
+/**
+ * Stops the SwitchCameras trace and prints out results.
+ */
+void SwitchCameras::stop(void)
+{
+    if (gSwitchCameras.isRunning() && gSwitchCamerasCalled == true) {
+        if (gSwitchCamerasOriginalVideoMode == gSwitchCamerasVideoMode) {
+            LOGD("Using %s mode, Switch from %s camera to %s camera, SWITCH time::\t%lldms\n",
+                    (gSwitchCamerasVideoMode ? "video" : "camera"),
+                    ((gSwitchCamerasOriginalCameraId == 0) ? "back" : "front"),
+                    ((gSwitchCamerasOriginalCameraId == 1) ? "back" : "front"),
+                    gSwitchCameras.timeUs() / 1000);
+        } else {
+            LOGD("Using %s camera, Switch from %s mode to %s mode, SWITCH time::\t%lldms\n",
+                    ((gSwitchCamerasOriginalCameraId == 0) ? "back" : "front"),
+                    (gSwitchCamerasOriginalVideoMode ? "video" : "camera"),
+                    (gSwitchCamerasVideoMode ? "video" : "camera"),
+                    gSwitchCameras.timeUs() / 1000);
+        }
+        gSwitchCamerasCalled = false;
+        gSwitchCameras.stop();
     }
 }
 

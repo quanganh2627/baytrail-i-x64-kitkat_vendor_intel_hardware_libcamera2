@@ -69,10 +69,20 @@ namespace PerformanceTraces {
     static void snapshotTaken(struct timeval *ts) STUB_BODY
   };
 
+
   class AAAProfiler {
   public:
     static void enable(bool set) STUB_BODY
     static void start(void) STUB_BODY
+    static void stop(void) STUB_BODY
+  };
+
+  class SwitchCameras {
+  public:
+    static void enable(bool set) STUB_BODY
+    static void start(int cameraid) STUB_BODY
+    static void getOriginalMode(bool videomode) STUB_BODY
+    static void called(bool videomode) STUB_BODY
     static void stop(void) STUB_BODY
   };
 
@@ -124,11 +134,14 @@ namespace PerformanceTraces {
    * @param x preview frame counter
    */
   #define PERFORMANCE_TRACES_PREVIEW_SHOWN(x) \
-      if (x == 1) {  \
-          PerformanceTraces::Launch2Preview::stop(); \
-          PerformanceTraces::Shot2Shot::step(__FUNCTION__);  \
-          PerformanceTraces::Shot2Shot::stop(x); \
-      }
+      do { \
+          if (x == 1) {  \
+              PerformanceTraces::Launch2Preview::stop(); \
+              PerformanceTraces::Shot2Shot::step(__FUNCTION__);  \
+              PerformanceTraces::Shot2Shot::stop(x); \
+          } \
+          PerformanceTraces::SwitchCameras::stop(); \
+      } while(0)
 
 }; // ns PerformanceTraces
 }; // ns android

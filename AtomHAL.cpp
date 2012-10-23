@@ -151,6 +151,7 @@ static void atom_stop_preview(struct camera_device * device)
     if(!device)
         return;
     atom_camera *cam = (atom_camera *)(device->priv);
+    PerformanceTraces::SwitchCameras::start(cam->camera_id);
     cam->control_thread->stopPreview();
 }
 
