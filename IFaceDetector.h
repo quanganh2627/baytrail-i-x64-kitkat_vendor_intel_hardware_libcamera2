@@ -43,7 +43,7 @@ public:
      * returns -1 if the buffer is not accepted.
      * otherwise return 0.
      */
-    virtual int sendFrame(AtomBuffer *img) = 0;
+    virtual int sendFrame(AtomBuffer *img, int zoomRatio) = 0;
 
     virtual void startSmartShutter(SmartShutterMode mode, int level) = 0;
     virtual void stopSmartShutter(SmartShutterMode mode) = 0;

@@ -140,6 +140,7 @@ static void computeZoomRatios(char *zoom_ratio, int max_count){
         *(zoom_ratio + pos -1 ) = '\0';
 }
 
+
 ////////////////////////////////////////////////////////////////////
 //                          PUBLIC METHODS
 ////////////////////////////////////////////////////////////////////
@@ -260,6 +261,23 @@ int AtomISP::getPrimaryCameraIndex(void) const
         }
     }
     return res;
+}
+
+/**
+ * Convert zoom value to zoom ratio
+ *
+ * @param zoomValue zoom value to convert to zoom ratio
+ *
+ * @return zoom ratio multiplied by 100
+ */
+int AtomISP::zoomRatio(int zoomValue) {
+    if (zoomValue > MAX_ZOOM_LEVEL) {
+        LOGE("Too big zoom value");
+        return BAD_VALUE;
+    }
+
+    int zoomStep = (MAX_SUPPORT_ZOOM - MIN_SUPPORT_ZOOM) / MAX_ZOOM_LEVEL;
+    return MIN_SUPPORT_ZOOM + zoomValue * zoomStep;
 }
 
 /**

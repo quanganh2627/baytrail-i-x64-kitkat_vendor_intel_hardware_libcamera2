@@ -430,7 +430,7 @@ status_t PostProcThread::handleExit()
     return status;
 }
 
-int PostProcThread::sendFrame(AtomBuffer *img)
+int PostProcThread::sendFrame(AtomBuffer *img, int zoomRatio)
 {
     LOG2("@%s: buf=%p, width=%d height=%d rotation=%d", __FUNCTION__, img, img->width , img->height, img->rotation);
     Message msg;
@@ -441,6 +441,8 @@ int PostProcThread::sendFrame(AtomBuffer *img)
     } else {
         LOGW("@%s: NULL AtomBuffer frame", __FUNCTION__);
     }
+
+    msg.data.frame.zoomRatio = zoomRatio;
 
     if (mMessageQueue.send(&msg) == NO_ERROR)
         return 0;
@@ -632,16 +634,28 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
 
         camera_face_t faces[num_faces];
         camera_frame_metadata_t face_metadata;
+
+        ia_face_state faceState;
+        faceState.faces = new ia_face[num_faces];
+        if (faceState.faces == NULL) {
+            LOGE("Error allocation memory");
+            return NO_MEMORY;
+        }
+
         face_metadata.number_of_faces = mFaceDetector->getFaces(faces, frameData.width, frameData.height);
         face_metadata.faces = faces;
+        mFaceDetector->getFaceState(&faceState, frameData.width, frameData.height, frame.zoomRatio);
 
         // call face detection listener and pass faces for 3A (AF) and smart scene detection
         if ((face_metadata.number_of_faces > 0) || (mLastReportedNumberOfFaces != 0)) {
             mLastReportedNumberOfFaces = face_metadata.number_of_faces;
             useFacesForAAA(face_metadata);
             mpListener->facesDetected(face_metadata);
-            mPostProcDoneCallback->facesDetected(&face_metadata);
+            mPostProcDoneCallback->facesDetected(&faceState);
         }
+
+        delete[] faceState.faces;
+        faceState.faces = NULL;
 
     // trigger for smart shutter
         if (mSmartShutter.captureOnTrigger) {

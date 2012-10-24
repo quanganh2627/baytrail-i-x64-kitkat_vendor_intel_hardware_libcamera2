@@ -35,7 +35,7 @@ class ICallbackPostProc {
 public:
     ICallbackPostProc() {}
     virtual ~ICallbackPostProc() {}
-    virtual void facesDetected(camera_frame_metadata_t *face_metadata) = 0;
+    virtual void facesDetected(const ia_face_state *faceState) = 0;
     virtual void postProcCaptureTrigger() = 0;
 };
 
@@ -67,7 +67,7 @@ public:
     };
     virtual void startFaceDetection();
     virtual void stopFaceDetection(bool wait=false);
-    virtual int sendFrame(AtomBuffer *img);
+    virtual int sendFrame(AtomBuffer *img, int zoomRatio);
     virtual void startSmartShutter(SmartShutterMode mode, int level);
     virtual void stopSmartShutter(SmartShutterMode mode);
     virtual bool isSmartRunning();
@@ -132,6 +132,7 @@ private:
     //
     struct MessageFrame {
         AtomBuffer img;
+        int zoomRatio;
     };
 
     struct MessageSmartShutter {

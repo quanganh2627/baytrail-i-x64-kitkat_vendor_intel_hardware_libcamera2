@@ -37,6 +37,7 @@ enum FlickerMode
 #include <time.h>
 #include "AtomCommon.h"
 #include "PlatformData.h"
+#include "ia_face.h"
 #include "AtomISP.h"
 #include <ia_3a_types.h>
 #include <ia_types.h>
@@ -317,7 +318,7 @@ public:
     status_t setSmartSceneDetection(bool en);
     bool     getSmartSceneDetection();
     status_t getSmartSceneMode(int *sceneMode, bool *sceneHdr);
-    status_t setFaces(camera_frame_metadata_t *face_metadata, int zoom);
+    status_t setFaces(const ia_face_state& faceState);
 
     status_t getGridWindow(AAAWindowInfo& window);
 

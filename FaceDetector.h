@@ -20,13 +20,8 @@
 #include <utils/threads.h>
 #include <system/camera.h>
 #include "MessageQueue.h"
-#ifdef __cplusplus
-extern "C" {
-#endif
+
 #include "ia_face.h"
-#ifdef __cplusplus
-}
-#endif
 
 namespace android {
 
@@ -60,6 +55,8 @@ public:
     ~FaceDetector();
 
     int getFaces(camera_face_t *faces, int width, int height);
+    void getFaceState(ia_face_state *faceStateOut, int width, int height,
+                      int zoomRatio);
     int faceDetect(ia_frame *frame);
     void eyeDetect(ia_frame *frame);
     void setSmileThreshold(int threshold);
@@ -121,6 +118,11 @@ private:
     ~FaceDetector() {}
 
     int getFaces(camera_face_t *faces, int width, int height) { return 0; }
+    void getFaceState(ia_face_state *faceStateOut, int width, int height,
+                      int zoomRatio) {
+        assert(faceStateOut != NULL);
+        faceStateOut->num_faces = 0;
+    }
     int faceDetect(ia_frame *frame) { return 0; }
     void eyeDetect(ia_frame *frame) {}
     void setSmileThreshold(int threshold) {}

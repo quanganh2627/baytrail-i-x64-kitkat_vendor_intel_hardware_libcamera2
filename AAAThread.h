@@ -75,7 +75,7 @@ public:
     status_t cancelAutoFocus();
     status_t newFrame(struct timeval capture_timestamp);
     status_t applyRedEyeRemoval(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer, int width, int height, int format);
-    status_t setFaces(camera_frame_metadata_t *face_metadata, int zoom);
+    status_t setFaces(const ia_face_state& faceState);
     void getCurrentSmartScene(int &sceneMode, bool &sceneHdr);
     void resetSmartSceneValues();
 
@@ -175,8 +175,7 @@ private:
     size_t mFramesTillAfComplete; // used for debugging only
     int mSmartSceneMode; // Current detected scene mode, as defined in ia_aiq_types.h
     bool mSmartSceneHdr; // Indicates whether the detected scene is valid for HDR
-    camera_frame_metadata_t mFaceMetadata; // face metadata for smart scene detection
-    int mCurrentZoom; // current zoom level for smart scene detection
+    ia_face_state mFaceState; // face metadata for smart scene detection
 }; // class AAAThread
 
 }; // namespace android

@@ -97,6 +97,9 @@ LOCAL_SHARED_LIBRARIES += \
 	libintelmetadatabuffer
 endif
 
+LOCAL_STATIC_LIBRARIES := \
+	libia_coordinate
+
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_CFLAGS += -DUSE_INTEL_JPEG
 endif

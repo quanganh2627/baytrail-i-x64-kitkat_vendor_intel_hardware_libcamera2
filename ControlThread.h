@@ -127,7 +127,7 @@ private:
     virtual void postProcCaptureTrigger();
     virtual void returnBuffer(AtomBuffer *buff);
     virtual void sceneDetected(int sceneMode, bool sceneHdr);
-    virtual void facesDetected(camera_frame_metadata_t *face_metadata);
+    virtual void facesDetected(const ia_face_state *faceState);
     virtual void panoramaCaptureTrigger();
     virtual void panoramaFinalized(AtomBuffer *buff);
 

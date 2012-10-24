@@ -226,6 +226,11 @@ public:
     /* file injection controls */
     void getSensorDataFromFile(const char *file_name, sensorPrivateData *sensor_data);
 
+// public static methods
+public:
+   // return zoom ratio multiplied by 100 from given zoom value
+   static int zoomRatio(int zoomValue);
+
 // private types
 private:
 

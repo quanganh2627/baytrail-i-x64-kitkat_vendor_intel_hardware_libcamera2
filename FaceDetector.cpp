@@ -22,6 +22,8 @@
 #include "LogHelper.h"
 #include "sqlite3.h"
 
+#include "ia_coordinate.h"
+
 namespace android {
 
 FaceDetector::FaceDetector() : Thread()
@@ -259,6 +261,43 @@ int FaceDetector::getFaces(camera_face_t *faces_out, int width, int height)
         LOG2("smile state: %d, score: %d, threshold %d", iaFace.smile_state, iaFace.smile_score, mSmileThreshold);
     }
     return mContext->num_faces;
+}
+
+/**
+ * Return detected faces in ia_face format and ia_coordinate
+ *
+ * @param faces_out: [OUT]: Detected faces
+ * @param width: [IN]: Width of the preview frame
+ * @param height: [IN]: Height of the preview frame
+ * @param zoomRatio: [IN]: digital zoomRatio of preview frame multiblied by 100
+ *
+ * @return Number of faces
+ */
+void FaceDetector::getFaceState(ia_face_state *faceStateOut, int width, int height, int zoomRatio) {
+    LOG2("@%s", __FUNCTION__);
+
+    assert(faceStateOut != NULL);
+
+    faceStateOut->num_faces = mContext->num_faces;
+    memcpy(faceStateOut->faces, mContext->faces, mContext->num_faces * sizeof(ia_face));
+
+    // ia_face coordinate range is [0 ... width] or [0 ... height]
+    ia_coordinate_system srcCoordinateSystem;
+    srcCoordinateSystem.top = 0;
+    srcCoordinateSystem.left = 0;
+    srcCoordinateSystem.bottom = height;
+    srcCoordinateSystem.right = width;
+
+    // use zoom ratio calculate where visible frame is in ia_coorinates
+    ia_coordinate_system trgCoordinateSystem;
+    long targetWidth = IA_COORDINATE_WIDTH * 100 / zoomRatio;
+    long targetHeight = IA_COORDINATE_HEIGHT * 100 / zoomRatio;
+    trgCoordinateSystem.top = IA_COORDINATE_TOP + (IA_COORDINATE_HEIGHT - targetHeight) / 2;
+    trgCoordinateSystem.left = IA_COORDINATE_LEFT + (IA_COORDINATE_WIDTH - targetWidth) / 2;
+    trgCoordinateSystem.bottom = trgCoordinateSystem.top + targetHeight;
+    trgCoordinateSystem.right = trgCoordinateSystem.left + targetWidth;
+
+    ia_coordinate_convert_faces(faceStateOut, &srcCoordinateSystem, &trgCoordinateSystem);
 }
 
 bool FaceDetector::threadLoop()

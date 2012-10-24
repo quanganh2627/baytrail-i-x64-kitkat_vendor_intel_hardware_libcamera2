@@ -784,11 +784,10 @@ void ControlThread::sceneDetected(int sceneMode, bool sceneHdr)
     mMessageQueue.send(&msg);
 }
 
-void ControlThread::facesDetected(camera_frame_metadata_t *face_metadata)
+void ControlThread::facesDetected(const ia_face_state *faceState)
 {
     LOG2("@%s", __FUNCTION__);
-    int zoom = (mParameters.getInt(CameraParameters::KEY_ZOOM) + 10) / 10;
-    m3AThread->setFaces(face_metadata, zoom);
+    m3AThread->setFaces(*faceState);
 }
 
 void ControlThread::panoramaFinalized(AtomBuffer *buff)
@@ -2277,7 +2276,7 @@ status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
         LOG2("@%s: face detection active", __FUNCTION__);
         msg->buff.rotation = mParameters.getInt(CameraParameters::KEY_ROTATION);
         msg->buff.owner = this;
-        if (mPostProcThread->sendFrame(&msg->buff) < 0) {
+        if (mPostProcThread->sendFrame(&msg->buff, AtomISP::zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM))) < 0) {
             msg->buff.owner = 0;
             releasePreviewFrame(&msg->buff);
         }
