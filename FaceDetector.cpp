@@ -22,10 +22,6 @@
 #include "LogHelper.h"
 #include "sqlite3.h"
 
-// HACK: This should be in ia_face.h
-extern "C" int ia_face_register_feature(ia_face_state* fs, char* new_feature, int new_person_id,
-                                        int new_feature_id, int time_stamp, int condition, int checksum, int version);
-
 namespace android {
 
 FaceDetector::FaceDetector() : Thread()
@@ -199,7 +195,7 @@ status_t FaceDetector::loadFaceDb()
         personId  = sqlite3_column_int(pStmt, 2);
         feature   = sqlite3_column_blob(pStmt, 3);
         timeStamp = sqlite3_column_int(pStmt, 4);
-        ret = ia_face_register_feature(mContext, (char*)feature, personId, featureId, timeStamp, 0, 0, version);
+        ret = ia_face_register_feature(mContext, (uint8_t*)feature, personId, featureId, timeStamp, 0, 0, version);
         LOG2("Register feature (%d): face ID: %d, feature ID: %d, timestamp: %d, version: %d", featureCount, personId, featureId, timeStamp, version);
         if (ret < 0) {
             LOGE("Error on loading feature data(%d) : %d", featureCount, ret);
