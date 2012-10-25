@@ -268,6 +268,10 @@ public:
                              const void *record,
                              unsigned short record_size);
 
+    //dump 3A statistics
+    int dumpCurrent3aStatToFile(void);
+    int init3aStatDump(const char * str_mode);
+    int deinit3aStatDump(void);
 // private members
 private:
 
@@ -281,6 +285,7 @@ private:
     AwbMode mAwbMode;
     int mFocusPosition;
     nsecs_t mStillAfStart;
+    FILE *pFile3aStatDump;
 }; // class AtomAAA
 
 }; // namespace android

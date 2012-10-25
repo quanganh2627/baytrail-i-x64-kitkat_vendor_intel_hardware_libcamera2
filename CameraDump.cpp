@@ -101,6 +101,7 @@ raw_data_format_E CameraDump::sRawDataFormat = RAW_NONE;
 bool CameraDump::sNeedDumpPreview = false;
 bool CameraDump::sNeedDumpSnapshot = false;
 bool CameraDump::sNeedDumpVideo = false;
+bool CameraDump::sNeedDump3aStat = false;
 
 CameraDump::CameraDump() : mAAA(AtomAAA::getInstance())
 {
@@ -135,6 +136,7 @@ void CameraDump::setDumpDataFlag(void)
     sNeedDumpPreview = false;
     sNeedDumpVideo = false;
     sNeedDumpSnapshot = false;
+    sNeedDump3aStat = false;
 
     // Set the dump debug level from property:
     if (property_get("camera.hal.debug", DumpLevelProp, NULL)) {
@@ -159,6 +161,9 @@ void CameraDump::setDumpDataFlag(void)
 
         if (DumpProp & CAMERA_DEBUG_DUMP_SNAPSHOT)
             sNeedDumpSnapshot = true;
+
+        if (DumpProp & CAMERA_DEBUG_DUMP_3A_STATISTICS)
+            sNeedDump3aStat = true;
     }
     LOG1("sRawDataFormat=%d, sNeedDumpPreview=%d, sNeedDumpVideo=%d, sNeedDumpSnapshot=%d",
          sRawDataFormat, sNeedDumpPreview, sNeedDumpVideo, sNeedDumpSnapshot);
@@ -194,6 +199,9 @@ bool CameraDump::isDumpImageEnable(int dumpFlag)
             break;
         case CAMERA_DEBUG_DUMP_SNAPSHOT:
             ret = sNeedDumpSnapshot;
+            break;
+        case CAMERA_DEBUG_DUMP_3A_STATISTICS:
+            ret = sNeedDump3aStat;
             break;
         default:
             ret = false;

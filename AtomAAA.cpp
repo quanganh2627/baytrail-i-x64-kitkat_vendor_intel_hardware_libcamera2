@@ -1233,5 +1233,62 @@ status_t AtomAAA::getGridWindow(AAAWindowInfo& window)
     return NO_ERROR;
 }
 
+int AtomAAA::dumpCurrent3aStatToFile(void)
+{
+    Mutex::Autolock lock(m3aLock);
+
+     if (SENSOR_TYPE_RAW == mSensorType) {
+         ci_adv_3a_stat cur_stat;
+         ci_adv_get_3a_stat (&cur_stat);
+         if (NULL != pFile3aStatDump)
+             fprintf(pFile3aStatDump, "%8.3f, %8.3f, %8.3f, %8.3f, %8d, %8.3f, %8.3f, %8.3f\n",
+                 cur_stat.bv,
+                 cur_stat.tv,
+                 cur_stat.sv,
+                 cur_stat.av,
+                 cur_stat.focus_pos,
+                 cur_stat.wb_gain_r,
+                 cur_stat.wb_gain_g,
+                 cur_stat.wb_gain_b);
+     }
+
+     return NO_ERROR;
+}
+
+int AtomAAA::init3aStatDump(const char * str_mode)
+{
+    Mutex::Autolock lock(m3aLock);
+
+    if (SENSOR_TYPE_RAW == mSensorType) {
+        char out_filename[80];
+        struct timeval cur_time;
+        gettimeofday(&cur_time, 0);
+        snprintf(out_filename, sizeof(out_filename), "/data/dynamic_stat_%s_%010d_%03d.log", str_mode,
+            (unsigned int)(cur_time.tv_sec),
+            (int)(cur_time.tv_usec/1000.0));
+
+        pFile3aStatDump = fopen(out_filename, "w");
+        if (NULL == pFile3aStatDump) {
+            LOGE("error in open file for 3a statistics dump\n");
+            return INVALID_OPERATION;
+        }
+    }
+
+    return NO_ERROR;
+}
+
+int AtomAAA::deinit3aStatDump(void)
+{
+    Mutex::Autolock lock(m3aLock);
+
+    if (SENSOR_TYPE_RAW == mSensorType) {
+        if (NULL != pFile3aStatDump) {
+            fclose (pFile3aStatDump);
+            pFile3aStatDump = NULL;
+        }
+    }
+
+    return NO_ERROR;
+}
 
 } //  namespace android

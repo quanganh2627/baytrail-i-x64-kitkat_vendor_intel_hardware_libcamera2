@@ -795,6 +795,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         state = STATE_PREVIEW_STILL;
         mode = MODE_PREVIEW;
     }
+    if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
+        mAAA->init3aStatDump("preview");
 
     // set preview frame config
     format = V4L2Format(mParameters.getPreviewFormat());
@@ -952,6 +954,10 @@ status_t ControlThread::stopPreviewCore()
     // set to null because frames can be returned to hal in stop state
     // need to check for null in relevant locations
     mCoupledBuffers = NULL;
+
+    if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
+        mAAA->deinit3aStatDump();
+
     return status;
 }
 

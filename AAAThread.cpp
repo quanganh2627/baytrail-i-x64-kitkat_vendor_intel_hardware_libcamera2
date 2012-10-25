@@ -21,6 +21,7 @@
 #include "AAAThread.h"
 #include "AtomAAA.h"
 #include "FaceDetector.h"
+#include "CameraDump.h"
 
 namespace android {
 
@@ -255,6 +256,10 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
     if(m3ARunning){
         // Run 3A statistics
         status = mAAA->apply3AProcess(true, capture_timestamp);
+
+        //dump 3A statistics
+        if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
+            mAAA->dumpCurrent3aStatToFile();
 
         // If auto-focus was requested, run auto-focus sequence
         if (status == NO_ERROR && mStartAF) {

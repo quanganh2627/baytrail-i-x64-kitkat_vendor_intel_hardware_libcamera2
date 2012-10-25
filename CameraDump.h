@@ -87,6 +87,7 @@ namespace android {
         static bool sNeedDumpPreview;
         static bool sNeedDumpSnapshot;
         static bool sNeedDumpVideo;
+        static bool sNeedDump3aStat;
         bool mNeedDumpFlush;
         AtomAAA *mAAA;
         camera_delay_dumpImage_T mDelayDump;
