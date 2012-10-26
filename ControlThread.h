@@ -586,6 +586,9 @@ private:
 
     bool mPreviewForceChanged;
 
+    Mutex mPreviewStartLock;
+    bool mPreviewStartQueued;
+
     CameraDump *mCameraDump;
 
     CameraAreas mFocusAreas;

@@ -102,6 +102,7 @@ ControlThread::ControlThread() :
     ,mLastRecordingBuffIndex(0)
     ,mStoreMetaDataInBuffers(false)
     ,mPreviewForceChanged(false)
+    ,mPreviewStartQueued(false)
     ,mCameraDump(NULL)
     ,mFocusAreas()
     ,mMeteringAreas()
@@ -443,20 +444,26 @@ status_t ControlThread::startPreview()
 {
     LOG1("@%s", __FUNCTION__);
     PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
-    // send message and block until thread processes message
+    status_t status = mPreviewStartLock.tryLock();
+    if (status != OK) {
+        return status;
+    }
+    // send message
     Message msg;
     msg.id = MESSAGE_ID_START_PREVIEW;
-    return mMessageQueue.send(&msg, MESSAGE_ID_START_PREVIEW);
+    mPreviewStartQueued = true;
+    status = mMessageQueue.send(&msg);
+    mPreviewStartLock.unlock();
+    return status;
 }
 
 status_t ControlThread::stopPreview()
 {
     LOG1("@%s", __FUNCTION__);
-    // send message and block until thread processes message
-    if (mState == STATE_STOPPED) {
+    if (mState == STATE_STOPPED && mPreviewStartQueued == false) {
         return NO_ERROR;
     }
-
+    // send message and block until thread processes message
     Message msg;
     msg.id = MESSAGE_ID_STOP_PREVIEW;
     return mMessageQueue.send(&msg, MESSAGE_ID_STOP_PREVIEW);
@@ -486,7 +493,8 @@ bool ControlThread::previewEnabled()
     bool enabled = (mState == STATE_PREVIEW_STILL ||
             mState == STATE_PREVIEW_NO_WINDOW ||
             mState == STATE_PREVIEW_VIDEO ||
-            mState == STATE_RECORDING);
+            mState == STATE_RECORDING ||
+            mPreviewStartQueued);
     return enabled;
 }
 
@@ -1025,11 +1033,13 @@ status_t ControlThread::handleMessageStartPreview()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status;
+    Mutex::Autolock mLock(mPreviewStartLock);
 
     if (mState == STATE_CAPTURE) {
         status = stopCapture();
         if (status != NO_ERROR) {
             LOGE("Could not stop capture before start preview!");
+            mPreviewStartQueued = false;
             return status;
         }
     }
@@ -1051,8 +1061,7 @@ status_t ControlThread::handleMessageStartPreview()
 
     mIsPreviewStartComplete = false;
 
-    // return status and unblock message sender
-    mMessageQueue.reply(MESSAGE_ID_START_PREVIEW, status);
+    mPreviewStartQueued = false;
     return status;
 }
 
