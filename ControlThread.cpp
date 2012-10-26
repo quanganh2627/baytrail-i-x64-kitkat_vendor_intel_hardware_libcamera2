@@ -602,6 +602,8 @@ status_t ControlThread::takePicture()
     LOG1("@%s", __FUNCTION__);
     Message msg;
 
+    PerformanceTraces::ShutterLag::takePictureCalled();
+
     if (mPanoramaThread->getState() != PANORAMA_STOPPED)
         msg.id = MESSAGE_ID_PANORAMA_PICTURE;
     else if (mPostProcThread->isSmartRunning()) // delaying capture for smart shutter case
@@ -1961,6 +1963,7 @@ status_t ControlThread::captureStillPic()
         LOGE("Error in grabbing snapshot!");
         return status;
     }
+    PerformanceTraces::ShutterLag::snapshotTaken(&snapshotBuffer.capture_timestamp);
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
                                        snapshotBuffer.frameCounter);

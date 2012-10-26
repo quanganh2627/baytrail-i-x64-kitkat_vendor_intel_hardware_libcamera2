@@ -53,6 +53,7 @@ void android::LogHelper::setDebugLevel(void)
         if (gLogLevel & CAMERA_DEBUG_LOG_PERF_TRACES) {
             PerformanceTraces::Launch2Preview::enable(true);
             PerformanceTraces::Shot2Shot::enable(true);
+            PerformanceTraces::ShutterLag::enable(true);
         }
         if (gLogLevel & CAMERA_DEBUG_LOG_PERF_TRACES_BREAKDOWN) {
             PerformanceTraces::Shot2Shot::enableBreakdown(true);

@@ -91,6 +91,7 @@ public:
 
 static PerformanceTimer gLaunch2Preview;
 static PerformanceTimer gShot2Shot;
+static PerformanceTimer gShutterLag;
 static bool gShot2ShotBreakdown = false;
 static int gShot2ShotFrame = -1;
 static bool gShot2ShotTakePictureCalled = false;
@@ -124,6 +125,36 @@ void Launch2Preview::stop(void)
         LOGD("LAUNCH time calculated from create instance to the 1st preview frame show::\t%lldms\n",
              gLaunch2Preview.timeUs() / 1000);
         gLaunch2Preview.stop();
+    }
+}
+
+/**
+ * Controls trace state
+ */
+void ShutterLag::enable(bool set)
+{
+    gShutterLag.mRequested = set;
+}
+
+/**
+ * Starts the ShutterLag trace.
+ */
+void ShutterLag::takePictureCalled(void)
+{
+    if (gShutterLag.isRequested())
+        gShutterLag.start();
+}
+
+/**
+ * Prints ShutterLag trace results.
+ */
+void ShutterLag::snapshotTaken(struct timeval *ts)
+{
+    if (gShutterLag.isRunning()) {
+        LOGD("ShutterLag from takePicture() to shot taken:\t%lldms\n",
+             (((nsecs_t(ts->tv_sec)*1000000LL
+             +  nsecs_t(ts->tv_usec))
+             - gShutterLag.mStartAt/1000)/1000));
     }
 }
 

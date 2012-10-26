@@ -62,6 +62,13 @@ namespace PerformanceTraces {
     static void stop(int frameCounter = -1) STUB_BODY
   };
 
+  class ShutterLag {
+  public:
+    static void enable(bool set) STUB_BODY
+    static void takePictureCalled(void) STUB_BODY
+    static void snapshotTaken(struct timeval *ts) STUB_BODY
+  };
+
   /**
    * Helper macro to call PerformanceTraces::Shot2Shot::step() with
    * the proper function name, and pass additional arguments.
