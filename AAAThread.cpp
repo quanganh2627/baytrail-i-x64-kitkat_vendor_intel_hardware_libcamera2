@@ -249,9 +249,27 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
     status_t status = NO_ERROR;
     int sceneMode = 0;
     bool sceneHdr = false;
+    Vector<Message> messages;
 
     if (!mDVSRunning && !m3ARunning)
         return status;
+
+    // 3A & DVS stats are read with proprietary ioctl that returns the
+    // statistics of most recent frame done.
+    // Multiple newFrames indicates we are late and 3A process is going
+    // to read the statistics of the most recent frame.
+    // We flush the queue and use the most recent timestamp.
+    mMessageQueue.remove(MESSAGE_ID_NEW_FRAME, &messages);
+    if(!messages.isEmpty()) {
+        Message msg = *messages.begin();
+        LOGW("%d frames in 3A process queue, handling timestamp "
+             "%lld instead of %lld\n", messages.size(),
+        ((long long)(msg.data.frame.capture_timestamp.tv_sec)*1000000LL +
+         (long long)(msg.data.frame.capture_timestamp.tv_usec)),
+        ((long long)(capture_timestamp.tv_sec)*1000000LL +
+         (long long)(capture_timestamp.tv_usec)));
+        capture_timestamp = msg.data.frame.capture_timestamp;
+    }
 
     if(m3ARunning){
         // Run 3A statistics
