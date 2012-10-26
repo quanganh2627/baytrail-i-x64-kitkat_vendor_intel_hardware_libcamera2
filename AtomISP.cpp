@@ -2258,20 +2258,16 @@ int AtomISP::atomisp_set_attribute (int fd, int attribute_num,
 
     control.id = attribute_num;
     control.value = value;
-    controls.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
+    controls.ctrl_class = V4L2_CTRL_ID2CLASS(control.id);
     controls.count = 1;
     controls.controls = &ext_control;
     ext_control.id = attribute_num;
     ext_control.value = value;
 
+    if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &controls) == 0)
+        return 0;
+
     if (ioctl(fd, VIDIOC_S_CTRL, &control) == 0)
-        return 0;
-
-    if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &controls) == 0)
-        return 0;
-
-    controls.ctrl_class = V4L2_CTRL_CLASS_USER;
-    if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &controls) == 0)
         return 0;
 
     LOGE("Failed to set value %d for control %s (%d) on device '%d', %s",
@@ -2296,26 +2292,19 @@ int AtomISP::atomisp_get_attribute (int fd, int attribute_num,
         return -1;
 
     control.id = attribute_num;
-    controls.ctrl_class = V4L2_CTRL_CLASS_USER;
+    controls.ctrl_class = V4L2_CTRL_ID2CLASS(control.id);
     controls.count = 1;
     controls.controls = &ext_control;
     ext_control.id = attribute_num;
 
+    if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &controls) == 0) {
+        *value = ext_control.value;
+    return 0;
+    }
+
     if (ioctl(fd, VIDIOC_G_CTRL, &control) == 0) {
         *value = control.value;
         return 0;
-    }
-
-    if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &controls) == 0) {
-        *value = ext_control.value;
-    return 0;
-    }
-
-    controls.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
-
-    if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &controls) == 0) {
-        *value = ext_control.value;
-    return 0;
     }
 
     LOGE("Failed to get value for control (%d) on device '%d', %s\n.",
