@@ -102,6 +102,18 @@ const char* PlatformData::preferredPreviewSizeForVideo(void)
     return i->mVideoPreviewSizePref;
 }
 
+void PlatformData::maxSnapshotSize(int cameraId, int* width, int* height)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return;
+    }
+
+    *width = i->mCameras[cameraId].maxSnapshotWidth;
+    *height = i->mCameras[cameraId].maxSnapshotHeight;
+}
+
 bool PlatformData::supportsBackFlash(void)
 {
     PlatformBase *i = getInstance();

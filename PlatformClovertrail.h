@@ -39,6 +39,8 @@ public:
         cam.orientation = 90;
         cam.dvs = false;
         cam.flipping = PlatformData::SENSOR_FLIP_NA;
+        cam.maxSnapshotWidth = RESOLUTION_8MP_WIDTH;
+        cam.maxSnapshotHeight = RESOLUTION_8MP_HEIGHT;
         mCameras.push(cam);
 
         // front camera
@@ -46,6 +48,8 @@ public:
         cam.orientation = 270;
         cam.dvs = false;
         cam.flipping = PlatformData::SENSOR_FLIP_NA;
+        cam.maxSnapshotWidth = RESOLUTION_1_3MP_WIDTH;
+        cam.maxSnapshotHeight = RESOLUTION_1_3MP_HEIGHT;
         mCameras.push(cam);
 
         // file inject device

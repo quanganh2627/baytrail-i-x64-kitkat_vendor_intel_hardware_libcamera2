@@ -19,6 +19,25 @@
 #include <utils/String8.h>
 #include <utils/Vector.h>
 
+#define RESOLUTION_14MP_WIDTH   4352
+#define RESOLUTION_14MP_HEIGHT  3264
+#define RESOLUTION_8MP_WIDTH    3264
+#define RESOLUTION_8MP_HEIGHT   2448
+#define RESOLUTION_5MP_WIDTH    2560
+#define RESOLUTION_5MP_HEIGHT   1920
+#define RESOLUTION_1_3MP_WIDTH    1280
+#define RESOLUTION_1_3MP_HEIGHT   960
+#define RESOLUTION_1080P_WIDTH  1920
+#define RESOLUTION_1080P_HEIGHT 1088
+#define RESOLUTION_720P_WIDTH   1280
+#define RESOLUTION_720P_HEIGHT  720
+#define RESOLUTION_480P_WIDTH   768
+#define RESOLUTION_480P_HEIGHT  480
+#define RESOLUTION_VGA_WIDTH    640
+#define RESOLUTION_VGA_HEIGHT   480
+#define RESOLUTION_POSTVIEW_WIDTH    320
+#define RESOLUTION_POSTVIEW_HEIGHT   240
+
 #include <camera.h>
 namespace android {
 
@@ -76,6 +95,8 @@ class PlatformBase {
        int orientation;
        int flipping;
        bool dvs;
+       int maxSnapshotWidth;
+       int maxSnapshotHeight;
     };
 
     // note: Android NDK does not yet support C++11 and
@@ -88,6 +109,7 @@ class PlatformBase {
     bool mFileInject;
 
     const char* mVideoPreviewSizePref;
+
     /* For EXIF Metadata */
     const char* mProductName;
     const char* mManufacturerName;
@@ -169,6 +191,15 @@ class PlatformData {
      * \return string following getParameter value notation
      */
     static const char* preferredPreviewSizeForVideo(void);
+
+    /**
+     * Returns (via out params) maximal supported snapshot size
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \param pointer to variable to receive max width
+     * \param pointer to variable to receive max height
+     */
+    static void maxSnapshotSize(int cameraId, int* width, int* height);
 
     /**
      * Whether the camera supports Digital Video Stabilization or not

@@ -34,23 +34,6 @@
 
 #define DEFAULT_SENSOR_FPS      15.0
 
-#define RESOLUTION_14MP_WIDTH   4352
-#define RESOLUTION_14MP_HEIGHT  3264
-#define RESOLUTION_8MP_WIDTH    3264
-#define RESOLUTION_8MP_HEIGHT   2448
-#define RESOLUTION_5MP_WIDTH    2560
-#define RESOLUTION_5MP_HEIGHT   1920
-#define RESOLUTION_1080P_WIDTH  1920
-#define RESOLUTION_1080P_HEIGHT 1088
-#define RESOLUTION_720P_WIDTH   1280
-#define RESOLUTION_720P_HEIGHT  720
-#define RESOLUTION_480P_WIDTH   768
-#define RESOLUTION_480P_HEIGHT  480
-#define RESOLUTION_VGA_WIDTH    640
-#define RESOLUTION_VGA_HEIGHT   480
-#define RESOLUTION_POSTVIEW_WIDTH    320
-#define RESOLUTION_POSTVIEW_HEIGHT   240
-
 #define RESOLUTION_14MP_TABLE   \
         "320x240,640x480,1024x768,1280x720,1920x1088,2048x1536,2560x1920,3264x1836,3264x2448,3648x2736,4096x3072,4352x3264"
 
@@ -71,15 +54,11 @@
 
 #define MAX_BACK_CAMERA_PREVIEW_WIDTH   1280
 #define MAX_BACK_CAMERA_PREVIEW_HEIGHT  720
-#define MAX_BACK_CAMERA_SNAPSHOT_WIDTH  4352
-#define MAX_BACK_CAMERA_SNAPSHOT_HEIGHT 3264
 #define MAX_BACK_CAMERA_VIDEO_WIDTH   1920
 #define MAX_BACK_CAMERA_VIDEO_HEIGHT  1088
 
 #define MAX_FRONT_CAMERA_PREVIEW_WIDTH  1280
 #define MAX_FRONT_CAMERA_PREVIEW_HEIGHT 720
-#define MAX_FRONT_CAMERA_SNAPSHOT_WIDTH 1920
-#define MAX_FRONT_CAMERA_SNAPSHOT_HEIGHT    1088
 #define MAX_FRONT_CAMERA_VIDEO_WIDTH   1920
 #define MAX_FRONT_CAMERA_VIDEO_HEIGHT  1088
 
@@ -300,8 +279,6 @@ void AtomISP::initDriverVersion(void)
  */
 void AtomISP::initFrameConfig(int cameraId)
 {
-    int ret;
-
     if (cameraId == INTEL_FILE_INJECT_CAMERA_ID) {
         mConfig.snapshot.maxWidth = MAX_FILE_INJECTION_SNAPSHOT_WIDTH;
         mConfig.snapshot.maxHeight = MAX_FILE_INJECTION_SNAPSHOT_HEIGHT;
@@ -309,30 +286,12 @@ void AtomISP::initFrameConfig(int cameraId)
         mConfig.preview.maxHeight = MAX_FILE_INJECTION_PREVIEW_HEIGHT;
         mConfig.recording.maxWidth = MAX_FILE_INJECTION_RECORDING_WIDTH;
         mConfig.recording.maxHeight = MAX_FILE_INJECTION_RECORDING_HEIGHT;
-        ret = 0;
     }
     else {
-        // query the V4L2 device
-        ret = detectDeviceResolutions();
-    }
-
-    if (ret) {
-        LOGE("Failed to detect camera %s, resolution! Use default settings", mCameraInput->name);
-        switch (mCameraInput->port) {
-        case ATOMISP_CAMERA_PORT_SECONDARY:
-            mConfig.snapshot.maxWidth  = MAX_FRONT_CAMERA_SNAPSHOT_WIDTH;
-            mConfig.snapshot.maxHeight = MAX_FRONT_CAMERA_SNAPSHOT_HEIGHT;
-            break;
-        case ATOMISP_CAMERA_PORT_PRIMARY:
-            mConfig.snapshot.maxWidth  = MAX_BACK_CAMERA_SNAPSHOT_WIDTH;
-            mConfig.snapshot.maxHeight = MAX_BACK_CAMERA_SNAPSHOT_HEIGHT;
-            break;
-        }
-    }
-    else {
-        LOG1("Camera %s: Max-resolution detected: %dx%d", mCameraInput->name,
-                mConfig.snapshot.maxWidth,
-                mConfig.snapshot.maxHeight);
+        int width, height;
+        PlatformData::maxSnapshotSize(mCameraInput->androidCameraId, &width, &height);
+        mConfig.snapshot.maxWidth  = width;
+        mConfig.snapshot.maxHeight = height;
     }
 
     switch (mCameraInput->port) {
@@ -1669,50 +1628,6 @@ status_t AtomISP::selectCameraSensor()
         return UNKNOWN_ERROR;
     }
     return NO_ERROR;
-}
-
-int AtomISP::detectDeviceResolutions()
-{
-    LOG1("@%s", __FUNCTION__);
-    int ret = 0;
-    struct v4l2_frmsizeenum frame_size;
-    //Switch the Mode before try the format.
-    ret = atomisp_set_capture_mode(MODE_CAPTURE);
-    if (ret < 0)
-        return ret;
-
-    int i = 0;
-    while (true) {
-        memset(&frame_size, 0, sizeof(frame_size));
-        frame_size.index = i++;
-        frame_size.pixel_format = mConfig.snapshot.format;
-        /* TODO: Currently VIDIOC_ENUM_FRAMESIZES is returning with Invalid argument
-         * Need to know why the driver is not supporting this V4L2 API call
-         */
-        if (ioctl(video_fds[V4L2_MAIN_DEVICE], VIDIOC_ENUM_FRAMESIZES, &frame_size) < 0) {
-            break;
-        }
-        ret++;
-        float fps = 0;
-        v4l2_capture_g_framerate(
-                video_fds[V4L2_MAIN_DEVICE],
-                &fps,
-                frame_size.discrete.width,
-                frame_size.discrete.height,
-                frame_size.pixel_format);
-        LOG1("Supported frame size: %ux%u@%dfps",
-                frame_size.discrete.width,
-                frame_size.discrete.height,
-                static_cast<int>(fps));
-    }
-
-    // Get the maximum format supported
-    mConfig.snapshot.maxWidth = 0xffff;
-    mConfig.snapshot.maxHeight = 0xffff;
-    ret = v4l2_capture_try_format(V4L2_MAIN_DEVICE, &mConfig.snapshot.maxWidth, &mConfig.snapshot.maxHeight, &mConfig.snapshot.format);
-    if (ret < 0)
-        return ret;
-    return 0;
 }
 
 status_t AtomISP::setPreviewFrameFormat(int width, int height, int format)
