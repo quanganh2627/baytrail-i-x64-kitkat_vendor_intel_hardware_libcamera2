@@ -85,8 +85,8 @@ public:
     void disableMsgType(int32_t msg_type);
     bool msgTypeEnabled(int32_t msg_type);
 
-    // synchronous (blocking) state machine methods
     status_t startPreview();
+    // synchronous (blocking) state machine methods
     status_t stopPreview();
     status_t startRecording();
     status_t stopRecording();
@@ -197,10 +197,6 @@ private:
         AtomBuffer postviewBuf;
     };
 
-    struct MessageSetParameters {
-        char* params;
-    };
-
     struct MessageGetParameters {
         char** params;
     };
@@ -260,9 +256,6 @@ private:
 
         // MESSAGE_ID_PICTURE_DONE
         MessagePicture pictureDone;
-
-        // MESSAGE_ID_SET_PARAMETERS
-        MessageSetParameters setParameters;
 
         // MESSAGE_ID_GET_PARAMETERS
         MessageGetParameters getParameters;
@@ -379,7 +372,7 @@ private:
     status_t handleMessageReleasePreviewFrame(MessageReleasePreviewFrame *msg);
     status_t handleMessagePreviewDone(MessagePreviewDone *msg);
     status_t handleMessagePictureDone(MessagePicture *msg);
-    status_t handleMessageSetParameters(MessageSetParameters *msg);
+    status_t handleMessageSetParameters();
     status_t handleMessageGetParameters(MessageGetParameters *msg);
     status_t handleMessageAutoFocusDone();
     status_t handleMessageCommand(MessageCommand* msg);
@@ -430,6 +423,7 @@ private:
 
     // parameters handling functions
     bool isParameterSet(const char* param);
+    bool isParameterSet(const char* param, const CameraParameters &params);
     String8 paramsReturnNewIfChanged(const CameraParameters *oldParams,
             CameraParameters *newParams,
             const char *key);
@@ -449,7 +443,7 @@ private:
     status_t processParamEffect(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamSceneMode(const CameraParameters *oldParams,
-            CameraParameters *newParams);
+            CameraParameters *newParams, bool applyImmediately = true);
     status_t processParamXNR_ANR(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamGDC(const CameraParameters *oldParams,
