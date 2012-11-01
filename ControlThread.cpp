@@ -3045,16 +3045,31 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     status_t localStatus = NO_ERROR;
+    int newWidth, newHeight;
+    int oldWidth, oldHeight;
+
+    newParams->getPictureSize(&newWidth, &newHeight);
+    oldParams->getPictureSize(&oldWidth, &oldHeight);
 
     // Check the HDR parameters
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_HDR_IMAGING);
+
     if (!newVal.isEmpty()) {
         if(newVal == "on") {
-            mHdr.enabled = true;
-            mHdr.bracketMode = BRACKET_EXPOSURE;
-            mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
+            status = mCP->initializeHDR(newWidth, newHeight);
+            if (status == NO_ERROR) {
+                mHdr.enabled = true;
+                mHdr.bracketMode = BRACKET_EXPOSURE;
+                mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
+            } else {
+                LOGE("HDR buffer allocation failed");
+            }
         } else if(newVal == "off") {
+            status = mCP->uninitializeHDR();
+            if (status != NO_ERROR) {
+                LOGE("HDR buffer release failed");
+            }
             mHdr.enabled = false;
         } else {
             LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_IMAGING, newVal.string());
@@ -3062,6 +3077,21 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         }
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_IMAGING, newVal.string());
+        }
+    } else {
+        // Re-allocate buffers if resolution changed and HDR was ON
+        const char* o = oldParams->get(IntelCameraParameters::KEY_HDR_IMAGING);
+        String8 oldVal (o, (o == NULL ? 0 : strlen(o)));
+        if(oldVal == "on" && (newWidth != oldWidth || newHeight != oldHeight)) {
+            status = mCP->uninitializeHDR();
+            if (status == NO_ERROR) {
+                status = mCP->initializeHDR(newWidth, newHeight);
+                if (status != NO_ERROR) {
+                    LOGE("HDR buffer allocation failed");
+                }
+            } else {
+                LOGE("HDR buffer release failed");
+            }
         }
     }
 

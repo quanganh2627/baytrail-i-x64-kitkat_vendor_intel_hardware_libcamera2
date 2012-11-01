@@ -64,6 +64,8 @@ public:
     status_t computeCDF(const CiUserBuffer& inputBuf, size_t bufIndex)STAT_STUB;
     status_t composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& outputBuf,
                         unsigned vividness, unsigned sharpening)STAT_STUB;
+    status_t initializeHDR(unsigned width, unsigned height)STAT_STUB;
+    status_t uninitializeHDR(void)STAT_STUB;
     static status_t setIaFrameFormat(ia_frame *inputBuf, int v4l2Format)STAT_STUB;
 
 private:
