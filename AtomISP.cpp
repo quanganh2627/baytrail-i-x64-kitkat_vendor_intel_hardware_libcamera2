@@ -1067,6 +1067,7 @@ status_t AtomISP::configurePreview()
     int ret = 0;
     status_t status = NO_ERROR;
 
+    mNumPreviewBuffers = NUM_PREVIEW_BUFFERS;
     mPreviewDevice = mConfigSnapshotPreviewDevice;
 
     if (mPreviewDevice != V4L2_MAIN_DEVICE) {

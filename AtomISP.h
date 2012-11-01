@@ -105,7 +105,7 @@ public:
     status_t stop();
     status_t releaseCaptureBuffers();
 
-    inline int getNumBuffers() { return mNumBuffers; }
+    inline int getNumBuffers(bool videoMode) { return videoMode? mNumBuffers : mNumPreviewBuffers; }
 
     status_t getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameStatus = NULL);
     status_t putPreviewFrame(AtomBuffer *buff);
@@ -235,6 +235,8 @@ private:
     static const int V4L2_MAX_DEVICE_COUNT  = V4L2_INJECT_DEVICE + 1;
 
     static const int NUM_DEFAULT_BUFFERS = 9;
+
+    static const int NUM_PREVIEW_BUFFERS = 6;
 
     struct FrameInfo {
         int format;     // V4L2 format

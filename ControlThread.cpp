@@ -158,8 +158,6 @@ status_t ControlThread::init(int cameraId)
         goto bail;
     }
 
-    mNumBuffers = mISP->getNumBuffers();
-
     mDvs = new AtomDvs(mISP);
     if (mDvs == NULL) {
         LOGE("error creating DVS");
@@ -947,7 +945,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     }
 
     mISP->getPreviewSize(&width, &height,&stride);
-    mNumBuffers = mISP->getNumBuffers();
+    mNumBuffers = mISP->getNumBuffers(videoMode);
     mPreviewThread->setPreviewConfig(width, height, stride, format, mNumBuffers);
 
     mCoupledBuffers = new CoupledBuffer[mNumBuffers];
