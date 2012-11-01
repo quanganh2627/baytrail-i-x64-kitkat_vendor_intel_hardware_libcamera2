@@ -23,7 +23,7 @@
 
 namespace android {
 
-#define MAX_EXIF_SIZE 0xFFFF
+#define MAX_EXIF_SIZE 0x10000
 
 class EXIFMaker {
 private:
