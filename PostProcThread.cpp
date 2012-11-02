@@ -436,6 +436,15 @@ int PostProcThread::sendFrame(AtomBuffer *img, int zoomRatio)
     Message msg;
     msg.id = MESSAGE_ID_FRAME;
 
+    // Face detection/recognition and panorama overlap detection may take long time, which
+    // slows down the preview because the buffers are not returned until they are processed.
+    // Allow post-processing only when the queue is empty. Otherwise the frame will be skipped,
+    // and ControlThread returns the buffer back to ISP.
+    if (!mMessageQueue.isEmpty()) {
+        LOG1("@%s: skipping frame", __FUNCTION__);
+        return -1;
+    }
+
     if (img != NULL) {
         msg.data.frame.img = *img;
     } else {
