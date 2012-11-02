@@ -695,9 +695,12 @@ int PreviewThread::getGfxBufferStride(void)
 {
     int stride = 0;
     buffer_handle_t *buf;
-
-    mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride);
-    mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
+    int err;
+    err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride);
+    if (!err)
+        mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
+    else
+        LOGE("Surface::dequeueBuffer returned error %d", err);
 
     return stride;
 
