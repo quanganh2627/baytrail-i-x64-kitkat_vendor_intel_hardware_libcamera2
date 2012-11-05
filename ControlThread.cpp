@@ -1089,22 +1089,12 @@ status_t ControlThread::stopCapture()
 
 status_t ControlThread::restartPreview(bool videoMode)
 {
-    LOG1("@%s: mode = %s", __FUNCTION__, videoMode ? "VIDEO" : "STILL");
-
-    Message msg;
-    msg.id = MESSAGE_ID_RESTART_PREVIEW;
-    msg.data.restartPreview.videoMode = videoMode;
-    return mMessageQueue.send(&msg);
-}
-
-status_t ControlThread::handleMessageRestartPreview(MessageRestartPreview *msg)
-{
-    LOG1("@%s: mode = %s", __FUNCTION__, msg->videoMode ? "VIDEO" : "STILL");
+    LOG1("@%s: mode = %s", __FUNCTION__, videoMode?"VIDEO":"STILL");
     bool faceActive = mFaceDetectionActive;
     stopFaceDetection(true);
     status_t status = stopPreviewCore();
     if (status == NO_ERROR)
-        status = startPreviewCore(msg->videoMode);
+        status = startPreviewCore(videoMode);
     if (faceActive)
         startFaceDetection();
     return status;
@@ -1202,9 +1192,7 @@ status_t ControlThread::handleMessageStartRecording()
         /* We are in PREVIEW_STILL mode; in order to start recording
          * we first need to stop AtomISP and restart it with MODE_VIDEO
          */
-        MessageRestartPreview msg;
-        msg.videoMode = true;
-        status = handleMessageRestartPreview(&msg);
+        status = restartPreview(true);
         if (status != NO_ERROR) {
             LOGE("Error restarting preview in video mode");
         }
@@ -4127,6 +4115,10 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
      *
      * Check the inline documentation for applyISPvideoLimitations()
      * in AtomISP.cpp to see detailed description of the limitations.
+     *
+     * NOTE: applyISPVideoLimitatiosn is const and the read access to
+     * AtomISP member mCameraInput is safe after init, so we don't need
+     * to lock in it.
      */
     if (videoMode && mISP->applyISPVideoLimitations(newParams, dvsEnabled)) {
         mPreviewForceChanged = true;
@@ -4305,9 +4297,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
         switch (mState) {
             case STATE_PREVIEW_VIDEO:
             case STATE_PREVIEW_STILL:
-                MessageRestartPreview msgRestart;
-                msgRestart.videoMode = msg->videoMode;
-                status = handleMessageRestartPreview(&msgRestart);
+                status = restartPreview(msg->videoMode);
                 break;
             case STATE_STOPPED:
                 break;
@@ -4985,10 +4975,6 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_START_PREVIEW:
             status = handleMessageStartPreview();
-            break;
-
-        case MESSAGE_ID_RESTART_PREVIEW:
-            status = handleMessageRestartPreview(&msg.data.restartPreview);
             break;
 
         case MESSAGE_ID_STOP_PREVIEW:

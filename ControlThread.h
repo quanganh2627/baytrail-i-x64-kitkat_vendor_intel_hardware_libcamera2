@@ -243,10 +243,6 @@ private:
         bool enabled;
     };
 
-    struct MessageRestartPreview {
-        bool videoMode;
-    };
-
     struct MessageSceneDetected {
         int sceneMode;
         bool sceneHdr;
@@ -292,9 +288,6 @@ private:
 
         // MESSAGE_ID_STORE_METADATA_IN_BUFFER
         MessageStoreMetaDataInBuffers storeMetaDataInBuffers;
-
-        // MESSAGE_ID_RESTART_PREVIEW
-        MessageRestartPreview restartPreview;
 
         // MESSAGE_ID_SCENE_DETECTED
         MessageSceneDetected    sceneDetected;
@@ -376,7 +369,6 @@ private:
     // thread message execution functions
     status_t handleMessageExit();
     status_t handleMessageStartPreview();
-    status_t handleMessageRestartPreview(MessageRestartPreview *msg);
     status_t handleMessageStopPreview();
     status_t handleMessageStartRecording();
     status_t handleMessageStopRecording();

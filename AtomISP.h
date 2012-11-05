@@ -126,7 +126,7 @@ public:
     status_t setPostviewFrameFormat(int width, int height, int format);
     status_t setSnapshotFrameFormat(int width, int height, int format);
     status_t setVideoFrameFormat(int width, int height, int format = 0);
-    bool applyISPVideoLimitations(CameraParameters *params, bool dvsEnabled);
+    bool applyISPVideoLimitations(CameraParameters *params, bool dvsEnabled) const;
 
     inline int getSnapshotPixelFormat() { return mConfig.snapshot.format; }
     void getVideoSize(int *width, int *height, int *stride);
@@ -416,8 +416,7 @@ private:
 
     SensorType mSensorType;
     AtomAAA *mAAA;
-    Mutex mCameraInputLock; // lock to allow access from camera service thread
-    struct cameraInfo *mCameraInput; // take mCameraInputLock when writing to this
+    struct cameraInfo *mCameraInput;
 
     bool mLowLight;
     int mXnr;

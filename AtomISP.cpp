@@ -327,7 +327,6 @@ status_t AtomISP::initCameraInput(int cameraId)
 {
     status_t status = NO_INIT;
     size_t numCameras = setupCameraInfo();
-    Mutex::Autolock mLock(mCameraInputLock); // protect accesses to mCameraInput
     mCameraInput = 0;
 
     for (size_t i = 0; i < numCameras; i++) {
@@ -1794,6 +1793,7 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
  * Apply ISP limitations related to supported preview sizes when in video mode.
  *
  * NOTE: this function runs in camera service thread. Protect member accesses accordingly!
+ * mCameraInput is safe to read after construction.
  *
  * Workaround 1: with DVS enable, the fps in 1080p recording can't reach 30fps,
  * so check if the preview size is corresponding to 1080p(1920x1080) or
@@ -1816,7 +1816,7 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
  * @return true: updated preview size
  * @return false: not need to update preview size
  */
-bool  AtomISP::applyISPVideoLimitations(CameraParameters *params, bool dvsEnabled)
+bool AtomISP::applyISPVideoLimitations(CameraParameters *params, bool dvsEnabled) const
 {
     LOG1("@%s", __FUNCTION__);
     bool ret = false;
@@ -1831,13 +1831,11 @@ bool  AtomISP::applyISPVideoLimitations(CameraParameters *params, bool dvsEnable
     //               limited high-resolution video recordiing
     // TODO: if we get more cases like this, move to PlatformData.h
     const char* sensorName = "ov8830";
-    mCameraInputLock.lock();
     if (mCameraInput &&
         strncmp(mCameraInput->name, sensorName, sizeof(sensorName) - 1) == 0) {
         LOG1("Quirk for sensor %s, limiting video preview size", mCameraInput->name);
         reducedVf = true;
     }
-    mCameraInputLock.unlock();
 
     // Workaround 1+3, detail refer to the function description
     if (reducedVf || dvsEnabled) {
