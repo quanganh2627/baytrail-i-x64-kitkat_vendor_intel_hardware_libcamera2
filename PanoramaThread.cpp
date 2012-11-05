@@ -104,7 +104,8 @@ status_t PanoramaThread::handleMessageStopPanorama(MessageStopPanorama stop)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     if (mContext) {
-        cancelStitch();
+        if (mPanoramaTotalCount > 0)
+            cancelStitch();
 #ifdef ENABLE_INTEL_EXTRAS
         ia_panorama_uninit(mContext);
 #endif
