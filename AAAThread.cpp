@@ -22,6 +22,7 @@
 #include "AtomAAA.h"
 #include "FaceDetector.h"
 #include "CameraDump.h"
+#include "PerformanceTraces.h"
 
 namespace android {
 
@@ -338,6 +339,9 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
                 mCallbacks->focusMove(cafStatus == ia_3a_af_status_busy);
                 mPreviousCafStatus = cafStatus;
             }
+
+            if (cafStatus == ia_3a_af_status_success)
+                PerformanceTraces::Launch2FocusLock::stop();
         }
 
         // Query the detected scene and notify the application

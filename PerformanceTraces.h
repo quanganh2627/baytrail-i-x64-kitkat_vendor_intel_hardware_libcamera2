@@ -53,6 +53,13 @@ namespace PerformanceTraces {
     static void stop(void) STUB_BODY
   };
 
+  class Launch2FocusLock {
+  public:
+    static void enable(bool set) STUB_BODY
+    static void start(void) STUB_BODY
+    static void stop(void) STUB_BODY
+  };
+
   class Shot2Shot {
   public:
     static void enable(bool set) STUB_BODY
@@ -151,6 +158,16 @@ namespace PerformanceTraces {
               PerformanceTraces::Shot2Shot::stop(x); \
           } \
           PerformanceTraces::SwitchCameras::stop(); \
+      } while(0)
+
+  /**
+   * Helper macro to call PerformanceTraces::Shot2Shot::takePictureCalled() with
+   * the proper function name.
+   */
+  #define PERFORMANCE_TRACES_LAUNCH_START() \
+      do { \
+          PerformanceTraces::Launch2Preview::start(); \
+          PerformanceTraces::Launch2FocusLock::start(); \
       } while(0)
 
 }; // ns PerformanceTraces

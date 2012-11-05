@@ -349,7 +349,7 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
     // without taking the instance lock
     LogHelper::setDebugLevel();
 
-    PerformanceTraces::Launch2Preview::start();
+    PERFORMANCE_TRACES_LAUNCH_START();
 
     Mutex::Autolock _l(atom_instance_lock);
 

@@ -90,6 +90,7 @@ public:
 #ifdef LIBCAMERA_RD_FEATURES
 
 static PerformanceTimer gLaunch2Preview;
+static PerformanceTimer gLaunch2FocusLock;
 static PerformanceTimer gShot2Shot;
 static PerformanceTimer gShutterLag;
 static PerformanceTimer gSwitchCameras;
@@ -155,9 +156,40 @@ void Launch2Preview::step(const char* func, const char* note)
 void Launch2Preview::stop(void)
 {
     if (gLaunch2Preview.isRunning()) {
-        LOGD("LAUNCH time calculated from create instance to the 1st preview frame show::\t%lldms\n",
+        LOGD("LAUNCH time calculated from create instance to the 1st preview frame show:\t%lld ms\n",
              gLaunch2Preview.timeUs() / 1000);
         gLaunch2Preview.stop();
+    }
+}
+
+/**
+ * Controls trace state
+ */
+void Launch2FocusLock::enable(bool set)
+{
+    gLaunch2FocusLock.mRequested = set;
+}
+
+/**
+ * Starts the launch2FocusLock trace.
+ */
+void Launch2FocusLock::start(void)
+{
+    if (gLaunch2FocusLock.isRequested()) {
+        gLaunch2FocusLock.formattedTrace("Launch2FocusLock", __FUNCTION__);
+        gLaunch2FocusLock.start();
+    }
+}
+
+/**
+ * Stops the launch2FocusLock trace and prints out results.
+ */
+void Launch2FocusLock::stop(void)
+{
+    if (gLaunch2FocusLock.isRunning()) {
+        LOGD("LAUNCH time calculated from create instance to lock the focus frame:\t%lld ms\n",
+             gLaunch2FocusLock.timeUs() / 1000);
+        gLaunch2FocusLock.stop();
     }
 }
 
