@@ -306,7 +306,10 @@ status_t ControlThread::init(int cameraId)
     property_set("media.camera.facing", facing);
 
     // Set default parameters so that settings propagate to 3A
-    handleMessageSetParameters();
+    MessageSetParameters msg;
+    msg.previewFormatChanged = false;
+    msg.videoMode = false;
+    handleMessageSetParameters(&msg);
 
     return NO_ERROR;
 
@@ -537,6 +540,13 @@ status_t ControlThread::setParameters(const char *params)
         goto exit;
     }
 
+    Message msg;
+    msg.id = MESSAGE_ID_SET_PARAMETERS;
+    // Take care of parameters that need to be set while the ISP is stopped
+    status = processStaticParameters(&oldParams, &newParams, msg);
+    if (status != NO_ERROR)
+        goto exit;
+
     {
         // release AE lock, if AE mode changed (cts)
         String8 newVal = paramsReturnNewIfChanged(&oldParams, &newParams,
@@ -561,8 +571,6 @@ status_t ControlThread::setParameters(const char *params)
         mParamCache = strndup(finalParams.string(), sizeof(char) * len);
     }
 
-    Message msg;
-    msg.id = MESSAGE_ID_SET_PARAMETERS;
     return mMessageQueue.send(&msg);
 
 exit:
@@ -1081,12 +1089,22 @@ status_t ControlThread::stopCapture()
 
 status_t ControlThread::restartPreview(bool videoMode)
 {
-    LOG1("@%s: mode = %s", __FUNCTION__, videoMode?"VIDEO":"STILL");
+    LOG1("@%s: mode = %s", __FUNCTION__, videoMode ? "VIDEO" : "STILL");
+
+    Message msg;
+    msg.id = MESSAGE_ID_RESTART_PREVIEW;
+    msg.data.restartPreview.videoMode = videoMode;
+    return mMessageQueue.send(&msg);
+}
+
+status_t ControlThread::handleMessageRestartPreview(MessageRestartPreview *msg)
+{
+    LOG1("@%s: mode = %s", __FUNCTION__, msg->videoMode ? "VIDEO" : "STILL");
     bool faceActive = mFaceDetectionActive;
     stopFaceDetection(true);
     status_t status = stopPreviewCore();
     if (status == NO_ERROR)
-        status = startPreviewCore(videoMode);
+        status = startPreviewCore(msg->videoMode);
     if (faceActive)
         startFaceDetection();
     return status;
@@ -1184,7 +1202,9 @@ status_t ControlThread::handleMessageStartRecording()
         /* We are in PREVIEW_STILL mode; in order to start recording
          * we first need to stop AtomISP and restart it with MODE_VIDEO
          */
-        status = restartPreview(true);
+        MessageRestartPreview msg;
+        msg.videoMode = true;
+        status = handleMessageRestartPreview(&msg);
         if (status != NO_ERROR) {
             LOGE("Error restarting preview in video mode");
         }
@@ -3994,8 +4014,17 @@ status_t ControlThread::processParamRawDataFormat(const CameraParameters *oldPar
     return NO_ERROR;
 }
 
+/*
+ * NOTE: this function runs in camera service thread. Protect member accesses accordingly!
+ *
+ * @param[in] oldParams the previous parameters
+ * @param[in] newParams the new parameters which are being set
+ * @param[out] msg a message which will be sent for ControlThread for processing later,
+ *             this function will return whether in video mode and whether preview
+ *             format changed through in message structure.
+ */
 status_t ControlThread::processStaticParameters(const CameraParameters *oldParams,
-        CameraParameters *newParams)
+        CameraParameters *newParams, Message &msg)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -4003,8 +4032,8 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
     float previewAspectRatio = 0.0f;
     float videoAspectRatio = 0.0f;
     Vector<Size> sizes;
-    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-    bool dvsEnabled = isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION) ?  true : false;
+    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT, *newParams) ? true : false;
+    bool dvsEnabled = isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION, *newParams) ?  true : false;
 
     int oldWidth, newWidth;
     int oldHeight, newHeight;
@@ -4101,30 +4130,11 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
      */
     if (videoMode && mISP->applyISPVideoLimitations(newParams, dvsEnabled)) {
         mPreviewForceChanged = true;
+        previewFormatChanged = true;
     }
 
-    // if file injection is enabled, get file injection parameters and save
-    // them in AtomISP
-    if (mISP->isFileInjectionEnabled())
-        processParamFileInject(newParams);
-
-    // if preview is running and static params have changed, then we need
-    // to stop, reconfigure, and restart the isp and all threads.
-    // Update the current params before we re-start
-    if (previewFormatChanged) {
-        mParameters = *newParams;
-        switch (mState) {
-        case STATE_PREVIEW_VIDEO:
-        case STATE_PREVIEW_STILL:
-            status = restartPreview(videoMode);
-            break;
-        case STATE_STOPPED:
-            break;
-        default:
-            LOGE("formats can only be changed while in preview or stop states");
-            break;
-        };
-    }
+    msg.data.setParameters.previewFormatChanged = previewFormatChanged;
+    msg.data.setParameters.videoMode = videoMode;
 
     return status;
 }
@@ -4213,7 +4223,7 @@ void ControlThread::restoreCurrentPictureParams()
     allocateSnapshotBuffers();
 }
 
-status_t ControlThread::handleMessageSetParameters()
+status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -4288,10 +4298,29 @@ status_t ControlThread::handleMessageSetParameters()
     mFocusAreas = newFocusAreas;
     mMeteringAreas = newMeteringAreas;
 
-    // Take care of parameters that need to be set while the ISP is stopped
-    status = processStaticParameters(&oldParams, &newParams);
-    if (status != NO_ERROR)
-        goto exit;
+    if (msg->previewFormatChanged) {
+        // if preview is running and preview format has changed, then we need
+        // to stop, reconfigure, and restart the isp and all threads.
+        // Update the current params before we re-start
+        switch (mState) {
+            case STATE_PREVIEW_VIDEO:
+            case STATE_PREVIEW_STILL:
+                MessageRestartPreview msgRestart;
+                msgRestart.videoMode = msg->videoMode;
+                status = handleMessageRestartPreview(&msgRestart);
+                break;
+            case STATE_STOPPED:
+                break;
+            default:
+                LOGE("formats can only be changed while in preview or stop states");
+                break;
+        };
+    }
+
+    // if file injection is enabled, get file injection parameters and save
+    // them in AtomISP
+    if (mISP->isFileInjectionEnabled())
+        processParamFileInject(&newParams);
 
     // Take care of parameters that can be set while ISP is running
     status = processDynamicParameters(&oldParams, &newParams);
@@ -4958,6 +4987,10 @@ status_t ControlThread::waitForAndExecuteMessage()
             status = handleMessageStartPreview();
             break;
 
+        case MESSAGE_ID_RESTART_PREVIEW:
+            status = handleMessageRestartPreview(&msg.data.restartPreview);
+            break;
+
         case MESSAGE_ID_STOP_PREVIEW:
             status = handleMessageStopPreview();
             break;
@@ -5016,7 +5049,7 @@ status_t ControlThread::waitForAndExecuteMessage()
             break;
 
         case MESSAGE_ID_SET_PARAMETERS:
-            status = handleMessageSetParameters();
+            status = handleMessageSetParameters(&msg.data.setParameters);
             break;
 
         case MESSAGE_ID_GET_PARAMETERS:

@@ -138,6 +138,7 @@ private:
 
         MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
         MESSAGE_ID_START_PREVIEW,
+        MESSAGE_ID_RESTART_PREVIEW,
         MESSAGE_ID_STOP_PREVIEW,
         MESSAGE_ID_START_RECORDING,
         MESSAGE_ID_STOP_RECORDING,
@@ -201,6 +202,11 @@ private:
         char** params;
     };
 
+    struct MessageSetParameters {
+        bool previewFormatChanged;
+        bool videoMode;
+    };
+
     struct MessageCommand{
         int32_t cmd_id;
         int32_t arg1;
@@ -237,6 +243,10 @@ private:
         bool enabled;
     };
 
+    struct MessageRestartPreview {
+        bool videoMode;
+    };
+
     struct MessageSceneDetected {
         int sceneMode;
         bool sceneHdr;
@@ -260,6 +270,9 @@ private:
         // MESSAGE_ID_GET_PARAMETERS
         MessageGetParameters getParameters;
 
+        // MESSAGE_ID_SET_PARAMETERS
+        MessageSetParameters setParameters;
+
         // MESSAGE_ID_COMMAND
         MessageCommand command;
         //MESSAGE_ID_FACES_DETECTED
@@ -279,6 +292,9 @@ private:
 
         // MESSAGE_ID_STORE_METADATA_IN_BUFFER
         MessageStoreMetaDataInBuffers storeMetaDataInBuffers;
+
+        // MESSAGE_ID_RESTART_PREVIEW
+        MessageRestartPreview restartPreview;
 
         // MESSAGE_ID_SCENE_DETECTED
         MessageSceneDetected    sceneDetected;
@@ -360,6 +376,7 @@ private:
     // thread message execution functions
     status_t handleMessageExit();
     status_t handleMessageStartPreview();
+    status_t handleMessageRestartPreview(MessageRestartPreview *msg);
     status_t handleMessageStopPreview();
     status_t handleMessageStartRecording();
     status_t handleMessageStopRecording();
@@ -372,7 +389,7 @@ private:
     status_t handleMessageReleasePreviewFrame(MessageReleasePreviewFrame *msg);
     status_t handleMessagePreviewDone(MessagePreviewDone *msg);
     status_t handleMessagePictureDone(MessagePicture *msg);
-    status_t handleMessageSetParameters();
+    status_t handleMessageSetParameters(MessageSetParameters *msg);
     status_t handleMessageGetParameters(MessageGetParameters *msg);
     status_t handleMessageAutoFocusDone();
     status_t handleMessageCommand(MessageCommand* msg);
@@ -491,7 +508,7 @@ private:
     // restarted. Static parameters will most likely affect buffer size and/or format so buffers
     // must be deallocated and reallocated accordingly.
     status_t processStaticParameters(const CameraParameters *oldParams,
-            CameraParameters *newParams);
+            CameraParameters *newParams, Message &msg);
     status_t validateParameters(const CameraParameters *params);
     // validation helpers
     bool validateSize(int width, int height, Vector<Size> &supportedSizes) const;
@@ -578,7 +595,11 @@ private:
     int mLastRecordingBuffIndex;
     bool mStoreMetaDataInBuffers;
 
-    bool mPreviewForceChanged;
+    bool mPreviewForceChanged; /*!< Stores whether preview size has been forced and no further fixing of aspect
+                                    ratios or similar should be done.
+                                    NOTE: Do not touch this variable from other threads than the camera service
+                                    thread which is running the setParameters and the processStaticParameters,
+                                    which is currently the only access point. */
 
     Mutex mPreviewStartLock;
     bool mPreviewStartQueued;

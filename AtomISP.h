@@ -416,7 +416,8 @@ private:
 
     SensorType mSensorType;
     AtomAAA *mAAA;
-    struct cameraInfo *mCameraInput;
+    Mutex mCameraInputLock; // lock to allow access from camera service thread
+    struct cameraInfo *mCameraInput; // take mCameraInputLock when writing to this
 
     bool mLowLight;
     int mXnr;
