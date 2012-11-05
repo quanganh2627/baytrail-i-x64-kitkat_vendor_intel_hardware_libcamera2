@@ -48,6 +48,8 @@ namespace PerformanceTraces {
   public:
     static void enable(bool set) STUB_BODY
     static void start(void) STUB_BODY
+    static void enableBreakdown(bool set) STUB_BODY
+    static void step(const char *func, const char* note = 0) STUB_BODY
     static void stop(void) STUB_BODY
   };
 
@@ -69,7 +71,6 @@ namespace PerformanceTraces {
     static void snapshotTaken(struct timeval *ts) STUB_BODY
   };
 
-
   class AAAProfiler {
   public:
     static void enable(bool set) STUB_BODY
@@ -86,7 +87,16 @@ namespace PerformanceTraces {
     static void stop(void) STUB_BODY
   };
 
-  /**
+ /**
+   * Helper macro to call PerformanceTraces::Launch2Preview::step() with
+   * the proper function name, and pass additional arguments.
+   *
+   * @param note textual description of the trace point
+   */
+  #define PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP(note) \
+    PerformanceTraces::Launch2Preview::step(__FUNCTION__, note)
+
+ /**
    * Helper macro to call PerformanceTraces::Shot2Shot::step() with
    * the proper function name, and pass additional arguments.
    *

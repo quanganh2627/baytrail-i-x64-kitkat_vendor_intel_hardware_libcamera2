@@ -178,6 +178,7 @@ status_t ControlThread::init(int cameraId)
         LOGE("error creating DVS");
         goto bail;
     }
+    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("ISP_Init_Done");
 
     mAAA = AtomAAA::getInstance();
     if (mAAA == NULL) {
@@ -266,6 +267,7 @@ status_t ControlThread::init(int cameraId)
     }
     mPreviewThread->setServiceProxy(mProxyToOlaService.get());
 #endif
+    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("New_Other_Threads");
 
     // get default params from AtomISP and JPEG encoder
     mISP->getDefaultParameters(&mParameters, &mIntelParameters);
@@ -474,6 +476,7 @@ status_t ControlThread::startPreview()
 {
     LOG1("@%s", __FUNCTION__);
     PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
+    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("startPreview_in");
     status_t status = mPreviewStartLock.tryLock();
     if (status != OK) {
         return status;
@@ -980,6 +983,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     mISP->getPreviewSize(&width, &height,&stride);
     mNumBuffers = mISP->getNumBuffers(videoMode);
     mPreviewThread->setPreviewConfig(width, height, stride, format, mNumBuffers);
+    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("Set_Preview_Config");
 
     mCoupledBuffers = new CoupledBuffer[mNumBuffers];
     memset(mCoupledBuffers, 0, mNumBuffers * sizeof(CoupledBuffer));
@@ -1005,6 +1009,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     }
 
     status = mISP->start();
+    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("ISP_Start");
     if (status == NO_ERROR) {
         memset(mCoupledBuffers, 0, sizeof(mCoupledBuffers));
         mState = state;

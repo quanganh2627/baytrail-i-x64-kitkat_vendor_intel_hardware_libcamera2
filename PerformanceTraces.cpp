@@ -94,6 +94,7 @@ static PerformanceTimer gShot2Shot;
 static PerformanceTimer gShutterLag;
 static PerformanceTimer gSwitchCameras;
 static bool gShot2ShotBreakdown = false;
+static bool gLaunch2PreviewBreakdown = false;
 static int gShot2ShotFrame = -1;
 static bool gShot2ShotTakePictureCalled = false;
 static bool gShot2ShotAutoFocusDone = false;
@@ -121,6 +122,32 @@ void Launch2Preview::start(void)
         gLaunch2Preview.start();
     }
 }
+
+/**
+ * Enable more detailed breakdown analysis that shows how long
+ * intermediate steps took time.
+ */
+void Launch2Preview::enableBreakdown(bool set)
+{
+    gLaunch2PreviewBreakdown = set;
+}
+
+
+/**
+ * Mark an intermedia step in the Launch2Preview trace
+ *
+ * @arg note a string printed with the breakdown trace
+ */
+void Launch2Preview::step(const char* func, const char* note)
+{
+    if (gLaunch2Preview.isRunning() && gLaunch2PreviewBreakdown) {
+        if (!note)
+            note = "";
+        LOGD("Launch2Preview step %s:%s, Time: %lld us, Diff: %lld us",
+             func, note, gLaunch2Preview.timeUs(), gLaunch2Preview.lastTimeUs());
+    }
+}
+
 
 /**
  * Stops the launch2preview trace and prints out results.

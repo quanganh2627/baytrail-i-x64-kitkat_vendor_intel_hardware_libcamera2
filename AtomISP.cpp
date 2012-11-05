@@ -28,6 +28,7 @@
 #include <fcntl.h>
 #include <math.h>
 #include <poll.h>
+#include "PerformanceTraces.h"
 
 #define CLEAR(x) memset (&(x), 0, sizeof (x))
 #define PAGE_ALIGN(x) ((x + 0xfff) & 0xfffff000)
@@ -193,6 +194,7 @@ status_t AtomISP::initHw(int cameraId)
         LOGE("Failed to open first device!");
         return NO_INIT;
     }
+    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("Open_Main_Device");
 
     initFileInject(cameraId);
 
@@ -225,6 +227,7 @@ status_t AtomISP::init(const sp<CameraBlob>& aiqConf)
     if (status != NO_ERROR) {
         goto errorexit;
     }
+    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("Init_3A");
 
     initFrameConfig();
 
@@ -1713,6 +1716,7 @@ status_t AtomISP::selectCameraSensor()
         video_fds[device] = -1;
         return UNKNOWN_ERROR;
     }
+    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("capture_s_input");
     return NO_ERROR;
 }
 

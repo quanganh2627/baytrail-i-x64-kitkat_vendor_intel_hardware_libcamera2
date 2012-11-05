@@ -388,6 +388,7 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
     *device = &camera_dev->common;
 
     atom_instances++;
+    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("Open_HAL_Done");
     return 0;
 }
 
