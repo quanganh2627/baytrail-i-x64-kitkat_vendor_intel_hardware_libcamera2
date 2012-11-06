@@ -37,7 +37,7 @@ public:
         // back camera
         cam.facing = CAMERA_FACING_BACK;
         cam.orientation = 90;
-        cam.dvs = false;
+        cam.dvs = true;
         cam.flipping = PlatformData::SENSOR_FLIP_NA;
         cam.maxSnapshotWidth = RESOLUTION_8MP_WIDTH;
         cam.maxSnapshotHeight = RESOLUTION_8MP_HEIGHT;
