@@ -20,11 +20,14 @@
 #include <utils/threads.h>
 #include <system/camera.h>
 #include <utils/List.h>
+#include <utils/UniquePtr.h>
 #include "AtomAAA.h"
 #include "AtomISP.h"
 #include "MessageQueue.h"
 
 namespace android {
+
+#define MAX_RETRY_COUNT 1
 
 enum BracketingMode {
     BRACKET_NONE = 0,
@@ -38,7 +41,7 @@ struct BracketingType {
     float maxValue;
     float currentValue;
     float step;
-    float *values;
+    UniquePtr<float[]> values;
 };
 
 class BracketManager : public Thread {
@@ -98,7 +101,9 @@ private:
 private:
     status_t applyBracketing();
     status_t applyBracketingParams();
-    status_t skipFrames(size_t numFrames, size_t doBracket = 0);
+    status_t skipFrames(int numFrames, int doBracket = 0);
+    int getNumLostFrames(int frameSequenceNbr);
+    void getRecoveryParams(int &skipNum, int &bracketNum);
 
     // main message function and message handlers
     status_t waitForAndExecuteMessage();
@@ -116,13 +121,14 @@ private:
     int  mBurstCaptureNum;
     int  mSnapshotReqNum;
     int  mBracketNum;
+    int  mLastFrameSequenceNbr;
     BracketingType mBracketing;
     List<SensorAeConfig> mBracketingParams;
     State mState;
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
-    AtomBuffer *mSnapshotBufs;
-    AtomBuffer *mPostviewBufs;
+    UniquePtr<AtomBuffer[]> mSnapshotBufs;
+    UniquePtr<AtomBuffer[]> mPostviewBufs;
 
 }; // class BracketManager
 

@@ -1928,7 +1928,7 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
             return NO_ERROR;
         }
         // Check if ISP has free buffers we can use
-        if (!mISP->dataAvailable()) {
+        if (mBracketManager->getBracketMode() == BRACKET_NONE && !mISP->dataAvailable()) {
             // If ISP has no data, do nothing and return
             return NO_ERROR;
         }
@@ -2041,7 +2041,7 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     }
 
     if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE && (mBurstCaptureNum == mBurstLength)) {
-        LOGI("@%s: Bracketing done, got all %d snapshots", __FUNCTION__, mBurstLength);
+        LOG1("@%s: Bracketing done, got all %d snapshots", __FUNCTION__, mBurstLength);
         mBracketManager->stopBracketing();
     }
 

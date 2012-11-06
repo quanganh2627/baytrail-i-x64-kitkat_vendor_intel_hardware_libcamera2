@@ -48,11 +48,6 @@ namespace android {
 #define EV_MIN -2
 #define EV_MAX  2
 
-// HACK: this should be in videodev2.h
-#ifndef V4L2_EVENT_FRAME_SYNC
-#define V4L2_EVENT_FRAME_SYNC           4
-#endif
-
 /**
  *  Minimum resolution of video frames to have DVS ON.
  *  Under this it will be disabled

@@ -78,6 +78,8 @@
 
 #define INTEL_FILE_INJECT_CAMERA_ID 2
 
+#define FRAME_SYNC_POLL_TIMEOUT 500
+
 namespace android {
 
 ////////////////////////////////////////////////////////////////////
@@ -88,7 +90,11 @@ static const char *dev_name_array[] = {"/dev/video0",
                                        "/dev/video1",
                                        "/dev/video2",
                                        "/dev/video3",
+#ifndef CLVT
                                        "/dev/v4l-subdev7" };
+#else
+                                       "/dev/v4l-subdev8" };
+#endif
 
 /**
  * When image data injection is used, read OTP data from
@@ -1282,7 +1288,7 @@ status_t AtomISP::configureCapture()
         goto errorCloseSecond;
     }
 
-    // If we need to do exposure bracketing, start also ISP subdevice
+    // Subscribe to frame sync event if in bracketing mode
     if (mFrameSyncRequested) {
         ret = openDevice(V4L2_ISP_SUBDEV);
         if (ret < 0) {
@@ -1290,7 +1296,6 @@ status_t AtomISP::configureCapture()
             goto errorCloseSecond;
         }
 
-        // Subscribe to frame sync event
         ret = v4l2_subscribe_event(video_fds[V4L2_ISP_SUBDEV], V4L2_EVENT_FRAME_SYNC);
         if (ret < 0) {
             LOGE("Failed to subscribe to frame sync event!");
@@ -1350,6 +1355,8 @@ status_t AtomISP::startCapture()
     initialSkips = getNumOfSkipFrames();
     for (i = 0; i < initialSkips; i++) {
         AtomBuffer s,p;
+        if (mFrameSyncEnabled)
+            pollFrameSyncEvent();
         ret = getSnapshot(&s,&p);
         if (ret == NO_ERROR)
             ret = putSnapshot(&s,&p);
@@ -3052,6 +3059,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
     }
     LOG1("Device: %d. Grabbed frame of size: %d", V4L2_MAIN_DEVICE, buf.bytesused);
     mSnapshotBuffers[snapshotIndex].capture_timestamp = buf.timestamp;
+    mSnapshotBuffers[snapshotIndex].frameSequenceNbr = buf.sequence;
 
     if (snapshotStatus)
         *snapshotStatus = (atomisp_frame_status)buf.reserved;
@@ -3066,6 +3074,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
     }
     LOG1("Device: %d. Grabbed frame of size: %d", V4L2_POSTVIEW_DEVICE, buf.bytesused);
     mPostviewBuffers[postviewIndex].capture_timestamp = buf.timestamp;
+    mPostviewBuffers[postviewIndex].frameSequenceNbr = buf.sequence;
 
     if (snapshotIndex != postviewIndex ||
             snapshotIndex >= MAX_V4L2_BUFFERS) {
@@ -4367,7 +4376,6 @@ status_t AtomISP::enableFrameSyncEvent(bool enable)
 status_t AtomISP::pollFrameSyncEvent()
 {
     LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
     struct pollfd pollFd;
     struct v4l2_event event;
     int ret;
@@ -4379,20 +4387,25 @@ status_t AtomISP::pollFrameSyncEvent()
 
     pollFd.fd = video_fds[V4L2_ISP_SUBDEV];
     pollFd.events = POLLPRI;
-    ret = poll(&pollFd, 1, -1); // infinite timeout
+    ret = poll(&pollFd, 1, FRAME_SYNC_POLL_TIMEOUT);
 
     if (ret <= 0) {
-        LOGE("Poll failed");
+        LOGE("Poll failed, disabling SOF event");
+        v4l2_unsubscribe_event(video_fds[V4L2_ISP_SUBDEV], V4L2_EVENT_FRAME_SYNC);
+        closeDevice(V4L2_ISP_SUBDEV);
+        mFrameSyncEnabled = false;
         return UNKNOWN_ERROR;
     }
 
     // if poll was successful, dequeue the event right away
     if (pollFd.revents & POLLPRI) {
-        ret = v4l2_dqevent(video_fds[V4L2_ISP_SUBDEV], &event);
-        if (ret < 0) {
-            LOGE("Dequeue event failed");
-            return UNKNOWN_ERROR;
-        }
+        do {
+            ret = v4l2_dqevent(video_fds[V4L2_ISP_SUBDEV], &event);
+            if (ret < 0) {
+                LOGE("Dequeue event failed");
+                return UNKNOWN_ERROR;
+            }
+        } while (event.pending > 0);
     }
 
     return NO_ERROR;

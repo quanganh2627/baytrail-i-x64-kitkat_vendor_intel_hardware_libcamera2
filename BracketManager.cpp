@@ -38,38 +38,6 @@ BracketManager::~BracketManager()
     LOG1("@%s", __FUNCTION__);
 }
 
-status_t BracketManager::skipFrames(size_t numFrames, size_t doBracket)
-{
-    LOG1("@%s: numFrames=%d, doBracket=%d", __FUNCTION__, numFrames, doBracket);
-    status_t status = NO_ERROR;
-    AtomBuffer snapshotBuffer, postviewBuffer;
-
-    for (size_t i = 0; i < numFrames; i++) {
-        if (i < doBracket) {
-            status = applyBracketingParams();
-            if (status != NO_ERROR) {
-                LOGE("Error applying bracketing in skip frame %d!", i);
-                return status;
-            }
-        } else if (mBracketing.mode != BRACKET_NONE) {
-            // poll and dequeue SOF event
-            mISP->pollFrameSyncEvent();
-        }
-        if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
-            LOGE("Error in grabbing warm-up frame %d!", i);
-            return status;
-        }
-        status = mISP->putSnapshot(&snapshotBuffer, &postviewBuffer);
-        if (status == DEAD_OBJECT) {
-            LOG1("Stale snapshot buffer returned to ISP");
-        } else if (status != NO_ERROR) {
-            LOGE("Error in putting skip frame %d!", i);
-            return status;
-        }
-    }
-    return status;
-}
-
 /**
  *  For Exposure Bracketing, the applied exposure value will be available in
  *  current frame + 2. Therefore, in order to do a correct exposure bracketing
@@ -109,6 +77,110 @@ status_t BracketManager::skipFrames(size_t numFrames, size_t doBracket)
  *  This was noticed when this changed from libcamera to libcamera2.
  */
 
+status_t BracketManager::skipFrames(int numFrames, int doBracket)
+{
+    LOG1("@%s: numFrames=%d, doBracket=%d", __FUNCTION__, numFrames, doBracket);
+    status_t status = NO_ERROR;
+    AtomBuffer snapshotBuffer, postviewBuffer;
+    int retryCount = 0;
+    bool recoveryNeeded = false;
+    int numLost = 0;
+
+    do {
+        recoveryNeeded = false;
+
+        for (int i = 0; i < numFrames; i++) {
+            if (i < doBracket) {
+                status = applyBracketingParams();
+                if (status != NO_ERROR) {
+                    LOGE("@%s: Error applying bracketing params for frame %d!", __FUNCTION__, i);
+                    return status;
+                }
+            } else if (mBracketing.mode != BRACKET_NONE) {
+                // poll and dequeue SOF event
+                if (mISP->pollFrameSyncEvent() != NO_ERROR) {
+                    LOGE("@%s: Error in polling frame sync event", __FUNCTION__);
+                }
+            }
+            if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
+                LOGE("@%s: Error in grabbing warm-up frame %d!", __FUNCTION__, i);
+                return status;
+            }
+
+            // Check if frame loss recovery is needed.
+            numLost = getNumLostFrames(snapshotBuffer.frameSequenceNbr);
+
+            status = mISP->putSnapshot(&snapshotBuffer, &postviewBuffer);
+            if (status == DEAD_OBJECT) {
+                LOG1("@%s: Stale snapshot buffer returned to ISP", __FUNCTION__);
+            } else if (status != NO_ERROR) {
+                LOGE("@%s: Error in putting skip frame %d!", __FUNCTION__, i);
+                return status;
+            }
+
+            // Frame loss recovery. Currently only supported for exposure bracketing.
+            if (numLost > 0 && mBracketing.mode == BRACKET_EXPOSURE) {
+                if (retryCount == MAX_RETRY_COUNT) {
+                    LOGE("@%s: Frames lost and can't recover.",__FUNCTION__);
+                    break;
+                }
+
+                // If only skip-frame was lost, then just skip less frames
+                if (i + numLost < numFrames) {
+                    LOGI("@%s: Recovering, skip %d frames less", __FUNCTION__, numLost);
+                    i += numLost;
+                } else {
+                    LOGI("@%s: Lost a snapshot frame, trying to recover", __FUNCTION__);
+                    // Restart bracketing from the last successfully captured frame.
+                    getRecoveryParams(numFrames, doBracket);
+                    retryCount++;
+                    recoveryNeeded = true;
+                    break;
+                }
+            }
+        }
+    } while (recoveryNeeded);
+
+    return status;
+}
+
+/**
+ * This function returns the number of lost frames. Number of lost
+ * frames is calculated based on frame sequence numbering.
+ */
+int BracketManager::getNumLostFrames(int frameSequenceNbr)
+{
+    LOG1("@%s", __FUNCTION__);
+    int numLost = 0;
+
+    if ((mLastFrameSequenceNbr != -1) && (frameSequenceNbr != (mLastFrameSequenceNbr + 1))) {
+        // Frame loss detected, check how many frames were lost.
+        numLost = frameSequenceNbr - mLastFrameSequenceNbr - 1;
+        LOGE("@%s: %d frame(s) lost. Current sequence number: %d, previous received: %d",__FUNCTION__, numLost,
+            frameSequenceNbr, mLastFrameSequenceNbr);
+    }
+    mLastFrameSequenceNbr = frameSequenceNbr;
+
+    return numLost;
+}
+
+/**
+ * When recovery is needed, the bracketing sequence is re-started from the last
+ * successfully captured frame. This function updates the next bracketing value,
+ * and returns how many frames need to be skipped and how many bracketing values
+ * need to be pushed.
+ */
+void BracketManager::getRecoveryParams(int &skipNum, int &bracketNum)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    skipNum = 2; // in case of exposure bracketing, need to skip 2 frames to re-fill the pipeline
+    bracketNum = (mFpsAdaptSkip > 0) ? 1 : 2; // push at least 1 value, 2 if capturing @15fps
+
+    mBracketNum = mSnapshotReqNum; // rewind to the last succesful capture
+    mBracketing.currentValue = mBracketing.values[mBracketNum];
+}
+
 status_t BracketManager::initBracketing(int length, int skip, float *bracketValues)
 {
     LOG1("@%s: mode = %d", __FUNCTION__, mBracketing.mode);
@@ -122,13 +194,14 @@ status_t BracketManager::initBracketing(int length, int skip, float *bracketValu
     mSnapshotReqNum = 0;
     mBracketNum = 0;
     mBracketingParams.clear();
+    mLastFrameSequenceNbr = -1;
 
     switch (mBracketing.mode) {
     case BRACKET_EXPOSURE:
         if (mBurstLength > 1) {
             mAAA->setAeMode(CAM_AE_MODE_MANUAL);
 
-            mBracketing.values = new float[length];
+            mBracketing.values.reset(new float[length]);
             if (bracketValues != NULL) {
                 // Using custom bracketing sequence
                 for (int i = 0; i < length; i++) {
@@ -175,7 +248,7 @@ status_t BracketManager::initBracketing(int length, int skip, float *bracketValu
             mBracketing.minValue = lensRange.macro;
             mBracketing.maxValue = lensRange.infinity;
             mBracketing.step = (lensRange.infinity - lensRange.macro) / (mBurstLength - 1);
-            mBracketing.values = NULL;
+            mBracketing.values.reset();
             // Initialize the current focus position and increment
             if (status == NO_ERROR) {
                 /*
@@ -210,8 +283,8 @@ status_t BracketManager::initBracketing(int length, int skip, float *bracketValu
     mISP->enableFrameSyncEvent(true);
 
     // Allocate internal buffers for captured frames
-    mSnapshotBufs = new AtomBuffer[length];
-    mPostviewBufs = new AtomBuffer[length];
+    mSnapshotBufs.reset(new AtomBuffer[mBurstLength]);
+    mPostviewBufs.reset(new AtomBuffer[mBurstLength]);
 
     return status;
 }
@@ -220,6 +293,9 @@ status_t BracketManager::applyBracketing()
 {
     LOG1("@%s: mode = %d", __FUNCTION__, mBracketing.mode);
     status_t status = NO_ERROR;
+    int retryCount = 0;
+    int numLost = 0;
+    bool recoveryNeeded = false;
 
     if  (mFpsAdaptSkip > 0) {
         LOG1("Skipping %d burst frames", mFpsAdaptSkip);
@@ -235,9 +311,8 @@ status_t BracketManager::applyBracketing()
             // This is because focus needs only 1 frame for the focus position to take effect
             doBracketNum += 1;
         }
-        if ((status = skipFrames(skipNum, doBracketNum)) != NO_ERROR) {
+        if (skipFrames(skipNum, doBracketNum) != NO_ERROR) {
             LOGE("Error skipping burst frames!");
-            return status;
         }
     }
 
@@ -246,16 +321,54 @@ status_t BracketManager::applyBracketing()
     if ((mFpsAdaptSkip < 2 && mBracketing.mode == BRACKET_EXPOSURE) ||
         (mFpsAdaptSkip < 1 && mBracketing.mode == BRACKET_FOCUS)) {
 
-        if ((status = applyBracketingParams()) != NO_ERROR) {
+        if (applyBracketingParams() != NO_ERROR) {
             LOGE("Error applying bracketing params!");
-            return status;
+        }
+    } else {
+        // poll and dequeue SOF event before getSnapshot()
+        if (mISP->pollFrameSyncEvent() != NO_ERROR) {
+            LOGE("@%s: Error in polling frame sync event", __FUNCTION__);
         }
     }
 
-    status = mISP->getSnapshot(&mSnapshotBufs[mBurstCaptureNum], &mPostviewBufs[mBurstCaptureNum]);
+
+    do {
+        recoveryNeeded = false;
+
+        status = mISP->getSnapshot(&mSnapshotBufs[mBurstCaptureNum], &mPostviewBufs[mBurstCaptureNum]);
+
+        // Check number of lost frames
+        numLost = getNumLostFrames(mSnapshotBufs[mBurstCaptureNum].frameSequenceNbr);
+
+        // Frame loss recovery. Currently only supported for exposure bracketing.
+        if (numLost > 0 && mBracketing.mode == BRACKET_EXPOSURE) {
+            if (retryCount == MAX_RETRY_COUNT) {
+                LOGE("@%s: Frames lost and can't recover.",__FUNCTION__);
+                status = UNKNOWN_ERROR;
+                break;
+            }
+            // Return the buffer to ISP
+            status = mISP->putSnapshot(&mSnapshotBufs[mBurstCaptureNum], &mPostviewBufs[mBurstCaptureNum]);
+
+            // Restart bracketing from the last successfully captured frame.
+            int skip, doBracket;
+            getRecoveryParams(skip, doBracket);
+            skipFrames(skip, doBracket);
+            if (skip > doBracket) {
+                // poll and dequeue SOF event before getSnapshot()
+                if (mISP->pollFrameSyncEvent() != NO_ERROR) {
+                    LOGE("@%s: Error in polling frame sync event", __FUNCTION__);
+                }
+            }
+            retryCount++;
+            recoveryNeeded = true;
+        }
+    } while (recoveryNeeded);
+
+    LOG1("@%s: Captured frame %d, sequence number: %d", __FUNCTION__, mBurstCaptureNum + 1, mSnapshotBufs[mBurstCaptureNum].frameSequenceNbr);
+    mLastFrameSequenceNbr = mSnapshotBufs[mBurstCaptureNum].frameSequenceNbr;
     mBurstCaptureNum++;
 
-    LOG1("@%s: Captured frame %d", __FUNCTION__, mBurstCaptureNum);
     if (mBurstCaptureNum == mBurstLength) {
         LOG1("@%s: All frames captured", __FUNCTION__);
         // Last setting applied, disable SOF event
@@ -275,7 +388,9 @@ status_t BracketManager::applyBracketingParams()
     memset(&aeConfig, 0, sizeof(aeConfig));
 
     // Poll frame sync event
-    mISP->pollFrameSyncEvent();
+    if (mISP->pollFrameSyncEvent() != NO_ERROR) {
+        LOGE("@%s: Error in polling frame sync event", __FUNCTION__);
+    }
 
     switch (mBracketing.mode) {
     case BRACKET_EXPOSURE:
@@ -341,41 +456,6 @@ void BracketManager::getNextAeConfig(SensorAeConfig *aeConfig) {
     }
 }
 
-bool BracketManager::threadLoop()
-{
-    LOG2("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-
-    mThreadRunning = true;
-
-    while (mThreadRunning) {
-        switch (mState) {
-
-        case STATE_STOPPED:
-        case STATE_CAPTURE:
-            LOG2("In %s...", (mState == STATE_STOPPED) ? "STATE_STOPPED" : "STATE_CAPTURE");
-            // in the stop/capture state all we do is wait for messages
-            status = waitForAndExecuteMessage();
-            break;
-
-        case STATE_BRACKETING:
-            LOG2("In STATE_BRACKETING...");
-            // Check if snapshot is requested and if we already have some available
-            if (!mMessageQueue.isEmpty() && mBurstCaptureNum >= mSnapshotReqNum) {
-                status = waitForAndExecuteMessage();
-            } else {
-                status = applyBracketing();
-            }
-            break;
-
-        default:
-            break;
-        };
-    }
-
-    return false;
-}
-
 status_t BracketManager::startBracketing()
 {
     LOG1("@%s", __FUNCTION__);
@@ -404,9 +484,8 @@ status_t BracketManager::startBracketing()
         skipNum += 1;
     }
     if (skipNum > 0) {
-        if ((status = skipFrames(skipNum, doBracketNum)) != NO_ERROR) {
+        if (skipFrames(skipNum, doBracketNum) != NO_ERROR) {
             LOGE("@%s: Error skipping initial frames!", __FUNCTION__);
-            return status;
         }
     }
     status = mMessageQueue.send(&msg, MESSAGE_ID_START_BRACKETING);
@@ -439,9 +518,9 @@ status_t BracketManager::handleMessageStopBracketing()
     status_t status = NO_ERROR;
 
     mState = STATE_STOPPED;
-    delete[] mSnapshotBufs;
-    delete[] mPostviewBufs;
-    delete[] mBracketing.values;
+    mSnapshotBufs.reset();
+    mPostviewBufs.reset();
+    mBracketing.values.reset();
     // disable SOF event
     mISP->enableFrameSyncEvent(false);
 
@@ -480,6 +559,45 @@ status_t BracketManager::handleMessageGetSnapshot()
 
     mMessageQueue.reply(MESSAGE_ID_GET_SNAPSHOT, status);
     return status;
+}
+
+bool BracketManager::threadLoop()
+{
+    LOG2("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    mThreadRunning = true;
+
+    while (mThreadRunning) {
+        switch (mState) {
+
+        case STATE_STOPPED:
+        case STATE_CAPTURE:
+            LOG2("In %s...", (mState == STATE_STOPPED) ? "STATE_STOPPED" : "STATE_CAPTURE");
+            // in the stop/capture state all we do is wait for messages
+            status = waitForAndExecuteMessage();
+            break;
+
+        case STATE_BRACKETING:
+            LOG2("In STATE_BRACKETING...");
+            // Check if snapshot is requested and if we already have some available
+            if (!mMessageQueue.isEmpty() && mBurstCaptureNum > mSnapshotReqNum) {
+                status = waitForAndExecuteMessage();
+            } else {
+                status = applyBracketing();
+            }
+            break;
+
+        default:
+            break;
+        }
+
+        if (status != NO_ERROR) {
+            LOGE("operation failed, state = %d, status = %d", mState, status);
+        }
+    }
+
+    return false;
 }
 
 status_t BracketManager::waitForAndExecuteMessage()
