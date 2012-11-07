@@ -36,16 +36,16 @@
 #define DEFAULT_SENSOR_FPS      15.0
 
 #define RESOLUTION_14MP_TABLE   \
-        "320x240,640x480,1024x768,1280x720,1920x1088,2048x1536,2560x1920,3264x1836,3264x2448,3648x2736,4096x3072,4352x3264"
+        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448,3648x2736,4096x3072,4352x3264"
 
 #define RESOLUTION_8MP_TABLE   \
-        "320x240,640x480,1024x768,1280x720,1920x1088,2048x1536,2560x1920,3264x1836,3264x2448"
+        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448"
 
 #define RESOLUTION_5MP_TABLE   \
-        "320x240,640x480,1024x768,1280x720,1920x1088,2048x1536,2560x1920"
+        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920"
 
 #define RESOLUTION_1080P_TABLE   \
-        "320x240,640x480,1024x768,1280x720,1920x1088"
+        "320x240,640x480,1024x768,1280x720,1920x1080"
 
 #define RESOLUTION_720P_TABLE   \
         "320x240,640x480,1280x720,1280x960"
@@ -60,6 +60,8 @@
 
 #define MAX_FRONT_CAMERA_PREVIEW_WIDTH  1280
 #define MAX_FRONT_CAMERA_PREVIEW_HEIGHT 720
+#define MAX_FRONT_CAMERA_SNAPSHOT_WIDTH 1920
+#define MAX_FRONT_CAMERA_SNAPSHOT_HEIGHT    1080
 #define MAX_FRONT_CAMERA_VIDEO_WIDTH   1920
 #define MAX_FRONT_CAMERA_VIDEO_HEIGHT  1088
 
@@ -479,10 +481,10 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
 
     if (mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
         params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES,
-            "1024x580,1024x576,800x600,720x480,640x480,640x360,416x312,352x288,320x240,176x144");
+            "1024x576,800x600,720x480,640x480,640x360,352x288,320x240,176x144");
     } else {
         params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES,
-            "1024x580,720x480,640x480,640x360,352x288,320x240,176x144");
+            "1024x576,720x480,640x480,640x360,352x288,320x240,176x144");
     }
 
     params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES,"30,15,10");
@@ -494,7 +496,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
      */
     params->setVideoSize(mConfig.recording.width, mConfig.recording.height);
     params->set(CameraParameters::KEY_PREFERRED_PREVIEW_SIZE_FOR_VIDEO, PlatformData::preferredPreviewSizeForVideo());
-    params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1080,1920x1088");
+    params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1080");
     params->set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,
                 CameraParameters::PIXEL_FORMAT_YUV420SP);
     params->set(CameraParameters::KEY_VIDEO_SNAPSHOT_SUPPORTED, CameraParameters::TRUE);
@@ -1811,7 +1813,7 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
     /**
      * Workaround: When video size is 1080P(1920x1080), because video HW codec
      * requests 16x16 pixel block as sub-block to encode, So whatever apps set recording
-     * size to 1920x1080 or 1920x1088 in 1080P, ISP always outputs 1920x1088
+     * size to 1080P, ISP always outputs 1920x1088
      * for encoder.
      * In current supported list of video size, only height 1080(1920x1080) isn't multiple of 16
      */
@@ -1860,8 +1862,8 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
  * mCameraInput is safe to read after construction.
  *
  * Workaround 1: with DVS enable, the fps in 1080p recording can't reach 30fps,
- * so check if the preview size is corresponding to 1080p(1920x1080) or
- * (1920x1088) recording, if yes, then change preview size to 640x360
+ * so check if the preview size is corresponding to recording, if yes, then
+ * change preview size to 640x360
  * BZ: 49330 51853
  *
  * Workaround 2: The camera firmware doesn't support preview dimensions that

@@ -58,7 +58,7 @@ public:
 
         // generic parameters
         mBackFlash = true;
-        mVideoPreviewSizePref = "1024x580";
+        mVideoPreviewSizePref = "1024x576";
         mProductName = "ExampleModel";
         mManufacturerName = "ExampleMaker";
     }
