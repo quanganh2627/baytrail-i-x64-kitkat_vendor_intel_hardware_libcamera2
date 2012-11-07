@@ -99,7 +99,7 @@ public:
             mCameras.editItemAt(0).orientation = 0;
             mCameras.editItemAt(1).orientation = 180;
         }
-        mVideoPreviewSizePref = "720x576";
+        mVideoPreviewSizePref = "1024x580";
     }
 };
 
