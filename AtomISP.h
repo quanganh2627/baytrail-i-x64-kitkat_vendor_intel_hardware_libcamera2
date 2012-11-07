@@ -48,6 +48,11 @@ namespace android {
 #define EV_MIN -2
 #define EV_MAX  2
 
+// HACK: this should be in videodev2.h
+#ifndef V4L2_EVENT_FRAME_SYNC
+#define V4L2_EVENT_FRAME_SYNC           4
+#endif
+
 /**
  *  Minimum resolution of video frames to have DVS ON.
  *  Under this it will be disabled
@@ -157,6 +162,8 @@ public:
     status_t setMotionVector(const struct atomisp_dis_vector *vector) const;
     status_t setDvsCoefficients(const struct atomisp_dis_coefficients *coefs) const;
     status_t getIspParameters(struct atomisp_parm *isp_param) const;
+    status_t enableFrameSyncEvent(bool enable);
+    status_t pollFrameSyncEvent();
 
     // file input/injection API
     int configureFileInject(const char* fileName, int width, int height, int format, int bayerOrder);
@@ -231,12 +238,13 @@ private:
     static const int V4L2_POSTVIEW_DEVICE   = 1;
     static const int V4L2_PREVIEW_DEVICE    = 2;
     static const int V4L2_INJECT_DEVICE     = 3;
+    static const int V4L2_ISP_SUBDEV        = 4;
     static const int V4L2_LEGACY_VIDEO_PREVIEW_DEVICE = 1;
 
     /**
      * Maximum number of V4L2 devices node we support
      */
-    static const int V4L2_MAX_DEVICE_COUNT  = V4L2_INJECT_DEVICE + 1;
+    static const int V4L2_MAX_DEVICE_COUNT  = V4L2_ISP_SUBDEV + 1;
 
     static const int NUM_DEFAULT_BUFFERS = 9;
 
@@ -352,6 +360,9 @@ private:
     int atomisp_get_attribute (int fd, int attribute_num, int *value);
     int atomisp_set_zoom (int fd, int zoom);
     int xioctl(int fd, int request, void *arg) const;
+    int v4l2_subscribe_event(int fd, int event);
+    int v4l2_unsubscribe_event(int fd, int event);
+    int v4l2_dqevent(int fd, struct v4l2_event *event);
 
     int startFileInject(void);
     int stopFileInject(void);
@@ -432,6 +443,8 @@ private:
     char *mZoomRatios;
 
     int mRawDataDumpSize;
+    bool mFrameSyncRequested;
+    bool mFrameSyncEnabled;
 
 }; // class AtomISP
 

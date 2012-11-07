@@ -27,6 +27,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <math.h>
+#include <poll.h>
 
 #define CLEAR(x) memset (&(x), 0, sizeof (x))
 #define PAGE_ALIGN(x) ((x + 0xfff) & 0xfffff000)
@@ -86,7 +87,8 @@ namespace android {
 static const char *dev_name_array[] = {"/dev/video0",
                                        "/dev/video1",
                                        "/dev/video2",
-                                       "/dev/video3" };
+                                       "/dev/video3",
+                                       "/dev/v4l-subdev7" };
 
 /**
  * When image data injection is used, read OTP data from
@@ -158,6 +160,8 @@ AtomISP::AtomISP() :
     ,mXnr(0)
     ,mZoomRatios(NULL)
     ,mRawDataDumpSize(0)
+    ,mFrameSyncRequested(false)
+    ,mFrameSyncEnabled(false)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -1278,11 +1282,30 @@ status_t AtomISP::configureCapture()
         goto errorCloseSecond;
     }
 
+    // If we need to do exposure bracketing, start also ISP subdevice
+    if (mFrameSyncRequested) {
+        ret = openDevice(V4L2_ISP_SUBDEV);
+        if (ret < 0) {
+            LOGE("Failed to open V4L2_ISP_SUBDEV!");
+            goto errorCloseSecond;
+        }
+
+        // Subscribe to frame sync event
+        ret = v4l2_subscribe_event(video_fds[V4L2_ISP_SUBDEV], V4L2_EVENT_FRAME_SYNC);
+        if (ret < 0) {
+            LOGE("Failed to subscribe to frame sync event!");
+            goto errorCloseSubdev;
+        }
+        mFrameSyncEnabled = true;
+    }
+
     // need to resend the current zoom value
     atomisp_set_zoom(main_fd, mConfig.zoom);
 
     return status;
 
+errorCloseSubdev:
+    closeDevice(V4L2_ISP_SUBDEV);
 errorCloseSecond:
     closeDevice(V4L2_POSTVIEW_DEVICE);
 errorFreeBuf:
@@ -1355,6 +1378,12 @@ status_t AtomISP::stopCapture()
     stopDevice(V4L2_MAIN_DEVICE);
     // note: MAIN device is kept open on purpose
     closeDevice(V4L2_POSTVIEW_DEVICE);
+    // if SOF event is enabled, unsubscribe and close the device
+    if (mFrameSyncEnabled) {
+        v4l2_unsubscribe_event(video_fds[V4L2_ISP_SUBDEV], V4L2_EVENT_FRAME_SYNC);
+        closeDevice(V4L2_ISP_SUBDEV);
+        mFrameSyncEnabled = false;
+    }
     if (mFileInject.active == true)
         stopFileInject();
     mUsingClientSnapshotBuffers = false;
@@ -1590,12 +1619,14 @@ int AtomISP::openDevice(int device)
     }
 
     // Query and check the capabilities
-    struct v4l2_capability cap;
-    if (v4l2_capture_querycap(device, &cap) < 0) {
-        LOGE("V4L2: capture_querycap failed: %s", strerror(errno));
-        v4l2_capture_close(video_fds[device]);
-        video_fds[device] = -1;
-        return -1;
+    if (device != V4L2_ISP_SUBDEV) {
+        struct v4l2_capability cap;
+        if (v4l2_capture_querycap(device, &cap) < 0) {
+            LOGE("V4L2: capture_querycap failed: %s", strerror(errno));
+            v4l2_capture_close(video_fds[device]);
+            video_fds[device] = -1;
+            return -1;
+        }
     }
 
     return video_fds[device];
@@ -2677,7 +2708,7 @@ status_t AtomISP::v4l2_capture_open(int device)
     int fd;
     struct stat st;
 
-    if (device < V4L2_MAIN_DEVICE || device > mConfigLastDevice) {
+    if ((device < V4L2_MAIN_DEVICE || device > mConfigLastDevice) && device != V4L2_ISP_SUBDEV) {
         LOGE("Wrong device node %d", device);
         return -1;
     }
@@ -3166,6 +3197,56 @@ int AtomISP::v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf)
     }
 
     return buf->index;
+}
+
+int AtomISP::v4l2_subscribe_event(int fd, int event)
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret;
+    struct v4l2_event_subscription sub;
+
+    memset(&sub, 0, sizeof(sub));
+    sub.type = event;
+
+    ret = ioctl(fd, VIDIOC_SUBSCRIBE_EVENT, &sub);
+    if (ret < 0) {
+        LOGE("error subscribing event: %s", strerror(errno));
+        return ret;
+    }
+
+    return ret;
+}
+
+int AtomISP::v4l2_unsubscribe_event(int fd, int event)
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret;
+    struct v4l2_event_subscription sub;
+
+    memset(&sub, 0, sizeof(sub));
+    sub.type = event;
+
+    ret = ioctl(fd, VIDIOC_UNSUBSCRIBE_EVENT, &sub);
+    if (ret < 0) {
+        LOGE("error unsubscribing event");
+        return ret;
+    }
+
+    return ret;
+}
+
+int AtomISP::v4l2_dqevent(int fd, struct v4l2_event *event)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+
+    ret = ioctl(fd, VIDIOC_DQEVENT, event);
+    if (ret < 0) {
+        LOGE("error dequeuing event");
+        return ret;
+    }
+
+    return ret;
 }
 
 ////////////////////////////////////////////////////////////////////
@@ -4273,6 +4354,48 @@ int AtomISP::setFlashIntensity(int intensity)
 {
     LOG2("@%s", __FUNCTION__);
     return setv4l2Control(V4L2_CID_FLASH_INTENSITY, intensity, "Set flash intensity");
+}
+
+status_t AtomISP::enableFrameSyncEvent(bool enable)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mFrameSyncRequested = enable;
+    return status;
+}
+
+status_t AtomISP::pollFrameSyncEvent()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    struct pollfd pollFd;
+    struct v4l2_event event;
+    int ret;
+
+    if (!mFrameSyncEnabled) {
+        LOGE("Frame sync not enabled");
+        return INVALID_OPERATION;
+    }
+
+    pollFd.fd = video_fds[V4L2_ISP_SUBDEV];
+    pollFd.events = POLLPRI;
+    ret = poll(&pollFd, 1, -1); // infinite timeout
+
+    if (ret <= 0) {
+        LOGE("Poll failed");
+        return UNKNOWN_ERROR;
+    }
+
+    // if poll was successful, dequeue the event right away
+    if (pollFd.revents & POLLPRI) {
+        ret = v4l2_dqevent(video_fds[V4L2_ISP_SUBDEV], &event);
+        if (ret < 0) {
+            LOGE("Dequeue event failed");
+            return UNKNOWN_ERROR;
+        }
+    }
+
+    return NO_ERROR;
 }
 
 } // namespace android
