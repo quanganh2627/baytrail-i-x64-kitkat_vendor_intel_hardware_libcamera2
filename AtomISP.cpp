@@ -3979,61 +3979,22 @@ bool AtomISP::isDumpRawImageReady(void)
     return (mSensorType == SENSOR_TYPE_RAW) && CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW);
 }
 
-int AtomISP::getv4l2Control(int id, int *value, const char *name)
-{
-    LOG2("@%s", __FUNCTION__);
-    int ret;
-    struct v4l2_ext_controls controls;
-    struct v4l2_ext_control control;
-
-    controls.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
-    controls.count = 1;
-    controls.controls = &control;
-    control.id = id;
-
-    ret = xioctl(main_fd, VIDIOC_G_EXT_CTRLS, &controls);
-    LOG2("%s IOCTL VIDIOC_G_EXT_CTRLS ret: %d\n", __FUNCTION__, ret);
-    if (ret == 0)
-        *value = control.value;
-
-    return ret;
-}
-
-int AtomISP::setv4l2Control(int id, int value, const char *name)
-{
-    LOG2("@%s", __FUNCTION__);
-    int ret;
-    struct v4l2_ext_controls controls;
-    struct v4l2_ext_control control;
-
-    controls.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
-    controls.count = 1;
-    controls.controls = &control;
-    control.id = id;
-    control.value = value;
-
-    ret = xioctl(main_fd, VIDIOC_S_EXT_CTRLS, &controls);
-    LOG2("%s IOCTL VIDIOC_S_EXT_CTRLS ret: %d\n", __FUNCTION__, ret);
-
-    return ret;
-}
-
 int AtomISP::sensorMoveFocusToPosition(int position)
 {
     LOG2("@%s", __FUNCTION__);
-    return setv4l2Control(V4L2_CID_FOCUS_ABSOLUTE, position, "Set focus position");
+    return atomisp_set_attribute(main_fd, V4L2_CID_FOCUS_ABSOLUTE, position, "Set focus position");
 }
 
 int AtomISP::sensorMoveFocusToBySteps(int steps)
 {
     LOG2("@%s", __FUNCTION__);
-    return setv4l2Control(V4L2_CID_FOCUS_RELATIVE, steps, "Set focus steps");
+    return atomisp_set_attribute(main_fd, V4L2_CID_FOCUS_RELATIVE, steps, "Set focus steps");
 }
 
 int AtomISP::sensorGetFocusStatus(int *status)
 {
     LOG2("@%s", __FUNCTION__);
-    return getv4l2Control(V4L2_CID_FOCUS_STATUS, status, "Get focus status");
+    return atomisp_get_attribute(main_fd,V4L2_CID_FOCUS_STATUS, status);
 }
 
 int AtomISP::sensorGetModeInfo(struct atomisp_sensor_mode_data *mode_data)
@@ -4057,13 +4018,13 @@ int AtomISP::sensorSetExposure(struct atomisp_exposure *exposure)
 int AtomISP::sensorGetExposureTime(int *time)
 {
     LOG2("@%s", __FUNCTION__);
-    return getv4l2Control(V4L2_CID_EXPOSURE_ABSOLUTE, time, "Get exposure time");
+    return atomisp_get_attribute(main_fd, V4L2_CID_EXPOSURE_ABSOLUTE, time);
 }
 
 int AtomISP::sensorGetAperture(int *aperture)
 {
     LOG2("@%s", __FUNCTION__);
-    return getv4l2Control(V4L2_CID_IRIS_ABSOLUTE, aperture, "Get aperture");
+    return atomisp_get_attribute(main_fd, V4L2_CID_IRIS_ABSOLUTE, aperture);
 }
 
 int AtomISP::sensorGetFNumber(unsigned short *fnum_num, unsigned short *fnum_denom)
@@ -4071,7 +4032,7 @@ int AtomISP::sensorGetFNumber(unsigned short *fnum_num, unsigned short *fnum_den
     LOG2("@%s", __FUNCTION__);
     int fnum = 0, ret;
 
-    ret = getv4l2Control(V4L2_CID_FNUMBER_ABSOLUTE, &fnum, "Get fnumber");
+    ret = atomisp_get_attribute(main_fd, V4L2_CID_FNUMBER_ABSOLUTE, &fnum);
 
     *fnum_num = (unsigned short)(fnum >> 16);
     *fnum_denom = (unsigned short)(fnum & 0xFFFF);
@@ -4362,7 +4323,7 @@ int AtomISP::setGcConfig(const struct atomisp_gc_config *gc_cfg)
 int AtomISP::setFlashIntensity(int intensity)
 {
     LOG2("@%s", __FUNCTION__);
-    return setv4l2Control(V4L2_CID_FLASH_INTENSITY, intensity, "Set flash intensity");
+    return atomisp_set_attribute(main_fd, V4L2_CID_FLASH_INTENSITY, intensity, "Set flash intensity");
 }
 
 status_t AtomISP::enableFrameSyncEvent(bool enable)

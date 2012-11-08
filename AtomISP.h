@@ -369,9 +369,6 @@ private:
     int getPrimaryCameraIndex(void) const;
     status_t applySensorFlip(void);
 
-    int getv4l2Control(int id, int *value, const char *name);
-    int setv4l2Control(int id, int value, const char *name);
-
 // private members
 private:
 
