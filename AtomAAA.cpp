@@ -1401,8 +1401,9 @@ int AtomAAA::ciAdvInit(const SensorParams *paramFiles, const char *sensorOtpFile
     param.param_calibration      = &m3ALibState.sensor_data;
     param.motor_calibration      = &m3ALibState.motor_data;
 
-    if (paramFiles->hasMotorData)
-      aicNvm = &m3ALibState.motor_data;
+    if (m3ALibState.sensor_data.data != NULL)
+      aicNvm = &m3ALibState.sensor_data;
+
 
     if (ia_3a_init(&param,
         &paramFiles->prmFiles,
