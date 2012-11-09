@@ -83,7 +83,7 @@ public:
 
 };
 
-// To allow disabling all tracing intrastructure for non-R&D builds,
+// To allow disabling all tracing infrastructure for non-R&D builds,
 // wrap everything in LIBCAMERA_RD_FEATURES (see Android.mk).
 // -----------------------------------------------------------------
 
@@ -94,17 +94,40 @@ static PerformanceTimer gLaunch2FocusLock;
 static PerformanceTimer gShot2Shot;
 static PerformanceTimer gShutterLag;
 static PerformanceTimer gSwitchCameras;
+static PerformanceTimer gAAAProfiler;
+
 static bool gShot2ShotBreakdown = false;
 static bool gLaunch2PreviewBreakdown = false;
 static int gShot2ShotFrame = -1;
 static bool gShot2ShotTakePictureCalled = false;
 static bool gShot2ShotAutoFocusDone = false;
-static PerformanceTimer gAAAProfiler;
 static bool gSwitchCamerasCalled = false;
 static bool gSwitchCamerasOriginalVideoMode = false;
 static bool gSwitchCamerasVideoMode = false;
 static int gSwitchCamerasOriginalCameraId = 0;
+/**
+ * Reset the flags that enable the different performance traces
+ * This is needed during HAL open so that we can turn off the performance
+ * traces from the system property
+ */
+void reset(void)
+{
+    gShot2ShotBreakdown = false;
+    gLaunch2PreviewBreakdown = false;
+    gShot2ShotFrame = -1;
+    gShot2ShotTakePictureCalled = false;
+    gShot2ShotAutoFocusDone = false;
+    gSwitchCamerasCalled = false;
+    gSwitchCamerasVideoMode = false;
 
+    gLaunch2Preview.mRequested = false;
+    gShot2Shot.mRequested = false;
+    gAAAProfiler.mRequested = false;
+    gShutterLag.mRequested = false;
+    gSwitchCameras.mRequested = false;
+    gLaunch2FocusLock.mRequested = false;
+
+}
 /**
  * Controls trace state
  */

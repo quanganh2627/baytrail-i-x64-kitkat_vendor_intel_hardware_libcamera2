@@ -34,6 +34,8 @@ const char CameraParamsLogger::ValueDelimiter[]  = "=";
 void android::LogHelper::setDebugLevel(void)
 {
     char gLogLevelProp[PROPERTY_VALUE_MAX];
+    PerformanceTraces::reset();
+
     if (property_get("camera.hal.debug", gLogLevelProp, NULL)) {
         gLogLevel = atoi(gLogLevelProp);
         LOGD("Debug level is %d", gLogLevel);

@@ -94,6 +94,12 @@ namespace PerformanceTraces {
     static void stop(void) STUB_BODY
   };
 
+
+  /**
+   * Helper function to disable all the performance traces
+   */
+  void reset(void);
+
  /**
    * Helper macro to call PerformanceTraces::Launch2Preview::step() with
    * the proper function name, and pass additional arguments.
