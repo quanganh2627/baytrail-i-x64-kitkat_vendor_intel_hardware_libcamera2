@@ -70,6 +70,12 @@ namespace android {
  */
 #define DEFAULT_HDR_BRACKETING 3
 
+// Minimum value of our supported preview FPS
+const int MIN_PREVIEW_FPS = 11;
+// Max value of our supported preview fps:
+// TODO: This value should be gotten from sensor dynamically, instead of hardcoding:
+const int MAX_PREVIEW_FPS = 30;
+
 ControlThread::ControlThread() :
     Thread(true) // callbacks may call into java
     ,mISP(NULL)
@@ -108,6 +114,7 @@ ControlThread::ControlThread() :
     ,mMeteringAreas()
     ,mIsPreviewStartComplete(false)
     ,mVideoSnapshotrequested(0)
+    ,mSetFPS(MAX_PREVIEW_FPS)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -2538,6 +2545,13 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         status = processParamRawDataFormat(oldParams, newParams);
     }
 
+    // preview framerate
+    // NOTE: This is deprecated since Android API level 9, applications should use
+    // setPreviewFpsRange()
+    if (status == NO_ERROR) {
+        status = processParamPreviewFrameRate(oldParams, newParams);
+    }
+
     if (mAAA->is3ASupported()) {
 
         // Changing the scene may change many parameters, including
@@ -3856,6 +3870,24 @@ status_t ControlThread::processParamRawDataFormat(const CameraParameters *oldPar
     return NO_ERROR;
 }
 
+status_t ControlThread::processParamPreviewFrameRate(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s : NOTE: DEPRECATED", __FUNCTION__);
+
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              CameraParameters::KEY_PREVIEW_FRAME_RATE);
+
+    if (!newVal.isEmpty()) {
+        LOGI("DEPRECATED: Got new preview frame rate: %s", newVal.string());
+        int fps = newParams->getPreviewFrameRate();
+        // Save the set FPS for doing frame dropping
+        mSetFPS = fps;
+    }
+
+    return NO_ERROR;
+}
+
 /*
  * NOTE: this function runs in camera service thread. Protect member accesses accordingly!
  *
@@ -4984,13 +5016,21 @@ status_t ControlThread::dequeuePreview()
     atomisp_frame_status frameStatus;
 
     status = mISP->getPreviewFrame(&buff, &frameStatus);
+
     if (status == NO_ERROR) {
         bool videoMode =
             (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING);
 
+        bool skipFrame = checkSkipFrame(buff.frameCounter);
+
         if (videoMode) {
             mCoupledBuffers[buff.id].previewBuff = buff;
-            mCoupledBuffers[buff.id].previewBuffReturned = false;
+            mCoupledBuffers[buff.id].previewBuffReturned = skipFrame;
+            if (skipFrame) {
+                LOG2("Dropping preview video frame, frame num=%d", buff.frameCounter);
+                queueCoupledBuffers(buff.id);
+                return status;
+            }
         }
 
         if (frameStatus != ATOMISP_FRAME_STATUS_CORRUPTED) {
@@ -5002,6 +5042,12 @@ status_t ControlThread::dequeuePreview()
                 status = m3AThread->newFrame(buff.capture_timestamp);
                 if (status != NO_ERROR)
                     LOGW("Error notifying new frame to 3A thread!");
+            }
+
+            if (skipFrame) {
+                LOG2("Dropping preview frame, frame num=%d", buff.frameCounter);
+                mISP->putPreviewFrame(&buff);
+                return status;
             }
             status = mPreviewThread->preview(&buff);
             if (status != NO_ERROR) {
@@ -5039,9 +5085,9 @@ status_t ControlThread::dequeueRecording()
         mCoupledBuffers[buff.id].recordingBuffReturned = false;
         mLastRecordingBuffIndex = buff.id;
         // See if recording has started.
-        // If it has, process the buffer
-        // If it hasn't, return the buffer to the driver
-        if (mState == STATE_RECORDING) {
+        // If it has, process the buffer, unless frame is to be dropped.
+        // If recording hasn't started or frame is dropped, return the buffer to the driver
+        if (mState == STATE_RECORDING && !checkSkipFrame(buff.frameCounter)) {
             mVideoThread->video(&buff, timestamp);
         } else {
             mCoupledBuffers[buff.id].recordingBuffReturned = true;
@@ -5051,6 +5097,29 @@ status_t ControlThread::dequeueRecording()
     }
 
     return status;
+}
+
+
+/**
+ * This function implements the frame skip algorithm.
+ * - If user requests 15fps, drop every even frame
+ * - If user requests 10fps, drop two frames every three frames
+ * @returns true: skip,  false: not skip
+ */
+// TODO: The above only applies to 30fps. Generalize this to support other sensor FPS as well.
+bool ControlThread::checkSkipFrame(int frameNum)
+{
+    if (mSetFPS == 15 && (frameNum % 2 == 0)) {
+        LOG2("Preview FPS: %d. Skipping frame num: %d", mSetFPS, frameNum);
+        return true;
+    }
+
+    if (mSetFPS == 10 && (frameNum % 3 != 0)) {
+        LOG2("Preview FPS: %d. Skipping frame num: %d", mSetFPS, frameNum);
+        return true;
+    }
+
+    return false;
 }
 
 bool ControlThread::threadLoop()

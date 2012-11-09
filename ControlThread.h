@@ -409,6 +409,7 @@ private:
     status_t dequeueRecording();
     status_t queueCoupledBuffers(int coupledId);
 
+    bool checkSkipFrame(int frameNum);
     status_t skipFrames(size_t numFrames);
     status_t initBracketing();
     status_t applyBracketing();
@@ -475,6 +476,9 @@ private:
     status_t processParamTNR(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamRawDataFormat(const CameraParameters *oldParams,
+            CameraParameters *newParams);
+    // NOTE: processParamPreviewFrameRate is deprecated since Android API level 9
+    status_t processParamPreviewFrameRate(const CameraParameters *oldParams,
             CameraParameters *newParams);
 
     void processParamFileInject(CameraParameters *newParams);
@@ -599,6 +603,8 @@ private:
                                                     can be restore when video recording stops
                                                  */
     Vector<MessagePicture> mUnqueuedPicBuf; /* store the buffers that have not been returned to ISP in capturing*/
+
+    int mSetFPS;                /* The current FPS, used for frame dropping */
 
 }; // class ControlThread
 
