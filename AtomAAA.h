@@ -222,7 +222,7 @@ private:
     int enableGbce(bool enable);
 
     // 3A control
-    int ciAdvInit(const SensorParams *paramFiles, const void *cpf_file, const char *sensorOtpFile);
+    int ciAdvInit(const SensorParams *paramFiles, const char *sensorOtpFile);
     void ciAdvUninit(void);
     void ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate);
     void *open3aParamFile(const char *modulename);
@@ -259,7 +259,7 @@ public:
     bool is3ASupported() { return mHas3A; }
 
     // Initialization functions
-    status_t init(const SensorParams *param_files, AtomISP *isp, const void *aiqConf, const char *otpInjectFile = NULL);
+    status_t init(const SensorParams *param_files, AtomISP *isp, const char *otpInjectFile = NULL);
     status_t unInit();
     status_t applyIspSettings();
     status_t switchModeAndRate(AtomMode mode, float fps);

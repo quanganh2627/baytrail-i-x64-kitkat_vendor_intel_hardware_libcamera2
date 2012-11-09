@@ -141,13 +141,13 @@ AtomAAA::~AtomAAA()
     mInstance = NULL;
 }
 
-status_t AtomAAA::init(const SensorParams *sensorParameters, AtomISP *isp, const void *aiqConf, const char *otpInjectFile)
+status_t AtomAAA::init(const SensorParams *sensorParameters, AtomISP *isp, const char *otpInjectFile)
 {
     Mutex::Autolock lock(m3aLock);
     int init_result;
     mISP = isp;
     gISP = isp;
-    init_result = ciAdvInit(sensorParameters, aiqConf, otpInjectFile);
+    init_result = ciAdvInit(sensorParameters, otpInjectFile);
     if (init_result == 0) {
         mSensorType = SENSOR_TYPE_RAW;
         mHas3A = true;
@@ -1414,16 +1414,11 @@ int AtomAAA::setFpnTable(const ia_frame *fpn_table)
     return mISP->setFpnTable(&fb);
 }
 
-int AtomAAA::ciAdvInit(const SensorParams *paramFiles, const void *cpf_file, const char *sensorOtpFile)
+int AtomAAA::ciAdvInit(const SensorParams *paramFiles, const char *sensorOtpFile)
 {
     LOG1("@%s", __FUNCTION__);
     ia_3a_params param;
     ia_3a_private_data *aicNvm = NULL;
-
-    ia_3a_private_data aic_cpf;
-    aic_cpf.data = (void *)cpf_file;
-    aic_cpf.data = NULL; /* TODO: Should remove this line to allow using cpf */
-    aic_cpf.size = 0; /* TODO: Should use size from cpf_file here */
 
     m3ALibState.boot_events = ci_adv_init_state;
     if (!paramFiles)

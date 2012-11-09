@@ -40,6 +40,7 @@ class AtomISP;
 
 #include "AtomAAA.h"
 #include "PlatformData.h"
+#include "CameraConf.h"
 
 namespace android {
 
@@ -96,7 +97,8 @@ public:
     AtomISP(void);
     ~AtomISP();
 
-    status_t init(int camera_id, const void *aiqConf);
+    status_t initHw(int camera_id);
+    status_t init(const sp<CameraBlob>& aiqConf);
 
 // public methods
 public:
@@ -286,11 +288,11 @@ private:
 // private methods
 private:
 
-    void initDriverVersion(void);
-    status_t init3A(int cameraId, const void *aiqConf);
-    void initFrameConfig(int cameraId);
     status_t initCameraInput(int cameraId);
-    void initFileInject(void);
+    void initFileInject(int cameraId);
+    void initDriverVersion(void);
+    void initFrameConfig();
+    status_t init3A(const sp<CameraBlob>& aiqConf);
 
     status_t configurePreview();
     status_t startPreview();
@@ -405,6 +407,7 @@ private:
 
     struct v4l2_buffer_pool v4l2_buf_pool[V4L2_MAX_DEVICE_COUNT]; //pool[0] for device0 pool[1] for device1
 
+    bool mIsFileInject;
     struct FileInject {
         String8 fileName;
         bool active;

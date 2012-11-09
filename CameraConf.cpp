@@ -24,6 +24,24 @@
 
 namespace android {
 
+const char *cpfPath = "/etc/atomisp/";  // Where CPF files are located
+const int statCacheSize = 2;  // CPF files to be "cached" (can be zero)
+static const char *sensorName = 0;  // Pointer to sensor name
+
+const char *cpf::internal::constructFileName()
+{
+    static String8 cpfName;
+    cpfName = cpfPath;
+
+    // If there are spaces in driver name, only take the beginning
+    String8 tmp(sensorName);
+    for(int i = 0; (i = tmp.find(" ")) > 0; tmp.setTo(tmp, i));
+    tmp = tmp + ".cpf";
+
+    cpfName.appendPath(tmp);
+    return cpfName;
+}
+
 CameraBlob::CameraBlob(const int size)
 {
     mSize = 0;
@@ -84,36 +102,73 @@ CameraBlob::~CameraBlob()
     }
 }
 
+void cpf::setSensorName(const char *ptr)
+{
+    sensorName = ptr;
+}
+
 status_t cpf::init(sp<CameraBlob>& aiqConf, sp<CameraBlob>& drvConf, sp<CameraBlob>& halConf)
 {
-    status_t ret = 0;
+    // In case the very same CPF configuration file has been verified
+    // already earlier, checksum calculation will be skipped this time.
+    // Files are identified by their stat structure. We need cache size
+    // to be at least 2 in order to prevent checksum calculation
+    // everytime the user switches between the front and back camera
+    static struct stat statPrevious[statCacheSize];
+    struct stat statCurrent;
+    bool canSkipChecksum = false;
+
     sp<CameraBlob> allConf;
+    status_t ret = 0;
 
     // First, we load the correct configuration file.
     // It will be behind reference counted MemoryHeapBase
     // object "allConf", meaning that the memory will be
     // automatically freed when it is no longer being pointed at
-    if ((ret = internal::loadAll(allConf)))
+    if ((ret = internal::loadAll(allConf, statCurrent)))
         return ret;
+
+    // See if we know the file already
+    for (int i = statCacheSize - 1; i >= 0; i--) {
+        if (!memcmp(&statPrevious[i], &statCurrent, sizeof(struct stat))) {
+            canSkipChecksum = true;
+            break;
+        }
+    }
 
     // Then, we will dig out component specific configuration
     // data from within "allConf". That will be placed behind
-    // reference counting MemoryBase memory descriptors
-    if ((ret = internal::initAiq(allConf, aiqConf)))
+    // reference counting MemoryBase memory descriptors.
+    // We only need to verify checksum once
+    if ((ret = internal::initAiq(allConf, aiqConf, canSkipChecksum)))
         return ret;
+    if ((ret = internal::initDrv(allConf, drvConf, true)))
+        return ret;
+    if ((ret = internal::initHal(allConf, halConf, true)))
+        return ret;
+
+    // If we are here, the file was ok. If it wasn't cached already,
+    // then do so now (adding to end of cache, removing from beginning)
+    if (!canSkipChecksum) {
+        for (int i = statCacheSize - 1; i > 0; i--) {
+            statPrevious[i-1] = statPrevious[i];
+        }
+        if (statCacheSize > 0) {
+            statPrevious[statCacheSize-1] = statCurrent;
+        }
+    }
 
     return ret;
 }
 
-status_t cpf::internal::loadAll(sp<CameraBlob>& allConf)
+status_t cpf::internal::loadAll(sp<CameraBlob>& allConf, struct stat& statCurrent)
 {
-    // FIXME: Get the file name e.g. from PlatformData
-    const char *filename = "/system/lib/file.cpf";
     FILE *file;
+    const char *fileName = internal::constructFileName();
     status_t ret = 0;
 
     do {
-        file = fopen(filename, "rb");
+        file = fopen(fileName, "rb");
         if (!file) {
             LOGE("ERROR in opening CPF file: %s", strerror(errno));
             ret = NAME_NOT_FOUND;
@@ -143,6 +198,17 @@ status_t cpf::internal::loadAll(sp<CameraBlob>& allConf)
                 break;
             }
 
+            // We use file statistics for file identification purposes.
+            // The access time was just changed (because of us!),
+            // so let's nullify the access time info
+            if (stat(fileName, &statCurrent) < 0) {
+                LOGE("ERROR querying filestat of CPF file: %s", strerror(errno));
+                ret = UNKNOWN_ERROR;
+                break;
+            }
+            statCurrent.st_atime = 0;
+            statCurrent.st_atime_nsec = 0;
+
         } while (0);
         fclose(file);
 
@@ -151,7 +217,7 @@ status_t cpf::internal::loadAll(sp<CameraBlob>& allConf)
 
 }
 
-status_t cpf::internal::initAiq(const sp<CameraBlob>& allConf, sp<CameraBlob>& aiqConf)
+status_t cpf::internal::initAiq(const sp<CameraBlob>& allConf, sp<CameraBlob>& aiqConf, bool skipChecksum)
 {
     status_t ret = 0;
 
@@ -161,7 +227,10 @@ status_t cpf::internal::initAiq(const sp<CameraBlob>& allConf, sp<CameraBlob>& a
         return NO_MEMORY;
     }
 
-    if (tbd_err_none == tbd_validate(allConf->getPtr(), tbd_tag_cpff, allConf->getSize())) {
+    if ((skipChecksum) || (tbd_err_none == tbd_validate(allConf->getPtr(), tbd_tag_cpff, allConf->getSize()))) {
+        // FIXME: Once we only accept one kind of CPF files, the content
+        // is either ok or not - no need for kludge checks and jumps like this
+        if (skipChecksum && (*(uint32_t *)(allConf->getPtr()) == tbd_tag_aiqb)) goto fixme;
         // Looks like we have valid CPF file,
         // let's look for AIQ record
         void *data;
@@ -177,9 +246,9 @@ status_t cpf::internal::initAiq(const sp<CameraBlob>& allConf, sp<CameraBlob>& a
             LOGE("ERROR incomplete CPF file");
             ret = BAD_VALUE;
         }
+    // FIXME: The tbd_tag_aiqb is enabled for R&D, but should lead to an error below
     } else if (tbd_err_none == tbd_validate(allConf->getPtr(), tbd_tag_aiqb, allConf->getSize())) {
-        // Looks like we have valid AIQ file
-        // (FIXME: Enabled for R&D, but should lead to an error below)
+fixme:  // Looks like we have valid AIQ file
         aiqConf = new CameraBlob(allConf, 0, allConf->getSize());
         if (aiqConf == 0) {
             LOGE("ERROR no memory in %s",__func__);
@@ -192,6 +261,16 @@ status_t cpf::internal::initAiq(const sp<CameraBlob>& allConf, sp<CameraBlob>& a
     }
 
     return ret;
+}
+
+status_t cpf::internal::initDrv(const sp<CameraBlob>& allConf, sp<CameraBlob>& drvConf, bool skipChecksum)
+{
+    return 0;
+}
+
+status_t cpf::internal::initHal(const sp<CameraBlob>& allConf, sp<CameraBlob>& halConf, bool skipChecksum)
+{
+    return 0;
 }
 
 } // namespace android

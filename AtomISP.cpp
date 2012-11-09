@@ -178,13 +178,9 @@ AtomISP::AtomISP() :
     CLEAR(mPostviewBuffers);
 }
 
-status_t AtomISP::init(int cameraId, const void *aiqConf)
+status_t AtomISP::initHw(int cameraId)
 {
     status_t status = NO_ERROR;
-
-    mConfig.fps = 30;
-    mConfig.num_snapshot = 1;
-    mConfig.zoom = 0;
 
     initDriverVersion();
 
@@ -192,10 +188,10 @@ status_t AtomISP::init(int cameraId, const void *aiqConf)
     int ret = openDevice(V4L2_MAIN_DEVICE);
     if (ret < 0) {
         LOGE("Failed to open first device!");
-        goto errorexit;
+        return NO_INIT;
     }
 
-    initFileInject();
+    initFileInject(cameraId);
 
     // Select the input port to use
     status = initCameraInput(cameraId);
@@ -207,12 +203,27 @@ status_t AtomISP::init(int cameraId, const void *aiqConf)
     mSensorType = (mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY)?SENSOR_TYPE_RAW:SENSOR_TYPE_SOC;
     LOG1("Sensor type detected: %s", (mSensorType == SENSOR_TYPE_RAW)?"RAW":"SOC");
 
-    status = init3A(cameraId, aiqConf);
+    return NO_ERROR;
+
+errorexit:
+    closeDevice(V4L2_MAIN_DEVICE);
+    return NO_INIT;
+}
+
+status_t AtomISP::init(const sp<CameraBlob>& aiqConf)
+{
+    status_t status = NO_ERROR;
+
+    mConfig.fps = 30;
+    mConfig.num_snapshot = 1;
+    mConfig.zoom = 0;
+
+    status = init3A(aiqConf);
     if (status != NO_ERROR) {
         goto errorexit;
     }
 
-    initFrameConfig(cameraId);
+    initFrameConfig();
 
     // Initialize the frame sizes
     setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
@@ -287,9 +298,9 @@ void AtomISP::initDriverVersion(void)
 /**
  * Only to be called from 2nd stage contructor AtomISP::init().
  */
-void AtomISP::initFrameConfig(int cameraId)
+void AtomISP::initFrameConfig()
 {
-    if (cameraId == INTEL_FILE_INJECT_CAMERA_ID) {
+    if (mIsFileInject) {
         mConfig.snapshot.maxWidth = MAX_FILE_INJECTION_SNAPSHOT_WIDTH;
         mConfig.snapshot.maxHeight = MAX_FILE_INJECTION_SNAPSHOT_HEIGHT;
         mConfig.preview.maxWidth = MAX_FILE_INJECTION_PREVIEW_WIDTH;
@@ -318,7 +329,7 @@ void AtomISP::initFrameConfig(int cameraId)
         mConfig.recording.maxHeight = MAX_BACK_CAMERA_VIDEO_HEIGHT;
         break;
     default:
-        LOGE("Invalid camera id: %d", cameraId);
+        LOGE("Invalid camera id");
     }
 }
 
@@ -364,22 +375,30 @@ status_t AtomISP::initCameraInput(int cameraId)
         status = NO_ERROR;
     }
 
+    // FIXME: This should be queried by CPF from media controller
+    cpf::setSensorName(mCameraInput->name);
+
     return status;
 }
 
 /**
  * Only to be called from 2nd stage contructor AtomISP::init().
  */
-status_t AtomISP::init3A(int cameraId, const void *aiqConf)
+status_t AtomISP::init3A(const sp<CameraBlob>& aiqConf)
 {
     status_t status = NO_ERROR;
 
     if (selectCameraSensor() == NO_ERROR) {
-        if (cameraId == INTEL_FILE_INJECT_CAMERA_ID) {
+        if (mIsFileInject) {
             const char* otp_file = privateOtpInjectFileName;
             int maincam = getPrimaryCameraIndex();
             const SensorParams *paramFiles = PlatformData::getSensorParamsFile(sCamInfo[maincam].name);
-            if (mAAA->init(paramFiles, this, aiqConf, otp_file) == NO_ERROR) {
+            SensorParams paramFilesWithCpf = *paramFiles;
+            if (aiqConf != 0) {
+                paramFilesWithCpf.cpfData.data = aiqConf->getPtr();
+                paramFilesWithCpf.cpfData.size = aiqConf->getSize();
+            }
+            if (mAAA->init(&paramFilesWithCpf, this, otp_file) == NO_ERROR) {
                 LOG1("3A initialized for file inject");
             }
             else {
@@ -389,7 +408,12 @@ status_t AtomISP::init3A(int cameraId, const void *aiqConf)
         }
         else if (mSensorType == SENSOR_TYPE_RAW) {
             const SensorParams *paramFiles = PlatformData::getSensorParamsFile(mCameraInput->name);
-            if (mAAA->init(paramFiles, this, aiqConf, NULL) == NO_ERROR) {
+            SensorParams paramFilesWithCpf = *paramFiles;
+            if (aiqConf != 0) {
+                paramFilesWithCpf.cpfData.data = aiqConf->getPtr();
+                paramFilesWithCpf.cpfData.size = aiqConf->getSize();
+            }
+            if (mAAA->init(&paramFilesWithCpf, this, NULL) == NO_ERROR) {
                 LOG1("3A initialized");
             } else {
                 LOGE("Error initializing 3A on RAW sensor!");
@@ -397,7 +421,7 @@ status_t AtomISP::init3A(int cameraId, const void *aiqConf)
             }
         }
     } else {
-        LOGE("Could not select camera: %s (sensor ID: %d)", mCameraInput->name, cameraId);
+        LOGE("Could not select camera: %s", mCameraInput->name);
         status = NO_INIT;
     }
 
@@ -407,8 +431,9 @@ status_t AtomISP::init3A(int cameraId, const void *aiqConf)
 /**
  * Only to be called from 2nd stage contructor AtomISP::init().
  */
-void AtomISP::initFileInject(void)
+void AtomISP::initFileInject(int cameraId)
 {
+    mIsFileInject = (cameraId == INTEL_FILE_INJECT_CAMERA_ID);
     mFileInject.active = false;
 }
 
@@ -2280,7 +2305,7 @@ int AtomISP::xioctl(int fd, int request, void *arg) const
     } while (-1 == ret && EINTR == errno);
 
     if (ret < 0)
-        LOGW ("Request %d failed: %s", request, strerror(errno));
+        LOGW ("%s: Request 0x%x failed: %s", __FUNCTION__, request, strerror(errno));
 
     return ret;
 }

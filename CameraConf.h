@@ -19,6 +19,7 @@
 
 #include <utils/Errors.h>
 #include <utils/RefBase.h>
+#include <sys/stat.h>
 
 namespace android {
 
@@ -42,12 +43,16 @@ private:
 
 namespace cpf {
 
+    void setSensorName(const char *ptr);
     status_t init(sp<CameraBlob>& aiqConf, sp<CameraBlob>& drvConf, sp<CameraBlob>& halConf);
 
 namespace internal {
 
-    status_t loadAll(sp<CameraBlob>& allConf);
-    status_t initAiq(const sp<CameraBlob>& allConf, sp<CameraBlob>& aiqConf);
+    status_t loadAll(sp<CameraBlob>& allConf, struct stat& statCurrent);
+    status_t initAiq(const sp<CameraBlob>& allConf, sp<CameraBlob>& aiqConf, bool skipChecksum);
+    status_t initDrv(const sp<CameraBlob>& allConf, sp<CameraBlob>& drvConf, bool skipChecksum);
+    status_t initHal(const sp<CameraBlob>& allConf, sp<CameraBlob>& halConf, bool skipChecksum);
+    const char *constructFileName();
 
 }; // namespace internal
 

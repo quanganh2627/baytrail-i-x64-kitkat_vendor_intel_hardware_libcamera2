@@ -136,15 +136,8 @@ status_t ControlThread::init(int cameraId)
 
     status_t status = UNKNOWN_ERROR;
 
+    // CPF configurations for IQ, driver and HAL
     sp<CameraBlob> aiqConf, drvConf, halConf;
-    status = cpf::init(aiqConf, drvConf, halConf);
-    if (status != NO_ERROR) {
-        // FIXME: "File not found" should be treated as an error...
-        if (status != NAME_NOT_FOUND) {
-            LOGE("Error in CPF initialization with id %d", cameraId);
-            goto bail;
-        }
-    }
 
     mISP = new AtomISP();
     if (mISP == NULL) {
@@ -152,9 +145,24 @@ status_t ControlThread::init(int cameraId)
         goto bail;
     }
 
-    status = mISP->init(cameraId, aiqConf->getPtr());
+    status = mISP->initHw(cameraId);
     if (status != NO_ERROR) {
         LOGE("Error initializing ISP with id %d", cameraId);
+        goto bail;
+    }
+
+    status = cpf::init(aiqConf, drvConf, halConf);  // Must be after mISP->initHw()
+    if (status != NO_ERROR) {
+        // FIXME: "File not found" should be treated as an error...
+        if (status != NAME_NOT_FOUND) {
+            LOGE("Error in CPF initialization");
+            goto bail;
+        }
+    }
+
+    status = mISP->init(aiqConf);
+    if (status != NO_ERROR) {
+        LOGE("Error initializing ISP");
         goto bail;
     }
 
