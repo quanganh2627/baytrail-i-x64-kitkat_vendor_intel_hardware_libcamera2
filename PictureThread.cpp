@@ -833,7 +833,7 @@ status_t PictureThread::completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBu
     endTime = systemTime();
     mHwCompressor->waitToComplete(&mainSize);
     if (mainSize > 0) {
-        finalSize += mExifBuf.size + mainSize;
+        finalSize += mExifBuf.size + mainSize - sizeof(JPEG_MARKER_SOI);
     } else {
         LOGE("HW JPEG Encoding failed to complete!");
         return UNKNOWN_ERROR;
@@ -860,10 +860,14 @@ status_t PictureThread::completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBu
         outBuf.width = mainBuf->width;
         outBuf.height = mainBuf->height;
         outBuf.quality = mPictureQuality;
-        outBuf.size = mainSize;
+        outBuf.size = mainSize - sizeof(JPEG_MARKER_SOI);
         if(mHwCompressor->getOutput(outBuf) < 0) {
             LOGE("Could not encode picture stream!");
             status = UNKNOWN_ERROR;
+        } else {
+            char *copyTo = (char*)destBuf->buff->data +
+                finalSize - sizeof(JPEG_MARKER_EOI);
+            memcpy(copyTo, (void*)JPEG_MARKER_EOI, sizeof(JPEG_MARKER_EOI));
         }
     }
 
