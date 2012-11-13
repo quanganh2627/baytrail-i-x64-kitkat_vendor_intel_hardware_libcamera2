@@ -140,11 +140,11 @@ public:
         status_t status = NO_ERROR;
 
         mQueueMutex.lock();
-        while (isEmpty()) {
+        while (isEmptyLocked()) {
             mQueueCondition.wait(mQueueMutex);
             // wait() should never complete without a message being
             // available, but for diagnostic purposes let's check it.
-            if (isEmpty()) {
+            if (isEmptyLocked()) {
                 LOGE("Atom_MessageQueue - woke with mCount == 0\n");
             }
         }
@@ -166,10 +166,23 @@ public:
     }
 
     // Return true if the queue is empty
-    inline bool isEmpty() { return size() == 0; }
-    inline int size() { return mList.size(); }
+    bool isEmpty() {
+        Mutex::Autolock lock(mQueueMutex);
+        return sizeLocked() == 0;
+    }
+
+    int size() {
+        Mutex::Autolock lock(mQueueMutex);
+        return sizeLocked();
+    }
 
 private:
+
+    // Return true if the queue is empty, must be called
+    // with mQueueMutex taken
+    inline bool isEmptyLocked() { return sizeLocked() == 0; }
+
+    inline int sizeLocked() { return mList.size(); }
 
     const char *mName;
     Mutex mQueueMutex;
