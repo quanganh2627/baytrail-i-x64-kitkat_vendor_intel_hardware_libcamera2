@@ -210,9 +210,11 @@ status_t AAAThread::handleMessageEnableAwbLock(MessageEnable* msg)
 status_t AAAThread::handleMessageAutoFocus()
 {
     LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
+    status_t status(NO_ERROR);
+    AfMode currAfMode(mAAA->getAfMode());
 
-    if (mAAA->is3ASupported()) {
+    if (mAAA->is3ASupported() && currAfMode != CAM_AF_MODE_INFINITY &&
+        currAfMode != CAM_AF_MODE_FIXED && currAfMode != CAM_AF_MODE_MANUAL) {
         mAAA->setAfEnabled(true);
 
         // state of client requested 3A locks is kept, so it
@@ -310,11 +312,6 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
                 mAAA->setAfEnabled(false);
                 mStartAF = false;
                 mStopAF = false;
-                // ****** workaround begin, BZ: 58489 ******
-                // we need to refresh 3A AF settings because it seems 3A forgets its mode
-                // after still af sequence is run
-                mAAA->setAfMode(mAAA->getAfMode());
-                // ****** workaround end *******************
                 mFramesTillAfComplete = 0;
                 mCallbacks->autofocusDone(afStatus == ia_3a_af_status_success);
                 // Also notify ControlThread that the auto-focus is finished

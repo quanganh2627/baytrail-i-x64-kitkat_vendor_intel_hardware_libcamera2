@@ -431,8 +431,6 @@ status_t AtomAAA::setAfMode(AfMode mode)
     if(!mHas3A)
         return INVALID_OPERATION;
 
-    ia_3a_af_lens_range lensRange;
-
     switch (mode) {
     case CAM_AF_MODE_CONTINUOUS:
         ia_3a_af_set_focus_mode(ia_3a_af_mode_auto);
@@ -440,7 +438,8 @@ status_t AtomAAA::setAfMode(AfMode mode)
         ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_auto);
         break;
     case CAM_AF_MODE_AUTO:
-        ia_3a_af_set_focus_mode(ia_3a_af_mode_manual);
+        // we use hyperfocal default lens position in hyperfocal mode
+        ia_3a_af_set_focus_mode(ia_3a_af_mode_hyperfocal);
         ia_3a_af_set_focus_range(ia_3a_af_range_full);
         ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_auto);
         break;
@@ -455,17 +454,12 @@ status_t AtomAAA::setAfMode(AfMode mode)
         ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_auto);
         break;
     case CAM_AF_MODE_INFINITY:
-        // TODO: change to ia_3a_af_mode_infinity after that is added to 3A
-        ia_3a_af_set_focus_mode(ia_3a_af_mode_manual);
+        ia_3a_af_set_focus_mode(ia_3a_af_mode_infinity);
         ia_3a_af_set_focus_range(ia_3a_af_range_full);
-        ia_3a_af_get_lens_range(&lensRange);
-        ia_3a_af_set_manual_focus_position(lensRange.infinity);
         break;
     case CAM_AF_MODE_FIXED:
-        // TODO: change to ia_3a_af_mode_hyperfocal after that is added to 3A
-        ia_3a_af_set_focus_mode(ia_3a_af_mode_manual);
+        ia_3a_af_set_focus_mode(ia_3a_af_mode_hyperfocal);
         ia_3a_af_set_focus_range(ia_3a_af_range_full);
-        ia_3a_af_set_manual_focus_position(280); // FIXME: remove line after 3A support hyperfocal
         break;
     case CAM_AF_MODE_MANUAL:
         ia_3a_af_set_focus_mode(ia_3a_af_mode_manual);
@@ -474,7 +468,7 @@ status_t AtomAAA::setAfMode(AfMode mode)
     case CAM_AF_MODE_FACE:
         ia_3a_af_set_focus_mode(ia_3a_af_mode_auto);
         ia_3a_af_set_focus_range(ia_3a_af_range_norm);
-        ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_multi);
+        ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_spot);
         break;
     default:
         LOGE("Set: invalid AF mode: %d. Using AUTO!", mode);
@@ -885,6 +879,7 @@ status_t AtomAAA::startStillAf()
     if(!mHas3A)
         return INVALID_OPERATION;
 
+    ia_3a_af_set_focus_mode(ia_3a_af_mode_auto);
     ia_3a_af_still_start();
     mStillAfStart = systemTime();
     return NO_ERROR;
@@ -898,6 +893,9 @@ status_t AtomAAA::stopStillAf()
         return INVALID_OPERATION;
 
     ia_3a_af_still_stop();
+    if (mAfMode == CAM_AF_MODE_AUTO) {
+        ia_3a_af_set_focus_mode(ia_3a_af_mode_manual);
+    }
     mStillAfStart = 0;
     return NO_ERROR;
 }
