@@ -74,17 +74,7 @@ static ia_3a_status cb_focus_drive_to_pos(short position, short absolute_pos)
 
 static ia_3a_af_lens_status cb_focus_status(void)
 {
-    ia_3a_af_lens_status stat;
-    if (ia_3a_af_get_status(&stat) < 0) {
-            int status;
-            gISP->sensorGetFocusStatus(&status);
-
-            if (status & ATOMISP_FOCUS_STATUS_MOVING)
-                    stat = ia_3a_af_lens_status_move;
-            else
-                    stat = ia_3a_af_lens_status_stop;
-    }
-    return stat;
+    return ia_3a_af_lens_status_stop;
 }
 
 static bool cb_focus_ready(void)
