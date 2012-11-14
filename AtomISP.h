@@ -115,6 +115,11 @@ public:
 
     inline int getNumBuffers(bool videoMode) { return videoMode? mNumBuffers : mNumPreviewBuffers; }
 
+    status_t startOfflineCapture();
+    status_t stopOfflineCapture();
+    bool isOfflineCaptureRunning() const;
+    bool isOfflineCaptureSupported() const;
+
     status_t getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameStatus = NULL);
     status_t putPreviewFrame(AtomBuffer *buff);
 
@@ -141,6 +146,7 @@ public:
     void getPreviewSize(int *width, int *height, int *stride);
 
     status_t setSnapshotNum(int num);
+    status_t setContCaptureNumCaptures(int numCaptures);
 
     void getZoomRatios(bool videoMode, CameraParameters *params);
     void getFocusDistances(CameraParameters *params);
@@ -276,6 +282,16 @@ private:
         int zoom;             // zoom value
     };
 
+    struct ContinuousCaptureConfig {
+      int numCaptures;        /*!< Number of captures
+                               * -1 = capture continuously
+                               * 0 = disabled, stop captures
+                               * >0 = burst of N snapshots
+                               */
+      int offset;             /*!< burst start offset */
+      unsigned int skip;      /*!< skip factor */
+    };
+
     struct cameraInfo {
         int androidCameraId; /*!< Index used by android to select this camera. This index is passed
                               *   when the camera HAL is open. Used to differentiate back and front camera
@@ -294,6 +310,15 @@ private:
         RESOLUTION_14MP,
     };
 
+    enum DeviceState {
+        DEVICE_CLOSED = 0,  /*!< kernel device closed */
+        DEVICE_OPEN,        /*!< device node opened */
+        DEVICE_CONFIGURED,  /*!< device format set, IOC_S_FMT */
+        DEVICE_PREPARED,    /*!< buffers queued, IOC_QBUF */
+        DEVICE_STARTED,     /*!< stream started, IOC_STREAMON */
+        DEVICE_ERROR        /*!< undefined state */
+    };
+
 // private methods
 private:
 
@@ -310,8 +335,13 @@ private:
     status_t startRecording();
     status_t stopRecording();
     status_t configureCapture();
+    status_t configureContinuous();
     status_t startCapture();
     status_t stopCapture();
+    status_t startContinuousPreview();
+    status_t stopContinuousPreview();
+
+    status_t requestContCapture(int numCaptures, int offset, unsigned int skip);
 
     void runStartISPActions();
     void runStopISPActions();
@@ -347,12 +377,13 @@ private:
     int v4l2_capture_g_framerate(int fd, float * framerate, int width,
                                           int height, int pix_fmt);
     int v4l2_capture_s_format(int fd, int device, int w, int h, int format, bool raw, int* stride);
-    void stopDevice(int device);
+    int stopDevice(int device, bool leaveConfigured = false);
     int v4l2_capture_streamoff(int fd);
     void destroyBufferPool(int device);
     int v4l2_capture_free_buffer(int device, struct v4l2_buffer_info *buf_info);
     int v4l2_capture_release_buffers(int device);
     int v4l2_capture_request_buffers(int device, uint num_buffers);
+    int prepareDevice(int device, int buffer_count);
     int startDevice(int device, int buffer_count);
     int createBufferPool(int device, int buffer_count);
     int v4l2_capture_new_buffer(int device, int index, struct v4l2_buffer_info *buf);
@@ -406,9 +437,14 @@ private:
     int mNumCapturegBuffersQueued;
     int mFlashTorchSetting;
     Config mConfig;
+    ContinuousCaptureConfig mContCaptConfig;
 
+    // TODO: video_fds should be moved to mDevices
     int video_fds[V4L2_MAX_DEVICE_COUNT];
-    unsigned int mFrameCounter[V4L2_MAX_DEVICE_COUNT];
+    struct {
+      unsigned int frameCounter;
+      DeviceState state;
+    } mDevices[V4L2_MAX_DEVICE_COUNT];
 
     int dumpPreviewFrame(int previewIndex);
     int dumpRecordingFrame(int recordingIndex);

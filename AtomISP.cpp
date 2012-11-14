@@ -84,6 +84,16 @@
 
 #define FRAME_SYNC_POLL_TIMEOUT 500
 
+/**
+ * Checks whether 'device' is a valid atomisp V4L2 device node
+ */
+#define VALID_DEVICE(device, x) \
+    if ((device < V4L2_MAIN_DEVICE || device > mConfigLastDevice) \
+            && device != V4L2_ISP_SUBDEV) { \
+        LOGE("%s: Wrong device %d (last %d)", __FUNCTION__, device, mConfigLastDevice); \
+        return x; \
+    }
+
 namespace android {
 
 ////////////////////////////////////////////////////////////////////
@@ -173,11 +183,14 @@ AtomISP::AtomISP(const sp<CameraConf>& cfg) :
 {
     LOG1("@%s", __FUNCTION__);
 
-    for(int i = 0; i < V4L2_MAX_DEVICE_COUNT; i++)
+    for(int i = 0; i < V4L2_MAX_DEVICE_COUNT; i++) {
         video_fds[i] = -1;
+        mDevices[i].state = DEVICE_CLOSED;
+    }
 
     CLEAR(mSnapshotBuffers);
     CLEAR(mPostviewBuffers);
+    CLEAR(mContCaptConfig);
 }
 
 status_t AtomISP::initDevice()
@@ -983,6 +996,9 @@ status_t AtomISP::configure(AtomMode mode)
     case MODE_CAPTURE:
         status = configureCapture();
         break;
+    case MODE_CONTINUOUS_CAPTURE:
+        status = configureContinuous();
+        break;
     default:
         status = UNKNOWN_ERROR;
         break;
@@ -1025,6 +1041,14 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
         if (mFileInject.active == true)
             startFileInject();
         break;
+    case MODE_CONTINUOUS_CAPTURE:
+        status = allocateBuffers(MODE_PREVIEW);
+        if (status == NO_ERROR)
+            status = allocateBuffers(MODE_CAPTURE);
+        else
+            freePreviewBuffers();
+        break;
+
     default:
         status = UNKNOWN_ERROR;
         break;
@@ -1048,6 +1072,9 @@ status_t AtomISP::start()
         break;
     case MODE_CAPTURE:
         status = startCapture();
+        break;
+    case MODE_CONTINUOUS_CAPTURE:
+        status = startContinuousPreview();
         break;
     default:
         status = UNKNOWN_ERROR;
@@ -1103,6 +1130,10 @@ status_t AtomISP::stop()
 
     case MODE_CAPTURE:
         status = stopCapture();
+        break;
+
+    case MODE_CONTINUOUS_CAPTURE:
+        status = stopContinuousPreview();
         break;
 
     default:
@@ -1365,6 +1396,100 @@ errorFreeBuf:
     return status;
 }
 
+status_t AtomISP::requestContCapture(int numCaptures, int offset, unsigned int skip)
+{
+    struct atomisp_cont_capture_conf conf;
+
+    CLEAR(conf);
+    conf.num_captures = numCaptures;
+    conf.offset = offset;
+    conf.skip_frames = skip;
+
+    int res = xioctl(video_fds[V4L2_MAIN_DEVICE],
+                     ATOMISP_IOC_S_CONT_CAPTURE_CONFIG,
+                     &conf);
+    LOG1("@%s: CONT_CAPTURE_CONFIG num %d, offset %d, skip %u, res %d",
+         __FUNCTION__, numCaptures, offset, skip, res);
+    if (res != 0) {
+        LOGE("@%s: error with CONT_CAPTURE_CONFIG, res %d", __FUNCTION__, res);
+        return UNKNOWN_ERROR;
+    }
+
+    return NO_ERROR;
+}
+
+status_t AtomISP::setContCaptureNumCaptures(int numCaptures)
+{
+    LOG1("@%s", __FUNCTION__);
+    mContCaptConfig.numCaptures = numCaptures;
+    return NO_ERROR;
+}
+
+status_t AtomISP::configureContinuous()
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret;
+    status_t status = NO_ERROR;
+
+    updateCaptureParams();
+
+    ret = requestContCapture(mContCaptConfig.numCaptures,
+                             mContCaptConfig.offset,
+                             mContCaptConfig.skip);
+    if (ret < 0) {
+        LOGE("setting continuous capture params failed");
+        return UNKNOWN_ERROR;
+    }
+
+    ret = configureDevice(
+            V4L2_MAIN_DEVICE,
+            CI_MODE_PREVIEW,
+            &(mConfig.snapshot),
+            isDumpRawImageReady());
+    if (ret < 0) {
+        LOGE("configure first device failed!");
+        status = UNKNOWN_ERROR;
+        goto errorFreeBuf;
+    }
+
+    status = configurePreview();
+    if (status != NO_ERROR) {
+        return status;
+    }
+
+    ret = openDevice(V4L2_POSTVIEW_DEVICE);
+    if (ret < 0) {
+        LOGE("Open second device failed!");
+        status = UNKNOWN_ERROR;
+        goto errorFreeBuf;
+    }
+
+    ret = configureDevice(
+            V4L2_POSTVIEW_DEVICE,
+            CI_MODE_PREVIEW,
+            &(mConfig.postview),
+            false);
+    if (ret < 0) {
+        LOGE("configure second device failed!");
+        status = UNKNOWN_ERROR;
+        goto errorCloseSecond;
+    }
+
+    // need to resend the current zoom value
+    atomisp_set_zoom(main_fd, mConfig.zoom);
+
+    return status;
+
+errorCloseSecond:
+    closeDevice(V4L2_POSTVIEW_DEVICE);
+errorFreeBuf:
+    freeSnapshotBuffers();
+    if (mFileInject.active == true)
+        stopFileInject();
+
+    return status;
+}
+
 status_t AtomISP::startCapture()
 {
     int ret;
@@ -1396,7 +1521,10 @@ status_t AtomISP::startCapture()
      * Some sensors produce corrupted first frames
      * If this sensor needs it then we skip
      */
-    initialSkips = getNumOfSkipFrames();
+    if (mMode != MODE_CONTINUOUS_CAPTURE)
+        initialSkips = getNumOfSkipFrames();
+    else
+        initialSkips = 0;
     for (i = 0; i < initialSkips; i++) {
         AtomBuffer s,p;
         if (mFrameSyncEnabled)
@@ -1420,6 +1548,24 @@ errorFreeBuf:
 
 end:
     return status;
+}
+
+status_t AtomISP::stopContinuousPreview()
+{
+    LOG1("@%s", __FUNCTION__);
+    int error = 0;
+    if (stopCapture() != NO_ERROR)
+        ++error;
+    if (requestContCapture(0, 0, 0) != NO_ERROR)
+        ++error;
+    if (stopPreview() != NO_ERROR)
+        ++error;
+    if (error) {
+        LOGE("@%s: errors (%d) in stopping continuous capture",
+             __FUNCTION__, error);
+        return UNKNOWN_ERROR;
+    }
+    return NO_ERROR;
 }
 
 status_t AtomISP::stopCapture()
@@ -1449,6 +1595,98 @@ status_t AtomISP::releaseCaptureBuffers()
 }
 
 /**
+ * Starts ISP in CSS1.5/2.0 continuous viewfinder mode.
+ *
+ * Queues buffers for all capture-related devices, including
+ * preview, snapshot and postview devices. Then the preview
+ * device is started with a STREAM_ON command, allowing the client
+ * to start streaming preview data with getPreview() calls.
+ *
+ * To grab a picture without stopping preview, client should
+ * call startOfflineCapture().
+ */
+status_t AtomISP::startContinuousPreview()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    status = prepareDevice(V4L2_MAIN_DEVICE, mConfig.num_snapshot);
+    if (status != NO_ERROR)
+        goto error;
+    status = prepareDevice(V4L2_POSTVIEW_DEVICE, mConfig.num_snapshot);
+    if (status != NO_ERROR)
+        goto errorStopMain;
+    status = startPreview();
+    if (status != NO_ERROR)
+        goto errorStopPostview;
+
+    return status;
+
+errorStopPostview:
+    stopDevice(V4L2_POSTVIEW_DEVICE);
+errorStopMain:
+    stopDevice(V4L2_MAIN_DEVICE);
+error:
+    return status;
+}
+
+/**
+ * Starts offline capture processing in the ISP.
+ *
+ * Snapshot and postview frame rendering is started
+ * and frame(s) can be fetched with getSnapshot().
+ */
+status_t AtomISP::startOfflineCapture()
+{
+    LOG1("@%s", __FUNCTION__);
+    if (mMode != MODE_CONTINUOUS_CAPTURE) {
+        LOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
+        return INVALID_OPERATION;
+    }
+    startCapture();
+    return NO_ERROR;
+}
+
+/**
+ * Stops offline capture processing in the ISP:
+ *
+ * Performs a STREAM-OFF for snapshot and postview devices,
+ * but does not free any buffers yet.
+ */
+status_t AtomISP::stopOfflineCapture()
+{
+    LOG1("@%s", __FUNCTION__);
+    if (mMode != MODE_CONTINUOUS_CAPTURE) {
+        LOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
+        return INVALID_OPERATION;
+    }
+    stopDevice(V4L2_MAIN_DEVICE, true);
+    stopDevice(V4L2_POSTVIEW_DEVICE, true);
+    return NO_ERROR;
+}
+
+bool AtomISP::isOfflineCaptureRunning() const
+{
+    int device = V4L2_MAIN_DEVICE;
+    VALID_DEVICE(device, false);
+
+    if (mMode == MODE_CONTINUOUS_CAPTURE &&
+        mDevices[device].state == DEVICE_STARTED)
+        return true;
+
+    return false;
+}
+
+bool AtomISP::isOfflineCaptureSupported() const
+{
+    // TODO: device node count reveals version of CSS firmware
+    if (mConfigLastDevice >= 3)
+        return true;
+
+    return false;
+}
+
+/**
  * Configures a particular device with a mode (preview, video or capture)
  *
  * The FrameInfo struct contains information about the frame dimensions that
@@ -1460,6 +1698,7 @@ status_t AtomISP::releaseCaptureBuffers()
 int AtomISP::configureDevice(int device, int deviceMode, FrameInfo *fInfo, bool raw)
 {
     LOG1("@%s", __FUNCTION__);
+    VALID_DEVICE(device, -1);
     int ret = 0;
     int w,h,format;
     w = fInfo->width;
@@ -1467,11 +1706,6 @@ int AtomISP::configureDevice(int device, int deviceMode, FrameInfo *fInfo, bool 
     format = fInfo->format;
     LOG1("device: %d, width:%d, height:%d, deviceMode:%d format:%d raw:%d", device,
         w, h, deviceMode, format, raw);
-
-    if ((device < V4L2_MAIN_DEVICE) || (device > mConfigLastDevice)) {
-        LOGE("Wrong device: %d", device);
-        return -1;
-    }
 
     if ((w <= 0) || (h <= 0)) {
         LOGE("Wrong Width %d or Height %d", w, h);
@@ -1519,23 +1753,20 @@ int AtomISP::configureDevice(int device, int deviceMode, FrameInfo *fInfo, bool 
             mConfig.fps = 15;
     }
 
+    mDevices[device].state = DEVICE_CONFIGURED;
+
     //We need apply all the parameter settings when do the camera reset
     return ret;
 }
 
-int AtomISP::startDevice(int device, int buffer_count)
+int AtomISP::prepareDevice(int device, int buffer_count)
 {
-    LOG1("@%s", __FUNCTION__);
-    LOG1("device = %d", device);
-
-    if (device < V4L2_MAIN_DEVICE || device > mConfigLastDevice) {
-        LOGE("Wrong device: %d", device);
-        return -1;
-    }
+    LOG1("@%s, device = %d", __FUNCTION__, device);
+    VALID_DEVICE(device, -1);
 
     int ret;
     int fd = video_fds[device];
-    LOG1(" startDevice fd = %d", fd);
+    LOG1(" prepareDevice fd = %d", fd);
 
     if (device == V4L2_MAIN_DEVICE &&
         mAAA->is3ASupported() &&
@@ -1545,34 +1776,53 @@ int AtomISP::startDevice(int device, int buffer_count)
         LOG1("Applied 3A ISP settings!");
     }
 
-    // reset frame counter
-    mFrameCounter[device] = 0;
-
     //parameter intialized before the streamon
     //request, query and mmap the buffer and save to the pool
     ret = createBufferPool(device, buffer_count);
     if (ret < 0)
         return ret;
 
-    //Qbuf
-    ret = activateBufferPool(device);
-    if (ret < 0)
-        goto activate_error;
-
-    //stream on
-    ret = v4l2_capture_streamon(fd);
-    if (ret < 0)
-       goto streamon_failed;
+    // reset frame counter
+    mDevices[device].frameCounter = 0;
+    mDevices[device].state = DEVICE_PREPARED;
 
     //we are started now
     return 0;
 
-aaa_error:
-    v4l2_capture_streamoff(fd);
-streamon_failed:
-activate_error:
-    destroyBufferPool(device);
     return ret;
+}
+
+int AtomISP::startDevice(int device, int buffer_count)
+{
+    LOG1("@%s, device = %d", __FUNCTION__, device);
+    VALID_DEVICE(device, -1);
+
+    int ret;
+    int fd = video_fds[device];
+    LOG1(" startDevice fd = %d", fd);
+
+    if (mDevices[device].state != DEVICE_PREPARED) {
+        ret = prepareDevice(device, buffer_count);
+        if (ret < 0) {
+            destroyBufferPool(device);
+            return ret;
+        }
+    }
+
+    //Qbuf
+    ret = activateBufferPool(device);
+    if (ret < 0)
+        return ret;
+
+    //stream on
+    ret = v4l2_capture_streamon(fd);
+    if (ret < 0)
+        return ret;
+
+    mDevices[device].state = DEVICE_STARTED;
+
+    //we are started now
+    return 0;
 }
 
 int AtomISP::activateBufferPool(int device)
@@ -1622,22 +1872,26 @@ error:
     return ret;
 }
 
-void AtomISP::stopDevice(int device)
+int AtomISP::stopDevice(int device, bool leaveConfigured)
 {
     LOG1("@%s: device = %d", __FUNCTION__, device);
-
-    if (device < V4L2_MAIN_DEVICE || device > mConfigLastDevice) {
-        LOGE("Wrong device: %d", device);
-        return;
-    }
+    VALID_DEVICE(device, -1);
 
     int fd = video_fds[device];
 
     if (fd >= 0) {
         //stream off
         v4l2_capture_streamoff(fd);
-        destroyBufferPool(device);
+
+        if (!leaveConfigured) {
+            destroyBufferPool(device);
+            mDevices[device].state = DEVICE_CONFIGURED;
+        }
+        else {
+            mDevices[device].state = DEVICE_PREPARED;
+        }
     }
+    return NO_ERROR;
 }
 
 void AtomISP::destroyBufferPool(int device)
@@ -1680,6 +1934,8 @@ int AtomISP::openDevice(int device)
         }
     }
 
+    mDevices[device].state = DEVICE_OPEN;
+
     return video_fds[device];
 }
 
@@ -1695,6 +1951,7 @@ void AtomISP::closeDevice(int device)
     v4l2_capture_close(video_fds[device]);
 
     video_fds[device] = -1;
+    mDevices[device].state = DEVICE_CLOSED;
 }
 
 status_t AtomISP::selectCameraSensor()
@@ -2756,6 +3013,8 @@ int AtomISP::v4l2_capture_qbuf(int fd, int index, struct v4l2_buffer_info *buf)
 status_t AtomISP::v4l2_capture_open(int device)
 {
     LOG1("@%s", __FUNCTION__);
+    VALID_DEVICE(device, INVALID_OPERATION);
+
     int fd;
     struct stat st;
 
@@ -2957,7 +3216,7 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameS
     }
     LOG2("Device: %d. Grabbed frame of size: %d", mPreviewDevice, buf.bytesused);
     mPreviewBuffers[index].id = index;
-    mPreviewBuffers[index].frameCounter = mFrameCounter[mPreviewDevice];
+    mPreviewBuffers[index].frameCounter = mDevices[mPreviewDevice].frameCounter;
     mPreviewBuffers[index].ispPrivate = mSessionId;
     mPreviewBuffers[index].capture_timestamp = buf.timestamp;
     *buff = mPreviewBuffers[index];
@@ -3040,7 +3299,7 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp)
     }
     LOG2("Device: %d. Grabbed frame of size: %d", mRecordingDevice, buf.bytesused);
     mRecordingBuffers[index].id = index;
-    mRecordingBuffers[index].frameCounter = mFrameCounter[mRecordingDevice];
+    mRecordingBuffers[index].frameCounter = mDevices[mRecordingDevice].frameCounter;
     mRecordingBuffers[index].ispPrivate = mSessionId;
     mRecordingBuffers[index].capture_timestamp = buf.timestamp;
     *buff = mRecordingBuffers[index];
@@ -3097,7 +3356,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
     struct v4l2_buffer buf;
     int snapshotIndex, postviewIndex;
 
-    if (mMode != MODE_CAPTURE)
+    if (mMode != MODE_CAPTURE && mMode != MODE_CONTINUOUS_CAPTURE)
         return INVALID_OPERATION;
 
     snapshotIndex = grabFrame(V4L2_MAIN_DEVICE, &buf);
@@ -3136,7 +3395,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
     }
 
     mSnapshotBuffers[snapshotIndex].id = snapshotIndex;
-    mSnapshotBuffers[snapshotIndex].frameCounter = mFrameCounter[V4L2_MAIN_DEVICE];
+    mSnapshotBuffers[snapshotIndex].frameCounter = mDevices[V4L2_MAIN_DEVICE].frameCounter;
     mSnapshotBuffers[snapshotIndex].ispPrivate = mSessionId;
     *snapshotBuf = mSnapshotBuffers[snapshotIndex];
     snapshotBuf->width = mConfig.snapshot.width;
@@ -3145,7 +3404,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
     snapshotBuf->size = mConfig.snapshot.size;
 
     mPostviewBuffers[postviewIndex].id = postviewIndex;
-    mPostviewBuffers[postviewIndex].frameCounter = mFrameCounter[V4L2_POSTVIEW_DEVICE];
+    mPostviewBuffers[postviewIndex].frameCounter = mDevices[V4L2_POSTVIEW_DEVICE].frameCounter;
     mPostviewBuffers[postviewIndex].ispPrivate = mSessionId;
     *postviewBuf = mPostviewBuffers[postviewIndex];
     postviewBuf->width = mConfig.postview.width;
@@ -3165,7 +3424,7 @@ status_t AtomISP::putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf)
     LOG1("@%s", __FUNCTION__);
     int ret0, ret1;
 
-    if (mMode != MODE_CAPTURE)
+    if (mMode != MODE_CAPTURE && mMode != MODE_CONTINUOUS_CAPTURE)
         return INVALID_OPERATION;
 
     if (snaphotBuf->ispPrivate != mSessionId || postviewBuf->ispPrivate != mSessionId)
@@ -3197,7 +3456,7 @@ bool AtomISP::dataAvailable()
         return mNumCapturegBuffersQueued > 0;
 
     // For preview, just make sure isp has a preview buffer
-    if (mMode == MODE_PREVIEW)
+    if (mMode == MODE_PREVIEW || mMode == MODE_CONTINUOUS_CAPTURE)
         return mNumPreviewBuffersQueued > 0;
 
     LOGE("Query for data in invalid mode");
@@ -3217,14 +3476,8 @@ int AtomISP::grabFrame(int device, struct v4l2_buffer *buf)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    //Must start first
-    if (main_fd < 0)
-        return -1;
 
-    if (device < V4L2_MAIN_DEVICE || device > mConfigLastDevice) {
-        LOGE("Wrong device %d", device);
-        return -1;
-    }
+    VALID_DEVICE(device, -1);
 
     ret = v4l2_capture_dqbuf(video_fds[device], buf);
 
@@ -3232,8 +3485,8 @@ int AtomISP::grabFrame(int device, struct v4l2_buffer *buf)
         return ret;
 
     // inc frame counter but do no wrap to negative numbers
-    ++mFrameCounter[device];
-    mFrameCounter[device] &= INT_MAX;
+    ++mDevices[device].frameCounter;
+    mDevices[device].frameCounter &= INT_MAX;
 
     return buf->index;
 }
