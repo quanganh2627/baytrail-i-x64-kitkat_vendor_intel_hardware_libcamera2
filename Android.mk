@@ -104,15 +104,13 @@ ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_CFLAGS += -DUSE_INTEL_JPEG
 endif
 
-ifeq ($(TARGET_PRODUCT), mfld_cdk)
-LOCAL_CFLAGS += -DMFLD_CDK
-else ifeq ($(TARGET_PRODUCT),mfld_gi)
+ifeq ($(TARGET_DEVICE),mfld_gi)
 LOCAL_CFLAGS += -DMFLD_GI
-else ifneq (,$(findstring $(TARGET_PRODUCT),mfld_dv10 redridge salitpa))
+else ifneq (,$(findstring $(TARGET_DEVICE),mfld_dv10 redridge salitpa))
 LOCAL_CFLAGS += -DMFLD_DV10
-else ifneq (,$(findstring $(TARGET_PRODUCT),victoriabay ctp_pr1 ctp_nomodem))
+else ifneq (,$(findstring $(TARGET_DEVICE),victoriabay ctp_pr1 ctp_nomodem))
 LOCAL_CFLAGS += -DCLVT
-else ifeq ($(TARGET_PRODUCT), mrfl_vp)
+else ifeq ($(TARGET_DEVICE), mrfl_vp)
 LOCAL_CFLAGS += -DMRFL_VP
 else
 LOCAL_CFLAGS += -DMFLD_PR2
