@@ -779,7 +779,7 @@ status_t PictureThread::doSwEncode(AtomBuffer *mainBuf, AtomBuffer* destBuf)
     outBuf.quality = mPictureQuality;
     outBuf.size = mOutBuf.buff->size;
     endTime = systemTime();
-    int mainSize = mCompressor.encode(inBuf, outBuf);
+    int mainSize = mCompressor.encode(inBuf, outBuf) - sizeof(JPEG_MARKER_SOI) - SIZE_OF_APP0_MARKER;
     LOG1("Picture JPEG size: %d (time to encode: %ums)", mainSize, (unsigned)((systemTime() - endTime) / 1000000));
     if (mainSize > 0) {
         finalSize = mExifBuf.size + mainSize;
@@ -803,8 +803,7 @@ status_t PictureThread::doSwEncode(AtomBuffer *mainBuf, AtomBuffer* destBuf)
         // avoid the copying the SOI and APP0
         char *copyTo = (char*)destBuf->buff->data + mExifBuf.size;
         char *copyFrom = (char*)mOutBuf.buff->data + sizeof(JPEG_MARKER_SOI) + SIZE_OF_APP0_MARKER;
-        int copyBytes = mainSize - sizeof(JPEG_MARKER_SOI) - SIZE_OF_APP0_MARKER;
-        memcpy(copyTo, copyFrom, copyBytes);
+        memcpy(copyTo, copyFrom, mainSize);
 
         destBuf->id = mainBuf->id;
     }
