@@ -506,6 +506,7 @@ bool ControlThread::previewEnabled()
             mState == STATE_PREVIEW_NO_WINDOW ||
             mState == STATE_PREVIEW_VIDEO ||
             mState == STATE_RECORDING ||
+            mState == STATE_CONTINUOUS_CAPTURE ||
             mPreviewStartQueued);
     return enabled;
 }
@@ -855,6 +856,92 @@ status_t ControlThread::handleMessageExit()
     return NO_ERROR;
 }
 
+
+/**
+ * Configures parameters for continuous capture.
+ *
+ * In continuous capture mode, parameters for both capture
+ * and preview need to be set up before starting the ISP.
+ */
+status_t ControlThread::initContinuousCapture()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    int format = mISP->getSnapshotPixelFormat();
+    int width, height;
+    mParameters.getPictureSize(&width, &height);
+
+    int pvWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
+    int pvHeight = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
+
+    // Configure PictureThread
+    mPictureThread->initialize(mParameters);
+
+    mISP->setSnapshotFrameFormat(width, height, format);
+    mISP->setContCaptureNumCaptures(1);
+
+    // TODO: check integration with preview-keepalive patch and
+    //       whether postview should be configured to a higher resolution
+    mISP->setPostviewFrameFormat(pvWidth, pvHeight, format);
+
+    // TODO: potential launch2preview impact, we cannot use
+    //       the lazy buffer allocation strategy in continuous mode
+    allocateSnapshotBuffers();
+    mIsPreviewStartComplete = true;
+
+    setExternalSnapshotBuffers(format, width, height);
+
+    status = mISP->allocateBuffers(MODE_CONTINUOUS_CAPTURE);
+
+    return status;
+}
+
+/**
+ * Frees resources related to continuous capture
+ *
+ * This function covers resources related to continous capture,
+ * which cannot be freed in stopPreviewCore().
+ */
+status_t ControlThread::releaseContinuousCapture()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    // picture thread cannot be flushed in stopPreviewCore()
+    // as that breaks the flash-fallback mechanism (switch
+    // to old CAPTURE mode for taking a flash picture)
+    status = mPictureThread->flushBuffers();
+    if (status != NO_ERROR) {
+        LOGE("Error flushing PictureThread!");
+        return status;
+    }
+
+    return status;
+}
+
+ControlThread::State ControlThread::selectPreviewMode()
+{
+    // TODO: check from platformdata whether cont mode is supported
+
+    if (mISP->isOfflineCaptureSupported() == false) {
+        LOG1("Disabling continuous mode, not supported");
+        return STATE_PREVIEW_STILL;
+    }
+
+    if (mBurstLength > 1) {
+        LOG1("Burst enabled, disabling continuous mode");
+        return STATE_PREVIEW_STILL;
+    }
+
+    if (!mAAA->is3ASupported()) {
+        LOG1("Non-RAW sensor, disabling continuous mode");
+        return STATE_PREVIEW_STILL;
+    }
+
+    return STATE_CONTINUOUS_CAPTURE;
+}
+
 status_t ControlThread::startPreviewCore(bool videoMode)
 {
     LOG1("@%s", __FUNCTION__);
@@ -867,7 +954,9 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     AtomMode mode;
     bool isDVSActive = false;
 
-    if (mState != STATE_STOPPED && mState != STATE_PREVIEW_NO_WINDOW) {
+    if (mState != STATE_STOPPED &&
+            mState != STATE_PREVIEW_NO_WINDOW &&
+            mState != STATE_CONTINUOUS_CAPTURE) {
         LOGE("Must be in STATE_STOPPED or PREVIEW_NO_WINDOW to start preview");
         return INVALID_OPERATION;
     }
@@ -903,6 +992,11 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mISP->setDVS(isDVSActive);
     }
 
+    if (state == STATE_CONTINUOUS_CAPTURE) {
+        if (initContinuousCapture() != NO_ERROR) {
+            return BAD_VALUE;
+        }
+    }
 
     // Update focus areas for the proper window size
     if (!mFaceDetectionActive && !mFocusAreas.isEmpty()) {
@@ -1032,6 +1126,7 @@ status_t ControlThread::stopPreviewCore()
         status = mVideoThread->flushBuffers();
     }
 
+    State oldState = mState;
     status = mISP->stop();
     if (status == NO_ERROR) {
         mState = STATE_STOPPED;
@@ -1040,6 +1135,9 @@ status_t ControlThread::stopPreviewCore()
     }
 
     status = mPreviewThread->returnPreviewBuffers();
+
+    if (oldState == STATE_CONTINUOUS_CAPTURE)
+        mISP->releaseCaptureBuffers();
 
     delete [] mCoupledBuffers;
     // set to null because frames can be returned to hal in stop state
@@ -1126,7 +1224,7 @@ status_t ControlThread::handleMessageStartPreview()
             return status;
         }
     }
-    if (mState == STATE_STOPPED) {
+    if (mState == STATE_STOPPED || mState == STATE_CONTINUOUS_CAPTURE) {
         // API says apps should call startFaceDetection when resuming preview
         // stop FD here to avoid accidental FD.
         stopFaceDetection();
@@ -1153,6 +1251,8 @@ status_t ControlThread::handleMessageStopPreview()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    State oldState = mState;
+
     // In STATE_CAPTURE, preview is already stopped, nothing to do
     if (mState != STATE_CAPTURE) {
         stopFaceDetection(true);
@@ -1163,6 +1263,10 @@ status_t ControlThread::handleMessageStopPreview()
             status = INVALID_OPERATION;
         }
     }
+
+    if (oldState == STATE_CONTINUOUS_CAPTURE)
+        releaseContinuousCapture();
+
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_STOP_PREVIEW, status);
     return status;
@@ -1485,12 +1589,12 @@ status_t ControlThread::handleMessageTakePicture() {
 
         case STATE_PREVIEW_STILL:
         case STATE_PREVIEW_VIDEO:
+        case STATE_CONTINUOUS_CAPTURE:
             status = captureStillPic();
             break;
         case STATE_CAPTURE:
             status = captureBurstPic(true);
             break;
-
         case STATE_RECORDING:
             status = captureVideoSnap();
             break;
@@ -1670,6 +1774,15 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     return status;
 }
 
+void ControlThread::stopOfflineCapture()
+{
+    LOG1("@%s: ", __FUNCTION__);
+    if (mState == STATE_CONTINUOUS_CAPTURE &&
+            mISP->isOfflineCaptureRunning()) {
+        mISP->stopOfflineCapture();
+    }
+}
+
 status_t ControlThread::captureStillPic()
 {
     LOG1("@%s: ", __FUNCTION__);
@@ -1728,12 +1841,21 @@ status_t ControlThread::captureStillPic()
         }
     }
 
-    status = stopPreviewCore();
-    if (status != NO_ERROR) {
-        LOGE("Error stopping preview!");
-        return status;
+    if (mState == STATE_CONTINUOUS_CAPTURE && !flashOn) {
+        assert(mBurstLength <= 1);
+        mISP->setContCaptureNumCaptures(1);
+        mISP->startOfflineCapture();
     }
-    mState = STATE_CAPTURE;
+    else {
+        if (mState == STATE_CONTINUOUS_CAPTURE)
+            LOG1("Fallback from continuous to normal mode for flash");
+        status = stopPreviewCore();
+        if (status != NO_ERROR) {
+            LOGE("Error stopping preview!");
+            return status;
+        }
+        mState = STATE_CAPTURE;
+    }
     mBurstCaptureNum = 0;
 
     // Get the current params
@@ -1747,45 +1869,47 @@ status_t ControlThread::captureStillPic()
     // Configure PictureThread
     mPictureThread->initialize(mParameters);
 
-    // Possible smart scene parameter changes (XNR, ANR)
-    if ((status = setSmartSceneParams()) != NO_ERROR)
-        LOG1("set smart scene parameters failed");
+    if (mState != STATE_CONTINUOUS_CAPTURE) {
 
-    // Configure and start the ISP
-    mISP->setSnapshotFrameFormat(width, height, format);
-    mISP->setPostviewFrameFormat(pvWidth, pvHeight, format);
-    if (mHdr.enabled) {
-        mHdr.outMainBuf.buff = NULL;
-        mHdr.outPostviewBuf.buff = NULL;
-    }
+        // Possible smart scene parameter changes (XNR, ANR)
+        if ((status = setSmartSceneParams()) != NO_ERROR)
+            LOG1("set smart scene parameters failed");
 
-    setExternalSnapshotBuffers(format, width, height);
+        // Configure and start the ISP
+        mISP->setSnapshotFrameFormat(width, height, format);
+        mISP->setPostviewFrameFormat(pvWidth, pvHeight, format);
+        if (mHdr.enabled) {
+            mHdr.outMainBuf.buff = NULL;
+            mHdr.outPostviewBuf.buff = NULL;
+        }
 
-    PERFORMANCE_TRACES_SHOT2SHOT_STEP("start ISP", -1);
+        setExternalSnapshotBuffers(format, width, height);
 
-    // Initialize bracketing manager before streaming starts
-    if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE) {
-        mBracketManager->initBracketing(mBurstLength, mFpsAdaptSkip);
-    }
+        // Initialize bracketing manager before streaming starts
+        if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE) {
+            mBracketManager->initBracketing(mBurstLength, mFpsAdaptSkip);
+        }
 
-    if ((status = mISP->configure(MODE_CAPTURE)) != NO_ERROR) {
-        LOGE("Error configuring the ISP driver for CAPTURE mode");
-        return status;
-    }
+        if ((status = mISP->configure(MODE_CAPTURE)) != NO_ERROR) {
+            LOGE("Error configuring the ISP driver for CAPTURE mode");
+            return status;
+        }
 
-    status = mISP->allocateBuffers(MODE_CAPTURE);
-    if (status != NO_ERROR) {
-        LOGE("Error allocate buffers in ISP");
-        return status;
-    }
+        PERFORMANCE_TRACES_SHOT2SHOT_STEP("start ISP", -1);
 
-    if (mAAA->is3ASupported())
-        if (mAAA->switchModeAndRate(MODE_CAPTURE, mISP->getFrameRate()) != NO_ERROR)
-            LOGE("Failed to switch 3A to capture mode at %.2f fps", mISP->getFrameRate());
+        status = mISP->allocateBuffers(MODE_CAPTURE);
+        if (status != NO_ERROR) {
+            LOGE("Error allocate buffers in ISP");
+            return status;
+        }
 
-    if ((status = mISP->start()) != NO_ERROR) {
-        LOGE("Error starting the ISP driver in CAPTURE mode");
-        return status;
+        if (mAAA->is3ASupported())
+            if (mAAA->switchModeAndRate(MODE_CAPTURE, mISP->getFrameRate()) != NO_ERROR)
+                LOGE("Failed to switch 3A to capture mode at %.2f fps", mISP->getFrameRate());
+        if ((status = mISP->start()) != NO_ERROR) {
+            LOGE("Error starting the ISP driver in CAPTURE mode");
+            return status;
+        }
     }
 
     // Start the actual bracketing sequence
@@ -1897,6 +2021,8 @@ status_t ControlThread::captureStillPic()
         // encoding was done, free the allocated metadata
         picMetaData.free();
     }
+
+    stopOfflineCapture();
 
     return status;
 }
@@ -2289,7 +2415,7 @@ status_t ControlThread::handleMessageReleasePreviewFrame(MessageReleasePreviewFr
 {
     LOG2("handle preview frame release buff id = %d", msg->buff.id);
     status_t status = NO_ERROR;
-    if (mState == STATE_PREVIEW_STILL) {
+    if (mState == STATE_PREVIEW_STILL || mState == STATE_CONTINUOUS_CAPTURE) {
         status = mISP->putPreviewFrame(&msg->buff);
         if (status == DEAD_OBJECT) {
             LOG1("Stale preview buffer returned to ISP");
@@ -2350,7 +2476,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             mCoupledBuffers[curBuff].videoSnapshotBuffReturned = false;
             mCoupledBuffers[curBuff].videoSnapshotBuff = false;
         }
-    } else if (mState == STATE_CAPTURE) {
+    } else if (mState == STATE_CAPTURE || mState == STATE_CONTINUOUS_CAPTURE) {
         /*
          * Store the buffer that has not been returned to ISP, and it shall be returned
          * when next capturing happen
@@ -4152,7 +4278,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
         goto exit;
     }
 
-    if (mState == STATE_CAPTURE) {
+    if (mState == STATE_CAPTURE || mState == STATE_CONTINUOUS_CAPTURE) {
         int newWidth, newHeight;
         int oldWidth, oldHeight;
         newParams.getPictureSize(&newWidth, &newHeight);
@@ -5110,6 +5236,21 @@ bool ControlThread::threadLoop()
                 } else {
                     status = waitForAndExecuteMessage();
                 }
+            }
+            break;
+
+        case STATE_CONTINUOUS_CAPTURE:
+            LOG2("In STATE_CONTINUOUS_CAPTURE...");
+            // message queue always has priority over getting data from the
+            // isp driver no matter what state we are in
+            if (!mMessageQueue.isEmpty()) {
+                status = waitForAndExecuteMessage();
+            } else {
+                // make sure ISP has data before we ask for some
+                if (mISP->dataAvailable())
+                    status = dequeuePreview();
+                else
+                    status = waitForAndExecuteMessage();
             }
             break;
 

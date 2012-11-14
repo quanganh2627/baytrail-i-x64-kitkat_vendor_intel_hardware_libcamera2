@@ -275,7 +275,8 @@ private:
         STATE_PREVIEW_STILL,
         STATE_PREVIEW_VIDEO,
         STATE_RECORDING,
-        STATE_CAPTURE
+        STATE_CAPTURE,
+        STATE_CONTINUOUS_CAPTURE
     };
 
     struct CoupledBuffer {
@@ -320,6 +321,10 @@ private:
     status_t restartPreview(bool videoMode);
     status_t startPreviewCore(bool videoMode);
     status_t stopPreviewCore();
+
+    status_t initContinuousCapture();
+    status_t releaseContinuousCapture();
+    State selectPreviewMode();
 
     // thread message execution functions
     status_t handleMessageExit();
@@ -461,6 +466,7 @@ private:
     bool validateSize(int width, int height, Vector<Size> &supportedSizes) const;
 
     status_t stopCapture();
+    void     stopOfflineCapture();
 
     // HDR helper functions
     status_t hdrInit(int size, int pvSize, int format,
