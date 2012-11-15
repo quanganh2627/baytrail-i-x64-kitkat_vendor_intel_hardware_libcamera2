@@ -264,6 +264,7 @@ status_t ControlThread::init(int cameraId)
     mISP->getDefaultParameters(&mParameters, &mIntelParameters);
     mPictureThread->getDefaultParameters(&mParameters);
     mPreviewThread->getDefaultParameters(&mParameters);
+    mPanoramaThread->getDefaultParameters(&mIntelParameters);
     mPostProcThread->getDefaultParameters(&mParameters, &mIntelParameters);
     updateParameterCache();
 

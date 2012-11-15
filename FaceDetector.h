@@ -34,9 +34,6 @@ namespace android {
 #define SMILE_THRESHOLD 70
 #define BLINK_THRESHOLD 30
 
-#define SMILE_SHUTTER_SUPPORTED "on,off"
-#define BLINK_SHUTTER_SUPPORTED "on,off"
-
 // Smart Shutter Parameters
 enum SmartShutterMode {
     SMILE_MODE = 0,

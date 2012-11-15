@@ -94,11 +94,21 @@ namespace android {
     const char IntelCameraParameters::KEY_BURST_FPS[] = "burst-fps";
 
     // smart shutter
+    const char IntelCameraParameters::KEY_SMILE_SHUTTER[] = "smile-shutter";
+    const char IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER[] = "smile-shutter-values";
     const char IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD[] = "smile-shutter-threshold";
-    const char IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER[] = "smile-shutter";
+    const char IntelCameraParameters::KEY_BLINK_SHUTTER[] = "blink-shutter";
+    const char IntelCameraParameters::KEY_SUPPORTED_BLINK_SHUTTER[] = "blink-shutter-values";
     const char IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD[] = "blink-shutter-threshold";
-    const char IntelCameraParameters::KEY_SUPPORTED_BLINK_SHUTTER[] = "blink-shutter";
 
+    const char IntelCameraParameters::KEY_PANORAMA[] = "panorama";
+    const char IntelCameraParameters::KEY_SUPPORTED_PANORAMA[] = "panorama-values";
+    const char IntelCameraParameters::KEY_FACE_DETECTION[] = "face-detection";
+    const char IntelCameraParameters::KEY_SUPPORTED_FACE_DETECTION[] = "face-detection-values";
+    const char IntelCameraParameters::KEY_FACE_RECOGNITION[] = "face-recognition";
+    const char IntelCameraParameters::KEY_SUPPORTED_FACE_RECOGNITION[] = "face-recognition-values";
+    const char IntelCameraParameters::KEY_SCENE_DETECTION[] = "scene-detection";
+    const char IntelCameraParameters::KEY_SUPPORTED_SCENE_DETECTION[] = "scene-detection-values";
     // for 3A
     // Values for ae mode settings
     const char IntelCameraParameters::AE_MODE_AUTO[] = "auto";

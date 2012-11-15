@@ -141,12 +141,26 @@ namespace android {
     static const char KEY_HDR_SAVE_ORIGINAL[];
     static const char KEY_SUPPORTED_HDR_SAVE_ORIGINAL[];
     // Smart Shutter
-    static const char KEY_SMILE_SHUTTER_THRESHOLD[];
+    static const char KEY_SMILE_SHUTTER[];
     static const char KEY_SUPPORTED_SMILE_SHUTTER[];
-    static const char KEY_BLINK_SHUTTER_THRESHOLD[];
+    static const char KEY_SMILE_SHUTTER_THRESHOLD[];
+    static const char KEY_BLINK_SHUTTER[];
     static const char KEY_SUPPORTED_BLINK_SHUTTER[];
+    static const char KEY_BLINK_SHUTTER_THRESHOLD[];
+
+    // Face features
+    static const char KEY_FACE_DETECTION[];
+    static const char KEY_SUPPORTED_FACE_DETECTION[];
+    static const char KEY_FACE_RECOGNITION[];
+    static const char KEY_SUPPORTED_FACE_RECOGNITION[];
+
+    // Scene detection
+    static const char KEY_SCENE_DETECTION[];
+    static const char KEY_SUPPORTED_SCENE_DETECTION[];
 
     //Panorama live preview size
+    static const char KEY_PANORAMA[];
+    static const char KEY_SUPPORTED_PANORAMA[];
     static const char KEY_PANORAMA_LIVE_PREVIEW_SIZE[];
 
     //MACC effect

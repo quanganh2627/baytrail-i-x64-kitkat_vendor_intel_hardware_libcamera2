@@ -22,6 +22,7 @@
 
 #include "PanoramaThread.h"
 #include "IntelParameters.h"
+#include "FeatureData.h"
 #include "LogHelper.h"
 #include "AtomAAA.h"
 #include "AtomCommon.h"
@@ -54,6 +55,17 @@ PanoramaThread::PanoramaThread(ICallbackPanorama *panoramaCallback) :
 PanoramaThread::~PanoramaThread()
 {
     LOG1("@%s", __FUNCTION__);
+}
+
+void PanoramaThread::getDefaultParameters(CameraParameters *intel_params)
+{
+    LOG1("@%s", __FUNCTION__);
+    if (!intel_params) {
+        LOGE("params is null!");
+        assert(false);
+    }
+    // Set if Panorama is available or not.
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PANORAMA, FeatureData::panoramaSupported());
 }
 
 void PanoramaThread::startPanorama(void)

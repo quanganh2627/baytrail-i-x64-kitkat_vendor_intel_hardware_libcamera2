@@ -20,6 +20,7 @@
 #include "Callbacks.h"
 #include "ColorConverter.h"
 #include "PlatformData.h"
+#include "FeatureData.h"
 #include "IntelParameters.h"
 #include "PanoramaThread.h"
 #include "CameraDump.h"
@@ -662,9 +663,9 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_CAPTURE_BRACKET, "none");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET, "none");
 
-    // No HDR imaging
-    intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, "off");
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, "off");
+    // HDR imaging settings
+    intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, FeatureData::hdrDefault());
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, FeatureData::hdrSupported());
     intel_params->set(IntelCameraParameters::KEY_HDR_VIVIDNESS, "none");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none");
     intel_params->set(IntelCameraParameters::KEY_HDR_SHARPENING, "none");
@@ -685,8 +686,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     } else {
         intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS, "1");
-        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, "1");
         intel_params->set(IntelCameraParameters::KEY_BURST_LENGTH, "1");
+        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, "1");
     }
 
     intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_FILENAME, "off");
@@ -825,8 +826,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
         intel_params->set(IntelCameraParameters::KEY_CAPTURE_BRACKET, "none");
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET, "none,exposure,focus");
 
-        intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, "off");
-        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, "on,off");
+        intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, FeatureData::hdrDefault());
+        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, FeatureData::hdrSupported());
         intel_params->set(IntelCameraParameters::KEY_HDR_VIVIDNESS, "gaussian");
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none,gaussian,gamma");
         intel_params->set(IntelCameraParameters::KEY_HDR_SHARPENING, "normal");

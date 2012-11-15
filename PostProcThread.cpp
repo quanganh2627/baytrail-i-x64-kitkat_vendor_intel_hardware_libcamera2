@@ -22,6 +22,7 @@
 #include "CallbacksThread.h"
 #include "PostProcThread.h"
 #include "IFaceDetectionListener.h"
+#include "FeatureData.h"
 #include <system/camera.h>
 
 namespace android {
@@ -77,8 +78,11 @@ void PostProcThread::getDefaultParameters(CameraParameters *params, CameraParame
     params->set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW, MAX_FACES_DETECTABLE);
     intel_params->set(IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD, STRINGIFY(SMILE_THRESHOLD));
     intel_params->set(IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD, STRINGIFY(BLINK_THRESHOLD));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER, SMILE_SHUTTER_SUPPORTED);
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BLINK_SHUTTER, BLINK_SHUTTER_SUPPORTED);
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER, FeatureData::smileShutterSupported());
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BLINK_SHUTTER, FeatureData::blinkShutterSupported());
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_DETECTION, FeatureData::faceDetectionSupported());
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_RECOGNITION, FeatureData::faceRecognitionSupported());
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SCENE_DETECTION, FeatureData::sceneDetectionSupported());
 }
 
 void PostProcThread::startFaceDetection()

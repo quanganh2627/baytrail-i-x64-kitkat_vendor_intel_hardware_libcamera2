@@ -20,6 +20,7 @@
 
 #include <utils/threads.h>
 #include <system/camera.h>
+#include <camera/CameraParameters.h>
 #include "MessageQueue.h"
 #include "AtomCommon.h"
 #include "Callbacks.h"
@@ -62,6 +63,7 @@ public:
     PanoramaThread(ICallbackPanorama *panoramaCallback);
     ~PanoramaThread();
 
+    void getDefaultParameters(CameraParameters *intel_params);
     void startPanorama(void);
     void stopPanorama(bool synchronous = false);
     void startPanoramaCapture(void);

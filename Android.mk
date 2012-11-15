@@ -33,6 +33,7 @@ LOCAL_SRC_FILES := \
 	CallbacksThread.cpp \
 	LogHelper.cpp \
 	PlatformData.cpp \
+	FeatureData.cpp \
 	IntelParameters.cpp \
 	exif/ExifCreater.cpp \
 	PostProcThread.cpp \
