@@ -364,6 +364,7 @@ exif_status ExifCreater::makeExif (void *exifOut,
     pApp1Start += 2;
 
     // fill the exif size
+    tmp -= 2; // remove APP1 marker size
     unsigned char size_mm[2] = {(tmp >> 8) & 0xFF, tmp & 0xFF};
     memcpy(pApp1Start, size_mm, 2);
 

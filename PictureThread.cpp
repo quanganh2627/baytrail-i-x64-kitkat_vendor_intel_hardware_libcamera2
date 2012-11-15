@@ -101,7 +101,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         mCallbacks->allocateMemory(&mOutBuf, bufferSize);
     }
     if (mExifBuf.buff == NULL || mExifBuf.buff->data == NULL || mExifBuf.buff->size <= 0) {
-        mCallbacks->allocateMemory(&mExifBuf, MAX_EXIF_SIZE + sizeof(JPEG_MARKER_SOI) + sizeof(JPEG_MARKER_EOI));
+        mCallbacks->allocateMemory(&mExifBuf, MAX_EXIF_SIZE + sizeof(JPEG_MARKER_SOI));
     }
     if (mOutBuf.buff == NULL || mOutBuf.buff->data == NULL) {
         LOGE("Could not allocate memory for temp buffer!");
@@ -381,7 +381,7 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
         mCallbacks->allocateMemory(&mOutBuf, bufferSize);
     }
     if (mExifBuf.buff == NULL || mExifBuf.buff->data == NULL || mExifBuf.buff->size <= 0) {
-        mCallbacks->allocateMemory(&mExifBuf, MAX_EXIF_SIZE + sizeof(JPEG_MARKER_SOI) + sizeof(JPEG_MARKER_EOI));
+        mCallbacks->allocateMemory(&mExifBuf, MAX_EXIF_SIZE + sizeof(JPEG_MARKER_SOI));
     }
     if ((mOutBuf.buff == NULL || mOutBuf.buff->data == NULL) ||
         (mExifBuf.buff == NULL || mExifBuf.buff->data == NULL) ){
@@ -727,11 +727,6 @@ void PictureThread::encodeExif(AtomBuffer *thumbBuf)
     }
     mExifBuf.size += tmpSize;
     currentPtr += mExifBuf.size;
-
-    // Copy the EOI marker
-    memcpy(currentPtr, (void*)JPEG_MARKER_EOI, sizeof(JPEG_MARKER_EOI));
-    mExifBuf.size += sizeof(JPEG_MARKER_EOI);
-
 }
 
 /**
@@ -797,10 +792,10 @@ status_t PictureThread::doSwEncode(AtomBuffer *mainBuf, AtomBuffer* destBuf)
     }
     if (status == NO_ERROR) {
         destBuf->size = finalSize;
-        // Copy EXIF (it will also have the SOI and EOI markers)
+        // Copy EXIF (it will also have the SOI markers)
         memcpy(destBuf->buff->data, mExifBuf.buff->data, mExifBuf.size);
         // Copy the final JPEG stream into the final destination buffer
-        // avoid the copying the SOI and APP0
+        // avoid the copying the SOI and APP0 but copy EOI marker
         char *copyTo = (char*)destBuf->buff->data + mExifBuf.size;
         char *copyFrom = (char*)mOutBuf.buff->data + sizeof(JPEG_MARKER_SOI) + SIZE_OF_APP0_MARKER;
         memcpy(copyTo, copyFrom, mainSize);
