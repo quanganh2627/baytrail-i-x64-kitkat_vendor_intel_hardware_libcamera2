@@ -699,7 +699,8 @@ void PictureThread::encodeExif(AtomBuffer *thumbBuf)
         thumbBuf = &mThumbBuf;
     } else if (thumbBuf &&
         (mThumbBuf.width < thumbBuf->width ||
-         mThumbBuf.height < thumbBuf->height)) {
+         mThumbBuf.height < thumbBuf->height ||
+         mThumbBuf.width < thumbBuf->stride)) {
         LOG1("Downscaling postview2thumbnail : %dx%d (%d) -> %dx%d (%d)",
                 thumbBuf->width, thumbBuf->height, thumbBuf->stride,
                 mThumbBuf.width, mThumbBuf.height, mThumbBuf.stride);
