@@ -3403,6 +3403,7 @@ status_t AtomISP::allocateRecordingBuffers()
         mRecordingBuffers[i].size = mConfig.recording.size;
         mRecordingBuffers[i].stride = mConfig.recording.stride;
         mRecordingBuffers[i].format = mConfig.recording.format;
+        mRecordingBuffers[i].type = ATOM_BUFFER_VIDEO;
     }
     return status;
 

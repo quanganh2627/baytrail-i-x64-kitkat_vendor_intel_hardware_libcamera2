@@ -609,6 +609,7 @@ status_t PreviewThread::allocateGfxPreviewBuffers(int numberOfBuffers) {
             tmpBuf.width = mPreviewWidth;
             tmpBuf.height = mPreviewHeight;
             tmpBuf.size = frameSize(V4L2_PIX_FMT_NV12, tmpBuf.stride, tmpBuf.height);
+            tmpBuf.format = V4L2_PIX_FMT_NV12;
 
             status = mapper.lock(*buf, lockMode, bounds, &dst);
             if(status != NO_ERROR) {
