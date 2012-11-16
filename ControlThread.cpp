@@ -1367,6 +1367,9 @@ status_t ControlThread::handleMessageStartRecording()
         /* We are in PREVIEW_STILL mode; in order to start recording
          * we first need to stop AtomISP and restart it with MODE_VIDEO
          */
+        mISP->applyISPVideoLimitations(&mParameters,
+                isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION)
+                && isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED));
         status = restartPreview(true);
         if (status != NO_ERROR) {
             LOGE("Error restarting preview in video mode");
