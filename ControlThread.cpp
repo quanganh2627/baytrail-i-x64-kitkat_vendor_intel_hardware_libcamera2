@@ -4463,6 +4463,8 @@ status_t ControlThread::hdrInit(int size, int pvSize, int format,
     mHdr.outMainBuf.shared = false;
     // merging multiple images from ISP, so just set counter to 1
     mHdr.outMainBuf.frameCounter = 1;
+    mHdr.outMainBuf.type = ATOM_BUFFER_SNAPSHOT;
+
     LOG1("HDR: using %p as HDR main output buffer", mHdr.outMainBuf.buff->data);
     // Postview output buffer
     mCallbacks->allocateMemory(&mHdr.outPostviewBuf, pvSize);
@@ -4470,6 +4472,8 @@ status_t ControlThread::hdrInit(int size, int pvSize, int format,
         LOGE("HDR: Error allocating memory for HDR postview buffer!");
         return NO_MEMORY;
     }
+    mHdr.outPostviewBuf.type = ATOM_BUFFER_POSTVIEW;
+
     LOG1("HDR: using %p as HDR postview output buffer", mHdr.outPostviewBuf.buff->data);
 
     // Initialize the CI input buffers (will be initialized later, when snapshots are taken)
