@@ -62,6 +62,10 @@ public:
         // other params
         mBackFlash = true;
         mVideoPreviewSizePref = "1024x576";
+        mMaxBurstFPS = 15;
+        mSupportedBurstFPS = "1,3,5,7,15";
+        mSupportedBurstLength = "1,3,5,10";
+
         mProductName = "ExampleModel";
         mManufacturerName = "ExampleMaker";
     }
@@ -75,6 +79,9 @@ class PlatformLexington : public PlatformBlackbay {
 public:
     PlatformLexington(void) {
         mBackFlash = false;
+        mMaxBurstFPS = 5;
+        mSupportedBurstFPS = "1,3,5";
+        mSupportedBurstLength = "1,3,5";
     }
 };
 
@@ -100,6 +107,9 @@ public:
             mCameras.editItemAt(1).orientation = 180;
         }
         mVideoPreviewSizePref = "1024x576";
+        mMaxBurstFPS = 15;
+        mSupportedBurstFPS = "1,3,5,7,15";
+        mSupportedBurstLength = "1,3,5,10";
     }
 };
 

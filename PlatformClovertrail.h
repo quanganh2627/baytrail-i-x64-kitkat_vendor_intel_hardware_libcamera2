@@ -59,6 +59,10 @@ public:
         // generic parameters
         mBackFlash = true;
         mVideoPreviewSizePref = "1024x576";
+        mMaxBurstFPS = 15;
+        mSupportedBurstFPS = "1,3,5,7,15";
+        mSupportedBurstLength = "1,3,5,10";
+
         mProductName = "ExampleModel";
         mManufacturerName = "ExampleMaker";
     }

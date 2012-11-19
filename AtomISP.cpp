@@ -683,8 +683,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     // So burst mode is disabled to soc sensors.
     if (mSensorType ==  SENSOR_TYPE_RAW) {
         intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
-        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS, "1,3,5,7,15");
-        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, "1,3,5,10");
+        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS, PlatformData::supportedBurstFPS());
+        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, PlatformData::supportedBurstLength());
         intel_params->set(IntelCameraParameters::KEY_BURST_LENGTH, "1");
     } else {
         intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");

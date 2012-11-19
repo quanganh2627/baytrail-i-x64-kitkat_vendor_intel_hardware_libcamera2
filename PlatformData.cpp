@@ -244,6 +244,24 @@ String8 PlatformData::supportedSceneModes()
     return String8(modes);
 }
 
+const char* PlatformData::supportedBurstFPS(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mSupportedBurstFPS;
+}
+
+const char* PlatformData::supportedBurstLength(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mSupportedBurstLength;
+}
+
+int PlatformData::getMaxBurstFPS(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mMaxBurstFPS;
+}
+
 const char* PlatformData::productName(void)
 {
     PlatformBase *i = getInstance();

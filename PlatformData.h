@@ -110,6 +110,11 @@ class PlatformBase {
     bool mBackFlash;
     bool mFileInject;
 
+    /* For burst capture's burst length and burst fps */
+    int mMaxBurstFPS;
+    const char* mSupportedBurstFPS;
+    const char* mSupportedBurstLength;
+
     const char* mVideoPreviewSizePref;
 
     /* For EXIF Metadata */
@@ -217,6 +222,24 @@ class PlatformData {
      *  upon error.
      */
     static String8 supportedSceneModes();
+
+    /**
+     * Returns the supported burst capture's fps list for the platform
+     * \return Supported burst capture's fps list string.
+     */
+    static const char* supportedBurstFPS(void);
+
+    /**
+     * Returns the supported burst capture's length list for the platform
+     * \return Supported burst capture's length list string.
+     */
+    static const char* supportedBurstLength(void);
+
+    /**
+     * Returns the max burst FPS
+     * \return Supported the max burst FPS.
+     */
+    static int getMaxBurstFPS(void);
 
     /**
      * Flipping controls to set for camera id

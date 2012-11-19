@@ -2550,7 +2550,8 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             return BAD_VALUE;
         }
         if (fps > 0) {
-            mFpsAdaptSkip = (MAX_BURST_FRAMERATE / fps) - 1;
+            mFpsAdaptSkip = roundf(PlatformData::getMaxBurstFPS()/float(fps)) - 1;
+            LOG1("%s, mFpsAdaptSkip:%d", __func__, mFpsAdaptSkip);
         }
     }
 
