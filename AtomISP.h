@@ -88,6 +88,8 @@ struct sensorPrivateData
 class Callbacks;
 
 class AtomISP {
+// FIXME: Only needed for NVM parsing "cameranvm_create()" in AtomAAA
+    friend class AtomAAA;
 
 // public types
 public:
@@ -204,6 +206,7 @@ public:
     int  sensorGetAperture(int *aperture);
     int  sensorGetFNumber(unsigned short  *fnum_num, unsigned short *fnum_denom);
     /* ISP related controls */
+    int setAicParameter(struct atomisp_parameters *aic_params);
     int setIspParameter(struct atomisp_parm *isp_params);
     int getIspStatistics(struct atomisp_3a_statistics *statistics);
     int setGdcConfig(const struct atomisp_morph_table *tbl);

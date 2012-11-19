@@ -4219,6 +4219,15 @@ void AtomISP::sensorGetSensorData(sensorPrivateData *sensor_data)
     sensor_data->size = otpdata.size;
 }
 
+int AtomISP::setAicParameter(struct atomisp_parameters *aic_param)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = xioctl(main_fd, ATOMISP_IOC_S_PARAMETERS, aic_param);
+    LOG2("%s IOCTL ATOMISP_IOC_S_PARAMETERS ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
 int AtomISP::setIspParameter(struct atomisp_parm *isp_param)
 {
     LOG2("@%s", __FUNCTION__);

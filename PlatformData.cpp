@@ -21,7 +21,6 @@
 #include <assert.h>
 #include <camera.h>
 #include <camera/CameraParameters.h>
-#include <AR0832ES_lsc_data.h>
 #include "PlatformData.h"
 #include "PlatformMedfield.h"
 #include "PlatformClovertrail.h"
@@ -87,8 +86,8 @@ static const SensorParams semcoLc898211Parameters = {
     "/system/lib/libSh3aParamsSemcoLc898211.so",
     ci_adv_load_camera_1,
     {
-      (void *)AR0832ES_lsc_data,
-      sizeof(AR0832ES_lsc_data),
+      NULL,
+      0,
     },
     true
 };

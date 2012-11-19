@@ -20,6 +20,7 @@
 #include "AtomCommon.h"
 #include "PlatformData.h"
 #include "PerformanceTraces.h"
+#include "cameranvm.h"
 #include <math.h>
 #include <time.h>
 #include <dlfcn.h>
@@ -74,7 +75,9 @@ static ia_3a_status cb_focus_drive_to_pos(short position, short absolute_pos)
 
 static ia_3a_af_lens_status cb_focus_status(void)
 {
-    return ia_3a_af_lens_status_stop;
+    ia_3a_af_lens_status stat;
+    stat = ia_3a_af_lens_status_stop;
+    return stat;
 }
 
 static bool cb_focus_ready(void)
@@ -97,6 +100,25 @@ static ia_3a_af_hp_status cb_focus_home_position(void)
         return ia_3a_af_hp_status_error;
 
     return ia_3a_af_hp_status_complete;
+}
+
+static void
+get_sensor_frame_params(ia_aiq_isp_frame_params *sensor_frame_params, struct atomisp_sensor_mode_data *sensor_mode_data)
+{
+    ia_3a_sensor_mode_data *ia_sensor_mode_data = (ia_3a_sensor_mode_data*)sensor_mode_data;
+
+    /*TODO: isp frame structure to be changed */
+    sensor_frame_params->sensor_native_height = ia_sensor_mode_data->y_end-ia_sensor_mode_data->y_start; /*cropped height*/
+    sensor_frame_params->sensor_native_width = ia_sensor_mode_data->x_end-ia_sensor_mode_data->x_start; /*cropped width*/
+    sensor_frame_params->sensor_horizontal_binning_denominator = 1;
+
+    sensor_frame_params->sensor_horizontal_binning_numerator = 1;
+    sensor_frame_params->sensor_vertical_binning_numerator = 1;
+    sensor_frame_params->sensor_vertical_binning_denominator = 1;
+    sensor_frame_params->horizontal_offset = ia_sensor_mode_data->x_start;
+    sensor_frame_params->vertical_offset = ia_sensor_mode_data->y_start;
+    sensor_frame_params->cropped_image_height = ia_sensor_mode_data->output_height * ia_sensor_mode_data->binning_factor_y;
+    sensor_frame_params->cropped_image_width = ia_sensor_mode_data->output_width * ia_sensor_mode_data->binning_factor_x;
 }
 
 } // extern "C"
@@ -775,19 +797,9 @@ status_t AtomAAA::setAeBacklightCorrection(bool en)
 
 status_t AtomAAA::setTNR(bool en)
 {
-    Mutex::Autolock lock(m3aLock);
-    LOG1("@%s: en = %d", __FUNCTION__, en);
-    int ret;
-    if(!mHas3A)
-        return INVALID_OPERATION;
-
-    ia_3a_prm_enable_tnr(en, &m3ALibState.results);
-    ret = applyResults();
-
-    if (ret != 0)
-        return UNKNOWN_ERROR;
-    else
-        return NO_ERROR;
+    // No longer supported, use CPF instead
+    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
+    return NO_ERROR;
 }
 
 status_t AtomAAA::setAwbMapping(ia_3a_awb_map mode)
@@ -1369,7 +1381,7 @@ int AtomAAA::ciAdvInit(const SensorParams *paramFiles, const char *sensorOtpFile
 {
     LOG1("@%s", __FUNCTION__);
     ia_3a_params param;
-    ia_3a_private_data *aicNvm = NULL;
+    ia_binary_data *aicNvm = NULL;
 
     m3ALibState.boot_events = ci_adv_init_state;
     if (!paramFiles)
@@ -1401,22 +1413,29 @@ int AtomAAA::ciAdvInit(const SensorParams *paramFiles, const char *sensorOtpFile
     param.param_calibration      = &m3ALibState.sensor_data;
     param.motor_calibration      = &m3ALibState.motor_data;
 
-    if (m3ALibState.sensor_data.data != NULL)
-      aicNvm = &m3ALibState.sensor_data;
-
+    // Intel 3A
+    if (cameranvm_create(mISP->mCameraInput->name,
+        (ia_binary_data *)&m3ALibState.sensor_data,
+        (ia_binary_data *)&m3ALibState.motor_data,
+        &aicNvm)) {
+        return -1;
+    }
 
     if (ia_3a_init(&param,
         &paramFiles->prmFiles,
         &mPrintFunctions,
         sensorOtpFile != NULL,
         &(paramFiles->cpfData),
-        aicNvm) < 0) {
+        (const ia_3a_private_data *)(aicNvm)) < 0) {
         if (m3ALibState.sh3a_params) {
             dlclose(m3ALibState.sh3a_params);
             m3ALibState.sh3a_params = NULL;
         }
+        cameranvm_delete(aicNvm);
         return -1;
     }
+
+    cameranvm_delete(aicNvm);
 
     m3ALibState.fpn_table_loaded = false;
     m3ALibState.gdc_table_loaded = false;
@@ -1451,9 +1470,9 @@ void AtomAAA::ciAdvUninit(void)
  */
 int AtomAAA::enableEe(bool enable)
 {
-    LOG1("@%s", __FUNCTION__);
-    ia_3a_prm_enable_ee(enable, &m3ALibState.results);
-    return applyResults();
+    // No longer supported, use CPF instead
+    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
+    return NO_ERROR;
 }
 
 /*! \fn  enableNr
@@ -1462,9 +1481,9 @@ int AtomAAA::enableEe(bool enable)
  */
 int AtomAAA::enableNr(bool enable)
 {
-    LOG1("@%s", __FUNCTION__);
-    ia_3a_prm_enable_nr(enable, &m3ALibState.results);
-    return applyResults();
+    // No longer supported, use CPF instead
+    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
+    return NO_ERROR;
 }
 
 /*! \fn  enableDp
@@ -1473,9 +1492,9 @@ int AtomAAA::enableNr(bool enable)
  */
 int AtomAAA::enableDp(bool enable)
 {
-    LOG1("@%s", __FUNCTION__);
-    ia_3a_prm_enable_dp(enable, &m3ALibState.results);
-    return applyResults();
+    // No longer supported, use CPF instead
+    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
+    return NO_ERROR;
 }
 
 /*! \fn  enableOb
@@ -1484,30 +1503,30 @@ int AtomAAA::enableDp(bool enable)
  */
 int AtomAAA::enableOb(bool enable)
 {
-    LOG1("@%s", __FUNCTION__);
-    ia_3a_prm_enable_ob(enable, &m3ALibState.results);
-    return applyResults();
+    // No longer supported, use CPF instead
+    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
+    return NO_ERROR;
 }
 
 int AtomAAA::enableShadingCorrection(bool enable)
 {
-    LOG1("@%s", __FUNCTION__);
-    ia_3a_asc_enable(enable, &m3ALibState.results);
-    return applyResults();
+    // No longer supported, use CPF instead
+    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
+    return NO_ERROR;
 }
 
 int AtomAAA::setGammaEffect(bool inv_gamma)
 {
-    LOG1("@%s", __FUNCTION__);
-    ia_3a_gbce_set_inverse_gamma(inv_gamma, &m3ALibState.results);
-    return applyResults();
+    // No longer supported, use CPF instead
+    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
+    return NO_ERROR;
 }
 
 int AtomAAA::enableGbce(bool enable)
 {
-    LOG1("@%s", __FUNCTION__);
-    ia_3a_gbce_enable(enable, &m3ALibState.results);
-    return applyResults();
+    // No longer supported, use CPF instead
+    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
+    return NO_ERROR;
 }
 
 void AtomAAA::ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate)
@@ -1517,7 +1536,9 @@ void AtomAAA::ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate)
         ia_3a_mknote_add_uint(ia_3a_mknote_field_name_boot_events, m3ALibState.boot_events);
     /* usually the grid changes as well when the mode changes. */
     reconfigureGrid();
-    ia_3a_reconfigure(mode, frame_rate, m3ALibState.stats, &m3ALibState.results);
+    ia_aiq_isp_frame_params sensor_frame_params;
+    get_sensor_frame_params(&sensor_frame_params, &m3ALibState.sensor_mode_data);
+    ia_3a_reconfigure(mode, frame_rate, m3ALibState.stats, &sensor_frame_params, &m3ALibState.results);
     applyResults();
 }
 
@@ -1529,38 +1550,10 @@ int AtomAAA::applyResults(void)
     PERFORMANCE_TRACES_AAA_PROFILER_START();
 
     /* Apply ISP settings */
-    if (m3ALibState.results.gamma_changed) {
-        if (m3ALibState.results.gamma_table)
-            ret |= mISP->setGammaTable(m3ALibState.results.gamma_table);
-        if (m3ALibState.results.ctc_table)
-            ret |= mISP->setCtcTable(m3ALibState.results.ctc_table);
-        m3ALibState.results.gamma_changed = false;
+    if (m3ALibState.results.aic_output) {
+        struct atomisp_parameters *aic_out_struct = (struct atomisp_parameters *)m3ALibState.results.aic_output;
+        ret |= mISP->setAicParameter(aic_out_struct);
     }
-    if (m3ALibState.results.macc_table_changed) {
-        struct atomisp_macc_config cfg;
-        cfg.color_effect = ia_3a_image_effect_none;
-        cfg.table = *m3ALibState.results.macc_table;
-        ret |= mISP->setMaccConfig(&cfg);
-        m3ALibState.results.macc_table_changed = false;
-    }
-    if (m3ALibState.results.isp_params_changed) {
-        ret |= mISP->setIspParameter(&m3ALibState.results.isp_params);
-        m3ALibState.results.isp_params_changed = false;
-    }
-    if (m3ALibState.results.s3a_config_changed) {
-        ret |= mISP->set3aConfig(&m3ALibState.results.s3a_config);
-        m3ALibState.results.s3a_config_changed = false;
-    }
-    if (m3ALibState.results.gc_config_changed) {
-        ret |= mISP->setGcConfig(&m3ALibState.results.gc_config);
-        m3ALibState.results.gc_config_changed = false;
-    }
-#ifndef MRFL_VP
-    if (m3ALibState.results.shading_table_changed) {
-        ret |= mISP->setShadingTable(&m3ALibState.results.shading_table);
-        m3ALibState.results.shading_table_changed = false;
-    }
-#endif
 
     /* Apply Sensor settings */
     if (m3ALibState.results.exposure_changed) {
@@ -1742,42 +1735,16 @@ int AtomAAA::getAfScore(bool average_enabled)
 
 int AtomAAA::enableFpn(bool enable)
 {
-    LOG1("@%s", __FUNCTION__);
-    //Mutex::Autolock lock(m3aLock); necessary?
-    int ret;
-    const ia_frame *black_frame;
-
-    if (m3ALibState.fpn_table_loaded || !enable)
-        return 0;
-
-    black_frame = ia_3a_prm_get_black_frame();
-    if (!black_frame)
-        return -1;
-
-    ret = setFpnTable(black_frame);
-    if (ret == 0)
-        m3ALibState.fpn_table_loaded = true;
-
-    return ret;
+    // No longer supported, use CPF instead
+    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
+    return NO_ERROR;
 }
 
 int AtomAAA::enableGdc(bool enable)
 {
-    LOG1("@%s", __FUNCTION__);
-    int ret;
-    const struct atomisp_morph_table *table;
-
-    if (m3ALibState.gdc_table_loaded || !enable)
-            return 0;
-
-    table = ia_3a_prm_get_morph_table();
-    if (!table)
-            return -1;
-
-    ret = mISP->setGdcConfig(table);
-    if (ret == 0)
-            m3ALibState.gdc_table_loaded = true;
-    return ret;
+    // No longer supported, use CPF instead
+    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
+    return NO_ERROR;
 }
 
 /*! \fn  getAEExpCfg

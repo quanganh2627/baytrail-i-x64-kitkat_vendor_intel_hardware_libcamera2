@@ -86,6 +86,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libandroid \
 	libui \
 	libmfldadvci \
+	libia_nvm \
 	libtbd \
 	libsqlite \
 	libdl
@@ -99,6 +100,7 @@ LOCAL_SHARED_LIBRARIES += \
 endif
 
 LOCAL_STATIC_LIBRARIES := \
+	libcameranvm \
 	libia_coordinate
 
 ifeq ($(USE_INTEL_JPEG), true)
