@@ -3384,7 +3384,8 @@ status_t AtomISP::allocateRecordingBuffers()
     for (int i = 0; i < mNumBuffers; i++) {
         mRecordingBuffers[i].buff = NULL;
         mRecordingBuffers[i].metadata_buff = NULL;
-        mCallbacks->allocateMemory(&mRecordingBuffers[i], size);
+        // recording buffers use uncached memory
+        mCallbacks->allocateMemory(&mRecordingBuffers[i], size, false);
         LOG1("allocate recording buffer[%d], buff=%p size=%d",
                 i, mRecordingBuffers[i].buff->data, mRecordingBuffers[i].buff->size);
         if (mRecordingBuffers[i].buff == NULL) {
@@ -3496,7 +3497,7 @@ errorFree:
 void AtomISP::initMetaDataBuf(IntelMetadataBuffer* metaDatabuf)
 {
     ValueInfo* vinfo = new ValueInfo;
-    vinfo->mode = MEM_MODE_MALLOC;
+    vinfo->mode = MEM_MODE_NONECACHE_USRPTR;
     vinfo->handle = 0;
     vinfo->width = mConfig.recording.width;
     vinfo->height = mConfig.recording.height;

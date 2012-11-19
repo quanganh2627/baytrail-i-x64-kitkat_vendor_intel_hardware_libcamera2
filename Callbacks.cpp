@@ -188,20 +188,36 @@ void Callbacks::sceneDetected(int sceneMode, bool sceneHdr)
     }
 }
 
-void Callbacks::allocateMemory(AtomBuffer *buff, int size)
+void Callbacks::allocateMemory(AtomBuffer *buff, int size, bool cached)
 {
     LOG1("@%s", __FUNCTION__);
     buff->buff = NULL;
-    if (mGetMemoryCB != NULL)
+    if (mGetMemoryCB != NULL) {
+      /*
+       * Because using uncached memory saves more power for video encoder
+       * during video recording, so the function provides the API to allocate
+       * cached/uncached memory, the parameter "fd" in the function "mGetMemoryCB()"
+       * will be used for that.
+       * "-1" means "cached memory"
+       * "-2" means "uncached memory"
+       */
+      if(cached)
         buff->buff = mGetMemoryCB(-1, size, 1, mUserToken);
+      else
+        buff->buff = mGetMemoryCB(-2, size, 1, mUserToken);
+    }
 }
 
-void Callbacks::allocateMemory(camera_memory_t **buff, size_t size)
+void Callbacks::allocateMemory(camera_memory_t **buff, size_t size, bool cached)
 {
     LOG1("@%s", __FUNCTION__);
     *buff = NULL;
-    if (mGetMemoryCB != NULL)
-        *buff = mGetMemoryCB(-1, size, 1, mUserToken);
+    if (mGetMemoryCB != NULL) {
+        if(cached)
+            *buff = mGetMemoryCB(-1, size, 1, mUserToken);
+        else
+            *buff = mGetMemoryCB(-2, size, 1, mUserToken);
+    }
 }
 
 void Callbacks::autofocusDone(bool status)
