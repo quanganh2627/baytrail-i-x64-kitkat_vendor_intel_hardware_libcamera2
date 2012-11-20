@@ -120,6 +120,9 @@ class PlatformBase {
     /* For EXIF Metadata */
     const char* mProductName;
     const char* mManufacturerName;
+
+    /* For Device name */
+    const char *mSubDevName;
 };
 
 /**
@@ -273,6 +276,12 @@ class PlatformData {
     */
     static const SensorParams *getSensorParamsFile(char *sensorId);
 
+    /**
+     * Returns the ISP sub device name
+     *
+     * \return the ISP sub device name, it'll return NULL when it fails
+    */
+    static const char* getISPSubDeviceName(void);
 };
 
 } /* namespace android */

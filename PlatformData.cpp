@@ -294,4 +294,10 @@ const SensorParams *PlatformData::getSensorParamsFile(char *sensorId)
 
     return sensorParameters;
 }
+
+const char* PlatformData::getISPSubDeviceName(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mSubDevName;
+}
 }; // namespace android

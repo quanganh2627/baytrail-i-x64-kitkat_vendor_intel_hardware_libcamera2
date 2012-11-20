@@ -33,6 +33,7 @@ class PlatformCtp : public PlatformBase {
 public:
     PlatformCtp(void) {
         CameraInfo cam;
+        mSubDevName = "/dev/v4l-subdev8";
 
         // back camera
         cam.facing = CAMERA_FACING_BACK;

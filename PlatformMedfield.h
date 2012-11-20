@@ -35,6 +35,7 @@ class PlatformBlackbay : public PlatformBase {
 public:
     PlatformBlackbay(void) {
         CameraInfo cam;
+        mSubDevName = "/dev/v4l-subdev7";
 
         // back camera
         cam.facing = CAMERA_FACING_BACK;
@@ -78,6 +79,7 @@ class PlatformLexington : public PlatformBlackbay {
 
 public:
     PlatformLexington(void) {
+        mSubDevName = "/dev/v4l-subdev6";
         mBackFlash = false;
         mMaxBurstFPS = 5;
         mSupportedBurstFPS = "1,3,5";
@@ -92,7 +94,7 @@ class PlatformRedridge : public PlatformBlackbay {
 
 public:
     PlatformRedridge(void) {
-
+        mSubDevName = "/dev/v4l-subdev7";
         char bid[PROPERTY_VALUE_MAX] = "";
         property_get("ro.board.id", bid, "");
 

@@ -92,12 +92,7 @@ namespace android {
 static const char *dev_name_array[] = {"/dev/video0",
                                        "/dev/video1",
                                        "/dev/video2",
-                                       "/dev/video3",
-#ifndef CLVT
-                                       "/dev/v4l-subdev7" };
-#else
-                                       "/dev/v4l-subdev8" };
-#endif
+                                       "/dev/video3"};
 
 /**
  * When image data injection is used, read OTP data from
@@ -2771,7 +2766,11 @@ status_t AtomISP::v4l2_capture_open(int device)
         return -1;
     }
 
-    const char *dev_name = dev_name_array[device];
+    const char *dev_name;
+    if (device == V4L2_ISP_SUBDEV)
+        dev_name = PlatformData::getISPSubDeviceName();
+    else
+        dev_name = dev_name_array[device];
     LOG1("---Open video device %s---", dev_name);
 
     if (stat (dev_name, &st) == -1) {
