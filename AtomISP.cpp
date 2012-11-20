@@ -3352,6 +3352,7 @@ errorFree:
     return status;
 }
 
+#ifdef ENABLE_INTEL_METABUFFER
 void AtomISP::initMetaDataBuf(IntelMetadataBuffer* metaDatabuf)
 {
     ValueInfo* vinfo = new ValueInfo;
@@ -3371,11 +3372,14 @@ void AtomISP::initMetaDataBuf(IntelMetadataBuffer* metaDatabuf)
     delete vinfo;
 
 }
+#endif
 
 status_t AtomISP::allocateMetaDataBuffers()
 {
     LOG1("@%s", __FUNCTION__);
+
     status_t status = NO_ERROR;
+#ifdef ENABLE_INTEL_METABUFFER
     int allocatedBufs = 0;
     uint8_t* meta_data_prt;
     uint32_t meta_data_size;
@@ -3429,6 +3433,7 @@ errorFree:
     }
     if (metaDataBuf)
         delete metaDataBuf;
+#endif
     return status;
 }
 

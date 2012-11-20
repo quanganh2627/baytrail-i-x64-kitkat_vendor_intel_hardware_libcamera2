@@ -33,7 +33,11 @@ class AtomISP;
 #include <camera/CameraParameters.h>
 #include "IntelParameters.h"
 #include "AtomCommon.h"
+
+#ifdef ENABLE_INTEL_METABUFFER
 #include "IntelMetadataBuffer.h"
+#endif
+
 #include "AtomAAA.h"
 #include "PlatformData.h"
 
@@ -306,7 +310,9 @@ private:
     status_t freeRecordingBuffers();
     status_t freeSnapshotBuffers();
 
+#ifdef ENABLE_INTEL_METABUFFER
     void initMetaDataBuf(IntelMetadataBuffer* metaDatabuf);
+#endif
 
     const char* getMaxSnapShotResolution();
 
