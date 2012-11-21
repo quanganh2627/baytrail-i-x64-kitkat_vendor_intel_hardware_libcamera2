@@ -283,9 +283,11 @@ status_t AtomCP::initializeHDR(unsigned width, unsigned height)
 {
     ia_err ia_err;
 
-    ia_err = ia_cp_hdr_init(width, height);
-    if (ia_err != ia_err_none)
-      return NO_MEMORY;
+    if (mISP->getLastDevice() == 3) {
+        ia_err = ia_cp_hdr_init(width, height);
+        if (ia_err != ia_err_none)
+            return NO_MEMORY;
+    }
 
     return NO_ERROR;
 }
@@ -294,9 +296,11 @@ status_t AtomCP::uninitializeHDR(void)
 {
     ia_err ia_err;
 
-    ia_err = ia_cp_hdr_uninit();
-    if (ia_err != ia_err_none)
-      return INVALID_OPERATION;
+    if (mISP->getLastDevice() == 3) {
+        ia_err = ia_cp_hdr_uninit();
+        if (ia_err != ia_err_none)
+            return INVALID_OPERATION;
+    }
 
     return NO_ERROR;
 }
