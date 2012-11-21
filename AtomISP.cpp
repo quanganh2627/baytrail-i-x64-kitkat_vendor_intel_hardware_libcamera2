@@ -431,17 +431,19 @@ status_t AtomISP::init3A(const sp<CameraBlob>& aiqConf)
         }
         else if (mSensorType == SENSOR_TYPE_RAW) {
             const SensorParams *paramFiles = PlatformData::getSensorParamsFile(mCameraInput->name);
-            SensorParams paramFilesWithCpf = *paramFiles;
-            if (aiqConf != 0) {
-                paramFilesWithCpf.cpfData.data = aiqConf->getPtr();
-                paramFilesWithCpf.cpfData.size = aiqConf->getSize();
-            }
-            if (mAAA->init(&paramFilesWithCpf, this, NULL) == NO_ERROR) {
-                LOG1("3A initialized");
-            } else {
-                LOGE("Error initializing 3A on RAW sensor!");
-                status = NO_INIT;
-            }
+            if (paramFiles != NULL) {
+                    SensorParams paramFilesWithCpf = *paramFiles;
+                    if (aiqConf != 0) {
+                            paramFilesWithCpf.cpfData.data = aiqConf->getPtr();
+                            paramFilesWithCpf.cpfData.size = aiqConf->getSize();
+                    }
+                    if (mAAA->init(&paramFilesWithCpf, this, NULL) == NO_ERROR) {
+                            LOG1("3A initialized");
+                    } else {
+                            LOGE("Error initializing 3A on RAW sensor!");
+                            status = NO_INIT;
+                    }
+             }
         }
     } else {
         LOGE("Could not select camera: %s", mCameraInput->name);
