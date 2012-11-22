@@ -1,11 +1,11 @@
 ifeq ($(USE_CAMERA_STUB),false)
 ifeq ($(USE_CAMERA_HAL2),true)
 LOCAL_PATH:= $(call my-dir)
-USE_INTEL_JPEG := false
+USE_INTEL_JPEG := true
 
 include $(CLEAR_VARS)
 
-#LOCAL_CFLAGS += -DENABLE_INTEL_METABUFFER
+LOCAL_CFLAGS += -DENABLE_INTEL_METABUFFER
 
 # Intel camera extras (HDR, face detection, etc.)
 ifeq ($(USE_INTEL_CAMERA_EXTRAS),true)
@@ -92,7 +92,8 @@ ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SHARED_LIBRARIES += \
 	libva \
 	libva-tpi \
-	libva-android
+	libva-android \
+	libintelmetadatabuffer
 endif
 
 ifeq ($(USE_INTEL_JPEG), true)
