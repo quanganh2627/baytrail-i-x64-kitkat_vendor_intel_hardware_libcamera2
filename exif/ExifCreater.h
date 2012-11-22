@@ -119,6 +119,10 @@ private:
                                  unsigned char *pValue,
                                  unsigned int *offset,
                                  unsigned char *start);
+    void writeThumbData(unsigned char *pIfdStart,
+                                 unsigned char *pNextIfdOffset,
+                                 unsigned int *LongerTagOffset,
+                                 exif_attribute_t *exifInfo);
 
     unsigned char * m_thumbBuf; // MAP: Added to set thumbnail from external data
     unsigned int m_thumbSize; // MAP: Added to set thumbnail from external data

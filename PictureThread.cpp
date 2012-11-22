@@ -101,7 +101,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         mCallbacks->allocateMemory(&mOutBuf, bufferSize);
     }
     if (mExifBuf.buff == NULL || mExifBuf.buff->data == NULL || mExifBuf.buff->size <= 0) {
-        mCallbacks->allocateMemory(&mExifBuf, MAX_EXIF_SIZE + sizeof(JPEG_MARKER_SOI));
+        mCallbacks->allocateMemory(&mExifBuf, EXIF_SIZE_LIMITATION + sizeof(JPEG_MARKER_SOI));
     }
     if (mOutBuf.buff == NULL || mOutBuf.buff->data == NULL) {
         LOGE("Could not allocate memory for temp buffer!");
@@ -381,7 +381,7 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
         mCallbacks->allocateMemory(&mOutBuf, bufferSize);
     }
     if (mExifBuf.buff == NULL || mExifBuf.buff->data == NULL || mExifBuf.buff->size <= 0) {
-        mCallbacks->allocateMemory(&mExifBuf, MAX_EXIF_SIZE + sizeof(JPEG_MARKER_SOI));
+        mCallbacks->allocateMemory(&mExifBuf, EXIF_SIZE_LIMITATION + sizeof(JPEG_MARKER_SOI));
     }
     if ((mOutBuf.buff == NULL || mOutBuf.buff->data == NULL) ||
         (mExifBuf.buff == NULL || mExifBuf.buff->data == NULL) ){

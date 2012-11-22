@@ -302,19 +302,60 @@ exif_status ExifCreater::makeExif (void *exifOut,
     }
 
     // 2 1th IFD TIFF Tags
-    unsigned char *thumbBuf = m_thumbBuf;
-    unsigned int thumbSize = m_thumbSize;
-    if (exifInfo->enableThumb && (thumbBuf != NULL) && (thumbSize > 0)) {
-        tmp = LongerTagOffset;
+    if (exifInfo->enableThumb && (m_thumbBuf != NULL) && (m_thumbSize > 0)) {
+        writeThumbData(pIfdStart, pNextIfdOffset, &LongerTagOffset, exifInfo);
+    } else {
+        tmp = 0;
+        memcpy(pNextIfdOffset, &tmp, OFFSET_SIZE);  // NEXT IFD offset skipped on 0th IFD
+    }
+
+    // fill APP1 maker
+    unsigned char App1Marker[2] = { 0xff, 0xe1 };
+    memcpy(pApp1Start, App1Marker, 2);
+    pApp1Start += 2;
+
+    // calc and fill the exif total size, 2 is length; 6 is ExifIdentifierCode
+    *size = 2 + 6 + LongerTagOffset;
+    unsigned char size_mm[2] = {(*size >> 8) & 0xFF, *size & 0xFF};
+    memcpy(pApp1Start, size_mm, 2);
+    *size += 2; // APP1 marker size
+
+    LOGV("makeExif End");
+
+    return EXIF_SUCCESS;
+}
+
+void ExifCreater::writeThumbData(unsigned char *pIfdStart,
+                                        unsigned char *pNextIfdOffset,
+                                        unsigned int *LongerTagOffset,
+                                        exif_attribute_t *exifInfo)
+{
+    unsigned char *pCur;
+    unsigned int tmp;
+
+    // firstly calc the exif total size, if it's > 64K, we'll disable the thumbnail
+    tmp  = 4 + 6 + *LongerTagOffset;  // 4 is APP1 marker and length; 6 is ExifIdentifierCode
+    tmp += NUM_SIZE + NUM_1TH_IFD_TIFF*IFD_SIZE + OFFSET_SIZE;
+    tmp += sizeof(exifInfo->x_resolution) + sizeof(exifInfo->y_resolution);
+    tmp += m_thumbSize;
+
+    if(tmp > EXIF_SIZE_LIMITATION) {
+        LOGD("line:%d, in makeExif, exif total size(%d) > 64K, we'll disable thumbnail.", __LINE__, tmp);
+        m_thumbSize = 0;
+        m_thumbBuf = NULL;
+        tmp = 0;
+        memcpy(pNextIfdOffset, &tmp, OFFSET_SIZE);  // NEXT IFD offset skipped on 0th IFD
+    } else {
+        tmp = *LongerTagOffset;
         memcpy(pNextIfdOffset, &tmp, OFFSET_SIZE);  // NEXT IFD offset skipped on 0th IFD
 
-        pCur = pIfdStart + LongerTagOffset;
+        pCur = pIfdStart + *LongerTagOffset;
 
         tmp = NUM_1TH_IFD_TIFF;
         memcpy(pCur, &tmp, NUM_SIZE);
         pCur += NUM_SIZE;
 
-        LongerTagOffset += NUM_SIZE + NUM_1TH_IFD_TIFF*IFD_SIZE + OFFSET_SIZE;
+        *LongerTagOffset += NUM_SIZE + NUM_1TH_IFD_TIFF*IFD_SIZE + OFFSET_SIZE;
 
         writeExifIfd(&pCur, EXIF_TAG_IMAGE_WIDTH, EXIF_TYPE_LONG,
                      1, exifInfo->widthThumb);
@@ -325,52 +366,24 @@ exif_status ExifCreater::makeExif (void *exifOut,
         writeExifIfd(&pCur, EXIF_TAG_ORIENTATION, EXIF_TYPE_SHORT,
                      1, exifInfo->orientation);
         writeExifIfd(&pCur, EXIF_TAG_X_RESOLUTION, EXIF_TYPE_RATIONAL,
-                     1, &exifInfo->x_resolution, &LongerTagOffset, pIfdStart);
+                     1, &exifInfo->x_resolution, LongerTagOffset, pIfdStart);
         writeExifIfd(&pCur, EXIF_TAG_Y_RESOLUTION, EXIF_TYPE_RATIONAL,
-                     1, &exifInfo->y_resolution, &LongerTagOffset, pIfdStart);
+                     1, &exifInfo->y_resolution, LongerTagOffset, pIfdStart);
         writeExifIfd(&pCur, EXIF_TAG_RESOLUTION_UNIT, EXIF_TYPE_SHORT,
                      1, exifInfo->resolution_unit);
         writeExifIfd(&pCur, EXIF_TAG_JPEG_INTERCHANGE_FORMAT, EXIF_TYPE_LONG,
-                     1, LongerTagOffset);
+                     1, *LongerTagOffset);
         writeExifIfd(&pCur, EXIF_TAG_JPEG_INTERCHANGE_FORMAT_LEN, EXIF_TYPE_LONG,
-                     1, thumbSize);
+                     1, m_thumbSize);
 
         tmp = 0;
         memcpy(pCur, &tmp, OFFSET_SIZE); // next IFD offset
         pCur += OFFSET_SIZE;
 
-        memcpy(pIfdStart + LongerTagOffset,
-               thumbBuf, thumbSize);
-        LongerTagOffset += thumbSize;
-    } else {
-        tmp = 0;
-        memcpy(pNextIfdOffset, &tmp, OFFSET_SIZE);  // NEXT IFD offset skipped on 0th IFD
+        memcpy(pIfdStart + *LongerTagOffset,
+               m_thumbBuf, m_thumbSize);
+        *LongerTagOffset += m_thumbSize;
     }
-
-    // calc the exif total size, if it's > 64K, we'll disable the thumbnail
-    tmp = *size = 4 + 6 + LongerTagOffset; // 4 is APP1 marker and length; 6 is ExifIdentifierCode
-    if(tmp >= EXIF_SIZE_LIMITATION) {
-        LOGD("line:%d, in makeExif, exif size > 64K, we'll disable thumbnail", __LINE__);
-        m_thumbSize = 0;
-        m_thumbBuf = NULL;
-        tmp = 0;
-        memcpy(pNextIfdOffset, &tmp, OFFSET_SIZE);  // NEXT IFD offset skipped on 0th IFD
-        tmp = *size = 4 + 6 + LongerTagOffsetWithoutThumbnail; // 4 is APP1 marker and length; 6 is ExifIdentifierCode
-    }
-
-    // fill APP1 maker
-    unsigned char App1Marker[2] = { 0xff, 0xe1 };
-    memcpy(pApp1Start, App1Marker, 2);
-    pApp1Start += 2;
-
-    // fill the exif size
-    tmp -= 2; // remove APP1 marker size
-    unsigned char size_mm[2] = {(tmp >> 8) & 0xFF, tmp & 0xFF};
-    memcpy(pApp1Start, size_mm, 2);
-
-    LOGV("makeExif End");
-
-    return EXIF_SUCCESS;
 }
 
 void ExifCreater::writeExifIfd(unsigned char **pCur,
