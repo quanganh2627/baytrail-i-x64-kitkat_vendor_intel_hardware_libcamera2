@@ -1553,6 +1553,7 @@ int AtomAAA::applyResults(void)
     if (m3ALibState.results.aic_output) {
         struct atomisp_parameters *aic_out_struct = (struct atomisp_parameters *)m3ALibState.results.aic_output;
         ret |= mISP->setAicParameter(aic_out_struct);
+        ret |= mISP->applyColorEffect();
     }
 
     /* Apply Sensor settings */

@@ -149,6 +149,7 @@ public:
     status_t setFlashIndicator(int intensity);
     status_t setTorch(int intensity);
     status_t setColorEffect(v4l2_colorfx effect);
+    status_t applyColorEffect();
     status_t getMakerNote(atomisp_makernote_info *info);
     status_t setXNR(bool enable);
     status_t setLightFrequency(FlickerMode flickerMode);
@@ -448,6 +449,7 @@ private:
     int mRawDataDumpSize;
     bool mFrameSyncRequested;
     bool mFrameSyncEnabled;
+    v4l2_colorfx mColorEffect;
 
 }; // class AtomISP
 

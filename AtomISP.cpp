@@ -167,6 +167,7 @@ AtomISP::AtomISP() :
     ,mRawDataDumpSize(0)
     ,mFrameSyncRequested(false)
     ,mFrameSyncEnabled(false)
+    ,mColorEffect(V4L2_COLORFX_NONE)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -2077,22 +2078,21 @@ status_t AtomISP::setTorch(int intensity)
 
 status_t AtomISP::setColorEffect(v4l2_colorfx effect)
 {
-    LOG1("@%s: effect = %d", __FUNCTION__, effect);
+    mColorEffect = effect;
+    return NO_ERROR;
+}
+
+status_t AtomISP::applyColorEffect()
+{
+    LOG1("@%s: effect = %d", __FUNCTION__, mColorEffect);
     status_t status = NO_ERROR;
-    if (mMode == MODE_CAPTURE)
-        return INVALID_OPERATION;
-    if (atomisp_set_attribute (main_fd, V4L2_CID_COLORFX, effect, "Colour Effect") < 0)
-        return UNKNOWN_ERROR;
-    if (mAAA->is3ASupported()) {
-        switch(effect) {
-        case V4L2_COLORFX_NEGATIVE:
-            status = mAAA->setNegativeEffect(true);
-            break;
-        default:
-            status = mAAA->setNegativeEffect(false);
-        }
-        if (status == NO_ERROR) {
-            status = mAAA->applyIspSettings();
+
+    // Color effect overrides configs that AIC has set
+    // Apply only when color effect is selected
+    if (mColorEffect != 0){
+        if (atomisp_set_attribute (main_fd, V4L2_CID_COLORFX, mColorEffect, "Colour Effect") < 0){
+            LOGE("Error setting color effect");
+            return UNKNOWN_ERROR;
         }
     }
     return status;
