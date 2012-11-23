@@ -39,27 +39,12 @@ enum FlickerMode
 #include "PlatformData.h"
 #include "ia_face.h"
 #include "AtomISP.h"
+#include "I3AControls.h"
 #include <ia_3a_types.h>
 #include <ia_types.h>
 #include <ia_aiq_types.h>
 
 namespace android {
-
-enum AwbMode
-{
-    CAM_AWB_MODE_NOT_SET = -1,
-    CAM_AWB_MODE_AUTO,
-    CAM_AWB_MODE_MANUAL_INPUT,
-    CAM_AWB_MODE_DAYLIGHT,
-    CAM_AWB_MODE_SUNSET,
-    CAM_AWB_MODE_CLOUDY,
-    CAM_AWB_MODE_TUNGSTEN,
-    CAM_AWB_MODE_FLUORESCENT,
-    CAM_AWB_MODE_WARM_FLUORESCENT,
-    CAM_AWB_MODE_SHADOW,
-    CAM_AWB_MODE_WARM_INCANDESCENT
-};
-
 
 enum AfMode
 {
@@ -90,19 +75,6 @@ enum FlashMode
                            x == CAM_AE_FLASH_MODE_DAY_SYNC || \
                            x == CAM_AE_FLASH_MODE_SLOW_SYNC) \
 
-enum SceneMode
-{
-    CAM_AE_SCENE_MODE_NOT_SET = -1,
-    CAM_AE_SCENE_MODE_AUTO,
-    CAM_AE_SCENE_MODE_PORTRAIT,
-    CAM_AE_SCENE_MODE_SPORTS,
-    CAM_AE_SCENE_MODE_LANDSCAPE,
-    CAM_AE_SCENE_MODE_NIGHT,
-    CAM_AE_SCENE_MODE_NIGHT_PORTRAIT,
-    CAM_AE_SCENE_MODE_FIREWORKS,
-    CAM_AE_SCENE_MODE_TEXT
-};
-
 enum AeMode
 {
     CAM_AE_MODE_NOT_SET = -1,
@@ -110,15 +82,6 @@ enum AeMode
     CAM_AE_MODE_MANUAL,
     CAM_AE_MODE_SHUTTER_PRIORITY,
     CAM_AE_MODE_APERTURE_PRIORITY
-};
-
-enum MeteringMode
-{
-    CAM_AE_METERING_MODE_NOT_SET = -1,
-    CAM_AE_METERING_MODE_AUTO,
-    CAM_AE_METERING_MODE_SPOT,
-    CAM_AE_METERING_MODE_CENTER,
-    CAM_AE_METERING_MODE_CUSTOMIZED
 };
 
 enum FlashStage
@@ -205,7 +168,7 @@ struct AAALibState
  *       imaging modules. Once this is complete, the singleton model
  *       will no longer be needed.
  */
-class AtomAAA {
+class AtomAAA : public I3AControls {
 
 // constructor/destructor
 private:
@@ -270,8 +233,6 @@ public:
     status_t setAfWindow(const CameraWindow *window);
     status_t setAeFlickerMode(FlickerMode mode);
     status_t setAfEnabled(bool en);
-    status_t setAeSceneMode(SceneMode mode);
-    SceneMode getAeSceneMode();
     status_t setAeMode(AeMode mode);
     AeMode getAeMode();
     status_t setAfMode(AfMode mode);
@@ -280,10 +241,6 @@ public:
     status_t setAeFlashMode(FlashMode mode);
     FlashMode getAeFlashMode();
     bool getAeFlashNecessary();
-    status_t setAwbMode(AwbMode mode);
-    AwbMode getAwbMode();
-    status_t setAeMeteringMode(MeteringMode mode);
-    MeteringMode getAeMeteringMode();
     status_t setAeBacklightCorrection(bool en);
     status_t setTNR(bool en);
     status_t setAeLock(bool en);
@@ -308,11 +265,7 @@ public:
     status_t getNextFocusPosition(int *pos);
     status_t getCurrentFocusPosition(int *pos);
     status_t applyEv(float bias);
-    status_t setEv(float bias);
-    status_t getEv(float *ret);
     status_t setGDC(bool en);
-    status_t setManualIso(int ret);
-    status_t getManualIso(int *ret);
     status_t setManualShutter(float expTime);
     status_t getManualShutter(float *expTime);
     status_t setSmartSceneDetection(bool en);
@@ -321,6 +274,19 @@ public:
     status_t setFaces(const ia_face_state& faceState);
 
     status_t getGridWindow(AAAWindowInfo& window);
+
+    // I3AControl functions
+    virtual status_t setEv(float bias);
+    virtual status_t getEv(float *ret);
+    virtual status_t setAeSceneMode(SceneMode mode);
+    virtual SceneMode getAeSceneMode();
+    virtual status_t setAwbMode(AwbMode mode);
+    virtual AwbMode getAwbMode();
+    virtual status_t setManualIso(int iso);
+    virtual status_t getManualIso(int *ret);
+    virtual status_t setAeMeteringMode(MeteringMode mode);
+    virtual MeteringMode getAeMeteringMode();
+    virtual status_t set3AColorEffect(v4l2_colorfx effect);
 
     // ISP processing functions
     status_t apply3AProcess(bool read_stats,

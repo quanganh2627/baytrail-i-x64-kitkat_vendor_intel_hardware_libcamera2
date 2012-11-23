@@ -41,6 +41,7 @@ class AtomISP;
 #include "AtomAAA.h"
 #include "PlatformData.h"
 #include "CameraConf.h"
+#include "I3AControls.h"
 
 namespace android {
 
@@ -87,7 +88,7 @@ struct sensorPrivateData
 
 class Callbacks;
 
-class AtomISP {
+class AtomISP : public I3AControls {
 // FIXME: Only needed for NVM parsing "cameranvm_create()" in AtomAAA
     friend class AtomAAA;
 
@@ -241,6 +242,19 @@ public:
     int setFlashIntensity(int intensity);
     /* file injection controls */
     void getSensorDataFromFile(const char *file_name, sensorPrivateData *sensor_data);
+
+    // I3AControls
+    virtual status_t setEv(float bias);
+    virtual status_t getEv(float *ret);
+    virtual status_t setAeSceneMode(SceneMode mode);
+    virtual SceneMode getAeSceneMode();
+    virtual status_t setAwbMode(AwbMode mode);
+    virtual AwbMode getAwbMode();
+    virtual status_t setManualIso(int iso);
+    virtual status_t getManualIso(int *ret);
+    virtual status_t setAeMeteringMode(MeteringMode mode);
+    virtual MeteringMode getAeMeteringMode();
+    virtual status_t set3AColorEffect(v4l2_colorfx effect);
 
 // public static methods
 public:

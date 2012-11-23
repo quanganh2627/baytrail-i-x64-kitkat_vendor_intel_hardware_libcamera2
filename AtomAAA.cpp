@@ -1777,4 +1777,17 @@ void AtomAAA::getAeExpCfg(int *exp_time, int *aperture,
     *aec_apex_Av = ae_res.av;
 }
 
+status_t AtomAAA::set3AColorEffect(v4l2_colorfx effect)
+{
+    LOG1("@%s: effect = %d", __FUNCTION__, effect);
+    status_t status = NO_ERROR;
+
+    status = mISP->setColorEffect(effect);
+    if (status != NO_ERROR) {
+        return UNKNOWN_ERROR;
+    }
+    return status;
+}
+
+
 } //  namespace android
