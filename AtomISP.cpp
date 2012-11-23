@@ -222,7 +222,7 @@ status_t AtomISP::initDevice()
         return NO_INIT;
     }
 
-    mSensorType = (mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY)?SENSOR_TYPE_RAW:SENSOR_TYPE_SOC;
+    mSensorType = PlatformData::sensorType(getCurrentCameraId());
     LOG1("Sensor type detected: %s", (mSensorType == SENSOR_TYPE_RAW)?"RAW":"SOC");
 
     return status;

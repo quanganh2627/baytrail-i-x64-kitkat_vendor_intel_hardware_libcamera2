@@ -276,8 +276,6 @@ status_t AtomAAA::setAeSceneMode(SceneMode mode)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
-    if(!mHas3A)
-        return INVALID_OPERATION;
 
     ia_3a_ae_exposure_program wr_val;
     switch (mode) {
@@ -327,8 +325,6 @@ SceneMode AtomAAA::getAeSceneMode()
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
     SceneMode mode = CAM_AE_SCENE_MODE_NOT_SET;
-    if(!mHas3A)
-        return mode;
 
     ia_3a_ae_exposure_program rd_val = ia_3a_ae_get_exposure_program();
     switch (rd_val) {
@@ -594,8 +590,6 @@ status_t AtomAAA::setAwbMode (AwbMode mode)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
-    if(!mHas3A)
-        return INVALID_OPERATION;
 
     switch (mode) {
     case CAM_AWB_MODE_DAYLIGHT:
@@ -651,8 +645,6 @@ AwbMode AtomAAA::getAwbMode()
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
-    if(!mHas3A)
-        return CAM_AWB_MODE_NOT_SET;
 
     return mAwbMode;
 }
@@ -661,8 +653,6 @@ status_t AtomAAA::setAeMeteringMode(MeteringMode mode)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
-    if(!mHas3A)
-        return INVALID_OPERATION;
 
     ia_3a_ae_metering_mode wr_val;
     switch (mode) {
@@ -692,8 +682,6 @@ MeteringMode AtomAAA::getAeMeteringMode()
     Mutex::Autolock lock(m3aLock);
     LOG2("@%s", __FUNCTION__);
     MeteringMode mode = CAM_AE_METERING_MODE_NOT_SET;
-    if(!mHas3A)
-        return mode;
 
     ia_3a_ae_metering_mode rd_val = ia_3a_ae_get_metering_mode();
     switch (rd_val) {
@@ -1075,8 +1063,6 @@ status_t AtomAAA::setEv(float bias)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: bias=%.2f", __FUNCTION__, bias);
-    if(!mHas3A)
-        return INVALID_OPERATION;
 
     bias = bias > 2 ? 2 : bias;
     bias = bias < -2 ? -2 : bias;
@@ -1089,8 +1075,6 @@ status_t AtomAAA::getEv(float *ret)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
-    if(!mHas3A)
-        return INVALID_OPERATION;
 
     *ret = ia_3a_ae_get_bias();
 
@@ -1145,8 +1129,6 @@ status_t AtomAAA::setManualIso(int sensitivity)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
-    if (!mHas3A)
-        return INVALID_OPERATION;
 
     float sv;
     if(sensitivity <= 0)
@@ -1166,8 +1148,6 @@ status_t AtomAAA::getManualIso(int *ret)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
-    if(!mHas3A)
-        return INVALID_OPERATION;
 
     float ev = ia_3a_ae_get_manual_iso();
 

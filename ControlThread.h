@@ -39,6 +39,7 @@
 #include "CameraAreas.h"
 #include "AtomCP.h"
 #include "BracketManager.h"
+#include "I3AControls.h"
 
 namespace android {
 
@@ -522,6 +523,7 @@ private:
     AtomAAA *mAAA;
     AtomDvs *mDvs;
     AtomCP  *mCP;
+    I3AControls *m3AControls;
     sp<PreviewThread> mPreviewThread;
     sp<PictureThread> mPictureThread;
     sp<VideoThread> mVideoThread;

@@ -172,6 +172,13 @@ status_t ControlThread::init()
         goto bail;
     }
 
+    // Choose 3A interface based on the sensor type
+    if (PlatformData::sensorType(mISP->getCurrentCameraId()) == SENSOR_TYPE_RAW) {
+        m3AControls = mAAA;
+    } else {
+        m3AControls = mISP;
+    }
+
     mCP = new AtomCP(mISP);
     if (mCP == NULL) {
         LOGE("error creating CP");
@@ -1101,13 +1108,13 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     }
 
     // Update the spot mode window for the proper window size.
-    if (mAAA->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT && mMeteringAreas.isEmpty()) {
+    if (m3AControls->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT && mMeteringAreas.isEmpty()) {
         // Update for the "fixed" AE spot window (Intel extension):
         LOG1("%s: setting forced spot window.", __FUNCTION__);
         AAAWindowInfo aaaWindow;
         mAAA->getGridWindow(aaaWindow);
         updateSpotWindow(aaaWindow.width, aaaWindow.height);
-    } else if (mAAA->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT) {
+    } else if (m3AControls->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT) {
         // This update is when the AE metering is internally set to
         // "spot" mode by the HAL, when user has set the AE metering window.
         LOG1("%s: setting metering area with spot window.", __FUNCTION__);
@@ -1761,7 +1768,7 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
     if (mAAA->is3ASupported()) {
         aeConfig = new SensorAeConfig;
         mAAA->getExposureInfo(*aeConfig);
-        if (mAAA->getEv(&aeConfig->evBias) != NO_ERROR) {
+        if (m3AControls->getEv(&aeConfig->evBias) != NO_ERROR) {
             aeConfig->evBias = EV_UPPER_BOUND;
         }
     }
@@ -2849,17 +2856,36 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         status = processParamPreviewFrameRate(oldParams, newParams);
     }
 
+    // Changing the scene may change many parameters, including
+    // flash, awb. Thus the order of how processParamFoo() are
+    // called is important for the parameter changes to take
+    // effect, and processParamSceneMode needs to be called first.
+    if (status == NO_ERROR) {
+        // Scene Mode
+        status = processParamSceneMode(oldParams, newParams);
+    }
+
+    if (status == NO_ERROR) {
+        // white balance
+        status = processParamWhiteBalance(oldParams, newParams);
+    }
+
+    if (status == NO_ERROR) {
+        // exposure compensation
+        status = processParamExposureCompensation(oldParams, newParams);
+    }
+
+    if (status == NO_ERROR) {
+        // ISO manual setting (Intel extension)
+        status = processParamIso(oldParams, newParams);
+    }
+
+    if (!mFaceDetectionActive && status == NO_ERROR) {
+        // customize metering
+        status = processParamSetMeteringAreas(oldParams, newParams);
+    }
+
     if (mAAA->is3ASupported()) {
-
-        // Changing the scene may change many parameters, including
-        // flash, awb. Thus the order of how processParamFoo() are
-        // called is important for the parameter changes to take
-        // effect, and processParamSceneMode needs to be called first.
-
-        if (status == NO_ERROR) {
-            // Scene Mode
-            status = processParamSceneMode(oldParams, newParams);
-        }
 
         if (status == NO_ERROR) {
             // flash settings
@@ -2869,11 +2895,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         if (status == NO_ERROR) {
             //Focus Mode
             status = processParamFocusMode(oldParams, newParams);
-        }
-
-        if (status == NO_ERROR || !mFaceDetectionActive) {
-            // white balance
-            status = processParamWhiteBalance(oldParams, newParams);
         }
 
         if (status == NO_ERROR) {
@@ -2916,24 +2937,9 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             status = processParamAutoExposureMeteringMode(oldParams, newParams);
         }
 
-        if (!mFaceDetectionActive && status == NO_ERROR) {
-            // customize metering
-            status = processParamSetMeteringAreas(oldParams, newParams);
-        }
-
-        if (status == NO_ERROR) {
-            // exposure compensation
-            status = processParamExposureCompensation(oldParams, newParams);
-        }
-
         if (status == NO_ERROR) {
             // ae mode
             status = processParamAutoExposureMode(oldParams, newParams);
-        }
-
-        if (status == NO_ERROR) {
-            // ISO manual setting (Intel extension)
-            status = processParamIso(oldParams, newParams);
         }
 
         if (status == NO_ERROR) {
@@ -3287,7 +3293,7 @@ status_t ControlThread::processParamEffect(const CameraParameters *oldParams,
         else if (newVal == IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_HIGH)
             effect = (v4l2_colorfx)V4L2_COLORFX_SKIN_WHITEN_HIGH;
 
-        status = mISP->setColorEffect(effect);
+        status = m3AControls->set3AColorEffect(effect);
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_EFFECT, newVal.string());
         }
@@ -3485,8 +3491,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
             newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
             newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
-        } else if (newScene == CameraParameters::SCENE_MODE_SPORTS) {
-            sceneMode = CAM_AE_SCENE_MODE_SPORTS;
+        } else if (newScene == CameraParameters::SCENE_MODE_SPORTS || newScene == CameraParameters::SCENE_MODE_PARTY) {
+            sceneMode = (newScene == CameraParameters::SCENE_MODE_SPORTS) ? CAM_AE_SCENE_MODE_SPORTS : CAM_AE_SCENE_MODE_PARTY;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
             newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
@@ -3503,8 +3509,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
             newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
             newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
-        } else if (newScene == CameraParameters::SCENE_MODE_LANDSCAPE) {
-            sceneMode = CAM_AE_SCENE_MODE_LANDSCAPE;
+        } else if (newScene == CameraParameters::SCENE_MODE_LANDSCAPE || newScene == CameraParameters::SCENE_MODE_SUNSET) {
+            sceneMode = (newScene == CameraParameters::SCENE_MODE_LANDSCAPE) ? CAM_AE_SCENE_MODE_LANDSCAPE : CAM_AE_SCENE_MODE_CANDLELIGHT;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
             newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
@@ -3594,11 +3600,13 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
             newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else {
-            if (newScene != CameraParameters::SCENE_MODE_AUTO) {
+            if (newScene == CameraParameters::SCENE_MODE_CANDLELIGHT) {
+                sceneMode = CAM_AE_SCENE_MODE_CANDLELIGHT;
+            } else {
                 LOG1("Unsupported %s: %s. Using AUTO!", CameraParameters::KEY_SCENE_MODE, newScene.string());
+                sceneMode = CAM_AE_SCENE_MODE_AUTO;
             }
 
-            sceneMode = CAM_AE_SCENE_MODE_AUTO;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
             newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,infinity,fixed,macro,continuous-video,continuous-picture");
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
@@ -3619,7 +3627,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
         }
 
         if (applyImmediately) {
-            mAAA->setAeSceneMode(sceneMode);
+            m3AControls->setAeSceneMode(sceneMode);
             if (status == NO_ERROR) {
                 LOG1("Changed: %s -> %s", CameraParameters::KEY_SCENE_MODE, newScene.string());
             }
@@ -3779,7 +3787,7 @@ status_t ControlThread:: processParamSetMeteringAreas(const CameraParameters *ol
         //default camera app. To have some kind of visual effect, we start our range from 5
         convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
 
-        if (mAAA->setAeMeteringMode(CAM_AE_METERING_MODE_SPOT) == NO_ERROR) {
+        if (m3AControls->setAeMeteringMode(CAM_AE_METERING_MODE_SPOT) == NO_ERROR) {
             LOG1("@%s, Got metering area, and \"spot\" mode set. Setting window.", __FUNCTION__ );
             if (mAAA->setAeWindow(&aeWindow) != NO_ERROR) {
                 LOGW("Error setting AE metering window. Metering will not work");
@@ -3799,9 +3807,9 @@ status_t ControlThread:: processParamSetMeteringAreas(const CameraParameters *ol
             oldMode = aeMeteringModeFromString(String8(modeStr));
         }
 
-        if (oldMode != mAAA->getAeMeteringMode()) {
+        if (oldMode != m3AControls->getAeMeteringMode()) {
             LOG1("Resetting from \"spot\" to (previous) AE metering mode (%d).", oldMode);
-            mAAA->setAeMeteringMode(oldMode);
+            m3AControls->setAeMeteringMode(oldMode);
         }
 
         if (oldMode == CAM_AE_METERING_MODE_SPOT) {
@@ -3824,9 +3832,9 @@ status_t ControlThread::processParamExposureCompensation(const CameraParameters 
     if (!newVal.isEmpty()) {
         int exposure = newParams->getInt(CameraParameters::KEY_EXPOSURE_COMPENSATION);
         float comp_step = newParams->getFloat(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP);
-        status = mAAA->setEv(exposure * comp_step);
+        status = m3AControls->setEv(exposure * comp_step);
         float ev = 0;
-        mAAA->getEv(&ev);
+        m3AControls->getEv(&ev);
         LOGD("exposure compensation to \"%s\" (%d), ev value %f, res %d",
              newVal.string(), exposure, ev, status);
     }
@@ -3908,7 +3916,7 @@ status_t ControlThread::processParamAutoExposureMeteringMode(
             LOGE("User trying to set AE metering mode \"spot\" with an AE metering area.");
         }
 
-        mAAA->setAeMeteringMode(mode);
+        m3AControls->setAeMeteringMode(mode);
         LOGD("Changed ae metering mode to \"%s\" (%d)", newVal.string(), mode);
     }
 
@@ -3934,7 +3942,7 @@ status_t ControlThread::processParamIso(const CameraParameters *oldParams,
         if (newVal.length() > iso_prefix_len) {
             const char* isostr = newVal.string() + iso_prefix_len;
             int iso = atoi(isostr);
-            mAAA->setManualIso(iso);
+            m3AControls->setManualIso(iso);
             LOGD("Changed manual iso to \"%s\" (%d)", newVal.string(), iso);
         }
     }
@@ -4115,7 +4123,7 @@ status_t ControlThread::processParamWhiteBalance(const CameraParameters *oldPara
             wbMode = CAM_AWB_MODE_MANUAL_INPUT;
         }
 
-        status = mAAA->setAwbMode(wbMode);
+        status = m3AControls->setAwbMode(wbMode);
 
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_WHITE_BALANCE, newVal.string());
