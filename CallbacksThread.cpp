@@ -121,9 +121,22 @@ status_t CallbacksThread::requestTakePicture(bool postviewCallback, bool rawCall
 status_t CallbacksThread::flushPictures()
 {
     LOG1("@%s", __FUNCTION__);
+    // we own the dynamically allocated jpegbuffer. Free that buffer for all
+    // the pending messages before flushing them
+    Vector<Message> pending;
+    mMessageQueue.remove(MESSAGE_ID_JPEG_DATA_READY, &pending);
+    Vector<Message>::iterator it;
+    for (it = pending.begin(); it != pending.end(); ++it) {
+       camera_memory_t* b = it->data.compressedFrame.jpegBuff.buff;
+       b->release(b);
+    }
+
+    /* Remove also any requests that may be queued  */
+    mMessageQueue.remove(MESSAGE_ID_JPEG_DATA_REQUEST, NULL);
+
     Message msg;
     msg.id = MESSAGE_ID_FLUSH;
-    return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
+    return mMessageQueue.send(&msg);
 }
 
 void CallbacksThread::autofocusDone(bool status)
@@ -300,7 +313,6 @@ status_t CallbacksThread::handleMessageFlush()
         jpegBuf.buff->release(jpegBuf.buff);
     }
     mBuffers.clear();
-    mMessageQueue.reply(MESSAGE_ID_FLUSH, status);
     return status;
 }
 
