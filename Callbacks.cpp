@@ -20,6 +20,7 @@
 #include "Callbacks.h"
 #include "intel_camera_extensions.h"
 #include "PerformanceTraces.h"
+#include "cutils/atomic.h"
 
 namespace android {
 
@@ -69,13 +70,13 @@ void Callbacks::setCallbacks(camera_notify_callback notify_cb,
 void Callbacks::enableMsgType(int32_t msgType)
 {
     LOG1("@%s: msgType = %d", __FUNCTION__, msgType);
-    mMessageFlags |= msgType;
+    android_atomic_or(msgType, (int32_t*)&mMessageFlags);
 }
 
 void Callbacks::disableMsgType(int32_t msgType)
 {
     LOG1("@%s: msgType = %d", __FUNCTION__, msgType);
-    mMessageFlags &= ~msgType;
+    android_atomic_and(~msgType, (int32_t*)&mMessageFlags);
 }
 
 bool Callbacks::msgTypeEnabled(int32_t msgType)

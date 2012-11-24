@@ -22,6 +22,7 @@
 #include <utils/threads.h>
 #include <utils/Timers.h>
 #include "AtomCommon.h"
+
 namespace android {
 
 class Callbacks {
