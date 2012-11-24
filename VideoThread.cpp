@@ -17,7 +17,7 @@
 
 #include "VideoThread.h"
 #include "LogHelper.h"
-#include "Callbacks.h"
+#include "CallbacksThread.h"
 
 namespace android {
 
@@ -25,7 +25,7 @@ VideoThread::VideoThread() :
     Thread(true) // callbacks may call into java
     ,mMessageQueue("VideoThread", MESSAGE_ID_MAX)
     ,mThreadRunning(false)
-    ,mCallbacks(Callbacks::getInstance())
+    ,mCallbacksThread(CallbacksThread::getInstance())
 {
     LOG1("@%s", __FUNCTION__);
 }
@@ -67,7 +67,7 @@ status_t VideoThread::handleMessageVideo(MessageVideo *msg)
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    mCallbacks->videoFrameDone(&msg->buff, msg->timestamp);
+    mCallbacksThread->videoFrameDone(&msg->buff, msg->timestamp);
 
     return status;
 }

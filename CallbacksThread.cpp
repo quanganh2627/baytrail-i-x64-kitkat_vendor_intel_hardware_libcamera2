@@ -229,6 +229,20 @@ status_t CallbacksThread::handleMessageCallbackShutter()
     return NO_ERROR;
 }
 
+status_t CallbacksThread::videoFrameDone(AtomBuffer *buff, nsecs_t timestamp)
+{
+    LOG2("@%s: ID = %d", __FUNCTION__, buff->id);
+    Message msg;
+    msg.id = MESSAGE_ID_VIDEO_DONE;
+    msg.data.video.frame = *buff;
+    msg.data.video.timestamp = timestamp;
+    return mMessageQueue.send(&msg);
+}
+
+/**
+ * Process message received from Picture Thread when a the image compression
+ * has completed.
+ */
 status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
 {
     LOG1("@%s: JPEG buffers queued: %d, mJpegRequested = %u, mPostviewRequested = %u, mRawRequested = %u",
@@ -351,6 +365,14 @@ status_t CallbacksThread::handleMessagePreviewDone(MessagePreview *msg)
     return status;
 }
 
+status_t CallbacksThread::handleMessageVideoDone(MessageVideo *msg)
+{
+    LOG2("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mCallbacks->videoFrameDone(&(msg->frame), msg->timestamp);
+    return status;
+}
+
 status_t CallbacksThread::waitForAndExecuteMessage()
 {
     LOG2("@%s", __FUNCTION__);
@@ -362,6 +384,14 @@ status_t CallbacksThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_EXIT:
             status = handleMessageExit();
+            break;
+
+        case MESSAGE_ID_PREVIEW_DONE:
+            status = handleMessagePreviewDone(&msg.data.preview);
+            break;
+
+        case MESSAGE_ID_VIDEO_DONE:
+            status = handleMessageVideoDone(&msg.data.video);
             break;
 
         case MESSAGE_ID_CALLBACK_SHUTTER:
@@ -404,9 +434,6 @@ status_t CallbacksThread::waitForAndExecuteMessage()
             status = handleMessagePanoramaSnapshot(&msg.data.panoramaSnapshot);
             break;
 
-        case MESSAGE_ID_PREVIEW_DONE:
-            status = handleMessagePreviewDone(&msg.data.preview);
-            break;
         default:
             status = BAD_VALUE;
             break;

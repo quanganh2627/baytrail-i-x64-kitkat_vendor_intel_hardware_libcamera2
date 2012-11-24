@@ -24,7 +24,7 @@
 
 namespace android {
 
-class Callbacks;
+class CallbacksThread;
 
 class VideoThread : public Thread {
 
@@ -99,7 +99,7 @@ private:
 
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
-    Callbacks *mCallbacks;
+    CallbacksThread *mCallbacksThread;
 
 }; // class VideoThread
 
