@@ -64,6 +64,7 @@ public:
 
     status_t shutterSound();
     status_t compressedFrameDone(AtomBuffer* jpegBuf, AtomBuffer* snapshotBuf, AtomBuffer* postviewBuf);
+    status_t previewFrameDone(AtomBuffer *aPreviewFrame);
     status_t requestTakePicture(bool postviewCallback = false, bool rawCallback = false);
     status_t flushPictures();
     size_t   getQueuedBuffersNum() { return mBuffers.size(); }
@@ -89,6 +90,7 @@ private:
         MESSAGE_ID_FLUSH,
         MESSAGE_ID_FACES,
         MESSAGE_ID_SCENE_DETECTED,
+        MESSAGE_ID_PREVIEW_DONE,
 
         // panorama callbacks
         MESSAGE_ID_PANORAMA_SNAPSHOT,
@@ -106,6 +108,10 @@ private:
         AtomBuffer jpegBuff;
         AtomBuffer postviewBuff;
         AtomBuffer snapshotBuff;
+    };
+
+    struct MessagePreview {
+        AtomBuffer frame;
     };
 
     struct MessageFaces {
@@ -159,6 +165,9 @@ private:
         // MESSAGE_ID_SCENE_DETECTED
         MessageSceneDetected    sceneDetected;
 
+        // MESSAGE_ID_PREVIEW_DONE
+        MessagePreview  preview;
+
         // MESSAGE_ID_PANORAMA_SNAPSHOT
         MessagePanoramaSnapshot panoramaSnapshot;
 
@@ -185,6 +194,7 @@ private:
     status_t handleMessageFlush();
     status_t handleMessageFaces(MessageFaces *msg);
     status_t handleMessageSceneDetected(MessageSceneDetected *msg);
+    status_t handleMessagePreviewDone(MessagePreview *msg);
     status_t handleMessagePanoramaDisplUpdate(MessagePanoramaDisplUpdate *msg);
     status_t handleMessagePanoramaSnapshot(MessagePanoramaSnapshot *msg);
 

@@ -19,6 +19,7 @@
 #include "LogHelper.h"
 #include "DebugFrameRate.h"
 #include "Callbacks.h"
+#include "CallbacksThread.h"
 #include "ColorConverter.h"
 #include <hal_public.h>
 #include <gui/Surface.h>
@@ -36,6 +37,7 @@ PreviewThread::PreviewThread(ICallbackPreview *previewDone) :
     ,mDebugFPS(new DebugFrameRate())
     ,mPreviewDoneCallback(previewDone)
     ,mCallbacks(Callbacks::getInstance())
+    ,mCallbacksThread(CallbacksThread::getInstance())
     ,mPreviewWindow(NULL)
     ,mPreviewWidth(640)
     ,mPreviewHeight(480)
@@ -310,7 +312,7 @@ status_t PreviewThread::handleMessagePreview(MessagePreview *msg)
             break;
         }
         if (status == NO_ERROR)
-            mCallbacks->previewFrameDone(&mPreviewBuf);
+            mCallbacksThread->previewFrameDone(&mPreviewBuf);
     }
 
     mDebugFPS->update(); // update fps counter

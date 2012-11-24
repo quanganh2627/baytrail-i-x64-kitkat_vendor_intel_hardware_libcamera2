@@ -28,6 +28,7 @@ namespace android {
 
 class DebugFrameRate;
 class Callbacks;
+class CallbacksThread;
 
 #define MAX_NUMBER_PREVIEW_GFX_BUFFERS      10  /*!< Maximum capacity of the vector where we store the
                                                      Gfx Preview Buffers*/
@@ -162,6 +163,7 @@ private:
     sp<DebugFrameRate> mDebugFPS;
     ICallbackPreview *mPreviewDoneCallback;
     Callbacks *mCallbacks;
+    CallbacksThread *mCallbacksThread;
 
     preview_stream_ops_t* mPreviewWindow;
 

@@ -107,6 +107,18 @@ status_t CallbacksThread::compressedFrameDone(AtomBuffer* jpegBuf, AtomBuffer* s
     return mMessageQueue.send(&msg);
 }
 
+status_t  CallbacksThread::previewFrameDone(AtomBuffer *aPreviewFrame)
+{
+    if(aPreviewFrame == NULL) return BAD_VALUE;
+
+    LOG2("@%s: ID = %d", __FUNCTION__, aPreviewFrame->id);
+    Message msg;
+    msg.id = MESSAGE_ID_PREVIEW_DONE;
+    msg.data.preview.frame = *aPreviewFrame;
+
+    return mMessageQueue.send(&msg);
+
+}
 
 status_t CallbacksThread::requestTakePicture(bool postviewCallback, bool rawCallback)
 {
@@ -331,6 +343,14 @@ status_t CallbacksThread::handleMessageSceneDetected(MessageSceneDetected *msg)
     return status;
 }
 
+status_t CallbacksThread::handleMessagePreviewDone(MessagePreview *msg)
+{
+    LOG2("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mCallbacks->previewFrameDone(&(msg->frame));
+    return status;
+}
+
 status_t CallbacksThread::waitForAndExecuteMessage()
 {
     LOG2("@%s", __FUNCTION__);
@@ -384,6 +404,9 @@ status_t CallbacksThread::waitForAndExecuteMessage()
             status = handleMessagePanoramaSnapshot(&msg.data.panoramaSnapshot);
             break;
 
+        case MESSAGE_ID_PREVIEW_DONE:
+            status = handleMessagePreviewDone(&msg.data.preview);
+            break;
         default:
             status = BAD_VALUE;
             break;
