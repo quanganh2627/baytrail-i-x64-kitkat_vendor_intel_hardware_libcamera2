@@ -199,6 +199,13 @@ bool PlatformData::supportsContinuousCapture(void)
     return i->mContinuousCapture;
 }
 
+bool PlatformData::renderPreviewViaOverlay(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mPreviewViaOverlay;
+
+}
+
 bool PlatformData::supportsDVS(int cameraId)
 {
     PlatformBase *i = getInstance();

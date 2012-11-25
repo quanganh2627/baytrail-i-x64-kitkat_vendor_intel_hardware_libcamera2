@@ -172,6 +172,10 @@ namespace android {
     const char IntelCameraParameters::KEY_FILE_INJECT_BAYER_ORDER[] = "file-inject-bayer-order";
     const char IntelCameraParameters::KEY_FILE_INJECT_FORMAT[] = "file-inject-format";
 
+    // HW Overlay support
+    const char IntelCameraParameters::KEY_HW_OVERLAY_RENDERING_SUPPORTED[] = "overlay-render-values";
+    const char IntelCameraParameters::KEY_HW_OVERLAY_RENDERING[] = "overlay-render";
+
     void IntelCameraParameters::getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params)
     {
         width = height = -1;

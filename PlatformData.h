@@ -112,9 +112,11 @@ public:
 
     bool mBackFlash;
     bool mFileInject;
-    bool mContinuousCapture;
 
+    bool mContinuousCapture;
     int mPanoramaMaxSnapshotCount;
+
+    bool mPreviewViaOverlay;
 
     /* For burst capture's burst length and burst fps */
     int mMaxBurstFPS;
@@ -302,6 +304,16 @@ class PlatformData {
      * \return the max panorama snapshot count
      */
     static int getMaxPanoramaSnapshotCount();
+
+    /**
+     * Whether preview is rendered via HW overlay or GFx plane
+     *
+     * \return true if rendered via HW overlay
+     * \return false if rendered via Gfx
+     */
+    static bool renderPreviewViaOverlay(void);
+
+
 };
 
 } /* namespace android */

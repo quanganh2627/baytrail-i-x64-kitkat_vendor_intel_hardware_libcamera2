@@ -638,6 +638,17 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     params->set(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE,"54.8");
 
     /**
+     * OVERLAY
+     */
+    if (PlatformData::renderPreviewViaOverlay()) {
+        intel_params->set(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING_SUPPORTED, "true,false");
+        intel_params->set(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING,"false"); // will be changed to true on the final patch
+    } else {
+        intel_params->set(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING_SUPPORTED, "false");
+        intel_params->set(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING,"false");
+    }
+
+    /**
      * flicker mode
      */
     if(mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {

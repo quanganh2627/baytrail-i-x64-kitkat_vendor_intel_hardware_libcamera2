@@ -179,6 +179,10 @@ namespace android {
     static const char KEY_FILE_INJECT_BAYER_ORDER[];
     static const char KEY_FILE_INJECT_FORMAT[];
 
+    // HW Overlay support
+    static const char KEY_HW_OVERLAY_RENDERING_SUPPORTED[];
+    static const char KEY_HW_OVERLAY_RENDERING[];
+
     static void getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params);
     static const char* getSupportedPanoramaLivePreviewSizes(const CameraParameters &params);
 
