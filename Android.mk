@@ -40,6 +40,7 @@ LOCAL_SRC_FILES := \
 	PanoramaThread.cpp \
 	AtomCommon.cpp \
 	FaceDetector.cpp \
+	nv12rotation.cpp \
 	CameraDump.cpp \
 	CameraAreas.cpp \
 	BracketManager.cpp
@@ -73,6 +74,8 @@ ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_C_INCLUDES += \
 	hardware/intel/libva
 endif
+
+LOCAL_C_FLAGS =+ -fno-pic
 
 LOCAL_SHARED_LIBRARIES := \
 	libcamera_client \
