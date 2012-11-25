@@ -41,6 +41,12 @@ public:
     virtual void previewDone(AtomBuffer *memory) = 0;
 };
 
+/**
+ * class PreviewThread
+ *
+ * This class is in charge of configuring the preview window send by the client
+ * and render the preview buffers sent by CtrlThread
+ */
 class PreviewThread : public Thread {
 
 // constructor destructor
@@ -130,29 +136,13 @@ private:
 
     // thread message execution functions
     status_t handleMessageExit();
-    status_t handleMessagePreview(MessagePreview *msg);
-    status_t handleMessageSetPreviewWindow(MessageSetPreviewWindow *msg);
-    status_t handleMessageSetPreviewConfig(MessageSetPreviewConfig *msg);
-    status_t handleMessageFetchPreviewBuffers();
-    status_t handleMessageReturnPreviewBuffers();
     status_t handleMessageFlush();
     status_t handleMessageIsWindowConfigured();
 
     // main message function
     status_t waitForAndExecuteMessage();
 
-    // buffer helper
-    void freeLocalPreviewBuf(void);
-    void allocateLocalPreviewBuf(void);
-    status_t allocateGfxPreviewBuffers(int numberOfBuffers);
-    status_t freeGfxPreviewBuffers();
-    int getGfxBufferStride();
-
-    // handler helpers
-    status_t callPreviewDone(MessagePreview *msg);
-
-// inherited from Thread
-private:
+    // inherited from Thread
     virtual bool threadLoop();
 
 // private data
@@ -160,24 +150,79 @@ private:
 
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
-    sp<DebugFrameRate> mDebugFPS;
-    ICallbackPreview *mPreviewDoneCallback;
-    Callbacks *mCallbacks;
-    CallbacksThread *mCallbacksThread;
 
-    preview_stream_ops_t* mPreviewWindow;
+    class PreviewMessageHandler {
+    public:
+        PreviewMessageHandler(PreviewThread* aThread, ICallbackPreview *previewDone);
+        virtual ~PreviewMessageHandler();
+        virtual status_t handleSetPreviewWindow(MessageSetPreviewWindow *msg) = 0;
+        virtual status_t handleSetPreviewConfig(MessageSetPreviewConfig *msg) = 0;
+        virtual status_t handlePreview(MessagePreview *msg) = 0;
+        virtual status_t handleFetchPreviewBuffers(void) = 0;
+        virtual status_t handleReturnPreviewBuffers(void) = 0;
+        virtual status_t fetchPreviewBuffers(AtomBuffer **pvBufs, int *count) = 0;
+    protected:
+        friend class PreviewThread;
+        void allocateLocalPreviewBuf(void);
+        void freeLocalPreviewBuf(void);
+    protected:
+        preview_stream_ops_t *mPreviewWindow;   /*!< struct passed from Service to control the native window */
+        PreviewThread       *mPvThread;         /*!< pointer to our dad */
+        AtomBuffer          mPreviewBuf;        /*!< Local preview buffer to give to the user */
+        Callbacks           *mCallbacks;
+        CallbacksThread     *mCallbacksThread;
+        ICallbackPreview    *mPreviewDoneCallback;
+        int                 mMinUndequeued;     /*!< Minimum number frames
+                                                     to keep in window */
+        sp<DebugFrameRate>  mDebugFPS;          /*!< reference to the object that keeps
+                                                     track of the fps */
+        int mPreviewWidth;
+        int mPreviewHeight;
+        int mPreviewStride;
+        int mPreviewFormat;
+    };
 
-    int mPreviewWidth;
-    int mPreviewHeight;
-    int mPreviewStride;
-    int mPreviewFormat;
+    class GfxPreviewHandler: public PreviewMessageHandler {
+    public:
+        GfxPreviewHandler(PreviewThread* aThread, ICallbackPreview *previewDone);
+        virtual ~GfxPreviewHandler();
 
-    AtomBuffer          mPreviewBuf;        /*!< Local preview buffer to give to the user */
-    Vector<AtomBuffer>  mPreviewBuffers;    /*!< Vector with the buffers retrieved from window */
-    Vector<int>         mPreviewInClient;   /*!< Vector with indexes to mPreviewBuffers*/
-    int                 mBuffersInWindow;   /*!< Number of buffers currently in the preview window */
-    int                 mMinUndequeued;     /*!< Minimum number frames
-                                                 tokeep in window */
+        // PreviewMessageHandler IF
+        virtual status_t handleSetPreviewWindow(MessageSetPreviewWindow *msg);
+        virtual status_t handleSetPreviewConfig(MessageSetPreviewConfig *msg);
+        virtual status_t handlePreview(MessagePreview *msg);
+        virtual status_t handleFetchPreviewBuffers(void);
+        virtual status_t handleReturnPreviewBuffers(void);
+        virtual status_t fetchPreviewBuffers(AtomBuffer **pvBufs, int *count);
+    private:
+        status_t callPreviewDone(MessagePreview *msg);
+        status_t allocateGfxPreviewBuffers(int numberOfBuffers);
+        status_t freeGfxPreviewBuffers();
+        int getGfxBufferStride();
+
+    private:
+        friend class PreviewThread;
+        Vector<AtomBuffer>  mPreviewBuffers;    /*!< Vector with the buffers retrieved from window */
+        Vector<int>         mPreviewInClient;   /*!< Vector with indexes to mPreviewBuffers*/
+        int                 mBuffersInWindow;   /*!< Number of buffers currently in the preview window */
+
+    };
+
+    class OverlayPreviewHandler: public PreviewMessageHandler {
+       public:
+           OverlayPreviewHandler(PreviewThread* aThread, ICallbackPreview *previewDone);
+           virtual ~OverlayPreviewHandler(){};
+
+           // PreviewMessageHandler IF
+           virtual status_t handleSetPreviewWindow(MessageSetPreviewWindow *msg);
+           virtual status_t handleSetPreviewConfig(MessageSetPreviewConfig *msg);
+           virtual status_t handlePreview(MessagePreview *msg);
+           virtual status_t handleFetchPreviewBuffers(void);
+           virtual status_t handleReturnPreviewBuffers(void);
+           virtual status_t fetchPreviewBuffers(AtomBuffer **pvBufs, int *count);
+    };
+
+    PreviewMessageHandler   *mMessageHandler;
 }; // class PreviewThread
 
 }; // namespace android

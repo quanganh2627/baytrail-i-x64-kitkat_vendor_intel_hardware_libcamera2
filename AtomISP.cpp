@@ -1326,6 +1326,7 @@ status_t AtomISP::configureRecording()
         goto err;
     }
 
+    mNumPreviewBuffers = NUM_DEFAULT_BUFFERS;
     ret = configureDevice(
             mPreviewDevice,
             CI_MODE_VIDEO,
@@ -3685,6 +3686,7 @@ status_t AtomISP::allocatePreviewBuffers()
              mPreviewBuffers[i].width = mConfig.preview.width;
              mPreviewBuffers[i].height = mConfig.preview.height;
              mPreviewBuffers[i].stride = mConfig.preview.stride;
+             mPreviewBuffers[i].format = mConfig.preview.format;
              mCallbacks->allocateMemory(&mPreviewBuffers[i],  mConfig.preview.size);
              if (mPreviewBuffers[i].buff == NULL) {
                  LOGE("Error allocation memory for preview buffers!");

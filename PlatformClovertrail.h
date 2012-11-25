@@ -72,6 +72,7 @@ public:
     PlatformCtpRedhookBay(void) {
         CameraInfo cam;
         mSubDevName = "/dev/v4l-subdev8";
+        mPreviewViaOverlay = true;
 
         // back camera
         cam.facing = CAMERA_FACING_BACK;

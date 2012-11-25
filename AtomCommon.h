@@ -240,6 +240,23 @@ static int bytesPerLineToWidth(int format, int bytesperline)
     return width;
 }
 
+static int paddingWidthNV12VED( int width, int height)
+{
+    int padding = 0;
+    if (width <= 512) {
+        padding = 512;
+    } else if (width <= 1024) {
+        padding = 1024;
+    } else if (width <= 1280) {
+        padding = 1280;
+    } else if (width <= 2048) {
+        padding = 2048;
+    } else if (width <= 4096) {
+        padding = 4096;
+    }
+    return padding;
+}
+
 static const char* v4l2Fmt2Str(int format)
 {
     static char fourccBuf[5];

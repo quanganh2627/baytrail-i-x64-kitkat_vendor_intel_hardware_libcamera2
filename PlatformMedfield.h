@@ -35,7 +35,9 @@ class PlatformBlackbay : public PlatformBase {
 public:
     PlatformBlackbay(void) {
         CameraInfo cam;
+
         mSubDevName = "/dev/v4l-subdev7";
+        mPreviewViaOverlay = false;
 
         // back camera
         cam.facing = CAMERA_FACING_BACK;
