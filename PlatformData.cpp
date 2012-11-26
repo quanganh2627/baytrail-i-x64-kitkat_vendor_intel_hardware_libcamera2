@@ -112,6 +112,9 @@ PlatformBase* PlatformData::getInstance(void)
         mInstance = new PlatformCtpRedhookBay();
 
 
+#elif   DMERR_VV
+        mInstance = new PlatformSaltBay();
+
 #else   // take defaults from MFLD_PR2 for all others now
         mInstance = new PlatformBlackbay();
 
