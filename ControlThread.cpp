@@ -879,6 +879,7 @@ status_t ControlThread::initContinuousCapture()
 
     mISP->setSnapshotFrameFormat(width, height, format);
     mISP->setContCaptureNumCaptures(1);
+    mISP->setContCaptureOffset(-1);
 
     // TODO: check integration with preview-keepalive patch and
     //       whether postview should be configured to a higher resolution
@@ -890,8 +891,6 @@ status_t ControlThread::initContinuousCapture()
     mIsPreviewStartComplete = true;
 
     setExternalSnapshotBuffers(format, width, height);
-
-    status = mISP->allocateBuffers(MODE_CONTINUOUS_CAPTURE);
 
     return status;
 }
@@ -919,7 +918,7 @@ status_t ControlThread::releaseContinuousCapture()
     return status;
 }
 
-ControlThread::State ControlThread::selectPreviewMode()
+ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &params)
 {
     if (PlatformData::supportsContinuousCapture() == false) {
         LOG1("Disabling continuous mode, not supported by platform");
@@ -928,6 +927,14 @@ ControlThread::State ControlThread::selectPreviewMode()
 
     if (mISP->isOfflineCaptureSupported() == false) {
         LOG1("Disabling continuous mode, not supported");
+        return STATE_PREVIEW_STILL;
+    }
+
+    int width = 0, height = 0;
+    params.getPictureSize(&width, &height);
+    if (width <= 1280 && height <= 768) {
+        // this is a limitation of current CSS stack
+        LOG1("1M or smaller picture-size, disabling continuous mode");
         return STATE_PREVIEW_STILL;
     }
 
@@ -1307,7 +1314,8 @@ status_t ControlThread::handleMessageStartRecording()
 
     if (mState == STATE_PREVIEW_VIDEO) {
         mState = STATE_RECORDING;
-    } else if (mState == STATE_PREVIEW_STILL) {
+    } else if (mState == STATE_PREVIEW_STILL ||
+               mState == STATE_CONTINUOUS_CAPTURE) {
         /* We are in PREVIEW_STILL mode; in order to start recording
          * we first need to stop AtomISP and restart it with MODE_VIDEO
          */
@@ -2260,6 +2268,7 @@ status_t ControlThread::handleMessageTakeSmartShutterPicture()
         status = handleMessageTakePicture();
     } else {   //normal smart shutter capture
         mPostProcThread->captureOnTrigger();
+        // TODO: switch back to whatever was the previous mode?
         mState = STATE_PREVIEW_STILL;
     }
 
@@ -2626,18 +2635,11 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     return NO_ERROR;
 }
 
-status_t ControlThread::processDynamicParameters(const CameraParameters *oldParams,
+status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
         CameraParameters *newParams)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-
-    int newZoom = newParams->getInt(CameraParameters::KEY_ZOOM);
-    bool zoomSupported = isParameterSet(CameraParameters::KEY_ZOOM_SUPPORTED) ? true : false;
-    if (zoomSupported)
-        status = mISP->setZoom(newZoom);
-    else
-        LOGD("not supported zoom setting");
 
     // Burst mode
     // Get the burst length
@@ -2658,6 +2660,25 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             LOG1("%s, mFpsAdaptSkip:%d", __func__, mFpsAdaptSkip);
         }
     }
+
+    // TODO: remove before commit
+    LOG1("@%s: len to %d, skip %d", __FUNCTION__, mBurstLength, mFpsAdaptSkip);
+
+    return status;
+}
+
+status_t ControlThread::processDynamicParameters(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    int newZoom = newParams->getInt(CameraParameters::KEY_ZOOM);
+    bool zoomSupported = isParameterSet(CameraParameters::KEY_ZOOM_SUPPORTED) ? true : false;
+    if (zoomSupported)
+        status = mISP->setZoom(newZoom);
+    else
+        LOGD("not supported zoom setting");
 
     // Color effect
     if (status == NO_ERROR) {
@@ -2794,7 +2815,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
 
     }
 
-    if ((status == NO_ERROR) && (mState != STATE_STOPPED)) {
+    // In case of continuous-capture, the buffers are allocated
+    // when restarting the preview (done if picture size changes).
+    if (status == NO_ERROR &&
+            mState != STATE_STOPPED &&
+            mState != STATE_CONTINUOUS_CAPTURE) {
         // Request PictureThread to allocate snapshot buffers
         allocateSnapshotBuffers();
     }
@@ -4123,6 +4148,15 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
         }
     }
 
+    // Burst mode
+    int oldBurstLength = mBurstLength;
+    int oldFpsAdaptSkip = mFpsAdaptSkip;
+    status = processParamBurst(oldParams, newParams);
+    if (mBurstLength != oldBurstLength || mFpsAdaptSkip != oldFpsAdaptSkip) {
+        LOG1("Burst configuration changed, restarting preview");
+        previewFormatChanged = true;
+    }
+
     /**
      * There are multiple workarounds related to what preview and video
      * size combinations can be supported by ISP (also impacted by
@@ -4230,6 +4264,21 @@ void ControlThread::restoreCurrentPictureParams()
     allocateSnapshotBuffers();
 }
 
+bool ControlThread::paramsHasPictureSizeChanged(const CameraParameters *oldParams,
+                                                CameraParameters *newParams) const
+{
+    int newWidth, newHeight;
+    int oldWidth, oldHeight;
+
+    newParams->getPictureSize(&newWidth, &newHeight);
+    oldParams->getPictureSize(&oldWidth, &oldHeight);
+
+    if (newWidth != oldWidth || newHeight != oldHeight)
+        return true;
+
+    return false;
+}
+
 status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
 {
     LOG1("@%s", __FUNCTION__);
@@ -4237,6 +4286,9 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     status_t status = NO_ERROR;
     CameraParameters newParams;
     CameraParameters oldParams = mParameters;
+
+    bool needRestartPreview = msg->previewFormatChanged;
+    bool videoMode = msg->videoMode;
 
     CameraAreas newFocusAreas;
     CameraAreas newMeteringAreas;
@@ -4280,39 +4332,39 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
         goto exit;
     }
 
-    if (mState == STATE_CAPTURE || mState == STATE_CONTINUOUS_CAPTURE) {
-        int newWidth, newHeight;
-        int oldWidth, oldHeight;
-        newParams.getPictureSize(&newWidth, &newHeight);
-        oldParams.getPictureSize(&oldWidth, &oldHeight);
-        // Check the picture size to see if changed. If changed, we need to stop the capture
-        if (newWidth != oldWidth || newHeight != oldHeight) {
-            LOG1("Picture size has changed! Requesting stopCapture, in order to handle setParameters");
-            /*
-             * TODO The message below is no longer valid - this is not processed synchronously anymore.
-             * TODO Check if we can run the message handler here directly
-             *
-             * We need to put a message to stop the capture since stopCapture can lead to a callback to
-             * CameraService, which can in turn lead to a dead-lock if it's done inside the thread that
-             * is processing a call from CameraService (like this one for example).
-             */
-            Message msg;
-            msg.id = MESSAGE_ID_STOP_CAPTURE;
-            mMessageQueue.send(&msg);
+    if (paramsHasPictureSizeChanged(&oldParams, &newParams)) {
+        LOG1("Picture size has changed while camera is active!");
+
+        if (mState == STATE_CAPTURE) {
+            status = stopCapture();
+        }
+        else if (mState == STATE_PREVIEW_STILL ||
+                 mState == STATE_CONTINUOUS_CAPTURE) {
+
+            // Preview needs to be restarted if the preview mode changes, or
+            // with any picture size change when in continuous mode.
+            if (selectPreviewMode(newParams) != mState ||
+                mState == STATE_CONTINUOUS_CAPTURE) {
+                needRestartPreview = true;
+                videoMode = false;
+                if (mState == STATE_CONTINUOUS_CAPTURE)
+                  allocateSnapshotBuffers();
+            }
         }
     }
     mParameters = newParams;
     mFocusAreas = newFocusAreas;
     mMeteringAreas = newMeteringAreas;
 
-    if (msg->previewFormatChanged) {
+    if (needRestartPreview == true) {
         // if preview is running and preview format has changed, then we need
         // to stop, reconfigure, and restart the isp and all threads.
         // Update the current params before we re-start
         switch (mState) {
             case STATE_PREVIEW_VIDEO:
             case STATE_PREVIEW_STILL:
-                status = restartPreview(msg->videoMode);
+            case STATE_CONTINUOUS_CAPTURE:
+                status = restartPreview(videoMode);
                 break;
             case STATE_STOPPED:
                 break;
@@ -4414,16 +4466,6 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
 
     if (status != NO_ERROR)
         LOGE("@%s command id %d failed", __FUNCTION__, msg->cmd_id);
-    return status;
-}
-
-status_t ControlThread::handleMessageStopCapture()
-{
-    status_t status = NO_ERROR;
-    status = stopCapture();
-    if (status != NO_ERROR) {
-        LOGE("Error stopping ISP from capture mode!");
-    }
     return status;
 }
 
@@ -5002,10 +5044,6 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_COMMAND:
             status = handleMessageCommand(&msg.data.command);
-            break;
-
-        case MESSAGE_ID_STOP_CAPTURE:
-            status = handleMessageStopCapture();
             break;
 
         case MESSAGE_ID_SET_PREVIEW_WINDOW:

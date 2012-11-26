@@ -1223,6 +1223,8 @@ status_t AtomISP::stopPreview()
 {
     LOG1("@%s", __FUNCTION__);
 
+    status_t status = NO_ERROR;
+
     stopDevice(mPreviewDevice);
     freePreviewBuffers();
 
@@ -1232,7 +1234,20 @@ status_t AtomISP::stopPreview()
     if (mFileInject.active == true)
         stopFileInject();
 
-    return NO_ERROR;
+    // TODO: This is a current CSS1.5 limitation, and the only way
+    //       to invalidate CSS internal state and avoid stale
+    //       settings from being used.
+    //       Tracked as BZ72616
+    if (PlatformData::supportsContinuousCapture() == true) {
+      closeDevice(V4L2_MAIN_DEVICE);
+      int res = openDevice(V4L2_MAIN_DEVICE);
+      if (res != -1)
+        status = selectCameraSensor();
+      else
+        status = UNKNOWN_ERROR;
+    }
+
+    return status;
 }
 
 status_t AtomISP::configureRecording()

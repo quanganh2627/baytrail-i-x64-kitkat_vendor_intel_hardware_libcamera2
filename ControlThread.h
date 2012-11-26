@@ -160,7 +160,6 @@ private:
         MESSAGE_ID_AUTO_FOCUS_DONE,
         MESSAGE_ID_COMMAND,
         MESSAGE_ID_FACES_DETECTED,
-        MESSAGE_ID_STOP_CAPTURE,
         MESSAGE_ID_SET_PREVIEW_WINDOW,
         MESSAGE_ID_SCENE_DETECTED,
         MESSAGE_ID_PANORAMA_PICTURE,
@@ -324,7 +323,7 @@ private:
 
     status_t initContinuousCapture();
     status_t releaseContinuousCapture();
-    State selectPreviewMode();
+    State selectPreviewMode(const CameraParameters &params);
 
     // thread message execution functions
     status_t handleMessageExit();
@@ -393,11 +392,15 @@ private:
     String8 paramsReturnNewIfChanged(const CameraParameters *oldParams,
             CameraParameters *newParams,
             const char *key);
+    bool paramsHasPictureSizeChanged(const CameraParameters *oldParams,
+            CameraParameters *newParams) const;
 
     // These are parameters that can be set while the ISP is running (most params can be
     // set while the isp is stopped as well).
     status_t processDynamicParameters(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    status_t processParamBurst(const CameraParameters *oldParams,
+                CameraParameters *newParams);
     status_t processParamFlash(const CameraParameters *oldParams,
                 CameraParameters *newParams);
     status_t processParamAELock(const CameraParameters *oldParams,
