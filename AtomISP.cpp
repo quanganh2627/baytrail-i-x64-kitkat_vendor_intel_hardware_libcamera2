@@ -2461,9 +2461,8 @@ int AtomISP::atomisp_set_zoom (int fd, int zoom)
            Calculate the zoom value should set to driver using the equation
            We want to get 3 if the zoom_driver is 2.9, so add 0.5 for compensation
          */
-
-        zoom_driver = (64.0 - (64.0 / zoom_real) + 0.5);
-
+        int maxZoomFactor = PlatformData::getMaxZoomFactor();
+        zoom_driver = (maxZoomFactor - (maxZoomFactor / zoom_real) + 0.5);
     }
 
     LOG1("set zoom %f to driver with %d", zoom_real, zoom_driver);

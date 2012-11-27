@@ -106,6 +106,8 @@ public:
 
         mProductName = "ExampleModel";
         mManufacturerName = "ExampleMaker";
+
+        mMaxZoomFactor = 64;
     }
 };
 

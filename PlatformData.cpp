@@ -671,4 +671,11 @@ const char* PlatformData::getISPSubDeviceName(void)
     PlatformBase *i = getInstance();
     return i->mSubDevName;
 }
+
+int PlatformData::getMaxZoomFactor(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mMaxZoomFactor;
+}
+
 }; // namespace android

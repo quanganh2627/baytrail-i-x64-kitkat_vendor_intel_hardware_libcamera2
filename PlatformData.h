@@ -298,6 +298,9 @@ public:
 
     /* For Device name */
     const char *mSubDevName;
+
+    /* For Zoom factor */
+    int mMaxZoomFactor;
 };
 
 /**
@@ -748,6 +751,11 @@ class PlatformData {
      */
     static bool renderPreviewViaOverlay(int cameraId);
 
+    /**
+     * Returns the max zoom factor
+     * \return the max zoom factor
+     */
+    static int getMaxZoomFactor(void);
 
 };
 

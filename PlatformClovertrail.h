@@ -144,6 +144,8 @@ public:
         mManufacturerName = "ExampleMaker";
 
         mContinuousCapture = (deviceOnContinuousCaptureBlackList() == false);
+        mMaxZoomFactor = 64;
+
     }
 };
 }; // namespace android
