@@ -267,6 +267,12 @@ const char* PlatformData::productName(void)
     return i->mProductName;
 }
 
+int PlatformData::getMaxPanoramaSnapshotCount()
+{
+    PlatformBase *i = getInstance();
+    return i->mPanoramaMaxSnapshotCount;
+}
+
 const char* PlatformData::manufacturerName(void)
 {
     PlatformBase *i = getInstance();

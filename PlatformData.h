@@ -86,6 +86,9 @@ class PlatformBase {
 
     friend class PlatformData;
 
+public:
+    PlatformBase() : mPanoramaMaxSnapshotCount(10) {}; // defaults
+
  protected:
 
     /**
@@ -109,6 +112,8 @@ class PlatformBase {
 
     bool mBackFlash;
     bool mFileInject;
+
+    int mPanoramaMaxSnapshotCount;
 
     /* For burst capture's burst length and burst fps */
     int mMaxBurstFPS;
@@ -282,6 +287,12 @@ class PlatformData {
      * \return the ISP sub device name, it'll return NULL when it fails
     */
     static const char* getISPSubDeviceName(void);
+
+    /**
+     * Returns the max panorama snapshot count
+     * \return the max panorama snapshot count
+     */
+    static int getMaxPanoramaSnapshotCount();
 };
 
 } /* namespace android */

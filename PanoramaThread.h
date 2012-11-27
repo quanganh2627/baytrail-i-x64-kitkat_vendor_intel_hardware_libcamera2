@@ -35,7 +35,6 @@ extern "C" {
 
 namespace android {
 
-#define PANORAMA_MAX_COUNT 6
 #define PANORAMA_MAX_BLURVALUE 12
 // PREV_WIDTH & HEIGHT must be from the list CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES
 #define PANORAMA_DEF_PREV_WIDTH 160
@@ -158,6 +157,7 @@ private:
     camera_panorama_metadata_t mCurrentMetadata;
     // counter for the entire panorama snapshots (to limit maximum nr. of snapshots)
     int mPanoramaTotalCount;
+    int mPanoramaMaxSnapshotCount;
     bool mThreadRunning;
     bool mPanoramaWaitingForImage;
     CallbacksThread *mCallbacksThread;

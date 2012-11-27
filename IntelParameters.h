@@ -158,10 +158,11 @@ namespace android {
     static const char KEY_SCENE_DETECTION[];
     static const char KEY_SUPPORTED_SCENE_DETECTION[];
 
-    //Panorama live preview size
+    // Panorama
     static const char KEY_PANORAMA[];
     static const char KEY_SUPPORTED_PANORAMA[];
     static const char KEY_PANORAMA_LIVE_PREVIEW_SIZE[];
+    static const char KEY_PANORAMA_MAX_SNAPSHOT_COUNT[];
 
     //MACC effect
     static const char EFFECT_STILL_SKY_BLUE[];

@@ -27,6 +27,7 @@
 #include "AtomAAA.h"
 #include "AtomCommon.h"
 #include "AtomISP.h"
+#include "PlatformData.h"
 
 namespace android {
 
@@ -50,6 +51,7 @@ PanoramaThread::PanoramaThread(ICallbackPanorama *panoramaCallback) :
     mCurrentMetadata.motion_blur = false;
     mCurrentMetadata.horizontal_displacement = 0;
     mCurrentMetadata.vertical_displacement = 0;
+    mPanoramaMaxSnapshotCount = PlatformData::getMaxPanoramaSnapshotCount();
 }
 
 PanoramaThread::~PanoramaThread()
@@ -66,6 +68,7 @@ void PanoramaThread::getDefaultParameters(CameraParameters *intel_params)
     }
     // Set if Panorama is available or not.
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PANORAMA, FeatureData::panoramaSupported());
+    intel_params->set(IntelCameraParameters::KEY_PANORAMA_MAX_SNAPSHOT_COUNT, mPanoramaMaxSnapshotCount);
 }
 
 void PanoramaThread::startPanorama(void)
@@ -203,7 +206,7 @@ bool PanoramaThread::detectOverlap(ia_frame *frame)
     LOG2("@%s", __FUNCTION__);
     bool overlap = false;
 #ifdef ENABLE_INTEL_EXTRAS
-    if (mPanoramaTotalCount < PANORAMA_MAX_COUNT) {
+    if (mPanoramaTotalCount < mPanoramaMaxSnapshotCount) {
         frame->format = ia_frame_format_nv12;
         ia_err err = ia_panorama_detect_overlap(mContext, frame);
         LOG2("@%s: direction: %d, H-displacement: %d, V-displacement: %d", __FUNCTION__,
@@ -424,7 +427,7 @@ status_t PanoramaThread::handleStitch(MessageStitch stitch)
     mCurrentMetadata.vertical_displacement = 0;
 
     mState = PANORAMA_DETECTING_OVERLAP;
-    if (mPanoramaTotalCount == PANORAMA_MAX_COUNT) {
+    if (mPanoramaTotalCount == mPanoramaMaxSnapshotCount) {
         finalize();
     }
 
