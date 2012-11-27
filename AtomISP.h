@@ -244,6 +244,7 @@ public:
     void getSensorDataFromFile(const char *file_name, sensorPrivateData *sensor_data);
 
     // I3AControls
+    virtual void getDefaultParams(CameraParameters *params, CameraParameters *intel_params);
     virtual status_t setEv(float bias);
     virtual status_t getEv(float *ret);
     virtual status_t setAeSceneMode(SceneMode mode);

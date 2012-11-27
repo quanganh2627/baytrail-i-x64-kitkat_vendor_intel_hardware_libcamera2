@@ -256,6 +256,7 @@ status_t ControlThread::init()
 
     // get default params from AtomISP and JPEG encoder
     mISP->getDefaultParameters(&mParameters, &mIntelParameters);
+    m3AControls->getDefaultParams(&mParameters, &mIntelParameters);
     mPictureThread->getDefaultParameters(&mParameters);
     mPreviewThread->getDefaultParameters(&mParameters);
     mPanoramaThread->getDefaultParameters(&mIntelParameters);

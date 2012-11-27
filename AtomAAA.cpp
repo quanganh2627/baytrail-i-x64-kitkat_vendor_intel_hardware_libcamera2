@@ -25,6 +25,8 @@
 #include <time.h>
 #include <dlfcn.h>
 #include <ia_3a.h>
+#include "PanoramaThread.h"
+#include "FeatureData.h"
 
 namespace android {
 static AtomISP *gISP; // See BZ 61293
@@ -1769,5 +1771,72 @@ status_t AtomAAA::set3AColorEffect(v4l2_colorfx effect)
     return status;
 }
 
+void AtomAAA::getDefaultParams(CameraParameters *params, CameraParameters *intel_params)
+{
+    LOG2("@%s", __FUNCTION__);
+    if (!params) {
+        LOGE("params is null!");
+        return;
+    }
+
+    // ae mode
+    intel_params->set(IntelCameraParameters::KEY_AE_MODE, "auto");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_AE_MODES, "auto,manual,shutter-priority,aperture-priority");
+
+    // 3a lock: auto-exposure lock
+    params->set(CameraParameters::KEY_AUTO_EXPOSURE_LOCK, CameraParameters::FALSE);
+    params->set(CameraParameters::KEY_AUTO_EXPOSURE_LOCK_SUPPORTED, CameraParameters::TRUE);
+    // 3a lock: auto-whitebalance lock
+    params->set(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, CameraParameters::FALSE);
+    params->set(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK_SUPPORTED, CameraParameters::TRUE);
+
+    // Intel/UMG parameters for 3A locks
+    // TODO: only needed until upstream key is available for AF lock
+    intel_params->set(IntelCameraParameters::KEY_AF_LOCK_MODE, "unlock");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_AF_LOCK_MODES, "lock,unlock");
+    // TODO: add UMG-style AE/AWB locking for Test Camera?
+
+    // manual shutter control (Intel extension)
+    intel_params->set(IntelCameraParameters::KEY_SHUTTER, "60");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SHUTTER, "1s,2,4,8,15,30,60,125,250,500");
+
+    // multipoint focus
+    params->set(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS, getAfMaxNumWindows());
+    // set empty area
+    params->set(CameraParameters::KEY_FOCUS_AREAS, "(0,0,0,0,0)");
+
+    // metering areas
+    params->set(CameraParameters::KEY_MAX_NUM_METERING_AREAS, getAeMaxNumWindows());
+    // set empty area
+    params->set(CameraParameters::KEY_METERING_AREAS, "(0,0,0,0,0)");
+
+    // Capture bracketing
+    intel_params->set(IntelCameraParameters::KEY_CAPTURE_BRACKET, "none");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET, "none,exposure,focus");
+
+    intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, FeatureData::hdrDefault());
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, FeatureData::hdrSupported());
+    intel_params->set(IntelCameraParameters::KEY_HDR_VIVIDNESS, "gaussian");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none,gaussian,gamma");
+    intel_params->set(IntelCameraParameters::KEY_HDR_SHARPENING, "normal");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SHARPENING, "none,normal,strong");
+    intel_params->set(IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, "off");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL, "on,off");
+
+    // back lighting correction mode
+    intel_params->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, "off");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BACK_LIGHTING_CORRECTION_MODES, "on,off");
+
+    // AWB mapping mode
+    intel_params->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES, "auto,indoor,outdoor");
+
+    // panorama
+    intel_params->set(IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE, CAM_RESO_STR(PANORAMA_DEF_PREV_WIDTH,PANORAMA_DEF_PREV_HEIGHT));
+
+    // temporal noise reduction
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_TEMPORAL_NOISE_REDUCTION, "on,off");
+    intel_params->set(IntelCameraParameters::KEY_TEMPORAL_NOISE_REDUCTION, "off");
+}
 
 } //  namespace android

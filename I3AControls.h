@@ -17,6 +17,8 @@
 #ifndef I3ACONTROLS_H_
 #define I3ACONTROLS_H_
 
+#include <camera/CameraParameters.h>
+
 namespace android {
 
 enum SceneMode
@@ -73,6 +75,7 @@ class I3AControls
 public:
     virtual ~I3AControls() {}
 
+    virtual void getDefaultParams(CameraParameters *params, CameraParameters *intel_params) = 0;
     virtual status_t setEv(float bias) = 0;
     virtual status_t getEv(float *ret) = 0;
     virtual status_t setAeSceneMode(SceneMode mode) = 0;
