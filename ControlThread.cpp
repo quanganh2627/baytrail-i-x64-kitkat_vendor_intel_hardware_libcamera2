@@ -780,6 +780,11 @@ void ControlThread::panoramaFinalized(AtomBuffer *buff)
     PictureThread::MetaData picMetaData;
     fillPicMetaData(picMetaData, false);
 
+    // Initialize the picture thread with the size of the final stiched image
+    CameraParameters tmpParam = mParameters;
+    tmpParam.setPictureSize(buff->width, buff->height);
+    mPictureThread->initialize(tmpParam);
+
     mPictureThread->encode(picMetaData, buff, NULL);
 }
 
