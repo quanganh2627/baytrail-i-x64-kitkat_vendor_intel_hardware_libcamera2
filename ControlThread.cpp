@@ -921,7 +921,10 @@ status_t ControlThread::releaseContinuousCapture()
 
 ControlThread::State ControlThread::selectPreviewMode()
 {
-    // TODO: check from platformdata whether cont mode is supported
+    if (PlatformData::supportsContinuousCapture() == false) {
+        LOG1("Disabling continuous mode, not supported by platform");
+        return STATE_PREVIEW_STILL;
+    }
 
     if (mISP->isOfflineCaptureSupported() == false) {
         LOG1("Disabling continuous mode, not supported");

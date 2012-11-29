@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 The Android Open Source Project
+ * Copyright (c) 2012 Intel Corporation.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -109,7 +109,7 @@ PlatformBase* PlatformData::getInstance(void)
         mInstance = new PlatformLexington();
 
 #elif   CLVT
-        mInstance = new PlatformCtp();
+        mInstance = new PlatformCtpRedhookBay();
 
 
 #else   // take defaults from MFLD_PR2 for all others now
@@ -188,6 +188,12 @@ bool PlatformData::supportsFileInject(void)
 {
     PlatformBase *i = getInstance();
     return i->mFileInject;
+}
+
+bool PlatformData::supportsContinuousCapture(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mContinuousCapture;
 }
 
 bool PlatformData::supportsDVS(int cameraId)

@@ -112,6 +112,7 @@ public:
 
     bool mBackFlash;
     bool mFileInject;
+    bool mContinuousCapture;
 
     int mPanoramaMaxSnapshotCount;
 
@@ -191,6 +192,14 @@ class PlatformData {
      * \return true if supported
      */
     static bool supportsFileInject(void);
+
+    /**
+     * Whether platform can support continuous capture mode in terms of
+     * SoC and ISP performance.
+     *
+     * \return true if supported
+     */
+    static bool supportsContinuousCapture(void);
 
     /**
      * Orientation of camera id

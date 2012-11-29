@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 The Android Open Source Project
+ * Copyright (c) 2012 Intel Corporation.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,8 +14,11 @@
  * limitations under the License.
  */
 
+#include <stdio.h>
 #include "PlatformData.h"
 #include <camera.h>
+
+#include "LogHelper.h"
 
 /**
  * \file PlatformClovertrail.h
@@ -25,13 +28,48 @@
 
 namespace android {
 
+#define CTP_PLATFORM_ID            2
+#define CTP_HARDWARE_ID_FIRST_B0   0xc
+
 /**
- * Platform data for CTP_PR (clovertrail based)
+ * Check using SPID information whether the device is recent
+ * enough revision to support continuous capture (older revisions
+ * have issues with memory access delays).
+ *
+ * This check is only applicable to Intel RHB CTP FFRD and
+ * cannot be used as a generic capability check.
  */
-class PlatformCtp : public PlatformBase {
+static bool deviceOnContinuousCaptureBlackList()
+{
+    unsigned int pid = 0, hid = 0;
+    FILE *f1 = fopen("/sys/spid/hardware_id", "rb");
+    if (f1) {
+        fscanf(f1,  "%04X", &hid);
+        LOGD("SPID hardware_id %04X", hid);
+        fclose(f1);
+    }
+
+    f1 = fopen("/sys/spid/platform_family_id", "rb");
+    if (f1) {
+        fscanf(f1, "%04X", &pid);
+        LOGD("SPID platform_family_id %04X", pid);
+        fclose(f1);
+    }
+
+    // Blacklist CLV+ A0 devices
+    if (pid == CTP_PLATFORM_ID && hid < CTP_HARDWARE_ID_FIRST_B0)
+        return true;
+
+    return false;
+}
+
+/**
+ * Platform data for RedhookBay (clovertrail based)
+ */
+class PlatformCtpRedhookBay : public PlatformBase {
 
 public:
-    PlatformCtp(void) {
+    PlatformCtpRedhookBay(void) {
         CameraInfo cam;
         mSubDevName = "/dev/v4l-subdev8";
 
@@ -66,6 +104,8 @@ public:
 
         mProductName = "ExampleModel";
         mManufacturerName = "ExampleMaker";
+
+        mContinuousCapture = (deviceOnContinuousCaptureBlackList() == false);
     }
 };
 
