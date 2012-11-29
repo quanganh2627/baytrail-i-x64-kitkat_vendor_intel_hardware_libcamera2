@@ -918,36 +918,71 @@ status_t ControlThread::releaseContinuousCapture()
     return status;
 }
 
+/**
+ * Selects which still preview mode to use.
+ *
+ * @return STATE_CONTINUOUS_CAPTURE or STATE_PREVIEW_STILL
+ */
 ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &params)
 {
+    // Whether hardware (SoC, memories) supports continuous mode?
     if (PlatformData::supportsContinuousCapture() == false) {
-        LOG1("Disabling continuous mode, not supported by platform");
+        LOG1("@%s: Disabling continuous mode, not supported by platform", __FUNCTION__);
         return STATE_PREVIEW_STILL;
     }
 
+    // Whether the loaded ISP firmware supports continuous mode?
     if (mISP->isOfflineCaptureSupported() == false) {
-        LOG1("Disabling continuous mode, not supported");
+        LOG1("@%s: Disabling continuous mode, not supported", __FUNCTION__);
         return STATE_PREVIEW_STILL;
     }
 
-    int width = 0, height = 0;
-    params.getPictureSize(&width, &height);
-    if (width <= 1280 && height <= 768) {
+    // Picture-sizes smaller than 1280x768 are not validated with
+    // any ISP firmware.
+    int picWidth = 0, picHeight = 0;
+    params.getPictureSize(&picWidth, &picHeight);
+    if (picWidth <= 1280 && picHeight <= 768) {
         // this is a limitation of current CSS stack
-        LOG1("1M or smaller picture-size, disabling continuous mode");
+        LOG1("@%s: 1M or smaller picture-size, disabling continuous mode", __FUNCTION__);
         return STATE_PREVIEW_STILL;
     }
 
+    // Only preview-size of 800x600 is validated to work in
+    // continuous mode.
+    // TODO: to be removed, tracked in BZ 72252
+    int pWidth = 0, pHeight = 0;
+    mParameters.getPreviewSize(&pWidth, &pHeight);
+    if (!(pWidth == 800 && pHeight == 600)  &&
+        !(pWidth == 1024 && pHeight == 576)) {
+        LOG1("@%s: continuous mode not available for preview size %ux%u",
+             __FUNCTION__, pWidth, pHeight);
+        return STATE_PREVIEW_STILL;
+    }
+
+    // ISP will fail to start if aspect ratio of preview and
+    // main output do not match.
+    // TODO: A CSS1.5 bug, tracked in BZ: 72564
+    float picRatio = 1.0 * picWidth / picHeight;
+    float previewRatio = 1.0 * pWidth / pHeight;
+    if  (fabsf(picRatio - previewRatio) > ASPECT_TOLERANCE) {
+        LOG1("@%s: Different aspect ratio for preview and picture size, disabling continuous mode", __FUNCTION__);
+        return STATE_PREVIEW_STILL;
+    }
+
+    // Only single captures are currently supported.
     if (mBurstLength > 1) {
-        LOG1("Burst enabled, disabling continuous mode");
+        LOG1("@%s: Burst requested, disabling continuous mode", __FUNCTION__);
         return STATE_PREVIEW_STILL;
     }
 
+    // The continuous mode depends on maintaining a RAW frame
+    // buffer, so feature is not available SoC sensors.
     if (!mAAA->is3ASupported()) {
-        LOG1("Non-RAW sensor, disabling continuous mode");
+        LOG1("@%s: Non-RAW sensor, disabling continuous mode", __FUNCTION__);
         return STATE_PREVIEW_STILL;
     }
 
+    LOG1("@%s: Selecting continuous still preview mode", __FUNCTION__);
     return STATE_CONTINUOUS_CAPTURE;
 }
 
@@ -979,8 +1014,21 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             isDVSActive = true;
     } else {
         LOG1("Starting preview in still mode");
-        state = STATE_PREVIEW_STILL;
-        mode = MODE_PREVIEW;
+
+        if (mState == STATE_CONTINUOUS_CAPTURE) {
+            // already in continuous viewfinder mode,
+            if (mISP->isOfflineCaptureRunning()) {
+                mISP->stopOfflineCapture();
+                LOG1("Capture stopped, resuming continuous viewfinder");
+            }
+            return status;
+        }
+
+        state = selectPreviewMode(mParameters);
+        if (state == STATE_PREVIEW_STILL)
+            mode = MODE_PREVIEW;
+        else
+            mode = MODE_CONTINUOUS_CAPTURE;
     }
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
         mAAA->init3aStatDump("preview");
