@@ -76,8 +76,9 @@ const int MIN_PREVIEW_FPS = 11;
 // TODO: This value should be gotten from sensor dynamically, instead of hardcoding:
 const int MAX_PREVIEW_FPS = 30;
 
-ControlThread::ControlThread() :
+ControlThread::ControlThread(const sp<CameraConf>& cfg) :
     Thread(true) // callbacks may call into java
+    ,mCameraConf(cfg)
     ,mISP(NULL)
     ,mAAA(NULL)
     ,mDvs(NULL)
@@ -136,37 +137,24 @@ ControlThread::~ControlThread()
     }
 }
 
-status_t ControlThread::init(int cameraId)
+status_t ControlThread::init()
 {
-    LOG1("@%s: cameraId = %d", __FUNCTION__, cameraId);
+    LOG1("@%s: cameraId = %d", __FUNCTION__, mCameraConf->cameraId());
+
+    if (mCameraConf == 0) {
+        LOGE("ERROR no CPF info given for Control Thread in %s", __FUNCTION__);
+        return NO_MEMORY;
+    }
 
     status_t status = UNKNOWN_ERROR;
 
-    // CPF configurations for IQ, driver and HAL
-    sp<CameraBlob> aiqConf, drvConf, halConf;
-
-    mISP = new AtomISP();
+    mISP = new AtomISP(mCameraConf);
     if (mISP == NULL) {
         LOGE("error creating ISP");
         goto bail;
     }
 
-    status = mISP->initHw(cameraId);
-    if (status != NO_ERROR) {
-        LOGE("Error initializing ISP with id %d", cameraId);
-        goto bail;
-    }
-
-    status = cpf::init(aiqConf, drvConf, halConf);  // Must be after mISP->initHw()
-    if (status != NO_ERROR) {
-        // FIXME: "File not found" should be treated as an error...
-        if (status != NAME_NOT_FOUND) {
-            LOGE("Error in CPF initialization");
-            goto bail;
-        }
-    }
-
-    status = mISP->init(aiqConf);
+    status = mISP->init();
     if (status != NO_ERROR) {
         LOGE("Error initializing ISP");
         goto bail;
@@ -320,7 +308,7 @@ status_t ControlThread::init(int cameraId)
 
     // Set property to inform system what camera is in use
     char facing[PROPERTY_VALUE_MAX];
-    snprintf(facing, PROPERTY_VALUE_MAX, "%d", cameraId);
+    snprintf(facing, PROPERTY_VALUE_MAX, "%d", mCameraConf->cameraId());
     property_set("media.camera.facing", facing);
 
     // Set default parameters so that settings propagate to 3A

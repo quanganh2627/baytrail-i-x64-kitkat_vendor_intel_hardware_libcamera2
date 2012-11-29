@@ -96,11 +96,11 @@ public:
 
 // constructor/destructor
 public:
-    AtomISP(void);
+    explicit AtomISP(const sp<CameraConf>& cfg);
     ~AtomISP();
 
-    status_t initHw(int camera_id);
-    status_t init(const sp<CameraBlob>& aiqConf);
+    status_t initDevice();
+    status_t init();
 
 // public methods
 public:
@@ -297,11 +297,11 @@ private:
 // private methods
 private:
 
-    status_t initCameraInput(int cameraId);
-    void initFileInject(int cameraId);
+    status_t initCameraInput();
+    void initFileInject();
     void initDriverVersion(void);
     void initFrameConfig();
-    status_t init3A(const sp<CameraBlob>& aiqConf);
+    status_t init3A();
 
     status_t configurePreview();
     status_t startPreview();
@@ -382,6 +382,8 @@ private:
 
 // private members
 private:
+
+    const sp<CameraConf> mCameraConf;
 
     static cameraInfo sCamInfo[MAX_CAMERA_NODES];
 

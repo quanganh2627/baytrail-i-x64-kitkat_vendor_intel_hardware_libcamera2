@@ -19,9 +19,13 @@
 
 #include <utils/Errors.h>
 #include <utils/RefBase.h>
+#include <utils/String8.h>
+#include <utils/Vector.h>
 #include <sys/stat.h>
 
 namespace android {
+
+class CameraConf;
 
 class CameraBlob : public RefBase
 {
@@ -30,8 +34,8 @@ public:
     CameraBlob(const sp<CameraBlob>& ref, const int offset, const int size);
     CameraBlob(const sp<CameraBlob>& ref, void * const ptr, const int size);
     virtual ~CameraBlob();
-    inline int getSize() const { return this == 0 ? 0 : mSize; }
-    inline void *getPtr() const { return this == 0 ? 0 : mPtr; }
+    inline int size() const { return this == 0 ? 0 : mSize; }
+    inline void *ptr() const { return this == 0 ? 0 : mPtr; }
 private:
     void *mPtr;
     int mSize;
@@ -41,22 +45,63 @@ private:
     void operator=(const CameraBlob&);
 };
 
-namespace cpf {
+class CpfStore
+{
+struct SensorDriver
+{
+    String8 mSensorName;
+    String8 mSysfsName;
+};
 
-    void setSensorName(const char *ptr);
-    status_t init(sp<CameraBlob>& aiqConf, sp<CameraBlob>& drvConf, sp<CameraBlob>& halConf);
+public:
+    explicit CpfStore(const int cameraId);
+    virtual ~CpfStore();
+    const sp<CameraConf> createCameraConf();
+private:
+    status_t initNames(String8& cpfName, String8& sysfsName);
+    status_t initNamesHelper(const String8& filename, String8& refName, int& index);
+    status_t initDriverList();
+    status_t initDriverListHelper(int major, int minor, SensorDriver& drvInfo);
+    status_t initConf(sp<CameraBlob>& aiqConf, sp<CameraBlob>& drvConf, sp<CameraBlob>& halConf);
+    status_t loadAllConf(sp<CameraBlob>& allConf, struct stat& statCurrent);
+    status_t fetchAiqConf(const sp<CameraBlob>& allConf, sp<CameraBlob>& aiqConf, bool skipChecksum);
+    status_t fetchDrvConf(const sp<CameraBlob>& allConf, sp<CameraBlob>& drvConf, bool skipChecksum);
+    status_t fetchHalConf(const sp<CameraBlob>& allConf, sp<CameraBlob>& halConf, bool skipChecksum);
+    status_t processDrvConf();
+    status_t processHalConf();
+private:
+    int mCameraId;
+    bool mIsOldConfig;
+    String8 mCpfPathName;
+    String8 mSysfsPathName;
+    sp<CameraBlob> mAiqConf, mDrvConf, mHalConf;
+    static Vector<struct SensorDriver> registeredDrivers;
+    static Vector<struct stat> validatedCpfFiles;
+    // Disallow copy and assignment
+    CpfStore(const CpfStore&);
+    void operator=(const CpfStore&);
+};
 
-namespace internal {
-
-    status_t loadAll(sp<CameraBlob>& allConf, struct stat& statCurrent);
-    status_t initAiq(const sp<CameraBlob>& allConf, sp<CameraBlob>& aiqConf, bool skipChecksum);
-    status_t initDrv(const sp<CameraBlob>& allConf, sp<CameraBlob>& drvConf, bool skipChecksum);
-    status_t initHal(const sp<CameraBlob>& allConf, sp<CameraBlob>& halConf, bool skipChecksum);
-    const char *constructFileName();
-
-}; // namespace internal
-
-}; // namespace cpf
+class CameraConf : public RefBase
+{
+public:
+    friend class CpfStore;
+    virtual ~CameraConf() {}
+    inline int cameraId() { return mCameraId; }
+    inline int cameraFacing() { return mCameraFacing; }
+    inline int cameraOrientation() { return mCameraOrientation; }
+public:
+    sp<CameraBlob> aiqConf;
+protected:
+    CameraConf() {}
+private:
+    int mCameraId;
+    int mCameraFacing;
+    int mCameraOrientation;
+    // Disallow copy and assignment
+    CameraConf(const CameraConf&);
+    void operator=(const CameraConf&);
+};
 
 }; // namespace android
 

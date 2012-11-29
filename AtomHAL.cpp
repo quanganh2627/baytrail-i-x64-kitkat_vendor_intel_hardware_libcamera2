@@ -18,6 +18,7 @@
 #include "ControlThread.h"
 #include "LogHelper.h"
 #include "AtomISP.h"
+#include "CameraConf.h"
 #include "PerformanceTraces.h"
 #include <utils/Log.h>
 #include <utils/threads.h>
@@ -361,13 +362,15 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
     }
 
     atom_cam.camera_id = atoi(name);
-    atom_cam.control_thread = new ControlThread();
+    CpfStore cpf(atom_cam.camera_id);
+
+    atom_cam.control_thread = new ControlThread(cpf.createCameraConf());
     if (atom_cam.control_thread == NULL) {
         LOGE("Memory allocation error!");
         return NO_MEMORY;
     }
 
-    int status = atom_cam.control_thread->init(atom_cam.camera_id);
+    int status = atom_cam.control_thread->init();
     if (status != NO_ERROR) {
         LOGE("Error initializing ControlThread");
         atom_cam.control_thread.clear();

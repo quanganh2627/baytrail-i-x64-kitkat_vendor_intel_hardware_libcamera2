@@ -32,6 +32,7 @@
 #include "CallbacksThread.h"
 #include "AAAThread.h"
 #include "AtomAAA.h"
+#include "CameraConf.h"
 #include "PostProcThread.h"
 #include "PanoramaThread.h"
 #include "CameraDump.h"
@@ -60,7 +61,7 @@ class ControlThread :
 
 // constructor destructor
 public:
-    ControlThread();
+    explicit ControlThread(const sp<CameraConf>& cfg);
     virtual ~ControlThread();
 
 // Thread overrides
@@ -70,7 +71,7 @@ public:
 // public methods
 public:
 
-    status_t init(int cameraId);
+    status_t init();
     void deinit();
 
     status_t setPreviewWindow(struct preview_stream_ops *window);
@@ -495,6 +496,7 @@ private:
 // private data
 private:
 
+    const sp<CameraConf> mCameraConf;
     AtomISP *mISP;
     AtomAAA *mAAA;
     AtomDvs *mDvs;

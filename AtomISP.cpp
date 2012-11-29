@@ -142,8 +142,9 @@ static void computeZoomRatios(char *zoom_ratio, int max_count){
 //                          PUBLIC METHODS
 ////////////////////////////////////////////////////////////////////
 
-AtomISP::AtomISP() :
-    mMode(MODE_NONE)
+AtomISP::AtomISP(const sp<CameraConf>& cfg) :
+    mCameraConf(cfg)
+    ,mMode(MODE_NONE)
     ,mCallbacks(Callbacks::getInstance())
     ,mNumBuffers(NUM_DEFAULT_BUFFERS)
     ,mNumPreviewBuffers(NUM_DEFAULT_BUFFERS)
@@ -179,13 +180,14 @@ AtomISP::AtomISP() :
     CLEAR(mPostviewBuffers);
 }
 
-status_t AtomISP::initHw(int cameraId)
+status_t AtomISP::initDevice()
 {
     status_t status = NO_ERROR;
 
     initDriverVersion();
 
     // Open the main device first, this device will remain open during object life span
+    // and will be closed in the object destructor
     int ret = openDevice(V4L2_MAIN_DEVICE);
     if (ret < 0) {
         LOGE("Failed to open first device!");
@@ -193,36 +195,37 @@ status_t AtomISP::initHw(int cameraId)
     }
     PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("Open_Main_Device");
 
-    initFileInject(cameraId);
+    initFileInject();
 
     // Select the input port to use
-    status = initCameraInput(cameraId);
+    status = initCameraInput();
     if (status != NO_ERROR) {
-        LOGE("Unable to initialize camera input %d", cameraId);
-        goto errorexit;
+        LOGE("Unable to initialize camera input %d", mCameraConf->cameraId());
+        return NO_INIT;
     }
 
     mSensorType = (mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY)?SENSOR_TYPE_RAW:SENSOR_TYPE_SOC;
     LOG1("Sensor type detected: %s", (mSensorType == SENSOR_TYPE_RAW)?"RAW":"SOC");
 
-    return NO_ERROR;
-
-errorexit:
-    closeDevice(V4L2_MAIN_DEVICE);
-    return NO_INIT;
+    return status;
 }
 
-status_t AtomISP::init(const sp<CameraBlob>& aiqConf)
+status_t AtomISP::init()
 {
     status_t status = NO_ERROR;
+
+    status = initDevice();
+    if (status != NO_ERROR) {
+        return NO_INIT;
+    }
 
     mConfig.fps = 30;
     mConfig.num_snapshot = 1;
     mConfig.zoom = 0;
 
-    status = init3A(aiqConf);
+    status = init3A();
     if (status != NO_ERROR) {
-        goto errorexit;
+        return NO_INIT;
     }
     PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("Init_3A");
 
@@ -243,11 +246,7 @@ status_t AtomISP::init(const sp<CameraBlob>& aiqConf)
     mZoomRatios = new char[zoomBytes];
     computeZoomRatios(mZoomRatios, zoomBytes);
 
-    return NO_ERROR;
-
-errorexit:
-    closeDevice(V4L2_MAIN_DEVICE);
-    return NO_INIT;
+    return status;
 }
 
 int AtomISP::getPrimaryCameraIndex(void) const
@@ -364,7 +363,7 @@ void AtomISP::initFrameConfig()
  *                  may be different. This Android camera id will be used
  *                  to select parameters from back or front camera
  */
-status_t AtomISP::initCameraInput(int cameraId)
+status_t AtomISP::initCameraInput()
 {
     status_t status = NO_INIT;
     size_t numCameras = setupCameraInfo();
@@ -375,28 +374,24 @@ status_t AtomISP::initCameraInput(int cameraId)
         // BACK camera -> AtomISP/V4L2 primary port
         // FRONT camera -> AomISP/V4L2 secondary port
 
-        if ((PlatformData::cameraFacing(cameraId) == CAMERA_FACING_BACK &&
+        if ((PlatformData::cameraFacing(mCameraConf->cameraId()) == CAMERA_FACING_BACK &&
              sCamInfo[i].port == ATOMISP_CAMERA_PORT_PRIMARY) ||
-            (PlatformData::cameraFacing(cameraId) == CAMERA_FACING_FRONT &&
+            (PlatformData::cameraFacing(mCameraConf->cameraId()) == CAMERA_FACING_FRONT &&
              sCamInfo[i].port == ATOMISP_CAMERA_PORT_SECONDARY)) {
             mCameraInput = &sCamInfo[i];
-            mCameraInput->androidCameraId = cameraId;
-            LOG1("Camera found, v4l2 dev %d, android cameraId %d", i, cameraId);
+            mCameraInput->androidCameraId = mCameraConf->cameraId();
+            LOG1("Camera found, v4l2 dev %d, android cameraId %d", i, mCameraConf->cameraId());
             status = NO_ERROR;
             break;
         }
     }
 
-    if (PlatformData::supportsFileInject() == true &&
-            cameraId == INTEL_FILE_INJECT_CAMERA_ID) {
+    if (mIsFileInject) {
         LOG1("AtomISP opened with file inject camera id");
         mCameraInput = &sCamInfo[INTEL_FILE_INJECT_CAMERA_ID];
         mFileInject.active = true;
         status = NO_ERROR;
     }
-
-    // FIXME: This should be queried by CPF from media controller
-    cpf::setSensorName(mCameraInput->name);
 
     return status;
 }
@@ -404,7 +399,7 @@ status_t AtomISP::initCameraInput(int cameraId)
 /**
  * Only to be called from 2nd stage contructor AtomISP::init().
  */
-status_t AtomISP::init3A(const sp<CameraBlob>& aiqConf)
+status_t AtomISP::init3A()
 {
     status_t status = NO_ERROR;
 
@@ -414,9 +409,9 @@ status_t AtomISP::init3A(const sp<CameraBlob>& aiqConf)
             int maincam = getPrimaryCameraIndex();
             const SensorParams *paramFiles = PlatformData::getSensorParamsFile(sCamInfo[maincam].name);
             SensorParams paramFilesWithCpf = *paramFiles;
-            if (aiqConf != 0) {
-                paramFilesWithCpf.cpfData.data = aiqConf->getPtr();
-                paramFilesWithCpf.cpfData.size = aiqConf->getSize();
+            if (mCameraConf->aiqConf != 0) {
+                paramFilesWithCpf.cpfData.data = mCameraConf->aiqConf->ptr();
+                paramFilesWithCpf.cpfData.size = mCameraConf->aiqConf->size();
             }
             if (mAAA->init(&paramFilesWithCpf, this, otp_file) == NO_ERROR) {
                 LOG1("3A initialized for file inject");
@@ -430,9 +425,9 @@ status_t AtomISP::init3A(const sp<CameraBlob>& aiqConf)
             const SensorParams *paramFiles = PlatformData::getSensorParamsFile(mCameraInput->name);
             if (paramFiles != NULL) {
                     SensorParams paramFilesWithCpf = *paramFiles;
-                    if (aiqConf != 0) {
-                            paramFilesWithCpf.cpfData.data = aiqConf->getPtr();
-                            paramFilesWithCpf.cpfData.size = aiqConf->getSize();
+                    if (mCameraConf->aiqConf != 0) {
+                        paramFilesWithCpf.cpfData.data = mCameraConf->aiqConf->ptr();
+                        paramFilesWithCpf.cpfData.size = mCameraConf->aiqConf->size();
                     }
                     if (mAAA->init(&paramFilesWithCpf, this, NULL) == NO_ERROR) {
                             LOG1("3A initialized");
@@ -442,6 +437,8 @@ status_t AtomISP::init3A(const sp<CameraBlob>& aiqConf)
                     }
              }
         }
+        // We don't need this memory anymore
+        mCameraConf->aiqConf.clear();
     } else {
         LOGE("Could not select camera: %s", mCameraInput->name);
         status = NO_INIT;
@@ -453,9 +450,9 @@ status_t AtomISP::init3A(const sp<CameraBlob>& aiqConf)
 /**
  * Only to be called from 2nd stage contructor AtomISP::init().
  */
-void AtomISP::initFileInject(int cameraId)
+void AtomISP::initFileInject()
 {
-    mIsFileInject = (cameraId == INTEL_FILE_INJECT_CAMERA_ID);
+    mIsFileInject = (PlatformData::supportsFileInject() == true) && (mCameraConf->cameraId() == INTEL_FILE_INJECT_CAMERA_ID);
     mFileInject.active = false;
 }
 
@@ -467,7 +464,7 @@ AtomISP::~AtomISP()
      * in general by the camera client when it's done with the camera device, but it is also called by
      * System Server when the camera application crashes. System Server calls close in order to release
      * the camera hardware module. So, if we are not in MODE_NONE, it means that we are in the middle of
-     * somthing when the close function was called. So it's our duty to stop first, then close the
+     * something when the close function was called. So it's our duty to stop first, then close the
      * camera device.
      */
     if (mMode != MODE_NONE) {
