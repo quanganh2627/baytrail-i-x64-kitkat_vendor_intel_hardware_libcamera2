@@ -129,7 +129,7 @@ private:
     virtual void sceneDetected(int sceneMode, bool sceneHdr);
     virtual void facesDetected(const ia_face_state *faceState);
     virtual void panoramaCaptureTrigger();
-    virtual void panoramaFinalized(AtomBuffer *buff);
+    virtual void panoramaFinalized(AtomBuffer *buff, AtomBuffer *pvBuff);
 
 // private types
 private:

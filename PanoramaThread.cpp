@@ -17,6 +17,7 @@
 #define LOG_TAG "Camera_Panorama"
 //#define LOG_NDEBUG 0
 
+#include "ImageScaler.h"
 #include <math.h>
 #include <assert.h>
 
@@ -45,6 +46,8 @@ PanoramaThread::PanoramaThread(ICallbackPanorama *panoramaCallback) :
     ,mState(PANORAMA_STOPPED)
     ,mPreviewWidth(0)
     ,mPreviewHeight(0)
+    ,mThumbnailWidth(0)
+    ,mThumbnailHeight(0)
 {
     LOG1("@%s", __FUNCTION__);
     mCurrentMetadata.direction = 0;
@@ -117,7 +120,7 @@ void PanoramaThread::stopPanorama(bool synchronous)
     mMessageQueue.send(&msg, synchronous ? MESSAGE_ID_STOP_PANORAMA : (MessageId) -1);
 }
 
-status_t PanoramaThread::handleMessageStopPanorama(MessageStopPanorama stop)
+status_t PanoramaThread::handleMessageStopPanorama(const MessageStopPanorama &stop)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -288,10 +291,6 @@ void PanoramaThread::finalize(void)
     mMessageQueue.send(&msg);
 }
 
-#define is_aligned(POINTER, BYTE_COUNT) \
-    (((uintptr_t)(const void *)(POINTER)) % (BYTE_COUNT) == 0)
-
-
 status_t PanoramaThread::handleMessageFinalize()
 {
     LOG1("@%s", __FUNCTION__);
@@ -321,15 +320,67 @@ status_t PanoramaThread::handleMessageFinalize()
     img.size = frameSize(V4L2_PIX_FMT_NV12, img.stride, img.height); // because pFrame->size from panorama is currently incorrectly zero
     // allocate some dummy memory (for struct in .buff basically)
     mCallbacks->allocateMemory(&img, 0);
+    if (img.buff == NULL)
+        return NO_MEMORY;
     // store data pointer and ownership for releasing purposes (see ::returnBuffer)
     img.gfxData = img.buff->data;
     img.owner = this;
     // .. and put panorama engine memory into the data pointer for the encoding
     img.buff->data = pFrame->data;
     // return panorama image via callback to PostProcThread, which passes it onwards
-    mPanoramaCallback->panoramaFinalized(&img);
+
+    if (mThumbnailWidth > 0 && mThumbnailHeight > 0) {
+        AtomBuffer pvImg = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+        pvImg.width = mThumbnailWidth;
+        pvImg.height = mThumbnailHeight;
+        pvImg.stride = mThumbnailWidth;
+        pvImg.format = V4L2_PIX_FMT_NV12;
+        pvImg.size = frameSize(V4L2_PIX_FMT_NV12, pvImg.stride, pvImg.height);
+        pvImg.owner = this;
+        mCallbacks->allocateMemory(&pvImg, pvImg.size);
+        if (pvImg.buff == NULL) {
+            LOGE("Failed to allocate panorama snapshot memory.");
+            // release img
+            img.buff->data = img.gfxData;
+            img.buff->release(img.buff);
+            return NO_MEMORY;
+        }
+
+        int thumbWidth = img.height * 4 / 3;
+        if (thumbWidth > img.width)
+            thumbWidth = img.width;
+
+        // center the thumbnail
+        int startPixel = img.width / 2 - thumbWidth / 2;
+        if (startPixel < 0)
+            startPixel = 0;
+
+        ImageScaler::downScaleImage(((char *)img.buff->data) + startPixel, pvImg.buff->data, mThumbnailWidth,
+                mThumbnailHeight, mThumbnailWidth, thumbWidth, img.height, img.stride, V4L2_PIX_FMT_NV12);
+
+        mPanoramaCallback->panoramaFinalized(&img, &pvImg);
+    } else
+        mPanoramaCallback->panoramaFinalized(&img, NULL);
 #endif
     return status;
+}
+
+void PanoramaThread::setThumbnailSize(int width, int height)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_THUMBNAILSIZE;
+    msg.data.thumbnail.width = width;
+    msg.data.thumbnail.height = height;
+    mMessageQueue.send(&msg);
+}
+
+status_t PanoramaThread::handleMessageThumbnailSize(const MessageThumbnailSize &size)
+{
+    LOG1("@%s", __FUNCTION__);
+    mThumbnailWidth = size.width;
+    mThumbnailHeight = size.height;
+    return OK;
 }
 
 /**
@@ -337,11 +388,15 @@ status_t PanoramaThread::handleMessageFinalize()
  */
 void PanoramaThread::returnBuffer(AtomBuffer *atomBuffer) {
     LOG1("@%s", __FUNCTION__);
-    // restore original pointer, which was stored into gfxData, and then release
-    atomBuffer->buff->data = atomBuffer->gfxData;
-    atomBuffer->buff->release(atomBuffer->buff);
-    // panorama engine releases its memory either at reinit (handleMessageStartPanoramaCapture)
-    // or uninit (handleMessageStopPanorama)
+    if (atomBuffer->type == ATOM_BUFFER_PANORAMA) {
+        // restore original pointer, which was stored into gfxData, and then release
+        atomBuffer->buff->data = atomBuffer->gfxData;
+        atomBuffer->buff->release(atomBuffer->buff);
+        // panorama engine releases its memory either at reinit (handleMessageStartPanoramaCapture)
+        // or uninit (handleMessageStopPanorama)
+    } else if (atomBuffer->type == ATOM_BUFFER_POSTVIEW) {
+        atomBuffer->buff->release(atomBuffer->buff);
+    }
 }
 
 void PanoramaThread::sendFrame(AtomBuffer &buf)
@@ -364,7 +419,7 @@ void PanoramaThread::sendFrame(AtomBuffer &buf)
     mMessageQueue.send(&msg, MESSAGE_ID_FRAME);
 }
 
-status_t PanoramaThread::handleFrame(MessageFrame frame)
+status_t PanoramaThread::handleFrame(MessageFrame &frame)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -385,7 +440,7 @@ PanoramaState PanoramaThread::getState(void)
     return mState;
 }
 
-status_t PanoramaThread::handleStitch(MessageStitch stitch)
+status_t PanoramaThread::handleStitch(const MessageStitch &stitch)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -488,6 +543,9 @@ status_t PanoramaThread::waitForAndExecuteMessage()
             break;
         case MESSAGE_ID_STOP_PANORAMA_CAPTURE:
             status = handleMessageStopPanoramaCapture();
+            break;
+        case MESSAGE_ID_THUMBNAILSIZE:
+            status = handleMessageThumbnailSize(msg.data.thumbnail);
             break;
         default:
             status = INVALID_OPERATION;

@@ -772,7 +772,7 @@ void ControlThread::facesDetected(const ia_face_state *faceState)
     m3AThread->setFaces(*faceState);
 }
 
-void ControlThread::panoramaFinalized(AtomBuffer *buff)
+void ControlThread::panoramaFinalized(AtomBuffer *buff, AtomBuffer *pvBuff)
 {
     LOG2("@%s", __FUNCTION__);
     mCallbacksThread->requestTakePicture(false, false);
@@ -785,7 +785,7 @@ void ControlThread::panoramaFinalized(AtomBuffer *buff)
     tmpParam.setPictureSize(buff->width, buff->height);
     mPictureThread->initialize(tmpParam);
 
-    mPictureThread->encode(picMetaData, buff, NULL);
+    mPictureThread->encode(picMetaData, buff, pvBuff);
 }
 
 void ControlThread::panoramaCaptureTrigger()
@@ -1767,7 +1767,8 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     LOG1("@%s: ", __FUNCTION__);
     status_t status = NO_ERROR;
     int format, size, width, height;
-    int pvWidth, pvHeight, pvSize;
+    int lpvWidth, lpvHeight, lpvSize;
+    int thumbnailWidth, thumbnailHeight;
 
     postviewBuffer.owner = this;
     stopFaceDetection();
@@ -1781,17 +1782,22 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
 
     // Get the current params
     mParameters.getPictureSize(&width, &height);
-    IntelCameraParameters::getPanoramaLivePreviewSize(pvWidth, pvHeight, mParameters);
+    IntelCameraParameters::getPanoramaLivePreviewSize(lpvWidth, lpvHeight, mParameters);
     format = mISP->getSnapshotPixelFormat();
     size = frameSize(format, width, height);
-    pvSize = frameSize(format, pvWidth, pvHeight);
+    lpvSize = frameSize(format, lpvWidth, lpvHeight);
 
     // Configure PictureThread
     mPictureThread->initialize(mParameters);
 
     // Configure and start the ISP
     mISP->setSnapshotFrameFormat(width, height, format);
-    mISP->setPostviewFrameFormat(pvWidth, pvHeight, format);
+    mISP->setPostviewFrameFormat(lpvWidth, lpvHeight, format);
+
+    // configure thumbnail size
+    thumbnailWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
+    thumbnailHeight= mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
+    mPanoramaThread->setThumbnailSize(thumbnailWidth, thumbnailHeight);
 
     if ((status = mISP->configure(MODE_CAPTURE)) != NO_ERROR) {
         LOGE("Error configuring the ISP driver for CAPTURE mode");
@@ -2538,6 +2544,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
         // panorama pictures are special, they use the panorama engine memory.
         // we return them to panorama for releasing
         msg->snapshotBuf.owner->returnBuffer(&msg->snapshotBuf);
+        msg->snapshotBuf.owner->returnBuffer(&msg->postviewBuf);
     } else if (mState == STATE_RECORDING) {
         int curBuff = msg->snapshotBuf.id;
         if (mCoupledBuffers && curBuff < mNumBuffers) {

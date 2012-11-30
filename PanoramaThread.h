@@ -47,7 +47,7 @@ public:
     ICallbackPanorama() {}
     virtual ~ICallbackPanorama() {}
     virtual void panoramaCaptureTrigger(void) = 0;
-    virtual void panoramaFinalized(AtomBuffer *img) = 0;
+    virtual void panoramaFinalized(AtomBuffer *img, AtomBuffer *pvImg) = 0;
 };
 
 // public types
@@ -71,6 +71,7 @@ public:
     void stopPanoramaCapture(void);
     void panoramaStitch(AtomBuffer *img, AtomBuffer *pv);
     void returnBuffer(AtomBuffer *buff);
+    void setThumbnailSize(int width, int height);
 
     status_t reInit();
     bool detectOverlap(ia_frame *frame);
@@ -97,6 +98,7 @@ private:
         MESSAGE_ID_START_PANORAMA_CAPTURE,
         MESSAGE_ID_STOP_PANORAMA_CAPTURE,
         MESSAGE_ID_FINALIZE,
+        MESSAGE_ID_THUMBNAILSIZE,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -118,12 +120,18 @@ private:
         ia_frame frame;
     };
 
+    struct MessageThumbnailSize {
+        int width;
+        int height;
+    };
+
     // union of all message data
     union MessageData {
         // MESSAGE_ID_FRAME
         MessageStitch stitch;
         MessageStopPanorama stop;
         MessageFrame frame;
+        MessageThumbnailSize thumbnail;
     };
 
     // message id and message data
@@ -139,13 +147,14 @@ private:
 // private methods
 private:
     status_t handleExit(void);
-    status_t handleStitch(MessageStitch frame);
-    status_t handleFrame(MessageFrame frame);
+    status_t handleStitch(const MessageStitch &frame);
+    status_t handleFrame(MessageFrame &frame);
     status_t handleMessageStartPanorama(void);
-    status_t handleMessageStopPanorama(MessageStopPanorama stop);
+    status_t handleMessageStopPanorama(const MessageStopPanorama &stop);
     status_t handleMessageStartPanoramaCapture(void);
     status_t handleMessageStopPanoramaCapture(void);
     status_t handleMessageFinalize(void);
+    status_t handleMessageThumbnailSize(const MessageThumbnailSize &size);
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -168,6 +177,8 @@ private:
     PanoramaState mState;
     int mPreviewWidth;
     int mPreviewHeight;
+    int mThumbnailWidth;
+    int mThumbnailHeight;
 
 }; // class Panorama
 
