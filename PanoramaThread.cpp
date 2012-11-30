@@ -233,6 +233,7 @@ bool PanoramaThread::detectOverlap(ia_frame *frame)
         // store values, do displacement callback
         mCurrentMetadata.horizontal_displacement = mContext->horizontal_displacement;
         mCurrentMetadata.vertical_displacement = mContext->vertical_displacement;
+        mCurrentMetadata.finalization_started = false;
         mCallbacksThread->panoramaDisplUpdate(mCurrentMetadata);
 
         // capture triggering, after first capture, if not blurred, and with proper displacement (based on decided direction)
@@ -400,10 +401,22 @@ status_t PanoramaThread::handleStitch(MessageStitch stitch)
     }
     assert(stitch.pv.size <= frameSize(V4L2_PIX_FMT_NV12, LARGEST_THUMBNAIL_WIDTH, LARGEST_THUMBNAIL_HEIGHT));
 
+    mPanoramaTotalCount++;
+    ia_err err = ia_panorama_stitch(mContext, &iaFrame);
+
+    if (err != ia_err_none) {
+        LOGE("ia_panorama_stitch failed, error = %d", err);
+        status = UNKNOWN_ERROR;
+
+        // TODO fixme we need to fall through, since current panorama lib does not provide valid return values
+        status = OK;
+    }
+
     // convert displacement to reflect PV image size
     camera_panorama_metadata metadata = mCurrentMetadata;
     metadata.horizontal_displacement = roundf((float) metadata.horizontal_displacement / mPreviewWidth * stitch.pv.width);
     metadata.vertical_displacement = roundf((float) metadata.vertical_displacement / mPreviewHeight * stitch.pv.height);
+    metadata.finalization_started = (mPanoramaTotalCount == mPanoramaMaxSnapshotCount);
     // space for the metadata is reserved in the beginning of the buffer
     memcpy(mPostviewBuf.buff->data, &metadata, sizeof(camera_panorama_metadata));
     // copy PV image
@@ -415,13 +428,7 @@ status_t PanoramaThread::handleStitch(MessageStitch stitch)
     mPostviewBuf.stride = stitch.pv.stride;
 
     mCallbacksThread->panoramaSnapshot(mPostviewBuf);
-    mPanoramaTotalCount++;
-    ia_err err = ia_panorama_stitch(mContext, &iaFrame);
 
-    if (err != ia_err_none) {
-        LOGE("ia_panorama_stitch failed, error = %d", err);
-        status = UNKNOWN_ERROR;
-    }
     //panorama engine resets displacement values after stitching, so we reset the current values here, too
     mCurrentMetadata.horizontal_displacement = 0;
     mCurrentMetadata.vertical_displacement = 0;
