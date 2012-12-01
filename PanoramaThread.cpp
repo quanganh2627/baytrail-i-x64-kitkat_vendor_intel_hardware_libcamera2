@@ -69,6 +69,9 @@ void PanoramaThread::getDefaultParameters(CameraParameters *intel_params)
     // Set if Panorama is available or not.
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PANORAMA, FeatureData::panoramaSupported());
     intel_params->set(IntelCameraParameters::KEY_PANORAMA_MAX_SNAPSHOT_COUNT, mPanoramaMaxSnapshotCount);
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PANORAMA_LIVE_PREVIEW_SIZES,
+            CAM_RESO_STR(PANORAMA_MAX_LIVE_PREV_WIDTH,PANORAMA_MAX_LIVE_PREV_HEIGHT)
+            ",800x600,720x480,640x480,640x360,416x312,352x288,320x240,320x180,176x144,160x120");
 }
 
 void PanoramaThread::startPanorama(void)
@@ -94,8 +97,8 @@ status_t PanoramaThread::handleMessageStartPanorama(void)
         return UNKNOWN_ERROR;
     }
     // allocate memory for the live preview callback. Max thumbnail in NV12 + metadata.
-    mCallbacks->allocateMemory(&mPostviewBuf, frameSize(V4L2_PIX_FMT_NV12, LARGEST_THUMBNAIL_WIDTH, LARGEST_THUMBNAIL_HEIGHT) +
-                               sizeof(camera_panorama_metadata));
+    mCallbacks->allocateMemory(&mPostviewBuf, frameSize(V4L2_PIX_FMT_NV12, PANORAMA_MAX_LIVE_PREV_WIDTH,
+                               PANORAMA_MAX_LIVE_PREV_HEIGHT) + sizeof(camera_panorama_metadata));
     if (mPostviewBuf.buff == NULL) {
         LOGE("fatal - out of memory for live preview callback");
         assert(false);
@@ -399,7 +402,7 @@ status_t PanoramaThread::handleStitch(MessageStitch stitch)
         LOGW("panorama stitch hack - snapshot frame stride zero, replacing with width %d", iaFrame.width);
         iaFrame.stride = iaFrame.width;
     }
-    assert(stitch.pv.size <= frameSize(V4L2_PIX_FMT_NV12, LARGEST_THUMBNAIL_WIDTH, LARGEST_THUMBNAIL_HEIGHT));
+    assert(stitch.pv.size <= frameSize(V4L2_PIX_FMT_NV12, PANORAMA_MAX_LIVE_PREV_WIDTH, PANORAMA_MAX_LIVE_PREV_HEIGHT));
 
     mPanoramaTotalCount++;
     ia_err err = ia_panorama_stitch(mContext, &iaFrame);

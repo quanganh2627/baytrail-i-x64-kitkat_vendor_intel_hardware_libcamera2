@@ -162,6 +162,7 @@ namespace android {
     static const char KEY_PANORAMA[];
     static const char KEY_SUPPORTED_PANORAMA[];
     static const char KEY_PANORAMA_LIVE_PREVIEW_SIZE[];
+    static const char KEY_SUPPORTED_PANORAMA_LIVE_PREVIEW_SIZES[];
     static const char KEY_PANORAMA_MAX_SNAPSHOT_COUNT[];
 
     //MACC effect

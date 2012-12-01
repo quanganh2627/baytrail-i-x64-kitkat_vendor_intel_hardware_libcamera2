@@ -39,6 +39,8 @@ namespace android {
 // PREV_WIDTH & HEIGHT must be from the list CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES
 #define PANORAMA_DEF_PREV_WIDTH 160
 #define PANORAMA_DEF_PREV_HEIGHT 120
+#define PANORAMA_MAX_LIVE_PREV_WIDTH 1024
+#define PANORAMA_MAX_LIVE_PREV_HEIGHT 576
 
 class ICallbackPanorama {
 public:

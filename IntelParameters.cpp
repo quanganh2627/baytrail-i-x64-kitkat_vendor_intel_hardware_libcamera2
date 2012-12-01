@@ -157,6 +157,7 @@ namespace android {
 
     //Panorama live preview size
     const char IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE[] = "panorama-live-preview-size";
+    const char IntelCameraParameters::KEY_SUPPORTED_PANORAMA_LIVE_PREVIEW_SIZES[] = "panorama-live-preview-sizes";
 
     //values for awb mapping
     const char IntelCameraParameters::AWB_MAPPING_AUTO[] = "auto";
@@ -197,7 +198,7 @@ namespace android {
     const char* IntelCameraParameters::getSupportedPanoramaLivePreviewSizes(const CameraParameters &params)
     {
         // live preview images are implemented with the thumbnails
-        return params.get(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES);
+        return params.get(KEY_SUPPORTED_PANORAMA_LIVE_PREVIEW_SIZES);
     }
 
 }; // ns android
