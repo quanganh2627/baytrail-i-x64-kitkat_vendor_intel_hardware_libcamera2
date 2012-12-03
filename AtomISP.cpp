@@ -1425,6 +1425,13 @@ status_t AtomISP::setContCaptureNumCaptures(int numCaptures)
     return NO_ERROR;
 }
 
+status_t AtomISP::setContCaptureOffset(int captureOffset)
+{
+    LOG1("@%s", __FUNCTION__);
+    mContCaptConfig.offset = captureOffset;
+    return NO_ERROR;
+}
+
 status_t AtomISP::configureContinuous()
 {
     LOG1("@%s", __FUNCTION__);

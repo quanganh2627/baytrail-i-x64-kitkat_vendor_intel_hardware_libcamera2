@@ -147,6 +147,7 @@ public:
 
     status_t setSnapshotNum(int num);
     status_t setContCaptureNumCaptures(int numCaptures);
+    status_t setContCaptureOffset(int captureOffset);
 
     void getZoomRatios(bool videoMode, CameraParameters *params);
     void getFocusDistances(CameraParameters *params);
