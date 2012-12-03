@@ -414,6 +414,15 @@ status_t PictureThread::handleMessageFetchBuffers(MessageAllocBufs *msg)
         msg->numBufs = 1;
         status = handleMessageAllocBufs(msg);
     }
+
+    if (mInputBufferArray[0].width != msg->width
+     || mInputBufferArray[0].height != msg->height) {
+        // Checks to ensure that allocation has happened for correct size.
+        LOGW("shared buffers not allocated for correct size");
+        msg->numBufs = 1;
+        status = handleMessageAllocBufs(msg);
+    }
+
     mMessageQueue.reply(MESSAGE_ID_FETCH_BUFS, status);
     return status;
 }
