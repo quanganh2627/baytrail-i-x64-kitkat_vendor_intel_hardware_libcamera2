@@ -82,6 +82,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libjpeg \
 	libandroid \
 	libui \
+	libia_mkn \
 	libmfldadvci \
 	libia_nvm \
 	libtbd \
