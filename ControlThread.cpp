@@ -4469,9 +4469,14 @@ status_t ControlThread::handleMessageStoreMetaDataInBuffers(MessageStoreMetaData
     LOG1("@%s. state = %d", __FUNCTION__, mState);
     status_t status = NO_ERROR;
     //Prohibit to enable metadata mode if state of HAL isn't equal stopped or in preview
-    if (mState != STATE_STOPPED && mState != STATE_PREVIEW_VIDEO && mState != STATE_PREVIEW_STILL){
+    if (mState != STATE_STOPPED &&
+            mState != STATE_PREVIEW_VIDEO &&
+            mState != STATE_PREVIEW_STILL &&
+            mState != STATE_CONTINUOUS_CAPTURE) {
         LOGE("Cannot configure metadata buffers in this state: %d", mState);
-        return BAD_VALUE;
+        status = BAD_VALUE;
+        mMessageQueue.reply(MESSAGE_ID_STORE_METADATA_IN_BUFFER, status);
+        return status;
     }
 
     mStoreMetaDataInBuffers = msg->enabled;
