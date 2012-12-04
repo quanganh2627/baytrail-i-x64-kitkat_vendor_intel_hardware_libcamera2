@@ -5127,18 +5127,24 @@ status_t ControlThread::dequeueRecording()
     AtomBuffer buff;
     nsecs_t timestamp;
     status_t status = NO_ERROR;
+    atomisp_frame_status frameStatus;
 
-    status = mISP->getRecordingFrame(&buff, &timestamp);
+    status = mISP->getRecordingFrame(&buff, &timestamp, &frameStatus);
     if (status == NO_ERROR) {
         mCoupledBuffers[buff.id].recordingBuff = buff;
-        mCoupledBuffers[buff.id].recordingBuffReturned = false;
-        mLastRecordingBuffIndex = buff.id;
-        // See if recording has started.
-        // If it has, process the buffer, unless frame is to be dropped.
-        // If recording hasn't started or frame is dropped, return the buffer to the driver
-        if (mState == STATE_RECORDING && !checkSkipFrame(buff.frameCounter)) {
-            mVideoThread->video(&buff, timestamp);
+        if (frameStatus != ATOMISP_FRAME_STATUS_CORRUPTED) {
+            mCoupledBuffers[buff.id].recordingBuffReturned = false;
+            mLastRecordingBuffIndex = buff.id;
+            // See if recording has started.
+            // If it has, process the buffer, unless frame is to be dropped.
+            // If recording hasn't started or frame is dropped, return the buffer to the driver
+            if (mState == STATE_RECORDING && !checkSkipFrame(buff.frameCounter)) {
+                mVideoThread->video(&buff, timestamp);
+            } else {
+                mCoupledBuffers[buff.id].recordingBuffReturned = true;
+            }
         } else {
+            LOGW("Recording frame %d corrupted, ignoring", buff.id);
             mCoupledBuffers[buff.id].recordingBuffReturned = true;
         }
     } else {

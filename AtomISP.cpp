@@ -3283,7 +3283,7 @@ status_t AtomISP::setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs
     return NO_ERROR;
 }
 
-status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp)
+status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp, atomisp_frame_status *frameStatus)
 {
     LOG2("@%s", __FUNCTION__);
     struct v4l2_buffer buf;
@@ -3305,6 +3305,15 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp)
     *buff = mRecordingBuffers[index];
     // time is get from ISP driver, it's realtime
     *timestamp = (buf.timestamp.tv_sec)*1000000000LL + (buf.timestamp.tv_usec)*1000LL;
+
+    if (frameStatus) {
+        *frameStatus = (atomisp_frame_status)buf.reserved;
+
+        // atom flag is an extended set of flags, so map V4L2 flags
+        // we are interested into atomisp_frame_status
+        if (buf.flags & V4L2_BUF_FLAG_ERROR)
+            *frameStatus = ATOMISP_FRAME_STATUS_CORRUPTED;
+    }
 
     mNumRecordingBuffersQueued--;
 

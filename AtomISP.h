@@ -124,7 +124,7 @@ public:
     status_t putPreviewFrame(AtomBuffer *buff);
 
     status_t setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs);
-    status_t getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp);
+    status_t getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp, atomisp_frame_status *frameStatus);
     status_t putRecordingFrame(AtomBuffer *buff);
 
     status_t setSnapshotBuffers(void *buffs, int numBuffs);
