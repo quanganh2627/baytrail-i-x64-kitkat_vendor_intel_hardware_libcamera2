@@ -543,7 +543,6 @@ private:
     Mutex mParamCacheLock;
     char* mParamCache;
 
-    int mLastRecordingBuffIndex;
     bool mStoreMetaDataInBuffers;
 
     bool mPreviewForceChanged; /*!< Stores whether preview size has been forced and no further fixing of aspect

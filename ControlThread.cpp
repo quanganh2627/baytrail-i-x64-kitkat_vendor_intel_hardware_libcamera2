@@ -105,7 +105,6 @@ ControlThread::ControlThread(const sp<CameraConf>& cfg) :
     ,mPublicAfMode(CAM_AF_MODE_AUTO)
     ,mPublicShutter(-1)
     ,mParamCache(NULL)
-    ,mLastRecordingBuffIndex(0)
     ,mStoreMetaDataInBuffers(false)
     ,mPreviewForceChanged(false)
     ,mPreviewStartQueued(false)
@@ -5134,7 +5133,6 @@ status_t ControlThread::dequeueRecording()
         mCoupledBuffers[buff.id].recordingBuff = buff;
         if (frameStatus != ATOMISP_FRAME_STATUS_CORRUPTED) {
             mCoupledBuffers[buff.id].recordingBuffReturned = false;
-            mLastRecordingBuffIndex = buff.id;
             // See if recording has started.
             // If it has, process the buffer, unless frame is to be dropped.
             // If recording hasn't started or frame is dropped, return the buffer to the driver
