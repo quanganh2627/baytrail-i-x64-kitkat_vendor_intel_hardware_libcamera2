@@ -3205,7 +3205,7 @@ status_t ControlThread::handleMessageAutoFocusDone()
 
 bool ControlThread::validateSize(int width, int height, Vector<Size> &supportedSizes) const
 {
-    if (width <= 0 || height <= 0)
+    if (width < 0 || height < 0)
         return false;
 
     for (Vector<Size>::iterator it = supportedSizes.begin(); it != supportedSizes.end(); ++it)
@@ -3253,11 +3253,77 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
+    // JPEG QUALITY
+    int jpegQuality = params->getInt(CameraParameters::KEY_JPEG_QUALITY);
+    if (jpegQuality < 1 || jpegQuality > 100) {
+        LOGE("bad jpeg quality: %d", jpegQuality);
+        return BAD_VALUE;
+    }
+
+    // THUMBNAIL QUALITY
+    int thumbQuality = params->getInt(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY);
+    if (thumbQuality < 1 || thumbQuality > 100) {
+        LOGE("bad thumbnail quality: %d", thumbQuality);
+        return BAD_VALUE;
+    }
+
+    // THUMBNAIL SIZE
+    int thumbWidth = params->getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
+    int thumbHeight = params->getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
+    char* thumbnailSizes = (char*) params->get(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES);
+    supportedSizes.clear();
+
+    while (true) {
+        int width = (int)strtol(thumbnailSizes, &thumbnailSizes, 10);
+        int height = (int)strtol(thumbnailSizes+1, &thumbnailSizes, 10);
+        supportedSizes.push(Size(width, height));
+        if (*thumbnailSizes == '\0')
+            break;
+        ++thumbnailSizes;
+    }
+
+    if (!validateSize(thumbWidth, thumbHeight, supportedSizes)) {
+        LOGE("bad thumbnail size: (%d,%d)", thumbWidth, thumbHeight);
+        return BAD_VALUE;
+    }
+
+    // PICTURE FORMAT
+    const char* picFormat = params->get(CameraParameters::KEY_PICTURE_FORMAT);
+    const char* picFormats = params->get(CameraParameters::KEY_SUPPORTED_PICTURE_FORMATS);
+    if (picFormat && picFormats && strstr(picFormats, picFormat) == NULL) {
+        LOGE("bad picture format: %s", picFormat);
+        return BAD_VALUE;
+    }
+
+    // PREVIEW FORMAT
+    const char* preFormat = params->get(CameraParameters::KEY_PREVIEW_FORMAT);
+    const char* preFormats = params->get(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS);
+    if (preFormat && preFormats && strstr(preFormats, preFormat) == NULL) {
+        LOGE("bad preview format: %s", preFormat);
+        return BAD_VALUE;
+    }
+
+    // ROTATION, can only be 0 ,90, 180 or 270.
+    int rotation = params->getInt(CameraParameters::KEY_ROTATION);
+    if (rotation != 0 && rotation != 90 && rotation != 180 && rotation != 270) {
+        LOGE("bad rotation value: %d", rotation);
+        return BAD_VALUE;
+    }
+
+
+    // WHITE BALANCE
+    const char* whiteBalance = params->get(CameraParameters::KEY_WHITE_BALANCE);
+    const char* whiteBalances = params->get(CameraParameters::KEY_SUPPORTED_WHITE_BALANCE);
+    if (whiteBalance && whiteBalances && strstr(whiteBalances, whiteBalance) == NULL) {
+        LOGE("bad white balance mode: %s", whiteBalance);
+        return BAD_VALUE;
+    }
+
     // ZOOM
     int zoom = params->getInt(CameraParameters::KEY_ZOOM);
     int maxZoom = params->getInt(CameraParameters::KEY_MAX_ZOOM);
-    if (zoom > maxZoom) {
-        LOGE("bad zoom index");
+    if (zoom > maxZoom || zoom < 0) {
+        LOGE("bad zoom index: %d", zoom);
         return BAD_VALUE;
     }
 
@@ -3328,6 +3394,46 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char* flickerModes = params->get(CameraParameters::KEY_SUPPORTED_ANTIBANDING);
     if (flickerMode && flickerModes && strstr(flickerModes, flickerMode) == NULL) {
         LOGE("bad anti flicker mode");
+        return BAD_VALUE;
+    }
+
+    // COLOR EFFECT
+    const char* colorEffect = params->get(CameraParameters::KEY_EFFECT);
+    const char* colorEffects = params->get(CameraParameters::KEY_SUPPORTED_EFFECTS);
+    if (colorEffect && colorEffects && strstr(colorEffects, colorEffect) == NULL) {
+        LOGE("bad color effect: %s", colorEffect);
+        return BAD_VALUE;
+    }
+
+    // EXPOSURE COMPENSATION
+    int exposure = params->getInt(CameraParameters::KEY_EXPOSURE_COMPENSATION);
+    int minExposure = params->getInt(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION);
+    int maxExposure = params->getInt(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION);
+    if (exposure > maxExposure || exposure < minExposure) {
+        LOGE("bad exposure compensation value: %d", exposure);
+        return BAD_VALUE;
+    }
+
+    //Note: here for Intel expand parameters, add additional validity check
+    //for their supported list. when they're null, we return bad value for
+    //these intel parameters setting. As "noise reduction and edge enhancement"
+    //and "multi access color correction" are not supported yet.
+
+    // NOISE_REDUCTION_AND_EDGE_ENHANCEMENT
+    const char* noiseReductionAndEdgeEnhancement = params->get(IntelCameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
+    const char* noiseReductionAndEdgeEnhancements = params->get(IntelCameraParameters::KEY_SUPPORTED_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
+    if (noiseReductionAndEdgeEnhancement && ((noiseReductionAndEdgeEnhancements &&
+        strstr(noiseReductionAndEdgeEnhancements,noiseReductionAndEdgeEnhancement) == NULL) || !noiseReductionAndEdgeEnhancements)) {
+        LOGE("bad noise reduction and edge enhancement value : %s", noiseReductionAndEdgeEnhancement);
+        return BAD_VALUE;
+    }
+
+    // MULTI_ACCESS_COLOR_CORRECTION
+    const char* multiAccessColorCorrection = params->get(IntelCameraParameters::KEY_MULTI_ACCESS_COLOR_CORRECTION);
+    const char* multiAccessColorCorrections = params->get(IntelCameraParameters::KEY_SUPPORTED_MULTI_ACCESS_COLOR_CORRECTIONS);
+    if (multiAccessColorCorrection && ((multiAccessColorCorrections &&
+        strstr(multiAccessColorCorrections,multiAccessColorCorrection) == NULL) || !multiAccessColorCorrections)) {
+        LOGE("bad multi access color correction value : %s", multiAccessColorCorrection);
         return BAD_VALUE;
     }
 

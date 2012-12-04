@@ -79,10 +79,6 @@ public:
         pcam->maxSnapshotWidth = RESOLUTION_720P_WIDTH;
         pcam->maxSnapshotHeight = RESOLUTION_720P_HEIGHT;
         pcam->supportedBurstLength = "";
-        pcam->maxEV = "";
-        pcam->minEV = "";
-        pcam->stepEV = "";
-        pcam->defaultEV = "";
         strcpy(pcam->supportedSceneModes,"");
         strcpy(pcam->supportedFlashModes,"");
         strcpy(pcam->supportedEffectModes,"");
