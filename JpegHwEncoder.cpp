@@ -723,6 +723,9 @@ int JpegHwEncoder::restoreContext()
                            VA_PROGRESSIVE, va->mSurfaceIds, mVaInputSurfacesNum, &va->mContextId);
     CHECK_STATUS(status, "vaCreateContext", __LINE__)
 
+    /* clear possible leftover from previous reset */
+    va->mBuff2SurfId.clear();
+
     /* Create mapping vector from buffer address to surface id */
     for (int i = 0 ; i < mVaInputSurfacesNum; i++) {
       va->mBuff2SurfId.add(mBuffers[i], va->mSurfaceIds[i]);
