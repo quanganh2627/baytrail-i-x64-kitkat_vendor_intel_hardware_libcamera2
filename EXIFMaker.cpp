@@ -328,7 +328,7 @@ void EXIFMaker::initialize(const CameraParameters &params)
     LOG1("EXIF: rotation value:%d degrees, orientation value:%d",
             rotation, exifAttributes.orientation);
 
-    exifAttributes.zoom_ratio.num = (params.getInt(CameraParameters::KEY_ZOOM) + 10) / 10;
+    exifAttributes.zoom_ratio.num = (params.getInt(CameraParameters::KEY_ZOOM) + 10);
     exifAttributes.zoom_ratio.den = 10;
     LOG1("EXIF: zoom=%u/%u", exifAttributes.zoom_ratio.num, exifAttributes.zoom_ratio.den);
 
