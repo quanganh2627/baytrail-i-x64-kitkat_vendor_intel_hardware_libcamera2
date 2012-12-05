@@ -281,6 +281,7 @@ status_t AtomCP::composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& ou
 
 status_t AtomCP::initializeHDR(unsigned width, unsigned height)
 {
+    LOG1("@%s, size=%ux%u", __FUNCTION__, width, height);
     ia_err ia_err;
 
     if (mISP->getLastDevice() == 3) {

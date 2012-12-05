@@ -2811,10 +2811,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             // Smart Shutter Capture
             status = processParamSmartShutter(oldParams, newParams);
         }
-        if (status == NO_ERROR) {
-            // hdr
-            status = processParamHDR(oldParams, newParams);
-        }
 
         if (status == NO_ERROR) {
             // ae mode
@@ -3281,19 +3277,10 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
 
     if (!newVal.isEmpty()) {
         if(newVal == "on") {
-            status = mCP->initializeHDR(newWidth, newHeight);
-            if (status == NO_ERROR) {
-                mHdr.enabled = true;
-                mHdr.bracketMode = BRACKET_EXPOSURE;
-                mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
-            } else {
-                LOGE("HDR buffer allocation failed");
-            }
+            mHdr.enabled = true;
+            mHdr.bracketMode = BRACKET_EXPOSURE;
+            mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
         } else if(newVal == "off") {
-            status = mCP->uninitializeHDR();
-            if (status != NO_ERROR) {
-                LOGE("HDR buffer release failed");
-            }
             mHdr.enabled = false;
         } else {
             LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_IMAGING, newVal.string());
@@ -3301,21 +3288,6 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         }
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_IMAGING, newVal.string());
-        }
-    } else {
-        // Re-allocate buffers if resolution changed and HDR was ON
-        const char* o = oldParams->get(IntelCameraParameters::KEY_HDR_IMAGING);
-        String8 oldVal (o, (o == NULL ? 0 : strlen(o)));
-        if(oldVal == "on" && (newWidth != oldWidth || newHeight != oldHeight)) {
-            status = mCP->uninitializeHDR();
-            if (status == NO_ERROR) {
-                status = mCP->initializeHDR(newWidth, newHeight);
-                if (status != NO_ERROR) {
-                    LOGE("HDR buffer allocation failed");
-                }
-            } else {
-                LOGE("HDR buffer release failed");
-            }
         }
     }
 
@@ -4196,10 +4168,13 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
         }
     }
 
-    // Burst mode
+    // Burst mode and HDR
     int oldBurstLength = mBurstLength;
     int oldFpsAdaptSkip = mFpsAdaptSkip;
     status = processParamBurst(oldParams, newParams);
+    if (status == NO_ERROR) {
+      status = processParamHDR(oldParams, newParams);
+    }
     if (mBurstLength != oldBurstLength || mFpsAdaptSkip != oldFpsAdaptSkip) {
         LOG1("Burst configuration changed, restarting preview");
         previewFormatChanged = true;
@@ -4758,8 +4733,17 @@ status_t ControlThread::hdrCompose()
      */
     status = mISP->stop();
     if (status != NO_ERROR) {
+        hdrPicMetaData.free();
         LOGE("Error stopping ISP!");
         return status;
+    }
+
+    status = mCP->initializeHDR(mHdr.ciBufOut.ciMainBuf->width,
+                                mHdr.ciBufOut.ciMainBuf->height);
+    if (status != NO_ERROR) {
+        hdrPicMetaData.free();
+        LOGE("HDR buffer allocation failed");
+        return UNKNOWN_ERROR;
     }
 
     bool doEncode = false;
@@ -4781,6 +4765,8 @@ status_t ControlThread::hdrCompose()
 
     if (doEncode == false)
         hdrPicMetaData.free();
+
+    mCP->uninitializeHDR();
 
     return status;
 }
