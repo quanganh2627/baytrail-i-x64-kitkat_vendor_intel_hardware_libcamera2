@@ -1527,6 +1527,9 @@ bool ControlThread::runPreFlashSequence()
     status_t status = NO_ERROR;
     atomisp_frame_status frameStatus = ATOMISP_FRAME_STATUS_OK;
 
+    // hued images fix (BZ: 72908)
+    status = skipPreviewFrames(2, &buff);
+
     // Stage 1
     status = mISP->getPreviewFrame(&buff);
     if (status == NO_ERROR) {
