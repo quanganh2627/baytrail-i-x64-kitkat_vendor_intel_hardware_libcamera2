@@ -43,6 +43,7 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs) :
     ,mForceAwbLock(false)
     ,mSmartSceneMode(0)
     ,mSmartSceneHdr(false)
+    ,mPreviousFaceCount(0)
 {
     LOG1("@%s", __FUNCTION__);
     mFaceState.faces = new ia_face[MAX_FACES_DETECTABLE];
@@ -344,9 +345,15 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
                 PerformanceTraces::Launch2FocusLock::stop();
         }
 
+        // Set face data to 3A only if there were detected faces and avoid unnecessary
+        // setting with consecutive zero face count.
+        if (!(mFaceState.num_faces == 0 && mPreviousFaceCount == 0)) {
+            mAAA->setFaces(mFaceState);
+            mPreviousFaceCount = mFaceState.num_faces;
+        }
+
         // Query the detected scene and notify the application
         if (mAAA->getSmartSceneDetection()) {
-            mAAA->setFaces(mFaceState);
             mAAA->getSmartSceneMode(&sceneMode, &sceneHdr);
 
             if ((sceneMode != mSmartSceneMode) || (sceneHdr != mSmartSceneHdr)) {

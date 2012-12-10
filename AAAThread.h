@@ -175,7 +175,8 @@ private:
     size_t mFramesTillAfComplete; // used for debugging only
     int mSmartSceneMode; // Current detected scene mode, as defined in ia_aiq_types.h
     bool mSmartSceneHdr; // Indicates whether the detected scene is valid for HDR
-    ia_face_state mFaceState; // face metadata for smart scene detection
+    ia_face_state mFaceState; // face metadata for 3A use
+    int mPreviousFaceCount;
 }; // class AAAThread
 
 }; // namespace android
