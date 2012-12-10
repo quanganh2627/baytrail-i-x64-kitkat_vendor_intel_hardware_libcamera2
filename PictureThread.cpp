@@ -116,8 +116,11 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     }
 
     // Start encoding main picture using HW encoder
-    status = startHwEncoding(mainBuf);
-    if(status != NO_ERROR)
+    if (mainBuf->type != ATOM_BUFFER_PANORAMA) {
+        status = startHwEncoding(mainBuf);
+        if(status != NO_ERROR)
+            failback = true;
+    } else
         failback = true;
 
     // Convert and encode the thumbnail, if present and EXIF maker is initialized
