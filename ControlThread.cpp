@@ -879,7 +879,7 @@ status_t ControlThread::initContinuousCapture()
 
     mISP->setSnapshotFrameFormat(width, height, format);
     mISP->setContCaptureNumCaptures(1);
-    mISP->setContCaptureOffset(-1);
+    mISP->setContCaptureOffset(0);
 
     // TODO: check integration with preview-keepalive patch and
     //       whether postview should be configured to a higher resolution
@@ -2453,6 +2453,9 @@ status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
     } else {
        releasePreviewFrame(&msg->buff);
     }
+
+    if (mState == STATE_CONTINUOUS_CAPTURE)
+        mISP->setContCaptureOffset(-1);
 
     if(!mIsPreviewStartComplete) {
         mIsPreviewStartComplete = true;
