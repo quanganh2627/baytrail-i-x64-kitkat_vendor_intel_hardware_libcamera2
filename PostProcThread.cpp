@@ -39,7 +39,6 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     ,mThreadRunning(false)
     ,mFaceDetectionRunning(false)
     ,mFaceRecognitionRunning(false)
-    ,mSmartShutterRunning(false)
     ,mFaceAAAFlags(AAA_FLAG_ALL)
     ,mOldAfMode(CAM_AF_MODE_NOT_SET)
     ,mOldAeMeteringMode(CAM_AE_METERING_MODE_NOT_SET)

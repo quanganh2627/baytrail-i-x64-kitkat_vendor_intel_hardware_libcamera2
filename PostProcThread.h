@@ -209,7 +209,6 @@ private:
     bool mThreadRunning;
     bool mFaceDetectionRunning;
     bool mFaceRecognitionRunning;
-    bool mSmartShutterRunning;
     int mFaceAAAFlags;
     AfMode mOldAfMode;
     MeteringMode mOldAeMeteringMode;
