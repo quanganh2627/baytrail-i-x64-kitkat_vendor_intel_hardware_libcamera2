@@ -164,6 +164,7 @@ private:
         MESSAGE_ID_SCENE_DETECTED,
         MESSAGE_ID_PANORAMA_PICTURE,
         MESSAGE_ID_PANORAMA_CAPTURE_TRIGGER,
+        MESSAGE_ID_PANORAMA_FINALIZE,
         MESSAGE_ID_POST_PROC_CAPTURE_TRIGGER,
 
         // Message for enabling metadata buffer mode
@@ -225,6 +226,11 @@ private:
         bool sceneHdr;
     };
 
+    struct MessagePanoramaFinalize {
+        AtomBuffer buff;
+        AtomBuffer pvBuff;
+    };
+
     // union of all message data
     union MessageData {
 
@@ -259,6 +265,9 @@ private:
 
         // MESSAGE_ID_SCENE_DETECTED
         MessageSceneDetected    sceneDetected;
+
+        // MESSAGE_ID_PANORAMA_FINALIZE
+        MessagePanoramaFinalize   panoramaFinalized;
     };
 
     // message id and message data
@@ -348,6 +357,7 @@ private:
     status_t handleMessageStoreMetaDataInBuffers(MessageStoreMetaDataInBuffers *msg);
     status_t handleMessagePanoramaPicture();
     status_t handleMessagePanoramaCaptureTrigger();
+    status_t handleMessagePanoramaFinalize(MessagePanoramaFinalize *msg);
 
     status_t startFaceDetection();
     status_t stopFaceDetection(bool wait=false);

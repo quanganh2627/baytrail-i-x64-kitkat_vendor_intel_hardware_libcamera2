@@ -774,18 +774,37 @@ void ControlThread::facesDetected(const ia_face_state *faceState)
 
 void ControlThread::panoramaFinalized(AtomBuffer *buff, AtomBuffer *pvBuff)
 {
-    LOG2("@%s", __FUNCTION__);
-    mCallbacksThread->requestTakePicture(false, false);
+    LOG1("panorama Finalized frame buffer data %p, id = %d", buff, buff->id);
+    Message msg;
+    msg.id = MESSAGE_ID_PANORAMA_FINALIZE;
+    msg.data.panoramaFinalized.buff = *buff;
+    if (pvBuff)
+        msg.data.panoramaFinalized.pvBuff = *pvBuff;
+    else
+        msg.data.panoramaFinalized.pvBuff.buff = NULL;
+    mMessageQueue.send(&msg);
+}
+
+status_t ControlThread::handleMessagePanoramaFinalize(MessagePanoramaFinalize *msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = mCallbacksThread->requestTakePicture(false, false);
+
+    if (status != OK)
+        return status;
 
     PictureThread::MetaData picMetaData;
     fillPicMetaData(picMetaData, false);
 
     // Initialize the picture thread with the size of the final stiched image
     CameraParameters tmpParam = mParameters;
-    tmpParam.setPictureSize(buff->width, buff->height);
+    tmpParam.setPictureSize(msg->buff.width, msg->buff.height);
     mPictureThread->initialize(tmpParam);
 
-    mPictureThread->encode(picMetaData, buff, pvBuff);
+    AtomBuffer *pPvBuff = msg->pvBuff.buff ? &(msg->pvBuff) : NULL;
+
+    status = mPictureThread->encode(picMetaData, &(msg->buff), pPvBuff);
+    return status;
 }
 
 void ControlThread::panoramaCaptureTrigger()
@@ -5121,6 +5140,10 @@ status_t ControlThread::waitForAndExecuteMessage()
             if (!mHdr.enabled || !mHdr.saveOrig)
                 mPostProcThread->resetSmartCaptureTrigger();
             break;
+
+        case MESSAGE_ID_PANORAMA_FINALIZE:
+             status = handleMessagePanoramaFinalize(&msg.data.panoramaFinalized);
+             break;
 
         default:
             LOGE("Invalid message");
