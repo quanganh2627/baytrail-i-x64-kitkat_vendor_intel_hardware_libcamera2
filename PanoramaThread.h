@@ -160,6 +160,8 @@ private:
     status_t waitForAndExecuteMessage();
 
     bool isBlurred(int width, int dx, int dy) const;
+    void fullHeightSrcForThumb(AtomBuffer &img, int &srcWidth, int &srcHeight, int &startPixel);
+    void fullWidthSrcForThumb(AtomBuffer &img, int &srcWidth, int &srcHeight, int &skipLinesTop, int &skipLinesBottom);
 
 private:
     ICallbackPanorama *mPanoramaCallback;

@@ -51,7 +51,8 @@ void ImageScaler::downScaleImage(AtomBuffer *src, AtomBuffer *dst)
 void ImageScaler::downScaleImage(void *src, void *dest,
     int dest_w, int dest_h, int dest_stride,
     int src_w, int src_h, int src_stride,
-    int format)
+    int format, int src_skip_lines_top, // number of lines that are skipped from src image start pointer
+    int src_skip_lines_bottom) // number of lines that are skipped after reading src_h (should be set always to reach full image height)
 {
     unsigned char *m_dest = (unsigned char *)dest;
     const unsigned char * m_src = (const unsigned char *)src;
@@ -59,7 +60,8 @@ void ImageScaler::downScaleImage(void *src, void *dest,
         case V4L2_PIX_FMT_NV12: {
            ImageScaler::downScaleAndCropNv12Image(m_dest, m_src,
                 dest_w, dest_h, dest_stride,
-                src_w, src_h, src_stride);
+                src_w, src_h, src_stride,
+                src_skip_lines_top, src_skip_lines_bottom);
             break;
         }
         default: {
@@ -72,24 +74,32 @@ void ImageScaler::downScaleImage(void *src, void *dest,
 // VGA-QCIF begin (Enzo specific)
 void ImageScaler::downScaleAndCropNv12Image(unsigned char *dest, const unsigned char *src,
     const int dest_w, const int dest_h, const int dest_stride,
-    const int src_w, const int src_h, const int src_stride)
+    const int src_w, const int src_h, const int src_stride,
+    const int src_skip_lines_top, // number of lines that are skipped from src image start pointer
+    const int src_skip_lines_bottom) // number of lines that are skipped after reading src_h (should be set always to reach full image height)
 {
-    if (src_w == 800 && src_h == 600
+    if (src_w == 800 && src_h == 600 && src_skip_lines_top == 0 && src_skip_lines_bottom == 0
         && dest_w == RESOLUTION_QVGA_WIDTH && dest_h == RESOLUTION_QVGA_HEIGHT) {
         downScaleNv12ImageFrom800x600ToQvga(dest, src, dest_stride, src_stride);
         return;
     }
     if (src_w == RESOLUTION_VGA_WIDTH && src_h == RESOLUTION_VGA_HEIGHT
+        && src_skip_lines_top == 0 && src_skip_lines_bottom == 0
         && dest_w == RESOLUTION_QVGA_WIDTH && dest_h == RESOLUTION_QVGA_HEIGHT) {
         downScaleAndCropNv12ImageQvga(dest, src, dest_stride, src_stride);
         return;
     }
     if (src_w == RESOLUTION_VGA_WIDTH && src_h == RESOLUTION_VGA_HEIGHT
+        && src_skip_lines_top == 0 && src_skip_lines_bottom == 0
         && dest_w == RESOLUTION_QCIF_WIDTH && dest_h == RESOLUTION_QCIF_WIDTH) {
         downScaleAndCropNv12ImageQcif(dest, src, dest_stride, src_stride);
         return;
     }
     LOG2("@%s", __FUNCTION__);
+
+    // skip lines from top
+    if (src_skip_lines_top > 0)
+        src += src_skip_lines_top * src_stride;
 
     // Correct aspect ratio is defined by destination buffer
     long int aspect_ratio = (dest_w << 16) / dest_h;
@@ -110,7 +120,7 @@ void ImageScaler::downScaleAndCropNv12Image(unsigned char *dest, const unsigned 
     int i, j, x1, y1, x2, y2;
     unsigned int val_1, val_2;
     int dx, dy;
-    int src_Y_data = src_stride * src_h;
+    int src_Y_data = src_stride * (src_h + src_skip_lines_bottom + (src_skip_lines_top >> 1));
     int dest_Y_data = dest_stride * dest_h;
     int flag, width, height;
     if (0 == dest_w || 0 == dest_h) {

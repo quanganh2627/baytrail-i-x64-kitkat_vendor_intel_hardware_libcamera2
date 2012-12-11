@@ -291,6 +291,33 @@ void PanoramaThread::finalize(void)
     mMessageQueue.send(&msg);
 }
 
+/**
+ * fullHeightSrcForThumb sets srcWidth, srcHeight and startPixel such that the panorama thumbnail will be
+ * created by using the full source image height. Width which is used from src image is calculated according
+ * to the thumbnail aspect ratio, and centered to the src image with the startPixel. The srcWidth is also made
+ * dividable by four so that the scaler works.
+ */
+void PanoramaThread::fullHeightSrcForThumb(AtomBuffer &img, int &srcWidth, int &srcHeight, int &startPixel)
+{
+    startPixel = img.width / 2 - mThumbnailWidth / 2;
+    srcHeight = img.height;
+    srcWidth = img.height * mThumbnailWidth / mThumbnailHeight;
+    srcWidth = (srcWidth + 2) & ~0x3; // hack for scaler
+}
+
+/**
+ * fullWidthSrcForThumb sets srcWidth, srcHeight, skipLinesTop and skipLinesBottom such that the panorama
+ * thumbnail will be created by using the full source image width. Height which is used from src image is calculated
+ * according to the thumbnail aspect ratio, and centered to the src image with the skipLinesTop and skipLinesBottom.
+ */
+void PanoramaThread::fullWidthSrcForThumb(AtomBuffer &img, int &srcWidth, int &srcHeight, int &skipLinesTop, int &skipLinesBottom)
+{
+    srcWidth = img.width;
+    srcHeight = img.width * mThumbnailHeight / mThumbnailWidth;
+    skipLinesTop = img.height / 2 - srcHeight / 2;
+    skipLinesBottom = img.height - srcHeight - skipLinesTop;
+}
+
 status_t PanoramaThread::handleMessageFinalize()
 {
     LOG1("@%s", __FUNCTION__);
@@ -346,17 +373,29 @@ status_t PanoramaThread::handleMessageFinalize()
             return NO_MEMORY;
         }
 
-        int thumbWidth = img.height * 4 / 3;
-        if (thumbWidth > img.width)
-            thumbWidth = img.width;
+        float thumbRatio = (float) mThumbnailWidth / mThumbnailHeight;
+        float imgRatio = (float) img.width / img.height;
+        int startPixel = 0; // used to skip startPixel amount of left side of image
+        int skipLinesTop = 0; // used to skip top of the image
+        int skipLinesBottom = 0; // used to skip bottom of the image
+        int srcWidth, srcHeight;
 
-        // center the thumbnail
-        int startPixel = img.width / 2 - thumbWidth / 2;
-        if (startPixel < 0)
-            startPixel = 0;
+        if (imgRatio > thumbRatio) {
+            fullHeightSrcForThumb(img, srcWidth, srcHeight, startPixel);
+        } else if (1 / imgRatio > thumbRatio) {
+            fullWidthSrcForThumb(img, srcWidth, srcHeight, skipLinesTop, skipLinesBottom);
+        } else {
+            // image is rather square, choose method based on which thumbnail dimension is bigger
+            if (mThumbnailWidth > mThumbnailHeight) {
+                fullWidthSrcForThumb(img, srcWidth, srcHeight, skipLinesTop, skipLinesBottom);
+            } else {
+                fullHeightSrcForThumb(img, srcWidth, srcHeight, startPixel);
+            }
+        }
 
         ImageScaler::downScaleImage(((char *)img.buff->data) + startPixel, pvImg.buff->data, mThumbnailWidth,
-                mThumbnailHeight, mThumbnailWidth, thumbWidth, img.height, img.stride, V4L2_PIX_FMT_NV12);
+                mThumbnailHeight, mThumbnailWidth, srcWidth, srcHeight, img.stride, V4L2_PIX_FMT_NV12,
+                skipLinesTop, skipLinesBottom);
 
         mPanoramaCallback->panoramaFinalized(&img, &pvImg);
     } else
