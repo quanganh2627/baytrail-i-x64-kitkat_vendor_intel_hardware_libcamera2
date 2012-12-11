@@ -86,6 +86,48 @@ public:
     status_t requestExitAndWait();
 // private types
 private:
+    class PanoramaStitchThread : public Thread {
+    public:
+        PanoramaStitchThread();
+        ~PanoramaStitchThread() {};
+        status_t requestExitAndWait();
+        status_t flush(); // processes stitches in queue
+        status_t cancel(ia_panorama_state* mContext); // drops stitches in queue without processing, cancels last stitch
+        status_t stitch(ia_panorama_state* mContext, AtomBuffer frame);
+    private:
+        virtual bool threadLoop();
+        status_t waitForAndExecuteMessage();
+
+        enum MessageId {
+            MESSAGE_ID_EXIT = 0, // call requestExitAndWait
+            MESSAGE_ID_STITCH,
+            MESSAGE_ID_FLUSH,
+            MESSAGE_ID_MAX
+        };
+
+        struct MessageStitch {
+            AtomBuffer img;
+            ia_panorama_state* mContext;
+        };
+
+        // union of all message data
+        union MessageData {
+            // MESSAGE_ID_STITCH
+            MessageStitch stitch;
+        };
+
+        // message id and message data
+        struct Message {
+            MessageId id;
+            MessageData data;
+        };
+
+        status_t handleMessageStitch(MessageStitch &stitch);
+        status_t handleExit();
+        status_t handleFlush();
+        MessageQueue<Message, MessageId> mMessageQueue;
+        bool mThreadRunning;
+    };
 
     // thread message id's
     enum MessageId {
@@ -181,7 +223,7 @@ private:
     int mPreviewHeight;
     int mThumbnailWidth;
     int mThumbnailHeight;
-
+    sp<PanoramaStitchThread> mPanoramaStitchThread;
 }; // class Panorama
 
 }; // namespace android

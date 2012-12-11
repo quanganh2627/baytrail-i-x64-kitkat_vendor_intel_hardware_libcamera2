@@ -48,6 +48,7 @@ PanoramaThread::PanoramaThread(ICallbackPanorama *panoramaCallback) :
     ,mPreviewHeight(0)
     ,mThumbnailWidth(0)
     ,mThumbnailHeight(0)
+    ,mPanoramaStitchThread(NULL)
 {
     LOG1("@%s", __FUNCTION__);
     mCurrentMetadata.direction = 0;
@@ -107,6 +108,19 @@ status_t PanoramaThread::handleMessageStartPanorama(void)
         assert(false);
         return NO_MEMORY;
     }
+
+    mPanoramaStitchThread = new PanoramaStitchThread();
+    if (mPanoramaStitchThread == NULL) {
+        mPostviewBuf.buff->release(mPostviewBuf.buff);
+        LOGE("error creating PanoramaThread");
+        assert(false);
+        return NO_MEMORY;
+    }
+
+    status = mPanoramaStitchThread->run();
+    if (status != NO_ERROR) {
+        LOGE("Error starting PanoramaStitchThread!");
+    }
 #endif
     return status;
 }
@@ -136,6 +150,12 @@ status_t PanoramaThread::handleMessageStopPanorama(const MessageStopPanorama &st
         mPostviewBuf.buff->release(mPostviewBuf.buff);
         mPostviewBuf.buff = NULL;
     }
+
+    if (mPanoramaStitchThread != NULL) {
+        mPanoramaStitchThread->requestExitAndWait();
+        mPanoramaStitchThread.clear();
+    }
+
     mState = PANORAMA_STOPPED;
     if (stop.synchronous)
         mMessageQueue.reply(MESSAGE_ID_STOP_PANORAMA, status);
@@ -210,27 +230,12 @@ bool PanoramaThread::isBlurred(int width, int dx, int dy) const
 bool PanoramaThread::detectOverlap(ia_frame *frame)
 {
     LOG2("@%s", __FUNCTION__);
-    bool overlap = false;
 #ifdef ENABLE_INTEL_EXTRAS
     if (mPanoramaTotalCount < mPanoramaMaxSnapshotCount) {
         frame->format = ia_frame_format_nv12;
-        ia_err err = ia_panorama_detect_overlap(mContext, frame);
+        int ret = ia_panorama_detect_overlap(mContext, frame);
         LOG2("@%s: direction: %d, H-displacement: %d, V-displacement: %d", __FUNCTION__,
             mContext->direction, mContext->horizontal_displacement, mContext->vertical_displacement);
-
-        if (err != ia_err_none) {
-            LOGE("ia_panorama_detect_overlap failed, error = %d", err);
-            return false;
-        }
-
-        int x = 0.65f * frame->width; // target horizontal displacement
-        int y = 0.65f * frame->height; // target vertical displacement
-        int dx = 0.15f * frame->width; // delta from target h_displacement to a maximum allowed h_displacement
-        int dy = 0.15f * frame->height; // delta from target v_displacement to a maximum allowed v_displacement
-        int displacementX = abs(mContext->horizontal_displacement);
-        int displacementY = abs(mContext->vertical_displacement);
-
-        mCurrentMetadata.direction = mContext->direction;
 
         // calculate motion blur (based on movement compared to previous displacement)
         int dxPrev = mContext->horizontal_displacement - mCurrentMetadata.horizontal_displacement;
@@ -239,23 +244,17 @@ bool PanoramaThread::detectOverlap(ia_frame *frame)
         // store values, do displacement callback
         mCurrentMetadata.horizontal_displacement = mContext->horizontal_displacement;
         mCurrentMetadata.vertical_displacement = mContext->vertical_displacement;
+        mCurrentMetadata.direction = mContext->direction;
         mCurrentMetadata.finalization_started = false;
         mCallbacksThread->panoramaDisplUpdate(mCurrentMetadata);
 
-        // capture triggering, after first capture, if not blurred, and with proper displacement (based on decided direction)
-        if (mPanoramaTotalCount > 0 && !mCurrentMetadata.motion_blur) {
-            if (displacementX > x && displacementX < x + dx &&
-                (mContext->direction == 1 || mContext->direction == 2)) {
-                return true;
-            }
-            if(displacementY > y && displacementY < y + dy &&
-                (mContext->direction == 3 || mContext->direction == 4)) {
-                return true;
-            }
+        // capture triggering, after first capture, if panorama engine so suggests
+        if (mPanoramaTotalCount > 0 && ret) {
+            return true;
         }
     }
 #endif
-    return overlap;
+    return false;
 }
 
 status_t PanoramaThread::stitch(AtomBuffer *img, AtomBuffer *pv)
@@ -278,7 +277,7 @@ status_t PanoramaThread::cancelStitch()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 #ifdef ENABLE_INTEL_EXTRAS
-    ia_panorama_cancel_stitching(mContext);
+    mPanoramaStitchThread->cancel(mContext);
 #endif
     return status;
 }
@@ -325,6 +324,8 @@ status_t PanoramaThread::handleMessageFinalize()
 #ifdef ENABLE_INTEL_EXTRAS
     if (mState == PANORAMA_DETECTING_OVERLAP || mState == PANORAMA_WAITING_FOR_SNAPSHOT)
         handleMessageStopPanoramaCapture(); // drops state to PANORAMA_STARTED
+
+    mPanoramaStitchThread->flush();
 
     ia_frame *pFrame = ia_panorama_finalize(mContext);
     if (!pFrame) {
@@ -484,30 +485,14 @@ status_t PanoramaThread::handleStitch(const MessageStitch &stitch)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 #ifdef ENABLE_INTEL_EXTRAS
-    ia_frame iaFrame;
-    iaFrame.data = stitch.img.buff->data;
-    iaFrame.size = stitch.img.size;
-    iaFrame.width = stitch.img.width;
-    iaFrame.height = stitch.img.height;
-    iaFrame.stride = stitch.img.stride;
-    iaFrame.format = ia_frame_format_nv12;
+    int ret = mPanoramaStitchThread->stitch(mContext, stitch.img);
 
-    if (iaFrame.stride == 0) {
-        LOGW("panorama stitch hack - snapshot frame stride zero, replacing with width %d", iaFrame.width);
-        iaFrame.stride = iaFrame.width;
+    if (ret < 0) {
+        LOGE("ia_panorama_stitch failed, error = %d", ret);
+        return UNKNOWN_ERROR;
     }
-    assert(stitch.pv.size <= frameSize(V4L2_PIX_FMT_NV12, PANORAMA_MAX_LIVE_PREV_WIDTH, PANORAMA_MAX_LIVE_PREV_HEIGHT));
 
     mPanoramaTotalCount++;
-    ia_err err = ia_panorama_stitch(mContext, &iaFrame);
-
-    if (err != ia_err_none) {
-        LOGE("ia_panorama_stitch failed, error = %d", err);
-        status = UNKNOWN_ERROR;
-
-        // TODO fixme we need to fall through, since current panorama lib does not provide valid return values
-        status = OK;
-    }
 
     // convert displacement to reflect PV image size
     camera_panorama_metadata metadata = mCurrentMetadata;
@@ -548,6 +533,171 @@ bool PanoramaThread::threadLoop()
         waitForAndExecuteMessage();
 
     return false;
+}
+
+PanoramaThread::PanoramaStitchThread::PanoramaStitchThread() :
+     mMessageQueue("PanoramaStitch", (int) MESSAGE_ID_MAX)
+{
+    LOG1("@%s", __FUNCTION__);
+}
+
+bool PanoramaThread::PanoramaStitchThread::threadLoop()
+{
+    LOG2("@%s", __FUNCTION__);
+    mThreadRunning = true;
+    while(mThreadRunning)
+        waitForAndExecuteMessage();
+
+    return false;
+}
+
+status_t PanoramaThread::PanoramaStitchThread::flush()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_FLUSH;
+    return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
+}
+
+status_t PanoramaThread::PanoramaStitchThread::cancel(ia_panorama_state* mContext)
+{
+    LOG1("@%s", __FUNCTION__);
+    Vector<Message> stitches;
+    // remove messages from queue
+    mMessageQueue.remove(MESSAGE_ID_STITCH, &stitches);
+
+    // release memory in messages
+    Vector<Message>::iterator it;
+    for (it = stitches.begin(); it != stitches.end(); ++it) {
+       camera_memory_t* b = it->data.stitch.img.buff;
+       b->release(b);
+    }
+
+    // cancel last stitch
+    ia_panorama_cancel_stitching(mContext);
+
+    // flush (releases memory from last stitch, too)
+    return flush();
+}
+
+status_t PanoramaThread::PanoramaStitchThread::requestExitAndWait()
+{
+    LOG2("@%s", __FUNCTION__);
+
+    Message msg;
+    msg.id = MESSAGE_ID_EXIT;
+    // tell thread to exit
+    // send message asynchronously
+    mMessageQueue.send(&msg);
+
+    // propagate call to base class
+    return Thread::requestExitAndWait();
+}
+status_t PanoramaThread::PanoramaStitchThread::stitch(ia_panorama_state* mContext, AtomBuffer frame)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    AtomBuffer copy = frame;
+    size_t size = frameSize(V4L2_PIX_FMT_NV12, frame.width, frame.height);
+
+    int retryTimeMillis = 5000;
+    int retrySleepMillis = 50;
+
+    do {
+        Callbacks::getInstance()->allocateMemory(&copy, size);
+        if (!copy.buff) {
+            LOGW("Failed to allocate panorama snapshot memory, sleeping %d milliseconds and retrying!", retrySleepMillis);
+            usleep(1000 * retrySleepMillis);
+            retryTimeMillis -= retrySleepMillis;
+        }
+    } while (!copy.buff && retryTimeMillis);
+
+    if (!copy.buff) {
+        // could not allocate at all
+        LOGE("Failed to allocate panorama snapshot memory - aborting!");
+        // since capturing and stitching is done without user interaction,
+        // and the device is unable to release resources, it is time to give up
+        abort();
+    }
+
+    memcpy(copy.buff->data, frame.buff->data, size);
+
+    Message msg;
+    msg.id = MESSAGE_ID_STITCH;
+    msg.data.stitch.img = copy;
+    msg.data.stitch.mContext = mContext;
+    mMessageQueue.send(&msg);
+    return OK;
+}
+
+status_t PanoramaThread::PanoramaStitchThread::handleMessageStitch(MessageStitch &stitch)
+{
+    LOG1("@%s", __FUNCTION__);
+    ia_frame iaFrame;
+    iaFrame.data = stitch.img.buff->data;
+    iaFrame.size = stitch.img.size;
+    iaFrame.width = stitch.img.width;
+    iaFrame.height = stitch.img.height;
+    iaFrame.stride = stitch.img.stride;
+    iaFrame.format = ia_frame_format_nv12;
+
+    if (iaFrame.stride == 0) {
+        LOGW("panorama stitch hack - snapshot frame stride zero, replacing with width %d", iaFrame.width);
+        iaFrame.stride = iaFrame.width;
+    }
+
+    int ret = ia_panorama_stitch(stitch.mContext, &iaFrame);
+    stitch.img.buff->release(stitch.img.buff);
+
+    if (ret >= 0)
+        return OK;
+    else
+        return ret;
+}
+
+status_t PanoramaThread::PanoramaStitchThread::handleExit()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mThreadRunning = false;
+    return status;
+}
+
+status_t PanoramaThread::PanoramaStitchThread::handleFlush()
+{
+    LOG1("@%s", __FUNCTION__);
+    // this intentionally does nothing. When this returns, all previously queued stitches are done.
+    mMessageQueue.reply(MESSAGE_ID_FLUSH, OK);
+    return OK;
+}
+
+
+status_t PanoramaThread::PanoramaStitchThread::waitForAndExecuteMessage()
+{
+    LOG2("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    Message msg;
+    mMessageQueue.receive(&msg);
+
+    switch (msg.id)
+    {
+        case MESSAGE_ID_STITCH:
+            status = handleMessageStitch(msg.data.stitch);
+            break;
+        case MESSAGE_ID_EXIT:
+            status = handleExit();
+            break;
+        case MESSAGE_ID_FLUSH:
+            status = handleFlush();
+            break;
+        default:
+            status = INVALID_OPERATION;
+            break;
+    }
+    if (status != NO_ERROR) {
+        LOGE("operation failed, ID = %d, status = %d", msg.id, status);
+    }
+    return status;
 }
 
 status_t PanoramaThread::waitForAndExecuteMessage()
