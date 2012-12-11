@@ -722,7 +722,7 @@ status_t ControlThread::cancelPicture()
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_CANCEL_PICTURE;
-    return mMessageQueue.send(&msg);
+    return mMessageQueue.send(&msg, MESSAGE_ID_CANCEL_PICTURE);
 }
 
 status_t ControlThread::autoFocus()
@@ -2504,8 +2504,10 @@ status_t ControlThread::handleMessageCancelPicture()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    // TODO: implement
+    mBurstLength = 0;
+    mPictureThread->flushBuffers();
 
+    mMessageQueue.reply(MESSAGE_ID_CANCEL_PICTURE, status);
     return status;
 }
 
