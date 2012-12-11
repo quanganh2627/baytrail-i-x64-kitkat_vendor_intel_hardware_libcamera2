@@ -892,10 +892,30 @@ void ControlThread::postProcCaptureTrigger()
 
 status_t ControlThread::handleMessageExit()
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s state = %d", __FUNCTION__, mState);
+    status_t status;
     mThreadRunning = false;
 
-    // TODO: any other cleanup that may need to be done
+    switch (mState) {
+    case STATE_CAPTURE:
+        status = stopCapture();
+        break;
+    case STATE_PREVIEW_STILL:
+    case STATE_PREVIEW_VIDEO:
+    case STATE_CONTINUOUS_CAPTURE:
+        handleMessageStopPreview();
+        break;
+    case STATE_RECORDING:
+        handleMessageStopRecording();
+        break;
+    case STATE_PREVIEW_NO_WINDOW:
+    case STATE_STOPPED:
+        // do nothing
+        break;
+    default:
+        LOGW("Exiting in an invalid state, this should not happen!!!");
+        break;
+    }
 
     return NO_ERROR;
 }
