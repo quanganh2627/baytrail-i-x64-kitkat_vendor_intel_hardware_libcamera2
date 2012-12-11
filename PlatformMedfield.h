@@ -180,4 +180,30 @@ public:
     }
 };
 
+/**
+ * Platform data for Salitpa
+ */
+class PlatformSalitpa : public PlatformRedridge {
+
+public:
+    PlatformSalitpa(void) {
+
+        mCameras.editItemAt(0).orientation = 0;
+        mCameras.editItemAt(0).sensorType = SENSOR_TYPE_SOC;
+        mCameras.editItemAt(0).dvs = false;
+        mCameras.editItemAt(0).maxSnapshotWidth = RESOLUTION_5MP_WIDTH;
+        mCameras.editItemAt(0).maxSnapshotHeight = RESOLUTION_5MP_HEIGHT;
+        mCameras.editItemAt(0).flipping = PlatformData::SENSOR_FLIP_NA;
+        mCameras.editItemAt(0).supportedPreviewSize = "1024x576,720x480,640x480,640x360,416x312,352x288,320x240,176x144";
+
+        mCameras.editItemAt(1).orientation = 0;
+        mCameras.editItemAt(1).sensorType = SENSOR_TYPE_SOC;
+        mCameras.editItemAt(1).maxSnapshotWidth = RESOLUTION_1_3MP_WIDTH;
+        mCameras.editItemAt(1).maxSnapshotHeight = RESOLUTION_1_3MP_HEIGHT;
+        mCameras.editItemAt(1).flipping = PlatformData::SENSOR_FLIP_NA;
+
+        mCameras.editItemAt(2).sensorType = SENSOR_TYPE_SOC;
+    }
+};
+
 }; // namespace android

@@ -134,6 +134,9 @@ PlatformBase* PlatformData::getInstance(void)
 #elif   YUKKA
         mInstance = new PlatformYukka();
 
+#elif   SALITPA
+        mInstance = new PlatformSalitpa();
+
 #else   // take defaults from MFLD_PR2 for all others now
         mInstance = new PlatformBlackbay();
 
