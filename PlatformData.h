@@ -25,8 +25,10 @@
 #define RESOLUTION_8MP_HEIGHT   2448
 #define RESOLUTION_5MP_WIDTH    2560
 #define RESOLUTION_5MP_HEIGHT   1920
-#define RESOLUTION_1_3MP_WIDTH    1280
-#define RESOLUTION_1_3MP_HEIGHT   960
+#define RESOLUTION_3MP_WIDTH    2048
+#define RESOLUTION_3MP_HEIGHT   1536
+#define RESOLUTION_1_3MP_WIDTH  1280
+#define RESOLUTION_1_3MP_HEIGHT 960
 #define RESOLUTION_1080P_WIDTH  1920
 #define RESOLUTION_1080P_HEIGHT 1080
 #define RESOLUTION_720P_WIDTH   1280
@@ -40,6 +42,7 @@
 
 #include <camera.h>
 #include "AtomCommon.h"
+#include <IntelParameters.h>
 
 namespace android {
 
@@ -87,22 +90,186 @@ class PlatformBase {
     friend class PlatformData;
 
 public:
-    PlatformBase() : mPanoramaMaxSnapshotCount(10) {}; // defaults
+    PlatformBase() {    //default
+        mPanoramaMaxSnapshotCount = 10;
+        mSupportedVideoSizes = "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1080";
+   };
 
  protected:
 
     /**
      * Camera feature info that is specific to camera id
      */
+
     class CameraInfo {
     public:
-       int facing;
-       int orientation;
-       int flipping;
-       bool dvs;
-       int maxSnapshotWidth;
-       int maxSnapshotHeight;
-       bool mPreviewViaOverlay;
+        CameraInfo() {
+            sensorType = SENSOR_TYPE_RAW;
+            facing = CAMERA_FACING_BACK;
+            orientation = 90;
+            // no flipping default.
+            dvs = true;
+            maxSnapshotWidth = RESOLUTION_8MP_WIDTH;
+            maxSnapshotHeight = RESOLUTION_8MP_HEIGHT;
+            mPreviewViaOverlay = false;
+            //burst
+            maxBurstFPS = 15;
+            supportedBurstFPS = "1,3,5,7,15";
+            supportedBurstLength = "1,3,5,10";
+            defaultBurstLength = "10";
+            //EV
+            maxEV = "2";
+            minEV = "-2";
+            stepEV = "0.33333333";
+            defaultEV = "0";
+            //Saturation
+            maxSaturation = "";
+            minSaturation = "";
+            stepSaturation = "";
+            defaultSaturation = "";
+            //Contrast
+            maxContrast = "";
+            minContrast = "";
+            stepContrast = "";
+            defaultContrast = "";
+            //Sharpness
+            maxSharpness = "";
+            minSharpness = "";
+            stepSharpness = "";
+            defaultSharpness = "";
+            //FlashMode
+            snprintf(supportedFlashModes
+                ,sizeof(supportedFlashModes)
+                ,"%s,%s,%s,%s"
+                ,CameraParameters::FLASH_MODE_AUTO
+                ,CameraParameters::FLASH_MODE_OFF
+                ,CameraParameters::FLASH_MODE_ON
+                ,CameraParameters::FLASH_MODE_TORCH);
+            snprintf(defaultFlashMode
+                ,sizeof(defaultFlashMode)
+                ,"%s", CameraParameters::FLASH_MODE_OFF);
+            //Iso
+            supportedIso = "auto,iso-100,iso-200,iso400,iso-800";
+            defaultIso = "iso-200";
+            //sceneMode
+            snprintf(supportedSceneModes
+                ,sizeof(supportedSceneModes)
+                ,"%s,%s,%s,%s,%s,%s,%s"
+                ,CameraParameters::SCENE_MODE_AUTO
+                ,CameraParameters::SCENE_MODE_PORTRAIT
+                ,CameraParameters::SCENE_MODE_SPORTS
+                ,CameraParameters::SCENE_MODE_LANDSCAPE
+                ,CameraParameters::SCENE_MODE_NIGHT
+                ,CameraParameters::SCENE_MODE_FIREWORKS
+                ,CameraParameters::SCENE_MODE_BARCODE);
+
+            snprintf(defaultSceneMode
+                ,sizeof(defaultSceneMode)
+                ,"%s", CameraParameters::SCENE_MODE_AUTO);
+            //effectMode
+            snprintf(supportedEffectModes
+                ,sizeof(supportedIntelEffectModes)
+                ,"%s,%s,%s,%s"
+                ,CameraParameters::EFFECT_NONE
+                ,CameraParameters::EFFECT_MONO
+                ,CameraParameters::EFFECT_NEGATIVE
+                ,CameraParameters::EFFECT_SEPIA);
+
+            snprintf(supportedIntelEffectModes
+                ,sizeof(supportedIntelEffectModes)
+                ,"%s,%s,%s,%s,%s,%s,%s,%s,%s,%s"
+                ,CameraParameters::EFFECT_NONE
+                ,CameraParameters::EFFECT_MONO
+                ,CameraParameters::EFFECT_NEGATIVE
+                ,CameraParameters::EFFECT_SEPIA
+                ,IntelCameraParameters::EFFECT_VIVID
+                ,IntelCameraParameters::EFFECT_STILL_SKY_BLUE
+                ,IntelCameraParameters::EFFECT_STILL_GRASS_GREEN
+                ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_LOW
+                ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_MEDIUM
+                ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_HIGH);
+            snprintf(defaultEffectMode
+                ,sizeof(defaultEffectMode)
+                ,"%s", CameraParameters::EFFECT_NONE);
+            //awbmode
+            snprintf(supportedAwbModes, sizeof(supportedAwbModes)
+                ,"%s,%s,%s,%s,%s"
+                ,CameraParameters::WHITE_BALANCE_AUTO
+                ,CameraParameters::WHITE_BALANCE_INCANDESCENT
+                ,CameraParameters::WHITE_BALANCE_FLUORESCENT
+                ,CameraParameters::WHITE_BALANCE_DAYLIGHT
+                ,CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT);
+            snprintf(defaultAwbMode
+                ,sizeof(defaultAwbMode)
+                ,"%s", CameraParameters::WHITE_BALANCE_AUTO);
+            //ae metering
+            supportedAeMetering = "auto,center,spot";
+            defaultAeMetering = "auto";
+            //preview
+            supportedPreviewFrameRate = "30,15,10";
+            supportedPreviewFPSRange = "(10500,30304),(11000,30304),(11500,30304)";
+            defaultPreviewFPSRange = "10500,30304";
+            supportedPreviewSize = "1024x576,800x600,720x480,640x480,640x360,416x312,352x288,320x240,176x144";
+        };
+
+        SensorType sensorType;
+        int facing;
+        int orientation;
+        int flipping;
+        bool dvs;
+        int maxSnapshotWidth;
+        int maxSnapshotHeight;
+        bool mPreviewViaOverlay;
+        // burst
+        int maxBurstFPS;
+        const char* supportedBurstFPS;
+        const char* supportedBurstLength;
+        const char* defaultBurstLength;
+        // exposure
+        const char* maxEV;
+        const char* minEV;
+        const char* stepEV;
+        const char* defaultEV;
+        // AE metering
+        const char* supportedAeMetering;
+        const char* defaultAeMetering;
+        // saturation
+        const char* maxSaturation;
+        const char* minSaturation;
+        const char* stepSaturation;
+        const char* defaultSaturation;
+        // contrast
+        const char* maxContrast;
+        const char* minContrast;
+        const char* stepContrast;
+        const char* defaultContrast;
+        // sharpness
+        const char* maxSharpness;
+        const char* minSharpness;
+        const char* stepSharpness;
+        const char* defaultSharpness;
+        // flash
+        char supportedFlashModes[100];
+        char defaultFlashMode[50];
+        // iso
+        const char* supportedIso;
+        const char* defaultIso;
+        // scene modes
+        char supportedSceneModes[100];
+        char defaultSceneMode[50];
+        // effect
+        char supportedEffectModes[200];
+        char supportedIntelEffectModes[200];
+        char defaultEffectMode[50];
+        // awb
+        char supportedAwbModes[200];
+        char defaultAwbMode[50];
+        // preview
+        const char* supportedPreviewFrameRate;
+        const char* supportedPreviewFPSRange;
+        const char* defaultPreviewFPSRange;
+        const char* supportedPreviewSize;
+
     };
 
     // note: Android NDK does not yet support C++11 and
@@ -123,6 +290,7 @@ public:
     const char* mSupportedBurstLength;
 
     const char* mVideoPreviewSizePref;
+    const char* mSupportedVideoSizes;
 
     /* For EXIF Metadata */
     const char* mProductName;
@@ -171,6 +339,13 @@ class PlatformData {
      * \return a non-negative integer
      */
     static int numberOfCameras(void);
+
+    /**
+     * Sensor type of camera id
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return SensorType of camera.     */
+    static SensorType sensorType(int cameraId);
 
     /**
      * Facing of camera id
@@ -235,29 +410,22 @@ class PlatformData {
     static bool supportsDVS(int cameraId);
 
     /**
-     * Returns the supported scene modes for the platform
-     * \return Supported scene mode string, or empty string (String8::isEmpty() == true)
-     *  upon error.
-     */
-    static String8 supportedSceneModes();
-
-    /**
      * Returns the supported burst capture's fps list for the platform
      * \return Supported burst capture's fps list string.
      */
-    static const char* supportedBurstFPS(void);
+    static const char* supportedBurstFPS(int CameraId);
 
     /**
      * Returns the supported burst capture's length list for the platform
      * \return Supported burst capture's length list string.
      */
-    static const char* supportedBurstLength(void);
+    static const char* supportedBurstLength(int CameraId);
 
     /**
      * Returns the max burst FPS
      * \return Supported the max burst FPS.
      */
-    static int getMaxBurstFPS(void);
+    static int getMaxBurstFPS(int CameraId);
 
     /**
      * Flipping controls to set for camera id
@@ -266,6 +434,273 @@ class PlatformData {
      * \return int value as defined in PlatformData::SENSOR_FLIP_FLAGS
      */
     static int sensorFlipping(int cameraId);
+
+    /**
+     * Exposure compensation default value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the default value as a string.
+     */
+    static const char* supportedDefaultEV(int cameraId);
+
+    /**
+     * Exposure compensation max value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the max as a string.
+     */
+    static const char* supportedMaxEV(int cameraId);
+
+    /**
+     * Exposure compensation min value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the min as a string.
+     */
+    static const char* supportedMinEV(int cameraId);
+
+    /**
+     * Exposure compensation step value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the step as a string.
+     */
+    static const char* supportedStepEV(int cameraId);
+
+    /**
+     * Ae Metering mode supported value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value supported for ae metering as a string.
+     */
+    static const char* supportedAeMetering(int cameraId);
+
+    /**
+     * Default Ae Metering value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the default ae metering as a string.
+     */
+    static const char* defaultAeMetering(int cameraId);
+
+    /**
+     * Saturation default value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the default saturation as a string.
+     */
+    static const char* supportedDefaultSaturation(int cameraId);
+
+    /**
+     * Saturation max value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the max saturation as a string.
+     */
+    static const char* supportedMaxSaturation(int cameraId);
+
+    /**
+     * Saturation min value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the min saturation as a string.
+     */
+    static const char* supportedMinSaturation(int cameraId);
+
+    /**
+     * Saturation step value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the saturation step as a string.
+     */
+    static const char* supportedStepSaturation(int cameraId);
+
+    /**
+     * Contrast default value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the default contrast as a string.
+     */
+    static const char* supportedDefaultContrast(int cameraId);
+
+    /**
+     * Contrast max value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the max contrast as a string.
+     */
+    static const char* supportedMaxContrast(int cameraId);
+
+    /**
+     * Contrast min value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the min contrast as a string.
+     */
+    static const char* supportedMinContrast(int cameraId);
+
+    /**
+     * Contrast step value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the contrast step as a string.
+     */
+    static const char* supportedStepContrast(int cameraId);
+
+    /**
+     * Sharpness default value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the default sharpness as a string.
+     */
+    static const char* supportedDefaultSharpness(int cameraId);
+
+    /**
+     * Sharpness max value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the max sharpness as a string.
+     */
+    static const char* supportedMaxSharpness(int cameraId);
+
+    /**
+     * Sharpness min value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the min sharpness as a string.
+     */
+    static const char* supportedMinSharpness(int cameraId);
+
+    /**
+     * Sharpness step value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the sharpness step as a string.
+     */
+    static const char* supportedStepSharpness(int cameraId);
+
+    /**
+     * Flash mode supported value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the flash supported as a string.
+     */
+    static const char* supportedFlashModes(int cameraId);
+
+    /**
+     * Flash mode default value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the flash default value as a string.
+     */
+    static const char* defaultFlashMode(int cameraId);
+
+    /**
+     * Iso mode supported value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the flash supported as a string.
+     */
+    static const char* supportedIso(int cameraId);
+
+    /**
+     * Iso default value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the iso default value as a string.
+     */
+    static const char* defaultIso(int cameraId);
+
+    /**
+     * Returns the supported scene modes for the platform
+     * \return Supported scene mode string, or empty string
+     *  upon error.
+     */
+    static const char* supportedSceneModes(int cameraId);
+
+    /**
+     * scene mode default value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the scene mode default value as a string.
+     */
+    static const char* defaultSceneMode(int cameraId);
+
+    /**
+     * Returns the supported effect modes for the platform
+     * \return Supported effect mode string, or empty string
+     *  upon error.
+     */
+    static const char* supportedEffectModes(int cameraId);
+
+    /**
+     * Returns the supported Intel specific effect modes for the platform
+     * \return Supported effect mode string, or empty string
+     *  upon error.
+     */
+    static const char* supportedIntelEffectModes(int cameraId);
+
+    /**
+     * effect mode default value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the effect mode default value as a string.
+     */
+    static const char* defaultEffectMode(int cameraId);
+
+    /**
+     * Returns the supported awb modes for the platform
+     * \return Supported awb mode string, or empty string
+     *  upon error.
+     */
+    static const char* supportedAwbModes(int cameraId);
+
+    /**
+     * awb mode default value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the awb mode default value as a string.
+     */
+    static const char* defaultAwbMode(int cameraId);
+
+    /**
+     * preview frame rate supported value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value supported for preview frame rate.
+     */
+    static const char* supportedPreviewFrameRate(int cameraId);
+
+    /**
+     * preview fps range supported value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value supported for preview fps range.
+     */
+    static const char* supportedPreviewFPSRange(int cameraId);
+
+    /**
+     * Default preview FPS range
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the default preview fps range as a string.
+     */
+    static const char* defaultPreviewFPSRange(int cameraId);
+
+    /**
+     * supported preview sizes
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the supported preview sizes as a string.
+     */
+    static const char* supportedPreviewSize(int cameraId);
+
+    /**
+     * supported video sizes
+     *
+     * \return the value of the supported video sizes as a string.
+     */
+    static const char* supportedVideoSizes(void);
 
     /**
      * Returns the name of the product

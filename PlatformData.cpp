@@ -111,7 +111,6 @@ PlatformBase* PlatformData::getInstance(void)
 #elif   CLVT
         mInstance = new PlatformCtpRedhookBay();
 
-
 #elif   DMERR_VV
         mInstance = new PlatformSaltBay();
 
@@ -123,6 +122,16 @@ PlatformBase* PlatformData::getInstance(void)
     }
 
     return mInstance;
+}
+
+SensorType PlatformData::sensorType(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return SENSOR_TYPE_NONE;
+    }
+    return i->mCameras[cameraId].sensorType;
 }
 
 int PlatformData::cameraFacing(int cameraId)
@@ -155,7 +164,6 @@ int PlatformData::sensorFlipping(int cameraId)
     return i->mCameras[cameraId].flipping;
 }
 
-
 int PlatformData::numberOfCameras(void)
 {
     PlatformBase *i = getInstance();
@@ -167,6 +175,12 @@ const char* PlatformData::preferredPreviewSizeForVideo(void)
 {
     PlatformBase *i = getInstance();
     return i->mVideoPreviewSizePref;
+}
+
+const char* PlatformData::supportedVideoSizes(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mSupportedVideoSizes;
 }
 
 void PlatformData::maxSnapshotSize(int cameraId, int* width, int* height)
@@ -220,65 +234,397 @@ bool PlatformData::supportsDVS(int cameraId)
     return i->mCameras[cameraId].dvs;
 }
 
-String8 PlatformData::supportedSceneModes()
+const char* PlatformData::supportedBurstFPS(int cameraId)
+{
+    PlatformBase *i = getInstance();
+
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return NULL;
+    }
+
+    return i->mCameras[cameraId].supportedBurstFPS;
+}
+
+const char* PlatformData::supportedBurstLength(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return NULL;
+    }
+
+    return i->mCameras[cameraId].supportedBurstLength;
+}
+
+int PlatformData::getMaxBurstFPS(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return -1;
+    }
+    return i->mCameras[cameraId].maxBurstFPS;
+}
+
+const char* PlatformData::supportedMaxEV(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].maxEV;
+}
+
+const char* PlatformData::supportedMinEV(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].minEV;
+}
+
+const char* PlatformData::supportedDefaultEV(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].defaultEV;
+}
+
+const char* PlatformData::supportedStepEV(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].stepEV;
+}
+
+const char* PlatformData::supportedAeMetering(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].supportedAeMetering;
+}
+
+const char* PlatformData::defaultAeMetering(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].defaultAeMetering;
+}
+
+const char* PlatformData::supportedMaxSaturation(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].maxSaturation;
+}
+
+const char* PlatformData::supportedMinSaturation(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].minSaturation;
+}
+
+const char* PlatformData::supportedDefaultSaturation(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].defaultSaturation;
+}
+
+const char* PlatformData::supportedStepSaturation(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].stepSaturation;
+}
+
+const char* PlatformData::supportedMaxContrast(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].maxContrast;
+}
+
+const char* PlatformData::supportedMinContrast(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].minContrast;
+}
+
+const char* PlatformData::supportedDefaultContrast(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].defaultContrast;
+}
+
+const char* PlatformData::supportedStepContrast(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].stepContrast;
+}
+
+const char* PlatformData::supportedMaxSharpness(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].maxSharpness;
+}
+
+const char* PlatformData::supportedMinSharpness(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].minSharpness;
+}
+
+const char* PlatformData::supportedDefaultSharpness(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].defaultSharpness;
+}
+
+const char* PlatformData::supportedStepSharpness(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].stepSharpness;
+}
+
+const char* PlatformData::supportedFlashModes(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].supportedFlashModes;
+}
+
+const char* PlatformData::defaultFlashMode(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].defaultFlashMode;
+}
+
+const char* PlatformData::supportedIso(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].supportedIso;
+}
+
+const char* PlatformData::defaultIso(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].defaultIso;
+}
+
+const char* PlatformData::supportedSceneModes(int cameraId)
 {
     // TODO: Figure out a way to do product-specific configuration properly
     // This is not actually a HW platform restriction as such, but a product config.
 
     PlatformBase *i = getInstance();
-    int status = 0;
-    char modes[100];
-
-    // This is the basic set of scene modes, supported on all
-    // platforms:
-    status = snprintf(modes, sizeof(modes)
-            ,"%s,%s,%s,%s,%s,%s,%s"
-            ,CameraParameters::SCENE_MODE_AUTO
-            ,CameraParameters::SCENE_MODE_PORTRAIT
-            ,CameraParameters::SCENE_MODE_SPORTS
-            ,CameraParameters::SCENE_MODE_LANDSCAPE
-            ,CameraParameters::SCENE_MODE_NIGHT
-            ,CameraParameters::SCENE_MODE_FIREWORKS
-            ,CameraParameters::SCENE_MODE_BARCODE);
-    if (status < 0 || static_cast<size_t>(status) >= sizeof(modes)) {
-        LOGE("Could not generate scene mode string. status = %d, error: %s",
-             status, strerror(errno));
-        return String8::empty();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
     }
 
-    // Generally the flash is supported, so let's add the rest of the
-    // supported scene modes that require flash:
-    if (i->mBackFlash) {
-        status = snprintf(modes, sizeof(modes)
-                ,"%s,%s"
-                ,modes
-                ,CameraParameters::SCENE_MODE_NIGHT_PORTRAIT);
-        if (status < 0 || static_cast<size_t>(status) >= sizeof(modes)) {
-            LOGE("Could not generate scene mode string. status = %d, error: %s",
-                 status, strerror(errno));
-            return String8::empty();
-        }
+
+    return i->mCameras[cameraId].supportedSceneModes;
+}
+
+const char* PlatformData::defaultSceneMode(int cameraId)
+{
+    // TODO: Figure out a way to do product-specific configuration properly
+    // This is not actually a HW platform restriction as such, but a product config.
+
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
     }
 
-    return String8(modes);
+    return i->mCameras[cameraId].defaultSceneMode;
 }
 
-const char* PlatformData::supportedBurstFPS(void)
+const char* PlatformData::supportedEffectModes(int cameraId)
 {
+    // TODO: Figure out a way to do product-specific configuration properly
+    // This is not actually a HW platform restriction as such, but a product config.
+
     PlatformBase *i = getInstance();
-    return i->mSupportedBurstFPS;
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+
+    return i->mCameras[cameraId].supportedEffectModes;
 }
 
-const char* PlatformData::supportedBurstLength(void)
+const char* PlatformData::supportedIntelEffectModes(int cameraId)
 {
+    // TODO: Figure out a way to do product-specific configuration properly
+    // This is not actually a HW platform restriction as such, but a product config.
+
     PlatformBase *i = getInstance();
-    return i->mSupportedBurstLength;
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+
+    return i->mCameras[cameraId].supportedIntelEffectModes;
 }
 
-int PlatformData::getMaxBurstFPS(void)
+const char* PlatformData::defaultEffectMode(int cameraId)
+{
+    // TODO: Figure out a way to do product-specific configuration properly
+    // This is not actually a HW platform restriction as such, but a product config.
+
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+
+    return i->mCameras[cameraId].defaultEffectMode;
+}
+
+const char* PlatformData::supportedAwbModes(int cameraId)
+{
+    // TODO: Figure out a way to do product-specific configuration properly
+    // This is not actually a HW platform restriction as such, but a product config.
+
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+
+
+    return i->mCameras[cameraId].supportedAwbModes;
+}
+
+const char* PlatformData::defaultAwbMode(int cameraId)
+{
+    // TODO: Figure out a way to do product-specific configuration properly
+    // This is not actually a HW platform restriction as such, but a product config.
+
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+
+    return i->mCameras[cameraId].defaultAwbMode;
+}
+
+const char* PlatformData::supportedPreviewFrameRate(int cameraId)
 {
     PlatformBase *i = getInstance();
-    return i->mMaxBurstFPS;
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].supportedPreviewFrameRate;
+}
+
+const char* PlatformData::supportedPreviewFPSRange(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].supportedPreviewFPSRange;
+}
+
+const char* PlatformData::defaultPreviewFPSRange(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].defaultPreviewFPSRange;
+}
+
+const char* PlatformData::supportedPreviewSize(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].supportedPreviewSize;
 }
 
 const char* PlatformData::productName(void)

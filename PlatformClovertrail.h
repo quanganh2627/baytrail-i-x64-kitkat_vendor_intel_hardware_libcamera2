@@ -70,29 +70,67 @@ class PlatformCtpRedhookBay : public PlatformBase {
 
 public:
     PlatformCtpRedhookBay(void) {
-        CameraInfo cam;
         mSubDevName = "/dev/v4l-subdev8";
 
+        /* Creating CameraInfo object (default constructor value applied)
+         * HERE we only modify the value which are different than
+         * in the constructor.
+         * non-present value are taking constructor values.
+         * See Default values in PlatformData.h
+         * same applies later in the code for front camera.
+         */
+        CameraInfo *pcam = new CameraInfo;
+        if (!pcam) {
+            LOGE("Cannot create CameraInfo!");
+            return;
+        }
+        // back camera settings
+        pcam->flipping = PlatformData::SENSOR_FLIP_NA;
+        //EV
+        pcam->maxEV = "6";
+        pcam->minEV = "-6";
+        pcam->mPreviewViaOverlay = true;
 
-        // back camera
-        cam.facing = CAMERA_FACING_BACK;
-        cam.orientation = 90;
-        cam.dvs = true;
-        cam.flipping = PlatformData::SENSOR_FLIP_NA;
-        cam.maxSnapshotWidth = RESOLUTION_8MP_WIDTH;
-        cam.maxSnapshotHeight = RESOLUTION_8MP_HEIGHT;
-        cam.mPreviewViaOverlay = true;
-        mCameras.push(cam);
+        // If the back flash is supported, let's add the rest of the
+        // supported scene modes that require flash:
+        snprintf(pcam->supportedSceneModes
+            ,sizeof(pcam->supportedSceneModes)
+            ,"%s,%s"
+            ,pcam->supportedSceneModes
+            ,CameraParameters::SCENE_MODE_NIGHT_PORTRAIT);
 
-        // front camera
-        cam.facing = CAMERA_FACING_FRONT;
-        cam.orientation = 270;
-        cam.dvs = false;
-        cam.flipping = PlatformData::SENSOR_FLIP_NA;
-        cam.maxSnapshotWidth = RESOLUTION_1_3MP_WIDTH;
-        cam.maxSnapshotHeight = RESOLUTION_1_3MP_HEIGHT;
-        cam.mPreviewViaOverlay = false;
-        mCameras.push(cam);
+        mCameras.push(*pcam);
+        delete pcam;
+
+        // New CameraInfo for front camera see comment for back camera above
+        pcam = new CameraInfo;
+        if (!pcam) {
+            LOGE("Cannot create CameraInfo!");
+            return;
+        }
+        // front camera settings
+        pcam->sensorType = SENSOR_TYPE_SOC;
+        pcam->facing = CAMERA_FACING_FRONT;
+        pcam->orientation = 270;
+        pcam->dvs = false;
+        pcam->flipping = PlatformData::SENSOR_FLIP_NA;
+        pcam->maxSnapshotWidth = RESOLUTION_1_3MP_WIDTH;
+        pcam->maxSnapshotHeight = RESOLUTION_1_3MP_HEIGHT;
+        pcam->supportedBurstLength = "";
+        pcam->maxEV = "";
+        pcam->minEV = "";
+        pcam->stepEV = "";
+        pcam->defaultEV = "";
+        strcpy(pcam->supportedFlashModes,"");
+        pcam->supportedIso = "";
+        strcpy(pcam->supportedSceneModes,"");
+        strcpy(pcam->supportedEffectModes,"");
+        strcpy(pcam->supportedIntelEffectModes,"");
+        strcpy(pcam->supportedAwbModes,"");
+        pcam->supportedAeMetering = "";
+        pcam->supportedPreviewSize = "1024x576,720x480,640x480,640x360,352x288,320x240,176x144";
+        mCameras.push(*pcam);
+        delete pcam;
 
         // file inject device
         mCameras.push(mCameras[0]);
@@ -101,9 +139,6 @@ public:
         // generic parameters
         mBackFlash = true;
         mVideoPreviewSizePref = "1024x576";
-        mMaxBurstFPS = 15;
-        mSupportedBurstFPS = "1,3,5,7,15";
-        mSupportedBurstLength = "1,3,5,10";
 
         mProductName = "ExampleModel";
         mManufacturerName = "ExampleMaker";
@@ -111,5 +146,4 @@ public:
         mContinuousCapture = (deviceOnContinuousCaptureBlackList() == false);
     }
 };
-
 }; // namespace android

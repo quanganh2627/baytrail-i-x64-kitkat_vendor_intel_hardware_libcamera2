@@ -46,6 +46,9 @@
 #define RESOLUTION_5MP_TABLE   \
         "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920"
 
+#define RESOLUTION_3MP_TABLE   \
+        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536"
+
 #define RESOLUTION_1080P_TABLE   \
         "320x240,640x480,1024x768,1280x720,1920x1080"
 
@@ -119,6 +122,7 @@ static const char *resolution_tables[] = {
     RESOLUTION_VGA_TABLE,
     RESOLUTION_720P_TABLE,
     RESOLUTION_1080P_TABLE,
+    RESOLUTION_3MP_TABLE,
     RESOLUTION_5MP_TABLE,
     RESOLUTION_8MP_TABLE,
     RESOLUTION_14MP_TABLE
@@ -274,6 +278,14 @@ int AtomISP::getPrimaryCameraIndex(void) const
         }
     }
     return res;
+}
+
+int AtomISP::getCurrentCameraId(void)
+{
+    if (mCameraInput->androidCameraId < 0)
+        LOGE("%s: Camera ID is wrong : %d", __func__, mCameraInput->androidCameraId);
+
+    return mCameraInput->androidCameraId;
 }
 
 /**
@@ -503,31 +515,26 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
         LOGE("params is null!");
         return;
     }
-
+    int cameraId = mCameraInput->androidCameraId;
     /**
      * PREVIEW
      */
     params->setPreviewSize(mConfig.preview.width, mConfig.preview.height);
     params->setPreviewFrameRate(30);
 
-    if (mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
-        params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES,
-            "1024x576,800x600,720x480,640x480,640x360,416x312,352x288,320x240,176x144");
-    } else {
-        params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES,
-            "1024x576,720x480,640x480,640x360,352x288,320x240,176x144");
-    }
 
-    params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES,"30,15,10");
-    params->set(CameraParameters::KEY_PREVIEW_FPS_RANGE,"10500,30304");
-    params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FPS_RANGE,"(10500,30304),(11000,30304),(11500,30304)");
+    params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES, PlatformData::supportedPreviewSize(cameraId));
+
+    params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES,PlatformData::supportedPreviewFrameRate(cameraId));
+    params->set(CameraParameters::KEY_PREVIEW_FPS_RANGE,PlatformData::defaultPreviewFPSRange(cameraId));
+    params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FPS_RANGE,PlatformData::supportedPreviewFPSRange(cameraId));
 
     /**
      * RECORDING
      */
     params->setVideoSize(mConfig.recording.width, mConfig.recording.height);
     params->set(CameraParameters::KEY_PREFERRED_PREVIEW_SIZE_FOR_VIDEO, PlatformData::preferredPreviewSizeForVideo());
-    params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1080");
+    params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, PlatformData::supportedVideoSizes());
     params->set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,
                 CameraParameters::PIXEL_FORMAT_YUV420SP);
     params->set(CameraParameters::KEY_VIDEO_SNAPSHOT_SUPPORTED, CameraParameters::TRUE);
@@ -557,18 +564,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
 
         // For main back camera
         // flash mode option, cts mandates default to be off
-        params->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
-        char flashModes[100] = {0};
-        if (snprintf(flashModes, sizeof(flashModes)
-                ,"%s,%s,%s,%s"
-                ,CameraParameters::FLASH_MODE_AUTO
-                ,CameraParameters::FLASH_MODE_OFF
-                ,CameraParameters::FLASH_MODE_ON
-                ,CameraParameters::FLASH_MODE_TORCH) < 0) {
-            LOGE("Could not generate %s string: %s", CameraParameters::KEY_SUPPORTED_FLASH_MODES, strerror(errno));
-            return;
-        }
-        params->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, flashModes);
+        params->set(CameraParameters::KEY_FLASH_MODE, PlatformData::defaultFlashMode(cameraId));
+        params->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, PlatformData::supportedFlashModes(cameraId));
     }
 
     /**
@@ -625,7 +622,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * DIGITAL VIDEO STABILIZATION
      */
-    if(PlatformData::supportsDVS(mCameraInput->androidCameraId))
+    if(PlatformData::supportsDVS(cameraId))
     {
         params->set(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED,"true");
         params->set(CameraParameters::KEY_VIDEO_STABILIZATION,"true");
@@ -675,10 +672,10 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * EXPOSURE
      */
-    params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION,0);
-    params->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION,0);
-    params->set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION,0);
-    params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP,0);
+    params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(cameraId));
+    params->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION,PlatformData::supportedMaxEV(cameraId));
+    params->set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION,PlatformData::supportedMinEV(cameraId));
+    params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP,PlatformData::supportedStepEV(cameraId));
 
     // No Capture bracketing
     intel_params->set(IntelCameraParameters::KEY_CAPTURE_BRACKET, "none");
@@ -699,11 +696,11 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
      */
     // Currently burst support is required only with raw sensors.
     // So burst mode is disabled to soc sensors.
-    if (mSensorType ==  SENSOR_TYPE_RAW) {
+    if (PlatformData::sensorType(cameraId) ==  SENSOR_TYPE_RAW) {
         intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
-        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS, PlatformData::supportedBurstFPS());
-        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, PlatformData::supportedBurstLength());
-        intel_params->set(IntelCameraParameters::KEY_BURST_LENGTH, "1");
+        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS, PlatformData::supportedBurstFPS(cameraId));
+        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, PlatformData::supportedBurstLength(cameraId));
+        intel_params->set(IntelCameraParameters::KEY_BURST_LENGTH,"1");
     } else {
         intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS, "1");
@@ -721,83 +718,32 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_RAW_DATA_FORMAT, "none");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_RAW_DATA_FORMATS, "none,yuv,bayer");
 
+    // effect modes
+    params->set(CameraParameters::KEY_EFFECT, PlatformData::defaultEffectMode(cameraId));
+    params->set(CameraParameters::KEY_SUPPORTED_EFFECTS, PlatformData::supportedEffectModes(cameraId));
+    intel_params->set(CameraParameters::KEY_SUPPORTED_EFFECTS, PlatformData::supportedIntelEffectModes(cameraId));
+    //awb
+    params->set(CameraParameters::KEY_WHITE_BALANCE, PlatformData::defaultAwbMode(cameraId));
+    params->set(CameraParameters::KEY_SUPPORTED_WHITE_BALANCE, PlatformData::supportedAwbModes(cameraId));
+    // scene mode
+    params->set(CameraParameters::KEY_SUPPORTED_SCENE_MODES, PlatformData::supportedSceneModes(cameraId));
+    params->set(CameraParameters::KEY_SCENE_MODE, PlatformData::defaultSceneMode(cameraId));
+
+    // exposure compensation
+    params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(cameraId));
+    params->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(cameraId));
+    params->set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION, PlatformData::supportedMinEV(cameraId));
+    params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, PlatformData::supportedStepEV(cameraId));
+
+    // ae metering mode (Intel extension)
+    intel_params->set(IntelCameraParameters::KEY_AE_METERING_MODE, PlatformData::defaultAeMetering(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, PlatformData::supportedAeMetering(cameraId));
+
+    // manual iso control (Intel extension)
+    intel_params->set(IntelCameraParameters::KEY_ISO, PlatformData::supportedIso(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(cameraId));
+
     if(mAAA->is3ASupported()){
-        // effect modes
-        params->set(CameraParameters::KEY_EFFECT, CameraParameters::EFFECT_NONE);
-        char effectModes[200] = {0};
-        int status = snprintf(effectModes, sizeof(effectModes)
-                ,"%s,%s,%s,%s"
-                ,CameraParameters::EFFECT_NONE
-                ,CameraParameters::EFFECT_MONO
-                ,CameraParameters::EFFECT_NEGATIVE
-                ,CameraParameters::EFFECT_SEPIA);
-
-        if (status < 0) {
-            LOGE("Could not generate %s string: %s",
-                 CameraParameters::KEY_SUPPORTED_EFFECTS, strerror(errno));
-            return;
-        } else if (static_cast<unsigned>(status) >= sizeof(effectModes)) {
-            LOGE("Truncated %s string. Reserved length: %d",
-                 CameraParameters::KEY_SUPPORTED_EFFECTS, sizeof(effectModes));
-            return;
-        }
-        params->set(CameraParameters::KEY_SUPPORTED_EFFECTS, effectModes);
-        status = snprintf(effectModes, sizeof(effectModes)
-                ,"%s,%s,%s,%s,%s,%s,%s,%s,%s,%s"
-                ,CameraParameters::EFFECT_NONE
-                ,CameraParameters::EFFECT_MONO
-                ,CameraParameters::EFFECT_NEGATIVE
-                ,CameraParameters::EFFECT_SEPIA
-                ,IntelCameraParameters::EFFECT_VIVID
-                ,IntelCameraParameters::EFFECT_STILL_SKY_BLUE
-                ,IntelCameraParameters::EFFECT_STILL_GRASS_GREEN
-                ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_LOW
-                ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_MEDIUM
-                ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_HIGH);
-
-        if (status < 0) {
-            LOGE("Could not generate %s string: %s",
-                 CameraParameters::KEY_SUPPORTED_EFFECTS, strerror(errno));
-            return;
-        } else if (static_cast<unsigned>(status) >= sizeof(effectModes)) {
-            LOGE("Truncated %s string for Intel params. Reserved length: %d",
-                 CameraParameters::KEY_SUPPORTED_EFFECTS, sizeof(effectModes));
-            return;
-        }
-        intel_params->set(CameraParameters::KEY_SUPPORTED_EFFECTS, effectModes);
-
-        // white-balance mode
-        params->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-        char wbModes[100] = {0};
-        status = snprintf(wbModes, sizeof(wbModes)
-                ,"%s,%s,%s,%s,%s"
-                ,CameraParameters::WHITE_BALANCE_AUTO
-                ,CameraParameters::WHITE_BALANCE_INCANDESCENT
-                ,CameraParameters::WHITE_BALANCE_FLUORESCENT
-                ,CameraParameters::WHITE_BALANCE_DAYLIGHT
-                ,CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT);
-        if (status < 0) {
-            LOGE("Could not generate %s string: %s",
-                 CameraParameters::KEY_SUPPORTED_WHITE_BALANCE, strerror(errno));
-            return;
-        } else if (static_cast<unsigned>(status) >= sizeof(wbModes)) {
-            LOGE("Truncated %s string. Reserved length: %d",
-                 CameraParameters::KEY_SUPPORTED_WHITE_BALANCE, sizeof(wbModes));
-            return;
-        }
-        params->set(CameraParameters::KEY_SUPPORTED_WHITE_BALANCE, wbModes);
-
-        // scene mode
-        params->set(CameraParameters::KEY_SCENE_MODE, CameraParameters::SCENE_MODE_AUTO);
-        String8 sceneModes = PlatformData::supportedSceneModes();
-
-        if (sceneModes.isEmpty()) {
-            LOGE("Error in getting supported scene modes.");
-            return;
-        }
-
-        params->set(CameraParameters::KEY_SUPPORTED_SCENE_MODES, sceneModes.string());
-
         // ae mode
         intel_params->set(IntelCameraParameters::KEY_AE_MODE, "auto");
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_AE_MODES, "auto,manual,shutter-priority,aperture-priority");
@@ -809,16 +755,6 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
         params->set(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, CameraParameters::FALSE);
         params->set(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK_SUPPORTED, CameraParameters::TRUE);
 
-        // exposure compensation
-        params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, "0");
-        params->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, "6");
-        params->set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION, "-6");
-        params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, "0.33333333");
-
-        // ae metering mode (Intel extension)
-        intel_params->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center,spot");
-
         // Intel/UMG parameters for 3A locks
         // TODO: only needed until upstream key is available for AF lock
         intel_params->set(IntelCameraParameters::KEY_AF_LOCK_MODE, "unlock");
@@ -828,10 +764,6 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
         // manual shutter control (Intel extension)
         intel_params->set(IntelCameraParameters::KEY_SHUTTER, "60");
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SHUTTER, "1s,2,4,8,15,30,60,125,250,500");
-
-        // manual iso control (Intel extension)
-        intel_params->set(IntelCameraParameters::KEY_ISO, "iso-200");
-        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_ISO, "iso-100,iso-200,iso-400,iso-800");
 
         // multipoint focus
         params->set(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS, mAAA->getAfMaxNumWindows());
@@ -883,6 +815,8 @@ const char* AtomISP::getMaxSnapShotResolution()
     if (mConfig.snapshot.maxWidth < RESOLUTION_8MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_8MP_HEIGHT)
             index--;
     if (mConfig.snapshot.maxWidth < RESOLUTION_5MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_5MP_HEIGHT)
+            index--;
+    if (mConfig.snapshot.maxWidth < RESOLUTION_3MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_3MP_HEIGHT)
             index--;
     if (mConfig.snapshot.maxWidth < RESOLUTION_1080P_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_1080P_HEIGHT)
             index--;

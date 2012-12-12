@@ -105,6 +105,7 @@ public:
 // public methods
 public:
 
+    int getCurrentCameraId(void);
     void getDefaultParameters(CameraParameters *params, CameraParameters *intel_params);
 
     status_t configure(AtomMode mode);
@@ -310,6 +311,7 @@ private:
         RESOLUTION_VGA = 0,
         RESOLUTION_720P,
         RESOLUTION_1080P,
+        RESOLUTION_3MP,
         RESOLUTION_5MP,
         RESOLUTION_8MP,
         RESOLUTION_14MP,

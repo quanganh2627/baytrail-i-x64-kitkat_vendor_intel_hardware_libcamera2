@@ -2803,7 +2803,7 @@ status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
             return BAD_VALUE;
         }
         if (fps > 0) {
-            mFpsAdaptSkip = roundf(PlatformData::getMaxBurstFPS()/float(fps)) - 1;
+            mFpsAdaptSkip = roundf(PlatformData::getMaxBurstFPS(mISP->getCurrentCameraId())/float(fps)) - 1;
             LOG1("%s, mFpsAdaptSkip:%d", __func__, mFpsAdaptSkip);
         }
     }
