@@ -249,6 +249,11 @@ status_t ControlThread::init()
         goto bail;
     }
 
+    if (mPostProcThread->init((void*)mISP) != NO_ERROR) {
+        LOGE("error initializing face engine");
+        goto bail;
+    }
+
     mBracketManager = new BracketManager(mISP);
     if (mBracketManager == NULL) {
         LOGE("error creating BracketManager");

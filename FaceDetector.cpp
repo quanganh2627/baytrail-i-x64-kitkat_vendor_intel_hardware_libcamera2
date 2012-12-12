@@ -22,6 +22,9 @@
 #include "LogHelper.h"
 #include "sqlite3.h"
 #include "cutils/properties.h"
+#include "AtomISP.h"
+#include "AtomCommon.h"
+#include "AtomAcc.h"
 
 #include "ia_coordinate.h"
 
@@ -43,6 +46,26 @@ FaceDetector::~FaceDetector()
     LOG1("@%s", __FUNCTION__);
     ia_face_uninit(mContext);
     mContext = NULL;
+}
+
+void FaceDetector::setAcc(void* isp)
+{
+    LOG2("@%s", __FUNCTION__);
+    ia_acceleration accApi;
+
+    accApi.isp               = isp;
+    accApi.open_firmware     = open_firmware;
+    accApi.load_firmware     = load_firmware_pipe; // beware this is not just load_firmware.
+    accApi.unload_firmware   = unload_firmware;
+    accApi.set_firmware_arg  = set_firmware_arg;
+    accApi.start_firmware    = start_firmware;
+    accApi.wait_for_firmware = wait_for_firmware;
+    accApi.abort_firmware    = abort_firmware;
+    accApi.map_firmware_arg   = map_firmware_arg;
+    accApi.unmap_firmware_arg = unmap_firmware_arg;
+    accApi.set_mapped_arg     = set_mapped_arg;
+
+    ia_face_set_acceleration(mContext, &accApi);
 }
 
 int FaceDetector::faceDetect(ia_frame *frame)

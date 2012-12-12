@@ -48,6 +48,7 @@ class PostProcThread : public IFaceDetector,
 public:
     PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread);
     virtual ~PostProcThread();
+    status_t init(void* isp);
 
 // Common methods
     void getDefaultParameters(CameraParameters *params, CameraParameters *intel_parameters, int cameraId);

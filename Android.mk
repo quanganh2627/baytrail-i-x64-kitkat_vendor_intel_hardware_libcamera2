@@ -48,7 +48,8 @@ LOCAL_SRC_FILES := \
 	nv12rotation.cpp \
 	CameraDump.cpp \
 	CameraAreas.cpp \
-	BracketManager.cpp
+	BracketManager.cpp \
+	AtomAcc.cpp
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SRC_FILES += \

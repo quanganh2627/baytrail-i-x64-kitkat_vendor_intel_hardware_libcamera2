@@ -19,6 +19,7 @@
 #include "AtomCP.h"
 #include "AtomCommon.h"
 #include "LogHelper.h"
+#include "AtomAcc.h"
 
 namespace android {
 
@@ -37,129 +38,10 @@ static void vinfo(const char *fmt, va_list ap)
 {
     LOG_PRI_VA(ANDROID_LOG_INFO, LOG_TAG, fmt, ap);
 }
-
-static int get_file_size (FILE *file)
-{
-    int len;
-
-    if (file == NULL) return 0;
-
-    if (fseek(file, 0, SEEK_END)) return 0;
-
-    len = ftell(file);
-
-    if (fseek(file, 0, SEEK_SET)) return 0;
-
-    return len;
-}
-
-static void *open_firmware(const char *fw_path, unsigned *size)
-{
-    FILE *file;
-    unsigned len;
-    void *fw;
-
-    LOG1("@%s", __FUNCTION__);
-    if (!fw_path)
-        return NULL;
-
-    file = fopen(fw_path, "rb");
-    if (!file)
-        return NULL;
-
-    len = get_file_size(file);
-
-    if (!len) {
-        fclose(file);
-        return NULL;
-    }
-
-    fw = malloc(len);
-    if (!fw) {
-        fclose(file);
-        return NULL;
-    }
-
-    if (fread(fw, 1, len, file) != len) {
-        fclose(file);
-        free(fw);
-        return NULL;
-    }
-
-    *size = len;
-
-    fclose(file);
-
-    return fw;
-}
-
-static int load_firmware(void *isp, void *fw, unsigned size, unsigned *handle)
-{
-    AtomISP *ISP = (AtomISP*)isp;
-    LOG1("@%s", __FUNCTION__);
-    return ISP->loadAccFirmware(fw, size, handle);
-}
-
-static int unload_firmware(void *isp, unsigned handle)
-{
-    AtomISP *ISP = (AtomISP*)isp;
-    LOG1("@%s", __FUNCTION__);
-    return ISP->unloadAccFirmware(handle);
-}
-
-static int map_firmware_arg (void *isp, void *val, size_t size, unsigned long *ptr)
-{
-    AtomISP *ISP = (AtomISP*)isp;
-    LOG1("@%s", __FUNCTION__);
-    return ISP->mapFirmwareArgument(val, size, ptr);
-}
-
-static int unmap_firmware_arg (void *isp, unsigned long val, size_t size)
-{
-    AtomISP *ISP = (AtomISP*)isp;
-    LOG1("@%s", __FUNCTION__);
-    return ISP->unmapFirmwareArgument(val, size);
-}
-
-static int set_firmware_arg(void *isp, unsigned handle, unsigned num, void *val, size_t size)
-{
-    AtomISP *ISP = (AtomISP*)isp;
-    LOG1("@%s", __FUNCTION__);
-    return ISP->setFirmwareArgument(handle, num, val, size);
-}
-
-static int set_mapped_arg(void *isp, unsigned handle, unsigned mem, unsigned long val, size_t size)
-{
-    AtomISP *ISP = (AtomISP*)isp;
-    LOG1("@%s", __FUNCTION__);
-    return ISP->setMappedFirmwareArgument(handle, mem, val, size);
-}
-
-static int start_firmware(void *isp, unsigned handle)
-{
-    AtomISP *ISP = (AtomISP*)isp;
-    LOG1("@%s", __FUNCTION__);
-    return ISP->startFirmware(handle);
-}
-
-static int wait_for_firmware(void *isp, unsigned handle)
-{
-    AtomISP *ISP = (AtomISP*)isp;
-    LOG1("@%s", __FUNCTION__);
-    return ISP->waitForFirmware(handle);
-}
-
-static int abort_firmware(void *isp, unsigned handle, unsigned timeout)
-{
-    AtomISP *ISP = (AtomISP*)isp;
-    LOG1("@%s", __FUNCTION__);
-    return ISP->abortFirmware(handle, timeout);
-}
 }
 
 AtomCP::AtomCP(AtomISP *isp)
 {
-
     LOG1("@%s", __FUNCTION__);
     mISP = isp;
 

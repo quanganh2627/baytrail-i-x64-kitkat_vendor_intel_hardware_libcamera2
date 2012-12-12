@@ -64,6 +64,30 @@ PostProcThread::~PostProcThread()
     }
 }
 
+/**
+ * Calling this is mandatory in order to use face engine functionalities.
+ * if *isp is null, face engine will run without acceleration.
+ */
+status_t PostProcThread::init(void* isp)
+{
+    mFaceDetector = new FaceDetector();
+    if (mFaceDetector == NULL) {
+        LOGE("Error creating FaceDetector");
+        return UNKNOWN_ERROR;
+    }
+
+    if (mFaceDetector->run() != NO_ERROR) {
+        LOGE("Error starting FaceDetector thread!");
+        return UNKNOWN_ERROR;
+    }
+
+    if (isp != NULL) {
+        mFaceDetector->setAcc(isp);
+    }
+
+    return NO_ERROR;
+}
+
 void PostProcThread::getDefaultParameters(CameraParameters *params, CameraParameters *intel_params, int cameraId)
 {
     LOG1("@%s", __FUNCTION__);
@@ -94,21 +118,6 @@ status_t PostProcThread::handleMessageStartFaceDetection()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-
-    // Create and init FD when starting for the first time
-    if (mFaceDetector == NULL) {
-        mFaceDetector = new FaceDetector();
-        if (mFaceDetector == NULL) {
-            LOGE("Error creating FaceDetector");
-            return UNKNOWN_ERROR;
-        }
-        if (mFaceDetector->run() != NO_ERROR) {
-            LOGW("Error starting FaceDetector thread!");
-            return UNKNOWN_ERROR;
-        }
-    } else {
-        mFaceDetector->reset();
-    }
 
     if (mSmartShutter.smartRunning && mSmartShutter.smileRunning)
         mFaceDetector->setSmileThreshold(mSmartShutter.smileThreshold);

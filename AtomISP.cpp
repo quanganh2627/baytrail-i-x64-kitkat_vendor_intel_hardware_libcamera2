@@ -4194,6 +4194,38 @@ int AtomISP::loadAccFirmware(void *fw, size_t size,
     return ret;
 }
 
+int AtomISP::loadAccPipeFirmware(void *fw, size_t size,
+                             unsigned int *fwHandle)
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret = -1;
+
+    struct atomisp_acc_fw_load_to_pipe fwDataPipe;
+    memset(&fwDataPipe, 0, sizeof(fwDataPipe));
+    fwDataPipe.flags = ATOMISP_ACC_FW_LOAD_FL_PREVIEW;
+    fwDataPipe.type = ATOMISP_ACC_FW_LOAD_TYPE_VIEWFINDER;
+
+    /*  fwDataPipe.fw_handle filled by kernel and returned to caller */
+    fwDataPipe.size = size;
+    fwDataPipe.data = fw;
+
+    if ( main_fd ){
+        ret = xioctl(main_fd, ATOMISP_IOC_ACC_LOAD_TO_PIPE, &fwDataPipe);
+        LOG1("%s IOCTL ATOMISP_IOC_ACC_LOAD_TO_PIPE ret : %d fwDataPipe->fw_handle: %d"\
+                , __FUNCTION__, ret, fwDataPipe.fw_handle);
+    }
+
+    //If IOCTRL call was returned successfully, get the firmware handle
+    //from the structure and return it to the application.
+    if(!ret){
+        *fwHandle = fwDataPipe.fw_handle;
+        LOG1("%s IOCTL Call returned : %d Handle: %ud",
+                __FUNCTION__, ret, *fwHandle );
+    }
+
+    return ret;
+}
+
 /*
  * Unloads the acceleration firmware from ISP.
  * Atomisp driver checks the validity of the handles and schedules
