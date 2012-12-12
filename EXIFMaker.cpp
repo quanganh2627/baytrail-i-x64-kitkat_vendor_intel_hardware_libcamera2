@@ -194,6 +194,44 @@ void EXIFMaker::pictureTaken(void)
             break;
         }
 
+        // light source type. Refer to EXIF V2.3
+        // TBD. Now light source is only set to UNKNOWN, when WB is auto mode.
+        if (CAM_AWB_MODE_AUTO == awbMode) {
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_UNKNOWN;
+        }
+        else {
+            ia_3a_awb_light_source  ia_3a_light_source = mAAA->getLightSource();
+            switch (ia_3a_light_source) {
+            case ia_3a_awb_light_source_other:
+                exifAttributes.light_source  = EXIF_LIGHT_SOURCE_OTHER_LIGHT_SOURCE;
+                break;
+            case ia_3a_awb_light_source_filament_lamp:
+                exifAttributes.light_source  = EXIF_LIGHT_SOURCE_TUNGSTEN;
+                break;
+            case ia_3a_awb_light_source_clear_sky:
+                exifAttributes.light_source = EXIF_LIGHT_SOURCE_FINE_WEATHER;
+                break;
+            case ia_3a_awb_light_source_cloudiness:
+                exifAttributes.light_source = EXIF_LIGHT_SOURCE_CLOUDY_WEATHER;
+                break;
+            case ia_3a_awb_light_source_shadow_area:
+                exifAttributes.light_source = EXIF_LIGHT_SOURCE_SHADE;
+                break;
+            case ia_3a_awb_light_source_fluorlamp_w:
+                exifAttributes.light_source = EXIF_LIGHT_SOURCE_COOL_WHITE_FLUORESCENT;
+                break;
+            case ia_3a_awb_light_source_fluorlamp_n:
+                exifAttributes.light_source = EXIF_LIGHT_SOURCE_DAY_WHITE_FLUORESCENT;
+                break;
+            case ia_3a_awb_light_source_fluorlamp_d:
+                exifAttributes.light_source = EXIF_LIGHT_SOURCE_DAYLIGHT_FLUORESCENT;
+                break;
+            default:
+                exifAttributes.light_source = EXIF_LIGHT_SOURCE_OTHER_LIGHT_SOURCE;
+                break;
+            }
+        }
+
         // scene mode
         SceneMode sceneMode = mAAA->getAeSceneMode();
         switch (sceneMode) {
@@ -525,6 +563,7 @@ void EXIFMaker::enableFlash()
     // bit 0: flash fired; bit 1 to 2: flash return; bit 3 to 4: flash mode;
     // bit 5: flash function; bit 6: red-eye mode;
     exifAttributes.flash = EXIF_FLASH_ON;
+    exifAttributes.light_source = EXIF_LIGHT_SOURCE_FLASH;
 }
 
 void EXIFMaker::setThumbnail(unsigned char *data, size_t size)

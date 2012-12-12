@@ -683,6 +683,15 @@ AwbMode AtomAAA::getAwbMode()
     return mAwbMode;
 }
 
+ia_3a_awb_light_source AtomAAA::getLightSource()
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+
+    m3ALightSource = ia_3a_awb_get_light_source();
+    return m3ALightSource;
+}
+
 status_t AtomAAA::setAeMeteringMode(MeteringMode mode)
 {
     Mutex::Autolock lock(m3aLock);

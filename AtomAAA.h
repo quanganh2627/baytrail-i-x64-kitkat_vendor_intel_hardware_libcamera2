@@ -248,6 +248,7 @@ public:
     status_t setAeFlashMode(FlashMode mode);
     FlashMode getAeFlashMode();
     bool getAeFlashNecessary();
+    ia_3a_awb_light_source getLightSource();
     status_t setAeBacklightCorrection(bool en);
     status_t setTNR(bool en);
     status_t setAeLock(bool en);
@@ -330,6 +331,7 @@ private:
     AfMode mPublicAfMode;
     FlashMode mFlashMode;
     AwbMode mAwbMode;
+    ia_3a_awb_light_source m3ALightSource;
     int mFocusPosition;
     nsecs_t mStillAfStart;
     FILE *pFile3aStatDump;
