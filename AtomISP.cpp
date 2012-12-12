@@ -1482,7 +1482,17 @@ status_t AtomISP::setContCaptureNumCaptures(int numCaptures)
 status_t AtomISP::setContCaptureOffset(int captureOffset)
 {
     LOG1("@%s", __FUNCTION__);
-    mContCaptConfig.offset = captureOffset;
+    if (captureOffset != mContCaptConfig.offset) {
+        int ret = requestContCapture(mContCaptConfig.numCaptures,
+                                     captureOffset,
+                                     mContCaptConfig.skip);
+        if (ret < 0) {
+            LOGE("setting continuous capture params failed");
+            return UNKNOWN_ERROR;
+        }
+        mContCaptConfig.offset = captureOffset;
+    }
+
     return NO_ERROR;
 }
 
