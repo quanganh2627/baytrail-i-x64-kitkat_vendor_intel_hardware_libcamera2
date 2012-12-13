@@ -61,6 +61,14 @@ enum MeteringMode
     CAM_AE_METERING_MODE_CUSTOMIZED
 };
 
+/** add Iso mode*/
+/* ISO control mode setting */
+enum IsoMode {
+    CAM_AE_ISO_MODE_NOT_SET = -1,
+    CAM_AE_ISO_MODE_AUTO,   /* Automatic */
+    CAM_AE_ISO_MODE_MANUAL  /* Manual */
+};
+
 /**
  * I3AControls defines an interface for 3A controls.
  * For RAW cameras the 3A controls are handled in Intel 3A library,
@@ -84,6 +92,9 @@ public:
     virtual AwbMode getAwbMode() = 0;
     virtual status_t setManualIso(int iso) = 0;
     virtual status_t getManualIso(int *ret) = 0;
+    /** expose iso mode setting*/
+    virtual status_t setIsoMode(IsoMode mode) = 0;
+    virtual IsoMode getIsoMode(void) = 0;
     virtual status_t setAeMeteringMode(MeteringMode mode) = 0;
     virtual MeteringMode getAeMeteringMode() = 0;
     virtual status_t set3AColorEffect(v4l2_colorfx effect) = 0;

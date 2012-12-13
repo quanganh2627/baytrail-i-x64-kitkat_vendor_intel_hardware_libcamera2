@@ -5183,6 +5183,18 @@ status_t AtomISP::getManualIso(int *iso)
     return status;
 }
 
+status_t AtomISP::setIsoMode(IsoMode mode) {
+    /*ISO mode not supported for SOC sensor yet.*/
+    LOG1("@%s", __FUNCTION__);
+    status_t status = INVALID_OPERATION;
+    return status;
+}
+
+IsoMode AtomISP::getIsoMode(void) {
+    /*ISO mode not supported for SOC sensor yet.*/
+    return CAM_AE_ISO_MODE_NOT_SET;
+}
+
 status_t AtomISP::setAeMeteringMode(MeteringMode mode)
 {
     LOG1("@%s: %d", __FUNCTION__, mode);

@@ -4517,18 +4517,21 @@ status_t ControlThread::processParamIso(const CameraParameters *oldParams,
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
-                                              IntelCameraParameters::KEY_ISO);
-    if (!newVal.isEmpty() && mAAA->getAeMode() == CAM_AE_MODE_MANUAL) {
-        // note: value format is 'iso-NNN'
-        const size_t iso_prefix_len = 4;
-        if (newVal.length() > iso_prefix_len) {
-            const char* isostr = newVal.string() + iso_prefix_len;
+                                   IntelCameraParameters::KEY_ISO);
+    if (newVal.isEmpty()) return status;
+    // note: value format is 'iso-NNN'
+    const size_t iso_prefix_len = 4;
+    if (newVal.length() > iso_prefix_len) {
+        IsoMode iso_mode(CAM_AE_ISO_MODE_AUTO);
+        const char* isostr = newVal.string() + iso_prefix_len;
+        if (strcmp("auto", isostr)) {
+            iso_mode = CAM_AE_ISO_MODE_MANUAL;
             int iso = atoi(isostr);
             m3AControls->setManualIso(iso);
             LOGD("Changed manual iso to \"%s\" (%d)", newVal.string(), iso);
         }
+        m3AControls->setIsoMode(iso_mode);
     }
-
     return status;
 }
 

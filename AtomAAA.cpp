@@ -384,6 +384,54 @@ status_t AtomAAA::setAeMode(AeMode mode)
     return NO_ERROR;
 }
 
+/** add iso mode setting*/
+status_t AtomAAA::setIsoMode(IsoMode mode)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s: mode = %d", __FUNCTION__, mode);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    ia_3a_ae_iso_mode wr_val;
+    switch (mode) {
+    case CAM_AE_ISO_MODE_AUTO:
+        wr_val = ia_3a_ae_iso_mode_auto;
+        break;
+    case CAM_AE_ISO_MODE_MANUAL:
+        wr_val = ia_3a_ae_iso_mode_manual;
+        break;
+    default:
+        LOGE("Set: invalid AE mode: %d. Using AUTO!", mode);
+        wr_val = ia_3a_ae_iso_mode_auto;
+    }
+    ia_3a_ae_set_iso_mode(wr_val);
+    return NO_ERROR;
+}
+
+IsoMode AtomAAA::getIsoMode(void)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    IsoMode mode = CAM_AE_ISO_MODE_NOT_SET;
+    if(!mHas3A)
+        return mode;
+
+    ia_3a_ae_iso_mode rd_val = ia_3a_ae_get_iso_mode();
+    switch (rd_val) {
+    case ia_3a_ae_iso_mode_auto:
+        mode = CAM_AE_ISO_MODE_AUTO;
+        break;
+    case ia_3a_ae_iso_mode_manual:
+        mode = CAM_AE_ISO_MODE_MANUAL;
+        break;
+    default:
+        LOGE("Get: invalid AE ISO mode: %d. Using AUTO!", rd_val);
+        mode = CAM_AE_ISO_MODE_AUTO;
+    }
+
+    return mode;
+}
+
 status_t AtomAAA::setAeFlickerMode(FlickerMode mode)
 {
     Mutex::Autolock lock(m3aLock);

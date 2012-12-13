@@ -262,6 +262,9 @@ public:
     virtual AwbMode getAwbMode();
     virtual status_t setManualIso(int iso);
     virtual status_t getManualIso(int *ret);
+    /** expose iso mode setting*/
+    virtual status_t setIsoMode(IsoMode mode);
+    virtual IsoMode getIsoMode(void);
     virtual status_t setAeMeteringMode(MeteringMode mode);
     virtual MeteringMode getAeMeteringMode();
     virtual status_t set3AColorEffect(v4l2_colorfx effect);
