@@ -115,6 +115,9 @@ public:
 
     inline int getNumBuffers(bool videoMode) { return videoMode? mNumBuffers : mNumPreviewBuffers; }
 
+    void requestClearDriverState();
+    void clearDriverState();
+
     status_t startOfflineCapture();
     status_t stopOfflineCapture();
     bool isOfflineCaptureRunning() const;
@@ -427,6 +430,8 @@ private:
     int mNumPreviewBuffers;
     AtomBuffer *mPreviewBuffers;
     AtomBuffer *mRecordingBuffers;
+
+    bool mNeedReset; /*!< TODO: remove, see BZ 72616 */
 
     void **mClientSnapshotBuffers;
     bool mUsingClientSnapshotBuffers;

@@ -160,6 +160,7 @@ AtomISP::AtomISP(const sp<CameraConf>& cfg) :
     ,mNumPreviewBuffers(NUM_DEFAULT_BUFFERS)
     ,mPreviewBuffers(NULL)
     ,mRecordingBuffers(NULL)
+    ,mNeedReset(false)
     ,mClientSnapshotBuffers(NULL)
     ,mUsingClientSnapshotBuffers(false)
     ,mStoreMetaDataInBuffers(false)
@@ -988,6 +989,7 @@ status_t AtomISP::configure(AtomMode mode)
 
     switch (mode) {
     case MODE_PREVIEW:
+        clearDriverState();
         status = configurePreview();
         break;
     case MODE_VIDEO:
@@ -997,6 +999,7 @@ status_t AtomISP::configure(AtomMode mode)
         status = configureCapture();
         break;
     case MODE_CONTINUOUS_CAPTURE:
+        clearDriverState();
         status = configureContinuous();
         break;
     default:
@@ -1055,6 +1058,54 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
     }
 
     return status;
+}
+
+/**
+ * Requests driver state to be reset at next startup
+ *
+ * We cannot clear the state immediately as some use-cases
+ * require kernel state to be maintained over ISP restart (e.g.
+ * lens position needs to be maintained when changing from
+ * preview to capture).
+ *
+ * TODO: see applicability notes in clearDriverState()
+ */
+void AtomISP::requestClearDriverState()
+{
+    LOG1("@%s %d", __FUNCTION__, mNeedReset);
+
+    if (PlatformData::supportsContinuousCapture() == true)
+        mNeedReset = true;
+}
+
+/**
+ * Closes all kernel devices and reopens the main device
+ * to reset all driver side state, and power-cycle the hardware.
+ *
+ * TODO:
+ * This is a workaround for CSS1.5 and only way to invalidate CSS
+ * internal state and avoid stale settings from being used.
+ * Tracked as BZ72616
+ */
+void AtomISP::clearDriverState()
+{
+    LOG1("@%s %d", __FUNCTION__, mNeedReset);
+
+    if (PlatformData::supportsContinuousCapture() != true)
+        return;
+
+    if (mNeedReset) {
+      if (PlatformData::supportsContinuousCapture() == true) {
+          closeDevice(V4L2_MAIN_DEVICE);
+          int res = openDevice(V4L2_MAIN_DEVICE);
+          status_t status = NO_ERROR;
+          if (res != -1)
+              status = selectCameraSensor();
+          else
+              status = UNKNOWN_ERROR;
+      }
+      mNeedReset = false;
+    }
 }
 
 status_t AtomISP::start()
@@ -1230,22 +1281,10 @@ status_t AtomISP::stopPreview()
 
     if (mPreviewDevice != V4L2_MAIN_DEVICE)
         closeDevice(mPreviewDevice);
+    requestClearDriverState();
 
     if (mFileInject.active == true)
         stopFileInject();
-
-    // TODO: This is a current CSS1.5 limitation, and the only way
-    //       to invalidate CSS internal state and avoid stale
-    //       settings from being used.
-    //       Tracked as BZ72616
-    if (PlatformData::supportsContinuousCapture() == true) {
-      closeDevice(V4L2_MAIN_DEVICE);
-      int res = openDevice(V4L2_MAIN_DEVICE);
-      if (res != -1)
-        status = selectCameraSensor();
-      else
-        status = UNKNOWN_ERROR;
-    }
 
     return status;
 }
@@ -1595,6 +1634,7 @@ status_t AtomISP::stopCapture()
     LOG1("@%s", __FUNCTION__);
     stopDevice(V4L2_POSTVIEW_DEVICE);
     stopDevice(V4L2_MAIN_DEVICE);
+    requestClearDriverState();
     // note: MAIN device is kept open on purpose
     closeDevice(V4L2_POSTVIEW_DEVICE);
     // if SOF event is enabled, unsubscribe and close the device
@@ -1908,6 +1948,7 @@ int AtomISP::stopDevice(int device, bool leaveConfigured)
         if (!leaveConfigured) {
             destroyBufferPool(device);
             mDevices[device].state = DEVICE_CONFIGURED;
+            requestClearDriverState();
         }
         else {
             mDevices[device].state = DEVICE_PREPARED;
