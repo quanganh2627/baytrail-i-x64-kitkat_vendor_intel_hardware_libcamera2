@@ -499,10 +499,18 @@ status_t PanoramaThread::handleStitch(const MessageStitch &stitch)
     metadata.horizontal_displacement = roundf((float) metadata.horizontal_displacement / mPreviewWidth * stitch.pv.width);
     metadata.vertical_displacement = roundf((float) metadata.vertical_displacement / mPreviewHeight * stitch.pv.height);
     metadata.finalization_started = (mPanoramaTotalCount == mPanoramaMaxSnapshotCount);
-    // space for the metadata is reserved in the beginning of the buffer
+
+    // space for the metadata is reserved in the beginning of the buffer, copy it there
     memcpy(mPostviewBuf.buff->data, &metadata, sizeof(camera_panorama_metadata));
     // copy PV image
-    memcpy((char *)mPostviewBuf.buff->data + sizeof(camera_panorama_metadata), stitch.pv.buff->data, stitch.pv.size);
+    unsigned char *src = NULL;
+    if (stitch.pv.shared) {
+        src = (unsigned char *) *((char **)stitch.pv.buff->data);
+    } else {
+        src = (unsigned char *) stitch.pv.buff->data;
+    }
+    memcpy((char *)mPostviewBuf.buff->data + sizeof(camera_panorama_metadata), src, stitch.pv.size);
+
     // set rest of PV fields
     mPostviewBuf.width = stitch.pv.width;
     mPostviewBuf.height = stitch.pv.height;
@@ -574,7 +582,9 @@ status_t PanoramaThread::PanoramaStitchThread::cancel(ia_panorama_state* mContex
     }
 
     // cancel last stitch
+#ifdef ENABLE_INTEL_EXTRAS
     ia_panorama_cancel_stitching(mContext);
+#endif
 
     // flush (releases memory from last stitch, too)
     return flush();
@@ -620,7 +630,14 @@ status_t PanoramaThread::PanoramaStitchThread::stitch(ia_panorama_state* mContex
         abort();
     }
 
-    memcpy(copy.buff->data, frame.buff->data, size);
+    unsigned char *src = NULL;
+    if (frame.shared) {
+        src = (unsigned char *) *((char **)frame.buff->data);
+    } else {
+        src = (unsigned char *) frame.buff->data;
+    }
+
+    memcpy(copy.buff->data, src, size);
 
     Message msg;
     msg.id = MESSAGE_ID_STITCH;
@@ -645,8 +662,10 @@ status_t PanoramaThread::PanoramaStitchThread::handleMessageStitch(MessageStitch
         LOGW("panorama stitch hack - snapshot frame stride zero, replacing with width %d", iaFrame.width);
         iaFrame.stride = iaFrame.width;
     }
-
-    int ret = ia_panorama_stitch(stitch.mContext, &iaFrame);
+    int ret = OK;
+#ifdef ENABLE_INTEL_EXTRAS
+    ret = ia_panorama_stitch(stitch.mContext, &iaFrame);
+#endif
     stitch.img.buff->release(stitch.img.buff);
 
     if (ret >= 0)

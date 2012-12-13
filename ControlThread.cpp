@@ -895,8 +895,15 @@ status_t ControlThread::initContinuousCapture()
     int width, height;
     mParameters.getPictureSize(&width, &height);
 
-    int pvWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
-    int pvHeight = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
+    int pvWidth;
+    int pvHeight;
+
+    if (mPanoramaThread->getState() == PANORAMA_STOPPED) {
+        pvWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
+        pvHeight = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
+    } else {
+        IntelCameraParameters::getPanoramaLivePreviewSize(pvWidth, pvHeight, mParameters);
+    }
 
     // Configure PictureThread
     mPictureThread->initialize(mParameters);
@@ -1641,15 +1648,19 @@ status_t ControlThread::handleMessagePanoramaCaptureTrigger()
     }
 
     mPanoramaThread->stitch(&snapshotBuffer, &postviewBuffer); // synchronous
-    // we can return buffers now that panorama has (synchronously) processed (copied) the buffers
-    status = mISP->putSnapshot(&snapshotBuffer, &postviewBuffer);
-    if (status != NO_ERROR)
-        LOGE("error returning panorama capture buffers");
 
-    //restart preview
-    Message msg;
-    msg.id = MESSAGE_ID_START_PREVIEW;
-    mMessageQueue.send(&msg);
+    if (mState != STATE_CONTINUOUS_CAPTURE) {
+        // we can return buffers now that panorama has (synchronously) processed
+        // (copied) the buffers
+        status = mISP->putSnapshot(&snapshotBuffer, &postviewBuffer);
+        if (status != NO_ERROR)
+            LOGE("error returning panorama capture buffers");
+
+        //restart preview
+        Message msg;
+        msg.id = MESSAGE_ID_START_PREVIEW;
+        mMessageQueue.send(&msg);
+    }
 
     return status;
 }
@@ -1791,12 +1802,20 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
 
     postviewBuffer.owner = this;
     stopFaceDetection();
-    status = stopPreviewCore();
-    if (status != NO_ERROR) {
-        LOGE("Error stopping preview!");
-        return status;
+
+    if (mState == STATE_CONTINUOUS_CAPTURE) {
+        assert(mBurstLength <= 1);
+        mISP->setContCaptureNumCaptures(1);
+        mISP->startOfflineCapture();
     }
-    mState = STATE_CAPTURE;
+    else {
+        status = stopPreviewCore();
+        if (status != NO_ERROR) {
+            LOGE("Error stopping preview!");
+            return status;
+        }
+        mState = STATE_CAPTURE;
+    }
     mBurstCaptureNum = 0;
 
     // Get the current params
@@ -1809,33 +1828,35 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     // Configure PictureThread
     mPictureThread->initialize(mParameters);
 
-    // Configure and start the ISP
-    mISP->setSnapshotFrameFormat(width, height, format);
-    mISP->setPostviewFrameFormat(lpvWidth, lpvHeight, format);
-
     // configure thumbnail size
     thumbnailWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
     thumbnailHeight= mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
     mPanoramaThread->setThumbnailSize(thumbnailWidth, thumbnailHeight);
 
-    if ((status = mISP->configure(MODE_CAPTURE)) != NO_ERROR) {
-        LOGE("Error configuring the ISP driver for CAPTURE mode");
-        return status;
-    }
+    if (mState != STATE_CONTINUOUS_CAPTURE) {
+        // Configure and start the ISP
+        mISP->setSnapshotFrameFormat(width, height, format);
+        mISP->setPostviewFrameFormat(lpvWidth, lpvHeight, format);
 
-    status = mISP->allocateBuffers(MODE_CAPTURE);
-    if (status != NO_ERROR) {
-        LOGE("Error allocate buffers in ISP");
-        return status;
-    }
+        if ((status = mISP->configure(MODE_CAPTURE)) != NO_ERROR) {
+            LOGE("Error configuring the ISP driver for CAPTURE mode");
+            return status;
+        }
 
-    if (mAAA->is3ASupported())
-        if (mAAA->switchModeAndRate(MODE_CAPTURE, mISP->getFrameRate()) != NO_ERROR)
-            LOGE("Failed to switch 3A to capture mode at %.2f fps", mISP->getFrameRate());
+        status = mISP->allocateBuffers(MODE_CAPTURE);
+        if (status != NO_ERROR) {
+            LOGE("Error allocate buffers in ISP");
+            return status;
+        }
 
-    if ((status = mISP->start()) != NO_ERROR) {
-        LOGE("Error starting the ISP driver in CAPTURE mode!");
-        return status;
+        if (mAAA->is3ASupported())
+            if (mAAA->switchModeAndRate(MODE_CAPTURE, mISP->getFrameRate()) != NO_ERROR)
+                LOGE("Failed to switch 3A to capture mode at %.2f fps", mISP->getFrameRate());
+
+        if ((status = mISP->start()) != NO_ERROR) {
+            LOGE("Error starting the ISP driver in CAPTURE mode!");
+            return status;
+        }
     }
 
     /*
@@ -1857,6 +1878,9 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
         LOGE("Error in grabbing snapshot!");
         return status;
     }
+
+    if (mState == STATE_CONTINUOUS_CAPTURE)
+        stopOfflineCapture();
 
     snapshotBuffer.owner = this;
 
@@ -5012,6 +5036,17 @@ status_t ControlThread::startPanorama()
     }
     if (mPanoramaThread != 0) {
         mPanoramaThread->startPanorama();
+
+        // in continuous capture mode, check if postview size matches live preview size.
+        // if not, restart preview so that pv size gets set to lpv size
+        if (mState == STATE_CONTINUOUS_CAPTURE) {
+            int lpwWidth, lpwHeight, pvWidth, pvHeight, pvFormat;
+            IntelCameraParameters::getPanoramaLivePreviewSize(lpwWidth, lpwHeight, mParameters);
+            mISP->getPostviewFrameFormat(pvWidth, pvHeight, pvFormat);
+            if (lpwWidth != pvWidth || lpwHeight != pvHeight)
+                restartPreview(false);
+        }
+
         return NO_ERROR;
     } else {
         return INVALID_OPERATION;

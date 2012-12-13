@@ -2016,6 +2016,14 @@ status_t AtomISP::setPreviewFrameFormat(int width, int height, int format)
     return status;
 }
 
+void AtomISP::getPostviewFrameFormat(int &width, int &height, int &format) const
+{
+    LOG1("@%s", __FUNCTION__);
+    width = mConfig.postview.width;
+    height = mConfig.postview.height;
+    format = mConfig.postview.format;
+}
+
 status_t AtomISP::setPostviewFrameFormat(int width, int height, int format)
 {
     LOG1("@%s", __FUNCTION__);
