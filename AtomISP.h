@@ -330,6 +330,7 @@ private:
         RESOLUTION_3MP,
         RESOLUTION_5MP,
         RESOLUTION_8MP,
+        RESOLUTION_13MP,
         RESOLUTION_14MP,
     };
 

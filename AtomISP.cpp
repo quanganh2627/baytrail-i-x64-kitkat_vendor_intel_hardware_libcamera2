@@ -40,6 +40,9 @@
 #define RESOLUTION_14MP_TABLE   \
         "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448,3648x2736,4096x3072,4352x3264"
 
+#define RESOLUTION_13MP_TABLE   \
+        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448,3648x2736,4096x3072,4192x3104"
+
 #define RESOLUTION_8MP_TABLE   \
         "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448"
 
@@ -125,6 +128,7 @@ static const char *resolution_tables[] = {
     RESOLUTION_3MP_TABLE,
     RESOLUTION_5MP_TABLE,
     RESOLUTION_8MP_TABLE,
+    RESOLUTION_13MP_TABLE,
     RESOLUTION_14MP_TABLE
 };
 
@@ -744,6 +748,8 @@ const char* AtomISP::getMaxSnapShotResolution()
     int index = RESOLUTION_14MP;
 
     if (mConfig.snapshot.maxWidth < RESOLUTION_14MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_14MP_HEIGHT)
+            index--;
+    if (mConfig.snapshot.maxWidth < RESOLUTION_13MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_13MP_HEIGHT)
             index--;
     if (mConfig.snapshot.maxWidth < RESOLUTION_8MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_8MP_HEIGHT)
             index--;
