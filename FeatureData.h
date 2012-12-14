@@ -51,21 +51,53 @@ class FeatureBase {
 
     friend class FeatureData;
 
-    protected:
+public:
+    class CameraFeature {
+    public:
+        CameraFeature() {
+        hdrDefault = "off";
+        hdrSupported = "on,off";
+        //TODO: lowLight Not supported yet
+        lowLightDefault = "";
+        lowLightSupported = "";
+        faceDetectionDefault = "off";
+        faceDetectionSupported = "on,off";
+        faceRecognitionDefault = "off";
+        faceRecognitionSupported = "on,off";
+        smileShutterDefault = "off";
+        smileShutterSupported = "on,off";
+        blinkShutterDefault = "off";
+        blinkShutterSupported = "on,off";
+        //TODO: continuous VF to add
+        //TODO: Burst Index
+        panoramaDefault = "off";
+        panoramaSupported = "onoff";
+        sceneDetectionDefault = "off";
+        sceneDetectionSupported = "on,off";
+        //FIXME CONSTRUCTOR
+        };
         const char *hdrDefault;
         const char *hdrSupported;
+        //TODO: lowLight Not supported yet
+        const char *lowLightDefault;
+        const char *lowLightSupported;
         const char *faceDetectionDefault;
         const char *faceDetectionSupported;
         const char *faceRecognitionDefault;
         const char *faceRecognitionSupported;
-        const char *blinkShutterDefault;
-        const char *blinkShutterSupported;
         const char *smileShutterDefault;
         const char *smileShutterSupported;
+        const char *blinkShutterDefault;
+        const char *blinkShutterSupported;
+        //TODO: continuous VF to add
+        //TODO: Burst Index
         const char *panoramaDefault;
         const char *panoramaSupported;
         const char *sceneDetectionDefault;
-    const char *sceneDetectionSupported;
+        const char *sceneDetectionSupported;
+    };
+
+    Vector<CameraFeature> mCamFeature;
 };
 
 
@@ -75,20 +107,22 @@ class FeatureData {
         static FeatureBase* mInstance;
         static FeatureBase* getInstance();
     public:
-        static const char* hdrDefault();
-        static const char* hdrSupported();
-        static const char* faceDetectionDefault();
-        static const char* faceDetectionSupported();
-        static const char* faceRecognitionDefault();
-        static const char* faceRecognitionSupported();
-        static const char* smileShutterDefault();
-        static const char* smileShutterSupported();
-        static const char* blinkShutterDefault();
-        static const char* blinkShutterSupported();
-        static const char* panoramaDefault();
-        static const char* panoramaSupported();
-        static const char* sceneDetectionDefault();
-        static const char* sceneDetectionSupported();
+        static const char* hdrDefault(int cameraId);
+        static const char* hdrSupported(int cameraId);
+        static const char* lowLightDefault(int cameraId);
+        static const char* lowLightSupported(int cameraId);
+        static const char* faceDetectionDefault(int cameraId);
+        static const char* faceDetectionSupported(int cameraId);
+        static const char* faceRecognitionDefault(int cameraId);
+        static const char* faceRecognitionSupported(int cameraId);
+        static const char* smileShutterDefault(int cameraId);
+        static const char* smileShutterSupported(int cameraId);
+        static const char* blinkShutterDefault(int cameraId);
+        static const char* blinkShutterSupported(int cameraId);
+        static const char* panoramaDefault(int cameraId);
+        static const char* panoramaSupported(int cameraId);
+        static const char* sceneDetectionDefault(int cameraId);
+        static const char* sceneDetectionSupported(int cameraId);
 };
 
 } /* namespace android */

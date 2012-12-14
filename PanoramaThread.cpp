@@ -63,7 +63,7 @@ PanoramaThread::~PanoramaThread()
     LOG1("@%s", __FUNCTION__);
 }
 
-void PanoramaThread::getDefaultParameters(CameraParameters *intel_params)
+void PanoramaThread::getDefaultParameters(CameraParameters *intel_params, int cameraId)
 {
     LOG1("@%s", __FUNCTION__);
     if (!intel_params) {
@@ -71,7 +71,7 @@ void PanoramaThread::getDefaultParameters(CameraParameters *intel_params)
         assert(false);
     }
     // Set if Panorama is available or not.
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PANORAMA, FeatureData::panoramaSupported());
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PANORAMA, FeatureData::panoramaSupported(cameraId));
     intel_params->set(IntelCameraParameters::KEY_PANORAMA_MAX_SNAPSHOT_COUNT, mPanoramaMaxSnapshotCount);
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PANORAMA_LIVE_PREVIEW_SIZES,
             CAM_RESO_STR(PANORAMA_MAX_LIVE_PREV_WIDTH,PANORAMA_MAX_LIVE_PREV_HEIGHT)

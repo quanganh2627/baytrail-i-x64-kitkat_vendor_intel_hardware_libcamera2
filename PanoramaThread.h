@@ -64,7 +64,7 @@ public:
     PanoramaThread(ICallbackPanorama *panoramaCallback);
     ~PanoramaThread();
 
-    void getDefaultParameters(CameraParameters *intel_params);
+    void getDefaultParameters(CameraParameters *intel_params, int cameraId);
     void startPanorama(void);
     void stopPanorama(bool synchronous = false);
     void startPanoramaCapture(void);

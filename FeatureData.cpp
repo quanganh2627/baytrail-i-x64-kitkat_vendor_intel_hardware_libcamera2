@@ -44,156 +44,176 @@ FeatureBase* FeatureData::getInstance()
 }
 
 /**
+ * Finding if CameraId is valid
+ * return CameraId validity status.
+ */
+static bool checkCameraId(int cameraId, FeatureBase *i)
+{
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCamFeature.size())) {
+        LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+        return false;
+    }
+
+    return true;
+}
+
+/**
  * getting hdr default value on current product
  * return default value
  */
-const char* FeatureData::hdrDefault()
+const char* FeatureData::hdrDefault(int cameraId)
 {
     FeatureBase *i = getInstance();
-
-    return i->hdrDefault;
+    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].hdrDefault : "");
 }
 
 /**
  * getting if hdr is supported or not on the current product
  * return possible options of hdr support
  */
-const char* FeatureData::hdrSupported()
+const char* FeatureData::hdrSupported(int cameraId)
 {
     FeatureBase *i = getInstance();
+    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].hdrSupported : "");
+}
 
-    return i->hdrSupported;
+/**
+ * getting low light default value on current product
+ * return default value
+ */
+const char* FeatureData::lowLightDefault(int cameraId)
+{
+    FeatureBase *i = getInstance();
+    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].lowLightDefault : "");
+}
+
+/**
+ * getting if low light is supported or not on the current product
+ * return possible options of hdr support
+ */
+const char* FeatureData::lowLightSupported(int cameraId)
+{
+    FeatureBase *i = getInstance();
+    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].lowLightSupported : "");
 }
 
 /**
  * getting face detection default value on current product
  * return default value
  */
-const char* FeatureData::faceDetectionDefault()
+const char* FeatureData::faceDetectionDefault(int cameraId)
 {
     FeatureBase *i = getInstance();
-
-    return i->faceDetectionDefault;
+    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].faceDetectionDefault : "");
 }
 
 /**
  * getting if face detection is supported or not on the current product
  * return possible options of face detection support
  */
-const char* FeatureData::faceDetectionSupported()
+const char* FeatureData::faceDetectionSupported(int cameraId)
 {
     FeatureBase *i = getInstance();
-
-    return i->faceDetectionSupported;
+    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].faceDetectionSupported : "");
 }
 
 /**
  * getting face recognition default value on current product
  * return default value
  */
-const char* FeatureData::faceRecognitionDefault()
+const char* FeatureData::faceRecognitionDefault(int cameraId)
 {
     FeatureBase *i = getInstance();
-
-    return i->faceRecognitionDefault;
+    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].faceRecognitionDefault : "");
 }
 
 /**
  * getting if face recognition is supported or not on the current product
  * return possible options of face recognition support
  */
-const char* FeatureData::faceRecognitionSupported()
+const char* FeatureData::faceRecognitionSupported(int cameraId)
 {
     FeatureBase *i = getInstance();
-
-    return i->faceRecognitionSupported;
+    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].faceRecognitionSupported : "");
 }
 
 /**
  * getting smile shutter default value on current product
  * return default value
  */
-const char* FeatureData::smileShutterDefault()
+const char* FeatureData::smileShutterDefault(int cameraId)
 {
     FeatureBase *i = getInstance();
-
-    return i->smileShutterDefault;
+    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].smileShutterDefault : "");
 }
 
 /**
  * getting if smile shutter is supported or not on the current product
  * return possible options of smile shutter support
  */
-const char* FeatureData::smileShutterSupported()
+const char* FeatureData::smileShutterSupported(int cameraId)
 {
     FeatureBase *i = getInstance();
-
-    return i->smileShutterSupported;
+    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].smileShutterSupported : "");
 }
 
 /**
  * getting blink shutter default value on current product
  * return default value
  */
-const char* FeatureData::blinkShutterDefault()
+const char* FeatureData::blinkShutterDefault(int cameraId)
 {
     FeatureBase *i = getInstance();
-
-    return i->blinkShutterDefault;
+    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].blinkShutterDefault : "");
 }
 
 /**
  * getting if blink shutter is supported or not on the current product
  * return possible options of blink shutter support
  */
-const char* FeatureData::blinkShutterSupported()
+const char* FeatureData::blinkShutterSupported(int cameraId)
 {
     FeatureBase *i = getInstance();
-
-    return i->blinkShutterSupported;
+    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].blinkShutterSupported : "");
 }
 
 /**
  * getting panorama default value on current product
  * return default value
  */
-const char* FeatureData::panoramaDefault()
+const char* FeatureData::panoramaDefault(int cameraId)
 {
     FeatureBase *i = getInstance();
-
-    return i->panoramaDefault;
+    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].panoramaDefault : "");
 }
 
 /**
  * getting if panorama is supported or not on the current product
  * return possible options of face panorama support
  */
-const char* FeatureData::panoramaSupported()
+const char* FeatureData::panoramaSupported(int cameraId)
 {
     FeatureBase *i = getInstance();
-
-    return i->panoramaSupported;
+    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].panoramaSupported : "");
 }
 
 /**
  * getting scene detection default value on current product
  * return default value
  */
-const char* FeatureData::sceneDetectionDefault()
+const char* FeatureData::sceneDetectionDefault(int cameraId)
 {
     FeatureBase *i = getInstance();
-
-    return i->sceneDetectionDefault;
+    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].sceneDetectionDefault : "");
 }
 
 /**
  * getting if scene detection is supported or not on the current product
  * return possible options of scene detection support
  */
-const char* FeatureData::sceneDetectionSupported()
+const char* FeatureData::sceneDetectionSupported(int cameraId)
 {
     FeatureBase *i = getInstance();
-
-    return i->sceneDetectionSupported;
+    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].sceneDetectionSupported : "");
 }
 }//namespace android

@@ -50,7 +50,7 @@ public:
     virtual ~PostProcThread();
 
 // Common methods
-    void getDefaultParameters(CameraParameters *params, CameraParameters *intel_parameters);
+    void getDefaultParameters(CameraParameters *params, CameraParameters *intel_parameters, int cameraId);
     void flushFrames();
 // Thread overrides
 public:

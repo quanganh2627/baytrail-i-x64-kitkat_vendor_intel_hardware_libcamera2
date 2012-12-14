@@ -138,6 +138,7 @@ ControlThread::~ControlThread()
 status_t ControlThread::init()
 {
     LOG1("@%s: cameraId = %d", __FUNCTION__, mCameraConf->cameraId());
+    int cameraId;
 
     if (mCameraConf == 0) {
         LOGE("ERROR no CPF info given for Control Thread in %s", __FUNCTION__);
@@ -253,13 +254,14 @@ status_t ControlThread::init()
 
     PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("New_Other_Threads");
 
+    cameraId = mISP->getCurrentCameraId();
     // get default params from AtomISP and JPEG encoder
     mISP->getDefaultParameters(&mParameters, &mIntelParameters);
     m3AControls->getDefaultParams(&mParameters, &mIntelParameters);
     mPictureThread->getDefaultParameters(&mParameters);
     mPreviewThread->getDefaultParameters(&mParameters);
-    mPanoramaThread->getDefaultParameters(&mIntelParameters);
-    mPostProcThread->getDefaultParameters(&mParameters, &mIntelParameters);
+    mPanoramaThread->getDefaultParameters(&mIntelParameters, cameraId);
+    mPostProcThread->getDefaultParameters(&mParameters, &mIntelParameters, cameraId);
     updateParameterCache();
 
     status = m3AThread->run();

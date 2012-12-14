@@ -66,7 +66,7 @@ PostProcThread::~PostProcThread()
     }
 }
 
-void PostProcThread::getDefaultParameters(CameraParameters *params, CameraParameters *intel_params)
+void PostProcThread::getDefaultParameters(CameraParameters *params, CameraParameters *intel_params, int cameraId)
 {
     LOG1("@%s", __FUNCTION__);
     if (!params) {
@@ -77,11 +77,11 @@ void PostProcThread::getDefaultParameters(CameraParameters *params, CameraParame
     params->set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW, MAX_FACES_DETECTABLE);
     intel_params->set(IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD, STRINGIFY(SMILE_THRESHOLD));
     intel_params->set(IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD, STRINGIFY(BLINK_THRESHOLD));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER, FeatureData::smileShutterSupported());
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BLINK_SHUTTER, FeatureData::blinkShutterSupported());
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_DETECTION, FeatureData::faceDetectionSupported());
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_RECOGNITION, FeatureData::faceRecognitionSupported());
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SCENE_DETECTION, FeatureData::sceneDetectionSupported());
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER, FeatureData::smileShutterSupported(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BLINK_SHUTTER, FeatureData::blinkShutterSupported(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_DETECTION, FeatureData::faceDetectionSupported(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_RECOGNITION, FeatureData::faceRecognitionSupported(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SCENE_DETECTION, FeatureData::sceneDetectionSupported(cameraId));
 }
 
 void PostProcThread::startFaceDetection()

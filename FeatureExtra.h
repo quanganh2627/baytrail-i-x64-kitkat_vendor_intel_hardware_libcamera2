@@ -36,46 +36,67 @@ class FeatureExtra : public FeatureBase {
     public:
 
     FeatureExtra(void) {
-        hdrDefault = "off";
-        hdrSupported = "on,off";
-        faceDetectionDefault = "off";
-        faceDetectionSupported = "on,off";
-        faceRecognitionDefault = "off";
-        faceRecognitionSupported = "on,off";
-        smileShutterDefault = "off";
-        smileShutterSupported = "on,off";
-        blinkShutterDefault = "off";
-        blinkShutterSupported = "on,off";
-        panoramaDefault = "off";
-        panoramaSupported = "on,off";
-        sceneDetectionDefault = "off";
-        sceneDetectionSupported = "on,off";
-         /* TODO: ADD MORE HERE WHEN NEEDED*/
-    }
+        /* Creating CameraFeature object (default constructor value applied)
+         * HERE we only modify the value which are different than
+         * in the constructor.
+         * non-present value are taking constructor values.
+         * See Default values in FeatureData.h
+         * same applies later in the code for front camera.
+         */
+        CameraFeature camFeat;
+        // Back camera settings same as default.
+        mCamFeature.push(camFeat);
+
+        //Front camera setting
+        camFeat.hdrDefault = "";
+        camFeat.hdrSupported = "";
+        camFeat.panoramaDefault = "";
+        camFeat.panoramaSupported = "";
+        camFeat.sceneDetectionDefault = "";
+        camFeat.sceneDetectionSupported = "";
+        mCamFeature.push(camFeat);
+
+    };
+
 };
 
-
+// No support for any Intel Feature.
 class FeatureNotExtra : public FeatureBase {
 
     public:
 
     FeatureNotExtra(void) {
-        hdrDefault = "";
-        hdrSupported = "";
-        faceDetectionDefault = "";
-        faceDetectionSupported = "";
-        faceRecognitionDefault = "";
-        faceRecognitionSupported = "";
-        smileShutterDefault = "";
-        smileShutterSupported = "";
-        blinkShutterDefault = "";
-        blinkShutterSupported = "";
-        panoramaDefault = "";
-        panoramaSupported = "";
-        sceneDetectionDefault = "";
-        sceneDetectionSupported = "";
-        /* TODO: ADD MORE HERE WHEN NEEDED */
-    }
+
+        /* Creating CameraFeature object (default constructor value applied)
+         * HERE we only modify the value which are different than
+         * in the constructor.
+         * non-present value are taking constructor values.
+         * See Default values in FeatureData.h
+         * same applies later in the code for front camera.
+         */
+        CameraFeature camFeat;
+
+        //Back camera setting
+        camFeat.hdrDefault = "";
+        camFeat.hdrSupported = "";
+        camFeat.faceDetectionDefault = "";
+        camFeat.faceDetectionSupported = "";
+        camFeat.faceRecognitionDefault = "";
+        camFeat.faceRecognitionSupported = "";
+        camFeat.smileShutterDefault = "";
+        camFeat.smileShutterSupported = "";
+        camFeat.blinkShutterDefault = "";
+        camFeat.blinkShutterSupported = "";
+        camFeat.panoramaDefault = "";
+        camFeat.panoramaSupported = "";
+        camFeat.sceneDetectionDefault = "";
+        camFeat.sceneDetectionSupported = "";
+        mCamFeature.push(camFeat);
+
+        //Front camera setting
+        // same as back camera
+        mCamFeature.push(camFeat);
+    };
 };
 }//namespace android
 #endif /* FEATUREDATA_H_ */

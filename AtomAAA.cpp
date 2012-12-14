@@ -1727,6 +1727,7 @@ void AtomAAA::getDefaultParams(CameraParameters *params, CameraParameters *intel
         return;
     }
 
+    int cameraId = mISP->getCurrentCameraId();
     // ae mode
     intel_params->set(IntelCameraParameters::KEY_AE_MODE, "auto");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_AE_MODES, "auto,manual,shutter-priority,aperture-priority");
@@ -1762,8 +1763,8 @@ void AtomAAA::getDefaultParams(CameraParameters *params, CameraParameters *intel
     intel_params->set(IntelCameraParameters::KEY_CAPTURE_BRACKET, "none");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET, "none,exposure,focus");
 
-    intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, FeatureData::hdrDefault());
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, FeatureData::hdrSupported());
+    intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, FeatureData::hdrDefault(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, FeatureData::hdrSupported(cameraId));
     intel_params->set(IntelCameraParameters::KEY_HDR_VIVIDNESS, "gaussian");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none,gaussian,gamma");
     intel_params->set(IntelCameraParameters::KEY_HDR_SHARPENING, "normal");
