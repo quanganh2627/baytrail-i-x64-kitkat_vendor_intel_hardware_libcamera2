@@ -2373,8 +2373,7 @@ status_t ControlThread::handleMessageTakeSmartShutterPicture()
         status = handleMessageTakePicture();
     } else {   //normal smart shutter capture
         mPostProcThread->captureOnTrigger();
-        // TODO: switch back to whatever was the previous mode?
-        mState = STATE_PREVIEW_STILL;
+        mState = selectPreviewMode(mParameters);
     }
 
     return status;
