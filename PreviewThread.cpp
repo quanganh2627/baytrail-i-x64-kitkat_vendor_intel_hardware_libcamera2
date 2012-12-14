@@ -37,6 +37,7 @@ PreviewThread::PreviewThread(ICallbackPreview *previewDone) :
     Thread(true) // callbacks may call into java
     ,mMessageQueue("PreviewThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
+    ,mPreviewDoneCallback(previewDone)
     ,mMessageHandler(NULL)
 {
     LOG1("@%s", __FUNCTION__);
@@ -54,6 +55,24 @@ PreviewThread::~PreviewThread()
     delete mMessageHandler;
 }
 
+status_t PreviewThread::enableOverlay(bool set)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    delete mMessageHandler;
+    mMessageHandler = NULL;
+
+    if(set)
+        mMessageHandler = new OverlayPreviewHandler(this, mPreviewDoneCallback);
+    else
+        mMessageHandler = new GfxPreviewHandler(this, mPreviewDoneCallback);
+
+    if (mMessageHandler == NULL)
+        status = NO_MEMORY;
+
+    return status;
+}
 
 void PreviewThread::getDefaultParameters(CameraParameters *params)
 {

@@ -2730,6 +2730,14 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
+    // OVERLAY
+    const char* overlaySupported = params->get(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING_SUPPORTED);
+    const char* overlay = params->get(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING);
+     if (overlay && overlaySupported && strstr(overlaySupported, overlay) == NULL) {
+        LOGE("bad overlay rendering mode: %s; supported: %s", overlay, overlaySupported);
+        return BAD_VALUE;
+    }
+
     // MISCELLANEOUS
     const char *size = params->get(IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE);
     const char *livePreviewSizes = IntelCameraParameters::getSupportedPanoramaLivePreviewSizes(*params);
@@ -2747,6 +2755,31 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     }
 
     return NO_ERROR;
+}
+
+status_t ControlThread::ProcessOverlayEnable(const CameraParameters *oldParams,
+                                                   CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_HW_OVERLAY_RENDERING);
+
+    if (!newVal.isEmpty() && (mState == STATE_STOPPED))  {
+
+        if (newVal == "true") {
+            if (mPreviewThread->enableOverlay() == NO_ERROR) {
+                newParams->set(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING, "true");
+                LOG1("@%s: Preview Overlay rendering enabled!", __FUNCTION__);
+            } else {
+                LOGE("Could not configure Overlay preview rendering");
+            }
+        }
+    } else {
+        LOGW("Overlay cannot be enabled in other state than stop, ignoring request");
+    }
+
+    return status;
 }
 
 status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
@@ -4444,6 +4477,8 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     mParameters = newParams;
     mFocusAreas = newFocusAreas;
     mMeteringAreas = newMeteringAreas;
+
+    ProcessOverlayEnable(&oldParams, &newParams);
 
     if (needRestartPreview == true) {
         // if preview is running and preview format has changed, then we need

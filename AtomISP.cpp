@@ -642,11 +642,10 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
      */
     if (PlatformData::renderPreviewViaOverlay()) {
         intel_params->set(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING_SUPPORTED, "true,false");
-        intel_params->set(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING,"false"); // will be changed to true on the final patch
     } else {
         intel_params->set(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING_SUPPORTED, "false");
-        intel_params->set(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING,"false");
     }
+    intel_params->set(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING,"false");
 
     /**
      * flicker mode

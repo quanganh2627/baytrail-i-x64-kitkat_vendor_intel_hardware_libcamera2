@@ -69,6 +69,7 @@ public:
     status_t fetchPreviewBuffers(AtomBuffer ** pvBufs, int *count);
     status_t returnPreviewBuffers();
     status_t flushBuffers();
+    status_t enableOverlay(bool set = true);
 
     // TODO: need methods to configure preview thread
     // TODO: decide if configuration method should send a message
@@ -150,6 +151,7 @@ private:
 
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
+    ICallbackPreview *mPreviewDoneCallback;
 
     class PreviewMessageHandler {
     public:
