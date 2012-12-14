@@ -457,6 +457,9 @@ void SwitchCameras::stop(void)
     }
 }
 
+#else // LIBCAMERA_RD_FEATURES
+void reset(void) {}
+
 #endif // LIBCAMERA_RD_FEATURES
 
 } // namespace PerformanceTraces
