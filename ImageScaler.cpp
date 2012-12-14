@@ -18,6 +18,8 @@
 #include "LogHelper.h"
 #include "ImageScaler.h"
 
+#define RESOLUTION_1080P_WIDTH  1920
+#define RESOLUTION_1080P_HEIGHT 1080
 #define RESOLUTION_VGA_WIDTH    640
 #define RESOLUTION_VGA_HEIGHT   480
 #define RESOLUTION_QVGA_WIDTH   320
@@ -103,6 +105,15 @@ void ImageScaler::downScaleAndCropNv12Image(unsigned char *dest, const unsigned 
         downScaleAndCropNv12ImageQcif(dest, src, dest_stride, src_stride);
         return;
     }
+
+    ////////////////// TODO remove this BIG scaler from HAL after ZSL postview starts to work
+    if (src_w == RESOLUTION_1080P_WIDTH && src_h == RESOLUTION_1080P_HEIGHT
+            && src_skip_lines_top == 0 && src_skip_lines_bottom == 0
+            && dest_w == 1024 && dest_h == 576) {
+            downScaleNv12ImageFrom1080PTo1024x576(dest, src, dest_stride, src_stride);
+            return;
+    }
+
     LOG2("@%s", __FUNCTION__);
 
     // skip lines from top
@@ -683,6 +694,8 @@ void ImageScaler::downScaleNv12ImageFrom800x600ToQvga(unsigned char *dest, const
 
 }
 // VGA-QCIF end
+
+
 
 };
 

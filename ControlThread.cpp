@@ -20,6 +20,7 @@
 #include "PerformanceTraces.h"
 #include "CameraConf.h"
 #include "PreviewThread.h"
+#include "ImageScaler.h"
 #include "PictureThread.h"
 #include "AtomISP.h"
 #include "Callbacks.h"
@@ -1901,8 +1902,12 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
         return status;
     }
 
-    if (mState == STATE_CONTINUOUS_CAPTURE)
+    if (mState == STATE_CONTINUOUS_CAPTURE) {
         stopOfflineCapture();
+        // workaround for broken postview images - downscale in software
+        // TODO REMOVE THIS WHEN ZSL POSTVIEW STARTS TO WORK PROPERLY!!! THIS CAUSES 22-60ms OF DELAY!
+        ImageScaler::downScaleImage(&snapshotBuffer, &postviewBuffer);
+    }
 
     snapshotBuffer.owner = this;
 

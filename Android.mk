@@ -27,6 +27,7 @@ LOCAL_SRC_FILES := \
 	CameraConf.cpp \
 	ColorConverter.cpp \
 	ImageScaler.cpp \
+	ImageScaler1080Pto1024x576.cpp \
 	EXIFMaker.cpp \
 	JpegCompressor.cpp \
 	SWJpegEncoder.cpp \
