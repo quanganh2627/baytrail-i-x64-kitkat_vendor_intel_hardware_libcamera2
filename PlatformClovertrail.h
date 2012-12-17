@@ -72,7 +72,7 @@ public:
     PlatformCtpRedhookBay(void) {
         CameraInfo cam;
         mSubDevName = "/dev/v4l-subdev8";
-        mPreviewViaOverlay = true;
+
 
         // back camera
         cam.facing = CAMERA_FACING_BACK;
@@ -81,6 +81,7 @@ public:
         cam.flipping = PlatformData::SENSOR_FLIP_NA;
         cam.maxSnapshotWidth = RESOLUTION_8MP_WIDTH;
         cam.maxSnapshotHeight = RESOLUTION_8MP_HEIGHT;
+        cam.mPreviewViaOverlay = true;
         mCameras.push(cam);
 
         // front camera
@@ -90,6 +91,7 @@ public:
         cam.flipping = PlatformData::SENSOR_FLIP_NA;
         cam.maxSnapshotWidth = RESOLUTION_1_3MP_WIDTH;
         cam.maxSnapshotHeight = RESOLUTION_1_3MP_HEIGHT;
+        cam.mPreviewViaOverlay = false;
         mCameras.push(cam);
 
         // file inject device

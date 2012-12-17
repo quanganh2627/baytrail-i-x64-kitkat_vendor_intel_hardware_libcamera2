@@ -37,7 +37,7 @@ public:
         CameraInfo cam;
 
         mSubDevName = "/dev/v4l-subdev7";
-        mPreviewViaOverlay = false;
+
 
         // back camera
         cam.facing = CAMERA_FACING_BACK;
@@ -46,6 +46,7 @@ public:
         cam.flipping = PlatformData::SENSOR_FLIP_NA;
         cam.maxSnapshotWidth = RESOLUTION_8MP_WIDTH;
         cam.maxSnapshotHeight = RESOLUTION_8MP_HEIGHT;
+        cam.mPreviewViaOverlay = false;
         mCameras.push(cam);
 
         // front camera
@@ -56,6 +57,7 @@ public:
                        PlatformData::SENSOR_FLIP_V;
         cam.maxSnapshotWidth = RESOLUTION_1_3MP_WIDTH;
         cam.maxSnapshotHeight = RESOLUTION_1_3MP_HEIGHT;
+        cam.mPreviewViaOverlay = false;
         mCameras.push(cam);
 
         // inject device

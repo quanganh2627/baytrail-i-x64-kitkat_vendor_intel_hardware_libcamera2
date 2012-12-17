@@ -102,6 +102,7 @@ public:
        bool dvs;
        int maxSnapshotWidth;
        int maxSnapshotHeight;
+       bool mPreviewViaOverlay;
     };
 
     // note: Android NDK does not yet support C++11 and
@@ -115,8 +116,6 @@ public:
 
     bool mContinuousCapture;
     int mPanoramaMaxSnapshotCount;
-
-    bool mPreviewViaOverlay;
 
     /* For burst capture's burst length and burst fps */
     int mMaxBurstFPS;
@@ -308,10 +307,11 @@ class PlatformData {
     /**
      * Whether preview is rendered via HW overlay or GFx plane
      *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
      * \return true if rendered via HW overlay
      * \return false if rendered via Gfx
      */
-    static bool renderPreviewViaOverlay(void);
+    static bool renderPreviewViaOverlay(int cameraId);
 
 
 };

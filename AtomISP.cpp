@@ -640,7 +640,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * OVERLAY
      */
-    if (PlatformData::renderPreviewViaOverlay()) {
+    if (PlatformData::renderPreviewViaOverlay(mCameraInput->androidCameraId)) {
         intel_params->set(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING_SUPPORTED, "true,false");
     } else {
         intel_params->set(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING_SUPPORTED, "false");
