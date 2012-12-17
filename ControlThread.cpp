@@ -4642,6 +4642,7 @@ status_t ControlThread::hdrInit(int size, int pvSize, int format,
         LOGE("HDR: Error allocating memory for HDR postview buffer!");
         return NO_MEMORY;
     }
+    mHdr.outPostviewBuf.shared = false;
     mHdr.outPostviewBuf.type = ATOM_BUFFER_POSTVIEW;
 
     LOG1("HDR: using %p as HDR postview output buffer", mHdr.outPostviewBuf.buff->data);
