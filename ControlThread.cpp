@@ -2442,13 +2442,7 @@ status_t ControlThread::handleMessageAutoFocus()
 
     // Implement pre auto-focus functions
     if (flashMode != CAM_AE_FLASH_MODE_TORCH && mAAA->is3ASupported() && mBurstLength <= 1) {
-
-        if (flashMode == CAM_AE_FLASH_MODE_ON) {
-            mFlashAutoFocus = true;
-        }
-
-        if (!mFlashAutoFocus && DetermineFlash(flashMode)) {
-            // Check the other modes
+        if (!mFlashAutoFocus && (DetermineFlash(flashMode) || flashMode == CAM_AE_FLASH_MODE_ON)) {
             LOG1("Flash mode = %d", flashMode);
             if (mAAA->getAfNeedAssistLight()) {
                 mFlashAutoFocus = true;
