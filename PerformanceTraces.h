@@ -74,6 +74,7 @@ namespace PerformanceTraces {
     static void enable(bool set) STUB_BODY
     static void enableBreakdown(bool set) STUB_BODY
     static void start(int frameCounter = -1) STUB_BODY
+    static void autoFocus(int frameCounter = -1) STUB_BODY
     static void takePictureCalled(void) STUB_BODY
     static void autoFocusDone(void) STUB_BODY
     static void step(const char *func, const char* note = 0, int frameCounter = -1) STUB_BODY
@@ -138,10 +139,10 @@ namespace PerformanceTraces {
     PerformanceTraces::Shot2Shot::step(__FUNCTION__)
 
   /**
-   * Helper macro to call PerformanceTraces::Shot2Shot::takePictureCalled() with
-   * the proper function name.
+   * Helper macro to call when a take picture message
+   * is actually handled.
    */
-  #define PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_CALLED() \
+  #define PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE() \
       do { \
           PerformanceTraces::Shot2Shot::takePictureCalled(); \
           PerformanceTraces::Shot2Shot::step(__FUNCTION__);  \
@@ -150,13 +151,20 @@ namespace PerformanceTraces {
   /**
    * Helper macro to call PerformanceTraces::Shot2Shot::autoFocusDone() with
    * the proper function name.
-   *
-   * @param ok true if AF was succesful
    */
-  #define PERFORMANCE_TRACES_SHOT2SHOT_AUTO_FOCUS_DONE(ok) \
+  #define PERFORMANCE_TRACES_SHOT2SHOT_AUTO_FOCUS_DONE() \
       do { \
-          if (ok) PerformanceTraces::Shot2Shot::autoFocusDone();   \
           PerformanceTraces::Shot2Shot::step(__FUNCTION__);  \
+      } while(0)
+
+  /**
+   * Helper macro to call when takePicture HAL method is called.
+   * This step is used in multiple metrics.
+   */
+  #define PERFORMANCE_TRACES_TAKE_PICTURE_QUEUE() \
+      do { \
+          PerformanceTraces::Shot2Shot::step(__FUNCTION__);  \
+          PerformanceTraces::ShutterLag::takePictureCalled(); \
       } while(0)
 
   /**
@@ -169,8 +177,6 @@ namespace PerformanceTraces {
       do { \
           if (x == 1) {  \
               PerformanceTraces::Launch2Preview::stop(); \
-              PerformanceTraces::Shot2Shot::step(__FUNCTION__);  \
-              PerformanceTraces::Shot2Shot::stop(x); \
               PerformanceTraces::FaceLock::start(); \
           } \
           PerformanceTraces::SwitchCameras::stop(); \

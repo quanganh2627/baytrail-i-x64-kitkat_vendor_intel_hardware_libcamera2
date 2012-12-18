@@ -344,6 +344,8 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
         jpegBuf.buff = NULL;
     }
 
+    jpegBuf.frameCounter = msg->snaphotBuf.frameCounter;
+
     // ownership was transferred to us from ControlThread, so we need
     // to free resources here after encoding
     msg->metaData.free();

@@ -704,7 +704,7 @@ status_t ControlThread::takePicture()
     LOG1("@%s", __FUNCTION__);
     Message msg;
 
-    PerformanceTraces::ShutterLag::takePictureCalled();
+    PERFORMANCE_TRACES_TAKE_PICTURE_QUEUE();
 
     if (mPanoramaThread->getState() != PANORAMA_STOPPED)
         msg.id = MESSAGE_ID_PANORAMA_PICTURE;
@@ -727,8 +727,6 @@ status_t ControlThread::cancelPicture()
 status_t ControlThread::autoFocus()
 {
     LOG1("@%s", __FUNCTION__);
-    // track shot2shot stats for frame number #1
-    PerformanceTraces::Shot2Shot::start(1);
     Message msg;
     msg.id = MESSAGE_ID_AUTO_FOCUS;
     return mMessageQueue.send(&msg);
@@ -1369,6 +1367,8 @@ status_t ControlThread::handleMessageStartPreview()
     status_t status;
     Mutex::Autolock mLock(mPreviewStartLock);
 
+    PERFORMANCE_TRACES_SHOT2SHOT_STEP("handle start preview", -1);
+
     if (mState == STATE_CAPTURE) {
         status = stopCapture();
         if (status != NO_ERROR) {
@@ -1393,6 +1393,8 @@ status_t ControlThread::handleMessageStartPreview()
         status = INVALID_OPERATION;
     }
 
+    PERFORMANCE_TRACES_SHOT2SHOT_STEP("preview started", -1);
+
     mIsPreviewStartComplete = false;
 
     mPreviewStartQueued = false;
@@ -1404,6 +1406,8 @@ status_t ControlThread::handleMessageStopPreview()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     State oldState = mState;
+
+    PERFORMANCE_TRACES_SHOT2SHOT_STEP("stop preview", -1);
 
     // In STATE_CAPTURE, preview is already stopped, nothing to do
     if (mState != STATE_CAPTURE) {
@@ -1418,6 +1422,8 @@ status_t ControlThread::handleMessageStopPreview()
 
     if (oldState == STATE_CONTINUOUS_CAPTURE && !mContinuousActiveStopped)
         releaseContinuousCapture();
+
+    PERFORMANCE_TRACES_SHOT2SHOT_STEP("preview stopped", -1);
 
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_STOP_PREVIEW, status);
@@ -1708,6 +1714,8 @@ status_t ControlThread::handleMessagePanoramaCaptureTrigger()
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
 
+    PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE();
+
     status = capturePanoramaPic(snapshotBuffer, postviewBuffer);
     if (status != NO_ERROR) {
         LOGE("Error %d capturing panorama picture.", status);
@@ -1983,7 +1991,7 @@ status_t ControlThread::captureStillPic()
     bool previewKeepAlive =
         isParameterSet(IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE);
 
-    PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_CALLED();
+    PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE();
 
     bool requestPostviewCallback = true;
     bool requestRawCallback = true;
@@ -2237,8 +2245,6 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     bool previewKeepAlive =
         isParameterSet(IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE);
 
-    PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
-
     if (clientRequest) {
         bool requestPostviewCallback = true;
         bool requestRawCallback = true;
@@ -2265,6 +2271,8 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
             return NO_ERROR;
         }
     }
+
+    PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE();
 
     /**
      * Time to return the used frames to ISP, we do not do this in the function

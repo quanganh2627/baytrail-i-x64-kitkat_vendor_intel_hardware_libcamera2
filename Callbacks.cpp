@@ -131,6 +131,8 @@ void Callbacks::compressedFrameDone(AtomBuffer *buff)
         LOG1("Sending message: CAMERA_MSG_COMPRESSED_IMAGE, buff id = %d, size = %zu", buff->id, buff->buff->size);
         mDataCB(CAMERA_MSG_COMPRESSED_IMAGE, buff->buff, 0, NULL, mUserToken);
     }
+    PERFORMANCE_TRACES_SHOT2SHOT_STEP("frame done",
+                                      buff != NULL ? buff->frameCounter : -1);
 }
 
 void Callbacks::postviewFrameDone(AtomBuffer *buff)
@@ -226,7 +228,7 @@ void Callbacks::allocateMemory(camera_memory_t **buff, size_t size, bool cached)
 void Callbacks::autofocusDone(bool status)
 {
     LOG1("@%s", __FUNCTION__);
-    PERFORMANCE_TRACES_SHOT2SHOT_AUTO_FOCUS_DONE(status);
+    PERFORMANCE_TRACES_SHOT2SHOT_AUTO_FOCUS_DONE();
     if (mMessageFlags & CAMERA_MSG_FOCUS) {
         LOG1("Sending message: CAMERA_MSG_FOCUS");
         mNotifyCB(CAMERA_MSG_FOCUS, status, 0, mUserToken);

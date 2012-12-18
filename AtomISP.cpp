@@ -1738,14 +1738,9 @@ int AtomISP::prepareDevice(int device, int buffer_count)
     if (ret < 0)
         return ret;
 
-    // reset frame counter
-    mDevices[device].frameCounter = 0;
     mDevices[device].state = DEVICE_PREPARED;
 
-    //we are started now
     return 0;
-
-    return ret;
 }
 
 int AtomISP::startDevice(int device, int buffer_count)
@@ -1775,6 +1770,7 @@ int AtomISP::startDevice(int device, int buffer_count)
     if (ret < 0)
         return ret;
 
+    mDevices[device].frameCounter = 0;
     mDevices[device].state = DEVICE_STARTED;
 
     //we are started now
