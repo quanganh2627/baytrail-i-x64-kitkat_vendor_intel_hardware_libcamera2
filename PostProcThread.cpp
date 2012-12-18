@@ -701,7 +701,7 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
 
 void PostProcThread::setFocusAreas(const CameraWindow* windows, size_t winCount)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     AfMode newAfMode = CAM_AF_MODE_FACE;
 
     AtomAAA* aaa = AtomAAA::getInstance();
@@ -719,7 +719,7 @@ void PostProcThread::setFocusAreas(const CameraWindow* windows, size_t winCount)
 
 void PostProcThread::setAeMeteringArea(const CameraWindow* window)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     AtomAAA* aaa = AtomAAA::getInstance();
 
     if (aaa->setAeWindow(window) == NO_ERROR) {
@@ -734,7 +734,7 @@ void PostProcThread::setAeMeteringArea(const CameraWindow* window)
 
 void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     if (face_metadata.number_of_faces <= 0) {
         resetToOldAAAValues();
         return;

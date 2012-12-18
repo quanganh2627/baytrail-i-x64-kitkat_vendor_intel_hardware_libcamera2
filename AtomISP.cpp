@@ -1492,7 +1492,7 @@ status_t AtomISP::setContCaptureNumCaptures(int numCaptures)
 
 status_t AtomISP::setContCaptureOffset(int captureOffset)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     if (captureOffset != mContCaptConfig.offset) {
         int ret = requestContCapture(mContCaptConfig.numCaptures,
                                      captureOffset,
@@ -2431,7 +2431,7 @@ status_t AtomISP::setColorEffect(v4l2_colorfx effect)
 
 status_t AtomISP::applyColorEffect()
 {
-    LOG1("@%s: effect = %d", __FUNCTION__, mColorEffect);
+    LOG2("@%s: effect = %d", __FUNCTION__, mColorEffect);
     status_t status = NO_ERROR;
 
     // Color effect overrides configs that AIC has set

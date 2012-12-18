@@ -186,7 +186,7 @@ status_t CallbacksThread::handleMessageFocusMove(CallbacksThread::MessageFocusMo
 
 void CallbacksThread::facesDetected(camera_frame_metadata_t &face_metadata)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     int num_faces;
     if (face_metadata.number_of_faces > MAX_FACES_DETECTABLE) {
         LOGW("@%s: %d faces detected, limiting to %d", __FUNCTION__,
@@ -372,7 +372,7 @@ status_t CallbacksThread::handleMessageFlush()
 
 status_t CallbacksThread::handleMessageFaces(MessageFaces *msg)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     mCallbacks->facesDetected(msg->meta_data);
     return NO_ERROR;
 }

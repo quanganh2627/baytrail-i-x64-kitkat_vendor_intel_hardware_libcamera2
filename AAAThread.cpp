@@ -139,7 +139,7 @@ status_t AAAThread::newFrame(struct timeval capture_timestamp)
 
 status_t AAAThread::setFaces(const ia_face_state& faceState)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     status_t status(NO_ERROR);
 
     if (mFaceState.faces == NULL) {

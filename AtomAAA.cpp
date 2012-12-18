@@ -233,7 +233,7 @@ status_t AtomAAA::switchModeAndRate(AtomMode mode, float fps)
 status_t AtomAAA::setAeWindow(const CameraWindow *window)
 {
     Mutex::Autolock lock(m3aLock);
-    LOG1("@%s: window = %p (%d,%d,%d,%d,%d)", __FUNCTION__,
+    LOG2("@%s: window = %p (%d,%d,%d,%d,%d)", __FUNCTION__,
             window,
             window->x_left,
             window->y_top,
@@ -690,7 +690,7 @@ status_t AtomAAA::setAeMeteringMode(MeteringMode mode)
 MeteringMode AtomAAA::getAeMeteringMode()
 {
     Mutex::Autolock lock(m3aLock);
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     MeteringMode mode = CAM_AE_METERING_MODE_NOT_SET;
     if(!mHas3A)
         return mode;
@@ -857,7 +857,7 @@ size_t AtomAAA::getAfMaxNumWindows()
 status_t AtomAAA::setAfWindows(const CameraWindow *windows, size_t numWindows)
 {
     Mutex::Autolock lock(m3aLock);
-    LOG1("@%s: windows = %p, num = %u", __FUNCTION__, windows, numWindows);
+    LOG2("@%s: windows = %p, num = %u", __FUNCTION__, windows, numWindows);
     if(!mHas3A)
         return INVALID_OPERATION;
 
@@ -1544,7 +1544,7 @@ void AtomAAA::ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate)
 
 int AtomAAA::applyResults(void)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     int ret = 0;
 
     PERFORMANCE_TRACES_AAA_PROFILER_START();
@@ -1592,7 +1592,7 @@ bool AtomAAA::reconfigureGrid(void)
 
 int AtomAAA::getStatistics(void)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     int ret;
 
     PERFORMANCE_TRACES_AAA_PROFILER_START();
@@ -1651,7 +1651,7 @@ err:
 
 int AtomAAA::ciAdvProcessFrame(bool read_stats, const struct timeval *frame_timestamp)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
 #ifndef MRFL_VP
     int ret;
     ia_3a_aperture aperture;
@@ -1698,7 +1698,7 @@ int AtomAAA::processForFlash(ia_3a_flash_stage stage)
 
 void AtomAAA::get3aGridInfo(struct atomisp_grid_info *pgrid)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     *pgrid = m3ALibState.results.isp_params.info;
 }
 
