@@ -60,6 +60,15 @@ namespace PerformanceTraces {
     static void stop(void) STUB_BODY
   };
 
+  class FaceLock {
+  public:
+    static void enable(bool set) STUB_BODY
+    static void start(void) STUB_BODY
+    static void getCurFrameNum(const int mFrameNum) STUB_BODY
+    static void stop(int mFaceNum = 0) STUB_BODY
+  };
+
+
   class Shot2Shot {
   public:
     static void enable(bool set) STUB_BODY
@@ -162,6 +171,7 @@ namespace PerformanceTraces {
               PerformanceTraces::Launch2Preview::stop(); \
               PerformanceTraces::Shot2Shot::step(__FUNCTION__);  \
               PerformanceTraces::Shot2Shot::stop(x); \
+              PerformanceTraces::FaceLock::start(); \
           } \
           PerformanceTraces::SwitchCameras::stop(); \
       } while(0)

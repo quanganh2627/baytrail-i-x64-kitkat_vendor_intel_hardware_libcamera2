@@ -19,6 +19,7 @@
 #include "LogHelper.h"
 #include "Callbacks.h"
 #include "FaceDetector.h"
+#include "PerformanceTraces.h"
 
 namespace android {
 
@@ -195,6 +196,8 @@ void CallbacksThread::facesDetected(camera_frame_metadata_t &face_metadata)
     } else {
         num_faces = face_metadata.number_of_faces;
     }
+    if (num_faces > 0)
+        PerformanceTraces::FaceLock::stop(num_faces);
     mFaceMetadata.number_of_faces = num_faces;
     memcpy(mFaceMetadata.faces, face_metadata.faces, mFaceMetadata.number_of_faces * sizeof(camera_face_t));
 

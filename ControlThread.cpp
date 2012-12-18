@@ -5312,6 +5312,9 @@ status_t ControlThread::dequeuePreview()
                 mISP->putPreviewFrame(&buff);
                 return status;
             }
+
+            PerformanceTraces::FaceLock::getCurFrameNum(buff.frameCounter);
+
             status = mPreviewThread->preview(&buff);
             if (status != NO_ERROR) {
                 LOGE("Error sending buffer to preview thread");

@@ -91,6 +91,7 @@ public:
 
 static PerformanceTimer gLaunch2Preview;
 static PerformanceTimer gLaunch2FocusLock;
+static PerformanceTimer gFaceLock;
 static PerformanceTimer gShot2Shot;
 static PerformanceTimer gShutterLag;
 static PerformanceTimer gSwitchCameras;
@@ -99,6 +100,7 @@ static PerformanceTimer gAAAProfiler;
 static bool gShot2ShotBreakdown = false;
 static bool gLaunch2PreviewBreakdown = false;
 static int gShot2ShotFrame = -1;
+static int gFaceLockFrame = -1;
 static bool gShot2ShotTakePictureCalled = false;
 static bool gShot2ShotAutoFocusDone = false;
 static bool gSwitchCamerasCalled = false;
@@ -213,6 +215,47 @@ void Launch2FocusLock::stop(void)
         LOGD("LAUNCH time calculated from create instance to lock the focus frame:\t%lld ms\n",
              gLaunch2FocusLock.timeUs() / 1000);
         gLaunch2FocusLock.stop();
+    }
+}
+
+/**
+ * Controls trace state
+ */
+void FaceLock::enable(bool set)
+{
+    gFaceLock.mRequested = set;
+}
+
+/**
+ * Starts the FaceLock trace.
+ */
+void FaceLock::start(void)
+{
+    if (gFaceLock.isRequested()) {
+        gFaceLock.formattedTrace("FaceLock", __FUNCTION__);
+        gFaceLock.start();
+    }
+}
+
+/**
+ * get current preview frame num
+ */
+void FaceLock::getCurFrameNum(const int mFrameNum)
+{
+    if (gFaceLock.isRunning()) {
+        gFaceLockFrame = mFrameNum;
+    }
+}
+
+/**
+ * Stops the FaceLock trace and prints out results.
+ */
+void FaceLock::stop(int mFaceNum)
+{
+    if (gFaceLock.isRunning()) {
+        LOGD("FaceLock face num: %d , Need frame: %d , From preview frame got to face lock successfully:\t%lld ms\n",
+             mFaceNum, gFaceLockFrame, gFaceLock.timeUs() / 1000);
+        gFaceLock.stop();
     }
 }
 
