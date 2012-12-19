@@ -309,6 +309,7 @@ status_t ControlThread::init()
 
     // Disable HDR by default
     mHdr.enabled = false;
+    mHdr.savedBracketMode = BRACKET_NONE;
     mHdr.sharpening = NORMAL_SHARPENING;
     mHdr.vividness = GAUSSIAN_VIVIDNESS;
     mHdr.saveOrig = false;
@@ -3385,9 +3386,11 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         if(newVal == "on") {
             mHdr.enabled = true;
             mHdr.bracketMode = BRACKET_EXPOSURE;
+            mHdr.savedBracketMode = mBracketManager->getBracketMode();
             mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
         } else if(newVal == "off") {
             mHdr.enabled = false;
+            mBracketManager->setBracketMode(mHdr.savedBracketMode);
         } else {
             LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_IMAGING, newVal.string());
             status = BAD_VALUE;

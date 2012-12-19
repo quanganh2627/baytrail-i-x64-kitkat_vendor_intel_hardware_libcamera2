@@ -299,6 +299,7 @@ private:
 
     struct HdrImaging {
         BracketingMode bracketMode;
+        BracketingMode savedBracketMode;
         int  bracketNum;
         bool enabled;
         bool saveOrig;
