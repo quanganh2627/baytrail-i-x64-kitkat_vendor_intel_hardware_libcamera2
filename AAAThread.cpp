@@ -330,8 +330,8 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
             }
         }
 
-        AfMode currAfMode = mAAA->getAfMode();
-        if (currAfMode == CAM_AF_MODE_CONTINUOUS) {
+        AfMode currPublicAfMode = mAAA->getPublicAfMode();
+        if (currPublicAfMode == CAM_AF_MODE_CONTINUOUS) {
             ia_3a_af_status cafStatus = mAAA->getCAFStatus();
             LOG2("CAF move lens status: %d", cafStatus);
             if (cafStatus != mPreviousCafStatus) {

@@ -237,6 +237,8 @@ public:
     AeMode getAeMode();
     status_t setAfMode(AfMode mode);
     AfMode getAfMode();
+    void setPublicAfMode(AfMode mode);
+    AfMode getPublicAfMode();
     bool getAfNeedAssistLight();
     status_t setAeFlashMode(FlashMode mode);
     FlashMode getAeFlashMode();
@@ -319,6 +321,7 @@ private:
     bool mHas3A;
     SensorType mSensorType;
     AfMode mAfMode;
+    AfMode mPublicAfMode;
     FlashMode mFlashMode;
     AwbMode mAwbMode;
     int mFocusPosition;

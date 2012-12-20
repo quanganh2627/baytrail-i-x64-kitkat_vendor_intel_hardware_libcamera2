@@ -131,6 +131,7 @@ AtomAAA::AtomAAA() :
     mHas3A(false)
     ,mSensorType(SENSOR_TYPE_NONE)
     ,mAfMode(CAM_AF_MODE_NOT_SET)
+    ,mPublicAfMode(CAM_AF_MODE_AUTO)
     ,mFlashMode(CAM_AE_FLASH_MODE_NOT_SET)
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
     ,mFocusPosition(0)
@@ -512,6 +513,23 @@ AfMode AtomAAA::getAfMode()
         return CAM_AF_MODE_NOT_SET;
 
     return mAfMode;
+}
+
+void AtomAAA::setPublicAfMode(AfMode mode)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG2("@%s", __FUNCTION__);
+    mPublicAfMode = mode;
+}
+
+AfMode AtomAAA::getPublicAfMode()
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG2("@%s", __FUNCTION__);
+    if (!mHas3A) {
+        return CAM_AF_MODE_NOT_SET;
+    }
+    return mPublicAfMode;
 }
 
 status_t AtomAAA::setAeFlashMode(FlashMode mode)

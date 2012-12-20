@@ -102,7 +102,6 @@ ControlThread::ControlThread(const sp<CameraConf>& cfg) :
     ,mBurstCaptureNum(0)
     ,mAELockFlashNeed(false)
     ,mPublicAeMode(CAM_AE_MODE_AUTO)
-    ,mPublicAfMode(CAM_AF_MODE_AUTO)
     ,mPublicShutter(-1)
     ,mParamCache(NULL)
     ,mStoreMetaDataInBuffers(false)
@@ -1278,13 +1277,14 @@ status_t ControlThread::stopCapture()
     if (mBracketManager->getBracketMode() == BRACKET_EXPOSURE)
         mAAA->setAeMode(mPublicAeMode);
     if (mBracketManager->getBracketMode() == BRACKET_FOCUS) {
+        AfMode publicAfMode = mAAA->getPublicAfMode();
         if (!mFocusAreas.isEmpty() &&
-            (mPublicAfMode == CAM_AF_MODE_AUTO ||
-             mPublicAfMode == CAM_AF_MODE_CONTINUOUS ||
-             mPublicAfMode == CAM_AF_MODE_MACRO)) {
+            (publicAfMode == CAM_AF_MODE_AUTO ||
+             publicAfMode == CAM_AF_MODE_CONTINUOUS ||
+             publicAfMode == CAM_AF_MODE_MACRO)) {
             mAAA->setAfMode(CAM_AF_MODE_TOUCH);
         } else {
-            mAAA->setAfMode(mPublicAfMode);
+            mAAA->setAfMode(publicAfMode);
         }
     }
 
@@ -3722,21 +3722,22 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             status = mAAA->setAfMode(afMode);
         }
         if (status == NO_ERROR) {
-            mPublicAfMode = afMode;
+            mAAA->setPublicAfMode(afMode);
             LOG1("Changed: %s -> %s", CameraParameters::KEY_FOCUS_MODE, newVal.string());
         }
     }
 
     if (!mFaceDetectionActive) {
 
+        AfMode publicAfMode = mAAA->getPublicAfMode();
         // Based on Google specs, the focus area is effective only for modes:
         // (framework side constants:) FOCUS_MODE_AUTO, FOCUS_MODE_MACRO, FOCUS_MODE_CONTINUOUS_VIDEO
         // or FOCUS_MODE_CONTINUOUS_PICTURE.
-        if (mPublicAfMode == CAM_AF_MODE_AUTO ||
-            mPublicAfMode == CAM_AF_MODE_CONTINUOUS ||
-            mPublicAfMode == CAM_AF_MODE_MACRO) {
+        if (publicAfMode == CAM_AF_MODE_AUTO ||
+            publicAfMode == CAM_AF_MODE_CONTINUOUS ||
+            publicAfMode == CAM_AF_MODE_MACRO) {
 
-            afMode = mPublicAfMode;
+            afMode = publicAfMode;
 
             // See if any focus areas are set.
             // NOTE: CAM_AF_MODE_TOUCH is for HAL internal use only
