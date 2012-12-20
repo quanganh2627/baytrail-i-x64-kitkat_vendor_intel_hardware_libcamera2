@@ -264,6 +264,7 @@ status_t ControlThread::init()
     mPreviewThread->getDefaultParameters(&mParameters);
     mPanoramaThread->getDefaultParameters(&mIntelParameters, cameraId);
     mPostProcThread->getDefaultParameters(&mParameters, &mIntelParameters, cameraId);
+    mVideoThread->getDefaultParameters(&mIntelParameters, cameraId);
     updateParameterCache();
 
     status = m3AThread->run();
@@ -2945,6 +2946,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         status = processParamSceneMode(oldParams, newParams);
     }
 
+    // slow motion value settings in high speed recording mode
+    if (status == NO_ERROR) {
+        status = processParamSlowMotionRate(oldParams, newParams);
+    }
+
     if (status == NO_ERROR) {
         // white balance
         status = processParamWhiteBalance(oldParams, newParams);
@@ -4204,6 +4210,43 @@ status_t ControlThread::processParamPreviewFrameRate(const CameraParameters *old
 
     return NO_ERROR;
 }
+
+/**
+ * Sets slow motion rate value in high speed recording mode
+ *
+ * Note, this is an Intel extension, so the values are not defined in
+ * Android documentation.
+ */
+status_t ControlThread::processParamSlowMotionRate(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    status_t status = NO_ERROR;
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_SLOW_MOTION_RATE);
+    if (!newVal.isEmpty()) {
+        int slowMotionRate = 1;
+        if(newVal == IntelCameraParameters::SLOW_MOTION_RATE_1X) {
+            slowMotionRate = 1;
+        } else if (newVal == IntelCameraParameters::SLOW_MOTION_RATE_2X) {
+            slowMotionRate = 2;
+        } else if (newVal == IntelCameraParameters::SLOW_MOTION_RATE_3X) {
+            slowMotionRate = 3;
+        } else if (newVal == IntelCameraParameters::SLOW_MOTION_RATE_4X) {
+            slowMotionRate = 4;
+        } else {
+            return BAD_VALUE;
+        }
+        status = mVideoThread->setSlowMotionRate(slowMotionRate);
+        if(status == NO_ERROR)
+            LOG1("Changed hs value to \"%s\" (%d)", newVal.string(), slowMotionRate);
+    }
+    return status;
+}
+
+
+
 
 /*
  * NOTE: this function runs in camera service thread. Protect member accesses accordingly!

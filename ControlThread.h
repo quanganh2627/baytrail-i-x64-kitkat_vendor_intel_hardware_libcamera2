@@ -463,6 +463,9 @@ private:
     status_t ProcessOverlayEnable(const CameraParameters *oldParams,
             CameraParameters *newParams);
 
+    status_t processParamSlowMotionRate(const CameraParameters *oldParams,
+        CameraParameters *newParams);
+
     void processParamFileInject(CameraParameters *newParams);
 
     void preSetCameraWindows(CameraWindow* focusWindows, size_t winCount);

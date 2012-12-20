@@ -216,6 +216,8 @@ public:
             supportedPreviewFPSRange = "(10500,30304),(11000,30304),(11500,30304)";
             defaultPreviewFPSRange = "10500,30304";
             supportedPreviewSize = "1024x576,800x600,720x480,640x480,640x360,416x312,352x288,320x240,176x144";
+            //For high speed recording, slow motion playback
+            hasSlowMotion = false;
         };
 
         SensorType sensorType;
@@ -275,6 +277,8 @@ public:
         const char* supportedPreviewFPSRange;
         const char* defaultPreviewFPSRange;
         const char* supportedPreviewSize;
+        // For high speed recording, slow motion playback
+        bool hasSlowMotion;
 
     };
 
@@ -712,6 +716,12 @@ class PlatformData {
      * \return the value of the supported preview sizes as a string.
      */
     static const char* supportedPreviewSize(int cameraId);
+
+    /**
+     * Whether the slow motion playback in high speed recording mode is supported?
+     * \return true if the slow motion playback is supported
+     */
+    static bool supportsSlowMotion(int cameraId);
 
     /**
      * supported video sizes

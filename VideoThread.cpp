@@ -18,6 +18,8 @@
 #include "VideoThread.h"
 #include "LogHelper.h"
 #include "CallbacksThread.h"
+#include "IntelParameters.h"
+#include "PlatformData.h"
 
 namespace android {
 
@@ -26,6 +28,8 @@ VideoThread::VideoThread() :
     ,mMessageQueue("VideoThread", MESSAGE_ID_MAX)
     ,mThreadRunning(false)
     ,mCallbacksThread(CallbacksThread::getInstance())
+    ,mSlowMotionRate(1)
+    ,mFirstFrameTimestamp(0)
 {
     LOG1("@%s", __FUNCTION__);
 }
@@ -54,6 +58,29 @@ status_t VideoThread::flushBuffers()
     return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
 }
 
+status_t VideoThread::setSlowMotionRate(int rate)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_SET_SLOWMOTION_RATE;
+    msg.data.setSlowMotionRate.rate = rate;
+    return mMessageQueue.send(&msg);
+}
+
+void VideoThread::getDefaultParameters(CameraParameters *intel_params, int cameraId)
+{
+    LOG1("@%s", __FUNCTION__);
+    if (!intel_params) {
+        LOGE("params is null!");
+        return;
+    }
+    // Set slow motion rate in high speed mode
+    if (PlatformData::supportsSlowMotion(cameraId)) {
+        intel_params->set(IntelCameraParameters::KEY_SLOW_MOTION_RATE, IntelCameraParameters::SLOW_MOTION_RATE_1X);
+        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SLOW_MOTION_RATE, "1x,2x,3x,4x");
+    }
+}
+
 status_t VideoThread::handleMessageExit()
 {
     LOG1("@%s", __FUNCTION__);
@@ -66,7 +93,12 @@ status_t VideoThread::handleMessageVideo(MessageVideo *msg)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-
+    if(mSlowMotionRate > 1)
+    {
+        if(mFirstFrameTimestamp == 0)
+            mFirstFrameTimestamp = msg->timestamp;
+        msg->timestamp = (msg->timestamp - mFirstFrameTimestamp) * mSlowMotionRate + mFirstFrameTimestamp;
+    }
     mCallbacksThread->videoFrameDone(&msg->buff, msg->timestamp);
 
     return status;
@@ -76,7 +108,16 @@ status_t VideoThread::handleMessageFlush()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    mFirstFrameTimestamp = 0;
     mMessageQueue.reply(MESSAGE_ID_FLUSH, status);
+    return status;
+}
+
+status_t VideoThread::handleMessageSetSlowMotionRate(MessageSetSlowMotionRate* msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mSlowMotionRate = msg->rate;
     return status;
 }
 
@@ -99,6 +140,10 @@ status_t VideoThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_FLUSH:
             status = handleMessageFlush();
+            break;
+
+        case MESSAGE_ID_SET_SLOWMOTION_RATE:
+            status = handleMessageSetSlowMotionRate(&msg.data.setSlowMotionRate);
             break;
 
         default:

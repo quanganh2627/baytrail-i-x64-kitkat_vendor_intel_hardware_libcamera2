@@ -19,6 +19,7 @@
 
 #include <utils/Timers.h>
 #include <utils/threads.h>
+#include <camera/CameraParameters.h>
 #include "MessageQueue.h"
 #include "AtomCommon.h"
 
@@ -42,6 +43,8 @@ public:
 
     status_t video(AtomBuffer *buff, nsecs_t timestamp);
     status_t flushBuffers();
+    status_t setSlowMotionRate(int rate);
+    void getDefaultParameters(CameraParameters *intel_params, int cameraId);
 
 // private types
 private:
@@ -52,6 +55,7 @@ private:
         MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
         MESSAGE_ID_VIDEO,
         MESSAGE_ID_FLUSH,
+        MESSAGE_ID_SET_SLOWMOTION_RATE,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -66,11 +70,16 @@ private:
         nsecs_t timestamp;
     };
 
+    struct MessageSetSlowMotionRate {
+        int rate;
+    };
+
     // union of all message data
     union MessageData {
 
         // MESSAGE_ID_VIDEO
         MessageVideo video;
+        MessageSetSlowMotionRate setSlowMotionRate;
     };
 
     // message id and message data
@@ -86,6 +95,7 @@ private:
     status_t handleMessageExit();
     status_t handleMessageVideo(MessageVideo *msg);
     status_t handleMessageFlush();
+    status_t handleMessageSetSlowMotionRate(MessageSetSlowMotionRate* msg);
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -100,6 +110,8 @@ private:
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
     CallbacksThread *mCallbacksThread;
+    int mSlowMotionRate;
+    nsecs_t mFirstFrameTimestamp;
 
 }; // class VideoThread
 

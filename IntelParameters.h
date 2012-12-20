@@ -181,6 +181,14 @@ namespace android {
     static const char KEY_HW_OVERLAY_RENDERING_SUPPORTED[];
     static const char KEY_HW_OVERLAY_RENDERING[];
 
+    //high speed recording, slow motion playback
+    static const char KEY_SLOW_MOTION_RATE[];
+    static const char KEY_SUPPORTED_SLOW_MOTION_RATE[];
+    static const char SLOW_MOTION_RATE_1X[];
+    static const char SLOW_MOTION_RATE_2X[];
+    static const char SLOW_MOTION_RATE_3X[];
+    static const char SLOW_MOTION_RATE_4X[];
+
     static void getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params);
     static const char* getSupportedPanoramaLivePreviewSizes(const CameraParameters &params);
 

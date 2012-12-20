@@ -175,6 +175,14 @@ namespace android {
     const char IntelCameraParameters::KEY_HW_OVERLAY_RENDERING_SUPPORTED[] = "overlay-render-values";
     const char IntelCameraParameters::KEY_HW_OVERLAY_RENDERING[] = "overlay-render";
 
+    // high speed recording, slow motion playback
+    const char IntelCameraParameters::KEY_SLOW_MOTION_RATE[] = "slow-motion-rate";
+    const char IntelCameraParameters::KEY_SUPPORTED_SLOW_MOTION_RATE[] = "slow-motion-rate-values";
+    const char IntelCameraParameters::SLOW_MOTION_RATE_1X[] = "1x";
+    const char IntelCameraParameters::SLOW_MOTION_RATE_2X[] = "2x";
+    const char IntelCameraParameters::SLOW_MOTION_RATE_3X[] = "3x";
+    const char IntelCameraParameters::SLOW_MOTION_RATE_4X[] = "4x";
+
     void IntelCameraParameters::getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params)
     {
         width = height = -1;
