@@ -101,7 +101,6 @@ ControlThread::ControlThread(const sp<CameraConf>& cfg) :
     ,mBurstLength(0)
     ,mBurstCaptureNum(0)
     ,mAELockFlashNeed(false)
-    ,mPublicAeMode(CAM_AE_MODE_AUTO)
     ,mPublicShutter(-1)
     ,mParamCache(NULL)
     ,mStoreMetaDataInBuffers(false)
@@ -1274,8 +1273,11 @@ status_t ControlThread::stopCapture()
 
     // Reset AE and AF in case HDR/bracketing was used (these features
     // manually configure AE and AF during takePicture)
-    if (mBracketManager->getBracketMode() == BRACKET_EXPOSURE)
-        mAAA->setAeMode(mPublicAeMode);
+    if (mBracketManager->getBracketMode() == BRACKET_EXPOSURE) {
+        AeMode publicAeMode = mAAA->getPublicAeMode();
+        mAAA->setAeMode(publicAeMode);
+    }
+
     if (mBracketManager->getBracketMode() == BRACKET_FOCUS) {
         AfMode publicAfMode = mAAA->getPublicAfMode();
         if (!mFocusAreas.isEmpty() &&
@@ -3880,7 +3882,7 @@ status_t ControlThread::processParamAutoExposureMode(const CameraParameters *old
             LOGW("unknown AE_MODE \"%s\", falling back to AUTO", newVal.string());
             ae_mode = CAM_AE_MODE_AUTO;
         }
-        mPublicAeMode = ae_mode;
+        mAAA->setPublicAeMode(ae_mode);
         mAAA->setAeMode(ae_mode);
         LOGD("Changed ae mode to \"%s\" (%d)", newVal.string(), ae_mode);
 

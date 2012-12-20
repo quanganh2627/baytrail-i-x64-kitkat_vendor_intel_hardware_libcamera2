@@ -554,7 +554,6 @@ private:
     int  mBurstCaptureNum;
     HdrImaging mHdr;
     bool mAELockFlashNeed;
-    AeMode mPublicAeMode;       /* AE mode set by application */
     float mPublicShutter;       /* Shutter set by application */
 
     Mutex mParamCacheLock;
