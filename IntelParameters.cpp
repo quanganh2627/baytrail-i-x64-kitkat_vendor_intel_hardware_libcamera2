@@ -88,6 +88,8 @@ namespace android {
     const char IntelCameraParameters::KEY_BURST_LENGTH[] = "burst-length";
     const char IntelCameraParameters::KEY_SUPPORTED_BURST_FPS[] = "burst-fps-values";
     const char IntelCameraParameters::KEY_BURST_FPS[] = "burst-fps";
+    const char IntelCameraParameters::KEY_BURST_START_INDEX[] = "burst-start-index";
+    const char IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX[] = "burst-start-index-values";
 
     // preview keep-alive
     const char IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE[] = "preview-keep-alive";

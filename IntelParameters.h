@@ -189,6 +189,10 @@ namespace android {
     static const char SLOW_MOTION_RATE_3X[];
     static const char SLOW_MOTION_RATE_4X[];
 
+    // Time nudge
+    static const char KEY_BURST_START_INDEX[];
+    static const char KEY_SUPPORTED_BURST_START_INDEX[];
+
     static void getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params);
     static const char* getSupportedPanoramaLivePreviewSizes(const CameraParameters &params);
 
@@ -200,4 +204,3 @@ namespace android {
 }; // ns android
 
 #endif
-

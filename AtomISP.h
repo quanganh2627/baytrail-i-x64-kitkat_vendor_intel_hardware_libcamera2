@@ -158,8 +158,10 @@ public:
     void getPreviewSize(int *width, int *height, int *stride);
 
     status_t setSnapshotNum(int num);
+    int getSnapshotNum();
     status_t setContCaptureNumCaptures(int numCaptures);
     status_t setContCaptureOffset(int captureOffset);
+    status_t setContCaptureSkip(unsigned int skip);
 
     void getZoomRatios(bool videoMode, CameraParameters *params);
     void getFocusDistances(CameraParameters *params);
@@ -364,6 +366,7 @@ private:
     status_t startRecording();
     status_t stopRecording();
     status_t configureCapture();
+    status_t configureContinuousRingBuffer();
     status_t configureContinuous();
     status_t startCapture();
     status_t stopCapture();

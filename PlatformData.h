@@ -99,6 +99,8 @@ public:
         mSupportedVideoSizes = "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1080";
         mSupportVideoSnapshot = true;
         mNumRecordingBuffers = 9;
+        mContinuousCapture = false;
+        mMaxContinuousRawRingBuffer = 0;
    };
 
  protected:
@@ -296,6 +298,7 @@ public:
     bool mSupportVideoSnapshot;
 
     bool mContinuousCapture;
+    int mMaxContinuousRawRingBuffer;
     int mPanoramaMaxSnapshotCount;
 
     /* For burst capture's burst length and burst fps */
@@ -401,6 +404,18 @@ class PlatformData {
      * \return true if supported
      */
     static bool supportsContinuousCapture(void);
+
+    /**
+     * What's the maximum supported size of the RAW ringbuffer
+     * for continuous capture maintained by the ISP.
+     *
+     * This depends both on kernel and CSS firmware, but also total
+     * available system memory that should be used for imaging use-cases.
+     *
+     * \return int number 0...N, if supportsContinuousCapture() is
+     *         false, this function will always return 0
+     */
+    static int maxContinuousRawRingBufferSize(void);
 
     /**
      * Orientation of camera id

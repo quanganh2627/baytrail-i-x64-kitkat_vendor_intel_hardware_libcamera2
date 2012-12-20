@@ -233,6 +233,15 @@ bool PlatformData::supportsContinuousCapture(void)
     return i->mContinuousCapture;
 }
 
+int PlatformData::maxContinuousRawRingBufferSize(void)
+{
+    PlatformBase *i = getInstance();
+    if (PlatformData::supportsContinuousCapture() == false)
+        return 0;
+
+    return i->mMaxContinuousRawRingBuffer;
+}
+
 bool PlatformData::renderPreviewViaOverlay(int cameraId)
 {
     PlatformBase *i = getInstance();

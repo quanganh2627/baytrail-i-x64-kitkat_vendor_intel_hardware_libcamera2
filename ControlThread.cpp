@@ -100,7 +100,10 @@ ControlThread::ControlThread(const sp<CameraConf>& cfg) :
     ,mFlashAutoFocus(false)
     ,mFpsAdaptSkip(0)
     ,mBurstLength(0)
-    ,mBurstCaptureNum(0)
+    ,mBurstStart(0)
+    ,mBurstCaptureNum(-1)
+    ,mBurstCaptureDoneNum(-1)
+    ,mBurstQbufs(0)
     ,mAELockFlashNeed(false)
     ,mPublicShutter(-1)
     ,mParamCache(NULL)
@@ -110,7 +113,7 @@ ControlThread::ControlThread(const sp<CameraConf>& cfg) :
     ,mCameraDump(NULL)
     ,mFocusAreas()
     ,mMeteringAreas()
-    ,mIsPreviewStartComplete(false)
+    ,mPreviewFramesDone(0)
     ,mVideoSnapshotrequested(0)
     ,mSetFPS(MAX_PREVIEW_FPS)
 {
@@ -989,6 +992,34 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
 }
 
 /**
+ * Configures the ISP ringbuffer size in continuous mode.
+ *
+ * This configuration must be done before preview pipeline
+ * is started. During runtime, user-space may modify
+ * capture configuration (number of captures, skip, offset),
+ * but only to smaller values. If any number of captures or
+ * offset needs be changed so that a larger ringbuffer would
+ * be needed, then ISP needs to be restarted. The values set
+ * here are thus the maximum values.
+ */
+status_t ControlThread::configureContinuousRingBuffer()
+{
+    LOG2("@%s", __FUNCTION__);
+    int numCaptures = 1;
+    int offset = -1;
+    if (mBurstLength > 1) {
+        numCaptures = mBurstLength;
+        offset = mBurstStart;
+    }
+
+    mISP->setContCaptureNumCaptures(numCaptures);
+    mISP->setContCaptureOffset(offset);
+    LOG2("continous mode ringbuffer for max %d captures, %d offset",
+         numCaptures, offset);
+    return NO_ERROR;
+}
+
+/**
  * Configures parameters for continuous capture.
  *
  * In continuous capture mode, parameters for both capture
@@ -996,7 +1027,7 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
  */
 status_t ControlThread::initContinuousCapture()
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     int format = mISP->getSnapshotPixelFormat();
@@ -1021,15 +1052,14 @@ status_t ControlThread::initContinuousCapture()
     mPictureThread->initialize(mParameters);
 
     mISP->setSnapshotFrameFormat(width, height, format);
-    mISP->setContCaptureNumCaptures(1);
-    mISP->setContCaptureOffset(0);
-
+    configureContinuousRingBuffer();
     mISP->setPostviewFrameFormat(pvWidth, pvHeight, format);
+
+    burstStateReset();
 
     // TODO: potential launch2preview impact, we cannot use
     //       the lazy buffer allocation strategy in continuous mode
     allocateSnapshotBuffers();
-    mIsPreviewStartComplete = true;
 
     setExternalSnapshotBuffers(format, width, height);
 
@@ -1110,10 +1140,29 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         return STATE_PREVIEW_STILL;
     }
 
-    // Only single captures are currently supported.
-    if (mBurstLength > 1) {
-        LOG1("@%s: Burst requested, disabling continuous mode", __FUNCTION__);
+    if (mBurstLength > 1 && mBurstStart >= 0) {
+        LOG1("@%s: Burst length of %d requested, disabling continuous mode",
+             __FUNCTION__, mBurstLength);
         return STATE_PREVIEW_STILL;
+    }
+
+    if (mBurstStart < 0) {
+        // One buffer in the raw ringbuffer is reserved for streaming
+        // from sensor, so output frame count is limited to maxSize-1.
+        int maxBufSize = PlatformData::maxContinuousRawRingBufferSize();
+        if (mBurstLength > maxBufSize - 1) {
+             LOG1("@%s: Burst length of %d with offset %d requested, disabling continuous mode",
+                  __FUNCTION__, mBurstLength, mBurstStart);
+            return STATE_PREVIEW_STILL;
+        }
+
+        // Bracketing not supported in continuous mode as the number
+        // captures is not fixed.
+        if (mBracketManager->getBracketMode() != BRACKET_NONE) {
+            LOG1("@%s: Bracketing requested, disabling continuous mode",
+                 __FUNCTION__);
+            return STATE_PREVIEW_STILL;
+        }
     }
 
     // The continuous mode depends on maintaining a RAW frame
@@ -1400,8 +1449,10 @@ status_t ControlThread::stopPreviewCore()
     }
     status = mPreviewThread->returnPreviewBuffers();
 
-    if (oldState == STATE_CONTINUOUS_CAPTURE)
+    if (oldState == STATE_CONTINUOUS_CAPTURE) {
+        mUnqueuedPicBuf.clear();
         mISP->releaseCaptureBuffers();
+    }
 
     delete [] mCoupledBuffers;
     // set to null because frames can be returned to hal in stop state
@@ -1443,7 +1494,7 @@ status_t ControlThread::stopCapture()
     status = mISP->releaseCaptureBuffers();
 
     mState = STATE_STOPPED;
-    mBurstCaptureNum = 0;
+    burstStateReset();
 
     // Reset AE and AF in case HDR/bracketing was used (these features
     // manually configure AE and AF during takePicture)
@@ -1484,6 +1535,40 @@ status_t ControlThread::restartPreview(bool videoMode)
         startFaceDetection();
     mPreviewStartQueued = false;
     return status;
+}
+
+/**
+ * Starts rendering an output frame from the raw
+ * ringbuffer.
+ */
+status_t ControlThread::startOfflineCapture()
+{
+    assert(mState == STATE_CONTINUOUS_CAPTURE);
+
+    int skip = 0;
+    int captures = 1;
+    int offset = -1;
+
+    if (mBurstLength > 1) {
+        captures = mBurstLength;
+        offset = mBurstStart;
+    }
+
+    // in case preview has just started, we need to limit
+    // how long we can look back
+    if (mPreviewFramesDone < -offset)
+        offset = -mPreviewFramesDone;
+
+    // Starting capture device will queue all buffers,
+    // so we need to clear any references we have.
+    mUnqueuedPicBuf.clear();
+
+    mISP->setContCaptureNumCaptures(captures);
+    mISP->setContCaptureOffset(offset);
+    mISP->setContCaptureSkip(skip);
+    mISP->startOfflineCapture();
+
+    return NO_ERROR;
 }
 
 status_t ControlThread::handleMessageStartPreview()
@@ -1527,10 +1612,9 @@ status_t ControlThread::handleMessageStartPreview()
     }
 preview_started:
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("preview started", -1);
-
-    mIsPreviewStartComplete = false;
-
+    mPreviewFramesDone = 0;
     mPreviewStartQueued = false;
+
     return status;
 }
 
@@ -1712,7 +1796,6 @@ status_t ControlThread::skipPreviewFrames(int numFrames, AtomBuffer* buff)
     }
     return NO_ERROR;
 }
-
 
 bool ControlThread::runPreFlashSequence()
 {
@@ -1898,6 +1981,53 @@ status_t ControlThread::handleMessagePanoramaPicture() {
     return status;
 }
 
+/**
+ * Is a burst capture sequence ongoing?
+ *
+ * Returns true until the last burst picture has been
+ * delivered to application.
+ *
+ * @see burstMoreCapturesNeeded()
+ */
+bool ControlThread::isBurstRunning()
+{
+    if (mBurstCaptureDoneNum != -1 &&
+        mBurstLength > 1 &&
+        mBurstCaptureDoneNum < mBurstLength)
+        return true;
+
+    return false;
+}
+
+/**
+ * Do we need to request more pictures from ISP to
+ * complete the capture burst.
+ *
+ * Returns true until the last burst picture has been
+ * requested from application.
+ *
+ * @see isBurstRunnning()
+ */
+bool ControlThread::burstMoreCapturesNeeded()
+{
+    if (isBurstRunning() &&
+        mBurstCaptureNum < mBurstLength)
+        return true;
+
+    return false;
+}
+
+/**
+ * Resets the burst state managed in control thread.
+ */
+void ControlThread::burstStateReset()
+{
+    mBurstCaptureNum = -1;
+    mBurstCaptureDoneNum = -1;
+    mBurstQbufs = 0;
+}
+
+
 status_t ControlThread::handleMessageTakePicture() {
     LOG1("@%s:", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -1906,8 +2036,13 @@ status_t ControlThread::handleMessageTakePicture() {
 
         case STATE_PREVIEW_STILL:
         case STATE_PREVIEW_VIDEO:
-        case STATE_CONTINUOUS_CAPTURE:
             status = captureStillPic();
+            break;
+        case STATE_CONTINUOUS_CAPTURE:
+            if (isBurstRunning())
+                status = captureFixedBurstPic(true);
+            else
+                status = captureStillPic();
             break;
         case STATE_CAPTURE:
             status = captureBurstPic(true);
@@ -2123,6 +2258,45 @@ void ControlThread::stopOfflineCapture()
     }
 }
 
+/**
+ * Dequeues preview frames until capture frame is
+ * available for reading from ISP.
+ */
+status_t ControlThread::waitForCaptureStart()
+{
+    LOG2("@%s: ", __FUNCTION__);
+    status_t status = NO_ERROR;
+    const int maxWaitMs = 2000;
+    const int previewTimeoutMs = 20;
+    const int maxCycles = maxWaitMs / previewTimeoutMs;
+    int n;
+
+    for(n = 0; n < maxCycles; n++) {
+        // Check if capture frame is availble (no wait)
+        int res = mISP->pollCapture(0);
+        if (res > 0)
+            break;
+
+        res = mISP->pollPreview(previewTimeoutMs);
+        if (res < 0) {
+            status = UNKNOWN_ERROR;
+            break;
+        }
+        else if (res > 0) {
+            AtomBuffer buff;
+            LOG2("handling preview while waiting for capture");
+            status = skipPreviewFrames(1, &buff);
+            if (status != NO_ERROR)
+                break;
+        }
+    }
+
+    if (n == maxCycles)
+        status = UNKNOWN_ERROR;
+
+    return status;
+}
+
 status_t ControlThread::captureStillPic()
 {
     LOG1("@%s: ", __FUNCTION__);
@@ -2186,9 +2360,8 @@ status_t ControlThread::captureStillPic()
 
     if (mState == STATE_CONTINUOUS_CAPTURE
         && (!flashOn || flashMode == CAM_AE_FLASH_MODE_TORCH)) {
-        assert(mBurstLength <= 1);
-        mISP->setContCaptureNumCaptures(1);
-        mISP->startOfflineCapture();
+        mCallbacksThread->shutterSound();
+        startOfflineCapture();
         mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
         // Snapshot timestamp in continuous-mode doesn't met with actual
         // frame taken time, but the time when frame is ready to be queueud.
@@ -2206,6 +2379,8 @@ status_t ControlThread::captureStillPic()
         mState = STATE_CAPTURE;
     }
     mBurstCaptureNum = 0;
+    mBurstCaptureDoneNum = 0;
+    mBurstQbufs = 0;
 
     // Get the current params
     mParameters.getPictureSize(&width, &height);
@@ -2314,6 +2489,15 @@ status_t ControlThread::captureStillPic()
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("get frame", 1);
 
+    if (mState == STATE_CONTINUOUS_CAPTURE && mBurstLength > 1) {
+        mBurstQbufs = mISP->getSnapshotNum();
+        status = waitForCaptureStart();
+        if (status != NO_ERROR) {
+            LOGE("Error while waiting for capture to start");
+            return status;
+        }
+    }
+
     // Get the snapshot
     if (flashFired) {
         status = getFlashExposedSnapshot(&snapshotBuffer, &postviewBuffer);
@@ -2332,6 +2516,7 @@ status_t ControlThread::captureStillPic()
         LOGE("Error in grabbing snapshot!");
         return status;
     }
+
     PerformanceTraces::ShutterLag::snapshotTaken(&snapshotBuffer.capture_timestamp);
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
@@ -2350,7 +2535,8 @@ status_t ControlThread::captureStillPic()
 
     mBurstCaptureNum++;
 
-    if (!mHdr.enabled || (mHdr.enabled && mBurstCaptureNum == 1)){
+    if (mState != STATE_CONTINUOUS_CAPTURE &&
+            (!mHdr.enabled || (mHdr.enabled && mBurstCaptureNum == 1))) {
         // Send request to play the Shutter Sound: in single shots or when burst-length is specified
         mCallbacksThread->shutterSound();
     }
@@ -2376,7 +2562,8 @@ status_t ControlThread::captureStillPic()
         picMetaData.free();
     }
 
-    stopOfflineCapture();
+    if (mState == STATE_CONTINUOUS_CAPTURE && mBurstLength <= 1)
+        stopOfflineCapture();
 
     if (previewKeepAlive && !mHdr.enabled) {
         mPreviewThread->postview(&postviewBuffer);
@@ -2548,6 +2735,122 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE && (mBurstCaptureNum == mBurstLength)) {
         LOG1("@%s: Bracketing done, got all %d snapshots", __FUNCTION__, mBurstLength);
         mBracketManager->stopBracketing();
+    }
+
+    return status;
+}
+
+/**
+ * Notifies CallbacksThread that a picture was requested by
+ * the application.
+ */
+void ControlThread::requestTakePicture()
+{
+    bool requestPostviewCallback = true;
+    bool requestRawCallback = true;
+
+    // Notify CallbacksThread that a picture was requested, so grab one from queue
+    mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback);
+}
+
+/**
+ * Whether the JPEG/compressed frame queue in CallbacksThread is
+ * already full?
+ */
+bool ControlThread::compressedFrameQueueFull()
+{
+    return mCallbacksThread->getQueuedBuffersNum() > MAX_JPEG_BUFFERS;
+}
+
+/**
+ * Queues unused snapshot buffers to ISP.
+ *
+ * Note: in certain use-cases like single captures,
+ * this step can be omitted to save in capture time.
+ */
+status_t ControlThread::queueSnapshotBuffers()
+{
+    LOG2("@%s:", __FUNCTION__);
+    status_t status = NO_ERROR;
+    for (size_t i = 0; i < mUnqueuedPicBuf.size(); i++) {
+        AtomBuffer snapshotBuf = mUnqueuedPicBuf[i].snapshotBuf;
+        AtomBuffer postviewBuf = mUnqueuedPicBuf[i].postviewBuf;
+        LOG2("return snapshot buffer %u to ISP", i);
+        status = mISP->putSnapshot(&snapshotBuf, &postviewBuf);
+        if (status == NO_ERROR) {
+            ++mBurstQbufs;
+        }
+        else if (status == DEAD_OBJECT) {
+            LOG1("Stale snapshot buffer returned to ISP");
+        } else if (status != NO_ERROR) {
+            LOGE("Error in putting snapshot!");
+        }
+    }
+    mUnqueuedPicBuf.clear();
+    return status;
+}
+
+/**
+ * Starts capture of the next picture of the ongoing fixed-size burst.
+ */
+status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
+{
+    LOG1("@%s: ", __FUNCTION__);
+    status_t status = NO_ERROR;
+    AtomBuffer snapshotBuffer, postviewBuffer;
+
+    assert(mState == STATE_CONTINUOUS_CAPTURE);
+
+    if (clientRequest) {
+        requestTakePicture();
+
+        // Check whether more frames are needed
+        if (compressedFrameQueueFull())
+            return NO_ERROR;
+    }
+
+    if (mBurstCaptureNum != -1 &&
+        mBurstLength > 1 &&
+        mBurstCaptureNum >= mBurstLength) {
+        // All frames of the burst have been requested (but not necessarily
+        // yet all dequeued).
+        return NO_ERROR;
+    }
+
+    PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE();
+
+    PictureThread::MetaData picMetaData;
+    fillPicMetaData(picMetaData, false);
+
+    // Get the snapshot
+    status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
+
+    if (status != NO_ERROR) {
+        LOGE("Error in grabbing snapshot!");
+        picMetaData.free();
+        return status;
+    }
+
+    mBurstCaptureNum++;
+
+    PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
+                                       snapshotBuffer.frameCounter);
+
+    // Do jpeg encoding
+    LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
+    status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
+
+    // If all captures have been requested, ISP capture device
+    // can be stopped. Otherwise requeue buffers back to ISP.
+    if (mBurstCaptureNum == mBurstLength) {
+        stopOfflineCapture();
+    }
+    else if (mBurstLength > mISP->getSnapshotNum() &&
+             mBurstQbufs < mBurstLength) {
+        // To save capture time, only requeue buffers if total
+        // burst length exdeeds the ISP buffer queue size, and
+        // more buffers are needed.
+        queueSnapshotBuffers();
     }
 
     return status;
@@ -2767,11 +3070,10 @@ status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
        releasePreviewFrame(&msg->buff);
     }
 
-    if (mState == STATE_CONTINUOUS_CAPTURE)
-        mISP->setContCaptureOffset(-1);
+    ++mPreviewFramesDone;
+    if (mPreviewFramesDone == 1 &&
+           mState != STATE_CONTINUOUS_CAPTURE) {
 
-    if(!mIsPreviewStartComplete) {
-        mIsPreviewStartComplete = true;
         /**
          * First preview frame was rendered.
          * Now preview is ongoing. Complete now any initialization that is not
@@ -2860,6 +3162,17 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
          * and burst capture
          */
         mUnqueuedPicBuf.push(*msg);
+
+        if (isBurstRunning()) {
+            ++mBurstCaptureDoneNum;
+            LOG2("Burst req %d done %d len %d",
+                 mBurstCaptureNum, mBurstCaptureDoneNum, mBurstLength);
+            if (mBurstCaptureDoneNum >= mBurstLength) {
+                LOGW("Last pic in burst received, terminating");
+                burstStateReset();
+            }
+        }
+
     } else {
         LOGW("Received a picture Done during invalid state %d; buf id:%d, ptr=%p", mState, msg->snapshotBuf.id, msg->snapshotBuf.buff);
     }
@@ -2972,6 +3285,12 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         LOGE("bad burst length: %s; supported: %s", burstLength, burstLengths);
         return BAD_VALUE;
     }
+    int burstStart = params->getInt(IntelCameraParameters::KEY_BURST_START_INDEX);
+    const char* captureBracket = params->get(IntelCameraParameters::KEY_CAPTURE_BRACKET);
+    if (burstStart < 0 && captureBracket && captureBracket && String8(captureBracket) != "none") {
+        LOGE("negative start-index and bracketing not supported concurrently");
+        return BAD_VALUE;
+    }
 
     // BURST FPS
     const char* burstFps = params->get(IntelCameraParameters::KEY_BURST_FPS);
@@ -3056,12 +3375,16 @@ status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
         }
         if (fps > 0) {
             mFpsAdaptSkip = roundf(PlatformData::getMaxBurstFPS(mISP->getCurrentCameraId())/float(fps)) - 1;
-            LOG1("%s, mFpsAdaptSkip:%d", __func__, mFpsAdaptSkip);
+            LOG1("%s, mFpsAdaptSkip:%d", __FUNCTION__, mFpsAdaptSkip);
         }
     }
 
-    // TODO: remove before commit
-    LOG1("@%s: len to %d, skip %d", __FUNCTION__, mBurstLength, mFpsAdaptSkip);
+    // Burst start-index (for Time Nudge et al)
+    int burstStart = newParams->getInt(IntelCameraParameters::KEY_BURST_START_INDEX);
+    if (burstStart != mBurstStart) {
+        LOG1("Burst start-index set %d -> %d", mBurstStart, burstStart);
+        mBurstStart = burstStart;
+    }
 
     return status;
 }
@@ -5717,7 +6040,6 @@ bool ControlThread::threadLoop()
             if (!mMessageQueue.isEmpty()) {
                 status = waitForAndExecuteMessage();
             } else {
-                // make sure ISP has data before we ask for some
                 if (mISP->dataAvailable())
                     status = dequeuePreview();
                 else
@@ -5752,7 +6074,9 @@ bool ControlThread::threadLoop()
                 status = waitForAndExecuteMessage();
             } else {
                 // make sure ISP has data before we ask for some
-                if (mISP->dataAvailable())
+                if (burstMoreCapturesNeeded())
+                    status = captureFixedBurstPic();
+                else if (mISP->dataAvailable())
                     status = dequeuePreview();
                 else
                     status = waitForAndExecuteMessage();

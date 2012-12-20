@@ -710,17 +710,24 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
      */
     // Currently burst support is required only with primary camera.
     // So burst mode is disabled to secondary camera.
+    const char* startIndexValues = "0";
     if (mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
-        intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS, PlatformData::supportedBurstFPS(cameraId));
-        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, PlatformData::supportedBurstLength(cameraId));
         intel_params->set(IntelCameraParameters::KEY_BURST_LENGTH,"1");
+        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, PlatformData::supportedBurstLength(cameraId));
+
+        // Bursts with negative start offset require a RAW sensor.
+        if (PlatformData::sensorType(cameraId) ==  SENSOR_TYPE_RAW &&
+                PlatformData::supportsContinuousCapture())
+            startIndexValues = "-4,-3,-2,-1,0";
     } else {
-        intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS, "1");
         intel_params->set(IntelCameraParameters::KEY_BURST_LENGTH, "1");
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, "1");
     }
+    intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
+    intel_params->set(IntelCameraParameters::KEY_BURST_START_INDEX, "0");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX, startIndexValues);
 
     intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_FILENAME, "off");
     intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_WIDTH, "0");
@@ -1382,8 +1389,24 @@ errorFreeBuf:
     return status;
 }
 
+/**
+ * Configures continuos capture settings to kernel
+ * (IOC_S_CONT_CAPTURE_CONFIG atomisp ioctl).
+ *
+ * This call has different semantics depending on whether
+ * it's called before ISP is started, or when ISP is
+ * already running. In the former case, this call is
+ * used to configure the ringbuffer size. In the latter
+ * case, this call is used to request ISP to start
+ * rendering output (main and postview) frames with
+ * the given parameters.
+ *
+ * See PSI BZ 80777 for a proposed change to this API.
+ */
 status_t AtomISP::requestContCapture(int numCaptures, int offset, unsigned int skip)
 {
+    LOG2("@%s", __FUNCTION__);
+
     struct atomisp_cont_capture_conf conf;
 
     CLEAR(conf);
@@ -1406,7 +1429,7 @@ status_t AtomISP::requestContCapture(int numCaptures, int offset, unsigned int s
 
 status_t AtomISP::setContCaptureNumCaptures(int numCaptures)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s, numCaptures = %d", __FUNCTION__, numCaptures);
     mContCaptConfig.numCaptures = numCaptures;
     return NO_ERROR;
 }
@@ -1414,18 +1437,48 @@ status_t AtomISP::setContCaptureNumCaptures(int numCaptures)
 status_t AtomISP::setContCaptureOffset(int captureOffset)
 {
     LOG2("@%s", __FUNCTION__);
-    if (captureOffset != mContCaptConfig.offset) {
-        int ret = requestContCapture(mContCaptConfig.numCaptures,
-                                     captureOffset,
-                                     mContCaptConfig.skip);
-        if (ret < 0) {
-            LOGE("setting continuous capture params failed");
-            return UNKNOWN_ERROR;
-        }
-        mContCaptConfig.offset = captureOffset;
-    }
-
+    mContCaptConfig.offset = captureOffset;
     return NO_ERROR;
+}
+
+status_t AtomISP::setContCaptureSkip(unsigned int skip)
+{
+    LOG2("@%s", __FUNCTION__);
+    mContCaptConfig.skip = skip;
+    return NO_ERROR;
+}
+
+/**
+ * Configures the ISP ringbuffer size in continuous mode.
+ *
+ * Set all ISP parameters that affect RAW ringbuffer
+ * sizing in continuous mode.
+ *
+ * \see setContCaptureOffset(), setContCaptureSkip() and
+ *      setContCaptureNumCaptures()
+ */
+status_t AtomISP::configureContinuousRingBuffer()
+{
+    int numBuffers = abs(mContCaptConfig.offset);
+;
+    int captures = mContCaptConfig.numCaptures;
+    int offset = mContCaptConfig.offset;
+    status_t status;
+
+    if (captures > numBuffers)
+        numBuffers = captures;
+
+    if (numBuffers > PlatformData::maxContinuousRawRingBufferSize())
+        numBuffers = PlatformData::maxContinuousRawRingBufferSize();
+
+    LOG1("continuous mode ringbuffer size to %d (captures %d, offset %d)",
+         numBuffers, captures, offset);
+
+    status = requestContCapture(numBuffers,
+                                mContCaptConfig.offset,
+                                mContCaptConfig.skip);
+
+    return status;
 }
 
 status_t AtomISP::configureContinuous()
@@ -1435,10 +1488,7 @@ status_t AtomISP::configureContinuous()
     status_t status = NO_ERROR;
 
     updateCaptureParams();
-
-    ret = requestContCapture(mContCaptConfig.numCaptures,
-                             mContCaptConfig.offset,
-                             mContCaptConfig.skip);
+    ret = configureContinuousRingBuffer();
     if (ret < 0) {
         LOGE("setting continuous capture params failed");
         return UNKNOWN_ERROR;
@@ -1598,8 +1648,10 @@ bool AtomISP::isSharedPreviewBufferConfigured(bool *reserved) const
 status_t AtomISP::stopCapture()
 {
     LOG1("@%s", __FUNCTION__);
-    stopDevice(V4L2_POSTVIEW_DEVICE);
-    stopDevice(V4L2_MAIN_DEVICE);
+    if (mDevices[V4L2_POSTVIEW_DEVICE].state == DEVICE_STARTED)
+        stopDevice(V4L2_POSTVIEW_DEVICE);
+    if (mDevices[V4L2_MAIN_DEVICE].state == DEVICE_STARTED)
+        stopDevice(V4L2_MAIN_DEVICE);
     requestClearDriverState();
     // note: MAIN device is kept open on purpose
     closeDevice(V4L2_POSTVIEW_DEVICE);
@@ -1666,13 +1718,21 @@ error:
  */
 status_t AtomISP::startOfflineCapture()
 {
+    status_t res = NO_ERROR;
+
     LOG1("@%s", __FUNCTION__);
     if (mMode != MODE_CONTINUOUS_CAPTURE) {
         LOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
         return INVALID_OPERATION;
     }
-    startCapture();
-    return NO_ERROR;
+
+    res = requestContCapture(mContCaptConfig.numCaptures,
+                             mContCaptConfig.offset,
+                             mContCaptConfig.skip);
+    if (res == NO_ERROR)
+        res = startCapture();
+
+    return res;
 }
 
 /**
@@ -2128,6 +2188,11 @@ void AtomISP::getPreviewSize(int *width, int *height, int *stride = NULL)
     }
     if (stride)
         *stride = mConfig.preview.stride;
+}
+
+int AtomISP::getSnapshotNum()
+{
+    return mConfig.num_snapshot;
 }
 
 status_t AtomISP::setSnapshotNum(int num)

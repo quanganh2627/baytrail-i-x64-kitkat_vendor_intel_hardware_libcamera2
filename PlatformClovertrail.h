@@ -91,6 +91,7 @@ public:
         pcam->minEV = "-6";
         pcam->mPreviewViaOverlay = true;
         pcam->overlayRelativeRotation = 0;
+        pcam->supportedBurstLength = "1,3,5,9,10";
 
         // If the back flash is supported, let's add the rest of the
         // supported scene modes that require flash:
@@ -148,6 +149,7 @@ public:
         mManufacturerName = "ExampleMaker";
 
         mContinuousCapture = (deviceOnContinuousCaptureBlackList() == false);
+        mMaxContinuousRawRingBuffer = 10;
         mMaxZoomFactor = 64;
 
     }
