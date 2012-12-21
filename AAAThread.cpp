@@ -337,6 +337,16 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
                 mCallbacks->autofocusDone(afStatus == ia_3a_af_status_success);
                 // Also notify ControlThread that the auto-focus is finished
                 mAAADoneCallback->autoFocusDone();
+                /**
+                 * Even if we complete AF, if the result was failure we keep
+                 * trying to focus if we are in continuous focus mode.
+                 *
+                 */
+                if((mAAA->getAfMode() == CAM_AF_MODE_CONTINUOUS) &&
+                   (afStatus != ia_3a_af_status_success) ) {
+                    mStartAF = true;
+                    mAAA->setAfEnabled(true);
+                }
             }
         }
 
