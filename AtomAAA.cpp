@@ -1432,12 +1432,12 @@ int AtomAAA::ciAdvInit(const SensorParams *paramFiles, const char *sensorOtpFile
     param.motor_calibration      = &m3ALibState.motor_data;
 
     // Intel 3A
-    if (cameranvm_create(mISP->mCameraInput->name,
+    // in a case of an error in parsing (e.g. incorrect data,
+    // mismatch in checksum) the pointer to NVM data is null
+    cameranvm_create(mISP->mCameraInput->name,
         (ia_binary_data *)&m3ALibState.sensor_data,
         (ia_binary_data *)&m3ALibState.motor_data,
-        &aicNvm)) {
-        return -1;
-    }
+        &aicNvm);
 
     if (ia_3a_init(&param,
         &paramFiles->prmFiles,
