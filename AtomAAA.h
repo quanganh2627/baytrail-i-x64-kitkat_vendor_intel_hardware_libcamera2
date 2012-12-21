@@ -110,7 +110,8 @@ struct SensorAeConfig
 {
     float evBias;
     int expTime;
-    int aperture;
+    short unsigned int aperture_num;
+    short unsigned int aperture_denum;
     int aecApexTv;
     int aecApexSv;
     int aecApexAv;
@@ -208,7 +209,9 @@ private:
     int enableShadingCorrection(bool enable);
 
     // Get exposure time for AE
-    void getAeExpCfg(int *exp_time, int *aperture,
+    void getAeExpCfg(int *exp_time,
+                     short unsigned int *aperture_num,
+                     short unsigned int *aperture_denum,
                      int *aec_apex_Tv, int *aec_apex_Sv, int *aec_apex_Av,
                      float *digital_gain);
 public:

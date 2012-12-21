@@ -459,8 +459,8 @@ void EXIFMaker::setSensorAeConfig(const SensorAeConfig& aeConfig)
         exifAttributes.shutter_speed.den = 10000;
 
         // aperture
-        exifAttributes.aperture.num = 100*(int)((1.0*exifAttributes.fnumber.num/exifAttributes.fnumber.den) * sqrt(100.0/aeConfig.aperture));
-        exifAttributes.aperture.den = 100;
+        exifAttributes.aperture.num = aeConfig.aperture_num;
+        exifAttributes.aperture.den = aeConfig.aperture_denum;
     }
 
     // exposure bias. unit is APEX value. -99.99 to 99.99

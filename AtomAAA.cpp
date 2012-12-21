@@ -967,13 +967,15 @@ status_t AtomAAA::getExposureInfo(SensorAeConfig& aeConfig)
 
     // evBias not reset, so not using memset
     aeConfig.expTime = 0;
-    aeConfig.aperture = 0;
+    aeConfig.aperture_num = 0;
+    aeConfig.aperture_denum = 1;
     aeConfig.aecApexTv = 0;
     aeConfig.aecApexSv = 0;
     aeConfig.aecApexAv = 0;
     aeConfig.digitalGain = 0;
     getAeExpCfg(&aeConfig.expTime,
-            &aeConfig.aperture,
+            &aeConfig.aperture_num,
+            &aeConfig.aperture_denum,
             &aeConfig.aecApexTv,
             &aeConfig.aecApexSv,
             &aeConfig.aecApexAv,
@@ -1778,7 +1780,9 @@ int AtomAAA::enableGdc(bool enable)
  * @param aec_apex_Av - Aperture
  * @param digital_gain - digital_gain
  */
-void AtomAAA::getAeExpCfg(int *exp_time, int *aperture,
+void AtomAAA::getAeExpCfg(int *exp_time,
+                          short unsigned int *aperture_num,
+                          short unsigned int *aperture_denum,
                      int *aec_apex_Tv, int *aec_apex_Sv, int *aec_apex_Av,
                      float *digital_gain)
 {
@@ -1786,7 +1790,7 @@ void AtomAAA::getAeExpCfg(int *exp_time, int *aperture,
     ia_3a_ae_result ae_res;
 
     mISP->sensorGetExposureTime(exp_time);
-    mISP->sensorGetAperture(aperture);
+    mISP->sensorGetFNumber(aperture_num, aperture_denum);
     ia_3a_ae_get_generic_result(&ae_res);
 
     *digital_gain = IA_3A_S15_16_TO_FLOAT(ae_res.global_digital_gain);
