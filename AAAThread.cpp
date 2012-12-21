@@ -224,6 +224,16 @@ status_t AAAThread::handleMessageAutoFocus()
     status_t status(NO_ERROR);
     AfMode currAfMode(mAAA->getAfMode());
 
+   /**
+    * If we are in continuous focus mode we should return immediately with
+    * the current status if we  are not busy.
+    */
+    ia_3a_af_status cafStatus = mAAA->getCAFStatus();
+    if (currAfMode == CAM_AF_MODE_CONTINUOUS && cafStatus != ia_3a_af_status_busy) {
+        mCallbacks->autofocusDone(cafStatus == ia_3a_af_status_success);
+        return status;
+    }
+
     if (mAAA->is3ASupported() && currAfMode != CAM_AF_MODE_INFINITY &&
         currAfMode != CAM_AF_MODE_FIXED && currAfMode != CAM_AF_MODE_MANUAL) {
         mAAA->setAfEnabled(true);
