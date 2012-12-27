@@ -945,16 +945,6 @@ status_t AtomAAA::setAfWindows(const CameraWindow *windows, size_t numWindows)
     return NO_ERROR;
 }
 
-status_t AtomAAA::setNegativeEffect(bool en)
-{
-    Mutex::Autolock lock(m3aLock);
-    LOG1("@%s", __FUNCTION__);
-    if(mSensorType != SENSOR_TYPE_RAW)
-        return INVALID_OPERATION;
-    mIspSettings.inv_gamma = en;
-    return NO_ERROR;
-}
-
 status_t AtomAAA::startStillAf()
 {
     Mutex::Autolock lock(m3aLock);
@@ -1542,7 +1532,6 @@ int AtomAAA::applyResults(void)
     if (m3ALibState.results.aic_output) {
         struct atomisp_parameters *aic_out_struct = (struct atomisp_parameters *)m3ALibState.results.aic_output;
         ret |= mISP->setAicParameter(aic_out_struct);
-        ret |= mISP->applyColorEffect();
     }
 
     /* Apply Sensor settings */

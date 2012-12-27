@@ -263,7 +263,6 @@ public:
     size_t   getAeMaxNumWindows();
     size_t   getAfMaxNumWindows();
     status_t setAfWindows(const CameraWindow *windows, size_t numWindows);
-    status_t setNegativeEffect(bool en);
     status_t getExposureInfo(SensorAeConfig& sensorAeConfig);
     status_t getAeManualBrightness(float *ret);
     status_t setManualFocus(int focus, bool applyNow);
