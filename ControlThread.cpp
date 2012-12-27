@@ -3926,32 +3926,7 @@ status_t ControlThread::processParamEffect(const CameraParameters *oldParams,
                                               CameraParameters::KEY_EFFECT);
 
     if (!newVal.isEmpty()) {
-
-        v4l2_colorfx effect = V4L2_COLORFX_NONE;
-        if (newVal == CameraParameters::EFFECT_MONO)
-            effect = V4L2_COLORFX_BW;
-        else if (newVal == CameraParameters::EFFECT_NEGATIVE)
-            effect = V4L2_COLORFX_NEGATIVE;
-        else if (newVal == CameraParameters::EFFECT_SEPIA)
-            effect = V4L2_COLORFX_SEPIA;
-        else if (newVal == IntelCameraParameters::EFFECT_STILL_SKY_BLUE)
-            effect = V4L2_COLORFX_SKY_BLUE;
-        else if (newVal == IntelCameraParameters::EFFECT_STILL_GRASS_GREEN)
-            effect = V4L2_COLORFX_GRASS_GREEN;
-        else if (newVal == IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_MEDIUM)
-            effect = V4L2_COLORFX_SKIN_WHITEN;
-        else if (newVal == IntelCameraParameters::EFFECT_VIVID)
-            effect = V4L2_COLORFX_VIVID;
-
-        // following two values need a explicit cast as the
-        // definitions in hardware/intel/linux-2.6/include/linux/atomisp.h
-        // have incorrect type (properly defined values are in videodev2.h)
-        else if (newVal == IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_LOW)
-            effect = (v4l2_colorfx)V4L2_COLORFX_SKIN_WHITEN_LOW;
-        else if (newVal == IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_HIGH)
-            effect = (v4l2_colorfx)V4L2_COLORFX_SKIN_WHITEN_HIGH;
-
-        status = m3AControls->set3AColorEffect(effect);
+        status = m3AControls->set3AColorEffect(newVal.string());
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_EFFECT, newVal.string());
         }

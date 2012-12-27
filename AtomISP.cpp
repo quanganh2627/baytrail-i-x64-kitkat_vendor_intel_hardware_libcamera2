@@ -5260,12 +5260,41 @@ MeteringMode AtomISP::getAeMeteringMode()
     return mode;
 }
 
-status_t AtomISP::set3AColorEffect(v4l2_colorfx effect)
+status_t AtomISP::set3AColorEffect(const char *effect)
 {
-    LOG1("@%s: effect = %d", __FUNCTION__, effect);
+    LOG1("@%s: effect = %s", __FUNCTION__, effect);
     status_t status = NO_ERROR;
 
-    status = setColorEffect(effect);
+    v4l2_colorfx v4l2Effect = V4L2_COLORFX_NONE;
+    if (strncmp(effect, CameraParameters::EFFECT_MONO, sizeof(effect)) == 0)
+        v4l2Effect = V4L2_COLORFX_BW;
+    else if (strncmp(effect, CameraParameters::EFFECT_NEGATIVE, sizeof(effect)) == 0)
+        v4l2Effect = V4L2_COLORFX_NEGATIVE;
+    else if (strncmp(effect, CameraParameters::EFFECT_SEPIA, sizeof(effect)) == 0)
+        v4l2Effect = V4L2_COLORFX_SEPIA;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_SKY_BLUE, sizeof(effect)) == 0)
+        v4l2Effect = V4L2_COLORFX_SKY_BLUE;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_GRASS_GREEN, sizeof(effect)) == 0)
+        v4l2Effect = V4L2_COLORFX_GRASS_GREEN;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_MEDIUM, sizeof(effect)) == 0)
+        v4l2Effect = V4L2_COLORFX_SKIN_WHITEN;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_VIVID, sizeof(effect)) == 0)
+        v4l2Effect = V4L2_COLORFX_VIVID;
+
+    // following two values need a explicit cast as the
+    // definitions in hardware/intel/linux-2.6/include/linux/atomisp.h
+    // have incorrect type (properly defined values are in videodev2.h)
+    else if (effect == IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_LOW)
+        v4l2Effect = (v4l2_colorfx)V4L2_COLORFX_SKIN_WHITEN_LOW;
+    else if (effect == IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_HIGH)
+        v4l2Effect = (v4l2_colorfx)V4L2_COLORFX_SKIN_WHITEN_HIGH;
+    else if (strncmp(effect, CameraParameters::EFFECT_NONE, strlen(effect)) != 0){
+        LOGE("Color effect not found.");
+        status = -1;
+        // Fall back to the effect NONE
+    }
+
+    status = setColorEffect(v4l2Effect);
     status = applyColorEffect();
     return status;
 }

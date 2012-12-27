@@ -1754,15 +1754,39 @@ void AtomAAA::getAeExpCfg(int *exp_time,
     *aec_apex_Av = ae_res.av;
 }
 
-status_t AtomAAA::set3AColorEffect(v4l2_colorfx effect)
+status_t AtomAAA::set3AColorEffect(const char *effect)
 {
-    LOG1("@%s: effect = %d", __FUNCTION__, effect);
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s: effect = %s", __FUNCTION__, effect);
     status_t status = NO_ERROR;
 
-    status = mISP->setColorEffect(effect);
-    if (status != NO_ERROR) {
-        return UNKNOWN_ERROR;
+    ia_aiq_effect aiqEffect = ia_aiq_effect_none;
+    if (strncmp(effect, CameraParameters::EFFECT_MONO, strlen(effect)) == 0)
+        aiqEffect = ia_aiq_effect_black_and_white;
+    else if (strncmp(effect, CameraParameters::EFFECT_NEGATIVE, strlen(effect)) == 0)
+        aiqEffect = ia_aiq_effect_negative;
+    else if (strncmp(effect, CameraParameters::EFFECT_SEPIA, strlen(effect)) == 0)
+        aiqEffect = ia_aiq_effect_sepia;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_SKY_BLUE, strlen(effect)) == 0)
+        aiqEffect = ia_aiq_effect_sky_blue;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_GRASS_GREEN, strlen(effect)) == 0)
+        aiqEffect = ia_aiq_effect_grass_green;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_LOW, strlen(effect)) == 0)
+        aiqEffect = ia_aiq_effect_skin_whiten_low;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_MEDIUM, strlen(effect)) == 0)
+        aiqEffect = ia_aiq_effect_skin_whiten;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_HIGH, strlen(effect)) == 0)
+        aiqEffect = ia_aiq_effect_skin_whiten_high;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_VIVID, strlen(effect)) == 0)
+        aiqEffect = ia_aiq_effect_vivid;
+    else if (strncmp(effect, CameraParameters::EFFECT_NONE, strlen(effect)) != 0){
+        LOGE("Color effect not found.");
+        status = -1;
+        // Fall back to the effect NONE
     }
+
+    ia_3a_set_color_effect(aiqEffect);
+
     return status;
 }
 

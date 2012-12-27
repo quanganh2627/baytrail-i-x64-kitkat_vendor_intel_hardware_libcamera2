@@ -267,7 +267,7 @@ public:
     virtual IsoMode getIsoMode(void);
     virtual status_t setAeMeteringMode(MeteringMode mode);
     virtual MeteringMode getAeMeteringMode();
-    virtual status_t set3AColorEffect(v4l2_colorfx effect);
+    virtual status_t set3AColorEffect(const char *effect);
 
 // public static methods
 public:

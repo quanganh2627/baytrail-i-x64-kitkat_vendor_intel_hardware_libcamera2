@@ -97,7 +97,7 @@ public:
     virtual IsoMode getIsoMode(void) = 0;
     virtual status_t setAeMeteringMode(MeteringMode mode) = 0;
     virtual MeteringMode getAeMeteringMode() = 0;
-    virtual status_t set3AColorEffect(v4l2_colorfx effect) = 0;
+    virtual status_t set3AColorEffect(const char *effect) = 0;
 };
 
 }
