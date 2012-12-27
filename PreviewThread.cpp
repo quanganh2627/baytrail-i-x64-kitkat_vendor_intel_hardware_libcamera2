@@ -160,11 +160,21 @@ status_t PreviewThread::returnPreviewBuffers()
     msg.id = MESSAGE_ID_RETURN_PREVIEW_BUFS;
     return mMessageQueue.send(&msg, MESSAGE_ID_RETURN_PREVIEW_BUFS);
 }
+
 status_t PreviewThread::preview(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_PREVIEW;
+    msg.data.preview.buff = *buff;
+    return mMessageQueue.send(&msg);
+}
+
+status_t PreviewThread::postview(AtomBuffer *buff)
+{
+    LOG2("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_POSTVIEW;
     msg.data.preview.buff = *buff;
     return mMessageQueue.send(&msg);
 }
@@ -175,6 +185,7 @@ status_t PreviewThread::flushBuffers()
     Message msg;
     msg.id = MESSAGE_ID_FLUSH;
     mMessageQueue.remove(MESSAGE_ID_PREVIEW);
+    mMessageQueue.remove(MESSAGE_ID_POSTVIEW);
     return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
 }
 
@@ -224,6 +235,10 @@ status_t PreviewThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_PREVIEW:
             status = mMessageHandler->handlePreview(&msg.data.preview);
+            break;
+
+        case MESSAGE_ID_POSTVIEW:
+            status = mMessageHandler->handlePostview(&msg.data.preview);
             break;
 
         case MESSAGE_ID_SET_PREVIEW_WINDOW:
@@ -773,6 +788,86 @@ PreviewThread::GfxPreviewHandler::getGfxBufferStride(void)
 
 }
 
+/**
+ * Copies snapshot-postview buffer to preview window for preview-keep-alive
+ * feature
+ *
+ * TODO: This is temporary solution to update preview surface while preview
+ * is stopped. Buffers coupling (indexes mapping in AtomISP & ControlThread)
+ * techniques need to be revisited to properly avoid copy done here and
+ * to seamlessly allow using gfx buffers regardless of AtomISP mode.
+ * Drawing postview should use generic preview() and this method is to be
+ * removed.
+ *
+ * Note: expects the buffers to be of correct size with configuration
+ * left from preview ran before snapshot.
+ */
+status_t PreviewThread::GfxPreviewHandler::handlePostview(MessagePreview *msg)
+{
+    int err, stride;
+    buffer_handle_t *buf;
+    void *src;
+    void *dst;
+
+    LOG1("@%s: width = %d, height = %d (texture)", __FUNCTION__,
+         msg->buff.width, msg->buff.height);
+
+    if (!mPreviewWindow) {
+        LOGW("Unable to provide 'preview-keep-alive' frame, no window!");
+        return NO_ERROR;
+    }
+
+    if (msg->buff.type != ATOM_BUFFER_POSTVIEW) {
+        // support implemented for using AtomISP postview type only
+        LOGD("Unable to provide 'preview-keep-alive' frame, input buffer type unexpected");
+        return UNKNOWN_ERROR;
+    }
+
+    if (!mPreviewInClient.isEmpty()) {
+        // indicates we didn't stop & return the gfx buffers
+        LOGD("Unable to provide 'preview-keep-alive' frame, normal preview active");
+        return UNKNOWN_ERROR;
+    }
+
+    if (msg->buff.width != mPreviewWidth ||
+        msg->buff.height != mPreviewHeight) {
+        LOGD("Unable to provide 'preview-keep-alive' frame, postview %dx%d -> preview %dx%d ",
+                msg->buff.width, msg->buff.height, mPreviewWidth, mPreviewHeight);
+        return UNKNOWN_ERROR;
+    }
+
+    src = msg->buff.buff->data;
+    GraphicBufferMapper &mapper = GraphicBufferMapper::get();
+    const Rect bounds(msg->buff.width, msg->buff.height);
+
+    // queue one from the window
+    err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride);
+    if (err != 0) {
+        LOGW("Error dequeuing preview buffer for 'preview-keep-alive'");
+        return UNKNOWN_ERROR;
+    }
+
+    err = mapper.lock(*buf,
+        GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_NEVER,
+        bounds, &dst);
+    if (err != 0) {
+        mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
+        return UNKNOWN_ERROR;
+    }
+
+    memcpy (dst, src, msg->buff.size);
+
+    mapper.unlock(*buf);
+
+    err = mPreviewWindow->enqueue_buffer(mPreviewWindow, buf);
+    if (err != 0)
+        LOGE("Surface::queueBuffer returned error %d", err);
+
+    LOG1("@%s: done", __FUNCTION__);
+
+    return NO_ERROR;
+}
+
 /******************************************************************************
  *   Overlay Preview Message Handler
  ******************************************************************************/
@@ -962,6 +1057,79 @@ PreviewThread::OverlayPreviewHandler::handleSetPreviewConfig(MessageSetPreviewCo
             break;
         }
     }
+
+    return NO_ERROR;
+}
+
+/**
+ * Rotates snapshot-postview buffer to preview window overlay buffer
+ * for preview-keep-alive feature
+ *
+ * Note: expects the buffers to be of correct size with configuration
+ * left from preview ran before snapshot.
+ */
+status_t PreviewThread::OverlayPreviewHandler::handlePostview(MessagePreview *msg)
+{
+    int err, stride;
+    buffer_handle_t *buf;
+    void *src;
+    void *dst;
+    LOG1("@%s: width = %d, height = %d (overlay)", __FUNCTION__,
+         msg->buff.width, msg->buff.height);
+
+    if (!mPreviewWindow) {
+        LOGW("Unable to provide 'preview-keep-alive', no window!");
+        return NO_ERROR;
+    }
+
+    if (msg->buff.type != ATOM_BUFFER_POSTVIEW) {
+        // support implemented for using AtomISP postview type only
+        LOGW("Unable to provide 'preview-keep-alive' frame, input buffer type unexpected");
+        return UNKNOWN_ERROR;
+    }
+
+    if (msg->buff.width != mPreviewWidth ||
+        msg->buff.height != mPreviewHeight) {
+        LOGW("Unable to provide 'preview-keep-alive' frame, postview %dx%d -> preview %dx%d ",
+                msg->buff.width, msg->buff.height, mPreviewWidth, mPreviewHeight);
+        return UNKNOWN_ERROR;
+    }
+
+    src = msg->buff.buff->data;
+    int paddedStride = paddingWidthNV12VED(mPreviewHeight,0);
+    GraphicBufferMapper &mapper = GraphicBufferMapper::get();
+    const Rect bounds(msg->buff.width, msg->buff.height);
+
+    // queue one from the window
+    err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride);
+    if (err != 0) {
+        LOGW("Error dequeuing preview buffer for 'preview-keep-alive'");
+        return UNKNOWN_ERROR;
+    }
+
+    err = mapper.lock(*buf,
+           GRALLOC_USAGE_SW_WRITE_OFTEN |
+           GRALLOC_USAGE_SW_READ_NEVER  |
+           GRALLOC_USAGE_HW_COMPOSER, bounds, &dst);
+    if (err != 0) {
+        mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
+        return UNKNOWN_ERROR;
+    }
+
+    nv12rotateBy90(mPreviewStride,       // width of the source image
+                   mPreviewHeight,       // height of the source image
+                   mPreviewStride,       // scanline stride of the source image
+                   paddedStride,         // scanline stride of the target image
+                   (const char *) src,   // source image
+                   (char*) dst);         // target image
+
+    mapper.unlock(*buf);
+
+    err = mPreviewWindow->enqueue_buffer(mPreviewWindow, buf);
+    if (err != 0)
+        LOGE("Surface::queueBuffer returned error %d", err);
+
+    LOG2("@%s: done", __FUNCTION__);
 
     return NO_ERROR;
 }

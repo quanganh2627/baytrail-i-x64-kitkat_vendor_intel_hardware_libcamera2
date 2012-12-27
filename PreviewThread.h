@@ -63,6 +63,7 @@ public:
     void getDefaultParameters(CameraParameters *params);
     bool isWindowConfigured();
     status_t preview(AtomBuffer *buff);
+    status_t postview(AtomBuffer *buff);
     status_t setPreviewWindow(struct preview_stream_ops *window);
     status_t setPreviewConfig(int preview_width, int preview_height, int preview_stride,
                               int preview_format, int bufferCount);
@@ -82,6 +83,7 @@ private:
 
         MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
         MESSAGE_ID_PREVIEW,
+        MESSAGE_ID_POSTVIEW,
         MESSAGE_ID_SET_PREVIEW_WINDOW,
         MESSAGE_ID_SET_PREVIEW_CONFIG,
         MESSAGE_ID_FETCH_PREVIEW_BUFS,
@@ -163,6 +165,7 @@ private:
         virtual status_t handleFetchPreviewBuffers(void) = 0;
         virtual status_t handleReturnPreviewBuffers(void) = 0;
         virtual status_t fetchPreviewBuffers(AtomBuffer **pvBufs, int *count) = 0;
+        virtual status_t handlePostview(MessagePreview *msg) = 0;
     protected:
         friend class PreviewThread;
         void allocateLocalPreviewBuf(void);
@@ -196,6 +199,7 @@ private:
         virtual status_t handleFetchPreviewBuffers(void);
         virtual status_t handleReturnPreviewBuffers(void);
         virtual status_t fetchPreviewBuffers(AtomBuffer **pvBufs, int *count);
+        virtual status_t handlePostview(MessagePreview *msg);
     private:
         status_t callPreviewDone(MessagePreview *msg);
         status_t allocateGfxPreviewBuffers(int numberOfBuffers);
@@ -222,6 +226,7 @@ private:
            virtual status_t handleFetchPreviewBuffers(void);
            virtual status_t handleReturnPreviewBuffers(void);
            virtual status_t fetchPreviewBuffers(AtomBuffer **pvBufs, int *count);
+           virtual status_t handlePostview(MessagePreview *msg);
     };
 
     PreviewMessageHandler   *mMessageHandler;

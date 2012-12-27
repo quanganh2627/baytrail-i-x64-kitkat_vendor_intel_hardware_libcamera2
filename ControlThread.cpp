@@ -906,8 +906,12 @@ status_t ControlThread::initContinuousCapture()
     int pvHeight;
 
     if (mPanoramaThread->getState() == PANORAMA_STOPPED) {
-        pvWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
-        pvHeight = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
+        if (isParameterSet(IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE)) {
+            mParameters.getPreviewSize(&pvWidth, &pvHeight);
+        } else {
+            pvWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
+            pvHeight = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
+        }
     } else {
         IntelCameraParameters::getPanoramaLivePreviewSize(pvWidth, pvHeight, mParameters);
     }
@@ -919,8 +923,6 @@ status_t ControlThread::initContinuousCapture()
     mISP->setContCaptureNumCaptures(1);
     mISP->setContCaptureOffset(0);
 
-    // TODO: check integration with preview-keepalive patch and
-    //       whether postview should be configured to a higher resolution
     mISP->setPostviewFrameFormat(pvWidth, pvHeight, format);
 
     // TODO: potential launch2preview impact, we cannot use
@@ -1260,6 +1262,9 @@ status_t ControlThread::stopCapture()
         LOGE("Error flushing PictureThread!");
         return status;
     }
+
+    if (isParameterSet(IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE))
+        mPreviewThread->flushBuffers();
 
     status = mISP->stop();
     if (status != NO_ERROR) {
@@ -1923,6 +1928,8 @@ status_t ControlThread::captureStillPic()
     bool flashOn = (flashMode == CAM_AE_FLASH_MODE_TORCH ||
                     flashMode == CAM_AE_FLASH_MODE_ON);
     bool flashFired = false;
+    bool previewKeepAlive =
+        isParameterSet(IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE);
 
     PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_CALLED();
 
@@ -1995,6 +2002,8 @@ status_t ControlThread::captureStillPic()
         // the same driver/ISP limitation as with video-sizes
         pvWidth = width;
         pvHeight = height;
+        // no support for postview2preview when size differs
+        previewKeepAlive = false;
     }
     format = mISP->getSnapshotPixelFormat();
     size = frameSize(format, width, height);
@@ -2115,6 +2124,9 @@ status_t ControlThread::captureStillPic()
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
                                        snapshotBuffer.frameCounter);
 
+    if (previewKeepAlive && !mHdr.enabled)
+        mPreviewThread->postview(&postviewBuffer);
+
     PictureThread::MetaData picMetaData;
     fillPicMetaData(picMetaData, flashFired);
 
@@ -2166,6 +2178,8 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     AtomBuffer snapshotBuffer, postviewBuffer;
     int width, height, format, size;
     int pvWidth, pvHeight, pvSize;
+    bool previewKeepAlive =
+        isParameterSet(IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE);
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
 
@@ -2231,6 +2245,8 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
         // the same driver/ISP limitation as with video-sizes
         pvWidth = width;
         pvHeight = height;
+        // no support for postview2preview when size differs
+        previewKeepAlive = false;
     }
     format = mISP->getSnapshotPixelFormat();
     size = frameSize(format, width, height);
@@ -2261,6 +2277,9 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
                                        snapshotBuffer.frameCounter);
+
+    if (previewKeepAlive && !mHdr.enabled)
+        mPreviewThread->postview(&postviewBuffer);
 
     PictureThread::MetaData picMetaData;
     fillPicMetaData(picMetaData, false);
