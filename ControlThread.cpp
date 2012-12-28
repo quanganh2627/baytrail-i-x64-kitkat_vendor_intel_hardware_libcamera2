@@ -2366,11 +2366,7 @@ void ControlThread::encodeVideoSnapshot(int buffId)
 
     pvWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
     pvHeight= mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
-    if ((pvWidth == 0) && (pvHeight == 0)) {
-        postViewBuf = NULL;
-    }  else {
-        postViewBuf =  &(mCoupledBuffers[buffId].previewBuff);
-    }
+    postViewBuf = &(mCoupledBuffers[buffId].previewBuff);
 
     mPictureThread->encode(aDummyMetaData,
                            &(mCoupledBuffers[buffId].recordingBuff),
