@@ -70,14 +70,16 @@ void Callbacks::setCallbacks(camera_notify_callback notify_cb,
 
 void Callbacks::enableMsgType(int32_t msgType)
 {
-    LOG1("@%s: msgType = %d", __FUNCTION__, msgType);
+    LOG1("@%s: msgType = 0x%08x", __FUNCTION__, msgType);
     android_atomic_or(msgType, (int32_t*)&mMessageFlags);
+    LOG1("@%s: mMessageFlags = 0x%08x", __FUNCTION__,  mMessageFlags);
 }
 
 void Callbacks::disableMsgType(int32_t msgType)
 {
-    LOG1("@%s: msgType = %d", __FUNCTION__, msgType);
+    LOG1("@%s: msgType = 0x%08x", __FUNCTION__, msgType);
     android_atomic_and(~msgType, (int32_t*)&mMessageFlags);
+    LOG1("@%s: mMessageFlags = 0x%08x", __FUNCTION__,  mMessageFlags);
 }
 
 bool Callbacks::msgTypeEnabled(int32_t msgType)
