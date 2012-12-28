@@ -32,6 +32,7 @@ Callbacks::Callbacks() :
     ,mDataCBTimestamp(NULL)
     ,mGetMemoryCB(NULL)
     ,mUserToken(NULL)
+    ,mMessageFlags(0)
     ,mDummyByte(NULL)
     ,mPanoramaMetadata(NULL)
     ,mStoreMetaDataInBuffers(false)
