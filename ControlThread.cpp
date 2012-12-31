@@ -1045,6 +1045,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         return INVALID_OPERATION;
     }
 
+    PerformanceTraces::SwitchCameras::called(videoMode);
     if (videoMode) {
         LOG1("Starting preview in video mode");
         state = STATE_PREVIEW_VIDEO;
@@ -1337,7 +1338,6 @@ status_t ControlThread::handleMessageStartPreview()
         stopFaceDetection();
         if (mPreviewThread->isWindowConfigured()) {
             bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT);
-            PerformanceTraces::SwitchCameras::called(videoMode);
             status = startPreviewCore(videoMode);
         } else {
             LOGI("Preview window not set deferring start preview until then");
