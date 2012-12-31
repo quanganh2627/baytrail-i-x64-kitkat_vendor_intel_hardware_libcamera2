@@ -504,14 +504,14 @@ status_t CpfStore::fetchAiqConf(const sp<CameraBlob>& allConf, sp<CameraBlob>& a
         return NO_MEMORY;
     }
 
-    if ((skipChecksum) || (tbd_err_none == tbd_validate(allConf->ptr(), tbd_tag_cpff, allConf->size()))) {
+    if ((skipChecksum) || (tbd_err_none == tbd_validate(allConf->ptr(), allConf->size(), tbd_tag_cpff))) {
         // FIXME: Once we only accept one kind of CPF files, the content
         // is either ok or not - no need for kludge checks and jumps like this
         if (skipChecksum && (*(uint32_t *)(allConf->ptr()) == tbd_tag_aiqb)) goto fixme;
         // Looks like we have valid CPF file,
         // let's look for AIQ record
         void *data;
-        int size;
+        size_t size;
         if (tbd_err_none == tbd_get_record(allConf->ptr(), tbd_class_aiq, tbd_format_any, &data, &size)) {
             aiqConf = new CameraBlob(allConf, data, size);
             if (aiqConf == 0) {
@@ -524,7 +524,7 @@ status_t CpfStore::fetchAiqConf(const sp<CameraBlob>& allConf, sp<CameraBlob>& a
             ret = NOT_ENOUGH_DATA;
         }
     // FIXME: The tbd_tag_aiqb is enabled for R&D, but should lead to an error below
-    } else if (tbd_err_none == tbd_validate(allConf->ptr(), tbd_tag_aiqb, allConf->size())) {
+    } else if (tbd_err_none == tbd_validate(allConf->ptr(), allConf->size(), tbd_tag_aiqb)) {
         // Looks like we have valid AIQ file
         LOGE("Please IGNORE the previous libtbd ERROR. Trying out alternative R&D tagging...");
 fixme:  aiqConf = new CameraBlob(allConf, 0, allConf->size());
