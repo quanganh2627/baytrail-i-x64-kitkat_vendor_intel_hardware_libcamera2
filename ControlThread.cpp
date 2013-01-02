@@ -2942,11 +2942,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         }
 
         if (status == NO_ERROR) {
-            // GDC
-            status = processParamGDC(oldParams, newParams);
-        }
-
-        if (status == NO_ERROR) {
             // Capture bracketing
             status = processParamBracket(oldParams, newParams);
         }
@@ -2974,11 +2969,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         if (status == NO_ERROR) {
             // back lighting correction (Intel extension)
             status = processParamBackLightingCorrectionMode(oldParams, newParams);
-        }
-
-        if (status == NO_ERROR) {
-            // temporal noise reduction (Intel extension)
-            status = processParamTNR(oldParams, newParams);
         }
 
         if (status == NO_ERROR) {
@@ -3140,26 +3130,6 @@ status_t ControlThread::processParamXNR_ANR(const CameraParameters *oldParams,
             status = mISP->setLowLight(true);
         else
             status = mISP->setLowLight(false);
-    }
-
-    return status;
-}
-
-status_t ControlThread::processParamGDC(const CameraParameters *oldParams,
-        CameraParameters *newParams)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-
-    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, IntelCameraParameters::KEY_GDC);
-
-    if (!newVal.isEmpty()) {
-        bool enable = (newVal == CameraParameters::TRUE);
-        status = mAAA->setGDC(enable);
-        if (status != NO_ERROR)
-            return status;
-        status = mISP->setGDC(enable);
-        LOG1("%s: mISP->setGDC(%d): status=%d", __FUNCTION__, enable, status);
     }
 
     return status;
@@ -4097,23 +4067,6 @@ status_t ControlThread::processParamAwbMappingMode(const CameraParameters *oldPa
         }
     }
 
-    return status;
-}
-
-status_t ControlThread::processParamTNR(const CameraParameters *oldParams,
-        CameraParameters *newParams)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
-            IntelCameraParameters::KEY_TEMPORAL_NOISE_REDUCTION);
-    if (!newVal.isEmpty()) {
-        // here we disable tnr when newVal == "off" or others unknow string.
-        bool tnr = (newVal == "on") ? true : false;
-
-        mAAA->setTNR(tnr);
-        LOGD("Changed tnr to \"%s\" (%d)", newVal.string(), tnr);
-    }
     return status;
 }
 

@@ -200,10 +200,6 @@ status_t AtomAAA::applyIspSettings()
     if(!mHas3A)
         return INVALID_OPERATION;
     ia_3a_gbce_set_strength(mIspSettings.GBCE_strength);
-    if (setGammaEffect(mIspSettings.inv_gamma) != 0) {
-        mHas3A = false;
-        return UNKNOWN_ERROR;
-    }
     return NO_ERROR;
 }
 
@@ -821,13 +817,6 @@ status_t AtomAAA::setAeBacklightCorrection(bool en)
     return NO_ERROR;
 }
 
-status_t AtomAAA::setTNR(bool en)
-{
-    // No longer supported, use CPF instead
-    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
-    return NO_ERROR;
-}
-
 status_t AtomAAA::setAwbMapping(ia_3a_awb_map mode)
 {
     Mutex::Autolock lock(m3aLock);
@@ -1117,17 +1106,6 @@ status_t AtomAAA::getEv(float *ret)
     LOG1("@%s", __FUNCTION__);
 
     *ret = ia_3a_ae_get_bias();
-
-    return NO_ERROR;
-}
-
-status_t AtomAAA::setGDC(bool en)
-{
-    Mutex::Autolock lock(m3aLock);
-    LOG1("@%s: en = %d", __FUNCTION__, en);
-
-    if(!mHas3A || enableGdc(en) != 0)
-        return INVALID_OPERATION;
 
     return NO_ERROR;
 }
@@ -1484,71 +1462,6 @@ void AtomAAA::ciAdvUninit(void)
     ia_3a_uninit();
 }
 
-/*! \fn  enableEe
- * \brief enable edge enhancement ISP parameter
- * @param enable - enable/disble EE
- */
-int AtomAAA::enableEe(bool enable)
-{
-    // No longer supported, use CPF instead
-    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
-    return NO_ERROR;
-}
-
-/*! \fn  enableNr
- * \brief enable noise reduction ISP parameter
- * @param enable - enable/disble NR
- */
-int AtomAAA::enableNr(bool enable)
-{
-    // No longer supported, use CPF instead
-    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
-    return NO_ERROR;
-}
-
-/*! \fn  enableDp
- * \brief enable DP ISP parameter
- * @param enable - enable/disble DP
- */
-int AtomAAA::enableDp(bool enable)
-{
-    // No longer supported, use CPF instead
-    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
-    return NO_ERROR;
-}
-
-/*! \fn  enableOb
- * \brief enable OB ISP parameter
- * @param enable - enable/disble OB
- */
-int AtomAAA::enableOb(bool enable)
-{
-    // No longer supported, use CPF instead
-    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
-    return NO_ERROR;
-}
-
-int AtomAAA::enableShadingCorrection(bool enable)
-{
-    // No longer supported, use CPF instead
-    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
-    return NO_ERROR;
-}
-
-int AtomAAA::setGammaEffect(bool inv_gamma)
-{
-    // No longer supported, use CPF instead
-    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
-    return NO_ERROR;
-}
-
-int AtomAAA::enableGbce(bool enable)
-{
-    // No longer supported, use CPF instead
-    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
-    return NO_ERROR;
-}
-
 void AtomAAA::ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate)
 {
     LOG1("@%s", __FUNCTION__);
@@ -1754,20 +1667,6 @@ int AtomAAA::getAfScore(bool average_enabled)
     return ret;
 }
 
-int AtomAAA::enableFpn(bool enable)
-{
-    // No longer supported, use CPF instead
-    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
-    return NO_ERROR;
-}
-
-int AtomAAA::enableGdc(bool enable)
-{
-    // No longer supported, use CPF instead
-    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
-    return NO_ERROR;
-}
-
 /*! \fn  getAEExpCfg
  * \brief Get sensor's configuration for AE
  * exp_time: Preview exposure time
@@ -1873,10 +1772,6 @@ void AtomAAA::getDefaultParams(CameraParameters *params, CameraParameters *intel
 
     // panorama
     intel_params->set(IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE, CAM_RESO_STR(PANORAMA_DEF_PREV_WIDTH,PANORAMA_DEF_PREV_HEIGHT));
-
-    // temporal noise reduction
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_TEMPORAL_NOISE_REDUCTION, "on,off");
-    intel_params->set(IntelCameraParameters::KEY_TEMPORAL_NOISE_REDUCTION, "off");
 }
 
 } //  namespace android

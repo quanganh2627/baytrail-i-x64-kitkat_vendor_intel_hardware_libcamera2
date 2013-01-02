@@ -427,8 +427,6 @@ private:
             CameraParameters *newParams, bool applyImmediately = true);
     status_t processParamXNR_ANR(const CameraParameters *oldParams,
             CameraParameters *newParams);
-    status_t processParamGDC(const CameraParameters *oldParams,
-            CameraParameters *newParams);
     status_t processParamAntiBanding(const CameraParameters *oldParams,
                                            CameraParameters *newParams);
     status_t processParamFocusMode(const CameraParameters *oldParams,
@@ -456,8 +454,6 @@ private:
     status_t processParamBackLightingCorrectionMode(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamAwbMappingMode(const CameraParameters *oldParams,
-            CameraParameters *newParams);
-    status_t processParamTNR(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamRawDataFormat(const CameraParameters *oldParams,
             CameraParameters *newParams);

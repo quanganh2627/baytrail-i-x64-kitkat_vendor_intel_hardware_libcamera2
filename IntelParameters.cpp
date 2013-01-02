@@ -72,10 +72,6 @@ namespace android {
     const char IntelCameraParameters::KEY_SUPPORTED_XNR[] = "xnr-values";
     const char IntelCameraParameters::KEY_ANR[] = "anr";
     const char IntelCameraParameters::KEY_SUPPORTED_ANR[] = "anr-values";
-    const char IntelCameraParameters::KEY_GDC[] = "gdc";
-    const char IntelCameraParameters::KEY_SUPPORTED_GDC[] = "gdc-values";
-    const char IntelCameraParameters::KEY_TEMPORAL_NOISE_REDUCTION[] = "temporal-noise-reduction";
-    const char IntelCameraParameters::KEY_SUPPORTED_TEMPORAL_NOISE_REDUCTION[] = "temporal-noise-reduction-values";
     const char IntelCameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT[] = "noise-reduction-and-edge-enhancement";
     const char IntelCameraParameters::KEY_SUPPORTED_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT[] = "noise-reduction-and-edge-enhancement-values";
     const char IntelCameraParameters::KEY_MULTI_ACCESS_COLOR_CORRECTION[] = "multi-access-color-correction";

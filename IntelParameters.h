@@ -37,10 +37,6 @@ namespace android {
     static const char KEY_SUPPORTED_XNR[];
     static const char KEY_ANR[];
     static const char KEY_SUPPORTED_ANR[];
-    static const char KEY_GDC[];
-    static const char KEY_SUPPORTED_GDC[];
-    static const char KEY_TEMPORAL_NOISE_REDUCTION[];
-    static const char KEY_SUPPORTED_TEMPORAL_NOISE_REDUCTION[];
     static const char KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT[];
     static const char KEY_SUPPORTED_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT[];
     static const char KEY_MULTI_ACCESS_COLOR_CORRECTION[];

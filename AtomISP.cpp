@@ -664,12 +664,6 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
 
     /**
-     * GDC
-     */
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_GDC, "true,false");
-    intel_params->set(IntelCameraParameters::KEY_GDC, CameraParameters::FALSE);
-
-    /**
      * EXPOSURE
      */
     params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(cameraId));
