@@ -124,6 +124,7 @@ public:
     status_t stopOfflineCapture();
     bool isOfflineCaptureRunning() const;
     bool isOfflineCaptureSupported() const;
+    bool isYUVvideoZoomingSupported() const;
     status_t returnPreviewBuffers();
     bool isSharedPreviewBufferConfigured(bool *reserved = NULL) const;
 

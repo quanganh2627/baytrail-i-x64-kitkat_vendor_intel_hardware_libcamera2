@@ -1708,6 +1708,15 @@ bool AtomISP::isOfflineCaptureSupported() const
     return false;
 }
 
+bool AtomISP::isYUVvideoZoomingSupported() const
+{
+    // TODO: device node count reveals version of CSS firmware
+    if (mConfigLastDevice >= 3)
+        return true;
+
+    return false;
+}
+
 /**
  * Configures a particular device with a mode (preview, video or capture)
  *
@@ -2235,7 +2244,7 @@ void AtomISP::getZoomRatios(bool videoMode, CameraParameters *params)
 {
     LOG1("@%s", __FUNCTION__);
     if (params) {
-        if (videoMode && mSensorType == SENSOR_TYPE_SOC) {
+        if (!isYUVvideoZoomingSupported() && videoMode && mSensorType == SENSOR_TYPE_SOC) {
             // zoom is not supported. this is indicated by placing a single zoom ratio in params
             params->set(CameraParameters::KEY_ZOOM, "0");
             params->set(CameraParameters::KEY_MAX_ZOOM, "0"); // zoom index 0 indicates first (and only) zoom ratio
