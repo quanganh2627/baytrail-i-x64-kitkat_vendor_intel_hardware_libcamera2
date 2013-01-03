@@ -108,6 +108,8 @@ status_t PostProcThread::handleMessageStartFaceDetection()
             LOGW("Error starting FaceDetector thread!");
             return UNKNOWN_ERROR;
         }
+    } else {
+        mFaceDetector->reset();
     }
 
     if (mSmartShutter.smartRunning && mSmartShutter.smileRunning)
@@ -115,6 +117,7 @@ status_t PostProcThread::handleMessageStartFaceDetection()
     if (mSmartShutter.smartRunning && mSmartShutter.blinkRunning)
         mFaceDetector->setBlinkThreshold(mSmartShutter.blinkThreshold);
 
+    mLastReportedNumberOfFaces = 0;
     mFaceDetectionRunning = true;
     return status;
 }

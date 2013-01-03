@@ -62,6 +62,7 @@ public:
     bool blinkDetect(ia_frame *frame);
     status_t startFaceRecognition();
     status_t stopFaceRecognition();
+    status_t reset();
     void faceRecognize(ia_frame *frame);
 
 // Thread overrides
@@ -73,6 +74,7 @@ private:
     status_t handleExit();
     status_t handleMessageStartFaceRecognition();
     status_t handleMessageStopFaceRecognition();
+    status_t handleMessageReset();
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -89,6 +91,7 @@ private:
         MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
         MESSAGE_ID_START_FACE_RECOGNITION,
         MESSAGE_ID_STOP_FACE_RECOGNITION,
+        MESSAGE_ID_RESET,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -128,6 +131,7 @@ private:
     void setBlinkThreshold(int threshold) {}
     status_t startFaceRecognition() { return UNKNOWN_ERROR; }
     status_t stopFaceRecognition() { return UNKNOWN_ERROR; }
+    status_t reset() { return UNKNOWN_ERROR; }
     void faceRecognize(ia_frame *frame) {}
 
 // Thread overrides

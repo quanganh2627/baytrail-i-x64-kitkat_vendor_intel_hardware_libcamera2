@@ -161,6 +161,30 @@ status_t FaceDetector::handleMessageStopFaceRecognition()
     return status;
 }
 
+
+status_t FaceDetector::reset()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    Message msg;
+    msg.id = MESSAGE_ID_RESET;
+    mMessageQueue.send(&msg);
+    return status;
+}
+
+status_t FaceDetector::handleMessageReset()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    if (mContext != NULL)
+        ia_face_reinit(mContext);
+    else
+        status = INVALID_OPERATION;
+
+    return status;
+}
+
 void FaceDetector::faceRecognize(ia_frame *frame)
 {
     LOG2("@%s", __FUNCTION__);
@@ -335,6 +359,9 @@ status_t FaceDetector::waitForAndExecuteMessage()
             break;
         case MESSAGE_ID_STOP_FACE_RECOGNITION:
             status = handleMessageStopFaceRecognition();
+            break;
+        case MESSAGE_ID_RESET:
+            status = handleMessageReset();
             break;
         default:
             status = INVALID_OPERATION;
