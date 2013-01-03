@@ -205,13 +205,15 @@ private:
         status_t allocateGfxPreviewBuffers(int numberOfBuffers);
         status_t freeGfxPreviewBuffers();
         int getGfxBufferStride();
+        AtomBuffer* dequeueFromWindow();
 
     private:
         friend class PreviewThread;
         Vector<AtomBuffer>  mPreviewBuffers;    /*!< Vector with the buffers retrieved from window */
         Vector<int>         mPreviewInClient;   /*!< Vector with indexes to mPreviewBuffers*/
         int                 mBuffersInWindow;   /*!< Number of buffers currently in the preview window */
-
+        size_t              mNumOfPreviewBuffers;
+        bool                mFetchDone;
     };
 
     class OverlayPreviewHandler: public PreviewMessageHandler {

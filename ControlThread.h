@@ -586,6 +586,8 @@ private:
 
     int mSetFPS;                /* The current FPS, used for frame dropping */
 
+    bool mContinuousActiveStoppedEnabled; /* state where API stopPreview() is allowed to leave ISP running */
+    bool mContinuousActiveStopped; /* state where ISP is running in background even preview publicly not enabled */
 }; // class ControlThread
 
 }; // namespace android

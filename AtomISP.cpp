@@ -3161,6 +3161,29 @@ int AtomISP::v4l2_capture_try_format(int device, int *w, int *h,
     return 0;
 }
 
+/**
+ * Pushes all preview buffers back into driver except the ones already queued
+ *
+ * Note: Currently no support for shared buffers for cautions
+ */
+status_t AtomISP::returnPreviewBuffers()
+{
+    LOG1("@%s", __FUNCTION__);
+    if (mPreviewBuffers) {
+        for (int i = 0 ; i < mNumPreviewBuffers; i++) {
+            if (mPreviewBuffers[i].shared)
+                return UNKNOWN_ERROR;
+            if (mPreviewBuffers[i].buff == NULL)
+                return UNKNOWN_ERROR;
+            // identifying already queued frames with negative id
+            if (mPreviewBuffers[i].id == -1)
+                continue;
+            putPreviewFrame(&mPreviewBuffers[i]);
+        }
+    }
+    return NO_ERROR;
+}
+
 status_t AtomISP::getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameStatus)
 {
     LOG2("@%s", __FUNCTION__);
@@ -3211,6 +3234,10 @@ status_t AtomISP::putPreviewFrame(AtomBuffer *buff)
                       &v4l2_buf_pool[mPreviewDevice].bufs[buff->id]) < 0) {
         return UNKNOWN_ERROR;
     }
+
+    // using -1 index to identify queued buffers
+    // id gets updated with dqbuf
+    mPreviewBuffers[buff->id].id = -1;
 
     mNumPreviewBuffersQueued++;
 
@@ -3560,7 +3587,7 @@ status_t AtomISP::allocatePreviewBuffers()
                  status = NO_MEMORY;
                  goto errorFree;
              }
-
+             mPreviewBuffers[i].size = mConfig.preview.size;
              allocatedBufs++;
              v4l2_buf_pool[mPreviewDevice].bufs[i].data = mPreviewBuffers[i].buff->data;
              mPreviewBuffers[i].shared = false;

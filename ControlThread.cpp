@@ -113,6 +113,8 @@ ControlThread::ControlThread(const sp<CameraConf>& cfg) :
     ,mIsPreviewStartComplete(false)
     ,mVideoSnapshotrequested(0)
     ,mSetFPS(MAX_PREVIEW_FPS)
+    ,mContinuousActiveStoppedEnabled(false)
+    ,mContinuousActiveStopped(false)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -338,6 +340,11 @@ bail:
 
 void ControlThread::deinit()
 {
+    if (mContinuousActiveStopped) {
+        mContinuousActiveStoppedEnabled = false;
+        mContinuousActiveStopped = false;
+        handleMessageStopPreview();
+    }
 
     // NOTE: This method should clean up only what NEEDS to be cleaned up.
     //       Refer to ControlThread::init(). This method will be called if
@@ -517,6 +524,11 @@ bool ControlThread::previewEnabled()
             mState == STATE_RECORDING ||
             mState == STATE_CONTINUOUS_CAPTURE ||
             mPreviewStartQueued);
+
+    // distinct "active stopped" case as a public preview-not-enabled
+    if (mState == STATE_CONTINUOUS_CAPTURE && mContinuousActiveStopped)
+        return false;
+
     return enabled;
 }
 
@@ -1041,9 +1053,18 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     AtomMode mode;
     bool isDVSActive = false;
 
+    if (mContinuousActiveStopped) {
+        // just re-configure previewThread
+        format = V4L2Format(mParameters.getPreviewFormat());
+        mISP->getPreviewSize(&width, &height,&stride);
+        mPreviewThread->setPreviewConfig(width, height, stride, format, 3);
+        mContinuousActiveStopped = false;
+        return NO_ERROR;
+    }
+
     if (mState != STATE_STOPPED &&
-            mState != STATE_PREVIEW_NO_WINDOW &&
-            mState != STATE_CONTINUOUS_CAPTURE) {
+        mState != STATE_PREVIEW_NO_WINDOW &&
+        mState != STATE_CONTINUOUS_CAPTURE) {
         LOGE("Must be in STATE_STOPPED or PREVIEW_NO_WINDOW to start preview");
         return INVALID_OPERATION;
     }
@@ -1153,18 +1174,29 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
     mISP->getPreviewSize(&width, &height,&stride);
     mNumBuffers = mISP->getNumBuffers(videoMode);
-    mPreviewThread->setPreviewConfig(width, height, stride, format, mNumBuffers);
+    AtomBuffer *pvBufs;
+    int count;
+    if (mode == MODE_CONTINUOUS_CAPTURE && !mIntelParamsAllowed) {
+        // using mIntelParamsAllowed to distinquish applications using public
+        // API from ones using agreed sequences within continuous mode.
+        // For API compliant continuous-mode we use internal preview buffers
+        // to be able to release and re-acquire external buffers while keeping
+        // continuous mode running.
+        // TODO: support for fluent transitions recardless of buffer type
+        //       transparently
+        mPreviewThread->setPreviewConfig(width, height, stride, format, 3);
+    } else {
+        mPreviewThread->setPreviewConfig(width, height, stride, format, mNumBuffers);
+        status = mPreviewThread->fetchPreviewBuffers(&pvBufs, &count);
+        if ((status == NO_ERROR) && (count == mNumBuffers)) {
+            mISP->setGraphicPreviewBuffers(pvBufs, mNumBuffers);
+        }
+    }
+
     PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("Set_Preview_Config");
 
     mCoupledBuffers = new CoupledBuffer[mNumBuffers];
     memset(mCoupledBuffers, 0, mNumBuffers * sizeof(CoupledBuffer));
-
-    AtomBuffer *pvBufs;
-    int count;
-    status = mPreviewThread->fetchPreviewBuffers(&pvBufs, &count);
-    if ((status == NO_ERROR) && (count == mNumBuffers)){
-        mISP->setGraphicPreviewBuffers(pvBufs, mNumBuffers);
-    }
 
     status = mISP->allocateBuffers(mode);
     if (status != NO_ERROR) {
@@ -1219,6 +1251,7 @@ status_t ControlThread::stopPreviewCore()
     // Flush also the messages coming from PreviewThread to CtrlThread
     // with preview frames ready to be sent to PostProcThread
     mMessageQueue.remove(MESSAGE_ID_PREVIEW_DONE);
+    mMessageQueue.remove(MESSAGE_ID_RELEASE_PREVIEW_FRAME);
 
     mPostProcThread->flushFrames();
 
@@ -1227,18 +1260,25 @@ status_t ControlThread::stopPreviewCore()
         status = mVideoThread->flushBuffers();
     }
 
-    State oldState = mState;
-    status = mISP->stop();
-    if (status == NO_ERROR) {
-        mState = STATE_STOPPED;
+    if (mContinuousActiveStoppedEnabled) {
+         status = mPreviewThread->returnPreviewBuffers();
+        // return buffers to ISP
+        mISP->returnPreviewBuffers();
+        mContinuousActiveStopped = true;
+        mContinuousActiveStoppedEnabled = false;
     } else {
-        LOGE("Error stopping ISP in preview mode!");
+        State oldState = mState;
+        status = mISP->stop();
+        if (status == NO_ERROR) {
+            mState = STATE_STOPPED;
+        } else {
+            LOGE("Error stopping ISP in preview mode!");
+        }
+        status = mPreviewThread->returnPreviewBuffers();
+
+        if (oldState == STATE_CONTINUOUS_CAPTURE)
+            mISP->releaseCaptureBuffers();
     }
-
-    status = mPreviewThread->returnPreviewBuffers();
-
-    if (oldState == STATE_CONTINUOUS_CAPTURE)
-        mISP->releaseCaptureBuffers();
 
     delete [] mCoupledBuffers;
     // set to null because frames can be returned to hal in stop state
@@ -1310,6 +1350,8 @@ status_t ControlThread::restartPreview(bool videoMode)
     LOG1("@%s: mode = %s", __FUNCTION__, videoMode?"VIDEO":"STILL");
     Mutex::Autolock mLock(mPreviewStartLock);
     mPreviewStartQueued = true;
+    mContinuousActiveStoppedEnabled = false;
+    mContinuousActiveStopped = false;
     bool faceActive = mFaceDetectionActive;
     stopFaceDetection(true);
     status_t status = stopPreviewCore();
@@ -1374,7 +1416,7 @@ status_t ControlThread::handleMessageStopPreview()
         }
     }
 
-    if (oldState == STATE_CONTINUOUS_CAPTURE)
+    if (oldState == STATE_CONTINUOUS_CAPTURE && !mContinuousActiveStopped)
         releaseContinuousCapture();
 
     // return status and unblock message sender
@@ -1991,6 +2033,10 @@ status_t ControlThread::captureStillPic()
         assert(mBurstLength <= 1);
         mISP->setContCaptureNumCaptures(1);
         mISP->startOfflineCapture();
+        if (!mIntelParamsAllowed) {
+            // enable active-stopped state for post-capture stopPreview()
+            mContinuousActiveStoppedEnabled = true;
+        }
     }
     else {
         if (mState == STATE_CONTINUOUS_CAPTURE)
@@ -5253,6 +5299,14 @@ status_t ControlThread::dequeuePreview()
     status = mISP->getPreviewFrame(&buff, &frameStatus);
 
     if (status == NO_ERROR) {
+        if (mContinuousActiveStopped) {
+            if (frameStatus != ATOMISP_FRAME_STATUS_CORRUPTED
+                && mAAA->is3ASupported())
+                m3AThread->newFrame(buff.capture_timestamp);
+            mISP->putPreviewFrame(&buff);
+            return status;
+        }
+
         bool videoMode =
             (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING);
 
