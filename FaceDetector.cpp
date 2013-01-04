@@ -310,7 +310,12 @@ int FaceDetector::getFaces(camera_face_t *faces_out, int width, int height)
         face.rect[3] = iaFace.face_area.bottom * coord_range / height - coord_range / 2;
 
         face.score = iaFace.confidence;
-        face.id = iaFace.person_id;
+
+        // Face ID should be unique for each detected face, so fill the face ID with tracking ID if
+        // FR is not enabled (person_id is always 0) or when the face is not recognized (person_id is always -1000).
+        // Tracking ID is always unique for each detected face. Use negative values below -1000 so that the application
+        // doesn't misinterpret the face as recognized and that the CTS tests pass.
+        face.id = iaFace.person_id > 0 ? iaFace.person_id : (-1000 - iaFace.tracking_id);
 
         face.left_eye[0] = iaFace.left_eye.position.x * coord_range / width - coord_range / 2;
         face.left_eye[1] = iaFace.left_eye.position.y * coord_range / height - coord_range / 2;
