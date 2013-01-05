@@ -277,9 +277,13 @@ void EXIFMaker::initialize(const CameraParameters &params)
     timeinfo = localtime(&rawtime);
     strftime((char *)exifAttributes.date_time, sizeof(exifAttributes.date_time), "%Y:%m:%d %H:%M:%S", timeinfo);
 
-    // conponents configuration. 0 means does not exist
-    // 1 = Y; 2 = Cb; 3 = Cr; 4 = R; 5 = G; 6 = B; other = reserved
-    memset(exifAttributes.components_configuration, 0, sizeof(exifAttributes.components_configuration));
+    // conponents configuration.
+    // Default = 4 5 6 0(if RGB uncompressed), 1 2 3 0(other cases)
+    // 0 = does not exist; 1 = Y; 2 = Cb; 3 = Cr; 4 = R; 5 = G; 6 = B; other = reserved
+    exifAttributes.components_configuration[0] = 1;
+    exifAttributes.components_configuration[1] = 2;
+    exifAttributes.components_configuration[2] = 3;
+    exifAttributes.components_configuration[3] = 0;
 
     // set default values for fnumber and focal length
     // (see EXIFMaker::setDriverData() how to override these)
