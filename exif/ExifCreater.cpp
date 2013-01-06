@@ -131,7 +131,7 @@ exif_status ExifCreater::makeExif (void *exifOut,
     pCur = pIfdStart + LongerTagOffset;
 
     tmp = NUM_0TH_IFD_EXIF;
-    memcpy(pCur, &tmp , NUM_SIZE);
+    memcpy(pCur, &tmp, NUM_SIZE);
     pCur += NUM_SIZE;
 
     LongerTagOffset += NUM_SIZE + NUM_0TH_IFD_EXIF*IFD_SIZE + OFFSET_SIZE;
@@ -202,6 +202,10 @@ exif_status ExifCreater::makeExif (void *exifOut,
                  1, exifInfo->scene_capture_type);
     writeExifIfd(&pCur, EXIF_TAG_GAIN_CONTROL, EXIF_TYPE_SHORT,
                  1, exifInfo->gain_control);
+    writeExifIfd(&pCur, EXIF_TAG_CONTRAST, EXIF_TYPE_SHORT,
+             1, exifInfo->contrast);
+    writeExifIfd(&pCur, EXIF_TAG_SATURATION, EXIF_TYPE_SHORT,
+             1, exifInfo->saturation);
     writeExifIfd(&pCur, EXIF_TAG_SHARPNESS, EXIF_TYPE_SHORT,
              1, exifInfo->sharpness);
 

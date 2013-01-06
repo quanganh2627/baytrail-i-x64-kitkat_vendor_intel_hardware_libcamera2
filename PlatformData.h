@@ -137,16 +137,19 @@ public:
             minSaturation = "";
             stepSaturation = "";
             defaultSaturation = "";
+            supportedSaturation = "";
             //Contrast
             maxContrast = "";
             minContrast = "";
             stepContrast = "";
             defaultContrast = "";
+            supportedContrast = "";
             //Sharpness
             maxSharpness = "";
             minSharpness = "";
             stepSharpness = "";
             defaultSharpness = "";
+            supportedSharpness = "";
             //FlashMode
             snprintf(supportedFlashModes
                 ,sizeof(supportedFlashModes)
@@ -265,16 +268,19 @@ public:
         const char* minSaturation;
         const char* stepSaturation;
         const char* defaultSaturation;
+        const char* supportedSaturation;
         // contrast
         const char* maxContrast;
         const char* minContrast;
         const char* stepContrast;
         const char* defaultContrast;
+        const char* supportedContrast;
         // sharpness
         const char* maxSharpness;
         const char* minSharpness;
         const char* stepSharpness;
         const char* defaultSharpness;
+        const char* supportedSharpness;
         // flash
         char supportedFlashModes[100];
         char defaultFlashMode[50];
@@ -557,9 +563,17 @@ class PlatformData {
      * Saturation default value
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the iso default value as a string.
+     */
+    static const char* defaultSaturation(int cameraId);
+
+    /**
+     * Saturation default value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
      * \return the value of the default saturation as a string.
      */
-    static const char* supportedDefaultSaturation(int cameraId);
+    static const char* supportedSaturation(int cameraId);
 
     /**
      * Saturation max value
@@ -589,9 +603,17 @@ class PlatformData {
      * Contrast default value
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the iso default value as a string.
+     */
+    static const char* defaultContrast(int cameraId);
+
+    /**
+     * Contrast default value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
      * \return the value of the default contrast as a string.
      */
-    static const char* supportedDefaultContrast(int cameraId);
+    static const char* supportedContrast(int cameraId);
 
     /**
      * Contrast max value
@@ -621,9 +643,17 @@ class PlatformData {
      * Sharpness default value
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the iso default value as a string.
+     */
+    static const char* defaultSharpness(int cameraId);
+
+    /**
+     * Sharpness default value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
      * \return the value of the default sharpness as a string.
      */
-    static const char* supportedDefaultSharpness(int cameraId);
+    static const char* supportedSharpness(int cameraId);
 
     /**
      * Sharpness max value

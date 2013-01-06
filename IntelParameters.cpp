@@ -196,6 +196,26 @@ namespace android {
     const char IntelCameraParameters::SCENE_MODE_FALL_COLORS[] = "fall-colors";
     const char IntelCameraParameters::SCENE_MODE_BACKLIGHT[] = " backlight";
 
+    // contrast
+    const char IntelCameraParameters::KEY_CONTRAST_MODE[] = "contrast-mode";
+    const char IntelCameraParameters::KEY_SUPPORTED_CONTRAST_MODES[] = "contrast-mode-values";
+    const char IntelCameraParameters::CONTRAST_MODE_NORMAL[] = "normal";
+    const char IntelCameraParameters::CONTRAST_MODE_SOFT[] = "soft";
+    const char IntelCameraParameters::CONTRAST_MODE_HARD[] = "hard";
+
+    // saturation
+    const char IntelCameraParameters::KEY_SATURATION_MODE[] = "saturation-mode";
+    const char IntelCameraParameters::KEY_SUPPORTED_SATURATION_MODES[] = "saturation-mode-values";
+    const char IntelCameraParameters::SATURATION_MODE_NORMAL[] = "normal";
+    const char IntelCameraParameters::SATURATION_MODE_LOW[] = "low";
+    const char IntelCameraParameters::SATURATION_MODE_HIGH[] = "high";
+
+    // sharpness
+    const char IntelCameraParameters::KEY_SHARPNESS_MODE[] = "sharpness-mode";
+    const char IntelCameraParameters::KEY_SUPPORTED_SHARPNESS_MODES[] = "sharpness-mode-values";
+    const char IntelCameraParameters::SHARPNESS_MODE_NORMAL[] = "normal";
+    const char IntelCameraParameters::SHARPNESS_MODE_SOFT[] = "soft";
+    const char IntelCameraParameters::SHARPNESS_MODE_HARD[] = "hard";
 
     void IntelCameraParameters::getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params)
     {

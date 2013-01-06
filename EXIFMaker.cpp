@@ -328,8 +328,37 @@ void EXIFMaker::initialize(const CameraParameters &params)
     // 1 = low gain up; 2 = high gain up; 3 = low gain down; 4 = high gain down
     exifAttributes.gain_control = 0;
 
+    // contrast, 0 = normal; 1 = soft; 2 = hard; other = reserved
+    const char *contrast = params.get(IntelCameraParameters::KEY_CONTRAST_MODE);
+
+    exifAttributes.contrast = EXIF_CONTRAST_NORMAL;
+    if (contrast) {
+        if (!strcmp(contrast, IntelCameraParameters::CONTRAST_MODE_SOFT))
+            exifAttributes.contrast = EXIF_CONTRAST_SOFT;
+        else if (!strcmp(contrast, IntelCameraParameters::CONTRAST_MODE_HARD))
+            exifAttributes.contrast = EXIF_CONTRAST_HARD;
+    }
+
+    // saturation, 0 = normal; 1 = Low saturation; 2 = High saturation; other = reserved
+    const char *saturation = params.get(IntelCameraParameters::KEY_SATURATION_MODE);
+    exifAttributes.saturation = EXIF_SATURATION_NORMAL;
+    if (saturation) {
+        if (!strcmp(saturation, IntelCameraParameters::SATURATION_MODE_LOW))
+            exifAttributes.saturation = EXIF_SATURATION_LOW;
+        else if (!strcmp(saturation, IntelCameraParameters::SATURATION_MODE_HIGH))
+            exifAttributes.saturation = EXIF_SATURATION_HIGH;
+    }
+
     // sharpness, 0 = normal; 1 = soft; 2 = hard; other = reserved
-    exifAttributes.sharpness = 0;
+    const char *sharpness = params.get(IntelCameraParameters::KEY_SHARPNESS_MODE);
+    exifAttributes.sharpness = EXIF_SHARPNESS_NORMAL;
+    if (sharpness) {
+        if (!strcmp(sharpness, IntelCameraParameters::SHARPNESS_MODE_SOFT))
+            exifAttributes.sharpness = EXIF_SHARPNESS_SOFT;
+        else if (!strcmp(sharpness, IntelCameraParameters::SHARPNESS_MODE_HARD))
+            exifAttributes.sharpness = EXIF_SHARPNESS_HARD;
+    }
+
     // the picture's width and height
     params.getPictureSize((int*)&exifAttributes.width, (int*)&exifAttributes.height);
 

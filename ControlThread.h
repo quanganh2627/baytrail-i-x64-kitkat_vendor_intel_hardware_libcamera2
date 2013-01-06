@@ -451,6 +451,12 @@ private:
             CameraParameters *newParams);
     status_t processParamIso(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    status_t processParamContrast(const CameraParameters *oldParams,
+            CameraParameters *newParams);
+    status_t processParamSaturation(const CameraParameters *oldParams,
+            CameraParameters *newParams);
+    status_t processParamSharpness(const CameraParameters *oldParams,
+            CameraParameters *newParams);
     status_t processParamShutter(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamBackLightingCorrectionMode(const CameraParameters *oldParams,

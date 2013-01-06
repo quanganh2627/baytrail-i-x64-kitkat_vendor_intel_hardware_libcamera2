@@ -192,6 +192,12 @@ public:
     status_t setColorEffect(v4l2_colorfx effect);
     status_t applyColorEffect();
     status_t getMakerNote(atomisp_makernote_info *info);
+    status_t getContrast(int *value);
+    status_t setContrast(int value);
+    status_t getSaturation(int *value);
+    status_t setSaturation(int value);
+    status_t getSharpness(int *value);
+    status_t setSharpness(int value);
     status_t setXNR(bool enable);
     status_t setLightFrequency(FlickerMode flickerMode);
     status_t setLowLight(bool enable);

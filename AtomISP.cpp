@@ -762,6 +762,18 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     // manual iso control (Intel extension)
     intel_params->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(cameraId));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::supportedIso(cameraId));
+
+    // contrast control (Intel extension)
+    intel_params->set(IntelCameraParameters::KEY_CONTRAST_MODE, PlatformData::defaultContrast(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_CONTRAST_MODES, PlatformData::supportedContrast(cameraId));
+
+    // saturation control (Intel extension)
+    intel_params->set(IntelCameraParameters::KEY_SATURATION_MODE, PlatformData::defaultSaturation(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SATURATION_MODES, PlatformData::supportedSaturation(cameraId));
+
+    // sharpness control (Intel extension)
+    intel_params->set(IntelCameraParameters::KEY_SHARPNESS_MODE, PlatformData::defaultSharpness(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SHARPNESS_MODES, PlatformData::supportedSharpness(cameraId));
 }
 
 const char* AtomISP::getMaxSnapShotResolution()
@@ -2549,6 +2561,102 @@ status_t AtomISP::getMakerNote(atomisp_makernote_info *info)
     info->f_number_range = 0;
     if (xioctl(fd, ATOMISP_IOC_ISP_MAKERNOTE, info) < 0) {
         LOGW("WARNING: get maker note from driver failed!");
+        return UNKNOWN_ERROR;
+    }
+    return NO_ERROR;
+}
+
+status_t AtomISP::getContrast(int *value)
+{
+    LOG1("@%s", __FUNCTION__);
+    int fd = video_fds[V4L2_MAIN_DEVICE];
+
+    if (fd < 0) {
+        return INVALID_OPERATION;
+    }
+
+    LOG2("@%s", __FUNCTION__);
+    if (atomisp_get_attribute(fd,V4L2_CID_CONTRAST, value) < 0) {
+        LOGW("WARNING: get Contrast from driver failed!");
+        return UNKNOWN_ERROR;
+    }
+    return NO_ERROR;
+}
+
+status_t AtomISP::setContrast(int value)
+{
+    LOG1("@%s: value:%d", __FUNCTION__, value);
+    int fd = video_fds[V4L2_MAIN_DEVICE];
+
+    if (fd < 0) {
+        return INVALID_OPERATION;
+    }
+    if (atomisp_set_attribute(fd, V4L2_CID_CONTRAST, value, "Request Contrast") < 0) {
+        LOGW("WARNING: set Contrast from driver failed!");
+        return UNKNOWN_ERROR;
+    }
+    return NO_ERROR;
+}
+
+status_t AtomISP::getSaturation(int *value)
+{
+    LOG1("@%s", __FUNCTION__);
+    int fd = video_fds[V4L2_MAIN_DEVICE];
+
+    if (fd < 0) {
+        return INVALID_OPERATION;
+    }
+
+    LOG2("@%s", __FUNCTION__);
+    if (atomisp_get_attribute(fd,V4L2_CID_SATURATION, value) < 0) {
+        LOGW("WARNING: get Saturation from driver failed!");
+        return UNKNOWN_ERROR;
+    }
+    return NO_ERROR;
+}
+
+status_t AtomISP::setSaturation(int value)
+{
+    LOG1("@%s: value:%d", __FUNCTION__, value);
+    int fd = video_fds[V4L2_MAIN_DEVICE];
+
+    if (fd < 0) {
+        return INVALID_OPERATION;
+    }
+    if (atomisp_set_attribute(fd, V4L2_CID_SATURATION, value, "Request Saturation") < 0) {
+        LOGW("WARNING: set Saturation from driver failed!");
+        return UNKNOWN_ERROR;
+    }
+    return NO_ERROR;
+}
+
+status_t AtomISP::getSharpness(int *value)
+{
+    LOG1("@%s", __FUNCTION__);
+    int fd = video_fds[V4L2_MAIN_DEVICE];
+
+    if (fd < 0) {
+        return INVALID_OPERATION;
+    }
+
+    LOG2("@%s", __FUNCTION__);
+    if (atomisp_get_attribute(fd,V4L2_CID_SHARPNESS, value) < 0) {
+        LOGW("WARNING: get Sharpness from driver failed!");
+        return UNKNOWN_ERROR;
+    }
+    return NO_ERROR;
+}
+
+status_t AtomISP::setSharpness(int value)
+{
+    LOG1("@%s: value:%d", __FUNCTION__, value);
+    int fd = video_fds[V4L2_MAIN_DEVICE];
+
+    if (fd < 0) {
+        return INVALID_OPERATION;
+    }
+    if (atomisp_set_attribute(fd, V4L2_CID_SHARPNESS, value, "Request Sharpness") < 0) {
+        LOGW("WARNING: set Sharpness from driver failed!");
         return UNKNOWN_ERROR;
     }
     return NO_ERROR;

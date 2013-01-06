@@ -31,7 +31,7 @@
 #define OFFSET_SIZE                 4
 
 #define NUM_0TH_IFD_TIFF            14
-#define NUM_0TH_IFD_EXIF            30
+#define NUM_0TH_IFD_EXIF            32
 #define NUM_0TH_IFD_GPS             10
 #define NUM_1TH_IFD_TIFF            9
 
@@ -95,6 +95,8 @@
 #define EXIF_TAG_JPEG_ZOOM_RATIO                0XA404
 #define EXIF_TAG_SCENCE_CAPTURE_TYPE            0xA406
 #define EXIF_TAG_GAIN_CONTROL                   0xA407
+#define EXIF_TAG_CONTRAST                       0xA408
+#define EXIF_TAG_SATURATION                     0xA409
 #define EXIF_TAG_SHARPNESS                      0xA40A
 
 /* 0th IFD GPS Info Tags */
@@ -189,6 +191,24 @@ typedef enum {
     EXIF_EXPOSURE_PROGRAM_SHUTTER_PRIORITY = 4
 } CamExifExposureProgramType;
 
+typedef enum {
+    EXIF_CONTRAST_NORMAL = 0,
+    EXIF_CONTRAST_SOFT = 1,
+    EXIF_CONTRAST_HARD = 2,
+} CamExifContrastType;
+
+typedef enum {
+    EXIF_SATURATION_NORMAL = 0,
+    EXIF_SATURATION_LOW = 1,
+    EXIF_SATURATION_HIGH = 2,
+} CamExifSaturationType;
+
+typedef enum {
+    EXIF_SHARPNESS_NORMAL = 0,
+    EXIF_SHARPNESS_SOFT = 1,
+    EXIF_SHARPNESS_HARD = 2,
+} CamExifSharpnessType;
+
 /* define the flag of enable gps info */
 const uint8_t   EXIF_GPS_LATITUDE       = 0x01;
 const uint8_t   EXIF_GPS_LONGITUDE      = 0x02;
@@ -262,6 +282,8 @@ typedef struct {
     uint16_t scene_capture_type;
     uint16_t light_source;
     uint16_t gain_control;
+    uint16_t contrast;
+    uint16_t saturation;
     uint16_t sharpness;
 
     rational_t exposure_time;

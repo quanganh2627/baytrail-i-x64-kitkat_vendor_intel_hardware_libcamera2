@@ -395,7 +395,7 @@ const char* PlatformData::supportedMinSaturation(int cameraId)
     return i->mCameras[cameraId].minSaturation;
 }
 
-const char* PlatformData::supportedDefaultSaturation(int cameraId)
+const char* PlatformData::defaultSaturation(int cameraId)
 {
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
@@ -403,6 +403,16 @@ const char* PlatformData::supportedDefaultSaturation(int cameraId)
       return "";
     }
     return i->mCameras[cameraId].defaultSaturation;
+}
+
+const char* PlatformData::supportedSaturation(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].supportedSaturation;
 }
 
 const char* PlatformData::supportedStepSaturation(int cameraId)
@@ -435,7 +445,7 @@ const char* PlatformData::supportedMinContrast(int cameraId)
     return i->mCameras[cameraId].minContrast;
 }
 
-const char* PlatformData::supportedDefaultContrast(int cameraId)
+const char* PlatformData::defaultContrast(int cameraId)
 {
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
@@ -443,6 +453,16 @@ const char* PlatformData::supportedDefaultContrast(int cameraId)
       return "";
     }
     return i->mCameras[cameraId].defaultContrast;
+}
+
+const char* PlatformData::supportedContrast(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].supportedContrast;
 }
 
 const char* PlatformData::supportedStepContrast(int cameraId)
@@ -475,7 +495,7 @@ const char* PlatformData::supportedMinSharpness(int cameraId)
     return i->mCameras[cameraId].minSharpness;
 }
 
-const char* PlatformData::supportedDefaultSharpness(int cameraId)
+const char* PlatformData::defaultSharpness(int cameraId)
 {
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
@@ -483,6 +503,16 @@ const char* PlatformData::supportedDefaultSharpness(int cameraId)
       return "";
     }
     return i->mCameras[cameraId].defaultSharpness;
+}
+
+const char* PlatformData::supportedSharpness(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].supportedSharpness;
 }
 
 const char* PlatformData::supportedStepSharpness(int cameraId)
