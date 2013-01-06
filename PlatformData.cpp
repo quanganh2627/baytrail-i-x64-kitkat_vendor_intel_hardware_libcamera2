@@ -131,6 +131,9 @@ PlatformBase* PlatformData::getInstance(void)
 #elif   MERR_VV
         mInstance = new PlatformSaltBay();
 
+#elif   YUKKA
+        mInstance = new PlatformYukka();
+
 #else   // take defaults from MFLD_PR2 for all others now
         mInstance = new PlatformBlackbay();
 
@@ -695,6 +698,12 @@ int PlatformData::getMaxZoomFactor(void)
 {
     PlatformBase *i = getInstance();
     return i->mMaxZoomFactor;
+}
+
+bool PlatformData::supportVideoSnapshot(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mSupportVideoSnapshot;
 }
 
 }; // namespace android

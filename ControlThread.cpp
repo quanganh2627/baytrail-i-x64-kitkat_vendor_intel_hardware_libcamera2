@@ -2756,7 +2756,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     supportedSizes.clear();
     params->getSupportedVideoSizes(supportedSizes);
     if (!validateSize(width, height, supportedSizes)) {
-        LOGE("bad video size");
+        LOGE("bad video size %dx%d", width, height);
         return BAD_VALUE;
     }
 
@@ -5089,7 +5089,8 @@ status_t ControlThread::enableIntelParameters()
 {
     // intel parameters support more effects
     // so use supported effects list stored in mIntelParameters.
-    mParameters.remove(CameraParameters::KEY_SUPPORTED_EFFECTS);
+    if (mIntelParameters.get(CameraParameters::KEY_SUPPORTED_EFFECTS))
+        mParameters.remove(CameraParameters::KEY_SUPPORTED_EFFECTS);
 
     String8 params(mParameters.flatten());
     String8 intel_params(mIntelParameters.flatten());

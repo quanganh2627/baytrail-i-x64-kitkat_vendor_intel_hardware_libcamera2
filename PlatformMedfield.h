@@ -123,6 +123,7 @@ public:
         mCameras.editItemAt(0).maxBurstFPS = 5;
         mCameras.editItemAt(0).supportedBurstLength = "1,3,5";
         mCameras.editItemAt(0).supportedBurstFPS = "1,3,5";
+        mSupportVideoSnapshot = false;
     }
 };
 
@@ -151,5 +152,27 @@ public:
     }
 };
 
+/**
+ * Platform data for Yukka Beach (Lexington based)
+ */
+class PlatformYukka : public PlatformLexington {
+
+public:
+    PlatformYukka(void) {
+
+        mCameras.editItemAt(0).orientation = 0;
+        mCameras.editItemAt(0).sensorType = SENSOR_TYPE_SOC;
+        mCameras.editItemAt(0).dvs = false;
+        mCameras.editItemAt(0).maxSnapshotWidth = RESOLUTION_2MP_WIDTH;
+        mCameras.editItemAt(0).maxSnapshotHeight = RESOLUTION_2MP_HEIGHT;
+
+        mCameras.editItemAt(1).orientation = 0;
+        mCameras.editItemAt(1).sensorType = SENSOR_TYPE_SOC;
+        mCameras.editItemAt(1).maxSnapshotWidth = RESOLUTION_VGA_WIDTH;
+        mCameras.editItemAt(1).maxSnapshotHeight = RESOLUTION_VGA_HEIGHT;
+
+        mCameras.editItemAt(2).sensorType = SENSOR_TYPE_SOC;
+    }
+};
 
 }; // namespace android

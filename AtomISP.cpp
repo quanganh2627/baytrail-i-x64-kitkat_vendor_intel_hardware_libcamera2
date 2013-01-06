@@ -55,6 +55,9 @@
 #define RESOLUTION_1080P_TABLE   \
         "320x240,640x480,1024x768,1280x720,1920x1080"
 
+#define RESOLUTION_2MP_TABLE   \
+        "320x240,640x480,1024x768,1280x720,1600x900,1600x1200"
+
 #define RESOLUTION_720P_TABLE   \
         "320x240,640x480,1280x720,1280x960"
 
@@ -124,6 +127,7 @@ AtomISP::cameraInfo AtomISP::sCamInfo[MAX_CAMERA_NODES];
 static const char *resolution_tables[] = {
     RESOLUTION_VGA_TABLE,
     RESOLUTION_720P_TABLE,
+    RESOLUTION_2MP_TABLE,
     RESOLUTION_1080P_TABLE,
     RESOLUTION_3MP_TABLE,
     RESOLUTION_5MP_TABLE,
@@ -364,21 +368,22 @@ void AtomISP::initFrameConfig()
         mConfig.snapshot.maxHeight = height;
     }
 
-    switch (mCameraInput->port) {
-    case ATOMISP_CAMERA_PORT_SECONDARY:
-        mConfig.preview.maxWidth   = MAX_FRONT_CAMERA_PREVIEW_WIDTH;
-        mConfig.preview.maxHeight  = MAX_FRONT_CAMERA_PREVIEW_HEIGHT;
-        mConfig.recording.maxWidth = MAX_FRONT_CAMERA_VIDEO_WIDTH;
-        mConfig.recording.maxHeight = MAX_FRONT_CAMERA_VIDEO_HEIGHT;
-        break;
-    case ATOMISP_CAMERA_PORT_PRIMARY:
-        mConfig.preview.maxWidth   = MAX_BACK_CAMERA_PREVIEW_WIDTH;
-        mConfig.preview.maxHeight  = MAX_BACK_CAMERA_PREVIEW_HEIGHT;
-        mConfig.recording.maxWidth = MAX_BACK_CAMERA_VIDEO_WIDTH;
-        mConfig.recording.maxHeight = MAX_BACK_CAMERA_VIDEO_HEIGHT;
-        break;
-    default:
-        LOGE("Invalid camera id");
+    if (mConfig.snapshot.maxWidth >= RESOLUTION_720P_WIDTH
+        && mConfig.snapshot.maxHeight >= RESOLUTION_720P_HEIGHT) {
+        mConfig.preview.maxWidth = RESOLUTION_720P_WIDTH;
+        mConfig.preview.maxHeight = RESOLUTION_720P_HEIGHT;
+    } else {
+        mConfig.preview.maxWidth = mConfig.snapshot.maxWidth;
+        mConfig.preview.maxHeight =  mConfig.snapshot.maxHeight;
+    }
+
+    if (mConfig.snapshot.maxWidth >= RESOLUTION_1080P_WIDTH
+        && mConfig.snapshot.maxHeight >= RESOLUTION_1080P_HEIGHT) {
+        mConfig.recording.maxWidth = RESOLUTION_1080P_WIDTH;
+        mConfig.recording.maxHeight = RESOLUTION_1080P_HEIGHT;
+    } else {
+        mConfig.recording.maxWidth = mConfig.snapshot.maxWidth;
+        mConfig.recording.maxHeight = mConfig.snapshot.maxHeight;
     }
 }
 
@@ -541,7 +546,10 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, PlatformData::supportedVideoSizes());
     params->set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,
                 CameraParameters::PIXEL_FORMAT_YUV420SP);
-    params->set(CameraParameters::KEY_VIDEO_SNAPSHOT_SUPPORTED, CameraParameters::TRUE);
+    if (PlatformData::supportVideoSnapshot())
+        params->set(CameraParameters::KEY_VIDEO_SNAPSHOT_SUPPORTED, CameraParameters::TRUE);
+    else
+        params->set(CameraParameters::KEY_VIDEO_SNAPSHOT_SUPPORTED, CameraParameters::FALSE);
 
     /**
      * SNAPSHOT
@@ -575,7 +583,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * FOCUS
      */
-    if (mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
+    if (mAAA->is3ASupported()) {
         params->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
 
         char focusModes[100] = {0};
@@ -662,10 +670,12 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * XNR/ANR
      */
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
-    intel_params->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true,false");
-    intel_params->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
+    if (mSensorType == SENSOR_TYPE_RAW) {
+        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+        intel_params->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true,false");
+        intel_params->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
+    }
 
     /**
      * EXPOSURE
@@ -692,9 +702,9 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * Burst-mode
      */
-    // Currently burst support is required only with raw sensors.
-    // So burst mode is disabled to soc sensors.
-    if (PlatformData::sensorType(cameraId) ==  SENSOR_TYPE_RAW) {
+    // Currently burst support is required only with primary camera.
+    // So burst mode is disabled to secondary camera.
+    if (mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
         intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS, PlatformData::supportedBurstFPS(cameraId));
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, PlatformData::supportedBurstLength(cameraId));
@@ -758,6 +768,8 @@ const char* AtomISP::getMaxSnapShotResolution()
     if (mConfig.snapshot.maxWidth < RESOLUTION_3MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_3MP_HEIGHT)
             index--;
     if (mConfig.snapshot.maxWidth < RESOLUTION_1080P_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_1080P_HEIGHT)
+            index--;
+    if (mConfig.snapshot.maxWidth < RESOLUTION_2MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_2MP_HEIGHT)
             index--;
     if (mConfig.snapshot.maxWidth < RESOLUTION_720P_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_720P_HEIGHT)
             index--;

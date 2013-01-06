@@ -120,6 +120,8 @@ else ifeq ($(REF_DEVICE_NAME), mrfl_vp)
 LOCAL_CFLAGS += -DMRFL_VP
 else ifeq ($(TARGET_DEVICE),merr_vv)
 LOCAL_CFLAGS += -DMERR_VV
+else ifeq ($(TARGET_DEVICE),yukkabeach)
+LOCAL_CFLAGS += -DYUKKA
 else
 LOCAL_CFLAGS += -DMFLD_PR2
 endif

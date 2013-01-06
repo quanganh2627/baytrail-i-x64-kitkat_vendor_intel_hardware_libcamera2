@@ -33,6 +33,8 @@
 #define RESOLUTION_1_3MP_HEIGHT 960
 #define RESOLUTION_1080P_WIDTH  1920
 #define RESOLUTION_1080P_HEIGHT 1080
+#define RESOLUTION_2MP_WIDTH  1600
+#define RESOLUTION_2MP_HEIGHT 1200
 #define RESOLUTION_720P_WIDTH   1280
 #define RESOLUTION_720P_HEIGHT  720
 #define RESOLUTION_480P_WIDTH   768
@@ -95,6 +97,7 @@ public:
     PlatformBase() {    //default
         mPanoramaMaxSnapshotCount = 10;
         mSupportedVideoSizes = "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1080";
+        mSupportVideoSnapshot = true;
    };
 
  protected:
@@ -282,6 +285,7 @@ public:
 
     bool mBackFlash;
     bool mFileInject;
+    bool mSupportVideoSnapshot;
 
     bool mContinuousCapture;
     int mPanoramaMaxSnapshotCount;
@@ -758,6 +762,13 @@ class PlatformData {
      * \return the max zoom factor
      */
     static int getMaxZoomFactor(void);
+
+    /**
+     * Whether snapshot in video is supported?
+     *
+     * \return true if supported
+     */
+    static bool supportVideoSnapshot(void);
 
 };
 
