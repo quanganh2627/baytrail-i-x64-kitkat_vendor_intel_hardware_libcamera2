@@ -193,6 +193,11 @@ namespace android {
     static const char KEY_BURST_START_INDEX[];
     static const char KEY_SUPPORTED_BURST_START_INDEX[];
 
+    // EXIF data
+    static const char KEY_EXIF_MAKER[];
+    static const char KEY_EXIF_MODEL[];
+    static const char KEY_EXIF_SOFTWARE[];
+
     static void getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params);
     static const char* getSupportedPanoramaLivePreviewSizes(const CameraParameters &params);
 

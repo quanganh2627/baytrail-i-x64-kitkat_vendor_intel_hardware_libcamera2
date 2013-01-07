@@ -467,6 +467,13 @@ private:
             CameraParameters *newParams);
     status_t ProcessOverlayEnable(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    // EXIF data
+    status_t processParamExifMaker(const CameraParameters *oldParams,
+            CameraParameters *newParams);
+    status_t processParamExifModel(const CameraParameters *oldParams,
+            CameraParameters *newParams);
+    status_t processParamExifSoftware(const CameraParameters *oldParams,
+            CameraParameters *newParams);
 
     status_t processParamSlowMotionRate(const CameraParameters *oldParams,
         CameraParameters *newParams);

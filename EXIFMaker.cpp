@@ -600,4 +600,28 @@ size_t EXIFMaker::makeExif(unsigned char **data)
     return 0;
 }
 
+void EXIFMaker::setMaker(const char *data)
+{
+    LOG1("@%s: data = %s", __FUNCTION__, data);
+    size_t len(sizeof(exifAttributes.maker));
+    strncpy((char*)exifAttributes.maker, data, len-1);
+    exifAttributes.maker[len-1] = '\0';
+}
+
+void EXIFMaker::setModel(const char *data)
+{
+    LOG1("@%s: data = %s", __FUNCTION__, data);
+    size_t len(sizeof(exifAttributes.model));
+    strncpy((char*)exifAttributes.model, data, len-1);
+    exifAttributes.model[len-1] = '\0';
+}
+
+void EXIFMaker::setSoftware(const char *data)
+{
+    LOG1("@%s: data = %s", __FUNCTION__, data);
+    size_t len(sizeof(exifAttributes.software));
+    strncpy((char*)exifAttributes.software, data, len-1);
+    exifAttributes.software[len-1] = '\0';
+}
+
 }; // namespace android

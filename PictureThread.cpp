@@ -542,6 +542,16 @@ int PictureThread::encodeExifAndThumbnail(AtomBuffer *thumbBuf, unsigned char* e
     outBuf.quality = mThumbnailQuality;
     outBuf.size = mOutBuf.buff->size;
 
+    // Set Exif data
+    if (!mExifMakerName.isEmpty())
+        mExifMaker.setMaker(mExifMakerName.string());
+
+    if (!mExifModelName.isEmpty())
+        mExifMaker.setModel(mExifModelName.string());
+
+    if (!mExifSoftwareName.isEmpty())
+        mExifMaker.setSoftware(mExifSoftwareName.string());
+
     do {
         endTime = systemTime();
         size = mCompressor.encode(inBuf, outBuf);
@@ -732,6 +742,16 @@ void PictureThread::encodeExif(AtomBuffer *thumbBuf)
     mExifBuf.size += sizeof(JPEG_MARKER_SOI);
     currentPtr += sizeof(JPEG_MARKER_SOI);
 
+    // Set Exif data
+    if (!mExifMakerName.isEmpty())
+        mExifMaker.setMaker(mExifMakerName.string());
+
+    if (!mExifModelName.isEmpty())
+        mExifMaker.setModel(mExifModelName.string());
+
+    if (!mExifSoftwareName.isEmpty())
+        mExifMaker.setSoftware(mExifSoftwareName.string());
+
     // Encode thumbnail as JPEG and exif into mExifBuf
     int tmpSize = encodeExifAndThumbnail(thumbBuf, currentPtr);
     if (tmpSize == 0) {
@@ -919,6 +939,24 @@ status_t PictureThread::scaleMainPic(AtomBuffer *mainBuf)
     }
 exit:
     return status;
+}
+
+void PictureThread::setExifMaker(const String8& data)
+{
+    LOG1("%s: name = %s",__FUNCTION__, data.string());
+    mExifMakerName = data;
+}
+
+void PictureThread::setExifModel(const String8& data)
+{
+    LOG1("%s: name = %s",__FUNCTION__, data.string());
+    mExifModelName = data;
+}
+
+void PictureThread::setExifSoftware(const String8& data)
+{
+    LOG1("%s: name = %s",__FUNCTION__, data.string());
+    mExifSoftwareName = data;
 }
 
 } // namespace android

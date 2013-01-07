@@ -185,6 +185,11 @@ namespace android {
     const char IntelCameraParameters::SLOW_MOTION_RATE_3X[] = "3x";
     const char IntelCameraParameters::SLOW_MOTION_RATE_4X[] = "4x";
 
+    // EXIF data
+    const char IntelCameraParameters::KEY_EXIF_MAKER[] = "exif-maker-name";
+    const char IntelCameraParameters::KEY_EXIF_MODEL[] = "exif-model-name";
+    const char IntelCameraParameters::KEY_EXIF_SOFTWARE[] = "exif-software-name";
+
     void IntelCameraParameters::getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params)
     {
         width = height = -1;

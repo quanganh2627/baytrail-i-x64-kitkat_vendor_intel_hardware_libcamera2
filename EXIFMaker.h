@@ -50,6 +50,9 @@ public:
     void setThumbnail(unsigned char *data, size_t size);
     bool isThumbnailSet() const;
     size_t makeExif(unsigned char **data);
+    void setMaker(const char *data);
+    void setModel(const char *data);
+    void setSoftware(const char *data);
 };
 
 }; // namespace android

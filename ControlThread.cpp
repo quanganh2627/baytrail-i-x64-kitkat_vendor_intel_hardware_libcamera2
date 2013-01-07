@@ -3662,6 +3662,18 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         status = processParamIso(oldParams, newParams);
     }
 
+    if (status == NO_ERROR) {
+        status = processParamExifMaker(oldParams, newParams);
+    }
+
+    if (status == NO_ERROR) {
+        status = processParamExifModel(oldParams, newParams);
+    }
+
+    if (status == NO_ERROR) {
+        status = processParamExifSoftware(oldParams, newParams);
+    }
+
     if (!mFaceDetectionActive && status == NO_ERROR) {
         // customize metering
         status = processParamSetMeteringAreas(oldParams, newParams);
@@ -4948,8 +4960,50 @@ status_t ControlThread::processParamSlowMotionRate(const CameraParameters *oldPa
     return status;
 }
 
+status_t ControlThread::processParamExifMaker(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_EXIF_MAKER);
 
+    if (!newVal.isEmpty()) {
+        LOG1("Got new Exif maker: %s", newVal.string());
+        mPictureThread->setExifMaker(newVal);
+    }
 
+    return NO_ERROR;
+}
+
+status_t ControlThread::processParamExifModel(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_EXIF_MODEL);
+
+    if (!newVal.isEmpty()) {
+        LOG1("Got new Exif model: %s", newVal.string());
+        mPictureThread->setExifModel(newVal);
+    }
+
+    return NO_ERROR;
+}
+
+status_t ControlThread::processParamExifSoftware(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_EXIF_SOFTWARE);
+
+    if (!newVal.isEmpty()) {
+        LOG1("Got new Exif software: %s", newVal.string());
+        mPictureThread->setExifSoftware(newVal);
+    }
+
+    return NO_ERROR;
+}
 
 /*
  * NOTE: this function runs in camera service thread. Protect member accesses accordingly!
