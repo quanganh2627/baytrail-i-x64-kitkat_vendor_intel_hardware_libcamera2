@@ -105,22 +105,21 @@ static ia_3a_af_hp_status cb_focus_home_position(void)
 }
 
 static void
-get_sensor_frame_params(ia_aiq_isp_frame_params *sensor_frame_params, struct atomisp_sensor_mode_data *sensor_mode_data)
+get_sensor_frame_params(ia_aiq_sensor_frame_params *frame_params, struct atomisp_sensor_mode_data *sensor_mode_data)
 {
-    ia_3a_sensor_mode_data *ia_sensor_mode_data = (ia_3a_sensor_mode_data*)sensor_mode_data;
+    ia_3a_sensor_mode_data *ia_data = (ia_3a_sensor_mode_data*)sensor_mode_data;
 
-    /*TODO: isp frame structure to be changed */
-    sensor_frame_params->sensor_native_height = ia_sensor_mode_data->y_end-ia_sensor_mode_data->y_start; /*cropped height*/
-    sensor_frame_params->sensor_native_width = ia_sensor_mode_data->x_end-ia_sensor_mode_data->x_start; /*cropped width*/
-    sensor_frame_params->sensor_horizontal_binning_denominator = 1;
-
-    sensor_frame_params->sensor_horizontal_binning_numerator = 1;
-    sensor_frame_params->sensor_vertical_binning_numerator = 1;
-    sensor_frame_params->sensor_vertical_binning_denominator = 1;
-    sensor_frame_params->horizontal_offset = ia_sensor_mode_data->x_start;
-    sensor_frame_params->vertical_offset = ia_sensor_mode_data->y_start;
-    sensor_frame_params->cropped_image_height = ia_sensor_mode_data->output_height * ia_sensor_mode_data->binning_factor_y;
-    sensor_frame_params->cropped_image_width = ia_sensor_mode_data->output_width * ia_sensor_mode_data->binning_factor_x;
+    frame_params->horizontal_crop_offset = ia_data->x_start;
+    frame_params->vertical_crop_offset = ia_data->y_start;
+    frame_params->cropped_image_height = ia_data->y_end - ia_data->y_start;
+    frame_params->cropped_image_width = ia_data->x_end - ia_data->x_start;
+    /* TODO: Get scaling factors from sensor configuration parameters */
+    frame_params->horizontal_scaling_denominator = 254;
+    frame_params->horizontal_scaling_numerator = 
+            ia_data->output_width * 254 * ia_data->binning_factor_x/ frame_params->cropped_image_width;
+    frame_params->vertical_scaling_numerator = 
+            ia_data->output_height * 254 * ia_data->binning_factor_y / frame_params->cropped_image_height;
+    frame_params->vertical_scaling_denominator = 254;
 }
 
 } // extern "C"
@@ -1526,7 +1525,7 @@ void AtomAAA::ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate)
         ia_3a_mknote_add_uint(ia_3a_mknote_field_name_boot_events, m3ALibState.boot_events);
     /* usually the grid changes as well when the mode changes. */
     reconfigureGrid();
-    ia_aiq_isp_frame_params sensor_frame_params;
+    ia_aiq_sensor_frame_params sensor_frame_params;
     get_sensor_frame_params(&sensor_frame_params, &m3ALibState.sensor_mode_data);
     ia_3a_reconfigure(mode, frame_rate, m3ALibState.stats, &sensor_frame_params, &m3ALibState.results);
     applyResults();
