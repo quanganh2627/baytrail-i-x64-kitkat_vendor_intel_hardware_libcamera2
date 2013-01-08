@@ -734,8 +734,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, PlatformData::supportedAeMetering(cameraId));
 
     // manual iso control (Intel extension)
-    intel_params->set(IntelCameraParameters::KEY_ISO, PlatformData::supportedIso(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::supportedIso(cameraId));
 }
 
 const char* AtomISP::getMaxSnapShotResolution()
