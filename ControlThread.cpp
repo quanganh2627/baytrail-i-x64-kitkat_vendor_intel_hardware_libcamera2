@@ -33,6 +33,7 @@
 #include <cutils/properties.h>
 #include <binder/IServiceManager.h>
 #include "intel_camera_extensions.h"
+#include "FeatureData.h"
 
 namespace android {
 
@@ -155,6 +156,19 @@ status_t ControlThread::init()
         goto bail;
     }
 
+    mAAA = AtomAAA::getInstance();
+    if (mAAA == NULL) {
+        LOGE("error creating AAA");
+        goto bail;
+    }
+
+    // Choose 3A interface based on the sensor type
+    if (PlatformData::sensorType(mCameraConf->cameraId()) == SENSOR_TYPE_RAW) {
+        m3AControls = mAAA;
+    } else {
+        m3AControls = mISP;
+    }
+    mISP->set3AControls(m3AControls);
     status = mISP->init();
     if (status != NO_ERROR) {
         LOGE("Error initializing ISP");
@@ -165,19 +179,6 @@ status_t ControlThread::init()
     if (mDvs == NULL) {
         LOGE("error creating DVS");
         goto bail;
-    }
-
-    mAAA = AtomAAA::getInstance();
-    if (mAAA == NULL) {
-        LOGE("error creating AAA");
-        goto bail;
-    }
-
-    // Choose 3A interface based on the sensor type
-    if (PlatformData::sensorType(mISP->getCurrentCameraId()) == SENSOR_TYPE_RAW) {
-        m3AControls = mAAA;
-    } else {
-        m3AControls = mISP;
     }
 
     mCP = new AtomCP(mISP);
@@ -193,6 +194,7 @@ status_t ControlThread::init()
             LOGE("error creating CameraDump");
             goto bail;
         }
+        mCameraDump->set3AControls(m3AControls);
     }
 
     // we implement the ICallbackPreview interface, so pass
@@ -203,7 +205,7 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mPictureThread = new PictureThread();
+    mPictureThread = new PictureThread(m3AControls);
     if (mPictureThread == NULL) {
         LOGE("error creating PictureThread");
         goto bail;
@@ -216,7 +218,7 @@ status_t ControlThread::init()
     }
 
     // we implement ICallbackAAA interface
-    m3AThread = new AAAThread(this, mDvs);
+    m3AThread = new AAAThread(this, mDvs, m3AControls);
     if (m3AThread == NULL) {
         LOGE("error creating 3AThread");
         goto bail;
@@ -235,13 +237,13 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mPanoramaThread = new PanoramaThread(this);
+    mPanoramaThread = new PanoramaThread(this, m3AControls);
     if (mPanoramaThread == NULL) {
         LOGE("error creating PanoramaThread");
         goto bail;
     }
 
-    mPostProcThread = new PostProcThread(this, mPanoramaThread.get());
+    mPostProcThread = new PostProcThread(this, mPanoramaThread.get(), m3AControls);
     if (mPostProcThread == NULL) {
         LOGE("error creating PostProcThread");
         goto bail;
@@ -252,7 +254,7 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mBracketManager = new BracketManager(mISP);
+    mBracketManager = new BracketManager(mISP, m3AControls);
     if (mBracketManager == NULL) {
         LOGE("error creating BracketManager");
         goto bail;
@@ -530,6 +532,7 @@ bool ControlThread::recordingEnabled()
 status_t ControlThread::setParameters(const char *params)
 {
     LOG1("@%s: params = %p", __FUNCTION__, params);
+
     Message msg;
     msg.id = MESSAGE_ID_SET_PARAMETERS;
     msg.data.setParameters.params = const_cast<char*>(params); // We swear we won't modify params :)
@@ -1118,7 +1121,7 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
 
     // The continuous mode depends on maintaining a RAW frame
     // buffer, so feature is not available SoC sensors.
-    if (!mAAA->is3ASupported()) {
+    if (PlatformData::sensorType(mISP->getCurrentCameraId()) == SENSOR_TYPE_SOC) {
         LOG1("@%s: Non-RAW sensor, disabling continuous mode", __FUNCTION__);
         return STATE_PREVIEW_STILL;
     }
@@ -1161,7 +1164,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             mode = MODE_CONTINUOUS_CAPTURE;
     }
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
-        mAAA->init3aStatDump("preview");
+        m3AControls->init3aStatDump("preview");
 
     // set preview frame config
     format = V4L2Format(mParameters.getPreviewFormat());
@@ -1191,9 +1194,9 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         CameraWindow *focusWindows = new CameraWindow[winCount];
         mFocusAreas.toWindows(focusWindows);
         preSetCameraWindows(focusWindows, winCount);
-        if (mAAA->setAfWindows(focusWindows, winCount) != NO_ERROR) {
+        if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
             LOGE("Could not set AF windows. Resseting the AF to %d", CAM_AF_MODE_AUTO);
-            mAAA->setAfMode(CAM_AF_MODE_AUTO);
+            m3AControls->setAfMode(CAM_AF_MODE_AUTO);
         }
         delete[] focusWindows;
         focusWindows = NULL;
@@ -1204,7 +1207,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         // Update for the "fixed" AE spot window (Intel extension):
         LOG1("%s: setting forced spot window.", __FUNCTION__);
         AAAWindowInfo aaaWindow;
-        mAAA->getGridWindow(aaaWindow);
+        m3AControls->getGridWindow(aaaWindow);
         updateSpotWindow(aaaWindow.width, aaaWindow.height);
     } else if (m3AControls->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT) {
         // This update is when the AE metering is internally set to
@@ -1216,10 +1219,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mMeteringAreas.toWindows(meteringWindows);
 
         AAAWindowInfo aaaWindow;
-        mAAA->getGridWindow(aaaWindow);
+        m3AControls->getGridWindow(aaaWindow);
         convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
 
-        if (mAAA->setAeWindow(&aeWindow) != NO_ERROR) {
+        if (m3AControls->setAeWindow(&aeWindow) != NO_ERROR) {
             LOGW("Error setting AE metering window. Metering will not work");
         }
         delete[] meteringWindows;
@@ -1271,8 +1274,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     }
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Alloc_Preview_Buffer");
-    if (mAAA->is3ASupported()) {
-        if (mAAA->switchModeAndRate(mode, mISP->getFrameRate()) != NO_ERROR)
+    if (m3AControls->isIntel3A()) {
+        if (m3AControls->switchModeAndRate(mode, mISP->getFrameRate()) != NO_ERROR)
             LOGE("Failed switching 3A at %.2f fps", mISP->getFrameRate());
         if (isDVSActive && mDvs->reconfigure() != NO_ERROR)
             LOGE("Failed to reconfigure DVS grid");
@@ -1290,9 +1293,9 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (status == NO_ERROR) {
         mState = state;
         mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED);
-        if (mAAA->is3ASupported()) {
+        if (m3AControls->isIntel3A()) {
             // Enable auto-focus by default
-            mAAA->setAfEnabled(true);
+            m3AControls->setAfEnabled(true);
             m3AThread->enable3A();
             m3AThread->enableDVS(isDVSActive);
         }
@@ -1315,7 +1318,7 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if ((mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING) && mAAA->is3ASupported()) {
+    if ((mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING) && m3AControls->isIntel3A()) {
         m3AThread->enableDVS(false);
     }
 
@@ -1347,7 +1350,7 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     }
 
     mISP->detachObserver(mPreviewThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
-    if (mAAA->is3ASupported())
+    if (m3AControls->isIntel3A())
         mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
     if (oldState == STATE_PREVIEW_VIDEO
      || oldState == STATE_RECORDING)
@@ -1361,7 +1364,7 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
         releaseContinuousCapture(flushPictures);
 
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
-        mAAA->deinit3aStatDump();
+        m3AControls->deinit3aStatDump();
 
     mPreviewThread->setPreviewState(PreviewThread::STATE_STOPPED);
 
@@ -1403,19 +1406,19 @@ status_t ControlThread::stopCapture()
     // Reset AE and AF in case HDR/bracketing was used (these features
     // manually configure AE and AF during takePicture)
     if (mBracketManager->getBracketMode() == BRACKET_EXPOSURE) {
-        AeMode publicAeMode = mAAA->getPublicAeMode();
-        mAAA->setAeMode(publicAeMode);
+        AeMode publicAeMode = m3AControls->getPublicAeMode();
+        m3AControls->setAeMode(publicAeMode);
     }
 
     if (mBracketManager->getBracketMode() == BRACKET_FOCUS) {
-        AfMode publicAfMode = mAAA->getPublicAfMode();
+        AfMode publicAfMode = m3AControls->getPublicAfMode();
         if (!mFocusAreas.isEmpty() &&
             (publicAfMode == CAM_AF_MODE_AUTO ||
              publicAfMode == CAM_AF_MODE_CONTINUOUS ||
              publicAfMode == CAM_AF_MODE_MACRO)) {
-            mAAA->setAfMode(CAM_AF_MODE_TOUCH);
+            m3AControls->setAfMode(CAM_AF_MODE_TOUCH);
         } else {
-            mAAA->setAfMode(publicAfMode);
+            m3AControls->setAfMode(publicAfMode);
         }
     }
 
@@ -1711,7 +1714,8 @@ status_t ControlThread::setSmartSceneParams(void)
         return INVALID_OPERATION;
 
     if (scene_mode && !strcmp(scene_mode, CameraParameters::SCENE_MODE_AUTO)) {
-        if (mAAA->is3ASupported() && mAAA->getSmartSceneDetection()) {
+        bool sceneDetectionSupported = strcmp(FeatureData::sceneDetectionSupported(mISP->getCurrentCameraId()), "") != 0;
+        if (sceneDetectionSupported && m3AControls->getSmartSceneDetection()) {
             int sceneMode = 0;
             bool sceneHdr = false;
             m3AThread->getCurrentSmartScene(sceneMode, sceneHdr);
@@ -1907,9 +1911,9 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
     atomisp_makernote_info *atomispMkNote = 0;
     SensorAeConfig *aeConfig = 0;
 
-    if (mAAA->is3ASupported()) {
+    if (m3AControls->isIntel3A()) {
         aeConfig = new SensorAeConfig;
-        mAAA->getExposureInfo(*aeConfig);
+        m3AControls->getExposureInfo(*aeConfig);
         if (m3AControls->getEv(&aeConfig->evBias) != NO_ERROR) {
             aeConfig->evBias = EV_UPPER_BOUND;
         }
@@ -1917,9 +1921,9 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
     // TODO: for SoC/secondary camera, we have no means to get
     //       SensorAeConfig information, so setting as NULL on purpose
     mBracketManager->getNextAeConfig(aeConfig);
-    if (mAAA->is3ASupported()) {
+    if (m3AControls->isIntel3A()) {
         // TODO: add support for raw mknote
-        aaaMkNote = mAAA->get3aMakerNote(ia_3a_mknote_mode_jpeg);
+        aaaMkNote = m3AControls->get3aMakerNote(ia_3a_mknote_mode_jpeg);
         if (!aaaMkNote)
             LOGW("No 3A makernote data available");
     }
@@ -2001,9 +2005,8 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
             return status;
         }
 
-        if (mAAA->is3ASupported())
-            if (mAAA->switchModeAndRate(MODE_CAPTURE, mISP->getFrameRate()) != NO_ERROR)
-                LOGE("Failed to switch 3A to capture mode at %.2f fps", mISP->getFrameRate());
+        if (m3AControls->switchModeAndRate(MODE_CAPTURE, mISP->getFrameRate()) != NO_ERROR)
+            LOGE("Failed to switch 3A to capture mode at %.2f fps", mISP->getFrameRate());
 
         if ((status = mISP->start()) != NO_ERROR) {
             LOGE("Error starting the ISP driver in CAPTURE mode!");
@@ -2015,7 +2018,7 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
      *  If the current camera does not have 3A, then we should skip the first
      *  frames in order to allow the sensor to warm up.
      */
-    if (!mAAA->is3ASupported()) {
+    if (PlatformData::sensorType(mISP->getCurrentCameraId()) == SENSOR_TYPE_SOC) {
         if ((status = skipFrames(NUM_WARMUP_FRAMES)) != NO_ERROR) {
             LOGE("Error skipping warm-up frames!");
             return status;
@@ -2214,7 +2217,7 @@ status_t ControlThread::captureStillPic()
     AtomBuffer snapshotBuffer, postviewBuffer;
     int width, height, format, size;
     int pvWidth, pvHeight, pvSize;
-    FlashMode flashMode = mAAA->getAeFlashMode();
+    FlashMode flashMode = m3AControls->getAeFlashMode();
     bool flashOn = (flashMode == CAM_AE_FLASH_MODE_TORCH ||
                     flashMode == CAM_AE_FLASH_MODE_ON);
     bool flashFired = false;
@@ -2241,7 +2244,7 @@ status_t ControlThread::captureStillPic()
     stopFaceDetection();
 
     if (mBurstLength <= 1) {
-        if (mAAA->is3ASupported()) {
+        if (m3AControls->isIntel3A()) {
             // If flash mode is not ON or TORCH, check for other
             // modes: AUTO, DAY_SYNC, SLOW_SYNC
 
@@ -2251,17 +2254,17 @@ status_t ControlThread::captureStillPic()
                 if (mFlashAutoFocus)
                     LOGW("Assist light on when running pre-flash sequence");
 
-                if (mAAA->getAeLock()) {
+                if (m3AControls->getAeLock()) {
                     LOG1("AE was locked in %s, using old flash decision from AE "
                          "locking time (%s)", __FUNCTION__, mAELockFlashNeed ? "ON" : "OFF");
                     flashOn = mAELockFlashNeed;
                 }
                 else
-                    flashOn = mAAA->getAeFlashNecessary();
+                    flashOn = m3AControls->getAeFlashNecessary();
             }
 
             if (flashOn) {
-                if (mAAA->getAeMode() != CAM_AE_MODE_MANUAL &&
+                if (m3AControls->getAeMode() != CAM_AE_MODE_MANUAL &&
                         flashMode != CAM_AE_FLASH_MODE_TORCH) {
                     flashSequenceStarted = true;
                     // hide preview frames already during pre-flash sequence
@@ -2334,9 +2337,8 @@ status_t ControlThread::captureStillPic()
             return status;
         }
 
-        if (mAAA->is3ASupported())
-            if (mAAA->switchModeAndRate(MODE_CAPTURE, mISP->getFrameRate()) != NO_ERROR)
-                LOGE("Failed to switch 3A to capture mode at %.2f fps", mISP->getFrameRate());
+        if (m3AControls->switchModeAndRate(MODE_CAPTURE, mISP->getFrameRate()) != NO_ERROR)
+            LOGE("Failed to switch 3A to capture mode at %.2f fps", mISP->getFrameRate());
         if ((status = mISP->start()) != NO_ERROR) {
             LOGE("Error starting the ISP driver in CAPTURE mode");
             return status;
@@ -2359,7 +2361,7 @@ status_t ControlThread::captureStillPic()
      *  If the current camera does not have 3A, then we should skip the first
      *  frames in order to allow the sensor to warm up.
      */
-    if (!mAAA->is3ASupported()) {
+    if (PlatformData::sensorType(mISP->getCurrentCameraId()) == SENSOR_TYPE_SOC) {
         if ((status = skipFrames(NUM_WARMUP_FRAMES)) != NO_ERROR) {
             LOGE("Error skipping warm-up frames!");
             return status;
@@ -2429,7 +2431,7 @@ status_t ControlThread::captureStillPic()
     if (mHdr.enabled &&
        (status = hdrProcess(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
         LOGE("HDR: Error in compute CDF for capture %d in HDR sequence!", mBurstCaptureNum);
-        picMetaData.free();
+        picMetaData.free(m3AControls);
         return status;
     }
 
@@ -2459,7 +2461,7 @@ status_t ControlThread::captureStillPic()
     if (doEncode == false) {
         // normally this is done by PictureThread, but as no
         // encoding was done, free the allocated metadata
-        picMetaData.free();
+        picMetaData.free(m3AControls);
     }
 
     if (mState == STATE_CONTINUOUS_CAPTURE && mBurstLength <= 1)
@@ -2578,7 +2580,7 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     if ( mHdr.enabled &&
         (status = hdrProcess(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
         LOGE("Error processing HDR!");
-        picMetaData.free();
+        picMetaData.free(m3AControls);
         return status;
     }
 
@@ -2606,7 +2608,7 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     if (doEncode == false) {
         // normally this is done by PictureThread, but as no
         // encoding was done, free the allocated metadata
-        picMetaData.free();
+        picMetaData.free(m3AControls);
     }
 
     if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE && (mBurstCaptureNum == mBurstLength)) {
@@ -2706,7 +2708,7 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
 
     if (status != NO_ERROR) {
         LOGE("Error in grabbing snapshot!");
-        picMetaData.free();
+        picMetaData.free(m3AControls);
         stopOfflineCapture();
         burstStateReset();
         return status;
@@ -2780,7 +2782,7 @@ status_t ControlThread::updateSpotWindow(const int &width, const int &height)
     LOG1("@%s", __FUNCTION__);
     // TODO: Check, if these window fractions are right. Copied off from libcamera1
     CameraWindow spotWin = { (int)width * 7.0 / 16.0, (int)width * 9.0 / 16.0, (int)height * 7.0 / 16.0, (int)height * 9.0 / 16.0, 255 };
-    return mAAA->setAeWindow(&spotWin);
+    return m3AControls->setAeWindow(&spotWin);
 }
 
 MeteringMode ControlThread::aeMeteringModeFromString(const String8& modeStr)
@@ -2845,15 +2847,15 @@ status_t ControlThread::handleMessageAutoFocus()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    FlashMode flashMode = mAAA->getAeFlashMode();
+    FlashMode flashMode = m3AControls->getAeFlashMode();
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP("In");
 
     // Implement pre auto-focus functions
-    if (flashMode != CAM_AE_FLASH_MODE_TORCH && mAAA->is3ASupported() && mBurstLength <= 1) {
+    if (flashMode != CAM_AE_FLASH_MODE_TORCH && m3AControls->isIntel3A() && mBurstLength <= 1) {
         if (!mFlashAutoFocus && (DetermineFlash(flashMode) || flashMode == CAM_AE_FLASH_MODE_ON)) {
             LOG1("Flash mode = %d", flashMode);
-            if (mAAA->getAfNeedAssistLight()) {
+            if (m3AControls->getAfNeedAssistLight()) {
                 mFlashAutoFocus = true;
             }
         }
@@ -2905,8 +2907,8 @@ status_t ControlThread::handleMessageCancelAutoFocus()
      *     - cancelAutoFocus: AF is locked, camera client no longer wants this focus position
      *       so we should switch back to auto-focus in 3A library
      */
-    if (mAAA->is3ASupported()) {
-        mAAA->setAfEnabled(true);
+    if (m3AControls->isIntel3A()) {
+        m3AControls->setAfEnabled(true);
     }
     return status;
 }
@@ -3541,22 +3543,26 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     }
 
     if (status == NO_ERROR) {
+        // flash settings
+        status = processParamFlash(oldParams, newParams);
+    }
+
+    if (status == NO_ERROR) {
+        //Focus Mode
+        status = processParamFocusMode(oldParams, newParams);
+    }
+
+    if (status == NO_ERROR) {
         // ae mode
         status = processParamAutoExposureMeteringMode(oldParams, newParams);
     }
 
-    if (mAAA->is3ASupported()) {
+    if (status == NO_ERROR) {
+        // ae mode
+        status = processParamAutoExposureMode(oldParams, newParams);
+    }
 
-        if (status == NO_ERROR) {
-            // flash settings
-            status = processParamFlash(oldParams, newParams);
-        }
-
-        if (status == NO_ERROR) {
-            //Focus Mode
-            status = processParamFocusMode(oldParams, newParams);
-        }
-
+    if (m3AControls->isIntel3A()) {
         if (status == NO_ERROR) {
             // ae lock
             status = processParamAELock(oldParams, newParams);
@@ -3588,11 +3594,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         }
 
         if (status == NO_ERROR) {
-            // ae mode
-            status = processParamAutoExposureMode(oldParams, newParams);
-        }
-
-        if (status == NO_ERROR) {
             // shutter manual setting (Intel extension)
             status = processParamShutter(oldParams, newParams);
         }
@@ -3606,7 +3607,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             // AWB mapping mode (Intel extension)
             status = processParamAwbMappingMode(oldParams, newParams);
         }
-
     }
 
     // In case of continuous-capture, the buffers are allocated
@@ -3695,7 +3695,7 @@ status_t ControlThread::processParamAFLock(const CameraParameters *oldParams,
             LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_AF_LOCK_MODE, newVal.string());
             return INVALID_OPERATION;
         }
-        status = mAAA->setAfLock(af_lock);
+        status = m3AControls->setAfLock(af_lock);
 
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_AF_LOCK_MODE, newVal.string());
@@ -3799,12 +3799,7 @@ status_t ControlThread::processParamAntiBanding(const CameraParameters *oldParam
         else
             lightFrequency = CAM_AE_FLICKER_MODE_OFF;
 
-        if(mAAA->is3ASupported()) {
-            status = mAAA->setAeFlickerMode(lightFrequency);
-        } else {
-            status = mISP->setLightFrequency(lightFrequency);
-        }
-
+        status = m3AControls->setAeFlickerMode(lightFrequency);
     }
 
     return status;
@@ -3836,7 +3831,7 @@ status_t ControlThread::processParamAELock(const CameraParameters *oldParams,
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK, newVal.string());
             if (ae_lock) {
-                mAELockFlashNeed = mAAA->getAeFlashNecessary();
+                mAELockFlashNeed = m3AControls->getAeFlashNecessary();
                 LOG1("AE locked, storing flash necessity decision (%s)", mAELockFlashNeed ? "ON" : "OFF");
             }
         }
@@ -3870,15 +3865,15 @@ status_t ControlThread::processParamFlash(const CameraParameters *oldParams,
 
         mSavedFlashMode = newVal;
 
-        if (flash == CAM_AE_FLASH_MODE_TORCH && mAAA->getAeFlashMode() != CAM_AE_FLASH_MODE_TORCH) {
+        if (flash == CAM_AE_FLASH_MODE_TORCH && m3AControls->getAeFlashMode() != CAM_AE_FLASH_MODE_TORCH) {
             mISP->setTorch(TORCH_INTENSITY);
         }
 
-        if (flash != CAM_AE_FLASH_MODE_TORCH && mAAA->getAeFlashMode() == CAM_AE_FLASH_MODE_TORCH) {
+        if (flash != CAM_AE_FLASH_MODE_TORCH && m3AControls->getAeFlashMode() == CAM_AE_FLASH_MODE_TORCH) {
             mISP->setTorch(0);
         }
 
-        status = mAAA->setAeFlashMode(flash);
+        status = m3AControls->setAeFlashMode(flash);
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_FLASH_MODE, newVal.string());
         }
@@ -4317,7 +4312,7 @@ void ControlThread::preSetCameraWindows(CameraWindow* focusWindows, size_t winCo
         int height;
         mParameters.getPreviewSize(&width, &height);
         AAAWindowInfo aaaWindow;
-        mAAA->getGridWindow(aaaWindow);
+        m3AControls->getGridWindow(aaaWindow);
 
         for (size_t i = 0; i < winCount; i++) {
             // Camera KEY_FOCUS_AREAS Coordinates range from -1000 to 1000. Let's convert..
@@ -4364,19 +4359,19 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             mPostProcThread->enableFaceAAA(AAA_FLAG_AF);
         }
 
-        status = mAAA->setAfEnabled(true);
+        status = m3AControls->setAfEnabled(true);
         if (status == NO_ERROR) {
-            status = mAAA->setAfMode(afMode);
+            status = m3AControls->setAfMode(afMode);
         }
         if (status == NO_ERROR) {
-            mAAA->setPublicAfMode(afMode);
+            m3AControls->setPublicAfMode(afMode);
             LOG1("Changed: %s -> %s", CameraParameters::KEY_FOCUS_MODE, newVal.string());
         }
     }
 
     if (!mFaceDetectionActive) {
 
-        AfMode publicAfMode = mAAA->getPublicAfMode();
+        AfMode publicAfMode = m3AControls->getPublicAfMode();
         // Based on Google specs, the focus area is effective only for modes:
         // (framework side constants:) FOCUS_MODE_AUTO, FOCUS_MODE_MACRO, FOCUS_MODE_CONTINUOUS_VIDEO
         // or FOCUS_MODE_CONTINUOUS_PICTURE.
@@ -4394,9 +4389,9 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             }
 
             // See if we have to change the actual mode (it could be correct already)
-            AfMode curAfMode = mAAA->getAfMode();
+            AfMode curAfMode = m3AControls->getAfMode();
             if (afMode != curAfMode) {
-                mAAA->setAfMode(afMode);
+                m3AControls->setAfMode(afMode);
             }
 
             // If in touch mode, we set the focus windows now
@@ -4405,11 +4400,11 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
                 CameraWindow *focusWindows = new CameraWindow[winCount];
                 mFocusAreas.toWindows(focusWindows);
                 preSetCameraWindows(focusWindows, winCount);
-                if (mAAA->setAfWindows(focusWindows, winCount) != NO_ERROR) {
+                if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
                     // If focus windows couldn't be set, previous AF mode is used
                     // (AfSetWindowMulti has its own safety checks for coordinates)
                     LOGE("Could not set AF windows. Resetting the AF back to %d", curAfMode);
-                    mAAA->setAfMode(curAfMode);
+                    m3AControls->setAfMode(curAfMode);
                 }
                 delete[] focusWindows;
                 focusWindows = NULL;
@@ -4436,7 +4431,7 @@ status_t ControlThread:: processParamSetMeteringAreas(const CameraParameters *ol
 
         mMeteringAreas.toWindows(meteringWindows);
 
-        mAAA->getGridWindow(aaaWindow);
+        m3AControls->getGridWindow(aaaWindow);
         //in our AE bg weight is 1, max is 255, thus working values are inside [2, 255].
         //Google probably expects bg weight to be zero, therefore sending happily 1 from
         //default camera app. To have some kind of visual effect, we start our range from 5
@@ -4444,7 +4439,7 @@ status_t ControlThread:: processParamSetMeteringAreas(const CameraParameters *ol
 
         if (m3AControls->setAeMeteringMode(CAM_AE_METERING_MODE_SPOT) == NO_ERROR) {
             LOG1("@%s, Got metering area, and \"spot\" mode set. Setting window.", __FUNCTION__ );
-            if (mAAA->setAeWindow(&aeWindow) != NO_ERROR) {
+            if (m3AControls->setAeWindow(&aeWindow) != NO_ERROR) {
                 LOGW("Error setting AE metering window. Metering will not work");
             }
         } else {
@@ -4469,7 +4464,7 @@ status_t ControlThread:: processParamSetMeteringAreas(const CameraParameters *ol
 
         if (oldMode == CAM_AE_METERING_MODE_SPOT) {
             AAAWindowInfo aaaWindow;
-            mAAA->getGridWindow(aaaWindow);
+            m3AControls->getGridWindow(aaaWindow);
             updateSpotWindow(aaaWindow.width, aaaWindow.height);
         }
     }
@@ -4527,14 +4522,14 @@ status_t ControlThread::processParamAutoExposureMode(const CameraParameters *old
             LOGW("unknown AE_MODE \"%s\", falling back to AUTO", newVal.string());
             ae_mode = CAM_AE_MODE_AUTO;
         }
-        mAAA->setPublicAeMode(ae_mode);
-        mAAA->setAeMode(ae_mode);
+        m3AControls->setPublicAeMode(ae_mode);
+        m3AControls->setAeMode(ae_mode);
         LOGD("Changed ae mode to \"%s\" (%d)", newVal.string(), ae_mode);
 
         if (mPublicShutter >= 0 &&
                 (ae_mode == CAM_AE_MODE_SHUTTER_PRIORITY ||
                 ae_mode == CAM_AE_MODE_MANUAL)) {
-            mAAA->setManualShutter(mPublicShutter);
+            m3AControls->setManualShutter(mPublicShutter);
             LOGD("Changed shutter to %f", mPublicShutter);
         }
     }
@@ -4563,7 +4558,7 @@ status_t ControlThread::processParamAutoExposureMeteringMode(
         // AE metering area to null (isEmpty() == true)
         if (mode == CAM_AE_METERING_MODE_SPOT && mMeteringAreas.isEmpty()) {
             AAAWindowInfo aaaWindow;
-            mAAA->getGridWindow(aaaWindow);
+            m3AControls->getGridWindow(aaaWindow);
             // Let's set metering area to fixed position here. We will also get arbitrary area
             // when using touch AE, which is handled in processParamSetMeteringAreas().
             updateSpotWindow(aaaWindow.width, aaaWindow.height);
@@ -4709,9 +4704,9 @@ status_t ControlThread::processParamShutter(const CameraParameters *oldParams,
 
         if (flagParsed) {
             mPublicShutter = shutter;
-            if (mAAA->getAeMode() == CAM_AE_MODE_MANUAL ||
-                (mAAA->getAeMode() == CAM_AE_MODE_SHUTTER_PRIORITY)) {
-                mAAA->setManualShutter(mPublicShutter);
+            if (m3AControls->getAeMode() == CAM_AE_MODE_MANUAL ||
+                (m3AControls->getAeMode() == CAM_AE_MODE_SHUTTER_PRIORITY)) {
+                m3AControls->setManualShutter(mPublicShutter);
                 LOGD("Changed shutter to \"%s\" (%f)", newVal.string(), shutter);
             }
         }
@@ -4744,7 +4739,7 @@ status_t ControlThread::processParamBackLightingCorrectionMode(const CameraParam
             backlightCorrection = true;
         }
 
-        mAAA->setAeBacklightCorrection(backlightCorrection);
+        m3AControls->setAeBacklightCorrection(backlightCorrection);
         LOGD("Changed ae backlight correction to \"%s\" (%d)",
              newVal.string(), backlightCorrection);
     }
@@ -4783,7 +4778,7 @@ status_t ControlThread::processParamAwbMappingMode(const CameraParameters *oldPa
             awbMappingMode = ia_3a_awb_map_auto;
         }
 
-        status = mAAA->setAwbMapping(awbMappingMode);
+        status = m3AControls->setAwbMapping(awbMappingMode);
         if (status ==  NO_ERROR) {
             LOGD("Changed AWB mapping mode to \"%s\" (%d)",
                  newVal.string(), awbMappingMode);
@@ -4848,9 +4843,11 @@ status_t ControlThread::processParamRawDataFormat(const CameraParameters *oldPar
         if (newVal == "bayer") {
             CameraDump::setDumpDataFlag(CAMERA_DEBUG_DUMP_RAW);
             mCameraDump = CameraDump::getInstance();
+            mCameraDump->set3AControls(m3AControls);
         } else if (newVal == "yuv") {
             CameraDump::setDumpDataFlag(CAMERA_DEBUG_DUMP_YUV);
             mCameraDump = CameraDump::getInstance();
+            mCameraDump->set3AControls(m3AControls);
         } else
             CameraDump::setDumpDataFlag(RAW_NONE);
     }
@@ -5239,14 +5236,14 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
 
     LOG1("scanning AF focus areas");
     status = newFocusAreas.scan(newParams.get(CameraParameters::KEY_FOCUS_AREAS),
-                                mAAA->getAfMaxNumWindows());
+                                m3AControls->getAfMaxNumWindows());
     if (status != NO_ERROR) {
         LOGE("bad focus area");
         goto exit;
     }
     LOG1("scanning AE metering areas");
     status = newMeteringAreas.scan(newParams.get(CameraParameters::KEY_METERING_AREAS),
-                                   mAAA->getAeMaxNumWindows());
+                                   m3AControls->getAeMaxNumWindows());
     if (status != NO_ERROR) {
         LOGE("bad metering area");
         goto exit;
@@ -5415,25 +5412,23 @@ status_t ControlThread::handleMessageSceneDetected(MessageSceneDetected *msg)
 status_t ControlThread::startSmartSceneDetection()
 {
     LOG2("@%s", __FUNCTION__);
-    if (mState == STATE_STOPPED || mAAA->getSmartSceneDetection()) {
+    if (mState == STATE_STOPPED || m3AControls->getSmartSceneDetection()) {
         return INVALID_OPERATION;
     }
     enableMsgType(CAMERA_MSG_SCENE_DETECT);
     if (m3AThread != NULL)
         m3AThread->resetSmartSceneValues();
-    mAAA->setSmartSceneDetection(true);
-    return NO_ERROR;
+    return m3AControls->setSmartSceneDetection(true);
 }
 
 status_t ControlThread::stopSmartSceneDetection()
 {
     LOG2("@%s", __FUNCTION__);
-    if (mState == STATE_STOPPED || !mAAA->getSmartSceneDetection()) {
+    if (mState == STATE_STOPPED || !m3AControls->getSmartSceneDetection()) {
         return INVALID_OPERATION;
     }
     disableMsgType(CAMERA_MSG_SCENE_DETECT);
-    mAAA->setSmartSceneDetection(false);
-    return NO_ERROR;
+    return m3AControls->setSmartSceneDetection(false);
 }
 
 status_t ControlThread::handleMessageStoreMetaDataInBuffers(MessageStoreMetaDataInBuffers *msg)
@@ -5641,7 +5636,7 @@ status_t ControlThread::hdrCompose()
      */
     status = mISP->stop();
     if (status != NO_ERROR) {
-        hdrPicMetaData.free();
+        hdrPicMetaData.free(m3AControls);
         LOGE("Error stopping ISP!");
         return status;
     }
@@ -5649,7 +5644,7 @@ status_t ControlThread::hdrCompose()
     status = mCP->initializeHDR(mHdr.ciBufOut.ciMainBuf->width,
                                 mHdr.ciBufOut.ciMainBuf->height);
     if (status != NO_ERROR) {
-        hdrPicMetaData.free();
+        hdrPicMetaData.free(m3AControls);
         LOGE("HDR buffer allocation failed");
         return UNKNOWN_ERROR;
     }
@@ -5672,7 +5667,7 @@ status_t ControlThread::hdrCompose()
     }
 
     if (doEncode == false)
-        hdrPicMetaData.free();
+        hdrPicMetaData.free(m3AControls);
 
     mCP->uninitializeHDR();
 
@@ -6079,13 +6074,14 @@ AtomBuffer* ControlThread::findRecordingBuffer(void *ptr)
 /**
  * override for IAtomIspObserver::atomIspNotify()
  *
- * ControlThread is attached to receive preview stream notifys
+ * ControlThread is attached to receive preview stream notifications
  * to handle dequeueing of recording frames in video mode.
  * NOTE: not touching Preview buffer here and ignoring state changes
  */
 bool ControlThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state)
 {
     LOG2("@%s", __FUNCTION__);
+
     if (msg) {
         Message local_msg;
         AtomBuffer *buff = &msg->data.frameBuffer.buff;

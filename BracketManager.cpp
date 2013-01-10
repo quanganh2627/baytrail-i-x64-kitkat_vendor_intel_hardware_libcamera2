@@ -22,9 +22,9 @@
 
 namespace android {
 
-BracketManager::BracketManager(AtomISP *isp) :
+BracketManager::BracketManager(AtomISP *isp, I3AControls *aaaControls) :
     Thread(false)
-    ,mAAA(AtomAAA::getInstance())
+    ,m3AControls(aaaControls)
     ,mISP(isp)
     ,mState(STATE_STOPPED)
     ,mMessageQueue("BracketManager", (int) MESSAGE_ID_MAX)
@@ -200,7 +200,7 @@ status_t BracketManager::initBracketing(int length, int skip, float *bracketValu
     switch (mBracketing.mode) {
     case BRACKET_EXPOSURE:
         if (mBurstLength > 1) {
-            mAAA->setAeMode(CAM_AE_MODE_MANUAL);
+            m3AControls->setAeMode(CAM_AE_MODE_MANUAL);
 
             mBracketing.values.reset(new float[length]);
             if (bracketValues != NULL) {
@@ -235,15 +235,15 @@ status_t BracketManager::initBracketing(int length, int skip, float *bracketValu
         break;
     case BRACKET_FOCUS:
         if (mBurstLength > 1) {
-            status = mAAA->getAfLensPosRange(&lensRange);
+            status = m3AControls->getAfLensPosRange(&lensRange);
             if (status == NO_ERROR) {
-                status = mAAA->getCurrentFocusPosition(&currentFocusPos);
+                status = m3AControls->getCurrentFocusPosition(&currentFocusPos);
             }
             if (status == NO_ERROR) {
-                status = mAAA->setAeMode(CAM_AE_MODE_MANUAL);
+                status = m3AControls->setAeMode(CAM_AE_MODE_MANUAL);
             }
             if (status == NO_ERROR) {
-                mAAA->setAfMode(CAM_AF_MODE_MANUAL);
+                m3AControls->setAfMode(CAM_AF_MODE_MANUAL);
             }
             mBracketing.currentValue = lensRange.macro;
             mBracketing.minValue = lensRange.macro;
@@ -256,12 +256,12 @@ status_t BracketManager::initBracketing(int length, int skip, float *bracketValu
                  * For focus we need to bring the focus position
                  * to the initial position in the bracketing sequence.
                  */
-                status = mAAA->getCurrentFocusPosition(&currentFocusPos);
+                status = m3AControls->getCurrentFocusPosition(&currentFocusPos);
                 if (status == NO_ERROR) {
-                    status = mAAA->setManualFocusIncrement(mBracketing.minValue - currentFocusPos);
+                    status = m3AControls->setManualFocusIncrement(mBracketing.minValue - currentFocusPos);
                 }
                 if (status == NO_ERROR) {
-                    status = mAAA->updateManualFocus();
+                    status = m3AControls->updateManualFocus();
                 }
             }
             if (status == NO_ERROR) {
@@ -397,12 +397,12 @@ status_t BracketManager::applyBracketingParams()
     case BRACKET_EXPOSURE:
         if (mBracketNum < mBurstLength) {
             LOG1("Applying Exposure Bracketing: %.2f", mBracketing.currentValue);
-            status = mAAA->applyEv(mBracketing.currentValue);
+            status = m3AControls->applyEv(mBracketing.currentValue);
             if (status != NO_ERROR) {
                 LOGE("Error applying exposure bracketing value EV = %.2f", mBracketing.currentValue);
                 return status;
             }
-            mAAA->getExposureInfo(aeConfig);
+            m3AControls->getExposureInfo(aeConfig);
             aeConfig.evBias = mBracketing.currentValue;
 
             LOG1("Adding aeConfig to list (size=%d+1)", mBracketingParams.size());
@@ -417,12 +417,12 @@ status_t BracketManager::applyBracketingParams()
         break;
     case BRACKET_FOCUS:
         if (mBracketing.currentValue + mBracketing.step <= mBracketing.maxValue) {
-            status = mAAA->setManualFocusIncrement(mBracketing.step);
+            status = m3AControls->setManualFocusIncrement(mBracketing.step);
         }
         if (status == NO_ERROR) {
             mBracketing.currentValue += mBracketing.step;
-            status = mAAA->updateManualFocus();
-            mAAA->getCurrentFocusPosition(&currentFocusPos);
+            status = m3AControls->updateManualFocus();
+            m3AControls->getCurrentFocusPosition(&currentFocusPos);
             LOG1("Applying Focus Bracketing: %d", currentFocusPos);
         }
         break;

@@ -20,15 +20,6 @@
 // Forward declaration needed to resolve circular reference between AtomAAA
 // and AtomISP objects.
 namespace android {
-
-enum FlickerMode
-{
-    CAM_AE_FLICKER_MODE_NOT_SET = -1,
-    CAM_AE_FLICKER_MODE_OFF,
-    CAM_AE_FLICKER_MODE_50HZ,
-    CAM_AE_FLICKER_MODE_60HZ,
-    CAM_AE_FLICKER_MODE_AUTO
-};
   class AtomAAA;
 };
 
@@ -46,51 +37,10 @@ enum FlickerMode
 
 namespace android {
 
-enum AfMode
-{
-    CAM_AF_MODE_NOT_SET = -1,
-    CAM_AF_MODE_AUTO,
-    CAM_AF_MODE_MACRO,
-    CAM_AF_MODE_INFINITY,
-    CAM_AF_MODE_FIXED,
-    CAM_AF_MODE_TOUCH,
-    CAM_AF_MODE_MANUAL,
-    CAM_AF_MODE_FACE,
-    CAM_AF_MODE_CONTINUOUS
-};
-
-enum FlashMode
-{
-    CAM_AE_FLASH_MODE_NOT_SET = -1,
-    CAM_AE_FLASH_MODE_AUTO,
-    CAM_AE_FLASH_MODE_OFF,
-    CAM_AE_FLASH_MODE_ON,
-    CAM_AE_FLASH_MODE_DAY_SYNC,
-    CAM_AE_FLASH_MODE_SLOW_SYNC,
-    CAM_AE_FLASH_MODE_TORCH
-};
-
 // DetermineFlash: returns true if flash should be determined according to current exposure
 #define DetermineFlash(x) (x == CAM_AE_FLASH_MODE_AUTO || \
                            x == CAM_AE_FLASH_MODE_DAY_SYNC || \
                            x == CAM_AE_FLASH_MODE_SLOW_SYNC) \
-
-enum AeMode
-{
-    CAM_AE_MODE_NOT_SET = -1,
-    CAM_AE_MODE_AUTO,
-    CAM_AE_MODE_MANUAL,
-    CAM_AE_MODE_SHUTTER_PRIORITY,
-    CAM_AE_MODE_APERTURE_PRIORITY
-};
-
-enum FlashStage
-{
-    CAM_FLASH_STAGE_NOT_SET = -1,
-    CAM_FLASH_STAGE_NONE,
-    CAM_FLASH_STAGE_PRE,
-    CAM_FLASH_STAGE_MAIN
-};
 
 #define DEFAULT_GBCE            true
 #define DEFAULT_GBCE_STRENGTH   0
@@ -98,18 +48,6 @@ enum FlashStage
 #define TORCH_INTENSITY         20   // 20%
 #define EV_LOWER_BOUND         -100
 #define EV_UPPER_BOUND          100
-
-struct SensorAeConfig
-{
-    float evBias;
-    int expTime;
-    short unsigned int aperture_num;
-    short unsigned int aperture_denum;
-    int aecApexTv;
-    int aecApexSv;
-    int aecApexAv;
-    float digitalGain;
-};
 
 struct AAAStatistics
 {
@@ -223,62 +161,23 @@ public:
     bool is3ASupported() { return mHas3A; }
 
     // Initialization functions
-    status_t init(const SensorParams *param_files, AtomISP *isp, const char *otpInjectFile = NULL);
-    status_t unInit();
-    status_t applyIspSettings();
-    status_t switchModeAndRate(AtomMode mode, float fps);
+    virtual status_t initIntel3A(const SensorParams *param_files, AtomISP *isp, const char *otpInjectFile = NULL);
+    virtual status_t unInitIntel3A();
+    virtual status_t switchModeAndRate(AtomMode mode, float fps);
 
     // Getters and Setters
-    status_t setAeWindow(const CameraWindow *window);
     status_t setAfWindow(const CameraWindow *window);
-    status_t setAeFlickerMode(FlickerMode mode);
-    status_t setAfEnabled(bool en);
-    status_t setAeMode(AeMode mode);
-    AeMode getAeMode();
-    status_t setAfMode(AfMode mode);
-    AfMode getAfMode();
-    void setPublicAeMode(AeMode mode);
-    AeMode getPublicAeMode();
-    void setPublicAfMode(AfMode mode);
-    AfMode getPublicAfMode();
-    bool getAfNeedAssistLight();
-    status_t setAeFlashMode(FlashMode mode);
-    FlashMode getAeFlashMode();
-    bool getAeFlashNecessary();
-    ia_3a_awb_light_source getLightSource();
-    status_t setAeBacklightCorrection(bool en);
     status_t setTNR(bool en);
-    status_t setAeLock(bool en);
-    bool     getAeLock();
-    status_t setAfLock(bool en);
-    bool     getAfLock();
-    ia_3a_af_status getCAFStatus();
-    status_t setAwbLock(bool en);
-    bool     getAwbLock();
-    status_t setAwbMapping(ia_3a_awb_map mode);
     ia_3a_awb_map getAwbMapping();
-    size_t   getAeMaxNumWindows();
-    size_t   getAfMaxNumWindows();
-    status_t setAfWindows(const CameraWindow *windows, size_t numWindows);
-    status_t getExposureInfo(SensorAeConfig& sensorAeConfig);
-    status_t getAeManualBrightness(float *ret);
+    virtual size_t   getAeMaxNumWindows();
+    virtual size_t   getAfMaxNumWindows();
+    virtual status_t setAfWindows(const CameraWindow *windows, size_t numWindows);
+    virtual status_t getExposureInfo(SensorAeConfig& sensorAeConfig);
+    virtual  status_t getAeManualBrightness(float *ret);
     status_t setManualFocus(int focus, bool applyNow);
-    status_t setManualFocusIncrement(int step);
-    status_t updateManualFocus();
-    status_t getAfLensPosRange(ia_3a_af_lens_range *lens_range);
     status_t getNextFocusPosition(int *pos);
-    status_t getCurrentFocusPosition(int *pos);
-    status_t applyEv(float bias);
     status_t setGDC(bool en);
-    status_t setManualShutter(float expTime);
     status_t getManualShutter(float *expTime);
-    status_t setSmartSceneDetection(bool en);
-    bool     getSmartSceneDetection();
-    status_t getSmartSceneMode(int *sceneMode, bool *sceneHdr);
-    status_t setFaces(const ia_face_state& faceState);
-    status_t setFlash(int numFrames);
-
-    status_t getGridWindow(AAAWindowInfo& window);
 
     // I3AControl functions
     virtual void getDefaultParams(CameraParameters *params, CameraParameters *intel_params);
@@ -296,29 +195,71 @@ public:
     virtual status_t setAeMeteringMode(MeteringMode mode);
     virtual MeteringMode getAeMeteringMode();
     virtual status_t set3AColorEffect(const char *effect);
+    virtual status_t setAeMode(AeMode mode);
+    virtual AeMode getAeMode();
+    virtual status_t setAfMode(AfMode mode);
+    virtual AfMode getAfMode();
+    virtual status_t setAfEnabled(bool en);
+    virtual status_t setAeWindow(const CameraWindow *window);
+    virtual status_t setAeFlickerMode(FlickerMode mode);
+
+    virtual bool isIntel3A() { return true; }
+    virtual status_t getAfLensPosRange(ia_3a_af_lens_range *lens_range);
+    virtual status_t getCurrentFocusPosition(int *pos);
+    virtual status_t setManualFocusIncrement(int step);
+    virtual status_t updateManualFocus();
+    virtual status_t applyEv(float bias);
+    virtual status_t getGridWindow(AAAWindowInfo& window);
+    virtual bool     getAeLock();
+    virtual status_t setAeLock(bool en);
+    virtual bool     getAfLock();
+    virtual status_t setAfLock(bool en);
+    virtual status_t setAeFlashMode(FlashMode mode);
+    virtual status_t setAwbLock(bool en);
+    virtual bool     getAwbLock();
+    virtual FlashMode getAeFlashMode();
+    virtual bool getAfNeedAssistLight();
+    virtual bool getAeFlashNecessary();
+    virtual ia_3a_awb_light_source getLightSource();
+    virtual status_t setAeBacklightCorrection(bool en);
+    virtual status_t setManualShutter(float expTime);
+    virtual status_t setAwbMapping(ia_3a_awb_map mode);
+    virtual status_t setSmartSceneDetection(bool en);
+    virtual bool     getSmartSceneDetection();
+    virtual status_t getSmartSceneMode(int *sceneMode, bool *sceneHdr);
+    virtual void setPublicAeMode(AeMode mode);
+    virtual AeMode getPublicAeMode();
+    virtual void setPublicAfMode(AfMode mode);
+    virtual AfMode getPublicAfMode();
+    virtual ia_3a_af_status getCAFStatus();
+    virtual status_t setFaces(const ia_face_state& faceState);
+
+    // Flash control
+    virtual status_t setFlash(int numFrames);
 
     // ISP processing functions
-    status_t apply3AProcess(bool read_stats,
+    virtual status_t apply3AProcess(bool read_stats,
         struct timeval capture_timestamp);
 
-    status_t startStillAf();
-    status_t stopStillAf();
-    ia_3a_af_status isStillAfComplete();
-    status_t applyPreFlashProcess(FlashStage stage);
+    virtual status_t startStillAf();
+    virtual status_t stopStillAf();
+    virtual ia_3a_af_status isStillAfComplete();
+    virtual status_t applyPreFlashProcess(FlashStage stage);
 
     // Makernote
-    ia_3a_mknote *get3aMakerNote(ia_3a_mknote_mode mode);
-    void put3aMakerNote(ia_3a_mknote *mknData);
-    void reset3aMakerNote(void);
-    int add3aMakerNoteRecord(ia_3a_mknote_field_type mkn_format_id,
-                             ia_3a_mknote_field_name mkn_name_id,
-                             const void *record,
-                             unsigned short record_size);
+    virtual ia_3a_mknote *get3aMakerNote(ia_3a_mknote_mode mode);
+    virtual void put3aMakerNote(ia_3a_mknote *mknData);
+    virtual void reset3aMakerNote(void);
+    virtual int add3aMakerNoteRecord(ia_3a_mknote_field_type mkn_format_id,
+                                     ia_3a_mknote_field_name mkn_name_id,
+                                     const void *record,
+                                     unsigned short record_size);
 
     //dump 3A statistics
-    int dumpCurrent3aStatToFile(void);
-    int init3aStatDump(const char * str_mode);
-    int deinit3aStatDump(void);
+    virtual int dumpCurrent3aStatToFile(void);
+    virtual int init3aStatDump(const char * str_mode);
+    virtual int deinit3aStatDump(void);
+
 // private members
 private:
 

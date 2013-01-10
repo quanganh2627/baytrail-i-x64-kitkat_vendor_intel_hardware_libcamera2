@@ -48,7 +48,7 @@ class PostProcThread : public IFaceDetector,
 
 // constructor/destructor
 public:
-    PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread);
+    PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread, I3AControls *aaaControls);
     virtual ~PostProcThread();
     status_t init(void* isp);
 
@@ -237,6 +237,7 @@ private:
     int mLastReportedNumberOfFaces;
     Callbacks *mCallbacks;
     ICallbackPostProc* mPostProcDoneCallback;
+    I3AControls *m3AControls;
     bool mThreadRunning;
     bool mFaceDetectionRunning;
     bool mFaceRecognitionRunning;

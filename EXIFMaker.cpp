@@ -27,8 +27,8 @@ namespace android {
 
 #define DEFAULT_ISO_SPEED 100
 
-EXIFMaker::EXIFMaker() :
-    mAAA(AtomAAA::getInstance())
+EXIFMaker::EXIFMaker(I3AControls *aaaControls) :
+    m3AControls(aaaControls)
     ,initialized(false)
 {
     LOG1("@%s", __FUNCTION__);
@@ -111,148 +111,150 @@ void EXIFMaker::pictureTaken(void)
     //       images have been delivered, this is a not a problem, but
     //       this may change in the future.
 
-    if (mAAA->is3ASupported()) {
-        // brightness, -99.99 to 99.99. FFFFFFFF.H means unknown.
-        float brightness;
-        if (mAAA->getAeManualBrightness(&brightness) == NO_ERROR) {
-            exifAttributes.brightness.num = (int)(brightness * 100);
-            exifAttributes.brightness.den = 100;
-            LOG1("EXIF: brightness = %.2f", brightness);
-        } else {
-            LOGW("EXIF: Could not query brightness!");
-        }
+    // brightness, -99.99 to 99.99. FFFFFFFF.H means unknown.
+    float brightness;
+    // TODO: The check for getAeManualBrightness of 3A should be moved
+    //       to MetaData class, because the metadata collection happen
+    //       at capture time
+    if (m3AControls->getAeManualBrightness(&brightness) == NO_ERROR) {
+        exifAttributes.brightness.num = (int)(brightness * 100);
+        exifAttributes.brightness.den = 100;
+        LOG1("EXIF: brightness = %.2f", brightness);
+    } else {
+        LOGW("EXIF: Could not query brightness!");
+    }
 
-        // set the exposure program mode
-        AeMode aeMode = mAAA->getAeMode();
-        switch (aeMode) {
-        case CAM_AE_MODE_MANUAL:
-            exifAttributes.exposure_program = EXIF_EXPOSURE_PROGRAM_MANUAL;
-            LOG1("EXIF: Exposure Program = Manual");
-            exifAttributes.exposure_mode = EXIF_EXPOSURE_MANUAL;
-            LOG1("EXIF: Exposure Mode = Manual");
-            break;
-        case CAM_AE_MODE_SHUTTER_PRIORITY:
-            exifAttributes.exposure_program = EXIF_EXPOSURE_PROGRAM_SHUTTER_PRIORITY;
-            LOG1("EXIF: Exposure Program = Shutter Priority");
-            break;
-        case CAM_AE_MODE_APERTURE_PRIORITY:
-            exifAttributes.exposure_program = EXIF_EXPOSURE_PROGRAM_APERTURE_PRIORITY;
-            LOG1("EXIF: Exposure Program = Aperture Priority");
-            break;
-        case CAM_AE_MODE_AUTO:
-        default:
-            exifAttributes.exposure_program = EXIF_EXPOSURE_PROGRAM_NORMAL;
-            LOG1("EXIF: Exposure Program = Normal");
-            exifAttributes.exposure_mode = EXIF_EXPOSURE_AUTO;
-            LOG1("EXIF: Exposure Mode = Auto");
-            break;
-        }
-
-        // the metering mode.
-        MeteringMode meteringMode  = mAAA->getAeMeteringMode();
-        switch (meteringMode) {
-        case CAM_AE_METERING_MODE_AUTO:
-            exifAttributes.metering_mode = EXIF_METERING_AVERAGE;
-            LOG1("EXIF: Metering Mode = Average");
-            break;
-        case CAM_AE_METERING_MODE_SPOT:
-            exifAttributes.metering_mode = EXIF_METERING_SPOT;
-            LOG1("EXIF: Metering Mode = Spot");
-            break;
-        case CAM_AE_METERING_MODE_CENTER:
-            exifAttributes.metering_mode = EXIF_METERING_CENTER;
-            LOG1("EXIF: Metering Mode = Center");
-            break;
-        case CAM_AE_METERING_MODE_CUSTOMIZED:
-        default:
-            exifAttributes.metering_mode = EXIF_METERING_OTHER;
-            LOG1("EXIF: Metering Mode = Other");
-            break;
-        }
-
-        // white balance mode. 0: auto; 1: manual
-        AwbMode awbMode = mAAA->getAwbMode();
-        switch (awbMode) {
-        case CAM_AWB_MODE_AUTO:
-        case CAM_AWB_MODE_NOT_SET:
-            exifAttributes.white_balance = EXIF_WB_AUTO;
-            LOG1("EXIF: Whitebalance = Auto");
-            break;
-        default:
-            exifAttributes.white_balance = EXIF_WB_MANUAL;
-            LOG1("EXIF: Whitebalance = Manual");
-            break;
-        }
-
-        // light source type. Refer to EXIF V2.3
-        // TBD. Now light source is only set to UNKNOWN, when WB is auto mode.
-        if (CAM_AWB_MODE_AUTO == awbMode) {
-            exifAttributes.light_source = EXIF_LIGHT_SOURCE_UNKNOWN;
-        }
-        else {
-            ia_3a_awb_light_source  ia_3a_light_source = mAAA->getLightSource();
-            switch (ia_3a_light_source) {
-            case ia_3a_awb_light_source_other:
-                exifAttributes.light_source  = EXIF_LIGHT_SOURCE_OTHER_LIGHT_SOURCE;
-                break;
-            case ia_3a_awb_light_source_filament_lamp:
-                exifAttributes.light_source  = EXIF_LIGHT_SOURCE_TUNGSTEN;
-                break;
-            case ia_3a_awb_light_source_clear_sky:
-                exifAttributes.light_source = EXIF_LIGHT_SOURCE_FINE_WEATHER;
-                break;
-            case ia_3a_awb_light_source_cloudiness:
-                exifAttributes.light_source = EXIF_LIGHT_SOURCE_CLOUDY_WEATHER;
-                break;
-            case ia_3a_awb_light_source_shadow_area:
-                exifAttributes.light_source = EXIF_LIGHT_SOURCE_SHADE;
-                break;
-            case ia_3a_awb_light_source_fluorlamp_w:
-                exifAttributes.light_source = EXIF_LIGHT_SOURCE_COOL_WHITE_FLUORESCENT;
-                break;
-            case ia_3a_awb_light_source_fluorlamp_n:
-                exifAttributes.light_source = EXIF_LIGHT_SOURCE_DAY_WHITE_FLUORESCENT;
-                break;
-            case ia_3a_awb_light_source_fluorlamp_d:
-                exifAttributes.light_source = EXIF_LIGHT_SOURCE_DAYLIGHT_FLUORESCENT;
-                break;
-            default:
-                exifAttributes.light_source = EXIF_LIGHT_SOURCE_OTHER_LIGHT_SOURCE;
-                break;
-            }
-        }
-
-        // scene mode
-        SceneMode sceneMode = mAAA->getAeSceneMode();
-        switch (sceneMode) {
-        case CAM_AE_SCENE_MODE_PORTRAIT:
-            exifAttributes.scene_capture_type = EXIF_SCENE_PORTRAIT;
-            LOG1("EXIF: Scene Mode = Portrait");
-            break;
-        case CAM_AE_SCENE_MODE_LANDSCAPE:
-            exifAttributes.scene_capture_type = EXIF_SCENE_LANDSCAPE;
-            LOG1("EXIF: Scene Mode = Landscape");
-            break;
-        case CAM_AE_SCENE_MODE_NIGHT:
-            exifAttributes.scene_capture_type = EXIF_SCENE_NIGHT;
-            LOG1("EXIF: Scene Mode = Night");
-            break;
-        default:
-            exifAttributes.scene_capture_type = EXIF_SCENE_STANDARD;
-            LOG1("EXIF: Scene Mode = Standard");
-            break;
-        }
+    // set the exposure program mode
+    AeMode aeMode = m3AControls->getAeMode();
+    switch (aeMode) {
+    case CAM_AE_MODE_MANUAL:
+        exifAttributes.exposure_program = EXIF_EXPOSURE_PROGRAM_MANUAL;
+        LOG1("EXIF: Exposure Program = Manual");
+        exifAttributes.exposure_mode = EXIF_EXPOSURE_MANUAL;
+        LOG1("EXIF: Exposure Mode = Manual");
+        break;
+    case CAM_AE_MODE_SHUTTER_PRIORITY:
+        exifAttributes.exposure_program = EXIF_EXPOSURE_PROGRAM_SHUTTER_PRIORITY;
+        LOG1("EXIF: Exposure Program = Shutter Priority");
+        break;
+    case CAM_AE_MODE_APERTURE_PRIORITY:
+        exifAttributes.exposure_program = EXIF_EXPOSURE_PROGRAM_APERTURE_PRIORITY;
+        LOG1("EXIF: Exposure Program = Aperture Priority");
+        break;
+    case CAM_AE_MODE_AUTO:
+    default:
+        exifAttributes.exposure_program = EXIF_EXPOSURE_PROGRAM_NORMAL;
+        LOG1("EXIF: Exposure Program = Normal");
+        exifAttributes.exposure_mode = EXIF_EXPOSURE_AUTO;
+        LOG1("EXIF: Exposure Mode = Auto");
+        break;
     }
 
     // indicates the ISO speed of the camera
     int isoSpeed;
-    if (mAAA->getManualIso(&isoSpeed) == NO_ERROR) {
+    if (m3AControls->getManualIso(&isoSpeed) == NO_ERROR) {
         exifAttributes.iso_speed_rating = isoSpeed;
     } else {
         LOGW("EXIF: Could not query ISO speed!");
         exifAttributes.iso_speed_rating = DEFAULT_ISO_SPEED;
     }
     LOG1("EXIF: ISO=%d", isoSpeed);
+
+    // the metering mode.
+    MeteringMode meteringMode  = m3AControls->getAeMeteringMode();
+    switch (meteringMode) {
+    case CAM_AE_METERING_MODE_AUTO:
+        exifAttributes.metering_mode = EXIF_METERING_AVERAGE;
+        LOG1("EXIF: Metering Mode = Average");
+        break;
+    case CAM_AE_METERING_MODE_SPOT:
+        exifAttributes.metering_mode = EXIF_METERING_SPOT;
+        LOG1("EXIF: Metering Mode = Spot");
+        break;
+    case CAM_AE_METERING_MODE_CENTER:
+        exifAttributes.metering_mode = EXIF_METERING_CENTER;
+        LOG1("EXIF: Metering Mode = Center");
+        break;
+    case CAM_AE_METERING_MODE_CUSTOMIZED:
+    default:
+        exifAttributes.metering_mode = EXIF_METERING_OTHER;
+        LOG1("EXIF: Metering Mode = Other");
+        break;
+    }
+
+    // white balance mode. 0: auto; 1: manual
+    AwbMode awbMode = m3AControls->getAwbMode();
+    switch (awbMode) {
+    case CAM_AWB_MODE_AUTO:
+    case CAM_AWB_MODE_NOT_SET:
+        exifAttributes.white_balance = EXIF_WB_AUTO;
+        LOG1("EXIF: Whitebalance = Auto");
+        break;
+    default:
+        exifAttributes.white_balance = EXIF_WB_MANUAL;
+        LOG1("EXIF: Whitebalance = Manual");
+        break;
+    }
+
+    // light source type. Refer to EXIF V2.3
+    // TBD. Now light source is only set to UNKNOWN, when WB is auto mode.
+    if (CAM_AWB_MODE_AUTO == awbMode) {
+        exifAttributes.light_source = EXIF_LIGHT_SOURCE_UNKNOWN;
+    }
+    else {
+        ia_3a_awb_light_source  ia_3a_light_source = m3AControls->getLightSource();
+        switch (ia_3a_light_source) {
+        case ia_3a_awb_light_source_other:
+            exifAttributes.light_source  = EXIF_LIGHT_SOURCE_OTHER_LIGHT_SOURCE;
+            break;
+        case ia_3a_awb_light_source_filament_lamp:
+            exifAttributes.light_source  = EXIF_LIGHT_SOURCE_TUNGSTEN;
+            break;
+        case ia_3a_awb_light_source_clear_sky:
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_FINE_WEATHER;
+            break;
+        case ia_3a_awb_light_source_cloudiness:
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_CLOUDY_WEATHER;
+            break;
+        case ia_3a_awb_light_source_shadow_area:
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_SHADE;
+            break;
+        case ia_3a_awb_light_source_fluorlamp_w:
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_COOL_WHITE_FLUORESCENT;
+            break;
+        case ia_3a_awb_light_source_fluorlamp_n:
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_DAY_WHITE_FLUORESCENT;
+            break;
+        case ia_3a_awb_light_source_fluorlamp_d:
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_DAYLIGHT_FLUORESCENT;
+            break;
+        default:
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_OTHER_LIGHT_SOURCE;
+            break;
+        }
+    }
+
+    // scene mode
+    SceneMode sceneMode = m3AControls->getAeSceneMode();
+    switch (sceneMode) {
+    case CAM_AE_SCENE_MODE_PORTRAIT:
+        exifAttributes.scene_capture_type = EXIF_SCENE_PORTRAIT;
+        LOG1("EXIF: Scene Mode = Portrait");
+        break;
+    case CAM_AE_SCENE_MODE_LANDSCAPE:
+        exifAttributes.scene_capture_type = EXIF_SCENE_LANDSCAPE;
+        LOG1("EXIF: Scene Mode = Landscape");
+        break;
+    case CAM_AE_SCENE_MODE_NIGHT:
+        exifAttributes.scene_capture_type = EXIF_SCENE_NIGHT;
+        LOG1("EXIF: Scene Mode = Night");
+        break;
+    default:
+        exifAttributes.scene_capture_type = EXIF_SCENE_STANDARD;
+        LOG1("EXIF: Scene Mode = Standard");
+        break;
+    }
+
 }
 
 /**
@@ -523,10 +525,10 @@ void EXIFMaker::setSensorAeConfig(const SensorAeConfig& aeConfig)
 {
     LOG1("@%s", __FUNCTION__);
 
-    if (mAAA->is3ASupported()) {
+    if (m3AControls->isIntel3A()) {
 
         // overwrite the value that we get from the sensor with the value from AEC
-        LOG1("EXIF: 3A used, setting exposure information from AEC");
+        LOG1("EXIF: Intel 3A used, setting exposure information from AEC");
 
         // conversion formula taken directly from libcamera1
         int expTime = (int) (pow(2.0, -aeConfig.aecApexTv * (1.52587890625e-005)) * 10000);

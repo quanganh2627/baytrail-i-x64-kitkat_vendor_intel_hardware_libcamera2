@@ -107,6 +107,7 @@ public:
 
     status_t initDevice();
     status_t init();
+    void set3AControls(I3AControls *aaaControls);
 
     // public types
 public:
@@ -199,7 +200,6 @@ public:
     status_t getSharpness(int *value);
     status_t setSharpness(int value);
     status_t setXNR(bool enable);
-    status_t setLightFrequency(FlickerMode flickerMode);
     status_t setLowLight(bool enable);
     status_t setGDC(bool enable);
 
@@ -280,6 +280,8 @@ public:
 
     // I3AControls
     virtual void getDefaultParams(CameraParameters *params, CameraParameters *intel_params);
+    virtual status_t setAeMode(AeMode mode);
+    virtual AeMode getAeMode();
     virtual status_t setEv(float bias);
     virtual status_t getEv(float *ret);
     virtual status_t setAeSceneMode(SceneMode mode);
@@ -294,6 +296,73 @@ public:
     virtual status_t setAeMeteringMode(MeteringMode mode);
     virtual MeteringMode getAeMeteringMode();
     virtual status_t set3AColorEffect(const char *effect);
+    virtual status_t setAeFlickerMode(FlickerMode flickerMode);
+    virtual status_t setAfMode(AfMode mode);
+    virtual AfMode getAfMode();
+    virtual status_t setAfEnabled(bool en);
+    int     get3ALock(); // helper method for 3A lock setters/getters
+    virtual bool     getAeLock();
+    virtual status_t setAeLock(bool en);
+    virtual bool     getAfLock();
+    virtual status_t setAfLock(bool en);
+    virtual status_t setAwbLock(bool en);
+    virtual bool     getAwbLock();
+    virtual status_t getCurrentFocusPosition(int *pos);
+    virtual status_t applyEv(float bias);
+    virtual status_t setManualShutter(float expTime);
+    virtual status_t setAeFlashMode(FlashMode mode);
+    virtual FlashMode getAeFlashMode();
+    virtual void setPublicAeMode(AeMode mode);
+    virtual AeMode getPublicAeMode();
+    virtual void setPublicAfMode(AfMode mode);
+    virtual AfMode getPublicAfMode();
+
+    // Only supported by Intel 3A
+    virtual bool isIntel3A() { return false; }
+    virtual status_t initIntel3A(const SensorParams *param_files, AtomISP *isp, const char *otpInjectFile = NULL) { return INVALID_OPERATION; }
+    virtual status_t unInitIntel3A() { return INVALID_OPERATION; }
+
+    virtual status_t getAeManualBrightness(float *ret) { return INVALID_OPERATION; }
+    virtual size_t   getAeMaxNumWindows() { return 0; }
+    virtual size_t   getAfMaxNumWindows() { return 0; }
+    virtual status_t setAeWindow(const CameraWindow *window) { return INVALID_OPERATION; }
+    virtual status_t setAfWindows(const CameraWindow *windows, size_t numWindows) { return INVALID_OPERATION; }
+    virtual status_t getAfLensPosRange(ia_3a_af_lens_range *lens_range) { return INVALID_OPERATION; }
+    virtual status_t setManualFocusIncrement(int step) { return INVALID_OPERATION; }
+    virtual status_t updateManualFocus() { return INVALID_OPERATION; }
+    virtual status_t getExposureInfo(SensorAeConfig& sensorAeConfig) { return INVALID_OPERATION; }
+    virtual status_t getGridWindow(AAAWindowInfo& window);
+    virtual bool getAfNeedAssistLight() { return false; }
+    virtual bool getAeFlashNecessary() { return false; }
+    virtual ia_3a_awb_light_source getLightSource() { return ia_3a_awb_light_source_other; }
+    virtual status_t setAeBacklightCorrection(bool en) { return INVALID_OPERATION; }
+    virtual status_t setAwbMapping(ia_3a_awb_map mode) { return INVALID_OPERATION; }
+
+    virtual status_t apply3AProcess(bool read_stats, struct timeval capture_timestamp) { return INVALID_OPERATION; }
+    virtual status_t startStillAf() { return INVALID_OPERATION; }
+    virtual status_t stopStillAf() { return INVALID_OPERATION; }
+    virtual ia_3a_af_status isStillAfComplete() { return ia_3a_af_status_error; }
+    virtual status_t applyPreFlashProcess(FlashStage stage) { return INVALID_OPERATION; }
+
+    virtual ia_3a_mknote *get3aMakerNote(ia_3a_mknote_mode mode) { return NULL; }
+    virtual void put3aMakerNote(ia_3a_mknote *mknData) { }
+    virtual void reset3aMakerNote(void) { }
+    virtual int add3aMakerNoteRecord(ia_3a_mknote_field_type mkn_format_id,
+                                     ia_3a_mknote_field_name mkn_name_id,
+                                     const void *record,
+                                     unsigned short record_size) { return -1; }
+
+    virtual status_t setSmartSceneDetection(bool en) { return INVALID_OPERATION; }
+    virtual bool     getSmartSceneDetection() { return false; }
+    virtual status_t switchModeAndRate(AtomMode mode, float fps) { return INVALID_OPERATION; }
+
+    virtual int dumpCurrent3aStatToFile(void) { return -1; }
+    virtual int init3aStatDump(const char * str_mode) { return INVALID_OPERATION; }
+    virtual int deinit3aStatDump(void) { return INVALID_OPERATION; }
+
+    virtual ia_3a_af_status getCAFStatus() { return ia_3a_af_status_error; }
+    status_t getSmartSceneMode(int *sceneMode, bool *sceneHdr) { return INVALID_OPERATION; }
+    status_t setFaces(const ia_face_state& faceState) { return INVALID_OPERATION; }
 
     // AtomIspObserver controls
     status_t attachObserver(IAtomIspObserver *observer, ObserverType t);
@@ -577,7 +646,7 @@ private:
     int mSessionId; // uniquely identify each session
 
     SensorType mSensorType;
-    AtomAAA *mAAA;
+    I3AControls *m3AControls;
     struct cameraInfo *mCameraInput;
 
     bool mLowLight;
@@ -591,6 +660,9 @@ private:
     v4l2_colorfx mColorEffect;
 
     AtomIspObserverManager mObserverManager;
+
+    AeMode mPublicAeMode;
+    AfMode mPublicAfMode;
 }; // class AtomISP
 
 }; // namespace android

@@ -58,7 +58,7 @@ class AAAThread : public Thread, public IAtomIspObserver {
 
 // constructor destructor
 public:
-    AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs);
+    AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs, I3AControls *aaaControls);
     virtual ~AAAThread();
 
     enum FlashStage {
@@ -189,7 +189,7 @@ private:
 
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
-    AtomAAA *mAAA;
+    I3AControls* m3AControls;
     CallbacksThread *mCallbacks;
     AtomDvs *mDvs;
     ICallbackAAA* mAAADoneCallback;

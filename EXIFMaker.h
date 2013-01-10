@@ -27,7 +27,7 @@ namespace android {
 class EXIFMaker {
 private:
     ExifCreater encoder;
-    AtomAAA *mAAA;
+    I3AControls *m3AControls;
     exif_attribute_t exifAttributes;
     int thumbWidth;
     int thumbHeight;
@@ -37,7 +37,7 @@ private:
     void initializeLocation(const CameraParameters &params);
     void clear();
 public:
-    EXIFMaker();
+    EXIFMaker(I3AControls *aaaControls);
     ~EXIFMaker();
 
     void initialize(const CameraParameters &params);

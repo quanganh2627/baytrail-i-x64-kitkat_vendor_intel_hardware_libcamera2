@@ -39,7 +39,7 @@ static const useconds_t STITCH_CHECK_INTERVAL_USEC = 500000; // 0.5 secs
 // Max count of stitch check tries:
 static const int STITCH_CHECK_LIMIT = 10;
 
-PanoramaThread::PanoramaThread(ICallbackPanorama *panoramaCallback) :
+PanoramaThread::PanoramaThread(ICallbackPanorama *panoramaCallback, I3AControls *aaaControls) :
     Thread(false)
     ,mPanoramaCallback(panoramaCallback)
     ,mContext(NULL)
@@ -56,6 +56,7 @@ PanoramaThread::PanoramaThread(ICallbackPanorama *panoramaCallback) :
     ,mThumbnailWidth(0)
     ,mThumbnailHeight(0)
     ,mPanoramaStitchThread(NULL)
+    ,m3AControls(aaaControls)
 {
     LOG1("@%s", __FUNCTION__);
     mCurrentMetadata.direction = 0;
@@ -238,9 +239,8 @@ status_t PanoramaThread::reInit()
 bool PanoramaThread::isBlurred(int width, int dx, int dy) const
 {
     LOG1("@%s", __FUNCTION__);
-    AtomAAA* aaa = AtomAAA::getInstance();
     SensorAeConfig config;
-    aaa->getExposureInfo(config);
+    m3AControls->getExposureInfo(config);
 
     float speed = sqrtf(dx * dx + dy * dy);
     float percentage = speed / width; // assuming square pixels

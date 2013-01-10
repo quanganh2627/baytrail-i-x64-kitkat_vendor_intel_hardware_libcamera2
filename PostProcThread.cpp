@@ -27,7 +27,7 @@
 
 namespace android {
 
-PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread) :
+PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread, I3AControls *aaaControls) :
     IFaceDetector(CallbacksThread::getInstance())
     ,Thread(true) // callbacks may call into java
     ,mFaceDetector(NULL)
@@ -36,6 +36,7 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     ,mLastReportedNumberOfFaces(0)
     ,mCallbacks(Callbacks::getInstance())
     ,mPostProcDoneCallback(postProcDone)
+    ,m3AControls(aaaControls)
     ,mThreadRunning(false)
     ,mFaceDetectionRunning(false)
     ,mFaceRecognitionRunning(false)
@@ -819,13 +820,12 @@ void PostProcThread::setFocusAreas(const CameraWindow* windows, size_t winCount)
     LOG2("@%s", __FUNCTION__);
     AfMode newAfMode = CAM_AF_MODE_FACE;
 
-    AtomAAA* aaa = AtomAAA::getInstance();
-    if (aaa->setAfWindows(windows, winCount) == NO_ERROR) {
-        AfMode curAfMode = aaa->getAfMode();
+    if (m3AControls->setAfWindows(windows, winCount) == NO_ERROR) {
+        AfMode curAfMode = m3AControls->getAfMode();
         // See if we have to change the actual mode (it could be correct already)
         if (curAfMode != newAfMode) {
             mOldAfMode = curAfMode;
-            aaa->setAfMode(newAfMode);
+            m3AControls->setAfMode(newAfMode);
             LOG2("Set to face focus mode (%d) from current (%d)", newAfMode, curAfMode);
         }
     }
@@ -835,14 +835,13 @@ void PostProcThread::setFocusAreas(const CameraWindow* windows, size_t winCount)
 void PostProcThread::setAeMeteringArea(const CameraWindow* window)
 {
     LOG2("@%s", __FUNCTION__);
-    AtomAAA* aaa = AtomAAA::getInstance();
 
-    if (aaa->setAeWindow(window) == NO_ERROR) {
-        MeteringMode curAeMeteringMode = aaa->getAeMeteringMode();
+    if (m3AControls->setAeWindow(window) == NO_ERROR) {
+        MeteringMode curAeMeteringMode = m3AControls->getAeMeteringMode();
         if (curAeMeteringMode != CAM_AE_METERING_MODE_SPOT) {
             LOG2("Setting AE metering mode to spot for face exposure");
-            mOldAeMeteringMode = aaa->getAeMeteringMode();
-            aaa->setAeMeteringMode(CAM_AE_METERING_MODE_SPOT);
+            mOldAeMeteringMode = m3AControls->getAeMeteringMode();
+            m3AControls->setAeMeteringMode(CAM_AE_METERING_MODE_SPOT);
         }
     }
 }
@@ -858,9 +857,8 @@ void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata
     if (mFaceAAAFlags & AAA_FLAG_AF || mFaceAAAFlags & AAA_FLAG_AE) {
         CameraWindow *windows = new CameraWindow[face_metadata.number_of_faces];
         int highestScoreInd = 0;
-        AtomAAA *aaa = AtomAAA::getInstance();
         AAAWindowInfo aaaWindow;
-        aaa->getGridWindow(aaaWindow);
+        m3AControls->getGridWindow(aaaWindow);
         for (int i = 0; i < face_metadata.number_of_faces; i++) {
             camera_face_t face = face_metadata.faces[i];
             windows[i].x_left = face.rect[0];
@@ -898,19 +896,18 @@ void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata
 void PostProcThread::resetToOldAAAValues()
 {
         // No faces detected, reset to previous 3A values:
-        AtomAAA* aaa = AtomAAA::getInstance();
 
         // Auto-focus:
         if ((mFaceAAAFlags & AAA_FLAG_AF) && mOldAfMode != CAM_AF_MODE_NOT_SET) {
             LOG2("Reset to old focus mode (%d)", mOldAfMode);
-            aaa->setAfMode(mOldAfMode);
+            m3AControls->setAfMode(mOldAfMode);
             mOldAfMode = CAM_AF_MODE_NOT_SET;
         }
 
         // Auto-exposure metering mode:
         if ((mFaceAAAFlags & AAA_FLAG_AE) && mOldAeMeteringMode != CAM_AE_METERING_MODE_NOT_SET) {
             LOG2("Reset to old AE metering mode (%d)", mOldAeMeteringMode);
-            aaa->setAeMeteringMode(mOldAeMeteringMode);
+            m3AControls->setAeMeteringMode(mOldAeMeteringMode);
             mOldAeMeteringMode = CAM_AE_METERING_MODE_NOT_SET;
         }
 

@@ -135,7 +135,7 @@ AtomAAA::~AtomAAA()
     mInstance = NULL;
 }
 
-status_t AtomAAA::init(const SensorParams *sensorParameters, AtomISP *isp, const char *otpInjectFile)
+status_t AtomAAA::initIntel3A(const SensorParams *sensorParameters, AtomISP *isp, const char *otpInjectFile)
 {
     Mutex::Autolock lock(m3aLock);
     int init_result;
@@ -153,7 +153,7 @@ status_t AtomAAA::init(const SensorParams *sensorParameters, AtomISP *isp, const
     return NO_ERROR;
 }
 
-status_t AtomAAA::unInit()
+status_t AtomAAA::unInitIntel3A()
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
@@ -211,8 +211,7 @@ status_t AtomAAA::setAeWindow(const CameraWindow *window)
             window->x_right,
             window->y_bottom,
             window->weight);
-    if(!mHas3A)
-        return INVALID_OPERATION;
+
     ia_3a_ae_set_window((const ia_3a_window *)window);
     return NO_ERROR;
 }
@@ -237,8 +236,6 @@ status_t AtomAAA::setAfEnabled(bool en)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: en = %d", __FUNCTION__, en);
-    if(!mHas3A)
-        return INVALID_OPERATION;
     ia_3a_af_enable(en);
     return NO_ERROR;
 }
@@ -329,8 +326,6 @@ status_t AtomAAA::setAeMode(AeMode mode)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
-    if(!mHas3A)
-        return INVALID_OPERATION;
 
     ia_3a_ae_mode wr_val;
     switch (mode) {
@@ -360,8 +355,6 @@ status_t AtomAAA::setIsoMode(IsoMode mode)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
-    if(!mHas3A)
-        return INVALID_OPERATION;
 
     ia_3a_ae_iso_mode wr_val;
     switch (mode) {
@@ -384,8 +377,6 @@ IsoMode AtomAAA::getIsoMode(void)
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
     IsoMode mode = CAM_AE_ISO_MODE_NOT_SET;
-    if(!mHas3A)
-        return mode;
 
     ia_3a_ae_iso_mode rd_val = ia_3a_ae_get_iso_mode();
     switch (rd_val) {
@@ -407,8 +398,6 @@ status_t AtomAAA::setAeFlickerMode(FlickerMode mode)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
-    if(!mHas3A)
-        return INVALID_OPERATION;
     ia_3a_ae_flicker_mode theMode;
 
     switch(mode) {
@@ -436,8 +425,6 @@ AeMode AtomAAA::getAeMode()
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
     AeMode mode = CAM_AE_MODE_NOT_SET;
-    if(!mHas3A)
-        return mode;
 
     ia_3a_ae_mode rd_val = ia_3a_ae_get_mode();
     switch (rd_val) {
@@ -465,8 +452,6 @@ status_t AtomAAA::setAfMode(AfMode mode)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
-    if(!mHas3A)
-        return INVALID_OPERATION;
 
     switch (mode) {
     case CAM_AF_MODE_CONTINUOUS:
@@ -525,8 +510,6 @@ AfMode AtomAAA::getAfMode()
 {
     Mutex::Autolock lock(m3aLock);
     LOG2("@%s", __FUNCTION__);
-    if(!mHas3A)
-        return CAM_AF_MODE_NOT_SET;
 
     return mAfMode;
 }
@@ -903,8 +886,6 @@ status_t AtomAAA::setAfWindows(const CameraWindow *windows, size_t numWindows)
 {
     Mutex::Autolock lock(m3aLock);
     LOG2("@%s: windows = %p, num = %u", __FUNCTION__, windows, numWindows);
-    if(!mHas3A)
-        return INVALID_OPERATION;
 
     for (size_t i = 0; i < numWindows; ++i) {
         LOG2("@%s: window(%u) = (%d,%d,%d,%d,%d)", __FUNCTION__, i,

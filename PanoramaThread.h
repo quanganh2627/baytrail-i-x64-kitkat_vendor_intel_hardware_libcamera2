@@ -25,6 +25,7 @@
 #include "AtomCommon.h"
 #include "Callbacks.h"
 #include "CallbacksThread.h"
+#include "I3AControls.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -62,7 +63,7 @@ class PanoramaThread : public Thread, public IBufferOwner {
 // constructor/destructor
 public:
 #ifdef ENABLE_INTEL_EXTRAS
-    PanoramaThread(ICallbackPanorama *panoramaCallback);
+    PanoramaThread(ICallbackPanorama *panoramaCallback, I3AControls *aaaControls);
     ~PanoramaThread();
 
     void getDefaultParameters(CameraParameters *intel_params, int cameraId);
@@ -233,7 +234,7 @@ private:
 #else
     // function stubs for building without Intel extra features
 public:
-    PanoramaThread(ICallbackPanorama *panoramaCallback) {}
+    PanoramaThread(ICallbackPanorama *panoramaCallback, I3AControls *aaaControls): m3AControls(aaaControls){}
     ~PanoramaThread() {}
 
     // getDefaultParameters() defined in PanoramaThread.cpp:
@@ -264,6 +265,7 @@ private:
 
 #endif // ENABLE_INTEL_EXTRAS
 
+    I3AControls* m3AControls;
 }; // class Panorama
 
 }; // namespace android
