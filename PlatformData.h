@@ -216,7 +216,8 @@ public:
             supportedPreviewFrameRate = "30,15,10";
             supportedPreviewFPSRange = "(10500,30304),(11000,30304),(11500,30304)";
             defaultPreviewFPSRange = "10500,30304";
-            supportedPreviewSize = "1024x576,800x600,704x576,720x480,640x480,640x360,416x312,352x288,320x240,176x144";
+            // Leaving this empty. NOTE: values need to be given in derived classes.
+            supportedPreviewSize = "";
             //For high speed recording, slow motion playback
             hasSlowMotion = false;
         };
@@ -282,7 +283,6 @@ public:
         const char* supportedPreviewSize;
         // For high speed recording, slow motion playback
         bool hasSlowMotion;
-
     };
 
     // note: Android NDK does not yet support C++11 and

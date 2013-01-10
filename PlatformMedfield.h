@@ -60,7 +60,8 @@ public:
             ,"%s,%s"
             ,pcam->supportedSceneModes
             ,CameraParameters::SCENE_MODE_NIGHT_PORTRAIT);
-
+        // Preview size
+        pcam->supportedPreviewSize = "1024x576,800x600,720x480,640x480,640x360,352x288,320x240,176x144";
         mCameras.push(*pcam);
         delete pcam;
 
@@ -125,6 +126,9 @@ public:
         mCameras.editItemAt(0).supportedBurstFPS = "1,3,5";
         mSupportVideoSnapshot = false;
         mNumRecordingBuffers = 6;
+        mCameras.editItemAt(0).supportedPreviewSize = "1024x576,800x600,720x480,640x480,640x360,416x312,352x288,320x240,176x144";
+        // NOTE: front camera uses supportedPreviewSize from PlatformBlackbay
+        mSupportedVideoSizes = "176x144,320x240,352x288,416x312,640x480,720x480,720x576,1280x720,1920x1080";
     }
 };
 

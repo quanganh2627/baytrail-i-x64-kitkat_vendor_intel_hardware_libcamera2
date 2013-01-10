@@ -99,7 +99,8 @@ public:
             ,"%s,%s"
             ,pcam->supportedSceneModes
             ,CameraParameters::SCENE_MODE_NIGHT_PORTRAIT);
-
+        // Preview size
+        pcam->supportedPreviewSize = "1024x576,800x600,720x480,640x480,640x360,352x288,320x240,176x144";
         mCameras.push(*pcam);
         delete pcam;
 
