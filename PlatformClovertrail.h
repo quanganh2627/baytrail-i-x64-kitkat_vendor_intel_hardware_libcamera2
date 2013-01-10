@@ -90,6 +90,7 @@ public:
         pcam->maxEV = "6";
         pcam->minEV = "-6";
         pcam->mPreviewViaOverlay = true;
+        pcam->overlayRelativeRotation = 0;
 
         // If the back flash is supported, let's add the rest of the
         // supported scene modes that require flash:
@@ -113,6 +114,8 @@ public:
         pcam->facing = CAMERA_FACING_FRONT;
         pcam->orientation = 270;
         pcam->dvs = false;
+        pcam->mPreviewViaOverlay = true;
+        pcam->overlayRelativeRotation = 0;
         pcam->flipping = PlatformData::SENSOR_FLIP_NA;
         pcam->maxSnapshotWidth = RESOLUTION_1_3MP_WIDTH;
         pcam->maxSnapshotHeight = RESOLUTION_1_3MP_HEIGHT;
