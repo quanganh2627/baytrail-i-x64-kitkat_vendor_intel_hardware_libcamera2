@@ -243,6 +243,16 @@ bool PlatformData::renderPreviewViaOverlay(int cameraId)
     return i->mCameras[cameraId].mPreviewViaOverlay;
 
 }
+int PlatformData::overlayRotation(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return false;
+    }
+    return i->mCameras[cameraId].overlayRelativeRotation;
+
+}
 
 bool PlatformData::supportsDVS(int cameraId)
 {

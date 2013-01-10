@@ -80,7 +80,7 @@ public:
     status_t fetchPreviewBuffers(AtomBuffer ** pvBufs, int *count);
     status_t returnPreviewBuffers();
     status_t flushBuffers();
-    status_t enableOverlay(bool set = true);
+    status_t enableOverlay(bool set = true, int rotation = 90);
 
     // TODO: need methods to configure preview thread
     // TODO: decide if configuration method should send a message
@@ -232,7 +232,9 @@ private:
 
     class OverlayPreviewHandler: public PreviewMessageHandler {
        public:
-           OverlayPreviewHandler(PreviewThread* aThread, ICallbackPreview *previewDone);
+           OverlayPreviewHandler(PreviewThread* aThread,
+                                 ICallbackPreview *previewDone,
+                                 int overlayRotation);
            virtual ~OverlayPreviewHandler(){};
 
            // PreviewMessageHandler IF
@@ -243,6 +245,9 @@ private:
            virtual status_t handleReturnPreviewBuffers(void);
            virtual status_t fetchPreviewBuffers(AtomBuffer **pvBufs, int *count);
            virtual status_t handlePostview(MessagePreview *msg);
+       private:
+           int mRotation;   /*!< Relative rotation of the camera scan order to
+                                 the display attached to overlay plane */
     };
 
     PreviewMessageHandler   *mMessageHandler;

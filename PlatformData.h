@@ -118,6 +118,7 @@ public:
             maxSnapshotWidth = RESOLUTION_8MP_WIDTH;
             maxSnapshotHeight = RESOLUTION_8MP_HEIGHT;
             mPreviewViaOverlay = false;
+            overlayRelativeRotation = 90;
             //burst
             maxBurstFPS = 15;
             supportedBurstFPS = "1,3,5,7,15";
@@ -228,6 +229,8 @@ public:
         int maxSnapshotWidth;
         int maxSnapshotHeight;
         bool mPreviewViaOverlay;
+        int overlayRelativeRotation;  /*<! Relative rotation between the native scan order of the
+                                           camera and the display attached to the overlay */
         // burst
         int maxBurstFPS;
         const char* supportedBurstFPS;
@@ -775,6 +778,16 @@ class PlatformData {
      * \return false if rendered via Gfx
      */
     static bool renderPreviewViaOverlay(int cameraId);
+
+    /**
+     * Returns the relative rotation between the camera normal scan order
+     * and the display attached to the HW overlay.
+     * A rotation of this magnitud is required to render correctly the preview
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return degrees required to rotate: 0,90,180,270
+     */
+    static int overlayRotation(int cameraId);
 
     /**
      * Returns the max zoom factor

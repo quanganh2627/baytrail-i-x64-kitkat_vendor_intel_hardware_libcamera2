@@ -3009,13 +3009,14 @@ status_t ControlThread::ProcessOverlayEnable(const CameraParameters *oldParams,
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    int cameraId = mISP->getCurrentCameraId();
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_HW_OVERLAY_RENDERING);
 
     if (!newVal.isEmpty() && (mState == STATE_STOPPED))  {
 
         if (newVal == "true") {
-            if (mPreviewThread->enableOverlay() == NO_ERROR) {
+            if (mPreviewThread->enableOverlay(true, PlatformData::overlayRotation(cameraId)) == NO_ERROR) {
                 newParams->set(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING, "true");
                 LOG1("@%s: Preview Overlay rendering enabled!", __FUNCTION__);
             } else {

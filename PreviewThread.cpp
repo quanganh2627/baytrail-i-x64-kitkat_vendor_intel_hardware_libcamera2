@@ -55,7 +55,7 @@ PreviewThread::~PreviewThread()
     delete mMessageHandler;
 }
 
-status_t PreviewThread::enableOverlay(bool set)
+status_t PreviewThread::enableOverlay(bool set, int rotation)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -64,7 +64,7 @@ status_t PreviewThread::enableOverlay(bool set)
     mMessageHandler = NULL;
 
     if(set)
-        mMessageHandler = new OverlayPreviewHandler(this, mPreviewDoneCallback);
+        mMessageHandler = new OverlayPreviewHandler(this, mPreviewDoneCallback, rotation);
     else
         mMessageHandler = new GfxPreviewHandler(this, mPreviewDoneCallback);
 
@@ -1061,9 +1061,24 @@ status_t PreviewThread::GfxPreviewHandler::handlePostview(MessagePreview *msg)
 /******************************************************************************
  *   Overlay Preview Message Handler
  ******************************************************************************/
-
-PreviewThread::OverlayPreviewHandler::OverlayPreviewHandler(PreviewThread* aThread, ICallbackPreview *previewDone) :
-        PreviewMessageHandler(aThread, previewDone)
+/**
+ * Overlay Preview Handler is in charge of handling th preview thread messages
+ * when we want to use the HW overlay to render the preview.
+ * The main differences with Gfx preview handler are:
+ *  - it sets GRALLOC flags to signal that the buffer is to be render via HWC.
+ *  - uses a different color format. It is esentially NV12 but with some exotic
+ *    stride requirement
+ *
+ * In some cases it requires a rotation that it is currently done in SW inside
+ * the preview thread.
+ * In cases where no rotation is needed a spacial memcopy is used to comply  with
+ * the stride requirements of the color format
+ */
+PreviewThread::OverlayPreviewHandler::OverlayPreviewHandler(PreviewThread* aThread,
+                                                            ICallbackPreview *previewDone,
+                                                            int OverlayRotation) :
+        PreviewMessageHandler(aThread, previewDone),
+        mRotation(OverlayRotation)
 {
 
 }
