@@ -472,6 +472,7 @@ private:
 
     void preSetCameraWindows(CameraWindow* focusWindows, size_t winCount);
 
+    void selectFlashMode(CameraParameters *newParams);
 
     // These are params that can only be set while the ISP is stopped. If the parameters
     // changed while the ISP is running, the ISP will need to be stopped, reconfigured, and
@@ -546,6 +547,10 @@ private:
     CameraParameters mParameters;
     CameraParameters mIntelParameters;
     bool mIntelParamsAllowed;           /*<! Flag that signals whether the caller is allowed to use Intel extended paramters*/
+    String8 mSavedFlashSupported;   /*<! Save single shot supported flash values,
+                                    in case burst multi shot capture is called and forces flash to be off.*/
+    String8 mSavedFlashMode;        /*<! Save single shot current flash mode,
+                                    in case burst multi shot capture is called and forces flash to be off.*/
 
     bool mFaceDetectionActive;
     bool mAutoFocusActive;
