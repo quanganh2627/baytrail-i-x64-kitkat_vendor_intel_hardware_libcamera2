@@ -1127,7 +1127,9 @@ PreviewThread::OverlayPreviewHandler::handlePreview(MessagePreview *msg)
        int err;
        int stride;
        int usage;
-       int paddedStride = paddingWidthNV12VED(mPreviewHeight,0);
+       int w = mPreviewStride;
+       int h = mPreviewHeight;
+
        if ((err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride)) != 0) {
            LOGE("Surface::dequeueBuffer returned error %d", err);
        } else {
@@ -1139,7 +1141,11 @@ PreviewThread::OverlayPreviewHandler::handlePreview(MessagePreview *msg)
            }
 
            GraphicBufferMapper &mapper = GraphicBufferMapper::get();
-           const Rect bounds(mPreviewHeight, mPreviewWidth);
+           if (mRotation == 90 || mRotation == 270) {
+               w = mPreviewHeight;
+               h = mPreviewWidth;
+           }
+           const Rect bounds(w, h);
            long long dst;      // this should be void* but this is a temporary workaround to bug BZ:34172
            usage = GRALLOC_USAGE_SW_WRITE_OFTEN |
                    GRALLOC_USAGE_SW_READ_NEVER  |
@@ -1152,12 +1158,10 @@ PreviewThread::OverlayPreviewHandler::handlePreview(MessagePreview *msg)
                goto exit;
            }
 
-           nv12rotateBy90(mPreviewStride,        // width of the source image
-                          mPreviewHeight,       // height of the source image
-                          mPreviewStride,       // scanline stride of the source image
-                          paddedStride,         // scanline stride of the target image
-                          (const char *)msg->buff.buff->data,      // source image
-                          (char*) dst);                            // target image
+           /* copies and rotates if necessary */
+           copyPreviewBuffer((const char *)msg->buff.buff->data,      // source image
+                             (char*) dst);                            // target image
+
            mapper.unlock(*buf);
            if ((err = mPreviewWindow->enqueue_buffer(mPreviewWindow, buf)) != 0) {
                LOGE("Surface::queueBuffer returned error %d", err);
@@ -1200,12 +1204,74 @@ exit:
     return status;
 }
 
+void
+PreviewThread::OverlayPreviewHandler::copyPreviewBuffer(const char* src, char*dst)
+{
+    int paddedStride;
+
+    if (mRotation == 90 || mRotation == 270) {
+       paddedStride = paddingWidthNV12VED(mPreviewHeight,0);
+   } else {
+       paddedStride = paddingWidthNV12VED(mPreviewStride,0);
+   }
+
+    switch (mRotation) {
+    case 90:
+        nv12rotateBy90(mPreviewStride,       // width of the source image
+                       mPreviewHeight,       // height of the source image
+                       mPreviewStride,       // scanline stride of the source image
+                       paddedStride,         // scanline stride of the target image
+                       src,                  // source image
+                       dst);                 // target image
+        break;
+    case 270:
+        // TODO: Not handled, waiting for Semi
+        break;
+    case 0:
+        strideCopy(mPreviewStride,       // width of the source image
+                    mPreviewHeight,       // height of the source image
+                    mPreviewStride,       // scanline stride of the source image
+                    paddedStride,         // scanline stride of the target image
+                    src,                  // source image
+                    dst);
+        break;
+    }
+
+}
+
+void
+PreviewThread::OverlayPreviewHandler::strideCopy(const int   width,
+                                                 const int   height,
+                                                 const int   rstride,
+                                                 const int   wstride,
+                                                 const char* sptr,
+                                                 char*       dptr)
+{
+    const char *src = sptr;
+    char *dst = dptr;
+    // Y
+    for (int i = 0; i < height; i++) {
+        memcpy(dst,src,rstride);
+        dst += wstride;
+        src += rstride;
+    }
+    //UV
+    for (int i = 0; i < height/2; i++) {
+            memcpy(dst,src,rstride);
+            dst += wstride;
+            src += rstride;
+        }
+
+}
+
 status_t
 PreviewThread::OverlayPreviewHandler::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
 {
     LOG1("@%s: window = %p", __FUNCTION__, msg->window);
 
     mPreviewWindow = msg->window;
+    int w = mPreviewWidth;
+    int h = mPreviewHeight;
 
     if (mPreviewWindow != NULL) {
         int usage = GRALLOC_USAGE_SW_WRITE_OFTEN |
@@ -1213,10 +1279,16 @@ PreviewThread::OverlayPreviewHandler::handleSetPreviewWindow(MessageSetPreviewWi
                     GRALLOC_USAGE_HW_COMPOSER;
         mPreviewWindow->set_usage(mPreviewWindow, usage );
         mPreviewWindow->set_buffer_count(mPreviewWindow, 4);
-        mPreviewWindow->set_buffers_geometry(mPreviewWindow,
-                                             mPreviewHeight,
-                                             mPreviewWidth,
+
+        if (mRotation == 90 || mRotation == 270) {
+            // We swap w and h
+            w = mPreviewHeight;
+            h = mPreviewWidth;
+        }
+
+        mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h,
                                              OMX_INTEL_COLOR_FormatYUV420PackedSemiPlanar);
+
     }
 
     return NO_ERROR;
@@ -1225,21 +1297,31 @@ PreviewThread::OverlayPreviewHandler::handleSetPreviewWindow(MessageSetPreviewWi
 status_t
 PreviewThread::OverlayPreviewHandler::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
 {
-    LOG1("@%s: width = %d, height = %d, format = %x", __FUNCTION__,
-         msg->width, msg->height, msg->format);
+    LOG1("@%s: width = %d (s:%d), height = %d, format = %x", __FUNCTION__,
+         msg->width, msg->stride, msg->height, msg->format);
     status_t status = NO_ERROR;
+    int w = msg->width;
+    int h = msg->height;
 
     if ((msg->width != 0 && msg->height != 0) &&
             (mPreviewWidth != msg->width || mPreviewHeight != msg->height)) {
         LOG1("Setting new preview size: %dx%d", msg->width, msg->height);
         if (mPreviewWindow != NULL) {
 
-            // if preview size changed, update the preview window
-            mPreviewWindow->set_buffers_geometry(mPreviewWindow,
-                                                 msg->height,
-                                                 msg->width,
+            /**
+             *  if preview size changed, update the preview window
+             *  but account for the rotation when setting the geometry
+             */
+            if (mRotation == 90 || mRotation == 270) {
+                // we swap width and height
+                w = msg->height;
+                h = msg->width;
+            }
+            mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h,
                                                  OMX_INTEL_COLOR_FormatYUV420PackedSemiPlanar);
+
         }
+        // we keep in our internal fields the resolution provided by CtrlThread
         mPreviewWidth = msg->width;
         mPreviewHeight = msg->height;
         mPreviewStride = msg->stride;

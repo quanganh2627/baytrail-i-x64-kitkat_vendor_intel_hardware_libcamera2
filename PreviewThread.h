@@ -246,6 +246,14 @@ private:
            virtual status_t fetchPreviewBuffers(AtomBuffer **pvBufs, int *count);
            virtual status_t handlePostview(MessagePreview *msg);
        private:
+           void copyPreviewBuffer(const char *src, char *dst);
+           void strideCopy(const int   width,
+                           const int   height,
+                           const int   rstride,
+                           const int   wstride,
+                           const char* sptr,
+                           char*       dptr);
+       private:
            int mRotation;   /*!< Relative rotation of the camera scan order to
                                  the display attached to overlay plane */
     };
