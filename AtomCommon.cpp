@@ -55,6 +55,7 @@ AtomBuffer AtomBufferFactory::createAtomBuffer(AtomBufferType type,
     buf.capture_timestamp = capture_timestamp;
     buf.gfxData = gfxData;
     buf.mNativeBufPtr = mNativeBufPtr;
+    buf.frameSequenceNbr = 0;
     return buf;
 }
 
