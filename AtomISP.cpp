@@ -172,6 +172,8 @@ AtomISP::AtomISP(const sp<CameraConf>& cfg) :
     ,mNumPreviewBuffers(PlatformData::getRecordingBufNum())
     ,mPreviewBuffers(NULL)
     ,mRecordingBuffers(NULL)
+    ,mSwapRecordingDevice(false)
+    ,mRecordingDeviceSwapped(false)
     ,mNeedReset(false)
     ,mClientSnapshotBuffers(NULL)
     ,mUsingClientSnapshotBuffers(false)
@@ -1189,6 +1191,8 @@ status_t AtomISP::configureRecording()
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
     status_t status = NO_ERROR;
+    FrameInfo *previewConfig;
+    FrameInfo *recordingConfig;
 
     mPreviewDevice = mConfigRecordingPreviewDevice;
 
@@ -1199,10 +1203,19 @@ status_t AtomISP::configureRecording()
         goto err;
     }
 
+    // See function description of applyISPVideoLimitations(), Workaround 2
+    if (mSwapRecordingDevice) {
+        previewConfig = &(mConfig.recording);
+        recordingConfig = &(mConfig.preview);
+    } else {
+        previewConfig  = &(mConfig.preview);
+        recordingConfig = &(mConfig.recording);
+    }
+
     ret = configureDevice(
             mRecordingDevice,
             CI_MODE_VIDEO,
-            &(mConfig.recording),
+            recordingConfig,
             false);
     if (ret < 0) {
         LOGE("Configure recording device failed!");
@@ -1214,12 +1227,21 @@ status_t AtomISP::configureRecording()
     ret = configureDevice(
             mPreviewDevice,
             CI_MODE_VIDEO,
-            &(mConfig.preview),
+            previewConfig,
             false);
     if (ret < 0) {
         LOGE("Configure recording device failed!");
         status = UNKNOWN_ERROR;
         goto err;
+    }
+
+    // The recording device must be configured first, so swap the devices after configuration
+    if (mSwapRecordingDevice) {
+        LOG1("@%s: swapping preview and recording devices", __FUNCTION__);
+        int tmp = mPreviewDevice;
+        mPreviewDevice = mRecordingDevice;
+        mRecordingDevice = tmp;
+        mRecordingDeviceSwapped = true;
     }
 
     return status;
@@ -1262,6 +1284,14 @@ err:
 status_t AtomISP::stopRecording()
 {
     LOG1("@%s", __FUNCTION__);
+
+    if (mRecordingDeviceSwapped) {
+        LOG1("@%s: swapping preview and recording devices back", __FUNCTION__);
+        int tmp = mPreviewDevice;
+        mPreviewDevice = mRecordingDevice;
+        mRecordingDevice = tmp;
+        mRecordingDeviceSwapped = false;
+    }
 
     stopDevice(mRecordingDevice);
     freeRecordingBuffers();
@@ -2116,9 +2146,8 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
  *
  * Workaround 2: The camera firmware doesn't support preview dimensions that
  * are bigger than video dimensions. If a single preview dimension is larger
- * than the video dimension then the FW will downscale the preview resolution
- * to that of the video resolution.
- * Checking if preview is still  bigger than video, this is not supported by the ISP
+ * than the video dimension then the preview and recording devices will be
+ * swapped to work around this limitation.
  *
  * Workaround 3: With some sensors, the configuration for 1080p
  * recording does not give enough processing time (blanking time) to
@@ -2130,7 +2159,7 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
  * @return true: updated preview size
  * @return false: not need to update preview size
  */
-bool AtomISP::applyISPVideoLimitations(CameraParameters *params, bool dvsEnabled) const
+bool AtomISP::applyISPVideoLimitations(CameraParameters *params, bool dvsEnabled)
 {
     LOG1("@%s", __FUNCTION__);
     bool ret = false;
@@ -2167,10 +2196,12 @@ bool AtomISP::applyISPVideoLimitations(CameraParameters *params, bool dvsEnabled
     params->getVideoSize(&videoWidth, &videoHeight);
     if((previewWidth*previewHeight) > (videoWidth*videoHeight)) {
             ret = true;
-            params->setPreviewSize(videoWidth, videoHeight);
-            LOGW("Warning: Video dimension(s) is smaller than preview dimension(s). "
-                 "Overriding preview resolution to video resolution [%d, %d] --> [%d, %d]",
-                 previewWidth, previewHeight, videoWidth, videoHeight);
+            mSwapRecordingDevice = true;
+            LOG1("Video dimension(s) [%d, %d] is smaller than preview dimension(s) [%d, %d]. "
+                 "Triggering swapping of preview and recording devices.",
+                 videoWidth, videoHeight, previewWidth, previewHeight);
+    } else {
+        mSwapRecordingDevice = false;
     }
 
     return ret;
