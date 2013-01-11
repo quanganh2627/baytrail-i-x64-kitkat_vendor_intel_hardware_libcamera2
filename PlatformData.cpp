@@ -60,6 +60,23 @@ static const SensorParams liteon8mParamFiles = {
     false
 };
 
+/* config files for SONY 13M settings */
+static const SensorParams imx135ParamFiles = {
+    {
+        "/etc/atomisp/Preview_UserParameter_imx135.prm",
+        "/etc/atomisp/Video_UserParameter_imx135.prm",
+        "/etc/atomisp/Primary_UserParameter_imx135.prm",
+    },
+    "/system/lib/libSh3aParamsimx135.so",
+    ci_adv_load_camera_2,
+    {
+      NULL,
+      0,
+    },
+    false
+};
+
+
 /* config files for Abico FI86A086 settings */
 static const SensorParams abicoFi86a086Parameters = {
     {
@@ -661,6 +678,8 @@ const SensorParams *PlatformData::getSensorParamsFile(char *sensorId)
         sensorParameters = &abicoFi86a086Parameters;
     } else if (strstr(sensorId, "dis71430m")) {
         sensorParameters = &dis14mParameters;
+    } else if (strstr(sensorId, "imx135") || strstr(sensorId, "imx175")) {
+        sensorParameters = &imx135ParamFiles;
     }
 
     return sensorParameters;
