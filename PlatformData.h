@@ -215,7 +215,7 @@ public:
             supportedPreviewFrameRate = "30,15,10";
             supportedPreviewFPSRange = "(10500,30304),(11000,30304),(11500,30304)";
             defaultPreviewFPSRange = "10500,30304";
-            supportedPreviewSize = "1024x576,800x600,720x480,640x480,640x360,416x312,352x288,320x240,176x144";
+            supportedPreviewSize = "1024x576,800x600,704x576,720x480,640x480,640x360,416x312,352x288,320x240,176x144";
             //For high speed recording, slow motion playback
             hasSlowMotion = false;
         };
