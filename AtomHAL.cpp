@@ -380,6 +380,10 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
     atom_cam.control_thread->run();
 
     camera_dev = (camera_device_t*)malloc(sizeof(*camera_dev));
+    if (camera_dev == NULL) {
+        LOGE("Memory allocation error!");
+        return NO_MEMORY;
+    }
     memset(camera_dev, 0, sizeof(*camera_dev));
     camera_dev->common.tag = HARDWARE_DEVICE_TAG;
     camera_dev->common.version = 0;
