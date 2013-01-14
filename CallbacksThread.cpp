@@ -300,8 +300,12 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
         }
 
         mCallbacks->compressedFrameDone(&jpegBuf);
-        LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
-        jpegBuf.buff->release(jpegBuf.buff);
+        if (jpegBuf.buff != NULL) {
+            LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
+            jpegBuf.buff->release(jpegBuf.buff);
+        } else {
+            LOGW("CallbacksThread received NULL jpegBuf.buff, which should not happen");
+        }
         mJpegRequested--;
 
         if (((snapshotBuf.buff != NULL || snapshotBuf.gfxData != NULL) &&
