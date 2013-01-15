@@ -33,6 +33,7 @@ LOCAL_SRC_FILES := \
 	PerformanceTraces.cpp \
 	Callbacks.cpp \
 	AtomAAA.cpp \
+	AtomAIQ.cpp \
 	AtomDvs.cpp \
 	AtomHAL.cpp \
 	CameraConf.cpp \

@@ -1009,4 +1009,10 @@ int PlatformData::getRecordingBufNum(void)
     return i->mNumRecordingBuffers;
 }
 
+bool PlatformData::supportAIQ(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mSupportAIQ;
+}
+
 }; // namespace android

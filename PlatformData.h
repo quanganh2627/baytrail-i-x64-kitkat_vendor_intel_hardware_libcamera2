@@ -103,6 +103,8 @@ public:
         mContinuousCapture = false;
         mMaxContinuousRawRingBuffer = 0;
         mShutterLagCompensationMs = 80;
+        mSupportAIQ = false;
+
    };
 
  protected:
@@ -352,6 +354,10 @@ public:
      * So we need to make the recording buffers can be configured.
     */
     int mNumRecordingBuffers;
+
+    /* For Intel3A ia_aiq */
+    bool mSupportAIQ;
+
 };
 
 /**
@@ -904,6 +910,15 @@ class PlatformData {
      * \return the recording buffers number
     */
     static int getRecordingBufNum(void);
+
+    /**
+     * Whether Intel3A ia_aiq is supported?
+     *
+     * \return true if supported
+     */
+    // TODO: remove this until official ia_aiq is adopted
+    static bool supportAIQ(void);
+
 };
 
 } /* namespace android */

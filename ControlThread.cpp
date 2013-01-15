@@ -87,7 +87,6 @@ ControlThread::ControlThread(int cameraId) :
     Thread(true) // callbacks may call into java
     ,mCameraId(cameraId)
     ,mISP(NULL)
-    ,mAAA(NULL)
     ,mDvs(NULL)
     ,mCP(NULL)
     ,m3AControls(NULL)
@@ -165,18 +164,12 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mAAA = AtomAAA::getInstance(mISP);
-    if (mAAA == NULL) {
+    // Choose 3A interface based on the sensor type
+    if (createAtom3A() != NO_ERROR) {
         LOGE("error creating AAA");
         goto bail;
     }
 
-    // Choose 3A interface based on the sensor type
-    if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
-        m3AControls = mAAA;
-    } else {
-        m3AControls = mISP;
-    }
     if (m3AControls->init3A() != NO_ERROR) {
         LOGE("Error initializing 3A controls");
         goto bail;
@@ -424,13 +417,13 @@ void ControlThread::deinit()
     if (m3AControls != NULL)
         m3AControls->deinit3A();
 
+    if (m3AControls->isIntel3A()) {
+        delete m3AControls;
+    }
+
     if (mISP != NULL) {
         delete mISP;
         PERFORMANCE_TRACES_BREAKDOWN_STEP("DeleteISP");
-    }
-
-    if (mAAA != NULL) {
-        delete mAAA;
     }
 
     if (mCP != NULL) {
@@ -5254,6 +5247,32 @@ void ControlThread::restoreCurrentPictureParams()
     mStillPictContext.clear();
     updateParameterCache();
     allocateSnapshotBuffers();
+}
+
+/**
+ * Create 3A instance according to sensor type and platform requirement:
+ * - AtomAAA for AcuteLogic 3A
+ * - AtomAIQ for IA AIQ
+ * - AtomISP for SoC 3A
+ */
+status_t ControlThread::createAtom3A()
+{
+    status_t status = NO_ERROR;
+
+    if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+        if(PlatformData::supportAIQ()) {
+            m3AControls = AtomAIQ::getInstance(mISP);
+        } else {
+            m3AControls = AtomAAA::getInstance(mISP);
+        }
+        if (m3AControls == NULL) {
+            LOGE("error creating AAA");
+            status = BAD_VALUE;
+        }
+    } else {
+        m3AControls = mISP;
+    }
+    return status;
 }
 
 bool ControlThread::paramsHasPictureSizeChanged(const CameraParameters *oldParams,

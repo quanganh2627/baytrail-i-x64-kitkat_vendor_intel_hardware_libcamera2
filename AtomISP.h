@@ -31,6 +31,7 @@
 #include "IntelMetadataBuffer.h"
 #endif
 
+#include "AtomAIQ.h"
 #include "AtomAAA.h"
 #include "PlatformData.h"
 #include "CameraConf.h"
@@ -84,6 +85,7 @@ class Callbacks;
 
 class AtomISP : public I3AControls, public IBufferOwner {
 // FIXME: Only needed for NVM parsing "cameranvm_create()" in AtomAAA
+    friend class AtomAIQ;
     friend class AtomAAA;
 
 // public types

@@ -549,6 +549,8 @@ private:
     void storeCurrentPictureParams();
     void restoreCurrentPictureParams();
 
+    status_t createAtom3A();
+
 // inherited from Thread
 private:
     virtual bool threadLoop();
@@ -558,7 +560,6 @@ private:
 
     int mCameraId;
     AtomISP *mISP;
-    AtomAAA *mAAA;
     AtomDvs *mDvs;
     AtomCP  *mCP;
     I3AControls *m3AControls;
