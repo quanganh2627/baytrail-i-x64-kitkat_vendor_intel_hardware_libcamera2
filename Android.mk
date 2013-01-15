@@ -85,6 +85,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libcutils \
 	libbinder \
 	libjpeg \
+	libia_aiq \
 	libandroid \
 	libui \
 	libia_mkn \
