@@ -168,8 +168,8 @@ AtomISP::AtomISP(const sp<CameraConf>& cfg) :
     mCameraConf(cfg)
     ,mMode(MODE_NONE)
     ,mCallbacks(Callbacks::getInstance())
-    ,mNumBuffers(NUM_DEFAULT_BUFFERS)
-    ,mNumPreviewBuffers(NUM_DEFAULT_BUFFERS)
+    ,mNumBuffers(PlatformData::getRecordingBufNum())
+    ,mNumPreviewBuffers(PlatformData::getRecordingBufNum())
     ,mPreviewBuffers(NULL)
     ,mRecordingBuffers(NULL)
     ,mNeedReset(false)
@@ -1210,7 +1210,7 @@ status_t AtomISP::configureRecording()
         goto err;
     }
 
-    mNumPreviewBuffers = NUM_DEFAULT_BUFFERS;
+    mNumPreviewBuffers = PlatformData::getRecordingBufNum();
     ret = configureDevice(
             mPreviewDevice,
             CI_MODE_VIDEO,

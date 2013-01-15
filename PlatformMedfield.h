@@ -124,6 +124,7 @@ public:
         mCameras.editItemAt(0).supportedBurstLength = "1,3,5";
         mCameras.editItemAt(0).supportedBurstFPS = "1,3,5";
         mSupportVideoSnapshot = false;
+        mNumRecordingBuffers = 6;
     }
 };
 

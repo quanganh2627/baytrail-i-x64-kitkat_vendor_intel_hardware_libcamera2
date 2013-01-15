@@ -98,6 +98,7 @@ public:
         mPanoramaMaxSnapshotCount = 10;
         mSupportedVideoSizes = "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1080";
         mSupportVideoSnapshot = true;
+        mNumRecordingBuffers = 9;
    };
 
  protected:
@@ -307,6 +308,14 @@ public:
 
     /* For Zoom factor */
     int mMaxZoomFactor;
+
+    /*
+     * For Recording Buffers number
+     * Because we have 512MB RAM devices, like the Lex,
+     * we have less memory for the recording.
+     * So we need to make the recording buffers can be configured.
+    */
+    int mNumRecordingBuffers;
 };
 
 /**
@@ -770,6 +779,12 @@ class PlatformData {
      */
     static bool supportVideoSnapshot(void);
 
+    /**
+     * Returns the Recording buffers number
+     *
+     * \return the recording buffers number
+    */
+    static int getRecordingBufNum(void);
 };
 
 } /* namespace android */

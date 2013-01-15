@@ -706,4 +706,10 @@ bool PlatformData::supportVideoSnapshot(void)
     return i->mSupportVideoSnapshot;
 }
 
+int PlatformData::getRecordingBufNum(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mNumRecordingBuffers;
+}
+
 }; // namespace android
