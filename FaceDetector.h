@@ -31,13 +31,19 @@ namespace android {
 #define MAX_FACES_DETECTABLE 32
 #define SMILE_THRESHOLD_MAX 100
 #define BLINK_THRESHOLD_MAX 100
-#define SMILE_THRESHOLD 70
-#define BLINK_THRESHOLD 30
+#define SMILE_THRESHOLD 48
+#define BLINK_THRESHOLD 50
 
 // Smart Shutter Parameters
 enum SmartShutterMode {
     SMILE_MODE = 0,
     BLINK_MODE
+};
+
+enum SmileState {
+    NO_SMILE = 0,
+    SMILE,
+    START_OF_SMILE
 };
 
 #define PERSONDB_FILENAME   ".PersonDB.db"

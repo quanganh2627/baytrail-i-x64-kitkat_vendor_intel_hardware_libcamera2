@@ -53,8 +53,6 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     mSmartShutter.captureTriggered = false;
     mSmartShutter.smileThreshold = SMILE_THRESHOLD;
     mSmartShutter.blinkThreshold = BLINK_THRESHOLD;
-    mSmartShutter.smileThreshold = 0;
-    mSmartShutter.blinkThreshold = 0;
 }
 
 PostProcThread::~PostProcThread()

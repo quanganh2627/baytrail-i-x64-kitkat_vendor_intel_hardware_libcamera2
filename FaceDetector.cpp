@@ -61,8 +61,12 @@ void FaceDetector::eyeDetect(ia_frame *frame)
 void FaceDetector::setSmileThreshold(int threshold)
 {
     LOG1("@%s", __FUNCTION__);
-
-    mSmileThreshold = threshold;
+    ia_face_parameters faceLibParams;
+    if (threshold >= 0) {
+        ia_face_get_parameters(mContext, &faceLibParams);
+        faceLibParams.smile_threshold = threshold;
+        ia_face_set_parameters(mContext, &faceLibParams);
+    }
 }
 
 bool FaceDetector::smileDetect(ia_frame *frame)
@@ -75,7 +79,7 @@ bool FaceDetector::smileDetect(ia_frame *frame)
     for (int i = 0; i < mContext->num_faces; i++)
     {
         ia_face face = mContext->faces[i];
-    if (face.smile_state != 0 && face.smile_score > mSmileThreshold) {
+        if (face.smile_state == SMILE) {
             smile = true;
         } else {
             smile = false;
@@ -88,7 +92,7 @@ bool FaceDetector::smileDetect(ia_frame *frame)
 void FaceDetector::setBlinkThreshold(int threshold)
 {
     LOG1("@%s", __FUNCTION__);
-    if (threshold > 0)
+    if (threshold >= 0)
         mBlinkThreshold = threshold;
 }
 
