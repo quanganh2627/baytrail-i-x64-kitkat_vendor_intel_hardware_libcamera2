@@ -1988,6 +1988,31 @@ void AtomISP::closeDevice(int device)
     mDevices[device].state = DEVICE_CLOSED;
 }
 
+/**
+ * Waits for frame data to be available
+ *
+ * \param device V4L2 device id
+ * \param timeout time to wait for data (in ms), timeout of -1
+ *        means to wait indefinitely for data
+ *
+ * \return 0: timeout, -1: error happened, positive number: success
+ */
+int AtomISP::v4l2_poll(int device, int timeout)
+{
+    LOG1("@%s", __FUNCTION__);
+    struct pollfd pfd;
+
+    if (video_fds[device] < 0) {
+        LOG1("Device %d already closed. Do nothing.", device);
+        return -1;
+    }
+
+    pfd.fd = video_fds[device];
+    pfd.events = POLLIN | POLLERR;
+
+    return poll(&pfd, 1, timeout);
+}
+
 status_t AtomISP::selectCameraSensor()
 {
     LOG1("@%s", __FUNCTION__);
@@ -3542,6 +3567,34 @@ bool AtomISP::dataAvailable()
     LOGE("Query for data in invalid mode");
 
     return false;
+}
+
+/**
+ * Polls the preview device node fd for data
+ *
+ * \param timeout time to wait for data (in ms), timeout of -1
+ *        means to wait indefinitely for data
+ * \return -1 for error, 0 if time out, positive number
+ *         if poll was successful
+ */
+int AtomISP::pollPreview(int timeout)
+{
+    LOG2("@%s", __FUNCTION__);
+    return v4l2_poll(mPreviewDevice, timeout);
+}
+
+/**
+ * Polls the preview device node fd for data
+ *
+ * \param timeout time to wait for data (in ms), timeout of -1
+ *        means to wait indefinitely for data
+ * \return -1 for error, 0 if time out, positive number
+ *         if poll was successful
+ */
+int AtomISP::pollCapture(int timeout)
+{
+    LOG2("@%s", __FUNCTION__);
+    return v4l2_poll(V4L2_MAIN_DEVICE, timeout);
 }
 
 bool AtomISP::isBufferValid(const AtomBuffer* buffer) const

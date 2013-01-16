@@ -140,6 +140,9 @@ public:
                          atomisp_frame_status *snapshotStatus = NULL);
     status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
 
+    int pollPreview(int timeout);
+    int pollCapture(int timeout);
+
     bool dataAvailable();
     bool isBufferValid(const AtomBuffer * buffer) const;
 
@@ -392,6 +395,7 @@ private:
 
     int  openDevice(int device);
     void closeDevice(int device);
+    int v4l2_poll(int device, int timeout);
     status_t v4l2_capture_open(int device);
     status_t v4l2_capture_close(int fd);
     status_t v4l2_capture_querycap(int device, struct v4l2_capability *cap);
