@@ -2953,7 +2953,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // FOCUS
     const char* focusMode = params->get(CameraParameters::KEY_FOCUS_MODE);
     const char* focusModes = params->get(CameraParameters::KEY_SUPPORTED_FOCUS_MODES);
-    if (focusMode && strstr(focusModes, focusMode) == NULL) {
+    if (focusMode && focusModes && strstr(focusModes, focusMode) == NULL) {
         LOGE("bad focus mode: %s; supported: %s", focusMode, focusModes);
         return BAD_VALUE;
     }
@@ -2985,7 +2985,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // MISCELLANEOUS
     const char *size = params->get(IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE);
     const char *livePreviewSizes = IntelCameraParameters::getSupportedPanoramaLivePreviewSizes(*params);
-    if (size && strstr(livePreviewSizes, size) == NULL) {
+    if (size && livePreviewSizes && strstr(livePreviewSizes, size) == NULL) {
         LOGE("bad panorama live preview size");
         return BAD_VALUE;
     }
@@ -2993,7 +2993,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // ANTI FLICKER
     const char* flickerMode = params->get(CameraParameters::KEY_ANTIBANDING);
     const char* flickerModes = params->get(CameraParameters::KEY_SUPPORTED_ANTIBANDING);
-    if (flickerMode && strstr(flickerModes, flickerMode) == NULL) {
+    if (flickerMode && flickerModes && strstr(flickerModes, flickerMode) == NULL) {
         LOGE("bad anti flicker mode");
         return BAD_VALUE;
     }
