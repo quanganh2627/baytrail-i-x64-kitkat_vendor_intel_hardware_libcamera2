@@ -2058,7 +2058,8 @@ status_t ControlThread::captureStillPic()
         }
     }
 
-    if (mState == STATE_CONTINUOUS_CAPTURE && !flashOn) {
+    if (mState == STATE_CONTINUOUS_CAPTURE
+        && (!flashOn || flashMode == CAM_AE_FLASH_MODE_TORCH)) {
         assert(mBurstLength <= 1);
         mISP->setContCaptureNumCaptures(1);
         mISP->startOfflineCapture();
