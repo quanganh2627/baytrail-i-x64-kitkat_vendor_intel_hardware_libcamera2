@@ -535,6 +535,11 @@ status_t ControlThread::setParameters(const char *params)
     CameraParameters newParams;
     CameraParameters oldParams;
 
+    if (mParamCache == NULL) {
+        String8 params = mParameters.flatten();
+        int len = params.length();
+        mParamCache = strndup(params.string(), sizeof(char) * len);
+    }
     String8 strOldParams(mParamCache);
     oldParams.unflatten(strOldParams);
     const String8 str_params(params);
@@ -585,9 +590,7 @@ status_t ControlThread::setParameters(const char *params)
         mISP->getFocusDistances(&newParams);
 
         // update param cache
-        if (mParamCache)
-            free(mParamCache);
-
+        free(mParamCache);
         String8 finalParams = newParams.flatten();
         int len = finalParams.length();
         mParamCache = strndup(finalParams.string(), sizeof(char) * len);
