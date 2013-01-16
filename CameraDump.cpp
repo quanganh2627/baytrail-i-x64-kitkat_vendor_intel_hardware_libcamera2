@@ -305,7 +305,11 @@ int CameraDump::dumpImage2File(const void *data, const unsigned int size, unsign
 
         // Get maker note data
         uMknData = mAAA->get3aMakerNote(ia_3a_mknote_mode_raw);
-        LOGD("RAW, mknSize: %d", uMknData->bytes);
+        if (uMknData) {
+            LOGD("RAW, mknSize: %d", uMknData->bytes);
+        } else {
+            LOGW("RAW, no makernote");
+        }
     }
     else
     {
