@@ -128,7 +128,7 @@ PlatformBase* PlatformData::getInstance(void)
 #elif   CLVT
         mInstance = new PlatformCtpRedhookBay();
 
-#elif   DMERR_VV
+#elif   MERR_VV
         mInstance = new PlatformSaltBay();
 
 #else   // take defaults from MFLD_PR2 for all others now
