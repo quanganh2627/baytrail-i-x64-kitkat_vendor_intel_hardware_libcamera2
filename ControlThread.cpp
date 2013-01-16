@@ -4595,9 +4595,21 @@ void ControlThread::storeCurrentPictureParams()
     mStillPictContext.thumbnailWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
     mStillPictContext.thumbnailHeigth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
 
-    mStillPictContext.supportedSnapshotSizes = mParameters.get(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES);
+    const char* supportedSnapshotSizes = mParameters.get(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES);
+    if (supportedSnapshotSizes) {
+        mStillPictContext.supportedSnapshotSizes = supportedSnapshotSizes;
+    } else {
+        LOGE("Missing supported picture sizes");
+        mStillPictContext.supportedSnapshotSizes = "";
+    }
 
-    mStillPictContext.suportedThumnailSizes = mParameters.get(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES);
+    const char* supportedThumbnailSizes = mParameters.get(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES);
+    if (supportedThumbnailSizes) {
+        mStillPictContext.suportedThumnailSizes = supportedThumbnailSizes;
+    } else {
+        LOGE("Missing supported thumbnail sizes");
+        mStillPictContext.suportedThumnailSizes = "";
+    }
 }
 
 /**
