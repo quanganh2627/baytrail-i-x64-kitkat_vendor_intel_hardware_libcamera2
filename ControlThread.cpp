@@ -1482,7 +1482,7 @@ status_t ControlThread::restartPreview(bool videoMode)
 status_t ControlThread::handleMessageStartPreview()
 {
     LOG1("@%s", __FUNCTION__);
-    status_t status;
+    status_t status = NO_ERROR;
     Mutex::Autolock mLock(mPreviewStartLock);
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("handle start preview", -1);
