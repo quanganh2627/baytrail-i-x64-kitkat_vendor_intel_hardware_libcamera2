@@ -125,6 +125,7 @@ public:
     bool isOfflineCaptureRunning() const;
     bool isOfflineCaptureSupported() const;
     status_t returnPreviewBuffers();
+    bool isSharedPreviewBufferConfigured(bool *reserved = NULL) const;
 
     status_t getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameStatus = NULL);
     status_t putPreviewFrame(AtomBuffer *buff);

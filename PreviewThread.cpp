@@ -38,10 +38,10 @@ PreviewThread::PreviewThread(ICallbackPreview *previewDone) :
     ,mMessageQueue("PreviewThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
     ,mPreviewDoneCallback(previewDone)
+    ,mState(STATE_STOPPED)
     ,mMessageHandler(NULL)
 {
     LOG1("@%s", __FUNCTION__);
-
 
     mMessageHandler = new GfxPreviewHandler(this, previewDone);
 
@@ -121,6 +121,7 @@ status_t PreviewThread::setPreviewConfig(int preview_width, int preview_height, 
     msg.data.setPreviewConfig.stride = preview_stride;
     msg.data.setPreviewConfig.format = preview_format;
     msg.data.setPreviewConfig.bufferCount = buffer_count;
+    setState(STATE_CONFIGURED);
     return mMessageQueue.send(&msg);
 }
 
@@ -196,6 +197,95 @@ status_t PreviewThread::handleMessageExit()
     mThreadRunning = false;
     return status;
 }
+
+/**
+ * Public preview state checker
+ *
+ * State transitions do not synchronize with stream.
+ * State distinctly serves the client to deside what
+ * to do with preview frame buffers.
+ */
+PreviewThread::PreviewState PreviewThread::getPreviewState() const
+{
+    Mutex::Autolock lock(&mStateMutex);
+    return mState;
+}
+
+/**
+ * Public state setter for allowed transitions
+ *
+ * Note: state != STATE_STOPPED &&
+ *       state != STATE_ENABLED_HIDDEN
+ *       means that public API shows preview enabled()
+ *       (+ queued startPreview handled by ControlThread)
+ *
+ * Note: only internally handled transition is initially
+ *       STATE_CONFIGURED - which requires the client to
+ *       call setPreviewConfig()
+ *
+ * Allowed transitions:
+ * _STOPPED -> _NO_WINDOW:
+ *   - Preview is started without window handle
+ * _NO_WINDOW -> _STOPPED:
+ * _ENABLED -> _STOPPED:
+ * _ENABLED_HIDDEN -> _STOPPED:
+ *  - Preview is stopped with one of the supported transition
+ * _CONFIGURED -> _ENABLED:
+ *  - preview gets enabled normally through supported transition
+ * _ENABLED_HIDDEN -> _ENABLED:
+ *  - preview gets restored visible (currently no-op internally)
+ */
+status_t PreviewThread::setPreviewState(PreviewState state)
+{
+    LOG1("@%s: state request %d", __FUNCTION__, state);
+    status_t status = INVALID_OPERATION;
+    Mutex::Autolock lock(&mStateMutex);
+
+    switch (state) {
+        case STATE_NO_WINDOW:
+           if (mState == STATE_STOPPED)
+                status = NO_ERROR;
+            break;
+        case STATE_STOPPED:
+            if (mState == STATE_NO_WINDOW
+             || mState == STATE_ENABLED
+             || mState == STATE_ENABLED_HIDDEN)
+                status = NO_ERROR;
+            break;
+        case STATE_ENABLED:
+            if (mState == STATE_CONFIGURED
+             || mState == STATE_ENABLED_HIDDEN)
+                status = NO_ERROR;
+            break;
+        case STATE_ENABLED_HIDDEN:
+            if (mState == STATE_ENABLED)
+                status = NO_ERROR;
+            break;
+        case STATE_CONFIGURED:
+        default:
+            break;
+    }
+
+    if (status != NO_ERROR) {
+        LOG1("Invalid preview state transition request %d => %d", mState, state);
+    } else {
+        mState = state;
+    }
+
+    return status;
+}
+
+/**
+ * Protected state setter for internal transitions
+ */
+status_t PreviewThread::setState(PreviewState state)
+{
+    LOG1("@%s: state %d => %d", __FUNCTION__, mState, state);
+    Mutex::Autolock lock(&mStateMutex);
+    mState = state;
+    return NO_ERROR;
+}
+
 /**
  * Synchronous query to check if a valid native window
  * has been received.
@@ -626,9 +716,16 @@ status_t
 PreviewThread::GfxPreviewHandler::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
 {
     LOG1("@%s: window = %p", __FUNCTION__, msg->window);
+
+    if (mPreviewWindow == msg->window) {
+        LOG1("Received the same window handle, nothing needs to be done.");
+        return NO_ERROR;
+    }
+
     if (mPreviewWindow != NULL) {
         freeGfxPreviewBuffers();
     }
+
     mPreviewWindow = msg->window;
 
     if (mPreviewWindow != NULL) {

@@ -1565,6 +1565,30 @@ status_t AtomISP::stopContinuousPreview()
     return NO_ERROR;
 }
 
+/**
+ * Checks whether local preview buffer pool contains shared buffers
+ *
+ * @param reserved optional argument to check if any of the shared
+ *                 buffers are currently queued
+ */
+bool AtomISP::isSharedPreviewBufferConfigured(bool *reserved) const
+{
+    bool configured = false;
+
+    if (reserved)
+        *reserved = false;
+
+    if (mPreviewBuffers)
+        for (int i = 0 ; i < mNumPreviewBuffers; i++)
+            if (mPreviewBuffers[i].shared) {
+                configured = true;
+                if (reserved && mPreviewBuffers[i].id == -1)
+                    *reserved = true;
+            }
+
+    return configured;
+}
+
 status_t AtomISP::stopCapture()
 {
     LOG1("@%s", __FUNCTION__);

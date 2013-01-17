@@ -280,7 +280,6 @@ private:
     // thread states
     enum State {
         STATE_STOPPED,
-        STATE_PREVIEW_NO_WINDOW,
         STATE_PREVIEW_STILL,
         STATE_PREVIEW_VIDEO,
         STATE_RECORDING,
@@ -335,6 +334,8 @@ private:
     status_t initContinuousCapture();
     status_t releaseContinuousCapture();
     State selectPreviewMode(const CameraParameters &params);
+    status_t handleContinuousPreviewBackgrounding();
+    status_t handleContinuousPreviewForegrounding();
 
     // thread message execution functions
     status_t handleMessageExit();
@@ -588,9 +589,6 @@ private:
     Vector<MessagePicture> mUnqueuedPicBuf; /* store the buffers that have not been returned to ISP in capturing*/
 
     int mSetFPS;                /* The current FPS, used for frame dropping */
-
-    bool mContinuousActiveStoppedEnabled; /* state where API stopPreview() is allowed to leave ISP running */
-    bool mContinuousActiveStopped; /* state where ISP is running in background even preview publicly not enabled */
 }; // class ControlThread
 
 }; // namespace android

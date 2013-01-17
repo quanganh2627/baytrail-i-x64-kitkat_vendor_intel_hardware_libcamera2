@@ -60,6 +60,16 @@ public:
 
 // public methods
 public:
+    enum PreviewState {
+        STATE_STOPPED,
+        STATE_NO_WINDOW,
+        STATE_CONFIGURED,
+        STATE_ENABLED,
+        STATE_ENABLED_HIDDEN
+    };
+
+    PreviewState getPreviewState() const;
+    status_t setPreviewState(PreviewState state);
     void getDefaultParameters(CameraParameters *params);
     bool isWindowConfigured();
     status_t preview(AtomBuffer *buff);
@@ -134,9 +144,11 @@ private:
         MessageData data;
     };
 
+protected:
+    status_t setState(PreviewState state);
+
 // private methods
 private:
-
     // thread message execution functions
     status_t handleMessageExit();
     status_t handleMessageFlush();
@@ -154,6 +166,8 @@ private:
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
     ICallbackPreview *mPreviewDoneCallback;
+    PreviewState mState;
+    mutable Mutex mStateMutex;
 
     class PreviewMessageHandler {
     public:
