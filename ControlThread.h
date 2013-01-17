@@ -336,6 +336,7 @@ private:
     State selectPreviewMode(const CameraParameters &params);
     status_t handleContinuousPreviewBackgrounding();
     status_t handleContinuousPreviewForegrounding();
+    void flushContinuousPreviewToDisplay(nsecs_t snapshotTs);
 
     // thread message execution functions
     status_t handleMessageExit();
@@ -589,6 +590,9 @@ private:
     Vector<MessagePicture> mUnqueuedPicBuf; /* store the buffers that have not been returned to ISP in capturing*/
 
     int mSetFPS;                /* The current FPS, used for frame dropping */
+
+    bool mEnableFocusCbAtStart;     /* for internal control of focus cb's in continuous-mode */
+    bool mEnableFocusMoveCbAtStart; /* for internal control of focus-move cb's in continuous-mode */
 }; // class ControlThread
 
 }; // namespace android

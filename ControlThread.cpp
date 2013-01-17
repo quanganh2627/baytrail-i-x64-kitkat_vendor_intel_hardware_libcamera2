@@ -972,6 +972,10 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
         LOGE("Trying to resume continuous preview from unexpected state!");
         return INVALID_OPERATION;
     }
+    if (mEnableFocusCbAtStart)
+        enableMsgType(CAMERA_MSG_FOCUS);
+    if (mEnableFocusMoveCbAtStart)
+        enableMsgType(CAMERA_MSG_FOCUS_MOVE);
     mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED);
     LOG1("Continuous preview is resumed by foregrounding");
     return NO_ERROR;
@@ -1288,6 +1292,69 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("started preview", 1);
 
     return status;
+}
+
+/**
+ * Dequeues preview buffers to display until certain timestamp
+ *
+ * ControlThread is handling both preview and capture. Current
+ * CSS1.5 is not able to provide constant preview stream while
+ * taking shots, but as the stream is kept running at AtomISP
+ * level, the shortage in preview frames is shorter compared to
+ * preview state changes in this level.
+ *
+ * To address behaviour of preview screen during continuous
+ * shooting, this function is used to flush preview frames from
+ * drivers output queue after taking a shot. This leaves preview
+ * in state close to the shot taken (not necessarily into same
+ * frame due to way how driver sets the timestamps) and makes it
+ * stay alive during max-fps capturing.
+ *
+ * Selected logic always dequeues a single frame and continues
+ * until the requested timestamp is reached. Single frame gets
+ * always flushed to keep preview alive in continuous-shooting
+ * mode.
+ *
+ * It is not ensured that last frame flushed is exactly the same
+ * frame with snapshot, for this one wound need to render the
+ * postview buffer. See, "preview-keep-alive" parameter.
+ */
+void ControlThread::flushContinuousPreviewToDisplay(nsecs_t snapshotTs)
+{
+    LOG1("@%s", __FUNCTION__);
+    atomisp_frame_status frameStatus;
+    nsecs_t previewTs = 0;
+    AtomBuffer buff;
+    status_t status;
+    int count = 0;
+    while (previewTs <= snapshotTs) {
+        if (!mISP->dataAvailable())
+            break;
+        status = mISP->getPreviewFrame(&buff, &frameStatus);
+        if (status != NO_ERROR)
+            break;
+        count++;
+        previewTs =
+            ((nsecs_t)(buff.capture_timestamp.tv_sec)*1000000LL +
+             (nsecs_t)(buff.capture_timestamp.tv_usec));
+        if (frameStatus != ATOMISP_FRAME_STATUS_CORRUPTED
+            && mAAA->is3ASupported()) {
+            m3AThread->newFrame(buff.capture_timestamp);
+            if (count <= 1 || previewTs <= snapshotTs) {
+                status = mPreviewThread->preview(&buff);
+                if (status != NO_ERROR) {
+                    LOGE("Error sending buffer to preview thread");
+                    mISP->putPreviewFrame(&buff);
+                }
+                LOG1("%s: flushed preview frame %lld <= %lld", __FUNCTION__,
+                        previewTs, snapshotTs);
+            } else {
+                mISP->putPreviewFrame(&buff);
+            }
+        } else {
+             mISP->putPreviewFrame(&buff);
+        }
+    }
 }
 
 status_t ControlThread::stopPreviewCore()
@@ -2062,6 +2129,7 @@ status_t ControlThread::captureStillPic()
     bool flashFired = false;
     bool previewKeepAlive =
         isParameterSet(IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE);
+    nsecs_t snapshotTs = 0;
 
     PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE();
 
@@ -2115,6 +2183,11 @@ status_t ControlThread::captureStillPic()
         mISP->setContCaptureNumCaptures(1);
         mISP->startOfflineCapture();
         mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
+        // Snapshot timestamp in continuous-mode doesn't met with actual
+        // frame taken time, but the time when frame is ready to be queueud.
+        // Until better timestamp available, using the systemTime() when we
+        // turn the offline capture mode on.
+        snapshotTs = systemTime()/1000;
     } else {
         if (mState == STATE_CONTINUOUS_CAPTURE)
             LOG1("Fallback from continuous to normal mode for flash");
@@ -2257,9 +2330,6 @@ status_t ControlThread::captureStillPic()
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
                                        snapshotBuffer.frameCounter);
 
-    if (previewKeepAlive && !mHdr.enabled)
-        mPreviewThread->postview(&postviewBuffer);
-
     PictureThread::MetaData picMetaData;
     fillPicMetaData(picMetaData, flashFired);
 
@@ -2300,6 +2370,22 @@ status_t ControlThread::captureStillPic()
     }
 
     stopOfflineCapture();
+
+    if (previewKeepAlive && !mHdr.enabled) {
+        mPreviewThread->postview(&postviewBuffer);
+    } else if (mState == STATE_CONTINUOUS_CAPTURE) {
+        // Continuous mode will keep running keeping 3A active but
+        // preview hidden, disable AF callbacks to act API compatible
+        // Note: lens shouldn't be moving either, but we need that for
+        // better AF behaviour in continuous-shooting mode
+        mEnableFocusCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS);
+        mEnableFocusMoveCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS_MOVE);
+        disableMsgType(CAMERA_MSG_FOCUS_MOVE);
+        disableMsgType(CAMERA_MSG_FOCUS);
+        // flush preview buffers queued during & right after transition to
+        // offline capture mode
+        flushContinuousPreviewToDisplay(snapshotTs);
+    }
 
     return status;
 }
@@ -5483,6 +5569,7 @@ status_t ControlThread::dequeuePreview()
     } else {
         LOGE("Error getting preview frame from ISP");
     }
+
     return status;
 }
 
