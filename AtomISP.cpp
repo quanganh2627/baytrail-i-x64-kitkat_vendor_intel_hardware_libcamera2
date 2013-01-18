@@ -3678,8 +3678,10 @@ errorFree:
             mPreviewBuffers[i].buff = NULL;
         }
     }
-    if (mPreviewBuffers)
+    if (mPreviewBuffers != NULL) {
         delete [] mPreviewBuffers;
+        mPreviewBuffers = NULL;
+    }
 
     return status;
 }
@@ -3732,8 +3734,10 @@ errorFree:
             mRecordingBuffers[i].buff = NULL;
         }
     }
-    if (mRecordingBuffers)
+    if (mRecordingBuffers != NULL) {
         delete [] mRecordingBuffers;
+        mRecordingBuffers = NULL;
+    }
     return status;
 }
 
@@ -3883,7 +3887,7 @@ status_t AtomISP::allocateMetaDataBuffers()
 
 errorFree:
     // On error, free the allocated buffers
-    if (mRecordingBuffers) {
+    if (mRecordingBuffers != NULL) {
         for (int i = 0 ; i < allocatedBufs; i++) {
             if (mRecordingBuffers[i].metadata_buff != NULL) {
                 mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
