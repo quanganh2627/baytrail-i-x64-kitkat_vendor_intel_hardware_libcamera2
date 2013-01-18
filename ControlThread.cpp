@@ -1118,13 +1118,11 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         return STATE_PREVIEW_STILL;
     }
 
-    // Only preview-size of 800x600 is validated to work in
-    // continuous mode.
-    // TODO: to be removed, tracked in BZ 72252
+    // Low preview resolutions have known issues in continuous mode.
+    // TODO: to be removed, tracked in BZ 81396
     int pWidth = 0, pHeight = 0;
     mParameters.getPreviewSize(&pWidth, &pHeight);
-    if (!(pWidth == 800 && pHeight == 600)  &&
-        !(pWidth == 1024 && pHeight == 576)) {
+    if (pWidth < 640 && pHeight < 360) {
         LOG1("@%s: continuous mode not available for preview size %ux%u",
              __FUNCTION__, pWidth, pHeight);
         return STATE_PREVIEW_STILL;
