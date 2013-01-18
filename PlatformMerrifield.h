@@ -75,7 +75,7 @@ public:
         pcam->flipping = PlatformData::SENSOR_FLIP_H |
                        PlatformData::SENSOR_FLIP_V;
         pcam->maxSnapshotWidth = RESOLUTION_720P_WIDTH;
-        pcam->maxSnapshotHeight = RESOLUTION_720P_WIDTH;
+        pcam->maxSnapshotHeight = RESOLUTION_720P_HEIGHT;
         pcam->supportedBurstLength = "";
         pcam->maxEV = "";
         pcam->minEV = "";
