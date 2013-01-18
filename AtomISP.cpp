@@ -58,8 +58,11 @@
 #define RESOLUTION_2MP_TABLE   \
         "320x240,640x480,1024x768,1280x720,1600x900,1600x1200"
 
-#define RESOLUTION_720P_TABLE   \
+#define RESOLUTION_1_3MP_TABLE   \
         "320x240,640x480,1280x720,1280x960"
+
+#define RESOLUTION_720P_TABLE   \
+        "320x240,640x480,1280x720"
 
 #define RESOLUTION_VGA_TABLE   \
         "320x240,640x480"
@@ -127,6 +130,7 @@ AtomISP::cameraInfo AtomISP::sCamInfo[MAX_CAMERA_NODES];
 static const char *resolution_tables[] = {
     RESOLUTION_VGA_TABLE,
     RESOLUTION_720P_TABLE,
+    RESOLUTION_1_3MP_TABLE,
     RESOLUTION_2MP_TABLE,
     RESOLUTION_1080P_TABLE,
     RESOLUTION_3MP_TABLE,
@@ -772,6 +776,8 @@ const char* AtomISP::getMaxSnapShotResolution()
     if (mConfig.snapshot.maxWidth < RESOLUTION_1080P_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_1080P_HEIGHT)
             index--;
     if (mConfig.snapshot.maxWidth < RESOLUTION_2MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_2MP_HEIGHT)
+            index--;
+    if (mConfig.snapshot.maxWidth < RESOLUTION_1_3MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_1_3MP_HEIGHT)
             index--;
     if (mConfig.snapshot.maxWidth < RESOLUTION_720P_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_720P_HEIGHT)
             index--;
