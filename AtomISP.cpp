@@ -94,6 +94,8 @@
 
 #define INTEL_FILE_INJECT_CAMERA_ID 2
 
+#define ATOMISP_POLL_TIMEOUT (5 * 1000)
+
 #define FRAME_SYNC_POLL_TIMEOUT 500
 
 /**
@@ -169,7 +171,9 @@ static void computeZoomRatios(char *zoom_ratio, int max_count){
 ////////////////////////////////////////////////////////////////////
 
 AtomISP::AtomISP(const sp<CameraConf>& cfg) :
-    mCameraConf(cfg)
+     mPreviewStreamSource("PreviewStreamSource", this)
+    ,mFrameSyncSource("FrameSyncSource", this)
+    ,mCameraConf(cfg)
     ,mMode(MODE_NONE)
     ,mCallbacks(Callbacks::getInstance())
     ,mNumBuffers(PlatformData::getRecordingBufNum())
@@ -195,9 +199,10 @@ AtomISP::AtomISP(const sp<CameraConf>& cfg) :
     ,mXnr(0)
     ,mZoomRatios(NULL)
     ,mRawDataDumpSize(0)
-    ,mFrameSyncRequested(false)
+    ,mFrameSyncRequested(0)
     ,mFrameSyncEnabled(false)
     ,mColorEffect(V4L2_COLORFX_NONE)
+    ,mObserverManager()
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -1018,6 +1023,9 @@ void AtomISP::runStartISPActions()
     if (mFlashTorchSetting > 0) {
         setTorchHelper(mFlashTorchSetting);
     }
+
+    // Start All ObserverThread's
+    mObserverManager.setState(OBSERVER_STATE_RUNNING, NULL);
 }
 
 /**
@@ -1125,8 +1133,12 @@ status_t AtomISP::startPreview()
     for (i = 0; i < initialSkips; i++) {
         AtomBuffer p;
         ret = getPreviewFrame(&p);
-        if (ret == NO_ERROR)
+        if (ret == NO_ERROR) {
             ret = putPreviewFrame(&p);
+            if (ret != NO_ERROR) {
+                LOGE("Failed queueing preview frame!");
+            }
+        }
     }
 
     mNumPreviewBuffersQueued = mNumPreviewBuffers;
@@ -1314,7 +1326,7 @@ status_t AtomISP::configureCapture()
     }
 
     // Subscribe to frame sync event if in bracketing mode
-    if (mFrameSyncRequested) {
+    if (mFrameSyncRequested > 0) {
         ret = openDevice(V4L2_ISP_SUBDEV);
         if (ret < 0) {
             LOGE("Failed to open V4L2_ISP_SUBDEV!");
@@ -2016,6 +2028,7 @@ int AtomISP::v4l2_poll(int device, int timeout)
 {
     LOG2("@%s", __FUNCTION__);
     struct pollfd pfd;
+    int ret;
 
     if (video_fds[device] < 0) {
         LOG1("Device %d already closed. Do nothing.", device);
@@ -2023,9 +2036,17 @@ int AtomISP::v4l2_poll(int device, int timeout)
     }
 
     pfd.fd = video_fds[device];
-    pfd.events = POLLIN | POLLERR;
+    pfd.events = POLLPRI | POLLIN | POLLERR;
 
-    return poll(&pfd, 1, timeout);
+
+    ret = poll(&pfd, 1, timeout);
+
+    if (pfd.revents & POLLERR) {
+        LOG1("%s received POLLERR", __FUNCTION__);
+        return -1;
+    }
+
+    return ret;
 }
 
 status_t AtomISP::selectCameraSensor()
@@ -3298,6 +3319,7 @@ int AtomISP::v4l2_capture_try_format(int device, int *w, int *h,
 status_t AtomISP::returnPreviewBuffers()
 {
     LOG1("@%s", __FUNCTION__);
+    status_t status;
     if (mPreviewBuffers) {
         for (int i = 0 ; i < mNumPreviewBuffers; i++) {
             if (mPreviewBuffers[i].shared)
@@ -3307,7 +3329,10 @@ status_t AtomISP::returnPreviewBuffers()
             // identifying already queued frames with negative id
             if (mPreviewBuffers[i].id == -1)
                 continue;
-            putPreviewFrame(&mPreviewBuffers[i]);
+            status = putPreviewFrame(&mPreviewBuffers[i]);
+            if (status != NO_ERROR) {
+                LOGE("Failed queueing preview frame!");
+            }
         }
     }
     return NO_ERROR;
@@ -3331,16 +3356,16 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameS
     mPreviewBuffers[index].frameCounter = mDevices[mPreviewDevice].frameCounter;
     mPreviewBuffers[index].ispPrivate = mSessionId;
     mPreviewBuffers[index].capture_timestamp = buf.timestamp;
+    // atom flag is an extended set of flags, so map V4L2 flags
+    // we are interested into atomisp_frame_status
+    if (buf.flags & V4L2_BUF_FLAG_ERROR)
+        mPreviewBuffers[index].status = (FrameBufferStatus)ATOMISP_FRAME_STATUS_CORRUPTED;
+    else
+        mPreviewBuffers[index].status = (FrameBufferStatus)buf.reserved;
+
+    if (frameStatus)
+        *frameStatus = (atomisp_frame_status)mPreviewBuffers[index].status;
     *buff = mPreviewBuffers[index];
-
-    if (frameStatus) {
-      *frameStatus = (atomisp_frame_status)buf.reserved;
-
-      // atom flag is an extended set of flags, so map V4L2 flags
-      // we are interested into atomisp_frame_status
-      if (buf.flags & V4L2_BUF_FLAG_ERROR)
-        *frameStatus = ATOMISP_FRAME_STATUS_CORRUPTED;
-    }
 
     mNumPreviewBuffersQueued--;
 
@@ -3371,6 +3396,27 @@ status_t AtomISP::putPreviewFrame(AtomBuffer *buff)
     mNumPreviewBuffersQueued++;
 
     return NO_ERROR;
+}
+
+/**
+ * Override function for IBufferOwner
+ *
+ * Note: currently used only for preview
+ */
+void AtomISP::returnBuffer(AtomBuffer* buff)
+{
+    LOG2("@%s", __FUNCTION__);
+    status_t status;
+    if ((buff->type != ATOM_BUFFER_PREVIEW_GFX) &&
+        (buff->type != ATOM_BUFFER_PREVIEW)) {
+        LOGE("Received unexpected buffer!");
+    } else {
+        buff->owner = 0;
+        status = putPreviewFrame(buff);
+        if (status != NO_ERROR) {
+            LOGE("Failed queueing preview frame!");
+        }
+    }
 }
 
 /**
@@ -4829,18 +4875,177 @@ int AtomISP::setFlashIntensity(int intensity)
     return atomisp_set_attribute(main_fd, V4L2_CID_FLASH_INTENSITY, intensity, "Set flash intensity");
 }
 
+/**
+ * TODO: deprecated, utilize observer. See mFrameSyncSource
+ */
 status_t AtomISP::enableFrameSyncEvent(bool enable)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    mFrameSyncRequested = enable;
+    mFrameSyncRequested = (enable)?(mFrameSyncRequested+1):(mFrameSyncRequested-1);
     return status;
 }
 
-status_t AtomISP::pollFrameSyncEvent()
+/**
+ * Return IObserverSubject for ObserverType
+ */
+IObserverSubject* AtomISP::observerSubjectByType(ObserverType t)
+{
+    IObserverSubject *s = NULL;
+    switch (t) {
+        case OBSERVE_PREVIEW_STREAM:
+            s = &mPreviewStreamSource;
+            break;
+        case OBSERVE_FRAME_SYNC_SOF:
+            s = &mFrameSyncSource;
+            break;
+        default:
+            break;
+    }
+    return s;
+}
+
+/**
+ * Attaches observer to one of the defined ObserverType's
+ */
+status_t AtomISP::attachObserver(IAtomIspObserver *observer, ObserverType t)
+{
+    if (t == OBSERVE_FRAME_SYNC_SOF)
+        mFrameSyncRequested++;
+
+    return mObserverManager.attachObserver(observer, observerSubjectByType(t));
+}
+
+/**
+ * Detaches observer from one of the defined ObserverType's
+ */
+status_t AtomISP::detachObserver(IAtomIspObserver *observer, ObserverType t)
+{
+    IObserverSubject *s = observerSubjectByType(t);
+    status_t ret;
+
+    ret = mObserverManager.detachObserver(observer, s);
+    if (ret != NO_ERROR) {
+        LOGE("%s failed!", __FUNCTION__);
+        return ret;
+    }
+
+    if (t == OBSERVE_FRAME_SYNC_SOF) {
+        if (--mFrameSyncRequested <= 0 && mFrameSyncEnabled) {
+            v4l2_unsubscribe_event(video_fds[V4L2_ISP_SUBDEV], V4L2_EVENT_FRAME_SYNC);
+            closeDevice(V4L2_ISP_SUBDEV);
+            mFrameSyncEnabled = false;
+        }
+    }
+
+    return ret;
+}
+
+/**
+ * Pause and synchronise with observer
+ *
+ * Ability to sync into paused state is provided specifically
+ * for ControlThread::stopPreviewCore() and OBSERVE_PREVIEW_STREAM.
+ * This is for the sake of retaining the old semantics with buffers
+ * flushing and keeping the initial preview parallelization changes
+ * minimal (Bug 76149)
+ *
+ * Effectively this call blocks until observer method returns
+ * normally and and then allows client to continue with the original
+ * flow of flushing messages, AtomISP::stop() and release of buffers.
+ *
+ * TODO: The intention might rise e.g to optimize shutterlag
+ * with CSS1.0 by streaming of the device and letting observers
+ * to handle end-of-stream themself. Ideally, this can be done
+ * with the help from IAtomIspObserver notify messages, but it
+ * would require separating the stopping of threads operations
+ * on buffers, the device streamoff and the release of buffers.
+ */
+void AtomISP::pauseObserver(ObserverType t)
+{
+    mObserverManager.setState(OBSERVER_STATE_PAUSED,
+            observerSubjectByType(t), true);
+}
+
+/**
+ * polls and dequeues SOF event into IAtomIspObserver::Message
+ */
+status_t AtomISP::FrameSyncSource::observe(IAtomIspObserver::Message *msg)
 {
     LOG1("@%s", __FUNCTION__);
-    struct pollfd pollFd;
+    struct v4l2_event event;
+    int ret;
+
+    if (!mISP->mFrameSyncEnabled) {
+        msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
+        LOGE("Frame sync not enabled");
+        return INVALID_OPERATION;
+    }
+
+    ret = mISP->v4l2_poll(mISP->video_fds[V4L2_ISP_SUBDEV], FRAME_SYNC_POLL_TIMEOUT);
+
+    if (ret <= 0) {
+        LOGE("Poll failed, disabling SOF event");
+        mISP->v4l2_unsubscribe_event(mISP->video_fds[V4L2_ISP_SUBDEV], V4L2_EVENT_FRAME_SYNC);
+        mISP->closeDevice(V4L2_ISP_SUBDEV);
+        mISP->mFrameSyncEnabled = false;
+        msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
+        return UNKNOWN_ERROR;
+    }
+
+    // poll was successful, dequeue the event right away
+    do {
+        ret = mISP->v4l2_dqevent(mISP->video_fds[V4L2_ISP_SUBDEV], &event);
+        if (ret < 0) {
+            LOGE("Dequeue event failed");
+            msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
+            return UNKNOWN_ERROR;
+        }
+    } while (event.pending > 0);
+
+    // fill observer message
+    msg->id = IAtomIspObserver::MESSAGE_ID_EVENT;
+    msg->data.event.timestamp.tv_sec  = event.timestamp.tv_sec;
+    msg->data.event.timestamp.tv_usec = event.timestamp.tv_nsec / 1000;
+    msg->data.event.sequence = event.sequence;
+
+    return NO_ERROR;
+}
+
+/**
+ * polls and dequeues a preview frame into IAtomIspObserver::Message
+ */
+status_t AtomISP::PreviewStreamSource::observe(IAtomIspObserver::Message *msg)
+{
+    status_t status;
+    int ret;
+    LOG2("@%s", __FUNCTION__);
+
+    msg->id = IAtomIspObserver::MESSAGE_ID_FRAME;
+
+    ret = mISP->pollPreview(ATOMISP_POLL_TIMEOUT);
+    if (ret > 0) {
+        status = mISP->getPreviewFrame(&msg->data.frameBuffer.buff);
+        if (status != NO_ERROR) {
+            msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
+            return UNKNOWN_ERROR;
+        }
+    } else {
+        LOGE("v4l2_poll for preview device failed! (%s)", (ret==0)?"timeout":"error");
+        msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
+        return (ret==0)?TIMED_OUT:UNKNOWN_ERROR;
+    }
+
+    msg->data.frameBuffer.buff.owner = mISP;
+    return NO_ERROR;
+}
+
+/**
+ * TODO: deprecated, utilize observer. See mFrameSyncSource.
+ */
+int AtomISP::pollFrameSyncEvent()
+{
+    LOG1("@%s", __FUNCTION__);
     struct v4l2_event event;
     int ret;
 
@@ -4849,9 +5054,7 @@ status_t AtomISP::pollFrameSyncEvent()
         return INVALID_OPERATION;
     }
 
-    pollFd.fd = video_fds[V4L2_ISP_SUBDEV];
-    pollFd.events = POLLPRI;
-    ret = poll(&pollFd, 1, FRAME_SYNC_POLL_TIMEOUT);
+    ret = v4l2_poll(video_fds[V4L2_ISP_SUBDEV], FRAME_SYNC_POLL_TIMEOUT);
 
     if (ret <= 0) {
         LOGE("Poll failed, disabling SOF event");
@@ -4861,16 +5064,14 @@ status_t AtomISP::pollFrameSyncEvent()
         return UNKNOWN_ERROR;
     }
 
-    // if poll was successful, dequeue the event right away
-    if (pollFd.revents & POLLPRI) {
-        do {
-            ret = v4l2_dqevent(video_fds[V4L2_ISP_SUBDEV], &event);
-            if (ret < 0) {
-                LOGE("Dequeue event failed");
-                return UNKNOWN_ERROR;
-            }
-        } while (event.pending > 0);
-    }
+    // poll was successful, dequeue the event right away
+    do {
+        ret = v4l2_dqevent(video_fds[V4L2_ISP_SUBDEV], &event);
+        if (ret < 0) {
+            LOGE("Dequeue event failed");
+            return UNKNOWN_ERROR;
+        }
+    } while (event.pending > 0);
 
     return NO_ERROR;
 }

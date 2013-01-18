@@ -65,6 +65,21 @@ enum AtomMode {
     MODE_CONTINUOUS_CAPTURE = 3
 };
 
+/*!\enum FrameBufferStatus
+ *
+ * maps with kernel atomisp.h atomisp_frame_status and extends
+ * for HAL's internal use
+ */
+enum FrameBufferStatus {
+    FRAME_STATUS_NA = -1,
+    FRAME_STATUS_OK = ATOMISP_FRAME_STATUS_OK,
+    FRAME_STATUS_CORRUPTED = ATOMISP_FRAME_STATUS_CORRUPTED,
+    FRAME_STATUS_FLASH_EXPOSED = ATOMISP_FRAME_STATUS_FLASH_EXPOSED,
+    FRAME_STATUS_FLASH_PARTIAL = ATOMISP_FRAME_STATUS_FLASH_PARTIAL,
+    FRAME_STATUS_FLASH_FAILED = ATOMISP_FRAME_STATUS_FLASH_FAILED,
+    FRAME_STATUS_SKIPPED,
+};
+
 /*!\enum AtomBufferType
  *
  * Different buffer types that AtomBuffer can encapsulate
@@ -110,6 +125,7 @@ struct AtomBuffer {
     int stride;             /*!< stride of the buffer*/
     int size;
     AtomBufferType type;                /*!< context in which the buffer is used */
+    FrameBufferStatus status;            /*!< status information of carried frame buffer */
     IBufferOwner* owner;                /*!< owner who is responsible to enqueue back to AtomISP*/
     struct timeval  capture_timestamp;  /*!< system timestamp from when the frame was captured */
     void    *gfxData;                   /*!< pointer to the actual data mapped from the gfx buffer

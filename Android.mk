@@ -54,7 +54,8 @@ LOCAL_SRC_FILES := \
 	CameraDump.cpp \
 	CameraAreas.cpp \
 	BracketManager.cpp \
-	AtomAcc.cpp
+	AtomAcc.cpp \
+	AtomIspObserverManager.cpp
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SRC_FILES += \
