@@ -1,11 +1,15 @@
 ifeq ($(USE_CAMERA_STUB),false)
 ifeq ($(USE_CAMERA_HAL2),true)
 LOCAL_PATH:= $(call my-dir)
-USE_INTEL_JPEG := true
 
 include $(CLEAR_VARS)
 
+ifeq ($(TARGET_DEVICE),merr_vv)
+USE_INTEL_JPEG := false
+else
+USE_INTEL_JPEG := true
 LOCAL_CFLAGS += -DENABLE_INTEL_METABUFFER
+endif
 
 # Intel camera extras (HDR, face detection, etc.)
 ifeq ($(USE_INTEL_CAMERA_EXTRAS),true)
