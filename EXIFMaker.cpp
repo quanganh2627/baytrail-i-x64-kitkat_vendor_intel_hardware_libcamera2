@@ -263,7 +263,7 @@ void EXIFMaker::pictureTaken(void)
 void EXIFMaker::initialize(const CameraParameters &params)
 {
     LOG1("@%s: params = %p", __FUNCTION__, &params);
-
+    const char *p = NULL;
     /* We clear the exif attributes, so we won't be using some old values
      * from a previous EXIF generation.
      */
@@ -306,6 +306,23 @@ void EXIFMaker::initialize(const CameraParameters &params)
 
     // light source, 0 means light source unknown
     exifAttributes.light_source = 0;
+    p = params.get(CameraParameters::KEY_WHITE_BALANCE);
+    String8 whiteBalance(p, (p == NULL ? 0 : strlen(p))); // String8 segfaults if given a NULL
+    if (!whiteBalance.isEmpty()) {
+        if(whiteBalance == CameraParameters::WHITE_BALANCE_AUTO) {
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_UNKNOWN;
+        } else if(whiteBalance == CameraParameters::WHITE_BALANCE_INCANDESCENT) {
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_TUNGSTEN;
+        } else if(whiteBalance == CameraParameters::WHITE_BALANCE_FLUORESCENT) {
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_FLUORESCENT;
+        } else if(whiteBalance == CameraParameters::WHITE_BALANCE_DAYLIGHT) {
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_DAYLIGHT;
+        } else if(whiteBalance == CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT) {
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_CLOUDY_WEATHER;
+        } else if(whiteBalance == CameraParameters::WHITE_BALANCE_SHADE) {
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_SHADE;
+        }
+    }
 
     // gain control, 0 = none;
     // 1 = low gain up; 2 = high gain up; 3 = low gain down; 4 = high gain down
@@ -335,6 +352,20 @@ void EXIFMaker::initialize(const CameraParameters &params)
     exifAttributes.zoom_ratio.num = (params.getInt(CameraParameters::KEY_ZOOM) + 10);
     exifAttributes.zoom_ratio.den = 10;
     LOG1("EXIF: zoom=%u/%u", exifAttributes.zoom_ratio.num, exifAttributes.zoom_ratio.den);
+
+    // metering mode, 0 = normal; 1 = soft; 2 = hard; other = reserved
+    exifAttributes.metering_mode = EXIF_METERING_UNKNOWN;
+    p = params.get(IntelCameraParameters::KEY_AE_METERING_MODE);
+    String8 meteringMode(p, (p == NULL ? 0 : strlen(p))); // String8 segfaults if given a NULL
+    if (!meteringMode.isEmpty()) {
+        if (meteringMode == IntelCameraParameters::AE_METERING_MODE_AUTO) {
+            exifAttributes.metering_mode = EXIF_METERING_AVERAGE;
+        } else if (meteringMode == IntelCameraParameters::AE_METERING_MODE_CENTER) {
+            exifAttributes.metering_mode = EXIF_METERING_CENTER;
+        } else if (meteringMode == IntelCameraParameters::AE_METERING_MODE_SPOT) {
+            exifAttributes.metering_mode = EXIF_METERING_SPOT;
+        }
+    }
 
     initializeLocation(params);
 
