@@ -1352,7 +1352,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
     // ISP started so frame counter will be 1
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("started preview", 1);
-
+    mPreviewFramesDone = 0;
     return status;
 }
 
@@ -1470,6 +1470,8 @@ status_t ControlThread::stopPreviewCore()
         mAAA->deinit3aStatDump();
 
     mPreviewThread->setPreviewState(PreviewThread::STATE_STOPPED);
+
+    LOG2("Preview stopped after %d frames", mPreviewFramesDone);
 
     return status;
 }
@@ -1619,7 +1621,6 @@ status_t ControlThread::handleMessageStartPreview()
     }
 preview_started:
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("preview started", -1);
-    mPreviewFramesDone = 0;
     mPreviewStartQueued = false;
 
     return status;
