@@ -69,7 +69,7 @@ public:
         blinkShutterDefault = "off";
         blinkShutterSupported = "on,off";
         panoramaDefault = "off";
-        panoramaSupported = "onoff";
+        panoramaSupported = "on,off";
         sceneDetectionDefault = "off";
         sceneDetectionSupported = "on,off";
         //FIXME CONSTRUCTOR
