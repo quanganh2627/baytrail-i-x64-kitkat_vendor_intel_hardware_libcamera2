@@ -115,8 +115,8 @@ private:
     int mSmileThreshold;
     int mBlinkThreshold;
     bool mFaceRecognitionRunning;
+    void *mAccHandle;
     bool mThreadRunning;
-
 
 // function stubs for building without Intel extra features
 #else

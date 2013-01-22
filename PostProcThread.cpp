@@ -81,9 +81,7 @@ status_t PostProcThread::init(void* isp)
         return UNKNOWN_ERROR;
     }
 
-    if (isp != NULL) {
-        mFaceDetector->setAcc(isp);
-    }
+    mIspHandle = isp;
 
     return NO_ERROR;
 }
@@ -434,6 +432,45 @@ status_t PostProcThread::handleMessageIsFaceRecognitionRunning()
     return status;
 }
 
+void PostProcThread::loadIspExtensions(bool videoMode)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_LOAD_ISP_EXTENSIONS;
+    msg.data.loadIspExtensions.videoMode = videoMode;
+    mMessageQueue.send(&msg, MESSAGE_ID_LOAD_ISP_EXTENSIONS);
+}
+
+status_t PostProcThread::handleMessageLoadIspExtensions(const MessageLoadIspExtensions& params)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    if (mIspHandle != NULL &&
+            params.videoMode == false)
+        mFaceDetector->setAcc(mIspHandle);
+
+    mMessageQueue.reply(MESSAGE_ID_LOAD_ISP_EXTENSIONS, status);
+    return status;
+}
+
+void PostProcThread::unloadIspExtensions()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_UNLOAD_ISP_EXTENSIONS;
+    mMessageQueue.send(&msg, MESSAGE_ID_UNLOAD_ISP_EXTENSIONS);
+}
+
+status_t PostProcThread::handleMessageUnloadIspExtensions()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mFaceDetector->setAcc(NULL);
+    mMessageQueue.reply(MESSAGE_ID_UNLOAD_ISP_EXTENSIONS, status);
+    return status;
+}
+
 status_t PostProcThread::handleExit()
 {
     LOG1("@%s", __FUNCTION__);
@@ -585,6 +622,12 @@ status_t PostProcThread::waitForAndExecuteMessage()
             break;
         case MESSAGE_ID_IS_FACE_RECOGNITION_RUNNING:
             status = handleMessageIsFaceRecognitionRunning();
+            break;
+        case MESSAGE_ID_LOAD_ISP_EXTENSIONS:
+            status = handleMessageLoadIspExtensions(msg.data.loadIspExtensions);
+            break;
+        case MESSAGE_ID_UNLOAD_ISP_EXTENSIONS:
+            status = handleMessageUnloadIspExtensions();
             break;
         default:
             status = INVALID_OPERATION;

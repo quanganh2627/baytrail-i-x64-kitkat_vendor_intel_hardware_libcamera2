@@ -1289,6 +1289,9 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         return status;
     }
 
+    // Load any ISP extensions before ISP is started
+    mPostProcThread->loadIspExtensions(videoMode);
+
     mISP->getPreviewSize(&width, &height,&stride);
     mNumBuffers = mISP->getNumBuffers(videoMode);
     AtomBuffer *pvBufs;
@@ -1436,6 +1439,7 @@ status_t ControlThread::stopPreviewCore()
     mMessageQueue.remove(MESSAGE_ID_PREVIEW_DONE);
     mMessageQueue.remove(MESSAGE_ID_RELEASE_PREVIEW_FRAME);
 
+    mPostProcThread->unloadIspExtensions();
     mPostProcThread->flushFrames();
 
     if (mState == STATE_PREVIEW_VIDEO ||
