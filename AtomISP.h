@@ -281,8 +281,6 @@ private:
      */
     static const int V4L2_MAX_DEVICE_COUNT  = V4L2_ISP_SUBDEV + 1;
 
-    static const int NUM_DEFAULT_BUFFERS = 9;
-
     static const int NUM_PREVIEW_BUFFERS = 6;
 
     struct FrameInfo {
