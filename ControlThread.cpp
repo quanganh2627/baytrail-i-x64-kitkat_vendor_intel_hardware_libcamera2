@@ -4931,56 +4931,58 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
                 previewAspectRatio);
     }
 
-    // see if video params have changed
-    newParams->getVideoSize(&newWidth, &newHeight);
-    oldParams->getVideoSize(&oldWidth, &oldHeight);
-    if (newWidth != oldWidth || newHeight != oldHeight) {
-        videoAspectRatio = 1.0 * newWidth / newHeight;
-        LOG1("Video size is changing: old=%dx%d; new=%dx%d; ratio=%.3f",
-                oldWidth, oldHeight,
-                newWidth, newHeight,
-                videoAspectRatio);
-        previewFormatChanged = true;
-        /*
-         *  Camera client requested a new video size, so make sure that requested
-         *  video size matches requested preview size. If it does not, then select
-         *  a corresponding preview size to match the aspect ratio with video
-         *  aspect ratio. Also, the video size must be at least as preview size
-         */
-        if (fabsf(videoAspectRatio - previewAspectRatio) > ASPECT_TOLERANCE) {
-            LOGW("Requested video (%dx%d) aspect ratio does not match preview \
-                 (%dx%d) aspect ratio! The preview will be stretched!",
+    if(videoMode) {
+        // see if video params have changed
+        newParams->getVideoSize(&newWidth, &newHeight);
+        oldParams->getVideoSize(&oldWidth, &oldHeight);
+        if (newWidth != oldWidth || newHeight != oldHeight) {
+            videoAspectRatio = 1.0 * newWidth / newHeight;
+            LOG1("Video size is changing: old=%dx%d; new=%dx%d; ratio=%.3f",
+                    oldWidth, oldHeight,
                     newWidth, newHeight,
-                    previewWidth, previewHeight);
-        }
-    } else {
-        videoAspectRatio = 1.0 * oldWidth / oldHeight;
-        LOG1("Video size is unchanged: old=%dx%d; ratio=%.3f",
-                oldWidth, oldHeight,
-                videoAspectRatio);
-        /*
-         *  Camera client did not specify any video size, so make sure that
-         *  requested preview size matches our default video size. If it does
-         *  not, then select a corresponding video size to match the aspect
-         *  ratio with preview aspect ratio.
-         */
-        if (fabsf(videoAspectRatio - previewAspectRatio) > ASPECT_TOLERANCE
-            && !mPreviewForceChanged) {
-            LOG1("Our video (%dx%d) aspect ratio does not match preview (%dx%d) aspect ratio!",
-                  newWidth, newHeight, previewWidth, previewHeight);
-            newParams->getSupportedVideoSizes(sizes);
-            for (size_t i = 0; i < sizes.size(); i++) {
-                float thisSizeAspectRatio = 1.0 * sizes[i].width / sizes[i].height;
-                if (fabsf(thisSizeAspectRatio - previewAspectRatio) <= ASPECT_TOLERANCE) {
-                    if (sizes[i].width < previewWidth || sizes[i].height < previewHeight) {
-                        // This video size is smaller than preview, can't use it
-                        continue;
+                    videoAspectRatio);
+            previewFormatChanged = true;
+            /*
+             *  Camera client requested a new video size, so make sure that requested
+             *  video size matches requested preview size. If it does not, then select
+             *  a corresponding preview size to match the aspect ratio with video
+             *  aspect ratio. Also, the video size must be at least as preview size
+             */
+            if (fabsf(videoAspectRatio - previewAspectRatio) > ASPECT_TOLERANCE) {
+                LOGW("Requested video (%dx%d) aspect ratio does not match preview \
+                     (%dx%d) aspect ratio! The preview will be stretched!",
+                        newWidth, newHeight,
+                        previewWidth, previewHeight);
+            }
+        } else {
+            videoAspectRatio = 1.0 * oldWidth / oldHeight;
+            LOG1("Video size is unchanged: old=%dx%d; ratio=%.3f",
+                    oldWidth, oldHeight,
+                    videoAspectRatio);
+            /*
+             *  Camera client did not specify any video size, so make sure that
+             *  requested preview size matches our default video size. If it does
+             *  not, then select a corresponding video size to match the aspect
+             *  ratio with preview aspect ratio.
+             */
+            if (fabsf(videoAspectRatio - previewAspectRatio) > ASPECT_TOLERANCE
+                && !mPreviewForceChanged) {
+                LOG1("Our video (%dx%d) aspect ratio does not match preview (%dx%d) aspect ratio!",
+                      newWidth, newHeight, previewWidth, previewHeight);
+                newParams->getSupportedVideoSizes(sizes);
+                for (size_t i = 0; i < sizes.size(); i++) {
+                    float thisSizeAspectRatio = 1.0 * sizes[i].width / sizes[i].height;
+                    if (fabsf(thisSizeAspectRatio - previewAspectRatio) <= ASPECT_TOLERANCE) {
+                        if (sizes[i].width < previewWidth || sizes[i].height < previewHeight) {
+                            // This video size is smaller than preview, can't use it
+                            continue;
+                        }
+                        newWidth = sizes[i].width;
+                        newHeight = sizes[i].height;
+                        LOG1("Forcing video to %dx%d to match preview aspect ratio!", newWidth, newHeight);
+                        newParams->setVideoSize(newWidth, newHeight);
+                        break;
                     }
-                    newWidth = sizes[i].width;
-                    newHeight = sizes[i].height;
-                    LOG1("Forcing video to %dx%d to match preview aspect ratio!", newWidth, newHeight);
-                    newParams->setVideoSize(newWidth, newHeight);
-                    break;
                 }
             }
         }
