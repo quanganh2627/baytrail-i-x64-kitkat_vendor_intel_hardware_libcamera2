@@ -4341,11 +4341,11 @@ int AtomISP::dumpSnapshot(int snapshotIndex, int postviewIndex)
                     LOGE("mmap failed");
             else {
                 LOG1("MMAP raw address from kernel 0x%p", start);
+                cameraDump->dumpImage2Buf(start, mRawDataDumpSize, mConfig.snapshot.stride,
+                                          mConfig.snapshot.height);
+                if (-1 == munmap(start, PAGE_ALIGN(mRawDataDumpSize)))
+                    LOGE("munmap failed");
             }
-            cameraDump->dumpImage2Buf(start, mRawDataDumpSize, mConfig.snapshot.stride,
-                                      mConfig.snapshot.height);
-            if (-1 == munmap(start, PAGE_ALIGN(mRawDataDumpSize)))
-                LOGE("munmap failed");
         }
     }
 
