@@ -100,7 +100,7 @@ status_t PanoramaThread::handleMessageStartPanorama(void)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-#ifdef ENABLE_INTEL_EXTRAS
+
     mContext = ia_panorama_init(NULL);
     if (mContext == NULL) {
         LOGE("fatal - error initializing panorama");
@@ -128,7 +128,7 @@ status_t PanoramaThread::handleMessageStartPanorama(void)
     if (status != NO_ERROR) {
         LOGE("Error starting PanoramaStitchThread!");
     }
-#endif
+
     return status;
 }
 
@@ -148,9 +148,9 @@ status_t PanoramaThread::handleMessageStopPanorama(const MessageStopPanorama &st
     if (mContext) {
         if (mPanoramaTotalCount > 0)
             cancelStitch();
-#ifdef ENABLE_INTEL_EXTRAS
+
         ia_panorama_uninit(mContext);
-#endif
+
         mContext = NULL;
     }
     if (mPostviewBuf.buff != NULL) {
@@ -214,9 +214,8 @@ status_t PanoramaThread::reInit()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-#ifdef ENABLE_INTEL_EXTRAS
     ia_panorama_reinit(mContext);
-#endif
+
     return status;
 }
 
@@ -237,7 +236,7 @@ bool PanoramaThread::isBlurred(int width, int dx, int dy) const
 bool PanoramaThread::detectOverlap(ia_frame *frame)
 {
     LOG2("@%s", __FUNCTION__);
-#ifdef ENABLE_INTEL_EXTRAS
+
     if (mPanoramaTotalCount < mPanoramaMaxSnapshotCount) {
         frame->format = ia_frame_format_nv12;
         int ret = ia_panorama_detect_overlap(mContext, frame);
@@ -260,7 +259,7 @@ bool PanoramaThread::detectOverlap(ia_frame *frame)
             return true;
         }
     }
-#endif
+
     return false;
 }
 
@@ -274,14 +273,12 @@ status_t PanoramaThread::stitch(AtomBuffer *img, AtomBuffer *pv)
 
     Message msg;
     msg.id = MESSAGE_ID_STITCH;
-#ifdef ENABLE_INTEL_EXTRAS
-    // handleStitch() is noop, when ENABLE_INTEL_EXTRAS
-    // is not defined, so OK to leave these out.
+
     msg.data.stitch.img = *img;
     msg.data.stitch.pv = *pv;
     msg.data.stitch.stitchId = ia_panorama_prepare_stitch(mContext);
     LOG2("stitchId = %d", msg.data.stitch.stitchId);
-#endif
+
     return mMessageQueue.send(&msg, MESSAGE_ID_STITCH);
 }
 
@@ -289,9 +286,8 @@ status_t PanoramaThread::cancelStitch()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-#ifdef ENABLE_INTEL_EXTRAS
     mPanoramaStitchThread->cancel(mContext);
-#endif
+
     return status;
 }
 
@@ -334,7 +330,7 @@ status_t PanoramaThread::handleMessageFinalize()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-#ifdef ENABLE_INTEL_EXTRAS
+
     if (mState == PANORAMA_DETECTING_OVERLAP || mState == PANORAMA_WAITING_FOR_SNAPSHOT)
         handleMessageStopPanoramaCapture(); // drops state to PANORAMA_STARTED
 
@@ -428,7 +424,7 @@ status_t PanoramaThread::handleMessageFinalize()
         mPanoramaCallback->panoramaFinalized(&img, &pvImg);
     } else
         mPanoramaCallback->panoramaFinalized(&img, NULL);
-#endif
+
     return status;
 }
 
@@ -511,7 +507,7 @@ status_t PanoramaThread::handleStitch(const MessageStitch &stitch)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-#ifdef ENABLE_INTEL_EXTRAS
+
     int ret = mPanoramaStitchThread->stitch(mContext, stitch.img, stitch.stitchId);
 
     if (ret < 0) {
@@ -556,7 +552,7 @@ status_t PanoramaThread::handleStitch(const MessageStitch &stitch)
     }
 
     mMessageQueue.reply(MESSAGE_ID_STITCH, status);
-#endif
+
     return status;
 }
 
@@ -609,9 +605,7 @@ status_t PanoramaThread::PanoramaStitchThread::cancel(ia_panorama_state* mContex
     }
 
     // cancel last stitch
-#ifdef ENABLE_INTEL_EXTRAS
     ia_panorama_cancel_stitching(mContext);
-#endif
 
     // flush (releases memory from last stitch, too)
     return flush();
@@ -694,9 +688,9 @@ status_t PanoramaThread::PanoramaStitchThread::handleMessageStitch(MessageStitch
         iaFrame.stride = iaFrame.width;
     }
     int ret = OK;
-#ifdef ENABLE_INTEL_EXTRAS
+
     ret = ia_panorama_stitch(stitch.mContext, &iaFrame, stitchId);
-#endif
+
     stitch.img.buff->release(stitch.img.buff);
 
     if (ret >= 0)
