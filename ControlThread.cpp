@@ -2522,8 +2522,11 @@ status_t ControlThread::captureStillPic()
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("get frame", 1);
 
-    if (mState == STATE_CONTINUOUS_CAPTURE && mBurstLength > 1) {
-        mBurstQbufs = mISP->getSnapshotNum();
+    if (mState == STATE_CONTINUOUS_CAPTURE) {
+        // TODO: to be removed once preview data flow is moved fully to
+        //       a separate thread
+        if (mBurstLength > 1)
+            mBurstQbufs = mISP->getSnapshotNum();
         status = waitForCaptureStart();
         if (status != NO_ERROR) {
             LOGE("Error while waiting for capture to start");
