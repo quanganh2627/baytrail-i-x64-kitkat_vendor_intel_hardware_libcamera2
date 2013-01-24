@@ -65,7 +65,7 @@ public:
     ~CameraParamsLogger();
 
     void dump() const;
-    void dumpDifference(CameraParamsLogger &otherParams);
+    void dumpDifference(const CameraParamsLogger &otherParams) const;
 
 private:
     int splitParam(String8 &inParam , String8  &aKey, String8 &aValue);
