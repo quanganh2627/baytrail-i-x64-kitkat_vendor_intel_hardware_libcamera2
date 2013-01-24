@@ -1074,24 +1074,25 @@ status_t ControlThread::initContinuousCapture()
 /**
  * Frees resources related to continuous capture
  *
- * This function covers resources related to continous capture,
- * which cannot be freed in stopPreviewCore().
+ * \param flushPictures whether to flush the picture thread
  */
-status_t ControlThread::releaseContinuousCapture()
+void ControlThread::releaseContinuousCapture(bool flushPictures)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    // picture thread cannot be flushed in stopPreviewCore()
-    // as that breaks the flash-fallback mechanism (switch
-    // to old CAPTURE mode for taking a flash picture)
-    status = mPictureThread->flushBuffers();
-    if (status != NO_ERROR) {
-        LOGE("Error flushing PictureThread!");
-        return status;
+    mUnqueuedPicBuf.clear();
+    mISP->releaseCaptureBuffers();
+    if (flushPictures) {
+        // This covers cases when we need to fallback from
+        // continuous mode to online mode to do a capture.
+        // As capture is not runnning in these cases, flush
+        // is not needed.
+        status = mPictureThread->flushBuffers();
+        if (status != NO_ERROR) {
+            LOGE("Error flushing PictureThread!");
+        }
     }
-
-    return status;
 }
 
 /**
@@ -1419,7 +1420,12 @@ void ControlThread::flushContinuousPreviewToDisplay(nsecs_t snapshotTs)
     }
 }
 
-status_t ControlThread::stopPreviewCore()
+/**
+ * Stops ISP and frees allocated resources
+ *
+ * \param flushPictures whether to flush the picture thread
+ */
+status_t ControlThread::stopPreviewCore(bool flushPictures)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -1456,10 +1462,8 @@ status_t ControlThread::stopPreviewCore()
     }
     status = mPreviewThread->returnPreviewBuffers();
 
-    if (oldState == STATE_CONTINUOUS_CAPTURE) {
-        mUnqueuedPicBuf.clear();
-        mISP->releaseCaptureBuffers();
-    }
+    if (oldState == STATE_CONTINUOUS_CAPTURE)
+        releaseContinuousCapture(flushPictures);
 
     delete [] mCoupledBuffers;
     // set to null because frames can be returned to hal in stop state
@@ -1630,7 +1634,6 @@ status_t ControlThread::handleMessageStopPreview()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    State oldState = mState;
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("stop preview", -1);
 
@@ -1649,10 +1652,6 @@ status_t ControlThread::handleMessageStopPreview()
             status = INVALID_OPERATION;
         }
     }
-
-    if (oldState == STATE_CONTINUOUS_CAPTURE
-        && mState == STATE_STOPPED)
-        releaseContinuousCapture();
 
     // Loose our preview window handle and let service maintain
     // it between stop and start
@@ -2332,6 +2331,34 @@ status_t ControlThread::burstCaptureSkipFrames()
     return status;
 }
 
+/**
+ * Starts the capture process in continuous capture mode.
+ */
+status_t ControlThread::continuousStartStillCapture(bool useFlash)
+{
+    LOG2("@%s: ", __FUNCTION__);
+    status_t status = NO_ERROR;
+    if (useFlash == false) {
+        mCallbacksThread->shutterSound();
+        startOfflineCapture();
+        mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
+    }
+    else {
+        // Flushing pictures will also clear counters for
+        // requested pictures, which would break the
+        // flash-fallback, so we need to avoid the flush (this
+        // is ok as we have just run preflash sequence).
+        LOG1("Fallback from continuous to normal mode for flash");
+        bool flushPicThread = false;
+        status = stopPreviewCore(flushPicThread);
+        if (status == NO_ERROR)
+            mState = STATE_CAPTURE;
+        else
+            LOGE("Error stopping preview!");
+    }
+    return status;
+}
+
 status_t ControlThread::captureStillPic()
 {
     LOG1("@%s: ", __FUNCTION__);
@@ -2393,19 +2420,16 @@ status_t ControlThread::captureStillPic()
         }
     }
 
-    if (mState == STATE_CONTINUOUS_CAPTURE
-        && (!flashOn || flashMode == CAM_AE_FLASH_MODE_TORCH)) {
-        mCallbacksThread->shutterSound();
-        startOfflineCapture();
-        mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
+    if (mState == STATE_CONTINUOUS_CAPTURE) {
+        bool useFlash = flashOn && flashMode != CAM_AE_FLASH_MODE_TORCH;
+        status = continuousStartStillCapture(useFlash);
+
         // Snapshot timestamp in continuous-mode doesn't met with actual
         // frame taken time, but the time when frame is ready to be queueud.
         // Until better timestamp available, using the systemTime() when we
         // turn the offline capture mode on.
         snapshotTs = systemTime()/1000;
     } else {
-        if (mState == STATE_CONTINUOUS_CAPTURE)
-            LOG1("Fallback from continuous to normal mode for flash");
         status = stopPreviewCore();
         if (status != NO_ERROR) {
             LOGE("Error stopping preview!");

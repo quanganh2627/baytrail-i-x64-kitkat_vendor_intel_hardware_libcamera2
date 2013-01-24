@@ -329,16 +329,17 @@ private:
     // state machine helper functions
     status_t restartPreview(bool videoMode);
     status_t startPreviewCore(bool videoMode);
-    status_t stopPreviewCore();
+    status_t stopPreviewCore(bool flushPictures = true);
 
     status_t initContinuousCapture();
-    status_t releaseContinuousCapture();
+    void releaseContinuousCapture(bool flushPictures);
     status_t startOfflineCapture();
     State selectPreviewMode(const CameraParameters &params);
     status_t handleContinuousPreviewBackgrounding();
     status_t handleContinuousPreviewForegrounding();
     void flushContinuousPreviewToDisplay(nsecs_t snapshotTs);
     status_t configureContinuousRingBuffer();
+    status_t continuousStartStillCapture(bool useFlash);
 
     // thread message execution functions
     status_t handleMessageExit();
