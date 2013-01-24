@@ -79,7 +79,7 @@ CameraParamsLogger::~CameraParamsLogger() {
 }
 
 void
-CameraParamsLogger::dump() {
+CameraParamsLogger::dump() const {
     LOG2("Dumping Camera Params");
     for (unsigned int i = 0; i < mPropMap.size(); i++) {
         LOG2("%s=%s",mPropMap.keyAt(i).string(), mPropMap.valueAt(i).string());
