@@ -32,6 +32,13 @@
 
 namespace android {
 
+#ifdef ENABLE_INTEL_EXTRAS
+
+// The interval for polling stitch status in case of failure:
+static const useconds_t STITCH_CHECK_INTERVAL_USEC = 500000; // 0.5 secs
+// Max count of stitch check tries:
+static const int STITCH_CHECK_LIMIT = 10;
+
 PanoramaThread::PanoramaThread(ICallbackPanorama *panoramaCallback) :
     Thread(false)
     ,mPanoramaCallback(panoramaCallback)
@@ -267,8 +274,14 @@ status_t PanoramaThread::stitch(AtomBuffer *img, AtomBuffer *pv)
 
     Message msg;
     msg.id = MESSAGE_ID_STITCH;
+#ifdef ENABLE_INTEL_EXTRAS
+    // handleStitch() is noop, when ENABLE_INTEL_EXTRAS
+    // is not defined, so OK to leave these out.
     msg.data.stitch.img = *img;
     msg.data.stitch.pv = *pv;
+    msg.data.stitch.stitchId = ia_panorama_prepare_stitch(mContext);
+    LOG2("stitchId = %d", msg.data.stitch.stitchId);
+#endif
     return mMessageQueue.send(&msg, MESSAGE_ID_STITCH);
 }
 
@@ -327,9 +340,23 @@ status_t PanoramaThread::handleMessageFinalize()
 
     mPanoramaStitchThread->flush();
 
+    int checkCnt = 0;
+    // ia_panorama_check_stitch_status() should always return 0, as all remained stiching
+    // is processed in flush()
+    while (ia_panorama_check_stitch_status(mContext) != 0 && checkCnt < STITCH_CHECK_LIMIT) {
+        LOG2("Polling ia_panorama_check_stitch_status()");
+        usleep(STITCH_CHECK_INTERVAL_USEC);
+        ++checkCnt;
+    }
+
+    if (checkCnt == STITCH_CHECK_LIMIT) {
+        LOGE("Panorama stitching error: stitch check retries exceeded");
+        return UNKNOWN_ERROR;
+    }
+
     ia_frame *pFrame = ia_panorama_finalize(mContext);
     if (!pFrame) {
-        LOGE("ia_panorama_finalize failed");
+        LOGE("ia_panorama_finalize() failed");
         return UNKNOWN_ERROR;
     }
 
@@ -485,7 +512,7 @@ status_t PanoramaThread::handleStitch(const MessageStitch &stitch)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 #ifdef ENABLE_INTEL_EXTRAS
-    int ret = mPanoramaStitchThread->stitch(mContext, stitch.img);
+    int ret = mPanoramaStitchThread->stitch(mContext, stitch.img, stitch.stitchId);
 
     if (ret < 0) {
         LOGE("ia_panorama_stitch failed, error = %d", ret);
@@ -603,7 +630,8 @@ status_t PanoramaThread::PanoramaStitchThread::requestExitAndWait()
     // propagate call to base class
     return Thread::requestExitAndWait();
 }
-status_t PanoramaThread::PanoramaStitchThread::stitch(ia_panorama_state* mContext, AtomBuffer frame)
+
+status_t PanoramaThread::PanoramaStitchThread::stitch(ia_panorama_state* mContext, AtomBuffer frame, int stitchId)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -643,6 +671,7 @@ status_t PanoramaThread::PanoramaStitchThread::stitch(ia_panorama_state* mContex
     msg.id = MESSAGE_ID_STITCH;
     msg.data.stitch.img = copy;
     msg.data.stitch.mContext = mContext;
+    msg.data.stitch.stitchId = stitchId;
     mMessageQueue.send(&msg);
     return OK;
 }
@@ -650,6 +679,8 @@ status_t PanoramaThread::PanoramaStitchThread::stitch(ia_panorama_state* mContex
 status_t PanoramaThread::PanoramaStitchThread::handleMessageStitch(MessageStitch &stitch)
 {
     LOG1("@%s", __FUNCTION__);
+    int stitchId = stitch.stitchId;
+
     ia_frame iaFrame;
     iaFrame.data = stitch.img.buff->data;
     iaFrame.size = stitch.img.size;
@@ -664,7 +695,7 @@ status_t PanoramaThread::PanoramaStitchThread::handleMessageStitch(MessageStitch
     }
     int ret = OK;
 #ifdef ENABLE_INTEL_EXTRAS
-    ret = ia_panorama_stitch(stitch.mContext, &iaFrame);
+    ret = ia_panorama_stitch(stitch.mContext, &iaFrame, stitchId);
 #endif
     stitch.img.buff->release(stitch.img.buff);
 
@@ -788,6 +819,8 @@ status_t PanoramaThread::handleExit()
     mThreadRunning = false;
     return status;
 }
+
+#endif // ENABLE_INTEL_EXTRAS
 
 }; // namespace android
 
