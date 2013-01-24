@@ -1972,7 +1972,7 @@ int AtomISP::stopDevice(int device, bool leaveConfigured)
 
     int fd = video_fds[device];
 
-    if (fd >= 0) {
+    if (fd >= 0 && mDevices[device].state == DEVICE_STARTED) {
         //stream off
         v4l2_capture_streamoff(fd);
 
