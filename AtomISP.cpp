@@ -3338,6 +3338,31 @@ status_t AtomISP::returnPreviewBuffers()
     return NO_ERROR;
 }
 
+/**
+ * Pushes all recording buffers back into driver except the ones already queued
+ *
+ * Note: Currently no support for shared buffers for cautions
+ */
+status_t AtomISP::returnRecordingBuffers()
+{
+    LOG1("@%s", __FUNCTION__);
+    if (mRecordingBuffers) {
+        for (int i = 0 ; i < mNumBuffers; i++) {
+            if (mRecordingBuffers[i].shared)
+                return UNKNOWN_ERROR;
+            if (mRecordingBuffers[i].buff == NULL)
+                return UNKNOWN_ERROR;
+            // identifying already queued frames with negative id
+            if (mRecordingBuffers[i].id == -1)
+                continue;
+            putRecordingFrame(&mRecordingBuffers[i]);
+        }
+    }
+    return NO_ERROR;
+}
+
+
+
 status_t AtomISP::getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameStatus)
 {
     LOG2("@%s", __FUNCTION__);
@@ -3498,7 +3523,7 @@ status_t AtomISP::putRecordingFrame(AtomBuffer *buff)
             &v4l2_buf_pool[mRecordingDevice].bufs[buff->id]) < 0) {
         return UNKNOWN_ERROR;
     }
-
+    mRecordingBuffers[buff->id].id = -1;
     mNumRecordingBuffersQueued++;
 
     return NO_ERROR;

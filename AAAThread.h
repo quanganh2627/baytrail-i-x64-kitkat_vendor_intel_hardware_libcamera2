@@ -22,6 +22,7 @@
 #include "AtomAAA.h"
 #include "AtomDvs.h"
 #include "MessageQueue.h"
+#include "IAtomIspObserver.h"
 
 namespace android {
 
@@ -53,7 +54,7 @@ class AtomAAA;
  *       AAAThread. But this is not yet supported by the underlying
  *       libraries so for now AtomAAA is used.
  */
-class AAAThread : public Thread {
+class AAAThread : public Thread, public IAtomIspObserver {
 
 // constructor destructor
 public:
@@ -63,6 +64,10 @@ public:
 // Thread overrides
 public:
     status_t requestExitAndWait();
+
+// IAtomIspObserver overrides
+public:
+    bool atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state);
 
 // public methods
 public:

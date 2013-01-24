@@ -33,17 +33,19 @@
 
 namespace android {
 
-PreviewThread::PreviewThread(ICallbackPreview *previewDone) :
+PreviewThread::PreviewThread() :
     Thread(true) // callbacks may call into java
     ,mMessageQueue("PreviewThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
-    ,mPreviewDoneCallback(previewDone)
     ,mState(STATE_STOPPED)
+    ,mSetFPS(30)
+    ,mLastFrameTs(0)
+    ,mFramesDone(0)
     ,mMessageHandler(NULL)
 {
     LOG1("@%s", __FUNCTION__);
 
-    mMessageHandler = new GfxPreviewHandler(this, previewDone);
+    mMessageHandler = new GfxPreviewHandler(this);
 
     assert(mMessageHandler != NULL);
 }
@@ -55,6 +57,78 @@ PreviewThread::~PreviewThread()
     delete mMessageHandler;
 }
 
+status_t PreviewThread::setCallback(ICallbackPreview *cb, ICallbackPreview::CallbackType t)
+{
+    LOG2("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_SET_CALLBACK;
+    msg.data.setCallback.icallback = cb;
+    msg.data.setCallback.type = t;
+    return mMessageQueue.send(&msg);
+}
+
+status_t PreviewThread::handleMessageSetCallback(MessageSetCallback *msg)
+{
+    CallbackVector *cbVector =
+        (msg->type == ICallbackPreview::INPUT
+      || msg->type == ICallbackPreview::INPUT_ONCE)?
+         &mInputBufferCb : &mOutputBufferCb;
+
+    CallbackVector::iterator it = cbVector->begin();
+    for (;it != cbVector->end(); ++it) {
+        if (it->value == msg->icallback)
+            return ALREADY_EXISTS;
+        if (msg->type == ICallbackPreview::OUTPUT_WITH_DATA &&
+            it->key == ICallbackPreview::OUTPUT_WITH_DATA) {
+            return ALREADY_EXISTS;
+        }
+    }
+
+    cbVector->push(callback_pair_t(msg->type, msg->icallback));
+    return NO_ERROR;
+}
+
+void PreviewThread::inputBufferCallback()
+{
+    if (mInputBufferCb.empty())
+        return;
+    Vector<CallbackVector::iterator> toDrop;
+    CallbackVector::iterator it = mInputBufferCb.begin();
+    for (;it != mInputBufferCb.end(); ++it) {
+        it->value->previewBufferCallback(NULL, it->key);
+        if (it->key == ICallbackPreview::INPUT_ONCE)
+            toDrop.push(it);
+    }
+    while (!toDrop.empty()) {
+        mInputBufferCb.erase(toDrop.top());
+        toDrop.pop();
+    }
+}
+
+bool PreviewThread::outputBufferCallback(AtomBuffer *buff)
+{
+    bool ownership_passed = false;
+    if (mOutputBufferCb.empty())
+        return ownership_passed;
+    Vector<CallbackVector::iterator> toDrop;
+    CallbackVector::iterator it = mOutputBufferCb.begin();
+    for (;it != mOutputBufferCb.end(); ++it) {
+        if (it->key == ICallbackPreview::OUTPUT_WITH_DATA) {
+            ownership_passed = true;
+            it->value->previewBufferCallback(buff, it->key);
+        } else {
+            it->value->previewBufferCallback(buff, it->key);
+        }
+        if (it->key == ICallbackPreview::OUTPUT_ONCE)
+            toDrop.push(it);
+    }
+    while (!toDrop.empty()) {
+        mInputBufferCb.erase(toDrop.top());
+        toDrop.pop();
+    }
+    return ownership_passed;
+}
+
 status_t PreviewThread::enableOverlay(bool set, int rotation)
 {
     LOG1("@%s", __FUNCTION__);
@@ -64,9 +138,9 @@ status_t PreviewThread::enableOverlay(bool set, int rotation)
     mMessageHandler = NULL;
 
     if(set)
-        mMessageHandler = new OverlayPreviewHandler(this, mPreviewDoneCallback, rotation);
+        mMessageHandler = new OverlayPreviewHandler(this, rotation);
     else
-        mMessageHandler = new GfxPreviewHandler(this, mPreviewDoneCallback);
+        mMessageHandler = new GfxPreviewHandler(this);
 
     if (mMessageHandler == NULL)
         status = NO_MEMORY;
@@ -100,6 +174,35 @@ void PreviewThread::getDefaultParameters(CameraParameters *params)
     params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, previewFormats);
 
 }
+
+status_t PreviewThread::setFramerate(int fps)
+{
+    mSetFPS = fps;
+    return NO_ERROR;
+}
+
+/**
+ * This function implements the frame skip algorithm.
+ * - If user requests 15fps, drop every even frame
+ * - If user requests 10fps, drop two frames every three frames
+ * @returns true: skip,  false: not skip
+ */
+// TODO: The above only applies to 30fps. Generalize this to support other sensor FPS as well.
+bool PreviewThread::checkSkipFrame(int frameNum)
+{
+    if (mSetFPS == 15 && (frameNum % 2 == 0)) {
+        LOG2("Preview FPS: %d. Skipping frame num: %d", mSetFPS, frameNum);
+        return true;
+    }
+
+    if (mSetFPS == 10 && (frameNum % 3 != 0)) {
+        LOG2("Preview FPS: %d. Skipping frame num: %d", mSetFPS, frameNum);
+        return true;
+    }
+
+    return false;
+}
+
 
 status_t PreviewThread::setPreviewWindow(struct preview_stream_ops *window)
 {
@@ -171,6 +274,49 @@ status_t PreviewThread::preview(AtomBuffer *buff)
     return mMessageQueue.send(&msg);
 }
 
+/**
+ * override for IAtomIspObserver::atomIspNotify()
+ *
+ * PreviewThread gets attached to receive preview stream here.
+ *
+ * We decide wether to pass buffers further or not
+ *
+ * Skip frame request for target video fps is also checked here,
+ * since we want to output the same fps to display and video.
+ * ControlThread is currently observing the same event, so we
+ * pass the skip information within FrameBufferMessage::status.
+ */
+bool PreviewThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state)
+{
+    LOG2("@%s", __FUNCTION__);
+    if (!msg) {
+        LOG1("Received observer state change");
+        // We are currently not receiving MESSAGE_ID_END_OF_STREAM when stream
+        // stops. Observer gets paused when device is about to be stopped and
+        // after pausing, we no longer receive new frames for the same session.
+        // Reset frame counter based on any observer state change
+        mFramesDone = 0;
+        return false;
+    }
+
+    AtomBuffer *buff = &msg->data.frameBuffer.buff;
+    if (msg->id == MESSAGE_ID_FRAME) {
+        if (checkSkipFrame(buff->frameCounter)) {
+            buff->status = FRAME_STATUS_SKIPPED;
+            buff->owner->returnBuffer(buff);
+        } else if(buff->status == FRAME_STATUS_CORRUPTED) {
+            buff->owner->returnBuffer(buff);
+        } else {
+            PerformanceTraces::FaceLock::getCurFrameNum(buff->frameCounter);
+            preview(buff);
+        }
+    } else {
+        LOG1("Received unexpected notify message id %d!", msg->id);
+    }
+
+    return false;
+}
+
 status_t PreviewThread::postview(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
@@ -215,7 +361,8 @@ PreviewThread::PreviewState PreviewThread::getPreviewState() const
  * Public state setter for allowed transitions
  *
  * Note: state != STATE_STOPPED &&
- *       state != STATE_ENABLED_HIDDEN
+ *       state != STATE_ENABLED_HIDDEN &&
+ *       state != STATE_ENABLED_HIDDEN_PASSTHROUGH
  *       means that public API shows preview enabled()
  *       (+ queued startPreview handled by ControlThread)
  *
@@ -234,6 +381,12 @@ PreviewThread::PreviewState PreviewThread::getPreviewState() const
  *  - preview gets enabled normally through supported transition
  * _ENABLED_HIDDEN -> _ENABLED:
  *  - preview gets restored visible (currently no-op internally)
+ *  _ENABLED -> _HIDDEN:
+ *  - public API preview state is shown disabled, we retain the
+ *    preview stream active, but do not send buffers to display
+ *  _ENABLED -> _HIDDEN_PASSTHROUGH:
+ *  - public API preview state is shown disabled, we keep passing
+ *    buffers to display
  */
 status_t PreviewThread::setPreviewState(PreviewState state)
 {
@@ -249,15 +402,18 @@ status_t PreviewThread::setPreviewState(PreviewState state)
         case STATE_STOPPED:
             if (mState == STATE_NO_WINDOW
              || mState == STATE_ENABLED
-             || mState == STATE_ENABLED_HIDDEN)
+             || mState == STATE_ENABLED_HIDDEN
+             || mState == STATE_ENABLED_HIDDEN_PASSTHROUGH)
                 status = NO_ERROR;
             break;
         case STATE_ENABLED:
             if (mState == STATE_CONFIGURED
-             || mState == STATE_ENABLED_HIDDEN)
+             || mState == STATE_ENABLED_HIDDEN
+             || mState == STATE_ENABLED_HIDDEN_PASSTHROUGH)
                 status = NO_ERROR;
             break;
         case STATE_ENABLED_HIDDEN:
+        case STATE_ENABLED_HIDDEN_PASSTHROUGH:
             if (mState == STATE_ENABLED)
                 status = NO_ERROR;
             break;
@@ -310,6 +466,18 @@ status_t PreviewThread::handleMessageIsWindowConfigured()
     mMessageQueue.reply(MESSAGE_ID_WINDOW_QUERY, status);
     return status;
 }
+
+/**
+ * helper function to update per-frame locally tracked timestamps and counters
+ */
+void PreviewThread::frameDone(AtomBuffer &buff)
+{
+    LOG2("@%s", __FUNCTION__);
+    mLastFrameTs = nsecs_t(buff.capture_timestamp.tv_sec) * 1000000LL
+                 + nsecs_t(buff.capture_timestamp.tv_usec);
+    mFramesDone++;
+}
+
 status_t PreviewThread::waitForAndExecuteMessage()
 {
     LOG2("@%s", __FUNCTION__);
@@ -325,6 +493,7 @@ status_t PreviewThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_PREVIEW:
             status = mMessageHandler->handlePreview(&msg.data.preview);
+            frameDone(msg.data.preview.buff);
             break;
 
         case MESSAGE_ID_POSTVIEW:
@@ -350,9 +519,14 @@ status_t PreviewThread::waitForAndExecuteMessage()
         case MESSAGE_ID_FETCH_PREVIEW_BUFS:
             status = mMessageHandler->handleFetchPreviewBuffers();
             break;
+
         case MESSAGE_ID_RETURN_PREVIEW_BUFS:
-           status = mMessageHandler->handleReturnPreviewBuffers();
-           break;
+            status = mMessageHandler->handleReturnPreviewBuffers();
+            break;
+
+        case MESSAGE_ID_SET_CALLBACK:
+            status = handleMessageSetCallback(&msg.data.setCallback);
+            break;
 
         default:
             LOGE("Invalid message");
@@ -404,13 +578,12 @@ status_t PreviewThread::handleMessageFlush()
 /******************************************************************************
  *  Common Preview Message Handler methods
  *****************************************************************************/
-PreviewThread::PreviewMessageHandler::PreviewMessageHandler(PreviewThread* aThread, ICallbackPreview *previewDone) :
+PreviewThread::PreviewMessageHandler::PreviewMessageHandler(PreviewThread* aThread) :
             mPreviewWindow(NULL)
            ,mPvThread(aThread)
            ,mPreviewBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_PREVIEW))
            ,mCallbacks(Callbacks::getInstance())
            ,mCallbacksThread(CallbacksThread::getInstance())
-           ,mPreviewDoneCallback(previewDone)
            ,mDebugFPS(new DebugFrameRate())
            ,mPreviewWidth(640)
            ,mPreviewHeight(480)
@@ -477,8 +650,8 @@ void PreviewThread::PreviewMessageHandler::allocateLocalPreviewBuf(void)
  *  GFx Preview message Handler
  *****************************************************************************/
 
-PreviewThread::GfxPreviewHandler::GfxPreviewHandler(PreviewThread* aThread, ICallbackPreview *previewDone) :
-         PreviewMessageHandler(aThread, previewDone)
+PreviewThread::GfxPreviewHandler::GfxPreviewHandler(PreviewThread* aThread) :
+         PreviewMessageHandler(aThread)
         ,mBuffersInWindow(0), mNumOfPreviewBuffers(0), mFetchDone(false)
 {
     LOG1("@%s",__FUNCTION__);
@@ -577,30 +750,6 @@ AtomBuffer* PreviewThread::GfxPreviewHandler::dequeueFromWindow()
 }
 
 /**
- * Calls previewDone callback if data is available
- *
- * Handles both internally and externally allocated preview
- * frames.
- */
-status_t
-PreviewThread::GfxPreviewHandler::callPreviewDone(MessagePreview *msg)
-{
-    LOG2("@%s", __FUNCTION__);
-    AtomBuffer *bufToReturn = NULL;
-
-    if (msg->buff.type == ATOM_BUFFER_PREVIEW) {
-        mPreviewDoneCallback->previewDone(&(msg->buff));
-        return NO_ERROR;
-    }
-
-    bufToReturn = dequeueFromWindow();
-    if (bufToReturn)
-        mPreviewDoneCallback->previewDone(bufToReturn);
-
-    return NO_ERROR;
-}
-
-/**
  *  handler for each preview frame when we are using Gfx plane
  *  and Gfx buffers to render preview
  *
@@ -610,10 +759,16 @@ PreviewThread::GfxPreviewHandler::handlePreview(MessagePreview *msg)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-
+    bool passedToGfx = false;
     LOG2("Buff: id = %d, data = %p",
             msg->buff.id,
             msg->buff.gfxData);
+
+    mPvThread->inputBufferCallback();
+
+    PreviewState state = mPvThread->getPreviewState();
+    if (state != STATE_ENABLED && state != STATE_ENABLED_HIDDEN_PASSTHROUGH)
+        goto skip_displaying;
 
     if (mPreviewWindow != 0) {
         int err;
@@ -648,12 +803,14 @@ PreviewThread::GfxPreviewHandler::handlePreview(MessagePreview *msg)
         } else {
             // proceed in 0-copy path
             bufToEnqueue = msg->buff.mNativeBufPtr;
+            passedToGfx = true;
         }
 
         if (bufToEnqueue != NULL) {
             if ((err = mPreviewWindow->enqueue_buffer(mPreviewWindow,
                             bufToEnqueue)) != 0) {
                 LOGE("Surface::queueBuffer returned error %d", err);
+                passedToGfx = false;
             } else {
                 for (size_t i = 0; i< mPreviewInClient.size(); i++) {
                     buffer_handle_t *bufHandle =
@@ -664,7 +821,6 @@ PreviewThread::GfxPreviewHandler::handlePreview(MessagePreview *msg)
                     }
                 }
                 mBuffersInWindow++;
-
                 // preview frame shown, update perf traces
                 PERFORMANCE_TRACES_PREVIEW_SHOWN(msg->buff.frameCounter);
             }
@@ -706,8 +862,24 @@ PreviewThread::GfxPreviewHandler::handlePreview(MessagePreview *msg)
             mCallbacksThread->previewFrameDone(&mPreviewBuf);
     }
 
+skip_displaying:
     mDebugFPS->update(); // update fps counter
-    status = callPreviewDone(msg);
+
+    if (!passedToGfx) {
+        // passing the input buffer as output
+        if (!mPvThread->outputBufferCallback(&(msg->buff)))
+            msg->buff.owner->returnBuffer(&msg->buff);
+    } else {
+        // input buffer was passed to Gfx queue, now try
+        // dequeueing to replace output callback buffer
+        AtomBuffer *outputBuffer = dequeueFromWindow();
+        if (outputBuffer) {
+            // restore the owner from input
+            outputBuffer->owner = msg->buff.owner;
+            if (!mPvThread->outputBufferCallback(outputBuffer))
+                msg->buff.owner->returnBuffer(outputBuffer);
+        }
+    }
 
     return status;
 }
@@ -978,7 +1150,6 @@ PreviewThread::GfxPreviewHandler::getGfxBufferStride(void)
         LOGE("Surface::dequeueBuffer returned error %d", err);
 
     return stride;
-
 }
 
 /**
@@ -1078,9 +1249,8 @@ status_t PreviewThread::GfxPreviewHandler::handlePostview(MessagePreview *msg)
  * the stride requirements of the color format
  */
 PreviewThread::OverlayPreviewHandler::OverlayPreviewHandler(PreviewThread* aThread,
-                                                            ICallbackPreview *previewDone,
                                                             int OverlayRotation) :
-        PreviewMessageHandler(aThread, previewDone),
+        PreviewMessageHandler(aThread),
         mRotation(OverlayRotation)
 {
 
@@ -1124,6 +1294,8 @@ PreviewThread::OverlayPreviewHandler::handlePreview(MessagePreview *msg)
     LOG2("Buff: id = %d, data = %p",
            msg->buff.id,
            msg->buff.buff->data);
+
+    mPvThread->inputBufferCallback();
 
     if (mPreviewWindow != 0) {
        buffer_handle_t *buf;
@@ -1202,7 +1374,8 @@ PreviewThread::OverlayPreviewHandler::handlePreview(MessagePreview *msg)
     }
     mDebugFPS->update(); // update fps counter
 exit:
-    mPreviewDoneCallback->previewDone(&msg->buff);
+    if (!mPvThread->outputBufferCallback(&msg->buff))
+        msg->buff.owner->returnBuffer(&msg->buff);
 
     return status;
 }

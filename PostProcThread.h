@@ -26,6 +26,7 @@
 #include "MessageQueue.h"
 #include "IFaceDetector.h"
 #include "PanoramaThread.h"
+#include "PreviewThread.h" // ICallbackPreview
 
 namespace android {
 
@@ -41,7 +42,8 @@ public:
 
 
 class PostProcThread : public IFaceDetector,
-                       public Thread
+                       public Thread,
+                       public ICallbackPreview
 {
 
 // constructor/destructor
@@ -53,9 +55,15 @@ public:
 // Common methods
     void getDefaultParameters(CameraParameters *params, CameraParameters *intel_parameters, int cameraId);
     void flushFrames();
+    status_t setZoom(int zoomRatio);
+    status_t setRotation(int rotation);
 // Thread overrides
 public:
     status_t requestExitAndWait();
+
+// ICallbackPreview overrides
+public:
+    virtual void previewBufferCallback(AtomBuffer *buff, ICallbackPreview::CallbackType t);
 
 public:
     SmartShutterMode mode;
@@ -68,7 +76,7 @@ public:
     };
     virtual void startFaceDetection();
     virtual void stopFaceDetection(bool wait=false);
-    virtual int sendFrame(AtomBuffer *img, int zoomRatio);
+    virtual int sendFrame(AtomBuffer *img);
     virtual void startSmartShutter(SmartShutterMode mode, int level);
     virtual void stopSmartShutter(SmartShutterMode mode);
     virtual bool isSmartRunning();
@@ -127,6 +135,8 @@ private:
         MESSAGE_ID_IS_FACE_RECOGNITION_RUNNING,
         MESSAGE_ID_LOAD_ISP_EXTENSIONS,
         MESSAGE_ID_UNLOAD_ISP_EXTENSIONS,
+        MESSAGE_ID_SET_ZOOM,
+        MESSAGE_ID_SET_ROTATION,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -137,7 +147,10 @@ private:
     //
     struct MessageFrame {
         AtomBuffer img;
-        int zoomRatio;
+    };
+
+    struct MessageConfig {
+        int value;
     };
 
     struct MessageSmartShutter {
@@ -164,6 +177,9 @@ private:
         MessageFaceAAA faceAAA;
         // MESSAGE_ID_LOAD_ISP_EXTENSIONS
         MessageLoadIspExtensions loadIspExtensions;
+        // MESSAGE_ID_SET_ZOOM
+        // MESSAGE_ID_SET_ROTATION
+        MessageConfig config;
     };
 
     // message id and message data
@@ -202,6 +218,8 @@ private:
     status_t handleMessageIsFaceRecognitionRunning();
     status_t handleMessageLoadIspExtensions(const MessageLoadIspExtensions&);
     status_t handleMessageUnloadIspExtensions();
+    status_t handleMessageSetZoom(MessageConfig &msg);
+    status_t handleMessageSetRotation(MessageConfig &msg);
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -227,6 +245,8 @@ private:
     MeteringMode mOldAeMeteringMode;
     SmartShutterParams mSmartShutter;
     void *mIspHandle;
+    int mRotation;
+    int mZoomRatio;
 }; // class PostProcThread
 
 }; // namespace android

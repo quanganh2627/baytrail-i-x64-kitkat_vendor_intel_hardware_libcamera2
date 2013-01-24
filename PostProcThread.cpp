@@ -112,6 +112,31 @@ void PostProcThread::startFaceDetection()
     mMessageQueue.send(&msg);
 }
 
+/**
+ * override for ICallbackPreview::previewBufferCallback()
+ *
+ * ControlThread assigns PostProcThread generally to PreviewThreads
+ * output data callback.
+ *
+ * We decide wether to pass buffers to post processing or not.
+ */
+void PostProcThread::previewBufferCallback(AtomBuffer *buff, ICallbackPreview::CallbackType t)
+{
+    LOG2("@%s", __FUNCTION__);
+    if (t != ICallbackPreview::OUTPUT_WITH_DATA) {
+        LOGE("Unexpected preview buffer callback type!");
+        return;
+    }
+
+    if (mFaceDetectionRunning || mPanoramaThread->getState() == PANORAMA_DETECTING_OVERLAP) {
+        if (sendFrame(buff) < 0) {
+           buff->owner->returnBuffer(buff);
+        }
+    } else {
+        buff->owner->returnBuffer(buff);
+    }
+}
+
 status_t PostProcThread::handleMessageStartFaceDetection()
 {
     LOG1("@%s", __FUNCTION__);
@@ -480,7 +505,35 @@ status_t PostProcThread::handleExit()
     return status;
 }
 
-int PostProcThread::sendFrame(AtomBuffer *img, int zoomRatio)
+status_t PostProcThread::setZoom(int zoomRatio)
+{
+    Message msg;
+    msg.id = MESSAGE_ID_SET_ZOOM;
+    msg.data.config.value = zoomRatio;
+    return mMessageQueue.send(&msg);
+}
+
+status_t PostProcThread::setRotation(int rotation)
+{
+    Message msg;
+    msg.id = MESSAGE_ID_SET_ROTATION;
+    msg.data.config.value = rotation;
+    return mMessageQueue.send(&msg);
+}
+
+status_t PostProcThread::handleMessageSetZoom(MessageConfig &msg)
+{
+    mZoomRatio = msg.value;
+    return NO_ERROR;
+}
+
+status_t PostProcThread::handleMessageSetRotation(MessageConfig &msg)
+{
+    mRotation = msg.value;
+    return NO_ERROR;
+}
+
+int PostProcThread::sendFrame(AtomBuffer *img)
 {
     LOG2("@%s: buf=%p, width=%d height=%d rotation=%d", __FUNCTION__, img, img->width , img->height, img->rotation);
     Message msg;
@@ -500,8 +553,6 @@ int PostProcThread::sendFrame(AtomBuffer *img, int zoomRatio)
     } else {
         LOGW("@%s: NULL AtomBuffer frame", __FUNCTION__);
     }
-
-    msg.data.frame.zoomRatio = zoomRatio;
 
     if (mMessageQueue.send(&msg) == NO_ERROR)
         return 0;
@@ -628,6 +679,11 @@ status_t PostProcThread::waitForAndExecuteMessage()
             break;
         case MESSAGE_ID_UNLOAD_ISP_EXTENSIONS:
             status = handleMessageUnloadIspExtensions();
+        case MESSAGE_ID_SET_ZOOM:
+            status = handleMessageSetZoom(msg.data.config);
+            break;
+        case MESSAGE_ID_SET_ROTATION:
+            status = handleMessageSetRotation(msg.data.config);
             break;
         default:
             status = INVALID_OPERATION;
@@ -709,7 +765,7 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
 
         face_metadata.number_of_faces = mFaceDetector->getFaces(faces, frameData.width, frameData.height);
         face_metadata.faces = faces;
-        mFaceDetector->getFaceState(&faceState, frameData.width, frameData.height, frame.zoomRatio);
+        mFaceDetector->getFaceState(&faceState, frameData.width, frameData.height, mZoomRatio);
 
         // call face detection listener and pass faces for 3A (AF) and smart scene detection
         if ((face_metadata.number_of_faces > 0) || (mLastReportedNumberOfFaces != 0)) {

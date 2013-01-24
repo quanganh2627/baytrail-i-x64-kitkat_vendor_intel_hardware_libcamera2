@@ -23,6 +23,7 @@
 #include <camera/CameraParameters.h>
 #include "MessageQueue.h"
 #include "AtomCommon.h"
+#include "IAtomIspObserver.h"
 
 namespace android {
 
@@ -36,9 +37,17 @@ class CallbacksThread;
 // callback for when Preview thread is done with yuv data
 class ICallbackPreview {
 public:
+    enum CallbackType {
+        INPUT,
+        INPUT_ONCE,
+        OUTPUT,
+        OUTPUT_ONCE,
+        OUTPUT_WITH_DATA
+    };
+
     ICallbackPreview() {}
     virtual ~ICallbackPreview() {}
-    virtual void previewDone(AtomBuffer *memory) = 0;
+    virtual void previewBufferCallback(AtomBuffer *memory, CallbackType t) = 0;
 };
 
 /**
@@ -47,16 +56,20 @@ public:
  * This class is in charge of configuring the preview window send by the client
  * and render the preview buffers sent by CtrlThread
  */
-class PreviewThread : public Thread {
+class PreviewThread : public Thread, public IAtomIspObserver {
 
 // constructor destructor
 public:
-    PreviewThread(ICallbackPreview *previewDone);
+    PreviewThread();
     virtual ~PreviewThread();
 
 // Thread overrides
 public:
     status_t requestExitAndWait();
+
+// IAtomIspObserver overrides
+public:
+    virtual bool atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state);
 
 // public methods
 public:
@@ -65,11 +78,15 @@ public:
         STATE_NO_WINDOW,
         STATE_CONFIGURED,
         STATE_ENABLED,
-        STATE_ENABLED_HIDDEN
+        STATE_ENABLED_HIDDEN,   /*!< API sees preview not enabled, we do not pass buffers to screen */
+        STATE_ENABLED_HIDDEN_PASSTHROUGH /*!< API sees preview not enabled, we anyhow pass buffers to screen */
     };
 
     PreviewState getPreviewState() const;
+    unsigned int getFramesDone() const { return mFramesDone; };
     status_t setPreviewState(PreviewState state);
+    status_t hidePreview(struct timeval &after_frame);
+    status_t setCallback(ICallbackPreview *cb, ICallbackPreview::CallbackType t);
     void getDefaultParameters(CameraParameters *params);
     bool isWindowConfigured();
     status_t preview(AtomBuffer *buff);
@@ -77,11 +94,11 @@ public:
     status_t setPreviewWindow(struct preview_stream_ops *window);
     status_t setPreviewConfig(int preview_width, int preview_height, int preview_stride,
                               int preview_format, int bufferCount);
+    status_t setFramerate(int fps);
     status_t fetchPreviewBuffers(AtomBuffer ** pvBufs, int *count);
     status_t returnPreviewBuffers();
     status_t flushBuffers();
     status_t enableOverlay(bool set = true, int rotation = 90);
-
     // TODO: need methods to configure preview thread
     // TODO: decide if configuration method should send a message
 
@@ -100,6 +117,7 @@ private:
         MESSAGE_ID_RETURN_PREVIEW_BUFS,
         MESSAGE_ID_FLUSH,
         MESSAGE_ID_WINDOW_QUERY,
+        MESSAGE_ID_SET_CALLBACK,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -115,6 +133,11 @@ private:
 
     struct MessageSetPreviewWindow {
         struct preview_stream_ops *window;
+    };
+
+    struct MessageSetCallback {
+        ICallbackPreview *icallback;
+        ICallbackPreview::CallbackType type;
     };
 
     struct MessageSetPreviewConfig {
@@ -136,6 +159,9 @@ private:
 
         // MESSAGE_ID_SET_PREVIEW_CONFIG
         MessageSetPreviewConfig setPreviewConfig;
+
+        // MESSAGE_ID_SET_CALLBACK
+        MessageSetCallback setCallback;
     };
 
     // message id and message data
@@ -146,6 +172,8 @@ private:
 
 protected:
     status_t setState(PreviewState state);
+    void inputBufferCallback();
+    bool outputBufferCallback(AtomBuffer *buff);
 
 // private methods
 private:
@@ -153,6 +181,7 @@ private:
     status_t handleMessageExit();
     status_t handleMessageFlush();
     status_t handleMessageIsWindowConfigured();
+    status_t handleMessageSetCallback(MessageSetCallback *msg);
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -160,18 +189,27 @@ private:
     // inherited from Thread
     virtual bool threadLoop();
 
+    bool checkSkipFrame(int frameNum);
+    void frameDone(AtomBuffer &buff);
+
 // private data
 private:
 
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
-    ICallbackPreview *mPreviewDoneCallback;
     PreviewState mState;
     mutable Mutex mStateMutex;
+    int mSetFPS;
+    typedef key_value_pair_t<ICallbackPreview::CallbackType, ICallbackPreview*> callback_pair_t;
+    typedef Vector<callback_pair_t> CallbackVector;
+    CallbackVector mInputBufferCb;
+    CallbackVector mOutputBufferCb;
+    nsecs_t         mLastFrameTs;
+    unsigned int    mFramesDone;
 
     class PreviewMessageHandler {
     public:
-        PreviewMessageHandler(PreviewThread* aThread, ICallbackPreview *previewDone);
+        PreviewMessageHandler(PreviewThread* aThread);
         virtual ~PreviewMessageHandler();
         virtual status_t handleSetPreviewWindow(MessageSetPreviewWindow *msg) = 0;
         virtual status_t handleSetPreviewConfig(MessageSetPreviewConfig *msg) = 0;
@@ -190,7 +228,6 @@ private:
         AtomBuffer          mPreviewBuf;        /*!< Local preview buffer to give to the user */
         Callbacks           *mCallbacks;
         CallbacksThread     *mCallbacksThread;
-        ICallbackPreview    *mPreviewDoneCallback;
         int                 mMinUndequeued;     /*!< Minimum number frames
                                                      to keep in window */
         sp<DebugFrameRate>  mDebugFPS;          /*!< reference to the object that keeps
@@ -203,7 +240,7 @@ private:
 
     class GfxPreviewHandler: public PreviewMessageHandler {
     public:
-        GfxPreviewHandler(PreviewThread* aThread, ICallbackPreview *previewDone);
+        GfxPreviewHandler(PreviewThread* aThread);
         virtual ~GfxPreviewHandler();
 
         // PreviewMessageHandler IF
@@ -215,7 +252,6 @@ private:
         virtual status_t fetchPreviewBuffers(AtomBuffer **pvBufs, int *count);
         virtual status_t handlePostview(MessagePreview *msg);
     private:
-        status_t callPreviewDone(MessagePreview *msg);
         status_t allocateGfxPreviewBuffers(int numberOfBuffers);
         status_t freeGfxPreviewBuffers();
         int getGfxBufferStride();
@@ -233,7 +269,6 @@ private:
     class OverlayPreviewHandler: public PreviewMessageHandler {
        public:
            OverlayPreviewHandler(PreviewThread* aThread,
-                                 ICallbackPreview *previewDone,
                                  int overlayRotation);
            virtual ~OverlayPreviewHandler(){};
 

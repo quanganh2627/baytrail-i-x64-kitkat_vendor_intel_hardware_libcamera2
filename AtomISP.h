@@ -131,6 +131,7 @@ public:
     bool isOfflineCaptureSupported() const;
     bool isYUVvideoZoomingSupported() const;
     status_t returnPreviewBuffers();
+    status_t returnRecordingBuffers();
     bool isSharedPreviewBufferConfigured(bool *reserved = NULL) const;
 
     status_t getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameStatus = NULL);

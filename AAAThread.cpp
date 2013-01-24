@@ -126,6 +126,19 @@ status_t AAAThread::cancelAutoFocus()
     return mMessageQueue.send(&msg);
 }
 
+/**
+ * override for IAtomIspObserver::atomIspNotify()
+ *
+ * signal start of 3A processing based on preview stream notify
+ */
+bool AAAThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state)
+{
+    if (msg && msg->id == IAtomIspObserver::MESSAGE_ID_FRAME)
+        newFrame(msg->data.frameBuffer.buff.capture_timestamp,
+                 msg->data.frameBuffer.buff.status);
+    return false;
+}
+
 status_t AAAThread::newFrame(struct timeval capture_timestamp)
 {
     LOG2("@%s", __FUNCTION__);
