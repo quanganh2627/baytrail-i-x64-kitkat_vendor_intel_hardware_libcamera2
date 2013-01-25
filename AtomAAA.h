@@ -279,6 +279,7 @@ public:
     bool     getSmartSceneDetection();
     status_t getSmartSceneMode(int *sceneMode, bool *sceneHdr);
     status_t setFaces(const ia_face_state& faceState);
+    status_t setFlash(int numFrames);
 
     status_t getGridWindow(AAAWindowInfo& window);
 

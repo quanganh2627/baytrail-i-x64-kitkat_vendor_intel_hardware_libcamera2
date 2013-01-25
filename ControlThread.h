@@ -44,8 +44,6 @@
 
 namespace android {
 
-#define FLASH_FRAME_TIMEOUT 5
-
 class AtomISP;
 //
 // ControlThread implements most of the operations defined

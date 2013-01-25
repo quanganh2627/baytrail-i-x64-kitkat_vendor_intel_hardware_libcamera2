@@ -112,7 +112,6 @@ ControlThread::ControlThread(const sp<CameraConf>& cfg) :
     ,mCameraDump(NULL)
     ,mFocusAreas()
     ,mMeteringAreas()
-    ,mPreviewFramesDone(0)
     ,mVideoSnapshotrequested(0)
     ,mEnableFocusCbAtStart(false)
     ,mEnableFocusMoveCbAtStart(false)
@@ -2202,6 +2201,7 @@ status_t ControlThread::captureStillPic()
     bool flashOn = (flashMode == CAM_AE_FLASH_MODE_TORCH ||
                     flashMode == CAM_AE_FLASH_MODE_ON);
     bool flashFired = false;
+    bool flashSequenceStarted = false;
     bool previewKeepAlive =
         isParameterSet(IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE);
 
@@ -2245,7 +2245,13 @@ status_t ControlThread::captureStillPic()
             if (flashOn) {
                 if (mAAA->getAeMode() != CAM_AE_MODE_MANUAL &&
                         flashMode != CAM_AE_FLASH_MODE_TORCH) {
-                    flashOn = runPreFlashSequence();
+                    flashSequenceStarted = true;
+                    // hide preview frames already during pre-flash sequence
+                    mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
+                    status = m3AThread->enterFlashSequence(AAAThread::FLASH_STAGE_PRE_EXPOSED);
+                    if (status != NO_ERROR) {
+                        flashOn = false;
+                    }
                 }
             }
         }
@@ -2254,8 +2260,12 @@ status_t ControlThread::captureStillPic()
     if (mState == STATE_CONTINUOUS_CAPTURE) {
         bool useFlash = flashOn && flashMode != CAM_AE_FLASH_MODE_TORCH;
         status = continuousStartStillCapture(useFlash);
+        if (flashSequenceStarted)
+            m3AThread->exitFlashSequence();
     } else {
         status = stopPreviewCore();
+        if (flashSequenceStarted)
+            m3AThread->exitFlashSequence();
         if (status != NO_ERROR) {
             LOGE("Error stopping preview!");
             return status;
@@ -2285,7 +2295,6 @@ status_t ControlThread::captureStillPic()
     mPictureThread->initialize(mParameters);
 
     if (mState != STATE_CONTINUOUS_CAPTURE) {
-
         // Possible smart scene parameter changes (XNR, ANR)
         if ((status = setSmartSceneParams()) != NO_ERROR)
             LOG1("set smart scene parameters failed");

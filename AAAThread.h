@@ -61,6 +61,18 @@ public:
     AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs);
     virtual ~AAAThread();
 
+    enum FlashStage {
+        FLASH_STAGE_NA,
+        FLASH_STAGE_EXIT,
+        FLASH_STAGE_PRE_START,
+        FLASH_STAGE_PRE_PHASE1,
+        FLASH_STAGE_PRE_PHASE2,
+        FLASH_STAGE_PRE_WAITING,
+        FLASH_STAGE_PRE_EXPOSED,
+        FLASH_STAGE_SHOT_WAITING,
+        FLASH_STAGE_SHOT_EXPOSED
+    };
+
 // Thread overrides
 public:
     status_t requestExitAndWait();
@@ -78,7 +90,9 @@ public:
     status_t lockAwb(bool en);
     status_t autoFocus();
     status_t cancelAutoFocus();
-    status_t newFrame(struct timeval capture_timestamp);
+    status_t enterFlashSequence(FlashStage blockForStage = FLASH_STAGE_NA);
+    status_t exitFlashSequence();
+    status_t newFrame(struct timeval capture_timestamp, FrameBufferStatus status = FRAME_STATUS_OK);
     status_t applyRedEyeRemoval(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer, int width, int height, int format);
     status_t setFaces(const ia_face_state& faceState);
     void getCurrentSmartScene(int &sceneMode, bool &sceneHdr);
@@ -86,7 +100,6 @@ public:
 
 // private types
 private:
-
     // thread message id's
     enum MessageId {
 
@@ -100,6 +113,7 @@ private:
         MESSAGE_ID_FACES,
         MESSAGE_ID_ENABLE_AE_LOCK,
         MESSAGE_ID_ENABLE_AWB_LOCK,
+        MESSAGE_ID_FLASH_STAGE,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -121,8 +135,13 @@ private:
         int format;
     };
 
+    struct MessageFlashStage {
+        FlashStage  value;
+    };
+
     // for MESSAGE_ID_NEW_FRAME
     struct MessageNewFrame {
+        FrameBufferStatus status;
         struct timeval capture_timestamp;
     };
 
@@ -131,6 +150,7 @@ private:
         MessageEnable enable;
         MessagePicture picture;
         MessageNewFrame frame;
+        MessageFlashStage flashStage;
     };
 
     // message id and message data
@@ -148,10 +168,14 @@ private:
     status_t handleMessageEnableDVS(MessageEnable* msg);
     status_t handleMessageAutoFocus();
     status_t handleMessageCancelAutoFocus();
-    status_t handleMessageNewFrame(struct timeval capture_timestamp);
+    status_t handleMessageNewFrame(MessageNewFrame *msg);
     status_t handleMessageRemoveRedEye(MessagePicture* msg);
     status_t handleMessageEnableAeLock(MessageEnable* msg);
     status_t handleMessageEnableAwbLock(MessageEnable* msg);
+    status_t handleMessageFlashStage(MessageFlashStage* msg);
+
+    // flash sequence handler
+    bool handleFlashSequence(FrameBufferStatus frameStatus);
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -182,6 +206,9 @@ private:
     bool mSmartSceneHdr; // Indicates whether the detected scene is valid for HDR
     ia_face_state mFaceState; // face metadata for 3A use
     int mPreviousFaceCount;
+    FlashStage mFlashStage;
+    size_t mFramesTillExposed;
+    FlashStage mBlockForStage;
 }; // class AAAThread
 
 }; // namespace android
