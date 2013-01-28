@@ -2305,6 +2305,33 @@ status_t ControlThread::waitForCaptureStart()
     return status;
 }
 
+/**
+ * Skips initial snapshot frames if target FPS is lower
+ * than the ISP burst frame rate.
+ */
+status_t ControlThread::burstCaptureSkipFrames()
+{
+    LOG2("@%s: ", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    // In continuous mode the output frame count is fixed, so
+    // we cannot arbitrarily skip frames. We return NO_ERROR as
+    // this function is used to hide differences between
+    // capture modes.
+    if (mState == STATE_CONTINUOUS_CAPTURE)
+        return NO_ERROR;
+
+    if (mBurstLength > 1 &&
+            mFpsAdaptSkip > 0 &&
+            mBracketManager->getBracketMode() == BRACKET_NONE) {
+        LOG1("Skipping %d burst frames", mFpsAdaptSkip);
+        if ((status = skipFrames(mFpsAdaptSkip)) != NO_ERROR) {
+            LOGE("Error skipping burst frames!");
+        }
+    }
+    return status;
+}
+
 status_t ControlThread::captureStillPic()
 {
     LOG1("@%s: ", __FUNCTION__);
@@ -2487,12 +2514,10 @@ status_t ControlThread::captureStillPic()
         mISP->setFlashIndicator(TORCH_INTENSITY);
     }
 
-    if (mBurstLength > 1 && mFpsAdaptSkip > 0 && mBracketManager->getBracketMode() == BRACKET_NONE) {
-        LOG1("Skipping %d burst frames", mFpsAdaptSkip);
-        if ((status = skipFrames(mFpsAdaptSkip)) != NO_ERROR) {
-            LOGE("Error skipping burst frames!");
-            return status;
-        }
+    status = burstCaptureSkipFrames();
+    if (status != NO_ERROR) {
+        LOGE("Error skipping burst frames!");
+        return status;
     }
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("get frame", 1);
@@ -2676,12 +2701,10 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     // note: flash is not supported in burst and continuous shooting
     //       modes (this would be the place to enable it)
 
-    if (mBurstLength > 1 && mFpsAdaptSkip > 0 && mBracketManager->getBracketMode() == BRACKET_NONE) {
-        LOG1("Skipping %d burst frames", mFpsAdaptSkip);
-        if ((status = skipFrames(mFpsAdaptSkip)) != NO_ERROR) {
-            LOGE("Error skipping burst frames!");
-            return status;
-        }
+    status = burstCaptureSkipFrames();
+    if (status != NO_ERROR) {
+        LOGE("Error skipping burst frames!");
+        return status;
     }
 
     // Get the snapshot

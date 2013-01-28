@@ -511,6 +511,7 @@ private:
     void     requestTakePicture();
     bool     compressedFrameQueueFull();
     status_t queueSnapshotBuffers();
+    status_t burstCaptureSkipFrames();
 
     status_t captureStillPic();
     status_t captureBurstPic(bool clientRequest);
