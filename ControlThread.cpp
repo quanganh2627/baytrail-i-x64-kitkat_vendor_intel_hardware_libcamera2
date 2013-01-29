@@ -1445,7 +1445,6 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     mMessageQueue.remove(MESSAGE_ID_PREVIEW_DONE);
     mMessageQueue.remove(MESSAGE_ID_RELEASE_PREVIEW_FRAME);
 
-    mPostProcThread->unloadIspExtensions();
     mPostProcThread->flushFrames();
 
     if (mState == STATE_PREVIEW_VIDEO ||
@@ -1461,6 +1460,7 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
         LOGE("Error stopping ISP in preview mode!");
     }
     status = mPreviewThread->returnPreviewBuffers();
+    mPostProcThread->unloadIspExtensions();
 
     if (oldState == STATE_CONTINUOUS_CAPTURE)
         releaseContinuousCapture(flushPictures);
