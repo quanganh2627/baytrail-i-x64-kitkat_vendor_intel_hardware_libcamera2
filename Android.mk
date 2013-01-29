@@ -8,6 +8,11 @@ ifeq ($(TARGET_DEVICE),merr_vv)
 USE_INTEL_JPEG := false
 else
 USE_INTEL_JPEG := true
+endif
+
+USE_INTEL_METABUFFER := true
+
+ifeq ($(USE_INTEL_METABUFFER),true)
 LOCAL_CFLAGS += -DENABLE_INTEL_METABUFFER
 endif
 
@@ -99,12 +104,16 @@ LOCAL_SHARED_LIBRARIES := \
 	libsqlite \
 	libdl
 
+ifeq ($(USE_INTEL_METABUFFER),true)
+LOCAL_SHARED_LIBRARIES += \
+	libintelmetadatabuffer
+endif
+
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SHARED_LIBRARIES += \
 	libva \
 	libva-tpi \
-	libva-android \
-	libintelmetadatabuffer
+	libva-android
 endif
 
 LOCAL_STATIC_LIBRARIES := \
