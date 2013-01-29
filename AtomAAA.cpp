@@ -838,6 +838,8 @@ ia_3a_af_status AtomAAA::getCAFStatus()
 {
     Mutex::Autolock lock(m3aLock);
     LOG2("@%s", __FUNCTION__);
+    if(mSensorType == SENSOR_TYPE_RAW)
+        return ia_3a_af_status_idle;
 
     return ia_3a_af_get_still_status();
 }
