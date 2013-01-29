@@ -44,8 +44,6 @@ public:
             return;
         }
         // back camera settings
-        pcam->maxSnapshotWidth = RESOLUTION_13MP_WIDTH;
-        pcam->maxSnapshotHeight = RESOLUTION_13MP_HEIGHT;
         //ev
         pcam->maxEV = "6";
         pcam->minEV = "-6";
