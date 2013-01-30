@@ -3474,11 +3474,21 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         LOGE("bad burst length: %s; supported: %s", burstLength, burstLengths);
         return BAD_VALUE;
     }
-    int burstStart = params->getInt(IntelCameraParameters::KEY_BURST_START_INDEX);
-    const char* captureBracket = params->get(IntelCameraParameters::KEY_CAPTURE_BRACKET);
-    if (burstStart < 0 && captureBracket && captureBracket && String8(captureBracket) != "none") {
-        LOGE("negative start-index and bracketing not supported concurrently");
-        return BAD_VALUE;
+    const char* burstStart = params->get(IntelCameraParameters::KEY_BURST_START_INDEX);
+    if (burstStart) {
+        int burstStartInt = atoi(burstStart);
+        if (burstStartInt < 0) {
+            const char* captureBracket = params->get(IntelCameraParameters::KEY_CAPTURE_BRACKET);
+            if (captureBracket && String8(captureBracket) != "none") {
+                LOGE("negative start-index and bracketing not supported concurrently");
+                return BAD_VALUE;
+            }
+            int len = burstLength ? atoi(burstLength) : 0;
+            if (len > PlatformData::maxContinuousRawRingBufferSize()-1) {
+                LOGE("negative start-index and burst-length=%d not supported concurrently", len);
+                return BAD_VALUE;
+            }
+        }
     }
 
     // BURST FPS
@@ -3607,10 +3617,11 @@ status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
     }
 
     // Burst start-index (for Time Nudge et al)
-    int burstStart = newParams->getInt(IntelCameraParameters::KEY_BURST_START_INDEX);
-    if (burstStart != mBurstStart) {
-        LOG1("Burst start-index set %d -> %d", mBurstStart, burstStart);
-        mBurstStart = burstStart;
+    const char* burstStart = newParams->get(IntelCameraParameters::KEY_BURST_START_INDEX);
+    int burstStartInt = burstStart ? atoi(burstStart) : 0;
+    if (burstStartInt != mBurstStart) {
+        LOG1("Burst start-index set %d -> %d", mBurstStart, burstStartInt);
+        mBurstStart = burstStartInt;
     }
 
     return status;
