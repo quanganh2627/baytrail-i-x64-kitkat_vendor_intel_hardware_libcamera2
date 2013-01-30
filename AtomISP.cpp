@@ -372,6 +372,15 @@ void AtomISP::initFrameConfig()
         PlatformData::maxSnapshotSize(mCameraInput->androidCameraId, &width, &height);
         mConfig.snapshot.maxWidth  = width;
         mConfig.snapshot.maxHeight = height;
+	/* workround to support two main sensor for vv - need to removed when one main sensor used */
+        if (strstr(mCameraInput->name, "imx175")) {
+           mConfig.snapshot.maxWidth  = RESOLUTION_8MP_WIDTH;
+           mConfig.snapshot.maxHeight = RESOLUTION_8MP_HEIGHT;
+        }
+        if (strstr(mCameraInput->name, "imx135")) {
+           mConfig.snapshot.maxWidth  = RESOLUTION_13MP_WIDTH;
+           mConfig.snapshot.maxHeight = RESOLUTION_13MP_HEIGHT;
+        }
     }
 
     if (mConfig.snapshot.maxWidth >= RESOLUTION_720P_WIDTH
