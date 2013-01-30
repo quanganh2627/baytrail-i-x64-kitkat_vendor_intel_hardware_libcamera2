@@ -1014,7 +1014,7 @@ status_t ControlThread::configureContinuousRingBuffer()
     int offset = -1;
     if (mBurstLength > 1) {
         numCaptures = mBurstLength;
-        offset = mBurstStart;
+        offset = mBurstStart - shutterLagZeroAlign();
     }
 
     mISP->setContCaptureNumCaptures(numCaptures);
@@ -1550,6 +1550,21 @@ status_t ControlThread::restartPreview(bool videoMode)
     return status;
 }
 
+
+/**
+ * Calculates the correct frame offset to capture to reach Zero
+ * Shutter Lag.
+ */
+int ControlThread::shutterLagZeroAlign()
+{
+    int delayMs = PlatformData::shutterLagCompensationMs();
+    float frameIntervalMs = 1000.0 / mISP->getFrameRate();
+    int lagZeroOffset = delayMs / frameIntervalMs + 1;
+    LOG2("@%s: delay %dms, fps %.02f, zero offset %d",
+         __FUNCTION__, delayMs, mISP->getFrameRate(), lagZeroOffset);
+    return lagZeroOffset;
+}
+
 /**
  * Starts rendering an output frame from the raw
  * ringbuffer.
@@ -1560,11 +1575,12 @@ status_t ControlThread::startOfflineCapture()
 
     int skip = 0;
     int captures = 1;
-    int offset = -1;
+    int offset = -1; // TODO: start using shutterLagZeroAlign() instead of
+                     // fixed -1 once BZ82274 is fixed
 
     if (mBurstLength > 1) {
         captures = mBurstLength;
-        offset = mBurstStart;
+        offset = mBurstStart - shutterLagZeroAlign();
     }
 
     // in case preview has just started, we need to limit

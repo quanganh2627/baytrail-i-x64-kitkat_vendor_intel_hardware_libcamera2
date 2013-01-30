@@ -334,6 +334,7 @@ private:
     status_t initContinuousCapture();
     void releaseContinuousCapture(bool flushPictures);
     status_t startOfflineCapture();
+    int shutterLagZeroAlign();
     State selectPreviewMode(const CameraParameters &params);
     status_t handleContinuousPreviewBackgrounding();
     status_t handleContinuousPreviewForegrounding();

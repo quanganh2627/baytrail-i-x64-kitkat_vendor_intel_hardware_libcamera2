@@ -245,6 +245,12 @@ int PlatformData::maxContinuousRawRingBufferSize(void)
     return i->mMaxContinuousRawRingBuffer;
 }
 
+int PlatformData::shutterLagCompensationMs(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mShutterLagCompensationMs;
+}
+
 bool PlatformData::renderPreviewViaOverlay(int cameraId)
 {
     PlatformBase *i = getInstance();

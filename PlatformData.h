@@ -101,6 +101,7 @@ public:
         mNumRecordingBuffers = 9;
         mContinuousCapture = false;
         mMaxContinuousRawRingBuffer = 0;
+        mShutterLagCompensationMs = 80;
    };
 
  protected:
@@ -299,6 +300,8 @@ public:
 
     bool mContinuousCapture;
     int mMaxContinuousRawRingBuffer;
+    int mShutterLagCompensationMs;
+
     int mPanoramaMaxSnapshotCount;
 
     /* For burst capture's burst length and burst fps */
@@ -416,6 +419,17 @@ class PlatformData {
      *         false, this function will always return 0
      */
     static int maxContinuousRawRingBufferSize(void);
+
+    /**
+     * Returns the average lag between user pressing shutter UI button or
+     * key, to camera HAL receiving take_picture method call.
+     *
+     * This value is used to fine-tune frame selection for Zero
+     * Shutter Lag.
+     *
+     * \return int lag time in milliseconds
+     */
+    static int shutterLagCompensationMs(void);
 
     /**
      * Orientation of camera id
