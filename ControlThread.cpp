@@ -2886,6 +2886,8 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
     if (status != NO_ERROR) {
         LOGE("Error in grabbing snapshot!");
         picMetaData.free();
+        stopOfflineCapture();
+        burstStateReset();
         return status;
     }
 
