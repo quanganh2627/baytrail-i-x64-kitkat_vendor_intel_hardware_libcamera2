@@ -486,6 +486,7 @@ private:
     status_t validateParameters(const CameraParameters *params);
     // validation helpers
     bool validateSize(int width, int height, Vector<Size> &supportedSizes) const;
+    bool validateString(const char* value,  const char* supportList) const;
 
     status_t stopCapture();
     void     stopOfflineCapture();

@@ -3266,6 +3266,53 @@ bool ControlThread::validateSize(int width, int height, Vector<Size> &supportedS
     return false;
 }
 
+bool ControlThread::validateString(const char* value,  const char* supportList) const{
+    // value should not set if support list is empty
+    if (value !=NULL && supportList == NULL) {
+        return false;
+    }
+
+    if (value == NULL || supportList == NULL) {
+        return true;
+    }
+
+    size_t len = strlen(value);
+    const char* startPtr(supportList);
+    const char* endPtr(supportList);
+    int bracketLevel(0);
+
+    // divide support list to values and compare those to given values.
+    // values are separated with comma in support list, but commas also exist
+    // part of values inside bracket.
+    while (true) {
+        if ( *endPtr == '(') {
+            ++bracketLevel;
+        } else if (*endPtr == ')') {
+            --bracketLevel;
+        } else if ( bracketLevel == 0 && ( *endPtr == '\0' || *endPtr == ',')) {
+            if (((startPtr + len) == endPtr) &&
+                (strncmp(value, startPtr, len) == 0)) {
+                return true;
+            }
+
+            // bracket can use circle values in supported list
+            if (((startPtr + len + 2 ) == endPtr) &&
+                ( *startPtr == '(') &&
+                (strncmp(value, startPtr + 1, len) == 0)) {
+                return true;
+            }
+            startPtr = endPtr + 1;
+        }
+
+        if (*endPtr == '\0') {
+            return false;
+        }
+        ++endPtr;
+    }
+
+    return false;
+}
+
 status_t ControlThread::validateParameters(const CameraParameters *params)
 {
     LOG1("@%s: params = %p", __FUNCTION__, params);
@@ -3341,7 +3388,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // PICTURE FORMAT
     const char* picFormat = params->get(CameraParameters::KEY_PICTURE_FORMAT);
     const char* picFormats = params->get(CameraParameters::KEY_SUPPORTED_PICTURE_FORMATS);
-    if (picFormat && picFormats && strstr(picFormats, picFormat) == NULL) {
+    if (!validateString(picFormat, picFormats)) {
         LOGE("bad picture format: %s", picFormat);
         return BAD_VALUE;
     }
@@ -3349,7 +3396,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // PREVIEW FORMAT
     const char* preFormat = params->get(CameraParameters::KEY_PREVIEW_FORMAT);
     const char* preFormats = params->get(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS);
-    if (preFormat && preFormats && strstr(preFormats, preFormat) == NULL) {
+    if (!validateString(preFormat, preFormats))  {
         LOGE("bad preview format: %s", preFormat);
         return BAD_VALUE;
     }
@@ -3365,7 +3412,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // WHITE BALANCE
     const char* whiteBalance = params->get(CameraParameters::KEY_WHITE_BALANCE);
     const char* whiteBalances = params->get(CameraParameters::KEY_SUPPORTED_WHITE_BALANCE);
-    if (whiteBalance && whiteBalances && strstr(whiteBalances, whiteBalance) == NULL) {
+    if (!validateString(whiteBalance, whiteBalances)) {
         LOGE("bad white balance mode: %s", whiteBalance);
         return BAD_VALUE;
     }
@@ -3381,7 +3428,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // FLASH
     const char* flashMode = params->get(CameraParameters::KEY_FLASH_MODE);
     const char* flashModes = params->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
-    if (flashMode && flashModes && strstr(flashModes, flashMode) == NULL) {
+    if (!validateString(flashMode, flashModes)) {
         LOGE("bad flash mode");
         return BAD_VALUE;
     }
@@ -3389,7 +3436,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // SCENE MODE
     const char* sceneMode = params->get(CameraParameters::KEY_SCENE_MODE);
     const char* sceneModes = params->get(CameraParameters::KEY_SUPPORTED_SCENE_MODES);
-     if (sceneMode && sceneModes && strstr(sceneModes, sceneMode) == NULL) {
+    if (!validateString(sceneMode, sceneModes)) {
         LOGE("bad scene mode: %s; supported: %s", sceneMode, sceneModes);
         return BAD_VALUE;
     }
@@ -3397,7 +3444,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // FOCUS
     const char* focusMode = params->get(CameraParameters::KEY_FOCUS_MODE);
     const char* focusModes = params->get(CameraParameters::KEY_SUPPORTED_FOCUS_MODES);
-    if (focusMode && focusModes && strstr(focusModes, focusMode) == NULL) {
+    if (!validateString(focusMode, focusModes)) {
         LOGE("bad focus mode: %s; supported: %s", focusMode, focusModes);
         return BAD_VALUE;
     }
@@ -3405,7 +3452,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // BURST LENGTH
     const char* burstLength = params->get(IntelCameraParameters::KEY_BURST_LENGTH);
     const char* burstLengths = params->get(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH);
-    if (burstLength && burstLengths && strstr(burstLengths, burstLength) == NULL) {
+    if (!validateString(burstLength, burstLengths)) {
         LOGE("bad burst length: %s; supported: %s", burstLength, burstLengths);
         return BAD_VALUE;
     }
@@ -3419,7 +3466,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // BURST FPS
     const char* burstFps = params->get(IntelCameraParameters::KEY_BURST_FPS);
     const char* burstFpss = params->get(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS);
-    if (burstFps && burstFpss && strstr(burstFpss, burstFps) == NULL) {
+    if (!validateString(burstFps,burstFpss)) {
         LOGE("bad burst FPS: %s; supported: %s", burstFps, burstFpss);
         return BAD_VALUE;
     }
@@ -3427,7 +3474,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // OVERLAY
     const char* overlaySupported = params->get(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING_SUPPORTED);
     const char* overlay = params->get(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING);
-     if (overlay && overlaySupported && strstr(overlaySupported, overlay) == NULL) {
+        if (!validateString(overlay, overlaySupported)) {
         LOGE("bad overlay rendering mode: %s; supported: %s", overlay, overlaySupported);
         return BAD_VALUE;
     }
@@ -3435,7 +3482,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // MISCELLANEOUS
     const char *size = params->get(IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE);
     const char *livePreviewSizes = IntelCameraParameters::getSupportedPanoramaLivePreviewSizes(*params);
-    if (size && livePreviewSizes && strstr(livePreviewSizes, size) == NULL) {
+    if (!validateString(size, livePreviewSizes)) {
         LOGE("bad panorama live preview size");
         return BAD_VALUE;
     }
@@ -3443,7 +3490,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // ANTI FLICKER
     const char* flickerMode = params->get(CameraParameters::KEY_ANTIBANDING);
     const char* flickerModes = params->get(CameraParameters::KEY_SUPPORTED_ANTIBANDING);
-    if (flickerMode && flickerModes && strstr(flickerModes, flickerMode) == NULL) {
+    if (!validateString(flickerMode, flickerModes)) {
         LOGE("bad anti flicker mode");
         return BAD_VALUE;
     }
@@ -3451,7 +3498,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // COLOR EFFECT
     const char* colorEffect = params->get(CameraParameters::KEY_EFFECT);
     const char* colorEffects = params->get(CameraParameters::KEY_SUPPORTED_EFFECTS);
-    if (colorEffect && colorEffects && strstr(colorEffects, colorEffect) == NULL) {
+    if (!validateString(colorEffect, colorEffects)) {
         LOGE("bad color effect: %s", colorEffect);
         return BAD_VALUE;
     }
@@ -3473,8 +3520,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // NOISE_REDUCTION_AND_EDGE_ENHANCEMENT
     const char* noiseReductionAndEdgeEnhancement = params->get(IntelCameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
     const char* noiseReductionAndEdgeEnhancements = params->get(IntelCameraParameters::KEY_SUPPORTED_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
-    if (noiseReductionAndEdgeEnhancement && ((noiseReductionAndEdgeEnhancements &&
-        strstr(noiseReductionAndEdgeEnhancements,noiseReductionAndEdgeEnhancement) == NULL) || !noiseReductionAndEdgeEnhancements)) {
+    if (!validateString(noiseReductionAndEdgeEnhancement, noiseReductionAndEdgeEnhancements)) {
         LOGE("bad noise reduction and edge enhancement value : %s", noiseReductionAndEdgeEnhancement);
         return BAD_VALUE;
     }
@@ -3482,8 +3528,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // MULTI_ACCESS_COLOR_CORRECTION
     const char* multiAccessColorCorrection = params->get(IntelCameraParameters::KEY_MULTI_ACCESS_COLOR_CORRECTION);
     const char* multiAccessColorCorrections = params->get(IntelCameraParameters::KEY_SUPPORTED_MULTI_ACCESS_COLOR_CORRECTIONS);
-    if (multiAccessColorCorrection && ((multiAccessColorCorrections &&
-        strstr(multiAccessColorCorrections,multiAccessColorCorrection) == NULL) || !multiAccessColorCorrections)) {
+    if (!validateString(multiAccessColorCorrection, multiAccessColorCorrections)) {
         LOGE("bad multi access color correction value : %s", multiAccessColorCorrection);
         return BAD_VALUE;
     }
