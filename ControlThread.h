@@ -453,6 +453,8 @@ private:
                 CameraParameters *newParams);
     status_t processParamHDR(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    status_t processParamULL(const CameraParameters *oldParams,
+            CameraParameters *newParams);
     status_t processParamExposureCompensation(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamAutoExposureMode(const CameraParameters *oldParams,

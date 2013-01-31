@@ -3632,6 +3632,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         status = processParamFocusMode(oldParams, newParams);
     }
 
+    // Ultra-low light
+    if (status == NO_ERROR) {
+        status = processParamULL(oldParams, newParams);
+    }
+
     if (status == NO_ERROR) {
         // ae mode
         status = processParamAutoExposureMeteringMode(oldParams, newParams);
@@ -4142,6 +4147,23 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         if (localStatus == NO_ERROR) {
             LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, newVal.string());
         }
+    }
+
+    return status;
+}
+
+status_t ControlThread::processParamULL(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_ULL);
+
+    // TODO: Param handling.
+    // TODO: ULL vs. scene values?
+    if (!newVal.isEmpty()) {
+        LOG1("ULL param new value: %s", newVal.string());
     }
 
     return status;

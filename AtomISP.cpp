@@ -698,6 +698,12 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL, "off");
 
     /**
+     * Ultra-low light (ULL)
+     */
+    intel_params->set(IntelCameraParameters::KEY_ULL, FeatureData::ultraLowLightDefault(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_ULL, FeatureData::ultraLowLightSupported(cameraId));
+
+    /**
      * Burst-mode
      */
     // Currently burst support is required only with primary camera.

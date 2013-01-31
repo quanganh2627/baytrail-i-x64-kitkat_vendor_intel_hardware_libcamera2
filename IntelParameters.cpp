@@ -45,6 +45,10 @@ namespace android {
     const char IntelCameraParameters::KEY_SUPPORTED_ROTATION_MODES[] = "rotation-mode-values";
     const char IntelCameraParameters::KEY_FRONT_SENSOR_FLIP[] = "front-sensor-flip";
 
+    // Ultra low light
+    const char IntelCameraParameters::KEY_ULL[] = "ull";
+    const char IntelCameraParameters::KEY_SUPPORTED_ULL[] = "ull-values";
+
     // 3A related
     const char IntelCameraParameters::KEY_AE_MODE[] = "ae-mode";
     const char IntelCameraParameters::KEY_SUPPORTED_AE_MODES[] = "ae-mode-values";
