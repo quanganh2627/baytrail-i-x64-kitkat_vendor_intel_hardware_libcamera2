@@ -148,16 +148,6 @@ void EXIFMaker::pictureTaken(void)
             break;
         }
 
-        // indicates the ISO speed of the camera
-        int isoSpeed;
-        if (mAAA->getManualIso(&isoSpeed) == NO_ERROR) {
-            exifAttributes.iso_speed_rating = isoSpeed;
-        } else {
-            LOGW("EXIF: Could not query ISO speed!");
-            exifAttributes.iso_speed_rating = DEFAULT_ISO_SPEED;
-        }
-        LOG1("EXIF: ISO=%d", isoSpeed);
-
         // the metering mode.
         MeteringMode meteringMode  = mAAA->getAeMeteringMode();
         switch (meteringMode) {
@@ -253,6 +243,16 @@ void EXIFMaker::pictureTaken(void)
             break;
         }
     }
+
+    // indicates the ISO speed of the camera
+    int isoSpeed;
+    if (mAAA->getManualIso(&isoSpeed) == NO_ERROR) {
+        exifAttributes.iso_speed_rating = isoSpeed;
+    } else {
+        LOGW("EXIF: Could not query ISO speed!");
+        exifAttributes.iso_speed_rating = DEFAULT_ISO_SPEED;
+    }
+    LOG1("EXIF: ISO=%d", isoSpeed);
 }
 
 /**

@@ -170,7 +170,7 @@ status_t AtomAAA::init(const SensorParams *sensorParameters, AtomISP *isp, const
         mSensorType = SENSOR_TYPE_SOC;
     }
     LOG1("@%s: tuning_3a_file = \"%s\", has3a %d, initRes %d, otpInj %s",
-         __FUNCTION__, sensorParameters->tuning3aFile, mHas3A, init_result, otpInjectFile);
+         __FUNCTION__, (sensorParameters == NULL ? "" : sensorParameters->tuning3aFile), mHas3A, init_result, otpInjectFile);
     return NO_ERROR;
 }
 
@@ -1214,6 +1214,9 @@ status_t AtomAAA::getManualIso(int *ret)
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
+
+    if(mSensorType == SENSOR_TYPE_SOC)
+        return mISP->getManualIso(ret);
 
     float ev = ia_3a_ae_get_manual_iso();
 

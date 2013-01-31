@@ -492,6 +492,8 @@ status_t AtomISP::init3A()
                             status = NO_INIT;
                     }
              }
+        } else if (mSensorType == SENSOR_TYPE_SOC) {
+            mAAA->init(NULL, this, NULL);
         }
         // We don't need this memory anymore
         mCameraConf->aiqConf.clear();
