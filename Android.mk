@@ -125,7 +125,8 @@ endif
 
 LOCAL_STATIC_LIBRARIES := \
 	libcameranvm \
-	libia_coordinate
+	libia_coordinate \
+        libmorpho_image_stabilizer3
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_CFLAGS += -DUSE_INTEL_JPEG
