@@ -465,8 +465,6 @@ private:
     bool mSwapRecordingDevice;
     bool mRecordingDeviceSwapped;
 
-    bool mNeedReset; /*!< TODO: remove, see BZ 72616 */
-
     void **mClientSnapshotBuffers;
     bool mUsingClientSnapshotBuffers;
     bool mStoreMetaDataInBuffers;
