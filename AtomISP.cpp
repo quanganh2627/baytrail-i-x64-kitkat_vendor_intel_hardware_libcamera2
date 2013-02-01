@@ -3366,6 +3366,7 @@ status_t AtomISP::returnRecordingBuffers()
 status_t AtomISP::getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameStatus)
 {
     LOG2("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mDevices[mPreviewDevice].mutex);
     struct v4l2_buffer buf;
 
     if (mMode == MODE_NONE)
@@ -3402,6 +3403,7 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameS
 status_t AtomISP::putPreviewFrame(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mDevices[mPreviewDevice].mutex);
     if (mMode == MODE_NONE)
         return INVALID_OPERATION;
 
@@ -3474,6 +3476,7 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp, atomis
 {
     LOG2("@%s", __FUNCTION__);
     struct v4l2_buffer buf;
+    Mutex::Autolock lock(mDevices[mRecordingDevice].mutex);
 
     if (mMode != MODE_VIDEO)
         return INVALID_OPERATION;
@@ -3512,6 +3515,8 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp, atomis
 status_t AtomISP::putRecordingFrame(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mDevices[mRecordingDevice].mutex);
+
     if (mMode != MODE_VIDEO)
         return INVALID_OPERATION;
 
@@ -5050,6 +5055,7 @@ status_t AtomISP::PreviewStreamSource::observe(IAtomIspObserver::Message *msg)
 
     ret = mISP->pollPreview(ATOMISP_POLL_TIMEOUT);
     if (ret > 0) {
+        LOG2("Entering dequeue : num-of-buffers queued %d", mISP->mNumPreviewBuffersQueued);
         status = mISP->getPreviewFrame(&msg->data.frameBuffer.buff);
         if (status != NO_ERROR) {
             msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;

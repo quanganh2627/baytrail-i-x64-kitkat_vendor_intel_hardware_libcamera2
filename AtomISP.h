@@ -533,6 +533,7 @@ private:
     struct {
       unsigned int frameCounter;
       DeviceState state;
+      Mutex       mutex;
     } mDevices[V4L2_MAX_DEVICE_COUNT];
 
     int dumpPreviewFrame(int previewIndex);
