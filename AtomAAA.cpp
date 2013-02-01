@@ -220,6 +220,9 @@ status_t AtomAAA::switchModeAndRate(AtomMode mode, float fps)
     case MODE_VIDEO:
         isp_mode = ia_3a_isp_mode_video;
         break;
+    case MODE_CONTINUOUS_CAPTURE:
+        isp_mode = ia_3a_isp_mode_continuous;
+        break;
     default:
         isp_mode = ia_3a_isp_mode_preview;
         LOGW("SwitchMode: Wrong sensor mode %d", mode);
