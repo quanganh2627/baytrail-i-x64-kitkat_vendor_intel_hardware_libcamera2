@@ -202,8 +202,7 @@ private:
     };
 
     struct MessageSetParameters {
-        bool previewFormatChanged;
-        bool videoMode;
+        char* params;
     };
 
     struct MessageCommand{
@@ -426,7 +425,7 @@ private:
     status_t processParamEffect(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamSceneMode(const CameraParameters *oldParams,
-            CameraParameters *newParams, bool applyImmediately = true);
+            CameraParameters *newParams);
     status_t processParamXNR_ANR(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamAntiBanding(const CameraParameters *oldParams,
@@ -489,7 +488,7 @@ private:
     // restarted. Static parameters will most likely affect buffer size and/or format so buffers
     // must be deallocated and reallocated accordingly.
     status_t processStaticParameters(const CameraParameters *oldParams,
-            CameraParameters *newParams, Message &msg);
+            CameraParameters *newParams, bool &previewFormatChanged);
     status_t validateParameters(const CameraParameters *params);
     // validation helpers
     bool validateSize(int width, int height, Vector<Size> &supportedSizes) const;

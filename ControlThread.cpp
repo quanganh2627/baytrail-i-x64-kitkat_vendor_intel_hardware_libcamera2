@@ -334,8 +334,7 @@ status_t ControlThread::init()
 
     // Set default parameters so that settings propagate to 3A
     MessageSetParameters msg;
-    msg.previewFormatChanged = false;
-    msg.videoMode = false;
+    msg.params = mParamCache;
     handleMessageSetParameters(&msg);
 
     return NO_ERROR;
@@ -542,76 +541,11 @@ bool ControlThread::recordingEnabled()
 status_t ControlThread::setParameters(const char *params)
 {
     LOG1("@%s: params = %p", __FUNCTION__, params);
-    Mutex::Autolock mLock(mParamCacheLock);
-    status_t status = NO_ERROR;
-    CameraParameters newParams;
-    CameraParameters oldParams;
-
-    if (mParamCache == NULL) {
-        String8 params = mParameters.flatten();
-        int len = params.length();
-        mParamCache = strndup(params.string(), sizeof(char) * len);
-    }
-    String8 strOldParams(mParamCache);
-    oldParams.unflatten(strOldParams);
-    const String8 str_params(params);
-    newParams.unflatten(str_params);
-
-    CameraAreas newFocusAreas;
-    CameraAreas newMeteringAreas;
-
-    // print all old and new params for comparison (debug)
-    status = validateParameters(&newParams);
-    if (status != NO_ERROR)
-        goto exit;
-    LOG1("scanning AF focus areas");
-    status = newFocusAreas.scan(newParams.get(CameraParameters::KEY_FOCUS_AREAS),
-                                mAAA->getAfMaxNumWindows());
-    if (status != NO_ERROR) {
-        LOGE("bad focus area");
-        goto exit;
-    }
-    LOG1("scanning AE metering areas");
-    status = newMeteringAreas.scan(newParams.get(CameraParameters::KEY_METERING_AREAS),
-                                   mAAA->getAeMaxNumWindows());
-    if (status != NO_ERROR) {
-        LOGE("bad metering area");
-        goto exit;
-    }
-
     Message msg;
     msg.id = MESSAGE_ID_SET_PARAMETERS;
-    // Take care of parameters that need to be set while the ISP is stopped
-    status = processStaticParameters(&oldParams, &newParams, msg);
-    if (status != NO_ERROR)
-        goto exit;
+    msg.data.setParameters.params = const_cast<char*>(params); // We swear we won't modify params :)
+    return mMessageQueue.send(&msg, MESSAGE_ID_SET_PARAMETERS);
 
-    {
-        // release AE lock, if AE mode changed (cts)
-        String8 newVal = paramsReturnNewIfChanged(&oldParams, &newParams,
-                                                  IntelCameraParameters::KEY_AE_MODE);
-        if (!newVal.isEmpty()) {
-            newParams.set(CameraParameters::KEY_AUTO_EXPOSURE_LOCK, CameraParameters::FALSE);
-        }
-
-        processParamSceneMode(&oldParams, &newParams, false); // for cts, we process, but do not apply yet
-
-        // let app know if we support zoom in the preview mode indicated
-        bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT, newParams);
-        mISP->getZoomRatios(videoMode, &newParams);
-        mISP->getFocusDistances(&newParams);
-
-        // update param cache
-        free(mParamCache);
-        String8 finalParams = newParams.flatten();
-        int len = finalParams.length();
-        mParamCache = strndup(finalParams.string(), sizeof(char) * len);
-    }
-
-    return mMessageQueue.send(&msg);
-
-exit:
-    return status;
 }
 
 char* ControlThread::getParameters()
@@ -4144,7 +4078,7 @@ void ControlThread::selectFlashMode(CameraParameters *newParams)
 }
 
 status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
-        CameraParameters *newParams, bool applyImmediately)
+        CameraParameters *newParams)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -4323,21 +4257,20 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         }
 
-        if (applyImmediately) {
-            m3AControls->setAeSceneMode(sceneMode);
-            if (status == NO_ERROR) {
-                LOG1("Changed: %s -> %s", CameraParameters::KEY_SCENE_MODE, newScene.string());
-            }
+        m3AControls->setAeSceneMode(sceneMode);
+        if (status == NO_ERROR) {
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_SCENE_MODE, newScene.string());
         }
+
 
         // If Intel params are not allowed,
         // we should update Intel params setting to HW, and remove them here.
         if (!mIntelParamsAllowed) {
-            if (applyImmediately) {
-                processParamBackLightingCorrectionMode(oldParams, newParams);
-                processParamAwbMappingMode(oldParams, newParams);
-                processParamXNR_ANR(oldParams, newParams);
-            }
+
+            processParamBackLightingCorrectionMode(oldParams, newParams);
+            processParamAwbMappingMode(oldParams, newParams);
+            processParamXNR_ANR(oldParams, newParams);
+
             newParams->remove(IntelCameraParameters::KEY_AWB_MAPPING_MODE);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES);
@@ -4933,20 +4866,17 @@ status_t ControlThread::processParamExifSoftware(const CameraParameters *oldPara
 }
 
 /*
- * NOTE: this function runs in camera service thread. Protect member accesses accordingly!
+ * Process parameters that require the ISP to be stopped.
  *
  * @param[in] oldParams the previous parameters
  * @param[in] newParams the new parameters which are being set
- * @param[out] msg a message which will be sent for ControlThread for processing later,
- *             this function will return whether in video mode and whether preview
- *             format changed through in message structure.
+ * @param[out] previewFormatChanged boolean to detect whether a preview re-start is needed.
  */
 status_t ControlThread::processStaticParameters(const CameraParameters *oldParams,
-        CameraParameters *newParams, Message &msg)
+        CameraParameters *newParams, bool &previewFormatChanged)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    bool previewFormatChanged = false;
     float previewAspectRatio = 0.0f;
     float videoAspectRatio = 0.0f;
     Vector<Size> sizes;
@@ -4957,7 +4887,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
     int oldHeight, newHeight;
     int previewWidth, previewHeight;
     int oldFormat, newFormat;
-
+    previewFormatChanged = false;
     // see if preview params have changed
     newParams->getPreviewSize(&newWidth, &newHeight);
     oldParams->getPreviewSize(&oldWidth, &oldHeight);
@@ -5068,9 +4998,6 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
         mPreviewForceChanged = true;
         previewFormatChanged = true;
     }
-
-    msg.data.setParameters.previewFormatChanged = previewFormatChanged;
-    msg.data.setParameters.videoMode = videoMode;
 
     return status;
 }
@@ -5193,23 +5120,16 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     status_t status = NO_ERROR;
     CameraParameters newParams;
     CameraParameters oldParams = mParameters;
-
-    bool needRestartPreview = msg->previewFormatChanged;
-    bool videoMode = msg->videoMode;
+    CameraParamsLogger newParamLogger (msg->params);
+    CameraParamsLogger oldParamLogger (mParameters.flatten().string());
+    bool needRestartPreview;
 
     CameraAreas newFocusAreas;
     CameraAreas newMeteringAreas;
-
-    mParamCacheLock.lock();
-    // flush the rest of setParameters, if any - last parameters are in mParamCache
-    mMessageQueue.remove(MESSAGE_ID_SET_PARAMETERS);
-    // copy cached settings
-    String8 str_params(mParamCache);
+    String8 str_params(msg->params);
     newParams.unflatten(str_params);
-    mParamCacheLock.unlock();
 
-    CameraParamsLogger newParamLogger (str_params.string());
-    CameraParamsLogger oldParamLogger (mParameters.flatten().string());
+    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT, newParams) ? true : false;
 
     // print all old and new params for comparison (debug)
     LOG1("----------BEGIN PARAM DIFFERENCE----------");
@@ -5223,6 +5143,10 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     LOG2("----------- BEGIN NEW PARAMS -------- ");
     newParamLogger.dump();
     LOG2("----------- END NEW PARAMS -------- ");
+
+    status = validateParameters(&newParams);
+    if (status != NO_ERROR)
+        goto exit;
 
     LOG1("scanning AF focus areas");
     status = newFocusAreas.scan(newParams.get(CameraParameters::KEY_FOCUS_AREAS),
@@ -5238,6 +5162,11 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
         LOGE("bad metering area");
         goto exit;
     }
+
+    // Take care of parameters that need to be set while the ISP is stopped
+    status = processStaticParameters(&oldParams, &newParams, needRestartPreview);
+    if (status != NO_ERROR)
+        goto exit;
 
     if (paramsHasPictureSizeChanged(&oldParams, &newParams)) {
         LOG1("Picture size has changed while camera is active!");
@@ -5294,8 +5223,11 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
         goto exit;
 
     mParameters = newParams;
+    updateParameterCache();
 
 exit:
+    // return status and unblock message sender
+    mMessageQueue.reply(MESSAGE_ID_SET_PARAMETERS, status);
     // return status
     return status;
 }
