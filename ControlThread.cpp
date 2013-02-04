@@ -100,6 +100,7 @@ ControlThread::ControlThread(const sp<CameraConf>& cfg) :
     ,mFpsAdaptSkip(0)
     ,mBurstLength(0)
     ,mBurstStart(0)
+    ,mBurstFps(-1)
     ,mBurstCaptureNum(-1)
     ,mBurstCaptureDoneNum(-1)
     ,mBurstQbufs(0)
@@ -899,6 +900,59 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
     return NO_ERROR;
 }
 
+
+/**
+ * Adapts continuous capture params to fit platform limits.
+ *
+ * In case the requested combination is not supported (platform
+ * does not have big enough ringbuffer for RAW frames),
+ * burst-start-index takes priority over burst-fps.
+ *
+ * The FPS is increased (by reducing skipping done in ISP), until
+ * the requested burst-start-index can be supported.
+ *
+ * \param cfg configuration container to modify
+ */
+void ControlThread::continuousConfigApplyLimits(AtomISP::ContinuousCaptureConfig &cfg) const
+{
+    int minOffset = mISP->continuousBurstNegMinOffset();
+    int skip = continuousBurstSkip(mBurstFps);
+    int offset = 0;
+    if (mBurstStart < 0) {
+        for(offset = minOffset-1; offset < minOffset; skip--) {
+            offset = mISP->continuousBurstNegOffset(skip, mBurstStart);
+            if (skip == 0)
+                break;
+        }
+    }
+    cfg.skip = skip;
+    cfg.offset = offset;
+    double outFps = mISP->getFrameRate() / (skip + 1);
+    LOG2("@%s: offset %d, skip %d, fps %d->%.1f (for start-index %d, sensor fps %.1f)",
+         __FUNCTION__, offset, skip, mBurstFps, outFps, mBurstStart, mISP->getFrameRate());
+}
+
+/**
+ * Returns the skip factor for the given target FPS.
+ *
+ * \return 0...N of frames to skip between valid output frames
+ */
+int ControlThread::continuousBurstSkip(double targetFps) const
+{
+    double ratio (mISP->getFrameRate() / targetFps);
+
+    // High - max sensor rate
+    if (ratio <= 2.0)
+        return 0;
+
+    // Medium - half the sensor rate
+    else if (ratio <= 4.0)
+        return 1;
+
+    // Low - quarter of sensor rate;
+    return 3;
+}
+
 /**
  * Configures the ISP ringbuffer size in continuous mode.
  *
@@ -913,18 +967,15 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
 status_t ControlThread::configureContinuousRingBuffer()
 {
     LOG2("@%s", __FUNCTION__);
-    int numCaptures = 1;
-    int offset = -1;
+    AtomISP::ContinuousCaptureConfig cfg;
+    cfg.numCaptures = 1;
+    cfg.offset = -1; // TODO: needs to be calibrated
+    cfg.skip = 0;
     if (mBurstLength > 1) {
-        numCaptures = mBurstLength;
-        offset = mBurstStart - shutterLagZeroAlign();
+        cfg.numCaptures = mBurstLength;
+        continuousConfigApplyLimits(cfg);
     }
-
-    mISP->setContCaptureNumCaptures(numCaptures);
-    mISP->setContCaptureOffset(offset);
-    LOG2("continous mode ringbuffer for max %d captures, %d offset",
-         numCaptures, offset);
-    return NO_ERROR;
+    return mISP->prepareOfflineCapture(cfg);
 }
 
 /**
@@ -1393,20 +1444,6 @@ status_t ControlThread::restartPreview(bool videoMode)
 
 
 /**
- * Calculates the correct frame offset to capture to reach Zero
- * Shutter Lag.
- */
-int ControlThread::shutterLagZeroAlign()
-{
-    int delayMs = PlatformData::shutterLagCompensationMs();
-    float frameIntervalMs = 1000.0 / mISP->getFrameRate();
-    int lagZeroOffset = delayMs / frameIntervalMs + 1;
-    LOG2("@%s: delay %dms, fps %.02f, zero offset %d",
-         __FUNCTION__, delayMs, mISP->getFrameRate(), lagZeroOffset);
-    return lagZeroOffset;
-}
-
-/**
  * Starts rendering an output frame from the raw
  * ringbuffer.
  */
@@ -1414,31 +1451,28 @@ status_t ControlThread::startOfflineCapture()
 {
     assert(mState == STATE_CONTINUOUS_CAPTURE);
 
-    int skip = 0;
-    int captures = 1;
-    int framesDone = 0;
-    int offset = -1; // TODO: start using shutterLagZeroAlign() instead of
+    AtomISP::ContinuousCaptureConfig cfg;
+    cfg.numCaptures = 1;
+    cfg.offset = -1; // TODO: start using shutterLagZeroAlign() instead of
                      // fixed -1 once BZ82274 is fixed
+    cfg.skip = 0;
 
     if (mBurstLength > 1) {
-        captures = mBurstLength;
-        offset = mBurstStart - shutterLagZeroAlign();
+        cfg.numCaptures = mBurstLength;
+        continuousConfigApplyLimits(cfg);
     }
 
     // in case preview has just started, we need to limit
     // how long we can look back
-    framesDone = mPreviewThread->getFramesDone();
-    if (framesDone < -offset)
-        offset = -framesDone;
+    int framesDone = mPreviewThread->getFramesDone();
+    if (framesDone < -cfg.offset)
+        cfg.offset = -framesDone;
 
     // Starting capture device will queue all buffers,
     // so we need to clear any references we have.
     mUnqueuedPicBuf.clear();
 
-    mISP->setContCaptureNumCaptures(captures);
-    mISP->setContCaptureOffset(offset);
-    mISP->setContCaptureSkip(skip);
-    mISP->startOfflineCapture();
+    mISP->startOfflineCapture(cfg);
 
     return NO_ERROR;
 }
@@ -1930,8 +1964,11 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
 
     if (mState == STATE_CONTINUOUS_CAPTURE) {
         assert(mBurstLength <= 1);
-        mISP->setContCaptureNumCaptures(1);
-        mISP->startOfflineCapture();
+        AtomISP::ContinuousCaptureConfig config;
+        config.numCaptures = 1;
+        config.offset = 0;
+        config.skip = 0,
+        mISP->startOfflineCapture(config);
     }
     else {
         status = stopPreviewCore();
@@ -2951,9 +2988,7 @@ void ControlThread::previewBufferCallback(AtomBuffer *buff, ICallbackPreview::Ca
 
 status_t ControlThread::handleMessagePreviewStarted()
 {
-    if (mState == STATE_CONTINUOUS_CAPTURE) {
-        mISP->setContCaptureOffset(-1);
-    } else {
+    if (mState != STATE_CONTINUOUS_CAPTURE) {
         /**
         * First preview frame was rendered.
         * Now preview is ongoing. Complete now any initialization that is not
@@ -3402,6 +3437,7 @@ status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
         }
         if (fps > 0) {
             mFpsAdaptSkip = roundf(PlatformData::getMaxBurstFPS(mISP->getCurrentCameraId())/float(fps)) - 1;
+            mBurstFps = fps;
             LOG1("%s, mFpsAdaptSkip:%d", __FUNCTION__, mFpsAdaptSkip);
         }
     }

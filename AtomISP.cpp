@@ -1,5 +1,6 @@
-    /*
+/*
  * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (C) 2011,2012,2013 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -191,6 +192,7 @@ AtomISP::AtomISP(const sp<CameraConf>& cfg) :
     ,mNumRecordingBuffersQueued(0)
     ,mNumCapturegBuffersQueued(0)
     ,mFlashTorchSetting(0)
+    ,mContCaptPrepared(false)
     ,mConfigSnapshotPreviewDevice(V4L2_MAIN_DEVICE)
     ,mConfigLastDevice(V4L2_PREVIEW_DEVICE)
     ,mPreviewDevice(V4L2_MAIN_DEVICE)
@@ -1380,27 +1382,6 @@ status_t AtomISP::requestContCapture(int numCaptures, int offset, unsigned int s
     return NO_ERROR;
 }
 
-status_t AtomISP::setContCaptureNumCaptures(int numCaptures)
-{
-    LOG1("@%s, numCaptures = %d", __FUNCTION__, numCaptures);
-    mContCaptConfig.numCaptures = numCaptures;
-    return NO_ERROR;
-}
-
-status_t AtomISP::setContCaptureOffset(int captureOffset)
-{
-    LOG2("@%s", __FUNCTION__);
-    mContCaptConfig.offset = captureOffset;
-    return NO_ERROR;
-}
-
-status_t AtomISP::setContCaptureSkip(unsigned int skip)
-{
-    LOG2("@%s", __FUNCTION__);
-    mContCaptConfig.skip = skip;
-    return NO_ERROR;
-}
-
 /**
  * Configures the ISP ringbuffer size in continuous mode.
  *
@@ -1434,11 +1415,70 @@ status_t AtomISP::configureContinuousRingBuffer()
     return status;
 }
 
+/**
+ * Calculates the correct frame offset to capture to reach Zero
+ * Shutter Lag.
+ */
+int AtomISP::shutterLagZeroAlign() const
+{
+    int delayMs = PlatformData::shutterLagCompensationMs();
+    float frameIntervalMs = 1000.0 / getFrameRate();
+    int lagZeroOffset = delayMs / frameIntervalMs + 1;
+    LOG2("@%s: delay %dms, fps %.02f, zero offset %d",
+         __FUNCTION__, delayMs, getFrameRate(), lagZeroOffset);
+    return lagZeroOffset;
+}
+
+/**
+ * Returns the minimum offset ISP supports.
+ *
+ * This values is the smallest value that can be passed
+ * to prepareOfflineCapture() and startOfflineCapture().
+ */
+int AtomISP::continuousBurstNegMinOffset(void) const
+{
+    return -(PlatformData::maxContinuousRawRingBufferSize() - 2);
+}
+
+/**
+ * Returns the needed buffer offset to capture frame
+ * with negative time index 'startIndex' and when skippng
+ * 'skip' input frames between each output frame.
+ *
+ * The resulting offset is aligned so that offset for
+ * startIndex==0 matches the user perceived zero shutter lag
+ * frame. This calibration is done by factoring in
+ * PlatformData::shutterLagCompensationMs().
+ *
+ * As the ISP continuous capture buffer consists of frames stored
+ * at full sensor rate, it depends on the requested output capture
+ * rate, how much back in time one can go.
+ *
+ * \param skip how many input frames ISP skips after each output frame
+ * \param startIndex index to first frame (counted at output rate)
+ * \return negative offset to the requested frame (counted at full sensor rate)
+ */
+int AtomISP::continuousBurstNegOffset(int skip, int startIndex) const
+{
+    assert(startIndex <= 0);
+    assert(skip >= 0);
+    int targetRatio = skip + 1;
+    int negOffset = targetRatio * startIndex - shutterLagZeroAlign();
+    LOG2("@%s: offset %d, ratio %d, skip %d, align %d",
+         __FUNCTION__, negOffset, targetRatio, skip, shutterLagZeroAlign());
+    return negOffset;
+}
+
 status_t AtomISP::configureContinuous()
 {
     LOG1("@%s", __FUNCTION__);
     int ret;
     status_t status = NO_ERROR;
+
+    if (!mContCaptPrepared) {
+        LOGE("offline capture not prepared correctly");
+        return UNKNOWN_ERROR;
+    }
 
     updateCaptureParams();
     ret = configureContinuousRingBuffer();
@@ -1667,8 +1707,15 @@ error:
  *
  * Snapshot and postview frame rendering is started
  * and frame(s) can be fetched with getSnapshot().
+ *
+ * Note that the capture params given in 'config' must be
+ * equal or a subset of the configuration passed to
+ * prepareOfflineCapture().
+ *
+ * \param config configuration container describing how many
+ *               captures to take, skipping and the start offset
  */
-status_t AtomISP::startOfflineCapture()
+status_t AtomISP::startOfflineCapture(AtomISP::ContinuousCaptureConfig &config)
 {
     status_t res = NO_ERROR;
 
@@ -1677,10 +1724,15 @@ status_t AtomISP::startOfflineCapture()
         LOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
         return INVALID_OPERATION;
     }
+    else if (config.offset < mContCaptConfig.offset ||
+             config.numCaptures > mContCaptConfig.numCaptures) {
+        LOGE("@%s: cannot start with current ISP configuration", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
 
-    res = requestContCapture(mContCaptConfig.numCaptures,
-                             mContCaptConfig.offset,
-                             mContCaptConfig.skip);
+    res = requestContCapture(config.numCaptures,
+                             config.offset,
+                             config.skip);
     if (res == NO_ERROR)
         res = startCapture();
 
@@ -1702,6 +1754,26 @@ status_t AtomISP::stopOfflineCapture()
     }
     stopDevice(V4L2_MAIN_DEVICE, true);
     stopDevice(V4L2_POSTVIEW_DEVICE, true);
+    mContCaptPrepared = true;
+    return NO_ERROR;
+}
+
+/**
+ * Prepares ISP for offline capture
+ *
+ * \param config container to configure capture count, skipping
+ *               and the start offset (see struct AtomISP::ContinuousCaptureConfig)
+ */
+status_t AtomISP::prepareOfflineCapture(AtomISP::ContinuousCaptureConfig &cfg)
+{
+    LOG1("@%s, numCaptures = %d", __FUNCTION__, cfg.numCaptures);
+    if (cfg.offset < continuousBurstNegMinOffset()) {
+        LOGE("@%s: offset %d not supported, minimum %d",
+             __FUNCTION__, cfg.offset, continuousBurstNegMinOffset());
+        return UNKNOWN_ERROR;
+    }
+    mContCaptConfig = cfg;
+    mContCaptPrepared = true;
     return NO_ERROR;
 }
 

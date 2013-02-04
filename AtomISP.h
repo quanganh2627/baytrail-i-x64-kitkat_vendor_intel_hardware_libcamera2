@@ -108,6 +108,18 @@ public:
     status_t initDevice();
     status_t init();
 
+    // public types
+public:
+    struct ContinuousCaptureConfig {
+        int numCaptures;        /*!< Number of captures
+                                 * -1 = capture continuously
+                                 * 0 = disabled, stop captures
+                                 * >0 = burst of N snapshots
+                                 */
+        int offset;             /*!< burst start offset */
+        int skip;               /*!< skip factor */
+    };
+
 // public methods
 public:
 
@@ -125,10 +137,15 @@ public:
     void requestClearDriverState();
     void clearDriverState();
 
-    status_t startOfflineCapture();
+    status_t startOfflineCapture(ContinuousCaptureConfig &config);
     status_t stopOfflineCapture();
     bool isOfflineCaptureRunning() const;
     bool isOfflineCaptureSupported() const;
+    int shutterLagZeroAlign() const;
+    int continuousBurstNegMinOffset(void) const;
+    int continuousBurstNegOffset(int skip, int startIndex) const;
+    status_t prepareOfflineCapture(ContinuousCaptureConfig &config);
+
     bool isYUVvideoZoomingSupported() const;
     status_t returnPreviewBuffers();
     status_t returnRecordingBuffers();
@@ -165,9 +182,6 @@ public:
 
     status_t setSnapshotNum(int num);
     int getSnapshotNum();
-    status_t setContCaptureNumCaptures(int numCaptures);
-    status_t setContCaptureOffset(int captureOffset);
-    status_t setContCaptureSkip(unsigned int skip);
 
     void getZoomRatios(bool videoMode, CameraParameters *params);
     void getFocusDistances(CameraParameters *params);
@@ -200,7 +214,7 @@ public:
     static int getNumberOfCameras();
     static status_t getCameraInfo(int cameraId, camera_info *cameraInfo);
 
-    float getFrameRate() { return mConfig.fps; }
+    float getFrameRate() const { return mConfig.fps; }
 
     /* Acceleration API extensions */
     int loadAccFirmware(void *fw, size_t size, unsigned int *fwHandle);
@@ -325,16 +339,6 @@ private:
         float fps;            // preview/recording (shared)
         int num_snapshot;     // number of snapshots to take
         int zoom;             // zoom value
-    };
-
-    struct ContinuousCaptureConfig {
-      int numCaptures;        /*!< Number of captures
-                               * -1 = capture continuously
-                               * 0 = disabled, stop captures
-                               * >0 = burst of N snapshots
-                               */
-      int offset;             /*!< burst start offset */
-      unsigned int skip;      /*!< skip factor */
     };
 
     struct cameraInfo {
@@ -527,6 +531,7 @@ private:
     int mFlashTorchSetting;
     Config mConfig;
     ContinuousCaptureConfig mContCaptConfig;
+    bool mContCaptPrepared;
 
     // TODO: video_fds should be moved to mDevices
     int video_fds[V4L2_MAX_DEVICE_COUNT];
