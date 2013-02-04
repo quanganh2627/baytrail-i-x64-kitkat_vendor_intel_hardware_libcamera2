@@ -638,7 +638,7 @@ PreviewThread::GfxPreviewHandler::handlePreview(MessagePreview *msg)
             } else {
                 AtomBuffer *buf = dequeueFromWindow();
                 if (buf) {
-                    LOG1("copying frame %p -> %p : size %d", buf->gfxData, msg->buff.buff->data, msg->buff.size);
+                    LOG2("copying frame %p -> %p : size %d", buf->gfxData, msg->buff.buff->data, msg->buff.size);
                     memcpy(buf->gfxData, msg->buff.buff->data, msg->buff.size);
                     bufToEnqueue = buf->mNativeBufPtr;
                 } else {

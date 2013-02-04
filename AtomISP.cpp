@@ -2014,7 +2014,7 @@ void AtomISP::closeDevice(int device)
  */
 int AtomISP::v4l2_poll(int device, int timeout)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     struct pollfd pfd;
 
     if (video_fds[device] < 0) {
