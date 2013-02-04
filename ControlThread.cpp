@@ -3573,20 +3573,20 @@ status_t ControlThread::ProcessOverlayEnable(const CameraParameters *oldParams,
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_HW_OVERLAY_RENDERING);
 
-    if (!newVal.isEmpty() && (mState == STATE_STOPPED))  {
-
-        if (newVal == "true") {
-            if (mPreviewThread->enableOverlay(true, PlatformData::overlayRotation(cameraId)) == NO_ERROR) {
-                newParams->set(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING, "true");
-                LOG1("@%s: Preview Overlay rendering enabled!", __FUNCTION__);
-            } else {
-                LOGE("Could not configure Overlay preview rendering");
+    if (!newVal.isEmpty()) {
+        if (mState == STATE_STOPPED) {
+            if (newVal == "true") {
+                if (mPreviewThread->enableOverlay(true, PlatformData::overlayRotation(cameraId)) == NO_ERROR) {
+                    newParams->set(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING, "true");
+                    LOG1("@%s: Preview Overlay rendering enabled!", __FUNCTION__);
+                } else {
+                    LOGE("Could not configure Overlay preview rendering");
+                }
             }
+        } else {
+            LOGW("Overlay cannot be enabled in other state than stop, ignoring request");
         }
-    } else {
-        LOGW("Overlay cannot be enabled in other state than stop, ignoring request");
     }
-
     return status;
 }
 
