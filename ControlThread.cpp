@@ -762,6 +762,14 @@ status_t ControlThread::storeMetaDataInBuffers(bool enabled)
     return  mMessageQueue.send(&msg, MESSAGE_ID_STORE_METADATA_IN_BUFFER);
 }
 
+void ControlThread::atomRelease()
+{
+    LOG2("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_RELEASE;
+    mMessageQueue.send(&msg, MESSAGE_ID_RELEASE);
+}
+
 void ControlThread::sceneDetected(int sceneMode, bool sceneHdr)
 {
     LOG2("@%s", __FUNCTION__);
@@ -866,11 +874,12 @@ void ControlThread::postProcCaptureTrigger()
     mMessageQueue.send(&msg);
 }
 
-status_t ControlThread::handleMessageExit()
+status_t ControlThread::handleMessageExit(MessageExit *msg)
 {
     LOG1("@%s state = %d", __FUNCTION__, mState);
     status_t status;
-    mThreadRunning = false;
+    if (msg->stopThread)
+        mThreadRunning = false;
 
     switch (mState) {
     case STATE_CAPTURE:
@@ -2876,6 +2885,20 @@ status_t ControlThread::handleMessageCancelPicture()
     mPictureThread->flushBuffers();
 
     mMessageQueue.reply(MESSAGE_ID_CANCEL_PICTURE, status);
+    return status;
+}
+
+status_t ControlThread::handleMessageRelease()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    // use exit handler to stop (but do not stop message handling)
+    Message msg;
+    msg.data.exit.stopThread = false;
+    status = handleMessageExit(&msg.data.exit);
+    // return Gfx buffers
+    mPreviewThread->returnPreviewBuffers();
+    mMessageQueue.reply(MESSAGE_ID_RELEASE, status);
     return status;
 }
 
@@ -5872,7 +5895,7 @@ status_t ControlThread::waitForAndExecuteMessage()
     switch (msg.id) {
 
         case MESSAGE_ID_EXIT:
-            status = handleMessageExit();
+            status = handleMessageExit(&msg.data.exit);
             break;
 
         case MESSAGE_ID_START_PREVIEW:
@@ -5973,6 +5996,9 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_DEQUEUE_RECORDING:
             status = dequeueRecording(msg.data.dequeueRecording.skipFrame);
+            break;
+        case MESSAGE_ID_RELEASE:
+            status = handleMessageRelease();
             break;
 
         default:
@@ -6142,6 +6168,7 @@ status_t ControlThread::requestExitAndWait()
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_EXIT;
+    msg.data.exit.stopThread = true;
 
     // tell thread to exit
     // send message asynchronously

@@ -121,6 +121,7 @@ public:
 
     // TODO: need methods to configure control thread
     // TODO: decide if configuration method should send a message
+     void atomRelease();
 
 // callback methods
 private:
@@ -155,6 +156,7 @@ private:
                                          // HAL threads to signal preview buffer
                                          // is not used and is free to queue back
                                          // AtomISP.
+        MESSAGE_ID_RELEASE,
         MESSAGE_ID_PREVIEW_STARTED,
         MESSAGE_ID_PICTURE_DONE,
         MESSAGE_ID_SET_PARAMETERS,
@@ -193,6 +195,10 @@ private:
 
     struct MessageGetParameters {
         char** params;
+    };
+
+    struct MessageExit {
+        bool stopThread;
     };
 
     struct MessageSetParameters {
@@ -267,6 +273,9 @@ private:
 
         // MESSAGE_ID_DEQUEUE_RECORDING
         MessageDequeueRecording   dequeueRecording;
+
+        // MESSAGE_ID_EXIT
+        MessageExit exit;
     };
 
     // message id and message data
@@ -332,7 +341,7 @@ private:
     status_t continuousStartStillCapture(bool useFlash);
 
     // thread message execution functions
-    status_t handleMessageExit();
+    status_t handleMessageExit(MessageExit *msg);
     status_t handleMessageStartPreview();
     status_t handleMessageStopPreview();
     status_t handleMessageStartRecording();
@@ -372,6 +381,7 @@ private:
     status_t stopPanorama();
     status_t startFaceRecognition();
     status_t stopFaceRecognition();
+    status_t handleMessageRelease();
 
     // main message function
     status_t waitForAndExecuteMessage();
