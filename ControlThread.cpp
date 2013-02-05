@@ -99,6 +99,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mPostProcThread(NULL)
     ,mPanoramaThread(NULL)
     ,mBracketManager(NULL)
+    ,mPostCaptureThread(NULL)
     ,mMessageQueue("ControlThread", (int) MESSAGE_ID_MAX)
     ,mState(STATE_STOPPED)
     ,mThreadRunning(false)
@@ -266,6 +267,12 @@ status_t ControlThread::init()
         goto bail;
     }
 
+    mPostCaptureThread = new PostCaptureThread(this);
+    if (mPostCaptureThread == NULL) {
+        LOGE("error creating PostCapture");
+        goto bail;
+    }
+
     // get default params from AtomISP and JPEG encoder
     mISP->getDefaultParameters(&mParameters, &mIntelParameters);
     m3AControls->getDefaultParams(&mParameters, &mIntelParameters);
@@ -322,6 +329,11 @@ status_t ControlThread::init()
         goto bail;
     }
 
+    status = mPostCaptureThread->run();
+    if (status != NO_ERROR) {
+        LOGW("Error Starting PostCaptureThread!");
+        goto bail;
+    }
     // Disable bracketing by default
     mBracketManager->setBracketMode(BRACKET_NONE);
 
@@ -367,6 +379,11 @@ void ControlThread::deinit()
     //       with deinit (eg. check for NULL / non-NULL).
 
     LOG1("@%s", __FUNCTION__);
+
+    if (mPostCaptureThread != NULL) {
+        mPostCaptureThread->requestExitAndWait();
+        mPostCaptureThread.clear();
+    }
 
     if (mBracketManager != NULL) {
         mBracketManager->requestExitAndWait();
@@ -5584,6 +5601,13 @@ status_t ControlThread::handleMessageStoreMetaDataInBuffers(MessageStoreMetaData
     return status;
 }
 
+void ControlThread::postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status)
+{
+    LOG1("@%s, item = %p", __FUNCTION__, item);
+
+    // TODO: get the output from the processing and send to encode.
+
+}
 status_t ControlThread::hdrInit(int size, int pvSize, int format,
                                 int width, int height,
                                 int pvWidth, int pvHeight)

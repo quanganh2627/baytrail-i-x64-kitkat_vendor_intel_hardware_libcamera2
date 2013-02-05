@@ -36,6 +36,7 @@
 #include "PostProcThread.h"
 #include "PanoramaThread.h"
 #include "SensorThread.h"
+#include "PostCaptureThread.h"
 #include "CameraDump.h"
 #include "CameraAreas.h"
 #include "AtomCP.h"
@@ -58,7 +59,8 @@ class ControlThread :
     public ICallbackAAA,
     public ICallbackPostProc,
     public ICallbackPanorama,
-    public IAtomIspObserver {
+    public IAtomIspObserver,
+    public IPostCaptureProcessObserver{
 
 // constructor destructor
 public:
@@ -121,9 +123,10 @@ public:
     // return recording frame to driver (asynchronous)
     status_t releaseRecordingFrame(void *buff);
 
-    // TODO: need methods to configure control thread
-    // TODO: decide if configuration method should send a message
-     void atomRelease();
+    void atomRelease();
+
+    // Implementation of IPostCaptureProcessObserver interface
+    void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status);
 
 // callback methods
 private:
@@ -575,6 +578,7 @@ private:
     sp<PanoramaThread> mPanoramaThread;
     sp<SensorThread> mSensorThread;
     sp<BracketManager> mBracketManager;
+    sp<PostCaptureThread> mPostCaptureThread;
 
     MessageQueue<Message, MessageId> mMessageQueue;
     State mState;

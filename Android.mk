@@ -55,7 +55,8 @@ LOCAL_SRC_FILES := \
 	BracketManager.cpp \
 	AtomAcc.cpp \
 	AtomIspObserverManager.cpp \
-	SensorThread.cpp
+	SensorThread.cpp	\
+	PostCaptureThread.cpp
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SRC_FILES += \
