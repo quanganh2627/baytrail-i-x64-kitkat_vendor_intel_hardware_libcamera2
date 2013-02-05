@@ -472,7 +472,7 @@ private:
 
     void selectFlashMode(CameraParameters *newParams);
 
-    bool selectPostviewSize(int &width, int height);
+    bool selectPostviewSize(int &width, int &height);
 
     // These are params that can only be set while the ISP is stopped. If the parameters
     // changed while the ISP is running, the ISP will need to be stopped, reconfigured, and

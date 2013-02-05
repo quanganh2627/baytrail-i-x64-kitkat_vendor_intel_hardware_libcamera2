@@ -2226,10 +2226,24 @@ bool ControlThread::selectPostviewSize(int &width, int &height)
         height = picHeight;
         // Note: resulting thumbnail leaves up to sw, currently not supported
     } else if (picWidth * thuHeight / thuWidth != picHeight) {
-        LOGW("Thumbnail size doesn't match the picture aspect, check your configuration");
-        width = thuWidth;
-        height = thuHeight;
-        // Note: resulting thumbnail gets stretched by CSS
+        LOGW("Thumbnail size doesn't match the picture aspect"
+             "(%d,%d) -> (%d,%d), check your configuration",
+             picWidth, picHeight, thuWidth, thuHeight);
+        int heightByPicAspect = thuWidth * picHeight / picWidth;
+        if (heightByPicAspect < thuHeight) {
+            // maintain height
+            // width = thuHeight * picWidth / picHeight;
+            // height = thuHeight;
+            // Note: not supported configuration, letting ISP to stretch
+            width = thuWidth;
+            height = thuHeight;
+        } else {
+            // maintain width
+            width = thuWidth;
+            height = heightByPicAspect;
+            LOG1("Wider thumbnail compared to picture, cropping %dx%d "
+                 "-> %dx%d with sw scaler", width, height, thuWidth, thuHeight);
+        }
     } else {
         width = thuWidth;
         height = thuHeight;
