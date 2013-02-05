@@ -1786,7 +1786,8 @@ int AtomISP::configureDevice(int device, int deviceMode, FrameInfo *fInfo, bool 
     if (ret < 0)
         return ret;
 
-    if (device == V4L2_MAIN_DEVICE)
+    if (device == V4L2_MAIN_DEVICE ||
+        device == V4L2_PREVIEW_DEVICE)
         applySensorFlip();
 
     //Set the format
