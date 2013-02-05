@@ -1012,12 +1012,7 @@ status_t ControlThread::initContinuousCapture()
     int pvHeight;
 
     if (mPanoramaThread->getState() == PANORAMA_STOPPED) {
-        if (isParameterSet(IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE)) {
-            mParameters.getPreviewSize(&pvWidth, &pvHeight);
-        } else {
-            pvWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
-            pvHeight = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
-        }
+        selectPostviewSize(pvWidth, pvHeight);
     } else {
         IntelCameraParameters::getPanoramaLivePreviewSize(pvWidth, pvHeight, mParameters);
     }
@@ -2190,6 +2185,59 @@ status_t ControlThread::continuousStartStillCapture(bool useFlash)
     return status;
 }
 
+/**
+ * Select resolution to be used as capture postview size
+ *
+ * We prefer that postview is configured to preview resolution to be able
+ * to pass preview buffers into the preview surface. Since picture-size,
+ * preview-size and thumbnail resolutions are all public API parameters,
+ * we run checks for aspect-ratio conflict. When ratios do not match
+ * we prefer FoV correctness with the resulting image.
+ *
+ * \return true if selected size matches preview-size
+ */
+bool ControlThread::selectPostviewSize(int &width, int &height)
+{
+    LOG1("@%s: ", __FUNCTION__);
+    int picWidth, picHeight;
+    int thuWidth, thuHeight;
+    int preWidth, preHeight;
+    mParameters.getPictureSize(&picWidth, &picHeight);
+    mParameters.getPreviewSize(&preWidth, &preHeight);
+    thuWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
+    thuHeight = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
+
+    // try preview size first
+    if (preWidth > picWidth || preHeight > picHeight) {
+        LOG1("Preferred postview size larger than picture size");
+    } else if (picWidth * preHeight / preWidth != picHeight) {
+        LOG1("Preferred postview size doesn't mach the picture aspect");
+    } else {
+        width = preWidth;
+        height = preHeight;
+        return true;
+    }
+
+    // then thumbnail
+    if (thuWidth > picWidth || thuHeight > picHeight) {
+        LOG1("Thumbnail size larger than picture size");
+        // use picture-size
+        width = picWidth;
+        height = picHeight;
+        // Note: resulting thumbnail leaves up to sw, currently not supported
+    } else if (picWidth * thuHeight / thuWidth != picHeight) {
+        LOGW("Thumbnail size doesn't match the picture aspect, check your configuration");
+        width = thuWidth;
+        height = thuHeight;
+        // Note: resulting thumbnail gets stretched by CSS
+    } else {
+        width = thuWidth;
+        height = thuHeight;
+    }
+
+    return false;
+}
+
 status_t ControlThread::captureStillPic()
 {
     LOG1("@%s: ", __FUNCTION__);
@@ -2278,15 +2326,7 @@ status_t ControlThread::captureStillPic()
 
     // Get the current params
     mParameters.getPictureSize(&width, &height);
-    mParameters.getPreviewSize(&pvWidth, &pvHeight);
-    if (pvWidth > width || pvHeight > height) {
-        // we can't configure postview to be bigger than picture size,
-        // the same driver/ISP limitation as with video-sizes
-        pvWidth = width;
-        pvHeight = height;
-        // no support for postview2preview when size differs
-        previewKeepAlive = false;
-    }
+    previewKeepAlive &= selectPostviewSize(pvWidth, pvHeight);
     format = mISP->getSnapshotPixelFormat();
     size = frameSize(format, width, height);
     pvSize = frameSize(format, pvWidth, pvHeight);
@@ -2480,10 +2520,10 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     LOG1("@%s: ", __FUNCTION__);
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
-    int width, height, format, size;
-    int pvWidth, pvHeight, pvSize;
+    int pvWidth, pvHeight;
     bool previewKeepAlive =
-        isParameterSet(IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE);
+        isParameterSet(IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE) &&
+        selectPostviewSize(pvWidth, pvHeight);
 
     if (clientRequest) {
         bool requestPostviewCallback = true;
@@ -2540,21 +2580,6 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
             }
         }
     }
-
-    // Get the current params
-    mParameters.getPictureSize(&width, &height);
-    mParameters.getPreviewSize(&pvWidth, &pvHeight);
-    if (pvWidth > width || pvHeight > height) {
-        // we can't configure postview to be bigger than picture size,
-        // the same driver/ISP limitation as with video-sizes
-        pvWidth = width;
-        pvHeight = height;
-        // no support for postview2preview when size differs
-        previewKeepAlive = false;
-    }
-    format = mISP->getSnapshotPixelFormat();
-    size = frameSize(format, width, height);
-    pvSize = frameSize(format, pvWidth, pvHeight);
 
     // note: flash is not supported in burst and continuous shooting
     //       modes (this would be the place to enable it)
