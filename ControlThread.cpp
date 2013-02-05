@@ -3413,6 +3413,7 @@ status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
         LOG1("Burst start-index set %d -> %d", mBurstStart, burstStartInt);
         mBurstStart = burstStartInt;
     }
+    selectFlashMode(newParams, false);
 
     return status;
 }
@@ -3981,6 +3982,7 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         // Dependency parameters
         mBurstLength = mHdr.bracketNum;
         mBracketManager->setBracketMode(mHdr.bracketMode);
+        selectFlashMode(newParams, false);
     }
 
     newVal = paramsReturnNewIfChanged(oldParams, newParams,
@@ -4048,14 +4050,17 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
  * in burst capture, the flash is forced to off, otherwise
  * saved single capture flash mode is applied.
  * \param newParams
+ * \param apply previous saved value
  */
-void ControlThread::selectFlashMode(CameraParameters *newParams)
+void ControlThread::selectFlashMode(CameraParameters *newParams, bool applySaved)
 {
     // !mBurstLength is only for CTS to pass
     LOG1("@%s", __FUNCTION__);
     if (mBurstLength == 1 || !mBurstLength) {
-        newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, mSavedFlashSupported.string());
-        newParams->set(CameraParameters::KEY_FLASH_MODE, mSavedFlashMode.string());
+        if (applySaved) {
+            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, mSavedFlashSupported.string());
+            newParams->set(CameraParameters::KEY_FLASH_MODE, mSavedFlashMode.string());
+        }
     } else {
         newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
         newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
@@ -4083,7 +4088,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
-                selectFlashMode(newParams);
+                selectFlashMode(newParams, true);
             }
             newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
             newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
@@ -4102,7 +4107,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams);
+                selectFlashMode(newParams, true);
             }
             newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
             newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
@@ -4121,7 +4126,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams);
+                selectFlashMode(newParams, true);
             }
             newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_OUTDOOR);
             newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
@@ -4140,7 +4145,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams);
+                selectFlashMode(newParams, true);
             }
             newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
             newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
@@ -4159,7 +4164,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("on");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_ON);
-                selectFlashMode(newParams);
+                selectFlashMode(newParams, true);
             }
             newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
             newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
@@ -4178,7 +4183,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams);
+                selectFlashMode(newParams, true);
             }
             newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
             newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
@@ -4196,8 +4201,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
-                mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
-                selectFlashMode(newParams);
+                mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
+                selectFlashMode(newParams, true);
             }
             newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
             newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
@@ -4230,7 +4235,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
-                selectFlashMode(newParams);
+                selectFlashMode(newParams, true);
             }
             newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
             newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center,spot");

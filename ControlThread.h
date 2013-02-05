@@ -479,7 +479,7 @@ private:
 
     void preSetCameraWindows(CameraWindow* focusWindows, size_t winCount);
 
-    void selectFlashMode(CameraParameters *newParams);
+    void selectFlashMode(CameraParameters *newParams, bool applySaved);
 
     bool selectPostviewSize(int &width, int &height);
 
