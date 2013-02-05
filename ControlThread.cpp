@@ -3563,6 +3563,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         status = processParamSetMeteringAreas(oldParams, newParams);
     }
 
+    if (status == NO_ERROR) {
+        // ae mode
+        status = processParamAutoExposureMeteringMode(oldParams, newParams);
+    }
+
     if (mAAA->is3ASupported()) {
 
         if (status == NO_ERROR) {
@@ -3603,11 +3608,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         if (status == NO_ERROR) {
             // Smart Shutter Capture
             status = processParamSmartShutter(oldParams, newParams);
-        }
-
-        if (status == NO_ERROR) {
-            // ae mode
-            status = processParamAutoExposureMeteringMode(oldParams, newParams);
         }
 
         if (status == NO_ERROR) {
