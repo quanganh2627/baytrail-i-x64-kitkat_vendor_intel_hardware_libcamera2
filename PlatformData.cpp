@@ -685,6 +685,26 @@ bool PlatformData::supportsSlowMotion(int cameraId)
     return i->mCameras[cameraId].hasSlowMotion;
 }
 
+const char* PlatformData::supportedFocusModes(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].supportedFocusModes;
+}
+
+const char* PlatformData::defaultFocusMode(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].defaultFocusMode;
+}
+
 const char* PlatformData::productName(void)
 {
     PlatformBase *i = getInstance();

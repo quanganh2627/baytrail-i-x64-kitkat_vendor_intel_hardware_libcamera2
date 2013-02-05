@@ -223,6 +223,18 @@ public:
             supportedPreviewSize = "";
             //For high speed recording, slow motion playback
             hasSlowMotion = false;
+            // focus modes
+            snprintf(supportedFocusModes, sizeof(supportedFocusModes)
+                ,"%s,%s,%s,%s,%s,%s"
+                ,CameraParameters::FOCUS_MODE_AUTO
+                ,CameraParameters::FOCUS_MODE_INFINITY
+                ,CameraParameters::FOCUS_MODE_FIXED
+                ,CameraParameters::FOCUS_MODE_MACRO
+                ,CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO
+                ,CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
+            snprintf(defaultFocusMode
+                ,sizeof(defaultFocusMode)
+                ,"%s", CameraParameters::FOCUS_MODE_AUTO);
         };
 
         SensorType sensorType;
@@ -286,6 +298,10 @@ public:
         const char* supportedPreviewSize;
         // For high speed recording, slow motion playback
         bool hasSlowMotion;
+        // focus modes
+        char supportedFocusModes[100];
+        char defaultFocusMode[50];
+
     };
 
     // note: Android NDK does not yet support C++11 and
@@ -754,6 +770,23 @@ class PlatformData {
      * \return true if the slow motion playback is supported
      */
     static bool supportsSlowMotion(int cameraId);
+
+    /**
+     * Focus mode supported value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the focus supported as a string.
+     */
+    static const char* supportedFocusModes(int cameraId);
+
+    /**
+     * Focus mode default value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the focus default value as a string.
+     */
+    static const char* defaultFocusMode(int cameraId);
+
 
     /**
      * supported video sizes

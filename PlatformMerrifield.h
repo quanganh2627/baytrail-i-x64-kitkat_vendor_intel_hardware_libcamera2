@@ -88,6 +88,8 @@ public:
         pcam->defaultAeMetering = "";
         pcam->supportedAeMetering = "";
         pcam->supportedPreviewSize = "1024x576,720x480,640x480,640x360,352x288,320x240,176x144";
+        strcpy(pcam->defaultFocusMode, CameraParameters::FOCUS_MODE_FIXED);
+        strcpy(pcam->supportedFocusModes, pcam->defaultFocusMode);
         mCameras.push(*pcam);
         delete pcam;
 
