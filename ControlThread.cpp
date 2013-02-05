@@ -102,6 +102,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mPostCaptureThread(NULL)
     ,mMessageQueue("ControlThread", (int) MESSAGE_ID_MAX)
     ,mState(STATE_STOPPED)
+    ,mShootingMode(SHOOTING_MODE_NONE)
     ,mThreadRunning(false)
     ,mCallbacks(NULL)
     ,mCallbacksThread(NULL)
@@ -1108,6 +1109,52 @@ void ControlThread::releaseContinuousCapture(bool flushPictures)
 }
 
 /**
+ *  Selects which shooting mode is active.
+ *  The selection is based on the HAL state and on other burst related variables
+ *  This selection is done when take_picture is received.
+ *  The actual variables involved in the decision process may change at other
+ *  times for other reasons.
+ *
+ *
+ * \return One of the shooting modes
+ * \sa ShootingMode
+ */
+ControlThread::ShootingMode ControlThread::selectShootingMode()
+{
+    ShootingMode ret = SHOOTING_MODE_NONE;
+
+    switch (mState) {
+        case STATE_PREVIEW_STILL:
+        case STATE_PREVIEW_VIDEO:
+            ret = SHOOTING_MODE_SINGLE;
+            break;
+
+        case STATE_RECORDING:
+            ret = SHOOTING_MODE_VIDEO_SNAP;
+            break;
+
+        case STATE_CONTINUOUS_CAPTURE:
+            if (isBurstRunning())
+                ret = SHOOTING_MODE_ZSL_BURST;
+            else
+                ret = SHOOTING_MODE_ZSL;
+            break;
+
+        case STATE_CAPTURE:
+            if (isBurstRunning())
+                ret = SHOOTING_MODE_BURST;
+            break;
+
+        case STATE_STOPPED:
+        default:
+            LOGW("Unexpected state (%d) to select the shooting mode",mState);
+            break;
+    }
+    LOG1("Shooting Mode selected: %d",ret);
+    return ret;
+}
+
+/**
  * Selects which still preview mode to use.
  *
  * @return STATE_CONTINUOUS_CAPTURE or STATE_PREVIEW_STILL
@@ -1945,22 +1992,27 @@ status_t ControlThread::handleMessageTakePicture() {
     LOG1("@%s:", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    switch(mState) {
+    mShootingMode = selectShootingMode();
 
-        case STATE_PREVIEW_STILL:
-        case STATE_PREVIEW_VIDEO:
+    switch(mShootingMode) {
+
+        case SHOOTING_MODE_SINGLE:
             status = captureStillPic();
             break;
-        case STATE_CONTINUOUS_CAPTURE:
-            if (isBurstRunning())
-                status = captureFixedBurstPic(true);
-            else
-                status = captureStillPic();
+
+        case SHOOTING_MODE_ZSL:
+            status = captureStillPic();
             break;
-        case STATE_CAPTURE:
+
+        case SHOOTING_MODE_ZSL_BURST:
+            status = captureFixedBurstPic(true);
+            break;
+
+        case SHOOTING_MODE_BURST:
             status = captureBurstPic(true);
             break;
-        case STATE_RECORDING:
+
+        case SHOOTING_MODE_VIDEO_SNAP:
             status = captureVideoSnap();
             break;
 

@@ -300,6 +300,19 @@ private:
         STATE_CAPTURE,
         STATE_CONTINUOUS_CAPTURE
     };
+    /**
+     * \enum ShootingMode
+     * Describes the active shooting mode
+     */
+    enum ShootingMode {
+        SHOOTING_MODE_NONE,         /*!< initial value */
+        SHOOTING_MODE_SINGLE,       /*!< Normal single shot */
+        SHOOTING_MODE_BURST,        /*!< Burst of x frames; x<MAX_BURST_LEN (Platform dependent) */
+        SHOOTING_MODE_ZSL,          /*!< Zero Shutter lag shoot*/
+        SHOOTING_MODE_VIDEO_SNAP,   /*!< Picture taking while recording is active */
+        SHOOTING_MODE_ZSL_BURST,    /*!< Burst of ZSL where we can take images before the shutter is pressed */
+        SHOOTING_MODE_ULL,          /*!< Ultra LowLight */
+    };
 
     struct HdrImaging {
         BracketingMode bracketMode;
@@ -341,6 +354,7 @@ private:
     void releaseContinuousCapture(bool flushPictures);
     status_t startOfflineCapture();
     State selectPreviewMode(const CameraParameters &params);
+    ShootingMode selectShootingMode();
     status_t handleContinuousPreviewBackgrounding();
     status_t handleContinuousPreviewForegrounding();
     void flushContinuousPreviewToDisplay(nsecs_t snapshotTs);
@@ -583,6 +597,7 @@ private:
 
     MessageQueue<Message, MessageId> mMessageQueue;
     State mState;
+    ShootingMode    mShootingMode;
     bool mThreadRunning;
     Callbacks *mCallbacks;
     sp<CallbacksThread> mCallbacksThread;
