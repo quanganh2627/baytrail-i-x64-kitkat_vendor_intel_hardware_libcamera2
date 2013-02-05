@@ -4290,6 +4290,14 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
         } else {
             if (newScene == CameraParameters::SCENE_MODE_CANDLELIGHT) {
                 sceneMode = CAM_AE_SCENE_MODE_CANDLELIGHT;
+            } else if (newScene == IntelCameraParameters::SCENE_MODE_BEACH_SNOW) {
+                sceneMode = CAM_AE_SCENE_MODE_BEACH_SNOW;
+            } else if (newScene == IntelCameraParameters::SCENE_MODE_DAWN_DUSK) {
+                sceneMode = CAM_AE_SCENE_MODE_DAWN_DUSK;
+            } else if (newScene == IntelCameraParameters::SCENE_MODE_FALL_COLORS) {
+                sceneMode = CAM_AE_SCENE_MODE_FALL_COLORS;
+            } else if (newScene == IntelCameraParameters::SCENE_MODE_BACKLIGHT) {
+                sceneMode = CAM_AE_SCENE_MODE_BACKLIGHT;
             } else {
                 LOG1("Unsupported %s: %s. Using AUTO!", CameraParameters::KEY_SCENE_MODE, newScene.string());
                 sceneMode = CAM_AE_SCENE_MODE_AUTO;

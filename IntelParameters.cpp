@@ -190,6 +190,13 @@ namespace android {
     const char IntelCameraParameters::KEY_EXIF_MODEL[] = "exif-model-name";
     const char IntelCameraParameters::KEY_EXIF_SOFTWARE[] = "exif-software-name";
 
+    // V4L2 specific scene modes
+    const char IntelCameraParameters::SCENE_MODE_BEACH_SNOW[] = "beach-snow";
+    const char IntelCameraParameters::SCENE_MODE_DAWN_DUSK[] = "dawn-dusk";
+    const char IntelCameraParameters::SCENE_MODE_FALL_COLORS[] = "fall-colors";
+    const char IntelCameraParameters::SCENE_MODE_BACKLIGHT[] = " backlight";
+
+
     void IntelCameraParameters::getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params)
     {
         width = height = -1;

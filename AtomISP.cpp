@@ -5189,6 +5189,18 @@ status_t AtomISP::setAeSceneMode(SceneMode mode)
         case CAM_AE_SCENE_MODE_CANDLELIGHT:
             v4lMode = V4L2_SCENE_MODE_CANDLE_LIGHT;
             break;
+        case CAM_AE_SCENE_MODE_BEACH_SNOW:
+            v4lMode = V4L2_SCENE_MODE_BEACH_SNOW;
+            break;
+        case CAM_AE_SCENE_MODE_DAWN_DUSK:
+            v4lMode = V4L2_SCENE_MODE_DAWN_DUSK;
+            break;
+        case CAM_AE_SCENE_MODE_FALL_COLORS:
+            v4lMode = V4L2_SCENE_MODE_FALL_COLORS;
+            break;
+        case CAM_AE_SCENE_MODE_BACKLIGHT:
+            v4lMode = V4L2_SCENE_MODE_BACKLIGHT;
+            break;
         default:
             LOGW("Unsupported scene mode (%d), using NONE", mode);
             v4lMode = V4L2_SCENE_MODE_NONE;
@@ -5244,6 +5256,18 @@ SceneMode AtomISP::getAeSceneMode()
             break;
         case V4L2_SCENE_MODE_CANDLE_LIGHT:
             mode = CAM_AE_SCENE_MODE_CANDLELIGHT;
+            break;
+        case V4L2_SCENE_MODE_BEACH_SNOW:
+            mode = CAM_AE_SCENE_MODE_BEACH_SNOW;
+            break;
+        case V4L2_SCENE_MODE_DAWN_DUSK:
+            mode = CAM_AE_SCENE_MODE_DAWN_DUSK;
+            break;
+        case V4L2_SCENE_MODE_FALL_COLORS:
+            mode = CAM_AE_SCENE_MODE_FALL_COLORS;
+            break;
+        case V4L2_SCENE_MODE_BACKLIGHT:
+            mode = CAM_AE_SCENE_MODE_BACKLIGHT;
             break;
         default:
             LOGW("Unsupported scene mode (%d), using AUTO", v4lMode);

@@ -282,7 +282,7 @@ public:
         const char* supportedIso;
         const char* defaultIso;
         // scene modes
-        char supportedSceneModes[100];
+        char supportedSceneModes[150];
         char defaultSceneMode[50];
         // effect
         char supportedEffectModes[200];

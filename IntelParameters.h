@@ -198,6 +198,12 @@ namespace android {
     static const char KEY_EXIF_MODEL[];
     static const char KEY_EXIF_SOFTWARE[];
 
+    // V4L2 specific scene modes
+    static const char SCENE_MODE_BEACH_SNOW[];
+    static const char SCENE_MODE_DAWN_DUSK[];
+    static const char SCENE_MODE_FALL_COLORS[];
+    static const char SCENE_MODE_BACKLIGHT[];
+
     static void getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params);
     static const char* getSupportedPanoramaLivePreviewSizes(const CameraParameters &params);
 
