@@ -569,6 +569,7 @@ private:
     AtomISP *mISP;
     AtomDvs *mDvs;
     AtomCP  *mCP;
+    UltraLowLight *mULL;
     I3AControls *m3AControls;
     sp<PreviewThread> mPreviewThread;
     sp<PictureThread> mPictureThread;

@@ -190,6 +190,12 @@ status_t ControlThread::init()
         goto bail;
     }
 
+    mULL = new UltraLowLight();
+    if (mULL == NULL) {
+        LOGE("error creating ULL");
+        goto bail;
+    }
+
     CameraDump::setDumpDataFlag();
     mCameraDump = CameraDump::getInstance();
     if (mCameraDump == NULL) {
@@ -219,7 +225,7 @@ status_t ControlThread::init()
     }
 
     // we implement ICallbackAAA interface
-    m3AThread = new AAAThread(this, mDvs, m3AControls);
+    m3AThread = new AAAThread(this, mDvs, mULL, m3AControls);
     if (m3AThread == NULL) {
         LOGE("error creating 3AThread");
         goto bail;
@@ -446,6 +452,10 @@ void ControlThread::deinit()
 
     if (mCP != NULL) {
         delete mCP;
+    }
+
+    if (mULL != NULL) {
+        delete mULL;
     }
 
     if (mCameraDump != NULL) {

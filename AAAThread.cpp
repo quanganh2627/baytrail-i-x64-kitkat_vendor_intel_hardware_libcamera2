@@ -28,13 +28,14 @@ namespace android {
 
 #define FLASH_FRAME_TIMEOUT 5
 
-AAAThread::AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs, I3AControls *aaaControls) :
+AAAThread::AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs, UltraLowLight *ull, I3AControls *aaaControls) :
     Thread(false)
     ,mMessageQueue("AAAThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
     ,m3AControls(aaaControls)
     ,mCallbacks(CallbacksThread::getInstance())
     ,mDvs(dvs)
+    ,mULL(ull)
     ,mAAADoneCallback(aaaDone)
     ,m3ARunning(false)
     ,mDVSRunning(false)

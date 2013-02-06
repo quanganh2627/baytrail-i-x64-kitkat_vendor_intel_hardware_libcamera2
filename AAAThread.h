@@ -21,6 +21,7 @@
 #include <time.h>
 #include "AtomAAA.h"
 #include "AtomDvs.h"
+#include "UltraLowLight.h"
 #include "MessageQueue.h"
 #include "IAtomIspObserver.h"
 
@@ -49,6 +50,9 @@ class AtomAAA;
  * just 3A, so the two classes should not be confused. Please refer to
  * AtomAAA class documentation for more information.
  *
+ * AAAThread also checks 3A variables and updates the trigger status for
+ * Ultra Low Light algorithm
+ *
  * TODO: In long term, the goal is to get rid of AtomAAA singleton
  *       and use instance of Intel 3A libraries directly from
  *       AAAThread. But this is not yet supported by the underlying
@@ -58,7 +62,7 @@ class AAAThread : public Thread, public IAtomIspObserver {
 
 // constructor destructor
 public:
-    AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs, I3AControls *aaaControls);
+    AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs, UltraLowLight *ull, I3AControls *aaaControls);
     virtual ~AAAThread();
 
     enum FlashStage {
@@ -198,6 +202,7 @@ private:
     I3AControls* m3AControls;
     CallbacksThread *mCallbacks;
     AtomDvs *mDvs;
+    UltraLowLight *mULL;
     ICallbackAAA* mAAADoneCallback;
 
     bool m3ARunning;

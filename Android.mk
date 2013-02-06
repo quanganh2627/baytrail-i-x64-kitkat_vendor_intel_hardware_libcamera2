@@ -56,7 +56,8 @@ LOCAL_SRC_FILES := \
 	AtomAcc.cpp \
 	AtomIspObserverManager.cpp \
 	SensorThread.cpp	\
-	PostCaptureThread.cpp
+	PostCaptureThread.cpp \
+	UltraLowLight.cpp
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SRC_FILES += \
