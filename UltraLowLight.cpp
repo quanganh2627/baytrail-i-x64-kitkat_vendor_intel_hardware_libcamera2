@@ -233,6 +233,8 @@ bool UltraLowLight::isActive()
 
 bool UltraLowLight::trigger()
 {
+    Mutex::Autolock lock(mTrigerMutex);
+
     if (mUserMode == ULL_ON)
         return true;
 
@@ -489,6 +491,7 @@ void UltraLowLight::AtomToMorphoBuffer(const AtomBuffer *atom, void* m)
 bool UltraLowLight::updateTrigger(SensorAeConfig &expInfo, int iso)
 {
     LOG2("%s", __FUNCTION__);
+    Mutex::Autolock lock(mTrigerMutex);
     int expTime = expInfo.expTime;
     bool change = false;
 
@@ -503,7 +506,9 @@ bool UltraLowLight::updateTrigger(SensorAeConfig &expInfo, int iso)
         change = (mTrigger? true:false);
         mTrigger = false;
     }
-    LOG2("trigger %s, iso %d, expTime %d",mTrigger?"true":"false", iso, expTime);
+    if (change)
+        LOG1("trigger %s, iso %d, expTime %d",mTrigger?"true":"false", iso, expTime);
+
     return change;
 }
 

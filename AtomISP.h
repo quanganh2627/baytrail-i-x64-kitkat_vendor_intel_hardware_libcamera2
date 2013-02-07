@@ -142,6 +142,7 @@ public:
     int shutterLagZeroAlign() const;
     int continuousBurstNegMinOffset(void) const;
     int continuousBurstNegOffset(int skip, int startIndex) const;
+    int getContinuousCaptureNumber() const;
     status_t prepareOfflineCapture(ContinuousCaptureConfig &config);
 
     bool isYUVvideoZoomingSupported() const;

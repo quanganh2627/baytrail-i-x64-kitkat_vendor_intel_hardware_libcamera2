@@ -1458,6 +1458,22 @@ status_t AtomISP::configureContinuousRingBuffer()
 }
 
 /**
+ *  Returns the Number of continuous captures configured during start preview.
+ *  This is in effect the size of the ring buffer allocated in the ISP used
+ *  during continuous capture mode.
+ *  This information is useful for example to know how many snapshot buffers
+ *  to allocate.
+ */
+int AtomISP::getContinuousCaptureNumber() const
+{
+   if (mMode == MODE_CONTINUOUS_CAPTURE)
+       return mContCaptConfig.numCaptures;
+   else
+       return 1;
+
+}
+
+/**
  * Calculates the correct frame offset to capture to reach Zero
  * Shutter Lag.
  */
@@ -1796,8 +1812,8 @@ status_t AtomISP::stopOfflineCapture()
         LOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
         return INVALID_OPERATION;
     }
-    stopDevice(V4L2_MAIN_DEVICE, true);
-    stopDevice(V4L2_POSTVIEW_DEVICE, true);
+    stopDevice(V4L2_MAIN_DEVICE, false);
+    stopDevice(V4L2_POSTVIEW_DEVICE, false);
     mContCaptPrepared = true;
     return NO_ERROR;
 }

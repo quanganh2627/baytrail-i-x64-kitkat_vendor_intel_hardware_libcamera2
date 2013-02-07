@@ -183,6 +183,7 @@ private:
 
     // Miscellaneous helper methods
     struct timeval getSOFTime(unsigned int sequece);
+    void updateULLTrigger(void);
 
     // flash sequence handler
     bool handleFlashSequence(FrameBufferStatus frameStatus);

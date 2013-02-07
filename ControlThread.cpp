@@ -49,10 +49,6 @@ namespace android {
  */
 #define NUM_BURST_BUFFERS 10
 /*
- * NUM_BURST_BUFFERS: used for single still capture
- */
-#define NUM_SINGLE_STILL_BUFFERS 1
-/*
  * MAX_JPEG_BUFFERS: the maximum numbers of queued JPEG buffers
  */
 #define MAX_JPEG_BUFFERS 4
@@ -980,19 +976,21 @@ void ControlThread::continuousConfigApplyLimits(AtomISP::ContinuousCaptureConfig
 {
     int minOffset = mISP->continuousBurstNegMinOffset();
     int skip = continuousBurstSkip(mBurstFps);
-    int offset = 0;
+
     if (mBurstStart < 0) {
+        int offset = 0;
         for(offset = minOffset-1; offset < minOffset; skip--) {
             offset = mISP->continuousBurstNegOffset(skip, mBurstStart);
             if (skip == 0)
                 break;
         }
+        cfg.offset = offset;
     }
     cfg.skip = skip;
-    cfg.offset = offset;
+
     double outFps = mISP->getFrameRate() / (skip + 1);
     LOG2("@%s: offset %d, skip %d, fps %d->%.1f (for start-index %d, sensor fps %.1f)",
-         __FUNCTION__, offset, skip, mBurstFps, outFps, mBurstStart, mISP->getFrameRate());
+         __FUNCTION__, cfg.offset, skip, mBurstFps, outFps, mBurstStart, mISP->getFrameRate());
 }
 
 /**
@@ -1026,18 +1024,30 @@ int ControlThread::continuousBurstSkip(double targetFps) const
  * offset needs be changed so that a larger ringbuffer would
  * be needed, then ISP needs to be restarted. The values set
  * here are thus the maximum values.
+ * In case algorithms like Ultra Low light are active
+ * we need to prepare a big enough ring buffers to satisfy the demands of it
+ * This allows us to trigger small bursts of ZSL captures.
  */
 status_t ControlThread::configureContinuousRingBuffer()
 {
     LOG2("@%s", __FUNCTION__);
     AtomISP::ContinuousCaptureConfig cfg;
-    cfg.numCaptures = 1;
+    if (mULL->isActive())
+        cfg.numCaptures = mULL->MAX_INPUT_BUFFERS;
+    else
+        cfg.numCaptures = 1;
+
     cfg.offset = -(mISP->shutterLagZeroAlign());
     cfg.skip = 0;
-    if (mBurstLength > 1) {
-        cfg.numCaptures = mBurstLength;
+    if (mBurstLength > 1 || mULL->isActive()) {
+        cfg.numCaptures = MAX(mBurstLength,cfg.numCaptures);
         continuousConfigApplyLimits(cfg);
     }
+    LOG1("%s numcaptures %d, offset %d, skip %d",__FUNCTION__,
+                                                cfg.numCaptures,
+                                                cfg.offset,
+                                                cfg.skip);
+
     return mISP->prepareOfflineCapture(cfg);
 }
 
@@ -1115,7 +1125,6 @@ void ControlThread::releaseContinuousCapture(bool flushPictures)
  *  The actual variables involved in the decision process may change at other
  *  times for other reasons.
  *
- *
  * \return One of the shooting modes
  * \sa ShootingMode
  */
@@ -1138,8 +1147,11 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
                 ret = SHOOTING_MODE_ZSL_BURST;
             else
                 ret = SHOOTING_MODE_ZSL;
-            break;
 
+            if (mULL->isActive() && mULL->trigger())
+                ret = SHOOTING_MODE_ULL;
+
+            break;
         case STATE_CAPTURE:
             if (isBurstRunning())
                 ret = SHOOTING_MODE_BURST;
@@ -2016,6 +2028,9 @@ status_t ControlThread::handleMessageTakePicture() {
             status = captureVideoSnap();
             break;
 
+        case SHOOTING_MODE_ULL:
+            status = captureULLPic();
+            break;
         default:
             LOGE("Taking picture when recording is not supported!");
             status = INVALID_OPERATION;
@@ -2913,6 +2928,111 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
     return status;
 }
 
+/**
+ * Captures a picture and processes it using ULL algorithm
+ * This shooting mode is only used in continuous mode and it doesn't support
+ * flash
+ * This mode performs a burst of 3 captures, but it doesn't go through the
+ * normal ThreadLoop.
+ * for that reason we need to overwrite some of the Burst capture variables
+ */
+status_t ControlThread::captureULLPic()
+{
+    LOG1("@%s: ", __FUNCTION__);
+    status_t status = NO_ERROR;
+    AtomBuffer snapshotBuffer, postviewBuffer;
+    int pvWidth, pvHeight;
+    int picWidth, picHeight, format;
+    int cachedBurstLength, cachedBurstStart, cachedBurstFps;
+    PictureThread::MetaData picMetaData;
+
+    bool previewKeepAlive = selectPostviewSize(pvWidth, pvHeight);
+    //cache burst related parameters
+    cachedBurstLength = mBurstLength;
+    cachedBurstStart = mBurstStart;
+    cachedBurstFps = mBurstFps;
+
+    mParameters.getPictureSize(&picWidth, &picHeight);
+    format = mISP->getSnapshotPixelFormat();
+
+    status = mULL->init(picWidth,picHeight,0);
+    if (status != NO_ERROR) {
+      mULL->deinit();
+      LOGE("Failed to initialize the ULL algorithm");
+      return NO_INIT;
+    }
+
+    PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE();
+
+    mCallbacksThread->requestTakePicture(true, false);
+
+    stopFaceDetection();
+    // Initialize the burst control variables for the ULL burst
+    mBurstLength = mULL->MAX_INPUT_BUFFERS;
+    mBurstStart = 0;
+    mBurstFps = mISP->getFrameRate();
+
+    // pass the necessary Snapshot buffers from PictureThread to AtomISP
+    setExternalSnapshotBuffers(format, picWidth, picHeight);
+
+    // Allocate the rest of the buffers (postview)
+    // This also initializes the V4L2 buffer pools for the captures and postviews
+    status = mISP->allocateBuffers(MODE_CAPTURE);
+    if (status != NO_ERROR) {
+       LOGE("Error allocate buffers in ISP");
+        return status;
+    }
+
+    status = continuousStartStillCapture(false);
+
+    // Configure PictureThread, inform of the picture and thumbnail resolutions
+    mPictureThread->initialize(mParameters);
+
+    // Get the snapshots
+    for (int i=0; i< mULL->MAX_INPUT_BUFFERS; i++) {
+       status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
+       if (status != NO_ERROR) {
+           LOGE("Error in grabbing snapshot!");
+           goto exit;
+       }
+       if (i == 0) {
+           PerformanceTraces::ShutterLag::snapshotTaken(&snapshotBuffer.capture_timestamp);
+
+           fillPicMetaData(picMetaData, false);
+           mULL->addSnapshotMetadata(picMetaData);
+           if (previewKeepAlive) {
+              mPreviewThread->postview(&postviewBuffer);
+          }
+       }
+
+       mULL->addInputFrame(&snapshotBuffer,  &postviewBuffer);
+    }
+
+    // send the  ULL processing to the postcapture thread. once it completes it
+    // will call the method postCaptureProcesssingDone()
+    mPostCaptureThread->sendProcessItem((IPostCaptureProcessItem*)mULL);
+
+    stopOfflineCapture();
+
+
+    // Continuous mode will keep running keeping 3A active but
+    // preview hidden, disable AF callbacks to act API compatible
+    // Note: lens shouldn't be moving either, but we need that for
+    // better AF behaviour in continuous-shooting mode
+    mEnableFocusCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS);
+    mEnableFocusMoveCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS_MOVE);
+    disableMsgType(CAMERA_MSG_FOCUS_MOVE);
+    disableMsgType(CAMERA_MSG_FOCUS);
+
+exit:
+    // Restore the Burst related control variables
+    mBurstLength = cachedBurstLength;
+    mBurstStart = cachedBurstStart;
+    mBurstFps = cachedBurstFps;
+    setExternalSnapshotBuffers(format, picWidth, picHeight);
+    return status;
+}
+
 status_t ControlThread::captureVideoSnap()
 {
     LOG1("@%s: ", __FUNCTION__);
@@ -3583,10 +3703,9 @@ status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
     // Get the burst length
     mBurstLength = newParams->getInt(IntelCameraParameters::KEY_BURST_LENGTH);
     mFpsAdaptSkip = 0;
-    if (mBurstLength <= 0) {
-        // Parameter not set, leave it as 0
-         mBurstLength = 0;
-    } else {
+    mBurstLength = CLIP(mBurstLength,NUM_BURST_BUFFERS,0);
+    if (mBurstLength > 0) {
+
         // Get the burst framerate
         int fps = newParams->getInt(IntelCameraParameters::KEY_BURST_FPS);
         if (fps > MAX_BURST_FRAMERATE) {
@@ -3720,11 +3839,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         status = processParamFocusMode(oldParams, newParams);
     }
 
-    // Ultra-low light
-    if (status == NO_ERROR) {
-        status = processParamULL(oldParams, newParams);
-    }
-
     if (status == NO_ERROR) {
         // ae mode
         status = processParamAutoExposureMeteringMode(oldParams, newParams);
@@ -3800,7 +3914,7 @@ status_t ControlThread::allocateSnapshotBuffers()
     status_t status = NO_ERROR;
     int picWidth, picHeight;
     bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-
+    int bufCount = MAX(mBurstLength, mISP->getContinuousCaptureNumber());
     mParameters.getPictureSize(&picWidth, &picHeight);
     if(videoMode){
        /**
@@ -3809,14 +3923,10 @@ status_t ControlThread::allocateSnapshotBuffers()
         * context created. we cannot have more than one libVA (encoder) context active
         * and in video mode the video encoder already creates one.
         */
-       status = mPictureThread->allocSharedBuffers(picWidth, picHeight, 0);
-    } else if (mBurstLength > 1){
-       int bufCount = mBurstLength > NUM_BURST_BUFFERS ? NUM_BURST_BUFFERS : mBurstLength;
-       status = mPictureThread->allocSharedBuffers(picWidth, picHeight, bufCount);
-    } else {
-       status = mPictureThread->allocSharedBuffers(picWidth, picHeight, NUM_SINGLE_STILL_BUFFERS);
+       bufCount = 0;
     }
 
+    status = mPictureThread->allocSharedBuffers(picWidth, picHeight, bufCount);
     if (status != NO_ERROR) {
        LOGW("Could not pre-allocate picture buffers!");
     }
@@ -4240,21 +4350,27 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
 }
 
 status_t ControlThread::processParamULL(const CameraParameters *oldParams,
-        CameraParameters *newParams)
+        CameraParameters *newParams, bool *restartPreview)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_ULL);
-
-    // TODO: Param handling.
-    // TODO: ULL vs. scene values?
     if (!newVal.isEmpty()) {
         LOG1("ULL param new value: %s", newVal.string());
+
+        if (newVal == "on") {
+            mULL->setMode(UltraLowLight::ULL_ON);
+        } else if (newVal == "auto") {
+            mULL->setMode(UltraLowLight::ULL_AUTO);
+        } else {
+            mULL->setMode(UltraLowLight::ULL_OFF);
+        }
     }
 
     return status;
 }
+
 
 /**
  * select flash mode for single or burst capture
@@ -5243,6 +5359,9 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
         previewFormatChanged = true;
     }
 
+    status = processParamULL(oldParams,newParams, &previewFormatChanged);
+
+
     /**
      * There are multiple workarounds related to what preview and video
      * size combinations can be supported by ISP (also impacted by
@@ -5663,11 +5782,27 @@ status_t ControlThread::handleMessageStoreMetaDataInBuffers(MessageStoreMetaData
     return status;
 }
 
-void ControlThread::postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status)
+void ControlThread::postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t procStatus)
 {
-    LOG1("@%s, item = %p", __FUNCTION__, item);
+    LOG1("@%s, item = %p status= %d", __FUNCTION__, item, procStatus);
+    status_t status;
+    AtomBuffer snapshotBuffer, postviewBuffer;
+    PictureThread::MetaData picMetaData;
 
-    // TODO: get the output from the processing and send to encode.
+
+    // ATM the only post capture processing is ULL, no need to check which one
+    mULL->getOuputResult(&snapshotBuffer,&postviewBuffer, &picMetaData);
+
+    if(procStatus != NO_ERROR)
+        LOGW("PostCapture Processing failed !!");
+
+    LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
+    status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
+    if (status != NO_ERROR) {
+        // normally this is done by PictureThread, but as no
+        // encoding was done, free the allocated metadata
+        picMetaData.free(m3AControls);
+    }
 
 }
 status_t ControlThread::hdrInit(int size, int pvSize, int format,
@@ -5908,10 +6043,14 @@ void ControlThread::setExternalSnapshotBuffers(int format, int width, int height
     if (format == V4L2_PIX_FMT_NV12) {
         // Try to use buffer sharing
         char* snapshotBufferPtr;
-        int numberOfSnapshots;
-        status = mPictureThread->getSharedBuffers(width, height, &snapshotBufferPtr, &numberOfSnapshots);
-        if (status == NO_ERROR) {
+        int numberOfSnapshots = MAX(1,mBurstLength);
+        int numberOfSnapshotsAllocated;
+
+        status = mPictureThread->getSharedBuffers(width, height, &snapshotBufferPtr, &numberOfSnapshotsAllocated);
+
+        if ((status == NO_ERROR) && numberOfSnapshots <= numberOfSnapshotsAllocated) {
             status = mISP->setSnapshotBuffers((void*)snapshotBufferPtr, numberOfSnapshots, false);
+
             if (status == NO_ERROR) {
                 LOG1("Using shared buffers for snapshot");
             } else {

@@ -40,6 +40,7 @@
 #include "CameraDump.h"
 #include "CameraAreas.h"
 #include "AtomCP.h"
+#include "UltraLowLight.h"
 #include "BracketManager.h"
 #include "I3AControls.h"
 #include "IAtomIspObserver.h"
@@ -471,7 +472,7 @@ private:
     status_t processParamHDR(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamULL(const CameraParameters *oldParams,
-            CameraParameters *newParams);
+            CameraParameters *newParams, bool *restartPreview);
     status_t processParamExposureCompensation(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamAutoExposureMode(const CameraParameters *oldParams,
@@ -559,6 +560,7 @@ private:
     status_t captureBurstPic(bool clientRequest);
     status_t captureFixedBurstPic(bool clientRequest);
     status_t capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffer &postviewBuffer);
+    status_t captureULLPic();
     status_t captureVideoSnap(void);
     AtomBuffer* findVideoSnapshotBuffer(int index);
     void     encodeVideoSnapshot(AtomBuffer &buff);

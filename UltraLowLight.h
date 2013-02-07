@@ -173,6 +173,7 @@ private:
      * algorithm external status
      */
     ULLMode        mUserMode; /*!> User selected mode of operation of the ULL feature */
+    Mutex          mTrigerMutex; /*!> Protects the trigger variable that is modified in AAAThread but read from ControlThread*/
     bool           mTrigger;  /*!> Only valid if in auto mode. It signal that ULL shoudl be used. */
 };
 }  //namespace android
