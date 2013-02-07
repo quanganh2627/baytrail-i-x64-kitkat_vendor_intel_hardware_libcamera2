@@ -2264,8 +2264,7 @@ status_t ControlThread::captureStillPic()
                     flashMode == CAM_AE_FLASH_MODE_ON);
     bool flashFired = false;
     bool flashSequenceStarted = false;
-    bool previewKeepAlive =
-        isParameterSet(IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE);
+    bool previewKeepAlive = selectPostviewSize(pvWidth, pvHeight) && !mHdr.enabled;
 
     PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE();
 
@@ -2280,7 +2279,7 @@ status_t ControlThread::captureStillPic()
     }
     // WORKAROUND END
     // Notify CallbacksThread that a picture was requested, so grab one from queue
-    mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback);
+    mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback, (mBurstLength > 1)? false : previewKeepAlive);
 
     stopFaceDetection();
 
@@ -2340,7 +2339,6 @@ status_t ControlThread::captureStillPic()
 
     // Get the current params
     mParameters.getPictureSize(&width, &height);
-    previewKeepAlive &= selectPostviewSize(pvWidth, pvHeight);
     format = mISP->getSnapshotPixelFormat();
     size = frameSize(format, width, height);
     pvSize = frameSize(format, pvWidth, pvHeight);
@@ -2513,9 +2511,11 @@ status_t ControlThread::captureStillPic()
     if (mState == STATE_CONTINUOUS_CAPTURE && mBurstLength <= 1)
         stopOfflineCapture();
 
-    if (previewKeepAlive && !mHdr.enabled) {
+    if (previewKeepAlive) {
         mPreviewThread->postview(&postviewBuffer);
-    } else if (mState == STATE_CONTINUOUS_CAPTURE) {
+    }
+
+    if (mState == STATE_CONTINUOUS_CAPTURE) {
         // Continuous mode will keep running keeping 3A active but
         // preview hidden, disable AF callbacks to act API compatible
         // Note: lens shouldn't be moving either, but we need that for
@@ -2535,9 +2535,7 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
     int pvWidth, pvHeight;
-    bool previewKeepAlive =
-        isParameterSet(IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE) &&
-        selectPostviewSize(pvWidth, pvHeight);
+    bool previewKeepAlive = selectPostviewSize(pvWidth, pvHeight) && !mHdr.enabled;
 
     if (clientRequest) {
         bool requestPostviewCallback = true;
@@ -2619,7 +2617,7 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
                                        snapshotBuffer.frameCounter);
 
-    if (previewKeepAlive && !mHdr.enabled)
+    if (previewKeepAlive)
         mPreviewThread->postview(&postviewBuffer);
 
     PictureThread::MetaData picMetaData;
@@ -2726,11 +2724,13 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
     LOG1("@%s: ", __FUNCTION__);
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
+    int pvW, pvH;
+    bool previewKeepAlive = selectPostviewSize(pvW, pvH);
 
     assert(mState == STATE_CONTINUOUS_CAPTURE);
 
     if (clientRequest) {
-        requestTakePicture();
+        mCallbacksThread->requestTakePicture(true, true);
 
         // Check whether more frames are needed
         if (compressedFrameQueueFull())
@@ -2765,6 +2765,9 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
                                        snapshotBuffer.frameCounter);
+
+    if (previewKeepAlive)
+        mPreviewThread->postview(&postviewBuffer);
 
     // Do jpeg encoding
     LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());

@@ -41,6 +41,7 @@ PreviewThread::PreviewThread() :
     ,mSetFPS(30)
     ,mLastFrameTs(0)
     ,mFramesDone(0)
+    ,mCallbacksThread(CallbacksThread::getInstance())
     ,mMessageHandler(NULL)
 {
     LOG1("@%s", __FUNCTION__);
@@ -498,6 +499,7 @@ status_t PreviewThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_POSTVIEW:
             status = mMessageHandler->handlePostview(&msg.data.preview);
+            mCallbacksThread->postviewRendered();
             break;
 
         case MESSAGE_ID_SET_PREVIEW_WINDOW:

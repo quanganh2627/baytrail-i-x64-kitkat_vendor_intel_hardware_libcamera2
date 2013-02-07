@@ -206,6 +206,7 @@ private:
     CallbackVector mOutputBufferCb;
     nsecs_t         mLastFrameTs;
     unsigned int    mFramesDone;
+    CallbacksThread *mCallbacksThread;
 
     class PreviewMessageHandler {
     public:
