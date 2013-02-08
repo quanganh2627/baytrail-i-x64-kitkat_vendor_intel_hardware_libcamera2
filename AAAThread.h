@@ -92,7 +92,8 @@ public:
     status_t cancelAutoFocus();
     status_t enterFlashSequence(FlashStage blockForStage = FLASH_STAGE_NA);
     status_t exitFlashSequence();
-    status_t newFrame(struct timeval capture_timestamp, FrameBufferStatus status = FRAME_STATUS_OK);
+    status_t newFrame(AtomBuffer* b);
+    status_t newSOF(IAtomIspObserver::MessageEvent *sofMsg);
     status_t applyRedEyeRemoval(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer, int width, int height, int format);
     status_t setFaces(const ia_face_state& faceState);
     void getCurrentSmartScene(int &sceneMode, bool &sceneHdr);
@@ -114,7 +115,7 @@ private:
         MESSAGE_ID_ENABLE_AE_LOCK,
         MESSAGE_ID_ENABLE_AWB_LOCK,
         MESSAGE_ID_FLASH_STAGE,
-
+        MESSAGE_ID_SOF,
         // max number of messages
         MESSAGE_ID_MAX
     };
@@ -143,6 +144,7 @@ private:
     struct MessageNewFrame {
         FrameBufferStatus status;
         struct timeval capture_timestamp;
+        unsigned int    sequence_number;
     };
 
     // union of all message data
@@ -169,10 +171,14 @@ private:
     status_t handleMessageAutoFocus();
     status_t handleMessageCancelAutoFocus();
     status_t handleMessageNewFrame(MessageNewFrame *msg);
+    status_t handleMessageNewSOF(MessageNewFrame *msg);
     status_t handleMessageRemoveRedEye(MessagePicture* msg);
     status_t handleMessageEnableAeLock(MessageEnable* msg);
     status_t handleMessageEnableAwbLock(MessageEnable* msg);
     status_t handleMessageFlashStage(MessageFlashStage* msg);
+
+    // Miscellaneous helper methods
+    struct timeval getSOFTime(unsigned int sequece);
 
     // flash sequence handler
     bool handleFlashSequence(FrameBufferStatus frameStatus);
@@ -209,6 +215,7 @@ private:
     FlashStage mFlashStage;
     size_t mFramesTillExposed;
     FlashStage mBlockForStage;
+    KeyedVector<unsigned int, struct timeval> mSOFEvents;
 }; // class AAAThread
 
 }; // namespace android

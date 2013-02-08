@@ -136,7 +136,8 @@ private:
     int setFpnTable(const ia_frame *fpn_table);
 
     // Common functions for 3A, GBCE, AF etc.
-    status_t run3aMain(const struct timeval *frame_timestamp, bool afRun);
+    status_t run3aMain(const struct timeval *frame_timestamp,
+                             struct timeval *sof_timestamp,bool afRun);
     //AE for flash
     int run3aMain();
     int AeForFlash();
@@ -160,7 +161,8 @@ private:
     int processForFlash();
     void get3aGridInfo(struct atomisp_grid_info *pgrid);
     void get3aStat();
-    status_t populateFrameInfo(const struct timeval *frame_timestamp);
+    status_t populateFrameInfo(const struct timeval *frame_timestamp,
+                                     struct timeval *sof_timestamp);
 
     //AIC
     void runAICMain();
@@ -303,7 +305,8 @@ public:
 
     // ISP processing functions
     status_t apply3AProcess(bool read_stats,
-        struct timeval capture_timestamp);
+        struct timeval capture_timestamp,
+        struct timeval sof_timestamp);
 
     status_t startStillAf();
     status_t stopStillAf();

@@ -337,7 +337,7 @@ public:
     virtual status_t setAeBacklightCorrection(bool en) { return INVALID_OPERATION; }
     virtual status_t setAwbMapping(ia_3a_awb_map mode) { return INVALID_OPERATION; }
 
-    virtual status_t apply3AProcess(bool read_stats, struct timeval capture_timestamp) { return INVALID_OPERATION; }
+    virtual status_t apply3AProcess(bool read_stats, struct timeval capture_timestamp, struct timeval sof_timestamp) { return INVALID_OPERATION; }
     virtual status_t startStillAf() { return INVALID_OPERATION; }
     virtual status_t stopStillAf() { return INVALID_OPERATION; }
     virtual ia_3a_af_status isStillAfComplete() { return ia_3a_af_status_error; }

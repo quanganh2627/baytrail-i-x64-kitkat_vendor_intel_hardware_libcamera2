@@ -1314,6 +1314,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         if (isDVSActive && mDvs->reconfigure() != NO_ERROR)
             LOGE("Failed to reconfigure DVS grid");
         mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+        mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
     }
 
     mISP->attachObserver(mPreviewThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
@@ -1357,7 +1358,9 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     }
 
     // synchronize and pause the preview dequeueing
+    mISP->pauseObserver(AtomISP::OBSERVE_FRAME_SYNC_SOF);
     mISP->pauseObserver(AtomISP::OBSERVE_PREVIEW_STREAM);
+
 
     // Before stopping the ISP, flush any buffers in picture
     // and video threads. This is needed as AtomISP::stop() may
@@ -1386,8 +1389,10 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
 
     // we only need to attach the 3AThread to preview stream for RAW type of cameras
     // when we use the 3A algorithm running on Atom
-    if (m3AControls->isIntel3A())
+    if (m3AControls->isIntel3A()) {
         mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+        mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
+    }
     mISP->detachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
     mMessageQueue.remove(MESSAGE_ID_DEQUEUE_RECORDING);
 

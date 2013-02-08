@@ -837,7 +837,7 @@ status_t AtomAIQ::setFlash(int numFrames)
 }
 
 status_t AtomAIQ::apply3AProcess(bool read_stats,
-    const struct timeval capture_timestamp)
+    const struct timeval capture_timestamp, struct timeval sof_timestamp)
 {
     LOG2("@%s: read_stats = %d", __FUNCTION__, read_stats);
     status_t status = NO_ERROR;
@@ -853,7 +853,7 @@ status_t AtomAIQ::apply3AProcess(bool read_stats,
     }
 
     if (m3aState.stats_valid) {
-        run3aMain(&capture_timestamp, true);
+        run3aMain(&capture_timestamp, &sof_timestamp, true);
         applyResults();
     }
     return status;
@@ -1408,14 +1408,16 @@ void AtomAIQ::runDSDMain()
 }
 
 //set statistics
-status_t AtomAIQ::populateFrameInfo(const struct timeval *frame_timestamp)
+status_t AtomAIQ::populateFrameInfo(const struct timeval *frame_timestamp,
+                                          struct timeval *sof_timestamp)
 {
     LOG2("@%s", __FUNCTION__);
     status_t ret = NO_ERROR;
 
     ia_err statistics_ret = ia_err_none;
 
-    m3aState.statistics_input_parameters.frame_timestamp = (unsigned long long)((frame_timestamp->tv_sec*1000000000LL + frame_timestamp->tv_usec*1000LL)/1000LL);
+    m3aState.statistics_input_parameters.eof_timestamp = (unsigned long long)((frame_timestamp->tv_sec*1000000000LL + frame_timestamp->tv_usec*1000LL)/1000LL);
+    m3aState.statistics_input_parameters.sof_timestamp = (unsigned long long)((sof_timestamp->tv_sec*1000000000LL + sof_timestamp->tv_usec*1000LL)/1000LL);
     m3aState.statistics_input_parameters.external_histogram = NULL;
 
     if(m3aState.faces)
@@ -1465,13 +1467,14 @@ status_t AtomAIQ::populateFrameInfo(const struct timeval *frame_timestamp)
 
 }
 
-status_t AtomAIQ::run3aMain(const struct timeval *frame_timestamp, bool afRun)
+status_t AtomAIQ::run3aMain(const struct timeval *frame_timestamp,
+                                  struct timeval *sof_timestamp,bool afRun)
 {
     LOG1("@%s", __FUNCTION__);
 
     if(afRun) {
         if(frame_timestamp)
-           populateFrameInfo(frame_timestamp);
+           populateFrameInfo(frame_timestamp, sof_timestamp);
         runAfMain();
         // if no DSD enable, should disable that
         if(m3aState.dsd_enabled)

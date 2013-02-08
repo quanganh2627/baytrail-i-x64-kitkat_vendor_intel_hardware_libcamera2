@@ -1108,6 +1108,8 @@ status_t AtomISP::configurePreview()
 
     return status;
 
+errorCloseSubdev:
+    closeDevice(V4L2_ISP_SUBDEV);
 err:
     stopDevice(mPreviewDevice);
     return status;
@@ -1358,7 +1360,7 @@ status_t AtomISP::configureCapture()
     }
 
     // Subscribe to frame sync event if in bracketing mode
-    if (mFrameSyncRequested > 0) {
+    if ((mFrameSyncRequested > 0) && (!mFrameSyncEnabled)) {
         ret = openDevice(V4L2_ISP_SUBDEV);
         if (ret < 0) {
             LOGE("Failed to open V4L2_ISP_SUBDEV!");
@@ -3614,6 +3616,7 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameS
     mPreviewBuffers[index].frameCounter = mDevices[mPreviewDevice].frameCounter;
     mPreviewBuffers[index].ispPrivate = mSessionId;
     mPreviewBuffers[index].capture_timestamp = buf.timestamp;
+    mPreviewBuffers[index].frameSequenceNbr = buf.sequence;
     // atom flag is an extended set of flags, so map V4L2 flags
     // we are interested into atomisp_frame_status
     if (buf.flags & V4L2_BUF_FLAG_ERROR)
@@ -5203,13 +5206,33 @@ IObserverSubject* AtomISP::observerSubjectByType(ObserverType t)
 }
 
 /**
- * Attaches observer to one of the defined ObserverType's
+ * Attaches an observer to one of the defined ObserverType's
  */
 status_t AtomISP::attachObserver(IAtomIspObserver *observer, ObserverType t)
 {
-    if (t == OBSERVE_FRAME_SYNC_SOF)
-        mFrameSyncRequested++;
+    status_t ret;
 
+    if (t == OBSERVE_FRAME_SYNC_SOF) {
+        mFrameSyncRequested++;
+        if (mFrameSyncRequested == 1) {
+           // Subscribe to frame sync event only the first time is requested
+           ret = openDevice(V4L2_ISP_SUBDEV);
+           if (ret < 0) {
+               LOGE("Failed to open V4L2_ISP_SUBDEV!");
+               return UNKNOWN_ERROR;
+           }
+
+           ret = v4l2_subscribe_event(video_fds[V4L2_ISP_SUBDEV], V4L2_EVENT_FRAME_SYNC);
+           if (ret < 0) {
+               LOGE("Failed to subscribe to frame sync event!");
+               closeDevice(V4L2_ISP_SUBDEV);
+               return UNKNOWN_ERROR;
+           }
+           mFrameSyncEnabled = true;
+
+        }
+    }
+exit:
     return mObserverManager.attachObserver(observer, observerSubjectByType(t));
 }
 
@@ -5270,7 +5293,7 @@ void AtomISP::pauseObserver(ObserverType t)
  */
 status_t AtomISP::FrameSyncSource::observe(IAtomIspObserver::Message *msg)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     struct v4l2_event event;
     int ret;
 
@@ -5283,7 +5306,7 @@ status_t AtomISP::FrameSyncSource::observe(IAtomIspObserver::Message *msg)
     ret = mISP->v4l2_poll(mISP->video_fds[V4L2_ISP_SUBDEV], FRAME_SYNC_POLL_TIMEOUT);
 
     if (ret <= 0) {
-        LOGE("Poll failed, disabling SOF event");
+        LOGE("Poll failed ret(%d), disabling SOF event",ret);
         mISP->v4l2_unsubscribe_event(mISP->video_fds[V4L2_ISP_SUBDEV], V4L2_EVENT_FRAME_SYNC);
         mISP->closeDevice(V4L2_ISP_SUBDEV);
         mISP->mFrameSyncEnabled = false;
