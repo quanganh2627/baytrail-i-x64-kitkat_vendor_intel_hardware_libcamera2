@@ -37,6 +37,13 @@ protected:
         const int src_skip_lines_top = 0,
         const int src_skip_lines_bottom = 0);
 
+    static void trimNv12Image(
+        unsigned char *dest, const unsigned char *src,
+        const int dest_w, const int dest_h, const int dest_stride,
+        const int src_w, const int src_h, const int src_stride,
+        const int src_skip_lines_top = 0,
+        const int src_skip_lines_bottom = 0);
+
     static void downScaleAndCropNv12ImageQvga(
         unsigned char *dest, const unsigned char *src,
         const int dest_stride, const int src_stride);

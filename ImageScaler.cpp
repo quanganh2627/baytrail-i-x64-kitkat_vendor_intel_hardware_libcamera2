@@ -69,16 +69,47 @@ void ImageScaler::downScaleImage(void *src, void *dest,
     const unsigned char * m_src = (const unsigned char *)src;
     switch (format) {
         case V4L2_PIX_FMT_NV12: {
-           ImageScaler::downScaleAndCropNv12Image(m_dest, m_src,
-                dest_w, dest_h, dest_stride,
-                src_w, src_h, src_stride,
-                src_skip_lines_top, src_skip_lines_bottom);
+            if (dest_w == src_w && dest_h == src_h) {
+                // trim only
+                ImageScaler::trimNv12Image(m_dest, m_src,
+                    dest_w, dest_h, dest_stride,
+                    src_w, src_h, src_stride,
+                    src_skip_lines_top, src_skip_lines_bottom);
+            } else {
+                // downscale & crop
+                ImageScaler::downScaleAndCropNv12Image(m_dest, m_src,
+                    dest_w, dest_h, dest_stride,
+                    src_w, src_h, src_stride,
+                    src_skip_lines_top, src_skip_lines_bottom);
+            }
             break;
         }
         default: {
             LOGE("no downscale support for format = %d", format);
             break;
         }
+    }
+}
+
+void ImageScaler::trimNv12Image(unsigned char *dst, const unsigned char *src,
+    const int dest_w, const int dest_h, const int dest_stride,
+    const int src_w, const int src_h, const int src_stride,
+    const int src_skip_lines_top, // number of lines that are skipped from src image start pointer
+    const int src_skip_lines_bottom) // number of lines that are skipped after reading src_h (should be set always to reach full image height)
+{
+    LOG1("@%s: dest_w: %d, dest_h: %d, dest_stride:%d, src_w: %d, src_h: %d, src_stride: %d, skip_top: %d, skip_bottom: %d", __FUNCTION__, dest_w,dest_h,dest_stride,src_w,src_h,src_stride,src_skip_lines_top,src_skip_lines_bottom);
+
+    // Y
+    for (int i = 0; i < dest_h; i++) {
+        memcpy(dst,src,dest_stride);
+        dst += dest_stride;
+        src += src_stride;
+    }
+    //UV
+    for (int i = 0; i < dest_h/2; i++) {
+        memcpy(dst,src,dest_stride);
+        dst += dest_stride;
+        src += src_stride;
     }
 }
 
