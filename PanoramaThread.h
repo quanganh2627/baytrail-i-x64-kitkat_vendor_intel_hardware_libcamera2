@@ -61,6 +61,7 @@ enum PanoramaState {
 class PanoramaThread : public Thread, public IBufferOwner {
 // constructor/destructor
 public:
+#ifdef ENABLE_INTEL_EXTRAS
     PanoramaThread(ICallbackPanorama *panoramaCallback);
     ~PanoramaThread();
 
@@ -93,7 +94,7 @@ private:
         status_t requestExitAndWait();
         status_t flush(); // processes stitches in queue
         status_t cancel(ia_panorama_state* mContext); // drops stitches in queue without processing, cancels last stitch
-        status_t stitch(ia_panorama_state* mContext, AtomBuffer frame);
+        status_t stitch(ia_panorama_state* mContext, AtomBuffer frame, int stitchId);
     private:
         virtual bool threadLoop();
         status_t waitForAndExecuteMessage();
@@ -106,6 +107,7 @@ private:
         };
 
         struct MessageStitch {
+            int stitchId;
             AtomBuffer img;
             ia_panorama_state* mContext;
         };
@@ -150,6 +152,7 @@ private:
     // message data structures
     //
     struct MessageStitch {
+        int stitchId;
         AtomBuffer img;
         AtomBuffer pv;
     };
@@ -224,6 +227,39 @@ private:
     int mThumbnailWidth;
     int mThumbnailHeight;
     sp<PanoramaStitchThread> mPanoramaStitchThread;
+#else
+    // function stubs for building without Intel extra features
+public:
+    PanoramaThread(ICallbackPanorama *panoramaCallback) {}
+    ~PanoramaThread() {}
+
+    // getDefaultParameters() defined in PanoramaThread.cpp:
+    void getDefaultParameters(CameraParameters *intel_params, int cameraId) {}
+    void startPanorama() {}
+    void stopPanorama(bool synchronous = false) {}
+    void startPanoramaCapture() {}
+    void stopPanoramaCapture() {}
+    void panoramaStitch(AtomBuffer *img, AtomBuffer *pv) {}
+    void returnBuffer(AtomBuffer *buff) {}
+    void setThumbnailSize(int width, int height) {}
+
+    status_t reInit() { return NO_ERROR; }
+    bool detectOverlap(ia_frame *frame) { return false; }
+    status_t stitch(AtomBuffer *img, AtomBuffer *pv) { return NO_ERROR; }
+    status_t cancelStitch() { return NO_ERROR; }
+    void finalize() {}
+    void sendFrame(AtomBuffer &buf) {}
+    PanoramaState getState() { return PANORAMA_STOPPED; }
+
+// Thread overrides
+public:
+    status_t requestExitAndWait() { return UNKNOWN_ERROR; }
+private:
+    // inherited from Thread
+    virtual bool threadLoop() { return false; }
+
+#endif // ENABLE_INTEL_EXTRAS
+
 }; // class Panorama
 
 }; // namespace android

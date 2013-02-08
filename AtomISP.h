@@ -124,6 +124,7 @@ public:
     status_t stopOfflineCapture();
     bool isOfflineCaptureRunning() const;
     bool isOfflineCaptureSupported() const;
+    bool isYUVvideoZoomingSupported() const;
     status_t returnPreviewBuffers();
     bool isSharedPreviewBufferConfigured(bool *reserved = NULL) const;
 
@@ -138,6 +139,9 @@ public:
     status_t getSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf,
                          atomisp_frame_status *snapshotStatus = NULL);
     status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
+
+    int pollPreview(int timeout);
+    int pollCapture(int timeout);
 
     bool dataAvailable();
     bool isBufferValid(const AtomBuffer * buffer) const;
@@ -154,8 +158,10 @@ public:
     void getPreviewSize(int *width, int *height, int *stride);
 
     status_t setSnapshotNum(int num);
+    int getSnapshotNum();
     status_t setContCaptureNumCaptures(int numCaptures);
     status_t setContCaptureOffset(int captureOffset);
+    status_t setContCaptureSkip(unsigned int skip);
 
     void getZoomRatios(bool videoMode, CameraParameters *params);
     void getFocusDistances(CameraParameters *params);
@@ -192,6 +198,7 @@ public:
 
     /* Acceleration API extensions */
     int loadAccFirmware(void *fw, size_t size, unsigned int *fwHandle);
+    int loadAccPipeFirmware(void *fw, size_t size, unsigned int *fwHandle);
     int unloadAccFirmware(unsigned int fwHandle);
     int mapFirmwareArgument(void *val, size_t size, unsigned long *ptr);
     int unmapFirmwareArgument(unsigned long val, size_t size);
@@ -255,9 +262,12 @@ public:
     virtual AwbMode getAwbMode();
     virtual status_t setManualIso(int iso);
     virtual status_t getManualIso(int *ret);
+    /** expose iso mode setting*/
+    virtual status_t setIsoMode(IsoMode mode);
+    virtual IsoMode getIsoMode(void);
     virtual status_t setAeMeteringMode(MeteringMode mode);
     virtual MeteringMode getAeMeteringMode();
-    virtual status_t set3AColorEffect(v4l2_colorfx effect);
+    virtual status_t set3AColorEffect(const char *effect);
 
 // public static methods
 public:
@@ -325,6 +335,7 @@ private:
     enum ResolutionIndex {
         RESOLUTION_VGA = 0,
         RESOLUTION_720P,
+        RESOLUTION_1_3MP,
         RESOLUTION_2MP,
         RESOLUTION_1080P,
         RESOLUTION_3MP,
@@ -359,6 +370,7 @@ private:
     status_t startRecording();
     status_t stopRecording();
     status_t configureCapture();
+    status_t configureContinuousRingBuffer();
     status_t configureContinuous();
     status_t startCapture();
     status_t stopCapture();
@@ -390,6 +402,7 @@ private:
 
     int  openDevice(int device);
     void closeDevice(int device);
+    int v4l2_poll(int device, int timeout);
     status_t v4l2_capture_open(int device);
     status_t v4l2_capture_close(int fd);
     status_t v4l2_capture_querycap(int device, struct v4l2_capability *cap);

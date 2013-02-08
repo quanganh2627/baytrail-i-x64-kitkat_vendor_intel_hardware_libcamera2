@@ -68,10 +68,8 @@ public:
         smileShutterSupported = "on,off";
         blinkShutterDefault = "off";
         blinkShutterSupported = "on,off";
-        //TODO: continuous VF to add
-        //TODO: Burst Index
         panoramaDefault = "off";
-        panoramaSupported = "onoff";
+        panoramaSupported = "on,off";
         sceneDetectionDefault = "off";
         sceneDetectionSupported = "on,off";
         //FIXME CONSTRUCTOR
@@ -89,8 +87,6 @@ public:
         const char *smileShutterSupported;
         const char *blinkShutterDefault;
         const char *blinkShutterSupported;
-        //TODO: continuous VF to add
-        //TODO: Burst Index
         const char *panoramaDefault;
         const char *panoramaSupported;
         const char *sceneDetectionDefault;

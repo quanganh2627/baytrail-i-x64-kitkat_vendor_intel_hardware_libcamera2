@@ -22,6 +22,9 @@
 #include "LogHelper.h"
 #include "sqlite3.h"
 #include "cutils/properties.h"
+#include "AtomISP.h"
+#include "AtomCommon.h"
+#include "AtomAcc.h"
 
 #include "ia_coordinate.h"
 
@@ -33,6 +36,7 @@ FaceDetector::FaceDetector() : Thread()
     ,mSmileThreshold(0)
     ,mBlinkThreshold(0)
     ,mFaceRecognitionRunning(false)
+    ,mAccHandle(0)
     ,mThreadRunning(false)
 {
     LOG1("@%s", __FUNCTION__);
@@ -43,6 +47,36 @@ FaceDetector::~FaceDetector()
     LOG1("@%s", __FUNCTION__);
     ia_face_uninit(mContext);
     mContext = NULL;
+}
+
+void FaceDetector::setAcc(void* isp)
+{
+    LOG2("@%s", __FUNCTION__);
+    ia_acceleration accApi;
+    ia_acceleration *accApiPtr = NULL;
+
+    if (isp == mAccHandle)
+        return;
+
+    if (isp) {
+        accApi.isp               = isp;
+        accApi.open_firmware     = open_firmware;
+        accApi.load_firmware     = load_firmware_pipe; // beware this is not just load_firmware.
+        accApi.unload_firmware   = unload_firmware;
+        accApi.set_firmware_arg  = set_firmware_arg;
+        accApi.start_firmware    = start_firmware;
+        accApi.wait_for_firmware = wait_for_firmware;
+        accApi.abort_firmware    = abort_firmware;
+        accApi.map_firmware_arg   = map_firmware_arg;
+        accApi.unmap_firmware_arg = unmap_firmware_arg;
+        accApi.set_mapped_arg     = set_mapped_arg;
+        accApiPtr = &accApi;
+    }
+
+    // note: passing a NULL accApiPtr value closes
+    //       all previously allocated ISP resources
+    ia_face_set_acceleration(mContext, accApiPtr);
+    mAccHandle = isp;
 }
 
 int FaceDetector::faceDetect(ia_frame *frame)
@@ -276,7 +310,12 @@ int FaceDetector::getFaces(camera_face_t *faces_out, int width, int height)
         face.rect[3] = iaFace.face_area.bottom * coord_range / height - coord_range / 2;
 
         face.score = iaFace.confidence;
-        face.id = iaFace.person_id;
+
+        // Face ID should be unique for each detected face, so fill the face ID with tracking ID if
+        // FR is not enabled (person_id is always 0) or when the face is not recognized (person_id is always -1000).
+        // Tracking ID is always unique for each detected face. Use negative values below -1000 so that the application
+        // doesn't misinterpret the face as recognized and that the CTS tests pass.
+        face.id = iaFace.person_id > 0 ? iaFace.person_id : (-1000 - iaFace.tracking_id);
 
         face.left_eye[0] = iaFace.left_eye.position.x * coord_range / width - coord_range / 2;
         face.left_eye[1] = iaFace.left_eye.position.y * coord_range / height - coord_range / 2;

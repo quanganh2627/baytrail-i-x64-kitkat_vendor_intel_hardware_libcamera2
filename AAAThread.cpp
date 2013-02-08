@@ -231,6 +231,8 @@ status_t AAAThread::handleMessageAutoFocus()
     ia_3a_af_status cafStatus = mAAA->getCAFStatus();
     if (currAfMode == CAM_AF_MODE_CONTINUOUS && cafStatus != ia_3a_af_status_busy) {
         mCallbacks->autofocusDone(cafStatus == ia_3a_af_status_success);
+        // Also notify ControlThread that the auto-focus is finished
+        mAAADoneCallback->autoFocusDone();
         return status;
     }
 
@@ -249,6 +251,8 @@ status_t AAAThread::handleMessageAutoFocus()
         mStopAF = false;
     } else {
         mCallbacks->autofocusDone(true);
+        // Also notify ControlThread that the auto-focus is finished
+        mAAADoneCallback->autoFocusDone();
     }
 
     return status;

@@ -105,22 +105,21 @@ static ia_3a_af_hp_status cb_focus_home_position(void)
 }
 
 static void
-get_sensor_frame_params(ia_aiq_isp_frame_params *sensor_frame_params, struct atomisp_sensor_mode_data *sensor_mode_data)
+get_sensor_frame_params(ia_aiq_sensor_frame_params *frame_params, struct atomisp_sensor_mode_data *sensor_mode_data)
 {
-    ia_3a_sensor_mode_data *ia_sensor_mode_data = (ia_3a_sensor_mode_data*)sensor_mode_data;
+    ia_3a_sensor_mode_data *ia_data = (ia_3a_sensor_mode_data*)sensor_mode_data;
 
-    /*TODO: isp frame structure to be changed */
-    sensor_frame_params->sensor_native_height = ia_sensor_mode_data->y_end-ia_sensor_mode_data->y_start; /*cropped height*/
-    sensor_frame_params->sensor_native_width = ia_sensor_mode_data->x_end-ia_sensor_mode_data->x_start; /*cropped width*/
-    sensor_frame_params->sensor_horizontal_binning_denominator = 1;
-
-    sensor_frame_params->sensor_horizontal_binning_numerator = 1;
-    sensor_frame_params->sensor_vertical_binning_numerator = 1;
-    sensor_frame_params->sensor_vertical_binning_denominator = 1;
-    sensor_frame_params->horizontal_offset = ia_sensor_mode_data->x_start;
-    sensor_frame_params->vertical_offset = ia_sensor_mode_data->y_start;
-    sensor_frame_params->cropped_image_height = ia_sensor_mode_data->output_height * ia_sensor_mode_data->binning_factor_y;
-    sensor_frame_params->cropped_image_width = ia_sensor_mode_data->output_width * ia_sensor_mode_data->binning_factor_x;
+    frame_params->horizontal_crop_offset = ia_data->x_start;
+    frame_params->vertical_crop_offset = ia_data->y_start;
+    frame_params->cropped_image_height = ia_data->y_end - ia_data->y_start;
+    frame_params->cropped_image_width = ia_data->x_end - ia_data->x_start;
+    /* TODO: Get scaling factors from sensor configuration parameters */
+    frame_params->horizontal_scaling_denominator = 254;
+    frame_params->horizontal_scaling_numerator = 
+            ia_data->output_width * 254 * ia_data->binning_factor_x/ frame_params->cropped_image_width;
+    frame_params->vertical_scaling_numerator = 
+            ia_data->output_height * 254 * ia_data->binning_factor_y / frame_params->cropped_image_height;
+    frame_params->vertical_scaling_denominator = 254;
 }
 
 } // extern "C"
@@ -382,6 +381,54 @@ status_t AtomAAA::setAeMode(AeMode mode)
     ia_3a_ae_set_mode(wr_val);
 
     return NO_ERROR;
+}
+
+/** add iso mode setting*/
+status_t AtomAAA::setIsoMode(IsoMode mode)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s: mode = %d", __FUNCTION__, mode);
+    if(!mHas3A)
+        return INVALID_OPERATION;
+
+    ia_3a_ae_iso_mode wr_val;
+    switch (mode) {
+    case CAM_AE_ISO_MODE_AUTO:
+        wr_val = ia_3a_ae_iso_mode_auto;
+        break;
+    case CAM_AE_ISO_MODE_MANUAL:
+        wr_val = ia_3a_ae_iso_mode_manual;
+        break;
+    default:
+        LOGE("Set: invalid AE mode: %d. Using AUTO!", mode);
+        wr_val = ia_3a_ae_iso_mode_auto;
+    }
+    ia_3a_ae_set_iso_mode(wr_val);
+    return NO_ERROR;
+}
+
+IsoMode AtomAAA::getIsoMode(void)
+{
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s", __FUNCTION__);
+    IsoMode mode = CAM_AE_ISO_MODE_NOT_SET;
+    if(!mHas3A)
+        return mode;
+
+    ia_3a_ae_iso_mode rd_val = ia_3a_ae_get_iso_mode();
+    switch (rd_val) {
+    case ia_3a_ae_iso_mode_auto:
+        mode = CAM_AE_ISO_MODE_AUTO;
+        break;
+    case ia_3a_ae_iso_mode_manual:
+        mode = CAM_AE_ISO_MODE_MANUAL;
+        break;
+    default:
+        LOGE("Get: invalid AE ISO mode: %d. Using AUTO!", rd_val);
+        mode = CAM_AE_ISO_MODE_AUTO;
+    }
+
+    return mode;
 }
 
 status_t AtomAAA::setAeFlickerMode(FlickerMode mode)
@@ -791,6 +838,8 @@ ia_3a_af_status AtomAAA::getCAFStatus()
 {
     Mutex::Autolock lock(m3aLock);
     LOG2("@%s", __FUNCTION__);
+    if(mSensorType == SENSOR_TYPE_RAW)
+        return ia_3a_af_status_idle;
 
     return ia_3a_af_get_still_status();
 }
@@ -895,16 +944,6 @@ status_t AtomAAA::setAfWindows(const CameraWindow *windows, size_t numWindows)
     }
 
     ia_3a_af_set_windows(numWindows, (const ia_3a_window*)windows);
-    return NO_ERROR;
-}
-
-status_t AtomAAA::setNegativeEffect(bool en)
-{
-    Mutex::Autolock lock(m3aLock);
-    LOG1("@%s", __FUNCTION__);
-    if(mSensorType != SENSOR_TYPE_RAW)
-        return INVALID_OPERATION;
-    mIspSettings.inv_gamma = en;
     return NO_ERROR;
 }
 
@@ -1478,7 +1517,7 @@ void AtomAAA::ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate)
         ia_3a_mknote_add_uint(ia_3a_mknote_field_name_boot_events, m3ALibState.boot_events);
     /* usually the grid changes as well when the mode changes. */
     reconfigureGrid();
-    ia_aiq_isp_frame_params sensor_frame_params;
+    ia_aiq_sensor_frame_params sensor_frame_params;
     get_sensor_frame_params(&sensor_frame_params, &m3ALibState.sensor_mode_data);
     ia_3a_reconfigure(mode, frame_rate, m3ALibState.stats, &sensor_frame_params, &m3ALibState.results);
     applyResults();
@@ -1495,7 +1534,6 @@ int AtomAAA::applyResults(void)
     if (m3ALibState.results.aic_output) {
         struct atomisp_parameters *aic_out_struct = (struct atomisp_parameters *)m3ALibState.results.aic_output;
         ret |= mISP->setAicParameter(aic_out_struct);
-        ret |= mISP->applyColorEffect();
     }
 
     /* Apply Sensor settings */
@@ -1707,15 +1745,39 @@ void AtomAAA::getAeExpCfg(int *exp_time,
     *aec_apex_Av = ae_res.av;
 }
 
-status_t AtomAAA::set3AColorEffect(v4l2_colorfx effect)
+status_t AtomAAA::set3AColorEffect(const char *effect)
 {
-    LOG1("@%s: effect = %d", __FUNCTION__, effect);
+    Mutex::Autolock lock(m3aLock);
+    LOG1("@%s: effect = %s", __FUNCTION__, effect);
     status_t status = NO_ERROR;
 
-    status = mISP->setColorEffect(effect);
-    if (status != NO_ERROR) {
-        return UNKNOWN_ERROR;
+    ia_aiq_effect aiqEffect = ia_aiq_effect_none;
+    if (strncmp(effect, CameraParameters::EFFECT_MONO, strlen(effect)) == 0)
+        aiqEffect = ia_aiq_effect_black_and_white;
+    else if (strncmp(effect, CameraParameters::EFFECT_NEGATIVE, strlen(effect)) == 0)
+        aiqEffect = ia_aiq_effect_negative;
+    else if (strncmp(effect, CameraParameters::EFFECT_SEPIA, strlen(effect)) == 0)
+        aiqEffect = ia_aiq_effect_sepia;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_SKY_BLUE, strlen(effect)) == 0)
+        aiqEffect = ia_aiq_effect_sky_blue;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_GRASS_GREEN, strlen(effect)) == 0)
+        aiqEffect = ia_aiq_effect_grass_green;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_LOW, strlen(effect)) == 0)
+        aiqEffect = ia_aiq_effect_skin_whiten_low;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_MEDIUM, strlen(effect)) == 0)
+        aiqEffect = ia_aiq_effect_skin_whiten;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_HIGH, strlen(effect)) == 0)
+        aiqEffect = ia_aiq_effect_skin_whiten_high;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_VIVID, strlen(effect)) == 0)
+        aiqEffect = ia_aiq_effect_vivid;
+    else if (strncmp(effect, CameraParameters::EFFECT_NONE, strlen(effect)) != 0){
+        LOGE("Color effect not found.");
+        status = -1;
+        // Fall back to the effect NONE
     }
+
+    ia_3a_set_color_effect(aiqEffect);
+
     return status;
 }
 

@@ -263,7 +263,6 @@ public:
     size_t   getAeMaxNumWindows();
     size_t   getAfMaxNumWindows();
     status_t setAfWindows(const CameraWindow *windows, size_t numWindows);
-    status_t setNegativeEffect(bool en);
     status_t getExposureInfo(SensorAeConfig& sensorAeConfig);
     status_t getAeManualBrightness(float *ret);
     status_t setManualFocus(int focus, bool applyNow);
@@ -293,9 +292,12 @@ public:
     virtual AwbMode getAwbMode();
     virtual status_t setManualIso(int iso);
     virtual status_t getManualIso(int *ret);
+    /** expose iso mode setting*/
+    virtual status_t setIsoMode(IsoMode mode);
+    virtual IsoMode getIsoMode(void);
     virtual status_t setAeMeteringMode(MeteringMode mode);
     virtual MeteringMode getAeMeteringMode();
-    virtual status_t set3AColorEffect(v4l2_colorfx effect);
+    virtual status_t set3AColorEffect(const char *effect);
 
     // ISP processing functions
     status_t apply3AProcess(bool read_stats,

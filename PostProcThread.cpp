@@ -64,6 +64,28 @@ PostProcThread::~PostProcThread()
     }
 }
 
+/**
+ * Calling this is mandatory in order to use face engine functionalities.
+ * if *isp is null, face engine will run without acceleration.
+ */
+status_t PostProcThread::init(void* isp)
+{
+    mFaceDetector = new FaceDetector();
+    if (mFaceDetector == NULL) {
+        LOGE("Error creating FaceDetector");
+        return UNKNOWN_ERROR;
+    }
+
+    if (mFaceDetector->run() != NO_ERROR) {
+        LOGE("Error starting FaceDetector thread!");
+        return UNKNOWN_ERROR;
+    }
+
+    mIspHandle = isp;
+
+    return NO_ERROR;
+}
+
 void PostProcThread::getDefaultParameters(CameraParameters *params, CameraParameters *intel_params, int cameraId)
 {
     LOG1("@%s", __FUNCTION__);
@@ -94,21 +116,6 @@ status_t PostProcThread::handleMessageStartFaceDetection()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-
-    // Create and init FD when starting for the first time
-    if (mFaceDetector == NULL) {
-        mFaceDetector = new FaceDetector();
-        if (mFaceDetector == NULL) {
-            LOGE("Error creating FaceDetector");
-            return UNKNOWN_ERROR;
-        }
-        if (mFaceDetector->run() != NO_ERROR) {
-            LOGW("Error starting FaceDetector thread!");
-            return UNKNOWN_ERROR;
-        }
-    } else {
-        mFaceDetector->reset();
-    }
 
     if (mSmartShutter.smartRunning && mSmartShutter.smileRunning)
         mFaceDetector->setSmileThreshold(mSmartShutter.smileThreshold);
@@ -425,6 +432,45 @@ status_t PostProcThread::handleMessageIsFaceRecognitionRunning()
     return status;
 }
 
+void PostProcThread::loadIspExtensions(bool videoMode)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_LOAD_ISP_EXTENSIONS;
+    msg.data.loadIspExtensions.videoMode = videoMode;
+    mMessageQueue.send(&msg, MESSAGE_ID_LOAD_ISP_EXTENSIONS);
+}
+
+status_t PostProcThread::handleMessageLoadIspExtensions(const MessageLoadIspExtensions& params)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    if (mIspHandle != NULL &&
+            params.videoMode == false)
+        mFaceDetector->setAcc(mIspHandle);
+
+    mMessageQueue.reply(MESSAGE_ID_LOAD_ISP_EXTENSIONS, status);
+    return status;
+}
+
+void PostProcThread::unloadIspExtensions()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_UNLOAD_ISP_EXTENSIONS;
+    mMessageQueue.send(&msg, MESSAGE_ID_UNLOAD_ISP_EXTENSIONS);
+}
+
+status_t PostProcThread::handleMessageUnloadIspExtensions()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mFaceDetector->setAcc(NULL);
+    mMessageQueue.reply(MESSAGE_ID_UNLOAD_ISP_EXTENSIONS, status);
+    return status;
+}
+
 status_t PostProcThread::handleExit()
 {
     LOG1("@%s", __FUNCTION__);
@@ -576,6 +622,12 @@ status_t PostProcThread::waitForAndExecuteMessage()
             break;
         case MESSAGE_ID_IS_FACE_RECOGNITION_RUNNING:
             status = handleMessageIsFaceRecognitionRunning();
+            break;
+        case MESSAGE_ID_LOAD_ISP_EXTENSIONS:
+            status = handleMessageLoadIspExtensions(msg.data.loadIspExtensions);
+            break;
+        case MESSAGE_ID_UNLOAD_ISP_EXTENSIONS:
+            status = handleMessageUnloadIspExtensions();
             break;
         default:
             status = INVALID_OPERATION;

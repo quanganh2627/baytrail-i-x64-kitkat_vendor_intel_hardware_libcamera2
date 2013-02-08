@@ -329,14 +329,18 @@ private:
     // state machine helper functions
     status_t restartPreview(bool videoMode);
     status_t startPreviewCore(bool videoMode);
-    status_t stopPreviewCore();
+    status_t stopPreviewCore(bool flushPictures = true);
 
     status_t initContinuousCapture();
-    status_t releaseContinuousCapture();
+    void releaseContinuousCapture(bool flushPictures);
+    status_t startOfflineCapture();
+    int shutterLagZeroAlign();
     State selectPreviewMode(const CameraParameters &params);
     status_t handleContinuousPreviewBackgrounding();
     status_t handleContinuousPreviewForegrounding();
     void flushContinuousPreviewToDisplay(nsecs_t snapshotTs);
+    status_t configureContinuousRingBuffer();
+    status_t continuousStartStillCapture(bool useFlash);
 
     // thread message execution functions
     status_t handleMessageExit();
@@ -464,6 +468,13 @@ private:
             CameraParameters *newParams);
     status_t ProcessOverlayEnable(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    // EXIF data
+    status_t processParamExifMaker(const CameraParameters *oldParams,
+            CameraParameters *newParams);
+    status_t processParamExifModel(const CameraParameters *oldParams,
+            CameraParameters *newParams);
+    status_t processParamExifSoftware(const CameraParameters *oldParams,
+            CameraParameters *newParams);
 
     status_t processParamSlowMotionRate(const CameraParameters *oldParams,
         CameraParameters *newParams);
@@ -483,9 +494,11 @@ private:
     status_t validateParameters(const CameraParameters *params);
     // validation helpers
     bool validateSize(int width, int height, Vector<Size> &supportedSizes) const;
+    bool validateString(const char* value,  const char* supportList) const;
 
     status_t stopCapture();
     void     stopOfflineCapture();
+    status_t waitForCaptureStart();
 
     // HDR helper functions
     status_t hdrInit(int size, int pvSize, int format,
@@ -501,8 +514,18 @@ private:
     status_t getFlashExposedSnapshot(AtomBuffer *snaphotBuffer, AtomBuffer *postviewBuffer);
     void     fillPicMetaData(PictureThread::MetaData &metadata, bool flashFired);
 
+    // Burst helper functions
+    bool     isBurstRunning();
+    bool     burstMoreCapturesNeeded();
+    void     burstStateReset();
+    void     requestTakePicture();
+    bool     compressedFrameQueueFull();
+    status_t queueSnapshotBuffers();
+    status_t burstCaptureSkipFrames();
+
     status_t captureStillPic();
     status_t captureBurstPic(bool clientRequest);
+    status_t captureFixedBurstPic(bool clientRequest);
     status_t capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffer &postviewBuffer);
     status_t captureVideoSnap(void);
     void     encodeVideoSnapshot(int buffId);
@@ -555,9 +578,25 @@ private:
     bool mFaceDetectionActive;
     bool mAutoFocusActive;
     bool mFlashAutoFocus;
+
+    /* Burst configuration: */
+
     int  mFpsAdaptSkip;
-    int  mBurstLength;
-    int  mBurstCaptureNum;
+    int  mBurstLength;          /*<! Burst length 1..N */
+    int  mBurstStart;           /*<! Relative offset at which burst
+                                  capture should start, where 0 marks
+                                  the zero shutter lag case. */
+
+    /* Burst runtime state, \see burstStateReset() */
+
+    int  mBurstCaptureNum;      /*<! Number of the most recent burst
+                                  capture that was started. In range
+                                  1...N, where N is mBurstLength. */
+    int  mBurstCaptureDoneNum;  /*<! Number of the most recent burst
+                                  capture that was completed. In range
+                                  1...N, where N is mBurstLength. */
+    int  mBurstQbufs;           /*<! Number of buffers queued so far
+                                  to ISP, 1..N where N is mBurstLength */
     HdrImaging mHdr;
     bool mAELockFlashNeed;
     float mPublicShutter;       /* Shutter set by application */
@@ -581,10 +620,7 @@ private:
     CameraAreas mFocusAreas;
     CameraAreas mMeteringAreas;
 
-    bool mIsPreviewStartComplete;   /*!< Flag that signals the completion of the start preview process
-                                         set to false when we receive the start preview command
-                                         set to true when the first preview frame is returned to
-                                         ControlThread */
+    int mPreviewFramesDone;     /*!< Number of done preview frames */
 
     int mVideoSnapshotrequested;    /*!< number of video snapshots requested */
 

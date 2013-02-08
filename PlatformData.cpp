@@ -134,6 +134,9 @@ PlatformBase* PlatformData::getInstance(void)
 #elif   YUKKA
         mInstance = new PlatformYukka();
 
+#elif   SALITPA
+        mInstance = new PlatformSalitpa();
+
 #else   // take defaults from MFLD_PR2 for all others now
         mInstance = new PlatformBlackbay();
 
@@ -231,6 +234,21 @@ bool PlatformData::supportsContinuousCapture(void)
 {
     PlatformBase *i = getInstance();
     return i->mContinuousCapture;
+}
+
+int PlatformData::maxContinuousRawRingBufferSize(void)
+{
+    PlatformBase *i = getInstance();
+    if (PlatformData::supportsContinuousCapture() == false)
+        return 0;
+
+    return i->mMaxContinuousRawRingBuffer;
+}
+
+int PlatformData::shutterLagCompensationMs(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mShutterLagCompensationMs;
 }
 
 bool PlatformData::renderPreviewViaOverlay(int cameraId)

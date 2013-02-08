@@ -88,6 +88,8 @@ namespace android {
     const char IntelCameraParameters::KEY_BURST_LENGTH[] = "burst-length";
     const char IntelCameraParameters::KEY_SUPPORTED_BURST_FPS[] = "burst-fps-values";
     const char IntelCameraParameters::KEY_BURST_FPS[] = "burst-fps";
+    const char IntelCameraParameters::KEY_BURST_START_INDEX[] = "burst-start-index";
+    const char IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX[] = "burst-start-index-values";
 
     // preview keep-alive
     const char IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE[] = "preview-keep-alive";
@@ -182,6 +184,11 @@ namespace android {
     const char IntelCameraParameters::SLOW_MOTION_RATE_2X[] = "2x";
     const char IntelCameraParameters::SLOW_MOTION_RATE_3X[] = "3x";
     const char IntelCameraParameters::SLOW_MOTION_RATE_4X[] = "4x";
+
+    // EXIF data
+    const char IntelCameraParameters::KEY_EXIF_MAKER[] = "exif-maker-name";
+    const char IntelCameraParameters::KEY_EXIF_MODEL[] = "exif-model-name";
+    const char IntelCameraParameters::KEY_EXIF_SOFTWARE[] = "exif-software-name";
 
     void IntelCameraParameters::getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params)
     {

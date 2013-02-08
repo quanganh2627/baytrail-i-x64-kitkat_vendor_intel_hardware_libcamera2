@@ -48,6 +48,7 @@ class PostProcThread : public IFaceDetector,
 public:
     PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread);
     virtual ~PostProcThread();
+    status_t init(void* isp);
 
 // Common methods
     void getDefaultParameters(CameraParameters *params, CameraParameters *intel_parameters, int cameraId);
@@ -83,6 +84,8 @@ public:
     virtual void disableFaceAAA(AAAFlags flags);
     virtual void startFaceRecognition();
     virtual void stopFaceRecognition();
+    virtual void loadIspExtensions(bool videoMode);
+    virtual void unloadIspExtensions();
     bool isFaceRecognitionRunning();
 
 // private types
@@ -122,6 +125,8 @@ private:
         MESSAGE_ID_START_FACE_RECOGNITION,
         MESSAGE_ID_STOP_FACE_RECOGNITION,
         MESSAGE_ID_IS_FACE_RECOGNITION_RUNNING,
+        MESSAGE_ID_LOAD_ISP_EXTENSIONS,
+        MESSAGE_ID_UNLOAD_ISP_EXTENSIONS,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -144,6 +149,10 @@ private:
         AAAFlags flags;
     };
 
+    struct MessageLoadIspExtensions {
+        bool videoMode;
+    };
+
     // union of all message data
     union MessageData {
         // MESSAGE_ID_FRAME
@@ -153,6 +162,8 @@ private:
         MessageSmartShutter smartShutterParam;
         //MESSAGE_ID_FACE_AAA
         MessageFaceAAA faceAAA;
+        // MESSAGE_ID_LOAD_ISP_EXTENSIONS
+        MessageLoadIspExtensions loadIspExtensions;
     };
 
     // message id and message data
@@ -189,6 +200,8 @@ private:
     status_t handleMessageStartFaceRecognition();
     status_t handleMessageStopFaceRecognition();
     status_t handleMessageIsFaceRecognitionRunning();
+    status_t handleMessageLoadIspExtensions(const MessageLoadIspExtensions&);
+    status_t handleMessageUnloadIspExtensions();
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -213,6 +226,7 @@ private:
     AfMode mOldAfMode;
     MeteringMode mOldAeMeteringMode;
     SmartShutterParams mSmartShutter;
+    void *mIspHandle;
 }; // class PostProcThread
 
 }; // namespace android

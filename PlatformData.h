@@ -99,6 +99,9 @@ public:
         mSupportedVideoSizes = "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1080";
         mSupportVideoSnapshot = true;
         mNumRecordingBuffers = 9;
+        mContinuousCapture = false;
+        mMaxContinuousRawRingBuffer = 0;
+        mShutterLagCompensationMs = 80;
    };
 
  protected:
@@ -156,7 +159,7 @@ public:
                 ,sizeof(defaultFlashMode)
                 ,"%s", CameraParameters::FLASH_MODE_OFF);
             //Iso
-            supportedIso = "iso-100,iso-200,iso-400,iso-800";
+            supportedIso = "iso-auto,iso-100,iso-200,iso-400,iso-800";
             defaultIso = "iso-200";
             //sceneMode
             snprintf(supportedSceneModes
@@ -216,7 +219,8 @@ public:
             supportedPreviewFrameRate = "30,15,10";
             supportedPreviewFPSRange = "(10500,30304),(11000,30304),(11500,30304)";
             defaultPreviewFPSRange = "10500,30304";
-            supportedPreviewSize = "1024x576,800x600,704x576,720x480,640x480,640x360,416x312,352x288,320x240,176x144";
+            // Leaving this empty. NOTE: values need to be given in derived classes.
+            supportedPreviewSize = "";
             //For high speed recording, slow motion playback
             hasSlowMotion = false;
         };
@@ -282,7 +286,6 @@ public:
         const char* supportedPreviewSize;
         // For high speed recording, slow motion playback
         bool hasSlowMotion;
-
     };
 
     // note: Android NDK does not yet support C++11 and
@@ -296,6 +299,9 @@ public:
     bool mSupportVideoSnapshot;
 
     bool mContinuousCapture;
+    int mMaxContinuousRawRingBuffer;
+    int mShutterLagCompensationMs;
+
     int mPanoramaMaxSnapshotCount;
 
     /* For burst capture's burst length and burst fps */
@@ -401,6 +407,29 @@ class PlatformData {
      * \return true if supported
      */
     static bool supportsContinuousCapture(void);
+
+    /**
+     * What's the maximum supported size of the RAW ringbuffer
+     * for continuous capture maintained by the ISP.
+     *
+     * This depends both on kernel and CSS firmware, but also total
+     * available system memory that should be used for imaging use-cases.
+     *
+     * \return int number 0...N, if supportsContinuousCapture() is
+     *         false, this function will always return 0
+     */
+    static int maxContinuousRawRingBufferSize(void);
+
+    /**
+     * Returns the average lag between user pressing shutter UI button or
+     * key, to camera HAL receiving take_picture method call.
+     *
+     * This value is used to fine-tune frame selection for Zero
+     * Shutter Lag.
+     *
+     * \return int lag time in milliseconds
+     */
+    static int shutterLagCompensationMs(void);
 
     /**
      * Orientation of camera id

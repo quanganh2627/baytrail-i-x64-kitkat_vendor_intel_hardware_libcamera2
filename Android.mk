@@ -1,11 +1,20 @@
 ifeq ($(USE_CAMERA_STUB),false)
 ifeq ($(USE_CAMERA_HAL2),true)
 LOCAL_PATH:= $(call my-dir)
-USE_INTEL_JPEG := true
 
 include $(CLEAR_VARS)
 
+ifeq ($(TARGET_DEVICE),merr_vv)
+USE_INTEL_JPEG := false
+else
+USE_INTEL_JPEG := true
+endif
+
+USE_INTEL_METABUFFER := true
+
+ifeq ($(USE_INTEL_METABUFFER),true)
 LOCAL_CFLAGS += -DENABLE_INTEL_METABUFFER
+endif
 
 # Intel camera extras (HDR, face detection, etc.)
 ifeq ($(USE_INTEL_CAMERA_EXTRAS),true)
@@ -44,7 +53,8 @@ LOCAL_SRC_FILES := \
 	nv12rotation.cpp \
 	CameraDump.cpp \
 	CameraAreas.cpp \
-	BracketManager.cpp
+	BracketManager.cpp \
+	AtomAcc.cpp
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SRC_FILES += \
@@ -85,6 +95,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libcutils \
 	libbinder \
 	libjpeg \
+	libia_aiq \
 	libandroid \
 	libui \
 	libia_mkn \
@@ -94,12 +105,16 @@ LOCAL_SHARED_LIBRARIES := \
 	libsqlite \
 	libdl
 
+ifeq ($(USE_INTEL_METABUFFER),true)
+LOCAL_SHARED_LIBRARIES += \
+	libintelmetadatabuffer
+endif
+
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SHARED_LIBRARIES += \
 	libva \
 	libva-tpi \
-	libva-android \
-	libintelmetadatabuffer
+	libva-android
 endif
 
 LOCAL_STATIC_LIBRARIES := \
@@ -112,16 +127,19 @@ endif
 
 ifeq ($(REF_DEVICE_NAME),mfld_gi)
 LOCAL_CFLAGS += -DMFLD_GI
-else ifneq (,$(findstring $(REF_DEVICE_NAME),mfld_dv10 redridge salitpa))
+
+else ifneq (,$(findstring $(REF_DEVICE_NAME),mfld_dv10 redridge))
 LOCAL_CFLAGS += -DMFLD_DV10
 else ifneq (,$(findstring $(REF_DEVICE_NAME),victoriabay ctp_pr1 ctp_nomodem))
 LOCAL_CFLAGS += -DCLVT
-else ifeq ($(REF_DEVICE_NAME), mrfl_vp)
+else ifeq ($(REF_DEVICE_NAME),mrfl_vp)
 LOCAL_CFLAGS += -DMRFL_VP
 else ifeq ($(TARGET_DEVICE),merr_vv)
 LOCAL_CFLAGS += -DMERR_VV
 else ifeq ($(TARGET_DEVICE),yukkabeach)
 LOCAL_CFLAGS += -DYUKKA
+else ifeq ($(REF_DEVICE_NAME),salitpa)
+LOCAL_CFLAGS += -DSALITPA
 else
 LOCAL_CFLAGS += -DMFLD_PR2
 endif

@@ -732,11 +732,12 @@ PreviewThread::GfxPreviewHandler::handleSetPreviewWindow(MessageSetPreviewWindow
         LOG1("Setting new preview window %p", mPreviewWindow);
         int previewWidthPadded = mPreviewWidth;
 
-        // write-often: main use-case, stream image data to window
+        // write-never: main use-case, stream image data to window by ISP only
         // read-rarely: 2nd use-case, memcpy to application data callback
         mPreviewWindow->set_usage(mPreviewWindow,
                                   (GRALLOC_USAGE_SW_READ_RARELY |
-                                   GRALLOC_USAGE_SW_WRITE_OFTEN));
+                                   GRALLOC_USAGE_SW_WRITE_NEVER |
+                                   GRALLOC_USAGE_HW_COMPOSER));
         mPreviewWindow->set_buffers_geometry(
                 mPreviewWindow,
                 previewWidthPadded,
@@ -811,7 +812,9 @@ PreviewThread::GfxPreviewHandler::handleFetchPreviewBuffers()
         int err, stride;
         buffer_handle_t *buf;
         void *dst;
-        int lockMode = GRALLOC_USAGE_SW_READ_OFTEN | GRALLOC_USAGE_SW_WRITE_NEVER;
+        int lockMode = GRALLOC_USAGE_SW_READ_OFTEN |
+                       GRALLOC_USAGE_SW_WRITE_NEVER |
+                       GRALLOC_USAGE_HW_COMPOSER;
         const Rect bounds(mPreviewWidth, mPreviewHeight);
         for (size_t i = 0; i < mNumOfPreviewBuffers; i++) {
             err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride);

@@ -79,46 +79,53 @@ CameraParamsLogger::~CameraParamsLogger() {
 }
 
 void
-CameraParamsLogger::dump() {
+CameraParamsLogger::dump() const {
     LOG2("Dumping Camera Params");
     for (unsigned int i = 0; i < mPropMap.size(); i++) {
         LOG2("%s=%s",mPropMap.keyAt(i).string(), mPropMap.valueAt(i).string());
     }
 }
-void CameraParamsLogger::dumpDifference(CameraParamsLogger &oldParams) {
+void CameraParamsLogger::dumpDifference(const CameraParamsLogger &oldParams) const {
+    String8 key_old, key_new, value_old, value_new;
 
-    int longParamsSize = mPropMap.size();
-    KeyedVector<String8, String8> &longMap = mPropMap;
-    KeyedVector<String8, String8> &shortMap = oldParams.mPropMap;
-    bool longNew = true;
+    size_t i(0);
+    size_t j(0);
 
-    if( mPropMap.size() < oldParams.mPropMap.size()) {
+    LOG1("Dumping camera params difference: size = %d -> %d", oldParams.mPropMap.size(), mPropMap.size());
 
-        longParamsSize = oldParams.mPropMap.size();
-        longMap = oldParams.mPropMap;
-        shortMap = mPropMap;
-        longNew = false;
-
-    }
-
-    for (int i = 0; i < longParamsSize; i++) {
-        if (shortMap.indexOfKey(longMap.keyAt(i)) != NAME_NOT_FOUND) {
-            if(shortMap.valueFor(longMap.keyAt(i)) != longMap.valueAt(i)) {
-                LOG1("Param [%s] changed from %s - to - %s",longMap.keyAt(i).string(),
-                                                            oldParams.mPropMap.valueFor(longMap.keyAt(i)).string(),
-                                                            mPropMap.valueFor(longMap.keyAt(i)).string());
+    while (i < oldParams.mPropMap.size() && j < mPropMap.size() ) {
+        key_old = oldParams.mPropMap.keyAt(i);
+	key_new = mPropMap.keyAt(j);
+	value_old = oldParams.mPropMap.valueAt(i);
+	value_new = mPropMap.valueAt(j);
+        if (key_old == key_new) {
+            if (value_old != value_new) {
+                LOG1("Value changed: %s: %s -> %s", key_old.string(), value_old.string(), value_new.string());
             }
-
+            ++i;
+            ++j;
+        } else if (key_old < key_new) {
+            LOG1("Deleted parameter: %s (%s)", key_old.string(), value_old.string());
+            ++i;
         } else {
-            if(!longNew) {
-                LOG1("Param [%s] not specified in new params", longMap.keyAt(i).string());
-            }else {
-                LOG1("New Param [%s] = %s",longMap.keyAt(i).string(), longMap.valueAt(i).string());
-            }
-
+            LOG1("New parameter: %s: %s", key_new.string(), value_new.string());
+            ++j;
         }
     }
 
+    while (i < oldParams.mPropMap.size()) {
+        key_old = oldParams.mPropMap.keyAt(i);
+        value_old = oldParams.mPropMap.keyAt(i);
+        LOG1("Deleted parameter: %s (%s)", key_old.string(), value_old.string());
+        ++i;
+    }
+
+    while (j < mPropMap.size() ) {
+        key_new = mPropMap.keyAt(j);
+        value_new = mPropMap.keyAt(j);
+        LOG1("New parameter: %s: %s", key_new.string(), value_new.string());
+        ++j;
+    }
 }
 
 int

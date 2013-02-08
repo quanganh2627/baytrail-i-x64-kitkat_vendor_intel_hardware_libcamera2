@@ -67,6 +67,11 @@ public:
     status_t wait(); // wait to finish queued messages (sync)
     status_t flushBuffers();
 
+    // Exif
+    void setExifMaker(const String8& data);
+    void setExifModel(const String8& data);
+    void setExifSoftware(const String8& data);
+
 // private types
 private:
 
@@ -173,6 +178,11 @@ private:
     AtomBuffer *mInputBufferArray;
     char       **mInputBuffDataArray;   /*!< Convenience variable. TODO remove and use mInputBufferArray */
     int        mInputBuffers;
+
+    // Exif data
+    String8 mExifMakerName;
+    String8 mExifModelName;
+    String8 mExifSoftwareName;
 }; // class PictureThread
 
 }; // namespace android

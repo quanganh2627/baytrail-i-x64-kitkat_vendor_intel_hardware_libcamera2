@@ -100,7 +100,10 @@ ControlThread::ControlThread(const sp<CameraConf>& cfg) :
     ,mFlashAutoFocus(false)
     ,mFpsAdaptSkip(0)
     ,mBurstLength(0)
-    ,mBurstCaptureNum(0)
+    ,mBurstStart(0)
+    ,mBurstCaptureNum(-1)
+    ,mBurstCaptureDoneNum(-1)
+    ,mBurstQbufs(0)
     ,mAELockFlashNeed(false)
     ,mPublicShutter(-1)
     ,mParamCache(NULL)
@@ -110,7 +113,7 @@ ControlThread::ControlThread(const sp<CameraConf>& cfg) :
     ,mCameraDump(NULL)
     ,mFocusAreas()
     ,mMeteringAreas()
-    ,mIsPreviewStartComplete(false)
+    ,mPreviewFramesDone(0)
     ,mVideoSnapshotrequested(0)
     ,mSetFPS(MAX_PREVIEW_FPS)
 {
@@ -243,6 +246,11 @@ status_t ControlThread::init()
     mPostProcThread = new PostProcThread(this, mPanoramaThread.get());
     if (mPostProcThread == NULL) {
         LOGE("error creating PostProcThread");
+        goto bail;
+    }
+
+    if (mPostProcThread->init((void*)mISP) != NO_ERROR) {
+        LOGE("error initializing face engine");
         goto bail;
     }
 
@@ -989,6 +997,34 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
 }
 
 /**
+ * Configures the ISP ringbuffer size in continuous mode.
+ *
+ * This configuration must be done before preview pipeline
+ * is started. During runtime, user-space may modify
+ * capture configuration (number of captures, skip, offset),
+ * but only to smaller values. If any number of captures or
+ * offset needs be changed so that a larger ringbuffer would
+ * be needed, then ISP needs to be restarted. The values set
+ * here are thus the maximum values.
+ */
+status_t ControlThread::configureContinuousRingBuffer()
+{
+    LOG2("@%s", __FUNCTION__);
+    int numCaptures = 1;
+    int offset = -1;
+    if (mBurstLength > 1) {
+        numCaptures = mBurstLength;
+        offset = mBurstStart - shutterLagZeroAlign();
+    }
+
+    mISP->setContCaptureNumCaptures(numCaptures);
+    mISP->setContCaptureOffset(offset);
+    LOG2("continous mode ringbuffer for max %d captures, %d offset",
+         numCaptures, offset);
+    return NO_ERROR;
+}
+
+/**
  * Configures parameters for continuous capture.
  *
  * In continuous capture mode, parameters for both capture
@@ -996,7 +1032,7 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
  */
 status_t ControlThread::initContinuousCapture()
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     int format = mISP->getSnapshotPixelFormat();
@@ -1021,15 +1057,14 @@ status_t ControlThread::initContinuousCapture()
     mPictureThread->initialize(mParameters);
 
     mISP->setSnapshotFrameFormat(width, height, format);
-    mISP->setContCaptureNumCaptures(1);
-    mISP->setContCaptureOffset(0);
-
+    configureContinuousRingBuffer();
     mISP->setPostviewFrameFormat(pvWidth, pvHeight, format);
+
+    burstStateReset();
 
     // TODO: potential launch2preview impact, we cannot use
     //       the lazy buffer allocation strategy in continuous mode
     allocateSnapshotBuffers();
-    mIsPreviewStartComplete = true;
 
     setExternalSnapshotBuffers(format, width, height);
 
@@ -1039,24 +1074,25 @@ status_t ControlThread::initContinuousCapture()
 /**
  * Frees resources related to continuous capture
  *
- * This function covers resources related to continous capture,
- * which cannot be freed in stopPreviewCore().
+ * \param flushPictures whether to flush the picture thread
  */
-status_t ControlThread::releaseContinuousCapture()
+void ControlThread::releaseContinuousCapture(bool flushPictures)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    // picture thread cannot be flushed in stopPreviewCore()
-    // as that breaks the flash-fallback mechanism (switch
-    // to old CAPTURE mode for taking a flash picture)
-    status = mPictureThread->flushBuffers();
-    if (status != NO_ERROR) {
-        LOGE("Error flushing PictureThread!");
-        return status;
+    mUnqueuedPicBuf.clear();
+    mISP->releaseCaptureBuffers();
+    if (flushPictures) {
+        // This covers cases when we need to fallback from
+        // continuous mode to online mode to do a capture.
+        // As capture is not runnning in these cases, flush
+        // is not needed.
+        status = mPictureThread->flushBuffers();
+        if (status != NO_ERROR) {
+            LOGE("Error flushing PictureThread!");
+        }
     }
-
-    return status;
 }
 
 /**
@@ -1088,13 +1124,11 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         return STATE_PREVIEW_STILL;
     }
 
-    // Only preview-size of 800x600 is validated to work in
-    // continuous mode.
-    // TODO: to be removed, tracked in BZ 72252
+    // Low preview resolutions have known issues in continuous mode.
+    // TODO: to be removed, tracked in BZ 81396
     int pWidth = 0, pHeight = 0;
     mParameters.getPreviewSize(&pWidth, &pHeight);
-    if (!(pWidth == 800 && pHeight == 600)  &&
-        !(pWidth == 1024 && pHeight == 576)) {
+    if (pWidth < 640 && pHeight < 360) {
         LOG1("@%s: continuous mode not available for preview size %ux%u",
              __FUNCTION__, pWidth, pHeight);
         return STATE_PREVIEW_STILL;
@@ -1110,10 +1144,29 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         return STATE_PREVIEW_STILL;
     }
 
-    // Only single captures are currently supported.
-    if (mBurstLength > 1) {
-        LOG1("@%s: Burst requested, disabling continuous mode", __FUNCTION__);
+    if (mBurstLength > 1 && mBurstStart >= 0) {
+        LOG1("@%s: Burst length of %d requested, disabling continuous mode",
+             __FUNCTION__, mBurstLength);
         return STATE_PREVIEW_STILL;
+    }
+
+    if (mBurstStart < 0) {
+        // One buffer in the raw ringbuffer is reserved for streaming
+        // from sensor, so output frame count is limited to maxSize-1.
+        int maxBufSize = PlatformData::maxContinuousRawRingBufferSize();
+        if (mBurstLength > maxBufSize - 1) {
+             LOG1("@%s: Burst length of %d with offset %d requested, disabling continuous mode",
+                  __FUNCTION__, mBurstLength, mBurstStart);
+            return STATE_PREVIEW_STILL;
+        }
+
+        // Bracketing not supported in continuous mode as the number
+        // captures is not fixed.
+        if (mBracketManager->getBracketMode() != BRACKET_NONE) {
+            LOG1("@%s: Bracketing requested, disabling continuous mode",
+                 __FUNCTION__);
+            return STATE_PREVIEW_STILL;
+        }
     }
 
     // The continuous mode depends on maintaining a RAW frame
@@ -1237,6 +1290,9 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         return status;
     }
 
+    // Load any ISP extensions before ISP is started
+    mPostProcThread->loadIspExtensions(videoMode);
+
     mISP->getPreviewSize(&width, &height,&stride);
     mNumBuffers = mISP->getNumBuffers(videoMode);
     AtomBuffer *pvBufs;
@@ -1297,7 +1353,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
     // ISP started so frame counter will be 1
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("started preview", 1);
-
+    mPreviewFramesDone = 0;
     return status;
 }
 
@@ -1364,7 +1420,12 @@ void ControlThread::flushContinuousPreviewToDisplay(nsecs_t snapshotTs)
     }
 }
 
-status_t ControlThread::stopPreviewCore()
+/**
+ * Stops ISP and frees allocated resources
+ *
+ * \param flushPictures whether to flush the picture thread
+ */
+status_t ControlThread::stopPreviewCore(bool flushPictures)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -1399,9 +1460,10 @@ status_t ControlThread::stopPreviewCore()
         LOGE("Error stopping ISP in preview mode!");
     }
     status = mPreviewThread->returnPreviewBuffers();
+    mPostProcThread->unloadIspExtensions();
 
     if (oldState == STATE_CONTINUOUS_CAPTURE)
-        mISP->releaseCaptureBuffers();
+        releaseContinuousCapture(flushPictures);
 
     delete [] mCoupledBuffers;
     // set to null because frames can be returned to hal in stop state
@@ -1412,6 +1474,8 @@ status_t ControlThread::stopPreviewCore()
         mAAA->deinit3aStatDump();
 
     mPreviewThread->setPreviewState(PreviewThread::STATE_STOPPED);
+
+    LOG2("Preview stopped after %d frames", mPreviewFramesDone);
 
     return status;
 }
@@ -1443,7 +1507,7 @@ status_t ControlThread::stopCapture()
     status = mISP->releaseCaptureBuffers();
 
     mState = STATE_STOPPED;
-    mBurstCaptureNum = 0;
+    burstStateReset();
 
     // Reset AE and AF in case HDR/bracketing was used (these features
     // manually configure AE and AF during takePicture)
@@ -1484,6 +1548,56 @@ status_t ControlThread::restartPreview(bool videoMode)
         startFaceDetection();
     mPreviewStartQueued = false;
     return status;
+}
+
+
+/**
+ * Calculates the correct frame offset to capture to reach Zero
+ * Shutter Lag.
+ */
+int ControlThread::shutterLagZeroAlign()
+{
+    int delayMs = PlatformData::shutterLagCompensationMs();
+    float frameIntervalMs = 1000.0 / mISP->getFrameRate();
+    int lagZeroOffset = delayMs / frameIntervalMs + 1;
+    LOG2("@%s: delay %dms, fps %.02f, zero offset %d",
+         __FUNCTION__, delayMs, mISP->getFrameRate(), lagZeroOffset);
+    return lagZeroOffset;
+}
+
+/**
+ * Starts rendering an output frame from the raw
+ * ringbuffer.
+ */
+status_t ControlThread::startOfflineCapture()
+{
+    assert(mState == STATE_CONTINUOUS_CAPTURE);
+
+    int skip = 0;
+    int captures = 1;
+    int offset = -1; // TODO: start using shutterLagZeroAlign() instead of
+                     // fixed -1 once BZ82274 is fixed
+
+    if (mBurstLength > 1) {
+        captures = mBurstLength;
+        offset = mBurstStart - shutterLagZeroAlign();
+    }
+
+    // in case preview has just started, we need to limit
+    // how long we can look back
+    if (mPreviewFramesDone < -offset)
+        offset = -mPreviewFramesDone;
+
+    // Starting capture device will queue all buffers,
+    // so we need to clear any references we have.
+    mUnqueuedPicBuf.clear();
+
+    mISP->setContCaptureNumCaptures(captures);
+    mISP->setContCaptureOffset(offset);
+    mISP->setContCaptureSkip(skip);
+    mISP->startOfflineCapture();
+
+    return NO_ERROR;
 }
 
 status_t ControlThread::handleMessageStartPreview()
@@ -1527,10 +1641,8 @@ status_t ControlThread::handleMessageStartPreview()
     }
 preview_started:
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("preview started", -1);
-
-    mIsPreviewStartComplete = false;
-
     mPreviewStartQueued = false;
+
     return status;
 }
 
@@ -1538,7 +1650,6 @@ status_t ControlThread::handleMessageStopPreview()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    State oldState = mState;
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("stop preview", -1);
 
@@ -1557,10 +1668,6 @@ status_t ControlThread::handleMessageStopPreview()
             status = INVALID_OPERATION;
         }
     }
-
-    if (oldState == STATE_CONTINUOUS_CAPTURE
-        && mState == STATE_STOPPED)
-        releaseContinuousCapture();
 
     // Loose our preview window handle and let service maintain
     // it between stop and start
@@ -1712,7 +1819,6 @@ status_t ControlThread::skipPreviewFrames(int numFrames, AtomBuffer* buff)
     }
     return NO_ERROR;
 }
-
 
 bool ControlThread::runPreFlashSequence()
 {
@@ -1898,6 +2004,53 @@ status_t ControlThread::handleMessagePanoramaPicture() {
     return status;
 }
 
+/**
+ * Is a burst capture sequence ongoing?
+ *
+ * Returns true until the last burst picture has been
+ * delivered to application.
+ *
+ * @see burstMoreCapturesNeeded()
+ */
+bool ControlThread::isBurstRunning()
+{
+    if (mBurstCaptureDoneNum != -1 &&
+        mBurstLength > 1 &&
+        mBurstCaptureDoneNum < mBurstLength)
+        return true;
+
+    return false;
+}
+
+/**
+ * Do we need to request more pictures from ISP to
+ * complete the capture burst.
+ *
+ * Returns true until the last burst picture has been
+ * requested from application.
+ *
+ * @see isBurstRunnning()
+ */
+bool ControlThread::burstMoreCapturesNeeded()
+{
+    if (isBurstRunning() &&
+        mBurstCaptureNum < mBurstLength)
+        return true;
+
+    return false;
+}
+
+/**
+ * Resets the burst state managed in control thread.
+ */
+void ControlThread::burstStateReset()
+{
+    mBurstCaptureNum = -1;
+    mBurstCaptureDoneNum = -1;
+    mBurstQbufs = 0;
+}
+
+
 status_t ControlThread::handleMessageTakePicture() {
     LOG1("@%s:", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -1906,8 +2059,13 @@ status_t ControlThread::handleMessageTakePicture() {
 
         case STATE_PREVIEW_STILL:
         case STATE_PREVIEW_VIDEO:
-        case STATE_CONTINUOUS_CAPTURE:
             status = captureStillPic();
+            break;
+        case STATE_CONTINUOUS_CAPTURE:
+            if (isBurstRunning())
+                status = captureFixedBurstPic(true);
+            else
+                status = captureStillPic();
             break;
         case STATE_CAPTURE:
             status = captureBurstPic(true);
@@ -2123,6 +2281,100 @@ void ControlThread::stopOfflineCapture()
     }
 }
 
+/**
+ * Dequeues preview frames until capture frame is
+ * available for reading from ISP.
+ */
+status_t ControlThread::waitForCaptureStart()
+{
+    LOG2("@%s: ", __FUNCTION__);
+    status_t status = NO_ERROR;
+    const int maxWaitMs = 2000;
+    const int previewTimeoutMs = 20;
+    const int maxCycles = maxWaitMs / previewTimeoutMs;
+    int n;
+
+    for(n = 0; n < maxCycles; n++) {
+        // Check if capture frame is availble (no wait)
+        int res = mISP->pollCapture(0);
+        if (res > 0)
+            break;
+
+        res = mISP->pollPreview(previewTimeoutMs);
+        if (res < 0) {
+            status = UNKNOWN_ERROR;
+            break;
+        }
+        else if (res > 0) {
+            AtomBuffer buff;
+            LOG2("handling preview while waiting for capture");
+            status = skipPreviewFrames(1, &buff);
+            if (status != NO_ERROR)
+                break;
+        }
+    }
+
+    if (n == maxCycles)
+        status = UNKNOWN_ERROR;
+
+    return status;
+}
+
+/**
+ * Skips initial snapshot frames if target FPS is lower
+ * than the ISP burst frame rate.
+ */
+status_t ControlThread::burstCaptureSkipFrames()
+{
+    LOG2("@%s: ", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    // In continuous mode the output frame count is fixed, so
+    // we cannot arbitrarily skip frames. We return NO_ERROR as
+    // this function is used to hide differences between
+    // capture modes.
+    if (mState == STATE_CONTINUOUS_CAPTURE)
+        return NO_ERROR;
+
+    if (mBurstLength > 1 &&
+            mFpsAdaptSkip > 0 &&
+            mBracketManager->getBracketMode() == BRACKET_NONE) {
+        LOG1("Skipping %d burst frames", mFpsAdaptSkip);
+        if ((status = skipFrames(mFpsAdaptSkip)) != NO_ERROR) {
+            LOGE("Error skipping burst frames!");
+        }
+    }
+    return status;
+}
+
+/**
+ * Starts the capture process in continuous capture mode.
+ */
+status_t ControlThread::continuousStartStillCapture(bool useFlash)
+{
+    LOG2("@%s: ", __FUNCTION__);
+    status_t status = NO_ERROR;
+    if (useFlash == false) {
+        mCallbacksThread->shutterSound();
+        startOfflineCapture();
+        mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
+    }
+    else {
+        // Flushing pictures will also clear counters for
+        // requested pictures, which would break the
+        // flash-fallback, so we need to avoid the flush (this
+        // is ok as we have just run preflash sequence).
+        LOG1("Fallback from continuous to normal mode for flash");
+        bool flushPicThread = false;
+        status = stopPreviewCore(flushPicThread);
+        if (status == NO_ERROR)
+            mState = STATE_CAPTURE;
+        else
+            LOGE("Error stopping preview!");
+    }
+    return status;
+}
+
 status_t ControlThread::captureStillPic()
 {
     LOG1("@%s: ", __FUNCTION__);
@@ -2184,20 +2436,16 @@ status_t ControlThread::captureStillPic()
         }
     }
 
-    if (mState == STATE_CONTINUOUS_CAPTURE
-        && (!flashOn || flashMode == CAM_AE_FLASH_MODE_TORCH)) {
-        assert(mBurstLength <= 1);
-        mISP->setContCaptureNumCaptures(1);
-        mISP->startOfflineCapture();
-        mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
+    if (mState == STATE_CONTINUOUS_CAPTURE) {
+        bool useFlash = flashOn && flashMode != CAM_AE_FLASH_MODE_TORCH;
+        status = continuousStartStillCapture(useFlash);
+
         // Snapshot timestamp in continuous-mode doesn't met with actual
         // frame taken time, but the time when frame is ready to be queueud.
         // Until better timestamp available, using the systemTime() when we
         // turn the offline capture mode on.
         snapshotTs = systemTime()/1000;
     } else {
-        if (mState == STATE_CONTINUOUS_CAPTURE)
-            LOG1("Fallback from continuous to normal mode for flash");
         status = stopPreviewCore();
         if (status != NO_ERROR) {
             LOGE("Error stopping preview!");
@@ -2206,6 +2454,8 @@ status_t ControlThread::captureStillPic()
         mState = STATE_CAPTURE;
     }
     mBurstCaptureNum = 0;
+    mBurstCaptureDoneNum = 0;
+    mBurstQbufs = 0;
 
     // Get the current params
     mParameters.getPictureSize(&width, &height);
@@ -2304,15 +2554,25 @@ status_t ControlThread::captureStillPic()
         mISP->setFlashIndicator(TORCH_INTENSITY);
     }
 
-    if (mBurstLength > 1 && mFpsAdaptSkip > 0 && mBracketManager->getBracketMode() == BRACKET_NONE) {
-        LOG1("Skipping %d burst frames", mFpsAdaptSkip);
-        if ((status = skipFrames(mFpsAdaptSkip)) != NO_ERROR) {
-            LOGE("Error skipping burst frames!");
-            return status;
-        }
+    status = burstCaptureSkipFrames();
+    if (status != NO_ERROR) {
+        LOGE("Error skipping burst frames!");
+        return status;
     }
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("get frame", 1);
+
+    if (mState == STATE_CONTINUOUS_CAPTURE) {
+        // TODO: to be removed once preview data flow is moved fully to
+        //       a separate thread
+        if (mBurstLength > 1)
+            mBurstQbufs = mISP->getSnapshotNum();
+        status = waitForCaptureStart();
+        if (status != NO_ERROR) {
+            LOGE("Error while waiting for capture to start");
+            return status;
+        }
+    }
 
     // Get the snapshot
     if (flashFired) {
@@ -2332,6 +2592,7 @@ status_t ControlThread::captureStillPic()
         LOGE("Error in grabbing snapshot!");
         return status;
     }
+
     PerformanceTraces::ShutterLag::snapshotTaken(&snapshotBuffer.capture_timestamp);
 
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
@@ -2350,7 +2611,8 @@ status_t ControlThread::captureStillPic()
 
     mBurstCaptureNum++;
 
-    if (!mHdr.enabled || (mHdr.enabled && mBurstCaptureNum == 1)){
+    if (mState != STATE_CONTINUOUS_CAPTURE &&
+            (!mHdr.enabled || (mHdr.enabled && mBurstCaptureNum == 1))) {
         // Send request to play the Shutter Sound: in single shots or when burst-length is specified
         mCallbacksThread->shutterSound();
     }
@@ -2376,7 +2638,8 @@ status_t ControlThread::captureStillPic()
         picMetaData.free();
     }
 
-    stopOfflineCapture();
+    if (mState == STATE_CONTINUOUS_CAPTURE && mBurstLength <= 1)
+        stopOfflineCapture();
 
     if (previewKeepAlive && !mHdr.enabled) {
         mPreviewThread->postview(&postviewBuffer);
@@ -2481,12 +2744,10 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     // note: flash is not supported in burst and continuous shooting
     //       modes (this would be the place to enable it)
 
-    if (mBurstLength > 1 && mFpsAdaptSkip > 0 && mBracketManager->getBracketMode() == BRACKET_NONE) {
-        LOG1("Skipping %d burst frames", mFpsAdaptSkip);
-        if ((status = skipFrames(mFpsAdaptSkip)) != NO_ERROR) {
-            LOGE("Error skipping burst frames!");
-            return status;
-        }
+    status = burstCaptureSkipFrames();
+    if (status != NO_ERROR) {
+        LOGE("Error skipping burst frames!");
+        return status;
     }
 
     // Get the snapshot
@@ -2548,6 +2809,124 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE && (mBurstCaptureNum == mBurstLength)) {
         LOG1("@%s: Bracketing done, got all %d snapshots", __FUNCTION__, mBurstLength);
         mBracketManager->stopBracketing();
+    }
+
+    return status;
+}
+
+/**
+ * Notifies CallbacksThread that a picture was requested by
+ * the application.
+ */
+void ControlThread::requestTakePicture()
+{
+    bool requestPostviewCallback = true;
+    bool requestRawCallback = true;
+
+    // Notify CallbacksThread that a picture was requested, so grab one from queue
+    mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback);
+}
+
+/**
+ * Whether the JPEG/compressed frame queue in CallbacksThread is
+ * already full?
+ */
+bool ControlThread::compressedFrameQueueFull()
+{
+    return mCallbacksThread->getQueuedBuffersNum() > MAX_JPEG_BUFFERS;
+}
+
+/**
+ * Queues unused snapshot buffers to ISP.
+ *
+ * Note: in certain use-cases like single captures,
+ * this step can be omitted to save in capture time.
+ */
+status_t ControlThread::queueSnapshotBuffers()
+{
+    LOG2("@%s:", __FUNCTION__);
+    status_t status = NO_ERROR;
+    for (size_t i = 0; i < mUnqueuedPicBuf.size(); i++) {
+        AtomBuffer snapshotBuf = mUnqueuedPicBuf[i].snapshotBuf;
+        AtomBuffer postviewBuf = mUnqueuedPicBuf[i].postviewBuf;
+        LOG2("return snapshot buffer %u to ISP", i);
+        status = mISP->putSnapshot(&snapshotBuf, &postviewBuf);
+        if (status == NO_ERROR) {
+            ++mBurstQbufs;
+        }
+        else if (status == DEAD_OBJECT) {
+            LOG1("Stale snapshot buffer returned to ISP");
+        } else if (status != NO_ERROR) {
+            LOGE("Error in putting snapshot!");
+        }
+    }
+    mUnqueuedPicBuf.clear();
+    return status;
+}
+
+/**
+ * Starts capture of the next picture of the ongoing fixed-size burst.
+ */
+status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
+{
+    LOG1("@%s: ", __FUNCTION__);
+    status_t status = NO_ERROR;
+    AtomBuffer snapshotBuffer, postviewBuffer;
+
+    assert(mState == STATE_CONTINUOUS_CAPTURE);
+
+    if (clientRequest) {
+        requestTakePicture();
+
+        // Check whether more frames are needed
+        if (compressedFrameQueueFull())
+            return NO_ERROR;
+    }
+
+    if (mBurstCaptureNum != -1 &&
+        mBurstLength > 1 &&
+        mBurstCaptureNum >= mBurstLength) {
+        // All frames of the burst have been requested (but not necessarily
+        // yet all dequeued).
+        return NO_ERROR;
+    }
+
+    PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE();
+
+    PictureThread::MetaData picMetaData;
+    fillPicMetaData(picMetaData, false);
+
+    // Get the snapshot
+    status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
+
+    if (status != NO_ERROR) {
+        LOGE("Error in grabbing snapshot!");
+        picMetaData.free();
+        stopOfflineCapture();
+        burstStateReset();
+        return status;
+    }
+
+    mBurstCaptureNum++;
+
+    PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
+                                       snapshotBuffer.frameCounter);
+
+    // Do jpeg encoding
+    LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
+    status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
+
+    // If all captures have been requested, ISP capture device
+    // can be stopped. Otherwise requeue buffers back to ISP.
+    if (mBurstCaptureNum == mBurstLength) {
+        stopOfflineCapture();
+    }
+    else if (mBurstLength > mISP->getSnapshotNum() &&
+             mBurstQbufs < mBurstLength) {
+        // To save capture time, only requeue buffers if total
+        // burst length exdeeds the ISP buffer queue size, and
+        // more buffers are needed.
+        queueSnapshotBuffers();
     }
 
     return status;
@@ -2767,11 +3146,10 @@ status_t ControlThread::handleMessagePreviewDone(MessagePreviewDone *msg)
        releasePreviewFrame(&msg->buff);
     }
 
-    if (mState == STATE_CONTINUOUS_CAPTURE)
-        mISP->setContCaptureOffset(-1);
+    ++mPreviewFramesDone;
+    if (mPreviewFramesDone == 1 &&
+           mState != STATE_CONTINUOUS_CAPTURE) {
 
-    if(!mIsPreviewStartComplete) {
-        mIsPreviewStartComplete = true;
         /**
          * First preview frame was rendered.
          * Now preview is ongoing. Complete now any initialization that is not
@@ -2860,6 +3238,17 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
          * and burst capture
          */
         mUnqueuedPicBuf.push(*msg);
+
+        if (isBurstRunning()) {
+            ++mBurstCaptureDoneNum;
+            LOG2("Burst req %d done %d len %d",
+                 mBurstCaptureNum, mBurstCaptureDoneNum, mBurstLength);
+            if (mBurstCaptureDoneNum >= mBurstLength) {
+                LOGW("Last pic in burst received, terminating");
+                burstStateReset();
+            }
+        }
+
     } else {
         LOGW("Received a picture Done during invalid state %d; buf id:%d, ptr=%p", mState, msg->snapshotBuf.id, msg->snapshotBuf.buff);
     }
@@ -2885,12 +3274,59 @@ status_t ControlThread::handleMessageAutoFocusDone()
 
 bool ControlThread::validateSize(int width, int height, Vector<Size> &supportedSizes) const
 {
-    if (width <= 0 || height <= 0)
+    if (width < 0 || height < 0)
         return false;
 
     for (Vector<Size>::iterator it = supportedSizes.begin(); it != supportedSizes.end(); ++it)
         if (width == it->width && height == it->height)
             return true;
+
+    return false;
+}
+
+bool ControlThread::validateString(const char* value,  const char* supportList) const{
+    // value should not set if support list is empty
+    if (value !=NULL && supportList == NULL) {
+        return false;
+    }
+
+    if (value == NULL || supportList == NULL) {
+        return true;
+    }
+
+    size_t len = strlen(value);
+    const char* startPtr(supportList);
+    const char* endPtr(supportList);
+    int bracketLevel(0);
+
+    // divide support list to values and compare those to given values.
+    // values are separated with comma in support list, but commas also exist
+    // part of values inside bracket.
+    while (true) {
+        if ( *endPtr == '(') {
+            ++bracketLevel;
+        } else if (*endPtr == ')') {
+            --bracketLevel;
+        } else if ( bracketLevel == 0 && ( *endPtr == '\0' || *endPtr == ',')) {
+            if (((startPtr + len) == endPtr) &&
+                (strncmp(value, startPtr, len) == 0)) {
+                return true;
+            }
+
+            // bracket can use circle values in supported list
+            if (((startPtr + len + 2 ) == endPtr) &&
+                ( *startPtr == '(') &&
+                (strncmp(value, startPtr + 1, len) == 0)) {
+                return true;
+            }
+            startPtr = endPtr + 1;
+        }
+
+        if (*endPtr == '\0') {
+            return false;
+        }
+        ++endPtr;
+    }
 
     return false;
 }
@@ -2933,18 +3369,84 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
+    // JPEG QUALITY
+    int jpegQuality = params->getInt(CameraParameters::KEY_JPEG_QUALITY);
+    if (jpegQuality < 1 || jpegQuality > 100) {
+        LOGE("bad jpeg quality: %d", jpegQuality);
+        return BAD_VALUE;
+    }
+
+    // THUMBNAIL QUALITY
+    int thumbQuality = params->getInt(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY);
+    if (thumbQuality < 1 || thumbQuality > 100) {
+        LOGE("bad thumbnail quality: %d", thumbQuality);
+        return BAD_VALUE;
+    }
+
+    // THUMBNAIL SIZE
+    int thumbWidth = params->getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
+    int thumbHeight = params->getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
+    char* thumbnailSizes = (char*) params->get(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES);
+    supportedSizes.clear();
+
+    while (true) {
+        int width = (int)strtol(thumbnailSizes, &thumbnailSizes, 10);
+        int height = (int)strtol(thumbnailSizes+1, &thumbnailSizes, 10);
+        supportedSizes.push(Size(width, height));
+        if (*thumbnailSizes == '\0')
+            break;
+        ++thumbnailSizes;
+    }
+
+    if (!validateSize(thumbWidth, thumbHeight, supportedSizes)) {
+        LOGE("bad thumbnail size: (%d,%d)", thumbWidth, thumbHeight);
+        return BAD_VALUE;
+    }
+
+    // PICTURE FORMAT
+    const char* picFormat = params->get(CameraParameters::KEY_PICTURE_FORMAT);
+    const char* picFormats = params->get(CameraParameters::KEY_SUPPORTED_PICTURE_FORMATS);
+    if (!validateString(picFormat, picFormats)) {
+        LOGE("bad picture format: %s", picFormat);
+        return BAD_VALUE;
+    }
+
+    // PREVIEW FORMAT
+    const char* preFormat = params->get(CameraParameters::KEY_PREVIEW_FORMAT);
+    const char* preFormats = params->get(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS);
+    if (!validateString(preFormat, preFormats))  {
+        LOGE("bad preview format: %s", preFormat);
+        return BAD_VALUE;
+    }
+
+    // ROTATION, can only be 0 ,90, 180 or 270.
+    int rotation = params->getInt(CameraParameters::KEY_ROTATION);
+    if (rotation != 0 && rotation != 90 && rotation != 180 && rotation != 270) {
+        LOGE("bad rotation value: %d", rotation);
+        return BAD_VALUE;
+    }
+
+
+    // WHITE BALANCE
+    const char* whiteBalance = params->get(CameraParameters::KEY_WHITE_BALANCE);
+    const char* whiteBalances = params->get(CameraParameters::KEY_SUPPORTED_WHITE_BALANCE);
+    if (!validateString(whiteBalance, whiteBalances)) {
+        LOGE("bad white balance mode: %s", whiteBalance);
+        return BAD_VALUE;
+    }
+
     // ZOOM
     int zoom = params->getInt(CameraParameters::KEY_ZOOM);
     int maxZoom = params->getInt(CameraParameters::KEY_MAX_ZOOM);
-    if (zoom > maxZoom) {
-        LOGE("bad zoom index");
+    if (zoom > maxZoom || zoom < 0) {
+        LOGE("bad zoom index: %d", zoom);
         return BAD_VALUE;
     }
 
     // FLASH
     const char* flashMode = params->get(CameraParameters::KEY_FLASH_MODE);
     const char* flashModes = params->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
-    if (flashMode && flashModes && strstr(flashModes, flashMode) == NULL) {
+    if (!validateString(flashMode, flashModes)) {
         LOGE("bad flash mode");
         return BAD_VALUE;
     }
@@ -2952,7 +3454,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // SCENE MODE
     const char* sceneMode = params->get(CameraParameters::KEY_SCENE_MODE);
     const char* sceneModes = params->get(CameraParameters::KEY_SUPPORTED_SCENE_MODES);
-     if (sceneMode && sceneModes && strstr(sceneModes, sceneMode) == NULL) {
+    if (!validateString(sceneMode, sceneModes)) {
         LOGE("bad scene mode: %s; supported: %s", sceneMode, sceneModes);
         return BAD_VALUE;
     }
@@ -2960,7 +3462,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // FOCUS
     const char* focusMode = params->get(CameraParameters::KEY_FOCUS_MODE);
     const char* focusModes = params->get(CameraParameters::KEY_SUPPORTED_FOCUS_MODES);
-    if (focusMode && focusModes && strstr(focusModes, focusMode) == NULL) {
+    if (!validateString(focusMode, focusModes)) {
         LOGE("bad focus mode: %s; supported: %s", focusMode, focusModes);
         return BAD_VALUE;
     }
@@ -2968,15 +3470,21 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // BURST LENGTH
     const char* burstLength = params->get(IntelCameraParameters::KEY_BURST_LENGTH);
     const char* burstLengths = params->get(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH);
-    if (burstLength && burstLengths && strstr(burstLengths, burstLength) == NULL) {
+    if (!validateString(burstLength, burstLengths)) {
         LOGE("bad burst length: %s; supported: %s", burstLength, burstLengths);
+        return BAD_VALUE;
+    }
+    int burstStart = params->getInt(IntelCameraParameters::KEY_BURST_START_INDEX);
+    const char* captureBracket = params->get(IntelCameraParameters::KEY_CAPTURE_BRACKET);
+    if (burstStart < 0 && captureBracket && captureBracket && String8(captureBracket) != "none") {
+        LOGE("negative start-index and bracketing not supported concurrently");
         return BAD_VALUE;
     }
 
     // BURST FPS
     const char* burstFps = params->get(IntelCameraParameters::KEY_BURST_FPS);
     const char* burstFpss = params->get(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS);
-    if (burstFps && burstFpss && strstr(burstFpss, burstFps) == NULL) {
+    if (!validateString(burstFps,burstFpss)) {
         LOGE("bad burst FPS: %s; supported: %s", burstFps, burstFpss);
         return BAD_VALUE;
     }
@@ -2984,7 +3492,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // OVERLAY
     const char* overlaySupported = params->get(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING_SUPPORTED);
     const char* overlay = params->get(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING);
-     if (overlay && overlaySupported && strstr(overlaySupported, overlay) == NULL) {
+        if (!validateString(overlay, overlaySupported)) {
         LOGE("bad overlay rendering mode: %s; supported: %s", overlay, overlaySupported);
         return BAD_VALUE;
     }
@@ -2992,7 +3500,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // MISCELLANEOUS
     const char *size = params->get(IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE);
     const char *livePreviewSizes = IntelCameraParameters::getSupportedPanoramaLivePreviewSizes(*params);
-    if (size && livePreviewSizes && strstr(livePreviewSizes, size) == NULL) {
+    if (!validateString(size, livePreviewSizes)) {
         LOGE("bad panorama live preview size");
         return BAD_VALUE;
     }
@@ -3000,8 +3508,46 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // ANTI FLICKER
     const char* flickerMode = params->get(CameraParameters::KEY_ANTIBANDING);
     const char* flickerModes = params->get(CameraParameters::KEY_SUPPORTED_ANTIBANDING);
-    if (flickerMode && flickerModes && strstr(flickerModes, flickerMode) == NULL) {
+    if (!validateString(flickerMode, flickerModes)) {
         LOGE("bad anti flicker mode");
+        return BAD_VALUE;
+    }
+
+    // COLOR EFFECT
+    const char* colorEffect = params->get(CameraParameters::KEY_EFFECT);
+    const char* colorEffects = params->get(CameraParameters::KEY_SUPPORTED_EFFECTS);
+    if (!validateString(colorEffect, colorEffects)) {
+        LOGE("bad color effect: %s", colorEffect);
+        return BAD_VALUE;
+    }
+
+    // EXPOSURE COMPENSATION
+    int exposure = params->getInt(CameraParameters::KEY_EXPOSURE_COMPENSATION);
+    int minExposure = params->getInt(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION);
+    int maxExposure = params->getInt(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION);
+    if (exposure > maxExposure || exposure < minExposure) {
+        LOGE("bad exposure compensation value: %d", exposure);
+        return BAD_VALUE;
+    }
+
+    //Note: here for Intel expand parameters, add additional validity check
+    //for their supported list. when they're null, we return bad value for
+    //these intel parameters setting. As "noise reduction and edge enhancement"
+    //and "multi access color correction" are not supported yet.
+
+    // NOISE_REDUCTION_AND_EDGE_ENHANCEMENT
+    const char* noiseReductionAndEdgeEnhancement = params->get(IntelCameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
+    const char* noiseReductionAndEdgeEnhancements = params->get(IntelCameraParameters::KEY_SUPPORTED_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
+    if (!validateString(noiseReductionAndEdgeEnhancement, noiseReductionAndEdgeEnhancements)) {
+        LOGE("bad noise reduction and edge enhancement value : %s", noiseReductionAndEdgeEnhancement);
+        return BAD_VALUE;
+    }
+
+    // MULTI_ACCESS_COLOR_CORRECTION
+    const char* multiAccessColorCorrection = params->get(IntelCameraParameters::KEY_MULTI_ACCESS_COLOR_CORRECTION);
+    const char* multiAccessColorCorrections = params->get(IntelCameraParameters::KEY_SUPPORTED_MULTI_ACCESS_COLOR_CORRECTIONS);
+    if (!validateString(multiAccessColorCorrection, multiAccessColorCorrections)) {
+        LOGE("bad multi access color correction value : %s", multiAccessColorCorrection);
         return BAD_VALUE;
     }
 
@@ -3056,12 +3602,16 @@ status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
         }
         if (fps > 0) {
             mFpsAdaptSkip = roundf(PlatformData::getMaxBurstFPS(mISP->getCurrentCameraId())/float(fps)) - 1;
-            LOG1("%s, mFpsAdaptSkip:%d", __func__, mFpsAdaptSkip);
+            LOG1("%s, mFpsAdaptSkip:%d", __FUNCTION__, mFpsAdaptSkip);
         }
     }
 
-    // TODO: remove before commit
-    LOG1("@%s: len to %d, skip %d", __FUNCTION__, mBurstLength, mFpsAdaptSkip);
+    // Burst start-index (for Time Nudge et al)
+    int burstStart = newParams->getInt(IntelCameraParameters::KEY_BURST_START_INDEX);
+    if (burstStart != mBurstStart) {
+        LOG1("Burst start-index set %d -> %d", mBurstStart, burstStart);
+        mBurstStart = burstStart;
+    }
 
     return status;
 }
@@ -3128,6 +3678,18 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     if (status == NO_ERROR) {
         // ISO manual setting (Intel extension)
         status = processParamIso(oldParams, newParams);
+    }
+
+    if (status == NO_ERROR) {
+        status = processParamExifMaker(oldParams, newParams);
+    }
+
+    if (status == NO_ERROR) {
+        status = processParamExifModel(oldParams, newParams);
+    }
+
+    if (status == NO_ERROR) {
+        status = processParamExifSoftware(oldParams, newParams);
     }
 
     if (!mFaceDetectionActive && status == NO_ERROR) {
@@ -3490,32 +4052,7 @@ status_t ControlThread::processParamEffect(const CameraParameters *oldParams,
                                               CameraParameters::KEY_EFFECT);
 
     if (!newVal.isEmpty()) {
-
-        v4l2_colorfx effect = V4L2_COLORFX_NONE;
-        if (newVal == CameraParameters::EFFECT_MONO)
-            effect = V4L2_COLORFX_BW;
-        else if (newVal == CameraParameters::EFFECT_NEGATIVE)
-            effect = V4L2_COLORFX_NEGATIVE;
-        else if (newVal == CameraParameters::EFFECT_SEPIA)
-            effect = V4L2_COLORFX_SEPIA;
-        else if (newVal == IntelCameraParameters::EFFECT_STILL_SKY_BLUE)
-            effect = V4L2_COLORFX_SKY_BLUE;
-        else if (newVal == IntelCameraParameters::EFFECT_STILL_GRASS_GREEN)
-            effect = V4L2_COLORFX_GRASS_GREEN;
-        else if (newVal == IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_MEDIUM)
-            effect = V4L2_COLORFX_SKIN_WHITEN;
-        else if (newVal == IntelCameraParameters::EFFECT_VIVID)
-            effect = V4L2_COLORFX_VIVID;
-
-        // following two values need a explicit cast as the
-        // definitions in hardware/intel/linux-2.6/include/linux/atomisp.h
-        // have incorrect type (properly defined values are in videodev2.h)
-        else if (newVal == IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_LOW)
-            effect = (v4l2_colorfx)V4L2_COLORFX_SKIN_WHITEN_LOW;
-        else if (newVal == IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_HIGH)
-            effect = (v4l2_colorfx)V4L2_COLORFX_SKIN_WHITEN_HIGH;
-
-        status = m3AControls->set3AColorEffect(effect);
+        status = m3AControls->set3AColorEffect(newVal.string());
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_EFFECT, newVal.string());
         }
@@ -4187,18 +4724,21 @@ status_t ControlThread::processParamIso(const CameraParameters *oldParams,
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
-                                              IntelCameraParameters::KEY_ISO);
-    if (!newVal.isEmpty() && mAAA->getAeMode() == CAM_AE_MODE_MANUAL) {
-        // note: value format is 'iso-NNN'
-        const size_t iso_prefix_len = 4;
-        if (newVal.length() > iso_prefix_len) {
-            const char* isostr = newVal.string() + iso_prefix_len;
+                                   IntelCameraParameters::KEY_ISO);
+    if (newVal.isEmpty()) return status;
+    // note: value format is 'iso-NNN'
+    const size_t iso_prefix_len = 4;
+    if (newVal.length() > iso_prefix_len) {
+        IsoMode iso_mode(CAM_AE_ISO_MODE_AUTO);
+        const char* isostr = newVal.string() + iso_prefix_len;
+        if (strcmp("auto", isostr)) {
+            iso_mode = CAM_AE_ISO_MODE_MANUAL;
             int iso = atoi(isostr);
             m3AControls->setManualIso(iso);
             LOGD("Changed manual iso to \"%s\" (%d)", newVal.string(), iso);
         }
+        m3AControls->setIsoMode(iso_mode);
     }
-
     return status;
 }
 
@@ -4438,8 +4978,50 @@ status_t ControlThread::processParamSlowMotionRate(const CameraParameters *oldPa
     return status;
 }
 
+status_t ControlThread::processParamExifMaker(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_EXIF_MAKER);
 
+    if (!newVal.isEmpty()) {
+        LOG1("Got new Exif maker: %s", newVal.string());
+        mPictureThread->setExifMaker(newVal);
+    }
 
+    return NO_ERROR;
+}
+
+status_t ControlThread::processParamExifModel(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_EXIF_MODEL);
+
+    if (!newVal.isEmpty()) {
+        LOG1("Got new Exif model: %s", newVal.string());
+        mPictureThread->setExifModel(newVal);
+    }
+
+    return NO_ERROR;
+}
+
+status_t ControlThread::processParamExifSoftware(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_EXIF_SOFTWARE);
+
+    if (!newVal.isEmpty()) {
+        LOG1("Got new Exif software: %s", newVal.string());
+        mPictureThread->setExifSoftware(newVal);
+    }
+
+    return NO_ERROR;
+}
 
 /*
  * NOTE: this function runs in camera service thread. Protect member accesses accordingly!
@@ -4492,56 +5074,58 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
                 previewAspectRatio);
     }
 
-    // see if video params have changed
-    newParams->getVideoSize(&newWidth, &newHeight);
-    oldParams->getVideoSize(&oldWidth, &oldHeight);
-    if (newWidth != oldWidth || newHeight != oldHeight) {
-        videoAspectRatio = 1.0 * newWidth / newHeight;
-        LOG1("Video size is changing: old=%dx%d; new=%dx%d; ratio=%.3f",
-                oldWidth, oldHeight,
-                newWidth, newHeight,
-                videoAspectRatio);
-        previewFormatChanged = true;
-        /*
-         *  Camera client requested a new video size, so make sure that requested
-         *  video size matches requested preview size. If it does not, then select
-         *  a corresponding preview size to match the aspect ratio with video
-         *  aspect ratio. Also, the video size must be at least as preview size
-         */
-        if (fabsf(videoAspectRatio - previewAspectRatio) > ASPECT_TOLERANCE) {
-            LOGW("Requested video (%dx%d) aspect ratio does not match preview \
-                 (%dx%d) aspect ratio! The preview will be stretched!",
+    if(videoMode) {
+        // see if video params have changed
+        newParams->getVideoSize(&newWidth, &newHeight);
+        oldParams->getVideoSize(&oldWidth, &oldHeight);
+        if (newWidth != oldWidth || newHeight != oldHeight) {
+            videoAspectRatio = 1.0 * newWidth / newHeight;
+            LOG1("Video size is changing: old=%dx%d; new=%dx%d; ratio=%.3f",
+                    oldWidth, oldHeight,
                     newWidth, newHeight,
-                    previewWidth, previewHeight);
-        }
-    } else {
-        videoAspectRatio = 1.0 * oldWidth / oldHeight;
-        LOG1("Video size is unchanged: old=%dx%d; ratio=%.3f",
-                oldWidth, oldHeight,
-                videoAspectRatio);
-        /*
-         *  Camera client did not specify any video size, so make sure that
-         *  requested preview size matches our default video size. If it does
-         *  not, then select a corresponding video size to match the aspect
-         *  ratio with preview aspect ratio.
-         */
-        if (fabsf(videoAspectRatio - previewAspectRatio) > ASPECT_TOLERANCE
-            && !mPreviewForceChanged) {
-            LOG1("Our video (%dx%d) aspect ratio does not match preview (%dx%d) aspect ratio!",
-                  newWidth, newHeight, previewWidth, previewHeight);
-            newParams->getSupportedVideoSizes(sizes);
-            for (size_t i = 0; i < sizes.size(); i++) {
-                float thisSizeAspectRatio = 1.0 * sizes[i].width / sizes[i].height;
-                if (fabsf(thisSizeAspectRatio - previewAspectRatio) <= ASPECT_TOLERANCE) {
-                    if (sizes[i].width < previewWidth || sizes[i].height < previewHeight) {
-                        // This video size is smaller than preview, can't use it
-                        continue;
+                    videoAspectRatio);
+            previewFormatChanged = true;
+            /*
+             *  Camera client requested a new video size, so make sure that requested
+             *  video size matches requested preview size. If it does not, then select
+             *  a corresponding preview size to match the aspect ratio with video
+             *  aspect ratio. Also, the video size must be at least as preview size
+             */
+            if (fabsf(videoAspectRatio - previewAspectRatio) > ASPECT_TOLERANCE) {
+                LOGW("Requested video (%dx%d) aspect ratio does not match preview \
+                     (%dx%d) aspect ratio! The preview will be stretched!",
+                        newWidth, newHeight,
+                        previewWidth, previewHeight);
+            }
+        } else {
+            videoAspectRatio = 1.0 * oldWidth / oldHeight;
+            LOG1("Video size is unchanged: old=%dx%d; ratio=%.3f",
+                    oldWidth, oldHeight,
+                    videoAspectRatio);
+            /*
+             *  Camera client did not specify any video size, so make sure that
+             *  requested preview size matches our default video size. If it does
+             *  not, then select a corresponding video size to match the aspect
+             *  ratio with preview aspect ratio.
+             */
+            if (fabsf(videoAspectRatio - previewAspectRatio) > ASPECT_TOLERANCE
+                && !mPreviewForceChanged) {
+                LOG1("Our video (%dx%d) aspect ratio does not match preview (%dx%d) aspect ratio!",
+                      newWidth, newHeight, previewWidth, previewHeight);
+                newParams->getSupportedVideoSizes(sizes);
+                for (size_t i = 0; i < sizes.size(); i++) {
+                    float thisSizeAspectRatio = 1.0 * sizes[i].width / sizes[i].height;
+                    if (fabsf(thisSizeAspectRatio - previewAspectRatio) <= ASPECT_TOLERANCE) {
+                        if (sizes[i].width < previewWidth || sizes[i].height < previewHeight) {
+                            // This video size is smaller than preview, can't use it
+                            continue;
+                        }
+                        newWidth = sizes[i].width;
+                        newHeight = sizes[i].height;
+                        LOG1("Forcing video to %dx%d to match preview aspect ratio!", newWidth, newHeight);
+                        newParams->setVideoSize(newWidth, newHeight);
+                        break;
                     }
-                    newWidth = sizes[i].width;
-                    newHeight = sizes[i].height;
-                    LOG1("Forcing video to %dx%d to match preview aspect ratio!", newWidth, newHeight);
-                    newParams->setVideoSize(newWidth, newHeight);
-                    break;
                 }
             }
         }
@@ -5717,7 +6301,6 @@ bool ControlThread::threadLoop()
             if (!mMessageQueue.isEmpty()) {
                 status = waitForAndExecuteMessage();
             } else {
-                // make sure ISP has data before we ask for some
                 if (mISP->dataAvailable())
                     status = dequeuePreview();
                 else
@@ -5752,7 +6335,9 @@ bool ControlThread::threadLoop()
                 status = waitForAndExecuteMessage();
             } else {
                 // make sure ISP has data before we ask for some
-                if (mISP->dataAvailable())
+                if (burstMoreCapturesNeeded())
+                    status = captureFixedBurstPic();
+                else if (mISP->dataAvailable())
                     status = dequeuePreview();
                 else
                     status = waitForAndExecuteMessage();

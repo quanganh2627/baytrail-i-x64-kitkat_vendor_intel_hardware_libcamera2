@@ -60,7 +60,8 @@ public:
             ,"%s,%s"
             ,pcam->supportedSceneModes
             ,CameraParameters::SCENE_MODE_NIGHT_PORTRAIT);
-
+        // Preview size
+        pcam->supportedPreviewSize = "1024x576,800x600,720x480,640x480,640x360,352x288,320x240,176x144";
         mCameras.push(*pcam);
         delete pcam;
 
@@ -79,17 +80,17 @@ public:
                        PlatformData::SENSOR_FLIP_V;
         pcam->maxSnapshotWidth = RESOLUTION_1_3MP_WIDTH;
         pcam->maxSnapshotHeight = RESOLUTION_1_3MP_HEIGHT;
+        pcam->defaultBurstLength = "";
         pcam->supportedBurstLength = "";
-        pcam->maxEV = "";
-        pcam->minEV = "";
-        pcam->stepEV = "";
-        pcam->defaultEV = "";
-        strcpy(pcam->supportedSceneModes,"");
+        strcpy(pcam->supportedSceneModes, pcam->defaultSceneMode);
+        strcpy(pcam->defaultFlashMode, "");
         strcpy(pcam->supportedFlashModes,"");
-        strcpy(pcam->supportedEffectModes,"");
-        strcpy(pcam->supportedIntelEffectModes,"");
-        strcpy(pcam->supportedAwbModes,"");
+        strcpy(pcam->supportedEffectModes, pcam->defaultEffectMode);
+        strcpy(pcam->supportedIntelEffectModes, pcam->defaultEffectMode);
+        strcpy(pcam->supportedAwbModes, pcam->defaultAwbMode);
+        pcam->defaultIso = "";
         pcam->supportedIso = "";
+        pcam->defaultAeMetering = "";
         pcam->supportedAeMetering = "";
         pcam->supportedPreviewSize = "1024x576,720x480,640x480,640x360,352x288,320x240,176x144";
         mCameras.push(*pcam);
@@ -125,6 +126,9 @@ public:
         mCameras.editItemAt(0).supportedBurstFPS = "1,3,5";
         mSupportVideoSnapshot = false;
         mNumRecordingBuffers = 6;
+        mCameras.editItemAt(0).supportedPreviewSize = "1024x576,800x600,720x480,640x480,640x360,416x312,352x288,320x240,176x144";
+        // NOTE: front camera uses supportedPreviewSize from PlatformBlackbay
+        mSupportedVideoSizes = "176x144,320x240,352x288,416x312,640x480,720x480,720x576,1280x720,1920x1080";
     }
 };
 
@@ -171,6 +175,32 @@ public:
         mCameras.editItemAt(1).sensorType = SENSOR_TYPE_SOC;
         mCameras.editItemAt(1).maxSnapshotWidth = RESOLUTION_VGA_WIDTH;
         mCameras.editItemAt(1).maxSnapshotHeight = RESOLUTION_VGA_HEIGHT;
+
+        mCameras.editItemAt(2).sensorType = SENSOR_TYPE_SOC;
+    }
+};
+
+/**
+ * Platform data for Salitpa
+ */
+class PlatformSalitpa : public PlatformRedridge {
+
+public:
+    PlatformSalitpa(void) {
+
+        mCameras.editItemAt(0).orientation = 0;
+        mCameras.editItemAt(0).sensorType = SENSOR_TYPE_SOC;
+        mCameras.editItemAt(0).dvs = false;
+        mCameras.editItemAt(0).maxSnapshotWidth = RESOLUTION_5MP_WIDTH;
+        mCameras.editItemAt(0).maxSnapshotHeight = RESOLUTION_5MP_HEIGHT;
+        mCameras.editItemAt(0).flipping = PlatformData::SENSOR_FLIP_NA;
+        mCameras.editItemAt(0).supportedPreviewSize = "1024x576,720x480,640x480,640x360,416x312,352x288,320x240,176x144";
+
+        mCameras.editItemAt(1).orientation = 0;
+        mCameras.editItemAt(1).sensorType = SENSOR_TYPE_SOC;
+        mCameras.editItemAt(1).maxSnapshotWidth = RESOLUTION_1_3MP_WIDTH;
+        mCameras.editItemAt(1).maxSnapshotHeight = RESOLUTION_1_3MP_HEIGHT;
+        mCameras.editItemAt(1).flipping = PlatformData::SENSOR_FLIP_NA;
 
         mCameras.editItemAt(2).sensorType = SENSOR_TYPE_SOC;
     }

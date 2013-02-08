@@ -90,7 +90,7 @@ public:
         pcam->maxEV = "6";
         pcam->minEV = "-6";
         pcam->mPreviewViaOverlay = true;
-        pcam->overlayRelativeRotation = 0;
+        pcam->supportedBurstLength = "1,3,5,9,10";
 
         // If the back flash is supported, let's add the rest of the
         // supported scene modes that require flash:
@@ -99,7 +99,8 @@ public:
             ,"%s,%s"
             ,pcam->supportedSceneModes
             ,CameraParameters::SCENE_MODE_NIGHT_PORTRAIT);
-
+        // Preview size
+        pcam->supportedPreviewSize = "1024x576,800x600,720x480,640x480,640x360,352x288,320x240,176x144";
         mCameras.push(*pcam);
         delete pcam;
 
@@ -114,22 +115,20 @@ public:
         pcam->facing = CAMERA_FACING_FRONT;
         pcam->orientation = 270;
         pcam->dvs = false;
-        pcam->mPreviewViaOverlay = true;
-        pcam->overlayRelativeRotation = 0;
         pcam->flipping = PlatformData::SENSOR_FLIP_NA;
         pcam->maxSnapshotWidth = RESOLUTION_1_3MP_WIDTH;
         pcam->maxSnapshotHeight = RESOLUTION_1_3MP_HEIGHT;
+        pcam->defaultBurstLength = "";
         pcam->supportedBurstLength = "";
-        pcam->maxEV = "";
-        pcam->minEV = "";
-        pcam->stepEV = "";
-        pcam->defaultEV = "";
+        strcpy(pcam->defaultFlashMode, "");
         strcpy(pcam->supportedFlashModes,"");
+        pcam->defaultIso = "";
         pcam->supportedIso = "";
-        strcpy(pcam->supportedSceneModes,"");
-        strcpy(pcam->supportedEffectModes,"");
-        strcpy(pcam->supportedIntelEffectModes,"");
-        strcpy(pcam->supportedAwbModes,"");
+        strcpy(pcam->supportedSceneModes, pcam->defaultSceneMode);
+        strcpy(pcam->supportedEffectModes, pcam->defaultEffectMode);
+        strcpy(pcam->supportedIntelEffectModes, pcam->defaultEffectMode);
+        strcpy(pcam->supportedAwbModes, pcam->defaultAwbMode);
+        pcam->defaultAeMetering = "";
         pcam->supportedAeMetering = "";
         pcam->supportedPreviewSize = "1024x576,720x480,640x480,640x360,352x288,320x240,176x144";
         mCameras.push(*pcam);
@@ -147,6 +146,7 @@ public:
         mManufacturerName = "ExampleMaker";
 
         mContinuousCapture = (deviceOnContinuousCaptureBlackList() == false);
+        mMaxContinuousRawRingBuffer = 10;
         mMaxZoomFactor = 64;
 
     }

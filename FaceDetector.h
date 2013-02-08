@@ -20,7 +20,6 @@
 #include <utils/threads.h>
 #include <system/camera.h>
 #include "MessageQueue.h"
-
 #include "ia_face.h"
 
 namespace android {
@@ -57,6 +56,7 @@ public:
     FaceDetector();
     ~FaceDetector();
 
+    void setAcc(void* acc);
     int getFaces(camera_face_t *faces, int width, int height);
     void getFaceState(ia_face_state *faceStateOut, int width, int height,
                       int zoomRatio);
@@ -115,14 +115,15 @@ private:
     int mSmileThreshold;
     int mBlinkThreshold;
     bool mFaceRecognitionRunning;
+    void *mAccHandle;
     bool mThreadRunning;
-
 
 // function stubs for building without Intel extra features
 #else
     FaceDetector() {}
     ~FaceDetector() {}
 
+    void setAcc(void* acc) {}
     int getFaces(camera_face_t *faces, int width, int height) { return 0; }
     void getFaceState(ia_face_state *faceStateOut, int width, int height,
                       int zoomRatio) {

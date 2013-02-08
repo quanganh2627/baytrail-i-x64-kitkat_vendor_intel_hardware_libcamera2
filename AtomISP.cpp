@@ -58,8 +58,11 @@
 #define RESOLUTION_2MP_TABLE   \
         "320x240,640x480,1024x768,1280x720,1600x900,1600x1200"
 
-#define RESOLUTION_720P_TABLE   \
+#define RESOLUTION_1_3MP_TABLE   \
         "320x240,640x480,1280x720,1280x960"
+
+#define RESOLUTION_720P_TABLE   \
+        "320x240,640x480,1280x720"
 
 #define RESOLUTION_VGA_TABLE   \
         "320x240,640x480"
@@ -127,6 +130,7 @@ AtomISP::cameraInfo AtomISP::sCamInfo[MAX_CAMERA_NODES];
 static const char *resolution_tables[] = {
     RESOLUTION_VGA_TABLE,
     RESOLUTION_720P_TABLE,
+    RESOLUTION_1_3MP_TABLE,
     RESOLUTION_2MP_TABLE,
     RESOLUTION_1080P_TABLE,
     RESOLUTION_3MP_TABLE,
@@ -368,6 +372,15 @@ void AtomISP::initFrameConfig()
         PlatformData::maxSnapshotSize(mCameraInput->androidCameraId, &width, &height);
         mConfig.snapshot.maxWidth  = width;
         mConfig.snapshot.maxHeight = height;
+	/* workround to support two main sensor for vv - need to removed when one main sensor used */
+        if (strstr(mCameraInput->name, "imx175")) {
+           mConfig.snapshot.maxWidth  = RESOLUTION_8MP_WIDTH;
+           mConfig.snapshot.maxHeight = RESOLUTION_8MP_HEIGHT;
+        }
+        if (strstr(mCameraInput->name, "imx135")) {
+           mConfig.snapshot.maxWidth  = RESOLUTION_13MP_WIDTH;
+           mConfig.snapshot.maxHeight = RESOLUTION_13MP_HEIGHT;
+        }
     }
 
     if (mConfig.snapshot.maxWidth >= RESOLUTION_720P_WIDTH
@@ -706,17 +719,24 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
      */
     // Currently burst support is required only with primary camera.
     // So burst mode is disabled to secondary camera.
+    const char* startIndexValues = "0";
     if (mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
-        intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS, PlatformData::supportedBurstFPS(cameraId));
-        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, PlatformData::supportedBurstLength(cameraId));
         intel_params->set(IntelCameraParameters::KEY_BURST_LENGTH,"1");
+        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, PlatformData::supportedBurstLength(cameraId));
+
+        // Bursts with negative start offset require a RAW sensor.
+        if (PlatformData::sensorType(cameraId) ==  SENSOR_TYPE_RAW &&
+                PlatformData::supportsContinuousCapture())
+            startIndexValues = "-4,-3,-2,-1,0";
     } else {
-        intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS, "1");
         intel_params->set(IntelCameraParameters::KEY_BURST_LENGTH, "1");
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, "1");
     }
+    intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
+    intel_params->set(IntelCameraParameters::KEY_BURST_START_INDEX, "0");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX, startIndexValues);
 
     intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_FILENAME, "off");
     intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_WIDTH, "0");
@@ -772,6 +792,8 @@ const char* AtomISP::getMaxSnapShotResolution()
     if (mConfig.snapshot.maxWidth < RESOLUTION_1080P_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_1080P_HEIGHT)
             index--;
     if (mConfig.snapshot.maxWidth < RESOLUTION_2MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_2MP_HEIGHT)
+            index--;
+    if (mConfig.snapshot.maxWidth < RESOLUTION_1_3MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_1_3MP_HEIGHT)
             index--;
     if (mConfig.snapshot.maxWidth < RESOLUTION_720P_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_720P_HEIGHT)
             index--;
@@ -1376,8 +1398,24 @@ errorFreeBuf:
     return status;
 }
 
+/**
+ * Configures continuos capture settings to kernel
+ * (IOC_S_CONT_CAPTURE_CONFIG atomisp ioctl).
+ *
+ * This call has different semantics depending on whether
+ * it's called before ISP is started, or when ISP is
+ * already running. In the former case, this call is
+ * used to configure the ringbuffer size. In the latter
+ * case, this call is used to request ISP to start
+ * rendering output (main and postview) frames with
+ * the given parameters.
+ *
+ * See PSI BZ 80777 for a proposed change to this API.
+ */
 status_t AtomISP::requestContCapture(int numCaptures, int offset, unsigned int skip)
 {
+    LOG2("@%s", __FUNCTION__);
+
     struct atomisp_cont_capture_conf conf;
 
     CLEAR(conf);
@@ -1400,7 +1438,7 @@ status_t AtomISP::requestContCapture(int numCaptures, int offset, unsigned int s
 
 status_t AtomISP::setContCaptureNumCaptures(int numCaptures)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s, numCaptures = %d", __FUNCTION__, numCaptures);
     mContCaptConfig.numCaptures = numCaptures;
     return NO_ERROR;
 }
@@ -1408,18 +1446,48 @@ status_t AtomISP::setContCaptureNumCaptures(int numCaptures)
 status_t AtomISP::setContCaptureOffset(int captureOffset)
 {
     LOG2("@%s", __FUNCTION__);
-    if (captureOffset != mContCaptConfig.offset) {
-        int ret = requestContCapture(mContCaptConfig.numCaptures,
-                                     captureOffset,
-                                     mContCaptConfig.skip);
-        if (ret < 0) {
-            LOGE("setting continuous capture params failed");
-            return UNKNOWN_ERROR;
-        }
-        mContCaptConfig.offset = captureOffset;
-    }
-
+    mContCaptConfig.offset = captureOffset;
     return NO_ERROR;
+}
+
+status_t AtomISP::setContCaptureSkip(unsigned int skip)
+{
+    LOG2("@%s", __FUNCTION__);
+    mContCaptConfig.skip = skip;
+    return NO_ERROR;
+}
+
+/**
+ * Configures the ISP ringbuffer size in continuous mode.
+ *
+ * Set all ISP parameters that affect RAW ringbuffer
+ * sizing in continuous mode.
+ *
+ * \see setContCaptureOffset(), setContCaptureSkip() and
+ *      setContCaptureNumCaptures()
+ */
+status_t AtomISP::configureContinuousRingBuffer()
+{
+    int numBuffers = abs(mContCaptConfig.offset);
+;
+    int captures = mContCaptConfig.numCaptures;
+    int offset = mContCaptConfig.offset;
+    status_t status;
+
+    if (captures > numBuffers)
+        numBuffers = captures;
+
+    if (numBuffers > PlatformData::maxContinuousRawRingBufferSize())
+        numBuffers = PlatformData::maxContinuousRawRingBufferSize();
+
+    LOG1("continuous mode ringbuffer size to %d (captures %d, offset %d)",
+         numBuffers, captures, offset);
+
+    status = requestContCapture(numBuffers,
+                                mContCaptConfig.offset,
+                                mContCaptConfig.skip);
+
+    return status;
 }
 
 status_t AtomISP::configureContinuous()
@@ -1429,10 +1497,7 @@ status_t AtomISP::configureContinuous()
     status_t status = NO_ERROR;
 
     updateCaptureParams();
-
-    ret = requestContCapture(mContCaptConfig.numCaptures,
-                             mContCaptConfig.offset,
-                             mContCaptConfig.skip);
+    ret = configureContinuousRingBuffer();
     if (ret < 0) {
         LOGE("setting continuous capture params failed");
         return UNKNOWN_ERROR;
@@ -1592,8 +1657,10 @@ bool AtomISP::isSharedPreviewBufferConfigured(bool *reserved) const
 status_t AtomISP::stopCapture()
 {
     LOG1("@%s", __FUNCTION__);
-    stopDevice(V4L2_POSTVIEW_DEVICE);
-    stopDevice(V4L2_MAIN_DEVICE);
+    if (mDevices[V4L2_POSTVIEW_DEVICE].state == DEVICE_STARTED)
+        stopDevice(V4L2_POSTVIEW_DEVICE);
+    if (mDevices[V4L2_MAIN_DEVICE].state == DEVICE_STARTED)
+        stopDevice(V4L2_MAIN_DEVICE);
     requestClearDriverState();
     // note: MAIN device is kept open on purpose
     closeDevice(V4L2_POSTVIEW_DEVICE);
@@ -1660,13 +1727,21 @@ error:
  */
 status_t AtomISP::startOfflineCapture()
 {
+    status_t res = NO_ERROR;
+
     LOG1("@%s", __FUNCTION__);
     if (mMode != MODE_CONTINUOUS_CAPTURE) {
         LOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
         return INVALID_OPERATION;
     }
-    startCapture();
-    return NO_ERROR;
+
+    res = requestContCapture(mContCaptConfig.numCaptures,
+                             mContCaptConfig.offset,
+                             mContCaptConfig.skip);
+    if (res == NO_ERROR)
+        res = startCapture();
+
+    return res;
 }
 
 /**
@@ -1700,6 +1775,15 @@ bool AtomISP::isOfflineCaptureRunning() const
 }
 
 bool AtomISP::isOfflineCaptureSupported() const
+{
+    // TODO: device node count reveals version of CSS firmware
+    if (mConfigLastDevice >= 3)
+        return true;
+
+    return false;
+}
+
+bool AtomISP::isYUVvideoZoomingSupported() const
 {
     // TODO: device node count reveals version of CSS firmware
     if (mConfigLastDevice >= 3)
@@ -1897,7 +1981,7 @@ int AtomISP::stopDevice(int device, bool leaveConfigured)
 
     int fd = video_fds[device];
 
-    if (fd >= 0) {
+    if (fd >= 0 && mDevices[device].state == DEVICE_STARTED) {
         //stream off
         v4l2_capture_streamoff(fd);
 
@@ -1971,6 +2055,31 @@ void AtomISP::closeDevice(int device)
 
     video_fds[device] = -1;
     mDevices[device].state = DEVICE_CLOSED;
+}
+
+/**
+ * Waits for frame data to be available
+ *
+ * \param device V4L2 device id
+ * \param timeout time to wait for data (in ms), timeout of -1
+ *        means to wait indefinitely for data
+ *
+ * \return 0: timeout, -1: error happened, positive number: success
+ */
+int AtomISP::v4l2_poll(int device, int timeout)
+{
+    LOG1("@%s", __FUNCTION__);
+    struct pollfd pfd;
+
+    if (video_fds[device] < 0) {
+        LOG1("Device %d already closed. Do nothing.", device);
+        return -1;
+    }
+
+    pfd.fd = video_fds[device];
+    pfd.events = POLLIN | POLLERR;
+
+    return poll(&pfd, 1, timeout);
 }
 
 status_t AtomISP::selectCameraSensor()
@@ -2088,6 +2197,11 @@ void AtomISP::getPreviewSize(int *width, int *height, int *stride = NULL)
     }
     if (stride)
         *stride = mConfig.preview.stride;
+}
+
+int AtomISP::getSnapshotNum()
+{
+    return mConfig.num_snapshot;
 }
 
 status_t AtomISP::setSnapshotNum(int num)
@@ -2235,7 +2349,7 @@ void AtomISP::getZoomRatios(bool videoMode, CameraParameters *params)
 {
     LOG1("@%s", __FUNCTION__);
     if (params) {
-        if (videoMode && mSensorType == SENSOR_TYPE_SOC) {
+        if (!isYUVvideoZoomingSupported() && videoMode && mSensorType == SENSOR_TYPE_SOC) {
             // zoom is not supported. this is indicated by placing a single zoom ratio in params
             params->set(CameraParameters::KEY_ZOOM, "0");
             params->set(CameraParameters::KEY_MAX_ZOOM, "0"); // zoom index 0 indicates first (and only) zoom ratio
@@ -3529,6 +3643,34 @@ bool AtomISP::dataAvailable()
     return false;
 }
 
+/**
+ * Polls the preview device node fd for data
+ *
+ * \param timeout time to wait for data (in ms), timeout of -1
+ *        means to wait indefinitely for data
+ * \return -1 for error, 0 if time out, positive number
+ *         if poll was successful
+ */
+int AtomISP::pollPreview(int timeout)
+{
+    LOG2("@%s", __FUNCTION__);
+    return v4l2_poll(mPreviewDevice, timeout);
+}
+
+/**
+ * Polls the preview device node fd for data
+ *
+ * \param timeout time to wait for data (in ms), timeout of -1
+ *        means to wait indefinitely for data
+ * \return -1 for error, 0 if time out, positive number
+ *         if poll was successful
+ */
+int AtomISP::pollCapture(int timeout)
+{
+    LOG2("@%s", __FUNCTION__);
+    return v4l2_poll(V4L2_MAIN_DEVICE, timeout);
+}
+
 bool AtomISP::isBufferValid(const AtomBuffer* buffer) const
 {
     if(buffer->type == ATOM_BUFFER_PREVIEW_GFX)
@@ -4061,6 +4203,38 @@ int AtomISP::loadAccFirmware(void *fw, size_t size,
     return ret;
 }
 
+int AtomISP::loadAccPipeFirmware(void *fw, size_t size,
+                             unsigned int *fwHandle)
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret = -1;
+
+    struct atomisp_acc_fw_load_to_pipe fwDataPipe;
+    memset(&fwDataPipe, 0, sizeof(fwDataPipe));
+    fwDataPipe.flags = ATOMISP_ACC_FW_LOAD_FL_PREVIEW;
+    fwDataPipe.type = ATOMISP_ACC_FW_LOAD_TYPE_VIEWFINDER;
+
+    /*  fwDataPipe.fw_handle filled by kernel and returned to caller */
+    fwDataPipe.size = size;
+    fwDataPipe.data = fw;
+
+    if ( main_fd ){
+        ret = xioctl(main_fd, ATOMISP_IOC_ACC_LOAD_TO_PIPE, &fwDataPipe);
+        LOG1("%s IOCTL ATOMISP_IOC_ACC_LOAD_TO_PIPE ret : %d fwDataPipe->fw_handle: %d"\
+                , __FUNCTION__, ret, fwDataPipe.fw_handle);
+    }
+
+    //If IOCTRL call was returned successfully, get the firmware handle
+    //from the structure and return it to the application.
+    if(!ret){
+        *fwHandle = fwDataPipe.fw_handle;
+        LOG1("%s IOCTL Call returned : %d Handle: %ud",
+                __FUNCTION__, ret, *fwHandle );
+    }
+
+    return ret;
+}
+
 /*
  * Unloads the acceleration firmware from ISP.
  * Atomisp driver checks the validity of the handles and schedules
@@ -4326,11 +4500,11 @@ int AtomISP::dumpSnapshot(int snapshotIndex, int postviewIndex)
                     LOGE("mmap failed");
             else {
                 LOG1("MMAP raw address from kernel 0x%p", start);
+                cameraDump->dumpImage2Buf(start, mRawDataDumpSize, mConfig.snapshot.stride,
+                                          mConfig.snapshot.height);
+                if (-1 == munmap(start, PAGE_ALIGN(mRawDataDumpSize)))
+                    LOGE("munmap failed");
             }
-            cameraDump->dumpImage2Buf(start, mRawDataDumpSize, mConfig.snapshot.stride,
-                                      mConfig.snapshot.height);
-            if (-1 == munmap(start, PAGE_ALIGN(mRawDataDumpSize)))
-                LOGE("munmap failed");
         }
     }
 
@@ -5018,6 +5192,18 @@ status_t AtomISP::getManualIso(int *iso)
     return status;
 }
 
+status_t AtomISP::setIsoMode(IsoMode mode) {
+    /*ISO mode not supported for SOC sensor yet.*/
+    LOG1("@%s", __FUNCTION__);
+    status_t status = INVALID_OPERATION;
+    return status;
+}
+
+IsoMode AtomISP::getIsoMode(void) {
+    /*ISO mode not supported for SOC sensor yet.*/
+    return CAM_AE_ISO_MODE_NOT_SET;
+}
+
 status_t AtomISP::setAeMeteringMode(MeteringMode mode)
 {
     LOG1("@%s: %d", __FUNCTION__, mode);
@@ -5083,12 +5269,41 @@ MeteringMode AtomISP::getAeMeteringMode()
     return mode;
 }
 
-status_t AtomISP::set3AColorEffect(v4l2_colorfx effect)
+status_t AtomISP::set3AColorEffect(const char *effect)
 {
-    LOG1("@%s: effect = %d", __FUNCTION__, effect);
+    LOG1("@%s: effect = %s", __FUNCTION__, effect);
     status_t status = NO_ERROR;
 
-    status = setColorEffect(effect);
+    v4l2_colorfx v4l2Effect = V4L2_COLORFX_NONE;
+    if (strncmp(effect, CameraParameters::EFFECT_MONO, sizeof(effect)) == 0)
+        v4l2Effect = V4L2_COLORFX_BW;
+    else if (strncmp(effect, CameraParameters::EFFECT_NEGATIVE, sizeof(effect)) == 0)
+        v4l2Effect = V4L2_COLORFX_NEGATIVE;
+    else if (strncmp(effect, CameraParameters::EFFECT_SEPIA, sizeof(effect)) == 0)
+        v4l2Effect = V4L2_COLORFX_SEPIA;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_SKY_BLUE, sizeof(effect)) == 0)
+        v4l2Effect = V4L2_COLORFX_SKY_BLUE;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_GRASS_GREEN, sizeof(effect)) == 0)
+        v4l2Effect = V4L2_COLORFX_GRASS_GREEN;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_MEDIUM, sizeof(effect)) == 0)
+        v4l2Effect = V4L2_COLORFX_SKIN_WHITEN;
+    else if (strncmp(effect, IntelCameraParameters::EFFECT_VIVID, sizeof(effect)) == 0)
+        v4l2Effect = V4L2_COLORFX_VIVID;
+
+    // following two values need a explicit cast as the
+    // definitions in hardware/intel/linux-2.6/include/linux/atomisp.h
+    // have incorrect type (properly defined values are in videodev2.h)
+    else if (effect == IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_LOW)
+        v4l2Effect = (v4l2_colorfx)V4L2_COLORFX_SKIN_WHITEN_LOW;
+    else if (effect == IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_HIGH)
+        v4l2Effect = (v4l2_colorfx)V4L2_COLORFX_SKIN_WHITEN_HIGH;
+    else if (strncmp(effect, CameraParameters::EFFECT_NONE, strlen(effect)) != 0){
+        LOGE("Color effect not found.");
+        status = -1;
+        // Fall back to the effect NONE
+    }
+
+    status = setColorEffect(v4l2Effect);
     status = applyColorEffect();
     return status;
 }
