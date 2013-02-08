@@ -5009,8 +5009,12 @@ int AtomISP::sensorMoveFocusToPosition(int position)
 
 int AtomISP::sensorMoveFocusToBySteps(int steps)
 {
+    int val = 0, rval;
     LOG2("@%s", __FUNCTION__);
-    return atomisp_set_attribute(main_fd, V4L2_CID_FOCUS_RELATIVE, steps, "Set focus steps");
+    rval = atomisp_get_attribute(main_fd, V4L2_CID_FOCUS_ABSOLUTE, &val);
+    if (rval)
+        return rval;
+    return sensorMoveFocusToPosition(val + steps);
 }
 
 int AtomISP::sensorGetFocusStatus(int *status)
