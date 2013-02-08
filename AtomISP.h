@@ -325,7 +325,6 @@ private:
     enum ResolutionIndex {
         RESOLUTION_VGA = 0,
         RESOLUTION_720P,
-        RESOLUTION_1_3MP,
         RESOLUTION_2MP,
         RESOLUTION_1080P,
         RESOLUTION_3MP,
