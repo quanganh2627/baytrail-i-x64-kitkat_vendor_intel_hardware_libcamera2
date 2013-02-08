@@ -17,7 +17,6 @@
 
 #include "CameraConf.h"
 #include "LogHelper.h"
-#include "libtbd.h"
 #include "PlatformData.h"
 #include <utils/Errors.h>
 #include <dirent.h>  // DIR, dirent
@@ -376,17 +375,6 @@ status_t CpfStore::initDriverListHelper(int major, int minor, SensorDriver& drvI
 
 status_t CpfStore::initConf(sp<CameraBlob>& aiqConf, sp<CameraBlob>& drvConf, sp<CameraBlob>& halConf)
 {
-    // In case the very same CPF configuration file has been verified
-    // already earlier, checksum calculation will be skipped this time.
-    // Files are identified by their stat structure. If we set the
-    // cache size equal to number of cameras in the system, checksum
-    // calculations are avoided when user switches between cameras.
-    // Note: the capacity could be set to zero as well if one wants
-    // to validate the file in every case
-    validatedCpfFiles.setCapacity(PlatformData::numberOfCameras());
-    struct stat statCurrent;
-    bool& canSkipChecksum = mIsOldConfig = false;
-
     sp<CameraBlob> allConf;
     status_t ret = 0;
 
@@ -394,53 +382,27 @@ status_t CpfStore::initConf(sp<CameraBlob>& aiqConf, sp<CameraBlob>& drvConf, sp
     // It will be behind reference counted MemoryHeapBase
     // object "allConf", meaning that the memory will be
     // automatically freed when it is no longer being pointed at
-    if ((ret = loadAllConf(allConf, statCurrent)))
+    if ((ret = loadConf(allConf)))
         return ret;
-
-    // See if we know the file already
-    for (int i = validatedCpfFiles.size() - 1; i >= 0; i--) {
-        if (!memcmp(&validatedCpfFiles[i], &statCurrent, sizeof(struct stat))) {
-            canSkipChecksum = true;
-            break;
-        }
-    }
-
-    if (canSkipChecksum) {
-        LOGD("CPF file already validated");
-    } else {
-        LOGD("CPF file not validated yet");
-    }
 
     // Then, we will dig out component specific configuration
     // data from within "allConf". That will be placed behind
     // reference counting MemoryBase memory descriptors.
     // We only need to verify checksum once
-    if ((ret = fetchAiqConf(allConf, aiqConf, canSkipChecksum)))
+    if ((ret = fetchConf(allConf, aiqConf, tbd_class_aiq, "AIQ")))
         return ret;
-    if ((ret = fetchDrvConf(allConf, drvConf, true)))
+    if ((ret = fetchConf(allConf, drvConf, tbd_class_dvr, "DRV")))
         return ret;
-    if ((ret = fetchHalConf(allConf, halConf, true)))
+    if ((ret = fetchConf(allConf, halConf, tbd_class_hal, "HAL")))
         return ret;
-
-    // If we are here, the file was ok. If it wasn't cached already,
-    // then do so now (adding to end of cache, removing from beginning)
-    if (!canSkipChecksum) {
-        if (validatedCpfFiles.size() < validatedCpfFiles.capacity()) {
-            validatedCpfFiles.push_back(statCurrent);
-        } else {
-            if (validatedCpfFiles.size() > 0) {
-                validatedCpfFiles.removeAt(0);
-                validatedCpfFiles.push_back(statCurrent);
-            }
-        }
-    }
 
     return ret;
 }
 
-status_t CpfStore::loadAllConf(sp<CameraBlob>& allConf, struct stat& statCurrent)
+status_t CpfStore::loadConf(sp<CameraBlob>& allConf)
 {
     FILE *file;
+    struct stat statCurrent;
     status_t ret = 0;
 
     LOGD("Opening CPF file \"%s\"", mCpfPathName.string());
@@ -461,7 +423,7 @@ status_t CpfStore::loadAllConf(sp<CameraBlob>& allConf, struct stat& statCurrent
         }
 
         allConf = new CameraBlob(fileSize);
-        if ((allConf == 0) || (allConf->size() == 0)) {
+        if ((allConf == 0) || (allConf->ptr() == 0)) {
             LOGE("ERROR no memory in %s", __func__);
             ret = NO_MEMORY;
             break;
@@ -491,70 +453,99 @@ status_t CpfStore::loadAllConf(sp<CameraBlob>& allConf, struct stat& statCurrent
         if (!ret) ret = EPERM;
     }
 
+    if (!ret) {
+        ret = validateConf(allConf, statCurrent);
+    }
+
     return ret;
 }
 
-status_t CpfStore::fetchAiqConf(const sp<CameraBlob>& allConf, sp<CameraBlob>& aiqConf, bool skipChecksum)
+status_t CpfStore::validateConf(const sp<CameraBlob>& allConf, const struct stat& statCurrent)
+{
+    status_t ret = 0;
+
+    // In case the very same CPF configuration file has been verified
+    // already earlier, checksum calculation will be skipped this time.
+    // Files are identified by their stat structure. If we set the
+    // cache size equal to number of cameras in the system, checksum
+    // calculations are avoided when user switches between cameras.
+    // Note: the capacity could be set to zero as well if one wants
+    // to validate the file in every case
+    validatedCpfFiles.setCapacity(PlatformData::numberOfCameras());
+    bool& canSkipChecksum = mIsOldConfig = false;
+
+    // See if we know the file already
+    for (int i = validatedCpfFiles.size() - 1; i >= 0; i--) {
+        if (!memcmp(&validatedCpfFiles[i], &statCurrent, sizeof(struct stat))) {
+            canSkipChecksum = true;
+            break;
+        }
+    }
+
+    if (canSkipChecksum) {
+        LOGD("CPF file already validated");
+    } else {
+        LOGD("CPF file not validated yet, validating...");
+        if (tbd_err_none != tbd_validate(allConf->ptr(), allConf->size(), tbd_tag_cpff)) {
+            // Error, looks like we had unknown file
+            LOGE("ERROR corrupted CPF file");
+            ret = DEAD_OBJECT;
+            return ret;
+        }
+    }
+
+    // If we are here, the file was ok. If it wasn't cached already,
+    // then do so now (adding to end of cache, removing from beginning)
+    if (!canSkipChecksum) {
+        if (validatedCpfFiles.size() < validatedCpfFiles.capacity()) {
+            validatedCpfFiles.push_back(statCurrent);
+        } else {
+            if (validatedCpfFiles.size() > 0) {
+                validatedCpfFiles.removeAt(0);
+                validatedCpfFiles.push_back(statCurrent);
+            }
+        }
+    }
+
+    return ret;
+}
+
+status_t CpfStore::fetchConf(const sp<CameraBlob>& allConf, sp<CameraBlob>& recConf, tbd_class_t recordClass, const char *blockDebugName)
 {
     status_t ret = 0;
 
     if (allConf == 0) {
         // This should never happen; CPF file has not been loaded properly
-        LOGE("ERROR using null pointer in CPF");
+        LOGE("ERROR null pointer provided");
         return NO_MEMORY;
     }
 
-    if ((skipChecksum) || (tbd_err_none == tbd_validate(allConf->ptr(), allConf->size(), tbd_tag_cpff))) {
-        // FIXME: Once we only accept one kind of CPF files, the content
-        // is either ok or not - no need for kludge checks and jumps like this
-        if (skipChecksum && (*(uint32_t *)(allConf->ptr()) == tbd_tag_aiqb)) goto fixme;
-        // Looks like we have valid CPF file,
-        // let's look for AIQ record
-        void *data;
-        size_t size;
-        if (tbd_err_none == tbd_get_record(allConf->ptr(), tbd_class_aiq, tbd_format_any, &data, &size)) {
-            aiqConf = new CameraBlob(allConf, data, size);
-            if (aiqConf == 0) {
+    // The contents have been validated already, let's look for specific record
+    void *data;
+    size_t size;
+    if (!(ret = tbd_get_record(allConf->ptr(), recordClass, tbd_format_any, &data, &size))) {
+        if (data && size) {
+            recConf = new CameraBlob(allConf, data, size);
+            if (recConf == 0) {
                 LOGE("ERROR no memory in %s", __func__);
                 ret = NO_MEMORY;
+            } else {
+                LOGD("CPF %s record found", blockDebugName);
             }
-        } else  {
-            // Error, looks like we didn't have AIQ record in CPF file
-            LOGE("ERROR incomplete CPF file");
-            ret = NOT_ENOUGH_DATA;
+        } else {
+            // Looks like we didn't have AIQ record in CPF file
+            LOGD("CPF %s record missing!", blockDebugName);
         }
-    // FIXME: The tbd_tag_aiqb is enabled for R&D, but should lead to an error below
-    } else if (tbd_err_none == tbd_validate(allConf->ptr(), allConf->size(), tbd_tag_aiqb)) {
-        // Looks like we have valid AIQ file
-        LOGE("Please IGNORE the previous libtbd ERROR. Trying out alternative R&D tagging...");
-fixme:  aiqConf = new CameraBlob(allConf, 0, allConf->size());
-        if (aiqConf == 0) {
-            LOGE("ERROR no memory in %s", __func__);
-            ret = NO_MEMORY;
-        }
-    } else {
-        // Error, looks like we had unknown file
-        LOGE("ERROR corrupted CPF file");
-        ret = DEAD_OBJECT;
     }
 
     return ret;
 }
 
-status_t CpfStore::fetchDrvConf(const sp<CameraBlob>& allConf, sp<CameraBlob>& drvConf, bool skipChecksum)
-{
-    // Data not present in CPF yet
-    return 0;
-}
-
-status_t CpfStore::fetchHalConf(const sp<CameraBlob>& allConf, sp<CameraBlob>& halConf, bool skipChecksum)
-{
-    // Data not present in CPF yet
-    return 0;
-}
-
 status_t CpfStore::processDrvConf()
 {
+    // FIXME: To be only cleared after use
+    mDrvConf.clear();
+
     // Only act if CPF file has been updated and there is some data
     // to be sent
     if (mIsOldConfig || mDrvConf == 0) {
@@ -599,7 +590,9 @@ status_t CpfStore::processDrvConf()
 
 status_t CpfStore::processHalConf()
 {
-    // Data not present in CPF yet
+    // FIXME: To be only cleared after use
+    mHalConf.clear();
+
     return 0;
 }
 
