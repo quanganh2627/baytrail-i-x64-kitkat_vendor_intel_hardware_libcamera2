@@ -96,6 +96,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libbinder \
 	libjpeg \
 	libia_aiq \
+	libia_aiq_cp \
 	libandroid \
 	libui \
 	libia_mkn \
