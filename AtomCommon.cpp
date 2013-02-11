@@ -49,6 +49,7 @@ AtomBuffer AtomBufferFactory::createAtomBuffer(AtomBufferType type,
     buf.id = id;
     buf.frameCounter = frameCounter;
     buf.ispPrivate = ispPrivate;
+    buf.status = FRAME_STATUS_NA;
     buf.shared = shared;
     buf.capture_timestamp = capture_timestamp;
     buf.gfxData = gfxData;
