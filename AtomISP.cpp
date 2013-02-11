@@ -94,7 +94,9 @@
 
 #define INTEL_FILE_INJECT_CAMERA_ID 2
 
-#define ATOMISP_POLL_TIMEOUT (5 * 1000)
+#define ATOMISP_PREVIEW_POLL_TIMEOUT 1000
+#define ATOMISP_GETFRAME_RETRY_COUNT 5  // Times to retry poll/dqbuf in case of error
+#define ATOMISP_GETFRAME_STARVING_WAIT 200000 // Time to usleep between retry's when stream is starving from buffers.
 
 #define FRAME_SYNC_POLL_TIMEOUT 500
 
@@ -5065,25 +5067,43 @@ status_t AtomISP::PreviewStreamSource::observe(IAtomIspObserver::Message *msg)
     status_t status;
     int ret;
     LOG2("@%s", __FUNCTION__);
+    int failCounter = 0;
 
-    msg->id = IAtomIspObserver::MESSAGE_ID_FRAME;
-
-    ret = mISP->pollPreview(ATOMISP_POLL_TIMEOUT);
+try_again:
+    ret = mISP->pollPreview(ATOMISP_PREVIEW_POLL_TIMEOUT);
     if (ret > 0) {
         LOG2("Entering dequeue : num-of-buffers queued %d", mISP->mNumPreviewBuffersQueued);
         status = mISP->getPreviewFrame(&msg->data.frameBuffer.buff);
         if (status != NO_ERROR) {
             msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
-            return UNKNOWN_ERROR;
+            status = UNKNOWN_ERROR;
+        } else {
+            msg->data.frameBuffer.buff.owner = mISP;
+            msg->id = IAtomIspObserver::MESSAGE_ID_FRAME;
         }
     } else {
         LOGE("v4l2_poll for preview device failed! (%s)", (ret==0)?"timeout":"error");
         msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
-        return (ret==0)?TIMED_OUT:UNKNOWN_ERROR;
+        status = (ret==0)?TIMED_OUT:UNKNOWN_ERROR;
     }
 
-    msg->data.frameBuffer.buff.owner = mISP;
-    return NO_ERROR;
+    if (status != NO_ERROR) {
+        // check if reason is starving and enter sleep to wait
+        // for returnBuffer()
+        while(!mISP->dataAvailable()) {
+            if (++failCounter > ATOMISP_GETFRAME_RETRY_COUNT) {
+                LOGD("There were no preview buffers returned in time");
+                break;
+            }
+            LOGW("Preview stream starving from buffers!");
+            usleep(ATOMISP_GETFRAME_STARVING_WAIT);
+        }
+
+        if (++failCounter <= ATOMISP_GETFRAME_RETRY_COUNT)
+            goto try_again;
+    }
+
+    return status;
 }
 
 /**
