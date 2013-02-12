@@ -239,7 +239,6 @@ status_t AtomISP::initDevice()
 
     mSensorType = PlatformData::sensorType(getCurrentCameraId());
     LOG1("Sensor type detected: %s", (mSensorType == SENSOR_TYPE_RAW)?"RAW":"SOC");
-
     return status;
 }
 
@@ -4037,7 +4036,7 @@ errorFree:
         }
     }
     if (mPreviewBuffers != NULL) {
-        delete [] mPreviewBuffers;
+        delete[] mPreviewBuffers;
         mPreviewBuffers = NULL;
     }
 
@@ -4093,7 +4092,7 @@ errorFree:
         }
     }
     if (mRecordingBuffers != NULL) {
-        delete [] mRecordingBuffers;
+        delete[] mRecordingBuffers;
         mRecordingBuffers = NULL;
     }
     return status;
@@ -4221,25 +4220,30 @@ status_t AtomISP::allocateMetaDataBuffers()
 
     for (int i = 0; i < mNumBuffers; i++) {
         metaDataBuf = new IntelMetadataBuffer();
-        initMetaDataBuf(metaDataBuf);
+        if(metaDataBuf) {
+            initMetaDataBuf(metaDataBuf);
+            metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].buff->data);
+            metaDataBuf->Serialize(meta_data_prt, meta_data_size);
+            mRecordingBuffers[i].metadata_buff = NULL;
+            mCallbacks->allocateMemory(&mRecordingBuffers[i].metadata_buff, meta_data_size);
+            LOG1("allocate metadata buffer[%d]  buff=%p size=%d",
+                i, mRecordingBuffers[i].metadata_buff->data,
+                mRecordingBuffers[i].metadata_buff->size);
+            if (mRecordingBuffers[i].metadata_buff == NULL) {
+                LOGE("Error allocation memory for metadata buffers!");
+                status = NO_MEMORY;
+                goto errorFree;
+            }
+            memcpy(mRecordingBuffers[i].metadata_buff->data, meta_data_prt, meta_data_size);
+            allocatedBufs++;
 
-        metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].buff->data);
-        metaDataBuf->Serialize(meta_data_prt, meta_data_size);
-        mRecordingBuffers[i].metadata_buff = NULL;
-        mCallbacks->allocateMemory(&mRecordingBuffers[i].metadata_buff, meta_data_size);
-        LOG1("allocate metadata buffer[%d]  buff=%p size=%d",
-               i, mRecordingBuffers[i].metadata_buff->data,
-               mRecordingBuffers[i].metadata_buff->size);
-        if (mRecordingBuffers[i].metadata_buff == NULL) {
-            LOGE("Error allocation memory for metadata buffers!");
+            delete metaDataBuf;
+            metaDataBuf = NULL;
+        } else {
+            LOGE("Error allocation memory for metaDataBuf!");
             status = NO_MEMORY;
             goto errorFree;
         }
-        memcpy(mRecordingBuffers[i].metadata_buff->data, meta_data_prt, meta_data_size);
-        allocatedBufs++;
-
-        if(metaDataBuf)
-           delete metaDataBuf;
     }
     return status;
 
@@ -4253,8 +4257,10 @@ errorFree:
             }
         }
     }
-    if (metaDataBuf)
+    if (metaDataBuf) {
         delete metaDataBuf;
+        metaDataBuf = NULL;
+    }
 #endif
     return status;
 }
@@ -4262,33 +4268,36 @@ errorFree:
 status_t AtomISP::freePreviewBuffers()
 {
     LOG1("@%s", __FUNCTION__);
-    if (mPreviewBuffers == NULL)
-        return NO_INIT;
-    for (int i = 0 ; i < mNumPreviewBuffers; i++) {
-        if (mPreviewBuffers[i].buff != NULL) {
-            mPreviewBuffers[i].buff->release(mPreviewBuffers[i].buff);
-            mPreviewBuffers[i].buff = NULL;
+    if (mPreviewBuffers != NULL) {
+        for (int i = 0 ; i < mNumPreviewBuffers; i++) {
+            if (mPreviewBuffers[i].buff != NULL) {
+                mPreviewBuffers[i].buff->release(mPreviewBuffers[i].buff);
+                mPreviewBuffers[i].buff = NULL;
+            }
         }
+        delete [] mPreviewBuffers;
+        mPreviewBuffers = NULL;
     }
-    delete [] mPreviewBuffers;
-    mPreviewBuffers = NULL;
     return NO_ERROR;
 }
 
 status_t AtomISP::freeRecordingBuffers()
 {
     LOG1("@%s", __FUNCTION__);
-    for (int i = 0 ; i < mNumBuffers; i++) {
-        if (mRecordingBuffers[i].buff != NULL) {
-            mRecordingBuffers[i].buff->release(mRecordingBuffers[i].buff);
-            mRecordingBuffers[i].buff = NULL;
+    if(mRecordingBuffers != NULL) {
+        for (int i = 0 ; i < mNumBuffers; i++) {
+            if (mRecordingBuffers[i].buff != NULL) {
+                mRecordingBuffers[i].buff->release(mRecordingBuffers[i].buff);
+                mRecordingBuffers[i].buff = NULL;
+            }
+            if (mRecordingBuffers[i].metadata_buff != NULL) {
+                mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
+                mRecordingBuffers[i].metadata_buff = NULL;
+            }
         }
-        if (mRecordingBuffers[i].metadata_buff != NULL) {
-            mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
-            mRecordingBuffers[i].metadata_buff = NULL;
-        }
+        delete[] mRecordingBuffers;
+        mRecordingBuffers = NULL;
     }
-    delete [] mRecordingBuffers;
     return NO_ERROR;
 }
 
