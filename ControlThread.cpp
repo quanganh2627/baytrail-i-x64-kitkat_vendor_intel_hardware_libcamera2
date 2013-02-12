@@ -108,7 +108,6 @@ ControlThread::ControlThread(const sp<CameraConf>& cfg) :
     ,mParamCache(NULL)
     ,mStoreMetaDataInBuffers(false)
     ,mPreviewForceChanged(false)
-    ,mPreviewStartQueued(false)
     ,mCameraDump(NULL)
     ,mFocusAreas()
     ,mMeteringAreas()
@@ -472,23 +471,16 @@ status_t ControlThread::startPreview()
     LOG1("@%s", __FUNCTION__);
     PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
     PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("startPreview_in");
-    status_t status = mPreviewStartLock.tryLock();
-    if (status != OK) {
-        return status;
-    }
     // send message
     Message msg;
     msg.id = MESSAGE_ID_START_PREVIEW;
-    mPreviewStartQueued = true;
-    status = mMessageQueue.send(&msg);
-    mPreviewStartLock.unlock();
-    return status;
+    return mMessageQueue.send(&msg, MESSAGE_ID_START_PREVIEW);
 }
 
 status_t ControlThread::stopPreview()
 {
     LOG1("@%s", __FUNCTION__);
-    if (mState == STATE_STOPPED && mPreviewStartQueued == false) {
+    if (mState == STATE_STOPPED) {
         return NO_ERROR;
     }
     // send message and block until thread processes message
@@ -524,8 +516,7 @@ bool ControlThread::previewEnabled()
 
     PreviewThread::PreviewState state = mPreviewThread->getPreviewState();
 
-    bool enabled = mPreviewStartQueued ||
-                   (state != PreviewThread::STATE_STOPPED
+    bool enabled = (state != PreviewThread::STATE_STOPPED
                  && state != PreviewThread::STATE_ENABLED_HIDDEN
                  && state != PreviewThread::STATE_ENABLED_HIDDEN_PASSTHROUGH);
     // Note: See PreviewThread::setPreviewState() for documentation
@@ -1390,8 +1381,6 @@ status_t ControlThread::stopCapture()
 status_t ControlThread::restartPreview(bool videoMode)
 {
     LOG1("@%s: mode = %s", __FUNCTION__, videoMode?"VIDEO":"STILL");
-    Mutex::Autolock mLock(mPreviewStartLock);
-    mPreviewStartQueued = true;
     bool faceActive = mFaceDetectionActive;
     stopFaceDetection(true);
     status_t status = stopPreviewCore();
@@ -1399,7 +1388,6 @@ status_t ControlThread::restartPreview(bool videoMode)
         status = startPreviewCore(videoMode);
     if (faceActive)
         startFaceDetection();
-    mPreviewStartQueued = false;
     return status;
 }
 
@@ -1459,15 +1447,13 @@ status_t ControlThread::handleMessageStartPreview()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    Mutex::Autolock mLock(mPreviewStartLock);
-
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("handle start preview", -1);
 
     if (mState == STATE_CAPTURE) {
         status = stopCapture();
         if (status != NO_ERROR) {
             LOGE("Could not stop capture before start preview!");
-            mPreviewStartQueued = false;
+            mMessageQueue.reply(MESSAGE_ID_START_PREVIEW, status);
             return status;
         }
     }
@@ -1508,8 +1494,7 @@ status_t ControlThread::handleMessageStartPreview()
 preview_started:
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("preview started", -1);
     mPreviewThread->setCallback(this, ICallbackPreview::INPUT_ONCE);
-    mPreviewStartQueued = false;
-
+    mMessageQueue.reply(MESSAGE_ID_START_PREVIEW, status);
     return status;
 }
 

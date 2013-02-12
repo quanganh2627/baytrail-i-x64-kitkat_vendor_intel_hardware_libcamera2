@@ -610,9 +610,6 @@ private:
                                     thread which is running the setParameters and the processStaticParameters,
                                     which is currently the only access point. */
 
-    Mutex mPreviewStartLock;
-    bool mPreviewStartQueued;
-
     CameraDump *mCameraDump;
 
     CameraAreas mFocusAreas;
