@@ -104,24 +104,6 @@ static ia_3a_af_hp_status cb_focus_home_position(void)
     return ia_3a_af_hp_status_complete;
 }
 
-static void
-get_sensor_frame_params(ia_aiq_sensor_frame_params *frame_params, struct atomisp_sensor_mode_data *sensor_mode_data)
-{
-    ia_3a_sensor_mode_data *ia_data = (ia_3a_sensor_mode_data*)sensor_mode_data;
-
-    frame_params->horizontal_crop_offset = ia_data->x_start;
-    frame_params->vertical_crop_offset = ia_data->y_start;
-    frame_params->cropped_image_height = ia_data->y_end - ia_data->y_start;
-    frame_params->cropped_image_width = ia_data->x_end - ia_data->x_start;
-    /* TODO: Get scaling factors from sensor configuration parameters */
-    frame_params->horizontal_scaling_denominator = 254;
-    frame_params->horizontal_scaling_numerator = 
-            ia_data->output_width * 254 * ia_data->binning_factor_x/ frame_params->cropped_image_width;
-    frame_params->vertical_scaling_numerator = 
-            ia_data->output_height * 254 * ia_data->binning_factor_y / frame_params->cropped_image_height;
-    frame_params->vertical_scaling_denominator = 254;
-}
-
 } // extern "C"
 
 AtomAAA* AtomAAA::mInstance = NULL;
@@ -1524,7 +1506,7 @@ void AtomAAA::ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate)
     /* usually the grid changes as well when the mode changes. */
     reconfigureGrid();
     ia_aiq_sensor_frame_params sensor_frame_params;
-    get_sensor_frame_params(&sensor_frame_params, &m3ALibState.sensor_mode_data);
+    getSensorFrameParams(&sensor_frame_params, &m3ALibState.sensor_mode_data);
     ia_3a_reconfigure(mode, frame_rate, m3ALibState.stats, &sensor_frame_params, &m3ALibState.results);
     applyResults();
 }
@@ -1855,6 +1837,31 @@ void AtomAAA::getDefaultParams(CameraParameters *params, CameraParameters *intel
 
     // panorama
     intel_params->set(IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE, CAM_RESO_STR(PANORAMA_DEF_PREV_WIDTH,PANORAMA_DEF_PREV_HEIGHT));
+}
+
+void AtomAAA::getSensorFrameParams(ia_aiq_sensor_frame_params *frame_params, struct atomisp_sensor_mode_data *sensor_mode_data)
+{
+    frame_params->horizontal_crop_offset = sensor_mode_data->crop_horizontal_start;
+    frame_params->vertical_crop_offset = sensor_mode_data->crop_vertical_start;
+    frame_params->cropped_image_height = sensor_mode_data->crop_vertical_end - sensor_mode_data->crop_vertical_start;
+    frame_params->cropped_image_width = sensor_mode_data->crop_horizontal_end - sensor_mode_data->crop_horizontal_start;
+    /* TODO: Get scaling factors from sensor configuration parameters */
+    frame_params->horizontal_scaling_denominator = 254;
+    frame_params->vertical_scaling_denominator = 254;
+
+    if ((frame_params->cropped_image_width == 0) || (frame_params->cropped_image_height == 0)){
+    // the driver gives incorrect values for the frame width or height
+        frame_params->horizontal_scaling_numerator = 0;
+        frame_params->vertical_scaling_numerator = 0;
+        LOGE("Invalid sensor frame parameters. Cropped image width: %d, cropped image height: %d",
+              frame_params->cropped_image_width, frame_params->cropped_image_height );
+        LOGE("This causes lens shading table not to be used.");
+    } else {
+        frame_params->horizontal_scaling_numerator =
+                sensor_mode_data->output_width * 254 * sensor_mode_data->binning_factor_x/ frame_params->cropped_image_width;
+        frame_params->vertical_scaling_numerator =
+                sensor_mode_data->output_height * 254 * sensor_mode_data->binning_factor_y / frame_params->cropped_image_height;
+    }
 }
 
 } //  namespace android
