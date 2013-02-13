@@ -94,7 +94,7 @@ enum FlashStage
 
 #define DEFAULT_GBCE            true
 #define DEFAULT_GBCE_STRENGTH   0
-#define MAX_TIME_FOR_AF         2000 // milliseconds
+#define MAX_TIME_FOR_AF         2500 // milliseconds
 #define TORCH_INTENSITY         20   // 20%
 #define EV_LOWER_BOUND         -100
 #define EV_UPPER_BOUND          100
