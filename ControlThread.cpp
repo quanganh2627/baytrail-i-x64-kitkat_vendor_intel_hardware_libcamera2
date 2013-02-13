@@ -5924,6 +5924,25 @@ status_t ControlThread::stopPanorama()
     if (mPanoramaThread->getState() == PANORAMA_STOPPED)
         return NO_ERROR;
     if (mPanoramaThread != 0) {
+        // empty panorama from pending work (push possible finalization to
+        // this thread)
+        mPanoramaThread->flush();
+
+        // at this point control thread may have a finalization message with
+        // memory from panorama engine, so process them right now
+        Vector<Message> pending;
+        mMessageQueue.remove(MESSAGE_ID_PANORAMA_FINALIZE, &pending);
+        Vector<Message>::iterator it;
+        for(it = pending.begin(); it != pending.end(); ++it)
+            handleMessagePanoramaFinalize(&it->data.panoramaFinalized);
+
+        // handling the finalization pushes the memory to picture thread, so
+        // flush the picture thread so that it is done with panorama engine
+        // memory
+        mPictureThread->flushBuffers();
+
+        // now, finally, we can stop the panorama engine, which releases its
+        // memory
         mPanoramaThread->stopPanorama();
         return NO_ERROR;
     } else{
