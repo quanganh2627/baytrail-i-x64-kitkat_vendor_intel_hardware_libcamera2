@@ -1236,6 +1236,7 @@ status_t AtomISP::startRecording()
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
     status_t status = NO_ERROR;
+    int i, initialSkips;
 
     ret = startDevice(mRecordingDevice, mNumBuffers);
     if (ret < 0) {
@@ -1253,6 +1254,33 @@ status_t AtomISP::startRecording()
 
     mNumPreviewBuffersQueued = mNumPreviewBuffers;
     mNumRecordingBuffersQueued = mNumBuffers;
+
+    /**
+     * Some sensors produce corrupted first frames
+     * If this sensor needs it then we skip
+     * TODO: This is wrong place to do it, it should be done
+     * in the real consumer loop, since here we block the
+     * start stack until frames come out.
+     */
+    initialSkips = getNumOfSkipFrames();
+    for (i = 0; i < initialSkips; i++) {
+        AtomBuffer p;
+        ret = getPreviewFrame(&p);
+        if (ret == NO_ERROR) {
+            ret = putPreviewFrame(&p);
+            if (ret != NO_ERROR) {
+                LOGE("Failed queueing preview frame!");
+            }
+            ret = getRecordingFrame(&p);
+            if (ret == NO_ERROR) {
+                ret = putRecordingFrame(&p);
+                if (ret != NO_ERROR) {
+                    LOGE("Failed queueing recording frame!");
+                }
+            }
+
+        }
+    }
 
     return status;
 
@@ -3659,7 +3687,8 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp, atomis
     mRecordingBuffers[index].capture_timestamp = buf.timestamp;
     *buff = mRecordingBuffers[index];
     // time is get from ISP driver, it's realtime
-    *timestamp = (buf.timestamp.tv_sec)*1000000000LL + (buf.timestamp.tv_usec)*1000LL;
+    if (timestamp)
+        *timestamp = (buf.timestamp.tv_sec)*1000000000LL + (buf.timestamp.tv_usec)*1000LL;
 
     if (frameStatus) {
         *frameStatus = (atomisp_frame_status)buf.reserved;
