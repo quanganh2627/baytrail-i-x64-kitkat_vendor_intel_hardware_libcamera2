@@ -4619,6 +4619,8 @@ status_t ControlThread::processParamIso(const CameraParameters *oldParams,
             int iso = atoi(isostr);
             m3AControls->setManualIso(iso);
             LOGD("Changed manual iso to \"%s\" (%d)", newVal.string(), iso);
+        } else {
+            LOGD("Changed auto iso to \"%s\"", newVal.string());
         }
         m3AControls->setIsoMode(iso_mode);
     }
