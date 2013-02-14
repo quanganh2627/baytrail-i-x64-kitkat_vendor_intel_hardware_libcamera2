@@ -3859,7 +3859,7 @@ status_t ControlThread::processParamRotation(const CameraParameters *oldParams,
     int old_value,new_value;
     old_value = oldParams->getInt(CameraParameters::KEY_ROTATION);
     new_value = newParams->getInt(CameraParameters::KEY_ROTATION);
-    if (old_value != new_value)
+    if (old_value != new_value || !mThreadRunning)
         status = mPostProcThread->setRotation(new_value);
     return status;
 }
