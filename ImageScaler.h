@@ -22,7 +22,8 @@ class AtomBuffer;
 
 class ImageScaler {
 public:
-    static void downScaleImage(AtomBuffer *src, AtomBuffer *dst);
+    static void downScaleImage(AtomBuffer *src, AtomBuffer *dst,
+            int src_skip_lines_top = 0, int src_skip_lines_bottom = 0);
     static void downScaleImage(void *src, void *dest,
             int dest_w, int dest_h, int dest_stride,
             int src_w, int src_h, int src_stride,

@@ -33,11 +33,13 @@ CallbacksThread::CallbacksThread() :
     ,mJpegRequested(0)
     ,mPostviewRequested(0)
     ,mRawRequested(0)
+    ,mWaitRendering(false)
 {
     LOG1("@%s", __FUNCTION__);
     mFaceMetadata.faces = new camera_face_t[MAX_FACES_DETECTABLE];
     memset(mFaceMetadata.faces, 0, MAX_FACES_DETECTABLE * sizeof(camera_face_t));
     mFaceMetadata.number_of_faces = 0;
+    mPostponedJpegReady.id = (MessageId) -1;
 }
 
 CallbacksThread::~CallbacksThread()
@@ -121,13 +123,46 @@ status_t  CallbacksThread::previewFrameDone(AtomBuffer *aPreviewFrame)
 
 }
 
-status_t CallbacksThread::requestTakePicture(bool postviewCallback, bool rawCallback)
+status_t CallbacksThread::postviewRendered()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_POSTVIEW_RENDERED;
+    return mMessageQueue.send(&msg);
+}
+
+status_t CallbacksThread::handleMessagePostviewRendered()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    if (mWaitRendering) {
+        mWaitRendering = false;
+        // check if handling of jpeg data ready was postponed for this
+        if (mPostponedJpegReady.id == MESSAGE_ID_JPEG_DATA_READY) {
+           status = handleMessageJpegDataReady(&mPostponedJpegReady.data.compressedFrame);
+           mPostponedJpegReady.id = (MessageId) -1;
+        }
+    }
+    return status;
+}
+
+
+/**
+ * Allocate memory for callbacks needed in takePicture()
+ *
+ * \param postviewCallback allocate for postview callback
+ * \param rawCallback      allocate for raw callback
+ * \param waitRendering    synchronize compressed frame callback with
+ *                         postviewRendered()
+ */
+status_t CallbacksThread::requestTakePicture(bool postviewCallback, bool rawCallback, bool waitRendering)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_JPEG_DATA_REQUEST;
     msg.data.dataRequest.postviewCallback = postviewCallback;
     msg.data.dataRequest.rawCallback = rawCallback;
+    msg.data.dataRequest.waitRendering = waitRendering;
     return mMessageQueue.send(&msg);
 }
 
@@ -142,6 +177,16 @@ status_t CallbacksThread::flushPictures()
     for (it = pending.begin(); it != pending.end(); ++it) {
        camera_memory_t* b = it->data.compressedFrame.jpegBuff.buff;
        b->release(b);
+    }
+
+    if (mWaitRendering) {
+        mWaitRendering = false;
+        // check if handling of jpeg data was postponed
+        if (mPostponedJpegReady.id == MESSAGE_ID_JPEG_DATA_READY) {
+            camera_memory_t* b = mPostponedJpegReady.data.compressedFrame.jpegBuff.buff;
+            b->release(b);
+            mPostponedJpegReady.id = (MessageId) -1;
+        }
     }
 
     /* Remove also any requests that may be queued  */
@@ -356,6 +401,7 @@ status_t CallbacksThread::handleMessageJpegDataRequest(MessageDataRequest *msg)
         if (msg->rawCallback) {
             mRawRequested++;
         }
+        mWaitRendering = msg->waitRendering;
     }
 
     return NO_ERROR;
@@ -368,6 +414,8 @@ status_t CallbacksThread::handleMessageFlush()
     mJpegRequested = 0;
     mPostviewRequested = 0;
     mRawRequested = 0;
+    mWaitRendering = false;
+    mPostponedJpegReady.id = (MessageId) -1;
     for (size_t i = 0; i < mBuffers.size(); i++) {
         AtomBuffer jpegBuf = mBuffers[i].jpegBuff;
         LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
@@ -434,7 +482,17 @@ status_t CallbacksThread::waitForAndExecuteMessage()
             break;
 
         case MESSAGE_ID_JPEG_DATA_READY:
-            status = handleMessageJpegDataReady(&msg.data.compressedFrame);
+            if (mWaitRendering) {
+                LOG1("Postponed Jpeg callbacks due rendering");
+                mPostponedJpegReady = msg;
+                status = NO_ERROR;
+            } else {
+                status = handleMessageJpegDataReady(&msg.data.compressedFrame);
+            }
+            break;
+
+        case MESSAGE_ID_POSTVIEW_RENDERED:
+            status = handleMessagePostviewRendered();
             break;
 
         case MESSAGE_ID_JPEG_DATA_REQUEST:

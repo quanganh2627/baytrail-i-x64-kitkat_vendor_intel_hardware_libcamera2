@@ -186,6 +186,7 @@ void PictureThread::initialize(const CameraParameters &params)
     if (q != 0)
         mThumbnailQuality = q;
 
+    mThumbBuf.format = V4L2_PIX_FMT_NV12;
     mThumbBuf.width = params.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
     mThumbBuf.height = params.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
     mThumbBuf.size = frameSize(mThumbBuf.format, mThumbBuf.width, mThumbBuf.height);
@@ -725,12 +726,21 @@ void PictureThread::encodeExif(AtomBuffer *thumbBuf)
         (mThumbBuf.width < thumbBuf->width ||
          mThumbBuf.height < thumbBuf->height ||
          mThumbBuf.width < thumbBuf->stride)) {
+        int srcHeighByThumbAspect = thumbBuf->width * mThumbBuf.height / mThumbBuf.width;
         LOG1("Downscaling postview2thumbnail : %dx%d (%d) -> %dx%d (%d)",
                 thumbBuf->width, thumbBuf->height, thumbBuf->stride,
                 mThumbBuf.width, mThumbBuf.height, mThumbBuf.stride);
         if (mThumbBuf.buff == NULL)
             mCallbacks->allocateMemory(&mThumbBuf,mThumbBuf.size);
-        ImageScaler::downScaleImage(thumbBuf, &mThumbBuf);
+        if (thumbBuf->height > srcHeighByThumbAspect) {
+            // Support cropping 16:9 out from 4:3
+            int skipLines = (thumbBuf->height - srcHeighByThumbAspect) / 2;
+            LOGW("Thumbnail cropped to match requested aspect ratio");
+            thumbBuf->height = srcHeighByThumbAspect;
+            ImageScaler::downScaleImage(thumbBuf, &mThumbBuf, skipLines, skipLines);
+        } else {
+            ImageScaler::downScaleImage(thumbBuf, &mThumbBuf);
+        }
         thumbBuf = &mThumbBuf;
     }
 

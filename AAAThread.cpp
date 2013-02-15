@@ -26,6 +26,8 @@
 
 namespace android {
 
+#define FLASH_FRAME_TIMEOUT 5
+
 AAAThread::AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs) :
     Thread(false)
     ,mMessageQueue("AAAThread", (int) MESSAGE_ID_MAX)
@@ -44,6 +46,8 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs) :
     ,mSmartSceneMode(0)
     ,mSmartSceneHdr(false)
     ,mPreviousFaceCount(0)
+    ,mFlashStage(FLASH_STAGE_NA)
+    ,mFramesTillExposed(0)
 {
     LOG1("@%s", __FUNCTION__);
     mFaceState.faces = new ia_face[MAX_FACES_DETECTABLE];
@@ -77,6 +81,53 @@ status_t AAAThread::enableDVS(bool en)
     Message msg;
     msg.id = MESSAGE_ID_ENABLE_DVS;
     msg.data.enable.enable = en;
+    return mMessageQueue.send(&msg);
+}
+
+
+/**
+ * Enters to FlashStage-machine by setting the initial stage.
+ * Following newFrame()'s are tracked by handleFlashSequence().
+ *
+ * @param blockForStage runFlashSequence() is left blocked until
+ *                      FlashStage-machine enters the requested state or
+ *                      there's failure in sequence.
+ */
+status_t AAAThread::enterFlashSequence(FlashStage blockForStage)
+{
+    LOG1("@%s", __FUNCTION__);
+    if (blockForStage == FLASH_STAGE_EXIT)
+        return BAD_VALUE;
+    Message msg;
+    msg.id = MESSAGE_ID_FLASH_STAGE;
+    msg.data.flashStage.value = blockForStage;
+    return mMessageQueue.send(&msg,
+            (blockForStage != FLASH_STAGE_NA) ? MESSAGE_ID_FLASH_STAGE : (MessageId) -1);
+}
+
+/**
+ * Exits or interrupts the current flash sequence
+ *
+ * Must always be called after runFlashSequence() since sequence
+ * continues until exposed or failure and remains the state until
+ * this function is called.
+ *
+ * e.g for normal pre-flash sequence client calls:
+ *
+ * 1. runFlashSequence(FLASH_STAGE_PRE_FLASH_EXPOSED);
+ *  - blocks until exposed frame is received or a failure
+ *
+ * 2. preview keeps running in exposed state keeping 3A not processed
+ *
+ * 3. endFlashSequence()
+ *  - client wants to exit flash sequence and let normal 3A to continue
+ */
+status_t AAAThread::exitFlashSequence()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_FLASH_STAGE;
+    msg.data.flashStage.value = FLASH_STAGE_EXIT;
     return mMessageQueue.send(&msg);
 }
 
@@ -126,13 +177,27 @@ status_t AAAThread::cancelAutoFocus()
     return mMessageQueue.send(&msg);
 }
 
-status_t AAAThread::newFrame(struct timeval capture_timestamp)
+/**
+ * override for IAtomIspObserver::atomIspNotify()
+ *
+ * signal start of 3A processing based on preview stream notify
+ */
+bool AAAThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state)
+{
+    if (msg && msg->id == IAtomIspObserver::MESSAGE_ID_FRAME)
+        newFrame(msg->data.frameBuffer.buff.capture_timestamp,
+                 msg->data.frameBuffer.buff.status);
+    return false;
+}
+
+status_t AAAThread::newFrame(struct timeval capture_timestamp, FrameBufferStatus frameStatus)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     Message msg;
     msg.id = MESSAGE_ID_NEW_FRAME;
     msg.data.frame.capture_timestamp = capture_timestamp;
+    msg.data.frame.status = frameStatus;
     status = mMessageQueue.send(&msg);
     return status;
 }
@@ -270,15 +335,171 @@ status_t AAAThread::handleMessageCancelAutoFocus()
     return status;
 }
 
-status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
+status_t AAAThread::handleMessageFlashStage(MessageFlashStage *msg)
+{
+    status_t status = NO_ERROR;
+    LOG1("@%s", __FUNCTION__);
+
+    // handle exitFlashSequence()
+    if (msg->value == FLASH_STAGE_EXIT) {
+        if (mBlockForStage != FLASH_STAGE_PRE_EXPOSED &&
+            mBlockForStage != FLASH_STAGE_SHOT_EXPOSED &&
+            mBlockForStage != FLASH_STAGE_NA) {
+            LOG1("Flash sequence interrupted");
+        }
+        if (mBlockForStage != FLASH_STAGE_NA) {
+            mMessageQueue.reply(MESSAGE_ID_FLASH_STAGE, status);
+            mBlockForStage = FLASH_STAGE_NA;
+        }
+        mFlashStage = FLASH_STAGE_NA;
+        return NO_ERROR;
+    }
+
+    // handle enterFlashSequence()
+    if (mFlashStage != FLASH_STAGE_NA) {
+        status = ALREADY_EXISTS;
+        LOGE("Flash sequence already started");
+        if (msg->value != FLASH_STAGE_NA)
+            mMessageQueue.reply(MESSAGE_ID_FLASH_STAGE, status);
+        return status;
+    }
+
+    mBlockForStage = msg->value;
+    if (mBlockForStage == FLASH_STAGE_SHOT_EXPOSED) {
+        // TODO: Not receiving expose statuses for snapshot frames
+        // ControlThread does snapshot capturing atm for this purpose.
+        LOGD("Not Implemented! its a deadlock");
+        mFlashStage = FLASH_STAGE_SHOT_WAITING;
+    } else {
+        // Enter pre-flash sequence by default
+        mFlashStage = FLASH_STAGE_PRE_START;
+    }
+    return NO_ERROR;
+}
+
+/**
+ * handles FlashStage-machine states based on newFrame()'s
+ *
+ * returns true if sequence is running and normal 3A should
+ * not be executed
+ */
+bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
+{
+    static unsigned int skipForEv = 0;
+    status_t status = NO_ERROR;
+
+    if (mFlashStage == FLASH_STAGE_NA) {
+        if (mBlockForStage != FLASH_STAGE_NA) {
+            // should never occur
+            LOG1("Releasing runFlashSequence(), sequence not started");
+            mMessageQueue.reply(MESSAGE_ID_FLASH_STAGE, UNKNOWN_ERROR);
+            mBlockForStage = FLASH_STAGE_NA;
+        }
+        return false;
+    }
+
+    LOG2("@%s : mFlashStage %d, FrameStatus %d", __FUNCTION__, mFlashStage, frameStatus);
+
+    switch (mFlashStage) {
+        case FLASH_STAGE_PRE_START:
+            // hued images fix (BZ: 72908)
+            if (skipForEv++ < 2)
+                break;
+            // Enter Stage 1
+            mFramesTillExposed = 0;
+            skipForEv = 2;
+            status = mAAA->applyPreFlashProcess(CAM_FLASH_STAGE_NONE);
+            mFlashStage = FLASH_STAGE_PRE_PHASE1;
+            break;
+        case FLASH_STAGE_PRE_PHASE1:
+            // Stage 1.5: Skip 2 frames to get exposure from Stage 1.
+            //            First frame is for sensor to pick up the new value
+            //            and second for sensor to apply it.
+            if (--skipForEv <= 0)
+                break;
+            // Enter Stage 2
+            skipForEv = 2;
+            status = mAAA->applyPreFlashProcess(CAM_FLASH_STAGE_PRE);
+            mFlashStage = FLASH_STAGE_PRE_PHASE2;
+            break;
+        case FLASH_STAGE_PRE_PHASE2:
+            // Stage 2.5: Same as above, but for Stage 2.
+            if (--skipForEv <= 0)
+                break;
+            // Enter Stage 3: get the flash-exposed preview frame
+            // and let the 3A library calculate the exposure
+            // settings for the flash-exposed still capture.
+            // We check the frame status to make sure we use
+            // the flash-exposed frame.
+            status = mAAA->setFlash(1);
+            mFlashStage = FLASH_STAGE_PRE_WAITING;
+            break;
+        case FLASH_STAGE_SHOT_WAITING:
+        case FLASH_STAGE_PRE_WAITING:
+            mFramesTillExposed++;
+            if (frameStatus == FRAME_STATUS_FLASH_EXPOSED) {
+                LOG1("PreFlash@Frame %d: SUCCESS    (stopping...)", mFramesTillExposed);
+                mFlashStage = (mFlashStage == FLASH_STAGE_SHOT_WAITING) ?
+                               FLASH_STAGE_SHOT_EXPOSED:FLASH_STAGE_PRE_EXPOSED;
+                mAAA->setFlash(0);
+                mAAA->applyPreFlashProcess(CAM_FLASH_STAGE_MAIN);
+            } else if(mFramesTillExposed > FLASH_FRAME_TIMEOUT
+                   || ( frameStatus != FRAME_STATUS_OK
+                        && frameStatus != FRAME_STATUS_FLASH_PARTIAL) ) {
+                LOG1("PreFlash@Frame %d: FAILED     (stopping...)", mFramesTillExposed);
+                status = UNKNOWN_ERROR;
+                mAAA->setFlash(0);
+                break;
+            }
+            status = NO_ERROR;
+            break;
+        case FLASH_STAGE_PRE_EXPOSED:
+        case FLASH_STAGE_SHOT_EXPOSED:
+            // staying in exposed state and not processing 3A until
+            status = NO_ERROR;
+            break;
+        default:
+        case FLASH_STAGE_EXIT:
+        case FLASH_STAGE_NA:
+            status = UNKNOWN_ERROR;
+            break;
+    }
+
+    if (mBlockForStage == mFlashStage) {
+        LOG2("Releasing runFlashSequence()");
+        mMessageQueue.reply(MESSAGE_ID_FLASH_STAGE, status);
+        mBlockForStage = FLASH_STAGE_NA;
+    }
+
+    if (status != NO_ERROR) {
+        LOGD("Flash sequence failed!");
+        mFramesTillExposed = 0;
+        skipForEv = 0;
+        mFlashStage = FLASH_STAGE_NA;
+        if (mBlockForStage != FLASH_STAGE_NA) {
+            LOG2("Releasing runFlashSequence()");
+            mMessageQueue.reply(MESSAGE_ID_FLASH_STAGE, status);
+            mBlockForStage = FLASH_STAGE_NA;
+        }
+        return false;
+    }
+
+    return true;
+}
+
+status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msgFrame)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     int sceneMode = 0;
     bool sceneHdr = false;
     Vector<Message> messages;
+    struct timeval capture_timestamp = msgFrame->capture_timestamp;
 
     if (!mDVSRunning && !m3ARunning)
+        return status;
+
+    if (handleFlashSequence(msgFrame->status))
         return status;
 
     // 3A & DVS stats are read with proprietary ioctl that returns the
@@ -288,14 +509,14 @@ status_t AAAThread::handleMessageNewFrame(struct timeval capture_timestamp)
     // We flush the queue and use the most recent timestamp.
     mMessageQueue.remove(MESSAGE_ID_NEW_FRAME, &messages);
     if(!messages.isEmpty()) {
-        Message msg = *messages.begin();
+        Message recent_msg = *messages.begin();
         LOGW("%d frames in 3A process queue, handling timestamp "
              "%lld instead of %lld\n", messages.size(),
-        ((long long)(msg.data.frame.capture_timestamp.tv_sec)*1000000LL +
-         (long long)(msg.data.frame.capture_timestamp.tv_usec)),
+        ((long long)(recent_msg.data.frame.capture_timestamp.tv_sec)*1000000LL +
+         (long long)(recent_msg.data.frame.capture_timestamp.tv_usec)),
         ((long long)(capture_timestamp.tv_sec)*1000000LL +
          (long long)(capture_timestamp.tv_usec)));
-        capture_timestamp = msg.data.frame.capture_timestamp;
+        capture_timestamp = recent_msg.data.frame.capture_timestamp;
     }
 
     if(m3ARunning){
@@ -439,7 +660,7 @@ status_t AAAThread::waitForAndExecuteMessage()
             break;
 
         case MESSAGE_ID_NEW_FRAME:
-            status = handleMessageNewFrame(msg.data.frame.capture_timestamp);
+            status = handleMessageNewFrame(&msg.data.frame);
             break;
 
         case MESSAGE_ID_ENABLE_AE_LOCK:
@@ -448,6 +669,10 @@ status_t AAAThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_ENABLE_AWB_LOCK:
             status = handleMessageEnableAwbLock(&msg.data.enable);
+            break;
+
+        case MESSAGE_ID_FLASH_STAGE:
+            status = handleMessageFlashStage(&msg.data.flashStage);
             break;
 
         default:

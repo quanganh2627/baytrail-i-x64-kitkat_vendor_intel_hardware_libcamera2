@@ -30,7 +30,8 @@
 
 namespace android {
 
-void ImageScaler::downScaleImage(AtomBuffer *src, AtomBuffer *dst)
+void ImageScaler::downScaleImage(AtomBuffer *src, AtomBuffer *dst,
+        int src_skip_lines_top, int src_skip_lines_bottom)
 {
     void *srcPtr, *dstPtr;
 
@@ -55,7 +56,7 @@ void ImageScaler::downScaleImage(AtomBuffer *src, AtomBuffer *dst)
     downScaleImage(srcPtr, dstPtr,
         dst->width, dst->height, dst->stride,
         src->width, src->height, src->stride,
-        src->format);
+        src->format, src_skip_lines_top, src_skip_lines_bottom);
 }
 
 void ImageScaler::downScaleImage(void *src, void *dest,

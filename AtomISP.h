@@ -42,6 +42,7 @@ class AtomISP;
 #include "PlatformData.h"
 #include "CameraConf.h"
 #include "I3AControls.h"
+#include "AtomIspObserverManager.h"
 
 namespace android {
 
@@ -88,12 +89,16 @@ struct sensorPrivateData
 
 class Callbacks;
 
-class AtomISP : public I3AControls {
+class AtomISP : public I3AControls, public IBufferOwner {
 // FIXME: Only needed for NVM parsing "cameranvm_create()" in AtomAAA
     friend class AtomAAA;
 
 // public types
 public:
+    enum ObserverType {
+        OBSERVE_PREVIEW_STREAM,
+        OBSERVE_FRAME_SYNC_SOF
+    };
 
 // constructor/destructor
 public:
@@ -126,6 +131,7 @@ public:
     bool isOfflineCaptureSupported() const;
     bool isYUVvideoZoomingSupported() const;
     status_t returnPreviewBuffers();
+    status_t returnRecordingBuffers();
     bool isSharedPreviewBufferConfigured(bool *reserved = NULL) const;
 
     status_t getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameStatus = NULL);
@@ -269,10 +275,18 @@ public:
     virtual MeteringMode getAeMeteringMode();
     virtual status_t set3AColorEffect(const char *effect);
 
+    // AtomIspObserver controls
+    status_t attachObserver(IAtomIspObserver *observer, ObserverType t);
+    status_t detachObserver(IAtomIspObserver *observer, ObserverType t);
+    void pauseObserver(ObserverType t);
+
+    // IBufferOwner override
+    virtual void returnBuffer(AtomBuffer* buff);
+
 // public static methods
 public:
-   // return zoom ratio multiplied by 100 from given zoom value
-   static int zoomRatio(int zoomValue);
+    // return zoom ratio multiplied by 100 from given zoom value
+    static int zoomRatio(int zoomValue);
 
 // private types
 private:
@@ -448,6 +462,42 @@ private:
     int getPrimaryCameraIndex(void) const;
     status_t applySensorFlip(void);
 
+
+private:
+    // AtomIspObserver
+    IObserverSubject* observerSubjectByType(ObserverType t);
+
+    // Observer subject sub-classes
+    class PreviewStreamSource: public IObserverSubject
+    {
+    public:
+        PreviewStreamSource(const char*name, AtomISP *aisp)
+            :mName(name), mISP(aisp) { };
+
+        // IObserverSubject override
+        virtual const char* getName() { return mName.string(); };
+        virtual status_t observe(IAtomIspObserver::Message *msg);
+
+    private:
+        String8  mName;
+        AtomISP *mISP;
+    } mPreviewStreamSource;
+
+    class FrameSyncSource: public IObserverSubject
+    {
+    public:
+        FrameSyncSource(const char*name, AtomISP *aisp)
+            :mName(name), mISP(aisp) { };
+
+        // IObserverSubject override
+        virtual const char* getName() { return mName.string(); };
+        virtual status_t observe(IAtomIspObserver::Message *msg);
+
+    private:
+        String8  mName;
+        AtomISP *mISP;
+    } mFrameSyncSource;
+
 // private members
 private:
 
@@ -464,8 +514,6 @@ private:
     AtomBuffer *mRecordingBuffers;
     bool mSwapRecordingDevice;
     bool mRecordingDeviceSwapped;
-
-    bool mNeedReset; /*!< TODO: remove, see BZ 72616 */
 
     void **mClientSnapshotBuffers;
     bool mUsingClientSnapshotBuffers;
@@ -485,6 +533,7 @@ private:
     struct {
       unsigned int frameCounter;
       DeviceState state;
+      Mutex       mutex;
     } mDevices[V4L2_MAX_DEVICE_COUNT];
 
     int dumpPreviewFrame(int previewIndex);
@@ -526,10 +575,11 @@ private:
     char *mZoomRatios;
 
     int mRawDataDumpSize;
-    bool mFrameSyncRequested;
+    int mFrameSyncRequested;
     bool mFrameSyncEnabled;
     v4l2_colorfx mColorEffect;
 
+    AtomIspObserverManager mObserverManager;
 }; // class AtomISP
 
 }; // namespace android

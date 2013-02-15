@@ -66,7 +66,8 @@ public:
     status_t compressedFrameDone(AtomBuffer* jpegBuf, AtomBuffer* snapshotBuf, AtomBuffer* postviewBuf);
     status_t previewFrameDone(AtomBuffer *aPreviewFrame);
     status_t videoFrameDone(AtomBuffer *buff, nsecs_t timstamp);
-    status_t requestTakePicture(bool postviewCallback = false, bool rawCallback = false);
+    status_t requestTakePicture(bool postviewCallback = false,
+                                bool rawCallback = false, bool waitRendering = false);
     status_t flushPictures();
     size_t   getQueuedBuffersNum() { return mBuffers.size(); }
     virtual void facesDetected(camera_frame_metadata_t &face_metadata);
@@ -75,6 +76,7 @@ public:
     void focusMove(bool start);
     void panoramaDisplUpdate(camera_panorama_metadata_t &metadata);
     void panoramaSnapshot(AtomBuffer &livePreview);
+    status_t postviewRendered();
 
 // private types
 private:
@@ -93,6 +95,7 @@ private:
         MESSAGE_ID_SCENE_DETECTED,
         MESSAGE_ID_PREVIEW_DONE,
         MESSAGE_ID_VIDEO_DONE,
+        MESSAGE_ID_POSTVIEW_RENDERED,
 
         // panorama callbacks
         MESSAGE_ID_PANORAMA_SNAPSHOT,
@@ -136,6 +139,7 @@ private:
     struct MessageDataRequest {
         bool postviewCallback;
         bool rawCallback;
+        bool waitRendering;
     };
 
     struct MessageSceneDetected {
@@ -208,6 +212,7 @@ private:
     status_t handleMessageVideoDone(MessageVideo *msg);
     status_t handleMessagePanoramaDisplUpdate(MessagePanoramaDisplUpdate *msg);
     status_t handleMessagePanoramaSnapshot(MessagePanoramaSnapshot *msg);
+    status_t handleMessagePostviewRendered();
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -230,6 +235,8 @@ private:
     unsigned mJpegRequested;
     unsigned mPostviewRequested;
     unsigned mRawRequested;
+    bool mWaitRendering;
+    Message mPostponedJpegReady;
 
     /*
      * This vector contains not only the JPEG buffers, but also their corresponding

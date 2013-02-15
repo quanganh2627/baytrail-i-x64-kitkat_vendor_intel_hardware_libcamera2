@@ -40,10 +40,9 @@
 #include "AtomCP.h"
 #include "BracketManager.h"
 #include "I3AControls.h"
+#include "IAtomIspObserver.h"
 
 namespace android {
-
-#define FLASH_FRAME_TIMEOUT 5
 
 class AtomISP;
 //
@@ -58,7 +57,7 @@ class ControlThread :
     public ICallbackAAA,
     public ICallbackPostProc,
     public ICallbackPanorama,
-    public IBufferOwner{
+    public IAtomIspObserver {
 
 // constructor destructor
 public:
@@ -68,6 +67,9 @@ public:
 // Thread overrides
 public:
     status_t requestExitAndWait();
+
+public:
+    virtual bool atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state);
 
 // public methods
 public:
@@ -122,11 +124,10 @@ public:
 
 // callback methods
 private:
-    virtual void previewDone(AtomBuffer *buff);
+    virtual void previewBufferCallback(AtomBuffer *buff, ICallbackPreview::CallbackType t);
     virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void autoFocusDone();
     virtual void postProcCaptureTrigger();
-    virtual void returnBuffer(AtomBuffer *buff);
     virtual void sceneDetected(int sceneMode, bool sceneHdr);
     virtual void facesDetected(const ia_face_state *faceState);
     virtual void panoramaCaptureTrigger();
@@ -154,7 +155,7 @@ private:
                                          // HAL threads to signal preview buffer
                                          // is not used and is free to queue back
                                          // AtomISP.
-        MESSAGE_ID_PREVIEW_DONE,
+        MESSAGE_ID_PREVIEW_STARTED,
         MESSAGE_ID_PICTURE_DONE,
         MESSAGE_ID_SET_PARAMETERS,
         MESSAGE_ID_GET_PARAMETERS,
@@ -171,6 +172,8 @@ private:
         // Message for enabling metadata buffer mode
         MESSAGE_ID_STORE_METADATA_IN_BUFFER,
 
+        MESSAGE_ID_DEQUEUE_RECORDING,
+
         // max number of messages
         MESSAGE_ID_MAX
     };
@@ -181,12 +184,6 @@ private:
 
     struct MessageReleaseRecordingFrame {
         void *buff;
-    };
-    struct MessageReleasePreviewFrame {
-        AtomBuffer buff;
-    };
-    struct MessagePreviewDone {
-        AtomBuffer buff;
     };
 
     struct MessagePicture {
@@ -232,17 +229,15 @@ private:
         AtomBuffer pvBuff;
     };
 
+    struct MessageDequeueRecording {
+        bool    skipFrame;
+    };
+
     // union of all message data
     union MessageData {
 
         // MESSAGE_ID_RELEASE_RECORDING_FRAME
         MessageReleaseRecordingFrame releaseRecordingFrame;
-
-        // MESSAGE_ID_RELEASE_PREVIEW_FRAME
-        MessageReleasePreviewFrame releasePreviewFrame;
-
-        // MESSAGE_ID_PREVIEW_DONE
-        MessagePreviewDone previewDone;
 
         // MESSAGE_ID_PICTURE_DONE
         MessagePicture pictureDone;
@@ -269,6 +264,9 @@ private:
 
         // MESSAGE_ID_PANORAMA_FINALIZE
         MessagePanoramaFinalize   panoramaFinalized;
+
+        // MESSAGE_ID_DEQUEUE_RECORDING
+        MessageDequeueRecording   dequeueRecording;
     };
 
     // message id and message data
@@ -285,15 +283,6 @@ private:
         STATE_RECORDING,
         STATE_CAPTURE,
         STATE_CONTINUOUS_CAPTURE
-    };
-
-    struct CoupledBuffer {
-        AtomBuffer previewBuff;
-        AtomBuffer recordingBuff;
-        bool previewBuffReturned;
-        bool recordingBuffReturned;
-        bool videoSnapshotBuff;
-        bool videoSnapshotBuffReturned;
     };
 
     struct HdrImaging {
@@ -354,8 +343,7 @@ private:
     status_t handleMessageAutoFocus();
     status_t handleMessageCancelAutoFocus();
     status_t handleMessageReleaseRecordingFrame(MessageReleaseRecordingFrame *msg);
-    status_t handleMessageReleasePreviewFrame(MessageReleasePreviewFrame *msg);
-    status_t handleMessagePreviewDone(MessagePreviewDone *msg);
+    status_t handleMessagePreviewStarted();
     status_t handleMessagePictureDone(MessagePicture *msg);
     status_t handleMessageSetParameters(MessageSetParameters *msg);
     status_t handleMessageGetParameters(MessageGetParameters *msg);
@@ -392,10 +380,8 @@ private:
 
     // dequeue buffers from driver and deliver them
     status_t dequeuePreview();
-    status_t dequeueRecording();
-    status_t queueCoupledBuffers(int coupledId);
+    status_t dequeueRecording(bool skip);
 
-    bool checkSkipFrame(int frameNum);
     status_t skipFrames(size_t numFrames);
     status_t initBracketing();
     status_t applyBracketing();
@@ -478,12 +464,15 @@ private:
 
     status_t processParamSlowMotionRate(const CameraParameters *oldParams,
         CameraParameters *newParams);
-
+    status_t processParamRotation(const CameraParameters *oldParams,
+                CameraParameters *newParams);
     void processParamFileInject(CameraParameters *newParams);
 
     void preSetCameraWindows(CameraWindow* focusWindows, size_t winCount);
 
     void selectFlashMode(CameraParameters *newParams);
+
+    bool selectPostviewSize(int &width, int &height);
 
     // These are params that can only be set while the ISP is stopped. If the parameters
     // changed while the ISP is running, the ISP will need to be stopped, reconfigured, and
@@ -528,7 +517,8 @@ private:
     status_t captureFixedBurstPic(bool clientRequest);
     status_t capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffer &postviewBuffer);
     status_t captureVideoSnap(void);
-    void     encodeVideoSnapshot(int buffId);
+    AtomBuffer* findVideoSnapshotBuffer(int index);
+    void     encodeVideoSnapshot(AtomBuffer &buff);
 
     status_t updateSpotWindow(const int &width, const int &height);
 
@@ -564,7 +554,6 @@ private:
     Callbacks *mCallbacks;
     sp<CallbacksThread> mCallbacksThread;
 
-    CoupledBuffer *mCoupledBuffers;
     int mNumBuffers;
 
     CameraParameters mParameters;
@@ -620,17 +609,15 @@ private:
     CameraAreas mFocusAreas;
     CameraAreas mMeteringAreas;
 
-    int mPreviewFramesDone;     /*!< Number of done preview frames */
-
     int mVideoSnapshotrequested;    /*!< number of video snapshots requested */
+    Vector<AtomBuffer> mVideoSnapshotBuffers; /*!< buffers reserved from stream for videosnapshot */
+    Vector<AtomBuffer> mRecordingBuffers; /*!< buffers reserverd from stream for video encoding */
 
     struct StillPicParamsCtx mStillPictContext; /*!< we store the current still image parameters
                                                     It is used when video recording starts so the settings
                                                     can be restore when video recording stops
                                                  */
     Vector<MessagePicture> mUnqueuedPicBuf; /* store the buffers that have not been returned to ISP in capturing*/
-
-    int mSetFPS;                /* The current FPS, used for frame dropping */
 
     bool mEnableFocusCbAtStart;     /* for internal control of focus cb's in continuous-mode */
     bool mEnableFocusMoveCbAtStart; /* for internal control of focus-move cb's in continuous-mode */

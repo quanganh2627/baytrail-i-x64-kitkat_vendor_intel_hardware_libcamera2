@@ -1552,6 +1552,11 @@ int AtomAAA::applyResults(void)
     return ret;
 }
 
+status_t AtomAAA::setFlash(int numFrames)
+{
+    return mISP->setFlash(numFrames);
+}
+
 /* returns false for error, true for success */
 bool AtomAAA::reconfigureGrid(void)
 {
