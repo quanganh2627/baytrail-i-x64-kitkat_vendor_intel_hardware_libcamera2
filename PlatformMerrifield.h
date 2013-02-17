@@ -29,7 +29,7 @@ class PlatformSaltBay : public PlatformBase {
 
 public:
     PlatformSaltBay(void) {
-        mSubDevName = "/dev/v4l-subdev7";
+        mSubDevName = "/dev/v4l-subdev8";
 
         /* Creating CameraInfo object (default constructor value applied)
          * HERE we only modify the value which are different than
