@@ -122,14 +122,6 @@ static const char *dev_name_array[] = {"/dev/video0",
                                        "/dev/video2",
                                        "/dev/video3"};
 
-/**
- * When image data injection is used, read OTP data from
- * this file.
- *
- * Note: camera HAL working directory is "/data" (at least upto ICS)
- */
-static const char *privateOtpInjectFileName = "otp_data.bin";
-
 AtomISP::cameraInfo AtomISP::sCamInfo[MAX_CAMERA_NODES];
 
 static const char *resolution_tables[] = {
@@ -264,9 +256,9 @@ status_t AtomISP::init()
     mConfig.num_snapshot = 1;
     mConfig.zoom = 0;
 
-    status = init3A();
-    if (status != NO_ERROR) {
-        return NO_INIT;
+    if (selectCameraSensor() != NO_ERROR) {
+       LOGE("Could not select camera: %s", mCameraInput->name);
+       return NO_INIT;
     }
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Init_3A");
 
@@ -290,11 +282,6 @@ status_t AtomISP::init()
     return status;
 }
 
-void AtomISP::set3AControls(I3AControls *aaaControls)
-{
-    LOG1("@%s", __FUNCTION__);
-    m3AControls = aaaControls;
-}
 int AtomISP::getPrimaryCameraIndex(void) const
 {
     int res = 0;
@@ -420,12 +407,13 @@ void AtomISP::initFrameConfig()
  * Maps the requested 'cameraId' to a V4L2 input.
  *
  * Only to be called from constructor
- * @param cameraId: Id passed to the HAL to identify a particular camera
- *                  This id maps always 0 to back camera and 1 to front
- *                  whereas the index in the sCamInfo is filled from V4L2
- *                  The order how front and back camera are returned
- *                  may be different. This Android camera id will be used
- *                  to select parameters from back or front camera
+ * The cameraId  is passed to the HAL during creation as is currently stored in
+ * the Camera Configuration Class (CPF Store)
+ * This CameraID is used to identify a particular camera, it maps always 0 to back
+ * camera and 1 to front whereas the index in the sCamInfo is filled from V4L2
+ * The order how front and back camera are returned
+ * may be different. This Android camera id will be used
+ * to select parameters from back or front camera
  */
 status_t AtomISP::initCameraInput()
 {
@@ -461,57 +449,44 @@ status_t AtomISP::initCameraInput()
 }
 
 /**
- * Only to be called from 2nd stage contructor AtomISP::init().
+ * Retrieves the sensor parameters and  CPFStore AIQ configuration
+ * Only to be called after AtomISP initialization
+ *
+ * These parameters are needed for Intel 3A initialization
+ * This method is called by AtomAAA during init3A()
+ *
+ * \param paramsAndCPF pointer to an allocated SensorParams structure
  */
-status_t AtomISP::init3A()
+status_t AtomISP::getSensorParams(SensorParams *paramsAndCPF)
 {
     status_t status = NO_ERROR;
+    const SensorParams *paramFiles;
 
-    if (selectCameraSensor() == NO_ERROR) {
-        if (mIsFileInject) {
-            const char* otp_file = privateOtpInjectFileName;
-            int maincam = getPrimaryCameraIndex();
-            const SensorParams *paramFiles = PlatformData::getSensorParamsFile(sCamInfo[maincam].name);
-            SensorParams paramFilesWithCpf = *paramFiles;
-            if (mCameraConf->aiqConf != 0) {
-                paramFilesWithCpf.cpfData.data = mCameraConf->aiqConf->ptr();
-                paramFilesWithCpf.cpfData.size = mCameraConf->aiqConf->size();
-            }
-            if (m3AControls->initIntel3A(&paramFilesWithCpf, this, otp_file) == NO_ERROR) {
-                LOG1("3A initialized for file inject");
-            }
-            else {
-                LOGE("Unable to initialize 3A for file inject");
-                status = NO_INIT;
-            }
-        }
-        else if (mSensorType == SENSOR_TYPE_RAW) {
-            const SensorParams *paramFiles = PlatformData::getSensorParamsFile(mCameraInput->name);
-            if (paramFiles != NULL) {
-                    SensorParams paramFilesWithCpf = *paramFiles;
-                    if (mCameraConf->aiqConf != 0) {
-                        paramFilesWithCpf.cpfData.data = mCameraConf->aiqConf->ptr();
-                        paramFilesWithCpf.cpfData.size = mCameraConf->aiqConf->size();
-                    }
-                    if (m3AControls->initIntel3A(&paramFilesWithCpf, this, NULL) == NO_ERROR) {
-                            LOG1("3A initialized");
-                    } else {
-                            LOGE("Error initializing 3A on RAW sensor!");
-                            status = NO_INIT;
-                    }
-             }
-        } else if (mSensorType == SENSOR_TYPE_SOC) {
-            m3AControls->initIntel3A(NULL, this, NULL);
-        }
-        // We don't need this memory anymore
-        mCameraConf->aiqConf.clear();
+    if (paramsAndCPF == NULL)
+        return BAD_VALUE;
+
+    if (mIsFileInject) {
+        int maincam = getPrimaryCameraIndex();
+        paramFiles = PlatformData::getSensorParamsFile(sCamInfo[maincam].name);
     } else {
-        LOGE("Could not select camera: %s", mCameraInput->name);
-        status = NO_INIT;
+        paramFiles = PlatformData::getSensorParamsFile(mCameraInput->name);
     }
+
+    if (paramFiles == NULL)
+        return UNKNOWN_ERROR;
+
+    *paramsAndCPF = *paramFiles;
+    if (mCameraConf->aiqConf != 0) {
+        paramsAndCPF->cpfData.data = mCameraConf->aiqConf->ptr();
+        paramsAndCPF->cpfData.size = mCameraConf->aiqConf->size();
+    }
+    // We don't need this memory anymore
+    mCameraConf->aiqConf.clear();
+
 
     return status;
 }
+
 
 /**
  * Only to be called from 2nd stage contructor AtomISP::init().
@@ -541,7 +516,6 @@ AtomISP::~AtomISP()
         //       This is not needed for preview and recording buffers.
         freeSnapshotBuffers();
     }
-    m3AControls->unInitIntel3A();
     closeDevice(V4L2_MAIN_DEVICE);
 
     if (mZoomRatios)
@@ -4656,7 +4630,6 @@ int AtomISP::dumpPreviewFrame(int previewIndex)
 
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_PREVIEW)) {
         CameraDump *cameraDump = CameraDump::getInstance();
-        cameraDump->set3AControls(m3AControls);
         const struct v4l2_buffer_info *buf =
             &v4l2_buf_pool[mPreviewDevice].bufs[previewIndex];
         if (mConfigRecordingPreviewDevice == mPreviewDevice)
@@ -4675,7 +4648,6 @@ int AtomISP::dumpRecordingFrame(int recordingIndex)
     LOG2("@%s", __FUNCTION__);
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_VIDEO)) {
         CameraDump *cameraDump = CameraDump::getInstance();
-        cameraDump->set3AControls(m3AControls);
         const struct v4l2_buffer_info *buf =
             &v4l2_buf_pool[mRecordingDevice].bufs[recordingIndex];
         const char *name = DUMPIMAGE_RECORD_STORE_FILENAME;
@@ -4691,7 +4663,6 @@ int AtomISP::dumpSnapshot(int snapshotIndex, int postviewIndex)
     LOG2("@%s", __FUNCTION__);
     if (CameraDump::isDumpImageEnable()) {
         CameraDump *cameraDump = CameraDump::getInstance();
-        cameraDump->set3AControls(m3AControls);
         if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_SNAPSHOT)) {
            const struct v4l2_buffer_info *buf0 =
                &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[snapshotIndex];
@@ -4739,7 +4710,6 @@ int AtomISP::dumpRawImageFlush(void)
     LOG1("@%s", __FUNCTION__);
     if (CameraDump::isDumpImageEnable()) {
         CameraDump *cameraDump = CameraDump::getInstance();
-        cameraDump->set3AControls(m3AControls);
         cameraDump->dumpImage2FileFlush();
     }
     return 0;
@@ -5347,6 +5317,17 @@ int AtomISP::pollFrameSyncEvent()
 }
 
 // I3AControls
+
+status_t AtomISP::init3A()
+{
+    return NO_ERROR;
+}
+
+status_t AtomISP::deinit3A()
+{
+    return NO_ERROR;
+}
+
 status_t AtomISP::setAeMode(AeMode mode)
 {
     LOG1("@%s: %d", __FUNCTION__, mode);

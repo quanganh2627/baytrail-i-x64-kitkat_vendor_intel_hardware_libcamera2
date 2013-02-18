@@ -150,6 +150,8 @@ class I3AControls
 {
 public:
     virtual ~I3AControls() {}
+    virtual status_t init3A() = 0;
+    virtual status_t deinit3A() = 0;
 
     virtual void getDefaultParams(CameraParameters *params, CameraParameters *intel_params) = 0;
     virtual status_t setAeMode(AeMode mode) = 0;
@@ -177,8 +179,6 @@ public:
 
     // Intel 3A specific
     virtual bool isIntel3A() = 0;
-    virtual status_t initIntel3A(const SensorParams *param_files, AtomISP *isp, const char *otpInjectFile = NULL) = 0;
-    virtual status_t unInitIntel3A() = 0;
     virtual status_t getAeManualBrightness(float *ret) = 0;
     virtual status_t getAfLensPosRange(ia_3a_af_lens_range *lens_range) = 0;
     virtual status_t getCurrentFocusPosition(int *pos) = 0;

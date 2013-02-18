@@ -17,13 +17,6 @@
 #ifndef ANDROID_LIBCAMERA_ATOM_ISP
 #define ANDROID_LIBCAMERA_ATOM_ISP
 
-// Forward declaration needed to resolve circular reference between AtomAAA
-// and AtomISP objects.
-namespace android {
-
-class AtomISP;
-};
-
 #include <utils/Timers.h>
 #include <utils/Errors.h>
 #include <utils/Vector.h>
@@ -107,7 +100,6 @@ public:
 
     status_t initDevice();
     status_t init();
-    void set3AControls(I3AControls *aaaControls);
 
     // public types
 public:
@@ -219,6 +211,7 @@ public:
     // camera hardware information
     static int getNumberOfCameras();
     static status_t getCameraInfo(int cameraId, camera_info *cameraInfo);
+    status_t getSensorParams(SensorParams *sp);
 
     float getFrameRate() const { return mConfig.fps; }
 
@@ -279,6 +272,8 @@ public:
     void getSensorDataFromFile(const char *file_name, sensorPrivateData *sensor_data);
 
     // I3AControls
+    virtual status_t init3A();
+    virtual status_t deinit3A();
     virtual void getDefaultParams(CameraParameters *params, CameraParameters *intel_params);
     virtual status_t setAeMode(AeMode mode);
     virtual AeMode getAeMode();
@@ -319,9 +314,6 @@ public:
 
     // Only supported by Intel 3A
     virtual bool isIntel3A() { return false; }
-    virtual status_t initIntel3A(const SensorParams *param_files, AtomISP *isp, const char *otpInjectFile = NULL) { return INVALID_OPERATION; }
-    virtual status_t unInitIntel3A() { return INVALID_OPERATION; }
-
     virtual status_t getAeManualBrightness(float *ret) { return INVALID_OPERATION; }
     virtual size_t   getAeMaxNumWindows() { return 0; }
     virtual size_t   getAfMaxNumWindows() { return 0; }
@@ -454,7 +446,6 @@ private:
     void initFileInject();
     void initDriverVersion(void);
     void initFrameConfig();
-    status_t init3A();
 
     status_t configurePreview();
     status_t startPreview();
@@ -646,7 +637,6 @@ private:
     int mSessionId; // uniquely identify each session
 
     SensorType mSensorType;
-    I3AControls *m3AControls;
     struct cameraInfo *mCameraInput;
 
     bool mLowLight;

@@ -156,7 +156,13 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mAAA = AtomAAA::getInstance();
+    status = mISP->init();
+    if (status != NO_ERROR) {
+        LOGE("Error initializing ISP");
+        goto bail;
+    }
+
+    mAAA = AtomAAA::getInstance(mISP);
     if (mAAA == NULL) {
         LOGE("error creating AAA");
         goto bail;
@@ -168,10 +174,8 @@ status_t ControlThread::init()
     } else {
         m3AControls = mISP;
     }
-    mISP->set3AControls(m3AControls);
-    status = mISP->init();
-    if (status != NO_ERROR) {
-        LOGE("Error initializing ISP");
+    if (m3AControls->init3A() != NO_ERROR) {
+        LOGE("Error initializing 3A controls");
         goto bail;
     }
 
@@ -188,14 +192,12 @@ status_t ControlThread::init()
     }
 
     CameraDump::setDumpDataFlag();
-    if (CameraDump::isDumpImageEnable()) {
-        mCameraDump = CameraDump::getInstance();
-        if (mCameraDump == NULL) {
-            LOGE("error creating CameraDump");
-            goto bail;
-        }
-        mCameraDump->set3AControls(m3AControls);
+    mCameraDump = CameraDump::getInstance();
+    if (mCameraDump == NULL) {
+        LOGE("error creating CameraDump");
+        goto bail;
     }
+    mCameraDump->set3AControls(m3AControls);
 
     // we implement the ICallbackPreview interface, so pass
     // this as argument
@@ -399,6 +401,8 @@ void ControlThread::deinit()
 
     if (mParamCache != NULL)
         free(mParamCache);
+
+    m3AControls->deinit3A();
 
     if (mISP != NULL) {
         delete mISP;
@@ -1350,6 +1354,9 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     }
 
     mISP->detachObserver(mPreviewThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+
+    // we only need to attach the 3AThread to preview stream for RAW type of cameras
+    // when we use the 3A algorithm running on Atom
     if (m3AControls->isIntel3A())
         mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
     if (oldState == STATE_PREVIEW_VIDEO
@@ -4843,11 +4850,9 @@ status_t ControlThread::processParamRawDataFormat(const CameraParameters *oldPar
         if (newVal == "bayer") {
             CameraDump::setDumpDataFlag(CAMERA_DEBUG_DUMP_RAW);
             mCameraDump = CameraDump::getInstance();
-            mCameraDump->set3AControls(m3AControls);
         } else if (newVal == "yuv") {
             CameraDump::setDumpDataFlag(CAMERA_DEBUG_DUMP_YUV);
             mCameraDump = CameraDump::getInstance();
-            mCameraDump->set3AControls(m3AControls);
         } else
             CameraDump::setDumpDataFlag(RAW_NONE);
     }

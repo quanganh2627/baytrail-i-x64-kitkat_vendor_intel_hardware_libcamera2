@@ -105,7 +105,7 @@ class AtomAAA : public I3AControls {
 // constructor/destructor
 private:
     static AtomAAA* mInstance;
-    AtomAAA();
+    AtomAAA(AtomISP *anISP);
     int setFpnTable(const ia_frame *fpn_table);
 
     // Common functions for 3A, GBCE, AF etc.
@@ -150,9 +150,13 @@ private:
                               struct atomisp_sensor_mode_data *sensor_mode_data);
 
 public:
-    static AtomAAA* getInstance() {
+    static AtomAAA* getInstance(AtomISP *anISP = NULL) {
         if (mInstance == NULL) {
-            mInstance = new AtomAAA();
+            if (anISP == NULL) {
+                LOGE("trying to get Intel 3A class before initializing it ");
+                return NULL;
+            }
+            mInstance = new AtomAAA(anISP);
         }
         return mInstance;
     }
@@ -161,8 +165,8 @@ public:
     bool is3ASupported() { return mHas3A; }
 
     // Initialization functions
-    virtual status_t initIntel3A(const SensorParams *param_files, AtomISP *isp, const char *otpInjectFile = NULL);
-    virtual status_t unInitIntel3A();
+    virtual status_t init3A();
+    virtual status_t deinit3A();
     virtual status_t switchModeAndRate(AtomMode mode, float fps);
 
     // Getters and Setters

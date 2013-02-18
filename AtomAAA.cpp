@@ -31,6 +31,14 @@
 namespace android {
 static AtomISP *gISP; // See BZ 61293
 
+/**
+ * When image data injection is used, read OTP data from
+ * this file.
+ *
+ * Note: camera HAL working directory is "/data" (at least upto ICS)
+ */
+static const char *privateOtpInjectFileName = "otp_data.bin";
+
 #if ENABLE_PROFILING
     #define PERFORMANCE_TRACES_AAA_PROFILER_START() \
         do { \
@@ -108,7 +116,7 @@ static ia_3a_af_hp_status cb_focus_home_position(void)
 
 AtomAAA* AtomAAA::mInstance = NULL;
 
-AtomAAA::AtomAAA() :
+AtomAAA::AtomAAA(AtomISP *anISP) :
     mHas3A(false)
     ,mSensorType(SENSOR_TYPE_NONE)
     ,mAfMode(CAM_AF_MODE_NOT_SET)
@@ -118,15 +126,16 @@ AtomAAA::AtomAAA() :
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
     ,mFocusPosition(0)
     ,mStillAfStart(0)
-    ,mISP(NULL)
+    ,mISP(anISP)
 {
     LOG1("@%s", __FUNCTION__);
     mPrintFunctions.vdebug = vdebug;
     mPrintFunctions.verror = verror;
     mPrintFunctions.vinfo  = vinfo;
 
-    gISP = NULL;
+    gISP = anISP;
     memset(&m3ALibState, 0, sizeof(AAALibState));
+    mSensorType = PlatformData::sensorType(mISP->getCurrentCameraId());
 }
 
 AtomAAA::~AtomAAA()
@@ -135,25 +144,31 @@ AtomAAA::~AtomAAA()
     mInstance = NULL;
 }
 
-status_t AtomAAA::initIntel3A(const SensorParams *sensorParameters, AtomISP *isp, const char *otpInjectFile)
+status_t AtomAAA::init3A()
 {
     Mutex::Autolock lock(m3aLock);
-    int init_result;
-    mISP = isp;
-    gISP = isp;
-    init_result = ciAdvInit(sensorParameters, otpInjectFile);
-    if (init_result == 0) {
-        mSensorType = SENSOR_TYPE_RAW;
-        mHas3A = true;
-    } else {
-        mSensorType = SENSOR_TYPE_SOC;
+    status_t status;
+    int init_result = 0;
+    SensorParams sensorParams;
+    const char* otp_file = mISP->isFileInjectionEnabled()? privateOtpInjectFileName: NULL;
+
+    status = mISP->getSensorParams(&sensorParams);
+    if (status != NO_ERROR) {
+        LOGE("Error retrieving sensor params");
+        return status;
     }
+
+    if (mSensorType == SENSOR_TYPE_RAW) { //TODO: To be removed, now AtomAAA is used only for RAW sensors
+        init_result = ciAdvInit(&sensorParams, otp_file);
+        mHas3A = true;
+    }
+
     LOG1("@%s: tuning_3a_file = \"%s\", has3a %d, initRes %d, otpInj %s",
-         __FUNCTION__, (sensorParameters == NULL ? "" : sensorParameters->tuning3aFile), mHas3A, init_result, otpInjectFile);
+         __FUNCTION__, sensorParams.tuning3aFile, mHas3A, init_result, otp_file);
     return NO_ERROR;
 }
 
-status_t AtomAAA::unInitIntel3A()
+status_t AtomAAA::deinit3A()
 {
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
