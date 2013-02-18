@@ -100,6 +100,8 @@ public:
 
     status_t initDevice();
     status_t init();
+    void deInitDevice();
+    bool isDeviceInitialized() const;
 
     // public types
 public:
@@ -126,6 +128,7 @@ public:
     status_t releaseCaptureBuffers();
 
     inline int getNumBuffers(bool videoMode) { return videoMode? mNumBuffers : mNumPreviewBuffers; }
+    AtomMode getMode() const { return mMode; };
 
     void requestClearDriverState();
     void clearDriverState();

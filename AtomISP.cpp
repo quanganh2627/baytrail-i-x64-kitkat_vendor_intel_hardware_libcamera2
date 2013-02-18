@@ -243,6 +243,30 @@ status_t AtomISP::initDevice()
     return status;
 }
 
+/**
+ * Closes the main device
+ *
+ * This is specifically provided for error recovery and
+ * expected to be called after AtomISP::stop(), where the
+ * rest of the devices are already closed and associated
+ * buffers are all freed.
+ *
+ * TODO: protect AtomISP API agains uninitialized state and
+ *       support direct uninit regardless of the state.
+ */
+void AtomISP::deInitDevice()
+{
+    closeDevice(V4L2_MAIN_DEVICE);
+}
+
+/**
+ * Checks if main device is open
+ */
+bool AtomISP::isDeviceInitialized() const
+{
+    return (video_fds[V4L2_MAIN_DEVICE] >= 0);
+}
+
 status_t AtomISP::init()
 {
     status_t status = NO_ERROR;

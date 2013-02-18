@@ -92,6 +92,7 @@ public:
     status_t startPreview();
     // synchronous (blocking) state machine methods
     status_t stopPreview();
+    status_t errorPreview();
     status_t startRecording();
     status_t stopRecording();
 
@@ -144,6 +145,7 @@ private:
         MESSAGE_ID_START_PREVIEW,
         MESSAGE_ID_RESTART_PREVIEW,
         MESSAGE_ID_STOP_PREVIEW,
+        MESSAGE_ID_ERROR_PREVIEW,
         MESSAGE_ID_START_RECORDING,
         MESSAGE_ID_STOP_RECORDING,
         MESSAGE_ID_TAKE_PICTURE,
@@ -176,6 +178,8 @@ private:
 
         MESSAGE_ID_DEQUEUE_RECORDING,
 
+        // timeout handler
+        MESSAGE_ID_TIMEOUT,
         // max number of messages
         MESSAGE_ID_MAX
     };
@@ -344,6 +348,7 @@ private:
     status_t handleMessageExit(MessageExit *msg);
     status_t handleMessageStartPreview();
     status_t handleMessageStopPreview();
+    status_t handleMessageErrorPreview();
     status_t handleMessageStartRecording();
     status_t handleMessageStopRecording();
     status_t handleMessageTakePicture();
@@ -363,6 +368,7 @@ private:
     status_t handleMessagePanoramaPicture();
     status_t handleMessagePanoramaCaptureTrigger();
     status_t handleMessagePanoramaFinalize(MessagePanoramaFinalize *msg);
+    status_t handleMessageTimeout();
 
     status_t startFaceDetection();
     status_t stopFaceDetection(bool wait=false);

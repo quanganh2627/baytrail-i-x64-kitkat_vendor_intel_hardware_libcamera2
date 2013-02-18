@@ -72,6 +72,11 @@ namespace android {
  */
 #define DEFAULT_HDR_BRACKETING 3
 
+/*
+ * Timeout for ControlThread::waitForAndExecuteMessage()
+ */
+#define MESSAGE_QUEUE_RECEIVE_TIMEOUT_MSEC 5000
+
 // Minimum value of our supported preview FPS
 const int MIN_PREVIEW_FPS = 11;
 // Max value of our supported preview fps:
@@ -494,6 +499,23 @@ status_t ControlThread::stopPreview()
     Message msg;
     msg.id = MESSAGE_ID_STOP_PREVIEW;
     return mMessageQueue.send(&msg, MESSAGE_ID_STOP_PREVIEW);
+}
+
+/**
+ * Sends preview error message to the ControlThread message queue
+ *
+ * Should be called when asynchronous error occurs during
+ * preview streaming. Message handler will try to reset the
+ * camera device and restart the preview.
+ *
+ * See ControlThread::handleMessageErrorPreview()
+ */
+status_t ControlThread::errorPreview()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_ERROR_PREVIEW;
+    return mMessageQueue.send(&msg);
 }
 
 status_t ControlThread::startRecording()
@@ -1287,8 +1309,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     }
 
     mISP->attachObserver(mPreviewThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
-    if (videoMode)
-        mISP->attachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
+    mISP->attachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
     mPreviewThread->setCallback(
             static_cast<ICallbackPreview*>(mPostProcThread.get()),
             ICallbackPreview::OUTPUT_WITH_DATA);
@@ -1307,6 +1328,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOGE("Error starting ISP!");
         mPreviewThread->returnPreviewBuffers();
         mISP->detachObserver(mPreviewThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+        mISP->detachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
     }
 
     return status;
@@ -1344,7 +1366,6 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
         mState == STATE_RECORDING) {
         status = mVideoThread->flushBuffers();
     }
-
     State oldState = mState;
     status = mISP->stop();
     if (status == NO_ERROR) {
@@ -1359,9 +1380,7 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     // when we use the 3A algorithm running on Atom
     if (m3AControls->isIntel3A())
         mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
-    if (oldState == STATE_PREVIEW_VIDEO
-     || oldState == STATE_RECORDING)
-        mISP->detachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
+    mISP->detachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
     mMessageQueue.remove(MESSAGE_ID_DEQUEUE_RECORDING);
 
     status = mPreviewThread->returnPreviewBuffers();
@@ -1561,10 +1580,60 @@ status_t ControlThread::handleMessageStopPreview()
     // Loose our preview window handle and let service maintain
     // it between stop and start
     mPreviewThread->setPreviewWindow(NULL);
-
 preview_stopped:
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_STOP_PREVIEW, status);
+    return status;
+}
+
+/**
+ * Handler for error in preview stream
+ *
+ * Stops the preview core without losing the window handle and
+ * calls AtomISP::deInitDevice() for complete reset to the camera driver.
+ *
+ * AtomISP state is checked specifically in the message queue timeout handler.
+ *
+ * See handleMessageTimeout().
+ */
+status_t ControlThread::handleMessageErrorPreview()
+{
+    LOG1("@%s", __FUNCTION__)
+    status_t status = NO_ERROR;
+    if (mState != STATE_STOPPED && mState != STATE_CAPTURE) {
+        status = stopPreviewCore(true);
+        mISP->deInitDevice();
+        LOGE("Preview was stopped due error in stream, trying to recover (timeout 5s)...");
+    } else {
+        LOGE("Preview stream error unhandled, unexpected state (%d)", mState);
+    }
+
+    return status;
+}
+
+/**
+ * Handler for MessageQueue::receive timeout (5s)
+ *
+ * Initially checks whether we were stopped because of an error in
+ * preview and tries to recover the preview state.
+ */
+status_t ControlThread::handleMessageTimeout()
+{
+    LOG2("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    if (!mISP->isDeviceInitialized()) {
+        status = mISP->init();
+        if (status != NO_ERROR) {
+            LOGE("Error initializing ISP");
+        }
+        bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
+        status = startPreviewCore(videoMode);
+        if (status)
+            LOGE("%s: Restart Preview failed", __FUNCTION__);
+    } else {
+        LOG2("%s: nothing to do", __FUNCTION__);
+    }
+
     return status;
 }
 
@@ -5938,7 +6007,10 @@ status_t ControlThread::waitForAndExecuteMessage()
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     Message msg;
-    mMessageQueue.receive(&msg);
+    // Note: MessageQueue::receive overrides msg in case of new message.
+    // If no messages, we timeout in 5s and execute the timeout handler
+    msg.id = MESSAGE_ID_TIMEOUT;
+    status = mMessageQueue.receive(&msg, MESSAGE_QUEUE_RECEIVE_TIMEOUT_MSEC);
 
     switch (msg.id) {
 
@@ -5952,6 +6024,10 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_STOP_PREVIEW:
             status = handleMessageStopPreview();
+            break;
+
+        case MESSAGE_ID_ERROR_PREVIEW:
+            status = handleMessageErrorPreview();
             break;
 
         case MESSAGE_ID_START_RECORDING:
@@ -6049,6 +6125,10 @@ status_t ControlThread::waitForAndExecuteMessage()
             status = handleMessageRelease();
             break;
 
+        case MESSAGE_ID_TIMEOUT:
+            status = handleMessageTimeout();
+            break;
+
         default:
             LOGE("Invalid message");
             status = BAD_VALUE;
@@ -6088,17 +6168,24 @@ bool ControlThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
     LOG2("@%s", __FUNCTION__);
 
     if (msg) {
-        Message local_msg;
         AtomBuffer *buff = &msg->data.frameBuffer.buff;
         if (msg->id != IAtomIspObserver::MESSAGE_ID_FRAME) {
             LOG1("Received unexpected notify message id %d!", msg->id);
+            if (msg->id == IAtomIspObserver::MESSAGE_ID_ERROR) {
+                LOGE("Error in preview stream");
+                errorPreview();
+            }
             return false;
         }
-        local_msg.id = MESSAGE_ID_DEQUEUE_RECORDING;
-        local_msg.data.dequeueRecording.skipFrame =
+
+        if (mISP->getMode() == MODE_VIDEO) {
+            Message local_msg;
+            local_msg.id = MESSAGE_ID_DEQUEUE_RECORDING;
+            local_msg.data.dequeueRecording.skipFrame =
                (buff->status == FRAME_STATUS_CORRUPTED)
-            || (buff->status == FRAME_STATUS_SKIPPED);
-        mMessageQueue.send(&local_msg);
+                || (buff->status == FRAME_STATUS_SKIPPED);
+            mMessageQueue.send(&local_msg);
+        }
     }
     return false;
 }
