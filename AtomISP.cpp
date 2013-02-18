@@ -2338,9 +2338,6 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
 /**
  * Apply ISP limitations related to supported preview sizes when in video mode.
  *
- * NOTE: this function runs in camera service thread. Protect member accesses accordingly!
- * mCameraInput is safe to read after construction.
- *
  * Workaround 1: with DVS enable, the fps in 1080p recording can't reach 30fps,
  * so check if the preview size is corresponding to recording, if yes, then
  * change preview size to 640x360
