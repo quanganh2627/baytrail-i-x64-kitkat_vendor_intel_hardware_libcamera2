@@ -172,6 +172,7 @@ public:
     void getPostviewFrameFormat(int &width, int &height, int &format) const;
     status_t setSnapshotFrameFormat(int width, int height, int format);
     status_t setVideoFrameFormat(int width, int height, int format = 0);
+    void applyISPLimitations(uint32_t width, uint32_t height, bool videomode);
     bool applyISPVideoLimitations(CameraParameters *params, bool dvsEnabled);
 
     inline int getSnapshotPixelFormat() { return mConfig.snapshot.format; }
@@ -199,6 +200,7 @@ public:
     status_t setXNR(bool enable);
     status_t setLowLight(bool enable);
     status_t setGDC(bool enable);
+    bool getPreviewTooBigForVFPP() { return mPreviewTooBigForVFPP; }
 
     status_t setDVS(bool enable);
     status_t getDvsStatistics(struct atomisp_dis_statistics *stats,
@@ -589,6 +591,7 @@ private:
     AtomBuffer *mRecordingBuffers;
     bool mSwapRecordingDevice;
     bool mRecordingDeviceSwapped;
+    bool mPreviewTooBigForVFPP;
 
     void **mClientSnapshotBuffers;
     bool mUsingClientSnapshotBuffers;

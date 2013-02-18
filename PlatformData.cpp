@@ -296,6 +296,17 @@ bool PlatformData::renderPreviewViaOverlay(int cameraId)
     return i->mCameras[cameraId].mPreviewViaOverlay;
 
 }
+
+unsigned int PlatformData::maxPreviewPixelCountForVFPP(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return 0xFFFFFFFF;
+    }
+    return i->mCameras[cameraId].maxPreviewPixelCountForVFPP;
+}
+
 int PlatformData::overlayRotation(int cameraId)
 {
     PlatformBase *i = getInstance();

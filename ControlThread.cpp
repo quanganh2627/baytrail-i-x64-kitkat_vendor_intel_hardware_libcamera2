@@ -5150,6 +5150,8 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
         previewFormatChanged = true;
     }
 
+    mISP->applyISPLimitations(previewWidth, previewHeight, videoMode);
+
     return status;
 }
 
