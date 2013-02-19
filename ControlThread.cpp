@@ -2218,19 +2218,18 @@ status_t ControlThread::getFlashExposedSnapshot(AtomBuffer *snapshotBuffer, Atom
     LOG2("@%s:", __FUNCTION__);
     status_t status = NO_ERROR;
     for (int cnt = 0;;) {
-        enum atomisp_frame_status stat;
 
-        status = mISP->getSnapshot(snapshotBuffer, postviewBuffer, &stat);
+        status = mISP->getSnapshot(snapshotBuffer, postviewBuffer);
         if (status != NO_ERROR) {
             LOGE("%s: Error in grabbing snapshot!", __FUNCTION__);
             break;
         }
 
-        if (stat == ATOMISP_FRAME_STATUS_FLASH_EXPOSED) {
+        if (snapshotBuffer->status == FRAME_STATUS_FLASH_EXPOSED) {
             LOG2("flash exposed, frame %d", cnt);
             break;
         }
-        else if (stat == ATOMISP_FRAME_STATUS_FLASH_FAILED) {
+        else if (snapshotBuffer->status  == FRAME_STATUS_FLASH_FAILED) {
             LOGE("%s: flash fail, frame %d", __FUNCTION__, cnt);
             break;
         }
@@ -7155,13 +7154,11 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
 {
     LOG2("@%s", __FUNCTION__);
     AtomBuffer buff;
-    nsecs_t timestamp;
     status_t status = NO_ERROR;
-    atomisp_frame_status frameStatus;
 
-    status = mISP->getRecordingFrame(&buff, &timestamp, &frameStatus);
+    status = mISP->getRecordingFrame(&buff);
     if (status == NO_ERROR) {
-       if (frameStatus != ATOMISP_FRAME_STATUS_CORRUPTED) {
+       if (buff.status != FRAME_STATUS_CORRUPTED) {
             // Check whether driver has run out of buffers
             if (!mISP->dataAvailable()) {
                 LOGE("Video frame dropped, buffers reserved : %d video encoder, %d video snapshot",
@@ -7187,13 +7184,13 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
                     mVideoSnapshotrequested--;
                     encodeVideoSnapshot(buff);
                 }
-                mVideoThread->video(&buff, timestamp);
+                mVideoThread->video(&buff);
                 mRecordingBuffers.push(buff);
             } else {
                 mISP->putRecordingFrame(&buff);
             }
         } else {
-            LOGW("Recording frame %d corrupted, ignoring", buff.id);
+            LOGD("Recording frame %d corrupted, ignoring", buff.id);
             mISP->putRecordingFrame(&buff);
         }
     } else {

@@ -142,6 +142,7 @@ AtomISP::AtomISP(int cameraId) :
     ,mFlashTorchSetting(0)
     ,mContCaptPrepared(false)
     ,mContCaptPriority(false)
+    ,mInitialSkips(0)
     ,mConfigSnapshotPreviewDevice(V4L2_MAIN_DEVICE)
     ,mConfigLastDevice(V4L2_PREVIEW_DEVICE)
     ,mPreviewDevice(V4L2_MAIN_DEVICE)
@@ -163,6 +164,7 @@ AtomISP::AtomISP(int cameraId) :
     for(int i = 0; i < V4L2_MAX_DEVICE_COUNT; i++) {
         video_fds[i] = -1;
         mDevices[i].state = DEVICE_CLOSED;
+        mDevices[i].initialSkips = 0;
     }
 
     CLEAR(mSnapshotBuffers);
@@ -959,6 +961,16 @@ status_t AtomISP::configure(AtomMode mode)
 
     if (status == NO_ERROR)
         mMode = mode;
+
+    /**
+     * Some sensors produce corrupted first frames
+     * value is provided by the sensor driver as frames to skip.
+     * value is specific to configuration, so we query it here after
+     * devices are configured and propagate the value to distinct devices
+     * at start.
+     */
+    mInitialSkips = getNumOfSkipFrames();
+
     return status;
 }
 
@@ -1142,7 +1154,6 @@ status_t AtomISP::startPreview()
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
     status_t status = NO_ERROR;
-    int i, initialSkips;
 
     ret = startDevice(mPreviewDevice, mNumPreviewBuffers);
     if (ret < 0) {
@@ -1151,25 +1162,8 @@ status_t AtomISP::startPreview()
         goto err;
     }
 
-    /**
-     * Some sensors produce corrupted first frames
-     * If this sensor needs it then we skip
-     */
-    initialSkips = getNumOfSkipFrames();
-    for (i = 0; i < initialSkips; i++) {
-        AtomBuffer p;
-        ret = getPreviewFrame(&p);
-        if (ret == NO_ERROR) {
-            ret = putPreviewFrame(&p);
-            if (ret != NO_ERROR) {
-                LOGE("Failed queueing preview frame!");
-            }
-        }
-    }
-
     mNumPreviewBuffersQueued = mNumPreviewBuffers;
 
-    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("Skip--", initialSkips);
     return status;
 
 err:
@@ -1283,7 +1277,6 @@ status_t AtomISP::startRecording()
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
     status_t status = NO_ERROR;
-    int i, initialSkips;
 
     ret = startDevice(mRecordingDevice, mNumBuffers);
     if (ret < 0) {
@@ -1301,33 +1294,6 @@ status_t AtomISP::startRecording()
 
     mNumPreviewBuffersQueued = mNumPreviewBuffers;
     mNumRecordingBuffersQueued = mNumBuffers;
-
-    /**
-     * Some sensors produce corrupted first frames
-     * If this sensor needs it then we skip
-     * TODO: This is wrong place to do it, it should be done
-     * in the real consumer loop, since here we block the
-     * start stack until frames come out.
-     */
-    initialSkips = getNumOfSkipFrames();
-    for (i = 0; i < initialSkips; i++) {
-        AtomBuffer p;
-        ret = getPreviewFrame(&p);
-        if (ret == NO_ERROR) {
-            ret = putPreviewFrame(&p);
-            if (ret != NO_ERROR) {
-                LOGE("Failed queueing preview frame!");
-            }
-            ret = getRecordingFrame(&p);
-            if (ret == NO_ERROR) {
-                ret = putRecordingFrame(&p);
-                if (ret != NO_ERROR) {
-                    LOGE("Failed queueing recording frame!");
-                }
-            }
-
-        }
-    }
 
     return status;
 
@@ -1697,11 +1663,10 @@ status_t AtomISP::startCapture()
 
 
     /**
-     * Some sensors produce corrupted first frames
-     * If this sensor needs it then we skip
+     * handle initial skips here for normal capture mode
      */
     if (mMode != MODE_CONTINUOUS_CAPTURE)
-        initialSkips = getNumOfSkipFrames();
+        initialSkips = mDevices[V4L2_MAIN_DEVICE].initialSkips;
     else
         initialSkips = 0;
     for (i = 0; i < initialSkips; i++) {
@@ -1712,10 +1677,11 @@ status_t AtomISP::startCapture()
         if (ret == NO_ERROR)
             ret = putSnapshot(&s,&p);
     }
+    mDevices[V4L2_MAIN_DEVICE].initialSkips = 0;
+    mDevices[V4L2_POSTVIEW_DEVICE].initialSkips = 0;
 
 nopostview:
     mNumCapturegBuffersQueued = snapNum;
-    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("Skip--", initialSkips);
     return status;
 
 errorStopFirst:
@@ -2047,6 +2013,7 @@ int AtomISP::startDevice(int device, int buffer_count)
 
     mDevices[device].frameCounter = 0;
     mDevices[device].state = DEVICE_STARTED;
+    mDevices[device].initialSkips = mInitialSkips;
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("DeviceId:", device);
     return ret;
@@ -3651,7 +3618,7 @@ status_t AtomISP::returnRecordingBuffers()
 
 
 
-status_t AtomISP::getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameStatus)
+status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
     Mutex::Autolock lock(mDevices[mPreviewDevice].mutex);
@@ -3671,15 +3638,8 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameS
     mPreviewBuffers[index].ispPrivate = mSessionId;
     mPreviewBuffers[index].capture_timestamp = buf.timestamp;
     mPreviewBuffers[index].frameSequenceNbr = buf.sequence;
-    // atom flag is an extended set of flags, so map V4L2 flags
-    // we are interested into atomisp_frame_status
-    if (buf.flags & V4L2_BUF_FLAG_ERROR)
-        mPreviewBuffers[index].status = (FrameBufferStatus)ATOMISP_FRAME_STATUS_CORRUPTED;
-    else
-        mPreviewBuffers[index].status = (FrameBufferStatus)buf.reserved;
+    mPreviewBuffers[index].status = (FrameBufferStatus)buf.reserved;
 
-    if (frameStatus)
-        *frameStatus = (atomisp_frame_status)mPreviewBuffers[index].status;
     *buff = mPreviewBuffers[index];
 
     mNumPreviewBuffersQueued--;
@@ -3762,7 +3722,7 @@ status_t AtomISP::setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs
     return NO_ERROR;
 }
 
-status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp, atomisp_frame_status *frameStatus)
+status_t AtomISP::getRecordingFrame(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
     struct v4l2_buffer buf;
@@ -3782,21 +3742,9 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp, atomis
     mRecordingBuffers[index].frameCounter = mDevices[mRecordingDevice].frameCounter;
     mRecordingBuffers[index].ispPrivate = mSessionId;
     mRecordingBuffers[index].capture_timestamp = buf.timestamp;
+    mRecordingBuffers[index].status = (FrameBufferStatus) buf.reserved;
     *buff = mRecordingBuffers[index];
     buff->stride = mConfig.recording.stride;
-
-    // time is get from ISP driver, it's realtime
-    if (timestamp)
-        *timestamp = (buf.timestamp.tv_sec)*1000000000LL + (buf.timestamp.tv_usec)*1000LL;
-
-    if (frameStatus) {
-        *frameStatus = (atomisp_frame_status)buf.reserved;
-
-        // atom flag is an extended set of flags, so map V4L2 flags
-        // we are interested into atomisp_frame_status
-        if (buf.flags & V4L2_BUF_FLAG_ERROR)
-            *frameStatus = ATOMISP_FRAME_STATUS_CORRUPTED;
-    }
 
     mNumRecordingBuffersQueued--;
 
@@ -3850,8 +3798,7 @@ status_t AtomISP::setSnapshotBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bo
     return NO_ERROR;
 }
 
-status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
-                              atomisp_frame_status *snapshotStatus)
+status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 {
     LOG1("@%s", __FUNCTION__);
     struct v4l2_buffer buf;
@@ -3868,9 +3815,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
     LOG1("Device: %d. Grabbed frame of size: %d", V4L2_MAIN_DEVICE, buf.bytesused);
     mSnapshotBuffers[snapshotIndex].capture_timestamp = buf.timestamp;
     mSnapshotBuffers[snapshotIndex].frameSequenceNbr = buf.sequence;
-
-    if (snapshotStatus)
-        *snapshotStatus = (atomisp_frame_status)buf.reserved;
+    mSnapshotBuffers[snapshotIndex].status = (FrameBufferStatus)buf.reserved;
 
     if (isDumpRawImageReady()) {
         postviewIndex = snapshotIndex;
@@ -3890,6 +3835,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
 
     mPostviewBuffers.editItemAt(postviewIndex).capture_timestamp = buf.timestamp;
     mPostviewBuffers.editItemAt(postviewIndex).frameSequenceNbr = buf.sequence;
+    mPostviewBuffers.editItemAt(postviewIndex).status = (FrameBufferStatus)buf.reserved;
 
     if (snapshotIndex != postviewIndex ||
             snapshotIndex >= MAX_V4L2_BUFFERS) {
@@ -4032,6 +3978,17 @@ int AtomISP::grabFrame(int device, struct v4l2_buffer *buf)
     // inc frame counter but do no wrap to negative numbers
     ++mDevices[device].frameCounter;
     mDevices[device].frameCounter &= INT_MAX;
+
+    // atomisp_frame_status is a proprietary extension to v4l2_buffer flags
+    // that driver places into reserved keyword
+    // translate error flag into corrupt frame
+    if (buf->flags & V4L2_BUF_FLAG_ERROR)
+        buf->reserved = (unsigned int) ATOMISP_FRAME_STATUS_CORRUPTED;
+    // translate initial skips into corrupt frame
+    if (mDevices[device].initialSkips > 0) {
+        buf->reserved = (unsigned int) ATOMISP_FRAME_STATUS_CORRUPTED;
+        mDevices[device].initialSkips--;
+    }
 
     return buf->index;
 }
