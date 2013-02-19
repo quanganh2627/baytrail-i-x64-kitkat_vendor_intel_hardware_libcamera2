@@ -47,6 +47,7 @@ public:
         //ev
         pcam->maxEV = "6";
         pcam->minEV = "-6";
+        pcam->supportedBurstLength = "1,3,5,9,10";
 
         // If the back flash is supported, let's add the rest of the
         // supported scene modes that require flash:
