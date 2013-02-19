@@ -124,9 +124,6 @@ AtomAAA::AtomAAA() :
     mPrintFunctions.vdebug = vdebug;
     mPrintFunctions.verror = verror;
     mPrintFunctions.vinfo  = vinfo;
-    mIspSettings.GBCE_strength = DEFAULT_GBCE_STRENGTH;
-    mIspSettings.GBCE_enabled = DEFAULT_GBCE;
-    mIspSettings.inv_gamma = false;
 
     gISP = NULL;
     memset(&m3ALibState, 0, sizeof(AAALibState));
@@ -171,16 +168,6 @@ status_t AtomAAA::unInit()
     mAwbMode = CAM_AWB_MODE_NOT_SET;
     mFlashMode = CAM_AE_FLASH_MODE_NOT_SET;
     mFocusPosition = 0;
-    return NO_ERROR;
-}
-
-status_t AtomAAA::applyIspSettings()
-{
-    Mutex::Autolock lock(m3aLock);
-    LOG1("@%s", __FUNCTION__);
-    if(!mHas3A)
-        return INVALID_OPERATION;
-    ia_3a_gbce_set_strength(mIspSettings.GBCE_strength);
     return NO_ERROR;
 }
 

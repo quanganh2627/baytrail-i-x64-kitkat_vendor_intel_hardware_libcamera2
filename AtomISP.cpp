@@ -1930,15 +1930,7 @@ int AtomISP::prepareDevice(int device, int buffer_count)
     int fd = video_fds[device];
     LOG1(" prepareDevice fd = %d", fd);
 
-    if (device == V4L2_MAIN_DEVICE &&
-        mAAA->is3ASupported() &&
-        mAAA->applyIspSettings() != NO_ERROR) {
-        LOGE("Failed to apply 3A ISP settings. Disabling 3A!");
-    } else {
-        LOG1("Applied 3A ISP settings!");
-    }
-
-    //parameter intialized before the streamon
+    //parameter initialized before the streamon
     //request, query and mmap the buffer and save to the pool
     ret = createBufferPool(device, buffer_count);
     if (ret < 0)
