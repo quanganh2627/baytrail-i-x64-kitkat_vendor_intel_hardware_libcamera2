@@ -440,7 +440,11 @@ status_t PictureThread::handleMessageFetchBuffers(MessageAllocBufs *msg)
 status_t PictureThread::allocateInputBuffers(int width, int height, int numBufs)
 {
     LOG1("@%s size (%dx%d) num %d", __FUNCTION__, width, height, numBufs);
-    size_t bufferSize = frameSize(V4L2_PIX_FMT_NV12, width, height);
+    // temporary workaround until CSS supports buffers with different strides
+    // until then we need to align all buffers to display subsystem stride
+    // requirements.... even the snapshot buffers that do not go to screen
+    int stride = SGXandDisplayStride(width);
+    size_t bufferSize = frameSize(V4L2_PIX_FMT_NV12, stride, height);
 
     if(numBufs == 0)
         return NO_ERROR;
@@ -460,6 +464,7 @@ status_t PictureThread::allocateInputBuffers(int width, int height, int numBufs)
         }
         mInputBufferArray[i].width = width;
         mInputBufferArray[i].height = height;
+        mInputBufferArray[i].stride = stride;
         mInputBufferArray[i].format = V4L2_PIX_FMT_NV12;
         mInputBufferArray[i].size = bufferSize;
         mInputBuffDataArray[i] = (char *) mInputBufferArray[i].buff->data;
@@ -937,9 +942,10 @@ status_t PictureThread::scaleMainPic(AtomBuffer *mainBuf)
     status_t status = NO_ERROR;
 
     if ((mainBuf->width > mScaledPic.width) ||
-        (mainBuf->height > mScaledPic.height)) {
-        LOG1("Need to Scale from (%dx%d) --> (%d,%d)",mainBuf->width, mainBuf->height,
-                                                      mScaledPic.width, mScaledPic.height);
+        (mainBuf->height > mScaledPic.height) ||
+        (mainBuf->stride > mScaledPic.width)) {
+        LOG1("Need to scale or trim from (%dx%d) s(%d)--> (%d,%d) s(%d)",mainBuf->width, mainBuf->height,mainBuf->stride,
+                                                      mScaledPic.width, mScaledPic.height, mScaledPic.stride);
 
         if (mScaledPic.buff != NULL)
             mScaledPic.buff->release(mScaledPic.buff);
