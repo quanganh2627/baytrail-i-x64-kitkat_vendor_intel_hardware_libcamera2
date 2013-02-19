@@ -70,9 +70,9 @@ public:
         // front camera settings
         pcam->sensorType = SENSOR_TYPE_SOC;
         pcam->facing = CAMERA_FACING_FRONT;
-        pcam->orientation = 90;
+        pcam->orientation = 270;
         pcam->dvs = false;
-        pcam->flipping = PlatformData::SENSOR_FLIP_H;
+        pcam->flipping = PlatformData::SENSOR_FLIP_V; /* vertical flip needed */
         pcam->maxSnapshotWidth = RESOLUTION_720P_WIDTH;
         pcam->maxSnapshotHeight = RESOLUTION_720P_HEIGHT;
         pcam->defaultBurstLength = "";
