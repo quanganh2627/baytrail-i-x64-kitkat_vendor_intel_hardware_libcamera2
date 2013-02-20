@@ -29,7 +29,7 @@ namespace android {
 
 const char *cpfConfigPath = "/etc/atomisp/";  // Where CPF files are located
 // FIXME: The spec for following is "dr%02d[0-9][0-9]??????????????.cpf"
-const char *cpfConfigPattern = "*.cpf";  // How CPF file name should look
+const char *cpfConfigPattern = "%02d*.cpf";  // How CPF file name should look
 const char *subdevPathName = "/dev/v4l-subdev%d";  // Subdevs
 const char *sysfsPath = "/sys/class/video4linux";  // Drivers
 const char *mcPathName = "/dev/media0";  // Media Controller
