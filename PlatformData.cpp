@@ -131,6 +131,9 @@ PlatformBase* PlatformData::getInstance(void)
 #elif   MERR_VV
         mInstance = new PlatformSaltBay();
 
+#elif   BODEGABAY
+        mInstance = new PlatformBodegaBay();
+
 #elif   YUKKA
         mInstance = new PlatformYukka();
 
