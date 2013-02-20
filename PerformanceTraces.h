@@ -48,9 +48,7 @@ namespace PerformanceTraces {
   public:
     static void enable(bool set) STUB_BODY
     static void start(void) STUB_BODY
-    static void enableBreakdown(bool set) STUB_BODY
-    static void step(const char *func, const char* note = 0) STUB_BODY
-    static void stop(void) STUB_BODY
+    static void stop(int mFrameNum) STUB_BODY
   };
 
   class Launch2FocusLock {
@@ -63,7 +61,7 @@ namespace PerformanceTraces {
   class FaceLock {
   public:
     static void enable(bool set) STUB_BODY
-    static void start(void) STUB_BODY
+    static void start(int frameNum) STUB_BODY
     static void getCurFrameNum(const int mFrameNum) STUB_BODY
     static void stop(int mFaceNum = 0) STUB_BODY
   };
@@ -72,13 +70,9 @@ namespace PerformanceTraces {
   class Shot2Shot {
   public:
     static void enable(bool set) STUB_BODY
-    static void enableBreakdown(bool set) STUB_BODY
-    static void start(int frameCounter = -1) STUB_BODY
-    static void autoFocus(int frameCounter = -1) STUB_BODY
+    static void start(void) STUB_BODY
     static void takePictureCalled(void) STUB_BODY
-    static void autoFocusDone(void) STUB_BODY
-    static void step(const char *func, const char* note = 0, int frameCounter = -1) STUB_BODY
-    static void stop(int frameCounter = -1) STUB_BODY
+    static void stop(void) STUB_BODY
   };
 
   class ShutterLag {
@@ -104,6 +98,25 @@ namespace PerformanceTraces {
     static void stop(void) STUB_BODY
   };
 
+/**
+ * PnP use following to breakdown all current PI/KPIs(L2P, S2S, HDRS2P, FaceLock,
+ * FocusLock, Back/FrontCameraSwitch, StillVideoModeSwitch)
+ */
+  class PnPBreakdown {
+  public:
+    static void start(void);
+    static void enable(bool set) STUB_BODY
+    static void step(const char *func, const char* note = 0, const int mFrameNum = -1) STUB_BODY
+    static void stop(void);
+  };
+
+  class HDRShot2Preview {
+  public:
+    static void start(void);
+    static void enable(bool set) STUB_BODY
+    static void HDRCalled(void) STUB_BODY
+    static void stop(void);
+  };
 
   /**
    * Helper function to disable all the performance traces
@@ -111,32 +124,29 @@ namespace PerformanceTraces {
   void reset(void);
 
  /**
-   * Helper macro to call PerformanceTraces::Launch2Preview::step() with
+   * Helper macro to call PerformanceTraces::Breakdown::step() with
    * the proper function name, and pass additional arguments.
    *
    * @param note textual description of the trace point
    */
-  #define PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP(note) \
-    PerformanceTraces::Launch2Preview::step(__FUNCTION__, note)
+  #define PERFORMANCE_TRACES_BREAKDOWN_STEP(note) \
+    PerformanceTraces::PnPBreakdown::step(__FUNCTION__, note)
+
 
  /**
-   * Helper macro to call PerformanceTraces::Shot2Shot::step() with
+   * Helper macro to call PerformanceTraces::Breakdown::step() with
    * the proper function name, and pass additional arguments.
    *
    * @param note textual description of the trace point
    * @param frameCounter frame id this trace relates to
    *
-   * See also PERFORMANCE_TRACES_SHOT2SHOT_NOPARAM()
+   * See also PERFORMANCE_TRACES_BREAKDOWN_STEP_NOPARAM()
    */
-  #define PERFORMANCE_TRACES_SHOT2SHOT_STEP(note, frameCounter) \
-    PerformanceTraces::Shot2Shot::step(__FUNCTION__, note, frameCounter)
+  #define PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM(note, mFrameNum) \
+    PerformanceTraces::PnPBreakdown::step(__FUNCTION__, note, mFrameNum)
 
-  /**
-   * Helper macro to call PerformanceTraces::Shot2Shot::step() with
-   * the proper function name.
-   */
-  #define PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM() \
-    PerformanceTraces::Shot2Shot::step(__FUNCTION__)
+  #define PERFORMANCE_TRACES_BREAKDOWN_STEP_NOPARAM() \
+    PerformanceTraces::PnPBreakdown::step(__FUNCTION__)
 
   /**
    * Helper macro to call when a take picture message
@@ -145,25 +155,27 @@ namespace PerformanceTraces {
   #define PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE() \
       do { \
           PerformanceTraces::Shot2Shot::takePictureCalled(); \
-          PerformanceTraces::Shot2Shot::step(__FUNCTION__);  \
+          PerformanceTraces::PnPBreakdown::step(__FUNCTION__); \
       } while(0)
 
   /**
-   * Helper macro to call PerformanceTraces::Shot2Shot::autoFocusDone() with
-   * the proper function name.
+   * Helper macro to call when a take picture message
+   * is actually handled.
    */
-  #define PERFORMANCE_TRACES_SHOT2SHOT_AUTO_FOCUS_DONE() \
+  #define PERFORMANCE_TRACES_HDR_SHOT2PREVIEW_CALLED() \
       do { \
-          PerformanceTraces::Shot2Shot::step(__FUNCTION__);  \
+          PerformanceTraces::HDRShot2Preview::HDRCalled(); \
+          PerformanceTraces::PnPBreakdown::step(__FUNCTION__); \
       } while(0)
 
-  /**
+
+ /**
    * Helper macro to call when takePicture HAL method is called.
    * This step is used in multiple metrics.
    */
   #define PERFORMANCE_TRACES_TAKE_PICTURE_QUEUE() \
       do { \
-          PerformanceTraces::Shot2Shot::step(__FUNCTION__);  \
+          PerformanceTraces::PnPBreakdown::step(__FUNCTION__);  \
           PerformanceTraces::ShutterLag::takePictureCalled(); \
       } while(0)
 
@@ -175,11 +187,10 @@ namespace PerformanceTraces {
    */
   #define PERFORMANCE_TRACES_PREVIEW_SHOWN(x) \
       do { \
-          if (x == 1) {  \
-              PerformanceTraces::Launch2Preview::stop(); \
-              PerformanceTraces::FaceLock::start(); \
-          } \
+          PerformanceTraces::Launch2Preview::stop(x); \
+          PerformanceTraces::HDRShot2Preview::stop(); \
           PerformanceTraces::SwitchCameras::stop(); \
+          PerformanceTraces::FaceLock::start(x); \
       } while(0)
 
   /**
@@ -188,8 +199,9 @@ namespace PerformanceTraces {
    */
   #define PERFORMANCE_TRACES_LAUNCH_START() \
       do { \
-          PerformanceTraces::Launch2Preview::start(); \
+          PerformanceTraces::PnPBreakdown::start(); \
           PerformanceTraces::Launch2FocusLock::start(); \
+          PerformanceTraces::Launch2Preview::start(); \
       } while(0)
 
 }; // ns PerformanceTraces

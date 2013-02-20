@@ -234,6 +234,7 @@ static int atom_take_picture(struct camera_device * device)
     LOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
+    PerformanceTraces::HDRShot2Preview::start();
     atom_camera *cam = (atom_camera *)(device->priv);
     return cam->control_thread->takePicture();
 }
@@ -397,7 +398,7 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
     *device = &camera_dev->common;
 
     atom_instances++;
-    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("Open_HAL_Done");
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("Open_HAL_Done");
     return 0;
 }
 
@@ -418,6 +419,7 @@ static int ATOM_CloseCameraHardware(hw_device_t* device)
 
     free(camera_dev);
 
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("Close_HAL_Done");
     atom_instances--;
     return 0;
 }

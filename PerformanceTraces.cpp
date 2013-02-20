@@ -96,10 +96,11 @@ static PerformanceTimer gShot2Shot;
 static PerformanceTimer gShutterLag;
 static PerformanceTimer gSwitchCameras;
 static PerformanceTimer gAAAProfiler;
+static PerformanceTimer gPnPBreakdown;
+static PerformanceTimer gHDRShot2Preview;
 
-static bool gShot2ShotBreakdown = false;
-static bool gLaunch2PreviewBreakdown = false;
 static int gFaceLockFrame = -1;
+static bool gHDRCalled = false;
 static bool gSwitchCamerasCalled = false;
 static bool gSwitchCamerasOriginalVideoMode = false;
 static bool gSwitchCamerasVideoMode = false;
@@ -111,11 +112,9 @@ static int gSwitchCamerasOriginalCameraId = 0;
  */
 void reset(void)
 {
-    gShot2ShotBreakdown = false;
-    gLaunch2PreviewBreakdown = false;
     gSwitchCamerasCalled = false;
     gSwitchCamerasVideoMode = false;
-
+    gHDRCalled =false;
     gLaunch2Preview.mRequested = false;
     gShot2Shot.mRequested = false;
     gAAAProfiler.mRequested = false;
@@ -138,45 +137,28 @@ void Launch2Preview::enable(bool set)
 void Launch2Preview::start(void)
 {
     if (gLaunch2Preview.isRequested()) {
-        gLaunch2Preview.formattedTrace("Launch2Preview", __FUNCTION__);
+        if (gPnPBreakdown.isRunning())
+            PnPBreakdown::step("Launch2Preview::start");
         gLaunch2Preview.start();
     }
 }
 
 /**
- * Enable more detailed breakdown analysis that shows how long
- * intermediate steps took time.
- */
-void Launch2Preview::enableBreakdown(bool set)
-{
-    gLaunch2PreviewBreakdown = set;
-}
-
-
-/**
- * Mark an intermedia step in the Launch2Preview trace
- *
- * @arg note a string printed with the breakdown trace
- */
-void Launch2Preview::step(const char* func, const char* note)
-{
-    if (gLaunch2Preview.isRunning() && gLaunch2PreviewBreakdown) {
-        if (!note)
-            note = "";
-        LOGD("Launch2Preview step %s:%s, Time: %lld us, Diff: %lld us",
-             func, note, gLaunch2Preview.timeUs(), gLaunch2Preview.lastTimeUs());
-    }
-}
-
-
-/**
  * Stops the launch2preview trace and prints out results.
  */
-void Launch2Preview::stop(void)
+void Launch2Preview::stop(int mFrameNum)
 {
     if (gLaunch2Preview.isRunning()) {
-        LOGD("LAUNCH time calculated from create instance to the 1st preview frame show:\t%lld ms\n",
-             gLaunch2Preview.timeUs() / 1000);
+        if (gPnPBreakdown.isRunning())
+            PnPBreakdown::step("Launch2Preview::stop");
+        if (mFrameNum == 1) {
+            LOGD("LAUNCH time to the 1st preview frame show:\t%lld ms\n",
+                 gLaunch2Preview.timeUs() / 1000);
+        } else {
+            LOGD("LAUNCH: skip %d frame, time to the 1st preview frame show:\t%lld ms\n",
+                 (mFrameNum - 1), gLaunch2Preview.timeUs() / 1000);
+        }
+
         gLaunch2Preview.stop();
     }
 }
@@ -206,6 +188,8 @@ void Launch2FocusLock::start(void)
 void Launch2FocusLock::stop(void)
 {
     if (gLaunch2FocusLock.isRunning()) {
+        if (gPnPBreakdown.isRunning())
+            PnPBreakdown::step("Launch2FocusLock::stop");
         LOGD("LAUNCH time calculated from create instance to lock the focus frame:\t%lld ms\n",
              gLaunch2FocusLock.timeUs() / 1000);
         gLaunch2FocusLock.stop();
@@ -223,10 +207,11 @@ void FaceLock::enable(bool set)
 /**
  * Starts the FaceLock trace.
  */
-void FaceLock::start(void)
+void FaceLock::start(int frameNum)
 {
-    if (gFaceLock.isRequested()) {
+    if (gFaceLock.isRequested() && !gFaceLock.isRunning()) {
         gFaceLock.formattedTrace("FaceLock", __FUNCTION__);
+        gFaceLockFrame = frameNum;
         gFaceLock.start();
     }
 }
@@ -237,7 +222,7 @@ void FaceLock::start(void)
 void FaceLock::getCurFrameNum(const int mFrameNum)
 {
     if (gFaceLock.isRunning()) {
-        gFaceLockFrame = mFrameNum;
+        gFaceLockFrame = mFrameNum - gFaceLockFrame;
     }
 }
 
@@ -249,6 +234,7 @@ void FaceLock::stop(int mFaceNum)
     if (gFaceLock.isRunning()) {
         LOGD("FaceLock face num: %d , Need frame: %d , From preview frame got to face lock successfully:\t%lld ms\n",
              mFaceNum, gFaceLockFrame, gFaceLock.timeUs() / 1000);
+        gFaceLock.mRequested = false;
         gFaceLock.stop();
     }
 }
@@ -292,22 +278,14 @@ void Shot2Shot::enable(bool set)
 }
 
 /**
- * Enable more detailed breakdown analysis that shows how long
- * intermediate steps took time.
- */
-void Shot2Shot::enableBreakdown(bool set)
-{
-    gShot2ShotBreakdown = set;
-}
-
-/**
  * Starts shot2shot trace
  */
-void Shot2Shot::start(int frameCounter)
+void Shot2Shot::start(void)
 {
     if (gShot2Shot.isRequested()) {
         gShot2Shot.start();
-        gShot2Shot.formattedTrace("Shot2Shot", __FUNCTION__);
+        if (gPnPBreakdown.isRunning())
+            PnPBreakdown::step("Shot2Shot::start");
     }
 }
 
@@ -325,35 +303,13 @@ void Shot2Shot::takePictureCalled(void)
     start();
 }
 
-/**
- * Mark an intermedia step in the shot2shot trace
- *
- * @arg note a string printed with the breakdown trace
- * @arg frameCounter if non-negative, a valid frame counter value
- *      that links the step to a specific frame
- */
-void Shot2Shot::step(const char* func, const char* note, int frameCounter)
-{
-    if (gShot2Shot.isRunning() && gShot2ShotBreakdown) {
-        if (!note)
-            note = "";
-        if (frameCounter < 0) {
-            LOGD("Shot2Shot step %s:%s, Time: %lld us, Diff: %lld us",
-                 func, note, gShot2Shot.timeUs(), gShot2Shot.lastTimeUs());
-        }
-        else {
-            LOGD("Shot2Shot step %s:%s [%d], Time: %lld us, Diff: %lld us",
-                 func, note, frameCounter, gShot2Shot.timeUs(), gShot2Shot.lastTimeUs());
-        }
-    }
-}
-
-void Shot2Shot::stop(int frameCounter)
+void Shot2Shot::stop(void)
 {
     if (gShot2Shot.isRunning()) {
-        LOGD("shot2shot latency: %lld us, frame %d",
-             gShot2Shot.timeUs(), frameCounter);
-        gShot2Shot.formattedTrace("Shot2Shot", __FUNCTION__);
+        if (gPnPBreakdown.isRunning())
+            PnPBreakdown::step("Shot2Shot::stop");
+            LOGD("shot2shot latency: %lld us.", gShot2Shot.timeUs());
+        gShot2Shot.stop();
     }
 }
 
@@ -403,7 +359,8 @@ void SwitchCameras::enable(bool set)
 void SwitchCameras::start(int cameraid)
 {
     if (gSwitchCameras.isRequested()) {
-        gSwitchCameras.formattedTrace("SwitchCameras", __FUNCTION__);
+        if (gPnPBreakdown.isRunning())
+            PnPBreakdown::step("Switch::start");
         gSwitchCamerasCalled = false;
         gSwitchCamerasOriginalVideoMode = false;
         gSwitchCamerasVideoMode = false;
@@ -438,6 +395,8 @@ void SwitchCameras::called(bool videomode)
 void SwitchCameras::stop(void)
 {
     if (gSwitchCameras.isRunning() && gSwitchCamerasCalled == true) {
+        if (gPnPBreakdown.isRunning())
+            PnPBreakdown::step("Switch::stop");
         if (gSwitchCamerasOriginalVideoMode == gSwitchCamerasVideoMode) {
             LOGD("Using %s mode, Switch from %s camera to %s camera, SWITCH time::\t%lldms\n",
                     (gSwitchCamerasVideoMode ? "video" : "camera"),
@@ -453,6 +412,100 @@ void SwitchCameras::stop(void)
         }
         gSwitchCamerasCalled = false;
         gSwitchCameras.stop();
+    }
+}
+
+/**
+ * Enable more detailed breakdown analysis that shows  how long
+ * intermediate steps consumed
+ */
+void PnPBreakdown::enable(bool set)
+{
+    gPnPBreakdown.mRequested = set;
+}
+
+/**
+ * Start the log breakdown performance tracer.
+ */
+void PnPBreakdown::start(void)
+{
+    if (gPnPBreakdown.isRequested()) {
+        gPnPBreakdown.formattedTrace("PnPBreakdown", __FUNCTION__);
+        gPnPBreakdown.start();
+    }
+}
+
+/**
+ * Mark an intermediate step in breakdown tracer.
+ *
+ * @arg func, the function name which called it.
+ * @arg not, a string printed with the breakdown trace
+ * @arg mFrameNum, the num of the frame got from ISP.
+ */
+void PnPBreakdown::step(const char *func, const char* note, const int mFrameNum)
+{
+    if (gPnPBreakdown.isRunning()) {
+        if (!note)
+            note = "";
+        if (mFrameNum < 0)
+            LOGD("PnPBreakdown-step %s:%s, Time: %lld us, Diff: %lld us",
+                 func, note, gPnPBreakdown.timeUs(), gPnPBreakdown.lastTimeUs());
+        else
+            LOGD("PnPBreakdown-step %s:%s[%d], Time: %lld us, Diff: %lld us",
+                 func, note, mFrameNum, gPnPBreakdown.timeUs(), gPnPBreakdown.lastTimeUs());
+   }
+}
+
+/**
+ * Stop the performance tracer.
+ */
+void PnPBreakdown::stop(void)
+{
+    if (gPnPBreakdown.isRunning()) {
+        gPnPBreakdown.formattedTrace("PnPBreakdown", __FUNCTION__);
+        gPnPBreakdown.stop();
+    }
+}
+
+/**
+ * Controls trace state
+ */
+void HDRShot2Preview::enable(bool set)
+{
+    gHDRShot2Preview.mRequested = set;
+}
+
+/**
+ * Starts HDR Shot2Preview trace
+ */
+void HDRShot2Preview::start(void)
+{
+    if (gHDRShot2Preview.isRequested() && !gHDRShot2Preview.isRunning()) {
+        gHDRShot2Preview.start();
+    }
+}
+
+/**
+ * Marks that HDR call has been issued.
+ *
+ * This is needed to reliably detect start and end of HDR shot2preview
+ * sequences.
+ */
+void HDRShot2Preview::HDRCalled(void)
+{
+    if (gHDRShot2Preview.isRunning()) {
+        gHDRCalled = true;
+    }
+}
+
+void HDRShot2Preview::stop(void)
+{
+    if (gHDRShot2Preview.isRunning() && gHDRCalled) {
+        gHDRCalled = false;
+        if (gPnPBreakdown.isRunning())
+            PnPBreakdown::step("HDRShot2Preview::stop");
+        LOGD("hdr shot2preview latency: %lld us", gHDRShot2Preview.timeUs());
+        gHDRShot2Preview.stop();
     }
 }
 

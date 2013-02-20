@@ -138,6 +138,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     if (status != NO_ERROR)
         LOGE("Error while encoding JPEG");
 
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("frameEncoded", mainBuf->frameCounter);
     LOG1("Total JPEG size: %d (time to encode: %ums)", destBuf->size, (unsigned)((systemTime() - startTime) / 1000000));
     return status;
 }
@@ -323,8 +324,6 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 
     jpegBuf.buff = NULL;
 
-    PERFORMANCE_TRACES_SHOT2SHOT_STEP("encoding frame", msg->snaphotBuf.frameCounter);
-
     // prepare EXIF data
     setupExifWithMetaData(msg->metaData);
 
@@ -351,7 +350,6 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
     // to free resources here after encoding
     msg->metaData.free();
 
-    PERFORMANCE_TRACES_SHOT2SHOT_STEP("frame encoded", msg->snaphotBuf.frameCounter);
 
     mCallbacksThread->compressedFrameDone(&jpegBuf, &msg->snaphotBuf, &msg->postviewBuf);
     return status;
@@ -671,6 +669,7 @@ status_t PictureThread::startHwEncoding(AtomBuffer* mainBuf)
     nsecs_t endTime;
     status_t status = NO_ERROR;
 
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("In",mainBuf->frameCounter);
     inBuf.clear();
     if (mainBuf->shared) {
        inBuf.buf = (unsigned char *) *((char **)mainBuf->buff->data);
@@ -795,6 +794,7 @@ status_t PictureThread::doSwEncode(AtomBuffer *mainBuf, AtomBuffer* destBuf)
     JpegCompressor::OutputBuffer outBuf;
     int finalSize = 0;
 
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("In",mainBuf->frameCounter);
     inBuf.clear();
     if (mainBuf->shared) {
         inBuf.buf = (unsigned char *) *((char **)mainBuf->buff->data);

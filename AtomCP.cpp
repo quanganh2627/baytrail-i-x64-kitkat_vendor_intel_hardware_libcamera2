@@ -20,6 +20,7 @@
 #include "AtomCommon.h"
 #include "LogHelper.h"
 #include "AtomAcc.h"
+#include "PerformanceTraces.h"
 
 namespace android {
 
@@ -108,6 +109,7 @@ status_t AtomCP::computeCDF(const CiUserBuffer& inputBuf, size_t bufIndex)
             *(inputBuf.hist[bufIndex].cdf + 5), *(inputBuf.hist[bufIndex].cdf + 5),
             *(inputBuf.hist[bufIndex].cdf + 6), *(inputBuf.hist[bufIndex].cdf + 7),
             *(inputBuf.hist[bufIndex].cdf + 8), *(inputBuf.hist[bufIndex].cdf + 9));
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
     return err;
 }
 
@@ -157,6 +159,7 @@ status_t AtomCP::composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& ou
                                inputBuf.hist);
     if (ia_err != ia_err_none)
             return INVALID_OPERATION;
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_NOPARAM();
 
     return NO_ERROR;
 }
@@ -171,6 +174,7 @@ status_t AtomCP::initializeHDR(unsigned width, unsigned height)
         if (ia_err != ia_err_none)
             return NO_MEMORY;
     }
+    PERFORMANCE_TRACES_HDR_SHOT2PREVIEW_CALLED();
 
     return NO_ERROR;
 }
@@ -184,6 +188,7 @@ status_t AtomCP::uninitializeHDR(void)
         if (ia_err != ia_err_none)
             return INVALID_OPERATION;
     }
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_NOPARAM();
 
     return NO_ERROR;
 }

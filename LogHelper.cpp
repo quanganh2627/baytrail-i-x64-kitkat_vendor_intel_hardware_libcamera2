@@ -59,10 +59,10 @@ void android::LogHelper::setDebugLevel(void)
             PerformanceTraces::Shot2Shot::enable(true);
             PerformanceTraces::ShutterLag::enable(true);
             PerformanceTraces::SwitchCameras::enable(true);
+            PerformanceTraces::HDRShot2Preview::enable(true);
         }
         if (gLogLevel & CAMERA_DEBUG_LOG_PERF_TRACES_BREAKDOWN) {
-            PerformanceTraces::Shot2Shot::enableBreakdown(true);
-            PerformanceTraces::Launch2Preview::enableBreakdown(true);
+            PerformanceTraces::PnPBreakdown::enable(true);
         }
     }
 

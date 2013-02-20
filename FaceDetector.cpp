@@ -27,6 +27,7 @@
 #include "AtomAcc.h"
 
 #include "ia_coordinate.h"
+#include "PerformanceTraces.h"
 
 namespace android {
 
@@ -40,6 +41,7 @@ FaceDetector::FaceDetector() : Thread()
     ,mThreadRunning(false)
 {
     LOG1("@%s", __FUNCTION__);
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("NewFD-Done");
 }
 
 FaceDetector::~FaceDetector()

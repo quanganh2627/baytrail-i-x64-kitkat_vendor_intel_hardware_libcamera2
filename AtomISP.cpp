@@ -233,7 +233,7 @@ status_t AtomISP::initDevice()
         LOGE("Failed to open first device!");
         return NO_INIT;
     }
-    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("Open_Main_Device");
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("Open_Main_Device");
 
     initFileInject();
 
@@ -267,7 +267,7 @@ status_t AtomISP::init()
     if (status != NO_ERROR) {
         return NO_INIT;
     }
-    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("Init_3A");
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("Init_3A");
 
     initFrameConfig();
 
@@ -1141,6 +1141,7 @@ status_t AtomISP::startPreview()
 
     mNumPreviewBuffersQueued = mNumPreviewBuffers;
 
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("Skip--", initialSkips);
     return status;
 
 err:
@@ -1163,6 +1164,7 @@ status_t AtomISP::stopPreview()
     if (mFileInject.active == true)
         stopFileInject();
 
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
     return status;
 }
 
@@ -1621,6 +1623,7 @@ status_t AtomISP::startCapture()
     }
 
     mNumCapturegBuffersQueued = snapNum;
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("Skip--", initialSkips);
     return status;
 
 errorStopFirst:
@@ -1697,6 +1700,7 @@ status_t AtomISP::stopCapture()
         stopFileInject();
     mUsingClientSnapshotBuffers = false;
     dumpRawImageFlush();
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
     return NO_ERROR;
 }
 
@@ -1917,6 +1921,7 @@ int AtomISP::configureDevice(int device, int deviceMode, FrameInfo *fInfo, bool 
 
     mDevices[device].state = DEVICE_CONFIGURED;
 
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("DeviceId:", device);
     //We need apply all the parameter settings when do the camera reset
     return ret;
 }
@@ -1971,8 +1976,8 @@ int AtomISP::startDevice(int device, int buffer_count)
     mDevices[device].frameCounter = 0;
     mDevices[device].state = DEVICE_STARTED;
 
-    //we are started now
-    return 0;
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("DeviceId:", device);
+    return ret;
 }
 
 int AtomISP::activateBufferPool(int device)
@@ -2153,7 +2158,7 @@ status_t AtomISP::selectCameraSensor()
         video_fds[device] = -1;
         return UNKNOWN_ERROR;
     }
-    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("capture_s_input");
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("capture_s_input");
     return NO_ERROR;
 }
 
