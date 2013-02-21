@@ -162,7 +162,6 @@ public:
     }
     ~AtomAAA();
 
-    bool is3ASupported() { return mHas3A; }
 
     // Initialization functions
     virtual status_t init3A();
@@ -268,7 +267,6 @@ public:
 private:
 
     Mutex m3aLock;
-    bool mHas3A;
     SensorType mSensorType;
     AfMode mAfMode;
     AeMode mPublicAeMode;
