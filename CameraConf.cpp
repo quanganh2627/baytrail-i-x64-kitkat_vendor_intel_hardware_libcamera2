@@ -391,7 +391,7 @@ status_t CpfStore::initConf(sp<CameraBlob>& aiqConf, sp<CameraBlob>& drvConf, sp
     // We only need to verify checksum once
     if ((ret = fetchConf(allConf, aiqConf, tbd_class_aiq, "AIQ")))
         return ret;
-    if ((ret = fetchConf(allConf, drvConf, tbd_class_dvr, "DRV")))
+    if ((ret = fetchConf(allConf, drvConf, tbd_class_drv, "DRV")))
         return ret;
     if ((ret = fetchConf(allConf, halConf, tbd_class_hal, "HAL")))
         return ret;
