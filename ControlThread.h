@@ -121,6 +121,7 @@ public:
 
     // TODO: need methods to configure control thread
     // TODO: decide if configuration method should send a message
+     void atomRelease();
 
 // callback methods
 private:
@@ -155,6 +156,7 @@ private:
                                          // HAL threads to signal preview buffer
                                          // is not used and is free to queue back
                                          // AtomISP.
+        MESSAGE_ID_RELEASE,
         MESSAGE_ID_PREVIEW_STARTED,
         MESSAGE_ID_PICTURE_DONE,
         MESSAGE_ID_SET_PARAMETERS,
@@ -195,9 +197,12 @@ private:
         char** params;
     };
 
+    struct MessageExit {
+        bool stopThread;
+    };
+
     struct MessageSetParameters {
-        bool previewFormatChanged;
-        bool videoMode;
+        char* params;
     };
 
     struct MessageCommand{
@@ -267,6 +272,9 @@ private:
 
         // MESSAGE_ID_DEQUEUE_RECORDING
         MessageDequeueRecording   dequeueRecording;
+
+        // MESSAGE_ID_EXIT
+        MessageExit exit;
     };
 
     // message id and message data
@@ -323,16 +331,17 @@ private:
     status_t initContinuousCapture();
     void releaseContinuousCapture(bool flushPictures);
     status_t startOfflineCapture();
-    int shutterLagZeroAlign();
     State selectPreviewMode(const CameraParameters &params);
     status_t handleContinuousPreviewBackgrounding();
     status_t handleContinuousPreviewForegrounding();
     void flushContinuousPreviewToDisplay(nsecs_t snapshotTs);
+    int continuousBurstSkip(double targetFps) const;
+    void continuousConfigApplyLimits(AtomISP::ContinuousCaptureConfig &cfg) const;
     status_t configureContinuousRingBuffer();
     status_t continuousStartStillCapture(bool useFlash);
 
     // thread message execution functions
-    status_t handleMessageExit();
+    status_t handleMessageExit(MessageExit *msg);
     status_t handleMessageStartPreview();
     status_t handleMessageStopPreview();
     status_t handleMessageStartRecording();
@@ -372,6 +381,7 @@ private:
     status_t stopPanorama();
     status_t startFaceRecognition();
     status_t stopFaceRecognition();
+    status_t handleMessageRelease();
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -416,7 +426,7 @@ private:
     status_t processParamEffect(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamSceneMode(const CameraParameters *oldParams,
-            CameraParameters *newParams, bool applyImmediately = true);
+            CameraParameters *newParams);
     status_t processParamXNR_ANR(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamAntiBanding(const CameraParameters *oldParams,
@@ -440,6 +450,12 @@ private:
     status_t processParamAutoExposureMeteringMode(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamIso(const CameraParameters *oldParams,
+            CameraParameters *newParams);
+    status_t processParamContrast(const CameraParameters *oldParams,
+            CameraParameters *newParams);
+    status_t processParamSaturation(const CameraParameters *oldParams,
+            CameraParameters *newParams);
+    status_t processParamSharpness(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamShutter(const CameraParameters *oldParams,
             CameraParameters *newParams);
@@ -470,7 +486,7 @@ private:
 
     void preSetCameraWindows(CameraWindow* focusWindows, size_t winCount);
 
-    void selectFlashMode(CameraParameters *newParams);
+    void selectFlashMode(CameraParameters *newParams, bool applySaved);
 
     bool selectPostviewSize(int &width, int &height);
 
@@ -479,7 +495,7 @@ private:
     // restarted. Static parameters will most likely affect buffer size and/or format so buffers
     // must be deallocated and reallocated accordingly.
     status_t processStaticParameters(const CameraParameters *oldParams,
-            CameraParameters *newParams, Message &msg);
+            CameraParameters *newParams, bool &previewFormatChanged);
     status_t validateParameters(const CameraParameters *params);
     // validation helpers
     bool validateSize(int width, int height, Vector<Size> &supportedSizes) const;
@@ -575,6 +591,7 @@ private:
     int  mBurstStart;           /*<! Relative offset at which burst
                                   capture should start, where 0 marks
                                   the zero shutter lag case. */
+    int mBurstFps;              /*<! Burst target output rate */
 
     /* Burst runtime state, \see burstStateReset() */
 
@@ -600,9 +617,6 @@ private:
                                     NOTE: Do not touch this variable from other threads than the camera service
                                     thread which is running the setParameters and the processStaticParameters,
                                     which is currently the only access point. */
-
-    Mutex mPreviewStartLock;
-    bool mPreviewStartQueued;
 
     CameraDump *mCameraDump;
 

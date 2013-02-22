@@ -24,7 +24,6 @@ AtomBuffer AtomBufferFactory::createAtomBuffer(AtomBufferType type,
                                                int format,
                                                int width,
                                                int height,
-                                               int rotation,
                                                int stride,
                                                int size,
                                                IBufferOwner *owner,
@@ -42,7 +41,6 @@ AtomBuffer AtomBufferFactory::createAtomBuffer(AtomBufferType type,
     buf.type = type;
     buf.width = width;
     buf.height = height;
-    buf.rotation = rotation;
     buf.stride = stride;
     buf.size = size;
     buf.owner = owner;

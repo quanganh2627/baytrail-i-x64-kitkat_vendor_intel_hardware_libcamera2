@@ -148,16 +148,6 @@ void EXIFMaker::pictureTaken(void)
             break;
         }
 
-        // indicates the ISO speed of the camera
-        int isoSpeed;
-        if (mAAA->getManualIso(&isoSpeed) == NO_ERROR) {
-            exifAttributes.iso_speed_rating = isoSpeed;
-        } else {
-            LOGW("EXIF: Could not query ISO speed!");
-            exifAttributes.iso_speed_rating = DEFAULT_ISO_SPEED;
-        }
-        LOG1("EXIF: ISO=%d", isoSpeed);
-
         // the metering mode.
         MeteringMode meteringMode  = mAAA->getAeMeteringMode();
         switch (meteringMode) {
@@ -253,6 +243,16 @@ void EXIFMaker::pictureTaken(void)
             break;
         }
     }
+
+    // indicates the ISO speed of the camera
+    int isoSpeed;
+    if (mAAA->getManualIso(&isoSpeed) == NO_ERROR) {
+        exifAttributes.iso_speed_rating = isoSpeed;
+    } else {
+        LOGW("EXIF: Could not query ISO speed!");
+        exifAttributes.iso_speed_rating = DEFAULT_ISO_SPEED;
+    }
+    LOG1("EXIF: ISO=%d", isoSpeed);
 }
 
 /**
@@ -263,7 +263,7 @@ void EXIFMaker::pictureTaken(void)
 void EXIFMaker::initialize(const CameraParameters &params)
 {
     LOG1("@%s: params = %p", __FUNCTION__, &params);
-
+    const char *p = NULL;
     /* We clear the exif attributes, so we won't be using some old values
      * from a previous EXIF generation.
      */
@@ -306,13 +306,59 @@ void EXIFMaker::initialize(const CameraParameters &params)
 
     // light source, 0 means light source unknown
     exifAttributes.light_source = 0;
+    p = params.get(CameraParameters::KEY_WHITE_BALANCE);
+    String8 whiteBalance(p, (p == NULL ? 0 : strlen(p))); // String8 segfaults if given a NULL
+    if (!whiteBalance.isEmpty()) {
+        if(whiteBalance == CameraParameters::WHITE_BALANCE_AUTO) {
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_UNKNOWN;
+        } else if(whiteBalance == CameraParameters::WHITE_BALANCE_INCANDESCENT) {
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_TUNGSTEN;
+        } else if(whiteBalance == CameraParameters::WHITE_BALANCE_FLUORESCENT) {
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_FLUORESCENT;
+        } else if(whiteBalance == CameraParameters::WHITE_BALANCE_DAYLIGHT) {
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_DAYLIGHT;
+        } else if(whiteBalance == CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT) {
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_CLOUDY_WEATHER;
+        } else if(whiteBalance == CameraParameters::WHITE_BALANCE_SHADE) {
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_SHADE;
+        }
+    }
 
     // gain control, 0 = none;
     // 1 = low gain up; 2 = high gain up; 3 = low gain down; 4 = high gain down
     exifAttributes.gain_control = 0;
 
+    // contrast, 0 = normal; 1 = soft; 2 = hard; other = reserved
+    const char *contrast = params.get(IntelCameraParameters::KEY_CONTRAST_MODE);
+
+    exifAttributes.contrast = EXIF_CONTRAST_NORMAL;
+    if (contrast) {
+        if (!strcmp(contrast, IntelCameraParameters::CONTRAST_MODE_SOFT))
+            exifAttributes.contrast = EXIF_CONTRAST_SOFT;
+        else if (!strcmp(contrast, IntelCameraParameters::CONTRAST_MODE_HARD))
+            exifAttributes.contrast = EXIF_CONTRAST_HARD;
+    }
+
+    // saturation, 0 = normal; 1 = Low saturation; 2 = High saturation; other = reserved
+    const char *saturation = params.get(IntelCameraParameters::KEY_SATURATION_MODE);
+    exifAttributes.saturation = EXIF_SATURATION_NORMAL;
+    if (saturation) {
+        if (!strcmp(saturation, IntelCameraParameters::SATURATION_MODE_LOW))
+            exifAttributes.saturation = EXIF_SATURATION_LOW;
+        else if (!strcmp(saturation, IntelCameraParameters::SATURATION_MODE_HIGH))
+            exifAttributes.saturation = EXIF_SATURATION_HIGH;
+    }
+
     // sharpness, 0 = normal; 1 = soft; 2 = hard; other = reserved
-    exifAttributes.sharpness = 0;
+    const char *sharpness = params.get(IntelCameraParameters::KEY_SHARPNESS_MODE);
+    exifAttributes.sharpness = EXIF_SHARPNESS_NORMAL;
+    if (sharpness) {
+        if (!strcmp(sharpness, IntelCameraParameters::SHARPNESS_MODE_SOFT))
+            exifAttributes.sharpness = EXIF_SHARPNESS_SOFT;
+        else if (!strcmp(sharpness, IntelCameraParameters::SHARPNESS_MODE_HARD))
+            exifAttributes.sharpness = EXIF_SHARPNESS_HARD;
+    }
+
     // the picture's width and height
     params.getPictureSize((int*)&exifAttributes.width, (int*)&exifAttributes.height);
 
@@ -335,6 +381,20 @@ void EXIFMaker::initialize(const CameraParameters &params)
     exifAttributes.zoom_ratio.num = (params.getInt(CameraParameters::KEY_ZOOM) + 10);
     exifAttributes.zoom_ratio.den = 10;
     LOG1("EXIF: zoom=%u/%u", exifAttributes.zoom_ratio.num, exifAttributes.zoom_ratio.den);
+
+    // metering mode, 0 = normal; 1 = soft; 2 = hard; other = reserved
+    exifAttributes.metering_mode = EXIF_METERING_UNKNOWN;
+    p = params.get(IntelCameraParameters::KEY_AE_METERING_MODE);
+    String8 meteringMode(p, (p == NULL ? 0 : strlen(p))); // String8 segfaults if given a NULL
+    if (!meteringMode.isEmpty()) {
+        if (meteringMode == IntelCameraParameters::AE_METERING_MODE_AUTO) {
+            exifAttributes.metering_mode = EXIF_METERING_AVERAGE;
+        } else if (meteringMode == IntelCameraParameters::AE_METERING_MODE_CENTER) {
+            exifAttributes.metering_mode = EXIF_METERING_CENTER;
+        } else if (meteringMode == IntelCameraParameters::AE_METERING_MODE_SPOT) {
+            exifAttributes.metering_mode = EXIF_METERING_SPOT;
+        }
+    }
 
     initializeLocation(params);
 

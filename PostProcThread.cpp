@@ -42,6 +42,8 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     ,mFaceAAAFlags(AAA_FLAG_ALL)
     ,mOldAfMode(CAM_AF_MODE_NOT_SET)
     ,mOldAeMeteringMode(CAM_AE_METERING_MODE_NOT_SET)
+    ,mRotation(0)
+    ,mZoomRatio(0)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -507,6 +509,7 @@ status_t PostProcThread::handleExit()
 
 status_t PostProcThread::setZoom(int zoomRatio)
 {
+    LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_SET_ZOOM;
     msg.data.config.value = zoomRatio;
@@ -515,6 +518,7 @@ status_t PostProcThread::setZoom(int zoomRatio)
 
 status_t PostProcThread::setRotation(int rotation)
 {
+    LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_SET_ROTATION;
     msg.data.config.value = rotation;
@@ -523,19 +527,21 @@ status_t PostProcThread::setRotation(int rotation)
 
 status_t PostProcThread::handleMessageSetZoom(MessageConfig &msg)
 {
+    LOG1("@%s", __FUNCTION__);
     mZoomRatio = msg.value;
     return NO_ERROR;
 }
 
 status_t PostProcThread::handleMessageSetRotation(MessageConfig &msg)
 {
+    LOG1("@%s", __FUNCTION__);
     mRotation = msg.value;
     return NO_ERROR;
 }
 
 int PostProcThread::sendFrame(AtomBuffer *img)
 {
-    LOG2("@%s: buf=%p, width=%d height=%d rotation=%d", __FUNCTION__, img, img->width , img->height, img->rotation);
+    LOG2("@%s: buf=%p, width=%d height=%d", __FUNCTION__, img, img->width , img->height);
     Message msg;
     msg.id = MESSAGE_ID_FRAME;
 
@@ -733,12 +739,12 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
 
         // frame rotation is counter clock wise in libia_face,
         // while it is clock wise for android (valid for CTP)
-        if (frame.img.rotation == 90)
+        if (mRotation == 90)
             frameData.rotation = 270;
-        else if (frame.img.rotation == 270)
+        else if (mRotation == 270)
             frameData.rotation = 90;
         else
-            frameData.rotation = frame.img.rotation;
+            frameData.rotation = mRotation;
 
         num_faces = mFaceDetector->faceDetect(&frameData);
 

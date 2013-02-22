@@ -1,5 +1,6 @@
-    /*
+/*
  * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (C) 2011,2012,2013 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,7 +51,7 @@
         "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920"
 
 #define RESOLUTION_3MP_TABLE   \
-        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536"
+        "320x240,640x480,1024x768,1280x720,1280x960,1536x864,1600x1200,1920x1080,2048x1152,2048x1536"
 
 #define RESOLUTION_1080P_TABLE   \
         "320x240,640x480,1024x768,1280x720,1920x1080"
@@ -94,7 +95,9 @@
 
 #define INTEL_FILE_INJECT_CAMERA_ID 2
 
-#define ATOMISP_POLL_TIMEOUT (5 * 1000)
+#define ATOMISP_PREVIEW_POLL_TIMEOUT 1000
+#define ATOMISP_GETFRAME_RETRY_COUNT 5  // Times to retry poll/dqbuf in case of error
+#define ATOMISP_GETFRAME_STARVING_WAIT 200000 // Time to usleep between retry's when stream is starving from buffers.
 
 #define FRAME_SYNC_POLL_TIMEOUT 500
 
@@ -189,6 +192,7 @@ AtomISP::AtomISP(const sp<CameraConf>& cfg) :
     ,mNumRecordingBuffersQueued(0)
     ,mNumCapturegBuffersQueued(0)
     ,mFlashTorchSetting(0)
+    ,mContCaptPrepared(false)
     ,mConfigSnapshotPreviewDevice(V4L2_MAIN_DEVICE)
     ,mConfigLastDevice(V4L2_PREVIEW_DEVICE)
     ,mPreviewDevice(V4L2_MAIN_DEVICE)
@@ -490,6 +494,8 @@ status_t AtomISP::init3A()
                             status = NO_INIT;
                     }
              }
+        } else if (mSensorType == SENSOR_TYPE_SOC) {
+            mAAA->init(NULL, this, NULL);
         }
         // We don't need this memory anymore
         mCameraConf->aiqConf.clear();
@@ -588,6 +594,11 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     params->set(CameraParameters::KEY_ZOOM_SUPPORTED, CameraParameters::TRUE);
 
     /**
+     * ROTATION
+     */
+    params->set(CameraParameters::KEY_ROTATION, 0);
+
+    /**
      * FLASH
      */
     if (PlatformData::supportsBackFlash() == true &&
@@ -602,33 +613,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * FOCUS
      */
-    if (mAAA->is3ASupported()) {
-        params->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_AUTO);
-
-        char focusModes[100] = {0};
-        int status = snprintf(focusModes, sizeof(focusModes)
-                ,"%s,%s,%s,%s,%s,%s"
-                ,CameraParameters::FOCUS_MODE_AUTO
-                ,CameraParameters::FOCUS_MODE_INFINITY
-                ,CameraParameters::FOCUS_MODE_FIXED
-                ,CameraParameters::FOCUS_MODE_MACRO
-                ,CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO
-                ,CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
-
-        if (status < 0) {
-            LOGE("Could not generate %s string: %s",
-                 CameraParameters::KEY_SUPPORTED_FOCUS_MODES, strerror(errno));
-            return;
-        } else if (static_cast<size_t>(status) >= sizeof(focusModes)) {
-            LOGE("Truncated %s string. Reserved length: %d",
-                 CameraParameters::KEY_SUPPORTED_FOCUS_MODES, sizeof(focusModes));
-            return;
-        }
-        params->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, focusModes);
-    } else {
-        params->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_FIXED);
-        params->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, CameraParameters::FOCUS_MODE_FIXED);
-    }
+    params->set(CameraParameters::KEY_FOCUS_MODE, PlatformData::defaultFocusMode(cameraId));
+    params->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, PlatformData::supportedFocusModes(cameraId));
 
     /**
      * FOCAL LENGTH
@@ -776,6 +762,18 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     // manual iso control (Intel extension)
     intel_params->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(cameraId));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::supportedIso(cameraId));
+
+    // contrast control (Intel extension)
+    intel_params->set(IntelCameraParameters::KEY_CONTRAST_MODE, PlatformData::defaultContrast(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_CONTRAST_MODES, PlatformData::supportedContrast(cameraId));
+
+    // saturation control (Intel extension)
+    intel_params->set(IntelCameraParameters::KEY_SATURATION_MODE, PlatformData::defaultSaturation(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SATURATION_MODES, PlatformData::supportedSaturation(cameraId));
+
+    // sharpness control (Intel extension)
+    intel_params->set(IntelCameraParameters::KEY_SHARPNESS_MODE, PlatformData::defaultSharpness(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SHARPNESS_MODES, PlatformData::supportedSharpness(cameraId));
 }
 
 const char* AtomISP::getMaxSnapShotResolution()
@@ -1396,27 +1394,6 @@ status_t AtomISP::requestContCapture(int numCaptures, int offset, unsigned int s
     return NO_ERROR;
 }
 
-status_t AtomISP::setContCaptureNumCaptures(int numCaptures)
-{
-    LOG1("@%s, numCaptures = %d", __FUNCTION__, numCaptures);
-    mContCaptConfig.numCaptures = numCaptures;
-    return NO_ERROR;
-}
-
-status_t AtomISP::setContCaptureOffset(int captureOffset)
-{
-    LOG2("@%s", __FUNCTION__);
-    mContCaptConfig.offset = captureOffset;
-    return NO_ERROR;
-}
-
-status_t AtomISP::setContCaptureSkip(unsigned int skip)
-{
-    LOG2("@%s", __FUNCTION__);
-    mContCaptConfig.skip = skip;
-    return NO_ERROR;
-}
-
 /**
  * Configures the ISP ringbuffer size in continuous mode.
  *
@@ -1450,11 +1427,70 @@ status_t AtomISP::configureContinuousRingBuffer()
     return status;
 }
 
+/**
+ * Calculates the correct frame offset to capture to reach Zero
+ * Shutter Lag.
+ */
+int AtomISP::shutterLagZeroAlign() const
+{
+    int delayMs = PlatformData::shutterLagCompensationMs();
+    float frameIntervalMs = 1000.0 / getFrameRate();
+    int lagZeroOffset = delayMs / frameIntervalMs + 1;
+    LOG2("@%s: delay %dms, fps %.02f, zero offset %d",
+         __FUNCTION__, delayMs, getFrameRate(), lagZeroOffset);
+    return lagZeroOffset;
+}
+
+/**
+ * Returns the minimum offset ISP supports.
+ *
+ * This values is the smallest value that can be passed
+ * to prepareOfflineCapture() and startOfflineCapture().
+ */
+int AtomISP::continuousBurstNegMinOffset(void) const
+{
+    return -(PlatformData::maxContinuousRawRingBufferSize() - 2);
+}
+
+/**
+ * Returns the needed buffer offset to capture frame
+ * with negative time index 'startIndex' and when skippng
+ * 'skip' input frames between each output frame.
+ *
+ * The resulting offset is aligned so that offset for
+ * startIndex==0 matches the user perceived zero shutter lag
+ * frame. This calibration is done by factoring in
+ * PlatformData::shutterLagCompensationMs().
+ *
+ * As the ISP continuous capture buffer consists of frames stored
+ * at full sensor rate, it depends on the requested output capture
+ * rate, how much back in time one can go.
+ *
+ * \param skip how many input frames ISP skips after each output frame
+ * \param startIndex index to first frame (counted at output rate)
+ * \return negative offset to the requested frame (counted at full sensor rate)
+ */
+int AtomISP::continuousBurstNegOffset(int skip, int startIndex) const
+{
+    assert(startIndex <= 0);
+    assert(skip >= 0);
+    int targetRatio = skip + 1;
+    int negOffset = targetRatio * startIndex - shutterLagZeroAlign();
+    LOG2("@%s: offset %d, ratio %d, skip %d, align %d",
+         __FUNCTION__, negOffset, targetRatio, skip, shutterLagZeroAlign());
+    return negOffset;
+}
+
 status_t AtomISP::configureContinuous()
 {
     LOG1("@%s", __FUNCTION__);
     int ret;
     status_t status = NO_ERROR;
+
+    if (!mContCaptPrepared) {
+        LOGE("offline capture not prepared correctly");
+        return UNKNOWN_ERROR;
+    }
 
     updateCaptureParams();
     ret = configureContinuousRingBuffer();
@@ -1683,8 +1719,15 @@ error:
  *
  * Snapshot and postview frame rendering is started
  * and frame(s) can be fetched with getSnapshot().
+ *
+ * Note that the capture params given in 'config' must be
+ * equal or a subset of the configuration passed to
+ * prepareOfflineCapture().
+ *
+ * \param config configuration container describing how many
+ *               captures to take, skipping and the start offset
  */
-status_t AtomISP::startOfflineCapture()
+status_t AtomISP::startOfflineCapture(AtomISP::ContinuousCaptureConfig &config)
 {
     status_t res = NO_ERROR;
 
@@ -1693,10 +1736,15 @@ status_t AtomISP::startOfflineCapture()
         LOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
         return INVALID_OPERATION;
     }
+    else if (config.offset < mContCaptConfig.offset ||
+             config.numCaptures > mContCaptConfig.numCaptures) {
+        LOGE("@%s: cannot start with current ISP configuration", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
 
-    res = requestContCapture(mContCaptConfig.numCaptures,
-                             mContCaptConfig.offset,
-                             mContCaptConfig.skip);
+    res = requestContCapture(config.numCaptures,
+                             config.offset,
+                             config.skip);
     if (res == NO_ERROR)
         res = startCapture();
 
@@ -1718,6 +1766,26 @@ status_t AtomISP::stopOfflineCapture()
     }
     stopDevice(V4L2_MAIN_DEVICE, true);
     stopDevice(V4L2_POSTVIEW_DEVICE, true);
+    mContCaptPrepared = true;
+    return NO_ERROR;
+}
+
+/**
+ * Prepares ISP for offline capture
+ *
+ * \param config container to configure capture count, skipping
+ *               and the start offset (see struct AtomISP::ContinuousCaptureConfig)
+ */
+status_t AtomISP::prepareOfflineCapture(AtomISP::ContinuousCaptureConfig &cfg)
+{
+    LOG1("@%s, numCaptures = %d", __FUNCTION__, cfg.numCaptures);
+    if (cfg.offset < continuousBurstNegMinOffset()) {
+        LOGE("@%s: offset %d not supported, minimum %d",
+             __FUNCTION__, cfg.offset, continuousBurstNegMinOffset());
+        return UNKNOWN_ERROR;
+    }
+    mContCaptConfig = cfg;
+    mContCaptPrepared = true;
     return NO_ERROR;
 }
 
@@ -2493,6 +2561,102 @@ status_t AtomISP::getMakerNote(atomisp_makernote_info *info)
     info->f_number_range = 0;
     if (xioctl(fd, ATOMISP_IOC_ISP_MAKERNOTE, info) < 0) {
         LOGW("WARNING: get maker note from driver failed!");
+        return UNKNOWN_ERROR;
+    }
+    return NO_ERROR;
+}
+
+status_t AtomISP::getContrast(int *value)
+{
+    LOG1("@%s", __FUNCTION__);
+    int fd = video_fds[V4L2_MAIN_DEVICE];
+
+    if (fd < 0) {
+        return INVALID_OPERATION;
+    }
+
+    LOG2("@%s", __FUNCTION__);
+    if (atomisp_get_attribute(fd,V4L2_CID_CONTRAST, value) < 0) {
+        LOGW("WARNING: get Contrast from driver failed!");
+        return UNKNOWN_ERROR;
+    }
+    return NO_ERROR;
+}
+
+status_t AtomISP::setContrast(int value)
+{
+    LOG1("@%s: value:%d", __FUNCTION__, value);
+    int fd = video_fds[V4L2_MAIN_DEVICE];
+
+    if (fd < 0) {
+        return INVALID_OPERATION;
+    }
+    if (atomisp_set_attribute(fd, V4L2_CID_CONTRAST, value, "Request Contrast") < 0) {
+        LOGW("WARNING: set Contrast from driver failed!");
+        return UNKNOWN_ERROR;
+    }
+    return NO_ERROR;
+}
+
+status_t AtomISP::getSaturation(int *value)
+{
+    LOG1("@%s", __FUNCTION__);
+    int fd = video_fds[V4L2_MAIN_DEVICE];
+
+    if (fd < 0) {
+        return INVALID_OPERATION;
+    }
+
+    LOG2("@%s", __FUNCTION__);
+    if (atomisp_get_attribute(fd,V4L2_CID_SATURATION, value) < 0) {
+        LOGW("WARNING: get Saturation from driver failed!");
+        return UNKNOWN_ERROR;
+    }
+    return NO_ERROR;
+}
+
+status_t AtomISP::setSaturation(int value)
+{
+    LOG1("@%s: value:%d", __FUNCTION__, value);
+    int fd = video_fds[V4L2_MAIN_DEVICE];
+
+    if (fd < 0) {
+        return INVALID_OPERATION;
+    }
+    if (atomisp_set_attribute(fd, V4L2_CID_SATURATION, value, "Request Saturation") < 0) {
+        LOGW("WARNING: set Saturation from driver failed!");
+        return UNKNOWN_ERROR;
+    }
+    return NO_ERROR;
+}
+
+status_t AtomISP::getSharpness(int *value)
+{
+    LOG1("@%s", __FUNCTION__);
+    int fd = video_fds[V4L2_MAIN_DEVICE];
+
+    if (fd < 0) {
+        return INVALID_OPERATION;
+    }
+
+    LOG2("@%s", __FUNCTION__);
+    if (atomisp_get_attribute(fd,V4L2_CID_SHARPNESS, value) < 0) {
+        LOGW("WARNING: get Sharpness from driver failed!");
+        return UNKNOWN_ERROR;
+    }
+    return NO_ERROR;
+}
+
+status_t AtomISP::setSharpness(int value)
+{
+    LOG1("@%s: value:%d", __FUNCTION__, value);
+    int fd = video_fds[V4L2_MAIN_DEVICE];
+
+    if (fd < 0) {
+        return INVALID_OPERATION;
+    }
+    if (atomisp_set_attribute(fd, V4L2_CID_SHARPNESS, value, "Request Sharpness") < 0) {
+        LOGW("WARNING: set Sharpness from driver failed!");
         return UNKNOWN_ERROR;
     }
     return NO_ERROR;
@@ -5065,25 +5229,43 @@ status_t AtomISP::PreviewStreamSource::observe(IAtomIspObserver::Message *msg)
     status_t status;
     int ret;
     LOG2("@%s", __FUNCTION__);
+    int failCounter = 0;
 
-    msg->id = IAtomIspObserver::MESSAGE_ID_FRAME;
-
-    ret = mISP->pollPreview(ATOMISP_POLL_TIMEOUT);
+try_again:
+    ret = mISP->pollPreview(ATOMISP_PREVIEW_POLL_TIMEOUT);
     if (ret > 0) {
         LOG2("Entering dequeue : num-of-buffers queued %d", mISP->mNumPreviewBuffersQueued);
         status = mISP->getPreviewFrame(&msg->data.frameBuffer.buff);
         if (status != NO_ERROR) {
             msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
-            return UNKNOWN_ERROR;
+            status = UNKNOWN_ERROR;
+        } else {
+            msg->data.frameBuffer.buff.owner = mISP;
+            msg->id = IAtomIspObserver::MESSAGE_ID_FRAME;
         }
     } else {
         LOGE("v4l2_poll for preview device failed! (%s)", (ret==0)?"timeout":"error");
         msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
-        return (ret==0)?TIMED_OUT:UNKNOWN_ERROR;
+        status = (ret==0)?TIMED_OUT:UNKNOWN_ERROR;
     }
 
-    msg->data.frameBuffer.buff.owner = mISP;
-    return NO_ERROR;
+    if (status != NO_ERROR) {
+        // check if reason is starving and enter sleep to wait
+        // for returnBuffer()
+        while(!mISP->dataAvailable()) {
+            if (++failCounter > ATOMISP_GETFRAME_RETRY_COUNT) {
+                LOGD("There were no preview buffers returned in time");
+                break;
+            }
+            LOGW("Preview stream starving from buffers!");
+            usleep(ATOMISP_GETFRAME_STARVING_WAIT);
+        }
+
+        if (++failCounter <= ATOMISP_GETFRAME_RETRY_COUNT)
+            goto try_again;
+    }
+
+    return status;
 }
 
 /**
@@ -5192,6 +5374,18 @@ status_t AtomISP::setAeSceneMode(SceneMode mode)
         case CAM_AE_SCENE_MODE_CANDLELIGHT:
             v4lMode = V4L2_SCENE_MODE_CANDLE_LIGHT;
             break;
+        case CAM_AE_SCENE_MODE_BEACH_SNOW:
+            v4lMode = V4L2_SCENE_MODE_BEACH_SNOW;
+            break;
+        case CAM_AE_SCENE_MODE_DAWN_DUSK:
+            v4lMode = V4L2_SCENE_MODE_DAWN_DUSK;
+            break;
+        case CAM_AE_SCENE_MODE_FALL_COLORS:
+            v4lMode = V4L2_SCENE_MODE_FALL_COLORS;
+            break;
+        case CAM_AE_SCENE_MODE_BACKLIGHT:
+            v4lMode = V4L2_SCENE_MODE_BACKLIGHT;
+            break;
         default:
             LOGW("Unsupported scene mode (%d), using NONE", mode);
             v4lMode = V4L2_SCENE_MODE_NONE;
@@ -5247,6 +5441,18 @@ SceneMode AtomISP::getAeSceneMode()
             break;
         case V4L2_SCENE_MODE_CANDLE_LIGHT:
             mode = CAM_AE_SCENE_MODE_CANDLELIGHT;
+            break;
+        case V4L2_SCENE_MODE_BEACH_SNOW:
+            mode = CAM_AE_SCENE_MODE_BEACH_SNOW;
+            break;
+        case V4L2_SCENE_MODE_DAWN_DUSK:
+            mode = CAM_AE_SCENE_MODE_DAWN_DUSK;
+            break;
+        case V4L2_SCENE_MODE_FALL_COLORS:
+            mode = CAM_AE_SCENE_MODE_FALL_COLORS;
+            break;
+        case V4L2_SCENE_MODE_BACKLIGHT:
+            mode = CAM_AE_SCENE_MODE_BACKLIGHT;
             break;
         default:
             LOGW("Unsupported scene mode (%d), using AUTO", v4lMode);

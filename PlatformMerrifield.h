@@ -29,7 +29,7 @@ class PlatformSaltBay : public PlatformBase {
 
 public:
     PlatformSaltBay(void) {
-        mSubDevName = "/dev/v4l-subdev7";
+        mSubDevName = "/dev/v4l-subdev8";
 
         /* Creating CameraInfo object (default constructor value applied)
          * HERE we only modify the value which are different than
@@ -88,6 +88,8 @@ public:
         pcam->defaultAeMetering = "";
         pcam->supportedAeMetering = "";
         pcam->supportedPreviewSize = "1024x576,720x480,640x480,640x360,352x288,320x240,176x144";
+        strcpy(pcam->defaultFocusMode, CameraParameters::FOCUS_MODE_FIXED);
+        strcpy(pcam->supportedFocusModes, pcam->defaultFocusMode);
         mCameras.push(*pcam);
         delete pcam;
 

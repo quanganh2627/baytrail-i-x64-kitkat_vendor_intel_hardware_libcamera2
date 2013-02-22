@@ -17,6 +17,7 @@
 #ifndef ANDROID_LIBCAMERA_CAMERA_CONFIGURATION_H
 #define ANDROID_LIBCAMERA_CAMERA_CONFIGURATION_H
 
+#include <libtbd.h>
 #include <utils/Errors.h>
 #include <utils/RefBase.h>
 #include <utils/String8.h>
@@ -63,10 +64,9 @@ private:
     status_t initDriverList();
     status_t initDriverListHelper(int major, int minor, SensorDriver& drvInfo);
     status_t initConf(sp<CameraBlob>& aiqConf, sp<CameraBlob>& drvConf, sp<CameraBlob>& halConf);
-    status_t loadAllConf(sp<CameraBlob>& allConf, struct stat& statCurrent);
-    status_t fetchAiqConf(const sp<CameraBlob>& allConf, sp<CameraBlob>& aiqConf, bool skipChecksum);
-    status_t fetchDrvConf(const sp<CameraBlob>& allConf, sp<CameraBlob>& drvConf, bool skipChecksum);
-    status_t fetchHalConf(const sp<CameraBlob>& allConf, sp<CameraBlob>& halConf, bool skipChecksum);
+    status_t loadConf(sp<CameraBlob>& allConf);
+    status_t validateConf(const sp<CameraBlob>& allConf, const struct stat& statCurrent);
+    status_t fetchConf(const sp<CameraBlob>& allConf, sp<CameraBlob>& recConf, tbd_class_t recordClass, const char *blockDebugName);
     status_t processDrvConf();
     status_t processHalConf();
 private:

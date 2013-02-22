@@ -198,6 +198,33 @@ namespace android {
     static const char KEY_EXIF_MODEL[];
     static const char KEY_EXIF_SOFTWARE[];
 
+    // V4L2 specific scene modes
+    static const char SCENE_MODE_BEACH_SNOW[];
+    static const char SCENE_MODE_DAWN_DUSK[];
+    static const char SCENE_MODE_FALL_COLORS[];
+    static const char SCENE_MODE_BACKLIGHT[];
+
+    // contrast
+    static const char KEY_CONTRAST_MODE[];
+    static const char KEY_SUPPORTED_CONTRAST_MODES[];
+    static const char CONTRAST_MODE_NORMAL[];
+    static const char CONTRAST_MODE_SOFT[];
+    static const char CONTRAST_MODE_HARD[];
+
+    // saturation
+    static const char KEY_SATURATION_MODE[];
+    static const char KEY_SUPPORTED_SATURATION_MODES[];
+    static const char SATURATION_MODE_NORMAL[];
+    static const char SATURATION_MODE_LOW[];
+    static const char SATURATION_MODE_HIGH[];
+
+    // sharpness
+    static const char KEY_SHARPNESS_MODE[];
+    static const char KEY_SUPPORTED_SHARPNESS_MODES[];
+    static const char SHARPNESS_MODE_NORMAL[];
+    static const char SHARPNESS_MODE_SOFT[];
+    static const char SHARPNESS_MODE_HARD[];
+
     static void getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params);
     static const char* getSupportedPanoramaLivePreviewSizes(const CameraParameters &params);
 

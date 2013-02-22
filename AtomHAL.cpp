@@ -291,7 +291,9 @@ static int atom_send_command(struct camera_device * device,
 static void atom_release(struct camera_device * device)
 {
     LOGD("%s", __FUNCTION__);
-    // TODO: implement
+    atom_camera *cam = (atom_camera *)(device->priv);
+    if (cam)
+        cam->control_thread->atomRelease();
 }
 
 static int atom_dump(struct camera_device * device, int fd)

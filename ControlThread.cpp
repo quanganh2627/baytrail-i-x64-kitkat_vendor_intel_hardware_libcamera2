@@ -100,6 +100,7 @@ ControlThread::ControlThread(const sp<CameraConf>& cfg) :
     ,mFpsAdaptSkip(0)
     ,mBurstLength(0)
     ,mBurstStart(0)
+    ,mBurstFps(-1)
     ,mBurstCaptureNum(-1)
     ,mBurstCaptureDoneNum(-1)
     ,mBurstQbufs(0)
@@ -108,7 +109,6 @@ ControlThread::ControlThread(const sp<CameraConf>& cfg) :
     ,mParamCache(NULL)
     ,mStoreMetaDataInBuffers(false)
     ,mPreviewForceChanged(false)
-    ,mPreviewStartQueued(false)
     ,mCameraDump(NULL)
     ,mFocusAreas()
     ,mMeteringAreas()
@@ -334,8 +334,7 @@ status_t ControlThread::init()
 
     // Set default parameters so that settings propagate to 3A
     MessageSetParameters msg;
-    msg.previewFormatChanged = false;
-    msg.videoMode = false;
+    msg.params = mParamCache;
     handleMessageSetParameters(&msg);
 
     return NO_ERROR;
@@ -473,23 +472,16 @@ status_t ControlThread::startPreview()
     LOG1("@%s", __FUNCTION__);
     PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
     PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("startPreview_in");
-    status_t status = mPreviewStartLock.tryLock();
-    if (status != OK) {
-        return status;
-    }
     // send message
     Message msg;
     msg.id = MESSAGE_ID_START_PREVIEW;
-    mPreviewStartQueued = true;
-    status = mMessageQueue.send(&msg);
-    mPreviewStartLock.unlock();
-    return status;
+    return mMessageQueue.send(&msg, MESSAGE_ID_START_PREVIEW);
 }
 
 status_t ControlThread::stopPreview()
 {
     LOG1("@%s", __FUNCTION__);
-    if (mState == STATE_STOPPED && mPreviewStartQueued == false) {
+    if (mState == STATE_STOPPED) {
         return NO_ERROR;
     }
     // send message and block until thread processes message
@@ -525,8 +517,7 @@ bool ControlThread::previewEnabled()
 
     PreviewThread::PreviewState state = mPreviewThread->getPreviewState();
 
-    bool enabled = mPreviewStartQueued ||
-                   (state != PreviewThread::STATE_STOPPED
+    bool enabled = (state != PreviewThread::STATE_STOPPED
                  && state != PreviewThread::STATE_ENABLED_HIDDEN
                  && state != PreviewThread::STATE_ENABLED_HIDDEN_PASSTHROUGH);
     // Note: See PreviewThread::setPreviewState() for documentation
@@ -542,76 +533,11 @@ bool ControlThread::recordingEnabled()
 status_t ControlThread::setParameters(const char *params)
 {
     LOG1("@%s: params = %p", __FUNCTION__, params);
-    Mutex::Autolock mLock(mParamCacheLock);
-    status_t status = NO_ERROR;
-    CameraParameters newParams;
-    CameraParameters oldParams;
-
-    if (mParamCache == NULL) {
-        String8 params = mParameters.flatten();
-        int len = params.length();
-        mParamCache = strndup(params.string(), sizeof(char) * len);
-    }
-    String8 strOldParams(mParamCache);
-    oldParams.unflatten(strOldParams);
-    const String8 str_params(params);
-    newParams.unflatten(str_params);
-
-    CameraAreas newFocusAreas;
-    CameraAreas newMeteringAreas;
-
-    // print all old and new params for comparison (debug)
-    status = validateParameters(&newParams);
-    if (status != NO_ERROR)
-        goto exit;
-    LOG1("scanning AF focus areas");
-    status = newFocusAreas.scan(newParams.get(CameraParameters::KEY_FOCUS_AREAS),
-                                mAAA->getAfMaxNumWindows());
-    if (status != NO_ERROR) {
-        LOGE("bad focus area");
-        goto exit;
-    }
-    LOG1("scanning AE metering areas");
-    status = newMeteringAreas.scan(newParams.get(CameraParameters::KEY_METERING_AREAS),
-                                   mAAA->getAeMaxNumWindows());
-    if (status != NO_ERROR) {
-        LOGE("bad metering area");
-        goto exit;
-    }
-
     Message msg;
     msg.id = MESSAGE_ID_SET_PARAMETERS;
-    // Take care of parameters that need to be set while the ISP is stopped
-    status = processStaticParameters(&oldParams, &newParams, msg);
-    if (status != NO_ERROR)
-        goto exit;
+    msg.data.setParameters.params = const_cast<char*>(params); // We swear we won't modify params :)
+    return mMessageQueue.send(&msg, MESSAGE_ID_SET_PARAMETERS);
 
-    {
-        // release AE lock, if AE mode changed (cts)
-        String8 newVal = paramsReturnNewIfChanged(&oldParams, &newParams,
-                                                  IntelCameraParameters::KEY_AE_MODE);
-        if (!newVal.isEmpty()) {
-            newParams.set(CameraParameters::KEY_AUTO_EXPOSURE_LOCK, CameraParameters::FALSE);
-        }
-
-        processParamSceneMode(&oldParams, &newParams, false); // for cts, we process, but do not apply yet
-
-        // let app know if we support zoom in the preview mode indicated
-        bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT, newParams);
-        mISP->getZoomRatios(videoMode, &newParams);
-        mISP->getFocusDistances(&newParams);
-
-        // update param cache
-        free(mParamCache);
-        String8 finalParams = newParams.flatten();
-        int len = finalParams.length();
-        mParamCache = strndup(finalParams.string(), sizeof(char) * len);
-    }
-
-    return mMessageQueue.send(&msg);
-
-exit:
-    return status;
 }
 
 char* ControlThread::getParameters()
@@ -762,6 +688,14 @@ status_t ControlThread::storeMetaDataInBuffers(bool enabled)
     return  mMessageQueue.send(&msg, MESSAGE_ID_STORE_METADATA_IN_BUFFER);
 }
 
+void ControlThread::atomRelease()
+{
+    LOG2("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_RELEASE;
+    mMessageQueue.send(&msg, MESSAGE_ID_RELEASE);
+}
+
 void ControlThread::sceneDetected(int sceneMode, bool sceneHdr)
 {
     LOG2("@%s", __FUNCTION__);
@@ -866,11 +800,12 @@ void ControlThread::postProcCaptureTrigger()
     mMessageQueue.send(&msg);
 }
 
-status_t ControlThread::handleMessageExit()
+status_t ControlThread::handleMessageExit(MessageExit *msg)
 {
     LOG1("@%s state = %d", __FUNCTION__, mState);
     status_t status;
-    mThreadRunning = false;
+    if (msg->stopThread)
+        mThreadRunning = false;
 
     switch (mState) {
     case STATE_CAPTURE:
@@ -965,6 +900,59 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
     return NO_ERROR;
 }
 
+
+/**
+ * Adapts continuous capture params to fit platform limits.
+ *
+ * In case the requested combination is not supported (platform
+ * does not have big enough ringbuffer for RAW frames),
+ * burst-start-index takes priority over burst-fps.
+ *
+ * The FPS is increased (by reducing skipping done in ISP), until
+ * the requested burst-start-index can be supported.
+ *
+ * \param cfg configuration container to modify
+ */
+void ControlThread::continuousConfigApplyLimits(AtomISP::ContinuousCaptureConfig &cfg) const
+{
+    int minOffset = mISP->continuousBurstNegMinOffset();
+    int skip = continuousBurstSkip(mBurstFps);
+    int offset = 0;
+    if (mBurstStart < 0) {
+        for(offset = minOffset-1; offset < minOffset; skip--) {
+            offset = mISP->continuousBurstNegOffset(skip, mBurstStart);
+            if (skip == 0)
+                break;
+        }
+    }
+    cfg.skip = skip;
+    cfg.offset = offset;
+    double outFps = mISP->getFrameRate() / (skip + 1);
+    LOG2("@%s: offset %d, skip %d, fps %d->%.1f (for start-index %d, sensor fps %.1f)",
+         __FUNCTION__, offset, skip, mBurstFps, outFps, mBurstStart, mISP->getFrameRate());
+}
+
+/**
+ * Returns the skip factor for the given target FPS.
+ *
+ * \return 0...N of frames to skip between valid output frames
+ */
+int ControlThread::continuousBurstSkip(double targetFps) const
+{
+    double ratio (mISP->getFrameRate() / targetFps);
+
+    // High - max sensor rate
+    if (ratio <= 2.0)
+        return 0;
+
+    // Medium - half the sensor rate
+    else if (ratio <= 4.0)
+        return 1;
+
+    // Low - quarter of sensor rate;
+    return 3;
+}
+
 /**
  * Configures the ISP ringbuffer size in continuous mode.
  *
@@ -979,18 +967,15 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
 status_t ControlThread::configureContinuousRingBuffer()
 {
     LOG2("@%s", __FUNCTION__);
-    int numCaptures = 1;
-    int offset = -1;
+    AtomISP::ContinuousCaptureConfig cfg;
+    cfg.numCaptures = 1;
+    cfg.offset = -1; // TODO: needs to be calibrated
+    cfg.skip = 0;
     if (mBurstLength > 1) {
-        numCaptures = mBurstLength;
-        offset = mBurstStart - shutterLagZeroAlign();
+        cfg.numCaptures = mBurstLength;
+        continuousConfigApplyLimits(cfg);
     }
-
-    mISP->setContCaptureNumCaptures(numCaptures);
-    mISP->setContCaptureOffset(offset);
-    LOG2("continous mode ringbuffer for max %d captures, %d offset",
-         numCaptures, offset);
-    return NO_ERROR;
+    return mISP->prepareOfflineCapture(cfg);
 }
 
 /**
@@ -1447,8 +1432,6 @@ status_t ControlThread::stopCapture()
 status_t ControlThread::restartPreview(bool videoMode)
 {
     LOG1("@%s: mode = %s", __FUNCTION__, videoMode?"VIDEO":"STILL");
-    Mutex::Autolock mLock(mPreviewStartLock);
-    mPreviewStartQueued = true;
     bool faceActive = mFaceDetectionActive;
     stopFaceDetection(true);
     status_t status = stopPreviewCore();
@@ -1456,24 +1439,9 @@ status_t ControlThread::restartPreview(bool videoMode)
         status = startPreviewCore(videoMode);
     if (faceActive)
         startFaceDetection();
-    mPreviewStartQueued = false;
     return status;
 }
 
-
-/**
- * Calculates the correct frame offset to capture to reach Zero
- * Shutter Lag.
- */
-int ControlThread::shutterLagZeroAlign()
-{
-    int delayMs = PlatformData::shutterLagCompensationMs();
-    float frameIntervalMs = 1000.0 / mISP->getFrameRate();
-    int lagZeroOffset = delayMs / frameIntervalMs + 1;
-    LOG2("@%s: delay %dms, fps %.02f, zero offset %d",
-         __FUNCTION__, delayMs, mISP->getFrameRate(), lagZeroOffset);
-    return lagZeroOffset;
-}
 
 /**
  * Starts rendering an output frame from the raw
@@ -1483,31 +1451,28 @@ status_t ControlThread::startOfflineCapture()
 {
     assert(mState == STATE_CONTINUOUS_CAPTURE);
 
-    int skip = 0;
-    int captures = 1;
-    int framesDone = 0;
-    int offset = -1; // TODO: start using shutterLagZeroAlign() instead of
+    AtomISP::ContinuousCaptureConfig cfg;
+    cfg.numCaptures = 1;
+    cfg.offset = -1; // TODO: start using shutterLagZeroAlign() instead of
                      // fixed -1 once BZ82274 is fixed
+    cfg.skip = 0;
 
     if (mBurstLength > 1) {
-        captures = mBurstLength;
-        offset = mBurstStart - shutterLagZeroAlign();
+        cfg.numCaptures = mBurstLength;
+        continuousConfigApplyLimits(cfg);
     }
 
     // in case preview has just started, we need to limit
     // how long we can look back
-    framesDone = mPreviewThread->getFramesDone();
-    if (framesDone < -offset)
-        offset = -framesDone;
+    int framesDone = mPreviewThread->getFramesDone();
+    if (framesDone < -cfg.offset)
+        cfg.offset = -framesDone;
 
     // Starting capture device will queue all buffers,
     // so we need to clear any references we have.
     mUnqueuedPicBuf.clear();
 
-    mISP->setContCaptureNumCaptures(captures);
-    mISP->setContCaptureOffset(offset);
-    mISP->setContCaptureSkip(skip);
-    mISP->startOfflineCapture();
+    mISP->startOfflineCapture(cfg);
 
     return NO_ERROR;
 }
@@ -1516,15 +1481,13 @@ status_t ControlThread::handleMessageStartPreview()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    Mutex::Autolock mLock(mPreviewStartLock);
-
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("handle start preview", -1);
 
     if (mState == STATE_CAPTURE) {
         status = stopCapture();
         if (status != NO_ERROR) {
             LOGE("Could not stop capture before start preview!");
-            mPreviewStartQueued = false;
+            mMessageQueue.reply(MESSAGE_ID_START_PREVIEW, status);
             return status;
         }
     }
@@ -1565,8 +1528,7 @@ status_t ControlThread::handleMessageStartPreview()
 preview_started:
     PERFORMANCE_TRACES_SHOT2SHOT_STEP("preview started", -1);
     mPreviewThread->setCallback(this, ICallbackPreview::INPUT_ONCE);
-    mPreviewStartQueued = false;
-
+    mMessageQueue.reply(MESSAGE_ID_START_PREVIEW, status);
     return status;
 }
 
@@ -2002,8 +1964,11 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
 
     if (mState == STATE_CONTINUOUS_CAPTURE) {
         assert(mBurstLength <= 1);
-        mISP->setContCaptureNumCaptures(1);
-        mISP->startOfflineCapture();
+        AtomISP::ContinuousCaptureConfig config;
+        config.numCaptures = 1;
+        config.offset = 0;
+        config.skip = 0,
+        mISP->startOfflineCapture(config);
     }
     else {
         status = stopPreviewCore();
@@ -2879,6 +2844,20 @@ status_t ControlThread::handleMessageCancelPicture()
     return status;
 }
 
+status_t ControlThread::handleMessageRelease()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    // use exit handler to stop (but do not stop message handling)
+    Message msg;
+    msg.data.exit.stopThread = false;
+    status = handleMessageExit(&msg.data.exit);
+    // return Gfx buffers
+    mPreviewThread->returnPreviewBuffers();
+    mMessageQueue.reply(MESSAGE_ID_RELEASE, status);
+    return status;
+}
+
 status_t ControlThread::handleMessageAutoFocus()
 {
     LOG1("@%s", __FUNCTION__);
@@ -3009,9 +2988,7 @@ void ControlThread::previewBufferCallback(AtomBuffer *buff, ICallbackPreview::Ca
 
 status_t ControlThread::handleMessagePreviewStarted()
 {
-    if (mState == STATE_CONTINUOUS_CAPTURE) {
-        mISP->setContCaptureOffset(-1);
-    } else {
+    if (mState != STATE_CONTINUOUS_CAPTURE) {
         /**
         * First preview frame was rendered.
         * Now preview is ongoing. Complete now any initialization that is not
@@ -3460,6 +3437,7 @@ status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
         }
         if (fps > 0) {
             mFpsAdaptSkip = roundf(PlatformData::getMaxBurstFPS(mISP->getCurrentCameraId())/float(fps)) - 1;
+            mBurstFps = fps;
             LOG1("%s, mFpsAdaptSkip:%d", __FUNCTION__, mFpsAdaptSkip);
         }
     }
@@ -3471,6 +3449,7 @@ status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
         LOG1("Burst start-index set %d -> %d", mBurstStart, burstStartInt);
         mBurstStart = burstStartInt;
     }
+    selectFlashMode(newParams, false);
 
     return status;
 }
@@ -3558,9 +3537,29 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         status = processParamExifSoftware(oldParams, newParams);
     }
 
+    if (status == NO_ERROR) {
+        // Saturation setting (Intel extension)
+        status = processParamSaturation(oldParams, newParams);
+    }
+
+    if (status == NO_ERROR) {
+        // Contrast setting (Intel extension)
+        status = processParamContrast(oldParams, newParams);
+    }
+
+    if (status == NO_ERROR) {
+        // Sharpness setting (Intel extension)
+        status = processParamSharpness(oldParams, newParams);
+    }
+
     if (!mFaceDetectionActive && status == NO_ERROR) {
         // customize metering
         status = processParamSetMeteringAreas(oldParams, newParams);
+    }
+
+    if (status == NO_ERROR) {
+        // ae mode
+        status = processParamAutoExposureMeteringMode(oldParams, newParams);
     }
 
     if (mAAA->is3ASupported()) {
@@ -3603,11 +3602,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         if (status == NO_ERROR) {
             // Smart Shutter Capture
             status = processParamSmartShutter(oldParams, newParams);
-        }
-
-        if (status == NO_ERROR) {
-            // ae mode
-            status = processParamAutoExposureMeteringMode(oldParams, newParams);
         }
 
         if (status == NO_ERROR) {
@@ -3916,7 +3910,7 @@ status_t ControlThread::processParamRotation(const CameraParameters *oldParams,
     int old_value,new_value;
     old_value = oldParams->getInt(CameraParameters::KEY_ROTATION);
     new_value = newParams->getInt(CameraParameters::KEY_ROTATION);
-    if (old_value != new_value)
+    if (old_value != new_value || !mThreadRunning)
         status = mPostProcThread->setRotation(new_value);
     return status;
 }
@@ -4039,6 +4033,7 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         // Dependency parameters
         mBurstLength = mHdr.bracketNum;
         mBracketManager->setBracketMode(mHdr.bracketMode);
+        selectFlashMode(newParams, false);
     }
 
     newVal = paramsReturnNewIfChanged(oldParams, newParams,
@@ -4106,14 +4101,17 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
  * in burst capture, the flash is forced to off, otherwise
  * saved single capture flash mode is applied.
  * \param newParams
+ * \param apply previous saved value
  */
-void ControlThread::selectFlashMode(CameraParameters *newParams)
+void ControlThread::selectFlashMode(CameraParameters *newParams, bool applySaved)
 {
     // !mBurstLength is only for CTS to pass
     LOG1("@%s", __FUNCTION__);
     if (mBurstLength == 1 || !mBurstLength) {
-        newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, mSavedFlashSupported.string());
-        newParams->set(CameraParameters::KEY_FLASH_MODE, mSavedFlashMode.string());
+        if (applySaved) {
+            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, mSavedFlashSupported.string());
+            newParams->set(CameraParameters::KEY_FLASH_MODE, mSavedFlashMode.string());
+        }
     } else {
         newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
         newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
@@ -4121,7 +4119,7 @@ void ControlThread::selectFlashMode(CameraParameters *newParams)
 }
 
 status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
-        CameraParameters *newParams, bool applyImmediately)
+        CameraParameters *newParams)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -4141,7 +4139,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
-                selectFlashMode(newParams);
+                selectFlashMode(newParams, true);
             }
             newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
             newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
@@ -4160,7 +4158,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams);
+                selectFlashMode(newParams, true);
             }
             newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
             newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
@@ -4179,7 +4177,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams);
+                selectFlashMode(newParams, true);
             }
             newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_OUTDOOR);
             newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
@@ -4198,7 +4196,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams);
+                selectFlashMode(newParams, true);
             }
             newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
             newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
@@ -4217,7 +4215,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("on");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_ON);
-                selectFlashMode(newParams);
+                selectFlashMode(newParams, true);
             }
             newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
             newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
@@ -4236,7 +4234,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams);
+                selectFlashMode(newParams, true);
             }
             newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
             newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
@@ -4254,8 +4252,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
-                mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
-                selectFlashMode(newParams);
+                mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
+                selectFlashMode(newParams, true);
             }
             newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
             newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
@@ -4267,6 +4265,14 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
         } else {
             if (newScene == CameraParameters::SCENE_MODE_CANDLELIGHT) {
                 sceneMode = CAM_AE_SCENE_MODE_CANDLELIGHT;
+            } else if (newScene == IntelCameraParameters::SCENE_MODE_BEACH_SNOW) {
+                sceneMode = CAM_AE_SCENE_MODE_BEACH_SNOW;
+            } else if (newScene == IntelCameraParameters::SCENE_MODE_DAWN_DUSK) {
+                sceneMode = CAM_AE_SCENE_MODE_DAWN_DUSK;
+            } else if (newScene == IntelCameraParameters::SCENE_MODE_FALL_COLORS) {
+                sceneMode = CAM_AE_SCENE_MODE_FALL_COLORS;
+            } else if (newScene == IntelCameraParameters::SCENE_MODE_BACKLIGHT) {
+                sceneMode = CAM_AE_SCENE_MODE_BACKLIGHT;
             } else {
                 LOG1("Unsupported %s: %s. Using AUTO!", CameraParameters::KEY_SCENE_MODE, newScene.string());
                 sceneMode = CAM_AE_SCENE_MODE_AUTO;
@@ -4280,7 +4286,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
-                selectFlashMode(newParams);
+                selectFlashMode(newParams, true);
             }
             newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
             newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center,spot");
@@ -4292,21 +4298,20 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         }
 
-        if (applyImmediately) {
-            m3AControls->setAeSceneMode(sceneMode);
-            if (status == NO_ERROR) {
-                LOG1("Changed: %s -> %s", CameraParameters::KEY_SCENE_MODE, newScene.string());
-            }
+        m3AControls->setAeSceneMode(sceneMode);
+        if (status == NO_ERROR) {
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_SCENE_MODE, newScene.string());
         }
+
 
         // If Intel params are not allowed,
         // we should update Intel params setting to HW, and remove them here.
         if (!mIntelParamsAllowed) {
-            if (applyImmediately) {
-                processParamBackLightingCorrectionMode(oldParams, newParams);
-                processParamAwbMappingMode(oldParams, newParams);
-                processParamXNR_ANR(oldParams, newParams);
-            }
+
+            processParamBackLightingCorrectionMode(oldParams, newParams);
+            processParamAwbMappingMode(oldParams, newParams);
+            processParamXNR_ANR(oldParams, newParams);
+
             newParams->remove(IntelCameraParameters::KEY_AWB_MAPPING_MODE);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES);
@@ -4620,6 +4625,69 @@ status_t ControlThread::processParamIso(const CameraParameters *oldParams,
     return status;
 }
 
+status_t ControlThread::processParamContrast(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    int value;
+    status_t status = NO_ERROR;
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_CONTRAST_MODE);
+    if (!newVal.isEmpty()) {
+        if (!strcmp(newVal.string(), IntelCameraParameters::CONTRAST_MODE_SOFT))
+            value = EXIF_CONTRAST_SOFT;
+        else if (!strcmp(newVal.string(), IntelCameraParameters::CONTRAST_MODE_HARD))
+            value = EXIF_CONTRAST_HARD;
+        else
+            value = EXIF_CONTRAST_NORMAL;
+
+        mISP->setContrast(value);
+    }
+    return status;
+}
+
+status_t ControlThread::processParamSaturation(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    int value;
+    status_t status = NO_ERROR;
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_SATURATION_MODE);
+    if (!newVal.isEmpty()) {
+        if (!strcmp(newVal.string(), IntelCameraParameters::SATURATION_MODE_LOW))
+            value = EXIF_SATURATION_LOW;
+        else if (!strcmp(newVal.string(), IntelCameraParameters::SATURATION_MODE_HIGH))
+            value = EXIF_SATURATION_HIGH;
+        else
+            value = EXIF_SATURATION_NORMAL;
+
+        mISP->setSaturation(value);
+    }
+    return status;
+}
+
+status_t ControlThread::processParamSharpness(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    int value;
+    status_t status = NO_ERROR;
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_SHARPNESS_MODE);
+    if (!newVal.isEmpty()) {
+        if (!strcmp(newVal.string(), IntelCameraParameters::SHARPNESS_MODE_SOFT))
+            value = EXIF_SHARPNESS_SOFT;
+        else if (!strcmp(newVal.string(), IntelCameraParameters::SHARPNESS_MODE_HARD))
+            value = EXIF_SHARPNESS_HARD;
+        else
+            value = EXIF_SHARPNESS_NORMAL;
+
+        mISP->setSharpness(value);
+    }
+    return status;
+}
+
 /**
  * Sets manual shutter time value
  *
@@ -4902,20 +4970,17 @@ status_t ControlThread::processParamExifSoftware(const CameraParameters *oldPara
 }
 
 /*
- * NOTE: this function runs in camera service thread. Protect member accesses accordingly!
+ * Process parameters that require the ISP to be stopped.
  *
  * @param[in] oldParams the previous parameters
  * @param[in] newParams the new parameters which are being set
- * @param[out] msg a message which will be sent for ControlThread for processing later,
- *             this function will return whether in video mode and whether preview
- *             format changed through in message structure.
+ * @param[out] previewFormatChanged boolean to detect whether a preview re-start is needed.
  */
 status_t ControlThread::processStaticParameters(const CameraParameters *oldParams,
-        CameraParameters *newParams, Message &msg)
+        CameraParameters *newParams, bool &previewFormatChanged)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    bool previewFormatChanged = false;
     float previewAspectRatio = 0.0f;
     float videoAspectRatio = 0.0f;
     Vector<Size> sizes;
@@ -4926,7 +4991,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
     int oldHeight, newHeight;
     int previewWidth, previewHeight;
     int oldFormat, newFormat;
-
+    previewFormatChanged = false;
     // see if preview params have changed
     newParams->getPreviewSize(&newWidth, &newHeight);
     oldParams->getPreviewSize(&oldWidth, &oldHeight);
@@ -5037,9 +5102,6 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
         mPreviewForceChanged = true;
         previewFormatChanged = true;
     }
-
-    msg.data.setParameters.previewFormatChanged = previewFormatChanged;
-    msg.data.setParameters.videoMode = videoMode;
 
     return status;
 }
@@ -5162,23 +5224,16 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     status_t status = NO_ERROR;
     CameraParameters newParams;
     CameraParameters oldParams = mParameters;
-
-    bool needRestartPreview = msg->previewFormatChanged;
-    bool videoMode = msg->videoMode;
+    CameraParamsLogger newParamLogger (msg->params);
+    CameraParamsLogger oldParamLogger (mParameters.flatten().string());
+    bool needRestartPreview;
 
     CameraAreas newFocusAreas;
     CameraAreas newMeteringAreas;
-
-    mParamCacheLock.lock();
-    // flush the rest of setParameters, if any - last parameters are in mParamCache
-    mMessageQueue.remove(MESSAGE_ID_SET_PARAMETERS);
-    // copy cached settings
-    String8 str_params(mParamCache);
+    String8 str_params(msg->params);
     newParams.unflatten(str_params);
-    mParamCacheLock.unlock();
 
-    CameraParamsLogger newParamLogger (str_params.string());
-    CameraParamsLogger oldParamLogger (mParameters.flatten().string());
+    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT, newParams) ? true : false;
 
     // print all old and new params for comparison (debug)
     LOG1("----------BEGIN PARAM DIFFERENCE----------");
@@ -5192,6 +5247,10 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     LOG2("----------- BEGIN NEW PARAMS -------- ");
     newParamLogger.dump();
     LOG2("----------- END NEW PARAMS -------- ");
+
+    status = validateParameters(&newParams);
+    if (status != NO_ERROR)
+        goto exit;
 
     LOG1("scanning AF focus areas");
     status = newFocusAreas.scan(newParams.get(CameraParameters::KEY_FOCUS_AREAS),
@@ -5207,6 +5266,11 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
         LOGE("bad metering area");
         goto exit;
     }
+
+    // Take care of parameters that need to be set while the ISP is stopped
+    status = processStaticParameters(&oldParams, &newParams, needRestartPreview);
+    if (status != NO_ERROR)
+        goto exit;
 
     if (paramsHasPictureSizeChanged(&oldParams, &newParams)) {
         LOG1("Picture size has changed while camera is active!");
@@ -5263,8 +5327,11 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
         goto exit;
 
     mParameters = newParams;
+    updateParameterCache();
 
 exit:
+    // return status and unblock message sender
+    mMessageQueue.reply(MESSAGE_ID_SET_PARAMETERS, status);
     // return status
     return status;
 }
@@ -5872,7 +5939,7 @@ status_t ControlThread::waitForAndExecuteMessage()
     switch (msg.id) {
 
         case MESSAGE_ID_EXIT:
-            status = handleMessageExit();
+            status = handleMessageExit(&msg.data.exit);
             break;
 
         case MESSAGE_ID_START_PREVIEW:
@@ -5973,6 +6040,9 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_DEQUEUE_RECORDING:
             status = dequeueRecording(msg.data.dequeueRecording.skipFrame);
+            break;
+        case MESSAGE_ID_RELEASE:
+            status = handleMessageRelease();
             break;
 
         default:
@@ -6142,6 +6212,7 @@ status_t ControlThread::requestExitAndWait()
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_EXIT;
+    msg.data.exit.stopThread = true;
 
     // tell thread to exit
     // send message asynchronously
