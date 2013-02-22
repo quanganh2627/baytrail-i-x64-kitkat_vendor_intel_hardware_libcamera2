@@ -5124,7 +5124,11 @@ status_t AtomISP::enableFrameSyncEvent(bool enable)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    mFrameSyncRequested = (enable)?(mFrameSyncRequested+1):(mFrameSyncRequested-1);
+    if (enable) {
+        mFrameSyncRequested++;
+    } else if (mFrameSyncRequested > 0) {
+        mFrameSyncRequested--;
+    }
     return status;
 }
 
@@ -5177,6 +5181,7 @@ status_t AtomISP::detachObserver(IAtomIspObserver *observer, ObserverType t)
             v4l2_unsubscribe_event(video_fds[V4L2_ISP_SUBDEV], V4L2_EVENT_FRAME_SYNC);
             closeDevice(V4L2_ISP_SUBDEV);
             mFrameSyncEnabled = false;
+            mFrameSyncRequested = 0;
         }
     }
 
