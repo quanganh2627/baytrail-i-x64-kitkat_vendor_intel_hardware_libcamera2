@@ -265,6 +265,12 @@ status_t ControlThread::init()
         goto bail;
     }
 
+    mSensorThread = SensorThread::getInstance();
+    if (mSensorThread == NULL) {
+        LOGE("error creating SensorThread");
+        goto bail;
+    }
+
     mBracketManager = new BracketManager(mISP, m3AControls);
     if (mBracketManager == NULL) {
         LOGE("error creating BracketManager");
@@ -282,6 +288,11 @@ status_t ControlThread::init()
     mVideoThread->getDefaultParameters(&mIntelParameters, cameraId);
     updateParameterCache();
 
+    status = mSensorThread->run();
+    if (status != NO_ERROR) {
+        LOGE("Error starting sensor thread!");
+        goto bail;
+    }
     status = m3AThread->run();
     if (status != NO_ERROR) {
         LOGE("Error starting 3A thread!");
@@ -406,6 +417,11 @@ void ControlThread::deinit()
     if (m3AThread != NULL) {
         m3AThread->requestExitAndWait();
         m3AThread.clear();
+    }
+
+    if (mSensorThread != NULL) {
+        mSensorThread->requestExitAndWait();
+        mSensorThread.clear();
     }
 
     if (mParamCache != NULL)
@@ -3535,11 +3551,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     else
         LOGD("not supported zoom setting");
 
-    // Rotation
-    if (status == NO_ERROR) {
-        status = processParamRotation(oldParams, newParams);
-    }
-
     // Color effect
     if (status == NO_ERROR) {
         status = processParamEffect(oldParams, newParams);
@@ -3959,18 +3970,6 @@ status_t ControlThread::processParamFlash(const CameraParameters *oldParams,
             LOG1("Changed: %s -> %s", CameraParameters::KEY_FLASH_MODE, newVal.string());
         }
     }
-    return status;
-}
-
-status_t ControlThread::processParamRotation(const CameraParameters *oldParams,
-        CameraParameters *newParams)
-{
-    status_t status = NO_ERROR;
-    int old_value,new_value;
-    old_value = oldParams->getInt(CameraParameters::KEY_ROTATION);
-    new_value = newParams->getInt(CameraParameters::KEY_ROTATION);
-    if (old_value != new_value || !mThreadRunning)
-        status = mPostProcThread->setRotation(new_value);
     return status;
 }
 

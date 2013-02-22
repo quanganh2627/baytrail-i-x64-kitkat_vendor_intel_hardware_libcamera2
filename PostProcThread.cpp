@@ -23,6 +23,7 @@
 #include "PostProcThread.h"
 #include "IFaceDetectionListener.h"
 #include "FeatureData.h"
+#include "PlatformData.h"
 #include <system/camera.h>
 
 namespace android {
@@ -43,8 +44,10 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     ,mFaceAAAFlags(AAA_FLAG_ALL)
     ,mOldAfMode(CAM_AF_MODE_NOT_SET)
     ,mOldAeMeteringMode(CAM_AE_METERING_MODE_NOT_SET)
-    ,mRotation(0)
     ,mZoomRatio(0)
+    ,mRotation(0)
+    ,mCameraOrientation(0)
+    ,mIsBackCamera(false)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -105,6 +108,11 @@ void PostProcThread::getDefaultParameters(CameraParameters *params, CameraParame
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_DETECTION, FeatureData::faceDetectionSupported(cameraId));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_RECOGNITION, FeatureData::faceRecognitionSupported(cameraId));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SCENE_DETECTION, FeatureData::sceneDetectionSupported(cameraId));
+
+    mCameraOrientation = PlatformData::cameraOrientation(cameraId);
+    // TODO: make sure that CameraId = 0 is main Camera always
+    if (cameraId == 0)
+        mIsBackCamera = true;
 }
 
 void PostProcThread::startFaceDetection()
@@ -150,6 +158,8 @@ status_t PostProcThread::handleMessageStartFaceDetection()
     if (mSmartShutter.smartRunning && mSmartShutter.blinkRunning)
         mFaceDetector->setBlinkThreshold(mSmartShutter.blinkThreshold);
 
+    mRotation = SensorThread::getInstance()->registerOrientationListener(this);
+
     mLastReportedNumberOfFaces = 0;
     mFaceDetectionRunning = true;
     return status;
@@ -179,7 +189,10 @@ status_t PostProcThread::handleMessageStopFaceDetection()
     mOldAfMode = CAM_AF_MODE_NOT_SET;
     mOldAeMeteringMode = CAM_AE_METERING_MODE_NOT_SET;
 
+    SensorThread::getInstance()->unRegisterOrientationListener(this);
+
     mMessageQueue.reply(MESSAGE_ID_STOP_FACE_DETECTION, status);
+
     return status;
 }
 
@@ -503,6 +516,11 @@ status_t PostProcThread::handleExit()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+
+    if (mFaceDetectionRunning) {
+        SensorThread::getInstance()->unRegisterOrientationListener(this);
+    }
+
     mThreadRunning = false;
     mFaceDetectionRunning = false;
     return status;
@@ -514,15 +532,6 @@ status_t PostProcThread::setZoom(int zoomRatio)
     Message msg;
     msg.id = MESSAGE_ID_SET_ZOOM;
     msg.data.config.value = zoomRatio;
-    return mMessageQueue.send(&msg);
-}
-
-status_t PostProcThread::setRotation(int rotation)
-{
-    LOG1("@%s", __FUNCTION__);
-    Message msg;
-    msg.id = MESSAGE_ID_SET_ROTATION;
-    msg.data.config.value = rotation;
     return mMessageQueue.send(&msg);
 }
 
@@ -726,6 +735,7 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         bool smile = false;
         bool blink = true;
         unsigned char *src;
+        int rotation;
         if (frame.img.type == ATOM_BUFFER_PREVIEW) {
             src = (unsigned char*) frame.img.buff->data;
         } else {
@@ -738,14 +748,22 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         frameData.height = frame.img.height;
         frameData.stride = frame.img.stride;
 
+        // correcting acceleration sensor orientation result
+        // with camera sensor orientation
+        if (mIsBackCamera)
+            rotation = (mCameraOrientation + mRotation) % 360;
+        else
+            rotation = (mCameraOrientation - mRotation + 360) % 360;
+
+
         // frame rotation is counter clock wise in libia_face,
         // while it is clock wise for android (valid for CTP)
-        if (mRotation == 90)
+        if (rotation == 90)
             frameData.rotation = 270;
-        else if (mRotation == 270)
+        else if (rotation == 270)
             frameData.rotation = 90;
         else
-            frameData.rotation = mRotation;
+            frameData.rotation = rotation;
 
         num_faces = mFaceDetector->faceDetect(&frameData);
 
@@ -912,6 +930,15 @@ void PostProcThread::resetToOldAAAValues()
         }
 
         // TODO: Reset AWB also, once taken into use above.
+}
+
+void PostProcThread::orientationChanged(int orientation)
+{
+    LOG2("@%s: orientation = %d", __FUNCTION__, orientation);
+    Message msg;
+    msg.id = MESSAGE_ID_SET_ROTATION;
+    msg.data.config.value = orientation;
+    mMessageQueue.send(&msg);
 }
 
 }

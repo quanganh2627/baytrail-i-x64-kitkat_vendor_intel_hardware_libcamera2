@@ -27,6 +27,7 @@
 #include "IFaceDetector.h"
 #include "PanoramaThread.h"
 #include "PreviewThread.h" // ICallbackPreview
+#include "SensorThread.h"
 
 namespace android {
 
@@ -43,7 +44,8 @@ public:
 
 class PostProcThread : public IFaceDetector,
                        public Thread,
-                       public ICallbackPreview
+                       public ICallbackPreview,
+                       public IOrientationListener
 {
 
 // constructor/destructor
@@ -56,7 +58,6 @@ public:
     void getDefaultParameters(CameraParameters *params, CameraParameters *intel_parameters, int cameraId);
     void flushFrames();
     status_t setZoom(int zoomRatio);
-    status_t setRotation(int rotation);
 // Thread overrides
 public:
     status_t requestExitAndWait();
@@ -95,6 +96,10 @@ public:
     virtual void loadIspExtensions(bool videoMode);
     virtual void unloadIspExtensions();
     bool isFaceRecognitionRunning();
+
+// IOrientationListener
+public:
+    void orientationChanged(int orientation);
 
 // private types
 private:
@@ -246,8 +251,10 @@ private:
     MeteringMode mOldAeMeteringMode;
     SmartShutterParams mSmartShutter;
     void *mIspHandle;
-    int mRotation;
     int mZoomRatio;
+    int mRotation;
+    int mCameraOrientation;
+    bool mIsBackCamera;
 }; // class PostProcThread
 
 }; // namespace android

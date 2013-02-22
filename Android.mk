@@ -57,7 +57,8 @@ LOCAL_SRC_FILES := \
 	CameraAreas.cpp \
 	BracketManager.cpp \
 	AtomAcc.cpp \
-	AtomIspObserverManager.cpp
+	AtomIspObserverManager.cpp \
+	SensorThread.cpp
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SRC_FILES += \
@@ -106,7 +107,8 @@ LOCAL_SHARED_LIBRARIES := \
 	libia_nvm \
 	libtbd \
 	libsqlite \
-	libdl
+	libdl \
+	libgui
 
 ifeq ($(USE_INTEL_METABUFFER),true)
 LOCAL_SHARED_LIBRARIES += \

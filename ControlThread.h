@@ -35,6 +35,7 @@
 #include "CameraConf.h"
 #include "PostProcThread.h"
 #include "PanoramaThread.h"
+#include "SensorThread.h"
 #include "CameraDump.h"
 #include "CameraAreas.h"
 #include "AtomCP.h"
@@ -486,8 +487,6 @@ private:
 
     status_t processParamSlowMotionRate(const CameraParameters *oldParams,
         CameraParameters *newParams);
-    status_t processParamRotation(const CameraParameters *oldParams,
-                CameraParameters *newParams);
     void processParamFileInject(CameraParameters *newParams);
 
     void preSetCameraWindows(CameraWindow* focusWindows, size_t winCount);
@@ -568,6 +567,7 @@ private:
     sp<AAAThread>     m3AThread;
     sp<PostProcThread> mPostProcThread;
     sp<PanoramaThread> mPanoramaThread;
+    sp<SensorThread> mSensorThread;
     sp<BracketManager> mBracketManager;
 
     MessageQueue<Message, MessageId> mMessageQueue;
