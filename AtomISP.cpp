@@ -597,11 +597,6 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     params->set(CameraParameters::KEY_ZOOM_SUPPORTED, CameraParameters::TRUE);
 
     /**
-     * ROTATION
-     */
-    params->set(CameraParameters::KEY_ROTATION, 0);
-
-    /**
      * FLASH
      */
     if (PlatformData::supportsBackFlash() == true &&
