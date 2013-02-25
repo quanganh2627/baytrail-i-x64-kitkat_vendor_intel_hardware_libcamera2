@@ -1013,6 +1013,8 @@ status_t AtomISP::start()
     if (status == NO_ERROR) {
         runStartISPActions();
         mSessionId++;
+    } else {
+        mMode = MODE_NONE;
     }
 
     return status;
@@ -4262,6 +4264,8 @@ errorFree:
 status_t AtomISP::freePreviewBuffers()
 {
     LOG1("@%s", __FUNCTION__);
+    if (mPreviewBuffers == NULL)
+        return NO_INIT;
     for (int i = 0 ; i < mNumPreviewBuffers; i++) {
         if (mPreviewBuffers[i].buff != NULL) {
             mPreviewBuffers[i].buff->release(mPreviewBuffers[i].buff);
