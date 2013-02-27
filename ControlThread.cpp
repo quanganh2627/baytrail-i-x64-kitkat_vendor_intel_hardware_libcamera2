@@ -1703,9 +1703,9 @@ status_t ControlThread::handleMessageStartRecording()
      */
     int stride;
     mISP->getVideoSize(&width, &height, &stride);
-    mParameters.setPictureSize(stride, height);
+    mParameters.setPictureSize(width, height);
     allocateSnapshotBuffers();
-    snprintf(sizes, 25, "%dx%d", stride,height);
+    snprintf(sizes, 25, "%dx%d", width,height);
     mParameters.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, sizes);
 
     LOG1("video snapshot size %dx%d", width, height);
