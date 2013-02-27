@@ -3518,21 +3518,23 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     int thumbHeight = params->getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
     char* thumbnailSizes = (char*) params->get(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES);
     supportedSizes.clear();
-
-    while (true) {
-        int width = (int)strtol(thumbnailSizes, &thumbnailSizes, 10);
-        int height = (int)strtol(thumbnailSizes+1, &thumbnailSizes, 10);
-        supportedSizes.push(Size(width, height));
-        if (*thumbnailSizes == '\0')
-            break;
-        ++thumbnailSizes;
-    }
-
-    if (!validateSize(thumbWidth, thumbHeight, supportedSizes)) {
-        LOGE("bad thumbnail size: (%d,%d)", thumbWidth, thumbHeight);
+    if (thumbnailSizes != NULL) {
+        while (true) {
+            int width = (int)strtol(thumbnailSizes, &thumbnailSizes, 10);
+            int height = (int)strtol(thumbnailSizes+1, &thumbnailSizes, 10);
+            supportedSizes.push(Size(width, height));
+            if (*thumbnailSizes == '\0')
+                break;
+            ++thumbnailSizes;
+        }
+        if (!validateSize(thumbWidth, thumbHeight, supportedSizes)) {
+            LOGE("bad thumbnail size: (%d,%d)", thumbWidth, thumbHeight);
+            return BAD_VALUE;
+        }
+    } else {
+        LOGE("bad thumbnail size");
         return BAD_VALUE;
     }
-
     // PICTURE FORMAT
     const char* picFormat = params->get(CameraParameters::KEY_PICTURE_FORMAT);
     const char* picFormats = params->get(CameraParameters::KEY_SUPPORTED_PICTURE_FORMATS);
