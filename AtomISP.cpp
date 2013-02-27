@@ -3685,6 +3685,8 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp, atomis
     mRecordingBuffers[index].ispPrivate = mSessionId;
     mRecordingBuffers[index].capture_timestamp = buf.timestamp;
     *buff = mRecordingBuffers[index];
+    buff->stride = mConfig.recording.stride;
+
     // time is get from ISP driver, it's realtime
     if (timestamp)
         *timestamp = (buf.timestamp.tv_sec)*1000000000LL + (buf.timestamp.tv_usec)*1000LL;
@@ -3796,6 +3798,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
     snapshotBuf->height = mConfig.snapshot.height;
     snapshotBuf->format = mConfig.snapshot.format;
     snapshotBuf->size = mConfig.snapshot.size;
+    snapshotBuf->stride = mConfig.snapshot.stride;
 
     mPostviewBuffers[postviewIndex].id = postviewIndex;
     mPostviewBuffers[postviewIndex].frameCounter = mDevices[V4L2_POSTVIEW_DEVICE].frameCounter;
@@ -3805,6 +3808,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
     postviewBuf->height = mConfig.postview.height;
     postviewBuf->format = mConfig.postview.format;
     postviewBuf->size = mConfig.postview.size;
+    postviewBuf->stride = mConfig.postview.stride;
 
     mNumCapturegBuffersQueued--;
 
