@@ -195,9 +195,9 @@ status_t CpfStore::initNames(String8& cpfName, String8& sysfsName)
             // So, let's see if we found any (suitable) CPF files
             if (drvIndex < 0) {
                 if (anyMatch) {
-                    LOGE("ERROR no suitable CPF files found in CPF folder \"%s\"", cpfConfigPath);
+                    LOGE("NOTE no suitable CPF files found in CPF folder \"%s\" (ok for SOC cameras)", cpfConfigPath);
                 } else {
-                    LOGE("ERROR not a single CPF file found in CPF folder \"%s\"", cpfConfigPath);
+                    LOGE("NOTE not a single CPF file found in CPF folder \"%s\" (ok for SOC cameras)", cpfConfigPath);
                 }
                 ret = NO_INIT;
             }
