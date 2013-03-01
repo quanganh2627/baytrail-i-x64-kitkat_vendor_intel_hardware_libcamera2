@@ -90,10 +90,14 @@ ControlThread::ControlThread(const sp<CameraConf>& cfg) :
     ,mAAA(NULL)
     ,mDvs(NULL)
     ,mCP(NULL)
+    ,m3AControls(NULL)
     ,mPreviewThread(NULL)
     ,mPictureThread(NULL)
     ,mVideoThread(NULL)
     ,m3AThread(NULL)
+    ,mPostProcThread(NULL)
+    ,mPanoramaThread(NULL)
+    ,mBracketManager(NULL)
     ,mMessageQueue("ControlThread", (int) MESSAGE_ID_MAX)
     ,mState(STATE_STOPPED)
     ,mThreadRunning(false)
@@ -407,7 +411,8 @@ void ControlThread::deinit()
     if (mParamCache != NULL)
         free(mParamCache);
 
-    m3AControls->deinit3A();
+    if (m3AControls != NULL)
+        m3AControls->deinit3A();
 
     if (mISP != NULL) {
         delete mISP;
