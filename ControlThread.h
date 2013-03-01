@@ -303,6 +303,7 @@ private:
         BracketingMode savedBracketMode;
         int  bracketNum;
         bool enabled;
+        bool inProgress;
         bool saveOrig;
         HdrSharpening sharpening;
         HdrVividness vividness;

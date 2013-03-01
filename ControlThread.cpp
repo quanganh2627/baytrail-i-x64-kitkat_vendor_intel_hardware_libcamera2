@@ -339,6 +339,7 @@ status_t ControlThread::init()
 
     // Disable HDR by default
     mHdr.enabled = false;
+    mHdr.inProgress = false;
     mHdr.savedBracketMode = BRACKET_NONE;
     mHdr.sharpening = NORMAL_SHARPENING;
     mHdr.vividness = GAUSSIAN_VIVIDNESS;
@@ -1469,7 +1470,7 @@ status_t ControlThread::stopCapture()
         }
     }
 
-    if (mHdr.enabled) {
+    if (mHdr.enabled || mHdr.inProgress) {
         hdrRelease();
     }
     return status;
@@ -5624,6 +5625,8 @@ status_t ControlThread::hdrInit(int size, int pvSize, int format,
             mHdr.ciBufOut.ciPostviewBuf[0].height,
             mHdr.ciBufOut.ciPostviewBuf[0].format);
 
+    mHdr.inProgress = true;
+
     return status;
 }
 
@@ -5695,6 +5698,7 @@ void ControlThread::hdrRelease()
     if (mHdr.ciBufOut.ciPostviewBuf != NULL) {
         delete[] mHdr.ciBufOut.ciPostviewBuf;
     }
+    mHdr.inProgress = false;
 }
 
 status_t ControlThread::hdrCompose()
