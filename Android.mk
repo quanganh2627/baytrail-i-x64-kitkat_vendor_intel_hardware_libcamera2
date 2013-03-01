@@ -128,7 +128,10 @@ endif
 
 ifeq ($(REF_DEVICE_NAME),mfld_gi)
 LOCAL_CFLAGS += -DMFLD_GI
-else ifneq (,$(findstring $(REF_DEVICE_NAME),victoriabay redhookbay))
+
+else ifneq (,$(findstring $(REF_DEVICE_NAME),mfld_dv10 redridge))
+LOCAL_CFLAGS += -DMFLD_DV10
+else ifneq (,$(findstring $(REF_DEVICE_NAME),victoriabay ctp_pr1 ctp_nomodem))
 LOCAL_CFLAGS += -DCLVT
 else ifeq ($(REF_DEVICE_NAME),mrfl_vp)
 LOCAL_CFLAGS += -DMRFL_VP
