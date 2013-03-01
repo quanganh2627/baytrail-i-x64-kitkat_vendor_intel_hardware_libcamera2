@@ -210,7 +210,7 @@ const char* PlatformData::preferredPreviewSizeForVideo(void)
     return i->mVideoPreviewSizePref;
 }
 
-const char* PlatformData::supportedVideoSizes(void)
+const char* PlatformData::supportedVideoSizes(int cameraId)
 {
     const char *sPtr;
     if (!HalConfig.getString(sPtr, CPF::VideoSizes)) {
@@ -218,7 +218,11 @@ const char* PlatformData::supportedVideoSizes(void)
     }
 
     PlatformBase *i = getInstance();
-    return i->mSupportedVideoSizes;
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return NULL;
+    }
+    return i->mCameras[cameraId].supportedVideoSizes;
 }
 
 void PlatformData::maxSnapshotSize(int cameraId, int* width, int* height)
@@ -885,7 +889,7 @@ const char* PlatformData::defaultPreviewFPSRange(int cameraId)
     return i->mCameras[cameraId].defaultPreviewFPSRange;
 }
 
-const char* PlatformData::supportedPreviewSize(int cameraId)
+const char* PlatformData::supportedPreviewSizes(int cameraId)
 {
     const char *sPtr;
     if (!HalConfig.getString(sPtr, CPF::PreviewSizes)) {
@@ -897,7 +901,7 @@ const char* PlatformData::supportedPreviewSize(int cameraId)
       LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
-    return i->mCameras[cameraId].supportedPreviewSize;
+    return i->mCameras[cameraId].supportedPreviewSizes;
 }
 
 bool PlatformData::supportsSlowMotion(int cameraId)

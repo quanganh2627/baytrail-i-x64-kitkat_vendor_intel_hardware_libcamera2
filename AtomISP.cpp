@@ -68,18 +68,6 @@
 #define RESOLUTION_VGA_TABLE   \
         "320x240,640x480"
 
-#define MAX_BACK_CAMERA_PREVIEW_WIDTH   1280
-#define MAX_BACK_CAMERA_PREVIEW_HEIGHT  720
-#define MAX_BACK_CAMERA_VIDEO_WIDTH   1920
-#define MAX_BACK_CAMERA_VIDEO_HEIGHT  1088
-
-#define MAX_FRONT_CAMERA_PREVIEW_WIDTH  1280
-#define MAX_FRONT_CAMERA_PREVIEW_HEIGHT 720
-#define MAX_FRONT_CAMERA_SNAPSHOT_WIDTH 1920
-#define MAX_FRONT_CAMERA_SNAPSHOT_HEIGHT    1080
-#define MAX_FRONT_CAMERA_VIDEO_WIDTH   1920
-#define MAX_FRONT_CAMERA_VIDEO_HEIGHT  1088
-
 #define MAX_FILE_INJECTION_SNAPSHOT_WIDTH    3264
 #define MAX_FILE_INJECTION_SNAPSHOT_HEIGHT   2448
 #define MAX_FILE_INJECTION_PREVIEW_WIDTH     1280
@@ -558,7 +546,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     params->setPreviewFrameRate(30);
 
 
-    params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES, PlatformData::supportedPreviewSize(cameraId));
+    params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES, PlatformData::supportedPreviewSizes(cameraId));
 
     params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES,PlatformData::supportedPreviewFrameRate(cameraId));
     params->set(CameraParameters::KEY_PREVIEW_FPS_RANGE,PlatformData::defaultPreviewFPSRange(cameraId));
@@ -569,7 +557,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
      */
     params->setVideoSize(mConfig.recording.width, mConfig.recording.height);
     params->set(CameraParameters::KEY_PREFERRED_PREVIEW_SIZE_FOR_VIDEO, PlatformData::preferredPreviewSizeForVideo());
-    params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, PlatformData::supportedVideoSizes());
+    params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, PlatformData::supportedVideoSizes(cameraId));
     params->set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,
                 CameraParameters::PIXEL_FORMAT_YUV420SP);
     if (PlatformData::supportVideoSnapshot())

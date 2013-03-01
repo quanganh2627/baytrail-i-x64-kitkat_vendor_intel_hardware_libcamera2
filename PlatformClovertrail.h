@@ -100,7 +100,8 @@ public:
             ,pcam->supportedSceneModes
             ,CameraParameters::SCENE_MODE_NIGHT_PORTRAIT);
         // Preview size
-        pcam->supportedPreviewSize = "1024x576,800x600,720x480,640x480,640x360,352x288,320x240,176x144";
+        pcam->supportedPreviewSizes = "1024x576,800x600,720x480,640x480,640x360,352x288,320x240,176x144";
+        pcam->supportedVideoSizes = "176x144,320x240,352x288,640x480,720x480,1280x720,1920x1080";
         mCameras.push(*pcam);
         delete pcam;
 
@@ -135,7 +136,8 @@ public:
         strcpy(pcam->defaultAwbMode, "");
         pcam->defaultAeMetering = "";
         pcam->supportedAeMetering = "";
-        pcam->supportedPreviewSize = "1024x576,720x480,640x480,640x360,352x288,320x240,176x144";
+        pcam->supportedPreviewSizes = "1024x576,720x480,640x480,640x360,352x288,320x240,176x144";
+        pcam->supportedVideoSizes = "176x144,320x240,352x288,640x480,720x480,1280x720";
         strcpy(pcam->defaultFocusMode, CameraParameters::FOCUS_MODE_FIXED);
         strcpy(pcam->supportedFocusModes, pcam->defaultFocusMode);
         mCameras.push(*pcam);
@@ -151,7 +153,6 @@ public:
 
         mProductName = "ExampleModel";
         mManufacturerName = "ExampleMaker";
-
         mContinuousCapture = (deviceOnContinuousCaptureBlackList() == false);
         mMaxContinuousRawRingBuffer = 10;
         mMaxZoomFactor = 64;
@@ -196,7 +197,8 @@ public:
             ,pcam->supportedSceneModes
             ,CameraParameters::SCENE_MODE_NIGHT_PORTRAIT);
         // Preview size
-        pcam->supportedPreviewSize = "1024x576,800x600,720x480,640x480,640x360,352x288,320x240,176x144";
+        pcam->supportedPreviewSizes = "1024x576,800x600,720x480,640x480,640x360,352x288,320x240,176x144";
+        pcam->supportedVideoSizes = "176x144,320x240,352x288,640x480,720x480,1280x720,1920x1080";
         mCameras.push(*pcam);
         delete pcam;
 
@@ -231,7 +233,8 @@ public:
         strcpy(pcam->defaultAwbMode, "");
         pcam->defaultAeMetering = "";
         pcam->supportedAeMetering = "";
-        pcam->supportedPreviewSize = "1024x576,720x480,640x480,640x360,352x288,320x240,176x144";
+        pcam->supportedPreviewSizes = "1024x576,720x480,640x480,640x360,352x288,320x240,176x144";
+        pcam->supportedVideoSizes = "176x144,320x240,352x288,640x480,720x480,1280x720";
         strcpy(pcam->defaultFocusMode, CameraParameters::FOCUS_MODE_FIXED);
         strcpy(pcam->supportedFocusModes, pcam->defaultFocusMode);
         mCameras.push(*pcam);
