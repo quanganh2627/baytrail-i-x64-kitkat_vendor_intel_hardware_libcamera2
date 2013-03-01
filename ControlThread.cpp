@@ -166,7 +166,6 @@ status_t ControlThread::init()
         LOGE("error creating DVS");
         goto bail;
     }
-    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("ISP_Init_Done");
 
     mAAA = AtomAAA::getInstance();
     if (mAAA == NULL) {
@@ -258,8 +257,6 @@ status_t ControlThread::init()
         LOGE("error creating BracketManager");
         goto bail;
     }
-
-    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("New_Other_Threads");
 
     cameraId = mISP->getCurrentCameraId();
     // get default params from AtomISP and JPEG encoder
@@ -403,6 +400,7 @@ void ControlThread::deinit()
 
     if (mISP != NULL) {
         delete mISP;
+        PERFORMANCE_TRACES_BREAKDOWN_STEP("DeleteISP");
     }
 
     if (mAAA != NULL) {
@@ -429,6 +427,7 @@ status_t ControlThread::setPreviewWindow(struct preview_stream_ops *window)
 {
     LOG1("@%s: window = %p, state %d", __FUNCTION__, window, mState);
 
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_NOPARAM();
     Message msg;
     msg.id = MESSAGE_ID_SET_PREVIEW_WINDOW;
     msg.data.previewWin.window = window;
@@ -470,8 +469,6 @@ bool ControlThread::msgTypeEnabled(int32_t msgType)
 status_t ControlThread::startPreview()
 {
     LOG1("@%s", __FUNCTION__);
-    PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
-    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("startPreview_in");
     // send message
     Message msg;
     msg.id = MESSAGE_ID_START_PREVIEW;
@@ -1017,6 +1014,7 @@ status_t ControlThread::initContinuousCapture()
 
     setExternalSnapshotBuffers(format, width, height);
 
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
     return status;
 }
 
@@ -1265,7 +1263,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             mISP->setGraphicPreviewBuffers(pvBufs, mNumBuffers);
         }
     }
-    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("Set_Preview_Config");
 
     status = mISP->allocateBuffers(mode);
     if (status != NO_ERROR) {
@@ -1273,6 +1270,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         return status;
     }
 
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("Alloc_Preview_Buffer");
     if (mAAA->is3ASupported()) {
         if (mAAA->switchModeAndRate(mode, mISP->getFrameRate()) != NO_ERROR)
             LOGE("Failed switching 3A at %.2f fps", mISP->getFrameRate());
@@ -1289,7 +1287,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             ICallbackPreview::OUTPUT_WITH_DATA);
 
     status = mISP->start();
-    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("ISP_Start");
     if (status == NO_ERROR) {
         mState = state;
         mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED);
@@ -1305,8 +1302,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mISP->detachObserver(mPreviewThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
     }
 
-    // ISP started so frame counter will be 1
-    PERFORMANCE_TRACES_SHOT2SHOT_STEP("started preview", 1);
     return status;
 }
 
@@ -1372,6 +1367,7 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
 
     LOG2("Preview stopped after %d frames", mPreviewThread->getFramesDone());
 
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
     return status;
 }
 
@@ -1481,8 +1477,8 @@ status_t ControlThread::handleMessageStartPreview()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    PERFORMANCE_TRACES_SHOT2SHOT_STEP("handle start preview", -1);
 
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_NOPARAM();
     if (mState == STATE_CAPTURE) {
         status = stopCapture();
         if (status != NO_ERROR) {
@@ -1526,7 +1522,6 @@ status_t ControlThread::handleMessageStartPreview()
         status = INVALID_OPERATION;
     }
 preview_started:
-    PERFORMANCE_TRACES_SHOT2SHOT_STEP("preview started", -1);
     mPreviewThread->setCallback(this, ICallbackPreview::INPUT_ONCE);
     mMessageQueue.reply(MESSAGE_ID_START_PREVIEW, status);
     return status;
@@ -1536,8 +1531,6 @@ status_t ControlThread::handleMessageStopPreview()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-
-    PERFORMANCE_TRACES_SHOT2SHOT_STEP("stop preview", -1);
 
     // In STATE_CAPTURE, preview is already stopped, nothing to do
     if (mState != STATE_CAPTURE) {
@@ -1560,8 +1553,6 @@ status_t ControlThread::handleMessageStopPreview()
     mPreviewThread->setPreviewWindow(NULL);
 
 preview_stopped:
-    PERFORMANCE_TRACES_SHOT2SHOT_STEP("preview stopped", -1);
-
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_STOP_PREVIEW, status);
     return status;
@@ -1704,6 +1695,7 @@ status_t ControlThread::skipFrames(size_t numFrames)
             return status;
         }
     }
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("Skip--", numFrames);
     return status;
 }
 
@@ -1745,8 +1737,6 @@ status_t ControlThread::handleMessagePanoramaCaptureTrigger()
     LOG1("@%s:", __FUNCTION__);
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
-
-    PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE();
 
     status = capturePanoramaPic(snapshotBuffer, postviewBuffer);
     if (status != NO_ERROR) {
@@ -2231,8 +2221,6 @@ status_t ControlThread::captureStillPic()
     bool flashSequenceStarted = false;
     bool previewKeepAlive = selectPostviewSize(pvWidth, pvHeight) && !mHdr.enabled;
 
-    PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE();
-
     bool requestPostviewCallback = true;
     bool requestRawCallback = true;
 
@@ -2245,6 +2233,10 @@ status_t ControlThread::captureStillPic()
     // WORKAROUND END
     // Notify CallbacksThread that a picture was requested, so grab one from queue
     mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback, (mBurstLength > 1)? false : previewKeepAlive);
+
+    if (!mHdr.enabled) {
+        PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE();
+    }
 
     stopFaceDetection();
 
@@ -2336,8 +2328,6 @@ status_t ControlThread::captureStillPic()
             return status;
         }
 
-        PERFORMANCE_TRACES_SHOT2SHOT_STEP("start ISP", -1);
-
         status = mISP->allocateBuffers(MODE_CAPTURE);
         if (status != NO_ERROR) {
             LOGE("Error allocate buffers in ISP");
@@ -2395,8 +2385,6 @@ status_t ControlThread::captureStillPic()
         return status;
     }
 
-    PERFORMANCE_TRACES_SHOT2SHOT_STEP("get frame", 1);
-
     if (mState == STATE_CONTINUOUS_CAPTURE) {
         // TODO: to be removed once preview data flow is moved fully to
         //       a separate thread
@@ -2418,8 +2406,12 @@ status_t ControlThread::captureStillPic()
     } else {
         if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE) {
             status = mBracketManager->getSnapshot(snapshotBuffer, postviewBuffer);
+            PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("BreaketGotFrame",
+                        snapshotBuffer.frameCounter);
         } else {
             status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
+            PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("ISPGotFrame",
+                        snapshotBuffer.frameCounter);
         }
     }
 
@@ -2429,9 +2421,6 @@ status_t ControlThread::captureStillPic()
     }
 
     PerformanceTraces::ShutterLag::snapshotTaken(&snapshotBuffer.capture_timestamp);
-
-    PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
-                                       snapshotBuffer.frameCounter);
 
     PictureThread::MetaData picMetaData;
     fillPicMetaData(picMetaData, flashFired);
@@ -2529,8 +2518,6 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
         }
     }
 
-    PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE();
-
     /**
      * Time to return the used frames to ISP, we do not do this in the function
      * "handleMessagePictureDone".
@@ -2570,17 +2557,16 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     // Get the snapshot
     if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE) {
         status = mBracketManager->getSnapshot(snapshotBuffer, postviewBuffer);
+        PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("BracketGotFrame", snapshotBuffer.frameCounter);
     } else {
         status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
+        PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("ISPGotFrame", snapshotBuffer.frameCounter);
     }
 
     if (status != NO_ERROR) {
         LOGE("Error in grabbing snapshot!");
         return status;
     }
-
-    PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
-                                       snapshotBuffer.frameCounter);
 
     if (previewKeepAlive)
         mPreviewThread->postview(&postviewBuffer);
@@ -2728,9 +2714,6 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
 
     mBurstCaptureNum++;
 
-    PERFORMANCE_TRACES_SHOT2SHOT_STEP("got frame",
-                                       snapshotBuffer.frameCounter);
-
     if (previewKeepAlive)
         mPreviewThread->postview(&postviewBuffer);
 
@@ -2864,7 +2847,7 @@ status_t ControlThread::handleMessageAutoFocus()
     status_t status = NO_ERROR;
     FlashMode flashMode = mAAA->getAeFlashMode();
 
-    PERFORMANCE_TRACES_SHOT2SHOT_STEP_NOPARAM();
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("In");
 
     // Implement pre auto-focus functions
     if (flashMode != CAM_AE_FLASH_MODE_TORCH && mAAA->is3ASupported() && mBurstLength <= 1) {
@@ -4619,6 +4602,8 @@ status_t ControlThread::processParamIso(const CameraParameters *oldParams,
             int iso = atoi(isostr);
             m3AControls->setManualIso(iso);
             LOGD("Changed manual iso to \"%s\" (%d)", newVal.string(), iso);
+        } else {
+            LOGD("Changed auto iso to \"%s\"", newVal.string());
         }
         m3AControls->setIsoMode(iso_mode);
     }
@@ -5922,6 +5907,25 @@ status_t ControlThread::stopPanorama()
     if (mPanoramaThread->getState() == PANORAMA_STOPPED)
         return NO_ERROR;
     if (mPanoramaThread != 0) {
+        // empty panorama from pending work (push possible finalization to
+        // this thread)
+        mPanoramaThread->flush();
+
+        // at this point control thread may have a finalization message with
+        // memory from panorama engine, so process them right now
+        Vector<Message> pending;
+        mMessageQueue.remove(MESSAGE_ID_PANORAMA_FINALIZE, &pending);
+        Vector<Message>::iterator it;
+        for(it = pending.begin(); it != pending.end(); ++it)
+            handleMessagePanoramaFinalize(&it->data.panoramaFinalized);
+
+        // handling the finalization pushes the memory to picture thread, so
+        // flush the picture thread so that it is done with panorama engine
+        // memory
+        mPictureThread->flushBuffers();
+
+        // now, finally, we can stop the panorama engine, which releases its
+        // memory
         mPanoramaThread->stopPanorama();
         return NO_ERROR;
     } else{

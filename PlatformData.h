@@ -163,7 +163,7 @@ public:
                 ,"%s", CameraParameters::FLASH_MODE_OFF);
             //Iso
             supportedIso = "iso-auto,iso-100,iso-200,iso-400,iso-800";
-            defaultIso = "iso-200";
+            defaultIso = "iso-auto";
             //sceneMode
             snprintf(supportedSceneModes
                 ,sizeof(supportedSceneModes)

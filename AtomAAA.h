@@ -99,13 +99,6 @@ enum FlashStage
 #define EV_LOWER_BOUND         -100
 #define EV_UPPER_BOUND          100
 
-struct IspSettings
-{
-    int  GBCE_strength; // default: 0,  >0 -> stronger GBCE
-    bool GBCE_enabled;
-    bool inv_gamma;    // inversed gamma flag, used in negative effect
-};
-
 struct SensorAeConfig
 {
     float evBias;
@@ -329,7 +322,6 @@ public:
 // private members
 private:
 
-    struct IspSettings mIspSettings;   // ISP related settings
     Mutex m3aLock;
     bool mHas3A;
     SensorType mSensorType;

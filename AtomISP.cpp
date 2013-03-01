@@ -233,7 +233,7 @@ status_t AtomISP::initDevice()
         LOGE("Failed to open first device!");
         return NO_INIT;
     }
-    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("Open_Main_Device");
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("Open_Main_Device");
 
     initFileInject();
 
@@ -267,7 +267,7 @@ status_t AtomISP::init()
     if (status != NO_ERROR) {
         return NO_INIT;
     }
-    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("Init_3A");
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("Init_3A");
 
     initFrameConfig();
 
@@ -1141,6 +1141,7 @@ status_t AtomISP::startPreview()
 
     mNumPreviewBuffersQueued = mNumPreviewBuffers;
 
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("Skip--", initialSkips);
     return status;
 
 err:
@@ -1163,6 +1164,7 @@ status_t AtomISP::stopPreview()
     if (mFileInject.active == true)
         stopFileInject();
 
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
     return status;
 }
 
@@ -1236,6 +1238,7 @@ status_t AtomISP::startRecording()
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
     status_t status = NO_ERROR;
+    int i, initialSkips;
 
     ret = startDevice(mRecordingDevice, mNumBuffers);
     if (ret < 0) {
@@ -1253,6 +1256,33 @@ status_t AtomISP::startRecording()
 
     mNumPreviewBuffersQueued = mNumPreviewBuffers;
     mNumRecordingBuffersQueued = mNumBuffers;
+
+    /**
+     * Some sensors produce corrupted first frames
+     * If this sensor needs it then we skip
+     * TODO: This is wrong place to do it, it should be done
+     * in the real consumer loop, since here we block the
+     * start stack until frames come out.
+     */
+    initialSkips = getNumOfSkipFrames();
+    for (i = 0; i < initialSkips; i++) {
+        AtomBuffer p;
+        ret = getPreviewFrame(&p);
+        if (ret == NO_ERROR) {
+            ret = putPreviewFrame(&p);
+            if (ret != NO_ERROR) {
+                LOGE("Failed queueing preview frame!");
+            }
+            ret = getRecordingFrame(&p);
+            if (ret == NO_ERROR) {
+                ret = putRecordingFrame(&p);
+                if (ret != NO_ERROR) {
+                    LOGE("Failed queueing recording frame!");
+                }
+            }
+
+        }
+    }
 
     return status;
 
@@ -1593,6 +1623,7 @@ status_t AtomISP::startCapture()
     }
 
     mNumCapturegBuffersQueued = snapNum;
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("Skip--", initialSkips);
     return status;
 
 errorStopFirst:
@@ -1669,6 +1700,7 @@ status_t AtomISP::stopCapture()
         stopFileInject();
     mUsingClientSnapshotBuffers = false;
     dumpRawImageFlush();
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
     return NO_ERROR;
 }
 
@@ -1889,6 +1921,7 @@ int AtomISP::configureDevice(int device, int deviceMode, FrameInfo *fInfo, bool 
 
     mDevices[device].state = DEVICE_CONFIGURED;
 
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("DeviceId:", device);
     //We need apply all the parameter settings when do the camera reset
     return ret;
 }
@@ -1902,15 +1935,7 @@ int AtomISP::prepareDevice(int device, int buffer_count)
     int fd = video_fds[device];
     LOG1(" prepareDevice fd = %d", fd);
 
-    if (device == V4L2_MAIN_DEVICE &&
-        mAAA->is3ASupported() &&
-        mAAA->applyIspSettings() != NO_ERROR) {
-        LOGE("Failed to apply 3A ISP settings. Disabling 3A!");
-    } else {
-        LOG1("Applied 3A ISP settings!");
-    }
-
-    //parameter intialized before the streamon
+    //parameter initialized before the streamon
     //request, query and mmap the buffer and save to the pool
     ret = createBufferPool(device, buffer_count);
     if (ret < 0)
@@ -1951,8 +1976,8 @@ int AtomISP::startDevice(int device, int buffer_count)
     mDevices[device].frameCounter = 0;
     mDevices[device].state = DEVICE_STARTED;
 
-    //we are started now
-    return 0;
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("DeviceId:", device);
+    return ret;
 }
 
 int AtomISP::activateBufferPool(int device)
@@ -2133,7 +2158,7 @@ status_t AtomISP::selectCameraSensor()
         video_fds[device] = -1;
         return UNKNOWN_ERROR;
     }
-    PERFORMANCE_TRACES_LAUNCH2PREVIEW_STEP("capture_s_input");
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("capture_s_input");
     return NO_ERROR;
 }
 
@@ -2309,9 +2334,6 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
 
 /**
  * Apply ISP limitations related to supported preview sizes when in video mode.
- *
- * NOTE: this function runs in camera service thread. Protect member accesses accordingly!
- * mCameraInput is safe to read after construction.
  *
  * Workaround 1: with DVS enable, the fps in 1080p recording can't reach 30fps,
  * so check if the preview size is corresponding to recording, if yes, then
@@ -3659,7 +3681,8 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp, atomis
     mRecordingBuffers[index].capture_timestamp = buf.timestamp;
     *buff = mRecordingBuffers[index];
     // time is get from ISP driver, it's realtime
-    *timestamp = (buf.timestamp.tv_sec)*1000000000LL + (buf.timestamp.tv_usec)*1000LL;
+    if (timestamp)
+        *timestamp = (buf.timestamp.tv_sec)*1000000000LL + (buf.timestamp.tv_usec)*1000LL;
 
     if (frameStatus) {
         *frameStatus = (atomisp_frame_status)buf.reserved;

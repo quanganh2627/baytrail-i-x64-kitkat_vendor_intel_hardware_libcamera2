@@ -81,6 +81,7 @@ public:
     void finalize(void);
     void sendFrame(AtomBuffer &buf);
     PanoramaState getState(void);
+    void flush(void);
 
 // Thread overrides
 public:
@@ -143,6 +144,7 @@ private:
         MESSAGE_ID_STOP_PANORAMA_CAPTURE,
         MESSAGE_ID_FINALIZE,
         MESSAGE_ID_THUMBNAILSIZE,
+        MESSAGE_ID_FLUSH,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -200,6 +202,7 @@ private:
     status_t handleMessageStopPanoramaCapture(void);
     status_t handleMessageFinalize(void);
     status_t handleMessageThumbnailSize(const MessageThumbnailSize &size);
+    status_t handleMessageFlush();
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -250,6 +253,7 @@ public:
     void finalize() {}
     void sendFrame(AtomBuffer &buf) {}
     PanoramaState getState() { return PANORAMA_STOPPED; }
+    void flush(void) {}
 
 // Thread overrides
 public:

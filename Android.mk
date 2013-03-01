@@ -131,13 +131,13 @@ LOCAL_CFLAGS += -DMFLD_GI
 
 else ifneq (,$(findstring $(REF_DEVICE_NAME),mfld_dv10 redridge))
 LOCAL_CFLAGS += -DMFLD_DV10
-else ifneq (,$(findstring $(REF_DEVICE_NAME),victoriabay ctp_pr1 ctp_nomodem))
+else ifneq (,$(findstring $(REF_DEVICE_NAME),victoriabay redhookbay ctpscaleht ctpscalelt))
 LOCAL_CFLAGS += -DCLVT
 else ifeq ($(REF_DEVICE_NAME),mrfl_vp)
 LOCAL_CFLAGS += -DMRFL_VP
-else ifeq ($(TARGET_DEVICE),merr_vv)
+else ifeq ($(REF_DEVICE_NAME),merr_vv)
 LOCAL_CFLAGS += -DMERR_VV
-else ifeq ($(TARGET_DEVICE),yukkabeach)
+else ifeq ($(REF_DEVICE_NAME),yukkabeach)
 LOCAL_CFLAGS += -DYUKKA
 else ifeq ($(REF_DEVICE_NAME),salitpa)
 LOCAL_CFLAGS += -DSALITPA

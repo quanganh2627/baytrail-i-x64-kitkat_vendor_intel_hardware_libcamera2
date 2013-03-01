@@ -141,6 +141,22 @@ void PanoramaThread::stopPanorama(bool synchronous)
     mMessageQueue.send(&msg, synchronous ? MESSAGE_ID_STOP_PANORAMA : (MessageId) -1);
 }
 
+void PanoramaThread::flush()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_FLUSH;
+    mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
+}
+
+status_t PanoramaThread::handleMessageFlush()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = mPanoramaStitchThread->flush();
+    mMessageQueue.reply(MESSAGE_ID_FLUSH, status);
+    return OK;
+}
+
 status_t PanoramaThread::handleMessageStopPanorama(const MessageStopPanorama &stop)
 {
     LOG1("@%s", __FUNCTION__);
@@ -779,6 +795,9 @@ status_t PanoramaThread::waitForAndExecuteMessage()
             break;
         case MESSAGE_ID_THUMBNAILSIZE:
             status = handleMessageThumbnailSize(msg.data.thumbnail);
+            break;
+        case MESSAGE_ID_FLUSH:
+            status = handleMessageFlush();
             break;
         default:
             status = INVALID_OPERATION;

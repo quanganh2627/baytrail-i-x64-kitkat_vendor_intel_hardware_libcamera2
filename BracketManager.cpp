@@ -18,6 +18,7 @@
 
 #include "LogHelper.h"
 #include "BracketManager.h"
+#include "PerformanceTraces.h"
 
 namespace android {
 
@@ -487,6 +488,7 @@ status_t BracketManager::startBracketing()
         if (skipFrames(skipNum, doBracketNum) != NO_ERROR) {
             LOGE("@%s: Error skipping initial frames!", __FUNCTION__);
         }
+        PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("Skip", skipNum);
     }
     status = mMessageQueue.send(&msg, MESSAGE_ID_START_BRACKETING);
     return status;
@@ -509,6 +511,7 @@ status_t BracketManager::stopBracketing()
     Message msg;
     msg.id = MESSAGE_ID_STOP_BRACKETING;
     status = mMessageQueue.send(&msg, MESSAGE_ID_STOP_BRACKETING);
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_NOPARAM();
     return status;
 }
 
