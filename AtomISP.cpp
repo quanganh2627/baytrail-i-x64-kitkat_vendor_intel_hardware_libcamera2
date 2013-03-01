@@ -4809,14 +4809,16 @@ bool AtomISP::isDumpRawImageReady(void)
 int AtomISP::sensorMoveFocusToPosition(int position)
 {
     LOG2("@%s", __FUNCTION__);
-#if MERR_VV
-    position = 1024 - position;
-    position = 100 + (position - 370) * 1.7;
-    if(position > 900)
-        position = 900;
-    if (position < 100)
-        position = 100;
-#endif
+
+    // TODO: this code will be removed when the CPF file is valid for merr_vv in the future
+    if (strcmp(PlatformData::getBoardName(), "merr_vv") == 0) {
+        position = 1024 - position;
+        position = 100 + (position - 370) * 1.7;
+        if(position > 900)
+            position = 900;
+        if (position < 100)
+            position = 100;
+    }
     return atomisp_set_attribute(main_fd, V4L2_CID_FOCUS_ABSOLUTE, position, "Set focus position");
 }
 
@@ -5007,10 +5009,11 @@ int AtomISP::setAicParameter(struct atomisp_parameters *aic_param)
     LOG2("@%s", __FUNCTION__);
     int ret;
 
-#if MERR_VV
-   aic_param->ctc_table = NULL;
-   aic_param->gamma_table = NULL;
-#endif
+    // TODO: this code will be removed when the CPF file is valid for merr_vv in the future
+    if (strcmp(PlatformData::getBoardName(), "merr_vv") == 0) {
+       aic_param->ctc_table = NULL;
+       aic_param->gamma_table = NULL;
+    }
 
     ret = xioctl(main_fd, ATOMISP_IOC_S_PARAMETERS, aic_param);
     LOG2("%s IOCTL ATOMISP_IOC_S_PARAMETERS ret: %d\n", __FUNCTION__, ret);

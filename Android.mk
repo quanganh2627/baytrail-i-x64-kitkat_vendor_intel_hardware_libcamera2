@@ -46,6 +46,7 @@ LOCAL_SRC_FILES := \
 	CallbacksThread.cpp \
 	LogHelper.cpp \
 	PlatformData.cpp \
+	CameraProfiles.cpp \
 	FeatureData.cpp \
 	IntelParameters.cpp \
 	exif/ExifCreater.cpp \
@@ -109,7 +110,8 @@ LOCAL_SHARED_LIBRARIES := \
 	libtbd \
 	libsqlite \
 	libdl \
-	libgui
+	libgui \
+	libexpat
 
 ifeq ($(USE_INTEL_METABUFFER),true)
 LOCAL_SHARED_LIBRARIES += \
@@ -130,20 +132,6 @@ LOCAL_STATIC_LIBRARIES := \
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_CFLAGS += -DUSE_INTEL_JPEG
-endif
-
-ifneq (,$(findstring $(REF_DEVICE_NAME),redhookbay ctpscaleht ctpscalelt))
-LOCAL_CFLAGS += -DCLVT
-else ifeq ($(REF_DEVICE_NAME),victoriabay)
-LOCAL_CFLAGS += -DVICTORIABAY
-else ifeq ($(REF_DEVICE_NAME),mrfl_vp)
-LOCAL_CFLAGS += -DMRFL_VP
-else ifeq ($(REF_DEVICE_NAME),merr_vv)
-LOCAL_CFLAGS += -DMERR_VV
-else ifeq ($(REF_DEVICE_NAME),bodegabay)
-LOCAL_CFLAGS += -DBODEGABAY
-else
-LOCAL_CFLAGS += -DCLVT
 endif
 
 # enable R&D features only in R&D builds

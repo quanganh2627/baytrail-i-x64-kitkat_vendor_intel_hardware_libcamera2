@@ -154,23 +154,17 @@ public:
             defaultSharpness = "";
             supportedSharpness = "";
             //FlashMode
-            snprintf(supportedFlashModes
-                ,sizeof(supportedFlashModes)
-                ,"%s,%s,%s,%s"
+            supportedFlashModes.appendFormat("%s,%s,%s,%s"
                 ,CameraParameters::FLASH_MODE_AUTO
                 ,CameraParameters::FLASH_MODE_OFF
                 ,CameraParameters::FLASH_MODE_ON
                 ,CameraParameters::FLASH_MODE_TORCH);
-            snprintf(defaultFlashMode
-                ,sizeof(defaultFlashMode)
-                ,"%s", CameraParameters::FLASH_MODE_OFF);
+            defaultFlashMode.appendFormat("%s", CameraParameters::FLASH_MODE_OFF);
             //Iso
             supportedIso = "iso-auto,iso-100,iso-200,iso-400,iso-800";
             defaultIso = "iso-auto";
             //sceneMode
-            snprintf(supportedSceneModes
-                ,sizeof(supportedSceneModes)
-                ,"%s,%s,%s,%s,%s,%s,%s"
+            supportedSceneModes.appendFormat("%s,%s,%s,%s,%s,%s,%s"
                 ,CameraParameters::SCENE_MODE_AUTO
                 ,CameraParameters::SCENE_MODE_PORTRAIT
                 ,CameraParameters::SCENE_MODE_SPORTS
@@ -179,21 +173,15 @@ public:
                 ,CameraParameters::SCENE_MODE_FIREWORKS
                 ,CameraParameters::SCENE_MODE_BARCODE);
 
-            snprintf(defaultSceneMode
-                ,sizeof(defaultSceneMode)
-                ,"%s", CameraParameters::SCENE_MODE_AUTO);
+            defaultSceneMode.appendFormat("%s", CameraParameters::SCENE_MODE_AUTO);
             //effectMode
-            snprintf(supportedEffectModes
-                ,sizeof(supportedIntelEffectModes)
-                ,"%s,%s,%s,%s"
+            supportedEffectModes.appendFormat("%s,%s,%s,%s"
                 ,CameraParameters::EFFECT_NONE
                 ,CameraParameters::EFFECT_MONO
                 ,CameraParameters::EFFECT_NEGATIVE
                 ,CameraParameters::EFFECT_SEPIA);
 
-            snprintf(supportedIntelEffectModes
-                ,sizeof(supportedIntelEffectModes)
-                ,"%s,%s,%s,%s,%s,%s,%s,%s,%s,%s"
+            supportedIntelEffectModes.appendFormat("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s"
                 ,CameraParameters::EFFECT_NONE
                 ,CameraParameters::EFFECT_MONO
                 ,CameraParameters::EFFECT_NEGATIVE
@@ -204,20 +192,15 @@ public:
                 ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_LOW
                 ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_MEDIUM
                 ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_HIGH);
-            snprintf(defaultEffectMode
-                ,sizeof(defaultEffectMode)
-                ,"%s", CameraParameters::EFFECT_NONE);
+            defaultEffectMode.appendFormat("%s", CameraParameters::EFFECT_NONE);
             //awbmode
-            snprintf(supportedAwbModes, sizeof(supportedAwbModes)
-                ,"%s,%s,%s,%s,%s"
+            supportedAwbModes.appendFormat("%s,%s,%s,%s,%s"
                 ,CameraParameters::WHITE_BALANCE_AUTO
                 ,CameraParameters::WHITE_BALANCE_INCANDESCENT
                 ,CameraParameters::WHITE_BALANCE_FLUORESCENT
                 ,CameraParameters::WHITE_BALANCE_DAYLIGHT
                 ,CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT);
-            snprintf(defaultAwbMode
-                ,sizeof(defaultAwbMode)
-                ,"%s", CameraParameters::WHITE_BALANCE_AUTO);
+            defaultAwbMode.appendFormat("%s", CameraParameters::WHITE_BALANCE_AUTO);
             //ae metering
             supportedAeMetering = "auto,center,spot";
             defaultAeMetering = "auto";
@@ -231,17 +214,14 @@ public:
             //For high speed recording, slow motion playback
             hasSlowMotion = false;
             // focus modes
-            snprintf(supportedFocusModes, sizeof(supportedFocusModes)
-                ,"%s,%s,%s,%s,%s,%s"
+            supportedFocusModes.appendFormat("%s,%s,%s,%s,%s,%s"
                 ,CameraParameters::FOCUS_MODE_AUTO
                 ,CameraParameters::FOCUS_MODE_INFINITY
                 ,CameraParameters::FOCUS_MODE_FIXED
                 ,CameraParameters::FOCUS_MODE_MACRO
                 ,CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO
                 ,CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
-            snprintf(defaultFocusMode
-                ,sizeof(defaultFocusMode)
-                ,"%s", CameraParameters::FOCUS_MODE_AUTO);
+            defaultFocusMode.appendFormat("%s", CameraParameters::FOCUS_MODE_AUTO);
         };
 
         SensorType sensorType;
@@ -258,62 +238,62 @@ public:
         unsigned int maxPreviewPixelCountForVFPP;
         // burst
         int maxBurstFPS;
-        const char* supportedBurstFPS;
-        const char* supportedBurstLength;
-        const char* defaultBurstLength;
+        String8 supportedBurstFPS;
+        String8 supportedBurstLength;
+        String8 defaultBurstLength;
         // exposure
-        const char* maxEV;
-        const char* minEV;
-        const char* stepEV;
-        const char* defaultEV;
+        String8 maxEV;
+        String8 minEV;
+        String8 stepEV;
+        String8 defaultEV;
         // AE metering
-        const char* supportedAeMetering;
-        const char* defaultAeMetering;
+        String8 supportedAeMetering;
+        String8 defaultAeMetering;
         // saturation
-        const char* maxSaturation;
-        const char* minSaturation;
-        const char* stepSaturation;
-        const char* defaultSaturation;
-        const char* supportedSaturation;
+        String8 maxSaturation;
+        String8 minSaturation;
+        String8 stepSaturation;
+        String8 defaultSaturation;
+        String8 supportedSaturation;
         // contrast
-        const char* maxContrast;
-        const char* minContrast;
-        const char* stepContrast;
-        const char* defaultContrast;
-        const char* supportedContrast;
+        String8 maxContrast;
+        String8 minContrast;
+        String8 stepContrast;
+        String8 defaultContrast;
+        String8 supportedContrast;
         // sharpness
-        const char* maxSharpness;
-        const char* minSharpness;
-        const char* stepSharpness;
-        const char* defaultSharpness;
-        const char* supportedSharpness;
+        String8 maxSharpness;
+        String8 minSharpness;
+        String8 stepSharpness;
+        String8 defaultSharpness;
+        String8 supportedSharpness;
         // flash
-        char supportedFlashModes[100];
-        char defaultFlashMode[50];
+        String8 supportedFlashModes;
+        String8 defaultFlashMode;
         // iso
-        const char* supportedIso;
-        const char* defaultIso;
+        String8 supportedIso;
+        String8 defaultIso;
         // scene modes
-        char supportedSceneModes[150];
-        char defaultSceneMode[50];
+        String8 supportedSceneModes;
+        String8 defaultSceneMode;
         // effect
-        char supportedEffectModes[200];
-        char supportedIntelEffectModes[200];
-        char defaultEffectMode[50];
+        String8 supportedEffectModes;
+        String8 supportedIntelEffectModes;
+        String8 defaultEffectMode;
         // awb
-        char supportedAwbModes[200];
-        char defaultAwbMode[50];
+        String8 supportedAwbModes;
+        String8 defaultAwbMode;
         // preview
-        const char* supportedPreviewFrameRate;
-        const char* supportedPreviewFPSRange;
-        const char* defaultPreviewFPSRange;
-        const char* supportedPreviewSizes;
-        const char* supportedVideoSizes;
+        String8 supportedPreviewFrameRate;
+        String8 supportedPreviewFPSRange;
+        String8 defaultPreviewFPSRange;
+        String8 supportedPreviewSizes;
+        String8 supportedVideoSizes;
         // For high speed recording, slow motion playback
         bool hasSlowMotion;
         // focus modes
-        char supportedFocusModes[100];
-        char defaultFocusMode[50];
+        String8 supportedFocusModes;
+        String8 defaultFocusMode;
 
     };
 
@@ -333,19 +313,14 @@ public:
 
     int mPanoramaMaxSnapshotCount;
 
-    /* For burst capture's burst length and burst fps */
-    int mMaxBurstFPS;
-    const char* mSupportedBurstFPS;
-    const char* mSupportedBurstLength;
-
-    const char* mVideoPreviewSizePref;
+    String8 mVideoPreviewSizePref;
 
     /* For EXIF Metadata */
-    const char* mProductName;
-    const char* mManufacturerName;
+    String8 mProductName;
+    String8 mManufacturerName;
 
     /* For Device name */
-    const char *mSubDevName;
+    String8 mSubDevName;
 
     /* For Zoom factor */
     int mMaxZoomFactor;
@@ -361,6 +336,8 @@ public:
     /* For Intel3A ia_aiq */
     bool mSupportAIQ;
 
+    /* blackbay, or merr_vv, or redhookbay, or victoriabay... */
+    String8 mBoardName;
 };
 
 /**
@@ -932,6 +909,14 @@ class PlatformData {
      */
     // TODO: remove this until official ia_aiq is adopted
     static bool supportAIQ(void);
+
+    /**
+     * Returns the board name
+     *
+     * \return the board name, it'll return NULL when it fails
+    */
+    static const char* getBoardName(void);
+
 
 };
 
