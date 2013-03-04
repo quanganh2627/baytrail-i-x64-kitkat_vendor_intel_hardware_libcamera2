@@ -22,7 +22,6 @@
 #include <camera.h>
 #include <camera/CameraParameters.h>
 #include "PlatformData.h"
-#include "PlatformMedfield.h"
 #include "PlatformClovertrail.h"
 #include "PlatformMerrifield.h"
 #include <utils/Log.h>
@@ -122,13 +121,7 @@ PlatformBase* PlatformData::getInstance(void)
 
     if (mInstance == 0) {
 
-#if     MFLD_DV10
-        mInstance = new PlatformRedridge();
-
-#elif   MFLD_GI
-        mInstance = new PlatformLexington();
-
-#elif   CLVT
+#if   CLVT
         mInstance = new PlatformCtpRedhookBay();
 
 #elif   MERR_VV
@@ -137,14 +130,8 @@ PlatformBase* PlatformData::getInstance(void)
 #elif   BODEGABAY
         mInstance = new PlatformBodegaBay();
 
-#elif   YUKKA
-        mInstance = new PlatformYukka();
-
-#elif   SALITPA
-        mInstance = new PlatformSalitpa();
-
-#else   // take defaults from MFLD_PR2 for all others now
-        mInstance = new PlatformBlackbay();
+#else   // take defaults from CloverTrail
+        mInstance = new PlatformCtpRedhookBay();
 
 #endif
 
