@@ -742,11 +742,16 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     params->set(CameraParameters::KEY_SUPPORTED_EFFECTS, PlatformData::supportedEffectModes(cameraId));
     intel_params->set(CameraParameters::KEY_SUPPORTED_EFFECTS, PlatformData::supportedIntelEffectModes(cameraId));
     //awb
-    params->set(CameraParameters::KEY_WHITE_BALANCE, PlatformData::defaultAwbMode(cameraId));
-    params->set(CameraParameters::KEY_SUPPORTED_WHITE_BALANCE, PlatformData::supportedAwbModes(cameraId));
+    if (strcmp(PlatformData::supportedAwbModes(getCurrentCameraId()), "")) {
+        params->set(CameraParameters::KEY_WHITE_BALANCE, PlatformData::defaultAwbMode(cameraId));
+        params->set(CameraParameters::KEY_SUPPORTED_WHITE_BALANCE, PlatformData::supportedAwbModes(cameraId));
+    }
+
     // scene mode
-    params->set(CameraParameters::KEY_SUPPORTED_SCENE_MODES, PlatformData::supportedSceneModes(cameraId));
-    params->set(CameraParameters::KEY_SCENE_MODE, PlatformData::defaultSceneMode(cameraId));
+    if (strcmp(PlatformData::supportedSceneModes(getCurrentCameraId()), "")) {
+        params->set(CameraParameters::KEY_SUPPORTED_SCENE_MODES, PlatformData::supportedSceneModes(cameraId));
+        params->set(CameraParameters::KEY_SCENE_MODE, PlatformData::defaultSceneMode(cameraId));
+    }
 
     // exposure compensation
     params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(cameraId));
@@ -5443,10 +5448,13 @@ AeMode AtomISP::getAeMode()
 
 status_t AtomISP::setEv(float bias)
 {
+    status_t status = NO_ERROR;
     int evValue = (int)bias;
     LOG1("@%s: bias: %f, EV value: %d", __FUNCTION__, bias, evValue);
 
-    status_t status = NO_ERROR;
+    if(evValue == 0)
+        return status;
+
     int ret = atomisp_set_attribute(main_fd, V4L2_CID_EXPOSURE, evValue, "exposure");
     if (ret != 0) {
         LOGE("Error setting EV in the driver");
@@ -5461,6 +5469,13 @@ status_t AtomISP::getEv(float *bias)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     int evValue = 0;
+
+    const char* minEV = PlatformData::supportedMinEV(getCurrentCameraId());
+    const char* maxEV = PlatformData::supportedMaxEV(getCurrentCameraId());
+    if(!strcmp(minEV, "0") && !strcmp(maxEV, "0")) {
+        LOG1("@%s: not supported by current camera", __FUNCTION__);
+        return INVALID_OPERATION;
+    }
 
     int ret = atomisp_get_attribute(main_fd, V4L2_CID_EXPOSURE, &evValue);
     if (ret != 0) {
