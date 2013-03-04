@@ -62,7 +62,7 @@ class ControlThread :
 
 // constructor destructor
 public:
-    explicit ControlThread(const sp<CameraConf>& cfg);
+    explicit ControlThread(int cameraId);
     virtual ~ControlThread();
 
 // Thread overrides
@@ -556,7 +556,7 @@ private:
 // private data
 private:
 
-    const sp<CameraConf> mCameraConf;
+    int mCameraId;
     AtomISP *mISP;
     AtomAAA *mAAA;
     AtomDvs *mDvs;

@@ -165,10 +165,10 @@ static void computeZoomRatios(char *zoom_ratio, int max_count){
 //                          PUBLIC METHODS
 ////////////////////////////////////////////////////////////////////
 
-AtomISP::AtomISP(const sp<CameraConf>& cfg) :
+AtomISP::AtomISP(int cameraId) :
      mPreviewStreamSource("PreviewStreamSource", this)
     ,mFrameSyncSource("FrameSyncSource", this)
-    ,mCameraConf(cfg)
+    ,mCameraId(cameraId)
     ,mMode(MODE_NONE)
     ,mCallbacks(Callbacks::getInstance())
     ,mNumBuffers(PlatformData::getRecordingBufNum())
@@ -233,7 +233,7 @@ status_t AtomISP::initDevice()
     // Select the input port to use
     status = initCameraInput();
     if (status != NO_ERROR) {
-        LOGE("Unable to initialize camera input %d", mCameraConf->cameraId());
+        LOGE("Unable to initialize camera input %d", mCameraId);
         return NO_INIT;
     }
 
@@ -320,10 +320,7 @@ int AtomISP::getPrimaryCameraIndex(void) const
 
 int AtomISP::getCurrentCameraId(void)
 {
-    if (mCameraInput->androidCameraId < 0)
-        LOGE("%s: Camera ID is wrong : %d", __func__, mCameraInput->androidCameraId);
-
-    return mCameraInput->androidCameraId;
+    return mCameraId;
 }
 
 /**
@@ -449,13 +446,13 @@ status_t AtomISP::initCameraInput()
         // BACK camera -> AtomISP/V4L2 primary port
         // FRONT camera -> AomISP/V4L2 secondary port
 
-        if ((PlatformData::cameraFacing(mCameraConf->cameraId()) == CAMERA_FACING_BACK &&
+        if ((PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_BACK &&
              sCamInfo[i].port == ATOMISP_CAMERA_PORT_PRIMARY) ||
-            (PlatformData::cameraFacing(mCameraConf->cameraId()) == CAMERA_FACING_FRONT &&
+            (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT &&
              sCamInfo[i].port == ATOMISP_CAMERA_PORT_SECONDARY)) {
             mCameraInput = &sCamInfo[i];
-            mCameraInput->androidCameraId = mCameraConf->cameraId();
-            LOG1("Camera found, v4l2 dev %d, android cameraId %d", i, mCameraConf->cameraId());
+            mCameraInput->androidCameraId = mCameraId;
+            LOG1("Camera found, v4l2 dev %d, android cameraId %d", i, mCameraId);
             status = NO_ERROR;
             break;
         }
@@ -499,12 +496,12 @@ status_t AtomISP::getSensorParams(SensorParams *paramsAndCPF)
         return UNKNOWN_ERROR;
 
     *paramsAndCPF = *paramFiles;
-    if (mCameraConf->aiqConf != 0) {
-        paramsAndCPF->cpfData.data = mCameraConf->aiqConf->ptr();
-        paramsAndCPF->cpfData.size = mCameraConf->aiqConf->size();
+    if (PlatformData::AiqConfig) {
+        paramsAndCPF->cpfData.data = PlatformData::AiqConfig.ptr();
+        paramsAndCPF->cpfData.size = PlatformData::AiqConfig.size();
     }
     // We don't need this memory anymore
-    mCameraConf->aiqConf.clear();
+    PlatformData::AiqConfig.clear();
 
 
     return status;
@@ -516,7 +513,7 @@ status_t AtomISP::getSensorParams(SensorParams *paramsAndCPF)
  */
 void AtomISP::initFileInject()
 {
-    mIsFileInject = (PlatformData::supportsFileInject() == true) && (mCameraConf->cameraId() == INTEL_FILE_INJECT_CAMERA_ID);
+    mIsFileInject = (PlatformData::supportsFileInject() == true) && (mCameraId == INTEL_FILE_INJECT_CAMERA_ID);
     mFileInject.active = false;
 }
 

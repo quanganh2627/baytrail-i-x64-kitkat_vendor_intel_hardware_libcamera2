@@ -17,90 +17,112 @@
 #ifndef ANDROID_LIBCAMERA_CAMERA_CONFIGURATION_H
 #define ANDROID_LIBCAMERA_CAMERA_CONFIGURATION_H
 
+#include <cpf-hal.h>
 #include <libtbd.h>
+#include <stdarg.h>
+#include <sys/stat.h>
 #include <utils/Errors.h>
 #include <utils/RefBase.h>
 #include <utils/String8.h>
 #include <utils/Vector.h>
-#include <sys/stat.h>
 
 namespace android {
 
-class CameraConf;
-
-class CameraBlob : public RefBase
+class CameraBlob
 {
+    class Blob : public RefBase
+    {
+    public:
+        Blob(const int size, void *& ptr);
+        virtual ~Blob();
+    private:
+        void *mPtr;
+        // Disallow copy and assignment
+        Blob(const Blob&);
+        void operator=(const Blob&);
+    };
+
 public:
-    CameraBlob(const int size);
-    CameraBlob(const sp<CameraBlob>& ref, const int offset, const int size);
-    CameraBlob(const sp<CameraBlob>& ref, void * const ptr, const int size);
-    virtual ~CameraBlob();
-    inline int size() const { return this == 0 ? 0 : mSize; }
-    inline void *ptr() const { return this == 0 ? 0 : mPtr; }
+    explicit CameraBlob(const int size = 0);
+    CameraBlob(const CameraBlob& refBlob, const int offset, const int size);
+    CameraBlob(const CameraBlob& refBlob, void * const ptr, const int size);
+    virtual inline ~CameraBlob() { clear(); }
+    inline void *ptr() const { return mPtr; }
+    inline int size() const { return mSize; }
+    inline operator void *() const { return mPtr; }
+    inline operator bool() const { return mPtr; }
+    CameraBlob copy();
+    void clear();
 private:
+    sp<Blob> mBlob;
     void *mPtr;
     int mSize;
-    sp<CameraBlob> mRef;
-    // Disallow copy and assignment
-    CameraBlob(const CameraBlob&);
-    void operator=(const CameraBlob&);
+};
+
+class AiqConf : public CameraBlob
+{
+public:
+    explicit inline AiqConf() {}
+    inline AiqConf(const CameraBlob& refBlob) : CameraBlob(refBlob) {}
+    inline virtual ~AiqConf() {}
+};
+
+class DrvConf : public CameraBlob
+{
+public:
+    explicit inline DrvConf() {}
+    inline DrvConf(const CameraBlob& refBlob) : CameraBlob(refBlob) {}
+    inline virtual ~DrvConf() {}
+};
+
+class HalConf : public CameraBlob
+{
+public:
+    explicit inline HalConf() {}
+    inline HalConf(const CameraBlob& refBlob) : CameraBlob(refBlob) {}
+    inline virtual ~HalConf() {}
+    status_t getValue(int& value, CPF::cpf_hal_tag_t tag, ...);
+    status_t getBool(bool& boolean, CPF::cpf_hal_tag_t tag, ...);
+    status_t getString(const char *& string, CPF::cpf_hal_tag_t tag, ...);
+private:
+    status_t getAny(int32_t *& any, CPF::cpf_hal_tag_t tag, va_list args);
 };
 
 class CpfStore
 {
-struct SensorDriver
-{
-    String8 mSensorName;
-    String8 mSysfsName;
-};
+    struct SensorDriver {
+        String8 mSensorName;
+        String8 mSysfsName;
+    };
 
 public:
     explicit CpfStore(const int cameraId);
     virtual ~CpfStore();
-    const sp<CameraConf> createCameraConf();
+public:
+    AiqConf AiqConfig;
+    HalConf HalConfig;
 private:
     status_t initNames(String8& cpfName, String8& sysfsName);
     status_t initNamesHelper(const String8& filename, String8& refName, int& index);
     status_t initDriverList();
     status_t initDriverListHelper(int major, int minor, SensorDriver& drvInfo);
-    status_t initConf(sp<CameraBlob>& aiqConf, sp<CameraBlob>& drvConf, sp<CameraBlob>& halConf);
-    status_t loadConf(sp<CameraBlob>& allConf);
-    status_t validateConf(const sp<CameraBlob>& allConf, const struct stat& statCurrent);
-    status_t fetchConf(const sp<CameraBlob>& allConf, sp<CameraBlob>& recConf, tbd_class_t recordClass, const char *blockDebugName);
-    status_t processDrvConf();
-    status_t processHalConf();
+    status_t initConf(CameraBlob& aiqConf, CameraBlob& drvConf, CameraBlob& halConf);
+    status_t loadConf(CameraBlob& allConf);
+    status_t validateConf(const CameraBlob& allConf, const struct stat& statCurrent);
+    status_t fetchConf(const CameraBlob& allConf, CameraBlob& recConf, tbd_class_t recordClass, const char *blockDebugName = 0);
+    status_t processAiqConf(CameraBlob& aiqConf);
+    status_t processDrvConf(CameraBlob& drvConf);
+    status_t processHalConf(CameraBlob& halConf);
 private:
     int mCameraId;
     bool mIsOldConfig;
     String8 mCpfPathName;
     String8 mSysfsPathName;
-    sp<CameraBlob> mAiqConf, mDrvConf, mHalConf;
     static Vector<struct SensorDriver> registeredDrivers;
     static Vector<struct stat> validatedCpfFiles;
     // Disallow copy and assignment
     CpfStore(const CpfStore&);
     void operator=(const CpfStore&);
-};
-
-class CameraConf : public RefBase
-{
-public:
-    friend class CpfStore;
-    virtual ~CameraConf() {}
-    inline int cameraId() { return mCameraId; }
-    inline int cameraFacing() { return mCameraFacing; }
-    inline int cameraOrientation() { return mCameraOrientation; }
-public:
-    sp<CameraBlob> aiqConf;
-protected:
-    CameraConf() {}
-private:
-    int mCameraId;
-    int mCameraFacing;
-    int mCameraOrientation;
-    // Disallow copy and assignment
-    CameraConf(const CameraConf&);
-    void operator=(const CameraConf&);
 };
 
 }; // namespace android

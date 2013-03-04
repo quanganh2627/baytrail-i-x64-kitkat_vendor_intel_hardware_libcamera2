@@ -95,7 +95,7 @@ public:
 
 // constructor/destructor
 public:
-    explicit AtomISP(const sp<CameraConf>& cfg);
+    explicit AtomISP(int cameraId);
     ~AtomISP();
 
     status_t initDevice();
@@ -574,7 +574,7 @@ private:
 // private members
 private:
 
-    const sp<CameraConf> mCameraConf;
+    int mCameraId;
 
     static cameraInfo sCamInfo[MAX_CAMERA_NODES];
 

@@ -366,8 +366,10 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
 
     atom_cam.camera_id = atoi(name);
     CpfStore cpf(atom_cam.camera_id);
+    PlatformData::AiqConfig = cpf.AiqConfig;
+    PlatformData::HalConfig = cpf.HalConfig;
 
-    atom_cam.control_thread = new ControlThread(cpf.createCameraConf());
+    atom_cam.control_thread = new ControlThread(atom_cam.camera_id);
     if (atom_cam.control_thread == NULL) {
         LOGE("Memory allocation error!");
         return NO_MEMORY;

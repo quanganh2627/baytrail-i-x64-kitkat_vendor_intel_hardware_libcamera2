@@ -83,9 +83,9 @@ const int MIN_PREVIEW_FPS = 11;
 // TODO: This value should be gotten from sensor dynamically, instead of hardcoding:
 const int MAX_PREVIEW_FPS = 30;
 
-ControlThread::ControlThread(const sp<CameraConf>& cfg) :
+ControlThread::ControlThread(int cameraId) :
     Thread(true) // callbacks may call into java
-    ,mCameraConf(cfg)
+    ,mCameraId(cameraId)
     ,mISP(NULL)
     ,mAAA(NULL)
     ,mDvs(NULL)
@@ -149,17 +149,11 @@ ControlThread::~ControlThread()
 
 status_t ControlThread::init()
 {
-    LOG1("@%s: cameraId = %d", __FUNCTION__, mCameraConf->cameraId());
-    int cameraId;
-
-    if (mCameraConf == 0) {
-        LOGE("ERROR no CPF info given for Control Thread in %s", __FUNCTION__);
-        return NO_MEMORY;
-    }
+    LOG1("@%s: cameraId = %d", __FUNCTION__, mCameraId);
 
     status_t status = UNKNOWN_ERROR;
 
-    mISP = new AtomISP(mCameraConf);
+    mISP = new AtomISP(mCameraId);
     if (mISP == NULL) {
         LOGE("error creating ISP");
         goto bail;
@@ -178,7 +172,7 @@ status_t ControlThread::init()
     }
 
     // Choose 3A interface based on the sensor type
-    if (PlatformData::sensorType(mCameraConf->cameraId()) == SENSOR_TYPE_RAW) {
+    if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
         m3AControls = mAAA;
     } else {
         m3AControls = mISP;
@@ -277,15 +271,14 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    cameraId = mISP->getCurrentCameraId();
     // get default params from AtomISP and JPEG encoder
     mISP->getDefaultParameters(&mParameters, &mIntelParameters);
     m3AControls->getDefaultParams(&mParameters, &mIntelParameters);
     mPictureThread->getDefaultParameters(&mParameters);
     mPreviewThread->getDefaultParameters(&mParameters);
-    mPanoramaThread->getDefaultParameters(&mIntelParameters, cameraId);
-    mPostProcThread->getDefaultParameters(&mParameters, &mIntelParameters, cameraId);
-    mVideoThread->getDefaultParameters(&mIntelParameters, cameraId);
+    mPanoramaThread->getDefaultParameters(&mIntelParameters, mCameraId);
+    mPostProcThread->getDefaultParameters(&mParameters, &mIntelParameters, mCameraId);
+    mVideoThread->getDefaultParameters(&mIntelParameters, mCameraId);
     updateParameterCache();
 
     status = mSensorThread->run();
@@ -346,12 +339,12 @@ status_t ControlThread::init()
     mHdr.saveOrig = false;
 
     //default flash modes
-    mSavedFlashSupported = PlatformData::supportedFlashModes(cameraId);
-    mSavedFlashMode = PlatformData::defaultFlashMode(cameraId);
+    mSavedFlashSupported = PlatformData::supportedFlashModes(mCameraId);
+    mSavedFlashMode = PlatformData::defaultFlashMode(mCameraId);
 
     // Set property to inform system what camera is in use
     char facing[PROPERTY_VALUE_MAX];
-    snprintf(facing, PROPERTY_VALUE_MAX, "%d", mCameraConf->cameraId());
+    snprintf(facing, PROPERTY_VALUE_MAX, "%d", mCameraId);
     property_set("media.camera.facing", facing);
 
     // Set default parameters so that settings propagate to 3A
