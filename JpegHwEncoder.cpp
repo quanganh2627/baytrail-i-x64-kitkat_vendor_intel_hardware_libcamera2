@@ -49,7 +49,10 @@ JpegHwEncoder::~JpegHwEncoder()
 /**
  * Initialize the HW encoder
  *
- * Initializes the libVA library
+ * Initializes the libVA library.
+ * It could fail in cases where the video HW encoder is already initialized.
+ * This is handled normally by the PictureThread falls back to the SW encoder
+ *
  * \return 0 success
  * \return -1 failure
  */
@@ -95,6 +98,10 @@ int JpegHwEncoder::init(void)
     attrib.value = va->mSupportedFormat;
     status = vaCreateConfig(va->mDpy, VAProfileJPEGBaseline, VAEntrypointEncPicture,
                             &attrib, 1, &va->mConfigId);
+    if (status != VA_STATUS_SUCCESS) {
+       vaDestroyConfig(va->mDpy, va->mConfigId);
+       vaTerminate(va->mDpy);
+    }
     CHECK_STATUS(status, "vaCreateConfig", __LINE__)
 
     mHWInitialized = true;
