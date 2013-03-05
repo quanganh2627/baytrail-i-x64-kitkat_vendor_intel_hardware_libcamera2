@@ -5458,8 +5458,11 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
     case CAMERA_CMD_STOP_BLINK_SHUTTER:
         status = stopSmartShutter(BLINK_MODE);
         break;
-    case CAMERA_CMD_CANCEL_TAKE_PICTURE:
-        status = cancelCaptureOnTrigger();
+    case CAMERA_CMD_CANCEL_SMART_SHUTTER_PICTURE:
+        status = cancelSmartShutterPicture();
+        break;
+    case CAMERA_CMD_FORCE_SMART_SHUTTER_PICTURE:
+        status = forceSmartShutterPicture();
         break;
     case CAMERA_CMD_ENABLE_INTEL_PARAMETERS:
         status = enableIntelParameters();
@@ -5956,14 +5959,22 @@ status_t ControlThread::enableIntelParameters()
     return NO_ERROR;
 }
 
-status_t ControlThread::cancelCaptureOnTrigger()
+status_t ControlThread::cancelSmartShutterPicture()
 {
     LOG1("@%s", __FUNCTION__);
-    if( !mPostProcThread->isSmartRunning())
-        return NO_ERROR;
-    if(mPostProcThread != 0)
+    status_t status = NO_ERROR;
+    if(mPostProcThread !=0 && mPostProcThread->isSmartRunning())
         mPostProcThread->stopCaptureOnTrigger();
-    return NO_ERROR;
+    return status;
+}
+
+status_t ControlThread::forceSmartShutterPicture()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    if(mPostProcThread !=0 && mPostProcThread->isSmartRunning())
+        mPostProcThread->forceSmartCaptureTrigger();
+    return status;
 }
 
 status_t ControlThread::startPanorama()

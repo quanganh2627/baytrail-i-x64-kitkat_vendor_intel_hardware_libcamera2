@@ -57,6 +57,7 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     mSmartShutter.blinkRunning = false;
     mSmartShutter.captureOnTrigger = false;
     mSmartShutter.captureTriggered = false;
+    mSmartShutter.captureForced = false;
     mSmartShutter.smileThreshold = SMILE_THRESHOLD;
     mSmartShutter.blinkThreshold = BLINK_THRESHOLD;
 }
@@ -335,6 +336,21 @@ status_t PostProcThread::handleMessageResetSmartCaptureTrigger()
     return status;
 }
 
+void PostProcThread::forceSmartCaptureTrigger()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_FORCE_SMART_CAPTURE_TRIGGER;
+    mMessageQueue.send(&msg);
+}
+
+status_t PostProcThread::handleMessageForceSmartCaptureTrigger()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mSmartShutter.captureForced = true;
+    return status;
+}
 bool PostProcThread::isSmartRunning()
 {
     LOG1("@%s", __FUNCTION__);
@@ -675,6 +691,9 @@ status_t PostProcThread::waitForAndExecuteMessage()
         case MESSAGE_ID_RESET_SMART_CAPTURE_TRIGGER:
             status = handleMessageResetSmartCaptureTrigger();
             break;
+        case MESSAGE_ID_FORCE_SMART_CAPTURE_TRIGGER:
+            status = handleMessageForceSmartCaptureTrigger();
+            break;
         case MESSAGE_ID_ENABLE_FACE_AAA:
             status = handleMessageEnableFaceAAA(msg.data.faceAAA);
             break;
@@ -813,10 +832,12 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
             // only blink detection running and detected
             if (((smile && mSmartShutter.smileRunning) && (!blink && mSmartShutter.blinkRunning))
                 || ((smile && mSmartShutter.smileRunning) && !mSmartShutter.blinkRunning)
-                || ((!blink && mSmartShutter.blinkRunning) && !mSmartShutter.smileRunning)) {
+                || ((!blink && mSmartShutter.blinkRunning) && !mSmartShutter.smileRunning)
+                || (mSmartShutter.captureForced)) {
                 mSmartShutter.captureOnTrigger = false;
                 mPostProcDoneCallback->postProcCaptureTrigger();
                 mSmartShutter.captureTriggered = true;
+                mSmartShutter.captureForced = false;
             }
         }
     }

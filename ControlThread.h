@@ -377,7 +377,9 @@ private:
     status_t enableFocusMoveMsg(bool enable);
     status_t startSmartShutter(SmartShutterMode mode);
     status_t stopSmartShutter(SmartShutterMode mode);
-    status_t cancelCaptureOnTrigger();
+    status_t cancelSmartShutterPicture();
+    status_t forceSmartShutterPicture();
+
     status_t handleMessageFacesDetected(MessageFacesDetected* msg);
     status_t startSmartSceneDetection();
     status_t stopSmartSceneDetection();
