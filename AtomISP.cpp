@@ -1479,7 +1479,7 @@ int AtomISP::shutterLagZeroAlign() const
 {
     int delayMs = PlatformData::shutterLagCompensationMs();
     float frameIntervalMs = 1000.0 / getFrameRate();
-    int lagZeroOffset = delayMs / frameIntervalMs + 1;
+    int lagZeroOffset = round(float(delayMs) / frameIntervalMs);
     LOG2("@%s: delay %dms, fps %.02f, zero offset %d",
          __FUNCTION__, delayMs, getFrameRate(), lagZeroOffset);
     return lagZeroOffset;
@@ -1782,9 +1782,15 @@ status_t AtomISP::startOfflineCapture(AtomISP::ContinuousCaptureConfig &config)
         LOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
         return INVALID_OPERATION;
     }
-    else if (config.offset < mContCaptConfig.offset ||
-             config.numCaptures > mContCaptConfig.numCaptures) {
-        LOGE("@%s: cannot start with current ISP configuration", __FUNCTION__);
+    else if (config.offset < 0 &&
+             config.offset < mContCaptConfig.offset) {
+        LOGE("@%s: cannot start, offset %d, %d set at preview start",
+             __FUNCTION__, config.offset, mContCaptConfig.offset);
+        return UNKNOWN_ERROR;
+    }
+    else if (config.numCaptures > mContCaptConfig.numCaptures) {
+        LOGE("@%s: cannot start, num captures %d, %d set at preview start",
+             __FUNCTION__, config.numCaptures, mContCaptConfig.numCaptures);
         return UNKNOWN_ERROR;
     }
 

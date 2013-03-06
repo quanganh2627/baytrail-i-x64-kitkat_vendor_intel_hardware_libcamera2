@@ -1002,7 +1002,7 @@ status_t ControlThread::configureContinuousRingBuffer()
     LOG2("@%s", __FUNCTION__);
     AtomISP::ContinuousCaptureConfig cfg;
     cfg.numCaptures = 1;
-    cfg.offset = -1; // TODO: needs to be calibrated
+    cfg.offset = -(mISP->shutterLagZeroAlign());
     cfg.skip = 0;
     if (mBurstLength > 1) {
         cfg.numCaptures = mBurstLength;
@@ -1493,8 +1493,7 @@ status_t ControlThread::startOfflineCapture()
 
     AtomISP::ContinuousCaptureConfig cfg;
     cfg.numCaptures = 1;
-    cfg.offset = -1; // TODO: start using shutterLagZeroAlign() instead of
-                     // fixed -1 once BZ82274 is fixed
+    cfg.offset = -(mISP->shutterLagZeroAlign());
     cfg.skip = 0;
 
     if (mBurstLength > 1) {
