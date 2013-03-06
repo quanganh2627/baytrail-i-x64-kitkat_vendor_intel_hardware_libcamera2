@@ -91,7 +91,7 @@ endif
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_C_INCLUDES += \
-	hardware/intel/libva
+	vendor/intel/hardware/libva
 endif
 
 LOCAL_C_FLAGS =+ -fno-pic
