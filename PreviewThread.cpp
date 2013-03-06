@@ -1189,7 +1189,7 @@ status_t PreviewThread::GfxPreviewHandler::handlePostview(MessagePreview *msg)
         return UNKNOWN_ERROR;
     }
 
-    if (!mPreviewInClient.isEmpty()) {
+    if (mPvThread->getPreviewState() != STATE_STOPPED) {
         // indicates we didn't stop & return the gfx buffers
         LOGD("Unable to provide 'preview-keep-alive' frame, normal preview active");
         return UNKNOWN_ERROR;
