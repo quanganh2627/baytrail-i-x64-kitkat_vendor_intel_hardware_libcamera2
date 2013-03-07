@@ -307,6 +307,9 @@ static const char* v4l2Fmt2Str(int format)
  * @param convWindow User defined conversion info: width and height will be converted
  * in ratio to the Android coordinate system
  */
+// TODO: This becomes obsolete once AE moves to using IA coordinates in Victoriabay
+// now this is only used for AE windows conversion. Libmfldadvci contains conversion functions
+// to convert to IA coordinates.
 inline static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
         CameraWindow &toWindow, const AAAWindowInfo& convWindow)
 {
@@ -366,6 +369,8 @@ inline static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
     int weightWidth = maxWeight - minWeight;
     toWindow.weight = minWeight + roundf(weightWidth * srcWindow.weight / 1000.0f);
 }
+
+void convertFromAndroidToIaCoordinates(const CameraWindow &srcWindow, CameraWindow &toWindow);
 
 }
 #endif // ANDROID_LIBCAMERA_COMMON_H
