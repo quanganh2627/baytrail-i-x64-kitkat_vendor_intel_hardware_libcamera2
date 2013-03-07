@@ -811,6 +811,31 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         face_metadata.faces = faces;
         mFaceDetector->getFaceState(&faceState, frameData.width, frameData.height, mZoomRatio);
 
+        // Find recognized faces from the data (ID is positive), and pick the first one:
+        int faceForFocusInd = 0;
+        for (int i = 0; i < num_faces; ++i) {
+            if (faceState.faces[i].person_id > 0) {
+                LOG2("Face index: %d, ID: %d", i, faceState.faces[i].person_id);
+                faceForFocusInd = i;
+                break;
+            }
+        }
+
+        //... and put the recognized face as first entry in the array for AF to use
+        // No need to swap if face is already in the first pos.
+        if (faceForFocusInd > 0) {
+            ia_face faceSwapTmp = faceState.faces[0];
+            faceState.faces[0] = faceState.faces[faceForFocusInd];
+            faceState.faces[faceForFocusInd] = faceSwapTmp;
+        }
+
+        // Swap also the face in face metadata going to the application to match the swapped faceState info
+        if (face_metadata.number_of_faces > 0 && faceForFocusInd > 0) {
+            camera_face_t faceMetaTmp = face_metadata.faces[0];
+            face_metadata.faces[0] = face_metadata.faces[faceForFocusInd];
+            face_metadata.faces[faceForFocusInd] = faceMetaTmp;
+        }
+
         // call face detection listener and pass faces for 3A (AF) and smart scene detection
         if ((face_metadata.number_of_faces > 0) || (mLastReportedNumberOfFaces != 0)) {
             mLastReportedNumberOfFaces = face_metadata.number_of_faces;
@@ -854,23 +879,6 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
     return status;
 }
 
-void PostProcThread::setFocusAreas(const CameraWindow* windows, size_t winCount)
-{
-    LOG2("@%s", __FUNCTION__);
-    AfMode newAfMode = CAM_AF_MODE_FACE;
-
-    if (m3AControls->setAfWindows(windows, winCount) == NO_ERROR) {
-        AfMode curAfMode = m3AControls->getAfMode();
-        // See if we have to change the actual mode (it could be correct already)
-        if (curAfMode != newAfMode) {
-            mOldAfMode = curAfMode;
-            m3AControls->setAfMode(newAfMode);
-            LOG2("Set to face focus mode (%d) from current (%d)", newAfMode, curAfMode);
-        }
-    }
-    return;
-}
-
 void PostProcThread::setAeMeteringArea(const CameraWindow* window)
 {
     LOG2("@%s", __FUNCTION__);
@@ -895,39 +903,39 @@ void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata
 
     if (mFaceAAAFlags & AAA_FLAG_AF || mFaceAAAFlags & AAA_FLAG_AE) {
         CameraWindow *windows = new CameraWindow[face_metadata.number_of_faces];
-        int highestScoreInd = 0;
         AAAWindowInfo aaaWindow;
+        // TODO: Victoriabay: Use IA coords for AE.
+        // For now, we need to use AcuteLogic grid window for AE windows
         m3AControls->getGridWindow(aaaWindow);
+
+        // TODO: Move the loop to sort func? Or do we want to sort?
         for (int i = 0; i < face_metadata.number_of_faces; i++) {
             camera_face_t face = face_metadata.faces[i];
             windows[i].x_left = face.rect[0];
             windows[i].y_top = face.rect[1];
             windows[i].x_right = face.rect[2];
             windows[i].y_bottom = face.rect[3];
+            // TODO: Victoriabay: Remove. Conversion here is now needed for AE coord.
+            // Deprecated once IA coords are to be used, then we can use the libmfldadvci conversion methods.
             convertFromAndroidCoordinates(windows[i], windows[i], aaaWindow);
             LOG2("Face window: (%d,%d,%d,%d)",
                 windows[i].x_left,
                 windows[i].y_top,
                 windows[i].x_right,
                 windows[i].y_bottom);
-
-            // Get the highest scored face window index:
-            if (i > 0 && face.score > face_metadata.faces[i - 1].score) {
-                highestScoreInd = i;
-            }
         }
-        // Apply AF window, if needed:
-        if (mFaceAAAFlags & AAA_FLAG_AF)
-            setFocusAreas(windows, face_metadata.number_of_faces);
+
         // Apply AE window if needed:
         if (mFaceAAAFlags & AAA_FLAG_AE) {
-            // Use the highest score window for AE metering:
-            // TODO: Better logic needed for picking face AE metering area..?
-            CameraWindow aeWindow = windows[highestScoreInd];
+            // NOTE: AF uses first window for focus, use 1st win for AE as well...
+            CameraWindow aeWindow = windows[0];
             aeWindow.weight = 5;
             setAeMeteringArea(&aeWindow);
         }
     }
+
+    // NOTE: Face AF is done by the ia_face_state information, sent as callback to ControlThread
+    // and on to AAAThread.
 
     //TODO: spec says we need also do AWB. Currently no support.
 }

@@ -233,7 +233,6 @@ private:
     // main message function
     status_t waitForAndExecuteMessage();
 
-    void setFocusAreas(const CameraWindow* windows, size_t winCount);
     void setAeMeteringArea(const CameraWindow* window);
     void useFacesForAAA(const camera_frame_metadata_t& face_metadata);
     void resetToOldAAAValues();
