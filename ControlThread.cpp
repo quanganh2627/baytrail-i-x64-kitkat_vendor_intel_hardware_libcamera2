@@ -1226,7 +1226,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         size_t winCount(mFocusAreas.numOfAreas());
         CameraWindow *focusWindows = new CameraWindow[winCount];
         mFocusAreas.toWindows(focusWindows);
-        preSetCameraWindows(focusWindows, winCount);
+        convertAfWindows(focusWindows, winCount);
         if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
             LOGE("Could not set AF windows. Resseting the AF to %d", CAM_AF_MODE_AUTO);
             m3AControls->setAfMode(CAM_AF_MODE_AUTO);
@@ -4370,20 +4370,15 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
     return status;
 }
 
-void ControlThread::preSetCameraWindows(CameraWindow* focusWindows, size_t winCount)
+void ControlThread::convertAfWindows(CameraWindow* focusWindows, size_t winCount)
 {
     LOG1("@%s", __FUNCTION__);
     if (winCount > 0) {
-        int width;
-        int height;
-        mParameters.getPreviewSize(&width, &height);
-        AAAWindowInfo aaaWindow;
-        m3AControls->getGridWindow(aaaWindow);
 
         for (size_t i = 0; i < winCount; i++) {
             // Camera KEY_FOCUS_AREAS Coordinates range from -1000 to 1000. Let's convert..
-            convertFromAndroidCoordinates(focusWindows[i], focusWindows[i], aaaWindow);
-            LOG1("Preset camera window %d: (%d,%d,%d,%d)",
+            convertFromAndroidToIaCoordinates(focusWindows[i], focusWindows[i]);
+            LOG1("Converted AF window %d: (%d,%d,%d,%d)",
                     i,
                     focusWindows[i].x_left,
                     focusWindows[i].y_top,
@@ -4465,7 +4460,7 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
                 size_t winCount(mFocusAreas.numOfAreas());
                 CameraWindow *focusWindows = new CameraWindow[winCount];
                 mFocusAreas.toWindows(focusWindows);
-                preSetCameraWindows(focusWindows, winCount);
+                convertAfWindows(focusWindows, winCount);
                 if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
                     // If focus windows couldn't be set, previous AF mode is used
                     // (AfSetWindowMulti has its own safety checks for coordinates)

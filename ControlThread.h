@@ -492,7 +492,7 @@ private:
         CameraParameters *newParams);
     void processParamFileInject(CameraParameters *newParams);
 
-    void preSetCameraWindows(CameraWindow* focusWindows, size_t winCount);
+    void convertAfWindows(CameraWindow* focusWindows, size_t winCount);
 
     void selectFlashMode(CameraParameters *newParams, bool applySaved);
 
