@@ -2570,12 +2570,9 @@ status_t AtomISP::applyColorEffect()
     status_t status = NO_ERROR;
 
     // Color effect overrides configs that AIC has set
-    // Apply only when color effect is selected
-    if (mColorEffect != 0){
-        if (atomisp_set_attribute (main_fd, V4L2_CID_COLORFX, mColorEffect, "Colour Effect") < 0){
-            LOGE("Error setting color effect");
-            return UNKNOWN_ERROR;
-        }
+    if (atomisp_set_attribute (main_fd, V4L2_CID_COLORFX, mColorEffect, "Colour Effect") < 0){
+        LOGE("Error setting color effect");
+        return UNKNOWN_ERROR;
     }
     return status;
 }
