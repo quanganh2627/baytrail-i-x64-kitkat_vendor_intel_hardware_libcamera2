@@ -1421,6 +1421,9 @@ status_t ControlThread::stopCapture()
         LOGE("Must be in STATE_CAPTURE to stop capture");
         return INVALID_OPERATION;
     }
+    if (mHdr.inProgress)
+        mBracketManager->stopBracketing();
+
     mUnqueuedPicBuf.clear();
     status = mPictureThread->flushBuffers();
     if (status != NO_ERROR) {
@@ -4050,6 +4053,11 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
 
     newParams->getPictureSize(&newWidth, &newHeight);
     oldParams->getPictureSize(&oldWidth, &oldHeight);
+
+    if (mHdr.inProgress) {
+        LOGW("%s: attempt to change hdr parameters during hdr capture");
+        return INVALID_OPERATION;
+    }
 
     // Check the HDR parameters
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,

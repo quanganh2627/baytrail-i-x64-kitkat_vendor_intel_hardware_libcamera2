@@ -436,8 +436,10 @@ status_t BracketManager::applyBracketingParams()
 
 void BracketManager::setBracketMode(BracketingMode mode)
 {
-    LOG1("@%s", __FUNCTION__);
-    mBracketing.mode = mode;
+    if (mState == STATE_STOPPED)
+        mBracketing.mode = mode;
+    else
+        LOGW("%s: attempt to change bracketing mode during capture", __FUNCTION__);
 }
 
 BracketingMode BracketManager::getBracketMode()
