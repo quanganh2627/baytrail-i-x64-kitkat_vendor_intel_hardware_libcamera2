@@ -31,8 +31,21 @@ class DebugFrameRate;
 class Callbacks;
 class CallbacksThread;
 
-#define MAX_NUMBER_PREVIEW_GFX_BUFFERS      10  /*!< Maximum capacity of the vector where we store the
-                                                     Gfx Preview Buffers*/
+/**
+ * Maximum capacity of the vector where we store the Gfx Preview Buffers
+ * This define does not control the actual number of buffers used, just
+ * the maximum allowed.
+ */
+#define MAX_NUMBER_PREVIEW_GFX_BUFFERS      10
+
+/**
+ * \def GFX_OVERLAY_BUFFERS_DURING_OVERLAY_USE
+ * Number of Gfx Buffers dequeued from window  when we render via overlay
+ * In this case AtomISP is allocating its own buffers to feed the ISP  preview
+ * in PreviewThread we do a rotation or memcopy from that set to the Gfx buffers
+ * (the ones dequeued from the window)
+ */
+#define GFX_OVERLAY_BUFFERS_DURING_OVERLAY_USE 4
 
 // callback for when Preview thread is done with yuv data
 class ICallbackPreview {
@@ -204,7 +217,8 @@ private:
     status_t freeGfxPreviewBuffers();
     int getGfxBufferStride();
     AtomBuffer* dequeueFromWindow();
-    void copyPreviewBuffer(const char *src, char *dst);
+    void copyPreviewBuffer(AtomBuffer* src, AtomBuffer* dst);
+    void getEffectiveDimensions(int *w, int *h);
     void strideCopy(const int   width,
                     const int   height,
                     const int   rstride,
