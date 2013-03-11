@@ -104,18 +104,18 @@ namespace PerformanceTraces {
  */
   class PnPBreakdown {
   public:
-    static void start(void);
+    static void start(void) STUB_BODY
     static void enable(bool set) STUB_BODY
     static void step(const char *func, const char* note = 0, const int mFrameNum = -1) STUB_BODY
-    static void stop(void);
+    static void stop(void) STUB_BODY
   };
 
   class HDRShot2Preview {
   public:
-    static void start(void);
+    static void start(void) STUB_BODY
     static void enable(bool set) STUB_BODY
     static void HDRCalled(void) STUB_BODY
-    static void stop(void);
+    static void stop(void) STUB_BODY
   };
 
   /**

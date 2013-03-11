@@ -24,6 +24,9 @@
 #include <utils/List.h>
 #include <utils/Vector.h>
 
+// By default MessageQueue::receive() waits infinitely for a new message
+#define MESSAGE_QUEUE_RECEIVE_TIMEOUT_MSEC_INFINITE 0
+
 namespace android {
 
 template <class MessageType, class MessageId>
@@ -135,15 +138,25 @@ public:
     }
 
     // Pop a message from the queue
-    status_t receive(MessageType *msg)
+    status_t receive(MessageType *msg,
+            unsigned int timeout_ms = MESSAGE_QUEUE_RECEIVE_TIMEOUT_MSEC_INFINITE)
     {
         status_t status = NO_ERROR;
-
+        nsecs_t timeout_val = 0;
         mQueueMutex.lock();
         while (isEmptyLocked()) {
-            mQueueCondition.wait(mQueueMutex);
+            if (timeout_ms) {
+                timeout_val = nsecs_t(timeout_ms) * 1000000LL;
+                status = mQueueCondition.waitRelative(mQueueMutex,timeout_val);
+            } else {
+                mQueueCondition.wait(mQueueMutex);
+            }
             // wait() should never complete without a message being
             // available, but for diagnostic purposes let's check it.
+            if (status == TIMED_OUT) {
+                mQueueMutex.unlock();
+                return status;
+            }
             if (isEmptyLocked()) {
                 LOGE("Atom_MessageQueue - woke with mCount == 0\n");
             }
@@ -152,7 +165,6 @@ public:
         *msg = *(--mList.end());
         mList.erase(--mList.end());
         mQueueMutex.unlock();
-
         return status;
     }
 

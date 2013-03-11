@@ -4,7 +4,9 @@ LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
 
-ifeq ($(TARGET_DEVICE),merr_vv)
+ifeq ($(REF_DEVICE_NAME),merr_vv)
+USE_INTEL_JPEG := false
+else ifeq ($(REF_DEVICE_NAME),bodegabay)
 USE_INTEL_JPEG := false
 else
 USE_INTEL_JPEG := true
@@ -55,7 +57,8 @@ LOCAL_SRC_FILES := \
 	CameraAreas.cpp \
 	BracketManager.cpp \
 	AtomAcc.cpp \
-	AtomIspObserverManager.cpp
+	AtomIspObserverManager.cpp \
+	SensorThread.cpp
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SRC_FILES += \
@@ -104,7 +107,8 @@ LOCAL_SHARED_LIBRARIES := \
 	libia_nvm \
 	libtbd \
 	libsqlite \
-	libdl
+	libdl \
+	libgui
 
 ifeq ($(USE_INTEL_METABUFFER),true)
 LOCAL_SHARED_LIBRARIES += \
@@ -137,6 +141,8 @@ else ifeq ($(REF_DEVICE_NAME),mrfl_vp)
 LOCAL_CFLAGS += -DMRFL_VP
 else ifeq ($(REF_DEVICE_NAME),merr_vv)
 LOCAL_CFLAGS += -DMERR_VV
+else ifeq ($(REF_DEVICE_NAME),bodegabay)
+LOCAL_CFLAGS += -DBODEGABAY
 else ifeq ($(REF_DEVICE_NAME),yukkabeach)
 LOCAL_CFLAGS += -DYUKKA
 else ifeq ($(REF_DEVICE_NAME),salitpa)

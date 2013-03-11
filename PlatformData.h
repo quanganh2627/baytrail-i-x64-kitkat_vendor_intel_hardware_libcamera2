@@ -16,6 +16,7 @@
 #ifndef PLATFORMDATA_H_
 #define PLATFORMDATA_H_
 
+#include "CameraConf.h"
 #include <utils/String8.h>
 #include <utils/Vector.h>
 
@@ -375,6 +376,9 @@ class PlatformData {
     static PlatformBase* getInstance(void);
 
  public:
+
+    static AiqConf AiqConfig;
+    static HalConf HalConfig;
 
     enum SensorFlip {
         SENSOR_FLIP_NA     = -1,   // Support Not-Available

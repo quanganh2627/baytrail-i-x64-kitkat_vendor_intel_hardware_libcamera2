@@ -77,6 +77,7 @@ namespace android {
         int dumpImage2File(const void *data, const unsigned int size, unsigned int width,
                       unsigned int height, const char *filename);
         int dumpImage2FileFlush(bool bufflag = true);
+        void set3AControls(I3AControls *aaaControls);
 
     private:
         CameraDump();
@@ -89,7 +90,7 @@ namespace android {
         static bool sNeedDumpVideo;
         static bool sNeedDump3aStat;
         bool mNeedDumpFlush;
-        AtomAAA *mAAA;
+        I3AControls* m3AControls;
         camera_delay_dumpImage_T mDelayDump;
     };// class CameraDump
 

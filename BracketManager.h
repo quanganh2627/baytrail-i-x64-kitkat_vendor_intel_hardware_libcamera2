@@ -48,7 +48,7 @@ class BracketManager : public Thread {
 
 // constructor destructor
 public:
-    BracketManager(AtomISP *isp);
+    BracketManager(AtomISP *isp, I3AControls *aaaControls);
     virtual ~BracketManager();
 
 // Thread overrides
@@ -114,7 +114,7 @@ private:
 
 // private data
 private:
-    AtomAAA *mAAA;
+    I3AControls *m3AControls;
     AtomISP *mISP;
     int  mFpsAdaptSkip;
     int  mBurstLength;

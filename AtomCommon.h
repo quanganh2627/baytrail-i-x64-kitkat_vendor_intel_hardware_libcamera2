@@ -47,6 +47,7 @@
 #define CLIP(Number, Max, Min)    ((Number) > (Max) ? (Max) : ((Number) < (Min) ? (Min) : (Number)))
 // macro ALIGN16 root value to value that is divisible by 16
 #define ALIGN16(x) (((x) + 15) & ~15)
+#define ALIGN64(x) (((x) + 63) & ~63)
 
 namespace android {
 struct AtomBuffer;
@@ -225,6 +226,20 @@ static int frameSize(int format, int width, int height)
     }
 
     return size;
+}
+
+/**
+ * Calculates the frame stride following the limitations imposed by display subsystem
+
+ * \param width [in]
+ * \return stride following the Display subsystem stride requirement
+ **/
+static int SGXandDisplayStride(int width)
+{
+    if (width <= 512)
+        return  512;
+    else
+        return ALIGN64(width);
 }
 
 static int bytesPerLineToWidth(int format, int bytesperline)

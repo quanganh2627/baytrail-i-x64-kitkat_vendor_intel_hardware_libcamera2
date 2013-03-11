@@ -32,7 +32,7 @@ static const int SIZE_OF_APP0_MARKER = 18;      /* Size of the JFIF App0 marker
                                                  * SOI. And sometimes needs to be removed
                                                  */
 
-PictureThread::PictureThread() :
+PictureThread::PictureThread(I3AControls *aaaControls) :
     Thread(true) // callbacks may call into java
     ,mMessageQueue("PictureThread", MESSAGE_ID_MAX)
     ,mThreadRunning(false)
@@ -43,6 +43,7 @@ PictureThread::PictureThread() :
     ,mPictureQuality(80)
     ,mThumbnailQuality(50)
     ,mInputBuffers(0)
+    ,m3AControls(aaaControls)
 {
     LOG1("@%s", __FUNCTION__);
     mOutBuf.buff = NULL;
@@ -50,6 +51,8 @@ PictureThread::PictureThread() :
     mInputBufferArray = NULL;
     mInputBuffDataArray = NULL;
     mHwCompressor = new JpegHwEncoder();
+    // TODO: Remove the EXIFMaker's dependency on aaaControls
+    mExifMaker = new EXIFMaker(aaaControls);
 }
 
 PictureThread::~PictureThread()
@@ -73,6 +76,9 @@ PictureThread::~PictureThread()
 
     if(mHwCompressor)
         delete mHwCompressor;
+
+    if (mExifMaker)
+        delete mExifMaker;
 }
 
 /*
@@ -124,7 +130,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         failback = true;
 
     // Convert and encode the thumbnail, if present and EXIF maker is initialized
-    if (mExifMaker.isInitialized())
+    if (mExifMaker->isInitialized())
     {
         encodeExif(thumbBuf);
     }
@@ -179,7 +185,7 @@ void PictureThread::getDefaultParameters(CameraParameters *params)
 
 void PictureThread::initialize(const CameraParameters &params)
 {
-    mExifMaker.initialize(params);
+    mExifMaker->initialize(params);
     int q = params.getInt(CameraParameters::KEY_JPEG_QUALITY);
     if (q != 0)
         mPictureQuality = q;
@@ -267,7 +273,7 @@ status_t PictureThread::flushBuffers()
     mMessageQueue.remove(MESSAGE_ID_ENCODE, &pending);
     Vector<Message>::iterator it;
     for(it = pending.begin(); it != pending.end(); ++it) {
-      it->data.encode.metaData.free();
+      it->data.encode.metaData.free(m3AControls);
     }
 
     return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
@@ -284,10 +290,10 @@ status_t PictureThread::handleMessageExit()
 /**
  * Frees resources tired to metaData object.
  */
-void PictureThread::MetaData::free()
+void PictureThread::MetaData::free(I3AControls *aaaControls)
 {
     if (ia3AMkNote)
-        AtomAAA::getInstance()->put3aMakerNote(ia3AMkNote);
+        aaaControls->put3aMakerNote(ia3AMkNote);
 
     if (aeConfig)
         delete aeConfig;
@@ -298,15 +304,15 @@ void PictureThread::MetaData::free()
  */
 void PictureThread::setupExifWithMetaData(const PictureThread::MetaData &metaData)
 {
-    mExifMaker.pictureTaken();
+    mExifMaker->pictureTaken();
     if (metaData.atomispMkNote)
-        mExifMaker.setDriverData(*metaData.atomispMkNote);
+        mExifMaker->setDriverData(*metaData.atomispMkNote);
     if (metaData.ia3AMkNote)
-        mExifMaker.setMakerNote(*metaData.ia3AMkNote);
+        mExifMaker->setMakerNote(*metaData.ia3AMkNote);
     if (metaData.aeConfig)
-        mExifMaker.setSensorAeConfig(*metaData.aeConfig);
+        mExifMaker->setSensorAeConfig(*metaData.aeConfig);
     if (metaData.flashFired)
-        mExifMaker.enableFlash();
+        mExifMaker->enableFlash();
 }
 
 status_t PictureThread::handleMessageEncode(MessageEncode *msg)
@@ -348,7 +354,7 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 
     // ownership was transferred to us from ControlThread, so we need
     // to free resources here after encoding
-    msg->metaData.free();
+    msg->metaData.free(m3AControls);
 
 
     mCallbacksThread->compressedFrameDone(&jpegBuf, &msg->snaphotBuf, &msg->postviewBuf);
@@ -434,7 +440,11 @@ status_t PictureThread::handleMessageFetchBuffers(MessageAllocBufs *msg)
 status_t PictureThread::allocateInputBuffers(int width, int height, int numBufs)
 {
     LOG1("@%s size (%dx%d) num %d", __FUNCTION__, width, height, numBufs);
-    size_t bufferSize = frameSize(V4L2_PIX_FMT_NV12, width, height);
+    // temporary workaround until CSS supports buffers with different strides
+    // until then we need to align all buffers to display subsystem stride
+    // requirements.... even the snapshot buffers that do not go to screen
+    int stride = SGXandDisplayStride(width);
+    size_t bufferSize = frameSize(V4L2_PIX_FMT_NV12, stride, height);
 
     if(numBufs == 0)
         return NO_ERROR;
@@ -454,6 +464,7 @@ status_t PictureThread::allocateInputBuffers(int width, int height, int numBufs)
         }
         mInputBufferArray[i].width = width;
         mInputBufferArray[i].height = height;
+        mInputBufferArray[i].stride = stride;
         mInputBufferArray[i].format = V4L2_PIX_FMT_NV12;
         mInputBufferArray[i].size = bufferSize;
         mInputBuffDataArray[i] = (char *) mInputBufferArray[i].buff->data;
@@ -543,29 +554,29 @@ int PictureThread::encodeExifAndThumbnail(AtomBuffer *thumbBuf, unsigned char* e
 
     // Set Exif data
     if (!mExifMakerName.isEmpty())
-        mExifMaker.setMaker(mExifMakerName.string());
+        mExifMaker->setMaker(mExifMakerName.string());
 
     if (!mExifModelName.isEmpty())
-        mExifMaker.setModel(mExifModelName.string());
+        mExifMaker->setModel(mExifModelName.string());
 
     if (!mExifSoftwareName.isEmpty())
-        mExifMaker.setSoftware(mExifSoftwareName.string());
+        mExifMaker->setSoftware(mExifSoftwareName.string());
 
     do {
         endTime = systemTime();
         size = mCompressor.encode(inBuf, outBuf);
         LOG1("Thumbnail JPEG size: %d (time to encode: %ums)", size, (unsigned)((systemTime() - endTime) / 1000000));
         if (size > 0) {
-            mExifMaker.setThumbnail(outBuf.buf, size);
+            mExifMaker->setThumbnail(outBuf.buf, size);
         } else {
             // This is not critical, we can continue with main picture image
             LOGE("Could not encode thumbnail stream!");
         }
 
-        exifSize = mExifMaker.makeExif(&exifDst);
+        exifSize = mExifMaker->makeExif(&exifDst);
         outBuf.quality = outBuf.quality - 5;
 
-    } while (exifSize > 0 && size > 0 && outBuf.quality > 0  && !mExifMaker.isThumbnailSet());
+    } while (exifSize > 0 && size > 0 && outBuf.quality > 0  && !mExifMaker->isThumbnailSet());
 exit:
     return exifSize;
 }
@@ -753,20 +764,20 @@ void PictureThread::encodeExif(AtomBuffer *thumbBuf)
 
     // Set Exif data
     if (!mExifMakerName.isEmpty())
-        mExifMaker.setMaker(mExifMakerName.string());
+        mExifMaker->setMaker(mExifMakerName.string());
 
     if (!mExifModelName.isEmpty())
-        mExifMaker.setModel(mExifModelName.string());
+        mExifMaker->setModel(mExifModelName.string());
 
     if (!mExifSoftwareName.isEmpty())
-        mExifMaker.setSoftware(mExifSoftwareName.string());
+        mExifMaker->setSoftware(mExifSoftwareName.string());
 
     // Encode thumbnail as JPEG and exif into mExifBuf
     int tmpSize = encodeExifAndThumbnail(thumbBuf, currentPtr);
     if (tmpSize == 0) {
         // This is not critical, we can continue with main picture image
         LOGI("Exif created without thumbnail stream!");
-        tmpSize = mExifMaker.makeExif(&currentPtr);
+        tmpSize = mExifMaker->makeExif(&currentPtr);
     }
     mExifBuf.size += tmpSize;
     currentPtr += mExifBuf.size;
@@ -931,9 +942,10 @@ status_t PictureThread::scaleMainPic(AtomBuffer *mainBuf)
     status_t status = NO_ERROR;
 
     if ((mainBuf->width > mScaledPic.width) ||
-        (mainBuf->height > mScaledPic.height)) {
-        LOG1("Need to Scale from (%dx%d) --> (%d,%d)",mainBuf->width, mainBuf->height,
-                                                      mScaledPic.width, mScaledPic.height);
+        (mainBuf->height > mScaledPic.height) ||
+        (mainBuf->stride > mScaledPic.width)) {
+        LOG1("Need to scale or trim from (%dx%d) s(%d)--> (%d,%d) s(%d)",mainBuf->width, mainBuf->height,mainBuf->stride,
+                                                      mScaledPic.width, mScaledPic.height, mScaledPic.stride);
 
         if (mScaledPic.buff != NULL)
             mScaledPic.buff->release(mScaledPic.buff);

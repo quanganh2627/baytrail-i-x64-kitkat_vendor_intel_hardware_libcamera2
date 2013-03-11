@@ -28,11 +28,11 @@ namespace android {
 
 #define FLASH_FRAME_TIMEOUT 5
 
-AAAThread::AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs) :
+AAAThread::AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs, I3AControls *aaaControls) :
     Thread(false)
     ,mMessageQueue("AAAThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
-    ,mAAA(AtomAAA::getInstance())
+    ,m3AControls(aaaControls)
     ,mCallbacks(CallbacksThread::getInstance())
     ,mDvs(dvs)
     ,mAAADoneCallback(aaaDone)
@@ -262,7 +262,7 @@ status_t AAAThread::handleMessageEnableAeLock(MessageEnable* msg)
     // during AF, AE lock is controlled by AF, otherwise
     // set the value here
     if (mStartAF != true)
-        mAAA->setAeLock(msg->enable);
+        m3AControls->setAeLock(msg->enable);
 
     mMessageQueue.reply(MESSAGE_ID_ENABLE_AE_LOCK, status);
     return status;
@@ -277,7 +277,7 @@ status_t AAAThread::handleMessageEnableAwbLock(MessageEnable* msg)
     // during AF, AWB lock is controlled by AF, otherwise
     // set the value here
     if (mStartAF != true)
-        mAAA->setAwbLock(msg->enable);
+        m3AControls->setAwbLock(msg->enable);
 
     mMessageQueue.reply(MESSAGE_ID_ENABLE_AWB_LOCK, status);
     return status;
@@ -287,13 +287,13 @@ status_t AAAThread::handleMessageAutoFocus()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status(NO_ERROR);
-    AfMode currAfMode(mAAA->getAfMode());
+    AfMode currAfMode(m3AControls->getAfMode());
 
    /**
     * If we are in continuous focus mode we should return immediately with
     * the current status if we  are not busy.
     */
-    ia_3a_af_status cafStatus = mAAA->getCAFStatus();
+    ia_3a_af_status cafStatus = m3AControls->getCAFStatus();
     if (currAfMode == CAM_AF_MODE_CONTINUOUS && cafStatus != ia_3a_af_status_busy) {
         mCallbacks->autofocusDone(cafStatus == ia_3a_af_status_success);
         // Also notify ControlThread that the auto-focus is finished
@@ -301,16 +301,16 @@ status_t AAAThread::handleMessageAutoFocus()
         return status;
     }
 
-    if (mAAA->is3ASupported() && currAfMode != CAM_AF_MODE_INFINITY &&
+    if (m3AControls->isIntel3A() && currAfMode != CAM_AF_MODE_INFINITY &&
         currAfMode != CAM_AF_MODE_FIXED && currAfMode != CAM_AF_MODE_MANUAL) {
-        mAAA->setAfEnabled(true);
+        m3AControls->setAfEnabled(true);
 
         // state of client requested 3A locks is kept, so it
         // is safe to override the values here
-        mAAA->setAeLock(true);
-        mAAA->setAwbLock(true);
+        m3AControls->setAeLock(true);
+        m3AControls->setAwbLock(true);
 
-        mAAA->startStillAf();
+        m3AControls->startStillAf();
         mFramesTillAfComplete = 0;
         mStartAF = true;
         mStopAF = false;
@@ -408,7 +408,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
             // Enter Stage 1
             mFramesTillExposed = 0;
             skipForEv = 2;
-            status = mAAA->applyPreFlashProcess(CAM_FLASH_STAGE_NONE);
+            status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_NONE);
             mFlashStage = FLASH_STAGE_PRE_PHASE1;
             break;
         case FLASH_STAGE_PRE_PHASE1:
@@ -419,7 +419,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
                 break;
             // Enter Stage 2
             skipForEv = 2;
-            status = mAAA->applyPreFlashProcess(CAM_FLASH_STAGE_PRE);
+            status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_PRE);
             mFlashStage = FLASH_STAGE_PRE_PHASE2;
             break;
         case FLASH_STAGE_PRE_PHASE2:
@@ -431,7 +431,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
             // settings for the flash-exposed still capture.
             // We check the frame status to make sure we use
             // the flash-exposed frame.
-            status = mAAA->setFlash(1);
+            status = m3AControls->setFlash(1);
             mFlashStage = FLASH_STAGE_PRE_WAITING;
             break;
         case FLASH_STAGE_SHOT_WAITING:
@@ -441,14 +441,14 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
                 LOG1("PreFlash@Frame %d: SUCCESS    (stopping...)", mFramesTillExposed);
                 mFlashStage = (mFlashStage == FLASH_STAGE_SHOT_WAITING) ?
                                FLASH_STAGE_SHOT_EXPOSED:FLASH_STAGE_PRE_EXPOSED;
-                mAAA->setFlash(0);
-                mAAA->applyPreFlashProcess(CAM_FLASH_STAGE_MAIN);
+                m3AControls->setFlash(0);
+                m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_MAIN);
             } else if(mFramesTillExposed > FLASH_FRAME_TIMEOUT
                    || ( frameStatus != FRAME_STATUS_OK
                         && frameStatus != FRAME_STATUS_FLASH_PARTIAL) ) {
                 LOG1("PreFlash@Frame %d: FAILED     (stopping...)", mFramesTillExposed);
                 status = UNKNOWN_ERROR;
-                mAAA->setFlash(0);
+                m3AControls->setFlash(0);
                 break;
             }
             status = NO_ERROR;
@@ -521,11 +521,11 @@ status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msgFrame)
 
     if(m3ARunning){
         // Run 3A statistics
-        status = mAAA->apply3AProcess(true, capture_timestamp);
+        status = m3AControls->apply3AProcess(true, capture_timestamp);
 
         //dump 3A statistics
         if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
-            mAAA->dumpCurrent3aStatToFile();
+            m3AControls->dumpCurrent3aStatToFile();
 
         // If auto-focus was requested, run auto-focus sequence
         if (status == NO_ERROR && mStartAF) {
@@ -534,7 +534,7 @@ status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msgFrame)
             if (mStopAF) {
                 afStatus = ia_3a_af_status_cancelled;
             } else {
-                afStatus = mAAA->isStillAfComplete();
+                afStatus = m3AControls->isStillAfComplete();
                 mFramesTillAfComplete++;
             }
             bool stopStillAf = false;
@@ -552,10 +552,10 @@ status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msgFrame)
             }
 
             if (stopStillAf) {
-                mAAA->stopStillAf();
-                mAAA->setAeLock(mForceAeLock);
-                mAAA->setAwbLock(mForceAwbLock);
-                mAAA->setAfEnabled(false);
+                m3AControls->stopStillAf();
+                m3AControls->setAeLock(mForceAeLock);
+                m3AControls->setAwbLock(mForceAwbLock);
+                m3AControls->setAfEnabled(false);
                 mStartAF = false;
                 mStopAF = false;
                 mFramesTillAfComplete = 0;
@@ -567,17 +567,17 @@ status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msgFrame)
                  * trying to focus if we are in continuous focus mode.
                  *
                  */
-                if((mAAA->getAfMode() == CAM_AF_MODE_CONTINUOUS) &&
+                if((m3AControls->getAfMode() == CAM_AF_MODE_CONTINUOUS) &&
                    (afStatus != ia_3a_af_status_success) ) {
                     mStartAF = true;
-                    mAAA->setAfEnabled(true);
+                    m3AControls->setAfEnabled(true);
                 }
             }
         }
 
-        AfMode currPublicAfMode = mAAA->getPublicAfMode();
+        AfMode currPublicAfMode = m3AControls->getPublicAfMode();
         if (currPublicAfMode == CAM_AF_MODE_CONTINUOUS) {
-            ia_3a_af_status cafStatus = mAAA->getCAFStatus();
+            ia_3a_af_status cafStatus = m3AControls->getCAFStatus();
             LOG2("CAF move lens status: %d", cafStatus);
             if (cafStatus != mPreviousCafStatus) {
                 LOG2("CAF move: %d", cafStatus == ia_3a_af_status_busy);
@@ -593,13 +593,13 @@ status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msgFrame)
         // Set face data to 3A only if there were detected faces and avoid unnecessary
         // setting with consecutive zero face count.
         if (!(mFaceState.num_faces == 0 && mPreviousFaceCount == 0)) {
-            mAAA->setFaces(mFaceState);
+            m3AControls->setFaces(mFaceState);
             mPreviousFaceCount = mFaceState.num_faces;
         }
 
         // Query the detected scene and notify the application
-        if (mAAA->getSmartSceneDetection()) {
-            mAAA->getSmartSceneMode(&sceneMode, &sceneHdr);
+        if (m3AControls->getSmartSceneDetection()) {
+            m3AControls->getSmartSceneMode(&sceneMode, &sceneHdr);
 
             if ((sceneMode != mSmartSceneMode) || (sceneHdr != mSmartSceneHdr)) {
                 LOG1("SmartScene: new scene detected: %d, HDR: %d", sceneMode, sceneHdr);

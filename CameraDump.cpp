@@ -103,7 +103,7 @@ bool CameraDump::sNeedDumpSnapshot = false;
 bool CameraDump::sNeedDumpVideo = false;
 bool CameraDump::sNeedDump3aStat = false;
 
-CameraDump::CameraDump() : mAAA(AtomAAA::getInstance())
+CameraDump::CameraDump()
 {
     LOG1("@%s", __FUNCTION__);
     mDelayDump.buffer_raw = NULL;
@@ -255,7 +255,7 @@ int CameraDump::dumpImage2File(const void *data, const unsigned int size, unsign
     int ret;
 
     if ((NULL == data) || (0 == size) || (0 == width) || (0 == height) || (NULL == name)
-        || (NULL == mAAA))
+        || (NULL == m3AControls))
         return -ERR_D2F_EVALUE;
 
     LOG2("%s filename is %s", __func__, name);
@@ -268,7 +268,7 @@ int CameraDump::dumpImage2File(const void *data, const unsigned int size, unsign
         LOGE("%s No valid mem for rawdata", __func__);
         return ret;
     }
-    if ((strcmp(name, "raw.bayer") == 0) && (mAAA != NULL))
+    if ((strcmp(name, "raw.bayer") == 0) && (m3AControls != NULL))
     {
         /* Only RAW image will have same file name as JPEG */
         char filesuffix[20];
@@ -301,10 +301,10 @@ int CameraDump::dumpImage2File(const void *data, const unsigned int size, unsign
         raw_info.border_lines_bottom = 0;
 
         // Add raw image info to the maker note.
-        mAAA->add3aMakerNoteRecord(ia_3a_mknote_field_type_uint8_array, ia_3a_mknote_field_name_raw_info, &raw_info, sizeof(raw_image_extra_info));
+        m3AControls->add3aMakerNoteRecord(ia_3a_mknote_field_type_uint8_array, ia_3a_mknote_field_name_raw_info, &raw_info, sizeof(raw_image_extra_info));
 
         // Get maker note data
-        uMknData = mAAA->get3aMakerNote(ia_3a_mknote_mode_raw);
+        uMknData = m3AControls->get3aMakerNote(ia_3a_mknote_mode_raw);
         if (uMknData) {
             LOGD("RAW, mknSize: %d", uMknData->bytes);
         } else {
@@ -323,7 +323,7 @@ int CameraDump::dumpImage2File(const void *data, const unsigned int size, unsign
         LOGE("open file %s failed %s", rawdpp, strerror(errno));
         if (uMknData) {
             // Delete Maker note data
-            mAAA->put3aMakerNote(uMknData);
+            m3AControls->put3aMakerNote(uMknData);
         }
         return -ERR_D2F_EOPEN;
     }
@@ -344,7 +344,7 @@ int CameraDump::dumpImage2File(const void *data, const unsigned int size, unsign
     if (uMknData)
     {
         // Delete Maker note data
-        mAAA->put3aMakerNote(uMknData);
+        m3AControls->put3aMakerNote(uMknData);
     }
 
     fclose (fp);
@@ -427,4 +427,11 @@ void CameraDump::showMediaServerGroup(void)
     else
         LOGE("%s Not enough mem for %d groupid", __func__, GIDSETSIZE);
 }
+
+void CameraDump::set3AControls(I3AControls *aaaControls)
+{
+    LOG1("@%s", __FUNCTION__);
+    m3AControls = aaaControls;
+}
+
 }; // namespace android

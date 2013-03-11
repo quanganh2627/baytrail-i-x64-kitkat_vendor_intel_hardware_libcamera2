@@ -61,12 +61,12 @@ int JpegCompressor::swEncode(const InputBuffer &in, const OutputBuffer &out)
         goto exit;
 
 exit:
-    mSWEncoder->deInit();
-
     if (status)
         mJpegSize = -1;
     else
         mSWEncoder->getJpegSize(&mJpegSize);
+
+    mSWEncoder->deInit();
 
     return (status ? -1 : 0);
 }

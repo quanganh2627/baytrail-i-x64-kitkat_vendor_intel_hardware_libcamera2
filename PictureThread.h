@@ -36,7 +36,7 @@ class PictureThread : public Thread {
 
 // constructor destructor
 public:
-    PictureThread();
+    PictureThread(I3AControls *aaaControls);
     virtual ~PictureThread();
 
 // Thread overrides
@@ -51,7 +51,7 @@ public:
       atomisp_makernote_info *atomispMkNote; /*!< kernel provided metadata, defined linux/atomisp.h */
       ia_3a_mknote *ia3AMkNote;              /*!< defined in ia_3a_types.h */
 
-      void free();
+      void free(I3AControls* aaaControls);
     };
 
 // public methods
@@ -157,7 +157,7 @@ private:
     CallbacksThread *mCallbacksThread;
     JpegCompressor   mCompressor;
     JpegHwEncoder   *mHwCompressor;
-    EXIFMaker       mExifMaker;
+    EXIFMaker       *mExifMaker;
     AtomBuffer      mExifBuf;
     AtomBuffer      mOutBuf;
     AtomBuffer      mThumbBuf;
@@ -183,6 +183,9 @@ private:
     String8 mExifMakerName;
     String8 mExifModelName;
     String8 mExifSoftwareName;
+
+    // 3A controls
+    I3AControls* m3AControls;
 }; // class PictureThread
 
 }; // namespace android

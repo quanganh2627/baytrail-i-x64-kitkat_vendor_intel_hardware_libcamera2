@@ -124,10 +124,15 @@ public:
         strcpy(pcam->supportedFlashModes,"");
         pcam->defaultIso = "";
         pcam->supportedIso = "";
-        strcpy(pcam->supportedSceneModes, pcam->defaultSceneMode);
+        pcam->minEV = "0";
+        pcam->maxEV = "0";
+        pcam->stepEV = "0";
+        strcpy(pcam->supportedSceneModes, "");
+        strcpy(pcam->defaultSceneMode, "");
         strcpy(pcam->supportedEffectModes, pcam->defaultEffectMode);
         strcpy(pcam->supportedIntelEffectModes, pcam->defaultEffectMode);
-        strcpy(pcam->supportedAwbModes, pcam->defaultAwbMode);
+        strcpy(pcam->supportedAwbModes, "");
+        strcpy(pcam->defaultAwbMode, "");
         pcam->defaultAeMetering = "";
         pcam->supportedAeMetering = "";
         pcam->supportedPreviewSize = "1024x576,720x480,640x480,640x360,352x288,320x240,176x144";
