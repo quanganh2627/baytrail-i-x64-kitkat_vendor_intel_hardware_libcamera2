@@ -25,6 +25,7 @@
 // - MACROBLOCK: side length of the macroblock square used to rotate images
 //               in pixels, must be a multiple of 16
 //                   (RSTRIDE, WSTRIDE, MACROBLOCK)
+NV12_ROTATION_STRIDES( 512,    512,     32        )
 NV12_ROTATION_STRIDES( 640,    512,     32        )
 NV12_ROTATION_STRIDES(1024,    576,     32        )
 NV12_ROTATION_STRIDES( 832,    640,     32        )
@@ -44,6 +45,7 @@ NV12_ROTATION_STRIDES( 768,    512,     32        )
 // generated for the defined geometry
 //
 //                    (COLUMNS, ROWS, RSTRIDE, WSTRIDE, MACROBLOCK)
+NV12_ROTATION_GEOMETRY( 352,    288,   512,      512,     32       )
 NV12_ROTATION_GEOMETRY( 720,    480,   768,      512,     32       )
 NV12_ROTATION_GEOMETRY( 640,    480,   640,      512,     32       )
 NV12_ROTATION_GEOMETRY( 640,    360,   640,      512,     32       )
