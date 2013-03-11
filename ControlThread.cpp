@@ -414,11 +414,10 @@ void ControlThread::deinit()
     if (mParamCache != NULL)
         free(mParamCache);
 
-    if (m3AControls != NULL)
+    if (m3AControls != NULL) {
         m3AControls->deinit3A();
-
-    if (m3AControls->isIntel3A()) {
-        delete m3AControls;
+        if (m3AControls->isIntel3A())
+            delete m3AControls;
     }
 
     if (mISP != NULL) {

@@ -1109,9 +1109,12 @@ bool AtomAIQ::changeSensorMode(void)
     m3aState.curr_grid_info = m3aState.results.isp_params.info;
     int grid_size = m3aState.curr_grid_info.s3a_width * m3aState.curr_grid_info.s3a_height;
     m3aState.stats = allocateStatistics(grid_size);
-    m3aState.stats->grid_info = m3aState.curr_grid_info;
-    m3aState.stats_valid  = false;
-
+    if (m3aState.stats != NULL) {
+        m3aState.stats->grid_info = m3aState.curr_grid_info;
+        m3aState.stats_valid  = false;
+    } else {
+        return false;
+    }
     return true;
 }
 
@@ -1300,14 +1303,15 @@ void AtomAIQ::runAeMain()
     }
 
 
-    if (first_run){
+    if (first_run && mAeState.ae_results != NULL){
         memcpy(&mAeState.prev_exposure[1], mAeState.ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
         memcpy(&mAeState.prev_exposure[2], mAeState.ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
     }
 
     memcpy(&mAeState.prev_exposure[0], &mAeState.prev_exposure[1], sizeof(ia_aiq_exposure_parameters));
     memcpy(&mAeState.prev_exposure[1], &mAeState.prev_exposure[2], sizeof(ia_aiq_exposure_parameters));
-    memcpy(&mAeState.prev_exposure[2], mAeState.ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
+    if (mAeState.ae_results != NULL)
+        memcpy(&mAeState.prev_exposure[2], mAeState.ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
 
     if (mAeState.ae_results &&
         (previous_total_exposure != mAeState.ae_results->exposure->total_target_exposure ||
@@ -1315,7 +1319,6 @@ void AtomAIQ::runAeMain()
          previous_analog_gain != mAeState.ae_results->exposure->analog_gain ||
          mAeState.force_update))
     {
-
         if (mAeState.ae_results->flash->status == ia_aiq_flash_status_pre) {
             memcpy(&mAeState.prev_exposure[0], mAeState.ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
             memcpy(&mAeState.prev_exposure[1], mAeState.ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
@@ -1336,7 +1339,7 @@ void AtomAIQ::runAeMain()
         LOG2("aperture: %d\n", mAeState.exposure.aperture);
     }
 
-    if (previous_flash_prc != mAeState.ae_results->flash->power_prc) {
+    if (mAeState.ae_results != NULL && previous_flash_prc != mAeState.ae_results->flash->power_prc) {
         mAeState.flash_result_changed = true;
         m3aState.results.flash_intensity_changed = true;
     }
@@ -1584,15 +1587,20 @@ void AtomAIQ::runAICMain()
     if (m3aState.ia_aiq_handle) {
         ia_aiq_aic_input_params aic_input_params;
         aic_input_params.frame_use = m3aState.frame_use;
+        aic_input_params.awb_results = NULL;
+        aic_input_params.gbce_results = NULL;
 
-        if(mAeState.ae_results)
+        if (mAeState.ae_results)
             aic_input_params.exposure_results = mAeState.ae_results->exposure;
 
-        if(mAwbResults)
+        if (mAwbResults) {
             aic_input_params.awb_results = mAwbResults;
-        LOG1("awb factor:%f", aic_input_params.awb_results->accurate_b_per_g);
-        aic_input_params.gbce_results = mGBCEResults;
-        LOG1("gbce :%d", aic_input_params.gbce_results->ctc_gains_lut_size);
+            LOG1("awb factor:%f", aic_input_params.awb_results->accurate_b_per_g);
+        }
+        if (mGBCEResults) {
+            aic_input_params.gbce_results = mGBCEResults;
+            LOG1("gbce :%d", aic_input_params.gbce_results->ctc_gains_lut_size);
+        }
         aic_input_params.sensor_frame_params = &m3aState.sensor_frame_params;
         LOG1("@%s  2 sensor native width %d", __FUNCTION__, aic_input_params.sensor_frame_params->cropped_image_width);
         aic_input_params.effects = mAICInputParameters.effects;
@@ -1637,7 +1645,6 @@ void AtomAIQ::getAeExpCfg(int *exp_time,
                      float *digital_gain)
 {
     LOG1("@%s", __FUNCTION__);
-    ia_3a_ae_result ae_res;
 
     mISP->sensorGetExposureTime(exp_time);
     mISP->sensorGetFNumber(aperture_num, aperture_denum);
@@ -1646,6 +1653,7 @@ void AtomAIQ::getAeExpCfg(int *exp_time,
         *digital_gain = (mAeState.ae_results->exposure)->digital_gain;
     // TODO: no support "tv,sv,av"
  /*
+    ia_3a_ae_result ae_res;
     *aec_apex_Tv = ae_res.tv;
     *aec_apex_Sv = ae_res.sv;
     *aec_apex_Av = ae_res.av;
