@@ -25,8 +25,6 @@
 #include <gui/Surface.h>
 #include "PerformanceTraces.h"
 #include <ui/GraphicBuffer.h>
-#include "media/openmax/OMX_IVCommon.h"     // for HWC overlay supported YUV color format
-//TODO: use a HAL YUV define once HWC starts using those
 #include <ui/GraphicBufferMapper.h>
 #include "AtomCommon.h"
 #include "nv12rotation.h"
@@ -54,6 +52,7 @@ PreviewThread::PreviewThread() :
     ,mPreviewStride(640)
     ,mPreviewFormat(V4L2_PIX_FMT_NV21)
     ,mOverlayEnabled(false)
+    ,mRotation(0)
 {
     LOG1("@%s", __FUNCTION__);
     mPreviewBuffers.setCapacity(MAX_NUMBER_PREVIEW_GFX_BUFFERS);
@@ -250,8 +249,12 @@ status_t PreviewThread::fetchPreviewBuffers(AtomBuffer **pvBufs, int *count)
     status_t status;
     status = mMessageQueue.send(&msg, MESSAGE_ID_FETCH_PREVIEW_BUFS);
 
-    *pvBufs = mPreviewBuffers.editArray();
     *count = mPreviewBuffers.size();
+    if(*count != 0) {
+        *pvBufs = mPreviewBuffers.editArray();
+    } else {
+        *pvBufs = NULL;
+    }
 
     LOG1("@%s: got [%d] buffers @ %p", __FUNCTION__, *count, *pvBufs);
     return status;
@@ -673,14 +676,16 @@ AtomBuffer* PreviewThread::dequeueFromWindow()
                     // Note: selected lock mode relies that if buffers were not
                     // prefetched, we end up in full frame memcpy path
                     int lockMode = GRALLOC_USAGE_SW_READ_NEVER | GRALLOC_USAGE_SW_WRITE_OFTEN;
-                    const Rect bounds(mPreviewWidth, mPreviewHeight);
+                    int w,h;
+                    getEffectiveDimensions(&w,&h);
+                    const Rect bounds(w, h);
                     tmpBuf.buff = NULL;     // We do not allocate a normal camera_memory_t
                     tmpBuf.id = mPreviewBuffers.size();
                     tmpBuf.type = ATOM_BUFFER_PREVIEW_GFX;
                     tmpBuf.mNativeBufPtr = buf;
                     tmpBuf.stride = stride;
-                    tmpBuf.width = mPreviewWidth;
-                    tmpBuf.height = mPreviewHeight;
+                    tmpBuf.width = w;
+                    tmpBuf.height = h;
                     tmpBuf.size = frameSize(V4L2_PIX_FMT_NV12, tmpBuf.stride, tmpBuf.height);
                     tmpBuf.format = V4L2_PIX_FMT_NV12;
                     if(mapper.lock(*buf, lockMode, bounds, &dst) != NO_ERROR) {
@@ -714,8 +719,7 @@ AtomBuffer* PreviewThread::dequeueFromWindow()
  *  stream
  *
  */
-status_t
-PreviewThread::handlePreview(MessagePreview *msg)
+status_t PreviewThread::handlePreview(MessagePreview *msg)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -753,8 +757,12 @@ PreviewThread::handlePreview(MessagePreview *msg)
             } else {
                 AtomBuffer *buf = dequeueFromWindow();
                 if (buf) {
-                    LOG2("copying frame %p -> %p : size %d", buf->gfxData, msg->buff.buff->data, msg->buff.size);
-                    memcpy(buf->gfxData, msg->buff.buff->data, msg->buff.size);
+                    LOG2("copying frame %p -> %p : size %d", msg->buff.buff->data, buf->gfxData, msg->buff.size);
+                    LOG2("src frame  %dx%d stride %d ", msg->buff.width, msg->buff.height,msg->buff.stride);
+                    LOG2("dst frame  %dx%d stride %d ", buf->width, buf->height, buf->stride);
+
+                    copyPreviewBuffer(&msg->buff, buf);
+
                     bufToEnqueue = buf->mNativeBufPtr;
                 } else {
                     LOGE("failed to dequeue from window");
@@ -844,8 +852,7 @@ skip_displaying:
     return status;
 }
 
-status_t
-PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
+status_t PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
 {
     LOG1("@%s: window = %p", __FUNCTION__, msg->window);
 
@@ -859,54 +866,72 @@ PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
     }
 
     mPreviewWindow = msg->window;
+    int w = mPreviewWidth;
+    int h = mPreviewHeight;
+    int usage;
+
+    getEffectiveDimensions(&w,&h);
 
     if (mPreviewWindow != NULL) {
-        LOG1("Setting new preview window %p", mPreviewWindow);
-        int previewWidthPadded = mPreviewWidth;
 
-        // write-never: main use-case, stream image data to window by ISP only
-        // read-rarely: 2nd use-case, memcpy to application data callback
-        mPreviewWindow->set_usage(mPreviewWindow,
-                                  (GRALLOC_USAGE_SW_READ_RARELY |
-                                   GRALLOC_USAGE_SW_WRITE_NEVER |
-                                   GRALLOC_USAGE_HW_COMPOSER));
-        mPreviewWindow->set_buffers_geometry(
-                mPreviewWindow,
-                previewWidthPadded,
-                mPreviewHeight,
-                HAL_PIXEL_FORMAT_NV12);
+        if (mOverlayEnabled) {
+            // write-often: overlay copy into the buffer
+            // read-never: we do not use this buffer for callbacks. We never read from it
+            usage = GRALLOC_USAGE_SW_WRITE_OFTEN |
+                    GRALLOC_USAGE_SW_READ_NEVER  |
+                    GRALLOC_USAGE_HW_COMPOSER;
+        } else {
+            // write-never: main use-case, stream image data to window by ISP only
+            // read-rarely: 2nd use-case, memcpy to application data callback
+            usage = GRALLOC_USAGE_SW_READ_RARELY |
+                    GRALLOC_USAGE_SW_WRITE_NEVER |
+                    GRALLOC_USAGE_HW_COMPOSER;
+        }
+
+        LOG1("Setting new preview window %p (%dx%d)", mPreviewWindow,w,h);
+        mPreviewWindow->set_usage(mPreviewWindow, usage);
+        mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h,
+                                             HAL_PIXEL_FORMAT_NV12);
     }
 
     return NO_ERROR;
 }
 
-status_t
-PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
+status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
 {
     LOG1("@%s: width = %d, height = %d, format = %x", __FUNCTION__,
          msg->width, msg->height, msg->format);
     status_t status = NO_ERROR;
+    int w = msg->width;
+    int h = msg->height;
+    int bufferCount = msg->bufferCount;
 
-    if ((msg->width != 0 && msg->height != 0) &&
-        (mPreviewWidth != msg->width || mPreviewHeight != msg->height)) {
-        LOG1("Setting new preview size: %dx%d, stride:%d", msg->width, msg->height, msg->stride);
+    if ((w != 0 && h != 0) &&
+        (mPreviewWidth != w || mPreviewHeight !=h)) {
+        LOG1("Setting new preview size: %dx%d, stride:%d", w, h, msg->stride);
         if (mPreviewWindow != NULL) {
 
-            // if preview size changed, update the preview window
-            mPreviewWindow->set_buffers_geometry(mPreviewWindow,
-                                                 msg->width,
-                                                 msg->height,
-                                                 HAL_PIXEL_FORMAT_NV12);
-
-            int stride = getGfxBufferStride();
-            if(stride != msg->stride) {
-                LOG1("the stride %d in GFX is different from stride %d in ISP:", stride, msg->stride)
-                mPreviewWindow->set_buffers_geometry(mPreviewWindow,
-                                                     msg->stride,
-                                                     msg->height,
-                                                     HAL_PIXEL_FORMAT_NV12);
+            /**
+             *  if preview size changed, update the preview window
+             *  but account for the rotation when setting the geometry
+             */
+            if (mRotation == 90 || mRotation == 270) {
+                // we swap width and height
+                w = msg->height;
+                h = msg->width;
             }
+            if(mOverlayEnabled)
+                bufferCount = GFX_OVERLAY_BUFFERS_DURING_OVERLAY_USE;
+
+            mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h,
+                                                 HAL_PIXEL_FORMAT_NV12);
         }
+
+        /**
+         * we keep in our internal fields the resolution provided by CtrlThread
+         * in order to get the effective resolution taking into account the
+         * rotation use \sa getEffectiveDimensions
+         */
         mPreviewWidth = msg->width;
         mPreviewHeight = msg->height;
         mPreviewStride = msg->stride;
@@ -916,7 +941,7 @@ PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
 
     allocateLocalPreviewBuf();
 
-    status = allocateGfxPreviewBuffers(msg->bufferCount);
+    status = allocateGfxPreviewBuffers(bufferCount);
 
     return status;
 }
@@ -932,8 +957,7 @@ PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
  * If buffers are not fetched in the beginning of streaming,
  * buffers allocated by AtomISP are expected.
  */
-status_t
-PreviewThread::handleFetchPreviewBuffers()
+status_t PreviewThread::handleFetchPreviewBuffers()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -991,8 +1015,7 @@ freeDeQueued:
     return status;
 }
 
-status_t
-PreviewThread::handleReturnPreviewBuffers()
+status_t PreviewThread::handleReturnPreviewBuffers()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -1010,8 +1033,7 @@ PreviewThread::handleReturnPreviewBuffers()
  * @return NO_MEMORY: If it could not allocate or dequeue the required buffers
  * @return INVALID_OPERATION: if it couldn't allocate the buffers because lack of preview window
  */
-status_t
-PreviewThread::allocateGfxPreviewBuffers(int numberOfBuffers) {
+status_t PreviewThread::allocateGfxPreviewBuffers(int numberOfBuffers) {
     LOG1("@%s: num buf: %d", __FUNCTION__, numberOfBuffers);
     status_t status = NO_ERROR;
     if(!mPreviewBuffers.isEmpty()) {
@@ -1098,8 +1120,7 @@ status_t PreviewThread::freeGfxPreviewBuffers() {
  * Please NOTE:
  *  It is the caller responsibility to ensure mPreviewWindow is initialized
  */
-int
-PreviewThread::getGfxBufferStride(void)
+int PreviewThread::getGfxBufferStride(void)
 {
     int stride = 0;
     buffer_handle_t *buf;
@@ -1129,12 +1150,9 @@ PreviewThread::getGfxBufferStride(void)
  */
 status_t PreviewThread::handlePostview(MessagePreview *msg)
 {
-    int err, stride;
-    buffer_handle_t *buf;
-    void *src;
-    void *dst;
+    int err;
 
-    LOG1("@%s: width = %d, height = %d (texture)", __FUNCTION__,
+    LOG1("@%s: width = %d, height = %d ", __FUNCTION__,
          msg->buff.width, msg->buff.height);
 
     if (!mPreviewWindow) {
@@ -1144,7 +1162,7 @@ status_t PreviewThread::handlePostview(MessagePreview *msg)
 
     if (msg->buff.type != ATOM_BUFFER_POSTVIEW) {
         // support implemented for using AtomISP postview type only
-        LOGD("Unable to provide 'preview-keep-alive' frame, input buffer type unexpected");
+        LOG1("Unable to provide 'preview-keep-alive' frame, input buffer type unexpected");
         return UNKNOWN_ERROR;
     }
 
@@ -1161,35 +1179,88 @@ status_t PreviewThread::handlePostview(MessagePreview *msg)
         return UNKNOWN_ERROR;
     }
 
-    src = msg->buff.buff->data;
+    AtomBuffer tmpBuf = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+    getEffectiveDimensions(&tmpBuf.width,&tmpBuf.height);
+
     GraphicBufferMapper &mapper = GraphicBufferMapper::get();
-    const Rect bounds(msg->buff.width, msg->buff.height);
+    const Rect bounds(tmpBuf.width, tmpBuf.height);
 
     // queue one from the window
-    err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride);
+    err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &tmpBuf.mNativeBufPtr, &tmpBuf.stride);
     if (err != 0) {
         LOGW("Error dequeuing preview buffer for 'preview-keep-alive'");
         return UNKNOWN_ERROR;
     }
 
-    err = mapper.lock(*buf,
+    err = mapper.lock(*tmpBuf.mNativeBufPtr,
         GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_NEVER,
-        bounds, &dst);
+        bounds, &tmpBuf.gfxData);
     if (err != 0) {
-        mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
+        LOGE("Error locking buffer for postview rendering");
+        mPreviewWindow->cancel_buffer(mPreviewWindow, tmpBuf.mNativeBufPtr);
         return UNKNOWN_ERROR;
     }
 
-    memcpy (dst, src, msg->buff.size);
+    copyPreviewBuffer(&msg->buff,&tmpBuf);
 
-    mapper.unlock(*buf);
+    mapper.unlock(*tmpBuf.mNativeBufPtr);
 
-    err = mPreviewWindow->enqueue_buffer(mPreviewWindow, buf);
+    err = mPreviewWindow->enqueue_buffer(mPreviewWindow, tmpBuf.mNativeBufPtr);
     if (err != 0)
         LOGE("Surface::queueBuffer returned error %d", err);
 
     LOG1("@%s: done", __FUNCTION__);
 
     return NO_ERROR;
+}
+
+/**
+ * Copies or rotates the buffer given by the ControlThread.
+ *
+ * Usually the src is a buffer from the ControlThread and the dst is a Gfx buffer
+ * dequeued from the preview window
+ *
+ * The rotation is passed when the overlay is enabled in cases where the scan
+ * order of the display and camera are different
+ */
+void PreviewThread::copyPreviewBuffer(AtomBuffer* src, AtomBuffer* dst)
+{
+    switch (mRotation) {
+    case 90:
+        nv12rotateBy90(src->width,       // width of the source image
+                       src->height,      // height of the source image
+                       src->stride,      // scanline stride of the source image
+                       dst->stride,      // scanline stride of the target image
+                       (const char*)src->buff->data,               // source image
+                       (char *)dst->gfxData);                 // target image
+        break;
+    case 270:
+        // TODO: Not handled, waiting for Semi
+        break;
+    case 0:
+        memcpy((char *)dst->gfxData, (const char*)src->buff->data,src->size);
+        break;
+    }
+
+}
+
+/**
+ * Returns the effective dimensions of the preview
+ * we store only the original request from the client in mPreviewWidth and
+ * mPreviewHeight. When we use these values we need to take into account any
+ * rotation that we need to do to the buffers in case we are using overlay.
+ * \param w [out] pointer to the effective width
+ * \param h [out] pointer to the effective height
+ */
+void PreviewThread::getEffectiveDimensions(int *w, int *h)
+{
+    if (mRotation == 90 || mRotation == 270) {
+        // we swap width and height
+        *w = mPreviewHeight;
+        *h = mPreviewWidth;
+    } else {
+        *w = mPreviewWidth;
+        *h = mPreviewHeight;
+    }
 }
 } // namespace android
