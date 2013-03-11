@@ -77,6 +77,8 @@ namespace android {
  */
 #define MESSAGE_QUEUE_RECEIVE_TIMEOUT_MSEC 5000
 
+#define ATOMISP_CAPTURE_POLL_TIMEOUT 2000
+
 // Minimum value of our supported preview FPS
 const int MIN_PREVIEW_FPS = 11;
 // Max value of our supported preview fps:
@@ -1553,7 +1555,7 @@ status_t ControlThread::handleMessageStartPreview()
         // API says apps should call startFaceDetection when resuming preview
         // stop FD here to avoid accidental FD.
         stopFaceDetection();
-        if (mPreviewThread->isWindowConfigured()) {
+        if (mPreviewThread->isWindowConfigured() || mISP->isFileInjectionEnabled()) {
             bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT);
             status = startPreviewCore(videoMode);
         } else {
@@ -2152,7 +2154,13 @@ status_t ControlThread::waitForCaptureStart()
     status_t status = NO_ERROR;
 
     // Check if capture frame is availble (no wait)
-    int res = mISP->pollCapture(2000);
+    int time_out = ATOMISP_CAPTURE_POLL_TIMEOUT;
+    // Polling captured image needs more timeslot in file injection mode,
+    // driver needs more than 30s to fill the snapshot buffer with 13M image,
+    // so set max timeout to 60s
+    if (mISP->isFileInjectionEnabled())
+        time_out = 60000;
+    int res = mISP->pollCapture(time_out);
     if (res == 0) {
         LOG1("%s: timed out!", __FUNCTION__);
         status = UNKNOWN_ERROR;
@@ -3741,7 +3749,6 @@ void ControlThread::processParamFileInject(CameraParameters *newParams)
 
     unsigned int width = 0, height = 0, bayerOrder = 0, format = 0;
     const char *fileName = newParams->get(IntelCameraParameters::KEY_FILE_INJECT_FILENAME);
-
     if (!fileName || !strncmp(fileName, "off", sizeof("off")))
         return;
 

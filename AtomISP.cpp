@@ -68,8 +68,8 @@
 #define RESOLUTION_VGA_TABLE   \
         "320x240,640x480"
 
-#define MAX_FILE_INJECTION_SNAPSHOT_WIDTH    3264
-#define MAX_FILE_INJECTION_SNAPSHOT_HEIGHT   2448
+#define MAX_FILE_INJECTION_SNAPSHOT_WIDTH    4192
+#define MAX_FILE_INJECTION_SNAPSHOT_HEIGHT   3104
 #define MAX_FILE_INJECTION_PREVIEW_WIDTH     1280
 #define MAX_FILE_INJECTION_PREVIEW_HEIGHT    720
 #define MAX_FILE_INJECTION_RECORDING_WIDTH   1920
@@ -911,7 +911,8 @@ status_t AtomISP::configure(AtomMode mode)
     LOG1("@%s", __FUNCTION__);
     LOG1("mode = %d", mode);
     status_t status = NO_ERROR;
-
+    if (mFileInject.active == true)
+        startFileInject();
     switch (mode) {
     case MODE_PREVIEW:
         status = configurePreview();
@@ -946,14 +947,10 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
         mPreviewDevice = mPreviewTooBigForVFPP ? mRecordingDevice : mConfigSnapshotPreviewDevice;
         if ((status = allocatePreviewBuffers()) != NO_ERROR)
             stopDevice(mPreviewDevice);
-        if (mFileInject.active == true)
-            startFileInject();
         break;
     case MODE_VIDEO:
         if ((status = allocateRecordingBuffers()) != NO_ERROR)
             return status;
-        if (mFileInject.active == true)
-            startFileInject();
         if ((status = allocatePreviewBuffers()) != NO_ERROR)
             stopRecording();
         if (mStoreMetaDataInBuffers) {
@@ -964,8 +961,6 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
     case MODE_CAPTURE:
         if ((status = allocateSnapshotBuffers()) != NO_ERROR)
             return status;
-        if (mFileInject.active == true)
-            startFileInject();
         break;
     case MODE_CONTINUOUS_CAPTURE:
         status = allocateBuffers(MODE_PREVIEW);
@@ -1070,6 +1065,8 @@ status_t AtomISP::stop()
     default:
         break;
     };
+    if (mFileInject.active == true)
+        stopFileInject();
 
     if (status == NO_ERROR)
         mMode = MODE_NONE;
@@ -1168,9 +1165,6 @@ status_t AtomISP::stopPreview()
 
     if (mPreviewDevice != V4L2_MAIN_DEVICE)
         closeDevice(mPreviewDevice);
-
-    if (mFileInject.active == true)
-        stopFileInject();
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
     return status;
@@ -1318,9 +1312,6 @@ status_t AtomISP::stopRecording()
     freePreviewBuffers();
     closeDevice(mPreviewDevice);
 
-    if (mFileInject.active == true)
-        stopFileInject();
-
     return NO_ERROR;
 }
 
@@ -1388,8 +1379,6 @@ errorCloseSecond:
     closeDevice(V4L2_POSTVIEW_DEVICE);
 errorFreeBuf:
     freeSnapshotBuffers();
-    if (mFileInject.active == true)
-        stopFileInject();
 
     return status;
 }
@@ -1580,8 +1569,6 @@ errorCloseSecond:
     closeDevice(V4L2_POSTVIEW_DEVICE);
 errorFreeBuf:
     freeSnapshotBuffers();
-    if (mFileInject.active == true)
-        stopFileInject();
 
     return status;
 }
@@ -1640,8 +1627,6 @@ errorCloseSecond:
     closeDevice(V4L2_POSTVIEW_DEVICE);
 errorFreeBuf:
     freeSnapshotBuffers();
-    if (mFileInject.active == true)
-        stopFileInject();
 
 end:
     return status;
@@ -1704,8 +1689,6 @@ status_t AtomISP::stopCapture()
         closeDevice(V4L2_ISP_SUBDEV);
         mFrameSyncEnabled = false;
     }
-    if (mFileInject.active == true)
-        stopFileInject();
     mUsingClientSnapshotBuffers = false;
     dumpRawImageFlush();
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
@@ -3136,6 +3119,7 @@ int AtomISP::v4l2_capture_request_buffers(int device, uint num_buffers)
     req_buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
     if (device == V4L2_INJECT_DEVICE) {
+        LOG2("request buffer for file injection");
         req_buf.memory = V4L2_MEMORY_MMAP;
         req_buf.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
     }
@@ -5350,7 +5334,12 @@ status_t AtomISP::PreviewStreamSource::observe(IAtomIspObserver::Message *msg)
     int ret;
     LOG2("@%s", __FUNCTION__);
     int failCounter = 0;
-
+    int retry_count = ATOMISP_GETFRAME_RETRY_COUNT;
+    // Polling preview buffer needs more timeslot in file injection mode,
+    // driver needs more than 20s to fill the 640x480 preview buffer, so
+    // set retry count to 60
+    if (mISP->isFileInjectionEnabled())
+        retry_count = 40;
 try_again:
     ret = mISP->pollPreview(ATOMISP_PREVIEW_POLL_TIMEOUT);
     if (ret > 0) {
@@ -5373,7 +5362,7 @@ try_again:
         // check if reason is starving and enter sleep to wait
         // for returnBuffer()
         while(!mISP->dataAvailable()) {
-            if (++failCounter > ATOMISP_GETFRAME_RETRY_COUNT) {
+            if (++failCounter > retry_count) {
                 LOGD("There were no preview buffers returned in time");
                 break;
             }
@@ -5381,7 +5370,7 @@ try_again:
             usleep(ATOMISP_GETFRAME_STARVING_WAIT);
         }
 
-        if (++failCounter <= ATOMISP_GETFRAME_RETRY_COUNT)
+        if (++failCounter <= retry_count)
             goto try_again;
     }
 
