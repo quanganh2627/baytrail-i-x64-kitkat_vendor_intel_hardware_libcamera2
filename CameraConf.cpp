@@ -204,6 +204,211 @@ exit:
     return ret;
 }
 
+status_t HalConf::getFpoint(int32_t& value, cpf_hal_tag_t tag, ...)
+{
+    value = 0;
+    int ret = 0;
+
+    va_list args;
+    va_start(args, tag);
+
+    int32_t *fpointTag;
+    if ((ret = getAny(fpointTag, tag, args))) {
+        goto exit;
+    }
+
+    if (!(*fpointTag++ & tag_fpoint)) {
+        ret = BAD_TYPE;
+        goto exit;
+    }
+
+    value = *fpointTag;
+
+exit:
+    va_end(args);
+    return ret;
+}
+
+status_t HalConf::getFloat(float& value, cpf_hal_tag_t tag, ...)
+{
+    value = 0;
+    int ret = 0;
+
+    va_list args;
+    va_start(args, tag);
+
+    int32_t *fpointTag;
+    if ((ret = getAny(fpointTag, tag, args))) {
+        goto exit;
+    }
+
+    if (!(*fpointTag++ & tag_fpoint)) {
+        ret = BAD_TYPE;
+        goto exit;
+    }
+
+    value = (float)(*fpointTag) / 65536.0;
+
+exit:
+    va_end(args);
+    return ret;
+}
+
+int HalConf::getValue(cpf_hal_tag_t tag, ...)
+{
+    int value = 0;
+    int ret = 0;
+
+    va_list args;
+    va_start(args, tag);
+
+    int32_t *valueTag;
+    if ((ret = getAny(valueTag, tag, args))) {
+        goto exit;
+    }
+
+    if (*valueTag++ & 0xffff0000) {
+        ret = BAD_TYPE;
+        goto exit;
+    }
+
+    value = *valueTag;
+
+exit:
+    va_end(args);
+
+    if (ret) {
+        LOGE("ERROR %d in %s!", ret, __FUNCTION__);
+    }
+
+    return value;
+}
+
+bool HalConf::getBool(cpf_hal_tag_t tag, ...)
+{
+    bool boolean = false;
+    int ret = 0;
+
+    va_list args;
+    va_start(args, tag);
+
+    int32_t *booleanTag;
+    if ((ret = getAny(booleanTag, tag, args))) {
+        goto exit;
+    }
+
+    if (!(*booleanTag++ & tag_bool)) {
+        ret = BAD_TYPE;
+        goto exit;
+    }
+
+    boolean = *booleanTag;
+
+exit:
+    va_end(args);
+
+    if (ret) {
+        LOGE("ERROR %d in %s!", ret, __FUNCTION__);
+    }
+
+    return boolean;
+}
+
+const char *HalConf::getString(cpf_hal_tag_t tag, ...)
+{
+    const char *string = 0;
+    int ret = 0;
+
+    va_list args;
+    va_start(args, tag);
+
+    cpf_hal_header_t *headerPtr;
+    char *stringPtr;
+
+    int32_t *stringTag;
+    if ((ret = getAny(stringTag, tag, args))) {
+        goto exit;
+    }
+
+    if (!(*stringTag++ & tag_string)) {
+        ret = BAD_TYPE;
+        goto exit;
+    }
+
+    headerPtr = (cpf_hal_header_t *)(ptr());
+    stringPtr = (char *)(headerPtr) + headerPtr->string_offset;
+    string = ((char *)(stringPtr) + *stringTag);
+
+exit:
+    va_end(args);
+
+    if (ret) {
+        LOGE("ERROR %d in %s!", ret, __FUNCTION__);
+    }
+
+    return string;
+}
+
+int32_t HalConf::getFpoint(cpf_hal_tag_t tag, ...)
+{
+    int32_t value = 0;
+    int ret = 0;
+
+    va_list args;
+    va_start(args, tag);
+
+    int32_t *fpointTag;
+    if ((ret = getAny(fpointTag, tag, args))) {
+        goto exit;
+    }
+
+    if (!(*fpointTag++ & tag_fpoint)) {
+        ret = BAD_TYPE;
+        goto exit;
+    }
+
+    value = *fpointTag;
+
+exit:
+    va_end(args);
+
+    if (ret) {
+        LOGE("ERROR %d in %s!", ret, __FUNCTION__);
+    }
+
+    return value;
+}
+
+float HalConf::getFloat(cpf_hal_tag_t tag, ...)
+{
+    int ret = 0;
+    float value = 0;
+
+    va_list args;
+    va_start(args, tag);
+
+    int32_t *fpointTag;
+    if ((ret = getAny(fpointTag, tag, args))) {
+        goto exit;
+    }
+
+    if (!(*fpointTag++ & tag_fpoint)) {
+        ret = BAD_TYPE;
+        goto exit;
+    }
+
+    value = (float)(*fpointTag) / 65536.0;
+
+exit:
+    va_end(args);
+
+    if (ret) {
+        LOGE("ERROR %d in %s!", ret, __FUNCTION__);
+    }
+
+    return value;
+}
+
 status_t HalConf::getAny(int32_t *& any, cpf_hal_tag_t tag, va_list args)
 {
     any = 0;

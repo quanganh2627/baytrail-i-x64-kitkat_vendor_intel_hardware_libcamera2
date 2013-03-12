@@ -84,6 +84,13 @@ public:
     status_t getValue(int& value, CPF::cpf_hal_tag_t tag, ...);
     status_t getBool(bool& boolean, CPF::cpf_hal_tag_t tag, ...);
     status_t getString(const char *& string, CPF::cpf_hal_tag_t tag, ...);
+    status_t getFpoint(int32_t& value, CPF::cpf_hal_tag_t tag, ...);
+    status_t getFloat(float& value, CPF::cpf_hal_tag_t tag, ...);
+    int getValue(CPF::cpf_hal_tag_t tag, ...);
+    bool getBool(CPF::cpf_hal_tag_t tag, ...);
+    const char *getString(CPF::cpf_hal_tag_t tag, ...);
+    int32_t getFpoint(CPF::cpf_hal_tag_t tag, ...);
+    float getFloat(CPF::cpf_hal_tag_t tag, ...);
 private:
     status_t getAny(int32_t *& any, CPF::cpf_hal_tag_t tag, va_list args);
 };
