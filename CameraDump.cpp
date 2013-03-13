@@ -24,63 +24,9 @@
 #include <sys/stat.h>
 #include "LogHelper.h"
 #include "CameraDump.h"
+#include "ia_aiq_types.h"
 
 namespace android {
-/*!
- * \brief Macro which combines 4 bytes into one 32  bit fourcc code.
-*/
-#define RAW_IMAGE_FOURCC(a,b,c,d) \
-    ( (unsigned long)(a) | ((unsigned long)(b)<<8) | ((unsigned long)(c)<<16) | ((unsigned long)(d)<<24) )
-
-/*!
- * \brief Raw image formats.
- * Copied definitions from videodev2.h.
-*/
-#define RAW_PLAIN_8_8_GRBG RAW_IMAGE_FOURCC('G','R','B','G')
-#define RAW_PLAIN_8_8_RGGB RAW_IMAGE_FOURCC('R','G','G','B')
-#define RAW_PLAIN_8_8_BGGR RAW_IMAGE_FOURCC('B','A','8','1')
-#define RAW_PLAIN_8_8_GBRG RAW_IMAGE_FOURCC('G','B','R','G')
-#define RAW_PLAIN_16_10_GRBG RAW_IMAGE_FOURCC('B','A','1','0')
-#define RAW_PLAIN_16_10_RGGB RAW_IMAGE_FOURCC('R','G','1','0')
-#define RAW_PLAIN_16_10_BGGR RAW_IMAGE_FOURCC('B','G','1','0')
-#define RAW_PLAIN_16_10_GBRG RAW_IMAGE_FOURCC('G','B','1','0')
-
-/*!
- * \brief Raw image essential information.
- * If raw image data doesn't contain any extra bytes/lines/columns, the image can be decoded with this info.
- * This header can be used with RawPlain16 format (for example after conversion by function raw_x_to_rawplain16_x()).
-*/
-typedef struct
-{
-    unsigned long data_format;      /*!< FOURCC code matching image data type */
-    unsigned long width_cols;       /*!< nominal width (640, 800, 1280, 1600, etc.) */
-    unsigned long height_lines;     /*!< nominal height (480, 600, 960, 1200, etc.) */
-} raw_image_info;
-
-/*!
- * \brief Raw image info with additional details about extra bytes/lines/columns to skip when decoding the raw image.
-*/
-typedef struct
-{
-    raw_image_info raw_image;            /*!< Essential information needed to decode the image. */
-    unsigned long header_size_bytes;     /*!< Variable size header */
-    unsigned long footer_size_bytes;     /*!< Variable size footer */
-
-    unsigned short extra_bytes_left;     /*!< e.g. CCP sync codes */
-    unsigned short extra_bytes_right;    /*!< e.g. CCP sync codes */
-
-    unsigned short extra_lines_top;       /*!< Non-image data, e.g. embedded data lines */
-    unsigned short border_lines_top;      /*!< Additional lines with visible pixels */
-    unsigned short extra_cols_left;       /*!< Non-image data, extra columns at left */
-    unsigned short border_cols_left;      /*!< Additional columns with visible pixels */
-    unsigned short extra_cols_right;      /*!< Non-image data, extra columns at left */
-    unsigned short border_cols_right;     /*!< Additional columns with visible pixels */
-    unsigned short extra_lines_bottom;    /*!< Non-image data, e.g. embedded data lines */
-    unsigned short border_lines_bottom;   /*!< Additional columns with visible pixels */
-
-    unsigned char byte_order_xor;        /*!< 0, 1 or 3 (for the cases when byte order has been modified for whatever reason) */
-    unsigned char spatial_sampling;      /*!< 0 or 1 = Bayer or Co-sited */
-} raw_image_extra_info;
 
 #define GIDSETSIZE      20
 
@@ -281,27 +227,26 @@ int CameraDump::dumpImage2File(const void *data, const unsigned int size, unsign
         strncat(filename, filesuffix, sizeof(filename) - strlen(filename) - 1);
         strncat(rawdpp, filename, strlen(filename));
 
-        raw_image_extra_info raw_info;
-        raw_info.raw_image.data_format = RAW_PLAIN_16_10_GRBG;
+        ia_aiq_raw_image_full_info raw_info;
+        raw_info.raw_image.data_format = ia_aiq_data_format_rawplain16;
+        raw_info.raw_image.bayer_order = ia_aiq_bayer_order_grbg;
+        raw_info.raw_image.data_format_bpp = 16;
+        raw_info.raw_image.data_bpp = 10;
         raw_info.raw_image.width_cols = width;
         raw_info.raw_image.height_lines = height;
         raw_info.header_size_bytes = 0;
         raw_info.footer_size_bytes = 0;
+        raw_info.extra_bytes_left = 0;
+        raw_info.extra_bytes_right = 0;
+        raw_info.extra_lines_top = 0;
+        raw_info.extra_cols_left = 0;
+        raw_info.extra_cols_right = 0;
+        raw_info.extra_lines_bottom = 0;
         raw_info.byte_order_xor = 0;
         raw_info.spatial_sampling = 0;
-        raw_info.extra_lines_top = 0;
-        raw_info.border_lines_top = 0;
-        raw_info.extra_bytes_left = 0;
-        raw_info.extra_cols_left = 0;
-        raw_info.border_cols_left = 0;
-        raw_info.extra_bytes_right = 0;
-        raw_info.extra_cols_right = 0;
-        raw_info.border_cols_right = 0;
-        raw_info.extra_lines_bottom = 0;
-        raw_info.border_lines_bottom = 0;
 
         // Add raw image info to the maker note.
-        m3AControls->add3aMakerNoteRecord(ia_3a_mknote_field_type_uint8_array, ia_3a_mknote_field_name_raw_info, &raw_info, sizeof(raw_image_extra_info));
+        m3AControls->add3aMakerNoteRecord(ia_3a_mknote_field_type_uint8, ia_3a_mknote_field_name_raw_info, &raw_info, sizeof(ia_aiq_raw_image_full_info));
 
         // Get maker note data
         uMknData = m3AControls->get3aMakerNote(ia_3a_mknote_mode_raw);
