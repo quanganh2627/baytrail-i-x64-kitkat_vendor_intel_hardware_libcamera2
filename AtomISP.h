@@ -466,7 +466,6 @@ private:
     status_t configureContinuous();
     status_t startCapture();
     status_t stopCapture();
-    status_t startContinuousPreview();
     status_t stopContinuousPreview();
 
     status_t requestContCapture(int numCaptures, int offset, unsigned int skip);

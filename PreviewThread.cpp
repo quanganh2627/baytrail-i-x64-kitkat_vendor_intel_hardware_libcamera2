@@ -730,8 +730,6 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
             msg->buff.id,
             msg->buff.gfxData);
 
-    inputBufferCallback();
-
     PreviewState state = getPreviewState();
     if (state != STATE_ENABLED && state != STATE_ENABLED_HIDDEN_PASSTHROUGH)
         goto skip_displaying;
@@ -797,7 +795,6 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
         }
     }
 
-
     if(!mPreviewBuf.buff) {
         allocateLocalPreviewBuf();
     }
@@ -833,6 +830,8 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
     }
 
 skip_displaying:
+    inputBufferCallback();
+
     mDebugFPS->update(); // update fps counter
 
     if (!passedToGfx) {

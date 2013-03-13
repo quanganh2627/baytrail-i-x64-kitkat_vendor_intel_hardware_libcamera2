@@ -669,6 +669,7 @@ private:
 
     bool mEnableFocusCbAtStart;     /* for internal control of focus cb's in continuous-mode */
     bool mEnableFocusMoveCbAtStart; /* for internal control of focus-move cb's in continuous-mode */
+    bool mFirstPreviewStart;        /* indicator of first preview start for L2P pnp optimizations */
 }; // class ControlThread
 
 }; // namespace android

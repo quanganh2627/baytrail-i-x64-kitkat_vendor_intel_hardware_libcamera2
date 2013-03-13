@@ -988,6 +988,7 @@ status_t AtomISP::start()
     status_t status = NO_ERROR;
 
     switch (mMode) {
+    case MODE_CONTINUOUS_CAPTURE:
     case MODE_PREVIEW:
         status = startPreview();
         break;
@@ -996,9 +997,6 @@ status_t AtomISP::start()
         break;
     case MODE_CAPTURE:
         status = startCapture();
-        break;
-    case MODE_CONTINUOUS_CAPTURE:
-        status = startContinuousPreview();
         break;
     default:
         status = UNKNOWN_ERROR;
@@ -1720,41 +1718,6 @@ status_t AtomISP::releaseCaptureBuffers()
     return freeSnapshotBuffers();
 }
 
-/**
- * Starts ISP in CSS1.5/2.0 continuous viewfinder mode.
- *
- * Queues buffers for all capture-related devices, including
- * preview, snapshot and postview devices. Then the preview
- * device is started with a STREAM_ON command, allowing the client
- * to start streaming preview data with getPreview() calls.
- *
- * To grab a picture without stopping preview, client should
- * call startOfflineCapture().
- */
-status_t AtomISP::startContinuousPreview()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-
-    status = prepareDevice(V4L2_MAIN_DEVICE, mConfig.num_snapshot);
-    if (status != NO_ERROR)
-        goto error;
-    status = prepareDevice(V4L2_POSTVIEW_DEVICE, mConfig.num_snapshot);
-    if (status != NO_ERROR)
-        goto errorStopMain;
-    status = startPreview();
-    if (status != NO_ERROR)
-        goto errorStopPostview;
-
-    return status;
-
-errorStopPostview:
-    stopDevice(V4L2_POSTVIEW_DEVICE);
-errorStopMain:
-    stopDevice(V4L2_MAIN_DEVICE);
-error:
-    return status;
-}
 
 /**
  * Starts offline capture processing in the ISP.

@@ -124,6 +124,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mVideoSnapshotrequested(0)
     ,mEnableFocusCbAtStart(false)
     ,mEnableFocusMoveCbAtStart(false)
+    ,mFirstPreviewStart(true)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -1084,11 +1085,10 @@ status_t ControlThread::initContinuousCapture()
 
     burstStateReset();
 
-    // TODO: potential launch2preview impact, we cannot use
-    //       the lazy buffer allocation strategy in continuous mode
-    allocateSnapshotBuffers();
-
-    setExternalSnapshotBuffers(format, width, height);
+    if (!mFirstPreviewStart) {
+        allocateSnapshotBuffers();
+        setExternalSnapshotBuffers(format, width, height);
+    }
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
     return status;
@@ -2302,8 +2302,36 @@ status_t ControlThread::continuousStartStillCapture(bool useFlash)
 {
     LOG2("@%s: ", __FUNCTION__);
     status_t status = NO_ERROR;
+    int picWidth, picHeight, format;
+    int size;
+
     if (useFlash == false) {
         mCallbacksThread->shutterSound();
+
+        /**
+         * At this stage we need to re-configure the v4l2 buffer pools
+         * in case the number of buffers have change.
+         * We do  not have an api to do this only. So we use these ones
+         * It may look that we are re-allocating buffers, but we are not.
+         * we are only changing the number of buffers queued to the driver
+         *
+         * The number of buffers queued may change up to the amount
+         * configured during  start preview. This is how we can do single still
+         * captures and burst of N (like for ULL) without re-starting the preview
+         * (Assuming we started continuous preview with N buffers in the ring)
+         *
+         */
+        mParameters.getPictureSize(&picWidth, &picHeight);
+        format = mISP->getSnapshotPixelFormat();
+        size = frameSize(format, picWidth, picHeight);
+
+        setExternalSnapshotBuffers(format, picWidth, picHeight);
+
+        status = mISP->allocateBuffers(MODE_CAPTURE);
+        if (status != NO_ERROR) {
+           LOGE("Error allocate buffers in ISP");
+            return status;
+        }
         startOfflineCapture();
         // Note: We change the PreviewThread state here to change
         // the public API previewEnabled() state to stopped while
@@ -2485,7 +2513,6 @@ status_t ControlThread::captureStillPic()
     mBurstCaptureNum = 0;
     mBurstCaptureDoneNum = 0;
     mBurstQbufs = 0;
-
     // Get the current params
     mParameters.getPictureSize(&width, &height);
     format = mISP->getSnapshotPixelFormat();
@@ -2972,17 +2999,6 @@ status_t ControlThread::captureULLPic()
     mBurstStart = 0;
     mBurstFps = mISP->getFrameRate();
 
-    // pass the necessary Snapshot buffers from PictureThread to AtomISP
-    setExternalSnapshotBuffers(format, picWidth, picHeight);
-
-    // Allocate the rest of the buffers (postview)
-    // This also initializes the V4L2 buffer pools for the captures and postviews
-    status = mISP->allocateBuffers(MODE_CAPTURE);
-    if (status != NO_ERROR) {
-       LOGE("Error allocate buffers in ISP");
-        return status;
-    }
-
     status = continuousStartStillCapture(false);
 
     // Configure PictureThread, inform of the picture and thumbnail resolutions
@@ -3267,7 +3283,7 @@ void ControlThread::previewBufferCallback(AtomBuffer *buff, ICallbackPreview::Ca
 
 status_t ControlThread::handleMessagePreviewStarted()
 {
-    if (mState != STATE_CONTINUOUS_CAPTURE) {
+    if (mState != STATE_CONTINUOUS_CAPTURE || mFirstPreviewStart) {
         /**
         * First preview frame was rendered.
         * Now preview is ongoing. Complete now any initialization that is not
@@ -3275,10 +3291,12 @@ status_t ControlThread::handleMessagePreviewStarted()
         * impact launch to preview time.
         *
         * In this case we send the request to the PictureThread to allocate
-        * the snapshot buffers
+        * the snapshot buffers. This is only needed during the first preview
+        * start.
         */
         allocateSnapshotBuffers();
     }
+    mFirstPreviewStart = false;
     return NO_ERROR;
 }
 
