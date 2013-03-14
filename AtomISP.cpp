@@ -57,7 +57,7 @@
 #define ATOMISP_PREVIEW_POLL_TIMEOUT 1000
 #define ATOMISP_GETFRAME_RETRY_COUNT 5  // Times to retry poll/dqbuf in case of error
 #define ATOMISP_GETFRAME_STARVING_WAIT 200000 // Time to usleep between retry's when stream is starving from buffers.
-
+#define ATOMISP_MIN_CONTINUOUS_BUF_SIZE 3 // Min buffer len supported by CSS
 #define FRAME_SYNC_POLL_TIMEOUT 500
 
 // workaround begin for the imx135, this code will be removed in the future
@@ -139,6 +139,7 @@ AtomISP::AtomISP(int cameraId) :
     ,mNumCapturegBuffersQueued(0)
     ,mFlashTorchSetting(0)
     ,mContCaptPrepared(false)
+    ,mContCaptPriority(false)
     ,mConfigSnapshotPreviewDevice(V4L2_MAIN_DEVICE)
     ,mConfigLastDevice(V4L2_PREVIEW_DEVICE)
     ,mPreviewDevice(V4L2_MAIN_DEVICE)
@@ -1366,18 +1367,13 @@ errorFreeBuf:
 }
 
 /**
- * Configures continuos capture settings to kernel
- * (IOC_S_CONT_CAPTURE_CONFIG atomisp ioctl).
+ * Requests driver to capture main and postview images
  *
- * This call has different semantics depending on whether
- * it's called before ISP is started, or when ISP is
- * already running. In the former case, this call is
- * used to configure the ringbuffer size. In the latter
- * case, this call is used to request ISP to start
- * rendering output (main and postview) frames with
- * the given parameters.
+ * This call is used to trigger captures from the continuously
+ * updated RAW ringbuffer maintained in ISP.
  *
- * See PSI BZ 80777 for a proposed change to this API.
+ * Call is implemented using the the IOC_S_CONT_CAPTURE_CONFIG
+ * atomisp ioctl.
  */
 status_t AtomISP::requestContCapture(int numCaptures, int offset, unsigned int skip)
 {
@@ -1404,6 +1400,27 @@ status_t AtomISP::requestContCapture(int numCaptures, int offset, unsigned int s
 }
 
 /**
+ * Configures the ISP continuous capture mode
+ *
+ * This takes effect in kernel when preview is started.
+ */
+status_t AtomISP::configureContinuousMode(bool enable)
+{
+    LOG2("@%s", __FUNCTION__);
+    if (atomisp_set_attribute(main_fd, V4L2_CID_ATOMISP_CONTINUOUS_MODE,
+                              enable, "Continuous mode") < 0)
+            return UNKNOWN_ERROR;
+
+    enable = !mContCaptPriority;
+    if (atomisp_set_attribute(main_fd, V4L2_CID_ATOMISP_CONTINUOUS_VIEWFINDER,
+                              enable, "Continuous viewfinder") < 0)
+            return UNKNOWN_ERROR;
+
+    return NO_ERROR;
+}
+
+
+/**
  * Configures the ISP ringbuffer size in continuous mode.
  *
  * Set all ISP parameters that affect RAW ringbuffer
@@ -1414,14 +1431,15 @@ status_t AtomISP::requestContCapture(int numCaptures, int offset, unsigned int s
  */
 status_t AtomISP::configureContinuousRingBuffer()
 {
-    int numBuffers = abs(mContCaptConfig.offset);
-;
+    int numBuffers = ATOMISP_MIN_CONTINUOUS_BUF_SIZE;
     int captures = mContCaptConfig.numCaptures;
     int offset = mContCaptConfig.offset;
-    status_t status;
+    int lookback = abs(offset);
 
-    if (captures > numBuffers)
-        numBuffers = captures;
+    if (lookback > captures)
+        numBuffers += lookback;
+    else
+        numBuffers += captures;
 
     if (numBuffers > PlatformData::maxContinuousRawRingBufferSize(mCameraId))
         numBuffers = PlatformData::maxContinuousRawRingBufferSize(mCameraId);
@@ -1429,11 +1447,13 @@ status_t AtomISP::configureContinuousRingBuffer()
     LOG1("continuous mode ringbuffer size to %d (captures %d, offset %d)",
          numBuffers, captures, offset);
 
-    status = requestContCapture(numBuffers,
-                                mContCaptConfig.offset,
-                                mContCaptConfig.skip);
+    if (atomisp_set_attribute(main_fd,
+                              V4L2_CID_ATOMISP_CONTINUOUS_RAW_BUFFER_SIZE,
+                              numBuffers,
+                              "Continuous raw ringbuffer size") < 0)
+        return UNKNOWN_ERROR;
 
-    return status;
+    return NO_ERROR;
 }
 
 /**
@@ -1515,10 +1535,17 @@ status_t AtomISP::configureContinuous()
     }
 
     updateCaptureParams();
+
+    ret = configureContinuousMode(true);
+    if (ret != NO_ERROR) {
+        LOGE("setting continuous mode failed");
+        return ret;
+    }
+
     ret = configureContinuousRingBuffer();
-    if (ret < 0) {
+    if (ret != NO_ERROR) {
         LOGE("setting continuous capture params failed");
-        return UNKNOWN_ERROR;
+        return ret;
     }
 
     ret = configureDevice(
@@ -1635,7 +1662,11 @@ status_t AtomISP::stopContinuousPreview()
     int error = 0;
     if (stopCapture() != NO_ERROR)
         ++error;
+    // TODO: this call to requestContCapture() can be
+    //       removed once PSI BZ 101676 is solved
     if (requestContCapture(0, 0, 0) != NO_ERROR)
+        ++error;
+    if (configureContinuousMode(false) != NO_ERROR)
         ++error;
     if (stopPreview() != NO_ERROR)
         ++error;
@@ -1775,7 +1806,7 @@ status_t AtomISP::stopOfflineCapture()
  * \param config container to configure capture count, skipping
  *               and the start offset (see struct AtomISP::ContinuousCaptureConfig)
  */
-status_t AtomISP::prepareOfflineCapture(AtomISP::ContinuousCaptureConfig &cfg)
+status_t AtomISP::prepareOfflineCapture(AtomISP::ContinuousCaptureConfig &cfg, bool capturePriority)
 {
     LOG1("@%s, numCaptures = %d", __FUNCTION__, cfg.numCaptures);
     if (cfg.offset < continuousBurstNegMinOffset()) {
@@ -1785,6 +1816,7 @@ status_t AtomISP::prepareOfflineCapture(AtomISP::ContinuousCaptureConfig &cfg)
     }
     mContCaptConfig = cfg;
     mContCaptPrepared = true;
+    mContCaptPriority = capturePriority;
     return NO_ERROR;
 }
 

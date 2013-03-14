@@ -1080,6 +1080,10 @@ int ControlThread::continuousBurstSkip(double targetFps) const
 status_t ControlThread::configureContinuousRingBuffer()
 {
     LOG2("@%s", __FUNCTION__);
+    bool capturePriority = true;
+    if (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_CONTINUOUS)
+        capturePriority = false;
+
     AtomISP::ContinuousCaptureConfig cfg;
     if (mULL->isActive())
         cfg.numCaptures = mULL->MAX_INPUT_BUFFERS;
@@ -1097,7 +1101,7 @@ status_t ControlThread::configureContinuousRingBuffer()
                                                 cfg.offset,
                                                 cfg.skip);
 
-    return mISP->prepareOfflineCapture(cfg);
+    return mISP->prepareOfflineCapture(cfg, capturePriority);
 }
 
 /**
