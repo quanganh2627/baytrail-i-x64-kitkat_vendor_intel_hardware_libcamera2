@@ -4055,7 +4055,7 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
     oldParams->getPictureSize(&oldWidth, &oldHeight);
 
     if (mHdr.inProgress) {
-        LOGW("%s: attempt to change hdr parameters during hdr capture");
+        LOGW("%s: attempt to change hdr parameters during hdr capture", __FUNCTION__);
         return INVALID_OPERATION;
     }
 
