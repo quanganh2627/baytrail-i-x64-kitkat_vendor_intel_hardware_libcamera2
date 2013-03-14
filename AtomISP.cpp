@@ -728,6 +728,12 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
     intel_params->set(IntelCameraParameters::KEY_BURST_START_INDEX, "0");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX, startIndexValues);
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_CONTINUOUS, "true,false");
+    intel_params->set(IntelCameraParameters::KEY_BURST_CONTINUOUS, "false");
+
+    // TODO: move to platform data
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PREVIEW_UPDATE_MODE, "standard,continuous,during-capture");
+    intel_params->set(IntelCameraParameters::KEY_PREVIEW_UPDATE_MODE, "standard");
 
     intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_FILENAME, "off");
     intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_WIDTH, "0");
