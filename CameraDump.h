@@ -53,6 +53,7 @@ namespace android {
         unsigned int buffer_size;
         unsigned int width;
         unsigned int height;
+        unsigned int stride;
     } camera_delay_dumpImage_T;
 
     class CameraDump {
@@ -73,9 +74,8 @@ namespace android {
                    || sNeedDumpPreview || sNeedDumpVideo || sNeedDumpSnapshot;
             return ret;
         }
-        int dumpImage2Buf(void *buffer, unsigned int size, unsigned int width, unsigned int height);
-        int dumpImage2File(const void *data, const unsigned int size, unsigned int width,
-                      unsigned int height, const char *filename);
+        int dumpImage2Buf(camera_delay_dumpImage_T *aDumpImage);
+        int dumpImage2File(camera_delay_dumpImage_T *aDumpImage, const char *filename);
         int dumpImage2FileFlush(bool bufflag = true);
         void set3AControls(I3AControls *aaaControls);
 

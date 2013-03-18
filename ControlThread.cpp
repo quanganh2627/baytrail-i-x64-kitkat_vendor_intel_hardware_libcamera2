@@ -44,6 +44,11 @@ namespace android {
  */
 #define NUM_WARMUP_FRAMES 4
 /*
+ * RAW_CAPTURE_SKIP: Number of frames we skip from capture device before we dump
+ * a raw image.
+ */
+#define RAW_CAPTURE_SKIP  2
+/*
  * NUM_BURST_BUFFERS: used for burst captures
  */
 #define NUM_BURST_BUFFERS 10
@@ -159,6 +164,7 @@ status_t ControlThread::init()
     LOG1("@%s: cameraId = %d", __FUNCTION__, mCameraId);
 
     status_t status = UNKNOWN_ERROR;
+    CameraDump::setDumpDataFlag();
 
     mISP = new AtomISP(mCameraId);
     if (mISP == NULL) {
@@ -201,7 +207,6 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    CameraDump::setDumpDataFlag();
     mCameraDump = CameraDump::getInstance();
     if (mCameraDump == NULL) {
         LOGE("error creating CameraDump");
@@ -1281,6 +1286,11 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
                  __FUNCTION__);
             return STATE_PREVIEW_STILL;
         }
+    }
+
+    if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
+        LOG1("@%s: Raw dump enabled, disabling continuous mode", __FUNCTION__);
+        return STATE_PREVIEW_STILL;
     }
 
     LOG1("@%s: Selecting continuous still preview mode", __FUNCTION__);
@@ -2702,11 +2712,18 @@ status_t ControlThread::captureStillPic()
     }
 
     /*
-     *  If the current camera does not have 3A, then we should skip the first
-     *  frames in order to allow the sensor to warm up.
+     *  Pre-capture skip.
+     *  we can skip frames for 2 reasons:
+     *  - If the current camera does not have 3A, then we should skip the first
+     *    frames in order to allow the sensor to warm up.
+     *  - If we are capturing a RAW image
      */
-    if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) {
-        if ((status = skipFrames(NUM_WARMUP_FRAMES)) != NO_ERROR) {
+    if ((PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) ||
+         CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
+
+        int framesToSkip = CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW) ?
+                         RAW_CAPTURE_SKIP:NUM_WARMUP_FRAMES;
+        if ((status = skipFrames(framesToSkip)) != NO_ERROR) {
             LOGE("Error skipping warm-up frames!");
             return status;
         }

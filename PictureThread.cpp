@@ -417,7 +417,8 @@ status_t PictureThread::allocateInputBuffers(int format, int width, int height, 
     // temporary workaround until CSS supports buffers with different strides
     // until then we need to align all buffers to display subsystem stride
     // requirements.... even the snapshot buffers that do not go to screen
-    int stride = SGXandDisplayStride(width);
+    int stride = SGXandDisplayStride(format, width);
+    LOG1("@%s stride %d", __FUNCTION__, stride);
     size_t bufferSize = frameSize(format, stride, height);
 
     if(numBufs == 0)
