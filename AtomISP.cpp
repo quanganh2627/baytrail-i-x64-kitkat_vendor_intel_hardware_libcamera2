@@ -75,6 +75,7 @@ namespace android {
 ////////////////////////////////////////////////////////////////////
 //                          STATIC DATA
 ////////////////////////////////////////////////////////////////////
+static sensorPrivateData gSensorDataCache[MAX_CAMERAS];
 
 static const char *dev_name_array[] = {"/dev/video0",
                                        "/dev/video1",
@@ -4390,6 +4391,7 @@ int AtomISP::getNumberOfCameras()
     int nodes = PlatformData::numberOfCameras();
     if (nodes > MAX_CAMERAS)
         nodes = MAX_CAMERAS;
+
     return nodes;
 }
 
@@ -4437,6 +4439,16 @@ status_t AtomISP::getCameraInfo(int cameraId, camera_info *cameraInfo)
          ((cameraInfo->facing == CAMERA_FACING_BACK) ?
           "back" : "front/other"),
          cameraInfo->orientation);
+
+    // PNP cold L2P optimization - read sensor data after boot when the camera
+    // infos are iterated
+    if (PlatformData::sensorType(cameraId) == SENSOR_TYPE_RAW) {
+        if (!gSensorDataCache[cameraId].fetched) {
+            // this in practice loads the sensor data to cache
+            AtomISP isp(cameraId);
+            isp.init();
+        }
+    }
 
     return NO_ERROR;
 }
@@ -4933,6 +4945,7 @@ void AtomISP::getSensorDataFromFile(const char *file_name, sensorPrivateData *se
 
     sensor_data->data = otpdata.data;
     sensor_data->size = otpdata.size;
+    sensor_data->fetched = true;
     close(otp_fd);
 }
 
@@ -4975,6 +4988,7 @@ void AtomISP::sensorGetMotorData(sensorPrivateData *sensor_data)
 
     sensor_data->data = motorPrivateData.data;
     sensor_data->size = motorPrivateData.size;
+    sensor_data->fetched = true;
 }
 
 void AtomISP::sensorGetSensorData(sensorPrivateData *sensor_data)
@@ -4990,6 +5004,13 @@ void AtomISP::sensorGetSensorData(sensorPrivateData *sensor_data)
 
     sensor_data->data = NULL;
     sensor_data->size = 0;
+
+    int cameraId = getCurrentCameraId();
+    if (gSensorDataCache[cameraId].fetched) {
+        sensor_data->data = gSensorDataCache[cameraId].data;
+        sensor_data->size = gSensorDataCache[cameraId].size;
+        return;
+    }
     // First call with size = 0 will return OTP data size.
     rc = xioctl (main_fd, ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
     LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data size ret: %d\n", __FUNCTION__, rc);
@@ -5016,6 +5037,8 @@ void AtomISP::sensorGetSensorData(sensorPrivateData *sensor_data)
 
     sensor_data->data = otpdata.data;
     sensor_data->size = otpdata.size;
+    sensor_data->fetched = true;
+    gSensorDataCache[cameraId] = *sensor_data;
 }
 
 int AtomISP::setAicParameter(struct atomisp_parameters *aic_param)

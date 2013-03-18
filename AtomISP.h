@@ -79,6 +79,7 @@ struct sensorPrivateData
 {
     void *data;
     unsigned int size;
+    bool fetched; // true if data has been attempted to read, false otherwise
 };
 
 class Callbacks;
