@@ -131,8 +131,10 @@ ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_CFLAGS += -DUSE_INTEL_JPEG
 endif
 
-ifneq (,$(findstring $(REF_DEVICE_NAME),victoriabay redhookbay ctpscaleht ctpscalelt))
+ifneq (,$(findstring $(REF_DEVICE_NAME),redhookbay ctpscaleht ctpscalelt))
 LOCAL_CFLAGS += -DCLVT
+else ifeq ($(REF_DEVICE_NAME),victoriabay)
+LOCAL_CFLAGS += -DVICTORIABAY
 else ifeq ($(REF_DEVICE_NAME),mrfl_vp)
 LOCAL_CFLAGS += -DMRFL_VP
 else ifeq ($(REF_DEVICE_NAME),merr_vv)

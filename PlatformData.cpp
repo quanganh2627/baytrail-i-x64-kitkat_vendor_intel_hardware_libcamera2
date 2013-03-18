@@ -124,6 +124,9 @@ PlatformBase* PlatformData::getInstance(void)
 #if   CLVT
         mInstance = new PlatformCtpRedhookBay();
 
+#elif VICTORIABAY
+        mInstance = new PlatformCtpVictoriaBay();
+
 #elif   MERR_VV
         mInstance = new PlatformSaltBay();
 
