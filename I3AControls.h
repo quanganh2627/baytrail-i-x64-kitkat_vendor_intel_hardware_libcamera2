@@ -215,7 +215,7 @@ public:
     virtual status_t setFlash(int numFrames) = 0;
 
     virtual status_t switchModeAndRate(AtomMode mode, float fps) = 0;
-    virtual status_t apply3AProcess(bool read_stats, struct timeval capture_timestamp) = 0;
+    virtual status_t apply3AProcess(bool read_stats, struct timeval capture_timestamp, const struct timeval sof_timestamp) = 0;
     virtual status_t startStillAf() = 0;
     virtual status_t stopStillAf() = 0;
     virtual ia_3a_af_status isStillAfComplete() = 0;

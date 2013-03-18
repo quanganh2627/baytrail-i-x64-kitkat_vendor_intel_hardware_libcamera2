@@ -177,6 +177,7 @@ AtomISP::AtomISP(int cameraId) :
     ,mRecordingBuffers(NULL)
     ,mSwapRecordingDevice(false)
     ,mRecordingDeviceSwapped(false)
+    ,mPreviewTooBigForVFPP(false)
     ,mClientSnapshotBuffers(NULL)
     ,mUsingClientSnapshotBuffers(false)
     ,mStoreMetaDataInBuffers(false)
@@ -940,7 +941,7 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
 
     switch (mode) {
     case MODE_PREVIEW:
-        mPreviewDevice = mConfigSnapshotPreviewDevice;
+        mPreviewDevice = mPreviewTooBigForVFPP ? mRecordingDevice : mConfigSnapshotPreviewDevice;
         if ((status = allocatePreviewBuffers()) != NO_ERROR)
             stopDevice(mPreviewDevice);
         if (mFileInject.active == true)
@@ -1081,7 +1082,7 @@ status_t AtomISP::configurePreview()
     status_t status = NO_ERROR;
 
     mNumPreviewBuffers = NUM_PREVIEW_BUFFERS;
-    mPreviewDevice = mConfigSnapshotPreviewDevice;
+    mPreviewDevice = mPreviewTooBigForVFPP ? mRecordingDevice : mConfigSnapshotPreviewDevice;
 
     if (mPreviewDevice != V4L2_MAIN_DEVICE) {
         ret = openDevice(mPreviewDevice);
@@ -1107,6 +1108,8 @@ status_t AtomISP::configurePreview()
 
     return status;
 
+errorCloseSubdev:
+    closeDevice(V4L2_ISP_SUBDEV);
 err:
     stopDevice(mPreviewDevice);
     return status;
@@ -1357,7 +1360,7 @@ status_t AtomISP::configureCapture()
     }
 
     // Subscribe to frame sync event if in bracketing mode
-    if (mFrameSyncRequested > 0) {
+    if ((mFrameSyncRequested > 0) && (!mFrameSyncEnabled)) {
         ret = openDevice(V4L2_ISP_SUBDEV);
         if (ret < 0) {
             LOGE("Failed to open V4L2_ISP_SUBDEV!");
@@ -2335,6 +2338,28 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
 }
 
 /**
+ * Apply ISP limitations related to supported preview sizes in still capture mode.
+ *
+ * When sensor vertical blanking time is too low to run ISP viewfinder postprocess
+ * binary (vf_pp) during it, every other frame would be dropped leading to halved
+ * frame rate. Add control V4L2_CID_ENABLE_VFPP to disable vf_pp. This control also
+ * forces CSS into video mode, which allows zooming at the cost of one frame output
+ * latency due to CSS internal buffering.
+ *
+ * This mode can be enabled by setting the threshold value for specific sensor in
+ * PlatformData (e.g. maxPreviewPixelCountForVFPP = 1024 * 768 - 1).
+ */
+void AtomISP::applyISPLimitations(uint32_t width, uint32_t height, bool video)
+{
+    LOG1("@%s", __FUNCTION__);
+    if (!video && width * height > PlatformData::maxPreviewPixelCountForVFPP(getCurrentCameraId())) {
+        mPreviewTooBigForVFPP = true;
+    } else {
+        mPreviewTooBigForVFPP = false;
+    }
+}
+
+/**
  * Apply ISP limitations related to supported preview sizes when in video mode.
  *
  * Workaround 1: with DVS enable, the fps in 1080p recording can't reach 30fps,
@@ -2545,12 +2570,9 @@ status_t AtomISP::applyColorEffect()
     status_t status = NO_ERROR;
 
     // Color effect overrides configs that AIC has set
-    // Apply only when color effect is selected
-    if (mColorEffect != 0){
-        if (atomisp_set_attribute (main_fd, V4L2_CID_COLORFX, mColorEffect, "Colour Effect") < 0){
-            LOGE("Error setting color effect");
-            return UNKNOWN_ERROR;
-        }
+    if (atomisp_set_attribute (main_fd, V4L2_CID_COLORFX, mColorEffect, "Colour Effect") < 0){
+        LOGE("Error setting color effect");
+        return UNKNOWN_ERROR;
     }
     return status;
 }
@@ -3431,11 +3453,12 @@ int AtomISP::atomisp_set_capture_mode(int deviceMode)
 {
     LOG1("@%s", __FUNCTION__);
     struct v4l2_streamparm parm;
+    int enable_vfpp = deviceMode != CI_MODE_PREVIEW || !mPreviewTooBigForVFPP;
 
     switch (deviceMode) {
     case CI_MODE_PREVIEW:
         LOG1("Setting CI_MODE_PREVIEW mode");
-        break;;
+        break;
     case CI_MODE_STILL_CAPTURE:
         LOG1("Setting CI_MODE_STILL_CAPTURE mode");
         break;
@@ -3448,9 +3471,28 @@ int AtomISP::atomisp_set_capture_mode(int deviceMode)
 
     parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     parm.parm.capture.capturemode = deviceMode;
+    if (mPreviewTooBigForVFPP) {
+        if (deviceMode == CI_MODE_PREVIEW) {
+            setZoom(0); // set zoom to zero, since we will not have VFPP
+        } else {
+            if (deviceMode == CI_MODE_STILL_CAPTURE) {
+                atomisp_set_zoom(main_fd, mConfig.zoom);// refresh zoom for capture
+            }
+        }
+    }
+
     if (ioctl(main_fd, VIDIOC_S_PARM, &parm) < 0) {
         LOGE("error %s", strerror(errno));
         return -1;
+    }
+
+    if (atomisp_set_attribute(main_fd, V4L2_CID_ENABLE_VFPP, enable_vfpp, "Enable vf_pp")) {
+        if (enable_vfpp) {
+            LOGE("error %s, but that is ok (vf_pp is always enabled)", strerror(errno));
+        } else {
+            LOGE("error %s, can not disable vf_pp", strerror(errno));
+            return -1;
+        }
     }
 
     return 0;
@@ -3571,6 +3613,7 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameS
     mPreviewBuffers[index].frameCounter = mDevices[mPreviewDevice].frameCounter;
     mPreviewBuffers[index].ispPrivate = mSessionId;
     mPreviewBuffers[index].capture_timestamp = buf.timestamp;
+    mPreviewBuffers[index].frameSequenceNbr = buf.sequence;
     // atom flag is an extended set of flags, so map V4L2 flags
     // we are interested into atomisp_frame_status
     if (buf.flags & V4L2_BUF_FLAG_ERROR)
@@ -5160,13 +5203,33 @@ IObserverSubject* AtomISP::observerSubjectByType(ObserverType t)
 }
 
 /**
- * Attaches observer to one of the defined ObserverType's
+ * Attaches an observer to one of the defined ObserverType's
  */
 status_t AtomISP::attachObserver(IAtomIspObserver *observer, ObserverType t)
 {
-    if (t == OBSERVE_FRAME_SYNC_SOF)
-        mFrameSyncRequested++;
+    status_t ret;
 
+    if (t == OBSERVE_FRAME_SYNC_SOF) {
+        mFrameSyncRequested++;
+        if (mFrameSyncRequested == 1) {
+           // Subscribe to frame sync event only the first time is requested
+           ret = openDevice(V4L2_ISP_SUBDEV);
+           if (ret < 0) {
+               LOGE("Failed to open V4L2_ISP_SUBDEV!");
+               return UNKNOWN_ERROR;
+           }
+
+           ret = v4l2_subscribe_event(video_fds[V4L2_ISP_SUBDEV], V4L2_EVENT_FRAME_SYNC);
+           if (ret < 0) {
+               LOGE("Failed to subscribe to frame sync event!");
+               closeDevice(V4L2_ISP_SUBDEV);
+               return UNKNOWN_ERROR;
+           }
+           mFrameSyncEnabled = true;
+
+        }
+    }
+exit:
     return mObserverManager.attachObserver(observer, observerSubjectByType(t));
 }
 
@@ -5227,7 +5290,7 @@ void AtomISP::pauseObserver(ObserverType t)
  */
 status_t AtomISP::FrameSyncSource::observe(IAtomIspObserver::Message *msg)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     struct v4l2_event event;
     int ret;
 
@@ -5240,7 +5303,7 @@ status_t AtomISP::FrameSyncSource::observe(IAtomIspObserver::Message *msg)
     ret = mISP->v4l2_poll(mISP->video_fds[V4L2_ISP_SUBDEV], FRAME_SYNC_POLL_TIMEOUT);
 
     if (ret <= 0) {
-        LOGE("Poll failed, disabling SOF event");
+        LOGE("Poll failed ret(%d), disabling SOF event",ret);
         mISP->v4l2_unsubscribe_event(mISP->video_fds[V4L2_ISP_SUBDEV], V4L2_EVENT_FRAME_SYNC);
         mISP->closeDevice(V4L2_ISP_SUBDEV);
         mISP->mFrameSyncEnabled = false;

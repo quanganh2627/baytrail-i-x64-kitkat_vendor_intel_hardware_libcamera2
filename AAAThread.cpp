@@ -181,25 +181,40 @@ status_t AAAThread::cancelAutoFocus()
  * override for IAtomIspObserver::atomIspNotify()
  *
  * signal start of 3A processing based on preview stream notify
+ * store SOF event information for future use
  */
 bool AAAThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state)
 {
-    if (msg && msg->id == IAtomIspObserver::MESSAGE_ID_FRAME)
-        newFrame(msg->data.frameBuffer.buff.capture_timestamp,
-                 msg->data.frameBuffer.buff.status);
+    if (msg && msg->id == IAtomIspObserver::MESSAGE_ID_FRAME) {
+        newFrame(&msg->data.frameBuffer.buff);
+    }
+    if(msg && msg->id == IAtomIspObserver::MESSAGE_ID_EVENT) {
+        newSOF(&msg->data.event);
+    }
     return false;
 }
 
-status_t AAAThread::newFrame(struct timeval capture_timestamp, FrameBufferStatus frameStatus)
+status_t AAAThread::newFrame(AtomBuffer *b)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     Message msg;
     msg.id = MESSAGE_ID_NEW_FRAME;
-    msg.data.frame.capture_timestamp = capture_timestamp;
-    msg.data.frame.status = frameStatus;
+    msg.data.frame.capture_timestamp = b->capture_timestamp;
+    msg.data.frame.status = b->status;
+    msg.data.frame.sequence_number = b->frameSequenceNbr;
     status = mMessageQueue.send(&msg);
     return status;
+}
+
+status_t AAAThread::newSOF(IAtomIspObserver::MessageEvent *sofMsg)
+{
+    LOG2("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_SOF;
+    msg.data.frame.capture_timestamp = sofMsg->timestamp;
+    msg.data.frame.sequence_number = sofMsg->sequence;
+    return mMessageQueue.send(&msg);
 }
 
 status_t AAAThread::setFaces(const ia_face_state& faceState)
@@ -495,6 +510,7 @@ status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msgFrame)
     bool sceneHdr = false;
     Vector<Message> messages;
     struct timeval capture_timestamp = msgFrame->capture_timestamp;
+    unsigned int capture_sequence_number = msgFrame->sequence_number;
 
     if (!mDVSRunning && !m3ARunning)
         return status;
@@ -517,11 +533,12 @@ status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msgFrame)
         ((long long)(capture_timestamp.tv_sec)*1000000LL +
          (long long)(capture_timestamp.tv_usec)));
         capture_timestamp = recent_msg.data.frame.capture_timestamp;
+        capture_sequence_number = recent_msg.data.frame.sequence_number;
     }
 
     if(m3ARunning){
         // Run 3A statistics
-        status = m3AControls->apply3AProcess(true, capture_timestamp);
+        status = m3AControls->apply3AProcess(true, capture_timestamp, getSOFTime(capture_sequence_number));
 
         //dump 3A statistics
         if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
@@ -616,6 +633,13 @@ status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msgFrame)
     return status;
 }
 
+status_t AAAThread::handleMessageNewSOF(MessageNewFrame *msgFrame)
+{
+    LOG2("@%s", __FUNCTION__);
+    mSOFEvents.add(msgFrame->sequence_number,msgFrame->capture_timestamp);
+    return NO_ERROR;
+}
+
 void AAAThread::getCurrentSmartScene(int &sceneMode, bool &sceneHdr)
 {
     LOG1("@%s", __FUNCTION__);
@@ -623,6 +647,48 @@ void AAAThread::getCurrentSmartScene(int &sceneMode, bool &sceneHdr)
     sceneHdr = mSmartSceneHdr;
 }
 
+/**
+ * returns the timestamp of the Start Of Frame event for a given frame sequence
+ * number
+ *
+ * AAAThread gets notification of SOF events, it then  stores the sequence
+ * number of the frame and the time stamp of the event
+ *
+ * This method is used when a new preview frame has been received and we want
+ * to know when the SOF event for this frame happened.
+ * The sequence number is an unique number that the driver assigns.
+ *
+ * Please note that due to the bug BZ:91697 we need to match with the previous
+ * sequence number not with the exact same one
+ *
+ */
+struct timeval AAAThread::getSOFTime(unsigned int frameNo)
+{
+   ssize_t index;
+   struct timeval t;
+
+   index = mSOFEvents.indexOfKey(frameNo -1); // This -1 is a temporary change, see comment above
+   if (index == NAME_NOT_FOUND) {
+       LOGE("SOF event for frame %d did not arrive",frameNo);
+       memset(&t, 0, sizeof(struct timeval));
+       return t;
+   }
+
+   t = mSOFEvents[index];
+   mSOFEvents.removeItemsAt(index,1);
+
+   /**
+    * Prevent vector from growing too much
+    * In case frames are skipped there will be SOF events from old frames
+    * that will never be collected.
+    **/
+   if (mSOFEvents.size() > 5) {
+       LOGW("Too many SOF events stored, flushing");
+       mSOFEvents.clear();
+   }
+   return t;
+
+}
 void AAAThread::resetSmartSceneValues()
 {
     LOG1("@%s", __FUNCTION__);
@@ -673,6 +739,10 @@ status_t AAAThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_FLASH_STAGE:
             status = handleMessageFlashStage(&msg.data.flashStage);
+            break;
+
+        case MESSAGE_ID_SOF:
+            status = handleMessageNewSOF(&msg.data.frame);
             break;
 
         default:

@@ -87,7 +87,6 @@ ControlThread::ControlThread(int cameraId) :
     Thread(true) // callbacks may call into java
     ,mCameraId(cameraId)
     ,mISP(NULL)
-    ,mAAA(NULL)
     ,mDvs(NULL)
     ,mCP(NULL)
     ,m3AControls(NULL)
@@ -165,18 +164,12 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mAAA = AtomAAA::getInstance(mISP);
-    if (mAAA == NULL) {
+    // Choose 3A interface based on the sensor type
+    if (createAtom3A() != NO_ERROR) {
         LOGE("error creating AAA");
         goto bail;
     }
 
-    // Choose 3A interface based on the sensor type
-    if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
-        m3AControls = mAAA;
-    } else {
-        m3AControls = mISP;
-    }
     if (m3AControls->init3A() != NO_ERROR) {
         LOGE("Error initializing 3A controls");
         goto bail;
@@ -421,16 +414,15 @@ void ControlThread::deinit()
     if (mParamCache != NULL)
         free(mParamCache);
 
-    if (m3AControls != NULL)
+    if (m3AControls != NULL) {
         m3AControls->deinit3A();
+        if (m3AControls->isIntel3A())
+            delete m3AControls;
+    }
 
     if (mISP != NULL) {
         delete mISP;
         PERFORMANCE_TRACES_BREAKDOWN_STEP("DeleteISP");
-    }
-
-    if (mAAA != NULL) {
-        delete mAAA;
     }
 
     if (mCP != NULL) {
@@ -1234,7 +1226,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         size_t winCount(mFocusAreas.numOfAreas());
         CameraWindow *focusWindows = new CameraWindow[winCount];
         mFocusAreas.toWindows(focusWindows);
-        preSetCameraWindows(focusWindows, winCount);
+        convertAfWindows(focusWindows, winCount);
         if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
             LOGE("Could not set AF windows. Resseting the AF to %d", CAM_AF_MODE_AUTO);
             m3AControls->setAfMode(CAM_AF_MODE_AUTO);
@@ -1321,6 +1313,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         if (isDVSActive && mDvs->reconfigure() != NO_ERROR)
             LOGE("Failed to reconfigure DVS grid");
         mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+        mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
     }
 
     mISP->attachObserver(mPreviewThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
@@ -1364,7 +1357,9 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     }
 
     // synchronize and pause the preview dequeueing
+    mISP->pauseObserver(AtomISP::OBSERVE_FRAME_SYNC_SOF);
     mISP->pauseObserver(AtomISP::OBSERVE_PREVIEW_STREAM);
+
 
     // Before stopping the ISP, flush any buffers in picture
     // and video threads. This is needed as AtomISP::stop() may
@@ -1393,8 +1388,10 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
 
     // we only need to attach the 3AThread to preview stream for RAW type of cameras
     // when we use the 3A algorithm running on Atom
-    if (m3AControls->isIntel3A())
+    if (m3AControls->isIntel3A()) {
         mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+        mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
+    }
     mISP->detachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
     mMessageQueue.remove(MESSAGE_ID_DEQUEUE_RECORDING);
 
@@ -1424,6 +1421,9 @@ status_t ControlThread::stopCapture()
         LOGE("Must be in STATE_CAPTURE to stop capture");
         return INVALID_OPERATION;
     }
+    if (mHdr.inProgress)
+        mBracketManager->stopBracketing();
+
     mUnqueuedPicBuf.clear();
     status = mPictureThread->flushBuffers();
     if (status != NO_ERROR) {
@@ -1711,13 +1711,8 @@ status_t ControlThread::handleMessageStartRecording()
     * and thumbnail size is the size of preview.
     */
     storeCurrentPictureParams();
-    /**
-     * in video mode we may allocate bigger buffers to satisfy encoder or
-     * ISP stride requirements. We need to be honest about the real size
-     * towards the user.
-     */
-    int stride;
-    mISP->getVideoSize(&width, &height, &stride);
+
+    mISP->getVideoSize(&width, &height, NULL);
     mParameters.setPictureSize(width, height);
     allocateSnapshotBuffers();
     snprintf(sizes, 25, "%dx%d", width,height);
@@ -4059,6 +4054,11 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
     newParams->getPictureSize(&newWidth, &newHeight);
     oldParams->getPictureSize(&oldWidth, &oldHeight);
 
+    if (mHdr.inProgress) {
+        LOGW("%s: attempt to change hdr parameters during hdr capture");
+        return INVALID_OPERATION;
+    }
+
     // Check the HDR parameters
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_HDR_IMAGING);
@@ -4220,7 +4220,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
             newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else if (newScene == CameraParameters::SCENE_MODE_LANDSCAPE || newScene == CameraParameters::SCENE_MODE_SUNSET) {
-            sceneMode = (newScene == CameraParameters::SCENE_MODE_LANDSCAPE) ? CAM_AE_SCENE_MODE_LANDSCAPE : CAM_AE_SCENE_MODE_CANDLELIGHT;
+            sceneMode = (newScene == CameraParameters::SCENE_MODE_LANDSCAPE) ? CAM_AE_SCENE_MODE_LANDSCAPE : CAM_AE_SCENE_MODE_SUNSET;
             newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
             newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
             newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
@@ -4378,20 +4378,15 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
     return status;
 }
 
-void ControlThread::preSetCameraWindows(CameraWindow* focusWindows, size_t winCount)
+void ControlThread::convertAfWindows(CameraWindow* focusWindows, size_t winCount)
 {
     LOG1("@%s", __FUNCTION__);
     if (winCount > 0) {
-        int width;
-        int height;
-        mParameters.getPreviewSize(&width, &height);
-        AAAWindowInfo aaaWindow;
-        m3AControls->getGridWindow(aaaWindow);
 
         for (size_t i = 0; i < winCount; i++) {
             // Camera KEY_FOCUS_AREAS Coordinates range from -1000 to 1000. Let's convert..
-            convertFromAndroidCoordinates(focusWindows[i], focusWindows[i], aaaWindow);
-            LOG1("Preset camera window %d: (%d,%d,%d,%d)",
+            convertFromAndroidToIaCoordinates(focusWindows[i], focusWindows[i]);
+            LOG1("Converted AF window %d: (%d,%d,%d,%d)",
                     i,
                     focusWindows[i].x_left,
                     focusWindows[i].y_top,
@@ -4473,7 +4468,7 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
                 size_t winCount(mFocusAreas.numOfAreas());
                 CameraWindow *focusWindows = new CameraWindow[winCount];
                 mFocusAreas.toWindows(focusWindows);
-                preSetCameraWindows(focusWindows, winCount);
+                convertAfWindows(focusWindows, winCount);
                 if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
                     // If focus windows couldn't be set, previous AF mode is used
                     // (AfSetWindowMulti has its own safety checks for coordinates)
@@ -5157,6 +5152,8 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
         previewFormatChanged = true;
     }
 
+    mISP->applyISPLimitations(previewWidth, previewHeight, videoMode);
+
     return status;
 }
 
@@ -5254,6 +5251,32 @@ void ControlThread::restoreCurrentPictureParams()
     mStillPictContext.clear();
     updateParameterCache();
     allocateSnapshotBuffers();
+}
+
+/**
+ * Create 3A instance according to sensor type and platform requirement:
+ * - AtomAAA for AcuteLogic 3A
+ * - AtomAIQ for IA AIQ
+ * - AtomISP for SoC 3A
+ */
+status_t ControlThread::createAtom3A()
+{
+    status_t status = NO_ERROR;
+
+    if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+        if(PlatformData::supportAIQ()) {
+            m3AControls = AtomAIQ::getInstance(mISP);
+        } else {
+            m3AControls = AtomAAA::getInstance(mISP);
+        }
+        if (m3AControls == NULL) {
+            LOGE("error creating AAA");
+            status = BAD_VALUE;
+        }
+    } else {
+        m3AControls = mISP;
+    }
+    return status;
 }
 
 bool ControlThread::paramsHasPictureSizeChanged(const CameraParameters *oldParams,
@@ -5438,8 +5461,11 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
     case CAMERA_CMD_STOP_BLINK_SHUTTER:
         status = stopSmartShutter(BLINK_MODE);
         break;
-    case CAMERA_CMD_CANCEL_TAKE_PICTURE:
-        status = cancelCaptureOnTrigger();
+    case CAMERA_CMD_CANCEL_SMART_SHUTTER_PICTURE:
+        status = cancelSmartShutterPicture();
+        break;
+    case CAMERA_CMD_FORCE_SMART_SHUTTER_PICTURE:
+        status = forceSmartShutterPicture();
         break;
     case CAMERA_CMD_ENABLE_INTEL_PARAMETERS:
         status = enableIntelParameters();
@@ -5936,14 +5962,22 @@ status_t ControlThread::enableIntelParameters()
     return NO_ERROR;
 }
 
-status_t ControlThread::cancelCaptureOnTrigger()
+status_t ControlThread::cancelSmartShutterPicture()
 {
     LOG1("@%s", __FUNCTION__);
-    if( !mPostProcThread->isSmartRunning())
-        return NO_ERROR;
-    if(mPostProcThread != 0)
+    status_t status = NO_ERROR;
+    if(mPostProcThread !=0 && mPostProcThread->isSmartRunning())
         mPostProcThread->stopCaptureOnTrigger();
-    return NO_ERROR;
+    return status;
+}
+
+status_t ControlThread::forceSmartShutterPicture()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    if(mPostProcThread !=0 && mPostProcThread->isSmartRunning())
+        mPostProcThread->forceSmartCaptureTrigger();
+    return status;
 }
 
 status_t ControlThread::startPanorama()

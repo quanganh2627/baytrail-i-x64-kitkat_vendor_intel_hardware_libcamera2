@@ -22,7 +22,6 @@
 #include <camera.h>
 #include <camera/CameraParameters.h>
 #include "PlatformData.h"
-#include "PlatformMedfield.h"
 #include "PlatformClovertrail.h"
 #include "PlatformMerrifield.h"
 #include <utils/Log.h>
@@ -122,13 +121,7 @@ PlatformBase* PlatformData::getInstance(void)
 
     if (mInstance == 0) {
 
-#if     MFLD_DV10
-        mInstance = new PlatformRedridge();
-
-#elif   MFLD_GI
-        mInstance = new PlatformLexington();
-
-#elif   CLVT
+#if   CLVT
         mInstance = new PlatformCtpRedhookBay();
 
 #elif   MERR_VV
@@ -137,14 +130,8 @@ PlatformBase* PlatformData::getInstance(void)
 #elif   BODEGABAY
         mInstance = new PlatformBodegaBay();
 
-#elif   YUKKA
-        mInstance = new PlatformYukka();
-
-#elif   SALITPA
-        mInstance = new PlatformSalitpa();
-
-#else   // take defaults from MFLD_PR2 for all others now
-        mInstance = new PlatformBlackbay();
+#else   // take defaults from CloverTrail
+        mInstance = new PlatformCtpRedhookBay();
 
 #endif
 
@@ -296,6 +283,17 @@ bool PlatformData::renderPreviewViaOverlay(int cameraId)
     return i->mCameras[cameraId].mPreviewViaOverlay;
 
 }
+
+unsigned int PlatformData::maxPreviewPixelCountForVFPP(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return 0xFFFFFFFF;
+    }
+    return i->mCameras[cameraId].maxPreviewPixelCountForVFPP;
+}
+
 int PlatformData::overlayRotation(int cameraId)
 {
     PlatformBase *i = getInstance();
@@ -1007,6 +1005,12 @@ int PlatformData::getRecordingBufNum(void)
 {
     PlatformBase *i = getInstance();
     return i->mNumRecordingBuffers;
+}
+
+bool PlatformData::supportAIQ(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mSupportAIQ;
 }
 
 }; // namespace android

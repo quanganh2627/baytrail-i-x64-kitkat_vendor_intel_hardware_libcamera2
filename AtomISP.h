@@ -31,6 +31,7 @@
 #include "IntelMetadataBuffer.h"
 #endif
 
+#include "AtomAIQ.h"
 #include "AtomAAA.h"
 #include "PlatformData.h"
 #include "CameraConf.h"
@@ -84,6 +85,7 @@ class Callbacks;
 
 class AtomISP : public I3AControls, public IBufferOwner {
 // FIXME: Only needed for NVM parsing "cameranvm_create()" in AtomAAA
+    friend class AtomAIQ;
     friend class AtomAAA;
 
 // public types
@@ -170,6 +172,7 @@ public:
     void getPostviewFrameFormat(int &width, int &height, int &format) const;
     status_t setSnapshotFrameFormat(int width, int height, int format);
     status_t setVideoFrameFormat(int width, int height, int format = 0);
+    void applyISPLimitations(uint32_t width, uint32_t height, bool videomode);
     bool applyISPVideoLimitations(CameraParameters *params, bool dvsEnabled);
 
     inline int getSnapshotPixelFormat() { return mConfig.snapshot.format; }
@@ -197,6 +200,7 @@ public:
     status_t setXNR(bool enable);
     status_t setLowLight(bool enable);
     status_t setGDC(bool enable);
+    bool getPreviewTooBigForVFPP() { return mPreviewTooBigForVFPP; }
 
     status_t setDVS(bool enable);
     status_t getDvsStatistics(struct atomisp_dis_statistics *stats,
@@ -333,7 +337,7 @@ public:
     virtual status_t setAeBacklightCorrection(bool en) { return INVALID_OPERATION; }
     virtual status_t setAwbMapping(ia_3a_awb_map mode) { return INVALID_OPERATION; }
 
-    virtual status_t apply3AProcess(bool read_stats, struct timeval capture_timestamp) { return INVALID_OPERATION; }
+    virtual status_t apply3AProcess(bool read_stats, struct timeval capture_timestamp, struct timeval sof_timestamp) { return INVALID_OPERATION; }
     virtual status_t startStillAf() { return INVALID_OPERATION; }
     virtual status_t stopStillAf() { return INVALID_OPERATION; }
     virtual ia_3a_af_status isStillAfComplete() { return ia_3a_af_status_error; }
@@ -587,6 +591,7 @@ private:
     AtomBuffer *mRecordingBuffers;
     bool mSwapRecordingDevice;
     bool mRecordingDeviceSwapped;
+    bool mPreviewTooBigForVFPP;
 
     void **mClientSnapshotBuffers;
     bool mUsingClientSnapshotBuffers;

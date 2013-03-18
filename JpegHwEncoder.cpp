@@ -99,7 +99,6 @@ int JpegHwEncoder::init(void)
     status = vaCreateConfig(va->mDpy, VAProfileJPEGBaseline, VAEntrypointEncPicture,
                             &attrib, 1, &va->mConfigId);
     if (status != VA_STATUS_SUCCESS) {
-       vaDestroyConfig(va->mDpy, va->mConfigId);
        vaTerminate(va->mDpy);
     }
     CHECK_STATUS(status, "vaCreateConfig", __LINE__)

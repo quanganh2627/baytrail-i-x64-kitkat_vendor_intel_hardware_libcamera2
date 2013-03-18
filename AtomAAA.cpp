@@ -1148,13 +1148,14 @@ status_t AtomAAA::applyPreFlashProcess(FlashStage stage)
 }
 
 status_t AtomAAA::apply3AProcess(bool read_stats,
-    const struct timeval capture_timestamp)
+    const struct timeval capture_timestamp,
+    const struct timeval sof_timestamp)
 {
     Mutex::Autolock lock(m3aLock);
     LOG2("@%s: read_stats = %d", __FUNCTION__, read_stats);
     status_t status = NO_ERROR;
 
-    if (ciAdvProcessFrame(read_stats, &capture_timestamp) != 0) {
+    if (ciAdvProcessFrame(read_stats, &capture_timestamp, &sof_timestamp) != 0) {
         status = UNKNOWN_ERROR;
     }
     return status;
@@ -1522,7 +1523,7 @@ err:
         return NULL;
 }
 
-int AtomAAA::ciAdvProcessFrame(bool read_stats, const struct timeval *frame_timestamp)
+int AtomAAA::ciAdvProcessFrame(bool read_stats, const struct timeval *frame_timestamp, const struct timeval *sof_timestamp)
 {
     LOG2("@%s", __FUNCTION__);
 #ifndef MRFL_VP
@@ -1541,7 +1542,7 @@ int AtomAAA::ciAdvProcessFrame(bool read_stats, const struct timeval *frame_time
     mISP->sensorGetFNumber(&aperture.num, &aperture.denum);
 
     if (m3ALibState.stats_valid) {
-        ia_3a_main(frame_timestamp, m3ALibState.stats, &aperture, &m3ALibState.results);
+        ia_3a_main(frame_timestamp, sof_timestamp, m3ALibState.stats, &aperture, &m3ALibState.results);
         applyResults();
     }
 #else

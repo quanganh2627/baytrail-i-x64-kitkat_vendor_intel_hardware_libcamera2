@@ -377,7 +377,9 @@ private:
     status_t enableFocusMoveMsg(bool enable);
     status_t startSmartShutter(SmartShutterMode mode);
     status_t stopSmartShutter(SmartShutterMode mode);
-    status_t cancelCaptureOnTrigger();
+    status_t cancelSmartShutterPicture();
+    status_t forceSmartShutterPicture();
+
     status_t handleMessageFacesDetected(MessageFacesDetected* msg);
     status_t startSmartSceneDetection();
     status_t stopSmartSceneDetection();
@@ -490,7 +492,7 @@ private:
         CameraParameters *newParams);
     void processParamFileInject(CameraParameters *newParams);
 
-    void preSetCameraWindows(CameraWindow* focusWindows, size_t winCount);
+    void convertAfWindows(CameraWindow* focusWindows, size_t winCount);
 
     void selectFlashMode(CameraParameters *newParams, bool applySaved);
 
@@ -549,6 +551,8 @@ private:
     void storeCurrentPictureParams();
     void restoreCurrentPictureParams();
 
+    status_t createAtom3A();
+
 // inherited from Thread
 private:
     virtual bool threadLoop();
@@ -558,7 +562,6 @@ private:
 
     int mCameraId;
     AtomISP *mISP;
-    AtomAAA *mAAA;
     AtomDvs *mDvs;
     AtomCP  *mCP;
     I3AControls *m3AControls;

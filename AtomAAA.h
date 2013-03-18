@@ -122,7 +122,9 @@ private:
     void ciAdvUninit(void);
     void ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate);
     void *open3aParamFile(const char *modulename);
-    int ciAdvProcessFrame(bool read_stats, const struct timeval *frame_timestamp);
+    int ciAdvProcessFrame(bool read_stats,
+                          const struct timeval *frame_timestamp,
+                          const struct timeval *sof_timestamp);
     int processForFlash(ia_3a_flash_stage stage);
     void get3aGridInfo(struct atomisp_grid_info *pgrid);
     void get3aStat(AAAStatistics *pstat);
@@ -241,8 +243,8 @@ public:
     virtual status_t setFlash(int numFrames);
 
     // ISP processing functions
-    virtual status_t apply3AProcess(bool read_stats,
-        struct timeval capture_timestamp);
+    status_t apply3AProcess(bool read_stats, struct timeval capture_timestamp,
+                                             struct timeval sof_timestamp);
 
     virtual status_t startStillAf();
     virtual status_t stopStillAf();

@@ -1189,7 +1189,7 @@ status_t PreviewThread::GfxPreviewHandler::handlePostview(MessagePreview *msg)
         return UNKNOWN_ERROR;
     }
 
-    if (!mPreviewInClient.isEmpty()) {
+    if (mPvThread->getPreviewState() != STATE_STOPPED) {
         // indicates we didn't stop & return the gfx buffers
         LOGD("Unable to provide 'preview-keep-alive' frame, normal preview active");
         return UNKNOWN_ERROR;
@@ -1304,12 +1304,13 @@ PreviewThread::OverlayPreviewHandler::handlePreview(MessagePreview *msg)
        int err;
        int stride;
        int usage;
-       int w = mPreviewStride;
+       int w = mPreviewWidth;
        int h = mPreviewHeight;
 
        if ((err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride)) != 0) {
            LOGE("Surface::dequeueBuffer returned error %d", err);
        } else {
+
            if (mPreviewWindow->lock_buffer(mPreviewWindow, buf) != NO_ERROR) {
                LOGE("Failed to lock preview buffer!");
                mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
@@ -1322,6 +1323,7 @@ PreviewThread::OverlayPreviewHandler::handlePreview(MessagePreview *msg)
                w = mPreviewHeight;
                h = mPreviewWidth;
            }
+
            const Rect bounds(w, h);
            long long dst;      // this should be void* but this is a temporary workaround to bug BZ:34172
            usage = GRALLOC_USAGE_SW_WRITE_OFTEN |
@@ -1395,7 +1397,7 @@ PreviewThread::OverlayPreviewHandler::copyPreviewBuffer(const char* src, char*ds
 
     switch (mRotation) {
     case 90:
-        nv12rotateBy90(mPreviewStride,       // width of the source image
+        nv12rotateBy90(mPreviewWidth,       // width of the source image
                        mPreviewHeight,       // height of the source image
                        mPreviewStride,       // scanline stride of the source image
                        paddedStride,         // scanline stride of the target image
@@ -1406,7 +1408,7 @@ PreviewThread::OverlayPreviewHandler::copyPreviewBuffer(const char* src, char*ds
         // TODO: Not handled, waiting for Semi
         break;
     case 0:
-        strideCopy(mPreviewStride,       // width of the source image
+        strideCopy(mPreviewWidth,       // width of the source image
                     mPreviewHeight,       // height of the source image
                     mPreviewStride,       // scanline stride of the source image
                     paddedStride,         // scanline stride of the target image

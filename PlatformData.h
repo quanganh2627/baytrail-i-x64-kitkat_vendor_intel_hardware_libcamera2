@@ -103,6 +103,8 @@ public:
         mContinuousCapture = false;
         mMaxContinuousRawRingBuffer = 0;
         mShutterLagCompensationMs = 80;
+        mSupportAIQ = false;
+
    };
 
  protected:
@@ -123,6 +125,7 @@ public:
             maxSnapshotHeight = RESOLUTION_8MP_HEIGHT;
             mPreviewViaOverlay = false;
             overlayRelativeRotation = 90;
+            maxPreviewPixelCountForVFPP = 0xFFFFFFFF; // default no limit
             //burst
             maxBurstFPS = 15;
             supportedBurstFPS = "1,3,5,7,15";
@@ -251,6 +254,8 @@ public:
         bool mPreviewViaOverlay;
         int overlayRelativeRotation;  /*<! Relative rotation between the native scan order of the
                                            camera and the display attached to the overlay */
+        // VFPP pixel limiter (sensor blanking time dependent)
+        unsigned int maxPreviewPixelCountForVFPP;
         // burst
         int maxBurstFPS;
         const char* supportedBurstFPS;
@@ -352,6 +357,10 @@ public:
      * So we need to make the recording buffers can be configured.
     */
     int mNumRecordingBuffers;
+
+    /* For Intel3A ia_aiq */
+    bool mSupportAIQ;
+
 };
 
 /**
@@ -876,6 +885,16 @@ class PlatformData {
     static bool renderPreviewViaOverlay(int cameraId);
 
     /**
+     * Returns the maximum preview pixel count that can be used with the VFPP
+     * binary. The value is dependent on the blanking time of the sensor.
+     * HAL will not use the VFPP binary for pixel counts bigger than returned.
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return maximum preview pixel count
+     */
+    static unsigned int maxPreviewPixelCountForVFPP(int cameraId);
+
+    /**
      * Returns the relative rotation between the camera normal scan order
      * and the display attached to the HW overlay.
      * A rotation of this magnitud is required to render correctly the preview
@@ -904,6 +923,15 @@ class PlatformData {
      * \return the recording buffers number
     */
     static int getRecordingBufNum(void);
+
+    /**
+     * Whether Intel3A ia_aiq is supported?
+     *
+     * \return true if supported
+     */
+    // TODO: remove this until official ia_aiq is adopted
+    static bool supportAIQ(void);
+
 };
 
 } /* namespace android */
