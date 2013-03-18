@@ -97,6 +97,18 @@ const char* ControlThread::sCaptureSubstateStrings[]= {
       "IDLE"
 };
 
+const char *scene_mode_detected[NUM_SCENE_DETECTED] = {
+                                                   "auto",
+                                                   "close_up_portrait",
+                                                   "portrait",
+                                                   "night_portrait",
+                                                   "night",
+                                                   "action",
+                                                   "backlight",
+                                                   "landscape",
+                                                   "barcode",
+                                                   "firework",
+};
 ControlThread::ControlThread(int cameraId) :
     Thread(true) // callbacks may call into java
     ,mCameraId(cameraId)
@@ -894,7 +906,7 @@ void ControlThread::sceneDetected(int sceneMode, bool sceneHdr)
     LOG2("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_SCENE_DETECTED;
-    msg.data.sceneDetected.sceneMode = sceneMode;
+    strlcpy(msg.data.sceneDetected.sceneMode, scene_mode_detected[sceneMode], (size_t)SCENE_STRING_LENGTH);
     msg.data.sceneDetected.sceneHdr = sceneHdr;
     mMessageQueue.send(&msg);
 }
@@ -6697,9 +6709,12 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
 
 status_t ControlThread::handleMessageSceneDetected(MessageSceneDetected *msg)
 {
-    LOG2("@%s", __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    status = mCallbacksThread->sceneDetected(msg->sceneMode, msg->sceneHdr);
+    camera_scene_detection_metadata_t metadata;
+    strlcpy(metadata.scene, msg->sceneMode, (size_t)SCENE_STRING_LENGTH);
+    metadata.hdr = msg->sceneHdr;
+    status = mCallbacksThread->sceneDetected(metadata);
     return status;
 }
 

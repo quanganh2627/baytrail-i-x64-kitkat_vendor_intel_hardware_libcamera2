@@ -33,6 +33,7 @@ Callbacks::Callbacks() :
     ,mMessageFlags(0)
     ,mDummyByte(NULL)
     ,mPanoramaMetadata(NULL)
+    ,mSceneDetectionMetadata(NULL)
     ,mStoreMetaDataInBuffers(false)
 {
     LOG1("@%s", __FUNCTION__);
@@ -188,7 +189,7 @@ void Callbacks::cameraError(int err)
 
 void Callbacks::facesDetected(camera_frame_metadata_t &face_metadata)
 {
- /*If the Call back is enabled for meta data and face detection is
+    /* If the Call back is enabled for meta data and face detection is
     * active, inform about faces.*/
     if ((mMessageFlags & CAMERA_MSG_PREVIEW_METADATA)){
         // We can't pass NULL to camera service, otherwise it
@@ -203,13 +204,14 @@ void Callbacks::facesDetected(camera_frame_metadata_t &face_metadata)
     }
 }
 
-void Callbacks::sceneDetected(int sceneMode, bool sceneHdr)
+void Callbacks::sceneDetected(camera_scene_detection_metadata &metadata)
 {
     LOG1("@%s", __FUNCTION__);
-    if ((mMessageFlags & CAMERA_MSG_SCENE_DETECT) && mNotifyCB != NULL) {
-        LOG1("Sending message: CAMERA_MSG_SCENE_DETECT, scene = %d, HDR = %d", sceneMode, (int) sceneHdr);
-        mNotifyCB(CAMERA_MSG_SCENE_DETECT, sceneMode, (int) sceneHdr, mUserToken);
-    }
+    if (mSceneDetectionMetadata == NULL)
+        mSceneDetectionMetadata = mGetMemoryCB(-1, sizeof(camera_scene_detection_metadata), 1, NULL);
+    memcpy(mSceneDetectionMetadata->data, &metadata, sizeof(camera_scene_detection_metadata));
+    LOG1("Sending message: CAMERA_MSG_SCENE_DETECT, scene = %s, HDR = %d", metadata.scene ,metadata.hdr);
+    mDataCB(CAMERA_MSG_SCENE_DETECT, mSceneDetectionMetadata,0, NULL, mUserToken);
 }
 
 void Callbacks::allocateMemory(AtomBuffer *buff, int size)

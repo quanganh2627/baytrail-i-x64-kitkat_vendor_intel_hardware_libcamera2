@@ -66,7 +66,7 @@ public:
     status_t flushPictures();
     size_t   getQueuedBuffersNum() { return mBuffers.size(); }
     virtual void facesDetected(camera_frame_metadata_t &face_metadata);
-    status_t sceneDetected(int sceneMode, bool sceneHdr);
+    status_t sceneDetected(camera_scene_detection_metadata_t &metadata);
     void autofocusDone(bool status);
     void focusMove(bool start);
     void panoramaDisplUpdate(camera_panorama_metadata_t &metadata);
@@ -156,7 +156,7 @@ private:
     };
 
     struct MessageSceneDetected {
-        int sceneMode;
+        char sceneMode[SCENE_STRING_LENGTH];
         bool sceneHdr;
     };
 

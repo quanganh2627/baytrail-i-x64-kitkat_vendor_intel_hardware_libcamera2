@@ -347,13 +347,13 @@ void CallbacksThread::facesDetected(camera_frame_metadata_t &face_metadata)
     mMessageQueue.send(&msg);
 }
 
-status_t CallbacksThread::sceneDetected(int sceneMode, bool sceneHdr)
+status_t CallbacksThread::sceneDetected(camera_scene_detection_metadata_t &metadata)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_SCENE_DETECTED;
-    msg.data.sceneDetected.sceneMode = sceneMode;
-    msg.data.sceneDetected.sceneHdr = sceneHdr;
+    strlcpy(msg.data.sceneDetected.sceneMode, metadata.scene, (size_t)SCENE_STRING_LENGTH);
+    msg.data.sceneDetected.sceneHdr = metadata.hdr;
     return mMessageQueue.send(&msg);
 }
 
@@ -609,7 +609,10 @@ status_t CallbacksThread::handleMessageSceneDetected(MessageSceneDetected *msg)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    mCallbacks->sceneDetected(msg->sceneMode, msg->sceneHdr);
+    camera_scene_detection_metadata_t metadata;
+    strlcpy(metadata.scene, msg->sceneMode, (size_t)SCENE_STRING_LENGTH);
+    metadata.hdr = msg->sceneHdr;
+    mCallbacks->sceneDetected(metadata);
     return status;
 }
 
