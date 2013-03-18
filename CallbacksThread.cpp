@@ -332,6 +332,19 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
             if (snapshotBuf.type == ATOM_BUFFER_PREVIEW_GFX) {
                 convertGfx2Regular(&snapshotBuf, &tmpCopy);
                 releaseTmp = true;
+            } else if (snapshotBuf.buff != NULL && mCallbacks->msgTypeEnabled(CAMERA_MSG_RAW_IMAGE)) {
+                LOG1("snapshotBuf.size:%d", snapshotBuf.size);
+                unsigned char *buf;
+                if (snapshotBuf.shared) {
+                    buf = (unsigned char *) *((char **)(snapshotBuf.buff->data));
+                } else {
+                    buf = (unsigned char *) (snapshotBuf.buff->data);
+                }
+                mCallbacks->allocateMemory(&tmpCopy.buff, snapshotBuf.size, false);
+                if (tmpCopy.buff != NULL) {
+                    memcpy(tmpCopy.buff->data, buf, snapshotBuf.size);
+                    releaseTmp = true;
+                }
             } else {
                 tmpCopy = snapshotBuf;
             }
