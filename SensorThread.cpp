@@ -113,6 +113,10 @@ int SensorThread::registerOrientationListener(IOrientationListener* listener) {
     if (mListeners.isEmpty()) {
         SensorManager& sensorManager(SensorManager::getInstance());
         Sensor const* sensor = sensorManager.getDefaultSensor(Sensor::TYPE_ACCELEROMETER);
+        if (sensor == NULL) {
+            LOGE("@%s: fail to get accelerometer sensor", __FUNCTION__);
+            return 0;
+        }
 
         mSensorEventQueue->enableSensor(sensor);
         mSensorEventQueue->setEventRate(sensor, ms2ns(200));
@@ -135,6 +139,10 @@ void SensorThread::unRegisterOrientationListener(IOrientationListener* listener)
     if (mListeners.isEmpty()) {
         SensorManager& sensorManager(SensorManager::getInstance());
         Sensor const* sensor = sensorManager.getDefaultSensor(Sensor::TYPE_ACCELEROMETER);
+        if (sensor == NULL) {
+            LOGE("@%s: fail to get accelerometer sensor", __FUNCTION__);
+            return;
+        }
 
         mSensorEventQueue->disableSensor(sensor);
 
