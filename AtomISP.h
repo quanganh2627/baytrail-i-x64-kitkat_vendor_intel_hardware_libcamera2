@@ -63,7 +63,7 @@ struct v4l2_buffer_info {
     int width;
     int height;
     int format;
-    int flags; //You can use to to detern the buf status
+    int cache_flags; /*!< initial flags used when creating buffers */
     struct v4l2_buffer vbuffer;
 };
 
@@ -152,11 +152,11 @@ public:
     status_t getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameStatus = NULL);
     status_t putPreviewFrame(AtomBuffer *buff);
 
-    status_t setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs);
+    status_t setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs, bool cached);
     status_t getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp = NULL, atomisp_frame_status *frameStatus = NULL);
     status_t putRecordingFrame(AtomBuffer *buff);
 
-    status_t setSnapshotBuffers(void *buffs, int numBuffs);
+    status_t setSnapshotBuffers(void *buffs, int numBuffs, bool cached);
     status_t getSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf,
                          atomisp_frame_status *snapshotStatus = NULL);
     status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
@@ -473,6 +473,8 @@ private:
     void runStartISPActions();
     void runStopISPActions();
 
+    void markBufferCached(struct v4l2_buffer_info *vinfo, bool cached);
+
     status_t allocatePreviewBuffers();
     status_t allocateRecordingBuffers();
     status_t allocateSnapshotBuffers();
@@ -588,12 +590,14 @@ private:
     int mNumBuffers;
     int mNumPreviewBuffers;
     AtomBuffer *mPreviewBuffers;
+    bool mPreviewBuffersCached;
     AtomBuffer *mRecordingBuffers;
     bool mSwapRecordingDevice;
     bool mRecordingDeviceSwapped;
     bool mPreviewTooBigForVFPP;
 
     void **mClientSnapshotBuffers;
+    bool mClientSnapshotBuffersCached;
     bool mUsingClientSnapshotBuffers;
     bool mStoreMetaDataInBuffers;
 

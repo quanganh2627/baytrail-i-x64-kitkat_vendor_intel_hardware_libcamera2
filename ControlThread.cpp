@@ -1298,7 +1298,9 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mPreviewThread->setPreviewConfig(width, height, stride, format, mNumBuffers);
         status = mPreviewThread->fetchPreviewBuffers(&pvBufs, &count);
         if ((status == NO_ERROR) && (count == mNumBuffers)) {
-            mISP->setGraphicPreviewBuffers(pvBufs, mNumBuffers);
+            bool cached = isParameterSet(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING) ? true: false;
+            LOG2("Setting GFX preview: %d bufs, cached/overlay %d", mNumBuffers, cached);
+            mISP->setGraphicPreviewBuffers(pvBufs, mNumBuffers, cached);
         }
     }
 
@@ -5823,7 +5825,7 @@ void ControlThread::setExternalSnapshotBuffers(int format, int width, int height
         int numberOfSnapshots;
         status = mPictureThread->getSharedBuffers(width, height, &snapshotBufferPtr, &numberOfSnapshots);
         if (status == NO_ERROR) {
-            status = mISP->setSnapshotBuffers((void*)snapshotBufferPtr, numberOfSnapshots);
+            status = mISP->setSnapshotBuffers((void*)snapshotBufferPtr, numberOfSnapshots, false);
             if (status == NO_ERROR) {
                 LOG1("Using shared buffers for snapshot");
             } else {

@@ -163,11 +163,13 @@ AtomISP::AtomISP(int cameraId) :
     ,mNumBuffers(PlatformData::getRecordingBufNum())
     ,mNumPreviewBuffers(PlatformData::getRecordingBufNum())
     ,mPreviewBuffers(NULL)
+    ,mPreviewBuffersCached(true)
     ,mRecordingBuffers(NULL)
     ,mSwapRecordingDevice(false)
     ,mRecordingDeviceSwapped(false)
     ,mPreviewTooBigForVFPP(false)
     ,mClientSnapshotBuffers(NULL)
+    ,mClientSnapshotBuffersCached(true)
     ,mUsingClientSnapshotBuffers(false)
     ,mStoreMetaDataInBuffers(false)
     ,mNumPreviewBuffersQueued(0)
@@ -3315,6 +3317,8 @@ int AtomISP::v4l2_capture_qbuf(int fd, int index, struct v4l2_buffer_info *buf)
 
     if (fd < 0) //Device is closed
         return 0;
+
+    v4l2_buf->flags = buf->cache_flags;
     ret = ioctl(fd, VIDIOC_QBUF, v4l2_buf);
     if (ret < 0) {
         LOGE("VIDIOC_QBUF index %d failed: %s",
@@ -3675,7 +3679,7 @@ void AtomISP::returnBuffer(AtomBuffer* buff)
  * Sets the externally allocated graphic buffers to be used
  * for the preview stream
  */
-status_t AtomISP::setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs)
+status_t AtomISP::setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs, bool cached)
 {
     LOG1("@%s: buffs = %p, numBuffs = %d", __FUNCTION__, buffs, numBuffs);
     if (buffs == NULL || numBuffs <= 0)
@@ -3693,6 +3697,7 @@ status_t AtomISP::setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs
     }
 
     mNumPreviewBuffers = numBuffs;
+    mPreviewBuffersCached = cached;
 
     return NO_ERROR;
 }
@@ -3762,13 +3767,14 @@ status_t AtomISP::putRecordingFrame(AtomBuffer *buff)
     return NO_ERROR;
 }
 
-status_t AtomISP::setSnapshotBuffers(void *buffs, int numBuffs)
+status_t AtomISP::setSnapshotBuffers(void *buffs, int numBuffs, bool cached)
 {
     LOG1("@%s: buffs = %p, numBuffs = %d", __FUNCTION__, buffs, numBuffs);
     if (buffs == NULL || numBuffs <= 0)
         return BAD_VALUE;
 
     mClientSnapshotBuffers = (void**)buffs;
+    mClientSnapshotBuffersCached = cached;
     mConfig.num_snapshot = numBuffs;
     mUsingClientSnapshotBuffers = true;
     for (int i = 0; i < numBuffs; i++) {
@@ -4022,6 +4028,30 @@ int AtomISP::v4l2_dqevent(int fd, struct v4l2_event *event)
 //                          PRIVATE METHODS
 ////////////////////////////////////////////////////////////////////
 
+/**
+ * Marks the given buffers as cached
+ *
+ * A cached buffer in this context means that the buffer
+ * memory may be accessed through some system caches, and
+ * the V4L2 driver must do cache invalidation in case
+ * the image data source is not updating system caches
+ * in hardware.
+ *
+ * When false (not cached), V4L2 driver can assume no cache
+ * invalidation/flushes are needed for this buffer.
+ */
+void AtomISP::markBufferCached(struct v4l2_buffer_info *vinfo, bool cached)
+{
+    LOG2("@%s, cached %d", __FUNCTION__, cached);
+    uint32_t cacheflags =
+        V4L2_BUF_FLAG_NO_CACHE_INVALIDATE |
+        V4L2_BUF_FLAG_NO_CACHE_CLEAN;
+    if (cached)
+        vinfo->cache_flags = 0;
+    else
+        vinfo->cache_flags = cacheflags;
+}
+
 status_t AtomISP::allocatePreviewBuffers()
 {
     LOG1("@%s", __FUNCTION__);
@@ -4030,6 +4060,8 @@ status_t AtomISP::allocatePreviewBuffers()
 
     if (mPreviewBuffers == NULL) {
         mPreviewBuffers = new AtomBuffer[mNumPreviewBuffers];
+        mPreviewBuffersCached = true;
+
         if (!mPreviewBuffers) {
             LOGE("Not enough mem for preview buffer array");
             status = NO_MEMORY;
@@ -4052,13 +4084,17 @@ status_t AtomISP::allocatePreviewBuffers()
              }
              mPreviewBuffers[i].size = mConfig.preview.size;
              allocatedBufs++;
-             v4l2_buf_pool[mPreviewDevice].bufs[i].data = mPreviewBuffers[i].buff->data;
+             struct v4l2_buffer_info *vinfo = &v4l2_buf_pool[mPreviewDevice].bufs[i];
+             vinfo->data = mPreviewBuffers[i].buff->data;
+             markBufferCached(vinfo, mPreviewBuffersCached);
              mPreviewBuffers[i].shared = false;
         }
 
     } else {
         for (int i = 0; i < mNumPreviewBuffers; i++) {
-            v4l2_buf_pool[mPreviewDevice].bufs[i].data = mPreviewBuffers[i].gfxData;
+            struct v4l2_buffer_info *vinfo = &v4l2_buf_pool[mPreviewDevice].bufs[i];
+            vinfo->data = mPreviewBuffers[i].gfxData;
+            markBufferCached(vinfo, mPreviewBuffersCached);
             mPreviewBuffers[i].shared = true;
         }
     }
@@ -4100,7 +4136,8 @@ status_t AtomISP::allocateRecordingBuffers()
         mRecordingBuffers[i].buff = NULL;
         mRecordingBuffers[i].metadata_buff = NULL;
         // recording buffers use uncached memory
-        mCallbacks->allocateMemory(&mRecordingBuffers[i], size, false);
+        bool cached = false;
+        mCallbacks->allocateMemory(&mRecordingBuffers[i], size, cached);
         LOG1("allocate recording buffer[%d], buff=%p size=%d",
                 i, mRecordingBuffers[i].buff->data, mRecordingBuffers[i].buff->size);
         if (mRecordingBuffers[i].buff == NULL) {
@@ -4109,7 +4146,9 @@ status_t AtomISP::allocateRecordingBuffers()
             goto errorFree;
         }
         allocatedBufs++;
-        v4l2_buf_pool[mRecordingDevice].bufs[i].data = mRecordingBuffers[i].buff->data;
+        struct v4l2_buffer_info *vinfo = &v4l2_buf_pool[mRecordingDevice].bufs[i];
+        vinfo->data = mRecordingBuffers[i].buff->data;
+        markBufferCached(vinfo, cached);
         mRecordingBuffers[i].shared = false;
         mRecordingBuffers[i].width = mConfig.recording.width;
         mRecordingBuffers[i].height = mConfig.recording.height;
@@ -4168,16 +4207,19 @@ status_t AtomISP::allocateSnapshotBuffers()
         }
         mSnapshotBuffers[i].type = ATOM_BUFFER_SNAPSHOT;
         allocatedSnaphotBufs++;
+        struct v4l2_buffer_info *vinfo;
         if (mUsingClientSnapshotBuffers) {
-            v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i].data = mClientSnapshotBuffers[i];
+            vinfo = &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i];
+            vinfo->data = mClientSnapshotBuffers[i];
             memcpy(mSnapshotBuffers[i].buff->data, &mClientSnapshotBuffers[i], sizeof(void *));
             mSnapshotBuffers[i].shared = true;
 
         } else {
-            v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i].data = mSnapshotBuffers[i].buff->data;
+            vinfo = &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i];
+            vinfo->data = mSnapshotBuffers[i].buff->data;
             mSnapshotBuffers[i].shared = false;
         }
-
+        markBufferCached(vinfo, mClientSnapshotBuffersCached);
         mPostviewBuffers[i].buff = NULL;
         mCallbacks->allocateMemory(&mPostviewBuffers[i], mConfig.postview.size);
         if (mPostviewBuffers[i].buff == NULL) {
@@ -4187,7 +4229,9 @@ status_t AtomISP::allocateSnapshotBuffers()
         }
         mPostviewBuffers[i].type = ATOM_BUFFER_POSTVIEW;
         allocatedPostviewBufs++;
-        v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[i].data = mPostviewBuffers[i].buff->data;
+        vinfo = &v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[i];
+        vinfo->data = mPostviewBuffers[i].buff->data;
+        markBufferCached(vinfo, true);
         mPostviewBuffers[i].shared = false;
         mPostviewBuffers[i].stride = mConfig.postview.stride;
     }
