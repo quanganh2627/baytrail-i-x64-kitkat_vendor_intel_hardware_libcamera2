@@ -1026,10 +1026,48 @@ int AtomAIQ::add3aMakerNoteRecord(ia_3a_mknote_field_type mkn_format_id,
                                    unsigned short record_size)
 {
     LOG2("@%s", __FUNCTION__);
-    //ToDo: HAL could have its own instance of IA MKN.
-    // Before writing makernote into EXIF, the HAL and AIQ makernotes
-    // can be merged (there is a function in IA MKN for doing that).
-    return INVALID_OPERATION;
+    ia_mkn_dfid field_type;
+    switch (mkn_format_id) {
+    case ia_3a_mknote_field_type_int8:
+        field_type = ia_mkn_dfid_signed_char;
+        break;
+    case ia_3a_mknote_field_type_uint8:
+        field_type = ia_mkn_dfid_unsigned_char;
+        break;
+    case ia_3a_mknote_field_type_int16:
+        field_type = ia_mkn_dfid_signed_short;
+        break;
+    case ia_3a_mknote_field_type_uint16:
+        field_type = ia_mkn_dfid_unsigned_short;
+        break;
+    case ia_3a_mknote_field_type_int32:
+        field_type = ia_mkn_dfid_signed_int;
+        break;
+    case ia_3a_mknote_field_type_uint32:
+        field_type = ia_mkn_dfid_unsigned_int;
+        break;
+    case ia_3a_mknote_field_type_int64:
+        field_type = ia_mkn_dfid_signed_long_long;
+        break;
+    case ia_3a_mknote_field_type_uint64:
+        field_type = ia_mkn_dfid_unsigned_long_long;
+        break;
+    default:
+        LOGW("Wrong 3A MakerNote Field type: %d", mkn_format_id);
+        return -1;
+    }
+
+    ia_mkn_dnid name_id;
+    switch (mkn_name_id) {
+    case ia_3a_mknote_field_name_raw_info:
+    default:
+        name_id = ia_mkn_dnid_hal_records;
+    }
+
+    if(record != NULL)
+        ia_mkn_add_record(mMkn, field_type, name_id, record, record_size, NULL);
+
+    return 0;
 }
 
 void AtomAIQ::get3aGridInfo(struct atomisp_grid_info *pgrid)
