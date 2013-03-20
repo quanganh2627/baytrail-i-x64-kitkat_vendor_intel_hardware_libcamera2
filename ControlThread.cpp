@@ -451,15 +451,15 @@ void ControlThread::deinit()
         }
     }
 
+    if (mCP != NULL) {
+        delete mCP;
+        mCP = NULL;
+    }
+
     if (mISP != NULL) {
         delete mISP;
         mISP = NULL;
         PERFORMANCE_TRACES_BREAKDOWN_STEP("DeleteISP");
-    }
-
-    if (mCP != NULL) {
-        delete mCP;
-        mCP = NULL;
     }
 
     if (mULL != NULL) {
@@ -4588,9 +4588,21 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         if(newVal == "on") {
             mHdr.enabled = true;
             mHdr.bracketMode = BRACKET_EXPOSURE;
-            mHdr.savedBracketMode = mBracketManager->getBracketMode();
             mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
+            status = mCP->initializeHDR(newWidth, newHeight);
+            if (status == NO_ERROR) {
+                mHdr.enabled = true;
+                mHdr.bracketMode = BRACKET_EXPOSURE;
+                mHdr.savedBracketMode = mBracketManager->getBracketMode();
+                mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
+            } else {
+                LOGE("HDR buffer allocation failed");
+            }
         } else if(newVal == "off") {
+            status = mCP->uninitializeHDR();
+            if (status != NO_ERROR) {
+                LOGE("HDR buffer release failed");
+            }
             mHdr.enabled = false;
             mBracketManager->setBracketMode(mHdr.savedBracketMode);
         } else {
@@ -4599,6 +4611,21 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         }
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_IMAGING, newVal.string());
+        }
+    } else {
+        // Re-allocate buffers if resolution changed and HDR was ON
+        const char* o = oldParams->get(IntelCameraParameters::KEY_HDR_IMAGING);
+        String8 oldVal (o, (o == NULL ? 0 : strlen(o)));
+        if(oldVal == "on" && (newWidth != oldWidth || newHeight != oldHeight)) {
+            status = mCP->uninitializeHDR();
+            if (status == NO_ERROR) {
+                status = mCP->initializeHDR(newWidth, newHeight);
+                if (status != NO_ERROR) {
+                    LOGE("HDR buffer allocation failed");
+                }
+            } else {
+                LOGE("HDR buffer release failed");
+            }
         }
     }
 
@@ -6400,8 +6427,6 @@ status_t ControlThread::hdrCompose()
         return status;
     }
 
-    status = mCP->initializeHDR(mHdr.ciBufOut.ciMainBuf->width,
-                                mHdr.ciBufOut.ciMainBuf->height);
     if (status != NO_ERROR) {
         hdrPicMetaData.free(m3AControls);
         LOGE("HDR buffer allocation failed");
@@ -6433,8 +6458,6 @@ status_t ControlThread::hdrCompose()
 
     if (doEncode == false)
         hdrPicMetaData.free(m3AControls);
-
-    mCP->uninitializeHDR();
 
     /**
      * TODO: to have a cleaner buffer recycle we should return the snapshot buffers
