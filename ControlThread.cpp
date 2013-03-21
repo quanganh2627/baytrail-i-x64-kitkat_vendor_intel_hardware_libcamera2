@@ -1156,7 +1156,7 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
 
     // The continuous mode depends on maintaining a RAW frame
     // buffer, so feature is not available SoC sensors.
-    if (PlatformData::sensorType(mISP->getCurrentCameraId()) == SENSOR_TYPE_SOC) {
+    if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) {
         LOG1("@%s: Non-RAW sensor, disabling continuous mode", __FUNCTION__);
         return STATE_PREVIEW_STILL;
     }
@@ -1801,7 +1801,7 @@ status_t ControlThread::setSmartSceneParams(void)
         return INVALID_OPERATION;
 
     if (scene_mode && !strcmp(scene_mode, CameraParameters::SCENE_MODE_AUTO)) {
-        bool sceneDetectionSupported = strcmp(FeatureData::sceneDetectionSupported(mISP->getCurrentCameraId()), "") != 0;
+        bool sceneDetectionSupported = strcmp(FeatureData::sceneDetectionSupported(mCameraId), "") != 0;
         if (sceneDetectionSupported && m3AControls->getSmartSceneDetection()) {
             int sceneMode = 0;
             bool sceneHdr = false;
@@ -2105,7 +2105,7 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
      *  If the current camera does not have 3A, then we should skip the first
      *  frames in order to allow the sensor to warm up.
      */
-    if (PlatformData::sensorType(mISP->getCurrentCameraId()) == SENSOR_TYPE_SOC) {
+    if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) {
         if ((status = skipFrames(NUM_WARMUP_FRAMES)) != NO_ERROR) {
             LOGE("Error skipping warm-up frames!");
             return status;
@@ -2454,7 +2454,7 @@ status_t ControlThread::captureStillPic()
      *  If the current camera does not have 3A, then we should skip the first
      *  frames in order to allow the sensor to warm up.
      */
-    if (PlatformData::sensorType(mISP->getCurrentCameraId()) == SENSOR_TYPE_SOC) {
+    if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) {
         if ((status = skipFrames(NUM_WARMUP_FRAMES)) != NO_ERROR) {
             LOGE("Error skipping warm-up frames!");
             return status;
@@ -3472,14 +3472,13 @@ status_t ControlThread::ProcessOverlayEnable(const CameraParameters *oldParams,
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    int cameraId = mISP->getCurrentCameraId();
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_HW_OVERLAY_RENDERING);
 
     if (!newVal.isEmpty()) {
         if (mState == STATE_STOPPED) {
             if (newVal == "true") {
-                if (mPreviewThread->enableOverlay(true, PlatformData::overlayRotation(cameraId)) == NO_ERROR) {
+                if (mPreviewThread->enableOverlay(true, PlatformData::overlayRotation(mCameraId)) == NO_ERROR) {
                     newParams->set(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING, "true");
                     LOG1("@%s: Preview Overlay rendering enabled!", __FUNCTION__);
                 } else {

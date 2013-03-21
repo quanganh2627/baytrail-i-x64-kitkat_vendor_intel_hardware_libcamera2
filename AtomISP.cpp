@@ -227,7 +227,7 @@ status_t AtomISP::initDevice()
         return NO_INIT;
     }
 
-    mSensorType = PlatformData::sensorType(getCurrentCameraId());
+    mSensorType = PlatformData::sensorType(mCameraId);
     LOG1("Sensor type detected: %s", (mSensorType == SENSOR_TYPE_RAW)?"RAW":"SOC");
     return status;
 }
@@ -380,7 +380,7 @@ void AtomISP::initFrameConfig()
     }
     else {
         int width, height;
-        PlatformData::maxSnapshotSize(mCameraInput->androidCameraId, &width, &height);
+        PlatformData::maxSnapshotSize(mCameraId, &width, &height);
         mConfig.snapshot.maxWidth  = width;
         mConfig.snapshot.maxHeight = height;
 	/* workround to support two main sensor for vv - need to removed when one main sensor used */
@@ -539,7 +539,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
         LOGE("params is null!");
         return;
     }
-    int cameraId = mCameraInput->androidCameraId;
+    int cameraId = mCameraId;
     /**
      * PREVIEW
      */
@@ -647,7 +647,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * OVERLAY
      */
-    if (PlatformData::renderPreviewViaOverlay(mCameraInput->androidCameraId)) {
+    if (PlatformData::renderPreviewViaOverlay(cameraId)) {
         intel_params->set(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING_SUPPORTED, "true,false");
     } else {
         intel_params->set(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING_SUPPORTED, "false");
@@ -742,13 +742,13 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     params->set(CameraParameters::KEY_SUPPORTED_EFFECTS, PlatformData::supportedEffectModes(cameraId));
     intel_params->set(CameraParameters::KEY_SUPPORTED_EFFECTS, PlatformData::supportedIntelEffectModes(cameraId));
     //awb
-    if (strcmp(PlatformData::supportedAwbModes(getCurrentCameraId()), "")) {
+    if (strcmp(PlatformData::supportedAwbModes(cameraId), "")) {
         params->set(CameraParameters::KEY_WHITE_BALANCE, PlatformData::defaultAwbMode(cameraId));
         params->set(CameraParameters::KEY_SUPPORTED_WHITE_BALANCE, PlatformData::supportedAwbModes(cameraId));
     }
 
     // scene mode
-    if (strcmp(PlatformData::supportedSceneModes(getCurrentCameraId()), "")) {
+    if (strcmp(PlatformData::supportedSceneModes(cameraId), "")) {
         params->set(CameraParameters::KEY_SUPPORTED_SCENE_MODES, PlatformData::supportedSceneModes(cameraId));
         params->set(CameraParameters::KEY_SCENE_MODE, PlatformData::defaultSceneMode(cameraId));
     }
@@ -890,7 +890,7 @@ status_t AtomISP::getIspParameters(struct atomisp_parm *isp_param) const
 
 status_t AtomISP::applySensorFlip(void)
 {
-    int sensorFlip = PlatformData::sensorFlipping(mCameraInput->androidCameraId);
+    int sensorFlip = PlatformData::sensorFlipping(mCameraId);
 
     if (sensorFlip == PlatformData::SENSOR_FLIP_NA)
         return NO_ERROR;
@@ -2343,7 +2343,7 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
 void AtomISP::applyISPLimitations(uint32_t width, uint32_t height, bool video)
 {
     LOG1("@%s", __FUNCTION__);
-    if (!video && width * height > PlatformData::maxPreviewPixelCountForVFPP(getCurrentCameraId())) {
+    if (!video && width * height > PlatformData::maxPreviewPixelCountForVFPP(mCameraId)) {
         mPreviewTooBigForVFPP = true;
     } else {
         mPreviewTooBigForVFPP = false;
@@ -5432,7 +5432,7 @@ status_t AtomISP::setAeMode(AeMode mode)
     v4l2_exposure_auto_type v4lMode;
 
     // TODO: add supported modes to PlatformData
-    if (getCurrentCameraId() > 0) {
+    if (mCameraId > 0) {
         LOG1("@%s: not supported by current camera", __FUNCTION__);
         return INVALID_OPERATION;
     }
@@ -5473,7 +5473,7 @@ AeMode AtomISP::getAeMode()
     v4l2_exposure_auto_type v4lMode = V4L2_EXPOSURE_AUTO;
 
     // TODO: add supported modes to PlatformData
-    if (getCurrentCameraId() > 0) {
+    if (mCameraId > 0) {
         LOG1("@%s: not supported by current camera", __FUNCTION__);
         return mode;
     }
@@ -5530,8 +5530,8 @@ status_t AtomISP::getEv(float *bias)
     status_t status = NO_ERROR;
     int evValue = 0;
 
-    const char* minEV = PlatformData::supportedMinEV(getCurrentCameraId());
-    const char* maxEV = PlatformData::supportedMaxEV(getCurrentCameraId());
+    const char* minEV = PlatformData::supportedMinEV(mCameraId);
+    const char* maxEV = PlatformData::supportedMaxEV(mCameraId);
     if(!strcmp(minEV, "0") && !strcmp(maxEV, "0")) {
         LOG1("@%s: not supported by current camera", __FUNCTION__);
         return INVALID_OPERATION;
@@ -5553,7 +5553,7 @@ status_t AtomISP::setAeSceneMode(SceneMode mode)
     status_t status = NO_ERROR;
     v4l2_scene_mode v4lMode;
 
-    if (!strcmp(PlatformData::supportedSceneModes(getCurrentCameraId()), "")) {
+    if (!strcmp(PlatformData::supportedSceneModes(mCameraId), "")) {
         LOG1("@%s: not supported by current camera", __FUNCTION__);
         return INVALID_OPERATION;
     }
@@ -5623,7 +5623,7 @@ SceneMode AtomISP::getAeSceneMode()
     SceneMode mode = CAM_AE_SCENE_MODE_NOT_SET;
     v4l2_scene_mode v4lMode = V4L2_SCENE_MODE_NONE;
 
-    if (!strcmp(PlatformData::supportedSceneModes(getCurrentCameraId()), "")) {
+    if (!strcmp(PlatformData::supportedSceneModes(mCameraId), "")) {
         LOG1("@%s: not supported by current camera", __FUNCTION__);
         return mode;
     }
@@ -5689,7 +5689,7 @@ status_t AtomISP::setAwbMode(AwbMode mode)
     status_t status = NO_ERROR;
     v4l2_auto_n_preset_white_balance v4lMode;
 
-    if (!strcmp(PlatformData::supportedAwbModes(getCurrentCameraId()), "")) {
+    if (!strcmp(PlatformData::supportedAwbModes(mCameraId), "")) {
         LOG1("@%s: not supported by current camera", __FUNCTION__);
         return INVALID_OPERATION;
     }
@@ -5747,7 +5747,7 @@ AwbMode AtomISP::getAwbMode()
     AwbMode mode = CAM_AWB_MODE_NOT_SET;
     v4l2_auto_n_preset_white_balance v4lMode = V4L2_WHITE_BALANCE_AUTO;
 
-    if (!strcmp(PlatformData::supportedAwbModes(getCurrentCameraId()), "")) {
+    if (!strcmp(PlatformData::supportedAwbModes(mCameraId), "")) {
         LOG1("@%s: not supported by current camera", __FUNCTION__);
         return mode;
     }
@@ -5797,7 +5797,7 @@ status_t AtomISP::setManualIso(int iso)
     LOG1("@%s: ISO: %d", __FUNCTION__, iso);
     status_t status = NO_ERROR;
 
-    if (!strcmp(PlatformData::supportedIso(getCurrentCameraId()), "")) {
+    if (!strcmp(PlatformData::supportedIso(mCameraId), "")) {
         LOG1("@%s: not supported by current camera", __FUNCTION__);
         return UNKNOWN_ERROR;
     }
@@ -5817,7 +5817,7 @@ status_t AtomISP::getManualIso(int *iso)
     status_t status = NO_ERROR;
     int isoValue = 0;
 
-    if (!strcmp(PlatformData::supportedIso(getCurrentCameraId()), "")) {
+    if (!strcmp(PlatformData::supportedIso(mCameraId), "")) {
         LOG1("@%s: not supported by current camera", __FUNCTION__);
         return INVALID_OPERATION;
     }
@@ -5850,7 +5850,7 @@ status_t AtomISP::setAeMeteringMode(MeteringMode mode)
     status_t status = NO_ERROR;
     v4l2_exposure_metering v4lMode;
 
-    if (!strcmp(PlatformData::supportedAeMetering(getCurrentCameraId()), "")) {
+    if (!strcmp(PlatformData::supportedAeMetering(mCameraId), "")) {
         LOG1("@%s: not supported by current camera", __FUNCTION__);
         return INVALID_OPERATION;
     }
@@ -5888,7 +5888,7 @@ MeteringMode AtomISP::getAeMeteringMode()
     MeteringMode mode = CAM_AE_METERING_MODE_NOT_SET;
     v4l2_exposure_metering v4lMode = V4L2_EXPOSURE_METERING_AVERAGE;
 
-    if (!strcmp(PlatformData::supportedAeMetering(getCurrentCameraId()), "")) {
+    if (!strcmp(PlatformData::supportedAeMetering(mCameraId), "")) {
         LOG1("@%s: not supported by current camera", __FUNCTION__);
         return mode;
     }
@@ -5986,7 +5986,7 @@ status_t AtomISP::setAfMode(AfMode mode)
     v4l2_auto_focus_range v4lMode;
 
     // TODO: add supported modes to PlatformData
-    if (getCurrentCameraId() > 0) {
+    if (mCameraId > 0) {
         LOG1("@%s: not supported by current camera", __FUNCTION__);
         return INVALID_OPERATION;
     }
@@ -6025,7 +6025,7 @@ AfMode AtomISP::getAfMode()
     v4l2_auto_focus_range v4lMode = V4L2_AUTO_FOCUS_RANGE_AUTO;
 
     // TODO: add supported modes to PlatformData
-    if (getCurrentCameraId() > 0) {
+    if (mCameraId > 0) {
         LOG1("@%s: not supported by current camera", __FUNCTION__);
         return mode;
     }
@@ -6077,7 +6077,7 @@ status_t AtomISP::setAfEnabled(bool enable)
     status_t status = NO_ERROR;
 
     // TODO: add supported modes to PlatformData
-    if (getCurrentCameraId() > 0) {
+    if (mCameraId > 0) {
         LOG1("@%s: not supported by current camera", __FUNCTION__);
         return INVALID_OPERATION;
     }
@@ -6243,7 +6243,7 @@ status_t AtomISP::setAeFlashMode(FlashMode mode)
     status_t status = NO_ERROR;
     v4l2_flash_led_mode v4lMode;
 
-    if (!strcmp(PlatformData::supportedFlashModes(getCurrentCameraId()), "")) {
+    if (!strcmp(PlatformData::supportedFlashModes(mCameraId), "")) {
         LOG1("@%s: not supported by current camera", __FUNCTION__);
         return INVALID_OPERATION;
     }
@@ -6281,7 +6281,7 @@ FlashMode AtomISP::getAeFlashMode()
     FlashMode mode = CAM_AE_FLASH_MODE_OFF;
     v4l2_flash_led_mode v4lMode = V4L2_FLASH_LED_MODE_NONE;
 
-    if (!strcmp(PlatformData::supportedFlashModes(getCurrentCameraId()), "")) {
+    if (!strcmp(PlatformData::supportedFlashModes(mCameraId), "")) {
         LOG1("@%s: not supported by current camera", __FUNCTION__);
         return mode;
     }
