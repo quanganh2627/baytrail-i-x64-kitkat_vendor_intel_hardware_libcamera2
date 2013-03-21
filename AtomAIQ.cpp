@@ -1325,7 +1325,7 @@ void AtomAIQ::runAeMain()
         mAeState.exposure.integration_time[0] = mAeState.ae_results->sensor_exposure->coarse_integration_time;
         //Here is workaround
         mAeState.exposure.integration_time[1] = mAeState.ae_results->sensor_exposure->fine_integration_time;
-        mAeState.exposure.gain[0] = mAeState.ae_results->sensor_exposure->analog_gain_code_global | 0x1000;
+        mAeState.exposure.gain[0] = mAeState.ae_results->sensor_exposure->analog_gain_code_global;
 
         mAeState.exposure.aperture = 100;
 
