@@ -4,14 +4,6 @@ LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
 
-ifeq ($(REF_DEVICE_NAME),merr_vv)
-USE_INTEL_JPEG := false
-else ifeq ($(REF_DEVICE_NAME),bodegabay)
-USE_INTEL_JPEG := false
-else
-USE_INTEL_JPEG := true
-endif
-
 USE_INTEL_METABUFFER := true
 
 ifeq ($(USE_INTEL_METABUFFER),true)
