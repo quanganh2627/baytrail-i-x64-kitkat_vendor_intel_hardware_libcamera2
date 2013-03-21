@@ -37,6 +37,7 @@
 #define main_fd video_fds[V4L2_MAIN_DEVICE]
 
 #define DEFAULT_SENSOR_FPS      15.0
+#define DEFAULT_PREVIEW_FPS     30.0
 
 #define RESOLUTION_14MP_TABLE   \
         "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448,3648x2736,4096x3072,4352x3264"
@@ -264,7 +265,7 @@ status_t AtomISP::init()
         return NO_INIT;
     }
 
-    mConfig.fps = 30;
+    mConfig.fps = DEFAULT_PREVIEW_FPS;
     mConfig.num_snapshot = 1;
     mConfig.zoom = 0;
 
@@ -543,8 +544,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
      * PREVIEW
      */
     params->setPreviewSize(mConfig.preview.width, mConfig.preview.height);
-    params->setPreviewFrameRate(30);
-
+    params->setPreviewFrameRate(DEFAULT_PREVIEW_FPS);
 
     params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES, PlatformData::supportedPreviewSizes(cameraId));
 
@@ -1461,10 +1461,10 @@ status_t AtomISP::configureContinuousRingBuffer()
 int AtomISP::shutterLagZeroAlign() const
 {
     int delayMs = PlatformData::shutterLagCompensationMs();
-    float frameIntervalMs = 1000.0 / getFrameRate();
+    float frameIntervalMs = 1000.0 / DEFAULT_PREVIEW_FPS;
     int lagZeroOffset = round(float(delayMs) / frameIntervalMs);
-    LOG2("@%s: delay %dms, fps %.02f, zero offset %d",
-         __FUNCTION__, delayMs, getFrameRate(), lagZeroOffset);
+    LOG2("@%s: delay %dms, zero offset %d",
+         __FUNCTION__, delayMs, lagZeroOffset);
     return lagZeroOffset;
 }
 
@@ -1913,7 +1913,7 @@ int AtomISP::configureDevice(int device, int deviceMode, FrameInfo *fInfo, bool 
     // reduce FPS for still capture
     if (mFileInject.active == true) {
         if (deviceMode == CI_MODE_STILL_CAPTURE)
-            mConfig.fps = 15;
+            mConfig.fps = DEFAULT_SENSOR_FPS;
     }
 
     mDevices[device].state = DEVICE_CONFIGURED;
