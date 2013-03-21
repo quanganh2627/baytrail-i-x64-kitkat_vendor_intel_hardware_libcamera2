@@ -179,8 +179,6 @@ public:
     inline int getSnapshotPixelFormat() { return mConfig.snapshot.format; }
     void getVideoSize(int *width, int *height, int *stride);
     void getPreviewSize(int *width, int *height, int *stride);
-
-    status_t setSnapshotNum(int num);
     int getSnapshotNum();
 
     void getZoomRatios(bool videoMode, CameraParameters *params);

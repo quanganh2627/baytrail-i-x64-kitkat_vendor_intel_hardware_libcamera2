@@ -2243,23 +2243,6 @@ int AtomISP::getSnapshotNum()
     return mConfig.num_snapshot;
 }
 
-status_t AtomISP::setSnapshotNum(int num)
-{
-    LOG1("@%s", __FUNCTION__);
-
-    if (mMode != MODE_NONE)
-        return INVALID_OPERATION;
-
-    // 'num_snapshot' is used when freeing the buffers, so to keep track,
-    // deallocate with old value here
-    if (mConfig.num_snapshot != num)
-        freeSnapshotBuffers();
-
-    mConfig.num_snapshot = num;
-    LOG1("mConfig.num_snapshot = %d", mConfig.num_snapshot);
-    return NO_ERROR;
-}
-
 status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
 {
     LOG1("@%s", __FUNCTION__);
