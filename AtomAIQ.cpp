@@ -33,6 +33,9 @@
 #include "ia_mkn_encoder.h"
 #include "ia_mkn_decoder.h"
 
+#define MAX_EOF_SOF_DIFF 200000
+#define DEFAULT_EOF_SOF_DELAY 66000
+
 namespace android {
 
 
@@ -898,10 +901,10 @@ status_t AtomAIQ::setFaces(const ia_face_state& faceState)
     return NO_ERROR;
 }
 
+/* TODO: Replace ia_3a_mknote with ia_binary_data in this API. */
 ia_3a_mknote *AtomAIQ::get3aMakerNote(ia_3a_mknote_mode mknMode)
 {
     LOG2("@%s", __FUNCTION__);
-    ia_err ret = ia_err_none;
     ia_mkn_trg mknTarget = ia_mkn_trg_exif;
 
     ia_3a_mknote *me;
@@ -910,16 +913,13 @@ ia_3a_mknote *AtomAIQ::get3aMakerNote(ia_3a_mknote_mode mknMode)
         return NULL;
     if(mknMode == ia_3a_mknote_mode_raw)
         mknTarget = ia_mkn_trg_raw;
-    ret = ia_mkn_prepare(mMkn, mknTarget);
-    // ToDo: libia_mkn shall provide the header and size thru ia_mkn_prepare()
-    // instead of the cast convert
-    ia_mkn_header *head = reinterpret_cast<ia_mkn_header *>(mMkn);
+    ia_binary_data mkn_binary_data = ia_mkn_prepare(mMkn, mknTarget);
 
-    me->bytes = head->size;
+    me->bytes = mkn_binary_data.size;
     me->data = (char*)malloc(me->bytes);
     if (me->data)
     {
-        memcpy(me->data, head, me->bytes);
+        memcpy(me->data, mkn_binary_data.data, me->bytes);
     } else {
         return NULL;
     }
@@ -1419,8 +1419,17 @@ status_t AtomAIQ::populateFrameInfo(const struct timeval *frame_timestamp,
 
     ia_err statistics_ret = ia_err_none;
 
-    m3aState.statistics_input_parameters.eof_timestamp = (unsigned long long)((frame_timestamp->tv_sec*1000000000LL + frame_timestamp->tv_usec*1000LL)/1000LL);
-    m3aState.statistics_input_parameters.sof_timestamp = (unsigned long long)((sof_timestamp->tv_sec*1000000000LL + sof_timestamp->tv_usec*1000LL)/1000LL);
+    long long eof_timestamp = (long long)((frame_timestamp->tv_sec*1000000000LL + frame_timestamp->tv_usec*1000LL)/1000LL);
+    if (eof_timestamp < (long long)m3aState.statistics_input_parameters.frame_timestamp ||
+        eof_timestamp - (long long)m3aState.statistics_input_parameters.frame_timestamp > MAX_EOF_SOF_DIFF)
+    {
+        m3aState.statistics_input_parameters.frame_timestamp = eof_timestamp - DEFAULT_EOF_SOF_DELAY;
+    }
+    else
+    {
+        m3aState.statistics_input_parameters.frame_timestamp = (unsigned long long)((sof_timestamp->tv_sec*1000000000LL + sof_timestamp->tv_usec*1000LL)/1000LL);
+    }
+
     m3aState.statistics_input_parameters.external_histogram = NULL;
 
     if(m3aState.faces)

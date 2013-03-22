@@ -586,7 +586,6 @@ status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msgFrame)
                  */
                 if((m3AControls->getAfMode() == CAM_AF_MODE_CONTINUOUS) &&
                    (afStatus != ia_3a_af_status_success) ) {
-                    mStartAF = true;
                     m3AControls->setAfEnabled(true);
                 }
             }

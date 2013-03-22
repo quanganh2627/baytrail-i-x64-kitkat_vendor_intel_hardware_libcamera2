@@ -97,7 +97,6 @@ class PlatformBase {
 public:
     PlatformBase() {    //default
         mPanoramaMaxSnapshotCount = 10;
-        mSupportedVideoSizes = "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1080";
         mSupportVideoSnapshot = true;
         mNumRecordingBuffers = 9;
         mContinuousCapture = false;
@@ -226,8 +225,9 @@ public:
             supportedPreviewFrameRate = "30,15,10";
             supportedPreviewFPSRange = "(10500,30304),(11000,30304),(11500,30304)";
             defaultPreviewFPSRange = "10500,30304";
+            supportedVideoSizes = "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1080";
             // Leaving this empty. NOTE: values need to be given in derived classes.
-            supportedPreviewSize = "";
+            supportedPreviewSizes = "";
             //For high speed recording, slow motion playback
             hasSlowMotion = false;
             // focus modes
@@ -307,7 +307,8 @@ public:
         const char* supportedPreviewFrameRate;
         const char* supportedPreviewFPSRange;
         const char* defaultPreviewFPSRange;
-        const char* supportedPreviewSize;
+        const char* supportedPreviewSizes;
+        const char* supportedVideoSizes;
         // For high speed recording, slow motion playback
         bool hasSlowMotion;
         // focus modes
@@ -338,7 +339,6 @@ public:
     const char* mSupportedBurstLength;
 
     const char* mVideoPreviewSizePref;
-    const char* mSupportedVideoSizes;
 
     /* For EXIF Metadata */
     const char* mProductName;
@@ -806,7 +806,7 @@ class PlatformData {
      * \param cameraId identifier passed to android.hardware.Camera.open()
      * \return the value of the supported preview sizes as a string.
      */
-    static const char* supportedPreviewSize(int cameraId);
+    static const char* supportedPreviewSizes(int cameraId);
 
     /**
      * Whether the slow motion playback in high speed recording mode is supported?
@@ -834,9 +834,10 @@ class PlatformData {
     /**
      * supported video sizes
      *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
      * \return the value of the supported video sizes as a string.
      */
-    static const char* supportedVideoSizes(void);
+    static const char* supportedVideoSizes(int cameraId);
 
     /**
      * Returns the name of the product

@@ -68,18 +68,6 @@
 #define RESOLUTION_VGA_TABLE   \
         "320x240,640x480"
 
-#define MAX_BACK_CAMERA_PREVIEW_WIDTH   1280
-#define MAX_BACK_CAMERA_PREVIEW_HEIGHT  720
-#define MAX_BACK_CAMERA_VIDEO_WIDTH   1920
-#define MAX_BACK_CAMERA_VIDEO_HEIGHT  1088
-
-#define MAX_FRONT_CAMERA_PREVIEW_WIDTH  1280
-#define MAX_FRONT_CAMERA_PREVIEW_HEIGHT 720
-#define MAX_FRONT_CAMERA_SNAPSHOT_WIDTH 1920
-#define MAX_FRONT_CAMERA_SNAPSHOT_HEIGHT    1080
-#define MAX_FRONT_CAMERA_VIDEO_WIDTH   1920
-#define MAX_FRONT_CAMERA_VIDEO_HEIGHT  1088
-
 #define MAX_FILE_INJECTION_SNAPSHOT_WIDTH    3264
 #define MAX_FILE_INJECTION_SNAPSHOT_HEIGHT   2448
 #define MAX_FILE_INJECTION_PREVIEW_WIDTH     1280
@@ -558,7 +546,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     params->setPreviewFrameRate(30);
 
 
-    params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES, PlatformData::supportedPreviewSize(cameraId));
+    params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES, PlatformData::supportedPreviewSizes(cameraId));
 
     params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES,PlatformData::supportedPreviewFrameRate(cameraId));
     params->set(CameraParameters::KEY_PREVIEW_FPS_RANGE,PlatformData::defaultPreviewFPSRange(cameraId));
@@ -569,7 +557,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
      */
     params->setVideoSize(mConfig.recording.width, mConfig.recording.height);
     params->set(CameraParameters::KEY_PREFERRED_PREVIEW_SIZE_FOR_VIDEO, PlatformData::preferredPreviewSizeForVideo());
-    params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, PlatformData::supportedVideoSizes());
+    params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, PlatformData::supportedVideoSizes(cameraId));
     params->set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,
                 CameraParameters::PIXEL_FORMAT_YUV420SP);
     if (PlatformData::supportVideoSnapshot())
@@ -645,8 +633,16 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * MISCELLANEOUS
      */
-    params->set(CameraParameters::KEY_VERTICAL_VIEW_ANGLE,"42.5");
-    params->set(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE,"54.8");
+    float vertical;
+    float horizontal;
+    if (!PlatformData::HalConfig.getFloat(vertical, CPF::Fov, CPF::Vertical)
+        && !PlatformData::HalConfig.getFloat(horizontal, CPF::Fov, CPF::Horizontal)) {
+        params->set(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, vertical);
+        params->set(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, horizontal);
+    } else {
+        params->set(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, "42.5");
+        params->set(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, "54.8");
+    }
 
     /**
      * OVERLAY
@@ -1471,7 +1467,7 @@ int AtomISP::shutterLagZeroAlign() const
 {
     int delayMs = PlatformData::shutterLagCompensationMs();
     float frameIntervalMs = 1000.0 / getFrameRate();
-    int lagZeroOffset = delayMs / frameIntervalMs + 1;
+    int lagZeroOffset = round(float(delayMs) / frameIntervalMs);
     LOG2("@%s: delay %dms, fps %.02f, zero offset %d",
          __FUNCTION__, delayMs, getFrameRate(), lagZeroOffset);
     return lagZeroOffset;
@@ -1774,9 +1770,15 @@ status_t AtomISP::startOfflineCapture(AtomISP::ContinuousCaptureConfig &config)
         LOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
         return INVALID_OPERATION;
     }
-    else if (config.offset < mContCaptConfig.offset ||
-             config.numCaptures > mContCaptConfig.numCaptures) {
-        LOGE("@%s: cannot start with current ISP configuration", __FUNCTION__);
+    else if (config.offset < 0 &&
+             config.offset < mContCaptConfig.offset) {
+        LOGE("@%s: cannot start, offset %d, %d set at preview start",
+             __FUNCTION__, config.offset, mContCaptConfig.offset);
+        return UNKNOWN_ERROR;
+    }
+    else if (config.numCaptures > mContCaptConfig.numCaptures) {
+        LOGE("@%s: cannot start, num captures %d, %d set at preview start",
+             __FUNCTION__, config.numCaptures, mContCaptConfig.numCaptures);
         return UNKNOWN_ERROR;
     }
 
