@@ -1360,6 +1360,9 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         return status;
     }
 
+    // sensor FPS is queried during configure so we set it to preview thread now
+    mPreviewThread->setSensorFramerate(mISP->getFrameRate());
+
     // Load any ISP extensions before ISP is started
     mPostProcThread->loadIspExtensions(videoMode);
 
