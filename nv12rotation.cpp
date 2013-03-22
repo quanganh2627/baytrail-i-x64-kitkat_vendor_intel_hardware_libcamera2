@@ -17,19 +17,11 @@
 // 1. add macroblock support for UV
 // 2. test optimal reading direction for top & right when (ROWS|COLUMNS)%MACROBLOCK
 #include "nv12rotation.h"
-#include "AtomCommon.h"
 #include <cstdlib>
 
 #define STRIZE2(s) #s
 #define STRIZE(s) STRIZE2(s)
 
-
-bool genericRotateBy90(const int   width,
-                        const int   height,
-                        const int   rstride,
-                        const int   wstride,
-                        const char* sptr,
-                        char*       dptr);
 
 #define NV12_ROTATION_STRIDES(RSTRIDE, WSTRIDE, MACROBLOCK) \
 static void rotateXx4x##RSTRIDE##x##WSTRIDE##Y \
@@ -357,49 +349,8 @@ bool nv12rotateBy90(const int   width,
     } else
 #include "nv12rotationgeometry.h"
     {
-         rotated = genericRotateBy90(width, height, rstride, wstride, sptr, dptr);
+        rotated = false;
     }
 
     return rotated;
-}
-
-/**
- * Fall back rotation algorithm in case the resolution requested is not
- * optimized
- **/
-bool genericRotateBy90(const int   width,
-                        const int   height,
-                        const int   rstride,
-                        const int   wstride,
-                        const char* sptr,
-                        char*       dptr)
-{
-    int i,j;
-    char* a = (char*) sptr;
-    char* b = dptr;
-
-    LOGW("Unoptimized CPU rotation! "
-         "Disable overlay or optimize for this resolution(%dx%d)",width, height);
-
-    // Luma rotation
-    for (i = 0; i < width; i++) {
-        for (j = height-1; j >= 0 ; j--) {
-            b[height - j -1] = a[i + j*rstride];
-        }
-        b += wstride;
-    }
-
-    a += rstride*height;
-
-    //Chroma rotation
-    for (i = 0; i < width; i+=2) {
-        for (j = height; j > 0 ; j-=2) {
-            b[height -j] = a[i + (j/2-1)*rstride]; //U
-            b[height -j +1] = a[i+1 + (j/2 -1)*rstride]; //V
-
-
-        }
-        b = b + wstride;
-    }
-    return true;
 }
