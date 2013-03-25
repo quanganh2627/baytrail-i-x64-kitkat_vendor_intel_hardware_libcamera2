@@ -892,7 +892,8 @@ status_t AtomISP::applySensorFlip(void)
 {
     int sensorFlip = PlatformData::sensorFlipping(mCameraId);
 
-    if (sensorFlip == PlatformData::SENSOR_FLIP_NA)
+    if (sensorFlip == PlatformData::SENSOR_FLIP_NA
+        || sensorFlip == PlatformData::SENSOR_FLIP_OFF)
         return NO_ERROR;
 
     if (atomisp_set_attribute(main_fd, V4L2_CID_VFLIP,
