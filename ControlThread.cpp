@@ -2971,7 +2971,8 @@ status_t ControlThread::captureULLPic()
     int pvWidth, pvHeight;
     int picWidth, picHeight, format;
     int cachedBurstLength, cachedBurstStart, cachedBurstFps;
-    PictureThread::MetaData picMetaData;
+    PictureThread::MetaData firstPicMetaData;
+    PictureThread::MetaData ullPicMetaData;
 
     bool previewKeepAlive = selectPostviewSize(pvWidth, pvHeight);
     //cache burst related parameters
@@ -3014,11 +3015,20 @@ status_t ControlThread::captureULLPic()
        if (i == 0) {
            PerformanceTraces::ShutterLag::snapshotTaken(&snapshotBuffer.capture_timestamp);
 
-           fillPicMetaData(picMetaData, false);
-           mULL->addSnapshotMetadata(picMetaData);
+           fillPicMetaData(firstPicMetaData, false);
+           fillPicMetaData(ullPicMetaData, false);
+           mULL->addSnapshotMetadata(ullPicMetaData);
            if (previewKeepAlive) {
               mPreviewThread->postview(&postviewBuffer);
-          }
+           }
+           status = mPictureThread->encode(firstPicMetaData,&snapshotBuffer, &postviewBuffer);
+           if (status != NO_ERROR) {
+               // normally this is done by PictureThread, but as no
+               // encoding was done, free the allocated metadata
+               firstPicMetaData.free(m3AControls);
+               LOGE("Error encoding first image of the ULL burst");
+               goto exit;
+           }
        }
 
        mULL->addInputFrame(&snapshotBuffer,  &postviewBuffer);
@@ -5814,13 +5824,16 @@ void ControlThread::postCaptureProcesssingDone(IPostCaptureProcessItem* item, st
     if(procStatus != NO_ERROR)
         LOGW("PostCapture Processing failed !!");
 
-    LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
+    mCallbacksThread->requestULLPicture();
+
     status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
     if (status != NO_ERROR) {
         // normally this is done by PictureThread, but as no
         // encoding was done, free the allocated metadata
         picMetaData.free(m3AControls);
     }
+    // TODO: Here we should return the other 2 snapshot+postview buffers that
+    // ULL stored
 
 }
 status_t ControlThread::hdrInit(int size, int pvSize, int format,
