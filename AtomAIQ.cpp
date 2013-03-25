@@ -20,6 +20,7 @@
 #include <math.h>
 #include <time.h>
 #include <dlfcn.h>
+#include <utils/String8.h>
 
 #include "LogHelper.h"
 #include "AtomCommon.h"
@@ -35,6 +36,8 @@
 
 #define MAX_EOF_SOF_DIFF 200000
 #define DEFAULT_EOF_SOF_DELAY 66000
+#define EPSILON 0.00001
+#define RETRY_COUNT 5
 
 namespace android {
 
@@ -70,6 +73,7 @@ AtomAIQ::AtomAIQ(AtomISP *anISP) :
     ,mFlashMode(CAM_AE_FLASH_MODE_NOT_SET)
     ,mAeSceneMode(CAM_AE_SCENE_MODE_NOT_SET)
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
+    ,mAwbRunCount(0)
     ,mMkn(NULL)
 {
     LOG1("@%s", __FUNCTION__);
@@ -1621,8 +1625,49 @@ void AtomAIQ::runAICMain()
 
         ret = ia_aiq_aic_run(m3aState.ia_aiq_handle, &aic_input_params, &((m3aState.results).aic_output));
         LOG2("@%s  ia_aiq_aic_run :%d", __FUNCTION__, ret);
+
+        if (mISP->isFileInjectionEnabled() && ret == 0 && mAwbResults != NULL) {
+            // When the awb result converged, and reach the max try count,
+            // dump the makernote into file
+            if ((mAwbResults->distance_from_convergence >= -EPSILON &&
+                 mAwbResults->distance_from_convergence <= EPSILON) &&
+                 mAwbRunCount > RETRY_COUNT ) {
+                mAwbRunCount = 0;
+                dumpMknToFile();
+            } else if(mAwbResults->distance_from_convergence >= -EPSILON &&
+                      mAwbResults->distance_from_convergence <= EPSILON){
+                mAwbRunCount++;
+                LOG2("AWB converged:%d", mAwbRunCount);
+            }
+        }
     }
 
+}
+
+int AtomAIQ::dumpMknToFile()
+{
+    LOG1("@%s", __FUNCTION__);
+    FILE *fp;
+    size_t bytes;
+    String8 fileName;
+    //get binary of makernote and store
+    ia_3a_mknote *aaaMkNote;
+    aaaMkNote = get3aMakerNote(ia_3a_mknote_mode_raw);
+    if(aaaMkNote) {
+        fileName = mISP->getFileInjectionFileName();
+        fileName += ".mkn";
+        LOG2("filename:%s",  fileName.string());
+        fp = fopen (fileName.string(), "w+");
+        if (fp == NULL) {
+            LOGE("open file %s failed %s", fileName.string(), strerror(errno));
+            put3aMakerNote(aaaMkNote);
+            return -1;
+        }
+        if ((bytes = fwrite(aaaMkNote->data, aaaMkNote->bytes, 1, fp)) < (size_t)aaaMkNote->bytes)
+            LOGW("Write less mkn bytes to %s: %d, %d", fileName.string(), aaaMkNote->bytes, bytes);
+        fclose (fp);
+    }
+    return 0;
 }
 
 int AtomAIQ::enableFpn(bool enable)

@@ -209,6 +209,7 @@ private:
                      float *digital_gain);
 
     void getSensorFrameParams(ia_aiq_sensor_frame_params *frame_params);
+    int dumpMknToFile();
 
 public:
     static AtomAIQ* getInstance(AtomISP *anISP = NULL) {
@@ -376,6 +377,7 @@ private:
     ia_aiq_awb_results *mAwbResults;
     AwbMode mAwbMode;
     bool mAwbLocked;
+    int mAwbRunCount;
 
     //GBCE
     ia_aiq_gbce_results *mGBCEResults;
