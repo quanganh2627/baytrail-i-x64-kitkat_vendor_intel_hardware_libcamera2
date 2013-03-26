@@ -4143,6 +4143,7 @@ status_t AtomISP::allocateSnapshotBuffers()
     int allocatedSnaphotBufs = 0;
     int allocatedPostviewBufs = 0;
     int snapshotSize = mConfig.snapshot.size;
+    struct v4l2_buffer_info *vinfo;
 
     if (mUsingClientSnapshotBuffers)
         snapshotSize = sizeof(void*);
@@ -4169,7 +4170,7 @@ status_t AtomISP::allocateSnapshotBuffers()
         }
         mSnapshotBuffers[i].type = ATOM_BUFFER_SNAPSHOT;
         allocatedSnaphotBufs++;
-        struct v4l2_buffer_info *vinfo;
+
         if (mUsingClientSnapshotBuffers) {
             vinfo = &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i];
             vinfo->data = mClientSnapshotBuffers[i];
@@ -4182,20 +4183,35 @@ status_t AtomISP::allocateSnapshotBuffers()
             mSnapshotBuffers[i].shared = false;
         }
         markBufferCached(vinfo, mClientSnapshotBuffersCached);
-        mPostviewBuffers[i].buff = NULL;
-        mCallbacks->allocateMemory(&mPostviewBuffers[i], mConfig.postview.size);
-        if (mPostviewBuffers[i].buff == NULL) {
-            LOGE("Error allocation memory for postview buffers!");
-            status = NO_MEMORY;
-            goto errorFree;
+    }
+
+    if (needNewPostviewBuffers()) {
+            freePostviewBuffers();
+            for (int i = 0; i < mConfig.num_snapshot; i++) {
+                mPostviewBuffers[i].buff = NULL;
+                mCallbacks->allocateMemory(&mPostviewBuffers[i], mConfig.postview.size);
+                if (mPostviewBuffers[i].buff == NULL) {
+                    LOGE("Error allocation memory for postview buffers!");
+                    status = NO_MEMORY;
+                    goto errorFree;
+                }
+                mPostviewBuffers[i].type = ATOM_BUFFER_POSTVIEW;
+                allocatedPostviewBufs++;
+                vinfo = &v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[i];
+                vinfo->data = mPostviewBuffers[i].buff->data;
+                markBufferCached(vinfo, true);
+                mPostviewBuffers[i].shared = false;
+                mPostviewBuffers[i].width = mConfig.postview.width;
+                mPostviewBuffers[i].height = mConfig.postview.height;
+                mPostviewBuffers[i].stride = mConfig.postview.stride;
+                mPostviewBuffers[i].size = mConfig.postview.size;
+
+            }
+    } else {
+        for (int i = 0; i < mConfig.num_snapshot; i++) {
+            vinfo = &v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[i];
+            vinfo->data = mPostviewBuffers[i].buff->data;
         }
-        mPostviewBuffers[i].type = ATOM_BUFFER_POSTVIEW;
-        allocatedPostviewBufs++;
-        vinfo = &v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[i];
-        vinfo->data = mPostviewBuffers[i].buff->data;
-        markBufferCached(vinfo, true);
-        mPostviewBuffers[i].shared = false;
-        mPostviewBuffers[i].stride = mConfig.postview.stride;
     }
     return status;
 
@@ -4352,12 +4368,53 @@ status_t AtomISP::freeSnapshotBuffers()
             mSnapshotBuffers[i].buff->release(mSnapshotBuffers[i].buff);
             mSnapshotBuffers[i].buff = NULL;
         }
+    }
+    return NO_ERROR;
+}
+
+status_t AtomISP::freePostviewBuffers()
+{
+    LOG1("@%s", __FUNCTION__);
+    for (int i = 0 ; i < mConfig.num_snapshot; i++) {
         if (mPostviewBuffers[i].buff != NULL) {
             mPostviewBuffers[i].buff->release(mPostviewBuffers[i].buff);
             mPostviewBuffers[i].buff = NULL;
         }
     }
     return NO_ERROR;
+}
+
+/**
+ * Helper method used during allocateSnapshot buffers
+ * It is used to detect whether we need to re-allocate the postview buffers
+ * or not.
+ *
+ * It checks two things:
+ *  - First the number of allocated buffers in mPostviewBuffers[]
+ *     if this differs from  mConfig.num_snapshot it returns true
+ *
+ *  - Second it checks the size of the first buffer is the same as the one
+ *    in the configuration. If it is then it returns false, indicating that we
+ *    do not need to re-allocate new postviews
+ *
+ */
+bool AtomISP::needNewPostviewBuffers()
+{
+    int currentBufferCnt = 0;
+    for (int i = 0 ; i < MAX_BURST_BUFFERS; i++) {
+        if (mPostviewBuffers[i].buff != NULL) {
+            currentBufferCnt++;
+        }
+    }
+
+    if ((currentBufferCnt != mConfig.num_snapshot) ||
+         (currentBufferCnt == 0))
+        return true;
+
+    if (mPostviewBuffers[0].size == mConfig.postview.size)
+        return false;
+
+    return true;
 }
 
 int AtomISP::getNumberOfCameras()

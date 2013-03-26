@@ -480,6 +480,8 @@ private:
     status_t freePreviewBuffers();
     status_t freeRecordingBuffers();
     status_t freeSnapshotBuffers();
+    status_t freePostviewBuffers();
+    bool needNewPostviewBuffers();
 
 #ifdef ENABLE_INTEL_METABUFFER
     void initMetaDataBuf(IntelMetadataBuffer* metaDatabuf);
