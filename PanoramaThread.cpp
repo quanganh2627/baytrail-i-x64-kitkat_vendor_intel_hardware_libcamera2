@@ -77,7 +77,9 @@ void PanoramaThread::getDefaultParameters(CameraParameters *intel_params, int ca
     if (!intel_params) {
         LOGE("params is null!");
         assert(false);
+        return;
     }
+
     // Set if Panorama is available or not.
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PANORAMA, FeatureData::panoramaSupported(cameraId));
     intel_params->set(IntelCameraParameters::KEY_PANORAMA_MAX_SNAPSHOT_COUNT, mPanoramaMaxSnapshotCount);
