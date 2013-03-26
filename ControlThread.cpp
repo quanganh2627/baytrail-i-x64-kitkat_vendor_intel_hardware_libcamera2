@@ -1773,7 +1773,7 @@ status_t ControlThread::handleMessageStartRecording()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    int width,height;
+    int width,height,widthPreview,heightPreview;
     char sizes[25];
 
     if (mState == STATE_PREVIEW_VIDEO) {
@@ -1807,13 +1807,20 @@ status_t ControlThread::handleMessageStartRecording()
     mParameters.setPictureSize(width, height);
     allocateSnapshotBuffers();
     snprintf(sizes, 25, "%dx%d", width,height);
-    mParameters.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, sizes);
-
     LOG1("video snapshot size %dx%d", width, height);
-    mParameters.getPreviewSize(&width, &height);
-    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH, width);
-    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT, height);
-    snprintf(sizes, 25, "%dx%d,0x0", width,height);
+    mParameters.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, sizes);
+    mParameters.getPreviewSize(&widthPreview, &heightPreview);
+
+    // avoid that thumbnail is larger than image in case of small video size
+    if (widthPreview > width) {
+        widthPreview = width;
+        heightPreview = height;
+    }
+
+    LOG1("video snapshot thumbnail size %dx%d", widthPreview, heightPreview);
+    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH, widthPreview);
+    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT, heightPreview);
+    snprintf(sizes, 25, "%dx%d,0x0", widthPreview,heightPreview);
     mParameters.set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES, sizes);
     updateParameterCache();
 
