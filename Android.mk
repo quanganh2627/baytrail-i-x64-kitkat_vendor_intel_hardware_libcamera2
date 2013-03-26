@@ -10,6 +10,11 @@ ifeq ($(USE_INTEL_METABUFFER),true)
 LOCAL_CFLAGS += -DENABLE_INTEL_METABUFFER
 endif
 
+
+ifeq ($(BOARD_GRAPHIC_IS_GEN),true)
+LOCAL_CFLAGS += -DGRAPHIC_IS_GEN
+endif
+
 # Intel camera extras (HDR, face detection, etc.)
 ifeq ($(USE_INTEL_CAMERA_EXTRAS),true)
 LOCAL_CFLAGS += -DENABLE_INTEL_EXTRAS
@@ -78,7 +83,12 @@ LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/cameralibs \
 	$(TARGET_OUT_HEADERS)/libmfldadvci \
 	$(TARGET_OUT_HEADERS)/libCameraFaceDetection \
+
+ifeq ($(BOARD_GRAPHIC_IS_GEN), true)
+else
+LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/pvr/hal
+endif
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_C_INCLUDES += \

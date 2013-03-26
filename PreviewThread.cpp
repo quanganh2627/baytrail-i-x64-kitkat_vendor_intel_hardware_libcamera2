@@ -21,7 +21,9 @@
 #include "Callbacks.h"
 #include "CallbacksThread.h"
 #include "ColorConverter.h"
+#ifndef GRAPHIC_IS_GEN
 #include <hal_public.h>
+#endif
 #include <gui/Surface.h>
 #include "PerformanceTraces.h"
 #include <ui/GraphicBuffer.h>
@@ -890,8 +892,11 @@ status_t PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
 
         LOG1("Setting new preview window %p (%dx%d)", mPreviewWindow,w,h);
         mPreviewWindow->set_usage(mPreviewWindow, usage);
-        mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h,
-                                             HAL_PIXEL_FORMAT_NV12);
+#ifndef GRAPHIC_IS_GEN
+        mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, HAL_PIXEL_FORMAT_NV12);
+#else
+        mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, HAL_PIXEL_FORMAT_YV12);
+#endif
     }
 
     return NO_ERROR;
@@ -922,9 +927,11 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
             }
             if(mOverlayEnabled)
                 bufferCount = GFX_OVERLAY_BUFFERS_DURING_OVERLAY_USE;
-
-            mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h,
-                                                 HAL_PIXEL_FORMAT_NV12);
+#ifndef GRAPHIC_IS_GEN
+            mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, HAL_PIXEL_FORMAT_NV12);
+#else
+            mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, HAL_PIXEL_FORMAT_YV12);
+#endif
         }
 
         /**
