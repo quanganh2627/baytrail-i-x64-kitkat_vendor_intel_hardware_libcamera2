@@ -101,7 +101,7 @@ public:
         mNumRecordingBuffers = 9;
         mContinuousCapture = false;
         mMaxContinuousRawRingBuffer = 0;
-        mShutterLagCompensationMs = 80;
+        mShutterLagCompensationMs = 40;
         mSupportAIQ = false;
 
    };
