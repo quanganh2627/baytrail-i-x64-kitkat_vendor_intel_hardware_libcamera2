@@ -1084,6 +1084,12 @@ status_t AtomISP::configurePreview()
     mNumPreviewBuffers = NUM_PREVIEW_BUFFERS;
     mPreviewDevice = mPreviewTooBigForVFPP ? mRecordingDevice : mConfigSnapshotPreviewDevice;
 
+    if (mPreviewDevice >= V4L2_MAX_DEVICE_COUNT) {
+        LOGE("Index mPreviewDevice (%d) beyond V4L2 device count (%d)", mPreviewDevice, V4L2_MAX_DEVICE_COUNT);
+        status = UNKNOWN_ERROR;
+        return status;
+    }
+
     if (mPreviewDevice != V4L2_MAIN_DEVICE) {
         ret = openDevice(mPreviewDevice);
         if (ret < 0) {
@@ -2042,6 +2048,13 @@ void AtomISP::destroyBufferPool(int device)
 int AtomISP::openDevice(int device)
 {
     LOG1("@%s", __FUNCTION__);
+
+    if (device >= V4L2_MAX_DEVICE_COUNT) {
+        LOGE("Attempted to open device with illegal index (%d). V4L2_MAX_DEVICE_COUNT = %d",
+             device, V4L2_MAX_DEVICE_COUNT);
+        return -1;
+    }
+
     if (video_fds[device] > 0) {
         LOGW("MainDevice already opened!");
         return video_fds[device];
