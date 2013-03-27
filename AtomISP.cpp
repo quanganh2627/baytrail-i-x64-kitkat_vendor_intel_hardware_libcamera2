@@ -4884,8 +4884,8 @@ int AtomISP::sensorMoveFocusToPosition(int position)
 {
     LOG2("@%s", __FUNCTION__);
 
-    // TODO: this code will be removed when the CPF file is valid for merr_vv in the future
-    if (strcmp(PlatformData::getBoardName(), "merr_vv") == 0) {
+    // TODO: this code will be removed when the CPF file is valid for saltbay in the future
+    if (strcmp(PlatformData::getBoardName(), "saltbay") == 0) {
         position = 1024 - position;
         position = 100 + (position - 370) * 1.7;
         if(position > 900)
@@ -5083,8 +5083,9 @@ int AtomISP::setAicParameter(struct atomisp_parameters *aic_param)
     LOG2("@%s", __FUNCTION__);
     int ret;
 
-    // TODO: this code will be removed when the CPF file is valid for merr_vv in the future
-    if (strcmp(PlatformData::getBoardName(), "merr_vv") == 0) {
+    // TODO: this code will be removed when the CPF file is valid for saltbay in the future
+    if (strcmp(PlatformData::getBoardName(), "saltbay") == 0 ||
+        strcmp(PlatformData::getBoardName(), "bodegabay") == 0) {
        aic_param->ctc_table = NULL;
        aic_param->gamma_table = NULL;
     }
