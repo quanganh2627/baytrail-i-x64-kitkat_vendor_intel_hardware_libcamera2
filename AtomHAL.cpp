@@ -30,7 +30,6 @@ using namespace android;
 //                              DATA TYPES
 ///////////////////////////////////////////////////////////////////////////////
 
-
 struct atom_camera {
     int camera_id;
     sp<ControlThread> control_thread;

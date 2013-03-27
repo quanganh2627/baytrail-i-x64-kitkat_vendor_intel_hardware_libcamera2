@@ -112,8 +112,7 @@ public:
         STATE_NO_WINDOW,
         STATE_CONFIGURED,
         STATE_ENABLED,
-        STATE_ENABLED_HIDDEN,   /*!< API sees preview not enabled, we do not pass buffers to screen */
-        STATE_ENABLED_HIDDEN_PASSTHROUGH /*!< API sees preview not enabled, we anyhow pass buffers to screen */
+        STATE_ENABLED_HIDDEN,
     };
 
     PreviewState getPreviewState() const;
@@ -124,7 +123,7 @@ public:
     void getDefaultParameters(CameraParameters *params);
     bool isWindowConfigured();
     status_t preview(AtomBuffer *buff);
-    status_t postview(AtomBuffer *buff);
+    status_t postview(AtomBuffer *buff, bool hidePreview = false);
     status_t setPreviewWindow(struct preview_stream_ops *window);
     status_t setPreviewConfig(int preview_width, int preview_height, int preview_stride,
                               int preview_format, bool shared_mode = true, int buffer_count = -1);
@@ -134,8 +133,6 @@ public:
     status_t returnPreviewBuffers();
     status_t flushBuffers();
     status_t enableOverlay(bool set = true, int rotation = 90);
-    // TODO: need methods to configure preview thread
-    // TODO: decide if configuration method should send a message
 
 // private types
 private:
@@ -174,6 +171,7 @@ private:
 
     struct MessagePreview {
         AtomBuffer buff;
+        bool hide;
     };
 
     struct MessageSetPreviewWindow {

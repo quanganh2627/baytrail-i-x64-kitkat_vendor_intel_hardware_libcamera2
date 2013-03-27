@@ -82,8 +82,6 @@ namespace android {
     static const char PREVIEW_UPDATE_MODE_STANDARD[];
     static const char PREVIEW_UPDATE_MODE_DURING_CAPTURE[];
     static const char PREVIEW_UPDATE_MODE_CONTINUOUS[];
-    // preview keep-alive (TODO: deprecated, remove when possible)
-    static const char KEY_PREVIEW_KEEP_ALIVE[];
     // raw data format for snapshot
     static const char KEY_RAW_DATA_FORMAT[];
     static const char KEY_SUPPORTED_RAW_DATA_FORMATS[];

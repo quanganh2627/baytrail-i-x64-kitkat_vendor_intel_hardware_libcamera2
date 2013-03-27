@@ -375,12 +375,16 @@ bool PreviewThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
     return false;
 }
 
-status_t PreviewThread::postview(AtomBuffer *buff)
+status_t PreviewThread::postview(AtomBuffer *buff, bool hidePreview)
 {
     LOG2("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_POSTVIEW;
-    msg.data.preview.buff = *buff;
+    if (buff)
+        msg.data.preview.buff = *buff;
+    else
+        msg.data.preview.buff.status = FRAME_STATUS_SKIPPED;
+    msg.data.preview.hide = hidePreview;
     return mMessageQueue.send(&msg);
 }
 
@@ -418,12 +422,6 @@ PreviewThread::PreviewState PreviewThread::getPreviewState() const
 /**
  * Public state setter for allowed transitions
  *
- * Note: state != STATE_STOPPED &&
- *       state != STATE_ENABLED_HIDDEN &&
- *       state != STATE_ENABLED_HIDDEN_PASSTHROUGH
- *       means that public API shows preview enabled()
- *       (+ queued startPreview handled by ControlThread)
- *
  * Note: only internally handled transition is initially
  *       STATE_CONFIGURED - which requires the client to
  *       call setPreviewConfig()
@@ -440,17 +438,16 @@ PreviewThread::PreviewState PreviewThread::getPreviewState() const
  * _ENABLED_HIDDEN -> _ENABLED:
  *  - preview gets restored visible (currently no-op internally)
  *  _ENABLED -> _HIDDEN:
- *  - public API preview state is shown disabled, we retain the
- *    preview stream active, but do not send buffers to display
- *  _ENABLED -> _HIDDEN_PASSTHROUGH:
- *  - public API preview state is shown disabled, we keep passing
- *    buffers to display
+ *  - preview stream active, but do not send buffers to display
  */
 status_t PreviewThread::setPreviewState(PreviewState state)
 {
     LOG1("@%s: state request %d", __FUNCTION__, state);
     status_t status = INVALID_OPERATION;
     Mutex::Autolock lock(&mStateMutex);
+
+    if (mState == state)
+        return NO_ERROR;
 
     switch (state) {
         case STATE_NO_WINDOW:
@@ -460,18 +457,15 @@ status_t PreviewThread::setPreviewState(PreviewState state)
         case STATE_STOPPED:
             if (mState == STATE_NO_WINDOW
              || mState == STATE_ENABLED
-             || mState == STATE_ENABLED_HIDDEN
-             || mState == STATE_ENABLED_HIDDEN_PASSTHROUGH)
+             || mState == STATE_ENABLED_HIDDEN)
                 status = NO_ERROR;
             break;
         case STATE_ENABLED:
             if (mState == STATE_CONFIGURED
-             || mState == STATE_ENABLED_HIDDEN
-             || mState == STATE_ENABLED_HIDDEN_PASSTHROUGH)
+             || mState == STATE_ENABLED_HIDDEN)
                 status = NO_ERROR;
             break;
         case STATE_ENABLED_HIDDEN:
-        case STATE_ENABLED_HIDDEN_PASSTHROUGH:
             if (mState == STATE_ENABLED)
                 status = NO_ERROR;
             break;
@@ -556,6 +550,8 @@ status_t PreviewThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_POSTVIEW:
             status = handlePostview(&msg.data.preview);
+            if (msg.data.preview.hide)
+                setPreviewState(STATE_ENABLED_HIDDEN);
             mCallbacksThread->postviewRendered();
             break;
 
@@ -895,7 +891,7 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
             msg->buff.dataPtr);
 
     PreviewState state = getPreviewState();
-    if (state != STATE_ENABLED && state != STATE_ENABLED_HIDDEN_PASSTHROUGH) {
+    if (state != STATE_ENABLED) {
         LOG2("Received preview frame in state %d, skipping", state);
         goto skip_displaying;
     }
@@ -1365,8 +1361,7 @@ PreviewThread::GfxAtomBuffer* PreviewThread::pickReservedBuffer()
 }
 
 /**
- * Copies snapshot-postview buffer to preview window for preview-keep-alive
- * feature
+ * Copies snapshot-postview buffer to preview window for displaying
  *
  * TODO: This is temporary solution to update preview surface with postview
  * frames. Buffers coupling (indexes mapping in AtomISP & ControlThread)
@@ -1381,31 +1376,33 @@ status_t PreviewThread::handlePostview(MessagePreview *msg)
 {
     int err;
 
+    if (msg->buff.status == FRAME_STATUS_SKIPPED)
+        return NO_ERROR;
+
     LOG1("@%s: width = %d, height = %d ", __FUNCTION__,
          msg->buff.width, msg->buff.height);
 
     if (!mPreviewWindow) {
-        LOGW("Unable to provide 'preview-keep-alive' frame, no window!");
+        LOGW("Unable to display postview frame, no window!");
         return NO_ERROR;
     }
 
     if (msg->buff.type != ATOM_BUFFER_POSTVIEW) {
         // support implemented for using AtomISP postview type only
-        LOG1("Unable to provide 'preview-keep-alive' frame, input buffer type unexpected");
+        LOG1("Unable to display postview frame, input buffer type unexpected");
         return UNKNOWN_ERROR;
     }
 
     if (msg->buff.width != mPreviewWidth ||
         msg->buff.height != mPreviewHeight) {
-        LOGD("Unable to provide 'preview-keep-alive' frame, postview %dx%d -> preview %dx%d ",
+        LOGD("Unable to display postview frame, postview %dx%d -> preview %dx%d ",
                 msg->buff.width, msg->buff.height, mPreviewWidth, mPreviewHeight);
         return UNKNOWN_ERROR;
     }
 
     PreviewState currentState = getPreviewState();
     if (currentState == STATE_ENABLED ||
-        currentState == STATE_ENABLED_HIDDEN ||
-        currentState == STATE_ENABLED_HIDDEN_PASSTHROUGH) {
+        currentState == STATE_ENABLED_HIDDEN) {
         // in continuous-mode, preview stream active
         // first try dequeueing from window
         GfxAtomBuffer *buf = dequeueFromWindow();
@@ -1442,7 +1439,7 @@ status_t PreviewThread::handlePostview(MessagePreview *msg)
         // queue one from the window
         err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &tmpBuf.stride);
         if (err != 0) {
-            LOGW("Error dequeuing preview buffer for 'preview-keep-alive'");
+            LOGW("Error dequeuing preview buffer for postview");
             return UNKNOWN_ERROR;
         }
 

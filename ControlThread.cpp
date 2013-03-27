@@ -125,6 +125,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mEnableFocusCbAtStart(false)
     ,mEnableFocusMoveCbAtStart(false)
     ,mFirstPreviewStart(true)
+    ,mStillCaptureInProgress(false)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -573,13 +574,17 @@ status_t ControlThread::stopRecording()
 bool ControlThread::previewEnabled()
 {
     LOG2("@%s", __FUNCTION__);
+    // Preview is essentially shown enabled whenever PreviewThread's
+    // state is other than stopped.
+    bool enabled =
+        (mPreviewThread->getPreviewState() != PreviewThread::STATE_STOPPED);
 
-    PreviewThread::PreviewState state = mPreviewThread->getPreviewState();
+    // mStillCaptureInProgress indicates a previous call to takePicture()
+    // and previewEnabled() needs to return false to act according to API
+    // specification. Reality of preview state may be different depending
+    // on mState (capture mode) and configuration.
+    enabled &= !mStillCaptureInProgress;
 
-    bool enabled = (state != PreviewThread::STATE_STOPPED
-                 && state != PreviewThread::STATE_ENABLED_HIDDEN
-                 && state != PreviewThread::STATE_ENABLED_HIDDEN_PASSTHROUGH);
-    // Note: See PreviewThread::setPreviewState() for documentation
     return enabled;
 }
 
@@ -592,12 +597,23 @@ bool ControlThread::recordingEnabled()
 status_t ControlThread::setParameters(const char *params)
 {
     LOG1("@%s: params = %p", __FUNCTION__, params);
-
     Message msg;
     msg.id = MESSAGE_ID_SET_PARAMETERS;
     msg.data.setParameters.params = const_cast<char*>(params); // We swear we won't modify params :)
-    return mMessageQueue.send(&msg, MESSAGE_ID_SET_PARAMETERS);
 
+    // mStillCaptureInProgress indicates that application is reconfiguring
+    // after takePicture() without stopping. This is valid use case since by
+    // the specification we should be stopped after takePicture(). However,
+    // continuous-mode may leave the preview running in which case such
+    // reconfiguration may cause multiple restartPreviews(). Following
+    // startPreview() is required, so we can stop before handling parameters.
+    PreviewThread::PreviewState previewState = mPreviewThread->getPreviewState();
+    msg.data.setParameters.stopPreviewRequest =
+        mStillCaptureInProgress
+        && (previewState == PreviewThread::STATE_ENABLED
+         || previewState == PreviewThread::STATE_ENABLED_HIDDEN);
+
+    return mMessageQueue.send(&msg, MESSAGE_ID_SET_PARAMETERS);
 }
 
 char* ControlThread::getParameters()
@@ -691,6 +707,7 @@ String8 ControlThread::paramsReturnNewIfChanged(
 
 status_t ControlThread::takePicture()
 {
+    status_t status = NO_ERROR;
     LOG1("@%s", __FUNCTION__);
     Message msg;
 
@@ -703,7 +720,11 @@ status_t ControlThread::takePicture()
     else
         msg.id = MESSAGE_ID_TAKE_PICTURE;
 
-    return mMessageQueue.send(&msg);
+    status = mMessageQueue.send(&msg);
+    if (status == NO_ERROR) {
+        mStillCaptureInProgress = (mState != STATE_RECORDING) ? true : false;
+    }
+    return status;
 }
 
 status_t ControlThread::cancelPicture()
@@ -890,28 +911,32 @@ status_t ControlThread::handleMessageExit(MessageExit *msg)
     return NO_ERROR;
 }
 
+/**
+ * Helper function for handleMessageStopPreview() to hanle backgrounding of
+ * currently running continuous-mode preview stream.
+ *
+ * PreviewBackgrounding is allowed in single scenario: when taking a single
+ * picture in continuous-mode. Call to stopPreview() is handled through this
+ * function and if allowed and possible - the preview stream is left running
+ * without stopping. This is to improve shot2shot in special case of application
+ * calling stopPreview() (e.g. to reset the window handle) in between shots.
+ */
 status_t ControlThread::handleContinuousPreviewBackgrounding()
 {
-    PreviewThread::PreviewState previewState;
-
     if (mThreadRunning == false)
         return INVALID_OPERATION;
 
     if (mState != STATE_CONTINUOUS_CAPTURE)
         return NO_INIT;
 
-    previewState = mPreviewThread->getPreviewState();
+    // allow backgrounding only in post capture sequence
+    if (!mStillCaptureInProgress)
+        return INVALID_OPERATION;
 
     // Post-capture stopPreview case
-    if (!mISP->isSharedPreviewBufferConfigured()
-        && (previewState == PreviewThread::STATE_ENABLED_HIDDEN
-        || previewState == PreviewThread::STATE_ENABLED_HIDDEN_PASSTHROUGH)) {
+    if (!mISP->isSharedPreviewBufferConfigured()) {
         // Using internal buffers => flush and release preview buffers
         // and leave the core running
-        // It is special case to fake preview stopped state for Public API
-        // to reach the target Shot2Shot in continuous-mode. We allow
-        // entering preview stopped state from hidden (after capture)
-        // without stopping the ISP.
         mPreviewThread->flushBuffers();
         mPostProcThread->flushFrames();
         // return Gfx buffers
@@ -921,7 +946,7 @@ status_t ControlThread::handleContinuousPreviewBackgrounding()
         mPreviewThread->setPreviewState(PreviewThread::STATE_STOPPED);
         LOG1("Continuous-mode is left running in background");
     } else {
-        LOG1("Continuous-mode needs to stop");
+        LOG1("Preview buffers shared, continuous-mode needs to stop");
         return INVALID_OPERATION;
     }
 
@@ -947,11 +972,12 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
         format = V4L2Format(mParameters.getPreviewFormat());
         mISP->getPreviewSize(&width, &height,&stride);
         mPreviewThread->setPreviewConfig(width, height, stride, format, false);
-    } else if (previewState != PreviewThread::STATE_ENABLED_HIDDEN &&
-               previewState != PreviewThread::STATE_ENABLED_HIDDEN_PASSTHROUGH) {
+    } else if (previewState != PreviewThread::STATE_ENABLED
+            && previewState != PreviewThread::STATE_ENABLED_HIDDEN) {
         LOGE("Trying to resume continuous preview from unexpected state!");
         return INVALID_OPERATION;
     }
+
     mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED);
     LOG1("Continuous preview is resumed by foregrounding");
     return NO_ERROR;
@@ -1531,8 +1557,7 @@ status_t ControlThread::stopCapture()
         return status;
     }
 
-    if (isParameterSet(IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE))
-        mPreviewThread->flushBuffers();
+    mPreviewThread->flushBuffers();
 
     status = mISP->stop();
     if (status != NO_ERROR) {
@@ -1631,6 +1656,8 @@ status_t ControlThread::handleMessageStartPreview()
         }
     }
 
+    mStillCaptureInProgress = false;
+
     // Check if continuous capture previously disabled focus callbacks
     if (mEnableFocusCbAtStart) {
         enableMsgType(CAMERA_MSG_FOCUS);
@@ -1640,13 +1667,6 @@ status_t ControlThread::handleMessageStartPreview()
     if (mEnableFocusMoveCbAtStart) {
         enableMsgType(CAMERA_MSG_FOCUS_MOVE);
         mEnableFocusCbAtStart = false;
-    }
-
-    if (mState == STATE_CONTINUOUS_CAPTURE) {
-        // already in continuous-state
-        status = handleContinuousPreviewForegrounding();
-        if (status == NO_ERROR)
-            goto preview_started;
     }
 
     if (mState == STATE_STOPPED) {
@@ -1660,10 +1680,17 @@ status_t ControlThread::handleMessageStartPreview()
             LOGI("Preview window not set deferring start preview until then");
             mPreviewThread->setPreviewState(PreviewThread::STATE_NO_WINDOW);
         }
+    } else if (mState == STATE_CONTINUOUS_CAPTURE) {
+        // already in continuous-state
+        status = handleContinuousPreviewForegrounding();
     } else {
-        LOGE("Error starting preview. Invalid state!");
         status = INVALID_OPERATION;
     }
+
+    if (status != NO_ERROR) {
+        LOGE("Error starting preview. Invalid state!");
+    }
+
 preview_started:
     mPreviewThread->setCallback(this, ICallbackPreview::INPUT_ONCE);
     mMessageQueue.reply(MESSAGE_ID_START_PREVIEW, status);
@@ -2346,16 +2373,6 @@ status_t ControlThread::continuousStartStillCapture(bool useFlash)
             return status;
         }
         startOfflineCapture();
-        // Note: We change the PreviewThread state here to change
-        // the public API previewEnabled() state to stopped while
-        // continuous mode keeps running the preview stream.
-        // Depending on mIntelParamsAllowed (proprietary vs. public)
-        // we decide whether to anyhow continue updating the preview
-        // screen in this state. This is to keep API sequences
-        // consistent between continuous and normal modes.
-        mPreviewThread->setPreviewState( mIntelParamsAllowed ?
-                PreviewThread::STATE_ENABLED_HIDDEN_PASSTHROUGH :
-                PreviewThread::STATE_ENABLED_HIDDEN);
     }
     else {
         // Flushing pictures will also clear counters for
@@ -2452,8 +2469,13 @@ status_t ControlThread::captureStillPic()
                     flashMode == CAM_AE_FLASH_MODE_ON);
     bool flashFired = false;
     bool flashSequenceStarted = false;
-    bool previewKeepAlive = selectPostviewSize(pvWidth, pvHeight) && !mHdr.enabled;
-
+    // TODO: do the postview displaying and hiding based on new
+    //       preview-update-mode parameter
+    bool displayPostview = selectPostviewSize(pvWidth, pvHeight)
+                           && !mHdr.enabled;
+    // Synchronise jpeg callback with postview rendering in case of single
+    // capture
+    bool syncJpegCbWithPostview = displayPostview && (mBurstLength <= 1) && !mHdr.enabled;
     bool requestPostviewCallback = true;
     bool requestRawCallback = true;
 
@@ -2465,8 +2487,7 @@ status_t ControlThread::captureStillPic()
     }
     // WORKAROUND END
     // Notify CallbacksThread that a picture was requested, so grab one from queue
-    mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback, (mBurstLength > 1)? false : previewKeepAlive);
-
+    mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback, syncJpegCbWithPostview);
     if (!mHdr.enabled) {
         PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE();
     }
@@ -2696,8 +2717,11 @@ status_t ControlThread::captureStillPic()
     if (mState == STATE_CONTINUOUS_CAPTURE && mBurstLength <= 1)
         stopOfflineCapture();
 
-    if (previewKeepAlive) {
-        mPreviewThread->postview(&postviewBuffer);
+    if (displayPostview) {
+        // We sync with single capture, where we also need preview to stall.
+        // So, hide preview after postview when syncJpegCbWithPostview is true
+        // TODO: hiding to be desided based on preview-update-mode
+        mPreviewThread->postview(&postviewBuffer, syncJpegCbWithPostview);
     }
 
     if (mState == STATE_CONTINUOUS_CAPTURE) {
@@ -2720,7 +2744,7 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
     int pvWidth, pvHeight;
-    bool previewKeepAlive = selectPostviewSize(pvWidth, pvHeight) && !mHdr.enabled;
+    bool displayPostview = selectPostviewSize(pvWidth, pvHeight) && !mHdr.enabled;
 
     if (clientRequest) {
         bool requestPostviewCallback = true;
@@ -2799,8 +2823,8 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
         return status;
     }
 
-    if (previewKeepAlive)
-        mPreviewThread->postview(&postviewBuffer);
+    if (displayPostview)
+        mPreviewThread->postview(&postviewBuffer, false);
 
     PictureThread::MetaData picMetaData;
     fillPicMetaData(picMetaData, false);
@@ -2907,7 +2931,7 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
     int pvW, pvH;
-    bool previewKeepAlive = selectPostviewSize(pvW, pvH);
+    bool displayPostview = selectPostviewSize(pvW, pvH);
 
     assert(mState == STATE_CONTINUOUS_CAPTURE);
 
@@ -2945,8 +2969,8 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
 
     mBurstCaptureNum++;
 
-    if (previewKeepAlive)
-        mPreviewThread->postview(&postviewBuffer);
+    if (displayPostview)
+        mPreviewThread->postview(&postviewBuffer, false);
 
     // Do jpeg encoding
     LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
@@ -2987,7 +3011,7 @@ status_t ControlThread::captureULLPic()
     PictureThread::MetaData firstPicMetaData;
     PictureThread::MetaData ullPicMetaData;
 
-    bool previewKeepAlive = selectPostviewSize(pvWidth, pvHeight);
+    bool displayPostview = selectPostviewSize(pvWidth, pvHeight);
     //cache burst related parameters
     cachedBurstLength = mBurstLength;
     cachedBurstStart = mBurstStart;
@@ -3034,8 +3058,8 @@ status_t ControlThread::captureULLPic()
            fillPicMetaData(firstPicMetaData, false);
            fillPicMetaData(ullPicMetaData, false);
            mULL->addSnapshotMetadata(ullPicMetaData);
-           if (previewKeepAlive) {
-              mPreviewThread->postview(&postviewBuffer);
+           if (displayPostview) {
+              mPreviewThread->postview(&postviewBuffer, false);
            }
            status = mPictureThread->encode(firstPicMetaData,&snapshotBuffer, &postviewBuffer);
            if (status != NO_ERROR) {
@@ -3160,6 +3184,8 @@ status_t ControlThread::handleMessageCancelPicture()
 
     mBurstLength = 0;
     mPictureThread->flushBuffers();
+
+    mStillCaptureInProgress = false;
 
     mMessageQueue.reply(MESSAGE_ID_CANCEL_PICTURE, status);
     return status;
@@ -5649,6 +5675,13 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     ProcessOverlayEnable(&oldParams, &newParams);
 
     if (needRestartPreview == true) {
+        if (msg->stopPreviewRequest) {
+            if (mState != STATE_CONTINUOUS_CAPTURE)
+                LOGD("%s: Invalid stopPreviewRequest!", __FUNCTION__);
+            status = stopPreviewCore();
+            if (status != NO_ERROR)
+                return status;
+        }
         // if preview is running and preview format has changed, then we need
         // to stop, reconfigure, and restart the isp and all threads.
         // Update the current params before we re-start

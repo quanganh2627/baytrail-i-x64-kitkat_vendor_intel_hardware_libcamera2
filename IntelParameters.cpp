@@ -104,9 +104,6 @@ namespace android {
     const char IntelCameraParameters::PREVIEW_UPDATE_MODE_DURING_CAPTURE[] = "during-capture";
     const char IntelCameraParameters::PREVIEW_UPDATE_MODE_CONTINUOUS[] = "continuous";
 
-    // preview keep-alive (TODO: deprecated, remove when possible)
-    const char IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE[] = "preview-keep-alive";
-
     // smart shutter
     const char IntelCameraParameters::KEY_SMILE_SHUTTER[] = "smile-shutter";
     const char IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER[] = "smile-shutter-values";
