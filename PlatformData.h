@@ -103,7 +103,7 @@ public:
         mMaxContinuousRawRingBuffer = 0;
         mShutterLagCompensationMs = 40;
         mSupportAIQ = false;
-
+        mPreviewFormat = V4L2_PIX_FMT_NV12;
    };
 
  protected:
@@ -335,6 +335,8 @@ public:
 
     /* For Intel3A ia_aiq */
     bool mSupportAIQ;
+
+    int mPreviewFormat;
 
     /* blackbay, or merr_vv, or redhookbay, or victoriabay... */
     String8 mBoardName;
@@ -909,6 +911,13 @@ class PlatformData {
      */
     // TODO: remove this until official ia_aiq is adopted
     static bool supportAIQ(void);
+
+    /**
+     * Returns the preview format with V4l2 definition
+     *
+     * \return the preview format, V4L2_PIX_FMT_NV12 or V4L2_PIX_FMT_YVU420
+    */
+    static int getPreviewFormat(void);
 
     /**
      * Returns the board name

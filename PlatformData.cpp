@@ -1002,6 +1002,13 @@ bool PlatformData::supportAIQ(void)
     return i->mSupportAIQ;
 }
 
+int PlatformData::getPreviewFormat(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mPreviewFormat;
+}
+
+
 const char* PlatformData::getBoardName(void)
 {
     PlatformBase *i = getInstance();
