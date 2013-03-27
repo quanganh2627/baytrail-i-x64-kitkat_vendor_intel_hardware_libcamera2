@@ -213,6 +213,7 @@ private:
 
     struct MessageSetParameters {
         char* params;
+        bool stopPreviewRequest;
     };
 
     struct MessageCommand{
@@ -680,6 +681,13 @@ private:
     bool mEnableFocusCbAtStart;     /* for internal control of focus cb's in continuous-mode */
     bool mEnableFocusMoveCbAtStart; /* for internal control of focus-move cb's in continuous-mode */
     bool mFirstPreviewStart;        /* indicator of first preview start for L2P pnp optimizations */
+
+    bool mStillCaptureInProgress;   /*!< indicates ongoing capture sequence for Camera_HAL API.
+                                         note: threadsafe to use only in Camera_HAL calling context
+                                               or synchronous messages from them
+                                         note: is set to true when takePicture() is called in other
+                                               than video recording state. Remains true until following
+                                               call to startPreview() or cancelPicture(). */
 }; // class ControlThread
 
 }; // namespace android
