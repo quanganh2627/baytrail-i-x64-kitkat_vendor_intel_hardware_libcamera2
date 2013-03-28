@@ -1478,11 +1478,8 @@ status_t AtomISP::configureContinuousRingBuffer()
  */
 int AtomISP::getContinuousCaptureNumber() const
 {
-   if (mMode == MODE_CONTINUOUS_CAPTURE)
-       return mContCaptConfig.numCaptures;
-   else
-       return 1;
 
+    return mContCaptConfig.numCaptures;
 }
 
 /**
