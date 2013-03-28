@@ -1131,6 +1131,9 @@ void ControlThread::releaseContinuousCapture(bool flushPictures)
 ControlThread::ShootingMode ControlThread::selectShootingMode()
 {
     ShootingMode ret = SHOOTING_MODE_NONE;
+    FlashMode flashMode = m3AControls->getAeFlashMode();
+    bool flashOn = (flashMode == CAM_AE_FLASH_MODE_TORCH ||
+                   flashMode == CAM_AE_FLASH_MODE_ON);
 
     switch (mState) {
         case STATE_PREVIEW_STILL:
@@ -1148,10 +1151,11 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
             else
                 ret = SHOOTING_MODE_ZSL;
 
-            if (mULL->isActive() && mULL->trigger())
+            /* Trigger ULL only when user did not forced flash */
+            if (mULL->isActive() && mULL->trigger() && !flashOn)
                 ret = SHOOTING_MODE_ULL;
-
             break;
+
         case STATE_CAPTURE:
             if (isBurstRunning())
                 ret = SHOOTING_MODE_BURST;
