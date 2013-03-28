@@ -112,6 +112,21 @@ status_t CallbacksThread::compressedFrameDone(AtomBuffer* jpegBuf, AtomBuffer* s
 }
 
 /**
+ * Sends an "ULL triggered"-callback to the application
+ * \param id ID of the post-processed ULL snapshot that will be provided to the
+ * application after the post-processing is done.
+ */
+status_t CallbacksThread::ullTriggered(int id)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_ULL_TRIGGERED;
+    msg.data.ull.id = id;
+
+    return mMessageQueue.send(&msg);
+}
+
+/**
  * Requests a ULL capture to be sent to client
  * the next JPEG image done received by the CallbackThread will be returned to
  * the client via  a custom callback rather than the normal JPEG data callabck
@@ -441,6 +456,14 @@ status_t CallbacksThread::handleMessageJpegDataRequest(MessageDataRequest *msg)
     return NO_ERROR;
 }
 
+status_t CallbacksThread::handleMessageUllTriggered(MessageULLSnapshot *msg)
+{
+    LOG1("@%s Done",__FUNCTION__);
+    int id = msg->id;
+    mCallbacks->ullTriggered(id);
+    return NO_ERROR;
+}
+
 status_t CallbacksThread::handleMessageUllJpegDataRequest(MessageULLSnapshot *msg)
 {
     LOG1("@%s Done",__FUNCTION__);
@@ -464,13 +487,40 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageFrame *msg)
         return NO_ERROR;
     }
 
-    mCallbacks->ullPictureDone(&jpegBuf);
+    // Put put the metadata in place to the ULL image buffer. This will be
+    // split into separate JPEG buffer and ULL metadata in the service (JNI) layer
+    // before passing to application via the Java callback
+    camera_ull_metadata_t metadata;
+    metadata.id = mULLid;
+
+    AtomBuffer jpegAndMeta = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+    mCallbacks->allocateMemory(&jpegAndMeta, jpegBuf.size + sizeof(camera_ull_metadata_t));
+
+    // space for the metadata is reserved in the beginning of the buffer, copy it there
+    memcpy(jpegAndMeta.buff->data, &metadata, sizeof(camera_ull_metadata_t));
+
+    unsigned char *src = NULL;
+    if (jpegBuf.shared) {
+        src = (unsigned char *) *((char **)jpegBuf.buff->data);
+    } else {
+        src = (unsigned char *) jpegBuf.buff->data;
+    }
+
+    // copy the image data in place, it goes after the metadata in the buffer
+    memcpy((char*)jpegAndMeta.buff->data + sizeof(camera_ull_metadata_t), src, jpegBuf.size);
+
+    mCallbacks->ullPictureDone(&jpegAndMeta);
 
     if (jpegBuf.buff != NULL) {
         LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
         jpegBuf.buff->release(jpegBuf.buff);
     } else {
         LOGW("CallbacksThread received NULL jpegBuf.buff, which should not happen");
+    }
+
+    if (jpegAndMeta.buff != NULL) {
+        LOG1("Releasing jpegAndMeta @%p", jpegAndMeta.buff->data);
+        jpegAndMeta.buff->release(jpegAndMeta.buff);
     }
 
     if (snapshotBuf.buff != NULL && postviewBuf.buff != NULL) {
@@ -604,6 +654,10 @@ status_t CallbacksThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_ULL_JPEG_DATA_REQUEST:
             status = handleMessageUllJpegDataRequest(&msg.data.ull);
+            break;
+
+        case MESSAGE_ID_ULL_TRIGGERED:
+            status = handleMessageUllTriggered(&msg.data.ull);
             break;
 
         default:

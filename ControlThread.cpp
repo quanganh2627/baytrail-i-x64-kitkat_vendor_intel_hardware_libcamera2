@@ -3018,6 +3018,9 @@ status_t ControlThread::captureULLPic()
     // Configure PictureThread, inform of the picture and thumbnail resolutions
     mPictureThread->initialize(mParameters);
 
+    // Let application know that we are going to produce an ULL image
+    mCallbacksThread->ullTriggered(mULL->getCurrentULLid());
+
     // Get the snapshots
     for (int i=0; i< mBurstLength; i++) {
        status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);

@@ -267,4 +267,15 @@ void Callbacks::ullPictureDone(AtomBuffer *buff)
     }
 }
 
+void Callbacks::ullTriggered(int id)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if (mNotifyCB != NULL) {
+        LOG1("Sending message: CAMERA_MSG_ULL_TRIGGERED, id = %d", id);
+        mNotifyCB(CAMERA_MSG_ULL_TRIGGERED, id, 0, mUserToken);
+    }
+
+}
+
 };
