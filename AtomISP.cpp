@@ -527,6 +527,7 @@ AtomISP::~AtomISP()
         //       we need to make sure we free them here.
         //       This is not needed for preview and recording buffers.
         freeSnapshotBuffers();
+        freePostviewBuffers();
     }
     closeDevice(V4L2_MAIN_DEVICE);
 
@@ -1392,6 +1393,7 @@ errorCloseSecond:
     closeDevice(V4L2_POSTVIEW_DEVICE);
 errorFreeBuf:
     freeSnapshotBuffers();
+    freePostviewBuffers();
 
     return status;
 }
@@ -1598,6 +1600,7 @@ errorCloseSecond:
     closeDevice(V4L2_POSTVIEW_DEVICE);
 errorFreeBuf:
     freeSnapshotBuffers();
+    freePostviewBuffers();
 
     return status;
 }
@@ -1656,6 +1659,7 @@ errorCloseSecond:
     closeDevice(V4L2_POSTVIEW_DEVICE);
 errorFreeBuf:
     freeSnapshotBuffers();
+    freePostviewBuffers();
 
 end:
     return status;
@@ -1727,7 +1731,10 @@ status_t AtomISP::stopCapture()
 status_t AtomISP::releaseCaptureBuffers()
 {
     LOG1("@%s", __FUNCTION__);
-    return freeSnapshotBuffers();
+    status_t status = NO_ERROR;
+    status = freeSnapshotBuffers();
+    status |= freePostviewBuffers();
+    return status;
 }
 
 
