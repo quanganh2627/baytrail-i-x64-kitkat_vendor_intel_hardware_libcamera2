@@ -71,13 +71,16 @@ public:
     /**
      *  Activation/De-activation Thresholds
      *  used to trigger ULL based on 3A parameters
+     *  There are 2 thresholds:
+     *  - one to activate ULL when scene gets darker (bright threshold)
+     *  - one to deactivate ULL if scene gets too dark (dark threshold)
+     *
      *  TODO: They should eventually come from CPF
-     *  TODO: we should have another threshold to allow flash
      **/
-    static int ULL_ACTIVATE_ISO_THRESHOLD;
-    static int ULL_DEACTIVATE_ISO_THRESHOLD;
-    static int ULL_ACTIVATE_EXPTIME_THRESHOLD;
-    static int ULL_DEACTIVATE_EXPTIME_THRESHOLD;
+    static int ULL_BRIGHT_ISO_THRESHOLD;
+    static int ULL_BRIGHT_EXPTIME_THRESHOLD;
+    static int ULL_DARK_ISO_THRESHOLD;
+    static int ULL_DARK_EXPTIME_THRESHOLD;
 
     /**
      * \enum ULLPreset
