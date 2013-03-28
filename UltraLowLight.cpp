@@ -31,10 +31,13 @@ const char UltraLowLight::MORPHO_INPUT_FORMAT[] = "YUV420_SEMIPLANAR";  // This 
 const int UltraLowLight::MORPHO_INPUT_FORMAT_V4L2 = V4L2_PIX_FMT_NV12; // Keep these two constants in sync
 const int UltraLowLight::MAX_INPUT_BUFFERS = 3;
 
-int UltraLowLight::ULL_ACTIVATE_ISO_THRESHOLD = 600;
-int UltraLowLight::ULL_DEACTIVATE_ISO_THRESHOLD = 400;
-int UltraLowLight::ULL_ACTIVATE_EXPTIME_THRESHOLD = 6000;
-int UltraLowLight::ULL_DEACTIVATE_EXPTIME_THRESHOLD = 4000;
+// ULL bright threshold: from Normal to ULL
+int UltraLowLight::ULL_BRIGHT_ISO_THRESHOLD = 600;
+int UltraLowLight::ULL_BRIGHT_EXPTIME_THRESHOLD = 4000;
+
+// ULL dark threshold : from ULL to Flash
+int UltraLowLight::ULL_DARK_ISO_THRESHOLD = 1100;
+int UltraLowLight::ULL_DARK_EXPTIME_THRESHOLD = 7000;
 
 /**
  * \struct MorphoULL
@@ -500,17 +503,17 @@ bool UltraLowLight::updateTrigger(SensorAeConfig &expInfo, int iso)
     int expTime = expInfo.expTime;
     bool change = false;
 
-    if ((iso >= ULL_ACTIVATE_ISO_THRESHOLD) &&
-        (expTime >= ULL_ACTIVATE_EXPTIME_THRESHOLD)) {
+    if (((iso >= ULL_DARK_ISO_THRESHOLD) && (expTime >= ULL_DARK_EXPTIME_THRESHOLD))
+     || ((iso <= ULL_BRIGHT_ISO_THRESHOLD) && (expTime <= ULL_BRIGHT_EXPTIME_THRESHOLD))){
+
+        change = (mTrigger? true:false);
+        mTrigger = false;
+
+    } else {
         change = (mTrigger? false:true);
         mTrigger = true;
     }
 
-    if ((iso <= ULL_DEACTIVATE_ISO_THRESHOLD) &&
-        (expTime <= ULL_DEACTIVATE_EXPTIME_THRESHOLD)) {
-        change = (mTrigger? true:false);
-        mTrigger = false;
-    }
     if (change)
         LOG1("trigger %s, iso %d, expTime %d",mTrigger?"true":"false", iso, expTime);
 
