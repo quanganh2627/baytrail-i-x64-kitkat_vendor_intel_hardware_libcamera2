@@ -848,15 +848,22 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
         switch(mPreviewFormat) {
 
         case V4L2_PIX_FMT_YUV420:
-            align16ConvertNV12ToYV12(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+            if (PlatformData::getPreviewFormat() == V4L2_PIX_FMT_NV12)
+                align16ConvertNV12ToYU12(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+            //TBD for other preview format, not supported yet
             break;
 
-        case V4L2_PIX_FMT_NV21:
-            trimConvertNV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+        case V4L2_PIX_FMT_NV21: // you need to do this for the first time
+            if (PlatformData::getPreviewFormat() == V4L2_PIX_FMT_NV12)
+                trimConvertNV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+            else
+                align16ConvertYV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
             break;
 
         case V4L2_PIX_FMT_RGB565:
-            trimConvertNV12ToRGB565(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+            if (PlatformData::getPreviewFormat() == V4L2_PIX_FMT_NV12)
+                trimConvertNV12ToRGB565(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+            //TBD for other preview format, not supported yet
             break;
 
         default:

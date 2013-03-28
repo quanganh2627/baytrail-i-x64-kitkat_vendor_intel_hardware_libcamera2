@@ -131,6 +131,46 @@ void trimConvertNV12ToRGB565(int width, int height, int srcStride, void *src, vo
     }
 }
 
+// covert YU12 (Y plane, V plane, U plane) to NV21 (Y plane, interlaced VU bytes)
+void align16ConvertYV12ToNV21(int width, int height, int srcStride, void *src, void *dst)
+{
+    int yStride = ALIGN16(width);
+    size_t ySize = yStride * height;
+    int cStride = ALIGN16(yStride/2);
+    size_t cSize = cStride * height/2;
+
+    unsigned char *srcPtr = (unsigned char *) src;
+    unsigned char *dstPtr = (unsigned char *) dst;
+    unsigned char *srcPtrV = (unsigned char *) src + ySize;
+    unsigned char *srcPtrU = (unsigned char *) src + ySize + cSize;
+
+    // copy the entire Y plane
+    if (srcStride == yStride) {
+        memcpy(dstPtr, srcPtr, ySize);
+        srcPtr += ySize;
+    } else if (srcStride > width) {
+        for (int i = 0; i < height; i++) {
+            memcpy(dstPtr, srcPtr, width);
+            srcPtr += srcStride;
+            dstPtr += yStride;
+        }
+    } else {
+        LOGE("bad src stride value");
+        return;
+    }
+
+    // interlace the VU data
+    for ( int i = 0; i < height / 2; ++i) {
+        for ( int j = 0; j < width / 2; ++j) {
+            dstPtr[j] = srcPtrV[j];
+            dstPtr[j *2 +1] = srcPtrU[j];
+        }
+        dstPtr += yStride;
+        srcPtrV += cStride;
+        srcPtrU += cStride;
+    }
+}
+
 // covert NV12 (Y plane, interlaced UV bytes) to
 // NV21 (Y plane, interlaced VU bytes) and trim stride width to real width
 void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void *dst)
@@ -242,8 +282,8 @@ void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void
     }
 }
 
-// covert NV12 (Y plane, interlaced UV bytes) to YV12 (Y plane, V plane, U plane)
-void align16ConvertNV12ToYV12(int width, int height, int srcStride, void *src, void *dst)
+// covert NV12 (Y plane, interlaced UV bytes) to YU12 (Y plane, V plane, U plane)
+void align16ConvertNV12ToYU12(int width, int height, int srcStride, void *src, void *dst)
 {
     int yStride = ALIGN16(width);
     size_t ySize = yStride * height;
