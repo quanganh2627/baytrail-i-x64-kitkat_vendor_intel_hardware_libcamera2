@@ -57,9 +57,8 @@ public:
         CameraFeature() {
         hdrDefault = "off";
         hdrSupported = "on,off";
-        //TODO: lowLight Not supported yet
-        lowLightDefault = "";
-        lowLightSupported = "";
+        ultraLowLightDefault = "off";
+        ultraLowLightSupported = "auto,on,off";
         faceDetectionDefault = "off";
         faceDetectionSupported = "on,off";
         faceRecognitionDefault = "off";
@@ -76,9 +75,8 @@ public:
         };
         const char *hdrDefault;
         const char *hdrSupported;
-        //TODO: lowLight Not supported yet
-        const char *lowLightDefault;
-        const char *lowLightSupported;
+        const char *ultraLowLightDefault;
+        const char *ultraLowLightSupported;
         const char *faceDetectionDefault;
         const char *faceDetectionSupported;
         const char *faceRecognitionDefault;
@@ -105,8 +103,8 @@ class FeatureData {
     public:
         static const char* hdrDefault(int cameraId);
         static const char* hdrSupported(int cameraId);
-        static const char* lowLightDefault(int cameraId);
-        static const char* lowLightSupported(int cameraId);
+        static const char* ultraLowLightDefault(int cameraId);
+        static const char* ultraLowLightSupported(int cameraId);
         static const char* faceDetectionDefault(int cameraId);
         static const char* faceDetectionSupported(int cameraId);
         static const char* faceRecognitionDefault(int cameraId);

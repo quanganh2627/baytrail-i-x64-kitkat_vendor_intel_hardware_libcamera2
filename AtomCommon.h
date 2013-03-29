@@ -45,6 +45,8 @@
 #define STRINGIFY_(s) #s
 // macro CLIP is used to clip the Number value to between the Min and Max
 #define CLIP(Number, Max, Min)    ((Number) > (Max) ? (Max) : ((Number) < (Min) ? (Min) : (Number)))
+// macro MAX
+#define MAX(a,b) ((a)>(b)?(a):(b))
 // macro ALIGN16 root value to value that is divisible by 16
 #define ALIGN16(x) (((x) + 15) & ~15)
 #define ALIGN64(x) (((x) + 63) & ~63)

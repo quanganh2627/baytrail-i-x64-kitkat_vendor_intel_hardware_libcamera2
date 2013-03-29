@@ -258,4 +258,13 @@ status_t Callbacks::storeMetaDataInBuffers(bool enabled)
     return status;
 }
 
+void Callbacks::ullPictureDone(AtomBuffer *buff)
+{
+    LOG1("@%s", __FUNCTION__);
+    if (mDataCB != NULL) {
+        LOG1("Sending message: CAMERA_MSG_ULL_SNAPSHOT, buff id = %d, size = %zu", buff->id, buff->buff->size);
+        mDataCB(CAMERA_MSG_ULL_SNAPSHOT, buff->buff, 0, NULL, mUserToken);
+    }
+}
+
 };

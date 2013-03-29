@@ -108,6 +108,7 @@ public:
     status_t setPreviewConfig(int preview_width, int preview_height, int preview_stride,
                               int preview_format, int bufferCount);
     status_t setFramerate(int fps);
+    status_t setSensorFramerate(float fps);
     status_t fetchPreviewBuffers(AtomBuffer ** pvBufs, int *count);
     status_t returnPreviewBuffers();
     status_t flushBuffers();
@@ -131,6 +132,8 @@ private:
         MESSAGE_ID_FLUSH,
         MESSAGE_ID_WINDOW_QUERY,
         MESSAGE_ID_SET_CALLBACK,
+        MESSAGE_ID_SET_FRAMERATE,
+        MESSAGE_ID_SET_SENSOR_FRAMERATE,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -139,6 +142,14 @@ private:
     //
     // message data structures
     //
+
+    struct MessageSetFramerate {
+        int fps;
+    };
+
+    struct MessageSetSensorFramerate {
+        float fps;
+    };
 
     struct MessagePreview {
         AtomBuffer buff;
@@ -175,6 +186,13 @@ private:
 
         // MESSAGE_ID_SET_CALLBACK
         MessageSetCallback setCallback;
+
+        // MESSAGE_ID_SET_FRAMERATE
+        MessageSetFramerate framerate;
+
+        // MESSAGE_ID_SET_SENSOR_FRAMERATE
+        MessageSetSensorFramerate sensorFramerate;
+
     };
 
     // message id and message data
@@ -201,6 +219,8 @@ private:
     status_t handleFetchPreviewBuffers(void);
     status_t handleReturnPreviewBuffers(void);
     status_t handlePostview(MessagePreview *msg);
+    status_t handleSetFramerate(MessageSetFramerate *msg);
+    status_t handleSetSensorFramerate(MessageSetSensorFramerate *msg);
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -234,6 +254,7 @@ private:
     PreviewState mState;
     mutable Mutex mStateMutex;
     int mSetFPS;
+    float mSensorFPS;
     typedef key_value_pair_t<ICallbackPreview::CallbackType, ICallbackPreview*> callback_pair_t;
     typedef Vector<callback_pair_t> CallbackVector;
     CallbackVector mInputBufferCb;

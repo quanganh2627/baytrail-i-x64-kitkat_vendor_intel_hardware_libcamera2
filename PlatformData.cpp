@@ -22,8 +22,7 @@
 #include <camera.h>
 #include <camera/CameraParameters.h>
 #include "PlatformData.h"
-#include "PlatformClovertrail.h"
-#include "PlatformMerrifield.h"
+#include "CameraProfiles.h"
 #include <utils/Log.h>
 namespace android {
 
@@ -120,24 +119,7 @@ PlatformBase* PlatformData::getInstance(void)
     //       could be runtime-detected in the future.
 
     if (mInstance == 0) {
-
-#if   CLVT
-        mInstance = new PlatformCtpRedhookBay();
-
-#elif VICTORIABAY
-        mInstance = new PlatformCtpVictoriaBay();
-
-#elif   MERR_VV
-        mInstance = new PlatformSaltBay();
-
-#elif   BODEGABAY
-        mInstance = new PlatformBodegaBay();
-
-#else   // take defaults from CloverTrail
-        mInstance = new PlatformCtpRedhookBay();
-
-#endif
-
+        mInstance = new CameraProfiles();
     }
 
     return mInstance;
@@ -1018,6 +1000,12 @@ bool PlatformData::supportAIQ(void)
 {
     PlatformBase *i = getInstance();
     return i->mSupportAIQ;
+}
+
+const char* PlatformData::getBoardName(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mBoardName;
 }
 
 }; // namespace android

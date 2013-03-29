@@ -4,18 +4,13 @@ LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
 
-ifeq ($(REF_DEVICE_NAME),merr_vv)
-USE_INTEL_JPEG := false
-else ifeq ($(REF_DEVICE_NAME),bodegabay)
-USE_INTEL_JPEG := false
-else
-USE_INTEL_JPEG := true
-endif
-
-USE_INTEL_METABUFFER := true
-
 ifeq ($(USE_INTEL_METABUFFER),true)
 LOCAL_CFLAGS += -DENABLE_INTEL_METABUFFER
+endif
+
+
+ifeq ($(BOARD_GRAPHIC_IS_GEN),true)
+LOCAL_CFLAGS += -DGRAPHIC_IS_GEN
 endif
 
 # Intel camera extras (HDR, face detection, etc.)
@@ -39,13 +34,13 @@ LOCAL_SRC_FILES := \
 	CameraConf.cpp \
 	ColorConverter.cpp \
 	ImageScaler.cpp \
-	ImageScaler1080Pto1024x576.cpp \
 	EXIFMaker.cpp \
 	JpegCompressor.cpp \
 	SWJpegEncoder.cpp \
 	CallbacksThread.cpp \
 	LogHelper.cpp \
 	PlatformData.cpp \
+	CameraProfiles.cpp \
 	FeatureData.cpp \
 	IntelParameters.cpp \
 	exif/ExifCreater.cpp \
@@ -59,7 +54,9 @@ LOCAL_SRC_FILES := \
 	BracketManager.cpp \
 	AtomAcc.cpp \
 	AtomIspObserverManager.cpp \
-	SensorThread.cpp
+	SensorThread.cpp	\
+	PostCaptureThread.cpp \
+	UltraLowLight.cpp
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SRC_FILES += \
@@ -85,7 +82,12 @@ LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/cameralibs \
 	$(TARGET_OUT_HEADERS)/libmfldadvci \
 	$(TARGET_OUT_HEADERS)/libCameraFaceDetection \
+
+ifeq ($(BOARD_GRAPHIC_IS_GEN), true)
+else
+LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/pvr/hal
+endif
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_C_INCLUDES += \
@@ -109,7 +111,8 @@ LOCAL_SHARED_LIBRARIES := \
 	libtbd \
 	libsqlite \
 	libdl \
-	libgui
+	libgui \
+	libexpat
 
 ifeq ($(USE_INTEL_METABUFFER),true)
 LOCAL_SHARED_LIBRARIES += \
@@ -125,24 +128,11 @@ endif
 
 LOCAL_STATIC_LIBRARIES := \
 	libcameranvm \
-	libia_coordinate
+	libia_coordinate \
+        libmorpho_image_stabilizer3
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_CFLAGS += -DUSE_INTEL_JPEG
-endif
-
-ifneq (,$(findstring $(REF_DEVICE_NAME),redhookbay ctpscaleht ctpscalelt))
-LOCAL_CFLAGS += -DCLVT
-else ifeq ($(REF_DEVICE_NAME),victoriabay)
-LOCAL_CFLAGS += -DVICTORIABAY
-else ifeq ($(REF_DEVICE_NAME),mrfl_vp)
-LOCAL_CFLAGS += -DMRFL_VP
-else ifeq ($(REF_DEVICE_NAME),merr_vv)
-LOCAL_CFLAGS += -DMERR_VV
-else ifeq ($(REF_DEVICE_NAME),bodegabay)
-LOCAL_CFLAGS += -DBODEGABAY
-else
-LOCAL_CFLAGS += -DCLVT
 endif
 
 # enable R&D features only in R&D builds

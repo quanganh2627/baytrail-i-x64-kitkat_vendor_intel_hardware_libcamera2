@@ -102,14 +102,10 @@ status_t AtomAIQ::init3A()
     ia_binary_data sensorData, motorData;
     mISP->sensorGetSensorData((sensorPrivateData *) &sensorData);
     mISP->sensorGetMotorData((sensorPrivateData *)&motorData);
-
-    if (cameranvm_create(mISP->mCameraInput->name,
+    cameranvm_create(mISP->mCameraInput->name,
                          &sensorData,
                          &motorData,
-                         &aicNvm)) {
-        return UNKNOWN_ERROR;
-    }
-
+                         &aicNvm) ;
     mMkn = ia_mkn_init(ia_mkn_cfg_compression);
     if(mMkn == NULL)
         LOGE("Error makernote init");
@@ -1329,7 +1325,7 @@ void AtomAIQ::runAeMain()
         mAeState.exposure.integration_time[0] = mAeState.ae_results->sensor_exposure->coarse_integration_time;
         //Here is workaround
         mAeState.exposure.integration_time[1] = mAeState.ae_results->sensor_exposure->fine_integration_time;
-        mAeState.exposure.gain[0] = mAeState.ae_results->sensor_exposure->analog_gain_code_global | 0x1000;
+        mAeState.exposure.gain[0] = mAeState.ae_results->sensor_exposure->analog_gain_code_global;
 
         mAeState.exposure.aperture = 100;
 
@@ -1486,14 +1482,15 @@ status_t AtomAIQ::run3aMain(const struct timeval *frame_timestamp,
 
     if(afRun) {
         if(frame_timestamp)
-           populateFrameInfo(frame_timestamp, sof_timestamp);
-        runAfMain();
+            populateFrameInfo(frame_timestamp, sof_timestamp);
+        if(!mISP->isFileInjectionEnabled())
+            runAfMain();
         // if no DSD enable, should disable that
-        if(m3aState.dsd_enabled)
+        if(m3aState.dsd_enabled && !mISP->isFileInjectionEnabled())
             runDSDMain();
     }
-
-    runAeMain();
+    if(!mISP->isFileInjectionEnabled())
+        runAeMain();
     runAwbMain();
 
     if(mGBCEEnable && mAeMode != CAM_AE_MODE_MANUAL)
@@ -1740,9 +1737,12 @@ void AtomAIQ::getSensorFrameParams(ia_aiq_sensor_frame_params *frame_params)
     LOG1("@%s", __FUNCTION__);
 
     struct atomisp_sensor_mode_data sensor_mode_data;
-    if(mISP->sensorGetModeInfo(&sensor_mode_data) < 0)
-        return;
-
+    if(mISP->sensorGetModeInfo(&sensor_mode_data) < 0) {
+        sensor_mode_data.crop_horizontal_start = 0;
+        sensor_mode_data.crop_vertical_start = 0;
+        sensor_mode_data.crop_vertical_end = 0;
+        sensor_mode_data.crop_horizontal_end = 0;
+    }
     frame_params->horizontal_crop_offset = sensor_mode_data.crop_horizontal_start;
     frame_params->vertical_crop_offset = sensor_mode_data.crop_vertical_start;
     frame_params->cropped_image_height = sensor_mode_data.crop_vertical_end - sensor_mode_data.crop_vertical_start;

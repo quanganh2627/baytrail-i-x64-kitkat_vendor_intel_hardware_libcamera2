@@ -55,10 +55,6 @@ protected:
     static void downScaleNv12ImageFrom800x600ToQvga(
         unsigned char *dest, const unsigned char *src,
         const int dest_stride, const int src_stride);
-
-    static void downScaleNv12ImageFrom1080PTo1024x576(
-        unsigned char *dest, const unsigned char *src,
-        const int dest_stride, const int src_stride);
 };
 
 };
