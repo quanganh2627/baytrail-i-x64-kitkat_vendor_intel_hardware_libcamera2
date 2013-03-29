@@ -63,7 +63,7 @@ struct v4l2_buffer_info {
     int width;
     int height;
     int format;
-    int flags; //You can use to to detern the buf status
+    int cache_flags; /*!< initial flags used when creating buffers */
     struct v4l2_buffer vbuffer;
 };
 
@@ -142,6 +142,7 @@ public:
     int shutterLagZeroAlign() const;
     int continuousBurstNegMinOffset(void) const;
     int continuousBurstNegOffset(int skip, int startIndex) const;
+    int getContinuousCaptureNumber() const;
     status_t prepareOfflineCapture(ContinuousCaptureConfig &config);
 
     bool isYUVvideoZoomingSupported() const;
@@ -152,11 +153,11 @@ public:
     status_t getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameStatus = NULL);
     status_t putPreviewFrame(AtomBuffer *buff);
 
-    status_t setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs);
+    status_t setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs, bool cached);
     status_t getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp = NULL, atomisp_frame_status *frameStatus = NULL);
     status_t putRecordingFrame(AtomBuffer *buff);
 
-    status_t setSnapshotBuffers(void *buffs, int numBuffs);
+    status_t setSnapshotBuffers(void *buffs, int numBuffs, bool cached);
     status_t getSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf,
                          atomisp_frame_status *snapshotStatus = NULL);
     status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
@@ -178,8 +179,6 @@ public:
     inline int getSnapshotPixelFormat() { return mConfig.snapshot.format; }
     void getVideoSize(int *width, int *height, int *stride);
     void getPreviewSize(int *width, int *height, int *stride);
-
-    status_t setSnapshotNum(int num);
     int getSnapshotNum();
 
     void getZoomRatios(bool videoMode, CameraParameters *params);
@@ -465,13 +464,14 @@ private:
     status_t configureContinuous();
     status_t startCapture();
     status_t stopCapture();
-    status_t startContinuousPreview();
     status_t stopContinuousPreview();
 
     status_t requestContCapture(int numCaptures, int offset, unsigned int skip);
 
     void runStartISPActions();
     void runStopISPActions();
+
+    void markBufferCached(struct v4l2_buffer_info *vinfo, bool cached);
 
     status_t allocatePreviewBuffers();
     status_t allocateRecordingBuffers();
@@ -480,6 +480,8 @@ private:
     status_t freePreviewBuffers();
     status_t freeRecordingBuffers();
     status_t freeSnapshotBuffers();
+    status_t freePostviewBuffers();
+    bool needNewPostviewBuffers();
 
 #ifdef ENABLE_INTEL_METABUFFER
     void initMetaDataBuf(IntelMetadataBuffer* metaDatabuf);
@@ -588,12 +590,14 @@ private:
     int mNumBuffers;
     int mNumPreviewBuffers;
     AtomBuffer *mPreviewBuffers;
+    bool mPreviewBuffersCached;
     AtomBuffer *mRecordingBuffers;
     bool mSwapRecordingDevice;
     bool mRecordingDeviceSwapped;
     bool mPreviewTooBigForVFPP;
 
     void **mClientSnapshotBuffers;
+    bool mClientSnapshotBuffersCached;
     bool mUsingClientSnapshotBuffers;
     bool mStoreMetaDataInBuffers;
 

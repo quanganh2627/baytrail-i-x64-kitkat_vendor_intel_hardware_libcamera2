@@ -81,20 +81,20 @@ const char* FeatureData::hdrSupported(int cameraId)
  * getting low light default value on current product
  * return default value
  */
-const char* FeatureData::lowLightDefault(int cameraId)
+const char* FeatureData::ultraLowLightDefault(int cameraId)
 {
     FeatureBase *i = getInstance();
-    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].lowLightDefault : "");
+    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].ultraLowLightDefault : "");
 }
 
 /**
  * getting if low light is supported or not on the current product
  * return possible options of hdr support
  */
-const char* FeatureData::lowLightSupported(int cameraId)
+const char* FeatureData::ultraLowLightSupported(int cameraId)
 {
     FeatureBase *i = getInstance();
-    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].lowLightSupported : "");
+    return (checkCameraId(cameraId, i) ? i->mCamFeature[cameraId].ultraLowLightSupported : "");
 }
 
 /**

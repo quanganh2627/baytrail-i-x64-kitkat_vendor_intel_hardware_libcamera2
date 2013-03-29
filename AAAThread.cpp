@@ -28,13 +28,14 @@ namespace android {
 
 #define FLASH_FRAME_TIMEOUT 5
 
-AAAThread::AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs, I3AControls *aaaControls) :
+AAAThread::AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs, UltraLowLight *ull, I3AControls *aaaControls) :
     Thread(false)
     ,mMessageQueue("AAAThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
     ,m3AControls(aaaControls)
     ,mCallbacks(CallbacksThread::getInstance())
     ,mDvs(dvs)
+    ,mULL(ull)
     ,mAAADoneCallback(aaaDone)
     ,m3ARunning(false)
     ,mDVSRunning(false)
@@ -624,6 +625,10 @@ status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msgFrame)
                 mAAADoneCallback->sceneDetected(sceneMode, sceneHdr);
             }
         }
+        /**
+         * query 3A and update ULL trigger
+         */
+        updateULLTrigger();
     }
 
     if (mDVSRunning) {
@@ -644,6 +649,26 @@ void AAAThread::getCurrentSmartScene(int &sceneMode, bool &sceneHdr)
     LOG1("@%s", __FUNCTION__);
     sceneMode = mSmartSceneMode;
     sceneHdr = mSmartSceneHdr;
+}
+
+/**
+ *  updateULLTrigger
+ *
+ *  query 3A gain and exposure and update the ULL trigger
+ *
+ */
+void AAAThread::updateULLTrigger()
+{
+    LOG2("%s",__FUNCTION__);
+    SensorAeConfig expInfo;
+    int gain;
+
+    if (mULL) {
+        m3AControls->getExposureInfo(expInfo);
+        m3AControls->getManualIso(&gain);
+
+        mULL->updateTrigger(expInfo, gain);
+    }
 }
 
 /**

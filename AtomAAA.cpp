@@ -920,7 +920,7 @@ ia_3a_af_status AtomAAA::isStillAfComplete()
 status_t AtomAAA::getExposureInfo(SensorAeConfig& aeConfig)
 {
     Mutex::Autolock lock(m3aLock);
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
 
     // evBias not reset, so not using memset
     aeConfig.expTime = 0;
@@ -1113,7 +1113,7 @@ status_t AtomAAA::setManualIso(int sensitivity)
 status_t AtomAAA::getManualIso(int *ret)
 {
     Mutex::Autolock lock(m3aLock);
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
 
     float ev = ia_3a_ae_get_manual_iso();
 
@@ -1626,7 +1626,7 @@ void AtomAAA::getAeExpCfg(int *exp_time,
                      int *aec_apex_Tv, int *aec_apex_Sv, int *aec_apex_Av,
                      float *digital_gain)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     ia_3a_ae_result ae_res;
 
     mISP->sensorGetExposureTime(exp_time);

@@ -225,6 +225,10 @@ namespace android {
     static const char SHARPNESS_MODE_SOFT[];
     static const char SHARPNESS_MODE_HARD[];
 
+    // Ultra low light
+    static const char KEY_ULL[];
+    static const char KEY_SUPPORTED_ULL[];
+
     static void getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params);
     static const char* getSupportedPanoramaLivePreviewSizes(const CameraParameters &params);
 

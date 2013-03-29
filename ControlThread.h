@@ -36,9 +36,11 @@
 #include "PostProcThread.h"
 #include "PanoramaThread.h"
 #include "SensorThread.h"
+#include "PostCaptureThread.h"
 #include "CameraDump.h"
 #include "CameraAreas.h"
 #include "AtomCP.h"
+#include "UltraLowLight.h"
 #include "BracketManager.h"
 #include "I3AControls.h"
 #include "IAtomIspObserver.h"
@@ -58,7 +60,8 @@ class ControlThread :
     public ICallbackAAA,
     public ICallbackPostProc,
     public ICallbackPanorama,
-    public IAtomIspObserver {
+    public IAtomIspObserver,
+    public IPostCaptureProcessObserver{
 
 // constructor destructor
 public:
@@ -121,9 +124,10 @@ public:
     // return recording frame to driver (asynchronous)
     status_t releaseRecordingFrame(void *buff);
 
-    // TODO: need methods to configure control thread
-    // TODO: decide if configuration method should send a message
-     void atomRelease();
+    void atomRelease();
+
+    // Implementation of IPostCaptureProcessObserver interface
+    void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status);
 
 // callback methods
 private:
@@ -297,6 +301,19 @@ private:
         STATE_CAPTURE,
         STATE_CONTINUOUS_CAPTURE
     };
+    /**
+     * \enum ShootingMode
+     * Describes the active shooting mode
+     */
+    enum ShootingMode {
+        SHOOTING_MODE_NONE,         /*!< initial value */
+        SHOOTING_MODE_SINGLE,       /*!< Normal single shot */
+        SHOOTING_MODE_BURST,        /*!< Burst of x frames; x<MAX_BURST_LEN (Platform dependent) */
+        SHOOTING_MODE_ZSL,          /*!< Zero Shutter lag shoot*/
+        SHOOTING_MODE_VIDEO_SNAP,   /*!< Picture taking while recording is active */
+        SHOOTING_MODE_ZSL_BURST,    /*!< Burst of ZSL where we can take images before the shutter is pressed */
+        SHOOTING_MODE_ULL,          /*!< Ultra LowLight */
+    };
 
     struct HdrImaging {
         BracketingMode bracketMode;
@@ -338,6 +355,7 @@ private:
     void releaseContinuousCapture(bool flushPictures);
     status_t startOfflineCapture();
     State selectPreviewMode(const CameraParameters &params);
+    ShootingMode selectShootingMode();
     status_t handleContinuousPreviewBackgrounding();
     status_t handleContinuousPreviewForegrounding();
     void flushContinuousPreviewToDisplay(nsecs_t snapshotTs);
@@ -453,6 +471,8 @@ private:
                 CameraParameters *newParams);
     status_t processParamHDR(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    status_t processParamULL(const CameraParameters *oldParams,
+            CameraParameters *newParams, bool *restartPreview);
     status_t processParamExposureCompensation(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamAutoExposureMode(const CameraParameters *oldParams,
@@ -540,6 +560,7 @@ private:
     status_t captureBurstPic(bool clientRequest);
     status_t captureFixedBurstPic(bool clientRequest);
     status_t capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffer &postviewBuffer);
+    status_t captureULLPic();
     status_t captureVideoSnap(void);
     AtomBuffer* findVideoSnapshotBuffer(int index);
     void     encodeVideoSnapshot(AtomBuffer &buff);
@@ -564,6 +585,7 @@ private:
     AtomISP *mISP;
     AtomDvs *mDvs;
     AtomCP  *mCP;
+    UltraLowLight *mULL;
     I3AControls *m3AControls;
     sp<PreviewThread> mPreviewThread;
     sp<PictureThread> mPictureThread;
@@ -573,9 +595,11 @@ private:
     sp<PanoramaThread> mPanoramaThread;
     sp<SensorThread> mSensorThread;
     sp<BracketManager> mBracketManager;
+    sp<PostCaptureThread> mPostCaptureThread;
 
     MessageQueue<Message, MessageId> mMessageQueue;
     State mState;
+    ShootingMode    mShootingMode;
     bool mThreadRunning;
     Callbacks *mCallbacks;
     sp<CallbacksThread> mCallbacksThread;
@@ -645,6 +669,7 @@ private:
 
     bool mEnableFocusCbAtStart;     /* for internal control of focus cb's in continuous-mode */
     bool mEnableFocusMoveCbAtStart; /* for internal control of focus-move cb's in continuous-mode */
+    bool mFirstPreviewStart;        /* indicator of first preview start for L2P pnp optimizations */
 }; // class ControlThread
 
 }; // namespace android

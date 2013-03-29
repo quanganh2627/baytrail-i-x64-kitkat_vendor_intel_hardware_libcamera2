@@ -76,6 +76,7 @@ public:
     void focusMove(bool start);
     void panoramaDisplUpdate(camera_panorama_metadata_t &metadata);
     void panoramaSnapshot(AtomBuffer &livePreview);
+    status_t requestULLPicture();
     status_t postviewRendered();
 
 // private types
@@ -100,6 +101,9 @@ private:
         // panorama callbacks
         MESSAGE_ID_PANORAMA_SNAPSHOT,
         MESSAGE_ID_PANORAMA_DISPL_UPDATE,
+
+        // Ultra Low Light Callbacks
+        MESSAGE_ID_ULL_JPEG_DATA_REQUEST,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -213,7 +217,8 @@ private:
     status_t handleMessagePanoramaDisplUpdate(MessagePanoramaDisplUpdate *msg);
     status_t handleMessagePanoramaSnapshot(MessagePanoramaSnapshot *msg);
     status_t handleMessagePostviewRendered();
-
+    status_t handleMessageUllJpegDataRequest();
+    status_t handleMessageUllJpegDataReady(MessageFrame *msg);
     // main message function
     status_t waitForAndExecuteMessage();
 
@@ -235,6 +240,7 @@ private:
     unsigned mJpegRequested;
     unsigned mPostviewRequested;
     unsigned mRawRequested;
+    unsigned mULLRequested;
     bool mWaitRendering;
     Message mPostponedJpegReady;
 
