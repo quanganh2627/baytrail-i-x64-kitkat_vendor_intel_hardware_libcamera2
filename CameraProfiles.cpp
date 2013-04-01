@@ -184,10 +184,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
             pCurrentCam->flipping |= PlatformData::SENSOR_FLIP_H;
         if (strcmp(atts[2], "value_v") == 0 && strcmp(atts[3], "SENSOR_FLIP_V") == 0)
             pCurrentCam->flipping |= PlatformData::SENSOR_FLIP_V;
-    } else if (strcmp(name, "maxSnapshotWidth") == 0) {
-        pCurrentCam->maxSnapshotWidth = atoi(atts[1]);
-    } else if (strcmp(name, "maxSnapshotHeight") == 0) {
-        pCurrentCam->maxSnapshotHeight = atoi(atts[1]);
+    } else if (strcmp(name, "supportedSnapshotSizes") == 0) {
+        pCurrentCam->supportedSnapshotSizes = atts[1];
     } else if (strcmp(name, "defaultBurstLength") == 0) {
         pCurrentCam->defaultBurstLength = atts[1];
     } else if (strcmp(name, "supportedBurstLength") == 0) {
@@ -401,8 +399,7 @@ void CameraProfiles::dump(void)
         LOGD("line%d, in DeviceData, pcam->orientation:%d ", __LINE__, mCameras[i].orientation);
         LOGD("line%d, in DeviceData, pcam->sensorType:%d ", __LINE__, mCameras[i].sensorType);
         LOGD("line%d, in DeviceData, pcam->dvs:%d ", __LINE__, mCameras[i].dvs);
-        LOGD("line%d, in DeviceData, pcam->maxSnapshotWidth:%d ", __LINE__, mCameras[i].maxSnapshotWidth);
-        LOGD("line%d, in DeviceData, pcam->maxSnapshotHeight:%d ", __LINE__, mCameras[i].maxSnapshotHeight);
+        LOGD("line%d, in DeviceData, pcam->supportedSnapshotSizes:%s ", __LINE__, mCameras[i].supportedSnapshotSizes.string());
         LOGD("line%d, in DeviceData, pcam->flipping:%d ", __LINE__, mCameras[i].flipping);
         LOGD("line%d, in DeviceData, pcam->mPreviewViaOverlay:%d ", __LINE__, mCameras[i].mPreviewViaOverlay);
         LOGD("line%d, in DeviceData, pcam->supportedBurstLength:%s ", __LINE__, mCameras[i].supportedBurstLength.string());

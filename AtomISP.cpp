@@ -39,36 +39,6 @@
 #define DEFAULT_SENSOR_FPS      15.0
 #define DEFAULT_PREVIEW_FPS     30.0
 
-#define RESOLUTION_14MP_TABLE   \
-        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448,3648x2736,4096x3072,4352x3264"
-
-#define RESOLUTION_13MP_TABLE   \
-        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448,3648x2736,4096x3072,4192x3104"
-
-#define RESOLUTION_8MP_TABLE   \
-        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448"
-
-#define RESOLUTION_5MP_TABLE   \
-        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920"
-
-#define RESOLUTION_3MP_TABLE   \
-        "320x240,640x480,1024x768,1280x720,1280x960,1536x864,1600x1200,1920x1080,2048x1152,2048x1536"
-
-#define RESOLUTION_1080P_TABLE   \
-        "320x240,640x480,1024x768,1280x720,1920x1080"
-
-#define RESOLUTION_2MP_TABLE   \
-        "320x240,640x480,1024x768,1280x720,1600x900,1600x1200"
-
-#define RESOLUTION_1_3MP_TABLE   \
-        "320x240,640x480,1280x720,1280x960"
-
-#define RESOLUTION_720P_TABLE   \
-        "320x240,640x480,1280x720"
-
-#define RESOLUTION_VGA_TABLE   \
-        "320x240,640x480"
-
 #define MAX_FILE_INJECTION_SNAPSHOT_WIDTH    4192
 #define MAX_FILE_INJECTION_SNAPSHOT_HEIGHT   3104
 #define MAX_FILE_INJECTION_PREVIEW_WIDTH     1280
@@ -113,19 +83,6 @@ static const char *dev_name_array[] = {"/dev/video0",
                                        "/dev/video3"};
 
 AtomISP::cameraInfo AtomISP::sCamInfo[MAX_CAMERA_NODES];
-
-static const char *resolution_tables[] = {
-    RESOLUTION_VGA_TABLE,
-    RESOLUTION_720P_TABLE,
-    RESOLUTION_1_3MP_TABLE,
-    RESOLUTION_2MP_TABLE,
-    RESOLUTION_1080P_TABLE,
-    RESOLUTION_3MP_TABLE,
-    RESOLUTION_5MP_TABLE,
-    RESOLUTION_8MP_TABLE,
-    RESOLUTION_13MP_TABLE,
-    RESOLUTION_14MP_TABLE
-};
 
 // Generated the string like "100,110,120, ...,1580,1590,1600"
 // The string is determined by MAX_ZOOM_LEVEL and MAX_SUPPORT_ZOOM
@@ -382,10 +339,7 @@ void AtomISP::initFrameConfig()
         mConfig.recording.maxHeight = MAX_FILE_INJECTION_RECORDING_HEIGHT;
     }
     else {
-        int width, height;
-        PlatformData::maxSnapshotSize(mCameraId, &width, &height);
-        mConfig.snapshot.maxWidth  = width;
-        mConfig.snapshot.maxHeight = height;
+        getMaxSnapShotSize(mCameraId, &(mConfig.snapshot.maxWidth), &(mConfig.snapshot.maxHeight));
 	/* workround to support two main sensor for vv - need to removed when one main sensor used */
         if (strstr(mCameraInput->name, "imx175")) {
            mConfig.snapshot.maxWidth  = RESOLUTION_8MP_WIDTH;
@@ -572,8 +526,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * SNAPSHOT
      */
-    const char *picSizes = getMaxSnapShotResolution();
-    params->set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, picSizes);
+    params->set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, PlatformData::supportedSnapshotSizes(cameraId));
     params->setPictureSize(mConfig.snapshot.width, mConfig.snapshot.height);
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH,"320");
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT,"240");
@@ -790,35 +743,24 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SHARPNESS_MODES, PlatformData::supportedSharpness(cameraId));
 }
 
-const char* AtomISP::getMaxSnapShotResolution()
+void AtomISP::getMaxSnapShotSize(int cameraId, int* width, int* height)
 {
     LOG1("@%s", __FUNCTION__);
-    int index = RESOLUTION_14MP;
+    CameraParameters p;
+    Vector<Size> supportedSizes;
+    int maxWidth = 0, maxHeight = 0;
 
-    if (mConfig.snapshot.maxWidth < RESOLUTION_14MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_14MP_HEIGHT)
-            index--;
-    if (mConfig.snapshot.maxWidth < RESOLUTION_13MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_13MP_HEIGHT)
-            index--;
-    if (mConfig.snapshot.maxWidth < RESOLUTION_8MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_8MP_HEIGHT)
-            index--;
-    if (mConfig.snapshot.maxWidth < RESOLUTION_5MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_5MP_HEIGHT)
-            index--;
-    if (mConfig.snapshot.maxWidth < RESOLUTION_3MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_3MP_HEIGHT)
-            index--;
-    if (mConfig.snapshot.maxWidth < RESOLUTION_1080P_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_1080P_HEIGHT)
-            index--;
-    if (mConfig.snapshot.maxWidth < RESOLUTION_2MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_2MP_HEIGHT)
-            index--;
-    if (mConfig.snapshot.maxWidth < RESOLUTION_1_3MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_1_3MP_HEIGHT)
-            index--;
-    if (mConfig.snapshot.maxWidth < RESOLUTION_720P_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_720P_HEIGHT)
-            index--;
-    if (mConfig.snapshot.maxWidth < RESOLUTION_VGA_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_VGA_HEIGHT)
-            index--;
-    if (index < 0)
-            index = 0;
+    p.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, PlatformData::supportedSnapshotSizes(cameraId));
+    p.getSupportedPictureSizes(supportedSizes);
 
-    return resolution_tables[index];
+    for (unsigned int i = 0; i < supportedSizes.size(); i++) {
+        if (maxWidth < supportedSizes[i].width)
+            maxWidth = supportedSizes[i].width;
+            maxHeight = supportedSizes[i].height;
+    }
+
+    *width = maxWidth;
+    *height = maxHeight;
 }
 
 /**
