@@ -208,21 +208,14 @@ const char* PlatformData::supportedVideoSizes(int cameraId)
     return i->mCameras[cameraId].supportedVideoSizes;
 }
 
-void PlatformData::maxSnapshotSize(int cameraId, int* width, int* height)
+const char* PlatformData::supportedSnapshotSizes(int cameraId)
 {
-    if (!HalConfig.getValue(*width, CPF::SizeActive, CPF::Width)
-        && !HalConfig.getValue(*height, CPF::SizeActive, CPF::Height)) {
-        return;
-    }
-
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
       LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
-      return;
+      return NULL;
     }
-
-    *width = i->mCameras[cameraId].maxSnapshotWidth;
-    *height = i->mCameras[cameraId].maxSnapshotHeight;
+    return i->mCameras[cameraId].supportedSnapshotSizes;
 }
 
 bool PlatformData::supportsBackFlash(void)

@@ -120,8 +120,7 @@ public:
             orientation = 90;
             // no flipping default.
             dvs = true;
-            maxSnapshotWidth = RESOLUTION_8MP_WIDTH;
-            maxSnapshotHeight = RESOLUTION_8MP_HEIGHT;
+            supportedSnapshotSizes = "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448";
             mPreviewViaOverlay = false;
             overlayRelativeRotation = 90;
             maxPreviewPixelCountForVFPP = 0xFFFFFFFF; // default no limit
@@ -229,8 +228,7 @@ public:
         int orientation;
         int flipping;
         bool dvs;
-        int maxSnapshotWidth;
-        int maxSnapshotHeight;
+        String8 supportedSnapshotSizes;
         bool mPreviewViaOverlay;
         int overlayRelativeRotation;  /*<! Relative rotation between the native scan order of the
                                            camera and the display attached to the overlay */
@@ -459,15 +457,6 @@ class PlatformData {
      * \return string following getParameter value notation
      */
     static const char* preferredPreviewSizeForVideo(void);
-
-    /**
-     * Returns (via out params) maximal supported snapshot size
-     *
-     * \param cameraId identifier passed to android.hardware.Camera.open()
-     * \param pointer to variable to receive max width
-     * \param pointer to variable to receive max height
-     */
-    static void maxSnapshotSize(int cameraId, int* width, int* height);
 
     /**
      * Whether the camera supports Digital Video Stabilization or not
@@ -817,6 +806,14 @@ class PlatformData {
      * \return the value of the supported video sizes as a string.
      */
     static const char* supportedVideoSizes(int cameraId);
+
+    /**
+     * supported snapshot sizes
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the supported snapshot sizes as a string.
+     */
+    static const char* supportedSnapshotSizes(int cameraId);
 
     /**
      * Returns the name of the product
