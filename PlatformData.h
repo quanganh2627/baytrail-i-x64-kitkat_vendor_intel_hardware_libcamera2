@@ -243,6 +243,14 @@ class PlatformData {
     static const char* supportedDefaultEV(int cameraId);
 
     /**
+     * Whether EV is supported?
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return true if supported, false if not supported
+     */
+    static bool supportEV(int cameraId);
+
+    /**
      * Exposure compensation max value
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()

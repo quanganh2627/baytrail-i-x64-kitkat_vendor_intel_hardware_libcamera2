@@ -343,6 +343,23 @@ int PlatformData::getMaxBurstFPS(int cameraId)
     return i->mCameras[cameraId].maxBurstFPS;
 }
 
+bool PlatformData::supportEV(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return false;
+    }
+
+    const char* minEV = i->mCameras[cameraId].minEV;
+    const char* maxEV = i->mCameras[cameraId].maxEV;
+    if(!strcmp(minEV, "0") && !strcmp(maxEV, "0")) {
+        LOG1("@%s: not supported by current camera", __FUNCTION__);
+        return false;
+    }
+    return true;
+}
+
 const char* PlatformData::supportedMaxEV(int cameraId)
 {
     const char *sPtr;
