@@ -4885,7 +4885,8 @@ int AtomISP::sensorMoveFocusToPosition(int position)
     LOG2("@%s", __FUNCTION__);
 
     // TODO: this code will be removed when the CPF file is valid for saltbay in the future
-    if (strcmp(PlatformData::getBoardName(), "saltbay") == 0) {
+    if ((strcmp(PlatformData::getBoardName(), "saltbay") == 0) ||
+        (strcmp(PlatformData::getBoardName(), "baylake") == 0)) {
         position = 1024 - position;
         position = 100 + (position - 370) * 1.7;
         if(position > 900)
