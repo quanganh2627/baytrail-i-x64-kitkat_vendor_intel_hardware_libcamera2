@@ -86,6 +86,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mISP(NULL)
     ,mDvs(NULL)
     ,mCP(NULL)
+    ,mULL(NULL)
     ,m3AControls(NULL)
     ,mPreviewThread(NULL)
     ,mPictureThread(NULL)
