@@ -86,7 +86,6 @@ AtomAIQ::~AtomAIQ()
     mInstance = NULL;
 }
 
-// ToDo: change sensorParameters to pointer to cpfData. Nothing else is needed from SensorParams
 status_t AtomAIQ::init3A()
 {
     LOG1("@%s", __FUNCTION__);
@@ -94,9 +93,8 @@ status_t AtomAIQ::init3A()
     status_t status = NO_ERROR;
     ia_err ret = ia_err_none;
 
-    SensorParams sensorParams;
-
-    status = mISP->getSensorParams(&sensorParams);
+    ia_binary_data cpfData;
+    status = getAiqConfig(&cpfData);
     if (status != NO_ERROR) {
         LOGE("Error retrieving sensor params");
         return status;
@@ -117,7 +115,7 @@ status_t AtomAIQ::init3A()
     if(ret != ia_err_none)
         LOGE("Error makernote init");
 
-    m3aState.ia_aiq_handle = ia_aiq_init((ia_binary_data*)&(sensorParams.cpfData),
+    m3aState.ia_aiq_handle = ia_aiq_init((ia_binary_data*)&(cpfData),
                                          (ia_binary_data*)aicNvm,
                                          MAX_STATISTICS_WIDTH,
                                          MAX_STATISTICS_HEIGHT,
@@ -140,6 +138,20 @@ status_t AtomAIQ::init3A()
     return status;
 }
 
+status_t AtomAIQ::getAiqConfig(ia_binary_data *cpfData)
+{
+    status_t status = NO_ERROR;
+
+    if (PlatformData::AiqConfig && cpfData != NULL) {
+        cpfData->data = PlatformData::AiqConfig.ptr();
+        cpfData->size = PlatformData::AiqConfig.size();
+        // We don't need this memory anymore
+        PlatformData::AiqConfig.clear();
+    } else {
+        status = UNKNOWN_ERROR;
+    }
+    return status;
+}
 
 status_t AtomAIQ::deinit3A()
 {
