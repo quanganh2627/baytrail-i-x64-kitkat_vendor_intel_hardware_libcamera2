@@ -166,6 +166,11 @@ status_t UltraLowLight::deinit()
     return ret;
 }
 
+int UltraLowLight::getULLBurstLength()
+{
+    return MAX_INPUT_BUFFERS;
+}
+
 status_t UltraLowLight::addInputFrame(AtomBuffer *snap, AtomBuffer *pv)
 {
     LOG1("@%s number of buffers currently stored %d ", __FUNCTION__, mInputBuffers.size());
