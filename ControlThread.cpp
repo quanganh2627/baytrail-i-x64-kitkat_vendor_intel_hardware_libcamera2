@@ -3001,7 +3001,7 @@ status_t ControlThread::captureULLPic()
 
     stopFaceDetection();
     // Initialize the burst control variables for the ULL burst
-    mBurstLength = mULL->MAX_INPUT_BUFFERS;
+    mBurstLength = mULL->getULLBurstLength();
     mBurstStart = 0;
     mBurstFps = mISP->getFrameRate();
 
@@ -3011,7 +3011,7 @@ status_t ControlThread::captureULLPic()
     mPictureThread->initialize(mParameters);
 
     // Get the snapshots
-    for (int i=0; i< mULL->MAX_INPUT_BUFFERS; i++) {
+    for (int i=0; i< mBurstLength; i++) {
        status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
        if (status != NO_ERROR) {
            LOGE("Error in grabbing snapshot!");
