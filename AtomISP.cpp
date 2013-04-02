@@ -5576,9 +5576,6 @@ status_t AtomISP::setEv(float bias)
     int evValue = (int)bias;
     LOG1("@%s: bias: %f, EV value: %d", __FUNCTION__, bias, evValue);
 
-    if(evValue == 0)
-        return status;
-
     int ret = atomisp_set_attribute(main_fd, V4L2_CID_EXPOSURE, evValue, "exposure");
     if (ret != 0) {
         LOGE("Error setting EV in the driver");
@@ -5593,13 +5590,6 @@ status_t AtomISP::getEv(float *bias)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     int evValue = 0;
-
-    const char* minEV = PlatformData::supportedMinEV(mCameraId);
-    const char* maxEV = PlatformData::supportedMaxEV(mCameraId);
-    if(!strcmp(minEV, "0") && !strcmp(maxEV, "0")) {
-        LOG1("@%s: not supported by current camera", __FUNCTION__);
-        return INVALID_OPERATION;
-    }
 
     int ret = atomisp_get_attribute(main_fd, V4L2_CID_EXPOSURE, &evValue);
     if (ret != 0) {
