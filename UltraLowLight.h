@@ -103,6 +103,7 @@ public:
     status_t addInputFrame(AtomBuffer *snapshot, AtomBuffer *postview) STUB_BODY_STAT
     status_t addSnapshotMetadata(PictureThread::MetaData &metadata) STUB_BODY_STAT
     status_t getOuputResult(AtomBuffer *snap, AtomBuffer * pv, PictureThread::MetaData *metadata) STUB_BODY_STAT
+    int getULLBurstLength() STUB_BODY_STAT
 
     // implementation of IPostCaptureProcessItem
     status_t process() STUB_BODY_STAT
