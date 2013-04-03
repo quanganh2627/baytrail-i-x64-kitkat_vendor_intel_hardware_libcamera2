@@ -5828,15 +5828,16 @@ void ControlThread::postCaptureProcesssingDone(IPostCaptureProcessItem* item, st
     status_t status;
     AtomBuffer snapshotBuffer, postviewBuffer;
     PictureThread::MetaData picMetaData;
+    int ULLid = 0;
 
 
     // ATM the only post capture processing is ULL, no need to check which one
-    mULL->getOuputResult(&snapshotBuffer,&postviewBuffer, &picMetaData);
+    mULL->getOuputResult(&snapshotBuffer,&postviewBuffer, &picMetaData, &ULLid);
 
     if(procStatus != NO_ERROR)
         LOGW("PostCapture Processing failed !!");
 
-    mCallbacksThread->requestULLPicture();
+    mCallbacksThread->requestULLPicture(ULLid);
 
     status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
     if (status != NO_ERROR) {

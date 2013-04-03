@@ -56,6 +56,7 @@ struct UltraLowLight::MorphoULL {
 UltraLowLight::UltraLowLight() : mMorphoCtrl(NULL),
                                  mCallbacks(Callbacks::getInstance()),
                                  mState(ULL_STATE_NULL),
+                                 mULLCounter(0),
                                  mWidth(0),
                                  mHeight(0),
                                  mUserMode(ULL_OFF),
@@ -215,7 +216,22 @@ status_t UltraLowLight::addSnapshotMetadata(PictureThread::MetaData &metadata)
     return NO_ERROR;
 }
 
-status_t UltraLowLight::getOuputResult(AtomBuffer *snap, AtomBuffer * pv, PictureThread::MetaData *metadata)
+/**
+ * Return the AtomBuffer that contains the result of the ULL process.
+ * The snapshot buffer is actually the first input buffer and it needs
+ * to be returned together with the others.
+ *
+ * Please note that the ULL id is incremented after this call
+ *
+ * \param snap [out] pointer to store the ULL outcome
+ * \param pv [out] pointer to store the postview image
+ * \param metadata [out] pointer to store the metadata needed to encode JPEG
+ * \param ULLid [out] pointer to store the id that this ULL is assigned.
+ *                   The id is queried before processing start and notified to
+ *                   application.
+ */
+status_t UltraLowLight::getOuputResult(AtomBuffer *snap, AtomBuffer * pv,
+                                           PictureThread::MetaData *metadata, int *ULLid)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -228,6 +244,8 @@ status_t UltraLowLight::getOuputResult(AtomBuffer *snap, AtomBuffer * pv, Pictur
     *snap = mOutputBuffer;
     *pv = mOutputPostView;
     *metadata = mSnapMetadata;
+    *ULLid = mULLCounter;
+    mULLCounter++;
     mState = ULL_STATE_INIT;
 
     return NO_ERROR;
