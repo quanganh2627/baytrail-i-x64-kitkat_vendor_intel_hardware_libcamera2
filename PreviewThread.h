@@ -39,13 +39,34 @@ class CallbacksThread;
 #define MAX_NUMBER_PREVIEW_GFX_BUFFERS      10
 
 /**
- * \def GFX_OVERLAY_BUFFERS_DURING_OVERLAY_USE
+ * \def GFX_BUFFERS_DURING_SHARED_TEXTURE_USE
+ * Number of shared gfx buffers to use when 0-copy mode available
+ */
+#define GFX_BUFFERS_DURING_SHARED_TEXTURE_USE 6
+
+/**
+ * \def GFX_BUFFERS_DURING_OVERLAY_USE
  * Number of Gfx Buffers dequeued from window  when we render via overlay
  * In this case AtomISP is allocating its own buffers to feed the ISP  preview
  * in PreviewThread we do a rotation or memcopy from that set to the Gfx buffers
  * (the ones dequeued from the window)
  */
-#define GFX_OVERLAY_BUFFERS_DURING_OVERLAY_USE 4
+#define GFX_BUFFERS_DURING_OVERLAY_USE 4
+
+/**
+ * \def GFX_BUFFERS_FOR_RESERVED_USE
+ * Number of Gfx Buffers to allocate and dequeue from window for rendering
+ * postview frames serialized with shared-mode preview frames.
+ */
+#define GFX_BUFFERS_FOR_RESERVED_USE 1
+
+/**
+ * \def GFX_DEQUEUE_RETRY_COUNT
+ * Number of retries when error or reserved buffer is received from native
+ * window.
+ */
+#define GFX_DEQUEUE_RETRY_COUNT 3
+
 
 // callback for when Preview thread is done with yuv data
 class ICallbackPreview {
@@ -106,10 +127,10 @@ public:
     status_t postview(AtomBuffer *buff);
     status_t setPreviewWindow(struct preview_stream_ops *window);
     status_t setPreviewConfig(int preview_width, int preview_height, int preview_stride,
-                              int preview_format, int bufferCount);
+                              int preview_format, bool shared_mode = true, int buffer_count = -1);
     status_t setFramerate(int fps);
     status_t setSensorFramerate(float fps);
-    status_t fetchPreviewBuffers(AtomBuffer ** pvBufs, int *count);
+    status_t fetchPreviewBuffers(Vector<AtomBuffer> &pvBufs);
     status_t returnPreviewBuffers();
     status_t flushBuffers();
     status_t enableOverlay(bool set = true, int rotation = 90);
@@ -170,6 +191,7 @@ private:
         int stride;
         int format;
         int bufferCount;
+        bool sharedMode;
     };
 
     // union of all message data
@@ -199,6 +221,18 @@ private:
     struct Message {
         MessageId id;
         MessageData data;
+    };
+
+    enum GfxBufferOwner {
+        OWNER_PREVIEWTHREAD,
+        OWNER_CLIENT,
+        OWNER_WINDOW
+    };
+
+    struct GfxAtomBuffer {
+        GfxBufferOwner owner;
+        AtomBuffer  buffer;
+        buffer_handle_t *gfxBufferHandle; /*!< native buffer handle from which the gfx data is derived by mapping */
     };
 
 protected:
@@ -236,7 +270,7 @@ private:
     status_t allocateGfxPreviewBuffers(int numberOfBuffers);
     status_t freeGfxPreviewBuffers();
     int getGfxBufferStride();
-    AtomBuffer* dequeueFromWindow();
+    GfxAtomBuffer* dequeueFromWindow();
     void copyPreviewBuffer(AtomBuffer* src, AtomBuffer* dst);
     void getEffectiveDimensions(int *w, int *h);
     void strideCopy(const int   width,
@@ -246,9 +280,15 @@ private:
                     const char* sptr,
                     char*       dptr);
 
+    GfxAtomBuffer* lookForGfxBufferHandle(buffer_handle_t *);
+    GfxAtomBuffer* lookForAtomBuffer(AtomBuffer *buffer);
+    status_t fetchReservedBuffers(int numOfReservedBuffers);
+    GfxAtomBuffer* pickReservedBuffer();
+
+
+
 // private data
 private:
-
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
     PreviewState mState;
@@ -268,8 +308,8 @@ private:
     Callbacks           *mCallbacks;
     int                 mMinUndequeued;     /*!< Minimum number frames
                                                  to keep in window */
-    Vector<AtomBuffer>  mPreviewBuffers;    /*!< Vector with the buffers retrieved from window */
-    Vector<int>         mPreviewInClient;   /*!< Vector with indexes to mPreviewBuffers*/
+    Vector<GfxAtomBuffer> mPreviewBuffers;    /*!< Vector with the buffers retrieved from window */
+    Vector<GfxAtomBuffer> mReservedBuffers;   /*!< Vector to hold buffers reserved for postview */
     int                 mBuffersInWindow;   /*!< Number of buffers currently in the preview window */
     size_t              mNumOfPreviewBuffers;
     bool                mFetchDone;
@@ -281,9 +321,9 @@ private:
     int mPreviewFormat;
 
     bool mOverlayEnabled; /*!< */
+    bool mSharedMode; /*!< true if gfx buffers are shared with AtomISP for 0-copy */
     int mRotation;   /*!< Relative rotation of the camera scan order to
                           the display attached to overlay plane */
-
 }; // class PreviewThread
 
 }; // namespace android

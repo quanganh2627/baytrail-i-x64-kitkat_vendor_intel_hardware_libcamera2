@@ -132,8 +132,6 @@ struct AtomBuffer {
     struct timeval  capture_timestamp;  /*!< system timestamp from when the frame was captured */
     void    *gfxData;                   /*!< pointer to the actual data mapped from the gfx buffer
                                              only used for PREVIEW_GFX type */
-    buffer_handle_t *mNativeBufPtr;     /*!< native buffer handle from which the gfx data is derived by mapping */
-
 };
 
 struct AAAWindowInfo {
@@ -158,8 +156,7 @@ public:
                            int ispPrivate = 0,
                            bool shared = false,
                            struct timeval capture_timestamp = AtomBufferFactory_AtomBufDefTS,
-                           void *gfxData = NULL,
-                           buffer_handle_t *mNativeBufPtr = NULL);
+                           void *gfxData = NULL);
 };
 
 enum SensorType {
