@@ -105,7 +105,9 @@ public:
 
     status_t addInputFrame(AtomBuffer *snapshot, AtomBuffer *postview) STUB_BODY_STAT
     status_t addSnapshotMetadata(PictureThread::MetaData &metadata) STUB_BODY_STAT
-    status_t getOuputResult(AtomBuffer *snap, AtomBuffer * pv, PictureThread::MetaData *metadata) STUB_BODY_STAT
+    status_t getOuputResult(AtomBuffer *snap, AtomBuffer * pv,
+                            PictureThread::MetaData *metadata, int *ULLid) STUB_BODY_STAT
+    int getCurrentULLid() { return mULLCounter; };
     int getULLBurstLength() STUB_BODY_STAT
 
     // implementation of IPostCaptureProcessItem
@@ -164,6 +166,7 @@ private:
     AtomBuffer  mOutputBuffer;  /*!> Output of the ULL processing. this is actually the first input buffer passed */
     AtomBuffer  mOutputPostView;  /*!> post view image for the first snapshot, used as output one */
     State       mState;
+    int mULLCounter;        /*!> Running counter of ULL shots. Used as frame id towards application */
     int mWidth;
     int mHeight;
     int mCurrentPreset;
