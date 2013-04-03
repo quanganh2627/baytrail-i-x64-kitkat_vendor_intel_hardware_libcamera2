@@ -115,12 +115,15 @@ status_t CallbacksThread::compressedFrameDone(AtomBuffer* jpegBuf, AtomBuffer* s
  * Requests a ULL capture to be sent to client
  * the next JPEG image done received by the CallbackThread will be returned to
  * the client via  a custom callback rather than the normal JPEG data callabck
+ * \param id [in] Running number identifying the ULL capture. It matches the
+ * number provided to the application when ULL starts
  */
-status_t CallbacksThread::requestULLPicture()
+status_t CallbacksThread::requestULLPicture(int id)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_ULL_JPEG_DATA_REQUEST;
+    msg.data.ull.id = id;
 
     return mMessageQueue.send(&msg);
 }
@@ -438,10 +441,11 @@ status_t CallbacksThread::handleMessageJpegDataRequest(MessageDataRequest *msg)
     return NO_ERROR;
 }
 
-status_t CallbacksThread::handleMessageUllJpegDataRequest()
+status_t CallbacksThread::handleMessageUllJpegDataRequest(MessageULLSnapshot *msg)
 {
     LOG1("@%s Done",__FUNCTION__);
     mULLRequested++;
+    mULLid = msg->id;
     return NO_ERROR;
 }
 
@@ -599,7 +603,7 @@ status_t CallbacksThread::waitForAndExecuteMessage()
             break;
 
         case MESSAGE_ID_ULL_JPEG_DATA_REQUEST:
-            status = handleMessageUllJpegDataRequest();
+            status = handleMessageUllJpegDataRequest(&msg.data.ull);
             break;
 
         default:

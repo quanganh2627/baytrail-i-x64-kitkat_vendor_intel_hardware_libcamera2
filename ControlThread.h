@@ -182,6 +182,7 @@ private:
         MESSAGE_ID_STORE_METADATA_IN_BUFFER,
 
         MESSAGE_ID_DEQUEUE_RECORDING,
+        MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE,
 
         // timeout handler
         MESSAGE_ID_TIMEOUT,
@@ -247,6 +248,11 @@ private:
         bool    skipFrame;
     };
 
+    struct MessagePostCaptureProcDone {
+        IPostCaptureProcessItem* item;
+        status_t status;
+    };
+
     // union of all message data
     union MessageData {
 
@@ -281,6 +287,9 @@ private:
 
         // MESSAGE_ID_DEQUEUE_RECORDING
         MessageDequeueRecording   dequeueRecording;
+
+        // MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE
+        MessagePostCaptureProcDone postCapture;
 
         // MESSAGE_ID_EXIT
         MessageExit exit;
@@ -389,6 +398,7 @@ private:
     status_t handleMessagePanoramaCaptureTrigger();
     status_t handleMessagePanoramaFinalize(MessagePanoramaFinalize *msg);
     status_t handleMessageTimeout();
+    status_t handleMessagePostCaptureProcessingDone(MessagePostCaptureProcDone *msg);
 
     status_t startFaceDetection();
     status_t stopFaceDetection(bool wait=false);

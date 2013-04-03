@@ -5824,19 +5824,31 @@ status_t ControlThread::handleMessageStoreMetaDataInBuffers(MessageStoreMetaData
 
 void ControlThread::postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t procStatus)
 {
-    LOG1("@%s, item = %p status= %d", __FUNCTION__, item, procStatus);
+    LOG1("@%s", __FUNCTION__);
+    // send message
+    Message msg;
+    msg.id = MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE;
+    msg.data.postCapture.item = item;
+    msg.data.postCapture.status = procStatus;
+
+    mMessageQueue.send(&msg);
+}
+
+status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptureProcDone *msg)
+{
+    LOG1("@%s, item = %p status= %d", __FUNCTION__, msg->item, msg->status);
     status_t status;
     AtomBuffer snapshotBuffer, postviewBuffer;
     PictureThread::MetaData picMetaData;
-
+    int ULLid = 0;
 
     // ATM the only post capture processing is ULL, no need to check which one
-    mULL->getOuputResult(&snapshotBuffer,&postviewBuffer, &picMetaData);
+    mULL->getOuputResult(&snapshotBuffer,&postviewBuffer, &picMetaData, &ULLid);
 
-    if(procStatus != NO_ERROR)
+    if(msg->status != NO_ERROR)
         LOGW("PostCapture Processing failed !!");
 
-    mCallbacksThread->requestULLPicture();
+    mCallbacksThread->requestULLPicture(ULLid);
 
     status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
     if (status != NO_ERROR) {
@@ -5846,7 +5858,7 @@ void ControlThread::postCaptureProcesssingDone(IPostCaptureProcessItem* item, st
     }
     // TODO: Here we should return the other 2 snapshot+postview buffers that
     // ULL stored
-
+    return NO_ERROR;
 }
 status_t ControlThread::hdrInit(int size, int pvSize, int format,
                                 int width, int height,
@@ -6459,6 +6471,10 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_TIMEOUT:
             status = handleMessageTimeout();
+            break;
+
+        case MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE:
+            status = handleMessagePostCaptureProcessingDone(&msg.data.postCapture);
             break;
 
         default:
