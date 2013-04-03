@@ -946,10 +946,7 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
         int format, width, height, stride;
         format = V4L2Format(mParameters.getPreviewFormat());
         mISP->getPreviewSize(&width, &height,&stride);
-        // Magic 3 here is to allow circulation of preview buffers inside
-        // PreviewThread, while we circulate with AtomISP buffers for all
-        // operations
-        mPreviewThread->setPreviewConfig(width, height, stride, format, 3);
+        mPreviewThread->setPreviewConfig(width, height, stride, format, false);
     } else if (previewState != PreviewThread::STATE_ENABLED_HIDDEN &&
                previewState != PreviewThread::STATE_ENABLED_HIDDEN_PASSTHROUGH) {
         LOGE("Trying to resume continuous preview from unexpected state!");
@@ -1373,27 +1370,30 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
     mISP->getPreviewSize(&width, &height,&stride);
     mNumBuffers = mISP->getNumBuffers(videoMode);
-    AtomBuffer *pvBufs;
-    int count;
-    if (mode == MODE_CONTINUOUS_CAPTURE && !mIntelParamsAllowed) {
-        // using mIntelParamsAllowed to distinquish applications using public
-        // API from ones using agreed sequences within continuous mode.
-        // For API compliant continuous-mode we use internal preview buffers
-        // to be able to release and re-acquire external buffers while keeping
-        // continuous mode running.
-        // TODO: support for fluent transitions recardless of buffer type
-        //       transparently
-        // Note: Magic 3 here is to allow circulation of preview buffers inside
-        // PreviewThread, while we circulate with AtomISP buffers for all
-        // operations
-        mPreviewThread->setPreviewConfig(width, height, stride, format, 3);
-    } else {
-        mPreviewThread->setPreviewConfig(width, height, stride, format, mNumBuffers);
-        status = mPreviewThread->fetchPreviewBuffers(&pvBufs, &count);
-        if ((status == NO_ERROR) && (count == mNumBuffers)) {
+
+    // using mIntelParamsAllowed to distinquish applications using public
+    // API from ones using agreed sequences when in continuous mode.
+    // For API compliant continuous-mode we disable sharedGfxBuffers (0-copy)
+    // to be able to release and re-acquire external buffers while keeping
+    // continuous mode running over stopPreview() and startPreview() after
+    // takePicture(). This is done for faster shot2shot.
+    // TODO: support for fluent transitions regardless of buffer type
+    //       transparently
+    bool useSharedGfxBuffers = mIntelParamsAllowed || mode != MODE_CONTINUOUS_CAPTURE;
+    mPreviewThread->setPreviewConfig(width, height, stride, format, useSharedGfxBuffers, mNumBuffers);
+    if (useSharedGfxBuffers) {
+        Vector<AtomBuffer> sharedGfxBuffers;
+        status = mPreviewThread->fetchPreviewBuffers(sharedGfxBuffers);
+        if (status == NO_ERROR) {
+            if ((int)sharedGfxBuffers.size() != mNumBuffers) {
+                LOGE("Invalid shared preview buffer count configuration");
+                return UNKNOWN_ERROR;
+            }
             bool cached = isParameterSet(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING) ? true: false;
-            LOG2("Setting GFX preview: %d bufs, cached/overlay %d", mNumBuffers, cached);
-            mISP->setGraphicPreviewBuffers(pvBufs, mNumBuffers, cached);
+            LOG2("Setting GFX preview: %d bufs, cached/overlay %d, shared 0-copy mode", mNumBuffers, cached);
+            mISP->setGraphicPreviewBuffers(sharedGfxBuffers.editArray(), mNumBuffers, cached);
+        } else {
+            LOG2("PreviewThread not sharing Gfx buffers, using internal buffers");
         }
     }
 
