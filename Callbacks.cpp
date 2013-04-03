@@ -208,6 +208,14 @@ void Callbacks::allocateMemory(AtomBuffer *buff, int size, bool cached)
         buff->buff = mGetMemoryCB(-1, size, 1, mUserToken);
       else
         buff->buff = mGetMemoryCB(-2, size, 1, mUserToken);
+
+      if (buff->buff != NULL) {
+          buff->dataPtr = buff->buff->data;
+          buff->size = buff->buff->size;
+      } else {
+          buff->dataPtr = NULL;
+          buff->size = 0;
+      }
     }
 }
 

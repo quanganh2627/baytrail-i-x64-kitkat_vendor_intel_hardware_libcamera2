@@ -38,6 +38,8 @@ PictureThread::PictureThread(I3AControls *aaaControls) :
     ,mThreadRunning(false)
     ,mCallbacks(Callbacks::getInstance())
     ,mCallbacksThread(CallbacksThread::getInstance())
+    ,mExifBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT_JPEG))
+    ,mOutBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT_JPEG))
     ,mThumbBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW))
     ,mScaledPic(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT))
     ,mPictureQuality(80)
@@ -46,8 +48,6 @@ PictureThread::PictureThread(I3AControls *aaaControls) :
     ,m3AControls(aaaControls)
 {
     LOG1("@%s", __FUNCTION__);
-    mOutBuf.buff = NULL;
-    mExifBuf.buff = NULL;
     mInputBufferArray = NULL;
     mInputBuffDataArray = NULL;
     mHwCompressor = new JpegHwEncoder();
@@ -98,23 +98,24 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     bool failback = false;
 
     size_t bufferSize = (mainBuf->width * mainBuf->height * 2);
-    if (mOutBuf.buff != NULL && bufferSize != mOutBuf.buff->size) {
+    if (mOutBuf.dataPtr != NULL && bufferSize != (size_t) mOutBuf.size) {
         mOutBuf.buff->release(mOutBuf.buff);
+        mOutBuf.dataPtr = NULL;
         mOutBuf.buff = NULL;
     }
 
-    if (mOutBuf.buff == NULL || mOutBuf.buff->data == NULL || mOutBuf.buff->size <= 0) {
+    if (mOutBuf.dataPtr == NULL) {
         mCallbacks->allocateMemory(&mOutBuf, bufferSize);
     }
-    if (mExifBuf.buff == NULL || mExifBuf.buff->data == NULL || mExifBuf.buff->size <= 0) {
+    if (mExifBuf.dataPtr == NULL) {
         mCallbacks->allocateMemory(&mExifBuf, EXIF_SIZE_LIMITATION + sizeof(JPEG_MARKER_SOI));
     }
-    if (mOutBuf.buff == NULL || mOutBuf.buff->data == NULL) {
+    if (mOutBuf.dataPtr == NULL) {
         LOGE("Could not allocate memory for temp buffer!");
         return NO_MEMORY;
     }
-    LOG1("Out buffer: @%p (%d bytes)", mOutBuf.buff->data, mOutBuf.buff->size);
-    LOG1("Exif buffer: @%p (%d bytes)", mExifBuf.buff->data, mExifBuf.buff->size);
+    LOG1("Out buffer: @%p (%d bytes)", mOutBuf.dataPtr, mOutBuf.size);
+    LOG1("Exif buffer: @%p (%d bytes)", mExifBuf.dataPtr, mExifBuf.size);
 
     status = scaleMainPic(mainBuf);
     if (status == NO_ERROR) {
@@ -162,7 +163,7 @@ status_t PictureThread::encode(MetaData &metaData, AtomBuffer *snaphotBuf, AtomB
         // thumbnail is optional
         LOG1("@%s, encoding without Thumbnail", __FUNCTION__);
         msg.data.encode.postviewBuf.buff = NULL;
-        msg.data.encode.postviewBuf.gfxData = NULL;
+        msg.data.encode.postviewBuf.dataPtr = NULL;
     }
     return mMessageQueue.send(&msg);
 }
@@ -198,9 +199,10 @@ void PictureThread::initialize(const CameraParameters &params)
     mThumbBuf.height = params.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
     mThumbBuf.size = frameSize(mThumbBuf.format, mThumbBuf.width, mThumbBuf.height);
     mThumbBuf.stride = mThumbBuf.width;
-    if (mThumbBuf.buff != NULL) {
+    if (mThumbBuf.dataPtr != NULL) {
         mThumbBuf.buff->release(mThumbBuf.buff);
         mThumbBuf.buff = NULL;
+        mThumbBuf.dataPtr = NULL;
     }
 
     params.getPictureSize(&mScaledPic.width, &mScaledPic.height);
@@ -335,7 +337,7 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 
     // Encode the image
     AtomBuffer *postviewBuf;
-    if(msg->postviewBuf.buff == NULL && msg->postviewBuf.gfxData == NULL)
+    if (msg->postviewBuf.dataPtr == NULL)
         postviewBuf = NULL;
     else
         postviewBuf = &msg->postviewBuf;
@@ -343,11 +345,12 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
     status = encodeToJpeg(&msg->snaphotBuf, postviewBuf, &jpegBuf);
     if (status != NO_ERROR) {
         LOGE("Error generating JPEG image!");
-        if (jpegBuf.buff != NULL && jpegBuf.buff->data != NULL) {
-            LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
+        if (jpegBuf.dataPtr != NULL) {
+            LOG1("Releasing jpegBuf @%p", jpegBuf.dataPtr);
             jpegBuf.buff->release(jpegBuf.buff);
         }
         jpegBuf.buff = NULL;
+        jpegBuf.dataPtr = NULL;
     }
 
     jpegBuf.frameCounter = msg->snaphotBuf.frameCounter;
@@ -381,20 +384,20 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
 
     /* Free old buffers if already allocated */
     size_t bufferSize = (msg->width * msg->height * 2);
-    if (mOutBuf.buff != NULL && bufferSize != mOutBuf.buff->size) {
+    if (mOutBuf.dataPtr != NULL && bufferSize != (size_t) mOutBuf.size) {
         mOutBuf.buff->release(mOutBuf.buff);
+        mOutBuf.dataPtr = NULL;
         mOutBuf.buff = NULL;
     }
 
     /* Allocate Output buffer : JPEG and EXIF */
-    if (mOutBuf.buff == NULL || mOutBuf.buff->data == NULL || mOutBuf.buff->size <= 0) {
+    if (mOutBuf.dataPtr == NULL) {
         mCallbacks->allocateMemory(&mOutBuf, bufferSize);
     }
-    if (mExifBuf.buff == NULL || mExifBuf.buff->data == NULL || mExifBuf.buff->size <= 0) {
+    if (mExifBuf.dataPtr == NULL) {
         mCallbacks->allocateMemory(&mExifBuf, EXIF_SIZE_LIMITATION + sizeof(JPEG_MARKER_SOI));
     }
-    if ((mOutBuf.buff == NULL || mOutBuf.buff->data == NULL) ||
-        (mExifBuf.buff == NULL || mExifBuf.buff->data == NULL) ){
+    if (mOutBuf.dataPtr == NULL || mExifBuf.dataPtr == NULL) {
         LOGE("Could not allocate memory for output buffers!");
         return NO_MEMORY;
     }
@@ -460,8 +463,8 @@ status_t PictureThread::allocateInputBuffers(int width, int height, int numBufs)
     mInputBuffers = numBufs;
 
     for (int i = 0; i < mInputBuffers; i++) {
-        mCallbacks->allocateMemory(&mInputBufferArray[i].buff, bufferSize);
-        if(mInputBufferArray[i].buff == NULL || mInputBufferArray[i].buff->data == NULL) {
+        mCallbacks->allocateMemory(&mInputBufferArray[i], bufferSize);
+        if (mInputBufferArray[i].dataPtr == NULL) {
             mInputBuffers = i;
             goto bailout;
         }
@@ -470,8 +473,8 @@ status_t PictureThread::allocateInputBuffers(int width, int height, int numBufs)
         mInputBufferArray[i].stride = stride;
         mInputBufferArray[i].format = V4L2_PIX_FMT_NV12;
         mInputBufferArray[i].size = bufferSize;
-        mInputBuffDataArray[i] = (char *) mInputBufferArray[i].buff->data;
-        LOG2("Snapshot buffer[%d] allocated, ptr = %p",i,mInputBufferArray[i].buff->data);
+        mInputBuffDataArray[i] = (char *) mInputBufferArray[i].dataPtr;
+        LOG2("Snapshot buffer[%d] allocated, ptr = %p",i,mInputBufferArray[i].dataPtr);
     }
     return NO_ERROR;
 
@@ -524,23 +527,11 @@ int PictureThread::encodeExifAndThumbnail(AtomBuffer *thumbBuf, unsigned char* e
         thumbBuf->height == 0)
         goto exit;
 
-    if (thumbBuf->type == ATOM_BUFFER_PREVIEW_GFX)
-    {
-        if (thumbBuf->gfxData == NULL) {
-           LOGW("Emtpy preview buffer was sent as thumbnail");
-           goto exit;
-        } else {
-           inBuf.buf = (unsigned char*)thumbBuf->gfxData;
-        }
-    } else
-    {
-        if (thumbBuf->buff == NULL ||
-            thumbBuf->buff->data == NULL) {
-            LOGW("Emtpy buffer was sent for thumbnail");
-            goto exit;
-        } else {
-            inBuf.buf = (unsigned char*)thumbBuf->buff->data;
-        }
+    if (thumbBuf->dataPtr == NULL) {
+        LOGW("Emtpy buffer was sent for thumbnail");
+        goto exit;
+    } else {
+        inBuf.buf = (unsigned char*)thumbBuf->dataPtr;
     }
 
     // setup the JpegCompressor input and output buffers
@@ -549,11 +540,11 @@ int PictureThread::encodeExifAndThumbnail(AtomBuffer *thumbBuf, unsigned char* e
     inBuf.format = thumbBuf->format;
     inBuf.size = frameSize(thumbBuf->format, thumbBuf->width, thumbBuf->height);
 
-    outBuf.buf = (unsigned char*)mOutBuf.buff->data;
+    outBuf.buf = (unsigned char*)mOutBuf.dataPtr;
     outBuf.width = thumbBuf->width;
     outBuf.height = thumbBuf->height;
     outBuf.quality = mThumbnailQuality;
-    outBuf.size = mOutBuf.buff->size;
+    outBuf.size = mOutBuf.size;
 
     // Set Exif data
     if (!mExifMakerName.isEmpty())
@@ -686,12 +677,10 @@ status_t PictureThread::startHwEncoding(AtomBuffer* mainBuf)
     PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("In",mainBuf->frameCounter);
     inBuf.clear();
     if (mainBuf->shared) {
-       inBuf.buf = (unsigned char *) *((char **)mainBuf->buff->data);
+       inBuf.buf = (unsigned char *) *((char **)mainBuf->dataPtr);
     } else {
-       inBuf.buf = (unsigned char *) mainBuf->buff->data;
+       inBuf.buf = (unsigned char *) mainBuf->dataPtr;
     }
-    if(mainBuf->type == ATOM_BUFFER_PREVIEW_GFX)
-        inBuf.buf = (unsigned char *) mainBuf->gfxData;
 
 
     inBuf.width = mainBuf->width;
@@ -743,7 +732,7 @@ void PictureThread::encodeExif(AtomBuffer *thumbBuf)
         LOG1("Downscaling postview2thumbnail : %dx%d (%d) -> %dx%d (%d)",
                 thumbBuf->width, thumbBuf->height, thumbBuf->stride,
                 mThumbBuf.width, mThumbBuf.height, mThumbBuf.stride);
-        if (mThumbBuf.buff == NULL)
+        if (mThumbBuf.dataPtr == NULL)
             mCallbacks->allocateMemory(&mThumbBuf,mThumbBuf.size);
         if (thumbBuf->height > srcHeighByThumbAspect) {
             // Support cropping 16:9 out from 4:3
@@ -757,7 +746,7 @@ void PictureThread::encodeExif(AtomBuffer *thumbBuf)
         thumbBuf = &mThumbBuf;
     }
 
-    unsigned char* currentPtr = (unsigned char*)mExifBuf.buff->data;
+    unsigned char* currentPtr = (unsigned char*)mExifBuf.dataPtr;
     mExifBuf.size = 0;
 
     // Copy the SOI marker
@@ -811,13 +800,10 @@ status_t PictureThread::doSwEncode(AtomBuffer *mainBuf, AtomBuffer* destBuf)
     PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("In",mainBuf->frameCounter);
     inBuf.clear();
     if (mainBuf->shared) {
-        inBuf.buf = (unsigned char *) *((char **)mainBuf->buff->data);
+        inBuf.buf = (unsigned char *) *((char **)mainBuf->dataPtr);
     } else {
-        inBuf.buf = (unsigned char *) mainBuf->buff->data;
+        inBuf.buf = (unsigned char *) mainBuf->dataPtr;
     }
-
-    if (mainBuf->type == ATOM_BUFFER_PREVIEW_GFX)
-        inBuf.buf = (unsigned char *) mainBuf->gfxData;
 
     int realWidth = (mainBuf->stride > mainBuf->width)? mainBuf->stride:
                                                        mainBuf->width;
@@ -826,11 +812,11 @@ status_t PictureThread::doSwEncode(AtomBuffer *mainBuf, AtomBuffer* destBuf)
     inBuf.format = mainBuf->format;
     inBuf.size = frameSize(mainBuf->format, mainBuf->width, mainBuf->height);
     outBuf.clear();
-    outBuf.buf = (unsigned char*)mOutBuf.buff->data;
+    outBuf.buf = (unsigned char*)mOutBuf.dataPtr;
     outBuf.width = realWidth;
     outBuf.height = mainBuf->height;
     outBuf.quality = mPictureQuality;
-    outBuf.size = mOutBuf.buff->size;
+    outBuf.size = mOutBuf.size;
     endTime = systemTime();
     int mainSize = mCompressor.encode(inBuf, outBuf) - sizeof(JPEG_MARKER_SOI) - SIZE_OF_APP0_MARKER;
     LOG1("Picture JPEG size: %d (time to encode: %ums)", mainSize, (unsigned)((systemTime() - endTime) / 1000000));
@@ -843,7 +829,7 @@ status_t PictureThread::doSwEncode(AtomBuffer *mainBuf, AtomBuffer* destBuf)
 
     if (status == NO_ERROR) {
         mCallbacks->allocateMemory(destBuf, finalSize);
-        if (destBuf->buff == NULL) {
+        if (destBuf->dataPtr == NULL) {
             LOGE("No memory for final JPEG file!");
             status = NO_MEMORY;
         }
@@ -851,11 +837,12 @@ status_t PictureThread::doSwEncode(AtomBuffer *mainBuf, AtomBuffer* destBuf)
     if (status == NO_ERROR) {
         destBuf->size = finalSize;
         // Copy EXIF (it will also have the SOI markers)
-        memcpy(destBuf->buff->data, mExifBuf.buff->data, mExifBuf.size);
-        // Copy the final JPEG stream into the final destination buffer
+        memcpy(destBuf->dataPtr, mExifBuf.dataPtr, mExifBuf.size);
+        // Copy the final /
+        // JPEG stream into the final destination buffer
         // avoid the copying the SOI and APP0 but copy EOI marker
-        char *copyTo = (char*)destBuf->buff->data + mExifBuf.size;
-        char *copyFrom = (char*)mOutBuf.buff->data + sizeof(JPEG_MARKER_SOI) + SIZE_OF_APP0_MARKER;
+        char *copyTo = (char*)destBuf->dataPtr + mExifBuf.size;
+        char *copyFrom = (char*)mOutBuf.dataPtr + sizeof(JPEG_MARKER_SOI) + SIZE_OF_APP0_MARKER;
         memcpy(copyTo, copyFrom, mainSize);
 
         destBuf->id = mainBuf->id;
@@ -894,7 +881,7 @@ status_t PictureThread::completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBu
     LOG1("Picture JPEG size: %d (waited for encode to finish: %ums)", mainSize, (unsigned)((systemTime() - endTime) / 1000000));
     if (status == NO_ERROR) {
         mCallbacks->allocateMemory(destBuf, finalSize);
-        if (destBuf->buff == NULL) {
+        if (destBuf->dataPtr == NULL) {
             LOGE("No memory for final JPEG file!");
             status = NO_MEMORY;
         }
@@ -904,11 +891,11 @@ status_t PictureThread::completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBu
         destBuf->size = finalSize;
 
         // Copy EXIF (it will also have the SOI marker)
-        memcpy(destBuf->buff->data, mExifBuf.buff->data, mExifBuf.size);
+        memcpy(destBuf->dataPtr, mExifBuf.dataPtr, mExifBuf.size);
         destBuf->id = mainBuf->id;
 
         outBuf.clear();
-        outBuf.buf = (unsigned char*)destBuf->buff->data + mExifBuf.size;
+        outBuf.buf = (unsigned char*)destBuf->dataPtr + mExifBuf.size;
         outBuf.width = mainBuf->width;
         outBuf.height = mainBuf->height;
         outBuf.quality = mPictureQuality;
@@ -917,7 +904,7 @@ status_t PictureThread::completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBu
             LOGE("Could not encode picture stream!");
             status = UNKNOWN_ERROR;
         } else {
-            char *copyTo = (char*)destBuf->buff->data +
+            char *copyTo = (char*)destBuf->dataPtr +
                 finalSize - sizeof(JPEG_MARKER_EOI);
             memcpy(copyTo, (void*)JPEG_MARKER_EOI, sizeof(JPEG_MARKER_EOI));
         }
