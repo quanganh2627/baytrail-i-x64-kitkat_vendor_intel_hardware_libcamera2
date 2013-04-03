@@ -400,9 +400,8 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
         }
         mJpegRequested--;
 
-        if (((snapshotBuf.buff != NULL || snapshotBuf.gfxData != NULL) &&
-             (postviewBuf.buff != NULL || postviewBuf.gfxData != NULL)) ||
-            snapshotBuf.type == ATOM_BUFFER_PANORAMA) {
+        if ((snapshotBuf.dataPtr != NULL && postviewBuf.dataPtr != NULL)
+            || snapshotBuf.type == ATOM_BUFFER_PANORAMA) {
             // Return the raw buffers back to ControlThread
             mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
         }
@@ -719,7 +718,7 @@ void CallbacksThread::convertGfx2Regular(AtomBuffer* aGfxBuf, AtomBuffer* aRegul
     LOG1("%s", __FUNCTION__);
 
     mCallbacks->allocateMemory(aRegularBuf, 0);
-    aRegularBuf->buff->data = aGfxBuf->gfxData;
+    aRegularBuf->buff->data = aGfxBuf->dataPtr;
     aRegularBuf->buff->size = aGfxBuf->size;
 }
 } // namespace android

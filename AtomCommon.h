@@ -103,9 +103,7 @@ enum AtomBufferType {
  *
  * Container struct for buffers passed to/from Atom ISP
  *
- * The buffer type determines how the actual data is accessed
- * for all buffer types except ATOM_BUFFER_PREVIEW_GFX data is in *buff
- * for ATOM_BUFFER_PREVIEW_GFX the data is accessed via gfxData
+ * The buffer type determines how the actual memory was aquired
  *
  * Please note that this struct must be kept as POC type.
  * so not possible to add methods.
@@ -130,8 +128,7 @@ struct AtomBuffer {
     FrameBufferStatus status;            /*!< status information of carried frame buffer */
     IBufferOwner* owner;                /*!< owner who is responsible to enqueue back to AtomISP*/
     struct timeval  capture_timestamp;  /*!< system timestamp from when the frame was captured */
-    void    *gfxData;                   /*!< pointer to the actual data mapped from the gfx buffer
-                                             only used for PREVIEW_GFX type */
+    void *dataPtr;                      /*!< pointer to the actual data mapped from the buffer provider */
 };
 
 struct AAAWindowInfo {
@@ -156,7 +153,7 @@ public:
                            int ispPrivate = 0,
                            bool shared = false,
                            struct timeval capture_timestamp = AtomBufferFactory_AtomBufDefTS,
-                           void *gfxData = NULL);
+                           void *dataPtr = NULL);
 };
 
 enum SensorType {

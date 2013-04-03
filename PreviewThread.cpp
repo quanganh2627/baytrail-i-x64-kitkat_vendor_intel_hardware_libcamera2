@@ -742,7 +742,7 @@ PreviewThread::GfxAtomBuffer* PreviewThread::dequeueFromWindow()
                             LOGE("Failed to lock GraphicBufferMapper!");
                             mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
                         } else {
-                            tmpBuf.gfxData = dst;
+                            tmpBuf.dataPtr = dst;
                             GfxAtomBuffer newBuf;
                             newBuf.buffer = tmpBuf;
                             newBuf.owner = OWNER_PREVIEWTHREAD;
@@ -815,7 +815,7 @@ PreviewThread::fetchReservedBuffers(int reservedBufferCount)
                 goto freeDeQueued;
             }
 
-            tmpBuf.gfxData = dst;
+            tmpBuf.dataPtr = dst;
             GfxAtomBuffer newBuf;
             newBuf.buffer = tmpBuf;
             newBuf.owner = OWNER_PREVIEWTHREAD;
@@ -861,14 +861,14 @@ PreviewThread::lookForAtomBuffer(AtomBuffer *buffer)
     Vector<GfxAtomBuffer>::iterator it = mPreviewBuffers.begin();
 
     for (;it != mPreviewBuffers.end(); it++) {
-        if (it->buffer.gfxData == buffer->gfxData) {
+        if (it->buffer.dataPtr == buffer->dataPtr) {
             return it;
         }
     }
 
     it = mReservedBuffers.begin();
     for (;it != mReservedBuffers.end(); it++) {
-        if (it->buffer.gfxData == buffer->gfxData) {
+        if (it->buffer.dataPtr == buffer->dataPtr) {
             return it;
         }
     }
@@ -892,7 +892,7 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
     bool passedToGfx = false;
     LOG2("Buff: id = %d, data = %p",
             msg->buff.id,
-            msg->buff.gfxData);
+            msg->buff.dataPtr);
 
     PreviewState state = getPreviewState();
     if (state != STATE_ENABLED && state != STATE_ENABLED_HIDDEN_PASSTHROUGH) {
@@ -922,10 +922,9 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
             } else {
                 bufToEnqueue = dequeueFromWindow();
                 if (bufToEnqueue) {
-                    LOG2("copying frame %p -> %p : size %d", msg->buff.buff->data, bufToEnqueue->buffer.gfxData, msg->buff.size);
+                    LOG2("copying frame %p -> %p : size %d", msg->buff.dataPtr, bufToEnqueue->buffer.dataPtr, msg->buff.size);
                     LOG2("src frame  %dx%d stride %d ", msg->buff.width, msg->buff.height,msg->buff.stride);
                     LOG2("dst frame  %dx%d stride %d ", bufToEnqueue->buffer.width, bufToEnqueue->buffer.height, bufToEnqueue->buffer.stride);
-
                     copyPreviewBuffer(&msg->buff, &bufToEnqueue->buffer);
                 } else {
                     LOGE("failed to dequeue from window");
@@ -956,11 +955,7 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
     }
 
     if(mCallbacks->msgTypeEnabled(CAMERA_MSG_PREVIEW_FRAME) && mPreviewBuf.buff) {
-        void *src;
-        if(msg->buff.type == ATOM_BUFFER_PREVIEW)
-            src = msg->buff.buff->data;
-        else
-            src = msg->buff.gfxData;
+        void *src = msg->buff.dataPtr;
 
         switch(mPreviewFormat) {
 
@@ -1197,7 +1192,7 @@ status_t PreviewThread::handleFetchPreviewBuffers()
                 goto freeDeQueued;
             }
 
-            tmpBuf.gfxData = dst;
+            tmpBuf.dataPtr = dst;
 
             GfxAtomBuffer newBuf;
             newBuf.buffer = tmpBuf;
@@ -1446,7 +1441,7 @@ status_t PreviewThread::handlePostview(MessagePreview *msg)
 
         err = mapper.lock(*buf,
             GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_NEVER,
-            bounds, &tmpBuf.gfxData);
+            bounds, &tmpBuf.dataPtr);
         if (err != 0) {
             LOGE("Error locking buffer for postview rendering");
             mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
@@ -1487,14 +1482,14 @@ void PreviewThread::copyPreviewBuffer(AtomBuffer* src, AtomBuffer* dst)
                        src->height,      // height of the source image
                        src->stride,      // scanline stride of the source image
                        dst->stride,      // scanline stride of the target image
-                       (const char*)src->buff->data,               // source image
-                       (char *)dst->gfxData);                 // target image
+                       (const char*)src->dataPtr,               // source image
+                       (char *)dst->dataPtr);                 // target image
         break;
     case 270:
         // TODO: Not handled, waiting for Semi
         break;
     case 0:
-        memcpy((char *)dst->gfxData, (const char*)src->buff->data,src->size);
+        memcpy((char *)dst->dataPtr, (const char*)src->dataPtr, src->size);
         break;
     }
 

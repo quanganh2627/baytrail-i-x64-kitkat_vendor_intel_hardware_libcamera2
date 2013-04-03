@@ -4013,7 +4013,7 @@ status_t AtomISP::allocatePreviewBuffers()
              mPreviewBuffers[i].size = mConfig.preview.size;
              allocatedBufs++;
              struct v4l2_buffer_info *vinfo = &v4l2_buf_pool[mPreviewDevice].bufs[i];
-             vinfo->data = mPreviewBuffers[i].buff->data;
+             vinfo->data = mPreviewBuffers[i].dataPtr;
              markBufferCached(vinfo, mPreviewBuffersCached);
              mPreviewBuffers[i].shared = false;
         }
@@ -4021,7 +4021,7 @@ status_t AtomISP::allocatePreviewBuffers()
     } else {
         for (int i = 0; i < mNumPreviewBuffers; i++) {
             struct v4l2_buffer_info *vinfo = &v4l2_buf_pool[mPreviewDevice].bufs[i];
-            vinfo->data = mPreviewBuffers[i].gfxData;
+            vinfo->data = mPreviewBuffers[i].dataPtr;
             markBufferCached(vinfo, mPreviewBuffersCached);
             mPreviewBuffers[i].shared = true;
         }
@@ -4067,7 +4067,7 @@ status_t AtomISP::allocateRecordingBuffers()
         bool cached = false;
         mCallbacks->allocateMemory(&mRecordingBuffers[i], size, cached);
         LOG1("allocate recording buffer[%d], buff=%p size=%d",
-                i, mRecordingBuffers[i].buff->data, mRecordingBuffers[i].buff->size);
+                i, mRecordingBuffers[i].dataPtr, mRecordingBuffers[i].size);
         if (mRecordingBuffers[i].buff == NULL) {
             LOGE("Error allocation memory for recording buffers!");
             status = NO_MEMORY;
@@ -4075,7 +4075,7 @@ status_t AtomISP::allocateRecordingBuffers()
         }
         allocatedBufs++;
         struct v4l2_buffer_info *vinfo = &v4l2_buf_pool[mRecordingDevice].bufs[i];
-        vinfo->data = mRecordingBuffers[i].buff->data;
+        vinfo->data = mRecordingBuffers[i].dataPtr;
         markBufferCached(vinfo, cached);
         mRecordingBuffers[i].shared = false;
         mRecordingBuffers[i].width = mConfig.recording.width;
@@ -4140,12 +4140,12 @@ status_t AtomISP::allocateSnapshotBuffers()
         if (mUsingClientSnapshotBuffers) {
             vinfo = &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i];
             vinfo->data = mClientSnapshotBuffers[i];
-            memcpy(mSnapshotBuffers[i].buff->data, &mClientSnapshotBuffers[i], sizeof(void *));
+            memcpy(mSnapshotBuffers[i].dataPtr, &mClientSnapshotBuffers[i], sizeof(void *));
             mSnapshotBuffers[i].shared = true;
 
         } else {
             vinfo = &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i];
-            vinfo->data = mSnapshotBuffers[i].buff->data;
+            vinfo->data = mSnapshotBuffers[i].dataPtr;
             mSnapshotBuffers[i].shared = false;
         }
         markBufferCached(vinfo, mClientSnapshotBuffersCached);
@@ -4247,7 +4247,7 @@ status_t AtomISP::allocateMetaDataBuffers()
         metaDataBuf = new IntelMetadataBuffer();
         if(metaDataBuf) {
             initMetaDataBuf(metaDataBuf);
-            metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].buff->data);
+            metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].dataPtr);
             metaDataBuf->Serialize(meta_data_prt, meta_data_size);
             mRecordingBuffers[i].metadata_buff = NULL;
             mCallbacks->allocateMemory(&mRecordingBuffers[i].metadata_buff, meta_data_size);
