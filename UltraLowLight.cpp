@@ -521,8 +521,8 @@ bool UltraLowLight::updateTrigger(SensorAeConfig &expInfo, int iso)
     int expTime = expInfo.expTime;
     bool change = false;
 
-    if (((iso >= ULL_DARK_ISO_THRESHOLD) && (expTime >= ULL_DARK_EXPTIME_THRESHOLD))
-     || ((iso <= ULL_BRIGHT_ISO_THRESHOLD) && (expTime <= ULL_BRIGHT_EXPTIME_THRESHOLD))){
+    if ((iso >= ULL_DARK_ISO_THRESHOLD)
+     || (iso <= ULL_BRIGHT_ISO_THRESHOLD)){
 
         change = (mTrigger? true:false);
         mTrigger = false;
