@@ -32,13 +32,10 @@ using namespace CPF;
 const char *cpfConfigPath = "/etc/atomisp/";  // Where CPF files are located
 // FIXME: The spec for following is "dr%02d[0-9][0-9]??????????????.cpf"
 const char *cpfConfigPattern = "%02d*.cpf";  // How CPF file name should look
-const char *subdevPathName = "/dev/v4l-subdev%d";  // Subdevs
-const char *sysfsPath = "/sys/class/video4linux";  // Drivers
-const char *mcPathName = "/dev/media0";  // Media Controller
 
 // Defining and initializing static members
-Vector<struct CpfStore::SensorDriver> CpfStore::registeredDrivers;
-Vector<struct stat> CpfStore::validatedCpfFiles;
+Vector<struct CpfStore::SensorDriver> CpfStore::RegisteredDrivers;
+Vector<struct stat> CpfStore::ValidatedCpfFiles;
 
 CameraBlob::Blob::Blob(const int size, void *& ptr)
 {
@@ -482,28 +479,33 @@ CpfStore::CpfStore(const int cameraId)
         return;
     }
 
-    // Find out the name of the CPF config file
-    if (initNames(mCpfPathName, mSysfsPathName)) {
-        LOGE("ERROR could not get CPF file name!");
+    // Find out the related file names
+    if (initFileNames(mCpfPathName, mSysfsPathName)) {
+        // Error message given already
         return;
     }
 
-    // Get separate CPF configurations from CPF config file
+    // Obtain the configurations
     if (initConf(aiqConf, drvConf, halConf)) {
-        LOGE("ERROR could not get CPF configuration!");
+        // Error message given already
         return;
     }
 
-    // Provide configuration data to driver and clean pointer
-    // to that data (continue further even if errors did occur)
+    // Provide configuration data for algorithms and image
+    // quality purposes, and continue further even if errors did occur.
+    // Pointer to that data is cleared later, whenever seen suitable,
+    // so that the memory reserved for CPF data can then be freed
     processAiqConf(aiqConf);
 
-    // Provide configuration data to driver and clean pointer
-    // to that data (continue further even if errors did occur)
+    // Provide configuration data to driver, and continue further even
+    // if errors did occur. Clean pointer to that data, so that
+    // the memory reserved for CPF data can then be freed
     processDrvConf(drvConf);
 
-    // Process configuration data to HAL and clean pointer to
-    // that data (continue further even if errors did occur)
+    // Process (make a copy of...) configuration data to HAL, and
+    // continue further even if errors did occur. Clean pointer to
+    // that data, so that the memory reserved for CPF data can then
+    // be freed
     processHalConf(halConf);
 }
 
@@ -511,122 +513,42 @@ CpfStore::~CpfStore()
 {
 }
 
-status_t CpfStore::initNames(String8& cpfName, String8& sysfsName)
+status_t CpfStore::initFileNames(String8& cpfPathName, String8& sysfsPathName)
 {
-    String8 name;
     status_t ret = 0;
-    int drvIndex = -1;  // Index of registered driver for which CPF file exists
-    bool anyMatch = false;
 
+    // First, we see what drivers we have in the system
     if ((ret = initDriverList())) {
-        LOGE("ERROR could not obtain list of sensor drivers!");
+        // Error message given already
         return ret;
     }
 
-    // We go the directory containing CPF files thru one by one file,
-    // and see if a particular file is something to react upon. If yes,
-    // we then see if there is a corresponding driver registered. It
-    // is allowed to have more than one CPF file for particular driver
-    // (logic therein decides which one to use, then), but having
-    // more than one suitable driver registered is a strict no no...
-
-    // Sensor drivers have been registered to media controller
-    DIR *dir = opendir(cpfConfigPath);
-    if (!dir) {
-        LOGE("ERROR in opening CPF folder \"%s\": %s!", cpfConfigPath, strerror(errno));
-        return ENOTDIR;
+    // Secondly, we will find a matching configuration file
+    int drvIndex = -1;   // Index of registered driver for which CPF file exists
+    String8 cpfFileName; // Name of the corresponding CPF config file
+    if ((ret = findConfigWithDriver(cpfFileName, drvIndex))) {
+        // Error message given already
+        return ret;
     }
 
-    do {
-        dirent *entry;
-        if (errno = 0, !(entry = readdir(dir))) {
-            if (errno) {
-                LOGE("ERROR in browsing CPF folder \"%s\": %s!", cpfConfigPath, strerror(errno));
-                ret = FAILED_TRANSACTION;
-            }
-            // If errno was not set, return 0 means end of directory.
-            // So, let's see if we found any (suitable) CPF files
-            if (drvIndex < 0) {
-                if (anyMatch) {
-                    LOGE("NOTE no suitable CPF files found in CPF folder \"%s\" (ok for SOC cameras)", cpfConfigPath);
-                } else {
-                    LOGE("NOTE not a single CPF file found in CPF folder \"%s\" (ok for SOC cameras)", cpfConfigPath);
-                }
-                ret = NO_INIT;
-            }
-            break;
-        }
-        if ((strcmp(entry->d_name, ".") == 0) ||
-            (strcmp(entry->d_name, "..") == 0)) {
-            continue;  // Skip self and parent
-        }
-        String8 pattern = String8::format(cpfConfigPattern, mCameraId);
-        int r = fnmatch(pattern, entry->d_name, 0);
-        switch (r) {
-        case 0:
-            // The file name looks like a valid CPF file name
-            anyMatch = true;
-            // See if we have corresponding driver registered
-            // (if there is an error, the looping ends at 'while')
-            ret = initNamesHelper(String8(entry->d_name), name, drvIndex);
-            continue;
-        case FNM_NOMATCH:
-            // The file name did not look like a CPF file name
-            continue;
-        default:
-            // Unknown error (the looping ends at 'while')
-            LOGE("ERROR in pattern matching file name \"%s\"!", entry->d_name);
-            ret = UNKNOWN_ERROR;
-            continue;
-        }
-    } while (!ret);
-
-    if (closedir(dir)) {
-        LOGE("ERROR in closing CPF folder \"%s\": %s!", cpfConfigPath, strerror(errno));
-        if (!ret) ret = EPERM;
+    // Thirdly, we will find out the I²C bus and address for the driver
+    int i2cBus;
+    int i2cAddress;
+    if ((ret = findBusAddress(drvIndex, i2cBus, i2cAddress))) {
+        // Error message given already
+        return ret;
     }
 
-    if (!ret) {
-        // Here is the correct CPF file, finally found out
-        cpfName = String8(cpfConfigPath).appendPath(name);
-        sysfsName = String8(sysfsPath).appendPath(registeredDrivers[drvIndex].mSysfsName);
-    }
+    // Here is the correct CPF file
+    cpfPathName = cpfConfigPath;
+    cpfPathName.appendPath(cpfFileName);
 
-    return ret;
-}
+    // Here is the correct sysfs file
+    const char *sysfsPath = "/sys/class/i2c-dev/i2c-%d/device/%d-%04d/sensordata";
+    sysfsPathName = String8::format(sysfsPath, i2cBus, i2cBus, i2cAddress);
 
-status_t CpfStore::initNamesHelper(const String8& filename, String8& refName, int& index)
-{
-    status_t ret = 0;
-
-    for (int i = registeredDrivers.size(); i-- > 0; ) {
-        if (filename.find(registeredDrivers[i].mSensorName) < 0) {
-            // Name of this registered driver was not found
-            // from within CPF looking file name -> skip it
-            continue;
-        } else {
-            // Since we are here, we do have a registered
-            // driver whose name maps to this CPF file name
-            if (index < 0) {
-                // No previous CPF<>driver pairs
-                index = i;
-                refName = filename;
-            } else {
-                if (index == i) {
-                    // Multiple CPF files match the driver
-                    // Let's use the most recent one
-                    if (strcmp(filename, refName) > 0) {
-                        refName = filename;
-                    }
-                } else {
-                    // We just got lost:
-                    // Which is the correct sensor driver?
-                    LOGE("ERROR multiple driver candidates for CPF file \"%s\"!", filename.string());
-                    ret = ENOTUNIQ;
-                }
-            }
-        }
-    }
+    LOGD("cpf config file name: %s", cpfPathName.string());
+    LOGD("cpf sysfs file name: %s", sysfsPathName.string());
 
     return ret;
 }
@@ -635,12 +557,13 @@ status_t CpfStore::initDriverList()
 {
     status_t ret = 0;
 
-    if (registeredDrivers.size() > 0) {
+    if (RegisteredDrivers.size() > 0) {
         // We only need to go through the drivers once
-        return ret;
+        return 0;
     }
 
     // Sensor drivers have been registered to media controller
+    const char *mcPathName = "/dev/media0";
     int fd = open(mcPathName, O_RDONLY);
     if (fd == -1) {
         LOGE("ERROR in opening media controller: %s!", strerror(errno));
@@ -656,7 +579,7 @@ status_t CpfStore::initDriverList()
             if (errno == EINVAL) {
                 // Ending up here when no more entities left.
                 // Will simply 'break' if everything was ok
-                if (registeredDrivers.size() == 0) {
+                if (RegisteredDrivers.size() == 0) {
                     // No registered drivers found
                     LOGE("ERROR no sensor driver registered in media controller!");
                     ret = NO_INIT;
@@ -701,6 +624,7 @@ status_t CpfStore::initDriverListHelper(int major, int minor, SensorDriver& drvI
 {
     String8 subdevPathNameN;
 
+    const char *subdevPathName = "/dev/v4l-subdev%d";
     for (int n = 0; true; n++) {
         subdevPathNameN = String8::format(subdevPathName, n);
         struct stat fileInfo;
@@ -715,15 +639,152 @@ status_t CpfStore::initDriverListHelper(int major, int minor, SensorDriver& drvI
             }
         }
         if ((major == MAJOR(fileInfo.st_rdev)) && (minor == MINOR(fileInfo.st_rdev))) {
-            drvInfo.mSysfsName = subdevPathNameN.getPathLeaf();
-            registeredDrivers.push(drvInfo);
-            LOGD("Registered sensor driver \"%s\" found for sensor \"%s\"", drvInfo.mSysfsName.string(), drvInfo.mSensorName.string());
+            drvInfo.mDeviceName = subdevPathNameN.getPathLeaf();
+            RegisteredDrivers.push(drvInfo);
+            LOGD("Registered sensor driver \"%s\" found for sensor \"%s\"", drvInfo.mDeviceName.string(), drvInfo.mSensorName.string());
             // All ok
             break;
         }
     }
 
     return 0;
+}
+
+status_t CpfStore::findConfigWithDriver(String8& cpfName, int& drvIndex)
+{
+    status_t ret = 0;
+    bool anyMatch = false;
+
+    // We go the directory containing CPF files thru one by one file,
+    // and see if a particular file is something to react upon. If yes,
+    // we then see if there is a corresponding driver registered. It
+    // is allowed to have more than one CPF file for particular driver
+    // (logic therein decides which one to use, then), but having
+    // more than one suitable driver registered is a strict no no...
+
+    DIR *dir = opendir(cpfConfigPath);
+    if (!dir) {
+        LOGE("ERROR in opening CPF folder \"%s\": %s!", cpfConfigPath, strerror(errno));
+        return ENOTDIR;
+    }
+
+    do {
+        dirent *entry;
+        if (errno = 0, !(entry = readdir(dir))) {
+            if (errno) {
+                LOGE("ERROR in browsing CPF folder \"%s\": %s!", cpfConfigPath, strerror(errno));
+                ret = FAILED_TRANSACTION;
+            }
+            // If errno was not set, return 0 means end of directory.
+            // So, let's see if we found any (suitable) CPF files
+            if (drvIndex < 0) {
+                if (anyMatch) {
+                    LOGE("NOTE no suitable CPF files found in CPF folder \"%s\" (ok for SOC cameras)", cpfConfigPath);
+                } else {
+                    LOGE("NOTE not a single CPF file found in CPF folder \"%s\" (ok for SOC cameras)", cpfConfigPath);
+                }
+                ret = NO_INIT;
+            }
+            break;
+        }
+        if ((strcmp(entry->d_name, ".") == 0) ||
+            (strcmp(entry->d_name, "..") == 0)) {
+            continue;  // Skip self and parent
+        }
+        String8 pattern = String8::format(cpfConfigPattern, mCameraId);
+        int r = fnmatch(pattern, entry->d_name, 0);
+        switch (r) {
+        case 0:
+            // The file name looks like a valid CPF file name
+            anyMatch = true;
+            // See if we have corresponding driver registered
+            // (if there is an error, the looping ends at 'while')
+            ret = findConfigWithDriverHelper(String8(entry->d_name), cpfName, drvIndex);
+            continue;
+        case FNM_NOMATCH:
+            // The file name did not look like a CPF file name
+            continue;
+        default:
+            // Unknown error (the looping ends at 'while')
+            LOGE("ERROR in pattern matching file name \"%s\"!", entry->d_name);
+            ret = UNKNOWN_ERROR;
+            continue;
+        }
+    } while (!ret);
+
+    if (closedir(dir)) {
+        LOGE("ERROR in closing CPF folder \"%s\": %s!", cpfConfigPath, strerror(errno));
+        if (!ret) ret = EPERM;
+    }
+
+    return ret;
+}
+
+status_t CpfStore::findConfigWithDriverHelper(const String8& fileName, String8& cpfName, int& index)
+{
+    status_t ret = 0;
+
+    for (int i = RegisteredDrivers.size(); i-- > 0; ) {
+        if (fileName.find(RegisteredDrivers[i].mSensorName) < 0) {
+            // Name of this registered driver was not found
+            // from within CPF looking file name -> skip it
+            continue;
+        } else {
+            // Since we are here, we do have a registered
+            // driver whose name maps to this CPF file name
+            if (index < 0) {
+                // No previous CPF<>driver pairs
+                index = i;
+                cpfName = fileName;
+            } else {
+                if (index == i) {
+                    // Multiple CPF files match the driver
+                    // Let's use the most recent one
+                    if (strcmp(fileName, cpfName) > 0) {
+                        cpfName = fileName;
+                    }
+                } else {
+                    // We just got lost:
+                    // Which is the correct sensor driver?
+                    LOGE("ERROR multiple driver candidates for CPF file \"%s\"!", fileName.string());
+                    ret = ENOTUNIQ;
+                }
+            }
+        }
+    }
+
+    return ret;
+}
+
+status_t CpfStore::findBusAddress(const int drvIndex, int& i2cBus, int& i2cAddress)
+{
+    FILE *file;
+    status_t ret = 0;
+
+    const char *sysfsInfoPathName = "/sys/class/video4linux/%s/name";
+    String8 i2cInfoPathName = String8::format(sysfsInfoPathName, RegisteredDrivers[drvIndex].mDeviceName.string());
+
+    file = fopen(i2cInfoPathName, "rb");
+    if (!file) {
+        LOGE("ERROR in opening file \"%s\" for I²C info: %s!", i2cInfoPathName.string(), strerror(errno));
+        return NAME_NOT_FOUND;
+    }
+
+    do {
+        if (fscanf(file, " %*s %d-%d", &i2cBus, &i2cAddress) < 2) {
+            LOGE("ERROR reading file \"%s\"!", i2cInfoPathName.string());
+            ret = EIO;
+            break;
+        }
+
+    } while (0);
+
+    if (fclose(file)) {
+        LOGE("ERROR in closing file \"%s\": %s!", i2cInfoPathName.string(), strerror(errno));
+        if (!ret) ret = EPERM;
+    }
+
+    return ret;
 }
 
 status_t CpfStore::initConf(CameraBlob& aiqConf, CameraBlob& drvConf, CameraBlob& halConf)
@@ -822,12 +883,12 @@ status_t CpfStore::validateConf(const CameraBlob& allConf, const struct stat& st
     // calculations are avoided when user switches between cameras.
     // Note: the capacity could be set to zero as well if one wants
     // to validate the file in every case
-    validatedCpfFiles.setCapacity(PlatformData::numberOfCameras());
+    ValidatedCpfFiles.setCapacity(PlatformData::numberOfCameras());
     bool& canSkipChecksum = mIsOldConfig = false;
 
     // See if we know the file already
-    for (int i = validatedCpfFiles.size() - 1; i >= 0; i--) {
-        if (!memcmp(&validatedCpfFiles[i], &statCurrent, sizeof(struct stat))) {
+    for (int i = ValidatedCpfFiles.size() - 1; i >= 0; i--) {
+        if (!memcmp(&ValidatedCpfFiles[i], &statCurrent, sizeof(struct stat))) {
             canSkipChecksum = true;
             break;
         }
@@ -847,12 +908,12 @@ status_t CpfStore::validateConf(const CameraBlob& allConf, const struct stat& st
     // If we are here, the file was ok. If it wasn't cached already,
     // then do so now (adding to end of cache, removing from beginning)
     if (!canSkipChecksum) {
-        if (validatedCpfFiles.size() < validatedCpfFiles.capacity()) {
-            validatedCpfFiles.push_back(statCurrent);
+        if (ValidatedCpfFiles.size() < ValidatedCpfFiles.capacity()) {
+            ValidatedCpfFiles.push_back(statCurrent);
         } else {
-            if (validatedCpfFiles.size() > 0) {
-                validatedCpfFiles.removeAt(0);
-                validatedCpfFiles.push_back(statCurrent);
+            if (ValidatedCpfFiles.size() > 0) {
+                ValidatedCpfFiles.removeAt(0);
+                ValidatedCpfFiles.push_back(statCurrent);
             }
         }
     }
@@ -899,10 +960,6 @@ status_t CpfStore::processAiqConf(CameraBlob& aiqConf)
 
 status_t CpfStore::processDrvConf(CameraBlob& drvConf)
 {
-    // FIXME: To be only cleared after use
-    // (actually cleared automatically, so can just remove this line later)
-    drvConf.clear();
-
     // Only act if CPF file has been updated and there is some data
     // to be sent
     if (mIsOldConfig || !drvConf) {
@@ -911,15 +968,24 @@ status_t CpfStore::processDrvConf(CameraBlob& drvConf)
 
     status_t ret = 0;
 
+    // We are only interested in actual HAL data, not the header
+    void *data;
+    size_t size;
+    if (tbd_get_record(drvConf, tbd_class_drv, tbd_format_any, &data, &size) || (data == 0) || (size == 0)) {
+        // Looks like the DRV record was broken
+        LOGE("ERROR corrupted DRV record!");
+        return DEAD_OBJECT;
+    }
+
     // There is a limitation in sysfs; maximum data size to be sent
     // is one page
-    if (drvConf.size() > getpagesize()) {
+    if (size > getpagesize()) {
         LOGE("ERROR too big driver configuration record!");
         return EOVERFLOW;
     }
 
     // Now, let's write the driver configuration data via sysfs
-    LOGD("Writing to sysfs file \"%s\"", mSysfsPathName.string());
+    LOGD("Writing %d bytes to sysfs file \"%s\"", size, mSysfsPathName.string());
     int fd = open(mSysfsPathName, O_WRONLY);
     if (fd == -1) {
         LOGE("ERROR in opening sysfs write file \"%s\": %s!", mSysfsPathName.string(), strerror(errno));
@@ -927,13 +993,12 @@ status_t CpfStore::processDrvConf(CameraBlob& drvConf)
     }
 
     // Writing the driver data record...
-    int bytes = write(fd, drvConf, drvConf.size());
+    int bytes = write(fd, data, size);
     if (bytes < 0) {
         LOGE("ERROR in writing sysfs data: %s!", strerror(errno));
         ret = EIO;
-    }
-    if ((bytes == 0) || (bytes != drvConf.size())) {
-        LOGE("ERROR in writing sysfs data!");
+    } else if ((bytes == 0) || (bytes != size)) {
+        LOGE("ERROR in writing sysfs data: %d bytes written (expecting %d)!", bytes, size);
         ret = EIO;
     }
 
