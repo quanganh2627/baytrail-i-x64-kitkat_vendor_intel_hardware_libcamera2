@@ -99,7 +99,7 @@ class CpfStore
 {
     struct SensorDriver {
         String8 mSensorName;
-        String8 mSysfsName;
+        String8 mDeviceName;
     };
 
 public:
@@ -109,10 +109,12 @@ public:
     AiqConf AiqConfig;
     HalConf HalConfig;
 private:
-    status_t initNames(String8& cpfName, String8& sysfsName);
-    status_t initNamesHelper(const String8& filename, String8& refName, int& index);
+    status_t initFileNames(String8& cpfPathName, String8& sysfsPathName);
     status_t initDriverList();
     status_t initDriverListHelper(int major, int minor, SensorDriver& drvInfo);
+    status_t findConfigWithDriver(String8& cpfName, int& drvIndex);
+    status_t findConfigWithDriverHelper(const String8& fileName, String8& cpfName, int& index);
+    status_t findBusAddress(const int drvIndex, int& i2cBus, int& i2cAddress);
     status_t initConf(CameraBlob& aiqConf, CameraBlob& drvConf, CameraBlob& halConf);
     status_t loadConf(CameraBlob& allConf);
     status_t validateConf(const CameraBlob& allConf, const struct stat& statCurrent);
@@ -125,8 +127,8 @@ private:
     bool mIsOldConfig;
     String8 mCpfPathName;
     String8 mSysfsPathName;
-    static Vector<struct SensorDriver> registeredDrivers;
-    static Vector<struct stat> validatedCpfFiles;
+    static Vector<struct SensorDriver> RegisteredDrivers;
+    static Vector<struct stat> ValidatedCpfFiles;
     // Disallow copy and assignment
     CpfStore(const CpfStore&);
     void operator=(const CpfStore&);
