@@ -485,6 +485,10 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageFrame *msg)
         LOGW("@%s: returning raw frames used in failed encoding", __FUNCTION__);
         mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
         return NO_ERROR;
+    } else if (jpegBuf.buff == NULL) {
+        // Should not have NULL buffer here in any case, but checking to make Klockwork happy:
+        LOGW("NULL jpegBuf.buff recevied in CallbacksThread. Should not happen.");
+        return UNKNOWN_ERROR;
     }
 
     // Put put the metadata in place to the ULL image buffer. This will be
@@ -495,6 +499,11 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageFrame *msg)
 
     AtomBuffer jpegAndMeta = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
     mCallbacks->allocateMemory(&jpegAndMeta, jpegBuf.size + sizeof(camera_ull_metadata_t));
+
+    if (jpegAndMeta.buff == NULL) {
+        LOGE("Failed to allocate memory for buffer jpegAndMeta");
+        return UNKNOWN_ERROR;
+    }
 
     // space for the metadata is reserved in the beginning of the buffer, copy it there
     memcpy(jpegAndMeta.buff->data, &metadata, sizeof(camera_ull_metadata_t));
@@ -514,13 +523,14 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageFrame *msg)
     if (jpegBuf.buff != NULL) {
         LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
         jpegBuf.buff->release(jpegBuf.buff);
-    } else {
-        LOGW("CallbacksThread received NULL jpegBuf.buff, which should not happen");
     }
 
     if (jpegAndMeta.buff != NULL) {
         LOG1("Releasing jpegAndMeta @%p", jpegAndMeta.buff->data);
         jpegAndMeta.buff->release(jpegAndMeta.buff);
+    } else {
+        LOGW("NULL jpegAndMeta buffer, while reaching release().");
+        return UNKNOWN_ERROR;
     }
 
     if (snapshotBuf.buff != NULL && postviewBuf.buff != NULL) {
