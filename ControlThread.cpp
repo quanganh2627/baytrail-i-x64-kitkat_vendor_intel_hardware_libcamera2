@@ -86,6 +86,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mISP(NULL)
     ,mDvs(NULL)
     ,mCP(NULL)
+    ,mULL(NULL)
     ,m3AControls(NULL)
     ,mPreviewThread(NULL)
     ,mPictureThread(NULL)
@@ -1204,16 +1205,19 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         return STATE_PREVIEW_STILL;
     }
 
+    //file injection to capture the 13M(4192x3104) pic for merr,
+    //need the STATE_CONTINUOUS_CAPTURE mode.
+    if(!mISP->isFileInjectionEnabled()) {
     // ISP will fail to start if aspect ratio of preview and
     // main output do not match.
     // TODO: A CSS1.5 bug, tracked in BZ: 72564
-    float picRatio = 1.0 * picWidth / picHeight;
-    float previewRatio = 1.0 * pWidth / pHeight;
-    if  (fabsf(picRatio - previewRatio) > ASPECT_TOLERANCE) {
-        LOG1("@%s: Different aspect ratio for preview and picture size, disabling continuous mode", __FUNCTION__);
-        return STATE_PREVIEW_STILL;
+        float picRatio = 1.0 * picWidth / picHeight;
+        float previewRatio = 1.0 * pWidth / pHeight;
+        if  (fabsf(picRatio - previewRatio) > ASPECT_TOLERANCE) {
+            LOG1("@%s: Different aspect ratio for preview and picture size, disabling continuous mode", __FUNCTION__);
+            return STATE_PREVIEW_STILL;
+        }
     }
-
     if (mBurstLength > 1 && mBurstStart >= 0) {
         LOG1("@%s: Burst length of %d requested, disabling continuous mode",
              __FUNCTION__, mBurstLength);
@@ -1773,7 +1777,7 @@ status_t ControlThread::handleMessageStartRecording()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    int width,height;
+    int width,height,widthPreview,heightPreview;
     char sizes[25];
 
     if (mState == STATE_PREVIEW_VIDEO) {
@@ -1807,13 +1811,20 @@ status_t ControlThread::handleMessageStartRecording()
     mParameters.setPictureSize(width, height);
     allocateSnapshotBuffers();
     snprintf(sizes, 25, "%dx%d", width,height);
-    mParameters.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, sizes);
-
     LOG1("video snapshot size %dx%d", width, height);
-    mParameters.getPreviewSize(&width, &height);
-    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH, width);
-    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT, height);
-    snprintf(sizes, 25, "%dx%d,0x0", width,height);
+    mParameters.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, sizes);
+    mParameters.getPreviewSize(&widthPreview, &heightPreview);
+
+    // avoid that thumbnail is larger than image in case of small video size
+    if (widthPreview > width) {
+        widthPreview = width;
+        heightPreview = height;
+    }
+
+    LOG1("video snapshot thumbnail size %dx%d", widthPreview, heightPreview);
+    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH, widthPreview);
+    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT, heightPreview);
+    snprintf(sizes, 25, "%dx%d,0x0", widthPreview,heightPreview);
     mParameters.set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES, sizes);
     updateParameterCache();
 
@@ -2994,7 +3005,7 @@ status_t ControlThread::captureULLPic()
 
     stopFaceDetection();
     // Initialize the burst control variables for the ULL burst
-    mBurstLength = mULL->MAX_INPUT_BUFFERS;
+    mBurstLength = mULL->getULLBurstLength();
     mBurstStart = 0;
     mBurstFps = mISP->getFrameRate();
 
@@ -3004,7 +3015,7 @@ status_t ControlThread::captureULLPic()
     mPictureThread->initialize(mParameters);
 
     // Get the snapshots
-    for (int i=0; i< mULL->MAX_INPUT_BUFFERS; i++) {
+    for (int i=0; i< mBurstLength; i++) {
        status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
        if (status != NO_ERROR) {
            LOGE("Error in grabbing snapshot!");

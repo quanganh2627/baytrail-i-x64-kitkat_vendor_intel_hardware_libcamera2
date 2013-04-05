@@ -21,7 +21,7 @@
 #include "Callbacks.h"
 #include "CallbacksThread.h"
 #include "ColorConverter.h"
-#ifndef GRAPHIC_IS_GEN
+#ifndef GRAPHIC_IS_GEN // this will be remove if graphic provides one common header file
 #include <hal_public.h>
 #endif
 #include <gui/Surface.h>
@@ -30,6 +30,7 @@
 #include <ui/GraphicBufferMapper.h>
 #include "AtomCommon.h"
 #include "nv12rotation.h"
+#include "PlatformData.h"
 
 namespace android {
 
@@ -726,8 +727,8 @@ AtomBuffer* PreviewThread::dequeueFromWindow()
                     tmpBuf.stride = stride;
                     tmpBuf.width = w;
                     tmpBuf.height = h;
-                    tmpBuf.size = frameSize(V4L2_PIX_FMT_NV12, tmpBuf.stride, tmpBuf.height);
-                    tmpBuf.format = V4L2_PIX_FMT_NV12;
+                    tmpBuf.size = frameSize(PlatformData::getPreviewFormat(), tmpBuf.stride, tmpBuf.height);
+                    tmpBuf.format = PlatformData::getPreviewFormat();
                     if(mapper.lock(*buf, lockMode, bounds, &dst) != NO_ERROR) {
                         LOGE("Failed to lock GraphicBufferMapper!");
                         mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
@@ -847,15 +848,22 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
         switch(mPreviewFormat) {
 
         case V4L2_PIX_FMT_YUV420:
-            align16ConvertNV12ToYV12(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+            if (PlatformData::getPreviewFormat() == V4L2_PIX_FMT_NV12)
+                align16ConvertNV12ToYU12(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+            //TBD for other preview format, not supported yet
             break;
 
-        case V4L2_PIX_FMT_NV21:
-            trimConvertNV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+        case V4L2_PIX_FMT_NV21: // you need to do this for the first time
+            if (PlatformData::getPreviewFormat() == V4L2_PIX_FMT_NV12)
+                trimConvertNV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+            else
+                align16ConvertYV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
             break;
 
         case V4L2_PIX_FMT_RGB565:
-            trimConvertNV12ToRGB565(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+            if (PlatformData::getPreviewFormat() == V4L2_PIX_FMT_NV12)
+                trimConvertNV12ToRGB565(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+            //TBD for other preview format, not supported yet
             break;
 
         default:
@@ -1032,8 +1040,8 @@ status_t PreviewThread::handleFetchPreviewBuffers()
             tmpBuf.stride = stride;
             tmpBuf.width = mPreviewWidth;
             tmpBuf.height = mPreviewHeight;
-            tmpBuf.size = frameSize(V4L2_PIX_FMT_NV12, tmpBuf.stride, tmpBuf.height);
-            tmpBuf.format = V4L2_PIX_FMT_NV12;
+            tmpBuf.size = frameSize(PlatformData::getPreviewFormat(), tmpBuf.stride, tmpBuf.height);
+            tmpBuf.format = PlatformData::getPreviewFormat();
 
             status = mapper.lock(*buf, lockMode, bounds, &dst);
             if(status != NO_ERROR) {

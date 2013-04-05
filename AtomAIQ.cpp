@@ -20,6 +20,7 @@
 #include <math.h>
 #include <time.h>
 #include <dlfcn.h>
+#include <utils/String8.h>
 
 #include "LogHelper.h"
 #include "AtomCommon.h"
@@ -35,6 +36,8 @@
 
 #define MAX_EOF_SOF_DIFF 200000
 #define DEFAULT_EOF_SOF_DELAY 66000
+#define EPSILON 0.00001
+#define RETRY_COUNT 5
 
 namespace android {
 
@@ -70,6 +73,7 @@ AtomAIQ::AtomAIQ(AtomISP *anISP) :
     ,mFlashMode(CAM_AE_FLASH_MODE_NOT_SET)
     ,mAeSceneMode(CAM_AE_SCENE_MODE_NOT_SET)
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
+    ,mAwbRunCount(0)
     ,mMkn(NULL)
 {
     LOG1("@%s", __FUNCTION__);
@@ -681,7 +685,7 @@ status_t AtomAIQ::stopStillAf()
 
 ia_3a_af_status AtomAIQ::isStillAfComplete()
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     if (mStillAfStart == 0) {
         // startStillAf wasn't called? return error
         LOGE("Call startStillAf before calling %s!", __FUNCTION__);
@@ -699,7 +703,7 @@ ia_3a_af_status AtomAIQ::isStillAfComplete()
 
 status_t AtomAIQ::getExposureInfo(SensorAeConfig& aeConfig)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
 
     // evBias not reset, so not using memset
     aeConfig.expTime = 0;
@@ -795,7 +799,7 @@ status_t AtomAIQ::setManualIso(int sensitivity)
 
 status_t AtomAIQ::getManualIso(int *ret)
 {
-    LOG1("@%s - %d", __FUNCTION__, mAeInputParameters.manual_iso);
+    LOG2("@%s - %d", __FUNCTION__, mAeInputParameters.manual_iso);
     *ret = mAeInputParameters.manual_iso;
     return NO_ERROR;
 }
@@ -803,7 +807,7 @@ status_t AtomAIQ::getManualIso(int *ret)
 status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
 {
     //ToDo: figure out with Miikka
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
 
     ia_aiq_flash_status wr_stage;
     switch (stage) {
@@ -868,7 +872,7 @@ status_t AtomAIQ::setSmartSceneDetection(bool en)
 
 bool AtomAIQ::getSmartSceneDetection()
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     return m3aState.dsd_enabled;
 }
 
@@ -955,7 +959,7 @@ int AtomAIQ::add3aMakerNoteRecord(ia_3a_mknote_field_type mkn_format_id,
 
 void AtomAIQ::get3aGridInfo(struct atomisp_grid_info *pgrid)
 {
-  LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     *pgrid = m3aState.results.isp_params.info;
 }
 
@@ -991,7 +995,7 @@ int AtomAIQ::setFpnTable(const ia_frame *fpn_table)
 
 struct atomisp_3a_statistics * AtomAIQ::allocateStatistics(int grid_size)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     struct atomisp_3a_statistics *stats;
     stats = (atomisp_3a_statistics*)malloc(sizeof(*stats));
     if (!stats)
@@ -1002,7 +1006,7 @@ struct atomisp_3a_statistics * AtomAIQ::allocateStatistics(int grid_size)
         free(stats);
         return NULL;
     }
-    LOG1("@%s success", __FUNCTION__);
+    LOG2("@%s success", __FUNCTION__);
     return stats;
 }
 
@@ -1048,7 +1052,7 @@ int AtomAIQ::run3aInit()
 //apply result of AIC, AE into ISP
 int AtomAIQ::applyResults(void)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     int ret = 0;
 
     PERFORMANCE_TRACES_AAA_PROFILER_START();
@@ -1116,7 +1120,7 @@ bool AtomAIQ::changeSensorMode(void)
 
 int AtomAIQ::getStatistics(void)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     int ret;
 
     PERFORMANCE_TRACES_AAA_PROFILER_START();
@@ -1144,7 +1148,7 @@ bool AtomAIQ::needStatistics()
 
 int AtomAIQ::processForFlash()
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
 
     if (getStatistics() < 0)
         return UNKNOWN_ERROR;
@@ -1383,7 +1387,7 @@ void AtomAIQ::runGBCEMain()
     {
         ret = ia_aiq_gbce_run(m3aState.ia_aiq_handle, &mGBCEResults);
         if(ret == ia_err_none)
-            LOG1("@%s success", __FUNCTION__);
+            LOG2("@%s success", __FUNCTION__);
     }
 }
 
@@ -1478,7 +1482,7 @@ status_t AtomAIQ::populateFrameInfo(const struct timeval *frame_timestamp,
 status_t AtomAIQ::run3aMain(const struct timeval *frame_timestamp,
                                   struct timeval *sof_timestamp,bool afRun)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
 
     if(afRun) {
         if(frame_timestamp)
@@ -1504,7 +1508,7 @@ status_t AtomAIQ::run3aMain(const struct timeval *frame_timestamp,
 
 int AtomAIQ::run3aMain()
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     int ret = 0;
     //
     switch(mFlashStage) {
@@ -1550,7 +1554,7 @@ int AtomAIQ::run3aMain()
 //run 3A for flash
 int AtomAIQ::AeForFlash()
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
 
     runAeMain();
     if (mAeState.ae_results->flash->status == ia_aiq_flash_status_no) {
@@ -1586,7 +1590,7 @@ int AtomAIQ::AeForFlash()
 
 void AtomAIQ::runAICMain()
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
 
     ia_err ret = ia_err_none;
 
@@ -1601,14 +1605,14 @@ void AtomAIQ::runAICMain()
 
         if (mAwbResults) {
             aic_input_params.awb_results = mAwbResults;
-            LOG1("awb factor:%f", aic_input_params.awb_results->accurate_b_per_g);
+            LOG2("awb factor:%f", aic_input_params.awb_results->accurate_b_per_g);
         }
         if (mGBCEResults) {
             aic_input_params.gbce_results = mGBCEResults;
-            LOG1("gbce :%d", aic_input_params.gbce_results->ctc_gains_lut_size);
+            LOG2("gbce :%d", aic_input_params.gbce_results->ctc_gains_lut_size);
         }
         aic_input_params.sensor_frame_params = &m3aState.sensor_frame_params;
-        LOG1("@%s  2 sensor native width %d", __FUNCTION__, aic_input_params.sensor_frame_params->cropped_image_width);
+        LOG2("@%s  2 sensor native width %d", __FUNCTION__, aic_input_params.sensor_frame_params->cropped_image_width);
         aic_input_params.effects = mAICInputParameters.effects;
 
         aic_input_params.manual_brightness = 0;
@@ -1621,8 +1625,49 @@ void AtomAIQ::runAICMain()
 
         ret = ia_aiq_aic_run(m3aState.ia_aiq_handle, &aic_input_params, &((m3aState.results).aic_output));
         LOG2("@%s  ia_aiq_aic_run :%d", __FUNCTION__, ret);
+
+        if (mISP->isFileInjectionEnabled() && ret == 0 && mAwbResults != NULL) {
+            // When the awb result converged, and reach the max try count,
+            // dump the makernote into file
+            if ((mAwbResults->distance_from_convergence >= -EPSILON &&
+                 mAwbResults->distance_from_convergence <= EPSILON) &&
+                 mAwbRunCount > RETRY_COUNT ) {
+                mAwbRunCount = 0;
+                dumpMknToFile();
+            } else if(mAwbResults->distance_from_convergence >= -EPSILON &&
+                      mAwbResults->distance_from_convergence <= EPSILON){
+                mAwbRunCount++;
+                LOG2("AWB converged:%d", mAwbRunCount);
+            }
+        }
     }
 
+}
+
+int AtomAIQ::dumpMknToFile()
+{
+    LOG1("@%s", __FUNCTION__);
+    FILE *fp;
+    size_t bytes;
+    String8 fileName;
+    //get binary of makernote and store
+    ia_3a_mknote *aaaMkNote;
+    aaaMkNote = get3aMakerNote(ia_3a_mknote_mode_raw);
+    if(aaaMkNote) {
+        fileName = mISP->getFileInjectionFileName();
+        fileName += ".mkn";
+        LOG2("filename:%s",  fileName.string());
+        fp = fopen (fileName.string(), "w+");
+        if (fp == NULL) {
+            LOGE("open file %s failed %s", fileName.string(), strerror(errno));
+            put3aMakerNote(aaaMkNote);
+            return -1;
+        }
+        if ((bytes = fwrite(aaaMkNote->data, aaaMkNote->bytes, 1, fp)) < (size_t)aaaMkNote->bytes)
+            LOGW("Write less mkn bytes to %s: %d, %d", fileName.string(), aaaMkNote->bytes, bytes);
+        fclose (fp);
+    }
+    return 0;
 }
 
 int AtomAIQ::enableFpn(bool enable)
@@ -1650,7 +1695,7 @@ void AtomAIQ::getAeExpCfg(int *exp_time,
                      int *aec_apex_Tv, int *aec_apex_Sv, int *aec_apex_Av,
                      float *digital_gain)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
 
     mISP->sensorGetExposureTime(exp_time);
     mISP->sensorGetFNumber(aperture_num, aperture_denum);
@@ -1734,7 +1779,7 @@ void AtomAIQ::getDefaultParams(CameraParameters *params, CameraParameters *intel
 
 void AtomAIQ::getSensorFrameParams(ia_aiq_sensor_frame_params *frame_params)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
 
     struct atomisp_sensor_mode_data sensor_mode_data;
     if(mISP->sensorGetModeInfo(&sensor_mode_data) < 0) {

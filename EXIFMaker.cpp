@@ -277,7 +277,15 @@ void EXIFMaker::initialize(const CameraParameters &params)
     struct tm *timeinfo;
     time(&rawtime);
     timeinfo = localtime(&rawtime);
-    strftime((char *)exifAttributes.date_time, sizeof(exifAttributes.date_time), "%Y:%m:%d %H:%M:%S", timeinfo);
+
+    if (timeinfo) {
+        strftime((char *)exifAttributes.date_time, sizeof(exifAttributes.date_time), "%Y:%m:%d %H:%M:%S", timeinfo);
+        // fields: tm_sec, tm_min, tm_hour, tm_mday, tm_mon, tm_year, tm_wday, tm_yday, tm_isdst, tm_gmtoff, tm_zone
+    } else {
+        LOGW("NULL timeinfo from localtime(), using defaults...");
+        struct tm tmpTime = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "UTC"};
+        strftime((char *)exifAttributes.date_time, sizeof(exifAttributes.date_time), "%Y:%m:%d %H:%M:%S", &tmpTime);
+    }
 
     // conponents configuration.
     // Default = 4 5 6 0(if RGB uncompressed), 1 2 3 0(other cases)

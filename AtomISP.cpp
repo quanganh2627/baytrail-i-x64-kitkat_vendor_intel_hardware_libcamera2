@@ -280,7 +280,7 @@ status_t AtomISP::init()
     initFrameConfig();
 
     // Initialize the frame sizes
-    setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
+    setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, PlatformData::getPreviewFormat());
     setPostviewFrameFormat(RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT, V4L2_PIX_FMT_NV12);
     setSnapshotFrameFormat(RESOLUTION_5MP_WIDTH, RESOLUTION_5MP_HEIGHT, V4L2_PIX_FMT_NV12);
     setVideoFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
@@ -527,6 +527,7 @@ AtomISP::~AtomISP()
         //       we need to make sure we free them here.
         //       This is not needed for preview and recording buffers.
         freeSnapshotBuffers();
+        freePostviewBuffers();
     }
     closeDevice(V4L2_MAIN_DEVICE);
 
@@ -728,6 +729,12 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
     intel_params->set(IntelCameraParameters::KEY_BURST_START_INDEX, "0");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX, startIndexValues);
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_CONTINUOUS, "true,false");
+    intel_params->set(IntelCameraParameters::KEY_BURST_CONTINUOUS, "false");
+
+    // TODO: move to platform data
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PREVIEW_UPDATE_MODE, "standard,continuous,during-capture");
+    intel_params->set(IntelCameraParameters::KEY_PREVIEW_UPDATE_MODE, "standard");
 
     intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_FILENAME, "off");
     intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_WIDTH, "0");
@@ -1084,6 +1091,12 @@ status_t AtomISP::configurePreview()
     mNumPreviewBuffers = NUM_PREVIEW_BUFFERS;
     mPreviewDevice = mPreviewTooBigForVFPP ? mRecordingDevice : mConfigSnapshotPreviewDevice;
 
+    if (mPreviewDevice >= V4L2_MAX_DEVICE_COUNT) {
+        LOGE("Index mPreviewDevice (%d) beyond V4L2 device count (%d)", mPreviewDevice, V4L2_MAX_DEVICE_COUNT);
+        status = UNKNOWN_ERROR;
+        return status;
+    }
+
     if (mPreviewDevice != V4L2_MAIN_DEVICE) {
         ret = openDevice(mPreviewDevice);
         if (ret < 0) {
@@ -1380,6 +1393,7 @@ errorCloseSecond:
     closeDevice(V4L2_POSTVIEW_DEVICE);
 errorFreeBuf:
     freeSnapshotBuffers();
+    freePostviewBuffers();
 
     return status;
 }
@@ -1586,6 +1600,7 @@ errorCloseSecond:
     closeDevice(V4L2_POSTVIEW_DEVICE);
 errorFreeBuf:
     freeSnapshotBuffers();
+    freePostviewBuffers();
 
     return status;
 }
@@ -1644,6 +1659,7 @@ errorCloseSecond:
     closeDevice(V4L2_POSTVIEW_DEVICE);
 errorFreeBuf:
     freeSnapshotBuffers();
+    freePostviewBuffers();
 
 end:
     return status;
@@ -1715,7 +1731,10 @@ status_t AtomISP::stopCapture()
 status_t AtomISP::releaseCaptureBuffers()
 {
     LOG1("@%s", __FUNCTION__);
-    return freeSnapshotBuffers();
+    status_t status = NO_ERROR;
+    status = freeSnapshotBuffers();
+    status |= freePostviewBuffers();
+    return status;
 }
 
 
@@ -2042,6 +2061,13 @@ void AtomISP::destroyBufferPool(int device)
 int AtomISP::openDevice(int device)
 {
     LOG1("@%s", __FUNCTION__);
+
+    if (device >= V4L2_MAX_DEVICE_COUNT) {
+        LOGE("Attempted to open device with illegal index (%d). V4L2_MAX_DEVICE_COUNT = %d",
+             device, V4L2_MAX_DEVICE_COUNT);
+        return -1;
+    }
+
     if (video_fds[device] > 0) {
         LOGW("MainDevice already opened!");
         return video_fds[device];
@@ -4858,8 +4884,9 @@ int AtomISP::sensorMoveFocusToPosition(int position)
 {
     LOG2("@%s", __FUNCTION__);
 
-    // TODO: this code will be removed when the CPF file is valid for merr_vv in the future
-    if (strcmp(PlatformData::getBoardName(), "merr_vv") == 0) {
+    // TODO: this code will be removed when the CPF file is valid for saltbay in the future
+    if ((strcmp(PlatformData::getBoardName(), "saltbay") == 0) ||
+        (strcmp(PlatformData::getBoardName(), "baylake") == 0)) {
         position = 1024 - position;
         position = 100 + (position - 370) * 1.7;
         if(position > 900)
@@ -5057,8 +5084,9 @@ int AtomISP::setAicParameter(struct atomisp_parameters *aic_param)
     LOG2("@%s", __FUNCTION__);
     int ret;
 
-    // TODO: this code will be removed when the CPF file is valid for merr_vv in the future
-    if (strcmp(PlatformData::getBoardName(), "merr_vv") == 0) {
+    // TODO: this code will be removed when the CPF file is valid for saltbay in the future
+    if (strcmp(PlatformData::getBoardName(), "saltbay") == 0 ||
+        strcmp(PlatformData::getBoardName(), "bodegabay") == 0) {
        aic_param->ctc_table = NULL;
        aic_param->gamma_table = NULL;
     }

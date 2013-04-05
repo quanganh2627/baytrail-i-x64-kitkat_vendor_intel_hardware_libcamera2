@@ -114,12 +114,13 @@ HalConf PlatformData::HalConfig;
 
 PlatformBase* PlatformData::getInstance(void)
 {
-
-    // Note: While these are build-time options at the moment, these
-    //       could be runtime-detected in the future.
-
     if (mInstance == 0) {
         mInstance = new CameraProfiles();
+
+        // add an extra camera which is copied from the first one as a fake camera
+        // for file injection
+        mInstance->mCameras.push(mInstance->mCameras[0]);
+        mInstance->mFileInject = true;
     }
 
     return mInstance;
@@ -1001,6 +1002,13 @@ bool PlatformData::supportAIQ(void)
     PlatformBase *i = getInstance();
     return i->mSupportAIQ;
 }
+
+int PlatformData::getPreviewFormat(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mPreviewFormat;
+}
+
 
 const char* PlatformData::getBoardName(void)
 {
