@@ -122,6 +122,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mFocusAreas()
     ,mMeteringAreas()
     ,mVideoSnapshotrequested(0)
+    ,mPanoramaFinalizationPending(false)
     ,mEnableFocusCbAtStart(false)
     ,mEnableFocusMoveCbAtStart(false)
     ,mFirstPreviewStart(true)
@@ -818,6 +819,7 @@ void ControlThread::panoramaFinalized(AtomBuffer *buff, AtomBuffer *pvBuff)
 status_t ControlThread::handleMessagePanoramaFinalize(MessagePanoramaFinalize *msg)
 {
     LOG1("@%s", __FUNCTION__);
+    mPanoramaFinalizationPending = false;
     status_t status = mCallbacksThread->requestTakePicture(false, false);
 
     if (status != OK)
@@ -2021,6 +2023,7 @@ status_t ControlThread::handleMessagePanoramaPicture() {
     if (mPanoramaThread->getState() == PANORAMA_STARTED) {
         mPanoramaThread->startPanoramaCapture();
     } else {
+        mPanoramaFinalizationPending = true;
         mPanoramaThread->finalize();
     }
 
@@ -6441,9 +6444,10 @@ status_t ControlThread::stopPanorama()
     if (mPanoramaThread->getState() == PANORAMA_STOPPED)
         return NO_ERROR;
     if (mPanoramaThread != 0) {
-        // empty panorama from pending work (push possible finalization to
-        // this thread)
-        mPanoramaThread->flush();
+        // empty panorama from pending work if finalization is pending and push
+        // finalized image to this thread
+        if (mPanoramaFinalizationPending)
+            mPanoramaThread->flush();
 
         // at this point control thread may have a finalization message with
         // memory from panorama engine, so process them right now
@@ -6461,6 +6465,11 @@ status_t ControlThread::stopPanorama()
         // now, finally, we can stop the panorama engine, which releases its
         // memory
         mPanoramaThread->stopPanorama();
+
+        // safety for automatic finalization which may have run during this
+        // function if max panorama snapshot count was reached
+        mMessageQueue.remove(MESSAGE_ID_PANORAMA_FINALIZE, &pending); // drop message
+
         return NO_ERROR;
     } else{
         return INVALID_OPERATION;

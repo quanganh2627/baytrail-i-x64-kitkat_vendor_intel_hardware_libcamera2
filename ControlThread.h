@@ -694,6 +694,7 @@ private:
                                                  */
     Vector<MessagePicture> mUnqueuedPicBuf; /* store the buffers that have not been returned to ISP in capturing*/
 
+    bool mPanoramaFinalizationPending; /* state boolean for pending panorama finalization commands */
     bool mEnableFocusCbAtStart;     /* for internal control of focus cb's in continuous-mode */
     bool mEnableFocusMoveCbAtStart; /* for internal control of focus-move cb's in continuous-mode */
     bool mFirstPreviewStart;        /* indicator of first preview start for L2P pnp optimizations */
