@@ -262,6 +262,10 @@ bool UltraLowLight::isActive()
 bool UltraLowLight::trigger()
 {
     Mutex::Autolock lock(mTrigerMutex);
+    // ULL is ready to start a capture in one of these 2 states
+    if ( (mState != ULL_STATE_INIT) &&
+         (mState != ULL_STATE_UNINIT))
+        return false;
 
     if (mUserMode == ULL_ON)
         return true;
