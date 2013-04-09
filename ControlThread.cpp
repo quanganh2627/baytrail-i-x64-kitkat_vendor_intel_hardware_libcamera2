@@ -126,6 +126,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mEnableFocusMoveCbAtStart(false)
     ,mFirstPreviewStart(true)
     ,mStillCaptureInProgress(false)
+    ,mPreviewUpdateMode(IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -2466,15 +2467,19 @@ status_t ControlThread::captureStillPic()
                     flashMode == CAM_AE_FLASH_MODE_ON);
     bool flashFired = false;
     bool flashSequenceStarted = false;
-    // TODO: do the postview displaying and hiding based on new
-    //       preview-update-mode parameter
     bool displayPostview = selectPostviewSize(pvWidth, pvHeight)
                            && !mHdr.enabled;
-    // Synchronise jpeg callback with postview rendering in case of single
-    // capture
-    bool syncJpegCbWithPostview = displayPostview && (mBurstLength <= 1) && !mHdr.enabled;
+    // Synchronise jpeg callback with postview rendering in case of single capture
+    bool syncJpegCbWithPostview = displayPostview && (mBurstLength <= 1);
     bool requestPostviewCallback = true;
     bool requestRawCallback = true;
+
+    if (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD) {
+        // In proprietary preview update modes we keep rendering of preview frames.
+        // Rendering of postview not needed.
+        displayPostview = false;
+        syncJpegCbWithPostview = false;
+    }
 
     // TODO: Fix the TestCamera application bug and remove this workaround
     // WORKAROUND BEGIN: Due to a TesCamera application bug send the POSTVIEW and RAW callbacks only for single shots
@@ -2717,7 +2722,6 @@ status_t ControlThread::captureStillPic()
     if (displayPostview) {
         // We sync with single capture, where we also need preview to stall.
         // So, hide preview after postview when syncJpegCbWithPostview is true
-        // TODO: hiding to be desided based on preview-update-mode
         mPreviewThread->postview(&postviewBuffer, syncJpegCbWithPostview);
     }
 
@@ -3815,6 +3819,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     else
         LOGD("not supported zoom setting");
 
+    // Preview update mode
+    if (status == NO_ERROR) {
+        status = processPreviewUpdateMode(oldParams, newParams);
+    }
+
     // Color effect
     if (status == NO_ERROR) {
         status = processParamEffect(oldParams, newParams);
@@ -4228,6 +4237,27 @@ status_t ControlThread::processParamFlash(const CameraParameters *oldParams,
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_FLASH_MODE, newVal.string());
         }
+    }
+    return status;
+}
+
+status_t ControlThread::processPreviewUpdateMode(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_PREVIEW_UPDATE_MODE);
+
+    if (!newVal.isEmpty()) {
+        if(newVal == IntelCameraParameters::PREVIEW_UPDATE_MODE_DURING_CAPTURE)
+            mPreviewUpdateMode = IntelCameraParameters::PREVIEW_UPDATE_MODE_DURING_CAPTURE;
+        else if(newVal == IntelCameraParameters::PREVIEW_UPDATE_MODE_CONTINUOUS)
+            mPreviewUpdateMode = IntelCameraParameters::PREVIEW_UPDATE_MODE_CONTINUOUS;
+        else if(newVal == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD)
+            mPreviewUpdateMode = IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD;
+        else
+            LOGE("Unknown preview update mode received %s", newVal.string());
     }
     return status;
 }
