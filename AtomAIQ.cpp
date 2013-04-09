@@ -1431,15 +1431,12 @@ status_t AtomAIQ::populateFrameInfo(const struct timeval *frame_timestamp,
 
     ia_err statistics_ret = ia_err_none;
 
-    long long eof_timestamp = (long long)((frame_timestamp->tv_sec*1000000000LL + frame_timestamp->tv_usec*1000LL)/1000LL);
-    if (eof_timestamp < (long long)m3aState.statistics_input_parameters.frame_timestamp ||
-        eof_timestamp - (long long)m3aState.statistics_input_parameters.frame_timestamp > MAX_EOF_SOF_DIFF)
+    unsigned long long eof_timestamp = (unsigned long long)((frame_timestamp->tv_sec*1000000LL + frame_timestamp->tv_usec));
+    m3aState.statistics_input_parameters.frame_timestamp = (unsigned long long)((sof_timestamp->tv_sec*1000000LL + sof_timestamp->tv_usec));
+    if (eof_timestamp < m3aState.statistics_input_parameters.frame_timestamp ||
+        eof_timestamp > MAX_EOF_SOF_DIFF + m3aState.statistics_input_parameters.frame_timestamp)
     {
         m3aState.statistics_input_parameters.frame_timestamp = eof_timestamp - DEFAULT_EOF_SOF_DELAY;
-    }
-    else
-    {
-        m3aState.statistics_input_parameters.frame_timestamp = (unsigned long long)((sof_timestamp->tv_sec*1000000000LL + sof_timestamp->tv_usec*1000LL)/1000LL);
     }
 
     m3aState.statistics_input_parameters.external_histogram = NULL;
