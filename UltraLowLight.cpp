@@ -253,6 +253,30 @@ status_t UltraLowLight::getOuputResult(AtomBuffer *snap, AtomBuffer * pv,
     return NO_ERROR;
 }
 
+/**
+ * retrieves the input buffers after processing has completed
+ * The input buffers are then returned to the pool of buffers
+ */
+status_t UltraLowLight::getInputBuffers(Vector<AtomBuffer> *inputs)
+{
+    LOG1("@%s: size = %d", __FUNCTION__, mInputBuffers.size());
+
+    if (inputs == NULL) {
+        LOGE("Invalid parameter");
+        return BAD_VALUE;
+    }
+
+    Vector<AtomBuffer>::iterator it = mInputBuffers.begin();
+
+    for (;it != mInputBuffers.end(); it++) {
+        inputs->push(*it);
+    }
+
+    mInputBuffers.clear();
+
+    return NO_ERROR;
+}
+
 bool UltraLowLight::isActive()
 {
     LOG1("@%s:%s",__FUNCTION__, mUserMode==ULL_OFF? "false":"true");
@@ -347,8 +371,8 @@ status_t UltraLowLight::process()
 
 processComplete:
     mOutputBuffer = mInputBuffers[0];
+    mInputBuffers.removeAt(0);
     mState = ULL_STATE_DONE;
-    mInputBuffers.clear();
     LOG1("ULL Processing completed (ret=%d) in %u ms", ret, (unsigned)((systemTime() - startTime) / 1000000))
     return ret;
 }
@@ -395,7 +419,7 @@ status_t UltraLowLight::initMorphoLib(int w, int h, int idx)
     mCurrentPreset = idx;
     mWidth = w;
     mHeight = h;
-
+    mInputBuffers.clear();
     mState = ULL_STATE_INIT;
 
 bail:

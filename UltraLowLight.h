@@ -107,6 +107,8 @@ public:
     status_t addSnapshotMetadata(PictureThread::MetaData &metadata) STUB_BODY_STAT
     status_t getOuputResult(AtomBuffer *snap, AtomBuffer * pv,
                             PictureThread::MetaData *metadata, int *ULLid) STUB_BODY_STAT
+    status_t getInputBuffers(Vector<AtomBuffer> *inputs) STUB_BODY_STAT
+
     int getCurrentULLid() { return mULLCounter; };
     int getULLBurstLength() STUB_BODY_STAT
 
