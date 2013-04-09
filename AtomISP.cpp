@@ -3468,33 +3468,6 @@ int AtomISP::v4l2_capture_try_format(int device, int *w, int *h,
 }
 
 /**
- * Pushes all preview buffers back into driver except the ones already queued
- *
- * Note: Currently no support for shared buffers for cautions
- */
-status_t AtomISP::returnPreviewBuffers()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status;
-    if (mPreviewBuffers) {
-        for (int i = 0 ; i < mNumPreviewBuffers; i++) {
-            if (mPreviewBuffers[i].shared)
-                return UNKNOWN_ERROR;
-            if (mPreviewBuffers[i].buff == NULL)
-                return UNKNOWN_ERROR;
-            // identifying already queued frames with negative id
-            if (mPreviewBuffers[i].id == -1)
-                continue;
-            status = putPreviewFrame(&mPreviewBuffers[i]);
-            if (status != NO_ERROR) {
-                LOGE("Failed queueing preview frame!");
-            }
-        }
-    }
-    return NO_ERROR;
-}
-
-/**
  * Pushes all recording buffers back into driver except the ones already queued
  *
  * Note: Currently no support for shared buffers for cautions
