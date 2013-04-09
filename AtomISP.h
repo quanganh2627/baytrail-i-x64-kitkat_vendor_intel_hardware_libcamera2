@@ -147,7 +147,6 @@ public:
     status_t prepareOfflineCapture(ContinuousCaptureConfig &config);
 
     bool isYUVvideoZoomingSupported() const;
-    status_t returnPreviewBuffers();
     status_t returnRecordingBuffers();
     bool isSharedPreviewBufferConfigured(bool *reserved = NULL) const;
 

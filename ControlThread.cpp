@@ -936,14 +936,13 @@ status_t ControlThread::handleContinuousPreviewBackgrounding()
 
     // Post-capture stopPreview case
     if (!mISP->isSharedPreviewBufferConfigured()) {
-        // Using internal buffers => flush and release preview buffers
-        // and leave the core running
-        mPreviewThread->flushBuffers();
-        mPostProcThread->flushFrames();
-        // return Gfx buffers
+        // Hide the preview first to prevent unnessary debug logs
+        mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
+        // When not sharing the window buffers with AtomISP we can
+        // just return the Gfx buffers in PreviewThreads possession.
         mPreviewThread->returnPreviewBuffers();
-        // return AtomISP buffers back to ISP
-        mISP->returnPreviewBuffers();
+        // Set preview to stopped state, since only re-configuration
+        // or closing may happen next.
         mPreviewThread->setPreviewState(PreviewThread::STATE_STOPPED);
         LOG1("Continuous-mode is left running in background");
     } else {
