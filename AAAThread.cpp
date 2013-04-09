@@ -661,13 +661,15 @@ void AAAThread::updateULLTrigger()
 {
     LOG2("%s",__FUNCTION__);
     SensorAeConfig expInfo;
-    int gain;
 
     if (mULL) {
         m3AControls->getExposureInfo(expInfo);
-        m3AControls->getManualIso(&gain);
-
-        mULL->updateTrigger(expInfo, gain);
+        bool flashOn;
+        if (m3AControls->getAeFlashMode() == CAM_AE_FLASH_MODE_OFF)
+            flashOn = false;
+        else
+            flashOn = m3AControls->getAeFlashNecessary();
+        mULL->updateTrigger(expInfo, flashOn);
     }
 }
 
