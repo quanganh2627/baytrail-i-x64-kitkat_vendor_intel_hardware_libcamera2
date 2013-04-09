@@ -532,6 +532,8 @@ private:
             CameraParameters *newParams);
     status_t processParamExifSoftware(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    status_t processPreviewUpdateMode(const CameraParameters *oldParams,
+            CameraParameters *newParams);
 
     status_t processParamSlowMotionRate(const CameraParameters *oldParams,
         CameraParameters *newParams);
@@ -702,6 +704,9 @@ private:
                                          note: is set to true when takePicture() is called in other
                                                than video recording state. Remains true until following
                                                call to startPreview() or cancelPicture(). */
+
+    const char* mPreviewUpdateMode;       /*!< indicates the active preview update mode.
+                                               See parameter preview-update-mode */
 }; // class ControlThread
 
 }; // namespace android
