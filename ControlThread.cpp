@@ -2144,16 +2144,19 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
 
     ia_3a_mknote *aaaMkNote = 0;
     atomisp_makernote_info *atomispMkNote = 0;
-    SensorAeConfig *aeConfig = 0;
+    SensorAeConfig *aeConfig = new SensorAeConfig;
 
     if (m3AControls->isIntel3A()) {
-        aeConfig = new SensorAeConfig;
         m3AControls->getExposureInfo(*aeConfig);
         if (m3AControls->getEv(&aeConfig->evBias) != NO_ERROR) {
             aeConfig->evBias = EV_UPPER_BOUND;
         }
+    } else {
+        memset(aeConfig, 0, sizeof(SensorAeConfig));
+        if (mISP->sensorGetExposureTime(&aeConfig->expTime))
+            aeConfig->expTime = 0;
     }
-    // TODO: for SoC/secondary camera, we have no means to get
+
     //       SensorAeConfig information, so setting as NULL on purpose
     mBracketManager->getNextAeConfig(aeConfig);
     if (m3AControls->isIntel3A()) {
