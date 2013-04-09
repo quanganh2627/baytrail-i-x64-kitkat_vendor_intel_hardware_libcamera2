@@ -5048,7 +5048,8 @@ int AtomISP::setAicParameter(struct atomisp_parameters *aic_param)
 
     // TODO: this code will be removed when the CPF file is valid for saltbay in the future
     if (strcmp(PlatformData::getBoardName(), "saltbay") == 0 ||
-        strcmp(PlatformData::getBoardName(), "bodegabay") == 0) {
+        strcmp(PlatformData::getBoardName(), "bodegabay") == 0 ||
+        (strcmp(PlatformData::getBoardName(), "baylake") == 0)) {
        aic_param->ctc_table = NULL;
        aic_param->gamma_table = NULL;
     }
