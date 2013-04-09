@@ -587,7 +587,7 @@ status_t AtomAAA::setAeFlashMode(FlashMode mode)
 FlashMode AtomAAA::getAeFlashMode()
 {
     Mutex::Autolock lock(m3aLock);
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
 
     return mFlashMode;
 }
@@ -606,11 +606,11 @@ bool AtomAAA::getAfNeedAssistLight()
 bool AtomAAA::getAeFlashNecessary()
 {
     Mutex::Autolock lock(m3aLock);
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
 
     bool en = ia_3a_ae_is_flash_necessary();
 
-    LOG1("%s returning %d", __FUNCTION__, en);
+    LOG2("%s returning %d", __FUNCTION__, en);
     return en;
 }
 

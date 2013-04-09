@@ -69,18 +69,17 @@ public:
     static const int  MAX_INPUT_BUFFERS;
 
     /**
-     *  Activation/De-activation Thresholds
+     *  Activation Threshold
      *  used to trigger ULL based on 3A parameters
-     *  There are 2 thresholds:
-     *  - one to activate ULL when scene gets darker (bright threshold)
-     *  - one to deactivate ULL if scene gets too dark (dark threshold)
+     *  There is 1 threshold:
+     *  - to activate ULL when scene gets darker (bright threshold)
+     *  In cases where scene is too dark and needs flash then flash is used
+     *  and ULL is disabled
      *
      *  TODO: They should eventually come from CPF
      **/
-    static int ULL_BRIGHT_ISO_THRESHOLD;
-    static int ULL_BRIGHT_EXPTIME_THRESHOLD;
-    static int ULL_DARK_ISO_THRESHOLD;
-    static int ULL_DARK_EXPTIME_THRESHOLD;
+    static int ULL_ACTIVATION_APEX_SV_THRESHOLD;
+
 
     /**
      * \enum ULLPreset
@@ -115,7 +114,7 @@ public:
     // implementation of IPostCaptureProcessItem
     status_t process() STUB_BODY_STAT
 
-    bool updateTrigger(SensorAeConfig &expInfo, int gain) STUB_BODY_BOOL;
+    bool updateTrigger(SensorAeConfig &expInfo, bool flash) STUB_BODY_BOOL;
 
 private:
     status_t initMorphoLib(int w, int h, int aPreset) STUB_BODY_STAT
