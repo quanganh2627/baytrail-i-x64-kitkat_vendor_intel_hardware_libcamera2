@@ -21,6 +21,7 @@
 #include <libexpat/expat.h>
 #include "PlatformData.h"
 #include "CameraProfiles.h"
+#include "IntelParameters.h"
 
 namespace android {
 
@@ -221,8 +222,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->supportedBurstFPS = atts[1];
     } else if (strcmp(name, "previewViaOverlay") == 0) {
         pCurrentCam->mPreviewViaOverlay = ((strcmp(atts[1], "true") == 0) ? true : false);
-    } else if (strcmp(name, "maxPreviewPixelCountForVFPP") == 0) {
-        pCurrentCam->maxPreviewPixelCountForVFPP = atoi(atts[1]);
+    } else if (strcmp(name, "VFPPLimitedResolutionList") == 0) {
+        IntelCameraParameters::parseResolutionList(atts[1], pCurrentCam->mVFPPLimitedResolutions);
     } else if (strcmp(name, "overlayRelativeRotation") == 0) {
         pCurrentCam->overlayRelativeRotation = atoi(atts[1]);
     } else if (strcmp(name, "maxSaturation") == 0) {

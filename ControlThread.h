@@ -63,7 +63,9 @@ class ControlThread :
     public ICallbackPanorama,
     public IAtomIspObserver,
     public IPostCaptureProcessObserver,
+    public IBufferOwner,
     public ISnapshotBufferUser {
+
 
 // constructor destructor
 public:
@@ -128,6 +130,9 @@ public:
 
     void atomRelease();
 
+    // IBufferOwner override
+    virtual void returnBuffer(AtomBuffer* buff);
+
     // Implementation of IPostCaptureProcessObserver interface
     void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status);
 
@@ -178,6 +183,7 @@ private:
         MESSAGE_ID_FACES_DETECTED,
         MESSAGE_ID_SET_PREVIEW_WINDOW,
         MESSAGE_ID_SCENE_DETECTED,
+        MESSAGE_ID_RETURN_BUFFER,
         MESSAGE_ID_PANORAMA_PICTURE,
         MESSAGE_ID_PANORAMA_CAPTURE_TRIGGER,
         MESSAGE_ID_PANORAMA_FINALIZE,
@@ -202,6 +208,10 @@ private:
 
     struct MessageReleaseRecordingFrame {
         void *buff;
+    };
+
+    struct MessageReturnBuffer {
+        AtomBuffer returnBuf;
     };
 
     struct MessagePicture {
@@ -253,6 +263,7 @@ private:
 
     struct MessageDequeueRecording {
         bool    skipFrame;
+        AtomBuffer previewFrame; // special case for VFPP limited cases, where recording frame is created from preview
     };
 
     struct MessagePostCaptureProcDone {
@@ -308,6 +319,9 @@ private:
 
         // MESSAGE_ID_EXIT
         MessageExit exit;
+
+        // MESSAGE_ID_RETURN_BUFFER
+        MessageReturnBuffer returnBuf;
     };
 
     // message id and message data
@@ -412,6 +426,7 @@ private:
     status_t handleMessagePanoramaPicture();
     status_t handleMessagePanoramaCaptureTrigger();
     status_t handleMessagePanoramaFinalize(MessagePanoramaFinalize *msg);
+    status_t handleMessageReturnBuffer(MessageReturnBuffer *msg);
     status_t handleMessageTimeout();
     status_t handleMessagePostCaptureProcessingDone(MessagePostCaptureProcDone *msg);
     status_t handleMessageSnapshotAllocated(MessageSnapshotAllocated *msg);
@@ -445,7 +460,7 @@ private:
 
     // dequeue buffers from driver and deliver them
     status_t dequeuePreview();
-    status_t dequeueRecording(bool skip);
+    status_t dequeueRecording(MessageDequeueRecording *msg);
 
     status_t skipFrames(size_t numFrames);
     status_t initBracketing();
