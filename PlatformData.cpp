@@ -267,14 +267,22 @@ bool PlatformData::renderPreviewViaOverlay(int cameraId)
 
 }
 
-unsigned int PlatformData::maxPreviewPixelCountForVFPP(int cameraId)
+bool PlatformData::resolutionSupportedByVFPP(int cameraId,
+        int width, int height)
 {
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
       LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
-      return 0xFFFFFFFF;
+      return true;
     }
-    return i->mCameras[cameraId].maxPreviewPixelCountForVFPP;
+
+    Vector<Size>::const_iterator it = i->mCameras[cameraId].mVFPPLimitedResolutions.begin();
+    for (;it != i->mCameras[cameraId].mVFPPLimitedResolutions.end(); ++it) {
+        if (it->width == width && it->height == height) {
+            return false;
+        }
+    }
+    return true;
 }
 
 int PlatformData::overlayRotation(int cameraId)

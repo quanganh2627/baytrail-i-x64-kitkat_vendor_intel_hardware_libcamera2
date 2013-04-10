@@ -1441,9 +1441,15 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
         mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
     }
-
-    mISP->attachObserver(mPreviewThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+    // ControlThread must be the observer before PreviewThread to ensure that
+    // the recording buffer dequeue handling message is guaranteed to happen
+    // before any possible preview return buffer handlers. Since the preview
+    // thread will get the observer notification later with this order, that is
+    // guaranteed. Thus we know, that if the recording buffer is using the
+    // preview buffer data for encoding, the handler for the recording buffer
+    // dequeue has run before the preview return buffer handler runs.
     mISP->attachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
+    mISP->attachObserver(mPreviewThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
     mPreviewThread->setCallback(
             static_cast<ICallbackPreview*>(mPostProcThread.get()),
             ICallbackPreview::OUTPUT_WITH_DATA);
@@ -1818,10 +1824,12 @@ status_t ControlThread::handleMessageStartRecording()
         /* We are in PREVIEW_STILL mode; in order to start recording
          * we first need to stop AtomISP and restart it with MODE_VIDEO
          */
-        mISP->applyISPVideoLimitations(&mParameters,
+        bool videoMode = true;
+        mISP->applyISPLimitations(&mParameters,
                 isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION)
-                && isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED));
-        status = restartPreview(true);
+                && isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED),
+                videoMode);
+        status = restartPreview(videoMode);
         if (status != NO_ERROR) {
             LOGE("Error restarting preview in video mode");
         }
@@ -5439,19 +5447,14 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
      * size combinations can be supported by ISP (also impacted by
      * sensor configuration).
      *
-     * Check the inline documentation for applyISPvideoLimitations()
+     * Check the inline documentation for applyISPLimitations()
      * in AtomISP.cpp to see detailed description of the limitations.
      *
-     * NOTE: applyISPVideoLimitatiosn is const and the read access to
-     * AtomISP member mCameraInput is safe after init, so we don't need
-     * to lock in it.
      */
-    if (videoMode && mISP->applyISPVideoLimitations(newParams, dvsEnabled)) {
+    if (mISP->applyISPLimitations(newParams, dvsEnabled, videoMode)) {
         mPreviewForceChanged = true;
         previewFormatChanged = true;
     }
-
-    mISP->applyISPLimitations(previewWidth, previewHeight, videoMode);
 
     return status;
 }
@@ -6401,6 +6404,10 @@ status_t ControlThread::waitForAndExecuteMessage()
             status = handleMessageExit(&msg.data.exit);
             break;
 
+        case MESSAGE_ID_RETURN_BUFFER:
+            status = handleMessageReturnBuffer(&msg.data.returnBuf);
+            break;
+
         case MESSAGE_ID_START_PREVIEW:
             status = handleMessageStartPreview();
             break;
@@ -6502,7 +6509,7 @@ status_t ControlThread::waitForAndExecuteMessage()
              break;
 
         case MESSAGE_ID_DEQUEUE_RECORDING:
-            status = dequeueRecording(msg.data.dequeueRecording.skipFrame);
+            status = dequeueRecording(&msg.data.dequeueRecording);
             break;
         case MESSAGE_ID_RELEASE:
             status = handleMessageRelease();
@@ -6544,6 +6551,33 @@ AtomBuffer* ControlThread::findRecordingBuffer(void *ptr)
 }
 
 /**
+ * Override function for IBufferOwner
+ *
+ * Note: currently used only for preview
+ */
+void ControlThread::returnBuffer(AtomBuffer* buff)
+{
+    // NOTE: it is important that this is done through a message, both
+    // for obvious thread safety reasons and also for synchronization purposes
+    LOG2("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_RETURN_BUFFER;
+    msg.data.returnBuf.returnBuf = *buff;
+    mMessageQueue.send(&msg);
+}
+
+status_t ControlThread::handleMessageReturnBuffer(MessageReturnBuffer *msg)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    // thanks to the observer ordering (control thread first,
+    // preview thread after it) this message will be handled after the
+    // recording dequeue message which makes the copy
+    mISP->returnBuffer(&msg->returnBuf);
+    return OK;
+}
+
+/**
  * override for IAtomIspObserver::atomIspNotify()
  *
  * ControlThread is attached to receive preview stream notifications
@@ -6566,8 +6600,17 @@ bool ControlThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
         }
 
         if (mISP->getMode() == MODE_VIDEO) {
+            // steal the owner, if vfpp has no time for processing - in that
+            // case the preview will be used for creating the recording content,
+            // and we need to steal the ownership to ensure the dequeue
+            // recording message is always handled before the preview buffer is
+            // returned to the ISP
+            if (mISP->getPreviewTooBigForVFPP())
+                buff->owner = this;
+
             Message local_msg;
             local_msg.id = MESSAGE_ID_DEQUEUE_RECORDING;
+            local_msg.data.dequeueRecording.previewFrame = *buff;
             local_msg.data.dequeueRecording.skipFrame =
                (buff->status == FRAME_STATUS_CORRUPTED)
                 || (buff->status == FRAME_STATUS_SKIPPED);
@@ -6577,7 +6620,7 @@ bool ControlThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
     return false;
 }
 
-status_t ControlThread::dequeueRecording(bool skip)
+status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
 {
     LOG2("@%s", __FUNCTION__);
     AtomBuffer buff;
@@ -6592,13 +6635,16 @@ status_t ControlThread::dequeueRecording(bool skip)
             if (!mISP->dataAvailable()) {
                 LOGE("Video frame dropped, buffers reserved : %d video encoder, %d video snapshot",
                         mRecordingBuffers.size(), mVideoSnapshotBuffers.size());
-                skip = true;
+                msg->skipFrame = true;
             }
             // See if recording has started (state).
             // If it has, process the buffer, unless frame is to be dropped.
             // If recording hasn't started or frame is dropped, return the buffer to the driver
-            if (mState == STATE_RECORDING && !skip) {
+            if (mState == STATE_RECORDING && !msg->skipFrame) {
                 // check recording
+                if (mISP->getPreviewTooBigForVFPP()) {
+                    memcpy(buff.dataPtr, msg->previewFrame.dataPtr, msg->previewFrame.size);
+                }
                 if (mVideoSnapshotrequested && mVideoSnapshotBuffers.size() < 3) {
                     mVideoSnapshotrequested--;
                     encodeVideoSnapshot(buff);
