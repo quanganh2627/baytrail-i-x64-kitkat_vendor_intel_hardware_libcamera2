@@ -124,9 +124,9 @@ ControlThread::ControlThread(int cameraId) :
     ,mVideoSnapshotrequested(0)
     ,mEnableFocusCbAtStart(false)
     ,mEnableFocusMoveCbAtStart(false)
-    ,mFirstPreviewStart(true)
     ,mStillCaptureInProgress(false)
     ,mPreviewUpdateMode(IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD)
+    ,mAllocationRequestSent(false)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -1116,11 +1116,6 @@ status_t ControlThread::initContinuousCapture()
 
     burstStateReset();
 
-    if (!mFirstPreviewStart) {
-        allocateSnapshotBuffers();
-        setExternalSnapshotBuffers(format, width, height);
-    }
-
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
     return status;
 }
@@ -1472,6 +1467,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mISP->detachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
     }
 
+    /* Now that preview is started let's send the asynchronous msg to PictureThread
+     * to start the allocation of snapshot buffers.
+     */
+    allocateSnapshotBuffers(videoMode);
     return status;
 }
 
@@ -1557,6 +1556,8 @@ status_t ControlThread::stopCapture()
     if (mHdr.inProgress)
         mBracketManager->stopBracketing();
 
+    mAvailableSnapshotBuffers.clear();
+    mAvailableSnapshotBuffers = mAllocatedSnapshotBuffers;
     mUnqueuedPicBuf.clear();
     status = mPictureThread->flushBuffers();
     if (status != NO_ERROR) {
@@ -1877,7 +1878,7 @@ status_t ControlThread::handleMessageStartRecording()
 
     mISP->getVideoSize(&width, &height, NULL);
     mParameters.setPictureSize(width, height);
-    allocateSnapshotBuffers();
+    allocateSnapshotBuffers(true);
     snprintf(sizes, 25, "%dx%d", width,height);
     LOG1("video snapshot size %dx%d", width, height);
     mParameters.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, sizes);
@@ -2784,7 +2785,7 @@ status_t ControlThread::captureStillPic()
 
 status_t ControlThread::captureBurstPic(bool clientRequest = false)
 {
-    LOG1("@%s: ", __FUNCTION__);
+    LOG1("@%s: client request %d", __FUNCTION__, clientRequest);
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
     int pvWidth, pvHeight;
@@ -3105,6 +3106,15 @@ status_t ControlThread::captureULLPic()
            if (displayPostview) {
               mPreviewThread->postview(&postviewBuffer, false);
            }
+           /*
+            *  Mark the snapshot as skipped.
+            *  This is done so that the snapshot buffer is not made available after
+            *  the JPEG encoding. This buffer will be made available after
+            *  the ULL processing completes.
+            *  By making available we mean, that it is not pushed to the
+            *  mAvailableSnapshotBuffers vector
+            */
+           snapshotBuffer.status = FRAME_STATUS_SKIPPED;
            status = mPictureThread->encode(firstPicMetaData,&snapshotBuffer, &postviewBuffer);
            if (status != NO_ERROR) {
                // normally this is done by PictureThread, but as no
@@ -3139,7 +3149,6 @@ exit:
     mBurstLength = cachedBurstLength;
     mBurstStart = cachedBurstStart;
     mBurstFps = cachedBurstFps;
-    setExternalSnapshotBuffers(format, picWidth, picHeight);
     return status;
 }
 
@@ -3379,20 +3388,15 @@ void ControlThread::previewBufferCallback(AtomBuffer *buff, ICallbackPreview::Ca
 
 status_t ControlThread::handleMessagePreviewStarted()
 {
-    if (mState != STATE_CONTINUOUS_CAPTURE || mFirstPreviewStart) {
-        /**
-        * First preview frame was rendered.
-        * Now preview is ongoing. Complete now any initialization that is not
-        * strictly needed to do, before preview is started so it doesn't
-        * impact launch to preview time.
-        *
-        * In this case we send the request to the PictureThread to allocate
-        * the snapshot buffers. This is only needed during the first preview
-        * start.
-        */
-        allocateSnapshotBuffers();
-    }
-    mFirstPreviewStart = false;
+
+    /**
+    * First preview frame was rendered.
+    * Now preview is ongoing. Complete now any initialization that is not
+    * strictly needed to do, before preview is started so it doesn't
+    * impact launch to preview time.
+    *
+    */
+
     return NO_ERROR;
 }
 
@@ -3457,6 +3461,33 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
          */
         mUnqueuedPicBuf.push(*msg);
 
+        /**
+         * Snapshot buffer recycle
+         * Buffers marked with FRAME_STATUS SKIPPED are not meant to be made
+         * available, this is used for example in HDR and ULL first snapshots
+         *
+         * We check if the buffer returned is in the array of allocated buffers
+         * this should always be the case.
+         * Then we check that it is not already in in the list of available buffers
+         *
+         * TODO: Have post-view allocation similar to snapshot and remove the need
+         * for the mUnqueuedPicBuf
+         *
+         */
+        if (msg->snapshotBuf.status != FRAME_STATUS_SKIPPED) {
+            msg->snapshotBuf.status = FRAME_STATUS_OK;
+            if (findBufferByData(&msg->snapshotBuf, &mAllocatedSnapshotBuffers) == NULL) {
+                LOGE("Stale snapshot buffer returned... this should not happen");
+
+            } else if (findBufferByData(&msg->snapshotBuf, &mAvailableSnapshotBuffers) == NULL) {
+                mAvailableSnapshotBuffers.push(msg->snapshotBuf);
+                LOG1("%s  pushed %p to mAvailableSnapshotBuffers, size %d",
+                      __FUNCTION__, msg->snapshotBuf.buff->data, mAvailableSnapshotBuffers.size());
+            } else {
+                LOGE("%s Already available snapshot buffer arrived. Find the bug!!", __FUNCTION__);
+            }
+        }
+
         if (isBurstRunning()) {
             ++mBurstCaptureDoneNum;
             LOG2("Burst req %d done %d len %d",
@@ -3473,6 +3504,22 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
 
 
     return status;
+}
+
+/**
+ * Utility method to find buffers in vectors of AtomBuffers
+ * the comparison is done based on the value of the data pointer
+ * inside camera_memory_t
+ */
+AtomBuffer* ControlThread::findBufferByData(AtomBuffer *buf,Vector<AtomBuffer> *aVector)
+{
+    Vector<AtomBuffer>::iterator it = aVector->begin();
+    for (;it != aVector->end(); ++it) {
+        if (buf->buff->data == it->buff->data)
+            return it;
+    }
+
+    return NULL;
 }
 
 status_t ControlThread::handleMessageAutoFocusDone()
@@ -4028,32 +4075,109 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
 
     return status;
 }
-
-status_t ControlThread::allocateSnapshotBuffers()
+/**
+ * Sends a request to PictureThread to allocated the snapshot buffers
+ *
+ * if we already have the same configuration available then it returns without
+ * asking PictureThread.
+ *
+ * Allocation request is asynchronous. If we try to allocate before previous
+ * request was completed we wait for it to complete and check again.
+ *
+ * Once the allocation completes on PictureThread, ControlThread receives the
+ * message SNAPSHOT_ALLOCATED and makes the buffers available.
+ *
+ * The buffers are allocated in the PictureThread for several reasons:
+ * - to keep the control thread responsive to commands offloading the allocation
+ * - and most importantly to register the allocated buffers with the HW JPEG encoder
+ *   in this way the snapshot buffers are already known to the HW encoder, this
+ *   speeds up the encoding.
+ *
+ */
+status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     int picWidth, picHeight;
-    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-    int bufCount = MAX(mBurstLength, mISP->getContinuousCaptureNumber());
+    unsigned int bufCount = MAX(mBurstLength, mISP->getContinuousCaptureNumber()+1);
     mParameters.getPictureSize(&picWidth, &picHeight);
+
     if(videoMode){
        /**
         * In video mode we configure the Picture thread not to pre-allocate
         * the snapshot buffers. This means that there will be no active libVA
-        * context created. we cannot have more than one libVA (encoder) context active
-        * and in video mode the video encoder already creates one.
+        * context created. we cannot have more than one libVA (encoder) context
+        * active, and in video mode the video encoder already creates one.
         */
        bufCount = 0;
     }
 
-    status = mPictureThread->allocSharedBuffers(picWidth, picHeight, bufCount);
+    if (mAllocatedSnapshotBuffers.isEmpty() && mAllocationRequestSent) {
+        LOGW("trying to allocate again before PictureThread completed- we should avoid this");
+        waitForAllocatedSnapshotBuffers();
+    }
+
+    LOG1("Request to allocate %d bufs of (%dx%d)",bufCount, picWidth,picHeight);
+    LOG1("Currently allocated: %d ",mAllocatedSnapshotBuffers.size());
+
+    if (!mAllocatedSnapshotBuffers.isEmpty()) {
+        AtomBuffer tmp;
+        tmp = mAllocatedSnapshotBuffers.itemAt(0);
+
+        if ( (tmp.width == picWidth) &&
+             (tmp.height == picHeight) &&
+             (mAllocatedSnapshotBuffers.size() == bufCount)) {
+            LOG1("No need to request Snapshot, buffers already available");
+            return NO_ERROR;
+        }
+    }
+
+    mAllocatedSnapshotBuffers.clear();
+    mAllocationRequestSent = true;
+    status = mPictureThread->allocSharedBuffers(picWidth, picHeight, bufCount,
+                                                (ISnapshotBufferUser*)this);
     if (status != NO_ERROR) {
-       LOGW("Could not pre-allocate picture buffers!");
+       LOGE("Could not pre-allocate picture buffers!");
     }
 
     return status;
 }
+
+/**
+ * The requested snapshot buffers from PictureThread are allocated now.
+ *
+ * The request is done via PictureThread::allocSharedBuffers()
+ * Once the allocation is completed and the new JPEG HW encoder context is created
+ * the Control Thread receives the AtomBuffers via this callback
+ */
+status_t ControlThread::snapshotsAllocated(AtomBuffer *bufs, int numBufs)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    Message msg;
+    msg.id = MESSAGE_ID_SNAPSHOT_ALLOCATED;
+    msg.data.snap.bufs = bufs;
+    msg.data.snap.numBuf = numBufs;
+
+    return mMessageQueue.send(&msg);
+}
+
+
+status_t ControlThread::handleMessageSnapshotAllocated(MessageSnapshotAllocated *msg)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    mAvailableSnapshotBuffers.clear();
+
+    for (int i = 0; i < msg->numBuf ; i++) {
+        mAllocatedSnapshotBuffers.push(msg->bufs[i]);
+        mAvailableSnapshotBuffers.push(msg->bufs[i]);
+        LOG1("mAllocatedSnapshotBuffers[%d] = %p",i,msg->bufs[i].buff->data);
+    }
+    mAllocationRequestSent = false;
+    return NO_ERROR;
+}
+
 void ControlThread::processParamFileInject(CameraParameters *newParams)
 {
     LOG1("@%s", __FUNCTION__);
@@ -5630,7 +5754,7 @@ void ControlThread::restoreCurrentPictureParams()
 
     mStillPictContext.clear();
     updateParameterCache();
-    allocateSnapshotBuffers();
+    allocateSnapshotBuffers(false);
 }
 
 /**
@@ -5744,8 +5868,6 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
                 mState == STATE_CONTINUOUS_CAPTURE) {
                 needRestartPreview = true;
                 videoMode = false;
-                if (mState == STATE_CONTINUOUS_CAPTURE)
-                  allocateSnapshotBuffers();
             }
         }
     }
@@ -5753,9 +5875,18 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     mFocusAreas = newFocusAreas;
     mMeteringAreas = newMeteringAreas;
 
+    /**
+     * we need to re-allocate the snapshots if the size has changed or the
+     * number of buffers have changed. If the burst parameters change a preview
+     * restart is triggered.
+     */
+    if (paramsHasPictureSizeChanged(&oldParams, &newParams) || needRestartPreview)
+        allocateSnapshotBuffers(videoMode);
+
     ProcessOverlayEnable(&oldParams, &newParams);
 
     if (needRestartPreview == true) {
+
         if (msg->stopPreviewRequest) {
             if (mState != STATE_CONTINUOUS_CAPTURE)
                 LOGD("%s: Invalid stopPreviewRequest!", __FUNCTION__);
@@ -5970,14 +6101,43 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
 
     mCallbacksThread->requestULLPicture(ULLid);
 
-    status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
+    /*
+     * We stop using the postview buffer since it maybe de-allocated
+     * this is because we still allocated the postview buffers in the AtomISP
+     * which means that if a capture is triggered while ULL was processing
+     * the postview will be freed and allocated again
+     * TODO: move postview allocation to PictureTrhead to make the snapshot
+     * and postview buffer life-cycles more similar.
+     * This will also reduce the time to take a picture
+     * (impacting shutter lag and S2S metrics)
+     */
+    snapshotBuffer.status = FRAME_STATUS_OK;
+    snapshotBuffer.type = ATOM_BUFFER_ULL;
+    status = mPictureThread->encode(picMetaData, &snapshotBuffer, NULL);
     if (status != NO_ERROR) {
         // normally this is done by PictureThread, but as no
         // encoding was done, free the allocated metadata
         picMetaData.free(m3AControls);
     }
-    // TODO: Here we should return the other 2 snapshot+postview buffers that
-    // ULL stored
+
+    /**
+     * retrieve input buffers from ULL class and return them for re-cycling
+     */
+    Vector<AtomBuffer> inputs;
+    mULL->getInputBuffers(&inputs);
+
+    Vector<AtomBuffer>::iterator it = inputs.begin();
+    MessagePicture picMsg;
+    // until we handle the same way post-view buffers
+    // we put an empty buffer here.
+    picMsg.postviewBuf = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+
+    for (; it != inputs.end(); ++it) {
+        picMsg.snapshotBuf = *it;
+        handleMessagePictureDone(&picMsg);
+    }
+
+
     return NO_ERROR;
 }
 status_t ControlThread::hdrInit(int size, int pvSize, int format,
@@ -6191,6 +6351,12 @@ status_t ControlThread::hdrCompose()
         if (hdrPicMetaData.aeConfig) {
             hdrPicMetaData.aeConfig->evBias = 0.0;
         }
+        // The output frame is allocated by the HDR module so it is not one of the
+        // snapshot buffers allocated by the PictureThread. We mark this in the
+        // status field as frame skipped. This field is only checked by the
+        // logic in PictureDone, so we make sure this frame is not added to the
+        // pool of snapshots
+        mHdr.outMainBuf.status = FRAME_STATUS_SKIPPED;
         status = mPictureThread->encode(hdrPicMetaData, &mHdr.outMainBuf, &mHdr.outPostviewBuf);
         if (status == NO_ERROR) {
             doEncode = true;
@@ -6204,18 +6370,37 @@ status_t ControlThread::hdrCompose()
 
     mCP->uninitializeHDR();
 
+    /**
+     * TODO: to have a cleaner buffer recycle we should return the snapshot buffers
+     * to the pool of available buffers. This is not done here, but it works
+     * because we reset the available buffer list with all allocated buffers
+     * in StopCapture
+     */
     return status;
 }
 
 /*
- * Helper methods used during the takePicture sequence
- * If possible it retrieves the  buffers allocated by the HW JPEG encoder
- * and passes them to the ISP to be used
- * If the operation fails we default to internally (by AtomISP) allocated buffers
- * Use buffers sharing only if the pixel format is NV12
- * @param[in] format V4L2 color space format of the frame
- * @param[in] width width in pixels
- * @param[in] height height in lines
+ * Helper method used during the takePicture sequences
+ *
+ * It  passes the  buffers allocated asynchronously by PictureThread to the AtomISP
+ * prior device initialization
+ *
+ * The allocation in the picture thread is triggered also by the Control Thread
+ * \sa allocateSnapshotBuffers()
+ *
+ * In this method we check whether we have enough available buffers to satisfy
+ * the request.
+ * If we do not have enough available but there are enough allocated it means
+ * snapshot buffers are being held somewhere else, this is an indication of a bug
+ *
+ *
+ * The input parameters are at the moment mostly for double checking. It is
+ * assumed that the allocatedSnapshotbuffers was previously called with the correct
+ * resolution and format
+ *
+ * \param [in] format V4L2 color space format of the frame (not used, see TODO)
+ * \param [in] width width in pixels
+ * \param [in] height height in lines
  */
 void ControlThread::setExternalSnapshotBuffers(int format, int width, int height)
 {
@@ -6223,27 +6408,69 @@ void ControlThread::setExternalSnapshotBuffers(int format, int width, int height
     status_t status = NO_ERROR;
 
     if (format == V4L2_PIX_FMT_NV12) {
-        // Try to use buffer sharing
-        char* snapshotBufferPtr;
-        int numberOfSnapshots = MAX(1,mBurstLength);
-        int numberOfSnapshotsAllocated;
 
-        status = mPictureThread->getSharedBuffers(width, height, &snapshotBufferPtr, &numberOfSnapshotsAllocated);
-
-        if ((status == NO_ERROR) && numberOfSnapshots <= numberOfSnapshotsAllocated) {
-            status = mISP->setSnapshotBuffers((void*)snapshotBufferPtr, numberOfSnapshots, false);
-
-            if (status == NO_ERROR) {
-                LOG1("Using shared buffers for snapshot");
-            } else {
-                LOGW("Cannot set shared buffers in atomisp, using internal buffers!");
-            }
-        } else {
-            LOGW("Cannot get shared buffers from libjpeg, using internal buffers!");
+        if (mAllocatedSnapshotBuffers.isEmpty()) {
+            LOG1("%s: snapshot buffers have  not arrived yet... waiting",__FUNCTION__);
+            waitForAllocatedSnapshotBuffers();
+            LOG1("%s: Got them (%d)!",__FUNCTION__ , mAllocatedSnapshotBuffers.size());
         }
+        unsigned int numberOfSnapshots = MAX(1,mBurstLength);
+        LOG1("Required Buffers for snapshot %d: Available %d",numberOfSnapshots,  mAllocatedSnapshotBuffers.size());
+
+        if (numberOfSnapshots <= mAvailableSnapshotBuffers.size()) {
+            if ((mAllocatedSnapshotBuffers[0].width != width) ||
+                (mAllocatedSnapshotBuffers[0].height != height)) {
+                LOGE("We got allocated snapshot buffers of wrong resolution (%dx%d), "
+                      "this should not happen!! we wanted (%dx%d)",
+                      mAllocatedSnapshotBuffers[0].width,
+                      mAllocatedSnapshotBuffers[0].height,
+                      width, height);
+            }
+            bool cached = false;
+            status = mISP->setSnapshotBuffers(&mAvailableSnapshotBuffers, numberOfSnapshots, cached  );
+        } else {
+            LOGE("Not enough available buffers for this request. This should not happen");
+        }
+
     } else {
         LOG1("Using internal buffers for snapshot");
+        // TODO: we should be able to get allocated buffers for any format.
+        // Make sure that we pass the format to PictureThread,
+        // then we can remove this.
     }
+}
+
+/**
+ * Since the snapshot allocation method is asynchronous there maybe cases where
+ * we need the buffers before the allocation completed.
+ * This method sends a synchronous message to PictureThread to make sure the
+ * allocation request completed. It then steals the message from the message Q
+ *
+ */
+void ControlThread::waitForAllocatedSnapshotBuffers()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status;
+    Vector<Message> pending;
+
+    /**
+     * wait for the allocation request to complete.
+     * we do so by sending a synchronous message to PictureThread.
+     * This message does nothing.
+     */
+    status = mPictureThread->wait();
+
+    /**
+     * Now the reply should be waiting in out Q
+     */
+    mMessageQueue.remove(MESSAGE_ID_SNAPSHOT_ALLOCATED,&pending);
+    if (pending.isEmpty()) {
+        LOGE("PictureThread did not send the allocated buffers, find the bug!!");
+        return;
+    }
+
+    MessageSnapshotAllocated msg = pending[0].data.snap;
+    handleMessageSnapshotAllocated(&msg);
 }
 
 /**
@@ -6602,6 +6829,10 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE:
             status = handleMessagePostCaptureProcessingDone(&msg.data.postCapture);
+            break;
+
+        case MESSAGE_ID_SNAPSHOT_ALLOCATED:
+            status = handleMessageSnapshotAllocated(&msg.data.snap);
             break;
 
         default:

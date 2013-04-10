@@ -157,7 +157,7 @@ public:
     status_t getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp = NULL, atomisp_frame_status *frameStatus = NULL);
     status_t putRecordingFrame(AtomBuffer *buff);
 
-    status_t setSnapshotBuffers(void *buffs, int numBuffs, bool cached);
+    status_t setSnapshotBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bool cached);
     status_t getSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf,
                          atomisp_frame_status *snapshotStatus = NULL);
     status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
@@ -596,7 +596,6 @@ private:
     bool mRecordingDeviceSwapped;
     bool mPreviewTooBigForVFPP;
 
-    void **mClientSnapshotBuffers;
     bool mClientSnapshotBuffersCached;
     bool mUsingClientSnapshotBuffers;
     bool mStoreMetaDataInBuffers;

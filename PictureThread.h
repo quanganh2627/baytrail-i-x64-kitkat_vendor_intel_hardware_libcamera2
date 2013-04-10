@@ -31,6 +31,12 @@ namespace android {
 class Callbacks;
 class CallbacksThread;
 
+class ISnapshotBufferUser {
+public:
+    ISnapshotBufferUser() {}
+    virtual ~ISnapshotBufferUser() {}
+    virtual status_t snapshotsAllocated(AtomBuffer *bufs, int numBufs) = 0;
+};
 
 class PictureThread : public Thread {
 
@@ -61,8 +67,8 @@ public:
 
     void getDefaultParameters(CameraParameters *params);
     void initialize(const CameraParameters &params);
-    status_t getSharedBuffers(int width, int height, char** sharedBuffersPtr, int *sharedBuffersNum);
-    status_t allocSharedBuffers(int width, int height, int sharedBuffersNum);
+    status_t allocSharedBuffers(int width, int height, int sharedBuffersNum,
+                                ISnapshotBufferUser *user);
 
     status_t wait(); // wait to finish queued messages (sync)
     status_t flushBuffers();
@@ -81,7 +87,6 @@ private:
         MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
         MESSAGE_ID_ENCODE,
         MESSAGE_ID_ALLOC_BUFS,
-        MESSAGE_ID_FETCH_BUFS,
         MESSAGE_ID_WAIT,
         MESSAGE_ID_FLUSH,
 
@@ -94,9 +99,10 @@ private:
     //
 
     struct MessageAllocBufs {
-        int width;
-        int height;
-        int numBufs;
+        int width;          /*!> width of the requested buffers */
+        int height;         /*!> height of the requested buffers */
+        int numBufs;        /*!> amount of buffers to allocate */
+        ISnapshotBufferUser *user;      /*!> pointer to the user of those buffers */
     };
 
     struct MessageEncode {
@@ -126,7 +132,6 @@ private:
     status_t handleMessageExit();
     status_t handleMessageEncode(MessageEncode *encode);
     status_t handleMessageAllocBufs(MessageAllocBufs *alloc);
-    status_t handleMessageFetchBuffers(MessageAllocBufs *alloc);
     status_t handleMessageWait();
     status_t handleMessageFlush();
 

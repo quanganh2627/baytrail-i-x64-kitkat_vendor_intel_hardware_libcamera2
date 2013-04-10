@@ -346,6 +346,11 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
         mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
         return NO_ERROR;
     }
+
+    if ((msg->snapshotBuff.type == ATOM_BUFFER_ULL) && (mULLRequested > 0)) {
+        return handleMessageUllJpegDataReady(msg);
+    }
+
     if (mJpegRequested > 0) {
         if (mPostviewRequested > 0) {
             if (postviewBuf.type == ATOM_BUFFER_PREVIEW_GFX) {
@@ -410,8 +415,6 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
             // Return the raw buffers back to ControlThread
             mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
         }
-    } else if (mULLRequested > 0) {
-        return handleMessageUllJpegDataReady(msg);
     } else {
         // Insert the buffer on the top
         mBuffers.push(*msg);
@@ -492,7 +495,7 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageFrame *msg)
         return NO_ERROR;
     } else if (jpegBuf.buff == NULL) {
         // Should not have NULL buffer here in any case, but checking to make Klockwork happy:
-        LOGW("NULL jpegBuf.buff recevied in CallbacksThread. Should not happen.");
+        LOGW("NULL jpegBuf.buff received in CallbacksThread. Should not happen.");
         return UNKNOWN_ERROR;
     }
 
@@ -540,8 +543,15 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageFrame *msg)
         return UNKNOWN_ERROR;
     }
 
-    if (snapshotBuf.buff != NULL && postviewBuf.buff != NULL) {
+    /**
+     *  even if postview is NULL we return the buffer anyway.
+     *  at the moment ULL cannot use postview because of the different lifecycle
+     *  of the postview and snapshot buffers. Once they are allocated like
+     *  snapshots we can check again the postview.
+     */
+    if (snapshotBuf.buff != NULL) {
         // Return the raw buffers back to ISP
+        snapshotBuf.type = ATOM_BUFFER_SNAPSHOT;  // reset the buffer type
         mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
     }
 
