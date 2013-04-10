@@ -114,7 +114,9 @@ private:
     status_t initDriverListHelper(int major, int minor, SensorDriver& drvInfo);
     status_t findConfigWithDriver(String8& cpfName, int& drvIndex);
     status_t findConfigWithDriverHelper(const String8& fileName, String8& cpfName, int& index);
+    status_t createVendorPlatformProductString(String8& fullString);
     status_t findBusAddress(const int drvIndex, int& i2cBus, int& i2cAddress);
+    status_t readSpId(String8& spIdName, int& spIdValue);
     status_t initConf(CameraBlob& aiqConf, CameraBlob& drvConf, CameraBlob& halConf);
     status_t loadConf(CameraBlob& allConf);
     status_t validateConf(const CameraBlob& allConf, const struct stat& statCurrent);
