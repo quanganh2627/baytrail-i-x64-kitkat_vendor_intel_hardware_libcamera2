@@ -674,23 +674,14 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * Burst-mode
      */
-    // Currently burst support is required only with primary camera.
-    // So burst mode is disabled to secondary camera.
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS, PlatformData::supportedBurstFPS(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_BURST_LENGTH,"1");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, PlatformData::supportedBurstLength(cameraId));
+    // Bursts with negative start offset require a RAW sensor.
     const char* startIndexValues = "0";
-    if (mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
-        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS, PlatformData::supportedBurstFPS(cameraId));
-        intel_params->set(IntelCameraParameters::KEY_BURST_LENGTH,"1");
-        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, PlatformData::supportedBurstLength(cameraId));
-
-        // Bursts with negative start offset require a RAW sensor.
-        if (PlatformData::sensorType(cameraId) ==  SENSOR_TYPE_RAW &&
-                PlatformData::supportsContinuousCapture())
-            startIndexValues = "-4,-3,-2,-1,0";
-    } else {
-        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS, "1");
-        intel_params->set(IntelCameraParameters::KEY_BURST_LENGTH, "1");
-        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, "1");
-    }
+    if (PlatformData::sensorType(cameraId) ==  SENSOR_TYPE_RAW &&
+            PlatformData::supportsContinuousCapture())
+        startIndexValues = "-4,-3,-2,-1,0";
     intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
     intel_params->set(IntelCameraParameters::KEY_BURST_START_INDEX, "0");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX, startIndexValues);

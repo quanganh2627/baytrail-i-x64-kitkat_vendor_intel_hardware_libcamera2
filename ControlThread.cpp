@@ -3823,7 +3823,10 @@ status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
         LOG1("Burst start-index set %d -> %d", mBurstStart, burstStartInt);
         mBurstStart = burstStartInt;
     }
-    selectFlashMode(newParams, false);
+
+    // just the back camera should be considered
+    if (mISP->getCurrentCameraId() == 0)
+        selectFlashMode(newParams, false);
 
     return status;
 }

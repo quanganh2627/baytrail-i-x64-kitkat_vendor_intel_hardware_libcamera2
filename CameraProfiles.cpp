@@ -192,6 +192,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->defaultBurstLength = atts[1];
     } else if (strcmp(name, "supportedBurstLength") == 0) {
         pCurrentCam->supportedBurstLength = atts[1];
+        if (!strcmp(atts[1], ""))
+            pCurrentCam->supportedBurstLength = "1";
     } else if (strcmp(name, "defaultFlashMode") == 0) {
         pCurrentCam->defaultFlashMode = atts[1];
     } else if (strcmp(name, "supportedFlashModes") == 0) {
