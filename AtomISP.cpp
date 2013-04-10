@@ -131,7 +131,6 @@ AtomISP::AtomISP(int cameraId) :
     ,mSwapRecordingDevice(false)
     ,mRecordingDeviceSwapped(false)
     ,mPreviewTooBigForVFPP(false)
-    ,mClientSnapshotBuffers(NULL)
     ,mClientSnapshotBuffersCached(true)
     ,mUsingClientSnapshotBuffers(false)
     ,mStoreMetaDataInBuffers(false)
@@ -1687,7 +1686,12 @@ status_t AtomISP::stopCapture()
         closeDevice(V4L2_ISP_SUBDEV);
         mFrameSyncEnabled = false;
     }
-    mUsingClientSnapshotBuffers = false;
+
+    if (mUsingClientSnapshotBuffers) {
+        mConfig.num_snapshot = 0;
+        mUsingClientSnapshotBuffers = false;
+    }
+
     dumpRawImageFlush();
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
     return NO_ERROR;
@@ -3189,7 +3193,7 @@ int AtomISP::v4l2_capture_new_buffer(int device, int index, struct v4l2_buffer_i
     LOG1("bytesused %u", vbuf->bytesused);
     LOG1("flags %08x", vbuf->flags);
     LOG1("memory %u", vbuf->memory);
-    LOG1("userptr:  %lu", vbuf->m.userptr);
+    LOG1("userptr:  %p", (void*)vbuf->m.userptr);
     LOG1("length %u", vbuf->length);
     return ret;
 }
@@ -3726,18 +3730,23 @@ status_t AtomISP::putRecordingFrame(AtomBuffer *buff)
     return NO_ERROR;
 }
 
-status_t AtomISP::setSnapshotBuffers(void *buffs, int numBuffs, bool cached)
+/**
+ * Initializes the snapshot buffers allocated by the PictureThread to the
+ * internal array
+ */
+status_t AtomISP::setSnapshotBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bool cached)
 {
     LOG1("@%s: buffs = %p, numBuffs = %d", __FUNCTION__, buffs, numBuffs);
     if (buffs == NULL || numBuffs <= 0)
         return BAD_VALUE;
 
-    mClientSnapshotBuffers = (void**)buffs;
     mClientSnapshotBuffersCached = cached;
     mConfig.num_snapshot = numBuffs;
     mUsingClientSnapshotBuffers = true;
     for (int i = 0; i < numBuffs; i++) {
-        LOG1("Snapshot buffer %d = %p", i, mClientSnapshotBuffers[i]);
+        mSnapshotBuffers[i] = buffs->top();
+        buffs->pop();
+        LOG1("Snapshot buffer %d = %p", i, mSnapshotBuffers[i].buff->data);
     }
 
     return NO_ERROR;
@@ -4133,6 +4142,16 @@ errorFree:
     return status;
 }
 
+/**
+ * Prepares V4L2  buffer info's for snapshot and postview buffers
+ *
+ * Currently snapshot buffers are always set externally, so there is no allocation
+ * done here, only the preparation of the v4l2 buffer pools
+ *
+ * For postview we are still allocating in this method.
+ * TODO: In the future we will also allocate externally the postviews to have a
+ * similar flow of buffers as the snapshots
+ */
 status_t AtomISP::allocateSnapshotBuffers()
 {
     LOG1("@%s", __FUNCTION__);
@@ -4142,44 +4161,43 @@ status_t AtomISP::allocateSnapshotBuffers()
     int snapshotSize = mConfig.snapshot.size;
     struct v4l2_buffer_info *vinfo;
 
-    if (mUsingClientSnapshotBuffers)
-        snapshotSize = sizeof(void*);
-
-    // note: make sure client has called releaseCaptureBuffers()
-    //       at this point (clients may hold on to snapshot buffers
-    //       after capture has been stopped)
-    if (mSnapshotBuffers[0].buff != NULL) {
-        LOGW("Client has not freed snapshot buffers!");
-        freeSnapshotBuffers();
-    }
-
-    LOG1("Allocating %d buffers of size: %d (snapshot), %d (postview)",
-            mConfig.num_snapshot,
-            snapshotSize,
-            mConfig.postview.size);
-    for (int i = 0; i < mConfig.num_snapshot; i++) {
-        mSnapshotBuffers[i].buff = NULL;
-        mCallbacks->allocateMemory(&mSnapshotBuffers[i], snapshotSize);
-        if (mSnapshotBuffers[i].buff == NULL) {
-            LOGE("Error allocation memory for snapshot buffers!");
-            status = NO_MEMORY;
-            goto errorFree;
-        }
-        mSnapshotBuffers[i].type = ATOM_BUFFER_SNAPSHOT;
-        allocatedSnaphotBufs++;
-
-        if (mUsingClientSnapshotBuffers) {
+    if (mUsingClientSnapshotBuffers) {
+        for (int i = 0; i < mConfig.num_snapshot; i++) {
+            mSnapshotBuffers[i].type = ATOM_BUFFER_SNAPSHOT;
+            mSnapshotBuffers[i].shared = false;
             vinfo = &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i];
-            vinfo->data = mClientSnapshotBuffers[i];
-            memcpy(mSnapshotBuffers[i].dataPtr, &mClientSnapshotBuffers[i], sizeof(void *));
-            mSnapshotBuffers[i].shared = true;
+            vinfo->data = mSnapshotBuffers[i].dataPtr;
+            markBufferCached(vinfo, mClientSnapshotBuffersCached);
+        }
+    } else {
 
-        } else {
+        // note: make sure client has called releaseCaptureBuffers()
+        //       at this point (clients may hold on to snapshot buffers
+        //       after capture has been stopped)
+        if (mSnapshotBuffers[0].buff != NULL) {
+            LOGW("Client has not freed snapshot buffers!");
+            freeSnapshotBuffers();
+        }
+
+        LOG1("Allocating %d buffers of size: %d (snapshot), %d (postview)",
+                mConfig.num_snapshot,
+                snapshotSize,
+                mConfig.postview.size);
+        for (int i = 0; i < mConfig.num_snapshot; i++) {
+            mSnapshotBuffers[i].buff = NULL;
+            mCallbacks->allocateMemory(&mSnapshotBuffers[i], snapshotSize);
+            if (mSnapshotBuffers[i].buff == NULL) {
+                LOGE("Error allocation memory for snapshot buffers!");
+                status = NO_MEMORY;
+                goto errorFree;
+            }
+            mSnapshotBuffers[i].type = ATOM_BUFFER_SNAPSHOT;
+            allocatedSnaphotBufs++;
             vinfo = &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i];
             vinfo->data = mSnapshotBuffers[i].dataPtr;
             mSnapshotBuffers[i].shared = false;
+            markBufferCached(vinfo, mClientSnapshotBuffersCached);
         }
-        markBufferCached(vinfo, mClientSnapshotBuffersCached);
     }
 
     if (needNewPostviewBuffers()) {
@@ -4361,6 +4379,11 @@ status_t AtomISP::freeRecordingBuffers()
 status_t AtomISP::freeSnapshotBuffers()
 {
     LOG1("@%s", __FUNCTION__);
+    if (mUsingClientSnapshotBuffers) {
+        LOG1("Using external Snapshotbuffers, nothing to free");
+        return NO_ERROR;
+    }
+
     for (int i = 0 ; i < mConfig.num_snapshot; i++) {
         if (mSnapshotBuffers[i].buff != NULL) {
             mSnapshotBuffers[i].buff->release(mSnapshotBuffers[i].buff);

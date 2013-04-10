@@ -44,6 +44,7 @@
 #include "BracketManager.h"
 #include "I3AControls.h"
 #include "IAtomIspObserver.h"
+#include "PictureThread.h"
 
 namespace android {
 
@@ -62,7 +63,8 @@ class ControlThread :
     public ICallbackPanorama,
     public IAtomIspObserver,
     public IPostCaptureProcessObserver,
-    public IBufferOwner {
+    public IBufferOwner,
+    public ISnapshotBufferUser {
 
 // constructor destructor
 public:
@@ -133,6 +135,9 @@ public:
     // Implementation of IPostCaptureProcessObserver interface
     void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status);
 
+    // Implementation of ISnapshotBufferUser interface
+    status_t snapshotsAllocated(AtomBuffer *bufs, int numBufs);
+
 // callback methods
 private:
     virtual void previewBufferCallback(AtomBuffer *buff, ICallbackPreview::CallbackType t);
@@ -190,6 +195,7 @@ private:
 
         MESSAGE_ID_DEQUEUE_RECORDING,
         MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE,
+        MESSAGE_ID_SNAPSHOT_ALLOCATED,
 
         // timeout handler
         MESSAGE_ID_TIMEOUT,
@@ -266,6 +272,11 @@ private:
         status_t status;
     };
 
+    struct MessageSnapshotAllocated{
+        AtomBuffer *bufs;
+        int numBuf;
+    };
+
     // union of all message data
     union MessageData {
 
@@ -306,6 +317,9 @@ private:
 
         // MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE
         MessagePostCaptureProcDone postCapture;
+
+        // MESSAGE_ID_SNAPSHOT_ALLOCATED
+        MessageSnapshotAllocated snap;
 
         // MESSAGE_ID_EXIT
         MessageExit exit;
@@ -430,6 +444,7 @@ private:
     status_t handleMessageReturnBuffer(MessageReturnBuffer *msg);
     status_t handleMessageTimeout();
     status_t handleMessagePostCaptureProcessingDone(MessagePostCaptureProcDone *msg);
+    status_t handleMessageSnapshotAllocated(MessageSnapshotAllocated *msg);
 
     status_t startFaceDetection();
     status_t stopFaceDetection(bool wait=false);
@@ -456,6 +471,7 @@ private:
     status_t waitForAndExecuteMessage();
 
     AtomBuffer* findRecordingBuffer(void *findMe);
+    AtomBuffer* findBufferByData(AtomBuffer *buf,Vector<AtomBuffer> *aVector);
 
     // dequeue buffers from driver and deliver them
     status_t dequeuePreview();
@@ -468,6 +484,7 @@ private:
     status_t setSmartSceneParams();
 
     bool runPreFlashSequence();
+    void waitForAllocatedSnapshotBuffers();
 
     // parameters handling functions
     bool isParameterSet(const char* param);
@@ -583,7 +600,7 @@ private:
     status_t hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* postviewBuffer);
     status_t hdrCompose();
     void     hdrRelease();
-    status_t allocateSnapshotBuffers();
+    status_t allocateSnapshotBuffers(bool videoMode);
     void     setExternalSnapshotBuffers(int format, int width, int heigth);
 
     // Capture Flow helpers
@@ -714,7 +731,7 @@ private:
     bool mPanoramaFinalizationPending; /* state boolean for pending panorama finalization commands */
     bool mEnableFocusCbAtStart;     /* for internal control of focus cb's in continuous-mode */
     bool mEnableFocusMoveCbAtStart; /* for internal control of focus-move cb's in continuous-mode */
-    bool mFirstPreviewStart;        /* indicator of first preview start for L2P pnp optimizations */
+
 
     bool mStillCaptureInProgress;   /*!< indicates ongoing capture sequence for Camera_HAL API.
                                          note: threadsafe to use only in Camera_HAL calling context
@@ -725,6 +742,14 @@ private:
 
     const char* mPreviewUpdateMode;       /*!< indicates the active preview update mode.
                                                See parameter preview-update-mode */
+
+    Vector<AtomBuffer> mAllocatedSnapshotBuffers; /*!< Current set of allocated snapshot buffers */
+    Vector<AtomBuffer> mAvailableSnapshotBuffers; /*!< Current set of available snapshot buffers */
+    bool mAllocationRequestSent;                 /*!< Tracks the request allocation towards PictureThread
+                                                      set to true when we issue a request
+                                                      set to false when request completes
+                                                  */
+
 }; // class ControlThread
 
 }; // namespace android
