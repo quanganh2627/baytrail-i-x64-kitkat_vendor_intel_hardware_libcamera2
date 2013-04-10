@@ -320,6 +320,7 @@ status_t AtomAIQ::setAeMode(AeMode mode)
     case CAM_AE_MODE_APERTURE_PRIORITY:
     default:
         mAeInputParameters.manual_analog_gain = -1;
+        mAeInputParameters.manual_iso = -1;
         mAeInputParameters.manual_exposure_time_us = -1;
         mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_automatic;
         break;
@@ -1631,6 +1632,12 @@ void AtomAIQ::runAICMain()
         aic_input_params.manual_sharpness = 0;
         aic_input_params.cc_matrix = NULL;
         aic_input_params.wb_gains = NULL;
+
+        int value;
+        if (PlatformData::HalConfig.getValue(value, CPF::IspVamemType)) {
+            value = 0;
+        }
+        aic_input_params.isp_vamem_type = value;
 
         ret = ia_aiq_aic_run(m3aState.ia_aiq_handle, &aic_input_params, &((m3aState.results).aic_output));
         LOG2("@%s  ia_aiq_aic_run :%d", __FUNCTION__, ret);
