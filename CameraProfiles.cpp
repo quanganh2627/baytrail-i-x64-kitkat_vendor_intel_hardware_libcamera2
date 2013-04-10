@@ -180,6 +180,7 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
     } else if (strcmp(name, "dvs") == 0) {
         pCurrentCam->dvs = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "flipping") == 0) {
+        pCurrentCam->flipping = PlatformData::SENSOR_FLIP_OFF; // reset NA to OFF first
         if (strcmp(atts[0], "value") == 0 && strcmp(atts[1], "SENSOR_FLIP_H") == 0)
             pCurrentCam->flipping |= PlatformData::SENSOR_FLIP_H;
         if (strcmp(atts[2], "value_v") == 0 && strcmp(atts[3], "SENSOR_FLIP_V") == 0)

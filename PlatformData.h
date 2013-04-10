@@ -80,265 +80,7 @@ namespace android {
  */
 
 // Forward declarations
-class PlatformData;
-
-/**
- * \class PlatformBase
- *
- * Base class for defining static platform features and
- * related configuration data that is needed by rest of the HAL.
- *
- * Each platform will extend this class.
- */
-class PlatformBase {
-
-    friend class PlatformData;
-
-public:
-    PlatformBase() {    //default
-        mPanoramaMaxSnapshotCount = 10;
-        mSupportVideoSnapshot = true;
-        mNumRecordingBuffers = 9;
-        mContinuousCapture = false;
-        mMaxContinuousRawRingBuffer = 0;
-        mShutterLagCompensationMs = 40;
-        mSupportAIQ = false;
-        mPreviewFormat = V4L2_PIX_FMT_NV12;
-   };
-
- protected:
-
-    /**
-     * Camera feature info that is specific to camera id
-     */
-
-    class CameraInfo {
-    public:
-        CameraInfo() {
-            sensorType = SENSOR_TYPE_RAW;
-            facing = CAMERA_FACING_BACK;
-            orientation = 90;
-            // no flipping default.
-            dvs = true;
-            supportedSnapshotSizes = "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448";
-            mPreviewViaOverlay = false;
-            overlayRelativeRotation = 90;
-            maxPreviewPixelCountForVFPP = 0xFFFFFFFF; // default no limit
-            //burst
-            maxBurstFPS = 15;
-            supportedBurstFPS = "1,3,5,7,15";
-            supportedBurstLength = "1,3,5,10";
-            defaultBurstLength = "10";
-            //EV
-            maxEV = "2";
-            minEV = "-2";
-            stepEV = "0.33333333";
-            defaultEV = "0";
-            //Saturation
-            maxSaturation = "";
-            minSaturation = "";
-            stepSaturation = "";
-            defaultSaturation = "";
-            supportedSaturation = "";
-            //Contrast
-            maxContrast = "";
-            minContrast = "";
-            stepContrast = "";
-            defaultContrast = "";
-            supportedContrast = "";
-            //Sharpness
-            maxSharpness = "";
-            minSharpness = "";
-            stepSharpness = "";
-            defaultSharpness = "";
-            supportedSharpness = "";
-            //FlashMode
-            supportedFlashModes.appendFormat("%s,%s,%s,%s"
-                ,CameraParameters::FLASH_MODE_AUTO
-                ,CameraParameters::FLASH_MODE_OFF
-                ,CameraParameters::FLASH_MODE_ON
-                ,CameraParameters::FLASH_MODE_TORCH);
-            defaultFlashMode.appendFormat("%s", CameraParameters::FLASH_MODE_OFF);
-            //Iso
-            supportedIso = "iso-auto,iso-100,iso-200,iso-400,iso-800";
-            defaultIso = "iso-auto";
-            //sceneMode
-            supportedSceneModes.appendFormat("%s,%s,%s,%s,%s,%s,%s"
-                ,CameraParameters::SCENE_MODE_AUTO
-                ,CameraParameters::SCENE_MODE_PORTRAIT
-                ,CameraParameters::SCENE_MODE_SPORTS
-                ,CameraParameters::SCENE_MODE_LANDSCAPE
-                ,CameraParameters::SCENE_MODE_NIGHT
-                ,CameraParameters::SCENE_MODE_FIREWORKS
-                ,CameraParameters::SCENE_MODE_BARCODE);
-
-            defaultSceneMode.appendFormat("%s", CameraParameters::SCENE_MODE_AUTO);
-            //effectMode
-            supportedEffectModes.appendFormat("%s,%s,%s,%s"
-                ,CameraParameters::EFFECT_NONE
-                ,CameraParameters::EFFECT_MONO
-                ,CameraParameters::EFFECT_NEGATIVE
-                ,CameraParameters::EFFECT_SEPIA);
-
-            supportedIntelEffectModes.appendFormat("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s"
-                ,CameraParameters::EFFECT_NONE
-                ,CameraParameters::EFFECT_MONO
-                ,CameraParameters::EFFECT_NEGATIVE
-                ,CameraParameters::EFFECT_SEPIA
-                ,IntelCameraParameters::EFFECT_VIVID
-                ,IntelCameraParameters::EFFECT_STILL_SKY_BLUE
-                ,IntelCameraParameters::EFFECT_STILL_GRASS_GREEN
-                ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_LOW
-                ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_MEDIUM
-                ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_HIGH);
-            defaultEffectMode.appendFormat("%s", CameraParameters::EFFECT_NONE);
-            //awbmode
-            supportedAwbModes.appendFormat("%s,%s,%s,%s,%s"
-                ,CameraParameters::WHITE_BALANCE_AUTO
-                ,CameraParameters::WHITE_BALANCE_INCANDESCENT
-                ,CameraParameters::WHITE_BALANCE_FLUORESCENT
-                ,CameraParameters::WHITE_BALANCE_DAYLIGHT
-                ,CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT);
-            defaultAwbMode.appendFormat("%s", CameraParameters::WHITE_BALANCE_AUTO);
-            //ae metering
-            supportedAeMetering = "auto,center,spot";
-            defaultAeMetering = "auto";
-            //preview
-            supportedPreviewFrameRate = "30,15,10";
-            supportedPreviewFPSRange = "(10500,30304),(11000,30304),(11500,30304)";
-            defaultPreviewFPSRange = "10500,30304";
-            supportedVideoSizes = "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1080";
-            // Leaving this empty. NOTE: values need to be given in derived classes.
-            supportedPreviewSizes = "";
-            //For high speed recording, slow motion playback
-            hasSlowMotion = false;
-            // focus modes
-            supportedFocusModes.appendFormat("%s,%s,%s,%s,%s,%s"
-                ,CameraParameters::FOCUS_MODE_AUTO
-                ,CameraParameters::FOCUS_MODE_INFINITY
-                ,CameraParameters::FOCUS_MODE_FIXED
-                ,CameraParameters::FOCUS_MODE_MACRO
-                ,CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO
-                ,CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
-            defaultFocusMode.appendFormat("%s", CameraParameters::FOCUS_MODE_AUTO);
-        };
-
-        SensorType sensorType;
-        int facing;
-        int orientation;
-        int flipping;
-        bool dvs;
-        String8 supportedSnapshotSizes;
-        bool mPreviewViaOverlay;
-        int overlayRelativeRotation;  /*<! Relative rotation between the native scan order of the
-                                           camera and the display attached to the overlay */
-        // VFPP pixel limiter (sensor blanking time dependent)
-        unsigned int maxPreviewPixelCountForVFPP;
-        // burst
-        int maxBurstFPS;
-        String8 supportedBurstFPS;
-        String8 supportedBurstLength;
-        String8 defaultBurstLength;
-        // exposure
-        String8 maxEV;
-        String8 minEV;
-        String8 stepEV;
-        String8 defaultEV;
-        // AE metering
-        String8 supportedAeMetering;
-        String8 defaultAeMetering;
-        // saturation
-        String8 maxSaturation;
-        String8 minSaturation;
-        String8 stepSaturation;
-        String8 defaultSaturation;
-        String8 supportedSaturation;
-        // contrast
-        String8 maxContrast;
-        String8 minContrast;
-        String8 stepContrast;
-        String8 defaultContrast;
-        String8 supportedContrast;
-        // sharpness
-        String8 maxSharpness;
-        String8 minSharpness;
-        String8 stepSharpness;
-        String8 defaultSharpness;
-        String8 supportedSharpness;
-        // flash
-        String8 supportedFlashModes;
-        String8 defaultFlashMode;
-        // iso
-        String8 supportedIso;
-        String8 defaultIso;
-        // scene modes
-        String8 supportedSceneModes;
-        String8 defaultSceneMode;
-        // effect
-        String8 supportedEffectModes;
-        String8 supportedIntelEffectModes;
-        String8 defaultEffectMode;
-        // awb
-        String8 supportedAwbModes;
-        String8 defaultAwbMode;
-        // preview
-        String8 supportedPreviewFrameRate;
-        String8 supportedPreviewFPSRange;
-        String8 defaultPreviewFPSRange;
-        String8 supportedPreviewSizes;
-        String8 supportedVideoSizes;
-        // For high speed recording, slow motion playback
-        bool hasSlowMotion;
-        // focus modes
-        String8 supportedFocusModes;
-        String8 defaultFocusMode;
-
-    };
-
-    // note: Android NDK does not yet support C++11 and
-    //       initializer lists, so avoiding structs for now
-    //       in these definitions (2012/May)
-
-    Vector<CameraInfo> mCameras;
-
-    bool mBackFlash;
-    bool mFileInject;
-    bool mSupportVideoSnapshot;
-
-    bool mContinuousCapture;
-    int mMaxContinuousRawRingBuffer;
-    int mShutterLagCompensationMs;
-
-    int mPanoramaMaxSnapshotCount;
-
-    String8 mVideoPreviewSizePref;
-
-    /* For EXIF Metadata */
-    String8 mProductName;
-    String8 mManufacturerName;
-
-    /* For Device name */
-    String8 mSubDevName;
-
-    /* For Zoom factor */
-    int mMaxZoomFactor;
-
-    /*
-     * For Recording Buffers number
-     * Because we have 512MB RAM devices, like the Lex,
-     * we have less memory for the recording.
-     * So we need to make the recording buffers can be configured.
-    */
-    int mNumRecordingBuffers;
-
-    /* For Intel3A ia_aiq */
-    bool mSupportAIQ;
-
-    int mPreviewFormat;
-
-    /* blackbay, or merr_vv, or redhookbay, or victoriabay... */
-    String8 mBoardName;
-};
+class PlatformBase;
 
 /**
  * \class PlatformData
@@ -924,6 +666,264 @@ class PlatformData {
     static const char* getBoardName(void);
 
 
+};
+
+/**
+ * \class PlatformBase
+ *
+ * Base class for defining static platform features and
+ * related configuration data that is needed by rest of the HAL.
+ *
+ * Each platform will extend this class.
+ */
+class PlatformBase {
+
+    friend class PlatformData;
+
+public:
+    PlatformBase() {    //default
+        mPanoramaMaxSnapshotCount = 10;
+        mSupportVideoSnapshot = true;
+        mNumRecordingBuffers = 9;
+        mContinuousCapture = false;
+        mMaxContinuousRawRingBuffer = 0;
+        mShutterLagCompensationMs = 40;
+        mSupportAIQ = false;
+        mPreviewFormat = V4L2_PIX_FMT_NV12;
+   };
+
+ protected:
+
+    /**
+     * Camera feature info that is specific to camera id
+     */
+
+    class CameraInfo {
+    public:
+        CameraInfo() {
+            sensorType = SENSOR_TYPE_RAW;
+            facing = CAMERA_FACING_BACK;
+            orientation = 90;
+            flipping = PlatformData::SENSOR_FLIP_NA;
+            dvs = true;
+            supportedSnapshotSizes = "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448";
+            mPreviewViaOverlay = false;
+            overlayRelativeRotation = 90;
+            maxPreviewPixelCountForVFPP = 0xFFFFFFFF; // default no limit
+            //burst
+            maxBurstFPS = 15;
+            supportedBurstFPS = "1,3,5,7,15";
+            supportedBurstLength = "1,3,5,10";
+            defaultBurstLength = "10";
+            //EV
+            maxEV = "2";
+            minEV = "-2";
+            stepEV = "0.33333333";
+            defaultEV = "0";
+            //Saturation
+            maxSaturation = "";
+            minSaturation = "";
+            stepSaturation = "";
+            defaultSaturation = "";
+            supportedSaturation = "";
+            //Contrast
+            maxContrast = "";
+            minContrast = "";
+            stepContrast = "";
+            defaultContrast = "";
+            supportedContrast = "";
+            //Sharpness
+            maxSharpness = "";
+            minSharpness = "";
+            stepSharpness = "";
+            defaultSharpness = "";
+            supportedSharpness = "";
+            //FlashMode
+            supportedFlashModes.appendFormat("%s,%s,%s,%s"
+                ,CameraParameters::FLASH_MODE_AUTO
+                ,CameraParameters::FLASH_MODE_OFF
+                ,CameraParameters::FLASH_MODE_ON
+                ,CameraParameters::FLASH_MODE_TORCH);
+            defaultFlashMode.appendFormat("%s", CameraParameters::FLASH_MODE_OFF);
+            //Iso
+            supportedIso = "iso-auto,iso-100,iso-200,iso-400,iso-800";
+            defaultIso = "iso-auto";
+            //sceneMode
+            supportedSceneModes.appendFormat("%s,%s,%s,%s,%s,%s,%s"
+                ,CameraParameters::SCENE_MODE_AUTO
+                ,CameraParameters::SCENE_MODE_PORTRAIT
+                ,CameraParameters::SCENE_MODE_SPORTS
+                ,CameraParameters::SCENE_MODE_LANDSCAPE
+                ,CameraParameters::SCENE_MODE_NIGHT
+                ,CameraParameters::SCENE_MODE_FIREWORKS
+                ,CameraParameters::SCENE_MODE_BARCODE);
+
+            defaultSceneMode.appendFormat("%s", CameraParameters::SCENE_MODE_AUTO);
+            //effectMode
+            supportedEffectModes.appendFormat("%s,%s,%s,%s"
+                ,CameraParameters::EFFECT_NONE
+                ,CameraParameters::EFFECT_MONO
+                ,CameraParameters::EFFECT_NEGATIVE
+                ,CameraParameters::EFFECT_SEPIA);
+
+            supportedIntelEffectModes.appendFormat("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s"
+                ,CameraParameters::EFFECT_NONE
+                ,CameraParameters::EFFECT_MONO
+                ,CameraParameters::EFFECT_NEGATIVE
+                ,CameraParameters::EFFECT_SEPIA
+                ,IntelCameraParameters::EFFECT_VIVID
+                ,IntelCameraParameters::EFFECT_STILL_SKY_BLUE
+                ,IntelCameraParameters::EFFECT_STILL_GRASS_GREEN
+                ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_LOW
+                ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_MEDIUM
+                ,IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_HIGH);
+            defaultEffectMode.appendFormat("%s", CameraParameters::EFFECT_NONE);
+            //awbmode
+            supportedAwbModes.appendFormat("%s,%s,%s,%s,%s"
+                ,CameraParameters::WHITE_BALANCE_AUTO
+                ,CameraParameters::WHITE_BALANCE_INCANDESCENT
+                ,CameraParameters::WHITE_BALANCE_FLUORESCENT
+                ,CameraParameters::WHITE_BALANCE_DAYLIGHT
+                ,CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT);
+            defaultAwbMode.appendFormat("%s", CameraParameters::WHITE_BALANCE_AUTO);
+            //ae metering
+            supportedAeMetering = "auto,center,spot";
+            defaultAeMetering = "auto";
+            //preview
+            supportedPreviewFrameRate = "30,15,10";
+            supportedPreviewFPSRange = "(10500,30304),(11000,30304),(11500,30304)";
+            defaultPreviewFPSRange = "10500,30304";
+            supportedVideoSizes = "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1080";
+            // Leaving this empty. NOTE: values need to be given in derived classes.
+            supportedPreviewSizes = "";
+            //For high speed recording, slow motion playback
+            hasSlowMotion = false;
+            // focus modes
+            supportedFocusModes.appendFormat("%s,%s,%s,%s,%s,%s"
+                ,CameraParameters::FOCUS_MODE_AUTO
+                ,CameraParameters::FOCUS_MODE_INFINITY
+                ,CameraParameters::FOCUS_MODE_FIXED
+                ,CameraParameters::FOCUS_MODE_MACRO
+                ,CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO
+                ,CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
+            defaultFocusMode.appendFormat("%s", CameraParameters::FOCUS_MODE_AUTO);
+        };
+
+        SensorType sensorType;
+        int facing;
+        int orientation;
+        int flipping;
+        bool dvs;
+        String8 supportedSnapshotSizes;
+        bool mPreviewViaOverlay;
+        int overlayRelativeRotation;  /*<! Relative rotation between the native scan order of the
+                                           camera and the display attached to the overlay */
+        // VFPP pixel limiter (sensor blanking time dependent)
+        unsigned int maxPreviewPixelCountForVFPP;
+        // burst
+        int maxBurstFPS;
+        String8 supportedBurstFPS;
+        String8 supportedBurstLength;
+        String8 defaultBurstLength;
+        // exposure
+        String8 maxEV;
+        String8 minEV;
+        String8 stepEV;
+        String8 defaultEV;
+        // AE metering
+        String8 supportedAeMetering;
+        String8 defaultAeMetering;
+        // saturation
+        String8 maxSaturation;
+        String8 minSaturation;
+        String8 stepSaturation;
+        String8 defaultSaturation;
+        String8 supportedSaturation;
+        // contrast
+        String8 maxContrast;
+        String8 minContrast;
+        String8 stepContrast;
+        String8 defaultContrast;
+        String8 supportedContrast;
+        // sharpness
+        String8 maxSharpness;
+        String8 minSharpness;
+        String8 stepSharpness;
+        String8 defaultSharpness;
+        String8 supportedSharpness;
+        // flash
+        String8 supportedFlashModes;
+        String8 defaultFlashMode;
+        // iso
+        String8 supportedIso;
+        String8 defaultIso;
+        // scene modes
+        String8 supportedSceneModes;
+        String8 defaultSceneMode;
+        // effect
+        String8 supportedEffectModes;
+        String8 supportedIntelEffectModes;
+        String8 defaultEffectMode;
+        // awb
+        String8 supportedAwbModes;
+        String8 defaultAwbMode;
+        // preview
+        String8 supportedPreviewFrameRate;
+        String8 supportedPreviewFPSRange;
+        String8 defaultPreviewFPSRange;
+        String8 supportedPreviewSizes;
+        String8 supportedVideoSizes;
+        // For high speed recording, slow motion playback
+        bool hasSlowMotion;
+        // focus modes
+        String8 supportedFocusModes;
+        String8 defaultFocusMode;
+
+    };
+
+    // note: Android NDK does not yet support C++11 and
+    //       initializer lists, so avoiding structs for now
+    //       in these definitions (2012/May)
+
+    Vector<CameraInfo> mCameras;
+
+    bool mBackFlash;
+    bool mFileInject;
+    bool mSupportVideoSnapshot;
+
+    bool mContinuousCapture;
+    int mMaxContinuousRawRingBuffer;
+    int mShutterLagCompensationMs;
+
+    int mPanoramaMaxSnapshotCount;
+
+    String8 mVideoPreviewSizePref;
+
+    /* For EXIF Metadata */
+    String8 mProductName;
+    String8 mManufacturerName;
+
+    /* For Device name */
+    String8 mSubDevName;
+
+    /* For Zoom factor */
+    int mMaxZoomFactor;
+
+    /*
+     * For Recording Buffers number
+     * Because we have 512MB RAM devices, like the Lex,
+     * we have less memory for the recording.
+     * So we need to make the recording buffers can be configured.
+    */
+    int mNumRecordingBuffers;
+
+    /* For Intel3A ia_aiq */
+    bool mSupportAIQ;
+
+    int mPreviewFormat;
+
+    /* blackbay, or merr_vv, or redhookbay, or victoriabay... */
+    String8 mBoardName;
 };
 
 } /* namespace android */
