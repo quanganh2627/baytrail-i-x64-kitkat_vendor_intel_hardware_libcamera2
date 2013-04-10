@@ -5376,7 +5376,7 @@ status_t AtomISP::FrameSyncSource::observe(IAtomIspObserver::Message *msg)
         return INVALID_OPERATION;
     }
 
-    ret = mISP->v4l2_poll(mISP->video_fds[V4L2_ISP_SUBDEV], FRAME_SYNC_POLL_TIMEOUT);
+    ret = mISP->v4l2_poll(V4L2_ISP_SUBDEV, FRAME_SYNC_POLL_TIMEOUT);
 
     if (ret <= 0) {
         LOGE("Poll failed ret(%d), disabling SOF event",ret);
@@ -5472,7 +5472,7 @@ int AtomISP::pollFrameSyncEvent()
         return INVALID_OPERATION;
     }
 
-    ret = v4l2_poll(video_fds[V4L2_ISP_SUBDEV], FRAME_SYNC_POLL_TIMEOUT);
+    ret = v4l2_poll(V4L2_ISP_SUBDEV, FRAME_SYNC_POLL_TIMEOUT);
 
     if (ret <= 0) {
         LOGE("Poll failed, disabling SOF event");
