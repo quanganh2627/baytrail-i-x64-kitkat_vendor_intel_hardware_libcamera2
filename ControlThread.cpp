@@ -1147,7 +1147,6 @@ void ControlThread::releaseContinuousCapture(bool flushPictures)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    mUnqueuedPicBuf.clear();
     mISP->releaseCaptureBuffers();
     if (flushPictures) {
         // This covers cases when we need to fallback from
@@ -1566,7 +1565,7 @@ status_t ControlThread::stopCapture()
 
     mAvailableSnapshotBuffers.clear();
     mAvailableSnapshotBuffers = mAllocatedSnapshotBuffers;
-    mUnqueuedPicBuf.clear();
+
     status = mPictureThread->flushBuffers();
     if (status != NO_ERROR) {
         LOGE("Error flushing PictureThread!");
@@ -1647,10 +1646,6 @@ status_t ControlThread::startOfflineCapture()
     int framesDone = mPreviewThread->getFramesDone();
     if (framesDone < -cfg.offset)
         cfg.offset = -framesDone;
-
-    // Starting capture device will queue all buffers,
-    // so we need to clear any references we have.
-    mUnqueuedPicBuf.clear();
 
     mISP->startOfflineCapture(cfg);
 
@@ -2838,33 +2833,6 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
         }
     }
 
-    /**
-     * Time to return the used frames to ISP, we do not do this in the function
-     * "handleMessagePictureDone".
-     * If HDR is enabled, don't return the buffers. we need them to compose HDR
-     * image. The buffers will be discarded after HDR is done in stopCapture().
-     * When HAL is in still single burst capture or burst capture, no need to
-     * return picture frames back to ISP, because the buffers allocated are enough,
-     * but for continuous capture, ControlThread will qbuf back to ISP before next capture.
-     */
-    if ((!mHdr.enabled) && (mBurstLength < 1) && (!mUnqueuedPicBuf.isEmpty())) {
-        // Return the last picture frames back to ISP
-        LOG1("return snapshot buffer to ISP");
-        for (size_t i = 0; i < mUnqueuedPicBuf.size(); i++) {
-            AtomBuffer snapshotBuf = mUnqueuedPicBuf[i].snapshotBuf;
-            AtomBuffer postviewBuf = mUnqueuedPicBuf[i].postviewBuf;
-            status = mISP->putSnapshot(&snapshotBuf, &postviewBuf);
-            if (status == NO_ERROR) {
-                mUnqueuedPicBuf.removeAt(i);
-            } else if (status == DEAD_OBJECT) {
-                mUnqueuedPicBuf.removeAt(i);
-                LOG1("Stale snapshot buffer returned to ISP");
-            } else if (status != NO_ERROR) {
-                LOGE("Error in putting snapshot!");
-            }
-        }
-    }
-
     // note: flash is not supported in burst and continuous shooting
     //       modes (this would be the place to enable it)
 
@@ -2960,18 +2928,23 @@ bool ControlThread::compressedFrameQueueFull()
 }
 
 /**
+ * TEMPORARILY DISABLED
  * Queues unused snapshot buffers to ISP.
  *
  * Note: in certain use-cases like single captures,
  * this step can be omitted to save in capture time.
+ *
+ * TODO: Once postview buffers are allocated same as snapshots then we
+ * can allocage less buffers than the burst length required. In this
+ * case we can re-sue this method
  */
 status_t ControlThread::queueSnapshotBuffers()
 {
-    LOG2("@%s:", __FUNCTION__);
+    LOG1("@%s:", __FUNCTION__);
     status_t status = NO_ERROR;
-    for (size_t i = 0; i < mUnqueuedPicBuf.size(); i++) {
-        AtomBuffer snapshotBuf = mUnqueuedPicBuf[i].snapshotBuf;
-        AtomBuffer postviewBuf = mUnqueuedPicBuf[i].postviewBuf;
+    /*for (size_t i = 0; i < mAvailableSnapshotBuffers.size(); i++) {
+        AtomBuffer snapshotBuf = mAvailableSnapshotBuffers[i].snapshotBuf;
+
         LOG2("return snapshot buffer %u to ISP", i);
         status = mISP->putSnapshot(&snapshotBuf, &postviewBuf);
         if (status == NO_ERROR) {
@@ -2983,7 +2956,7 @@ status_t ControlThread::queueSnapshotBuffers()
             LOGE("Error in putting snapshot!");
         }
     }
-    mUnqueuedPicBuf.clear();
+    mAvailableSnapshotBuffers.clear();*/
     return status;
 }
 
@@ -3049,9 +3022,11 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
     else if (mBurstLength > mISP->getSnapshotNum() &&
              mBurstQbufs < mBurstLength) {
         // To save capture time, only requeue buffers if total
-        // burst length exdeeds the ISP buffer queue size, and
+        // burst length exceeds the ISP buffer queue size, and
         // more buffers are needed.
-        queueSnapshotBuffers();
+        //queueSnapshotBuffers();
+        // This i sno longer possible: TODO: allow less buffers than the
+        // burst length to be allocated.
     }
 
     return status;
@@ -3483,13 +3458,6 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             return status;
         }
     } else if (mState == STATE_CAPTURE || mState == STATE_CONTINUOUS_CAPTURE) {
-        /*
-         * Store the buffer that has not been returned to ISP, and it shall be returned
-         * when next capturing happen
-         * The reason is to save S2S time, don't need to qbuf back to ISP in still
-         * and burst capture
-         */
-        mUnqueuedPicBuf.push(*msg);
 
         /**
          * Snapshot buffer recycle
@@ -3500,8 +3468,8 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
          * this should always be the case.
          * Then we check that it is not already in in the list of available buffers
          *
-         * TODO: Have post-view allocation similar to snapshot and remove the need
-         * for the mUnqueuedPicBuf
+         * TODO: Have post-view allocation similar to snapshot.
+         *
          *
          */
         if (msg->snapshotBuf.status != FRAME_STATUS_SKIPPED) {
