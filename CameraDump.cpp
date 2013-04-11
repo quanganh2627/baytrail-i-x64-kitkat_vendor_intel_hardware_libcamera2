@@ -222,7 +222,13 @@ int CameraDump::dumpImage2File(const void *data, const unsigned int size, unsign
         struct tm *timeinfo;
         time(&rawtime);
         timeinfo = localtime(&rawtime);
-        strftime((char *)filename, sizeof(filename), "IMG_%Y%m%d_%H%M%S", timeinfo);
+
+        if (timeinfo) {
+            strftime((char *)filename, sizeof(filename) - sizeof(filesuffix), "IMG_%Y%m%d_%H%M%S", timeinfo);
+        } else {
+            snprintf((char *)filename, sizeof(filename) - sizeof(filesuffix), "IMG_%s", "notime");
+        }
+
         snprintf(filesuffix, sizeof(filesuffix), "%03u.i3av4", count);
         strncat(filename, filesuffix, sizeof(filename) - strlen(filename) - 1);
         strncat(rawdpp, filename, strlen(filename));

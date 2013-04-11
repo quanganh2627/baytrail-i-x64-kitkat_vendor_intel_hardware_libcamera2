@@ -67,6 +67,7 @@ public:
     void panoramaDisplUpdate(camera_panorama_metadata &metadata);
     void panoramaSnapshot(AtomBuffer &livePreview);
     status_t storeMetaDataInBuffers(bool enabled);
+    void ullTriggered(int id);
     void ullPictureDone(AtomBuffer *ullJpegPicture);
 
 private:
