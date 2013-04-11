@@ -695,7 +695,6 @@ private:
                                                     It is used when video recording starts so the settings
                                                     can be restore when video recording stops
                                                  */
-    Vector<MessagePicture> mUnqueuedPicBuf; /* store the buffers that have not been returned to ISP in capturing*/
 
     bool mEnableFocusCbAtStart;     /* for internal control of focus cb's in continuous-mode */
     bool mEnableFocusMoveCbAtStart; /* for internal control of focus-move cb's in continuous-mode */
