@@ -86,7 +86,6 @@ ControlThread::ControlThread(int cameraId) :
     ,mISP(NULL)
     ,mDvs(NULL)
     ,mCP(NULL)
-    ,mULL(NULL)
     ,m3AControls(NULL)
     ,mPreviewThread(NULL)
     ,mPictureThread(NULL)
@@ -1131,9 +1130,6 @@ void ControlThread::releaseContinuousCapture(bool flushPictures)
 ControlThread::ShootingMode ControlThread::selectShootingMode()
 {
     ShootingMode ret = SHOOTING_MODE_NONE;
-    FlashMode flashMode = m3AControls->getAeFlashMode();
-    bool flashOn = (flashMode == CAM_AE_FLASH_MODE_TORCH ||
-                   flashMode == CAM_AE_FLASH_MODE_ON);
 
     switch (mState) {
         case STATE_PREVIEW_STILL:
@@ -1151,11 +1147,10 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
             else
                 ret = SHOOTING_MODE_ZSL;
 
-            /* Trigger ULL only when user did not forced flash */
-            if (mULL->isActive() && mULL->trigger() && !flashOn)
+            if (mULL->isActive() && mULL->trigger())
                 ret = SHOOTING_MODE_ULL;
-            break;
 
+            break;
         case STATE_CAPTURE:
             if (isBurstRunning())
                 ret = SHOOTING_MODE_BURST;
@@ -1778,7 +1773,7 @@ status_t ControlThread::handleMessageStartRecording()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    int width,height,widthPreview,heightPreview;
+    int width,height;
     char sizes[25];
 
     if (mState == STATE_PREVIEW_VIDEO) {
@@ -1812,20 +1807,13 @@ status_t ControlThread::handleMessageStartRecording()
     mParameters.setPictureSize(width, height);
     allocateSnapshotBuffers();
     snprintf(sizes, 25, "%dx%d", width,height);
-    LOG1("video snapshot size %dx%d", width, height);
     mParameters.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, sizes);
-    mParameters.getPreviewSize(&widthPreview, &heightPreview);
 
-    // avoid that thumbnail is larger than image in case of small video size
-    if (widthPreview > width) {
-        widthPreview = width;
-        heightPreview = height;
-    }
-
-    LOG1("video snapshot thumbnail size %dx%d", widthPreview, heightPreview);
-    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH, widthPreview);
-    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT, heightPreview);
-    snprintf(sizes, 25, "%dx%d,0x0", widthPreview,heightPreview);
+    LOG1("video snapshot size %dx%d", width, height);
+    mParameters.getPreviewSize(&width, &height);
+    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH, width);
+    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT, height);
+    snprintf(sizes, 25, "%dx%d,0x0", width,height);
     mParameters.set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES, sizes);
     updateParameterCache();
 
@@ -3006,7 +2994,7 @@ status_t ControlThread::captureULLPic()
 
     stopFaceDetection();
     // Initialize the burst control variables for the ULL burst
-    mBurstLength = mULL->getULLBurstLength();
+    mBurstLength = mULL->MAX_INPUT_BUFFERS;
     mBurstStart = 0;
     mBurstFps = mISP->getFrameRate();
 
@@ -3016,7 +3004,7 @@ status_t ControlThread::captureULLPic()
     mPictureThread->initialize(mParameters);
 
     // Get the snapshots
-    for (int i=0; i< mBurstLength; i++) {
+    for (int i=0; i< mULL->MAX_INPUT_BUFFERS; i++) {
        status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
        if (status != NO_ERROR) {
            LOGE("Error in grabbing snapshot!");
@@ -5828,16 +5816,15 @@ void ControlThread::postCaptureProcesssingDone(IPostCaptureProcessItem* item, st
     status_t status;
     AtomBuffer snapshotBuffer, postviewBuffer;
     PictureThread::MetaData picMetaData;
-    int ULLid = 0;
 
 
     // ATM the only post capture processing is ULL, no need to check which one
-    mULL->getOuputResult(&snapshotBuffer,&postviewBuffer, &picMetaData, &ULLid);
+    mULL->getOuputResult(&snapshotBuffer,&postviewBuffer, &picMetaData);
 
     if(procStatus != NO_ERROR)
         LOGW("PostCapture Processing failed !!");
 
-    mCallbacksThread->requestULLPicture(ULLid);
+    mCallbacksThread->requestULLPicture();
 
     status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
     if (status != NO_ERROR) {

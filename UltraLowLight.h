@@ -71,16 +71,13 @@ public:
     /**
      *  Activation/De-activation Thresholds
      *  used to trigger ULL based on 3A parameters
-     *  There are 2 thresholds:
-     *  - one to activate ULL when scene gets darker (bright threshold)
-     *  - one to deactivate ULL if scene gets too dark (dark threshold)
-     *
      *  TODO: They should eventually come from CPF
+     *  TODO: we should have another threshold to allow flash
      **/
-    static int ULL_BRIGHT_ISO_THRESHOLD;
-    static int ULL_BRIGHT_EXPTIME_THRESHOLD;
-    static int ULL_DARK_ISO_THRESHOLD;
-    static int ULL_DARK_EXPTIME_THRESHOLD;
+    static int ULL_ACTIVATE_ISO_THRESHOLD;
+    static int ULL_DEACTIVATE_ISO_THRESHOLD;
+    static int ULL_ACTIVATE_EXPTIME_THRESHOLD;
+    static int ULL_DEACTIVATE_EXPTIME_THRESHOLD;
 
     /**
      * \enum ULLPreset
@@ -105,10 +102,7 @@ public:
 
     status_t addInputFrame(AtomBuffer *snapshot, AtomBuffer *postview) STUB_BODY_STAT
     status_t addSnapshotMetadata(PictureThread::MetaData &metadata) STUB_BODY_STAT
-    status_t getOuputResult(AtomBuffer *snap, AtomBuffer * pv,
-                            PictureThread::MetaData *metadata, int *ULLid) STUB_BODY_STAT
-    int getCurrentULLid() { return mULLCounter; };
-    int getULLBurstLength() STUB_BODY_STAT
+    status_t getOuputResult(AtomBuffer *snap, AtomBuffer * pv, PictureThread::MetaData *metadata) STUB_BODY_STAT
 
     // implementation of IPostCaptureProcessItem
     status_t process() STUB_BODY_STAT
@@ -166,7 +160,6 @@ private:
     AtomBuffer  mOutputBuffer;  /*!> Output of the ULL processing. this is actually the first input buffer passed */
     AtomBuffer  mOutputPostView;  /*!> post view image for the first snapshot, used as output one */
     State       mState;
-    int mULLCounter;        /*!> Running counter of ULL shots. Used as frame id towards application */
     int mWidth;
     int mHeight;
     int mCurrentPreset;

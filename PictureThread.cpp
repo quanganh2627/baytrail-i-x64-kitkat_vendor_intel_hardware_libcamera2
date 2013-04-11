@@ -425,15 +425,12 @@ status_t PictureThread::handleMessageFetchBuffers(MessageAllocBufs *msg)
         status = handleMessageAllocBufs(msg);
     }
 
-    if (mInputBufferArray && (mInputBufferArray[0].width != msg->width
-        || mInputBufferArray[0].height != msg->height)) {
+    if (mInputBufferArray[0].width != msg->width
+     || mInputBufferArray[0].height != msg->height) {
         // Checks to ensure that allocation has happened for correct size.
         LOGW("shared buffers not allocated for correct size");
         msg->numBufs = 1;
         status = handleMessageAllocBufs(msg);
-    } else if (!mInputBufferArray) {
-        LOGE("NULL mInputBufferArray.");
-        status = UNKNOWN_ERROR;
     }
 
     mMessageQueue.reply(MESSAGE_ID_FETCH_BUFS, status);

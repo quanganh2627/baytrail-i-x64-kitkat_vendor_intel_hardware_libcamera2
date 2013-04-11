@@ -8,6 +8,7 @@ ifeq ($(USE_INTEL_METABUFFER),true)
 LOCAL_CFLAGS += -DENABLE_INTEL_METABUFFER
 endif
 
+
 ifeq ($(BOARD_GRAPHIC_IS_GEN),true)
 LOCAL_CFLAGS += -DGRAPHIC_IS_GEN
 endif
@@ -54,8 +55,8 @@ LOCAL_SRC_FILES := \
 	AtomAcc.cpp \
 	AtomIspObserverManager.cpp \
 	SensorThread.cpp	\
-	PostCaptureThread.cpp
-
+	PostCaptureThread.cpp \
+	UltraLowLight.cpp
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SRC_FILES += \
@@ -63,8 +64,7 @@ LOCAL_SRC_FILES += \
 endif
 
 ifeq ($(USE_INTEL_CAMERA_EXTRAS),true)
-LOCAL_SRC_FILES += AtomCP.cpp \
-                   UltraLowLight.cpp
+LOCAL_SRC_FILES += AtomCP.cpp
 endif
 
 LOCAL_C_INCLUDES += \

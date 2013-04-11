@@ -527,7 +527,6 @@ AtomISP::~AtomISP()
         //       we need to make sure we free them here.
         //       This is not needed for preview and recording buffers.
         freeSnapshotBuffers();
-        freePostviewBuffers();
     }
     closeDevice(V4L2_MAIN_DEVICE);
 
@@ -1085,12 +1084,6 @@ status_t AtomISP::configurePreview()
     mNumPreviewBuffers = NUM_PREVIEW_BUFFERS;
     mPreviewDevice = mPreviewTooBigForVFPP ? mRecordingDevice : mConfigSnapshotPreviewDevice;
 
-    if (mPreviewDevice >= V4L2_MAX_DEVICE_COUNT) {
-        LOGE("Index mPreviewDevice (%d) beyond V4L2 device count (%d)", mPreviewDevice, V4L2_MAX_DEVICE_COUNT);
-        status = UNKNOWN_ERROR;
-        return status;
-    }
-
     if (mPreviewDevice != V4L2_MAIN_DEVICE) {
         ret = openDevice(mPreviewDevice);
         if (ret < 0) {
@@ -1387,7 +1380,6 @@ errorCloseSecond:
     closeDevice(V4L2_POSTVIEW_DEVICE);
 errorFreeBuf:
     freeSnapshotBuffers();
-    freePostviewBuffers();
 
     return status;
 }
@@ -1472,8 +1464,11 @@ status_t AtomISP::configureContinuousRingBuffer()
  */
 int AtomISP::getContinuousCaptureNumber() const
 {
+   if (mMode == MODE_CONTINUOUS_CAPTURE)
+       return mContCaptConfig.numCaptures;
+   else
+       return 1;
 
-    return mContCaptConfig.numCaptures;
 }
 
 /**
@@ -1591,7 +1586,6 @@ errorCloseSecond:
     closeDevice(V4L2_POSTVIEW_DEVICE);
 errorFreeBuf:
     freeSnapshotBuffers();
-    freePostviewBuffers();
 
     return status;
 }
@@ -1650,7 +1644,6 @@ errorCloseSecond:
     closeDevice(V4L2_POSTVIEW_DEVICE);
 errorFreeBuf:
     freeSnapshotBuffers();
-    freePostviewBuffers();
 
 end:
     return status;
@@ -1722,10 +1715,7 @@ status_t AtomISP::stopCapture()
 status_t AtomISP::releaseCaptureBuffers()
 {
     LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    status = freeSnapshotBuffers();
-    status |= freePostviewBuffers();
-    return status;
+    return freeSnapshotBuffers();
 }
 
 
@@ -2052,13 +2042,6 @@ void AtomISP::destroyBufferPool(int device)
 int AtomISP::openDevice(int device)
 {
     LOG1("@%s", __FUNCTION__);
-
-    if (device >= V4L2_MAX_DEVICE_COUNT) {
-        LOGE("Attempted to open device with illegal index (%d). V4L2_MAX_DEVICE_COUNT = %d",
-             device, V4L2_MAX_DEVICE_COUNT);
-        return -1;
-    }
-
     if (video_fds[device] > 0) {
         LOGW("MainDevice already opened!");
         return video_fds[device];
