@@ -130,6 +130,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mAllocationRequestSent(false)
     ,mSaveMirrored(false)
     ,mCurrentOrientation(0)
+    ,mRecordingOrientation(0)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -1920,6 +1921,11 @@ status_t ControlThread::handleMessageStartRecording()
     mParameters.set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES, sizes);
     updateParameterCache();
 
+    // Store device orientation at the start of video recording
+    if (mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT)) {
+        mRecordingOrientation = mCurrentOrientation;
+    }
+
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_START_RECORDING, status);
     return status;
@@ -2243,7 +2249,9 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
     metaData.atomispMkNote = atomispMkNote;
 
     // Request mirroring for snapshot and postview buffers (only for front camera)
-    metaData.saveMirrored = mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT);
+    // Do mirroring only in still capture mode, video snapshots are mirrored in dequeueRecording()
+    metaData.saveMirrored = mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT) &&
+                            (mState != STATE_RECORDING);
     metaData.cameraOrientation = PlatformData::cameraOrientation(mCameraId);
     metaData.currentOrientation = mCurrentOrientation;
 }
@@ -7031,6 +7039,13 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
                 if (mISP->getPreviewTooBigForVFPP()) {
                     memcpy(buff.dataPtr, msg->previewFrame.dataPtr, msg->previewFrame.size);
                 }
+
+                // Mirror the recording buffer if mirroring is enabled (only for front camera)
+                // TODO: this should be moved into VideoThread
+                if (mSaveMirrored && PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT) {
+                    mirrorBuffer(&buff, mRecordingOrientation, PlatformData::cameraOrientation(mCameraId));
+                }
+
                 if (mVideoSnapshotrequested && mVideoSnapshotBuffers.size() < 3) {
                     mVideoSnapshotrequested--;
                     encodeVideoSnapshot(buff);
