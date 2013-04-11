@@ -4247,7 +4247,9 @@ errorFree:
 void AtomISP::initMetaDataBuf(IntelMetadataBuffer* metaDatabuf)
 {
     ValueInfo* vinfo = new ValueInfo;
-    vinfo->mode = MEM_MODE_NONECACHE_USRPTR;
+    // Video buffers actually use cached memory,
+    // even though uncached memory was requested
+    vinfo->mode = MEM_MODE_MALLOC;
     vinfo->handle = 0;
     vinfo->width = mConfig.recording.width;
     vinfo->height = mConfig.recording.height;
