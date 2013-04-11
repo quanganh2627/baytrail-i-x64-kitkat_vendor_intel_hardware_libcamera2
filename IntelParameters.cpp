@@ -229,6 +229,11 @@ namespace android {
     const char IntelCameraParameters::SHARPNESS_MODE_SOFT[] = "soft";
     const char IntelCameraParameters::SHARPNESS_MODE_HARD[] = "hard";
 
+    // save mirrored
+    const char IntelCameraParameters::KEY_SAVE_MIRRORED[] = "save-mirrored";
+    const char IntelCameraParameters::KEY_SUPPORTED_SAVE_MIRRORED[] = "save-mirrored-values";
+
+
     void IntelCameraParameters::getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params)
     {
         width = height = -1;

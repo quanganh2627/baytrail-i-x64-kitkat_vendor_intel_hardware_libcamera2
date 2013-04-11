@@ -129,6 +129,8 @@ ControlThread::ControlThread(int cameraId) :
     ,mStillCaptureInProgress(false)
     ,mPreviewUpdateMode(IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD)
     ,mAllocationRequestSent(false)
+    ,mSaveMirrored(false)
+    ,mCurrentOrientation(0)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -2233,6 +2235,11 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
     metaData.aeConfig = aeConfig;
     metaData.ia3AMkNote = aaaMkNote;
     metaData.atomispMkNote = atomispMkNote;
+
+    // Request mirroring for snapshot and postview buffers (only for front camera)
+    metaData.saveMirrored = mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT);
+    metaData.cameraOrientation = PlatformData::cameraOrientation(mCameraId);
+    metaData.currentOrientation = mCurrentOrientation;
 }
 
 status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffer &postviewBuffer)
@@ -2777,6 +2784,15 @@ status_t ControlThread::captureStillPic()
         mISP->setFlashIndicator(0);
     }
 
+    // Do postview for preview-keep-alive feature synchronously before the possible mirroring.
+    // Otherwise mirrored image will be shown in postview.
+    if (displayPostview || syncJpegCbWithPostview) {
+        // We sync with single capture, where we also need preview to stall.
+        // So, hide preview after postview when syncJpegCbWithPostview is true
+        bool syncPostview = mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT);
+        mPreviewThread->postview(displayPostview?&postviewBuffer:NULL, syncJpegCbWithPostview, syncPostview);
+    }
+
     // Do jpeg encoding in other cases except HDR. Encoding HDR will be done later.
     bool doEncode = false;
     if (!mHdr.enabled) {
@@ -2795,12 +2811,6 @@ status_t ControlThread::captureStillPic()
 
     if (mState == STATE_CONTINUOUS_CAPTURE && mBurstLength <= 1)
         stopOfflineCapture();
-
-    if (displayPostview || syncJpegCbWithPostview) {
-        // We sync with single capture, where we also need preview to stall.
-        // So, hide preview after postview when syncJpegCbWithPostview is true
-        mPreviewThread->postview(displayPostview?&postviewBuffer:NULL, syncJpegCbWithPostview);
-    }
 
     if (mState == STATE_CONTINUOUS_CAPTURE) {
         // Continuous mode will keep running keeping 3A active but
@@ -4041,6 +4051,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     if (status == NO_ERROR) {
         // ae mode
         status = processParamAutoExposureMode(oldParams, newParams);
+    }
+
+    if (status == NO_ERROR) {
+        // save mirrored image (for front camera)
+        status = processParamMirroring(oldParams, newParams);
     }
 
     if (m3AControls->isIntel3A()) {
@@ -5565,6 +5580,27 @@ status_t ControlThread::processParamExifSoftware(const CameraParameters *oldPara
     return NO_ERROR;
 }
 
+status_t ControlThread::processParamMirroring(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_SAVE_MIRRORED);
+
+    if (!newVal.isEmpty()) {
+        if (newVal == CameraParameters::TRUE) {
+            mSaveMirrored = true;
+            mCurrentOrientation = SensorThread::getInstance()->registerOrientationListener(this);
+         } else {
+            mSaveMirrored = false;
+            SensorThread::getInstance()->unRegisterOrientationListener(this);
+        }
+        LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_SAVE_MIRRORED, newVal.string());
+    }
+
+    return NO_ERROR;
+}
+
 /*
  * Process parameters that require the ISP to be stopped.
  *
@@ -6892,6 +6928,9 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE:
             status = handleMessagePostCaptureProcessingDone(&msg.data.postCapture);
+
+        case MESSAGE_ID_SET_ORIENTATION:
+            status = handleMessageSetOrientation(&msg.data.orientation);
             break;
 
         case MESSAGE_ID_SNAPSHOT_ALLOCATED:
@@ -7120,6 +7159,22 @@ status_t ControlThread::requestExitAndWait()
 
     // propagate call to base class
     return Thread::requestExitAndWait();
+}
+
+void ControlThread::orientationChanged(int orientation)
+{
+    LOG1("@%s: orientation = %d", __FUNCTION__, orientation);
+    Message msg;
+    msg.id = MESSAGE_ID_SET_ORIENTATION;
+    msg.data.orientation.value = orientation;
+    mMessageQueue.send(&msg);
+}
+
+status_t ControlThread::handleMessageSetOrientation(MessageOrientation *msg)
+{
+    LOG1("@%s: orientation = %d", __FUNCTION__, msg->value);
+    mCurrentOrientation = msg->value;
+    return NO_ERROR;
 }
 
 } // namespace android

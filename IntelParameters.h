@@ -237,6 +237,9 @@ namespace android {
     static const char KEY_ULL[];
     static const char KEY_SUPPORTED_ULL[];
 
+    static const char KEY_SAVE_MIRRORED[];
+    static const char KEY_SUPPORTED_SAVE_MIRRORED[];
+
     static void getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params);
     static const char* getSupportedPanoramaLivePreviewSizes(const CameraParameters &params);
     static void parseResolutionList(const char *sizeStr, Vector<Size> &sizes);
