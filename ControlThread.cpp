@@ -4064,15 +4064,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         }
     }
 
-    // In case of continuous-capture, the buffers are allocated
-    // when restarting the preview (done if picture size changes).
-    if (status == NO_ERROR &&
-            mState != STATE_STOPPED &&
-            mState != STATE_CONTINUOUS_CAPTURE) {
-        // Request PictureThread to allocate snapshot buffers
-        allocateSnapshotBuffers();
-    }
-
     return status;
 }
 /**
