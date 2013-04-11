@@ -771,6 +771,7 @@ private:
     int mCurrentOrientation;        /*!< Current orientation of the device. Used in case the image is
                                          saved as mirrored. The image will be mirrored based on the
                                          camera sensor orientation and device orientation. */
+    int mRecordingOrientation;      /*!< Device orientation at the start of video recording. */
 }; // class ControlThread
 
 }; // namespace android
