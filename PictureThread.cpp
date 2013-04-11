@@ -320,6 +320,13 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
     else
         postviewBuf = &msg->postviewBuf;
 
+    // Mirror snapshot and postview buffers if requested
+    if (msg->metaData.saveMirrored) {
+        mirrorBuffer(&msg->snaphotBuf, msg->metaData.currentOrientation, msg->metaData.cameraOrientation);
+        if (postviewBuf)
+            mirrorBuffer(postviewBuf, msg->metaData.currentOrientation, msg->metaData.cameraOrientation);
+    }
+
     status = encodeToJpeg(&msg->snaphotBuf, postviewBuf, &jpegBuf);
     if (status != NO_ERROR) {
         LOGE("Error generating JPEG image!");

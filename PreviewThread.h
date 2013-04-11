@@ -123,7 +123,7 @@ public:
     void getDefaultParameters(CameraParameters *params);
     bool isWindowConfigured();
     status_t preview(AtomBuffer *buff);
-    status_t postview(AtomBuffer *buff, bool hidePreview = false);
+    status_t postview(AtomBuffer *buff, bool hidePreview = false, bool synchronous = false);
     status_t setPreviewWindow(struct preview_stream_ops *window);
     status_t setPreviewConfig(int preview_width, int preview_height, int preview_stride,
                               int preview_format, bool shared_mode = true, int buffer_count = -1);
@@ -172,6 +172,7 @@ private:
     struct MessagePreview {
         AtomBuffer buff;
         bool hide;
+        bool synchronous;
     };
 
     struct MessageSetPreviewWindow {

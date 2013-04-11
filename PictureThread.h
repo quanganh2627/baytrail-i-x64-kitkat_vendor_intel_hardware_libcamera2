@@ -56,6 +56,9 @@ public:
       SensorAeConfig *aeConfig;              /*!< defined in AtomAAA.h */
       atomisp_makernote_info *atomispMkNote; /*!< kernel provided metadata, defined linux/atomisp.h */
       ia_3a_mknote *ia3AMkNote;              /*!< defined in ia_3a_types.h */
+      bool saveMirrored;                     /*!< whether to do mirroring */
+      int cameraOrientation;                 /*!< camera sensor orientation */
+      int currentOrientation;                /*!< Current orientation of the device */
 
       void free(I3AControls* aaaControls);
     };

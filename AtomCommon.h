@@ -370,5 +370,9 @@ inline static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
 
 void convertFromAndroidToIaCoordinates(const CameraWindow &srcWindow, CameraWindow &toWindow);
 
+void mirrorBuffer(AtomBuffer *buffer, int currentOrientation, int cameraOrientation);
+void flipBufferV(AtomBuffer *buffer);
+void flipBufferH(AtomBuffer *buffer);
+
 }
 #endif // ANDROID_LIBCAMERA_COMMON_H

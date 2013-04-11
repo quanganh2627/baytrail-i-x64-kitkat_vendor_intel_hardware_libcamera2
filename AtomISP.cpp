@@ -736,6 +736,11 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     // sharpness control (Intel extension)
     intel_params->set(IntelCameraParameters::KEY_SHARPNESS_MODE, PlatformData::defaultSharpness(cameraId));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SHARPNESS_MODES, PlatformData::supportedSharpness(cameraId));
+
+    // save mirrored
+    intel_params->set(IntelCameraParameters::KEY_SAVE_MIRRORED, "false");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SAVE_MIRRORED, "true,false");
+
 }
 
 void AtomISP::getMaxSnapShotSize(int cameraId, int* width, int* height)

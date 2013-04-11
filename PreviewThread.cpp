@@ -376,7 +376,7 @@ bool PreviewThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
     return false;
 }
 
-status_t PreviewThread::postview(AtomBuffer *buff, bool hidePreview)
+status_t PreviewThread::postview(AtomBuffer *buff, bool hidePreview, bool synchronous)
 {
     LOG2("@%s", __FUNCTION__);
     Message msg;
@@ -386,7 +386,11 @@ status_t PreviewThread::postview(AtomBuffer *buff, bool hidePreview)
     else
         msg.data.preview.buff.status = FRAME_STATUS_SKIPPED;
     msg.data.preview.hide = hidePreview;
-    return mMessageQueue.send(&msg);
+    msg.data.preview.synchronous = synchronous;
+    if (!synchronous)
+        return mMessageQueue.send(&msg);
+    else
+        return mMessageQueue.send(&msg, MESSAGE_ID_POSTVIEW);
 }
 
 status_t PreviewThread::flushBuffers()
@@ -1398,6 +1402,7 @@ status_t PreviewThread::handlePostview(MessagePreview *msg)
 {
     int err;
     GraphicBufferMapper &mapper = GraphicBufferMapper::get();
+    status_t status = NO_ERROR;
 
     if (msg->buff.status == FRAME_STATUS_SKIPPED)
         return NO_ERROR;
@@ -1489,7 +1494,10 @@ status_t PreviewThread::handlePostview(MessagePreview *msg)
 
     LOG1("@%s: done", __FUNCTION__);
 
-    return NO_ERROR;
+    if (msg->synchronous)
+        mMessageQueue.reply(MESSAGE_ID_POSTVIEW, status);
+
+    return status;
 }
 
 /**
