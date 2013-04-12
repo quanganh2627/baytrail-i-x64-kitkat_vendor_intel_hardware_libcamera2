@@ -27,6 +27,7 @@
 #include "PlatformData.h"
 #include "PerformanceTraces.h"
 #include "cameranvm.h"
+#include "ia_cmc_parser.h"
 #include "PanoramaThread.h"
 #include "FeatureData.h"
 
@@ -114,12 +115,36 @@ status_t AtomAIQ::init3A()
     if(ret != ia_err_none)
         LOGE("Error makernote init");
 
+    ia_cmc_t *cmc = ia_cmc_parser_init((ia_binary_data*)&(cpfData));
     m3aState.ia_aiq_handle = ia_aiq_init((ia_binary_data*)&(cpfData),
                                          (ia_binary_data*)aicNvm,
                                          MAX_STATISTICS_WIDTH,
                                          MAX_STATISTICS_HEIGHT,
+                                         cmc,
                                          mMkn);
-    if(!m3aState.ia_aiq_handle) {
+
+    if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5)){
+        m3aState.ia_isp_handle = ia_isp_1_5_init((ia_binary_data*)&(cpfData),
+                                                 MAX_STATISTICS_WIDTH,
+                                                 MAX_STATISTICS_HEIGHT,
+                                                 cmc,
+                                                 mMkn);
+    }
+    else if ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0)){
+        m3aState.ia_isp_handle = ia_isp_2_2_init((ia_binary_data*)&(cpfData),
+                                                         MAX_STATISTICS_WIDTH,
+                                                         MAX_STATISTICS_HEIGHT,
+                                                         cmc,
+                                                         mMkn);
+    }
+    else {
+        m3aState.ia_isp_handle = NULL;
+        LOGE("Ambiguous CSS version used: %d.%d", mISP->getCssMajorVersion(), mISP->getCssMinorVersion());
+    }
+
+    ia_cmc_parser_deinit(cmc);
+
+    if(!m3aState.ia_aiq_handle || !m3aState.ia_isp_handle) {
         cameranvm_delete(aicNvm);
         return UNKNOWN_ERROR;
     }
@@ -159,6 +184,10 @@ status_t AtomAIQ::deinit3A()
     free(m3aState.faces);
     freeStatistics(m3aState.stats);
     ia_aiq_deinit(m3aState.ia_aiq_handle);
+    if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5))
+        ia_isp_1_5_deinit(m3aState.ia_isp_handle);
+    else if ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0))
+        ia_isp_2_2_deinit(m3aState.ia_isp_handle);
     ia_mkn_uninit(mMkn);
     mISP = NULL;
     mAfMode = CAM_AF_MODE_NOT_SET;
@@ -644,7 +673,10 @@ status_t AtomAIQ::set3AColorEffect(const char *effect)
         status = -1;
         // Fall back to the effect NONE
     }
-    mAICInputParameters.effects = aiqEffect;
+    if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion()==5))
+        mISP15InputParameters.effects = aiqEffect;
+    else if ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion()==0))
+        mISP22InputParameters.effects = aiqEffect;
 
     return status;
 }
@@ -820,7 +852,7 @@ status_t AtomAIQ::getEv(float *ret)
 status_t AtomAIQ::setManualShutter(float expTime)
 {
     LOG1("@%s, expTime: %f", __FUNCTION__, expTime);
-    mAeInputParameters.manual_exposure_time_us = powf(2.0, -expTime) * 1000000;
+    mAeInputParameters.manual_exposure_time_us = expTime * 1000000;
     return NO_ERROR;
 }
 
@@ -1172,18 +1204,23 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp,
             statistics_input_parameters.faces = m3aState.faces;
 
         if(mAwbResults)
-            statistics_input_parameters.awb_results = mAwbResults;
+            statistics_input_parameters.frame_awb_parameters = mAwbResults;
 
         if (mAeState.ae_results)
-            statistics_input_parameters.ae_results = &mAeState.prev_results[0];
+            statistics_input_parameters.frame_ae_parameters = &mAeState.prev_results[0];
 
         statistics_input_parameters.wb_gains = NULL;
         statistics_input_parameters.cc_matrix = NULL;
-        statistics_input_parameters.ev_shift = 0;
 
-        ia_aiq_statistics_convert(m3aState.ia_aiq_handle, m3aState.stats,
-                const_cast<ia_aiq_rgbs_grid**>(&statistics_input_parameters.rgbs_grid),
-                const_cast<ia_aiq_af_grid**>(&statistics_input_parameters.af_grid));
+        if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5))
+            ia_isp_1_5_statistics_convert(m3aState.ia_isp_handle, m3aState.stats,
+                            const_cast<ia_aiq_rgbs_grid**>(&statistics_input_parameters.rgbs_grid),
+                            const_cast<ia_aiq_af_grid**>(&statistics_input_parameters.af_grid));
+        else if ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0))
+            ia_isp_2_2_statistics_convert(m3aState.ia_isp_handle, m3aState.stats,
+                                        const_cast<ia_aiq_rgbs_grid**>(&statistics_input_parameters.rgbs_grid),
+                                        const_cast<ia_aiq_af_grid**>(&statistics_input_parameters.af_grid));
+
         LOG2("m3aState.stats: grid_info: %d  %d %d ",
               m3aState.stats->grid_info.s3a_width,m3aState.stats->grid_info.s3a_height,m3aState.stats->grid_info.s3a_bqs_per_grid_cell);
 
@@ -1297,6 +1334,8 @@ void AtomAIQ::resetAECParams()
     mAeInputParameters.manual_exposure_time_us = -1;
     mAeInputParameters.manual_analog_gain = -1;
     mAeInputParameters.manual_iso = -1;
+    mAeInputParameters.manual_frame_time_us_min = -1;
+    mAeInputParameters.manual_frame_time_us_max = -1;
     mAeInputParameters.aec_features = ia_aiq_ae_feature_tuning;
 }
 
@@ -1444,11 +1483,12 @@ void AtomAIQ::resetGBCEParams()
 status_t AtomAIQ::runGBCEMain()
 {
     LOG2("@%s", __FUNCTION__);
-    if (m3aState.ia_aiq_handle && mGBCEEnable)
-    {
+    if (m3aState.ia_aiq_handle && mGBCEEnable) {
         ia_err err = ia_aiq_gbce_run(m3aState.ia_aiq_handle, &mGBCEResults);
         if(err == ia_err_none)
             LOG2("@%s success", __FUNCTION__);
+    } else {
+        mGBCEResults = NULL;
     }
     return NO_ERROR;
 }
@@ -1491,6 +1531,8 @@ status_t AtomAIQ::run3aMain()
 
     if(mAeMode != CAM_AE_MODE_MANUAL)
         ret |= runGBCEMain();
+    else
+        mGBCEResults = NULL;
 
     // get AIC result and apply into ISP
     ret |= runAICMain();
@@ -1587,44 +1629,89 @@ status_t AtomAIQ::runAICMain()
     status_t ret = NO_ERROR;
 
     if (m3aState.ia_aiq_handle) {
-        ia_aiq_aic_input_params aic_input_params;
-        aic_input_params.frame_use = m3aState.frame_use;
-        aic_input_params.awb_results = NULL;
-        aic_input_params.gbce_results = NULL;
+        ia_aiq_pa_input_params pa_input_params;
 
-        if (mAeState.ae_results)
-            aic_input_params.exposure_results = mAeState.ae_results->exposure;
+        // NOTE: currently the input parameter structs are identical for CSS 1.5 and 2.0
+        // To reduce lots of if elses, the parameters are first stored into a 1.5 version
+        // A more intelligent way needs to be figured out. Such as hiding the CSS
+        // differencies into AIQ library.
+        ia_isp_1_5_input_params isp_15_input_params;
+
+        pa_input_params.frame_use = m3aState.frame_use;
+        isp_15_input_params.frame_use = m3aState.frame_use;
+
+        pa_input_params.awb_results = NULL;
+        isp_15_input_params.awb_results = NULL;
+
+        isp_15_input_params.exposure_results = (mAeState.ae_results) ? mAeState.ae_results->exposure : NULL;
 
         if (mAwbResults) {
-            aic_input_params.awb_results = mAwbResults;
-            LOG2("awb factor:%f", aic_input_params.awb_results->accurate_b_per_g);
+            LOG2("awb factor:%f", mAwbResults->accurate_b_per_g);
         }
-        if (mGBCEResults) {
-            aic_input_params.gbce_results = mGBCEResults;
-            LOG2("gbce :%d", aic_input_params.gbce_results->ctc_gains_lut_size);
-        }
-        aic_input_params.sensor_frame_params = &m3aState.sensor_frame_params;
-        LOG2("@%s  2 sensor native width %d", __FUNCTION__, aic_input_params.sensor_frame_params->cropped_image_width);
-        aic_input_params.effects = mAICInputParameters.effects;
+        pa_input_params.awb_results = mAwbResults;
+        isp_15_input_params.awb_results = mAwbResults;
 
-        aic_input_params.manual_brightness = 0;
-        aic_input_params.manual_contrast = 0;
-        aic_input_params.manual_hue = 0;
-        aic_input_params.manual_saturation = 0;
-        aic_input_params.manual_sharpness = 0;
-        aic_input_params.cc_matrix = NULL;
-        aic_input_params.wb_gains = NULL;
+        if (mGBCEResults) {
+            LOG2("gbce :%d", mGBCEResults->ctc_gains_lut_size);
+        }
+        isp_15_input_params.gbce_results = mGBCEResults;
+
+        pa_input_params.sensor_frame_params = &m3aState.sensor_frame_params;
+        isp_15_input_params.sensor_frame_params = &m3aState.sensor_frame_params;
+        LOG2("@%s  2 sensor native width %d", __FUNCTION__, pa_input_params.sensor_frame_params->cropped_image_width);
+
+        pa_input_params.cc_matrix = NULL;
+        pa_input_params.wb_gains = NULL;
+
+        ia_aiq_pa_results *pa_results;
+        ret = ia_aiq_pa_run(m3aState.ia_aiq_handle, &pa_input_params, &pa_results);
+        LOG2("@%s  ia_aiq_pa_run :%d", __FUNCTION__, ret);
+
+        isp_15_input_params.pa_results = pa_results;
+
+        if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() ==5))
+            isp_15_input_params.effects = mISP15InputParameters.effects;
+        else if ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() ==0))
+            isp_15_input_params.effects = mISP22InputParameters.effects;
+
+        isp_15_input_params.manual_brightness = 0;
+        isp_15_input_params.manual_contrast = 0;
+        isp_15_input_params.manual_hue = 0;
+        isp_15_input_params.manual_saturation = 0;
+        isp_15_input_params.manual_sharpness = 0;
 
         int value = 0;
         PlatformData::HalConfig.getValue(value, CPF::IspVamemType);
-        aic_input_params.isp_vamem_type = value;
+        isp_15_input_params.isp_vamem_type = value;
 
-        ret = ia_aiq_aic_run(m3aState.ia_aiq_handle, &aic_input_params, &((m3aState.results).aic_output));
-        LOG2("@%s  ia_aiq_aic_run :%d", __FUNCTION__, ret);
+        if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5)) {
+            ret = ia_isp_1_5_run(m3aState.ia_isp_handle, &isp_15_input_params, &((m3aState.results).isp_output));
+            LOG2("@%s  ia_isp_1_5_run :%d", __FUNCTION__, ret);
+        }
+        else if ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0)) {
+            ia_isp_2_2_input_params isp_22_input_params;
+
+            isp_22_input_params.frame_use = isp_15_input_params.frame_use;
+            isp_22_input_params.sensor_frame_params = isp_15_input_params.sensor_frame_params;
+            isp_22_input_params.exposure_results = isp_15_input_params.exposure_results;
+            isp_22_input_params.awb_results = isp_15_input_params.awb_results;
+            isp_22_input_params.gbce_results = isp_15_input_params.gbce_results;
+            isp_22_input_params.pa_results = isp_15_input_params.pa_results;
+            isp_22_input_params.isp_vamem_type = isp_15_input_params.isp_vamem_type;
+            isp_22_input_params.manual_brightness = isp_15_input_params.manual_brightness;
+            isp_22_input_params.manual_contrast = isp_15_input_params.manual_contrast;
+            isp_22_input_params.manual_hue = isp_15_input_params.manual_hue;
+            isp_22_input_params.manual_saturation = isp_15_input_params.manual_saturation;
+            isp_22_input_params.manual_sharpness = isp_15_input_params.manual_sharpness;
+            isp_22_input_params.effects = isp_15_input_params.effects;
+
+            ret = ia_isp_2_2_run(m3aState.ia_isp_handle, &isp_22_input_params, &((m3aState.results).isp_output));
+            LOG2("@%s  ia_isp_2_2_run :%d", __FUNCTION__, ret);
+        }
 
         /* Apply ISP settings */
-        if (m3aState.results.aic_output) {
-            struct atomisp_parameters *aic_out_struct = (struct atomisp_parameters *)m3aState.results.aic_output;
+        if (m3aState.results.isp_output.data) {
+            struct atomisp_parameters *aic_out_struct = (struct atomisp_parameters *)m3aState.results.isp_output.data;
             ret |= mISP->setAicParameter(aic_out_struct);
             ret |= mISP->applyColorEffect();
         }

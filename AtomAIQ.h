@@ -29,6 +29,8 @@ class AtomAIQ;
 #include <ia_types.h>
 #include <ia_aiq_types.h>
 #include <ia_aiq.h>
+#include <ia_isp_1_5.h>
+#include <ia_isp_2_2.h>
 #include "AtomCommon.h"
 #include "AtomISP.h"
 #include "I3AControls.h"
@@ -55,7 +57,7 @@ namespace android {
 
 typedef struct {
     struct atomisp_parm               isp_params;
-    void*                             aic_output;
+    ia_binary_data                    isp_output;
     bool                              exposure_changed;
     bool                              flash_intensity_changed;
 } aiq_results;
@@ -87,6 +89,7 @@ typedef struct {
     bool                            reconfigured;
     ia_face_state                  *faces;
     ia_aiq                         *ia_aiq_handle;
+    ia_isp                         *ia_isp_handle;
     ia_aiq_scene_mode               detected_scene;
     ia_aiq_rgbs_grid                rgbs_grid;
     ia_aiq_af_grid                  af_grid;
@@ -375,8 +378,9 @@ private:
     bool mGBCEEnable;
 
 
-    //AIC
-    ia_aiq_aic_input_params mAICInputParameters;
+    //ISP
+    ia_isp_1_5_input_params mISP15InputParameters;
+    ia_isp_2_2_input_params mISP22InputParameters;
 
     //DSD
     ia_aiq_dsd_input_params mDSDInputParameters;
@@ -384,7 +388,6 @@ private:
 
     //MKN
     ia_mkn  *mMkn;
-
 }; // class AtomAIQ
 
 }; // namespace android
