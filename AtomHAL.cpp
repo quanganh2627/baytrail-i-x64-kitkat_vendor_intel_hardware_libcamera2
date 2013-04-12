@@ -111,7 +111,7 @@ static void atom_set_callbacks(struct camera_device * device,
 
 static void atom_enable_msg_type(struct camera_device * device, int32_t msg_type)
 {
-    LOGD("%s msg_type=0x%08x", __FUNCTION__, msg_type);
+    LOG1("%s msg_type=0x%08x", __FUNCTION__, msg_type);
     if(!device)
         return;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -120,7 +120,7 @@ static void atom_enable_msg_type(struct camera_device * device, int32_t msg_type
 
 static void atom_disable_msg_type(struct camera_device * device, int32_t msg_type)
 {
-    LOGD("%s msg_type=0x%08x", __FUNCTION__, msg_type);
+    LOG1("%s msg_type=0x%08x", __FUNCTION__, msg_type);
     if(!device)
         return;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -129,7 +129,7 @@ static void atom_disable_msg_type(struct camera_device * device, int32_t msg_typ
 
 static int atom_msg_type_enabled(struct camera_device * device, int32_t msg_type)
 {
-    LOGD("%s msg_type=0x%08x", __FUNCTION__, msg_type);
+    LOG1("%s msg_type=0x%08x", __FUNCTION__, msg_type);
     if(!device)
         return 0;
     atom_camera *cam = (atom_camera *)(device->priv);

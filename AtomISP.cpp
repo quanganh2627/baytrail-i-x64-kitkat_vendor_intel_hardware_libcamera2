@@ -356,10 +356,10 @@ void AtomISP::initFrameConfig()
         }
     }
 
-    if (mConfig.snapshot.maxWidth >= RESOLUTION_720P_WIDTH
-        && mConfig.snapshot.maxHeight >= RESOLUTION_720P_HEIGHT) {
-        mConfig.preview.maxWidth = RESOLUTION_720P_WIDTH;
-        mConfig.preview.maxHeight = RESOLUTION_720P_HEIGHT;
+    if (mConfig.snapshot.maxWidth >= RESOLUTION_1080P_WIDTH
+        && mConfig.snapshot.maxHeight >= RESOLUTION_1080P_HEIGHT) {
+        mConfig.preview.maxWidth = RESOLUTION_1080P_WIDTH;
+        mConfig.preview.maxHeight = RESOLUTION_1080P_HEIGHT;
     } else {
         mConfig.preview.maxWidth = mConfig.snapshot.maxWidth;
         mConfig.preview.maxHeight =  mConfig.snapshot.maxHeight;
