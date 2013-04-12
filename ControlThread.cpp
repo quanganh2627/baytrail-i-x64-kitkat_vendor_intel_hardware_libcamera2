@@ -289,53 +289,53 @@ status_t ControlThread::init()
     mVideoThread->getDefaultParameters(&mIntelParameters, mCameraId);
     updateParameterCache();
 
-    status = mSensorThread->run();
+    status = mSensorThread->run("CamHAL_SENSOR");
     if (status != NO_ERROR) {
         LOGE("Error starting sensor thread!");
         goto bail;
     }
-    status = m3AThread->run();
+    status = m3AThread->run("CamHAL_3A");
     if (status != NO_ERROR) {
         LOGE("Error starting 3A thread!");
         goto bail;
     }
-    status = mPreviewThread->run();
+    status = mPreviewThread->run("CamHAL_PREVIEW");
     if (status != NO_ERROR) {
         LOGE("Error starting preview thread!");
         goto bail;
     }
-    status = mPictureThread->run();
+    status = mPictureThread->run("CamHAL_PICTURE");
     if (status != NO_ERROR) {
         LOGW("Error starting picture thread!");
         goto bail;
     }
-    status = mCallbacksThread->run();
+    status = mCallbacksThread->run("CamHAL_CALLBACK");
     if (status != NO_ERROR) {
         LOGW("Error starting callbacks thread!");
         goto bail;
     }
-    status = mVideoThread->run();
+    status = mVideoThread->run("CamHAL_VIDEO");
     if (status != NO_ERROR) {
         LOGW("Error starting video thread!");
         goto bail;
     }
-    status = mPostProcThread->run();
+    status = mPostProcThread->run("CamHAL_POSTPROC");
     if (status != NO_ERROR) {
         LOGW("Error starting Post Processing thread!");
         goto bail;
     }
-    status = mPanoramaThread->run();
+    status = mPanoramaThread->run("CamHAL_PANO");
     if (status != NO_ERROR) {
         LOGW("Error Starting Panorama Thread!");
         goto bail;
     }
-    status = mBracketManager->run();
+    status = mBracketManager->run("CamHAL_BRACKET");
     if (status != NO_ERROR) {
         LOGW("Error Starting Bracketing Manager!");
         goto bail;
     }
 
-    status = mPostCaptureThread->run();
+    status = mPostCaptureThread->run("CamHAL_POSTCAP");
     if (status != NO_ERROR) {
         LOGW("Error Starting PostCaptureThread!");
         goto bail;

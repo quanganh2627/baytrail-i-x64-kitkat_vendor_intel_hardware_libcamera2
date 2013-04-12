@@ -128,7 +128,7 @@ status_t PanoramaThread::handleMessageStartPanorama(void)
         return NO_MEMORY;
     }
 
-    status = mPanoramaStitchThread->run();
+    status = mPanoramaStitchThread->run("CamHAL_PANOSTITCH");
     if (status != NO_ERROR) {
         LOGE("Error starting PanoramaStitchThread!");
     }
