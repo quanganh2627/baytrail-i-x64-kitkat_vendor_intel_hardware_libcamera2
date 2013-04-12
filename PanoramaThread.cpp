@@ -122,6 +122,7 @@ status_t PanoramaThread::handleMessageStartPanorama(void)
     mPanoramaStitchThread = new PanoramaStitchThread();
     if (mPanoramaStitchThread == NULL) {
         mPostviewBuf.buff->release(mPostviewBuf.buff);
+        mPostviewBuf.buff = NULL;
         LOGE("error creating PanoramaThread");
         assert(false);
         return NO_MEMORY;
@@ -461,8 +462,10 @@ status_t PanoramaThread::handleMessageThumbnailSize(const MessageThumbnailSize &
 void PanoramaThread::returnBuffer(AtomBuffer *atomBuffer) {
     LOG1("@%s", __FUNCTION__);
     // for postview buffer type we release the memory we allocated
-    if (atomBuffer->buff)
+    if (atomBuffer->buff) {
         atomBuffer->buff->release(atomBuffer->buff);
+        atomBuffer->buff = NULL;
+    }
     // for panorama buffer type dataPtr was overwritten with ia_frame data
     // panorama engine releases its memory either at reinit (handleMessageStartPanoramaCapture)
     // or uninit (handleMessageStopPanorama)
@@ -604,6 +607,7 @@ status_t PanoramaThread::PanoramaStitchThread::cancel(ia_panorama_state* mContex
     for (it = stitches.begin(); it != stitches.end(); ++it) {
        camera_memory_t* b = it->data.stitch.img.buff;
        b->release(b);
+       b = NULL;
     }
 
     // cancel last stitch
@@ -694,6 +698,7 @@ status_t PanoramaThread::PanoramaStitchThread::handleMessageStitch(MessageStitch
     ret = ia_panorama_stitch(stitch.mContext, &iaFrame, stitchId);
 
     stitch.img.buff->release(stitch.img.buff);
+    stitch.img.buff = NULL;
 
     if (ret >= 0)
         return OK;

@@ -441,32 +441,40 @@ void ControlThread::deinit()
 
     if (m3AControls != NULL) {
         m3AControls->deinit3A();
-        if (m3AControls->isIntel3A())
+        if (m3AControls->isIntel3A()) {
             delete m3AControls;
+            m3AControls = NULL;
+        }
     }
 
     if (mISP != NULL) {
         delete mISP;
+        mISP = NULL;
         PERFORMANCE_TRACES_BREAKDOWN_STEP("DeleteISP");
     }
 
     if (mCP != NULL) {
         delete mCP;
+        mCP = NULL;
     }
 
     if (mULL != NULL) {
         delete mULL;
+        mULL = NULL;
     }
 
     if (mCameraDump != NULL) {
         delete mCameraDump;
+        mCameraDump = NULL;
     }
 
     if (mDvs != NULL) {
         delete mDvs;
+        mDvs = NULL;
     }
     if (mCallbacks != NULL) {
         delete mCallbacks;
+        mCallbacks = NULL;
     }
 }
 
@@ -6077,24 +6085,31 @@ void ControlThread::hdrRelease()
     // Deallocate memory
     if (mHdr.outMainBuf.buff != NULL) {
         mHdr.outMainBuf.buff->release(mHdr.outMainBuf.buff);
+        mHdr.outMainBuf.buff = NULL;
     }
     if (mHdr.outPostviewBuf.buff != NULL) {
         mHdr.outPostviewBuf.buff->release(mHdr.outPostviewBuf.buff);
+        mHdr.outPostviewBuf.buff = NULL;
     }
     if (mHdr.ciBufIn.ciMainBuf != NULL) {
         delete[] mHdr.ciBufIn.ciMainBuf;
+        mHdr.ciBufIn.ciMainBuf = NULL;
     }
     if (mHdr.ciBufIn.ciPostviewBuf != NULL) {
         delete[] mHdr.ciBufIn.ciPostviewBuf;
+        mHdr.ciBufIn.ciPostviewBuf = NULL;
     }
     if (mHdr.ciBufIn.hist != NULL) {
         delete[] mHdr.ciBufIn.hist;
+        mHdr.ciBufIn.hist = NULL;
     }
     if (mHdr.ciBufOut.ciMainBuf != NULL) {
         delete[] mHdr.ciBufOut.ciMainBuf;
+        mHdr.ciBufOut.ciMainBuf = NULL;
     }
     if (mHdr.ciBufOut.ciPostviewBuf != NULL) {
         delete[] mHdr.ciBufOut.ciPostviewBuf;
+        mHdr.ciBufOut.ciPostviewBuf = NULL;
     }
     mHdr.inProgress = false;
 }

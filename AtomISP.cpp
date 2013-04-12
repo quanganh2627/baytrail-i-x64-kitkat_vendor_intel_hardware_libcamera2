@@ -491,8 +491,10 @@ AtomISP::~AtomISP()
     }
     closeDevice(V4L2_MAIN_DEVICE);
 
-    if (mZoomRatios)
+    if (mZoomRatios) {
         delete[] mZoomRatios;
+        mZoomRatios = NULL;
+    }
 }
 
 void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *intel_params)
@@ -4255,6 +4257,7 @@ void AtomISP::initMetaDataBuf(IntelMetadataBuffer* metaDatabuf)
     vinfo->s3dformat = 0xFFFFFFFF;
     metaDatabuf->SetValueInfo(vinfo);
     delete vinfo;
+    vinfo = NULL;
 
 }
 #endif

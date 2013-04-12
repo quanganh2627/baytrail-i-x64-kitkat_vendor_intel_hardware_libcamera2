@@ -61,24 +61,32 @@ PictureThread::~PictureThread()
 
     if (mOutBuf.buff != NULL) {
         mOutBuf.buff->release(mOutBuf.buff);
+        mOutBuf.buff = NULL;
     }
     if (mExifBuf.buff != NULL) {
         mExifBuf.buff->release(mExifBuf.buff);
+        mExifBuf.buff = NULL;
     }
     if (mThumbBuf.buff != NULL) {
         mThumbBuf.buff->release(mThumbBuf.buff);
+        mThumbBuf.buff = NULL;
     }
     if (mScaledPic.buff != NULL) {
         mScaledPic.buff->release(mScaledPic.buff);
+        mScaledPic.buff = NULL;
     }
 
     freeInputBuffers();
 
-    if(mHwCompressor)
+    if(mHwCompressor) {
         delete mHwCompressor;
+        mHwCompressor = NULL;
+    }
 
-    if (mExifMaker)
+    if (mExifMaker) {
         delete mExifMaker;
+        mExifMaker = NULL;
+    }
 }
 
 /*
@@ -297,8 +305,10 @@ void PictureThread::MetaData::free(I3AControls *aaaControls)
     if (ia3AMkNote)
         aaaControls->put3aMakerNote(ia3AMkNote);
 
-    if (aeConfig)
+    if (aeConfig) {
         delete aeConfig;
+        aeConfig = NULL;
+    }
 }
 
 /**
@@ -489,8 +499,10 @@ void PictureThread::freeInputBuffers()
     LOG1("@%s", __FUNCTION__);
 
     if(mInputBufferArray != NULL) {
-       for (int i = 0; i < mInputBuffers; i++)
+       for (int i = 0; i < mInputBuffers; i++) {
            mInputBufferArray[i].buff->release(mInputBufferArray[i].buff);
+           mInputBufferArray[i].buff = NULL;
+       }
        delete [] mInputBufferArray;
        mInputBufferArray = NULL;
        mInputBuffers = 0;
@@ -937,8 +949,10 @@ status_t PictureThread::scaleMainPic(AtomBuffer *mainBuf)
         LOG1("Need to scale or trim from (%dx%d) s(%d)--> (%d,%d) s(%d)",mainBuf->width, mainBuf->height,mainBuf->stride,
                                                       mScaledPic.width, mScaledPic.height, mScaledPic.stride);
 
-        if (mScaledPic.buff != NULL)
+        if (mScaledPic.buff != NULL) {
             mScaledPic.buff->release(mScaledPic.buff);
+            mScaledPic.buff = NULL;
+        }
 
         mCallbacks->allocateMemory(&mScaledPic, mScaledPic.size);
         if (mScaledPic.buff == NULL)

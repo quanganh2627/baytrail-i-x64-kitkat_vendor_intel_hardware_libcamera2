@@ -44,9 +44,14 @@ Callbacks::~Callbacks()
 {
     LOG1("@%s", __FUNCTION__);
     mInstance = NULL;
-    if (mDummyByte != NULL) mDummyByte->release(mDummyByte);
-    if (mPanoramaMetadata != NULL)
+    if (mDummyByte != NULL) {
+        mDummyByte->release(mDummyByte);
+        mDummyByte = NULL;
+    }
+    if (mPanoramaMetadata != NULL) {
         mPanoramaMetadata->release(mPanoramaMetadata);
+        mPanoramaMetadata = NULL;
+    }
 }
 
 void Callbacks::setCallbacks(camera_notify_callback notify_cb,

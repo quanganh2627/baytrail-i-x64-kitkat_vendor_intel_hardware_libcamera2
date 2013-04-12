@@ -210,6 +210,7 @@ status_t CallbacksThread::flushPictures()
     for (it = pending.begin(); it != pending.end(); ++it) {
        camera_memory_t* b = it->data.compressedFrame.jpegBuff.buff;
        b->release(b);
+       b = NULL;
     }
 
     if (mWaitRendering) {
@@ -218,6 +219,7 @@ status_t CallbacksThread::flushPictures()
         if (mPostponedJpegReady.id == MESSAGE_ID_JPEG_DATA_READY) {
             camera_memory_t* b = mPostponedJpegReady.data.compressedFrame.jpegBuff.buff;
             b->release(b);
+            b = NULL;
             mPostponedJpegReady.id = (MessageId) -1;
         }
     }
@@ -359,6 +361,7 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
             tmpCopy.buff->size = 0;     // we only allocated the camera_memory_t no any actual memory
             tmpCopy.buff->data = NULL;
             tmpCopy.buff->release(tmpCopy.buff);
+            tmpCopy.buff = NULL;
             releaseTmp = false;
         }
 
@@ -389,12 +392,14 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
             tmpCopy.buff->size = 0;
             tmpCopy.buff->data = NULL;
             tmpCopy.buff->release(tmpCopy.buff);
+            tmpCopy.buff = NULL;
         }
 
         mCallbacks->compressedFrameDone(&jpegBuf);
         if (jpegBuf.buff != NULL) {
             LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
             jpegBuf.buff->release(jpegBuf.buff);
+            jpegBuf.buff = NULL;
         } else {
             LOGW("CallbacksThread received NULL jpegBuf.buff, which should not happen");
         }
@@ -436,6 +441,7 @@ status_t CallbacksThread::handleMessageJpegDataRequest(MessageDataRequest *msg)
         mCallbacks->compressedFrameDone(&jpegBuf);
         LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
         jpegBuf.buff->release(jpegBuf.buff);
+        jpegBuf.buff = NULL;
         if (snapshotBuf.buff != NULL && postviewBuf.buff != NULL) {
             // Return the raw buffers back to ISP
             mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
@@ -522,11 +528,13 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageFrame *msg)
     if (jpegBuf.buff != NULL) {
         LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
         jpegBuf.buff->release(jpegBuf.buff);
+        jpegBuf.buff = NULL;
     }
 
     if (jpegAndMeta.buff != NULL) {
         LOG1("Releasing jpegAndMeta @%p", jpegAndMeta.buff->data);
         jpegAndMeta.buff->release(jpegAndMeta.buff);
+        jpegAndMeta.buff = NULL;
     } else {
         LOGW("NULL jpegAndMeta buffer, while reaching release().");
         return UNKNOWN_ERROR;
@@ -554,6 +562,7 @@ status_t CallbacksThread::handleMessageFlush()
         AtomBuffer jpegBuf = mBuffers[i].jpegBuff;
         LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
         jpegBuf.buff->release(jpegBuf.buff);
+        jpegBuf.buff = NULL;
     }
     mBuffers.clear();
     return status;
