@@ -209,6 +209,8 @@ public:
     status_t setLowLight(bool enable);
     status_t setGDC(bool enable);
     bool getPreviewTooBigForVFPP() { return mPreviewTooBigForVFPP; }
+    bool getXNR() const { return mXnr; };
+    bool getLowLight() const { return mLowLight; };
 
     status_t setDVS(bool enable);
     status_t getDvsStatistics(struct atomisp_dis_statistics *stats,

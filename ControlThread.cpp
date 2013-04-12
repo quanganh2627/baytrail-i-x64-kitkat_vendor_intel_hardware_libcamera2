@@ -1345,6 +1345,11 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         return STATE_PREVIEW_STILL;
     }
 
+    if (mISP->getLowLight()) {
+        LOG1("@%s: ANR enabled, disabling continuous mode", __FUNCTION__);
+        return STATE_PREVIEW_STILL;
+    }
+
     LOG1("@%s: Selecting continuous still preview mode", __FUNCTION__);
     return STATE_CONTINUOUS_CAPTURE;
 }
@@ -4114,15 +4119,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         status = processParamPreviewFrameRate(oldParams, newParams);
     }
 
-    // Changing the scene may change many parameters, including
-    // flash, awb. Thus the order of how processParamFoo() are
-    // called is important for the parameter changes to take
-    // effect, and processParamSceneMode needs to be called first.
-    if (status == NO_ERROR) {
-        // Scene Mode
-        status = processParamSceneMode(oldParams, newParams);
-    }
-
     // slow motion value settings in high speed recording mode
     if (status == NO_ERROR) {
         status = processParamSlowMotionRate(oldParams, newParams);
@@ -4215,11 +4211,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         if (status == NO_ERROR) {
             // awb lock
             status = processParamAWBLock(oldParams, newParams);
-        }
-
-        if (status == NO_ERROR) {
-            // xnr/anr
-            status = processParamXNR_ANR(oldParams, newParams);
         }
 
         if (status == NO_ERROR) {
@@ -4413,32 +4404,64 @@ status_t ControlThread::processParamAWBLock(const CameraParameters *oldParams,
     return status;
 }
 
+/**
+ *  Noise reduction algorithms
+ *  XNR is currently supported during continuous capture
+ *  ANR is NOT supported on continuous capture
+ *
+ *  For the above reasons if ANR is activated we need to force a preview re-start
+ *  that will switch from Continuous Capture preview to "old-style" online preview
+ *  In selectPreviewMode we check the status of ANR to decide this.
+ *
+ */
 status_t ControlThread::processParamXNR_ANR(const CameraParameters *oldParams,
-        CameraParameters *newParams)
+        CameraParameters *newParams, bool &restartNeeded)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    bool XNR_ANR_changed = false;
 
     // XNR
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_XNR);
-    LOG2("XNR value new %s ", newVal.string());
     if (!newVal.isEmpty()) {
-        if (newVal == CameraParameters::TRUE)
-            status = mISP->setXNR(true);
-        else
-            status = mISP->setXNR(false);
+        bool xnr = (newVal == CameraParameters::TRUE);
+        // note: due add/remove of intel parameters newVal doesn't always
+        // reflect changes of value in AtomISP level
+        if (mISP->getXNR() != xnr) {
+            LOG2("XNR value new %s", newVal.string());
+            XNR_ANR_changed = true;
+            mISP->setXNR(xnr);
+        }
     }
 
     // ANR
     newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_ANR);
-    LOG2("ANR value new %s ", newVal.string());
     if (!newVal.isEmpty()) {
-        if (newVal == CameraParameters::TRUE)
-            status = mISP->setLowLight(true);
-        else
-            status = mISP->setLowLight(false);
+        bool anr = (newVal == CameraParameters::TRUE);
+        // note: due add/remove of intel parameters newVal doesn't always
+        // reflect changes of value in AtomISP level
+        if (mISP->getLowLight() != anr) {
+            LOG2("ANR value new %s", newVal.string());
+            XNR_ANR_changed = true;
+            mISP->setLowLight(anr);
+        }
+    }
+
+    if (XNR_ANR_changed) {
+        if (mState == STATE_CONTINUOUS_CAPTURE) {
+            // XNR needs continuous mode restart atm.
+            // ANR is not supported at all, See selectPreviewMode().
+            restartNeeded = true;
+        } else if (restartNeeded == false &&
+                   mState == STATE_PREVIEW_STILL) {
+            // XNR/ANR is changing and restart is not requested for other reasons
+            // check whether we can switch back to continuous-mode
+            if (mState != selectPreviewMode(*newParams)) {
+                restartNeeded = true;
+            }
+        }
     }
 
     return status;
@@ -4871,7 +4894,7 @@ void ControlThread::selectFlashModeForScene(CameraParameters *newParams)
 }
 
 status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
-        CameraParameters *newParams)
+        CameraParameters *newParams, bool &needRestart)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -5078,7 +5101,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
 
             processParamBackLightingCorrectionMode(oldParams, newParams);
             processParamAwbMappingMode(oldParams, newParams);
-            processParamXNR_ANR(oldParams, newParams);
+            processParamXNR_ANR(oldParams, newParams, needRestart);
 
             newParams->remove(IntelCameraParameters::KEY_AWB_MAPPING_MODE);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES);
@@ -5767,10 +5790,10 @@ status_t ControlThread::processParamMirroring(const CameraParameters *oldParams,
  *
  * @param[in] oldParams the previous parameters
  * @param[in] newParams the new parameters which are being set
- * @param[out] previewFormatChanged boolean to detect whether a preview re-start is needed.
+ * @param[out] restartNeeded boolean to detect whether a preview re-start is needed.
  */
 status_t ControlThread::processStaticParameters(const CameraParameters *oldParams,
-        CameraParameters *newParams, bool &previewFormatChanged)
+        CameraParameters *newParams, bool &restartNeeded)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -5784,7 +5807,6 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
     int oldHeight, newHeight;
     int previewWidth, previewHeight;
     int oldFormat, newFormat;
-    previewFormatChanged = false;
     // see if preview params have changed
     newParams->getPreviewSize(&newWidth, &newHeight);
     oldParams->getPreviewSize(&oldWidth, &oldHeight);
@@ -5801,7 +5823,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
                 oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
                 newWidth, newHeight, v4l2Fmt2Str(newFormat),
                 previewAspectRatio);
-        previewFormatChanged = true;
+        restartNeeded = true;
         mPreviewForceChanged = false;
     } else {
         previewAspectRatio = 1.0 * oldWidth / oldHeight;
@@ -5820,7 +5842,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
                     oldWidth, oldHeight,
                     newWidth, newHeight,
                     videoAspectRatio);
-            previewFormatChanged = true;
+            restartNeeded = true;
             /*
              *  Camera client requested a new video size, so make sure that requested
              *  video size matches requested preview size. If it does not, then select
@@ -5876,11 +5898,10 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
     }
     if (mBurstLength != oldBurstLength || mFpsAdaptSkip != oldFpsAdaptSkip) {
         LOG1("Burst configuration changed, restarting preview");
-        previewFormatChanged = true;
+        restartNeeded = true;
     }
 
-    status = processParamULL(oldParams,newParams, &previewFormatChanged);
-
+    status = processParamULL(oldParams,newParams, &restartNeeded);
 
     /**
      * There are multiple workarounds related to what preview and video
@@ -5893,7 +5914,21 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
      */
     if (mISP->applyISPLimitations(newParams, dvsEnabled, videoMode)) {
         mPreviewForceChanged = true;
-        previewFormatChanged = true;
+        restartNeeded = true;
+    }
+
+    // Changing the scene may change many parameters, including
+    // flash, awb. Thus the order of how processParamFoo() are
+    // called is important for the parameter changes to take
+    // effect, and processParamSceneMode needs to be called first.
+    if (status == NO_ERROR) {
+        // Scene Mode
+        status = processParamSceneMode(oldParams, newParams, restartNeeded);
+    }
+
+    if (status == NO_ERROR) {
+        // xnr/anr
+        status = processParamXNR_ANR(oldParams, newParams, restartNeeded);
     }
 
     return status;
@@ -6052,7 +6087,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     CameraParameters oldParams = mParameters;
     CameraParamsLogger newParamLogger (msg->params);
     CameraParamsLogger oldParamLogger (mParameters.flatten().string());
-    bool needRestartPreview;
+    bool needRestartPreview = false;
 
     CameraAreas newFocusAreas;
     CameraAreas newMeteringAreas;
