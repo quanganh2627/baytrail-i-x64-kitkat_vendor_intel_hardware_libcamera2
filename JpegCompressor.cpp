@@ -35,8 +35,10 @@ JpegCompressor::~JpegCompressor()
 {
     LOG1("@%s", __FUNCTION__);
 
-    if(mSWEncoder != NULL)
+    if(mSWEncoder != NULL) {
         delete mSWEncoder;
+        mSWEncoder = NULL;
+    }
 }
 
 int JpegCompressor::swEncode(const InputBuffer &in, const OutputBuffer &out)
