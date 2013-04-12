@@ -20,6 +20,7 @@
 #include "LogHelper.h"
 #include "AtomIspObserverManager.h"
 #include "IAtomIspObserver.h"
+#include <utils/String8.h>
 
 namespace android {
 
@@ -52,7 +53,9 @@ AtomIspObserverManager::attachObserver(IAtomIspObserver *observer, IObserverSubj
         }
     sp<ObserverThread> newThread = new ObserverThread(s);
     newThread->attach(observer);
-    newThread->run();
+    String8 str("CamHAL_");
+    str += s->getName();
+    newThread->run(str);
     mObserverThreads.push(observer_pair_t(s, newThread));
     return NO_ERROR;
 }

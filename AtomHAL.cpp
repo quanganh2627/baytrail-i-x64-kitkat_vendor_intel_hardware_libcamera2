@@ -381,7 +381,7 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
         return status;
     }
 
-    atom_cam.control_thread->run();
+    atom_cam.control_thread->run("CamHAL_CTRL");
 
     camera_dev = (camera_device_t*)malloc(sizeof(*camera_dev));
     if (camera_dev == NULL) {
