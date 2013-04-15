@@ -689,7 +689,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_BURST_CONTINUOUS, "false");
 
     // TODO: move to platform data
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PREVIEW_UPDATE_MODE, "standard,continuous,during-capture");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PREVIEW_UPDATE_MODE, "standard,continuous,during-capture,windowless");
     intel_params->set(IntelCameraParameters::KEY_PREVIEW_UPDATE_MODE, "standard");
 
     intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_FILENAME, "off");
