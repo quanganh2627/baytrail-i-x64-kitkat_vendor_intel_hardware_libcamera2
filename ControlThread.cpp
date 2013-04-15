@@ -1413,7 +1413,9 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     // takePicture(). This is done for faster shot2shot.
     // TODO: support for fluent transitions regardless of buffer type
     //       transparently
-    bool useSharedGfxBuffers = mIntelParamsAllowed || mode != MODE_CONTINUOUS_CAPTURE;
+    bool useSharedGfxBuffers =
+        (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS)
+        && (mIntelParamsAllowed || mode != MODE_CONTINUOUS_CAPTURE);
     mPreviewThread->setPreviewConfig(width, height, stride, format, useSharedGfxBuffers, mNumBuffers);
     if (useSharedGfxBuffers) {
         Vector<AtomBuffer> sharedGfxBuffers;
@@ -1678,7 +1680,8 @@ status_t ControlThread::handleMessageStartPreview()
         // API says apps should call startFaceDetection when resuming preview
         // stop FD here to avoid accidental FD.
         stopFaceDetection();
-        if (mPreviewThread->isWindowConfigured() || mISP->isFileInjectionEnabled()) {
+        if (mPreviewThread->isWindowConfigured() || mISP->isFileInjectionEnabled()
+            || mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS) {
             bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT);
             status = startPreviewCore(videoMode);
         } else {
@@ -1796,14 +1799,43 @@ status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
     if (mPreviewThread == NULL)
         return NO_INIT;
 
-    status = mPreviewThread->setPreviewWindow(msg->window);
-
     bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
 
-    // Only start preview if it was already requested by user
-    if (mPreviewThread->getPreviewState() == PreviewThread::STATE_NO_WINDOW
+    PreviewThread::PreviewState currentState = mPreviewThread->getPreviewState();
+    if (currentState == PreviewThread::STATE_NO_WINDOW
         && (msg->window != NULL)) {
+        status = mPreviewThread->setPreviewWindow(msg->window);
+        // Start preview if it was already requested by user
         startPreviewCore(videoMode);
+    } else if (msg->window != NULL
+        && mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS
+        && currentState != PreviewThread::STATE_STOPPED) {
+        // preview was started windowless, force back to standard and make it public
+        mPreviewUpdateMode = IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD;
+        mParameters.set(IntelCameraParameters::KEY_PREVIEW_UPDATE_MODE,
+                        IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD);
+        // stop preview
+        bool faceActive = mFaceDetectionActive;
+        stopFaceDetection(true);
+        stopPreviewCore();
+        // start preview with new window
+        status = mPreviewThread->setPreviewWindow(msg->window);
+        startPreviewCore(videoMode);
+        if (faceActive)
+            startFaceDetection();
+    } else {
+        // Notes:
+        //  1. msg->window == NULL comes only from CameraService in release
+        //     stack, explicit NULL from application never reaches HAL.
+        //     -> Application must call stopPreview() to have GfxBuffers
+        //        freed first.
+        //  2. msg->window != NULL may come from applications explicit call
+        //     to setPreviewDisplay() or setPreviewTexture():
+        //      - API if preview is stopped
+        //      - running preview does not currently continue
+        //  3. msg->window != NULL is always called by CameraService before
+        //     startPreview(), with the handle that was previosly set.
+        status = mPreviewThread->setPreviewWindow(msg->window);
     }
 
     return status;
@@ -4257,14 +4289,25 @@ status_t ControlThread::processPreviewUpdateMode(const CameraParameters *oldPara
                                               IntelCameraParameters::KEY_PREVIEW_UPDATE_MODE);
 
     if (!newVal.isEmpty()) {
-        if(newVal == IntelCameraParameters::PREVIEW_UPDATE_MODE_DURING_CAPTURE)
+        if (newVal == IntelCameraParameters::PREVIEW_UPDATE_MODE_DURING_CAPTURE)
             mPreviewUpdateMode = IntelCameraParameters::PREVIEW_UPDATE_MODE_DURING_CAPTURE;
-        else if(newVal == IntelCameraParameters::PREVIEW_UPDATE_MODE_CONTINUOUS)
+        else if (newVal == IntelCameraParameters::PREVIEW_UPDATE_MODE_CONTINUOUS)
             mPreviewUpdateMode = IntelCameraParameters::PREVIEW_UPDATE_MODE_CONTINUOUS;
-        else if(newVal == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD)
+        else if (newVal == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD)
             mPreviewUpdateMode = IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD;
-        else
+        else if (newVal == IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS) {
+            if (mPreviewThread->isWindowConfigured()) {
+                LOGE("Windowless operation cannot be enabled, window already configured!");
+                return INVALID_OPERATION;
+            }
+            if (mPreviewThread->getPreviewState() == PreviewThread::STATE_NO_WINDOW) {
+                LOGE("Windowless operation cannot be enabled, startPreview() already called");
+                return INVALID_OPERATION;
+            }
+            mPreviewUpdateMode = IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS;
+        } else {
             LOGE("Unknown preview update mode received %s", newVal.string());
+        }
     }
     return status;
 }

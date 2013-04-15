@@ -103,6 +103,7 @@ namespace android {
     const char IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD[] = "standard";
     const char IntelCameraParameters::PREVIEW_UPDATE_MODE_DURING_CAPTURE[] = "during-capture";
     const char IntelCameraParameters::PREVIEW_UPDATE_MODE_CONTINUOUS[] = "continuous";
+    const char IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS[] = "windowless";
 
     // smart shutter
     const char IntelCameraParameters::KEY_SMILE_SHUTTER[] = "smile-shutter";
