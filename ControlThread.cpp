@@ -4141,6 +4141,7 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
     int picWidth, picHeight;
     unsigned int bufCount = MAX(mBurstLength, mISP->getContinuousCaptureNumber()+1);
     mParameters.getPictureSize(&picWidth, &picHeight);
+    int format = mISP->getSnapshotPixelFormat();
 
     if(videoMode){
        /**
@@ -4174,7 +4175,7 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
 
     mAllocatedSnapshotBuffers.clear();
     mAllocationRequestSent = true;
-    status = mPictureThread->allocSharedBuffers(picWidth, picHeight, bufCount,
+    status = mPictureThread->allocSharedBuffers(picWidth, picHeight, bufCount, format,
                                                 (ISnapshotBufferUser*)this);
     if (status != NO_ERROR) {
        LOGE("Could not pre-allocate picture buffers!");
@@ -6511,42 +6512,35 @@ void ControlThread::setExternalSnapshotBuffers(int format, int width, int height
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if (format == V4L2_PIX_FMT_NV12) {
-
-        if (mAllocatedSnapshotBuffers.isEmpty()) {
-            LOG1("%s: snapshot buffers have  not arrived yet... waiting",__FUNCTION__);
-            if (mAllocationRequestSent == false) {
-                LOGW("snapshot allocation request was not send. This is a sign of unoptimal API use");
-                allocateSnapshotBuffers(false);
-            }
-            waitForAllocatedSnapshotBuffers();
-            LOG1("%s: Got them (%d)!",__FUNCTION__ , mAllocatedSnapshotBuffers.size());
+    if (mAllocatedSnapshotBuffers.isEmpty()) {
+        LOG1("%s: snapshot buffers have  not arrived yet... waiting",__FUNCTION__);
+        if (mAllocationRequestSent == false) {
+            LOGW("snapshot allocation request was not send. This is a sign of unoptimal API use");
+            allocateSnapshotBuffers(false);
         }
-        unsigned int numberOfSnapshots = MAX(1,mBurstLength);
-        LOG1("Required Buffers for snapshot %d: Available %d Allocated: %d", numberOfSnapshots,
-                                                                             mAvailableSnapshotBuffers.size(),
-                                                                             mAllocatedSnapshotBuffers.size());
-
-        if (numberOfSnapshots <= mAvailableSnapshotBuffers.size()) {
-            if ((mAllocatedSnapshotBuffers[0].width != width) ||
-                (mAllocatedSnapshotBuffers[0].height != height)) {
-                LOGE("We got allocated snapshot buffers of wrong resolution (%dx%d), "
-                      "this should not happen!! we wanted (%dx%d)",
-                      mAllocatedSnapshotBuffers[0].width,
-                      mAllocatedSnapshotBuffers[0].height,
-                      width, height);
-            }
-            bool cached = false;
-            status = mISP->setSnapshotBuffers(&mAvailableSnapshotBuffers, numberOfSnapshots, cached  );
-        } else {
-            LOGE("Not enough available buffers for this request. This should not happen");
-        }
-    } else {
-        LOG1("Using internal buffers for snapshot");
-        // TODO: we should be able to get allocated buffers for any format.
-        // Make sure that we pass the format to PictureThread,
-        // then we can remove this.
+        waitForAllocatedSnapshotBuffers();
+        LOG1("%s: Got them (%d)!",__FUNCTION__ , mAllocatedSnapshotBuffers.size());
     }
+    unsigned int numberOfSnapshots = MAX(1,mBurstLength);
+    LOG1("Required Buffers for snapshot %d: Available %d Allocated: %d", numberOfSnapshots,
+                                                                         mAvailableSnapshotBuffers.size(),
+                                                                         mAllocatedSnapshotBuffers.size());
+
+    if (numberOfSnapshots <= mAvailableSnapshotBuffers.size()) {
+        if ((mAllocatedSnapshotBuffers[0].width != width) ||
+            (mAllocatedSnapshotBuffers[0].height != height)) {
+            LOGE("We got allocated snapshot buffers of wrong resolution (%dx%d), "
+                  "this should not happen!! we wanted (%dx%d)",
+                  mAllocatedSnapshotBuffers[0].width,
+                  mAllocatedSnapshotBuffers[0].height,
+                  width, height);
+        }
+        bool cached = false;
+        status = mISP->setSnapshotBuffers(&mAvailableSnapshotBuffers, numberOfSnapshots, cached  );
+    } else {
+        LOGE("Not enough available buffers for this request. This should not happen");
+    }
+
 }
 
 /**
