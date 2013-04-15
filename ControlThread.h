@@ -142,6 +142,7 @@ public:
 // callback methods
 private:
     virtual void previewBufferCallback(AtomBuffer *buff, ICallbackPreview::CallbackType t);
+    virtual void encodingDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void autoFocusDone();
     virtual void postProcCaptureTrigger();
@@ -175,6 +176,7 @@ private:
                                          // AtomISP.
         MESSAGE_ID_RELEASE,
         MESSAGE_ID_PREVIEW_STARTED,
+        MESSAGE_ID_ENCODING_DONE,
         MESSAGE_ID_PICTURE_DONE,
         MESSAGE_ID_SET_PARAMETERS,
         MESSAGE_ID_GET_PARAMETERS,
@@ -282,6 +284,9 @@ private:
         // MESSAGE_ID_RELEASE_RECORDING_FRAME
         MessageReleaseRecordingFrame releaseRecordingFrame;
 
+        // MESSAGE_ID_ENCODING_DONE
+        MessagePicture encodingDone;
+
         // MESSAGE_ID_PICTURE_DONE
         MessagePicture pictureDone;
 
@@ -339,6 +344,16 @@ private:
         STATE_CAPTURE,
         STATE_CONTINUOUS_CAPTURE
     };
+
+    // capture substates
+    enum CaptureSubState {
+        STATE_CAPTURE_INIT,          // initial capture state
+        STATE_CAPTURE_STARTED,       // when takePicture is received
+        STATE_CAPTURE_ENCODING_DONE, // when encoding done callback is received
+        STATE_CAPTURE_PICTURE_DONE,  // when picture done callback is received
+        STATE_CAPTURE_IDLE           // when preview is started again
+    };
+
     /**
      * \enum ShootingMode
      * Describes the active shooting mode
@@ -416,6 +431,7 @@ private:
     status_t handleMessageCancelAutoFocus();
     status_t handleMessageReleaseRecordingFrame(MessageReleaseRecordingFrame *msg);
     status_t handleMessagePreviewStarted();
+    status_t handleMessageEncodingDone(MessagePicture *msg);
     status_t handleMessagePictureDone(MessagePicture *msg);
     status_t handleMessageSetParameters(MessageSetParameters *msg);
     status_t handleMessageGetParameters(MessageGetParameters *msg);
@@ -644,6 +660,7 @@ private:
 
     MessageQueue<Message, MessageId> mMessageQueue;
     State mState;
+    CaptureSubState mCaptureSubState;
     ShootingMode    mShootingMode;
     bool mThreadRunning;
     Callbacks *mCallbacks;
