@@ -341,6 +341,8 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
     AtomBuffer tmpCopy = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_PREVIEW);
     bool    releaseTmp = false;
 
+    mPictureDoneCallback->encodingDone(&snapshotBuf, &postviewBuf);
+
     if (jpegBuf.buff == NULL && snapshotBuf.buff != NULL && postviewBuf.buff != NULL) {
         LOGW("@%s: returning raw frames used in failed encoding", __FUNCTION__);
         mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);

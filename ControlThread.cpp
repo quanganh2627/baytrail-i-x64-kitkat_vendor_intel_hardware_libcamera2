@@ -98,6 +98,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mPostCaptureThread(NULL)
     ,mMessageQueue("ControlThread", (int) MESSAGE_ID_MAX)
     ,mState(STATE_STOPPED)
+    ,mCaptureSubState(STATE_CAPTURE_INIT)
     ,mShootingMode(SHOOTING_MODE_NONE)
     ,mThreadRunning(false)
     ,mCallbacks(NULL)
@@ -844,6 +845,20 @@ void ControlThread::panoramaCaptureTrigger()
     LOG2("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_PANORAMA_CAPTURE_TRIGGER;
+    mMessageQueue.send(&msg);
+}
+
+void ControlThread::encodingDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
+{
+    LOG2("@%s: snapshotBuf = %p, postviewBuf = %p, id = %d",
+                __FUNCTION__,
+                snapshotBuf->dataPtr,
+                postviewBuf->dataPtr,
+                snapshotBuf->id);
+    Message msg;
+    msg.id = MESSAGE_ID_ENCODING_DONE;
+    msg.data.encodingDone.snapshotBuf = *snapshotBuf;
+    msg.data.encodingDone.postviewBuf = *postviewBuf;
     mMessageQueue.send(&msg);
 }
 
@@ -1657,6 +1672,7 @@ status_t ControlThread::handleMessageStartPreview()
     }
 
     mStillCaptureInProgress = false;
+    mCaptureSubState = STATE_CAPTURE_IDLE;
 
     // Check if continuous capture previously disabled focus callbacks
     if (mEnableFocusCbAtStart) {
@@ -2082,6 +2098,7 @@ status_t ControlThread::handleMessageTakePicture() {
     status_t status = NO_ERROR;
 
     mShootingMode = selectShootingMode();
+    mCaptureSubState = STATE_CAPTURE_STARTED;
 
     switch(mShootingMode) {
 
@@ -2113,6 +2130,9 @@ status_t ControlThread::handleMessageTakePicture() {
             status = INVALID_OPERATION;
             break;
     }
+
+    if (status != OK)
+        mCaptureSubState = STATE_CAPTURE_IDLE;
 
     return status;
 }
@@ -3406,10 +3426,20 @@ AtomBuffer* ControlThread::findVideoSnapshotBuffer(int index)
     return NULL;
 }
 
+status_t ControlThread::handleMessageEncodingDone(MessagePicture *msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    // message content is provided for future use; not needed yet
+    mCaptureSubState = STATE_CAPTURE_ENCODING_DONE;
+    return OK;
+}
+
 status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+
+    mCaptureSubState = STATE_CAPTURE_PICTURE_DONE;
     if (msg->snapshotBuf.type == ATOM_BUFFER_PANORAMA) {
         // panorama pictures are special, they use the panorama engine memory.
         // we return them to panorama for releasing
@@ -5709,6 +5739,13 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     if (status != NO_ERROR)
         goto exit;
 
+    if (mCaptureSubState == STATE_CAPTURE_STARTED) {
+        LOGE("setParameters happened during capturing. Changing parameters during capturing would produce "
+             "undeterministic results, so dropping the params! Fix your application!");
+        status = INVALID_OPERATION;
+        goto exit;
+    }
+
     LOG1("scanning AF focus areas");
     status = newFocusAreas.scan(newParams.get(CameraParameters::KEY_FOCUS_AREAS),
                                 m3AControls->getAfMaxNumWindows());
@@ -6549,6 +6586,10 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_PREVIEW_STARTED:
             status = handleMessagePreviewStarted();
+            break;
+
+        case MESSAGE_ID_ENCODING_DONE:
+            status = handleMessageEncodingDone(&msg.data.encodingDone);
             break;
 
         case MESSAGE_ID_PICTURE_DONE:
