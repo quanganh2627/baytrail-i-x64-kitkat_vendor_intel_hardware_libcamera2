@@ -2484,6 +2484,10 @@ bool ControlThread::selectPostviewSize(int &width, int &height)
         width = picWidth;
         height = picHeight;
         // Note: resulting thumbnail leaves up to sw, currently not supported
+    } else if (thuWidth == 0) {
+        width = 0;
+        height = 0;
+        return false;
     } else if (picWidth * thuHeight / thuWidth != picHeight) {
         LOGW("Thumbnail size doesn't match the picture aspect"
              "(%d,%d) -> (%d,%d), check your configuration",
