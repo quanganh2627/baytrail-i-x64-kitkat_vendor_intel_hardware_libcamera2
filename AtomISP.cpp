@@ -596,8 +596,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     float horizontal;
     if (!PlatformData::HalConfig.getFloat(vertical, CPF::Fov, CPF::Vertical)
         && !PlatformData::HalConfig.getFloat(horizontal, CPF::Fov, CPF::Horizontal)) {
-        params->set(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, vertical);
-        params->set(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, horizontal);
+        params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, vertical);
+        params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, horizontal);
     } else {
         params->set(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, "42.5");
         params->set(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, "54.8");
