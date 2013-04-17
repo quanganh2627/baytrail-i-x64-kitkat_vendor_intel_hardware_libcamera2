@@ -1225,7 +1225,6 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
     int picWidth = 0, picHeight = 0;
     params.getPictureSize(&picWidth, &picHeight);
     if ((strcmp(PlatformData::getBoardName(), "saltbay") != 0 &&
-         strcmp(PlatformData::getBoardName(), "baylake") != 0 &&
          strcmp(PlatformData::getBoardName(), "bodegabay") != 0)
         && picWidth <= 1280 && picHeight <= 768) {
         // this is a limitation of current CSS stack
