@@ -3737,12 +3737,14 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
-    // FLASH
-    const char* flashMode = params->get(CameraParameters::KEY_FLASH_MODE);
-    const char* flashModes = params->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
-    if (!validateString(flashMode, flashModes)) {
-        LOGE("bad flash mode");
-        return BAD_VALUE;
+    // FLASH. About the checking: just the back camera support flash
+    if ((mCameraId == 0) && PlatformData::supportsBackFlash()) {
+        const char* flashMode = params->get(CameraParameters::KEY_FLASH_MODE);
+        const char* flashModes = params->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
+        if (!validateString(flashMode, flashModes)) {
+            LOGE("bad flash mode");
+            return BAD_VALUE;
+        }
     }
 
     // SCENE MODE

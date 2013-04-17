@@ -543,14 +543,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * FLASH
      */
-    if (PlatformData::supportsBackFlash() == true &&
-        mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
-
-        // For main back camera
-        // flash mode option, cts mandates default to be off
-        params->set(CameraParameters::KEY_FLASH_MODE, PlatformData::defaultFlashMode(cameraId));
-        params->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, PlatformData::supportedFlashModes(cameraId));
-    }
+    params->set(CameraParameters::KEY_FLASH_MODE, PlatformData::defaultFlashMode(cameraId));
+    params->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, PlatformData::supportedFlashModes(cameraId));
 
     /**
      * FOCUS
