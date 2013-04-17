@@ -3638,7 +3638,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
 
     int minFPS, maxFPS;
     params->getPreviewFpsRange(&minFPS, &maxFPS);
-    if (minFPS == maxFPS || minFPS > maxFPS) {
+    if (minFPS > maxFPS || minFPS < 0) {
         LOGE("invalid fps range [%d,%d]", minFPS, maxFPS);
         return BAD_VALUE;
     }
