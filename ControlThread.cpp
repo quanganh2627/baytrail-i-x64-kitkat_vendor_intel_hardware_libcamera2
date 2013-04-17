@@ -2513,7 +2513,7 @@ status_t ControlThread::captureStillPic()
     bool displayPostview = selectPostviewSize(pvWidth, pvHeight)
                            && !mHdr.enabled;
     // Synchronise jpeg callback with postview rendering in case of single capture
-    bool syncJpegCbWithPostview = displayPostview && (mBurstLength <= 1);
+    bool syncJpegCbWithPostview = !mHdr.enabled && (mBurstLength <= 1);
     bool requestPostviewCallback = true;
     bool requestRawCallback = true;
 
@@ -2762,10 +2762,10 @@ status_t ControlThread::captureStillPic()
     if (mState == STATE_CONTINUOUS_CAPTURE && mBurstLength <= 1)
         stopOfflineCapture();
 
-    if (displayPostview) {
+    if (displayPostview || syncJpegCbWithPostview) {
         // We sync with single capture, where we also need preview to stall.
         // So, hide preview after postview when syncJpegCbWithPostview is true
-        mPreviewThread->postview(&postviewBuffer, syncJpegCbWithPostview);
+        mPreviewThread->postview(displayPostview?&postviewBuffer:NULL, syncJpegCbWithPostview);
     }
 
     if (mState == STATE_CONTINUOUS_CAPTURE) {
