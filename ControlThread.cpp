@@ -1242,19 +1242,6 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         return STATE_PREVIEW_STILL;
     }
 
-    //file injection to capture the 13M(4192x3104) pic for merr,
-    //need the STATE_CONTINUOUS_CAPTURE mode.
-    if(!mISP->isFileInjectionEnabled()) {
-    // ISP will fail to start if aspect ratio of preview and
-    // main output do not match.
-    // TODO: A CSS1.5 bug, tracked in BZ: 72564
-        float picRatio = 1.0 * picWidth / picHeight;
-        float previewRatio = 1.0 * pWidth / pHeight;
-        if  (fabsf(picRatio - previewRatio) > ASPECT_TOLERANCE) {
-            LOG1("@%s: Different aspect ratio for preview and picture size, disabling continuous mode", __FUNCTION__);
-            return STATE_PREVIEW_STILL;
-        }
-    }
     if (mBurstLength > 1 && mBurstStart >= 0) {
         LOG1("@%s: Burst length of %d requested, disabling continuous mode",
              __FUNCTION__, mBurstLength);
