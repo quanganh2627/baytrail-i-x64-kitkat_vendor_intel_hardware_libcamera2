@@ -269,6 +269,7 @@ private:
     status_t allocateGfxPreviewBuffers(int numberOfBuffers);
     status_t freeGfxPreviewBuffers();
     int getGfxBufferStride();
+    void padPreviewBuffer(GfxAtomBuffer* &gfx, MessagePreview* &msg);
     GfxAtomBuffer* dequeueFromWindow();
     void copyPreviewBuffer(AtomBuffer* src, AtomBuffer* dst);
     void getEffectiveDimensions(int *w, int *h);
@@ -318,6 +319,8 @@ private:
     int mPreviewHeight;
     int mPreviewStride;
     int mPreviewFormat;
+    int mGfxStride;  /*!< Gfx buffer stride, due to hardware limitation Gfx
+                          and ISP buffer stride alignment may be mismatched. */
 
     bool mOverlayEnabled; /*!< */
     bool mSharedMode; /*!< true if gfx buffers are shared with AtomISP for 0-copy */

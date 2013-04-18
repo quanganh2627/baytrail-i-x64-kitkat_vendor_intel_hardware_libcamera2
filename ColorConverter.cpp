@@ -174,7 +174,7 @@ void convertYV12ToNV21(int width, int height, int srcStride, int dstStride, void
 void convertYV12ToYU12(int width, int height, int srcStride, int dstStride, void *src, void *dst)
 {
     const int scStride = srcStride>>1;
-    const int dcStride = dstStride>>1;
+    const int dcStride = ALIGN16(dstStride>>1); // Android CTS required: U/V plane needs 16 bytes aligned!
     const int hhalf = height>>1;
     const int whalf = width>>1;
 
@@ -387,6 +387,62 @@ void NV12ToP411(int width, int height, void *src, void *dst)
                 q++;
             }
         }
+    }
+}
+
+// Re-pad YUV420 format image, the format can be YV12, YU12 or YUV420 planar.
+// If buffer size: (height*dstStride*1.5) > (height*srcStride*1.5), src and dst
+// buffer start addresses are same, the re-padding can be done inplace.
+void repadYUV420(int width, int height, int srcStride, int dstStride, void *src, void *dst)
+{
+    unsigned char *dptr;
+    unsigned char *sptr;
+    void * (*myCopy)(void *dst, const void *src, size_t n);
+
+    const int whalf = width >> 1;
+    const int hhalf = height >> 1;
+    const int scStride = srcStride >> 1;
+    const int dcStride = dstStride >> 1;
+    const int sySize = height * srcStride;
+    const int dySize = height * dstStride;
+    const int scSize = hhalf * scStride;
+    const int dcSize = hhalf * dcStride;
+
+    // directly copy, if (srcStride == dstStride)
+    if (srcStride == dstStride) {
+        memcpy(dst, src, dySize + 2*dcSize);
+        return;
+    }
+
+    // copy V(YV12 case) or U(YU12 case) plane line by line
+    sptr = (unsigned char *)src + sySize + 2*scSize - scStride;
+    dptr = (unsigned char *)dst + dySize + 2*dcSize - dcStride;
+
+    // try to avoid overlapped memcpy()
+    myCopy = (abs(sptr -dptr) > dstStride) ? memcpy : memmove;
+
+    for (int i = 0; i < hhalf; i ++) {
+        myCopy(dptr, sptr, whalf);
+        sptr -= scStride;
+        dptr -= dcStride;
+    }
+
+    // copy  V(YV12 case) or U(YU12 case) U/V plane line by line
+    sptr = (unsigned char *)src + sySize + scSize - scStride;
+    dptr = (unsigned char *)dst + dySize + dcSize - dcStride;
+    for (int i = 0; i < hhalf; i ++) {
+        myCopy(dptr, sptr, whalf);
+        sptr -= scStride;
+        dptr -= dcStride;
+    }
+
+    // copy Y plane line by line
+    sptr = (unsigned char *)src + sySize - srcStride;
+    dptr = (unsigned char *)dst + dySize - dstStride;
+    for (int i = 0; i < height; i ++) {
+        myCopy(dptr, sptr, width);
+        sptr -= srcStride;
+        dptr -= dstStride;
     }
 }
 

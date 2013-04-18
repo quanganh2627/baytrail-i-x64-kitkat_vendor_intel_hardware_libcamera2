@@ -55,6 +55,7 @@ PreviewThread::PreviewThread() :
     ,mPreviewHeight(480)
     ,mPreviewStride(640)
     ,mPreviewFormat(V4L2_PIX_FMT_NV21)
+    ,mGfxStride(640)
     ,mOverlayEnabled(false)
     ,mRotation(0)
 {
@@ -737,6 +738,11 @@ PreviewThread::GfxAtomBuffer* PreviewThread::dequeueFromWindow()
             if (err != 0) {
                 LOGW("Error dequeuing preview buffer");
             } else {
+                // If Gfx frame buffer stride is greater than ISP buffer stride, we can
+                // repad the shared buffer between Gfx and ISP to meet Gfx alignmnet
+                // requirement, so we should change the lockMode as CPU writable.
+                if (stride > mPreviewStride)
+                    lockMode |= GRALLOC_USAGE_SW_WRITE_OFTEN;
                 size_t i = 0;
                 ret = lookForGfxBufferHandle(buf);
                 if (ret == NULL) {
@@ -907,6 +913,24 @@ PreviewThread::lookForAtomBuffer(AtomBuffer *buffer)
     return NULL;
 }
 
+/**
+ *  This is a quick fix due to BayTrial Gfx is 128 bytes aligned while ISP may be 64/48/32/16 bytes
+ *  aligned, in case of the Gfx buffer queued into ISP is not 128 bytes aligned, when the buffer is
+ *  queued back to Gfx, we have to add padding to make this buffer 128 bytes aligned to meet the Gfx
+ *  weird requirement.
+ *  When doing the Gfx buffer padding We should take lockMode into account or we may have cache line
+ *  issues as we have had, more details please refer to:
+ *  http://android.intel.com:8080/#/c/102603/
+ */
+void PreviewThread::padPreviewBuffer(GfxAtomBuffer* &gfxBuf, MessagePreview* &msg)
+{
+    if (msg->buff.stride < mGfxStride && msg->buff.type == ATOM_BUFFER_PREVIEW_GFX) {
+        LOG2("@%s stride-gfx=%d, stride-msg=%d", __FUNCTION__, mGfxStride, msg->buff.stride);
+        repadYUV420(gfxBuf->buffer.width, gfxBuf->buffer.height, gfxBuf->buffer.stride,
+                    mGfxStride, gfxBuf->buffer.dataPtr, gfxBuf->buffer.dataPtr);
+        msg->buff.stride = mGfxStride;
+    }
+}
 
 /**
  *  This method gets executed for each preview frames that the Thread
@@ -962,11 +986,14 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
             }
         } else {
             bufToEnqueue = lookForAtomBuffer(&msg->buff);
-            if (bufToEnqueue)
-               passedToGfx = true;
+            if (bufToEnqueue) {
+                passedToGfx = true;
+            }
         }
 
         if (bufToEnqueue != NULL) {
+            // TODO: If ISP can be configured to match Gfx buffer stride alignment, please delete below line.
+            padPreviewBuffer(bufToEnqueue, msg);
             mapper.unlock(*(bufToEnqueue->gfxBufferHandle));
             if ((err = mPreviewWindow->enqueue_buffer(mPreviewWindow,
                             bufToEnqueue->gfxBufferHandle)) != 0) {
@@ -987,7 +1014,6 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
 
     if(mCallbacks->msgTypeEnabled(CAMERA_MSG_PREVIEW_FRAME) && mPreviewBuf.buff) {
         void *src = msg->buff.dataPtr;
-
         switch(mPreviewFormat) {
 
         case V4L2_PIX_FMT_YUV420:
@@ -1203,7 +1229,7 @@ status_t PreviewThread::handleFetchPreviewBuffers()
     if (mSharedMode && mPreviewBuffers.isEmpty()) {
         GraphicBufferMapper &mapper = GraphicBufferMapper::get();
         AtomBuffer tmpBuf;
-        int err, stride;
+        int err;
         buffer_handle_t *buf;
         void *dst;
         int lockMode = GRALLOC_USAGE_SW_READ_OFTEN |
@@ -1218,7 +1244,7 @@ status_t PreviewThread::handleFetchPreviewBuffers()
         }
 
         for (size_t i = 0; i < mNumOfPreviewBuffers; i++) {
-            err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride);
+            err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &mGfxStride);
             if(err != 0) {
                 LOGE("Surface::dequeueBuffer returned error %d", err);
                 status = UNKNOWN_ERROR;
@@ -1227,7 +1253,23 @@ status_t PreviewThread::handleFetchPreviewBuffers()
             tmpBuf.buff = NULL;     // We do not allocate a normal camera_memory_t
             tmpBuf.id = i;
             tmpBuf.type = ATOM_BUFFER_PREVIEW_GFX;
-            tmpBuf.stride = stride;
+            /*
+              There may be alignment mismatch between Gfx and ISP. For BayTrial case:
+              Gfx is 128 bytes aligned, while ISP may be 64/48/32/16 bytes aligned, we
+              forcibly set stride value with mPreviewStride, when buffer is dequeued
+              from ISP, we can repad this buffer then enqueue it to Gfx for displaying.
+              Please notice, we could not support Gfx stride is less than ISP stride
+              case, this should not happen.
+            */
+            LOG1("%s stride-gfx=%d stride-preview=%d", __FUNCTION__, mGfxStride, mPreviewStride);
+            if (mGfxStride >= mPreviewStride) {
+                tmpBuf.stride = mPreviewStride;
+            } else {
+                LOGE("Gfx buffer size is to small to save ISP preview output");
+                status = UNKNOWN_ERROR;
+                goto freeDeQueued;
+            }
+
             tmpBuf.width = mPreviewWidth;
             tmpBuf.height = mPreviewHeight;
             tmpBuf.size = frameSize(PlatformData::getPreviewFormat(), tmpBuf.stride, tmpBuf.height);
