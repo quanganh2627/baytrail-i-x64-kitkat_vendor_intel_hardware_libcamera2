@@ -1209,7 +1209,7 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
 ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &params)
 {
     // Whether hardware (SoC, memories) supports continuous mode?
-    if (PlatformData::supportsContinuousCapture() == false) {
+    if (PlatformData::supportsContinuousCapture(mCameraId) == false) {
         LOG1("@%s: Disabling continuous mode, not supported by platform", __FUNCTION__);
         return STATE_PREVIEW_STILL;
     }
@@ -1264,7 +1264,7 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
     if (mBurstStart < 0) {
         // One buffer in the raw ringbuffer is reserved for streaming
         // from sensor, so output frame count is limited to maxSize-1.
-        int maxBufSize = PlatformData::maxContinuousRawRingBufferSize();
+        int maxBufSize = PlatformData::maxContinuousRawRingBufferSize(mCameraId);
         if (mBurstLength > maxBufSize - 1) {
              LOG1("@%s: Burst length of %d with offset %d requested, disabling continuous mode",
                   __FUNCTION__, mBurstLength, mBurstStart);
@@ -1278,13 +1278,6 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
                  __FUNCTION__);
             return STATE_PREVIEW_STILL;
         }
-    }
-
-    // The continuous mode depends on maintaining a RAW frame
-    // buffer, so feature is not available SoC sensors.
-    if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) {
-        LOG1("@%s: Non-RAW sensor, disabling continuous mode", __FUNCTION__);
-        return STATE_PREVIEW_STILL;
     }
 
     LOG1("@%s: Selecting continuous still preview mode", __FUNCTION__);
@@ -3720,7 +3713,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
                 return BAD_VALUE;
             }
             int len = burstLength ? atoi(burstLength) : 0;
-            if (len > PlatformData::maxContinuousRawRingBufferSize()-1) {
+            if (len > PlatformData::maxContinuousRawRingBufferSize(mCameraId)-1) {
                 LOGE("negative start-index and burst-length=%d not supported concurrently", len);
                 return BAD_VALUE;
             }

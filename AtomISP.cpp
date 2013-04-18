@@ -679,8 +679,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, PlatformData::supportedBurstLength(cameraId));
     // Bursts with negative start offset require a RAW sensor.
     const char* startIndexValues = "0";
-    if (PlatformData::sensorType(cameraId) ==  SENSOR_TYPE_RAW &&
-            PlatformData::supportsContinuousCapture())
+    if (PlatformData::supportsContinuousCapture(cameraId))
         startIndexValues = "-4,-3,-2,-1,0";
     intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
     intel_params->set(IntelCameraParameters::KEY_BURST_START_INDEX, "0");
@@ -1425,8 +1424,8 @@ status_t AtomISP::configureContinuousRingBuffer()
     if (captures > numBuffers)
         numBuffers = captures;
 
-    if (numBuffers > PlatformData::maxContinuousRawRingBufferSize())
-        numBuffers = PlatformData::maxContinuousRawRingBufferSize();
+    if (numBuffers > PlatformData::maxContinuousRawRingBufferSize(mCameraId))
+        numBuffers = PlatformData::maxContinuousRawRingBufferSize(mCameraId);
 
     LOG1("continuous mode ringbuffer size to %d (captures %d, offset %d)",
          numBuffers, captures, offset);
@@ -1473,7 +1472,7 @@ int AtomISP::shutterLagZeroAlign() const
  */
 int AtomISP::continuousBurstNegMinOffset(void) const
 {
-    return -(PlatformData::maxContinuousRawRingBufferSize() - 2);
+    return -(PlatformData::maxContinuousRawRingBufferSize(mCameraId) - 2);
 }
 
 /**
