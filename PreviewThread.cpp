@@ -67,6 +67,7 @@ PreviewThread::~PreviewThread()
     LOG1("@%s", __FUNCTION__);
     mDebugFPS.clear();
     freeGfxPreviewBuffers();
+    freeLocalPreviewBuf();
 }
 
 status_t PreviewThread::setCallback(ICallbackPreview *cb, ICallbackPreview::CallbackType t)
