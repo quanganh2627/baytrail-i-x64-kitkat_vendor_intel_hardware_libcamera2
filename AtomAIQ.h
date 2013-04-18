@@ -51,13 +51,7 @@ namespace android {
 #define EV_LOWER_BOUND         -100
 #define EV_UPPER_BOUND          100
 #define MAX_NUM_AF_WINDOW       9
-
-enum MainFlashStage
-{
-    CAM_FLASH_STAGE_AF= -1 ,
-    CAM_FLASH_STAGE_AE,
-    CAM_FLASH_STAGE_FIN,
-};
+#define AE_DELAY_FRAMES         1
 
 typedef struct {
     struct atomisp_parm               isp_params;
@@ -79,17 +73,13 @@ typedef struct {
 } af_state;
 
 typedef struct {
-    bool                              result_changed;
-    bool                              flash_result_changed;
-    bool                              force_update;
     bool                              ae_locked;
     struct atomisp_exposure           exposure; //ToDo: remove
-    ia_aiq_flash_parameters           flash_parameter;
-    ia_aiq_exposure_sensor_descriptor sensor_descriptor;
-    ia_aiq_ae_results                *ae_results;
-    ia_aiq_ae_results                 prev_results;
-    ia_aiq_exposure_parameters        prev_results_exposure;
-    ia_aiq_exposure_parameters        prev_exposure[3];
+    ia_aiq_ae_results                 *ae_results;
+    ia_aiq_ae_results                 prev_results[AE_DELAY_FRAMES+1];
+    ia_aiq_exposure_parameters        prev_exposure[AE_DELAY_FRAMES+1];
+    ia_aiq_exposure_sensor_parameters prev_sensor_exposure[AE_DELAY_FRAMES+1];
+    ia_aiq_flash_parameters           prev_flash[AE_DELAY_FRAMES+1];
 } ae_state;
 
 typedef struct {
@@ -138,16 +128,16 @@ private:
     status_t getAiqConfig(ia_binary_data *cpfData);
 
     // Common functions for 3A, GBCE, AF etc.
-    status_t run3aMain(const struct timeval *frame_timestamp,
-                             struct timeval *sof_timestamp,bool afRun);
+    status_t run3aMain();
+
     //AE for flash
-    int run3aMain();
     int AeForFlash();
     int applyResults();
     bool changeSensorMode(void);
 
     //staticstics
-    int getStatistics(void);
+    status_t getStatistics(const struct timeval *frame_timestamp,
+                           const struct timeval *sof_timestamp);
     struct atomisp_3a_statistics * allocateStatistics(int grid_size);
     void freeStatistics(struct atomisp_3a_statistics *stats);
     bool needStatistics();
@@ -156,7 +146,7 @@ private:
     int setGammaEffect(bool inv_gamma);
     int enableGbce(bool enable);
     void resetGBCEParams();
-    void runGBCEMain();
+    status_t runGBCEMain();
 
     // 3A control
     int run3aInit();
@@ -164,14 +154,14 @@ private:
     void get3aGridInfo(struct atomisp_grid_info *pgrid);
     void get3aStat();
     status_t populateFrameInfo(const struct timeval *frame_timestamp,
-                                     struct timeval *sof_timestamp);
+                               const struct timeval *sof_timestamp);
 
     //AIC
-    void runAICMain();
+    status_t runAICMain();
 
     // AF
     void resetAFParams();
-    void runAfMain();
+    status_t runAfMain();
     void setAfFocusMode(ia_aiq_af_operation_mode mode);
     void setAfFocusRange(ia_aiq_af_range range);
     void setAfMeteringMode(ia_aiq_af_metering_mode mode);
@@ -181,7 +171,7 @@ private:
 
     //AE
     void resetAECParams();
-    void runAeMain();
+    status_t runAeMain();
     bool getAeResults();
     bool getAeFlashResults();
 
@@ -192,7 +182,7 @@ private:
 
     //DSD
     void resetDSDParams();
-    void runDSDMain();
+    status_t runDSDMain();
 
     //ISP parameters
     int enableGdc(bool enable);
@@ -359,17 +349,14 @@ private:
     nsecs_t mStillAfStart;
     ia_aiq_af_input_params mAfInputParameters;
     af_state mAfState;
-    MainFlashStage mFlashStage;
     int mFocusPosition;
 
     //AF bracketing
     ia_aiq_af_bracketing_results* mAfBracketingResult;
 
-    //FLASH
-    FlashMode mFlashMode;
-
     //AE
     ia_aiq_ae_input_params mAeInputParameters;
+    ia_aiq_exposure_sensor_descriptor mAeSensorDescriptor;
     AeMode mAeMode;
     SceneMode mAeSceneMode;
     FlashMode mAeFlashMode;
