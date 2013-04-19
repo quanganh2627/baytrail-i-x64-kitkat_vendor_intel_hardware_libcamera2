@@ -33,23 +33,15 @@ void ImageScaler::downScaleImage(AtomBuffer *src, AtomBuffer *dst,
 {
     void *srcPtr, *dstPtr;
 
-    if (src->type == ATOM_BUFFER_PREVIEW_GFX)
-        srcPtr = src->gfxData;
-    else {
-        if (src->shared)
-            srcPtr = (void *) *((char **)src->buff->data);
-        else
-            srcPtr = src->buff->data;
-    }
+    if (src->shared)
+        srcPtr = (void *) *((char **)src->dataPtr);
+    else
+        srcPtr = src->dataPtr;
 
-    if (dst->type == ATOM_BUFFER_PREVIEW_GFX)
-        dstPtr = dst->gfxData;
-    else {
-        if (dst->shared)
-            dstPtr = (void *) *((char **)dst->buff->data);
-        else
-            dstPtr = dst->buff->data;
-    }
+    if (dst->shared)
+        dstPtr = (void *) *((char **)dst->dataPtr);
+    else
+        dstPtr = dst->dataPtr;
 
     downScaleImage(srcPtr, dstPtr,
         dst->width, dst->height, dst->stride,

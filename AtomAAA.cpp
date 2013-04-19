@@ -1387,7 +1387,8 @@ void AtomAAA::ciAdvUninit(void)
 {
     LOG1("@%s", __FUNCTION__);
     if (m3ALibState.sensor_data.data) {
-        free(m3ALibState.sensor_data.data);
+        // as the data is stored into a global cache, we will not free it, just
+        // NULL the pointer
         m3ALibState.sensor_data.data = NULL;
     }
     ia_3a_free_statistics(m3ALibState.stats);

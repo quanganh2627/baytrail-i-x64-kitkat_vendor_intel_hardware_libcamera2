@@ -125,6 +125,15 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
         PlatformBase::mBoardName = atts[1];
     } else if (strcmp(name, "supportAIQ") == 0) {
         PlatformBase::mSupportAIQ = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "previewFormat") == 0) {
+        if (strcmp(atts[1], "V4L2_PIX_FMT_YVU420") == 0)
+            PlatformBase::mPreviewFormat = V4L2_PIX_FMT_YVU420;
+        else
+            PlatformBase::mPreviewFormat = V4L2_PIX_FMT_NV12;
+    } else if (strcmp(name, "shutterLagCompensationMs") == 0) {
+        PlatformBase::mShutterLagCompensationMs = atoi(atts[1]);
+    } else if (strcmp(name, "mPanoramaMaxSnapshotCount") == 0) {
+        PlatformBase::mPanoramaMaxSnapshotCount = atoi(atts[1]);
     }
 }
 
@@ -152,6 +161,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->minEV = atts[1];
     } else if (strcmp(name, "stepEV") == 0) {
         pCurrentCam->stepEV = atts[1];
+    } else if (strcmp(name, "defaultEV") == 0) {
+        pCurrentCam->defaultEV = atts[1];
     } else if (strcmp(name, "supportedPreviewSizes") == 0) {
         pCurrentCam->supportedPreviewSizes = atts[1];
     } else if (strcmp(name, "supportedVideoSizes") == 0) {
@@ -169,14 +180,13 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
     } else if (strcmp(name, "dvs") == 0) {
         pCurrentCam->dvs = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "flipping") == 0) {
+        pCurrentCam->flipping = PlatformData::SENSOR_FLIP_OFF; // reset NA to OFF first
         if (strcmp(atts[0], "value") == 0 && strcmp(atts[1], "SENSOR_FLIP_H") == 0)
             pCurrentCam->flipping |= PlatformData::SENSOR_FLIP_H;
         if (strcmp(atts[2], "value_v") == 0 && strcmp(atts[3], "SENSOR_FLIP_V") == 0)
             pCurrentCam->flipping |= PlatformData::SENSOR_FLIP_V;
-    } else if (strcmp(name, "maxSnapshotWidth") == 0) {
-        pCurrentCam->maxSnapshotWidth = atoi(atts[1]);
-    } else if (strcmp(name, "maxSnapshotHeight") == 0) {
-        pCurrentCam->maxSnapshotHeight = atoi(atts[1]);
+    } else if (strcmp(name, "supportedSnapshotSizes") == 0) {
+        pCurrentCam->supportedSnapshotSizes = atts[1];
     } else if (strcmp(name, "defaultBurstLength") == 0) {
         pCurrentCam->defaultBurstLength = atts[1];
     } else if (strcmp(name, "supportedBurstLength") == 0) {
@@ -211,6 +221,50 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->supportedBurstFPS = atts[1];
     } else if (strcmp(name, "previewViaOverlay") == 0) {
         pCurrentCam->mPreviewViaOverlay = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "maxPreviewPixelCountForVFPP") == 0) {
+        pCurrentCam->maxPreviewPixelCountForVFPP = atoi(atts[1]);
+    } else if (strcmp(name, "overlayRelativeRotation") == 0) {
+        pCurrentCam->overlayRelativeRotation = atoi(atts[1]);
+    } else if (strcmp(name, "maxSaturation") == 0) {
+        pCurrentCam->maxSaturation = atts[1];
+    } else if (strcmp(name, "minSaturation") == 0) {
+        pCurrentCam->minSaturation = atts[1];
+    } else if (strcmp(name, "stepSaturation") == 0) {
+        pCurrentCam->stepSaturation = atts[1];
+    } else if (strcmp(name, "defaultSaturation") == 0) {
+        pCurrentCam->defaultSaturation = atts[1];
+    } else if (strcmp(name, "supportedSaturation") == 0) {
+        pCurrentCam->supportedSaturation = atts[1];
+    } else if (strcmp(name, "maxContrast") == 0) {
+        pCurrentCam->maxContrast = atts[1];
+    } else if (strcmp(name, "minContrast") == 0) {
+        pCurrentCam->minContrast = atts[1];
+    } else if (strcmp(name, "stepContrast") == 0) {
+        pCurrentCam->stepContrast = atts[1];
+    } else if (strcmp(name, "defaultContrast") == 0) {
+        pCurrentCam->defaultContrast = atts[1];
+    } else if (strcmp(name, "supportedContrast") == 0) {
+        pCurrentCam->supportedContrast = atts[1];
+    } else if (strcmp(name, "maxSharpness") == 0) {
+        pCurrentCam->maxSharpness = atts[1];
+    } else if (strcmp(name, "minSharpness") == 0) {
+        pCurrentCam->minSharpness = atts[1];
+    } else if (strcmp(name, "stepSharpness") == 0) {
+        pCurrentCam->stepSharpness = atts[1];
+    } else if (strcmp(name, "defaultSharpness") == 0) {
+        pCurrentCam->defaultSharpness = atts[1];
+    } else if (strcmp(name, "supportedSharpness") == 0) {
+        pCurrentCam->supportedSharpness = atts[1];
+    } else if (strcmp(name, "defaultEffectMode") == 0) {
+        pCurrentCam->defaultEffectMode = atts[1];
+    } else if (strcmp(name, "supportedPreviewFrameRate") == 0) {
+        pCurrentCam->supportedPreviewFrameRate = atts[1];
+    } else if (strcmp(name, "supportedPreviewFPSRange") == 0) {
+        pCurrentCam->supportedPreviewFPSRange = atts[1];
+    } else if (strcmp(name, "defaultPreviewFPSRange") == 0) {
+        pCurrentCam->defaultPreviewFPSRange = atts[1];
+    } else if (strcmp(name, "hasSlowMotion") == 0) {
+        pCurrentCam->hasSlowMotion = ((strcmp(atts[1], "true") == 0) ? true : false);
     }
 }
 
@@ -346,8 +400,7 @@ void CameraProfiles::dump(void)
         LOGD("line%d, in DeviceData, pcam->orientation:%d ", __LINE__, mCameras[i].orientation);
         LOGD("line%d, in DeviceData, pcam->sensorType:%d ", __LINE__, mCameras[i].sensorType);
         LOGD("line%d, in DeviceData, pcam->dvs:%d ", __LINE__, mCameras[i].dvs);
-        LOGD("line%d, in DeviceData, pcam->maxSnapshotWidth:%d ", __LINE__, mCameras[i].maxSnapshotWidth);
-        LOGD("line%d, in DeviceData, pcam->maxSnapshotHeight:%d ", __LINE__, mCameras[i].maxSnapshotHeight);
+        LOGD("line%d, in DeviceData, pcam->supportedSnapshotSizes:%s ", __LINE__, mCameras[i].supportedSnapshotSizes.string());
         LOGD("line%d, in DeviceData, pcam->flipping:%d ", __LINE__, mCameras[i].flipping);
         LOGD("line%d, in DeviceData, pcam->mPreviewViaOverlay:%d ", __LINE__, mCameras[i].mPreviewViaOverlay);
         LOGD("line%d, in DeviceData, pcam->supportedBurstLength:%s ", __LINE__, mCameras[i].supportedBurstLength.string());

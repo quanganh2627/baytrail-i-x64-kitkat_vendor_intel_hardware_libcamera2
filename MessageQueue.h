@@ -61,8 +61,11 @@ public:
 
         if (mNumReply > 0) {
             delete [] mReplyMutex;
+            mReplyMutex = NULL;
             delete [] mReplyCondition;
+            mReplyCondition = NULL;
             delete [] mReplyStatus;
+            mReplyStatus = NULL;
         }
     }
 

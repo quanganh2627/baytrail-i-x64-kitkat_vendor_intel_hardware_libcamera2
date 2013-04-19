@@ -73,8 +73,15 @@ namespace android {
     static const char KEY_BURST_LENGTH[];
     static const char KEY_SUPPORTED_BURST_FPS[];
     static const char KEY_BURST_FPS[];
-    // preview keep alive
-    static const char KEY_PREVIEW_KEEP_ALIVE[];
+    static const char KEY_BURST_CONTINUOUS[];
+    static const char KEY_SUPPORTED_BURST_CONTINUOUS[];
+
+    // preview update mode
+    static const char KEY_SUPPORTED_PREVIEW_UPDATE_MODE[];
+    static const char KEY_PREVIEW_UPDATE_MODE[];
+    static const char PREVIEW_UPDATE_MODE_STANDARD[];
+    static const char PREVIEW_UPDATE_MODE_DURING_CAPTURE[];
+    static const char PREVIEW_UPDATE_MODE_CONTINUOUS[];
     // raw data format for snapshot
     static const char KEY_RAW_DATA_FORMAT[];
     static const char KEY_SUPPORTED_RAW_DATA_FORMATS[];

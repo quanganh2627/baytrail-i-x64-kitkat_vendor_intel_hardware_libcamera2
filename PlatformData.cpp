@@ -114,12 +114,13 @@ HalConf PlatformData::HalConfig;
 
 PlatformBase* PlatformData::getInstance(void)
 {
-
-    // Note: While these are build-time options at the moment, these
-    //       could be runtime-detected in the future.
-
     if (mInstance == 0) {
         mInstance = new CameraProfiles();
+
+        // add an extra camera which is copied from the first one as a fake camera
+        // for file injection
+        mInstance->mCameras.push(mInstance->mCameras[0]);
+        mInstance->mFileInject = true;
     }
 
     return mInstance;
@@ -207,21 +208,14 @@ const char* PlatformData::supportedVideoSizes(int cameraId)
     return i->mCameras[cameraId].supportedVideoSizes;
 }
 
-void PlatformData::maxSnapshotSize(int cameraId, int* width, int* height)
+const char* PlatformData::supportedSnapshotSizes(int cameraId)
 {
-    if (!HalConfig.getValue(*width, CPF::SizeActive, CPF::Width)
-        && !HalConfig.getValue(*height, CPF::SizeActive, CPF::Height)) {
-        return;
-    }
-
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
       LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
-      return;
+      return NULL;
     }
-
-    *width = i->mCameras[cameraId].maxSnapshotWidth;
-    *height = i->mCameras[cameraId].maxSnapshotHeight;
+    return i->mCameras[cameraId].supportedSnapshotSizes;
 }
 
 bool PlatformData::supportsBackFlash(void)
@@ -1001,6 +995,13 @@ bool PlatformData::supportAIQ(void)
     PlatformBase *i = getInstance();
     return i->mSupportAIQ;
 }
+
+int PlatformData::getPreviewFormat(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mPreviewFormat;
+}
+
 
 const char* PlatformData::getBoardName(void)
 {

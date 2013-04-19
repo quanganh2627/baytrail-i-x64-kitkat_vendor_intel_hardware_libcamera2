@@ -44,9 +44,14 @@ Callbacks::~Callbacks()
 {
     LOG1("@%s", __FUNCTION__);
     mInstance = NULL;
-    if (mDummyByte != NULL) mDummyByte->release(mDummyByte);
-    if (mPanoramaMetadata != NULL)
+    if (mDummyByte != NULL) {
+        mDummyByte->release(mDummyByte);
+        mDummyByte = NULL;
+    }
+    if (mPanoramaMetadata != NULL) {
         mPanoramaMetadata->release(mPanoramaMetadata);
+        mPanoramaMetadata = NULL;
+    }
 }
 
 void Callbacks::setCallbacks(camera_notify_callback notify_cb,
@@ -208,6 +213,14 @@ void Callbacks::allocateMemory(AtomBuffer *buff, int size, bool cached)
         buff->buff = mGetMemoryCB(-1, size, 1, mUserToken);
       else
         buff->buff = mGetMemoryCB(-2, size, 1, mUserToken);
+
+      if (buff->buff != NULL) {
+          buff->dataPtr = buff->buff->data;
+          buff->size = buff->buff->size;
+      } else {
+          buff->dataPtr = NULL;
+          buff->size = 0;
+      }
     }
 }
 

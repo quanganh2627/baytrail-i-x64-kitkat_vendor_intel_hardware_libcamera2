@@ -79,6 +79,7 @@ struct sensorPrivateData
 {
     void *data;
     unsigned int size;
+    bool fetched; // true if data has been attempted to read, false otherwise
 };
 
 class Callbacks;
@@ -146,7 +147,6 @@ public:
     status_t prepareOfflineCapture(ContinuousCaptureConfig &config);
 
     bool isYUVvideoZoomingSupported() const;
-    status_t returnPreviewBuffers();
     status_t returnRecordingBuffers();
     bool isSharedPreviewBufferConfigured(bool *reserved = NULL) const;
 
@@ -487,7 +487,7 @@ private:
     void initMetaDataBuf(IntelMetadataBuffer* metaDatabuf);
 #endif
 
-    const char* getMaxSnapShotResolution();
+    void getMaxSnapShotSize(int cameraId, int* width, int* height);
 
     status_t updateLowLight();
     status_t setTorchHelper(int intensity);

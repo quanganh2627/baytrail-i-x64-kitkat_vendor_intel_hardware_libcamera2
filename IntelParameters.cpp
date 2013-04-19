@@ -92,11 +92,17 @@ namespace android {
     const char IntelCameraParameters::KEY_BURST_LENGTH[] = "burst-length";
     const char IntelCameraParameters::KEY_SUPPORTED_BURST_FPS[] = "burst-fps-values";
     const char IntelCameraParameters::KEY_BURST_FPS[] = "burst-fps";
+    const char IntelCameraParameters::KEY_SUPPORTED_BURST_CONTINUOUS[] = "burst-continuous-values";
+    const char IntelCameraParameters::KEY_BURST_CONTINUOUS[] = "burst-continuous";
     const char IntelCameraParameters::KEY_BURST_START_INDEX[] = "burst-start-index";
     const char IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX[] = "burst-start-index-values";
 
-    // preview keep-alive
-    const char IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE[] = "preview-keep-alive";
+    // preview update mode
+    const char IntelCameraParameters::KEY_SUPPORTED_PREVIEW_UPDATE_MODE[] = "preview-update-mode-values";
+    const char IntelCameraParameters::KEY_PREVIEW_UPDATE_MODE[] = "preview-update-mode";
+    const char IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD[] = "standard";
+    const char IntelCameraParameters::PREVIEW_UPDATE_MODE_DURING_CAPTURE[] = "during-capture";
+    const char IntelCameraParameters::PREVIEW_UPDATE_MODE_CONTINUOUS[] = "continuous";
 
     // smart shutter
     const char IntelCameraParameters::KEY_SMILE_SHUTTER[] = "smile-shutter";

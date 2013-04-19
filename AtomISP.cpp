@@ -39,36 +39,6 @@
 #define DEFAULT_SENSOR_FPS      15.0
 #define DEFAULT_PREVIEW_FPS     30.0
 
-#define RESOLUTION_14MP_TABLE   \
-        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448,3648x2736,4096x3072,4352x3264"
-
-#define RESOLUTION_13MP_TABLE   \
-        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448,3648x2736,4096x3072,4192x3104"
-
-#define RESOLUTION_8MP_TABLE   \
-        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448"
-
-#define RESOLUTION_5MP_TABLE   \
-        "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920"
-
-#define RESOLUTION_3MP_TABLE   \
-        "320x240,640x480,1024x768,1280x720,1280x960,1536x864,1600x1200,1920x1080,2048x1152,2048x1536"
-
-#define RESOLUTION_1080P_TABLE   \
-        "320x240,640x480,1024x768,1280x720,1920x1080"
-
-#define RESOLUTION_2MP_TABLE   \
-        "320x240,640x480,1024x768,1280x720,1600x900,1600x1200"
-
-#define RESOLUTION_1_3MP_TABLE   \
-        "320x240,640x480,1280x720,1280x960"
-
-#define RESOLUTION_720P_TABLE   \
-        "320x240,640x480,1280x720"
-
-#define RESOLUTION_VGA_TABLE   \
-        "320x240,640x480"
-
 #define MAX_FILE_INJECTION_SNAPSHOT_WIDTH    4192
 #define MAX_FILE_INJECTION_SNAPSHOT_HEIGHT   3104
 #define MAX_FILE_INJECTION_PREVIEW_WIDTH     1280
@@ -105,6 +75,7 @@ namespace android {
 ////////////////////////////////////////////////////////////////////
 //                          STATIC DATA
 ////////////////////////////////////////////////////////////////////
+static sensorPrivateData gSensorDataCache[MAX_CAMERAS];
 
 static const char *dev_name_array[] = {"/dev/video0",
                                        "/dev/video1",
@@ -112,19 +83,6 @@ static const char *dev_name_array[] = {"/dev/video0",
                                        "/dev/video3"};
 
 AtomISP::cameraInfo AtomISP::sCamInfo[MAX_CAMERA_NODES];
-
-static const char *resolution_tables[] = {
-    RESOLUTION_VGA_TABLE,
-    RESOLUTION_720P_TABLE,
-    RESOLUTION_1_3MP_TABLE,
-    RESOLUTION_2MP_TABLE,
-    RESOLUTION_1080P_TABLE,
-    RESOLUTION_3MP_TABLE,
-    RESOLUTION_5MP_TABLE,
-    RESOLUTION_8MP_TABLE,
-    RESOLUTION_13MP_TABLE,
-    RESOLUTION_14MP_TABLE
-};
 
 // Generated the string like "100,110,120, ...,1580,1590,1600"
 // The string is determined by MAX_ZOOM_LEVEL and MAX_SUPPORT_ZOOM
@@ -280,7 +238,7 @@ status_t AtomISP::init()
     initFrameConfig();
 
     // Initialize the frame sizes
-    setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
+    setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, PlatformData::getPreviewFormat());
     setPostviewFrameFormat(RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT, V4L2_PIX_FMT_NV12);
     setSnapshotFrameFormat(RESOLUTION_5MP_WIDTH, RESOLUTION_5MP_HEIGHT, V4L2_PIX_FMT_NV12);
     setVideoFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
@@ -381,10 +339,7 @@ void AtomISP::initFrameConfig()
         mConfig.recording.maxHeight = MAX_FILE_INJECTION_RECORDING_HEIGHT;
     }
     else {
-        int width, height;
-        PlatformData::maxSnapshotSize(mCameraId, &width, &height);
-        mConfig.snapshot.maxWidth  = width;
-        mConfig.snapshot.maxHeight = height;
+        getMaxSnapShotSize(mCameraId, &(mConfig.snapshot.maxWidth), &(mConfig.snapshot.maxHeight));
 	/* workround to support two main sensor for vv - need to removed when one main sensor used */
         if (strstr(mCameraInput->name, "imx175")) {
            mConfig.snapshot.maxWidth  = RESOLUTION_8MP_WIDTH;
@@ -531,8 +486,10 @@ AtomISP::~AtomISP()
     }
     closeDevice(V4L2_MAIN_DEVICE);
 
-    if (mZoomRatios)
+    if (mZoomRatios) {
         delete[] mZoomRatios;
+        mZoomRatios = NULL;
+    }
 }
 
 void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *intel_params)
@@ -571,8 +528,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * SNAPSHOT
      */
-    const char *picSizes = getMaxSnapShotResolution();
-    params->set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, picSizes);
+    params->set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, PlatformData::supportedSnapshotSizes(cameraId));
     params->setPictureSize(mConfig.snapshot.width, mConfig.snapshot.height);
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH,"320");
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT,"240");
@@ -729,6 +685,12 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
     intel_params->set(IntelCameraParameters::KEY_BURST_START_INDEX, "0");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX, startIndexValues);
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_CONTINUOUS, "true,false");
+    intel_params->set(IntelCameraParameters::KEY_BURST_CONTINUOUS, "false");
+
+    // TODO: move to platform data
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PREVIEW_UPDATE_MODE, "standard,continuous,during-capture");
+    intel_params->set(IntelCameraParameters::KEY_PREVIEW_UPDATE_MODE, "standard");
 
     intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_FILENAME, "off");
     intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_WIDTH, "0");
@@ -783,35 +745,24 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SHARPNESS_MODES, PlatformData::supportedSharpness(cameraId));
 }
 
-const char* AtomISP::getMaxSnapShotResolution()
+void AtomISP::getMaxSnapShotSize(int cameraId, int* width, int* height)
 {
     LOG1("@%s", __FUNCTION__);
-    int index = RESOLUTION_14MP;
+    CameraParameters p;
+    Vector<Size> supportedSizes;
+    int maxWidth = 0, maxHeight = 0;
 
-    if (mConfig.snapshot.maxWidth < RESOLUTION_14MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_14MP_HEIGHT)
-            index--;
-    if (mConfig.snapshot.maxWidth < RESOLUTION_13MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_13MP_HEIGHT)
-            index--;
-    if (mConfig.snapshot.maxWidth < RESOLUTION_8MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_8MP_HEIGHT)
-            index--;
-    if (mConfig.snapshot.maxWidth < RESOLUTION_5MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_5MP_HEIGHT)
-            index--;
-    if (mConfig.snapshot.maxWidth < RESOLUTION_3MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_3MP_HEIGHT)
-            index--;
-    if (mConfig.snapshot.maxWidth < RESOLUTION_1080P_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_1080P_HEIGHT)
-            index--;
-    if (mConfig.snapshot.maxWidth < RESOLUTION_2MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_2MP_HEIGHT)
-            index--;
-    if (mConfig.snapshot.maxWidth < RESOLUTION_1_3MP_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_1_3MP_HEIGHT)
-            index--;
-    if (mConfig.snapshot.maxWidth < RESOLUTION_720P_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_720P_HEIGHT)
-            index--;
-    if (mConfig.snapshot.maxWidth < RESOLUTION_VGA_WIDTH || mConfig.snapshot.maxHeight < RESOLUTION_VGA_HEIGHT)
-            index--;
-    if (index < 0)
-            index = 0;
+    p.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, PlatformData::supportedSnapshotSizes(cameraId));
+    p.getSupportedPictureSizes(supportedSizes);
 
-    return resolution_tables[index];
+    for (unsigned int i = 0; i < supportedSizes.size(); i++) {
+        if (maxWidth < supportedSizes[i].width)
+            maxWidth = supportedSizes[i].width;
+            maxHeight = supportedSizes[i].height;
+    }
+
+    *width = maxWidth;
+    *height = maxHeight;
 }
 
 /**
@@ -3519,33 +3470,6 @@ int AtomISP::v4l2_capture_try_format(int device, int *w, int *h,
 }
 
 /**
- * Pushes all preview buffers back into driver except the ones already queued
- *
- * Note: Currently no support for shared buffers for cautions
- */
-status_t AtomISP::returnPreviewBuffers()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status;
-    if (mPreviewBuffers) {
-        for (int i = 0 ; i < mNumPreviewBuffers; i++) {
-            if (mPreviewBuffers[i].shared)
-                return UNKNOWN_ERROR;
-            if (mPreviewBuffers[i].buff == NULL)
-                return UNKNOWN_ERROR;
-            // identifying already queued frames with negative id
-            if (mPreviewBuffers[i].id == -1)
-                continue;
-            status = putPreviewFrame(&mPreviewBuffers[i]);
-            if (status != NO_ERROR) {
-                LOGE("Failed queueing preview frame!");
-            }
-        }
-    }
-    return NO_ERROR;
-}
-
-/**
  * Pushes all recording buffers back into driver except the ones already queued
  *
  * Note: Currently no support for shared buffers for cautions
@@ -4064,7 +3988,7 @@ status_t AtomISP::allocatePreviewBuffers()
              mPreviewBuffers[i].size = mConfig.preview.size;
              allocatedBufs++;
              struct v4l2_buffer_info *vinfo = &v4l2_buf_pool[mPreviewDevice].bufs[i];
-             vinfo->data = mPreviewBuffers[i].buff->data;
+             vinfo->data = mPreviewBuffers[i].dataPtr;
              markBufferCached(vinfo, mPreviewBuffersCached);
              mPreviewBuffers[i].shared = false;
         }
@@ -4072,7 +3996,7 @@ status_t AtomISP::allocatePreviewBuffers()
     } else {
         for (int i = 0; i < mNumPreviewBuffers; i++) {
             struct v4l2_buffer_info *vinfo = &v4l2_buf_pool[mPreviewDevice].bufs[i];
-            vinfo->data = mPreviewBuffers[i].gfxData;
+            vinfo->data = mPreviewBuffers[i].dataPtr;
             markBufferCached(vinfo, mPreviewBuffersCached);
             mPreviewBuffers[i].shared = true;
         }
@@ -4118,7 +4042,7 @@ status_t AtomISP::allocateRecordingBuffers()
         bool cached = false;
         mCallbacks->allocateMemory(&mRecordingBuffers[i], size, cached);
         LOG1("allocate recording buffer[%d], buff=%p size=%d",
-                i, mRecordingBuffers[i].buff->data, mRecordingBuffers[i].buff->size);
+                i, mRecordingBuffers[i].dataPtr, mRecordingBuffers[i].size);
         if (mRecordingBuffers[i].buff == NULL) {
             LOGE("Error allocation memory for recording buffers!");
             status = NO_MEMORY;
@@ -4126,7 +4050,7 @@ status_t AtomISP::allocateRecordingBuffers()
         }
         allocatedBufs++;
         struct v4l2_buffer_info *vinfo = &v4l2_buf_pool[mRecordingDevice].bufs[i];
-        vinfo->data = mRecordingBuffers[i].buff->data;
+        vinfo->data = mRecordingBuffers[i].dataPtr;
         markBufferCached(vinfo, cached);
         mRecordingBuffers[i].shared = false;
         mRecordingBuffers[i].width = mConfig.recording.width;
@@ -4191,12 +4115,12 @@ status_t AtomISP::allocateSnapshotBuffers()
         if (mUsingClientSnapshotBuffers) {
             vinfo = &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i];
             vinfo->data = mClientSnapshotBuffers[i];
-            memcpy(mSnapshotBuffers[i].buff->data, &mClientSnapshotBuffers[i], sizeof(void *));
+            memcpy(mSnapshotBuffers[i].dataPtr, &mClientSnapshotBuffers[i], sizeof(void *));
             mSnapshotBuffers[i].shared = true;
 
         } else {
             vinfo = &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i];
-            vinfo->data = mSnapshotBuffers[i].buff->data;
+            vinfo->data = mSnapshotBuffers[i].dataPtr;
             mSnapshotBuffers[i].shared = false;
         }
         markBufferCached(vinfo, mClientSnapshotBuffersCached);
@@ -4267,6 +4191,7 @@ void AtomISP::initMetaDataBuf(IntelMetadataBuffer* metaDatabuf)
     vinfo->s3dformat = 0xFFFFFFFF;
     metaDatabuf->SetValueInfo(vinfo);
     delete vinfo;
+    vinfo = NULL;
 
 }
 #endif
@@ -4298,7 +4223,7 @@ status_t AtomISP::allocateMetaDataBuffers()
         metaDataBuf = new IntelMetadataBuffer();
         if(metaDataBuf) {
             initMetaDataBuf(metaDataBuf);
-            metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].buff->data);
+            metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].dataPtr);
             metaDataBuf->Serialize(meta_data_prt, meta_data_size);
             mRecordingBuffers[i].metadata_buff = NULL;
             mCallbacks->allocateMemory(&mRecordingBuffers[i].metadata_buff, meta_data_size);
@@ -4442,6 +4367,7 @@ int AtomISP::getNumberOfCameras()
     int nodes = PlatformData::numberOfCameras();
     if (nodes > MAX_CAMERAS)
         nodes = MAX_CAMERAS;
+
     return nodes;
 }
 
@@ -4489,6 +4415,16 @@ status_t AtomISP::getCameraInfo(int cameraId, camera_info *cameraInfo)
          ((cameraInfo->facing == CAMERA_FACING_BACK) ?
           "back" : "front/other"),
          cameraInfo->orientation);
+
+    // PNP cold L2P optimization - read sensor data after boot when the camera
+    // infos are iterated
+    if (PlatformData::sensorType(cameraId) == SENSOR_TYPE_RAW) {
+        if (!gSensorDataCache[cameraId].fetched) {
+            // this in practice loads the sensor data to cache
+            AtomISP isp(cameraId);
+            isp.init();
+        }
+    }
 
     return NO_ERROR;
 }
@@ -4984,6 +4920,7 @@ void AtomISP::getSensorDataFromFile(const char *file_name, sensorPrivateData *se
 
     sensor_data->data = otpdata.data;
     sensor_data->size = otpdata.size;
+    sensor_data->fetched = true;
     close(otp_fd);
 }
 
@@ -5026,6 +4963,7 @@ void AtomISP::sensorGetMotorData(sensorPrivateData *sensor_data)
 
     sensor_data->data = motorPrivateData.data;
     sensor_data->size = motorPrivateData.size;
+    sensor_data->fetched = true;
 }
 
 void AtomISP::sensorGetSensorData(sensorPrivateData *sensor_data)
@@ -5041,6 +4979,13 @@ void AtomISP::sensorGetSensorData(sensorPrivateData *sensor_data)
 
     sensor_data->data = NULL;
     sensor_data->size = 0;
+
+    int cameraId = getCurrentCameraId();
+    if (gSensorDataCache[cameraId].fetched) {
+        sensor_data->data = gSensorDataCache[cameraId].data;
+        sensor_data->size = gSensorDataCache[cameraId].size;
+        return;
+    }
     // First call with size = 0 will return OTP data size.
     rc = xioctl (main_fd, ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
     LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data size ret: %d\n", __FUNCTION__, rc);
@@ -5067,6 +5012,8 @@ void AtomISP::sensorGetSensorData(sensorPrivateData *sensor_data)
 
     sensor_data->data = otpdata.data;
     sensor_data->size = otpdata.size;
+    sensor_data->fetched = true;
+    gSensorDataCache[cameraId] = *sensor_data;
 }
 
 int AtomISP::setAicParameter(struct atomisp_parameters *aic_param)
@@ -5376,7 +5323,7 @@ status_t AtomISP::FrameSyncSource::observe(IAtomIspObserver::Message *msg)
         return INVALID_OPERATION;
     }
 
-    ret = mISP->v4l2_poll(mISP->video_fds[V4L2_ISP_SUBDEV], FRAME_SYNC_POLL_TIMEOUT);
+    ret = mISP->v4l2_poll(V4L2_ISP_SUBDEV, FRAME_SYNC_POLL_TIMEOUT);
 
     if (ret <= 0) {
         LOGE("Poll failed ret(%d), disabling SOF event",ret);
@@ -5472,7 +5419,7 @@ int AtomISP::pollFrameSyncEvent()
         return INVALID_OPERATION;
     }
 
-    ret = v4l2_poll(video_fds[V4L2_ISP_SUBDEV], FRAME_SYNC_POLL_TIMEOUT);
+    ret = v4l2_poll(V4L2_ISP_SUBDEV, FRAME_SYNC_POLL_TIMEOUT);
 
     if (ret <= 0) {
         LOGE("Poll failed, disabling SOF event");
