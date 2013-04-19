@@ -32,6 +32,11 @@ using namespace CPF;
 const char *cpfConfigPath = "/etc/atomisp/";  // Where CPF files are located
 // FIXME: The spec for following is "dr%02d[0-9][0-9]??????????????.cpf"
 const char *cpfConfigPattern = "%02d*.cpf";  // How CPF file name should look
+static const int spIdLength = 4;
+
+// Indicates the number of files whose name contains the vendor,
+// platform and product id's
+static int mNumFilesWithFullNameFound = 0;
 
 // Defining and initializing static members
 Vector<struct CpfStore::SensorDriver> CpfStore::RegisteredDrivers;
@@ -655,6 +660,8 @@ status_t CpfStore::findConfigWithDriver(String8& cpfName, int& drvIndex)
     status_t ret = 0;
     bool anyMatch = false;
 
+    mNumFilesWithFullNameFound = 0;
+
     // We go the directory containing CPF files thru one by one file,
     // and see if a particular file is something to react upon. If yes,
     // we then see if there is a corresponding driver registered. It
@@ -739,8 +746,22 @@ status_t CpfStore::findConfigWithDriverHelper(const String8& fileName, String8& 
             } else {
                 if (index == i) {
                     // Multiple CPF files match the driver
+                    // If there are cpf files for different products with the same sensor name,
+                    // the files are distinguished by spId
+                    // Let's check for the vendor_id, platform_family_id and product_line_id
+                    String8 vendorPlatformProduct;
+                    if (createVendorPlatformProductString(vendorPlatformProduct) == 0) {
+                        if (fileName.find(vendorPlatformProduct) >= 0) {
+                            mNumFilesWithFullNameFound++;
+                            cpfName = fileName;
+                        }
+                    }
+
                     // Let's use the most recent one
-                    if (strcmp(fileName, cpfName) > 0) {
+                    // if there are no files that match the vendorPlatformProduct string, then we'll
+                    // just compare the file names having only the sensor name
+                    if ((strcmp(fileName, cpfName) > 0) && ((mNumFilesWithFullNameFound = 0) ||
+                            (mNumFilesWithFullNameFound > 1)))  {
                         cpfName = fileName;
                     }
                 } else {
@@ -754,6 +775,46 @@ status_t CpfStore::findConfigWithDriverHelper(const String8& fileName, String8& 
     }
 
     return ret;
+}
+
+status_t CpfStore::createVendorPlatformProductString(String8& fullString)
+{
+    int vendorIdValue;
+    int platformFamilyIdValue;
+    int productLineIdValue;
+
+    String8 vendorIdName = String8("vendor_id");
+    String8 platformFamilyIdName = String8("platform_family_id");
+    String8 productLineIdName = String8("product_line_id");
+
+    if (readSpId(vendorIdName, vendorIdValue) < 0) {
+            LOGE("%s could not be read from sysfs", vendorIdName.string());
+            return UNKNOWN_ERROR;
+    }
+    if (readSpId(platformFamilyIdName, platformFamilyIdValue) < 0) {
+        LOGE("%s could not be read from sysfs", platformFamilyIdName.string());
+        return UNKNOWN_ERROR;
+    }
+    if (readSpId(productLineIdName, productLineIdValue) < 0){
+        LOGE("%s could not be read from sysfs", productLineIdName.string());
+        return UNKNOWN_ERROR;
+    }
+
+    char vendorIdValueStr[spIdLength];
+    char platformFamilyIdValueStr[spIdLength];
+    char productLineIdValueStr[spIdLength];
+
+    snprintf(vendorIdValueStr, spIdLength, "%#x", vendorIdValue);
+    snprintf(platformFamilyIdValueStr, spIdLength, "%#x", platformFamilyIdValue);
+    snprintf(productLineIdValueStr, spIdLength, "%#x", productLineIdValue);
+
+    fullString = vendorIdValueStr;
+    fullString += String8("-");
+    fullString += platformFamilyIdValueStr;
+    fullString += String8("-");
+    fullString += productLineIdValueStr;
+
+    return OK;
 }
 
 status_t CpfStore::findBusAddress(const int drvIndex, int& i2cBus, int& i2cAddress)
@@ -785,6 +846,32 @@ status_t CpfStore::findBusAddress(const int drvIndex, int& i2cBus, int& i2cAddre
     }
 
     return ret;
+}
+
+status_t CpfStore::readSpId(String8& spIdName, int& spIdValue)
+{
+        FILE *file;
+        status_t ret = OK;
+        String8 sysfsSpIdPath = String8("/sys/spid/");
+        String8 fullPath;
+
+        fullPath = sysfsSpIdPath;
+        fullPath.append(spIdName);
+
+        file = fopen(fullPath, "rb");
+        if (!file) {
+            LOGE("ERROR in opening file %s", fullPath.string());
+            return NAME_NOT_FOUND;
+        }
+        ret = fscanf(file, "%x", &spIdValue);
+        if (ret < 0) {
+            LOGE("ERROR in reading %s", fullPath.string());
+            spIdValue = 0;
+            fclose(file);
+            return UNKNOWN_ERROR;
+        }
+        fclose(file);
+        return ret;
 }
 
 status_t CpfStore::initConf(CameraBlob& aiqConf, CameraBlob& drvConf, CameraBlob& halConf)
@@ -979,7 +1066,7 @@ status_t CpfStore::processDrvConf(CameraBlob& drvConf)
 
     // There is a limitation in sysfs; maximum data size to be sent
     // is one page
-    if (size > getpagesize()) {
+    if (size > (size_t)(getpagesize())) {
         LOGE("ERROR too big driver configuration record!");
         return EOVERFLOW;
     }
@@ -997,7 +1084,7 @@ status_t CpfStore::processDrvConf(CameraBlob& drvConf)
     if (bytes < 0) {
         LOGE("ERROR in writing sysfs data: %s!", strerror(errno));
         ret = EIO;
-    } else if ((bytes == 0) || (bytes != size)) {
+    } else if ((bytes == 0) || ((size_t)(bytes) != size)) {
         LOGE("ERROR in writing sysfs data: %d bytes written (expecting %d)!", bytes, size);
         ret = EIO;
     }

@@ -130,11 +130,18 @@ exif_status ExifCreater::makeExif (void *exifOut,
     // 2 0th IFD Exif Private Tags
     pCur = pIfdStart + LongerTagOffset;
 
-    tmp = NUM_0TH_IFD_EXIF;
+    int drop_num = 0;
+    if (exifInfo->exposure_time.den == 0)
+        drop_num++;
+    if (exifInfo->shutter_speed.den == 0)
+        drop_num++;
+    if (exifInfo->makerNoteDataSize == 0)
+        drop_num++;
+    tmp = NUM_0TH_IFD_EXIF - drop_num;
     memcpy(pCur, &tmp, NUM_SIZE);
     pCur += NUM_SIZE;
 
-    LongerTagOffset += NUM_SIZE + NUM_0TH_IFD_EXIF*IFD_SIZE + OFFSET_SIZE;
+    LongerTagOffset += NUM_SIZE + tmp * IFD_SIZE + OFFSET_SIZE;
     if (exifInfo->exposure_time.den != 0) {
         writeExifIfd(&pCur, EXIF_TAG_EXPOSURE_TIME, EXIF_TYPE_RATIONAL,
                      1, &exifInfo->exposure_time, &LongerTagOffset, pIfdStart);
@@ -183,7 +190,6 @@ exif_status ExifCreater::makeExif (void *exifOut,
     memcpy(exifInfo->user_comment, code, sizeof(code));
     writeExifIfd(&pCur, EXIF_TAG_USER_COMMENT, EXIF_TYPE_UNDEFINED,
                  commentsLen + sizeof(code), exifInfo->user_comment, &LongerTagOffset, pIfdStart);
-
     writeExifIfd(&pCur, EXIF_TAG_FLASH_PIX_VERSION, EXIF_TYPE_UNDEFINED,
                  4, exifInfo->flashpix_version);
     writeExifIfd(&pCur, EXIF_TAG_COLOR_SPACE, EXIF_TYPE_SHORT,
@@ -208,7 +214,6 @@ exif_status ExifCreater::makeExif (void *exifOut,
              1, exifInfo->saturation);
     writeExifIfd(&pCur, EXIF_TAG_SHARPNESS, EXIF_TYPE_SHORT,
              1, exifInfo->sharpness);
-
     // Save MakerNote data
     if (exifInfo->makerNoteDataSize > 0) {
         writeExifIfd(

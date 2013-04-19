@@ -491,8 +491,10 @@ AtomISP::~AtomISP()
     }
     closeDevice(V4L2_MAIN_DEVICE);
 
-    if (mZoomRatios)
+    if (mZoomRatios) {
         delete[] mZoomRatios;
+        mZoomRatios = NULL;
+    }
 }
 
 void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *intel_params)
@@ -672,23 +674,14 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * Burst-mode
      */
-    // Currently burst support is required only with primary camera.
-    // So burst mode is disabled to secondary camera.
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS, PlatformData::supportedBurstFPS(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_BURST_LENGTH,"1");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, PlatformData::supportedBurstLength(cameraId));
+    // Bursts with negative start offset require a RAW sensor.
     const char* startIndexValues = "0";
-    if (mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
-        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS, PlatformData::supportedBurstFPS(cameraId));
-        intel_params->set(IntelCameraParameters::KEY_BURST_LENGTH,"1");
-        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, PlatformData::supportedBurstLength(cameraId));
-
-        // Bursts with negative start offset require a RAW sensor.
-        if (PlatformData::sensorType(cameraId) ==  SENSOR_TYPE_RAW &&
-                PlatformData::supportsContinuousCapture())
-            startIndexValues = "-4,-3,-2,-1,0";
-    } else {
-        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS, "1");
-        intel_params->set(IntelCameraParameters::KEY_BURST_LENGTH, "1");
-        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, "1");
-    }
+    if (PlatformData::sensorType(cameraId) ==  SENSOR_TYPE_RAW &&
+            PlatformData::supportsContinuousCapture())
+        startIndexValues = "-4,-3,-2,-1,0";
     intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
     intel_params->set(IntelCameraParameters::KEY_BURST_START_INDEX, "0");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX, startIndexValues);
@@ -1157,7 +1150,7 @@ status_t AtomISP::configureRecording()
         goto err;
     }
 
-    // See function description of applyISPVideoLimitations(), Workaround 2
+    // See function description of applyISPLimitations(), Workaround 2
     if (mSwapRecordingDevice) {
         previewConfig = &(mConfig.recording);
         recordingConfig = &(mConfig.preview);
@@ -1178,11 +1171,31 @@ status_t AtomISP::configureRecording()
     }
 
     mNumPreviewBuffers = PlatformData::getRecordingBufNum();
+
+    // fake preview config size if VFPP is too slow, so that VFPP will not
+    // cause FPS to drop
+    if (mPreviewTooBigForVFPP) {
+        previewConfig->width = 176;
+        previewConfig->height = 144;
+    }
     ret = configureDevice(
             mPreviewDevice,
             CI_MODE_VIDEO,
             previewConfig,
             false);
+    // restore original preview config size if VFPP was too slow
+    if (mPreviewTooBigForVFPP) {
+        // since we only support recording == preview resolution, we can simply do:
+        *previewConfig = *recordingConfig;
+        // now the configuration and the stride in it will be correct,
+        // when HAL uses it. Buffer allocation will be for the big size, stride
+        // etc. will be also for the big size, only ISP will use the small size
+        // for VFPP. Notice the device swap is on in this case, so the fake size
+        // was actually stored in the mConfig.recording and we just copied the
+        // preview config back to recording config, even though the pointer
+        // names suggest the other way around
+    }
+
     if (ret < 0) {
         LOGE("Configure recording device failed!");
         status = UNKNOWN_ERROR;
@@ -2272,30 +2285,9 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
     return status;
 }
 
-/**
- * Apply ISP limitations related to supported preview sizes in still capture mode.
- *
- * When sensor vertical blanking time is too low to run ISP viewfinder postprocess
- * binary (vf_pp) during it, every other frame would be dropped leading to halved
- * frame rate. Add control V4L2_CID_ENABLE_VFPP to disable vf_pp. This control also
- * forces CSS into video mode, which allows zooming at the cost of one frame output
- * latency due to CSS internal buffering.
- *
- * This mode can be enabled by setting the threshold value for specific sensor in
- * PlatformData (e.g. maxPreviewPixelCountForVFPP = 1024 * 768 - 1).
- */
-void AtomISP::applyISPLimitations(uint32_t width, uint32_t height, bool video)
-{
-    LOG1("@%s", __FUNCTION__);
-    if (!video && width * height > PlatformData::maxPreviewPixelCountForVFPP(mCameraId)) {
-        mPreviewTooBigForVFPP = true;
-    } else {
-        mPreviewTooBigForVFPP = false;
-    }
-}
 
 /**
- * Apply ISP limitations related to supported preview sizes when in video mode.
+ * Apply ISP limitations related to supported preview sizes.
  *
  * Workaround 1: with DVS enable, the fps in 1080p recording can't reach 30fps,
  * so check if the preview size is corresponding to recording, if yes, then
@@ -2312,54 +2304,108 @@ void AtomISP::applyISPLimitations(uint32_t width, uint32_t height, bool video)
  * the ISP, so the viewfinder resolution must be limited.
  * BZ: 55640 59636
  *
+ * Workaround 4: When sensor vertical blanking time is too low to run ISP
+ * viewfinder postprocess binary (vf_pp) during it, every other frame would be
+ * dropped leading to halved frame rate. Add control V4L2_CID_ENABLE_VFPP to
+ * disable vf_pp for still preview.
+ *
+ * This mode can be enabled by setting VFPPLimitedResolutionList to a proper
+ * value for the platform in the camera_profiles.xml. If e.g. for resolution
+ * 1024*768 the FPS drops to half the normal because VFPP is too slow
+ * to process the frame during the sensor dependent blanking time, add
+ * 1024x768 to the XML resolution list.
+ *
+ * In case of video recording, the vf_pp is configured to small size, preview
+ * and video are swapped and the video frames are created from preview frames.
+ * Currently preview and recording resolutions must be the same in this case.
+ *
+ * In case of still mode preview, vf_pp is entirely disabled for the resolutions
+ * in VFPPLimitedResolutionList.
+ *
  * @param params
  * @param dvsEabled
  * @return true: updated preview size
  * @return false: not need to update preview size
  */
-bool AtomISP::applyISPVideoLimitations(CameraParameters *params, bool dvsEnabled)
+bool AtomISP::applyISPLimitations(CameraParameters *params,
+        bool dvsEnabled, bool videoMode)
 {
     LOG1("@%s", __FUNCTION__);
     bool ret = false;
     int previewWidth, previewHeight;
     int videoWidth, videoHeight;
     bool reducedVf = false;
+    bool workaround2 = false;
 
     params->getPreviewSize(&previewWidth, &previewHeight);
     params->getVideoSize(&videoWidth, &videoHeight);
 
-    // Workaround 3: with some sensors the VF resolution must be
-    //               limited high-resolution video recordiing
-    // TODO: if we get more cases like this, move to PlatformData.h
-    const char* sensorName = "ov8830";
-    if (mCameraInput &&
-        strncmp(mCameraInput->name, sensorName, sizeof(sensorName) - 1) == 0) {
-        LOG1("Quirk for sensor %s, limiting video preview size", mCameraInput->name);
-        reducedVf = true;
-    }
+    if (videoMode || mMode == MODE_VIDEO) {
+        // Workaround 3: with some sensors the VF resolution must be
+        //               limited high-resolution video recordiing
+        // TODO: if we get more cases like this, move to PlatformData.h
+        const char* sensorName = "ov8830";
+        if (mCameraInput &&
+            strncmp(mCameraInput->name, sensorName, sizeof(sensorName) - 1) == 0) {
+            LOG1("Quirk for sensor %s, limiting video preview size", mCameraInput->name);
+            reducedVf = true;
+        }
 
-    // Workaround 1+3, detail refer to the function description
-    if (reducedVf || dvsEnabled) {
-        if ((previewWidth > RESOLUTION_VGA_WIDTH || previewHeight > RESOLUTION_VGA_HEIGHT) &&
-            (videoWidth > RESOLUTION_720P_WIDTH || videoHeight > RESOLUTION_720P_HEIGHT)) {
+        // Workaround 1+3, detail refer to the function description
+        if (reducedVf || dvsEnabled) {
+            if ((previewWidth > RESOLUTION_VGA_WIDTH || previewHeight > RESOLUTION_VGA_HEIGHT) &&
+                (videoWidth > RESOLUTION_720P_WIDTH || videoHeight > RESOLUTION_720P_HEIGHT)) {
+                    ret = true;
+                    params->setPreviewSize(640, 360);
+                    LOG1("change preview size to 640x360 due to DVS on");
+                } else {
+                    LOG1("no need change preview size: %dx%d", previewWidth, previewHeight);
+                }
+        }
+        //Workaround 2, detail refer to the function description
+        params->getPreviewSize(&previewWidth, &previewHeight);
+        params->getVideoSize(&videoWidth, &videoHeight);
+        if((previewWidth*previewHeight) > (videoWidth*videoHeight)) {
                 ret = true;
-                params->setPreviewSize(640, 360);
-                LOG1("change preview size to 640x360 due to DVS on");
-            } else {
-                LOG1("no need change preview size: %dx%d", previewWidth, previewHeight);
-            }
+                mSwapRecordingDevice = true;
+                workaround2 = true;
+                LOG1("Video dimension(s) [%d, %d] is smaller than preview dimension(s) [%d, %d]. "
+                     "Triggering swapping of preview and recording devices.",
+                     videoWidth, videoHeight, previewWidth, previewHeight);
+        } else {
+            mSwapRecordingDevice = false;
+        }
     }
-    //Workaround 2, detail refer to the function description
-    params->getPreviewSize(&previewWidth, &previewHeight);
-    params->getVideoSize(&videoWidth, &videoHeight);
-    if((previewWidth*previewHeight) > (videoWidth*videoHeight)) {
-            ret = true;
-            mSwapRecordingDevice = true;
-            LOG1("Video dimension(s) [%d, %d] is smaller than preview dimension(s) [%d, %d]. "
-                 "Triggering swapping of preview and recording devices.",
-                 videoWidth, videoHeight, previewWidth, previewHeight);
+
+    // workaround 4, detail refer to the function description
+    bool previewSizeSupported = PlatformData::resolutionSupportedByVFPP(mCameraId, previewWidth, previewHeight);
+    if (!previewSizeSupported) {
+        if (videoMode || mMode == MODE_VIDEO) {
+            if (workaround2) {
+                // swapping is on already due to preview bigger than video (workaround 2)
+                // we don't need to do anything vfpp related anymore
+                // TODO support for situations where preview is bigger than
+                // video, swapping is on due to workaround 2, but vfpp size is still too big
+                mPreviewTooBigForVFPP = false;
+                bool videoSizeSupported = PlatformData::resolutionSupportedByVFPP(mCameraId, videoWidth, videoWidth);
+                if (!videoSizeSupported) {
+                    LOGE("@%s ERROR: Video recording with preview > video "
+                         "resolution and video resolution > maxPreviewPixelCountForVFPP "
+                         "is not yet supported.", __FUNCTION__);
+                }
+            } else {
+                mPreviewTooBigForVFPP = true; // video mode, too big preview, not yet swapped for workaround 2
+                mSwapRecordingDevice = true; // swap for this workaround 4, since vfpp is too slow
+                if (previewWidth * previewHeight != videoWidth * videoHeight) {
+                    LOGE("@%s ERROR: Video recording with preview resolution > "
+                         "maxPreviewPixelCountForVFPP and recording resolution > "
+                         "preview resolution is not yet supported.", __FUNCTION__);
+                }
+            }
+        } else
+            mPreviewTooBigForVFPP = true; // not video mode, too big preview
     } else {
-        mSwapRecordingDevice = false;
+        mPreviewTooBigForVFPP = false; // preview size is small enough for vfpp
     }
 
     return ret;
@@ -3481,33 +3527,6 @@ int AtomISP::v4l2_capture_try_format(int device, int *w, int *h,
 }
 
 /**
- * Pushes all preview buffers back into driver except the ones already queued
- *
- * Note: Currently no support for shared buffers for cautions
- */
-status_t AtomISP::returnPreviewBuffers()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status;
-    if (mPreviewBuffers) {
-        for (int i = 0 ; i < mNumPreviewBuffers; i++) {
-            if (mPreviewBuffers[i].shared)
-                return UNKNOWN_ERROR;
-            if (mPreviewBuffers[i].buff == NULL)
-                return UNKNOWN_ERROR;
-            // identifying already queued frames with negative id
-            if (mPreviewBuffers[i].id == -1)
-                continue;
-            status = putPreviewFrame(&mPreviewBuffers[i]);
-            if (status != NO_ERROR) {
-                LOGE("Failed queueing preview frame!");
-            }
-        }
-    }
-    return NO_ERROR;
-}
-
-/**
  * Pushes all recording buffers back into driver except the ones already queued
  *
  * Note: Currently no support for shared buffers for cautions
@@ -4026,7 +4045,7 @@ status_t AtomISP::allocatePreviewBuffers()
              mPreviewBuffers[i].size = mConfig.preview.size;
              allocatedBufs++;
              struct v4l2_buffer_info *vinfo = &v4l2_buf_pool[mPreviewDevice].bufs[i];
-             vinfo->data = mPreviewBuffers[i].buff->data;
+             vinfo->data = mPreviewBuffers[i].dataPtr;
              markBufferCached(vinfo, mPreviewBuffersCached);
              mPreviewBuffers[i].shared = false;
         }
@@ -4034,7 +4053,7 @@ status_t AtomISP::allocatePreviewBuffers()
     } else {
         for (int i = 0; i < mNumPreviewBuffers; i++) {
             struct v4l2_buffer_info *vinfo = &v4l2_buf_pool[mPreviewDevice].bufs[i];
-            vinfo->data = mPreviewBuffers[i].gfxData;
+            vinfo->data = mPreviewBuffers[i].dataPtr;
             markBufferCached(vinfo, mPreviewBuffersCached);
             mPreviewBuffers[i].shared = true;
         }
@@ -4080,7 +4099,7 @@ status_t AtomISP::allocateRecordingBuffers()
         bool cached = false;
         mCallbacks->allocateMemory(&mRecordingBuffers[i], size, cached);
         LOG1("allocate recording buffer[%d], buff=%p size=%d",
-                i, mRecordingBuffers[i].buff->data, mRecordingBuffers[i].buff->size);
+                i, mRecordingBuffers[i].dataPtr, mRecordingBuffers[i].size);
         if (mRecordingBuffers[i].buff == NULL) {
             LOGE("Error allocation memory for recording buffers!");
             status = NO_MEMORY;
@@ -4088,7 +4107,7 @@ status_t AtomISP::allocateRecordingBuffers()
         }
         allocatedBufs++;
         struct v4l2_buffer_info *vinfo = &v4l2_buf_pool[mRecordingDevice].bufs[i];
-        vinfo->data = mRecordingBuffers[i].buff->data;
+        vinfo->data = mRecordingBuffers[i].dataPtr;
         markBufferCached(vinfo, cached);
         mRecordingBuffers[i].shared = false;
         mRecordingBuffers[i].width = mConfig.recording.width;
@@ -4153,12 +4172,12 @@ status_t AtomISP::allocateSnapshotBuffers()
         if (mUsingClientSnapshotBuffers) {
             vinfo = &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i];
             vinfo->data = mClientSnapshotBuffers[i];
-            memcpy(mSnapshotBuffers[i].buff->data, &mClientSnapshotBuffers[i], sizeof(void *));
+            memcpy(mSnapshotBuffers[i].dataPtr, &mClientSnapshotBuffers[i], sizeof(void *));
             mSnapshotBuffers[i].shared = true;
 
         } else {
             vinfo = &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i];
-            vinfo->data = mSnapshotBuffers[i].buff->data;
+            vinfo->data = mSnapshotBuffers[i].dataPtr;
             mSnapshotBuffers[i].shared = false;
         }
         markBufferCached(vinfo, mClientSnapshotBuffersCached);
@@ -4229,6 +4248,7 @@ void AtomISP::initMetaDataBuf(IntelMetadataBuffer* metaDatabuf)
     vinfo->s3dformat = 0xFFFFFFFF;
     metaDatabuf->SetValueInfo(vinfo);
     delete vinfo;
+    vinfo = NULL;
 
 }
 #endif
@@ -4260,7 +4280,7 @@ status_t AtomISP::allocateMetaDataBuffers()
         metaDataBuf = new IntelMetadataBuffer();
         if(metaDataBuf) {
             initMetaDataBuf(metaDataBuf);
-            metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].buff->data);
+            metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].dataPtr);
             metaDataBuf->Serialize(meta_data_prt, meta_data_size);
             mRecordingBuffers[i].metadata_buff = NULL;
             mCallbacks->allocateMemory(&mRecordingBuffers[i].metadata_buff, meta_data_size);
@@ -5363,7 +5383,7 @@ status_t AtomISP::FrameSyncSource::observe(IAtomIspObserver::Message *msg)
         return INVALID_OPERATION;
     }
 
-    ret = mISP->v4l2_poll(mISP->video_fds[V4L2_ISP_SUBDEV], FRAME_SYNC_POLL_TIMEOUT);
+    ret = mISP->v4l2_poll(V4L2_ISP_SUBDEV, FRAME_SYNC_POLL_TIMEOUT);
 
     if (ret <= 0) {
         LOGE("Poll failed ret(%d), disabling SOF event",ret);
@@ -5459,7 +5479,7 @@ int AtomISP::pollFrameSyncEvent()
         return INVALID_OPERATION;
     }
 
-    ret = v4l2_poll(video_fds[V4L2_ISP_SUBDEV], FRAME_SYNC_POLL_TIMEOUT);
+    ret = v4l2_poll(V4L2_ISP_SUBDEV, FRAME_SYNC_POLL_TIMEOUT);
 
     if (ret <= 0) {
         LOGE("Poll failed, disabling SOF event");

@@ -77,8 +77,10 @@ UltraLowLight::~UltraLowLight()
     if (mState > ULL_STATE_UNINIT)
         deinitMorphoLib();
 
-    if (mMorphoCtrl != NULL)
+    if (mMorphoCtrl != NULL) {
         delete mMorphoCtrl;
+        mMorphoCtrl = NULL;
+    }
 }
 
 void UltraLowLight::setMode(ULLMode aMode) {
@@ -363,8 +365,10 @@ status_t UltraLowLight::initMorphoLib(int w, int h, int idx)
                                                                MORPHO_INPUT_FORMAT);
     LOG1("ULL working buf size %d", workingBufferSize);
     if (w != mWidth || h != mHeight) {
-        if (mMorphoCtrl->workingBuffer != NULL)
+        if (mMorphoCtrl->workingBuffer != NULL) {
             delete[] mMorphoCtrl->workingBuffer;
+            mMorphoCtrl->workingBuffer = NULL;
+        }
         mMorphoCtrl->workingBuffer = new unsigned char[workingBufferSize];
     }
 
@@ -395,6 +399,7 @@ bail:
 
 bailFree:
     delete[] mMorphoCtrl->workingBuffer;
+    mMorphoCtrl->workingBuffer = NULL;
     return ret;
 }
 
@@ -406,8 +411,10 @@ void UltraLowLight::deinitMorphoLib()
     mWidth = 0;
     mHeight = 0;
     mCurrentPreset = 0;
-    if (mMorphoCtrl->workingBuffer != NULL)
+    if (mMorphoCtrl->workingBuffer != NULL) {
         delete[] mMorphoCtrl->workingBuffer;
+        mMorphoCtrl->workingBuffer = NULL;
+    }
 
     memset(mMorphoCtrl,0,sizeof(UltraLowLight::MorphoULL));
 

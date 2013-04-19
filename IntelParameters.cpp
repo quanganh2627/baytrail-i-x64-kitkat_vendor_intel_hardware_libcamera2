@@ -15,6 +15,7 @@
  */
 
 #include "IntelParameters.h"
+#include "LogHelper.h"
 #include <stdlib.h>
 
 namespace android {
@@ -103,9 +104,6 @@ namespace android {
     const char IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD[] = "standard";
     const char IntelCameraParameters::PREVIEW_UPDATE_MODE_DURING_CAPTURE[] = "during-capture";
     const char IntelCameraParameters::PREVIEW_UPDATE_MODE_CONTINUOUS[] = "continuous";
-
-    // preview keep-alive (TODO: deprecated, remove when possible)
-    const char IntelCameraParameters::KEY_PREVIEW_KEEP_ALIVE[] = "preview-keep-alive";
 
     // smart shutter
     const char IntelCameraParameters::KEY_SMILE_SHUTTER[] = "smile-shutter";
@@ -241,16 +239,50 @@ namespace android {
         parseResolution(p, width, height);
     }
 
-    void IntelCameraParameters::parseResolution(const char *p, int &width, int &height)
+    void IntelCameraParameters::parseResolutionList(const char *sizeStr, Vector<Size> &sizes)
     {
-        char *xptr = NULL, *endptr = NULL;
+        LOG1("@%s", __FUNCTION__);
+        if (sizeStr == 0) {
+            return;
+        }
+
+        char *sizeStartPtr = (char *)sizeStr;
+
+        while (true) {
+            int width = -1, height = -1;
+            status_t status = parseResolution(sizeStartPtr, width, height,
+                                     &sizeStartPtr);
+            if (status != OK || (*sizeStartPtr != ',' && *sizeStartPtr != '\0')) {
+                LOGE("Resolution string \"%s\" contains invalid character.", sizeStr);
+                return;
+            }
+            sizes.push(Size(width, height));
+            LOG1("@%s added resolution %dx%d", __FUNCTION__, width, height);
+
+            if (*sizeStartPtr == '\0') {
+                return;
+            }
+            sizeStartPtr++;
+        }
+    }
+
+
+    status_t IntelCameraParameters::parseResolution(const char *p, int &width, int &height,
+            char **endptr)
+    {
+        LOG1("@%s", __FUNCTION__);
+        char *xptr = NULL;
         width = (int) strtol(p, &xptr, 10);
         if (xptr == NULL || *xptr != 'x') // strtol stores location of x into xptr
-            return;
+            return BAD_VALUE;
 
-        xptr++;
-        endptr = xptr;
-        height = (int) strtol(xptr, &endptr, 10);
+        height = (int) strtol(xptr + 1, &xptr, 10);
+
+        if (endptr) {
+            *endptr = xptr;
+        }
+
+        return OK;
     }
 
     const char* IntelCameraParameters::getSupportedPanoramaLivePreviewSizes(const CameraParameters &params)

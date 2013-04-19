@@ -21,6 +21,7 @@
 #include <libexpat/expat.h>
 #include "PlatformData.h"
 #include "CameraProfiles.h"
+#include "IntelParameters.h"
 
 namespace android {
 
@@ -180,6 +181,7 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
     } else if (strcmp(name, "dvs") == 0) {
         pCurrentCam->dvs = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "flipping") == 0) {
+        pCurrentCam->flipping = PlatformData::SENSOR_FLIP_OFF; // reset NA to OFF first
         if (strcmp(atts[0], "value") == 0 && strcmp(atts[1], "SENSOR_FLIP_H") == 0)
             pCurrentCam->flipping |= PlatformData::SENSOR_FLIP_H;
         if (strcmp(atts[2], "value_v") == 0 && strcmp(atts[3], "SENSOR_FLIP_V") == 0)
@@ -190,6 +192,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->defaultBurstLength = atts[1];
     } else if (strcmp(name, "supportedBurstLength") == 0) {
         pCurrentCam->supportedBurstLength = atts[1];
+        if (!strcmp(atts[1], ""))
+            pCurrentCam->supportedBurstLength = "1";
     } else if (strcmp(name, "defaultFlashMode") == 0) {
         pCurrentCam->defaultFlashMode = atts[1];
     } else if (strcmp(name, "supportedFlashModes") == 0) {
@@ -220,8 +224,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->supportedBurstFPS = atts[1];
     } else if (strcmp(name, "previewViaOverlay") == 0) {
         pCurrentCam->mPreviewViaOverlay = ((strcmp(atts[1], "true") == 0) ? true : false);
-    } else if (strcmp(name, "maxPreviewPixelCountForVFPP") == 0) {
-        pCurrentCam->maxPreviewPixelCountForVFPP = atoi(atts[1]);
+    } else if (strcmp(name, "VFPPLimitedResolutionList") == 0) {
+        IntelCameraParameters::parseResolutionList(atts[1], pCurrentCam->mVFPPLimitedResolutions);
     } else if (strcmp(name, "overlayRelativeRotation") == 0) {
         pCurrentCam->overlayRelativeRotation = atoi(atts[1]);
     } else if (strcmp(name, "maxSaturation") == 0) {
