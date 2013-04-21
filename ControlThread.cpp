@@ -2021,6 +2021,12 @@ status_t ControlThread::handleMessagePanoramaCaptureTrigger()
         Message msg;
         msg.id = MESSAGE_ID_START_PREVIEW;
         mMessageQueue.send(&msg);
+    } else {
+        // recycle the buffer as if the picture would be done
+        MessagePicture picMsg;
+        picMsg.postviewBuf = postviewBuffer;
+        picMsg.snapshotBuf = snapshotBuffer;
+        handleMessagePictureDone(&picMsg);
     }
 
     return status;
@@ -2224,15 +2230,7 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     postviewBuffer.owner = NULL;
     stopFaceDetection();
 
-    if (mState == STATE_CONTINUOUS_CAPTURE) {
-        assert(mBurstLength <= 1);
-        AtomISP::ContinuousCaptureConfig config;
-        config.numCaptures = 1;
-        config.offset = 0;
-        config.skip = 0,
-        mISP->startOfflineCapture(config);
-    }
-    else {
+    if (mState != STATE_CONTINUOUS_CAPTURE) {
         status = stopPreviewCore();
         if (status != NO_ERROR) {
             LOGE("Error stopping preview!");
@@ -2257,6 +2255,8 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     thumbnailHeight= mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
     mPanoramaThread->setThumbnailSize(thumbnailWidth, thumbnailHeight);
 
+    setExternalSnapshotBuffers(format,width,height);
+
     if (mState != STATE_CONTINUOUS_CAPTURE) {
         // Configure and start the ISP
         mISP->setSnapshotFrameFormat(width, height, format);
@@ -2280,6 +2280,20 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
             LOGE("Error starting the ISP driver in CAPTURE mode!");
             return status;
         }
+    } else {
+        /* Necessary to update the buffer pools before we start to capture */
+        status = mISP->allocateBuffers(MODE_CAPTURE);
+        if (status != NO_ERROR) {
+            LOGE("Error allocate buffers in ISP");
+            return status;
+        }
+
+        assert(mBurstLength <= 1);
+        AtomISP::ContinuousCaptureConfig config;
+        config.numCaptures = 1;
+        config.offset = 0;
+        config.skip = 0,
+        mISP->startOfflineCapture(config);
     }
 
     /*
