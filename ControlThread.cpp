@@ -1474,10 +1474,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mISP->detachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
     }
 
-    /* Now that preview is started let's send the asynchronous msg to PictureThread
-     * to start the allocation of snapshot buffers.
-     */
-    allocateSnapshotBuffers(videoMode);
     return status;
 }
 
@@ -3406,6 +3402,11 @@ status_t ControlThread::handleMessagePreviewStarted()
     *
     */
 
+    /* Now that preview is started let's send the asynchronous msg to PictureThread
+     * to start the allocation of snapshot buffers.
+     */
+    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
+    allocateSnapshotBuffers(videoMode);
     return NO_ERROR;
 }
 
@@ -6421,11 +6422,17 @@ void ControlThread::setExternalSnapshotBuffers(int format, int width, int height
 
         if (mAllocatedSnapshotBuffers.isEmpty()) {
             LOG1("%s: snapshot buffers have  not arrived yet... waiting",__FUNCTION__);
+            if (mAllocationRequestSent == false) {
+                LOGW("snapshot allocation request was not send. This is a sign of unoptimal API use");
+                allocateSnapshotBuffers(false);
+            }
             waitForAllocatedSnapshotBuffers();
             LOG1("%s: Got them (%d)!",__FUNCTION__ , mAllocatedSnapshotBuffers.size());
         }
         unsigned int numberOfSnapshots = MAX(1,mBurstLength);
-        LOG1("Required Buffers for snapshot %d: Available %d",numberOfSnapshots,  mAllocatedSnapshotBuffers.size());
+        LOG1("Required Buffers for snapshot %d: Available %d Allocated: %d", numberOfSnapshots,
+                                                                             mAvailableSnapshotBuffers.size(),
+                                                                             mAllocatedSnapshotBuffers.size());
 
         if (numberOfSnapshots <= mAvailableSnapshotBuffers.size()) {
             if ((mAllocatedSnapshotBuffers[0].width != width) ||
@@ -6441,7 +6448,6 @@ void ControlThread::setExternalSnapshotBuffers(int format, int width, int height
         } else {
             LOGE("Not enough available buffers for this request. This should not happen");
         }
-
     } else {
         LOG1("Using internal buffers for snapshot");
         // TODO: we should be able to get allocated buffers for any format.
