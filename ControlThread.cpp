@@ -417,11 +417,6 @@ void ControlThread::deinit()
         mPictureThread.clear();
     }
 
-    if (mCallbacksThread != NULL) {
-        mCallbacksThread->requestExitAndWait();
-        mCallbacksThread.clear();
-    }
-
     if (mVideoThread != NULL) {
         mVideoThread->requestExitAndWait();
         mVideoThread.clear();
@@ -435,6 +430,11 @@ void ControlThread::deinit()
     if (mSensorThread != NULL) {
         mSensorThread->requestExitAndWait();
         mSensorThread.clear();
+    }
+
+    if (mCallbacksThread != NULL) {
+        mCallbacksThread->requestExitAndWait();
+        mCallbacksThread.clear();
     }
 
     if (mParamCache != NULL)
