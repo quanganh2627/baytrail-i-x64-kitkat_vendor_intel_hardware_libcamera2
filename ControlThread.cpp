@@ -1239,9 +1239,7 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
     // any ISP firmware.
     int picWidth = 0, picHeight = 0;
     params.getPictureSize(&picWidth, &picHeight);
-    if ((strcmp(PlatformData::getBoardName(), "saltbay") != 0 &&
-         strcmp(PlatformData::getBoardName(), "bodegabay") != 0)
-        && picWidth <= 1280 && picHeight <= 768) {
+    if (picWidth <= 1280 && picHeight <= 768) {
         // this is a limitation of current CSS stack
         LOG1("@%s: 1M or smaller picture-size, disabling continuous mode", __FUNCTION__);
         return STATE_PREVIEW_STILL;
