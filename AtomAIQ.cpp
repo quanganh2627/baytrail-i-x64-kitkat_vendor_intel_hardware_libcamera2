@@ -236,6 +236,12 @@ status_t AtomAIQ::setAfWindow(const CameraWindow *window)
     return NO_ERROR;
 }
 
+status_t AtomAIQ::setAfWindows(const CameraWindow *windows, size_t numWindows)
+{
+    LOG2("@%s: windows = %p, num = %u", __FUNCTION__, windows, numWindows);
+    return setAfWindow(windows);
+}
+
 // TODO: no manual setting for scene mode, map that into AE/AF operation mode
 status_t AtomAIQ::setAeSceneMode(SceneMode mode)
 {
@@ -581,24 +587,19 @@ bool AtomAIQ::getAfLock()
 ia_3a_af_status AtomAIQ::getCAFStatus()
 {
     LOG2("@%s", __FUNCTION__);
-    ia_3a_af_status status;
-
-    ia_aiq_af_status aiq_status = ia_aiq_af_status_idle;
-    if(mAfState.af_results) {
-        aiq_status = mAfState.af_results->status;
-        LOG2("af_results->status:%d", aiq_status);
+    ia_3a_af_status status = ia_3a_af_status_busy;
+    if (mAfState.af_results != NULL) {
+        if (mAfState.af_results->status == ia_aiq_af_status_success && (mAfState.af_results->final_lens_position_reached || mStillAfStart == 0)) {
+            status = ia_3a_af_status_success;
+        }
+        else if (mAfState.af_results->status == ia_aiq_af_status_fail && (mAfState.af_results->final_lens_position_reached || mStillAfStart == 0)) {
+            status  = ia_3a_af_status_error;
+        }
+        else {
+            status = ia_3a_af_status_busy;
+        }
     }
-    switch (aiq_status) {
-    case ia_aiq_af_status_success:
-        status = ia_3a_af_status_success;
-        break;
-    case ia_aiq_af_status_fail:
-        status = ia_3a_af_status_error;
-        break;
-    default:
-        status = ia_3a_af_status_busy;
-    }
-
+    LOG2("af_results->status:%d", status);
     return status;
 }
 

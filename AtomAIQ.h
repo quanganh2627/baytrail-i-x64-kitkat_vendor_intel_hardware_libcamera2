@@ -50,6 +50,7 @@ namespace android {
 #define TORCH_INTENSITY         20   // 20%
 #define EV_LOWER_BOUND         -100
 #define EV_UPPER_BOUND          100
+#define MAX_NUM_AF_WINDOW       9
 
 enum MainFlashStage
 {
@@ -274,8 +275,8 @@ public:
     // returning an error in the following functions will cause some functions
     // not to be run in ControlThread
     size_t   getAeMaxNumWindows() { return 0; }
-    size_t   getAfMaxNumWindows() { return 0; }
-    status_t setAfWindows(const CameraWindow *windows, size_t numWindows){ return 0; }
+    size_t   getAfMaxNumWindows() { return MAX_NUM_AF_WINDOW; }
+    status_t setAfWindows(const CameraWindow *windows, size_t numWindows);
     status_t getExposureInfo(SensorAeConfig& sensorAeConfig);
     status_t getAeManualBrightness(float *ret);
     status_t setManualFocus(int focus, bool applyNow);
