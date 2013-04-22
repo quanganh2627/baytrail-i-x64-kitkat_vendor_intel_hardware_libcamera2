@@ -1304,6 +1304,12 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     }
 
     PerformanceTraces::SwitchCameras::called(videoMode);
+
+    // ISP can be de-initialized during ErrorPreview notification.
+    // It is there necessary to check if the ISP is still Initialized everytime we restart it.
+    if (!mISP->isDeviceInitialized())
+        mISP->init();
+
     if (videoMode) {
         LOG1("Starting preview in video mode");
         state = STATE_PREVIEW_VIDEO;
