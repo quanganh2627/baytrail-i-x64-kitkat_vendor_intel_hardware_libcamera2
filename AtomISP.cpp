@@ -4495,16 +4495,6 @@ status_t AtomISP::getCameraInfo(int cameraId, camera_info *cameraInfo)
           "back" : "front/other"),
          cameraInfo->orientation);
 
-    // PNP cold L2P optimization - read sensor data after boot when the camera
-    // infos are iterated
-    if (PlatformData::sensorType(cameraId) == SENSOR_TYPE_RAW) {
-        if (!gSensorDataCache[cameraId].fetched) {
-            // this in practice loads the sensor data to cache
-            AtomISP isp(cameraId);
-            isp.init();
-        }
-    }
-
     return NO_ERROR;
 }
 
