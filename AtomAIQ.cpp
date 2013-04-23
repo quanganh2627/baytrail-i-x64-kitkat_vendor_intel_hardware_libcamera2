@@ -69,6 +69,7 @@ AtomAIQ::AtomAIQ(AtomISP *anISP) :
     ,mAfMode(CAM_AF_MODE_NOT_SET)
     ,mStillAfStart(0)
     ,mFocusPosition(0)
+    ,mBracketingStops(0)
     ,mAeSceneMode(CAM_AE_SCENE_MODE_NOT_SET)
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
     ,mAwbRunCount(0)
@@ -740,23 +741,47 @@ status_t AtomAIQ::getAeManualBrightness(float *ret)
 }
 
 // Focus operations
-status_t AtomAIQ::initAfBracketing(int stops, ia_aiq_af_bracketing_mode mode)
+status_t AtomAIQ::initAfBracketing(int stops, AFBracketingMode mode)
 {
     LOG1("@%s", __FUNCTION__);
+    mBracketingStops = stops;
+    ia_aiq_af_bracketing_parameters param;
+    switch (mode) {
+    case CAM_AF_BRACKETING_MODE_SYMMETRIC:
+        param.af_bracketing_mode = ia_aiq_af_bracketing_mode_symmetric;
+        break;
+    case CAM_AF_BRACKETING_MODE_TOWARDS_NEAR:
+        param.af_bracketing_mode = ia_aiq_af_bracketing_mode_towards_near;
+        break;
+    case CAM_AF_BRACKETING_MODE_TOWARDS_FAR:
+        param.af_bracketing_mode = ia_aiq_af_bracketing_mode_towards_far;
+        break;
+    default:
+        param.af_bracketing_mode = ia_aiq_af_bracketing_mode_symmetric;
+    }
+    param.focus_positions = (char) stops;
     //first run AF to get the af result
     runAfMain();
-
-    ia_aiq_af_bracketing_parameters param;
-    param.focus_positions = (char) stops;
     memcpy(&param.af_results, mAfState.af_results, sizeof(ia_aiq_af_results));
-    param.af_bracketing_mode = mode;
     ia_aiq_af_bracketing_calculate(m3aState.ia_aiq_handle, &param, &mAfBracketingResult);
-    for(int i=0; i<stops; i++)
+    for(int i = 0; i < stops; i++)
         LOG1("i=%d, postion=%ld", i, mAfBracketingResult->lens_positions_bracketing[i]);
 
     return  NO_ERROR;
 }
 
+status_t AtomAIQ::setManualFocusIncrement(int steps)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t ret = NO_ERROR;
+    if(steps >= 0 && steps < mBracketingStops) {
+        int position = mAfBracketingResult->lens_positions_bracketing[steps];
+        int focus_moved = mISP->sensorMoveFocusToPosition(position);
+        if(focus_moved != 0)
+            ret = UNKNOWN_ERROR;
+    }
+    return ret;
+}
 
 // Exposure operations
 // For exposure bracketing

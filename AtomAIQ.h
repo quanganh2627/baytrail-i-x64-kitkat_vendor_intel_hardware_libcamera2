@@ -271,7 +271,7 @@ public:
     status_t getExposureInfo(SensorAeConfig& sensorAeConfig);
     status_t getAeManualBrightness(float *ret);
     status_t setManualFocus(int focus, bool applyNow);
-    status_t setManualFocusIncrement(int step) { return INVALID_OPERATION; }
+    status_t setManualFocusIncrement(int step);
     status_t updateManualFocus() { return INVALID_OPERATION; }
     status_t getAfLensPosRange(ia_3a_af_lens_range *lens_range) { return INVALID_OPERATION; }
     status_t getNextFocusPosition(int *pos) { return INVALID_OPERATION; }
@@ -292,7 +292,7 @@ public:
     status_t getGridWindow(AAAWindowInfo& window);
 
     //Bracketing
-    status_t initAfBracketing(int stop, ia_aiq_af_bracketing_mode mode = ia_aiq_af_bracketing_mode_symmetric);
+    status_t initAfBracketing(int stop, AFBracketingMode mode);
 
     // Flash control
     virtual status_t setFlash(int numFrames);
@@ -353,6 +353,7 @@ private:
 
     //AF bracketing
     ia_aiq_af_bracketing_results* mAfBracketingResult;
+    int mBracketingStops;
 
     //AE
     ia_aiq_ae_input_params mAeInputParameters;

@@ -327,6 +327,7 @@ public:
     virtual status_t setAfWindows(const CameraWindow *windows, size_t numWindows) { return INVALID_OPERATION; }
     virtual status_t getAfLensPosRange(ia_3a_af_lens_range *lens_range) { return INVALID_OPERATION; }
     virtual status_t setManualFocusIncrement(int step) { return INVALID_OPERATION; }
+    virtual status_t initAfBracketing(int stops,  AFBracketingMode mode) { return INVALID_OPERATION; }
     virtual status_t updateManualFocus() { return INVALID_OPERATION; }
     virtual status_t getExposureInfo(SensorAeConfig& sensorAeConfig) { return INVALID_OPERATION; }
     virtual status_t getGridWindow(AAAWindowInfo& window);
