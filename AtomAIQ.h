@@ -270,7 +270,8 @@ public:
     ia_3a_af_status getCAFStatus();
     status_t setAwbLock(bool en);
     bool     getAwbLock();
-    status_t setAwbMapping(ia_3a_awb_map mode) { return INVALID_OPERATION; }
+    //Keep backwards compability with Acute Logic 3A
+    status_t setAwbMapping(ia_3a_awb_map mode) { return 0; }
     ia_3a_awb_map getAwbMapping();
     // returning an error in the following functions will cause some functions
     // not to be run in ControlThread
