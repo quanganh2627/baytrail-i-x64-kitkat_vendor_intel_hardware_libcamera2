@@ -398,6 +398,11 @@ void ControlThread::deinit()
         mBracketManager.clear();
     }
 
+    if (mSensorThread != NULL) {
+        mSensorThread->requestExitAndWait();
+        mSensorThread.clear();
+    }
+
     if (mPostProcThread != NULL) {
         mPostProcThread->requestExitAndWait();
         mPostProcThread.clear();
@@ -413,24 +418,19 @@ void ControlThread::deinit()
         mPreviewThread.clear();
     }
 
-    if (mPictureThread != NULL) {
-        mPictureThread->requestExitAndWait();
-        mPictureThread.clear();
-    }
-
     if (mVideoThread != NULL) {
         mVideoThread->requestExitAndWait();
         mVideoThread.clear();
     }
 
+    if (mPictureThread != NULL) {
+        mPictureThread->requestExitAndWait();
+        mPictureThread.clear();
+    }
+
     if (m3AThread != NULL) {
         m3AThread->requestExitAndWait();
         m3AThread.clear();
-    }
-
-    if (mSensorThread != NULL) {
-        mSensorThread->requestExitAndWait();
-        mSensorThread.clear();
     }
 
     if (mCallbacksThread != NULL) {
