@@ -20,10 +20,8 @@
 #include <math.h>
 
 #define EXIF_LOG2(x)                    (log((double)(x)) / log(2.0))
-#define APEX_FNUM_TO_APERTURE(x)        ((int)(EXIF_LOG2((double)(x)) * 2 + 0.5))
-#define APEX_EXPOSURE_TO_SHUTTER(x)     ((x) >= 1 ?                                 \
-                                        (int)(-(EXIF_LOG2((double)(x)) + 0.5)) :    \
-                                        (int)(-(EXIF_LOG2((double)(x)) - 0.5)))
+#define APEX_FNUM_TO_APERTURE(x)        (2 * (EXIF_LOG2((double)(x))))
+#define APEX_EXPOSURE_TO_SHUTTER(x)     (-1.0 * (EXIF_LOG2((double)(x))))
 #define APEX_ISO_TO_FILMSENSITIVITY(x)  ((int)(EXIF_LOG2((x) / 3.125) + 0.5))
 
 #define NUM_SIZE                    2

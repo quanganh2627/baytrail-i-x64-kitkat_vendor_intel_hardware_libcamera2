@@ -86,7 +86,6 @@ AtomAIQ::~AtomAIQ()
     mInstance = NULL;
 }
 
-// ToDo: change sensorParameters to pointer to cpfData. Nothing else is needed from SensorParams
 status_t AtomAIQ::init3A()
 {
     LOG1("@%s", __FUNCTION__);
@@ -94,9 +93,8 @@ status_t AtomAIQ::init3A()
     status_t status = NO_ERROR;
     ia_err ret = ia_err_none;
 
-    SensorParams sensorParams;
-
-    status = mISP->getSensorParams(&sensorParams);
+    ia_binary_data cpfData;
+    status = getAiqConfig(&cpfData);
     if (status != NO_ERROR) {
         LOGE("Error retrieving sensor params");
         return status;
@@ -117,7 +115,7 @@ status_t AtomAIQ::init3A()
     if(ret != ia_err_none)
         LOGE("Error makernote init");
 
-    m3aState.ia_aiq_handle = ia_aiq_init((ia_binary_data*)&(sensorParams.cpfData),
+    m3aState.ia_aiq_handle = ia_aiq_init((ia_binary_data*)&(cpfData),
                                          (ia_binary_data*)aicNvm,
                                          MAX_STATISTICS_WIDTH,
                                          MAX_STATISTICS_HEIGHT,
@@ -140,6 +138,20 @@ status_t AtomAIQ::init3A()
     return status;
 }
 
+status_t AtomAIQ::getAiqConfig(ia_binary_data *cpfData)
+{
+    status_t status = NO_ERROR;
+
+    if (PlatformData::AiqConfig && cpfData != NULL) {
+        cpfData->data = PlatformData::AiqConfig.ptr();
+        cpfData->size = PlatformData::AiqConfig.size();
+        // We don't need this memory anymore
+        PlatformData::AiqConfig.clear();
+    } else {
+        status = UNKNOWN_ERROR;
+    }
+    return status;
+}
 
 status_t AtomAIQ::deinit3A()
 {
@@ -308,6 +320,7 @@ status_t AtomAIQ::setAeMode(AeMode mode)
     case CAM_AE_MODE_APERTURE_PRIORITY:
     default:
         mAeInputParameters.manual_analog_gain = -1;
+        mAeInputParameters.manual_iso = -1;
         mAeInputParameters.manual_exposure_time_us = -1;
         mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_automatic;
         break;
@@ -1330,6 +1343,7 @@ void AtomAIQ::runAeMain()
         //Here is workaround
         mAeState.exposure.integration_time[1] = mAeState.ae_results->sensor_exposure->fine_integration_time;
         mAeState.exposure.gain[0] = mAeState.ae_results->sensor_exposure->analog_gain_code_global;
+        mAeState.exposure.gain[1] = mAeState.ae_results->sensor_exposure->digital_gain_global;
 
         mAeState.exposure.aperture = 100;
 
@@ -1419,15 +1433,12 @@ status_t AtomAIQ::populateFrameInfo(const struct timeval *frame_timestamp,
 
     ia_err statistics_ret = ia_err_none;
 
-    long long eof_timestamp = (long long)((frame_timestamp->tv_sec*1000000000LL + frame_timestamp->tv_usec*1000LL)/1000LL);
-    if (eof_timestamp < (long long)m3aState.statistics_input_parameters.frame_timestamp ||
-        eof_timestamp - (long long)m3aState.statistics_input_parameters.frame_timestamp > MAX_EOF_SOF_DIFF)
+    unsigned long long eof_timestamp = (unsigned long long)((frame_timestamp->tv_sec*1000000LL + frame_timestamp->tv_usec));
+    m3aState.statistics_input_parameters.frame_timestamp = (unsigned long long)((sof_timestamp->tv_sec*1000000LL + sof_timestamp->tv_usec));
+    if (eof_timestamp < m3aState.statistics_input_parameters.frame_timestamp ||
+        eof_timestamp > MAX_EOF_SOF_DIFF + m3aState.statistics_input_parameters.frame_timestamp)
     {
         m3aState.statistics_input_parameters.frame_timestamp = eof_timestamp - DEFAULT_EOF_SOF_DELAY;
-    }
-    else
-    {
-        m3aState.statistics_input_parameters.frame_timestamp = (unsigned long long)((sof_timestamp->tv_sec*1000000000LL + sof_timestamp->tv_usec*1000LL)/1000LL);
     }
 
     m3aState.statistics_input_parameters.external_histogram = NULL;
@@ -1622,6 +1633,12 @@ void AtomAIQ::runAICMain()
         aic_input_params.manual_sharpness = 0;
         aic_input_params.cc_matrix = NULL;
         aic_input_params.wb_gains = NULL;
+
+        int value;
+        if (PlatformData::HalConfig.getValue(value, CPF::IspVamemType)) {
+            value = 0;
+        }
+        aic_input_params.isp_vamem_type = value;
 
         ret = ia_aiq_aic_run(m3aState.ia_aiq_handle, &aic_input_params, &((m3aState.results).aic_output));
         LOG2("@%s  ia_aiq_aic_run :%d", __FUNCTION__, ret);

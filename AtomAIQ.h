@@ -134,6 +134,7 @@ private:
 
 
     int setFpnTable(const ia_frame *fpn_table);
+    status_t getAiqConfig(ia_binary_data *cpfData);
 
     // Common functions for 3A, GBCE, AF etc.
     status_t run3aMain(const struct timeval *frame_timestamp,

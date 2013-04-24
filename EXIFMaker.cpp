@@ -534,7 +534,6 @@ void EXIFMaker::setSensorAeConfig(const SensorAeConfig& aeConfig)
     LOG1("@%s", __FUNCTION__);
 
     if (m3AControls->isIntel3A()) {
-
         // overwrite the value that we get from the sensor with the value from AEC
         LOG1("EXIF: Intel 3A used, setting exposure information from AEC");
 
@@ -550,38 +549,42 @@ void EXIFMaker::setSensorAeConfig(const SensorAeConfig& aeConfig)
         exifAttributes.shutter_speed.den = 65536;
 
         // APEX aperture value
-        int aecApexAv = aeConfig.aecApexAv;
-        if (aecApexAv <= 0) {
-            aecApexAv = 1;
+        exifAttributes.aperture.num = aeConfig.aecApexAv;
+        exifAttributes.aperture.den = 65536;
+
+        // exposure bias. unit is APEX value. -99.99 to 99.99
+        if (aeConfig.evBias > EV_LOWER_BOUND && aeConfig.evBias < EV_UPPER_BOUND) {
+            exifAttributes.exposure_bias.num = (int)(aeConfig.evBias * 100);
+            exifAttributes.exposure_bias.den = 100;
+            LOG1("EXIF: Ev = %.2f", aeConfig.evBias);
+        } else {
+            LOGW("EXIF: Invalid Ev!");
+        }
+    } else {
+        if (aeConfig.expTime > 0) {
+            // exposure time - from aeConfig
+            exifAttributes.exposure_time.num = aeConfig.expTime;
+            exifAttributes.exposure_time.den = 10000;
+            // APEX shutter speed = -log2(exposure time) - from aeConfig
+            double exp_t = (double)aeConfig.expTime / (double)10000;
+            double shutter = APEX_EXPOSURE_TO_SHUTTER(exp_t);
+            exifAttributes.shutter_speed.num = (uint32_t)(shutter * 10000);
+            exifAttributes.shutter_speed.den = 10000;
+        } else {
+            exifAttributes.exposure_time.num = exifAttributes.exposure_time.den = 0;
+            exifAttributes.shutter_speed.num = exifAttributes.shutter_speed.den = 0;
         }
 
-        // conversion formula taken directly from libcamera1
-        exifAttributes.aperture.num = 28853.9008*log(aecApexAv* (1.52587890625e-005));
+        // APEX aperture value = 2 x log2(F number) - from TOMISP_IOC_ISP_MAKERNOTE
+        // fnumber.den never is 0, for initialize() setting to default
+        double f_number = (double)exifAttributes.fnumber.num / (double)exifAttributes.fnumber.den;
+        exifAttributes.aperture.num = (uint32_t)(10000 * APEX_FNUM_TO_APERTURE(f_number));
         exifAttributes.aperture.den = 10000;
-    }
-    else {
-        // exposure time
-        exifAttributes.exposure_time.num = aeConfig.expTime;
-        exifAttributes.exposure_time.den = 10000;
 
-        // shutter speed, = -log2(exposure time)
-        float exp_t = (float)(aeConfig.expTime / 10000.0);
-        float shutter = -1.0 * (log10(exp_t) / log10(2.0));
-        exifAttributes.shutter_speed.num = (shutter * 10000);
-        exifAttributes.shutter_speed.den = 10000;
-
-        // aperture
-        exifAttributes.aperture.num = aeConfig.aperture_num;
-        exifAttributes.aperture.den = aeConfig.aperture_denum;
-    }
-
-    // exposure bias. unit is APEX value. -99.99 to 99.99
-    if (aeConfig.evBias > EV_LOWER_BOUND && aeConfig.evBias < EV_UPPER_BOUND) {
-        exifAttributes.exposure_bias.num = (int)(aeConfig.evBias * 100);
+        // exposure bias - hardcode, set to default 0
+        // TODO: exposure bias is N/A for SoC sensors now
+        exifAttributes.exposure_bias.num = 0;
         exifAttributes.exposure_bias.den = 100;
-        LOG1("EXIF: Ev = %.2f", aeConfig.evBias);
-    } else {
-        LOGW("EXIF: Invalid Ev!");
     }
 
     LOG1("EXIF: shutter speed=%u/%u", exifAttributes.shutter_speed.num,

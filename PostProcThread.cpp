@@ -83,7 +83,7 @@ status_t PostProcThread::init(void* isp)
         return UNKNOWN_ERROR;
     }
 
-    if (mFaceDetector->run() != NO_ERROR) {
+    if (mFaceDetector->run("CamHAL_FACE") != NO_ERROR) {
         LOGE("Error starting FaceDetector thread!");
         return UNKNOWN_ERROR;
     }
@@ -755,11 +755,7 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         bool blink = true;
         unsigned char *src;
         int rotation;
-        if (frame.img.type == ATOM_BUFFER_PREVIEW) {
-            src = (unsigned char*) frame.img.buff->data;
-        } else {
-            src = (unsigned char*) frame.img.gfxData;
-        }
+        src = (unsigned char*) frame.img.dataPtr;
         ia_frame frameData;
         frameData.data = src;
         frameData.size = frame.img.size;

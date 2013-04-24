@@ -61,7 +61,8 @@ class ControlThread :
     public ICallbackPostProc,
     public ICallbackPanorama,
     public IAtomIspObserver,
-    public IPostCaptureProcessObserver{
+    public IPostCaptureProcessObserver,
+    public IBufferOwner {
 
 // constructor destructor
 public:
@@ -126,6 +127,9 @@ public:
 
     void atomRelease();
 
+    // IBufferOwner override
+    virtual void returnBuffer(AtomBuffer* buff);
+
     // Implementation of IPostCaptureProcessObserver interface
     void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status);
 
@@ -173,6 +177,7 @@ private:
         MESSAGE_ID_FACES_DETECTED,
         MESSAGE_ID_SET_PREVIEW_WINDOW,
         MESSAGE_ID_SCENE_DETECTED,
+        MESSAGE_ID_RETURN_BUFFER,
         MESSAGE_ID_PANORAMA_PICTURE,
         MESSAGE_ID_PANORAMA_CAPTURE_TRIGGER,
         MESSAGE_ID_PANORAMA_FINALIZE,
@@ -198,6 +203,10 @@ private:
         void *buff;
     };
 
+    struct MessageReturnBuffer {
+        AtomBuffer returnBuf;
+    };
+
     struct MessagePicture {
         AtomBuffer snapshotBuf;
         AtomBuffer postviewBuf;
@@ -213,6 +222,7 @@ private:
 
     struct MessageSetParameters {
         char* params;
+        bool stopPreviewRequest;
     };
 
     struct MessageCommand{
@@ -246,6 +256,7 @@ private:
 
     struct MessageDequeueRecording {
         bool    skipFrame;
+        AtomBuffer previewFrame; // special case for VFPP limited cases, where recording frame is created from preview
     };
 
     struct MessagePostCaptureProcDone {
@@ -293,6 +304,9 @@ private:
 
         // MESSAGE_ID_EXIT
         MessageExit exit;
+
+        // MESSAGE_ID_RETURN_BUFFER
+        MessageReturnBuffer returnBuf;
     };
 
     // message id and message data
@@ -397,6 +411,7 @@ private:
     status_t handleMessagePanoramaPicture();
     status_t handleMessagePanoramaCaptureTrigger();
     status_t handleMessagePanoramaFinalize(MessagePanoramaFinalize *msg);
+    status_t handleMessageReturnBuffer(MessageReturnBuffer *msg);
     status_t handleMessageTimeout();
     status_t handleMessagePostCaptureProcessingDone(MessagePostCaptureProcDone *msg);
 
@@ -428,7 +443,7 @@ private:
 
     // dequeue buffers from driver and deliver them
     status_t dequeuePreview();
-    status_t dequeueRecording(bool skip);
+    status_t dequeueRecording(MessageDequeueRecording *msg);
 
     status_t skipFrames(size_t numFrames);
     status_t initBracketing();
@@ -516,6 +531,8 @@ private:
     status_t processParamExifModel(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamExifSoftware(const CameraParameters *oldParams,
+            CameraParameters *newParams);
+    status_t processPreviewUpdateMode(const CameraParameters *oldParams,
             CameraParameters *newParams);
 
     status_t processParamSlowMotionRate(const CameraParameters *oldParams,
@@ -680,6 +697,16 @@ private:
     bool mEnableFocusCbAtStart;     /* for internal control of focus cb's in continuous-mode */
     bool mEnableFocusMoveCbAtStart; /* for internal control of focus-move cb's in continuous-mode */
     bool mFirstPreviewStart;        /* indicator of first preview start for L2P pnp optimizations */
+
+    bool mStillCaptureInProgress;   /*!< indicates ongoing capture sequence for Camera_HAL API.
+                                         note: threadsafe to use only in Camera_HAL calling context
+                                               or synchronous messages from them
+                                         note: is set to true when takePicture() is called in other
+                                               than video recording state. Remains true until following
+                                               call to startPreview() or cancelPicture(). */
+
+    const char* mPreviewUpdateMode;       /*!< indicates the active preview update mode.
+                                               See parameter preview-update-mode */
 }; // class ControlThread
 
 }; // namespace android

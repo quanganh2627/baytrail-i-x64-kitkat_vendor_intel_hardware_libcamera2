@@ -42,8 +42,10 @@ JpegHwEncoder::~JpegHwEncoder()
     LOG1("@%s", __FUNCTION__);
     if(mHWInitialized)
         deInit();
-    if(mVaEncoderContext != NULL)
+    if(mVaEncoderContext != NULL) {
         delete mVaEncoderContext;
+        mVaEncoderContext = NULL;
+    }
 }
 
 /**
