@@ -25,7 +25,9 @@ void YUV420ToRGB565(int width, int height, void *src, void *dst);
 
 void trimConvertNV12ToRGB565(int width, int height, int srcStride, void *src, void *dst);
 
-void align16ConvertYV12ToNV21(int width, int height, int srcStride, void *src, void *dst);
+void convertYV12ToNV21(int width, int height, int srcStride, int dstStride, void *src, void *dst);
+void convertYV12ToYU12(int width, int height, int srcStride, int dstStride, void *src, void *dst);
+
 void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void *dst);
 
 void align16ConvertNV12ToYU12(int width, int height, int srcStride, void *src, void *dst);

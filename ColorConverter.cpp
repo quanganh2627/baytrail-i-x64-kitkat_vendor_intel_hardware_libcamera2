@@ -132,42 +132,83 @@ void trimConvertNV12ToRGB565(int width, int height, int srcStride, void *src, vo
 }
 
 // covert YV12 (Y plane, V plane, U plane) to NV21 (Y plane, interlaced VU bytes)
-void align16ConvertYV12ToNV21(int width, int height, int srcStride, void *src, void *dst)
+void convertYV12ToNV21(int width, int height, int srcStride, int dstStride, void *src, void *dst)
 {
-    int yStride = ALIGN16(width);
-    size_t ySize = yStride * height;
-    int cStride = ALIGN16(yStride/2);
-    size_t cSize = cStride * height/2;
-
-    unsigned char *srcPtr = (unsigned char *) src;
-    unsigned char *dstPtr = (unsigned char *) dst;
-    unsigned char *srcPtrV = (unsigned char *) src + ySize;
-    unsigned char *srcPtrU = (unsigned char *) src + ySize + cSize;
+    const int cStride = srcStride>>1;
+    const int vuStride = dstStride;
+    const int hhalf = height>>1;
+    const int whalf = width>>1;
 
     // copy the entire Y plane
-    if (srcStride == yStride) {
-        memcpy(dstPtr, srcPtr, ySize);
-        dstPtr += ySize;
-    } else if (srcStride > width) {
+    unsigned char *srcPtr = (unsigned char *)src;
+    unsigned char *dstPtr = (unsigned char *)dst;
+    if (srcStride == dstStride) {
+        memcpy(dstPtr, srcPtr, dstStride*height);
+    } else {
         for (int i = 0; i < height; i++) {
             memcpy(dstPtr, srcPtr, width);
             srcPtr += srcStride;
-            dstPtr += yStride;
+            dstPtr += dstStride;
         }
-    } else {
-        LOGE("bad src stride value");
-        return;
     }
 
     // interlace the VU data
-    for ( int i = 0; i < height / 2; ++i) {
-        for ( int j = 0; j < cStride; ++j) {
-            dstPtr[j *2] = srcPtrV[j];
-            dstPtr[j *2 +1] = srcPtrU[j];
+    unsigned char *srcPtrV = (unsigned char *)src + height*srcStride;
+    unsigned char *srcPtrU = srcPtrV + cStride*hhalf;
+    dstPtr = (unsigned char *)dst + dstStride*height;
+    for (int i = 0; i < hhalf; ++i) {
+        unsigned char *pDstVU = dstPtr;
+        unsigned char *pSrcV = srcPtrV;
+        unsigned char *pSrcU = srcPtrU;
+        for (int j = 0; j < whalf; ++j) {
+            *pDstVU ++ = *pSrcV ++;
+            *pDstVU ++ = *pSrcU ++;
         }
-        dstPtr += yStride;
+        dstPtr += vuStride;
         srcPtrV += cStride;
         srcPtrU += cStride;
+    }
+}
+
+// covert YV12 (Y plane, V plan, U plan) to YU12(I420) (Y plane, U plane, V plane)
+void convertYV12ToYU12(int width, int height, int srcStride, int dstStride, void *src, void *dst)
+{
+    const int scStride = srcStride>>1;
+    const int dcStride = dstStride>>1;
+    const int hhalf = height>>1;
+    const int whalf = width>>1;
+
+    // copy the entire Y plane
+    unsigned char *srcPtrY = (unsigned char *)src;
+    unsigned char *dstPtrY = (unsigned char *)dst;
+    if (srcStride == dstStride) {
+        memcpy(dstPtrY, srcPtrY, dstStride*height);
+    } else {
+        for (int i = 0; i < height; i++) {
+            memcpy(dstPtrY, srcPtrY, width);
+            srcPtrY += srcStride;
+            dstPtrY += dstStride;
+        }
+    }
+
+    // switch order from VU to UV
+    unsigned char *srcPtrV = (unsigned char *)src + height*srcStride;
+    unsigned char *srcPtrU = srcPtrV + scStride*hhalf;
+    unsigned char *dstPtrU = (unsigned char *)dst + height*dstStride;
+    unsigned char *dstPtrV = dstPtrU + dcStride*hhalf;
+    for (int i = 0; i < hhalf; ++i) {
+        unsigned char *pDstU = dstPtrU;
+        unsigned char *pDstV = dstPtrV;
+        unsigned char *pSrcV = srcPtrV;
+        unsigned char *pSrcU = srcPtrU;
+        for (int j = 0; j < whalf; ++j) {
+            *pDstU ++ = *pSrcU ++;
+            *pDstV ++ = *pSrcV ++;
+        }
+        dstPtrU += dcStride;
+        dstPtrV += dcStride;
+        srcPtrV += scStride;
+        srcPtrU += scStride;
     }
 }
 

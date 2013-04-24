@@ -984,14 +984,15 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
         case V4L2_PIX_FMT_YUV420:
             if (PlatformData::getPreviewFormat() == V4L2_PIX_FMT_NV12)
                 align16ConvertNV12ToYU12(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
-            //TBD for other preview format, not supported yet
+            else
+                convertYV12ToYU12(mPreviewWidth, mPreviewHeight, msg->buff.stride, mPreviewWidth, src, mPreviewBuf.buff->data);
             break;
 
         case V4L2_PIX_FMT_NV21: // you need to do this for the first time
             if (PlatformData::getPreviewFormat() == V4L2_PIX_FMT_NV12)
                 trimConvertNV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
             else
-                align16ConvertYV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+                convertYV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, mPreviewWidth, src, mPreviewBuf.buff->data);
             break;
 
         case V4L2_PIX_FMT_RGB565:
