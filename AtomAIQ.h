@@ -296,6 +296,7 @@ public:
 
     //Bracketing
     status_t initAfBracketing(int stop, AFBracketingMode mode);
+    virtual status_t initAeBracketing();
 
     // Flash control
     virtual status_t setFlash(int numFrames);
@@ -365,6 +366,11 @@ private:
     SceneMode mAeSceneMode;
     FlashMode mAeFlashMode;
     ae_state mAeState;
+
+    //AE bracketing
+    ia_aiq_ae_input_params mAeBracketingInputParameters;
+    bool mBracketingRunning;
+    ia_aiq_ae_results *mAEBracketingResult;
 
     //AW
     ia_aiq_awb_input_params mAwbInputParameters;

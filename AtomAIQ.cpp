@@ -72,6 +72,8 @@ AtomAIQ::AtomAIQ(AtomISP *anISP) :
     ,mFocusPosition(0)
     ,mBracketingStops(0)
     ,mAeSceneMode(CAM_AE_SCENE_MODE_NOT_SET)
+    ,mBracketingRunning(false)
+    ,mAEBracketingResult(NULL)
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
     ,mAwbRunCount(0)
     ,mMkn(NULL)
@@ -229,7 +231,10 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
 
     /* usually the grid changes as well when the mode changes. */
     changeSensorMode();
-
+    if (mBracketingRunning) {
+        mAeBracketingInputParameters = mAeInputParameters;
+        mAeBracketingInputParameters.frame_use =  m3aState.frame_use;
+    }
     /* Invalidate AEC results and re-run AEC to get new results for new mode. */
     mAeState.ae_results = NULL;
     status = runAeMain();
@@ -823,16 +828,38 @@ status_t AtomAIQ::setManualFocusIncrement(int steps)
     return ret;
 }
 
+status_t AtomAIQ::initAeBracketing()
+{
+    LOG1("@%s", __FUNCTION__);
+    mBracketingRunning = true;
+    return NO_ERROR;
+}
+
 // Exposure operations
 // For exposure bracketing
 status_t AtomAIQ::applyEv(float bias)
 {
     LOG1("@%s: bias=%.2f", __FUNCTION__, bias);
-
-    int ret = setEv(bias);
-    if (ret == NO_ERROR)
-        ret = runAeMain();
-
+    mAeBracketingInputParameters.ev_shift = bias;
+    status_t ret = NO_ERROR;
+    if (m3aState.ia_aiq_handle){
+        ia_aiq_ae_run(m3aState.ia_aiq_handle, &mAeBracketingInputParameters, &mAEBracketingResult);
+    }
+    if (mAEBracketingResult != NULL) {
+        struct atomisp_exposure exposure;
+        exposure.integration_time[0] = mAEBracketingResult->sensor_exposure->coarse_integration_time;
+        exposure.integration_time[1] = mAEBracketingResult->sensor_exposure->fine_integration_time;
+        exposure.gain[0] = mAEBracketingResult->sensor_exposure->analog_gain_code_global;
+        exposure.gain[1] = mAEBracketingResult->sensor_exposure->digital_gain_global;
+        exposure.aperture = 100;
+        LOG2("AEC integration_time[0]: %d", exposure.integration_time[0]);
+        LOG2("AEC integration_time[1]: %d", exposure.integration_time[1]);
+        LOG2("AEC gain[0]: %x", exposure.gain[0]);
+        LOG2("AEC gain[1]: %x", exposure.gain[1]);
+        LOG2("AEC aperture: %d\n", exposure.aperture);
+        /* Apply Sensor settings */
+        ret |= mISP->sensorSetExposure(&exposure);
+    }
     return ret;
 }
 
@@ -1575,6 +1602,7 @@ status_t AtomAIQ::run3aMain()
     LOG2("@%s", __FUNCTION__);
     status_t ret = NO_ERROR;
 
+    mBracketingRunning = false;
     if(!mISP->isFileInjectionEnabled())
         ret |= runAfMain();
 
@@ -1847,11 +1875,18 @@ void AtomAIQ::getAeExpCfg(int *exp_time,
 
     mISP->sensorGetExposureTime(exp_time);
     mISP->sensorGetFNumber(aperture_num, aperture_denum);
-    if(mAeState.prev_results[AE_DELAY_FRAMES].exposure != NULL) {
-        *digital_gain = (mAeState.prev_results[AE_DELAY_FRAMES].exposure)->digital_gain;
-        *aec_apex_Tv = -1.0 * (log10((double)(mAeState.prev_results[AE_DELAY_FRAMES].exposure)->exposure_time_us/1000000) / log10(2.0)) * 65536;
-        *aec_apex_Av = log10(pow((mAeState.prev_results[AE_DELAY_FRAMES].exposure)->aperture_fn, 2))/log10(2.0) * 65536;
-        *aec_apex_Sv = log10(pow(2.0, -7.0/4.0) * (mAeState.prev_results[AE_DELAY_FRAMES].exposure)->iso) / log10(2.0) * 65536;
+    ia_aiq_exposure_parameters *exposure = NULL;
+    if (mBracketingRunning) {
+        if (mAEBracketingResult)
+            exposure = mAEBracketingResult->exposure;
+    } else {
+        exposure = mAeState.prev_results[AE_DELAY_FRAMES].exposure;
+    }
+    if (exposure != NULL) {
+        *digital_gain = exposure->digital_gain;
+        *aec_apex_Tv = -1.0 * (log10((double)exposure->exposure_time_us/1000000) / log10(2.0)) * 65536;
+        *aec_apex_Av = log10(pow(exposure->aperture_fn, 2))/log10(2.0) * 65536;
+        *aec_apex_Sv = log10(pow(2.0, -7.0/4.0) * exposure->iso) / log10(2.0) * 65536;
     }
 }
 

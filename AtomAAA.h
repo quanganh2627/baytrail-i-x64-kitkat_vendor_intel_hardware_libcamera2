@@ -267,6 +267,7 @@ public:
 
     // Bracketing
     virtual status_t initAfBracketing(int stops,  AFBracketingMode mode) { return INVALID_OPERATION; }
+    virtual status_t initAeBracketing() { return INVALID_OPERATION; }
 
 // private members
 private:

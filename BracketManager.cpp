@@ -206,6 +206,7 @@ status_t BracketManager::initBracketing(int length, int skip, float *bracketValu
     switch (mBracketing.mode) {
     case BRACKET_EXPOSURE:
         if (mBurstLength > 1) {
+            m3AControls->initAeBracketing();
             m3AControls->setAeMode(CAM_AE_MODE_MANUAL);
 
             mBracketing.values.reset(new float[length]);
