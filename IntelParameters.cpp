@@ -203,10 +203,10 @@ namespace android {
     const char IntelCameraParameters::KEY_EXIF_SOFTWARE[] = "exif-software-name";
 
     // V4L2 specific scene modes
-    const char IntelCameraParameters::SCENE_MODE_BEACH_SNOW[] = "beach-snow";
-    const char IntelCameraParameters::SCENE_MODE_DAWN_DUSK[] = "dawn-dusk";
-    const char IntelCameraParameters::SCENE_MODE_FALL_COLORS[] = "fall-colors";
-    const char IntelCameraParameters::SCENE_MODE_BACKLIGHT[] = " backlight";
+    const char IntelCameraParameters::SCENE_MODE_BEACH_SNOW[] = "beach";
+    const char IntelCameraParameters::SCENE_MODE_DAWN_DUSK[] = "dusk-dawn";
+    const char IntelCameraParameters::SCENE_MODE_FALL_COLORS[] = "fall-color";
+    const char IntelCameraParameters::SCENE_MODE_BACKLIGHT[] = "back-light";
 
     // contrast
     const char IntelCameraParameters::KEY_CONTRAST_MODE[] = "contrast-mode";
