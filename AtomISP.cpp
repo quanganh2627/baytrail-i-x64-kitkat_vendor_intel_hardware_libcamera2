@@ -970,6 +970,7 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
 
     switch (mode) {
     case MODE_PREVIEW:
+    case MODE_CONTINUOUS_CAPTURE:
         mPreviewDevice = mPreviewTooBigForVFPP ? mRecordingDevice : mConfigSnapshotPreviewDevice;
         if ((status = allocatePreviewBuffers()) != NO_ERROR)
             stopDevice(mPreviewDevice);
@@ -988,14 +989,6 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
         if ((status = allocateSnapshotBuffers()) != NO_ERROR)
             return status;
         break;
-    case MODE_CONTINUOUS_CAPTURE:
-        status = allocateBuffers(MODE_PREVIEW);
-        if (status == NO_ERROR)
-            status = allocateBuffers(MODE_CAPTURE);
-        else
-            freePreviewBuffers();
-        break;
-
     default:
         status = UNKNOWN_ERROR;
         break;
