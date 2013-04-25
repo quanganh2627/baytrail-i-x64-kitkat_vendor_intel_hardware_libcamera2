@@ -825,7 +825,7 @@ status_t PictureThread::completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBu
     status_t status= NO_ERROR;
     nsecs_t endTime;
     JpegCompressor::OutputBuffer outBuf;
-    int mainSize;
+    int mainSize = 0;
     int finalSize = 0;
 
     endTime = systemTime();
