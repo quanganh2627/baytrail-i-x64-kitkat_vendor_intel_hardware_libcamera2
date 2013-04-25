@@ -879,6 +879,26 @@ const char* PlatformData::supportedPreviewSizes(int cameraId)
     return i->mCameras[cameraId].supportedPreviewSizes;
 }
 
+const char* PlatformData::supportedPreviewUpdateModes(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].supportedPreviewUpdateModes;
+}
+
+const char* PlatformData::defaultPreviewUpdateMode(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].defaultPreviewUpdateMode;
+}
+
 bool PlatformData::supportsSlowMotion(int cameraId)
 {
     PlatformBase *i = getInstance();
