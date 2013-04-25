@@ -527,6 +527,22 @@ class PlatformData {
     static const char* supportedPreviewSizes(int cameraId);
 
     /**
+     * supported preview update modes
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the supported preview update mode as a string.
+     */
+    static const char* supportedPreviewUpdateModes(int cameraId);
+
+    /**
+     * default preview update mode
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the default preview update mode as a string.
+     */
+    static const char* defaultPreviewUpdateMode(int cameraId);
+
+    /**
      * Whether the slow motion playback in high speed recording mode is supported?
      * \return true if the slow motion playback is supported
      */
@@ -803,6 +819,8 @@ public:
             supportedVideoSizes = "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1080";
             // Leaving this empty. NOTE: values need to be given in derived classes.
             supportedPreviewSizes = "";
+            supportedPreviewUpdateModes = "standard,continuous,during-capture,windowless";
+            defaultPreviewUpdateMode = "standard";
             //For high speed recording, slow motion playback
             hasSlowMotion = false;
             // focus modes
@@ -880,6 +898,8 @@ public:
         String8 supportedPreviewFPSRange;
         String8 defaultPreviewFPSRange;
         String8 supportedPreviewSizes;
+        String8 supportedPreviewUpdateModes;
+        String8 defaultPreviewUpdateMode;
         String8 supportedVideoSizes;
         // For high speed recording, slow motion playback
         bool hasSlowMotion;
