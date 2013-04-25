@@ -143,6 +143,8 @@ ControlThread::ControlThread(int cameraId) :
     // This is a workaround for an issue with Thread reference counting.
 
     LOG1("@%s", __FUNCTION__);
+
+    PlatformData::setActiveCameraId(mCameraId);
 }
 
 ControlThread::~ControlThread()
@@ -157,6 +159,8 @@ ControlThread::~ControlThread()
         mMessageQueue.receive(&msg);
         LOGE(" Id of first message is %d",msg.id);
     }
+
+    PlatformData::freeActiveCameraId(mCameraId);
 }
 
 status_t ControlThread::init()

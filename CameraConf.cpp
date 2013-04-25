@@ -128,7 +128,6 @@ void CameraBlob::clear()
 
 status_t HalConf::getValue(int& value, cpf_hal_tag_t tag, ...)
 {
-    value = 0;
     int ret = 0;
 
     va_list args;
@@ -153,7 +152,6 @@ exit:
 
 status_t HalConf::getBool(bool& boolean, cpf_hal_tag_t tag, ...)
 {
-    boolean = false;
     int ret = 0;
 
     va_list args;
@@ -178,7 +176,6 @@ exit:
 
 status_t HalConf::getString(const char *& string, cpf_hal_tag_t tag, ...)
 {
-    string = 0;
     int ret = 0;
 
     va_list args;
@@ -208,7 +205,6 @@ exit:
 
 status_t HalConf::getFpoint(int32_t& value, cpf_hal_tag_t tag, ...)
 {
-    value = 0;
     int ret = 0;
 
     va_list args;
@@ -233,7 +229,6 @@ exit:
 
 status_t HalConf::getFloat(float& value, cpf_hal_tag_t tag, ...)
 {
-    value = 0;
     int ret = 0;
 
     va_list args;

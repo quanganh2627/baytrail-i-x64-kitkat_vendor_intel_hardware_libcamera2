@@ -1349,8 +1349,7 @@ int AtomAAA::ciAdvInit(const SensorParams *paramFiles, const char *sensorOtpFile
     param.motor_calibration      = &m3ALibState.motor_data;
 
     int isp_vamem_type = 0;
-    if (PlatformData::HalConfig.getValue(isp_vamem_type, CPF::IspVamemType))
-        isp_vamem_type = 0;
+    PlatformData::HalConfig.getValue(isp_vamem_type, CPF::IspVamemType);
 
     // Intel 3A
     // in a case of an error in parsing (e.g. incorrect data,

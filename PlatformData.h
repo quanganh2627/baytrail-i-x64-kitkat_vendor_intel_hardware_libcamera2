@@ -95,6 +95,7 @@ class PlatformData {
 
  private:
     static PlatformBase* mInstance;
+    static int mActiveCameraId;
 
     /**
      * Get access to the platform singleton.
@@ -114,6 +115,26 @@ class PlatformData {
         SENSOR_FLIP_H      = 0x01, // V4L2_CID_HFLIP 1
         SENSOR_FLIP_V      = 0x02, // V4L2_CID_VFLIP 1
     };
+
+    /**
+     * Sets the ID of active camera
+     *
+     * This function should be called every time an instance of CameraHAL
+     * is created with given cameraId
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     */
+    static void setActiveCameraId(int cameraId);
+
+    /**
+     * Frees the ID of active camera
+     *
+     * This function should be called every time an instance of CameraHAL
+     * using the given Id is terminated
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     */
+    static void freeActiveCameraId(int cameraId);
 
     /**
      * Number of cameras

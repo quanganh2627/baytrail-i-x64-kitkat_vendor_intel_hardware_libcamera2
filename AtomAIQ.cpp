@@ -1613,10 +1613,8 @@ status_t AtomAIQ::runAICMain()
         aic_input_params.cc_matrix = NULL;
         aic_input_params.wb_gains = NULL;
 
-        int value;
-        if (PlatformData::HalConfig.getValue(value, CPF::IspVamemType)) {
-            value = 0;
-        }
+        int value = 0;
+        PlatformData::HalConfig.getValue(value, CPF::IspVamemType);
         aic_input_params.isp_vamem_type = value;
 
         ret = ia_aiq_aic_run(m3aState.ia_aiq_handle, &aic_input_params, &((m3aState.results).aic_output));

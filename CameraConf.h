@@ -81,11 +81,13 @@ public:
     explicit inline HalConf() {}
     inline HalConf(const CameraBlob& refBlob) : CameraBlob(refBlob) {}
     inline virtual ~HalConf() {}
+    // Queries with return codes
     status_t getValue(int& value, CPF::cpf_hal_tag_t tag, ...);
     status_t getBool(bool& boolean, CPF::cpf_hal_tag_t tag, ...);
     status_t getString(const char *& string, CPF::cpf_hal_tag_t tag, ...);
     status_t getFpoint(int32_t& value, CPF::cpf_hal_tag_t tag, ...);
     status_t getFloat(float& value, CPF::cpf_hal_tag_t tag, ...);
+    // Straightforward queries
     int getValue(CPF::cpf_hal_tag_t tag, ...);
     bool getBool(CPF::cpf_hal_tag_t tag, ...);
     const char *getString(CPF::cpf_hal_tag_t tag, ...);
