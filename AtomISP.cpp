@@ -57,6 +57,8 @@
 #define ATOMISP_PREVIEW_POLL_TIMEOUT 1000
 #define ATOMISP_GETFRAME_RETRY_COUNT 5  // Times to retry poll/dqbuf in case of error
 #define ATOMISP_GETFRAME_STARVING_WAIT 200000 // Time to usleep between retry's when stream is starving from buffers.
+#define ATOMISP_ZSL_GUARD_FRAMES 3      // Minimum number of preview frames between
+                                        // successive ZSL captures, see PSI BZ 103248
 
 #define FRAME_SYNC_POLL_TIMEOUT 500
 
@@ -1730,8 +1732,20 @@ status_t AtomISP::startOfflineCapture(AtomISP::ContinuousCaptureConfig &config)
         return UNKNOWN_ERROR;
     }
 
+    // in case preview has just started, we need to limit
+    // how long we can look back
+    int offset = config.offset;
+    int sinceLastCapture =
+        mDevices[mPreviewDevice].frameCounter - mPreviewCountAtCapture;
+    LOG2("offline capture: %d frames since last capture", sinceLastCapture);
+    if (sinceLastCapture + offset < ATOMISP_ZSL_GUARD_FRAMES) {
+        offset = 0;
+        LOGW("offline capture: too few preview frames, limiting ZSL offset");
+    }
+    mPreviewCountAtCapture = mDevices[mPreviewDevice].frameCounter;
+
     res = requestContCapture(config.numCaptures,
-                             config.offset,
+                             offset,
                              config.skip);
     if (res == NO_ERROR)
         res = startCapture();
@@ -1774,6 +1788,7 @@ status_t AtomISP::prepareOfflineCapture(AtomISP::ContinuousCaptureConfig &cfg)
     }
     mContCaptConfig = cfg;
     mContCaptPrepared = true;
+    mPreviewCountAtCapture = 0;
     return NO_ERROR;
 }
 

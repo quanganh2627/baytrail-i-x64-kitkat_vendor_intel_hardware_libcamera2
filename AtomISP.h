@@ -608,6 +608,8 @@ private:
     Config mConfig;
     ContinuousCaptureConfig mContCaptConfig;
     bool mContCaptPrepared;
+    int mPreviewCountAtCapture;    /*!< preview frame count when last
+                                     capture was taken */
 
     // TODO: video_fds should be moved to mDevices
     int video_fds[V4L2_MAX_DEVICE_COUNT];
