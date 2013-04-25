@@ -5681,6 +5681,9 @@ status_t AtomISP::setAeSceneMode(SceneMode mode)
 
     switch (mode)
     {
+        case CAM_AE_SCENE_MODE_AUTO:
+            v4lMode = V4L2_SCENE_MODE_NONE;
+            break;
         case CAM_AE_SCENE_MODE_PORTRAIT:
             v4lMode = V4L2_SCENE_MODE_PORTRAIT;
             break;
@@ -5757,6 +5760,9 @@ SceneMode AtomISP::getAeSceneMode()
 
     switch (v4lMode)
     {
+        case V4L2_SCENE_MODE_NONE:
+            mode = CAM_AE_SCENE_MODE_AUTO;
+            break;
         case V4L2_SCENE_MODE_PORTRAIT:
             mode = CAM_AE_SCENE_MODE_PORTRAIT;
             break;
