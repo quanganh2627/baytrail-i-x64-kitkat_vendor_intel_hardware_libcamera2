@@ -1849,6 +1849,13 @@ status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
         startPreviewCore(videoMode);
         if (faceActive)
             startFaceDetection();
+    } else if (msg->window == NULL
+               && currentState == PreviewThread::STATE_STOPPED
+               && mState == STATE_CONTINUOUS_CAPTURE) {
+        // if we are in continuous-mode and backgrounding-state
+        // and window is set to null, then stop review
+        stopPreviewCore();
+        status = mPreviewThread->setPreviewWindow(msg->window);
     } else {
         // Notes:
         //  1. msg->window == NULL comes only from CameraService in release
