@@ -157,7 +157,7 @@ public:
     status_t getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp = NULL, atomisp_frame_status *frameStatus = NULL);
     status_t putRecordingFrame(AtomBuffer *buff);
 
-    status_t setSnapshotBuffers(void *buffs, int numBuffs, bool cached);
+    status_t setSnapshotBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bool cached);
     status_t getSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf,
                          atomisp_frame_status *snapshotStatus = NULL);
     status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
@@ -173,8 +173,7 @@ public:
     void getPostviewFrameFormat(int &width, int &height, int &format) const;
     status_t setSnapshotFrameFormat(int width, int height, int format);
     status_t setVideoFrameFormat(int width, int height, int format = 0);
-    void applyISPLimitations(uint32_t width, uint32_t height, bool videomode);
-    bool applyISPVideoLimitations(CameraParameters *params, bool dvsEnabled);
+    bool applyISPLimitations(CameraParameters *params, bool dvsEnabled, bool videoMode);
 
     inline int getSnapshotPixelFormat() { return mConfig.snapshot.format; }
     void getVideoSize(int *width, int *height, int *stride);
@@ -596,7 +595,6 @@ private:
     bool mRecordingDeviceSwapped;
     bool mPreviewTooBigForVFPP;
 
-    void **mClientSnapshotBuffers;
     bool mClientSnapshotBuffersCached;
     bool mUsingClientSnapshotBuffers;
     bool mStoreMetaDataInBuffers;

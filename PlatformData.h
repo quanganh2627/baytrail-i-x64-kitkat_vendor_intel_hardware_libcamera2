@@ -604,14 +604,14 @@ class PlatformData {
     static bool renderPreviewViaOverlay(int cameraId);
 
     /**
-     * Returns the maximum preview pixel count that can be used with the VFPP
-     * binary. The value is dependent on the blanking time of the sensor.
-     * HAL will not use the VFPP binary for pixel counts bigger than returned.
+     * Returns whether the resolution is supported by VFPP
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
-     * \return maximum preview pixel count
+     * \param width of resolution
+     * \param height of resolution
+     * \return true if resolution is supported by VFPP, false if not
      */
-    static unsigned int maxPreviewPixelCountForVFPP(int cameraId);
+    static bool resolutionSupportedByVFPP(int cameraId, int width, int height);
 
     /**
      * Returns the relative rotation between the camera normal scan order
@@ -709,7 +709,6 @@ public:
             supportedSnapshotSizes = "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448";
             mPreviewViaOverlay = false;
             overlayRelativeRotation = 90;
-            maxPreviewPixelCountForVFPP = 0xFFFFFFFF; // default no limit
             //burst
             maxBurstFPS = 15;
             supportedBurstFPS = "1,3,5,7,15";
@@ -818,8 +817,8 @@ public:
         bool mPreviewViaOverlay;
         int overlayRelativeRotation;  /*<! Relative rotation between the native scan order of the
                                            camera and the display attached to the overlay */
-        // VFPP pixel limiter (sensor blanking time dependent)
-        unsigned int maxPreviewPixelCountForVFPP;
+        // VFPP limited resolutions (sensor blanking time dependent
+        Vector<Size> mVFPPLimitedResolutions; // preview resolutions with VFPP limitations
         // burst
         int maxBurstFPS;
         String8 supportedBurstFPS;

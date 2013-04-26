@@ -83,7 +83,7 @@ status_t PostProcThread::init(void* isp)
         return UNKNOWN_ERROR;
     }
 
-    if (mFaceDetector->run() != NO_ERROR) {
+    if (mFaceDetector->run("CamHAL_FACE") != NO_ERROR) {
         LOGE("Error starting FaceDetector thread!");
         return UNKNOWN_ERROR;
     }

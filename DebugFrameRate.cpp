@@ -43,7 +43,7 @@ DebugFrameRate::~DebugFrameRate()
 status_t DebugFrameRate::run()
 {
    if(mActive)
-       return Thread::run();
+       return Thread::run("CamHAL_DEBFPS");
 
    return NO_ERROR;
 }

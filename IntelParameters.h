@@ -82,6 +82,7 @@ namespace android {
     static const char PREVIEW_UPDATE_MODE_STANDARD[];
     static const char PREVIEW_UPDATE_MODE_DURING_CAPTURE[];
     static const char PREVIEW_UPDATE_MODE_CONTINUOUS[];
+    static const char PREVIEW_UPDATE_MODE_WINDOWLESS[];
     // raw data format for snapshot
     static const char KEY_RAW_DATA_FORMAT[];
     static const char KEY_SUPPORTED_RAW_DATA_FORMATS[];
@@ -238,11 +239,11 @@ namespace android {
 
     static void getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params);
     static const char* getSupportedPanoramaLivePreviewSizes(const CameraParameters &params);
-
+    static void parseResolutionList(const char *sizeStr, Vector<Size> &sizes);
   private:
       IntelCameraParameters(void) {}
 
-      static void parseResolution(const char *p, int &width, int &height);
+      static status_t parseResolution(const char *p, int &width, int &height, char **endptr = NULL);
   };
 }; // ns android
 
