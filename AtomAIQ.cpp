@@ -1700,15 +1700,16 @@ void AtomAIQ::getAeExpCfg(int *exp_time,
 
     mISP->sensorGetExposureTime(exp_time);
     mISP->sensorGetFNumber(aperture_num, aperture_denum);
+    if(mAeState.prev_results[AE_DELAY_FRAMES].exposure != NULL) {
+        *digital_gain = (mAeState.prev_results[AE_DELAY_FRAMES].exposure)->digital_gain;
+        *aec_apex_Tv = -1.0 * (log10((double)(mAeState.prev_results[AE_DELAY_FRAMES].exposure)->exposure_time_us/1000000) / log10(2.0)) * 65536;
+        *aec_apex_Av = log10(pow((mAeState.prev_results[AE_DELAY_FRAMES].exposure)->aperture_fn, 2))/log10(2.0) * 65536;
+    }
 
-    if(mAeState.ae_results)
-        *digital_gain = (mAeState.ae_results->exposure)->digital_gain;
-    // TODO: no support "tv,sv,av"
+    // TODO: no support "sv"
  /*
     ia_3a_ae_result ae_res;
-    *aec_apex_Tv = ae_res.tv;
     *aec_apex_Sv = ae_res.sv;
-    *aec_apex_Av = ae_res.av;
     */
 }
 
