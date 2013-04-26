@@ -292,6 +292,11 @@ void PictureThread::MetaData::free(I3AControls *aaaControls)
     if (ia3AMkNote)
         aaaControls->put3aMakerNote(ia3AMkNote);
 
+    if (atomispMkNote) {
+        delete atomispMkNote;
+        atomispMkNote = NULL;
+    }
+
     if (aeConfig) {
         delete aeConfig;
         aeConfig = NULL;

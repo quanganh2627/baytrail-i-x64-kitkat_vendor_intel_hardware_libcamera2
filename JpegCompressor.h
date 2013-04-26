@@ -63,6 +63,7 @@ public:
             height = 0;
             size = 0;
             quality = 0;
+            length = 0;
         }
     };
 

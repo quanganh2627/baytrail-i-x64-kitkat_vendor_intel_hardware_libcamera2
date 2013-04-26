@@ -754,6 +754,7 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         int rotation;
         src = (unsigned char*) frame.img.dataPtr;
         ia_frame frameData;
+        frameData.format = ia_frame_format_nv12;
         frameData.data = src;
         frameData.size = frame.img.size;
         frameData.width = frame.img.width;
