@@ -73,6 +73,14 @@ AtomCP::AtomCP(AtomISP *isp)
         mAccAPI.set_mapped_arg     = NULL;
     }
 
+    mAccAPI.version_css.major = mISP->getCssMajorVersion();
+    mAccAPI.version_css.minor = mISP->getCssMinorVersion();
+    mAccAPI.version_isp.major = mISP->getIspHwMajorVersion();
+    mAccAPI.version_isp.minor = mISP->getIspHwMinorVersion();
+    LOG1("@%s: version infor css.major:%d, minor:%d, isp.major:%d, isp.minor:%d", __FUNCTION__,
+            mAccAPI.version_css.major, mAccAPI.version_css.minor,
+            mAccAPI.version_isp.major, mAccAPI.version_isp.minor);
+
     ia_cp_init(&mAccAPI, &mPrintFunctions);
 }
 
