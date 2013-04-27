@@ -128,7 +128,7 @@ status_t PanoramaThread::handleMessageStartPanorama(void)
         return NO_MEMORY;
     }
 
-    status = mPanoramaStitchThread->run();
+    status = mPanoramaStitchThread->run("CamHAL_PANOSTITCH");
     if (status != NO_ERROR) {
         LOGE("Error starting PanoramaStitchThread!");
     }
@@ -166,10 +166,16 @@ status_t PanoramaThread::handleMessageStopPanorama(const MessageStopPanorama &st
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     if (mContext) {
-        if (mPanoramaTotalCount > 0)
+        if (mPanoramaTotalCount > 0 && mPanoramaStitchThread != NULL)
             cancelStitch();
 
         ia_panorama_uninit(mContext);
+
+        mPanoramaTotalCount = 0;
+        mCurrentMetadata.direction = 0;
+        mCurrentMetadata.motion_blur = false;
+        mCurrentMetadata.horizontal_displacement = 0;
+        mCurrentMetadata.vertical_displacement = 0;
 
         mContext = NULL;
     }

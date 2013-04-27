@@ -67,6 +67,7 @@ PreviewThread::~PreviewThread()
     LOG1("@%s", __FUNCTION__);
     mDebugFPS.clear();
     freeGfxPreviewBuffers();
+    freeLocalPreviewBuf();
 }
 
 status_t PreviewThread::setCallback(ICallbackPreview *cb, ICallbackPreview::CallbackType t)
@@ -1101,9 +1102,14 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
         mPreviewStride = msg->stride;
     }
 
+    mPreviewFormat = msg->format;
+
+    // allocate local buffer used with preview callbacks
+    allocateLocalPreviewBuf();
+
     if (mPreviewWindow == NULL) {
-        LOG1("No window, configure called too early ?");
-        return NO_INIT;
+        LOG1("No window, not trying to allocate graphic buffers");
+        return NO_ERROR;
     }
 
     // Decide the count of Gfx buffers to allocate
@@ -1131,9 +1137,6 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
     }
 
     // Allocate gfx buffers
-    mPreviewFormat = msg->format;
-    allocateLocalPreviewBuf();
-
     // In shared mode, add reserved buffers count to the total amount
     // allocated but fetch them into separate vector.
     reservedBufferCount = (mSharedMode) ? GFX_BUFFERS_FOR_RESERVED_USE : 0;

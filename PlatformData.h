@@ -160,7 +160,7 @@ class PlatformData {
      *
      * \return true if supported
      */
-    static bool supportsContinuousCapture(void);
+    static bool supportsContinuousCapture(int cameraId);
 
     /**
      * What's the maximum supported size of the RAW ringbuffer
@@ -172,7 +172,7 @@ class PlatformData {
      * \return int number 0...N, if supportsContinuousCapture() is
      *         false, this function will always return 0
      */
-    static int maxContinuousRawRingBufferSize(void);
+    static int maxContinuousRawRingBufferSize(int cameraId);
 
     /**
      * Returns the average lag between user pressing shutter UI button or
@@ -241,6 +241,14 @@ class PlatformData {
      * \return the value of the default value as a string.
      */
     static const char* supportedDefaultEV(int cameraId);
+
+    /**
+     * Whether EV is supported?
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return true if supported, false if not supported
+     */
+    static bool supportEV(int cameraId);
 
     /**
      * Exposure compensation max value
@@ -685,7 +693,6 @@ public:
         mPanoramaMaxSnapshotCount = 10;
         mSupportVideoSnapshot = true;
         mNumRecordingBuffers = 9;
-        mContinuousCapture = false;
         mMaxContinuousRawRingBuffer = 0;
         mShutterLagCompensationMs = 40;
         mSupportAIQ = false;
@@ -709,6 +716,7 @@ public:
             supportedSnapshotSizes = "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448";
             mPreviewViaOverlay = false;
             overlayRelativeRotation = 90;
+            continuousCapture = false;
             //burst
             maxBurstFPS = 15;
             supportedBurstFPS = "1,3,5,7,15";
@@ -819,6 +827,7 @@ public:
                                            camera and the display attached to the overlay */
         // VFPP limited resolutions (sensor blanking time dependent
         Vector<Size> mVFPPLimitedResolutions; // preview resolutions with VFPP limitations
+        bool continuousCapture;
         // burst
         int maxBurstFPS;
         String8 supportedBurstFPS;
@@ -890,7 +899,6 @@ public:
     bool mFileInject;
     bool mSupportVideoSnapshot;
 
-    bool mContinuousCapture;
     int mMaxContinuousRawRingBuffer;
     int mShutterLagCompensationMs;
 

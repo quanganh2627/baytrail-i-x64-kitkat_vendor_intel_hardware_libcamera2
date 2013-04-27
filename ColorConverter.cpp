@@ -131,7 +131,7 @@ void trimConvertNV12ToRGB565(int width, int height, int srcStride, void *src, vo
     }
 }
 
-// covert YU12 (Y plane, V plane, U plane) to NV21 (Y plane, interlaced VU bytes)
+// covert YV12 (Y plane, V plane, U plane) to NV21 (Y plane, interlaced VU bytes)
 void align16ConvertYV12ToNV21(int width, int height, int srcStride, void *src, void *dst)
 {
     int yStride = ALIGN16(width);
@@ -147,7 +147,7 @@ void align16ConvertYV12ToNV21(int width, int height, int srcStride, void *src, v
     // copy the entire Y plane
     if (srcStride == yStride) {
         memcpy(dstPtr, srcPtr, ySize);
-        srcPtr += ySize;
+        dstPtr += ySize;
     } else if (srcStride > width) {
         for (int i = 0; i < height; i++) {
             memcpy(dstPtr, srcPtr, width);
@@ -161,8 +161,8 @@ void align16ConvertYV12ToNV21(int width, int height, int srcStride, void *src, v
 
     // interlace the VU data
     for ( int i = 0; i < height / 2; ++i) {
-        for ( int j = 0; j < width / 2; ++j) {
-            dstPtr[j] = srcPtrV[j];
+        for ( int j = 0; j < cStride; ++j) {
+            dstPtr[j *2] = srcPtrV[j];
             dstPtr[j *2 +1] = srcPtrU[j];
         }
         dstPtr += yStride;

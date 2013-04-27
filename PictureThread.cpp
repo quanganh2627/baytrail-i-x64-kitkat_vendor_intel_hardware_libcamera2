@@ -218,41 +218,8 @@ void PictureThread::initialize(const CameraParameters &params)
     mScaledPic.size = frameSize(mScaledPic.format, mScaledPic.stride, mScaledPic.height);
 }
 
-
-status_t PictureThread::getSharedBuffers(int width, int height, char** sharedBuffersPtr, int *sharedBuffersNum)
-{
-    LOG1("@%s mInputBuffers %d", __FUNCTION__, mInputBuffers);
-    status_t status = NO_ERROR;
-    Message msg;
-
-    if(sharedBuffersPtr == NULL || sharedBuffersNum == NULL) {
-        LOGE("invalid parameters passed to %s", __FUNCTION__);
-        return BAD_VALUE;
-    }
-
-
-    msg.id = MESSAGE_ID_FETCH_BUFS;
-    msg.data.alloc.width = width;
-    msg.data.alloc.height = height;
-
-    status = mMessageQueue.send(&msg,MESSAGE_ID_FETCH_BUFS);
-
-    if(  status == NO_ERROR &&
-         mInputBufferArray[0].width ==  width &&
-         mInputBufferArray[0].height ==  height ) {
-
-        *sharedBuffersPtr = (char *)mInputBuffDataArray;
-        *sharedBuffersNum = mInputBuffers;
-    } else {
-        status = BAD_VALUE;
-        LOGE("Picture thread did not had any buffers, or it had with wrong dimensions." \
-              " This should not happen!!");
-    }
-
-    return status;
-}
-
-status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuffersNum)
+status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuffersNum,
+                                           ISnapshotBufferUser *user)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
@@ -260,6 +227,7 @@ status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuff
     msg.data.alloc.width = width;
     msg.data.alloc.height = height;
     msg.data.alloc.numBufs = sharedBuffersNum;
+    msg.data.alloc.user = user;
     return mMessageQueue.send(&msg);
 }
 
@@ -382,6 +350,7 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
             msg->height,
             msg->numBufs);
     status_t status = NO_ERROR;
+    size_t bufferSize = (msg->width * msg->height * 2);
 
     /* check if re-allocation is needed */
     if( (mInputBufferArray != NULL) &&
@@ -389,11 +358,10 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
         (mInputBufferArray[0].width == msg->width) &&
         (mInputBufferArray[0].height == msg->height)) {
         LOG1("Trying to allocate same number of buffers with same resolution... skipping");
-        return NO_ERROR;
+        goto skip;
     }
 
     /* Free old buffers if already allocated */
-    size_t bufferSize = (msg->width * msg->height * 2);
     if (mOutBuf.dataPtr != NULL && bufferSize != (size_t) mOutBuf.size) {
         mOutBuf.buff->release(mOutBuf.buff);
         mOutBuf.dataPtr = NULL;
@@ -425,32 +393,12 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
             LOGW("HW Encoder cannot use pre-allocate buffers");
     }
 
+skip:
+    // Provide the buffer to the user (CtrlThread)
+    if (msg->user != NULL)
+        msg->user->snapshotsAllocated(mInputBufferArray,mInputBuffers);
+
     return NO_ERROR;
-}
-
-status_t PictureThread::handleMessageFetchBuffers(MessageAllocBufs *msg)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    if(mInputBuffers == 0) {
-        LOGW("trying to get shared buffers before being allocated");
-        msg->numBufs = 1;
-        status = handleMessageAllocBufs(msg);
-    }
-
-    if (mInputBufferArray && (mInputBufferArray[0].width != msg->width
-        || mInputBufferArray[0].height != msg->height)) {
-        // Checks to ensure that allocation has happened for correct size.
-        LOGW("shared buffers not allocated for correct size");
-        msg->numBufs = 1;
-        status = handleMessageAllocBufs(msg);
-    } else if (!mInputBufferArray) {
-        LOGE("NULL mInputBufferArray.");
-        status = UNKNOWN_ERROR;
-    }
-
-    mMessageQueue.reply(MESSAGE_ID_FETCH_BUFS, status);
-    return status;
 }
 
 status_t PictureThread::allocateInputBuffers(int width, int height, int numBufs)
@@ -483,8 +431,11 @@ status_t PictureThread::allocateInputBuffers(int width, int height, int numBufs)
         mInputBufferArray[i].stride = stride;
         mInputBufferArray[i].format = V4L2_PIX_FMT_NV12;
         mInputBufferArray[i].size = bufferSize;
+        mInputBufferArray[i].type = ATOM_BUFFER_SNAPSHOT;
+        mInputBufferArray[i].status = FRAME_STATUS_OK;
         mInputBuffDataArray[i] = (char *) mInputBufferArray[i].dataPtr;
         LOG2("Snapshot buffer[%d] allocated, ptr = %p",i,mInputBufferArray[i].dataPtr);
+
     }
     return NO_ERROR;
 
@@ -624,10 +575,6 @@ status_t PictureThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_ALLOC_BUFS:
             status = handleMessageAllocBufs(&msg.data.alloc);
-            break;
-
-        case MESSAGE_ID_FETCH_BUFS:
-            status = handleMessageFetchBuffers(&msg.data.alloc);
             break;
 
         case MESSAGE_ID_WAIT:

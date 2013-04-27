@@ -44,6 +44,7 @@
 #include "BracketManager.h"
 #include "I3AControls.h"
 #include "IAtomIspObserver.h"
+#include "PictureThread.h"
 
 namespace android {
 
@@ -62,7 +63,8 @@ class ControlThread :
     public ICallbackPanorama,
     public IAtomIspObserver,
     public IPostCaptureProcessObserver,
-    public IBufferOwner {
+    public IBufferOwner,
+    public ISnapshotBufferUser {
 
 // constructor destructor
 public:
@@ -133,9 +135,13 @@ public:
     // Implementation of IPostCaptureProcessObserver interface
     void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status);
 
+    // Implementation of ISnapshotBufferUser interface
+    status_t snapshotsAllocated(AtomBuffer *bufs, int numBufs);
+
 // callback methods
 private:
     virtual void previewBufferCallback(AtomBuffer *buff, ICallbackPreview::CallbackType t);
+    virtual void encodingDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void autoFocusDone();
     virtual void postProcCaptureTrigger();
@@ -169,6 +175,7 @@ private:
                                          // AtomISP.
         MESSAGE_ID_RELEASE,
         MESSAGE_ID_PREVIEW_STARTED,
+        MESSAGE_ID_ENCODING_DONE,
         MESSAGE_ID_PICTURE_DONE,
         MESSAGE_ID_SET_PARAMETERS,
         MESSAGE_ID_GET_PARAMETERS,
@@ -188,6 +195,7 @@ private:
 
         MESSAGE_ID_DEQUEUE_RECORDING,
         MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE,
+        MESSAGE_ID_SNAPSHOT_ALLOCATED,
 
         // timeout handler
         MESSAGE_ID_TIMEOUT,
@@ -264,11 +272,19 @@ private:
         status_t status;
     };
 
+    struct MessageSnapshotAllocated{
+        AtomBuffer *bufs;
+        int numBuf;
+    };
+
     // union of all message data
     union MessageData {
 
         // MESSAGE_ID_RELEASE_RECORDING_FRAME
         MessageReleaseRecordingFrame releaseRecordingFrame;
+
+        // MESSAGE_ID_ENCODING_DONE
+        MessagePicture encodingDone;
 
         // MESSAGE_ID_PICTURE_DONE
         MessagePicture pictureDone;
@@ -302,6 +318,9 @@ private:
         // MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE
         MessagePostCaptureProcDone postCapture;
 
+        // MESSAGE_ID_SNAPSHOT_ALLOCATED
+        MessageSnapshotAllocated snap;
+
         // MESSAGE_ID_EXIT
         MessageExit exit;
 
@@ -324,6 +343,16 @@ private:
         STATE_CAPTURE,
         STATE_CONTINUOUS_CAPTURE
     };
+
+    // capture substates
+    enum CaptureSubState {
+        STATE_CAPTURE_INIT,          // initial capture state
+        STATE_CAPTURE_STARTED,       // when takePicture is received
+        STATE_CAPTURE_ENCODING_DONE, // when encoding done callback is received
+        STATE_CAPTURE_PICTURE_DONE,  // when picture done callback is received
+        STATE_CAPTURE_IDLE           // when preview is started again
+    };
+
     /**
      * \enum ShootingMode
      * Describes the active shooting mode
@@ -401,6 +430,7 @@ private:
     status_t handleMessageCancelAutoFocus();
     status_t handleMessageReleaseRecordingFrame(MessageReleaseRecordingFrame *msg);
     status_t handleMessagePreviewStarted();
+    status_t handleMessageEncodingDone(MessagePicture *msg);
     status_t handleMessagePictureDone(MessagePicture *msg);
     status_t handleMessageSetParameters(MessageSetParameters *msg);
     status_t handleMessageGetParameters(MessageGetParameters *msg);
@@ -414,6 +444,7 @@ private:
     status_t handleMessageReturnBuffer(MessageReturnBuffer *msg);
     status_t handleMessageTimeout();
     status_t handleMessagePostCaptureProcessingDone(MessagePostCaptureProcDone *msg);
+    status_t handleMessageSnapshotAllocated(MessageSnapshotAllocated *msg);
 
     status_t startFaceDetection();
     status_t stopFaceDetection(bool wait=false);
@@ -440,6 +471,7 @@ private:
     status_t waitForAndExecuteMessage();
 
     AtomBuffer* findRecordingBuffer(void *findMe);
+    AtomBuffer* findBufferByData(AtomBuffer *buf,Vector<AtomBuffer> *aVector);
 
     // dequeue buffers from driver and deliver them
     status_t dequeuePreview();
@@ -452,6 +484,7 @@ private:
     status_t setSmartSceneParams();
 
     bool runPreFlashSequence();
+    void waitForAllocatedSnapshotBuffers();
 
     // parameters handling functions
     bool isParameterSet(const char* param);
@@ -567,7 +600,7 @@ private:
     status_t hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* postviewBuffer);
     status_t hdrCompose();
     void     hdrRelease();
-    status_t allocateSnapshotBuffers();
+    status_t allocateSnapshotBuffers(bool videoMode);
     void     setExternalSnapshotBuffers(int format, int width, int heigth);
 
     // Capture Flow helpers
@@ -626,6 +659,7 @@ private:
 
     MessageQueue<Message, MessageId> mMessageQueue;
     State mState;
+    CaptureSubState mCaptureSubState;
     ShootingMode    mShootingMode;
     bool mThreadRunning;
     Callbacks *mCallbacks;
@@ -692,11 +726,11 @@ private:
                                                     It is used when video recording starts so the settings
                                                     can be restore when video recording stops
                                                  */
-    Vector<MessagePicture> mUnqueuedPicBuf; /* store the buffers that have not been returned to ISP in capturing*/
 
+    bool mPanoramaFinalizationPending; /* state boolean for pending panorama finalization commands */
     bool mEnableFocusCbAtStart;     /* for internal control of focus cb's in continuous-mode */
     bool mEnableFocusMoveCbAtStart; /* for internal control of focus-move cb's in continuous-mode */
-    bool mFirstPreviewStart;        /* indicator of first preview start for L2P pnp optimizations */
+
 
     bool mStillCaptureInProgress;   /*!< indicates ongoing capture sequence for Camera_HAL API.
                                          note: threadsafe to use only in Camera_HAL calling context
@@ -707,6 +741,14 @@ private:
 
     const char* mPreviewUpdateMode;       /*!< indicates the active preview update mode.
                                                See parameter preview-update-mode */
+
+    Vector<AtomBuffer> mAllocatedSnapshotBuffers; /*!< Current set of allocated snapshot buffers */
+    Vector<AtomBuffer> mAvailableSnapshotBuffers; /*!< Current set of available snapshot buffers */
+    bool mAllocationRequestSent;                 /*!< Tracks the request allocation towards PictureThread
+                                                      set to true when we issue a request
+                                                      set to false when request completes
+                                                  */
+
 }; // class ControlThread
 
 }; // namespace android

@@ -106,8 +106,6 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
         PlatformBase::mFileInject = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "backFlash") == 0) {
         PlatformBase::mBackFlash = ((strcmp(atts[1], "true") == 0) ? true : false);
-    } else if (strcmp(name, "continuousCapture") == 0) {
-        PlatformBase::mContinuousCapture = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "productName") == 0) {
         PlatformBase::mProductName = atts[1];
     } else if (strcmp(name, "manufacturerName") == 0) {
@@ -186,6 +184,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
             pCurrentCam->flipping |= PlatformData::SENSOR_FLIP_H;
         if (strcmp(atts[2], "value_v") == 0 && strcmp(atts[3], "SENSOR_FLIP_V") == 0)
             pCurrentCam->flipping |= PlatformData::SENSOR_FLIP_V;
+    } else if (strcmp(name, "continuousCapture") == 0) {
+        pCurrentCam->continuousCapture = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "supportedSnapshotSizes") == 0) {
         pCurrentCam->supportedSnapshotSizes = atts[1];
     } else if (strcmp(name, "defaultBurstLength") == 0) {
@@ -405,6 +405,7 @@ void CameraProfiles::dump(void)
         LOGD("line%d, in DeviceData, pcam->dvs:%d ", __LINE__, mCameras[i].dvs);
         LOGD("line%d, in DeviceData, pcam->supportedSnapshotSizes:%s ", __LINE__, mCameras[i].supportedSnapshotSizes.string());
         LOGD("line%d, in DeviceData, pcam->flipping:%d ", __LINE__, mCameras[i].flipping);
+        LOGD("line%d, in DeviceData, pcam->continuousCapture:%d ", __LINE__, mCameras[i].continuousCapture);
         LOGD("line%d, in DeviceData, pcam->mPreviewViaOverlay:%d ", __LINE__, mCameras[i].mPreviewViaOverlay);
         LOGD("line%d, in DeviceData, pcam->supportedBurstLength:%s ", __LINE__, mCameras[i].supportedBurstLength.string());
         LOGD("line%d, in DeviceData, pcam->facing:%d ", __LINE__, mCameras[i].facing);
@@ -427,7 +428,6 @@ void CameraProfiles::dump(void)
     LOGD("line%d, in DeviceData, mSubDevName:%s ", __LINE__, mSubDevName.string());
     LOGD("line%d, in DeviceData, mFileInject:%d ", __LINE__, mFileInject);
     LOGD("line%d, in DeviceData, mBackFlash:%d ", __LINE__, mBackFlash);
-    LOGD("line%d, in DeviceData, mContinuousCapture:%d ", __LINE__, mContinuousCapture);
     LOGD("line%d, in DeviceData, mVideoPreviewSizePref:%s ", __LINE__, mVideoPreviewSizePref.string());
     LOGD("line%d, in DeviceData, mProductName:%s ", __LINE__, mProductName.string());
     LOGD("line%d, in DeviceData, mManufacturerName:%s ", __LINE__, mManufacturerName.string());

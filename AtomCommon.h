@@ -97,6 +97,8 @@ enum AtomBufferType {
     ATOM_BUFFER_POSTVIEW_JPEG,      /*!< Buffer contains a postview image (JPEG) */
     ATOM_BUFFER_VIDEO,              /*!< Buffer contains a video frame  */
     ATOM_BUFFER_PANORAMA,           /*!< Buffer contains a panorama image */
+    ATOM_BUFFER_ULL,                /*!< Buffer contains a full snapshot with the
+                                         outcome of the Ultra Low light post capture processing (uncompressed)*/
 };
 
 /*! \struct AtomBuffer

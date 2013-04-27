@@ -131,7 +131,6 @@ AtomISP::AtomISP(int cameraId) :
     ,mSwapRecordingDevice(false)
     ,mRecordingDeviceSwapped(false)
     ,mPreviewTooBigForVFPP(false)
-    ,mClientSnapshotBuffers(NULL)
     ,mClientSnapshotBuffersCached(true)
     ,mUsingClientSnapshotBuffers(false)
     ,mStoreMetaDataInBuffers(false)
@@ -356,10 +355,10 @@ void AtomISP::initFrameConfig()
         }
     }
 
-    if (mConfig.snapshot.maxWidth >= RESOLUTION_720P_WIDTH
-        && mConfig.snapshot.maxHeight >= RESOLUTION_720P_HEIGHT) {
-        mConfig.preview.maxWidth = RESOLUTION_720P_WIDTH;
-        mConfig.preview.maxHeight = RESOLUTION_720P_HEIGHT;
+    if (mConfig.snapshot.maxWidth >= RESOLUTION_1080P_WIDTH
+        && mConfig.snapshot.maxHeight >= RESOLUTION_1080P_HEIGHT) {
+        mConfig.preview.maxWidth = RESOLUTION_1080P_WIDTH;
+        mConfig.preview.maxHeight = RESOLUTION_1080P_HEIGHT;
     } else {
         mConfig.preview.maxWidth = mConfig.snapshot.maxWidth;
         mConfig.preview.maxHeight =  mConfig.snapshot.maxHeight;
@@ -605,8 +604,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     float horizontal;
     if (!PlatformData::HalConfig.getFloat(vertical, CPF::Fov, CPF::Vertical)
         && !PlatformData::HalConfig.getFloat(horizontal, CPF::Fov, CPF::Horizontal)) {
-        params->set(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, vertical);
-        params->set(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, horizontal);
+        params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, vertical);
+        params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, horizontal);
     } else {
         params->set(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, "42.5");
         params->set(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, "54.8");
@@ -679,8 +678,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, PlatformData::supportedBurstLength(cameraId));
     // Bursts with negative start offset require a RAW sensor.
     const char* startIndexValues = "0";
-    if (PlatformData::sensorType(cameraId) ==  SENSOR_TYPE_RAW &&
-            PlatformData::supportsContinuousCapture())
+    if (PlatformData::supportsContinuousCapture(cameraId))
         startIndexValues = "-4,-3,-2,-1,0";
     intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
     intel_params->set(IntelCameraParameters::KEY_BURST_START_INDEX, "0");
@@ -689,7 +687,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_BURST_CONTINUOUS, "false");
 
     // TODO: move to platform data
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PREVIEW_UPDATE_MODE, "standard,continuous,during-capture");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PREVIEW_UPDATE_MODE, "standard,continuous,during-capture,windowless");
     intel_params->set(IntelCameraParameters::KEY_PREVIEW_UPDATE_MODE, "standard");
 
     intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_FILENAME, "off");
@@ -1425,8 +1423,8 @@ status_t AtomISP::configureContinuousRingBuffer()
     if (captures > numBuffers)
         numBuffers = captures;
 
-    if (numBuffers > PlatformData::maxContinuousRawRingBufferSize())
-        numBuffers = PlatformData::maxContinuousRawRingBufferSize();
+    if (numBuffers > PlatformData::maxContinuousRawRingBufferSize(mCameraId))
+        numBuffers = PlatformData::maxContinuousRawRingBufferSize(mCameraId);
 
     LOG1("continuous mode ringbuffer size to %d (captures %d, offset %d)",
          numBuffers, captures, offset);
@@ -1473,7 +1471,7 @@ int AtomISP::shutterLagZeroAlign() const
  */
 int AtomISP::continuousBurstNegMinOffset(void) const
 {
-    return -(PlatformData::maxContinuousRawRingBufferSize() - 2);
+    return -(PlatformData::maxContinuousRawRingBufferSize(mCameraId) - 2);
 }
 
 /**
@@ -1688,7 +1686,12 @@ status_t AtomISP::stopCapture()
         closeDevice(V4L2_ISP_SUBDEV);
         mFrameSyncEnabled = false;
     }
-    mUsingClientSnapshotBuffers = false;
+
+    if (mUsingClientSnapshotBuffers) {
+        mConfig.num_snapshot = 0;
+        mUsingClientSnapshotBuffers = false;
+    }
+
     dumpRawImageFlush();
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
     return NO_ERROR;
@@ -3190,7 +3193,7 @@ int AtomISP::v4l2_capture_new_buffer(int device, int index, struct v4l2_buffer_i
     LOG1("bytesused %u", vbuf->bytesused);
     LOG1("flags %08x", vbuf->flags);
     LOG1("memory %u", vbuf->memory);
-    LOG1("userptr:  %lu", vbuf->m.userptr);
+    LOG1("userptr:  %p", (void*)vbuf->m.userptr);
     LOG1("length %u", vbuf->length);
     return ret;
 }
@@ -3727,18 +3730,23 @@ status_t AtomISP::putRecordingFrame(AtomBuffer *buff)
     return NO_ERROR;
 }
 
-status_t AtomISP::setSnapshotBuffers(void *buffs, int numBuffs, bool cached)
+/**
+ * Initializes the snapshot buffers allocated by the PictureThread to the
+ * internal array
+ */
+status_t AtomISP::setSnapshotBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bool cached)
 {
     LOG1("@%s: buffs = %p, numBuffs = %d", __FUNCTION__, buffs, numBuffs);
     if (buffs == NULL || numBuffs <= 0)
         return BAD_VALUE;
 
-    mClientSnapshotBuffers = (void**)buffs;
     mClientSnapshotBuffersCached = cached;
     mConfig.num_snapshot = numBuffs;
     mUsingClientSnapshotBuffers = true;
     for (int i = 0; i < numBuffs; i++) {
-        LOG1("Snapshot buffer %d = %p", i, mClientSnapshotBuffers[i]);
+        mSnapshotBuffers[i] = buffs->top();
+        buffs->pop();
+        LOG1("Snapshot buffer %d = %p", i, mSnapshotBuffers[i].buff->data);
     }
 
     return NO_ERROR;
@@ -4134,6 +4142,16 @@ errorFree:
     return status;
 }
 
+/**
+ * Prepares V4L2  buffer info's for snapshot and postview buffers
+ *
+ * Currently snapshot buffers are always set externally, so there is no allocation
+ * done here, only the preparation of the v4l2 buffer pools
+ *
+ * For postview we are still allocating in this method.
+ * TODO: In the future we will also allocate externally the postviews to have a
+ * similar flow of buffers as the snapshots
+ */
 status_t AtomISP::allocateSnapshotBuffers()
 {
     LOG1("@%s", __FUNCTION__);
@@ -4143,44 +4161,43 @@ status_t AtomISP::allocateSnapshotBuffers()
     int snapshotSize = mConfig.snapshot.size;
     struct v4l2_buffer_info *vinfo;
 
-    if (mUsingClientSnapshotBuffers)
-        snapshotSize = sizeof(void*);
-
-    // note: make sure client has called releaseCaptureBuffers()
-    //       at this point (clients may hold on to snapshot buffers
-    //       after capture has been stopped)
-    if (mSnapshotBuffers[0].buff != NULL) {
-        LOGW("Client has not freed snapshot buffers!");
-        freeSnapshotBuffers();
-    }
-
-    LOG1("Allocating %d buffers of size: %d (snapshot), %d (postview)",
-            mConfig.num_snapshot,
-            snapshotSize,
-            mConfig.postview.size);
-    for (int i = 0; i < mConfig.num_snapshot; i++) {
-        mSnapshotBuffers[i].buff = NULL;
-        mCallbacks->allocateMemory(&mSnapshotBuffers[i], snapshotSize);
-        if (mSnapshotBuffers[i].buff == NULL) {
-            LOGE("Error allocation memory for snapshot buffers!");
-            status = NO_MEMORY;
-            goto errorFree;
-        }
-        mSnapshotBuffers[i].type = ATOM_BUFFER_SNAPSHOT;
-        allocatedSnaphotBufs++;
-
-        if (mUsingClientSnapshotBuffers) {
+    if (mUsingClientSnapshotBuffers) {
+        for (int i = 0; i < mConfig.num_snapshot; i++) {
+            mSnapshotBuffers[i].type = ATOM_BUFFER_SNAPSHOT;
+            mSnapshotBuffers[i].shared = false;
             vinfo = &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i];
-            vinfo->data = mClientSnapshotBuffers[i];
-            memcpy(mSnapshotBuffers[i].dataPtr, &mClientSnapshotBuffers[i], sizeof(void *));
-            mSnapshotBuffers[i].shared = true;
+            vinfo->data = mSnapshotBuffers[i].dataPtr;
+            markBufferCached(vinfo, mClientSnapshotBuffersCached);
+        }
+    } else {
 
-        } else {
+        // note: make sure client has called releaseCaptureBuffers()
+        //       at this point (clients may hold on to snapshot buffers
+        //       after capture has been stopped)
+        if (mSnapshotBuffers[0].buff != NULL) {
+            LOGW("Client has not freed snapshot buffers!");
+            freeSnapshotBuffers();
+        }
+
+        LOG1("Allocating %d buffers of size: %d (snapshot), %d (postview)",
+                mConfig.num_snapshot,
+                snapshotSize,
+                mConfig.postview.size);
+        for (int i = 0; i < mConfig.num_snapshot; i++) {
+            mSnapshotBuffers[i].buff = NULL;
+            mCallbacks->allocateMemory(&mSnapshotBuffers[i], snapshotSize);
+            if (mSnapshotBuffers[i].buff == NULL) {
+                LOGE("Error allocation memory for snapshot buffers!");
+                status = NO_MEMORY;
+                goto errorFree;
+            }
+            mSnapshotBuffers[i].type = ATOM_BUFFER_SNAPSHOT;
+            allocatedSnaphotBufs++;
             vinfo = &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i];
             vinfo->data = mSnapshotBuffers[i].dataPtr;
             mSnapshotBuffers[i].shared = false;
+            markBufferCached(vinfo, mClientSnapshotBuffersCached);
         }
-        markBufferCached(vinfo, mClientSnapshotBuffersCached);
     }
 
     if (needNewPostviewBuffers()) {
@@ -4362,6 +4379,11 @@ status_t AtomISP::freeRecordingBuffers()
 status_t AtomISP::freeSnapshotBuffers()
 {
     LOG1("@%s", __FUNCTION__);
+    if (mUsingClientSnapshotBuffers) {
+        LOG1("Using external Snapshotbuffers, nothing to free");
+        return NO_ERROR;
+    }
+
     for (int i = 0 ; i < mConfig.num_snapshot; i++) {
         if (mSnapshotBuffers[i].buff != NULL) {
             mSnapshotBuffers[i].buff->release(mSnapshotBuffers[i].buff);
@@ -5080,9 +5102,7 @@ int AtomISP::setAicParameter(struct atomisp_parameters *aic_param)
     int ret;
 
     // TODO: this code will be removed when the CPF file is valid for saltbay in the future
-    if (strcmp(PlatformData::getBoardName(), "saltbay") == 0 ||
-        strcmp(PlatformData::getBoardName(), "bodegabay") == 0 ||
-        (strcmp(PlatformData::getBoardName(), "baylake") == 0)) {
+    if (strcmp(PlatformData::getBoardName(), "baylake") == 0) {
        aic_param->ctc_table = NULL;
        aic_param->gamma_table = NULL;
     }
@@ -5600,9 +5620,6 @@ status_t AtomISP::setEv(float bias)
     int evValue = (int)bias;
     LOG1("@%s: bias: %f, EV value: %d", __FUNCTION__, bias, evValue);
 
-    if(evValue == 0)
-        return status;
-
     int ret = atomisp_set_attribute(main_fd, V4L2_CID_EXPOSURE, evValue, "exposure");
     if (ret != 0) {
         LOGE("Error setting EV in the driver");
@@ -5617,13 +5634,6 @@ status_t AtomISP::getEv(float *bias)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     int evValue = 0;
-
-    const char* minEV = PlatformData::supportedMinEV(mCameraId);
-    const char* maxEV = PlatformData::supportedMaxEV(mCameraId);
-    if(!strcmp(minEV, "0") && !strcmp(maxEV, "0")) {
-        LOG1("@%s: not supported by current camera", __FUNCTION__);
-        return INVALID_OPERATION;
-    }
 
     int ret = atomisp_get_attribute(main_fd, V4L2_CID_EXPOSURE, &evValue);
     if (ret != 0) {

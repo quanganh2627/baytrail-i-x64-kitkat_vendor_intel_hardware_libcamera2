@@ -587,7 +587,7 @@ status_t AtomAAA::setAeFlashMode(FlashMode mode)
 FlashMode AtomAAA::getAeFlashMode()
 {
     Mutex::Autolock lock(m3aLock);
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
 
     return mFlashMode;
 }
@@ -606,11 +606,11 @@ bool AtomAAA::getAfNeedAssistLight()
 bool AtomAAA::getAeFlashNecessary()
 {
     Mutex::Autolock lock(m3aLock);
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
 
     bool en = ia_3a_ae_is_flash_necessary();
 
-    LOG1("%s returning %d", __FUNCTION__, en);
+    LOG2("%s returning %d", __FUNCTION__, en);
     return en;
 }
 
@@ -1348,6 +1348,10 @@ int AtomAAA::ciAdvInit(const SensorParams *paramFiles, const char *sensorOtpFile
     param.param_calibration      = &m3ALibState.sensor_data;
     param.motor_calibration      = &m3ALibState.motor_data;
 
+    int isp_vamem_type = 0;
+    if (PlatformData::HalConfig.getValue(isp_vamem_type, CPF::IspVamemType))
+        isp_vamem_type = 0;
+
     // Intel 3A
     // in a case of an error in parsing (e.g. incorrect data,
     // mismatch in checksum) the pointer to NVM data is null
@@ -1361,7 +1365,8 @@ int AtomAAA::ciAdvInit(const SensorParams *paramFiles, const char *sensorOtpFile
         &mPrintFunctions,
         sensorOtpFile != NULL,
         &(paramFiles->cpfData),
-        (const ia_3a_private_data *)(aicNvm)) < 0) {
+        (const ia_3a_private_data *)(aicNvm),
+        isp_vamem_type) < 0) {
         if (m3ALibState.sh3a_params) {
             dlclose(m3ALibState.sh3a_params);
             m3ALibState.sh3a_params = NULL;

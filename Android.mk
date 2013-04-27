@@ -102,7 +102,6 @@ LOCAL_SHARED_LIBRARIES := \
 	libcutils \
 	libbinder \
 	libjpeg \
-	libia_aiq \
 	libandroid \
 	libui \
 	libia_mkn \
@@ -126,6 +125,14 @@ LOCAL_SHARED_LIBRARIES += \
 	libva-android
 endif
 
+ifeq ($(USE_CSS_2_0), true)
+LOCAL_SHARED_LIBRARIES += \
+    libia_aiq_2_0
+else
+LOCAL_SHARED_LIBRARIES += \
+    libia_aiq
+endif
+
 LOCAL_STATIC_LIBRARIES := \
 	libcameranvm \
 	libia_coordinate \
@@ -133,6 +140,10 @@ LOCAL_STATIC_LIBRARIES := \
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_CFLAGS += -DUSE_INTEL_JPEG
+endif
+
+ifeq ($(USE_CSS_2_0), true)
+LOCAL_CFLAGS += -DATOMISP_CSS2
 endif
 
 # enable R&D features only in R&D builds
