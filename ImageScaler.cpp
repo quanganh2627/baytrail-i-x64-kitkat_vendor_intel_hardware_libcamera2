@@ -110,7 +110,8 @@ void ImageScaler::downScaleAndCropNv12Image(unsigned char *dest, const unsigned 
     const int src_skip_lines_top, // number of lines that are skipped from src image start pointer
     const int src_skip_lines_bottom) // number of lines that are skipped after reading src_h (should be set always to reach full image height)
 {
-    LOG2("@%s: dest_w: %d, dest_h: %d, dest_stride:%d, src_w: %d, src_h: %d, src_stride: %d, skip_top: %d, skip_bottom: %d, dest: %p, src: %p", __FUNCTION__, dest_w,dest_h,dest_stride,src_w,src_h,src_stride,src_skip_lines_top,src_skip_lines_bottom, dest, src);
+    LOG1("@%s: dest_w: %d, dest_h: %d, dest_stride: %d, src_w: %d, src_h: %d, src_stride: %d, skip_top: %d, skip_bottom: %d, dest: %p, src: %p",
+         __FUNCTION__, dest_w, dest_h, dest_stride, src_w, src_h, src_stride, src_skip_lines_top, src_skip_lines_bottom, dest, src);
 
     if (src_w == 800 && src_h == 600 && src_skip_lines_top == 0 && src_skip_lines_bottom == 0
         && dest_w == RESOLUTION_QVGA_WIDTH && dest_h == RESOLUTION_QVGA_HEIGHT) {
@@ -129,7 +130,6 @@ void ImageScaler::downScaleAndCropNv12Image(unsigned char *dest, const unsigned 
         downScaleAndCropNv12ImageQcif(dest, src, dest_stride, src_stride);
         return;
     }
-    LOG2("@%s", __FUNCTION__);
 
     // skip lines from top
     if (src_skip_lines_top > 0)
@@ -214,7 +214,7 @@ void ImageScaler::downScaleAndCropNv12Image(unsigned char *dest, const unsigned 
 void ImageScaler::downScaleAndCropNv12ImageQvga(unsigned char *dest, const unsigned char *src,
     const int dest_stride, const int src_stride)
 {
-    LOG2("@%s", __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     const int dest_w = RESOLUTION_QVGA_WIDTH;
     const int dest_h = RESOLUTION_QVGA_HEIGHT;
     const int src_h = RESOLUTION_VGA_HEIGHT;
@@ -271,7 +271,7 @@ void ImageScaler::downScaleAndCropNv12ImageQvga(unsigned char *dest, const unsig
 void ImageScaler::downScaleAndCropNv12ImageQcif(unsigned char *dest, const unsigned char *src,
     const int dest_stride, const int src_stride)
 {
-    LOG2("@%s", __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     const int dest_w = RESOLUTION_QCIF_WIDTH;
     const int dest_h = RESOLUTION_QCIF_HEIGHT;
     const int src_w = RESOLUTION_VGA_WIDTH;
@@ -352,7 +352,7 @@ void ImageScaler::downScaleAndCropNv12ImageQcif(unsigned char *dest, const unsig
 void ImageScaler::downScaleNv12ImageFrom800x600ToQvga(unsigned char *dest, const unsigned char *src,
     const int dest_stride, const int src_stride)
 {
-    LOG2("@%s", __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     const int dest_w = RESOLUTION_QVGA_WIDTH;
     const int dest_h = RESOLUTION_QVGA_HEIGHT;
     const int src_h = 600;
