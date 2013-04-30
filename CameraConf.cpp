@@ -601,8 +601,8 @@ status_t CpfStore::initDriverList()
                 // Cut the name to first space
                 for (int i = 0; (i = drvInfo.mSensorName.find(" ")) > 0; drvInfo.mSensorName.setTo(drvInfo.mSensorName, i));
 
-                int major = entity.v4l.major;
-                int minor = entity.v4l.minor;
+                unsigned major = entity.v4l.major;
+                unsigned minor = entity.v4l.minor;
 
                 // Go thru the subdevs one by one, see which one
                 // corresponds to this driver (if there is an error,
@@ -620,7 +620,7 @@ status_t CpfStore::initDriverList()
     return ret;
 }
 
-status_t CpfStore::initDriverListHelper(int major, int minor, SensorDriver& drvInfo)
+status_t CpfStore::initDriverListHelper(unsigned major, unsigned minor, SensorDriver& drvInfo)
 {
     String8 subdevPathNameN;
 

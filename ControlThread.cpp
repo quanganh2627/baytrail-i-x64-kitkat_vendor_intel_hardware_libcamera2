@@ -3296,7 +3296,12 @@ status_t ControlThread::updateSpotWindow(const int &width, const int &height)
 {
     LOG1("@%s", __FUNCTION__);
     // TODO: Check, if these window fractions are right. Copied off from libcamera1
-    CameraWindow spotWin = { (int)width * 7.0 / 16.0, (int)width * 9.0 / 16.0, (int)height * 7.0 / 16.0, (int)height * 9.0 / 16.0, 255 };
+    CameraWindow spotWin = {
+            static_cast<int>(width * 7.0 / 16.0),
+            static_cast<int>(width * 9.0 / 16.0),
+            static_cast<int>(height * 7.0 / 16.0),
+            static_cast<int>(height * 9.0 / 16.0), 255 };
+
     return m3AControls->setAeWindow(&spotWin);
 }
 
