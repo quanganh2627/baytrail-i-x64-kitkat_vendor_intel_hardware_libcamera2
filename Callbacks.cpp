@@ -218,9 +218,15 @@ void Callbacks::allocateMemory(AtomBuffer *buff, int size, bool cached)
           buff->dataPtr = buff->buff->data;
           buff->size = buff->buff->size;
       } else {
+          LOGE("Memory allocation failed (get memory callback return null)");
           buff->dataPtr = NULL;
           buff->size = 0;
       }
+    } else {
+      LOGE("Memory allocation failed (missing get memory callback)");
+      buff->buff = NULL;
+      buff->dataPtr = NULL;
+      buff->size = 0;
     }
 }
 
