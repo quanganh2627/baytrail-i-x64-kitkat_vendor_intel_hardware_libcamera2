@@ -272,6 +272,10 @@ public:
     int setGammaTable(const struct atomisp_gamma_table *gamma_tbl);
     int setFpnTable(struct v4l2_framebuffer *fb);
     int setGcConfig(const struct atomisp_gc_config *gc_cfg);
+    int getCssMajorVersion();
+    int getCssMinorVersion();
+    int getIspHwMajorVersion();
+    int getIspHwMinorVersion();
     /* Flash related controls */
     int setFlashIntensity(int intensity);
     /* file injection controls */
@@ -542,7 +546,7 @@ private:
     int getNumOfSkipFrames(void);
     int getPrimaryCameraIndex(void) const;
     status_t applySensorFlip(void);
-
+    void fetchIspVersions();
 
 private:
     // AtomIspObserver
@@ -667,6 +671,11 @@ private:
 
     AeMode mPublicAeMode;
     AfMode mPublicAfMode;
+
+    int mCssMajorVersion;
+    int mCssMinorVersion;
+    int mIspHwMajorVersion;
+    int mIspHwMinorVersion;
 }; // class AtomISP
 
 }; // namespace android

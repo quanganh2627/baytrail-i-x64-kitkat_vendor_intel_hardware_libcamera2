@@ -30,6 +30,8 @@
 #include <fcntl.h>
 #include <math.h>
 #include <poll.h>
+#include <linux/media.h>
+#include <linux/atomisp.h>
 #include "PerformanceTraces.h"
 
 #define CLEAR(x) memset (&(x), 0, sizeof (x))
@@ -256,6 +258,7 @@ status_t AtomISP::init()
     static const int zoomBytes = MAX_ZOOM_LEVEL * 5 + 1;
     mZoomRatios = new char[zoomBytes];
     computeZoomRatios(mZoomRatios, zoomBytes);
+    fetchIspVersions();
 
     return status;
 }
@@ -857,6 +860,76 @@ status_t AtomISP::applySensorFlip(void)
         return UNKNOWN_ERROR;
 
     return NO_ERROR;
+}
+
+void AtomISP::fetchIspVersions()
+{
+    LOG1("@%s", __FUNCTION__);
+
+    mCssMajorVersion = -1;
+    mCssMinorVersion = -1;
+    mIspHwMajorVersion = -1;
+    mIspHwMinorVersion = -1;
+
+    // Sensor drivers have been registered to media controller
+    const char *mcPathName = "/dev/media0";
+    int fd = open(mcPathName, O_RDONLY);
+    if (fd == -1) {
+        LOGE("Error in opening media controller: %s!", strerror(errno));
+    } else {
+        struct media_device_info info;
+        memset(&info, 0, sizeof(info));
+
+        if (ioctl(fd, MEDIA_IOC_DEVICE_INFO, &info) < 0) {
+            LOGE("Error in getting media controller info: %s", strerror(errno));
+        } else {
+            int hw_version = (info.hw_revision & ATOMISP_HW_REVISION_MASK) >> ATOMISP_HW_REVISION_SHIFT;
+            int hw_stepping = info.hw_revision & ATOMISP_HW_STEPPING_MASK;
+            int css_version = info.driver_version & ATOMISP_CSS_VERSION_MASK;
+
+            switch(hw_version) {
+                case ATOMISP_HW_REVISION_ISP2300:
+                    mIspHwMajorVersion = 23;
+                    LOG1("ISP HW version is: %d", mIspHwMajorVersion);
+                    break;
+                case ATOMISP_HW_REVISION_ISP2400:
+                    mIspHwMajorVersion = 24;
+                    LOG1("ISP HW version is: %d", mIspHwMajorVersion);
+                    break;
+                default:
+                    LOGE("Unknown ISP HW version: %d", hw_version);
+            }
+
+            switch(hw_stepping) {
+                case ATOMISP_HW_STEPPING_A0:
+                    mIspHwMinorVersion = 0;
+                    LOG1("ISP HW stepping is: %d", mIspHwMinorVersion);
+                    break;
+                case ATOMISP_HW_STEPPING_B0:
+                    mIspHwMinorVersion = 1;
+                    LOG1("ISP HW stepping is: %d", mIspHwMinorVersion);
+                    break;
+                default:
+                    LOGE("Unknown ISP HW stepping: %d", hw_stepping);
+            }
+
+            switch(css_version) {
+                case ATOMISP_CSS_VERSION_15:
+                    mCssMajorVersion = 1;
+                    mCssMinorVersion = 5;
+                    LOG1("CSS version is: %d.%d", mCssMajorVersion, mCssMinorVersion);
+                    break;
+                case ATOMISP_CSS_VERSION_20:
+                    mCssMajorVersion = 2;
+                    mCssMinorVersion = 0;
+                    LOG1("CSS version is: %d.%d", mCssMajorVersion, mCssMinorVersion);
+                    break;
+                default:
+                    LOGE("Unknown CSS version: %d", css_version);
+            }
+        }
+        close(fd);
+    }
 }
 
 status_t AtomISP::configure(AtomMode mode)
@@ -5308,6 +5381,26 @@ int AtomISP::setGcConfig(const struct atomisp_gc_config *gc_cfg)
     ret = xioctl(main_fd, ATOMISP_IOC_S_ISP_GAMMA_CORRECTION, (struct atomisp_gc_config *)gc_cfg);
     LOG2("%s IOCTL ATOMISP_IOC_S_ISP_GAMMA_CORRECTION ret: %d\n", __FUNCTION__, ret);
     return ret;
+}
+
+int AtomISP::getCssMajorVersion()
+{
+    return mCssMajorVersion;
+}
+
+int AtomISP::getCssMinorVersion()
+{
+    return mCssMinorVersion;
+}
+
+int AtomISP::getIspHwMajorVersion()
+{
+    return mIspHwMajorVersion;
+}
+
+int AtomISP::getIspHwMinorVersion()
+{
+    return mIspHwMinorVersion;
 }
 
 int AtomISP::setFlashIntensity(int intensity)
