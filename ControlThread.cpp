@@ -1733,6 +1733,33 @@ status_t ControlThread::handleMessageStopPreview()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
+    if (mCaptureSubState == STATE_CAPTURE_STARTED) {
+        // We are going to cancel ongoing capture process based
+        // on assumption that application is no longer interested
+        // in receiving the jpeg. This is done to protect racing
+        // conditions with unfinished capture process and camera
+        // reconfiguration (setParameters) in general.
+        // Note: In case snapshot is already sent to PictureThread for
+        //       encoding, we may or may not end up calling picture
+        //       callbacks. Callback would get blocked until this
+        //       stopPreview finishes.
+        //       It is up to application to ensure it blocks for jpeg
+        //       before letting other API calls to happen or touches
+        //       into callback interfaces given with takePicture().
+        //       If we are here, ANR is expected - just protecting
+        //       against crashes.
+        LOGW("stopPreview() called while capture in progress, canceling"
+             "application should release the camera to cancel capture process");
+        if (mState == STATE_CAPTURE)
+            status = stopCapture();
+        else if (mState == STATE_CONTINUOUS_CAPTURE)
+            stopOfflineCapture();
+        mBurstLength = 0;
+        mPictureThread->flushBuffers();
+        mStillCaptureInProgress = false;
+        mCaptureSubState = STATE_CAPTURE_IDLE;
+    }
+
     // In STATE_CAPTURE, preview is already stopped, nothing to do
     if (mState != STATE_CAPTURE) {
         stopFaceDetection(true);
