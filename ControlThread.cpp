@@ -1752,12 +1752,19 @@ status_t ControlThread::handleMessageStopPreview()
              "application should release the camera to cancel capture process");
         if (mState == STATE_CAPTURE)
             status = stopCapture();
-        else if (mState == STATE_CONTINUOUS_CAPTURE)
+        else if (mState == STATE_CONTINUOUS_CAPTURE) {
             stopOfflineCapture();
+        }
         mBurstLength = 0;
         mPictureThread->flushBuffers();
         mStillCaptureInProgress = false;
         mCaptureSubState = STATE_CAPTURE_IDLE;
+    }
+    /**
+     * We maybe in the middle of processing ULL image, make sure we cancel this
+     */
+    if (mULL && mULL->isProcessing()) {
+        mPostCaptureThread->cancelProcessingItem((IPostCaptureProcessItem *)mULL);
     }
 
     // In STATE_CAPTURE, preview is already stopped, nothing to do
@@ -6219,11 +6226,17 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
     PictureThread::MetaData picMetaData;
     int ULLid = 0;
 
-    // ATM the only post capture processing is ULL, no need to check which one
-    mULL->getOuputResult(&snapshotBuffer,&postviewBuffer, &picMetaData, &ULLid);
-
-    if(msg->status != NO_ERROR)
+    if(msg->status != NO_ERROR)  {
         LOGW("PostCapture Processing failed !!");
+        goto cleanup;
+    }
+
+    // ATM the only post capture processing is ULL, no need to check which one
+    status = mULL->getOuputResult(&snapshotBuffer,&postviewBuffer, &picMetaData, &ULLid);
+    if (status != NO_ERROR) {
+        /* This can only mean that ULL was cancel, cleanup and go */
+        goto cleanup;
+    }
 
     mCallbacksThread->requestULLPicture(ULLid);
 
@@ -6246,6 +6259,7 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
         picMetaData.free(m3AControls);
     }
 
+cleanup:
     /**
      * retrieve input buffers from ULL class and return them for re-cycling
      */
@@ -6263,9 +6277,9 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
         handleMessagePictureDone(&picMsg);
     }
 
-
     return NO_ERROR;
 }
+
 status_t ControlThread::hdrInit(int size, int pvSize, int format,
                                 int width, int height,
                                 int pvWidth, int pvHeight)
