@@ -3498,15 +3498,6 @@ int AtomISP::atomisp_set_capture_mode(int deviceMode)
 
     parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     parm.parm.capture.capturemode = deviceMode;
-    if (mPreviewTooBigForVFPP) {
-        if (deviceMode == CI_MODE_PREVIEW) {
-            setZoom(0); // set zoom to zero, since we will not have VFPP
-        } else {
-            if (deviceMode == CI_MODE_STILL_CAPTURE) {
-                atomisp_set_zoom(main_fd, mConfig.zoom);// refresh zoom for capture
-            }
-        }
-    }
 
     if (ioctl(main_fd, VIDIOC_S_PARM, &parm) < 0) {
         LOGE("error %s", strerror(errno));
