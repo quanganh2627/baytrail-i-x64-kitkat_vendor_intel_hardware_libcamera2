@@ -1704,7 +1704,11 @@ status_t AtomISP::startOfflineCapture(AtomISP::ContinuousCaptureConfig &config)
     int sinceLastCapture =
         mDevices[mPreviewDevice].frameCounter - mPreviewCountAtCapture;
     LOG2("offline capture: %d frames since last capture", sinceLastCapture);
-    if (sinceLastCapture + offset < ATOMISP_ZSL_GUARD_FRAMES) {
+    // TODO: the below limitation is not applied to 8MP case,
+    //       see PSI BZ 103248
+    if (sinceLastCapture + offset < ATOMISP_ZSL_GUARD_FRAMES &&
+        !(mConfig.snapshot.width == RESOLUTION_8MP_WIDTH &&
+          mConfig.snapshot.height == RESOLUTION_8MP_HEIGHT)) {
         offset = 0;
         LOGW("offline capture: too few preview frames, limiting ZSL offset");
     }
