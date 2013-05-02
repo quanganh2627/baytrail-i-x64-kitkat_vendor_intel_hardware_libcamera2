@@ -71,10 +71,16 @@ namespace android {
     // burst capture
     static const char KEY_SUPPORTED_BURST_LENGTH[];
     static const char KEY_BURST_LENGTH[];
-    static const char KEY_SUPPORTED_BURST_FPS[];
-    static const char KEY_BURST_FPS[];
+    static const char KEY_SUPPORTED_BURST_FPS[]; // TODO: old API, it will be deleted in the future.
+    static const char KEY_BURST_FPS[]; // TODO: old API, it will be deleted in the future.
+    static const char KEY_SUPPORTED_BURST_SPEED[];
+    static const char KEY_BURST_SPEED[];
     static const char KEY_BURST_CONTINUOUS[];
     static const char KEY_SUPPORTED_BURST_CONTINUOUS[];
+    //values for burst speed
+    static const char BURST_SPEED_FAST[];
+    static const char BURST_SPEED_MEDIUM[];
+    static const char BURST_SPEED_LOW[];
 
     // preview update mode
     static const char KEY_SUPPORTED_PREVIEW_UPDATE_MODE[];

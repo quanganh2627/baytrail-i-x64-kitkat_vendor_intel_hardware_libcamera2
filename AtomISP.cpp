@@ -677,6 +677,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     if (PlatformData::supportsContinuousCapture(cameraId))
         startIndexValues = "-4,-3,-2,-1,0";
     intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
+    intel_params->set(IntelCameraParameters::KEY_BURST_SPEED, "fast");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_SPEED, "fast,medium,low");
     intel_params->set(IntelCameraParameters::KEY_BURST_START_INDEX, "0");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX, startIndexValues);
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_CONTINUOUS, "true,false");

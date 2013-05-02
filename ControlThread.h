@@ -424,7 +424,6 @@ private:
     status_t handleContinuousPreviewBackgrounding();
     status_t handleContinuousPreviewForegrounding();
     void flushContinuousPreviewToDisplay(nsecs_t snapshotTs);
-    int continuousBurstSkip(double targetFps) const;
     void continuousConfigApplyLimits(AtomISP::ContinuousCaptureConfig &cfg) const;
     status_t configureContinuousRingBuffer();
     status_t continuousStartStillCapture(bool useFlash);
@@ -713,7 +712,6 @@ private:
     int  mBurstStart;           /*<! Relative offset at which burst
                                   capture should start, where 0 marks
                                   the zero shutter lag case. */
-    int mBurstFps;              /*<! Burst target output rate */
 
     /* Burst runtime state, \see burstStateReset() */
 

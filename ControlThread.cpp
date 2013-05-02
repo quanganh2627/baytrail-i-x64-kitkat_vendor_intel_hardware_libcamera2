@@ -115,7 +115,6 @@ ControlThread::ControlThread(int cameraId) :
     ,mFpsAdaptSkip(0)
     ,mBurstLength(0)
     ,mBurstStart(0)
-    ,mBurstFps(-1)
     ,mBurstCaptureNum(-1)
     ,mBurstCaptureDoneNum(-1)
     ,mBurstQbufs(0)
@@ -1066,7 +1065,7 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
 void ControlThread::continuousConfigApplyLimits(AtomISP::ContinuousCaptureConfig &cfg) const
 {
     int minOffset = mISP->continuousBurstNegMinOffset();
-    int skip = continuousBurstSkip(mBurstFps);
+    int skip = mFpsAdaptSkip;
 
     if (mBurstStart < 0) {
         int offset = 0;
@@ -1080,29 +1079,8 @@ void ControlThread::continuousConfigApplyLimits(AtomISP::ContinuousCaptureConfig
     cfg.skip = skip;
 
     double outFps = mISP->getFrameRate() / (skip + 1);
-    LOG2("@%s: offset %d, skip %d, fps %d->%.1f (for start-index %d, sensor fps %.1f)",
-         __FUNCTION__, cfg.offset, skip, mBurstFps, outFps, mBurstStart, mISP->getFrameRate());
-}
-
-/**
- * Returns the skip factor for the given target FPS.
- *
- * \return 0...N of frames to skip between valid output frames
- */
-int ControlThread::continuousBurstSkip(double targetFps) const
-{
-    double ratio (mISP->getFrameRate() / targetFps);
-
-    // High - max sensor rate
-    if (ratio <= 2.0)
-        return 0;
-
-    // Medium - half the sensor rate
-    else if (ratio <= 4.0)
-        return 1;
-
-    // Low - quarter of sensor rate;
-    return 3;
+    LOG2("@%s: offset %d, skip %d, fps %.1f (for start-index %d, sensor fps %.1f)",
+         __FUNCTION__, cfg.offset, skip, outFps, mBurstStart, mISP->getFrameRate());
 }
 
 /**
@@ -3161,7 +3139,7 @@ status_t ControlThread::captureULLPic()
     AtomBuffer snapshotBuffer, postviewBuffer;
     int pvWidth, pvHeight;
     int picWidth, picHeight, format;
-    int cachedBurstLength, cachedBurstStart, cachedBurstFps;
+    int cachedBurstLength, cachedBurstStart;
     PictureThread::MetaData firstPicMetaData;
     PictureThread::MetaData ullPicMetaData;
     // In case ULL gets triggered with standard preview update mode
@@ -3173,7 +3151,6 @@ status_t ControlThread::captureULLPic()
     //cache burst related parameters
     cachedBurstLength = mBurstLength;
     cachedBurstStart = mBurstStart;
-    cachedBurstFps = mBurstFps;
 
     mParameters.getPictureSize(&picWidth, &picHeight);
     format = mISP->getSnapshotPixelFormat();
@@ -3193,7 +3170,6 @@ status_t ControlThread::captureULLPic()
     // Initialize the burst control variables for the ULL burst
     mBurstLength = mULL->getULLBurstLength();
     mBurstStart = 0;
-    mBurstFps = mISP->getFrameRate();
 
     status = continuousStartStillCapture(false);
 
@@ -3250,7 +3226,6 @@ exit:
     // Restore the Burst related control variables
     mBurstLength = cachedBurstLength;
     mBurstStart = cachedBurstStart;
-    mBurstFps = cachedBurstFps;
     return status;
 }
 
@@ -3875,11 +3850,11 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         }
     }
 
-    // BURST FPS
-    const char* burstFps = params->get(IntelCameraParameters::KEY_BURST_FPS);
-    const char* burstFpss = params->get(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS);
-    if (!validateString(burstFps,burstFpss)) {
-        LOGE("bad burst FPS: %s; supported: %s", burstFps, burstFpss);
+    // BURST SPEED
+    const char* burstSpeed = params->get(IntelCameraParameters::KEY_BURST_SPEED);
+    const char* burstSpeeds = params->get(IntelCameraParameters::KEY_SUPPORTED_BURST_SPEED);
+    if (!validateString(burstSpeed, burstSpeeds)) {
+        LOGE("bad burst speed: %s; supported: %s", burstSpeed, burstSpeeds);
         return BAD_VALUE;
     }
 
@@ -3986,17 +3961,15 @@ status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
     mBurstLength = CLIP(mBurstLength,NUM_BURST_BUFFERS,0);
     if (mBurstLength > 0) {
 
-        // Get the burst framerate
-        int fps = newParams->getInt(IntelCameraParameters::KEY_BURST_FPS);
-        if (fps > MAX_BURST_FRAMERATE) {
-            LOGE("Invalid value received for %s: %d", IntelCameraParameters::KEY_BURST_FPS, mFpsAdaptSkip);
-            return BAD_VALUE;
-        }
-        if (fps > 0) {
-            mFpsAdaptSkip = roundf(PlatformData::getMaxBurstFPS(mISP->getCurrentCameraId())/float(fps)) - 1;
-            mBurstFps = fps;
-            LOG1("%s, mFpsAdaptSkip:%d", __FUNCTION__, mFpsAdaptSkip);
-        }
+        // Get the burst speed
+        String8 speed(newParams->get(IntelCameraParameters::KEY_BURST_SPEED));
+        if (speed == IntelCameraParameters::BURST_SPEED_LOW)
+            mFpsAdaptSkip = BURST_SPEED_LOW_SKIP_NUM;
+        else if (speed == IntelCameraParameters::BURST_SPEED_MEDIUM)
+            mFpsAdaptSkip = BURST_SPEED_MEDIUM_SKIP_NUM;
+        else
+            mFpsAdaptSkip = BURST_SPEED_FAST_SKIP_NUM;
+        LOG1("%s, mFpsAdaptSkip:%d", __FUNCTION__, mFpsAdaptSkip);
     }
 
     // Burst start-index (for Time Nudge et al)

@@ -39,6 +39,9 @@
 #define MAX_PARAM_VALUE_LENGTH 32
 #define MAX_BURST_BUFFERS 32
 #define MAX_BURST_FRAMERATE 15
+#define BURST_SPEED_FAST_SKIP_NUM 0  // full speed
+#define BURST_SPEED_MEDIUM_SKIP_NUM 1  // 1/2 full speed
+#define BURST_SPEED_LOW_SKIP_NUM 3  // 1/4 full speed
 
 // macro STRINGIFY to change a number in a string.
 #define STRINGIFY(s) STRINGIFY_(s)
