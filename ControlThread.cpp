@@ -2580,19 +2580,16 @@ status_t ControlThread::captureStillPic()
                     flashMode == CAM_AE_FLASH_MODE_ON);
     bool flashFired = false;
     bool flashSequenceStarted = false;
-    bool displayPostview = selectPostviewSize(pvWidth, pvHeight)
-                           && !mHdr.enabled;
+    // Decide whether we display the postview
+    bool displayPostview = selectPostviewSize(pvWidth, pvHeight) // postview matches size of preview
+                           && !mHdr.enabled                      // HDR not enabled
+                           && (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD
+                              || mBurstLength > 1)               // proprietary preview update mode or burst
+                           && mBurstStart >= 0;                  // negative fixed burst start index
     // Synchronise jpeg callback with postview rendering in case of single capture
     bool syncJpegCbWithPostview = !mHdr.enabled && (mBurstLength <= 1);
     bool requestPostviewCallback = true;
     bool requestRawCallback = true;
-
-    if (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD) {
-        // In proprietary preview update modes we keep rendering of preview frames.
-        // Rendering of postview not needed.
-        displayPostview = false;
-        syncJpegCbWithPostview = false;
-    }
 
     // TODO: Fix the TestCamera application bug and remove this workaround
     // WORKAROUND BEGIN: Due to a TesCamera application bug send the POSTVIEW and RAW callbacks only for single shots
@@ -2868,6 +2865,9 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
     int pvWidth, pvHeight;
+    // Note: Burst (online mode) does not need to handle preview-update-mode
+    //       preview is stopped and we always display postview when size matches
+    //       and HDR is not enabled.
     bool displayPostview = selectPostviewSize(pvWidth, pvHeight) && !mHdr.enabled;
 
     if (clientRequest) {
@@ -3033,7 +3033,13 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
     int pvW, pvH;
-    bool displayPostview = selectPostviewSize(pvW, pvH);
+    // Note: Postview is not displayed with any of fixed burst scenarios,
+    //       just having it here for conformity and noticing.
+    //       Continuous mode with negative mBurstStart index would lead to
+    //       disordered displaying of postview and preview frames.
+    bool displayPostview = selectPostviewSize(pvW, pvH)
+                           && mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD
+                           && mBurstStart >= 0;
 
     assert(mState == STATE_CONTINUOUS_CAPTURE);
 
@@ -3114,8 +3120,12 @@ status_t ControlThread::captureULLPic()
     int cachedBurstLength, cachedBurstStart, cachedBurstFps;
     PictureThread::MetaData firstPicMetaData;
     PictureThread::MetaData ullPicMetaData;
-
-    bool displayPostview = selectPostviewSize(pvWidth, pvHeight);
+    // In case ULL gets triggered with standard preview update mode
+    // we display the first postview frame, sync and hide the preview as
+    // with standard single capture. Application needs to handle the ULL
+    // postview out from callbacks if this is the intention.
+    bool displayPostview = selectPostviewSize(pvWidth, pvHeight)
+                           && mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD;
     //cache burst related parameters
     cachedBurstLength = mBurstLength;
     cachedBurstStart = mBurstStart;
@@ -3133,7 +3143,7 @@ status_t ControlThread::captureULLPic()
 
     PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE();
 
-    mCallbacksThread->requestTakePicture(true, false);
+    mCallbacksThread->requestTakePicture(true, false, displayPostview);
 
     stopFaceDetection();
     // Initialize the burst control variables for the ULL burst
@@ -3162,9 +3172,8 @@ status_t ControlThread::captureULLPic()
            fillPicMetaData(firstPicMetaData, false);
            fillPicMetaData(ullPicMetaData, false);
            mULL->addSnapshotMetadata(ullPicMetaData);
-           if (displayPostview) {
-              mPreviewThread->postview(&postviewBuffer, false);
-           }
+           if (displayPostview)
+               mPreviewThread->postview(&postviewBuffer, true);
            /*
             *  Mark the snapshot as skipped.
             *  This is done so that the snapshot buffer is not made available after
