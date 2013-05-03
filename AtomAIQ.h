@@ -265,7 +265,7 @@ public:
     ia_3a_awb_map getAwbMapping();
     // returning an error in the following functions will cause some functions
     // not to be run in ControlThread
-    size_t   getAeMaxNumWindows() { return 0; }
+    size_t   getAeMaxNumWindows() { return 1; }
     size_t   getAfMaxNumWindows() { return MAX_NUM_AF_WINDOW; }
     status_t setAfWindows(const CameraWindow *windows, size_t numWindows);
     status_t getExposureInfo(SensorAeConfig& sensorAeConfig);
