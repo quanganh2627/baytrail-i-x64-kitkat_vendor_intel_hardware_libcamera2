@@ -166,8 +166,8 @@ AtomISP::AtomISP(int cameraId) :
     }
 
     CLEAR(mSnapshotBuffers);
-    CLEAR(mPostviewBuffers);
     CLEAR(mContCaptConfig);
+    mPostviewBuffers.clear();
 }
 
 status_t AtomISP::initDevice()
@@ -3839,6 +3839,7 @@ status_t AtomISP::setSnapshotBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bo
 
     mClientSnapshotBuffersCached = cached;
     mConfig.num_snapshot = numBuffs;
+    mConfig.num_postviews = numBuffs;
     mUsingClientSnapshotBuffers = true;
     for (int i = 0; i < numBuffs; i++) {
         mSnapshotBuffers[i] = buffs->top();
@@ -3886,8 +3887,9 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
         return BAD_INDEX;
     }
     LOG1("Device: %d. Grabbed frame of size: %d", V4L2_POSTVIEW_DEVICE, buf.bytesused);
-    mPostviewBuffers[postviewIndex].capture_timestamp = buf.timestamp;
-    mPostviewBuffers[postviewIndex].frameSequenceNbr = buf.sequence;
+
+    mPostviewBuffers.editItemAt(postviewIndex).capture_timestamp = buf.timestamp;
+    mPostviewBuffers.editItemAt(postviewIndex).frameSequenceNbr = buf.sequence;
 
     if (snapshotIndex != postviewIndex ||
             snapshotIndex >= MAX_V4L2_BUFFERS) {
@@ -3911,9 +3913,9 @@ nopostview:
     snapshotBuf->size = mConfig.snapshot.size;
     snapshotBuf->stride = mConfig.snapshot.stride;
 
-    mPostviewBuffers[postviewIndex].id = postviewIndex;
-    mPostviewBuffers[postviewIndex].frameCounter = mDevices[V4L2_POSTVIEW_DEVICE].frameCounter;
-    mPostviewBuffers[postviewIndex].ispPrivate = mSessionId;
+    mPostviewBuffers.editItemAt(postviewIndex).id = postviewIndex;
+    mPostviewBuffers.editItemAt(postviewIndex).frameCounter = mDevices[V4L2_POSTVIEW_DEVICE].frameCounter;
+    mPostviewBuffers.editItemAt(postviewIndex).ispPrivate = mSessionId;
     *postviewBuf = mPostviewBuffers[postviewIndex];
     postviewBuf->width = mConfig.postview.width;
     postviewBuf->height = mConfig.postview.height;
@@ -4267,7 +4269,6 @@ status_t AtomISP::allocateSnapshotBuffers()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     int allocatedSnaphotBufs = 0;
-    int allocatedPostviewBufs = 0;
     int snapshotSize = mConfig.snapshot.size;
     struct v4l2_buffer_info *vinfo;
 
@@ -4312,28 +4313,30 @@ status_t AtomISP::allocateSnapshotBuffers()
 
     if (needNewPostviewBuffers()) {
             freePostviewBuffers();
+            AtomBuffer postv;
             for (int i = 0; i < mConfig.num_snapshot; i++) {
-                mPostviewBuffers[i].buff = NULL;
-                mCallbacks->allocateMemory(&mPostviewBuffers[i], mConfig.postview.size);
-                if (mPostviewBuffers[i].buff == NULL) {
+                postv.buff = NULL;
+                mCallbacks->allocateMemory(&postv, mConfig.postview.size);
+                if (postv.buff == NULL) {
                     LOGE("Error allocation memory for postview buffers!");
                     status = NO_MEMORY;
                     goto errorFree;
                 }
-                mPostviewBuffers[i].type = ATOM_BUFFER_POSTVIEW;
-                allocatedPostviewBufs++;
+                postv.type = ATOM_BUFFER_POSTVIEW;
+
                 vinfo = &v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[i];
-                vinfo->data = mPostviewBuffers[i].buff->data;
+                vinfo->data = postv.buff->data;
                 markBufferCached(vinfo, true);
-                mPostviewBuffers[i].shared = false;
-                mPostviewBuffers[i].width = mConfig.postview.width;
-                mPostviewBuffers[i].height = mConfig.postview.height;
-                mPostviewBuffers[i].stride = mConfig.postview.stride;
-                mPostviewBuffers[i].size = mConfig.postview.size;
+                postv.shared = false;
+                postv.width = mConfig.postview.width;
+                postv.height = mConfig.postview.height;
+                postv.stride = mConfig.postview.stride;
+                postv.size = mConfig.postview.size;
+                mPostviewBuffers.push(postv);
 
             }
     } else {
-        for (int i = 0; i < mConfig.num_snapshot; i++) {
+        for (size_t i = 0; i < mPostviewBuffers.size(); i++) {
             vinfo = &v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[i];
             vinfo->data = mPostviewBuffers[i].buff->data;
         }
@@ -4348,12 +4351,7 @@ errorFree:
             mSnapshotBuffers[i].buff = NULL;
         }
     }
-    for (int i = 0 ; i < allocatedPostviewBufs; i++) {
-        if (mPostviewBuffers[i].buff != NULL) {
-            mPostviewBuffers[i].buff->release(mPostviewBuffers[i].buff);
-            mPostviewBuffers[i].buff = NULL;
-        }
-    }
+    freePostviewBuffers();
     return status;
 }
 
@@ -4507,13 +4505,14 @@ status_t AtomISP::freeSnapshotBuffers()
 
 status_t AtomISP::freePostviewBuffers()
 {
-    LOG1("@%s", __FUNCTION__);
-    for (int i = 0 ; i < mConfig.num_snapshot; i++) {
+    LOG1("@%s: freeing %d", __FUNCTION__, mPostviewBuffers.size());
+
+    for (size_t i = 0 ; i < mPostviewBuffers.size(); i++) {
         if (mPostviewBuffers[i].buff != NULL) {
             mPostviewBuffers[i].buff->release(mPostviewBuffers[i].buff);
-            mPostviewBuffers[i].buff = NULL;
         }
     }
+    mPostviewBuffers.clear();
     return NO_ERROR;
 }
 
@@ -4533,15 +4532,9 @@ status_t AtomISP::freePostviewBuffers()
  */
 bool AtomISP::needNewPostviewBuffers()
 {
-    int currentBufferCnt = 0;
-    for (int i = 0 ; i < MAX_BURST_BUFFERS; i++) {
-        if (mPostviewBuffers[i].buff != NULL) {
-            currentBufferCnt++;
-        }
-    }
 
-    if ((currentBufferCnt != mConfig.num_snapshot) ||
-         (currentBufferCnt == 0))
+    if ((mPostviewBuffers.size() != (unsigned int)mConfig.num_snapshot) ||
+         mPostviewBuffers.isEmpty())
         return true;
 
     if (mPostviewBuffers[0].size == mConfig.postview.size)

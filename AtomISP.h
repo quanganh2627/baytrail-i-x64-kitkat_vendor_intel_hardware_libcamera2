@@ -416,6 +416,7 @@ private:
         FrameInfo postview;   // postview (thumbnail for capture)
         float fps;            // preview/recording (shared)
         int num_snapshot;     // number of snapshots to take
+        int num_postviews;    // number of allocated postviews
         int zoom;             // zoom value
     };
 
@@ -607,7 +608,7 @@ private:
     bool mStoreMetaDataInBuffers;
 
     AtomBuffer mSnapshotBuffers[MAX_BURST_BUFFERS];
-    AtomBuffer mPostviewBuffers[MAX_BURST_BUFFERS];
+    Vector <AtomBuffer> mPostviewBuffers;
     int mNumPreviewBuffersQueued;
     int mNumRecordingBuffersQueued;
     int mNumCapturegBuffersQueued;
