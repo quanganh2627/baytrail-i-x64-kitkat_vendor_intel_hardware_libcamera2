@@ -266,6 +266,10 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->supportedPreviewFPSRange = atts[1];
     } else if (strcmp(name, "defaultPreviewFPSRange") == 0) {
         pCurrentCam->defaultPreviewFPSRange = atts[1];
+    } else if (strcmp(name, "supportedPreviewUpdateModes") == 0) {
+        pCurrentCam->supportedPreviewUpdateModes = atts[1];
+    } else if (strcmp(name, "defaultPreviewUpdateMode") == 0) {
+        pCurrentCam->defaultPreviewUpdateMode = atts[1];
     } else if (strcmp(name, "hasSlowMotion") == 0) {
         pCurrentCam->hasSlowMotion = ((strcmp(atts[1], "true") == 0) ? true : false);
     }

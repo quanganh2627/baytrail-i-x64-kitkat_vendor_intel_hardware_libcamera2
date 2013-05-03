@@ -219,7 +219,7 @@ void PictureThread::initialize(const CameraParameters &params)
 }
 
 status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuffersNum,
-                                           ISnapshotBufferUser *user)
+                                           int format, ISnapshotBufferUser *user)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
@@ -227,6 +227,7 @@ status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuff
     msg.data.alloc.width = width;
     msg.data.alloc.height = height;
     msg.data.alloc.numBufs = sharedBuffersNum;
+    msg.data.alloc.format = format;
     msg.data.alloc.user = user;
     return mMessageQueue.send(&msg);
 }
@@ -320,6 +321,13 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
     else
         postviewBuf = &msg->postviewBuf;
 
+    // Mirror snapshot and postview buffers if requested
+    if (msg->metaData.saveMirrored) {
+        mirrorBuffer(&msg->snaphotBuf, msg->metaData.currentOrientation, msg->metaData.cameraOrientation);
+        if (postviewBuf)
+            mirrorBuffer(postviewBuf, msg->metaData.currentOrientation, msg->metaData.cameraOrientation);
+    }
+
     status = encodeToJpeg(&msg->snaphotBuf, postviewBuf, &jpegBuf);
     if (status != NO_ERROR) {
         LOGE("Error generating JPEG image!");
@@ -344,19 +352,21 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 
 status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
 {
-    LOG1("@%s: width = %d, height = %d, numBufs = %d",
+    LOG1("@%s: width = %d, height = %d, format = %s, numBufs = %d",
             __FUNCTION__,
             msg->width,
             msg->height,
+            v4l2Fmt2Str(msg->format),
             msg->numBufs);
     status_t status = NO_ERROR;
-    size_t bufferSize = (msg->width * msg->height * 2);
+    size_t bufferSize = frameSize(msg->format, msg->width, msg->height);
 
     /* check if re-allocation is needed */
     if( (mInputBufferArray != NULL) &&
         (mInputBuffers == msg->numBufs) &&
         (mInputBufferArray[0].width == msg->width) &&
-        (mInputBufferArray[0].height == msg->height)) {
+        (mInputBufferArray[0].height == msg->height) &&
+        (mInputBufferArray[0].format == msg->format)) {
         LOG1("Trying to allocate same number of buffers with same resolution... skipping");
         goto skip;
     }
@@ -382,7 +392,7 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
 
     /* re-allocates array of input buffers into mInputBufferArray */
     freeInputBuffers();
-    status = allocateInputBuffers(msg->width, msg->height, msg->numBufs);
+    status = allocateInputBuffers(msg->format, msg->width, msg->height, msg->numBufs);
     if(status != NO_ERROR)
         return status;
 
@@ -401,14 +411,15 @@ skip:
     return NO_ERROR;
 }
 
-status_t PictureThread::allocateInputBuffers(int width, int height, int numBufs)
+status_t PictureThread::allocateInputBuffers(int format, int width, int height, int numBufs)
 {
     LOG1("@%s size (%dx%d) num %d", __FUNCTION__, width, height, numBufs);
     // temporary workaround until CSS supports buffers with different strides
     // until then we need to align all buffers to display subsystem stride
     // requirements.... even the snapshot buffers that do not go to screen
-    int stride = SGXandDisplayStride(width);
-    size_t bufferSize = frameSize(V4L2_PIX_FMT_NV12, stride, height);
+    int stride = SGXandDisplayStride(format, width);
+    LOG1("@%s stride %d", __FUNCTION__, stride);
+    size_t bufferSize = frameSize(format, stride, height);
 
     if(numBufs == 0)
         return NO_ERROR;
@@ -429,7 +440,7 @@ status_t PictureThread::allocateInputBuffers(int width, int height, int numBufs)
         mInputBufferArray[i].width = width;
         mInputBufferArray[i].height = height;
         mInputBufferArray[i].stride = stride;
-        mInputBufferArray[i].format = V4L2_PIX_FMT_NV12;
+        mInputBufferArray[i].format = format;
         mInputBufferArray[i].size = bufferSize;
         mInputBufferArray[i].type = ATOM_BUFFER_SNAPSHOT;
         mInputBufferArray[i].status = FRAME_STATUS_OK;
@@ -825,7 +836,7 @@ status_t PictureThread::completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBu
     status_t status= NO_ERROR;
     nsecs_t endTime;
     JpegCompressor::OutputBuffer outBuf;
-    int mainSize;
+    int mainSize = 0;
     int finalSize = 0;
 
     endTime = systemTime();

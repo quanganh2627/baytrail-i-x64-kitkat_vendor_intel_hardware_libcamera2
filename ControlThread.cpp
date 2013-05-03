@@ -44,6 +44,11 @@ namespace android {
  */
 #define NUM_WARMUP_FRAMES 4
 /*
+ * RAW_CAPTURE_SKIP: Number of frames we skip from capture device before we dump
+ * a raw image.
+ */
+#define RAW_CAPTURE_SKIP  2
+/*
  * NUM_BURST_BUFFERS: used for burst captures
  */
 #define NUM_BURST_BUFFERS 10
@@ -129,12 +134,17 @@ ControlThread::ControlThread(int cameraId) :
     ,mStillCaptureInProgress(false)
     ,mPreviewUpdateMode(IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD)
     ,mAllocationRequestSent(false)
+    ,mSaveMirrored(false)
+    ,mCurrentOrientation(0)
+    ,mRecordingOrientation(0)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
     // This is a workaround for an issue with Thread reference counting.
 
     LOG1("@%s", __FUNCTION__);
+
+    PlatformData::setActiveCameraId(mCameraId);
 }
 
 ControlThread::~ControlThread()
@@ -149,6 +159,8 @@ ControlThread::~ControlThread()
         mMessageQueue.receive(&msg);
         LOGE(" Id of first message is %d",msg.id);
     }
+
+    PlatformData::freeActiveCameraId(mCameraId);
 }
 
 status_t ControlThread::init()
@@ -156,6 +168,7 @@ status_t ControlThread::init()
     LOG1("@%s: cameraId = %d", __FUNCTION__, mCameraId);
 
     status_t status = UNKNOWN_ERROR;
+    CameraDump::setDumpDataFlag();
 
     mISP = new AtomISP(mCameraId);
     if (mISP == NULL) {
@@ -198,7 +211,6 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    CameraDump::setDumpDataFlag();
     mCameraDump = CameraDump::getInstance();
     if (mCameraDump == NULL) {
         LOGE("error creating CameraDump");
@@ -398,6 +410,11 @@ void ControlThread::deinit()
         mBracketManager.clear();
     }
 
+    if (mSensorThread != NULL) {
+        mSensorThread->requestExitAndWait();
+        mSensorThread.clear();
+    }
+
     if (mPostProcThread != NULL) {
         mPostProcThread->requestExitAndWait();
         mPostProcThread.clear();
@@ -413,19 +430,14 @@ void ControlThread::deinit()
         mPreviewThread.clear();
     }
 
-    if (mPictureThread != NULL) {
-        mPictureThread->requestExitAndWait();
-        mPictureThread.clear();
-    }
-
-    if (mCallbacksThread != NULL) {
-        mCallbacksThread->requestExitAndWait();
-        mCallbacksThread.clear();
-    }
-
     if (mVideoThread != NULL) {
         mVideoThread->requestExitAndWait();
         mVideoThread.clear();
+    }
+
+    if (mPictureThread != NULL) {
+        mPictureThread->requestExitAndWait();
+        mPictureThread.clear();
     }
 
     if (m3AThread != NULL) {
@@ -433,9 +445,9 @@ void ControlThread::deinit()
         m3AThread.clear();
     }
 
-    if (mSensorThread != NULL) {
-        mSensorThread->requestExitAndWait();
-        mSensorThread.clear();
+    if (mCallbacksThread != NULL) {
+        mCallbacksThread->requestExitAndWait();
+        mCallbacksThread.clear();
     }
 
     if (mParamCache != NULL)
@@ -449,15 +461,15 @@ void ControlThread::deinit()
         }
     }
 
+    if (mCP != NULL) {
+        delete mCP;
+        mCP = NULL;
+    }
+
     if (mISP != NULL) {
         delete mISP;
         mISP = NULL;
         PERFORMANCE_TRACES_BREAKDOWN_STEP("DeleteISP");
-    }
-
-    if (mCP != NULL) {
-        delete mCP;
-        mCP = NULL;
     }
 
     if (mULL != NULL) {
@@ -1080,6 +1092,10 @@ int ControlThread::continuousBurstSkip(double targetFps) const
 status_t ControlThread::configureContinuousRingBuffer()
 {
     LOG2("@%s", __FUNCTION__);
+    bool capturePriority = true;
+    if (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_CONTINUOUS)
+        capturePriority = false;
+
     AtomISP::ContinuousCaptureConfig cfg;
     if (mULL->isActive())
         cfg.numCaptures = mULL->MAX_INPUT_BUFFERS;
@@ -1097,7 +1113,7 @@ status_t ControlThread::configureContinuousRingBuffer()
                                                 cfg.offset,
                                                 cfg.skip);
 
-    return mISP->prepareOfflineCapture(cfg);
+    return mISP->prepareOfflineCapture(cfg, capturePriority);
 }
 
 /**
@@ -1235,9 +1251,7 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
     // any ISP firmware.
     int picWidth = 0, picHeight = 0;
     params.getPictureSize(&picWidth, &picHeight);
-    if ((strcmp(PlatformData::getBoardName(), "saltbay") != 0 &&
-         strcmp(PlatformData::getBoardName(), "bodegabay") != 0)
-        && picWidth <= 1280 && picHeight <= 768) {
+    if (picWidth <= 1280 && picHeight <= 768) {
         // this is a limitation of current CSS stack
         LOG1("@%s: 1M or smaller picture-size, disabling continuous mode", __FUNCTION__);
         return STATE_PREVIEW_STILL;
@@ -1278,6 +1292,11 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         }
     }
 
+    if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
+        LOG1("@%s: Raw dump enabled, disabling continuous mode", __FUNCTION__);
+        return STATE_PREVIEW_STILL;
+    }
+
     LOG1("@%s: Selecting continuous still preview mode", __FUNCTION__);
     return STATE_CONTINUOUS_CAPTURE;
 }
@@ -1300,6 +1319,12 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     }
 
     PerformanceTraces::SwitchCameras::called(videoMode);
+
+    // ISP can be de-initialized during ErrorPreview notification.
+    // It is there necessary to check if the ISP is still Initialized everytime we restart it.
+    if (!mISP->isDeviceInitialized())
+        mISP->init();
+
     if (videoMode) {
         LOG1("Starting preview in video mode");
         state = STATE_PREVIEW_VIDEO;
@@ -1474,10 +1499,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mISP->detachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
     }
 
-    /* Now that preview is started let's send the asynchronous msg to PictureThread
-     * to start the allocation of snapshot buffers.
-     */
-    allocateSnapshotBuffers(videoMode);
     return status;
 }
 
@@ -1903,6 +1924,11 @@ status_t ControlThread::handleMessageStartRecording()
     mParameters.set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES, sizes);
     updateParameterCache();
 
+    // Store device orientation at the start of video recording
+    if (mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT)) {
+        mRecordingOrientation = mCurrentOrientation;
+    }
+
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_START_RECORDING, status);
     return status;
@@ -2024,6 +2050,12 @@ status_t ControlThread::handleMessagePanoramaCaptureTrigger()
         Message msg;
         msg.id = MESSAGE_ID_START_PREVIEW;
         mMessageQueue.send(&msg);
+    } else {
+        // recycle the buffer as if the picture would be done
+        MessagePicture picMsg;
+        picMsg.postviewBuf = postviewBuffer;
+        picMsg.snapshotBuf = snapshotBuffer;
+        handleMessagePictureDone(&picMsg);
     }
 
     return status;
@@ -2223,6 +2255,13 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
     metaData.aeConfig = aeConfig;
     metaData.ia3AMkNote = aaaMkNote;
     metaData.atomispMkNote = atomispMkNote;
+
+    // Request mirroring for snapshot and postview buffers (only for front camera)
+    // Do mirroring only in still capture mode, video snapshots are mirrored in dequeueRecording()
+    metaData.saveMirrored = mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT) &&
+                            (mState != STATE_RECORDING);
+    metaData.cameraOrientation = PlatformData::cameraOrientation(mCameraId);
+    metaData.currentOrientation = mCurrentOrientation;
 }
 
 status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffer &postviewBuffer)
@@ -2236,15 +2275,7 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     postviewBuffer.owner = NULL;
     stopFaceDetection();
 
-    if (mState == STATE_CONTINUOUS_CAPTURE) {
-        assert(mBurstLength <= 1);
-        AtomISP::ContinuousCaptureConfig config;
-        config.numCaptures = 1;
-        config.offset = 0;
-        config.skip = 0,
-        mISP->startOfflineCapture(config);
-    }
-    else {
+    if (mState != STATE_CONTINUOUS_CAPTURE) {
         status = stopPreviewCore();
         if (status != NO_ERROR) {
             LOGE("Error stopping preview!");
@@ -2269,6 +2300,8 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     thumbnailHeight= mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
     mPanoramaThread->setThumbnailSize(thumbnailWidth, thumbnailHeight);
 
+    setExternalSnapshotBuffers(format,width,height);
+
     if (mState != STATE_CONTINUOUS_CAPTURE) {
         // Configure and start the ISP
         mISP->setSnapshotFrameFormat(width, height, format);
@@ -2292,6 +2325,20 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
             LOGE("Error starting the ISP driver in CAPTURE mode!");
             return status;
         }
+    } else {
+        /* Necessary to update the buffer pools before we start to capture */
+        status = mISP->allocateBuffers(MODE_CAPTURE);
+        if (status != NO_ERROR) {
+            LOGE("Error allocate buffers in ISP");
+            return status;
+        }
+
+        assert(mBurstLength <= 1);
+        AtomISP::ContinuousCaptureConfig config;
+        config.numCaptures = 1;
+        config.offset = 0;
+        config.skip = 0,
+        mISP->startOfflineCapture(config);
     }
 
     /*
@@ -2669,11 +2716,18 @@ status_t ControlThread::captureStillPic()
     }
 
     /*
-     *  If the current camera does not have 3A, then we should skip the first
-     *  frames in order to allow the sensor to warm up.
+     *  Pre-capture skip.
+     *  we can skip frames for 2 reasons:
+     *  - If the current camera does not have 3A, then we should skip the first
+     *    frames in order to allow the sensor to warm up.
+     *  - If we are capturing a RAW image
      */
-    if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) {
-        if ((status = skipFrames(NUM_WARMUP_FRAMES)) != NO_ERROR) {
+    if ((PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) ||
+         CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
+
+        int framesToSkip = CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW) ?
+                         RAW_CAPTURE_SKIP:NUM_WARMUP_FRAMES;
+        if ((status = skipFrames(framesToSkip)) != NO_ERROR) {
             LOGE("Error skipping warm-up frames!");
             return status;
         }
@@ -2759,6 +2813,15 @@ status_t ControlThread::captureStillPic()
         mISP->setFlashIndicator(0);
     }
 
+    // Do postview for preview-keep-alive feature synchronously before the possible mirroring.
+    // Otherwise mirrored image will be shown in postview.
+    if (displayPostview || syncJpegCbWithPostview) {
+        // We sync with single capture, where we also need preview to stall.
+        // So, hide preview after postview when syncJpegCbWithPostview is true
+        bool syncPostview = mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT);
+        mPreviewThread->postview(displayPostview?&postviewBuffer:NULL, syncJpegCbWithPostview, syncPostview);
+    }
+
     // Do jpeg encoding in other cases except HDR. Encoding HDR will be done later.
     bool doEncode = false;
     if (!mHdr.enabled) {
@@ -2777,12 +2840,6 @@ status_t ControlThread::captureStillPic()
 
     if (mState == STATE_CONTINUOUS_CAPTURE && mBurstLength <= 1)
         stopOfflineCapture();
-
-    if (displayPostview || syncJpegCbWithPostview) {
-        // We sync with single capture, where we also need preview to stall.
-        // So, hide preview after postview when syncJpegCbWithPostview is true
-        mPreviewThread->postview(displayPostview?&postviewBuffer:NULL, syncJpegCbWithPostview);
-    }
 
     if (mState == STATE_CONTINUOUS_CAPTURE) {
         // Continuous mode will keep running keeping 3A active but
@@ -3392,6 +3449,11 @@ status_t ControlThread::handleMessagePreviewStarted()
     *
     */
 
+    /* Now that preview is started let's send the asynchronous msg to PictureThread
+     * to start the allocation of snapshot buffers.
+     */
+    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
+    allocateSnapshotBuffers(videoMode);
     return NO_ERROR;
 }
 
@@ -3609,7 +3671,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
 
     int minFPS, maxFPS;
     params->getPreviewFpsRange(&minFPS, &maxFPS);
-    if (minFPS == maxFPS || minFPS > maxFPS) {
+    if (minFPS > maxFPS || minFPS < 0) {
         LOGE("invalid fps range [%d,%d]", minFPS, maxFPS);
         return BAD_VALUE;
     }
@@ -3708,12 +3770,14 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
-    // FLASH
-    const char* flashMode = params->get(CameraParameters::KEY_FLASH_MODE);
-    const char* flashModes = params->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
-    if (!validateString(flashMode, flashModes)) {
-        LOGE("bad flash mode");
-        return BAD_VALUE;
+    // FLASH. About the checking: just the back camera support flash
+    if ((mCameraId == 0) && PlatformData::supportsBackFlash()) {
+        const char* flashMode = params->get(CameraParameters::KEY_FLASH_MODE);
+        const char* flashModes = params->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
+        if (!validateString(flashMode, flashModes)) {
+            LOGE("bad flash mode");
+            return BAD_VALUE;
+        }
     }
 
     // SCENE MODE
@@ -4018,6 +4082,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         status = processParamAutoExposureMode(oldParams, newParams);
     }
 
+    if (status == NO_ERROR) {
+        // save mirrored image (for front camera)
+        status = processParamMirroring(oldParams, newParams);
+    }
+
     if (m3AControls->isIntel3A()) {
         if (status == NO_ERROR) {
             // ae lock
@@ -4093,6 +4162,7 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
     int picWidth, picHeight;
     unsigned int bufCount = MAX(mBurstLength, mISP->getContinuousCaptureNumber()+1);
     mParameters.getPictureSize(&picWidth, &picHeight);
+    int format = mISP->getSnapshotPixelFormat();
 
     if(videoMode){
        /**
@@ -4126,7 +4196,7 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
 
     mAllocatedSnapshotBuffers.clear();
     mAllocationRequestSent = true;
-    status = mPictureThread->allocSharedBuffers(picWidth, picHeight, bufCount,
+    status = mPictureThread->allocSharedBuffers(picWidth, picHeight, bufCount, format,
                                                 (ISnapshotBufferUser*)this);
     if (status != NO_ERROR) {
        LOGE("Could not pre-allocate picture buffers!");
@@ -4537,9 +4607,21 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         if(newVal == "on") {
             mHdr.enabled = true;
             mHdr.bracketMode = BRACKET_EXPOSURE;
-            mHdr.savedBracketMode = mBracketManager->getBracketMode();
             mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
+            status = mCP->initializeHDR(newWidth, newHeight);
+            if (status == NO_ERROR) {
+                mHdr.enabled = true;
+                mHdr.bracketMode = BRACKET_EXPOSURE;
+                mHdr.savedBracketMode = mBracketManager->getBracketMode();
+                mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
+            } else {
+                LOGE("HDR buffer allocation failed");
+            }
         } else if(newVal == "off") {
+            status = mCP->uninitializeHDR();
+            if (status != NO_ERROR) {
+                LOGE("HDR buffer release failed");
+            }
             mHdr.enabled = false;
             mBracketManager->setBracketMode(mHdr.savedBracketMode);
         } else {
@@ -4548,6 +4630,21 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         }
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_IMAGING, newVal.string());
+        }
+    } else {
+        // Re-allocate buffers if resolution changed and HDR was ON
+        const char* o = oldParams->get(IntelCameraParameters::KEY_HDR_IMAGING);
+        String8 oldVal (o, (o == NULL ? 0 : strlen(o)));
+        if(oldVal == "on" && (newWidth != oldWidth || newHeight != oldHeight)) {
+            status = mCP->uninitializeHDR();
+            if (status == NO_ERROR) {
+                status = mCP->initializeHDR(newWidth, newHeight);
+                if (status != NO_ERROR) {
+                    LOGE("HDR buffer allocation failed");
+                }
+            } else {
+                LOGE("HDR buffer release failed");
+            }
         }
     }
 
@@ -4676,137 +4773,151 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
         SceneMode sceneMode = CAM_AE_SCENE_MODE_AUTO;
         if (newScene == CameraParameters::SCENE_MODE_PORTRAIT) {
             sceneMode = CAM_AE_SCENE_MODE_PORTRAIT;
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
-            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
-            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+            if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
+                newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+                newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
+                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
+                newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
+            }
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
                 selectFlashMode(newParams, true);
             }
-            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
-            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
-            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
-            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else if (newScene == CameraParameters::SCENE_MODE_SPORTS || newScene == CameraParameters::SCENE_MODE_PARTY) {
             sceneMode = (newScene == CameraParameters::SCENE_MODE_SPORTS) ? CAM_AE_SCENE_MODE_SPORTS : CAM_AE_SCENE_MODE_PARTY;
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
-            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
-            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
+                newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
+                newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
+            }
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
                 selectFlashMode(newParams, true);
             }
-            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
-            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
-            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else if (newScene == CameraParameters::SCENE_MODE_LANDSCAPE || newScene == CameraParameters::SCENE_MODE_SUNSET) {
             sceneMode = (newScene == CameraParameters::SCENE_MODE_LANDSCAPE) ? CAM_AE_SCENE_MODE_LANDSCAPE : CAM_AE_SCENE_MODE_SUNSET;
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
-            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
-            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
+                newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_OUTDOOR);
+                newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
+                newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
+            }
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
                 selectFlashMode(newParams, true);
             }
-            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_OUTDOOR);
-            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
-            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
-            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else if (newScene == CameraParameters::SCENE_MODE_NIGHT) {
             sceneMode = CAM_AE_SCENE_MODE_NIGHT;
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
-            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
-            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
+                newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true");
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
+                newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::TRUE);
+            }
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
                 selectFlashMode(newParams, true);
             }
-            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true");
-            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
-            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::TRUE);
         } else if (newScene == CameraParameters::SCENE_MODE_NIGHT_PORTRAIT) {
             sceneMode = CAM_AE_SCENE_MODE_NIGHT_PORTRAIT;
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
-            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
-            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
+                newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true");
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
+                newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::TRUE);
+            }
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("on");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_ON);
                 selectFlashMode(newParams, true);
             }
-            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true");
-            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
-            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::TRUE);
         } else if (newScene == CameraParameters::SCENE_MODE_FIREWORKS) {
             sceneMode = CAM_AE_SCENE_MODE_FIREWORKS;
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
-            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
-            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
+                newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
+                newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
+            }
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
                 selectFlashMode(newParams, true);
             }
-            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
-            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
-            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else if (newScene == CameraParameters::SCENE_MODE_BARCODE) {
             sceneMode = CAM_AE_SCENE_MODE_TEXT;
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_MACRO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "macro,continuous-picture");
-            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+            if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_MACRO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "macro,continuous-picture");
+                newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+                newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
+                newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
+            }
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
                 selectFlashMode(newParams, true);
             }
-            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
-            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
-            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else {
             if (newScene == CameraParameters::SCENE_MODE_CANDLELIGHT) {
                 sceneMode = CAM_AE_SCENE_MODE_CANDLELIGHT;
@@ -4823,24 +4934,26 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 sceneMode = CAM_AE_SCENE_MODE_AUTO;
             }
 
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,infinity,fixed,macro,continuous-video,continuous-picture");
-            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, "off,50hz,60hz,auto");
-            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+            if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,infinity,fixed,macro,continuous-video,continuous-picture");
+                newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, "off,50hz,60hz,auto");
+                newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center,spot");
+                newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true,false");
+                newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
+            }
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
                 selectFlashMode(newParams, true);
             }
-            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center,spot");
-            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
-            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true,false");
-            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         }
 
         m3AControls->setAeSceneMode(sceneMode);
@@ -5508,6 +5621,27 @@ status_t ControlThread::processParamExifSoftware(const CameraParameters *oldPara
     if (!newVal.isEmpty()) {
         LOG1("Got new Exif software: %s", newVal.string());
         mPictureThread->setExifSoftware(newVal);
+    }
+
+    return NO_ERROR;
+}
+
+status_t ControlThread::processParamMirroring(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_SAVE_MIRRORED);
+
+    if (!newVal.isEmpty()) {
+        if (newVal == CameraParameters::TRUE) {
+            mSaveMirrored = true;
+            mCurrentOrientation = SensorThread::getInstance()->registerOrientationListener(this);
+         } else {
+            mSaveMirrored = false;
+            SensorThread::getInstance()->unRegisterOrientationListener(this);
+        }
+        LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_SAVE_MIRRORED, newVal.string());
     }
 
     return NO_ERROR;
@@ -6330,8 +6464,6 @@ status_t ControlThread::hdrCompose()
         return status;
     }
 
-    status = mCP->initializeHDR(mHdr.ciBufOut.ciMainBuf->width,
-                                mHdr.ciBufOut.ciMainBuf->height);
     if (status != NO_ERROR) {
         hdrPicMetaData.free(m3AControls);
         LOGE("HDR buffer allocation failed");
@@ -6363,8 +6495,6 @@ status_t ControlThread::hdrCompose()
 
     if (doEncode == false)
         hdrPicMetaData.free(m3AControls);
-
-    mCP->uninitializeHDR();
 
     /**
      * TODO: to have a cleaner buffer recycle we should return the snapshot buffers
@@ -6403,37 +6533,35 @@ void ControlThread::setExternalSnapshotBuffers(int format, int width, int height
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if (format == V4L2_PIX_FMT_NV12) {
-
-        if (mAllocatedSnapshotBuffers.isEmpty()) {
-            LOG1("%s: snapshot buffers have  not arrived yet... waiting",__FUNCTION__);
-            waitForAllocatedSnapshotBuffers();
-            LOG1("%s: Got them (%d)!",__FUNCTION__ , mAllocatedSnapshotBuffers.size());
+    if (mAllocatedSnapshotBuffers.isEmpty()) {
+        LOG1("%s: snapshot buffers have  not arrived yet... waiting",__FUNCTION__);
+        if (mAllocationRequestSent == false) {
+            LOGW("snapshot allocation request was not send. This is a sign of unoptimal API use");
+            allocateSnapshotBuffers(false);
         }
-        unsigned int numberOfSnapshots = MAX(1,mBurstLength);
-        LOG1("Required Buffers for snapshot %d: Available %d",numberOfSnapshots,  mAllocatedSnapshotBuffers.size());
-
-        if (numberOfSnapshots <= mAvailableSnapshotBuffers.size()) {
-            if ((mAllocatedSnapshotBuffers[0].width != width) ||
-                (mAllocatedSnapshotBuffers[0].height != height)) {
-                LOGE("We got allocated snapshot buffers of wrong resolution (%dx%d), "
-                      "this should not happen!! we wanted (%dx%d)",
-                      mAllocatedSnapshotBuffers[0].width,
-                      mAllocatedSnapshotBuffers[0].height,
-                      width, height);
-            }
-            bool cached = false;
-            status = mISP->setSnapshotBuffers(&mAvailableSnapshotBuffers, numberOfSnapshots, cached  );
-        } else {
-            LOGE("Not enough available buffers for this request. This should not happen");
-        }
-
-    } else {
-        LOG1("Using internal buffers for snapshot");
-        // TODO: we should be able to get allocated buffers for any format.
-        // Make sure that we pass the format to PictureThread,
-        // then we can remove this.
+        waitForAllocatedSnapshotBuffers();
+        LOG1("%s: Got them (%d)!",__FUNCTION__ , mAllocatedSnapshotBuffers.size());
     }
+    unsigned int numberOfSnapshots = MAX(1,mBurstLength);
+    LOG1("Required Buffers for snapshot %d: Available %d Allocated: %d", numberOfSnapshots,
+                                                                         mAvailableSnapshotBuffers.size(),
+                                                                         mAllocatedSnapshotBuffers.size());
+
+    if (numberOfSnapshots <= mAvailableSnapshotBuffers.size()) {
+        if ((mAllocatedSnapshotBuffers[0].width != width) ||
+            (mAllocatedSnapshotBuffers[0].height != height)) {
+            LOGE("We got allocated snapshot buffers of wrong resolution (%dx%d), "
+                  "this should not happen!! we wanted (%dx%d)",
+                  mAllocatedSnapshotBuffers[0].width,
+                  mAllocatedSnapshotBuffers[0].height,
+                  width, height);
+        }
+        bool cached = false;
+        status = mISP->setSnapshotBuffers(&mAvailableSnapshotBuffers, numberOfSnapshots, cached  );
+    } else {
+        LOGE("Not enough available buffers for this request. This should not happen");
+    }
+
 }
 
 /**
@@ -6839,6 +6967,9 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE:
             status = handleMessagePostCaptureProcessingDone(&msg.data.postCapture);
+
+        case MESSAGE_ID_SET_ORIENTATION:
+            status = handleMessageSetOrientation(&msg.data.orientation);
             break;
 
         case MESSAGE_ID_SNAPSHOT_ALLOCATED:
@@ -6967,6 +7098,13 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
                 if (mISP->getPreviewTooBigForVFPP()) {
                     memcpy(buff.dataPtr, msg->previewFrame.dataPtr, msg->previewFrame.size);
                 }
+
+                // Mirror the recording buffer if mirroring is enabled (only for front camera)
+                // TODO: this should be moved into VideoThread
+                if (mSaveMirrored && PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT) {
+                    mirrorBuffer(&buff, mRecordingOrientation, PlatformData::cameraOrientation(mCameraId));
+                }
+
                 if (mVideoSnapshotrequested && mVideoSnapshotBuffers.size() < 3) {
                     mVideoSnapshotrequested--;
                     encodeVideoSnapshot(buff);
@@ -7067,6 +7205,22 @@ status_t ControlThread::requestExitAndWait()
 
     // propagate call to base class
     return Thread::requestExitAndWait();
+}
+
+void ControlThread::orientationChanged(int orientation)
+{
+    LOG1("@%s: orientation = %d", __FUNCTION__, orientation);
+    Message msg;
+    msg.id = MESSAGE_ID_SET_ORIENTATION;
+    msg.data.orientation.value = orientation;
+    mMessageQueue.send(&msg);
+}
+
+status_t ControlThread::handleMessageSetOrientation(MessageOrientation *msg)
+{
+    LOG1("@%s: orientation = %d", __FUNCTION__, msg->value);
+    mCurrentOrientation = msg->value;
+    return NO_ERROR;
 }
 
 } // namespace android

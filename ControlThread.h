@@ -45,6 +45,7 @@
 #include "I3AControls.h"
 #include "IAtomIspObserver.h"
 #include "PictureThread.h"
+#include "SensorThread.h"
 
 namespace android {
 
@@ -64,7 +65,8 @@ class ControlThread :
     public IAtomIspObserver,
     public IPostCaptureProcessObserver,
     public IBufferOwner,
-    public ISnapshotBufferUser {
+    public ISnapshotBufferUser,
+    public IOrientationListener {
 
 // constructor destructor
 public:
@@ -138,6 +140,9 @@ public:
     // Implementation of ISnapshotBufferUser interface
     status_t snapshotsAllocated(AtomBuffer *bufs, int numBufs);
 
+    // IOrientationListener
+    void orientationChanged(int orientation);
+
 // callback methods
 private:
     virtual void previewBufferCallback(AtomBuffer *buff, ICallbackPreview::CallbackType t);
@@ -196,6 +201,7 @@ private:
         MESSAGE_ID_DEQUEUE_RECORDING,
         MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE,
         MESSAGE_ID_SNAPSHOT_ALLOCATED,
+        MESSAGE_ID_SET_ORIENTATION,
 
         // timeout handler
         MESSAGE_ID_TIMEOUT,
@@ -277,6 +283,10 @@ private:
         int numBuf;
     };
 
+    struct MessageOrientation {
+        int value;
+    };
+
     // union of all message data
     union MessageData {
 
@@ -320,6 +330,9 @@ private:
 
         // MESSAGE_ID_SNAPSHOT_ALLOCATED
         MessageSnapshotAllocated snap;
+
+        // MESSAGE_ID_SET_ORIENTATION
+        MessageOrientation  orientation;
 
         // MESSAGE_ID_EXIT
         MessageExit exit;
@@ -445,6 +458,7 @@ private:
     status_t handleMessageTimeout();
     status_t handleMessagePostCaptureProcessingDone(MessagePostCaptureProcDone *msg);
     status_t handleMessageSnapshotAllocated(MessageSnapshotAllocated *msg);
+    status_t handleMessageSetOrientation(MessageOrientation *msg);
 
     status_t startFaceDetection();
     status_t stopFaceDetection(bool wait=false);
@@ -570,6 +584,10 @@ private:
 
     status_t processParamSlowMotionRate(const CameraParameters *oldParams,
         CameraParameters *newParams);
+
+    status_t processParamMirroring(const CameraParameters *oldParams,
+        CameraParameters *newParams);
+
     void processParamFileInject(CameraParameters *newParams);
 
     void convertAfWindows(CameraWindow* focusWindows, size_t winCount);
@@ -749,6 +767,11 @@ private:
                                                       set to false when request completes
                                                   */
 
+    bool mSaveMirrored;
+    int mCurrentOrientation;        /*!< Current orientation of the device. Used in case the image is
+                                         saved as mirrored. The image will be mirrored based on the
+                                         camera sensor orientation and device orientation. */
+    int mRecordingOrientation;      /*!< Device orientation at the start of video recording. */
 }; // class ControlThread
 
 }; // namespace android

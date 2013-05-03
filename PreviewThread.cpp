@@ -376,7 +376,7 @@ bool PreviewThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
     return false;
 }
 
-status_t PreviewThread::postview(AtomBuffer *buff, bool hidePreview)
+status_t PreviewThread::postview(AtomBuffer *buff, bool hidePreview, bool synchronous)
 {
     LOG2("@%s", __FUNCTION__);
     Message msg;
@@ -386,7 +386,11 @@ status_t PreviewThread::postview(AtomBuffer *buff, bool hidePreview)
     else
         msg.data.preview.buff.status = FRAME_STATUS_SKIPPED;
     msg.data.preview.hide = hidePreview;
-    return mMessageQueue.send(&msg);
+    msg.data.preview.synchronous = synchronous;
+    if (!synchronous)
+        return mMessageQueue.send(&msg);
+    else
+        return mMessageQueue.send(&msg, MESSAGE_ID_POSTVIEW);
 }
 
 status_t PreviewThread::flushBuffers()
@@ -689,12 +693,32 @@ void PreviewThread::allocateLocalPreviewBuf(void)
 
 
 /**
- * stream-time dequeueing of buffers from preview_window_ops
+ * stream-time dequeuing of buffers from preview_window_ops
+ *
  */
 PreviewThread::GfxAtomBuffer* PreviewThread::dequeueFromWindow()
 {
     GfxAtomBuffer *ret = NULL;
     int dq_retries = GFX_DEQUEUE_RETRY_COUNT;
+    void *dst;
+    int w,h;
+    int lockMode;
+
+    /**
+     * Note: selected lock mode relies that if buffers are shared or not
+     *
+     * if they are shared with ControlThread then the ISP writes into the buffers
+     * and Previewthread and PostprocThread read from it.
+     *
+     * if they are not shared then CPU is copying into the buffers in the PreviewThread
+     * and nobody is reading, since these buffers are not passed to PostProcThread
+     */
+    if (mSharedMode)
+        lockMode = GRALLOC_USAGE_SW_READ_OFTEN | GRALLOC_USAGE_SW_WRITE_NEVER;
+    else
+        lockMode = GRALLOC_USAGE_SW_READ_NEVER | GRALLOC_USAGE_SW_WRITE_OFTEN;
+
+    GraphicBufferMapper &mapper = GraphicBufferMapper::get();
 
     for (;dq_retries > 0 && ret == NULL; dq_retries--) {
         // mMinUndequeued is a constraint set by native window and
@@ -717,13 +741,8 @@ PreviewThread::GfxAtomBuffer* PreviewThread::dequeueFromWindow()
                         mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
                     } else {
                         // stream-time fetching until target buffer count
-                        void *dst;
                         AtomBuffer tmpBuf;
-                        GraphicBufferMapper &mapper = GraphicBufferMapper::get();
-                        // Note: selected lock mode relies that if buffers were not
-                        // prefetched, we end up in full frame memcpy path
-                        int lockMode = GRALLOC_USAGE_SW_READ_NEVER | GRALLOC_USAGE_SW_WRITE_OFTEN;
-                        int w,h;
+
                         getEffectiveDimensions(&w,&h);
                         const Rect bounds(w, h);
                         tmpBuf.buff = NULL;     // We do not allocate a normal camera_memory_t
@@ -753,10 +772,18 @@ PreviewThread::GfxAtomBuffer* PreviewThread::dequeueFromWindow()
                     }
                 } else {
                     mBuffersInWindow--;
-                    ret->owner = OWNER_PREVIEWTHREAD;
-                    if (ret->buffer.id >= MAX_NUMBER_PREVIEW_GFX_BUFFERS) {
-                        LOG2("Received one of reserved buffers from Gfx, dequeueing another one");
+                    getEffectiveDimensions(&w,&h);
+                    const Rect bounds(w, h);
+                    if (mapper.lock(*buf, lockMode, bounds, &dst) != NO_ERROR) {
+                        LOGE("Failed to lock GraphicBufferMapper!");
+                        mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
                         ret = NULL;
+                    } else {
+                        ret->owner = OWNER_PREVIEWTHREAD;
+                        if (ret->buffer.id >= MAX_NUMBER_PREVIEW_GFX_BUFFERS) {
+                            LOG2("Received one of reserved buffers from Gfx, dequeueing another one");
+                            ret = NULL;
+                        }
                     }
                 }
             }
@@ -887,6 +914,7 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     bool passedToGfx = false;
+    GraphicBufferMapper &mapper = GraphicBufferMapper::get();
     LOG2("Buff: id = %d, data = %p",
             msg->buff.id,
             msg->buff.dataPtr);
@@ -934,6 +962,7 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
         }
 
         if (bufToEnqueue != NULL) {
+            mapper.unlock(*(bufToEnqueue->gfxBufferHandle));
             if ((err = mPreviewWindow->enqueue_buffer(mPreviewWindow,
                             bufToEnqueue->gfxBufferHandle)) != 0) {
                 LOGE("Surface::queueBuffer returned error %d", err);
@@ -959,14 +988,15 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
         case V4L2_PIX_FMT_YUV420:
             if (PlatformData::getPreviewFormat() == V4L2_PIX_FMT_NV12)
                 align16ConvertNV12ToYU12(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
-            //TBD for other preview format, not supported yet
+            else
+                convertYV12ToYU12(mPreviewWidth, mPreviewHeight, msg->buff.stride, mPreviewWidth, src, mPreviewBuf.buff->data);
             break;
 
         case V4L2_PIX_FMT_NV21: // you need to do this for the first time
             if (PlatformData::getPreviewFormat() == V4L2_PIX_FMT_NV12)
                 trimConvertNV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
             else
-                align16ConvertYV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+                convertYV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, mPreviewWidth, src, mPreviewBuf.buff->data);
             break;
 
         case V4L2_PIX_FMT_RGB565:
@@ -1285,12 +1315,12 @@ status_t PreviewThread::freeGfxPreviewBuffers() {
     if ((mPreviewWindow != NULL) && (!mPreviewBuffers.isEmpty())) {
 
         for( i = 0; i < mPreviewBuffers.size(); i++) {
-            res = mapper.unlock(*(mPreviewBuffers[i].gfxBufferHandle));
-            if (res != 0) {
-                LOGW("%s: unlocking gfx buffer %d failed!", __FUNCTION__, i);
-            }
-
             if (mPreviewBuffers[i].owner != OWNER_WINDOW) {
+
+                res = mapper.unlock(*(mPreviewBuffers[i].gfxBufferHandle));
+                if (res != 0) {
+                    LOGW("%s: unlocking gfx buffer %d failed!", __FUNCTION__, i);
+                }
                 buffer_handle_t *bufHandle = mPreviewBuffers[i].gfxBufferHandle;
                 LOG1("%s: canceling gfx buffer[%d]: %p (value = %p)",
                      __FUNCTION__, i, bufHandle, *bufHandle);
@@ -1305,11 +1335,12 @@ status_t PreviewThread::freeGfxPreviewBuffers() {
     if ((mPreviewWindow != NULL) && (!mReservedBuffers.isEmpty())) {
 
         for( i = 0; i < mReservedBuffers.size(); i++) {
-            res = mapper.unlock(*(mReservedBuffers[i].gfxBufferHandle));
-            if (res != 0) {
-                LOGW("%s: unlocking gfx (reserved) buffer %d failed!", __FUNCTION__, i);
-            }
             if (mReservedBuffers[i].owner != OWNER_WINDOW) {
+
+                res = mapper.unlock(*(mReservedBuffers[i].gfxBufferHandle));
+                if (res != 0) {
+                    LOGW("%s: unlocking gfx (reserved) buffer %d failed!", __FUNCTION__, i);
+                }
                 buffer_handle_t *bufHandle = mReservedBuffers[i].gfxBufferHandle;
                 LOG1("%s: canceling gfx buffer[%d] (reserved): %p (value = %p)",
                      __FUNCTION__, i, bufHandle, *bufHandle);
@@ -1378,6 +1409,8 @@ PreviewThread::GfxAtomBuffer* PreviewThread::pickReservedBuffer()
 status_t PreviewThread::handlePostview(MessagePreview *msg)
 {
     int err;
+    status_t status = NO_ERROR;
+    GraphicBufferMapper &mapper = GraphicBufferMapper::get();
 
     if (msg->buff.status == FRAME_STATUS_SKIPPED)
         return NO_ERROR;
@@ -1414,6 +1447,7 @@ status_t PreviewThread::handlePostview(MessagePreview *msg)
         if (buf) {
             // succeeded
             copyPreviewBuffer(&msg->buff, &buf->buffer);
+            mapper.unlock(*buf->gfxBufferHandle);
             if ((err = mPreviewWindow->enqueue_buffer(mPreviewWindow,
                         buf->gfxBufferHandle)) != 0) {
                 LOGE("Surface::queueBuffer returned error %d", err);
@@ -1436,7 +1470,6 @@ status_t PreviewThread::handlePostview(MessagePreview *msg)
         getEffectiveDimensions(&tmpBuf.width,&tmpBuf.height);
         buffer_handle_t *buf;
 
-        GraphicBufferMapper &mapper = GraphicBufferMapper::get();
         const Rect bounds(tmpBuf.width, tmpBuf.height);
 
         // queue one from the window
@@ -1469,7 +1502,10 @@ status_t PreviewThread::handlePostview(MessagePreview *msg)
 
     LOG1("@%s: done", __FUNCTION__);
 
-    return NO_ERROR;
+    if (msg->synchronous)
+        mMessageQueue.reply(MESSAGE_ID_POSTVIEW, status);
+
+    return status;
 }
 
 /**

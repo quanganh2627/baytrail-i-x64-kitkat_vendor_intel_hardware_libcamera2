@@ -50,6 +50,7 @@
 // macro ALIGN16 root value to value that is divisible by 16
 #define ALIGN16(x) (((x) + 15) & ~15)
 #define ALIGN64(x) (((x) + 63) & ~63)
+#define ALIGN128(x) (((x) + 127) & ~127)
 
 namespace android {
 struct AtomBuffer;
@@ -217,6 +218,7 @@ static int frameSize(int format, int width, int height)
             size = (width * height *  2);
             break;
         case V4L2_PIX_FMT_RGB565:
+        case V4L2_PIX_FMT_SRGGB10:
             size = (width * height * BPP);
             break;
         default:
@@ -228,12 +230,24 @@ static int frameSize(int format, int width, int height)
 
 /**
  * Calculates the frame stride following the limitations imposed by display subsystem
-
- * \param width [in]
+ *
+ * The SGX limitation is that the number of bytes per line needs to be aligned
+ * to 64
+ * In case of Raw capture the requirement chnges
+ *
+ * \param format [in] V4L2 pixelf format of the image
+ * \param width [in] width in pixels
+ *
  * \return stride following the Display subsystem stride requirement
  **/
-static int SGXandDisplayStride(int width)
+static int SGXandDisplayStride(int format, int width)
 {
+    /**
+     * Raw format has special stride requirements
+     */
+    if (format == V4L2_PIX_FMT_SRGGB10)
+        return ALIGN128(width);
+
     if (width <= 512)
         return  512;
     else
@@ -258,6 +272,7 @@ static int bytesPerLineToWidth(int format, int bytesperline)
         width = (bytesperline / 2);
         break;
     case V4L2_PIX_FMT_RGB565:
+    case V4L2_PIX_FMT_SRGGB10:
         width = (bytesperline / 2);
         break;
     default:
@@ -369,6 +384,10 @@ inline static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
 }
 
 void convertFromAndroidToIaCoordinates(const CameraWindow &srcWindow, CameraWindow &toWindow);
+
+void mirrorBuffer(AtomBuffer *buffer, int currentOrientation, int cameraOrientation);
+void flipBufferV(AtomBuffer *buffer);
+void flipBufferH(AtomBuffer *buffer);
 
 }
 #endif // ANDROID_LIBCAMERA_COMMON_H

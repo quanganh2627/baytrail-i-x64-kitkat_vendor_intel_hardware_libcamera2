@@ -56,6 +56,9 @@ public:
       SensorAeConfig *aeConfig;              /*!< defined in AtomAAA.h */
       atomisp_makernote_info *atomispMkNote; /*!< kernel provided metadata, defined linux/atomisp.h */
       ia_3a_mknote *ia3AMkNote;              /*!< defined in ia_3a_types.h */
+      bool saveMirrored;                     /*!< whether to do mirroring */
+      int cameraOrientation;                 /*!< camera sensor orientation */
+      int currentOrientation;                /*!< Current orientation of the device */
 
       void free(I3AControls* aaaControls);
     };
@@ -68,7 +71,7 @@ public:
     void getDefaultParameters(CameraParameters *params);
     void initialize(const CameraParameters &params);
     status_t allocSharedBuffers(int width, int height, int sharedBuffersNum,
-                                ISnapshotBufferUser *user);
+                                int format, ISnapshotBufferUser *user);
 
     status_t wait(); // wait to finish queued messages (sync)
     status_t flushBuffers();
@@ -102,6 +105,7 @@ private:
         int width;          /*!> width of the requested buffers */
         int height;         /*!> height of the requested buffers */
         int numBufs;        /*!> amount of buffers to allocate */
+        int format;         /*!> V4L2 pixel format */
         ISnapshotBufferUser *user;      /*!> pointer to the user of those buffers */
     };
 
@@ -140,7 +144,7 @@ private:
 
     void setupExifWithMetaData(const MetaData &metaData);
     status_t encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, AtomBuffer *destBuf);
-    status_t allocateInputBuffers(int width, int height, int numBufs);
+    status_t allocateInputBuffers(int format, int width, int height, int numBufs);
     void     freeInputBuffers();
     int      encodeExifAndThumbnail(AtomBuffer *thumbnail, unsigned char* exifDst);
     status_t startHwEncoding(AtomBuffer *mainBuf);

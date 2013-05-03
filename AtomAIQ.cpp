@@ -68,9 +68,8 @@ AtomAIQ::AtomAIQ(AtomISP *anISP) :
     mISP(anISP)
     ,mAfMode(CAM_AF_MODE_NOT_SET)
     ,mStillAfStart(0)
-    ,mFlashStage(CAM_FLASH_STAGE_AF)
     ,mFocusPosition(0)
-    ,mFlashMode(CAM_AE_FLASH_MODE_NOT_SET)
+    ,mBracketingStops(0)
     ,mAeSceneMode(CAM_AE_SCENE_MODE_NOT_SET)
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
     ,mAwbRunCount(0)
@@ -164,7 +163,6 @@ status_t AtomAIQ::deinit3A()
     mISP = NULL;
     mAfMode = CAM_AF_MODE_NOT_SET;
     mAwbMode = CAM_AWB_MODE_NOT_SET;
-    mFlashMode = CAM_AE_FLASH_MODE_NOT_SET;
     mFocusPosition = 0;
     return NO_ERROR;
 }
@@ -197,13 +195,10 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
 
     /* usually the grid changes as well when the mode changes. */
     changeSensorMode();
-    getSensorFrameParams(&m3aState.sensor_frame_params);
 
-    //before run 3A, first run ae, then apply that into ISP?
-    runAeMain();
-    applyResults();
-
-    return NO_ERROR;
+    /* Invalidate AEC results and re-run AEC to get new results for new mode. */
+    mAeState.ae_results = NULL;
+    return runAeMain();
 }
 
 status_t AtomAIQ::setAeWindow(const CameraWindow *window)
@@ -234,6 +229,12 @@ status_t AtomAIQ::setAfWindow(const CameraWindow *window)
     //ToDo: Make sure that all coordinates passed to AIQ are in format/range defined in ia_coordinate.h.
 
     return NO_ERROR;
+}
+
+status_t AtomAIQ::setAfWindows(const CameraWindow *windows, size_t numWindows)
+{
+    LOG2("@%s: windows = %p, num = %u", __FUNCTION__, windows, numWindows);
+    return setAfWindow(windows);
 }
 
 // TODO: no manual setting for scene mode, map that into AE/AF operation mode
@@ -581,24 +582,19 @@ bool AtomAIQ::getAfLock()
 ia_3a_af_status AtomAIQ::getCAFStatus()
 {
     LOG2("@%s", __FUNCTION__);
-    ia_3a_af_status status;
-
-    ia_aiq_af_status aiq_status = ia_aiq_af_status_idle;
-    if(mAfState.af_results) {
-        aiq_status = mAfState.af_results->status;
-        LOG2("af_results->status:%d", aiq_status);
+    ia_3a_af_status status = ia_3a_af_status_busy;
+    if (mAfState.af_results != NULL) {
+        if (mAfState.af_results->status == ia_aiq_af_status_success && (mAfState.af_results->final_lens_position_reached || mStillAfStart == 0)) {
+            status = ia_3a_af_status_success;
+        }
+        else if (mAfState.af_results->status == ia_aiq_af_status_fail && (mAfState.af_results->final_lens_position_reached || mStillAfStart == 0)) {
+            status  = ia_3a_af_status_error;
+        }
+        else {
+            status = ia_3a_af_status_busy;
+        }
     }
-    switch (aiq_status) {
-    case ia_aiq_af_status_success:
-        status = ia_3a_af_status_success;
-        break;
-    case ia_aiq_af_status_fail:
-        status = ia_3a_af_status_error;
-        break;
-    default:
-        status = ia_3a_af_status_busy;
-    }
-
+    LOG2("af_results->status:%d", status);
     return status;
 }
 
@@ -745,37 +741,59 @@ status_t AtomAIQ::getAeManualBrightness(float *ret)
 }
 
 // Focus operations
-status_t AtomAIQ::initAfBracketing(int stops, ia_aiq_af_bracketing_mode mode)
+status_t AtomAIQ::initAfBracketing(int stops, AFBracketingMode mode)
 {
     LOG1("@%s", __FUNCTION__);
+    mBracketingStops = stops;
+    ia_aiq_af_bracketing_parameters param;
+    switch (mode) {
+    case CAM_AF_BRACKETING_MODE_SYMMETRIC:
+        param.af_bracketing_mode = ia_aiq_af_bracketing_mode_symmetric;
+        break;
+    case CAM_AF_BRACKETING_MODE_TOWARDS_NEAR:
+        param.af_bracketing_mode = ia_aiq_af_bracketing_mode_towards_near;
+        break;
+    case CAM_AF_BRACKETING_MODE_TOWARDS_FAR:
+        param.af_bracketing_mode = ia_aiq_af_bracketing_mode_towards_far;
+        break;
+    default:
+        param.af_bracketing_mode = ia_aiq_af_bracketing_mode_symmetric;
+    }
+    param.focus_positions = (char) stops;
     //first run AF to get the af result
     runAfMain();
-
-    ia_aiq_af_bracketing_parameters param;
-    param.focus_positions = (char) stops;
     memcpy(&param.af_results, mAfState.af_results, sizeof(ia_aiq_af_results));
-    param.af_bracketing_mode = mode;
     ia_aiq_af_bracketing_calculate(m3aState.ia_aiq_handle, &param, &mAfBracketingResult);
-    for(int i=0; i<stops; i++)
+    for(int i = 0; i < stops; i++)
         LOG1("i=%d, postion=%ld", i, mAfBracketingResult->lens_positions_bracketing[i]);
 
     return  NO_ERROR;
 }
 
+status_t AtomAIQ::setManualFocusIncrement(int steps)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t ret = NO_ERROR;
+    if(steps >= 0 && steps < mBracketingStops) {
+        int position = mAfBracketingResult->lens_positions_bracketing[steps];
+        int focus_moved = mISP->sensorMoveFocusToPosition(position);
+        if(focus_moved != 0)
+            ret = UNKNOWN_ERROR;
+    }
+    return ret;
+}
 
 // Exposure operations
 // For exposure bracketing
 status_t AtomAIQ::applyEv(float bias)
 {
     LOG1("@%s: bias=%.2f", __FUNCTION__, bias);
-    int ret;
 
-    setEv(bias);
-    ret = applyResults();
-    if (ret != 0)
-        return UNKNOWN_ERROR;
-    else
-        return NO_ERROR;
+    int ret = setEv(bias);
+    if (ret == NO_ERROR)
+        ret = runAeMain();
+
+    return ret;
 }
 
 status_t AtomAIQ::setEv(float bias)
@@ -819,32 +837,47 @@ status_t AtomAIQ::getManualIso(int *ret)
 
 status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
 {
-    //ToDo: figure out with Miikka
     LOG2("@%s", __FUNCTION__);
 
-    ia_aiq_flash_status wr_stage;
-    switch (stage) {
-    case CAM_FLASH_STAGE_NONE:
-        wr_stage = ia_aiq_flash_status_no;
-        break;
-    case CAM_FLASH_STAGE_PRE:
-        wr_stage = ia_aiq_flash_status_pre;
-        break;
-    case CAM_FLASH_STAGE_MAIN:
-        wr_stage = ia_aiq_flash_status_main;
-        break;
-    default:
-        LOGE("Unknown flash stage: %d", stage);
-        return UNKNOWN_ERROR;
-    }
-    mAeState.flash_parameter.status = wr_stage;
-    int ret = processForFlash();
-    if (ret < 0)
-        return UNKNOWN_ERROR;
-    else
-        return NO_ERROR;
+    status_t ret = NO_ERROR;
 
+    /* AEC needs some timestamp to detect if frame is the same. */
+    struct timeval dummy_time;
+    dummy_time.tv_sec = stage;
+    dummy_time.tv_usec = 0;
+
+    if (stage == CAM_FLASH_STAGE_PRE || stage == CAM_FLASH_STAGE_MAIN)
+    {
+        /* Store previous state of 3A locks. */
+        bool prev_af_lock = getAfLock();
+        bool prev_ae_lock = getAeLock();
+        bool prev_awb_lock = getAwbLock();
+
+        /* AF is not run during flash sequence. */
+        setAfLock(true);
+
+        /* During flash sequence AE and AWB must be enabled in order to calculate correct parameters for the final image. */
+        setAeLock(false);
+        setAwbLock(false);
+
+        mAeInputParameters.frame_use = ia_aiq_frame_use_still;
+
+        ret =  apply3AProcess(true, dummy_time, dummy_time);
+
+        mAeInputParameters.frame_use = m3aState.frame_use;
+
+        /* Restore previous state of 3A locks. */
+        setAfLock(prev_af_lock);
+        setAeLock(prev_ae_lock);
+        setAwbLock(prev_awb_lock);
+    }
+    else
+    {
+        ret =  apply3AProcess(true, dummy_time, dummy_time);
+    }
+    return ret;
 }
+
 
 status_t AtomAIQ::setFlash(int numFrames)
 {
@@ -858,20 +891,14 @@ status_t AtomAIQ::apply3AProcess(bool read_stats,
     LOG2("@%s: read_stats = %d", __FUNCTION__, read_stats);
     status_t status = NO_ERROR;
 
-    int ret;
-    if (read_stats && needStatistics()) {
-        ret = getStatistics();
-        if (ret < 0)
-            return UNKNOWN_ERROR;
-    } else if (!read_stats) {
-        /* TODO: find out why we do this here, this looks very strange. */
-        changeSensorMode();
+    if (read_stats) {
+        status = getStatistics(&capture_timestamp, &sof_timestamp);
     }
 
     if (m3aState.stats_valid) {
-        run3aMain(&capture_timestamp, &sof_timestamp, true);
-        applyResults();
+        status |= run3aMain();
     }
+
     return status;
 }
 
@@ -1047,12 +1074,15 @@ int AtomAIQ::run3aInit()
     }
     else
         return -1;
-    mAeState.flash_parameter.status = ia_aiq_flash_status_no;
 
     resetAFParams();
     mAfState.af_results = NULL;
     memset(&mAeState, 0, sizeof(mAeState));
-    mAeState.ae_results = NULL;
+    for (int i = 0; i <= AE_DELAY_FRAMES; i++) {
+        mAeState.prev_results[i].exposure = &mAeState.prev_exposure[i];
+        mAeState.prev_results[i].sensor_exposure = &mAeState.prev_sensor_exposure[i];
+        mAeState.prev_results[i].flash = &mAeState.prev_flash[i];
+    }
     resetAECParams();
     resetAWBParams();
     mAwbResults = NULL;
@@ -1062,40 +1092,13 @@ int AtomAIQ::run3aInit()
     return 0;
 }
 
-//apply result of AIC, AE into ISP
-int AtomAIQ::applyResults(void)
-{
-    LOG2("@%s", __FUNCTION__);
-    int ret = 0;
-
-    PERFORMANCE_TRACES_AAA_PROFILER_START();
-
-    /* Apply ISP settings */
-    if (m3aState.results.aic_output) {
-        struct atomisp_parameters *aic_out_struct = (struct atomisp_parameters *)m3aState.results.aic_output;
-        ret |= mISP->setAicParameter(aic_out_struct);
-        ret |= mISP->applyColorEffect();
-    }
-    /* Apply Sensor settings */
-    if (mAeState.result_changed) {
-        ret |= mISP->sensorSetExposure(&mAeState.exposure);
-        m3aState.results.exposure_changed = false;
-    }
-
-    /* Apply Flash settings */
-    if (m3aState.results.flash_intensity_changed && mAeState.ae_results) {
-        ret |= mISP->setFlashIntensity((int)(mAeState.ae_results->flash)->power_prc);
-        m3aState.results.flash_intensity_changed = false;
-    }
-
-    PERFORMANCE_TRACES_AAA_PROFILER_STOP();
-    return ret;
-}
-
 /* returns false for error, true for success */
 bool AtomAIQ::changeSensorMode(void)
 {
     LOG1("@%s", __FUNCTION__);
+
+    /* Get new sensor frame params needed by AIC for LSC calculation. */
+    getSensorFrameParams(&m3aState.sensor_frame_params);
 
     struct atomisp_sensor_mode_data sensor_mode_data;
     mISP->sensorGetModeInfo(&sensor_mode_data);
@@ -1103,15 +1106,14 @@ bool AtomAIQ::changeSensorMode(void)
         return false;
 
     /* Reconfigure 3A grid */
-    ia_aiq_exposure_sensor_descriptor *sd = &mAeState.sensor_descriptor;
-    sd->pixel_clock_freq_mhz = sensor_mode_data.vt_pix_clk_freq_mhz/1000000;
+    ia_aiq_exposure_sensor_descriptor *sd = &mAeSensorDescriptor;
+    sd->pixel_clock_freq_mhz = sensor_mode_data.vt_pix_clk_freq_mhz/1000000.0f;
     sd->pixel_periods_per_line = sensor_mode_data.line_length_pck;
     sd->line_periods_per_field = sensor_mode_data.frame_length_lines;
     sd->fine_integration_time_min = sensor_mode_data.fine_integration_time_def;
     sd->fine_integration_time_max_margin = sensor_mode_data.line_length_pck - sensor_mode_data.fine_integration_time_def;
     sd->coarse_integration_time_min = sensor_mode_data.coarse_integration_time_min;
     sd->coarse_integration_time_max_margin = sensor_mode_data.coarse_integration_time_max_margin;
-    mAeInputParameters.sensor_descriptor = &mAeState.sensor_descriptor;
 
     LOG2("sensor_descriptor assign complete: %d, %d", mAeInputParameters.sensor_descriptor->line_periods_per_field,
         sd->coarse_integration_time_max_margin);
@@ -1128,13 +1130,15 @@ bool AtomAIQ::changeSensorMode(void)
     } else {
         return false;
     }
+
     return true;
 }
 
-int AtomAIQ::getStatistics(void)
+status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp,
+                                const struct timeval *sof_timestamp)
 {
     LOG2("@%s", __FUNCTION__);
-    int ret;
+    status_t ret = NO_ERROR;
 
     PERFORMANCE_TRACES_AAA_PROFILER_START();
     ret = mISP->getIspStatistics(m3aState.stats);
@@ -1146,33 +1150,52 @@ int AtomAIQ::getStatistics(void)
     }
     PERFORMANCE_TRACES_AAA_PROFILER_STOP();
 
-    if (ret == 0) {
+    if (ret == 0)
+    {
+        ia_err err = ia_err_none;
+        ia_aiq_statistics_input_params statistics_input_parameters;
+
+        long long eof_timestamp = (long long)((frame_timestamp->tv_sec*1000000000LL + frame_timestamp->tv_usec*1000LL)/1000LL);
+        statistics_input_parameters.frame_timestamp = (unsigned long long)((sof_timestamp->tv_sec*1000000000LL + sof_timestamp->tv_usec*1000LL)/1000LL);
+        if (eof_timestamp < (long long)statistics_input_parameters.frame_timestamp ||
+            eof_timestamp - (long long)statistics_input_parameters.frame_timestamp > MAX_EOF_SOF_DIFF)
+        {
+            statistics_input_parameters.frame_timestamp = eof_timestamp - DEFAULT_EOF_SOF_DELAY;
+        }
+
+        statistics_input_parameters.external_histogram = NULL;
+
+        if(m3aState.faces)
+            statistics_input_parameters.faces = m3aState.faces;
+
+        if(mAwbResults)
+            statistics_input_parameters.awb_results = mAwbResults;
+
+        if (mAeState.ae_results)
+            statistics_input_parameters.ae_results = &mAeState.prev_results[0];
+
+        statistics_input_parameters.wb_gains = NULL;
+        statistics_input_parameters.cc_matrix = NULL;
+        statistics_input_parameters.ev_shift = 0;
+
+        ia_aiq_statistics_convert(m3aState.ia_aiq_handle, m3aState.stats,
+                const_cast<ia_aiq_rgbs_grid**>(&statistics_input_parameters.rgbs_grid),
+                const_cast<ia_aiq_af_grid**>(&statistics_input_parameters.af_grid));
+        LOG2("m3aState.stats: grid_info: %d  %d %d ",
+              m3aState.stats->grid_info.s3a_width,m3aState.stats->grid_info.s3a_height,m3aState.stats->grid_info.s3a_bqs_per_grid_cell);
+
+        LOG2("rgb_grid: grid_width:%u, grid_height:%u, thr_r:%u, thr_gr:%u,thr_gb:%u", statistics_input_parameters.rgbs_grid->grid_width,
+              statistics_input_parameters.rgbs_grid->grid_height,
+              statistics_input_parameters.rgbs_grid->blocks_ptr->avg_r,
+              statistics_input_parameters.rgbs_grid->blocks_ptr->avg_g,
+              statistics_input_parameters.rgbs_grid->blocks_ptr->avg_b);
+
+        err = ia_aiq_statistics_set(m3aState.ia_aiq_handle, &statistics_input_parameters);
+
         m3aState.stats_valid = true;
-        return 0;
     }
 
-    return -1;
-}
-
-bool AtomAIQ::needStatistics()
-{
-    return true;
-}
-
-int AtomAIQ::processForFlash()
-{
-    LOG2("@%s", __FUNCTION__);
-
-    if (getStatistics() < 0)
-        return UNKNOWN_ERROR;
-
-    if (m3aState.stats_valid) {
-        if (run3aMain() == 0)
-            applyResults();
-        else
-            return UNKNOWN_ERROR;
-    }
-    return NO_ERROR;
+    return ret;
 }
 
 void AtomAIQ::setAfFocusMode(ia_aiq_af_operation_mode mode)
@@ -1188,21 +1211,6 @@ void AtomAIQ::setAfFocusRange(ia_aiq_af_range range)
 void AtomAIQ::setAfMeteringMode(ia_aiq_af_metering_mode mode)
 {
     mAfInputParameters.focus_metering_mode = mode;
-}
-
-status_t AtomAIQ::moveFocusDriveToPos(long position)
-{
-    LOG2("@%s", __FUNCTION__);
-    int status = mISP->sensorMoveFocusToPosition(position);
-
-    return (status == -1) ? UNKNOWN_ERROR: NO_ERROR;
-}
-
-void AtomAIQ::afUpdateTimestamp(void)
-{
-    LOG2("@%s", __FUNCTION__);
-    clock_gettime(CLOCK_MONOTONIC, &m3aState.lens_timestamp);
-    mAfInputParameters.lens_movement_start_timestamp = (unsigned long long)((m3aState.lens_timestamp.tv_sec*1000000000LL + m3aState.lens_timestamp.tv_nsec)/1000LL);
 }
 
 void AtomAIQ::resetAFParams()
@@ -1231,12 +1239,15 @@ void AtomAIQ::resetAFParams()
 
 }
 
-void AtomAIQ::runAfMain()
+status_t AtomAIQ::runAfMain()
 {
     LOG2("@%s", __FUNCTION__);
+    status_t ret = NO_ERROR;
+
     if (mAfState.af_locked)
-        return;
-    ia_err ret = ia_err_none;
+        return ret;
+
+    ia_err err = ia_err_none;
 
     LOG2("@af window = (%d,%d,%d,%d)",mAfInputParameters.focus_rect->height,
                  mAfInputParameters.focus_rect->width,
@@ -1244,19 +1255,24 @@ void AtomAIQ::runAfMain()
                  mAfInputParameters.focus_rect->top);
 
     if(m3aState.ia_aiq_handle)
-        ret = ia_aiq_af_run(m3aState.ia_aiq_handle, &mAfInputParameters, &mAfState.af_results);
+        err = ia_aiq_af_run(m3aState.ia_aiq_handle, &mAfInputParameters, &mAfState.af_results);
 
-    /*Move the lens to the required lens position*/
     ia_aiq_af_results* af_results_ptr = mAfState.af_results;
-    LOG2("lens_driver_action:%d", af_results_ptr->lens_driver_action);
-    if (ret == ia_err_none && af_results_ptr->lens_driver_action == ia_aiq_lens_driver_action_move_to_unit) {
-        /*ci_adv_sensor_move_focus_to_position(af_results_ptr->next_lens_position);*/
-        LOG2("next lens position:%ld", af_results_ptr->next_lens_position);
-        moveFocusDriveToPos(af_results_ptr->next_lens_position);
-        afUpdateTimestamp();
-    }
-    mAfInputParameters.lens_position = af_results_ptr->next_lens_position; /*Assume that the lens has moved to the requested position*/
 
+    /* Move the lens to the required lens position */
+    LOG2("lens_driver_action:%d", af_results_ptr->lens_driver_action);
+    if (err == ia_err_none && af_results_ptr->lens_driver_action == ia_aiq_lens_driver_action_move_to_unit)
+    {
+        LOG2("next lens position:%ld", af_results_ptr->next_lens_position);
+        ret = mISP->sensorMoveFocusToPosition(af_results_ptr->next_lens_position);
+        if (ret == NO_ERROR)
+        {
+            clock_gettime(CLOCK_MONOTONIC, &m3aState.lens_timestamp);
+            mAfInputParameters.lens_movement_start_timestamp = (unsigned long long)((m3aState.lens_timestamp.tv_sec*1000000000LL + m3aState.lens_timestamp.tv_nsec)/1000LL);
+            mAfInputParameters.lens_position = af_results_ptr->next_lens_position; /*Assume that the lens has moved to the requested position*/
+        }
+    }
+    return ret;
 }
 
 void AtomAIQ::resetAECParams()
@@ -1264,7 +1280,6 @@ void AtomAIQ::resetAECParams()
     LOG2("@%s", __FUNCTION__);
     mAeMode = CAM_AE_MODE_NOT_SET;
 
-    mAeState.prev_results.exposure = &mAeState.prev_results_exposure;
     mAeInputParameters.frame_use = m3aState.frame_use;
 
     mAeInputParameters.flash_mode = ia_aiq_flash_mode_auto;
@@ -1272,92 +1287,123 @@ void AtomAIQ::resetAECParams()
     mAeInputParameters.metering_mode = ia_aiq_ae_metering_mode_evaluative;
     mAeInputParameters.priority_mode = ia_aiq_ae_priority_mode_normal;
     mAeInputParameters.flicker_reduction_mode = ia_aiq_ae_flicker_reduction_auto;
+    mAeInputParameters.sensor_descriptor = &mAeSensorDescriptor;
 
     mAeInputParameters.exposure_coordinate = NULL;
     mAeInputParameters.ev_shift = 0;
     mAeInputParameters.manual_exposure_time_us = -1;
     mAeInputParameters.manual_analog_gain = -1;
     mAeInputParameters.manual_iso = -1;
-
+    mAeInputParameters.aec_features = ia_aiq_ae_feature_tuning;
 }
 
-void AtomAIQ::runAeMain()
+status_t AtomAIQ::runAeMain()
 {
     LOG2("@%s", __FUNCTION__);
+    status_t ret = NO_ERROR;
+
     if (mAeState.ae_locked)
-        return;
+        return ret;
 
-    ia_err ret = ia_err_none;
+    // ToDo:
+    // More intelligent handling of ae_lock should be implemented:
+    // Use case when mode/resolution changes and AE lock is ON would not produce new/correct sensor exposure parameters.
+    // Maybe AE should be run in manual mode with previous results to produce same exposure parameters but for different sensor mode?
 
-    mAeState.result_changed = false;
-    long previous_total_exposure = 0;
-    long previous_exposure_time_us = 0;
-    float previous_analog_gain = 0;
-    char previous_flash_prc = 0;
-    bool first_run = false;
+    ia_err err = ia_err_none;
+    ia_aiq_ae_results *new_ae_results = NULL;
 
+    bool first_run = true;
     if (mAeState.ae_results)
-    {
-        previous_total_exposure = mAeState.ae_results->exposure->total_target_exposure;
-        previous_exposure_time_us = mAeState.ae_results->exposure->exposure_time_us;
-        previous_analog_gain = mAeState.ae_results->exposure->analog_gain;
-        previous_flash_prc = mAeState.ae_results->flash->power_prc;
-    } else {
-        first_run = true;
-    }
+        first_run = false;
 
-    LOG2("manual_exposure_time_us: %ld manual_analog_gain: %f", mAeInputParameters.manual_exposure_time_us, mAeInputParameters.manual_analog_gain);
-    LOG2("sensor_descriptor ->line_periods_per_field: %d", mAeInputParameters.sensor_descriptor->line_periods_per_field);
-    LOG2("mAeInputParameters.frame_use: %d",mAeInputParameters.frame_use);
+    LOG2("AEC manual_exposure_time_us: %ld manual_analog_gain: %f manual_iso: %d", mAeInputParameters.manual_exposure_time_us, mAeInputParameters.manual_analog_gain, mAeInputParameters.manual_iso);
+    LOG2("AEC sensor_descriptor ->line_periods_per_field: %d", mAeInputParameters.sensor_descriptor->line_periods_per_field);
+    LOG2("AEC mAeInputParameters.frame_use: %d",mAeInputParameters.frame_use);
 
     if(m3aState.ia_aiq_handle){
-        ret = ia_aiq_ae_run(m3aState.ia_aiq_handle, &mAeInputParameters, &mAeState.ae_results);
-        LOG2("@%s result: %d", __FUNCTION__, ret);
+        err = ia_aiq_ae_run(m3aState.ia_aiq_handle, &mAeInputParameters, &new_ae_results);
+        LOG2("@%s result: %d", __FUNCTION__, err);
     }
 
-
-    if (first_run && mAeState.ae_results != NULL){
-        memcpy(&mAeState.prev_exposure[1], mAeState.ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
-        memcpy(&mAeState.prev_exposure[2], mAeState.ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
-    }
-
-    memcpy(&mAeState.prev_exposure[0], &mAeState.prev_exposure[1], sizeof(ia_aiq_exposure_parameters));
-    memcpy(&mAeState.prev_exposure[1], &mAeState.prev_exposure[2], sizeof(ia_aiq_exposure_parameters));
-    if (mAeState.ae_results != NULL)
-        memcpy(&mAeState.prev_exposure[2], mAeState.ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
-
-    if (mAeState.ae_results &&
-        (previous_total_exposure != mAeState.ae_results->exposure->total_target_exposure ||
-         previous_exposure_time_us != mAeState.ae_results->exposure->exposure_time_us ||
-         previous_analog_gain != mAeState.ae_results->exposure->analog_gain ||
-         mAeState.force_update))
+    if (new_ae_results &&
+        (first_run || new_ae_results->flash->status == ia_aiq_flash_status_pre))
     {
-        if (mAeState.ae_results->flash->status == ia_aiq_flash_status_pre) {
-            memcpy(&mAeState.prev_exposure[0], mAeState.ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
-            memcpy(&mAeState.prev_exposure[1], mAeState.ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
+        /*
+         * Fill AE results history with first AE results because there is no AE delay in the beginning OR
+         * Fill AE results history with first AE results because there is no AE delay after mode change (handled with 'first_run' flag - see switchModeAndRate()) OR
+         * Fill AE results history with flash AE results because flash process skips partially illuminated frames removing the AE delay.
+         */
+        for (int i = 1; i <= AE_DELAY_FRAMES; i++)
+        {
+            ia_aiq_ae_results *history_ae_results = &mAeState.prev_results[i];
+
+            // TODO: Weight grid addresses are the same always. May change in the future.
+            history_ae_results->weight_grid = new_ae_results->weight_grid;
+            memcpy(history_ae_results->exposure, new_ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
+            memcpy(history_ae_results->sensor_exposure, new_ae_results->exposure, sizeof(ia_aiq_exposure_sensor_parameters));
+            memcpy(history_ae_results->flash, new_ae_results->flash, sizeof(ia_aiq_flash_parameters));
         }
-        mAeState.result_changed = true;
-        mAeState.force_update = false;
-
-        mAeState.exposure.integration_time[0] = mAeState.ae_results->sensor_exposure->coarse_integration_time;
-        //Here is workaround
-        mAeState.exposure.integration_time[1] = mAeState.ae_results->sensor_exposure->fine_integration_time;
-        mAeState.exposure.gain[0] = mAeState.ae_results->sensor_exposure->analog_gain_code_global;
-        mAeState.exposure.gain[1] = mAeState.ae_results->sensor_exposure->digital_gain_global;
-
-        mAeState.exposure.aperture = 100;
-
-        LOG2("integration_time[0]: %d", mAeState.exposure.integration_time[0]);
-        LOG2("integration_time[1]: %d", mAeState.exposure.integration_time[1]);
-        LOG2("gain[0]: %x", mAeState.exposure.gain[0]);
-        LOG2("aperture: %d\n", mAeState.exposure.aperture);
     }
 
-    if (mAeState.ae_results != NULL && previous_flash_prc != mAeState.ae_results->flash->power_prc) {
-        mAeState.flash_result_changed = true;
-        m3aState.results.flash_intensity_changed = true;
+    // TODO: Make sure exposure parameters are not moved in the list more than once per frame (ie. if AEC is called multiple times per frame).
+    for (int i = 0; i < AE_DELAY_FRAMES; i++)
+    {
+        ia_aiq_ae_results *old_ae_results = &mAeState.prev_results[i+1];
+        ia_aiq_ae_results *older_ae_results = &mAeState.prev_results[i];
+
+        older_ae_results->weight_grid = old_ae_results->weight_grid;
+        memcpy(older_ae_results->exposure, old_ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
+        memcpy(older_ae_results->sensor_exposure, old_ae_results->sensor_exposure, sizeof(ia_aiq_exposure_sensor_parameters));
+        memcpy(older_ae_results->flash, old_ae_results->flash, sizeof(ia_aiq_flash_parameters));
     }
 
+    if (new_ae_results != NULL)
+    {
+        ia_aiq_ae_results *prev_ae_results = &mAeState.prev_results[AE_DELAY_FRAMES];
+
+        // Compare sensor exposure parameters instead of generic exposure parameters to take into account mode changes when exposure time doesn't change but sensor parameters do change.
+        if (prev_ae_results->sensor_exposure->coarse_integration_time != new_ae_results->sensor_exposure->coarse_integration_time ||
+            prev_ae_results->sensor_exposure->fine_integration_time != new_ae_results->sensor_exposure->fine_integration_time ||
+            prev_ae_results->sensor_exposure->digital_gain_global != new_ae_results->sensor_exposure->digital_gain_global ||
+            prev_ae_results->sensor_exposure->analog_gain_code_global != new_ae_results->sensor_exposure->analog_gain_code_global)
+        {
+            mAeState.exposure.integration_time[0] = new_ae_results->sensor_exposure->coarse_integration_time;
+            mAeState.exposure.integration_time[1] = new_ae_results->sensor_exposure->fine_integration_time;
+            mAeState.exposure.gain[0] = new_ae_results->sensor_exposure->analog_gain_code_global;
+            mAeState.exposure.gain[1] = new_ae_results->sensor_exposure->digital_gain_global;
+
+            mAeState.exposure.aperture = 100;
+
+            LOG2("AEC integration_time[0]: %d", mAeState.exposure.integration_time[0]);
+            LOG2("AEC integration_time[1]: %d", mAeState.exposure.integration_time[1]);
+            LOG2("AEC gain[0]: %x", mAeState.exposure.gain[0]);
+            LOG2("AEC gain[1]: %x", mAeState.exposure.gain[1]);
+            LOG2("AEC aperture: %d\n", mAeState.exposure.aperture);
+
+            /* Apply Sensor settings */
+            ret |= mISP->sensorSetExposure(&mAeState.exposure);
+        }
+
+        // TODO: Verify that checking the power change is enough. Should status be checked (rer/pre/main).
+        if (prev_ae_results->flash->power_prc != new_ae_results->flash->power_prc)
+        {
+            /* Apply Flash settings */
+            if (mAeState.ae_results)
+                ret |= mISP->setFlashIntensity((int)(mAeState.ae_results->flash)->power_prc);
+            else
+                LOGE("ae_results is NULL, could not apply flash settings");
+        }
+
+        // Store the latest AE results in the end if the list.
+        prev_ae_results->weight_grid = new_ae_results->weight_grid;
+        memcpy(prev_ae_results->exposure, new_ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
+        memcpy(prev_ae_results->sensor_exposure, new_ae_results->sensor_exposure, sizeof(ia_aiq_exposure_sensor_parameters));
+        memcpy(prev_ae_results->flash, new_ae_results->flash, sizeof(ia_aiq_flash_parameters));
+
+        mAeState.ae_results = new_ae_results;
+    }
+    return ret;
 }
 
 void AtomAIQ::resetAWBParams()
@@ -1393,16 +1439,16 @@ void AtomAIQ::resetGBCEParams()
     mGBCEResults = NULL;
 }
 
-void AtomAIQ::runGBCEMain()
+status_t AtomAIQ::runGBCEMain()
 {
     LOG2("@%s", __FUNCTION__);
-    ia_err ret = ia_err_none;
-    if (m3aState.ia_aiq_handle)
+    if (m3aState.ia_aiq_handle && mGBCEEnable)
     {
-        ret = ia_aiq_gbce_run(m3aState.ia_aiq_handle, &mGBCEResults);
-        if(ret == ia_err_none)
+        ia_err err = ia_aiq_gbce_run(m3aState.ia_aiq_handle, &mGBCEResults);
+        if(err == ia_err_none)
             LOG2("@%s success", __FUNCTION__);
     }
+    return NO_ERROR;
 }
 
 
@@ -1411,112 +1457,45 @@ void AtomAIQ::resetDSDParams()
     m3aState.dsd_enabled = false;
 }
 
-void AtomAIQ::runDSDMain()
+status_t AtomAIQ::runDSDMain()
 {
     LOG2("@%s", __FUNCTION__);
-    ia_err ret = ia_err_none;
     if (m3aState.ia_aiq_handle && m3aState.dsd_enabled)
     {
         mDSDInputParameters.af_results = mAfState.af_results;
-        ia_aiq_dsd_run(m3aState.ia_aiq_handle, &mDSDInputParameters, &mDetectedSceneMode);
+        ia_err ret = ia_aiq_dsd_run(m3aState.ia_aiq_handle, &mDSDInputParameters, &mDetectedSceneMode);
         if(ret == ia_err_none)
             LOG2("@%s success, detected scene mode: %d", __FUNCTION__, mDetectedSceneMode);
     }
+    return NO_ERROR;
 }
 
-//set statistics
-status_t AtomAIQ::populateFrameInfo(const struct timeval *frame_timestamp,
-                                          struct timeval *sof_timestamp)
+status_t AtomAIQ::run3aMain()
 {
     LOG2("@%s", __FUNCTION__);
     status_t ret = NO_ERROR;
 
-    ia_err statistics_ret = ia_err_none;
-
-    unsigned long long eof_timestamp = (unsigned long long)((frame_timestamp->tv_sec*1000000LL + frame_timestamp->tv_usec));
-    m3aState.statistics_input_parameters.frame_timestamp = (unsigned long long)((sof_timestamp->tv_sec*1000000LL + sof_timestamp->tv_usec));
-    if (eof_timestamp < m3aState.statistics_input_parameters.frame_timestamp ||
-        eof_timestamp > MAX_EOF_SOF_DIFF + m3aState.statistics_input_parameters.frame_timestamp)
-    {
-        m3aState.statistics_input_parameters.frame_timestamp = eof_timestamp - DEFAULT_EOF_SOF_DELAY;
-    }
-
-    m3aState.statistics_input_parameters.external_histogram = NULL;
-
-    if(m3aState.faces)
-        m3aState.statistics_input_parameters.faces = m3aState.faces;
-
-    if(mAwbResults)
-        m3aState.statistics_input_parameters.awb_results = mAwbResults;
-
-    //get previous ae result
-    if (mAeState.ae_results) {
-        LOG2("Get previous Ae results");
-        mAeState.prev_results.weight_grid = mAeState.ae_results->weight_grid;
-        mAeState.prev_results.exposure->exposure_time_us = mAeState.prev_exposure[0].exposure_time_us;
-        mAeState.prev_results.exposure->analog_gain = mAeState.prev_exposure[0].analog_gain;
-        mAeState.prev_results.exposure->digital_gain = mAeState.prev_exposure[0].digital_gain;
-        mAeState.prev_results.exposure->aperture_fn = mAeState.prev_exposure[0].aperture_fn;
-        mAeState.prev_results.exposure->nd_filter_enabled = mAeState.prev_exposure[0].nd_filter_enabled;
-        mAeState.prev_results.exposure->total_target_exposure = mAeState.prev_results.exposure->exposure_time_us * mAeState.prev_results.exposure->analog_gain * mAeState.prev_results.exposure->digital_gain;
-        mAeState.prev_results.sensor_exposure = NULL;
-        mAeState.prev_results.flash = mAeState.ae_results->flash;
-        mAeState.prev_results.distance_from_convergence = mAeState.ae_results->distance_from_convergence;
-        mAeState.prev_results.converged = mAeState.ae_results->converged;
-
-        m3aState.statistics_input_parameters.ae_results = &mAeState.prev_results;
-    }
-    m3aState.statistics_input_parameters.wb_gains = NULL;
-    m3aState.statistics_input_parameters.cc_matrix = NULL;
-    m3aState.statistics_input_parameters.ev_shift = 0;
-
-    ia_aiq_af_grid *af_grid;
-    ia_aiq_rgbs_grid *rgbs_grid;
-    ia_aiq_statistics_convert(m3aState.ia_aiq_handle, m3aState.stats, &rgbs_grid, &af_grid);
-    m3aState.statistics_input_parameters.af_grid = af_grid;
-    m3aState.statistics_input_parameters.rgbs_grid = rgbs_grid;
-    LOG2("m3aState.stats: grid_info: %d  %d %d ",
-          m3aState.stats->grid_info.s3a_width,m3aState.stats->grid_info.s3a_height,m3aState.stats->grid_info.s3a_bqs_per_grid_cell);
-
-    LOG2("rgb_grid: grid_width:%u, grid_height:%u, thr_r:%u, thr_gr:%u,thr_gb:%u", m3aState.statistics_input_parameters.rgbs_grid->grid_width,
-          m3aState.statistics_input_parameters.rgbs_grid->grid_height,
-          m3aState.statistics_input_parameters.rgbs_grid->blocks_ptr->avg_r,
-          m3aState.statistics_input_parameters.rgbs_grid->blocks_ptr->avg_g,
-          m3aState.statistics_input_parameters.rgbs_grid->blocks_ptr->avg_b);
-
-    statistics_ret = ia_aiq_statistics_set(m3aState.ia_aiq_handle, &m3aState.statistics_input_parameters);
-
-    return ret;
-
-}
-
-status_t AtomAIQ::run3aMain(const struct timeval *frame_timestamp,
-                                  struct timeval *sof_timestamp,bool afRun)
-{
-    LOG2("@%s", __FUNCTION__);
-
-    if(afRun) {
-        if(frame_timestamp)
-            populateFrameInfo(frame_timestamp, sof_timestamp);
-        if(!mISP->isFileInjectionEnabled())
-            runAfMain();
-        // if no DSD enable, should disable that
-        if(m3aState.dsd_enabled && !mISP->isFileInjectionEnabled())
-            runDSDMain();
-    }
     if(!mISP->isFileInjectionEnabled())
-        runAeMain();
+        ret |= runAfMain();
+
+    // if no DSD enable, should disable that
+    if(!mISP->isFileInjectionEnabled())
+        ret |= runDSDMain();
+
+    if(!mISP->isFileInjectionEnabled())
+        ret |= runAeMain();
+
     runAwbMain();
 
-    if(mGBCEEnable && mAeMode != CAM_AE_MODE_MANUAL)
-        runGBCEMain();
+    if(mAeMode != CAM_AE_MODE_MANUAL)
+        ret |= runGBCEMain();
 
     // get AIC result and apply into ISP
-    runAICMain();
+    ret |= runAICMain();
 
-    return NO_ERROR;
+    return ret;
 }
-
+/*
 int AtomAIQ::run3aMain()
 {
     LOG2("@%s", __FUNCTION__);
@@ -1598,12 +1577,12 @@ int AtomAIQ::AeForFlash()
 
     return NO_ERROR;
 }
-
-void AtomAIQ::runAICMain()
+*/
+status_t AtomAIQ::runAICMain()
 {
     LOG2("@%s", __FUNCTION__);
 
-    ia_err ret = ia_err_none;
+    status_t ret = NO_ERROR;
 
     if (m3aState.ia_aiq_handle) {
         ia_aiq_aic_input_params aic_input_params;
@@ -1634,14 +1613,19 @@ void AtomAIQ::runAICMain()
         aic_input_params.cc_matrix = NULL;
         aic_input_params.wb_gains = NULL;
 
-        int value;
-        if (PlatformData::HalConfig.getValue(value, CPF::IspVamemType)) {
-            value = 0;
-        }
+        int value = 0;
+        PlatformData::HalConfig.getValue(value, CPF::IspVamemType);
         aic_input_params.isp_vamem_type = value;
 
         ret = ia_aiq_aic_run(m3aState.ia_aiq_handle, &aic_input_params, &((m3aState.results).aic_output));
         LOG2("@%s  ia_aiq_aic_run :%d", __FUNCTION__, ret);
+
+        /* Apply ISP settings */
+        if (m3aState.results.aic_output) {
+            struct atomisp_parameters *aic_out_struct = (struct atomisp_parameters *)m3aState.results.aic_output;
+            ret |= mISP->setAicParameter(aic_out_struct);
+            ret |= mISP->applyColorEffect();
+        }
 
         if (mISP->isFileInjectionEnabled() && ret == 0 && mAwbResults != NULL) {
             // When the awb result converged, and reach the max try count,
@@ -1658,7 +1642,7 @@ void AtomAIQ::runAICMain()
             }
         }
     }
-
+    return ret;
 }
 
 int AtomAIQ::dumpMknToFile()

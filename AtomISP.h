@@ -144,7 +144,7 @@ public:
     int continuousBurstNegMinOffset(void) const;
     int continuousBurstNegOffset(int skip, int startIndex) const;
     int getContinuousCaptureNumber() const;
-    status_t prepareOfflineCapture(ContinuousCaptureConfig &config);
+    status_t prepareOfflineCapture(ContinuousCaptureConfig &config, bool capturePriority);
 
     bool isYUVvideoZoomingSupported() const;
     status_t returnRecordingBuffers();
@@ -327,6 +327,7 @@ public:
     virtual status_t setAfWindows(const CameraWindow *windows, size_t numWindows) { return INVALID_OPERATION; }
     virtual status_t getAfLensPosRange(ia_3a_af_lens_range *lens_range) { return INVALID_OPERATION; }
     virtual status_t setManualFocusIncrement(int step) { return INVALID_OPERATION; }
+    virtual status_t initAfBracketing(int stops,  AFBracketingMode mode) { return INVALID_OPERATION; }
     virtual status_t updateManualFocus() { return INVALID_OPERATION; }
     virtual status_t getExposureInfo(SensorAeConfig& sensorAeConfig) { return INVALID_OPERATION; }
     virtual status_t getGridWindow(AAAWindowInfo& window);
@@ -460,6 +461,7 @@ private:
     status_t startRecording();
     status_t stopRecording();
     status_t configureCapture();
+    status_t configureContinuousMode(bool enable);
     status_t configureContinuousRingBuffer();
     status_t configureContinuous();
     status_t startCapture();
@@ -609,6 +611,7 @@ private:
     Config mConfig;
     ContinuousCaptureConfig mContCaptConfig;
     bool mContCaptPrepared;
+    bool mContCaptPriority;
 
     // TODO: video_fds should be moved to mDevices
     int video_fds[V4L2_MAX_DEVICE_COUNT];

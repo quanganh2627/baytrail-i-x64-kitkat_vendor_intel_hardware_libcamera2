@@ -95,6 +95,7 @@ class PlatformData {
 
  private:
     static PlatformBase* mInstance;
+    static int mActiveCameraId;
 
     /**
      * Get access to the platform singleton.
@@ -114,6 +115,26 @@ class PlatformData {
         SENSOR_FLIP_H      = 0x01, // V4L2_CID_HFLIP 1
         SENSOR_FLIP_V      = 0x02, // V4L2_CID_VFLIP 1
     };
+
+    /**
+     * Sets the ID of active camera
+     *
+     * This function should be called every time an instance of CameraHAL
+     * is created with given cameraId
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     */
+    static void setActiveCameraId(int cameraId);
+
+    /**
+     * Frees the ID of active camera
+     *
+     * This function should be called every time an instance of CameraHAL
+     * using the given Id is terminated
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     */
+    static void freeActiveCameraId(int cameraId);
 
     /**
      * Number of cameras
@@ -527,6 +548,22 @@ class PlatformData {
     static const char* supportedPreviewSizes(int cameraId);
 
     /**
+     * supported preview update modes
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the supported preview update mode as a string.
+     */
+    static const char* supportedPreviewUpdateModes(int cameraId);
+
+    /**
+     * default preview update mode
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the default preview update mode as a string.
+     */
+    static const char* defaultPreviewUpdateMode(int cameraId);
+
+    /**
      * Whether the slow motion playback in high speed recording mode is supported?
      * \return true if the slow motion playback is supported
      */
@@ -803,6 +840,8 @@ public:
             supportedVideoSizes = "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1080";
             // Leaving this empty. NOTE: values need to be given in derived classes.
             supportedPreviewSizes = "";
+            supportedPreviewUpdateModes = "standard,continuous,during-capture,windowless";
+            defaultPreviewUpdateMode = "standard";
             //For high speed recording, slow motion playback
             hasSlowMotion = false;
             // focus modes
@@ -880,6 +919,8 @@ public:
         String8 supportedPreviewFPSRange;
         String8 defaultPreviewFPSRange;
         String8 supportedPreviewSizes;
+        String8 supportedPreviewUpdateModes;
+        String8 defaultPreviewUpdateMode;
         String8 supportedVideoSizes;
         // For high speed recording, slow motion playback
         bool hasSlowMotion;
