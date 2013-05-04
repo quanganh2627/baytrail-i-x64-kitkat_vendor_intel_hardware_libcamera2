@@ -244,7 +244,7 @@ bool PreviewThread::checkSkipFrame(int frameNum)
 
 status_t PreviewThread::setPreviewWindow(struct preview_stream_ops *window)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s: preview_window = %p", __FUNCTION__, window);
     Message msg;
     msg.id = MESSAGE_ID_SET_PREVIEW_WINDOW;
     msg.data.setPreviewWindow.window = window;
@@ -295,6 +295,11 @@ status_t PreviewThread::fetchPreviewBuffers(Vector<AtomBuffer> &pvBufs)
 
     status_t status;
     status = mMessageQueue.send(&msg, MESSAGE_ID_FETCH_PREVIEW_BUFS);
+
+    if (status != NO_ERROR) {
+        LOGE("Failed to fetch preview buffers (error: %d)", status);
+        return status;
+    }
 
     if(mSharedMode && mPreviewBuffers.size() > 0) {
         Vector<GfxAtomBuffer>::iterator it = mPreviewBuffers.begin();
@@ -376,7 +381,7 @@ bool PreviewThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
     return false;
 }
 
-status_t PreviewThread::postview(AtomBuffer *buff, bool hidePreview)
+status_t PreviewThread::postview(AtomBuffer *buff, bool hidePreview, bool synchronous)
 {
     LOG2("@%s", __FUNCTION__);
     Message msg;
@@ -386,7 +391,11 @@ status_t PreviewThread::postview(AtomBuffer *buff, bool hidePreview)
     else
         msg.data.preview.buff.status = FRAME_STATUS_SKIPPED;
     msg.data.preview.hide = hidePreview;
-    return mMessageQueue.send(&msg);
+    msg.data.preview.synchronous = synchronous;
+    if (!synchronous)
+        return mMessageQueue.send(&msg);
+    else
+        return mMessageQueue.send(&msg, MESSAGE_ID_POSTVIEW);
 }
 
 status_t PreviewThread::flushBuffers()
@@ -1030,7 +1039,7 @@ skip_displaying:
 
 status_t PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
 {
-    LOG1("@%s: window = %p", __FUNCTION__, msg->window);
+    LOG1("@%s: preview_window = %p", __FUNCTION__, msg->window);
 
     if (mPreviewWindow == msg->window) {
         LOG1("Received the same window handle, nothing needs to be done.");
@@ -1193,6 +1202,13 @@ status_t PreviewThread::handleFetchPreviewBuffers()
                        GRALLOC_USAGE_SW_WRITE_NEVER |
                        GRALLOC_USAGE_HW_COMPOSER;
         const Rect bounds(mPreviewWidth, mPreviewHeight);
+
+        if (mPreviewWindow == NULL) {
+            LOGE("no PreviewWindow set, could not fetch previewBuffers");
+            status = INVALID_OPERATION;
+            goto freeDeQueued;
+        }
+
         for (size_t i = 0; i < mNumOfPreviewBuffers; i++) {
             err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride);
             if(err != 0) {
@@ -1398,6 +1414,7 @@ status_t PreviewThread::handlePostview(MessagePreview *msg)
 {
     int err;
     GraphicBufferMapper &mapper = GraphicBufferMapper::get();
+    status_t status = NO_ERROR;
 
     if (msg->buff.status == FRAME_STATUS_SKIPPED)
         return NO_ERROR;
@@ -1489,7 +1506,10 @@ status_t PreviewThread::handlePostview(MessagePreview *msg)
 
     LOG1("@%s: done", __FUNCTION__);
 
-    return NO_ERROR;
+    if (msg->synchronous)
+        mMessageQueue.reply(MESSAGE_ID_POSTVIEW, status);
+
+    return status;
 }
 
 /**

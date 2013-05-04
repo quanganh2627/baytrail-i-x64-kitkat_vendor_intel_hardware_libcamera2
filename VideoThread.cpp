@@ -39,13 +39,12 @@ VideoThread::~VideoThread()
     LOG1("@%s", __FUNCTION__);
 }
 
-status_t VideoThread::video(AtomBuffer *buff, nsecs_t timestamp)
+status_t VideoThread::video(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_VIDEO;
     msg.data.video.buff = *buff;
-    msg.data.video.timestamp = timestamp;
     return mMessageQueue.send(&msg);
 }
 
@@ -93,13 +92,15 @@ status_t VideoThread::handleMessageVideo(MessageVideo *msg)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    nsecs_t timestamp = (msg->buff.capture_timestamp.tv_sec)*1000000000LL
+                        + (msg->buff.capture_timestamp.tv_usec)*1000LL;
     if(mSlowMotionRate > 1)
     {
         if(mFirstFrameTimestamp == 0)
-            mFirstFrameTimestamp = msg->timestamp;
-        msg->timestamp = (msg->timestamp - mFirstFrameTimestamp) * mSlowMotionRate + mFirstFrameTimestamp;
+            mFirstFrameTimestamp = timestamp;
+        timestamp = (timestamp - mFirstFrameTimestamp) * mSlowMotionRate + mFirstFrameTimestamp;
     }
-    mCallbacksThread->videoFrameDone(&msg->buff, msg->timestamp);
+    mCallbacksThread->videoFrameDone(&msg->buff, timestamp);
 
     return status;
 }

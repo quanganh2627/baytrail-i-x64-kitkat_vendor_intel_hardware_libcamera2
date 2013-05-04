@@ -41,7 +41,7 @@ public:
 // public methods
 public:
 
-    status_t video(AtomBuffer *buff, nsecs_t timestamp);
+    status_t video(AtomBuffer *buff);
     status_t flushBuffers();
     status_t setSlowMotionRate(int rate);
     void getDefaultParameters(CameraParameters *intel_params, int cameraId);
@@ -67,7 +67,6 @@ private:
 
     struct MessageVideo {
         AtomBuffer buff;
-        nsecs_t timestamp;
     };
 
     struct MessageSetSlowMotionRate {

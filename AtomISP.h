@@ -150,16 +150,16 @@ public:
     status_t returnRecordingBuffers();
     bool isSharedPreviewBufferConfigured(bool *reserved = NULL) const;
 
-    status_t getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameStatus = NULL);
+    // TODO: client no longer using, can be moved to privates
+    status_t getPreviewFrame(AtomBuffer *buff);
     status_t putPreviewFrame(AtomBuffer *buff);
 
     status_t setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs, bool cached);
-    status_t getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp = NULL, atomisp_frame_status *frameStatus = NULL);
+    status_t getRecordingFrame(AtomBuffer *buff);
     status_t putRecordingFrame(AtomBuffer *buff);
 
     status_t setSnapshotBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bool cached);
-    status_t getSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf,
-                         atomisp_frame_status *snapshotStatus = NULL);
+    status_t getSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
     status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
 
     int pollPreview(int timeout);
@@ -540,7 +540,6 @@ private:
     int getPrimaryCameraIndex(void) const;
     status_t applySensorFlip(void);
 
-
 private:
     // AtomIspObserver
     IObserverSubject* observerSubjectByType(ObserverType t);
@@ -608,6 +607,9 @@ private:
     Config mConfig;
     ContinuousCaptureConfig mContCaptConfig;
     bool mContCaptPrepared;
+    int mInitialSkips;
+    int mPreviewCountAtCapture;    /*!< preview frame count when last
+                                     capture was taken */
 
     // TODO: video_fds should be moved to mDevices
     int video_fds[V4L2_MAX_DEVICE_COUNT];
@@ -615,6 +617,7 @@ private:
       unsigned int frameCounter;
       DeviceState state;
       Mutex       mutex;
+      unsigned int initialSkips;
     } mDevices[V4L2_MAX_DEVICE_COUNT];
 
     int dumpPreviewFrame(int previewIndex);

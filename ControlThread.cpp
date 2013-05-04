@@ -128,6 +128,9 @@ ControlThread::ControlThread(int cameraId) :
     ,mStillCaptureInProgress(false)
     ,mPreviewUpdateMode(IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD)
     ,mAllocationRequestSent(false)
+    ,mSaveMirrored(false)
+    ,mCurrentOrientation(0)
+    ,mRecordingOrientation(0)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -448,15 +451,15 @@ void ControlThread::deinit()
         }
     }
 
+    if (mCP != NULL) {
+        delete mCP;
+        mCP = NULL;
+    }
+
     if (mISP != NULL) {
         delete mISP;
         mISP = NULL;
         PERFORMANCE_TRACES_BREAKDOWN_STEP("DeleteISP");
-    }
-
-    if (mCP != NULL) {
-        delete mCP;
-        mCP = NULL;
     }
 
     if (mULL != NULL) {
@@ -1730,6 +1733,40 @@ status_t ControlThread::handleMessageStopPreview()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
+    if (mCaptureSubState == STATE_CAPTURE_STARTED) {
+        // We are going to cancel ongoing capture process based
+        // on assumption that application is no longer interested
+        // in receiving the jpeg. This is done to protect racing
+        // conditions with unfinished capture process and camera
+        // reconfiguration (setParameters) in general.
+        // Note: In case snapshot is already sent to PictureThread for
+        //       encoding, we may or may not end up calling picture
+        //       callbacks. Callback would get blocked until this
+        //       stopPreview finishes.
+        //       It is up to application to ensure it blocks for jpeg
+        //       before letting other API calls to happen or touches
+        //       into callback interfaces given with takePicture().
+        //       If we are here, ANR is expected - just protecting
+        //       against crashes.
+        LOGW("stopPreview() called while capture in progress, canceling"
+             "application should release the camera to cancel capture process");
+        if (mState == STATE_CAPTURE)
+            status = stopCapture();
+        else if (mState == STATE_CONTINUOUS_CAPTURE) {
+            stopOfflineCapture();
+        }
+        mBurstLength = 0;
+        mPictureThread->flushBuffers();
+        mStillCaptureInProgress = false;
+        mCaptureSubState = STATE_CAPTURE_IDLE;
+    }
+    /**
+     * We maybe in the middle of processing ULL image, make sure we cancel this
+     */
+    if (mULL && mULL->isProcessing()) {
+        mPostCaptureThread->cancelProcessingItem((IPostCaptureProcessItem *)mULL);
+    }
+
     // In STATE_CAPTURE, preview is already stopped, nothing to do
     if (mState != STATE_CAPTURE) {
         stopFaceDetection(true);
@@ -1843,6 +1880,13 @@ status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
         startPreviewCore(videoMode);
         if (faceActive)
             startFaceDetection();
+    } else if (msg->window == NULL
+               && currentState == PreviewThread::STATE_STOPPED
+               && mState == STATE_CONTINUOUS_CAPTURE) {
+        // if we are in continuous-mode and backgrounding-state
+        // and window is set to null, then stop review
+        stopPreviewCore();
+        status = mPreviewThread->setPreviewWindow(msg->window);
     } else {
         // Notes:
         //  1. msg->window == NULL comes only from CameraService in release
@@ -1917,6 +1961,11 @@ status_t ControlThread::handleMessageStartRecording()
     snprintf(sizes, 25, "%dx%d,0x0", widthPreview,heightPreview);
     mParameters.set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES, sizes);
     updateParameterCache();
+
+    // Store device orientation at the start of video recording
+    if (mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT)) {
+        mRecordingOrientation = mCurrentOrientation;
+    }
 
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_START_RECORDING, status);
@@ -2165,19 +2214,18 @@ status_t ControlThread::getFlashExposedSnapshot(AtomBuffer *snapshotBuffer, Atom
     LOG2("@%s:", __FUNCTION__);
     status_t status = NO_ERROR;
     for (int cnt = 0;;) {
-        enum atomisp_frame_status stat;
 
-        status = mISP->getSnapshot(snapshotBuffer, postviewBuffer, &stat);
+        status = mISP->getSnapshot(snapshotBuffer, postviewBuffer);
         if (status != NO_ERROR) {
             LOGE("%s: Error in grabbing snapshot!", __FUNCTION__);
             break;
         }
 
-        if (stat == ATOMISP_FRAME_STATUS_FLASH_EXPOSED) {
+        if (snapshotBuffer->status == FRAME_STATUS_FLASH_EXPOSED) {
             LOG2("flash exposed, frame %d", cnt);
             break;
         }
-        else if (stat == ATOMISP_FRAME_STATUS_FLASH_FAILED) {
+        else if (snapshotBuffer->status  == FRAME_STATUS_FLASH_FAILED) {
             LOGE("%s: flash fail, frame %d", __FUNCTION__, cnt);
             break;
         }
@@ -2239,6 +2287,13 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
     metaData.aeConfig = aeConfig;
     metaData.ia3AMkNote = aaaMkNote;
     metaData.atomispMkNote = atomispMkNote;
+
+    // Request mirroring for snapshot and postview buffers (only for front camera)
+    // Do mirroring only in still capture mode, video snapshots are mirrored in dequeueRecording()
+    metaData.saveMirrored = mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT) &&
+                            (mState != STATE_RECORDING);
+    metaData.cameraOrientation = PlatformData::cameraOrientation(mCameraId);
+    metaData.currentOrientation = mCurrentOrientation;
 }
 
 status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffer &postviewBuffer)
@@ -2783,6 +2838,15 @@ status_t ControlThread::captureStillPic()
         mISP->setFlashIndicator(0);
     }
 
+    // Do postview for preview-keep-alive feature synchronously before the possible mirroring.
+    // Otherwise mirrored image will be shown in postview.
+    if (displayPostview || syncJpegCbWithPostview) {
+        // We sync with single capture, where we also need preview to stall.
+        // So, hide preview after postview when syncJpegCbWithPostview is true
+        bool syncPostview = mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT);
+        mPreviewThread->postview(displayPostview?&postviewBuffer:NULL, syncJpegCbWithPostview, syncPostview);
+    }
+
     // Do jpeg encoding in other cases except HDR. Encoding HDR will be done later.
     bool doEncode = false;
     if (!mHdr.enabled) {
@@ -2801,12 +2865,6 @@ status_t ControlThread::captureStillPic()
 
     if (mState == STATE_CONTINUOUS_CAPTURE && mBurstLength <= 1)
         stopOfflineCapture();
-
-    if (displayPostview) {
-        // We sync with single capture, where we also need preview to stall.
-        // So, hide preview after postview when syncJpegCbWithPostview is true
-        mPreviewThread->postview(&postviewBuffer, syncJpegCbWithPostview);
-    }
 
     if (mState == STATE_CONTINUOUS_CAPTURE) {
         // Continuous mode will keep running keeping 3A active but
@@ -3638,7 +3696,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
 
     int minFPS, maxFPS;
     params->getPreviewFpsRange(&minFPS, &maxFPS);
-    if (minFPS == maxFPS || minFPS > maxFPS) {
+    if (minFPS > maxFPS || minFPS < 0) {
         LOGE("invalid fps range [%d,%d]", minFPS, maxFPS);
         return BAD_VALUE;
     }
@@ -3737,12 +3795,14 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
-    // FLASH
-    const char* flashMode = params->get(CameraParameters::KEY_FLASH_MODE);
-    const char* flashModes = params->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
-    if (!validateString(flashMode, flashModes)) {
-        LOGE("bad flash mode");
-        return BAD_VALUE;
+    // FLASH. About the checking: just the back camera support flash
+    if ((mCameraId == 0) && PlatformData::supportsBackFlash()) {
+        const char* flashMode = params->get(CameraParameters::KEY_FLASH_MODE);
+        const char* flashModes = params->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
+        if (!validateString(flashMode, flashModes)) {
+            LOGE("bad flash mode");
+            return BAD_VALUE;
+        }
     }
 
     // SCENE MODE
@@ -4042,6 +4102,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     if (status == NO_ERROR) {
         // ae mode
         status = processParamAutoExposureMode(oldParams, newParams);
+    }
+
+    if (status == NO_ERROR) {
+        // save mirrored image (for front camera)
+        status = processParamMirroring(oldParams, newParams);
     }
 
     if (m3AControls->isIntel3A()) {
@@ -4563,9 +4628,21 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         if(newVal == "on") {
             mHdr.enabled = true;
             mHdr.bracketMode = BRACKET_EXPOSURE;
-            mHdr.savedBracketMode = mBracketManager->getBracketMode();
             mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
+            status = mCP->initializeHDR(newWidth, newHeight);
+            if (status == NO_ERROR) {
+                mHdr.enabled = true;
+                mHdr.bracketMode = BRACKET_EXPOSURE;
+                mHdr.savedBracketMode = mBracketManager->getBracketMode();
+                mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
+            } else {
+                LOGE("HDR buffer allocation failed");
+            }
         } else if(newVal == "off") {
+            status = mCP->uninitializeHDR();
+            if (status != NO_ERROR) {
+                LOGE("HDR buffer release failed");
+            }
             mHdr.enabled = false;
             mBracketManager->setBracketMode(mHdr.savedBracketMode);
         } else {
@@ -4574,6 +4651,21 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         }
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_IMAGING, newVal.string());
+        }
+    } else {
+        // Re-allocate buffers if resolution changed and HDR was ON
+        const char* o = oldParams->get(IntelCameraParameters::KEY_HDR_IMAGING);
+        String8 oldVal (o, (o == NULL ? 0 : strlen(o)));
+        if(oldVal == "on" && (newWidth != oldWidth || newHeight != oldHeight)) {
+            status = mCP->uninitializeHDR();
+            if (status == NO_ERROR) {
+                status = mCP->initializeHDR(newWidth, newHeight);
+                if (status != NO_ERROR) {
+                    LOGE("HDR buffer allocation failed");
+                }
+            } else {
+                LOGE("HDR buffer release failed");
+            }
         }
     }
 
@@ -5537,6 +5629,27 @@ status_t ControlThread::processParamExifSoftware(const CameraParameters *oldPara
     return NO_ERROR;
 }
 
+status_t ControlThread::processParamMirroring(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_SAVE_MIRRORED);
+
+    if (!newVal.isEmpty()) {
+        if (newVal == CameraParameters::TRUE) {
+            mSaveMirrored = true;
+            mCurrentOrientation = SensorThread::getInstance()->registerOrientationListener(this);
+         } else {
+            mSaveMirrored = false;
+            SensorThread::getInstance()->unRegisterOrientationListener(this);
+        }
+        LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_SAVE_MIRRORED, newVal.string());
+    }
+
+    return NO_ERROR;
+}
+
 /*
  * Process parameters that require the ISP to be stopped.
  *
@@ -6113,11 +6226,17 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
     PictureThread::MetaData picMetaData;
     int ULLid = 0;
 
-    // ATM the only post capture processing is ULL, no need to check which one
-    mULL->getOuputResult(&snapshotBuffer,&postviewBuffer, &picMetaData, &ULLid);
-
-    if(msg->status != NO_ERROR)
+    if(msg->status != NO_ERROR)  {
         LOGW("PostCapture Processing failed !!");
+        goto cleanup;
+    }
+
+    // ATM the only post capture processing is ULL, no need to check which one
+    status = mULL->getOuputResult(&snapshotBuffer,&postviewBuffer, &picMetaData, &ULLid);
+    if (status != NO_ERROR) {
+        /* This can only mean that ULL was cancel, cleanup and go */
+        goto cleanup;
+    }
 
     mCallbacksThread->requestULLPicture(ULLid);
 
@@ -6140,6 +6259,7 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
         picMetaData.free(m3AControls);
     }
 
+cleanup:
     /**
      * retrieve input buffers from ULL class and return them for re-cycling
      */
@@ -6157,9 +6277,9 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
         handleMessagePictureDone(&picMsg);
     }
 
-
     return NO_ERROR;
 }
+
 status_t ControlThread::hdrInit(int size, int pvSize, int format,
                                 int width, int height,
                                 int pvWidth, int pvHeight)
@@ -6354,8 +6474,6 @@ status_t ControlThread::hdrCompose()
         return status;
     }
 
-    status = mCP->initializeHDR(mHdr.ciBufOut.ciMainBuf->width,
-                                mHdr.ciBufOut.ciMainBuf->height);
     if (status != NO_ERROR) {
         hdrPicMetaData.free(m3AControls);
         LOGE("HDR buffer allocation failed");
@@ -6387,8 +6505,6 @@ status_t ControlThread::hdrCompose()
 
     if (doEncode == false)
         hdrPicMetaData.free(m3AControls);
-
-    mCP->uninitializeHDR();
 
     /**
      * TODO: to have a cleaner buffer recycle we should return the snapshot buffers
@@ -6862,6 +6978,9 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE:
             status = handleMessagePostCaptureProcessingDone(&msg.data.postCapture);
+
+        case MESSAGE_ID_SET_ORIENTATION:
+            status = handleMessageSetOrientation(&msg.data.orientation);
             break;
 
         case MESSAGE_ID_SNAPSHOT_ALLOCATED:
@@ -6969,13 +7088,11 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
 {
     LOG2("@%s", __FUNCTION__);
     AtomBuffer buff;
-    nsecs_t timestamp;
     status_t status = NO_ERROR;
-    atomisp_frame_status frameStatus;
 
-    status = mISP->getRecordingFrame(&buff, &timestamp, &frameStatus);
+    status = mISP->getRecordingFrame(&buff);
     if (status == NO_ERROR) {
-       if (frameStatus != ATOMISP_FRAME_STATUS_CORRUPTED) {
+       if (buff.status != FRAME_STATUS_CORRUPTED) {
             // Check whether driver has run out of buffers
             if (!mISP->dataAvailable()) {
                 LOGE("Video frame dropped, buffers reserved : %d video encoder, %d video snapshot",
@@ -6990,17 +7107,24 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
                 if (mISP->getPreviewTooBigForVFPP()) {
                     memcpy(buff.dataPtr, msg->previewFrame.dataPtr, msg->previewFrame.size);
                 }
+
+                // Mirror the recording buffer if mirroring is enabled (only for front camera)
+                // TODO: this should be moved into VideoThread
+                if (mSaveMirrored && PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT) {
+                    mirrorBuffer(&buff, mRecordingOrientation, PlatformData::cameraOrientation(mCameraId));
+                }
+
                 if (mVideoSnapshotrequested && mVideoSnapshotBuffers.size() < 3) {
                     mVideoSnapshotrequested--;
                     encodeVideoSnapshot(buff);
                 }
-                mVideoThread->video(&buff, timestamp);
+                mVideoThread->video(&buff);
                 mRecordingBuffers.push(buff);
             } else {
                 mISP->putRecordingFrame(&buff);
             }
         } else {
-            LOGW("Recording frame %d corrupted, ignoring", buff.id);
+            LOGD("Recording frame %d corrupted, ignoring", buff.id);
             mISP->putRecordingFrame(&buff);
         }
     } else {
@@ -7090,6 +7214,22 @@ status_t ControlThread::requestExitAndWait()
 
     // propagate call to base class
     return Thread::requestExitAndWait();
+}
+
+void ControlThread::orientationChanged(int orientation)
+{
+    LOG1("@%s: orientation = %d", __FUNCTION__, orientation);
+    Message msg;
+    msg.id = MESSAGE_ID_SET_ORIENTATION;
+    msg.data.orientation.value = orientation;
+    mMessageQueue.send(&msg);
+}
+
+status_t ControlThread::handleMessageSetOrientation(MessageOrientation *msg)
+{
+    LOG1("@%s: orientation = %d", __FUNCTION__, msg->value);
+    mCurrentOrientation = msg->value;
+    return NO_ERROR;
 }
 
 } // namespace android

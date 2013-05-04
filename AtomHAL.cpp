@@ -88,7 +88,7 @@ camera_module_t HAL_MODULE_INFO_SYM = {
 static int atom_set_preview_window(struct camera_device * device,
         struct preview_stream_ops *window)
 {
-    LOGD("%s", __FUNCTION__);
+    LOGD("%s preview_window = %p", __FUNCTION__, window);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);

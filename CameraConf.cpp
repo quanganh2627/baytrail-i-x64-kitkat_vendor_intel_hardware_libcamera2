@@ -979,7 +979,7 @@ status_t CpfStore::processDrvConf(CameraBlob& drvConf)
 
     // There is a limitation in sysfs; maximum data size to be sent
     // is one page
-    if (size > getpagesize()) {
+    if ((int)size > getpagesize()) {
         LOGE("ERROR too big driver configuration record!");
         return EOVERFLOW;
     }
@@ -997,7 +997,7 @@ status_t CpfStore::processDrvConf(CameraBlob& drvConf)
     if (bytes < 0) {
         LOGE("ERROR in writing sysfs data: %s!", strerror(errno));
         ret = EIO;
-    } else if ((bytes == 0) || (bytes != size)) {
+    } else if ((bytes == 0) || (bytes != (int)size)) {
         LOGE("ERROR in writing sysfs data: %d bytes written (expecting %d)!", bytes, size);
         ret = EIO;
     }

@@ -82,4 +82,108 @@ void convertFromAndroidToIaCoordinates(const CameraWindow &srcWindow, CameraWind
     toWindow.y_bottom = bottomright.y;
 }
 
+/**
+ * Mirror the buffer contents by flipping the data horizontally or
+ * vertically based on the camera sensor orientation and device
+ * orientation.
+ */
+void mirrorBuffer(AtomBuffer *buffer, int currentOrientation, int cameraOrientation)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    int rotation = (cameraOrientation - currentOrientation + 360) % 360;
+    if (rotation == 90 || rotation == 270) {
+        flipBufferH(buffer);
+    } else {
+        flipBufferV(buffer);
+    }
+}
+
+void flipBufferV(AtomBuffer *buffer) {
+    LOG1("@%s", __FUNCTION__);
+    int width, height, stride;
+    unsigned char *data = NULL;
+
+    void *ptr = NULL;
+    if (buffer->shared)
+        ptr = (void *) *((char **)buffer->dataPtr);
+    else
+        ptr = buffer->dataPtr;
+
+    data = (unsigned char *) ptr;
+    width = buffer->width;
+    height = buffer->height;
+    stride = buffer->stride;
+    int w = width / 2;
+    unsigned char temp = 0;
+
+    // Y
+    for (int j=0; j < height; j++) {
+        for (int i=0; i < w; i++) {
+            temp = data[i];
+            data[i] = data[width-i-1];
+            data[width-i-1] = temp;
+        }
+        data = data + stride;
+    }
+
+    int h = height / 2;
+    unsigned char tempu = 0;
+    unsigned char tempv = 0;
+
+    // U+V
+    for (int j=0; j < h; j++) {
+        for (int i=0; i < w; i+=2) {
+            tempu = data[i];
+            tempv = data[i+1];
+            data[i] = data[width-i-2];
+            data[i+1] = data[width-i-1];
+            data[width-i-2] = tempu;
+            data[width-i-1] = tempv;
+        }
+        data = data + stride;
+    }
+}
+
+void flipBufferH(AtomBuffer *buffer) {
+    LOG1("@%s", __FUNCTION__);
+    int width, height, stride;
+    unsigned char *data = NULL;
+
+    void *ptr = NULL;
+    if (buffer->shared)
+        ptr = (void *) *((char **)buffer->dataPtr);
+    else
+        ptr = buffer->dataPtr;
+
+    data = (unsigned char *) ptr;
+    width = buffer->width;
+    height = buffer->height;
+    stride = buffer->stride;
+    int h = height / 2;
+    unsigned char temp = 0;
+
+    // Y
+    for (int j=0; j < width; j++) {
+        for (int i=0; i < h; i++) {
+            temp = data[i*stride + j];
+            data[i*stride + j] = data[(height-1-i)*stride + j];
+            data[(height-1-i)*stride + j] = temp;
+        }
+    }
+
+    // U+V
+    data = data + stride * height;
+    h = height / 4;
+    int heightUV = height / 2;
+
+    for (int j=0; j < width; j++) {
+        for (int i=0; i < h; i++) {
+            temp = data[i*stride + j];
+            data[i*stride + j] = data[(heightUV-1-i)*stride + j];
+            data[(heightUV-1-i)*stride + j] = temp;
+        }
+    }
+}
+
 }

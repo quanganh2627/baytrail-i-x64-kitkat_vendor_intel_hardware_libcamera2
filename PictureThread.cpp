@@ -38,21 +38,31 @@ PictureThread::PictureThread(I3AControls *aaaControls) :
     ,mThreadRunning(false)
     ,mCallbacks(Callbacks::getInstance())
     ,mCallbacksThread(CallbacksThread::getInstance())
+    ,mHwCompressor(NULL)
+    ,mExifMaker(NULL)
     ,mExifBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT_JPEG))
     ,mOutBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT_JPEG))
     ,mThumbBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW))
     ,mScaledPic(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT))
     ,mPictureQuality(80)
     ,mThumbnailQuality(50)
+    ,mInputBufferArray(NULL)
+    ,mInputBuffDataArray(NULL)
     ,mInputBuffers(0)
     ,m3AControls(aaaControls)
 {
     LOG1("@%s", __FUNCTION__);
-    mInputBufferArray = NULL;
-    mInputBuffDataArray = NULL;
+
     mHwCompressor = new JpegHwEncoder();
+    if (mHwCompressor == NULL) {
+        LOGE("HwCompressor allocation failed");
+    }
+
     // TODO: Remove the EXIFMaker's dependency on aaaControls
     mExifMaker = new EXIFMaker(aaaControls);
+    if (mExifMaker == NULL) {
+        LOGE("ExifMaker allocation failed");
+    }
 }
 
 PictureThread::~PictureThread()
@@ -60,30 +70,37 @@ PictureThread::~PictureThread()
     LOG1("@%s", __FUNCTION__);
 
     if (mOutBuf.buff != NULL) {
+        LOGD("@%s: release mOutBuf", __FUNCTION__);
         mOutBuf.buff->release(mOutBuf.buff);
         mOutBuf.buff = NULL;
     }
     if (mExifBuf.buff != NULL) {
+        LOGD("@%s: release mExifBuf", __FUNCTION__);
         mExifBuf.buff->release(mExifBuf.buff);
         mExifBuf.buff = NULL;
     }
     if (mThumbBuf.buff != NULL) {
+        LOGD("@%s: release mThumbBuf", __FUNCTION__);
         mThumbBuf.buff->release(mThumbBuf.buff);
         mThumbBuf.buff = NULL;
     }
     if (mScaledPic.buff != NULL) {
+        LOGD("@%s: release mScaledPic", __FUNCTION__);
         mScaledPic.buff->release(mScaledPic.buff);
         mScaledPic.buff = NULL;
     }
 
+    LOGD("@%s: release InputBuffers", __FUNCTION__);
     freeInputBuffers();
 
-    if(mHwCompressor) {
+    if (mHwCompressor) {
+        LOGD("@%s: release mHwCompressor", __FUNCTION__);
         delete mHwCompressor;
         mHwCompressor = NULL;
     }
 
     if (mExifMaker) {
+        LOGD("@%s: release mExifMaker", __FUNCTION__);
         delete mExifMaker;
         mExifMaker = NULL;
     }
@@ -320,6 +337,13 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
     else
         postviewBuf = &msg->postviewBuf;
 
+    // Mirror snapshot and postview buffers if requested
+    if (msg->metaData.saveMirrored) {
+        mirrorBuffer(&msg->snaphotBuf, msg->metaData.currentOrientation, msg->metaData.cameraOrientation);
+        if (postviewBuf)
+            mirrorBuffer(postviewBuf, msg->metaData.currentOrientation, msg->metaData.cameraOrientation);
+    }
+
     status = encodeToJpeg(&msg->snaphotBuf, postviewBuf, &jpegBuf);
     if (status != NO_ERROR) {
         LOGE("Error generating JPEG image!");
@@ -451,8 +475,10 @@ void PictureThread::freeInputBuffers()
 
     if(mInputBufferArray != NULL) {
        for (int i = 0; i < mInputBuffers; i++) {
-           mInputBufferArray[i].buff->release(mInputBufferArray[i].buff);
-           mInputBufferArray[i].buff = NULL;
+           if (mInputBufferArray[i].buff != NULL) {
+               mInputBufferArray[i].buff->release(mInputBufferArray[i].buff);
+               mInputBufferArray[i].buff = NULL;
+           }
        }
        delete [] mInputBufferArray;
        mInputBufferArray = NULL;

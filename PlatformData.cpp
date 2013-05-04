@@ -128,15 +128,6 @@ PlatformBase* PlatformData::getInstance(void)
 
 SensorType PlatformData::sensorType(int cameraId)
 {
-    bool boolean;
-    if (!HalConfig.getBool(boolean, CPF::NeedsIsp)) {
-        if (CPF::NeedsIsp) {
-            return SENSOR_TYPE_RAW;
-        } else {
-            return SENSOR_TYPE_SOC;
-        }
-    }
-
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
       LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
@@ -886,6 +877,26 @@ const char* PlatformData::supportedPreviewSizes(int cameraId)
       return "";
     }
     return i->mCameras[cameraId].supportedPreviewSizes;
+}
+
+const char* PlatformData::supportedPreviewUpdateModes(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].supportedPreviewUpdateModes;
+}
+
+const char* PlatformData::defaultPreviewUpdateMode(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].defaultPreviewUpdateMode;
 }
 
 bool PlatformData::supportsSlowMotion(int cameraId)
