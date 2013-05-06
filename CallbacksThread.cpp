@@ -268,6 +268,23 @@ status_t CallbacksThread::handleMessageFocusMove(CallbacksThread::MessageFocusMo
 }
 
 
+status_t CallbacksThread::sendError(int id)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.data.error.id = id;
+    msg.id = MESSAGE_ID_ERROR_CALLBACK;
+
+    return mMessageQueue.send(&msg);
+}
+
+status_t CallbacksThread::handleMessageSendError(MessageError *msg)
+{
+    LOGE("@%s: id %d", __FUNCTION__,msg->id);
+    mCallbacks->cameraError(msg->id);
+    return NO_ERROR;
+}
+
 void CallbacksThread::facesDetected(camera_frame_metadata_t &face_metadata)
 {
     LOG2("@%s", __FUNCTION__);
@@ -471,7 +488,7 @@ status_t CallbacksThread::handleMessageJpegDataRequest(MessageDataRequest *msg)
 
 status_t CallbacksThread::handleMessageUllTriggered(MessageULLSnapshot *msg)
 {
-    LOG1("@%s Done",__FUNCTION__);
+    LOG1("@%s Done id:%d",__FUNCTION__,msg->id);
     int id = msg->id;
     mCallbacks->ullTriggered(id);
     return NO_ERROR;
@@ -693,6 +710,9 @@ status_t CallbacksThread::waitForAndExecuteMessage()
             status = handleMessageUllTriggered(&msg.data.ull);
             break;
 
+        case MESSAGE_ID_ERROR_CALLBACK:
+            status = handleMessageSendError(&msg.data.error);
+            break;
         default:
             status = BAD_VALUE;
             break;
