@@ -30,7 +30,7 @@
 
 #define NUM_0TH_IFD_TIFF            14
 #define NUM_0TH_IFD_EXIF            32
-#define NUM_0TH_IFD_GPS             10
+#define NUM_0TH_IFD_GPS             12
 #define NUM_1TH_IFD_TIFF            9
 
 #define EXIF_SIZE_LIMITATION        0x10000
@@ -106,6 +106,8 @@
 #define EXIF_TAG_GPS_ALTITUDE_REF               0x0005
 #define EXIF_TAG_GPS_ALTITUDE                   0x0006
 #define EXIF_TAG_GPS_TIMESTAMP                  0x0007
+#define EXIF_TAG_GPS_IMG_DIRECTION_REF          0x0010
+#define EXIF_TAG_GPS_IMG_DIRECTION              0x0011
 #define EXIF_TAG_GPS_PROCESSING_METHOD          0x001B
 #define EXIF_TAG_GPS_DATESTAMP                  0x001D
 
@@ -213,6 +215,7 @@ const uint8_t   EXIF_GPS_LONGITUDE      = 0x02;
 const uint8_t   EXIF_GPS_ALTITUDE       = 0x04;
 const uint8_t   EXIF_GPS_TIMESTAMP      = 0x08;
 const uint8_t   EXIF_GPS_PROCMETHOD     = 0x10;
+const uint8_t   EXIF_GPS_IMG_DIRECTION  = 0x20;
 
 /* Values */
 #define EXIF_DEF_IMAGE_DESCRIPTION          "Jpeg"
@@ -310,6 +313,9 @@ typedef struct {
     rational_t gps_timestamp[3];
     uint8_t gps_datestamp[11];
     uint8_t gps_processing_method[100];
+
+    uint8_t gps_img_direction_ref[2];
+    rational_t gps_img_direction;
 
     rational_t x_resolution;
     rational_t y_resolution;

@@ -240,6 +240,14 @@ namespace android {
     static const char KEY_SAVE_MIRRORED[];
     static const char KEY_SUPPORTED_SAVE_MIRRORED[];
 
+    // GPS extension
+    static const char KEY_GPS_IMG_DIRECTION[];
+    static const char KEY_GPS_IMG_DIRECTION_REF[];
+    static const char KEY_SUPPORTED_GPS_IMG_DIRECTION_REF[];
+    // possible value for the KEY_GPS_IMG_DIRECTION_REF
+    static const char GPS_IMG_DIRECTION_REF_TRUE[];
+    static const char GPS_IMG_DIRECTION_REF_MAGNETIC[];
+
     static void getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params);
     static const char* getSupportedPanoramaLivePreviewSizes(const CameraParameters &params);
     static void parseResolutionList(const char *sizeStr, Vector<Size> &sizes);

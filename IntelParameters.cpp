@@ -233,6 +233,13 @@ namespace android {
     const char IntelCameraParameters::KEY_SAVE_MIRRORED[] = "save-mirrored";
     const char IntelCameraParameters::KEY_SUPPORTED_SAVE_MIRRORED[] = "save-mirrored-values";
 
+    // GPS extension
+    const char IntelCameraParameters::KEY_GPS_IMG_DIRECTION[] = "gps-img-direction";
+    const char IntelCameraParameters::KEY_GPS_IMG_DIRECTION_REF[] = "gps-img-direction-ref";
+    const char IntelCameraParameters::KEY_SUPPORTED_GPS_IMG_DIRECTION_REF[] = "gps-img-direction-ref-values";
+    // possible value for the KEY_GPS_IMG_DIRECTION_REF
+    const char IntelCameraParameters::GPS_IMG_DIRECTION_REF_TRUE[] = "true-direction";
+    const char IntelCameraParameters::GPS_IMG_DIRECTION_REF_MAGNETIC[] = "magnetic-direction";
 
     void IntelCameraParameters::getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params)
     {

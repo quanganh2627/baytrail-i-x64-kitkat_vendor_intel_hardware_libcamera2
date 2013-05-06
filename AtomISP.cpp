@@ -742,6 +742,9 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_SAVE_MIRRORED, "false");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SAVE_MIRRORED, "true,false");
 
+    // GPS related (Intel extension)
+    intel_params->set(IntelCameraParameters::KEY_GPS_IMG_DIRECTION_REF, "true-direction");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_GPS_IMG_DIRECTION_REF, "true-direction,magnetic-direction");
 }
 
 void AtomISP::getMaxSnapShotSize(int cameraId, int* width, int* height)
