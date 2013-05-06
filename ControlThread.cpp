@@ -4007,10 +4007,6 @@ status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
         mBurstStart = burstStartInt;
     }
 
-    // just the back camera should be considered
-    if (mISP->getCurrentCameraId() == 0)
-        selectFlashMode(newParams, false);
-
     return status;
 }
 
@@ -4707,7 +4703,6 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         // Dependency parameters
         mBurstLength = mHdr.bracketNum;
         mBracketManager->setBracketMode(mHdr.bracketMode);
-        selectFlashMode(newParams, false);
     }
 
     newVal = paramsReturnNewIfChanged(oldParams, newParams,
@@ -4798,17 +4793,14 @@ status_t ControlThread::processParamULL(const CameraParameters *oldParams,
  * in burst capture, the flash is forced to off, otherwise
  * saved single capture flash mode is applied.
  * \param newParams
- * \param apply previous saved value
  */
-void ControlThread::selectFlashMode(CameraParameters *newParams, bool applySaved)
+void ControlThread::selectFlashMode(CameraParameters *newParams)
 {
     // !mBurstLength is only for CTS to pass
     LOG1("@%s", __FUNCTION__);
     if (mBurstLength == 1 || !mBurstLength) {
-        if (applySaved) {
-            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, mSavedFlashSupported.string());
-            newParams->set(CameraParameters::KEY_FLASH_MODE, mSavedFlashMode.string());
-        }
+        newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, mSavedFlashSupported.string());
+        newParams->set(CameraParameters::KEY_FLASH_MODE, mSavedFlashMode.string());
     } else {
         newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
         newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
@@ -4845,7 +4837,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
-                selectFlashMode(newParams, true);
+                selectFlashMode(newParams);
             }
         } else if (newScene == CameraParameters::SCENE_MODE_SPORTS || newScene == CameraParameters::SCENE_MODE_PARTY) {
             sceneMode = (newScene == CameraParameters::SCENE_MODE_SPORTS) ? CAM_AE_SCENE_MODE_SPORTS : CAM_AE_SCENE_MODE_PARTY;
@@ -4866,7 +4858,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams, true);
+                selectFlashMode(newParams);
             }
         } else if (newScene == CameraParameters::SCENE_MODE_LANDSCAPE || newScene == CameraParameters::SCENE_MODE_SUNSET) {
             sceneMode = (newScene == CameraParameters::SCENE_MODE_LANDSCAPE) ? CAM_AE_SCENE_MODE_LANDSCAPE : CAM_AE_SCENE_MODE_SUNSET;
@@ -4887,7 +4879,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams, true);
+                selectFlashMode(newParams);
             }
         } else if (newScene == CameraParameters::SCENE_MODE_NIGHT) {
             sceneMode = CAM_AE_SCENE_MODE_NIGHT;
@@ -4908,7 +4900,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams, true);
+                selectFlashMode(newParams);
             }
         } else if (newScene == CameraParameters::SCENE_MODE_NIGHT_PORTRAIT) {
             sceneMode = CAM_AE_SCENE_MODE_NIGHT_PORTRAIT;
@@ -4929,7 +4921,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("on");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_ON);
-                selectFlashMode(newParams, true);
+                selectFlashMode(newParams);
             }
         } else if (newScene == CameraParameters::SCENE_MODE_FIREWORKS) {
             sceneMode = CAM_AE_SCENE_MODE_FIREWORKS;
@@ -4950,7 +4942,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams, true);
+                selectFlashMode(newParams);
             }
         } else if (newScene == CameraParameters::SCENE_MODE_BARCODE) {
             sceneMode = CAM_AE_SCENE_MODE_TEXT;
@@ -4970,8 +4962,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             }
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
-                mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams, true);
+                mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
+                selectFlashMode(newParams);
             }
         } else {
             if (newScene == CameraParameters::SCENE_MODE_CANDLELIGHT) {
@@ -5007,7 +4999,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
-                selectFlashMode(newParams, true);
+                selectFlashMode(newParams);
             }
         }
 

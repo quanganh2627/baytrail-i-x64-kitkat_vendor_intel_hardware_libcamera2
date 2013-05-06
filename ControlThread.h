@@ -592,7 +592,7 @@ private:
 
     void convertAfWindows(CameraWindow* focusWindows, size_t winCount);
 
-    void selectFlashMode(CameraParameters *newParams, bool applySaved);
+    void selectFlashMode(CameraParameters *newParams);
 
     bool selectPostviewSize(int &width, int &height);
 
