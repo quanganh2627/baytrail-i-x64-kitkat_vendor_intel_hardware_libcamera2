@@ -192,6 +192,9 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
     }
 
     m3aState.frame_use = isp_mode;
+    mAfInputParameters.frame_use = m3aState.frame_use;
+    mAeInputParameters.frame_use = m3aState.frame_use;
+    mAwbInputParameters.frame_use = m3aState.frame_use;
 
     /* usually the grid changes as well when the mode changes. */
     changeSensorMode();
@@ -686,7 +689,7 @@ status_t AtomAIQ::stopStillAf()
     if (mAfMode == CAM_AF_MODE_AUTO) {
         setAfFocusMode(ia_aiq_af_operation_mode_manual);
     }
-    mAfInputParameters.frame_use = ia_aiq_frame_use_preview;
+    mAfInputParameters.frame_use = m3aState.frame_use;
 
     mStillAfStart = 0;
     return NO_ERROR;
@@ -1226,7 +1229,7 @@ void AtomAIQ::resetAFParams()
     mAfInputParameters.focus_rect->width = 0;
     mAfInputParameters.focus_rect->left = 0;
     mAfInputParameters.focus_rect->top = 0;
-    mAfInputParameters.frame_use = ia_aiq_frame_use_preview;
+    mAfInputParameters.frame_use = m3aState.frame_use;
     mAfInputParameters.lens_position = 0;
 
     mAfInputParameters.manual_focus_parameters = &mAfState.focus_parameters;
@@ -1425,7 +1428,6 @@ void AtomAIQ::runAwbMain()
 
     if(m3aState.ia_aiq_handle)
     {
-        mAwbInputParameters.frame_use = m3aState.frame_use;
         //mAwbInputParameters.scene_mode = ia_aiq_awb_operation_mode_auto;
         LOG2("before ia_aiq_awb_run() param-- frame_use:%d scene_mode:%d", mAwbInputParameters.frame_use, mAwbInputParameters.scene_mode);
         ret = ia_aiq_awb_run(m3aState.ia_aiq_handle, &mAwbInputParameters, &mAwbResults);
