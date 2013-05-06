@@ -170,45 +170,42 @@ void convertYV12ToNV21(int width, int height, int srcStride, int dstStride, void
     }
 }
 
-// covert YV12 (Y plane, V plan, U plan) to YU12(I420) (Y plane, U plane, V plane)
-void convertYV12ToYU12(int width, int height, int srcStride, int dstStride, void *src, void *dst)
+// copy YV12 to YV12 (Y plane, V plan, U plan) in case of different stride length
+void copyYV12ToYV12(int width, int height, int srcStride, int dstStride, void *src, void *dst)
 {
-    const int scStride = srcStride>>1;
-    const int dcStride = ALIGN16(dstStride>>1); // Android CTS required: U/V plane needs 16 bytes aligned!
-    const int hhalf = height>>1;
-    const int whalf = width>>1;
-
     // copy the entire Y plane
-    unsigned char *srcPtrY = (unsigned char *)src;
-    unsigned char *dstPtrY = (unsigned char *)dst;
     if (srcStride == dstStride) {
-        memcpy(dstPtrY, srcPtrY, dstStride*height);
+        memcpy(dst, src, dstStride * height);
     } else {
-        for (int i = 0; i < height; i++) {
+        unsigned char *srcPtrY = (unsigned char *)src;
+        unsigned char *dstPtrY = (unsigned char *)dst;
+        for (int i = 0; i < height; i ++) {
             memcpy(dstPtrY, srcPtrY, width);
             srcPtrY += srcStride;
             dstPtrY += dstStride;
         }
     }
 
-    // switch order from VU to UV
-    unsigned char *srcPtrV = (unsigned char *)src + height*srcStride;
-    unsigned char *srcPtrU = srcPtrV + scStride*hhalf;
-    unsigned char *dstPtrU = (unsigned char *)dst + height*dstStride;
-    unsigned char *dstPtrV = dstPtrU + dcStride*hhalf;
-    for (int i = 0; i < hhalf; ++i) {
-        unsigned char *pDstU = dstPtrU;
-        unsigned char *pDstV = dstPtrV;
-        unsigned char *pSrcV = srcPtrV;
-        unsigned char *pSrcU = srcPtrU;
-        for (int j = 0; j < whalf; ++j) {
-            *pDstU ++ = *pSrcU ++;
-            *pDstV ++ = *pSrcV ++;
+    // copy VU plane
+    const int scStride = srcStride >> 1;
+    const int dcStride = ALIGN16(dstStride >> 1); // Android CTS required: U/V plane needs 16 bytes aligned!
+    if (dcStride == scStride) {
+        unsigned char *srcPtrVU = (unsigned char *)src + height * srcStride;
+        unsigned char *dstPtrVU = (unsigned char *)dst + height * dstStride;
+        memcpy(dstPtrVU, srcPtrVU, height * dcStride);
+    } else {
+        const int wHalf = width >> 1;
+        const int hHalf = height >> 1;
+        unsigned char *srcPtrV = (unsigned char *)src + height * srcStride;
+        unsigned char *srcPtrU = srcPtrV + scStride * hHalf;
+        unsigned char *dstPtrV = (unsigned char *)dst + height * dstStride;
+        unsigned char *dstPtrU = dstPtrV + dcStride * hHalf;
+        for (int i = 0; i < hHalf; i ++) {
+            memcpy(dstPtrU, srcPtrU, wHalf);
+            memcpy(dstPtrV, srcPtrV, wHalf);
+            dstPtrU += dcStride, srcPtrU += scStride;
+            dstPtrV += dcStride, srcPtrV += scStride;
         }
-        dstPtrU += dcStride;
-        dstPtrV += dcStride;
-        srcPtrV += scStride;
-        srcPtrU += scStride;
     }
 }
 
@@ -323,8 +320,8 @@ void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void
     }
 }
 
-// covert NV12 (Y plane, interlaced UV bytes) to YU12 (Y plane, V plane, U plane)
-void align16ConvertNV12ToYU12(int width, int height, int srcStride, void *src, void *dst)
+// covert NV12 (Y plane, interlaced UV bytes) to YV12 (Y plane, V plane, U plane)
+void align16ConvertNV12ToYV12(int width, int height, int srcStride, void *src, void *dst)
 {
     int yStride = ALIGN16(width);
     size_t ySize = yStride * height;
@@ -449,7 +446,7 @@ void repadYUV420(int width, int height, int srcStride, int dstStride, void *src,
 const char *cameraParametersFormat(int v4l2Format)
 {
     switch (v4l2Format) {
-    case V4L2_PIX_FMT_YUV420:
+    case V4L2_PIX_FMT_YVU420:
         return CameraParameters::PIXEL_FORMAT_YUV420P;
     case V4L2_PIX_FMT_NV21:
         return CameraParameters::PIXEL_FORMAT_YUV420SP;
@@ -465,7 +462,7 @@ const char *cameraParametersFormat(int v4l2Format)
 
 int V4L2Format(const char *cameraParamsFormat)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s cameraParamsFormat=%s", __FUNCTION__, cameraParamsFormat);
     if (!cameraParamsFormat) {
         LOGE("null cameraParamsFormat");
         return -1;
@@ -477,7 +474,7 @@ int V4L2Format(const char *cameraParamsFormat)
 
     len = strlen(CameraParameters::PIXEL_FORMAT_YUV420P);
     if (strncmp(cameraParamsFormat, CameraParameters::PIXEL_FORMAT_YUV420P, len) == 0)
-        return V4L2_PIX_FMT_YUV420;
+        return V4L2_PIX_FMT_YVU420;
 
     len = strlen(CameraParameters::PIXEL_FORMAT_RGB565);
     if (strncmp(cameraParamsFormat, CameraParameters::PIXEL_FORMAT_RGB565, len) == 0)

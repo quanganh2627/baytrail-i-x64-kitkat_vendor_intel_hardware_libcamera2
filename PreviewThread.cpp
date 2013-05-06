@@ -182,7 +182,6 @@ void PreviewThread::getDefaultParameters(CameraParameters *params)
         LOG1("preview format %s\n", previewFormats);
     }
     params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, previewFormats);
-
 }
 
 status_t PreviewThread::setFramerate(int fps)
@@ -670,7 +669,7 @@ void PreviewThread::allocateLocalPreviewBuf(void)
     freeLocalPreviewBuf();
 
     switch(mPreviewFormat) {
-    case V4L2_PIX_FMT_YUV420:
+    case V4L2_PIX_FMT_YVU420:
         stride = ALIGN16(mPreviewWidth);
         ySize = stride * mPreviewHeight;
         cStride = ALIGN16(stride/2);
@@ -1015,12 +1014,12 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
     if(mCallbacks->msgTypeEnabled(CAMERA_MSG_PREVIEW_FRAME) && mPreviewBuf.buff) {
         void *src = msg->buff.dataPtr;
         switch(mPreviewFormat) {
-
-        case V4L2_PIX_FMT_YUV420:
+                                  // Android defintion: PIXEL_FORMAT_YUV420P-->YV12, please refer to
+        case V4L2_PIX_FMT_YVU420: // header file: frameworks/av/include/camera/CameraParameters.h
             if (PlatformData::getPreviewFormat() == V4L2_PIX_FMT_NV12)
-                align16ConvertNV12ToYU12(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+                align16ConvertNV12ToYV12(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
             else
-                convertYV12ToYU12(mPreviewWidth, mPreviewHeight, msg->buff.stride, mPreviewWidth, src, mPreviewBuf.buff->data);
+                copyYV12ToYV12(mPreviewWidth, mPreviewHeight, msg->buff.stride, mPreviewWidth, src, mPreviewBuf.buff->data);
             break;
 
         case V4L2_PIX_FMT_NV21: // you need to do this for the first time
