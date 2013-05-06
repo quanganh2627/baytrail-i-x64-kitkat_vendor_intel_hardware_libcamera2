@@ -1178,7 +1178,6 @@ void ControlThread::releaseContinuousCapture(bool flushPictures)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    mISP->releaseCaptureBuffers();
     if (flushPictures) {
         // This covers cases when we need to fallback from
         // continuous mode to online mode to do a capture.
@@ -1189,6 +1188,8 @@ void ControlThread::releaseContinuousCapture(bool flushPictures)
             LOGE("Error flushing PictureThread!");
         }
     }
+
+    mISP->releaseCaptureBuffers();
 }
 
 /**
