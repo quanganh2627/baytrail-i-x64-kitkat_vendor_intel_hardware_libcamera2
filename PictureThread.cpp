@@ -723,7 +723,12 @@ void PictureThread::encodeExif(AtomBuffer *thumbBuf)
                 mThumbBuf.width, mThumbBuf.height, mThumbBuf.stride);
         if (mThumbBuf.dataPtr == NULL)
             mCallbacks->allocateMemory(&mThumbBuf,mThumbBuf.size);
-        if (thumbBuf->height > srcHeighByThumbAspect) {
+        if (mThumbBuf.dataPtr == NULL) {
+            LOGE("Could not allocate memory for ThumbBuf buffers!");
+            mThumbBuf.size = 0;
+            mThumbBuf.width = 0;
+            mThumbBuf.height = 0;
+        } else if (thumbBuf->height > srcHeighByThumbAspect) {
             // Support cropping 16:9 out from 4:3
             int skipLines = (thumbBuf->height - srcHeighByThumbAspect) / 2;
             LOGW("Thumbnail cropped to match requested aspect ratio");
