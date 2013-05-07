@@ -55,8 +55,8 @@
 #define INTEL_FILE_INJECT_CAMERA_ID 2
 
 #define ATOMISP_PREVIEW_POLL_TIMEOUT 1000
-#define ATOMISP_GETFRAME_RETRY_COUNT 5  // Times to retry poll/dqbuf in case of error
-#define ATOMISP_GETFRAME_STARVING_WAIT 200000 // Time to usleep between retry's when stream is starving from buffers.
+#define ATOMISP_GETFRAME_RETRY_COUNT 30  // Times to retry poll/dqbuf in case of error
+#define ATOMISP_GETFRAME_STARVING_WAIT 33000 // Time to usleep between retry's when stream is starving from buffers.
 #define ATOMISP_ZSL_GUARD_FRAMES 3      // Minimum number of preview frames between
                                         // successive ZSL captures, see PSI BZ 103248
 
