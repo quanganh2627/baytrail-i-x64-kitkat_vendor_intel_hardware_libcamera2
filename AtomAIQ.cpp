@@ -1704,13 +1704,8 @@ void AtomAIQ::getAeExpCfg(int *exp_time,
         *digital_gain = (mAeState.prev_results[AE_DELAY_FRAMES].exposure)->digital_gain;
         *aec_apex_Tv = -1.0 * (log10((double)(mAeState.prev_results[AE_DELAY_FRAMES].exposure)->exposure_time_us/1000000) / log10(2.0)) * 65536;
         *aec_apex_Av = log10(pow((mAeState.prev_results[AE_DELAY_FRAMES].exposure)->aperture_fn, 2))/log10(2.0) * 65536;
+        *aec_apex_Sv = log10(pow(2.0, -7.0/4.0) * (mAeState.prev_results[AE_DELAY_FRAMES].exposure)->iso) / log10(2.0) * 65536;
     }
-
-    // TODO: no support "sv"
- /*
-    ia_3a_ae_result ae_res;
-    *aec_apex_Sv = ae_res.sv;
-    */
 }
 
 void AtomAIQ::getDefaultParams(CameraParameters *params, CameraParameters *intel_params)
