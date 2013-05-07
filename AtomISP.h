@@ -544,7 +544,7 @@ private:
 
     status_t selectCameraSensor();
     size_t setupCameraInfo();
-    int getNumOfSkipFrames(void);
+    unsigned int getNumOfSkipFrames(void);
     int getPrimaryCameraIndex(void) const;
     status_t applySensorFlip(void);
     void fetchIspVersions();
@@ -617,7 +617,7 @@ private:
     ContinuousCaptureConfig mContCaptConfig;
     bool mContCaptPrepared;
     bool mContCaptPriority;
-    int mInitialSkips;
+    unsigned int mInitialSkips;
 
     // TODO: video_fds should be moved to mDevices
     int video_fds[V4L2_MAX_DEVICE_COUNT];

@@ -2941,7 +2941,7 @@ int AtomISP::atomisp_get_attribute (int fd, int attribute_num,
 
     if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &controls) == 0) {
         *value = ext_control.value;
-    return 0;
+        return 0;
     }
 
     if (ioctl(fd, VIDIOC_G_CTRL, &control) == 0) {
@@ -4560,19 +4560,22 @@ status_t AtomISP::getCameraInfo(int cameraId, camera_info *cameraInfo)
     return NO_ERROR;
 }
 
-int AtomISP::getNumOfSkipFrames(void)
+unsigned int AtomISP::getNumOfSkipFrames(void)
 {
     int ret = 0;
     int num_skipframes = 0;
 
     ret = atomisp_get_attribute(main_fd, V4L2_CID_G_SKIP_FRAMES,
                                 &num_skipframes);
-
-    LOG1("%s: returns %d skip frame needed %d",__FUNCTION__, ret, num_skipframes);
-    if (ret < 0)
-        return ret;
-    else
-        return num_skipframes;
+    if (ret < 0) {
+        LOGD("Failed to query control V4L2_CID_G_SKIP_FRAMES!");
+        num_skipframes = 0;
+    } else if (num_skipframes < 0) {
+        LOGD("Negative value for V4L2_CID_G_SKIP_FRAMES!");
+        num_skipframes = 0;
+    }
+    LOG1("%s: skipping %d initial frames", __FUNCTION__, num_skipframes);
+    return (unsigned int)num_skipframes;
 }
 
 /* ===================  ACCELERATION API EXTENSIONS ====================== */
@@ -4594,8 +4597,6 @@ int AtomISP::loadAccFirmware(void *fw, size_t size,
     fwData.data = fw;
     LOG2("fwData : 0x%x fwData->data : 0x%x",
         (unsigned int)&fwData, (unsigned int)fwData.data );
-
-
 
     if ( main_fd ){
         ret = xioctl(main_fd, ATOMISP_IOC_ACC_LOAD, &fwData);
