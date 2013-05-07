@@ -1270,6 +1270,12 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         return STATE_PREVIEW_STILL;
     }
 
+    if (mHdr.enabled) {
+        LOG1("@%s: HDR enabled, disabling continuous mode",
+             __FUNCTION__);
+        return STATE_PREVIEW_STILL;
+    }
+
     if (mBurstLength > 1 && mBurstStart >= 0) {
         LOG1("@%s: Burst length of %d requested, disabling continuous mode",
              __FUNCTION__, mBurstLength);
