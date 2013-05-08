@@ -357,12 +357,12 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 
     jpegBuf.frameCounter = msg->snaphotBuf.frameCounter;
 
+    mCallbacksThread->compressedFrameDone(&jpegBuf, &msg->snaphotBuf, &msg->postviewBuf);
+
     // ownership was transferred to us from ControlThread, so we need
     // to free resources here after encoding
     msg->metaData.free(m3AControls);
 
-
-    mCallbacksThread->compressedFrameDone(&jpegBuf, &msg->snaphotBuf, &msg->postviewBuf);
     return status;
 }
 
