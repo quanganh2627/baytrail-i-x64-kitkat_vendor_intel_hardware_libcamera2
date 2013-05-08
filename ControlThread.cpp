@@ -610,6 +610,13 @@ bool ControlThread::recordingEnabled()
 status_t ControlThread::setParameters(const char *params)
 {
     LOG1("@%s: params = %p", __FUNCTION__, params);
+
+    {
+        Mutex::Autolock mLock(mParamCacheLock);
+        if (mParamCache && strcmp(mParamCache, params) == 0)
+            return OK;
+    }
+
     Message msg;
     msg.id = MESSAGE_ID_SET_PARAMETERS;
     msg.data.setParameters.params = const_cast<char*>(params); // We swear we won't modify params :)
