@@ -248,7 +248,7 @@ void PostProcThread::startSmartShutter(SmartShutterMode mode, int level)
     msg.id = MESSAGE_ID_START_SMART_SHUTTER;
     msg.data.smartShutterParam.mode = mode;
     msg.data.smartShutterParam.level = level;
-    mMessageQueue.send(&msg);
+    mMessageQueue.send(&msg, MESSAGE_ID_START_SMART_SHUTTER);
 }
 
 status_t PostProcThread::handleMessageStartSmartShutter(MessageSmartShutter params)
@@ -257,7 +257,7 @@ status_t PostProcThread::handleMessageStartSmartShutter(MessageSmartShutter para
     status_t status = NO_ERROR;
     if (!mFaceDetectionRunning) {
         LOGE("%s: Face Detection must be running", __FUNCTION__);
-        return INVALID_OPERATION;
+        mMessageQueue.reply(MESSAGE_ID_START_SMART_SHUTTER, INVALID_OPERATION);
     }
     if (params.mode == SMILE_MODE) {
         mFaceDetector->setSmileThreshold(params.level);
@@ -268,13 +268,14 @@ status_t PostProcThread::handleMessageStartSmartShutter(MessageSmartShutter para
         mSmartShutter.blinkRunning = true;
         mSmartShutter.blinkThreshold = params.level;
     } else {
-        return INVALID_OPERATION;
+        mMessageQueue.reply(MESSAGE_ID_START_SMART_SHUTTER, INVALID_OPERATION);
     }
     if (mSmartShutter.smileRunning || mSmartShutter.blinkRunning)
         mSmartShutter.smartRunning = true;
 
     LOG1("%s: mode: %d Active Mode: (smile %d (%d) , blink %d (%d), smart %d)", __FUNCTION__, params.mode, mSmartShutter.smileRunning, mSmartShutter.smileThreshold, mSmartShutter.blinkRunning, mSmartShutter.blinkThreshold, mSmartShutter.smartRunning);
 
+    mMessageQueue.reply(MESSAGE_ID_START_SMART_SHUTTER, OK);
     return status;
 }
 
@@ -285,7 +286,7 @@ void PostProcThread::stopSmartShutter(SmartShutterMode mode)
     msg.id = MESSAGE_ID_STOP_SMART_SHUTTER;
     msg.data.smartShutterParam.mode = mode;
     msg.data.smartShutterParam.level = 0;
-    mMessageQueue.send(&msg);
+    mMessageQueue.send(&msg, MESSAGE_ID_STOP_SMART_SHUTTER);
 }
 
 status_t PostProcThread::handleMessageStopSmartShutter(MessageSmartShutter params)
@@ -300,6 +301,8 @@ status_t PostProcThread::handleMessageStopSmartShutter(MessageSmartShutter param
         return INVALID_OPERATION;
     if (!mSmartShutter.smileRunning && !mSmartShutter.blinkRunning)
         mSmartShutter.smartRunning = false;
+
+    mMessageQueue.reply(MESSAGE_ID_STOP_SMART_SHUTTER, OK);
     return status;
 }
 
@@ -354,18 +357,10 @@ status_t PostProcThread::handleMessageForceSmartCaptureTrigger()
 bool PostProcThread::isSmartRunning()
 {
     LOG1("@%s", __FUNCTION__);
-    Message msg;
-    msg.id = MESSAGE_ID_IS_SMART_RUNNING;
-    mMessageQueue.send(&msg, MESSAGE_ID_IS_SMART_RUNNING); // waiting for reply
+    // since start and stop for smartShutter are synchronous and only accessed
+    // from ControlThread, we can do a quick path to return the variable in
+    // caller context - only safe for ControlThread!
     return mSmartShutter.smartRunning;
-}
-
-status_t PostProcThread::handleMessageIsSmartRunning()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    mMessageQueue.reply(MESSAGE_ID_IS_SMART_RUNNING, status);
-    return status;
 }
 
 bool PostProcThread::isSmileRunning()
@@ -669,9 +664,6 @@ status_t PostProcThread::waitForAndExecuteMessage()
             break;
         case MESSAGE_ID_STOP_SMART_SHUTTER:
             status = handleMessageStopSmartShutter(msg.data.smartShutterParam);
-            break;
-        case MESSAGE_ID_IS_SMART_RUNNING:
-            status = handleMessageIsSmartRunning();
             break;
         case MESSAGE_ID_IS_SMILE_RUNNING:
             status = handleMessageIsSmileRunning();

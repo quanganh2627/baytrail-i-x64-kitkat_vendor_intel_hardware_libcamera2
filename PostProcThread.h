@@ -128,7 +128,6 @@ private:
         MESSAGE_ID_STOP_SMART_SHUTTER,
         MESSAGE_ID_CAPTURE_ON_TRIGGER,
         MESSAGE_ID_STOP_CAPTURE_ON_TRIGGER,
-        MESSAGE_ID_IS_SMART_RUNNING,
         MESSAGE_ID_IS_SMILE_RUNNING,
         MESSAGE_ID_IS_SMART_CAPTURE_TRIGGERED,
         MESSAGE_ID_RESET_SMART_CAPTURE_TRIGGER,
@@ -210,7 +209,6 @@ private:
     status_t handleMessageStopSmartShutter(MessageSmartShutter params);
     status_t handleMessageCaptureOnTrigger();
     status_t handleMessageStopCaptureOnTrigger();
-    status_t handleMessageIsSmartRunning();
     status_t handleMessageIsSmileRunning();
     status_t handleMessageGetSmileThreshold();
     status_t handleMessageIsBlinkRunning();
