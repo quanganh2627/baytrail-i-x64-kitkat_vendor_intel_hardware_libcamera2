@@ -36,7 +36,7 @@ class PictureThread : public Thread {
 
 // constructor destructor
 public:
-    PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler);
+    PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler, int cameraId);
     virtual ~PictureThread();
 
 // prevent copy constructor and assignment operator
@@ -198,6 +198,7 @@ private:
 
     // 3A controls
     I3AControls* m3AControls;
+    int mCameraId;
 }; // class PictureThread
 
 }; // namespace android

@@ -31,7 +31,7 @@ class VideoThread : public Thread {
 
 // constructor destructor
 public:
-    VideoThread();
+    VideoThread(int cameraId);
     virtual ~VideoThread();
 
 // prevent copy constructor and assignment operator

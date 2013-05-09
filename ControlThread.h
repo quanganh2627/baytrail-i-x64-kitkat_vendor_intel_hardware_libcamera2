@@ -651,6 +651,8 @@ private:
     void enableFocusCallbacks();
     void disableFocusCallbacks();
 
+    int getCameraID();
+
 // inherited from Thread
 private:
     virtual bool threadLoop();

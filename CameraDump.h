@@ -59,11 +59,18 @@ namespace android {
     class CameraDump {
     public:
         ~CameraDump();
-        static CameraDump *getInstance() {
-            if (sInstance == NULL) {
-                sInstance = new CameraDump();
+        static CameraDump *getInstance(int cameraId) {
+            if (cameraId == 0) {
+                if (sInstance == NULL) {
+                    sInstance = new CameraDump(cameraId);
+                }
+                return sInstance;
+            } else {
+                if (sInstance_1 == NULL) {
+                    sInstance_1 = new CameraDump(cameraId);
+                }
+                return sInstance_1;
             }
-            return sInstance;
         }
         static void setDumpDataFlag(void);
         static void setDumpDataFlag(int dumpFlag);
@@ -86,10 +93,11 @@ namespace android {
         CameraDump& operator=(const CameraDump& other);
 
     private:
-        CameraDump();
+        CameraDump(int cameraId);
         int getRawDataPath(char *ppath);
         void showMediaServerGroup(void);
         static CameraDump *sInstance;
+        static CameraDump *sInstance_1;
         static raw_data_format_E sRawDataFormat;
         static bool sNeedDumpPreview;
         static bool sNeedDumpSnapshot;
@@ -98,6 +106,7 @@ namespace android {
         bool mNeedDumpFlush;
         I3AControls* m3AControls;
         camera_delay_dumpImage_T mDelayDump;
+        int mCameraId;
     };// class CameraDump
 
 }; // namespace android

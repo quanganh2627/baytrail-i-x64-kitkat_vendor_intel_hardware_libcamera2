@@ -44,6 +44,7 @@ namespace android {
 #define EV_MIN -2
 #define EV_MAX  2
 
+#define MAX_DEVICE_NODE_CHAR_NR	32
 /**
  *  Minimum resolution of video frames to have DVS ON.
  *  Under this it will be disabled
@@ -81,6 +82,11 @@ struct sensorPrivateData
     bool fetched; // true if data has been attempted to read, false otherwise
 };
 
+struct devNameGroup
+{
+    char dev[MAX_CAMERA_NODES + 1][MAX_DEVICE_NODE_CHAR_NR];
+    bool in_use;
+};
 class Callbacks;
 
 class AtomISP :
@@ -565,6 +571,10 @@ private:
 private:
 
     int mCameraId;
+
+    // Dual Video
+    int mGroupIndex;
+    Mutex mISPCountLock;
 
     static cameraInfo sCamInfo[MAX_CAMERA_NODES];
 

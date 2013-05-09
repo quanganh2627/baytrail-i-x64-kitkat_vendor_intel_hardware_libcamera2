@@ -33,12 +33,12 @@ static const int SIZE_OF_APP0_MARKER = 18;      /* Size of the JFIF App0 marker
                                                  * SOI. And sometimes needs to be removed
                                                  */
 
-PictureThread::PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler) :
+PictureThread::PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler, int cameraId) :
     Thread(true) // callbacks may call into java
     ,mMessageQueue("PictureThread", MESSAGE_ID_MAX)
     ,mThreadRunning(false)
-    ,mCallbacks(Callbacks::getInstance())
-    ,mCallbacksThread(CallbacksThread::getInstance())
+    ,mCallbacks(Callbacks::getInstance(cameraId))
+    ,mCallbacksThread(CallbacksThread::getInstance(NULL, cameraId))
     ,mHwCompressor(NULL)
     ,mExifMaker(NULL)
     ,mExifBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT_JPEG))
@@ -52,6 +52,7 @@ PictureThread::PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler)
     ,mInputBuffers(0)
     ,mScaler(scaler)
     ,m3AControls(aaaControls)
+    ,mCameraId(cameraId)
 {
     LOG1("@%s", __FUNCTION__);
 

@@ -227,13 +227,13 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mULL = new UltraLowLight();
+    mULL = new UltraLowLight(mCameraId);
     if (mULL == NULL) {
         LOGE("error creating ULL");
         goto bail;
     }
 
-    mCameraDump = CameraDump::getInstance();
+    mCameraDump = CameraDump::getInstance(mCameraId);
     if (mCameraDump == NULL) {
         LOGE("error creating CameraDump");
         goto bail;
@@ -242,19 +242,19 @@ status_t ControlThread::init()
 
     // we implement the ICallbackPreview interface, so pass
     // this as argument
-    mPreviewThread = new PreviewThread();
+    mPreviewThread = new PreviewThread(mCameraId);
     if (mPreviewThread == NULL) {
         LOGE("error creating PreviewThread");
         goto bail;
     }
 
-    mPictureThread = new PictureThread(m3AControls, mScalerService);
+    mPictureThread = new PictureThread(m3AControls, mScalerService, mCameraId);
     if (mPictureThread == NULL) {
         LOGE("error creating PictureThread");
         goto bail;
     }
 
-    mVideoThread = new VideoThread();
+    mVideoThread = new VideoThread(mCameraId);
     if (mVideoThread == NULL) {
         LOGE("error creating VideoThread");
         goto bail;
@@ -267,26 +267,26 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mCallbacks = Callbacks::getInstance();
+    mCallbacks = Callbacks::getInstance(mCameraId);
     if (mCallbacks == NULL) {
         LOGE("error creating Callbacks");
         goto bail;
     }
 
     // we implement ICallbackPicture interface
-    mCallbacksThread = CallbacksThread::getInstance(this);
+    mCallbacksThread = CallbacksThread::getInstance(this, mCameraId);
     if (mCallbacksThread == NULL) {
         LOGE("error creating CallbacksThread");
         goto bail;
     }
 
-    mPanoramaThread = new PanoramaThread(this, m3AControls);
+    mPanoramaThread = new PanoramaThread(this, m3AControls, mCameraId);
     if (mPanoramaThread == NULL) {
         LOGE("error creating PanoramaThread");
         goto bail;
     }
 
-    mPostProcThread = new PostProcThread(this, mPanoramaThread.get(), m3AControls);
+    mPostProcThread = new PostProcThread(this, mPanoramaThread.get(), m3AControls, mCameraId);
     if (mPostProcThread == NULL) {
         LOGE("error creating PostProcThread");
         goto bail;
@@ -297,7 +297,7 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mSensorThread = SensorThread::getInstance();
+    mSensorThread = SensorThread::getInstance(mCameraId);
     if (mSensorThread == NULL) {
         LOGE("error creating SensorThread");
         goto bail;
@@ -886,6 +886,11 @@ void ControlThread::facesDetected(const ia_face_state *faceState)
 {
     LOG2("@%s", __FUNCTION__);
     m3AThread->setFaces(*faceState);
+}
+
+int ControlThread::getCameraID()
+{
+    return mCameraId;
 }
 
 void ControlThread::panoramaFinalized(AtomBuffer *buff, AtomBuffer *pvBuff)
@@ -5696,10 +5701,10 @@ status_t ControlThread::processParamRawDataFormat(const CameraParameters *oldPar
     if (!newVal.isEmpty()) {
         if (newVal == "bayer") {
             CameraDump::setDumpDataFlag(CAMERA_DEBUG_DUMP_RAW);
-            mCameraDump = CameraDump::getInstance();
+            mCameraDump = CameraDump::getInstance(mCameraId);
         } else if (newVal == "yuv") {
             CameraDump::setDumpDataFlag(CAMERA_DEBUG_DUMP_YUV);
-            mCameraDump = CameraDump::getInstance();
+            mCameraDump = CameraDump::getInstance(mCameraId);
         } else
             CameraDump::setDumpDataFlag(RAW_NONE);
     }
@@ -5813,10 +5818,10 @@ status_t ControlThread::processParamMirroring(const CameraParameters *oldParams,
     if (!newVal.isEmpty()) {
         if (newVal == CameraParameters::TRUE) {
             mSaveMirrored = true;
-            mCurrentOrientation = SensorThread::getInstance()->registerOrientationListener(this);
+            mCurrentOrientation = SensorThread::getInstance(mCameraId)->registerOrientationListener(this);
          } else {
             mSaveMirrored = false;
-            SensorThread::getInstance()->unRegisterOrientationListener(this);
+            SensorThread::getInstance(mCameraId)->unRegisterOrientationListener(this);
         }
         LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_SAVE_MIRRORED, newVal.string());
     }

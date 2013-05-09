@@ -23,6 +23,7 @@
 namespace android {
 
 SensorThread* SensorThread::sInstance = NULL;
+SensorThread* SensorThread::sInstance_1 = NULL;
 
 int sensorEventsListener(int fd, int events, void* data)
 {
@@ -68,9 +69,10 @@ int sensorEventsListener(int fd, int events, void* data)
     return 1; // continue looper listening
 }
 
-SensorThread::SensorThread() :
+SensorThread::SensorThread(int cameraId) :
     Thread(false)
     , mOrientation(0)
+    ,mCameraId(cameraId)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -102,7 +104,10 @@ SensorThread::~SensorThread()
     mLooper.clear();
     mSensorEventQueue.clear();
 
-    sInstance = NULL;
+    if (mCameraId == 0)
+        sInstance = NULL;
+    else
+        sInstance_1 = NULL;
 }
 
 int SensorThread::registerOrientationListener(IOrientationListener* listener) {

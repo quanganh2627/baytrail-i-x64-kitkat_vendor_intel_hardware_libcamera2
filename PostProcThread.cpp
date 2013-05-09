@@ -29,14 +29,14 @@
 
 namespace android {
 
-PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread, I3AControls *aaaControls) :
-    IFaceDetector(CallbacksThread::getInstance())
+PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread, I3AControls *aaaControls, int cameraId) :
+    IFaceDetector(CallbacksThread::getInstance(NULL, cameraId))
     ,Thread(true) // callbacks may call into java
     ,mFaceDetector(NULL)
     ,mPanoramaThread(panoramaThread)
     ,mMessageQueue("PostProcThread", (int) MESSAGE_ID_MAX)
     ,mLastReportedNumberOfFaces(0)
-    ,mCallbacks(Callbacks::getInstance())
+    ,mCallbacks(Callbacks::getInstance(cameraId))
     ,mPostProcDoneCallback(postProcDone)
     ,m3AControls(aaaControls)
     ,mThreadRunning(false)
@@ -48,6 +48,7 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     ,mRotation(0)
     ,mCameraOrientation(0)
     ,mIsBackCamera(false)
+    ,mCameraId(cameraId)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -69,6 +70,11 @@ PostProcThread::~PostProcThread()
         mFaceDetector->requestExitAndWait();
         mFaceDetector.clear();
     }
+}
+
+int PostProcThread::getCameraID()
+{
+    return mCameraId;
 }
 
 /**
@@ -159,7 +165,7 @@ status_t PostProcThread::handleMessageStartFaceDetection()
     if (mSmartShutter.smartRunning && mSmartShutter.blinkRunning)
         mFaceDetector->setBlinkThreshold(mSmartShutter.blinkThreshold);
 
-    mRotation = SensorThread::getInstance()->registerOrientationListener(this);
+    mRotation = SensorThread::getInstance(this->getCameraID())->registerOrientationListener(this);
 
     mLastReportedNumberOfFaces = 0;
     mFaceDetectionRunning = true;
@@ -190,7 +196,7 @@ status_t PostProcThread::handleMessageStopFaceDetection()
     resetToOldAAAValues();
     mOldAeMeteringMode = CAM_AE_METERING_MODE_NOT_SET;
 
-    SensorThread::getInstance()->unRegisterOrientationListener(this);
+    SensorThread::getInstance(this->getCameraID())->unRegisterOrientationListener(this);
 
     mMessageQueue.reply(MESSAGE_ID_STOP_FACE_DETECTION, status);
 
@@ -529,7 +535,7 @@ status_t PostProcThread::handleExit()
     status_t status = NO_ERROR;
 
     if (mFaceDetectionRunning) {
-        SensorThread::getInstance()->unRegisterOrientationListener(this);
+        SensorThread::getInstance(this->getCameraID())->unRegisterOrientationListener(this);
     }
 
     mThreadRunning = false;

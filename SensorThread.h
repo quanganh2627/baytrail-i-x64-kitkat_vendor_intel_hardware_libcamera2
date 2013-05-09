@@ -31,11 +31,16 @@ class SensorThread :
     public Thread {
 
 public:
-    static SensorThread * getInstance() {
-        if (sInstance == NULL) {
-            sInstance = new SensorThread();
+    static SensorThread * getInstance(int cameraId) {
+        if(cameraId == 1) {
+            if(sInstance_1 == NULL)
+                sInstance_1 = new SensorThread(cameraId);
+            return sInstance_1;
+        } else {
+            if (sInstance == NULL)
+                sInstance = new SensorThread(cameraId);
+            return sInstance;
         }
-        return sInstance;
     }
 
     virtual ~SensorThread();
@@ -76,7 +81,7 @@ private:
 
 // private methods
 private:
-    SensorThread();
+    SensorThread(int cameraId);
     void orientationChanged(int orientation);
 
 // private data
@@ -86,10 +91,12 @@ private:
     sp<SensorEventQueue> mSensorEventQueue;
     SortedVector<IOrientationListener*> mListeners;
     Mutex mLock;
+    int mCameraId;
 
 // private static data
 private:
     static SensorThread* sInstance;
+    static SensorThread* sInstance_1;
 
 friend int sensorEventsListener(int, int, void*);
 

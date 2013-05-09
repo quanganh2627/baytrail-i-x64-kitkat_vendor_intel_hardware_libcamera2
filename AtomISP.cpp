@@ -83,11 +83,12 @@ namespace android {
 ////////////////////////////////////////////////////////////////////
 static sensorPrivateData gSensorDataCache[MAX_CAMERAS];
 
-static const char *dev_name_array[] = {"/dev/video0",
-                                       "/dev/video1",
-                                       "/dev/video2",
-                                       "/dev/video3"};
-
+static struct devNameGroup devName[MAX_CAMERAS] = {
+    {{"/dev/video0", "/dev/video1", "/dev/video2", "/dev/video3"},
+        false,},
+    {{"/dev/video4", "/dev/video5", "/dev/video6", "/dev/video7"},
+        false,},
+};
 AtomISP::cameraInfo AtomISP::sCamInfo[MAX_CAMERA_NODES];
 
 ////////////////////////////////////////////////////////////////////
@@ -99,8 +100,9 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
     ,mFrameSyncSource("FrameSyncSource", this)
     ,m3AStatSource("AAAStatSource", this)
     ,mCameraId(cameraId)
+    ,mGroupIndex (-1)
     ,mMode(MODE_NONE)
-    ,mCallbacks(Callbacks::getInstance())
+    ,mCallbacks(Callbacks::getInstance(cameraId))
     ,mNumBuffers(PlatformData::getRecordingBufNum())
     ,mNumPreviewBuffers(PlatformData::getRecordingBufNum())
     ,mPreviewBuffers(NULL)
@@ -210,6 +212,20 @@ bool AtomISP::isDeviceInitialized() const
 status_t AtomISP::init()
 {
     status_t status = NO_ERROR;
+
+    Mutex::Autolock lock(mISPCountLock);
+    for (int i = 0; i < MAX_CAMERAS; i++) {
+        if (devName[i].in_use == false) {
+            mGroupIndex = i;
+            devName[i].in_use = true;
+            break;
+        }
+    }
+
+    if (mGroupIndex < 0) {
+        LOGE("No free device. Inititialize Atomisp failed.");
+        return NO_INIT;
+    }
 
     status = initDevice();
     if (status != NO_ERROR) {
@@ -412,6 +428,8 @@ void AtomISP::initFileInject()
 AtomISP::~AtomISP()
 {
     LOG1("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mISPCountLock);
+    devName[mGroupIndex].in_use = false;
     /*
      * The destructor is called when the hw_module close mehod is called. The close method is called
      * in general by the camera client when it's done with the camera device, but it is also called by
@@ -3444,7 +3462,8 @@ status_t AtomISP::v4l2_capture_open(int device)
     if ((device == V4L2_ISP_SUBDEV) || (device == V4L2_ISP_SUBDEV2))
         dev_name = PlatformData::getISPSubDeviceName();
     else
-        dev_name = dev_name_array[device];
+        dev_name = devName[mGroupIndex].dev[device];
+
     LOG1("---Open video device %s---", dev_name);
 
     if (stat (dev_name, &st) == -1) {
@@ -5272,7 +5291,7 @@ int AtomISP::dumpPreviewFrame(int previewIndex)
     LOG2("@%s", __FUNCTION__);
 
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_PREVIEW)) {
-        CameraDump *cameraDump = CameraDump::getInstance();
+        CameraDump *cameraDump = CameraDump::getInstance(mCameraId);
         const struct v4l2_buffer_info *buf =
             &v4l2_buf_pool[mPreviewDevice].bufs[previewIndex];
         camera_delay_dumpImage_T dump;
@@ -5294,7 +5313,7 @@ int AtomISP::dumpRecordingFrame(int recordingIndex)
 {
     LOG2("@%s", __FUNCTION__);
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_VIDEO)) {
-        CameraDump *cameraDump = CameraDump::getInstance();
+        CameraDump *cameraDump = CameraDump::getInstance(mCameraId);
         const struct v4l2_buffer_info *buf =
             &v4l2_buf_pool[mRecordingDevice].bufs[recordingIndex];
         camera_delay_dumpImage_T dump;
@@ -5315,7 +5334,7 @@ int AtomISP::dumpSnapshot(int snapshotIndex, int postviewIndex)
     LOG1("@%s", __FUNCTION__);
     if (CameraDump::isDumpImageEnable()) {
         camera_delay_dumpImage_T dump;
-        CameraDump *cameraDump = CameraDump::getInstance();
+        CameraDump *cameraDump = CameraDump::getInstance(mCameraId);
         if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_SNAPSHOT)) {
             const struct v4l2_buffer_info *buf0 =
                &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[snapshotIndex];
@@ -5359,7 +5378,7 @@ int AtomISP::dumpRawImageFlush(void)
 {
     LOG1("@%s", __FUNCTION__);
     if (CameraDump::isDumpImageEnable()) {
-        CameraDump *cameraDump = CameraDump::getInstance();
+        CameraDump *cameraDump = CameraDump::getInstance(mCameraId);
         cameraDump->dumpImage2FileFlush();
     }
     return 0;

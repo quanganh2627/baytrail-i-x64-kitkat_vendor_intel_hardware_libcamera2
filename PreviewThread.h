@@ -82,6 +82,7 @@ public:
     ICallbackPreview() {}
     virtual ~ICallbackPreview() {}
     virtual void previewBufferCallback(AtomBuffer *memory, CallbackType t) = 0;
+    virtual int getCameraID() = 0;
 };
 
 /**
@@ -94,7 +95,7 @@ class PreviewThread : public Thread, public IAtomIspObserver {
 
 // constructor destructor
 public:
-    PreviewThread();
+    PreviewThread(int cameraId);
     virtual ~PreviewThread();
 
 // prevent copy constructor and assignment operator

@@ -43,26 +43,31 @@ const char *filename[RAW_OVER] = {
 };
 
 CameraDump* CameraDump::sInstance = NULL;
+CameraDump* CameraDump::sInstance_1 = NULL;
 raw_data_format_E CameraDump::sRawDataFormat = RAW_NONE;
 bool CameraDump::sNeedDumpPreview = false;
 bool CameraDump::sNeedDumpSnapshot = false;
 bool CameraDump::sNeedDumpVideo = false;
 bool CameraDump::sNeedDump3aStat = false;
 
-CameraDump::CameraDump()
+CameraDump::CameraDump(int cameraId)
 {
     LOG1("@%s", __FUNCTION__);
     mDelayDump.buffer_raw = NULL;
     mDelayDump.buffer_size = 0;
     mDelayDump.width = 0;
     mDelayDump.height = 0;
+    mCameraId = cameraId;
     mNeedDumpFlush = false;
 }
 
 CameraDump::~CameraDump()
 {
     LOG1("@%s", __FUNCTION__);
-    sInstance = NULL;
+    if (mCameraId == 0)
+        sInstance = NULL;
+    else
+        sInstance_1 = NULL;
     sRawDataFormat = RAW_NONE;
     sNeedDumpPreview = false;
     sNeedDumpVideo = false;

@@ -49,7 +49,7 @@ class PostProcThread : public IFaceDetector,
 
 // constructor/destructor
 public:
-    PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread, I3AControls *aaaControls);
+    PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread, I3AControls *aaaControls, int cameraId);
     virtual ~PostProcThread();
     status_t init(void* isp);
 
@@ -96,6 +96,7 @@ public:
     virtual void loadIspExtensions(bool videoMode);
     virtual void unloadIspExtensions();
     bool isFaceRecognitionRunning();
+    int getCameraID();
 
 // IOrientationListener
 public:
@@ -259,6 +260,7 @@ private:
     int mRotation;
     int mCameraOrientation;
     bool mIsBackCamera;
+    int mCameraId;
 }; // class PostProcThread
 
 }; // namespace android
