@@ -509,6 +509,12 @@ private:
     bool paramsHasPictureSizeChanged(const CameraParameters *oldParams,
             CameraParameters *newParams) const;
 
+    // Process flashmode based on shooting mode criteria etc.
+    // E.g., changes supported flash modes in burst and HDR modes.
+    // NOTE: Need to call processParamHDR() and processParamBurst() before
+    // this!
+    void preProcessFlashMode(CameraParameters *newParams);
+
     // These are parameters that can be set while the ISP is running (most params can be
     // set while the isp is stopped as well).
     status_t processDynamicParameters(const CameraParameters *oldParams,
@@ -592,7 +598,7 @@ private:
 
     void convertAfWindows(CameraWindow* focusWindows, size_t winCount);
 
-    void selectFlashMode(CameraParameters *newParams, bool applySaved);
+    void selectFlashModeForScene(CameraParameters *newParams);
 
     bool selectPostviewSize(int &width, int &height);
 

@@ -128,7 +128,7 @@ private:
 
     struct MessageVideo {
         AtomBuffer  frame;
-        nsecs_t     timestamp;
+        nsecs_t timestamp;
     };
 
     struct MessageFaces {

@@ -325,7 +325,10 @@ exif_status ExifCreater::makeExif (void *exifOut,
 
     // calc and fill the exif total size, 2 is length; 6 is ExifIdentifierCode
     *size = 2 + 6 + LongerTagOffset;
-    unsigned char size_mm[2] = {(*size >> 8) & 0xFF, *size & 0xFF};
+    unsigned char size_mm[2] = {
+        static_cast<unsigned char>((*size >> 8) & 0xFF),
+        static_cast<unsigned char>(*size & 0xFF) };
+
     memcpy(pApp1Start, size_mm, 2);
     *size += 2; // APP1 marker size
 

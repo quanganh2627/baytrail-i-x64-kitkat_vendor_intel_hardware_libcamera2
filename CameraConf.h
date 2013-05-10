@@ -113,7 +113,7 @@ public:
 private:
     status_t initFileNames(String8& cpfPathName, String8& sysfsPathName);
     status_t initDriverList();
-    status_t initDriverListHelper(int major, int minor, SensorDriver& drvInfo);
+    status_t initDriverListHelper(unsigned major, unsigned minor, SensorDriver& drvInfo);
     status_t findConfigWithDriver(String8& cpfName, int& drvIndex);
     status_t findConfigWithDriverHelper(const String8& fileName, String8& cpfName, int& index);
     status_t createVendorPlatformProductString(String8& fullString);

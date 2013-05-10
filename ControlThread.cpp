@@ -1736,6 +1736,40 @@ status_t ControlThread::handleMessageStopPreview()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
+    if (mCaptureSubState == STATE_CAPTURE_STARTED) {
+        // We are going to cancel ongoing capture process based
+        // on assumption that application is no longer interested
+        // in receiving the jpeg. This is done to protect racing
+        // conditions with unfinished capture process and camera
+        // reconfiguration (setParameters) in general.
+        // Note: In case snapshot is already sent to PictureThread for
+        //       encoding, we may or may not end up calling picture
+        //       callbacks. Callback would get blocked until this
+        //       stopPreview finishes.
+        //       It is up to application to ensure it blocks for jpeg
+        //       before letting other API calls to happen or touches
+        //       into callback interfaces given with takePicture().
+        //       If we are here, ANR is expected - just protecting
+        //       against crashes.
+        LOGW("stopPreview() called while capture in progress, canceling"
+             "application should release the camera to cancel capture process");
+        if (mState == STATE_CAPTURE)
+            status = stopCapture();
+        else if (mState == STATE_CONTINUOUS_CAPTURE) {
+            stopOfflineCapture();
+        }
+        mBurstLength = 0;
+        mPictureThread->flushBuffers();
+        mStillCaptureInProgress = false;
+        mCaptureSubState = STATE_CAPTURE_IDLE;
+    }
+    /**
+     * We maybe in the middle of processing ULL image, make sure we cancel this
+     */
+    if (mULL && mULL->isProcessing()) {
+        mPostCaptureThread->cancelProcessingItem((IPostCaptureProcessItem *)mULL);
+    }
+
     // In STATE_CAPTURE, preview is already stopped, nothing to do
     if (mState != STATE_CAPTURE) {
         stopFaceDetection(true);
@@ -1849,6 +1883,13 @@ status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
         startPreviewCore(videoMode);
         if (faceActive)
             startFaceDetection();
+    } else if (msg->window == NULL
+               && currentState == PreviewThread::STATE_STOPPED
+               && mState == STATE_CONTINUOUS_CAPTURE) {
+        // if we are in continuous-mode and backgrounding-state
+        // and window is set to null, then stop review
+        stopPreviewCore();
+        status = mPreviewThread->setPreviewWindow(msg->window);
     } else {
         // Notes:
         //  1. msg->window == NULL comes only from CameraService in release
@@ -2177,19 +2218,18 @@ status_t ControlThread::getFlashExposedSnapshot(AtomBuffer *snapshotBuffer, Atom
     LOG2("@%s:", __FUNCTION__);
     status_t status = NO_ERROR;
     for (int cnt = 0;;) {
-        enum atomisp_frame_status stat;
 
-        status = mISP->getSnapshot(snapshotBuffer, postviewBuffer, &stat);
+        status = mISP->getSnapshot(snapshotBuffer, postviewBuffer);
         if (status != NO_ERROR) {
             LOGE("%s: Error in grabbing snapshot!", __FUNCTION__);
             break;
         }
 
-        if (stat == ATOMISP_FRAME_STATUS_FLASH_EXPOSED) {
+        if (snapshotBuffer->status == FRAME_STATUS_FLASH_EXPOSED) {
             LOG2("flash exposed, frame %d", cnt);
             break;
         }
-        else if (stat == ATOMISP_FRAME_STATUS_FLASH_FAILED) {
+        else if (snapshotBuffer->status  == FRAME_STATUS_FLASH_FAILED) {
             LOGE("%s: flash fail, frame %d", __FUNCTION__, cnt);
             break;
         }
@@ -2573,19 +2613,16 @@ status_t ControlThread::captureStillPic()
                     flashMode == CAM_AE_FLASH_MODE_ON);
     bool flashFired = false;
     bool flashSequenceStarted = false;
-    bool displayPostview = selectPostviewSize(pvWidth, pvHeight)
-                           && !mHdr.enabled;
+    // Decide whether we display the postview
+    bool displayPostview = selectPostviewSize(pvWidth, pvHeight) // postview matches size of preview
+                           && !mHdr.enabled                      // HDR not enabled
+                           && (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD
+                              || mBurstLength > 1)               // proprietary preview update mode or burst
+                           && mBurstStart >= 0;                  // negative fixed burst start index
     // Synchronise jpeg callback with postview rendering in case of single capture
     bool syncJpegCbWithPostview = !mHdr.enabled && (mBurstLength <= 1);
     bool requestPostviewCallback = true;
     bool requestRawCallback = true;
-
-    if (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD) {
-        // In proprietary preview update modes we keep rendering of preview frames.
-        // Rendering of postview not needed.
-        displayPostview = false;
-        syncJpegCbWithPostview = false;
-    }
 
     // TODO: Fix the TestCamera application bug and remove this workaround
     // WORKAROUND BEGIN: Due to a TesCamera application bug send the POSTVIEW and RAW callbacks only for single shots
@@ -2861,6 +2898,9 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
     int pvWidth, pvHeight;
+    // Note: Burst (online mode) does not need to handle preview-update-mode
+    //       preview is stopped and we always display postview when size matches
+    //       and HDR is not enabled.
     bool displayPostview = selectPostviewSize(pvWidth, pvHeight) && !mHdr.enabled;
 
     if (clientRequest) {
@@ -3026,7 +3066,13 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
     int pvW, pvH;
-    bool displayPostview = selectPostviewSize(pvW, pvH);
+    // Note: Postview is not displayed with any of fixed burst scenarios,
+    //       just having it here for conformity and noticing.
+    //       Continuous mode with negative mBurstStart index would lead to
+    //       disordered displaying of postview and preview frames.
+    bool displayPostview = selectPostviewSize(pvW, pvH)
+                           && mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD
+                           && mBurstStart >= 0;
 
     assert(mState == STATE_CONTINUOUS_CAPTURE);
 
@@ -3107,8 +3153,12 @@ status_t ControlThread::captureULLPic()
     int cachedBurstLength, cachedBurstStart, cachedBurstFps;
     PictureThread::MetaData firstPicMetaData;
     PictureThread::MetaData ullPicMetaData;
-
-    bool displayPostview = selectPostviewSize(pvWidth, pvHeight);
+    // In case ULL gets triggered with standard preview update mode
+    // we display the first postview frame, sync and hide the preview as
+    // with standard single capture. Application needs to handle the ULL
+    // postview out from callbacks if this is the intention.
+    bool displayPostview = selectPostviewSize(pvWidth, pvHeight)
+                           && mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD;
     //cache burst related parameters
     cachedBurstLength = mBurstLength;
     cachedBurstStart = mBurstStart;
@@ -3126,7 +3176,7 @@ status_t ControlThread::captureULLPic()
 
     PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE();
 
-    mCallbacksThread->requestTakePicture(true, false);
+    mCallbacksThread->requestTakePicture(true, false, displayPostview);
 
     stopFaceDetection();
     // Initialize the burst control variables for the ULL burst
@@ -3155,9 +3205,8 @@ status_t ControlThread::captureULLPic()
            fillPicMetaData(firstPicMetaData, false);
            fillPicMetaData(ullPicMetaData, false);
            mULL->addSnapshotMetadata(ullPicMetaData);
-           if (displayPostview) {
-              mPreviewThread->postview(&postviewBuffer, false);
-           }
+           if (displayPostview)
+               mPreviewThread->postview(&postviewBuffer, true);
            /*
             *  Mark the snapshot as skipped.
             *  This is done so that the snapshot buffer is not made available after
@@ -3246,7 +3295,12 @@ status_t ControlThread::updateSpotWindow(const int &width, const int &height)
 {
     LOG1("@%s", __FUNCTION__);
     // TODO: Check, if these window fractions are right. Copied off from libcamera1
-    CameraWindow spotWin = { (int)width * 7.0 / 16.0, (int)width * 9.0 / 16.0, (int)height * 7.0 / 16.0, (int)height * 9.0 / 16.0, 255 };
+    CameraWindow spotWin = {
+            static_cast<int>(width * 7.0 / 16.0),
+            static_cast<int>(width * 9.0 / 16.0),
+            static_cast<int>(height * 7.0 / 16.0),
+            static_cast<int>(height * 9.0 / 16.0), 255 };
+
     return m3AControls->setAeWindow(&spotWin);
 }
 
@@ -3952,10 +4006,6 @@ status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
         mBurstStart = burstStartInt;
     }
 
-    // just the back camera should be considered
-    if (mISP->getCurrentCameraId() == 0)
-        selectFlashMode(newParams, false);
-
     return status;
 }
 
@@ -4064,6 +4114,7 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
 
     if (status == NO_ERROR) {
         // flash settings
+        preProcessFlashMode(newParams);
         status = processParamFlash(oldParams, newParams);
     }
 
@@ -4652,7 +4703,6 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         // Dependency parameters
         mBurstLength = mHdr.bracketNum;
         mBracketManager->setBracketMode(mHdr.bracketMode);
-        selectFlashMode(newParams, false);
     }
 
     newVal = paramsReturnNewIfChanged(oldParams, newParams,
@@ -4737,24 +4787,44 @@ status_t ControlThread::processParamULL(const CameraParameters *oldParams,
     return status;
 }
 
+void ControlThread::preProcessFlashMode(CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    // Don't do anything, if not using back camera. CTS fails,
+    // if we meddle with invalid flash values it sets.
+    if (mCameraId != 0 || !PlatformData::supportsBackFlash())
+        return;
+
+    String8 currSupportedFlashModes = String8(newParams->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES));
+
+    // If burst or HDR is enabled, the only supported flash mode is "off".
+    // Also, we only want to record only the first change to "off".
+    if ((mBurstLength > 1 || mHdr.enabled)
+        && currSupportedFlashModes != CameraParameters::FLASH_MODE_OFF) {
+        newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, CameraParameters::FLASH_MODE_OFF);
+        newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
+    } else if ((mBurstLength == 1 || mBurstLength == 0) && !mHdr.enabled) {
+        // Restore the supported flash modes to the values prior to forcing to "off":
+        newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, mSavedFlashSupported);
+    }
+}
 
 /**
  * select flash mode for single or burst capture
  * in burst capture, the flash is forced to off, otherwise
  * saved single capture flash mode is applied.
  * \param newParams
- * \param apply previous saved value
  */
-void ControlThread::selectFlashMode(CameraParameters *newParams, bool applySaved)
+void ControlThread::selectFlashModeForScene(CameraParameters *newParams)
 {
-    // !mBurstLength is only for CTS to pass
     LOG1("@%s", __FUNCTION__);
+    // !mBurstLength is only for CTS to pass
     if (mBurstLength == 1 || !mBurstLength) {
-        if (applySaved) {
-            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, mSavedFlashSupported.string());
-            newParams->set(CameraParameters::KEY_FLASH_MODE, mSavedFlashMode.string());
-        }
+        newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, mSavedFlashSupported.string());
+        newParams->set(CameraParameters::KEY_FLASH_MODE, mSavedFlashMode.string());
     } else {
+        LOG1("Forcing flash off");
         newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
         newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
     }
@@ -4790,7 +4860,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
-                selectFlashMode(newParams, true);
+                selectFlashModeForScene(newParams);
             }
         } else if (newScene == CameraParameters::SCENE_MODE_SPORTS || newScene == CameraParameters::SCENE_MODE_PARTY) {
             sceneMode = (newScene == CameraParameters::SCENE_MODE_SPORTS) ? CAM_AE_SCENE_MODE_SPORTS : CAM_AE_SCENE_MODE_PARTY;
@@ -4811,7 +4881,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams, true);
+                selectFlashModeForScene(newParams);
             }
         } else if (newScene == CameraParameters::SCENE_MODE_LANDSCAPE || newScene == CameraParameters::SCENE_MODE_SUNSET) {
             sceneMode = (newScene == CameraParameters::SCENE_MODE_LANDSCAPE) ? CAM_AE_SCENE_MODE_LANDSCAPE : CAM_AE_SCENE_MODE_SUNSET;
@@ -4832,7 +4902,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams, true);
+                selectFlashModeForScene(newParams);
             }
         } else if (newScene == CameraParameters::SCENE_MODE_NIGHT) {
             sceneMode = CAM_AE_SCENE_MODE_NIGHT;
@@ -4853,7 +4923,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams, true);
+                selectFlashModeForScene(newParams);
             }
         } else if (newScene == CameraParameters::SCENE_MODE_NIGHT_PORTRAIT) {
             sceneMode = CAM_AE_SCENE_MODE_NIGHT_PORTRAIT;
@@ -4874,7 +4944,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("on");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_ON);
-                selectFlashMode(newParams, true);
+                selectFlashModeForScene(newParams);
             }
         } else if (newScene == CameraParameters::SCENE_MODE_FIREWORKS) {
             sceneMode = CAM_AE_SCENE_MODE_FIREWORKS;
@@ -4895,7 +4965,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams, true);
+                selectFlashModeForScene(newParams);
             }
         } else if (newScene == CameraParameters::SCENE_MODE_BARCODE) {
             sceneMode = CAM_AE_SCENE_MODE_TEXT;
@@ -4915,8 +4985,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             }
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
-                mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams, true);
+                mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
+                selectFlashModeForScene(newParams);
             }
         } else {
             if (newScene == CameraParameters::SCENE_MODE_CANDLELIGHT) {
@@ -4952,7 +5022,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
-                selectFlashMode(newParams, true);
+                selectFlashModeForScene(newParams);
             }
         }
 
@@ -6223,11 +6293,17 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
     PictureThread::MetaData picMetaData;
     int ULLid = 0;
 
-    // ATM the only post capture processing is ULL, no need to check which one
-    mULL->getOuputResult(&snapshotBuffer,&postviewBuffer, &picMetaData, &ULLid);
-
-    if(msg->status != NO_ERROR)
+    if(msg->status != NO_ERROR)  {
         LOGW("PostCapture Processing failed !!");
+        goto cleanup;
+    }
+
+    // ATM the only post capture processing is ULL, no need to check which one
+    status = mULL->getOuputResult(&snapshotBuffer,&postviewBuffer, &picMetaData, &ULLid);
+    if (status != NO_ERROR) {
+        /* This can only mean that ULL was cancel, cleanup and go */
+        goto cleanup;
+    }
 
     mCallbacksThread->requestULLPicture(ULLid);
 
@@ -6250,6 +6326,7 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
         picMetaData.free(m3AControls);
     }
 
+cleanup:
     /**
      * retrieve input buffers from ULL class and return them for re-cycling
      */
@@ -6267,9 +6344,9 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
         handleMessagePictureDone(&picMsg);
     }
 
-
     return NO_ERROR;
 }
+
 status_t ControlThread::hdrInit(int size, int pvSize, int format,
                                 int width, int height,
                                 int pvWidth, int pvHeight)
@@ -7077,13 +7154,11 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
 {
     LOG2("@%s", __FUNCTION__);
     AtomBuffer buff;
-    nsecs_t timestamp;
     status_t status = NO_ERROR;
-    atomisp_frame_status frameStatus;
 
-    status = mISP->getRecordingFrame(&buff, &timestamp, &frameStatus);
+    status = mISP->getRecordingFrame(&buff);
     if (status == NO_ERROR) {
-       if (frameStatus != ATOMISP_FRAME_STATUS_CORRUPTED) {
+       if (buff.status != FRAME_STATUS_CORRUPTED) {
             // Check whether driver has run out of buffers
             if (!mISP->dataAvailable()) {
                 LOGE("Video frame dropped, buffers reserved : %d video encoder, %d video snapshot",
@@ -7109,13 +7184,13 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
                     mVideoSnapshotrequested--;
                     encodeVideoSnapshot(buff);
                 }
-                mVideoThread->video(&buff, timestamp);
+                mVideoThread->video(&buff);
                 mRecordingBuffers.push(buff);
             } else {
                 mISP->putRecordingFrame(&buff);
             }
         } else {
-            LOGW("Recording frame %d corrupted, ignoring", buff.id);
+            LOGD("Recording frame %d corrupted, ignoring", buff.id);
             mISP->putRecordingFrame(&buff);
         }
     } else {

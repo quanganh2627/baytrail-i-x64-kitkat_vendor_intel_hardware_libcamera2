@@ -150,16 +150,16 @@ public:
     status_t returnRecordingBuffers();
     bool isSharedPreviewBufferConfigured(bool *reserved = NULL) const;
 
-    status_t getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameStatus = NULL);
+    // TODO: client no longer using, can be moved to privates
+    status_t getPreviewFrame(AtomBuffer *buff);
     status_t putPreviewFrame(AtomBuffer *buff);
 
     status_t setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs, bool cached);
-    status_t getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp = NULL, atomisp_frame_status *frameStatus = NULL);
+    status_t getRecordingFrame(AtomBuffer *buff);
     status_t putRecordingFrame(AtomBuffer *buff);
 
     status_t setSnapshotBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bool cached);
-    status_t getSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf,
-                         atomisp_frame_status *snapshotStatus = NULL);
+    status_t getSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
     status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
 
     int pollPreview(int timeout);
@@ -272,6 +272,10 @@ public:
     int setGammaTable(const struct atomisp_gamma_table *gamma_tbl);
     int setFpnTable(struct v4l2_framebuffer *fb);
     int setGcConfig(const struct atomisp_gc_config *gc_cfg);
+    int getCssMajorVersion();
+    int getCssMinorVersion();
+    int getIspHwMajorVersion();
+    int getIspHwMinorVersion();
     /* Flash related controls */
     int setFlashIntensity(int intensity);
     /* file injection controls */
@@ -412,6 +416,7 @@ private:
         FrameInfo postview;   // postview (thumbnail for capture)
         float fps;            // preview/recording (shared)
         int num_snapshot;     // number of snapshots to take
+        int num_postviews;    // number of allocated postviews
         int zoom;             // zoom value
     };
 
@@ -539,10 +544,10 @@ private:
 
     status_t selectCameraSensor();
     size_t setupCameraInfo();
-    int getNumOfSkipFrames(void);
+    unsigned int getNumOfSkipFrames(void);
     int getPrimaryCameraIndex(void) const;
     status_t applySensorFlip(void);
-
+    void fetchIspVersions();
 
 private:
     // AtomIspObserver
@@ -603,7 +608,7 @@ private:
     bool mStoreMetaDataInBuffers;
 
     AtomBuffer mSnapshotBuffers[MAX_BURST_BUFFERS];
-    AtomBuffer mPostviewBuffers[MAX_BURST_BUFFERS];
+    Vector <AtomBuffer> mPostviewBuffers;
     int mNumPreviewBuffersQueued;
     int mNumRecordingBuffersQueued;
     int mNumCapturegBuffersQueued;
@@ -612,6 +617,7 @@ private:
     ContinuousCaptureConfig mContCaptConfig;
     bool mContCaptPrepared;
     bool mContCaptPriority;
+    unsigned int mInitialSkips;
 
     // TODO: video_fds should be moved to mDevices
     int video_fds[V4L2_MAX_DEVICE_COUNT];
@@ -619,6 +625,7 @@ private:
       unsigned int frameCounter;
       DeviceState state;
       Mutex       mutex;
+      unsigned int initialSkips;
     } mDevices[V4L2_MAX_DEVICE_COUNT];
 
     int dumpPreviewFrame(int previewIndex);
@@ -667,6 +674,11 @@ private:
 
     AeMode mPublicAeMode;
     AfMode mPublicAfMode;
+
+    int mCssMajorVersion;
+    int mCssMinorVersion;
+    int mIspHwMajorVersion;
+    int mIspHwMinorVersion;
 }; // class AtomISP
 
 }; // namespace android

@@ -70,6 +70,36 @@ status_t PostCaptureThread::handleProcessItem(MessageProcessItem &msg)
     return status;
 }
 
+status_t PostCaptureThread::cancelProcessingItem(IPostCaptureProcessItem* item)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+
+    msg.id = MESSAGE_ID_CANCEL_PROCESS_ITEM;
+
+    /**
+     * Before sending the message to the thread we already warn the processing
+     * item class that it has to cancel. This call should be thread safe.
+     *
+     */
+    if (item != NULL)
+        item->cancelProcess();
+
+    /**
+     * Now we can send the message to make sure processing completes. This
+     * message does nothing on the context of the thread, it just ensures that
+     * the previous processing completed.
+     */
+    return mMessageQueue.send(&msg,MESSAGE_ID_CANCEL_PROCESS_ITEM);
+}
+
+status_t PostCaptureThread::handleCancelProcessItem()
+{
+    LOG1("@%s", __FUNCTION__);
+
+    mMessageQueue.reply(MESSAGE_ID_CANCEL_PROCESS_ITEM, NO_ERROR);
+    return NO_ERROR;
+}
 status_t PostCaptureThread::requestExitAndWait()
 {
     LOG2("@%s", __FUNCTION__);
@@ -94,6 +124,9 @@ status_t PostCaptureThread::waitForAndExecuteMessage()
     {
         case MESSAGE_ID_PROCESS_ITEM:
             status = handleProcessItem(msg.data.procItem);
+            break;
+        case MESSAGE_ID_CANCEL_PROCESS_ITEM:
+            status = handleCancelProcessItem();
             break;
         case MESSAGE_ID_EXIT:
             status = handleExit();
