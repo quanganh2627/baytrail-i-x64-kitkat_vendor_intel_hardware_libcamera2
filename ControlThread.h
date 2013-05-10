@@ -603,9 +603,7 @@ private:
     status_t waitForCaptureStart();
 
     // HDR helper functions
-    status_t hdrInit(int size, int pvSize, int format,
-                     int width, int height,
-                     int pvWidth, int pvHeight);
+    status_t hdrInit(int pvSize, int pvWidth, int pvHeight);
     status_t hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* postviewBuffer);
     status_t hdrCompose();
     void     hdrRelease();

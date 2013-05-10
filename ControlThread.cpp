@@ -2775,7 +2775,7 @@ status_t ControlThread::captureStillPic()
 
     // HDR init
     if (mHdr.enabled &&
-       (status = hdrInit( size, pvSize, format, width, height, pvWidth, pvHeight)) != NO_ERROR) {
+       (status = hdrInit( pvSize, pvWidth, pvHeight)) != NO_ERROR) {
         LOGE("Error initializing HDR!");
         return status;
     }
@@ -6351,15 +6351,25 @@ cleanup:
     return NO_ERROR;
 }
 
-status_t ControlThread::hdrInit(int size, int pvSize, int format,
-                                int width, int height,
-                                int pvWidth, int pvHeight)
+status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     // Initialize the HDR output buffers
-    // Main output buffer
+    // Main output buffer should have same dimensions initially as one of the input
+    // buffers, so take those details from the vector of allocated buffers
+    if (mAllocatedSnapshotBuffers.isEmpty()) {
+        LOGE("%s:We do not have any snapshotbuffers yet... find the bug",__FUNCTION__);
+        return NO_MEMORY;
+    }
+
+    int size = mAllocatedSnapshotBuffers[0].size;
+    int width = mAllocatedSnapshotBuffers[0].width;
+    int stride = mAllocatedSnapshotBuffers[0].stride;
+    int height = mAllocatedSnapshotBuffers[0].height;
+    int format = mAllocatedSnapshotBuffers[0].format;
+
     mCallbacks->allocateMemory(&mHdr.outMainBuf, size);
     if (mHdr.outMainBuf.buff == NULL) {
         LOGE("HDR: Error allocating memory for HDR main buffer!");
@@ -6411,7 +6421,7 @@ status_t ControlThread::hdrInit(int size, int pvSize, int format,
 
     mHdr.ciBufOut.ciMainBuf->data = mHdr.outMainBuf.dataPtr;
     mHdr.ciBufOut.ciMainBuf[0].width = mHdr.outMainBuf.width = width;
-    mHdr.ciBufOut.ciMainBuf[0].stride = mHdr.outMainBuf.stride = width;
+    mHdr.ciBufOut.ciMainBuf[0].stride = mHdr.outMainBuf.stride = stride;
     mHdr.ciBufOut.ciMainBuf[0].height = mHdr.outMainBuf.height = height;
     mHdr.outMainBuf.format = format;
     mHdr.ciBufOut.ciMainBuf[0].size = mHdr.outMainBuf.size = size;
@@ -6452,7 +6462,7 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
     // Initialize the HDR CI input buffers (main/postview) for this capture
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer->dataPtr;
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].width = snapshotBuffer->width;
-    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].stride = snapshotBuffer->width;
+    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].stride = snapshotBuffer->stride;
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height = snapshotBuffer->height;
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].size = snapshotBuffer->size;
     AtomCP::setIaFrameFormat(&mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum], snapshotBuffer->format);
