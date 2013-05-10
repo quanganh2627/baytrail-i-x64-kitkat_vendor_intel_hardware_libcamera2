@@ -653,6 +653,9 @@ private:
 
     status_t createAtom3A();
 
+    void enableFocusCallbacks();
+    void disableFocusCallbacks();
+
 // inherited from Thread
 private:
     virtual bool threadLoop();
