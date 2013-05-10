@@ -765,7 +765,8 @@ status_t ControlThread::takePicture()
         // startPreview(). This is because scenarios that left AF running
         // are possible and applications (including Google reference) get
         // confused from receiving focus callbacks.
-        disableFocusCallbacks();
+        if (mStillCaptureInProgress)
+            disableFocusCallbacks();
     }
     return status;
 }
