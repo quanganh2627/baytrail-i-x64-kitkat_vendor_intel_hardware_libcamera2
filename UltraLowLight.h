@@ -98,11 +98,9 @@ public:
     void setMode(ULLMode m) STUB_BODY
     bool isActive() STUB_BODY_BOOL
     bool trigger() STUB_BODY_BOOL
-    bool isProcessing() STUB_BODY_BOOL
 
     status_t init( int w, int h, int aPreset) STUB_BODY_STAT
     status_t deinit() STUB_BODY_STAT
-
 
     status_t addInputFrame(AtomBuffer *snapshot, AtomBuffer *postview) STUB_BODY_STAT
     status_t addSnapshotMetadata(PictureThread::MetaData &metadata) STUB_BODY_STAT
@@ -115,9 +113,14 @@ public:
 
     // implementation of IPostCaptureProcessItem
     status_t process() STUB_BODY_STAT
-    status_t cancelProcess() STUB_BODY_STAT
 
     bool updateTrigger(SensorAeConfig &expInfo, bool flash) STUB_BODY_BOOL;
+
+private:
+    status_t initMorphoLib(int w, int h, int aPreset) STUB_BODY_STAT
+    status_t configureMorphoLib(void) STUB_BODY_STAT
+    void deinitMorphoLib() STUB_BODY
+    void AtomToMorphoBuffer(const   AtomBuffer *atom, void* morpho) STUB_BODY
 
 private:
     enum State {
@@ -126,7 +129,6 @@ private:
         ULL_STATE_INIT,
         ULL_STATE_READY,
         ULL_STATE_PROCESSING,
-        ULL_STATE_CANCELING,
         ULL_STATE_DONE
     };
 
@@ -159,15 +161,6 @@ private:
         {}
     };
 
-private:
-    status_t initMorphoLib(int w, int h, int aPreset) STUB_BODY_STAT
-    status_t configureMorphoLib(void) STUB_BODY_STAT
-    void deinitMorphoLib() STUB_BODY
-    void AtomToMorphoBuffer(const   AtomBuffer *atom, void* morpho) STUB_BODY
-    void setState(enum State aState);
-    enum State getState();
-
-private:
     struct MorphoULL;       /*!> Forward declaration of the opaque struct for Morpho's algo configuration */
     MorphoULL   *mMorphoCtrl;
     Callbacks   *mCallbacks;
@@ -188,8 +181,8 @@ private:
      * algorithm external status
      */
     ULLMode        mUserMode; /*!> User selected mode of operation of the ULL feature */
-    Mutex          mStateMutex; /*!> Protects the trigger and state variable that are queried by different threads*/
-    bool           mTrigger;  /*!> Only valid if in auto mode. It signal that ULL should be used. */
+    Mutex          mTrigerMutex; /*!> Protects the trigger variable that is modified in AAAThread but read from ControlThread*/
+    bool           mTrigger;  /*!> Only valid if in auto mode. It signal that ULL shoudl be used. */
 };
 }  //namespace android
 #endif /* ANDROID_LIBCAMERA_ULTRALOWLIGHT_H_ */

@@ -29,18 +29,12 @@ namespace android {
  * Virtual Interface implemented by the different algorithms run after capture
  * It allows them to run the in the PotCaptureThread
  *
- * The cancel call needs to be thread safe, since it is normally called from a
- * different thread than the processing thread. This method should signal the
- * algorithm so that the processing stops soon or when it completes, the correct
- * actions are taken.
- *
  */
 class IPostCaptureProcessItem {
 public:
     IPostCaptureProcessItem() {}
     virtual ~IPostCaptureProcessItem() {}
     virtual status_t process() = 0;
-    virtual status_t cancelProcess() = 0;
 };
 
 /**
@@ -87,7 +81,6 @@ public:
     virtual ~PostCaptureThread();
 
     status_t sendProcessItem(IPostCaptureProcessItem* item);
-    status_t cancelProcessingItem(IPostCaptureProcessItem* item);
     // Thread class overrides
     status_t requestExitAndWait();
 
@@ -97,7 +90,6 @@ private:
 
         MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
         MESSAGE_ID_PROCESS_ITEM,
-        MESSAGE_ID_CANCEL_PROCESS_ITEM,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -129,7 +121,6 @@ private:
     status_t waitForAndExecuteMessage();
     // Message processing methods
     status_t handleProcessItem(MessageProcessItem &msg);
-    status_t handleCancelProcessItem();
     status_t handleExit();
 
 private:

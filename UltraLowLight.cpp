@@ -70,7 +70,7 @@ UltraLowLight::UltraLowLight() : mMorphoCtrl(NULL),
 UltraLowLight::~UltraLowLight()
 {
     LOG1("@%s :state=%d", __FUNCTION__, mState);
-    if (getState() > ULL_STATE_UNINIT)
+    if (mState > ULL_STATE_UNINIT)
         deinitMorphoLib();
 
     if (mMorphoCtrl != NULL) {
@@ -106,7 +106,7 @@ status_t UltraLowLight::init( int w, int h, int aPreset)
     if (mUserMode == ULL_OFF)
         return INVALID_OPERATION;
 
-    switch (getState()) {
+    switch (mState) {
     case ULL_STATE_UNINIT:
     case ULL_STATE_INIT:
         startTime= systemTime();
@@ -131,7 +131,7 @@ status_t UltraLowLight::init( int w, int h, int aPreset)
     }
 
     if (ret ==  NO_ERROR)
-        setState(ULL_STATE_INIT);
+        mState = ULL_STATE_INIT;
     return ret;
 
 }
@@ -141,7 +141,7 @@ status_t UltraLowLight::deinit()
     LOG1("@%s ", __FUNCTION__);
     status_t ret = NO_ERROR;
 
-    switch (getState()) {
+    switch (mState) {
     case ULL_STATE_UNINIT:
         // do nothing
         break;
@@ -179,7 +179,7 @@ status_t UltraLowLight::addInputFrame(AtomBuffer *snap, AtomBuffer *pv)
     status_t ret = NO_ERROR;
     unsigned int maxBufs = MAX_INPUT_BUFFERS;
 
-    if (getState() != ULL_STATE_INIT)
+    if (mState != ULL_STATE_INIT)
         return INVALID_OPERATION;
 
     if (mInputBuffers.size() >= maxBufs)
@@ -202,7 +202,7 @@ status_t UltraLowLight::addInputFrame(AtomBuffer *snap, AtomBuffer *pv)
     if (mInputBuffers.size() == maxBufs) {
         ret = configureMorphoLib();
         if (ret == NO_ERROR)
-            setState(ULL_STATE_READY);
+            mState = ULL_STATE_READY;
     }
 
     return ret;
@@ -236,7 +236,7 @@ status_t UltraLowLight::getOuputResult(AtomBuffer *snap, AtomBuffer * pv,
     if ( (snap == NULL) || (pv == NULL) || (metadata == NULL))
         return BAD_VALUE;
 
-    if (getState() != ULL_STATE_DONE)
+    if (mState != ULL_STATE_DONE)
         return INVALID_OPERATION;
 
     *snap = mOutputBuffer;
@@ -244,7 +244,7 @@ status_t UltraLowLight::getOuputResult(AtomBuffer *snap, AtomBuffer * pv,
     *metadata = mSnapMetadata;
     *ULLid = mULLCounter;
     mULLCounter++;
-    setState(ULL_STATE_INIT);
+    mState = ULL_STATE_INIT;
 
     return NO_ERROR;
 }
@@ -279,39 +279,9 @@ bool UltraLowLight::isActive()
     return mUserMode==ULL_OFF? false: true;
 }
 
-bool UltraLowLight::isProcessing()
-{
-    Mutex::Autolock lock(mStateMutex);
-    LOG1("@%s:%s",__FUNCTION__, mState==ULL_STATE_PROCESSING? "true":"false");
-    return mState==ULL_STATE_PROCESSING? true: false;
-}
-/**
- * Cancels an ongoing ULL processing
- * The cancellation is not synchronous. The processing cannot be stopped
- * this method just notifies the ULL object that there is no need to compress
- * the resulting image once the processing completes.
- *
- * If this method is called in any other state than ULL_STATE_PROCESSING
- * the method is ignored
- *
- */
-status_t UltraLowLight::cancelProcess()
-{
-   LOG1("@%s", __FUNCTION__);
-   Mutex::Autolock lock(mStateMutex);
-
-   if (mState != ULL_STATE_PROCESSING) {
-       LOGW("trying to cancel ULL when ULL is not in progress, ignoring request");
-       return INVALID_OPERATION;
-   }
-
-   mState = ULL_STATE_CANCELING;
-   return NO_ERROR;
-}
-
 bool UltraLowLight::trigger()
 {
-    Mutex::Autolock lock(mStateMutex);
+    Mutex::Autolock lock(mTrigerMutex);
     // ULL is ready to start a capture in one of these 2 states
     if ( (mState != ULL_STATE_INIT) &&
          (mState != ULL_STATE_UNINIT))
@@ -328,11 +298,11 @@ status_t UltraLowLight::process()
     LOG1("@%s", __FUNCTION__);
     status_t ret = NO_ERROR;
 
-    if (getState() != ULL_STATE_READY)
+    if (mState != ULL_STATE_READY)
         return INVALID_OPERATION;
 
     nsecs_t startTime = systemTime();
-    setState(ULL_STATE_PROCESSING);
+    mState = ULL_STATE_PROCESSING;
     int i;
 
     /* Initialize the morpho specific input buffer structures */
@@ -396,14 +366,9 @@ status_t UltraLowLight::process()
        LOGW("Error closing the library");
 
 processComplete:
-
-    if (getState() == ULL_STATE_PROCESSING) {
-        setState(ULL_STATE_DONE);
-        mOutputBuffer = mInputBuffers[0];
-        mInputBuffers.removeAt(0);
-    } else {
-        LOGW("ULL was canceled during processing state = %d",getState());
-    }
+    mOutputBuffer = mInputBuffers[0];
+    mInputBuffers.removeAt(0);
+    mState = ULL_STATE_DONE;
     LOG1("ULL Processing completed (ret=%d) in %u ms", ret, (unsigned)((systemTime() - startTime) / 1000000))
     return ret;
 }
@@ -451,7 +416,7 @@ status_t UltraLowLight::initMorphoLib(int w, int h, int idx)
     mWidth = w;
     mHeight = h;
     mInputBuffers.clear();
-    setState(ULL_STATE_INIT);
+    mState = ULL_STATE_INIT;
 
 bail:
     return ret;
@@ -466,7 +431,7 @@ void UltraLowLight::deinitMorphoLib()
 {
     LOG1("@%s ", __FUNCTION__);
 
-    setState(ULL_STATE_UNINIT);
+    mState = ULL_STATE_UNINIT;
     mWidth = 0;
     mHeight = 0;
     mCurrentPreset = 0;
@@ -582,7 +547,7 @@ void UltraLowLight::AtomToMorphoBuffer(const AtomBuffer *atom, void* m)
 bool UltraLowLight::updateTrigger(SensorAeConfig &expInfo, bool flash)
 {
     LOG2("%s", __FUNCTION__);
-    Mutex::Autolock lock(mStateMutex);
+    Mutex::Autolock lock(mTrigerMutex);
     int apexSv = expInfo.aecApexSv;
     bool change = false;
 
@@ -607,25 +572,4 @@ bool UltraLowLight::updateTrigger(SensorAeConfig &expInfo, bool flash)
     return change;
 }
 
-/**
- * Changes the state of the ULL algorithm in a thread safe way
- * This is an internal method to be used by other methods that do not need to
- * take the lock all the time.
- */
-void UltraLowLight::setState(enum State aState)
-{
-    Mutex::Autolock lock(mStateMutex);
-    mState = aState;
-}
-
-/**
- * Queries the state of the ULL algorithm in a thread safe way
- * This is an internal method to be used by other methods that do not need to
- * take the lock all the time.
- */
-UltraLowLight::State UltraLowLight::getState()
-{
-    Mutex::Autolock lock(mStateMutex);
-    return mState;
-}
 } //namespace android
