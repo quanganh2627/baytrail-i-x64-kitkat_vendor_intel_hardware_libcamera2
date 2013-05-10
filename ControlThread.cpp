@@ -538,8 +538,10 @@ bool ControlThread::msgTypeEnabled(int32_t msgType)
  */
 void ControlThread::disableFocusCallbacks()
 {
-    mEnableFocusCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS);
-    mEnableFocusMoveCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS_MOVE);
+    if (!mEnableFocusCbAtStart)
+        mEnableFocusCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS);
+    if (!mEnableFocusMoveCbAtStart)
+        mEnableFocusMoveCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS_MOVE);
     disableMsgType(CAMERA_MSG_FOCUS_MOVE);
     disableMsgType(CAMERA_MSG_FOCUS);
 }
@@ -780,7 +782,8 @@ status_t ControlThread::takePicture()
         // startPreview(). This is because scenarios that left AF running
         // are possible and applications (including Google reference) get
         // confused from receiving focus callbacks.
-        disableFocusCallbacks();
+        if (mStillCaptureInProgress)
+            disableFocusCallbacks();
     }
     return status;
 }
