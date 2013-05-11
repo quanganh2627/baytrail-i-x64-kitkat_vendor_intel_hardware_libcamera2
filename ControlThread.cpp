@@ -1428,9 +1428,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         return status;
     }
 
-    // sensor FPS is queried during configure so we set it to preview thread now
-    mPreviewThread->setSensorFramerate(mISP->getFrameRate());
-
     // Load any ISP extensions before ISP is started
     mPostProcThread->loadIspExtensions(videoMode);
 
@@ -5586,7 +5583,7 @@ status_t ControlThread::processParamPreviewFrameRate(const CameraParameters *old
         LOGI("DEPRECATED: Got new preview frame rate: %s", newVal.string());
         int fps = newParams->getPreviewFrameRate();
         // Save the set FPS for doing frame dropping
-        mPreviewThread->setFramerate(fps);
+        mISP->setPreviewFramerate(fps);
     }
 
     return NO_ERROR;
