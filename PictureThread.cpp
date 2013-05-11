@@ -236,7 +236,7 @@ void PictureThread::initialize(const CameraParameters &params)
 }
 
 status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuffersNum,
-                                           ISnapshotBufferUser *user)
+                                                Vector<AtomBuffer> *bufs)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
@@ -244,8 +244,9 @@ status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuff
     msg.data.alloc.width = width;
     msg.data.alloc.height = height;
     msg.data.alloc.numBufs = sharedBuffersNum;
-    msg.data.alloc.user = user;
-    return mMessageQueue.send(&msg);
+    msg.data.alloc.bufs = bufs;
+
+    return mMessageQueue.send(&msg, MESSAGE_ID_ALLOC_BUFS);
 }
 
 status_t PictureThread::wait()
@@ -401,28 +402,33 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
     }
     if (mOutBuf.dataPtr == NULL || mExifBuf.dataPtr == NULL) {
         LOGE("Could not allocate memory for output buffers!");
-        return NO_MEMORY;
+        status = NO_MEMORY;
+        goto exit_fail;
     }
 
     /* re-allocates array of input buffers into mInputBufferArray */
     freeInputBuffers();
     status = allocateInputBuffers(msg->width, msg->height, msg->numBufs);
     if(status != NO_ERROR)
-        return status;
+        goto exit_fail;
 
     /* Now let the encoder know about the new buffers for the surfaces*/
     if(mHwCompressor) {
         status = mHwCompressor->setInputBuffers(mInputBufferArray, mInputBuffers);
-        if(status)
+        if(status) {
             LOGW("HW Encoder cannot use pre-allocate buffers");
+            status = NO_ERROR; // this is not critical, we still return some buffers
+        }
     }
 
 skip:
-    // Provide the buffer to the user (CtrlThread)
-    if (msg->user != NULL)
-        msg->user->snapshotsAllocated(mInputBufferArray,mInputBuffers);
 
-    return NO_ERROR;
+    for (int i = 0; i < mInputBuffers; i++)
+        msg->bufs->push(mInputBufferArray[i]);
+
+exit_fail:
+    mMessageQueue.reply(MESSAGE_ID_ALLOC_BUFS, status);
+    return status;
 }
 
 status_t PictureThread::allocateInputBuffers(int width, int height, int numBufs)

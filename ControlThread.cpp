@@ -127,7 +127,6 @@ ControlThread::ControlThread(int cameraId) :
     ,mEnableFocusMoveCbAtStart(false)
     ,mStillCaptureInProgress(false)
     ,mPreviewUpdateMode(IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD)
-    ,mAllocationRequestSent(false)
     ,mSaveMirrored(false)
     ,mCurrentOrientation(0)
     ,mRecordingOrientation(0)
@@ -1954,7 +1953,13 @@ status_t ControlThread::handleMessageStartRecording()
 
     mISP->getVideoSize(&width, &height, NULL);
     mParameters.setPictureSize(width, height);
-    allocateSnapshotBuffers(true);
+
+    if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
+        allocateSnapshotBuffers(true);
+    } else {
+        LOG1("%s not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+    }
+
     snprintf(sizes, 25, "%dx%d", width,height);
     LOG1("video snapshot size %dx%d", width, height);
     mParameters.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, sizes);
@@ -3499,7 +3504,18 @@ status_t ControlThread::handleMessagePreviewStarted()
      * to start the allocation of snapshot buffers.
      */
     bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-    allocateSnapshotBuffers(videoMode);
+
+    /**
+     * if we have all the allocated buffers available then it is safe to re-allocate
+     *
+     */
+
+    if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
+        allocateSnapshotBuffers(videoMode);
+    } else {
+        LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+    };
+
     return NO_ERROR;
 }
 
@@ -4185,17 +4201,19 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
  * if we already have the same configuration available then it returns without
  * asking PictureThread.
  *
- * Allocation request is asynchronous. If we try to allocate before previous
- * request was completed we wait for it to complete and check again.
+ * Allocation request is synchronous.
  *
- * Once the allocation completes on PictureThread, ControlThread receives the
- * message SNAPSHOT_ALLOCATED and makes the buffers available.
+ * The buffers are allocated in the PictureThread to register the allocated
+ *   buffers with the HW JPEG encoder in this way the snapshot buffers are
+ *   already known to the HW encoder, this  speeds up the encoding.
  *
- * The buffers are allocated in the PictureThread for several reasons:
- * - to keep the control thread responsive to commands offloading the allocation
- * - and most importantly to register the allocated buffers with the HW JPEG encoder
- *   in this way the snapshot buffers are already known to the HW encoder, this
- *   speeds up the encoding.
+ * This call is used in the following situations:
+ * - when preview has already started
+ * - when processing parameters and those require new buffers
+ *
+ * care needs to be taken no to allocate the buffers at a time when ControlThread
+ * needs to be fast for some performance metric, like when taking a snapshot
+ * or when we are starting preview
  *
  */
 status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
@@ -4216,13 +4234,11 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
        bufCount = 0;
     }
 
-    if (mAllocatedSnapshotBuffers.isEmpty() && mAllocationRequestSent) {
-        LOGW("trying to allocate again before PictureThread completed- we should avoid this");
-        waitForAllocatedSnapshotBuffers();
-    }
 
     LOG1("Request to allocate %d bufs of (%dx%d)",bufCount, picWidth,picHeight);
-    LOG1("Currently allocated: %d ",mAllocatedSnapshotBuffers.size());
+    LOG1("Currently allocated: %d , available %d",mAllocatedSnapshotBuffers.size(),
+                                                  mAvailableSnapshotBuffers.size());
+
 
     if (!mAllocatedSnapshotBuffers.isEmpty()) {
         AtomBuffer tmp;
@@ -4237,50 +4253,19 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
     }
 
     mAllocatedSnapshotBuffers.clear();
-    mAllocationRequestSent = true;
+    mAvailableSnapshotBuffers.clear();
+
     status = mPictureThread->allocSharedBuffers(picWidth, picHeight, bufCount,
-                                                (ISnapshotBufferUser*)this);
+                                                &mAllocatedSnapshotBuffers);
     if (status != NO_ERROR) {
        LOGE("Could not pre-allocate picture buffers!");
+    } else {
+        mAvailableSnapshotBuffers = mAllocatedSnapshotBuffers;
     }
 
     return status;
 }
 
-/**
- * The requested snapshot buffers from PictureThread are allocated now.
- *
- * The request is done via PictureThread::allocSharedBuffers()
- * Once the allocation is completed and the new JPEG HW encoder context is created
- * the Control Thread receives the AtomBuffers via this callback
- */
-status_t ControlThread::snapshotsAllocated(AtomBuffer *bufs, int numBufs)
-{
-    LOG1("@%s", __FUNCTION__);
-
-    Message msg;
-    msg.id = MESSAGE_ID_SNAPSHOT_ALLOCATED;
-    msg.data.snap.bufs = bufs;
-    msg.data.snap.numBuf = numBufs;
-
-    return mMessageQueue.send(&msg);
-}
-
-
-status_t ControlThread::handleMessageSnapshotAllocated(MessageSnapshotAllocated *msg)
-{
-    LOG1("@%s", __FUNCTION__);
-
-    mAvailableSnapshotBuffers.clear();
-
-    for (int i = 0; i < msg->numBuf ; i++) {
-        mAllocatedSnapshotBuffers.push(msg->bufs[i]);
-        mAvailableSnapshotBuffers.push(msg->bufs[i]);
-        LOG1("mAllocatedSnapshotBuffers[%d] = %p",i,msg->bufs[i].buff->data);
-    }
-    mAllocationRequestSent = false;
-    return NO_ERROR;
-}
 
 void ControlThread::processParamFileInject(CameraParameters *newParams)
 {
@@ -4774,6 +4759,7 @@ status_t ControlThread::processParamULL(const CameraParameters *oldParams,
         } else {
             mULL->setMode(UltraLowLight::ULL_OFF);
         }
+
     }
 
     return status;
@@ -5919,7 +5905,14 @@ void ControlThread::restoreCurrentPictureParams()
 
     mStillPictContext.clear();
     updateParameterCache();
-    allocateSnapshotBuffers(false);
+
+    if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
+        allocateSnapshotBuffers(false);
+    } else {
+        LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+    }
+
+
 }
 
 /**
@@ -6050,10 +6043,19 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     /**
      * we need to re-allocate the snapshots if the size has changed or the
      * number of buffers have changed. If the burst parameters change a preview
-     * restart is triggered.
+     * restart is triggered. If preview is re-started we will allocate the snapshots
+     * after preview has started, not impacting L2P
+     *
+     * In cases where we receive set_params before we start preview we do not allocate
      */
-    if (paramsHasPictureSizeChanged(&oldParams, &newParams) || needRestartPreview)
-        allocateSnapshotBuffers(videoMode);
+    if (paramsHasPictureSizeChanged(&oldParams, &newParams) && mState != STATE_STOPPED) {
+
+        if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
+            allocateSnapshotBuffers(videoMode);
+        } else {
+            LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+        }
+    }
 
     ProcessOverlayEnable(&oldParams, &newParams);
 
@@ -6583,16 +6585,16 @@ void ControlThread::setExternalSnapshotBuffers(int format, int width, int height
     status_t status = NO_ERROR;
 
     if (format == V4L2_PIX_FMT_NV12) {
-
+        /**
+         * This is needed for CTS cases when we receive the take_picture request
+         * before start preview has completed, which is the normal place to allocate
+         * the snapshot buffers
+         */
         if (mAllocatedSnapshotBuffers.isEmpty()) {
-            LOG1("%s: snapshot buffers have  not arrived yet... waiting",__FUNCTION__);
-            if (mAllocationRequestSent == false) {
-                LOGW("snapshot allocation request was not send. This is a sign of unoptimal API use");
-                allocateSnapshotBuffers(false);
-            }
-            waitForAllocatedSnapshotBuffers();
-            LOG1("%s: Got them (%d)!",__FUNCTION__ , mAllocatedSnapshotBuffers.size());
+            LOGW("Trying to use snapshot buffers before they are allocated- sign of suboptimal API use");
+            allocateSnapshotBuffers(false);
         }
+
         unsigned int numberOfSnapshots = MAX(1,mBurstLength);
         LOG1("Required Buffers for snapshot %d: Available %d Allocated: %d", numberOfSnapshots,
                                                                              mAvailableSnapshotBuffers.size(),
@@ -6610,7 +6612,15 @@ void ControlThread::setExternalSnapshotBuffers(int format, int width, int height
             bool cached = false;
             status = mISP->setSnapshotBuffers(&mAvailableSnapshotBuffers, numberOfSnapshots, cached  );
         } else {
-            LOGE("Not enough available buffers for this request. This should not happen");
+            /**
+             * The places when we allocate snapshot buffers should ensure that at take
+             * picture time there are enough buffers. This situation may arise if
+             * not enough buffers were allocated, and some buffers are in used
+             * ControlThread needs to ensure it allocates enough.
+             * It is not possible to re-allocate now if we do not have all the
+             * snapshot buffers back in mAvailableSnapshotBuffers.
+             */
+            LOGE("Not enough available buffers for this request. This should not happen, find the bug");
         }
     } else {
         LOG1("Using internal buffers for snapshot");
@@ -6618,39 +6628,6 @@ void ControlThread::setExternalSnapshotBuffers(int format, int width, int height
         // Make sure that we pass the format to PictureThread,
         // then we can remove this.
     }
-}
-
-/**
- * Since the snapshot allocation method is asynchronous there maybe cases where
- * we need the buffers before the allocation completed.
- * This method sends a synchronous message to PictureThread to make sure the
- * allocation request completed. It then steals the message from the message Q
- *
- */
-void ControlThread::waitForAllocatedSnapshotBuffers()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status;
-    Vector<Message> pending;
-
-    /**
-     * wait for the allocation request to complete.
-     * we do so by sending a synchronous message to PictureThread.
-     * This message does nothing.
-     */
-    status = mPictureThread->wait();
-
-    /**
-     * Now the reply should be waiting in out Q
-     */
-    mMessageQueue.remove(MESSAGE_ID_SNAPSHOT_ALLOCATED,&pending);
-    if (pending.isEmpty()) {
-        LOGE("PictureThread did not send the allocated buffers, find the bug!!");
-        return;
-    }
-
-    MessageSnapshotAllocated msg = pending[0].data.snap;
-    handleMessageSnapshotAllocated(&msg);
 }
 
 /**
@@ -7017,13 +6994,10 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE:
             status = handleMessagePostCaptureProcessingDone(&msg.data.postCapture);
+            break;
 
         case MESSAGE_ID_SET_ORIENTATION:
             status = handleMessageSetOrientation(&msg.data.orientation);
-            break;
-
-        case MESSAGE_ID_SNAPSHOT_ALLOCATED:
-            status = handleMessageSnapshotAllocated(&msg.data.snap);
             break;
 
         default:

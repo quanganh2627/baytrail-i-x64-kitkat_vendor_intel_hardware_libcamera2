@@ -31,13 +31,6 @@ namespace android {
 class Callbacks;
 class CallbacksThread;
 
-class ISnapshotBufferUser {
-public:
-    ISnapshotBufferUser() {}
-    virtual ~ISnapshotBufferUser() {}
-    virtual status_t snapshotsAllocated(AtomBuffer *bufs, int numBufs) = 0;
-};
-
 class PictureThread : public Thread {
 
 // constructor destructor
@@ -71,7 +64,7 @@ public:
     void getDefaultParameters(CameraParameters *params);
     void initialize(const CameraParameters &params);
     status_t allocSharedBuffers(int width, int height, int sharedBuffersNum,
-                                ISnapshotBufferUser *user);
+                                  Vector<AtomBuffer> *bufs);
 
     status_t wait(); // wait to finish queued messages (sync)
     status_t flushBuffers();
@@ -105,7 +98,7 @@ private:
         int width;          /*!> width of the requested buffers */
         int height;         /*!> height of the requested buffers */
         int numBufs;        /*!> amount of buffers to allocate */
-        ISnapshotBufferUser *user;      /*!> pointer to the user of those buffers */
+        Vector<AtomBuffer> *bufs;      /*!> Vector where to store the buffers */
     };
 
     struct MessageEncode {
