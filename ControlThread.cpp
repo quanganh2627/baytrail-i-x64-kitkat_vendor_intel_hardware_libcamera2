@@ -1765,7 +1765,7 @@ status_t ControlThread::handleMessageStopPreview()
         //       into callback interfaces given with takePicture().
         //       If we are here, ANR is expected - just protecting
         //       against crashes.
-        LOGW("stopPreview() called while capture in progress, canceling"
+        LOGW("stopPreview() called while capture in progress, canceling\n"
              "application should release the camera to cancel capture process");
         if (mState == STATE_CAPTURE)
             status = stopCapture();
@@ -2007,6 +2007,15 @@ status_t ControlThread::handleMessageStopRecording()
         LOGE("Error stopping recording. Invalid state!");
         status = INVALID_OPERATION;
     }
+
+    if (mCaptureSubState == STATE_CAPTURE_STARTED) {
+        // cancel video snapshot
+        mPictureThread->flushBuffers();
+        mCaptureSubState = STATE_CAPTURE_IDLE;
+    }
+    // clear reserved lists
+    mVideoSnapshotBuffers.clear();
+    mRecordingBuffers.clear();
 
     // release buffers owned by encoder since it is not going to return them
     mISP->returnRecordingBuffers();
