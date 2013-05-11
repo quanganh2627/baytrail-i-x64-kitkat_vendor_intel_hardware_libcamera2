@@ -65,7 +65,6 @@ class ControlThread :
     public IAtomIspObserver,
     public IPostCaptureProcessObserver,
     public IBufferOwner,
-    public ISnapshotBufferUser,
     public IOrientationListener {
 
 // constructor destructor
@@ -137,9 +136,6 @@ public:
     // Implementation of IPostCaptureProcessObserver interface
     void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status);
 
-    // Implementation of ISnapshotBufferUser interface
-    status_t snapshotsAllocated(AtomBuffer *bufs, int numBufs);
-
     // IOrientationListener
     void orientationChanged(int orientation);
 
@@ -200,7 +196,6 @@ private:
 
         MESSAGE_ID_DEQUEUE_RECORDING,
         MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE,
-        MESSAGE_ID_SNAPSHOT_ALLOCATED,
         MESSAGE_ID_SET_ORIENTATION,
 
         // timeout handler
@@ -278,11 +273,6 @@ private:
         status_t status;
     };
 
-    struct MessageSnapshotAllocated{
-        AtomBuffer *bufs;
-        int numBuf;
-    };
-
     struct MessageOrientation {
         int value;
     };
@@ -327,9 +317,6 @@ private:
 
         // MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE
         MessagePostCaptureProcDone postCapture;
-
-        // MESSAGE_ID_SNAPSHOT_ALLOCATED
-        MessageSnapshotAllocated snap;
 
         // MESSAGE_ID_SET_ORIENTATION
         MessageOrientation  orientation;
@@ -456,7 +443,6 @@ private:
     status_t handleMessageReturnBuffer(MessageReturnBuffer *msg);
     status_t handleMessageTimeout();
     status_t handleMessagePostCaptureProcessingDone(MessagePostCaptureProcDone *msg);
-    status_t handleMessageSnapshotAllocated(MessageSnapshotAllocated *msg);
     status_t handleMessageSetOrientation(MessageOrientation *msg);
 
     status_t startFaceDetection();
@@ -769,10 +755,6 @@ private:
 
     Vector<AtomBuffer> mAllocatedSnapshotBuffers; /*!< Current set of allocated snapshot buffers */
     Vector<AtomBuffer> mAvailableSnapshotBuffers; /*!< Current set of available snapshot buffers */
-    bool mAllocationRequestSent;                 /*!< Tracks the request allocation towards PictureThread
-                                                      set to true when we issue a request
-                                                      set to false when request completes
-                                                  */
 
     bool mSaveMirrored;
     int mCurrentOrientation;        /*!< Current orientation of the device. Used in case the image is
