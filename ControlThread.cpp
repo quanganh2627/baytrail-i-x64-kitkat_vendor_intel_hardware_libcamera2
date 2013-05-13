@@ -525,6 +525,30 @@ bool ControlThread::msgTypeEnabled(int32_t msgType)
     return mCallbacks->msgTypeEnabled(msgType);
 }
 
+/**
+ * Disable focus callbacks
+ */
+void ControlThread::disableFocusCallbacks()
+{
+    mEnableFocusCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS);
+    mEnableFocusMoveCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS_MOVE);
+    disableMsgType(CAMERA_MSG_FOCUS_MOVE);
+    disableMsgType(CAMERA_MSG_FOCUS);
+}
+
+/**
+ *  Enable focus callbacks in case we disabled them
+ */
+void ControlThread::enableFocusCallbacks()
+{
+    if (mEnableFocusCbAtStart)
+        enableMsgType(CAMERA_MSG_FOCUS);
+
+    if (mEnableFocusMoveCbAtStart)
+        enableMsgType(CAMERA_MSG_FOCUS_MOVE);
+}
+
+
 status_t ControlThread::startPreview()
 {
     LOG1("@%s", __FUNCTION__);
@@ -736,6 +760,13 @@ status_t ControlThread::takePicture()
     status = mMessageQueue.send(&msg);
     if (status == NO_ERROR) {
         mStillCaptureInProgress = (mState != STATE_RECORDING) ? true : false;
+        // We need to disable focus callbacks here to ensure application
+        // is not receiving them after this call and until the next
+        // startPreview(). This is because scenarios that left AF running
+        // are possible and applications (including Google reference) get
+        // confused from receiving focus callbacks.
+        if (mStillCaptureInProgress)
+            disableFocusCallbacks();
     }
     return status;
 }
@@ -1689,16 +1720,8 @@ status_t ControlThread::handleMessageStartPreview()
     mStillCaptureInProgress = false;
     mCaptureSubState = STATE_CAPTURE_IDLE;
 
-    // Check if continuous capture previously disabled focus callbacks
-    if (mEnableFocusCbAtStart) {
-        enableMsgType(CAMERA_MSG_FOCUS);
-        mEnableFocusCbAtStart = false;
-    }
-
-    if (mEnableFocusMoveCbAtStart) {
-        enableMsgType(CAMERA_MSG_FOCUS_MOVE);
-        mEnableFocusCbAtStart = false;
-    }
+    // Check if we previously disabled focus callbacks
+    enableFocusCallbacks();
 
     if (mState == STATE_STOPPED) {
         // API says apps should call startFaceDetection when resuming preview
@@ -2865,17 +2888,6 @@ status_t ControlThread::captureStillPic()
     if (mState == STATE_CONTINUOUS_CAPTURE && mBurstLength <= 1)
         stopOfflineCapture();
 
-    if (mState == STATE_CONTINUOUS_CAPTURE) {
-        // Continuous mode will keep running keeping 3A active but
-        // preview hidden, disable AF callbacks to act API compatible
-        // Note: lens shouldn't be moving either, but we need that for
-        // better AF behaviour in continuous-shooting mode
-        mEnableFocusCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS);
-        mEnableFocusMoveCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS_MOVE);
-        disableMsgType(CAMERA_MSG_FOCUS_MOVE);
-        disableMsgType(CAMERA_MSG_FOCUS);
-    }
-
     return status;
 }
 
@@ -3221,16 +3233,6 @@ status_t ControlThread::captureULLPic()
     mPostCaptureThread->sendProcessItem((IPostCaptureProcessItem*)mULL);
 
     stopOfflineCapture();
-
-
-    // Continuous mode will keep running keeping 3A active but
-    // preview hidden, disable AF callbacks to act API compatible
-    // Note: lens shouldn't be moving either, but we need that for
-    // better AF behaviour in continuous-shooting mode
-    mEnableFocusCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS);
-    mEnableFocusMoveCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS_MOVE);
-    disableMsgType(CAMERA_MSG_FOCUS_MOVE);
-    disableMsgType(CAMERA_MSG_FOCUS);
 
 exit:
     // Restore the Burst related control variables
