@@ -1261,27 +1261,32 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp,
         statistics_input_parameters.wb_gains = NULL;
         statistics_input_parameters.cc_matrix = NULL;
 
-        if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5))
+        bool statistics_converted = false;
+        if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5)) {
             ia_isp_1_5_statistics_convert(m3aState.ia_isp_handle, m3aState.stats,
                             const_cast<ia_aiq_rgbs_grid**>(&statistics_input_parameters.rgbs_grid),
                             const_cast<ia_aiq_af_grid**>(&statistics_input_parameters.af_grid));
-        else if ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0))
+            statistics_converted = true;
+        } else if ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0)) {
             ia_isp_2_2_statistics_convert(m3aState.ia_isp_handle, m3aState.stats,
                                         const_cast<ia_aiq_rgbs_grid**>(&statistics_input_parameters.rgbs_grid),
                                         const_cast<ia_aiq_af_grid**>(&statistics_input_parameters.af_grid));
+            statistics_converted = true;
+        }
+        if(statistics_converted) {
+            LOG2("m3aState.stats: grid_info: %d  %d %d ",
+                  m3aState.stats->grid_info.s3a_width,m3aState.stats->grid_info.s3a_height,m3aState.stats->grid_info.s3a_bqs_per_grid_cell);
 
-        LOG2("m3aState.stats: grid_info: %d  %d %d ",
-              m3aState.stats->grid_info.s3a_width,m3aState.stats->grid_info.s3a_height,m3aState.stats->grid_info.s3a_bqs_per_grid_cell);
+            LOG2("rgb_grid: grid_width:%u, grid_height:%u, thr_r:%u, thr_gr:%u,thr_gb:%u", statistics_input_parameters.rgbs_grid->grid_width,
+                  statistics_input_parameters.rgbs_grid->grid_height,
+                  statistics_input_parameters.rgbs_grid->blocks_ptr->avg_r,
+                  statistics_input_parameters.rgbs_grid->blocks_ptr->avg_g,
+                  statistics_input_parameters.rgbs_grid->blocks_ptr->avg_b);
 
-        LOG2("rgb_grid: grid_width:%u, grid_height:%u, thr_r:%u, thr_gr:%u,thr_gb:%u", statistics_input_parameters.rgbs_grid->grid_width,
-              statistics_input_parameters.rgbs_grid->grid_height,
-              statistics_input_parameters.rgbs_grid->blocks_ptr->avg_r,
-              statistics_input_parameters.rgbs_grid->blocks_ptr->avg_g,
-              statistics_input_parameters.rgbs_grid->blocks_ptr->avg_b);
+            err = ia_aiq_statistics_set(m3aState.ia_aiq_handle, &statistics_input_parameters);
 
-        err = ia_aiq_statistics_set(m3aState.ia_aiq_handle, &statistics_input_parameters);
-
-        m3aState.stats_valid = true;
+            m3aState.stats_valid = true;
+        }
     }
 
     return ret;

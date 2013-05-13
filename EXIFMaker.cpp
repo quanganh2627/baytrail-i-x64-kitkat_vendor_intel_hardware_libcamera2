@@ -426,10 +426,11 @@ void EXIFMaker::initializeLocation(const CameraParameters &params)
     const char *pimgdirection = params.get(IntelCameraParameters::KEY_GPS_IMG_DIRECTION);
     const char *pimgdirectionref = params.get(IntelCameraParameters::KEY_GPS_IMG_DIRECTION_REF);
 
-    double imgdirection;
+    double imgdirection = 0.0;
     if (pimgdirection) {
         imgdirection = atof(pimgdirection);
-        if (((strcmp(pimgdirectionref, IntelCameraParameters::GPS_IMG_DIRECTION_REF_TRUE) != 0)
+        if ((pimgdirectionref == NULL)
+            ||((strcmp(pimgdirectionref, IntelCameraParameters::GPS_IMG_DIRECTION_REF_TRUE) != 0)
             && (strcmp(pimgdirectionref, IntelCameraParameters::GPS_IMG_DIRECTION_REF_MAGNETIC) != 0))
             || (imgdirection < 0 || imgdirection > 359.99))
             pimgdirection = NULL;
@@ -541,7 +542,7 @@ void EXIFMaker::initializeLocation(const CameraParameters &params)
         LOG1("EXIF: GPS processing method:%s", exifAttributes.gps_processing_method);
     }
 
-    if (pimgdirection) {
+    if (pimgdirection && pimgdirectionref)  {
         if (strcmp(pimgdirectionref, IntelCameraParameters::GPS_IMG_DIRECTION_REF_TRUE) == 0)
             memcpy(exifAttributes.gps_img_direction_ref, "T", sizeof(exifAttributes.gps_img_direction_ref));
         else if (strcmp(pimgdirectionref, IntelCameraParameters::GPS_IMG_DIRECTION_REF_MAGNETIC) == 0)

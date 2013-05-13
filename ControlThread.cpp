@@ -4007,7 +4007,8 @@ status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
     if (mBurstLength > 0) {
 
         // Get the burst speed
-        String8 speed(newParams->get(IntelCameraParameters::KEY_BURST_SPEED));
+        const char* s_speed = newParams->get(IntelCameraParameters::KEY_BURST_SPEED);
+        String8 speed(s_speed, s_speed == NULL ? 0 : strlen(s_speed));
         if (speed == IntelCameraParameters::BURST_SPEED_LOW)
             mFpsAdaptSkip = BURST_SPEED_LOW_SKIP_NUM;
         else if (speed == IntelCameraParameters::BURST_SPEED_MEDIUM)
@@ -4785,7 +4786,8 @@ void ControlThread::preProcessFlashMode(CameraParameters *newParams)
     if (mCameraId != 0 || !PlatformData::supportsBackFlash())
         return;
 
-    String8 currSupportedFlashModes = String8(newParams->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES));
+    const char* supportedFlashModes = newParams->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
+    String8 currSupportedFlashModes(supportedFlashModes, supportedFlashModes == NULL ? 0 : strlen(supportedFlashModes));
 
     // If burst or HDR is enabled, the only supported flash mode is "off".
     // Also, we only want to record only the first change to "off".
