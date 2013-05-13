@@ -3491,6 +3491,7 @@ void ControlThread::previewBufferCallback(AtomBuffer *buff, ICallbackPreview::Ca
 
 status_t ControlThread::handleMessagePreviewStarted()
 {
+    LOG1("@%s", __FUNCTION__);
 
     /**
     * First preview frame was rendered.
@@ -3499,6 +3500,10 @@ status_t ControlThread::handleMessagePreviewStarted()
     * impact launch to preview time.
     *
     */
+
+    /* NOTE: handleMessageTakePicture can be called before this function, if application
+     *       call take_picture fast after preview start. So we must take care of that case.
+     */
 
     /* Now that preview is started let's send the asynchronous msg to PictureThread
      * to start the allocation of snapshot buffers.
@@ -6583,16 +6588,26 @@ void ControlThread::setExternalSnapshotBuffers(int format, int width, int height
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    unsigned int bufCount = MAX(mBurstLength, mISP->getContinuousCaptureNumber()+1);
 
     if (format == V4L2_PIX_FMT_NV12) {
         /**
-         * This is needed for CTS cases when we receive the take_picture request
-         * before start preview has completed, which is the normal place to allocate
-         * the snapshot buffers
+         * This is needed for cases when we receive the take_picture request before
+         * start preview has completed, which is the normal place to allocate
+         * the snapshot buffers. This can happen with CTS or instantly tapping shutter
+         * after mode change.
          */
-        if (mAllocatedSnapshotBuffers.isEmpty()) {
+        if (mAllocatedSnapshotBuffers.isEmpty() ||
+            mAllocatedSnapshotBuffers.size() != bufCount ||
+            mAllocatedSnapshotBuffers[0].width != width ||
+            mAllocatedSnapshotBuffers[0].height != height) {
             LOGW("Trying to use snapshot buffers before they are allocated- sign of suboptimal API use");
-            allocateSnapshotBuffers(false);
+
+            if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
+                allocateSnapshotBuffers(false);
+            } else {
+                LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+            };
         }
 
         unsigned int numberOfSnapshots = MAX(1,mBurstLength);
