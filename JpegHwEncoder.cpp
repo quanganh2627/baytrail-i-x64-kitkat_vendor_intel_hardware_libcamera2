@@ -704,6 +704,7 @@ int JpegHwEncoder::resetContext(const JpegCompressor::InputBuffer &in, unsigned 
     CHECK_STATUS(status, "vaCreateContext", __LINE__)
 
     va->mBuff2SurfId.add((unsigned int)in.buf, *aSurface);
+    va->mSurfaceIds[0] = *aSurface;
 
     /* Allocate buffer for compressed  output. It is stored in mCodedBuf */
     status = vaCreateBuffer(va->mDpy, va->mContextId, VAEncCodedBufferType,
