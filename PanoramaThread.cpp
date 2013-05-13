@@ -535,15 +535,9 @@ status_t PanoramaThread::handleStitch(const MessageStitch &stitch)
     metadata.finalization_started = (mPanoramaTotalCount == mPanoramaMaxSnapshotCount);
 
     // space for the metadata is reserved in the beginning of the buffer, copy it there
-    memcpy(mPostviewBuf.buff->data, &metadata, sizeof(camera_panorama_metadata));
+    memcpy(mPostviewBuf.dataPtr, &metadata, sizeof(camera_panorama_metadata));
     // copy PV image
-    unsigned char *src = NULL;
-    if (stitch.pv.shared) {
-        src = (unsigned char *) *((char **)stitch.pv.buff->data);
-    } else {
-        src = (unsigned char *) stitch.pv.buff->data;
-    }
-    memcpy((char *)mPostviewBuf.buff->data + sizeof(camera_panorama_metadata), src, stitch.pv.size);
+    memcpy((char *)mPostviewBuf.dataPtr + sizeof(camera_panorama_metadata), stitch.pv.dataPtr, stitch.pv.size);
 
     // set rest of PV fields
     mPostviewBuf.width = stitch.pv.width;
@@ -664,14 +658,7 @@ status_t PanoramaThread::PanoramaStitchThread::stitch(ia_panorama_state* mContex
         abort();
     }
 
-    unsigned char *src = NULL;
-    if (frame.shared) {
-        src = (unsigned char *) *((char **)frame.buff->data);
-    } else {
-        src = (unsigned char *) frame.buff->data;
-    }
-
-    memcpy(copy.buff->data, src, size);
+    memcpy(copy.dataPtr, frame.dataPtr, size);
 
     Message msg;
     msg.id = MESSAGE_ID_STITCH;
@@ -688,7 +675,7 @@ status_t PanoramaThread::PanoramaStitchThread::handleMessageStitch(MessageStitch
     int stitchId = stitch.stitchId;
 
     ia_frame iaFrame;
-    iaFrame.data = stitch.img.buff->data;
+    iaFrame.data = stitch.img.dataPtr;
     iaFrame.size = stitch.img.size;
     iaFrame.width = stitch.img.width;
     iaFrame.height = stitch.img.height;

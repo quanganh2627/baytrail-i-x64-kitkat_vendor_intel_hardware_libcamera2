@@ -3572,7 +3572,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
                     if(mStoreMetaDataInBuffers)
                         recBuffer = findRecordingBuffer((void*) videoBuffer->metadata_buff->data);
                     else
-                        recBuffer = findRecordingBuffer((void*) videoBuffer->buff->data);
+                        recBuffer = findRecordingBuffer((void*) videoBuffer->dataPtr);
                     if (recBuffer) {
                         LOG1("Snapshot buffer found reserved for video encoding");
                         // drop from reserved list
@@ -3616,7 +3616,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             } else if (findBufferByData(&msg->snapshotBuf, &mAvailableSnapshotBuffers) == NULL) {
                 mAvailableSnapshotBuffers.push(msg->snapshotBuf);
                 LOG1("%s  pushed %p to mAvailableSnapshotBuffers, size %d",
-                      __FUNCTION__, msg->snapshotBuf.buff->data, mAvailableSnapshotBuffers.size());
+                      __FUNCTION__, msg->snapshotBuf.dataPtr, mAvailableSnapshotBuffers.size());
             } else {
                 LOGE("%s Already available snapshot buffer arrived. Find the bug!!", __FUNCTION__);
             }
@@ -3649,7 +3649,7 @@ AtomBuffer* ControlThread::findBufferByData(AtomBuffer *buf,Vector<AtomBuffer> *
 {
     Vector<AtomBuffer>::iterator it = aVector->begin();
     for (;it != aVector->end(); ++it) {
-        if (buf->buff->data == it->buff->data)
+        if (buf->dataPtr == it->dataPtr)
             return it;
     }
 
@@ -4277,7 +4277,6 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
 
     return status;
 }
-
 
 void ControlThread::processParamFileInject(CameraParameters *newParams)
 {
@@ -6371,7 +6370,7 @@ status_t ControlThread::hdrInit(int size, int pvSize, int format,
     mHdr.outMainBuf.frameCounter = 1;
     mHdr.outMainBuf.type = ATOM_BUFFER_SNAPSHOT;
 
-    LOG1("HDR: using %p as HDR main output buffer", mHdr.outMainBuf.buff->data);
+    LOG1("HDR: using %p as HDR main output buffer", mHdr.outMainBuf.dataPtr);
     // Postview output buffer
     mCallbacks->allocateMemory(&mHdr.outPostviewBuf, pvSize);
     if (mHdr.outPostviewBuf.buff == NULL) {
@@ -6381,7 +6380,7 @@ status_t ControlThread::hdrInit(int size, int pvSize, int format,
     mHdr.outPostviewBuf.shared = false;
     mHdr.outPostviewBuf.type = ATOM_BUFFER_POSTVIEW;
 
-    LOG1("HDR: using %p as HDR postview output buffer", mHdr.outPostviewBuf.buff->data);
+    LOG1("HDR: using %p as HDR postview output buffer", mHdr.outPostviewBuf.dataPtr);
 
     // Initialize the CI input buffers (will be initialized later, when snapshots are taken)
     mHdr.ciBufIn.ciBufNum = mHdr.bracketNum;
@@ -6410,7 +6409,7 @@ status_t ControlThread::hdrInit(int size, int pvSize, int format,
         return status;
     }
 
-    mHdr.ciBufOut.ciMainBuf->data = mHdr.outMainBuf.buff->data;
+    mHdr.ciBufOut.ciMainBuf->data = mHdr.outMainBuf.dataPtr;
     mHdr.ciBufOut.ciMainBuf[0].width = mHdr.outMainBuf.width = width;
     mHdr.ciBufOut.ciMainBuf[0].stride = mHdr.outMainBuf.stride = width;
     mHdr.ciBufOut.ciMainBuf[0].height = mHdr.outMainBuf.height = height;
@@ -6425,7 +6424,7 @@ status_t ControlThread::hdrInit(int size, int pvSize, int format,
             mHdr.ciBufOut.ciMainBuf[0].height,
             mHdr.ciBufOut.ciMainBuf[0].format);
 
-    mHdr.ciBufOut.ciPostviewBuf[0].data = mHdr.outPostviewBuf.buff->data;
+    mHdr.ciBufOut.ciPostviewBuf[0].data = mHdr.outPostviewBuf.dataPtr;
     mHdr.ciBufOut.ciPostviewBuf[0].width = mHdr.outPostviewBuf.width = pvWidth;
     mHdr.ciBufOut.ciPostviewBuf[0].stride = mHdr.outPostviewBuf.stride = pvWidth;
     mHdr.ciBufOut.ciPostviewBuf[0].height = mHdr.outPostviewBuf.height = pvHeight;
@@ -6451,12 +6450,7 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
     LOG1("@%s", __FUNCTION__);
 
     // Initialize the HDR CI input buffers (main/postview) for this capture
-    if (snapshotBuffer->shared) {
-        mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = (void *) *((char **)snapshotBuffer->buff->data);
-    } else {
-        mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer->buff->data;
-    }
-
+    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer->dataPtr;
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].width = snapshotBuffer->width;
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].stride = snapshotBuffer->width;
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height = snapshotBuffer->height;
@@ -6472,7 +6466,7 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
             mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height,
             mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].format);
 
-    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].data = postviewBuffer->buff->data;  /* postview buffers are never shared (i.e. coming from the PictureThread) */
+    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].data = postviewBuffer->dataPtr;  /* postview buffers are never shared (i.e. coming from the PictureThread) */
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].width = postviewBuffer->width;
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height = postviewBuffer->height;
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].size = postviewBuffer->size;
@@ -7059,7 +7053,7 @@ AtomBuffer* ControlThread::findRecordingBuffer(void *ptr)
             if (it->metadata_buff->data == ptr)
                 return it;
         } else {
-             if (it->buff->data == ptr)
+             if (it->dataPtr == ptr)
                 return it;
         }
     }

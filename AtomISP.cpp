@@ -3797,7 +3797,7 @@ status_t AtomISP::setSnapshotBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bo
     for (int i = 0; i < numBuffs; i++) {
         mSnapshotBuffers[i] = buffs->top();
         buffs->pop();
-        LOG1("Snapshot buffer %d = %p", i, mSnapshotBuffers[i].buff->data);
+        LOG1("Snapshot buffer %d = %p", i, mSnapshotBuffers[i].dataPtr);
     }
 
     return NO_ERROR;
@@ -4287,7 +4287,8 @@ status_t AtomISP::allocateSnapshotBuffers()
                 postv.type = ATOM_BUFFER_POSTVIEW;
 
                 vinfo = &v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[i];
-                vinfo->data = postv.buff->data;
+
+                vinfo->data = postv.dataPtr;
                 markBufferCached(vinfo, true);
                 postv.shared = false;
                 postv.width = mConfig.postview.width;
@@ -4300,7 +4301,7 @@ status_t AtomISP::allocateSnapshotBuffers()
     } else {
         for (size_t i = 0; i < mPostviewBuffers.size(); i++) {
             vinfo = &v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[i];
-            vinfo->data = mPostviewBuffers[i].buff->data;
+            vinfo->data = mPostviewBuffers[i].dataPtr;
         }
     }
     return status;

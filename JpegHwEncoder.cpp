@@ -400,7 +400,7 @@ int JpegHwEncoder::configSurfaces(AtomBuffer* inputBuffersArray, int inputBuffer
     CLIP(mVaInputSurfacesNum, MAX_BURST_BUFFERS, 1);
 
     for (int i = 0 ; i < mVaInputSurfacesNum; i++) {
-        mBuffers[i] = (unsigned int) inputBuffersArray[i].buff->data;
+        mBuffers[i] = (unsigned int) inputBuffersArray[i].dataPtr;
     }
 
     surfaceAttrib.buffers = mBuffers;

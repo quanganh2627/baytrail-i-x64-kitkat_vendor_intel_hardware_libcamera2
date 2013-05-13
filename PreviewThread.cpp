@@ -1014,24 +1014,24 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
     if(mCallbacks->msgTypeEnabled(CAMERA_MSG_PREVIEW_FRAME) && mPreviewBuf.buff) {
         void *src = msg->buff.dataPtr;
         switch(mPreviewFormat) {
-                                  // Android defintion: PIXEL_FORMAT_YUV420P-->YV12, please refer to
+                                  // Android definition: PIXEL_FORMAT_YUV420P-->YV12, please refer to
         case V4L2_PIX_FMT_YVU420: // header file: frameworks/av/include/camera/CameraParameters.h
             if (PlatformData::getPreviewFormat() == V4L2_PIX_FMT_NV12)
-                align16ConvertNV12ToYV12(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+                align16ConvertNV12ToYV12(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.dataPtr);
             else
-                copyYV12ToYV12(mPreviewWidth, mPreviewHeight, msg->buff.stride, mPreviewWidth, src, mPreviewBuf.buff->data);
+                copyYV12ToYV12(mPreviewWidth, mPreviewHeight, msg->buff.stride, mPreviewWidth, src, mPreviewBuf.dataPtr);
             break;
 
         case V4L2_PIX_FMT_NV21: // you need to do this for the first time
             if (PlatformData::getPreviewFormat() == V4L2_PIX_FMT_NV12)
-                trimConvertNV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+                trimConvertNV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.dataPtr);
             else
-                convertYV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, mPreviewWidth, src, mPreviewBuf.buff->data);
+                convertYV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, mPreviewWidth, src, mPreviewBuf.dataPtr);
             break;
 
         case V4L2_PIX_FMT_RGB565:
             if (PlatformData::getPreviewFormat() == V4L2_PIX_FMT_NV12)
-                trimConvertNV12ToRGB565(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+                trimConvertNV12ToRGB565(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.dataPtr);
             //TBD for other preview format, not supported yet
             break;
 

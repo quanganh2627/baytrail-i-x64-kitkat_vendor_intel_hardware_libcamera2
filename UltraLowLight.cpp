@@ -554,11 +554,7 @@ void UltraLowLight::AtomToMorphoBuffer(const AtomBuffer *atom, void* m)
 {
     unsigned int Ysize = atom->width * atom->height;
     morpho_ImageData* morpho = (morpho_ImageData*)m;
-    void* p;
-    if (atom->shared)
-        p = (void *) *((char **)atom->buff->data);
-    else
-        p = atom->buff->data;
+    void* p = atom->dataPtr;
 
     morpho->width = atom->width;
     morpho->height = atom->height;
