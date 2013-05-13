@@ -5449,7 +5449,7 @@ try_again:
     if (status != NO_ERROR) {
         // check if reason is starving and enter sleep to wait
         // for returnBuffer()
-        while(!mISP->dataAvailable()) {
+        while(mISP->mNumPreviewBuffersQueued < 1) {
             if (++failCounter > retry_count) {
                 LOGD("There were no preview buffers returned in time");
                 break;
