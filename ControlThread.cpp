@@ -2826,6 +2826,7 @@ status_t ControlThread::captureStillPic()
         status = waitForCaptureStart();
         if (status != NO_ERROR) {
             LOGE("Error while waiting for capture to start");
+            mCallbacksThread->sendError(CAMERA_ERROR_UNKNOWN);
             return status;
         }
     }
