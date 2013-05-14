@@ -158,7 +158,7 @@ endif
 
 # enable R&D features only in R&D builds
 ifneq ($(filter userdebug eng tests, $(TARGET_BUILD_VARIANT)),)
-LOCAL_CFLAGS += -DLIBCAMERA_RD_FEATURES -Wunused-variable -Werror
+LOCAL_CFLAGS += -DLIBCAMERA_RD_FEATURES -Wunused-variable
 endif
 
 # The camera.<TARGET_DEVICE>.so will be built for each platform
