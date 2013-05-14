@@ -6830,11 +6830,13 @@ status_t ControlThread::forceSmartShutterPicture()
 
 status_t ControlThread::startPanorama()
 {
-    LOG2("@%s", __FUNCTION__);
-    if (mPanoramaThread->getState() != PANORAMA_STOPPED) {
-        return INVALID_OPERATION;
-    }
+    LOG1("@%s", __FUNCTION__);
+
     if (mPanoramaThread != 0) {
+        if (mPanoramaThread->getState() != PANORAMA_STOPPED) {
+            return INVALID_OPERATION;
+        }
+
         mPanoramaThread->startPanorama();
 
         // in continuous capture mode, check if postview size matches live preview size.
@@ -6855,32 +6857,26 @@ status_t ControlThread::startPanorama()
 
 status_t ControlThread::stopPanorama()
 {
-    LOG2("@%s", __FUNCTION__);
-    if (mPanoramaThread->getState() == PANORAMA_STOPPED)
-        return NO_ERROR;
+    LOG1("@%s", __FUNCTION__);
+
     if (mPanoramaThread != 0) {
-        // empty panorama from pending work (push possible finalization to
-        // this thread)
-        mPanoramaThread->flush();
 
-        // at this point control thread may have a finalization message with
-        // memory from panorama engine, so process them right now
-        Vector<Message> pending;
-        mMessageQueue.remove(MESSAGE_ID_PANORAMA_FINALIZE, &pending);
-        Vector<Message>::iterator it;
-        for(it = pending.begin(); it != pending.end(); ++it)
-            handleMessagePanoramaFinalize(&it->data.panoramaFinalized);
+        if (mPanoramaThread->getState() == PANORAMA_STOPPED)
+            return NO_ERROR;
 
-        // handling the finalization pushes the memory to picture thread, so
-        // flush the picture thread so that it is done with panorama engine
-        // memory
+        // Panorama stop released panorama engine memory. Before stop flush
+        // the picture thread so that it is done with panorama engine memory.
         mPictureThread->flushBuffers();
 
-        // now, finally, we can stop the panorama engine, which releases its
-        // memory
-        mPanoramaThread->stopPanorama();
+        // now we can stop the panorama engine, which releases its memory.
+        mPanoramaThread->stopPanorama(true); // synchronous call
+
+        // Remove for the finalization message which may have arrived during this
+        // function. The finalization message includes pointers to released memory.
+        mMessageQueue.remove(MESSAGE_ID_PANORAMA_FINALIZE); // drop message
+
         return NO_ERROR;
-    } else{
+    } else {
         return INVALID_OPERATION;
     }
 }
