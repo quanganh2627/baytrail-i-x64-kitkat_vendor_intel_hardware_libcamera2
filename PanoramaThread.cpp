@@ -56,6 +56,7 @@ PanoramaThread::PanoramaThread(ICallbackPanorama *panoramaCallback, I3AControls 
     ,mThumbnailWidth(0)
     ,mThumbnailHeight(0)
     ,mPanoramaStitchThread(NULL)
+    ,mStopInProgress(false)
     ,m3AControls(aaaControls)
 {
     LOG1("@%s", __FUNCTION__);
@@ -104,6 +105,8 @@ status_t PanoramaThread::handleMessageStartPanorama(void)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
+    Mutex::Autolock lock(mStitchLock);
+
     mContext = ia_panorama_init(NULL);
     if (mContext == NULL) {
         LOGE("fatal - error initializing panorama");
@@ -140,6 +143,15 @@ void PanoramaThread::stopPanorama(bool synchronous)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
+
+    // cancel stitching to make stop faster
+    mStitchLock.lock();
+    if (mPanoramaStitchThread != NULL && mContext != NULL) {
+        mStopInProgress = true;
+        mPanoramaStitchThread->cancel(mContext);
+    }
+    mStitchLock.unlock();
+
     msg.id = MESSAGE_ID_STOP_PANORAMA;
     msg.data.stop.synchronous = synchronous;
     mMessageQueue.send(&msg, synchronous ? MESSAGE_ID_STOP_PANORAMA : (MessageId) -1);
@@ -165,6 +177,9 @@ status_t PanoramaThread::handleMessageStopPanorama(const MessageStopPanorama &st
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+
+    Mutex::Autolock lock(mStitchLock);
+
     if (mContext) {
         if (mPanoramaTotalCount > 0 && mPanoramaStitchThread != NULL)
             cancelStitch();
@@ -190,8 +205,10 @@ status_t PanoramaThread::handleMessageStopPanorama(const MessageStopPanorama &st
     }
 
     mState = PANORAMA_STOPPED;
+    mStopInProgress = false;
     if (stop.synchronous)
         mMessageQueue.reply(MESSAGE_ID_STOP_PANORAMA, status);
+
     return status;
 }
 
@@ -377,8 +394,15 @@ status_t PanoramaThread::handleMessageFinalize()
 
     ia_frame *pFrame = ia_panorama_finalize(mContext);
     if (!pFrame) {
-        LOGE("ia_panorama_finalize() failed");
-        return UNKNOWN_ERROR;
+        Mutex::Autolock lock(mStitchLock);
+
+        if (mStopInProgress) {
+            LOGD("ia_panorama_finalize() aborted, because of stop panorama in progress");
+            return NO_ERROR;
+        } else {
+            LOGE("ia_panorama_finalize() failed");
+            return UNKNOWN_ERROR;
+        }
     }
 
     mPanoramaTotalCount = 0;
