@@ -498,6 +498,15 @@ status_t BracketManager::startBracketing()
          */
          skipNum += 2 - mFpsAdaptSkip;
          doBracketNum += 2 - mFpsAdaptSkip;
+        /*
+         *  Because integration time and gain can not become effective immediately
+         *  for some sensors after it has been set into ISP, so need to skip first
+         *  several frames, the skip frame number is configured in CPF
+         */
+         int aeBracketingSkipNum = 0;
+         PlatformData::HalConfig.getValue(aeBracketingSkipNum, CPF::Exposure, CPF::Lag);
+         skipNum += aeBracketingSkipNum;
+         doBracketNum += aeBracketingSkipNum;
     } else if (mBracketing.mode == BRACKET_FOCUS && mFpsAdaptSkip < 1) {
         /*
          *  If we are in Focus Bracketing, and mFpsAdaptSkip < 1, we need to
