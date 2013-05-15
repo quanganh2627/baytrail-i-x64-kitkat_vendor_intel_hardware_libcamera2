@@ -1189,6 +1189,7 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp,
     {
         ia_err err = ia_err_none;
         ia_aiq_statistics_input_params statistics_input_parameters;
+        memset(&statistics_input_parameters, 0, sizeof(ia_aiq_statistics_input_params));
 
         long long eof_timestamp = (long long)((frame_timestamp->tv_sec*1000000000LL + frame_timestamp->tv_usec*1000LL)/1000LL);
         statistics_input_parameters.frame_timestamp = (unsigned long long)((sof_timestamp->tv_sec*1000000000LL + sof_timestamp->tv_usec*1000LL)/1000LL);
