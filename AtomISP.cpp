@@ -730,6 +730,13 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     params->set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION, PlatformData::supportedMinEV(cameraId));
     params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, PlatformData::supportedStepEV(cameraId));
 
+    // 3a lock: auto-exposure lock
+    params->set(CameraParameters::KEY_AUTO_EXPOSURE_LOCK,CameraParameters::FALSE);
+    params->set(CameraParameters::KEY_AUTO_EXPOSURE_LOCK_SUPPORTED, PlatformData::supportedAeLock(cameraId));
+    // 3a lock: auto-whitebalance lock
+    params->set(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, CameraParameters::FALSE);
+    params->set(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK_SUPPORTED, PlatformData::supportedAwbLock(cameraId));
+
     // ae metering mode (Intel extension)
     intel_params->set(IntelCameraParameters::KEY_AE_METERING_MODE, PlatformData::defaultAeMetering(cameraId));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, PlatformData::supportedAeMetering(cameraId));

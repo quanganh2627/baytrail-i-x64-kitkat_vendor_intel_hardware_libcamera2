@@ -4202,20 +4202,20 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         status = processParamMirroring(oldParams, newParams);
     }
 
-    if (m3AControls->isIntel3A()) {
-        if (status == NO_ERROR) {
-            // ae lock
-            status = processParamAELock(oldParams, newParams);
-        }
+    if (status == NO_ERROR) {
+        // ae lock
+        status = processParamAELock(oldParams, newParams);
+    }
 
+    if (status == NO_ERROR) {
+        // awb lock
+        status = processParamAWBLock(oldParams, newParams);
+    }
+
+    if (m3AControls->isIntel3A()) {
         if (status == NO_ERROR) {
             // af lock
             status = processParamAFLock(oldParams, newParams);
-        }
-
-        if (status == NO_ERROR) {
-            // awb lock
-            status = processParamAWBLock(oldParams, newParams);
         }
 
         if (status == NO_ERROR) {
