@@ -182,6 +182,7 @@ status_t AtomAIQ::deinit3A()
     LOG1("@%s", __FUNCTION__);
 
     free(m3aState.faces);
+    m3aState.faces = NULL;
     freeStatistics(m3aState.stats);
     ia_aiq_deinit(m3aState.ia_aiq_handle);
     if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5))
@@ -1011,6 +1012,7 @@ void AtomAIQ::put3aMakerNote(ia_3a_mknote *mknData)
             mknData->data = NULL;
         }
         free(mknData);
+        mknData = NULL;
     }
 }
 
@@ -1117,6 +1119,7 @@ struct atomisp_3a_statistics * AtomAIQ::allocateStatistics(int grid_size)
     stats->data = (atomisp_3a_output*)malloc(grid_size * sizeof(*stats->data));
     if (!stats->data) {
         free(stats);
+        stats = NULL;
         return NULL;
     }
     LOG2("@%s success", __FUNCTION__);
@@ -1126,9 +1129,12 @@ struct atomisp_3a_statistics * AtomAIQ::allocateStatistics(int grid_size)
 void AtomAIQ::freeStatistics(struct atomisp_3a_statistics *stats)
 {
     if (stats) {
-        if (stats->data)
+        if (stats->data) {
             free(stats->data);
+            stats->data = NULL;
+        }
         free(stats);
+        stats = NULL;
     }
 }
 
