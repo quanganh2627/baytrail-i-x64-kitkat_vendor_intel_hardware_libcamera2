@@ -106,7 +106,6 @@ LOCAL_SHARED_LIBRARIES := \
 	libia_isp_1_5 \
 	libia_isp_2_2 \
 	libia_cmc_parser \
-	libandroid \
 	libui \
 	libia_mkn \
 	libmfldadvci \
