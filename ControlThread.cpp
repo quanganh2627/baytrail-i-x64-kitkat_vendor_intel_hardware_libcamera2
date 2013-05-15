@@ -488,6 +488,7 @@ void ControlThread::deinit()
         delete mCallbacks;
         mCallbacks = NULL;
     }
+    LOG1("@%s- complete", __FUNCTION__);
 }
 
 status_t ControlThread::setPreviewWindow(struct preview_stream_ops *window)
