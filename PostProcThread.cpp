@@ -920,6 +920,9 @@ void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata
             aeWindow.weight = 5;
             setAeMeteringArea(&aeWindow);
         }
+
+        delete[] windows;
+        windows = NULL;
     }
 
     // NOTE: Face AF is done by the ia_face_state information, sent as callback to ControlThread

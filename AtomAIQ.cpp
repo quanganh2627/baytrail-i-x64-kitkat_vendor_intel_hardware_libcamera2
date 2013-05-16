@@ -985,8 +985,10 @@ ia_3a_mknote *AtomAIQ::get3aMakerNote(ia_3a_mknote_mode mknMode)
 
     ia_3a_mknote *me;
     me = (ia_3a_mknote *)malloc(sizeof(ia_3a_mknote));
-    if (!me)
+    if (!me) {
+        LOGE("Error allocation memory for mknote!");
         return NULL;
+    }
     if(mknMode == ia_3a_mknote_mode_raw)
         mknTarget = ia_mkn_trg_raw;
     ia_binary_data mkn_binary_data = ia_mkn_prepare(mMkn, mknTarget);
@@ -997,6 +999,8 @@ ia_3a_mknote *AtomAIQ::get3aMakerNote(ia_3a_mknote_mode mknMode)
     {
         memcpy(me->data, mkn_binary_data.data, me->bytes);
     } else {
+        LOGE("Error allocation memory for mknote data!");
+        free(me);
         return NULL;
     }
     return me;
