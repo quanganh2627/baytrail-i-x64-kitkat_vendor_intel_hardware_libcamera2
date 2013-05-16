@@ -3010,12 +3010,14 @@ status_t AtomISP::fileInjectSetSize(void)
     CLEAR(st);
     if (fstat(fileFd, &st) < 0) {
         LOGE("ERR(%s): fstat %s failed\n", __func__, fileName);
+        close(fileFd);
         return INVALID_OPERATION;
     }
 
     fileSize = st.st_size;
     if (fileSize == 0) {
         LOGE("ERR(%s): empty file %s\n", __func__, fileName);
+        close(fileFd);
         return -1;
     }
 
@@ -3339,7 +3341,7 @@ status_t AtomISP::v4l2_capture_open(int device)
 
     fd = open(dev_name, O_RDWR);
 
-    if (fd <= 0) {
+    if (fd < 0) {
         LOGE("Error opening video device %s: %s",
             dev_name, strerror(errno));
         return -1;
@@ -4933,6 +4935,7 @@ void AtomISP::getSensorDataFromFile(const char *file_name, sensorPrivateData *se
     memset(&st, 0, sizeof (st));
     if (fstat(otp_fd, &st) < 0) {
         LOGE("ERR(%s): fstat %s failed\n", __func__, file_name);
+        close(otp_fd);
         return;
     }
 
@@ -4940,6 +4943,7 @@ void AtomISP::getSensorDataFromFile(const char *file_name, sensorPrivateData *se
     otpdata.data = malloc(otpdata.size);
     if (otpdata.data == NULL) {
         LOGD("Failed to allocate memory for OTP data.");
+        close(otp_fd);
         return;
     }
 
