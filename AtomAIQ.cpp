@@ -292,14 +292,12 @@ status_t AtomAIQ::setAeSceneMode(SceneMode mode)
         break;
     case CAM_AE_SCENE_MODE_NIGHT:
         mAfInputParameters.focus_mode = ia_aiq_af_operation_mode_hyperfocal;
-        // TODO: if user expect low noise low light mode
-        // mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_long_exposure
-        // mAeInputParameters.flash_mode = ia_aiq_flash_mode_off
+        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_long_exposure;
+        mAeInputParameters.flash_mode = ia_aiq_flash_mode_off;
         break;
     case CAM_AE_SCENE_MODE_FIREWORKS:
         mAfInputParameters.focus_mode = ia_aiq_af_operation_mode_infinity;
-        //TODO: Below definition is not ready in ia_aiq.h
-        //mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_fireworks;
+        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_fireworks;
         mAwbInputParameters.scene_mode = ia_aiq_awb_operation_mode_manual_cct_range;
         m3aState.cct_range.min_cct = 5500;
         m3aState.cct_range.max_cct = 5500;
