@@ -372,6 +372,7 @@ private:
     SceneMode mAeSceneMode;
     FlashMode mAeFlashMode;
     ae_state mAeState;
+    ia_coordinate mAeCoord;
 
     //AE bracketing
     ia_aiq_ae_input_params mAeBracketingInputParameters;

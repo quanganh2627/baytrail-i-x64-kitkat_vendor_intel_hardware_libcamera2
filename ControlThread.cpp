@@ -1420,9 +1420,18 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         CameraWindow aeWindow;
         mMeteringAreas.toWindows(meteringWindows);
 
-        AAAWindowInfo aaaWindow;
-        m3AControls->getGridWindow(aaaWindow);
-        convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
+        /**
+         * Temporary support for both 3A libs.
+         * Intel 3A (aka AIQ) uses different coordinates than
+         * Acute Logic 3A.
+         */
+        if (PlatformData::supportAIQ()) {
+            convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
+        } else {
+            AAAWindowInfo aaaWindow;
+            m3AControls->getGridWindow(aaaWindow);
+            convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
+        }
 
         if (m3AControls->setAeWindow(&aeWindow) != NO_ERROR) {
             LOGW("Error setting AE metering window. Metering will not work");
@@ -5164,15 +5173,20 @@ status_t ControlThread:: processParamSetMeteringAreas(const CameraParameters *ol
         size_t winCount(mMeteringAreas.numOfAreas());
         CameraWindow *meteringWindows = new CameraWindow[winCount];
         CameraWindow aeWindow;
-        AAAWindowInfo aaaWindow;
 
         mMeteringAreas.toWindows(meteringWindows);
 
-        m3AControls->getGridWindow(aaaWindow);
-        //in our AE bg weight is 1, max is 255, thus working values are inside [2, 255].
-        //Google probably expects bg weight to be zero, therefore sending happily 1 from
-        //default camera app. To have some kind of visual effect, we start our range from 5
-        convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
+        if (PlatformData::supportAIQ()) {
+            convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
+        } else {
+            AAAWindowInfo aaaWindow;
+            m3AControls->getGridWindow(aaaWindow);
+            //in our AE bg weight is 1, max is 255, thus working values are inside [2, 255].
+            //Google probably expects bg weight to be zero, therefore sending happily 1 from
+            //default camera app. To have some kind of visual effect, we start our range from 5
+
+            convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
+        }
 
         if (m3AControls->setAeMeteringMode(CAM_AE_METERING_MODE_SPOT) == NO_ERROR) {
             LOG1("@%s, Got metering area, and \"spot\" mode set. Setting window.", __FUNCTION__ );

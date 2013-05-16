@@ -96,6 +96,7 @@ AtomAIQ::AtomAIQ(AtomISP *anISP) :
 {
     LOG1("@%s", __FUNCTION__);
     memset(&m3aState, 0, sizeof(aaa_state));
+    memset(&mAeCoord, 0, sizeof(ia_coordinate));
 }
 
 AtomAIQ::~AtomAIQ()
@@ -264,12 +265,26 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
 
 status_t AtomAIQ::setAeWindow(const CameraWindow *window)
 {
-    // comments from Miikka: There is exposure coordinate in AE input parameters.
-    // Around that coordinate (10% of image width/height) exposure is within certain
-    // limits (tunable from CPF).
 
     LOG1("@%s", __FUNCTION__);
-    return INVALID_OPERATION;
+
+    if (window == NULL)
+        return BAD_VALUE;
+    else
+        LOG1("window = %p (%d,%d,%d,%d,%d)", window,
+                                             window->x_left,
+                                             window->y_top,
+                                             window->x_right,
+                                             window->y_bottom,
+                                             window->weight);
+
+    /* Calculate center coordinate of window. */
+    int width = window->x_right - window->x_left;
+    int height = window->y_bottom - window->y_top;
+    mAeCoord.x = window->x_left + width/2;
+    mAeCoord.y = window->y_top + height/2;
+
+    return NO_ERROR;
 }
 
 status_t AtomAIQ::setAfWindow(const CameraWindow *window)
@@ -564,17 +579,22 @@ AwbMode AtomAIQ::getAwbMode()
     return mAwbMode;
 }
 
-// TODO: add spot., customized, auto???
 status_t AtomAIQ::setAeMeteringMode(MeteringMode mode)
 {
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
 
+    /* Don't use exposure coordinate in other than SPOT mode. */
+    mAeInputParameters.exposure_coordinate = NULL;
+
     ia_aiq_ae_metering_mode wr_val;
     switch (mode) {
     case CAM_AE_METERING_MODE_SPOT:
-        wr_val = ia_aiq_ae_metering_mode_center;
+        mAeInputParameters.exposure_coordinate = &mAeCoord;
+        wr_val = ia_aiq_ae_metering_mode_evaluative;
         break;
     case CAM_AE_METERING_MODE_CENTER:
+        wr_val = ia_aiq_ae_metering_mode_center;
+        break;
     case CAM_AE_METERING_MODE_CUSTOMIZED:
     case CAM_AE_METERING_MODE_AUTO:
         wr_val = ia_aiq_ae_metering_mode_evaluative;
@@ -596,7 +616,11 @@ MeteringMode AtomAIQ::getAeMeteringMode()
     ia_aiq_ae_metering_mode rd_val = mAeInputParameters.metering_mode;
     switch (rd_val) {
     case ia_aiq_ae_metering_mode_evaluative:
-        mode = CAM_AE_METERING_MODE_SPOT;
+        /* Handle SPOT mode. */
+        if (mAeInputParameters.exposure_coordinate)
+            mode = CAM_AE_METERING_MODE_SPOT;
+        else
+            mode = CAM_AE_METERING_MODE_AUTO;
         break;
     case ia_aiq_ae_metering_mode_center:
         mode = CAM_AE_METERING_MODE_CENTER;
@@ -1226,6 +1250,7 @@ int AtomAIQ::run3aInit()
 
     resetAFParams();
     mAfState.af_results = NULL;
+    memset(&mAeCoord, 0, sizeof(mAeCoord));
     memset(&mAeState, 0, sizeof(mAeState));
     for (int i = 0; i <= AE_DELAY_FRAMES; i++) {
         mAeState.prev_results[i].exposure = &mAeState.prev_exposure[i];
@@ -1456,14 +1481,12 @@ void AtomAIQ::resetAECParams()
     mAeMode = CAM_AE_MODE_NOT_SET;
 
     mAeInputParameters.frame_use = m3aState.frame_use;
-
     mAeInputParameters.flash_mode = ia_aiq_flash_mode_auto;
     mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_automatic;
     mAeInputParameters.metering_mode = ia_aiq_ae_metering_mode_evaluative;
     mAeInputParameters.priority_mode = ia_aiq_ae_priority_mode_normal;
     mAeInputParameters.flicker_reduction_mode = ia_aiq_ae_flicker_reduction_auto;
     mAeInputParameters.sensor_descriptor = &mAeSensorDescriptor;
-
     mAeInputParameters.exposure_coordinate = NULL;
     mAeInputParameters.ev_shift = 0;
     mAeInputParameters.manual_exposure_time_us = -1;

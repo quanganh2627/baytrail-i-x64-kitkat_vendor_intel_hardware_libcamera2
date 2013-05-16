@@ -900,10 +900,6 @@ void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata
 
     if (mFaceAAAFlags & AAA_FLAG_AF || mFaceAAAFlags & AAA_FLAG_AE) {
         CameraWindow *windows = new CameraWindow[face_metadata.number_of_faces];
-        AAAWindowInfo aaaWindow;
-        // TODO: Victoriabay: Use IA coords for AE.
-        // For now, we need to use AcuteLogic grid window for AE windows
-        m3AControls->getGridWindow(aaaWindow);
 
         // TODO: Move the loop to sort func? Or do we want to sort?
         for (int i = 0; i < face_metadata.number_of_faces; i++) {
@@ -912,9 +908,17 @@ void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata
             windows[i].y_top = face.rect[1];
             windows[i].x_right = face.rect[2];
             windows[i].y_bottom = face.rect[3];
-            // TODO: Victoriabay: Remove. Conversion here is now needed for AE coord.
-            // Deprecated once IA coords are to be used, then we can use the libmfldadvci conversion methods.
-            convertFromAndroidCoordinates(windows[i], windows[i], aaaWindow);
+
+            // TODO: Once we support only one set of AAA libs we can remove this.
+            if (PlatformData::supportAIQ()) {
+                convertFromAndroidToIaCoordinates(windows[i], windows[i]);
+            } else {
+                AAAWindowInfo aaaWindow;
+                m3AControls->getGridWindow(aaaWindow);
+                convertFromAndroidCoordinates(windows[i], windows[i], aaaWindow);
+            }
+
+
             LOG2("Face window: (%d,%d,%d,%d)",
                 windows[i].x_left,
                 windows[i].y_top,
