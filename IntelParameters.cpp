@@ -91,12 +91,18 @@ namespace android {
     // burst capture
     const char IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH[] = "burst-length-values";
     const char IntelCameraParameters::KEY_BURST_LENGTH[] = "burst-length";
-    const char IntelCameraParameters::KEY_SUPPORTED_BURST_FPS[] = "burst-fps-values";
-    const char IntelCameraParameters::KEY_BURST_FPS[] = "burst-fps";
+    const char IntelCameraParameters::KEY_SUPPORTED_BURST_FPS[] = "burst-fps-values"; // TODO: old API, it will be deleted in the future.
+    const char IntelCameraParameters::KEY_BURST_FPS[] = "burst-fps"; // TODO: old API, it will be deleted in the future.
+    const char IntelCameraParameters::KEY_SUPPORTED_BURST_SPEED[] = "burst-speed-values";
+    const char IntelCameraParameters::KEY_BURST_SPEED[] = "burst-speed";
     const char IntelCameraParameters::KEY_SUPPORTED_BURST_CONTINUOUS[] = "burst-continuous-values";
     const char IntelCameraParameters::KEY_BURST_CONTINUOUS[] = "burst-continuous";
     const char IntelCameraParameters::KEY_BURST_START_INDEX[] = "burst-start-index";
     const char IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX[] = "burst-start-index-values";
+    //values for burst speed
+    const char IntelCameraParameters::BURST_SPEED_FAST[] = "fast";
+    const char IntelCameraParameters::BURST_SPEED_MEDIUM[] = "medium";
+    const char IntelCameraParameters::BURST_SPEED_LOW[] = "low";
 
     // preview update mode
     const char IntelCameraParameters::KEY_SUPPORTED_PREVIEW_UPDATE_MODE[] = "preview-update-mode-values";
@@ -233,6 +239,13 @@ namespace android {
     const char IntelCameraParameters::KEY_SAVE_MIRRORED[] = "save-mirrored";
     const char IntelCameraParameters::KEY_SUPPORTED_SAVE_MIRRORED[] = "save-mirrored-values";
 
+    // GPS extension
+    const char IntelCameraParameters::KEY_GPS_IMG_DIRECTION[] = "gps-img-direction";
+    const char IntelCameraParameters::KEY_GPS_IMG_DIRECTION_REF[] = "gps-img-direction-ref";
+    const char IntelCameraParameters::KEY_SUPPORTED_GPS_IMG_DIRECTION_REF[] = "gps-img-direction-ref-values";
+    // possible value for the KEY_GPS_IMG_DIRECTION_REF
+    const char IntelCameraParameters::GPS_IMG_DIRECTION_REF_TRUE[] = "true-direction";
+    const char IntelCameraParameters::GPS_IMG_DIRECTION_REF_MAGNETIC[] = "magnetic-direction";
 
     void IntelCameraParameters::getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params)
     {

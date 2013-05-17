@@ -218,8 +218,6 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->defaultFocusMode = atts[1];
     } else if (strcmp(name, "supportedFocusModes") == 0) {
         pCurrentCam->supportedFocusModes = atts[1];
-    } else if (strcmp(name, "maxBurstFPS") == 0) {
-        pCurrentCam->maxBurstFPS = atoi(atts[1]);
     } else if (strcmp(name, "supportedBurstFPS") == 0) {
         pCurrentCam->supportedBurstFPS = atts[1];
     } else if (strcmp(name, "previewViaOverlay") == 0) {
@@ -402,7 +400,6 @@ void CameraProfiles::dump(void)
         LOGD("line%d, in DeviceData, pcam->defaultSceneMode:%s ", __LINE__, mCameras[i].defaultSceneMode.string());
         LOGD("line%d, in DeviceData, pcam->supportedPreviewSizes:%s ", __LINE__, mCameras[i].supportedPreviewSizes.string());
         LOGD("line%d, in DeviceData, mSupportedVideoSizes:%s ", __LINE__, mCameras[i].supportedVideoSizes.string());
-        LOGD("line%d, in DeviceData, pcam->maxBurstFPS:%d ", __LINE__, mCameras[i].maxBurstFPS);
         LOGD("line%d, in DeviceData, pcam->supportedBurstFPS:%s ", __LINE__, mCameras[i].supportedBurstFPS.string());
         LOGD("line%d, in DeviceData, pcam->orientation:%d ", __LINE__, mCameras[i].orientation);
         LOGD("line%d, in DeviceData, pcam->sensorType:%d ", __LINE__, mCameras[i].sensorType);

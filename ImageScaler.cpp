@@ -110,6 +110,8 @@ void ImageScaler::downScaleAndCropNv12Image(unsigned char *dest, const unsigned 
     const int src_skip_lines_top, // number of lines that are skipped from src image start pointer
     const int src_skip_lines_bottom) // number of lines that are skipped after reading src_h (should be set always to reach full image height)
 {
+    LOG2("@%s: dest_w: %d, dest_h: %d, dest_stride:%d, src_w: %d, src_h: %d, src_stride: %d, skip_top: %d, skip_bottom: %d, dest: %p, src: %p", __FUNCTION__, dest_w,dest_h,dest_stride,src_w,src_h,src_stride,src_skip_lines_top,src_skip_lines_bottom, dest, src);
+
     if (src_w == 800 && src_h == 600 && src_skip_lines_top == 0 && src_skip_lines_bottom == 0
         && dest_w == RESOLUTION_QVGA_WIDTH && dest_h == RESOLUTION_QVGA_HEIGHT) {
         downScaleNv12ImageFrom800x600ToQvga(dest, src, dest_stride, src_stride);

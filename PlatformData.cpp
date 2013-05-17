@@ -343,16 +343,6 @@ const char* PlatformData::supportedBurstLength(int cameraId)
     return i->mCameras[cameraId].supportedBurstLength;
 }
 
-int PlatformData::getMaxBurstFPS(int cameraId)
-{
-    PlatformBase *i = getInstance();
-    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
-      return -1;
-    }
-    return i->mCameras[cameraId].maxBurstFPS;
-}
-
 bool PlatformData::supportEV(int cameraId)
 {
     PlatformBase *i = getInstance();

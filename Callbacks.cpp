@@ -198,7 +198,7 @@ void Callbacks::sceneDetected(int sceneMode, bool sceneHdr)
 
 void Callbacks::allocateMemory(AtomBuffer *buff, int size, bool cached)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s: size %d", __FUNCTION__, size);
     buff->buff = NULL;
     if (mGetMemoryCB != NULL) {
         /*

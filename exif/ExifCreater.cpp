@@ -249,6 +249,8 @@ exif_status ExifCreater::makeExif (void *exifOut,
             tmp -= 1;
         if ((exifInfo->enableGps & EXIF_GPS_PROCMETHOD) == 0)
             tmp -= 1;
+        if ((exifInfo->enableGps & EXIF_GPS_IMG_DIRECTION) == 0)
+            tmp -= 2;
 
         memcpy(pCur, &tmp, NUM_SIZE);
         pCur += NUM_SIZE;
@@ -281,6 +283,13 @@ exif_status ExifCreater::makeExif (void *exifOut,
         if (exifInfo->enableGps & EXIF_GPS_TIMESTAMP) {
             writeExifIfd(&pCur, EXIF_TAG_GPS_TIMESTAMP, EXIF_TYPE_RATIONAL,
                          3, exifInfo->gps_timestamp, &LongerTagOffset, pIfdStart);
+        }
+
+        if (exifInfo->enableGps & EXIF_GPS_IMG_DIRECTION) {
+            writeExifIfd(&pCur, EXIF_TAG_GPS_IMG_DIRECTION_REF, EXIF_TYPE_ASCII,
+                         2, exifInfo->gps_img_direction_ref);
+            writeExifIfd(&pCur, EXIF_TAG_GPS_IMG_DIRECTION, EXIF_TYPE_RATIONAL,
+                         1, &exifInfo->gps_img_direction, &LongerTagOffset, pIfdStart);
         }
 
         if (exifInfo->enableGps & EXIF_GPS_PROCMETHOD) {

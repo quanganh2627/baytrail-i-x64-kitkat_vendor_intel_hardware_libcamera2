@@ -242,12 +242,6 @@ class PlatformData {
     static const char* supportedBurstLength(int CameraId);
 
     /**
-     * Returns the max burst FPS
-     * \return Supported the max burst FPS.
-     */
-    static int getMaxBurstFPS(int CameraId);
-
-    /**
      * Flipping controls to set for camera id
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
@@ -755,7 +749,6 @@ public:
             overlayRelativeRotation = 90;
             continuousCapture = false;
             //burst
-            maxBurstFPS = 15;
             supportedBurstFPS = "1,3,5,7,15";
             supportedBurstLength = "1,3,5,10";
             defaultBurstLength = "10";
@@ -868,8 +861,7 @@ public:
         Vector<Size> mVFPPLimitedResolutions; // preview resolutions with VFPP limitations
         bool continuousCapture;
         // burst
-        int maxBurstFPS;
-        String8 supportedBurstFPS;
+        String8 supportedBurstFPS; // TODO: it will be removed in the future
         String8 supportedBurstLength;
         String8 defaultBurstLength;
         // exposure

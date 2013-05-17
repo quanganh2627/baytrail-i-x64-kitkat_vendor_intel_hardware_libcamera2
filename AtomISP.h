@@ -175,6 +175,7 @@ public:
     status_t setVideoFrameFormat(int width, int height, int format = 0);
     bool applyISPLimitations(CameraParameters *params, bool dvsEnabled, bool videoMode);
 
+    void setPreviewFramerate(int fps);
     inline int getSnapshotPixelFormat() { return mConfig.snapshot.format; }
     void getVideoSize(int *width, int *height, int *stride);
     void getPreviewSize(int *width, int *height, int *stride);
@@ -414,7 +415,8 @@ private:
         FrameInfo recording;  // recording
         FrameInfo snapshot;   // snapshot
         FrameInfo postview;   // postview (thumbnail for capture)
-        float fps;            // preview/recording (shared)
+        float fps;            // preview/recording (shared) output by sensor
+        int target_fps ;      // preview/recording requested by user
         int num_snapshot;     // number of snapshots to take
         int num_postviews;    // number of allocated postviews
         int zoom;             // zoom value
@@ -563,6 +565,7 @@ private:
         // IObserverSubject override
         virtual const char* getName() { return mName.string(); };
         virtual status_t observe(IAtomIspObserver::Message *msg);
+        virtual bool checkSkipFrame(int frameNum);
 
     private:
         String8  mName;

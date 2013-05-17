@@ -115,7 +115,6 @@ ControlThread::ControlThread(int cameraId) :
     ,mFpsAdaptSkip(0)
     ,mBurstLength(0)
     ,mBurstStart(0)
-    ,mBurstFps(-1)
     ,mBurstCaptureNum(-1)
     ,mBurstCaptureDoneNum(-1)
     ,mBurstQbufs(0)
@@ -133,7 +132,6 @@ ControlThread::ControlThread(int cameraId) :
     ,mEnableFocusMoveCbAtStart(false)
     ,mStillCaptureInProgress(false)
     ,mPreviewUpdateMode(IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD)
-    ,mAllocationRequestSent(false)
     ,mSaveMirrored(false)
     ,mCurrentOrientation(0)
     ,mRecordingOrientation(0)
@@ -535,6 +533,32 @@ bool ControlThread::msgTypeEnabled(int32_t msgType)
     return mCallbacks->msgTypeEnabled(msgType);
 }
 
+/**
+ * Disable focus callbacks
+ */
+void ControlThread::disableFocusCallbacks()
+{
+    if (!mEnableFocusCbAtStart)
+        mEnableFocusCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS);
+    if (!mEnableFocusMoveCbAtStart)
+        mEnableFocusMoveCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS_MOVE);
+    disableMsgType(CAMERA_MSG_FOCUS_MOVE);
+    disableMsgType(CAMERA_MSG_FOCUS);
+}
+
+/**
+ *  Enable focus callbacks in case we disabled them
+ */
+void ControlThread::enableFocusCallbacks()
+{
+    if (mEnableFocusCbAtStart)
+        enableMsgType(CAMERA_MSG_FOCUS);
+
+    if (mEnableFocusMoveCbAtStart)
+        enableMsgType(CAMERA_MSG_FOCUS_MOVE);
+}
+
+
 status_t ControlThread::startPreview()
 {
     LOG1("@%s", __FUNCTION__);
@@ -620,6 +644,13 @@ bool ControlThread::recordingEnabled()
 status_t ControlThread::setParameters(const char *params)
 {
     LOG1("@%s: params = %p", __FUNCTION__, params);
+
+    {
+        Mutex::Autolock mLock(mParamCacheLock);
+        if (mParamCache && strcmp(mParamCache, params) == 0)
+            return OK;
+    }
+
     Message msg;
     msg.id = MESSAGE_ID_SET_PARAMETERS;
     msg.data.setParameters.params = const_cast<char*>(params); // We swear we won't modify params :)
@@ -746,6 +777,13 @@ status_t ControlThread::takePicture()
     status = mMessageQueue.send(&msg);
     if (status == NO_ERROR) {
         mStillCaptureInProgress = (mState != STATE_RECORDING) ? true : false;
+        // We need to disable focus callbacks here to ensure application
+        // is not receiving them after this call and until the next
+        // startPreview(). This is because scenarios that left AF running
+        // are possible and applications (including Google reference) get
+        // confused from receiving focus callbacks.
+        if (mStillCaptureInProgress)
+            disableFocusCallbacks();
     }
     return status;
 }
@@ -1036,7 +1074,7 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
 void ControlThread::continuousConfigApplyLimits(AtomISP::ContinuousCaptureConfig &cfg) const
 {
     int minOffset = mISP->continuousBurstNegMinOffset();
-    int skip = continuousBurstSkip(mBurstFps);
+    int skip = mFpsAdaptSkip;
 
     if (mBurstStart < 0) {
         int offset = 0;
@@ -1050,29 +1088,8 @@ void ControlThread::continuousConfigApplyLimits(AtomISP::ContinuousCaptureConfig
     cfg.skip = skip;
 
     double outFps = mISP->getFrameRate() / (skip + 1);
-    LOG2("@%s: offset %d, skip %d, fps %d->%.1f (for start-index %d, sensor fps %.1f)",
-         __FUNCTION__, cfg.offset, skip, mBurstFps, outFps, mBurstStart, mISP->getFrameRate());
-}
-
-/**
- * Returns the skip factor for the given target FPS.
- *
- * \return 0...N of frames to skip between valid output frames
- */
-int ControlThread::continuousBurstSkip(double targetFps) const
-{
-    double ratio (mISP->getFrameRate() / targetFps);
-
-    // High - max sensor rate
-    if (ratio <= 2.0)
-        return 0;
-
-    // Medium - half the sensor rate
-    else if (ratio <= 4.0)
-        return 1;
-
-    // Low - quarter of sensor rate;
-    return 3;
+    LOG2("@%s: offset %d, skip %d, fps %.1f (for start-index %d, sensor fps %.1f)",
+         __FUNCTION__, cfg.offset, skip, outFps, mBurstStart, mISP->getFrameRate());
 }
 
 /**
@@ -1163,7 +1180,6 @@ void ControlThread::releaseContinuousCapture(bool flushPictures)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    mISP->releaseCaptureBuffers();
     if (flushPictures) {
         // This covers cases when we need to fallback from
         // continuous mode to online mode to do a capture.
@@ -1174,6 +1190,8 @@ void ControlThread::releaseContinuousCapture(bool flushPictures)
             LOGE("Error flushing PictureThread!");
         }
     }
+
+    mISP->releaseCaptureBuffers();
 }
 
 /**
@@ -1264,6 +1282,12 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
     if (pWidth < 640 && pHeight < 360) {
         LOG1("@%s: continuous mode not available for preview size %ux%u",
              __FUNCTION__, pWidth, pHeight);
+        return STATE_PREVIEW_STILL;
+    }
+
+    if (mHdr.enabled) {
+        LOG1("@%s: HDR enabled, disabling continuous mode",
+             __FUNCTION__);
         return STATE_PREVIEW_STILL;
     }
 
@@ -1416,9 +1440,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOGE("Error configuring ISP");
         return status;
     }
-
-    // sensor FPS is queried during configure so we set it to preview thread now
-    mPreviewThread->setSensorFramerate(mISP->getFrameRate());
 
     // Load any ISP extensions before ISP is started
     mPostProcThread->loadIspExtensions(videoMode);
@@ -1691,16 +1712,8 @@ status_t ControlThread::handleMessageStartPreview()
     mStillCaptureInProgress = false;
     mCaptureSubState = STATE_CAPTURE_IDLE;
 
-    // Check if continuous capture previously disabled focus callbacks
-    if (mEnableFocusCbAtStart) {
-        enableMsgType(CAMERA_MSG_FOCUS);
-        mEnableFocusCbAtStart = false;
-    }
-
-    if (mEnableFocusMoveCbAtStart) {
-        enableMsgType(CAMERA_MSG_FOCUS_MOVE);
-        mEnableFocusCbAtStart = false;
-    }
+    // Check if we previously disabled focus callbacks
+    enableFocusCallbacks();
 
     if (mState == STATE_STOPPED) {
         // API says apps should call startFaceDetection when resuming preview
@@ -1751,7 +1764,7 @@ status_t ControlThread::handleMessageStopPreview()
         //       into callback interfaces given with takePicture().
         //       If we are here, ANR is expected - just protecting
         //       against crashes.
-        LOGW("stopPreview() called while capture in progress, canceling"
+        LOGW("stopPreview() called while capture in progress, canceling\n"
              "application should release the camera to cancel capture process");
         if (mState == STATE_CAPTURE)
             status = stopCapture();
@@ -1946,7 +1959,13 @@ status_t ControlThread::handleMessageStartRecording()
 
     mISP->getVideoSize(&width, &height, NULL);
     mParameters.setPictureSize(width, height);
-    allocateSnapshotBuffers(true);
+
+    if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
+        allocateSnapshotBuffers(true);
+    } else {
+        LOG1("%s not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+    }
+
     snprintf(sizes, 25, "%dx%d", width,height);
     LOG1("video snapshot size %dx%d", width, height);
     mParameters.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, sizes);
@@ -1993,6 +2012,15 @@ status_t ControlThread::handleMessageStopRecording()
         LOGE("Error stopping recording. Invalid state!");
         status = INVALID_OPERATION;
     }
+
+    if (mCaptureSubState == STATE_CAPTURE_STARTED) {
+        // cancel video snapshot
+        mPictureThread->flushBuffers();
+        mCaptureSubState = STATE_CAPTURE_IDLE;
+    }
+    // clear reserved lists
+    mVideoSnapshotBuffers.clear();
+    mRecordingBuffers.clear();
 
     // release buffers owned by encoder since it is not going to return them
     mISP->returnRecordingBuffers();
@@ -2747,7 +2775,7 @@ status_t ControlThread::captureStillPic()
 
     // HDR init
     if (mHdr.enabled &&
-       (status = hdrInit( size, pvSize, format, width, height, pvWidth, pvHeight)) != NO_ERROR) {
+       (status = hdrInit( pvSize, pvWidth, pvHeight)) != NO_ERROR) {
         LOGE("Error initializing HDR!");
         return status;
     }
@@ -2877,17 +2905,6 @@ status_t ControlThread::captureStillPic()
 
     if (mState == STATE_CONTINUOUS_CAPTURE && mBurstLength <= 1)
         stopOfflineCapture();
-
-    if (mState == STATE_CONTINUOUS_CAPTURE) {
-        // Continuous mode will keep running keeping 3A active but
-        // preview hidden, disable AF callbacks to act API compatible
-        // Note: lens shouldn't be moving either, but we need that for
-        // better AF behaviour in continuous-shooting mode
-        mEnableFocusCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS);
-        mEnableFocusMoveCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS_MOVE);
-        disableMsgType(CAMERA_MSG_FOCUS_MOVE);
-        disableMsgType(CAMERA_MSG_FOCUS);
-    }
 
     return status;
 }
@@ -3150,7 +3167,7 @@ status_t ControlThread::captureULLPic()
     AtomBuffer snapshotBuffer, postviewBuffer;
     int pvWidth, pvHeight;
     int picWidth, picHeight, format;
-    int cachedBurstLength, cachedBurstStart, cachedBurstFps;
+    int cachedBurstLength, cachedBurstStart;
     PictureThread::MetaData firstPicMetaData;
     PictureThread::MetaData ullPicMetaData;
     // In case ULL gets triggered with standard preview update mode
@@ -3162,7 +3179,6 @@ status_t ControlThread::captureULLPic()
     //cache burst related parameters
     cachedBurstLength = mBurstLength;
     cachedBurstStart = mBurstStart;
-    cachedBurstFps = mBurstFps;
 
     mParameters.getPictureSize(&picWidth, &picHeight);
     format = mISP->getSnapshotPixelFormat();
@@ -3182,7 +3198,6 @@ status_t ControlThread::captureULLPic()
     // Initialize the burst control variables for the ULL burst
     mBurstLength = mULL->getULLBurstLength();
     mBurstStart = 0;
-    mBurstFps = mISP->getFrameRate();
 
     status = continuousStartStillCapture(false);
 
@@ -3235,21 +3250,10 @@ status_t ControlThread::captureULLPic()
 
     stopOfflineCapture();
 
-
-    // Continuous mode will keep running keeping 3A active but
-    // preview hidden, disable AF callbacks to act API compatible
-    // Note: lens shouldn't be moving either, but we need that for
-    // better AF behaviour in continuous-shooting mode
-    mEnableFocusCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS);
-    mEnableFocusMoveCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS_MOVE);
-    disableMsgType(CAMERA_MSG_FOCUS_MOVE);
-    disableMsgType(CAMERA_MSG_FOCUS);
-
 exit:
     // Restore the Burst related control variables
     mBurstLength = cachedBurstLength;
     mBurstStart = cachedBurstStart;
-    mBurstFps = cachedBurstFps;
     return status;
 }
 
@@ -3494,6 +3498,7 @@ void ControlThread::previewBufferCallback(AtomBuffer *buff, ICallbackPreview::Ca
 
 status_t ControlThread::handleMessagePreviewStarted()
 {
+    LOG1("@%s", __FUNCTION__);
 
     /**
     * First preview frame was rendered.
@@ -3503,11 +3508,26 @@ status_t ControlThread::handleMessagePreviewStarted()
     *
     */
 
+    /* NOTE: handleMessageTakePicture can be called before this function, if application
+     *       call take_picture fast after preview start. So we must take care of that case.
+     */
+
     /* Now that preview is started let's send the asynchronous msg to PictureThread
      * to start the allocation of snapshot buffers.
      */
     bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-    allocateSnapshotBuffers(videoMode);
+
+    /**
+     * if we have all the allocated buffers available then it is safe to re-allocate
+     *
+     */
+
+    if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
+        allocateSnapshotBuffers(videoMode);
+    } else {
+        LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+    };
+
     return NO_ERROR;
 }
 
@@ -3552,7 +3572,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
                     if(mStoreMetaDataInBuffers)
                         recBuffer = findRecordingBuffer((void*) videoBuffer->metadata_buff->data);
                     else
-                        recBuffer = findRecordingBuffer((void*) videoBuffer->buff->data);
+                        recBuffer = findRecordingBuffer((void*) videoBuffer->dataPtr);
                     if (recBuffer) {
                         LOG1("Snapshot buffer found reserved for video encoding");
                         // drop from reserved list
@@ -3596,7 +3616,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             } else if (findBufferByData(&msg->snapshotBuf, &mAvailableSnapshotBuffers) == NULL) {
                 mAvailableSnapshotBuffers.push(msg->snapshotBuf);
                 LOG1("%s  pushed %p to mAvailableSnapshotBuffers, size %d",
-                      __FUNCTION__, msg->snapshotBuf.buff->data, mAvailableSnapshotBuffers.size());
+                      __FUNCTION__, msg->snapshotBuf.dataPtr, mAvailableSnapshotBuffers.size());
             } else {
                 LOGE("%s Already available snapshot buffer arrived. Find the bug!!", __FUNCTION__);
             }
@@ -3629,7 +3649,7 @@ AtomBuffer* ControlThread::findBufferByData(AtomBuffer *buf,Vector<AtomBuffer> *
 {
     Vector<AtomBuffer>::iterator it = aVector->begin();
     for (;it != aVector->end(); ++it) {
-        if (buf->buff->data == it->buff->data)
+        if (buf->dataPtr == it->dataPtr)
             return it;
     }
 
@@ -3874,11 +3894,11 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         }
     }
 
-    // BURST FPS
-    const char* burstFps = params->get(IntelCameraParameters::KEY_BURST_FPS);
-    const char* burstFpss = params->get(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS);
-    if (!validateString(burstFps,burstFpss)) {
-        LOGE("bad burst FPS: %s; supported: %s", burstFps, burstFpss);
+    // BURST SPEED
+    const char* burstSpeed = params->get(IntelCameraParameters::KEY_BURST_SPEED);
+    const char* burstSpeeds = params->get(IntelCameraParameters::KEY_SUPPORTED_BURST_SPEED);
+    if (!validateString(burstSpeed, burstSpeeds)) {
+        LOGE("bad burst speed: %s; supported: %s", burstSpeed, burstSpeeds);
         return BAD_VALUE;
     }
 
@@ -3985,17 +4005,15 @@ status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
     mBurstLength = CLIP(mBurstLength,NUM_BURST_BUFFERS,0);
     if (mBurstLength > 0) {
 
-        // Get the burst framerate
-        int fps = newParams->getInt(IntelCameraParameters::KEY_BURST_FPS);
-        if (fps > MAX_BURST_FRAMERATE) {
-            LOGE("Invalid value received for %s: %d", IntelCameraParameters::KEY_BURST_FPS, mFpsAdaptSkip);
-            return BAD_VALUE;
-        }
-        if (fps > 0) {
-            mFpsAdaptSkip = roundf(PlatformData::getMaxBurstFPS(mISP->getCurrentCameraId())/float(fps)) - 1;
-            mBurstFps = fps;
-            LOG1("%s, mFpsAdaptSkip:%d", __FUNCTION__, mFpsAdaptSkip);
-        }
+        // Get the burst speed
+        String8 speed(newParams->get(IntelCameraParameters::KEY_BURST_SPEED));
+        if (speed == IntelCameraParameters::BURST_SPEED_LOW)
+            mFpsAdaptSkip = BURST_SPEED_LOW_SKIP_NUM;
+        else if (speed == IntelCameraParameters::BURST_SPEED_MEDIUM)
+            mFpsAdaptSkip = BURST_SPEED_MEDIUM_SKIP_NUM;
+        else
+            mFpsAdaptSkip = BURST_SPEED_FAST_SKIP_NUM;
+        LOG1("%s, mFpsAdaptSkip:%d", __FUNCTION__, mFpsAdaptSkip);
     }
 
     // Burst start-index (for Time Nudge et al)
@@ -4193,17 +4211,19 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
  * if we already have the same configuration available then it returns without
  * asking PictureThread.
  *
- * Allocation request is asynchronous. If we try to allocate before previous
- * request was completed we wait for it to complete and check again.
+ * Allocation request is synchronous.
  *
- * Once the allocation completes on PictureThread, ControlThread receives the
- * message SNAPSHOT_ALLOCATED and makes the buffers available.
+ * The buffers are allocated in the PictureThread to register the allocated
+ *   buffers with the HW JPEG encoder in this way the snapshot buffers are
+ *   already known to the HW encoder, this  speeds up the encoding.
  *
- * The buffers are allocated in the PictureThread for several reasons:
- * - to keep the control thread responsive to commands offloading the allocation
- * - and most importantly to register the allocated buffers with the HW JPEG encoder
- *   in this way the snapshot buffers are already known to the HW encoder, this
- *   speeds up the encoding.
+ * This call is used in the following situations:
+ * - when preview has already started
+ * - when processing parameters and those require new buffers
+ *
+ * care needs to be taken no to allocate the buffers at a time when ControlThread
+ * needs to be fast for some performance metric, like when taking a snapshot
+ * or when we are starting preview
  *
  */
 status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
@@ -4225,13 +4245,11 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
        bufCount = 0;
     }
 
-    if (mAllocatedSnapshotBuffers.isEmpty() && mAllocationRequestSent) {
-        LOGW("trying to allocate again before PictureThread completed- we should avoid this");
-        waitForAllocatedSnapshotBuffers();
-    }
 
     LOG1("Request to allocate %d bufs of (%dx%d)",bufCount, picWidth,picHeight);
-    LOG1("Currently allocated: %d ",mAllocatedSnapshotBuffers.size());
+    LOG1("Currently allocated: %d , available %d",mAllocatedSnapshotBuffers.size(),
+                                                  mAvailableSnapshotBuffers.size());
+
 
     if (!mAllocatedSnapshotBuffers.isEmpty()) {
         AtomBuffer tmp;
@@ -4246,49 +4264,18 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
     }
 
     mAllocatedSnapshotBuffers.clear();
-    mAllocationRequestSent = true;
-    status = mPictureThread->allocSharedBuffers(picWidth, picHeight, bufCount, format,
-                                                (ISnapshotBufferUser*)this);
+    mAvailableSnapshotBuffers.clear();
+
+    status = mPictureThread->allocSharedBuffers(picWidth, picHeight, bufCount,format,
+                                                &mAllocatedSnapshotBuffers);
+
     if (status != NO_ERROR) {
        LOGE("Could not pre-allocate picture buffers!");
+    } else {
+        mAvailableSnapshotBuffers = mAllocatedSnapshotBuffers;
     }
 
     return status;
-}
-
-/**
- * The requested snapshot buffers from PictureThread are allocated now.
- *
- * The request is done via PictureThread::allocSharedBuffers()
- * Once the allocation is completed and the new JPEG HW encoder context is created
- * the Control Thread receives the AtomBuffers via this callback
- */
-status_t ControlThread::snapshotsAllocated(AtomBuffer *bufs, int numBufs)
-{
-    LOG1("@%s", __FUNCTION__);
-
-    Message msg;
-    msg.id = MESSAGE_ID_SNAPSHOT_ALLOCATED;
-    msg.data.snap.bufs = bufs;
-    msg.data.snap.numBuf = numBufs;
-
-    return mMessageQueue.send(&msg);
-}
-
-
-status_t ControlThread::handleMessageSnapshotAllocated(MessageSnapshotAllocated *msg)
-{
-    LOG1("@%s", __FUNCTION__);
-
-    mAvailableSnapshotBuffers.clear();
-
-    for (int i = 0; i < msg->numBuf ; i++) {
-        mAllocatedSnapshotBuffers.push(msg->bufs[i]);
-        mAvailableSnapshotBuffers.push(msg->bufs[i]);
-        LOG1("mAllocatedSnapshotBuffers[%d] = %p",i,msg->bufs[i].buff->data);
-    }
-    mAllocationRequestSent = false;
-    return NO_ERROR;
 }
 
 void ControlThread::processParamFileInject(CameraParameters *newParams)
@@ -4782,6 +4769,7 @@ status_t ControlThread::processParamULL(const CameraParameters *oldParams,
         } else {
             mULL->setMode(UltraLowLight::ULL_OFF);
         }
+
     }
 
     return status;
@@ -5611,7 +5599,7 @@ status_t ControlThread::processParamPreviewFrameRate(const CameraParameters *old
         LOGI("DEPRECATED: Got new preview frame rate: %s", newVal.string());
         int fps = newParams->getPreviewFrameRate();
         // Save the set FPS for doing frame dropping
-        mPreviewThread->setFramerate(fps);
+        mISP->setPreviewFramerate(fps);
     }
 
     return NO_ERROR;
@@ -5947,7 +5935,14 @@ void ControlThread::restoreCurrentPictureParams()
 
     mStillPictContext.clear();
     updateParameterCache();
-    allocateSnapshotBuffers(false);
+
+    if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
+        allocateSnapshotBuffers(false);
+    } else {
+        LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+    }
+
+
 }
 
 /**
@@ -6078,10 +6073,19 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     /**
      * we need to re-allocate the snapshots if the size has changed or the
      * number of buffers have changed. If the burst parameters change a preview
-     * restart is triggered.
+     * restart is triggered. If preview is re-started we will allocate the snapshots
+     * after preview has started, not impacting L2P
+     *
+     * In cases where we receive set_params before we start preview we do not allocate
      */
-    if (paramsHasPictureSizeChanged(&oldParams, &newParams) || needRestartPreview)
-        allocateSnapshotBuffers(videoMode);
+    if (paramsHasPictureSizeChanged(&oldParams, &newParams) && mState != STATE_STOPPED) {
+
+        if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
+            allocateSnapshotBuffers(videoMode);
+        } else {
+            LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+        }
+    }
 
     ProcessOverlayEnable(&oldParams, &newParams);
 
@@ -6347,15 +6351,25 @@ cleanup:
     return NO_ERROR;
 }
 
-status_t ControlThread::hdrInit(int size, int pvSize, int format,
-                                int width, int height,
-                                int pvWidth, int pvHeight)
+status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     // Initialize the HDR output buffers
-    // Main output buffer
+    // Main output buffer should have same dimensions initially as one of the input
+    // buffers, so take those details from the vector of allocated buffers
+    if (mAllocatedSnapshotBuffers.isEmpty()) {
+        LOGE("%s:We do not have any snapshotbuffers yet... find the bug",__FUNCTION__);
+        return NO_MEMORY;
+    }
+
+    int size = mAllocatedSnapshotBuffers[0].size;
+    int width = mAllocatedSnapshotBuffers[0].width;
+    int stride = mAllocatedSnapshotBuffers[0].stride;
+    int height = mAllocatedSnapshotBuffers[0].height;
+    int format = mAllocatedSnapshotBuffers[0].format;
+
     mCallbacks->allocateMemory(&mHdr.outMainBuf, size);
     if (mHdr.outMainBuf.buff == NULL) {
         LOGE("HDR: Error allocating memory for HDR main buffer!");
@@ -6366,7 +6380,7 @@ status_t ControlThread::hdrInit(int size, int pvSize, int format,
     mHdr.outMainBuf.frameCounter = 1;
     mHdr.outMainBuf.type = ATOM_BUFFER_SNAPSHOT;
 
-    LOG1("HDR: using %p as HDR main output buffer", mHdr.outMainBuf.buff->data);
+    LOG1("HDR: using %p as HDR main output buffer", mHdr.outMainBuf.dataPtr);
     // Postview output buffer
     mCallbacks->allocateMemory(&mHdr.outPostviewBuf, pvSize);
     if (mHdr.outPostviewBuf.buff == NULL) {
@@ -6376,7 +6390,7 @@ status_t ControlThread::hdrInit(int size, int pvSize, int format,
     mHdr.outPostviewBuf.shared = false;
     mHdr.outPostviewBuf.type = ATOM_BUFFER_POSTVIEW;
 
-    LOG1("HDR: using %p as HDR postview output buffer", mHdr.outPostviewBuf.buff->data);
+    LOG1("HDR: using %p as HDR postview output buffer", mHdr.outPostviewBuf.dataPtr);
 
     // Initialize the CI input buffers (will be initialized later, when snapshots are taken)
     mHdr.ciBufIn.ciBufNum = mHdr.bracketNum;
@@ -6405,9 +6419,9 @@ status_t ControlThread::hdrInit(int size, int pvSize, int format,
         return status;
     }
 
-    mHdr.ciBufOut.ciMainBuf->data = mHdr.outMainBuf.buff->data;
+    mHdr.ciBufOut.ciMainBuf->data = mHdr.outMainBuf.dataPtr;
     mHdr.ciBufOut.ciMainBuf[0].width = mHdr.outMainBuf.width = width;
-    mHdr.ciBufOut.ciMainBuf[0].stride = mHdr.outMainBuf.stride = width;
+    mHdr.ciBufOut.ciMainBuf[0].stride = mHdr.outMainBuf.stride = stride;
     mHdr.ciBufOut.ciMainBuf[0].height = mHdr.outMainBuf.height = height;
     mHdr.outMainBuf.format = format;
     mHdr.ciBufOut.ciMainBuf[0].size = mHdr.outMainBuf.size = size;
@@ -6420,7 +6434,7 @@ status_t ControlThread::hdrInit(int size, int pvSize, int format,
             mHdr.ciBufOut.ciMainBuf[0].height,
             mHdr.ciBufOut.ciMainBuf[0].format);
 
-    mHdr.ciBufOut.ciPostviewBuf[0].data = mHdr.outPostviewBuf.buff->data;
+    mHdr.ciBufOut.ciPostviewBuf[0].data = mHdr.outPostviewBuf.dataPtr;
     mHdr.ciBufOut.ciPostviewBuf[0].width = mHdr.outPostviewBuf.width = pvWidth;
     mHdr.ciBufOut.ciPostviewBuf[0].stride = mHdr.outPostviewBuf.stride = pvWidth;
     mHdr.ciBufOut.ciPostviewBuf[0].height = mHdr.outPostviewBuf.height = pvHeight;
@@ -6446,14 +6460,9 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
     LOG1("@%s", __FUNCTION__);
 
     // Initialize the HDR CI input buffers (main/postview) for this capture
-    if (snapshotBuffer->shared) {
-        mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = (void *) *((char **)snapshotBuffer->buff->data);
-    } else {
-        mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer->buff->data;
-    }
-
+    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer->dataPtr;
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].width = snapshotBuffer->width;
-    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].stride = snapshotBuffer->width;
+    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].stride = snapshotBuffer->stride;
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height = snapshotBuffer->height;
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].size = snapshotBuffer->size;
     AtomCP::setIaFrameFormat(&mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum], snapshotBuffer->format);
@@ -6467,7 +6476,7 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
             mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height,
             mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].format);
 
-    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].data = postviewBuffer->buff->data;  /* postview buffers are never shared (i.e. coming from the PictureThread) */
+    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].data = postviewBuffer->dataPtr;  /* postview buffers are never shared (i.e. coming from the PictureThread) */
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].width = postviewBuffer->width;
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height = postviewBuffer->height;
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].size = postviewBuffer->size;
@@ -6609,16 +6618,26 @@ void ControlThread::setExternalSnapshotBuffers(int format, int width, int height
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    unsigned int bufCount = MAX(mBurstLength, mISP->getContinuousCaptureNumber()+1);
 
-    if (mAllocatedSnapshotBuffers.isEmpty()) {
-        LOG1("%s: snapshot buffers have  not arrived yet... waiting",__FUNCTION__);
-        if (mAllocationRequestSent == false) {
-            LOGW("snapshot allocation request was not send. This is a sign of unoptimal API use");
+    /**
+     * This is needed for cases when we receive the take_picture request before
+     * start preview has completed, which is the normal place to allocate
+     * the snapshot buffers. This can happen with CTS or instantly tapping shutter
+     * after mode change.
+     */
+    if (mAllocatedSnapshotBuffers.isEmpty() ||
+        mAllocatedSnapshotBuffers.size() != bufCount ||
+        mAllocatedSnapshotBuffers[0].width != width ||
+        mAllocatedSnapshotBuffers[0].height != height) {
+
+        if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
             allocateSnapshotBuffers(false);
-        }
-        waitForAllocatedSnapshotBuffers();
-        LOG1("%s: Got them (%d)!",__FUNCTION__ , mAllocatedSnapshotBuffers.size());
+        } else {
+            LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+        };
     }
+
     unsigned int numberOfSnapshots = MAX(1,mBurstLength);
     LOG1("Required Buffers for snapshot %d: Available %d Allocated: %d", numberOfSnapshots,
                                                                          mAvailableSnapshotBuffers.size(),
@@ -6636,42 +6655,17 @@ void ControlThread::setExternalSnapshotBuffers(int format, int width, int height
         bool cached = false;
         status = mISP->setSnapshotBuffers(&mAvailableSnapshotBuffers, numberOfSnapshots, cached  );
     } else {
+        /**
+         * The places when we allocate snapshot buffers should ensure that at take
+         * picture time there are enough buffers. This situation may arise if
+         * not enough buffers were allocated, and some buffers are in used
+         * ControlThread needs to ensure it allocates enough.
+         * It is not possible to re-allocate now if we do not have all the
+         * snapshot buffers back in mAvailableSnapshotBuffers.
+         */
         LOGE("Not enough available buffers for this request. This should not happen");
     }
 
-}
-
-/**
- * Since the snapshot allocation method is asynchronous there maybe cases where
- * we need the buffers before the allocation completed.
- * This method sends a synchronous message to PictureThread to make sure the
- * allocation request completed. It then steals the message from the message Q
- *
- */
-void ControlThread::waitForAllocatedSnapshotBuffers()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status;
-    Vector<Message> pending;
-
-    /**
-     * wait for the allocation request to complete.
-     * we do so by sending a synchronous message to PictureThread.
-     * This message does nothing.
-     */
-    status = mPictureThread->wait();
-
-    /**
-     * Now the reply should be waiting in out Q
-     */
-    mMessageQueue.remove(MESSAGE_ID_SNAPSHOT_ALLOCATED,&pending);
-    if (pending.isEmpty()) {
-        LOGE("PictureThread did not send the allocated buffers, find the bug!!");
-        return;
-    }
-
-    MessageSnapshotAllocated msg = pending[0].data.snap;
-    handleMessageSnapshotAllocated(&msg);
 }
 
 /**
@@ -7044,13 +7038,10 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE:
             status = handleMessagePostCaptureProcessingDone(&msg.data.postCapture);
+            break;
 
         case MESSAGE_ID_SET_ORIENTATION:
             status = handleMessageSetOrientation(&msg.data.orientation);
-            break;
-
-        case MESSAGE_ID_SNAPSHOT_ALLOCATED:
-            status = handleMessageSnapshotAllocated(&msg.data.snap);
             break;
 
         default:
@@ -7072,7 +7063,7 @@ AtomBuffer* ControlThread::findRecordingBuffer(void *ptr)
             if (it->metadata_buff->data == ptr)
                 return it;
         } else {
-             if (it->buff->data == ptr)
+             if (it->dataPtr == ptr)
                 return it;
         }
     }

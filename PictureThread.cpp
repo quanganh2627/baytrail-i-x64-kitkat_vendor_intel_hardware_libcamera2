@@ -236,7 +236,7 @@ void PictureThread::initialize(const CameraParameters &params)
 }
 
 status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuffersNum,
-                                           int format, ISnapshotBufferUser *user)
+                                           int format, Vector<AtomBuffer> *bufs)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
@@ -245,8 +245,9 @@ status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuff
     msg.data.alloc.height = height;
     msg.data.alloc.numBufs = sharedBuffersNum;
     msg.data.alloc.format = format;
-    msg.data.alloc.user = user;
-    return mMessageQueue.send(&msg);
+    msg.data.alloc.bufs = bufs;
+
+    return mMessageQueue.send(&msg, MESSAGE_ID_ALLOC_BUFS);
 }
 
 status_t PictureThread::wait()
@@ -358,12 +359,12 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 
     jpegBuf.frameCounter = msg->snaphotBuf.frameCounter;
 
+    mCallbacksThread->compressedFrameDone(&jpegBuf, &msg->snaphotBuf, &msg->postviewBuf);
+
     // ownership was transferred to us from ControlThread, so we need
     // to free resources here after encoding
     msg->metaData.free(m3AControls);
 
-
-    mCallbacksThread->compressedFrameDone(&jpegBuf, &msg->snaphotBuf, &msg->postviewBuf);
     return status;
 }
 
@@ -404,28 +405,33 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
     }
     if (mOutBuf.dataPtr == NULL || mExifBuf.dataPtr == NULL) {
         LOGE("Could not allocate memory for output buffers!");
-        return NO_MEMORY;
+        status = NO_MEMORY;
+        goto exit_fail;
     }
 
     /* re-allocates array of input buffers into mInputBufferArray */
     freeInputBuffers();
     status = allocateInputBuffers(msg->format, msg->width, msg->height, msg->numBufs);
     if(status != NO_ERROR)
-        return status;
+        goto exit_fail;
 
     /* Now let the encoder know about the new buffers for the surfaces*/
     if(mHwCompressor) {
         status = mHwCompressor->setInputBuffers(mInputBufferArray, mInputBuffers);
-        if(status)
+        if(status) {
             LOGW("HW Encoder cannot use pre-allocate buffers");
+            status = NO_ERROR; // this is not critical, we still return some buffers
+        }
     }
 
 skip:
-    // Provide the buffer to the user (CtrlThread)
-    if (msg->user != NULL)
-        msg->user->snapshotsAllocated(mInputBufferArray,mInputBuffers);
 
-    return NO_ERROR;
+    for (int i = 0; i < mInputBuffers; i++)
+        msg->bufs->push(mInputBufferArray[i]);
+
+exit_fail:
+    mMessageQueue.reply(MESSAGE_ID_ALLOC_BUFS, status);
+    return status;
 }
 
 status_t PictureThread::allocateInputBuffers(int format, int width, int height, int numBufs)
@@ -723,7 +729,12 @@ void PictureThread::encodeExif(AtomBuffer *thumbBuf)
                 mThumbBuf.width, mThumbBuf.height, mThumbBuf.stride);
         if (mThumbBuf.dataPtr == NULL)
             mCallbacks->allocateMemory(&mThumbBuf,mThumbBuf.size);
-        if (thumbBuf->height > srcHeighByThumbAspect) {
+        if (mThumbBuf.dataPtr == NULL) {
+            LOGE("Could not allocate memory for ThumbBuf buffers!");
+            mThumbBuf.size = 0;
+            mThumbBuf.width = 0;
+            mThumbBuf.height = 0;
+        } else if (thumbBuf->height > srcHeighByThumbAspect) {
             // Support cropping 16:9 out from 4:3
             int skipLines = (thumbBuf->height - srcHeighByThumbAspect) / 2;
             LOGW("Thumbnail cropped to match requested aspect ratio");

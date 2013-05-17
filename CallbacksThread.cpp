@@ -378,15 +378,10 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
                 releaseTmp = true;
             } else if (snapshotBuf.buff != NULL && mCallbacks->msgTypeEnabled(CAMERA_MSG_RAW_IMAGE)) {
                 LOG1("snapshotBuf.size:%d", snapshotBuf.size);
-                unsigned char *buf;
-                if (snapshotBuf.shared) {
-                    buf = (unsigned char *) *((char **)(snapshotBuf.buff->data));
-                } else {
-                    buf = (unsigned char *) (snapshotBuf.buff->data);
-                }
+
                 mCallbacks->allocateMemory(&tmpCopy.buff, snapshotBuf.size, false);
                 if (tmpCopy.buff != NULL) {
-                    memcpy(tmpCopy.buff->data, buf, snapshotBuf.size);
+                    memcpy(tmpCopy.buff->data, snapshotBuf.dataPtr, snapshotBuf.size);
                     releaseTmp = true;
                 }
             } else {
@@ -404,7 +399,7 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
 
         mCallbacks->compressedFrameDone(&jpegBuf);
         if (jpegBuf.buff != NULL) {
-            LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
+            LOG1("Releasing jpegBuf @%p", jpegBuf.dataPtr);
             jpegBuf.buff->release(jpegBuf.buff);
             jpegBuf.buff = NULL;
         } else {
@@ -444,7 +439,7 @@ status_t CallbacksThread::handleMessageJpegDataRequest(MessageDataRequest *msg)
             mCallbacks->rawFrameDone(&snapshotBuf);
         }
         mCallbacks->compressedFrameDone(&jpegBuf);
-        LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
+        LOG1("Releasing jpegBuf @%p", jpegBuf.dataPtr);
         jpegBuf.buff->release(jpegBuf.buff);
         jpegBuf.buff = NULL;
         if (snapshotBuf.buff != NULL && postviewBuf.buff != NULL) {
@@ -516,28 +511,21 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageFrame *msg)
     }
 
     // space for the metadata is reserved in the beginning of the buffer, copy it there
-    memcpy(jpegAndMeta.buff->data, &metadata, sizeof(camera_ull_metadata_t));
-
-    unsigned char *src = NULL;
-    if (jpegBuf.shared) {
-        src = (unsigned char *) *((char **)jpegBuf.buff->data);
-    } else {
-        src = (unsigned char *) jpegBuf.buff->data;
-    }
+    memcpy(jpegAndMeta.dataPtr, &metadata, sizeof(camera_ull_metadata_t));
 
     // copy the image data in place, it goes after the metadata in the buffer
-    memcpy((char*)jpegAndMeta.buff->data + sizeof(camera_ull_metadata_t), src, jpegBuf.size);
+    memcpy((char*)jpegAndMeta.dataPtr + sizeof(camera_ull_metadata_t), jpegBuf.dataPtr, jpegBuf.size);
 
     mCallbacks->ullPictureDone(&jpegAndMeta);
 
     if (jpegBuf.buff != NULL) {
-        LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
+        LOG1("Releasing jpegBuf @%p", jpegBuf.dataPtr);
         jpegBuf.buff->release(jpegBuf.buff);
         jpegBuf.buff = NULL;
     }
 
     if (jpegAndMeta.buff != NULL) {
-        LOG1("Releasing jpegAndMeta @%p", jpegAndMeta.buff->data);
+        LOG1("Releasing jpegAndMeta @%p", jpegAndMeta.dataPtr);
         jpegAndMeta.buff->release(jpegAndMeta.buff);
         jpegAndMeta.buff = NULL;
     } else {
@@ -572,7 +560,7 @@ status_t CallbacksThread::handleMessageFlush()
     mPostponedJpegReady.id = (MessageId) -1;
     for (size_t i = 0; i < mBuffers.size(); i++) {
         AtomBuffer jpegBuf = mBuffers[i].jpegBuff;
-        LOG1("Releasing jpegBuf @%p", jpegBuf.buff->data);
+        LOG1("Releasing jpegBuf @%p", jpegBuf.dataPtr);
         jpegBuf.buff->release(jpegBuf.buff);
         jpegBuf.buff = NULL;
     }
