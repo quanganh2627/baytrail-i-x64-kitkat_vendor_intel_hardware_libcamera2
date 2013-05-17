@@ -55,8 +55,8 @@
 #define INTEL_FILE_INJECT_CAMERA_ID 2
 
 #define ATOMISP_PREVIEW_POLL_TIMEOUT 1000
-#define ATOMISP_GETFRAME_RETRY_COUNT 5  // Times to retry poll/dqbuf in case of error
-#define ATOMISP_GETFRAME_STARVING_WAIT 200000 // Time to usleep between retry's when stream is starving from buffers.
+#define ATOMISP_GETFRAME_RETRY_COUNT 30  // Times to retry poll/dqbuf in case of error
+#define ATOMISP_GETFRAME_STARVING_WAIT 33000 // Time to usleep between retry's when stream is starving from buffers.
 #define ATOMISP_ZSL_GUARD_FRAMES 3      // Minimum number of preview frames between
                                         // successive ZSL captures, see PSI BZ 103248
 
@@ -229,6 +229,7 @@ status_t AtomISP::init()
     }
 
     mConfig.fps = DEFAULT_PREVIEW_FPS;
+    mConfig.target_fps = DEFAULT_PREVIEW_FPS;
     mConfig.num_snapshot = 1;
     mConfig.zoom = 0;
 
@@ -2129,6 +2130,18 @@ status_t AtomISP::setPreviewFrameFormat(int width, int height, int format)
     LOG1("width(%d), height(%d), pad_width(%d), size(%d), format(%x)",
         width, height, mConfig.preview.stride, mConfig.preview.size, format);
     return status;
+}
+
+/**
+ * Configures the user requested FPS
+ * ISP will drop frames to adjust the sensor fps to the requested fps
+ * This frame-dropping operation is done in the PreviewStreamSource class
+ *
+ */
+void AtomISP::setPreviewFramerate(int fps)
+{
+    LOG1("@%s: %d", __FUNCTION__, fps);
+    mConfig.target_fps = fps;
 }
 
 void AtomISP::getPostviewFrameFormat(int &width, int &height, int &format) const
@@ -5373,6 +5386,32 @@ status_t AtomISP::FrameSyncSource::observe(IAtomIspObserver::Message *msg)
 }
 
 /**
+ * This function implements the frame skip algorithm.
+ * - If user requests half of sensor fps, drop every even frame
+ * - If user requests third of sensor fps, drop two frames every three frames
+ * @returns true: skip,  false: not skip
+ */
+bool AtomISP::PreviewStreamSource::checkSkipFrame(int frameNum)
+{
+    float sensorFPS = mISP->mConfig.fps;
+    int targetFPS = mISP->mConfig.target_fps;
+
+    if (fabs(sensorFPS / targetFPS - 2) < 0.1f && (frameNum % 2 == 0)) {
+        LOG2("Preview FPS: %d. Skipping frame num: %d", targetFPS, frameNum);
+        return true;
+    }
+
+    if (fabs(sensorFPS / targetFPS - 3) < 0.1f && (frameNum % 3 != 0)) {
+        LOG2("Preview FPS: %d. Skipping frame num: %d", targetFPS, frameNum);
+        return true;
+    }
+
+    // TODO skipping support for 25fps sensor framerate
+
+    return false;
+}
+
+/**
  * polls and dequeues a preview frame into IAtomIspObserver::Message
  */
 status_t AtomISP::PreviewStreamSource::observe(IAtomIspObserver::Message *msg)
@@ -5398,6 +5437,8 @@ try_again:
         } else {
             msg->data.frameBuffer.buff.owner = mISP;
             msg->id = IAtomIspObserver::MESSAGE_ID_FRAME;
+            if (checkSkipFrame(msg->data.frameBuffer.buff.frameCounter))
+                msg->data.frameBuffer.buff.status = FRAME_STATUS_SKIPPED;
         }
     } else {
         LOGE("v4l2_poll for preview device failed! (%s)", (ret==0)?"timeout":"error");
@@ -5408,7 +5449,7 @@ try_again:
     if (status != NO_ERROR) {
         // check if reason is starving and enter sleep to wait
         // for returnBuffer()
-        while(!mISP->dataAvailable()) {
+        while(mISP->mNumPreviewBuffersQueued < 1) {
             if (++failCounter > retry_count) {
                 LOGD("There were no preview buffers returned in time");
                 break;

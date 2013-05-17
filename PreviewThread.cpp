@@ -39,8 +39,6 @@ PreviewThread::PreviewThread() :
     ,mMessageQueue("PreviewThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
     ,mState(STATE_STOPPED)
-    ,mSetFPS(30)
-    ,mSensorFPS(30.0f)
     ,mLastFrameTs(0)
     ,mFramesDone(0)
     ,mCallbacksThread(CallbacksThread::getInstance())
@@ -184,64 +182,6 @@ void PreviewThread::getDefaultParameters(CameraParameters *params)
 
 }
 
-status_t PreviewThread::setFramerate(int fps)
-{
-    LOG1("@%s", __FUNCTION__);
-    Message msg;
-    msg.id = MESSAGE_ID_SET_FRAMERATE;
-    msg.data.framerate.fps = fps;
-    mMessageQueue.send(&msg);
-    return NO_ERROR;
-}
-
-status_t PreviewThread::handleSetFramerate(MessageSetFramerate *msg)
-{
-    LOG1("@%s", __FUNCTION__);
-    mSetFPS = msg->fps;
-    return OK;
-}
-
-status_t PreviewThread::setSensorFramerate(float fps)
-{
-    LOG1("@%s", __FUNCTION__);
-    Message msg;
-    msg.id = MESSAGE_ID_SET_SENSOR_FRAMERATE;
-    msg.data.sensorFramerate.fps = fps;
-    mMessageQueue.send(&msg);
-    return NO_ERROR;
-}
-
-status_t PreviewThread::handleSetSensorFramerate(MessageSetSensorFramerate *msg)
-{
-    LOG1("@%s", __FUNCTION__);
-    mSensorFPS = msg->fps;
-    return OK;
-}
-
-/**
- * This function implements the frame skip algorithm.
- * - If user requests half of sensor fps, drop every even frame
- * - If user requests third of sensor fps, drop two frames every three frames
- * @returns true: skip,  false: not skip
- */
-bool PreviewThread::checkSkipFrame(int frameNum)
-{
-    if (fabs(mSensorFPS / mSetFPS - 2) < 0.1f && (frameNum % 2 == 0)) {
-        LOG2("Preview FPS: %d. Skipping frame num: %d", mSetFPS, frameNum);
-        return true;
-    }
-
-    if (fabs(mSensorFPS / mSetFPS - 3) < 0.1f && (frameNum % 3 != 0)) {
-        LOG2("Preview FPS: %d. Skipping frame num: %d", mSetFPS, frameNum);
-        return true;
-    }
-
-    // TODO skipping support for 25fps sensor framerate
-
-    return false;
-}
-
-
 status_t PreviewThread::setPreviewWindow(struct preview_stream_ops *window)
 {
     LOG1("@%s: preview_window = %p", __FUNCTION__, window);
@@ -343,12 +283,7 @@ status_t PreviewThread::preview(AtomBuffer *buff)
  *
  * PreviewThread gets attached to receive preview stream here.
  *
- * We decide wether to pass buffers further or not
  *
- * Skip frame request for target video fps is also checked here,
- * since we want to output the same fps to display and video.
- * ControlThread is currently observing the same event, so we
- * pass the skip information within FrameBufferMessage::status.
  */
 bool PreviewThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state)
 {
@@ -365,8 +300,7 @@ bool PreviewThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
 
     AtomBuffer *buff = &msg->data.frameBuffer.buff;
     if (msg->id == MESSAGE_ID_FRAME) {
-        if (checkSkipFrame(buff->frameCounter)) {
-            buff->status = FRAME_STATUS_SKIPPED;
+        if (buff->status == FRAME_STATUS_SKIPPED) {
             buff->owner->returnBuffer(buff);
         } else if(buff->status == FRAME_STATUS_CORRUPTED) {
             buff->owner->returnBuffer(buff);
@@ -591,14 +525,6 @@ status_t PreviewThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_SET_CALLBACK:
             status = handleMessageSetCallback(&msg.data.setCallback);
-            break;
-
-        case MESSAGE_ID_SET_FRAMERATE:
-            status = handleSetFramerate(&msg.data.framerate);
-            break;
-
-        case MESSAGE_ID_SET_SENSOR_FRAMERATE:
-            status = handleSetSensorFramerate(&msg.data.sensorFramerate);
             break;
 
         default:
