@@ -57,8 +57,8 @@
 #define INTEL_FILE_INJECT_CAMERA_ID 2
 
 #define ATOMISP_PREVIEW_POLL_TIMEOUT 1000
-#define ATOMISP_GETFRAME_RETRY_COUNT 10  // Times to retry poll/dqbuf in case of error
-#define ATOMISP_GETFRAME_STARVING_WAIT 200000 // Time to usleep between retry's when stream is starving from buffers.
+#define ATOMISP_GETFRAME_RETRY_COUNT 60  // Times to retry poll/dqbuf in case of error
+#define ATOMISP_GETFRAME_STARVING_WAIT 33000 // Time to usleep between retry's when stream is starving from buffers.
 #define ATOMISP_MIN_CONTINUOUS_BUF_SIZE 3 // Min buffer len supported by CSS
 #define FRAME_SYNC_POLL_TIMEOUT 500
 
