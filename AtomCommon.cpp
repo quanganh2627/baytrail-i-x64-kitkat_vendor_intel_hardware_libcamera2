@@ -18,6 +18,19 @@
 #include "AtomCommon.h"
 #include <ia_coordinate.h>
 
+#ifdef LIBCAMERA_RD_FEATURES
+#include <dlfcn.h>
+#include <sys/types.h>
+#include <pthread.h>
+
+#define MAX_BACKTRACE_DEPTH 15
+
+struct stack_crawl_state_t {
+    size_t count;
+    intptr_t* addrs;
+};
+
+#endif
 namespace android {
 
 timeval AtomBufferFactory_AtomBufDefTS = {0, 0}; // default timestamp (see AtomCommon.h)
@@ -82,4 +95,185 @@ void convertFromAndroidToIaCoordinates(const CameraWindow &srcWindow, CameraWind
     toWindow.y_bottom = bottomright.y;
 }
 
+/**
+ * Mirror the buffer contents by flipping the data horizontally or
+ * vertically based on the camera sensor orientation and device
+ * orientation.
+ */
+void mirrorBuffer(AtomBuffer *buffer, int currentOrientation, int cameraOrientation)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    int rotation = (cameraOrientation - currentOrientation + 360) % 360;
+    if (rotation == 90 || rotation == 270) {
+        flipBufferH(buffer);
+    } else {
+        flipBufferV(buffer);
+    }
+}
+
+void flipBufferV(AtomBuffer *buffer) {
+    LOG1("@%s", __FUNCTION__);
+    int width, height, stride;
+    unsigned char *data = NULL;
+
+    void *ptr = NULL;
+    if (buffer->shared)
+        ptr = (void *) *((char **)buffer->dataPtr);
+    else
+        ptr = buffer->dataPtr;
+
+    data = (unsigned char *) ptr;
+    width = buffer->width;
+    height = buffer->height;
+    stride = buffer->stride;
+    int w = width / 2;
+    unsigned char temp = 0;
+
+    // Y
+    for (int j=0; j < height; j++) {
+        for (int i=0; i < w; i++) {
+            temp = data[i];
+            data[i] = data[width-i-1];
+            data[width-i-1] = temp;
+        }
+        data = data + stride;
+    }
+
+    int h = height / 2;
+    unsigned char tempu = 0;
+    unsigned char tempv = 0;
+
+    // U+V
+    for (int j=0; j < h; j++) {
+        for (int i=0; i < w; i+=2) {
+            tempu = data[i];
+            tempv = data[i+1];
+            data[i] = data[width-i-2];
+            data[i+1] = data[width-i-1];
+            data[width-i-2] = tempu;
+            data[width-i-1] = tempv;
+        }
+        data = data + stride;
+    }
+}
+
+void flipBufferH(AtomBuffer *buffer) {
+    LOG1("@%s", __FUNCTION__);
+    int width, height, stride;
+    unsigned char *data = NULL;
+
+    void *ptr = NULL;
+    if (buffer->shared)
+        ptr = (void *) *((char **)buffer->dataPtr);
+    else
+        ptr = buffer->dataPtr;
+
+    data = (unsigned char *) ptr;
+    width = buffer->width;
+    height = buffer->height;
+    stride = buffer->stride;
+    int h = height / 2;
+    unsigned char temp = 0;
+
+    // Y
+    for (int j=0; j < width; j++) {
+        for (int i=0; i < h; i++) {
+            temp = data[i*stride + j];
+            data[i*stride + j] = data[(height-1-i)*stride + j];
+            data[(height-1-i)*stride + j] = temp;
+        }
+    }
+
+    // U+V
+    data = data + stride * height;
+    h = height / 4;
+    int heightUV = height / 2;
+
+    for (int j=0; j < width; j++) {
+        for (int i=0; i < h; i++) {
+            temp = data[i*stride + j];
+            data[i*stride + j] = data[(heightUV-1-i)*stride + j];
+            data[(heightUV-1-i)*stride + j] = temp;
+        }
+    }
+}
+
+#ifdef LIBCAMERA_RD_FEATURES
+/************************************************************************
+ * DEBUGGING UTILITIES
+ *
+ */
+
+
+int get_backtrace(intptr_t* addrs, size_t max_entries) {
+    stack_crawl_state_t state;
+    state.count = max_entries;
+    state.addrs = addrs;
+
+    size_t i, s;
+    pthread_attr_t thread_attr;
+    unsigned sb, st;
+    size_t stacksize;
+    pthread_t thread = pthread_self();
+    unsigned *_ebp, *base_ebp;
+    unsigned *caller;
+
+    pthread_attr_init(&thread_attr);
+    s = pthread_getattr_np(thread, &thread_attr);
+    if (s) goto out;
+    s = pthread_attr_getstack(&thread_attr, (void **)(&sb), &stacksize);
+    if (s) goto out;
+    st = sb + stacksize;
+
+    asm ("movl %%ebp, %0"
+            : "=r" (_ebp)
+    );
+
+    if (_ebp >= (unsigned *)(st - 4) || _ebp < (unsigned *)sb)
+            goto out;
+    base_ebp = _ebp;
+    caller = (unsigned *) *(_ebp + 1);
+
+    for (i = 0; i < max_entries; i++) {
+        addrs[i] = (intptr_t) caller;
+        state.count--;
+        _ebp = (unsigned *) *_ebp;
+        if (_ebp >= (unsigned *)(st - 4) || _ebp < base_ebp) break;
+        caller = (unsigned *) *(_ebp + 1);
+    }
+
+out:
+    pthread_attr_destroy(&thread_attr);
+
+    return max_entries - state.count;
+}
+
+/**
+ * Helper method to trace via log error the callstack in a particular point
+ * this is only a RD feature.
+ */
+void trace_callstack () {
+    intptr_t bt[MAX_BACKTRACE_DEPTH];
+    Dl_info info;
+    void* offset = 0;
+    const char* symbol = NULL;
+    const char* fname = NULL;
+
+    int depth = get_backtrace(bt, MAX_BACKTRACE_DEPTH);
+
+    for (int i = 0; i < depth; i++) {
+        if (dladdr((void*)bt[i], &info)) {
+               offset = info.dli_saddr;
+               symbol = info.dli_sname;
+               fname = info.dli_fname;
+               LOGE("Camera_BT:%s:%s:+%p",fname,symbol,offset);
+        } else {
+            LOGE("Camera_BT symbol not found in address %x",bt[i]);
+        }
+
+    }
+
+}
+#endif //LIBCAMERA_RD_FEATURES
 }

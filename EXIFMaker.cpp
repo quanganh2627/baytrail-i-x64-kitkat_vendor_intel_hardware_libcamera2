@@ -421,10 +421,21 @@ void EXIFMaker::initializeLocation(const CameraParameters &params)
     const char *paltitude = params.get(CameraParameters::KEY_GPS_ALTITUDE);
     const char *ptimestamp = params.get(CameraParameters::KEY_GPS_TIMESTAMP);
     const char *pprocmethod = params.get(CameraParameters::KEY_GPS_PROCESSING_METHOD);
+    const char *pimgdirection = params.get(IntelCameraParameters::KEY_GPS_IMG_DIRECTION);
+    const char *pimgdirectionref = params.get(IntelCameraParameters::KEY_GPS_IMG_DIRECTION_REF);
+
+    double imgdirection;
+    if (pimgdirection) {
+        imgdirection = atof(pimgdirection);
+        if (((strcmp(pimgdirectionref, IntelCameraParameters::GPS_IMG_DIRECTION_REF_TRUE) != 0)
+            && (strcmp(pimgdirectionref, IntelCameraParameters::GPS_IMG_DIRECTION_REF_MAGNETIC) != 0))
+            || (imgdirection < 0 || imgdirection > 359.99))
+            pimgdirection = NULL;
+    }
 
     // check whether the GIS Information is valid
     if((NULL != platitude) || (NULL != plongitude) || (NULL != paltitude)
-       || (NULL != ptimestamp) || (NULL != pprocmethod))
+       || (NULL != ptimestamp) || (NULL != pprocmethod) || (NULL != pimgdirection))
         gpsEnabled = true;
 
     exifAttributes.enableGps = 0;
@@ -526,6 +537,20 @@ void EXIFMaker::initializeLocation(const CameraParameters &params)
         memcpy(exifAttributes.gps_processing_method, pprocmethod, len);
         exifAttributes.enableGps |= EXIF_GPS_PROCMETHOD;
         LOG1("EXIF: GPS processing method:%s", exifAttributes.gps_processing_method);
+    }
+
+    if (pimgdirection) {
+        if (strcmp(pimgdirectionref, IntelCameraParameters::GPS_IMG_DIRECTION_REF_TRUE) == 0)
+            memcpy(exifAttributes.gps_img_direction_ref, "T", sizeof(exifAttributes.gps_img_direction_ref));
+        else if (strcmp(pimgdirectionref, IntelCameraParameters::GPS_IMG_DIRECTION_REF_MAGNETIC) == 0)
+            memcpy(exifAttributes.gps_img_direction_ref, "M", sizeof(exifAttributes.gps_img_direction_ref));
+        exifAttributes.gps_img_direction.num = (uint32_t)(imgdirection*100);
+        exifAttributes.gps_img_direction.den = 100;
+        exifAttributes.enableGps |= EXIF_GPS_IMG_DIRECTION;
+        LOG1("EXIF: GPS img direction ref:%s, img direction num:%d, den:%d",
+            exifAttributes.gps_img_direction_ref,
+            exifAttributes.gps_img_direction.num,
+            exifAttributes.gps_img_direction.den);
     }
 }
 

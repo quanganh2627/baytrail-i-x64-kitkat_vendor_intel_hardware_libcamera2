@@ -32,12 +32,8 @@ const int UltraLowLight::MORPHO_INPUT_FORMAT_V4L2 = V4L2_PIX_FMT_NV12; // Keep t
 const int UltraLowLight::MAX_INPUT_BUFFERS = 3;
 
 // ULL bright threshold: from Normal to ULL
-int UltraLowLight::ULL_BRIGHT_ISO_THRESHOLD = 600;
-int UltraLowLight::ULL_BRIGHT_EXPTIME_THRESHOLD = 4000;
+int UltraLowLight::ULL_ACTIVATION_APEX_SV_THRESHOLD = 451799;
 
-// ULL dark threshold : from ULL to Flash
-int UltraLowLight::ULL_DARK_ISO_THRESHOLD = 1100;
-int UltraLowLight::ULL_DARK_EXPTIME_THRESHOLD = 7000;
 
 /**
  * \struct MorphoULL
@@ -74,7 +70,7 @@ UltraLowLight::UltraLowLight() : mMorphoCtrl(NULL),
 UltraLowLight::~UltraLowLight()
 {
     LOG1("@%s :state=%d", __FUNCTION__, mState);
-    if (mState > ULL_STATE_UNINIT)
+    if (getState() > ULL_STATE_UNINIT)
         deinitMorphoLib();
 
     if (mMorphoCtrl != NULL) {
@@ -110,7 +106,7 @@ status_t UltraLowLight::init( int w, int h, int aPreset)
     if (mUserMode == ULL_OFF)
         return INVALID_OPERATION;
 
-    switch (mState) {
+    switch (getState()) {
     case ULL_STATE_UNINIT:
     case ULL_STATE_INIT:
         startTime= systemTime();
@@ -135,7 +131,7 @@ status_t UltraLowLight::init( int w, int h, int aPreset)
     }
 
     if (ret ==  NO_ERROR)
-        mState = ULL_STATE_INIT;
+        setState(ULL_STATE_INIT);
     return ret;
 
 }
@@ -145,7 +141,7 @@ status_t UltraLowLight::deinit()
     LOG1("@%s ", __FUNCTION__);
     status_t ret = NO_ERROR;
 
-    switch (mState) {
+    switch (getState()) {
     case ULL_STATE_UNINIT:
         // do nothing
         break;
@@ -183,7 +179,7 @@ status_t UltraLowLight::addInputFrame(AtomBuffer *snap, AtomBuffer *pv)
     status_t ret = NO_ERROR;
     unsigned int maxBufs = MAX_INPUT_BUFFERS;
 
-    if (mState != ULL_STATE_INIT)
+    if (getState() != ULL_STATE_INIT)
         return INVALID_OPERATION;
 
     if (mInputBuffers.size() >= maxBufs)
@@ -206,7 +202,7 @@ status_t UltraLowLight::addInputFrame(AtomBuffer *snap, AtomBuffer *pv)
     if (mInputBuffers.size() == maxBufs) {
         ret = configureMorphoLib();
         if (ret == NO_ERROR)
-            mState = ULL_STATE_READY;
+            setState(ULL_STATE_READY);
     }
 
     return ret;
@@ -240,7 +236,7 @@ status_t UltraLowLight::getOuputResult(AtomBuffer *snap, AtomBuffer * pv,
     if ( (snap == NULL) || (pv == NULL) || (metadata == NULL))
         return BAD_VALUE;
 
-    if (mState != ULL_STATE_DONE)
+    if (getState() != ULL_STATE_DONE)
         return INVALID_OPERATION;
 
     *snap = mOutputBuffer;
@@ -248,7 +244,31 @@ status_t UltraLowLight::getOuputResult(AtomBuffer *snap, AtomBuffer * pv,
     *metadata = mSnapMetadata;
     *ULLid = mULLCounter;
     mULLCounter++;
-    mState = ULL_STATE_INIT;
+    setState(ULL_STATE_INIT);
+
+    return NO_ERROR;
+}
+
+/**
+ * retrieves the input buffers after processing has completed
+ * The input buffers are then returned to the pool of buffers
+ */
+status_t UltraLowLight::getInputBuffers(Vector<AtomBuffer> *inputs)
+{
+    LOG1("@%s: size = %d", __FUNCTION__, mInputBuffers.size());
+
+    if (inputs == NULL) {
+        LOGE("Invalid parameter");
+        return BAD_VALUE;
+    }
+
+    Vector<AtomBuffer>::iterator it = mInputBuffers.begin();
+
+    for (;it != mInputBuffers.end(); it++) {
+        inputs->push(*it);
+    }
+
+    mInputBuffers.clear();
 
     return NO_ERROR;
 }
@@ -259,9 +279,43 @@ bool UltraLowLight::isActive()
     return mUserMode==ULL_OFF? false: true;
 }
 
+bool UltraLowLight::isProcessing()
+{
+    Mutex::Autolock lock(mStateMutex);
+    LOG1("@%s:%s",__FUNCTION__, mState==ULL_STATE_PROCESSING? "true":"false");
+    return mState==ULL_STATE_PROCESSING? true: false;
+}
+/**
+ * Cancels an ongoing ULL processing
+ * The cancellation is not synchronous. The processing cannot be stopped
+ * this method just notifies the ULL object that there is no need to compress
+ * the resulting image once the processing completes.
+ *
+ * If this method is called in any other state than ULL_STATE_PROCESSING
+ * the method is ignored
+ *
+ */
+status_t UltraLowLight::cancelProcess()
+{
+   LOG1("@%s", __FUNCTION__);
+   Mutex::Autolock lock(mStateMutex);
+
+   if (mState != ULL_STATE_PROCESSING) {
+       LOGW("trying to cancel ULL when ULL is not in progress, ignoring request");
+       return INVALID_OPERATION;
+   }
+
+   mState = ULL_STATE_CANCELING;
+   return NO_ERROR;
+}
+
 bool UltraLowLight::trigger()
 {
-    Mutex::Autolock lock(mTrigerMutex);
+    Mutex::Autolock lock(mStateMutex);
+    // ULL is ready to start a capture in one of these 2 states
+    if ( (mState != ULL_STATE_INIT) &&
+         (mState != ULL_STATE_UNINIT))
+        return false;
 
     if (mUserMode == ULL_ON)
         return true;
@@ -274,11 +328,11 @@ status_t UltraLowLight::process()
     LOG1("@%s", __FUNCTION__);
     status_t ret = NO_ERROR;
 
-    if (mState != ULL_STATE_READY)
+    if (getState() != ULL_STATE_READY)
         return INVALID_OPERATION;
 
     nsecs_t startTime = systemTime();
-    mState = ULL_STATE_PROCESSING;
+    setState(ULL_STATE_PROCESSING);
     int i;
 
     /* Initialize the morpho specific input buffer structures */
@@ -342,9 +396,14 @@ status_t UltraLowLight::process()
        LOGW("Error closing the library");
 
 processComplete:
-    mOutputBuffer = mInputBuffers[0];
-    mState = ULL_STATE_DONE;
-    mInputBuffers.clear();
+
+    if (getState() == ULL_STATE_PROCESSING) {
+        setState(ULL_STATE_DONE);
+        mOutputBuffer = mInputBuffers[0];
+        mInputBuffers.removeAt(0);
+    } else {
+        LOGW("ULL was canceled during processing state = %d",getState());
+    }
     LOG1("ULL Processing completed (ret=%d) in %u ms", ret, (unsigned)((systemTime() - startTime) / 1000000))
     return ret;
 }
@@ -391,8 +450,8 @@ status_t UltraLowLight::initMorphoLib(int w, int h, int idx)
     mCurrentPreset = idx;
     mWidth = w;
     mHeight = h;
-
-    mState = ULL_STATE_INIT;
+    mInputBuffers.clear();
+    setState(ULL_STATE_INIT);
 
 bail:
     return ret;
@@ -407,7 +466,7 @@ void UltraLowLight::deinitMorphoLib()
 {
     LOG1("@%s ", __FUNCTION__);
 
-    mState = ULL_STATE_UNINIT;
+    setState(ULL_STATE_UNINIT);
     mWidth = 0;
     mHeight = 0;
     mCurrentPreset = 0;
@@ -495,11 +554,7 @@ void UltraLowLight::AtomToMorphoBuffer(const AtomBuffer *atom, void* m)
 {
     unsigned int Ysize = atom->width * atom->height;
     morpho_ImageData* morpho = (morpho_ImageData*)m;
-    void* p;
-    if (atom->shared)
-        p = (void *) *((char **)atom->buff->data);
-    else
-        p = atom->buff->data;
+    void* p = atom->dataPtr;
 
     morpho->width = atom->width;
     morpho->height = atom->height;
@@ -514,35 +569,59 @@ void UltraLowLight::AtomToMorphoBuffer(const AtomBuffer *atom, void* m)
  *
  *  This method is called from the 3A Thread for each 3A iteration.
  *  The status of the trigger can be queried using the method trigger()
- *  \sa trigger()
  *
  *  \param expInfo [in] current exposure settings
- *  \param iso [in] current iso value in use by the sensor
+ *  \param flash [in] true if flash should be used
  *  \return true if the state of the trigger changed
  *  \return false if the trigger state remained the same.
  */
-bool UltraLowLight::updateTrigger(SensorAeConfig &expInfo, int iso)
+bool UltraLowLight::updateTrigger(SensorAeConfig &expInfo, bool flash)
 {
     LOG2("%s", __FUNCTION__);
-    Mutex::Autolock lock(mTrigerMutex);
-    int expTime = expInfo.expTime;
+    Mutex::Autolock lock(mStateMutex);
+    int apexSv = expInfo.aecApexSv;
     bool change = false;
 
-    if ((iso >= ULL_DARK_ISO_THRESHOLD)
-     || (iso <= ULL_BRIGHT_ISO_THRESHOLD)){
-
+    if (flash) {
         change = (mTrigger? true:false);
         mTrigger = false;
 
     } else {
-        change = (mTrigger? false:true);
-        mTrigger = true;
+
+        if (apexSv > ULL_ACTIVATION_APEX_SV_THRESHOLD) {
+            change = (mTrigger? false:true);
+            mTrigger = true;
+        } else {
+            change = (mTrigger? true:false);
+            mTrigger = false;
+        }
     }
 
     if (change)
-        LOG1("trigger %s, iso %d, expTime %d",mTrigger?"true":"false", iso, expTime);
+        LOG1("trigger %s, flash %d, apexSv %d",mTrigger?"true":"false", flash, apexSv);
 
     return change;
 }
 
+/**
+ * Changes the state of the ULL algorithm in a thread safe way
+ * This is an internal method to be used by other methods that do not need to
+ * take the lock all the time.
+ */
+void UltraLowLight::setState(enum State aState)
+{
+    Mutex::Autolock lock(mStateMutex);
+    mState = aState;
+}
+
+/**
+ * Queries the state of the ULL algorithm in a thread safe way
+ * This is an internal method to be used by other methods that do not need to
+ * take the lock all the time.
+ */
+UltraLowLight::State UltraLowLight::getState()
+{
+    Mutex::Autolock lock(mStateMutex);
+    return mState;
+}
 } //namespace android

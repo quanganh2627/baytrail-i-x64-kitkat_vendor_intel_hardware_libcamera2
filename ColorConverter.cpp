@@ -132,42 +132,80 @@ void trimConvertNV12ToRGB565(int width, int height, int srcStride, void *src, vo
 }
 
 // covert YV12 (Y plane, V plane, U plane) to NV21 (Y plane, interlaced VU bytes)
-void align16ConvertYV12ToNV21(int width, int height, int srcStride, void *src, void *dst)
+void convertYV12ToNV21(int width, int height, int srcStride, int dstStride, void *src, void *dst)
 {
-    int yStride = ALIGN16(width);
-    size_t ySize = yStride * height;
-    int cStride = ALIGN16(yStride/2);
-    size_t cSize = cStride * height/2;
-
-    unsigned char *srcPtr = (unsigned char *) src;
-    unsigned char *dstPtr = (unsigned char *) dst;
-    unsigned char *srcPtrV = (unsigned char *) src + ySize;
-    unsigned char *srcPtrU = (unsigned char *) src + ySize + cSize;
+    const int cStride = srcStride>>1;
+    const int vuStride = dstStride;
+    const int hhalf = height>>1;
+    const int whalf = width>>1;
 
     // copy the entire Y plane
-    if (srcStride == yStride) {
-        memcpy(dstPtr, srcPtr, ySize);
-        dstPtr += ySize;
-    } else if (srcStride > width) {
+    unsigned char *srcPtr = (unsigned char *)src;
+    unsigned char *dstPtr = (unsigned char *)dst;
+    if (srcStride == dstStride) {
+        memcpy(dstPtr, srcPtr, dstStride*height);
+    } else {
         for (int i = 0; i < height; i++) {
             memcpy(dstPtr, srcPtr, width);
             srcPtr += srcStride;
-            dstPtr += yStride;
+            dstPtr += dstStride;
         }
-    } else {
-        LOGE("bad src stride value");
-        return;
     }
 
     // interlace the VU data
-    for ( int i = 0; i < height / 2; ++i) {
-        for ( int j = 0; j < cStride; ++j) {
-            dstPtr[j *2] = srcPtrV[j];
-            dstPtr[j *2 +1] = srcPtrU[j];
+    unsigned char *srcPtrV = (unsigned char *)src + height*srcStride;
+    unsigned char *srcPtrU = srcPtrV + cStride*hhalf;
+    dstPtr = (unsigned char *)dst + dstStride*height;
+    for (int i = 0; i < hhalf; ++i) {
+        unsigned char *pDstVU = dstPtr;
+        unsigned char *pSrcV = srcPtrV;
+        unsigned char *pSrcU = srcPtrU;
+        for (int j = 0; j < whalf; ++j) {
+            *pDstVU ++ = *pSrcV ++;
+            *pDstVU ++ = *pSrcU ++;
         }
-        dstPtr += yStride;
+        dstPtr += vuStride;
         srcPtrV += cStride;
         srcPtrU += cStride;
+    }
+}
+
+// copy YV12 to YV12 (Y plane, V plan, U plan) in case of different stride length
+void copyYV12ToYV12(int width, int height, int srcStride, int dstStride, void *src, void *dst)
+{
+    // copy the entire Y plane
+    if (srcStride == dstStride) {
+        memcpy(dst, src, dstStride * height);
+    } else {
+        unsigned char *srcPtrY = (unsigned char *)src;
+        unsigned char *dstPtrY = (unsigned char *)dst;
+        for (int i = 0; i < height; i ++) {
+            memcpy(dstPtrY, srcPtrY, width);
+            srcPtrY += srcStride;
+            dstPtrY += dstStride;
+        }
+    }
+
+    // copy VU plane
+    const int scStride = srcStride >> 1;
+    const int dcStride = ALIGN16(dstStride >> 1); // Android CTS required: U/V plane needs 16 bytes aligned!
+    if (dcStride == scStride) {
+        unsigned char *srcPtrVU = (unsigned char *)src + height * srcStride;
+        unsigned char *dstPtrVU = (unsigned char *)dst + height * dstStride;
+        memcpy(dstPtrVU, srcPtrVU, height * dcStride);
+    } else {
+        const int wHalf = width >> 1;
+        const int hHalf = height >> 1;
+        unsigned char *srcPtrV = (unsigned char *)src + height * srcStride;
+        unsigned char *srcPtrU = srcPtrV + scStride * hHalf;
+        unsigned char *dstPtrV = (unsigned char *)dst + height * dstStride;
+        unsigned char *dstPtrU = dstPtrV + dcStride * hHalf;
+        for (int i = 0; i < hHalf; i ++) {
+            memcpy(dstPtrU, srcPtrU, wHalf);
+            memcpy(dstPtrV, srcPtrV, wHalf);
+            dstPtrU += dcStride, srcPtrU += scStride;
+            dstPtrV += dcStride, srcPtrV += scStride;
+        }
     }
 }
 
@@ -282,8 +320,8 @@ void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void
     }
 }
 
-// covert NV12 (Y plane, interlaced UV bytes) to YU12 (Y plane, V plane, U plane)
-void align16ConvertNV12ToYU12(int width, int height, int srcStride, void *src, void *dst)
+// covert NV12 (Y plane, interlaced UV bytes) to YV12 (Y plane, V plane, U plane)
+void align16ConvertNV12ToYV12(int width, int height, int srcStride, void *src, void *dst)
 {
     int yStride = ALIGN16(width);
     size_t ySize = yStride * height;
@@ -349,10 +387,66 @@ void NV12ToP411(int width, int height, void *src, void *dst)
     }
 }
 
+// Re-pad YUV420 format image, the format can be YV12, YU12 or YUV420 planar.
+// If buffer size: (height*dstStride*1.5) > (height*srcStride*1.5), src and dst
+// buffer start addresses are same, the re-padding can be done inplace.
+void repadYUV420(int width, int height, int srcStride, int dstStride, void *src, void *dst)
+{
+    unsigned char *dptr;
+    unsigned char *sptr;
+    void * (*myCopy)(void *dst, const void *src, size_t n);
+
+    const int whalf = width >> 1;
+    const int hhalf = height >> 1;
+    const int scStride = srcStride >> 1;
+    const int dcStride = dstStride >> 1;
+    const int sySize = height * srcStride;
+    const int dySize = height * dstStride;
+    const int scSize = hhalf * scStride;
+    const int dcSize = hhalf * dcStride;
+
+    // directly copy, if (srcStride == dstStride)
+    if (srcStride == dstStride) {
+        memcpy(dst, src, dySize + 2*dcSize);
+        return;
+    }
+
+    // copy V(YV12 case) or U(YU12 case) plane line by line
+    sptr = (unsigned char *)src + sySize + 2*scSize - scStride;
+    dptr = (unsigned char *)dst + dySize + 2*dcSize - dcStride;
+
+    // try to avoid overlapped memcpy()
+    myCopy = (abs(sptr -dptr) > dstStride) ? memcpy : memmove;
+
+    for (int i = 0; i < hhalf; i ++) {
+        myCopy(dptr, sptr, whalf);
+        sptr -= scStride;
+        dptr -= dcStride;
+    }
+
+    // copy  V(YV12 case) or U(YU12 case) U/V plane line by line
+    sptr = (unsigned char *)src + sySize + scSize - scStride;
+    dptr = (unsigned char *)dst + dySize + dcSize - dcStride;
+    for (int i = 0; i < hhalf; i ++) {
+        myCopy(dptr, sptr, whalf);
+        sptr -= scStride;
+        dptr -= dcStride;
+    }
+
+    // copy Y plane line by line
+    sptr = (unsigned char *)src + sySize - srcStride;
+    dptr = (unsigned char *)dst + dySize - dstStride;
+    for (int i = 0; i < height; i ++) {
+        myCopy(dptr, sptr, width);
+        sptr -= srcStride;
+        dptr -= dstStride;
+    }
+}
+
 const char *cameraParametersFormat(int v4l2Format)
 {
     switch (v4l2Format) {
-    case V4L2_PIX_FMT_YUV420:
+    case V4L2_PIX_FMT_YVU420:
         return CameraParameters::PIXEL_FORMAT_YUV420P;
     case V4L2_PIX_FMT_NV21:
         return CameraParameters::PIXEL_FORMAT_YUV420SP;
@@ -368,7 +462,7 @@ const char *cameraParametersFormat(int v4l2Format)
 
 int V4L2Format(const char *cameraParamsFormat)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s cameraParamsFormat=%s", __FUNCTION__, cameraParamsFormat);
     if (!cameraParamsFormat) {
         LOGE("null cameraParamsFormat");
         return -1;
@@ -380,7 +474,7 @@ int V4L2Format(const char *cameraParamsFormat)
 
     len = strlen(CameraParameters::PIXEL_FORMAT_YUV420P);
     if (strncmp(cameraParamsFormat, CameraParameters::PIXEL_FORMAT_YUV420P, len) == 0)
-        return V4L2_PIX_FMT_YUV420;
+        return V4L2_PIX_FMT_YVU420;
 
     len = strlen(CameraParameters::PIXEL_FORMAT_RGB565);
     if (strncmp(cameraParamsFormat, CameraParameters::PIXEL_FORMAT_RGB565, len) == 0)

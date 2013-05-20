@@ -265,6 +265,9 @@ public:
     virtual int init3aStatDump(const char * str_mode);
     virtual int deinit3aStatDump(void);
 
+    // Bracketing
+    virtual status_t initAfBracketing(int stops,  AFBracketingMode mode) { return INVALID_OPERATION; }
+
 // private members
 private:
 

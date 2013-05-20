@@ -25,12 +25,16 @@ void YUV420ToRGB565(int width, int height, void *src, void *dst);
 
 void trimConvertNV12ToRGB565(int width, int height, int srcStride, void *src, void *dst);
 
-void align16ConvertYV12ToNV21(int width, int height, int srcStride, void *src, void *dst);
+void convertYV12ToNV21(int width, int height, int srcStride, int dstStride, void *src, void *dst);
+void copyYV12ToYV12(int width, int height, int srcStride, int dstStride, void *src, void *dst);
+
 void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void *dst);
 
-void align16ConvertNV12ToYU12(int width, int height, int srcStride, void *src, void *dst);
+void align16ConvertNV12ToYV12(int width, int height, int srcStride, void *src, void *dst);
 
 void NV12ToP411(int width, int height, void *src, void *dst);
+
+void repadYUV420(int width, int height, int srcStride, int dstStride, void *src, void *dst);
 
 const char *cameraParametersFormat(int v4l2Format);
 int V4L2Format(const char *cameraParamsFormat);

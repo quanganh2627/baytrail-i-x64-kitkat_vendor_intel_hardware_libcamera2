@@ -123,12 +123,10 @@ public:
     void getDefaultParameters(CameraParameters *params);
     bool isWindowConfigured();
     status_t preview(AtomBuffer *buff);
-    status_t postview(AtomBuffer *buff, bool hidePreview = false);
+    status_t postview(AtomBuffer *buff, bool hidePreview = false, bool synchronous = false);
     status_t setPreviewWindow(struct preview_stream_ops *window);
     status_t setPreviewConfig(int preview_width, int preview_height, int preview_stride,
                               int preview_format, bool shared_mode = true, int buffer_count = -1);
-    status_t setFramerate(int fps);
-    status_t setSensorFramerate(float fps);
     status_t fetchPreviewBuffers(Vector<AtomBuffer> &pvBufs);
     status_t returnPreviewBuffers();
     status_t flushBuffers();
@@ -150,8 +148,6 @@ private:
         MESSAGE_ID_FLUSH,
         MESSAGE_ID_WINDOW_QUERY,
         MESSAGE_ID_SET_CALLBACK,
-        MESSAGE_ID_SET_FRAMERATE,
-        MESSAGE_ID_SET_SENSOR_FRAMERATE,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -161,17 +157,10 @@ private:
     // message data structures
     //
 
-    struct MessageSetFramerate {
-        int fps;
-    };
-
-    struct MessageSetSensorFramerate {
-        float fps;
-    };
-
     struct MessagePreview {
         AtomBuffer buff;
         bool hide;
+        bool synchronous;
     };
 
     struct MessageSetPreviewWindow {
@@ -206,12 +195,6 @@ private:
 
         // MESSAGE_ID_SET_CALLBACK
         MessageSetCallback setCallback;
-
-        // MESSAGE_ID_SET_FRAMERATE
-        MessageSetFramerate framerate;
-
-        // MESSAGE_ID_SET_SENSOR_FRAMERATE
-        MessageSetSensorFramerate sensorFramerate;
 
     };
 
@@ -251,8 +234,6 @@ private:
     status_t handleFetchPreviewBuffers(void);
     status_t handleReturnPreviewBuffers(void);
     status_t handlePostview(MessagePreview *msg);
-    status_t handleSetFramerate(MessageSetFramerate *msg);
-    status_t handleSetSensorFramerate(MessageSetSensorFramerate *msg);
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -268,6 +249,7 @@ private:
     status_t allocateGfxPreviewBuffers(int numberOfBuffers);
     status_t freeGfxPreviewBuffers();
     int getGfxBufferStride();
+    void padPreviewBuffer(GfxAtomBuffer* &gfx, MessagePreview* &msg);
     GfxAtomBuffer* dequeueFromWindow();
     void copyPreviewBuffer(AtomBuffer* src, AtomBuffer* dst);
     void getEffectiveDimensions(int *w, int *h);
@@ -291,8 +273,6 @@ private:
     bool mThreadRunning;
     PreviewState mState;
     mutable Mutex mStateMutex;
-    int mSetFPS;
-    float mSensorFPS;
     typedef key_value_pair_t<ICallbackPreview::CallbackType, ICallbackPreview*> callback_pair_t;
     typedef Vector<callback_pair_t> CallbackVector;
     CallbackVector mInputBufferCb;
@@ -317,6 +297,8 @@ private:
     int mPreviewHeight;
     int mPreviewStride;
     int mPreviewFormat;
+    int mGfxStride;  /*!< Gfx buffer stride, due to hardware limitation Gfx
+                          and ISP buffer stride alignment may be mismatched. */
 
     bool mOverlayEnabled; /*!< */
     bool mSharedMode; /*!< true if gfx buffers are shared with AtomISP for 0-copy */

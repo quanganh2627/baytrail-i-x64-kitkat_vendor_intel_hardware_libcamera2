@@ -91,12 +91,18 @@ namespace android {
     // burst capture
     const char IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH[] = "burst-length-values";
     const char IntelCameraParameters::KEY_BURST_LENGTH[] = "burst-length";
-    const char IntelCameraParameters::KEY_SUPPORTED_BURST_FPS[] = "burst-fps-values";
-    const char IntelCameraParameters::KEY_BURST_FPS[] = "burst-fps";
+    const char IntelCameraParameters::KEY_SUPPORTED_BURST_FPS[] = "burst-fps-values"; // TODO: old API, it will be deleted in the future.
+    const char IntelCameraParameters::KEY_BURST_FPS[] = "burst-fps"; // TODO: old API, it will be deleted in the future.
+    const char IntelCameraParameters::KEY_SUPPORTED_BURST_SPEED[] = "burst-speed-values";
+    const char IntelCameraParameters::KEY_BURST_SPEED[] = "burst-speed";
     const char IntelCameraParameters::KEY_SUPPORTED_BURST_CONTINUOUS[] = "burst-continuous-values";
     const char IntelCameraParameters::KEY_BURST_CONTINUOUS[] = "burst-continuous";
     const char IntelCameraParameters::KEY_BURST_START_INDEX[] = "burst-start-index";
     const char IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX[] = "burst-start-index-values";
+    //values for burst speed
+    const char IntelCameraParameters::BURST_SPEED_FAST[] = "fast";
+    const char IntelCameraParameters::BURST_SPEED_MEDIUM[] = "medium";
+    const char IntelCameraParameters::BURST_SPEED_LOW[] = "low";
 
     // preview update mode
     const char IntelCameraParameters::KEY_SUPPORTED_PREVIEW_UPDATE_MODE[] = "preview-update-mode-values";
@@ -203,10 +209,10 @@ namespace android {
     const char IntelCameraParameters::KEY_EXIF_SOFTWARE[] = "exif-software-name";
 
     // V4L2 specific scene modes
-    const char IntelCameraParameters::SCENE_MODE_BEACH_SNOW[] = "beach-snow";
-    const char IntelCameraParameters::SCENE_MODE_DAWN_DUSK[] = "dawn-dusk";
-    const char IntelCameraParameters::SCENE_MODE_FALL_COLORS[] = "fall-colors";
-    const char IntelCameraParameters::SCENE_MODE_BACKLIGHT[] = " backlight";
+    const char IntelCameraParameters::SCENE_MODE_BEACH_SNOW[] = "beach";
+    const char IntelCameraParameters::SCENE_MODE_DAWN_DUSK[] = "dusk-dawn";
+    const char IntelCameraParameters::SCENE_MODE_FALL_COLORS[] = "fall-color";
+    const char IntelCameraParameters::SCENE_MODE_BACKLIGHT[] = "back-light";
 
     // contrast
     const char IntelCameraParameters::KEY_CONTRAST_MODE[] = "contrast-mode";
@@ -228,6 +234,18 @@ namespace android {
     const char IntelCameraParameters::SHARPNESS_MODE_NORMAL[] = "normal";
     const char IntelCameraParameters::SHARPNESS_MODE_SOFT[] = "soft";
     const char IntelCameraParameters::SHARPNESS_MODE_HARD[] = "hard";
+
+    // save mirrored
+    const char IntelCameraParameters::KEY_SAVE_MIRRORED[] = "save-mirrored";
+    const char IntelCameraParameters::KEY_SUPPORTED_SAVE_MIRRORED[] = "save-mirrored-values";
+
+    // GPS extension
+    const char IntelCameraParameters::KEY_GPS_IMG_DIRECTION[] = "gps-img-direction";
+    const char IntelCameraParameters::KEY_GPS_IMG_DIRECTION_REF[] = "gps-img-direction-ref";
+    const char IntelCameraParameters::KEY_SUPPORTED_GPS_IMG_DIRECTION_REF[] = "gps-img-direction-ref-values";
+    // possible value for the KEY_GPS_IMG_DIRECTION_REF
+    const char IntelCameraParameters::GPS_IMG_DIRECTION_REF_TRUE[] = "true-direction";
+    const char IntelCameraParameters::GPS_IMG_DIRECTION_REF_MAGNETIC[] = "magnetic-direction";
 
     void IntelCameraParameters::getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params)
     {

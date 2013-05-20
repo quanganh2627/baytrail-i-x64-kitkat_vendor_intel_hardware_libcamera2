@@ -198,29 +198,35 @@ void Callbacks::sceneDetected(int sceneMode, bool sceneHdr)
 
 void Callbacks::allocateMemory(AtomBuffer *buff, int size, bool cached)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s: size %d", __FUNCTION__, size);
     buff->buff = NULL;
     if (mGetMemoryCB != NULL) {
-      /*
-       * Because using uncached memory saves more power for video encoder
-       * during video recording, so the function provides the API to allocate
-       * cached/uncached memory, the parameter "fd" in the function "mGetMemoryCB()"
-       * will be used for that.
-       * "-1" means "cached memory"
-       * "-2" means "uncached memory"
-       */
-      if(cached)
-        buff->buff = mGetMemoryCB(-1, size, 1, mUserToken);
-      else
-        buff->buff = mGetMemoryCB(-2, size, 1, mUserToken);
+        /*
+         * Because using uncached memory saves more power for video encoder
+         * during video recording, so the function provides the API to allocate
+         * cached/uncached memory, the parameter "fd" in the function "mGetMemoryCB()"
+         * will be used for that.
+         * "-1" means "cached memory"
+         * "-2" means "uncached memory"
+         */
+        if(cached)
+            buff->buff = mGetMemoryCB(-1, size, 1, mUserToken);
+        else
+            buff->buff = mGetMemoryCB(-2, size, 1, mUserToken);
 
-      if (buff->buff != NULL) {
-          buff->dataPtr = buff->buff->data;
-          buff->size = buff->buff->size;
-      } else {
-          buff->dataPtr = NULL;
-          buff->size = 0;
-      }
+        if (buff->buff != NULL) {
+            buff->dataPtr = buff->buff->data;
+            buff->size = buff->buff->size;
+        } else {
+            LOGE("Memory allocation failed (get memory callback return null)");
+            buff->dataPtr = NULL;
+            buff->size = 0;
+        }
+    } else {
+        LOGE("Memory allocation failed (missing get memory callback)");
+        buff->buff = NULL;
+        buff->dataPtr = NULL;
+        buff->size = 0;
     }
 }
 

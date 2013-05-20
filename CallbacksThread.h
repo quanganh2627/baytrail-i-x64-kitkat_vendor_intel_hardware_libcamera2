@@ -33,6 +33,7 @@ class ICallbackPicture {
 public:
     ICallbackPicture() {}
     virtual ~ICallbackPicture() {}
+    virtual void encodingDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf) = 0;
     virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf) = 0;
 };
 
@@ -127,7 +128,7 @@ private:
 
     struct MessageVideo {
         AtomBuffer  frame;
-        nsecs_t     timestamp;
+        nsecs_t timestamp;
     };
 
     struct MessageFaces {

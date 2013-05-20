@@ -166,10 +166,16 @@ status_t PanoramaThread::handleMessageStopPanorama(const MessageStopPanorama &st
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     if (mContext) {
-        if (mPanoramaTotalCount > 0)
+        if (mPanoramaTotalCount > 0 && mPanoramaStitchThread != NULL)
             cancelStitch();
 
         ia_panorama_uninit(mContext);
+
+        mPanoramaTotalCount = 0;
+        mCurrentMetadata.direction = 0;
+        mCurrentMetadata.motion_blur = false;
+        mCurrentMetadata.horizontal_displacement = 0;
+        mCurrentMetadata.vertical_displacement = 0;
 
         mContext = NULL;
     }
@@ -529,15 +535,9 @@ status_t PanoramaThread::handleStitch(const MessageStitch &stitch)
     metadata.finalization_started = (mPanoramaTotalCount == mPanoramaMaxSnapshotCount);
 
     // space for the metadata is reserved in the beginning of the buffer, copy it there
-    memcpy(mPostviewBuf.buff->data, &metadata, sizeof(camera_panorama_metadata));
+    memcpy(mPostviewBuf.dataPtr, &metadata, sizeof(camera_panorama_metadata));
     // copy PV image
-    unsigned char *src = NULL;
-    if (stitch.pv.shared) {
-        src = (unsigned char *) *((char **)stitch.pv.buff->data);
-    } else {
-        src = (unsigned char *) stitch.pv.buff->data;
-    }
-    memcpy((char *)mPostviewBuf.buff->data + sizeof(camera_panorama_metadata), src, stitch.pv.size);
+    memcpy((char *)mPostviewBuf.dataPtr + sizeof(camera_panorama_metadata), stitch.pv.dataPtr, stitch.pv.size);
 
     // set rest of PV fields
     mPostviewBuf.width = stitch.pv.width;
@@ -658,14 +658,7 @@ status_t PanoramaThread::PanoramaStitchThread::stitch(ia_panorama_state* mContex
         abort();
     }
 
-    unsigned char *src = NULL;
-    if (frame.shared) {
-        src = (unsigned char *) *((char **)frame.buff->data);
-    } else {
-        src = (unsigned char *) frame.buff->data;
-    }
-
-    memcpy(copy.buff->data, src, size);
+    memcpy(copy.dataPtr, frame.dataPtr, size);
 
     Message msg;
     msg.id = MESSAGE_ID_STITCH;
@@ -682,7 +675,7 @@ status_t PanoramaThread::PanoramaStitchThread::handleMessageStitch(MessageStitch
     int stitchId = stitch.stitchId;
 
     ia_frame iaFrame;
-    iaFrame.data = stitch.img.buff->data;
+    iaFrame.data = stitch.img.dataPtr;
     iaFrame.size = stitch.img.size;
     iaFrame.width = stitch.img.width;
     iaFrame.height = stitch.img.height;

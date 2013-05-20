@@ -249,6 +249,8 @@ exif_status ExifCreater::makeExif (void *exifOut,
             tmp -= 1;
         if ((exifInfo->enableGps & EXIF_GPS_PROCMETHOD) == 0)
             tmp -= 1;
+        if ((exifInfo->enableGps & EXIF_GPS_IMG_DIRECTION) == 0)
+            tmp -= 2;
 
         memcpy(pCur, &tmp, NUM_SIZE);
         pCur += NUM_SIZE;
@@ -281,6 +283,13 @@ exif_status ExifCreater::makeExif (void *exifOut,
         if (exifInfo->enableGps & EXIF_GPS_TIMESTAMP) {
             writeExifIfd(&pCur, EXIF_TAG_GPS_TIMESTAMP, EXIF_TYPE_RATIONAL,
                          3, exifInfo->gps_timestamp, &LongerTagOffset, pIfdStart);
+        }
+
+        if (exifInfo->enableGps & EXIF_GPS_IMG_DIRECTION) {
+            writeExifIfd(&pCur, EXIF_TAG_GPS_IMG_DIRECTION_REF, EXIF_TYPE_ASCII,
+                         2, exifInfo->gps_img_direction_ref);
+            writeExifIfd(&pCur, EXIF_TAG_GPS_IMG_DIRECTION, EXIF_TYPE_RATIONAL,
+                         1, &exifInfo->gps_img_direction, &LongerTagOffset, pIfdStart);
         }
 
         if (exifInfo->enableGps & EXIF_GPS_PROCMETHOD) {
@@ -325,7 +334,10 @@ exif_status ExifCreater::makeExif (void *exifOut,
 
     // calc and fill the exif total size, 2 is length; 6 is ExifIdentifierCode
     *size = 2 + 6 + LongerTagOffset;
-    unsigned char size_mm[2] = {(*size >> 8) & 0xFF, *size & 0xFF};
+    unsigned char size_mm[2] = {
+        static_cast<unsigned char>((*size >> 8) & 0xFF),
+        static_cast<unsigned char>(*size & 0xFF) };
+
     memcpy(pApp1Start, size_mm, 2);
     *size += 2; // APP1 marker size
 

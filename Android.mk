@@ -102,6 +102,10 @@ LOCAL_SHARED_LIBRARIES := \
 	libcutils \
 	libbinder \
 	libjpeg \
+	libia_aiq \
+	libia_isp_1_5 \
+	libia_isp_2_2 \
+	libia_cmc_parser \
 	libandroid \
 	libui \
 	libia_mkn \
@@ -125,14 +129,6 @@ LOCAL_SHARED_LIBRARIES += \
 	libva-android
 endif
 
-ifeq ($(USE_CSS_2_0), true)
-LOCAL_SHARED_LIBRARIES += \
-    libia_aiq_2_0
-else
-LOCAL_SHARED_LIBRARIES += \
-    libia_aiq
-endif
-
 LOCAL_STATIC_LIBRARIES := \
 	libcameranvm \
 	libia_coordinate \
@@ -148,7 +144,7 @@ endif
 
 # enable R&D features only in R&D builds
 ifneq ($(filter userdebug eng tests, $(TARGET_BUILD_VARIANT)),)
-LOCAL_CFLAGS += -DLIBCAMERA_RD_FEATURES -Wunused-variable
+LOCAL_CFLAGS += -DLIBCAMERA_RD_FEATURES -Wunused-variable -Werror
 endif
 
 # The camera.<TARGET_DEVICE>.so will be built for each platform

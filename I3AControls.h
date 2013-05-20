@@ -137,6 +137,13 @@ enum FlickerMode
     CAM_AE_FLICKER_MODE_AUTO
 };
 
+enum AFBracketingMode
+{
+    CAM_AF_BRACKETING_MODE_SYMMETRIC,
+    CAM_AF_BRACKETING_MODE_TOWARDS_NEAR,
+    CAM_AF_BRACKETING_MODE_TOWARDS_FAR,
+};
+
 /**
  * I3AControls defines an interface for 3A controls.
  * For RAW cameras the 3A controls are handled in Intel 3A library,
@@ -183,6 +190,7 @@ public:
     virtual status_t getAfLensPosRange(ia_3a_af_lens_range *lens_range) = 0;
     virtual status_t getCurrentFocusPosition(int *pos) = 0;
     virtual status_t setManualFocusIncrement(int step) = 0;
+    virtual status_t initAfBracketing(int stops,  AFBracketingMode mode) = 0;
     virtual status_t updateManualFocus() = 0;
     virtual status_t applyEv(float bias) = 0;
     virtual status_t getExposureInfo(SensorAeConfig& sensorAeConfig) = 0;

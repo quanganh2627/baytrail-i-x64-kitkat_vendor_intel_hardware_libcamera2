@@ -33,7 +33,24 @@ JpegHwEncoder::JpegHwEncoder() :
     mMaxOutJpegBufSize(0)
 {
     LOG1("@%s", __FUNCTION__);
+    int display_num = 0;
+    int major_ver = 0;
+    int minor_ver = 0;
+
     mVaEncoderContext = new vaJpegContext();
+    if (mVaEncoderContext != NULL) {
+        VAStatus status;
+        mVaEncoderContext->mDpy = vaGetDisplay(&display_num);
+        status = vaInitialize(mVaEncoderContext->mDpy, &major_ver, &minor_ver);
+        if (status != VA_STATUS_SUCCESS) {
+            LOGE("Failed to initialize libVa!!");
+            delete mVaEncoderContext;
+            mVaEncoderContext = NULL;
+        }
+
+    } else {
+        LOGE("%s:Failed to create libva context", __FUNCTION__);
+    }
 
 }
 
@@ -42,7 +59,15 @@ JpegHwEncoder::~JpegHwEncoder()
     LOG1("@%s", __FUNCTION__);
     if(mHWInitialized)
         deInit();
+
     if(mVaEncoderContext != NULL) {
+        if (mVaEncoderContext->mDpy) {
+            VAStatus status;
+            status = vaTerminate(mVaEncoderContext->mDpy);
+        }
+        mVaEncoderContext->mDpy = 0;
+
+
         delete mVaEncoderContext;
         mVaEncoderContext = NULL;
     }
@@ -62,7 +87,6 @@ int JpegHwEncoder::init(void)
 {
     LOG1("@%s", __FUNCTION__);
     VAStatus status;
-    int display_num, major_ver, minor_ver;
     int num_entrypoints, i, maxNum;
     const char *driver = NULL;
     VAEntrypoint entrypoints[VAEntrypointMax];
@@ -76,9 +100,6 @@ int JpegHwEncoder::init(void)
     }
 
     va = mVaEncoderContext;
-    va->mDpy = vaGetDisplay(&display_num);
-    status = vaInitialize(va->mDpy, &major_ver, &minor_ver);
-    CHECK_STATUS(status, "vaInitialize", __LINE__)
 
     driver = vaQueryVendorString(va->mDpy);
     maxNum = vaMaxNumEntrypoints(va->mDpy);
@@ -101,7 +122,10 @@ int JpegHwEncoder::init(void)
     status = vaCreateConfig(va->mDpy, VAProfileJPEGBaseline, VAEntrypointEncPicture,
                             &attrib, 1, &va->mConfigId);
     if (status != VA_STATUS_SUCCESS) {
+
+       LOGE("Terminating libVA: we fail to create configuration %d",status);
        vaTerminate(va->mDpy);
+       va->mDpy = 0;
     }
     CHECK_STATUS(status, "vaCreateConfig", __LINE__)
 
@@ -127,11 +151,7 @@ int JpegHwEncoder::deInit()
         status = vaDestroyConfig(va->mDpy, va->mConfigId);
         CHECK_STATUS(status, "vaDestroyConfig", __LINE__)
     }
-    if (va->mDpy) {
-        status = vaTerminate(va->mDpy);
-        CHECK_STATUS(status, "vaTerminate", __LINE__)
-    }
-    va->mDpy = 0;
+
     va->mConfigId = 0;
     mHWInitialized = false;
     return 0;
@@ -380,7 +400,7 @@ int JpegHwEncoder::configSurfaces(AtomBuffer* inputBuffersArray, int inputBuffer
     CLIP(mVaInputSurfacesNum, MAX_BURST_BUFFERS, 1);
 
     for (int i = 0 ; i < mVaInputSurfacesNum; i++) {
-        mBuffers[i] = (unsigned int) inputBuffersArray[i].buff->data;
+        mBuffers[i] = (unsigned int) inputBuffersArray[i].dataPtr;
     }
 
     surfaceAttrib.buffers = mBuffers;
@@ -684,6 +704,7 @@ int JpegHwEncoder::resetContext(const JpegCompressor::InputBuffer &in, unsigned 
     CHECK_STATUS(status, "vaCreateContext", __LINE__)
 
     va->mBuff2SurfId.add((unsigned int)in.buf, *aSurface);
+    va->mSurfaceIds[0] = *aSurface;
 
     /* Allocate buffer for compressed  output. It is stored in mCodedBuf */
     status = vaCreateBuffer(va->mDpy, va->mContextId, VAEncCodedBufferType,

@@ -44,6 +44,8 @@
 #include "BracketManager.h"
 #include "I3AControls.h"
 #include "IAtomIspObserver.h"
+#include "PictureThread.h"
+#include "SensorThread.h"
 
 namespace android {
 
@@ -62,7 +64,8 @@ class ControlThread :
     public ICallbackPanorama,
     public IAtomIspObserver,
     public IPostCaptureProcessObserver,
-    public IBufferOwner {
+    public IBufferOwner,
+    public IOrientationListener {
 
 // constructor destructor
 public:
@@ -133,9 +136,13 @@ public:
     // Implementation of IPostCaptureProcessObserver interface
     void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status);
 
+    // IOrientationListener
+    void orientationChanged(int orientation);
+
 // callback methods
 private:
     virtual void previewBufferCallback(AtomBuffer *buff, ICallbackPreview::CallbackType t);
+    virtual void encodingDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void autoFocusDone();
     virtual void postProcCaptureTrigger();
@@ -169,6 +176,7 @@ private:
                                          // AtomISP.
         MESSAGE_ID_RELEASE,
         MESSAGE_ID_PREVIEW_STARTED,
+        MESSAGE_ID_ENCODING_DONE,
         MESSAGE_ID_PICTURE_DONE,
         MESSAGE_ID_SET_PARAMETERS,
         MESSAGE_ID_GET_PARAMETERS,
@@ -188,6 +196,7 @@ private:
 
         MESSAGE_ID_DEQUEUE_RECORDING,
         MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE,
+        MESSAGE_ID_SET_ORIENTATION,
 
         // timeout handler
         MESSAGE_ID_TIMEOUT,
@@ -264,11 +273,18 @@ private:
         status_t status;
     };
 
+    struct MessageOrientation {
+        int value;
+    };
+
     // union of all message data
     union MessageData {
 
         // MESSAGE_ID_RELEASE_RECORDING_FRAME
         MessageReleaseRecordingFrame releaseRecordingFrame;
+
+        // MESSAGE_ID_ENCODING_DONE
+        MessagePicture encodingDone;
 
         // MESSAGE_ID_PICTURE_DONE
         MessagePicture pictureDone;
@@ -302,6 +318,9 @@ private:
         // MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE
         MessagePostCaptureProcDone postCapture;
 
+        // MESSAGE_ID_SET_ORIENTATION
+        MessageOrientation  orientation;
+
         // MESSAGE_ID_EXIT
         MessageExit exit;
 
@@ -324,6 +343,16 @@ private:
         STATE_CAPTURE,
         STATE_CONTINUOUS_CAPTURE
     };
+
+    // capture substates
+    enum CaptureSubState {
+        STATE_CAPTURE_INIT,          // initial capture state
+        STATE_CAPTURE_STARTED,       // when takePicture is received
+        STATE_CAPTURE_ENCODING_DONE, // when encoding done callback is received
+        STATE_CAPTURE_PICTURE_DONE,  // when picture done callback is received
+        STATE_CAPTURE_IDLE           // when preview is started again
+    };
+
     /**
      * \enum ShootingMode
      * Describes the active shooting mode
@@ -382,7 +411,6 @@ private:
     status_t handleContinuousPreviewBackgrounding();
     status_t handleContinuousPreviewForegrounding();
     void flushContinuousPreviewToDisplay(nsecs_t snapshotTs);
-    int continuousBurstSkip(double targetFps) const;
     void continuousConfigApplyLimits(AtomISP::ContinuousCaptureConfig &cfg) const;
     status_t configureContinuousRingBuffer();
     status_t continuousStartStillCapture(bool useFlash);
@@ -401,6 +429,7 @@ private:
     status_t handleMessageCancelAutoFocus();
     status_t handleMessageReleaseRecordingFrame(MessageReleaseRecordingFrame *msg);
     status_t handleMessagePreviewStarted();
+    status_t handleMessageEncodingDone(MessagePicture *msg);
     status_t handleMessagePictureDone(MessagePicture *msg);
     status_t handleMessageSetParameters(MessageSetParameters *msg);
     status_t handleMessageGetParameters(MessageGetParameters *msg);
@@ -414,6 +443,7 @@ private:
     status_t handleMessageReturnBuffer(MessageReturnBuffer *msg);
     status_t handleMessageTimeout();
     status_t handleMessagePostCaptureProcessingDone(MessagePostCaptureProcDone *msg);
+    status_t handleMessageSetOrientation(MessageOrientation *msg);
 
     status_t startFaceDetection();
     status_t stopFaceDetection(bool wait=false);
@@ -440,6 +470,7 @@ private:
     status_t waitForAndExecuteMessage();
 
     AtomBuffer* findRecordingBuffer(void *findMe);
+    AtomBuffer* findBufferByData(AtomBuffer *buf,Vector<AtomBuffer> *aVector);
 
     // dequeue buffers from driver and deliver them
     status_t dequeuePreview();
@@ -452,6 +483,7 @@ private:
     status_t setSmartSceneParams();
 
     bool runPreFlashSequence();
+    void waitForAllocatedSnapshotBuffers();
 
     // parameters handling functions
     bool isParameterSet(const char* param);
@@ -461,6 +493,12 @@ private:
             const char *key);
     bool paramsHasPictureSizeChanged(const CameraParameters *oldParams,
             CameraParameters *newParams) const;
+
+    // Process flashmode based on shooting mode criteria etc.
+    // E.g., changes supported flash modes in burst and HDR modes.
+    // NOTE: Need to call processParamHDR() and processParamBurst() before
+    // this!
+    void preProcessFlashMode(CameraParameters *newParams);
 
     // These are parameters that can be set while the ISP is running (most params can be
     // set while the isp is stopped as well).
@@ -537,11 +575,15 @@ private:
 
     status_t processParamSlowMotionRate(const CameraParameters *oldParams,
         CameraParameters *newParams);
+
+    status_t processParamMirroring(const CameraParameters *oldParams,
+        CameraParameters *newParams);
+
     void processParamFileInject(CameraParameters *newParams);
 
     void convertAfWindows(CameraWindow* focusWindows, size_t winCount);
 
-    void selectFlashMode(CameraParameters *newParams, bool applySaved);
+    void selectFlashModeForScene(CameraParameters *newParams);
 
     bool selectPostviewSize(int &width, int &height);
 
@@ -561,13 +603,11 @@ private:
     status_t waitForCaptureStart();
 
     // HDR helper functions
-    status_t hdrInit(int size, int pvSize, int format,
-                     int width, int height,
-                     int pvWidth, int pvHeight);
+    status_t hdrInit(int pvSize, int pvWidth, int pvHeight);
     status_t hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* postviewBuffer);
     status_t hdrCompose();
     void     hdrRelease();
-    status_t allocateSnapshotBuffers();
+    status_t allocateSnapshotBuffers(bool videoMode);
     void     setExternalSnapshotBuffers(int format, int width, int heigth);
 
     // Capture Flow helpers
@@ -601,6 +641,9 @@ private:
 
     status_t createAtom3A();
 
+    void enableFocusCallbacks();
+    void disableFocusCallbacks();
+
 // inherited from Thread
 private:
     virtual bool threadLoop();
@@ -626,6 +669,7 @@ private:
 
     MessageQueue<Message, MessageId> mMessageQueue;
     State mState;
+    CaptureSubState mCaptureSubState;
     ShootingMode    mShootingMode;
     bool mThreadRunning;
     Callbacks *mCallbacks;
@@ -652,7 +696,6 @@ private:
     int  mBurstStart;           /*<! Relative offset at which burst
                                   capture should start, where 0 marks
                                   the zero shutter lag case. */
-    int mBurstFps;              /*<! Burst target output rate */
 
     /* Burst runtime state, \see burstStateReset() */
 
@@ -692,11 +735,11 @@ private:
                                                     It is used when video recording starts so the settings
                                                     can be restore when video recording stops
                                                  */
-    Vector<MessagePicture> mUnqueuedPicBuf; /* store the buffers that have not been returned to ISP in capturing*/
 
+    bool mPanoramaFinalizationPending; /* state boolean for pending panorama finalization commands */
     bool mEnableFocusCbAtStart;     /* for internal control of focus cb's in continuous-mode */
     bool mEnableFocusMoveCbAtStart; /* for internal control of focus-move cb's in continuous-mode */
-    bool mFirstPreviewStart;        /* indicator of first preview start for L2P pnp optimizations */
+
 
     bool mStillCaptureInProgress;   /*!< indicates ongoing capture sequence for Camera_HAL API.
                                          note: threadsafe to use only in Camera_HAL calling context
@@ -707,6 +750,15 @@ private:
 
     const char* mPreviewUpdateMode;       /*!< indicates the active preview update mode.
                                                See parameter preview-update-mode */
+
+    Vector<AtomBuffer> mAllocatedSnapshotBuffers; /*!< Current set of allocated snapshot buffers */
+    Vector<AtomBuffer> mAvailableSnapshotBuffers; /*!< Current set of available snapshot buffers */
+
+    bool mSaveMirrored;
+    int mCurrentOrientation;        /*!< Current orientation of the device. Used in case the image is
+                                         saved as mirrored. The image will be mirrored based on the
+                                         camera sensor orientation and device orientation. */
+    int mRecordingOrientation;      /*!< Device orientation at the start of video recording. */
 }; // class ControlThread
 
 }; // namespace android

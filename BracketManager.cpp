@@ -235,40 +235,46 @@ status_t BracketManager::initBracketing(int length, int skip, float *bracketValu
         break;
     case BRACKET_FOCUS:
         if (mBurstLength > 1) {
-            status = m3AControls->getAfLensPosRange(&lensRange);
-            if (status == NO_ERROR) {
-                status = m3AControls->getCurrentFocusPosition(&currentFocusPos);
-            }
-            if (status == NO_ERROR) {
-                status = m3AControls->setAeMode(CAM_AE_MODE_MANUAL);
-            }
-            if (status == NO_ERROR) {
-                m3AControls->setAfMode(CAM_AF_MODE_MANUAL);
-            }
-            mBracketing.currentValue = lensRange.macro;
-            mBracketing.minValue = lensRange.macro;
-            mBracketing.maxValue = lensRange.infinity;
-            mBracketing.step = (lensRange.infinity - lensRange.macro) / (mBurstLength - 1);
-            mBracketing.values.reset();
-            // Initialize the current focus position and increment
-            if (status == NO_ERROR) {
-                /*
-                 * For focus we need to bring the focus position
-                 * to the initial position in the bracketing sequence.
-                 */
-                status = m3AControls->getCurrentFocusPosition(&currentFocusPos);
+            if(PlatformData::supportAIQ()) {
+                mBracketing.step = mBurstLength;
+                mBracketing.currentValue = 0;
+                m3AControls->initAfBracketing(mBracketing.step, CAM_AF_BRACKETING_MODE_SYMMETRIC);
+            } else {
+                status = m3AControls->getAfLensPosRange(&lensRange);
                 if (status == NO_ERROR) {
-                    status = m3AControls->setManualFocusIncrement(mBracketing.minValue - currentFocusPos);
+                    status = m3AControls->getCurrentFocusPosition(&currentFocusPos);
                 }
                 if (status == NO_ERROR) {
-                    status = m3AControls->updateManualFocus();
+                    status = m3AControls->setAeMode(CAM_AE_MODE_MANUAL);
                 }
-            }
-            if (status == NO_ERROR) {
-                LOG1("Initialized Focus Bracketing to: (min: %.2f, max:%.2f, step:%.2f)",
-                        mBracketing.minValue,
-                        mBracketing.maxValue,
-                        mBracketing.step);
+                if (status == NO_ERROR) {
+                    m3AControls->setAfMode(CAM_AF_MODE_MANUAL);
+                }
+                mBracketing.currentValue = lensRange.macro;
+                mBracketing.minValue = lensRange.macro;
+                mBracketing.maxValue = lensRange.infinity;
+                mBracketing.step = (lensRange.infinity - lensRange.macro) / (mBurstLength - 1);
+                mBracketing.values.reset();
+                // Initialize the current focus position and increment
+                if (status == NO_ERROR) {
+                    /*
+                     * For focus we need to bring the focus position
+                     * to the initial position in the bracketing sequence.
+                     */
+                    status = m3AControls->getCurrentFocusPosition(&currentFocusPos);
+                    if (status == NO_ERROR) {
+                        status = m3AControls->setManualFocusIncrement(mBracketing.minValue - currentFocusPos);
+                    }
+                    if (status == NO_ERROR) {
+                        status = m3AControls->updateManualFocus();
+                    }
+                }
+                if (status == NO_ERROR) {
+                    LOG1("Initialized Focus Bracketing to: (min: %.2f, max:%.2f, step:%.2f)",
+                            mBracketing.minValue,
+                            mBracketing.maxValue,
+                            mBracketing.step);
+                }
             }
         } else {
             LOG1("Can't do bracketing with only one capture, disable bracketing!");
@@ -416,14 +422,21 @@ status_t BracketManager::applyBracketingParams()
         }
         break;
     case BRACKET_FOCUS:
-        if (mBracketing.currentValue + mBracketing.step <= mBracketing.maxValue) {
-            status = m3AControls->setManualFocusIncrement(mBracketing.step);
-        }
-        if (status == NO_ERROR) {
-            mBracketing.currentValue += mBracketing.step;
-            status = m3AControls->updateManualFocus();
-            m3AControls->getCurrentFocusPosition(&currentFocusPos);
-            LOG1("Applying Focus Bracketing: %d", currentFocusPos);
+        if(PlatformData::supportAIQ()) {
+            if(mBracketing.currentValue < mBracketing.step) {
+                m3AControls->setManualFocusIncrement(mBracketing.currentValue);
+                mBracketing.currentValue++;
+            }
+        } else {
+            if (mBracketing.currentValue + mBracketing.step <= mBracketing.maxValue) {
+                status = m3AControls->setManualFocusIncrement(mBracketing.step);
+            }
+            if (status == NO_ERROR) {
+                mBracketing.currentValue += mBracketing.step;
+                status = m3AControls->updateManualFocus();
+                m3AControls->getCurrentFocusPosition(&currentFocusPos);
+                LOG1("Applying Focus Bracketing: %d", currentFocusPos);
+            }
         }
         break;
     case BRACKET_NONE:

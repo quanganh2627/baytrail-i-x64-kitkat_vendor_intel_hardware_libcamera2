@@ -71,10 +71,16 @@ namespace android {
     // burst capture
     static const char KEY_SUPPORTED_BURST_LENGTH[];
     static const char KEY_BURST_LENGTH[];
-    static const char KEY_SUPPORTED_BURST_FPS[];
-    static const char KEY_BURST_FPS[];
+    static const char KEY_SUPPORTED_BURST_FPS[]; // TODO: old API, it will be deleted in the future.
+    static const char KEY_BURST_FPS[]; // TODO: old API, it will be deleted in the future.
+    static const char KEY_SUPPORTED_BURST_SPEED[];
+    static const char KEY_BURST_SPEED[];
     static const char KEY_BURST_CONTINUOUS[];
     static const char KEY_SUPPORTED_BURST_CONTINUOUS[];
+    //values for burst speed
+    static const char BURST_SPEED_FAST[];
+    static const char BURST_SPEED_MEDIUM[];
+    static const char BURST_SPEED_LOW[];
 
     // preview update mode
     static const char KEY_SUPPORTED_PREVIEW_UPDATE_MODE[];
@@ -236,6 +242,17 @@ namespace android {
     // Ultra low light
     static const char KEY_ULL[];
     static const char KEY_SUPPORTED_ULL[];
+
+    static const char KEY_SAVE_MIRRORED[];
+    static const char KEY_SUPPORTED_SAVE_MIRRORED[];
+
+    // GPS extension
+    static const char KEY_GPS_IMG_DIRECTION[];
+    static const char KEY_GPS_IMG_DIRECTION_REF[];
+    static const char KEY_SUPPORTED_GPS_IMG_DIRECTION_REF[];
+    // possible value for the KEY_GPS_IMG_DIRECTION_REF
+    static const char GPS_IMG_DIRECTION_REF_TRUE[];
+    static const char GPS_IMG_DIRECTION_REF_MAGNETIC[];
 
     static void getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params);
     static const char* getSupportedPanoramaLivePreviewSizes(const CameraParameters &params);

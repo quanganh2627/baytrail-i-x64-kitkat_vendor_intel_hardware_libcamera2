@@ -156,9 +156,14 @@ bool CameraDump::isDumpImageEnable(int dumpFlag)
     return ret;
 }
 
-int CameraDump::dumpImage2Buf(void *buffer, unsigned int size, unsigned int width, unsigned int height)
+int CameraDump::dumpImage2Buf(camera_delay_dumpImage_T *aDumpImage)
 {
     LOG1("@%s", __FUNCTION__);
+    void *buffer = aDumpImage->buffer_raw;
+    unsigned int size = aDumpImage->buffer_size;
+    unsigned int width = aDumpImage->width;
+    unsigned int height = aDumpImage->height;
+    unsigned int stride = aDumpImage->stride;
     if ((0 == size) || (0 == width) || (0 == height)) {
         LOGE("value is err(size=%d,width=%d,height=%d)", size, width, height);
         return -ERR_D2F_EVALUE;
@@ -175,6 +180,7 @@ int CameraDump::dumpImage2Buf(void *buffer, unsigned int size, unsigned int widt
             mDelayDump.buffer_size = 0;
             mDelayDump.width = 0;
             mDelayDump.height = 0;
+            mDelayDump.stride = 0;
             mNeedDumpFlush = false;
             return -ERR_D2F_NOMEM;
         }
@@ -182,16 +188,21 @@ int CameraDump::dumpImage2Buf(void *buffer, unsigned int size, unsigned int widt
     mDelayDump.buffer_size = size;
     mDelayDump.width = width;
     mDelayDump.height = height;
+    mDelayDump.stride = stride;
     memcpy(mDelayDump.buffer_raw, buffer, size);
     mNeedDumpFlush = true;
 
     return ERR_D2F_SUCESS;
 }
 
-int CameraDump::dumpImage2File(const void *data, const unsigned int size, unsigned int width,
-                          unsigned int height, const char *name)
+int CameraDump::dumpImage2File(camera_delay_dumpImage_T *aDumpImage, const char *name)
 {
     LOG1("@%s", __FUNCTION__);
+    void *data = aDumpImage->buffer_raw;
+    unsigned int size = aDumpImage->buffer_size;
+    unsigned int width = aDumpImage->width;
+    unsigned int height = aDumpImage->height;
+    unsigned int stride = aDumpImage->stride;
     char filename[80];
     static unsigned int count = 0;
     size_t bytes;
@@ -238,7 +249,7 @@ int CameraDump::dumpImage2File(const void *data, const unsigned int size, unsign
         raw_info.raw_image.bayer_order = ia_aiq_bayer_order_grbg;
         raw_info.raw_image.data_format_bpp = 16;
         raw_info.raw_image.data_bpp = 10;
-        raw_info.raw_image.width_cols = width;
+        raw_info.raw_image.width_cols = stride;
         raw_info.raw_image.height_lines = height;
         raw_info.header_size_bytes = 0;
         raw_info.footer_size_bytes = 0;
@@ -321,8 +332,7 @@ int CameraDump::dumpImage2FileFlush(bool bufflag)
         else
             nameID = RAW_NONE;
 
-        ret = dumpImage2File(mDelayDump.buffer_raw, mDelayDump.buffer_size, mDelayDump.width,
-                         mDelayDump.height,filename[nameID]);
+        ret = dumpImage2File(&mDelayDump, filename[nameID]);
 
         if(bufflag){
             free(mDelayDump.buffer_raw);
@@ -330,6 +340,7 @@ int CameraDump::dumpImage2FileFlush(bool bufflag)
             mDelayDump.buffer_size = 0;
             mDelayDump.width = 0;
             mDelayDump.height = 0;
+            mDelayDump.stride = 0;
         }
         mNeedDumpFlush = false;
     }
@@ -351,6 +362,7 @@ int CameraDump::getRawDataPath(char *ppath)
             continue;
         }
         if(S_ISDIR(buf.st_mode)) {
+            LOG1("@%s destination path for raw found: %s", __FUNCTION__,(char *)(rawdp+i));
             break;
         }
     }

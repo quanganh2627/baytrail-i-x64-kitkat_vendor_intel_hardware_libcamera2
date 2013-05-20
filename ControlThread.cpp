@@ -44,6 +44,11 @@ namespace android {
  */
 #define NUM_WARMUP_FRAMES 4
 /*
+ * RAW_CAPTURE_SKIP: Number of frames we skip from capture device before we dump
+ * a raw image.
+ */
+#define RAW_CAPTURE_SKIP  2
+/*
  * NUM_BURST_BUFFERS: used for burst captures
  */
 #define NUM_BURST_BUFFERS 10
@@ -98,6 +103,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mPostCaptureThread(NULL)
     ,mMessageQueue("ControlThread", (int) MESSAGE_ID_MAX)
     ,mState(STATE_STOPPED)
+    ,mCaptureSubState(STATE_CAPTURE_INIT)
     ,mShootingMode(SHOOTING_MODE_NONE)
     ,mThreadRunning(false)
     ,mCallbacks(NULL)
@@ -109,7 +115,6 @@ ControlThread::ControlThread(int cameraId) :
     ,mFpsAdaptSkip(0)
     ,mBurstLength(0)
     ,mBurstStart(0)
-    ,mBurstFps(-1)
     ,mBurstCaptureNum(-1)
     ,mBurstCaptureDoneNum(-1)
     ,mBurstQbufs(0)
@@ -122,17 +127,22 @@ ControlThread::ControlThread(int cameraId) :
     ,mFocusAreas()
     ,mMeteringAreas()
     ,mVideoSnapshotrequested(0)
+    ,mPanoramaFinalizationPending(false)
     ,mEnableFocusCbAtStart(false)
     ,mEnableFocusMoveCbAtStart(false)
-    ,mFirstPreviewStart(true)
     ,mStillCaptureInProgress(false)
     ,mPreviewUpdateMode(IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD)
+    ,mSaveMirrored(false)
+    ,mCurrentOrientation(0)
+    ,mRecordingOrientation(0)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
     // This is a workaround for an issue with Thread reference counting.
 
     LOG1("@%s", __FUNCTION__);
+
+    PlatformData::setActiveCameraId(mCameraId);
 }
 
 ControlThread::~ControlThread()
@@ -147,6 +157,8 @@ ControlThread::~ControlThread()
         mMessageQueue.receive(&msg);
         LOGE(" Id of first message is %d",msg.id);
     }
+
+    PlatformData::freeActiveCameraId(mCameraId);
 }
 
 status_t ControlThread::init()
@@ -154,6 +166,7 @@ status_t ControlThread::init()
     LOG1("@%s: cameraId = %d", __FUNCTION__, mCameraId);
 
     status_t status = UNKNOWN_ERROR;
+    CameraDump::setDumpDataFlag();
 
     mISP = new AtomISP(mCameraId);
     if (mISP == NULL) {
@@ -196,7 +209,6 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    CameraDump::setDumpDataFlag();
     mCameraDump = CameraDump::getInstance();
     if (mCameraDump == NULL) {
         LOGE("error creating CameraDump");
@@ -396,6 +408,11 @@ void ControlThread::deinit()
         mBracketManager.clear();
     }
 
+    if (mSensorThread != NULL) {
+        mSensorThread->requestExitAndWait();
+        mSensorThread.clear();
+    }
+
     if (mPostProcThread != NULL) {
         mPostProcThread->requestExitAndWait();
         mPostProcThread.clear();
@@ -411,19 +428,14 @@ void ControlThread::deinit()
         mPreviewThread.clear();
     }
 
-    if (mPictureThread != NULL) {
-        mPictureThread->requestExitAndWait();
-        mPictureThread.clear();
-    }
-
-    if (mCallbacksThread != NULL) {
-        mCallbacksThread->requestExitAndWait();
-        mCallbacksThread.clear();
-    }
-
     if (mVideoThread != NULL) {
         mVideoThread->requestExitAndWait();
         mVideoThread.clear();
+    }
+
+    if (mPictureThread != NULL) {
+        mPictureThread->requestExitAndWait();
+        mPictureThread.clear();
     }
 
     if (m3AThread != NULL) {
@@ -431,9 +443,9 @@ void ControlThread::deinit()
         m3AThread.clear();
     }
 
-    if (mSensorThread != NULL) {
-        mSensorThread->requestExitAndWait();
-        mSensorThread.clear();
+    if (mCallbacksThread != NULL) {
+        mCallbacksThread->requestExitAndWait();
+        mCallbacksThread.clear();
     }
 
     if (mParamCache != NULL)
@@ -447,15 +459,15 @@ void ControlThread::deinit()
         }
     }
 
+    if (mCP != NULL) {
+        delete mCP;
+        mCP = NULL;
+    }
+
     if (mISP != NULL) {
         delete mISP;
         mISP = NULL;
         PERFORMANCE_TRACES_BREAKDOWN_STEP("DeleteISP");
-    }
-
-    if (mCP != NULL) {
-        delete mCP;
-        mCP = NULL;
     }
 
     if (mULL != NULL) {
@@ -520,6 +532,32 @@ bool ControlThread::msgTypeEnabled(int32_t msgType)
     LOG2("@%s", __FUNCTION__);
     return mCallbacks->msgTypeEnabled(msgType);
 }
+
+/**
+ * Disable focus callbacks
+ */
+void ControlThread::disableFocusCallbacks()
+{
+    if (!mEnableFocusCbAtStart)
+        mEnableFocusCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS);
+    if (!mEnableFocusMoveCbAtStart)
+        mEnableFocusMoveCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS_MOVE);
+    disableMsgType(CAMERA_MSG_FOCUS_MOVE);
+    disableMsgType(CAMERA_MSG_FOCUS);
+}
+
+/**
+ *  Enable focus callbacks in case we disabled them
+ */
+void ControlThread::enableFocusCallbacks()
+{
+    if (mEnableFocusCbAtStart)
+        enableMsgType(CAMERA_MSG_FOCUS);
+
+    if (mEnableFocusMoveCbAtStart)
+        enableMsgType(CAMERA_MSG_FOCUS_MOVE);
+}
+
 
 status_t ControlThread::startPreview()
 {
@@ -606,6 +644,13 @@ bool ControlThread::recordingEnabled()
 status_t ControlThread::setParameters(const char *params)
 {
     LOG1("@%s: params = %p", __FUNCTION__, params);
+
+    {
+        Mutex::Autolock mLock(mParamCacheLock);
+        if (mParamCache && strcmp(mParamCache, params) == 0)
+            return OK;
+    }
+
     Message msg;
     msg.id = MESSAGE_ID_SET_PARAMETERS;
     msg.data.setParameters.params = const_cast<char*>(params); // We swear we won't modify params :)
@@ -732,6 +777,13 @@ status_t ControlThread::takePicture()
     status = mMessageQueue.send(&msg);
     if (status == NO_ERROR) {
         mStillCaptureInProgress = (mState != STATE_RECORDING) ? true : false;
+        // We need to disable focus callbacks here to ensure application
+        // is not receiving them after this call and until the next
+        // startPreview(). This is because scenarios that left AF running
+        // are possible and applications (including Google reference) get
+        // confused from receiving focus callbacks.
+        if (mStillCaptureInProgress)
+            disableFocusCallbacks();
     }
     return status;
 }
@@ -818,6 +870,7 @@ void ControlThread::panoramaFinalized(AtomBuffer *buff, AtomBuffer *pvBuff)
 status_t ControlThread::handleMessagePanoramaFinalize(MessagePanoramaFinalize *msg)
 {
     LOG1("@%s", __FUNCTION__);
+    mPanoramaFinalizationPending = false;
     status_t status = mCallbacksThread->requestTakePicture(false, false);
 
     if (status != OK)
@@ -842,6 +895,20 @@ void ControlThread::panoramaCaptureTrigger()
     LOG2("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_PANORAMA_CAPTURE_TRIGGER;
+    mMessageQueue.send(&msg);
+}
+
+void ControlThread::encodingDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
+{
+    LOG2("@%s: snapshotBuf = %p, postviewBuf = %p, id = %d",
+                __FUNCTION__,
+                snapshotBuf->dataPtr,
+                postviewBuf->dataPtr,
+                snapshotBuf->id);
+    Message msg;
+    msg.id = MESSAGE_ID_ENCODING_DONE;
+    msg.data.encodingDone.snapshotBuf = *snapshotBuf;
+    msg.data.encodingDone.postviewBuf = *postviewBuf;
     mMessageQueue.send(&msg);
 }
 
@@ -1007,7 +1074,7 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
 void ControlThread::continuousConfigApplyLimits(AtomISP::ContinuousCaptureConfig &cfg) const
 {
     int minOffset = mISP->continuousBurstNegMinOffset();
-    int skip = continuousBurstSkip(mBurstFps);
+    int skip = mFpsAdaptSkip;
 
     if (mBurstStart < 0) {
         int offset = 0;
@@ -1021,29 +1088,8 @@ void ControlThread::continuousConfigApplyLimits(AtomISP::ContinuousCaptureConfig
     cfg.skip = skip;
 
     double outFps = mISP->getFrameRate() / (skip + 1);
-    LOG2("@%s: offset %d, skip %d, fps %d->%.1f (for start-index %d, sensor fps %.1f)",
-         __FUNCTION__, cfg.offset, skip, mBurstFps, outFps, mBurstStart, mISP->getFrameRate());
-}
-
-/**
- * Returns the skip factor for the given target FPS.
- *
- * \return 0...N of frames to skip between valid output frames
- */
-int ControlThread::continuousBurstSkip(double targetFps) const
-{
-    double ratio (mISP->getFrameRate() / targetFps);
-
-    // High - max sensor rate
-    if (ratio <= 2.0)
-        return 0;
-
-    // Medium - half the sensor rate
-    else if (ratio <= 4.0)
-        return 1;
-
-    // Low - quarter of sensor rate;
-    return 3;
+    LOG2("@%s: offset %d, skip %d, fps %.1f (for start-index %d, sensor fps %.1f)",
+         __FUNCTION__, cfg.offset, skip, outFps, mBurstStart, mISP->getFrameRate());
 }
 
 /**
@@ -1063,6 +1109,10 @@ int ControlThread::continuousBurstSkip(double targetFps) const
 status_t ControlThread::configureContinuousRingBuffer()
 {
     LOG2("@%s", __FUNCTION__);
+    bool capturePriority = true;
+    if (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_CONTINUOUS)
+        capturePriority = false;
+
     AtomISP::ContinuousCaptureConfig cfg;
     if (mULL->isActive())
         cfg.numCaptures = mULL->MAX_INPUT_BUFFERS;
@@ -1080,7 +1130,7 @@ status_t ControlThread::configureContinuousRingBuffer()
                                                 cfg.offset,
                                                 cfg.skip);
 
-    return mISP->prepareOfflineCapture(cfg);
+    return mISP->prepareOfflineCapture(cfg, capturePriority);
 }
 
 /**
@@ -1116,11 +1166,6 @@ status_t ControlThread::initContinuousCapture()
 
     burstStateReset();
 
-    if (!mFirstPreviewStart) {
-        allocateSnapshotBuffers();
-        setExternalSnapshotBuffers(format, width, height);
-    }
-
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
     return status;
 }
@@ -1135,8 +1180,6 @@ void ControlThread::releaseContinuousCapture(bool flushPictures)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    mUnqueuedPicBuf.clear();
-    mISP->releaseCaptureBuffers();
     if (flushPictures) {
         // This covers cases when we need to fallback from
         // continuous mode to online mode to do a capture.
@@ -1147,6 +1190,8 @@ void ControlThread::releaseContinuousCapture(bool flushPictures)
             LOGE("Error flushing PictureThread!");
         }
     }
+
+    mISP->releaseCaptureBuffers();
 }
 
 /**
@@ -1209,7 +1254,7 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
 ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &params)
 {
     // Whether hardware (SoC, memories) supports continuous mode?
-    if (PlatformData::supportsContinuousCapture() == false) {
+    if (PlatformData::supportsContinuousCapture(mCameraId) == false) {
         LOG1("@%s: Disabling continuous mode, not supported by platform", __FUNCTION__);
         return STATE_PREVIEW_STILL;
     }
@@ -1224,9 +1269,7 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
     // any ISP firmware.
     int picWidth = 0, picHeight = 0;
     params.getPictureSize(&picWidth, &picHeight);
-    if ((strcmp(PlatformData::getBoardName(), "saltbay") != 0 &&
-         strcmp(PlatformData::getBoardName(), "bodegabay") != 0)
-        && picWidth <= 1280 && picHeight <= 768) {
+    if (picWidth <= 1280 && picHeight <= 768) {
         // this is a limitation of current CSS stack
         LOG1("@%s: 1M or smaller picture-size, disabling continuous mode", __FUNCTION__);
         return STATE_PREVIEW_STILL;
@@ -1242,19 +1285,12 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         return STATE_PREVIEW_STILL;
     }
 
-    //file injection to capture the 13M(4192x3104) pic for merr,
-    //need the STATE_CONTINUOUS_CAPTURE mode.
-    if(!mISP->isFileInjectionEnabled()) {
-    // ISP will fail to start if aspect ratio of preview and
-    // main output do not match.
-    // TODO: A CSS1.5 bug, tracked in BZ: 72564
-        float picRatio = 1.0 * picWidth / picHeight;
-        float previewRatio = 1.0 * pWidth / pHeight;
-        if  (fabsf(picRatio - previewRatio) > ASPECT_TOLERANCE) {
-            LOG1("@%s: Different aspect ratio for preview and picture size, disabling continuous mode", __FUNCTION__);
-            return STATE_PREVIEW_STILL;
-        }
+    if (mHdr.enabled) {
+        LOG1("@%s: HDR enabled, disabling continuous mode",
+             __FUNCTION__);
+        return STATE_PREVIEW_STILL;
     }
+
     if (mBurstLength > 1 && mBurstStart >= 0) {
         LOG1("@%s: Burst length of %d requested, disabling continuous mode",
              __FUNCTION__, mBurstLength);
@@ -1264,7 +1300,7 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
     if (mBurstStart < 0) {
         // One buffer in the raw ringbuffer is reserved for streaming
         // from sensor, so output frame count is limited to maxSize-1.
-        int maxBufSize = PlatformData::maxContinuousRawRingBufferSize();
+        int maxBufSize = PlatformData::maxContinuousRawRingBufferSize(mCameraId);
         if (mBurstLength > maxBufSize - 1) {
              LOG1("@%s: Burst length of %d with offset %d requested, disabling continuous mode",
                   __FUNCTION__, mBurstLength, mBurstStart);
@@ -1280,10 +1316,8 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         }
     }
 
-    // The continuous mode depends on maintaining a RAW frame
-    // buffer, so feature is not available SoC sensors.
-    if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) {
-        LOG1("@%s: Non-RAW sensor, disabling continuous mode", __FUNCTION__);
+    if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
+        LOG1("@%s: Raw dump enabled, disabling continuous mode", __FUNCTION__);
         return STATE_PREVIEW_STILL;
     }
 
@@ -1309,6 +1343,12 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     }
 
     PerformanceTraces::SwitchCameras::called(videoMode);
+
+    // ISP can be de-initialized during ErrorPreview notification.
+    // It is there necessary to check if the ISP is still Initialized everytime we restart it.
+    if (!mISP->isDeviceInitialized())
+        mISP->init();
+
     if (videoMode) {
         LOG1("Starting preview in video mode");
         state = STATE_PREVIEW_VIDEO;
@@ -1400,9 +1440,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOGE("Error configuring ISP");
         return status;
     }
-
-    // sensor FPS is queried during configure so we set it to preview thread now
-    mPreviewThread->setSensorFramerate(mISP->getFrameRate());
 
     // Load any ISP extensions before ISP is started
     mPostProcThread->loadIspExtensions(videoMode);
@@ -1568,7 +1605,9 @@ status_t ControlThread::stopCapture()
     if (mHdr.inProgress)
         mBracketManager->stopBracketing();
 
-    mUnqueuedPicBuf.clear();
+    mAvailableSnapshotBuffers.clear();
+    mAvailableSnapshotBuffers = mAllocatedSnapshotBuffers;
+
     status = mPictureThread->flushBuffers();
     if (status != NO_ERROR) {
         LOGE("Error flushing PictureThread!");
@@ -1650,10 +1689,6 @@ status_t ControlThread::startOfflineCapture()
     if (framesDone < -cfg.offset)
         cfg.offset = -framesDone;
 
-    // Starting capture device will queue all buffers,
-    // so we need to clear any references we have.
-    mUnqueuedPicBuf.clear();
-
     mISP->startOfflineCapture(cfg);
 
     return NO_ERROR;
@@ -1675,17 +1710,10 @@ status_t ControlThread::handleMessageStartPreview()
     }
 
     mStillCaptureInProgress = false;
+    mCaptureSubState = STATE_CAPTURE_IDLE;
 
-    // Check if continuous capture previously disabled focus callbacks
-    if (mEnableFocusCbAtStart) {
-        enableMsgType(CAMERA_MSG_FOCUS);
-        mEnableFocusCbAtStart = false;
-    }
-
-    if (mEnableFocusMoveCbAtStart) {
-        enableMsgType(CAMERA_MSG_FOCUS_MOVE);
-        mEnableFocusCbAtStart = false;
-    }
+    // Check if we previously disabled focus callbacks
+    enableFocusCallbacks();
 
     if (mState == STATE_STOPPED) {
         // API says apps should call startFaceDetection when resuming preview
@@ -1720,6 +1748,40 @@ status_t ControlThread::handleMessageStopPreview()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+
+    if (mCaptureSubState == STATE_CAPTURE_STARTED) {
+        // We are going to cancel ongoing capture process based
+        // on assumption that application is no longer interested
+        // in receiving the jpeg. This is done to protect racing
+        // conditions with unfinished capture process and camera
+        // reconfiguration (setParameters) in general.
+        // Note: In case snapshot is already sent to PictureThread for
+        //       encoding, we may or may not end up calling picture
+        //       callbacks. Callback would get blocked until this
+        //       stopPreview finishes.
+        //       It is up to application to ensure it blocks for jpeg
+        //       before letting other API calls to happen or touches
+        //       into callback interfaces given with takePicture().
+        //       If we are here, ANR is expected - just protecting
+        //       against crashes.
+        LOGW("stopPreview() called while capture in progress, canceling\n"
+             "application should release the camera to cancel capture process");
+        if (mState == STATE_CAPTURE)
+            status = stopCapture();
+        else if (mState == STATE_CONTINUOUS_CAPTURE) {
+            stopOfflineCapture();
+        }
+        mBurstLength = 0;
+        mPictureThread->flushBuffers();
+        mStillCaptureInProgress = false;
+        mCaptureSubState = STATE_CAPTURE_IDLE;
+    }
+    /**
+     * We maybe in the middle of processing ULL image, make sure we cancel this
+     */
+    if (mULL && mULL->isProcessing()) {
+        mPostCaptureThread->cancelProcessingItem((IPostCaptureProcessItem *)mULL);
+    }
 
     // In STATE_CAPTURE, preview is already stopped, nothing to do
     if (mState != STATE_CAPTURE) {
@@ -1834,6 +1896,13 @@ status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
         startPreviewCore(videoMode);
         if (faceActive)
             startFaceDetection();
+    } else if (msg->window == NULL
+               && currentState == PreviewThread::STATE_STOPPED
+               && mState == STATE_CONTINUOUS_CAPTURE) {
+        // if we are in continuous-mode and backgrounding-state
+        // and window is set to null, then stop review
+        stopPreviewCore();
+        status = mPreviewThread->setPreviewWindow(msg->window);
     } else {
         // Notes:
         //  1. msg->window == NULL comes only from CameraService in release
@@ -1890,7 +1959,13 @@ status_t ControlThread::handleMessageStartRecording()
 
     mISP->getVideoSize(&width, &height, NULL);
     mParameters.setPictureSize(width, height);
-    allocateSnapshotBuffers();
+
+    if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
+        allocateSnapshotBuffers(true);
+    } else {
+        LOG1("%s not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+    }
+
     snprintf(sizes, 25, "%dx%d", width,height);
     LOG1("video snapshot size %dx%d", width, height);
     mParameters.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, sizes);
@@ -1908,6 +1983,11 @@ status_t ControlThread::handleMessageStartRecording()
     snprintf(sizes, 25, "%dx%d,0x0", widthPreview,heightPreview);
     mParameters.set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES, sizes);
     updateParameterCache();
+
+    // Store device orientation at the start of video recording
+    if (mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT)) {
+        mRecordingOrientation = mCurrentOrientation;
+    }
 
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_START_RECORDING, status);
@@ -1932,6 +2012,15 @@ status_t ControlThread::handleMessageStopRecording()
         LOGE("Error stopping recording. Invalid state!");
         status = INVALID_OPERATION;
     }
+
+    if (mCaptureSubState == STATE_CAPTURE_STARTED) {
+        // cancel video snapshot
+        mPictureThread->flushBuffers();
+        mCaptureSubState = STATE_CAPTURE_IDLE;
+    }
+    // clear reserved lists
+    mVideoSnapshotBuffers.clear();
+    mRecordingBuffers.clear();
 
     // release buffers owned by encoder since it is not going to return them
     mISP->returnRecordingBuffers();
@@ -2030,6 +2119,12 @@ status_t ControlThread::handleMessagePanoramaCaptureTrigger()
         Message msg;
         msg.id = MESSAGE_ID_START_PREVIEW;
         mMessageQueue.send(&msg);
+    } else {
+        // recycle the buffer as if the picture would be done
+        MessagePicture picMsg;
+        picMsg.postviewBuf = postviewBuffer;
+        picMsg.snapshotBuf = snapshotBuffer;
+        handleMessagePictureDone(&picMsg);
     }
 
     return status;
@@ -2041,6 +2136,7 @@ status_t ControlThread::handleMessagePanoramaPicture() {
     if (mPanoramaThread->getState() == PANORAMA_STARTED) {
         mPanoramaThread->startPanoramaCapture();
     } else {
+        mPanoramaFinalizationPending = true;
         mPanoramaThread->finalize();
     }
 
@@ -2099,6 +2195,7 @@ status_t ControlThread::handleMessageTakePicture() {
     status_t status = NO_ERROR;
 
     mShootingMode = selectShootingMode();
+    mCaptureSubState = STATE_CAPTURE_STARTED;
 
     switch(mShootingMode) {
 
@@ -2131,6 +2228,9 @@ status_t ControlThread::handleMessageTakePicture() {
             break;
     }
 
+    if (status != OK)
+        mCaptureSubState = STATE_CAPTURE_IDLE;
+
     return status;
 }
 
@@ -2146,19 +2246,18 @@ status_t ControlThread::getFlashExposedSnapshot(AtomBuffer *snapshotBuffer, Atom
     LOG2("@%s:", __FUNCTION__);
     status_t status = NO_ERROR;
     for (int cnt = 0;;) {
-        enum atomisp_frame_status stat;
 
-        status = mISP->getSnapshot(snapshotBuffer, postviewBuffer, &stat);
+        status = mISP->getSnapshot(snapshotBuffer, postviewBuffer);
         if (status != NO_ERROR) {
             LOGE("%s: Error in grabbing snapshot!", __FUNCTION__);
             break;
         }
 
-        if (stat == ATOMISP_FRAME_STATUS_FLASH_EXPOSED) {
+        if (snapshotBuffer->status == FRAME_STATUS_FLASH_EXPOSED) {
             LOG2("flash exposed, frame %d", cnt);
             break;
         }
-        else if (stat == ATOMISP_FRAME_STATUS_FLASH_FAILED) {
+        else if (snapshotBuffer->status  == FRAME_STATUS_FLASH_FAILED) {
             LOGE("%s: flash fail, frame %d", __FUNCTION__, cnt);
             break;
         }
@@ -2190,8 +2289,9 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
 
     if (m3AControls->isIntel3A()) {
         m3AControls->getExposureInfo(*aeConfig);
-        if (m3AControls->getEv(&aeConfig->evBias) != NO_ERROR) {
-            aeConfig->evBias = EV_UPPER_BOUND;
+        if (PlatformData::supportEV(mISP->getCurrentCameraId())) {
+            if (m3AControls->getEv(&aeConfig->evBias) != NO_ERROR)
+                aeConfig->evBias = EV_UPPER_BOUND;
         }
     } else {
         memset(aeConfig, 0, sizeof(SensorAeConfig));
@@ -2223,6 +2323,13 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
     metaData.aeConfig = aeConfig;
     metaData.ia3AMkNote = aaaMkNote;
     metaData.atomispMkNote = atomispMkNote;
+
+    // Request mirroring for snapshot and postview buffers (only for front camera)
+    // Do mirroring only in still capture mode, video snapshots are mirrored in dequeueRecording()
+    metaData.saveMirrored = mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT) &&
+                            (mState != STATE_RECORDING);
+    metaData.cameraOrientation = PlatformData::cameraOrientation(mCameraId);
+    metaData.currentOrientation = mCurrentOrientation;
 }
 
 status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffer &postviewBuffer)
@@ -2236,15 +2343,7 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     postviewBuffer.owner = NULL;
     stopFaceDetection();
 
-    if (mState == STATE_CONTINUOUS_CAPTURE) {
-        assert(mBurstLength <= 1);
-        AtomISP::ContinuousCaptureConfig config;
-        config.numCaptures = 1;
-        config.offset = 0;
-        config.skip = 0,
-        mISP->startOfflineCapture(config);
-    }
-    else {
+    if (mState != STATE_CONTINUOUS_CAPTURE) {
         status = stopPreviewCore();
         if (status != NO_ERROR) {
             LOGE("Error stopping preview!");
@@ -2269,6 +2368,8 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     thumbnailHeight= mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
     mPanoramaThread->setThumbnailSize(thumbnailWidth, thumbnailHeight);
 
+    setExternalSnapshotBuffers(format,width,height);
+
     if (mState != STATE_CONTINUOUS_CAPTURE) {
         // Configure and start the ISP
         mISP->setSnapshotFrameFormat(width, height, format);
@@ -2292,6 +2393,20 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
             LOGE("Error starting the ISP driver in CAPTURE mode!");
             return status;
         }
+    } else {
+        /* Necessary to update the buffer pools before we start to capture */
+        status = mISP->allocateBuffers(MODE_CAPTURE);
+        if (status != NO_ERROR) {
+            LOGE("Error allocate buffers in ISP");
+            return status;
+        }
+
+        assert(mBurstLength <= 1);
+        AtomISP::ContinuousCaptureConfig config;
+        config.numCaptures = 1;
+        config.offset = 0;
+        config.skip = 0,
+        mISP->startOfflineCapture(config);
     }
 
     /*
@@ -2526,19 +2641,16 @@ status_t ControlThread::captureStillPic()
                     flashMode == CAM_AE_FLASH_MODE_ON);
     bool flashFired = false;
     bool flashSequenceStarted = false;
-    bool displayPostview = selectPostviewSize(pvWidth, pvHeight)
-                           && !mHdr.enabled;
+    // Decide whether we display the postview
+    bool displayPostview = selectPostviewSize(pvWidth, pvHeight) // postview matches size of preview
+                           && !mHdr.enabled                      // HDR not enabled
+                           && (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD
+                              || mBurstLength > 1)               // proprietary preview update mode or burst
+                           && mBurstStart >= 0;                  // negative fixed burst start index
     // Synchronise jpeg callback with postview rendering in case of single capture
-    bool syncJpegCbWithPostview = displayPostview && (mBurstLength <= 1);
+    bool syncJpegCbWithPostview = !mHdr.enabled && (mBurstLength <= 1);
     bool requestPostviewCallback = true;
     bool requestRawCallback = true;
-
-    if (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD) {
-        // In proprietary preview update modes we keep rendering of preview frames.
-        // Rendering of postview not needed.
-        displayPostview = false;
-        syncJpegCbWithPostview = false;
-    }
 
     // TODO: Fix the TestCamera application bug and remove this workaround
     // WORKAROUND BEGIN: Due to a TesCamera application bug send the POSTVIEW and RAW callbacks only for single shots
@@ -2663,17 +2775,24 @@ status_t ControlThread::captureStillPic()
 
     // HDR init
     if (mHdr.enabled &&
-       (status = hdrInit( size, pvSize, format, width, height, pvWidth, pvHeight)) != NO_ERROR) {
+       (status = hdrInit( pvSize, pvWidth, pvHeight)) != NO_ERROR) {
         LOGE("Error initializing HDR!");
         return status;
     }
 
     /*
-     *  If the current camera does not have 3A, then we should skip the first
-     *  frames in order to allow the sensor to warm up.
+     *  Pre-capture skip.
+     *  we can skip frames for 2 reasons:
+     *  - If the current camera does not have 3A, then we should skip the first
+     *    frames in order to allow the sensor to warm up.
+     *  - If we are capturing a RAW image
      */
-    if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) {
-        if ((status = skipFrames(NUM_WARMUP_FRAMES)) != NO_ERROR) {
+    if ((PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) ||
+         CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
+
+        int framesToSkip = CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW) ?
+                         RAW_CAPTURE_SKIP:NUM_WARMUP_FRAMES;
+        if ((status = skipFrames(framesToSkip)) != NO_ERROR) {
             LOGE("Error skipping warm-up frames!");
             return status;
         }
@@ -2759,6 +2878,15 @@ status_t ControlThread::captureStillPic()
         mISP->setFlashIndicator(0);
     }
 
+    // Do postview for preview-keep-alive feature synchronously before the possible mirroring.
+    // Otherwise mirrored image will be shown in postview.
+    if (displayPostview || syncJpegCbWithPostview) {
+        // We sync with single capture, where we also need preview to stall.
+        // So, hide preview after postview when syncJpegCbWithPostview is true
+        bool syncPostview = mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT);
+        mPreviewThread->postview(displayPostview?&postviewBuffer:NULL, syncJpegCbWithPostview, syncPostview);
+    }
+
     // Do jpeg encoding in other cases except HDR. Encoding HDR will be done later.
     bool doEncode = false;
     if (!mHdr.enabled) {
@@ -2778,32 +2906,18 @@ status_t ControlThread::captureStillPic()
     if (mState == STATE_CONTINUOUS_CAPTURE && mBurstLength <= 1)
         stopOfflineCapture();
 
-    if (displayPostview) {
-        // We sync with single capture, where we also need preview to stall.
-        // So, hide preview after postview when syncJpegCbWithPostview is true
-        mPreviewThread->postview(&postviewBuffer, syncJpegCbWithPostview);
-    }
-
-    if (mState == STATE_CONTINUOUS_CAPTURE) {
-        // Continuous mode will keep running keeping 3A active but
-        // preview hidden, disable AF callbacks to act API compatible
-        // Note: lens shouldn't be moving either, but we need that for
-        // better AF behaviour in continuous-shooting mode
-        mEnableFocusCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS);
-        mEnableFocusMoveCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS_MOVE);
-        disableMsgType(CAMERA_MSG_FOCUS_MOVE);
-        disableMsgType(CAMERA_MSG_FOCUS);
-    }
-
     return status;
 }
 
 status_t ControlThread::captureBurstPic(bool clientRequest = false)
 {
-    LOG1("@%s: ", __FUNCTION__);
+    LOG1("@%s: client request %d", __FUNCTION__, clientRequest);
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
     int pvWidth, pvHeight;
+    // Note: Burst (online mode) does not need to handle preview-update-mode
+    //       preview is stopped and we always display postview when size matches
+    //       and HDR is not enabled.
     bool displayPostview = selectPostviewSize(pvWidth, pvHeight) && !mHdr.enabled;
 
     if (clientRequest) {
@@ -2830,33 +2944,6 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
         // If burst length was specified stop capturing when reached the requested burst captures
         if (mBurstLength > 1 && mBurstCaptureNum >= mBurstLength) {
             return NO_ERROR;
-        }
-    }
-
-    /**
-     * Time to return the used frames to ISP, we do not do this in the function
-     * "handleMessagePictureDone".
-     * If HDR is enabled, don't return the buffers. we need them to compose HDR
-     * image. The buffers will be discarded after HDR is done in stopCapture().
-     * When HAL is in still single burst capture or burst capture, no need to
-     * return picture frames back to ISP, because the buffers allocated are enough,
-     * but for continuous capture, ControlThread will qbuf back to ISP before next capture.
-     */
-    if ((!mHdr.enabled) && (mBurstLength < 1) && (!mUnqueuedPicBuf.isEmpty())) {
-        // Return the last picture frames back to ISP
-        LOG1("return snapshot buffer to ISP");
-        for (size_t i = 0; i < mUnqueuedPicBuf.size(); i++) {
-            AtomBuffer snapshotBuf = mUnqueuedPicBuf[i].snapshotBuf;
-            AtomBuffer postviewBuf = mUnqueuedPicBuf[i].postviewBuf;
-            status = mISP->putSnapshot(&snapshotBuf, &postviewBuf);
-            if (status == NO_ERROR) {
-                mUnqueuedPicBuf.removeAt(i);
-            } else if (status == DEAD_OBJECT) {
-                mUnqueuedPicBuf.removeAt(i);
-                LOG1("Stale snapshot buffer returned to ISP");
-            } else if (status != NO_ERROR) {
-                LOGE("Error in putting snapshot!");
-            }
         }
     }
 
@@ -2955,18 +3042,23 @@ bool ControlThread::compressedFrameQueueFull()
 }
 
 /**
+ * TEMPORARILY DISABLED
  * Queues unused snapshot buffers to ISP.
  *
  * Note: in certain use-cases like single captures,
  * this step can be omitted to save in capture time.
+ *
+ * TODO: Once postview buffers are allocated same as snapshots then we
+ * can allocage less buffers than the burst length required. In this
+ * case we can re-sue this method
  */
 status_t ControlThread::queueSnapshotBuffers()
 {
-    LOG2("@%s:", __FUNCTION__);
+    LOG1("@%s:", __FUNCTION__);
     status_t status = NO_ERROR;
-    for (size_t i = 0; i < mUnqueuedPicBuf.size(); i++) {
-        AtomBuffer snapshotBuf = mUnqueuedPicBuf[i].snapshotBuf;
-        AtomBuffer postviewBuf = mUnqueuedPicBuf[i].postviewBuf;
+    /*for (size_t i = 0; i < mAvailableSnapshotBuffers.size(); i++) {
+        AtomBuffer snapshotBuf = mAvailableSnapshotBuffers[i].snapshotBuf;
+
         LOG2("return snapshot buffer %u to ISP", i);
         status = mISP->putSnapshot(&snapshotBuf, &postviewBuf);
         if (status == NO_ERROR) {
@@ -2978,7 +3070,7 @@ status_t ControlThread::queueSnapshotBuffers()
             LOGE("Error in putting snapshot!");
         }
     }
-    mUnqueuedPicBuf.clear();
+    mAvailableSnapshotBuffers.clear();*/
     return status;
 }
 
@@ -2991,7 +3083,13 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer, postviewBuffer;
     int pvW, pvH;
-    bool displayPostview = selectPostviewSize(pvW, pvH);
+    // Note: Postview is not displayed with any of fixed burst scenarios,
+    //       just having it here for conformity and noticing.
+    //       Continuous mode with negative mBurstStart index would lead to
+    //       disordered displaying of postview and preview frames.
+    bool displayPostview = selectPostviewSize(pvW, pvH)
+                           && mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD
+                           && mBurstStart >= 0;
 
     assert(mState == STATE_CONTINUOUS_CAPTURE);
 
@@ -3044,9 +3142,11 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
     else if (mBurstLength > mISP->getSnapshotNum() &&
              mBurstQbufs < mBurstLength) {
         // To save capture time, only requeue buffers if total
-        // burst length exdeeds the ISP buffer queue size, and
+        // burst length exceeds the ISP buffer queue size, and
         // more buffers are needed.
-        queueSnapshotBuffers();
+        //queueSnapshotBuffers();
+        // This i sno longer possible: TODO: allow less buffers than the
+        // burst length to be allocated.
     }
 
     return status;
@@ -3067,15 +3167,18 @@ status_t ControlThread::captureULLPic()
     AtomBuffer snapshotBuffer, postviewBuffer;
     int pvWidth, pvHeight;
     int picWidth, picHeight, format;
-    int cachedBurstLength, cachedBurstStart, cachedBurstFps;
+    int cachedBurstLength, cachedBurstStart;
     PictureThread::MetaData firstPicMetaData;
     PictureThread::MetaData ullPicMetaData;
-
-    bool displayPostview = selectPostviewSize(pvWidth, pvHeight);
+    // In case ULL gets triggered with standard preview update mode
+    // we display the first postview frame, sync and hide the preview as
+    // with standard single capture. Application needs to handle the ULL
+    // postview out from callbacks if this is the intention.
+    bool displayPostview = selectPostviewSize(pvWidth, pvHeight)
+                           && mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD;
     //cache burst related parameters
     cachedBurstLength = mBurstLength;
     cachedBurstStart = mBurstStart;
-    cachedBurstFps = mBurstFps;
 
     mParameters.getPictureSize(&picWidth, &picHeight);
     format = mISP->getSnapshotPixelFormat();
@@ -3089,13 +3192,12 @@ status_t ControlThread::captureULLPic()
 
     PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE();
 
-    mCallbacksThread->requestTakePicture(true, false);
+    mCallbacksThread->requestTakePicture(true, false, displayPostview);
 
     stopFaceDetection();
     // Initialize the burst control variables for the ULL burst
     mBurstLength = mULL->getULLBurstLength();
     mBurstStart = 0;
-    mBurstFps = mISP->getFrameRate();
 
     status = continuousStartStillCapture(false);
 
@@ -3118,9 +3220,17 @@ status_t ControlThread::captureULLPic()
            fillPicMetaData(firstPicMetaData, false);
            fillPicMetaData(ullPicMetaData, false);
            mULL->addSnapshotMetadata(ullPicMetaData);
-           if (displayPostview) {
-              mPreviewThread->postview(&postviewBuffer, false);
-           }
+           if (displayPostview)
+               mPreviewThread->postview(&postviewBuffer, true);
+           /*
+            *  Mark the snapshot as skipped.
+            *  This is done so that the snapshot buffer is not made available after
+            *  the JPEG encoding. This buffer will be made available after
+            *  the ULL processing completes.
+            *  By making available we mean, that it is not pushed to the
+            *  mAvailableSnapshotBuffers vector
+            */
+           snapshotBuffer.status = FRAME_STATUS_SKIPPED;
            status = mPictureThread->encode(firstPicMetaData,&snapshotBuffer, &postviewBuffer);
            if (status != NO_ERROR) {
                // normally this is done by PictureThread, but as no
@@ -3140,22 +3250,10 @@ status_t ControlThread::captureULLPic()
 
     stopOfflineCapture();
 
-
-    // Continuous mode will keep running keeping 3A active but
-    // preview hidden, disable AF callbacks to act API compatible
-    // Note: lens shouldn't be moving either, but we need that for
-    // better AF behaviour in continuous-shooting mode
-    mEnableFocusCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS);
-    mEnableFocusMoveCbAtStart = msgTypeEnabled(CAMERA_MSG_FOCUS_MOVE);
-    disableMsgType(CAMERA_MSG_FOCUS_MOVE);
-    disableMsgType(CAMERA_MSG_FOCUS);
-
 exit:
     // Restore the Burst related control variables
     mBurstLength = cachedBurstLength;
     mBurstStart = cachedBurstStart;
-    mBurstFps = cachedBurstFps;
-    setExternalSnapshotBuffers(format, picWidth, picHeight);
     return status;
 }
 
@@ -3201,7 +3299,12 @@ status_t ControlThread::updateSpotWindow(const int &width, const int &height)
 {
     LOG1("@%s", __FUNCTION__);
     // TODO: Check, if these window fractions are right. Copied off from libcamera1
-    CameraWindow spotWin = { (int)width * 7.0 / 16.0, (int)width * 9.0 / 16.0, (int)height * 7.0 / 16.0, (int)height * 9.0 / 16.0, 255 };
+    CameraWindow spotWin = {
+            static_cast<int>(width * 7.0 / 16.0),
+            static_cast<int>(width * 9.0 / 16.0),
+            static_cast<int>(height * 7.0 / 16.0),
+            static_cast<int>(height * 9.0 / 16.0), 255 };
+
     return m3AControls->setAeWindow(&spotWin);
 }
 
@@ -3395,20 +3498,36 @@ void ControlThread::previewBufferCallback(AtomBuffer *buff, ICallbackPreview::Ca
 
 status_t ControlThread::handleMessagePreviewStarted()
 {
-    if (mState != STATE_CONTINUOUS_CAPTURE || mFirstPreviewStart) {
-        /**
-        * First preview frame was rendered.
-        * Now preview is ongoing. Complete now any initialization that is not
-        * strictly needed to do, before preview is started so it doesn't
-        * impact launch to preview time.
-        *
-        * In this case we send the request to the PictureThread to allocate
-        * the snapshot buffers. This is only needed during the first preview
-        * start.
-        */
-        allocateSnapshotBuffers();
-    }
-    mFirstPreviewStart = false;
+    LOG1("@%s", __FUNCTION__);
+
+    /**
+    * First preview frame was rendered.
+    * Now preview is ongoing. Complete now any initialization that is not
+    * strictly needed to do, before preview is started so it doesn't
+    * impact launch to preview time.
+    *
+    */
+
+    /* NOTE: handleMessageTakePicture can be called before this function, if application
+     *       call take_picture fast after preview start. So we must take care of that case.
+     */
+
+    /* Now that preview is started let's send the asynchronous msg to PictureThread
+     * to start the allocation of snapshot buffers.
+     */
+    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
+
+    /**
+     * if we have all the allocated buffers available then it is safe to re-allocate
+     *
+     */
+
+    if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
+        allocateSnapshotBuffers(videoMode);
+    } else {
+        LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+    };
+
     return NO_ERROR;
 }
 
@@ -3422,10 +3541,20 @@ AtomBuffer* ControlThread::findVideoSnapshotBuffer(int index)
     return NULL;
 }
 
+status_t ControlThread::handleMessageEncodingDone(MessagePicture *msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    // message content is provided for future use; not needed yet
+    mCaptureSubState = STATE_CAPTURE_ENCODING_DONE;
+    return OK;
+}
+
 status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+
+    mCaptureSubState = STATE_CAPTURE_PICTURE_DONE;
     if (msg->snapshotBuf.type == ATOM_BUFFER_PANORAMA) {
         // panorama pictures are special, they use the panorama engine memory.
         // we return them to panorama for releasing
@@ -3443,7 +3572,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
                     if(mStoreMetaDataInBuffers)
                         recBuffer = findRecordingBuffer((void*) videoBuffer->metadata_buff->data);
                     else
-                        recBuffer = findRecordingBuffer((void*) videoBuffer->buff->data);
+                        recBuffer = findRecordingBuffer((void*) videoBuffer->dataPtr);
                     if (recBuffer) {
                         LOG1("Snapshot buffer found reserved for video encoding");
                         // drop from reserved list
@@ -3465,13 +3594,33 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             return status;
         }
     } else if (mState == STATE_CAPTURE || mState == STATE_CONTINUOUS_CAPTURE) {
-        /*
-         * Store the buffer that has not been returned to ISP, and it shall be returned
-         * when next capturing happen
-         * The reason is to save S2S time, don't need to qbuf back to ISP in still
-         * and burst capture
+
+        /**
+         * Snapshot buffer recycle
+         * Buffers marked with FRAME_STATUS SKIPPED are not meant to be made
+         * available, this is used for example in HDR and ULL first snapshots
+         *
+         * We check if the buffer returned is in the array of allocated buffers
+         * this should always be the case.
+         * Then we check that it is not already in in the list of available buffers
+         *
+         * TODO: Have post-view allocation similar to snapshot.
+         *
+         *
          */
-        mUnqueuedPicBuf.push(*msg);
+        if (msg->snapshotBuf.status != FRAME_STATUS_SKIPPED) {
+            msg->snapshotBuf.status = FRAME_STATUS_OK;
+            if (findBufferByData(&msg->snapshotBuf, &mAllocatedSnapshotBuffers) == NULL) {
+                LOGE("Stale snapshot buffer returned... this should not happen");
+
+            } else if (findBufferByData(&msg->snapshotBuf, &mAvailableSnapshotBuffers) == NULL) {
+                mAvailableSnapshotBuffers.push(msg->snapshotBuf);
+                LOG1("%s  pushed %p to mAvailableSnapshotBuffers, size %d",
+                      __FUNCTION__, msg->snapshotBuf.dataPtr, mAvailableSnapshotBuffers.size());
+            } else {
+                LOGE("%s Already available snapshot buffer arrived. Find the bug!!", __FUNCTION__);
+            }
+        }
 
         if (isBurstRunning()) {
             ++mBurstCaptureDoneNum;
@@ -3489,6 +3638,22 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
 
 
     return status;
+}
+
+/**
+ * Utility method to find buffers in vectors of AtomBuffers
+ * the comparison is done based on the value of the data pointer
+ * inside camera_memory_t
+ */
+AtomBuffer* ControlThread::findBufferByData(AtomBuffer *buf,Vector<AtomBuffer> *aVector)
+{
+    Vector<AtomBuffer>::iterator it = aVector->begin();
+    for (;it != aVector->end(); ++it) {
+        if (buf->dataPtr == it->dataPtr)
+            return it;
+    }
+
+    return NULL;
 }
 
 status_t ControlThread::handleMessageAutoFocusDone()
@@ -3580,7 +3745,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
 
     int minFPS, maxFPS;
     params->getPreviewFpsRange(&minFPS, &maxFPS);
-    if (minFPS == maxFPS || minFPS > maxFPS) {
+    if (minFPS > maxFPS || minFPS < 0) {
         LOGE("invalid fps range [%d,%d]", minFPS, maxFPS);
         return BAD_VALUE;
     }
@@ -3679,12 +3844,14 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
-    // FLASH
-    const char* flashMode = params->get(CameraParameters::KEY_FLASH_MODE);
-    const char* flashModes = params->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
-    if (!validateString(flashMode, flashModes)) {
-        LOGE("bad flash mode");
-        return BAD_VALUE;
+    // FLASH. About the checking: just the back camera support flash
+    if ((mCameraId == 0) && PlatformData::supportsBackFlash()) {
+        const char* flashMode = params->get(CameraParameters::KEY_FLASH_MODE);
+        const char* flashModes = params->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
+        if (!validateString(flashMode, flashModes)) {
+            LOGE("bad flash mode");
+            return BAD_VALUE;
+        }
     }
 
     // SCENE MODE
@@ -3720,18 +3887,18 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
                 return BAD_VALUE;
             }
             int len = burstLength ? atoi(burstLength) : 0;
-            if (len > PlatformData::maxContinuousRawRingBufferSize()-1) {
+            if (len > PlatformData::maxContinuousRawRingBufferSize(mCameraId)-1) {
                 LOGE("negative start-index and burst-length=%d not supported concurrently", len);
                 return BAD_VALUE;
             }
         }
     }
 
-    // BURST FPS
-    const char* burstFps = params->get(IntelCameraParameters::KEY_BURST_FPS);
-    const char* burstFpss = params->get(IntelCameraParameters::KEY_SUPPORTED_BURST_FPS);
-    if (!validateString(burstFps,burstFpss)) {
-        LOGE("bad burst FPS: %s; supported: %s", burstFps, burstFpss);
+    // BURST SPEED
+    const char* burstSpeed = params->get(IntelCameraParameters::KEY_BURST_SPEED);
+    const char* burstSpeeds = params->get(IntelCameraParameters::KEY_SUPPORTED_BURST_SPEED);
+    if (!validateString(burstSpeed, burstSpeeds)) {
+        LOGE("bad burst speed: %s; supported: %s", burstSpeed, burstSpeeds);
         return BAD_VALUE;
     }
 
@@ -3838,17 +4005,15 @@ status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
     mBurstLength = CLIP(mBurstLength,NUM_BURST_BUFFERS,0);
     if (mBurstLength > 0) {
 
-        // Get the burst framerate
-        int fps = newParams->getInt(IntelCameraParameters::KEY_BURST_FPS);
-        if (fps > MAX_BURST_FRAMERATE) {
-            LOGE("Invalid value received for %s: %d", IntelCameraParameters::KEY_BURST_FPS, mFpsAdaptSkip);
-            return BAD_VALUE;
-        }
-        if (fps > 0) {
-            mFpsAdaptSkip = roundf(PlatformData::getMaxBurstFPS(mISP->getCurrentCameraId())/float(fps)) - 1;
-            mBurstFps = fps;
-            LOG1("%s, mFpsAdaptSkip:%d", __FUNCTION__, mFpsAdaptSkip);
-        }
+        // Get the burst speed
+        String8 speed(newParams->get(IntelCameraParameters::KEY_BURST_SPEED));
+        if (speed == IntelCameraParameters::BURST_SPEED_LOW)
+            mFpsAdaptSkip = BURST_SPEED_LOW_SKIP_NUM;
+        else if (speed == IntelCameraParameters::BURST_SPEED_MEDIUM)
+            mFpsAdaptSkip = BURST_SPEED_MEDIUM_SKIP_NUM;
+        else
+            mFpsAdaptSkip = BURST_SPEED_FAST_SKIP_NUM;
+        LOG1("%s, mFpsAdaptSkip:%d", __FUNCTION__, mFpsAdaptSkip);
     }
 
     // Burst start-index (for Time Nudge et al)
@@ -3858,10 +4023,6 @@ status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
         LOG1("Burst start-index set %d -> %d", mBurstStart, burstStartInt);
         mBurstStart = burstStartInt;
     }
-
-    // just the back camera should be considered
-    if (mISP->getCurrentCameraId() == 0)
-        selectFlashMode(newParams, false);
 
     return status;
 }
@@ -3971,6 +4132,7 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
 
     if (status == NO_ERROR) {
         // flash settings
+        preProcessFlashMode(newParams);
         status = processParamFlash(oldParams, newParams);
     }
 
@@ -3987,6 +4149,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     if (status == NO_ERROR) {
         // ae mode
         status = processParamAutoExposureMode(oldParams, newParams);
+    }
+
+    if (status == NO_ERROR) {
+        // save mirrored image (for front camera)
+        status = processParamMirroring(oldParams, newParams);
     }
 
     if (m3AControls->isIntel3A()) {
@@ -4036,43 +4203,81 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         }
     }
 
-    // In case of continuous-capture, the buffers are allocated
-    // when restarting the preview (done if picture size changes).
-    if (status == NO_ERROR &&
-            mState != STATE_STOPPED &&
-            mState != STATE_CONTINUOUS_CAPTURE) {
-        // Request PictureThread to allocate snapshot buffers
-        allocateSnapshotBuffers();
-    }
-
     return status;
 }
-
-status_t ControlThread::allocateSnapshotBuffers()
+/**
+ * Sends a request to PictureThread to allocated the snapshot buffers
+ *
+ * if we already have the same configuration available then it returns without
+ * asking PictureThread.
+ *
+ * Allocation request is synchronous.
+ *
+ * The buffers are allocated in the PictureThread to register the allocated
+ *   buffers with the HW JPEG encoder in this way the snapshot buffers are
+ *   already known to the HW encoder, this  speeds up the encoding.
+ *
+ * This call is used in the following situations:
+ * - when preview has already started
+ * - when processing parameters and those require new buffers
+ *
+ * care needs to be taken no to allocate the buffers at a time when ControlThread
+ * needs to be fast for some performance metric, like when taking a snapshot
+ * or when we are starting preview
+ *
+ */
+status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     int picWidth, picHeight;
-    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-    int bufCount = MAX(mBurstLength, mISP->getContinuousCaptureNumber());
+    unsigned int bufCount = MAX(mBurstLength, mISP->getContinuousCaptureNumber()+1);
     mParameters.getPictureSize(&picWidth, &picHeight);
+    int format = mISP->getSnapshotPixelFormat();
+
     if(videoMode){
        /**
         * In video mode we configure the Picture thread not to pre-allocate
         * the snapshot buffers. This means that there will be no active libVA
-        * context created. we cannot have more than one libVA (encoder) context active
-        * and in video mode the video encoder already creates one.
+        * context created. we cannot have more than one libVA (encoder) context
+        * active, and in video mode the video encoder already creates one.
         */
        bufCount = 0;
     }
 
-    status = mPictureThread->allocSharedBuffers(picWidth, picHeight, bufCount);
+
+    LOG1("Request to allocate %d bufs of (%dx%d)",bufCount, picWidth,picHeight);
+    LOG1("Currently allocated: %d , available %d",mAllocatedSnapshotBuffers.size(),
+                                                  mAvailableSnapshotBuffers.size());
+
+
+    if (!mAllocatedSnapshotBuffers.isEmpty()) {
+        AtomBuffer tmp;
+        tmp = mAllocatedSnapshotBuffers.itemAt(0);
+
+        if ( (tmp.width == picWidth) &&
+             (tmp.height == picHeight) &&
+             (mAllocatedSnapshotBuffers.size() == bufCount)) {
+            LOG1("No need to request Snapshot, buffers already available");
+            return NO_ERROR;
+        }
+    }
+
+    mAllocatedSnapshotBuffers.clear();
+    mAvailableSnapshotBuffers.clear();
+
+    status = mPictureThread->allocSharedBuffers(picWidth, picHeight, bufCount,format,
+                                                &mAllocatedSnapshotBuffers);
+
     if (status != NO_ERROR) {
-       LOGW("Could not pre-allocate picture buffers!");
+       LOGE("Could not pre-allocate picture buffers!");
+    } else {
+        mAvailableSnapshotBuffers = mAllocatedSnapshotBuffers;
     }
 
     return status;
 }
+
 void ControlThread::processParamFileInject(CameraParameters *newParams)
 {
     LOG1("@%s", __FUNCTION__);
@@ -4440,9 +4645,21 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         if(newVal == "on") {
             mHdr.enabled = true;
             mHdr.bracketMode = BRACKET_EXPOSURE;
-            mHdr.savedBracketMode = mBracketManager->getBracketMode();
             mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
+            status = mCP->initializeHDR(newWidth, newHeight);
+            if (status == NO_ERROR) {
+                mHdr.enabled = true;
+                mHdr.bracketMode = BRACKET_EXPOSURE;
+                mHdr.savedBracketMode = mBracketManager->getBracketMode();
+                mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
+            } else {
+                LOGE("HDR buffer allocation failed");
+            }
         } else if(newVal == "off") {
+            status = mCP->uninitializeHDR();
+            if (status != NO_ERROR) {
+                LOGE("HDR buffer release failed");
+            }
             mHdr.enabled = false;
             mBracketManager->setBracketMode(mHdr.savedBracketMode);
         } else {
@@ -4452,13 +4669,27 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_IMAGING, newVal.string());
         }
+    } else {
+        // Re-allocate buffers if resolution changed and HDR was ON
+        const char* o = oldParams->get(IntelCameraParameters::KEY_HDR_IMAGING);
+        String8 oldVal (o, (o == NULL ? 0 : strlen(o)));
+        if(oldVal == "on" && (newWidth != oldWidth || newHeight != oldHeight)) {
+            status = mCP->uninitializeHDR();
+            if (status == NO_ERROR) {
+                status = mCP->initializeHDR(newWidth, newHeight);
+                if (status != NO_ERROR) {
+                    LOGE("HDR buffer allocation failed");
+                }
+            } else {
+                LOGE("HDR buffer release failed");
+            }
+        }
     }
 
     if (mHdr.enabled) {
         // Dependency parameters
         mBurstLength = mHdr.bracketNum;
         mBracketManager->setBracketMode(mHdr.bracketMode);
-        selectFlashMode(newParams, false);
     }
 
     newVal = paramsReturnNewIfChanged(oldParams, newParams,
@@ -4538,29 +4769,50 @@ status_t ControlThread::processParamULL(const CameraParameters *oldParams,
         } else {
             mULL->setMode(UltraLowLight::ULL_OFF);
         }
+
     }
 
     return status;
 }
 
+void ControlThread::preProcessFlashMode(CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    // Don't do anything, if not using back camera. CTS fails,
+    // if we meddle with invalid flash values it sets.
+    if (mCameraId != 0 || !PlatformData::supportsBackFlash())
+        return;
+
+    String8 currSupportedFlashModes = String8(newParams->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES));
+
+    // If burst or HDR is enabled, the only supported flash mode is "off".
+    // Also, we only want to record only the first change to "off".
+    if ((mBurstLength > 1 || mHdr.enabled)
+        && currSupportedFlashModes != CameraParameters::FLASH_MODE_OFF) {
+        newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, CameraParameters::FLASH_MODE_OFF);
+        newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
+    } else if ((mBurstLength == 1 || mBurstLength == 0) && !mHdr.enabled) {
+        // Restore the supported flash modes to the values prior to forcing to "off":
+        newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, mSavedFlashSupported);
+    }
+}
 
 /**
  * select flash mode for single or burst capture
  * in burst capture, the flash is forced to off, otherwise
  * saved single capture flash mode is applied.
  * \param newParams
- * \param apply previous saved value
  */
-void ControlThread::selectFlashMode(CameraParameters *newParams, bool applySaved)
+void ControlThread::selectFlashModeForScene(CameraParameters *newParams)
 {
-    // !mBurstLength is only for CTS to pass
     LOG1("@%s", __FUNCTION__);
+    // !mBurstLength is only for CTS to pass
     if (mBurstLength == 1 || !mBurstLength) {
-        if (applySaved) {
-            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, mSavedFlashSupported.string());
-            newParams->set(CameraParameters::KEY_FLASH_MODE, mSavedFlashMode.string());
-        }
+        newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, mSavedFlashSupported.string());
+        newParams->set(CameraParameters::KEY_FLASH_MODE, mSavedFlashMode.string());
     } else {
+        LOG1("Forcing flash off");
         newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
         newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
     }
@@ -4579,137 +4831,151 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
         SceneMode sceneMode = CAM_AE_SCENE_MODE_AUTO;
         if (newScene == CameraParameters::SCENE_MODE_PORTRAIT) {
             sceneMode = CAM_AE_SCENE_MODE_PORTRAIT;
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
-            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
-            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+            if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
+                newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+                newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
+                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
+                newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
+            }
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
-                selectFlashMode(newParams, true);
+                selectFlashModeForScene(newParams);
             }
-            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
-            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
-            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
-            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else if (newScene == CameraParameters::SCENE_MODE_SPORTS || newScene == CameraParameters::SCENE_MODE_PARTY) {
             sceneMode = (newScene == CameraParameters::SCENE_MODE_SPORTS) ? CAM_AE_SCENE_MODE_SPORTS : CAM_AE_SCENE_MODE_PARTY;
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
-            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
-            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
+                newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
+                newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
+            }
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams, true);
+                selectFlashModeForScene(newParams);
             }
-            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
-            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
-            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else if (newScene == CameraParameters::SCENE_MODE_LANDSCAPE || newScene == CameraParameters::SCENE_MODE_SUNSET) {
             sceneMode = (newScene == CameraParameters::SCENE_MODE_LANDSCAPE) ? CAM_AE_SCENE_MODE_LANDSCAPE : CAM_AE_SCENE_MODE_SUNSET;
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
-            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
-            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
+                newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_OUTDOOR);
+                newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
+                newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
+            }
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams, true);
+                selectFlashModeForScene(newParams);
             }
-            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_OUTDOOR);
-            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
-            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
-            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else if (newScene == CameraParameters::SCENE_MODE_NIGHT) {
             sceneMode = CAM_AE_SCENE_MODE_NIGHT;
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
-            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
-            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
+                newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true");
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
+                newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::TRUE);
+            }
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams, true);
+                selectFlashModeForScene(newParams);
             }
-            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true");
-            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
-            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::TRUE);
         } else if (newScene == CameraParameters::SCENE_MODE_NIGHT_PORTRAIT) {
             sceneMode = CAM_AE_SCENE_MODE_NIGHT_PORTRAIT;
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
-            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
-            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
+                newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true");
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
+                newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::TRUE);
+            }
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("on");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_ON);
-                selectFlashMode(newParams, true);
+                selectFlashModeForScene(newParams);
             }
-            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true");
-            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
-            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::TRUE);
         } else if (newScene == CameraParameters::SCENE_MODE_FIREWORKS) {
             sceneMode = CAM_AE_SCENE_MODE_FIREWORKS;
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
-            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
-            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+            if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
+                newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
+                newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
+                newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
+            }
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams, true);
+                selectFlashModeForScene(newParams);
             }
-            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
-            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
-            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else if (newScene == CameraParameters::SCENE_MODE_BARCODE) {
             sceneMode = CAM_AE_SCENE_MODE_TEXT;
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_MACRO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "macro,continuous-picture");
-            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+            if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_MACRO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "macro,continuous-picture");
+                newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+                newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
+                newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
+            }
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
-                mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
-                selectFlashMode(newParams, true);
+                mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
+                selectFlashModeForScene(newParams);
             }
-            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
-            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
-            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         } else {
             if (newScene == CameraParameters::SCENE_MODE_CANDLELIGHT) {
                 sceneMode = CAM_AE_SCENE_MODE_CANDLELIGHT;
@@ -4726,24 +4992,26 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 sceneMode = CAM_AE_SCENE_MODE_AUTO;
             }
 
-            newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
-            newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,infinity,fixed,macro,continuous-video,continuous-picture");
-            newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-            newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, "off,50hz,60hz,auto");
-            newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+            if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,infinity,fixed,macro,continuous-video,continuous-picture");
+                newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, "off,50hz,60hz,auto");
+                newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center,spot");
+                newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true,false");
+                newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
+            }
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
-                selectFlashMode(newParams, true);
+                selectFlashModeForScene(newParams);
             }
-            newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center,spot");
-            newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-            newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
-            newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-            newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true,false");
-            newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
         }
 
         m3AControls->setAeSceneMode(sceneMode);
@@ -4947,9 +5215,11 @@ status_t ControlThread::processParamExposureCompensation(const CameraParameters 
     if (!newVal.isEmpty()) {
         int exposure = newParams->getInt(CameraParameters::KEY_EXPOSURE_COMPENSATION);
         float comp_step = newParams->getFloat(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP);
-        status = m3AControls->setEv(exposure * comp_step);
+        if (PlatformData::supportEV(mISP->getCurrentCameraId()))
+            status = m3AControls->setEv(exposure * comp_step);
         float ev = 0;
-        m3AControls->getEv(&ev);
+        if (PlatformData::supportEV(mISP->getCurrentCameraId()))
+            m3AControls->getEv(&ev);
         LOGD("exposure compensation to \"%s\" (%d), ev value %f, res %d",
              newVal.string(), exposure, ev, status);
     }
@@ -5329,7 +5599,7 @@ status_t ControlThread::processParamPreviewFrameRate(const CameraParameters *old
         LOGI("DEPRECATED: Got new preview frame rate: %s", newVal.string());
         int fps = newParams->getPreviewFrameRate();
         // Save the set FPS for doing frame dropping
-        mPreviewThread->setFramerate(fps);
+        mISP->setPreviewFramerate(fps);
     }
 
     return NO_ERROR;
@@ -5409,6 +5679,27 @@ status_t ControlThread::processParamExifSoftware(const CameraParameters *oldPara
     if (!newVal.isEmpty()) {
         LOG1("Got new Exif software: %s", newVal.string());
         mPictureThread->setExifSoftware(newVal);
+    }
+
+    return NO_ERROR;
+}
+
+status_t ControlThread::processParamMirroring(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_SAVE_MIRRORED);
+
+    if (!newVal.isEmpty()) {
+        if (newVal == CameraParameters::TRUE) {
+            mSaveMirrored = true;
+            mCurrentOrientation = SensorThread::getInstance()->registerOrientationListener(this);
+         } else {
+            mSaveMirrored = false;
+            SensorThread::getInstance()->unRegisterOrientationListener(this);
+        }
+        LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_SAVE_MIRRORED, newVal.string());
     }
 
     return NO_ERROR;
@@ -5644,7 +5935,14 @@ void ControlThread::restoreCurrentPictureParams()
 
     mStillPictContext.clear();
     updateParameterCache();
-    allocateSnapshotBuffers();
+
+    if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
+        allocateSnapshotBuffers(false);
+    } else {
+        LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+    }
+
+
 }
 
 /**
@@ -5723,6 +6021,13 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     if (status != NO_ERROR)
         goto exit;
 
+    if (mCaptureSubState == STATE_CAPTURE_STARTED) {
+        LOGE("setParameters happened during capturing. Changing parameters during capturing would produce "
+             "undeterministic results, so dropping the params! Fix your application!");
+        status = INVALID_OPERATION;
+        goto exit;
+    }
+
     LOG1("scanning AF focus areas");
     status = newFocusAreas.scan(newParams.get(CameraParameters::KEY_FOCUS_AREAS),
                                 m3AControls->getAfMaxNumWindows());
@@ -5758,8 +6063,6 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
                 mState == STATE_CONTINUOUS_CAPTURE) {
                 needRestartPreview = true;
                 videoMode = false;
-                if (mState == STATE_CONTINUOUS_CAPTURE)
-                  allocateSnapshotBuffers();
             }
         }
     }
@@ -5767,9 +6070,27 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     mFocusAreas = newFocusAreas;
     mMeteringAreas = newMeteringAreas;
 
+    /**
+     * we need to re-allocate the snapshots if the size has changed or the
+     * number of buffers have changed. If the burst parameters change a preview
+     * restart is triggered. If preview is re-started we will allocate the snapshots
+     * after preview has started, not impacting L2P
+     *
+     * In cases where we receive set_params before we start preview we do not allocate
+     */
+    if (paramsHasPictureSizeChanged(&oldParams, &newParams) && mState != STATE_STOPPED) {
+
+        if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
+            allocateSnapshotBuffers(videoMode);
+        } else {
+            LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+        }
+    }
+
     ProcessOverlayEnable(&oldParams, &newParams);
 
     if (needRestartPreview == true) {
+
         if (msg->stopPreviewRequest) {
             if (mState != STATE_CONTINUOUS_CAPTURE)
                 LOGD("%s: Invalid stopPreviewRequest!", __FUNCTION__);
@@ -5976,33 +6297,79 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
     PictureThread::MetaData picMetaData;
     int ULLid = 0;
 
-    // ATM the only post capture processing is ULL, no need to check which one
-    mULL->getOuputResult(&snapshotBuffer,&postviewBuffer, &picMetaData, &ULLid);
-
-    if(msg->status != NO_ERROR)
+    if(msg->status != NO_ERROR)  {
         LOGW("PostCapture Processing failed !!");
+        goto cleanup;
+    }
+
+    // ATM the only post capture processing is ULL, no need to check which one
+    status = mULL->getOuputResult(&snapshotBuffer,&postviewBuffer, &picMetaData, &ULLid);
+    if (status != NO_ERROR) {
+        /* This can only mean that ULL was cancel, cleanup and go */
+        goto cleanup;
+    }
 
     mCallbacksThread->requestULLPicture(ULLid);
 
-    status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
+    /*
+     * We stop using the postview buffer since it maybe de-allocated
+     * this is because we still allocated the postview buffers in the AtomISP
+     * which means that if a capture is triggered while ULL was processing
+     * the postview will be freed and allocated again
+     * TODO: move postview allocation to PictureTrhead to make the snapshot
+     * and postview buffer life-cycles more similar.
+     * This will also reduce the time to take a picture
+     * (impacting shutter lag and S2S metrics)
+     */
+    snapshotBuffer.status = FRAME_STATUS_OK;
+    snapshotBuffer.type = ATOM_BUFFER_ULL;
+    status = mPictureThread->encode(picMetaData, &snapshotBuffer, NULL);
     if (status != NO_ERROR) {
         // normally this is done by PictureThread, but as no
         // encoding was done, free the allocated metadata
         picMetaData.free(m3AControls);
     }
-    // TODO: Here we should return the other 2 snapshot+postview buffers that
-    // ULL stored
+
+cleanup:
+    /**
+     * retrieve input buffers from ULL class and return them for re-cycling
+     */
+    Vector<AtomBuffer> inputs;
+    mULL->getInputBuffers(&inputs);
+
+    Vector<AtomBuffer>::iterator it = inputs.begin();
+    MessagePicture picMsg;
+    // until we handle the same way post-view buffers
+    // we put an empty buffer here.
+    picMsg.postviewBuf = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+
+    for (; it != inputs.end(); ++it) {
+        picMsg.snapshotBuf = *it;
+        handleMessagePictureDone(&picMsg);
+    }
+
     return NO_ERROR;
 }
-status_t ControlThread::hdrInit(int size, int pvSize, int format,
-                                int width, int height,
-                                int pvWidth, int pvHeight)
+
+status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     // Initialize the HDR output buffers
-    // Main output buffer
+    // Main output buffer should have same dimensions initially as one of the input
+    // buffers, so take those details from the vector of allocated buffers
+    if (mAllocatedSnapshotBuffers.isEmpty()) {
+        LOGE("%s:We do not have any snapshotbuffers yet... find the bug",__FUNCTION__);
+        return NO_MEMORY;
+    }
+
+    int size = mAllocatedSnapshotBuffers[0].size;
+    int width = mAllocatedSnapshotBuffers[0].width;
+    int stride = mAllocatedSnapshotBuffers[0].stride;
+    int height = mAllocatedSnapshotBuffers[0].height;
+    int format = mAllocatedSnapshotBuffers[0].format;
+
     mCallbacks->allocateMemory(&mHdr.outMainBuf, size);
     if (mHdr.outMainBuf.buff == NULL) {
         LOGE("HDR: Error allocating memory for HDR main buffer!");
@@ -6013,7 +6380,7 @@ status_t ControlThread::hdrInit(int size, int pvSize, int format,
     mHdr.outMainBuf.frameCounter = 1;
     mHdr.outMainBuf.type = ATOM_BUFFER_SNAPSHOT;
 
-    LOG1("HDR: using %p as HDR main output buffer", mHdr.outMainBuf.buff->data);
+    LOG1("HDR: using %p as HDR main output buffer", mHdr.outMainBuf.dataPtr);
     // Postview output buffer
     mCallbacks->allocateMemory(&mHdr.outPostviewBuf, pvSize);
     if (mHdr.outPostviewBuf.buff == NULL) {
@@ -6023,7 +6390,7 @@ status_t ControlThread::hdrInit(int size, int pvSize, int format,
     mHdr.outPostviewBuf.shared = false;
     mHdr.outPostviewBuf.type = ATOM_BUFFER_POSTVIEW;
 
-    LOG1("HDR: using %p as HDR postview output buffer", mHdr.outPostviewBuf.buff->data);
+    LOG1("HDR: using %p as HDR postview output buffer", mHdr.outPostviewBuf.dataPtr);
 
     // Initialize the CI input buffers (will be initialized later, when snapshots are taken)
     mHdr.ciBufIn.ciBufNum = mHdr.bracketNum;
@@ -6052,9 +6419,9 @@ status_t ControlThread::hdrInit(int size, int pvSize, int format,
         return status;
     }
 
-    mHdr.ciBufOut.ciMainBuf->data = mHdr.outMainBuf.buff->data;
+    mHdr.ciBufOut.ciMainBuf->data = mHdr.outMainBuf.dataPtr;
     mHdr.ciBufOut.ciMainBuf[0].width = mHdr.outMainBuf.width = width;
-    mHdr.ciBufOut.ciMainBuf[0].stride = mHdr.outMainBuf.stride = width;
+    mHdr.ciBufOut.ciMainBuf[0].stride = mHdr.outMainBuf.stride = stride;
     mHdr.ciBufOut.ciMainBuf[0].height = mHdr.outMainBuf.height = height;
     mHdr.outMainBuf.format = format;
     mHdr.ciBufOut.ciMainBuf[0].size = mHdr.outMainBuf.size = size;
@@ -6067,7 +6434,7 @@ status_t ControlThread::hdrInit(int size, int pvSize, int format,
             mHdr.ciBufOut.ciMainBuf[0].height,
             mHdr.ciBufOut.ciMainBuf[0].format);
 
-    mHdr.ciBufOut.ciPostviewBuf[0].data = mHdr.outPostviewBuf.buff->data;
+    mHdr.ciBufOut.ciPostviewBuf[0].data = mHdr.outPostviewBuf.dataPtr;
     mHdr.ciBufOut.ciPostviewBuf[0].width = mHdr.outPostviewBuf.width = pvWidth;
     mHdr.ciBufOut.ciPostviewBuf[0].stride = mHdr.outPostviewBuf.stride = pvWidth;
     mHdr.ciBufOut.ciPostviewBuf[0].height = mHdr.outPostviewBuf.height = pvHeight;
@@ -6093,14 +6460,9 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
     LOG1("@%s", __FUNCTION__);
 
     // Initialize the HDR CI input buffers (main/postview) for this capture
-    if (snapshotBuffer->shared) {
-        mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = (void *) *((char **)snapshotBuffer->buff->data);
-    } else {
-        mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer->buff->data;
-    }
-
+    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer->dataPtr;
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].width = snapshotBuffer->width;
-    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].stride = snapshotBuffer->width;
+    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].stride = snapshotBuffer->stride;
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height = snapshotBuffer->height;
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].size = snapshotBuffer->size;
     AtomCP::setIaFrameFormat(&mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum], snapshotBuffer->format);
@@ -6114,7 +6476,7 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
             mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height,
             mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].format);
 
-    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].data = postviewBuffer->buff->data;  /* postview buffers are never shared (i.e. coming from the PictureThread) */
+    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].data = postviewBuffer->dataPtr;  /* postview buffers are never shared (i.e. coming from the PictureThread) */
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].width = postviewBuffer->width;
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height = postviewBuffer->height;
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].size = postviewBuffer->size;
@@ -6188,8 +6550,6 @@ status_t ControlThread::hdrCompose()
         return status;
     }
 
-    status = mCP->initializeHDR(mHdr.ciBufOut.ciMainBuf->width,
-                                mHdr.ciBufOut.ciMainBuf->height);
     if (status != NO_ERROR) {
         hdrPicMetaData.free(m3AControls);
         LOGE("HDR buffer allocation failed");
@@ -6205,6 +6565,12 @@ status_t ControlThread::hdrCompose()
         if (hdrPicMetaData.aeConfig) {
             hdrPicMetaData.aeConfig->evBias = 0.0;
         }
+        // The output frame is allocated by the HDR module so it is not one of the
+        // snapshot buffers allocated by the PictureThread. We mark this in the
+        // status field as frame skipped. This field is only checked by the
+        // logic in PictureDone, so we make sure this frame is not added to the
+        // pool of snapshots
+        mHdr.outMainBuf.status = FRAME_STATUS_SKIPPED;
         status = mPictureThread->encode(hdrPicMetaData, &mHdr.outMainBuf, &mHdr.outPostviewBuf);
         if (status == NO_ERROR) {
             doEncode = true;
@@ -6216,48 +6582,90 @@ status_t ControlThread::hdrCompose()
     if (doEncode == false)
         hdrPicMetaData.free(m3AControls);
 
-    mCP->uninitializeHDR();
-
+    /**
+     * TODO: to have a cleaner buffer recycle we should return the snapshot buffers
+     * to the pool of available buffers. This is not done here, but it works
+     * because we reset the available buffer list with all allocated buffers
+     * in StopCapture
+     */
     return status;
 }
 
 /*
- * Helper methods used during the takePicture sequence
- * If possible it retrieves the  buffers allocated by the HW JPEG encoder
- * and passes them to the ISP to be used
- * If the operation fails we default to internally (by AtomISP) allocated buffers
- * Use buffers sharing only if the pixel format is NV12
- * @param[in] format V4L2 color space format of the frame
- * @param[in] width width in pixels
- * @param[in] height height in lines
+ * Helper method used during the takePicture sequences
+ *
+ * It  passes the  buffers allocated asynchronously by PictureThread to the AtomISP
+ * prior device initialization
+ *
+ * The allocation in the picture thread is triggered also by the Control Thread
+ * \sa allocateSnapshotBuffers()
+ *
+ * In this method we check whether we have enough available buffers to satisfy
+ * the request.
+ * If we do not have enough available but there are enough allocated it means
+ * snapshot buffers are being held somewhere else, this is an indication of a bug
+ *
+ *
+ * The input parameters are at the moment mostly for double checking. It is
+ * assumed that the allocatedSnapshotbuffers was previously called with the correct
+ * resolution and format
+ *
+ * \param [in] format V4L2 color space format of the frame (not used, see TODO)
+ * \param [in] width width in pixels
+ * \param [in] height height in lines
  */
 void ControlThread::setExternalSnapshotBuffers(int format, int width, int height)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    unsigned int bufCount = MAX(mBurstLength, mISP->getContinuousCaptureNumber()+1);
 
-    if (format == V4L2_PIX_FMT_NV12) {
-        // Try to use buffer sharing
-        char* snapshotBufferPtr;
-        int numberOfSnapshots = MAX(1,mBurstLength);
-        int numberOfSnapshotsAllocated;
+    /**
+     * This is needed for cases when we receive the take_picture request before
+     * start preview has completed, which is the normal place to allocate
+     * the snapshot buffers. This can happen with CTS or instantly tapping shutter
+     * after mode change.
+     */
+    if (mAllocatedSnapshotBuffers.isEmpty() ||
+        mAllocatedSnapshotBuffers.size() != bufCount ||
+        mAllocatedSnapshotBuffers[0].width != width ||
+        mAllocatedSnapshotBuffers[0].height != height) {
 
-        status = mPictureThread->getSharedBuffers(width, height, &snapshotBufferPtr, &numberOfSnapshotsAllocated);
-
-        if ((status == NO_ERROR) && numberOfSnapshots <= numberOfSnapshotsAllocated) {
-            status = mISP->setSnapshotBuffers((void*)snapshotBufferPtr, numberOfSnapshots, false);
-
-            if (status == NO_ERROR) {
-                LOG1("Using shared buffers for snapshot");
-            } else {
-                LOGW("Cannot set shared buffers in atomisp, using internal buffers!");
-            }
+        if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
+            allocateSnapshotBuffers(false);
         } else {
-            LOGW("Cannot get shared buffers from libjpeg, using internal buffers!");
-        }
-    } else {
-        LOG1("Using internal buffers for snapshot");
+            LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+        };
     }
+
+    unsigned int numberOfSnapshots = MAX(1,mBurstLength);
+    LOG1("Required Buffers for snapshot %d: Available %d Allocated: %d", numberOfSnapshots,
+                                                                         mAvailableSnapshotBuffers.size(),
+                                                                         mAllocatedSnapshotBuffers.size());
+
+    if (numberOfSnapshots <= mAvailableSnapshotBuffers.size()) {
+        if ((mAllocatedSnapshotBuffers[0].width != width) ||
+            (mAllocatedSnapshotBuffers[0].height != height)) {
+            LOGE("We got allocated snapshot buffers of wrong resolution (%dx%d), "
+                  "this should not happen!! we wanted (%dx%d)",
+                  mAllocatedSnapshotBuffers[0].width,
+                  mAllocatedSnapshotBuffers[0].height,
+                  width, height);
+        }
+        bool cached = false;
+        status = mISP->setSnapshotBuffers(&mAvailableSnapshotBuffers, numberOfSnapshots, cached  );
+    } else {
+        /**
+         * The places when we allocate snapshot buffers should ensure that at take
+         * picture time there are enough buffers. This situation may arise if
+         * not enough buffers were allocated, and some buffers are in used
+         * ControlThread needs to ensure it allocates enough.
+         * It is not possible to re-allocate now if we do not have all the
+         * snapshot buffers back in mAvailableSnapshotBuffers.
+         */
+        LOGE("Not enough available buffers for this request. This should not happen");
+    }
+
 }
 
 /**
@@ -6461,9 +6869,10 @@ status_t ControlThread::stopPanorama()
     if (mPanoramaThread->getState() == PANORAMA_STOPPED)
         return NO_ERROR;
     if (mPanoramaThread != 0) {
-        // empty panorama from pending work (push possible finalization to
-        // this thread)
-        mPanoramaThread->flush();
+        // empty panorama from pending work if finalization is pending and push
+        // finalized image to this thread
+        if (mPanoramaFinalizationPending)
+            mPanoramaThread->flush();
 
         // at this point control thread may have a finalization message with
         // memory from panorama engine, so process them right now
@@ -6481,6 +6890,11 @@ status_t ControlThread::stopPanorama()
         // now, finally, we can stop the panorama engine, which releases its
         // memory
         mPanoramaThread->stopPanorama();
+
+        // safety for automatic finalization which may have run during this
+        // function if max panorama snapshot count was reached
+        mMessageQueue.remove(MESSAGE_ID_PANORAMA_FINALIZE, &pending); // drop message
+
         return NO_ERROR;
     } else{
         return INVALID_OPERATION;
@@ -6559,6 +6973,10 @@ status_t ControlThread::waitForAndExecuteMessage()
             status = handleMessagePreviewStarted();
             break;
 
+        case MESSAGE_ID_ENCODING_DONE:
+            status = handleMessageEncodingDone(&msg.data.encodingDone);
+            break;
+
         case MESSAGE_ID_PICTURE_DONE:
             status = handleMessagePictureDone(&msg.data.pictureDone);
             break;
@@ -6622,6 +7040,10 @@ status_t ControlThread::waitForAndExecuteMessage()
             status = handleMessagePostCaptureProcessingDone(&msg.data.postCapture);
             break;
 
+        case MESSAGE_ID_SET_ORIENTATION:
+            status = handleMessageSetOrientation(&msg.data.orientation);
+            break;
+
         default:
             LOGE("Invalid message");
             status = BAD_VALUE;
@@ -6641,7 +7063,7 @@ AtomBuffer* ControlThread::findRecordingBuffer(void *ptr)
             if (it->metadata_buff->data == ptr)
                 return it;
         } else {
-             if (it->buff->data == ptr)
+             if (it->dataPtr == ptr)
                 return it;
         }
     }
@@ -6723,13 +7145,11 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
 {
     LOG2("@%s", __FUNCTION__);
     AtomBuffer buff;
-    nsecs_t timestamp;
     status_t status = NO_ERROR;
-    atomisp_frame_status frameStatus;
 
-    status = mISP->getRecordingFrame(&buff, &timestamp, &frameStatus);
+    status = mISP->getRecordingFrame(&buff);
     if (status == NO_ERROR) {
-       if (frameStatus != ATOMISP_FRAME_STATUS_CORRUPTED) {
+       if (buff.status != FRAME_STATUS_CORRUPTED) {
             // Check whether driver has run out of buffers
             if (!mISP->dataAvailable()) {
                 LOGE("Video frame dropped, buffers reserved : %d video encoder, %d video snapshot",
@@ -6744,17 +7164,24 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
                 if (mISP->getPreviewTooBigForVFPP()) {
                     memcpy(buff.dataPtr, msg->previewFrame.dataPtr, msg->previewFrame.size);
                 }
+
+                // Mirror the recording buffer if mirroring is enabled (only for front camera)
+                // TODO: this should be moved into VideoThread
+                if (mSaveMirrored && PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT) {
+                    mirrorBuffer(&buff, mRecordingOrientation, PlatformData::cameraOrientation(mCameraId));
+                }
+
                 if (mVideoSnapshotrequested && mVideoSnapshotBuffers.size() < 3) {
                     mVideoSnapshotrequested--;
                     encodeVideoSnapshot(buff);
                 }
-                mVideoThread->video(&buff, timestamp);
+                mVideoThread->video(&buff);
                 mRecordingBuffers.push(buff);
             } else {
                 mISP->putRecordingFrame(&buff);
             }
         } else {
-            LOGW("Recording frame %d corrupted, ignoring", buff.id);
+            LOGD("Recording frame %d corrupted, ignoring", buff.id);
             mISP->putRecordingFrame(&buff);
         }
     } else {
@@ -6844,6 +7271,22 @@ status_t ControlThread::requestExitAndWait()
 
     // propagate call to base class
     return Thread::requestExitAndWait();
+}
+
+void ControlThread::orientationChanged(int orientation)
+{
+    LOG1("@%s: orientation = %d", __FUNCTION__, orientation);
+    Message msg;
+    msg.id = MESSAGE_ID_SET_ORIENTATION;
+    msg.data.orientation.value = orientation;
+    mMessageQueue.send(&msg);
+}
+
+status_t ControlThread::handleMessageSetOrientation(MessageOrientation *msg)
+{
+    LOG1("@%s: orientation = %d", __FUNCTION__, msg->value);
+    mCurrentOrientation = msg->value;
+    return NO_ERROR;
 }
 
 } // namespace android

@@ -39,8 +39,6 @@ PreviewThread::PreviewThread() :
     ,mMessageQueue("PreviewThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
     ,mState(STATE_STOPPED)
-    ,mSetFPS(30)
-    ,mSensorFPS(30.0f)
     ,mLastFrameTs(0)
     ,mFramesDone(0)
     ,mCallbacksThread(CallbacksThread::getInstance())
@@ -55,6 +53,7 @@ PreviewThread::PreviewThread() :
     ,mPreviewHeight(480)
     ,mPreviewStride(640)
     ,mPreviewFormat(V4L2_PIX_FMT_NV21)
+    ,mGfxStride(640)
     ,mOverlayEnabled(false)
     ,mRotation(0)
 {
@@ -181,70 +180,11 @@ void PreviewThread::getDefaultParameters(CameraParameters *params)
         LOG1("preview format %s\n", previewFormats);
     }
     params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, previewFormats);
-
 }
-
-status_t PreviewThread::setFramerate(int fps)
-{
-    LOG1("@%s", __FUNCTION__);
-    Message msg;
-    msg.id = MESSAGE_ID_SET_FRAMERATE;
-    msg.data.framerate.fps = fps;
-    mMessageQueue.send(&msg);
-    return NO_ERROR;
-}
-
-status_t PreviewThread::handleSetFramerate(MessageSetFramerate *msg)
-{
-    LOG1("@%s", __FUNCTION__);
-    mSetFPS = msg->fps;
-    return OK;
-}
-
-status_t PreviewThread::setSensorFramerate(float fps)
-{
-    LOG1("@%s", __FUNCTION__);
-    Message msg;
-    msg.id = MESSAGE_ID_SET_SENSOR_FRAMERATE;
-    msg.data.sensorFramerate.fps = fps;
-    mMessageQueue.send(&msg);
-    return NO_ERROR;
-}
-
-status_t PreviewThread::handleSetSensorFramerate(MessageSetSensorFramerate *msg)
-{
-    LOG1("@%s", __FUNCTION__);
-    mSensorFPS = msg->fps;
-    return OK;
-}
-
-/**
- * This function implements the frame skip algorithm.
- * - If user requests half of sensor fps, drop every even frame
- * - If user requests third of sensor fps, drop two frames every three frames
- * @returns true: skip,  false: not skip
- */
-bool PreviewThread::checkSkipFrame(int frameNum)
-{
-    if (fabs(mSensorFPS / mSetFPS - 2) < 0.1f && (frameNum % 2 == 0)) {
-        LOG2("Preview FPS: %d. Skipping frame num: %d", mSetFPS, frameNum);
-        return true;
-    }
-
-    if (fabs(mSensorFPS / mSetFPS - 3) < 0.1f && (frameNum % 3 != 0)) {
-        LOG2("Preview FPS: %d. Skipping frame num: %d", mSetFPS, frameNum);
-        return true;
-    }
-
-    // TODO skipping support for 25fps sensor framerate
-
-    return false;
-}
-
 
 status_t PreviewThread::setPreviewWindow(struct preview_stream_ops *window)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s: preview_window = %p", __FUNCTION__, window);
     Message msg;
     msg.id = MESSAGE_ID_SET_PREVIEW_WINDOW;
     msg.data.setPreviewWindow.window = window;
@@ -296,6 +236,11 @@ status_t PreviewThread::fetchPreviewBuffers(Vector<AtomBuffer> &pvBufs)
     status_t status;
     status = mMessageQueue.send(&msg, MESSAGE_ID_FETCH_PREVIEW_BUFS);
 
+    if (status != NO_ERROR) {
+        LOGE("Failed to fetch preview buffers (error: %d)", status);
+        return status;
+    }
+
     if(mSharedMode && mPreviewBuffers.size() > 0) {
         Vector<GfxAtomBuffer>::iterator it = mPreviewBuffers.begin();
         for (;it != mPreviewBuffers.end(); it++) {
@@ -338,12 +283,7 @@ status_t PreviewThread::preview(AtomBuffer *buff)
  *
  * PreviewThread gets attached to receive preview stream here.
  *
- * We decide wether to pass buffers further or not
  *
- * Skip frame request for target video fps is also checked here,
- * since we want to output the same fps to display and video.
- * ControlThread is currently observing the same event, so we
- * pass the skip information within FrameBufferMessage::status.
  */
 bool PreviewThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state)
 {
@@ -360,8 +300,7 @@ bool PreviewThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
 
     AtomBuffer *buff = &msg->data.frameBuffer.buff;
     if (msg->id == MESSAGE_ID_FRAME) {
-        if (checkSkipFrame(buff->frameCounter)) {
-            buff->status = FRAME_STATUS_SKIPPED;
+        if (buff->status == FRAME_STATUS_SKIPPED) {
             buff->owner->returnBuffer(buff);
         } else if(buff->status == FRAME_STATUS_CORRUPTED) {
             buff->owner->returnBuffer(buff);
@@ -376,7 +315,7 @@ bool PreviewThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
     return false;
 }
 
-status_t PreviewThread::postview(AtomBuffer *buff, bool hidePreview)
+status_t PreviewThread::postview(AtomBuffer *buff, bool hidePreview, bool synchronous)
 {
     LOG2("@%s", __FUNCTION__);
     Message msg;
@@ -386,7 +325,11 @@ status_t PreviewThread::postview(AtomBuffer *buff, bool hidePreview)
     else
         msg.data.preview.buff.status = FRAME_STATUS_SKIPPED;
     msg.data.preview.hide = hidePreview;
-    return mMessageQueue.send(&msg);
+    msg.data.preview.synchronous = synchronous;
+    if (!synchronous)
+        return mMessageQueue.send(&msg);
+    else
+        return mMessageQueue.send(&msg, MESSAGE_ID_POSTVIEW);
 }
 
 status_t PreviewThread::flushBuffers()
@@ -584,14 +527,6 @@ status_t PreviewThread::waitForAndExecuteMessage()
             status = handleMessageSetCallback(&msg.data.setCallback);
             break;
 
-        case MESSAGE_ID_SET_FRAMERATE:
-            status = handleSetFramerate(&msg.data.framerate);
-            break;
-
-        case MESSAGE_ID_SET_SENSOR_FRAMERATE:
-            status = handleSetSensorFramerate(&msg.data.sensorFramerate);
-            break;
-
         default:
             LOGE("Invalid message");
             status = BAD_VALUE;
@@ -660,7 +595,7 @@ void PreviewThread::allocateLocalPreviewBuf(void)
     freeLocalPreviewBuf();
 
     switch(mPreviewFormat) {
-    case V4L2_PIX_FMT_YUV420:
+    case V4L2_PIX_FMT_YVU420:
         stride = ALIGN16(mPreviewWidth);
         ySize = stride * mPreviewHeight;
         cStride = ALIGN16(stride/2);
@@ -689,12 +624,32 @@ void PreviewThread::allocateLocalPreviewBuf(void)
 
 
 /**
- * stream-time dequeueing of buffers from preview_window_ops
+ * stream-time dequeuing of buffers from preview_window_ops
+ *
  */
 PreviewThread::GfxAtomBuffer* PreviewThread::dequeueFromWindow()
 {
     GfxAtomBuffer *ret = NULL;
     int dq_retries = GFX_DEQUEUE_RETRY_COUNT;
+    void *dst;
+    int w,h;
+    int lockMode;
+
+    /**
+     * Note: selected lock mode relies that if buffers are shared or not
+     *
+     * if they are shared with ControlThread then the ISP writes into the buffers
+     * and Previewthread and PostprocThread read from it.
+     *
+     * if they are not shared then CPU is copying into the buffers in the PreviewThread
+     * and nobody is reading, since these buffers are not passed to PostProcThread
+     */
+    if (mSharedMode)
+        lockMode = GRALLOC_USAGE_SW_READ_OFTEN | GRALLOC_USAGE_SW_WRITE_NEVER;
+    else
+        lockMode = GRALLOC_USAGE_SW_READ_NEVER | GRALLOC_USAGE_SW_WRITE_OFTEN;
+
+    GraphicBufferMapper &mapper = GraphicBufferMapper::get();
 
     for (;dq_retries > 0 && ret == NULL; dq_retries--) {
         // mMinUndequeued is a constraint set by native window and
@@ -708,6 +663,11 @@ PreviewThread::GfxAtomBuffer* PreviewThread::dequeueFromWindow()
             if (err != 0) {
                 LOGW("Error dequeuing preview buffer");
             } else {
+                // If Gfx frame buffer stride is greater than ISP buffer stride, we can
+                // repad the shared buffer between Gfx and ISP to meet Gfx alignmnet
+                // requirement, so we should change the lockMode as CPU writable.
+                if (stride > mPreviewStride)
+                    lockMode |= GRALLOC_USAGE_SW_WRITE_OFTEN;
                 size_t i = 0;
                 ret = lookForGfxBufferHandle(buf);
                 if (ret == NULL) {
@@ -717,13 +677,8 @@ PreviewThread::GfxAtomBuffer* PreviewThread::dequeueFromWindow()
                         mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
                     } else {
                         // stream-time fetching until target buffer count
-                        void *dst;
                         AtomBuffer tmpBuf;
-                        GraphicBufferMapper &mapper = GraphicBufferMapper::get();
-                        // Note: selected lock mode relies that if buffers were not
-                        // prefetched, we end up in full frame memcpy path
-                        int lockMode = GRALLOC_USAGE_SW_READ_NEVER | GRALLOC_USAGE_SW_WRITE_OFTEN;
-                        int w,h;
+
                         getEffectiveDimensions(&w,&h);
                         const Rect bounds(w, h);
                         tmpBuf.buff = NULL;     // We do not allocate a normal camera_memory_t
@@ -753,10 +708,18 @@ PreviewThread::GfxAtomBuffer* PreviewThread::dequeueFromWindow()
                     }
                 } else {
                     mBuffersInWindow--;
-                    ret->owner = OWNER_PREVIEWTHREAD;
-                    if (ret->buffer.id >= MAX_NUMBER_PREVIEW_GFX_BUFFERS) {
-                        LOG2("Received one of reserved buffers from Gfx, dequeueing another one");
+                    getEffectiveDimensions(&w,&h);
+                    const Rect bounds(w, h);
+                    if (mapper.lock(*buf, lockMode, bounds, &dst) != NO_ERROR) {
+                        LOGE("Failed to lock GraphicBufferMapper!");
+                        mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
                         ret = NULL;
+                    } else {
+                        ret->owner = OWNER_PREVIEWTHREAD;
+                        if (ret->buffer.id >= MAX_NUMBER_PREVIEW_GFX_BUFFERS) {
+                            LOG2("Received one of reserved buffers from Gfx, dequeueing another one");
+                            ret = NULL;
+                        }
                     }
                 }
             }
@@ -875,6 +838,24 @@ PreviewThread::lookForAtomBuffer(AtomBuffer *buffer)
     return NULL;
 }
 
+/**
+ *  This is a quick fix due to BayTrial Gfx is 128 bytes aligned while ISP may be 64/48/32/16 bytes
+ *  aligned, in case of the Gfx buffer queued into ISP is not 128 bytes aligned, when the buffer is
+ *  queued back to Gfx, we have to add padding to make this buffer 128 bytes aligned to meet the Gfx
+ *  weird requirement.
+ *  When doing the Gfx buffer padding We should take lockMode into account or we may have cache line
+ *  issues as we have had, more details please refer to:
+ *  http://android.intel.com:8080/#/c/102603/
+ */
+void PreviewThread::padPreviewBuffer(GfxAtomBuffer* &gfxBuf, MessagePreview* &msg)
+{
+    if (msg->buff.stride < mGfxStride && msg->buff.type == ATOM_BUFFER_PREVIEW_GFX) {
+        LOG2("@%s stride-gfx=%d, stride-msg=%d", __FUNCTION__, mGfxStride, msg->buff.stride);
+        repadYUV420(gfxBuf->buffer.width, gfxBuf->buffer.height, gfxBuf->buffer.stride,
+                    mGfxStride, gfxBuf->buffer.dataPtr, gfxBuf->buffer.dataPtr);
+        msg->buff.stride = mGfxStride;
+    }
+}
 
 /**
  *  This method gets executed for each preview frames that the Thread
@@ -887,6 +868,7 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     bool passedToGfx = false;
+    GraphicBufferMapper &mapper = GraphicBufferMapper::get();
     LOG2("Buff: id = %d, data = %p",
             msg->buff.id,
             msg->buff.dataPtr);
@@ -929,11 +911,15 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
             }
         } else {
             bufToEnqueue = lookForAtomBuffer(&msg->buff);
-            if (bufToEnqueue)
-               passedToGfx = true;
+            if (bufToEnqueue) {
+                passedToGfx = true;
+            }
         }
 
         if (bufToEnqueue != NULL) {
+            // TODO: If ISP can be configured to match Gfx buffer stride alignment, please delete below line.
+            padPreviewBuffer(bufToEnqueue, msg);
+            mapper.unlock(*(bufToEnqueue->gfxBufferHandle));
             if ((err = mPreviewWindow->enqueue_buffer(mPreviewWindow,
                             bufToEnqueue->gfxBufferHandle)) != 0) {
                 LOGE("Surface::queueBuffer returned error %d", err);
@@ -953,25 +939,25 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
 
     if(mCallbacks->msgTypeEnabled(CAMERA_MSG_PREVIEW_FRAME) && mPreviewBuf.buff) {
         void *src = msg->buff.dataPtr;
-
         switch(mPreviewFormat) {
-
-        case V4L2_PIX_FMT_YUV420:
+                                  // Android definition: PIXEL_FORMAT_YUV420P-->YV12, please refer to
+        case V4L2_PIX_FMT_YVU420: // header file: frameworks/av/include/camera/CameraParameters.h
             if (PlatformData::getPreviewFormat() == V4L2_PIX_FMT_NV12)
-                align16ConvertNV12ToYU12(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
-            //TBD for other preview format, not supported yet
+                align16ConvertNV12ToYV12(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.dataPtr);
+            else
+                copyYV12ToYV12(mPreviewWidth, mPreviewHeight, msg->buff.stride, mPreviewWidth, src, mPreviewBuf.dataPtr);
             break;
 
         case V4L2_PIX_FMT_NV21: // you need to do this for the first time
             if (PlatformData::getPreviewFormat() == V4L2_PIX_FMT_NV12)
-                trimConvertNV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+                trimConvertNV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.dataPtr);
             else
-                align16ConvertYV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+                convertYV12ToNV21(mPreviewWidth, mPreviewHeight, msg->buff.stride, mPreviewWidth, src, mPreviewBuf.dataPtr);
             break;
 
         case V4L2_PIX_FMT_RGB565:
             if (PlatformData::getPreviewFormat() == V4L2_PIX_FMT_NV12)
-                trimConvertNV12ToRGB565(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.buff->data);
+                trimConvertNV12ToRGB565(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.dataPtr);
             //TBD for other preview format, not supported yet
             break;
 
@@ -1012,7 +998,7 @@ skip_displaying:
 
 status_t PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
 {
-    LOG1("@%s: window = %p", __FUNCTION__, msg->window);
+    LOG1("@%s: preview_window = %p", __FUNCTION__, msg->window);
 
     if (mPreviewWindow == msg->window) {
         LOG1("Received the same window handle, nothing needs to be done.");
@@ -1168,15 +1154,22 @@ status_t PreviewThread::handleFetchPreviewBuffers()
     if (mSharedMode && mPreviewBuffers.isEmpty()) {
         GraphicBufferMapper &mapper = GraphicBufferMapper::get();
         AtomBuffer tmpBuf;
-        int err, stride;
+        int err;
         buffer_handle_t *buf;
         void *dst;
         int lockMode = GRALLOC_USAGE_SW_READ_OFTEN |
                        GRALLOC_USAGE_SW_WRITE_NEVER |
                        GRALLOC_USAGE_HW_COMPOSER;
         const Rect bounds(mPreviewWidth, mPreviewHeight);
+
+        if (mPreviewWindow == NULL) {
+            LOGE("no PreviewWindow set, could not fetch previewBuffers");
+            status = INVALID_OPERATION;
+            goto freeDeQueued;
+        }
+
         for (size_t i = 0; i < mNumOfPreviewBuffers; i++) {
-            err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride);
+            err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &mGfxStride);
             if(err != 0) {
                 LOGE("Surface::dequeueBuffer returned error %d", err);
                 status = UNKNOWN_ERROR;
@@ -1185,7 +1178,23 @@ status_t PreviewThread::handleFetchPreviewBuffers()
             tmpBuf.buff = NULL;     // We do not allocate a normal camera_memory_t
             tmpBuf.id = i;
             tmpBuf.type = ATOM_BUFFER_PREVIEW_GFX;
-            tmpBuf.stride = stride;
+            /*
+              There may be alignment mismatch between Gfx and ISP. For BayTrial case:
+              Gfx is 128 bytes aligned, while ISP may be 64/48/32/16 bytes aligned, we
+              forcibly set stride value with mPreviewStride, when buffer is dequeued
+              from ISP, we can repad this buffer then enqueue it to Gfx for displaying.
+              Please notice, we could not support Gfx stride is less than ISP stride
+              case, this should not happen.
+            */
+            LOG1("%s stride-gfx=%d stride-preview=%d", __FUNCTION__, mGfxStride, mPreviewStride);
+            if (mGfxStride >= mPreviewStride) {
+                tmpBuf.stride = mPreviewStride;
+            } else {
+                LOGE("Gfx buffer size is to small to save ISP preview output");
+                status = UNKNOWN_ERROR;
+                goto freeDeQueued;
+            }
+
             tmpBuf.width = mPreviewWidth;
             tmpBuf.height = mPreviewHeight;
             tmpBuf.size = frameSize(PlatformData::getPreviewFormat(), tmpBuf.stride, tmpBuf.height);
@@ -1285,12 +1294,12 @@ status_t PreviewThread::freeGfxPreviewBuffers() {
     if ((mPreviewWindow != NULL) && (!mPreviewBuffers.isEmpty())) {
 
         for( i = 0; i < mPreviewBuffers.size(); i++) {
-            res = mapper.unlock(*(mPreviewBuffers[i].gfxBufferHandle));
-            if (res != 0) {
-                LOGW("%s: unlocking gfx buffer %d failed!", __FUNCTION__, i);
-            }
-
             if (mPreviewBuffers[i].owner != OWNER_WINDOW) {
+
+                res = mapper.unlock(*(mPreviewBuffers[i].gfxBufferHandle));
+                if (res != 0) {
+                    LOGW("%s: unlocking gfx buffer %d failed!", __FUNCTION__, i);
+                }
                 buffer_handle_t *bufHandle = mPreviewBuffers[i].gfxBufferHandle;
                 LOG1("%s: canceling gfx buffer[%d]: %p (value = %p)",
                      __FUNCTION__, i, bufHandle, *bufHandle);
@@ -1305,11 +1314,12 @@ status_t PreviewThread::freeGfxPreviewBuffers() {
     if ((mPreviewWindow != NULL) && (!mReservedBuffers.isEmpty())) {
 
         for( i = 0; i < mReservedBuffers.size(); i++) {
-            res = mapper.unlock(*(mReservedBuffers[i].gfxBufferHandle));
-            if (res != 0) {
-                LOGW("%s: unlocking gfx (reserved) buffer %d failed!", __FUNCTION__, i);
-            }
             if (mReservedBuffers[i].owner != OWNER_WINDOW) {
+
+                res = mapper.unlock(*(mReservedBuffers[i].gfxBufferHandle));
+                if (res != 0) {
+                    LOGW("%s: unlocking gfx (reserved) buffer %d failed!", __FUNCTION__, i);
+                }
                 buffer_handle_t *bufHandle = mReservedBuffers[i].gfxBufferHandle;
                 LOG1("%s: canceling gfx buffer[%d] (reserved): %p (value = %p)",
                      __FUNCTION__, i, bufHandle, *bufHandle);
@@ -1378,6 +1388,8 @@ PreviewThread::GfxAtomBuffer* PreviewThread::pickReservedBuffer()
 status_t PreviewThread::handlePostview(MessagePreview *msg)
 {
     int err;
+    status_t status = NO_ERROR;
+    GraphicBufferMapper &mapper = GraphicBufferMapper::get();
 
     if (msg->buff.status == FRAME_STATUS_SKIPPED)
         return NO_ERROR;
@@ -1414,6 +1426,7 @@ status_t PreviewThread::handlePostview(MessagePreview *msg)
         if (buf) {
             // succeeded
             copyPreviewBuffer(&msg->buff, &buf->buffer);
+            mapper.unlock(*buf->gfxBufferHandle);
             if ((err = mPreviewWindow->enqueue_buffer(mPreviewWindow,
                         buf->gfxBufferHandle)) != 0) {
                 LOGE("Surface::queueBuffer returned error %d", err);
@@ -1436,7 +1449,6 @@ status_t PreviewThread::handlePostview(MessagePreview *msg)
         getEffectiveDimensions(&tmpBuf.width,&tmpBuf.height);
         buffer_handle_t *buf;
 
-        GraphicBufferMapper &mapper = GraphicBufferMapper::get();
         const Rect bounds(tmpBuf.width, tmpBuf.height);
 
         // queue one from the window
@@ -1469,7 +1481,10 @@ status_t PreviewThread::handlePostview(MessagePreview *msg)
 
     LOG1("@%s: done", __FUNCTION__);
 
-    return NO_ERROR;
+    if (msg->synchronous)
+        mMessageQueue.reply(MESSAGE_ID_POSTVIEW, status);
+
+    return status;
 }
 
 /**

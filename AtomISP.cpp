@@ -30,6 +30,8 @@
 #include <fcntl.h>
 #include <math.h>
 #include <poll.h>
+#include <linux/media.h>
+#include <linux/atomisp.h>
 #include "PerformanceTraces.h"
 
 #define CLEAR(x) memset (&(x), 0, sizeof (x))
@@ -55,9 +57,9 @@
 #define INTEL_FILE_INJECT_CAMERA_ID 2
 
 #define ATOMISP_PREVIEW_POLL_TIMEOUT 1000
-#define ATOMISP_GETFRAME_RETRY_COUNT 5  // Times to retry poll/dqbuf in case of error
+#define ATOMISP_GETFRAME_RETRY_COUNT 10  // Times to retry poll/dqbuf in case of error
 #define ATOMISP_GETFRAME_STARVING_WAIT 200000 // Time to usleep between retry's when stream is starving from buffers.
-
+#define ATOMISP_MIN_CONTINUOUS_BUF_SIZE 3 // Min buffer len supported by CSS
 #define FRAME_SYNC_POLL_TIMEOUT 500
 
 // workaround begin for the imx135, this code will be removed in the future
@@ -131,7 +133,6 @@ AtomISP::AtomISP(int cameraId) :
     ,mSwapRecordingDevice(false)
     ,mRecordingDeviceSwapped(false)
     ,mPreviewTooBigForVFPP(false)
-    ,mClientSnapshotBuffers(NULL)
     ,mClientSnapshotBuffersCached(true)
     ,mUsingClientSnapshotBuffers(false)
     ,mStoreMetaDataInBuffers(false)
@@ -140,6 +141,8 @@ AtomISP::AtomISP(int cameraId) :
     ,mNumCapturegBuffersQueued(0)
     ,mFlashTorchSetting(0)
     ,mContCaptPrepared(false)
+    ,mContCaptPriority(false)
+    ,mInitialSkips(0)
     ,mConfigSnapshotPreviewDevice(V4L2_MAIN_DEVICE)
     ,mConfigLastDevice(V4L2_PREVIEW_DEVICE)
     ,mPreviewDevice(V4L2_MAIN_DEVICE)
@@ -161,11 +164,12 @@ AtomISP::AtomISP(int cameraId) :
     for(int i = 0; i < V4L2_MAX_DEVICE_COUNT; i++) {
         video_fds[i] = -1;
         mDevices[i].state = DEVICE_CLOSED;
+        mDevices[i].initialSkips = 0;
     }
 
     CLEAR(mSnapshotBuffers);
-    CLEAR(mPostviewBuffers);
     CLEAR(mContCaptConfig);
+    mPostviewBuffers.clear();
 }
 
 status_t AtomISP::initDevice()
@@ -231,6 +235,7 @@ status_t AtomISP::init()
     }
 
     mConfig.fps = DEFAULT_PREVIEW_FPS;
+    mConfig.target_fps = DEFAULT_PREVIEW_FPS;
     mConfig.num_snapshot = 1;
     mConfig.zoom = 0;
 
@@ -256,6 +261,7 @@ status_t AtomISP::init()
     static const int zoomBytes = MAX_ZOOM_LEVEL * 5 + 1;
     mZoomRatios = new char[zoomBytes];
     computeZoomRatios(mZoomRatios, zoomBytes);
+    fetchIspVersions();
 
     return status;
 }
@@ -553,14 +559,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * FLASH
      */
-    if (PlatformData::supportsBackFlash() == true &&
-        mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
-
-        // For main back camera
-        // flash mode option, cts mandates default to be off
-        params->set(CameraParameters::KEY_FLASH_MODE, PlatformData::defaultFlashMode(cameraId));
-        params->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, PlatformData::supportedFlashModes(cameraId));
-    }
+    params->set(CameraParameters::KEY_FLASH_MODE, PlatformData::defaultFlashMode(cameraId));
+    params->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, PlatformData::supportedFlashModes(cameraId));
 
     /**
      * FOCUS
@@ -601,16 +601,12 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * MISCELLANEOUS
      */
-    float vertical;
-    float horizontal;
-    if (!PlatformData::HalConfig.getFloat(vertical, CPF::Fov, CPF::Vertical)
-        && !PlatformData::HalConfig.getFloat(horizontal, CPF::Fov, CPF::Horizontal)) {
-        params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, vertical);
-        params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, horizontal);
-    } else {
-        params->set(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, "42.5");
-        params->set(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, "54.8");
-    }
+    float vertical = 42.5;
+    float horizontal = 54.8;
+    PlatformData::HalConfig.getFloat(vertical, CPF::Fov, CPF::Vertical);
+    PlatformData::HalConfig.getFloat(horizontal, CPF::Fov, CPF::Horizontal);
+    params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, vertical);
+    params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, horizontal);
 
     /**
      * OVERLAY
@@ -679,18 +675,19 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH, PlatformData::supportedBurstLength(cameraId));
     // Bursts with negative start offset require a RAW sensor.
     const char* startIndexValues = "0";
-    if (PlatformData::sensorType(cameraId) ==  SENSOR_TYPE_RAW &&
-            PlatformData::supportsContinuousCapture())
+    if (PlatformData::supportsContinuousCapture(cameraId))
         startIndexValues = "-4,-3,-2,-1,0";
     intel_params->set(IntelCameraParameters::KEY_BURST_FPS, "1");
+    intel_params->set(IntelCameraParameters::KEY_BURST_SPEED, "fast");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_SPEED, "fast,medium,low");
     intel_params->set(IntelCameraParameters::KEY_BURST_START_INDEX, "0");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX, startIndexValues);
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_CONTINUOUS, "true,false");
     intel_params->set(IntelCameraParameters::KEY_BURST_CONTINUOUS, "false");
 
     // TODO: move to platform data
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PREVIEW_UPDATE_MODE, "standard,continuous,during-capture,windowless");
-    intel_params->set(IntelCameraParameters::KEY_PREVIEW_UPDATE_MODE, "standard");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PREVIEW_UPDATE_MODE, PlatformData::supportedPreviewUpdateModes(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_PREVIEW_UPDATE_MODE, PlatformData::defaultPreviewUpdateMode(cameraId));
 
     intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_FILENAME, "off");
     intel_params->set(IntelCameraParameters::KEY_FILE_INJECT_WIDTH, "0");
@@ -743,6 +740,14 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     // sharpness control (Intel extension)
     intel_params->set(IntelCameraParameters::KEY_SHARPNESS_MODE, PlatformData::defaultSharpness(cameraId));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SHARPNESS_MODES, PlatformData::supportedSharpness(cameraId));
+
+    // save mirrored
+    intel_params->set(IntelCameraParameters::KEY_SAVE_MIRRORED, "false");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SAVE_MIRRORED, "true,false");
+
+    // GPS related (Intel extension)
+    intel_params->set(IntelCameraParameters::KEY_GPS_IMG_DIRECTION_REF, "true-direction");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_GPS_IMG_DIRECTION_REF, "true-direction,magnetic-direction");
 }
 
 void AtomISP::getMaxSnapShotSize(int cameraId, int* width, int* height)
@@ -865,6 +870,76 @@ status_t AtomISP::applySensorFlip(void)
     return NO_ERROR;
 }
 
+void AtomISP::fetchIspVersions()
+{
+    LOG1("@%s", __FUNCTION__);
+
+    mCssMajorVersion = -1;
+    mCssMinorVersion = -1;
+    mIspHwMajorVersion = -1;
+    mIspHwMinorVersion = -1;
+
+    // Sensor drivers have been registered to media controller
+    const char *mcPathName = "/dev/media0";
+    int fd = open(mcPathName, O_RDONLY);
+    if (fd == -1) {
+        LOGE("Error in opening media controller: %s!", strerror(errno));
+    } else {
+        struct media_device_info info;
+        memset(&info, 0, sizeof(info));
+
+        if (ioctl(fd, MEDIA_IOC_DEVICE_INFO, &info) < 0) {
+            LOGE("Error in getting media controller info: %s", strerror(errno));
+        } else {
+            int hw_version = (info.hw_revision & ATOMISP_HW_REVISION_MASK) >> ATOMISP_HW_REVISION_SHIFT;
+            int hw_stepping = info.hw_revision & ATOMISP_HW_STEPPING_MASK;
+            int css_version = info.driver_version & ATOMISP_CSS_VERSION_MASK;
+
+            switch(hw_version) {
+                case ATOMISP_HW_REVISION_ISP2300:
+                    mIspHwMajorVersion = 23;
+                    LOG1("ISP HW version is: %d", mIspHwMajorVersion);
+                    break;
+                case ATOMISP_HW_REVISION_ISP2400:
+                    mIspHwMajorVersion = 24;
+                    LOG1("ISP HW version is: %d", mIspHwMajorVersion);
+                    break;
+                default:
+                    LOGE("Unknown ISP HW version: %d", hw_version);
+            }
+
+            switch(hw_stepping) {
+                case ATOMISP_HW_STEPPING_A0:
+                    mIspHwMinorVersion = 0;
+                    LOG1("ISP HW stepping is: %d", mIspHwMinorVersion);
+                    break;
+                case ATOMISP_HW_STEPPING_B0:
+                    mIspHwMinorVersion = 1;
+                    LOG1("ISP HW stepping is: %d", mIspHwMinorVersion);
+                    break;
+                default:
+                    LOGE("Unknown ISP HW stepping: %d", hw_stepping);
+            }
+
+            switch(css_version) {
+                case ATOMISP_CSS_VERSION_15:
+                    mCssMajorVersion = 1;
+                    mCssMinorVersion = 5;
+                    LOG1("CSS version is: %d.%d", mCssMajorVersion, mCssMinorVersion);
+                    break;
+                case ATOMISP_CSS_VERSION_20:
+                    mCssMajorVersion = 2;
+                    mCssMinorVersion = 0;
+                    LOG1("CSS version is: %d.%d", mCssMajorVersion, mCssMinorVersion);
+                    break;
+                default:
+                    LOGE("Unknown CSS version: %d", css_version);
+            }
+        }
+        close(fd);
+    }
+}
+
 status_t AtomISP::configure(AtomMode mode)
 {
     LOG1("@%s", __FUNCTION__);
@@ -892,6 +967,16 @@ status_t AtomISP::configure(AtomMode mode)
 
     if (status == NO_ERROR)
         mMode = mode;
+
+    /**
+     * Some sensors produce corrupted first frames
+     * value is provided by the sensor driver as frames to skip.
+     * value is specific to configuration, so we query it here after
+     * devices are configured and propagate the value to distinct devices
+     * at start.
+     */
+    mInitialSkips = getNumOfSkipFrames();
+
     return status;
 }
 
@@ -903,6 +988,7 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
 
     switch (mode) {
     case MODE_PREVIEW:
+    case MODE_CONTINUOUS_CAPTURE:
         mPreviewDevice = mPreviewTooBigForVFPP ? mRecordingDevice : mConfigSnapshotPreviewDevice;
         if ((status = allocatePreviewBuffers()) != NO_ERROR)
             stopDevice(mPreviewDevice);
@@ -921,14 +1007,6 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
         if ((status = allocateSnapshotBuffers()) != NO_ERROR)
             return status;
         break;
-    case MODE_CONTINUOUS_CAPTURE:
-        status = allocateBuffers(MODE_PREVIEW);
-        if (status == NO_ERROR)
-            status = allocateBuffers(MODE_CAPTURE);
-        else
-            freePreviewBuffers();
-        break;
-
     default:
         status = UNKNOWN_ERROR;
         break;
@@ -1082,7 +1160,6 @@ status_t AtomISP::startPreview()
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
     status_t status = NO_ERROR;
-    int i, initialSkips;
 
     ret = startDevice(mPreviewDevice, mNumPreviewBuffers);
     if (ret < 0) {
@@ -1091,25 +1168,8 @@ status_t AtomISP::startPreview()
         goto err;
     }
 
-    /**
-     * Some sensors produce corrupted first frames
-     * If this sensor needs it then we skip
-     */
-    initialSkips = getNumOfSkipFrames();
-    for (i = 0; i < initialSkips; i++) {
-        AtomBuffer p;
-        ret = getPreviewFrame(&p);
-        if (ret == NO_ERROR) {
-            ret = putPreviewFrame(&p);
-            if (ret != NO_ERROR) {
-                LOGE("Failed queueing preview frame!");
-            }
-        }
-    }
-
     mNumPreviewBuffersQueued = mNumPreviewBuffers;
 
-    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("Skip--", initialSkips);
     return status;
 
 err:
@@ -1223,7 +1283,6 @@ status_t AtomISP::startRecording()
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
     status_t status = NO_ERROR;
-    int i, initialSkips;
 
     ret = startDevice(mRecordingDevice, mNumBuffers);
     if (ret < 0) {
@@ -1241,33 +1300,6 @@ status_t AtomISP::startRecording()
 
     mNumPreviewBuffersQueued = mNumPreviewBuffers;
     mNumRecordingBuffersQueued = mNumBuffers;
-
-    /**
-     * Some sensors produce corrupted first frames
-     * If this sensor needs it then we skip
-     * TODO: This is wrong place to do it, it should be done
-     * in the real consumer loop, since here we block the
-     * start stack until frames come out.
-     */
-    initialSkips = getNumOfSkipFrames();
-    for (i = 0; i < initialSkips; i++) {
-        AtomBuffer p;
-        ret = getPreviewFrame(&p);
-        if (ret == NO_ERROR) {
-            ret = putPreviewFrame(&p);
-            if (ret != NO_ERROR) {
-                LOGE("Failed queueing preview frame!");
-            }
-            ret = getRecordingFrame(&p);
-            if (ret == NO_ERROR) {
-                ret = putRecordingFrame(&p);
-                if (ret != NO_ERROR) {
-                    LOGE("Failed queueing recording frame!");
-                }
-            }
-
-        }
-    }
 
     return status;
 
@@ -1316,6 +1348,9 @@ status_t AtomISP::configureCapture()
         status = UNKNOWN_ERROR;
         goto errorFreeBuf;
     }
+    // Raw capture currently does not support postview
+    if (isDumpRawImageReady())
+        goto nopostview;
 
     ret = openDevice(V4L2_POSTVIEW_DEVICE);
     if (ret < 0) {
@@ -1335,6 +1370,7 @@ status_t AtomISP::configureCapture()
         goto errorCloseSecond;
     }
 
+nopostview:
     // Subscribe to frame sync event if in bracketing mode
     if ((mFrameSyncRequested > 0) && (!mFrameSyncEnabled)) {
         ret = openDevice(V4L2_ISP_SUBDEV);
@@ -1368,18 +1404,13 @@ errorFreeBuf:
 }
 
 /**
- * Configures continuos capture settings to kernel
- * (IOC_S_CONT_CAPTURE_CONFIG atomisp ioctl).
+ * Requests driver to capture main and postview images
  *
- * This call has different semantics depending on whether
- * it's called before ISP is started, or when ISP is
- * already running. In the former case, this call is
- * used to configure the ringbuffer size. In the latter
- * case, this call is used to request ISP to start
- * rendering output (main and postview) frames with
- * the given parameters.
+ * This call is used to trigger captures from the continuously
+ * updated RAW ringbuffer maintained in ISP.
  *
- * See PSI BZ 80777 for a proposed change to this API.
+ * Call is implemented using the the IOC_S_CONT_CAPTURE_CONFIG
+ * atomisp ioctl.
  */
 status_t AtomISP::requestContCapture(int numCaptures, int offset, unsigned int skip)
 {
@@ -1406,6 +1437,27 @@ status_t AtomISP::requestContCapture(int numCaptures, int offset, unsigned int s
 }
 
 /**
+ * Configures the ISP continuous capture mode
+ *
+ * This takes effect in kernel when preview is started.
+ */
+status_t AtomISP::configureContinuousMode(bool enable)
+{
+    LOG2("@%s", __FUNCTION__);
+    if (atomisp_set_attribute(main_fd, V4L2_CID_ATOMISP_CONTINUOUS_MODE,
+                              enable, "Continuous mode") < 0)
+            return UNKNOWN_ERROR;
+
+    enable = !mContCaptPriority;
+    if (atomisp_set_attribute(main_fd, V4L2_CID_ATOMISP_CONTINUOUS_VIEWFINDER,
+                              enable, "Continuous viewfinder") < 0)
+            return UNKNOWN_ERROR;
+
+    return NO_ERROR;
+}
+
+
+/**
  * Configures the ISP ringbuffer size in continuous mode.
  *
  * Set all ISP parameters that affect RAW ringbuffer
@@ -1416,26 +1468,29 @@ status_t AtomISP::requestContCapture(int numCaptures, int offset, unsigned int s
  */
 status_t AtomISP::configureContinuousRingBuffer()
 {
-    int numBuffers = abs(mContCaptConfig.offset);
-;
+    int numBuffers = ATOMISP_MIN_CONTINUOUS_BUF_SIZE;
     int captures = mContCaptConfig.numCaptures;
     int offset = mContCaptConfig.offset;
-    status_t status;
+    int lookback = abs(offset);
 
-    if (captures > numBuffers)
-        numBuffers = captures;
+    if (lookback > captures)
+        numBuffers += lookback;
+    else
+        numBuffers += captures;
 
-    if (numBuffers > PlatformData::maxContinuousRawRingBufferSize())
-        numBuffers = PlatformData::maxContinuousRawRingBufferSize();
+    if (numBuffers > PlatformData::maxContinuousRawRingBufferSize(mCameraId))
+        numBuffers = PlatformData::maxContinuousRawRingBufferSize(mCameraId);
 
     LOG1("continuous mode ringbuffer size to %d (captures %d, offset %d)",
          numBuffers, captures, offset);
 
-    status = requestContCapture(numBuffers,
-                                mContCaptConfig.offset,
-                                mContCaptConfig.skip);
+    if (atomisp_set_attribute(main_fd,
+                              V4L2_CID_ATOMISP_CONTINUOUS_RAW_BUFFER_SIZE,
+                              numBuffers,
+                              "Continuous raw ringbuffer size") < 0)
+        return UNKNOWN_ERROR;
 
-    return status;
+    return NO_ERROR;
 }
 
 /**
@@ -1473,7 +1528,7 @@ int AtomISP::shutterLagZeroAlign() const
  */
 int AtomISP::continuousBurstNegMinOffset(void) const
 {
-    return -(PlatformData::maxContinuousRawRingBufferSize() - 2);
+    return -(PlatformData::maxContinuousRawRingBufferSize(mCameraId) - 2);
 }
 
 /**
@@ -1517,10 +1572,17 @@ status_t AtomISP::configureContinuous()
     }
 
     updateCaptureParams();
+
+    ret = configureContinuousMode(true);
+    if (ret != NO_ERROR) {
+        LOGE("setting continuous mode failed");
+        return ret;
+    }
+
     ret = configureContinuousRingBuffer();
-    if (ret < 0) {
+    if (ret != NO_ERROR) {
         LOGE("setting continuous capture params failed");
-        return UNKNOWN_ERROR;
+        return ret;
     }
 
     ret = configureDevice(
@@ -1578,8 +1640,9 @@ status_t AtomISP::startCapture()
     int i, initialSkips;
     // Limited by driver, raw bayer image dump can support only 1 frame when setting
     // snapshot number. Otherwise, the raw dump image would be corrupted.
+    // also since CSS1.5 we cannot capture from postview at the same time
     int snapNum;
-    if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW))
+    if (mConfig.snapshot.format == V4L2_PIX_FMT_SBGGR10)
         snapNum = 1;
     else
         snapNum = mConfig.num_snapshot;
@@ -1591,6 +1654,12 @@ status_t AtomISP::startCapture()
         goto end;
     }
 
+    if (isDumpRawImageReady()) {
+        initialSkips = 0;
+        goto nopostview;
+    }
+
+
     ret = startDevice(V4L2_POSTVIEW_DEVICE, snapNum);
     if (ret < 0) {
         LOGE("start capture on second device failed!");
@@ -1598,12 +1667,12 @@ status_t AtomISP::startCapture()
         goto errorStopFirst;
     }
 
+
     /**
-     * Some sensors produce corrupted first frames
-     * If this sensor needs it then we skip
+     * handle initial skips here for normal capture mode
      */
     if (mMode != MODE_CONTINUOUS_CAPTURE)
-        initialSkips = getNumOfSkipFrames();
+        initialSkips = mDevices[V4L2_MAIN_DEVICE].initialSkips;
     else
         initialSkips = 0;
     for (i = 0; i < initialSkips; i++) {
@@ -1614,9 +1683,11 @@ status_t AtomISP::startCapture()
         if (ret == NO_ERROR)
             ret = putSnapshot(&s,&p);
     }
+    mDevices[V4L2_MAIN_DEVICE].initialSkips = 0;
+    mDevices[V4L2_POSTVIEW_DEVICE].initialSkips = 0;
 
+nopostview:
     mNumCapturegBuffersQueued = snapNum;
-    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("Skip--", initialSkips);
     return status;
 
 errorStopFirst:
@@ -1637,7 +1708,11 @@ status_t AtomISP::stopContinuousPreview()
     int error = 0;
     if (stopCapture() != NO_ERROR)
         ++error;
+    // TODO: this call to requestContCapture() can be
+    //       removed once PSI BZ 101676 is solved
     if (requestContCapture(0, 0, 0) != NO_ERROR)
+        ++error;
+    if (configureContinuousMode(false) != NO_ERROR)
         ++error;
     if (stopPreview() != NO_ERROR)
         ++error;
@@ -1688,7 +1763,12 @@ status_t AtomISP::stopCapture()
         closeDevice(V4L2_ISP_SUBDEV);
         mFrameSyncEnabled = false;
     }
-    mUsingClientSnapshotBuffers = false;
+
+    if (mUsingClientSnapshotBuffers) {
+        mConfig.num_snapshot = 0;
+        mUsingClientSnapshotBuffers = false;
+    }
+
     dumpRawImageFlush();
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
     return NO_ERROR;
@@ -1772,7 +1852,7 @@ status_t AtomISP::stopOfflineCapture()
  * \param config container to configure capture count, skipping
  *               and the start offset (see struct AtomISP::ContinuousCaptureConfig)
  */
-status_t AtomISP::prepareOfflineCapture(AtomISP::ContinuousCaptureConfig &cfg)
+status_t AtomISP::prepareOfflineCapture(AtomISP::ContinuousCaptureConfig &cfg, bool capturePriority)
 {
     LOG1("@%s, numCaptures = %d", __FUNCTION__, cfg.numCaptures);
     if (cfg.offset < continuousBurstNegMinOffset()) {
@@ -1782,6 +1862,7 @@ status_t AtomISP::prepareOfflineCapture(AtomISP::ContinuousCaptureConfig &cfg)
     }
     mContCaptConfig = cfg;
     mContCaptPrepared = true;
+    mContCaptPriority = capturePriority;
     return NO_ERROR;
 }
 
@@ -1938,6 +2019,7 @@ int AtomISP::startDevice(int device, int buffer_count)
 
     mDevices[device].frameCounter = 0;
     mDevices[device].state = DEVICE_STARTED;
+    mDevices[device].initialSkips = mInitialSkips;
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("DeviceId:", device);
     return ret;
@@ -2153,6 +2235,18 @@ status_t AtomISP::setPreviewFrameFormat(int width, int height, int format)
     return status;
 }
 
+/**
+ * Configures the user requested FPS
+ * ISP will drop frames to adjust the sensor fps to the requested fps
+ * This frame-dropping operation is done in the PreviewStreamSource class
+ *
+ */
+void AtomISP::setPreviewFramerate(int fps)
+{
+    LOG1("@%s: %d", __FUNCTION__, fps);
+    mConfig.target_fps = fps;
+}
+
 void AtomISP::getPostviewFrameFormat(int &width, int &height, int &format) const
 {
     LOG1("@%s", __FUNCTION__);
@@ -2202,7 +2296,11 @@ status_t AtomISP::setSnapshotFrameFormat(int width, int height, int format)
     mConfig.snapshot.height = height;
     mConfig.snapshot.format = format;
     mConfig.snapshot.stride = width;
-    mConfig.snapshot.size = frameSize(format, width, height);;
+    mConfig.snapshot.size = frameSize(format, width, height);
+
+    if (isDumpRawImageReady())
+        mConfig.snapshot.format = V4L2_PIX_FMT_SRGGB10;
+
     if (mConfig.snapshot.size == 0)
         mConfig.snapshot.size = mConfig.snapshot.width * mConfig.snapshot.height * BPP;
     LOG1("width(%d), height(%d), pad_width(%d), size(%d), format(%x)",
@@ -2861,7 +2959,7 @@ int AtomISP::atomisp_get_attribute (int fd, int attribute_num,
 
     if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &controls) == 0) {
         *value = ext_control.value;
-    return 0;
+        return 0;
     }
 
     if (ioctl(fd, VIDIOC_G_CTRL, &control) == 0) {
@@ -3190,7 +3288,7 @@ int AtomISP::v4l2_capture_new_buffer(int device, int index, struct v4l2_buffer_i
     LOG1("bytesused %u", vbuf->bytesused);
     LOG1("flags %08x", vbuf->flags);
     LOG1("memory %u", vbuf->memory);
-    LOG1("userptr:  %lu", vbuf->m.userptr);
+    LOG1("userptr:  %p", (void*)vbuf->m.userptr);
     LOG1("length %u", vbuf->length);
     return ret;
 }
@@ -3262,12 +3360,8 @@ int AtomISP::v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc,
         LOGE("VIDIOC_G_FMT failed: %s", strerror(errno));
         return -1;
     }
-    if (raw) {
-        LOG1("Choose raw dump path");
-        v4l2_fmt.type = V4L2_BUF_TYPE_PRIVATE;
-    } else {
-        v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    }
+
+    v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
     v4l2_fmt.fmt.pix.width = w;
     v4l2_fmt.fmt.pix.height = h;
@@ -3455,15 +3549,6 @@ int AtomISP::atomisp_set_capture_mode(int deviceMode)
 
     parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     parm.parm.capture.capturemode = deviceMode;
-    if (mPreviewTooBigForVFPP) {
-        if (deviceMode == CI_MODE_PREVIEW) {
-            setZoom(0); // set zoom to zero, since we will not have VFPP
-        } else {
-            if (deviceMode == CI_MODE_STILL_CAPTURE) {
-                atomisp_set_zoom(main_fd, mConfig.zoom);// refresh zoom for capture
-            }
-        }
-    }
 
     if (ioctl(main_fd, VIDIOC_S_PARM, &parm) < 0) {
         LOGE("error %s", strerror(errno));
@@ -3551,7 +3636,7 @@ status_t AtomISP::returnRecordingBuffers()
 
 
 
-status_t AtomISP::getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameStatus)
+status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
     Mutex::Autolock lock(mDevices[mPreviewDevice].mutex);
@@ -3571,15 +3656,8 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff, atomisp_frame_status *frameS
     mPreviewBuffers[index].ispPrivate = mSessionId;
     mPreviewBuffers[index].capture_timestamp = buf.timestamp;
     mPreviewBuffers[index].frameSequenceNbr = buf.sequence;
-    // atom flag is an extended set of flags, so map V4L2 flags
-    // we are interested into atomisp_frame_status
-    if (buf.flags & V4L2_BUF_FLAG_ERROR)
-        mPreviewBuffers[index].status = (FrameBufferStatus)ATOMISP_FRAME_STATUS_CORRUPTED;
-    else
-        mPreviewBuffers[index].status = (FrameBufferStatus)buf.reserved;
+    mPreviewBuffers[index].status = (FrameBufferStatus)buf.reserved;
 
-    if (frameStatus)
-        *frameStatus = (atomisp_frame_status)mPreviewBuffers[index].status;
     *buff = mPreviewBuffers[index];
 
     mNumPreviewBuffersQueued--;
@@ -3662,7 +3740,7 @@ status_t AtomISP::setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs
     return NO_ERROR;
 }
 
-status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp, atomisp_frame_status *frameStatus)
+status_t AtomISP::getRecordingFrame(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
     struct v4l2_buffer buf;
@@ -3682,21 +3760,9 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff, nsecs_t *timestamp, atomis
     mRecordingBuffers[index].frameCounter = mDevices[mRecordingDevice].frameCounter;
     mRecordingBuffers[index].ispPrivate = mSessionId;
     mRecordingBuffers[index].capture_timestamp = buf.timestamp;
+    mRecordingBuffers[index].status = (FrameBufferStatus) buf.reserved;
     *buff = mRecordingBuffers[index];
     buff->stride = mConfig.recording.stride;
-
-    // time is get from ISP driver, it's realtime
-    if (timestamp)
-        *timestamp = (buf.timestamp.tv_sec)*1000000000LL + (buf.timestamp.tv_usec)*1000LL;
-
-    if (frameStatus) {
-        *frameStatus = (atomisp_frame_status)buf.reserved;
-
-        // atom flag is an extended set of flags, so map V4L2 flags
-        // we are interested into atomisp_frame_status
-        if (buf.flags & V4L2_BUF_FLAG_ERROR)
-            *frameStatus = ATOMISP_FRAME_STATUS_CORRUPTED;
-    }
 
     mNumRecordingBuffersQueued--;
 
@@ -3727,25 +3793,30 @@ status_t AtomISP::putRecordingFrame(AtomBuffer *buff)
     return NO_ERROR;
 }
 
-status_t AtomISP::setSnapshotBuffers(void *buffs, int numBuffs, bool cached)
+/**
+ * Initializes the snapshot buffers allocated by the PictureThread to the
+ * internal array
+ */
+status_t AtomISP::setSnapshotBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bool cached)
 {
     LOG1("@%s: buffs = %p, numBuffs = %d", __FUNCTION__, buffs, numBuffs);
     if (buffs == NULL || numBuffs <= 0)
         return BAD_VALUE;
 
-    mClientSnapshotBuffers = (void**)buffs;
     mClientSnapshotBuffersCached = cached;
     mConfig.num_snapshot = numBuffs;
+    mConfig.num_postviews = numBuffs;
     mUsingClientSnapshotBuffers = true;
     for (int i = 0; i < numBuffs; i++) {
-        LOG1("Snapshot buffer %d = %p", i, mClientSnapshotBuffers[i]);
+        mSnapshotBuffers[i] = buffs->top();
+        buffs->pop();
+        LOG1("Snapshot buffer %d = %p", i, mSnapshotBuffers[i].dataPtr);
     }
 
     return NO_ERROR;
 }
 
-status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
-                              atomisp_frame_status *snapshotStatus)
+status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 {
     LOG1("@%s", __FUNCTION__);
     struct v4l2_buffer buf;
@@ -3762,9 +3833,13 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
     LOG1("Device: %d. Grabbed frame of size: %d", V4L2_MAIN_DEVICE, buf.bytesused);
     mSnapshotBuffers[snapshotIndex].capture_timestamp = buf.timestamp;
     mSnapshotBuffers[snapshotIndex].frameSequenceNbr = buf.sequence;
+    mSnapshotBuffers[snapshotIndex].status = (FrameBufferStatus)buf.reserved;
 
-    if (snapshotStatus)
-        *snapshotStatus = (atomisp_frame_status)buf.reserved;
+    if (isDumpRawImageReady()) {
+        postviewIndex = snapshotIndex;
+        goto nopostview;
+    }
+
 
     postviewIndex = grabFrame(V4L2_POSTVIEW_DEVICE, &buf);
     if (postviewIndex < 0) {
@@ -3775,8 +3850,10 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
         return BAD_INDEX;
     }
     LOG1("Device: %d. Grabbed frame of size: %d", V4L2_POSTVIEW_DEVICE, buf.bytesused);
-    mPostviewBuffers[postviewIndex].capture_timestamp = buf.timestamp;
-    mPostviewBuffers[postviewIndex].frameSequenceNbr = buf.sequence;
+
+    mPostviewBuffers.editItemAt(postviewIndex).capture_timestamp = buf.timestamp;
+    mPostviewBuffers.editItemAt(postviewIndex).frameSequenceNbr = buf.sequence;
+    mPostviewBuffers.editItemAt(postviewIndex).status = (FrameBufferStatus)buf.reserved;
 
     if (snapshotIndex != postviewIndex ||
             snapshotIndex >= MAX_V4L2_BUFFERS) {
@@ -3789,6 +3866,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
         return BAD_INDEX;
     }
 
+nopostview:
     mSnapshotBuffers[snapshotIndex].id = snapshotIndex;
     mSnapshotBuffers[snapshotIndex].frameCounter = mDevices[V4L2_MAIN_DEVICE].frameCounter;
     mSnapshotBuffers[snapshotIndex].ispPrivate = mSessionId;
@@ -3799,9 +3877,9 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf,
     snapshotBuf->size = mConfig.snapshot.size;
     snapshotBuf->stride = mConfig.snapshot.stride;
 
-    mPostviewBuffers[postviewIndex].id = postviewIndex;
-    mPostviewBuffers[postviewIndex].frameCounter = mDevices[V4L2_POSTVIEW_DEVICE].frameCounter;
-    mPostviewBuffers[postviewIndex].ispPrivate = mSessionId;
+    mPostviewBuffers.editItemAt(postviewIndex).id = postviewIndex;
+    mPostviewBuffers.editItemAt(postviewIndex).frameCounter = mDevices[V4L2_POSTVIEW_DEVICE].frameCounter;
+    mPostviewBuffers.editItemAt(postviewIndex).ispPrivate = mSessionId;
     *postviewBuf = mPostviewBuffers[postviewIndex];
     postviewBuf->width = mConfig.postview.width;
     postviewBuf->height = mConfig.postview.height;
@@ -3830,8 +3908,14 @@ status_t AtomISP::putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf)
     ret0 = v4l2_capture_qbuf(video_fds[V4L2_MAIN_DEVICE], snaphotBuf->id,
                       &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[snaphotBuf->id]);
 
-    ret1 = v4l2_capture_qbuf(video_fds[V4L2_POSTVIEW_DEVICE], postviewBuf->id,
-                      &v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[postviewBuf->id]);
+    if (mConfig.snapshot.format == V4L2_PIX_FMT_SBGGR10) {
+        // for RAW captures we do not dequeue the postview, therefore we do
+        // not need to return it.
+        ret1 = 0;
+    } else {
+        ret1 = v4l2_capture_qbuf(video_fds[V4L2_POSTVIEW_DEVICE], postviewBuf->id,
+                          &v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[postviewBuf->id]);
+    }
     if (ret0 < 0 || ret1 < 0)
         return UNKNOWN_ERROR;
 
@@ -3912,6 +3996,17 @@ int AtomISP::grabFrame(int device, struct v4l2_buffer *buf)
     // inc frame counter but do no wrap to negative numbers
     ++mDevices[device].frameCounter;
     mDevices[device].frameCounter &= INT_MAX;
+
+    // atomisp_frame_status is a proprietary extension to v4l2_buffer flags
+    // that driver places into reserved keyword
+    // translate error flag into corrupt frame
+    if (buf->flags & V4L2_BUF_FLAG_ERROR)
+        buf->reserved = (unsigned int) ATOMISP_FRAME_STATUS_CORRUPTED;
+    // translate initial skips into corrupt frame
+    if (mDevices[device].initialSkips > 0) {
+        buf->reserved = (unsigned int) ATOMISP_FRAME_STATUS_CORRUPTED;
+        mDevices[device].initialSkips--;
+    }
 
     return buf->index;
 }
@@ -4134,81 +4229,92 @@ errorFree:
     return status;
 }
 
+/**
+ * Prepares V4L2  buffer info's for snapshot and postview buffers
+ *
+ * Currently snapshot buffers are always set externally, so there is no allocation
+ * done here, only the preparation of the v4l2 buffer pools
+ *
+ * For postview we are still allocating in this method.
+ * TODO: In the future we will also allocate externally the postviews to have a
+ * similar flow of buffers as the snapshots
+ */
 status_t AtomISP::allocateSnapshotBuffers()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     int allocatedSnaphotBufs = 0;
-    int allocatedPostviewBufs = 0;
     int snapshotSize = mConfig.snapshot.size;
     struct v4l2_buffer_info *vinfo;
 
-    if (mUsingClientSnapshotBuffers)
-        snapshotSize = sizeof(void*);
-
-    // note: make sure client has called releaseCaptureBuffers()
-    //       at this point (clients may hold on to snapshot buffers
-    //       after capture has been stopped)
-    if (mSnapshotBuffers[0].buff != NULL) {
-        LOGW("Client has not freed snapshot buffers!");
-        freeSnapshotBuffers();
-    }
-
-    LOG1("Allocating %d buffers of size: %d (snapshot), %d (postview)",
-            mConfig.num_snapshot,
-            snapshotSize,
-            mConfig.postview.size);
-    for (int i = 0; i < mConfig.num_snapshot; i++) {
-        mSnapshotBuffers[i].buff = NULL;
-        mCallbacks->allocateMemory(&mSnapshotBuffers[i], snapshotSize);
-        if (mSnapshotBuffers[i].buff == NULL) {
-            LOGE("Error allocation memory for snapshot buffers!");
-            status = NO_MEMORY;
-            goto errorFree;
-        }
-        mSnapshotBuffers[i].type = ATOM_BUFFER_SNAPSHOT;
-        allocatedSnaphotBufs++;
-
-        if (mUsingClientSnapshotBuffers) {
+    if (mUsingClientSnapshotBuffers) {
+        for (int i = 0; i < mConfig.num_snapshot; i++) {
+            mSnapshotBuffers[i].type = ATOM_BUFFER_SNAPSHOT;
+            mSnapshotBuffers[i].shared = false;
             vinfo = &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i];
-            vinfo->data = mClientSnapshotBuffers[i];
-            memcpy(mSnapshotBuffers[i].dataPtr, &mClientSnapshotBuffers[i], sizeof(void *));
-            mSnapshotBuffers[i].shared = true;
+            vinfo->data = mSnapshotBuffers[i].dataPtr;
+            markBufferCached(vinfo, mClientSnapshotBuffersCached);
+        }
+    } else {
 
-        } else {
+        // note: make sure client has called releaseCaptureBuffers()
+        //       at this point (clients may hold on to snapshot buffers
+        //       after capture has been stopped)
+        if (mSnapshotBuffers[0].buff != NULL) {
+            LOGW("Client has not freed snapshot buffers!");
+            freeSnapshotBuffers();
+        }
+
+        LOG1("Allocating %d buffers of size: %d (snapshot), %d (postview)",
+                mConfig.num_snapshot,
+                snapshotSize,
+                mConfig.postview.size);
+        for (int i = 0; i < mConfig.num_snapshot; i++) {
+            mSnapshotBuffers[i].buff = NULL;
+            mCallbacks->allocateMemory(&mSnapshotBuffers[i], snapshotSize);
+            if (mSnapshotBuffers[i].buff == NULL) {
+                LOGE("Error allocation memory for snapshot buffers!");
+                status = NO_MEMORY;
+                goto errorFree;
+            }
+            mSnapshotBuffers[i].type = ATOM_BUFFER_SNAPSHOT;
+            allocatedSnaphotBufs++;
             vinfo = &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i];
             vinfo->data = mSnapshotBuffers[i].dataPtr;
             mSnapshotBuffers[i].shared = false;
+            markBufferCached(vinfo, mClientSnapshotBuffersCached);
         }
-        markBufferCached(vinfo, mClientSnapshotBuffersCached);
     }
 
     if (needNewPostviewBuffers()) {
             freePostviewBuffers();
+            AtomBuffer postv;
             for (int i = 0; i < mConfig.num_snapshot; i++) {
-                mPostviewBuffers[i].buff = NULL;
-                mCallbacks->allocateMemory(&mPostviewBuffers[i], mConfig.postview.size);
-                if (mPostviewBuffers[i].buff == NULL) {
+                postv.buff = NULL;
+                mCallbacks->allocateMemory(&postv, mConfig.postview.size);
+                if (postv.buff == NULL) {
                     LOGE("Error allocation memory for postview buffers!");
                     status = NO_MEMORY;
                     goto errorFree;
                 }
-                mPostviewBuffers[i].type = ATOM_BUFFER_POSTVIEW;
-                allocatedPostviewBufs++;
+                postv.type = ATOM_BUFFER_POSTVIEW;
+
                 vinfo = &v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[i];
-                vinfo->data = mPostviewBuffers[i].buff->data;
+
+                vinfo->data = postv.dataPtr;
                 markBufferCached(vinfo, true);
-                mPostviewBuffers[i].shared = false;
-                mPostviewBuffers[i].width = mConfig.postview.width;
-                mPostviewBuffers[i].height = mConfig.postview.height;
-                mPostviewBuffers[i].stride = mConfig.postview.stride;
-                mPostviewBuffers[i].size = mConfig.postview.size;
+                postv.shared = false;
+                postv.width = mConfig.postview.width;
+                postv.height = mConfig.postview.height;
+                postv.stride = mConfig.postview.stride;
+                postv.size = mConfig.postview.size;
+                mPostviewBuffers.push(postv);
 
             }
     } else {
-        for (int i = 0; i < mConfig.num_snapshot; i++) {
+        for (size_t i = 0; i < mPostviewBuffers.size(); i++) {
             vinfo = &v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[i];
-            vinfo->data = mPostviewBuffers[i].buff->data;
+            vinfo->data = mPostviewBuffers[i].dataPtr;
         }
     }
     return status;
@@ -4221,12 +4327,7 @@ errorFree:
             mSnapshotBuffers[i].buff = NULL;
         }
     }
-    for (int i = 0 ; i < allocatedPostviewBufs; i++) {
-        if (mPostviewBuffers[i].buff != NULL) {
-            mPostviewBuffers[i].buff->release(mPostviewBuffers[i].buff);
-            mPostviewBuffers[i].buff = NULL;
-        }
-    }
+    freePostviewBuffers();
     return status;
 }
 
@@ -4234,7 +4335,9 @@ errorFree:
 void AtomISP::initMetaDataBuf(IntelMetadataBuffer* metaDatabuf)
 {
     ValueInfo* vinfo = new ValueInfo;
-    vinfo->mode = MEM_MODE_NONECACHE_USRPTR;
+    // Video buffers actually use cached memory,
+    // even though uncached memory was requested
+    vinfo->mode = MEM_MODE_MALLOC;
     vinfo->handle = 0;
     vinfo->width = mConfig.recording.width;
     vinfo->height = mConfig.recording.height;
@@ -4362,6 +4465,11 @@ status_t AtomISP::freeRecordingBuffers()
 status_t AtomISP::freeSnapshotBuffers()
 {
     LOG1("@%s", __FUNCTION__);
+    if (mUsingClientSnapshotBuffers) {
+        LOG1("Using external Snapshotbuffers, nothing to free");
+        return NO_ERROR;
+    }
+
     for (int i = 0 ; i < mConfig.num_snapshot; i++) {
         if (mSnapshotBuffers[i].buff != NULL) {
             mSnapshotBuffers[i].buff->release(mSnapshotBuffers[i].buff);
@@ -4373,13 +4481,14 @@ status_t AtomISP::freeSnapshotBuffers()
 
 status_t AtomISP::freePostviewBuffers()
 {
-    LOG1("@%s", __FUNCTION__);
-    for (int i = 0 ; i < mConfig.num_snapshot; i++) {
+    LOG1("@%s: freeing %d", __FUNCTION__, mPostviewBuffers.size());
+
+    for (size_t i = 0 ; i < mPostviewBuffers.size(); i++) {
         if (mPostviewBuffers[i].buff != NULL) {
             mPostviewBuffers[i].buff->release(mPostviewBuffers[i].buff);
-            mPostviewBuffers[i].buff = NULL;
         }
     }
+    mPostviewBuffers.clear();
     return NO_ERROR;
 }
 
@@ -4399,15 +4508,9 @@ status_t AtomISP::freePostviewBuffers()
  */
 bool AtomISP::needNewPostviewBuffers()
 {
-    int currentBufferCnt = 0;
-    for (int i = 0 ; i < MAX_BURST_BUFFERS; i++) {
-        if (mPostviewBuffers[i].buff != NULL) {
-            currentBufferCnt++;
-        }
-    }
 
-    if ((currentBufferCnt != mConfig.num_snapshot) ||
-         (currentBufferCnt == 0))
+    if ((mPostviewBuffers.size() != (unsigned int)mConfig.num_snapshot) ||
+         mPostviewBuffers.isEmpty())
         return true;
 
     if (mPostviewBuffers[0].size == mConfig.postview.size)
@@ -4473,32 +4576,25 @@ status_t AtomISP::getCameraInfo(int cameraId, camera_info *cameraInfo)
           "back" : "front/other"),
          cameraInfo->orientation);
 
-    // PNP cold L2P optimization - read sensor data after boot when the camera
-    // infos are iterated
-    if (PlatformData::sensorType(cameraId) == SENSOR_TYPE_RAW) {
-        if (!gSensorDataCache[cameraId].fetched) {
-            // this in practice loads the sensor data to cache
-            AtomISP isp(cameraId);
-            isp.init();
-        }
-    }
-
     return NO_ERROR;
 }
 
-int AtomISP::getNumOfSkipFrames(void)
+unsigned int AtomISP::getNumOfSkipFrames(void)
 {
     int ret = 0;
     int num_skipframes = 0;
 
     ret = atomisp_get_attribute(main_fd, V4L2_CID_G_SKIP_FRAMES,
                                 &num_skipframes);
-
-    LOG1("%s: returns %d skip frame needed %d",__FUNCTION__, ret, num_skipframes);
-    if (ret < 0)
-        return ret;
-    else
-        return num_skipframes;
+    if (ret < 0) {
+        LOGD("Failed to query control V4L2_CID_G_SKIP_FRAMES!");
+        num_skipframes = 0;
+    } else if (num_skipframes < 0) {
+        LOGD("Negative value for V4L2_CID_G_SKIP_FRAMES!");
+        num_skipframes = 0;
+    }
+    LOG1("%s: skipping %d initial frames", __FUNCTION__, num_skipframes);
+    return (unsigned int)num_skipframes;
 }
 
 /* ===================  ACCELERATION API EXTENSIONS ====================== */
@@ -4520,8 +4616,6 @@ int AtomISP::loadAccFirmware(void *fw, size_t size,
     fwData.data = fw;
     LOG2("fwData : 0x%x fwData->data : 0x%x",
         (unsigned int)&fwData, (unsigned int)fwData.data );
-
-
 
     if ( main_fd ){
         ret = xioctl(main_fd, ATOMISP_IOC_ACC_LOAD, &fwData);
@@ -4775,12 +4869,16 @@ int AtomISP::dumpPreviewFrame(int previewIndex)
         CameraDump *cameraDump = CameraDump::getInstance();
         const struct v4l2_buffer_info *buf =
             &v4l2_buf_pool[mPreviewDevice].bufs[previewIndex];
+        camera_delay_dumpImage_T dump;
+        dump.buffer_raw = buf->data;
+        dump.buffer_size =  mConfig.preview.size;
+        dump.width =  mConfig.preview.width;
+        dump.height = mConfig.preview.height;
+        dump.stride = mConfig.preview.stride;
         if (mConfigRecordingPreviewDevice == mPreviewDevice)
-            cameraDump->dumpImage2File(buf->data, mConfig.preview.size, mConfig.preview.width,
-                                       mConfig.preview.height, DUMPIMAGE_RECORD_PREVIEW_FILENAME);
+            cameraDump->dumpImage2File(&dump, DUMPIMAGE_RECORD_PREVIEW_FILENAME);
         else
-            cameraDump->dumpImage2File(buf->data, mConfig.preview.size, mConfig.preview.width,
-                                       mConfig.preview.height, DUMPIMAGE_PREVIEW_FILENAME);
+            cameraDump->dumpImage2File(&dump, DUMPIMAGE_PREVIEW_FILENAME);
     }
 
     return 0;
@@ -4793,9 +4891,14 @@ int AtomISP::dumpRecordingFrame(int recordingIndex)
         CameraDump *cameraDump = CameraDump::getInstance();
         const struct v4l2_buffer_info *buf =
             &v4l2_buf_pool[mRecordingDevice].bufs[recordingIndex];
+        camera_delay_dumpImage_T dump;
+        dump.buffer_raw = buf->data;
+        dump.buffer_size =  mConfig.recording.size;
+        dump.width =  mConfig.recording.width;
+        dump.height = mConfig.recording.height;
+        dump.stride = mConfig.recording.stride;
         const char *name = DUMPIMAGE_RECORD_STORE_FILENAME;
-        cameraDump->dumpImage2File(buf->data, mConfig.recording.size, mConfig.recording.width,
-                                   mConfig.recording.height, name);
+        cameraDump->dumpImage2File(&dump, name);
     }
 
     return 0;
@@ -4803,46 +4906,44 @@ int AtomISP::dumpRecordingFrame(int recordingIndex)
 
 int AtomISP::dumpSnapshot(int snapshotIndex, int postviewIndex)
 {
-    LOG2("@%s", __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     if (CameraDump::isDumpImageEnable()) {
+        camera_delay_dumpImage_T dump;
         CameraDump *cameraDump = CameraDump::getInstance();
         if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_SNAPSHOT)) {
-           const struct v4l2_buffer_info *buf0 =
+            const struct v4l2_buffer_info *buf0 =
                &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[snapshotIndex];
-           const struct v4l2_buffer_info *buf1 =
+            const struct v4l2_buffer_info *buf1 =
                &v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[postviewIndex];
-           const char *name0 = "snap_v0.nv12";
-           const char *name1 = "snap_v1.nv12";
-           cameraDump->dumpImage2File(buf0->data, mConfig.snapshot.size, mConfig.snapshot.width,
-                                      mConfig.snapshot.height, name0);
-           cameraDump->dumpImage2File(buf1->data, mConfig.postview.size, mConfig.postview.width,
-                                      mConfig.postview.height, name1);
+            const char *name0 = "snap_v0.nv12";
+            const char *name1 = "snap_v1.nv12";
+            dump.buffer_raw = buf0->data;
+            dump.buffer_size = mConfig.snapshot.size;
+            dump.width = mConfig.snapshot.width;
+            dump.height = mConfig.snapshot.height;
+            dump.stride = mConfig.snapshot.stride;
+            cameraDump->dumpImage2File(&dump, name0);
+            dump.buffer_raw = buf1->data;
+            dump.buffer_size = mConfig.postview.size;
+            dump.width = mConfig.postview.width;
+            dump.height = mConfig.postview.height;
+            dump.stride = mConfig.postview.stride;
+            cameraDump->dumpImage2File(&dump, name1);
         }
 
-        if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_YUV)) {
+        if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_YUV) ||
+             isDumpRawImageReady()  ) {
             const struct v4l2_buffer_info *buf =
                 &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[snapshotIndex];
-            cameraDump->dumpImage2Buf(buf->data, mConfig.snapshot.size, mConfig.snapshot.width,
-                                      mConfig.snapshot.height);
+
+            dump.buffer_raw = buf->data;
+            dump.buffer_size = mConfig.snapshot.size;
+            dump.width = mConfig.snapshot.width;
+            dump.height = mConfig.snapshot.height;
+            dump.stride = mConfig.snapshot.stride;
+            cameraDump->dumpImage2Buf(&dump);
         }
 
-        if (isDumpRawImageReady()) {
-            LOG1("dumping raw data");
-            void *start = mmap(NULL /* start anywhere */ ,
-                               PAGE_ALIGN(mRawDataDumpSize),
-                               PROT_READ | PROT_WRITE /* required */ ,
-                               MAP_SHARED /* recommended */ ,
-                               video_fds[V4L2_MAIN_DEVICE], 0xfffff000);
-            if (MAP_FAILED == start)
-                    LOGE("mmap failed");
-            else {
-                LOG1("MMAP raw address from kernel 0x%p", start);
-                cameraDump->dumpImage2Buf(start, mRawDataDumpSize, mConfig.snapshot.stride,
-                                          mConfig.snapshot.height);
-                if (-1 == munmap(start, PAGE_ALIGN(mRawDataDumpSize)))
-                    LOGE("munmap failed");
-            }
-        }
     }
 
     return 0;
@@ -4860,8 +4961,10 @@ int AtomISP::dumpRawImageFlush(void)
 
 bool AtomISP::isDumpRawImageReady(void)
 {
-    LOG1("@%s", __FUNCTION__);
-    return (mSensorType == SENSOR_TYPE_RAW) && CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW);
+
+    bool ret = (mSensorType == SENSOR_TYPE_RAW) && CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW);
+    LOG1("@%s: %s", __FUNCTION__,ret?"Yes":"No");
+    return ret;
 }
 
 int AtomISP::sensorMoveFocusToPosition(int position)
@@ -4883,8 +4986,12 @@ int AtomISP::sensorMoveFocusToPosition(int position)
 
 int AtomISP::sensorMoveFocusToBySteps(int steps)
 {
+    int val = 0, rval;
     LOG2("@%s", __FUNCTION__);
-    return atomisp_set_attribute(main_fd, V4L2_CID_FOCUS_RELATIVE, steps, "Set focus steps");
+    rval = atomisp_get_attribute(main_fd, V4L2_CID_FOCUS_ABSOLUTE, &val);
+    if (rval)
+        return rval;
+    return sensorMoveFocusToPosition(val + steps);
 }
 
 int AtomISP::sensorGetFocusStatus(int *status)
@@ -5243,6 +5350,26 @@ int AtomISP::setGcConfig(const struct atomisp_gc_config *gc_cfg)
     return ret;
 }
 
+int AtomISP::getCssMajorVersion()
+{
+    return mCssMajorVersion;
+}
+
+int AtomISP::getCssMinorVersion()
+{
+    return mCssMinorVersion;
+}
+
+int AtomISP::getIspHwMajorVersion()
+{
+    return mIspHwMajorVersion;
+}
+
+int AtomISP::getIspHwMinorVersion()
+{
+    return mIspHwMinorVersion;
+}
+
 int AtomISP::setFlashIntensity(int intensity)
 {
     LOG2("@%s", __FUNCTION__);
@@ -5412,6 +5539,32 @@ status_t AtomISP::FrameSyncSource::observe(IAtomIspObserver::Message *msg)
 }
 
 /**
+ * This function implements the frame skip algorithm.
+ * - If user requests half of sensor fps, drop every even frame
+ * - If user requests third of sensor fps, drop two frames every three frames
+ * @returns true: skip,  false: not skip
+ */
+bool AtomISP::PreviewStreamSource::checkSkipFrame(int frameNum)
+{
+    float sensorFPS = mISP->mConfig.fps;
+    int targetFPS = mISP->mConfig.target_fps;
+
+    if (fabs(sensorFPS / targetFPS - 2) < 0.1f && (frameNum % 2 == 0)) {
+        LOG2("Preview FPS: %d. Skipping frame num: %d", targetFPS, frameNum);
+        return true;
+    }
+
+    if (fabs(sensorFPS / targetFPS - 3) < 0.1f && (frameNum % 3 != 0)) {
+        LOG2("Preview FPS: %d. Skipping frame num: %d", targetFPS, frameNum);
+        return true;
+    }
+
+    // TODO skipping support for 25fps sensor framerate
+
+    return false;
+}
+
+/**
  * polls and dequeues a preview frame into IAtomIspObserver::Message
  */
 status_t AtomISP::PreviewStreamSource::observe(IAtomIspObserver::Message *msg)
@@ -5437,6 +5590,8 @@ try_again:
         } else {
             msg->data.frameBuffer.buff.owner = mISP;
             msg->id = IAtomIspObserver::MESSAGE_ID_FRAME;
+            if (checkSkipFrame(msg->data.frameBuffer.buff.frameCounter))
+                msg->data.frameBuffer.buff.status = FRAME_STATUS_SKIPPED;
         }
     } else {
         LOGE("v4l2_poll for preview device failed! (%s)", (ret==0)?"timeout":"error");
@@ -5447,7 +5602,7 @@ try_again:
     if (status != NO_ERROR) {
         // check if reason is starving and enter sleep to wait
         // for returnBuffer()
-        while(!mISP->dataAvailable()) {
+        while(mISP->mNumPreviewBuffersQueued < 1) {
             if (++failCounter > retry_count) {
                 LOGD("There were no preview buffers returned in time");
                 break;
@@ -5598,9 +5753,6 @@ status_t AtomISP::setEv(float bias)
     int evValue = (int)bias;
     LOG1("@%s: bias: %f, EV value: %d", __FUNCTION__, bias, evValue);
 
-    if(evValue == 0)
-        return status;
-
     int ret = atomisp_set_attribute(main_fd, V4L2_CID_EXPOSURE, evValue, "exposure");
     if (ret != 0) {
         LOGE("Error setting EV in the driver");
@@ -5615,13 +5767,6 @@ status_t AtomISP::getEv(float *bias)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     int evValue = 0;
-
-    const char* minEV = PlatformData::supportedMinEV(mCameraId);
-    const char* maxEV = PlatformData::supportedMaxEV(mCameraId);
-    if(!strcmp(minEV, "0") && !strcmp(maxEV, "0")) {
-        LOG1("@%s: not supported by current camera", __FUNCTION__);
-        return INVALID_OPERATION;
-    }
 
     int ret = atomisp_get_attribute(main_fd, V4L2_CID_EXPOSURE, &evValue);
     if (ret != 0) {
@@ -5646,6 +5791,9 @@ status_t AtomISP::setAeSceneMode(SceneMode mode)
 
     switch (mode)
     {
+        case CAM_AE_SCENE_MODE_AUTO:
+            v4lMode = V4L2_SCENE_MODE_NONE;
+            break;
         case CAM_AE_SCENE_MODE_PORTRAIT:
             v4lMode = V4L2_SCENE_MODE_PORTRAIT;
             break;
@@ -5722,6 +5870,9 @@ SceneMode AtomISP::getAeSceneMode()
 
     switch (v4lMode)
     {
+        case V4L2_SCENE_MODE_NONE:
+            mode = CAM_AE_SCENE_MODE_AUTO;
+            break;
         case V4L2_SCENE_MODE_PORTRAIT:
             mode = CAM_AE_SCENE_MODE_PORTRAIT;
             break;

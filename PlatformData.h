@@ -95,6 +95,7 @@ class PlatformData {
 
  private:
     static PlatformBase* mInstance;
+    static int mActiveCameraId;
 
     /**
      * Get access to the platform singleton.
@@ -114,6 +115,26 @@ class PlatformData {
         SENSOR_FLIP_H      = 0x01, // V4L2_CID_HFLIP 1
         SENSOR_FLIP_V      = 0x02, // V4L2_CID_VFLIP 1
     };
+
+    /**
+     * Sets the ID of active camera
+     *
+     * This function should be called every time an instance of CameraHAL
+     * is created with given cameraId
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     */
+    static void setActiveCameraId(int cameraId);
+
+    /**
+     * Frees the ID of active camera
+     *
+     * This function should be called every time an instance of CameraHAL
+     * using the given Id is terminated
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     */
+    static void freeActiveCameraId(int cameraId);
 
     /**
      * Number of cameras
@@ -160,7 +181,7 @@ class PlatformData {
      *
      * \return true if supported
      */
-    static bool supportsContinuousCapture(void);
+    static bool supportsContinuousCapture(int cameraId);
 
     /**
      * What's the maximum supported size of the RAW ringbuffer
@@ -172,7 +193,7 @@ class PlatformData {
      * \return int number 0...N, if supportsContinuousCapture() is
      *         false, this function will always return 0
      */
-    static int maxContinuousRawRingBufferSize(void);
+    static int maxContinuousRawRingBufferSize(int cameraId);
 
     /**
      * Returns the average lag between user pressing shutter UI button or
@@ -221,12 +242,6 @@ class PlatformData {
     static const char* supportedBurstLength(int CameraId);
 
     /**
-     * Returns the max burst FPS
-     * \return Supported the max burst FPS.
-     */
-    static int getMaxBurstFPS(int CameraId);
-
-    /**
      * Flipping controls to set for camera id
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
@@ -241,6 +256,14 @@ class PlatformData {
      * \return the value of the default value as a string.
      */
     static const char* supportedDefaultEV(int cameraId);
+
+    /**
+     * Whether EV is supported?
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return true if supported, false if not supported
+     */
+    static bool supportEV(int cameraId);
 
     /**
      * Exposure compensation max value
@@ -519,6 +542,22 @@ class PlatformData {
     static const char* supportedPreviewSizes(int cameraId);
 
     /**
+     * supported preview update modes
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the supported preview update mode as a string.
+     */
+    static const char* supportedPreviewUpdateModes(int cameraId);
+
+    /**
+     * default preview update mode
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the default preview update mode as a string.
+     */
+    static const char* defaultPreviewUpdateMode(int cameraId);
+
+    /**
      * Whether the slow motion playback in high speed recording mode is supported?
      * \return true if the slow motion playback is supported
      */
@@ -685,7 +724,6 @@ public:
         mPanoramaMaxSnapshotCount = 10;
         mSupportVideoSnapshot = true;
         mNumRecordingBuffers = 9;
-        mContinuousCapture = false;
         mMaxContinuousRawRingBuffer = 0;
         mShutterLagCompensationMs = 40;
         mSupportAIQ = false;
@@ -709,8 +747,8 @@ public:
             supportedSnapshotSizes = "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448";
             mPreviewViaOverlay = false;
             overlayRelativeRotation = 90;
+            continuousCapture = false;
             //burst
-            maxBurstFPS = 15;
             supportedBurstFPS = "1,3,5,7,15";
             supportedBurstLength = "1,3,5,10";
             defaultBurstLength = "10";
@@ -795,6 +833,8 @@ public:
             supportedVideoSizes = "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1080";
             // Leaving this empty. NOTE: values need to be given in derived classes.
             supportedPreviewSizes = "";
+            supportedPreviewUpdateModes = "standard,continuous,during-capture,windowless";
+            defaultPreviewUpdateMode = "standard";
             //For high speed recording, slow motion playback
             hasSlowMotion = false;
             // focus modes
@@ -819,9 +859,9 @@ public:
                                            camera and the display attached to the overlay */
         // VFPP limited resolutions (sensor blanking time dependent
         Vector<Size> mVFPPLimitedResolutions; // preview resolutions with VFPP limitations
+        bool continuousCapture;
         // burst
-        int maxBurstFPS;
-        String8 supportedBurstFPS;
+        String8 supportedBurstFPS; // TODO: it will be removed in the future
         String8 supportedBurstLength;
         String8 defaultBurstLength;
         // exposure
@@ -871,6 +911,8 @@ public:
         String8 supportedPreviewFPSRange;
         String8 defaultPreviewFPSRange;
         String8 supportedPreviewSizes;
+        String8 supportedPreviewUpdateModes;
+        String8 defaultPreviewUpdateMode;
         String8 supportedVideoSizes;
         // For high speed recording, slow motion playback
         bool hasSlowMotion;
@@ -890,7 +932,6 @@ public:
     bool mFileInject;
     bool mSupportVideoSnapshot;
 
-    bool mContinuousCapture;
     int mMaxContinuousRawRingBuffer;
     int mShutterLagCompensationMs;
 

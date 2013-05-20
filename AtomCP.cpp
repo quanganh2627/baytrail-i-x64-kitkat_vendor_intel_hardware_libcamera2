@@ -159,6 +159,7 @@ status_t AtomCP::composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& ou
                                inputBuf.hist);
     if (ia_err != ia_err_none)
             return INVALID_OPERATION;
+    PERFORMANCE_TRACES_HDR_SHOT2PREVIEW_CALLED();
     PERFORMANCE_TRACES_BREAKDOWN_STEP_NOPARAM();
 
     return NO_ERROR;
@@ -174,7 +175,6 @@ status_t AtomCP::initializeHDR(unsigned width, unsigned height)
         if (ia_err != ia_err_none)
             return NO_MEMORY;
     }
-    PERFORMANCE_TRACES_HDR_SHOT2PREVIEW_CALLED();
 
     return NO_ERROR;
 }

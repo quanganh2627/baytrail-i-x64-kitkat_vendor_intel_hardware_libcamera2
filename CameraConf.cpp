@@ -128,7 +128,6 @@ void CameraBlob::clear()
 
 status_t HalConf::getValue(int& value, cpf_hal_tag_t tag, ...)
 {
-    value = 0;
     int ret = 0;
 
     va_list args;
@@ -153,7 +152,6 @@ exit:
 
 status_t HalConf::getBool(bool& boolean, cpf_hal_tag_t tag, ...)
 {
-    boolean = false;
     int ret = 0;
 
     va_list args;
@@ -178,7 +176,6 @@ exit:
 
 status_t HalConf::getString(const char *& string, cpf_hal_tag_t tag, ...)
 {
-    string = 0;
     int ret = 0;
 
     va_list args;
@@ -208,7 +205,6 @@ exit:
 
 status_t HalConf::getFpoint(int32_t& value, cpf_hal_tag_t tag, ...)
 {
-    value = 0;
     int ret = 0;
 
     va_list args;
@@ -233,7 +229,6 @@ exit:
 
 status_t HalConf::getFloat(float& value, cpf_hal_tag_t tag, ...)
 {
-    value = 0;
     int ret = 0;
 
     va_list args;
@@ -606,8 +601,8 @@ status_t CpfStore::initDriverList()
                 // Cut the name to first space
                 for (int i = 0; (i = drvInfo.mSensorName.find(" ")) > 0; drvInfo.mSensorName.setTo(drvInfo.mSensorName, i));
 
-                int major = entity.v4l.major;
-                int minor = entity.v4l.minor;
+                unsigned major = entity.v4l.major;
+                unsigned minor = entity.v4l.minor;
 
                 // Go thru the subdevs one by one, see which one
                 // corresponds to this driver (if there is an error,
@@ -625,7 +620,7 @@ status_t CpfStore::initDriverList()
     return ret;
 }
 
-status_t CpfStore::initDriverListHelper(int major, int minor, SensorDriver& drvInfo)
+status_t CpfStore::initDriverListHelper(unsigned major, unsigned minor, SensorDriver& drvInfo)
 {
     String8 subdevPathNameN;
 

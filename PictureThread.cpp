@@ -38,21 +38,31 @@ PictureThread::PictureThread(I3AControls *aaaControls) :
     ,mThreadRunning(false)
     ,mCallbacks(Callbacks::getInstance())
     ,mCallbacksThread(CallbacksThread::getInstance())
+    ,mHwCompressor(NULL)
+    ,mExifMaker(NULL)
     ,mExifBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT_JPEG))
     ,mOutBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT_JPEG))
     ,mThumbBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW))
     ,mScaledPic(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT))
     ,mPictureQuality(80)
     ,mThumbnailQuality(50)
+    ,mInputBufferArray(NULL)
+    ,mInputBuffDataArray(NULL)
     ,mInputBuffers(0)
     ,m3AControls(aaaControls)
 {
     LOG1("@%s", __FUNCTION__);
-    mInputBufferArray = NULL;
-    mInputBuffDataArray = NULL;
+
     mHwCompressor = new JpegHwEncoder();
+    if (mHwCompressor == NULL) {
+        LOGE("HwCompressor allocation failed");
+    }
+
     // TODO: Remove the EXIFMaker's dependency on aaaControls
     mExifMaker = new EXIFMaker(aaaControls);
+    if (mExifMaker == NULL) {
+        LOGE("ExifMaker allocation failed");
+    }
 }
 
 PictureThread::~PictureThread()
@@ -60,30 +70,37 @@ PictureThread::~PictureThread()
     LOG1("@%s", __FUNCTION__);
 
     if (mOutBuf.buff != NULL) {
+        LOGD("@%s: release mOutBuf", __FUNCTION__);
         mOutBuf.buff->release(mOutBuf.buff);
         mOutBuf.buff = NULL;
     }
     if (mExifBuf.buff != NULL) {
+        LOGD("@%s: release mExifBuf", __FUNCTION__);
         mExifBuf.buff->release(mExifBuf.buff);
         mExifBuf.buff = NULL;
     }
     if (mThumbBuf.buff != NULL) {
+        LOGD("@%s: release mThumbBuf", __FUNCTION__);
         mThumbBuf.buff->release(mThumbBuf.buff);
         mThumbBuf.buff = NULL;
     }
     if (mScaledPic.buff != NULL) {
+        LOGD("@%s: release mScaledPic", __FUNCTION__);
         mScaledPic.buff->release(mScaledPic.buff);
         mScaledPic.buff = NULL;
     }
 
+    LOGD("@%s: release InputBuffers", __FUNCTION__);
     freeInputBuffers();
 
-    if(mHwCompressor) {
+    if (mHwCompressor) {
+        LOGD("@%s: release mHwCompressor", __FUNCTION__);
         delete mHwCompressor;
         mHwCompressor = NULL;
     }
 
     if (mExifMaker) {
+        LOGD("@%s: release mExifMaker", __FUNCTION__);
         delete mExifMaker;
         mExifMaker = NULL;
     }
@@ -218,41 +235,8 @@ void PictureThread::initialize(const CameraParameters &params)
     mScaledPic.size = frameSize(mScaledPic.format, mScaledPic.stride, mScaledPic.height);
 }
 
-
-status_t PictureThread::getSharedBuffers(int width, int height, char** sharedBuffersPtr, int *sharedBuffersNum)
-{
-    LOG1("@%s mInputBuffers %d", __FUNCTION__, mInputBuffers);
-    status_t status = NO_ERROR;
-    Message msg;
-
-    if(sharedBuffersPtr == NULL || sharedBuffersNum == NULL) {
-        LOGE("invalid parameters passed to %s", __FUNCTION__);
-        return BAD_VALUE;
-    }
-
-
-    msg.id = MESSAGE_ID_FETCH_BUFS;
-    msg.data.alloc.width = width;
-    msg.data.alloc.height = height;
-
-    status = mMessageQueue.send(&msg,MESSAGE_ID_FETCH_BUFS);
-
-    if(  status == NO_ERROR &&
-         mInputBufferArray[0].width ==  width &&
-         mInputBufferArray[0].height ==  height ) {
-
-        *sharedBuffersPtr = (char *)mInputBuffDataArray;
-        *sharedBuffersNum = mInputBuffers;
-    } else {
-        status = BAD_VALUE;
-        LOGE("Picture thread did not had any buffers, or it had with wrong dimensions." \
-              " This should not happen!!");
-    }
-
-    return status;
-}
-
-status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuffersNum)
+status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuffersNum,
+                                           int format, Vector<AtomBuffer> *bufs)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
@@ -260,7 +244,10 @@ status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuff
     msg.data.alloc.width = width;
     msg.data.alloc.height = height;
     msg.data.alloc.numBufs = sharedBuffersNum;
-    return mMessageQueue.send(&msg);
+    msg.data.alloc.format = format;
+    msg.data.alloc.bufs = bufs;
+
+    return mMessageQueue.send(&msg, MESSAGE_ID_ALLOC_BUFS);
 }
 
 status_t PictureThread::wait()
@@ -352,6 +339,13 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
     else
         postviewBuf = &msg->postviewBuf;
 
+    // Mirror snapshot and postview buffers if requested
+    if (msg->metaData.saveMirrored) {
+        mirrorBuffer(&msg->snaphotBuf, msg->metaData.currentOrientation, msg->metaData.cameraOrientation);
+        if (postviewBuf)
+            mirrorBuffer(postviewBuf, msg->metaData.currentOrientation, msg->metaData.cameraOrientation);
+    }
+
     status = encodeToJpeg(&msg->snaphotBuf, postviewBuf, &jpegBuf);
     if (status != NO_ERROR) {
         LOGE("Error generating JPEG image!");
@@ -365,35 +359,37 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 
     jpegBuf.frameCounter = msg->snaphotBuf.frameCounter;
 
+    mCallbacksThread->compressedFrameDone(&jpegBuf, &msg->snaphotBuf, &msg->postviewBuf);
+
     // ownership was transferred to us from ControlThread, so we need
     // to free resources here after encoding
     msg->metaData.free(m3AControls);
 
-
-    mCallbacksThread->compressedFrameDone(&jpegBuf, &msg->snaphotBuf, &msg->postviewBuf);
     return status;
 }
 
 status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
 {
-    LOG1("@%s: width = %d, height = %d, numBufs = %d",
+    LOG1("@%s: width = %d, height = %d, format = %s, numBufs = %d",
             __FUNCTION__,
             msg->width,
             msg->height,
+            v4l2Fmt2Str(msg->format),
             msg->numBufs);
     status_t status = NO_ERROR;
+    size_t bufferSize = frameSize(msg->format, msg->width, msg->height);
 
     /* check if re-allocation is needed */
     if( (mInputBufferArray != NULL) &&
         (mInputBuffers == msg->numBufs) &&
         (mInputBufferArray[0].width == msg->width) &&
-        (mInputBufferArray[0].height == msg->height)) {
+        (mInputBufferArray[0].height == msg->height) &&
+        (mInputBufferArray[0].format == msg->format)) {
         LOG1("Trying to allocate same number of buffers with same resolution... skipping");
-        return NO_ERROR;
+        goto skip;
     }
 
     /* Free old buffers if already allocated */
-    size_t bufferSize = (msg->width * msg->height * 2);
     if (mOutBuf.dataPtr != NULL && bufferSize != (size_t) mOutBuf.size) {
         mOutBuf.buff->release(mOutBuf.buff);
         mOutBuf.dataPtr = NULL;
@@ -409,58 +405,44 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
     }
     if (mOutBuf.dataPtr == NULL || mExifBuf.dataPtr == NULL) {
         LOGE("Could not allocate memory for output buffers!");
-        return NO_MEMORY;
+        status = NO_MEMORY;
+        goto exit_fail;
     }
 
     /* re-allocates array of input buffers into mInputBufferArray */
     freeInputBuffers();
-    status = allocateInputBuffers(msg->width, msg->height, msg->numBufs);
+    status = allocateInputBuffers(msg->format, msg->width, msg->height, msg->numBufs);
     if(status != NO_ERROR)
-        return status;
+        goto exit_fail;
 
     /* Now let the encoder know about the new buffers for the surfaces*/
     if(mHwCompressor) {
         status = mHwCompressor->setInputBuffers(mInputBufferArray, mInputBuffers);
-        if(status)
+        if(status) {
             LOGW("HW Encoder cannot use pre-allocate buffers");
+            status = NO_ERROR; // this is not critical, we still return some buffers
+        }
     }
 
-    return NO_ERROR;
-}
+skip:
 
-status_t PictureThread::handleMessageFetchBuffers(MessageAllocBufs *msg)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    if(mInputBuffers == 0) {
-        LOGW("trying to get shared buffers before being allocated");
-        msg->numBufs = 1;
-        status = handleMessageAllocBufs(msg);
-    }
+    for (int i = 0; i < mInputBuffers; i++)
+        msg->bufs->push(mInputBufferArray[i]);
 
-    if (mInputBufferArray && (mInputBufferArray[0].width != msg->width
-        || mInputBufferArray[0].height != msg->height)) {
-        // Checks to ensure that allocation has happened for correct size.
-        LOGW("shared buffers not allocated for correct size");
-        msg->numBufs = 1;
-        status = handleMessageAllocBufs(msg);
-    } else if (!mInputBufferArray) {
-        LOGE("NULL mInputBufferArray.");
-        status = UNKNOWN_ERROR;
-    }
-
-    mMessageQueue.reply(MESSAGE_ID_FETCH_BUFS, status);
+exit_fail:
+    mMessageQueue.reply(MESSAGE_ID_ALLOC_BUFS, status);
     return status;
 }
 
-status_t PictureThread::allocateInputBuffers(int width, int height, int numBufs)
+status_t PictureThread::allocateInputBuffers(int format, int width, int height, int numBufs)
 {
     LOG1("@%s size (%dx%d) num %d", __FUNCTION__, width, height, numBufs);
     // temporary workaround until CSS supports buffers with different strides
     // until then we need to align all buffers to display subsystem stride
     // requirements.... even the snapshot buffers that do not go to screen
-    int stride = SGXandDisplayStride(width);
-    size_t bufferSize = frameSize(V4L2_PIX_FMT_NV12, stride, height);
+    int stride = SGXandDisplayStride(format, width);
+    LOG1("@%s stride %d", __FUNCTION__, stride);
+    size_t bufferSize = frameSize(format, stride, height);
 
     if(numBufs == 0)
         return NO_ERROR;
@@ -481,10 +463,13 @@ status_t PictureThread::allocateInputBuffers(int width, int height, int numBufs)
         mInputBufferArray[i].width = width;
         mInputBufferArray[i].height = height;
         mInputBufferArray[i].stride = stride;
-        mInputBufferArray[i].format = V4L2_PIX_FMT_NV12;
+        mInputBufferArray[i].format = format;
         mInputBufferArray[i].size = bufferSize;
+        mInputBufferArray[i].type = ATOM_BUFFER_SNAPSHOT;
+        mInputBufferArray[i].status = FRAME_STATUS_OK;
         mInputBuffDataArray[i] = (char *) mInputBufferArray[i].dataPtr;
         LOG2("Snapshot buffer[%d] allocated, ptr = %p",i,mInputBufferArray[i].dataPtr);
+
     }
     return NO_ERROR;
 
@@ -500,8 +485,10 @@ void PictureThread::freeInputBuffers()
 
     if(mInputBufferArray != NULL) {
        for (int i = 0; i < mInputBuffers; i++) {
-           mInputBufferArray[i].buff->release(mInputBufferArray[i].buff);
-           mInputBufferArray[i].buff = NULL;
+           if (mInputBufferArray[i].buff != NULL) {
+               mInputBufferArray[i].buff->release(mInputBufferArray[i].buff);
+               mInputBufferArray[i].buff = NULL;
+           }
        }
        delete [] mInputBufferArray;
        mInputBufferArray = NULL;
@@ -626,10 +613,6 @@ status_t PictureThread::waitForAndExecuteMessage()
             status = handleMessageAllocBufs(&msg.data.alloc);
             break;
 
-        case MESSAGE_ID_FETCH_BUFS:
-            status = handleMessageFetchBuffers(&msg.data.alloc);
-            break;
-
         case MESSAGE_ID_WAIT:
             status = handleMessageWait();
             break;
@@ -746,7 +729,12 @@ void PictureThread::encodeExif(AtomBuffer *thumbBuf)
                 mThumbBuf.width, mThumbBuf.height, mThumbBuf.stride);
         if (mThumbBuf.dataPtr == NULL)
             mCallbacks->allocateMemory(&mThumbBuf,mThumbBuf.size);
-        if (thumbBuf->height > srcHeighByThumbAspect) {
+        if (mThumbBuf.dataPtr == NULL) {
+            LOGE("Could not allocate memory for ThumbBuf buffers!");
+            mThumbBuf.size = 0;
+            mThumbBuf.width = 0;
+            mThumbBuf.height = 0;
+        } else if (thumbBuf->height > srcHeighByThumbAspect) {
             // Support cropping 16:9 out from 4:3
             int skipLines = (thumbBuf->height - srcHeighByThumbAspect) / 2;
             LOGW("Thumbnail cropped to match requested aspect ratio");
@@ -878,7 +866,7 @@ status_t PictureThread::completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBu
     status_t status= NO_ERROR;
     nsecs_t endTime;
     JpegCompressor::OutputBuffer outBuf;
-    int mainSize;
+    int mainSize = 0;
     int finalSize = 0;
 
     endTime = systemTime();

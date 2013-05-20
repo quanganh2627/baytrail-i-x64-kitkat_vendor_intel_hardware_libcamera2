@@ -31,7 +31,6 @@ namespace android {
 class Callbacks;
 class CallbacksThread;
 
-
 class PictureThread : public Thread {
 
 // constructor destructor
@@ -50,6 +49,9 @@ public:
       SensorAeConfig *aeConfig;              /*!< defined in AtomAAA.h */
       atomisp_makernote_info *atomispMkNote; /*!< kernel provided metadata, defined linux/atomisp.h */
       ia_3a_mknote *ia3AMkNote;              /*!< defined in ia_3a_types.h */
+      bool saveMirrored;                     /*!< whether to do mirroring */
+      int cameraOrientation;                 /*!< camera sensor orientation */
+      int currentOrientation;                /*!< Current orientation of the device */
 
       void free(I3AControls* aaaControls);
     };
@@ -61,8 +63,9 @@ public:
 
     void getDefaultParameters(CameraParameters *params);
     void initialize(const CameraParameters &params);
-    status_t getSharedBuffers(int width, int height, char** sharedBuffersPtr, int *sharedBuffersNum);
-    status_t allocSharedBuffers(int width, int height, int sharedBuffersNum);
+    status_t allocSharedBuffers(int width, int height, int sharedBuffersNum,
+                                int format, Vector<AtomBuffer> *bufs);
+
 
     status_t wait(); // wait to finish queued messages (sync)
     status_t flushBuffers();
@@ -81,7 +84,6 @@ private:
         MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
         MESSAGE_ID_ENCODE,
         MESSAGE_ID_ALLOC_BUFS,
-        MESSAGE_ID_FETCH_BUFS,
         MESSAGE_ID_WAIT,
         MESSAGE_ID_FLUSH,
 
@@ -94,9 +96,12 @@ private:
     //
 
     struct MessageAllocBufs {
-        int width;
-        int height;
-        int numBufs;
+        int width;          /*!> width of the requested buffers */
+        int height;         /*!> height of the requested buffers */
+        int numBufs;        /*!> amount of buffers to allocate */
+        int format;         /*!> V4L2 pixel format */
+        Vector<AtomBuffer> *bufs;      /*!> Vector where to store the buffers */
+
     };
 
     struct MessageEncode {
@@ -126,7 +131,6 @@ private:
     status_t handleMessageExit();
     status_t handleMessageEncode(MessageEncode *encode);
     status_t handleMessageAllocBufs(MessageAllocBufs *alloc);
-    status_t handleMessageFetchBuffers(MessageAllocBufs *alloc);
     status_t handleMessageWait();
     status_t handleMessageFlush();
 
@@ -135,7 +139,7 @@ private:
 
     void setupExifWithMetaData(const MetaData &metaData);
     status_t encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, AtomBuffer *destBuf);
-    status_t allocateInputBuffers(int width, int height, int numBufs);
+    status_t allocateInputBuffers(int format, int width, int height, int numBufs);
     void     freeInputBuffers();
     int      encodeExifAndThumbnail(AtomBuffer *thumbnail, unsigned char* exifDst);
     status_t startHwEncoding(AtomBuffer *mainBuf);

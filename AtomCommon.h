@@ -39,6 +39,9 @@
 #define MAX_PARAM_VALUE_LENGTH 32
 #define MAX_BURST_BUFFERS 32
 #define MAX_BURST_FRAMERATE 15
+#define BURST_SPEED_FAST_SKIP_NUM 0  // full speed
+#define BURST_SPEED_MEDIUM_SKIP_NUM 1  // 1/2 full speed
+#define BURST_SPEED_LOW_SKIP_NUM 3  // 1/4 full speed
 
 // macro STRINGIFY to change a number in a string.
 #define STRINGIFY(s) STRINGIFY_(s)
@@ -50,6 +53,7 @@
 // macro ALIGN16 root value to value that is divisible by 16
 #define ALIGN16(x) (((x) + 15) & ~15)
 #define ALIGN64(x) (((x) + 63) & ~63)
+#define ALIGN128(x) (((x) + 127) & ~127)
 
 namespace android {
 struct AtomBuffer;
@@ -97,6 +101,8 @@ enum AtomBufferType {
     ATOM_BUFFER_POSTVIEW_JPEG,      /*!< Buffer contains a postview image (JPEG) */
     ATOM_BUFFER_VIDEO,              /*!< Buffer contains a video frame  */
     ATOM_BUFFER_PANORAMA,           /*!< Buffer contains a panorama image */
+    ATOM_BUFFER_ULL,                /*!< Buffer contains a full snapshot with the
+                                         outcome of the Ultra Low light post capture processing (uncompressed)*/
 };
 
 /*! \struct AtomBuffer
@@ -215,6 +221,7 @@ static int frameSize(int format, int width, int height)
             size = (width * height *  2);
             break;
         case V4L2_PIX_FMT_RGB565:
+        case V4L2_PIX_FMT_SRGGB10:
             size = (width * height * BPP);
             break;
         default:
@@ -226,12 +233,24 @@ static int frameSize(int format, int width, int height)
 
 /**
  * Calculates the frame stride following the limitations imposed by display subsystem
-
- * \param width [in]
+ *
+ * The SGX limitation is that the number of bytes per line needs to be aligned
+ * to 64
+ * In case of Raw capture the requirement chnges
+ *
+ * \param format [in] V4L2 pixelf format of the image
+ * \param width [in] width in pixels
+ *
  * \return stride following the Display subsystem stride requirement
  **/
-static int SGXandDisplayStride(int width)
+static int SGXandDisplayStride(int format, int width)
 {
+    /**
+     * Raw format has special stride requirements
+     */
+    if (format == V4L2_PIX_FMT_SRGGB10)
+        return ALIGN128(width);
+
     if (width <= 512)
         return  512;
     else
@@ -256,6 +275,7 @@ static int bytesPerLineToWidth(int format, int bytesperline)
         width = (bytesperline / 2);
         break;
     case V4L2_PIX_FMT_RGB565:
+    case V4L2_PIX_FMT_SRGGB10:
         width = (bytesperline / 2);
         break;
     default:
@@ -367,6 +387,14 @@ inline static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
 }
 
 void convertFromAndroidToIaCoordinates(const CameraWindow &srcWindow, CameraWindow &toWindow);
+
+void mirrorBuffer(AtomBuffer *buffer, int currentOrientation, int cameraOrientation);
+void flipBufferV(AtomBuffer *buffer);
+void flipBufferH(AtomBuffer *buffer);
+
+#ifdef LIBCAMERA_RD_FEATURES
+void trace_callstack();
+#endif
 
 }
 #endif // ANDROID_LIBCAMERA_COMMON_H
