@@ -199,6 +199,7 @@ status_t AtomAIQ::deinit3A()
 
 status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
 {
+    status_t status = NO_ERROR;
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
 
     ia_aiq_frame_use isp_mode;
@@ -231,7 +232,12 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
 
     /* Invalidate AEC results and re-run AEC to get new results for new mode. */
     mAeState.ae_results = NULL;
-    return runAeMain();
+    status = runAeMain();
+
+    /* Re-run ISP to get new results for new mode. LSC needs to be updated if resolution changes. */
+    status |= runAICMain();
+
+    return status;
 }
 
 status_t AtomAIQ::setAeWindow(const CameraWindow *window)
