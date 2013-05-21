@@ -803,16 +803,6 @@ bool AtomAAA::getAwbLock()
     return ret;
 }
 
-status_t AtomAAA::setAeBacklightCorrection(bool en)
-{
-    Mutex::Autolock lock(m3aLock);
-    LOG1("@%s: en = %d", __FUNCTION__, en);
-
-    ia_3a_ae_enable_backlight_correction(en);
-
-    return NO_ERROR;
-}
-
 status_t AtomAAA::setAwbMapping(ia_3a_awb_map mode)
 {
     Mutex::Autolock lock(m3aLock);
@@ -1736,10 +1726,6 @@ void AtomAAA::getDefaultParams(CameraParameters *params, CameraParameters *intel
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SHARPENING, "none,normal,strong");
     intel_params->set(IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, "off");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL, "on,off");
-
-    // back lighting correction mode
-    intel_params->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, "off");
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BACK_LIGHTING_CORRECTION_MODES, "on,off");
 
     // AWB mapping mode
     intel_params->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);

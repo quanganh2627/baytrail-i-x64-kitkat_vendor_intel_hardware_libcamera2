@@ -219,7 +219,6 @@ public:
     virtual bool getAfNeedAssistLight() = 0;
     virtual bool getAeFlashNecessary() = 0;
     virtual ia_3a_awb_light_source getLightSource() = 0;
-    virtual status_t setAeBacklightCorrection(bool en) = 0;
     virtual status_t setManualShutter(float expTime) = 0;
     virtual status_t setAwbMapping(ia_3a_awb_map mode) = 0;
     virtual status_t setSmartSceneDetection(bool en) = 0;

@@ -4292,11 +4292,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         }
 
         if (status == NO_ERROR) {
-            // back lighting correction (Intel extension)
-            status = processParamBackLightingCorrectionMode(oldParams, newParams);
-        }
-
-        if (status == NO_ERROR) {
             // AWB mapping mode (Intel extension)
             status = processParamAwbMappingMode(oldParams, newParams);
         }
@@ -4982,7 +4977,6 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
-                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
@@ -5003,7 +4997,6 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
@@ -5024,7 +5017,6 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_OUTDOOR);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
@@ -5045,7 +5037,6 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
@@ -5066,7 +5057,6 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
@@ -5105,7 +5095,6 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
@@ -5126,7 +5115,6 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
@@ -5162,7 +5150,6 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center,spot");
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true,false");
@@ -5185,14 +5172,12 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
         // we should update Intel params setting to HW, and remove them here.
         if (!mIntelParamsAllowed) {
 
-            processParamBackLightingCorrectionMode(oldParams, newParams);
             processParamAwbMappingMode(oldParams, newParams);
             processParamXNR_ANR(oldParams, newParams, needRestart);
 
             newParams->remove(IntelCameraParameters::KEY_AWB_MAPPING_MODE);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES);
-            newParams->remove(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_XNR);
             newParams->remove(IntelCameraParameters::KEY_XNR);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_ANR);
@@ -5616,37 +5601,6 @@ status_t ControlThread::processParamShutter(const CameraParameters *oldParams,
     return status;
 }
 
-/**
- * Sets Back Lighting Correction Mode
- *
- * Note, this is an Intel extension, so the values are not defined in
- * Android documentation.
- */
-status_t ControlThread::processParamBackLightingCorrectionMode(const CameraParameters *oldParams,
-        CameraParameters *newParams)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
-            IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE);
-    if (!newVal.isEmpty()) {
-        bool backlightCorrection;
-
-        if (newVal == "on") {
-            backlightCorrection= true;
-        } else if (newVal == "off") {
-            backlightCorrection= false;
-        } else {
-            backlightCorrection = true;
-        }
-
-        m3AControls->setAeBacklightCorrection(backlightCorrection);
-        LOGD("Changed ae backlight correction to \"%s\" (%d)",
-             newVal.string(), backlightCorrection);
-    }
-
-    return status;
-}
 /**
  * Sets AWB Mapping Mode
  *

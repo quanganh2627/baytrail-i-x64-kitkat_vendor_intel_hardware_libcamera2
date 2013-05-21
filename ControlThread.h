@@ -558,8 +558,6 @@ private:
             CameraParameters *newParams);
     status_t processParamShutter(const CameraParameters *oldParams,
             CameraParameters *newParams);
-    status_t processParamBackLightingCorrectionMode(const CameraParameters *oldParams,
-            CameraParameters *newParams);
     status_t processParamAwbMappingMode(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamRawDataFormat(const CameraParameters *oldParams,

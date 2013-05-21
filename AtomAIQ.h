@@ -243,7 +243,6 @@ public:
     ia_3a_awb_light_source getLightSource(){ return ia_3a_awb_light_source_other; };
     status_t setAeMeteringMode(MeteringMode mode);
     MeteringMode getAeMeteringMode();
-    status_t setAeBacklightCorrection(bool en) { return INVALID_OPERATION; }
     status_t set3AColorEffect(const char *effect);
     virtual void setPublicAeMode(AeMode mode);
     virtual AeMode getPublicAeMode();
