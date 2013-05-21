@@ -61,7 +61,7 @@ namespace android {
 
 #define MAX_STATISTICS_WIDTH 150
 #define MAX_STATISTICS_HEIGHT 150
-#define IA_AIQ_MAX_NUM_FACES 1
+#define IA_AIQ_MAX_NUM_FACES 5
 
 AtomAIQ* AtomAIQ::mInstance = NULL; // ToDo: remove
 
@@ -970,7 +970,7 @@ status_t AtomAIQ::setFaces(const ia_face_state& faceState)
         m3aState.faces->num_faces = IA_AIQ_MAX_NUM_FACES;
 
     /*ia_aiq assumes that the faces are ordered in the order of importance*/
-    memcpy(m3aState.faces->faces, faceState.faces, faceState.num_faces*sizeof(ia_face));
+    memcpy(m3aState.faces->faces, faceState.faces, m3aState.faces->num_faces*sizeof(ia_face));
 
     return NO_ERROR;
 }
