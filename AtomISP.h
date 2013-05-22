@@ -94,7 +94,8 @@ class AtomISP : public I3AControls, public IBufferOwner {
 public:
     enum ObserverType {
         OBSERVE_PREVIEW_STREAM,
-        OBSERVE_FRAME_SYNC_SOF
+        OBSERVE_FRAME_SYNC_SOF,
+        OBSERVE_3A_STAT_READY,
     };
 
 // constructor/destructor
@@ -400,12 +401,13 @@ private:
     static const int V4L2_PREVIEW_DEVICE    = 2;
     static const int V4L2_INJECT_DEVICE     = 3;
     static const int V4L2_ISP_SUBDEV        = 4;
+    static const int V4L2_ISP_SUBDEV2       = 5;
     static const int V4L2_LEGACY_VIDEO_PREVIEW_DEVICE = 1;
 
     /**
      * Maximum number of V4L2 devices node we support
      */
-    static const int V4L2_MAX_DEVICE_COUNT  = V4L2_ISP_SUBDEV + 1;
+    static const int V4L2_MAX_DEVICE_COUNT  = V4L2_ISP_SUBDEV2 + 1;
 
     static const int NUM_PREVIEW_BUFFERS = 6;
 
@@ -611,6 +613,21 @@ private:
         AtomISP *mISP;
     } mFrameSyncSource;
 
+    class AAAStatSource: public IObserverSubject
+    {
+    public:
+        AAAStatSource(const char*name, AtomISP *aisp)
+            :mName(name), mISP(aisp) { };
+
+        // IObserverSubject override
+        virtual const char* getName() { return mName.string(); };
+        virtual status_t observe(IAtomIspObserver::Message *msg);
+
+    private:
+        String8  mName;
+        AtomISP *mISP;
+    } m3AStatSource;
+
 // private members
 private:
 
@@ -705,7 +722,9 @@ private:
 
     int mRawDataDumpSize;
     int mFrameSyncRequested;
+    int m3AStatRequested;
     bool mFrameSyncEnabled;
+    bool m3AStatscEnabled;
     v4l2_colorfx mColorEffect;
 
     sp<ScalerService> mScaler;

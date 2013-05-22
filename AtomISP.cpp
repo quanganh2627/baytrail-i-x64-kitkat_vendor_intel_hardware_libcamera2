@@ -72,7 +72,7 @@
  */
 #define VALID_DEVICE(device, x) \
     if ((device < V4L2_MAIN_DEVICE || device > mConfigLastDevice) \
-            && device != V4L2_ISP_SUBDEV) { \
+            && (device != V4L2_ISP_SUBDEV && device != V4L2_ISP_SUBDEV2)) { \
         LOGE("%s: Wrong device %d (last %d)", __FUNCTION__, device, mConfigLastDevice); \
         return x; \
     }
@@ -122,6 +122,7 @@ static void computeZoomRatios(char *zoom_ratio, int max_count){
 AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
      mPreviewStreamSource("PreviewStreamSource", this)
     ,mFrameSyncSource("FrameSyncSource", this)
+    ,m3AStatSource("AAAStatSource", this)
     ,mCameraId(cameraId)
     ,mMode(MODE_NONE)
     ,mCallbacks(Callbacks::getInstance())
@@ -155,7 +156,9 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
     ,mZoomRatios(NULL)
     ,mRawDataDumpSize(0)
     ,mFrameSyncRequested(0)
+    ,m3AStatRequested(0)
     ,mFrameSyncEnabled(false)
+    ,m3AStatscEnabled(false)
     ,mColorEffect(V4L2_COLORFX_NONE)
     ,mScaler(scalerService)
     ,mObserverManager()
@@ -2230,7 +2233,7 @@ int AtomISP::openDevice(int device)
     }
 
     if (video_fds[device] > 0) {
-        LOGW("MainDevice already opened!");
+        LOGW("Device %d already opened!",device);
         return video_fds[device];
     }
 
@@ -2243,8 +2246,8 @@ int AtomISP::openDevice(int device)
         return -1;
     }
 
-    // Query and check the capabilities
-    if (device != V4L2_ISP_SUBDEV) {
+    // Query and check the capabilities (not needed for sub devices)
+    if ((device != V4L2_ISP_SUBDEV) && (device != V4L2_ISP_SUBDEV2)) {
         struct v4l2_capability cap;
         if (v4l2_capture_querycap(device, &cap) < 0) {
             LOGE("V4L2: capture_querycap failed: %s", strerror(errno));
@@ -3544,13 +3547,14 @@ status_t AtomISP::v4l2_capture_open(int device)
     int fd;
     struct stat st;
 
-    if ((device < V4L2_MAIN_DEVICE || device > mConfigLastDevice) && device != V4L2_ISP_SUBDEV) {
+    if ((device < V4L2_MAIN_DEVICE || device > mConfigLastDevice) &&
+        (device != V4L2_ISP_SUBDEV && device != V4L2_ISP_SUBDEV2)) {
         LOGE("Wrong device node %d", device);
         return -1;
     }
 
     const char *dev_name;
-    if (device == V4L2_ISP_SUBDEV)
+    if ((device == V4L2_ISP_SUBDEV) || (device == V4L2_ISP_SUBDEV2))
         dev_name = PlatformData::getISPSubDeviceName();
     else
         dev_name = dev_name_array[device];
@@ -5908,6 +5912,9 @@ IObserverSubject* AtomISP::observerSubjectByType(ObserverType t)
         case OBSERVE_FRAME_SYNC_SOF:
             s = &mFrameSyncSource;
             break;
+        case OBSERVE_3A_STAT_READY:
+            s = &m3AStatSource;
+            break;
         default:
             break;
     }
@@ -5941,6 +5948,28 @@ status_t AtomISP::attachObserver(IAtomIspObserver *observer, ObserverType t)
 
         }
     }
+
+    if (t == OBSERVE_3A_STAT_READY) {
+        m3AStatRequested++;
+        if (m3AStatRequested == 1) {
+          // subscribe to 3A frame sync event, only one subscription is needed
+          // to serve multiple observers
+          ret = openDevice(V4L2_ISP_SUBDEV2);
+          if (ret < 0) {
+              LOGE("Failed to open V4L2_ISP_SUBDEV2!");
+              return UNKNOWN_ERROR;
+          }
+
+          ret = v4l2_subscribe_event(video_fds[V4L2_ISP_SUBDEV2], V4L2_EVENT_ATOMISP_3A_STATS_READY);
+          if (ret < 0) {
+              LOGE("Failed to subscribe to frame sync event!");
+              closeDevice(V4L2_ISP_SUBDEV2);
+              return UNKNOWN_ERROR;
+          }
+          m3AStatscEnabled = true;
+        }
+    }
+
 exit:
     return mObserverManager.attachObserver(observer, observerSubjectByType(t));
 }
@@ -5965,6 +5994,14 @@ status_t AtomISP::detachObserver(IAtomIspObserver *observer, ObserverType t)
             closeDevice(V4L2_ISP_SUBDEV);
             mFrameSyncEnabled = false;
             mFrameSyncRequested = 0;
+        }
+    }
+    if (t == OBSERVE_3A_STAT_READY) {
+        if (--m3AStatRequested <= 0 && m3AStatscEnabled) {
+            v4l2_unsubscribe_event(video_fds[V4L2_ISP_SUBDEV2], V4L2_EVENT_ATOMISP_3A_STATS_READY);
+            closeDevice(V4L2_ISP_SUBDEV2);
+            m3AStatscEnabled = false;
+            m3AStatRequested = 0;
         }
     }
 
@@ -6035,6 +6072,53 @@ status_t AtomISP::FrameSyncSource::observe(IAtomIspObserver::Message *msg)
 
     // fill observer message
     msg->id = IAtomIspObserver::MESSAGE_ID_EVENT;
+    msg->data.event.type = IAtomIspObserver::EVENT_TYPE_SOF;
+    msg->data.event.timestamp.tv_sec  = event.timestamp.tv_sec;
+    msg->data.event.timestamp.tv_usec = event.timestamp.tv_nsec / 1000;
+    msg->data.event.sequence = event.sequence;
+
+    return NO_ERROR;
+}
+
+/**
+ * polls and dequeues 3A statistics ready event into IAtomIspObserver::Message
+ */
+status_t AtomISP::AAAStatSource::observe(IAtomIspObserver::Message *msg)
+{
+    LOG2("@%s", __FUNCTION__);
+    struct v4l2_event event;
+    int ret;
+
+    if (!mISP->m3AStatscEnabled) {
+        msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
+        LOGE("3A stat event enabled");
+        return INVALID_OPERATION;
+    }
+
+    ret = mISP->v4l2_poll(V4L2_ISP_SUBDEV2, FRAME_SYNC_POLL_TIMEOUT);
+
+    if (ret <= 0) {
+        LOGE("Poll failed ret(%d), disabling SOF event",ret);
+        mISP->v4l2_unsubscribe_event(mISP->video_fds[V4L2_ISP_SUBDEV], V4L2_EVENT_ATOMISP_3A_STATS_READY);
+        mISP->closeDevice(V4L2_ISP_SUBDEV2);
+        mISP->m3AStatscEnabled = false;
+        msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
+        return UNKNOWN_ERROR;
+    }
+
+    // poll was successful, dequeue the event right away
+    do {
+        ret = mISP->v4l2_dqevent(mISP->video_fds[V4L2_ISP_SUBDEV2], &event);
+        if (ret < 0) {
+            LOGE("Dequeue event failed");
+            msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
+            return UNKNOWN_ERROR;
+        }
+    } while (event.pending > 0);
+
+    // fill observer message
+    msg->id = IAtomIspObserver::MESSAGE_ID_EVENT;
+    msg->data.event.type = IAtomIspObserver::EVENT_TYPE_STATISTICS_READY;
     msg->data.event.timestamp.tv_sec  = event.timestamp.tv_sec;
     msg->data.event.timestamp.tv_usec = event.timestamp.tv_nsec / 1000;
     msg->data.event.sequence = event.sequence;

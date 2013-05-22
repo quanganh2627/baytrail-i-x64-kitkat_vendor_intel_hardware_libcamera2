@@ -37,11 +37,17 @@ public:
         MESSAGE_ID_ERROR
     };
 
+    enum EventType {
+        EVENT_TYPE_SOF,
+        EVENT_TYPE_STATISTICS_READY,
+    };
+
     struct MessageFrameBuffer {
         AtomBuffer buff;
     };
 
     struct MessageEvent {
+        EventType       type;
         struct timeval  timestamp;
         unsigned int    sequence;
     };
