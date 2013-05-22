@@ -24,6 +24,7 @@ namespace android {
 
 
 JpegCompressor::JpegCompressor() :
+    mJpegSize(-1),
     mSWEncoder(NULL)
 {
     LOG1("@%s", __FUNCTION__);

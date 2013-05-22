@@ -563,7 +563,11 @@ status_t PostProcThread::handleMessageSetRotation(MessageConfig &msg)
 
 int PostProcThread::sendFrame(AtomBuffer *img)
 {
-    LOG2("@%s: buf=%p, width=%d height=%d", __FUNCTION__, img, img->width , img->height);
+    if (img != NULL) {
+        LOG2("@%s: buf=%p, width=%d height=%d", __FUNCTION__, img, img->width , img->height);
+    } else {
+        LOG2("@%s: buf=NULL", __FUNCTION__);
+    }
     Message msg;
     msg.id = MESSAGE_ID_FRAME;
 

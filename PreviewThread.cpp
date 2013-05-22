@@ -243,7 +243,7 @@ status_t PreviewThread::fetchPreviewBuffers(Vector<AtomBuffer> &pvBufs)
 
     if(mSharedMode && mPreviewBuffers.size() > 0) {
         Vector<GfxAtomBuffer>::iterator it = mPreviewBuffers.begin();
-        for (;it != mPreviewBuffers.end(); it++) {
+        for (;it != mPreviewBuffers.end(); ++it) {
             it->owner = OWNER_CLIENT;
             pvBufs.push(it->buffer);
         }
@@ -796,14 +796,14 @@ PreviewThread::lookForGfxBufferHandle(buffer_handle_t *handle)
 {
     Vector<GfxAtomBuffer>::iterator it = mPreviewBuffers.begin();
 
-    for (;it != mPreviewBuffers.end(); it++) {
+    for (;it != mPreviewBuffers.end(); ++it) {
         if (it->gfxBufferHandle == handle) {
             return it;
         }
     }
 
     it = mReservedBuffers.begin();
-    for (;it != mReservedBuffers.end(); it++) {
+    for (;it != mReservedBuffers.end(); ++it) {
         if (it->gfxBufferHandle == handle) {
             return it;
         }
@@ -820,14 +820,14 @@ PreviewThread::lookForAtomBuffer(AtomBuffer *buffer)
 {
     Vector<GfxAtomBuffer>::iterator it = mPreviewBuffers.begin();
 
-    for (;it != mPreviewBuffers.end(); it++) {
+    for (;it != mPreviewBuffers.end(); ++it) {
         if (it->buffer.dataPtr == buffer->dataPtr) {
             return it;
         }
     }
 
     it = mReservedBuffers.begin();
-    for (;it != mReservedBuffers.end(); it++) {
+    for (;it != mReservedBuffers.end(); ++it) {
         if (it->buffer.dataPtr == buffer->dataPtr) {
             return it;
         }
@@ -1365,7 +1365,7 @@ int PreviewThread::getGfxBufferStride(void)
 PreviewThread::GfxAtomBuffer* PreviewThread::pickReservedBuffer()
 {
     Vector<GfxAtomBuffer>::iterator it = mReservedBuffers.begin();
-    for (;it != mReservedBuffers.end(); it++) {
+    for (;it != mReservedBuffers.end(); ++it) {
         if (it->owner == OWNER_PREVIEWTHREAD) {
             return it;
         }

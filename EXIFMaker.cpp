@@ -29,6 +29,9 @@ namespace android {
 
 EXIFMaker::EXIFMaker(I3AControls *aaaControls) :
     m3AControls(aaaControls)
+    ,thumbWidth(-1)
+    ,thumbHeight(-1)
+    ,exifSize(-1)
     ,initialized(false)
 {
     LOG1("@%s", __FUNCTION__);

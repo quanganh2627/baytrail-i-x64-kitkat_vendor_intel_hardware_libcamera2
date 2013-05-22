@@ -722,7 +722,10 @@ class PlatformBase {
 public:
     PlatformBase() {    //default
         mPanoramaMaxSnapshotCount = 10;
+        mBackFlash = false;
+        mFileInject = false;
         mSupportVideoSnapshot = true;
+        mMaxZoomFactor = 64;
         mNumRecordingBuffers = 9;
         mMaxContinuousRawRingBuffer = 0;
         mShutterLagCompensationMs = 40;
