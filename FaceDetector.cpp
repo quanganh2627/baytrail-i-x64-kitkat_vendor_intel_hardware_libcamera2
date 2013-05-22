@@ -37,8 +37,8 @@ FaceDetector::FaceDetector() : Thread()
     ,mSmileThreshold(0)
     ,mBlinkThreshold(0)
     ,mFaceRecognitionRunning(false)
-    ,mAccHandle(0)
     ,mThreadRunning(false)
+    ,mAccApi()
 {
     LOG1("@%s", __FUNCTION__);
     PERFORMANCE_TRACES_BREAKDOWN_STEP("NewFD-Done");
@@ -54,31 +54,36 @@ FaceDetector::~FaceDetector()
 void FaceDetector::setAcc(void* isp)
 {
     LOG2("@%s", __FUNCTION__);
-    ia_acceleration accApi;
     ia_acceleration *accApiPtr = NULL;
 
-    if (isp == mAccHandle)
+    if (isp == mAccApi.isp)
         return;
 
     if (isp) {
-        accApi.isp               = isp;
-        accApi.open_firmware     = open_firmware;
-        accApi.load_firmware     = load_firmware_pipe; // beware this is not just load_firmware.
-        accApi.unload_firmware   = unload_firmware;
-        accApi.set_firmware_arg  = set_firmware_arg;
-        accApi.start_firmware    = start_firmware;
-        accApi.wait_for_firmware = wait_for_firmware;
-        accApi.abort_firmware    = abort_firmware;
-        accApi.map_firmware_arg   = map_firmware_arg;
-        accApi.unmap_firmware_arg = unmap_firmware_arg;
-        accApi.set_mapped_arg     = set_mapped_arg;
-        accApiPtr = &accApi;
+        if (mAccApi.isp == NULL) {
+            AtomISP* atom_isp = (AtomISP*) isp;
+            mAccApi.open_firmware     = open_firmware;
+            mAccApi.load_firmware     = load_firmware_pipe; // beware this is not just load_firmware.
+            mAccApi.unload_firmware   = unload_firmware;
+            mAccApi.set_firmware_arg  = set_firmware_arg;
+            mAccApi.start_firmware    = start_firmware;
+            mAccApi.wait_for_firmware = wait_for_firmware;
+            mAccApi.abort_firmware    = abort_firmware;
+            mAccApi.map_firmware_arg   = map_firmware_arg;
+            mAccApi.unmap_firmware_arg = unmap_firmware_arg;
+            mAccApi.set_mapped_arg     = set_mapped_arg;
+            mAccApi.version_isp.major = atom_isp->getIspHwMajorVersion();
+            mAccApi.version_isp.minor = atom_isp->getIspHwMinorVersion();
+            mAccApi.version_css.major = atom_isp->getCssMajorVersion();
+            mAccApi.version_css.minor = atom_isp->getCssMinorVersion();
+        }
+        accApiPtr = &mAccApi;
     }
 
     // note: passing a NULL accApiPtr value closes
     //       all previously allocated ISP resources
+    mAccApi.isp = isp;
     ia_face_set_acceleration(mContext, accApiPtr);
-    mAccHandle = isp;
 }
 
 int FaceDetector::faceDetect(ia_frame *frame)
