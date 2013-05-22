@@ -182,16 +182,32 @@ status_t AAAThread::cancelAutoFocus()
 /**
  * override for IAtomIspObserver::atomIspNotify()
  *
- * signal start of 3A processing based on preview stream notify
+ * signal start of 3A processing based on 3A statistics available event
  * store SOF event information for future use
  */
 bool AAAThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state)
 {
-    if (msg && msg->id == IAtomIspObserver::MESSAGE_ID_FRAME) {
-        newFrame(&msg->data.frameBuffer.buff);
-    }
+
     if(msg && msg->id == IAtomIspObserver::MESSAGE_ID_EVENT) {
-        newSOF(&msg->data.event);
+
+        if (msg->data.event.type == EVENT_TYPE_STATISTICS_READY) {
+            LOG2("-- STATS READY, seq %d, ts %lldus, systemTime %lldms ---",
+                                   msg->data.event.sequence,
+                                     nsecs_t(msg->data.event.timestamp.tv_sec)*1000000LL
+                                   + nsecs_t(msg->data.event.timestamp.tv_usec),
+                                   systemTime()/1000/1000);
+            AtomBuffer fake;
+            fake.frameSequenceNbr = msg->data.event.sequence;
+            fake.capture_timestamp = msg->data.event.timestamp;
+            newFrame(&fake);
+        } else if (msg->data.event.type == EVENT_TYPE_SOF) {
+            LOG2("--SOF READY, seq %d, ts %lldus, systemTime %lldms ---",
+                               msg->data.event.sequence,
+                                 nsecs_t(msg->data.event.timestamp.tv_sec)*1000000LL
+                               + nsecs_t(msg->data.event.timestamp.tv_usec),
+                               systemTime()/1000/1000);
+            newSOF(&msg->data.event);
+        }
     }
     return false;
 }
