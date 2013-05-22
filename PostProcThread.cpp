@@ -25,6 +25,7 @@
 #include "FeatureData.h"
 #include "PlatformData.h"
 #include <system/camera.h>
+#include "AtomCP.h"
 
 namespace android {
 
@@ -754,6 +755,9 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         frameData.width = frame.img.width;
         frameData.height = frame.img.height;
         frameData.stride = frame.img.stride;
+        if (AtomCP::setIaFrameFormat(&frameData, frame.img.format) != NO_ERROR) {
+            LOGE("@%s: setting ia_frame format failed", __FUNCTION__);
+        }
 
         // correcting acceleration sensor orientation result
         // with camera sensor orientation
