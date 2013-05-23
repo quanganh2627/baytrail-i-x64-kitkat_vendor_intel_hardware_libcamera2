@@ -126,7 +126,6 @@ private:
         MESSAGE_ID_ENABLE_AE_LOCK,
         MESSAGE_ID_ENABLE_AWB_LOCK,
         MESSAGE_ID_FLASH_STAGE,
-        MESSAGE_ID_SOF,
         // max number of messages
         MESSAGE_ID_MAX
     };
@@ -190,15 +189,14 @@ private:
     status_t handleMessageCancelAutoFocus();
     status_t handleMessageNewStats(MessageNewStats *msg);
     status_t handleMessageNewFrame(MessageNewFrame *msg);
-    status_t handleMessageNewSOF(MessageNewFrame *msg);
     status_t handleMessageRemoveRedEye(MessagePicture* msg);
     status_t handleMessageEnableAeLock(MessageEnable* msg);
     status_t handleMessageEnableAwbLock(MessageEnable* msg);
     status_t handleMessageFlashStage(MessageFlashStage* msg);
 
     // Miscellaneous helper methods
-    struct timeval getSOFTime(unsigned int sequece);
     void updateULLTrigger(void);
+    struct timeval getLastSOFTime();
 
     // flash sequence handler
     bool handleFlashSequence(FrameBufferStatus frameStatus);
@@ -236,7 +234,8 @@ private:
     FlashStage mFlashStage;
     size_t mFramesTillExposed;
     FlashStage mBlockForStage;
-    KeyedVector<unsigned int, struct timeval> mSOFEvents;
+    Mutex mSOFTimeLock;             /*!< SOF timestamp updates are not serialized, this lock is used to make the usage thread safe*/
+    struct timeval mLastSOFTime;    /*!< time stamp  of the latest SOF event*/
 }; // class AAAThread
 
 }; // namespace android

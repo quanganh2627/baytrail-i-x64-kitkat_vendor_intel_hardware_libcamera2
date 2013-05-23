@@ -245,14 +245,35 @@ status_t AAAThread::newFrame(AtomBuffer *b)
     return status;
 }
 
+/**
+ * newSOF event received.
+ * This event is not serialized via the message queue.
+ * The reason for this is that in cases where SOF and 3A-STATS event arrive quite
+ * close the order how they are processed has an impact on 3A decisions.
+ * SOF event time is only recorded in 3A thread for information to the 3A library
+ * and it is important to get the latest one.
+ * if the 3A-STAT event is processed before, the 3A will think that SOF was skipped
+ * but it is actually in the message Q.
+ *
+ * For this reason we fast-track the SOF event and we just use a mutex to protect
+ * the variable where we store the SOF time
+ *
+ */
 status_t AAAThread::newSOF(IAtomIspObserver::MessageEvent *sofMsg)
 {
     LOG2("@%s", __FUNCTION__);
-    Message msg;
-    msg.id = MESSAGE_ID_SOF;
-    msg.data.frame.capture_timestamp = sofMsg->timestamp;
-    msg.data.frame.sequence_number = sofMsg->sequence;
-    return mMessageQueue.send(&msg);
+    Mutex::Autolock _l(mSOFTimeLock);
+
+    mLastSOFTime = sofMsg->timestamp;
+
+    return NO_ERROR;
+}
+
+struct timeval AAAThread::getLastSOFTime()
+{
+    LOG2("@%s", __FUNCTION__);
+    Mutex::Autolock _l(mSOFTimeLock);
+    return mLastSOFTime;
 }
 
 status_t AAAThread::setFaces(const ia_face_state& faceState)
@@ -603,7 +624,7 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
 
     if(m3ARunning){
         // Run 3A statistics
-        status = m3AControls->apply3AProcess(true, capture_timestamp, getSOFTime(capture_sequence_number));
+        status = m3AControls->apply3AProcess(true, capture_timestamp, getLastSOFTime());
 
         //dump 3A statistics
         if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
@@ -701,13 +722,6 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
     return status;
 }
 
-status_t AAAThread::handleMessageNewSOF(MessageNewFrame *msgFrame)
-{
-    LOG2("@%s", __FUNCTION__);
-    mSOFEvents.add(msgFrame->sequence_number,msgFrame->capture_timestamp);
-    return NO_ERROR;
-}
-
 void AAAThread::getCurrentSmartScene(int &sceneMode, bool &sceneHdr)
 {
     LOG1("@%s", __FUNCTION__);
@@ -737,48 +751,6 @@ void AAAThread::updateULLTrigger()
     }
 }
 
-/**
- * returns the timestamp of the Start Of Frame event for a given frame sequence
- * number
- *
- * AAAThread gets notification of SOF events, it then  stores the sequence
- * number of the frame and the time stamp of the event
- *
- * This method is used when a new preview frame has been received and we want
- * to know when the SOF event for this frame happened.
- * The sequence number is an unique number that the driver assigns.
- *
- * Please note that due to the bug BZ:91697 we need to match with the previous
- * sequence number not with the exact same one
- *
- */
-struct timeval AAAThread::getSOFTime(unsigned int frameNo)
-{
-   ssize_t index;
-   struct timeval t;
-
-   index = mSOFEvents.indexOfKey(frameNo -1); // This -1 is a temporary change, see comment above
-   if (index == NAME_NOT_FOUND) {
-       LOGE("SOF event for frame %d did not arrive",frameNo);
-       memset(&t, 0, sizeof(struct timeval));
-       return t;
-   }
-
-   t = mSOFEvents[index];
-   mSOFEvents.removeItemsAt(index,1);
-
-   /**
-    * Prevent vector from growing too much
-    * In case frames are skipped there will be SOF events from old frames
-    * that will never be collected.
-    **/
-   if (mSOFEvents.size() > 5) {
-       LOGW("Too many SOF events stored, flushing");
-       mSOFEvents.clear();
-   }
-   return t;
-
-}
 void AAAThread::resetSmartSceneValues()
 {
     LOG1("@%s", __FUNCTION__);
@@ -833,10 +805,6 @@ status_t AAAThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_FLASH_STAGE:
             status = handleMessageFlashStage(&msg.data.flashStage);
-            break;
-
-        case MESSAGE_ID_SOF:
-            status = handleMessageNewSOF(&msg.data.frame);
             break;
 
         default:
