@@ -196,20 +196,40 @@ bool AAAThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverStat
                                      nsecs_t(msg->data.event.timestamp.tv_sec)*1000000LL
                                    + nsecs_t(msg->data.event.timestamp.tv_usec),
                                    systemTime()/1000/1000);
-            AtomBuffer fake;
-            fake.frameSequenceNbr = msg->data.event.sequence;
-            fake.capture_timestamp = msg->data.event.timestamp;
-            newFrame(&fake);
+
+            newStats(msg->data.event.timestamp, msg->data.event.sequence);
         } else if (msg->data.event.type == EVENT_TYPE_SOF) {
             LOG2("--SOF READY, seq %d, ts %lldus, systemTime %lldms ---",
                                msg->data.event.sequence,
                                  nsecs_t(msg->data.event.timestamp.tv_sec)*1000000LL
                                + nsecs_t(msg->data.event.timestamp.tv_usec),
                                systemTime()/1000/1000);
+
             newSOF(&msg->data.event);
         }
     }
+
+    if (msg && msg->id == IAtomIspObserver::MESSAGE_ID_FRAME) {
+        LOG2("--- FRAME, seq %d, ts %lldms, systemTime %lldms ---",
+                msg->data.frameBuffer.buff.frameSequenceNbr,
+                  nsecs_t(msg->data.frameBuffer.buff.capture_timestamp.tv_sec)*1000000LL
+                + nsecs_t(msg->data.frameBuffer.buff.capture_timestamp.tv_usec),
+                systemTime()/1000/1000);
+        newFrame(&msg->data.frameBuffer.buff);
+    }
     return false;
+}
+
+status_t AAAThread::newStats(timeval &t, unsigned int seqNo)
+{
+    LOG2("@%s", __FUNCTION__);
+    Message msg;
+
+    msg.id = MESSAGE_ID_NEW_STATS_READY;
+    msg.data.stats.capture_timestamp = t;
+    msg.data.stats.sequence_number = seqNo;
+
+    return mMessageQueue.send(&msg);
 }
 
 status_t AAAThread::newFrame(AtomBuffer *b)
@@ -530,7 +550,23 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
     return true;
 }
 
-status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msgFrame)
+/**
+ * New preview frame available
+ * 3A thread needs this message only during the pre-flash sequence
+ * For normal 3A operation it runs from the 3A statistics ready event
+ */
+status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msg)
+{
+    LOG1("@%s: status: %d", __FUNCTION__,msg->status);
+    handleFlashSequence(msg->status);
+    return NO_ERROR;
+}
+
+/**
+ * Run 3A and DVS processing
+ * We received message that new 3A statistics are ready
+ */
+status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -543,7 +579,8 @@ status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msgFrame)
     if (!mDVSRunning && !m3ARunning)
         return status;
 
-    if (handleFlashSequence(msgFrame->status))
+    /* Do not run 3A if we are in the pre-flash sequence */
+    if (mFlashStage != FLASH_STAGE_NA)
         return status;
 
     // 3A & DVS stats are read with proprietary ioctl that returns the
@@ -551,7 +588,7 @@ status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msgFrame)
     // Multiple newFrames indicates we are late and 3A process is going
     // to read the statistics of the most recent frame.
     // We flush the queue and use the most recent timestamp.
-    mMessageQueue.remove(MESSAGE_ID_NEW_FRAME, &messages);
+    mMessageQueue.remove(MESSAGE_ID_NEW_STATS_READY, &messages);
     if(!messages.isEmpty()) {
         Message recent_msg = *messages.begin();
         LOGW("%d frames in 3A process queue, handling timestamp "
@@ -760,6 +797,10 @@ status_t AAAThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_EXIT:
             status = handleMessageExit();
+            break;
+
+        case MESSAGE_ID_NEW_STATS_READY:
+            status = handleMessageNewStats(&msg.data.stats);
             break;
 
         case MESSAGE_ID_ENABLE_AAA:

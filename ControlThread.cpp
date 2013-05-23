@@ -2730,6 +2730,7 @@ status_t ControlThread::captureStillPic()
                     flashSequenceStarted = true;
                     // hide preview frames already during pre-flash sequence
                     mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
+                    mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
                     status = m3AThread->enterFlashSequence(AAAThread::FLASH_STAGE_PRE_EXPOSED);
                     if (status != NO_ERROR) {
                         flashOn = false;
@@ -2742,18 +2743,20 @@ status_t ControlThread::captureStillPic()
     if (mState == STATE_CONTINUOUS_CAPTURE) {
         bool useFlash = flashOn && flashMode != CAM_AE_FLASH_MODE_TORCH;
         status = continuousStartStillCapture(useFlash);
-        if (flashSequenceStarted)
-            m3AThread->exitFlashSequence();
     } else {
         status = stopPreviewCore();
-        if (flashSequenceStarted)
-            m3AThread->exitFlashSequence();
         if (status != NO_ERROR) {
             LOGE("Error stopping preview!");
             return status;
         }
         mState = STATE_CAPTURE;
     }
+
+    if (flashSequenceStarted) {
+        m3AThread->exitFlashSequence();
+        mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+    }
+
     mBurstCaptureNum = 0;
     mBurstCaptureDoneNum = 0;
     mBurstQbufs = 0;
