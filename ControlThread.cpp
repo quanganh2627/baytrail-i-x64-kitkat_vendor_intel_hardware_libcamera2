@@ -126,7 +126,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mEnableFocusCbAtStart(false)
     ,mEnableFocusMoveCbAtStart(false)
     ,mStillCaptureInProgress(false)
-    ,mPreviewUpdateMode(IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD)
+    ,mPreviewUpdateMode(STRING_TO_STRING8(PlatformData::defaultPreviewUpdateMode(cameraId)))
     ,mSaveMirrored(false)
     ,mCurrentOrientation(0)
     ,mRecordingOrientation(0)

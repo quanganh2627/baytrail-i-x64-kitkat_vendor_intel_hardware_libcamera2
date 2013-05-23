@@ -51,6 +51,9 @@
 #define ALIGN16(x) (((x) + 15) & ~15)
 #define ALIGN64(x) (((x) + 63) & ~63)
 
+// it will convert one string to String8
+#define STRING_TO_STRING8(x) (String8((x), ((x) == NULL ? 0 : strlen(x))))
+
 namespace android {
 struct AtomBuffer;
 class IBufferOwner
