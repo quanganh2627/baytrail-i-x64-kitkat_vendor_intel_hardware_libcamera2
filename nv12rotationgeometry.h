@@ -30,6 +30,7 @@ NV12_ROTATION_STRIDES( 640,    512,     32        )
 NV12_ROTATION_STRIDES(1024,    576,     32        )
 NV12_ROTATION_STRIDES( 832,    640,     32        )
 NV12_ROTATION_STRIDES( 768,    512,     32        )
+NV12_ROTATION_STRIDES( 960,    768,     32        )
 #undef NV12_ROTATION_STRIDES
 #endif
 
@@ -50,6 +51,7 @@ NV12_ROTATION_GEOMETRY( 720,    480,   768,      512,     32       )
 NV12_ROTATION_GEOMETRY( 640,    480,   640,      512,     32       )
 NV12_ROTATION_GEOMETRY( 640,    360,   640,      512,     32       )
 NV12_ROTATION_GEOMETRY( 800,    600,   832,      640,     32       )
+NV12_ROTATION_GEOMETRY( 960,    720,   960,      768,     32       )
 NV12_ROTATION_GEOMETRY(1024,    576,  1024,      576,     32       )
 #undef NV12_ROTATION_GEOMETRY
 #endif
