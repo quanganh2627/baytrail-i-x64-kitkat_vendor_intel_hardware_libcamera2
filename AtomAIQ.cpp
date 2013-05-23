@@ -61,7 +61,7 @@ namespace android {
 
 #define MAX_STATISTICS_WIDTH 150
 #define MAX_STATISTICS_HEIGHT 150
-#define IA_AIQ_MAX_NUM_FACES 1
+#define IA_AIQ_MAX_NUM_FACES 5
 
 AtomAIQ* AtomAIQ::mInstance = NULL; // ToDo: remove
 
@@ -182,6 +182,7 @@ status_t AtomAIQ::deinit3A()
     LOG1("@%s", __FUNCTION__);
 
     free(m3aState.faces);
+    m3aState.faces = NULL;
     freeStatistics(m3aState.stats);
     ia_aiq_deinit(m3aState.ia_aiq_handle);
     if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5))
@@ -198,6 +199,7 @@ status_t AtomAIQ::deinit3A()
 
 status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
 {
+    status_t status = NO_ERROR;
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
 
     ia_aiq_frame_use isp_mode;
@@ -230,7 +232,12 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
 
     /* Invalidate AEC results and re-run AEC to get new results for new mode. */
     mAeState.ae_results = NULL;
-    return runAeMain();
+    status = runAeMain();
+
+    /* Re-run ISP to get new results for new mode. LSC needs to be updated if resolution changes. */
+    status |= runAICMain();
+
+    return status;
 }
 
 status_t AtomAIQ::setAeWindow(const CameraWindow *window)
@@ -291,14 +298,12 @@ status_t AtomAIQ::setAeSceneMode(SceneMode mode)
         break;
     case CAM_AE_SCENE_MODE_NIGHT:
         mAfInputParameters.focus_mode = ia_aiq_af_operation_mode_hyperfocal;
-        // TODO: if user expect low noise low light mode
-        // mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_long_exposure
-        // mAeInputParameters.flash_mode = ia_aiq_flash_mode_off
+        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_long_exposure;
+        mAeInputParameters.flash_mode = ia_aiq_flash_mode_off;
         break;
     case CAM_AE_SCENE_MODE_FIREWORKS:
         mAfInputParameters.focus_mode = ia_aiq_af_operation_mode_infinity;
-        //TODO: Below definition is not ready in ia_aiq.h
-        //mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_fireworks;
+        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_fireworks;
         mAwbInputParameters.scene_mode = ia_aiq_awb_operation_mode_manual_cct_range;
         m3aState.cct_range.min_cct = 5500;
         m3aState.cct_range.max_cct = 5500;
@@ -971,7 +976,7 @@ status_t AtomAIQ::setFaces(const ia_face_state& faceState)
         m3aState.faces->num_faces = IA_AIQ_MAX_NUM_FACES;
 
     /*ia_aiq assumes that the faces are ordered in the order of importance*/
-    memcpy(m3aState.faces->faces, faceState.faces, faceState.num_faces*sizeof(ia_face));
+    memcpy(m3aState.faces->faces, faceState.faces, m3aState.faces->num_faces*sizeof(ia_face));
 
     return NO_ERROR;
 }
@@ -984,8 +989,10 @@ ia_3a_mknote *AtomAIQ::get3aMakerNote(ia_3a_mknote_mode mknMode)
 
     ia_3a_mknote *me;
     me = (ia_3a_mknote *)malloc(sizeof(ia_3a_mknote));
-    if (!me)
+    if (!me) {
+        LOGE("Error allocation memory for mknote!");
         return NULL;
+    }
     if(mknMode == ia_3a_mknote_mode_raw)
         mknTarget = ia_mkn_trg_raw;
     ia_binary_data mkn_binary_data = ia_mkn_prepare(mMkn, mknTarget);
@@ -996,6 +1003,8 @@ ia_3a_mknote *AtomAIQ::get3aMakerNote(ia_3a_mknote_mode mknMode)
     {
         memcpy(me->data, mkn_binary_data.data, me->bytes);
     } else {
+        LOGE("Error allocation memory for mknote data!");
+        free(me);
         return NULL;
     }
     return me;
@@ -1011,6 +1020,7 @@ void AtomAIQ::put3aMakerNote(ia_3a_mknote *mknData)
             mknData->data = NULL;
         }
         free(mknData);
+        mknData = NULL;
     }
 }
 
@@ -1117,6 +1127,7 @@ struct atomisp_3a_statistics * AtomAIQ::allocateStatistics(int grid_size)
     stats->data = (atomisp_3a_output*)malloc(grid_size * sizeof(*stats->data));
     if (!stats->data) {
         free(stats);
+        stats = NULL;
         return NULL;
     }
     LOG2("@%s success", __FUNCTION__);
@@ -1126,9 +1137,12 @@ struct atomisp_3a_statistics * AtomAIQ::allocateStatistics(int grid_size)
 void AtomAIQ::freeStatistics(struct atomisp_3a_statistics *stats)
 {
     if (stats) {
-        if (stats->data)
+        if (stats->data) {
             free(stats->data);
+            stats->data = NULL;
+        }
         free(stats);
+        stats = NULL;
     }
 }
 
@@ -1251,27 +1265,32 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp,
         statistics_input_parameters.wb_gains = NULL;
         statistics_input_parameters.cc_matrix = NULL;
 
-        if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5))
+        bool statistics_converted = false;
+        if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5)) {
             ia_isp_1_5_statistics_convert(m3aState.ia_isp_handle, m3aState.stats,
                             const_cast<ia_aiq_rgbs_grid**>(&statistics_input_parameters.rgbs_grid),
                             const_cast<ia_aiq_af_grid**>(&statistics_input_parameters.af_grid));
-        else if ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0))
+            statistics_converted = true;
+        } else if ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0)) {
             ia_isp_2_2_statistics_convert(m3aState.ia_isp_handle, m3aState.stats,
                                         const_cast<ia_aiq_rgbs_grid**>(&statistics_input_parameters.rgbs_grid),
                                         const_cast<ia_aiq_af_grid**>(&statistics_input_parameters.af_grid));
+            statistics_converted = true;
+        }
+        if(statistics_converted) {
+            LOG2("m3aState.stats: grid_info: %d  %d %d ",
+                  m3aState.stats->grid_info.s3a_width,m3aState.stats->grid_info.s3a_height,m3aState.stats->grid_info.s3a_bqs_per_grid_cell);
 
-        LOG2("m3aState.stats: grid_info: %d  %d %d ",
-              m3aState.stats->grid_info.s3a_width,m3aState.stats->grid_info.s3a_height,m3aState.stats->grid_info.s3a_bqs_per_grid_cell);
+            LOG2("rgb_grid: grid_width:%u, grid_height:%u, thr_r:%u, thr_gr:%u,thr_gb:%u", statistics_input_parameters.rgbs_grid->grid_width,
+                  statistics_input_parameters.rgbs_grid->grid_height,
+                  statistics_input_parameters.rgbs_grid->blocks_ptr->avg_r,
+                  statistics_input_parameters.rgbs_grid->blocks_ptr->avg_g,
+                  statistics_input_parameters.rgbs_grid->blocks_ptr->avg_b);
 
-        LOG2("rgb_grid: grid_width:%u, grid_height:%u, thr_r:%u, thr_gr:%u,thr_gb:%u", statistics_input_parameters.rgbs_grid->grid_width,
-              statistics_input_parameters.rgbs_grid->grid_height,
-              statistics_input_parameters.rgbs_grid->blocks_ptr->avg_r,
-              statistics_input_parameters.rgbs_grid->blocks_ptr->avg_g,
-              statistics_input_parameters.rgbs_grid->blocks_ptr->avg_b);
+            err = ia_aiq_statistics_set(m3aState.ia_aiq_handle, &statistics_input_parameters);
 
-        err = ia_aiq_statistics_set(m3aState.ia_aiq_handle, &statistics_input_parameters);
-
-        m3aState.stats_valid = true;
+            m3aState.stats_valid = true;
+        }
     }
 
     return ret;

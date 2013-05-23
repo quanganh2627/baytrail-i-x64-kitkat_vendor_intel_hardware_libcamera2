@@ -214,7 +214,7 @@ private:
 
 private:
     ICallbackPanorama *mPanoramaCallback;
-    ia_panorama_state* mContext;
+    ia_panorama_state* mContext; // mStitchLock is used to protect this
     MessageQueue<Message, MessageId> mMessageQueue;
     camera_panorama_metadata_t mCurrentMetadata;
     // counter for the entire panorama snapshots (to limit maximum nr. of snapshots)
@@ -230,7 +230,9 @@ private:
     int mPreviewHeight;
     int mThumbnailWidth;
     int mThumbnailHeight;
-    sp<PanoramaStitchThread> mPanoramaStitchThread;
+    sp<PanoramaStitchThread> mPanoramaStitchThread; // mStitchLock is used to protect this
+    bool mStopInProgress; // mStitchLock is used to protect this
+    Mutex mStitchLock; //! Protects mStopInProgress, mPanoramaStitchThread and mContext queried by different threads
 #else
     // function stubs for building without Intel extra features
 public:

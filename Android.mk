@@ -89,6 +89,11 @@ LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/pvr/hal
 endif
 
+ifeq (,$(wildcard frameworks/base/core/jni/android_hardware_Camera.h))
+LOCAL_C_INCLUDES += \
+	hardware/intel/camera_extension/include/
+endif
+
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_C_INCLUDES += \
 	vendor/intel/hardware/libva
@@ -106,7 +111,6 @@ LOCAL_SHARED_LIBRARIES := \
 	libia_isp_1_5 \
 	libia_isp_2_2 \
 	libia_cmc_parser \
-	libandroid \
 	libui \
 	libia_mkn \
 	libmfldadvci \

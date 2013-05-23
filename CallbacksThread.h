@@ -80,6 +80,7 @@ public:
     status_t requestULLPicture(int id);
     status_t ullTriggered(int id);
     status_t postviewRendered();
+    status_t sendError(int id);
 
 // private types
 private:
@@ -107,6 +108,9 @@ private:
         // Ultra Low Light Callbacks
         MESSAGE_ID_ULL_JPEG_DATA_REQUEST,
         MESSAGE_ID_ULL_TRIGGERED,
+
+        // Error callback
+        MESSAGE_ID_ERROR_CALLBACK,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -167,6 +171,9 @@ private:
         int id;
     };
 
+    struct MessageError {
+        int id;
+    };
     // union of all message data
     union MessageData {
 
@@ -204,6 +211,9 @@ private:
         // MESSAGE_ID_ULL_TRIGGERED
         MessageULLSnapshot  ull;
 
+        // MESSAGE_ID_ERROR_CALLBACK
+        MessageError error;
+
     };
 
     // message id and message data
@@ -233,6 +243,7 @@ private:
     status_t handleMessageUllJpegDataRequest(MessageULLSnapshot *msg);
     status_t handleMessageUllTriggered(MessageULLSnapshot *msg);
     status_t handleMessageUllJpegDataReady(MessageFrame *msg);
+    status_t handleMessageSendError(MessageError *msg);
     // main message function
     status_t waitForAndExecuteMessage();
 
