@@ -164,6 +164,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
     ,mObserverManager()
     ,mPublicAeMode(CAM_AE_MODE_AUTO)
     ,mPublicAfMode(CAM_AF_MODE_AUTO)
+    ,mNoiseReductionEdgeEnhancement(true)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -729,6 +730,10 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     // GPS related (Intel extension)
     intel_params->set(IntelCameraParameters::KEY_GPS_IMG_DIRECTION_REF, "true-direction");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_GPS_IMG_DIRECTION_REF, "true-direction,magnetic-direction");
+
+    //Edge Enhancement and Noise Reduction
+    intel_params->set(IntelCameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT, "true");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT, "true,false");
 }
 
 Size AtomISP::getHALZSLResolution()
@@ -2072,6 +2077,22 @@ int AtomISP::startDevice(int device, int buffer_count)
     int ret;
     int fd = video_fds[device];
     LOG1(" startDevice fd = %d", fd);
+
+    if (mNoiseReductionEdgeEnhancement == false) {
+        //Disable the Noise Reduction and Edge Enhancement
+        struct atomisp_ee_config ee_cfg;
+        struct atomisp_nr_config nr_cfg;
+        struct atomisp_de_config de_cfg;
+
+        memset(&ee_cfg, 0, sizeof(struct atomisp_ee_config));
+        memset(&nr_cfg, 0, sizeof(struct atomisp_nr_config));
+        memset(&de_cfg, 0, sizeof(struct atomisp_de_config));
+        ee_cfg.threshold = 65535;
+        setNrConfig(&nr_cfg);
+        setEeConfig(&ee_cfg);
+        setDeConfig(&de_cfg);
+        LOG1("Disabled NREE in %s", __func__);
+    }
 
     if (mDevices[device].state != DEVICE_PREPARED) {
         ret = prepareDevice(device, buffer_count);
@@ -5642,6 +5663,15 @@ int AtomISP::setAicParameter(struct atomisp_parameters *aic_param)
        aic_param->gamma_table = NULL;
     }
 
+    if (mNoiseReductionEdgeEnhancement == false) {
+        //Disable the Noise Reduction and Edge Enhancement
+        memset(aic_param->ee_config, 0, sizeof(struct atomisp_ee_config));
+        memset(aic_param->nr_config, 0, sizeof(struct atomisp_nr_config));
+        memset(aic_param->de_config, 0, sizeof(struct atomisp_de_config));
+        aic_param->ee_config->threshold = 65535;
+        LOG2("Disabled NREE in 3A");
+    }
+
     ret = xioctl(main_fd, ATOMISP_IOC_S_PARAMETERS, aic_param);
     LOG2("%s IOCTL ATOMISP_IOC_S_PARAMETERS ret: %d\n", __FUNCTION__, ret);
     return ret;
@@ -7105,6 +7135,12 @@ AfMode AtomISP::getPublicAfMode()
 {
     LOG2("@%s", __FUNCTION__);
     return mPublicAfMode;
+}
+
+void AtomISP::setNrEE(bool en)
+{
+    LOG2("@%s", __FUNCTION__);
+    mNoiseReductionEdgeEnhancement = en;
 }
 
 } // namespace android

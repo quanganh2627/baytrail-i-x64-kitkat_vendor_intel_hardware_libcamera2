@@ -285,6 +285,8 @@ public:
     /* file injection controls */
     void getSensorDataFromFile(const char *file_name, sensorPrivateData *sensor_data);
 
+    void setNrEE(bool en);
+
     // I3AControls
     virtual status_t init3A();
     virtual status_t deinit3A();
@@ -730,6 +732,8 @@ private:
     int mCssMinorVersion;
     int mIspHwMajorVersion;
     int mIspHwMinorVersion;
+
+    bool mNoiseReductionEdgeEnhancement;
 }; // class AtomISP
 
 }; // namespace android

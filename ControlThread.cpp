@@ -4204,6 +4204,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         status = processParamAWBLock(oldParams, newParams);
     }
 
+    if (status == NO_ERROR) {
+        // disable/enable Noise Reduction and Edge Enhancement
+        status = processParamNREE(oldParams, newParams);
+    }
+
     if (m3AControls->isIntel3A()) {
         if (status == NO_ERROR) {
             // af lock
@@ -5777,6 +5782,28 @@ status_t ControlThread::processParamMirroring(const CameraParameters *oldParams,
             SensorThread::getInstance()->unRegisterOrientationListener(this);
         }
         LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_SAVE_MIRRORED, newVal.string());
+    }
+
+    return NO_ERROR;
+}
+
+status_t ControlThread::processParamNREE(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
+
+    if (!newVal.isEmpty()) {
+        if (newVal == CameraParameters::TRUE) {
+            //Disable Noise Reduction and Edge Enhancement
+            mISP->setNrEE(true);
+        } else {
+            mISP->setNrEE(false);
+        }
+
+        LOG1("Changed: %s -> %s",
+             IntelCameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT, newVal.string());
     }
 
     return NO_ERROR;

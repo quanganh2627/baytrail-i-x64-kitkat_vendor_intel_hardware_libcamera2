@@ -587,6 +587,9 @@ private:
 
     void processParamFileInject(CameraParameters *newParams);
 
+    status_t processParamNREE(const CameraParameters *oldParams,
+        CameraParameters *newParams);
+
     void convertAfWindows(CameraWindow* focusWindows, size_t winCount);
 
     void selectFlashModeForScene(CameraParameters *newParams);
