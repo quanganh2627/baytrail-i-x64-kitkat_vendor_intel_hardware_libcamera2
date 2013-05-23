@@ -2155,6 +2155,7 @@ status_t ControlThread::handleMessagePanoramaPicture() {
     status_t status = NO_ERROR;
     if (mPanoramaThread->getState() == PANORAMA_STARTED) {
         mPanoramaThread->startPanoramaCapture();
+        handleMessagePanoramaCaptureTrigger();
     } else {
         mPanoramaThread->finalize();
     }
