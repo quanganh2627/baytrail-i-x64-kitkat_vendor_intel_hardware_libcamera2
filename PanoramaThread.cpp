@@ -211,7 +211,7 @@ status_t PanoramaThread::handleMessageStartPanoramaCapture()
     status_t status = NO_ERROR;
     if (mState == PANORAMA_STARTED) {
         reInit();
-        mState = PANORAMA_DETECTING_OVERLAP;
+        mState = PANORAMA_WAITING_FOR_SNAPSHOT;
     }
     else
         status = INVALID_OPERATION;
@@ -509,7 +509,7 @@ status_t PanoramaThread::handleFrame(MessageFrame &frame)
     mPreviewWidth = frame.frame.width;
     mPreviewHeight = frame.frame.height;
     if (mState == PANORAMA_DETECTING_OVERLAP) {
-        if (mPanoramaTotalCount == 0 || detectOverlap(&frame.frame)) {
+        if (detectOverlap(&frame.frame)) {
             mState = PANORAMA_WAITING_FOR_SNAPSHOT;
             mPanoramaCallback->panoramaCaptureTrigger();
         }
@@ -540,8 +540,10 @@ status_t PanoramaThread::handleStitch(const MessageStitch &stitch)
 
     // convert displacement to reflect PV image size
     camera_panorama_metadata metadata = mCurrentMetadata;
-    metadata.horizontal_displacement = roundf((float) metadata.horizontal_displacement / mPreviewWidth * stitch.pv.width);
-    metadata.vertical_displacement = roundf((float) metadata.vertical_displacement / mPreviewHeight * stitch.pv.height);
+    if (mPreviewWidth != 0 && mPreviewHeight != 0)  {
+        metadata.horizontal_displacement = roundf((float) metadata.horizontal_displacement / mPreviewWidth * stitch.pv.width);
+        metadata.vertical_displacement = roundf((float) metadata.vertical_displacement / mPreviewHeight * stitch.pv.height);
+    }
     metadata.finalization_started = (mPanoramaTotalCount == mPanoramaMaxSnapshotCount);
 
     // allocate memory for the live preview callback.
