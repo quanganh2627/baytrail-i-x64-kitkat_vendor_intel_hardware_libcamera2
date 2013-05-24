@@ -1163,7 +1163,8 @@ status_t ControlThread::initContinuousCapture()
 
     mISP->setSnapshotFrameFormat(width, height, format);
     configureContinuousRingBuffer();
-    mISP->setPostviewFrameFormat(pvWidth, pvHeight, format);
+    mISP->setPostviewFrameFormat(pvWidth, pvHeight,
+                                 PlatformData::getPreviewFormat());
 
     burstStateReset();
 
@@ -2383,7 +2384,8 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     if (mState != STATE_CONTINUOUS_CAPTURE) {
         // Configure and start the ISP
         mISP->setSnapshotFrameFormat(width, height, format);
-        mISP->setPostviewFrameFormat(lpvWidth, lpvHeight, format);
+        mISP->setPostviewFrameFormat(lpvWidth, lpvHeight,
+                                     PlatformData::getPreviewFormat());
 
         if ((status = mISP->configure(MODE_CAPTURE)) != NO_ERROR) {
             LOGE("Error configuring the ISP driver for CAPTURE mode");
@@ -2746,7 +2748,8 @@ status_t ControlThread::captureStillPic()
 
         // Configure and start the ISP
         mISP->setSnapshotFrameFormat(width, height, format);
-        mISP->setPostviewFrameFormat(pvWidth, pvHeight, format);
+        mISP->setPostviewFrameFormat(pvWidth, pvHeight,
+                                     PlatformData::getPreviewFormat());
         if (mHdr.enabled) {
             mHdr.outMainBuf.buff = NULL;
             mHdr.outPostviewBuf.buff = NULL;
