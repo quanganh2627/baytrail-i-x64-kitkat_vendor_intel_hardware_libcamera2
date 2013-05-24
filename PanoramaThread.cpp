@@ -49,7 +49,6 @@ PanoramaThread::PanoramaThread(ICallbackPanorama *panoramaCallback, I3AControls 
     ,mPanoramaWaitingForImage(false)
     ,mCallbacksThread(CallbacksThread::getInstance())
     ,mCallbacks(Callbacks::getInstance()) // for memory allocation
-    ,mPostviewBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW))
     ,mState(PANORAMA_STOPPED)
     ,mPreviewWidth(0)
     ,mPreviewHeight(0)
@@ -113,19 +112,9 @@ status_t PanoramaThread::handleMessageStartPanorama(void)
         assert(false);
         return UNKNOWN_ERROR;
     }
-    // allocate memory for the live preview callback. Max thumbnail in NV12 + metadata.
-    mCallbacks->allocateMemory(&mPostviewBuf, frameSize(V4L2_PIX_FMT_NV12, PANORAMA_MAX_LIVE_PREV_WIDTH,
-                               PANORAMA_MAX_LIVE_PREV_HEIGHT) + sizeof(camera_panorama_metadata));
-    if (mPostviewBuf.buff == NULL) {
-        LOGE("fatal - out of memory for live preview callback");
-        assert(false);
-        return NO_MEMORY;
-    }
 
     mPanoramaStitchThread = new PanoramaStitchThread();
     if (mPanoramaStitchThread == NULL) {
-        mPostviewBuf.buff->release(mPostviewBuf.buff);
-        mPostviewBuf.buff = NULL;
         LOGE("error creating PanoramaThread");
         assert(false);
         return NO_MEMORY;
@@ -187,10 +176,6 @@ status_t PanoramaThread::handleMessageStopPanorama(const MessageStopPanorama &st
         ia_panorama_uninit(mContext);
 
         mContext = NULL;
-    }
-    if (mPostviewBuf.buff != NULL) {
-        mPostviewBuf.buff->release(mPostviewBuf.buff);
-        mPostviewBuf.buff = NULL;
     }
 
     if (mPanoramaStitchThread != NULL) {
@@ -536,6 +521,7 @@ status_t PanoramaThread::handleStitch(const MessageStitch &stitch)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    AtomBuffer postviewBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW));
 
     int ret = mPanoramaStitchThread->stitch(mContext, stitch.img, stitch.stitchId);
 
@@ -552,24 +538,32 @@ status_t PanoramaThread::handleStitch(const MessageStitch &stitch)
     metadata.vertical_displacement = roundf((float) metadata.vertical_displacement / mPreviewHeight * stitch.pv.height);
     metadata.finalization_started = (mPanoramaTotalCount == mPanoramaMaxSnapshotCount);
 
-    // space for the metadata is reserved in the beginning of the buffer, copy it there
-    memcpy(mPostviewBuf.buff->data, &metadata, sizeof(camera_panorama_metadata));
-    // copy PV image
-    unsigned char *src = NULL;
-    if (stitch.pv.shared) {
-        src = (unsigned char *) *((char **)stitch.pv.buff->data);
+    // allocate memory for the live preview callback.
+    mCallbacks->allocateMemory(&postviewBuf, stitch.pv.size + sizeof(camera_panorama_metadata));
+    if (postviewBuf.buff == NULL) {
+        LOGE("fatal - out of memory for live preview callback");
+        status =  NO_MEMORY;
     } else {
-        src = (unsigned char *) stitch.pv.buff->data;
+        // space for the metadata is reserved in the beginning of the buffer, copy it there
+        memcpy(postviewBuf.buff->data, &metadata, sizeof(camera_panorama_metadata));
+        // copy PV image
+        unsigned char *src = NULL;
+        if (stitch.pv.shared) {
+            src = (unsigned char *) *((char **)stitch.pv.buff->data);
+        } else {
+            src = (unsigned char *) stitch.pv.buff->data;
+        }
+        memcpy((char *)postviewBuf.buff->data + sizeof(camera_panorama_metadata), src, stitch.pv.size);
+
+        // set rest of PV fields
+        postviewBuf.width = stitch.pv.width;
+        postviewBuf.height = stitch.pv.height;
+        postviewBuf.size = stitch.pv.size;
+        postviewBuf.stride = stitch.pv.stride;
+
+        mCallbacksThread->panoramaSnapshot(postviewBuf);
+        postviewBuf.buff = NULL; // callbacks thread responsible memory release
     }
-    memcpy((char *)mPostviewBuf.buff->data + sizeof(camera_panorama_metadata), src, stitch.pv.size);
-
-    // set rest of PV fields
-    mPostviewBuf.width = stitch.pv.width;
-    mPostviewBuf.height = stitch.pv.height;
-    mPostviewBuf.size = stitch.pv.size;
-    mPostviewBuf.stride = stitch.pv.stride;
-
-    mCallbacksThread->panoramaSnapshot(mPostviewBuf);
 
     //panorama engine resets displacement values after stitching, so we reset the current values here, too
     mCurrentMetadata.horizontal_displacement = 0;
