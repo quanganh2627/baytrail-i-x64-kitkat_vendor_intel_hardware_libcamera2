@@ -402,6 +402,9 @@ status_t AAAThread::handleMessageFlashStage(MessageFlashStage *msg)
  */
 bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
 {
+    // TODO: Make aware of frame sync and changes in exposure to
+    //       reduce unneccesary skipping and consider processing for
+    //       every frame with AtomAIQ
     static unsigned int skipForEv = 0;
     status_t status = NO_ERROR;
 
@@ -420,8 +423,10 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
     switch (mFlashStage) {
         case FLASH_STAGE_PRE_START:
             // hued images fix (BZ: 72908)
-            if (skipForEv++ < 2)
+            if (skipForEv++ < 2) {
+                LOG2("@%s : Frame skipped to wait correct exposure", __FUNCTION__);
                 break;
+            }
             // Enter Stage 1
             mFramesTillExposed = 0;
             skipForEv = 2;
@@ -432,8 +437,10 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
             // Stage 1.5: Skip 2 frames to get exposure from Stage 1.
             //            First frame is for sensor to pick up the new value
             //            and second for sensor to apply it.
-            if (--skipForEv <= 0)
+            if (skipForEv-- > 0) {
+                LOG2("@%s : Frame skipped to wait correct exposure", __FUNCTION__);
                 break;
+            }
             // Enter Stage 2
             skipForEv = 2;
             status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_PRE);
@@ -441,13 +448,16 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
             break;
         case FLASH_STAGE_PRE_PHASE2:
             // Stage 2.5: Same as above, but for Stage 2.
-            if (--skipForEv <= 0)
+            if (skipForEv-- > 0) {
+                LOG2("@%s : Frame skipped to wait correct exposure", __FUNCTION__);
                 break;
+            }
             // Enter Stage 3: get the flash-exposed preview frame
             // and let the 3A library calculate the exposure
             // settings for the flash-exposed still capture.
             // We check the frame status to make sure we use
             // the flash-exposed frame.
+            skipForEv = 0;
             status = m3AControls->setFlash(1);
             mFlashStage = FLASH_STAGE_PRE_WAITING;
             break;
