@@ -892,7 +892,7 @@ status_t ControlThread::handleMessagePanoramaFinalize(MessagePanoramaFinalize *m
     // Initialize the picture thread with the size of the final stiched image
     CameraParameters tmpParam = mParameters;
     tmpParam.setPictureSize(msg->buff.width, msg->buff.height);
-    mPictureThread->initialize(tmpParam);
+    mPictureThread->initialize(tmpParam, 1);
 
     AtomBuffer *pPvBuff = msg->pvBuff.buff ? &(msg->pvBuff) : NULL;
 
@@ -1170,7 +1170,7 @@ status_t ControlThread::initContinuousCapture()
     }
 
     // Configure PictureThread
-    mPictureThread->initialize(mParameters);
+    mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     mISP->setSnapshotFrameFormat(width, height, format);
     configureContinuousRingBuffer();
@@ -2393,7 +2393,7 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     lpvSize = frameSize(format, lpvWidth, lpvHeight);
 
     // Configure PictureThread
-    mPictureThread->initialize(mParameters);
+    mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     // configure thumbnail size
     thumbnailWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
@@ -2764,7 +2764,7 @@ status_t ControlThread::captureStillPic()
     pvSize = frameSize(format, pvWidth, pvHeight);
 
     // Configure PictureThread
-    mPictureThread->initialize(mParameters);
+    mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     if (mState != STATE_CONTINUOUS_CAPTURE) {
         // Possible smart scene parameter changes (XNR, ANR)
@@ -3241,7 +3241,7 @@ status_t ControlThread::captureULLPic()
     status = continuousStartStillCapture(false);
 
     // Configure PictureThread, inform of the picture and thumbnail resolutions
-    mPictureThread->initialize(mParameters);
+    mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     // Let application know that we are going to produce an ULL image
     mCallbacksThread->ullTriggered(mULL->getCurrentULLid());
@@ -3306,7 +3306,7 @@ status_t ControlThread::captureVideoSnap()
     mCallbacksThread->requestTakePicture(true, true);
 
     // Configure PictureThread
-    mPictureThread->initialize(mParameters);
+    mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     /* Request a new video snapshot in the next capture cycle
      * In the next call of dequeueRecording we will send the
@@ -4077,7 +4077,7 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     bool zoomSupported = isParameterSet(CameraParameters::KEY_ZOOM_SUPPORTED) ? true : false;
     if (zoomSupported) {
         status = mISP->setZoom(newZoom);
-        mPostProcThread->setZoom(AtomISP::zoomRatio(newZoom));
+        mPostProcThread->setZoom(mISP->zoomRatio(newZoom));
     }
     else
         LOGD("not supported zoom setting");

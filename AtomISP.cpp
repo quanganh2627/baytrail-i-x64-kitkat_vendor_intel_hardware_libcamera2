@@ -49,9 +49,6 @@
 #define MAX_FILE_INJECTION_RECORDING_WIDTH   1920
 #define MAX_FILE_INJECTION_RECORDING_HEIGHT  1088
 
-#define MAX_ZOOM_LEVEL          150     // How many levels we have from 1x -> max zoom
-#define MIN_ZOOM_LEVEL          0
-#define MIN_SUPPORT_ZOOM        100     // Support 1x at least
 #define MAX_SUPPORT_ZOOM        1600    // Support upto 16x and should not bigger than 99x
 #define ZOOM_RATIO              100     // Conversion between zoom to really zoom effect
 
@@ -92,30 +89,6 @@ static const char *dev_name_array[] = {"/dev/video0",
                                        "/dev/video3"};
 
 AtomISP::cameraInfo AtomISP::sCamInfo[MAX_CAMERA_NODES];
-
-// Generated the string like "100,110,120, ...,1580,1590,1600"
-// The string is determined by MAX_ZOOM_LEVEL and MAX_SUPPORT_ZOOM
-static void computeZoomRatios(char *zoom_ratio, int max_count){
-
-    //set up zoom ratio according to MAX_ZOOM_LEVEL
-    int zoom_step = (MAX_SUPPORT_ZOOM - MIN_SUPPORT_ZOOM)/MAX_ZOOM_LEVEL;
-    int ratio = MIN_SUPPORT_ZOOM;
-    int pos = 0;
-    //Get zoom from MIN_SUPPORT_ZOOM to MAX_SUPPORT_ZOOM
-    while((ratio <= MAX_SUPPORT_ZOOM) && (pos < max_count)){
-        sprintf(zoom_ratio + pos,"%d,",ratio);
-        if (ratio < 1000)
-            pos += 4;
-        else
-            pos += 5;
-        ratio += zoom_step;
-    }
-
-    //Overwrite the last ',' with '\0'
-    if (pos > 0)
-        *(zoom_ratio + pos -1 ) = '\0';
-}
-
 
 ////////////////////////////////////////////////////////////////////
 //                          PUBLIC METHODS
@@ -264,14 +237,7 @@ status_t AtomISP::init()
     setSnapshotFrameFormat(RESOLUTION_5MP_WIDTH, RESOLUTION_5MP_HEIGHT, V4L2_PIX_FMT_NV12);
     setVideoFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
 
-    /*
-       Zoom is describled as 100, 200, each level has less memory than 5 bytes
-       We don't support zoom bigger than 9999
-       The last byte is used to store '\0'
-     */
-    static const int zoomBytes = MAX_ZOOM_LEVEL * 5 + 1;
-    mZoomRatios = new char[zoomBytes];
-    computeZoomRatios(mZoomRatios, zoomBytes);
+    status = computeZoomRatios();
     fetchIspVersions();
 
     return status;
@@ -302,14 +268,8 @@ int AtomISP::getCurrentCameraId(void)
  *
  * @return zoom ratio multiplied by 100
  */
-int AtomISP::zoomRatio(int zoomValue) {
-    if (zoomValue > MAX_ZOOM_LEVEL) {
-        LOGE("Too big zoom value");
-        return BAD_VALUE;
-    }
-
-    int zoomStep = (MAX_SUPPORT_ZOOM - MIN_SUPPORT_ZOOM) / MAX_ZOOM_LEVEL;
-    return MIN_SUPPORT_ZOOM + zoomValue * zoomStep;
+int AtomISP::zoomRatio(int zoomValue) const {
+    return mZoomRatioTable[zoomValue];
 }
 
 /**
@@ -2613,11 +2573,11 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
     return ret;
 }
 
-void AtomISP::getZoomRatios(CameraParameters *params)
+void AtomISP::getZoomRatios(CameraParameters *params) const
 {
     LOG1("@%s", __FUNCTION__);
     if (params) {
-        params->set(CameraParameters::KEY_MAX_ZOOM, MAX_ZOOM_LEVEL);
+        params->set(CameraParameters::KEY_MAX_ZOOM, mZoomRatioTable.size() - 1);
         params->set(CameraParameters::KEY_ZOOM_RATIOS, mZoomRatios);
         params->set(CameraParameters::KEY_ZOOM_SUPPORTED, CameraParameters::TRUE);
     }
@@ -2967,37 +2927,10 @@ int AtomISP::atomisp_set_zoom (int fd, int zoom)
         return 0;
     }
 
-    int zoom_driver = 0;
-    float zoom_real = 0.0;
-
-    if (zoom != 0) {
-
-        /*
-           The zoom value passed to HAL is from 0 to MAX_ZOOM_LEVEL to match 1x
-           to 16x of real zoom effect. The equation between zoom_real and zoom_hal is:
-
-           (zoom_hal - MIN_ZOOM_LEVEL)                   MAX_ZOOM_LEVEL - MIN_ZOOM_LEVEL
-           ------------------------------------------ = ------------------------------------
-           zoom_real * ZOOM_RATIO - MIN_SUPPORT_ZOOM     MAX_SUPPORT_ZOOM - MIN_SUPPORT_ZOOM
-         */
-
-        float x = ((MAX_SUPPORT_ZOOM - MIN_SUPPORT_ZOOM) / (MAX_ZOOM_LEVEL - MIN_ZOOM_LEVEL)) *
-            ((float) zoom - MIN_ZOOM_LEVEL);
-        zoom_real = (x + MIN_SUPPORT_ZOOM) / ZOOM_RATIO;
-
-        /*
-           The real zoom effect is 64/(64-zoom_driver) in the driver.
-           Add 0.5 to get the more accurate result
-           Calculate the zoom value should set to driver using the equation
-           We want to get 3 if the zoom_driver is 2.9, so add 0.5 for compensation
-         */
-        int maxZoomFactor = PlatformData::getMaxZoomFactor();
-        zoom_driver = (maxZoomFactor - (maxZoomFactor / zoom_real) + 0.5);
-    }
-
     int ret = 0;
     if (!mHALZSLEnabled) { // fix for driver zoom bug, prevent setting in HAL ZSL mode
-        LOG1("set zoom %f to driver with %d", zoom_real, zoom_driver);
+        int zoom_driver(mZoomDriveTable[zoom]);
+        LOG1("set zoom %d to driver with %d", zoom, zoom_driver);
         ret = atomisp_set_attribute (fd, V4L2_CID_ZOOM_ABSOLUTE, zoom_driver, "zoom");
     }
     return ret;
@@ -3839,7 +3772,7 @@ status_t AtomISP::getHALZSLPreviewFrame(AtomBuffer *buff)
     mHALZSLPreviewBuffers.removeAt(0);
 
     if (!(buf.flags & V4L2_BUF_FLAG_ERROR)) {
-        float zoomFactor = (mConfig.zoom + 10) / 10.0f;
+        float zoomFactor(static_cast<float>(zoomRatio(mConfig.zoom)) / ZOOM_RATIO);
         mScaler->scaleAndZoom(&mHALZSLBuffers[index], &previewBuf, zoomFactor);
     }
     previewBuf.frameCounter = mHALZSLBuffers[index].frameCounter;
@@ -4133,7 +4066,7 @@ status_t AtomISP::getHALZSLSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postvie
 
     AtomBuffer* matchingPreviewBuf = findMatchingHALZSLPreviewFrame(captureBuf.frameCounter);
 
-    float zoomFactor = (mConfig.zoom + 10) / 10.0f;
+    float zoomFactor(static_cast<float>(zoomRatio(mConfig.zoom)) / ZOOM_RATIO);
 
     // snapshot
     copyOrScaleHALZSLBuffer(captureBuf, matchingPreviewBuf, snapshotBuf, mSnapshotBuffers[0], zoomFactor);
@@ -4415,6 +4348,83 @@ int AtomISP::v4l2_dqevent(int fd, struct v4l2_event *event)
 ////////////////////////////////////////////////////////////////////
 //                          PRIVATE METHODS
 ////////////////////////////////////////////////////////////////////
+
+/**
+ * Compute zoom ratios
+ *
+ * Compute zoom ratios support by ISP and store them to tables.
+ * After compute string format is generated and stored for camera parameters.
+ *
+ * Calculation is based on following formula:
+ * ratio = MaxZoomFactor / (MaxZoomFactor - ZoomDrive)
+ */
+status_t AtomISP::computeZoomRatios()
+{
+    LOG1("@%s", __FUNCTION__);
+    int maxZoomFactor(PlatformData::getMaxZoomFactor());
+    int zoomFactor(maxZoomFactor);
+    int stringSize(0);
+    int ratio((maxZoomFactor * ZOOM_RATIO + zoomFactor / 2) / zoomFactor);
+    int preRatio(0);
+    int preZoomFactor(0);
+
+    mZoomRatioTable.clear();
+    mZoomDriveTable.clear();
+    mZoomRatioTable.setCapacity(maxZoomFactor);
+    mZoomDriveTable.setCapacity(maxZoomFactor);
+
+    while (ratio <= MAX_SUPPORT_ZOOM) {
+        if (ratio == preRatio) {
+            // replace zoom factor, if round error to 2 digit is smaller
+            int target = maxZoomFactor * ZOOM_RATIO;
+            if (abs(ratio * zoomFactor - target) < abs(ratio * preZoomFactor - target)) {
+                mZoomDriveTable.editTop() = maxZoomFactor - zoomFactor;
+                preZoomFactor = zoomFactor;
+            }
+        } else {
+            mZoomRatioTable.push(ratio);
+            mZoomDriveTable.push(maxZoomFactor - zoomFactor);
+            preRatio = ratio;
+            preZoomFactor = zoomFactor;
+
+            // calculate stringSize needed also include comma char
+            stringSize += 4;
+            ratio = ratio / 1000;
+            while (ratio) {
+                stringSize += 1;
+                ratio = ratio / 10;
+            }
+        }
+
+        zoomFactor = zoomFactor - 1;
+        if (zoomFactor == 0)
+            break;
+        ratio = (maxZoomFactor * ZOOM_RATIO + zoomFactor / 2) / zoomFactor;
+    }
+
+    LOG1("@%s: %d zoom ratios (string size = %d)", __FUNCTION__, mZoomRatioTable.size(), stringSize);
+
+    int pos(0);
+
+    if (mZoomRatios != NULL) {
+        delete[] mZoomRatios;
+    }
+
+    mZoomRatios = new char[stringSize];
+    if (mZoomRatios == NULL) {
+        LOGE("Error allocation memory for zoom ratios!");
+        return NO_MEMORY;
+    }
+
+    for (Vector<int>::iterator it = mZoomRatioTable.begin(); it != mZoomRatioTable.end(); ++it)
+        pos += snprintf(mZoomRatios + pos, stringSize - pos, "%d,", *it);
+
+    //Overwrite the last ',' with '\0'
+    mZoomRatios[stringSize - 1] = '\0';
+
+    LOG2("@%s: zoom ratios list: %s", __FUNCTION__, mZoomRatios);
+    return NO_ERROR;
+}
 
 /**
  * Marks the given buffers as cached

@@ -40,7 +40,7 @@ public:
     EXIFMaker(I3AControls *aaaControls);
     ~EXIFMaker();
 
-    void initialize(const CameraParameters &params);
+    void initialize(const CameraParameters &params, int zoomRatio);
     bool isInitialized() { return initialized; }
     void setMakerNote(const ia_3a_mknote &aaaMkNoteData);
     void setDriverData(const atomisp_makernote_info &ispData);

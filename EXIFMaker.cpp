@@ -269,7 +269,7 @@ void EXIFMaker::pictureTaken(void)
  *
  * @arg params active Android HAL parameters
  */
-void EXIFMaker::initialize(const CameraParameters &params)
+    void EXIFMaker::initialize(const CameraParameters &params, int zoomRatio)
 {
     LOG1("@%s: params = %p", __FUNCTION__, &params);
     const char *p = NULL;
@@ -395,8 +395,8 @@ void EXIFMaker::initialize(const CameraParameters &params)
     LOG1("EXIF: rotation value:%d degrees, orientation value:%d",
             rotation, exifAttributes.orientation);
 
-    exifAttributes.zoom_ratio.num = (params.getInt(CameraParameters::KEY_ZOOM) + 10);
-    exifAttributes.zoom_ratio.den = 10;
+    exifAttributes.zoom_ratio.num = zoomRatio;
+    exifAttributes.zoom_ratio.den = 100;
     LOG1("EXIF: zoom=%u/%u", exifAttributes.zoom_ratio.num, exifAttributes.zoom_ratio.den);
 
     // metering mode, 0 = normal; 1 = soft; 2 = hard; other = reserved

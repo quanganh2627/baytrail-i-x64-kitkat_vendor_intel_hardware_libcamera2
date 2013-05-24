@@ -201,9 +201,9 @@ void PictureThread::getDefaultParameters(CameraParameters *params)
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY, "50");
 }
 
-void PictureThread::initialize(const CameraParameters &params)
+    void PictureThread::initialize(const CameraParameters &params, int zoomRatio)
 {
-    mExifMaker->initialize(params);
+    mExifMaker->initialize(params, zoomRatio);
     int q = params.getInt(CameraParameters::KEY_JPEG_QUALITY);
     if (q != 0)
         mPictureQuality = q;

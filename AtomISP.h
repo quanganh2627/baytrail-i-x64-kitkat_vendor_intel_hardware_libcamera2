@@ -184,7 +184,7 @@ public:
     void getPreviewSize(int *width, int *height, int *stride);
     int getSnapshotNum();
 
-    void getZoomRatios(CameraParameters *params);
+    void getZoomRatios(CameraParameters *params) const;
     void getFocusDistances(CameraParameters *params);
     status_t setZoom(int zoom);
     status_t setFlash(int numFrames);
@@ -382,10 +382,8 @@ public:
     // IBufferOwner override
     virtual void returnBuffer(AtomBuffer* buff);
 
-// public static methods
-public:
     // return zoom ratio multiplied by 100 from given zoom value
-    static int zoomRatio(int zoomValue);
+    int zoomRatio(int zoomValue) const;
 
 // private types
 private:
@@ -464,6 +462,7 @@ private:
 // private methods
 private:
 
+    status_t computeZoomRatios();
     status_t initCameraInput();
     void initFileInject();
     void initFrameConfig();
@@ -712,6 +711,8 @@ private:
     bool mLowLight;
     int mXnr;
 
+    Vector <int> mZoomRatioTable;
+    Vector <int> mZoomDriveTable;
     char *mZoomRatios;
 
     int mRawDataDumpSize;
