@@ -70,8 +70,8 @@ UltraLowLight::UltraLowLight() : mMorphoCtrl(NULL),
 UltraLowLight::~UltraLowLight()
 {
     LOG1("@%s :state=%d", __FUNCTION__, mState);
-    if (getState() > ULL_STATE_UNINIT)
-        deinitMorphoLib();
+
+    deinit();
 
     if (mMorphoCtrl != NULL) {
         delete mMorphoCtrl;
@@ -106,15 +106,19 @@ status_t UltraLowLight::init( int w, int h, int aPreset)
     if (mUserMode == ULL_OFF)
         return INVALID_OPERATION;
 
-    switch (getState()) {
+    State aState = getState();
+
+    switch (aState) {
     case ULL_STATE_UNINIT:
     case ULL_STATE_INIT:
+    case ULL_STATE_DONE:
         startTime= systemTime();
         ret = initMorphoLib(w, h, aPreset);
         LOG1("ULL init completed (ret=%d) in %u ms", ret, (unsigned)((systemTime() - startTime) / 1000000))
         break;
 
     case ULL_STATE_READY:
+        deinitMorphoLib();
         mInputBuffers.clear();
         ret = initMorphoLib(w, h, aPreset);
         break;
@@ -127,6 +131,7 @@ status_t UltraLowLight::init( int w, int h, int aPreset)
     case ULL_STATE_PROCESSING:
     default:
         ret = INVALID_OPERATION;
+        LOGE("Trying to initialize ULL on an invalid state %d",aState);
         break;
     }
 
@@ -148,11 +153,19 @@ status_t UltraLowLight::deinit()
 
     case ULL_STATE_INIT:
          deinitMorphoLib();
+         setState(ULL_STATE_UNINIT);
         break;
 
     case ULL_STATE_READY:
         mInputBuffers.clear();
         deinitMorphoLib();
+        setState(ULL_STATE_UNINIT);
+        break;
+
+    case ULL_STATE_CANCELING:
+    case ULL_STATE_DONE:
+        freeWorkingBuffer();
+        setState(ULL_STATE_UNINIT);
         break;
 
     case ULL_STATE_NULL:
@@ -162,6 +175,7 @@ status_t UltraLowLight::deinit()
 
     case ULL_STATE_PROCESSING:
     default:
+        LOGW("De-initializing library in an invalid state: %d", getState());
         ret = INVALID_OPERATION;
         break;
     }
@@ -229,7 +243,7 @@ status_t UltraLowLight::addSnapshotMetadata(PictureThread::MetaData &metadata)
  *                   application.
  */
 status_t UltraLowLight::getOuputResult(AtomBuffer *snap, AtomBuffer * pv,
-                                           PictureThread::MetaData *metadata, int *ULLid)
+                                       PictureThread::MetaData *metadata, int *ULLid)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -244,7 +258,6 @@ status_t UltraLowLight::getOuputResult(AtomBuffer *snap, AtomBuffer * pv,
     *metadata = mSnapMetadata;
     *ULLid = mULLCounter;
     mULLCounter++;
-    setState(ULL_STATE_INIT);
 
     return NO_ERROR;
 }
@@ -312,9 +325,10 @@ status_t UltraLowLight::cancelProcess()
 bool UltraLowLight::trigger()
 {
     Mutex::Autolock lock(mStateMutex);
-    // ULL is ready to start a capture in one of these 2 states
+    // ULL is ready to start a capture in one of these 3 states
     if ( (mState != ULL_STATE_INIT) &&
-         (mState != ULL_STATE_UNINIT))
+         (mState != ULL_STATE_UNINIT) &&
+         (mState != ULL_STATE_DONE))
         return false;
 
     if (mUserMode == ULL_ON)
@@ -390,12 +404,11 @@ status_t UltraLowLight::process()
     } else
         ret = NO_ERROR;
 
+processComplete:
     /* Render final image */
     ret = morpho_ImageStabilizer3_finalize( &mMorphoCtrl->stab );
     if (ret != MORPHO_OK)
        LOGW("Error closing the library");
-
-processComplete:
 
     if (getState() == ULL_STATE_PROCESSING) {
         setState(ULL_STATE_DONE);
@@ -451,34 +464,41 @@ status_t UltraLowLight::initMorphoLib(int w, int h, int idx)
     mWidth = w;
     mHeight = h;
     mInputBuffers.clear();
-    setState(ULL_STATE_INIT);
 
 bail:
     return ret;
 
 bailFree:
-    delete[] mMorphoCtrl->workingBuffer;
-    mMorphoCtrl->workingBuffer = NULL;
+    deinitMorphoLib();
     return ret;
 }
 
 void UltraLowLight::deinitMorphoLib()
 {
-    LOG1("@%s ", __FUNCTION__);
+    LOGE("@%s ", __FUNCTION__);
+    status_t ret;
 
-    setState(ULL_STATE_UNINIT);
+    ret = morpho_ImageStabilizer3_finalize( &mMorphoCtrl->stab );
+    if (ret != MORPHO_OK)
+       LOGW("Error closing the ImageSolid library");
+
     mWidth = 0;
     mHeight = 0;
     mCurrentPreset = 0;
+    freeWorkingBuffer();
+
+    // Blank the Morpho control Block
+    memset(mMorphoCtrl,0,sizeof(UltraLowLight::MorphoULL));
+}
+
+void UltraLowLight::freeWorkingBuffer()
+{
     if (mMorphoCtrl->workingBuffer != NULL) {
         delete[] mMorphoCtrl->workingBuffer;
         mMorphoCtrl->workingBuffer = NULL;
     }
 
-    memset(mMorphoCtrl,0,sizeof(UltraLowLight::MorphoULL));
-
 }
-
 
 #define PRINT_ERROR_AND_BAIL(x)     if (ret != MORPHO_OK) {\
                                         LOGE(x);\

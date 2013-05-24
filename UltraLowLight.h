@@ -163,6 +163,7 @@ private:
     status_t initMorphoLib(int w, int h, int aPreset) STUB_BODY_STAT
     status_t configureMorphoLib(void) STUB_BODY_STAT
     void deinitMorphoLib() STUB_BODY
+    void freeWorkingBuffer() STUB_BODY
     void AtomToMorphoBuffer(const   AtomBuffer *atom, void* morpho) STUB_BODY
     void setState(enum State aState);
     enum State getState();

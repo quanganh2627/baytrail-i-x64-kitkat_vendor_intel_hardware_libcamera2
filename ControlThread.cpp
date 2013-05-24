@@ -488,6 +488,7 @@ void ControlThread::deinit()
         delete mCallbacks;
         mCallbacks = NULL;
     }
+    LOG1("@%s- complete", __FUNCTION__);
 }
 
 status_t ControlThread::setPreviewWindow(struct preview_stream_ops *window)
@@ -2825,6 +2826,7 @@ status_t ControlThread::captureStillPic()
         status = waitForCaptureStart();
         if (status != NO_ERROR) {
             LOGE("Error while waiting for capture to start");
+            mCallbacksThread->sendError(CAMERA_ERROR_UNKNOWN);
             return status;
         }
     }
@@ -4006,7 +4008,8 @@ status_t ControlThread::processParamBurst(const CameraParameters *oldParams,
     if (mBurstLength > 0) {
 
         // Get the burst speed
-        String8 speed(newParams->get(IntelCameraParameters::KEY_BURST_SPEED));
+        const char* s_speed = newParams->get(IntelCameraParameters::KEY_BURST_SPEED);
+        String8 speed(s_speed, s_speed == NULL ? 0 : strlen(s_speed));
         if (speed == IntelCameraParameters::BURST_SPEED_LOW)
             mFpsAdaptSkip = BURST_SPEED_LOW_SKIP_NUM;
         else if (speed == IntelCameraParameters::BURST_SPEED_MEDIUM)
@@ -4784,7 +4787,8 @@ void ControlThread::preProcessFlashMode(CameraParameters *newParams)
     if (mCameraId != 0 || !PlatformData::supportsBackFlash())
         return;
 
-    String8 currSupportedFlashModes = String8(newParams->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES));
+    const char* supportedFlashModes = newParams->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
+    String8 currSupportedFlashModes(supportedFlashModes, supportedFlashModes == NULL ? 0 : strlen(supportedFlashModes));
 
     // If burst or HDR is enabled, the only supported flash mode is "off".
     // Also, we only want to record only the first change to "off".
@@ -6840,11 +6844,13 @@ status_t ControlThread::forceSmartShutterPicture()
 
 status_t ControlThread::startPanorama()
 {
-    LOG2("@%s", __FUNCTION__);
-    if (mPanoramaThread->getState() != PANORAMA_STOPPED) {
-        return INVALID_OPERATION;
-    }
+    LOG1("@%s", __FUNCTION__);
+
     if (mPanoramaThread != 0) {
+        if (mPanoramaThread->getState() != PANORAMA_STOPPED) {
+            return INVALID_OPERATION;
+        }
+
         mPanoramaThread->startPanorama();
 
         // in continuous capture mode, check if postview size matches live preview size.
@@ -6865,38 +6871,27 @@ status_t ControlThread::startPanorama()
 
 status_t ControlThread::stopPanorama()
 {
-    LOG2("@%s", __FUNCTION__);
-    if (mPanoramaThread->getState() == PANORAMA_STOPPED)
-        return NO_ERROR;
+    LOG1("@%s", __FUNCTION__);
+
     if (mPanoramaThread != 0) {
-        // empty panorama from pending work if finalization is pending and push
-        // finalized image to this thread
         if (mPanoramaFinalizationPending)
-            mPanoramaThread->flush();
 
-        // at this point control thread may have a finalization message with
-        // memory from panorama engine, so process them right now
-        Vector<Message> pending;
-        mMessageQueue.remove(MESSAGE_ID_PANORAMA_FINALIZE, &pending);
-        Vector<Message>::iterator it;
-        for(it = pending.begin(); it != pending.end(); ++it)
-            handleMessagePanoramaFinalize(&it->data.panoramaFinalized);
+        if (mPanoramaThread->getState() == PANORAMA_STOPPED)
+            return NO_ERROR;
 
-        // handling the finalization pushes the memory to picture thread, so
-        // flush the picture thread so that it is done with panorama engine
-        // memory
+        // Panorama stop released panorama engine memory. Before stop flush
+        // the picture thread so that it is done with panorama engine memory.
         mPictureThread->flushBuffers();
 
-        // now, finally, we can stop the panorama engine, which releases its
-        // memory
-        mPanoramaThread->stopPanorama();
+        // now we can stop the panorama engine, which releases its memory.
+        mPanoramaThread->stopPanorama(true); // synchronous call
 
-        // safety for automatic finalization which may have run during this
-        // function if max panorama snapshot count was reached
-        mMessageQueue.remove(MESSAGE_ID_PANORAMA_FINALIZE, &pending); // drop message
+        // Remove for the finalization message which may have arrived during this
+        // function. The finalization message includes pointers to released memory.
+        mMessageQueue.remove(MESSAGE_ID_PANORAMA_FINALIZE); // drop message
 
         return NO_ERROR;
-    } else{
+    } else {
         return INVALID_OPERATION;
     }
 }

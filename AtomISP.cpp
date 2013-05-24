@@ -57,8 +57,8 @@
 #define INTEL_FILE_INJECT_CAMERA_ID 2
 
 #define ATOMISP_PREVIEW_POLL_TIMEOUT 1000
-#define ATOMISP_GETFRAME_RETRY_COUNT 10  // Times to retry poll/dqbuf in case of error
-#define ATOMISP_GETFRAME_STARVING_WAIT 200000 // Time to usleep between retry's when stream is starving from buffers.
+#define ATOMISP_GETFRAME_RETRY_COUNT 60  // Times to retry poll/dqbuf in case of error
+#define ATOMISP_GETFRAME_STARVING_WAIT 33000 // Time to usleep between retry's when stream is starving from buffers.
 #define ATOMISP_MIN_CONTINUOUS_BUF_SIZE 3 // Min buffer len supported by CSS
 #define FRAME_SYNC_POLL_TIMEOUT 500
 
@@ -3117,12 +3117,14 @@ status_t AtomISP::fileInjectSetSize(void)
     CLEAR(st);
     if (fstat(fileFd, &st) < 0) {
         LOGE("ERR(%s): fstat %s failed\n", __func__, fileName);
+        close(fileFd);
         return INVALID_OPERATION;
     }
 
     fileSize = st.st_size;
     if (fileSize == 0) {
         LOGE("ERR(%s): empty file %s\n", __func__, fileName);
+        close(fileFd);
         return -1;
     }
 
@@ -3442,7 +3444,7 @@ status_t AtomISP::v4l2_capture_open(int device)
 
     fd = open(dev_name, O_RDWR);
 
-    if (fd <= 0) {
+    if (fd < 0) {
         LOGE("Error opening video device %s: %s",
             dev_name, strerror(errno));
         return -1;
@@ -3531,7 +3533,8 @@ int AtomISP::atomisp_set_capture_mode(int deviceMode)
 {
     LOG1("@%s", __FUNCTION__);
     struct v4l2_streamparm parm;
-    int enable_vfpp = deviceMode != CI_MODE_PREVIEW || !mPreviewTooBigForVFPP;
+    int vfpp_mode = deviceMode == CI_MODE_PREVIEW && mPreviewTooBigForVFPP ?
+        ATOMISP_VFPP_DISABLE_SCALER : ATOMISP_VFPP_ENABLE;
 
     switch (deviceMode) {
     case CI_MODE_PREVIEW:
@@ -3555,13 +3558,16 @@ int AtomISP::atomisp_set_capture_mode(int deviceMode)
         return -1;
     }
 
-    if (atomisp_set_attribute(main_fd, V4L2_CID_ENABLE_VFPP, enable_vfpp, "Enable vf_pp")) {
-        if (enable_vfpp) {
-            LOGE("error %s, but that is ok (vf_pp is always enabled)", strerror(errno));
-        } else {
-            LOGE("error %s, can not disable vf_pp", strerror(errno));
-            return -1;
-        }
+    if (atomisp_set_attribute(main_fd, V4L2_CID_VFPP, vfpp_mode, "V4L2_CID_VFPP")) {
+        /* Menu-style V4L2_CID_VFPP not available, try legacy V4L2_CID_ENABLE_VFPP */
+        LOGW("warning %s: V4L2_CID_VFPP %i failed, trying V4L2_CID_ENABLE_VFPP", strerror(errno), vfpp_mode);
+        if (atomisp_set_attribute(main_fd, V4L2_CID_ENABLE_VFPP, vfpp_mode == ATOMISP_VFPP_ENABLE, "V4L2_CID_ENABLE_VFPP")) {
+            LOGW("warning %s: V4L2_CID_ENABLE_VFPP failed", strerror(errno));
+	    if (vfpp_mode != ATOMISP_VFPP_ENABLE) {
+                LOGE("error: can not disable vf_pp");
+                return -1;
+	    } /* else vf_pp enabled by default, so everything should be all right */
+	}
     }
 
     return 0;
@@ -5066,6 +5072,7 @@ void AtomISP::getSensorDataFromFile(const char *file_name, sensorPrivateData *se
     memset(&st, 0, sizeof (st));
     if (fstat(otp_fd, &st) < 0) {
         LOGE("ERR(%s): fstat %s failed\n", __func__, file_name);
+        close(otp_fd);
         return;
     }
 
@@ -5073,6 +5080,7 @@ void AtomISP::getSensorDataFromFile(const char *file_name, sensorPrivateData *se
     otpdata.data = malloc(otpdata.size);
     if (otpdata.data == NULL) {
         LOGD("Failed to allocate memory for OTP data.");
+        close(otp_fd);
         return;
     }
 
