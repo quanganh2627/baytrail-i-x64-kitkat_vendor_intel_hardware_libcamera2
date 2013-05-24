@@ -81,7 +81,7 @@ public:
     void autofocusDone(bool status);
     void focusMove(bool start);
     void panoramaDisplUpdate(camera_panorama_metadata_t &metadata);
-    void panoramaSnapshot(AtomBuffer &livePreview);
+    void panoramaSnapshot(const AtomBuffer &livePreview);
     status_t requestULLPicture(int id);
     status_t ullTriggered(int id);
     status_t postviewRendered();

@@ -75,7 +75,7 @@ status_t CallbacksThread::handleMessagePanoramaDisplUpdate(MessagePanoramaDisplU
     return OK;
 }
 
-void CallbacksThread::panoramaSnapshot(AtomBuffer &livePreview)
+void CallbacksThread::panoramaSnapshot(const AtomBuffer &livePreview)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
@@ -88,6 +88,9 @@ status_t CallbacksThread::handleMessagePanoramaSnapshot(MessagePanoramaSnapshot 
 {
     LOG1("@%s", __FUNCTION__);
     mCallbacks->panoramaSnapshot(msg->snapshot);
+    // CallbackThread is responsible release memory
+    msg->snapshot.buff->release(msg->snapshot.buff);
+    msg->snapshot.buff = NULL;
     return OK;
 }
 

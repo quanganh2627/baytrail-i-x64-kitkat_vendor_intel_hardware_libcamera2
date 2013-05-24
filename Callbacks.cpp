@@ -92,7 +92,7 @@ bool Callbacks::msgTypeEnabled(int32_t msgType)
     return (mMessageFlags & msgType) != 0;
 }
 
-void Callbacks::panoramaSnapshot(AtomBuffer &livePreview)
+void Callbacks::panoramaSnapshot(const AtomBuffer &livePreview)
 {
     LOG2("@%s", __FUNCTION__);
     mDataCB(CAMERA_MSG_PANORAMA_SNAPSHOT, livePreview.buff, 0, NULL, mUserToken);
