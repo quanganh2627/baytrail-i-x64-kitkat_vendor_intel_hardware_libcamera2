@@ -59,6 +59,7 @@
 #define ATOMISP_PREVIEW_POLL_TIMEOUT 1000
 #define ATOMISP_GETFRAME_RETRY_COUNT 60  // Times to retry poll/dqbuf in case of error
 #define ATOMISP_GETFRAME_STARVING_WAIT 33000 // Time to usleep between retry's when stream is starving from buffers.
+#define ATOMISP_EVENT_RECOVERY_WAIT 33000 // Time to usleep between retry's after erros from v4l2_event receiving.
 #define ATOMISP_MIN_CONTINUOUS_BUF_SIZE 3 // Min buffer len supported by CSS
 #define FRAME_SYNC_POLL_TIMEOUT 500
 
@@ -6052,23 +6053,25 @@ status_t AtomISP::FrameSyncSource::observe(IAtomIspObserver::Message *msg)
     ret = mISP->v4l2_poll(V4L2_ISP_SUBDEV, FRAME_SYNC_POLL_TIMEOUT);
 
     if (ret <= 0) {
-        LOGE("Poll failed ret(%d), disabling SOF event",ret);
-        mISP->v4l2_unsubscribe_event(mISP->video_fds[V4L2_ISP_SUBDEV], V4L2_EVENT_FRAME_SYNC);
-        mISP->closeDevice(V4L2_ISP_SUBDEV);
-        mISP->mFrameSyncEnabled = false;
-        msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
-        return UNKNOWN_ERROR;
+        LOGE("Poll failed (%s), waiting recovery..", (ret == 0) ? "timeout" : "error");
+        ret = -1;
+    } else {
+        // poll was successful, dequeue the event right away
+        do {
+            ret = mISP->v4l2_dqevent(mISP->video_fds[V4L2_ISP_SUBDEV], &event);
+            if (ret < 0) {
+                LOGE("Dequeue event failed");
+            }
+        } while (event.pending > 0);
     }
 
-    // poll was successful, dequeue the event right away
-    do {
-        ret = mISP->v4l2_dqevent(mISP->video_fds[V4L2_ISP_SUBDEV], &event);
-        if (ret < 0) {
-            LOGE("Dequeue event failed");
-            msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
-            return UNKNOWN_ERROR;
-        }
-    } while (event.pending > 0);
+    if (ret < 0) {
+        msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
+        // We sleep a moment but keep passing error messages to observers
+        // until further client controls.
+        usleep(ATOMISP_EVENT_RECOVERY_WAIT);
+        return NO_ERROR;
+    }
 
     // fill observer message
     msg->id = IAtomIspObserver::MESSAGE_ID_EVENT;
