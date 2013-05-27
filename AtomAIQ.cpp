@@ -470,7 +470,7 @@ status_t AtomAIQ::setAeFlashMode(FlashMode mode)
 
 FlashMode AtomAIQ::getAeFlashMode()
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     return mAeFlashMode;
 }
 
@@ -487,7 +487,7 @@ bool AtomAIQ::getAfNeedAssistLight()
 // could be used directly from AE results
 bool AtomAIQ::getAeFlashNecessary()
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     if(mAeState.ae_results)
         return mAeState.ae_results->flash->status;
     else

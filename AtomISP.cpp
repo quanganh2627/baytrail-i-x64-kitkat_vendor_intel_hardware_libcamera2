@@ -2908,12 +2908,12 @@ int AtomISP::atomisp_set_zoom (int fd, int zoom)
 int AtomISP::atomisp_set_attribute (int fd, int attribute_num,
                                              const int value, const char *name)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     struct v4l2_control control;
     struct v4l2_ext_controls controls;
     struct v4l2_ext_control ext_control;
 
-    LOG1("setting attribute [%s] to %d", name, value);
+    LOG2("setting attribute [%s] to %d", name, value);
 
     if (fd < 0)
         return -1;
@@ -6539,7 +6539,7 @@ status_t AtomISP::setAeFlashMode(FlashMode mode)
 
 FlashMode AtomISP::getAeFlashMode()
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     FlashMode mode = CAM_AE_FLASH_MODE_OFF;
     v4l2_flash_led_mode v4lMode = V4L2_FLASH_LED_MODE_NONE;
