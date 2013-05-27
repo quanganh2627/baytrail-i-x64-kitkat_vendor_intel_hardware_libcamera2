@@ -37,6 +37,15 @@
 
 #define MAX_EOF_SOF_DIFF 200000
 #define DEFAULT_EOF_SOF_DELAY 66000
+/**
+ * \define MIN_SOF_DELAY
+ * Minimum time in microseconds between latest SOF event reported and 3A running
+ * to consider that the SOF event time given to 3A belongs to the same frame as
+ * the current stats.
+ * This means that if last SOF reported happen less than 20ms before 3A stats
+ * we assume that this SOF belongs to the next frame.
+ */
+#define MIN_SOF_DELAY 20000
 #define EPSILON 0.00001
 #define RETRY_COUNT 5
 
@@ -62,6 +71,13 @@ namespace android {
 #define MAX_STATISTICS_WIDTH 150
 #define MAX_STATISTICS_HEIGHT 150
 #define IA_AIQ_MAX_NUM_FACES 5
+
+/** Convert timeval struct to value in microseconds
+ *
+ *  Helper macro to convert timeval struct to microsecond values stored in a
+ *  long long signed value (equivalent to int64_t)
+ */
+#define TIMEVAL2USECS(x) (long long)(((x)->tv_sec*1000000000LL + (x)->tv_usec*1000LL)/1000LL)
 
 AtomAIQ* AtomAIQ::mInstance = NULL; // ToDo: remove
 
@@ -226,6 +242,7 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
 
     m3aState.frame_use = isp_mode;
     mAfInputParameters.frame_use = m3aState.frame_use;
+    mAfState.previous_sof = 0;
     mAeInputParameters.frame_use = m3aState.frame_use;
     mAwbInputParameters.frame_use = m3aState.frame_use;
 
@@ -1266,8 +1283,8 @@ bool AtomAIQ::changeSensorMode(void)
     return true;
 }
 
-status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp,
-                                const struct timeval *sof_timestamp)
+status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct,
+                                const struct timeval *sof_timestamp_struct)
 {
     LOG2("@%s", __FUNCTION__);
     status_t ret = NO_ERROR;
@@ -1286,10 +1303,25 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp,
     {
         ia_err err = ia_err_none;
         ia_aiq_statistics_input_params statistics_input_parameters;
+        nsecs_t now = systemTime();
         memset(&statistics_input_parameters, 0, sizeof(ia_aiq_statistics_input_params));
 
-        long long eof_timestamp = (long long)((frame_timestamp->tv_sec*1000000000LL + frame_timestamp->tv_usec*1000LL)/1000LL);
-        statistics_input_parameters.frame_timestamp = (unsigned long long)((sof_timestamp->tv_sec*1000000000LL + sof_timestamp->tv_usec*1000LL)/1000LL);
+        long long eof_timestamp = TIMEVAL2USECS(frame_timestamp_struct);
+        long long sof_timestamp = TIMEVAL2USECS(sof_timestamp_struct);
+        unsigned long long diff = (now)/1000LL - sof_timestamp;
+
+        if (diff < MIN_SOF_DELAY && mAfState.previous_sof)
+        {
+            LOG2("SOF %lld does not correspond to the latest statistics %lld. Use the SOF from the previous frame %lld", sof_timestamp,
+                (now)/1000LL, mAfState.previous_sof);
+            statistics_input_parameters.frame_timestamp = mAfState.previous_sof;
+        }
+        else
+        {
+            statistics_input_parameters.frame_timestamp = sof_timestamp;
+        }
+        mAfState.previous_sof = sof_timestamp;
+
         if (eof_timestamp < (long long)statistics_input_parameters.frame_timestamp ||
             eof_timestamp - (long long)statistics_input_parameters.frame_timestamp > MAX_EOF_SOF_DIFF)
         {
@@ -1379,7 +1411,7 @@ void AtomAIQ::resetAFParams()
 
     mAfState.af_locked = false;
     mAfState.aec_locked = false;
-
+    mAfState.previous_sof = 0;
 }
 
 status_t AtomAIQ::runAfMain()

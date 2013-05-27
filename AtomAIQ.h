@@ -67,6 +67,7 @@ typedef struct {
     ia_aiq_rect                     focus_rect;
     ia_aiq_manual_focus_parameters  focus_parameters;
     struct timespec                 lens_timestamp;
+    unsigned long long              previous_sof;
     int32_t                         lens_position;
     bool                            aec_locked;
     bool                            af_locked;
