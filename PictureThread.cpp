@@ -432,7 +432,7 @@ exit_fail:
 
 status_t PictureThread::allocateInputBuffers(int format, int width, int height, int numBufs, bool registerToScaler)
 {
-    LOG1("@%s size (%dx%d) num %d", __FUNCTION__, width, height, numBufs);
+    LOG1("@%s size (%dx%d) num %d format %s", __FUNCTION__, width, height, numBufs,v4l2Fmt2Str(format));
     // temporary workaround until CSS supports buffers with different strides
     // until then we need to align all buffers to display subsystem stride
     // requirements.... even the snapshot buffers that do not go to screen

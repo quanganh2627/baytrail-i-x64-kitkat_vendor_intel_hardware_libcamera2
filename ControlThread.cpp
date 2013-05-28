@@ -4183,11 +4183,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         status = processParamAntiBanding(oldParams, newParams);
     }
 
-    // raw data format for snapshot
-    if (status == NO_ERROR) {
-        status = processParamRawDataFormat(oldParams, newParams);
-    }
-
     // preview framerate
     // NOTE: This is deprecated since Android API level 9, applications should use
     // setPreviewFpsRange()
@@ -4342,15 +4337,21 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    int picWidth, picHeight;
+    int picWidth, picHeight, format;
     unsigned int bufCount = MAX(mBurstLength, mISP->getContinuousCaptureNumber()+1);
+
     mParameters.getPictureSize(&picWidth, &picHeight);
-   /**
-    * we currently use the NV12 as YUV format for snapshot buffers
-    * If this needs to be variated per platform then we should introduce a
-    * PlatformData::getSnapshotFormat()
-    */
-    int format = V4L2_PIX_FMT_NV12;
+
+    /**
+     * Snapshot format is harcoded to NV12, this is the format between
+     * camera and JPEG encoder. In cases where we need to capture bayer
+     * then the format changes to RGB adn JPEG encoding breaks (i.e. image is
+     * green) this is a known limitation of the raw capture sequence in ISP fW
+     */
+    if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW))
+        format = V4L2_PIX_FMT_SRGGB10;
+    else
+        format = V4L2_PIX_FMT_NV12;
 
     if(videoMode){
        /**
@@ -4362,8 +4363,7 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
        bufCount = 0;
     }
 
-
-    LOG1("Request to allocate %d bufs of (%dx%d)",bufCount, picWidth,picHeight);
+    LOG1("Request to allocate %d bufs of (%dx%d) format: %d",bufCount, picWidth,picHeight,format);
     LOG1("Currently allocated: %d , available %d",mAllocatedSnapshotBuffers.size(),
                                                   mAvailableSnapshotBuffers.size());
 
@@ -4374,6 +4374,7 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
 
         if ( (tmp.width == picWidth) &&
              (tmp.height == picHeight) &&
+             (tmp.format == format) &&
              (mAllocatedSnapshotBuffers.size() == bufCount)) {
             LOG1("No need to request Snapshot, buffers already available");
             return NO_ERROR;
@@ -4398,6 +4399,8 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
         mAvailableSnapshotBuffers = mAllocatedSnapshotBuffers;
     }
 
+    // update configuration inside  AtomISP class
+    mISP->setSnapshotFrameFormat(picWidth,picHeight,format);
     return status;
 }
 
@@ -5712,7 +5715,7 @@ status_t ControlThread::processParamWhiteBalance(const CameraParameters *oldPara
 }
 
 status_t ControlThread::processParamRawDataFormat(const CameraParameters *oldParams,
-        CameraParameters *newParams)
+        CameraParameters *newParams, bool &previewRestartNeeded)
 {
     LOG1("@%s", __FUNCTION__);
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
@@ -5721,6 +5724,7 @@ status_t ControlThread::processParamRawDataFormat(const CameraParameters *oldPar
         if (newVal == "bayer") {
             CameraDump::setDumpDataFlag(CAMERA_DEBUG_DUMP_RAW);
             mCameraDump = CameraDump::getInstance(mCameraId);
+            previewRestartNeeded = true;
         } else if (newVal == "yuv") {
             CameraDump::setDumpDataFlag(CAMERA_DEBUG_DUMP_YUV);
             mCameraDump = CameraDump::getInstance(mCameraId);
@@ -5988,6 +5992,17 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
 
     status = processParamULL(oldParams,newParams, &restartNeeded);
 
+    /*
+     *  Process parameter that controls raw data format for snapshot,
+     *  this may change the pixel format if raw bayer is selected. In this case
+     *  we trigger a preview re-start because Raw capture is only supported
+     *  in good-old online mode.
+     *
+     */
+    if (status == NO_ERROR) {
+        status = processParamRawDataFormat(oldParams, newParams, restartNeeded);
+    }
+
     /**
      * There are multiple workarounds related to what preview and video
      * size combinations can be supported by ISP (also impacted by
@@ -6174,6 +6189,17 @@ bool ControlThread::paramsHasPictureSizeChanged(const CameraParameters *oldParam
     return false;
 }
 
+bool ControlThread::hasPictureFormatChanged()
+{
+    int currentFormat = mISP->getSnapshotPixelFormat();
+    int newFormat = V4L2_PIX_FMT_NV12;
+
+    if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW))
+       newFormat = V4L2_PIX_FMT_SRGGB10;
+
+    return (newFormat != currentFormat);
+}
+
 status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
 {
     LOG1("@%s", __FUNCTION__);
@@ -6253,20 +6279,29 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
                 videoMode = false;
             }
         }
+
     }
+
     mParameters = newParams;
     mFocusAreas = newFocusAreas;
     mMeteringAreas = newMeteringAreas;
 
     /**
-     * we need to re-allocate the snapshots if the size has changed or the
-     * number of buffers have changed. If the burst parameters change a preview
-     * restart is triggered. If preview is re-started we will allocate the snapshots
-     * after preview has started, not impacting L2P
+     * we need to re-allocate the snapshots in the following scenarios:
+     * - if the size has changed
+     * - if the pixel format has change (when dumping Raw bayer)
+     * - if the number of buffers (burst) have changed
+     *
+     * If the burst parameters change, a preview restart is triggered.
+     * If preview is re-started we will allocate the snapshots
+     * after preview has started, not impacting L2P. Here we only handle the
+     * first 2 cases
      *
      * In cases where we receive set_params before we start preview we do not allocate
+     * not to impact L2P and because application needs to start preview before
+     * taking a picture.
      */
-    if (paramsHasPictureSizeChanged(&oldParams, &newParams) && mState != STATE_STOPPED) {
+    if ((paramsHasPictureSizeChanged(&oldParams, &newParams) || hasPictureFormatChanged())&& mState != STATE_STOPPED) {
 
         if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
             allocateSnapshotBuffers(videoMode);
