@@ -1267,23 +1267,23 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         return STATE_PREVIEW_STILL;
     }
 
-    // Picture-sizes smaller than 1280x768 are not validated with
-    // any ISP firmware.
+    // Picture-sizes smaller than preview-size do not work with
+    // current CSS firmwares in continuous/ZSL mode.
+    // TODO: should be removed when CSS can handle this, see PSI BZ 73112
     int picWidth = 0, picHeight = 0;
+    int vfWidth = 0, vfHeight = 0;
     params.getPictureSize(&picWidth, &picHeight);
-    if (picWidth <= 1280 && picHeight <= 768) {
-        // this is a limitation of current CSS stack
-        LOG1("@%s: 1M or smaller picture-size, disabling continuous mode", __FUNCTION__);
+    params.getPreviewSize(&vfWidth, &vfHeight);
+    if (picWidth < vfWidth && picHeight < vfHeight) {
+        LOG1("@%s: picture-size smaller than preview-size, disabling continuous mode", __FUNCTION__);
         return STATE_PREVIEW_STILL;
     }
 
     // Low preview resolutions have known issues in continuous mode.
     // TODO: to be removed, tracked in BZ 81396
-    int pWidth = 0, pHeight = 0;
-    mParameters.getPreviewSize(&pWidth, &pHeight);
-    if (pWidth < 640 && pHeight < 360) {
+    if (vfWidth < 640 && vfHeight < 360) {
         LOG1("@%s: continuous mode not available for preview size %ux%u",
-             __FUNCTION__, pWidth, pHeight);
+             __FUNCTION__, vfWidth, vfHeight);
         return STATE_PREVIEW_STILL;
     }
 
