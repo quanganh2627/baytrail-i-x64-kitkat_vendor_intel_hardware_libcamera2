@@ -175,7 +175,7 @@ private:
 
     //AE
     void resetAECParams();
-    status_t runAeMain();
+    status_t runAeMain(bool first_run = false);
     bool getAeResults();
     bool getAeFlashResults();
 

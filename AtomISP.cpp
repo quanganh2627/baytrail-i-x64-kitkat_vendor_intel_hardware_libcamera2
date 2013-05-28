@@ -5520,7 +5520,7 @@ int AtomISP::sensorSetExposure(struct atomisp_exposure *exposure)
     LOG2("@%s", __FUNCTION__);
     int ret;
     ret = xioctl(main_fd, ATOMISP_IOC_S_EXPOSURE, exposure);
-    LOG2("%s IOCTL ATOMISP_IOC_S_EXPOSURE ret: %d\n", __FUNCTION__, ret);
+    LOG2("%s IOCTL ATOMISP_IOC_S_EXPOSURE ret: %d, gain %d, citg %d\n", __FUNCTION__, ret, exposure->gain[0], exposure->integration_time[0]);
     return ret;
 }
 

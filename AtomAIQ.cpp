@@ -274,11 +274,11 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
         mAeBracketingInputParameters = mAeInputParameters;
         mAeBracketingInputParameters.frame_use =  m3aState.frame_use;
     }
-    /* Invalidate AEC results and re-run AEC to get new results for new mode. */
-    mAeState.ae_results = NULL;
-    status = runAeMain();
+    /* Re-run AEC to re-calculate sensor exposure for potential changes
+     * in sensor settings */
+    status = runAeMain(true);
 
-    /* Re-run ISP to get new results for new mode. LSC needs to be updated if resolution changes. */
+    /* Re-run AIC to get new results for new mode. LSC needs to be updated if resolution changes. */
     status |= runAICMain();
 
     return status;
@@ -975,18 +975,6 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
     dummy_time.tv_sec = stage;
     dummy_time.tv_usec = 0;
 
-    ia_aiq_ae_results *latest_ae_results = &mAeState.prev_results[AE_DELAY_FRAMES];
-    for (int i = 0; i <= AE_DELAY_FRAMES; i++)
-    {
-        ia_aiq_ae_results *history_ae_results = &mAeState.prev_results[i];
-
-        // TODO: Weight grid addresses are the same always. May change in the future.
-        history_ae_results->weight_grid = latest_ae_results->weight_grid;
-        memcpy(history_ae_results->exposure, latest_ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
-        memcpy(history_ae_results->sensor_exposure, latest_ae_results->exposure, sizeof(ia_aiq_exposure_sensor_parameters));
-        memcpy(history_ae_results->flash, latest_ae_results->flash, sizeof(ia_aiq_flash_parameters));
-    }
-
     if (stage == CAM_FLASH_STAGE_PRE || stage == CAM_FLASH_STAGE_MAIN)
     {
         /* Store previous state of 3A locks. */
@@ -1014,12 +1002,22 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
         setAeLock(prev_ae_lock);
         setAwbLock(prev_awb_lock);
         resetGBCEParams();
-
-        if (stage == CAM_FLASH_STAGE_MAIN)
-            mAeState.ae_results = NULL;
     }
     else
     {
+        /* Copy latest preview results as input parameters directly
+         * while frame_use != ia_aiq_frame_use_still and invalidate
+         * this is to make runAeMain() to flush history with new values
+         * as upper layer is skipping frames */
+        ia_aiq_ae_results *latest_ae_results = &mAeState.prev_results[AE_DELAY_FRAMES];
+        ia_aiq_ae_results *still_ae_results = &mAeState.prev_results[0];
+        // TODO: Weight grid addresses are the same always. May change in the future.
+        still_ae_results->weight_grid = latest_ae_results->weight_grid;
+        memcpy(still_ae_results->exposure, latest_ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
+        memcpy(still_ae_results->sensor_exposure, latest_ae_results->exposure, sizeof(ia_aiq_exposure_sensor_parameters));
+        memcpy(still_ae_results->flash, latest_ae_results->flash, sizeof(ia_aiq_flash_parameters));
+        mAeState.ae_results = NULL;
+
         ret =  apply3AProcess(true, dummy_time, dummy_time);
     }
     return ret;
@@ -1310,8 +1308,13 @@ bool AtomAIQ::changeSensorMode(void)
     sd->coarse_integration_time_min = sensor_mode_data.coarse_integration_time_min;
     sd->coarse_integration_time_max_margin = sensor_mode_data.coarse_integration_time_max_margin;
 
-    LOG2("sensor_descriptor assign complete: %d, %d", mAeInputParameters.sensor_descriptor->line_periods_per_field,
-        sd->coarse_integration_time_max_margin);
+    LOG2("sensor_descriptor assign complete:");
+
+    LOG2("sensor descriptor: pixel_clock_freq_mhz %f", sd->pixel_clock_freq_mhz);
+    LOG2("sensor descriptor: pixel_periods_per_line %d", sd->pixel_periods_per_line);
+    LOG2("sensor descriptor: line_periods_per_field %d", sd->line_periods_per_field);
+    LOG2("sensor descriptor: coarse_integration_time_min %d", sd->coarse_integration_time_min);
+    LOG2("sensor descriptor: coarse_integration_time_max_margin %d", sd->coarse_integration_time_max_margin);
 
     if (m3aState.stats)
         freeStatistics(m3aState.stats);
@@ -1518,73 +1521,95 @@ void AtomAIQ::resetAECParams()
     mAeInputParameters.aec_features = ia_aiq_ae_feature_tuning;
 }
 
-status_t AtomAIQ::runAeMain()
+status_t AtomAIQ::runAeMain(bool first_run)
 {
     LOG2("@%s", __FUNCTION__);
     status_t ret = NO_ERROR;
 
-    if (mAeState.ae_locked)
+    if (mAeState.ae_results == NULL) {
+        LOG2("AEC invalidated, flushing results history");
+        first_run = true;
+    }
+
+    if (!first_run && mAeState.ae_locked)
         return ret;
 
     // ToDo:
     // More intelligent handling of ae_lock should be implemented:
-    // Use case when mode/resolution changes and AE lock is ON would not produce new/correct sensor exposure parameters.
-    // Maybe AE should be run in manual mode with previous results to produce same exposure parameters but for different sensor mode?
 
     ia_err err = ia_err_none;
     ia_aiq_ae_results *new_ae_results = NULL;
 
-    bool first_run = true;
-    if (mAeState.ae_results)
-        first_run = false;
-
-    LOG2("AEC manual_exposure_time_us: %ld manual_analog_gain: %f manual_iso: %d", mAeInputParameters.manual_exposure_time_us, mAeInputParameters.manual_analog_gain, mAeInputParameters.manual_iso);
-    LOG2("AEC sensor_descriptor ->line_periods_per_field: %d", mAeInputParameters.sensor_descriptor->line_periods_per_field);
-    LOG2("AEC mAeInputParameters.frame_use: %d",mAeInputParameters.frame_use);
-
     if(m3aState.ia_aiq_handle){
-        err = ia_aiq_ae_run(m3aState.ia_aiq_handle, &mAeInputParameters, &new_ae_results);
-        LOG2("@%s result: %d", __FUNCTION__, err);
-    }
+        if (first_run && mAeState.ae_results) {
+            LOG2("AEC re-run to recalculate sensor_exposure for changed sensor settings");
+            LOG2("AEC sensor_descriptor ->line_periods_per_field: %d", mAeInputParameters.sensor_descriptor->line_periods_per_field);
+            LOG2("AEC frame_use: %d",mAeInputParameters.frame_use);
+            ia_aiq_ae_input_params input_parameters = mAeInputParameters;
+            int restore_results_idx = (mAeInputParameters.frame_use == ia_aiq_frame_use_still) ? 0 : AE_DELAY_FRAMES;
+            input_parameters.manual_exposure_time_us = mAeState.prev_results[restore_results_idx].exposure->exposure_time_us;
+            input_parameters.manual_iso = mAeState.prev_results[restore_results_idx].exposure->iso;
+            LOG2("AEC re-run, using manual exposure %ld", input_parameters.manual_exposure_time_us);
+            LOG2("AEC re-run, using manual iso %d", input_parameters.manual_iso);
+            err = ia_aiq_ae_run(m3aState.ia_aiq_handle, &input_parameters, &new_ae_results);
+        } else {
+            LOG2("AEC manual_exposure_time_us: %ld manual_analog_gain: %f manual_iso: %d", mAeInputParameters.manual_exposure_time_us, mAeInputParameters.manual_analog_gain, mAeInputParameters.manual_iso);
+            LOG2("AEC sensor_descriptor ->line_periods_per_field: %d", mAeInputParameters.sensor_descriptor->line_periods_per_field);
+            LOG2("AEC mAeInputParameters.frame_use: %d",mAeInputParameters.frame_use);
 
-    if (new_ae_results &&
-        first_run)
-    {
-        /*
-         * Fill AE results history with first AE results because there is no AE delay in the beginning OR
-         * Fill AE results history with first AE results because there is no AE delay after mode change (handled with 'first_run' flag - see switchModeAndRate()) OR
-         * Fill AE results history with flash AE results because flash process skips partially illuminated frames removing the AE delay.
-         */
-        for (int i = 1; i <= AE_DELAY_FRAMES; i++)
-        {
-            ia_aiq_ae_results *history_ae_results = &mAeState.prev_results[i];
-
-            // TODO: Weight grid addresses are the same always. May change in the future.
-            history_ae_results->weight_grid = new_ae_results->weight_grid;
-            memcpy(history_ae_results->exposure, new_ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
-            memcpy(history_ae_results->sensor_exposure, new_ae_results->exposure, sizeof(ia_aiq_exposure_sensor_parameters));
-            memcpy(history_ae_results->flash, new_ae_results->flash, sizeof(ia_aiq_flash_parameters));
+            err = ia_aiq_ae_run(m3aState.ia_aiq_handle, &mAeInputParameters, &new_ae_results);
+            LOG2("@%s result: %d", __FUNCTION__, err);
         }
     }
 
-    // TODO: Make sure exposure parameters are not moved in the list more than once per frame (ie. if AEC is called multiple times per frame).
-    for (int i = 0; i < AE_DELAY_FRAMES; i++)
+    // Note: using single results with still (flash sequence)
+    if (mAeInputParameters.frame_use != ia_aiq_frame_use_still)
     {
-        ia_aiq_ae_results *old_ae_results = &mAeState.prev_results[i+1];
-        ia_aiq_ae_results *older_ae_results = &mAeState.prev_results[i];
+        if (new_ae_results &&
+            first_run)
+        {
+            /*
+             * Fill AE results history with first AE results because there is no AE delay in the beginning OR
+             * Fill AE results history with first AE results because there is no AE delay after mode change (handled with 'first_run' flag - see switchModeAndRate()) OR
+             * Fill AE results history with flash AE results because flash process skips partially illuminated frames removing the AE delay.
+             */
+            for (int i = 1; i <= AE_DELAY_FRAMES; i++)
+            {
+                ia_aiq_ae_results *history_ae_results = &mAeState.prev_results[i];
 
-        older_ae_results->weight_grid = old_ae_results->weight_grid;
-        memcpy(older_ae_results->exposure, old_ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
-        memcpy(older_ae_results->sensor_exposure, old_ae_results->sensor_exposure, sizeof(ia_aiq_exposure_sensor_parameters));
-        memcpy(older_ae_results->flash, old_ae_results->flash, sizeof(ia_aiq_flash_parameters));
+                // TODO: Weight grid addresses are the same always. May change in the future.
+                history_ae_results->weight_grid = new_ae_results->weight_grid;
+                memcpy(history_ae_results->exposure, new_ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
+                memcpy(history_ae_results->sensor_exposure, new_ae_results->exposure, sizeof(ia_aiq_exposure_sensor_parameters));
+                memcpy(history_ae_results->flash, new_ae_results->flash, sizeof(ia_aiq_flash_parameters));
+            }
+        }
+
+        // TODO: Make sure exposure parameters are not moved in the list more than once per frame (ie. if AEC is called multiple times per frame).
+        for (int i = 0; i < AE_DELAY_FRAMES; i++)
+        {
+            ia_aiq_ae_results *old_ae_results = &mAeState.prev_results[i+1];
+            ia_aiq_ae_results *older_ae_results = &mAeState.prev_results[i];
+
+            older_ae_results->weight_grid = old_ae_results->weight_grid;
+            memcpy(older_ae_results->exposure, old_ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
+            memcpy(older_ae_results->sensor_exposure, old_ae_results->sensor_exposure, sizeof(ia_aiq_exposure_sensor_parameters));
+            memcpy(older_ae_results->flash, old_ae_results->flash, sizeof(ia_aiq_flash_parameters));
+        }
     }
 
     if (new_ae_results != NULL)
     {
-        ia_aiq_ae_results *prev_ae_results = &mAeState.prev_results[AE_DELAY_FRAMES];
+        ia_aiq_ae_results *prev_ae_results = NULL;
+
+        if (mAeInputParameters.frame_use != ia_aiq_frame_use_still)
+            prev_ae_results = &mAeState.prev_results[AE_DELAY_FRAMES];
+        else
+            prev_ae_results = &mAeState.prev_results[0];
 
         // Compare sensor exposure parameters instead of generic exposure parameters to take into account mode changes when exposure time doesn't change but sensor parameters do change.
-        if (prev_ae_results->sensor_exposure->coarse_integration_time != new_ae_results->sensor_exposure->coarse_integration_time ||
+        if (first_run ||
+            prev_ae_results->sensor_exposure->coarse_integration_time != new_ae_results->sensor_exposure->coarse_integration_time ||
             prev_ae_results->sensor_exposure->fine_integration_time != new_ae_results->sensor_exposure->fine_integration_time ||
             prev_ae_results->sensor_exposure->digital_gain_global != new_ae_results->sensor_exposure->digital_gain_global ||
             prev_ae_results->sensor_exposure->analog_gain_code_global != new_ae_results->sensor_exposure->analog_gain_code_global)
@@ -1595,7 +1620,8 @@ status_t AtomAIQ::runAeMain()
             mAeState.exposure.gain[1] = new_ae_results->sensor_exposure->digital_gain_global;
 
             mAeState.exposure.aperture = 100;
-
+            LOG2("AEC exposure : %ld", new_ae_results->exposure->exposure_time_us);
+            LOG2("AEC iso : %d", new_ae_results->exposure->iso);
             LOG2("AEC integration_time[0]: %d", mAeState.exposure.integration_time[0]);
             LOG2("AEC integration_time[1]: %d", mAeState.exposure.integration_time[1]);
             LOG2("AEC gain[0]: %x", mAeState.exposure.gain[0]);
@@ -1607,13 +1633,11 @@ status_t AtomAIQ::runAeMain()
         }
 
         // TODO: Verify that checking the power change is enough. Should status be checked (rer/pre/main).
-        if (prev_ae_results->flash->power_prc != new_ae_results->flash->power_prc)
+        if (first_run ||
+            prev_ae_results->flash->power_prc != new_ae_results->flash->power_prc)
         {
             /* Apply Flash settings */
-            if (mAeState.ae_results)
-                ret |= mISP->setFlashIntensity((int)(mAeState.ae_results->flash)->power_prc);
-            else
-                LOGE("ae_results is NULL, could not apply flash settings");
+            ret |= mISP->setFlashIntensity((int)(new_ae_results->flash)->power_prc);
         }
 
         // Store the latest AE results in the end if the list.
