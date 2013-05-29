@@ -913,12 +913,26 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
     dummy_time.tv_sec = stage;
     dummy_time.tv_usec = 0;
 
+    ia_aiq_ae_results *latest_ae_results = &mAeState.prev_results[AE_DELAY_FRAMES];
+    for (int i = 0; i <= AE_DELAY_FRAMES; i++)
+    {
+        ia_aiq_ae_results *history_ae_results = &mAeState.prev_results[i];
+
+        // TODO: Weight grid addresses are the same always. May change in the future.
+        history_ae_results->weight_grid = latest_ae_results->weight_grid;
+        memcpy(history_ae_results->exposure, latest_ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
+        memcpy(history_ae_results->sensor_exposure, latest_ae_results->exposure, sizeof(ia_aiq_exposure_sensor_parameters));
+        memcpy(history_ae_results->flash, latest_ae_results->flash, sizeof(ia_aiq_flash_parameters));
+    }
+
     if (stage == CAM_FLASH_STAGE_PRE || stage == CAM_FLASH_STAGE_MAIN)
     {
         /* Store previous state of 3A locks. */
         bool prev_af_lock = getAfLock();
         bool prev_ae_lock = getAeLock();
         bool prev_awb_lock = getAwbLock();
+        resetGBCEParams();
+        mGBCEEnable = false;
 
         /* AF is not run during flash sequence. */
         setAfLock(true);
@@ -937,6 +951,10 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
         setAfLock(prev_af_lock);
         setAeLock(prev_ae_lock);
         setAwbLock(prev_awb_lock);
+        resetGBCEParams();
+
+        if (stage == CAM_FLASH_STAGE_MAIN)
+            mAeState.ae_results = NULL;
     }
     else
     {
@@ -1454,7 +1472,7 @@ status_t AtomAIQ::runAeMain()
     }
 
     if (new_ae_results &&
-        (first_run || new_ae_results->flash->status == ia_aiq_flash_status_pre))
+        first_run)
     {
         /*
          * Fill AE results history with first AE results because there is no AE delay in the beginning OR

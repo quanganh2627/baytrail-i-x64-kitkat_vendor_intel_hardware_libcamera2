@@ -53,7 +53,7 @@ namespace android {
 #define EV_LOWER_BOUND         -100
 #define EV_UPPER_BOUND          100
 #define MAX_NUM_AF_WINDOW       9
-#define AE_DELAY_FRAMES         1
+#define AE_DELAY_FRAMES         2
 
 typedef struct {
     struct atomisp_parm               isp_params;
