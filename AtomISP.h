@@ -637,6 +637,7 @@ private:
       unsigned int initialSkips;
     } mDevices[V4L2_MAX_DEVICE_COUNT];
 
+    int dumpFrameInfo(AtomMode mode);
     int dumpPreviewFrame(int previewIndex);
     int dumpRecordingFrame(int recordingIndex);
     int dumpSnapshot(int snapshotIndex, int postviewIndex);

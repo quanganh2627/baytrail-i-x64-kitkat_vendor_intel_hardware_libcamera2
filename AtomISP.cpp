@@ -968,7 +968,10 @@ status_t AtomISP::configure(AtomMode mode)
     }
 
     if (status == NO_ERROR)
+    {
         mMode = mode;
+        dumpFrameInfo(mode);
+    }
 
     /**
      * Some sensors produce corrupted first frames
@@ -4883,6 +4886,32 @@ exitFreeRec:
         }
     }
     return status;
+}
+
+
+int AtomISP::dumpFrameInfo(AtomMode mode)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    if (gLogLevel & CAMERA_DEBUG_LOG_PERF_TRACES) {
+        const char *previewMode[5]={"NoPreview",
+                                    "Preview",
+                                    "Capture",
+                                    "Video",
+                                    "ContinuousCapture"};
+
+        LOGD("FrameInfo: PreviewMode: %s", previewMode[mode+1]);
+        LOGD("FrameInfo: previewSize: %dx%d, stride: %d",
+                mConfig.preview.width, mConfig.preview.height, mConfig.preview.stride);
+        LOGD("FrameInfo: PostviewSize: %dx%d, stride: %d",
+                mConfig.postview.width, mConfig.postview.height, mConfig.postview.stride);
+        LOGD("FrameInfo: PictureSize: %dx%d, stride: %d",
+                mConfig.snapshot.width, mConfig.snapshot.height, mConfig.snapshot.stride);
+        LOGD("FrameInfo: videoSize: %dx%d, stride: %d",
+                mConfig.recording.width, mConfig.recording.height, mConfig.recording.stride);
+    }
+
+    return 0;
 }
 
 int AtomISP::dumpPreviewFrame(int previewIndex)
