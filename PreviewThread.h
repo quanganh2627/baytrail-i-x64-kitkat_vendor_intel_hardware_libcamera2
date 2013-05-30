@@ -218,7 +218,6 @@ private:
     struct GfxAtomBuffer {
         GfxBufferOwner owner;
         AtomBuffer  buffer;
-        buffer_handle_t *gfxBufferHandle; /*!< native buffer handle from which the gfx data is derived by mapping */
     };
 
 protected:

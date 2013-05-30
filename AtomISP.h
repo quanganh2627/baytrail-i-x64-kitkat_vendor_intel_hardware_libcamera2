@@ -174,6 +174,8 @@ public:
     bool dataAvailable();
     bool isBufferValid(const AtomBuffer * buffer) const;
 
+    bool isHALZSLEnabled() const { return mHALZSLEnabled; }
+
     status_t setPreviewFrameFormat(int width, int height, int format = 0);
     status_t setPostviewFrameFormat(int width, int height, int format);
     void getPostviewFrameFormat(int &width, int &height, int &format) const;
@@ -422,6 +424,7 @@ private:
         FrameInfo recording;  // recording
         FrameInfo snapshot;   // snapshot
         FrameInfo postview;   // postview (thumbnail for capture)
+        FrameInfo HALZSL;     // HAL ZSL
         float fps;            // preview/recording (shared) output by sensor
         int target_fps ;      // preview/recording requested by user
         int num_snapshot;     // number of snapshots to take
@@ -478,6 +481,7 @@ private:
     status_t configureContinuousMode(bool enable);
     status_t configureContinuousRingBuffer();
     status_t configureContinuous();
+    status_t configureContinuousSOC();
     status_t startCapture();
     status_t stopCapture();
     status_t stopContinuousPreview();
@@ -488,6 +492,19 @@ private:
     void runStopISPActions();
 
     void markBufferCached(struct v4l2_buffer_info *vinfo, bool cached);
+
+    Size getHALZSLResolution();
+    status_t allocateHALZSLBuffers();
+    status_t freeHALZSLBuffers();
+    status_t getHALZSLPreviewFrame(AtomBuffer *buff);
+    status_t putHALZSLPreviewFrame(AtomBuffer *buff);
+    AtomBuffer* findMatchingHALZSLPreviewFrame(int frameCounter);
+    void copyOrScaleHALZSLBuffer(const AtomBuffer &captureBuf, const AtomBuffer *previewBuf,
+            AtomBuffer *targetBuf, const AtomBuffer &localBuf, float zoomFactor) const;
+    status_t getHALZSLSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
+    bool waitForHALZSLBuffer(Vector<AtomBuffer> &vector);
+    void dumpHALZSLBufs();
+    void dumpHALZSLPreviewBufs();
 
     status_t allocatePreviewBuffers();
     status_t allocateRecordingBuffers();
@@ -612,6 +629,16 @@ private:
     bool mSwapRecordingDevice;
     bool mRecordingDeviceSwapped;
     bool mPreviewTooBigForVFPP;
+
+    bool mHALZSLEnabled;
+    AtomBuffer *mHALZSLBuffers;
+    Vector<AtomBuffer> mHALZSLPreviewBuffers;
+    Vector<AtomBuffer> mHALZSLCaptureBuffers;
+    Mutex mHALZSLLock;
+    static const unsigned int sMaxHALZSLBuffersHeldInHAL = 2;
+    static const int sNumHALZSLBuffers = sMaxHALZSLBuffersHeldInHAL + 4;
+    static const int sHALZSLRetryCount = 5;
+    static const int sHALZSLRetryUSleep = 33000;
 
     bool mClientSnapshotBuffersCached;
     bool mUsingClientSnapshotBuffers;

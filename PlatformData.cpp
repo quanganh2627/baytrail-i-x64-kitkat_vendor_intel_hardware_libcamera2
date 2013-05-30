@@ -327,6 +327,24 @@ bool PlatformData::resolutionSupportedByVFPP(int cameraId,
     return true;
 }
 
+bool PlatformData::snapshotResolutionSupportedByZSL(int cameraId,
+        int width, int height)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return true;
+    }
+
+    Vector<Size>::const_iterator it = i->mCameras[cameraId].mZSLUnsupportedSnapshotResolutions.begin();
+    for (;it != i->mCameras[cameraId].mZSLUnsupportedSnapshotResolutions.end(); ++it) {
+        if (it->width == width && it->height == height) {
+            return false;
+        }
+    }
+    return true;
+}
+
 int PlatformData::overlayRotation(int cameraId)
 {
     PlatformBase *i = getInstance();

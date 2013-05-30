@@ -133,6 +133,8 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
     ,mSwapRecordingDevice(false)
     ,mRecordingDeviceSwapped(false)
     ,mPreviewTooBigForVFPP(false)
+    ,mHALZSLEnabled(false)
+    ,mHALZSLBuffers(NULL)
     ,mClientSnapshotBuffersCached(true)
     ,mUsingClientSnapshotBuffers(false)
     ,mStoreMetaDataInBuffers(false)
@@ -753,6 +755,35 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_GPS_IMG_DIRECTION_REF, "true-direction,magnetic-direction");
 }
 
+Size AtomISP::getHALZSLResolution()
+{
+    LOG1("@%s", __FUNCTION__);
+    CameraParameters p;
+    Vector<Size> supportedSizes;
+
+    p.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, PlatformData::supportedSnapshotSizes(mCameraId));
+    p.getSupportedPictureSizes(supportedSizes);
+
+    Size largest(0, 0);
+
+    for (unsigned int i = 0; i < supportedSizes.size(); i++) {
+        // check if last largest size is bigger than this size
+        if (largest.width * largest.height < supportedSizes[i].width * supportedSizes[i].height) {
+            // check if aspect ratios are same..
+            if (fabs(((float)supportedSizes[i].width / supportedSizes[i].height) /
+                     ((float)mConfig.snapshot.width  / mConfig.snapshot.height) - 1) < 0.01f) {
+                // check if this size is really supported by ZSL
+                if (PlatformData::snapshotResolutionSupportedByZSL(mCameraId,
+                        supportedSizes[i].width, supportedSizes[i].height))
+                    largest = supportedSizes[i];
+            }
+        }
+    }
+
+    LOG1("@%s selected HAL ZSL resolution %dx%d", __FUNCTION__, largest.width, largest.height);
+    return largest;
+}
+
 void AtomISP::getMaxSnapShotSize(int cameraId, int* width, int* height)
 {
     LOG1("@%s", __FUNCTION__);
@@ -948,6 +979,7 @@ status_t AtomISP::configure(AtomMode mode)
     LOG1("@%s", __FUNCTION__);
     LOG1("mode = %d", mode);
     status_t status = NO_ERROR;
+    mHALZSLEnabled = false; // configureContinuous turns this on, when needed
     if (mFileInject.active == true)
         startFileInject();
     switch (mode) {
@@ -995,7 +1027,7 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
     switch (mode) {
     case MODE_PREVIEW:
     case MODE_CONTINUOUS_CAPTURE:
-        mPreviewDevice = mPreviewTooBigForVFPP ? mRecordingDevice : mConfigSnapshotPreviewDevice;
+        mPreviewDevice = (mPreviewTooBigForVFPP || mHALZSLEnabled) ? mRecordingDevice : mConfigSnapshotPreviewDevice;
         if ((status = allocatePreviewBuffers()) != NO_ERROR)
             stopDevice(mPreviewDevice);
         break;
@@ -1166,15 +1198,17 @@ status_t AtomISP::startPreview()
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
     status_t status = NO_ERROR;
+    int bufcount = mHALZSLEnabled ? sNumHALZSLBuffers : mNumPreviewBuffers;
 
-    ret = startDevice(mPreviewDevice, mNumPreviewBuffers);
+    ret = startDevice(mPreviewDevice, bufcount);
+
     if (ret < 0) {
         LOGE("Start preview device failed!");
         status = UNKNOWN_ERROR;
         goto err;
     }
 
-    mNumPreviewBuffersQueued = mNumPreviewBuffers;
+    mNumPreviewBuffersQueued = bufcount;
 
     return status;
 
@@ -1566,6 +1600,68 @@ int AtomISP::continuousBurstNegOffset(int skip, int startIndex) const
     return negOffset;
 }
 
+/**
+ * Configures the ISP to work on a mode where Continuous capture is implemented
+ * in the HAL. This is currently only available for SoC sensors, hence the name.
+ */
+status_t AtomISP::configureContinuousSOC()
+{
+    LOG1("@%s", __FUNCTION__);
+
+    // fix for driver zoom bug, reset to zero before entering HAL ZSL mode
+    setZoom(0);
+
+    mHALZSLEnabled = true;
+    int ret = 0;
+    status_t status = OK;
+
+    mNumPreviewBuffers = NUM_PREVIEW_BUFFERS;
+    mPreviewDevice = mRecordingDevice;
+
+    if (mPreviewDevice >= V4L2_MAX_DEVICE_COUNT) {
+        LOGE("Index mPreviewDevice (%d) beyond V4L2 device count (%d)", mPreviewDevice, V4L2_MAX_DEVICE_COUNT);
+        status = UNKNOWN_ERROR;
+        return status;
+    }
+
+    if (mPreviewDevice != V4L2_MAIN_DEVICE) {
+        ret = openDevice(mPreviewDevice);
+        if (ret < 0) {
+            LOGE("Open preview device failed!");
+            status = UNKNOWN_ERROR;
+            return status;
+        }
+    }
+
+    Size zslSize = getHALZSLResolution();
+    mConfig.HALZSL = mConfig.snapshot;
+    mConfig.HALZSL.width = zslSize.width;
+    mConfig.HALZSL.height = zslSize.height;
+    mConfig.HALZSL.stride = SGXandDisplayStride(V4L2_PIX_FMT_NV12, mConfig.HALZSL.width);
+    mConfig.HALZSL.size = frameSize(mConfig.HALZSL.format, mConfig.HALZSL.width, mConfig.HALZSL.height);
+
+    // fix the Preview stride to have gfx stride, as preview never goes to ISP
+    mConfig.preview.stride = SGXandDisplayStride(V4L2_PIX_FMT_NV12, mConfig.preview.width);
+
+    ret = configureDevice(
+            mPreviewDevice,
+            CI_MODE_PREVIEW,
+            &(mConfig.HALZSL),
+            false);
+    if (ret < 0) {
+        status = UNKNOWN_ERROR;
+        LOG1("@%s error", __FUNCTION__);
+        goto err;
+    }
+
+    LOG1("@%s configured %dx%d stride %d", __FUNCTION__, mConfig.HALZSL.width, mConfig.HALZSL.height, mConfig.HALZSL.stride);
+
+    return status;
+err:
+    stopDevice(mPreviewDevice);
+    return status;
+}
+
 status_t AtomISP::configureContinuous()
 {
     LOG1("@%s", __FUNCTION__);
@@ -1578,6 +1674,10 @@ status_t AtomISP::configureContinuous()
     }
 
     updateCaptureParams();
+
+    if(mSensorType == SENSOR_TYPE_SOC) {
+        return configureContinuousSOC();
+    }
 
     ret = configureContinuousMode(true);
     if (ret != NO_ERROR) {
@@ -1808,6 +1908,9 @@ status_t AtomISP::startOfflineCapture(AtomISP::ContinuousCaptureConfig &config)
     status_t res = NO_ERROR;
 
     LOG1("@%s", __FUNCTION__);
+    if (mHALZSLEnabled)
+        return OK;
+
     if (mMode != MODE_CONTINUOUS_CAPTURE) {
         LOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
         return INVALID_OPERATION;
@@ -1846,6 +1949,10 @@ status_t AtomISP::stopOfflineCapture()
         LOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
         return INVALID_OPERATION;
     }
+
+    if (mHALZSLEnabled)
+        return OK;
+
     stopDevice(V4L2_MAIN_DEVICE, false);
     stopDevice(V4L2_POSTVIEW_DEVICE, false);
     mContCaptPrepared = true;
@@ -2266,7 +2373,7 @@ status_t AtomISP::setPostviewFrameFormat(int width, int height, int format)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    LOG1("width(%d), height(%d), format(%x)",
+    LOG1("@%s width(%d), height(%d), format(%x)", __FUNCTION__,
          width, height, format);
     if (width < 0 || height < 0) {
         LOGE("Invalid postview size requested!");
@@ -2905,8 +3012,12 @@ int AtomISP::atomisp_set_zoom (int fd, int zoom)
         zoom_driver = (maxZoomFactor - (maxZoomFactor / zoom_real) + 0.5);
     }
 
-    LOG1("set zoom %f to driver with %d", zoom_real, zoom_driver);
-    return atomisp_set_attribute (fd, V4L2_CID_ZOOM_ABSOLUTE, zoom_driver, "zoom");
+    int ret = 0;
+    if (!mHALZSLEnabled) { // fix for driver zoom bug, prevent setting in HAL ZSL mode
+        LOG1("set zoom %f to driver with %d", zoom_real, zoom_driver);
+        ret = atomisp_set_attribute (fd, V4L2_CID_ZOOM_ABSOLUTE, zoom_driver, "zoom");
+    }
+    return ret;
 }
 
 int AtomISP::atomisp_set_attribute (int fd, int attribute_num,
@@ -3208,7 +3319,7 @@ int AtomISP::v4l2_capture_release_buffers(int device)
 
 int AtomISP::v4l2_capture_request_buffers(int device, uint num_buffers)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s dev %d buffers %d", __FUNCTION__, device, num_buffers);
     struct v4l2_requestbuffers req_buf;
     int ret;
     CLEAR(req_buf);
@@ -3418,7 +3529,7 @@ int AtomISP::v4l2_capture_qbuf(int fd, int index, struct v4l2_buffer_info *buf)
     v4l2_buf->flags = buf->cache_flags;
     ret = ioctl(fd, VIDIOC_QBUF, v4l2_buf);
     if (ret < 0) {
-        LOGE("VIDIOC_QBUF index %d failed: %s",
+        LOGE("@%s VIDIOC_QBUF index %d failed: %s", __FUNCTION__,
              index, strerror(errno));
         return ret;
     }
@@ -3547,8 +3658,11 @@ int AtomISP::atomisp_set_capture_mode(int deviceMode)
 {
     LOG1("@%s", __FUNCTION__);
     struct v4l2_streamparm parm;
-    int vfpp_mode = deviceMode == CI_MODE_PREVIEW && mPreviewTooBigForVFPP ?
-        ATOMISP_VFPP_DISABLE_SCALER : ATOMISP_VFPP_ENABLE;
+    int vfpp_mode = ATOMISP_VFPP_ENABLE;
+    if (deviceMode == CI_MODE_PREVIEW && mPreviewTooBigForVFPP)
+        vfpp_mode = ATOMISP_VFPP_DISABLE_SCALER;
+    else if(mHALZSLEnabled)
+        vfpp_mode = ATOMISP_VFPP_DISABLE_LOWLAT;
 
     CLEAR(parm);
 
@@ -3579,11 +3693,11 @@ int AtomISP::atomisp_set_capture_mode(int deviceMode)
         LOGW("warning %s: V4L2_CID_VFPP %i failed, trying V4L2_CID_ENABLE_VFPP", strerror(errno), vfpp_mode);
         if (atomisp_set_attribute(main_fd, V4L2_CID_ENABLE_VFPP, vfpp_mode == ATOMISP_VFPP_ENABLE, "V4L2_CID_ENABLE_VFPP")) {
             LOGW("warning %s: V4L2_CID_ENABLE_VFPP failed", strerror(errno));
-	    if (vfpp_mode != ATOMISP_VFPP_ENABLE) {
+            if (vfpp_mode != ATOMISP_VFPP_ENABLE) {
                 LOGE("error: can not disable vf_pp");
                 return -1;
-	    } /* else vf_pp enabled by default, so everything should be all right */
-	}
+            } /* else vf_pp enabled by default, so everything should be all right */
+        }
     }
 
     return 0;
@@ -3656,7 +3770,106 @@ status_t AtomISP::returnRecordingBuffers()
     return NO_ERROR;
 }
 
+void AtomISP::dumpHALZSLBufs() {
+    size_t size = mHALZSLCaptureBuffers.size();
 
+    LOG2("*** begin HAL ZSL DUMP ***");
+    for (unsigned int i = 0; i < size; i++) {
+        AtomBuffer buf = mHALZSLCaptureBuffers.itemAt(i);
+        LOG2("HAL ZSL buffer %d framecounter %d timestamp %ld.%ld", i, buf.frameCounter, buf.capture_timestamp.tv_sec, buf.capture_timestamp.tv_usec);
+    }
+    LOG2("*** end HAL ZSL DUMP ***");
+}
+
+void AtomISP::dumpHALZSLPreviewBufs() {
+    size_t size = mHALZSLPreviewBuffers.size();
+
+    LOG2("*** begin HAL ZSL Preview DUMP ***");
+    for (unsigned int i = 0; i < size; i++) {
+        AtomBuffer buf = mHALZSLPreviewBuffers.itemAt(i);
+        LOG2("HAL ZSL buffer %d framecounter %d timestamp %ld.%ld", i, buf.frameCounter, buf.capture_timestamp.tv_sec, buf.capture_timestamp.tv_usec);
+    }
+    LOG2("*** end HAL ZSL Preview DUMP ***");
+}
+
+/**
+ * Waits for buffers to arrive in the given vector. If there aren't initially
+ * any buffers, this sleeps and retries a predefined amount of cycles.
+ *
+ * Preconditions: mDevices[mPreviewDevice].mutex and mHALZSLLock are locked
+ * in that order.
+ * \param vector of AtomBuffers
+ * \return true if there are buffers in the vector, false if not
+ */
+bool AtomISP::waitForHALZSLBuffer(Vector<AtomBuffer> &vector)
+{
+    LOG2("@%s", __FUNCTION__);
+    int retryCount = sHALZSLRetryCount;
+    size_t size = 0;
+    do {
+        size = vector.size();
+        if (size == 0) {
+            mHALZSLLock.unlock();
+            mDevices[mPreviewDevice].mutex.unlock();
+            LOGW("@%s, AtomISP starving from ZSL buffers.", __FUNCTION__);
+            usleep(sHALZSLRetryUSleep);
+            mDevices[mPreviewDevice].mutex.lock(); // this locking order is significant!
+            mHALZSLLock.lock();
+        }
+    } while(retryCount-- && size == 0);
+
+    return (size != 0);
+}
+
+status_t AtomISP::getHALZSLPreviewFrame(AtomBuffer *buff)
+{
+    LOG2("@%s", __FUNCTION__);
+    // NOTE: mDevices[mPreviewDevice].mutex locked in getPreviewFrame
+
+    struct v4l2_buffer buf;
+
+    Mutex::Autolock mLock(mHALZSLLock);
+
+    int index = grabFrame(mPreviewDevice, &buf);
+    if(index < 0){
+        LOGE("@%s Error in grabbing frame!", __FUNCTION__);
+        return BAD_INDEX;
+    }
+    LOG2("Device: %d. Grabbed frame of size: %d", mPreviewDevice, buf.bytesused);
+    mNumPreviewBuffersQueued--;
+    LOG2("@%s mNumPreviewBuffersQueued:%d", __FUNCTION__, mNumPreviewBuffersQueued);
+
+    mHALZSLBuffers[index].id = index;
+    mHALZSLBuffers[index].frameCounter = mDevices[mPreviewDevice].frameCounter;
+    mHALZSLBuffers[index].ispPrivate = mSessionId;
+    mHALZSLBuffers[index].capture_timestamp = buf.timestamp;
+    mHALZSLBuffers[index].frameSequenceNbr = buf.sequence;
+    mHALZSLBuffers[index].status = (FrameBufferStatus)buf.reserved;
+
+    if (!waitForHALZSLBuffer(mHALZSLPreviewBuffers)) {
+        LOGE("@%s no preview buffers in FIFO!", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+    AtomBuffer previewBuf = mHALZSLPreviewBuffers.itemAt(0);
+    mHALZSLPreviewBuffers.removeAt(0);
+
+    if (!(buf.flags & V4L2_BUF_FLAG_ERROR)) {
+        float zoomFactor = (mConfig.zoom + 10) / 10.0f;
+        mScaler->scaleAndZoom(&mHALZSLBuffers[index], &previewBuf, zoomFactor);
+    }
+    previewBuf.frameCounter = mHALZSLBuffers[index].frameCounter;
+    previewBuf.capture_timestamp = mHALZSLBuffers[index].capture_timestamp;
+    previewBuf.frameSequenceNbr = mHALZSLBuffers[index].frameSequenceNbr;
+    previewBuf.status = mHALZSLBuffers[index].status;
+
+    *buff = previewBuf;
+
+    mHALZSLCaptureBuffers.push(mHALZSLBuffers[index]);
+
+    return NO_ERROR;
+
+}
 
 status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
 {
@@ -3666,6 +3879,9 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
 
     if (mMode == MODE_NONE)
         return INVALID_OPERATION;
+
+    if (mHALZSLEnabled)
+        return getHALZSLPreviewFrame(buff);
 
     CLEAR(buf);
 
@@ -3691,12 +3907,44 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
     return NO_ERROR;
 }
 
+status_t AtomISP::putHALZSLPreviewFrame(AtomBuffer *buff)
+{
+    LOG2("@%s", __FUNCTION__);
+    // NOTE - mDevices[mPreviewDevice].mutex locked in putPreviewFrame
+
+    Mutex::Autolock mLock(mHALZSLLock);
+    mHALZSLPreviewBuffers.push(*buff);
+
+    size_t size = mHALZSLCaptureBuffers.size();
+    LOG2("@%s cap buffers size was %d", __FUNCTION__, size);
+
+    if (size > sMaxHALZSLBuffersHeldInHAL) {
+        AtomBuffer buf = mHALZSLCaptureBuffers.itemAt(0);
+        mHALZSLCaptureBuffers.removeAt(0);
+
+        if (v4l2_capture_qbuf(video_fds[mPreviewDevice],
+                          buf.id,
+                          &v4l2_buf_pool[mPreviewDevice].bufs[buf.id]) < 0) {
+            return UNKNOWN_ERROR;
+        }
+        mNumPreviewBuffersQueued++;
+        LOG2("@%s mNumPreviewBuffersQueued:%d", __FUNCTION__, mNumPreviewBuffersQueued);
+    }
+
+    dumpHALZSLBufs();
+
+    return NO_ERROR;
+}
+
 status_t AtomISP::putPreviewFrame(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
     Mutex::Autolock lock(mDevices[mPreviewDevice].mutex);
     if (mMode == MODE_NONE)
         return INVALID_OPERATION;
+
+    if (mHALZSLEnabled)
+        return putHALZSLPreviewFrame(buff);
 
     if ((buff->type == ATOM_BUFFER_PREVIEW) && (buff->ispPrivate != mSessionId))
         return DEAD_OBJECT;
@@ -3842,6 +4090,75 @@ status_t AtomISP::setSnapshotBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bo
     return NO_ERROR;
 }
 
+/**
+ * Finds the matching preview buffer for a given frameCounter value.
+ * Returns a pointer to the buffer, null if not found.
+ */
+AtomBuffer* AtomISP::findMatchingHALZSLPreviewFrame(int frameCounter)
+{
+    Vector<AtomBuffer>::iterator it = mHALZSLPreviewBuffers.begin();
+    for (;it != mHALZSLPreviewBuffers.end(); ++it)
+        if (it->frameCounter == frameCounter) {
+            return it;
+        }
+    return NULL;
+}
+
+void AtomISP::copyOrScaleHALZSLBuffer(const AtomBuffer &captureBuf, const AtomBuffer *previewBuf,
+        AtomBuffer *targetBuf, const AtomBuffer &localBuf, float zoomFactor) const
+{
+    LOG1("@%s", __FUNCTION__);
+    targetBuf->capture_timestamp = captureBuf.capture_timestamp;
+    targetBuf->frameSequenceNbr = captureBuf.frameSequenceNbr;
+    targetBuf->id = captureBuf.id;
+    targetBuf->frameCounter = mDevices[V4L2_MAIN_DEVICE].frameCounter;
+    targetBuf->ispPrivate = mSessionId;
+    targetBuf->width = localBuf.width;
+    targetBuf->height = localBuf.height;
+    targetBuf->format = localBuf.format;
+    targetBuf->size = localBuf.size;
+    targetBuf->stride = SGXandDisplayStride(V4L2_PIX_FMT_NV12, localBuf.stride);
+    targetBuf->gfxInfo = localBuf.gfxInfo;
+    targetBuf->buff = localBuf.buff;
+    targetBuf->dataPtr = localBuf.dataPtr;
+    targetBuf->shared = localBuf.shared;
+
+    // optimizations, if right sized frame already exists (captureBuf is not zoomed so memcpy only works for zoomFactor 1.0)
+    if (zoomFactor == 1.0f && targetBuf->width == mConfig.HALZSL.width && targetBuf->height == mConfig.HALZSL.height) {
+        memcpy(targetBuf->dataPtr, captureBuf.dataPtr, captureBuf.size);
+    } else if (targetBuf->width == mConfig.preview.width && targetBuf->height == mConfig.preview.height &&
+            previewBuf != NULL) {
+        memcpy(targetBuf->dataPtr, previewBuf->dataPtr, previewBuf->size);
+    } else
+        mScaler->scaleAndZoom(&captureBuf, targetBuf, zoomFactor);
+}
+
+status_t AtomISP::getHALZSLSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
+{
+    LOG1("@%s", __FUNCTION__);
+    Mutex::Autolock mLock(mHALZSLLock);
+
+    if (!waitForHALZSLBuffer(mHALZSLCaptureBuffers)) {
+        LOGE("@%s no capture buffers in FIFO!", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+    AtomBuffer captureBuf = mHALZSLCaptureBuffers.itemAt(0);
+    LOG1("@%s capture buffer framecounter %d timestamp %ld.%ld", __FUNCTION__, captureBuf.frameCounter, captureBuf.capture_timestamp.tv_sec, captureBuf.capture_timestamp.tv_usec);
+    dumpHALZSLPreviewBufs();
+
+    AtomBuffer* matchingPreviewBuf = findMatchingHALZSLPreviewFrame(captureBuf.frameCounter);
+
+    float zoomFactor = (mConfig.zoom + 10) / 10.0f;
+
+    // snapshot
+    copyOrScaleHALZSLBuffer(captureBuf, matchingPreviewBuf, snapshotBuf, mSnapshotBuffers[0], zoomFactor);
+    // postview
+    copyOrScaleHALZSLBuffer(captureBuf, matchingPreviewBuf, postviewBuf, mPostviewBuffers[0], zoomFactor);
+
+    return OK;
+}
+
 status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 {
     LOG1("@%s", __FUNCTION__);
@@ -3850,6 +4167,9 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 
     if (mMode != MODE_CAPTURE && mMode != MODE_CONTINUOUS_CAPTURE)
         return INVALID_OPERATION;
+
+    if (mHALZSLEnabled)
+        return getHALZSLSnapshot(snapshotBuf, postviewBuf);
 
     CLEAR(buf);
 
@@ -3930,6 +4250,9 @@ status_t AtomISP::putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf)
     if (mMode != MODE_CAPTURE && mMode != MODE_CONTINUOUS_CAPTURE)
         return INVALID_OPERATION;
 
+    if (mHALZSLEnabled)
+        return OK;
+
     if (snaphotBuf->ispPrivate != mSessionId || postviewBuf->ispPrivate != mSessionId)
         return DEAD_OBJECT;
 
@@ -3998,6 +4321,12 @@ int AtomISP::pollPreview(int timeout)
 int AtomISP::pollCapture(int timeout)
 {
     LOG2("@%s", __FUNCTION__);
+
+    if (mHALZSLEnabled) {
+        if (mHALZSLCaptureBuffers.size() > 0)
+            return 1;
+    }
+
     return v4l2_poll(V4L2_MAIN_DEVICE, timeout);
 }
 
@@ -4135,6 +4464,61 @@ void AtomISP::markBufferCached(struct v4l2_buffer_info *vinfo, bool cached)
         vinfo->cache_flags = cacheflags;
 }
 
+
+status_t AtomISP::allocateHALZSLBuffers()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = OK;
+
+    if (mHALZSLBuffers == NULL) {
+        mHALZSLBuffers = new AtomBuffer[sNumHALZSLBuffers];
+
+        for (int i = 0; i < sNumHALZSLBuffers; i++) {
+            AtomBuffer *buff = &mHALZSLBuffers[i];
+            status = mCallbacks->allocateGraphicBuffer(mHALZSLBuffers[i], mConfig.HALZSL.width, mConfig.HALZSL.height);
+
+            if(status != NO_ERROR) {
+                LOGE("@%s: Failed to allocate GraphicBuffer!", __FUNCTION__);
+                break;
+            }
+
+            struct v4l2_buffer_info *vinfo = &v4l2_buf_pool[mPreviewDevice].bufs[i];
+            vinfo->data = buff->dataPtr;
+            mScaler->registerBuffer(*buff, ScalerService::SCALER_INPUT);
+        }
+    }
+
+    if (status != OK && mHALZSLBuffers) {
+        delete [] mHALZSLBuffers;
+        mHALZSLBuffers = NULL;
+    }
+
+    return status;
+}
+
+status_t AtomISP::freeHALZSLBuffers()
+{
+    LOG1("@%s", __FUNCTION__);
+    Mutex::Autolock mLock(mHALZSLLock);
+    if (mHALZSLBuffers != NULL) {
+        for (int i = 0 ; i < sNumHALZSLBuffers; i++) {
+            mScaler->unRegisterBuffer(mHALZSLBuffers[i], ScalerService::SCALER_INPUT);
+            GraphicBuffer *graphicBuffer = (GraphicBuffer *) mHALZSLBuffers[i].gfxInfo.gfxBuffer;
+            LOG1("@%s freeing gfx buffer with pointer %p (graphic win buf %p) refcount %d", __FUNCTION__, mHALZSLBuffers[i].dataPtr, graphicBuffer, graphicBuffer->getStrongCount());
+            if (mHALZSLBuffers[i].gfxInfo.locked)
+                graphicBuffer->unlock();
+            graphicBuffer->decStrong(this);
+            mHALZSLBuffers[i].gfxInfo.gfxBuffer = NULL;
+        }
+        delete [] mHALZSLBuffers;
+        mHALZSLBuffers = NULL;
+
+        // HALZSL cleanup..
+        mHALZSLCaptureBuffers.clear();
+    }
+    return NO_ERROR;
+}
+
 status_t AtomISP::allocatePreviewBuffers()
 {
     LOG1("@%s", __FUNCTION__);
@@ -4153,24 +4537,22 @@ status_t AtomISP::allocatePreviewBuffers()
 
         LOG1("Allocating %d buffers of size %d", mNumPreviewBuffers, mConfig.preview.size);
         for (int i = 0; i < mNumPreviewBuffers; i++) {
-             mPreviewBuffers[i].buff = NULL;
-             mPreviewBuffers[i].type = ATOM_BUFFER_PREVIEW;
-             mPreviewBuffers[i].width = mConfig.preview.width;
-             mPreviewBuffers[i].height = mConfig.preview.height;
-             mPreviewBuffers[i].stride = mConfig.preview.stride;
-             mPreviewBuffers[i].format = mConfig.preview.format;
-             mCallbacks->allocateMemory(&mPreviewBuffers[i],  mConfig.preview.size);
-             if (mPreviewBuffers[i].buff == NULL) {
-                 LOGE("Error allocation memory for preview buffers!");
-                 status = NO_MEMORY;
-                 goto errorFree;
-             }
-             mPreviewBuffers[i].size = mConfig.preview.size;
-             allocatedBufs++;
-             struct v4l2_buffer_info *vinfo = &v4l2_buf_pool[mPreviewDevice].bufs[i];
-             vinfo->data = mPreviewBuffers[i].dataPtr;
-             markBufferCached(vinfo, mPreviewBuffersCached);
-             mPreviewBuffers[i].shared = false;
+            mCallbacks->allocateGraphicBuffer(mPreviewBuffers[i], mConfig.preview.width, mConfig.preview.height);
+            if (mPreviewBuffers[i].dataPtr == NULL) {
+                LOGE("Error allocation memory for preview buffers!");
+                status = NO_MEMORY;
+                goto errorFree;
+            }
+
+            mPreviewBuffers[i].type = ATOM_BUFFER_PREVIEW;
+            allocatedBufs++;
+            struct v4l2_buffer_info *vinfo = &v4l2_buf_pool[mPreviewDevice].bufs[i];
+            vinfo->data = mPreviewBuffers[i].dataPtr;
+
+            if (mHALZSLEnabled) {
+                mScaler->registerBuffer(mPreviewBuffers[i], ScalerService::SCALER_OUTPUT);
+                mHALZSLPreviewBuffers.push(mPreviewBuffers[i]);
+            }
         }
 
     } else {
@@ -4179,13 +4561,35 @@ status_t AtomISP::allocatePreviewBuffers()
             vinfo->data = mPreviewBuffers[i].dataPtr;
             markBufferCached(vinfo, mPreviewBuffersCached);
             mPreviewBuffers[i].shared = true;
+            if (mHALZSLEnabled) {
+                mScaler->registerBuffer(mPreviewBuffers[i], ScalerService::SCALER_OUTPUT);
+                mHALZSLPreviewBuffers.push(mPreviewBuffers[i]);
+            }
         }
+    }
+
+    if (mHALZSLEnabled) {
+        allocateHALZSLBuffers();
     }
 
     return status;
 errorFree:
     // On error, free the allocated buffers
     for (int i = 0 ; i < allocatedBufs; i++) {
+        if (mHALZSLEnabled)
+            mScaler->unRegisterBuffer(mPreviewBuffers[i], ScalerService::SCALER_OUTPUT);
+
+        GraphicBuffer *graphicBuffer = (GraphicBuffer *) mPreviewBuffers[i].gfxInfo.gfxBuffer;
+        if (graphicBuffer) { // if gfx buffers came through setGraphicPreviewBuffers, there is no graphic buffer stored..
+            LOG1("@%s freeing gfx buffer with pointer %p (graphic win buf %p) refcount %d", __FUNCTION__, mPreviewBuffers[i].dataPtr, graphicBuffer, graphicBuffer->getStrongCount());
+            if (mPreviewBuffers[i].gfxInfo.locked) {
+                graphicBuffer->unlock();
+                mPreviewBuffers[i].gfxInfo.locked = false;
+            }
+            graphicBuffer->decStrong(this);
+            mPreviewBuffers[i].gfxInfo.gfxBuffer = NULL;
+        }
+
         if (mPreviewBuffers[i].buff != NULL) {
             mPreviewBuffers[i].buff->release(mPreviewBuffers[i].buff);
             mPreviewBuffers[i].buff = NULL;
@@ -4276,24 +4680,27 @@ status_t AtomISP::allocateSnapshotBuffers()
     struct v4l2_buffer_info *vinfo;
 
     if (mUsingClientSnapshotBuffers) {
+        LOG1("@%s using %d client snapshot buffers",__FUNCTION__, mConfig.num_snapshot);
         for (int i = 0; i < mConfig.num_snapshot; i++) {
             mSnapshotBuffers[i].type = ATOM_BUFFER_SNAPSHOT;
             mSnapshotBuffers[i].shared = false;
-            vinfo = &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i];
-            vinfo->data = mSnapshotBuffers[i].dataPtr;
-            markBufferCached(vinfo, mClientSnapshotBuffersCached);
+            if (!mHALZSLEnabled) {
+                vinfo = &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i];
+                vinfo->data = mSnapshotBuffers[i].dataPtr;
+                markBufferCached(vinfo, mClientSnapshotBuffersCached);
+            }
         }
     } else {
-
         // note: make sure client has called releaseCaptureBuffers()
         //       at this point (clients may hold on to snapshot buffers
         //       after capture has been stopped)
         if (mSnapshotBuffers[0].buff != NULL) {
-            LOGW("Client has not freed snapshot buffers!");
+            LOGW("@%s Client has not freed snapshot buffers!", __FUNCTION__);
             freeSnapshotBuffers();
         }
 
-        LOG1("Allocating %d buffers of size: %d (snapshot), %d (postview)",
+        LOG1("@%s Allocating %d buffers of size: %d (snapshot), %d (postview)",
+                __FUNCTION__,
                 mConfig.num_snapshot,
                 snapshotSize,
                 mConfig.postview.size);
@@ -4319,12 +4726,16 @@ status_t AtomISP::allocateSnapshotBuffers()
             AtomBuffer postv;
             for (int i = 0; i < mConfig.num_snapshot; i++) {
                 postv.buff = NULL;
-                mCallbacks->allocateMemory(&postv, mConfig.postview.size);
-                if (postv.buff == NULL) {
+                // for image data, actual sized buff
+                mCallbacks->allocateGraphicBuffer(postv, mConfig.postview.width, mConfig.postview.height);
+                // for callbacks, a dummy buff
+                mCallbacks->allocateMemory(&postv.buff, 1, true);
+                if (postv.dataPtr == NULL || postv.buff == NULL) {
                     LOGE("Error allocation memory for postview buffers!");
                     status = NO_MEMORY;
                     goto errorFree;
                 }
+
                 postv.type = ATOM_BUFFER_POSTVIEW;
 
                 vinfo = &v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[i];
@@ -4336,6 +4747,11 @@ status_t AtomISP::allocateSnapshotBuffers()
                 postv.height = mConfig.postview.height;
                 postv.stride = mConfig.postview.stride;
                 postv.size = mConfig.postview.size;
+                postv.buff->data = postv.dataPtr;
+                postv.buff->size = postv.size;
+                if (mHALZSLEnabled)
+                    mScaler->registerBuffer(postv, ScalerService::SCALER_OUTPUT);
+
                 mPostviewBuffers.push(postv);
 
             }
@@ -4457,8 +4873,23 @@ errorFree:
 status_t AtomISP::freePreviewBuffers()
 {
     LOG1("@%s", __FUNCTION__);
+
     if (mPreviewBuffers != NULL) {
         for (int i = 0 ; i < mNumPreviewBuffers; i++) {
+            LOG1("@%s mHALZSLEnabled = %d i=%d, mNum = %d", __FUNCTION__, mHALZSLEnabled, i, mNumPreviewBuffers);
+            if (mHALZSLEnabled)
+                mScaler->unRegisterBuffer(mPreviewBuffers[i], ScalerService::SCALER_OUTPUT);
+
+            GraphicBuffer *graphicBuffer = (GraphicBuffer *) mPreviewBuffers[i].gfxInfo.gfxBuffer;
+            if (graphicBuffer) { // if gfx buffers came through setGraphicPreviewBuffers, there is no graphic buffer stored..
+                LOG1("@%s freeing gfx buffer with pointer %p (graphic win buf %p) refcount %d", __FUNCTION__, mPreviewBuffers[i].dataPtr, graphicBuffer, graphicBuffer->getStrongCount());
+                if (mPreviewBuffers[i].gfxInfo.locked) {
+                    graphicBuffer->unlock();
+                    mPreviewBuffers[i].gfxInfo.locked = false;
+                }
+                graphicBuffer->decStrong(this);
+                mPreviewBuffers[i].gfxInfo.gfxBuffer = NULL;
+            }
             if (mPreviewBuffers[i].buff != NULL) {
                 mPreviewBuffers[i].buff->release(mPreviewBuffers[i].buff);
                 mPreviewBuffers[i].buff = NULL;
@@ -4467,6 +4898,12 @@ status_t AtomISP::freePreviewBuffers()
         delete [] mPreviewBuffers;
         mPreviewBuffers = NULL;
     }
+
+    if (mHALZSLEnabled) {
+        freeHALZSLBuffers();
+        mHALZSLPreviewBuffers.clear();
+    }
+
     return NO_ERROR;
 }
 
@@ -4512,8 +4949,19 @@ status_t AtomISP::freePostviewBuffers()
     LOG1("@%s: freeing %d", __FUNCTION__, mPostviewBuffers.size());
 
     for (size_t i = 0 ; i < mPostviewBuffers.size(); i++) {
-        if (mPostviewBuffers[i].buff != NULL) {
-            mPostviewBuffers[i].buff->release(mPostviewBuffers[i].buff);
+        AtomBuffer &buffer = mPostviewBuffers.editItemAt(i);
+        if (mHALZSLEnabled)
+            mScaler->unRegisterBuffer(buffer, ScalerService::SCALER_OUTPUT);
+
+        GraphicBuffer *graphicBuffer = (GraphicBuffer *) buffer.gfxInfo.gfxBuffer;
+        if (buffer.gfxInfo.locked) {
+            LOG1("@%s unlocking gfx buffer with pointer %p (graphic win buf %p) refcount %d", __FUNCTION__, buffer.dataPtr, graphicBuffer, graphicBuffer->getStrongCount());
+            graphicBuffer->unlock();
+        }
+        graphicBuffer->decStrong(this);
+
+        if (buffer.buff != NULL) {
+            buffer.buff->release(buffer.buff);
         }
     }
     mPostviewBuffers.clear();
@@ -5638,7 +6086,7 @@ status_t AtomISP::PreviewStreamSource::observe(IAtomIspObserver::Message *msg)
 try_again:
     ret = mISP->pollPreview(ATOMISP_PREVIEW_POLL_TIMEOUT);
     if (ret > 0) {
-        LOG2("Entering dequeue : num-of-buffers queued %d", mISP->mNumPreviewBuffersQueued);
+        LOG2("@%s Entering dequeue : num-of-buffers queued %d", __FUNCTION__, mISP->mNumPreviewBuffersQueued);
         status = mISP->getPreviewFrame(&msg->data.frameBuffer.buff);
         if (status != NO_ERROR) {
             msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
@@ -5650,7 +6098,7 @@ try_again:
                 msg->data.frameBuffer.buff.status = FRAME_STATUS_SKIPPED;
         }
     } else {
-        LOGE("v4l2_poll for preview device failed! (%s)", (ret==0)?"timeout":"error");
+        LOGE("@%s v4l2_poll for preview device failed! (%s)", __FUNCTION__, (ret==0)?"timeout":"error");
         msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
         status = (ret==0)?TIMED_OUT:UNKNOWN_ERROR;
     }
@@ -5660,10 +6108,10 @@ try_again:
         // for returnBuffer()
         while(mISP->mNumPreviewBuffersQueued < 1) {
             if (++failCounter > retry_count) {
-                LOGD("There were no preview buffers returned in time");
+                LOGD("@%s There were no preview buffers returned in time", __FUNCTION__);
                 break;
             }
-            LOGW("Preview stream starving from buffers!");
+            LOGW("@%s Preview stream starving from buffers!", __FUNCTION__);
             usleep(ATOMISP_GETFRAME_STARVING_WAIT);
         }
 

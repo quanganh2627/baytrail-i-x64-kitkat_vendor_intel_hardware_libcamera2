@@ -231,7 +231,7 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mPictureThread = new PictureThread(m3AControls);
+    mPictureThread = new PictureThread(m3AControls, mScalerService);
     if (mPictureThread == NULL) {
         LOGE("error creating PictureThread");
         goto bail;
@@ -1017,6 +1017,8 @@ status_t ControlThread::handleMessageExit(MessageExit *msg)
  */
 status_t ControlThread::handleContinuousPreviewBackgrounding()
 {
+    LOG1("@%s", __FUNCTION__);
+
     if (mThreadRunning == false)
         return INVALID_OPERATION;
 
@@ -1291,14 +1293,17 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
     int vfWidth = 0, vfHeight = 0;
     params.getPictureSize(&picWidth, &picHeight);
     params.getPreviewSize(&vfWidth, &vfHeight);
-    if (picWidth < vfWidth && picHeight < vfHeight) {
+    if ((PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW &&
+        picWidth < vfWidth && picHeight < vfHeight) ||
+        !PlatformData::snapshotResolutionSupportedByZSL(mCameraId, picWidth, picHeight)) {
         LOG1("@%s: picture-size smaller than preview-size, disabling continuous mode", __FUNCTION__);
         return STATE_PREVIEW_STILL;
     }
 
     // Low preview resolutions have known issues in continuous mode.
     // TODO: to be removed, tracked in BZ 81396
-    if (vfWidth < 640 && vfHeight < 360) {
+    if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW &&
+        vfWidth < 640 && vfHeight < 360) {
         LOG1("@%s: continuous mode not available for preview size %ux%u",
              __FUNCTION__, vfWidth, vfHeight);
         return STATE_PREVIEW_STILL;
@@ -2678,7 +2683,8 @@ status_t ControlThread::captureStillPic()
                               || mBurstLength > 1)               // proprietary preview update mode or burst
                            && mBurstStart >= 0;                  // negative fixed burst start index
     // Synchronise jpeg callback with postview rendering in case of single capture
-    bool syncJpegCbWithPostview = !mHdr.enabled && (mBurstLength <= 1);
+    bool syncJpegCbWithPostview = !mHdr.enabled && (mBurstLength <= 1) &&
+            (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD);
     bool requestPostviewCallback = true;
     bool requestRawCallback = true;
 
@@ -2814,11 +2820,13 @@ status_t ControlThread::captureStillPic()
     /*
      *  Pre-capture skip.
      *  we can skip frames for 2 reasons:
-     *  - If the current camera does not have 3A, then we should skip the first
-     *    frames in order to allow the sensor to warm up.
-     *  - If we are capturing a RAW image
+     *  - if the we are using a SOC sensor in on-line mode, we just changed
+     *    modes and we need to skip some frames for the sensor to converge to
+     *    decent 3A params
+     *  - if we are using a raw sensor to capture (and dump) raw bayer images.
+     *    We are also using online mode and we need the skip for sensor
      */
-    if ((PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) ||
+    if ((mState != STATE_CONTINUOUS_CAPTURE && PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) ||
          CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
 
         int framesToSkip = CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW) ?
@@ -4299,8 +4307,14 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
     mAllocatedSnapshotBuffers.clear();
     mAvailableSnapshotBuffers.clear();
 
+    // check need to register bufs to scaler.. can't use ISP since ISP isn't
+    // configured yet, so do it by checking the preview mode and sensor type
+    ControlThread::State state = selectPreviewMode(mParameters);
+    bool registerToScaler = (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) &&
+            (state == STATE_CONTINUOUS_CAPTURE);
+
     status = mPictureThread->allocSharedBuffers(picWidth, picHeight, bufCount,format,
-                                                &mAllocatedSnapshotBuffers);
+                                                &mAllocatedSnapshotBuffers, registerToScaler);
 
     if (status != NO_ERROR) {
        LOGE("Could not pre-allocate picture buffers!");

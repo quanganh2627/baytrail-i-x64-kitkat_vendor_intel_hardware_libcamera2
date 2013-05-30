@@ -32,7 +32,7 @@ static const int SIZE_OF_APP0_MARKER = 18;      /* Size of the JFIF App0 marker
                                                  * SOI. And sometimes needs to be removed
                                                  */
 
-PictureThread::PictureThread(I3AControls *aaaControls) :
+PictureThread::PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler) :
     Thread(true) // callbacks may call into java
     ,mMessageQueue("PictureThread", MESSAGE_ID_MAX)
     ,mThreadRunning(false)
@@ -49,6 +49,7 @@ PictureThread::PictureThread(I3AControls *aaaControls) :
     ,mInputBufferArray(NULL)
     ,mInputBuffDataArray(NULL)
     ,mInputBuffers(0)
+    ,mScaler(scaler)
     ,m3AControls(aaaControls)
 {
     LOG1("@%s", __FUNCTION__);
@@ -236,7 +237,8 @@ void PictureThread::initialize(const CameraParameters &params)
 }
 
 status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuffersNum,
-                                           int format, Vector<AtomBuffer> *bufs)
+                                           int format, Vector<AtomBuffer> *bufs,
+                                           bool registerToScaler)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
@@ -246,6 +248,7 @@ status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuff
     msg.data.alloc.numBufs = sharedBuffersNum;
     msg.data.alloc.format = format;
     msg.data.alloc.bufs = bufs;
+    msg.data.alloc.registerToScaler = registerToScaler;
 
     return mMessageQueue.send(&msg, MESSAGE_ID_ALLOC_BUFS);
 }
@@ -416,7 +419,7 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
 
     /* re-allocates array of input buffers into mInputBufferArray */
     freeInputBuffers();
-    status = allocateInputBuffers(msg->format, msg->width, msg->height, msg->numBufs);
+    status = allocateInputBuffers(msg->format, msg->width, msg->height, msg->numBufs, msg->registerToScaler);
     if(status != NO_ERROR)
         goto exit_fail;
 
@@ -439,7 +442,7 @@ exit_fail:
     return status;
 }
 
-status_t PictureThread::allocateInputBuffers(int format, int width, int height, int numBufs)
+status_t PictureThread::allocateInputBuffers(int format, int width, int height, int numBufs, bool registerToScaler)
 {
     LOG1("@%s size (%dx%d) num %d", __FUNCTION__, width, height, numBufs);
     // temporary workaround until CSS supports buffers with different strides
@@ -460,7 +463,7 @@ status_t PictureThread::allocateInputBuffers(int format, int width, int height, 
     mInputBuffers = numBufs;
 
     for (int i = 0; i < mInputBuffers; i++) {
-        mCallbacks->allocateMemory(&mInputBufferArray[i], bufferSize);
+        mCallbacks->allocateGraphicBuffer(mInputBufferArray[i], width, height);
         if (mInputBufferArray[i].dataPtr == NULL) {
             mInputBuffers = i;
             goto bailout;
@@ -473,6 +476,9 @@ status_t PictureThread::allocateInputBuffers(int format, int width, int height, 
         mInputBufferArray[i].type = ATOM_BUFFER_SNAPSHOT;
         mInputBufferArray[i].status = FRAME_STATUS_OK;
         mInputBuffDataArray[i] = (char *) mInputBufferArray[i].dataPtr;
+        if (registerToScaler)
+            mScaler->registerBuffer(mInputBufferArray[i], ScalerService::SCALER_OUTPUT);
+
         LOG2("Snapshot buffer[%d] allocated, ptr = %p",i,mInputBufferArray[i].dataPtr);
 
     }
@@ -490,6 +496,13 @@ void PictureThread::freeInputBuffers()
 
     if(mInputBufferArray != NULL) {
        for (int i = 0; i < mInputBuffers; i++) {
+           if (mInputBufferArray[i].gfxInfo.locked)
+               mInputBufferArray[i].gfxInfo.gfxBuffer->unlock();
+           if (mInputBufferArray[i].gfxInfo.scalerId != -1) {
+               mScaler->unRegisterBuffer(mInputBufferArray[i], ScalerService::SCALER_OUTPUT);
+               mInputBufferArray[i].gfxInfo.scalerId = -1;
+           }
+           mInputBufferArray[i].gfxInfo.gfxBuffer->decStrong(this);
            if (mInputBufferArray[i].buff != NULL) {
                mInputBufferArray[i].buff->release(mInputBufferArray[i].buff);
                mInputBufferArray[i].buff = NULL;

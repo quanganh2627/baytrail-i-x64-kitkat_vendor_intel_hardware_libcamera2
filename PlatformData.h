@@ -664,6 +664,16 @@ class PlatformData {
     static bool resolutionSupportedByVFPP(int cameraId, int width, int height);
 
     /**
+     * Returns whether the snapshot resolution has ZSL support
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \param width of resolution
+     * \param height of resolution
+     * \return true if resolution support ZSL, false if not
+     */
+    static bool snapshotResolutionSupportedByZSL(int cameraId, int width, int height);
+
+    /**
      * Returns the relative rotation between the camera normal scan order
      * and the display attached to the HW overlay.
      * A rotation of this magnitud is required to render correctly the preview
@@ -889,6 +899,7 @@ public:
                                            camera and the display attached to the overlay */
         // VFPP limited resolutions (sensor blanking time dependent
         Vector<Size> mVFPPLimitedResolutions; // preview resolutions with VFPP limitations
+        Vector<Size> mZSLUnsupportedSnapshotResolutions; // snapshot resolutions not supported by ZSL
         bool continuousCapture;
         // burst
         String8 supportedBurstFPS; // TODO: it will be removed in the future

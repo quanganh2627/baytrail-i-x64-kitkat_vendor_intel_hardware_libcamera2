@@ -396,7 +396,7 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
             if (snapshotBuf.type == ATOM_BUFFER_PREVIEW_GFX) {
                 convertGfx2Regular(&snapshotBuf, &tmpCopy);
                 releaseTmp = true;
-            } else if (snapshotBuf.buff != NULL && mCallbacks->msgTypeEnabled(CAMERA_MSG_RAW_IMAGE)) {
+            } else if (snapshotBuf.dataPtr != NULL && mCallbacks->msgTypeEnabled(CAMERA_MSG_RAW_IMAGE)) {
                 LOG1("snapshotBuf.size:%d", snapshotBuf.size);
 
                 mCallbacks->allocateMemory(&tmpCopy.buff, snapshotBuf.size, false);
