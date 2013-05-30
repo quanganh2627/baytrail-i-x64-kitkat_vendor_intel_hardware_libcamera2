@@ -34,6 +34,11 @@ public:
     VideoThread();
     virtual ~VideoThread();
 
+// prevent copy constructor and assignment operator
+private:
+    VideoThread(const VideoThread& other);
+    VideoThread& operator=(const VideoThread& other);
+
 // Thread overrides
 public:
     status_t requestExitAndWait();

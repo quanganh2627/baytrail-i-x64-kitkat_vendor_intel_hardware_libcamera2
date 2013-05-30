@@ -97,6 +97,11 @@ public:
     PreviewThread();
     virtual ~PreviewThread();
 
+// prevent copy constructor and assignment operator
+private:
+    PreviewThread(const PreviewThread& other);
+    PreviewThread& operator=(const PreviewThread& other);
+
 // Thread overrides
 public:
     status_t requestExitAndWait();

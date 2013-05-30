@@ -51,6 +51,11 @@ public:
     BracketManager(AtomISP *isp, I3AControls *aaaControls);
     virtual ~BracketManager();
 
+// prevent copy constructor and assignment operator
+private:
+    BracketManager(const BracketManager& other);
+    BracketManager& operator=(const BracketManager& other);
+
 // Thread overrides
 public:
     status_t requestExitAndWait();

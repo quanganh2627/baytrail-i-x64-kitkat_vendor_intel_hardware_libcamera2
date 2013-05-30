@@ -72,6 +72,11 @@ public:
     explicit ControlThread(int cameraId);
     virtual ~ControlThread();
 
+// prevent copy constructor and assignment operator
+private:
+    ControlThread(const ControlThread& other);
+    ControlThread& operator=(const ControlThread& other);
+
 // Thread overrides
 public:
     status_t requestExitAndWait();

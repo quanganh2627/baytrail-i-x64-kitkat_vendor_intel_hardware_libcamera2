@@ -77,6 +77,11 @@ public:
         FLASH_STAGE_SHOT_EXPOSED
     };
 
+// prevent copy constructor and assignment operator
+private:
+    AAAThread(const AAAThread& other);
+    AAAThread& operator=(const AAAThread& other);
+
 // Thread overrides
 public:
     status_t requestExitAndWait();

@@ -79,6 +79,11 @@ namespace android {
         int dumpImage2FileFlush(bool bufflag = true);
         void set3AControls(I3AControls *aaaControls);
 
+    // prevent copy constructor and assignment operator
+    private:
+        CameraDump(const CameraDump& other);
+        CameraDump& operator=(const CameraDump& other);
+
     private:
         CameraDump();
         int getRawDataPath(char *ppath);

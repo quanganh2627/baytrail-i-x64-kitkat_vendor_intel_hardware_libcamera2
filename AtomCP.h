@@ -68,6 +68,11 @@ public:
     status_t uninitializeHDR(void)STAT_STUB;
     static status_t setIaFrameFormat(ia_frame *inputBuf, int v4l2Format)STAT_STUB;
 
+// prevent copy constructor and assignment operator
+private:
+    AtomCP(const AtomCP& other);
+    AtomCP& operator=(const AtomCP& other);
+
 private:
     ia_env mPrintFunctions;
     ia_acceleration mAccAPI;

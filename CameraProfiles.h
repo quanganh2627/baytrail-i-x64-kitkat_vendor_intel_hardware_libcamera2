@@ -55,6 +55,11 @@ public:
 
     unsigned getSensorNum(void) {return mSensorNum;};
 
+// prevent copy constructor and assignment operator
+private:
+    CameraProfiles(const CameraProfiles& other);
+    CameraProfiles& operator=(const CameraProfiles& other);
+
 private:
     enum DataField {
         FIELD_INVALID = 0,

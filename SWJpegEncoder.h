@@ -62,6 +62,11 @@ public:
     int doJpegEncoding(const void* nv12_buf);
     void getJpegSize(int *jpegSize);
 
+// prevent copy constructor and assignment operator
+private:
+    SWJpegEncoder(const SWJpegEncoder& other);
+    SWJpegEncoder& operator=(const SWJpegEncoder& other);
+
 private:
     typedef struct {
         struct jpeg_destination_mgr pub;

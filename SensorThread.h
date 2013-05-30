@@ -65,6 +65,11 @@ public:
      */
     void unRegisterOrientationListener(IOrientationListener* listener);
 
+// prevent copy constructor and assignment operator
+private:
+    SensorThread(const SensorThread& other);
+    SensorThread& operator=(const SensorThread& other);
+
 // inherited from Thread
 private:
     virtual bool threadLoop();

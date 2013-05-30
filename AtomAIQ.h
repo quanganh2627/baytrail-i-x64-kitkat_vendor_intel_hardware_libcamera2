@@ -206,6 +206,11 @@ private:
     void getSensorFrameParams(ia_aiq_sensor_frame_params *frame_params);
     int dumpMknToFile();
 
+// prevent copy constructor and assignment operator
+private:
+    AtomAIQ(const AtomAIQ& other);
+    AtomAIQ& operator=(const AtomAIQ& other);
+
 public:
     static AtomAIQ* getInstance(AtomISP *anISP = NULL) {
         if (mInstance == NULL) {

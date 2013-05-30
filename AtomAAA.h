@@ -151,6 +151,11 @@ private:
     void getSensorFrameParams(ia_aiq_sensor_frame_params *frame_params,
                               struct atomisp_sensor_mode_data *sensor_mode_data);
 
+// prevent copy constructor and assignment operator
+private:
+    AtomAAA(const AtomAAA& other);
+    AtomAAA& operator=(const AtomAAA& other);
+
 public:
     static AtomAAA* getInstance(AtomISP *anISP = NULL) {
         if (mInstance == NULL) {

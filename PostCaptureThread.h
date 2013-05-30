@@ -91,6 +91,11 @@ public:
     // Thread class overrides
     status_t requestExitAndWait();
 
+// prevent copy constructor and assignment operator
+private:
+    PostCaptureThread(const  PostCaptureThread& other);
+    PostCaptureThread& operator=(const PostCaptureThread& other);
+
 private:
     // thread message id's
     enum MessageId {
