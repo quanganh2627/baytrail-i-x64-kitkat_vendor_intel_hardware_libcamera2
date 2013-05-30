@@ -771,6 +771,28 @@ class PlatformData {
      * \return the board name, it'll return NULL when it fails
     */
     static status_t createVendorPlatformProductName(String8& name);
+
+    /**
+     * Returns frame latency for analog gain applying
+     *
+     * \return the frame latency for analog gain applying
+    */
+    static int getSensorGainLag(void);
+
+    /**
+     * Returns frame latency for exposure applying
+     *
+     * \return the frame latency for exposure applying
+    */
+    static int getSensorExposureLag(void);
+
+    /**
+     * Returns whether to use frame synchronization for exposure applying
+     *
+     * \return true if synchronisation needed
+    */
+    static bool synchronizeExposure(void);
+
 };
 
 /**
@@ -798,9 +820,11 @@ public:
         mSupportAIQ = false;
         mSupportDualVideo = false;
         mPreviewFormat = V4L2_PIX_FMT_NV12;
+        mSensorGainLag = 0;
+        mSensorExposureLag = 1;
    };
 
- protected:
+protected:
 
     /**
      * Camera feature info that is specific to camera id
@@ -918,6 +942,7 @@ public:
                 ,CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO
                 ,CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
             defaultFocusMode.appendFormat("%s", CameraParameters::FOCUS_MODE_AUTO);
+            synchronizeExposure = false;
         };
 
         SensorType sensorType;
@@ -1000,6 +1025,11 @@ public:
         String8 supportedFocusModes;
         String8 defaultFocusMode;
 
+        // SensorSyncManager
+        // TODO: implement more control for how to synchronize, e.g. into
+        //       which event and how (per sensor specific implementations
+        //       available)
+        bool synchronizeExposure;
     };
 
     // note: Android NDK does not yet support C++11 and
@@ -1049,6 +1079,11 @@ public:
 
     /* blackbay, or merr_vv, or redhookbay, or victoriabay... */
     String8 mBoardName;
+
+
+    int mSensorGainLag;
+
+    int mSensorExposureLag;
 };
 
 } /* namespace android */

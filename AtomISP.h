@@ -280,7 +280,7 @@ public:
     // IHWSensorControl overloads, TODO: move them all
     // TODO: replacing fixed value of AE_DELAY_FRAMES in AtomAIQ.h in non-functional API refactory
     //       this value exists in CPF and needs awareness of frames timing.
-    virtual unsigned int getExposureDelay() { return 2; };
+    virtual unsigned int getExposureDelay() { return PlatformData::getSensorExposureLag(); };
     virtual int setExposure(struct atomisp_exposure *exposure);
 
     /* ISP related controls */

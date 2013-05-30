@@ -192,6 +192,18 @@ status_t ControlThread::init()
         goto bail;
     }
 
+    mSensorSyncManager = new SensorSyncManager((IHWSensorControl*) mISP);
+    if (mSensorSyncManager == NULL) {
+        LOGE("Error creating sensor sync manager");
+        goto bail;
+    }
+
+    status = mSensorSyncManager->init();
+    if (status != NO_ERROR) {
+        LOGD("Error initializing sensor sync manager");
+        mSensorSyncManager.clear();
+    }
+
     // Choose 3A interface based on the sensor type
     if (createAtom3A() != NO_ERROR) {
         LOGE("error creating AAA");
@@ -479,6 +491,9 @@ void ControlThread::deinit()
             m3AControls = NULL;
         }
     }
+
+    if (mSensorSyncManager != NULL)
+        mSensorSyncManager.clear();
 
     if (mCP != NULL) {
         if (mHdr.enabled)
@@ -1514,6 +1529,9 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Alloc_Preview_Buffer");
     if (m3AControls->isIntel3A()) {
+        // Enable auto-focus by default
+        m3AControls->setAfEnabled(true);
+        m3AThread->enable3A();
         if (m3AControls->switchModeAndRate(mode, mISP->getFrameRate()) != NO_ERROR)
             LOGE("Failed switching 3A at %.2f fps", mISP->getFrameRate());
 
@@ -1526,6 +1544,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
         mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_3A_STAT_READY);
         mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
+        if (mSensorSyncManager != NULL)
+            mISP->attachObserver(mSensorSyncManager.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
     }
     // ControlThread must be the observer before PreviewThread to ensure that
     // the recording buffer dequeue handling message is guaranteed to happen
@@ -1545,17 +1565,18 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (status == NO_ERROR) {
         mState = state;
         mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED);
-        if (m3AControls->isIntel3A()) {
-            // Enable auto-focus by default
-            m3AControls->setAfEnabled(true);
-            m3AThread->enable3A();
-        }
     } else {
         LOGE("Error starting ISP!");
         mPreviewThread->returnPreviewBuffers();
         mISP->detachObserver(mPreviewThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
         mISP->detachObserver(mDvs, AtomISP::OBSERVE_PREVIEW_STREAM);
         mISP->detachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
+        if (m3AControls->isIntel3A()) {
+            mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+            mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
+            if (mSensorSyncManager != NULL)
+                mISP->detachObserver(mSensorSyncManager.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
+        }
     }
 
     return status;
@@ -1607,6 +1628,8 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     if (m3AControls->isIntel3A()) {
         mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_3A_STAT_READY);
         mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
+        if (mSensorSyncManager != NULL)
+            mISP->detachObserver(mSensorSyncManager.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
         // Detaching DVS observer. Just to make sure, although it might not be attached:
         // might be a non-RAW sensor, or enabling failed on startPreviewCore().
         // It is OK to detach; if the observer is not attached, detachObserver()
@@ -6100,7 +6123,10 @@ status_t ControlThread::createAtom3A()
     if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
         HWControlGroup hwcg;
 
-        hwcg.mSensorCI = (IHWSensorControl*) mISP;
+        if (mSensorSyncManager != NULL)
+            hwcg.mSensorCI = (IHWSensorControl*) mSensorSyncManager.get();
+        else
+            hwcg.mSensorCI = (IHWSensorControl*) mISP;
 
         if(PlatformData::supportAIQ()) {
             m3AControls = new AtomAIQ(hwcg, mISP);

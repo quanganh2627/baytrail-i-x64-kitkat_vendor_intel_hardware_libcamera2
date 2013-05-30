@@ -47,6 +47,7 @@
 #include "IAtomIspObserver.h"
 #include "PictureThread.h"
 #include "SensorThread.h"
+#include "SensorSyncManager.h"
 
 namespace android {
 
@@ -675,6 +676,7 @@ private:
     sp<SensorThread> mSensorThread;
     sp<BracketManager> mBracketManager;
     sp<PostCaptureThread> mPostCaptureThread;
+    sp<SensorSyncManager> mSensorSyncManager;
 
     MessageQueue<Message, MessageId> mMessageQueue;
     State mState;

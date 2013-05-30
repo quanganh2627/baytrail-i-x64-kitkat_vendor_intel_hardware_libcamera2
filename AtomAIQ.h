@@ -46,6 +46,7 @@ namespace android {
 #define AIQ_MAX_TIME_FOR_AF     2500 // milliseconds
 #define TORCH_INTENSITY         20   // 20%
 #define MAX_NUM_AF_WINDOW       9
+#define AE_DELAY_FRAMES_DEFAULT 2
 
 typedef struct {
     struct atomisp_parm               isp_params;

@@ -279,6 +279,8 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
         mAeState.feedback_delay = 0;
     else {
         mAeState.feedback_delay = mSensorCI->getExposureDelay();
+        if (mAeState.feedback_delay == 0)
+            mAeState.feedback_delay = AE_DELAY_FRAMES_DEFAULT;
     }
 
     /* Invalidate and re-run AEC to re-calculate sensor exposure for potential changes
@@ -1488,6 +1490,11 @@ int AtomAIQ::run3aInit()
     if (mSensorCI == NULL)
         return -1;
     unsigned int store_size = mSensorCI->getExposureDelay() + 1; /* max delay + current results */
+    if (store_size == 1) {
+        // IHWSensorControl API returned 0 delay this means not set,
+        // using default
+        store_size += AE_DELAY_FRAMES_DEFAULT;
+    }
     mAeState.stored_results = new AtomFifo<stored_ae_results>(store_size);
     if (mAeState.stored_results == NULL)
         return -1;

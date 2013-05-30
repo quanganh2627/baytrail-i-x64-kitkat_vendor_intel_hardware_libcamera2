@@ -58,8 +58,8 @@ LOCAL_SRC_FILES := \
 	AtomIspObserverManager.cpp \
 	SensorThread.cpp \
 	ScalerService.cpp \
-	PostCaptureThread.cpp
-
+	PostCaptureThread.cpp \
+	SensorSyncManager.cpp
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SRC_FILES += \
