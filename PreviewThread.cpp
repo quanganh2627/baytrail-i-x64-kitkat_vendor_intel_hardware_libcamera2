@@ -657,10 +657,10 @@ PreviewThread::GfxAtomBuffer* PreviewThread::dequeueFromWindow()
         // Typically at least two frames must be kept in native window
         // when streaming.
         if (mBuffersInWindow > mMinUndequeued) {
-            int err, stride;
-            buffer_handle_t *buf;
+            int err(-1), stride(0);
+            buffer_handle_t *buf(NULL);
             err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride);
-            if (err != 0) {
+            if (err != 0 || buf == NULL) {
                 LOGW("Error dequeuing preview buffer");
             } else {
                 // If Gfx frame buffer stride is greater than ISP buffer stride, we can
@@ -668,12 +668,10 @@ PreviewThread::GfxAtomBuffer* PreviewThread::dequeueFromWindow()
                 // requirement, so we should change the lockMode as CPU writable.
                 if (stride > mPreviewStride)
                     lockMode |= GRALLOC_USAGE_SW_WRITE_OFTEN;
-                size_t i = 0;
                 ret = lookForGfxBufferHandle(buf);
                 if (ret == NULL) {
                     if (mFetchDone) {
-                        LOGW("unknown gfx buffer dequeued, i %d, ptr %p",
-                             i, mPreviewBuffers[i].gfxBufferHandle);
+                        LOGW("unknown gfx buffer dequeued, handle=%p", buf);
                         mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
                     } else {
                         // stream-time fetching until target buffer count
@@ -746,15 +744,15 @@ PreviewThread::fetchReservedBuffers(int reservedBufferCount)
     if (reservedBufferCount > 0 && mReservedBuffers.isEmpty()) {
         GraphicBufferMapper &mapper = GraphicBufferMapper::get();
         AtomBuffer tmpBuf;
-        int err, stride;
-        buffer_handle_t *buf;
-        void *dst;
+        int err(-1), stride(0);
+        buffer_handle_t *buf(NULL);
+        void *dst(NULL);
         int lockMode = GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_NEVER;
         const Rect bounds(mPreviewWidth, mPreviewHeight);
         for (int i = 0; i < reservedBufferCount; i++) {
             err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride);
-            if(err != 0) {
-                LOGE("Surface::dequeueBuffer returned error %d", err);
+            if(err != 0 || buf == NULL) {
+                LOGE("Surface::dequeueBuffer returned error %d (buf=%p)", err, buf);
                 status = UNKNOWN_ERROR;
                 goto freeDeQueued;
             }
@@ -810,7 +808,7 @@ PreviewThread::lookForGfxBufferHandle(buffer_handle_t *handle)
     }
 
     if (mFetchDone)
-        LOGE("%s: Unknown buffer handle!", __FUNCTION__);
+        LOGE("%s: Unknown buffer handle(%p)!", __FUNCTION__, handle);
 
     return NULL;
 }
@@ -833,7 +831,7 @@ PreviewThread::lookForAtomBuffer(AtomBuffer *buffer)
         }
     }
 
-    LOGE("%s: Unknown buffer !", __FUNCTION__);
+    LOGE("%s: Unknown buffer(%p)!", __FUNCTION__, buffer);
 
     return NULL;
 }
@@ -1154,9 +1152,9 @@ status_t PreviewThread::handleFetchPreviewBuffers()
     if (mSharedMode && mPreviewBuffers.isEmpty()) {
         GraphicBufferMapper &mapper = GraphicBufferMapper::get();
         AtomBuffer tmpBuf;
-        int err;
-        buffer_handle_t *buf;
-        void *dst;
+        int err(-1);
+        buffer_handle_t *buf(NULL);
+        void *dst(NULL);
         int lockMode = GRALLOC_USAGE_SW_READ_OFTEN |
                        GRALLOC_USAGE_SW_WRITE_NEVER |
                        GRALLOC_USAGE_HW_COMPOSER;
@@ -1170,8 +1168,8 @@ status_t PreviewThread::handleFetchPreviewBuffers()
 
         for (size_t i = 0; i < mNumOfPreviewBuffers; i++) {
             err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &mGfxStride);
-            if(err != 0) {
-                LOGE("Surface::dequeueBuffer returned error %d", err);
+            if(err != 0 || buf == NULL) {
+                LOGE("Surface::dequeueBuffer returned error %d (buf=%p)", err, buf);
                 status = UNKNOWN_ERROR;
                 goto freeDeQueued;
             }
@@ -1348,13 +1346,13 @@ status_t PreviewThread::freeGfxPreviewBuffers() {
 int PreviewThread::getGfxBufferStride(void)
 {
     int stride = 0;
-    buffer_handle_t *buf;
-    int err;
+    buffer_handle_t *buf(NULL);
+    int err(-1);
     err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride);
-    if (!err)
+    if (!err || buf != NULL)
         mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
     else
-        LOGE("Surface::dequeueBuffer returned error %d", err);
+        LOGE("Surface::dequeueBuffer returned error %d (buf=%p)", err, buf);
 
     return stride;
 }
@@ -1447,14 +1445,14 @@ status_t PreviewThread::handlePostview(MessagePreview *msg)
         // copy our postview.
         AtomBuffer tmpBuf = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
         getEffectiveDimensions(&tmpBuf.width,&tmpBuf.height);
-        buffer_handle_t *buf;
+        buffer_handle_t *buf(NULL);
 
         const Rect bounds(tmpBuf.width, tmpBuf.height);
 
         // queue one from the window
         err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &tmpBuf.stride);
-        if (err != 0) {
-            LOGW("Error dequeuing preview buffer for postview");
+        if (err != 0 || buf == NULL) {
+            LOGW("Error dequeuing preview buffer for postview. error=%d (buf=%p)", err, buf);
             return UNKNOWN_ERROR;
         }
 
