@@ -437,6 +437,16 @@ const char* PlatformData::defaultAeMetering(int cameraId)
     return i->mCameras[cameraId].defaultAeMetering;
 }
 
+const char* PlatformData::supportedAeLock(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return NULL;
+    }
+    return i->mCameras[cameraId].supportedAeLock;
+}
+
 const char* PlatformData::supportedMaxSaturation(int cameraId)
 {
     const char *sPtr;
@@ -849,6 +859,16 @@ const char* PlatformData::supportedPreviewFrameRate(int cameraId)
       return "";
     }
     return i->mCameras[cameraId].supportedPreviewFrameRate;
+}
+
+const char* PlatformData::supportedAwbLock(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return NULL;
+    }
+    return i->mCameras[cameraId].supportedAwbLock;
 }
 
 const char* PlatformData::supportedPreviewFPSRange(int cameraId)

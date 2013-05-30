@@ -291,6 +291,14 @@ class PlatformData {
     static const char* defaultAeMetering(int cameraId);
 
     /**
+     * AE lock supported value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return true as a string if AE lock is supported, false if not.
+     */
+    static const char* supportedAeLock(int cameraId);
+
+    /**
      * Saturation default value
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
@@ -493,6 +501,14 @@ class PlatformData {
      * \return the value of the awb mode default value as a string.
      */
     static const char* defaultAwbMode(int cameraId);
+
+    /**
+     * AWB lock supported value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return true as a string if AWB lock is supported, false if not.
+     */
+    static const char* supportedAwbLock(int cameraId);
 
     /**
      * preview frame rate supported value
@@ -809,9 +825,11 @@ public:
                 ,CameraParameters::WHITE_BALANCE_DAYLIGHT
                 ,CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT);
             defaultAwbMode.appendFormat("%s", CameraParameters::WHITE_BALANCE_AUTO);
+            supportedAwbLock = "true";
             //ae metering
             supportedAeMetering = "auto,center,spot";
             defaultAeMetering = "auto";
+            supportedAeLock = "true";
             //preview
             supportedPreviewFrameRate = "30,15,10";
             supportedPreviewFPSRange = "(10500,30304),(11000,30304),(11500,30304)";
@@ -858,6 +876,7 @@ public:
         // AE metering
         String8 supportedAeMetering;
         String8 defaultAeMetering;
+        String8 supportedAeLock;
         // saturation
         String8 maxSaturation;
         String8 minSaturation;
@@ -892,6 +911,7 @@ public:
         // awb
         String8 supportedAwbModes;
         String8 defaultAwbMode;
+        String8 supportedAwbLock;
         // preview
         String8 supportedPreviewFrameRate;
         String8 supportedPreviewFPSRange;
