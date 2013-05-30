@@ -480,6 +480,8 @@ void ControlThread::deinit()
     }
 
     if (mCP != NULL) {
+        if (mHdr.enabled)
+            mCP->uninitializeHDR();
         delete mCP;
         mCP = NULL;
     }
@@ -4708,12 +4710,15 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         return INVALID_OPERATION;
     }
 
+    //TODO remove newValIntel whenever we only use HDR scene mode
     // Check the HDR parameters
-    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+    String8 newValIntel = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_HDR_IMAGING);
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              CameraParameters::KEY_SCENE_MODE);
 
-    if (!newVal.isEmpty()) {
-        if(newVal == "on") {
+    if (!newVal.isEmpty() || !newValIntel.isEmpty()) {
+        if(newValIntel == "on" || newVal == CameraParameters::SCENE_MODE_HDR) {
             mHdr.enabled = true;
             mHdr.bracketMode = BRACKET_EXPOSURE;
             mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
@@ -4726,7 +4731,8 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
             } else {
                 LOGE("HDR buffer allocation failed");
             }
-        } else if(newVal == "off") {
+        } else if ((newValIntel.isEmpty() && newVal != CameraParameters::SCENE_MODE_HDR)
+                    || (newValIntel == "off" && newVal != CameraParameters::SCENE_MODE_HDR)) {
             status = mCP->uninitializeHDR();
             if (status != NO_ERROR) {
                 LOGE("HDR buffer release failed");
@@ -4734,17 +4740,18 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
             mHdr.enabled = false;
             mBracketManager->setBracketMode(mHdr.savedBracketMode);
         } else {
+            if(!newValIntel.isEmpty()) {
             LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_IMAGING, newVal.string());
             status = BAD_VALUE;
-        }
-        if (status == NO_ERROR) {
-            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_IMAGING, newVal.string());
+            }
         }
     } else {
         // Re-allocate buffers if resolution changed and HDR was ON
-        const char* o = oldParams->get(IntelCameraParameters::KEY_HDR_IMAGING);
+        const char* oIntel = oldParams->get(IntelCameraParameters::KEY_HDR_IMAGING);
+        const char* o = oldParams->get(CameraParameters::KEY_SCENE_MODE);
         String8 oldVal (o, (o == NULL ? 0 : strlen(o)));
-        if(oldVal == "on" && (newWidth != oldWidth || newHeight != oldHeight)) {
+        String8 oldValIntel (oIntel, (oIntel == NULL ? 0 : strlen(oIntel)));
+        if((oldValIntel == "on" || oldVal == CameraParameters::SCENE_MODE_HDR) && (newWidth != oldWidth || newHeight != oldHeight)) {
             status = mCP->uninitializeHDR();
             if (status == NO_ERROR) {
                 status = mCP->initializeHDR(newWidth, newHeight);
@@ -5004,6 +5011,24 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("on");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_ON);
+                selectFlashModeForScene(newParams);
+            }
+        } else if (newScene == CameraParameters::SCENE_MODE_HDR) {
+            sceneMode = CAM_AE_SCENE_MODE_AUTO;
+            if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
+                newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
+                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "false");
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
+                newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
+            }
+            if (PlatformData::supportsBackFlash()) {
+                mSavedFlashSupported = String8("off");
+                mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
                 selectFlashModeForScene(newParams);
             }
         } else if (newScene == CameraParameters::SCENE_MODE_FIREWORKS) {
