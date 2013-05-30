@@ -1079,6 +1079,11 @@ int PlatformData::getPreviewFormat(void)
     return i->mPreviewFormat;
 }
 
+int PlatformData::getGFXHALPixelFormat(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mHALPixelFormat;
+}
 
 const char* PlatformData::getBoardName(void)
 {

@@ -65,6 +65,7 @@ public:
     void focusMove(bool start);
     void shutterSound();
 
+    status_t allocateGraphicBuffer(AtomBuffer &buf, int width, int height);
     void allocateMemory(AtomBuffer *buff, int size, bool cached = true);
     void allocateMemory(camera_memory_t **buff, size_t size, bool cached = true);
     void facesDetected(camera_frame_metadata_t &face_metadata);

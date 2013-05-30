@@ -119,7 +119,7 @@ static void computeZoomRatios(char *zoom_ratio, int max_count){
 //                          PUBLIC METHODS
 ////////////////////////////////////////////////////////////////////
 
-AtomISP::AtomISP(int cameraId) :
+AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
      mPreviewStreamSource("PreviewStreamSource", this)
     ,mFrameSyncSource("FrameSyncSource", this)
     ,mCameraId(cameraId)
@@ -155,6 +155,7 @@ AtomISP::AtomISP(int cameraId) :
     ,mFrameSyncRequested(0)
     ,mFrameSyncEnabled(false)
     ,mColorEffect(V4L2_COLORFX_NONE)
+    ,mScaler(scalerService)
     ,mObserverManager()
     ,mPublicAeMode(CAM_AE_MODE_AUTO)
     ,mPublicAfMode(CAM_AF_MODE_AUTO)

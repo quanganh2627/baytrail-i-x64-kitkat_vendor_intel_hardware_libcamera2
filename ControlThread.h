@@ -36,6 +36,7 @@
 #include "PostProcThread.h"
 #include "PanoramaThread.h"
 #include "SensorThread.h"
+#include "ScalerService.h"
 #include "PostCaptureThread.h"
 #include "CameraDump.h"
 #include "CameraAreas.h"
@@ -668,6 +669,7 @@ private:
     sp<AAAThread>     m3AThread;
     sp<PostProcThread> mPostProcThread;
     sp<PanoramaThread> mPanoramaThread;
+    sp<ScalerService> mScalerService;
     sp<SensorThread> mSensorThread;
     sp<BracketManager> mBracketManager;
     sp<PostCaptureThread> mPostCaptureThread;

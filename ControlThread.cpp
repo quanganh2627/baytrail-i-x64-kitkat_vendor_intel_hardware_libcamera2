@@ -99,6 +99,7 @@ ControlThread::ControlThread(int cameraId) :
     ,m3AThread(NULL)
     ,mPostProcThread(NULL)
     ,mPanoramaThread(NULL)
+    ,mScalerService(NULL)
     ,mBracketManager(NULL)
     ,mPostCaptureThread(NULL)
     ,mMessageQueue("ControlThread", (int) MESSAGE_ID_MAX)
@@ -168,7 +169,13 @@ status_t ControlThread::init()
     status_t status = UNKNOWN_ERROR;
     CameraDump::setDumpDataFlag();
 
-    mISP = new AtomISP(mCameraId);
+    mScalerService = new ScalerService();
+    if (mScalerService == NULL) {
+        LOGE("error creating ScalerService");
+        goto bail;
+    }
+
+    mISP = new AtomISP(mCameraId, mScalerService);
     if (mISP == NULL) {
         LOGE("error creating ISP");
         goto bail;
@@ -304,6 +311,11 @@ status_t ControlThread::init()
     status = mSensorThread->run("CamHAL_SENSOR");
     if (status != NO_ERROR) {
         LOGE("Error starting sensor thread!");
+        goto bail;
+    }
+    status = mScalerService->run("CamHAL_SCALER");
+    if (status != NO_ERROR) {
+        LOGE("Error starting scaler service!");
         goto bail;
     }
     status = m3AThread->run("CamHAL_3A");
@@ -468,6 +480,11 @@ void ControlThread::deinit()
         delete mISP;
         mISP = NULL;
         PERFORMANCE_TRACES_BREAKDOWN_STEP("DeleteISP");
+    }
+
+    if (mScalerService != NULL) {
+        mScalerService->requestExitAndWait();
+        mScalerService.clear();
     }
 
     if (mULL != NULL) {

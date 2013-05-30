@@ -37,6 +37,7 @@
 #include "CameraConf.h"
 #include "I3AControls.h"
 #include "AtomIspObserverManager.h"
+#include "ScalerService.h"
 
 namespace android {
 
@@ -98,7 +99,7 @@ public:
 
 // constructor/destructor
 public:
-    explicit AtomISP(int cameraId);
+    explicit AtomISP(int cameraId, sp<ScalerService> scalerService);
     ~AtomISP();
 
     status_t initDevice();
@@ -679,6 +680,8 @@ private:
     int mFrameSyncRequested;
     bool mFrameSyncEnabled;
     v4l2_colorfx mColorEffect;
+
+    sp<ScalerService> mScaler;
 
     AtomIspObserverManager mObserverManager;
 

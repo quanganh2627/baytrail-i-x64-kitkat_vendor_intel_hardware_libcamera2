@@ -51,9 +51,11 @@ LOCAL_SRC_FILES := \
 	CameraDump.cpp \
 	CameraAreas.cpp \
 	BracketManager.cpp \
+	GPUScaler.cpp \
 	AtomAcc.cpp \
 	AtomIspObserverManager.cpp \
-	SensorThread.cpp	\
+	SensorThread.cpp \
+	ScalerService.cpp \
 	PostCaptureThread.cpp
 
 
@@ -118,6 +120,8 @@ LOCAL_SHARED_LIBRARIES := \
 	libtbd \
 	libsqlite \
 	libdl \
+	libEGL \
+	libGLESv2 \
 	libgui \
 	libexpat
 

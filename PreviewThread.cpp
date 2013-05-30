@@ -21,9 +21,6 @@
 #include "Callbacks.h"
 #include "CallbacksThread.h"
 #include "ColorConverter.h"
-#ifndef GRAPHIC_IS_GEN // this will be remove if graphic provides one common header file
-#include <hal_public.h>
-#endif
 #include <gui/Surface.h>
 #include "PerformanceTraces.h"
 #include <ui/GraphicBuffer.h>
@@ -1032,11 +1029,7 @@ status_t PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
 
         LOG1("Setting new preview window %p (%dx%d)", mPreviewWindow,w,h);
         mPreviewWindow->set_usage(mPreviewWindow, usage);
-#ifndef GRAPHIC_IS_GEN
-        mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, HAL_PIXEL_FORMAT_NV12);
-#else
-        mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, HAL_PIXEL_FORMAT_YV12);
-#endif
+        mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, PlatformData::getGFXHALPixelFormat());
     }
 
     return NO_ERROR;
@@ -1069,11 +1062,7 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
                 w = msg->height;
                 h = msg->width;
             }
-#ifndef GRAPHIC_IS_GEN
-            mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, HAL_PIXEL_FORMAT_NV12);
-#else
-            mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, HAL_PIXEL_FORMAT_YV12);
-#endif
+            mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, PlatformData::getGFXHALPixelFormat());
         }
 
         /**

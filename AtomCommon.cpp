@@ -48,7 +48,8 @@ AtomBuffer AtomBufferFactory::createAtomBuffer(AtomBufferType type,
                                                int ispPrivate,
                                                bool shared,
                                                struct timeval capture_timestamp,
-                                               void *dataPtr) {
+                                               void *dataPtr,
+                                               GFXBufferInfo *gfxInfo) {
     AtomBuffer buf;
     buf.format = format;
     buf.type = type;
@@ -69,6 +70,14 @@ AtomBuffer AtomBufferFactory::createAtomBuffer(AtomBufferType type,
     buf.frameSequenceNbr = 0;
     if (dataPtr == NULL && buff != NULL)
         buf.dataPtr = buff->data;
+    if (gfxInfo)
+        buf.gfxInfo = *gfxInfo;
+    else {
+        buf.gfxInfo.gfxBuffer = NULL;
+        buf.gfxInfo.gfxBufferHandle = NULL;
+        buf.gfxInfo.scalerId = -1;
+        buf.gfxInfo.locked = false;
+    }
     return buf;
 }
 
