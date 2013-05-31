@@ -26,6 +26,12 @@ BracketManager::BracketManager(AtomISP *isp, I3AControls *aaaControls) :
     Thread(false)
     ,m3AControls(aaaControls)
     ,mISP(isp)
+    ,mFpsAdaptSkip(-1)
+    ,mBurstLength(-1)
+    ,mBurstCaptureNum(-1)
+    ,mSnapshotReqNum(-1)
+    ,mBracketNum(-1)
+    ,mLastFrameSequenceNbr(-1)
     ,mState(STATE_STOPPED)
     ,mMessageQueue("BracketManager", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
@@ -200,6 +206,7 @@ status_t BracketManager::initBracketing(int length, int skip, float *bracketValu
     switch (mBracketing.mode) {
     case BRACKET_EXPOSURE:
         if (mBurstLength > 1) {
+            m3AControls->initAeBracketing();
             m3AControls->setAeMode(CAM_AE_MODE_MANUAL);
 
             mBracketing.values.reset(new float[length]);
@@ -491,6 +498,15 @@ status_t BracketManager::startBracketing()
          */
          skipNum += 2 - mFpsAdaptSkip;
          doBracketNum += 2 - mFpsAdaptSkip;
+        /*
+         *  Because integration time and gain can not become effective immediately
+         *  for some sensors after it has been set into ISP, so need to skip first
+         *  several frames, the skip frame number is configured in CPF
+         */
+         int aeBracketingSkipNum = 0;
+         PlatformData::HalConfig.getValue(aeBracketingSkipNum, CPF::Exposure, CPF::Lag);
+         skipNum += aeBracketingSkipNum;
+         doBracketNum += aeBracketingSkipNum;
     } else if (mBracketing.mode == BRACKET_FOCUS && mFpsAdaptSkip < 1) {
         /*
          *  If we are in Focus Bracketing, and mFpsAdaptSkip < 1, we need to

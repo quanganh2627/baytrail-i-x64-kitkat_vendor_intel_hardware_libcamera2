@@ -170,6 +170,8 @@ AtomISP::AtomISP(int cameraId) :
     CLEAR(mSnapshotBuffers);
     CLEAR(mContCaptConfig);
     mPostviewBuffers.clear();
+    CLEAR(mConfig);
+    memset(v4l2_buf_pool, 0, sizeof(v4l2_buf_pool));
 }
 
 status_t AtomISP::initDevice()
@@ -2916,6 +2918,10 @@ int AtomISP::atomisp_set_attribute (int fd, int attribute_num,
     if (fd < 0)
         return -1;
 
+    CLEAR(control);
+    CLEAR(controls);
+    CLEAR(ext_control);
+
     control.id = attribute_num;
     control.value = value;
     controls.ctrl_class = V4L2_CTRL_ID2CLASS(control.id);
@@ -2950,6 +2956,10 @@ int AtomISP::atomisp_get_attribute (int fd, int attribute_num,
 
     if (fd < 0)
         return -1;
+
+    CLEAR(control);
+    CLEAR(controls);
+    CLEAR(ext_control);
 
     control.id = attribute_num;
     controls.ctrl_class = V4L2_CTRL_ID2CLASS(control.id);
@@ -3536,6 +3546,8 @@ int AtomISP::atomisp_set_capture_mode(int deviceMode)
     int vfpp_mode = deviceMode == CI_MODE_PREVIEW && mPreviewTooBigForVFPP ?
         ATOMISP_VFPP_DISABLE_SCALER : ATOMISP_VFPP_ENABLE;
 
+    CLEAR(parm);
+
     switch (deviceMode) {
     case CI_MODE_PREVIEW:
         LOG1("Setting CI_MODE_PREVIEW mode");
@@ -3651,6 +3663,8 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
     if (mMode == MODE_NONE)
         return INVALID_OPERATION;
 
+    CLEAR(buf);
+
     int index = grabFrame(mPreviewDevice, &buf);
     if(index < 0){
         LOGE("Error in grabbing frame!");
@@ -3755,6 +3769,8 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff)
     if (mMode != MODE_VIDEO)
         return INVALID_OPERATION;
 
+    CLEAR(buf);
+
     int index = grabFrame(mRecordingDevice, &buf);
     LOG2("index = %d", index);
     if(index < 0) {
@@ -3830,6 +3846,8 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 
     if (mMode != MODE_CAPTURE && mMode != MODE_CONTINUOUS_CAPTURE)
         return INVALID_OPERATION;
+
+    CLEAR(buf);
 
     snapshotIndex = grabFrame(V4L2_MAIN_DEVICE, &buf);
     if (snapshotIndex < 0) {
@@ -5167,7 +5185,7 @@ void AtomISP::sensorGetSensorData(sensorPrivateData *sensor_data)
         return;
     }
 
-    otpdata.data = malloc(otpdata.size);
+    otpdata.data = calloc(otpdata.size, 1);
     if (otpdata.data == NULL) {
         LOGD("Failed to allocate memory for OTP data.");
         return;

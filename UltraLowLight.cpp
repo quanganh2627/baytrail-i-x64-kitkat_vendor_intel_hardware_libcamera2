@@ -55,6 +55,7 @@ UltraLowLight::UltraLowLight() : mMorphoCtrl(NULL),
                                  mULLCounter(0),
                                  mWidth(0),
                                  mHeight(0),
+                                 mCurrentPreset(0),
                                  mUserMode(ULL_OFF),
                                  mTrigger(false)
 {
@@ -277,7 +278,7 @@ status_t UltraLowLight::getInputBuffers(Vector<AtomBuffer> *inputs)
 
     Vector<AtomBuffer>::iterator it = mInputBuffers.begin();
 
-    for (;it != mInputBuffers.end(); it++) {
+    for (;it != mInputBuffers.end(); ++it) {
         inputs->push(*it);
     }
 

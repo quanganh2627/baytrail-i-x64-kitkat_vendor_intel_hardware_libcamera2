@@ -3170,8 +3170,6 @@ status_t ControlThread::captureULLPic()
     int pvWidth, pvHeight;
     int picWidth, picHeight, format;
     int cachedBurstLength, cachedBurstStart;
-    PictureThread::MetaData firstPicMetaData;
-    PictureThread::MetaData ullPicMetaData;
     // In case ULL gets triggered with standard preview update mode
     // we display the first postview frame, sync and hide the preview as
     // with standard single capture. Application needs to handle the ULL
@@ -3219,6 +3217,8 @@ status_t ControlThread::captureULLPic()
        if (i == 0) {
            PerformanceTraces::ShutterLag::snapshotTaken(&snapshotBuffer.capture_timestamp);
 
+           PictureThread::MetaData firstPicMetaData;
+           PictureThread::MetaData ullPicMetaData;
            fillPicMetaData(firstPicMetaData, false);
            fillPicMetaData(ullPicMetaData, false);
            mULL->addSnapshotMetadata(ullPicMetaData);

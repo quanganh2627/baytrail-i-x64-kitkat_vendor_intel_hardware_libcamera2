@@ -41,10 +41,10 @@ static void vinfo(const char *fmt, va_list ap)
 }
 }
 
-AtomCP::AtomCP(AtomISP *isp)
+AtomCP::AtomCP(AtomISP *isp) :
+    mISP(isp)
 {
     LOG1("@%s", __FUNCTION__);
-    mISP = isp;
 
     mPrintFunctions.vdebug = vdebug;
     mPrintFunctions.verror = verror;

@@ -192,6 +192,7 @@ public:
     virtual status_t setManualFocusIncrement(int step) = 0;
     virtual status_t initAfBracketing(int stops,  AFBracketingMode mode) = 0;
     virtual status_t updateManualFocus() = 0;
+    virtual status_t initAeBracketing() = 0;
     virtual status_t applyEv(float bias) = 0;
     virtual status_t getExposureInfo(SensorAeConfig& sensorAeConfig) = 0;
     virtual size_t   getAeMaxNumWindows() = 0;

@@ -49,6 +49,7 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs, UltraLowLight *ull, I3
     ,mPreviousFaceCount(0)
     ,mFlashStage(FLASH_STAGE_NA)
     ,mFramesTillExposed(0)
+    ,mBlockForStage(FLASH_STAGE_NA)
 {
     LOG1("@%s", __FUNCTION__);
     mFaceState.faces = new ia_face[MAX_FACES_DETECTABLE];

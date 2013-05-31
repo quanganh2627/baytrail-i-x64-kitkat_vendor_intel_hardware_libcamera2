@@ -25,6 +25,7 @@
 #include "FeatureData.h"
 #include "PlatformData.h"
 #include <system/camera.h>
+#include "AtomCP.h"
 
 namespace android {
 
@@ -562,7 +563,11 @@ status_t PostProcThread::handleMessageSetRotation(MessageConfig &msg)
 
 int PostProcThread::sendFrame(AtomBuffer *img)
 {
-    LOG2("@%s: buf=%p, width=%d height=%d", __FUNCTION__, img, img->width , img->height);
+    if (img != NULL) {
+        LOG2("@%s: buf=%p, width=%d height=%d", __FUNCTION__, img, img->width , img->height);
+    } else {
+        LOG2("@%s: buf=NULL", __FUNCTION__);
+    }
     Message msg;
     msg.id = MESSAGE_ID_FRAME;
 
@@ -749,11 +754,15 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         int rotation;
         src = (unsigned char*) frame.img.dataPtr;
         ia_frame frameData;
+        frameData.format = ia_frame_format_nv12;
         frameData.data = src;
         frameData.size = frame.img.size;
         frameData.width = frame.img.width;
         frameData.height = frame.img.height;
         frameData.stride = frame.img.stride;
+        if (AtomCP::setIaFrameFormat(&frameData, frame.img.format) != NO_ERROR) {
+            LOGE("@%s: setting ia_frame format failed", __FUNCTION__);
+        }
 
         // correcting acceleration sensor orientation result
         // with camera sensor orientation
