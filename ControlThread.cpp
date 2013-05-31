@@ -460,8 +460,10 @@ void ControlThread::deinit()
         mCallbacksThread.clear();
     }
 
-    if (mParamCache != NULL)
+    if (mParamCache != NULL) {
         free(mParamCache);
+        mParamCache = NULL;
+    }
 
     if (m3AControls != NULL) {
         m3AControls->deinit3A();
@@ -5966,7 +5968,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
  */
 status_t ControlThread::updateParameterCache()
 {
-    status_t status = BAD_VALUE;
+    status_t status = NO_ERROR;
 
     mParamCacheLock.lock();
 
@@ -5976,10 +5978,15 @@ status_t ControlThread::updateParameterCache()
 
     String8 params = mParameters.flatten();
     int len = params.length();
-    if (mParamCache)
+    if (mParamCache) {
         free(mParamCache);
+        mParamCache = NULL;
+    }
     mParamCache = strndup(params.string(), sizeof(char) * len);
-    status = NO_ERROR;
+    if (!mParamCache) {
+        status = NO_MEMORY;
+        LOGE("@%s: strndup failed, len = %d", __FUNCTION__, len);
+    }
 
     mParamCacheLock.unlock();
 
