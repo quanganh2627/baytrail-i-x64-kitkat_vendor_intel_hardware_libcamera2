@@ -1094,7 +1094,10 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
 void ControlThread::continuousConfigApplyLimits(AtomISP::ContinuousCaptureConfig &cfg) const
 {
     int minOffset = mISP->continuousBurstNegMinOffset();
-    int skip = mFpsAdaptSkip;
+    int skip = 0;
+
+    if (cfg.numCaptures > 1)
+        skip = mFpsAdaptSkip;
 
     if (mBurstStart < 0) {
         int offset = 0;
@@ -1107,9 +1110,8 @@ void ControlThread::continuousConfigApplyLimits(AtomISP::ContinuousCaptureConfig
     }
     cfg.skip = skip;
 
-    double outFps = mISP->getFrameRate() / (skip + 1);
-    LOG2("@%s: offset %d, skip %d, fps %.1f (for start-index %d, sensor fps %.1f)",
-         __FUNCTION__, cfg.offset, skip, outFps, mBurstStart, mISP->getFrameRate());
+    LOG2("@%s: offset %d, skip %d (for start-index %d)",
+         __FUNCTION__, cfg.offset, skip, mBurstStart);
 }
 
 /**
@@ -1134,17 +1136,15 @@ status_t ControlThread::configureContinuousRingBuffer()
         capturePriority = false;
 
     AtomISP::ContinuousCaptureConfig cfg;
-    if (mULL->isActive())
-        cfg.numCaptures = mULL->MAX_INPUT_BUFFERS;
+    if (mULL->isActive() || mBurstLength > 1)
+        cfg.numCaptures = MAX(mULL->MAX_INPUT_BUFFERS, mBurstLength);
     else
         cfg.numCaptures = 1;
 
     cfg.offset = -(mISP->shutterLagZeroAlign());
     cfg.skip = 0;
-    if (mBurstLength > 1 || mULL->isActive()) {
-        cfg.numCaptures = MAX(mBurstLength,cfg.numCaptures);
-        continuousConfigApplyLimits(cfg);
-    }
+    continuousConfigApplyLimits(cfg);
+
     LOG1("%s numcaptures %d, offset %d, skip %d",__FUNCTION__,
                                                 cfg.numCaptures,
                                                 cfg.offset,
@@ -1710,11 +1710,11 @@ status_t ControlThread::startOfflineCapture()
     cfg.numCaptures = 1;
     cfg.offset = -(mISP->shutterLagZeroAlign());
     cfg.skip = 0;
-
-    if (mBurstLength > 1) {
+    if (mBurstLength > 0)
         cfg.numCaptures = mBurstLength;
-        continuousConfigApplyLimits(cfg);
-    }
+    else
+        cfg.numCaptures = 1;
+    continuousConfigApplyLimits(cfg);
 
     // in case preview has just started, we need to limit
     // how long we can look back
