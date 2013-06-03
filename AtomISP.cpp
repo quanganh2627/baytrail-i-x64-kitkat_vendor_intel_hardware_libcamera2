@@ -5657,12 +5657,6 @@ int AtomISP::setAicParameter(struct atomisp_parameters *aic_param)
     LOG2("@%s", __FUNCTION__);
     int ret;
 
-    // TODO: this code will be removed when the CPF file is valid for saltbay in the future
-    if (strcmp(PlatformData::getBoardName(), "baylake") == 0) {
-       aic_param->ctc_table = NULL;
-       aic_param->gamma_table = NULL;
-    }
-
     if (mNoiseReductionEdgeEnhancement == false) {
         //Disable the Noise Reduction and Edge Enhancement
         memset(aic_param->ee_config, 0, sizeof(struct atomisp_ee_config));
