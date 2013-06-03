@@ -32,7 +32,6 @@ using namespace CPF;
 const char *cpfConfigPath = "/etc/atomisp/";  // Where CPF files are located
 // FIXME: The spec for following is "dr%02d[0-9][0-9]??????????????.cpf"
 const char *cpfConfigPattern = "%02d*.cpf";  // How CPF file name should look
-static const int spIdLength = 4;
 
 // Indicates the number of files whose name contains the vendor,
 // platform and product id's
@@ -745,7 +744,7 @@ status_t CpfStore::findConfigWithDriverHelper(const String8& fileName, String8& 
                     // the files are distinguished by spId
                     // Let's check for the vendor_id, platform_family_id and product_line_id
                     String8 vendorPlatformProduct;
-                    if (createVendorPlatformProductString(vendorPlatformProduct) == 0) {
+                    if (PlatformData::createVendorPlatformProductName(vendorPlatformProduct) == 0) {
                         if (fileName.find(vendorPlatformProduct) >= 0) {
                             mNumFilesWithFullNameFound++;
                             cpfName = fileName;
@@ -770,46 +769,6 @@ status_t CpfStore::findConfigWithDriverHelper(const String8& fileName, String8& 
     }
 
     return ret;
-}
-
-status_t CpfStore::createVendorPlatformProductString(String8& fullString)
-{
-    int vendorIdValue;
-    int platformFamilyIdValue;
-    int productLineIdValue;
-
-    String8 vendorIdName = String8("vendor_id");
-    String8 platformFamilyIdName = String8("platform_family_id");
-    String8 productLineIdName = String8("product_line_id");
-
-    if (readSpId(vendorIdName, vendorIdValue) < 0) {
-            LOGE("%s could not be read from sysfs", vendorIdName.string());
-            return UNKNOWN_ERROR;
-    }
-    if (readSpId(platformFamilyIdName, platformFamilyIdValue) < 0) {
-        LOGE("%s could not be read from sysfs", platformFamilyIdName.string());
-        return UNKNOWN_ERROR;
-    }
-    if (readSpId(productLineIdName, productLineIdValue) < 0){
-        LOGE("%s could not be read from sysfs", productLineIdName.string());
-        return UNKNOWN_ERROR;
-    }
-
-    char vendorIdValueStr[spIdLength];
-    char platformFamilyIdValueStr[spIdLength];
-    char productLineIdValueStr[spIdLength];
-
-    snprintf(vendorIdValueStr, spIdLength, "%#x", vendorIdValue);
-    snprintf(platformFamilyIdValueStr, spIdLength, "%#x", platformFamilyIdValue);
-    snprintf(productLineIdValueStr, spIdLength, "%#x", productLineIdValue);
-
-    fullString = vendorIdValueStr;
-    fullString += String8("-");
-    fullString += platformFamilyIdValueStr;
-    fullString += String8("-");
-    fullString += productLineIdValueStr;
-
-    return OK;
 }
 
 status_t CpfStore::findBusAddress(const int drvIndex, int& i2cBus, int& i2cAddress)
@@ -841,32 +800,6 @@ status_t CpfStore::findBusAddress(const int drvIndex, int& i2cBus, int& i2cAddre
     }
 
     return ret;
-}
-
-status_t CpfStore::readSpId(String8& spIdName, int& spIdValue)
-{
-        FILE *file;
-        status_t ret = OK;
-        String8 sysfsSpIdPath = String8("/sys/spid/");
-        String8 fullPath;
-
-        fullPath = sysfsSpIdPath;
-        fullPath.append(spIdName);
-
-        file = fopen(fullPath, "rb");
-        if (!file) {
-            LOGE("ERROR in opening file %s", fullPath.string());
-            return NAME_NOT_FOUND;
-        }
-        ret = fscanf(file, "%x", &spIdValue);
-        if (ret < 0) {
-            LOGE("ERROR in reading %s", fullPath.string());
-            spIdValue = 0;
-            fclose(file);
-            return UNKNOWN_ERROR;
-        }
-        fclose(file);
-        return ret;
 }
 
 status_t CpfStore::initConf(CameraBlob& aiqConf, CameraBlob& drvConf, CameraBlob& halConf)

@@ -104,6 +104,14 @@ class PlatformData {
      */
     static PlatformBase* getInstance(void);
 
+    /**
+     * Reads the required SpId hexadecimal value from /sys/spid
+     *
+     * \param spIdName  Value read from /sys/spid, e.g. vendor name
+     * \param spIdValue The id of the desired value, e.g. vendor_id
+     */
+    static status_t readSpId(String8& spIdName, int& spIdValue);
+
  public:
 
     static AiqConf AiqConfig;
@@ -704,7 +712,12 @@ class PlatformData {
     */
     static const char* getBoardName(void);
 
-
+    /**
+     * Creates a string that defines the specific
+     *
+     * \return the board name, it'll return NULL when it fails
+    */
+    static status_t createVendorPlatformProductName(String8& name);
 };
 
 /**

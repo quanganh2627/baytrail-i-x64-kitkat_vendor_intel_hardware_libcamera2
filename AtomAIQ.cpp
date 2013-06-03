@@ -111,6 +111,8 @@ status_t AtomAIQ::init3A()
 
     status_t status = NO_ERROR;
     ia_err ret = ia_err_none;
+    String8 fullName, spIdName;
+    int spacePos;
 
     ia_binary_data cpfData;
     status = getAiqConfig(&cpfData);
@@ -123,10 +125,29 @@ status_t AtomAIQ::init3A()
     ia_binary_data sensorData, motorData;
     mISP->sensorGetSensorData((sensorPrivateData *) &sensorData);
     mISP->sensorGetMotorData((sensorPrivateData *)&motorData);
-    cameranvm_create(mISP->mCameraInput->name,
-                         &sensorData,
-                         &motorData,
-                         &aicNvm) ;
+
+    // Combine sensor name and spId
+    PlatformData::createVendorPlatformProductName(spIdName);
+    fullName = mISP->mCameraInput->name;
+
+    spacePos = fullName.find(" ");
+
+    if (spacePos < 0){
+        fullName = mISP->mCameraInput->name;
+    }
+    else {
+        fullName.setTo(fullName, spacePos);
+    }
+
+    fullName += "-";
+    fullName += spIdName;
+    LOG1("Sensor-vendor-platform-product name: %s", fullName.string());
+
+    cameranvm_create( fullName,
+                      &sensorData,
+                      &motorData,
+                      &aicNvm);
+
     mMkn = ia_mkn_init(ia_mkn_cfg_compression);
     if(mMkn == NULL)
         LOGE("Error makernote init");
