@@ -1464,7 +1464,10 @@ status_t AtomISP::configureContinuousMode(bool enable)
                               enable, "Continuous mode") < 0)
             return UNKNOWN_ERROR;
 
-    enable = !mContCaptPriority;
+    enable = (!mContCaptPriority &&
+              PlatformData::snapshotResolutionSupportedByCVF(mCameraId,
+                                                             mConfig.snapshot.width,
+                                                             mConfig.snapshot.height));
     if (atomisp_set_attribute(main_fd, V4L2_CID_ATOMISP_CONTINUOUS_VIEWFINDER,
                               enable, "Continuous viewfinder") < 0)
             return UNKNOWN_ERROR;

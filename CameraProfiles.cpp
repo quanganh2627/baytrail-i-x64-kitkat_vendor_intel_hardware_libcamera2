@@ -226,6 +226,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         IntelCameraParameters::parseResolutionList(atts[1], pCurrentCam->mVFPPLimitedResolutions);
     } else if (strcmp(name, "ZSLUnsupportedSnapshotResolutionList") == 0) {
         IntelCameraParameters::parseResolutionList(atts[1], pCurrentCam->mZSLUnsupportedSnapshotResolutions);
+    } else if (strcmp(name, "CVFUnsupportedSnapshotResolutionList") == 0) {
+        IntelCameraParameters::parseResolutionList(atts[1], pCurrentCam->mCVFUnsupportedSnapshotResolutions);
     } else if (strcmp(name, "overlayRelativeRotation") == 0) {
         pCurrentCam->overlayRelativeRotation = atoi(atts[1]);
     } else if (strcmp(name, "maxSaturation") == 0) {
