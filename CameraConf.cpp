@@ -543,7 +543,7 @@ status_t CpfStore::initFileNames(String8& cpfPathName, String8& sysfsPathName)
     cpfPathName.appendPath(cpfFileName);
 
     // Here is the correct sysfs file
-    const char *sysfsPath = "/sys/class/i2c-dev/i2c-%d/device/%d-%04d/sensordata";
+    const char *sysfsPath = "/sys/class/i2c-dev/i2c-%d/device/%d-%04x/sensordata";
     sysfsPathName = String8::format(sysfsPath, i2cBus, i2cBus, i2cAddress);
 
     LOGD("cpf config file name: %s", cpfPathName.string());
@@ -786,7 +786,7 @@ status_t CpfStore::findBusAddress(const int drvIndex, int& i2cBus, int& i2cAddre
     }
 
     do {
-        if (fscanf(file, " %*s %d-%d", &i2cBus, &i2cAddress) < 2) {
+        if (fscanf(file, " %*s %d-%x", &i2cBus, &i2cAddress) < 2) {
             LOGE("ERROR reading file \"%s\"!", i2cInfoPathName.string());
             ret = EIO;
             break;
