@@ -1040,7 +1040,7 @@ status_t PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
 
         LOG1("Setting new preview window %p (%dx%d)", mPreviewWindow,w,h);
         mPreviewWindow->set_usage(mPreviewWindow, usage);
-        mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, PlatformData::getGFXHALPixelFormat());
+        mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewFormat()));
     }
 
     return NO_ERROR;
@@ -1073,7 +1073,7 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
                 w = msg->height;
                 h = msg->width;
             }
-            mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, PlatformData::getGFXHALPixelFormat());
+            mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewFormat()));
         }
 
         /**

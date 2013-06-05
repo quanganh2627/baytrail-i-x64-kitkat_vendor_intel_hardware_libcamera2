@@ -25,6 +25,7 @@
 #include "IntelParameters.h"
 #include "PanoramaThread.h"
 #include "CameraDump.h"
+#include "MemoryUtils.h"
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -4450,7 +4451,8 @@ status_t AtomISP::allocateHALZSLBuffers()
 
         for (int i = 0; i < sNumHALZSLBuffers; i++) {
             AtomBuffer *buff = &mHALZSLBuffers[i];
-            status = mCallbacks->allocateGraphicBuffer(mHALZSLBuffers[i], mConfig.HALZSL.width, mConfig.HALZSL.height);
+            *buff = AtomBufferFactory::createAtomBuffer(); // init fields
+            status = MemoryUtils::allocateGraphicBuffer(mHALZSLBuffers[i], mConfig.HALZSL.width, mConfig.HALZSL.height);
 
             if(status != NO_ERROR) {
                 LOGE("@%s: Failed to allocate GraphicBuffer!", __FUNCTION__);
@@ -4478,12 +4480,7 @@ status_t AtomISP::freeHALZSLBuffers()
     if (mHALZSLBuffers != NULL) {
         for (int i = 0 ; i < sNumHALZSLBuffers; i++) {
             mScaler->unRegisterBuffer(mHALZSLBuffers[i], ScalerService::SCALER_INPUT);
-            GraphicBuffer *graphicBuffer = (GraphicBuffer *) mHALZSLBuffers[i].gfxInfo.gfxBuffer;
-            LOG1("@%s freeing gfx buffer with pointer %p (graphic win buf %p) refcount %d", __FUNCTION__, mHALZSLBuffers[i].dataPtr, graphicBuffer, graphicBuffer->getStrongCount());
-            if (mHALZSLBuffers[i].gfxInfo.locked)
-                graphicBuffer->unlock();
-            graphicBuffer->decStrong(this);
-            mHALZSLBuffers[i].gfxInfo.gfxBuffer = NULL;
+            MemoryUtils::freeAtomBuffer(mHALZSLBuffers[i]);
         }
         delete [] mHALZSLBuffers;
         mHALZSLBuffers = NULL;
@@ -4512,7 +4509,8 @@ status_t AtomISP::allocatePreviewBuffers()
 
         LOG1("Allocating %d buffers of size %d", mNumPreviewBuffers, mConfig.preview.size);
         for (int i = 0; i < mNumPreviewBuffers; i++) {
-            mCallbacks->allocateGraphicBuffer(mPreviewBuffers[i], mConfig.preview.width, mConfig.preview.height);
+            mPreviewBuffers[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_PREVIEW); // init fields
+            MemoryUtils::allocateGraphicBuffer(mPreviewBuffers[i], mConfig.preview.width, mConfig.preview.height);
             if (mPreviewBuffers[i].dataPtr == NULL) {
                 LOGE("Error allocation memory for preview buffers!");
                 status = NO_MEMORY;
@@ -4544,7 +4542,11 @@ status_t AtomISP::allocatePreviewBuffers()
     }
 
     if (mHALZSLEnabled) {
-        allocateHALZSLBuffers();
+        status = allocateHALZSLBuffers();
+        if (status != OK) {
+            LOGE("Error allocation memory for HAL ZSL buffers!");
+            goto errorFree;
+        }
     }
 
     return status;
@@ -4554,26 +4556,14 @@ errorFree:
         if (mHALZSLEnabled)
             mScaler->unRegisterBuffer(mPreviewBuffers[i], ScalerService::SCALER_OUTPUT);
 
-        GraphicBuffer *graphicBuffer = (GraphicBuffer *) mPreviewBuffers[i].gfxInfo.gfxBuffer;
-        if (graphicBuffer) { // if gfx buffers came through setGraphicPreviewBuffers, there is no graphic buffer stored..
-            LOG1("@%s freeing gfx buffer with pointer %p (graphic win buf %p) refcount %d", __FUNCTION__, mPreviewBuffers[i].dataPtr, graphicBuffer, graphicBuffer->getStrongCount());
-            if (mPreviewBuffers[i].gfxInfo.locked) {
-                graphicBuffer->unlock();
-                mPreviewBuffers[i].gfxInfo.locked = false;
-            }
-            graphicBuffer->decStrong(this);
-            mPreviewBuffers[i].gfxInfo.gfxBuffer = NULL;
-        }
-
-        if (mPreviewBuffers[i].buff != NULL) {
-            mPreviewBuffers[i].buff->release(mPreviewBuffers[i].buff);
-            mPreviewBuffers[i].buff = NULL;
-        }
+        MemoryUtils::freeAtomBuffer(mPreviewBuffers[i]);
     }
     if (mPreviewBuffers != NULL) {
         delete[] mPreviewBuffers;
         mPreviewBuffers = NULL;
     }
+    if (mHALZSLEnabled)
+        freeHALZSLBuffers();
 
     return status;
 }
@@ -4595,8 +4585,7 @@ status_t AtomISP::allocateRecordingBuffers()
     }
 
     for (int i = 0; i < mNumBuffers; i++) {
-        mRecordingBuffers[i].buff = NULL;
-        mRecordingBuffers[i].metadata_buff = NULL;
+        mRecordingBuffers[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_VIDEO); // init fields
         // recording buffers use uncached memory
         bool cached = false;
         mCallbacks->allocateMemory(&mRecordingBuffers[i], size, cached);
@@ -4617,18 +4606,14 @@ status_t AtomISP::allocateRecordingBuffers()
         mRecordingBuffers[i].size = mConfig.recording.size;
         mRecordingBuffers[i].stride = mConfig.recording.stride;
         mRecordingBuffers[i].format = mConfig.recording.format;
-        mRecordingBuffers[i].type = ATOM_BUFFER_VIDEO;
     }
     return status;
 
 errorFree:
     // On error, free the allocated buffers
-    for (int i = 0 ; i < allocatedBufs; i++) {
-        if (mRecordingBuffers[i].buff != NULL) {
-            mRecordingBuffers[i].buff->release(mRecordingBuffers[i].buff);
-            mRecordingBuffers[i].buff = NULL;
-        }
-    }
+    for (int i = 0 ; i < allocatedBufs; i++)
+        MemoryUtils::freeAtomBuffer(mRecordingBuffers[i]);
+
     if (mRecordingBuffers != NULL) {
         delete[] mRecordingBuffers;
         mRecordingBuffers = NULL;
@@ -4680,14 +4665,13 @@ status_t AtomISP::allocateSnapshotBuffers()
                 snapshotSize,
                 mConfig.postview.size);
         for (int i = 0; i < mConfig.num_snapshot; i++) {
-            mSnapshotBuffers[i].buff = NULL;
+            mSnapshotBuffers[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
             mCallbacks->allocateMemory(&mSnapshotBuffers[i], snapshotSize);
             if (mSnapshotBuffers[i].buff == NULL) {
                 LOGE("Error allocation memory for snapshot buffers!");
                 status = NO_MEMORY;
                 goto errorFree;
             }
-            mSnapshotBuffers[i].type = ATOM_BUFFER_SNAPSHOT;
             allocatedSnaphotBufs++;
             vinfo = &v4l2_buf_pool[V4L2_MAIN_DEVICE].bufs[i];
             vinfo->data = mSnapshotBuffers[i].dataPtr;
@@ -4698,11 +4682,11 @@ status_t AtomISP::allocateSnapshotBuffers()
 
     if (needNewPostviewBuffers()) {
             freePostviewBuffers();
-            AtomBuffer postv;
+            AtomBuffer postv = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
             for (int i = 0; i < mConfig.num_snapshot; i++) {
                 postv.buff = NULL;
                 // for image data, actual sized buff
-                mCallbacks->allocateGraphicBuffer(postv, mConfig.postview.width, mConfig.postview.height);
+                MemoryUtils::allocateGraphicBuffer(postv, mConfig.postview.width, mConfig.postview.height);
                 // for callbacks, a dummy buff
                 mCallbacks->allocateMemory(&postv.buff, 1, true);
                 if (postv.dataPtr == NULL || postv.buff == NULL) {
@@ -4710,8 +4694,6 @@ status_t AtomISP::allocateSnapshotBuffers()
                     status = NO_MEMORY;
                     goto errorFree;
                 }
-
-                postv.type = ATOM_BUFFER_POSTVIEW;
 
                 vinfo = &v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[i];
 
@@ -4740,12 +4722,9 @@ status_t AtomISP::allocateSnapshotBuffers()
 
 errorFree:
     // On error, free the allocated buffers
-    for (int i = 0 ; i < allocatedSnaphotBufs; i++) {
-        if (mSnapshotBuffers[i].buff != NULL) {
-            mSnapshotBuffers[i].buff->release(mSnapshotBuffers[i].buff);
-            mSnapshotBuffers[i].buff = NULL;
-        }
-    }
+    for (int i = 0 ; i < allocatedSnaphotBufs; i++)
+        MemoryUtils::freeAtomBuffer(mSnapshotBuffers[i]);
+
     freePostviewBuffers();
     return status;
 }
@@ -4830,12 +4809,8 @@ status_t AtomISP::allocateMetaDataBuffers()
 errorFree:
     // On error, free the allocated buffers
     if (mRecordingBuffers != NULL) {
-        for (int i = 0 ; i < allocatedBufs; i++) {
-            if (mRecordingBuffers[i].metadata_buff != NULL) {
-                mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
-                mRecordingBuffers[i].metadata_buff = NULL;
-            }
-        }
+        for (int i = 0 ; i < allocatedBufs; i++)
+            MemoryUtils::freeAtomBuffer(mRecordingBuffers[i]);
     }
     if (metaDataBuf) {
         delete metaDataBuf;
@@ -4855,20 +4830,7 @@ status_t AtomISP::freePreviewBuffers()
             if (mHALZSLEnabled)
                 mScaler->unRegisterBuffer(mPreviewBuffers[i], ScalerService::SCALER_OUTPUT);
 
-            GraphicBuffer *graphicBuffer = (GraphicBuffer *) mPreviewBuffers[i].gfxInfo.gfxBuffer;
-            if (graphicBuffer) { // if gfx buffers came through setGraphicPreviewBuffers, there is no graphic buffer stored..
-                LOG1("@%s freeing gfx buffer with pointer %p (graphic win buf %p) refcount %d", __FUNCTION__, mPreviewBuffers[i].dataPtr, graphicBuffer, graphicBuffer->getStrongCount());
-                if (mPreviewBuffers[i].gfxInfo.locked) {
-                    graphicBuffer->unlock();
-                    mPreviewBuffers[i].gfxInfo.locked = false;
-                }
-                graphicBuffer->decStrong(this);
-                mPreviewBuffers[i].gfxInfo.gfxBuffer = NULL;
-            }
-            if (mPreviewBuffers[i].buff != NULL) {
-                mPreviewBuffers[i].buff->release(mPreviewBuffers[i].buff);
-                mPreviewBuffers[i].buff = NULL;
-            }
+            MemoryUtils::freeAtomBuffer(mPreviewBuffers[i]);
         }
         delete [] mPreviewBuffers;
         mPreviewBuffers = NULL;
@@ -4886,16 +4848,9 @@ status_t AtomISP::freeRecordingBuffers()
 {
     LOG1("@%s", __FUNCTION__);
     if(mRecordingBuffers != NULL) {
-        for (int i = 0 ; i < mNumBuffers; i++) {
-            if (mRecordingBuffers[i].buff != NULL) {
-                mRecordingBuffers[i].buff->release(mRecordingBuffers[i].buff);
-                mRecordingBuffers[i].buff = NULL;
-            }
-            if (mRecordingBuffers[i].metadata_buff != NULL) {
-                mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
-                mRecordingBuffers[i].metadata_buff = NULL;
-            }
-        }
+        for (int i = 0 ; i < mNumBuffers; i++)
+            MemoryUtils::freeAtomBuffer(mRecordingBuffers[i]);
+
         delete[] mRecordingBuffers;
         mRecordingBuffers = NULL;
     }
@@ -4910,12 +4865,9 @@ status_t AtomISP::freeSnapshotBuffers()
         return NO_ERROR;
     }
 
-    for (int i = 0 ; i < mConfig.num_snapshot; i++) {
-        if (mSnapshotBuffers[i].buff != NULL) {
-            mSnapshotBuffers[i].buff->release(mSnapshotBuffers[i].buff);
-            mSnapshotBuffers[i].buff = NULL;
-        }
-    }
+    for (int i = 0 ; i < mConfig.num_snapshot; i++)
+        MemoryUtils::freeAtomBuffer(mSnapshotBuffers[i]);
+
     return NO_ERROR;
 }
 
@@ -4928,16 +4880,7 @@ status_t AtomISP::freePostviewBuffers()
         if (mHALZSLEnabled)
             mScaler->unRegisterBuffer(buffer, ScalerService::SCALER_OUTPUT);
 
-        GraphicBuffer *graphicBuffer = (GraphicBuffer *) buffer.gfxInfo.gfxBuffer;
-        if (buffer.gfxInfo.locked) {
-            LOG1("@%s unlocking gfx buffer with pointer %p (graphic win buf %p) refcount %d", __FUNCTION__, buffer.dataPtr, graphicBuffer, graphicBuffer->getStrongCount());
-            graphicBuffer->unlock();
-        }
-        graphicBuffer->decStrong(this);
-
-        if (buffer.buff != NULL) {
-            buffer.buff->release(buffer.buff);
-        }
+        MemoryUtils::freeAtomBuffer(buffer);
     }
     mPostviewBuffers.clear();
     return NO_ERROR;

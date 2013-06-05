@@ -392,6 +392,8 @@ inline static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
     toWindow.y_bottom = bottom;
 }
 
+int getGFXHALPixelFormatFromV4L2Format(int previewFormat);
+
 /**
  * Converts window from Android coordinate system [-1000, 1000] to user defined width
  * and height coordinates [0, width], [0, height], and google weight [1, 1000] to

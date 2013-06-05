@@ -21,6 +21,7 @@
 #include "Callbacks.h"
 #include "CallbacksThread.h"
 #include "ImageScaler.h"
+#include "MemoryUtils.h"
 #include <utils/Timers.h>
 
 namespace android {
@@ -463,7 +464,8 @@ status_t PictureThread::allocateInputBuffers(int format, int width, int height, 
     mInputBuffers = numBufs;
 
     for (int i = 0; i < mInputBuffers; i++) {
-        mCallbacks->allocateGraphicBuffer(mInputBufferArray[i], width, height);
+        mInputBufferArray[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+        MemoryUtils::allocateGraphicBuffer(mInputBufferArray[i], width, height);
         if (mInputBufferArray[i].dataPtr == NULL) {
             mInputBuffers = i;
             goto bailout;
@@ -473,7 +475,6 @@ status_t PictureThread::allocateInputBuffers(int format, int width, int height, 
         mInputBufferArray[i].stride = stride;
         mInputBufferArray[i].format = format;
         mInputBufferArray[i].size = bufferSize;
-        mInputBufferArray[i].type = ATOM_BUFFER_SNAPSHOT;
         mInputBufferArray[i].status = FRAME_STATUS_OK;
         mInputBuffDataArray[i] = (char *) mInputBufferArray[i].dataPtr;
         if (registerToScaler)
@@ -496,17 +497,11 @@ void PictureThread::freeInputBuffers()
 
     if(mInputBufferArray != NULL) {
        for (int i = 0; i < mInputBuffers; i++) {
-           if (mInputBufferArray[i].gfxInfo.locked)
-               mInputBufferArray[i].gfxInfo.gfxBuffer->unlock();
            if (mInputBufferArray[i].gfxInfo.scalerId != -1) {
                mScaler->unRegisterBuffer(mInputBufferArray[i], ScalerService::SCALER_OUTPUT);
                mInputBufferArray[i].gfxInfo.scalerId = -1;
            }
-           mInputBufferArray[i].gfxInfo.gfxBuffer->decStrong(this);
-           if (mInputBufferArray[i].buff != NULL) {
-               mInputBufferArray[i].buff->release(mInputBufferArray[i].buff);
-               mInputBufferArray[i].buff = NULL;
-           }
+           MemoryUtils::freeAtomBuffer(mInputBufferArray[i]);
        }
        delete [] mInputBufferArray;
        mInputBufferArray = NULL;

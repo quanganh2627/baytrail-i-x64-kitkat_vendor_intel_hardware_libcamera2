@@ -48,9 +48,6 @@
 #include <camera.h>
 #include "AtomCommon.h"
 #include <IntelParameters.h>
-#ifndef GRAPHIC_IS_GEN // this will be remove if graphic provides one common header file
-#include <hal_public.h>
-#endif
 
 namespace android {
 
@@ -801,11 +798,6 @@ public:
         mSupportAIQ = false;
         mSupportDualVideo = false;
         mPreviewFormat = V4L2_PIX_FMT_NV12;
-#ifndef GRAPHIC_IS_GEN // this will be remove if graphic provides one common header file
-        mHALPixelFormat = HAL_PIXEL_FORMAT_NV12;
-#else
-        mHALPixelFormat = HAL_PIXEL_FORMAT_YV12;
-#endif
    };
 
  protected:

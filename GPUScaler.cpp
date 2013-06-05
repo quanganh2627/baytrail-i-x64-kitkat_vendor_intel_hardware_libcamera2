@@ -270,7 +270,8 @@ int GPUScaler::addOutputBuffer(buffer_handle_t *pBufHandle, int width, int heigh
         LOG2("Error: maximum output buffer count exceeded\n");
         return (-1);
     } else {
-        mGraphicBuffer[bufferId] = new GraphicBuffer(width, height, PlatformData::getGFXHALPixelFormat(),
+        mGraphicBuffer[bufferId] = new GraphicBuffer(width, height,
+                getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewFormat()),
                 GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_SW_READ_OFTEN | GraphicBuffer::USAGE_HW_TEXTURE,
                 width, (native_handle_t *)*pBufHandle, 0);
         mEglClientBuffer[bufferId] = (mGraphicBuffer[bufferId])->getNativeBuffer();

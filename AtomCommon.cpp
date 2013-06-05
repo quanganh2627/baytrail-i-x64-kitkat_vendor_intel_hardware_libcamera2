@@ -17,6 +17,9 @@
 
 #include "AtomCommon.h"
 #include <ia_coordinate.h>
+#ifndef GRAPHIC_IS_GEN // this will be removed if graphic provides one common header file
+#include <hal_public.h>
+#endif
 
 #ifdef LIBCAMERA_RD_FEATURES
 #include <dlfcn.h>
@@ -206,6 +209,32 @@ void flipBufferH(AtomBuffer *buffer) {
             data[(heightUV-1-i)*stride + j] = temp;
         }
     }
+}
+
+int getGFXHALPixelFormatFromV4L2Format(int previewFormat)
+{
+    LOG1("@%s", __FUNCTION__);
+    int halPixelFormat = BAD_VALUE;
+
+    switch(previewFormat) {
+    case V4L2_PIX_FMT_NV12:
+#ifndef GRAPHIC_IS_GEN // this will be removed if graphic provides one common header file
+        halPixelFormat = HAL_PIXEL_FORMAT_NV12;
+#endif
+        break;
+    case V4L2_PIX_FMT_YVU420:
+        halPixelFormat = HAL_PIXEL_FORMAT_YV12;
+        break;
+    default: break;
+    }
+
+    if (halPixelFormat == BAD_VALUE) {
+        LOGE("@%s Unknown / unsupported preview pixel format: fatal error, aborting",
+                __FUNCTION__);
+        abort();
+    }
+
+    return halPixelFormat;
 }
 
 #ifdef LIBCAMERA_RD_FEATURES

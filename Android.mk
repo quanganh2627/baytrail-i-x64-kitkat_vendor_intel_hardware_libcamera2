@@ -38,6 +38,7 @@ LOCAL_SRC_FILES := \
 	SWJpegEncoder.cpp \
 	CallbacksThread.cpp \
 	LogHelper.cpp \
+	MemoryUtils.cpp \
 	PlatformData.cpp \
 	CameraProfiles.cpp \
 	FeatureData.cpp \
