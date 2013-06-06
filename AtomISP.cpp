@@ -574,6 +574,14 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     }
 
     /**
+     * DUAL VIDEO
+     */
+    if(PlatformData::supportDualVideo())
+    {
+        intel_params->set(IntelCameraParameters::KEY_DUAL_VIDEO_SUPPORTED,"true");
+    }
+
+    /**
      * MISCELLANEOUS
      */
     float vertical = 42.5;

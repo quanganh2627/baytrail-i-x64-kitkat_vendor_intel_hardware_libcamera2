@@ -748,6 +748,13 @@ class PlatformData {
     static int getGFXHALPixelFormat(void);
 
     /**
+     * Whether dual video is supported?
+     *
+     * \return true if supported
+     */
+    static bool supportDualVideo(void);
+
+    /**
      * Returns the preview format with V4l2 definition
      *
      * \return the preview format, V4L2_PIX_FMT_NV12 or V4L2_PIX_FMT_YVU420
@@ -792,6 +799,7 @@ public:
         mMaxContinuousRawRingBuffer = 0;
         mShutterLagCompensationMs = 40;
         mSupportAIQ = false;
+        mSupportDualVideo = false;
         mPreviewFormat = V4L2_PIX_FMT_NV12;
 #ifndef GRAPHIC_IS_GEN // this will be remove if graphic provides one common header file
         mHALPixelFormat = HAL_PIXEL_FORMAT_NV12;
@@ -1039,6 +1047,9 @@ public:
 
     /* For Intel3A ia_aiq */
     bool mSupportAIQ;
+
+    /* For Dual Vidoe */
+    bool mSupportDualVideo;
 
     int mPreviewFormat;
 

@@ -1129,6 +1129,12 @@ bool PlatformData::supportAIQ(void)
     return i->mSupportAIQ;
 }
 
+bool PlatformData::supportDualVideo(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mSupportDualVideo;
+}
+
 int PlatformData::getPreviewFormat(void)
 {
     PlatformBase *i = getInstance();

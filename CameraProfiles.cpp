@@ -133,6 +133,8 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
         PlatformBase::mShutterLagCompensationMs = atoi(atts[1]);
     } else if (strcmp(name, "mPanoramaMaxSnapshotCount") == 0) {
         PlatformBase::mPanoramaMaxSnapshotCount = atoi(atts[1]);
+    } else if (strcmp(name, "supportDualVideo") == 0) {
+        PlatformBase::mSupportDualVideo = ((strcmp(atts[1], "true") == 0) ? true : false);
     }
 }
 
