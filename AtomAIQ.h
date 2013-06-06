@@ -362,7 +362,7 @@ private:
     int mFocusPosition;
 
     //AF bracketing
-    ia_aiq_af_bracketing_results* mAfBracketingResult;
+    ia_aiq_af_bracket_results* mAfBracketingResult;
     int mBracketingStops;
 
     //AE

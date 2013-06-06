@@ -852,25 +852,25 @@ status_t AtomAIQ::initAfBracketing(int stops, AFBracketingMode mode)
 {
     LOG1("@%s", __FUNCTION__);
     mBracketingStops = stops;
-    ia_aiq_af_bracketing_parameters param;
+    ia_aiq_af_bracket_input_params param;
     switch (mode) {
     case CAM_AF_BRACKETING_MODE_SYMMETRIC:
-        param.af_bracketing_mode = ia_aiq_af_bracketing_mode_symmetric;
+        param.af_bracket_mode = ia_aiq_af_bracket_mode_symmetric;
         break;
     case CAM_AF_BRACKETING_MODE_TOWARDS_NEAR:
-        param.af_bracketing_mode = ia_aiq_af_bracketing_mode_towards_near;
+        param.af_bracket_mode = ia_aiq_af_bracket_mode_towards_near;
         break;
     case CAM_AF_BRACKETING_MODE_TOWARDS_FAR:
-        param.af_bracketing_mode = ia_aiq_af_bracketing_mode_towards_far;
+        param.af_bracket_mode = ia_aiq_af_bracket_mode_towards_far;
         break;
     default:
-        param.af_bracketing_mode = ia_aiq_af_bracketing_mode_symmetric;
+        param.af_bracket_mode = ia_aiq_af_bracket_mode_symmetric;
     }
     param.focus_positions = (char) stops;
     //first run AF to get the af result
     runAfMain();
     memcpy(&param.af_results, mAfState.af_results, sizeof(ia_aiq_af_results));
-    ia_aiq_af_bracketing_calculate(m3aState.ia_aiq_handle, &param, &mAfBracketingResult);
+    ia_aiq_af_bracket(m3aState.ia_aiq_handle, &param, &mAfBracketingResult);
     for(int i = 0; i < stops; i++)
         LOG1("i=%d, postion=%ld", i, mAfBracketingResult->lens_positions_bracketing[i]);
 
@@ -1511,6 +1511,8 @@ void AtomAIQ::resetAECParams()
     mAeInputParameters.priority_mode = ia_aiq_ae_priority_mode_normal;
     mAeInputParameters.flicker_reduction_mode = ia_aiq_ae_flicker_reduction_auto;
     mAeInputParameters.sensor_descriptor = &mAeSensorDescriptor;
+    mAeInputParameters.sensor_frame_params = NULL;
+    mAeInputParameters.exposure_window = NULL; // TODO: exposure window should be used with digital zoom.
     mAeInputParameters.exposure_coordinate = NULL;
     mAeInputParameters.ev_shift = 0;
     mAeInputParameters.manual_exposure_time_us = -1;
@@ -1539,6 +1541,7 @@ status_t AtomAIQ::runAeMain(bool first_run)
 
     ia_err err = ia_err_none;
     ia_aiq_ae_results *new_ae_results = NULL;
+    mAeInputParameters.sensor_frame_params = &m3aState.sensor_frame_params;
 
     if(m3aState.ia_aiq_handle){
         if (first_run && mAeState.ae_results) {
@@ -1687,7 +1690,11 @@ status_t AtomAIQ::runGBCEMain()
 {
     LOG2("@%s", __FUNCTION__);
     if (m3aState.ia_aiq_handle && mGBCEEnable) {
-        ia_err err = ia_aiq_gbce_run(m3aState.ia_aiq_handle, &mGBCEResults);
+        ia_aiq_gbce_input_params gbce_input_params;
+        gbce_input_params.gbce_level = ia_aiq_gbce_level_use_tuning;
+        gbce_input_params.frame_use = m3aState.frame_use;
+        getEv(&gbce_input_params.ev_shift);
+        ia_err err = ia_aiq_gbce_run(m3aState.ia_aiq_handle, &gbce_input_params, &mGBCEResults);
         if(err == ia_err_none)
             LOG2("@%s success", __FUNCTION__);
     } else {
@@ -1848,6 +1855,7 @@ status_t AtomAIQ::runAICMain()
         isp_15_input_params.awb_results = NULL;
 
         isp_15_input_params.exposure_results = (mAeState.ae_results) ? mAeState.ae_results->exposure : NULL;
+        pa_input_params.exposure_params = (mAeState.ae_results) ? mAeState.ae_results->exposure : NULL;
 
         if (mAwbResults) {
             LOG2("awb factor:%f", mAwbResults->accurate_b_per_g);
