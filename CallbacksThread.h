@@ -56,6 +56,11 @@ public:
     }
     virtual ~CallbacksThread();
 
+// prevent copy constructor and assignment operator
+private:
+    CallbacksThread(const CallbacksThread& other);
+    CallbacksThread operator=(const CallbacksThread& other);
+
 // Thread overrides
 public:
     status_t requestExitAndWait();

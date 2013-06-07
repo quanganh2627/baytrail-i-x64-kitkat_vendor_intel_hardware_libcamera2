@@ -38,6 +38,11 @@ public:
     PictureThread(I3AControls *aaaControls);
     virtual ~PictureThread();
 
+// prevent copy constructor and assignment operator
+private:
+    PictureThread(const PictureThread& other);
+    PictureThread& operator=(const PictureThread& other);
+
 // Thread overrides
 public:
     status_t requestExitAndWait();

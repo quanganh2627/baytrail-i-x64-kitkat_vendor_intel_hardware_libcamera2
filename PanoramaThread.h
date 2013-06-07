@@ -97,6 +97,12 @@ private:
         status_t flush(); // processes stitches in queue
         status_t cancel(ia_panorama_state* mContext); // drops stitches in queue without processing, cancels last stitch
         status_t stitch(ia_panorama_state* mContext, AtomBuffer frame, int stitchId);
+
+    // prevent copy constructor and assignment operator
+    private:
+        PanoramaStitchThread(const PanoramaStitchThread& other);
+        PanoramaStitchThread& operator=(const PanoramaStitchThread& other);
+
     private:
         virtual bool threadLoop();
         status_t waitForAndExecuteMessage();
@@ -266,6 +272,11 @@ private:
     virtual bool threadLoop() { return false; }
 
 #endif // ENABLE_INTEL_EXTRAS
+
+// prevent copy constructor and assignment operator
+private:
+    PanoramaThread(const PanoramaThread& other);
+    PanoramaThread& operator=(const PanoramaThread& other);
 
     I3AControls* m3AControls;
 }; // class Panorama

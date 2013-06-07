@@ -150,6 +150,10 @@ private:
     virtual bool threadLoop() { return false; }
 #endif
 
+// prevent copy constructor and assignment operator
+private:
+    FaceDetector(const FaceDetector& other);
+    FaceDetector& operator=(const FaceDetector& other);
 }; // class FaceDetector
 
 }; // namespace android

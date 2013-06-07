@@ -106,6 +106,11 @@ public:
     void deInitDevice();
     bool isDeviceInitialized() const;
 
+// prevent copy constructor and assignment operator
+private:
+    AtomISP(const AtomISP& other);
+    AtomISP& operator=(const AtomISP& other);
+
     // public types
 public:
     struct ContinuousCaptureConfig {

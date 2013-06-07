@@ -195,6 +195,11 @@ private:
         MessageData data;
     };
 
+// prevent copy constructor and assignment operator
+private:
+    PostProcThread(const PostProcThread& other);
+    PostProcThread& operator=(const PostProcThread& other);
+
 // inherited from Thread
 private:
     virtual bool threadLoop();

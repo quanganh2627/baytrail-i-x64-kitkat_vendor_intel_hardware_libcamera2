@@ -36,6 +36,11 @@ public:
     status_t run();
     status_t reconfigure();
 
+// prevent copy constructor and assignment operator
+private:
+    AtomDvs(const AtomDvs& other);
+    AtomDvs& operator=(const AtomDvs& other);
+
 private:
     status_t reconfigureNoLock();
     AtomISP *mIsp;

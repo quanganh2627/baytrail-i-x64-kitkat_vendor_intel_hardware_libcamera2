@@ -38,6 +38,11 @@ public:
     }
     virtual ~Callbacks();
 
+// prevent copy constructor and assignment operator
+private:
+    Callbacks(const Callbacks& other);
+    Callbacks& operator=(const Callbacks& other);
+
 public:
 
     void setCallbacks(camera_notify_callback notify_cb,

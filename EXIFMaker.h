@@ -53,6 +53,11 @@ public:
     void setMaker(const char *data);
     void setModel(const char *data);
     void setSoftware(const char *data);
+
+// prevent copy constructor and assignment operator
+private:
+    EXIFMaker(const EXIFMaker& other);
+    EXIFMaker& operator=(const EXIFMaker& other);
 };
 
 }; // namespace android

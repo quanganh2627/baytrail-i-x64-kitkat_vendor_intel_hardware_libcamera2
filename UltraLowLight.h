@@ -119,6 +119,11 @@ public:
 
     bool updateTrigger(SensorAeConfig &expInfo, bool flash) STUB_BODY_BOOL;
 
+// prevent copy constructor and assignment operator
+private:
+    UltraLowLight(const UltraLowLight& other);
+    UltraLowLight& operator=(const UltraLowLight& other);
+
 private:
     enum State {
         ULL_STATE_NULL,
