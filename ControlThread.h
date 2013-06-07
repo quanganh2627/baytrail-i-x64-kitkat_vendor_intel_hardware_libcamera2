@@ -746,7 +746,7 @@ private:
                                                than video recording state. Remains true until following
                                                call to startPreview() or cancelPicture(). */
 
-    const char* mPreviewUpdateMode;       /*!< indicates the active preview update mode.
+    String8 mPreviewUpdateMode;       /*!< indicates the active preview update mode.
                                                See parameter preview-update-mode */
 
     Vector<AtomBuffer> mAllocatedSnapshotBuffers; /*!< Current set of allocated snapshot buffers */

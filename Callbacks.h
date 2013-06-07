@@ -65,7 +65,7 @@ public:
     void facesDetected(camera_frame_metadata_t &face_metadata);
     void sceneDetected(int sceneMode, bool sceneHdr);
     void panoramaDisplUpdate(camera_panorama_metadata &metadata);
-    void panoramaSnapshot(AtomBuffer &livePreview);
+    void panoramaSnapshot(const AtomBuffer &livePreview);
     status_t storeMetaDataInBuffers(bool enabled);
     void ullTriggered(int id);
     void ullPictureDone(AtomBuffer *ullJpegPicture);

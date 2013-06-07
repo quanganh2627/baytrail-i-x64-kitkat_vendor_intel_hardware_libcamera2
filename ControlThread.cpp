@@ -126,7 +126,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mEnableFocusCbAtStart(false)
     ,mEnableFocusMoveCbAtStart(false)
     ,mStillCaptureInProgress(false)
-    ,mPreviewUpdateMode(IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD)
+    ,mPreviewUpdateMode(STRING_TO_STRING8(PlatformData::defaultPreviewUpdateMode(cameraId)))
     ,mSaveMirrored(false)
     ,mCurrentOrientation(0)
     ,mRecordingOrientation(0)
@@ -2155,6 +2155,7 @@ status_t ControlThread::handleMessagePanoramaPicture() {
     status_t status = NO_ERROR;
     if (mPanoramaThread->getState() == PANORAMA_STARTED) {
         mPanoramaThread->startPanoramaCapture();
+        handleMessagePanoramaCaptureTrigger();
     } else {
         mPanoramaThread->finalize();
     }
