@@ -6053,14 +6053,14 @@ status_t AtomISP::FrameSyncSource::observe(IAtomIspObserver::Message *msg)
     ret = mISP->v4l2_poll(V4L2_ISP_SUBDEV, FRAME_SYNC_POLL_TIMEOUT);
 
     if (ret <= 0) {
-        LOGE("Poll failed (%s), waiting recovery..", (ret == 0) ? "timeout" : "error");
+        LOGE("SOF sync poll failed (%s), waiting recovery..", (ret == 0) ? "timeout" : "error");
         ret = -1;
     } else {
         // poll was successful, dequeue the event right away
         do {
             ret = mISP->v4l2_dqevent(mISP->video_fds[V4L2_ISP_SUBDEV], &event);
             if (ret < 0) {
-                LOGE("Dequeue event failed");
+                LOGE("Dequeue SOF event failed");
             }
         } while (event.pending > 0);
     }
@@ -6101,23 +6101,25 @@ status_t AtomISP::AAAStatSource::observe(IAtomIspObserver::Message *msg)
     ret = mISP->v4l2_poll(V4L2_ISP_SUBDEV2, FRAME_SYNC_POLL_TIMEOUT);
 
     if (ret <= 0) {
-        LOGE("Poll failed ret(%d), disabling SOF event",ret);
-        mISP->v4l2_unsubscribe_event(mISP->video_fds[V4L2_ISP_SUBDEV], V4L2_EVENT_ATOMISP_3A_STATS_READY);
-        mISP->closeDevice(V4L2_ISP_SUBDEV2);
-        mISP->m3AStatscEnabled = false;
-        msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
-        return UNKNOWN_ERROR;
+        LOGE("Stats sync poll failed (%s), waiting recovery", (ret == 0) ? "timeout" : "error");
+        ret = -1;
+    } else {
+        // poll was successful, dequeue the event right away
+        do {
+            ret = mISP->v4l2_dqevent(mISP->video_fds[V4L2_ISP_SUBDEV2], &event);
+            if (ret < 0) {
+                LOGE("Dequeue stats event failed");
+            }
+        } while (event.pending > 0);
     }
 
-    // poll was successful, dequeue the event right away
-    do {
-        ret = mISP->v4l2_dqevent(mISP->video_fds[V4L2_ISP_SUBDEV2], &event);
-        if (ret < 0) {
-            LOGE("Dequeue event failed");
-            msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
-            return UNKNOWN_ERROR;
-        }
-    } while (event.pending > 0);
+    if (ret < 0) {
+        msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
+        // We sleep a moment but keep passing error messages to observers
+        // until further client controls.
+        usleep(ATOMISP_EVENT_RECOVERY_WAIT);
+        return NO_ERROR;
+    }
 
     // fill observer message
     msg->id = IAtomIspObserver::MESSAGE_ID_EVENT;
