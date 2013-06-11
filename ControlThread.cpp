@@ -1280,12 +1280,6 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         return STATE_PREVIEW_STILL;
     }
 
-    // Whether the loaded ISP firmware supports continuous mode?
-    if (mISP->isOfflineCaptureSupported() == false) {
-        LOG1("@%s: Disabling continuous mode, not supported", __FUNCTION__);
-        return STATE_PREVIEW_STILL;
-    }
-
     // Picture-sizes smaller than preview-size do not work with
     // current CSS firmwares in continuous/ZSL mode.
     // TODO: should be removed when CSS can handle this, see PSI BZ 73112

@@ -1967,15 +1967,6 @@ bool AtomISP::isOfflineCaptureRunning() const
     return false;
 }
 
-bool AtomISP::isOfflineCaptureSupported() const
-{
-    // TODO: device node count reveals version of CSS firmware
-    if (mConfigLastDevice >= 3)
-        return true;
-
-    return false;
-}
-
 bool AtomISP::isYUVvideoZoomingSupported() const
 {
     // TODO: device node count reveals version of CSS firmware

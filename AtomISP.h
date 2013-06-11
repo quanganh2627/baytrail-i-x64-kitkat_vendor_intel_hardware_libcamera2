@@ -143,7 +143,6 @@ public:
     status_t startOfflineCapture(ContinuousCaptureConfig &config);
     status_t stopOfflineCapture();
     bool isOfflineCaptureRunning() const;
-    bool isOfflineCaptureSupported() const;
     int shutterLagZeroAlign() const;
     int continuousBurstNegMinOffset(void) const;
     int continuousBurstNegOffset(int skip, int startIndex) const;
