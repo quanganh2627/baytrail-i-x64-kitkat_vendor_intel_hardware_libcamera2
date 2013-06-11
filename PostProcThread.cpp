@@ -711,6 +711,7 @@ status_t PostProcThread::waitForAndExecuteMessage()
             break;
         case MESSAGE_ID_UNLOAD_ISP_EXTENSIONS:
             status = handleMessageUnloadIspExtensions();
+            break;
         case MESSAGE_ID_SET_ZOOM:
             status = handleMessageSetZoom(msg.data.config);
             break;
