@@ -1480,7 +1480,12 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     }
 
     // Load any ISP extensions before ISP is started
-    mPostProcThread->loadIspExtensions(videoMode);
+
+    // workaround for FR during HAL ZSL - do not use extensions
+    if (mISP->isHALZSLEnabled())
+        mPostProcThread->unloadIspExtensions(); // sends NULL to ia_face_set_acceleration -> enables SW FR
+    else
+        mPostProcThread->loadIspExtensions(videoMode);
 
     mISP->getPreviewSize(&width, &height,&stride);
     mNumBuffers = mISP->getNumBuffers(videoMode);
