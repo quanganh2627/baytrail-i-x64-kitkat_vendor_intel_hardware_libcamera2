@@ -48,6 +48,8 @@
 // macro STRINGIFY to change a number in a string.
 #define STRINGIFY(s) STRINGIFY_(s)
 #define STRINGIFY_(s) #s
+// macro CLEAR Initialize a structure with 0's
+#define CLEAR(x) memset (&(x), 0, sizeof (x))
 // macro CLIP is used to clip the Number value to between the Min and Max
 #define CLIP(Number, Max, Min)    ((Number) > (Max) ? (Max) : ((Number) < (Min) ? (Min) : (Number)))
 // macro MAX

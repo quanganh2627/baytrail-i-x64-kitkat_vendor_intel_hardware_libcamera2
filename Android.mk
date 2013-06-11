@@ -59,7 +59,10 @@ LOCAL_SRC_FILES := \
 	SensorThread.cpp \
 	ScalerService.cpp \
 	PostCaptureThread.cpp \
-	SensorSyncManager.cpp
+	SensorSyncManager.cpp \
+	v4l2dev/v4l2devicebase.cpp \
+	v4l2dev/v4l2videonode.cpp \
+	v4l2dev/v4l2subdevice.cpp 
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SRC_FILES += \
@@ -86,6 +89,7 @@ LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/cameralibs \
 	$(TARGET_OUT_HEADERS)/libmfldadvci \
 	$(TARGET_OUT_HEADERS)/libCameraFaceDetection \
+	$(LOCAL_PATH)/v4l2dev/
 
 ifeq ($(BOARD_GRAPHIC_IS_GEN), true)
 else
