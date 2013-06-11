@@ -34,7 +34,7 @@ class AtomAIQ;
 #include "AtomISP.h"
 #include "I3AControls.h"
 #include "PlatformData.h"
-
+#include "AtomFifo.h"
 #include "ia_face.h"
 
 namespace android {
@@ -67,13 +67,19 @@ typedef struct {
 } af_state;
 
 typedef struct {
+    ia_aiq_ae_results                 results;
+    ia_aiq_hist_weight_grid           weight_grid;
+    ia_aiq_exposure_parameters        exposure;
+    ia_aiq_exposure_sensor_parameters sensor_exposure;
+    ia_aiq_flash_parameters           flash;
+} stored_ae_results;
+
+typedef struct {
     bool                              ae_locked;
-    struct atomisp_exposure           exposure; //ToDo: remove
     ia_aiq_ae_results                 *ae_results;
-    ia_aiq_ae_results                 prev_results[AE_DELAY_FRAMES+1];
-    ia_aiq_exposure_parameters        prev_exposure[AE_DELAY_FRAMES+1];
-    ia_aiq_exposure_sensor_parameters prev_sensor_exposure[AE_DELAY_FRAMES+1];
-    ia_aiq_flash_parameters           prev_flash[AE_DELAY_FRAMES+1];
+    stored_ae_results                 feedback_results;
+    unsigned int                      feedback_delay;
+    AtomFifo<stored_ae_results>       *stored_results;
 } ae_state;
 
 typedef struct {
@@ -162,9 +168,13 @@ private:
 
     //AE
     void resetAECParams();
-    status_t runAeMain(bool first_run = false);
+    status_t runAeMain();
     bool getAeResults();
     bool getAeFlashResults();
+    int applyExposure(ia_aiq_exposure_sensor_parameters *);
+    ia_aiq_ae_results* storeAeResults(ia_aiq_ae_results *, int updateIdx = -1);
+    ia_aiq_ae_results* peekAeStoredResults(unsigned int offset);
+    ia_aiq_ae_results* pickAeFeedbackResults();
 
     //AWB
     void resetAWBParams();
