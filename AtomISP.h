@@ -472,7 +472,6 @@ private:
 
     status_t initCameraInput();
     void initFileInject();
-    void initDriverVersion(void);
     void initFrameConfig();
 
     status_t configurePreview();

@@ -185,7 +185,9 @@ status_t AtomISP::initDevice()
 {
     status_t status = NO_ERROR;
 
-    initDriverVersion();
+    mConfigSnapshotPreviewDevice = V4L2_PREVIEW_DEVICE;
+    mConfigRecordingPreviewDevice = V4L2_PREVIEW_DEVICE;
+    mConfigLastDevice = 3;
 
     // Open the main device first, this device will remain open during object life span
     // and will be closed in the object destructor
@@ -308,41 +310,6 @@ int AtomISP::zoomRatio(int zoomValue) {
 
     int zoomStep = (MAX_SUPPORT_ZOOM - MIN_SUPPORT_ZOOM) / MAX_ZOOM_LEVEL;
     return MIN_SUPPORT_ZOOM + zoomValue * zoomStep;
-}
-
-/**
- * Detects which AtomISP kernel driver is used in the system
- *
- * Only to be called from 2nd stage contructor AtomISP::init().
- */
-void AtomISP::initDriverVersion(void)
-{
-    struct stat buf;
-
-    /*
-     * This version of AtomISP supports two kernel driver variants:
-     *
-     *  1) driver that uses four distinct /dev/video device nodes and
-     *     has a separate device node for preview, and
-     *  2) driver that uses three /dev/video device nodes and uses
-     *     the first/main device both for snapshot preview and actual
-     *     main capture
-     */
-    int res = stat("/dev/video3", &buf);
-    if (!res) {
-        LOGD("Kernel with separate preview device node detected");
-
-        mConfigSnapshotPreviewDevice = V4L2_PREVIEW_DEVICE;
-        mConfigRecordingPreviewDevice = V4L2_PREVIEW_DEVICE;
-        mConfigLastDevice = 3;
-    }
-    else {
-        LOGD("Kernel with multiplexed preview and main devices detected");
-
-        mConfigSnapshotPreviewDevice = V4L2_MAIN_DEVICE;
-        mConfigRecordingPreviewDevice = V4L2_LEGACY_VIDEO_PREVIEW_DEVICE;
-        mConfigLastDevice = 2;
-    }
 }
 
 /**
