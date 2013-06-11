@@ -5946,8 +5946,7 @@ status_t ControlThread::updateParameterCache()
     mParamCacheLock.lock();
 
     // let app know if we support zoom in the preview mode indicated
-    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-    mISP->getZoomRatios(videoMode, &mParameters);
+    mISP->getZoomRatios(&mParameters);
     mISP->getFocusDistances(&mParameters);
 
     String8 params = mParameters.flatten();
@@ -6232,8 +6231,7 @@ status_t ControlThread::handleMessageGetParameters(MessageGetParameters *msg)
 
     if (msg->params) {
         // let app know if we support zoom in the preview mode indicated
-        bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-        mISP->getZoomRatios(videoMode, &mParameters);
+        mISP->getZoomRatios(&mParameters);
         mISP->getFocusDistances(&mParameters);
 
         String8 params = mParameters.flatten();

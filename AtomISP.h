@@ -149,7 +149,6 @@ public:
     int getContinuousCaptureNumber() const;
     status_t prepareOfflineCapture(ContinuousCaptureConfig &config, bool capturePriority);
 
-    bool isYUVvideoZoomingSupported() const;
     status_t returnRecordingBuffers();
     bool isSharedPreviewBufferConfigured(bool *reserved = NULL) const;
 
@@ -185,7 +184,7 @@ public:
     void getPreviewSize(int *width, int *height, int *stride);
     int getSnapshotNum();
 
-    void getZoomRatios(bool videoMode, CameraParameters *params);
+    void getZoomRatios(CameraParameters *params);
     void getFocusDistances(CameraParameters *params);
     status_t setZoom(int zoom);
     status_t setFlash(int numFrames);
