@@ -203,7 +203,7 @@ status_t AtomCP::uninitializeHDR(void)
 
 status_t AtomCP::setIaFrameFormat(ia_frame* iaFrame, int v4l2Format)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     if (v4l2Format == V4L2_PIX_FMT_YUV420)
         iaFrame->format = ia_frame_format_yuv420;
     else if (v4l2Format == V4L2_PIX_FMT_NV12)
