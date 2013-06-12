@@ -244,7 +244,7 @@ status_t ControlThread::init()
     }
 
     // we implement ICallbackAAA interface
-    m3AThread = new AAAThread(this, mDvs, mULL, m3AControls);
+    m3AThread = new AAAThread(this, mULL, m3AControls);
     if (m3AThread == NULL) {
         LOGE("error creating 3AThread");
         goto bail;
@@ -1378,9 +1378,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOG1("Starting preview in video mode");
         state = STATE_PREVIEW_VIDEO;
         mode = MODE_VIDEO;
-        if(isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED) &&
-           isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION))
-            isDVSActive = true;
+
+        mParameters.getVideoSize(&width, &height);
+        mISP->setVideoFrameFormat(width, height);
+        isDVSActive = mDvs->enable(mParameters);
     } else {
         LOG1("Starting preview in still mode");
         state = selectPreviewMode(mParameters);
@@ -1389,6 +1390,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         else
             mode = MODE_CONTINUOUS_CAPTURE;
     }
+
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
         m3AControls->init3aStatDump("preview");
 
@@ -1397,15 +1399,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (format == -1) {
         LOGE("Bad preview format. Cannot start the preview!");
         return BAD_VALUE;
-    }
-
-    // set video frame config
-    if (videoMode) {
-        mParameters.getVideoSize(&width, &height);
-        mISP->setVideoFrameFormat(width, height);
-        if(width < MIN_DVS_WIDTH && height < MIN_DVS_HEIGHT)
-            isDVSActive = false;
-        mISP->setDVS(isDVSActive);
     }
 
     if (state == STATE_CONTINUOUS_CAPTURE) {
@@ -1524,8 +1517,14 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (m3AControls->isIntel3A()) {
         if (m3AControls->switchModeAndRate(mode, mISP->getFrameRate()) != NO_ERROR)
             LOGE("Failed switching 3A at %.2f fps", mISP->getFrameRate());
-        if (isDVSActive && mDvs->reconfigure() != NO_ERROR)
+
+        if (isDVSActive && mDvs->reconfigure() == NO_ERROR) {
+            // Attach only when DVS is active:
+            mISP->attachObserver(mDvs, AtomISP::OBSERVE_PREVIEW_STREAM);
+        } else if (isDVSActive) {
             LOGE("Failed to reconfigure DVS grid");
+        }
+
         mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_3A_STAT_READY);
         mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
     }
@@ -1538,6 +1537,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     // dequeue has run before the preview return buffer handler runs.
     mISP->attachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
     mISP->attachObserver(mPreviewThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+
     mPreviewThread->setCallback(
             static_cast<ICallbackPreview*>(mPostProcThread.get()),
             ICallbackPreview::OUTPUT_WITH_DATA);
@@ -1550,12 +1550,12 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             // Enable auto-focus by default
             m3AControls->setAfEnabled(true);
             m3AThread->enable3A();
-            m3AThread->enableDVS(isDVSActive);
         }
     } else {
         LOGE("Error starting ISP!");
         mPreviewThread->returnPreviewBuffers();
         mISP->detachObserver(mPreviewThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+        mISP->detachObserver(mDvs, AtomISP::OBSERVE_PREVIEW_STREAM);
         mISP->detachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
     }
 
@@ -1571,10 +1571,6 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-
-    if ((mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING) && m3AControls->isIntel3A()) {
-        m3AThread->enableDVS(false);
-    }
 
     // synchronize and pause the preview dequeueing
     mISP->pauseObserver(AtomISP::OBSERVE_FRAME_SYNC_SOF);
@@ -1612,6 +1608,11 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     if (m3AControls->isIntel3A()) {
         mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_3A_STAT_READY);
         mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
+        // Detaching DVS observer. Just to make sure, although it might not be attached:
+        // might be a non-RAW sensor, or enabling failed on startPreviewCore().
+        // It is OK to detach; if the observer is not attached, detachObserver()
+        // returns BAD_VALUE.
+        mISP->detachObserver(mDvs, AtomISP::OBSERVE_PREVIEW_STREAM);
     }
     mISP->detachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
     mMessageQueue.remove(MESSAGE_ID_DEQUEUE_RECORDING);

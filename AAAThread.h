@@ -53,7 +53,7 @@ class AAAThread : public Thread, public IAtomIspObserver {
 
 // constructor destructor
 public:
-    AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs, UltraLowLight *ull, I3AControls *aaaControls);
+    AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaaControls);
     virtual ~AAAThread();
 
     enum FlashStage {
@@ -85,7 +85,6 @@ public:
 public:
 
     status_t enable3A();
-    status_t enableDVS(bool en);
     status_t lockAe(bool en);
     status_t lockAwb(bool en);
     status_t autoFocus();
@@ -107,7 +106,6 @@ private:
 
         MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
         MESSAGE_ID_ENABLE_AAA,
-        MESSAGE_ID_ENABLE_DVS,
         MESSAGE_ID_REMOVE_REDEYE,
         MESSAGE_ID_AUTO_FOCUS,
         MESSAGE_ID_CANCEL_AUTO_FOCUS,
@@ -175,7 +173,6 @@ private:
     // thread message execution functions
     status_t handleMessageExit();
     status_t handleMessageEnable3A();
-    status_t handleMessageEnableDVS(MessageEnable* msg);
     status_t handleMessageAutoFocus();
     status_t handleMessageCancelAutoFocus();
     status_t handleMessageNewStats(MessageNewStats *msg);
@@ -206,12 +203,10 @@ private:
     bool mThreadRunning;
     I3AControls* m3AControls;
     CallbacksThread *mCallbacks;
-    AtomDvs *mDvs;
     UltraLowLight *mULL;
     ICallbackAAA* mAAADoneCallback;
 
     bool m3ARunning;
-    bool mDVSRunning;
     bool mStartAF;
     bool mStopAF;
     ia_3a_af_status mPreviousCafStatus;

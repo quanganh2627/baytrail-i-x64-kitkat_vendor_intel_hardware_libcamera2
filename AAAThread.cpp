@@ -30,17 +30,15 @@ namespace android {
 #define STATISTICS_SYNC_DELTA_US 20000
 #define STATISTICS_SYNC_DELTA_US_MAX 200000
 
-AAAThread::AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs, UltraLowLight *ull, I3AControls *aaaControls) :
+AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaaControls) :
     Thread(false)
     ,mMessageQueue("AAAThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
     ,m3AControls(aaaControls)
     ,mCallbacks(CallbacksThread::getInstance())
-    ,mDvs(dvs)
     ,mULL(ull)
     ,mAAADoneCallback(aaaDone)
     ,m3ARunning(false)
-    ,mDVSRunning(false)
     ,mStartAF(false)
     ,mStopAF(false)
     ,mPreviousCafStatus(ia_3a_af_status_idle)
@@ -78,16 +76,6 @@ status_t AAAThread::enable3A()
     msg.id = MESSAGE_ID_ENABLE_AAA;
     return mMessageQueue.send(&msg, MESSAGE_ID_ENABLE_AAA);
 }
-
-status_t AAAThread::enableDVS(bool en)
-{
-    LOG1("@%s", __FUNCTION__);
-    Message msg;
-    msg.id = MESSAGE_ID_ENABLE_DVS;
-    msg.data.enable.enable = en;
-    return mMessageQueue.send(&msg);
-}
-
 
 /**
  * Enters to FlashStage-machine by setting the initial stage.
@@ -355,7 +343,6 @@ status_t AAAThread::handleMessageExit()
     status_t status = NO_ERROR;
     mThreadRunning = false;
     m3ARunning = false;
-    mDVSRunning = false;
 
     return status;
 }
@@ -366,14 +353,6 @@ status_t AAAThread::handleMessageEnable3A()
     status_t status = NO_ERROR;
     m3ARunning = true;
     mMessageQueue.reply(MESSAGE_ID_ENABLE_AAA, status);
-    return status;
-}
-
-status_t AAAThread::handleMessageEnableDVS(MessageEnable* msg)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    mDVSRunning = msg->enable;
     return status;
 }
 
@@ -647,7 +626,7 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
     struct timeval capture_timestamp = msgFrame->capture_timestamp;
     unsigned int capture_sequence_number = msgFrame->sequence_number;
 
-    if (!mDVSRunning && !m3ARunning)
+    if (!m3ARunning)
         return status;
 
     /* Do not run 3A if we are in the pre-flash sequence */
@@ -767,9 +746,6 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
         updateULLTrigger();
     }
 
-    if (mDVSRunning) {
-        status = mDvs->run();
-    }
     return status;
 }
 
@@ -828,10 +804,6 @@ status_t AAAThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_ENABLE_AAA:
             status = handleMessageEnable3A();
-            break;
-
-        case MESSAGE_ID_ENABLE_DVS:
-            status = handleMessageEnableDVS(&msg.data.enable);
             break;
 
         case MESSAGE_ID_AUTO_FOCUS:
