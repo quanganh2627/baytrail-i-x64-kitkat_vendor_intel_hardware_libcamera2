@@ -35,6 +35,7 @@
 #include "CameraConf.h"
 #include "AtomIspObserverManager.h"
 #include "ScalerService.h"
+#include "ICameraHwControls.h"
 
 namespace android {
 
@@ -82,7 +83,9 @@ struct sensorPrivateData
 
 class Callbacks;
 
-class AtomISP : public IBufferOwner {
+class AtomISP :
+    public IHWSensorControl, // implements sensor support for IA 3A
+    public IBufferOwner {
 // FIXME: Only needed for NVM parsing "cameranvm_create()" in AtomAAA
     friend class AtomAIQ;
     friend class AtomAAA;
@@ -243,19 +246,17 @@ public:
     status_t storeMetaDataInBuffers(bool enabled);
 
     /* Sensor related controls */
-
-    int  sensorSetExposure(struct atomisp_exposure *exposure);
-    int  sensorMoveFocusToPosition(int position);
-    int  sensorMoveFocusToBySteps(int steps);
+    int sensorMoveFocusToPosition(int position);
+    int sensorMoveFocusToBySteps(int steps);
     int sensorGetFocusPosition(int * position);
     void sensorGetMotorData(sensorPrivateData *sensor_data);
     void sensorGetSensorData(sensorPrivateData *sensor_data);
-    int  sensorGetFocusStatus(int *status);
-    int  sensorGetModeInfo(struct atomisp_sensor_mode_data *mode_data);
+    int sensorGetFocusStatus(int *status);
+    int sensorGetModeInfo(struct atomisp_sensor_mode_data *mode_data);
     int sensorSetExposureTime(int time);
-    int  sensorGetExposureTime(int *exposure_time);
-    int  sensorGetAperture(int *aperture);
-    int  sensorGetFNumber(unsigned short  *fnum_num, unsigned short *fnum_denom);
+    int sensorGetExposureTime(int *exposure_time);
+    int sensorGetAperture(int *aperture);
+    int sensorGetFNumber(unsigned short  *fnum_num, unsigned short *fnum_denom);
     int sensorSetExposureMode(v4l2_exposure_auto_type type);
     int sensorGetExposureMode(v4l2_exposure_auto_type * type);
     int sensorSetExposure(int bias);
@@ -276,6 +277,11 @@ public:
     int sensorGet3ALock(int * aaaLock);
     int sensorSetAeFlashMode(v4l2_flash_led_mode mode);
     int sensorGetAeFlashMode(v4l2_flash_led_mode * mode);
+    // IHWSensorControl overloads, TODO: move them all
+    // TODO: replacing fixed value of AE_DELAY_FRAMES in AtomAIQ.h in non-functional API refactory
+    //       this value exists in CPF and needs awareness of frames timing.
+    virtual unsigned int getExposureDelay() { return 2; };
+    virtual int setExposure(struct atomisp_exposure *exposure);
 
     /* ISP related controls */
     int setAicParameter(struct atomisp_parameters *aic_params);

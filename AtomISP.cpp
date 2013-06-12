@@ -5408,7 +5408,7 @@ int AtomISP::sensorGetModeInfo(struct atomisp_sensor_mode_data *mode_data)
     return ret;
 }
 
-int AtomISP::sensorSetExposure(struct atomisp_exposure *exposure)
+int AtomISP::setExposure(struct atomisp_exposure *exposure)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;

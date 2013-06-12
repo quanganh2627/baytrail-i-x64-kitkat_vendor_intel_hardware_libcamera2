@@ -37,6 +37,7 @@
 #include <binder/IServiceManager.h>
 #include "intel_camera_extensions.h"
 #include "FeatureData.h"
+#include "ICameraHwControls.h"
 
 namespace android {
 
@@ -6097,10 +6098,14 @@ status_t ControlThread::createAtom3A()
     status_t status = NO_ERROR;
 
     if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+        HWControlGroup hwcg;
+
+        hwcg.mSensorCI = (IHWSensorControl*) mISP;
+
         if(PlatformData::supportAIQ()) {
-            m3AControls = new AtomAIQ(mISP);
+            m3AControls = new AtomAIQ(hwcg, mISP);
         } else {
-            m3AControls = new AtomAAA(mISP);
+            m3AControls = new AtomAAA(hwcg, mISP);
         }
     } else {
         m3AControls = new AtomSoc3A(mCameraId, mISP);

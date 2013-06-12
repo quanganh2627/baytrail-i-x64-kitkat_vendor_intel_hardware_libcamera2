@@ -72,7 +72,7 @@ namespace android {
 #define MAX_STATISTICS_HEIGHT 150
 #define IA_AIQ_MAX_NUM_FACES 5
 
-AtomAIQ::AtomAIQ(AtomISP *anISP) :
+AtomAIQ::AtomAIQ(HWControlGroup &hwcg, AtomISP *anISP):
     mISP(anISP)
     ,mAfMode(CAM_AF_MODE_NOT_SET)
     ,mStillAfStart(0)
@@ -84,6 +84,7 @@ AtomAIQ::AtomAIQ(AtomISP *anISP) :
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
     ,mAwbRunCount(0)
     ,mMkn(NULL)
+    ,mSensorCI(hwcg.mSensorCI)
 {
     LOG1("@%s", __FUNCTION__);
     memset(&m3aState, 0, sizeof(aaa_state));
@@ -277,7 +278,7 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
     if (mAeInputParameters.frame_use == ia_aiq_frame_use_still)
         mAeState.feedback_delay = 0;
     else {
-        mAeState.feedback_delay = AE_DELAY_FRAMES;
+        mAeState.feedback_delay = mSensorCI->getExposureDelay();
     }
 
     /* Invalidate and re-run AEC to re-calculate sensor exposure for potential changes
@@ -933,7 +934,7 @@ status_t AtomAIQ::applyEv(float bias)
         LOG2("AEC gain[1]: %x", exposure.gain[1]);
         LOG2("AEC aperture: %d\n", exposure.aperture);
         /* Apply Sensor settings */
-        ret |= mISP->sensorSetExposure(&exposure);
+        ret |= mSensorCI->setExposure(&exposure);
     }
     return ret;
 }
@@ -1457,14 +1458,9 @@ int AtomAIQ::applyExposure(ia_aiq_exposure_sensor_parameters *sensor_exposure)
     LOG2("AEC aperture: %d\n", atomispExposure.aperture);
 
     /* Apply Sensor settings as exposure changes*/
-    if (mISP != NULL) {
-        ret = mISP->sensorSetExposure(&atomispExposure);
-        if (ret != 0) {
-            LOGE("Exposure applying failed");
-        }
-    } else {
-        LOGE("No interface for exposure");
-        ret = -1;
+    ret = mSensorCI->setExposure(&atomispExposure);
+    if (ret != 0) {
+        LOGE("Exposure applying failed");
     }
 
     return ret;
@@ -1489,10 +1485,13 @@ int AtomAIQ::run3aInit()
     mAfState.af_results = NULL;
     memset(&mAeCoord, 0, sizeof(mAeCoord));
     memset(&mAeState, 0, sizeof(mAeState));
-    mAeState.stored_results = new AtomFifo<stored_ae_results>(AE_DELAY_FRAMES + 1);
+    if (mSensorCI == NULL)
+        return -1;
+    unsigned int store_size = mSensorCI->getExposureDelay() + 1; /* max delay + current results */
+    mAeState.stored_results = new AtomFifo<stored_ae_results>(store_size);
     if (mAeState.stored_results == NULL)
         return -1;
-    LOG1("@%s: keeping %d AE history results stored", __FUNCTION__, AE_DELAY_FRAMES + 1);
+    LOG1("@%s: keeping %d AE history results stored", __FUNCTION__, store_size);
     resetAECParams();
     resetAWBParams();
     mAwbResults = NULL;

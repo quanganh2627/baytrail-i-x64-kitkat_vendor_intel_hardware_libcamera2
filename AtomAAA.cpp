@@ -114,7 +114,7 @@ static ia_3a_af_hp_status cb_focus_home_position(void)
 
 } // extern "C"
 
-AtomAAA::AtomAAA(AtomISP *anISP) :
+AtomAAA::AtomAAA(HWControlGroup &hwcg, AtomISP *anISP) :
      mSensorType(SENSOR_TYPE_NONE)
     ,mAfMode(CAM_AF_MODE_NOT_SET)
     ,mPublicAeMode(CAM_AE_MODE_AUTO)
@@ -124,6 +124,7 @@ AtomAAA::AtomAAA(AtomISP *anISP) :
     ,mFocusPosition(0)
     ,mStillAfStart(0)
     ,mISP(anISP)
+    ,mSensorCI(hwcg.mSensorCI)
 {
     LOG1("@%s", __FUNCTION__);
     mPrintFunctions.vdebug = vdebug;
@@ -1029,7 +1030,7 @@ status_t AtomAAA::applyEv(float bias)
     ret = applyResults();
     /* we should set everytime for bias */
     if (!m3ALibState.results.exposure_changed)
-      mISP->sensorSetExposure(&m3ALibState.results.exposure);
+        mSensorCI->setExposure(&m3ALibState.results.exposure);
 
     if (ret != 0)
         return UNKNOWN_ERROR;
@@ -1429,7 +1430,13 @@ int AtomAAA::applyResults(void)
 
     /* Apply Sensor settings */
     if (m3ALibState.results.exposure_changed) {
-        ret |= mISP->sensorSetExposure(&m3ALibState.results.exposure);
+        if (mSensorCI != NULL) {
+            int delay = mSensorCI->setExposure(&m3ALibState.results.exposure);
+            if (delay < 0)
+                ret |= delay;
+        } else {
+            LOGE("No interface for exposure control");
+        }
         m3ALibState.results.exposure_changed = false;
     }
 

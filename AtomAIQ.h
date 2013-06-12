@@ -20,6 +20,7 @@
 
 namespace android {
 class AtomAIQ;
+class I3AControls;
 };
 
 #include <utils/Errors.h>
@@ -35,6 +36,7 @@ class AtomAIQ;
 #include "I3AControls.h"
 #include "PlatformData.h"
 #include "AtomFifo.h"
+#include "ICameraHwControls.h"
 #include "ia_face.h"
 
 namespace android {
@@ -44,7 +46,6 @@ namespace android {
 #define AIQ_MAX_TIME_FOR_AF     2500 // milliseconds
 #define TORCH_INTENSITY         20   // 20%
 #define MAX_NUM_AF_WINDOW       9
-#define AE_DELAY_FRAMES         2
 
 typedef struct {
     struct atomisp_parm               isp_params;
@@ -210,7 +211,7 @@ private:
     AtomAIQ& operator=(const AtomAIQ& other);
 
 public:
-    AtomAIQ(AtomISP *anISP);
+    AtomAIQ(HWControlGroup &hwcg, AtomISP *anISP);
     ~AtomAIQ();
 
     virtual bool isIntel3A() { return true; }
@@ -389,6 +390,8 @@ private:
 
     //MKN
     ia_mkn  *mMkn;
+
+    IHWSensorControl*    mSensorCI;
 }; // class AtomAIQ
 
 }; // namespace android
