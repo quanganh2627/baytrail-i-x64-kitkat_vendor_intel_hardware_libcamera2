@@ -937,7 +937,7 @@ status_t AtomAIQ::setEv(float bias)
 
 status_t AtomAIQ::getEv(float *ret)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     *ret = mAeInputParameters.ev_shift;
     return NO_ERROR;
 }
