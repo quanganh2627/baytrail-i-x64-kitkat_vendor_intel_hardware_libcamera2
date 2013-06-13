@@ -493,7 +493,6 @@ private:
 
     // parameters handling functions
     bool isParameterSet(const char* param);
-    bool isParameterSet(const char* param, const CameraParameters &params);
     String8 paramsReturnNewIfChanged(const CameraParameters *oldParams,
             CameraParameters *newParams,
             const char *key);

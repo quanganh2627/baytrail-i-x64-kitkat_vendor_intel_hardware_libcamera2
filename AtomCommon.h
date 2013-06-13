@@ -29,6 +29,7 @@
 #include <time.h>
 #include <ia_3a_types.h>
 #include <ui/GraphicBuffer.h>
+#include <camera/CameraParameters.h>
 
 #include "LogHelper.h"
 
@@ -415,6 +416,7 @@ inline static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
 }
 
 void convertFromAndroidToIaCoordinates(const CameraWindow &srcWindow, CameraWindow &toWindow);
+bool isParameterSet(const char *param, const CameraParameters &params);
 
 void mirrorBuffer(AtomBuffer *buffer, int currentOrientation, int cameraOrientation);
 void flipBufferV(AtomBuffer *buffer);

@@ -736,19 +736,9 @@ void ControlThread::putParameters(char* params)
         free(params);
 }
 
-bool ControlThread::isParameterSet(const char *param, const CameraParameters &params)
-{
-    const char* strParam = params.get(param);
-    int len = strlen(CameraParameters::TRUE);
-    if (strParam != NULL && strncmp(strParam, CameraParameters::TRUE, len) == 0) {
-        return true;
-    }
-    return false;
-}
-
 bool ControlThread::isParameterSet(const char* param)
 {
-    return isParameterSet(param, mParameters);
+    return android::isParameterSet(param, mParameters);
 }
 
 /**
@@ -5827,8 +5817,8 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
     float previewAspectRatio = 0.0f;
     float videoAspectRatio = 0.0f;
     Vector<Size> sizes;
-    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT, *newParams) ? true : false;
-    bool dvsEnabled = isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION, *newParams) ?  true : false;
+    bool videoMode = android::isParameterSet(CameraParameters::KEY_RECORDING_HINT, *newParams) ? true : false;
+    bool dvsEnabled = android::isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION, *newParams) ?  true : false;
 
     int oldWidth, newWidth;
     int oldHeight, newHeight;
@@ -6125,7 +6115,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     String8 str_params(msg->params);
     newParams.unflatten(str_params);
 
-    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT, newParams) ? true : false;
+    bool videoMode = android::isParameterSet(CameraParameters::KEY_RECORDING_HINT, newParams) ? true : false;
 
     // print all old and new params for comparison (debug)
     LOG1("----------BEGIN PARAM DIFFERENCE----------");

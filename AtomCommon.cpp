@@ -84,6 +84,16 @@ AtomBuffer AtomBufferFactory::createAtomBuffer(AtomBufferType type,
     return buf;
 }
 
+bool isParameterSet(const char *param, const CameraParameters &params)
+{
+    const char* strParam = params.get(param);
+    int len = strlen(CameraParameters::TRUE);
+    if (strParam != NULL && strncmp(strParam, CameraParameters::TRUE, len) == 0) {
+        return true;
+    }
+    return false;
+}
+
 void convertFromAndroidToIaCoordinates(const CameraWindow &srcWindow, CameraWindow &toWindow)
 {
     const ia_coordinate_system androidCoord = {-1000, -1000, 1000, 1000};
