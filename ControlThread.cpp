@@ -6870,8 +6870,8 @@ status_t ControlThread::startFaceRecognition()
 {
     LOG1("@%s", __FUNCTION__);
     if (mPostProcThread->isFaceRecognitionRunning()) {
-        LOGE("@%s: face recognition already started", __FUNCTION__);
-        return INVALID_OPERATION;
+        LOGW("@%s: face recognition already started", __FUNCTION__);
+        return NO_ERROR;
     }
     mPostProcThread->startFaceRecognition();
     return NO_ERROR;
