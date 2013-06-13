@@ -254,7 +254,7 @@ int GPUScaler::logConfig() {
     return (0);
 }
 
-int GPUScaler::addOutputBuffer(buffer_handle_t *pBufHandle, int width, int height)
+int GPUScaler::addOutputBuffer(buffer_handle_t *pBufHandle, int width, int height, int stride)
 {
     mOutputBufferCounter++;
     LOG2("@%s output buffer count %d\n", __FUNCTION__, mOutputBufferCounter);
@@ -270,10 +270,13 @@ int GPUScaler::addOutputBuffer(buffer_handle_t *pBufHandle, int width, int heigh
         LOG2("Error: maximum output buffer count exceeded\n");
         return (-1);
     } else {
+        // note - GraphicBuffer destructor is private, and eglCreateImageKHR will
+        // increase the strong ref count. eglDestroyImageKHR will respectively decrease
+        // the ref count, resulting in destruction.
         mGraphicBuffer[bufferId] = new GraphicBuffer(width, height,
                 getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewFormat()),
                 GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_SW_READ_OFTEN | GraphicBuffer::USAGE_HW_TEXTURE,
-                width, (native_handle_t *)*pBufHandle, 0);
+                stride, (native_handle_t *)*pBufHandle, 0);
         mEglClientBuffer[bufferId] = (mGraphicBuffer[bufferId])->getNativeBuffer();
         EGLint eglImageAttribsY[] =
         {
@@ -351,7 +354,7 @@ void GPUScaler::removeOutputBuffer(int bufferId)
     dstRenderBuffers[bufferId][0] = dstRenderBuffers[bufferId][1] = 0;
 }
 
-int GPUScaler::addInputBuffer(ANativeWindowBuffer *inNativeWindow)
+int GPUScaler::addInputBuffer(buffer_handle_t *pBufHandle, int width, int height, int stride)
 {
     mInputBufferCounter++;
     LOG1("@%s input buffer count %d\n", __FUNCTION__, mInputBufferCounter);
@@ -366,9 +369,23 @@ int GPUScaler::addInputBuffer(ANativeWindowBuffer *inNativeWindow)
     }
 
     if (bufferId == -1) {
-        LOG2("Error: maximum input buffer count exceeded\n");
+        LOG1("Error: maximum input buffer count exceeded\n");
         return (-1);
     }
+
+    // note - GraphicBuffer destructor is private, and eglCreateImageKHR will
+    // increase the strong ref count. eglDestroyImageKHR will respectively decrease
+    // the ref count, resulting in destruction.
+    GraphicBuffer *graphicBuffer = new GraphicBuffer(width, height,
+            getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewFormat()),
+            GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_SW_WRITE_OFTEN | GraphicBuffer::USAGE_HW_TEXTURE,
+            width, (native_handle_t *)*pBufHandle, 0);
+
+    if (graphicBuffer == NULL) {
+        LOGE("Error: out of memory\n");
+        return (-1);
+    }
+    ANativeWindowBuffer *nativeWindow = graphicBuffer->getNativeBuffer();
 
     EGLint eglImageAttribsY[] =
     {
@@ -383,11 +400,11 @@ int GPUScaler::addInputBuffer(ANativeWindowBuffer *inNativeWindow)
             EGL_NONE,                                                                       EGL_NONE,
     };
     srcEglImageHandle[bufferId][0] = eglCreateImageKHR_EC(eglGetDisplay(EGL_DEFAULT_DISPLAY), EGL_NO_CONTEXT,
-            EGL_NATIVE_BUFFER_ANDROID, inNativeWindow, 0);
+            EGL_NATIVE_BUFFER_ANDROID, nativeWindow, 0);
     srcEglImageHandle[bufferId][1] = eglCreateImageKHR_EC(eglGetDisplay(EGL_DEFAULT_DISPLAY), EGL_NO_CONTEXT,
-            EGL_NATIVE_BUFFER_ANDROID, inNativeWindow, eglImageAttribsY);
+            EGL_NATIVE_BUFFER_ANDROID, nativeWindow, eglImageAttribsY);
     srcEglImageHandle[bufferId][2] = eglCreateImageKHR_EC(eglGetDisplay(EGL_DEFAULT_DISPLAY), EGL_NO_CONTEXT,
-            EGL_NATIVE_BUFFER_ANDROID, inNativeWindow, eglImageAttribsUV);
+            EGL_NATIVE_BUFFER_ANDROID, nativeWindow, eglImageAttribsUV);
     if (srcEglImageHandle[bufferId][1] == EGL_NO_IMAGE_KHR || srcEglImageHandle[bufferId][2] == EGL_NO_IMAGE_KHR)
         LOGE("eglCreateImageKHR source failed (err=0x%x)\n", eglGetError());
 

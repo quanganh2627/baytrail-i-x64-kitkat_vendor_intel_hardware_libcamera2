@@ -93,22 +93,18 @@ status_t ScalerService::handleMessageRegisterBuffer(MessageRegister &msg)
 
     int id = -1;
     GraphicBufferMapper &mapper = GraphicBufferMapper::get();
-    if (msg.dir == SCALER_INPUT) {
-        GraphicBuffer *graphicBuffer = (GraphicBuffer *) msg.buffer->gfxInfo.gfxBuffer;
-        graphicBuffer->unlock(); // gpuscaler wants unlocked bufs
-        id = mGPUScaler->addInputBuffer(graphicBuffer->getNativeBuffer());
-        if (id < 0)
-            mMessageQueue.reply(MESSAGE_ID_REGISTER_BUFFER, NO_MEMORY);
-        msg.buffer->gfxInfo.scalerId = id;
-    } else { // BufferDirection == SCALER_OUTPUT
-        mapper.unlock(*msg.buffer->gfxInfo.gfxBufferHandle);  // gpuscaler wants unlocked bufs
-        id = mGPUScaler->addOutputBuffer(msg.buffer->gfxInfo.gfxBufferHandle, msg.buffer->width, msg.buffer->height);
-        if (id < 0)
-            mMessageQueue.reply(MESSAGE_ID_REGISTER_BUFFER, NO_MEMORY);
-        msg.buffer->gfxInfo.scalerId = id;
-    }
-    msg.buffer->gfxInfo.locked = false;
+    mapper.unlock(*msg.buffer->gfxInfo.gfxBufferHandle);  // gpuscaler wants unlocked bufs
 
+    if (msg.dir == SCALER_INPUT) {
+        id = mGPUScaler->addInputBuffer(msg.buffer->gfxInfo.gfxBufferHandle, msg.buffer->width, msg.buffer->height, msg.buffer->stride);
+    } else { // BufferDirection == SCALER_OUTPUT
+        id = mGPUScaler->addOutputBuffer(msg.buffer->gfxInfo.gfxBufferHandle, msg.buffer->width, msg.buffer->height, msg.buffer->stride);
+    }
+
+    if (id < 0)
+        mMessageQueue.reply(MESSAGE_ID_REGISTER_BUFFER, NO_MEMORY);
+
+    msg.buffer->gfxInfo.scalerId = id;
     // restore buffers to the locked state since they enter this function
     // locked
     int lockMode = GRALLOC_USAGE_SW_READ_OFTEN |
