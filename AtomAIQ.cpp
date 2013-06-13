@@ -1557,6 +1557,9 @@ status_t AtomAIQ::runAeMain(bool first_run)
             LOG2("AEC re-run, using manual exposure %ld", input_parameters.manual_exposure_time_us);
             LOG2("AEC re-run, using manual iso %d", input_parameters.manual_iso);
             err = ia_aiq_ae_run(m3aState.ia_aiq_handle, &input_parameters, &new_ae_results);
+            // Use only exposure from manual run
+            // TODO: need AIQ AEC to provide a way for plain re-calculation
+            new_ae_results->flash = mAeState.prev_results[restore_results_idx].flash;
         } else {
             LOG2("AEC manual_exposure_time_us: %ld manual_analog_gain: %f manual_iso: %d", mAeInputParameters.manual_exposure_time_us, mAeInputParameters.manual_analog_gain, mAeInputParameters.manual_iso);
             LOG2("AEC sensor_descriptor ->line_periods_per_field: %d", mAeInputParameters.sensor_descriptor->line_periods_per_field);
