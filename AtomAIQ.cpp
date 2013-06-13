@@ -510,6 +510,8 @@ status_t AtomAIQ::setAeFlashMode(FlashMode mode)
         wr_val = ia_aiq_flash_mode_off;
         break;
     case CAM_AE_FLASH_MODE_AUTO:
+        wr_val = ia_aiq_flash_mode_auto;
+        break;
     default:
         LOGE("Set: invalid flash mode: %d. Using AUTO!", mode);
         mode = CAM_AE_FLASH_MODE_AUTO;
