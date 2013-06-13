@@ -21,7 +21,6 @@
 #include <system/camera.h>
 #include <utils/List.h>
 #include <utils/UniquePtr.h>
-#include "AtomAAA.h"
 #include "AtomISP.h"
 #include "MessageQueue.h"
 

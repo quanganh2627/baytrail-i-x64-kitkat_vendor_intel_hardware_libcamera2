@@ -20,7 +20,6 @@
 #include <utils/threads.h>
 #include <time.h>
 #include <camera/CameraParameters.h>
-#include "AtomAAA.h"
 #include "IntelParameters.h"
 #include "FaceDetector.h"
 #include "MessageQueue.h"

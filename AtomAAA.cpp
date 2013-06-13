@@ -114,8 +114,6 @@ static ia_3a_af_hp_status cb_focus_home_position(void)
 
 } // extern "C"
 
-AtomAAA* AtomAAA::mInstance = NULL;
-
 AtomAAA::AtomAAA(AtomISP *anISP) :
      mSensorType(SENSOR_TYPE_NONE)
     ,mAfMode(CAM_AF_MODE_NOT_SET)
@@ -140,7 +138,6 @@ AtomAAA::AtomAAA(AtomISP *anISP) :
 AtomAAA::~AtomAAA()
 {
     LOG1("@%s", __FUNCTION__);
-    mInstance = NULL;
 }
 
 status_t AtomAAA::init3A()

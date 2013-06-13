@@ -19,7 +19,6 @@
 #include "LogHelper.h"
 #include "CallbacksThread.h"
 #include "AAAThread.h"
-#include "AtomAAA.h"
 #include "FaceDetector.h"
 #include "CameraDump.h"
 #include "PerformanceTraces.h"

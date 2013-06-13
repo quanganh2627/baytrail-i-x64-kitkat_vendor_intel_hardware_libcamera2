@@ -25,7 +25,6 @@
 #include "IntelParameters.h"
 #include "FeatureData.h"
 #include "LogHelper.h"
-#include "AtomAAA.h"
 #include "AtomCommon.h"
 #include "AtomISP.h"
 #include "PlatformData.h"

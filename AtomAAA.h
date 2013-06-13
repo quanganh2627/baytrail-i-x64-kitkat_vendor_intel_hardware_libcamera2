@@ -104,8 +104,6 @@ class AtomAAA : public I3AControls {
 
 // constructor/destructor
 private:
-    static AtomAAA* mInstance;
-    AtomAAA(AtomISP *anISP);
     int setFpnTable(const ia_frame *fpn_table);
 
     // Common functions for 3A, GBCE, AF etc.
@@ -157,18 +155,8 @@ private:
     AtomAAA& operator=(const AtomAAA& other);
 
 public:
-    static AtomAAA* getInstance(AtomISP *anISP = NULL) {
-        if (mInstance == NULL) {
-            if (anISP == NULL) {
-                LOGE("trying to get Intel 3A class before initializing it ");
-                return NULL;
-            }
-            mInstance = new AtomAAA(anISP);
-        }
-        return mInstance;
-    }
+    AtomAAA(AtomISP *anISP);
     ~AtomAAA();
-
 
     // Initialization functions
     virtual status_t init3A();

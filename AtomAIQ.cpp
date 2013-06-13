@@ -72,8 +72,6 @@ namespace android {
 #define MAX_STATISTICS_HEIGHT 150
 #define IA_AIQ_MAX_NUM_FACES 5
 
-AtomAIQ* AtomAIQ::mInstance = NULL; // ToDo: remove
-
 AtomAIQ::AtomAIQ(AtomISP *anISP) :
     mISP(anISP)
     ,mAfMode(CAM_AF_MODE_NOT_SET)
@@ -95,7 +93,6 @@ AtomAIQ::AtomAIQ(AtomISP *anISP) :
 AtomAIQ::~AtomAIQ()
 {
     LOG1("@%s", __FUNCTION__);
-    mInstance = NULL;
 }
 
 status_t AtomAIQ::init3A()
