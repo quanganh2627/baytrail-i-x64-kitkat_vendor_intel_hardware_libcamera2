@@ -72,9 +72,9 @@
  * Checks whether 'device' is a valid atomisp V4L2 device node
  */
 #define VALID_DEVICE(device, x) \
-    if ((device < V4L2_MAIN_DEVICE || device > mConfigLastDevice) \
+    if ((device < V4L2_MAIN_DEVICE) \
             && (device != V4L2_ISP_SUBDEV && device != V4L2_ISP_SUBDEV2)) { \
-        LOGE("%s: Wrong device %d (last %d)", __FUNCTION__, device, mConfigLastDevice); \
+        LOGE("%s: Wrong device %d ", __FUNCTION__, device); \
         return x; \
     }
 
@@ -148,7 +148,6 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
     ,mContCaptPriority(false)
     ,mInitialSkips(0)
     ,mConfigSnapshotPreviewDevice(V4L2_MAIN_DEVICE)
-    ,mConfigLastDevice(V4L2_PREVIEW_DEVICE)
     ,mPreviewDevice(V4L2_MAIN_DEVICE)
     ,mRecordingDevice(V4L2_MAIN_DEVICE)
     ,mSessionId(0)
@@ -187,7 +186,6 @@ status_t AtomISP::initDevice()
 
     mConfigSnapshotPreviewDevice = V4L2_PREVIEW_DEVICE;
     mConfigRecordingPreviewDevice = V4L2_PREVIEW_DEVICE;
-    mConfigLastDevice = 3;
 
     // Open the main device first, this device will remain open during object life span
     // and will be closed in the object destructor
@@ -3522,7 +3520,7 @@ status_t AtomISP::v4l2_capture_open(int device)
     int fd;
     struct stat st;
 
-    if ((device < V4L2_MAIN_DEVICE || device > mConfigLastDevice) &&
+    if ((device < V4L2_MAIN_DEVICE) &&
         (device != V4L2_ISP_SUBDEV && device != V4L2_ISP_SUBDEV2)) {
         LOGE("Wrong device node %d", device);
         return -1;

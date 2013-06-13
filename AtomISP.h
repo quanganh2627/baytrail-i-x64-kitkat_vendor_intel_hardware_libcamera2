@@ -248,8 +248,6 @@ public:
     int waitForFirmware(unsigned int fwHandle);
     int abortFirmware(unsigned int fwHandle, unsigned int timeout);
 
-    int getLastDevice() { return mConfigLastDevice; }
-
     // Enable metadata buffer mode API
     status_t storeMetaDataInBuffers(bool enabled);
 
@@ -707,7 +705,6 @@ private:
 
     int mConfigSnapshotPreviewDevice;
     int mConfigRecordingPreviewDevice;
-    int mConfigLastDevice;
     int mPreviewDevice;
     int mRecordingDevice;
 
