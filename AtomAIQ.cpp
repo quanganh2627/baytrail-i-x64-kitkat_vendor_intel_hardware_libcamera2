@@ -271,6 +271,10 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
      * in sensor settings */
     status = runAeMain(true);
 
+    /* run AWB and GBCE to get initial values */
+    runAwbMain();
+    status |= runGBCEMain();
+
     /* Re-run AIC to get new results for new mode. LSC needs to be updated if resolution changes. */
     status |= runAICMain();
 
