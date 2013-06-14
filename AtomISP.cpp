@@ -4307,14 +4307,6 @@ int AtomISP::pollCapture(int timeout)
     return v4l2_poll(V4L2_MAIN_DEVICE, timeout);
 }
 
-bool AtomISP::isBufferValid(const AtomBuffer* buffer) const
-{
-    if(buffer->type == ATOM_BUFFER_PREVIEW_GFX)
-        return true;
-
-    return buffer->ispPrivate == this->mSessionId;
-}
-
 int AtomISP::grabFrame(int device, struct v4l2_buffer *buf)
 {
     LOG2("@%s", __FUNCTION__);

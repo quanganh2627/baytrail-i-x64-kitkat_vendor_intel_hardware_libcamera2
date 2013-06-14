@@ -140,9 +140,6 @@ public:
     inline int getNumBuffers(bool videoMode) { return videoMode? mNumBuffers : mNumPreviewBuffers; }
     AtomMode getMode() const { return mMode; };
 
-    void requestClearDriverState();
-    void clearDriverState();
-
     status_t startOfflineCapture(ContinuousCaptureConfig &config);
     status_t stopOfflineCapture();
     bool isOfflineCaptureRunning() const;
@@ -173,7 +170,6 @@ public:
     int pollCapture(int timeout);
 
     bool dataAvailable();
-    bool isBufferValid(const AtomBuffer * buffer) const;
 
     bool isHALZSLEnabled() const { return mHALZSLEnabled; }
 
