@@ -37,6 +37,7 @@
 #include "CameraConf.h"
 #include "I3AControls.h"
 #include "AtomIspObserverManager.h"
+#include "ScalerService.h"
 
 namespace android {
 
@@ -93,12 +94,13 @@ class AtomISP : public I3AControls, public IBufferOwner {
 public:
     enum ObserverType {
         OBSERVE_PREVIEW_STREAM,
-        OBSERVE_FRAME_SYNC_SOF
+        OBSERVE_FRAME_SYNC_SOF,
+        OBSERVE_3A_STAT_READY,
     };
 
 // constructor/destructor
 public:
-    explicit AtomISP(int cameraId);
+    explicit AtomISP(int cameraId, sp<ScalerService> scalerService);
     ~AtomISP();
 
     status_t initDevice();
@@ -173,6 +175,8 @@ public:
     bool dataAvailable();
     bool isBufferValid(const AtomBuffer * buffer) const;
 
+    bool isHALZSLEnabled() const { return mHALZSLEnabled; }
+
     status_t setPreviewFrameFormat(int width, int height, int format = 0);
     status_t setPostviewFrameFormat(int width, int height, int format);
     void getPostviewFrameFormat(int &width, int &height, int &format) const;
@@ -205,6 +209,8 @@ public:
     status_t setLowLight(bool enable);
     status_t setGDC(bool enable);
     bool getPreviewTooBigForVFPP() { return mPreviewTooBigForVFPP; }
+    bool getXNR() const { return mXnr; };
+    bool getLowLight() const { return mLowLight; };
 
     status_t setDVS(bool enable);
     status_t getDvsStatistics(struct atomisp_dis_statistics *stats,
@@ -397,12 +403,13 @@ private:
     static const int V4L2_PREVIEW_DEVICE    = 2;
     static const int V4L2_INJECT_DEVICE     = 3;
     static const int V4L2_ISP_SUBDEV        = 4;
+    static const int V4L2_ISP_SUBDEV2       = 5;
     static const int V4L2_LEGACY_VIDEO_PREVIEW_DEVICE = 1;
 
     /**
      * Maximum number of V4L2 devices node we support
      */
-    static const int V4L2_MAX_DEVICE_COUNT  = V4L2_ISP_SUBDEV + 1;
+    static const int V4L2_MAX_DEVICE_COUNT  = V4L2_ISP_SUBDEV2 + 1;
 
     static const int NUM_PREVIEW_BUFFERS = 6;
 
@@ -421,6 +428,7 @@ private:
         FrameInfo recording;  // recording
         FrameInfo snapshot;   // snapshot
         FrameInfo postview;   // postview (thumbnail for capture)
+        FrameInfo HALZSL;     // HAL ZSL
         float fps;            // preview/recording (shared) output by sensor
         int target_fps ;      // preview/recording requested by user
         int num_snapshot;     // number of snapshots to take
@@ -477,6 +485,7 @@ private:
     status_t configureContinuousMode(bool enable);
     status_t configureContinuousRingBuffer();
     status_t configureContinuous();
+    status_t configureContinuousSOC();
     status_t startCapture();
     status_t stopCapture();
     status_t stopContinuousPreview();
@@ -487,6 +496,19 @@ private:
     void runStopISPActions();
 
     void markBufferCached(struct v4l2_buffer_info *vinfo, bool cached);
+
+    Size getHALZSLResolution();
+    status_t allocateHALZSLBuffers();
+    status_t freeHALZSLBuffers();
+    status_t getHALZSLPreviewFrame(AtomBuffer *buff);
+    status_t putHALZSLPreviewFrame(AtomBuffer *buff);
+    AtomBuffer* findMatchingHALZSLPreviewFrame(int frameCounter);
+    void copyOrScaleHALZSLBuffer(const AtomBuffer &captureBuf, const AtomBuffer *previewBuf,
+            AtomBuffer *targetBuf, const AtomBuffer &localBuf, float zoomFactor) const;
+    status_t getHALZSLSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
+    bool waitForHALZSLBuffer(Vector<AtomBuffer> &vector);
+    void dumpHALZSLBufs();
+    void dumpHALZSLPreviewBufs();
 
     status_t allocatePreviewBuffers();
     status_t allocateRecordingBuffers();
@@ -593,6 +615,21 @@ private:
         AtomISP *mISP;
     } mFrameSyncSource;
 
+    class AAAStatSource: public IObserverSubject
+    {
+    public:
+        AAAStatSource(const char*name, AtomISP *aisp)
+            :mName(name), mISP(aisp) { };
+
+        // IObserverSubject override
+        virtual const char* getName() { return mName.string(); };
+        virtual status_t observe(IAtomIspObserver::Message *msg);
+
+    private:
+        String8  mName;
+        AtomISP *mISP;
+    } m3AStatSource;
+
 // private members
 private:
 
@@ -611,6 +648,16 @@ private:
     bool mSwapRecordingDevice;
     bool mRecordingDeviceSwapped;
     bool mPreviewTooBigForVFPP;
+
+    bool mHALZSLEnabled;
+    AtomBuffer *mHALZSLBuffers;
+    Vector<AtomBuffer> mHALZSLPreviewBuffers;
+    Vector<AtomBuffer> mHALZSLCaptureBuffers;
+    Mutex mHALZSLLock;
+    static const unsigned int sMaxHALZSLBuffersHeldInHAL = 2;
+    static const int sNumHALZSLBuffers = sMaxHALZSLBuffersHeldInHAL + 4;
+    static const int sHALZSLRetryCount = 5;
+    static const int sHALZSLRetryUSleep = 33000;
 
     bool mClientSnapshotBuffersCached;
     bool mUsingClientSnapshotBuffers;
@@ -637,6 +684,7 @@ private:
       unsigned int initialSkips;
     } mDevices[V4L2_MAX_DEVICE_COUNT];
 
+    int dumpFrameInfo(AtomMode mode);
     int dumpPreviewFrame(int previewIndex);
     int dumpRecordingFrame(int recordingIndex);
     int dumpSnapshot(int snapshotIndex, int postviewIndex);
@@ -676,8 +724,12 @@ private:
 
     int mRawDataDumpSize;
     int mFrameSyncRequested;
+    int m3AStatRequested;
     bool mFrameSyncEnabled;
+    bool m3AStatscEnabled;
     v4l2_colorfx mColorEffect;
+
+    sp<ScalerService> mScaler;
 
     AtomIspObserverManager mObserverManager;
 

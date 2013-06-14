@@ -21,6 +21,7 @@
 #include "intel_camera_extensions.h"
 #include "PerformanceTraces.h"
 #include "cutils/atomic.h"
+#include "PlatformData.h"
 
 namespace android {
 
@@ -92,7 +93,7 @@ bool Callbacks::msgTypeEnabled(int32_t msgType)
     return (mMessageFlags & msgType) != 0;
 }
 
-void Callbacks::panoramaSnapshot(AtomBuffer &livePreview)
+void Callbacks::panoramaSnapshot(const AtomBuffer &livePreview)
 {
     LOG2("@%s", __FUNCTION__);
     mDataCB(CAMERA_MSG_PANORAMA_SNAPSHOT, livePreview.buff, 0, NULL, mUserToken);
@@ -194,6 +195,49 @@ void Callbacks::sceneDetected(int sceneMode, bool sceneHdr)
         LOG1("Sending message: CAMERA_MSG_SCENE_DETECT, scene = %d, HDR = %d", sceneMode, (int) sceneHdr);
         mNotifyCB(CAMERA_MSG_SCENE_DETECT, sceneMode, (int) sceneHdr, mUserToken);
     }
+}
+
+status_t Callbacks::allocateGraphicBuffer(AtomBuffer &buff, int width, int height)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = OK;
+
+    MapperPointer mapperPointer;
+    mapperPointer.ptr = NULL;
+
+    int lockMode = GRALLOC_USAGE_SW_READ_OFTEN |
+                   GRALLOC_USAGE_SW_WRITE_NEVER |
+                   GRALLOC_USAGE_HW_COMPOSER;
+
+    GraphicBuffer *cameraGraphicBuffer = new GraphicBuffer(width, height, PlatformData::getGFXHALPixelFormat(),
+                    GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_SW_WRITE_OFTEN | GraphicBuffer::USAGE_HW_TEXTURE);
+
+    if (!cameraGraphicBuffer)
+        return NO_MEMORY;
+
+    ANativeWindowBuffer *cameraNativeWindowBuffer = cameraGraphicBuffer->getNativeBuffer();
+    buff.buff = NULL;     // We do not allocate a normal camera_memory_t
+    buff.width = width;
+    buff.height = height;
+    buff.stride = cameraNativeWindowBuffer->stride;
+    buff.format = PlatformData::getPreviewFormat();
+    buff.gfxInfo.scalerId = -1;
+    buff.gfxInfo.gfxBufferHandle = &cameraGraphicBuffer->handle;
+    buff.gfxInfo.gfxBuffer = cameraGraphicBuffer;
+    cameraGraphicBuffer->incStrong(this);
+    buff.size = frameSize(V4L2_PIX_FMT_NV12, buff.stride, buff.height);
+
+    status = cameraGraphicBuffer->lock(lockMode, &mapperPointer.ptr);
+    buff.gfxInfo.locked = true;
+    if (status != NO_ERROR) {
+        LOGE("@%s: Failed to lock GraphicBuffer!", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+    buff.dataPtr = mapperPointer.ptr;
+    buff.shared = false;
+    LOG1("@%s allocated gfx buffer with pointer %p nativewindowbuf %p", __FUNCTION__, buff.dataPtr, cameraNativeWindowBuffer);
+    return status;
 }
 
 void Callbacks::allocateMemory(AtomBuffer *buff, int size, bool cached)

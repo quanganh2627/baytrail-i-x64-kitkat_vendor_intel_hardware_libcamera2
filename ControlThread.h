@@ -36,6 +36,7 @@
 #include "PostProcThread.h"
 #include "PanoramaThread.h"
 #include "SensorThread.h"
+#include "ScalerService.h"
 #include "PostCaptureThread.h"
 #include "CameraDump.h"
 #include "CameraAreas.h"
@@ -522,9 +523,9 @@ private:
     status_t processParamEffect(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamSceneMode(const CameraParameters *oldParams,
-            CameraParameters *newParams);
+            CameraParameters *newParams, bool &restartNeeded);
     status_t processParamXNR_ANR(const CameraParameters *oldParams,
-            CameraParameters *newParams);
+            CameraParameters *newParams, bool &restartNeeded);
     status_t processParamAntiBanding(const CameraParameters *oldParams,
                                            CameraParameters *newParams);
     status_t processParamFocusMode(const CameraParameters *oldParams,
@@ -540,7 +541,7 @@ private:
     status_t processParamHDR(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamULL(const CameraParameters *oldParams,
-            CameraParameters *newParams, bool *restartPreview);
+            CameraParameters *newParams, bool *restartNeeded);
     status_t processParamExposureCompensation(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamAutoExposureMode(const CameraParameters *oldParams,
@@ -597,7 +598,7 @@ private:
     // restarted. Static parameters will most likely affect buffer size and/or format so buffers
     // must be deallocated and reallocated accordingly.
     status_t processStaticParameters(const CameraParameters *oldParams,
-            CameraParameters *newParams, bool &previewFormatChanged);
+            CameraParameters *newParams, bool &restartNeeded);
     status_t validateParameters(const CameraParameters *params);
     // validation helpers
     bool validateSize(int width, int height, Vector<Size> &supportedSizes) const;
@@ -668,6 +669,7 @@ private:
     sp<AAAThread>     m3AThread;
     sp<PostProcThread> mPostProcThread;
     sp<PanoramaThread> mPanoramaThread;
+    sp<ScalerService> mScalerService;
     sp<SensorThread> mSensorThread;
     sp<BracketManager> mBracketManager;
     sp<PostCaptureThread> mPostCaptureThread;

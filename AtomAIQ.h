@@ -53,7 +53,7 @@ namespace android {
 #define EV_LOWER_BOUND         -100
 #define EV_UPPER_BOUND          100
 #define MAX_NUM_AF_WINDOW       9
-#define AE_DELAY_FRAMES         1
+#define AE_DELAY_FRAMES         2
 
 typedef struct {
     struct atomisp_parm               isp_params;
@@ -67,6 +67,7 @@ typedef struct {
     ia_aiq_rect                     focus_rect;
     ia_aiq_manual_focus_parameters  focus_parameters;
     struct timespec                 lens_timestamp;
+    unsigned long long              previous_sof;
     int32_t                         lens_position;
     bool                            aec_locked;
     bool                            af_locked;
@@ -174,7 +175,7 @@ private:
 
     //AE
     void resetAECParams();
-    status_t runAeMain();
+    status_t runAeMain(bool first_run = false);
     bool getAeResults();
     bool getAeFlashResults();
 
@@ -361,7 +362,7 @@ private:
     int mFocusPosition;
 
     //AF bracketing
-    ia_aiq_af_bracketing_results* mAfBracketingResult;
+    ia_aiq_af_bracket_results* mAfBracketingResult;
     int mBracketingStops;
 
     //AE
@@ -371,6 +372,7 @@ private:
     SceneMode mAeSceneMode;
     FlashMode mAeFlashMode;
     ae_state mAeState;
+    ia_coordinate mAeCoord;
 
     //AE bracketing
     ia_aiq_ae_input_params mAeBracketingInputParameters;

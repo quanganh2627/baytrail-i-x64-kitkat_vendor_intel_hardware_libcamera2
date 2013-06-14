@@ -48,6 +48,9 @@
 #include <camera.h>
 #include "AtomCommon.h"
 #include <IntelParameters.h>
+#ifndef GRAPHIC_IS_GEN // this will be remove if graphic provides one common header file
+#include <hal_public.h>
+#endif
 
 namespace android {
 
@@ -103,6 +106,14 @@ class PlatformData {
      * Note: this is implemented in PlatformFactory.cpp
      */
     static PlatformBase* getInstance(void);
+
+    /**
+     * Reads the required SpId hexadecimal value from /sys/spid
+     *
+     * \param spIdName  Value read from /sys/spid, e.g. vendor name
+     * \param spIdValue The id of the desired value, e.g. vendor_id
+     */
+    static status_t readSpId(String8& spIdName, int& spIdValue);
 
  public:
 
@@ -304,6 +315,14 @@ class PlatformData {
      * \return the value of the default ae metering as a string.
      */
     static const char* defaultAeMetering(int cameraId);
+
+    /**
+     * AE lock supported value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return true as a string if AE lock is supported, false if not.
+     */
+    static const char* supportedAeLock(int cameraId);
 
     /**
      * Saturation default value
@@ -510,6 +529,14 @@ class PlatformData {
     static const char* defaultAwbMode(int cameraId);
 
     /**
+     * AWB lock supported value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return true as a string if AWB lock is supported, false if not.
+     */
+    static const char* supportedAwbLock(int cameraId);
+
+    /**
      * preview frame rate supported value
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
@@ -653,6 +680,16 @@ class PlatformData {
     static bool resolutionSupportedByVFPP(int cameraId, int width, int height);
 
     /**
+     * Returns whether the snapshot resolution has ZSL support
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \param width of resolution
+     * \param height of resolution
+     * \return true if resolution support ZSL, false if not
+     */
+    static bool snapshotResolutionSupportedByZSL(int cameraId, int width, int height);
+
+    /**
      * Returns the relative rotation between the camera normal scan order
      * and the display attached to the HW overlay.
      * A rotation of this magnitud is required to render correctly the preview
@@ -691,6 +728,12 @@ class PlatformData {
     static bool supportAIQ(void);
 
     /**
+     * Returns Graphics HAL pixel format
+     * \return the pixel format
+     */
+    static int getGFXHALPixelFormat(void);
+
+    /**
      * Returns the preview format with V4l2 definition
      *
      * \return the preview format, V4L2_PIX_FMT_NV12 or V4L2_PIX_FMT_YVU420
@@ -704,7 +747,12 @@ class PlatformData {
     */
     static const char* getBoardName(void);
 
-
+    /**
+     * Creates a string that defines the specific
+     *
+     * \return the board name, it'll return NULL when it fails
+    */
+    static status_t createVendorPlatformProductName(String8& name);
 };
 
 /**
@@ -731,6 +779,11 @@ public:
         mShutterLagCompensationMs = 40;
         mSupportAIQ = false;
         mPreviewFormat = V4L2_PIX_FMT_NV12;
+#ifndef GRAPHIC_IS_GEN // this will be remove if graphic provides one common header file
+        mHALPixelFormat = HAL_PIXEL_FORMAT_NV12;
+#else
+        mHALPixelFormat = HAL_PIXEL_FORMAT_YV12;
+#endif
    };
 
  protected:
@@ -826,9 +879,11 @@ public:
                 ,CameraParameters::WHITE_BALANCE_DAYLIGHT
                 ,CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT);
             defaultAwbMode.appendFormat("%s", CameraParameters::WHITE_BALANCE_AUTO);
+            supportedAwbLock = "true";
             //ae metering
             supportedAeMetering = "auto,center,spot";
             defaultAeMetering = "auto";
+            supportedAeLock = "true";
             //preview
             supportedPreviewFrameRate = "30,15,10";
             supportedPreviewFPSRange = "(10500,30304),(11000,30304),(11500,30304)";
@@ -862,6 +917,7 @@ public:
                                            camera and the display attached to the overlay */
         // VFPP limited resolutions (sensor blanking time dependent
         Vector<Size> mVFPPLimitedResolutions; // preview resolutions with VFPP limitations
+        Vector<Size> mZSLUnsupportedSnapshotResolutions; // snapshot resolutions not supported by ZSL
         bool continuousCapture;
         // burst
         String8 supportedBurstFPS; // TODO: it will be removed in the future
@@ -875,6 +931,7 @@ public:
         // AE metering
         String8 supportedAeMetering;
         String8 defaultAeMetering;
+        String8 supportedAeLock;
         // saturation
         String8 maxSaturation;
         String8 minSaturation;
@@ -909,6 +966,7 @@ public:
         // awb
         String8 supportedAwbModes;
         String8 defaultAwbMode;
+        String8 supportedAwbLock;
         // preview
         String8 supportedPreviewFrameRate;
         String8 supportedPreviewFPSRange;
@@ -964,6 +1022,8 @@ public:
     bool mSupportAIQ;
 
     int mPreviewFormat;
+
+    int mHALPixelFormat;
 
     /* blackbay, or merr_vv, or redhookbay, or victoriabay... */
     String8 mBoardName;

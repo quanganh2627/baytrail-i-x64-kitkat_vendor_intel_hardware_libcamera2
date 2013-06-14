@@ -487,11 +487,11 @@ static const unsigned char StandardQuantChroma[64] = {
     // But most of them follow libjpeg's formula, a widely accepted one.
     ui16_q_factor = (ui16_q_factor < 50) ? (5000 / ui16_q_factor) : (200 - ui16_q_factor * 2);
     for(uc_j = 0; uc_j < 64; uc_j++) {
-        uc_qVal = (StandardQuantLuma[uc_j] * ui16_q_factor + 50) / 100;
+        uc_qVal = (uint32_t)(StandardQuantLuma[uc_j] * ui16_q_factor + 50) / 100;
         luma_matrix[uc_j] = (unsigned char)CLIP(uc_qVal, 255, 1);
     }
     for(uc_j = 0; uc_j < 64; uc_j++) {
-        uc_qVal = (StandardQuantChroma[uc_j] * ui16_q_factor + 50) / 100;
+        uc_qVal = (uint32_t)(StandardQuantChroma[uc_j] * ui16_q_factor + 50) / 100;
         chroma_matrix[uc_j] = (unsigned char)CLIP(uc_qVal, 255, 1);
     }
 

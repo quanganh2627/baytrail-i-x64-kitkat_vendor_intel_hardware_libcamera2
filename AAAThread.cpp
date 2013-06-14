@@ -182,18 +182,54 @@ status_t AAAThread::cancelAutoFocus()
 /**
  * override for IAtomIspObserver::atomIspNotify()
  *
- * signal start of 3A processing based on preview stream notify
+ * signal start of 3A processing based on 3A statistics available event
  * store SOF event information for future use
  */
 bool AAAThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state)
 {
+
+    if(msg && msg->id == IAtomIspObserver::MESSAGE_ID_EVENT) {
+
+        if (msg->data.event.type == EVENT_TYPE_STATISTICS_READY) {
+            LOG2("-- STATS READY, seq %d, ts %lldus, systemTime %lldms ---",
+                                   msg->data.event.sequence,
+                                     nsecs_t(msg->data.event.timestamp.tv_sec)*1000000LL
+                                   + nsecs_t(msg->data.event.timestamp.tv_usec),
+                                   systemTime()/1000/1000);
+
+            newStats(msg->data.event.timestamp, msg->data.event.sequence);
+        } else if (msg->data.event.type == EVENT_TYPE_SOF) {
+            LOG2("--SOF READY, seq %d, ts %lldus, systemTime %lldms ---",
+                               msg->data.event.sequence,
+                                 nsecs_t(msg->data.event.timestamp.tv_sec)*1000000LL
+                               + nsecs_t(msg->data.event.timestamp.tv_usec),
+                               systemTime()/1000/1000);
+
+            newSOF(&msg->data.event);
+        }
+    }
+
     if (msg && msg->id == IAtomIspObserver::MESSAGE_ID_FRAME) {
+        LOG2("--- FRAME, seq %d, ts %lldms, systemTime %lldms ---",
+                msg->data.frameBuffer.buff.frameSequenceNbr,
+                  nsecs_t(msg->data.frameBuffer.buff.capture_timestamp.tv_sec)*1000000LL
+                + nsecs_t(msg->data.frameBuffer.buff.capture_timestamp.tv_usec),
+                systemTime()/1000/1000);
         newFrame(&msg->data.frameBuffer.buff);
     }
-    if(msg && msg->id == IAtomIspObserver::MESSAGE_ID_EVENT) {
-        newSOF(&msg->data.event);
-    }
     return false;
+}
+
+status_t AAAThread::newStats(timeval &t, unsigned int seqNo)
+{
+    LOG2("@%s", __FUNCTION__);
+    Message msg;
+
+    msg.id = MESSAGE_ID_NEW_STATS_READY;
+    msg.data.stats.capture_timestamp = t;
+    msg.data.stats.sequence_number = seqNo;
+
+    return mMessageQueue.send(&msg);
 }
 
 status_t AAAThread::newFrame(AtomBuffer *b)
@@ -209,14 +245,35 @@ status_t AAAThread::newFrame(AtomBuffer *b)
     return status;
 }
 
+/**
+ * newSOF event received.
+ * This event is not serialized via the message queue.
+ * The reason for this is that in cases where SOF and 3A-STATS event arrive quite
+ * close the order how they are processed has an impact on 3A decisions.
+ * SOF event time is only recorded in 3A thread for information to the 3A library
+ * and it is important to get the latest one.
+ * if the 3A-STAT event is processed before, the 3A will think that SOF was skipped
+ * but it is actually in the message Q.
+ *
+ * For this reason we fast-track the SOF event and we just use a mutex to protect
+ * the variable where we store the SOF time
+ *
+ */
 status_t AAAThread::newSOF(IAtomIspObserver::MessageEvent *sofMsg)
 {
     LOG2("@%s", __FUNCTION__);
-    Message msg;
-    msg.id = MESSAGE_ID_SOF;
-    msg.data.frame.capture_timestamp = sofMsg->timestamp;
-    msg.data.frame.sequence_number = sofMsg->sequence;
-    return mMessageQueue.send(&msg);
+    Mutex::Autolock _l(mSOFTimeLock);
+
+    mLastSOFTime = sofMsg->timestamp;
+
+    return NO_ERROR;
+}
+
+struct timeval AAAThread::getLastSOFTime()
+{
+    LOG2("@%s", __FUNCTION__);
+    Mutex::Autolock _l(mSOFTimeLock);
+    return mLastSOFTime;
 }
 
 status_t AAAThread::setFaces(const ia_face_state& faceState)
@@ -402,6 +459,9 @@ status_t AAAThread::handleMessageFlashStage(MessageFlashStage *msg)
  */
 bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
 {
+    // TODO: Make aware of frame sync and changes in exposure to
+    //       reduce unneccesary skipping and consider processing for
+    //       every frame with AtomAIQ
     static unsigned int skipForEv = 0;
     status_t status = NO_ERROR;
 
@@ -420,8 +480,10 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
     switch (mFlashStage) {
         case FLASH_STAGE_PRE_START:
             // hued images fix (BZ: 72908)
-            if (skipForEv++ < 2)
+            if (skipForEv++ < 2) {
+                LOG2("@%s : Frame skipped to wait correct exposure", __FUNCTION__);
                 break;
+            }
             // Enter Stage 1
             mFramesTillExposed = 0;
             skipForEv = 2;
@@ -432,8 +494,10 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
             // Stage 1.5: Skip 2 frames to get exposure from Stage 1.
             //            First frame is for sensor to pick up the new value
             //            and second for sensor to apply it.
-            if (--skipForEv <= 0)
+            if (skipForEv-- > 0) {
+                LOG2("@%s : Frame skipped to wait correct exposure", __FUNCTION__);
                 break;
+            }
             // Enter Stage 2
             skipForEv = 2;
             status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_PRE);
@@ -441,13 +505,16 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
             break;
         case FLASH_STAGE_PRE_PHASE2:
             // Stage 2.5: Same as above, but for Stage 2.
-            if (--skipForEv <= 0)
+            if (skipForEv-- > 0) {
+                LOG2("@%s : Frame skipped to wait correct exposure", __FUNCTION__);
                 break;
+            }
             // Enter Stage 3: get the flash-exposed preview frame
             // and let the 3A library calculate the exposure
             // settings for the flash-exposed still capture.
             // We check the frame status to make sure we use
             // the flash-exposed frame.
+            skipForEv = 0;
             status = m3AControls->setFlash(1);
             mFlashStage = FLASH_STAGE_PRE_WAITING;
             break;
@@ -504,7 +571,23 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
     return true;
 }
 
-status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msgFrame)
+/**
+ * New preview frame available
+ * 3A thread needs this message only during the pre-flash sequence
+ * For normal 3A operation it runs from the 3A statistics ready event
+ */
+status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msg)
+{
+    LOG1("@%s: status: %d", __FUNCTION__,msg->status);
+    handleFlashSequence(msg->status);
+    return NO_ERROR;
+}
+
+/**
+ * Run 3A and DVS processing
+ * We received message that new 3A statistics are ready
+ */
+status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -517,7 +600,8 @@ status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msgFrame)
     if (!mDVSRunning && !m3ARunning)
         return status;
 
-    if (handleFlashSequence(msgFrame->status))
+    /* Do not run 3A if we are in the pre-flash sequence */
+    if (mFlashStage != FLASH_STAGE_NA)
         return status;
 
     // 3A & DVS stats are read with proprietary ioctl that returns the
@@ -525,7 +609,7 @@ status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msgFrame)
     // Multiple newFrames indicates we are late and 3A process is going
     // to read the statistics of the most recent frame.
     // We flush the queue and use the most recent timestamp.
-    mMessageQueue.remove(MESSAGE_ID_NEW_FRAME, &messages);
+    mMessageQueue.remove(MESSAGE_ID_NEW_STATS_READY, &messages);
     if(!messages.isEmpty()) {
         Message recent_msg = *messages.begin();
         LOGW("%d frames in 3A process queue, handling timestamp "
@@ -540,7 +624,7 @@ status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msgFrame)
 
     if(m3ARunning){
         // Run 3A statistics
-        status = m3AControls->apply3AProcess(true, capture_timestamp, getSOFTime(capture_sequence_number));
+        status = m3AControls->apply3AProcess(true, capture_timestamp, getLastSOFTime());
 
         //dump 3A statistics
         if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
@@ -638,13 +722,6 @@ status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msgFrame)
     return status;
 }
 
-status_t AAAThread::handleMessageNewSOF(MessageNewFrame *msgFrame)
-{
-    LOG2("@%s", __FUNCTION__);
-    mSOFEvents.add(msgFrame->sequence_number,msgFrame->capture_timestamp);
-    return NO_ERROR;
-}
-
 void AAAThread::getCurrentSmartScene(int &sceneMode, bool &sceneHdr)
 {
     LOG1("@%s", __FUNCTION__);
@@ -674,48 +751,6 @@ void AAAThread::updateULLTrigger()
     }
 }
 
-/**
- * returns the timestamp of the Start Of Frame event for a given frame sequence
- * number
- *
- * AAAThread gets notification of SOF events, it then  stores the sequence
- * number of the frame and the time stamp of the event
- *
- * This method is used when a new preview frame has been received and we want
- * to know when the SOF event for this frame happened.
- * The sequence number is an unique number that the driver assigns.
- *
- * Please note that due to the bug BZ:91697 we need to match with the previous
- * sequence number not with the exact same one
- *
- */
-struct timeval AAAThread::getSOFTime(unsigned int frameNo)
-{
-   ssize_t index;
-   struct timeval t;
-
-   index = mSOFEvents.indexOfKey(frameNo -1); // This -1 is a temporary change, see comment above
-   if (index == NAME_NOT_FOUND) {
-       LOGE("SOF event for frame %d did not arrive",frameNo);
-       memset(&t, 0, sizeof(struct timeval));
-       return t;
-   }
-
-   t = mSOFEvents[index];
-   mSOFEvents.removeItemsAt(index,1);
-
-   /**
-    * Prevent vector from growing too much
-    * In case frames are skipped there will be SOF events from old frames
-    * that will never be collected.
-    **/
-   if (mSOFEvents.size() > 5) {
-       LOGW("Too many SOF events stored, flushing");
-       mSOFEvents.clear();
-   }
-   return t;
-
-}
 void AAAThread::resetSmartSceneValues()
 {
     LOG1("@%s", __FUNCTION__);
@@ -734,6 +769,10 @@ status_t AAAThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_EXIT:
             status = handleMessageExit();
+            break;
+
+        case MESSAGE_ID_NEW_STATS_READY:
+            status = handleMessageNewStats(&msg.data.stats);
             break;
 
         case MESSAGE_ID_ENABLE_AAA:
@@ -766,10 +805,6 @@ status_t AAAThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_FLASH_STAGE:
             status = handleMessageFlashStage(&msg.data.flashStage);
-            break;
-
-        case MESSAGE_ID_SOF:
-            status = handleMessageNewSOF(&msg.data.frame);
             break;
 
         default:

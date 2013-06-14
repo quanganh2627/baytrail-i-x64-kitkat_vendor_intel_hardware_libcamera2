@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <ia_3a_types.h>
+#include <ui/GraphicBuffer.h>
 
 #include "LogHelper.h"
 
@@ -63,6 +64,15 @@ public:
     virtual void returnBuffer(AtomBuffer* buff) =0;
     virtual ~IBufferOwner(){};
 };
+
+/**
+ * Union for GraphicBufferMapper lock(...) pointers. GraphicBufferMapper writes
+ * two addresses to the pointer, so more space is needed.
+ */
+typedef union {
+    void *ptr;
+    long long space;
+} MapperPointer;
 
 enum AtomMode {
     MODE_NONE = -1,
@@ -105,6 +115,13 @@ enum AtomBufferType {
                                          outcome of the Ultra Low light post capture processing (uncompressed)*/
 };
 
+struct GFXBufferInfo {
+    GraphicBuffer *gfxBuffer;
+    buffer_handle_t *gfxBufferHandle;
+    bool locked;
+    int scalerId;
+};
+
 /*! \struct AtomBuffer
  *
  * Container struct for buffers passed to/from Atom ISP
@@ -131,10 +148,11 @@ struct AtomBuffer {
     int stride;             /*!< stride of the buffer*/
     int size;
     AtomBufferType type;                /*!< context in which the buffer is used */
-    FrameBufferStatus status;            /*!< status information of carried frame buffer */
+    FrameBufferStatus status;           /*!< status information of carried frame buffer */
     IBufferOwner* owner;                /*!< owner who is responsible to enqueue back to AtomISP*/
     struct timeval  capture_timestamp;  /*!< system timestamp from when the frame was captured */
     void *dataPtr;                      /*!< pointer to the actual data mapped from the buffer provider */
+    GFXBufferInfo gfxInfo;              /*!< graphics buffer information */
 };
 
 struct AAAWindowInfo {
@@ -159,7 +177,8 @@ public:
                            int ispPrivate = 0,
                            bool shared = false,
                            struct timeval capture_timestamp = AtomBufferFactory_AtomBufDefTS,
-                           void *dataPtr = NULL);
+                           void *dataPtr = NULL,
+                           GFXBufferInfo *gfxInfo = NULL);
 };
 
 enum SensorType {

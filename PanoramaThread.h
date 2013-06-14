@@ -230,7 +230,6 @@ private:
     bool mPanoramaWaitingForImage;
     CallbacksThread *mCallbacksThread;
     Callbacks *mCallbacks;
-    AtomBuffer mPostviewBuf;
     PanoramaState mState;
     int mPreviewWidth;
     int mPreviewHeight;

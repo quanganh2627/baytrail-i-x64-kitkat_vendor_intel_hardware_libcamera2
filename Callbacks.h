@@ -65,12 +65,13 @@ public:
     void focusMove(bool start);
     void shutterSound();
 
+    status_t allocateGraphicBuffer(AtomBuffer &buf, int width, int height);
     void allocateMemory(AtomBuffer *buff, int size, bool cached = true);
     void allocateMemory(camera_memory_t **buff, size_t size, bool cached = true);
     void facesDetected(camera_frame_metadata_t &face_metadata);
     void sceneDetected(int sceneMode, bool sceneHdr);
     void panoramaDisplUpdate(camera_panorama_metadata &metadata);
-    void panoramaSnapshot(AtomBuffer &livePreview);
+    void panoramaSnapshot(const AtomBuffer &livePreview);
     status_t storeMetaDataInBuffers(bool enabled);
     void ullTriggered(int id);
     void ullPictureDone(AtomBuffer *ullJpegPicture);

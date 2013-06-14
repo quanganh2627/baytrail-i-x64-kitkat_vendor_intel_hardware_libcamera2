@@ -25,6 +25,7 @@
 #include "EXIFMaker.h"
 #include "JpegHwEncoder.h"
 #include "JpegCompressor.h"
+#include "ScalerService.h"
 
 namespace android {
 
@@ -35,7 +36,7 @@ class PictureThread : public Thread {
 
 // constructor destructor
 public:
-    PictureThread(I3AControls *aaaControls);
+    PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler);
     virtual ~PictureThread();
 
 // prevent copy constructor and assignment operator
@@ -69,7 +70,8 @@ public:
     void getDefaultParameters(CameraParameters *params);
     void initialize(const CameraParameters &params);
     status_t allocSharedBuffers(int width, int height, int sharedBuffersNum,
-                                int format, Vector<AtomBuffer> *bufs);
+                                int format, Vector<AtomBuffer> *bufs,
+                                bool registerToScaler);
 
 
     status_t wait(); // wait to finish queued messages (sync)
@@ -106,7 +108,7 @@ private:
         int numBufs;        /*!> amount of buffers to allocate */
         int format;         /*!> V4L2 pixel format */
         Vector<AtomBuffer> *bufs;      /*!> Vector where to store the buffers */
-
+        bool registerToScaler; /*!> whether to register buffers to scaler */
     };
 
     struct MessageEncode {
@@ -144,7 +146,7 @@ private:
 
     void setupExifWithMetaData(const MetaData &metaData);
     status_t encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, AtomBuffer *destBuf);
-    status_t allocateInputBuffers(int format, int width, int height, int numBufs);
+    status_t allocateInputBuffers(int format, int width, int height, int numBufs, bool registerToScaler);
     void     freeInputBuffers();
     int      encodeExifAndThumbnail(AtomBuffer *thumbnail, unsigned char* exifDst);
     status_t startHwEncoding(AtomBuffer *mainBuf);
@@ -187,6 +189,7 @@ private:
     AtomBuffer *mInputBufferArray;
     char       **mInputBuffDataArray;   /*!< Convenience variable. TODO remove and use mInputBufferArray */
     int        mInputBuffers;
+    sp<ScalerService> mScaler;
 
     // Exif data
     String8 mExifMakerName;

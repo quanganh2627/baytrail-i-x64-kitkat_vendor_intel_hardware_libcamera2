@@ -99,6 +99,7 @@ ControlThread::ControlThread(int cameraId) :
     ,m3AThread(NULL)
     ,mPostProcThread(NULL)
     ,mPanoramaThread(NULL)
+    ,mScalerService(NULL)
     ,mBracketManager(NULL)
     ,mPostCaptureThread(NULL)
     ,mMessageQueue("ControlThread", (int) MESSAGE_ID_MAX)
@@ -168,7 +169,13 @@ status_t ControlThread::init()
     status_t status = UNKNOWN_ERROR;
     CameraDump::setDumpDataFlag();
 
-    mISP = new AtomISP(mCameraId);
+    mScalerService = new ScalerService();
+    if (mScalerService == NULL) {
+        LOGE("error creating ScalerService");
+        goto bail;
+    }
+
+    mISP = new AtomISP(mCameraId, mScalerService);
     if (mISP == NULL) {
         LOGE("error creating ISP");
         goto bail;
@@ -224,7 +231,7 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mPictureThread = new PictureThread(m3AControls);
+    mPictureThread = new PictureThread(m3AControls, mScalerService);
     if (mPictureThread == NULL) {
         LOGE("error creating PictureThread");
         goto bail;
@@ -304,6 +311,11 @@ status_t ControlThread::init()
     status = mSensorThread->run("CamHAL_SENSOR");
     if (status != NO_ERROR) {
         LOGE("Error starting sensor thread!");
+        goto bail;
+    }
+    status = mScalerService->run("CamHAL_SCALER");
+    if (status != NO_ERROR) {
+        LOGE("Error starting scaler service!");
         goto bail;
     }
     status = m3AThread->run("CamHAL_3A");
@@ -468,6 +480,11 @@ void ControlThread::deinit()
         delete mISP;
         mISP = NULL;
         PERFORMANCE_TRACES_BREAKDOWN_STEP("DeleteISP");
+    }
+
+    if (mScalerService != NULL) {
+        mScalerService->requestExitAndWait();
+        mScalerService.clear();
     }
 
     if (mULL != NULL) {
@@ -1000,6 +1017,8 @@ status_t ControlThread::handleMessageExit(MessageExit *msg)
  */
 status_t ControlThread::handleContinuousPreviewBackgrounding()
 {
+    LOG1("@%s", __FUNCTION__);
+
     if (mThreadRunning == false)
         return INVALID_OPERATION;
 
@@ -1075,7 +1094,10 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
 void ControlThread::continuousConfigApplyLimits(AtomISP::ContinuousCaptureConfig &cfg) const
 {
     int minOffset = mISP->continuousBurstNegMinOffset();
-    int skip = mFpsAdaptSkip;
+    int skip = 0;
+
+    if (cfg.numCaptures > 1)
+        skip = mFpsAdaptSkip;
 
     if (mBurstStart < 0) {
         int offset = 0;
@@ -1088,9 +1110,8 @@ void ControlThread::continuousConfigApplyLimits(AtomISP::ContinuousCaptureConfig
     }
     cfg.skip = skip;
 
-    double outFps = mISP->getFrameRate() / (skip + 1);
-    LOG2("@%s: offset %d, skip %d, fps %.1f (for start-index %d, sensor fps %.1f)",
-         __FUNCTION__, cfg.offset, skip, outFps, mBurstStart, mISP->getFrameRate());
+    LOG2("@%s: offset %d, skip %d (for start-index %d)",
+         __FUNCTION__, cfg.offset, skip, mBurstStart);
 }
 
 /**
@@ -1115,17 +1136,15 @@ status_t ControlThread::configureContinuousRingBuffer()
         capturePriority = false;
 
     AtomISP::ContinuousCaptureConfig cfg;
-    if (mULL->isActive())
-        cfg.numCaptures = mULL->MAX_INPUT_BUFFERS;
+    if (mULL->isActive() || mBurstLength > 1)
+        cfg.numCaptures = MAX(mULL->MAX_INPUT_BUFFERS, mBurstLength);
     else
         cfg.numCaptures = 1;
 
     cfg.offset = -(mISP->shutterLagZeroAlign());
     cfg.skip = 0;
-    if (mBurstLength > 1 || mULL->isActive()) {
-        cfg.numCaptures = MAX(mBurstLength,cfg.numCaptures);
-        continuousConfigApplyLimits(cfg);
-    }
+    continuousConfigApplyLimits(cfg);
+
     LOG1("%s numcaptures %d, offset %d, skip %d",__FUNCTION__,
                                                 cfg.numCaptures,
                                                 cfg.offset,
@@ -1163,7 +1182,8 @@ status_t ControlThread::initContinuousCapture()
 
     mISP->setSnapshotFrameFormat(width, height, format);
     configureContinuousRingBuffer();
-    mISP->setPostviewFrameFormat(pvWidth, pvHeight, format);
+    mISP->setPostviewFrameFormat(pvWidth, pvHeight,
+                                 PlatformData::getPreviewFormat());
 
     burstStateReset();
 
@@ -1266,23 +1286,26 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         return STATE_PREVIEW_STILL;
     }
 
-    // Picture-sizes smaller than 1280x768 are not validated with
-    // any ISP firmware.
+    // Picture-sizes smaller than preview-size do not work with
+    // current CSS firmwares in continuous/ZSL mode.
+    // TODO: should be removed when CSS can handle this, see PSI BZ 73112
     int picWidth = 0, picHeight = 0;
+    int vfWidth = 0, vfHeight = 0;
     params.getPictureSize(&picWidth, &picHeight);
-    if (picWidth <= 1280 && picHeight <= 768) {
-        // this is a limitation of current CSS stack
-        LOG1("@%s: 1M or smaller picture-size, disabling continuous mode", __FUNCTION__);
+    params.getPreviewSize(&vfWidth, &vfHeight);
+    if ((PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW &&
+        picWidth < vfWidth && picHeight < vfHeight) ||
+        !PlatformData::snapshotResolutionSupportedByZSL(mCameraId, picWidth, picHeight)) {
+        LOG1("@%s: picture-size smaller than preview-size, disabling continuous mode", __FUNCTION__);
         return STATE_PREVIEW_STILL;
     }
 
     // Low preview resolutions have known issues in continuous mode.
     // TODO: to be removed, tracked in BZ 81396
-    int pWidth = 0, pHeight = 0;
-    mParameters.getPreviewSize(&pWidth, &pHeight);
-    if (pWidth < 640 && pHeight < 360) {
+    if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW &&
+        vfWidth < 640 && vfHeight < 360) {
         LOG1("@%s: continuous mode not available for preview size %ux%u",
-             __FUNCTION__, pWidth, pHeight);
+             __FUNCTION__, vfWidth, vfHeight);
         return STATE_PREVIEW_STILL;
     }
 
@@ -1319,6 +1342,11 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
 
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
         LOG1("@%s: Raw dump enabled, disabling continuous mode", __FUNCTION__);
+        return STATE_PREVIEW_STILL;
+    }
+
+    if (mISP->getLowLight()) {
+        LOG1("@%s: ANR enabled, disabling continuous mode", __FUNCTION__);
         return STATE_PREVIEW_STILL;
     }
 
@@ -1420,9 +1448,18 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         CameraWindow aeWindow;
         mMeteringAreas.toWindows(meteringWindows);
 
-        AAAWindowInfo aaaWindow;
-        m3AControls->getGridWindow(aaaWindow);
-        convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
+        /**
+         * Temporary support for both 3A libs.
+         * Intel 3A (aka AIQ) uses different coordinates than
+         * Acute Logic 3A.
+         */
+        if (PlatformData::supportAIQ()) {
+            convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
+        } else {
+            AAAWindowInfo aaaWindow;
+            m3AControls->getGridWindow(aaaWindow);
+            convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
+        }
 
         if (m3AControls->setAeWindow(&aeWindow) != NO_ERROR) {
             LOGW("Error setting AE metering window. Metering will not work");
@@ -1443,7 +1480,12 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     }
 
     // Load any ISP extensions before ISP is started
-    mPostProcThread->loadIspExtensions(videoMode);
+
+    // workaround for FR during HAL ZSL - do not use extensions
+    if (mISP->isHALZSLEnabled())
+        mPostProcThread->unloadIspExtensions(); // sends NULL to ia_face_set_acceleration -> enables SW FR
+    else
+        mPostProcThread->loadIspExtensions(videoMode);
 
     mISP->getPreviewSize(&width, &height,&stride);
     mNumBuffers = mISP->getNumBuffers(videoMode);
@@ -1488,7 +1530,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             LOGE("Failed switching 3A at %.2f fps", mISP->getFrameRate());
         if (isDVSActive && mDvs->reconfigure() != NO_ERROR)
             LOGE("Failed to reconfigure DVS grid");
-        mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+        mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_3A_STAT_READY);
         mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
     }
     // ControlThread must be the observer before PreviewThread to ensure that
@@ -1541,6 +1583,7 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     // synchronize and pause the preview dequeueing
     mISP->pauseObserver(AtomISP::OBSERVE_FRAME_SYNC_SOF);
     mISP->pauseObserver(AtomISP::OBSERVE_PREVIEW_STREAM);
+    mISP->pauseObserver(AtomISP::OBSERVE_3A_STAT_READY);
 
 
     // Before stopping the ISP, flush any buffers in picture
@@ -1571,7 +1614,7 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     // we only need to attach the 3AThread to preview stream for RAW type of cameras
     // when we use the 3A algorithm running on Atom
     if (m3AControls->isIntel3A()) {
-        mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+        mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_3A_STAT_READY);
         mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
     }
     mISP->detachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
@@ -1678,11 +1721,11 @@ status_t ControlThread::startOfflineCapture()
     cfg.numCaptures = 1;
     cfg.offset = -(mISP->shutterLagZeroAlign());
     cfg.skip = 0;
-
-    if (mBurstLength > 1) {
+    if (mBurstLength > 0)
         cfg.numCaptures = mBurstLength;
-        continuousConfigApplyLimits(cfg);
-    }
+    else
+        cfg.numCaptures = 1;
+    continuousConfigApplyLimits(cfg);
 
     // in case preview has just started, we need to limit
     // how long we can look back
@@ -2136,6 +2179,7 @@ status_t ControlThread::handleMessagePanoramaPicture() {
     status_t status = NO_ERROR;
     if (mPanoramaThread->getState() == PANORAMA_STARTED) {
         mPanoramaThread->startPanoramaCapture();
+        handleMessagePanoramaCaptureTrigger();
     } else {
         mPanoramaFinalizationPending = true;
         mPanoramaThread->finalize();
@@ -2374,7 +2418,8 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     if (mState != STATE_CONTINUOUS_CAPTURE) {
         // Configure and start the ISP
         mISP->setSnapshotFrameFormat(width, height, format);
-        mISP->setPostviewFrameFormat(lpvWidth, lpvHeight, format);
+        mISP->setPostviewFrameFormat(lpvWidth, lpvHeight,
+                                     PlatformData::getPreviewFormat());
 
         if ((status = mISP->configure(MODE_CAPTURE)) != NO_ERROR) {
             LOGE("Error configuring the ISP driver for CAPTURE mode");
@@ -2649,7 +2694,8 @@ status_t ControlThread::captureStillPic()
                               || mBurstLength > 1)               // proprietary preview update mode or burst
                            && mBurstStart >= 0;                  // negative fixed burst start index
     // Synchronise jpeg callback with postview rendering in case of single capture
-    bool syncJpegCbWithPostview = !mHdr.enabled && (mBurstLength <= 1);
+    bool syncJpegCbWithPostview = !mHdr.enabled && (mBurstLength <= 1) &&
+            (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD);
     bool requestPostviewCallback = true;
     bool requestRawCallback = true;
 
@@ -2694,6 +2740,7 @@ status_t ControlThread::captureStillPic()
                     flashSequenceStarted = true;
                     // hide preview frames already during pre-flash sequence
                     mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
+                    mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
                     status = m3AThread->enterFlashSequence(AAAThread::FLASH_STAGE_PRE_EXPOSED);
                     if (status != NO_ERROR) {
                         flashOn = false;
@@ -2706,18 +2753,20 @@ status_t ControlThread::captureStillPic()
     if (mState == STATE_CONTINUOUS_CAPTURE) {
         bool useFlash = flashOn && flashMode != CAM_AE_FLASH_MODE_TORCH;
         status = continuousStartStillCapture(useFlash);
-        if (flashSequenceStarted)
-            m3AThread->exitFlashSequence();
     } else {
         status = stopPreviewCore();
-        if (flashSequenceStarted)
-            m3AThread->exitFlashSequence();
         if (status != NO_ERROR) {
             LOGE("Error stopping preview!");
             return status;
         }
         mState = STATE_CAPTURE;
     }
+
+    if (flashSequenceStarted) {
+        m3AThread->exitFlashSequence();
+        mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+    }
+
     mBurstCaptureNum = 0;
     mBurstCaptureDoneNum = 0;
     mBurstQbufs = 0;
@@ -2737,7 +2786,8 @@ status_t ControlThread::captureStillPic()
 
         // Configure and start the ISP
         mISP->setSnapshotFrameFormat(width, height, format);
-        mISP->setPostviewFrameFormat(pvWidth, pvHeight, format);
+        mISP->setPostviewFrameFormat(pvWidth, pvHeight,
+                                     PlatformData::getPreviewFormat());
         if (mHdr.enabled) {
             mHdr.outMainBuf.buff = NULL;
             mHdr.outPostviewBuf.buff = NULL;
@@ -2784,11 +2834,13 @@ status_t ControlThread::captureStillPic()
     /*
      *  Pre-capture skip.
      *  we can skip frames for 2 reasons:
-     *  - If the current camera does not have 3A, then we should skip the first
-     *    frames in order to allow the sensor to warm up.
-     *  - If we are capturing a RAW image
+     *  - if the we are using a SOC sensor in on-line mode, we just changed
+     *    modes and we need to skip some frames for the sensor to converge to
+     *    decent 3A params
+     *  - if we are using a raw sensor to capture (and dump) raw bayer images.
+     *    We are also using online mode and we need the skip for sensor
      */
-    if ((PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) ||
+    if ((mState != STATE_CONTINUOUS_CAPTURE && PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) ||
          CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
 
         int framesToSkip = CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW) ?
@@ -4072,15 +4124,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         status = processParamPreviewFrameRate(oldParams, newParams);
     }
 
-    // Changing the scene may change many parameters, including
-    // flash, awb. Thus the order of how processParamFoo() are
-    // called is important for the parameter changes to take
-    // effect, and processParamSceneMode needs to be called first.
-    if (status == NO_ERROR) {
-        // Scene Mode
-        status = processParamSceneMode(oldParams, newParams);
-    }
-
     // slow motion value settings in high speed recording mode
     if (status == NO_ERROR) {
         status = processParamSlowMotionRate(oldParams, newParams);
@@ -4159,25 +4202,20 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         status = processParamMirroring(oldParams, newParams);
     }
 
-    if (m3AControls->isIntel3A()) {
-        if (status == NO_ERROR) {
-            // ae lock
-            status = processParamAELock(oldParams, newParams);
-        }
+    if (status == NO_ERROR) {
+        // ae lock
+        status = processParamAELock(oldParams, newParams);
+    }
 
+    if (status == NO_ERROR) {
+        // awb lock
+        status = processParamAWBLock(oldParams, newParams);
+    }
+
+    if (m3AControls->isIntel3A()) {
         if (status == NO_ERROR) {
             // af lock
             status = processParamAFLock(oldParams, newParams);
-        }
-
-        if (status == NO_ERROR) {
-            // awb lock
-            status = processParamAWBLock(oldParams, newParams);
-        }
-
-        if (status == NO_ERROR) {
-            // xnr/anr
-            status = processParamXNR_ANR(oldParams, newParams);
         }
 
         if (status == NO_ERROR) {
@@ -4269,8 +4307,14 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
     mAllocatedSnapshotBuffers.clear();
     mAvailableSnapshotBuffers.clear();
 
+    // check need to register bufs to scaler.. can't use ISP since ISP isn't
+    // configured yet, so do it by checking the preview mode and sensor type
+    ControlThread::State state = selectPreviewMode(mParameters);
+    bool registerToScaler = (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) &&
+            (state == STATE_CONTINUOUS_CAPTURE);
+
     status = mPictureThread->allocSharedBuffers(picWidth, picHeight, bufCount,format,
-                                                &mAllocatedSnapshotBuffers);
+                                                &mAllocatedSnapshotBuffers, registerToScaler);
 
     if (status != NO_ERROR) {
        LOGE("Could not pre-allocate picture buffers!");
@@ -4365,32 +4409,64 @@ status_t ControlThread::processParamAWBLock(const CameraParameters *oldParams,
     return status;
 }
 
+/**
+ *  Noise reduction algorithms
+ *  XNR is currently supported during continuous capture
+ *  ANR is NOT supported on continuous capture
+ *
+ *  For the above reasons if ANR is activated we need to force a preview re-start
+ *  that will switch from Continuous Capture preview to "old-style" online preview
+ *  In selectPreviewMode we check the status of ANR to decide this.
+ *
+ */
 status_t ControlThread::processParamXNR_ANR(const CameraParameters *oldParams,
-        CameraParameters *newParams)
+        CameraParameters *newParams, bool &restartNeeded)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    bool XNR_ANR_changed = false;
 
     // XNR
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_XNR);
-    LOG2("XNR value new %s ", newVal.string());
     if (!newVal.isEmpty()) {
-        if (newVal == CameraParameters::TRUE)
-            status = mISP->setXNR(true);
-        else
-            status = mISP->setXNR(false);
+        bool xnr = (newVal == CameraParameters::TRUE);
+        // note: due add/remove of intel parameters newVal doesn't always
+        // reflect changes of value in AtomISP level
+        if (mISP->getXNR() != xnr) {
+            LOG2("XNR value new %s", newVal.string());
+            XNR_ANR_changed = true;
+            mISP->setXNR(xnr);
+        }
     }
 
     // ANR
     newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_ANR);
-    LOG2("ANR value new %s ", newVal.string());
     if (!newVal.isEmpty()) {
-        if (newVal == CameraParameters::TRUE)
-            status = mISP->setLowLight(true);
-        else
-            status = mISP->setLowLight(false);
+        bool anr = (newVal == CameraParameters::TRUE);
+        // note: due add/remove of intel parameters newVal doesn't always
+        // reflect changes of value in AtomISP level
+        if (mISP->getLowLight() != anr) {
+            LOG2("ANR value new %s", newVal.string());
+            XNR_ANR_changed = true;
+            mISP->setLowLight(anr);
+        }
+    }
+
+    if (XNR_ANR_changed) {
+        if (mState == STATE_CONTINUOUS_CAPTURE) {
+            // XNR needs continuous mode restart atm.
+            // ANR is not supported at all, See selectPreviewMode().
+            restartNeeded = true;
+        } else if (restartNeeded == false &&
+                   mState == STATE_PREVIEW_STILL) {
+            // XNR/ANR is changing and restart is not requested for other reasons
+            // check whether we can switch back to continuous-mode
+            if (mState != selectPreviewMode(*newParams)) {
+                restartNeeded = true;
+            }
+        }
     }
 
     return status;
@@ -4823,7 +4899,7 @@ void ControlThread::selectFlashModeForScene(CameraParameters *newParams)
 }
 
 status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
-        CameraParameters *newParams)
+        CameraParameters *newParams, bool &needRestart)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -5030,7 +5106,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
 
             processParamBackLightingCorrectionMode(oldParams, newParams);
             processParamAwbMappingMode(oldParams, newParams);
-            processParamXNR_ANR(oldParams, newParams);
+            processParamXNR_ANR(oldParams, newParams, needRestart);
 
             newParams->remove(IntelCameraParameters::KEY_AWB_MAPPING_MODE);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES);
@@ -5164,15 +5240,20 @@ status_t ControlThread:: processParamSetMeteringAreas(const CameraParameters *ol
         size_t winCount(mMeteringAreas.numOfAreas());
         CameraWindow *meteringWindows = new CameraWindow[winCount];
         CameraWindow aeWindow;
-        AAAWindowInfo aaaWindow;
 
         mMeteringAreas.toWindows(meteringWindows);
 
-        m3AControls->getGridWindow(aaaWindow);
-        //in our AE bg weight is 1, max is 255, thus working values are inside [2, 255].
-        //Google probably expects bg weight to be zero, therefore sending happily 1 from
-        //default camera app. To have some kind of visual effect, we start our range from 5
-        convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
+        if (PlatformData::supportAIQ()) {
+            convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
+        } else {
+            AAAWindowInfo aaaWindow;
+            m3AControls->getGridWindow(aaaWindow);
+            //in our AE bg weight is 1, max is 255, thus working values are inside [2, 255].
+            //Google probably expects bg weight to be zero, therefore sending happily 1 from
+            //default camera app. To have some kind of visual effect, we start our range from 5
+
+            convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
+        }
 
         if (m3AControls->setAeMeteringMode(CAM_AE_METERING_MODE_SPOT) == NO_ERROR) {
             LOG1("@%s, Got metering area, and \"spot\" mode set. Setting window.", __FUNCTION__ );
@@ -5714,10 +5795,10 @@ status_t ControlThread::processParamMirroring(const CameraParameters *oldParams,
  *
  * @param[in] oldParams the previous parameters
  * @param[in] newParams the new parameters which are being set
- * @param[out] previewFormatChanged boolean to detect whether a preview re-start is needed.
+ * @param[out] restartNeeded boolean to detect whether a preview re-start is needed.
  */
 status_t ControlThread::processStaticParameters(const CameraParameters *oldParams,
-        CameraParameters *newParams, bool &previewFormatChanged)
+        CameraParameters *newParams, bool &restartNeeded)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -5731,7 +5812,6 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
     int oldHeight, newHeight;
     int previewWidth, previewHeight;
     int oldFormat, newFormat;
-    previewFormatChanged = false;
     // see if preview params have changed
     newParams->getPreviewSize(&newWidth, &newHeight);
     oldParams->getPreviewSize(&oldWidth, &oldHeight);
@@ -5748,7 +5828,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
                 oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
                 newWidth, newHeight, v4l2Fmt2Str(newFormat),
                 previewAspectRatio);
-        previewFormatChanged = true;
+        restartNeeded = true;
         mPreviewForceChanged = false;
     } else {
         previewAspectRatio = 1.0 * oldWidth / oldHeight;
@@ -5767,7 +5847,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
                     oldWidth, oldHeight,
                     newWidth, newHeight,
                     videoAspectRatio);
-            previewFormatChanged = true;
+            restartNeeded = true;
             /*
              *  Camera client requested a new video size, so make sure that requested
              *  video size matches requested preview size. If it does not, then select
@@ -5823,11 +5903,10 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
     }
     if (mBurstLength != oldBurstLength || mFpsAdaptSkip != oldFpsAdaptSkip) {
         LOG1("Burst configuration changed, restarting preview");
-        previewFormatChanged = true;
+        restartNeeded = true;
     }
 
-    status = processParamULL(oldParams,newParams, &previewFormatChanged);
-
+    status = processParamULL(oldParams,newParams, &restartNeeded);
 
     /**
      * There are multiple workarounds related to what preview and video
@@ -5840,7 +5919,21 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
      */
     if (mISP->applyISPLimitations(newParams, dvsEnabled, videoMode)) {
         mPreviewForceChanged = true;
-        previewFormatChanged = true;
+        restartNeeded = true;
+    }
+
+    // Changing the scene may change many parameters, including
+    // flash, awb. Thus the order of how processParamFoo() are
+    // called is important for the parameter changes to take
+    // effect, and processParamSceneMode needs to be called first.
+    if (status == NO_ERROR) {
+        // Scene Mode
+        status = processParamSceneMode(oldParams, newParams, restartNeeded);
+    }
+
+    if (status == NO_ERROR) {
+        // xnr/anr
+        status = processParamXNR_ANR(oldParams, newParams, restartNeeded);
     }
 
     return status;
@@ -5999,7 +6092,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     CameraParameters oldParams = mParameters;
     CameraParamsLogger newParamLogger (msg->params);
     CameraParamsLogger oldParamLogger (mParameters.flatten().string());
-    bool needRestartPreview;
+    bool needRestartPreview = false;
 
     CameraAreas newFocusAreas;
     CameraAreas newMeteringAreas;
