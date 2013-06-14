@@ -252,7 +252,7 @@ public:
     status_t storeMetaDataInBuffers(bool enabled);
 
     /* Sensor related controls */
-    int  sensorGetGocusStatus(int *status);
+
     int  sensorSetExposure(struct atomisp_exposure *exposure);
     int  sensorMoveFocusToPosition(int position);
     int  sensorMoveFocusToBySteps(int steps);
