@@ -72,13 +72,6 @@ namespace android {
 #define MAX_STATISTICS_HEIGHT 150
 #define IA_AIQ_MAX_NUM_FACES 5
 
-/** Convert timeval struct to value in microseconds
- *
- *  Helper macro to convert timeval struct to microsecond values stored in a
- *  long long signed value (equivalent to int64_t)
- */
-#define TIMEVAL2USECS(x) (long long)(((x)->tv_sec*1000000000LL + (x)->tv_usec*1000LL)/1000LL)
-
 AtomAIQ* AtomAIQ::mInstance = NULL; // ToDo: remove
 
 AtomAIQ::AtomAIQ(AtomISP *anISP) :
@@ -1354,30 +1347,9 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct,
     {
         ia_err err = ia_err_none;
         ia_aiq_statistics_input_params statistics_input_parameters;
-        nsecs_t now = systemTime();
         memset(&statistics_input_parameters, 0, sizeof(ia_aiq_statistics_input_params));
 
-        long long eof_timestamp = TIMEVAL2USECS(frame_timestamp_struct);
-        long long sof_timestamp = TIMEVAL2USECS(sof_timestamp_struct);
-        unsigned long long diff = (now)/1000LL - sof_timestamp;
-
-        if (diff < MIN_SOF_DELAY && mAfState.previous_sof)
-        {
-            LOG2("SOF %lld does not correspond to the latest statistics %lld. Use the SOF from the previous frame %lld", sof_timestamp,
-                (now)/1000LL, mAfState.previous_sof);
-            statistics_input_parameters.frame_timestamp = mAfState.previous_sof;
-        }
-        else
-        {
-            statistics_input_parameters.frame_timestamp = sof_timestamp;
-        }
-        mAfState.previous_sof = sof_timestamp;
-
-        if (eof_timestamp < (long long)statistics_input_parameters.frame_timestamp ||
-            eof_timestamp - (long long)statistics_input_parameters.frame_timestamp > MAX_EOF_SOF_DIFF)
-        {
-            statistics_input_parameters.frame_timestamp = eof_timestamp - DEFAULT_EOF_SOF_DELAY;
-        }
+        statistics_input_parameters.frame_timestamp = TIMEVAL2USECS(sof_timestamp_struct);
 
         statistics_input_parameters.external_histogram = NULL;
 

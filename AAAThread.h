@@ -103,7 +103,7 @@ public:
     status_t exitFlashSequence();
     status_t newFrame(AtomBuffer* b);
     status_t newStats(timeval &t, unsigned int seqNo);
-    status_t newSOF(IAtomIspObserver::MessageEvent *sofMsg);
+    status_t newFrameSync(IAtomIspObserver::MessageEvent *sofMsg);
     status_t applyRedEyeRemoval(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer, int width, int height, int format);
     status_t setFaces(const ia_face_state& faceState);
     void getCurrentSmartScene(int &sceneMode, bool &sceneHdr);
@@ -196,7 +196,7 @@ private:
 
     // Miscellaneous helper methods
     void updateULLTrigger(void);
-    struct timeval getLastSOFTime();
+    struct timeval getFrameSyncForStatistics(struct timeval *ts);
 
     // flash sequence handler
     bool handleFlashSequence(FrameBufferStatus frameStatus);
@@ -234,8 +234,13 @@ private:
     FlashStage mFlashStage;
     size_t mFramesTillExposed;
     FlashStage mBlockForStage;
-    Mutex mSOFTimeLock;             /*!< SOF timestamp updates are not serialized, this lock is used to make the usage thread safe*/
-    struct timeval mLastSOFTime;    /*!< time stamp  of the latest SOF event*/
+
+    struct
+    {
+        Mutex       lock; /*!< Frame sync event timestamp updates are not serialized, this lock is used to make the usage thread safe*/
+        struct timeval     prevTs;
+        struct timeval     ts;
+    } mFrameSyncData;
 }; // class AAAThread
 
 }; // namespace android
