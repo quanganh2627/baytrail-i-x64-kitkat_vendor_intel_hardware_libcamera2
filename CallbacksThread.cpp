@@ -19,6 +19,7 @@
 #include "LogHelper.h"
 #include "Callbacks.h"
 #include "FaceDetector.h"
+#include "MemoryUtils.h"
 #include "PerformanceTraces.h"
 
 namespace android {
@@ -88,9 +89,7 @@ status_t CallbacksThread::handleMessagePanoramaSnapshot(MessagePanoramaSnapshot 
 {
     LOG1("@%s", __FUNCTION__);
     mCallbacks->panoramaSnapshot(msg->snapshot);
-    // CallbackThread is responsible release memory
-    msg->snapshot.buff->release(msg->snapshot.buff);
-    msg->snapshot.buff = NULL;
+    MemoryUtils::freeAtomBuffer(msg->snapshot);
     return OK;
 }
 
@@ -363,7 +362,7 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
 
     mPictureDoneCallback->encodingDone(&snapshotBuf, &postviewBuf);
 
-    if (jpegBuf.buff == NULL && snapshotBuf.buff != NULL && postviewBuf.buff != NULL) {
+    if (jpegBuf.dataPtr == NULL && snapshotBuf.dataPtr != NULL && postviewBuf.dataPtr != NULL) {
         LOGW("@%s: returning raw frames used in failed encoding", __FUNCTION__);
         mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
         return NO_ERROR;
@@ -387,8 +386,7 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
         if (tmpCopy.buff != NULL && releaseTmp) {
             tmpCopy.buff->size = 0;     // we only allocated the camera_memory_t no any actual memory
             tmpCopy.buff->data = NULL;
-            tmpCopy.buff->release(tmpCopy.buff);
-            tmpCopy.buff = NULL;
+            MemoryUtils::freeAtomBuffer(tmpCopy);
             releaseTmp = false;
         }
 
@@ -400,8 +398,8 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
                 LOG1("snapshotBuf.size:%d", snapshotBuf.size);
 
                 mCallbacks->allocateMemory(&tmpCopy.buff, snapshotBuf.size, false);
-                if (tmpCopy.buff != NULL) {
-                    memcpy(tmpCopy.buff->data, snapshotBuf.dataPtr, snapshotBuf.size);
+                if (tmpCopy.dataPtr != NULL) {
+                    memcpy(tmpCopy.dataPtr, snapshotBuf.dataPtr, snapshotBuf.size);
                     releaseTmp = true;
                 }
             } else {
@@ -413,17 +411,15 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
         if (tmpCopy.buff != NULL && releaseTmp) {
             tmpCopy.buff->size = 0;
             tmpCopy.buff->data = NULL;
-            tmpCopy.buff->release(tmpCopy.buff);
-            tmpCopy.buff = NULL;
+            MemoryUtils::freeAtomBuffer(tmpCopy);
         }
 
         mCallbacks->compressedFrameDone(&jpegBuf);
-        if (jpegBuf.buff != NULL) {
-            LOG1("Releasing jpegBuf @%p", jpegBuf.dataPtr);
-            jpegBuf.buff->release(jpegBuf.buff);
-            jpegBuf.buff = NULL;
-        } else {
+        if (jpegBuf.buff == NULL) {
             LOGW("CallbacksThread received NULL jpegBuf.buff, which should not happen");
+        } else {
+            LOG1("Releasing jpegBuf @%p", jpegBuf.dataPtr);
+            MemoryUtils::freeAtomBuffer(jpegBuf);
         }
         mJpegRequested--;
 
@@ -459,10 +455,11 @@ status_t CallbacksThread::handleMessageJpegDataRequest(MessageDataRequest *msg)
             mCallbacks->rawFrameDone(&snapshotBuf);
         }
         mCallbacks->compressedFrameDone(&jpegBuf);
-        LOG1("Releasing jpegBuf @%p", jpegBuf.dataPtr);
-        jpegBuf.buff->release(jpegBuf.buff);
-        jpegBuf.buff = NULL;
-        if (snapshotBuf.buff != NULL && postviewBuf.buff != NULL) {
+
+        LOG1("Releasing jpegBuf.buff %p, dataPtr %p", jpegBuf.buff, jpegBuf.dataPtr);
+        MemoryUtils::freeAtomBuffer(jpegBuf);
+
+        if (snapshotBuf.dataPtr != NULL && postviewBuf.dataPtr != NULL) {
             // Return the raw buffers back to ISP
             mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
         }
@@ -506,13 +503,13 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageFrame *msg)
 
     mULLRequested--;
 
-    if (jpegBuf.buff == NULL && snapshotBuf.buff != NULL && postviewBuf.buff != NULL) {
+    if (jpegBuf.dataPtr == NULL && snapshotBuf.dataPtr != NULL && postviewBuf.dataPtr != NULL) {
         LOGW("@%s: returning raw frames used in failed encoding", __FUNCTION__);
         mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
         return NO_ERROR;
-    } else if (jpegBuf.buff == NULL) {
+    } else if (jpegBuf.dataPtr == NULL) {
         // Should not have NULL buffer here in any case, but checking to make Klockwork happy:
-        LOGW("NULL jpegBuf.buff received in CallbacksThread. Should not happen.");
+        LOGW("NULL jpegBuf.dataPtr received in CallbacksThread. Should not happen.");
         return UNKNOWN_ERROR;
     }
 
@@ -538,19 +535,15 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageFrame *msg)
 
     mCallbacks->ullPictureDone(&jpegAndMeta);
 
-    if (jpegBuf.buff != NULL) {
-        LOG1("Releasing jpegBuf @%p", jpegBuf.dataPtr);
-        jpegBuf.buff->release(jpegBuf.buff);
-        jpegBuf.buff = NULL;
-    }
+    LOG1("Releasing jpegBuf.buff %p, dataPtr %p", jpegBuf.buff, jpegBuf.dataPtr);
+    MemoryUtils::freeAtomBuffer(jpegBuf);
 
-    if (jpegAndMeta.buff != NULL) {
-        LOG1("Releasing jpegAndMeta @%p", jpegAndMeta.dataPtr);
-        jpegAndMeta.buff->release(jpegAndMeta.buff);
-        jpegAndMeta.buff = NULL;
-    } else {
-        LOGW("NULL jpegAndMeta buffer, while reaching release().");
+    if (jpegAndMeta.buff == NULL) {
+        LOGW("NULL jpegAndMeta buffer, while reaching freeAtomBuffer().");
         return UNKNOWN_ERROR;
+    } else {
+        LOG1("Releasing jpegAndMeta.buff %p, dataPtr %p", jpegAndMeta.buff, jpegAndMeta.dataPtr);
+        MemoryUtils::freeAtomBuffer(jpegAndMeta);
     }
 
     /**
@@ -581,9 +574,8 @@ status_t CallbacksThread::handleMessageFlush()
     mPostponedJpegReady.id = (MessageId) -1;
     for (size_t i = 0; i < mBuffers.size(); i++) {
         AtomBuffer jpegBuf = mBuffers[i].jpegBuff;
-        LOG1("Releasing jpegBuf @%p", jpegBuf.dataPtr);
-        jpegBuf.buff->release(jpegBuf.buff);
-        jpegBuf.buff = NULL;
+        LOG1("Releasing jpegBuf.buff %p, dataPtr %p", jpegBuf.buff, jpegBuf.dataPtr);
+        MemoryUtils::freeAtomBuffer(jpegBuf);
     }
     mBuffers.clear();
     return status;
@@ -752,6 +744,7 @@ void CallbacksThread::convertGfx2Regular(AtomBuffer* aGfxBuf, AtomBuffer* aRegul
 
     mCallbacks->allocateMemory(aRegularBuf, 0);
     aRegularBuf->buff->data = aGfxBuf->dataPtr;
+    aRegularBuf->dataPtr = aRegularBuf->buff->data; // Keep the dataPtr in sync
     aRegularBuf->buff->size = aGfxBuf->size;
 }
 } // namespace android

@@ -548,7 +548,7 @@ status_t PanoramaThread::handleStitch(const MessageStitch &stitch)
 
     // allocate memory for the live preview callback.
     mCallbacks->allocateMemory(&postviewBuf, stitch.pv.size + sizeof(camera_panorama_metadata));
-    if (postviewBuf.buff == NULL) {
+    if (postviewBuf.dataPtr == NULL) {
         LOGE("fatal - out of memory for live preview callback");
         status =  NO_MEMORY;
     } else {
@@ -565,6 +565,7 @@ status_t PanoramaThread::handleStitch(const MessageStitch &stitch)
 
         mCallbacksThread->panoramaSnapshot(postviewBuf);
         postviewBuf.buff = NULL; // callbacks thread responsible memory release
+        postviewBuf.dataPtr = NULL;
     }
 
     //panorama engine resets displacement values after stitching, so we reset the current values here, too
@@ -663,14 +664,14 @@ status_t PanoramaThread::PanoramaStitchThread::stitch(ia_panorama_state* mContex
 
     do {
         Callbacks::getInstance()->allocateMemory(&copy, size);
-        if (!copy.buff) {
+        if (!copy.dataPtr) {
             LOGW("Failed to allocate panorama snapshot memory, sleeping %d milliseconds and retrying!", retrySleepMillis);
             usleep(1000 * retrySleepMillis);
             retryTimeMillis -= retrySleepMillis;
         }
-    } while (!copy.buff && retryTimeMillis);
+    } while (!copy.dataPtr && retryTimeMillis);
 
-    if (!copy.buff) {
+    if (!copy.dataPtr) {
         // could not allocate at all
         LOGE("Failed to allocate panorama snapshot memory - aborting!");
         // since capturing and stitching is done without user interaction,

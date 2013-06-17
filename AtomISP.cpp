@@ -4591,7 +4591,7 @@ status_t AtomISP::allocateRecordingBuffers()
         mCallbacks->allocateMemory(&mRecordingBuffers[i], size, cached);
         LOG1("allocate recording buffer[%d], buff=%p size=%d",
                 i, mRecordingBuffers[i].dataPtr, mRecordingBuffers[i].size);
-        if (mRecordingBuffers[i].buff == NULL) {
+        if (mRecordingBuffers[i].dataPtr == NULL) {
             LOGE("Error allocation memory for recording buffers!");
             status = NO_MEMORY;
             goto errorFree;
@@ -4667,7 +4667,7 @@ status_t AtomISP::allocateSnapshotBuffers()
         for (int i = 0; i < mConfig.num_snapshot; i++) {
             mSnapshotBuffers[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
             mCallbacks->allocateMemory(&mSnapshotBuffers[i], snapshotSize);
-            if (mSnapshotBuffers[i].buff == NULL) {
+            if (mSnapshotBuffers[i].dataPtr == NULL) {
                 LOGE("Error allocation memory for snapshot buffers!");
                 status = NO_MEMORY;
                 goto errorFree;
@@ -4685,6 +4685,7 @@ status_t AtomISP::allocateSnapshotBuffers()
             AtomBuffer postv = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
             for (int i = 0; i < mConfig.num_snapshot; i++) {
                 postv.buff = NULL;
+                postv.dataPtr = NULL;
                 // for image data, actual sized buff
                 MemoryUtils::allocateGraphicBuffer(postv, mConfig.postview.width, mConfig.postview.height);
                 // for callbacks, a dummy buff
