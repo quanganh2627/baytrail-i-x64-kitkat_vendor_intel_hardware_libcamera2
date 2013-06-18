@@ -2112,7 +2112,8 @@ status_t ControlThread::setSmartSceneParams(void)
 
     if (scene_mode && !strcmp(scene_mode, CameraParameters::SCENE_MODE_AUTO)) {
         bool sceneDetectionSupported = strcmp(FeatureData::sceneDetectionSupported(mCameraId), "") != 0;
-        if (sceneDetectionSupported && m3AControls->getSmartSceneDetection()) {
+        //scene mode detection should always be working, but we shouldn't take it in account whenever HDR is on.
+        if (!mHdr.enabled && sceneDetectionSupported && m3AControls->getSmartSceneDetection()) {
             int sceneMode = 0;
             bool sceneHdr = false;
             m3AThread->getCurrentSmartScene(sceneMode, sceneHdr);
@@ -6370,7 +6371,7 @@ status_t ControlThread::handleMessageSceneDetected(MessageSceneDetected *msg)
  */
 status_t ControlThread::startSmartSceneDetection()
 {
-    LOG2("@%s", __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     if (mState == STATE_STOPPED || m3AControls->getSmartSceneDetection()) {
         return INVALID_OPERATION;
     }
@@ -6382,7 +6383,7 @@ status_t ControlThread::startSmartSceneDetection()
 
 status_t ControlThread::stopSmartSceneDetection()
 {
-    LOG2("@%s", __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     if (mState == STATE_STOPPED || !m3AControls->getSmartSceneDetection()) {
         return INVALID_OPERATION;
     }
