@@ -17,7 +17,7 @@
 #ifndef ANDROID_HARDWARE_CAMERA_DUMP_H
 #define ANDROID_HARDWARE_CAMERA_DUMP_H
 
-#include "AtomAAA.h"
+#include "I3AControls.h"
 #include "LogHelper.h"
 
 namespace android {

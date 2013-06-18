@@ -28,6 +28,7 @@ LOCAL_SRC_FILES := \
 	Callbacks.cpp \
 	AtomAAA.cpp \
 	AtomAIQ.cpp \
+	AtomSoc3A.cpp \
 	AtomDvs.cpp \
 	AtomHAL.cpp \
 	CameraConf.cpp \

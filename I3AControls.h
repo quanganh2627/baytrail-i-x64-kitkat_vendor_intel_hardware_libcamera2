@@ -18,10 +18,20 @@
 #define I3ACONTROLS_H_
 
 #include <camera/CameraParameters.h>
+#include "AtomCommon.h"
+#include <ia_3a_types.h>
 #include "ia_face.h"
 
 namespace android {
 class AtomISP;
+
+// DetermineFlash: returns true if flash should be determined according to current exposure
+#define DetermineFlash(x) (x == CAM_AE_FLASH_MODE_AUTO || \
+                           x == CAM_AE_FLASH_MODE_DAY_SYNC || \
+                           x == CAM_AE_FLASH_MODE_SLOW_SYNC) \
+
+#define EV_LOWER_BOUND         -100
+#define EV_UPPER_BOUND          100
 
 enum AeMode
 {

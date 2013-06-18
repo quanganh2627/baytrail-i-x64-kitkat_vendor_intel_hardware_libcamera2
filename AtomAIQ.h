@@ -25,7 +25,6 @@ class AtomAIQ;
 #include <utils/Errors.h>
 #include <utils/threads.h>
 #include <time.h>
-#include <ia_3a_types.h>
 #include <ia_types.h>
 #include <ia_aiq_types.h>
 #include <ia_aiq.h>
@@ -39,19 +38,11 @@ class AtomAIQ;
 #include "ia_face.h"
 
 namespace android {
-// DetermineFlash: returns true if flash should be determined according to current exposure
-#define DetermineFlash(x) (x == CAM_AE_FLASH_MODE_AUTO || \
-                           x == CAM_AE_FLASH_MODE_DAY_SYNC || \
-                           x == CAM_AE_FLASH_MODE_SLOW_SYNC) \
-
-
 
 #define DEFAULT_GBCE            true
 #define DEFAULT_GBCE_STRENGTH   0
 #define AIQ_MAX_TIME_FOR_AF     2500 // milliseconds
 #define TORCH_INTENSITY         20   // 20%
-#define EV_LOWER_BOUND         -100
-#define EV_UPPER_BOUND          100
 #define MAX_NUM_AF_WINDOW       9
 #define AE_DELAY_FRAMES         2
 

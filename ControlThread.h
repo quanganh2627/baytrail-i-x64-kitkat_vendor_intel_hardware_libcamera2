@@ -31,7 +31,7 @@
 #include "AtomCommon.h"
 #include "CallbacksThread.h"
 #include "AAAThread.h"
-#include "AtomAAA.h"
+#include "I3AControls.h"
 #include "CameraConf.h"
 #include "PostProcThread.h"
 #include "PanoramaThread.h"

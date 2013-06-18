@@ -136,8 +136,6 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
     ,mColorEffect(V4L2_COLORFX_NONE)
     ,mScaler(scalerService)
     ,mObserverManager()
-    ,mPublicAeMode(CAM_AE_MODE_AUTO)
-    ,mPublicAfMode(CAM_AF_MODE_AUTO)
     ,mNoiseReductionEdgeEnhancement(true)
 {
     LOG1("@%s", __FUNCTION__);
@@ -2875,43 +2873,6 @@ status_t AtomISP::setGDC(bool enable)
     return status;
 }
 
-status_t AtomISP::setAeFlickerMode(FlickerMode mode) {
-
-    LOG1("@%s: %d", __FUNCTION__, (int) mode);
-    status_t status(NO_ERROR);
-    int ret(0);
-    v4l2_power_line_frequency theMode(V4L2_CID_POWER_LINE_FREQUENCY_DISABLED);
-
-    if (mSensorType != SENSOR_TYPE_RAW) {
-
-        switch(mode) {
-        case CAM_AE_FLICKER_MODE_50HZ:
-            theMode = V4L2_CID_POWER_LINE_FREQUENCY_50HZ;
-            break;
-        case CAM_AE_FLICKER_MODE_60HZ:
-            theMode = V4L2_CID_POWER_LINE_FREQUENCY_60HZ;
-            break;
-        case CAM_AE_FLICKER_MODE_OFF:
-            theMode = V4L2_CID_POWER_LINE_FREQUENCY_DISABLED;
-            break;
-        case CAM_AE_FLICKER_MODE_AUTO:
-            theMode = V4L2_CID_POWER_LINE_FREQUENCY_AUTO;
-            break;
-        default:
-            LOGE("unsupported light frequency mode(%d)", (int) mode);
-            status = BAD_VALUE;
-            return status;
-        }
-        ret = atomisp_set_attribute(main_fd, V4L2_CID_POWER_LINE_FREQUENCY,
-                                    theMode, "light frequency");
-        if (ret < 0) {
-            LOGE("setting light frequency failed");
-            status = UNKNOWN_ERROR;
-        }
-    }
-    return status;
-}
-
 status_t AtomISP::setLowLight(bool enable)
 {
     LOG1("@%s: %d", __FUNCTION__, (int) enable);
@@ -4035,6 +3996,7 @@ void AtomISP::copyOrScaleHALZSLBuffer(const AtomBuffer &captureBuf, const AtomBu
     targetBuf->format = localBuf.format;
     targetBuf->size = localBuf.size;
     targetBuf->stride = SGXandDisplayStride(V4L2_PIX_FMT_NV12, localBuf.stride);
+    targetBuf->type = localBuf.type;
     targetBuf->gfxInfo = localBuf.gfxInfo;
     targetBuf->buff = localBuf.buff;
     targetBuf->dataPtr = localBuf.dataPtr;
@@ -5425,6 +5387,12 @@ int AtomISP::sensorMoveFocusToBySteps(int steps)
     return sensorMoveFocusToPosition(val + steps);
 }
 
+int AtomISP::sensorGetFocusPosition(int * position)
+{
+    LOG2("@%s", __FUNCTION__);
+    return atomisp_get_attribute(main_fd, V4L2_CID_FOCUS_ABSOLUTE , position);
+}
+
 int AtomISP::sensorGetFocusStatus(int *status)
 {
     LOG2("@%s", __FUNCTION__);
@@ -5447,6 +5415,12 @@ int AtomISP::sensorSetExposure(struct atomisp_exposure *exposure)
     ret = xioctl(main_fd, ATOMISP_IOC_S_EXPOSURE, exposure);
     LOG2("%s IOCTL ATOMISP_IOC_S_EXPOSURE ret: %d, gain %d, citg %d\n", __FUNCTION__, ret, exposure->gain[0], exposure->integration_time[0]);
     return ret;
+}
+
+int AtomISP::sensorSetExposureTime(int time)
+{
+    LOG2("@%s", __FUNCTION__);
+    return atomisp_set_attribute(main_fd, V4L2_CID_EXPOSURE_ABSOLUTE, time, "Exposure time");
 }
 
 int AtomISP::sensorGetExposureTime(int *time)
@@ -5612,6 +5586,128 @@ void AtomISP::sensorGetSensorData(sensorPrivateData *sensor_data)
     sensor_data->size = otpdata.size;
     sensor_data->fetched = true;
     gSensorDataCache[cameraId] = *sensor_data;
+}
+
+int AtomISP::sensorSetExposureMode(v4l2_exposure_auto_type v4l2Mode)
+{
+    LOG2("@%s: %d", __FUNCTION__, v4l2Mode);
+    return atomisp_set_attribute(main_fd, V4L2_CID_EXPOSURE_AUTO, v4l2Mode, "AE mode");
+}
+
+int AtomISP::sensorGetExposureMode(v4l2_exposure_auto_type * type)
+{
+    LOG2("@%s", __FUNCTION__);
+    return atomisp_get_attribute(main_fd, V4L2_CID_EXPOSURE_AUTO, (int*)type);
+}
+
+int AtomISP::sensorSetExposure(int bias)
+{
+    LOG2("@%s: bias: %d", __FUNCTION__, bias);
+    return atomisp_set_attribute(main_fd, V4L2_CID_EXPOSURE, bias, "exposure");
+}
+
+int AtomISP::sensorGetExposure(int * bias)
+{
+    LOG2("@%s", __FUNCTION__);
+    return atomisp_get_attribute(main_fd, V4L2_CID_EXPOSURE, bias);
+}
+
+int AtomISP::sensorSetSceneMode(v4l2_scene_mode mode)
+{
+    LOG2("@%s: %d", __FUNCTION__, mode);
+    return atomisp_set_attribute(main_fd, V4L2_CID_SCENE_MODE, mode, "scene mode");
+}
+
+int AtomISP::sensorGetSceneMode(v4l2_scene_mode * mode)
+{
+    LOG2("@%s", __FUNCTION__);
+    return atomisp_get_attribute(main_fd, V4L2_CID_SCENE_MODE, (int*)mode);
+}
+
+int AtomISP::sensorSetWhiteBalance(v4l2_auto_n_preset_white_balance mode)
+{
+    LOG2("@%s: %d", __FUNCTION__, mode);
+    return atomisp_set_attribute(main_fd, V4L2_CID_AUTO_N_PRESET_WHITE_BALANCE, mode, "white balance");
+}
+
+int AtomISP::sensorGetWhiteBalance(v4l2_auto_n_preset_white_balance * mode)
+{
+    LOG2("@%s", __FUNCTION__);
+    return atomisp_get_attribute(main_fd, V4L2_CID_AUTO_N_PRESET_WHITE_BALANCE, (int*)mode);
+}
+
+int AtomISP::sensorSetIso(int iso)
+{
+    LOG2("@%s: ISO: %d", __FUNCTION__, iso);
+    return atomisp_set_attribute(main_fd, V4L2_CID_ISO_SENSITIVITY, iso, "iso");
+}
+
+int AtomISP::sensorGetIso(int * iso)
+{
+    LOG2("@%s", __FUNCTION__);
+    return atomisp_get_attribute(main_fd, V4L2_CID_ISO_SENSITIVITY, iso);
+}
+
+int AtomISP::sensorSetAeMeteringMode(v4l2_exposure_metering mode)
+{
+    LOG2("@%s: %d", __FUNCTION__, mode);
+    return atomisp_set_attribute(main_fd, V4L2_CID_EXPOSURE_METERING, mode, "AE metering mode");
+}
+
+int AtomISP::sensorGetAeMeteringMode(v4l2_exposure_metering * mode)
+{
+    LOG2("@%s", __FUNCTION__);
+    return atomisp_get_attribute(main_fd, V4L2_CID_EXPOSURE_METERING, (int*)mode);
+}
+
+int AtomISP::sensorSetAeFlickerMode(v4l2_power_line_frequency mode)
+{
+    LOG2("@%s: %d", __FUNCTION__, (int) mode);
+    return atomisp_set_attribute(main_fd, V4L2_CID_POWER_LINE_FREQUENCY,
+                                    mode, "light frequency");
+}
+
+int AtomISP::sensorSetAfMode(v4l2_auto_focus_range mode)
+{
+    LOG2("@%s: %d", __FUNCTION__, mode);
+    return atomisp_set_attribute(main_fd, V4L2_CID_AUTO_FOCUS_RANGE , mode, "AF mode");
+}
+
+int AtomISP::sensorGetAfMode(v4l2_auto_focus_range * mode)
+{
+    LOG2("@%s", __FUNCTION__);
+    return atomisp_get_attribute(main_fd, V4L2_CID_AUTO_FOCUS_RANGE, (int*)mode);
+}
+
+int AtomISP::sensorSetAfEnabled(bool enable)
+{
+    LOG2("@%s", __FUNCTION__);
+    return atomisp_set_attribute(main_fd, V4L2_CID_FOCUS_AUTO, enable, "Auto Focus");
+}
+
+int AtomISP::sensorSet3ALock(int aaaLock)
+{
+    LOG2("@%s", __FUNCTION__);
+    return atomisp_set_attribute(main_fd, V4L2_CID_3A_LOCK, aaaLock, "AE Lock");
+}
+
+int AtomISP::sensorGet3ALock(int * aaaLock)
+{
+    LOG2("@%s", __FUNCTION__);
+    return atomisp_get_attribute(main_fd, V4L2_CID_3A_LOCK, aaaLock);
+}
+
+
+int AtomISP::sensorSetAeFlashMode(v4l2_flash_led_mode mode)
+{
+    LOG2("@%s: %d", __FUNCTION__, mode);
+    return atomisp_set_attribute(main_fd, V4L2_CID_FLASH_LED_MODE, mode, "Flash mode");
+}
+
+int AtomISP::sensorGetAeFlashMode(v4l2_flash_led_mode * mode)
+{
+    LOG2("@%s", __FUNCTION__);
+    return atomisp_get_attribute(main_fd, V4L2_CID_FLASH_LED_MODE, (int*)mode);
 }
 
 int AtomISP::setAicParameter(struct atomisp_parameters *aic_param)
@@ -6172,925 +6268,6 @@ int AtomISP::pollFrameSyncEvent()
     } while (event.pending > 0);
 
     return NO_ERROR;
-}
-
-// I3AControls
-
-status_t AtomISP::init3A()
-{
-    return NO_ERROR;
-}
-
-status_t AtomISP::deinit3A()
-{
-    return NO_ERROR;
-}
-
-status_t AtomISP::setAeMode(AeMode mode)
-{
-    LOG1("@%s: %d", __FUNCTION__, mode);
-    status_t status = NO_ERROR;
-    v4l2_exposure_auto_type v4lMode;
-
-    // TODO: add supported modes to PlatformData
-    if (mCameraId > 0) {
-        LOG1("@%s: not supported by current camera", __FUNCTION__);
-        return INVALID_OPERATION;
-    }
-
-    switch (mode)
-    {
-        case CAM_AE_MODE_AUTO:
-            v4lMode = V4L2_EXPOSURE_AUTO;
-            break;
-        case CAM_AE_MODE_MANUAL:
-            v4lMode = V4L2_EXPOSURE_MANUAL;
-            break;
-        case CAM_AE_MODE_SHUTTER_PRIORITY:
-            v4lMode = V4L2_EXPOSURE_SHUTTER_PRIORITY;
-            break;
-        case CAM_AE_MODE_APERTURE_PRIORITY:
-            v4lMode = V4L2_EXPOSURE_APERTURE_PRIORITY;
-            break;
-        default:
-            LOGW("Unsupported AE mode (%d), using AUTO", mode);
-            v4lMode = V4L2_EXPOSURE_AUTO;
-    }
-
-    int ret = atomisp_set_attribute(main_fd, V4L2_CID_EXPOSURE_AUTO, v4lMode, "AE mode");
-    if (ret != 0) {
-        LOGE("Error setting AE mode (%d) in the driver", v4lMode);
-        status = UNKNOWN_ERROR;
-    }
-
-    return status;
-}
-
-AeMode AtomISP::getAeMode()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    AeMode mode = CAM_AE_MODE_NOT_SET;
-    v4l2_exposure_auto_type v4lMode = V4L2_EXPOSURE_AUTO;
-
-    // TODO: add supported modes to PlatformData
-    if (mCameraId > 0) {
-        LOG1("@%s: not supported by current camera", __FUNCTION__);
-        return mode;
-    }
-
-    int ret = atomisp_get_attribute(main_fd, V4L2_CID_EXPOSURE_AUTO, (int*) &v4lMode);
-    if (ret != 0) {
-        LOGE("Error getting AE mode from the driver");
-        status = UNKNOWN_ERROR;
-    }
-
-    switch (v4lMode)
-    {
-        case V4L2_EXPOSURE_AUTO:
-            mode = CAM_AE_MODE_AUTO;
-            break;
-        case V4L2_EXPOSURE_MANUAL:
-            mode = CAM_AE_MODE_MANUAL;
-            break;
-        case V4L2_EXPOSURE_SHUTTER_PRIORITY:
-            mode = CAM_AE_MODE_SHUTTER_PRIORITY;
-            break;
-        case V4L2_EXPOSURE_APERTURE_PRIORITY:
-            mode = CAM_AE_MODE_APERTURE_PRIORITY;
-            break;
-        default:
-            LOGW("Unsupported AE mode (%d), using AUTO", v4lMode);
-            mode = CAM_AE_MODE_AUTO;
-    }
-
-    return mode;
-}
-
-status_t AtomISP::setEv(float bias)
-{
-    status_t status = NO_ERROR;
-    int evValue = (int)bias;
-    LOG1("@%s: bias: %f, EV value: %d", __FUNCTION__, bias, evValue);
-
-    int ret = atomisp_set_attribute(main_fd, V4L2_CID_EXPOSURE, evValue, "exposure");
-    if (ret != 0) {
-        LOGE("Error setting EV in the driver");
-        status = UNKNOWN_ERROR;
-    }
-
-    return status;
-}
-
-status_t AtomISP::getEv(float *bias)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    int evValue = 0;
-
-    int ret = atomisp_get_attribute(main_fd, V4L2_CID_EXPOSURE, &evValue);
-    if (ret != 0) {
-        LOGE("Error getting EV from the driver");
-        status = UNKNOWN_ERROR;
-    }
-    *bias = (float)evValue;
-
-    return status;
-}
-
-status_t AtomISP::setAeSceneMode(SceneMode mode)
-{
-    LOG1("@%s: %d", __FUNCTION__, mode);
-    status_t status = NO_ERROR;
-    v4l2_scene_mode v4lMode;
-
-    if (!strcmp(PlatformData::supportedSceneModes(mCameraId), "")) {
-        LOG1("@%s: not supported by current camera", __FUNCTION__);
-        return INVALID_OPERATION;
-    }
-
-    switch (mode)
-    {
-        case CAM_AE_SCENE_MODE_AUTO:
-            v4lMode = V4L2_SCENE_MODE_NONE;
-            break;
-        case CAM_AE_SCENE_MODE_PORTRAIT:
-            v4lMode = V4L2_SCENE_MODE_PORTRAIT;
-            break;
-        case CAM_AE_SCENE_MODE_SPORTS:
-            v4lMode = V4L2_SCENE_MODE_SPORTS;
-            break;
-        case CAM_AE_SCENE_MODE_LANDSCAPE:
-            v4lMode = V4L2_SCENE_MODE_LANDSCAPE;
-            break;
-        case CAM_AE_SCENE_MODE_NIGHT:
-            v4lMode = V4L2_SCENE_MODE_NIGHT;
-            break;
-        case CAM_AE_SCENE_MODE_NIGHT_PORTRAIT:
-            v4lMode = V4L2_SCENE_MODE_NIGHT;
-            break;
-        case CAM_AE_SCENE_MODE_FIREWORKS:
-            v4lMode = V4L2_SCENE_MODE_FIREWORKS;
-            break;
-        case CAM_AE_SCENE_MODE_TEXT:
-            v4lMode = V4L2_SCENE_MODE_TEXT;
-            break;
-        case CAM_AE_SCENE_MODE_SUNSET:
-            v4lMode = V4L2_SCENE_MODE_SUNSET;
-            break;
-        case CAM_AE_SCENE_MODE_PARTY:
-            v4lMode = V4L2_SCENE_MODE_PARTY_INDOOR;
-            break;
-        case CAM_AE_SCENE_MODE_CANDLELIGHT:
-            v4lMode = V4L2_SCENE_MODE_CANDLE_LIGHT;
-            break;
-        case CAM_AE_SCENE_MODE_BEACH_SNOW:
-            v4lMode = V4L2_SCENE_MODE_BEACH_SNOW;
-            break;
-        case CAM_AE_SCENE_MODE_DAWN_DUSK:
-            v4lMode = V4L2_SCENE_MODE_DAWN_DUSK;
-            break;
-        case CAM_AE_SCENE_MODE_FALL_COLORS:
-            v4lMode = V4L2_SCENE_MODE_FALL_COLORS;
-            break;
-        case CAM_AE_SCENE_MODE_BACKLIGHT:
-            v4lMode = V4L2_SCENE_MODE_BACKLIGHT;
-            break;
-        default:
-            LOGW("Unsupported scene mode (%d), using NONE", mode);
-            v4lMode = V4L2_SCENE_MODE_NONE;
-    }
-
-    int ret = atomisp_set_attribute(main_fd, V4L2_CID_SCENE_MODE, v4lMode, "scene mode");
-    if (ret != 0) {
-        LOGE("Error setting scene mode in the driver");
-        status = UNKNOWN_ERROR;
-    }
-
-    return status;
-}
-
-SceneMode AtomISP::getAeSceneMode()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    SceneMode mode = CAM_AE_SCENE_MODE_NOT_SET;
-    v4l2_scene_mode v4lMode = V4L2_SCENE_MODE_NONE;
-
-    if (!strcmp(PlatformData::supportedSceneModes(mCameraId), "")) {
-        LOG1("@%s: not supported by current camera", __FUNCTION__);
-        return mode;
-    }
-
-    int ret = atomisp_get_attribute(main_fd, V4L2_CID_SCENE_MODE, (int*) &v4lMode);
-    if (ret != 0) {
-        LOGE("Error getting scene mode from the driver");
-        status = UNKNOWN_ERROR;
-    }
-
-    switch (v4lMode)
-    {
-        case V4L2_SCENE_MODE_NONE:
-            mode = CAM_AE_SCENE_MODE_AUTO;
-            break;
-        case V4L2_SCENE_MODE_PORTRAIT:
-            mode = CAM_AE_SCENE_MODE_PORTRAIT;
-            break;
-        case V4L2_SCENE_MODE_SPORTS:
-            mode = CAM_AE_SCENE_MODE_SPORTS;
-            break;
-        case V4L2_SCENE_MODE_LANDSCAPE:
-            mode = CAM_AE_SCENE_MODE_LANDSCAPE;
-            break;
-        case V4L2_SCENE_MODE_NIGHT:
-            mode = CAM_AE_SCENE_MODE_NIGHT;
-            break;
-        case V4L2_SCENE_MODE_FIREWORKS:
-            mode = CAM_AE_SCENE_MODE_FIREWORKS;
-            break;
-        case V4L2_SCENE_MODE_TEXT:
-            mode = CAM_AE_SCENE_MODE_TEXT;
-            break;
-        case V4L2_SCENE_MODE_SUNSET:
-            mode = CAM_AE_SCENE_MODE_SUNSET;
-            break;
-        case V4L2_SCENE_MODE_PARTY_INDOOR:
-            mode = CAM_AE_SCENE_MODE_PARTY;
-            break;
-        case V4L2_SCENE_MODE_CANDLE_LIGHT:
-            mode = CAM_AE_SCENE_MODE_CANDLELIGHT;
-            break;
-        case V4L2_SCENE_MODE_BEACH_SNOW:
-            mode = CAM_AE_SCENE_MODE_BEACH_SNOW;
-            break;
-        case V4L2_SCENE_MODE_DAWN_DUSK:
-            mode = CAM_AE_SCENE_MODE_DAWN_DUSK;
-            break;
-        case V4L2_SCENE_MODE_FALL_COLORS:
-            mode = CAM_AE_SCENE_MODE_FALL_COLORS;
-            break;
-        case V4L2_SCENE_MODE_BACKLIGHT:
-            mode = CAM_AE_SCENE_MODE_BACKLIGHT;
-            break;
-        default:
-            LOGW("Unsupported scene mode (%d), using AUTO", v4lMode);
-            mode = CAM_AE_SCENE_MODE_AUTO;
-    }
-
-    return mode;
-}
-
-status_t AtomISP::setAwbMode(AwbMode mode)
-{
-    LOG1("@%s: %d", __FUNCTION__, mode);
-    status_t status = NO_ERROR;
-    v4l2_auto_n_preset_white_balance v4lMode;
-
-    if (!strcmp(PlatformData::supportedAwbModes(mCameraId), "")) {
-        LOG1("@%s: not supported by current camera", __FUNCTION__);
-        return INVALID_OPERATION;
-    }
-
-    switch (mode)
-    {
-        case CAM_AWB_MODE_AUTO:
-            v4lMode = V4L2_WHITE_BALANCE_AUTO;
-            break;
-        case CAM_AWB_MODE_MANUAL_INPUT:
-            v4lMode = V4L2_WHITE_BALANCE_MANUAL;
-            break;
-        case CAM_AWB_MODE_DAYLIGHT:
-            v4lMode = V4L2_WHITE_BALANCE_DAYLIGHT;
-            break;
-        case CAM_AWB_MODE_SUNSET:
-            v4lMode = V4L2_WHITE_BALANCE_INCANDESCENT;
-            break;
-        case CAM_AWB_MODE_CLOUDY:
-            v4lMode = V4L2_WHITE_BALANCE_CLOUDY;
-            break;
-        case CAM_AWB_MODE_TUNGSTEN:
-            v4lMode = V4L2_WHITE_BALANCE_INCANDESCENT;
-            break;
-        case CAM_AWB_MODE_FLUORESCENT:
-            v4lMode = V4L2_WHITE_BALANCE_FLUORESCENT;
-            break;
-        case CAM_AWB_MODE_WARM_FLUORESCENT:
-            v4lMode = V4L2_WHITE_BALANCE_FLUORESCENT_H;
-            break;
-        case CAM_AWB_MODE_SHADOW:
-            v4lMode = V4L2_WHITE_BALANCE_SHADE;
-            break;
-        case CAM_AWB_MODE_WARM_INCANDESCENT:
-            v4lMode = V4L2_WHITE_BALANCE_INCANDESCENT;
-            break;
-        default:
-            LOGW("Unsupported AWB mode %d", mode);
-            v4lMode = V4L2_WHITE_BALANCE_AUTO;
-    }
-
-    int ret = atomisp_set_attribute(main_fd, V4L2_CID_AUTO_N_PRESET_WHITE_BALANCE, v4lMode, "white balance");
-    if (ret != 0) {
-        LOGE("Error setting WB mode (%d) in the driver", v4lMode);
-        status = UNKNOWN_ERROR;
-    }
-
-    return status;
-}
-
-AwbMode AtomISP::getAwbMode()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    AwbMode mode = CAM_AWB_MODE_NOT_SET;
-    v4l2_auto_n_preset_white_balance v4lMode = V4L2_WHITE_BALANCE_AUTO;
-
-    if (!strcmp(PlatformData::supportedAwbModes(mCameraId), "")) {
-        LOG1("@%s: not supported by current camera", __FUNCTION__);
-        return mode;
-    }
-
-    int ret = atomisp_get_attribute(main_fd, V4L2_CID_AUTO_N_PRESET_WHITE_BALANCE, (int*) &v4lMode);
-    if (ret != 0) {
-        LOGE("Error getting WB mode from the driver");
-        status = UNKNOWN_ERROR;
-    }
-
-    switch (v4lMode)
-    {
-        case V4L2_WHITE_BALANCE_AUTO:
-            mode = CAM_AWB_MODE_AUTO;
-            break;
-        case V4L2_WHITE_BALANCE_MANUAL:
-            mode = CAM_AWB_MODE_MANUAL_INPUT;
-            break;
-        case V4L2_WHITE_BALANCE_DAYLIGHT:
-            mode = CAM_AWB_MODE_DAYLIGHT;
-            break;
-        case V4L2_WHITE_BALANCE_CLOUDY:
-            mode = CAM_AWB_MODE_CLOUDY;
-            break;
-        case V4L2_WHITE_BALANCE_INCANDESCENT:
-            mode = CAM_AWB_MODE_TUNGSTEN;
-            break;
-        case V4L2_WHITE_BALANCE_FLUORESCENT:
-            mode = CAM_AWB_MODE_FLUORESCENT;
-            break;
-        case V4L2_WHITE_BALANCE_FLUORESCENT_H:
-            mode = CAM_AWB_MODE_WARM_FLUORESCENT;
-            break;
-        case V4L2_WHITE_BALANCE_SHADE:
-            mode = CAM_AWB_MODE_SHADOW;
-            break;
-        default:
-            LOGW("Unsupported AWB mode %d", v4lMode);
-            mode = CAM_AWB_MODE_AUTO;
-    }
-
-    return mode;
-}
-
-status_t AtomISP::setManualIso(int iso)
-{
-    LOG1("@%s: ISO: %d", __FUNCTION__, iso);
-    status_t status = NO_ERROR;
-
-    if (!strcmp(PlatformData::supportedIso(mCameraId), "")) {
-        LOG1("@%s: not supported by current camera", __FUNCTION__);
-        return UNKNOWN_ERROR;
-    }
-
-    int ret = atomisp_set_attribute(main_fd, V4L2_CID_ISO_SENSITIVITY, iso, "iso");
-    if (ret != 0) {
-        LOGE("Error setting ISO in the driver");
-        status = UNKNOWN_ERROR;
-    }
-
-    return status;
-}
-
-status_t AtomISP::getManualIso(int *iso)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    int isoValue = 0;
-
-    if (!strcmp(PlatformData::supportedIso(mCameraId), "")) {
-        LOG1("@%s: not supported by current camera", __FUNCTION__);
-        return INVALID_OPERATION;
-    }
-
-    int ret = atomisp_get_attribute(main_fd, V4L2_CID_ISO_SENSITIVITY, &isoValue);
-    if (ret != 0) {
-        LOGE("Error getting ISO from the driver");
-        status = UNKNOWN_ERROR;
-    }
-    *iso = isoValue;
-
-    return status;
-}
-
-status_t AtomISP::setIsoMode(IsoMode mode) {
-    /*ISO mode not supported for SOC sensor yet.*/
-    LOG1("@%s", __FUNCTION__);
-    status_t status = INVALID_OPERATION;
-    return status;
-}
-
-IsoMode AtomISP::getIsoMode(void) {
-    /*ISO mode not supported for SOC sensor yet.*/
-    return CAM_AE_ISO_MODE_NOT_SET;
-}
-
-status_t AtomISP::setAeMeteringMode(MeteringMode mode)
-{
-    LOG1("@%s: %d", __FUNCTION__, mode);
-    status_t status = NO_ERROR;
-    v4l2_exposure_metering v4lMode;
-
-    if (!strcmp(PlatformData::supportedAeMetering(mCameraId), "")) {
-        LOG1("@%s: not supported by current camera", __FUNCTION__);
-        return INVALID_OPERATION;
-    }
-
-    switch (mode)
-    {
-        case CAM_AE_METERING_MODE_AUTO:
-            v4lMode = V4L2_EXPOSURE_METERING_AVERAGE;
-            break;
-        case CAM_AE_METERING_MODE_SPOT:
-            v4lMode = V4L2_EXPOSURE_METERING_SPOT;
-            break;
-        case CAM_AE_METERING_MODE_CENTER:
-            v4lMode = V4L2_EXPOSURE_METERING_CENTER_WEIGHTED;
-            break;
-        default:
-            LOGW("Unsupported AE metering mode (%d), using AVERAGE", mode);
-            v4lMode = V4L2_EXPOSURE_METERING_AVERAGE;
-            break;
-    }
-
-    int ret = atomisp_set_attribute(main_fd, V4L2_CID_EXPOSURE_METERING, v4lMode, "AE metering mode");
-    if (ret != 0) {
-        LOGE("Error setting AE metering mode (%d) in the driver", v4lMode);
-        status = UNKNOWN_ERROR;
-    }
-
-    return status;
-}
-
-MeteringMode AtomISP::getAeMeteringMode()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    MeteringMode mode = CAM_AE_METERING_MODE_NOT_SET;
-    v4l2_exposure_metering v4lMode = V4L2_EXPOSURE_METERING_AVERAGE;
-
-    if (!strcmp(PlatformData::supportedAeMetering(mCameraId), "")) {
-        LOG1("@%s: not supported by current camera", __FUNCTION__);
-        return mode;
-    }
-
-    int ret = atomisp_get_attribute(main_fd, V4L2_CID_EXPOSURE_METERING, (int*) &v4lMode);
-    if (ret != 0) {
-        LOGE("Error getting AE metering mode from the driver");
-        status = UNKNOWN_ERROR;
-    }
-
-    switch (v4lMode)
-    {
-        case V4L2_EXPOSURE_METERING_CENTER_WEIGHTED:
-            mode = CAM_AE_METERING_MODE_CENTER;
-            break;
-        case V4L2_EXPOSURE_METERING_SPOT:
-            mode = CAM_AE_METERING_MODE_SPOT;
-            break;
-        case V4L2_EXPOSURE_METERING_AVERAGE:
-            mode = CAM_AE_METERING_MODE_AUTO;
-            break;
-        default:
-            LOGW("Unsupported AE metering mode (%d), using AUTO", v4lMode);
-            mode = CAM_AE_METERING_MODE_AUTO;
-            break;
-    }
-
-    return mode;
-}
-
-status_t AtomISP::set3AColorEffect(const char *effect)
-{
-    LOG1("@%s: effect = %s", __FUNCTION__, effect);
-    status_t status = NO_ERROR;
-
-    v4l2_colorfx v4l2Effect = V4L2_COLORFX_NONE;
-    if (strncmp(effect, CameraParameters::EFFECT_MONO, sizeof(effect)) == 0)
-        v4l2Effect = V4L2_COLORFX_BW;
-    else if (strncmp(effect, CameraParameters::EFFECT_NEGATIVE, sizeof(effect)) == 0)
-        v4l2Effect = V4L2_COLORFX_NEGATIVE;
-    else if (strncmp(effect, CameraParameters::EFFECT_SEPIA, sizeof(effect)) == 0)
-        v4l2Effect = V4L2_COLORFX_SEPIA;
-    else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_SKY_BLUE, sizeof(effect)) == 0)
-        v4l2Effect = V4L2_COLORFX_SKY_BLUE;
-    else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_GRASS_GREEN, sizeof(effect)) == 0)
-        v4l2Effect = V4L2_COLORFX_GRASS_GREEN;
-    else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_MEDIUM, sizeof(effect)) == 0)
-        v4l2Effect = V4L2_COLORFX_SKIN_WHITEN;
-    else if (strncmp(effect, IntelCameraParameters::EFFECT_VIVID, sizeof(effect)) == 0)
-        v4l2Effect = V4L2_COLORFX_VIVID;
-
-    // following two values need a explicit cast as the
-    // definitions in hardware/intel/linux-2.6/include/linux/atomisp.h
-    // have incorrect type (properly defined values are in videodev2.h)
-    else if (effect == IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_LOW)
-        v4l2Effect = (v4l2_colorfx)V4L2_COLORFX_SKIN_WHITEN_LOW;
-    else if (effect == IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_HIGH)
-        v4l2Effect = (v4l2_colorfx)V4L2_COLORFX_SKIN_WHITEN_HIGH;
-    else if (strncmp(effect, CameraParameters::EFFECT_NONE, strlen(effect)) != 0){
-        LOGE("Color effect not found.");
-        status = -1;
-        // Fall back to the effect NONE
-    }
-
-    status = setColorEffect(v4l2Effect);
-    status = applyColorEffect();
-    return status;
-}
-
-void AtomISP::getDefaultParams(CameraParameters *params, CameraParameters *intel_params)
-{
-    LOG1("@%s", __FUNCTION__);
-    if (!params) {
-        LOGE("params is null!");
-        return;
-    }
-
-    // multipoint focus
-    params->set(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS, 0);
-    // set empty area
-    params->set(CameraParameters::KEY_FOCUS_AREAS, "(0,0,0,0,0)");
-
-    // metering areas
-    params->set(CameraParameters::KEY_MAX_NUM_METERING_AREAS, 0);
-    // set empty area
-    params->set(CameraParameters::KEY_METERING_AREAS, "(0,0,0,0,0)");
-
-    // TODO: Add here any V4L2 3A specific settings
-}
-
-status_t AtomISP::setAfMode(AfMode mode)
-{
-    LOG1("@%s: %d", __FUNCTION__, mode);
-    status_t status = NO_ERROR;
-    v4l2_auto_focus_range v4lMode;
-
-    // TODO: add supported modes to PlatformData
-    if (mCameraId > 0) {
-        LOG1("@%s: not supported by current camera", __FUNCTION__);
-        return INVALID_OPERATION;
-    }
-
-    switch (mode)
-    {
-        case CAM_AF_MODE_AUTO:
-            v4lMode = V4L2_AUTO_FOCUS_RANGE_AUTO;
-            break;
-        case CAM_AF_MODE_MACRO:
-            v4lMode = V4L2_AUTO_FOCUS_RANGE_MACRO;
-            break;
-        case CAM_AF_MODE_INFINITY:
-            v4lMode = V4L2_AUTO_FOCUS_RANGE_INFINITY;
-            break;
-        default:
-            LOGW("Unsupported AF mode (%d), using AUTO", mode);
-            v4lMode = V4L2_AUTO_FOCUS_RANGE_AUTO;
-            break;
-    }
-
-    int ret = atomisp_set_attribute(main_fd, V4L2_CID_AUTO_FOCUS_RANGE , v4lMode, "AF mode");
-    if (ret != 0) {
-        LOGE("Error setting AF  mode (%d) in the driver", v4lMode);
-        status = UNKNOWN_ERROR;
-    }
-
-    return status;
-}
-
-AfMode AtomISP::getAfMode()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    AfMode mode = CAM_AF_MODE_AUTO;
-    v4l2_auto_focus_range v4lMode = V4L2_AUTO_FOCUS_RANGE_AUTO;
-
-    // TODO: add supported modes to PlatformData
-    if (mCameraId > 0) {
-        LOG1("@%s: not supported by current camera", __FUNCTION__);
-        return mode;
-    }
-
-    int ret = atomisp_get_attribute(main_fd, V4L2_CID_AUTO_FOCUS_RANGE, (int*) &v4lMode);
-    if (ret != 0) {
-        LOGE("Error getting AF mode from the driver");
-        status = UNKNOWN_ERROR;
-    }
-
-    switch (v4lMode)
-    {
-        case V4L2_AUTO_FOCUS_RANGE_AUTO:
-            mode = CAM_AF_MODE_AUTO;
-            break;
-        case CAM_AF_MODE_MACRO:
-            mode = CAM_AF_MODE_MACRO;
-            break;
-        case CAM_AF_MODE_INFINITY:
-            mode = CAM_AF_MODE_INFINITY;
-            break;
-        default:
-            LOGW("Unsupported AF mode (%d), using AUTO", v4lMode);
-            mode = CAM_AF_MODE_AUTO;
-            break;
-    }
-
-    return mode;
-}
-
-status_t AtomISP::getGridWindow(AAAWindowInfo& window)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-
-    atomisp_parm isp_param;
-    if (getIspParameters(&isp_param) < 0)
-        return UNKNOWN_ERROR;
-
-    window.width = isp_param.info.s3a_width * isp_param.info.s3a_bqs_per_grid_cell * 2;
-    window.height = isp_param.info.s3a_height * isp_param.info.s3a_bqs_per_grid_cell * 2;
-
-    return status;
-}
-
-status_t AtomISP::setAfEnabled(bool enable)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-
-    // TODO: add supported modes to PlatformData
-    if (mCameraId > 0) {
-        LOG1("@%s: not supported by current camera", __FUNCTION__);
-        return INVALID_OPERATION;
-    }
-
-    int ret = atomisp_set_attribute(main_fd, V4L2_CID_FOCUS_AUTO, enable, "Auto Focus");
-    if (ret != 0) {
-        LOGE("Error setting Auto Focus (%d) in the driver", enable);
-        status = UNKNOWN_ERROR;
-    }
-
-    return status;
-}
-
-int AtomISP::get3ALock()
-{
-    LOG1("@%s", __FUNCTION__);
-    int aaaLock = 0;
-
-    int ret = atomisp_get_attribute(main_fd, V4L2_CID_3A_LOCK, &aaaLock);
-    if (ret != 0) {
-        LOGE("Error getting 3A Lock setting from the driver");
-    }
-
-    return aaaLock;
-}
-
-bool AtomISP::getAeLock()
-{
-    LOG1("@%s", __FUNCTION__);
-    bool aeLockEnabled = false;
-
-    int aaaLock = get3ALock();
-    if (aaaLock & V4L2_LOCK_EXPOSURE)
-        aeLockEnabled = true;
-
-    return aeLockEnabled;
-}
-
-status_t AtomISP::setAeLock(bool enable)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-
-    int aaaLock = get3ALock();
-    if (enable)
-        aaaLock |= V4L2_LOCK_EXPOSURE;
-    else
-        aaaLock &= ~V4L2_LOCK_EXPOSURE;
-
-    int ret = atomisp_set_attribute(main_fd, V4L2_CID_3A_LOCK, aaaLock, "AE Lock");
-    if (ret != 0) {
-        LOGE("Error setting AE lock (%d) in the driver", enable);
-        status = UNKNOWN_ERROR;
-    }
-
-    return status;
-}
-
-bool AtomISP::getAfLock()
-{
-    LOG1("@%s", __FUNCTION__);
-    bool afLockEnabled = false;
-
-    int aaaLock = get3ALock();
-    if (aaaLock & V4L2_LOCK_FOCUS)
-        afLockEnabled = true;
-
-    return afLockEnabled;
-}
-
-status_t AtomISP::setAfLock(bool enable)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-
-    int aaaLock = get3ALock();
-    if (enable)
-        aaaLock |= V4L2_LOCK_FOCUS;
-    else
-        aaaLock &= ~V4L2_LOCK_FOCUS;
-
-    int ret = atomisp_set_attribute(main_fd, V4L2_CID_3A_LOCK, aaaLock, "AF Lock");
-    if (ret != 0) {
-        LOGE("Error setting AF lock (%d) in the driver", enable);
-        status = UNKNOWN_ERROR;
-    }
-
-    return status;
-}
-
-bool AtomISP::getAwbLock()
-{
-    LOG1("@%s", __FUNCTION__);
-    bool awbLockEnabled = false;
-
-    int aaaLock = get3ALock();
-    if (aaaLock & V4L2_LOCK_WHITE_BALANCE)
-        awbLockEnabled = true;
-
-    return awbLockEnabled;
-}
-
-status_t AtomISP::setAwbLock(bool enable)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-
-    int aaaLock = get3ALock();
-    if (enable)
-        aaaLock |= V4L2_LOCK_WHITE_BALANCE;
-    else
-        aaaLock &= ~V4L2_LOCK_WHITE_BALANCE;
-
-    int ret = atomisp_set_attribute(main_fd, V4L2_CID_3A_LOCK, aaaLock, "AF Lock");
-    if (ret != 0) {
-        LOGE("Error setting AWB lock (%d) in the driver", enable);
-        status = UNKNOWN_ERROR;
-    }
-
-    return status;
-}
-
-status_t AtomISP::getCurrentFocusPosition(int *pos)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    int position = 0;
-
-    int ret = atomisp_get_attribute(main_fd, V4L2_CID_FOCUS_ABSOLUTE , &position);
-    if (ret != 0) {
-        LOGE("Error getting Focus Position from the driver");
-        status = UNKNOWN_ERROR;
-    }
-    *pos = position;
-
-    return status;
-}
-
-status_t AtomISP::applyEv(float bias)
-{
-    LOG1("@%s: bias: %f", __FUNCTION__, bias);
-    return setEv(bias);
-}
-
-status_t AtomISP::setManualShutter(float expTime)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    int time = expTime / 0.0001; // 100 usec units
-
-    int ret = atomisp_set_attribute(main_fd, V4L2_CID_EXPOSURE_ABSOLUTE, time, "Exposure time");
-    if (ret != 0) {
-        LOGE("Error setting Exposure time (%d) in the driver", time);
-        status = UNKNOWN_ERROR;
-    }
-
-    return status;
-}
-
-status_t AtomISP::setAeFlashMode(FlashMode mode)
-{
-    LOG1("@%s: %d", __FUNCTION__, mode);
-    status_t status = NO_ERROR;
-    v4l2_flash_led_mode v4lMode;
-
-    if (!strcmp(PlatformData::supportedFlashModes(mCameraId), "")) {
-        LOG1("@%s: not supported by current camera", __FUNCTION__);
-        return INVALID_OPERATION;
-    }
-
-    switch (mode)
-    {
-        case CAM_AE_FLASH_MODE_OFF:
-            v4lMode = V4L2_FLASH_LED_MODE_NONE;
-            break;
-        case CAM_AE_FLASH_MODE_ON:
-            v4lMode = V4L2_FLASH_LED_MODE_FLASH;
-            break;
-        case CAM_AE_FLASH_MODE_TORCH:
-            v4lMode = V4L2_FLASH_LED_MODE_TORCH;
-            break;
-        default:
-            LOGW("Unsupported Flash mode (%d), using OFF", mode);
-            v4lMode = V4L2_FLASH_LED_MODE_NONE;
-            break;
-    }
-
-    int ret = atomisp_set_attribute(main_fd, V4L2_CID_FLASH_LED_MODE , v4lMode, "Flash mode");
-    if (ret != 0) {
-        LOGE("Error setting Flash mode (%d) in the driver", v4lMode);
-        status = UNKNOWN_ERROR;
-    }
-
-    return status;
-}
-
-FlashMode AtomISP::getAeFlashMode()
-{
-    LOG2("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    FlashMode mode = CAM_AE_FLASH_MODE_OFF;
-    v4l2_flash_led_mode v4lMode = V4L2_FLASH_LED_MODE_NONE;
-
-    if (!strcmp(PlatformData::supportedFlashModes(mCameraId), "")) {
-        LOG1("@%s: not supported by current camera", __FUNCTION__);
-        return mode;
-    }
-
-    int ret = atomisp_get_attribute(main_fd, V4L2_CID_FLASH_LED_MODE, (int*) &v4lMode);
-    if (ret != 0) {
-        LOGE("Error getting Flash mode from the driver");
-        status = UNKNOWN_ERROR;
-    }
-
-    switch (v4lMode)
-    {
-        case V4L2_FLASH_LED_MODE_NONE:
-            mode = CAM_AE_FLASH_MODE_OFF;
-            break;
-        case V4L2_FLASH_LED_MODE_FLASH:
-            mode = CAM_AE_FLASH_MODE_ON;
-            break;
-        case V4L2_FLASH_LED_MODE_TORCH:
-            mode = CAM_AE_FLASH_MODE_TORCH;
-            break;
-        default:
-            LOGW("Unsupported Flash mode (%d), using OFF", v4lMode);
-            mode = CAM_AE_FLASH_MODE_OFF;
-            break;
-    }
-
-    return mode;
-}
-
-void AtomISP::setPublicAeMode(AeMode mode)
-{
-    LOG2("@%s", __FUNCTION__);
-    mPublicAeMode = mode;
-}
-
-AeMode AtomISP::getPublicAeMode()
-{
-    LOG2("@%s", __FUNCTION__);
-    return mPublicAeMode;
-}
-
-void AtomISP::setPublicAfMode(AfMode mode)
-{
-    LOG2("@%s", __FUNCTION__);
-    mPublicAfMode = mode;
-}
-
-AfMode AtomISP::getPublicAfMode()
-{
-    LOG2("@%s", __FUNCTION__);
-    return mPublicAfMode;
 }
 
 void AtomISP::setNrEE(bool en)

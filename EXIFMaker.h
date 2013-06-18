@@ -15,7 +15,7 @@
  */
 
 #include "exif/ExifCreater.h"
-#include "AtomAAA.h"
+#include "I3AControls.h"
 #include <camera/CameraParameters.h>
 
 #ifndef EXIFMAKER_H_

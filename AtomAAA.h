@@ -31,23 +31,15 @@ namespace android {
 #include "ia_face.h"
 #include "AtomISP.h"
 #include "I3AControls.h"
-#include <ia_3a_types.h>
 #include <ia_types.h>
 #include <ia_aiq_types.h>
 
 namespace android {
 
-// DetermineFlash: returns true if flash should be determined according to current exposure
-#define DetermineFlash(x) (x == CAM_AE_FLASH_MODE_AUTO || \
-                           x == CAM_AE_FLASH_MODE_DAY_SYNC || \
-                           x == CAM_AE_FLASH_MODE_SLOW_SYNC) \
-
 #define DEFAULT_GBCE            true
 #define DEFAULT_GBCE_STRENGTH   0
 #define MAX_TIME_FOR_AF         2500 // milliseconds
 #define TORCH_INTENSITY         20   // 20%
-#define EV_LOWER_BOUND         -100
-#define EV_UPPER_BOUND          100
 
 struct AAAStatistics
 {

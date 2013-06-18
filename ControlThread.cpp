@@ -21,6 +21,9 @@
 #include "CameraConf.h"
 #include "PreviewThread.h"
 #include "PictureThread.h"
+#include "AtomAIQ.h"
+#include "AtomAAA.h"
+#include "AtomSoc3A.h"
 #include "AtomISP.h"
 #include "Callbacks.h"
 #include "CallbacksThread.h"
@@ -6074,12 +6077,12 @@ status_t ControlThread::createAtom3A()
         } else {
             m3AControls = new AtomAAA(mISP);
         }
-        if (m3AControls == NULL) {
-            LOGE("error creating AAA");
-            status = BAD_VALUE;
-        }
     } else {
-        m3AControls = mISP;
+        m3AControls = new AtomSoc3A(mCameraId, mISP);
+    }
+    if (m3AControls == NULL) {
+        LOGE("error creating AAA");
+        status = BAD_VALUE;
     }
     return status;
 }
