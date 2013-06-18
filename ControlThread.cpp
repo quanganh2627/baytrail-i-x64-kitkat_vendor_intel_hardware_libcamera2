@@ -2730,7 +2730,8 @@ status_t ControlThread::captureStillPic()
     bool flashFired = false;
     bool flashSequenceStarted = false;
     // Decide whether we display the postview
-    bool displayPostview = selectPostviewSize(pvWidth, pvHeight) // postview matches size of preview
+    bool postviewDisplayable = selectPostviewSize(pvWidth, pvHeight);
+    bool displayPostview = postviewDisplayable                   // postview matches size of preview
                            && !mHdr.enabled                      // HDR not enabled
                            && (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD
                               || mBurstLength > 1)               // proprietary preview update mode or burst
@@ -2787,6 +2788,9 @@ status_t ControlThread::captureStillPic()
                     if (status != NO_ERROR) {
                         flashOn = false;
                     }
+                    // display postview when flash is triggered
+                    // regardless of preview update mode
+                    displayPostview = postviewDisplayable;
                 }
             }
         }
