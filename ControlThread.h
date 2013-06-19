@@ -418,7 +418,7 @@ private:
     status_t handleContinuousPreviewBackgrounding();
     status_t handleContinuousPreviewForegrounding();
     void flushContinuousPreviewToDisplay(nsecs_t snapshotTs);
-    void continuousConfigApplyLimits(AtomISP::ContinuousCaptureConfig &cfg) const;
+    void continuousConfigApplyLimits(ContinuousCaptureConfig &cfg) const;
     status_t configureContinuousRingBuffer();
     status_t continuousStartStillCapture(bool useFlash);
 

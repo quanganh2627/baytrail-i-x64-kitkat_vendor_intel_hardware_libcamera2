@@ -17,11 +17,11 @@
 
 #include "ControlThread.h"
 #include "LogHelper.h"
-#include "AtomISP.h"
 #include "CameraConf.h"
 #include "PerformanceTraces.h"
 #include <utils/Log.h>
 #include <utils/threads.h>
+#include "PlatformData.h"
 
 using namespace android;
 
@@ -446,11 +446,28 @@ static int ATOM_CloseCameraHardware(hw_device_t* device)
 static int ATOM_GetNumberOfCameras(void)
 {
     LOGD("%s", __FUNCTION__);
-    return AtomISP::getNumberOfCameras();
+    int nodes = PlatformData::numberOfCameras();
+    if (nodes > MAX_CAMERAS)
+        nodes = MAX_CAMERAS;
+
+    return nodes;
 }
 
 static int ATOM_GetCameraInfo(int camera_id, struct camera_info *info)
 {
     LOGD("%s", __FUNCTION__);
-    return AtomISP::getCameraInfo(camera_id, info);
+    if (camera_id >= PlatformData::numberOfCameras())
+        return BAD_VALUE;
+
+    info->facing = PlatformData::cameraFacing(camera_id);
+    info->orientation = PlatformData::cameraOrientation(camera_id);
+
+    LOG1("@%s: %d: facing %s, orientation %d",
+         __FUNCTION__,
+         camera_id,
+         ((info->facing == CAMERA_FACING_BACK) ?
+          "back" : "front/other"),
+         info->orientation);
+
+    return NO_ERROR;
 }

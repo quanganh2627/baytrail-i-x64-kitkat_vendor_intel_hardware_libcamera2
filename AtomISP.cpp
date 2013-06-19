@@ -275,6 +275,12 @@ int AtomISP::getCurrentCameraId(void)
     return mCameraId;
 }
 
+const char * AtomISP::getSensorName(void)
+{
+    return mCameraInput->name;
+}
+
+
 /**
  * Convert zoom value to zoom ratio
  *
@@ -1862,7 +1868,6 @@ status_t AtomISP::releaseCaptureBuffers()
     return status;
 }
 
-
 /**
  * Starts offline capture processing in the ISP.
  *
@@ -1876,7 +1881,7 @@ status_t AtomISP::releaseCaptureBuffers()
  * \param config configuration container describing how many
  *               captures to take, skipping and the start offset
  */
-status_t AtomISP::startOfflineCapture(AtomISP::ContinuousCaptureConfig &config)
+status_t AtomISP::startOfflineCapture(ContinuousCaptureConfig &config)
 {
     status_t res = NO_ERROR;
 
@@ -1945,9 +1950,9 @@ status_t AtomISP::stopOfflineCapture()
  * Prepares ISP for offline capture
  *
  * \param config container to configure capture count, skipping
- *               and the start offset (see struct AtomISP::ContinuousCaptureConfig)
+ *               and the start offset (see struct ContinuousCaptureConfig)
  */
-status_t AtomISP::prepareOfflineCapture(AtomISP::ContinuousCaptureConfig &cfg, bool capturePriority)
+status_t AtomISP::prepareOfflineCapture(ContinuousCaptureConfig &cfg, bool capturePriority)
 {
     LOG1("@%s, numCaptures = %d", __FUNCTION__, cfg.numCaptures);
     if (cfg.offset < continuousBurstNegMinOffset()) {
@@ -4918,18 +4923,6 @@ bool AtomISP::needNewPostviewBuffers()
     return true;
 }
 
-int AtomISP::getNumberOfCameras()
-{
-    LOG1("@%s", __FUNCTION__);
-    // note: hide the file inject device node, so do
-    //       not allow to get info for MAX_CAMERA_NODES
-    int nodes = PlatformData::numberOfCameras();
-    if (nodes > MAX_CAMERAS)
-        nodes = MAX_CAMERAS;
-
-    return nodes;
-}
-
 size_t AtomISP::setupCameraInfo()
 {
     LOG1("@%s", __FUNCTION__);
@@ -4959,24 +4952,7 @@ size_t AtomISP::setupCameraInfo()
     return numCameras;
 }
 
-status_t AtomISP::getCameraInfo(int cameraId, camera_info *cameraInfo)
-{
-    LOG1("@%s: cameraId = %d", __FUNCTION__, cameraId);
-    if (cameraId >= PlatformData::numberOfCameras())
-        return BAD_VALUE;
 
-    cameraInfo->facing = PlatformData::cameraFacing(cameraId);
-    cameraInfo->orientation = PlatformData::cameraOrientation(cameraId);
-
-    LOG1("@%s: %d: facing %s, orientation %d",
-         __FUNCTION__,
-         cameraId,
-         ((cameraInfo->facing == CAMERA_FACING_BACK) ?
-          "back" : "front/other"),
-         cameraInfo->orientation);
-
-    return NO_ERROR;
-}
 
 unsigned int AtomISP::getNumOfSkipFrames(void)
 {
@@ -5419,19 +5395,19 @@ int AtomISP::sensorMoveFocusToBySteps(int steps)
     return sensorMoveFocusToPosition(val + steps);
 }
 
-int AtomISP::sensorGetFocusPosition(int * position)
+int AtomISP::getFocusPosition(int * position)
 {
     LOG2("@%s", __FUNCTION__);
     return atomisp_get_attribute(main_fd, V4L2_CID_FOCUS_ABSOLUTE , position);
 }
 
-int AtomISP::sensorGetFocusStatus(int *status)
+int AtomISP::getFocusStatus(int *status)
 {
     LOG2("@%s", __FUNCTION__);
     return atomisp_get_attribute(main_fd,V4L2_CID_FOCUS_STATUS, status);
 }
 
-int AtomISP::sensorGetModeInfo(struct atomisp_sensor_mode_data *mode_data)
+int AtomISP::getModeInfo(struct atomisp_sensor_mode_data *mode_data)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
@@ -5448,25 +5424,25 @@ int AtomISP::setExposure(struct atomisp_exposure *exposure)
     return ret;
 }
 
-int AtomISP::sensorSetExposureTime(int time)
+int AtomISP::setExposureTime(int time)
 {
     LOG2("@%s", __FUNCTION__);
     return atomisp_set_attribute(main_fd, V4L2_CID_EXPOSURE_ABSOLUTE, time, "Exposure time");
 }
 
-int AtomISP::sensorGetExposureTime(int *time)
+int AtomISP::getExposureTime(int *time)
 {
     LOG2("@%s", __FUNCTION__);
     return atomisp_get_attribute(main_fd, V4L2_CID_EXPOSURE_ABSOLUTE, time);
 }
 
-int AtomISP::sensorGetAperture(int *aperture)
+int AtomISP::getAperture(int *aperture)
 {
     LOG2("@%s", __FUNCTION__);
     return atomisp_get_attribute(main_fd, V4L2_CID_IRIS_ABSOLUTE, aperture);
 }
 
-int AtomISP::sensorGetFNumber(unsigned short *fnum_num, unsigned short *fnum_denom)
+int AtomISP::getFNumber(unsigned short *fnum_num, unsigned short *fnum_denom)
 {
     LOG2("@%s", __FUNCTION__);
     int fnum = 0, ret;
@@ -5527,7 +5503,7 @@ void AtomISP::getSensorDataFromFile(const char *file_name, sensorPrivateData *se
     close(otp_fd);
 }
 
-void AtomISP::sensorGetMotorData(sensorPrivateData *sensor_data)
+void AtomISP::getMotorData(sensorPrivateData *sensor_data)
 {
     LOG2("@%s", __FUNCTION__);
     int rc;
@@ -5569,7 +5545,7 @@ void AtomISP::sensorGetMotorData(sensorPrivateData *sensor_data)
     sensor_data->fetched = true;
 }
 
-void AtomISP::sensorGetSensorData(sensorPrivateData *sensor_data)
+void AtomISP::getSensorData(sensorPrivateData *sensor_data)
 {
     LOG2("@%s", __FUNCTION__);
     int rc;
@@ -5619,123 +5595,123 @@ void AtomISP::sensorGetSensorData(sensorPrivateData *sensor_data)
     gSensorDataCache[cameraId] = *sensor_data;
 }
 
-int AtomISP::sensorSetExposureMode(v4l2_exposure_auto_type v4l2Mode)
+int AtomISP::setExposureMode(v4l2_exposure_auto_type v4l2Mode)
 {
     LOG2("@%s: %d", __FUNCTION__, v4l2Mode);
     return atomisp_set_attribute(main_fd, V4L2_CID_EXPOSURE_AUTO, v4l2Mode, "AE mode");
 }
 
-int AtomISP::sensorGetExposureMode(v4l2_exposure_auto_type * type)
+int AtomISP::getExposureMode(v4l2_exposure_auto_type * type)
 {
     LOG2("@%s", __FUNCTION__);
     return atomisp_get_attribute(main_fd, V4L2_CID_EXPOSURE_AUTO, (int*)type);
 }
 
-int AtomISP::sensorSetExposure(int bias)
+int AtomISP::setExposureBias(int bias)
 {
     LOG2("@%s: bias: %d", __FUNCTION__, bias);
     return atomisp_set_attribute(main_fd, V4L2_CID_EXPOSURE, bias, "exposure");
 }
 
-int AtomISP::sensorGetExposure(int * bias)
+int AtomISP::getExposureBias(int * bias)
 {
     LOG2("@%s", __FUNCTION__);
     return atomisp_get_attribute(main_fd, V4L2_CID_EXPOSURE, bias);
 }
 
-int AtomISP::sensorSetSceneMode(v4l2_scene_mode mode)
+int AtomISP::setSceneMode(v4l2_scene_mode mode)
 {
     LOG2("@%s: %d", __FUNCTION__, mode);
     return atomisp_set_attribute(main_fd, V4L2_CID_SCENE_MODE, mode, "scene mode");
 }
 
-int AtomISP::sensorGetSceneMode(v4l2_scene_mode * mode)
+int AtomISP::getSceneMode(v4l2_scene_mode * mode)
 {
     LOG2("@%s", __FUNCTION__);
     return atomisp_get_attribute(main_fd, V4L2_CID_SCENE_MODE, (int*)mode);
 }
 
-int AtomISP::sensorSetWhiteBalance(v4l2_auto_n_preset_white_balance mode)
+int AtomISP::setWhiteBalance(v4l2_auto_n_preset_white_balance mode)
 {
     LOG2("@%s: %d", __FUNCTION__, mode);
     return atomisp_set_attribute(main_fd, V4L2_CID_AUTO_N_PRESET_WHITE_BALANCE, mode, "white balance");
 }
 
-int AtomISP::sensorGetWhiteBalance(v4l2_auto_n_preset_white_balance * mode)
+int AtomISP::getWhiteBalance(v4l2_auto_n_preset_white_balance * mode)
 {
     LOG2("@%s", __FUNCTION__);
     return atomisp_get_attribute(main_fd, V4L2_CID_AUTO_N_PRESET_WHITE_BALANCE, (int*)mode);
 }
 
-int AtomISP::sensorSetIso(int iso)
+int AtomISP::setIso(int iso)
 {
     LOG2("@%s: ISO: %d", __FUNCTION__, iso);
     return atomisp_set_attribute(main_fd, V4L2_CID_ISO_SENSITIVITY, iso, "iso");
 }
 
-int AtomISP::sensorGetIso(int * iso)
+int AtomISP::getIso(int * iso)
 {
     LOG2("@%s", __FUNCTION__);
     return atomisp_get_attribute(main_fd, V4L2_CID_ISO_SENSITIVITY, iso);
 }
 
-int AtomISP::sensorSetAeMeteringMode(v4l2_exposure_metering mode)
+int AtomISP::setAeMeteringMode(v4l2_exposure_metering mode)
 {
     LOG2("@%s: %d", __FUNCTION__, mode);
     return atomisp_set_attribute(main_fd, V4L2_CID_EXPOSURE_METERING, mode, "AE metering mode");
 }
 
-int AtomISP::sensorGetAeMeteringMode(v4l2_exposure_metering * mode)
+int AtomISP::getAeMeteringMode(v4l2_exposure_metering * mode)
 {
     LOG2("@%s", __FUNCTION__);
     return atomisp_get_attribute(main_fd, V4L2_CID_EXPOSURE_METERING, (int*)mode);
 }
 
-int AtomISP::sensorSetAeFlickerMode(v4l2_power_line_frequency mode)
+int AtomISP::setAeFlickerMode(v4l2_power_line_frequency mode)
 {
     LOG2("@%s: %d", __FUNCTION__, (int) mode);
     return atomisp_set_attribute(main_fd, V4L2_CID_POWER_LINE_FREQUENCY,
                                     mode, "light frequency");
 }
 
-int AtomISP::sensorSetAfMode(v4l2_auto_focus_range mode)
+int AtomISP::setAfMode(v4l2_auto_focus_range mode)
 {
     LOG2("@%s: %d", __FUNCTION__, mode);
     return atomisp_set_attribute(main_fd, V4L2_CID_AUTO_FOCUS_RANGE , mode, "AF mode");
 }
 
-int AtomISP::sensorGetAfMode(v4l2_auto_focus_range * mode)
+int AtomISP::getAfMode(v4l2_auto_focus_range * mode)
 {
     LOG2("@%s", __FUNCTION__);
     return atomisp_get_attribute(main_fd, V4L2_CID_AUTO_FOCUS_RANGE, (int*)mode);
 }
 
-int AtomISP::sensorSetAfEnabled(bool enable)
+int AtomISP::setAfEnabled(bool enable)
 {
     LOG2("@%s", __FUNCTION__);
     return atomisp_set_attribute(main_fd, V4L2_CID_FOCUS_AUTO, enable, "Auto Focus");
 }
 
-int AtomISP::sensorSet3ALock(int aaaLock)
+int AtomISP::set3ALock(int aaaLock)
 {
     LOG2("@%s", __FUNCTION__);
     return atomisp_set_attribute(main_fd, V4L2_CID_3A_LOCK, aaaLock, "AE Lock");
 }
 
-int AtomISP::sensorGet3ALock(int * aaaLock)
+int AtomISP::get3ALock(int * aaaLock)
 {
     LOG2("@%s", __FUNCTION__);
     return atomisp_get_attribute(main_fd, V4L2_CID_3A_LOCK, aaaLock);
 }
 
 
-int AtomISP::sensorSetAeFlashMode(v4l2_flash_led_mode mode)
+int AtomISP::setAeFlashMode(v4l2_flash_led_mode mode)
 {
     LOG2("@%s: %d", __FUNCTION__, mode);
     return atomisp_set_attribute(main_fd, V4L2_CID_FLASH_LED_MODE, mode, "Flash mode");
 }
 
-int AtomISP::sensorGetAeFlashMode(v4l2_flash_led_mode * mode)
+int AtomISP::getAeFlashMode(v4l2_flash_led_mode * mode)
 {
     LOG2("@%s", __FUNCTION__);
     return atomisp_get_attribute(main_fd, V4L2_CID_FLASH_LED_MODE, (int*)mode);

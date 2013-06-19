@@ -1112,7 +1112,7 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
  *
  * \param cfg configuration container to modify
  */
-void ControlThread::continuousConfigApplyLimits(AtomISP::ContinuousCaptureConfig &cfg) const
+void ControlThread::continuousConfigApplyLimits(ContinuousCaptureConfig &cfg) const
 {
     int minOffset = mISP->continuousBurstNegMinOffset();
     int skip = 0;
@@ -1156,7 +1156,7 @@ status_t ControlThread::configureContinuousRingBuffer()
     if (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_CONTINUOUS)
         capturePriority = false;
 
-    AtomISP::ContinuousCaptureConfig cfg;
+    ContinuousCaptureConfig cfg;
     if (mULL->isActive() || mBurstLength > 1)
         cfg.numCaptures = MAX(mULL->MAX_INPUT_BUFFERS, mBurstLength);
     else
@@ -1541,15 +1541,15 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
         if (isDVSActive && mDvs->reconfigure() == NO_ERROR) {
             // Attach only when DVS is active:
-            mISP->attachObserver(mDvs, AtomISP::OBSERVE_PREVIEW_STREAM);
+            mISP->attachObserver(mDvs, OBSERVE_PREVIEW_STREAM);
         } else if (isDVSActive) {
             LOGE("Failed to reconfigure DVS grid");
         }
 
-        mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_3A_STAT_READY);
-        mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
+        mISP->attachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
+        mISP->attachObserver(m3AThread.get(), OBSERVE_FRAME_SYNC_SOF);
         if (mSensorSyncManager != NULL)
-            mISP->attachObserver(mSensorSyncManager.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
+            mISP->attachObserver(mSensorSyncManager.get(), OBSERVE_FRAME_SYNC_SOF);
     }
     // ControlThread must be the observer before PreviewThread to ensure that
     // the recording buffer dequeue handling message is guaranteed to happen
@@ -1558,8 +1558,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     // guaranteed. Thus we know, that if the recording buffer is using the
     // preview buffer data for encoding, the handler for the recording buffer
     // dequeue has run before the preview return buffer handler runs.
-    mISP->attachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
-    mISP->attachObserver(mPreviewThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+    mISP->attachObserver(this, OBSERVE_PREVIEW_STREAM);
+    mISP->attachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
 
     mPreviewThread->setCallback(
             static_cast<ICallbackPreview*>(mPostProcThread.get()),
@@ -1572,14 +1572,14 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     } else {
         LOGE("Error starting ISP!");
         mPreviewThread->returnPreviewBuffers();
-        mISP->detachObserver(mPreviewThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
-        mISP->detachObserver(mDvs, AtomISP::OBSERVE_PREVIEW_STREAM);
-        mISP->detachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
+        mISP->detachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
+        mISP->detachObserver(mDvs, OBSERVE_PREVIEW_STREAM);
+        mISP->detachObserver(this, OBSERVE_PREVIEW_STREAM);
         if (m3AControls->isIntel3A()) {
-            mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
-            mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
+            mISP->detachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
+            mISP->detachObserver(m3AThread.get(), OBSERVE_FRAME_SYNC_SOF);
             if (mSensorSyncManager != NULL)
-                mISP->detachObserver(mSensorSyncManager.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
+                mISP->detachObserver(mSensorSyncManager.get(), OBSERVE_FRAME_SYNC_SOF);
         }
     }
 
@@ -1597,9 +1597,9 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     status_t status = NO_ERROR;
 
     // synchronize and pause the preview dequeueing
-    mISP->pauseObserver(AtomISP::OBSERVE_FRAME_SYNC_SOF);
-    mISP->pauseObserver(AtomISP::OBSERVE_PREVIEW_STREAM);
-    mISP->pauseObserver(AtomISP::OBSERVE_3A_STAT_READY);
+    mISP->pauseObserver(OBSERVE_FRAME_SYNC_SOF);
+    mISP->pauseObserver(OBSERVE_PREVIEW_STREAM);
+    mISP->pauseObserver(OBSERVE_3A_STAT_READY);
 
 
     // Before stopping the ISP, flush any buffers in picture
@@ -1625,22 +1625,22 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
         LOGE("Error stopping ISP in preview mode!");
     }
 
-    mISP->detachObserver(mPreviewThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+    mISP->detachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
 
     // we only need to attach the 3AThread to preview stream for RAW type of cameras
     // when we use the 3A algorithm running on Atom
     if (m3AControls->isIntel3A()) {
-        mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_3A_STAT_READY);
-        mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
+        mISP->detachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
+        mISP->detachObserver(m3AThread.get(), OBSERVE_FRAME_SYNC_SOF);
         if (mSensorSyncManager != NULL)
-            mISP->detachObserver(mSensorSyncManager.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
+            mISP->detachObserver(mSensorSyncManager.get(), OBSERVE_FRAME_SYNC_SOF);
         // Detaching DVS observer. Just to make sure, although it might not be attached:
         // might be a non-RAW sensor, or enabling failed on startPreviewCore().
         // It is OK to detach; if the observer is not attached, detachObserver()
         // returns BAD_VALUE.
-        mISP->detachObserver(mDvs, AtomISP::OBSERVE_PREVIEW_STREAM);
+        mISP->detachObserver(mDvs, OBSERVE_PREVIEW_STREAM);
     }
-    mISP->detachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
+    mISP->detachObserver(this, OBSERVE_PREVIEW_STREAM);
     mMessageQueue.remove(MESSAGE_ID_DEQUEUE_RECORDING);
 
     status = mPreviewThread->returnPreviewBuffers();
@@ -1740,7 +1740,7 @@ status_t ControlThread::startOfflineCapture()
 {
     assert(mState == STATE_CONTINUOUS_CAPTURE);
 
-    AtomISP::ContinuousCaptureConfig cfg;
+    ContinuousCaptureConfig cfg;
     cfg.numCaptures = 1;
     cfg.offset = -(mISP->shutterLagZeroAlign());
     cfg.skip = 0;
@@ -2371,7 +2371,7 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
         }
     } else {
         memset(aeConfig, 0, sizeof(SensorAeConfig));
-        if (mISP->sensorGetExposureTime(&aeConfig->expTime))
+        if (mISP->getExposureTime(&aeConfig->expTime))
             aeConfig->expTime = 0;
     }
 
@@ -2479,7 +2479,7 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
         }
 
         assert(mBurstLength <= 1);
-        AtomISP::ContinuousCaptureConfig config;
+        ContinuousCaptureConfig config;
         config.numCaptures = 1;
         config.offset = 0;
         config.skip = 0,
@@ -2787,7 +2787,7 @@ status_t ControlThread::captureStillPic()
                     flashSequenceStarted = true;
                     // hide preview frames already during pre-flash sequence
                     mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
-                    mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+                    mISP->attachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
                     status = m3AThread->enterFlashSequence(AAAThread::FLASH_STAGE_PRE_EXPOSED);
                     if (status != NO_ERROR) {
                         flashOn = false;
@@ -2814,7 +2814,7 @@ status_t ControlThread::captureStillPic()
 
     if (flashSequenceStarted) {
         m3AThread->exitFlashSequence();
-        mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+        mISP->detachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
     }
 
     mBurstCaptureNum = 0;

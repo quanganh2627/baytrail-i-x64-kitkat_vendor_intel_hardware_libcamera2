@@ -114,17 +114,17 @@ status_t AtomAIQ::init3A()
 
     ia_binary_data *aicNvm = NULL;
     ia_binary_data sensorData, motorData;
-    mISP->sensorGetSensorData((sensorPrivateData *) &sensorData);
-    mISP->sensorGetMotorData((sensorPrivateData *)&motorData);
+    mISP->getSensorData((sensorPrivateData *) &sensorData);
+    mISP->getMotorData((sensorPrivateData *)&motorData);
 
     // Combine sensor name and spId
     PlatformData::createVendorPlatformProductName(spIdName);
-    fullName = mISP->mCameraInput->name;
+    fullName = mISP->getSensorName();
 
     spacePos = fullName.find(" ");
 
     if (spacePos < 0){
-        fullName = mISP->mCameraInput->name;
+        fullName = mISP->getSensorName();
     }
     else {
         fullName.setTo(fullName, spacePos);
@@ -1517,7 +1517,7 @@ bool AtomAIQ::changeSensorMode(void)
     getSensorFrameParams(&m3aState.sensor_frame_params);
 
     struct atomisp_sensor_mode_data sensor_mode_data;
-    mISP->sensorGetModeInfo(&sensor_mode_data);
+    mISP->getModeInfo(&sensor_mode_data);
     if (mISP->getIspParameters(&m3aState.results.isp_params) < 0)
         return false;
 
@@ -2212,8 +2212,8 @@ void AtomAIQ::getAeExpCfg(int *exp_time,
 {
     LOG2("@%s", __FUNCTION__);
 
-    mISP->sensorGetExposureTime(exp_time);
-    mISP->sensorGetFNumber(aperture_num, aperture_denum);
+    mISP->getExposureTime(exp_time);
+    mISP->getFNumber(aperture_num, aperture_denum);
     ia_aiq_ae_results *latest_ae_results = NULL;
     if (mBracketingRunning && mAEBracketingResult) {
         latest_ae_results = mAEBracketingResult;
@@ -2296,7 +2296,7 @@ void AtomAIQ::getSensorFrameParams(ia_aiq_sensor_frame_params *frame_params)
     LOG2("@%s", __FUNCTION__);
 
     struct atomisp_sensor_mode_data sensor_mode_data;
-    if(mISP->sensorGetModeInfo(&sensor_mode_data) < 0) {
+    if(mISP->getModeInfo(&sensor_mode_data) < 0) {
         sensor_mode_data.crop_horizontal_start = 0;
         sensor_mode_data.crop_vertical_start = 0;
         sensor_mode_data.crop_vertical_end = 0;

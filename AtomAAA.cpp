@@ -93,7 +93,7 @@ static ia_3a_af_lens_status cb_focus_status(void)
 static bool cb_focus_ready(void)
 {
     int status;
-    gISP->sensorGetFocusStatus(&status);
+    gISP->getFocusStatus(&status);
     return status & ATOMISP_FOCUS_STATUS_ACCEPTS_NEW_MOVE;
 }
 
@@ -101,7 +101,7 @@ static ia_3a_af_hp_status cb_focus_home_position(void)
 {
     int status;
 
-    gISP->sensorGetFocusStatus(&status);
+    gISP->getFocusStatus(&status);
     status &= ATOMISP_FOCUS_STATUS_HOME_POSITION;
 
     if (status == ATOMISP_FOCUS_HP_IN_PROGRESS)
@@ -1320,12 +1320,12 @@ int AtomAAA::ciAdvInit(const SensorParams *paramFiles, const char *sensorOtpFile
         if (m3ALibState.sensor_data.size > 0  && m3ALibState.sensor_data.data != NULL)
             m3ALibState.boot_events |= ci_adv_file_sensor_data;
     } else {
-        mISP->sensorGetSensorData(reinterpret_cast<sensorPrivateData *>(&m3ALibState.sensor_data));
+        mISP->getSensorData(reinterpret_cast<sensorPrivateData *>(&m3ALibState.sensor_data));
         if (m3ALibState.sensor_data.size > 0  && m3ALibState.sensor_data.data != NULL)
             m3ALibState.boot_events |= ci_adv_cam_sensor_data;
     }
 
-    mISP->sensorGetMotorData(reinterpret_cast<sensorPrivateData *>(&m3ALibState.motor_data));
+    mISP->getMotorData(reinterpret_cast<sensorPrivateData *>(&m3ALibState.motor_data));
     if (m3ALibState.motor_data.size > 0 && m3ALibState.motor_data.data != NULL)
         m3ALibState.boot_events |= ci_adv_cam_motor_data;
 
@@ -1342,7 +1342,7 @@ int AtomAAA::ciAdvInit(const SensorParams *paramFiles, const char *sensorOtpFile
     // Intel 3A
     // in a case of an error in parsing (e.g. incorrect data,
     // mismatch in checksum) the pointer to NVM data is null
-    cameranvm_create(mISP->mCameraInput->name,
+    cameranvm_create(mISP->getSensorName(),
         (ia_binary_data *)&m3ALibState.sensor_data,
         (ia_binary_data *)&m3ALibState.motor_data,
         &aicNvm);
@@ -1449,7 +1449,7 @@ status_t AtomAAA::setFlash(int numFrames)
 bool AtomAAA::reconfigureGrid(void)
 {
     LOG1("@%s", __FUNCTION__);
-    mISP->sensorGetModeInfo(&m3ALibState.sensor_mode_data);
+    mISP->getModeInfo(&m3ALibState.sensor_mode_data);
     if (mISP->getIspParameters(&m3ALibState.results.isp_params) < 0)
         return false;
 
@@ -1538,7 +1538,7 @@ int AtomAAA::ciAdvProcessFrame(bool read_stats, const struct timeval *frame_time
         reconfigureGrid();
     }
 
-    mISP->sensorGetFNumber(&aperture.num, &aperture.denum);
+    mISP->getFNumber(&aperture.num, &aperture.denum);
 
     if (m3ALibState.stats_valid) {
         ia_3a_main(frame_timestamp, sof_timestamp, m3ALibState.stats, &aperture, &m3ALibState.results);
@@ -1628,8 +1628,8 @@ void AtomAAA::getAeExpCfg(int *exp_time,
     LOG2("@%s", __FUNCTION__);
     ia_3a_ae_result ae_res;
 
-    mISP->sensorGetExposureTime(exp_time);
-    mISP->sensorGetFNumber(aperture_num, aperture_denum);
+    mISP->getExposureTime(exp_time);
+    mISP->getFNumber(aperture_num, aperture_denum);
     ia_3a_ae_get_generic_result(&ae_res);
 
     *digital_gain = IA_3A_S15_16_TO_FLOAT(ae_res.global_digital_gain);

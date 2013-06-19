@@ -22,9 +22,6 @@
 #include <utils/Vector.h>
 #include <utils/Errors.h>
 #include <utils/threads.h>
-#include <utils/String8.h>
-#include <camera/CameraParameters.h>
-#include "IntelParameters.h"
 #include "AtomCommon.h"
 
 #ifdef ENABLE_INTEL_METABUFFER
@@ -33,7 +30,6 @@
 
 #include "PlatformData.h"
 #include "CameraConf.h"
-#include "AtomIspObserverManager.h"
 #include "ScalerService.h"
 #include "ICameraHwControls.h"
 
@@ -49,12 +45,8 @@ namespace android {
  *  Minimum resolution of video frames to have DVS ON.
  *  Under this it will be disabled
  **/
-#define MIN_DVS_WIDTH   384
-#define MIN_DVS_HEIGHT  384
 #define LARGEST_THUMBNAIL_WIDTH 320
 #define LARGEST_THUMBNAIL_HEIGHT 240
-#define CAM_WXH_STR(w,h) STRINGIFY_(w##x##h)
-#define CAM_RESO_STR(w,h) CAM_WXH_STR(w,h) // example: CAM_RESO_STR(VGA_WIDTH,VGA_HEIGHT) -> "640x480"
 
 //v4l2 buffer in pool
 struct v4l2_buffer_info {
@@ -75,12 +67,6 @@ struct v4l2_buffer_pool {
     struct v4l2_buffer_info bufs [MAX_V4L2_BUFFERS];
 };
 
-struct sensorPrivateData
-{
-    void *data;
-    unsigned int size;
-    bool fetched; // true if data has been attempted to read, false otherwise
-};
 
 struct devNameGroup
 {
@@ -92,22 +78,11 @@ class Callbacks;
 class AtomISP :
     public IHWSensorControl, // implements sensor support for IA 3A
     public IBufferOwner {
-// FIXME: Only needed for NVM parsing "cameranvm_create()" in AtomAAA
-    friend class AtomAIQ;
-    friend class AtomAAA;
-
-// public types
-public:
-    enum ObserverType {
-        OBSERVE_PREVIEW_STREAM,
-        OBSERVE_FRAME_SYNC_SOF,
-        OBSERVE_3A_STAT_READY,
-    };
 
 // constructor/destructor
 public:
     explicit AtomISP(int cameraId, sp<ScalerService> scalerService);
-    ~AtomISP();
+    virtual ~AtomISP();
 
     status_t initDevice();
     status_t init();
@@ -119,22 +94,11 @@ private:
     AtomISP(const AtomISP& other);
     AtomISP& operator=(const AtomISP& other);
 
-    // public types
-public:
-    struct ContinuousCaptureConfig {
-        int numCaptures;        /*!< Number of captures
-                                 * -1 = capture continuously
-                                 * 0 = disabled, stop captures
-                                 * >0 = burst of N snapshots
-                                 */
-        int offset;             /*!< burst start offset */
-        int skip;               /*!< skip factor */
-    };
-
 // public methods
 public:
 
     int getCurrentCameraId(void);
+    const char * getSensorName(void);
     void getDefaultParameters(CameraParameters *params, CameraParameters *intel_params);
 
     status_t configure(AtomMode mode);
@@ -227,8 +191,6 @@ public:
     inline String8 getFileInjectionFileName(void) const { return mFileInject.fileName; }
 
     // camera hardware information
-    static int getNumberOfCameras();
-    static status_t getCameraInfo(int cameraId, camera_info *cameraInfo);
     status_t getSensorParams(SensorParams *sp);
 
     float getFrameRate() const { return mConfig.fps; }
@@ -254,35 +216,35 @@ public:
     /* Sensor related controls */
     int sensorMoveFocusToPosition(int position);
     int sensorMoveFocusToBySteps(int steps);
-    int sensorGetFocusPosition(int * position);
-    void sensorGetMotorData(sensorPrivateData *sensor_data);
-    void sensorGetSensorData(sensorPrivateData *sensor_data);
-    int sensorGetFocusStatus(int *status);
-    int sensorGetModeInfo(struct atomisp_sensor_mode_data *mode_data);
-    int sensorSetExposureTime(int time);
-    int sensorGetExposureTime(int *exposure_time);
-    int sensorGetAperture(int *aperture);
-    int sensorGetFNumber(unsigned short  *fnum_num, unsigned short *fnum_denom);
-    int sensorSetExposureMode(v4l2_exposure_auto_type type);
-    int sensorGetExposureMode(v4l2_exposure_auto_type * type);
-    int sensorSetExposure(int bias);
-    int sensorGetExposure(int * bias);
-    int sensorSetSceneMode(v4l2_scene_mode mode);
-    int sensorGetSceneMode(v4l2_scene_mode * mode);
-    int sensorSetWhiteBalance(v4l2_auto_n_preset_white_balance mode);
-    int sensorGetWhiteBalance(v4l2_auto_n_preset_white_balance * mode);
-    int sensorSetIso(int iso);
-    int sensorGetIso(int * iso);
-    int sensorSetAeMeteringMode(v4l2_exposure_metering mode);
-    int sensorGetAeMeteringMode(v4l2_exposure_metering * mode);
-    int sensorSetAeFlickerMode(v4l2_power_line_frequency mode);
-    int sensorSetAfMode(v4l2_auto_focus_range mode);
-    int sensorGetAfMode(v4l2_auto_focus_range * mode);
-    int sensorSetAfEnabled(bool enable);
-    int sensorSet3ALock(int aaaLock);
-    int sensorGet3ALock(int * aaaLock);
-    int sensorSetAeFlashMode(v4l2_flash_led_mode mode);
-    int sensorGetAeFlashMode(v4l2_flash_led_mode * mode);
+    int getFocusPosition(int * position);
+    void getMotorData(sensorPrivateData *sensor_data);
+    void getSensorData(sensorPrivateData *sensor_data);
+    int getFocusStatus(int *status);
+    int getModeInfo(struct atomisp_sensor_mode_data *mode_data);
+    int setExposureTime(int time);
+    int getExposureTime(int *exposure_time);
+    int getAperture(int *aperture);
+    int getFNumber(unsigned short  *fnum_num, unsigned short *fnum_denom);
+    int setExposureMode(v4l2_exposure_auto_type type);
+    int getExposureMode(v4l2_exposure_auto_type * type);
+    int setExposureBias(int bias);
+    int getExposureBias(int * bias);
+    int setSceneMode(v4l2_scene_mode mode);
+    int getSceneMode(v4l2_scene_mode * mode);
+    int setWhiteBalance(v4l2_auto_n_preset_white_balance mode);
+    int getWhiteBalance(v4l2_auto_n_preset_white_balance * mode);
+    int setIso(int iso);
+    int getIso(int * iso);
+    int setAeMeteringMode(v4l2_exposure_metering mode);
+    int getAeMeteringMode(v4l2_exposure_metering * mode);
+    int setAeFlickerMode(v4l2_power_line_frequency mode);
+    int setAfMode(v4l2_auto_focus_range mode);
+    int getAfMode(v4l2_auto_focus_range * mode);
+    int setAfEnabled(bool enable);
+    int set3ALock(int aaaLock);
+    int get3ALock(int * aaaLock);
+    int setAeFlashMode(v4l2_flash_led_mode mode);
+    int getAeFlashMode(v4l2_flash_led_mode * mode);
     // IHWSensorControl overloads, TODO: move them all
     // TODO: replacing fixed value of AE_DELAY_FRAMES in AtomAIQ.h in non-functional API refactory
     //       this value exists in CPF and needs awareness of frames timing.
