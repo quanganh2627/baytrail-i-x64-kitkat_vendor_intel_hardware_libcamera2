@@ -30,6 +30,7 @@
 #include "ColorConverter.h"
 #include "PlatformData.h"
 #include "IntelParameters.h"
+#include "MemoryUtils.h"
 #include <utils/Vector.h>
 #include <math.h>
 #include <cutils/properties.h>
@@ -377,6 +378,8 @@ status_t ControlThread::init()
     mHdr.sharpening = NORMAL_SHARPENING;
     mHdr.vividness = GAUSSIAN_VIVIDNESS;
     mHdr.saveOrig = false;
+    mHdr.outMainBuf = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+    mHdr.outPostviewBuf = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
 
     //default flash modes
     mSavedFlashSupported = PlatformData::supportedFlashModes(mCameraId);
@@ -2778,10 +2781,6 @@ status_t ControlThread::captureStillPic()
         mISP->setSnapshotFrameFormat(width, height, format);
         mISP->setPostviewFrameFormat(pvWidth, pvHeight,
                                      PlatformData::getPreviewFormat());
-        if (mHdr.enabled) {
-            mHdr.outMainBuf.buff = NULL;
-            mHdr.outPostviewBuf.buff = NULL;
-        }
 
         setExternalSnapshotBuffers(format, width, height);
 
@@ -6486,7 +6485,7 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
     int format = mAllocatedSnapshotBuffers[0].format;
 
     mCallbacks->allocateMemory(&mHdr.outMainBuf, size);
-    if (mHdr.outMainBuf.buff == NULL) {
+    if (mHdr.outMainBuf.dataPtr == NULL) {
         LOGE("HDR: Error allocating memory for HDR main buffer!");
         return NO_MEMORY;
     }
@@ -6498,7 +6497,7 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
     LOG1("HDR: using %p as HDR main output buffer", mHdr.outMainBuf.dataPtr);
     // Postview output buffer
     mCallbacks->allocateMemory(&mHdr.outPostviewBuf, pvSize);
-    if (mHdr.outPostviewBuf.buff == NULL) {
+    if (mHdr.outPostviewBuf.dataPtr == NULL) {
         LOGE("HDR: Error allocating memory for HDR postview buffer!");
         return NO_MEMORY;
     }
@@ -6613,14 +6612,8 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
 void ControlThread::hdrRelease()
 {
     // Deallocate memory
-    if (mHdr.outMainBuf.buff != NULL) {
-        mHdr.outMainBuf.buff->release(mHdr.outMainBuf.buff);
-        mHdr.outMainBuf.buff = NULL;
-    }
-    if (mHdr.outPostviewBuf.buff != NULL) {
-        mHdr.outPostviewBuf.buff->release(mHdr.outPostviewBuf.buff);
-        mHdr.outPostviewBuf.buff = NULL;
-    }
+    MemoryUtils::freeAtomBuffer(mHdr.outMainBuf);
+    MemoryUtils::freeAtomBuffer(mHdr.outPostviewBuf);
     if (mHdr.ciBufIn.ciMainBuf != NULL) {
         delete[] mHdr.ciBufIn.ciMainBuf;
         mHdr.ciBufIn.ciMainBuf = NULL;
