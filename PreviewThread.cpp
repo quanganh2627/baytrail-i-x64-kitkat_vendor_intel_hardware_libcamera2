@@ -32,17 +32,17 @@
 
 namespace android {
 
-PreviewThread::PreviewThread(int cameraId) :
+PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* callbacks) :
     Thread(true) // callbacks may call into java
     ,mMessageQueue("PreviewThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
     ,mState(STATE_STOPPED)
     ,mLastFrameTs(0)
     ,mFramesDone(0)
-    ,mCallbacksThread(CallbacksThread::getInstance(NULL, cameraId))
+    ,mCallbacksThread(callbacksThread)
     ,mPreviewWindow(NULL)
     ,mPreviewBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_PREVIEW))
-    ,mCallbacks(Callbacks::getInstance(cameraId))
+    ,mCallbacks(callbacks)
     ,mBuffersInWindow(0)
     ,mNumOfPreviewBuffers(0)
     ,mFetchDone(false)

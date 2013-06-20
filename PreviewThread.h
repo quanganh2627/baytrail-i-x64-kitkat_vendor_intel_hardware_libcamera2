@@ -95,7 +95,7 @@ class PreviewThread : public Thread, public IAtomIspObserver {
 
 // constructor destructor
 public:
-    PreviewThread(int cameraId);
+    PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* callbacks);
     virtual ~PreviewThread();
 
 // prevent copy constructor and assignment operator
@@ -284,7 +284,7 @@ private:
     CallbackVector mOutputBufferCb;
     nsecs_t         mLastFrameTs;
     unsigned int    mFramesDone;
-    CallbacksThread *mCallbacksThread;
+    sp<CallbacksThread> mCallbacksThread;
 
     preview_stream_ops_t *mPreviewWindow;   /*!< struct passed from Service to control the native window */
     AtomBuffer          mPreviewBuf;        /*!< Local preview buffer to give to the user */

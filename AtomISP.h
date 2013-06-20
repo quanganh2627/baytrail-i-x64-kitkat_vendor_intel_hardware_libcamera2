@@ -66,7 +66,7 @@ class AtomISP :
 
 // constructor/destructor
 public:
-    explicit AtomISP(int cameraId, sp<ScalerService> scalerService);
+    explicit AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callbacks);
     virtual ~AtomISP();
 
     status_t initDevice();

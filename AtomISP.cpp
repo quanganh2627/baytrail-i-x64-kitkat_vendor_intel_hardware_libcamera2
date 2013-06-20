@@ -81,14 +81,14 @@ AtomISP::cameraInfo AtomISP::sCamInfo[MAX_CAMERA_NODES];
 //                          PUBLIC METHODS
 ////////////////////////////////////////////////////////////////////
 
-AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
+AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callbacks) :
      mPreviewStreamSource("PreviewStreamSource", this)
     ,mFrameSyncSource("FrameSyncSource", this)
     ,m3AStatSource("AAAStatSource", this)
     ,mCameraId(cameraId)
     ,mGroupIndex (-1)
     ,mMode(MODE_NONE)
-    ,mCallbacks(Callbacks::getInstance(cameraId))
+    ,mCallbacks(callbacks)
     ,mNumBuffers(PlatformData::getRecordingBufNum())
     ,mNumPreviewBuffers(PlatformData::getRecordingBufNum())
     ,mPreviewBuffersCached(true)

@@ -29,14 +29,15 @@
 
 namespace android {
 
-PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread, I3AControls *aaaControls, int cameraId) :
-    IFaceDetector(CallbacksThread::getInstance(NULL, cameraId))
+PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread, I3AControls *aaaControls,
+                               sp<CallbacksThread> callbacksThread, Callbacks *callbacks, int cameraId) :
+    IFaceDetector(callbacksThread.get())
     ,Thread(true) // callbacks may call into java
     ,mFaceDetector(NULL)
     ,mPanoramaThread(panoramaThread)
     ,mMessageQueue("PostProcThread", (int) MESSAGE_ID_MAX)
     ,mLastReportedNumberOfFaces(0)
-    ,mCallbacks(Callbacks::getInstance(cameraId))
+    ,mCallbacks(callbacks)
     ,mPostProcDoneCallback(postProcDone)
     ,m3AControls(aaaControls)
     ,mThreadRunning(false)

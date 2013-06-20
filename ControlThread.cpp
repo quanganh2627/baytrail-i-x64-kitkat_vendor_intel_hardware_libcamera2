@@ -188,7 +188,20 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    isp = new AtomISP(mCameraId, mScalerService);
+    mCallbacks = new Callbacks();
+    if (mCallbacks == NULL) {
+        LOGE("error creating Callbacks");
+        goto bail;
+    }
+
+    // we implement ICallbackPicture interface
+    mCallbacksThread = new CallbacksThread(mCallbacks, this);
+    if (mCallbacksThread == NULL) {
+        LOGE("error creating CallbacksThread");
+        goto bail;
+    }
+
+    isp = new AtomISP(mCameraId, mScalerService, mCallbacks);
     if (isp == NULL) {
         LOGE("error creating ISP");
         goto bail;
@@ -240,7 +253,7 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mULL = new UltraLowLight(mCameraId);
+    mULL = new UltraLowLight(mCallbacks);
     if (mULL == NULL) {
         LOGE("error creating ULL");
         goto bail;
@@ -255,51 +268,38 @@ status_t ControlThread::init()
 
     // we implement the ICallbackPreview interface, so pass
     // this as argument
-    mPreviewThread = new PreviewThread(mCameraId);
+    mPreviewThread = new PreviewThread(mCallbacksThread, mCallbacks);
     if (mPreviewThread == NULL) {
         LOGE("error creating PreviewThread");
         goto bail;
     }
 
-    mPictureThread = new PictureThread(m3AControls, mScalerService, mCameraId);
+    mPictureThread = new PictureThread(m3AControls, mScalerService, mCallbacksThread, mCallbacks);
     if (mPictureThread == NULL) {
         LOGE("error creating PictureThread");
         goto bail;
     }
 
-    mVideoThread = new VideoThread(mCameraId);
+    mVideoThread = new VideoThread(mCallbacksThread);
     if (mVideoThread == NULL) {
         LOGE("error creating VideoThread");
         goto bail;
     }
 
     // we implement ICallbackAAA interface
-    m3AThread = new AAAThread(this, mULL, m3AControls);
+    m3AThread = new AAAThread(this, mULL, m3AControls, mCallbacksThread);
     if (m3AThread == NULL) {
         LOGE("error creating 3AThread");
         goto bail;
     }
 
-    mCallbacks = Callbacks::getInstance(mCameraId);
-    if (mCallbacks == NULL) {
-        LOGE("error creating Callbacks");
-        goto bail;
-    }
-
-    // we implement ICallbackPicture interface
-    mCallbacksThread = CallbacksThread::getInstance(this, mCameraId);
-    if (mCallbacksThread == NULL) {
-        LOGE("error creating CallbacksThread");
-        goto bail;
-    }
-
-    mPanoramaThread = new PanoramaThread(this, m3AControls, mCameraId);
+    mPanoramaThread = new PanoramaThread(this, m3AControls, mCallbacksThread, mCallbacks, mCameraId);
     if (mPanoramaThread == NULL) {
         LOGE("error creating PanoramaThread");
         goto bail;
     }
 
-    mPostProcThread = new PostProcThread(this, mPanoramaThread.get(), m3AControls, mCameraId);
+    mPostProcThread = new PostProcThread(this, mPanoramaThread.get(), m3AControls, mCallbacksThread, mCallbacks, mCameraId);
     if (mPostProcThread == NULL) {
         LOGE("error creating PostProcThread");
         goto bail;
@@ -488,11 +488,6 @@ void ControlThread::deinit()
         m3AThread.clear();
     }
 
-    if (mCallbacksThread != NULL) {
-        mCallbacksThread->requestExitAndWait();
-        mCallbacksThread.clear();
-    }
-
     if (mParamCache != NULL) {
         free(mParamCache);
         mParamCache = NULL;
@@ -548,6 +543,12 @@ void ControlThread::deinit()
         if (it->id == MESSAGE_ID_SET_PARAMETERS)
             free(it->data.setParameters.params); // was strdupped, needs free
     mPostponedMessages.clear();
+
+    if (mCallbacksThread != NULL) {
+        mCallbacksThread->requestExitAndWait();
+        mCallbacksThread.clear();
+    }
+
     LOG1("@%s- complete", __FUNCTION__);
 }
 

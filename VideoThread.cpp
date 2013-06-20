@@ -23,11 +23,11 @@
 
 namespace android {
 
-VideoThread::VideoThread(int cameraId) :
+VideoThread::VideoThread(sp<CallbacksThread> callbacksThread) :
     Thread(true) // callbacks may call into java
     ,mMessageQueue("VideoThread", MESSAGE_ID_MAX)
     ,mThreadRunning(false)
-    ,mCallbacksThread(CallbacksThread::getInstance(NULL, cameraId))
+    ,mCallbacksThread(callbacksThread)
     ,mSlowMotionRate(1)
     ,mFirstFrameTimestamp(0)
 {

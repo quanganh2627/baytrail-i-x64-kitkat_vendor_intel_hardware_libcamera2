@@ -41,31 +41,8 @@ class CallbacksThread :
     public Thread,
     public IFaceDetectionListener {
 
-private:
-    static CallbacksThread* mInstance;
-    static CallbacksThread* mInstance_1;
-    CallbacksThread(int cameraId);
-// constructor destructor
 public:
-    static CallbacksThread* getInstance(ICallbackPicture *pictureDone = 0,
-                                        int cameraId = 0) {
-
-        if(cameraId == 0) {
-            if (mInstance == NULL) {
-                mInstance = new CallbacksThread(cameraId);
-            }
-            if(mInstance && pictureDone)
-                mInstance->setPictureDoneCallback(pictureDone);
-            return mInstance;
-        } else {
-            if (mInstance_1 == NULL) {
-                mInstance_1 = new CallbacksThread(cameraId);
-            }
-            if(mInstance_1 && pictureDone)
-                mInstance_1->setPictureDoneCallback(pictureDone);
-            return mInstance_1;
-        }
-    }
+    CallbacksThread(Callbacks *callbacks, ICallbackPicture *pictureDone = NULL);
     virtual ~CallbacksThread();
 
 // prevent copy constructor and assignment operator
@@ -268,8 +245,6 @@ private:
     // main message function
     status_t waitForAndExecuteMessage();
 
-    // Intialization of Ctrl thread callback
-    void setPictureDoneCallback(ICallbackPicture *pictureDone) { mPictureDoneCallback = pictureDone; };
     void convertGfx2Regular(AtomBuffer* aGfxBuf, AtomBuffer* aRegularBuf);
 
 // inherited from Thread
@@ -279,7 +254,6 @@ private:
 // private data
 private:
 
-    ICallbackPicture *mPictureDoneCallback;
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
     Callbacks *mCallbacks;
@@ -290,6 +264,7 @@ private:
     unsigned mULLid;
     bool mWaitRendering;
     Message mPostponedJpegReady;
+    ICallbackPicture *mPictureDoneCallback;
 
     /*
      * This vector contains not only the JPEG buffers, but also their corresponding

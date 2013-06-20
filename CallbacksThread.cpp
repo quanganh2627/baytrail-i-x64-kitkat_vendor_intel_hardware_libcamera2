@@ -25,20 +25,17 @@
 
 namespace android {
 
-CallbacksThread* CallbacksThread::mInstance = NULL;
-CallbacksThread* CallbacksThread::mInstance_1 = NULL;
-
-CallbacksThread::CallbacksThread(int cameraId) :
+CallbacksThread::CallbacksThread(Callbacks *callbacks, ICallbackPicture *pictureDone) :
     Thread(true) // callbacks may call into java
     ,mMessageQueue("CallbacksThread", MESSAGE_ID_MAX)
     ,mThreadRunning(false)
-    ,mCallbacks(Callbacks::getInstance(cameraId))
+    ,mCallbacks(callbacks)
     ,mJpegRequested(0)
     ,mPostviewRequested(0)
     ,mRawRequested(0)
     ,mULLRequested(0)
     ,mWaitRendering(false)
-    ,mCameraId(cameraId)
+    ,mPictureDoneCallback(pictureDone)
 {
     LOG1("@%s", __FUNCTION__);
     mFaceMetadata.faces = new camera_face_t[MAX_FACES_DETECTABLE];
@@ -52,10 +49,6 @@ CallbacksThread::~CallbacksThread()
     LOG1("@%s", __FUNCTION__);
     delete [] mFaceMetadata.faces;
     mFaceMetadata.faces = NULL;
-    if(mCameraId == 0)
-        mInstance = NULL;
-    else
-        mInstance_1 = NULL;
 }
 
 status_t CallbacksThread::shutterSound()

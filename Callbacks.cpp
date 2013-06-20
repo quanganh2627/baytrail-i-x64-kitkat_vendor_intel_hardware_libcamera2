@@ -24,10 +24,7 @@
 
 namespace android {
 
-Callbacks* Callbacks::mInstance = NULL;
-Callbacks* Callbacks::mInstance_1 = NULL;
-
-Callbacks::Callbacks(int cameraId) :
+Callbacks::Callbacks() :
     mNotifyCB(NULL)
     ,mDataCB(NULL)
     ,mDataCBTimestamp(NULL)
@@ -37,7 +34,6 @@ Callbacks::Callbacks(int cameraId) :
     ,mDummyByte(NULL)
     ,mPanoramaMetadata(NULL)
     ,mStoreMetaDataInBuffers(false)
-    ,mCameraId(cameraId)
 {
     LOG1("@%s", __FUNCTION__);
 }
@@ -45,11 +41,6 @@ Callbacks::Callbacks(int cameraId) :
 Callbacks::~Callbacks()
 {
     LOG1("@%s", __FUNCTION__);
-    if (mCameraId == 0)
-        mInstance = NULL;
-    else
-        mInstance_1 = NULL;
-
     if (mDummyByte != NULL) {
         mDummyByte->release(mDummyByte);
         mDummyByte = NULL;

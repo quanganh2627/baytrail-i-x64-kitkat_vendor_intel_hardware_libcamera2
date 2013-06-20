@@ -47,9 +47,8 @@ struct UltraLowLight::MorphoULL {
     MorphoULL(): workingBuffer(NULL) {};
 };
 
-
-UltraLowLight::UltraLowLight(int cameraId) : mMorphoCtrl(NULL),
-                                 mCallbacks(Callbacks::getInstance(cameraId)),
+UltraLowLight::UltraLowLight(Callbacks *callbacks) : mMorphoCtrl(NULL),
+                                 mCallbacks(callbacks),
                                  mState(ULL_STATE_NULL),
                                  mULLCounter(0),
                                  mWidth(0),

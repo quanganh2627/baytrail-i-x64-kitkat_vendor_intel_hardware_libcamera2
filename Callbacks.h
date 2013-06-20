@@ -27,21 +27,8 @@ namespace android {
 
 class Callbacks {
 
-    static Callbacks* mInstance;
-    static Callbacks* mInstance_1;
-    Callbacks(int cameraId);
 public:
-    static Callbacks* getInstance(int cameraId) {
-        if(cameraId == 1) {
-            if(mInstance_1 == NULL)
-                mInstance_1 = new Callbacks(cameraId);
-            return mInstance_1;
-        } else {
-            if (mInstance == NULL)
-                mInstance = new Callbacks(cameraId);
-            return mInstance;
-        }
-    }
+    Callbacks();
     virtual ~Callbacks();
 
 // prevent copy constructor and assignment operator
@@ -93,7 +80,6 @@ private:
     camera_memory_t* mDummyByte;
     camera_memory_t* mPanoramaMetadata;
     bool mStoreMetaDataInBuffers;
-    int mCameraId;
     };
 
 };
