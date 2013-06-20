@@ -105,7 +105,6 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
     ,mCallbacks(Callbacks::getInstance(cameraId))
     ,mNumBuffers(PlatformData::getRecordingBufNum())
     ,mNumPreviewBuffers(PlatformData::getRecordingBufNum())
-    ,mPreviewBuffers(NULL)
     ,mPreviewBuffersCached(true)
     ,mRecordingBuffers(NULL)
     ,mSwapRecordingDevice(false)
@@ -151,6 +150,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
     CLEAR(mSnapshotBuffers);
     CLEAR(mContCaptConfig);
     mPostviewBuffers.clear();
+    mPreviewBuffers.clear();
     CLEAR(mConfig);
     memset(v4l2_buf_pool, 0, sizeof(v4l2_buf_pool));
 }
@@ -1824,8 +1824,8 @@ bool AtomISP::isSharedPreviewBufferConfigured(bool *reserved) const
     if (reserved)
         *reserved = false;
 
-    if (mPreviewBuffers)
-        for (int i = 0 ; i < mNumPreviewBuffers; i++)
+    if (!mPreviewBuffers.isEmpty())
+        for (size_t i = 0 ; i < mPreviewBuffers.size(); i++)
             if (mPreviewBuffers[i].shared) {
                 configured = true;
                 if (reserved && mPreviewBuffers[i].id == -1)
@@ -3808,12 +3808,12 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
         return BAD_INDEX;
     }
     LOG2("Device: %d. Grabbed frame of size: %d", mPreviewDevice, buf.bytesused);
-    mPreviewBuffers[index].id = index;
-    mPreviewBuffers[index].frameCounter = mDevices[mPreviewDevice].frameCounter;
-    mPreviewBuffers[index].ispPrivate = mSessionId;
-    mPreviewBuffers[index].capture_timestamp = buf.timestamp;
-    mPreviewBuffers[index].frameSequenceNbr = buf.sequence;
-    mPreviewBuffers[index].status = (FrameBufferStatus)buf.reserved;
+    mPreviewBuffers.editItemAt(index).id = index;
+    mPreviewBuffers.editItemAt(index).frameCounter = mDevices[mPreviewDevice].frameCounter;
+    mPreviewBuffers.editItemAt(index).ispPrivate = mSessionId;
+    mPreviewBuffers.editItemAt(index).capture_timestamp = buf.timestamp;
+    mPreviewBuffers.editItemAt(index).frameSequenceNbr = buf.sequence;
+    mPreviewBuffers.editItemAt(index).status = (FrameBufferStatus)buf.reserved;
 
     *buff = mPreviewBuffers[index];
 
@@ -3874,7 +3874,7 @@ status_t AtomISP::putPreviewFrame(AtomBuffer *buff)
 
     // using -1 index to identify queued buffers
     // id gets updated with dqbuf
-    mPreviewBuffers[buff->id].id = -1;
+    mPreviewBuffers.editItemAt(buff->id).id = -1;
 
     mNumPreviewBuffersQueued++;
 
@@ -3912,15 +3912,10 @@ status_t AtomISP::setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs
     if (buffs == NULL || numBuffs <= 0)
         return BAD_VALUE;
 
-    if(mPreviewBuffers != NULL)
-        freePreviewBuffers();
-
-    mPreviewBuffers = new AtomBuffer[numBuffs];
-    if (mPreviewBuffers == NULL)
-        return NO_MEMORY;
+    freePreviewBuffers();
 
     for (int i = 0; i < numBuffs; i++) {
-        mPreviewBuffers[i] = buffs[i];
+        mPreviewBuffers.push(buffs[i]);
     }
 
     mNumPreviewBuffers = numBuffs;
@@ -4506,47 +4501,38 @@ status_t AtomISP::allocatePreviewBuffers()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    int allocatedBufs = 0;
 
-    if (mPreviewBuffers == NULL) {
-        mPreviewBuffers = new AtomBuffer[mNumPreviewBuffers];
+    if (mPreviewBuffers.isEmpty()) {
+        AtomBuffer tmp = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_PREVIEW); // init fields
         mPreviewBuffersCached = true;
-
-        if (!mPreviewBuffers) {
-            LOGE("Not enough mem for preview buffer array");
-            status = NO_MEMORY;
-            goto errorFree;
-        }
 
         LOG1("Allocating %d buffers of size %d", mNumPreviewBuffers, mConfig.preview.size);
         for (int i = 0; i < mNumPreviewBuffers; i++) {
-            mPreviewBuffers[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_PREVIEW); // init fields
-            MemoryUtils::allocateGraphicBuffer(mPreviewBuffers[i], mConfig.preview);
-            if (mPreviewBuffers[i].dataPtr == NULL) {
+            MemoryUtils::allocateGraphicBuffer(tmp, mConfig.preview);
+            if (tmp.dataPtr == NULL) {
                 LOGE("Error allocation memory for preview buffers!");
                 status = NO_MEMORY;
                 goto errorFree;
             }
 
-            mPreviewBuffers[i].type = ATOM_BUFFER_PREVIEW;
-            allocatedBufs++;
             struct v4l2_buffer_info *vinfo = &v4l2_buf_pool[mPreviewDevice].bufs[i];
-            vinfo->data = mPreviewBuffers[i].dataPtr;
+            vinfo->data = tmp.dataPtr;
+            mPreviewBuffers.push(tmp);
 
             if (mHALZSLEnabled) {
-                mScaler->registerBuffer(mPreviewBuffers[i], ScalerService::SCALER_OUTPUT);
-                mHALZSLPreviewBuffers.push(mPreviewBuffers[i]);
+                mScaler->registerBuffer(tmp, ScalerService::SCALER_OUTPUT);
+                mHALZSLPreviewBuffers.push(tmp);
             }
         }
 
     } else {
-        for (int i = 0; i < mNumPreviewBuffers; i++) {
+        for (size_t i = 0; i < mPreviewBuffers.size(); i++) {
             struct v4l2_buffer_info *vinfo = &v4l2_buf_pool[mPreviewDevice].bufs[i];
             vinfo->data = mPreviewBuffers[i].dataPtr;
             markBufferCached(vinfo, mPreviewBuffersCached);
-            mPreviewBuffers[i].shared = true;
+            mPreviewBuffers.editItemAt(i).shared = true;
             if (mHALZSLEnabled) {
-                mScaler->registerBuffer(mPreviewBuffers[i], ScalerService::SCALER_OUTPUT);
+                mScaler->registerBuffer(mPreviewBuffers.editItemAt(i), ScalerService::SCALER_OUTPUT);
                 mHALZSLPreviewBuffers.push(mPreviewBuffers[i]);
             }
         }
@@ -4561,20 +4547,10 @@ status_t AtomISP::allocatePreviewBuffers()
     }
 
     return status;
-errorFree:
-    // On error, free the allocated buffers
-    for (int i = 0 ; i < allocatedBufs; i++) {
-        if (mHALZSLEnabled)
-            mScaler->unRegisterBuffer(mPreviewBuffers[i], ScalerService::SCALER_OUTPUT);
 
-        MemoryUtils::freeAtomBuffer(mPreviewBuffers[i]);
-    }
-    if (mPreviewBuffers != NULL) {
-        delete[] mPreviewBuffers;
-        mPreviewBuffers = NULL;
-    }
-    if (mHALZSLEnabled)
-        freeHALZSLBuffers();
+errorFree:
+
+    freePreviewBuffers();
 
     return status;
 }
@@ -4832,16 +4808,15 @@ status_t AtomISP::freePreviewBuffers()
 {
     LOG1("@%s", __FUNCTION__);
 
-    if (mPreviewBuffers != NULL) {
-        for (int i = 0 ; i < mNumPreviewBuffers; i++) {
+    if (!mPreviewBuffers.isEmpty()) {
+        for (size_t i = 0 ; i < mPreviewBuffers.size(); i++) {
             LOG1("@%s mHALZSLEnabled = %d i=%d, mNum = %d", __FUNCTION__, mHALZSLEnabled, i, mNumPreviewBuffers);
             if (mHALZSLEnabled)
-                mScaler->unRegisterBuffer(mPreviewBuffers[i], ScalerService::SCALER_OUTPUT);
+                mScaler->unRegisterBuffer(mPreviewBuffers.editItemAt(i), ScalerService::SCALER_OUTPUT);
 
-            MemoryUtils::freeAtomBuffer(mPreviewBuffers[i]);
+            MemoryUtils::freeAtomBuffer(mPreviewBuffers.editItemAt(i));
         }
-        delete [] mPreviewBuffers;
-        mPreviewBuffers = NULL;
+        mPreviewBuffers.clear();
     }
 
     if (mHALZSLEnabled) {

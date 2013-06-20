@@ -539,7 +539,7 @@ private:
 
     int mNumBuffers;
     int mNumPreviewBuffers;
-    AtomBuffer *mPreviewBuffers;
+    Vector <AtomBuffer> mPreviewBuffers;
     bool mPreviewBuffersCached;
     AtomBuffer *mRecordingBuffers;
     bool mSwapRecordingDevice;
