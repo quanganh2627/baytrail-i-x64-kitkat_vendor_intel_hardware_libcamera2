@@ -20,8 +20,8 @@
 
 namespace android {
 
-AtomDvs::AtomDvs(AtomISP *isp) :
-    mIsp(isp)
+AtomDvs::AtomDvs(HWControlGroup &hwcg) :
+    mIsp(hwcg.mIspCI)
     ,mStatistics(NULL)
 {
     mState = ia_dvs_create();

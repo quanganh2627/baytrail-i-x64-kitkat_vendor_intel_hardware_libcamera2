@@ -59,13 +59,6 @@ struct ContinuousCaptureConfig {
 // Our target is APIs will be seperated to several interface classes in the near future
 class IHWIspControl
 {
-    // public types
-public:
-    enum {
-        ISP_MODE_CHANGED, // TBD
-        ISP_SCENE_MODE_CHANGED,
-    };
-
 public:
     /* **********************************************************
      * Constructor/Destructor
@@ -98,7 +91,7 @@ public:
      */
     virtual AtomMode getMode(void) const = 0;
     virtual void setPreviewFramerate(int fps) = 0;
-    virtual bool applyISPLimitations(CameraParameters *params, bool videoMode, int changeEvent) = 0;
+    virtual bool applyISPLimitations(CameraParameters *params, bool dvsEnabled, bool videoMode) = 0;
 
     /* **********************************************************
      * Pipeline controls
@@ -208,7 +201,6 @@ public:
 
     virtual void getSensorDataFromFile(const char *file_name, sensorPrivateData *sensor_data) = 0;
 
-    virtual void sensorGetMotorData(sensorPrivateData *sensor_data) = 0;
 
     /* **********************************************************
      * Acceleration API extensions
@@ -288,6 +280,8 @@ public:
     virtual int get3ALock(int * aaaLock) = 0;
     virtual int setAeFlashMode(v4l2_flash_led_mode mode) = 0;
     virtual int getAeFlashMode(v4l2_flash_led_mode * mode) = 0;
+
+    virtual void getMotorData(sensorPrivateData *sensor_data) = 0;
 };
 
 /* Abstraction of HW flash control interface for 3A support */

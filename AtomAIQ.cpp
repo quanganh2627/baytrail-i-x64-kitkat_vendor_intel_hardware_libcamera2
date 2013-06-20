@@ -72,8 +72,8 @@ namespace android {
 #define MAX_STATISTICS_HEIGHT 150
 #define IA_AIQ_MAX_NUM_FACES 5
 
-AtomAIQ::AtomAIQ(HWControlGroup &hwcg, AtomISP *anISP):
-    mISP(anISP)
+AtomAIQ::AtomAIQ(HWControlGroup &hwcg):
+    mISP(hwcg.mIspCI)
     ,mAfMode(CAM_AF_MODE_NOT_SET)
     ,mStillAfStart(0)
     ,mFocusPosition(0)
@@ -85,6 +85,8 @@ AtomAIQ::AtomAIQ(HWControlGroup &hwcg, AtomISP *anISP):
     ,mAwbRunCount(0)
     ,mMkn(NULL)
     ,mSensorCI(hwcg.mSensorCI)
+    ,mFlashCI(hwcg.mFlashCI)
+    ,mLensCI(hwcg.mLensCI)
 {
     LOG1("@%s", __FUNCTION__);
     memset(&m3aState, 0, sizeof(aaa_state));
@@ -114,17 +116,17 @@ status_t AtomAIQ::init3A()
 
     ia_binary_data *aicNvm = NULL;
     ia_binary_data sensorData, motorData;
-    mISP->getSensorData((sensorPrivateData *) &sensorData);
-    mISP->getMotorData((sensorPrivateData *)&motorData);
+    mSensorCI->getSensorData((sensorPrivateData *) &sensorData);
+    mSensorCI->getMotorData((sensorPrivateData *)&motorData);
 
     // Combine sensor name and spId
     PlatformData::createVendorPlatformProductName(spIdName);
-    fullName = mISP->getSensorName();
+    fullName = mSensorCI->getSensorName();
 
     spacePos = fullName.find(" ");
 
     if (spacePos < 0){
-        fullName = mISP->getSensorName();
+        fullName = mSensorCI->getSensorName();
     }
     else {
         fullName.setTo(fullName, spacePos);
@@ -899,7 +901,7 @@ status_t AtomAIQ::setManualFocusIncrement(int steps)
     status_t ret = NO_ERROR;
     if(steps >= 0 && steps < mBracketingStops) {
         int position = mAfBracketingResult->lens_positions_bracketing[steps];
-        int focus_moved = mISP->sensorMoveFocusToPosition(position);
+        int focus_moved = mLensCI->moveFocusToPosition(position);
         if(focus_moved != 0)
             ret = UNKNOWN_ERROR;
     }
@@ -1057,7 +1059,7 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
 status_t AtomAIQ::setFlash(int numFrames)
 {
     LOG1("@%s: numFrames = %d", __FUNCTION__, numFrames);
-    return mISP->setFlash(numFrames);
+    return mFlashCI->setFlash(numFrames);
 }
 
 status_t AtomAIQ::apply3AProcess(bool read_stats,
@@ -1517,7 +1519,7 @@ bool AtomAIQ::changeSensorMode(void)
     getSensorFrameParams(&m3aState.sensor_frame_params);
 
     struct atomisp_sensor_mode_data sensor_mode_data;
-    mISP->getModeInfo(&sensor_mode_data);
+    mSensorCI->getModeInfo(&sensor_mode_data);
     if (mISP->getIspParameters(&m3aState.results.isp_params) < 0)
         return false;
 
@@ -1691,7 +1693,7 @@ status_t AtomAIQ::runAfMain()
     if (err == ia_err_none && af_results_ptr->lens_driver_action == ia_aiq_lens_driver_action_move_to_unit)
     {
         LOG2("next lens position:%ld", af_results_ptr->next_lens_position);
-        ret = mISP->sensorMoveFocusToPosition(af_results_ptr->next_lens_position);
+        ret = mLensCI->moveFocusToPosition(af_results_ptr->next_lens_position);
         if (ret == NO_ERROR)
         {
             clock_gettime(CLOCK_MONOTONIC, &m3aState.lens_timestamp);
@@ -1846,7 +1848,7 @@ status_t AtomAIQ::runAeMain()
 
         /* Apply Flash settings */
         if (apply_flash_intensity)
-            ret |= mISP->setFlashIntensity((int)(new_ae_results->flash)->power_prc);
+            ret |= mFlashCI->setFlashIntensity((int)(new_ae_results->flash)->power_prc);
 
         if (update_results_history) {
             mAeState.ae_results = storeAeResults(new_ae_results);
@@ -2212,8 +2214,8 @@ void AtomAIQ::getAeExpCfg(int *exp_time,
 {
     LOG2("@%s", __FUNCTION__);
 
-    mISP->getExposureTime(exp_time);
-    mISP->getFNumber(aperture_num, aperture_denum);
+    mSensorCI->getExposureTime(exp_time);
+    mSensorCI->getFNumber(aperture_num, aperture_denum);
     ia_aiq_ae_results *latest_ae_results = NULL;
     if (mBracketingRunning && mAEBracketingResult) {
         latest_ae_results = mAEBracketingResult;
@@ -2296,7 +2298,7 @@ void AtomAIQ::getSensorFrameParams(ia_aiq_sensor_frame_params *frame_params)
     LOG2("@%s", __FUNCTION__);
 
     struct atomisp_sensor_mode_data sensor_mode_data;
-    if(mISP->getModeInfo(&sensor_mode_data) < 0) {
+    if(mSensorCI->getModeInfo(&sensor_mode_data) < 0) {
         sensor_mode_data.crop_horizontal_start = 0;
         sensor_mode_data.crop_vertical_start = 0;
         sensor_mode_data.crop_vertical_end = 0;

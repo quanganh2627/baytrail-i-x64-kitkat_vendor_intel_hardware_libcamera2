@@ -26,7 +26,7 @@
 #include "FeatureData.h"
 #include "LogHelper.h"
 #include "AtomCommon.h"
-#include "AtomISP.h"
+#include "ICameraHwControls.h"
 #include "PlatformData.h"
 
 namespace android {

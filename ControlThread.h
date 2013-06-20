@@ -48,10 +48,10 @@
 #include "PictureThread.h"
 #include "SensorThread.h"
 #include "SensorSyncManager.h"
+#include "ICameraHwControls.h"
 
 namespace android {
 
-class AtomISP;
 //
 // ControlThread implements most of the operations defined
 // by camera_device_ops_t. Refer to hardware/camera.h
@@ -661,7 +661,8 @@ private:
 private:
 
     int mCameraId;
-    AtomISP *mISP;
+    HWControlGroup mHwcg;
+    IHWIspControl *mISP;
     AtomDvs *mDvs;
     AtomCP  *mCP;
     UltraLowLight *mULL;

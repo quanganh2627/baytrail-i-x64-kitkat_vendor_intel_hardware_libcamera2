@@ -41,8 +41,8 @@ static void vinfo(const char *fmt, va_list ap)
 }
 }
 
-AtomCP::AtomCP(AtomISP *isp) :
-    mISP(isp)
+AtomCP::AtomCP(HWControlGroup &hwcg) :
+    mISP(hwcg.mIspCI)
 {
     LOG1("@%s", __FUNCTION__);
     int ispMinor, ispMajor;
@@ -54,7 +54,7 @@ AtomCP::AtomCP(AtomISP *isp) :
     mPrintFunctions.verror = verror;
     mPrintFunctions.vinfo  = vinfo;
 
-    mAccAPI.isp               = isp;
+    mAccAPI.isp               = mISP;
     mAccAPI.open_firmware     = open_firmware;
     mAccAPI.load_firmware     = load_firmware;
     mAccAPI.unload_firmware   = unload_firmware;

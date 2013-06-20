@@ -19,7 +19,7 @@
 
 #include <utils/Errors.h>
 #include <utils/threads.h>
-#include "AtomISP.h"
+#include "ICameraHwControls.h"
 #include <ia_cp_types.h>
 
 extern "C" {
@@ -59,7 +59,7 @@ struct CiUserBuffer {
 class AtomCP {
 
 public:
-    AtomCP(AtomISP *isp)STUB;
+    AtomCP(HWControlGroup &hwcg)STUB;
     ~AtomCP()STUB;
     status_t computeCDF(const CiUserBuffer& inputBuf, size_t bufIndex)STAT_STUB;
     status_t composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& outputBuf,
@@ -76,7 +76,7 @@ private:
 private:
     ia_env mPrintFunctions;
     ia_acceleration mAccAPI;
-    AtomISP *mISP;
+    IHWIspControl *mISP;
     Mutex mLock;
 };
 

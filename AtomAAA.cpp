@@ -29,7 +29,8 @@
 #include "FeatureData.h"
 
 namespace android {
-static AtomISP *gISP; // See BZ 61293
+static IHWSensorControl *gSensorCI; // See BZ 61293
+static IHWLensControl   *gLensCI;
 
 /**
  * When image data injection is used, read OTP data from
@@ -76,9 +77,9 @@ static ia_3a_status cb_focus_drive_to_pos(short position, short absolute_pos)
     ia_3a_af_update_timestamp();
 
     if (absolute_pos)
-        gISP->sensorMoveFocusToPosition(position);
+        gLensCI->moveFocusToPosition(position);
     else
-        gISP->sensorMoveFocusToBySteps(position);
+        gLensCI->moveFocusToBySteps(position);
 
     return ia_3a_status_okay;
 }
@@ -93,7 +94,7 @@ static ia_3a_af_lens_status cb_focus_status(void)
 static bool cb_focus_ready(void)
 {
     int status;
-    gISP->getFocusStatus(&status);
+    gLensCI->getFocusStatus(&status);
     return status & ATOMISP_FOCUS_STATUS_ACCEPTS_NEW_MOVE;
 }
 
@@ -101,7 +102,7 @@ static ia_3a_af_hp_status cb_focus_home_position(void)
 {
     int status;
 
-    gISP->getFocusStatus(&status);
+    gLensCI->getFocusStatus(&status);
     status &= ATOMISP_FOCUS_STATUS_HOME_POSITION;
 
     if (status == ATOMISP_FOCUS_HP_IN_PROGRESS)
@@ -114,7 +115,7 @@ static ia_3a_af_hp_status cb_focus_home_position(void)
 
 } // extern "C"
 
-AtomAAA::AtomAAA(HWControlGroup &hwcg, AtomISP *anISP) :
+AtomAAA::AtomAAA(HWControlGroup &hwcg) :
      mSensorType(SENSOR_TYPE_NONE)
     ,mAfMode(CAM_AF_MODE_NOT_SET)
     ,mPublicAeMode(CAM_AE_MODE_AUTO)
@@ -123,7 +124,8 @@ AtomAAA::AtomAAA(HWControlGroup &hwcg, AtomISP *anISP) :
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
     ,mFocusPosition(0)
     ,mStillAfStart(0)
-    ,mISP(anISP)
+    ,mISP(hwcg.mIspCI)
+    ,mFlashCI(hwcg.mFlashCI)
     ,mSensorCI(hwcg.mSensorCI)
 {
     LOG1("@%s", __FUNCTION__);
@@ -131,7 +133,8 @@ AtomAAA::AtomAAA(HWControlGroup &hwcg, AtomISP *anISP) :
     mPrintFunctions.verror = verror;
     mPrintFunctions.vinfo  = vinfo;
 
-    gISP = anISP;
+    gSensorCI = hwcg.mSensorCI;
+    gLensCI = hwcg.mLensCI;
     memset(&m3ALibState, 0, sizeof(AAALibState));
     mSensorType = PlatformData::sensorType(mISP->getCurrentCameraId());
 }
@@ -149,7 +152,7 @@ status_t AtomAAA::init3A()
     SensorParams sensorParams;
     const char* otp_file = mISP->isFileInjectionEnabled()? privateOtpInjectFileName: NULL;
 
-    status = mISP->getSensorParams(&sensorParams);
+    status = mSensorCI->getSensorParams(&sensorParams);
     if (status != NO_ERROR) {
         LOGE("Error retrieving sensor params");
         return status;
@@ -169,7 +172,8 @@ status_t AtomAAA::deinit3A()
 
     ciAdvUninit();
     mISP = NULL;
-    gISP = NULL;
+    gSensorCI = NULL;
+    gLensCI = NULL;
     mSensorType = SENSOR_TYPE_NONE;
     mAfMode = CAM_AF_MODE_NOT_SET;
     mAwbMode = CAM_AWB_MODE_NOT_SET;
@@ -1320,12 +1324,12 @@ int AtomAAA::ciAdvInit(const SensorParams *paramFiles, const char *sensorOtpFile
         if (m3ALibState.sensor_data.size > 0  && m3ALibState.sensor_data.data != NULL)
             m3ALibState.boot_events |= ci_adv_file_sensor_data;
     } else {
-        mISP->getSensorData(reinterpret_cast<sensorPrivateData *>(&m3ALibState.sensor_data));
+        mSensorCI->getSensorData(reinterpret_cast<sensorPrivateData *>(&m3ALibState.sensor_data));
         if (m3ALibState.sensor_data.size > 0  && m3ALibState.sensor_data.data != NULL)
             m3ALibState.boot_events |= ci_adv_cam_sensor_data;
     }
 
-    mISP->getMotorData(reinterpret_cast<sensorPrivateData *>(&m3ALibState.motor_data));
+    mSensorCI->getMotorData(reinterpret_cast<sensorPrivateData *>(&m3ALibState.motor_data));
     if (m3ALibState.motor_data.size > 0 && m3ALibState.motor_data.data != NULL)
         m3ALibState.boot_events |= ci_adv_cam_motor_data;
 
@@ -1342,7 +1346,7 @@ int AtomAAA::ciAdvInit(const SensorParams *paramFiles, const char *sensorOtpFile
     // Intel 3A
     // in a case of an error in parsing (e.g. incorrect data,
     // mismatch in checksum) the pointer to NVM data is null
-    cameranvm_create(mISP->getSensorName(),
+    cameranvm_create(mSensorCI->getSensorName(),
         (ia_binary_data *)&m3ALibState.sensor_data,
         (ia_binary_data *)&m3ALibState.motor_data,
         &aicNvm);
@@ -1432,7 +1436,7 @@ int AtomAAA::applyResults(void)
 
     /* Apply Flash settings */
     if (m3ALibState.results.flash_intensity_changed) {
-        ret |= mISP->setFlashIntensity(m3ALibState.results.flash_intensity);
+        ret |= mFlashCI->setFlashIntensity(m3ALibState.results.flash_intensity);
         m3ALibState.results.flash_intensity_changed = false;
     }
 
@@ -1442,14 +1446,14 @@ int AtomAAA::applyResults(void)
 
 status_t AtomAAA::setFlash(int numFrames)
 {
-    return mISP->setFlash(numFrames);
+    return mFlashCI->setFlash(numFrames);
 }
 
 /* returns false for error, true for success */
 bool AtomAAA::reconfigureGrid(void)
 {
     LOG1("@%s", __FUNCTION__);
-    mISP->getModeInfo(&m3ALibState.sensor_mode_data);
+    mSensorCI->getModeInfo(&m3ALibState.sensor_mode_data);
     if (mISP->getIspParameters(&m3ALibState.results.isp_params) < 0)
         return false;
 
@@ -1538,7 +1542,7 @@ int AtomAAA::ciAdvProcessFrame(bool read_stats, const struct timeval *frame_time
         reconfigureGrid();
     }
 
-    mISP->getFNumber(&aperture.num, &aperture.denum);
+    mSensorCI->getFNumber(&aperture.num, &aperture.denum);
 
     if (m3ALibState.stats_valid) {
         ia_3a_main(frame_timestamp, sof_timestamp, m3ALibState.stats, &aperture, &m3ALibState.results);
@@ -1628,8 +1632,8 @@ void AtomAAA::getAeExpCfg(int *exp_time,
     LOG2("@%s", __FUNCTION__);
     ia_3a_ae_result ae_res;
 
-    mISP->getExposureTime(exp_time);
-    mISP->getFNumber(aperture_num, aperture_denum);
+    mSensorCI->getExposureTime(exp_time);
+    mSensorCI->getFNumber(aperture_num, aperture_denum);
     ia_3a_ae_get_generic_result(&ae_res);
 
     *digital_gain = IA_3A_S15_16_TO_FLOAT(ae_res.global_digital_gain);

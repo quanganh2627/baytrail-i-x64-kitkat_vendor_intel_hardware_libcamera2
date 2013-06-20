@@ -2426,7 +2426,7 @@ void AtomISP::getPreviewSize(int *width, int *height, int *stride = NULL)
         *stride = mConfig.preview.stride;
 }
 
-int AtomISP::getSnapshotNum()
+int AtomISP::getNumSnapshotBuffers()
 {
     return mConfig.num_snapshot;
 }
@@ -5368,7 +5368,7 @@ bool AtomISP::isDumpRawImageReady(void)
     return ret;
 }
 
-int AtomISP::sensorMoveFocusToPosition(int position)
+int AtomISP::moveFocusToPosition(int position)
 {
     LOG2("@%s", __FUNCTION__);
 
@@ -5385,14 +5385,14 @@ int AtomISP::sensorMoveFocusToPosition(int position)
     return atomisp_set_attribute(main_fd, V4L2_CID_FOCUS_ABSOLUTE, position, "Set focus position");
 }
 
-int AtomISP::sensorMoveFocusToBySteps(int steps)
+int AtomISP::moveFocusToBySteps(int steps)
 {
     int val = 0, rval;
     LOG2("@%s", __FUNCTION__);
     rval = atomisp_get_attribute(main_fd, V4L2_CID_FOCUS_ABSOLUTE, &val);
     if (rval)
         return rval;
-    return sensorMoveFocusToPosition(val + steps);
+    return moveFocusToPosition(val + steps);
 }
 
 int AtomISP::getFocusPosition(int * position)

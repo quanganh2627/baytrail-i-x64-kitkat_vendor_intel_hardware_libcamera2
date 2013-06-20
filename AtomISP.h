@@ -37,8 +37,6 @@ namespace android {
 
 #define MAX_V4L2_BUFFERS    MAX_BURST_BUFFERS
 #define MAX_CAMERA_NODES    MAX_CAMERAS + 1
-#define EV_MIN -2
-#define EV_MAX  2
 
 #define MAX_DEVICE_NODE_CHAR_NR	32
 /**
@@ -76,7 +74,10 @@ struct devNameGroup
 class Callbacks;
 
 class AtomISP :
+    public IHWIspControl,
     public IHWSensorControl, // implements sensor support for IA 3A
+    public IHWFlashControl,
+    public IHWLensControl,
     public IBufferOwner {
 
 // constructor/destructor
@@ -107,7 +108,8 @@ public:
     status_t stop();
     status_t releaseCaptureBuffers();
 
-    inline int getNumBuffers(bool videoMode) { return videoMode? mNumBuffers : mNumPreviewBuffers; }
+    inline int getNumPreviewBuffers() { return mNumPreviewBuffers; }
+    inline int getNumVideoBuffers() { return mNumBuffers; }
     AtomMode getMode() const { return mMode; };
 
     status_t startOfflineCapture(ContinuousCaptureConfig &config);
@@ -149,17 +151,14 @@ public:
     bool applyISPLimitations(CameraParameters *params, bool dvsEnabled, bool videoMode);
 
     void setPreviewFramerate(int fps);
-    inline int getSnapshotPixelFormat() { return mConfig.snapshot.format; }
+    int getSnapshotPixelFormat() { return mConfig.snapshot.format; }
     void getVideoSize(int *width, int *height, int *stride);
     void getPreviewSize(int *width, int *height, int *stride);
-    int getSnapshotNum();
+    int getNumSnapshotBuffers();
 
     void getZoomRatios(CameraParameters *params) const;
     void getFocusDistances(CameraParameters *params);
     status_t setZoom(int zoom);
-    status_t setFlash(int numFrames);
-    status_t setFlashIndicator(int intensity);
-    status_t setTorch(int intensity);
     status_t setColorEffect(v4l2_colorfx effect);
     status_t applyColorEffect();
     status_t getMakerNote(atomisp_makernote_info *info);
@@ -188,7 +187,7 @@ public:
     // file input/injection API
     int configureFileInject(const char* fileName, int width, int height, int format, int bayerOrder);
     bool isFileInjectionEnabled(void) const { return mFileInject.active; }
-    inline String8 getFileInjectionFileName(void) const { return mFileInject.fileName; }
+    String8 getFileInjectionFileName(void) const { return mFileInject.fileName; }
 
     // camera hardware information
     status_t getSensorParams(SensorParams *sp);
@@ -213,13 +212,21 @@ public:
     // Enable metadata buffer mode API
     status_t storeMetaDataInBuffers(bool enabled);
 
-    /* Sensor related controls */
-    int sensorMoveFocusToPosition(int position);
-    int sensorMoveFocusToBySteps(int steps);
+    /* IHWFlashControl overloads, */
+    status_t setFlash(int numFrames);
+    status_t setFlashIndicator(int intensity);
+    status_t setTorch(int intensity);
+    int setFlashIntensity(int intensity);
+
+    /* IHWLensControl overloads, */
+    int moveFocusToPosition(int position);
+    int moveFocusToBySteps(int steps);
     int getFocusPosition(int * position);
+    int getFocusStatus(int *status);
+
+    /* IHWSensorControl overloads, */
     void getMotorData(sensorPrivateData *sensor_data);
     void getSensorData(sensorPrivateData *sensor_data);
-    int getFocusStatus(int *status);
     int getModeInfo(struct atomisp_sensor_mode_data *mode_data);
     int setExposureTime(int time);
     int getExposureTime(int *exposure_time);
@@ -245,7 +252,6 @@ public:
     int get3ALock(int * aaaLock);
     int setAeFlashMode(v4l2_flash_led_mode mode);
     int getAeFlashMode(v4l2_flash_led_mode * mode);
-    // IHWSensorControl overloads, TODO: move them all
     // TODO: replacing fixed value of AE_DELAY_FRAMES in AtomAIQ.h in non-functional API refactory
     //       this value exists in CPF and needs awareness of frames timing.
     virtual unsigned int getExposureDelay() { return PlatformData::getSensorExposureLag(); };
@@ -274,8 +280,6 @@ public:
     int getCssMinorVersion();
     int getIspHwMajorVersion();
     int getIspHwMinorVersion();
-    /* Flash related controls */
-    int setFlashIntensity(int intensity);
     /* file injection controls */
     void getSensorDataFromFile(const char *file_name, sensorPrivateData *sensor_data);
 

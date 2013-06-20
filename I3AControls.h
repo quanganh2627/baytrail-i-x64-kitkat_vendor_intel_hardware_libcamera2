@@ -23,7 +23,9 @@
 #include "ia_face.h"
 
 namespace android {
-class AtomISP;
+
+#define EV_MIN -2
+#define EV_MAX 2
 
 // DetermineFlash: returns true if flash should be determined according to current exposure
 #define DetermineFlash(x) (x == CAM_AE_FLASH_MODE_AUTO || \

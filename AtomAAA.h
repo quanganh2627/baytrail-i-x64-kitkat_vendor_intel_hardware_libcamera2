@@ -29,7 +29,6 @@ namespace android {
 #include "AtomCommon.h"
 #include "PlatformData.h"
 #include "ia_face.h"
-#include "AtomISP.h"
 #include "I3AControls.h"
 #include "ICameraHwControls.h"
 #include <ia_types.h>
@@ -148,8 +147,7 @@ private:
     AtomAAA& operator=(const AtomAAA& other);
 
 public:
-    // TODO: I3AHardwareSupport targets to replace AtomISP handle fully
-    AtomAAA(HWControlGroup &hwcg, AtomISP *anISP);
+    AtomAAA(HWControlGroup &hwcg);
     ~AtomAAA();
 
     // Initialization functions
@@ -269,10 +267,11 @@ private:
     int mFocusPosition;
     nsecs_t mStillAfStart;
     FILE *pFile3aStatDump;
-    AtomISP *mISP;
+    IHWIspControl *mISP;
+    IHWFlashControl *mFlashCI;
+    IHWSensorControl *mSensorCI;
     ia_env mPrintFunctions;
     AAALibState m3ALibState;
-    IHWSensorControl *mSensorCI;
 }; // class AtomAAA
 
 }; // namespace android

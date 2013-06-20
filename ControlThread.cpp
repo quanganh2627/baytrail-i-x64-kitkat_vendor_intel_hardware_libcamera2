@@ -174,17 +174,23 @@ status_t ControlThread::init()
     status_t status = UNKNOWN_ERROR;
     CameraDump::setDumpDataFlag();
 
+    AtomISP * isp = NULL;
     mScalerService = new ScalerService();
     if (mScalerService == NULL) {
         LOGE("error creating ScalerService");
         goto bail;
     }
 
-    mISP = new AtomISP(mCameraId, mScalerService);
-    if (mISP == NULL) {
+    isp = new AtomISP(mCameraId, mScalerService);
+    if (isp == NULL) {
         LOGE("error creating ISP");
         goto bail;
     }
+    mISP = isp;
+    mHwcg.mIspCI = (IHWIspControl*)isp;
+    mHwcg.mSensorCI = (IHWSensorControl*)isp;
+    mHwcg.mFlashCI = (IHWFlashControl*)isp;
+    mHwcg.mLensCI = (IHWLensControl*)isp;
 
     status = mISP->init();
     if (status != NO_ERROR) {
@@ -192,7 +198,7 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mSensorSyncManager = new SensorSyncManager((IHWSensorControl*) mISP);
+    mSensorSyncManager = new SensorSyncManager(mHwcg.mSensorCI);
     if (mSensorSyncManager == NULL) {
         LOGE("Error creating sensor sync manager");
         goto bail;
@@ -215,13 +221,13 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mDvs = new AtomDvs(mISP);
+    mDvs = new AtomDvs(mHwcg);
     if (mDvs == NULL) {
         LOGE("error creating DVS");
         goto bail;
     }
 
-    mCP = new AtomCP(mISP);
+    mCP = new AtomCP(mHwcg);
     if (mCP == NULL) {
         LOGE("error creating CP");
         goto bail;
@@ -303,7 +309,7 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mBracketManager = new BracketManager(mISP, m3AControls);
+    mBracketManager = new BracketManager(mHwcg, m3AControls);
     if (mBracketManager == NULL) {
         LOGE("error creating BracketManager");
         goto bail;
@@ -1495,7 +1501,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mPostProcThread->loadIspExtensions(videoMode);
 
     mISP->getPreviewSize(&width, &height,&stride);
-    mNumBuffers = mISP->getNumBuffers(videoMode);
+    if (videoMode)
+        mNumBuffers = mISP->getNumVideoBuffers();
+    else
+        mNumBuffers = mISP->getNumPreviewBuffers();
 
     // using mIntelParamsAllowed to distinquish applications using public
     // API from ones using agreed sequences when in continuous mode.
@@ -1536,8 +1545,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         // Enable auto-focus by default
         m3AControls->setAfEnabled(true);
         m3AThread->enable3A();
-        if (m3AControls->switchModeAndRate(mode, mISP->getFrameRate()) != NO_ERROR)
-            LOGE("Failed switching 3A at %.2f fps", mISP->getFrameRate());
+        if (m3AControls->switchModeAndRate(mode, mHwcg.mSensorCI->getFrameRate()) != NO_ERROR)
+            LOGE("Failed switching 3A at %.2f fps", mHwcg.mSensorCI->getFrameRate());
 
         if (isDVSActive && mDvs->reconfigure() == NO_ERROR) {
             // Attach only when DVS is active:
@@ -2371,7 +2380,7 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
         }
     } else {
         memset(aeConfig, 0, sizeof(SensorAeConfig));
-        if (mISP->getExposureTime(&aeConfig->expTime))
+        if (mHwcg.mSensorCI->getExposureTime(&aeConfig->expTime))
             aeConfig->expTime = 0;
     }
 
@@ -2463,8 +2472,8 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
             return status;
         }
 
-        if (m3AControls->switchModeAndRate(MODE_CAPTURE, mISP->getFrameRate()) != NO_ERROR)
-            LOGE("Failed to switch 3A to capture mode at %.2f fps", mISP->getFrameRate());
+        if (m3AControls->switchModeAndRate(MODE_CAPTURE, mHwcg.mSensorCI->getFrameRate()) != NO_ERROR)
+            LOGE("Failed to switch 3A to capture mode at %.2f fps",mHwcg.mSensorCI->getFrameRate());
 
         if ((status = mISP->start()) != NO_ERROR) {
             LOGE("Error starting the ISP driver in CAPTURE mode!");
@@ -2498,7 +2507,7 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     }
 
     // Turn off flash
-    mISP->setFlashIndicator(0);
+    mHwcg.mFlashCI->setFlashIndicator(0);
 
     // Get the snapshot
     if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
@@ -2857,8 +2866,8 @@ status_t ControlThread::captureStillPic()
             return status;
         }
 
-        if (m3AControls->switchModeAndRate(MODE_CAPTURE, mISP->getFrameRate()) != NO_ERROR)
-            LOGE("Failed to switch 3A to capture mode at %.2f fps", mISP->getFrameRate());
+        if (m3AControls->switchModeAndRate(MODE_CAPTURE, mHwcg.mSensorCI->getFrameRate()) != NO_ERROR)
+            LOGE("Failed to switch 3A to capture mode at %.2f fps", mHwcg.mSensorCI->getFrameRate());
         if ((status = mISP->start()) != NO_ERROR) {
             LOGE("Error starting the ISP driver in CAPTURE mode");
             return status;
@@ -2900,14 +2909,14 @@ status_t ControlThread::captureStillPic()
     // Turn on flash. If flash mode is torch, then torch is already on
     if (flashOn && flashMode != CAM_AE_FLASH_MODE_TORCH && mBurstLength <= 1) {
         LOG1("Requesting flash");
-        if (mISP->setFlash(1) != NO_ERROR) {
+        if (mHwcg.mFlashCI->setFlash(1) != NO_ERROR) {
             LOGE("Failed to enable the Flash!");
         }
         else {
             flashFired = true;
         }
     } else if (DetermineFlash(flashMode)) {
-        mISP->setFlashIndicator(TORCH_INTENSITY);
+        mHwcg.mFlashCI->setFlashIndicator(TORCH_INTENSITY);
     }
 
     status = burstCaptureSkipFrames();
@@ -2920,7 +2929,7 @@ status_t ControlThread::captureStillPic()
         // TODO: to be removed once preview data flow is moved fully to
         //       a separate thread
         if (mBurstLength > 1)
-            mBurstQbufs = mISP->getSnapshotNum();
+            mBurstQbufs = mISP->getNumSnapshotBuffers();
         status = waitForCaptureStart();
         if (status != NO_ERROR) {
             LOGE("Error while waiting for capture to start");
@@ -2934,7 +2943,7 @@ status_t ControlThread::captureStillPic()
         status = getFlashExposedSnapshot(&snapshotBuffer, &postviewBuffer);
         // Set flash off only if torch is not used
         if (flashMode != CAM_AE_FLASH_MODE_TORCH)
-            mISP->setFlash(0);
+            mHwcg.mFlashCI->setFlash(0);
     } else {
         if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE) {
             status = mBracketManager->getSnapshot(snapshotBuffer, postviewBuffer);
@@ -2975,7 +2984,7 @@ status_t ControlThread::captureStillPic()
 
     // Turn off flash
     if (!flashOn && DetermineFlash(flashMode) && mBurstLength <= 1) {
-        mISP->setFlashIndicator(0);
+        mHwcg.mFlashCI->setFlashIndicator(0);
     }
 
     // Do postview for preview-keep-alive feature synchronously before the possible mirroring.
@@ -3249,7 +3258,7 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
     if (mBurstCaptureNum == mBurstLength) {
         stopOfflineCapture();
     }
-    else if (mBurstLength > mISP->getSnapshotNum() &&
+    else if (mBurstLength > mISP->getNumSnapshotBuffers() &&
              mBurstQbufs < mBurstLength) {
         // To save capture time, only requeue buffers if total
         // burst length exceeds the ISP buffer queue size, and
@@ -3500,7 +3509,7 @@ status_t ControlThread::handleMessageAutoFocus()
 
         if (mFlashAutoFocus) {
             LOG1("Using Torch for auto-focus");
-            mISP->setTorch(TORCH_INTENSITY);
+            mHwcg.mFlashCI->setTorch(TORCH_INTENSITY);
         }
     }
 
@@ -3516,7 +3525,7 @@ status_t ControlThread::handleMessageAutoFocus()
 
     // If start auto-focus failed and we enabled torch, disable it now
     if (status != NO_ERROR && mFlashAutoFocus) {
-        mISP->setTorch(0);
+        mHwcg.mFlashCI->setTorch(0);
         mFlashAutoFocus = false;
     }
 
@@ -3532,7 +3541,7 @@ status_t ControlThread::handleMessageCancelAutoFocus()
     if (mFaceDetectionActive)
         enableMsgType(CAMERA_MSG_PREVIEW_METADATA);
     if (mFlashAutoFocus) {
-        mISP->setTorch(0);
+        mHwcg.mFlashCI->setTorch(0);
         mFlashAutoFocus = false;
     }
     /*
@@ -3777,7 +3786,7 @@ status_t ControlThread::handleMessageAutoFocusDone()
         enableMsgType(CAMERA_MSG_PREVIEW_METADATA);
     // Implement post auto-focus functions
     if (mFlashAutoFocus) {
-        mISP->setTorch(0);
+        mHwcg.mFlashCI->setTorch(0);
         mFlashAutoFocus = false;
     }
 
@@ -4629,11 +4638,11 @@ status_t ControlThread::processParamFlash(const CameraParameters *oldParams,
         mSavedFlashMode = newVal;
 
         if (flash == CAM_AE_FLASH_MODE_TORCH && m3AControls->getAeFlashMode() != CAM_AE_FLASH_MODE_TORCH) {
-            mISP->setTorch(TORCH_INTENSITY);
+            mHwcg.mFlashCI->setTorch(TORCH_INTENSITY);
         }
 
         if (flash != CAM_AE_FLASH_MODE_TORCH && m3AControls->getAeFlashMode() == CAM_AE_FLASH_MODE_TORCH) {
-            mISP->setTorch(0);
+            mHwcg.mFlashCI->setTorch(0);
         }
 
         status = m3AControls->setAeFlashMode(flash);
@@ -6126,12 +6135,12 @@ status_t ControlThread::createAtom3A()
             hwcg.mSensorCI = (IHWSensorControl*) mISP;
 
         if(PlatformData::supportAIQ()) {
-            m3AControls = new AtomAIQ(hwcg, mISP);
+            m3AControls = new AtomAIQ(mHwcg);
         } else {
-            m3AControls = new AtomAAA(hwcg, mISP);
+            m3AControls = new AtomAAA(mHwcg);
         }
     } else {
-        m3AControls = new AtomSoc3A(mCameraId, mISP);
+        m3AControls = new AtomSoc3A(mCameraId, mHwcg);
     }
     if (m3AControls == NULL) {
         LOGE("error creating AAA");
@@ -7248,7 +7257,7 @@ status_t ControlThread::handleMessageReturnBuffer(MessageReturnBuffer *msg)
     // thanks to the observer ordering (control thread first,
     // preview thread after it) this message will be handled after the
     // recording dequeue message which makes the copy
-    mISP->returnBuffer(&msg->returnBuf);
+    msg->returnBuf.owner->returnBuffer(&msg->returnBuf);
     return OK;
 }
 

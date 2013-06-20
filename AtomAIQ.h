@@ -32,7 +32,6 @@ class I3AControls;
 #include <ia_isp_1_5.h>
 #include <ia_isp_2_2.h>
 #include "AtomCommon.h"
-#include "AtomISP.h"
 #include "I3AControls.h"
 #include "PlatformData.h"
 #include "AtomFifo.h"
@@ -212,7 +211,7 @@ private:
     AtomAIQ& operator=(const AtomAIQ& other);
 
 public:
-    AtomAIQ(HWControlGroup &hwcg, AtomISP *anISP);
+    AtomAIQ(HWControlGroup &hwcg);
     ~AtomAIQ();
 
     virtual bool isIntel3A() { return true; }
@@ -335,7 +334,7 @@ public:
 private:
 
     FILE *pFile3aStatDump;
-    AtomISP *mISP;
+    IHWIspControl *mISP;
     ia_env mPrintFunctions;
 
     aaa_state m3aState;
@@ -392,6 +391,8 @@ private:
     ia_mkn  *mMkn;
 
     IHWSensorControl*    mSensorCI;
+    IHWFlashControl*    mFlashCI;
+    IHWLensControl*    mLensCI;
 }; // class AtomAIQ
 
 }; // namespace android

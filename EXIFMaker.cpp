@@ -18,7 +18,7 @@
 
 #include "EXIFMaker.h"
 #include "LogHelper.h"
-#include "AtomISP.h"
+#include "ICameraHwControls.h"
 #include "PlatformData.h"
 #include <camera.h>
 

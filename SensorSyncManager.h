@@ -87,6 +87,8 @@ public:
     virtual int setAeFlashMode(v4l2_flash_led_mode mode) { return mSensorCI->setAeFlashMode(mode); };
     virtual int getAeFlashMode(v4l2_flash_led_mode * mode) { return mSensorCI->getAeFlashMode(mode); };
 
+    virtual void getMotorData(sensorPrivateData *sensor_data) { return mSensorCI->getMotorData(sensor_data); };
+
     // IAtomIspObserver overloads
     virtual bool atomIspNotify(Message *msg, const ObserverState state);
 

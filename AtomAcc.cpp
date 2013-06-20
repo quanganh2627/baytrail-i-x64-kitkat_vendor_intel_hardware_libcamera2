@@ -15,7 +15,7 @@
  */
 
 #include "AtomAcc.h"
-#include "AtomISP.h"
+#include "ICameraHwControls.h"
 #include <stdio.h>
 
 
@@ -80,70 +80,70 @@ void *open_firmware(const char *fw_path, unsigned *size)
 
 int load_firmware(void *isp, void *fw, unsigned size, unsigned *handle)
 {
-    AtomISP *ISP = (AtomISP*)isp;
+    IHWIspControl *ISP = (IHWIspControl*)isp;
     LOG1("@%s", __FUNCTION__);
     return ISP->loadAccFirmware(fw, size, handle);
 }
 
 int load_firmware_pipe(void *isp, void *fw, unsigned size, unsigned *handle)
 {
-    AtomISP *ISP = (AtomISP*)isp;
+    IHWIspControl *ISP = (IHWIspControl*)isp;
     LOG1("@%s", __FUNCTION__);
     return ISP->loadAccPipeFirmware(fw, size, handle);
 }
 
 int unload_firmware(void *isp, unsigned handle)
 {
-    AtomISP *ISP = (AtomISP*)isp;
+    IHWIspControl *ISP = (IHWIspControl*)isp;
     LOG1("@%s", __FUNCTION__);
     return ISP->unloadAccFirmware(handle);
 }
 
 int map_firmware_arg (void *isp, void *val, size_t size, unsigned long *ptr)
 {
-    AtomISP *ISP = (AtomISP*)isp;
+    IHWIspControl *ISP = (IHWIspControl*)isp;
     LOG1("@%s", __FUNCTION__);
     return ISP->mapFirmwareArgument(val, size, ptr);
 }
 
 int unmap_firmware_arg (void *isp, unsigned long val, size_t size)
 {
-    AtomISP *ISP = (AtomISP*)isp;
+    IHWIspControl *ISP = (IHWIspControl*)isp;
     LOG1("@%s", __FUNCTION__);
     return ISP->unmapFirmwareArgument(val, size);
 }
 
 int set_firmware_arg(void *isp, unsigned handle, unsigned num, void *val, size_t size)
 {
-    AtomISP *ISP = (AtomISP*)isp;
+    IHWIspControl *ISP = (IHWIspControl*)isp;
     LOG1("@%s", __FUNCTION__);
     return ISP->setFirmwareArgument(handle, num, val, size);
 }
 
 int set_mapped_arg(void *isp, unsigned handle, unsigned mem, unsigned long val, size_t size)
 {
-    AtomISP *ISP = (AtomISP*)isp;
+    IHWIspControl *ISP = (IHWIspControl*)isp;
     LOG1("@%s", __FUNCTION__);
     return ISP->setMappedFirmwareArgument(handle, mem, val, size);
 }
 
 int start_firmware(void *isp, unsigned handle)
 {
-    AtomISP *ISP = (AtomISP*)isp;
+    IHWIspControl *ISP = (IHWIspControl*)isp;
     LOG1("@%s", __FUNCTION__);
     return ISP->startFirmware(handle);
 }
 
 int wait_for_firmware(void *isp, unsigned handle)
 {
-    AtomISP *ISP = (AtomISP*)isp;
+    IHWIspControl *ISP = (IHWIspControl*)isp;
     LOG1("@%s", __FUNCTION__);
     return ISP->waitForFirmware(handle);
 }
 
 int abort_firmware(void *isp, unsigned handle, unsigned timeout)
 {
-    AtomISP *ISP = (AtomISP*)isp;
+    IHWIspControl *ISP = (IHWIspControl*)isp;
     LOG1("@%s", __FUNCTION__);
     return ISP->abortFirmware(handle, timeout);
 }
