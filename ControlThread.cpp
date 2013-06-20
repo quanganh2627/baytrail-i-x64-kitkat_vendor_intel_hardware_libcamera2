@@ -1303,10 +1303,9 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
     int vfWidth = 0, vfHeight = 0;
     params.getPictureSize(&picWidth, &picHeight);
     params.getPreviewSize(&vfWidth, &vfHeight);
-    if ((PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW &&
-        picWidth < vfWidth && picHeight < vfHeight) ||
-        !PlatformData::snapshotResolutionSupportedByZSL(mCameraId, picWidth, picHeight)) {
-        LOG1("@%s: picture-size smaller than preview-size, disabling continuous mode", __FUNCTION__);
+    if (!PlatformData::snapshotResolutionSupportedByZSL(mCameraId, picWidth, picHeight)) {
+        LOG1("@%s: picture-size %dx%d, disabling continuous mode",
+             __FUNCTION__, picWidth, picHeight);
         return STATE_PREVIEW_STILL;
     }
 
