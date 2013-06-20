@@ -126,6 +126,7 @@ public:
     // Convenience accessors
     bool isStarted() const { return mState == DEVICE_STARTED; };
     unsigned int getFrameCount() const { return mFrameCounter; };
+    unsigned int getInitialFrameSkips() const { return mInitialSkips; };
 
 private:
     int qbuf(struct v4l2_buffer_info *buf);

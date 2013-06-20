@@ -23,6 +23,7 @@
 #include <utils/Errors.h>
 #include <utils/threads.h>
 #include "AtomCommon.h"
+#include "v4l2device.h"
 
 #ifdef ENABLE_INTEL_METABUFFER
 #include "IntelMetadataBuffer.h"
@@ -46,17 +47,6 @@ namespace android {
 #define LARGEST_THUMBNAIL_WIDTH 320
 #define LARGEST_THUMBNAIL_HEIGHT 240
 
-//v4l2 buffer in pool
-struct v4l2_buffer_info {
-    void *data;
-    size_t length;
-    int width;
-    int height;
-    int format;
-    int cache_flags; /*!< initial flags used when creating buffers */
-    struct v4l2_buffer vbuffer;
-};
-
 struct v4l2_buffer_pool {
     int active_buffers;
     int width;
@@ -65,12 +55,12 @@ struct v4l2_buffer_pool {
     struct v4l2_buffer_info bufs [MAX_V4L2_BUFFERS];
 };
 
-
 struct devNameGroup
 {
     char dev[MAX_CAMERA_NODES + 1][MAX_DEVICE_NODE_CHAR_NR];
     bool in_use;
 };
+
 class Callbacks;
 
 class AtomISP :
@@ -434,6 +424,7 @@ private:
     int atomisp_set_capture_mode(int deviceMode);
     int v4l2_capture_try_format(int device, int *w, int *h, int *format);
     int configureDevice(int device, int deviceMode, FrameInfo* fInfo, bool raw);
+    int configureDevice(V4L2VideoNode *device, int deviceMode, FrameInfo *fInfo, bool raw);
     int v4l2_capture_g_framerate(int fd, float * framerate, int width,
                                           int height, int pix_fmt);
     int v4l2_capture_s_format(int fd, int device, int w, int h, int format, bool raw, int* stride);
@@ -455,7 +446,7 @@ private:
     int atomisp_set_attribute (int fd, int attribute_num,
                                const int value, const char *name);
     int atomisp_get_attribute (int fd, int attribute_num, int *value);
-    int atomisp_set_zoom (int fd, int zoom);
+    int atomisp_set_zoom (int zoom);
     int xioctl(int fd, int request, void *arg) const;
     int v4l2_subscribe_event(int fd, int event);
     int v4l2_unsubscribe_event(int fd, int event);
@@ -562,7 +553,7 @@ private:
 
     AtomBuffer mSnapshotBuffers[MAX_BURST_BUFFERS];
     Vector <AtomBuffer> mPostviewBuffers;
-    int mNumPreviewBuffersQueued;
+    int mNumPreviewBuffersQueued;       /* TODO: move this tracking var to device video node class */
     int mNumRecordingBuffersQueued;
     int mNumCapturegBuffersQueued;
     int mFlashTorchSetting;
@@ -582,6 +573,15 @@ private:
     } mDevices[V4L2_MAX_DEVICE_COUNT];
 
     int dumpFrameInfo(AtomMode mode);
+
+    sp<V4L2VideoNode>  mMainDevice;
+    sp<V4L2VideoNode>  mPreviewDevice;
+    sp<V4L2VideoNode>  mRecordingDevice;
+    sp<V4L2VideoNode>  mPostViewDevice;
+    sp<V4L2Subdevice>  mIspSubdevice;
+    sp<V4L2Subdevice>  m3AEventSubdevice;
+    sp<V4L2VideoNode>  mOriginalPreviewDevice;
+
     int dumpPreviewFrame(int previewIndex);
     int dumpRecordingFrame(int recordingIndex);
     int dumpSnapshot(int snapshotIndex, int postviewIndex);
@@ -602,11 +602,6 @@ private:
         int bayerOrder;
         char *mappedAddr;
     } mFileInject;
-
-    int mConfigSnapshotPreviewDevice;
-    int mConfigRecordingPreviewDevice;
-    int mPreviewDevice;
-    int mRecordingDevice;
 
     int mSessionId; // uniquely identify each session
 

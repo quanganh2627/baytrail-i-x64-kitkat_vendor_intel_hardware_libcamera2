@@ -457,7 +457,6 @@ status_t V4L2VideoNode::setBufferPool(void **pool, int poolSize,
                                      FrameInfo *aFrameInfo, bool cached)
 {
     LOG1("@%s: device = %s", __FUNCTION__, mName.string());
-
     struct v4l2_buffer_info vinfo;
     uint32_t cacheflags = V4L2_BUF_FLAG_NO_CACHE_INVALIDATE |
                           V4L2_BUF_FLAG_NO_CACHE_CLEAN;
