@@ -581,6 +581,7 @@ private:
     sp<V4L2Subdevice>  mIspSubdevice;
     sp<V4L2Subdevice>  m3AEventSubdevice;
     sp<V4L2VideoNode>  mOriginalPreviewDevice;
+    sp<V4L2VideoNode>  mFileInjectDevice;
 
     int dumpPreviewFrame(int previewIndex);
     int dumpRecordingFrame(int recordingIndex);
@@ -594,13 +595,15 @@ private:
     struct FileInject {
         String8 fileName;
         bool active;
-        unsigned int width;
-        unsigned int height;
-        unsigned int size;
-        int stride;
-        int format;
+        FrameInfo   frameInfo;
         int bayerOrder;
-        char *mappedAddr;
+        char *dataAddr;
+        void clear() {
+            fileName.clear();
+            active = false;
+            CLEAR(frameInfo);
+            dataAddr = NULL;
+        };
     } mFileInject;
 
     int mSessionId; // uniquely identify each session

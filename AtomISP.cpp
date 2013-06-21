@@ -142,6 +142,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
     mPostviewBuffers.clear();
     mPreviewBuffers.clear();
     CLEAR(mConfig);
+    mFileInject.clear();
     memset(v4l2_buf_pool, 0, sizeof(v4l2_buf_pool));
 }
 
@@ -155,6 +156,9 @@ status_t AtomISP::initDevice()
     mRecordingDevice = mMainDevice;
     mIspSubdevice = new V4L2Subdevice(PlatformData::getISPSubDeviceName(),V4L2_ISP_SUBDEV);
     m3AEventSubdevice = new V4L2Subdevice(PlatformData::getISPSubDeviceName(),V4L2_ISP_SUBDEV);
+    mFileInjectDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_INJECT_DEVICE], V4L2_INJECT_DEVICE,
+                                          V4L2VideoNode::OUTPUT_VIDEO_NODE);
+
     /**
      * In some situation we are swapping the preview device to be capturing device
      * like in HAL ZSL, or in cases where there is a limitation in ISP.
@@ -469,6 +473,7 @@ AtomISP::~AtomISP()
     mRecordingDevice.clear();
     m3AEventSubdevice.clear();
     mIspSubdevice.clear();
+    mFileInjectDevice.clear();
 
     if (mZoomRatios) {
         delete[] mZoomRatios;
@@ -3131,7 +3136,6 @@ int AtomISP::startFileInject(void)
     LOG1("%s: enter", __FUNCTION__);
 
     int ret = 0;
-    int device = V4L2_INJECT_DEVICE;
     int buffer_count = 1;
 
     if (mFileInject.active != true) {
@@ -3139,22 +3143,22 @@ int AtomISP::startFileInject(void)
         return -1;
     }
 
-    video_fds[device] = v4l2_capture_open(device);
-
-    if (video_fds[device] < 0)
+    if (mFileInjectDevice->open() != NO_ERROR) {
         goto error1;
+    }
 
     // Query and check the capabilities
     struct v4l2_capability cap;
-    if (v4l2_capture_querycap(device, &cap) < 0)
+    if (mFileInjectDevice->queryCap(&cap) < 0)
         goto error1;
 
     struct v4l2_streamparm parm;
     memset(&parm, 0, sizeof(parm));
     parm.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
     parm.parm.output.outputmode = OUTPUT_MODE_FILE;
-    if (ioctl(video_fds[device], VIDIOC_S_PARM, &parm) < 0) {
-        LOGE("error %s", strerror(errno));
+
+    if (mFileInjectDevice->setParameter(&parm) != NO_ERROR) {
+        LOGE("error setting parameter V4L2_BUF_TYPE_VIDEO_OUTPUT %s", strerror(errno));
         return -1;
     }
 
@@ -3162,32 +3166,55 @@ int AtomISP::startFileInject(void)
         goto error1;
 
     //Set the format
-    ret = v4l2_capture_s_format(video_fds[device], device, mFileInject.width,
-                                mFileInject.height, mFileInject.format, false, &(mFileInject.stride));
+    struct v4l2_format format;
+    format.fmt.pix.width = mFileInject.frameInfo.width;
+    format.fmt.pix.height = mFileInject.frameInfo.height;
+    format.fmt.pix.pixelformat = mFileInject.frameInfo.format;
+    format.fmt.pix.sizeimage = PAGE_ALIGN(mFileInject.frameInfo.size);
+    format.fmt.pix.priv = mFileInject.bayerOrder;
+
+    if (mFileInjectDevice->setFormat(format) != NO_ERROR)
+        goto error1;
+
+    // allocate buffer and copy file content into it
+
+    if (mFileInject.dataAddr != NULL)
+        delete[] mFileInject.dataAddr;
+
+    mFileInject.dataAddr = new char[mFileInject.frameInfo.size];
+    if (mFileInject.dataAddr == NULL) {
+        LOGE("Not enough memory to allocate injection buffer");
+        goto error1;
+    }
+
+    // fill buffer with image data from file
+    FILE *file;
+    if (!(file = fopen(mFileInject.fileName.string(), "r"))) {
+        LOGE("ERR(%s): Failed to open %s\n", __func__, mFileInject.fileName.string());
+        goto error1;
+    }
+    fread(mFileInject.dataAddr, 1,  mFileInject.frameInfo.size, file);
+    fclose(file);
+
+    // Set buffer pool
+    ret = mFileInjectDevice->setBufferPool((void**)&mFileInject.dataAddr, buffer_count,
+                                           &mFileInject.frameInfo,true);
+
+    ret = mFileInjectDevice->createBufferPool(buffer_count);
     if (ret < 0)
         goto error1;
 
-    v4l2_buf_pool[device].width = mFileInject.width;
-    v4l2_buf_pool[device].height = mFileInject.height;
-    v4l2_buf_pool[device].format = mFileInject.format;
-
-    //request, query and mmap the buffer and save to the pool
-    ret = createBufferPool(device, buffer_count);
-    if (ret < 0)
-        goto error1;
-
-    // QBUF
-    ret = activateBufferPool(device);
+    // Queue the buffers to device
+    ret = mFileInjectDevice->activateBufferPool();
     if (ret < 0)
         goto error0;
 
     return 0;
 
 error0:
-    destroyBufferPool(device);
+    mFileInjectDevice->destroyBufferPool();
 error1:
-    v4l2_capture_close(video_fds[device]);
-    video_fds[device] = -1;
+    mFileInjectDevice->close();
     return -1;
 }
 
@@ -3200,13 +3227,12 @@ error1:
 int AtomISP::stopFileInject(void)
 {
     LOG1("%s: enter", __FUNCTION__);
-    int device;
-    device = V4L2_INJECT_DEVICE;
-    if (video_fds[device] < 0)
-        LOGW("%s: Already closed", __func__);
-    destroyBufferPool(device);
-    v4l2_capture_close(video_fds[device]);
-    video_fds[device] = -1;
+
+    if (mFileInject.dataAddr != NULL)
+        delete[] mFileInject.dataAddr;
+
+    mFileInjectDevice->close();
+
     return 0;
 }
 
@@ -3225,9 +3251,9 @@ int AtomISP::configureFileInject(const char *fileName, int width, int height, in
     if (mFileInject.fileName.isEmpty() != true) {
         LOG1("Enabling file injection, image file=%s", mFileInject.fileName.string());
         mFileInject.active = true;
-        mFileInject.width = width;
-        mFileInject.height = height;
-        mFileInject.format = format;
+        mFileInject.frameInfo.width = width;
+        mFileInject.frameInfo.height = height;
+        mFileInject.frameInfo.format = format;
         mFileInject.bayerOrder = bayerOrder;
     }
     else {
@@ -3266,7 +3292,7 @@ status_t AtomISP::fileInjectSetSize(void)
 
     LOG1("%s: file %s size of %u", __FUNCTION__, fileName, fileSize);
 
-    mFileInject.size = fileSize;
+    mFileInject.frameInfo.size = fileSize;
 
     close(fileFd);
     return NO_ERROR;
@@ -3310,15 +3336,6 @@ int AtomISP::v4l2_capture_free_buffer(int device, struct v4l2_buffer_info *buf_i
 {
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
-    void *addr = buf_info->data;
-    size_t length = buf_info->length;
-
-    if (device == V4L2_INJECT_DEVICE &&
-        (ret = munmap(addr, length)) < 0) {
-            LOGE("munmap returned: %d (%s)", ret, strerror(errno));
-            return ret;
-        }
-
     return ret;
 }
 
@@ -3344,12 +3361,6 @@ int AtomISP::v4l2_capture_request_buffers(int device, uint num_buffers)
     req_buf.count = num_buffers;
     req_buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
-    if (device == V4L2_INJECT_DEVICE) {
-        LOG2("request buffer for file injection");
-        req_buf.memory = V4L2_MEMORY_MMAP;
-        req_buf.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
-    }
-
     LOG1("VIDIOC_REQBUFS, count=%d", req_buf.count);
     ret = ioctl(fd, VIDIOC_REQBUFS, &req_buf);
 
@@ -3368,44 +3379,11 @@ int AtomISP::v4l2_capture_request_buffers(int device, uint num_buffers)
 int AtomISP::v4l2_capture_new_buffer(int device, int index, struct v4l2_buffer_info *buf)
 {
     LOG1("@%s", __FUNCTION__);
-    void *data;
+
     int ret;
     int fd = video_fds[device];
     struct v4l2_buffer *vbuf = &buf->vbuffer;
     vbuf->flags = 0x0;
-
-    if (device == V4L2_INJECT_DEVICE) {
-        vbuf->index = index;
-        vbuf->type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
-        vbuf->memory = V4L2_MEMORY_MMAP;
-
-        ret = ioctl(fd, VIDIOC_QUERYBUF, vbuf);
-        if (ret < 0) {
-            LOGE("VIDIOC_QUERYBUF failed: %s", strerror(errno));
-            return -1;
-        }
-
-        data = mmap(NULL, vbuf->length, PROT_READ | PROT_WRITE, MAP_SHARED, fd,
-                    vbuf->m.offset);
-
-        if (MAP_FAILED == data) {
-            LOGE("mmap failed: %s", strerror(errno));
-            return -1;
-        }
-
-        buf->data = data;
-        buf->length = vbuf->length;
-
-        // fill buffer with image data from file
-        FILE *file;
-        if (!(file = fopen(mFileInject.fileName.string(), "r"))) {
-            LOGE("ERR(%s): Failed to open %s\n", __func__, mFileInject.fileName.string());
-            return -1;
-        }
-        fread(data, 1,  mFileInject.size, file);
-        fclose(file);
-        return 0;
-    }
 
     vbuf->memory = V4L2_MEMORY_USERPTR;
 
@@ -3467,29 +3445,6 @@ int AtomISP::v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc,
     int ret;
     struct v4l2_format v4l2_fmt;
     CLEAR(v4l2_fmt);
-
-    if (device == V4L2_INJECT_DEVICE) {
-        v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
-        v4l2_fmt.fmt.pix.width = mFileInject.width;
-        v4l2_fmt.fmt.pix.height = mFileInject.height;
-        v4l2_fmt.fmt.pix.pixelformat = mFileInject.format;
-        v4l2_fmt.fmt.pix.sizeimage = PAGE_ALIGN(mFileInject.size);
-        v4l2_fmt.fmt.pix.priv = mFileInject.bayerOrder;
-
-        LOG1("VIDIOC_S_FMT: device %d, width: %d, height: %d, format: %x, size: %d, bayer_order: %d",
-                device,
-                mFileInject.width,
-                mFileInject.height,
-                mFileInject.format,
-                mFileInject.size,
-                mFileInject.bayerOrder);
-        ret = ioctl(fd, VIDIOC_S_FMT, &v4l2_fmt);
-        if (ret < 0) {
-            LOGE("VIDIOC_S_FMT failed: %s", strerror(errno));
-            return -1;
-        }
-        return 0;
-    }
 
     v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     LOG1("VIDIOC_G_FMT");
@@ -3621,14 +3576,6 @@ status_t AtomISP::v4l2_capture_querycap(int device, struct v4l2_capability *cap)
         return ret;
     }
 
-    if (device == V4L2_INJECT_DEVICE) {
-        if (!(cap->capabilities & V4L2_CAP_VIDEO_OUTPUT)) {
-            LOGE("No output devices");
-            return -1;
-        }
-        return ret;
-    }
-
     if (!(cap->capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
         LOGE("No capture devices");
         return -1;
@@ -3708,21 +3655,6 @@ int AtomISP::v4l2_capture_try_format(int device, int *w, int *h,
     int fd = video_fds[device];
     struct v4l2_format v4l2_fmt;
     CLEAR(v4l2_fmt);
-
-    if (device == V4L2_INJECT_DEVICE) {
-        *w = mFileInject.width;
-        *h = mFileInject.height;
-        *fourcc = mFileInject.format;
-
-        LOG1("width: %d, height: %d, format: %x, size: %d, bayer_order: %d",
-             mFileInject.width,
-             mFileInject.height,
-             mFileInject.format,
-             mFileInject.size,
-             mFileInject.bayerOrder);
-
-        return 0;
-    }
 
     v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
