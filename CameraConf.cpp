@@ -54,6 +54,7 @@ CameraBlob::Blob::Blob(const int size, void *& ptr)
 CameraBlob::Blob::~Blob()
 {
     free(mPtr);
+    mPtr = NULL;
 }
 
 CameraBlob::CameraBlob(const int size)

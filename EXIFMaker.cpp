@@ -250,9 +250,11 @@ void EXIFMaker::pictureTaken(void)
         break;
     case CAM_AE_SCENE_MODE_NIGHT:
     case CAM_AE_SCENE_MODE_NIGHT_PORTRAIT:
-    case CAM_AE_SCENE_MODE_FIREWORKS:
         exifAttributes.scene_capture_type = EXIF_SCENE_NIGHT;
         LOG1("EXIF: Scene Mode = Night");
+        break;
+    case CAM_AE_SCENE_MODE_FIREWORKS:
+        LOG1("EXIF: Scene Mode = Standard");
         break;
     default:
         exifAttributes.scene_capture_type = EXIF_SCENE_STANDARD;

@@ -22,7 +22,7 @@
 
 #define RESOLUTION_14MP_WIDTH   4352
 #define RESOLUTION_14MP_HEIGHT  3264
-#define RESOLUTION_13MP_WIDTH   4192
+#define RESOLUTION_13MP_WIDTH   4160
 #define RESOLUTION_13MP_HEIGHT  3104
 #define RESOLUTION_8MP_WIDTH    3264
 #define RESOLUTION_8MP_HEIGHT   2448
@@ -690,6 +690,20 @@ class PlatformData {
     static bool snapshotResolutionSupportedByZSL(int cameraId, int width, int height);
 
     /**
+      * Returns whether the snapshot resolution is supported
+      * to be used with Continuous Viewfinder.
+      *
+      * When false, viewfinder frame rate may drop when taking
+      * pictures at this resolution.
+      *
+      * \param cameraId identifier passed to android.hardware.Camera.open()
+      * \param width of resolution
+      * \param height of resolution
+      * \return true if resolution supports Continuous Viewfinder, false if not
+      */
+    static bool snapshotResolutionSupportedByCVF(int cameraId, int width, int height);
+
+    /**
      * Returns the relative rotation between the camera normal scan order
      * and the display attached to the HW overlay.
      * A rotation of this magnitud is required to render correctly the preview
@@ -732,6 +746,13 @@ class PlatformData {
      * \return the pixel format
      */
     static int getGFXHALPixelFormat(void);
+
+    /**
+     * Whether dual video is supported?
+     *
+     * \return true if supported
+     */
+    static bool supportDualVideo(void);
 
     /**
      * Returns the preview format with V4l2 definition
@@ -778,6 +799,7 @@ public:
         mMaxContinuousRawRingBuffer = 0;
         mShutterLagCompensationMs = 40;
         mSupportAIQ = false;
+        mSupportDualVideo = false;
         mPreviewFormat = V4L2_PIX_FMT_NV12;
 #ifndef GRAPHIC_IS_GEN // this will be remove if graphic provides one common header file
         mHALPixelFormat = HAL_PIXEL_FORMAT_NV12;
@@ -918,6 +940,11 @@ public:
         // VFPP limited resolutions (sensor blanking time dependent
         Vector<Size> mVFPPLimitedResolutions; // preview resolutions with VFPP limitations
         Vector<Size> mZSLUnsupportedSnapshotResolutions; // snapshot resolutions not supported by ZSL
+
+        // snapshot resolutions not supported when continuous
+        // viewfinder is used
+        Vector<Size> mCVFUnsupportedSnapshotResolutions;
+
         bool continuousCapture;
         // burst
         String8 supportedBurstFPS; // TODO: it will be removed in the future
@@ -1020,6 +1047,9 @@ public:
 
     /* For Intel3A ia_aiq */
     bool mSupportAIQ;
+
+    /* For Dual Vidoe */
+    bool mSupportDualVideo;
 
     int mPreviewFormat;
 

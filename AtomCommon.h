@@ -56,6 +56,13 @@
 #define ALIGN64(x) (((x) + 63) & ~63)
 #define ALIGN128(x) (((x) + 127) & ~127)
 
+/** Convert timeval struct to value in microseconds
+ *
+ *  Helper macro to convert timeval struct to microsecond values stored in a
+ *  long long signed value (equivalent to int64_t)
+ */
+#define TIMEVAL2USECS(x) (long long)(((x)->tv_sec*1000000000LL + (x)->tv_usec*1000LL)/1000LL)
+
 namespace android {
 struct AtomBuffer;
 class IBufferOwner

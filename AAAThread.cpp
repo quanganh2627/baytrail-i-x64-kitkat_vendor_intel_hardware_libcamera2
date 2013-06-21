@@ -27,6 +27,9 @@
 namespace android {
 
 #define FLASH_FRAME_TIMEOUT 5
+// TODO: use values relative to real sensor timings or fps
+#define STATISTICS_SYNC_DELTA_US 20000
+#define STATISTICS_SYNC_DELTA_US_MAX 200000
 
 AAAThread::AAAThread(ICallbackAAA *aaaDone, AtomDvs *dvs, UltraLowLight *ull, I3AControls *aaaControls) :
     Thread(false)
@@ -187,7 +190,6 @@ status_t AAAThread::cancelAutoFocus()
  */
 bool AAAThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state)
 {
-
     if(msg && msg->id == IAtomIspObserver::MESSAGE_ID_EVENT) {
 
         if (msg->data.event.type == EVENT_TYPE_STATISTICS_READY) {
@@ -205,17 +207,18 @@ bool AAAThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverStat
                                + nsecs_t(msg->data.event.timestamp.tv_usec),
                                systemTime()/1000/1000);
 
-            newSOF(&msg->data.event);
+            newFrameSync(&msg->data.event);
         }
-    }
-
-    if (msg && msg->id == IAtomIspObserver::MESSAGE_ID_FRAME) {
+    } else if (msg && msg->id == IAtomIspObserver::MESSAGE_ID_FRAME) {
         LOG2("--- FRAME, seq %d, ts %lldms, systemTime %lldms ---",
                 msg->data.frameBuffer.buff.frameSequenceNbr,
                   nsecs_t(msg->data.frameBuffer.buff.capture_timestamp.tv_sec)*1000000LL
                 + nsecs_t(msg->data.frameBuffer.buff.capture_timestamp.tv_usec),
                 systemTime()/1000/1000);
         newFrame(&msg->data.frameBuffer.buff);
+    } else if ((msg && msg->id == IAtomIspObserver::MESSAGE_ID_ERROR) || !msg) {
+        // Clean frame-sync history
+        newFrameSync(NULL);
     }
     return false;
 }
@@ -246,34 +249,82 @@ status_t AAAThread::newFrame(AtomBuffer *b)
 }
 
 /**
- * newSOF event received.
+ * newFrameSync event received.
  * This event is not serialized via the message queue.
- * The reason for this is that in cases where SOF and 3A-STATS event arrive quite
+ * The reason for this is that in cases where frame sync and 3A-STATS event arrive quite
  * close the order how they are processed has an impact on 3A decisions.
- * SOF event time is only recorded in 3A thread for information to the 3A library
- * and it is important to get the latest one.
- * if the 3A-STAT event is processed before, the 3A will think that SOF was skipped
- * but it is actually in the message Q.
+ * FrameSync event time is only recorded in 3A thread for information to the 3A library
+ * and it is important to get the one wherefrom the statistics originate.
  *
- * For this reason we fast-track the SOF event and we just use a mutex to protect
- * the variable where we store the SOF time
- *
+ * For this reason we fast-track the SOF event as a FrameSync and store
+ * one previous timestamp used in case where latest is not considered to be
+ * the origin for statistics about to get read by 3A. This is essentially not reliable,
+ * the impact of miss sync is seen as momentary IQ miss behaviour. Proper mapping of
+ * frames from lower level is expected to drop the need for this eventually.
  */
-status_t AAAThread::newSOF(IAtomIspObserver::MessageEvent *sofMsg)
+status_t AAAThread::newFrameSync(IAtomIspObserver::MessageEvent *sofMsg)
 {
     LOG2("@%s", __FUNCTION__);
-    Mutex::Autolock _l(mSOFTimeLock);
+    Mutex::Autolock _l(mFrameSyncData.lock);
 
-    mLastSOFTime = sofMsg->timestamp;
+    if (!sofMsg) {
+        mFrameSyncData.ts.tv_sec = mFrameSyncData.ts.tv_usec = 0;
+        mFrameSyncData.prevTs = mFrameSyncData.ts;
+    } else {
+        mFrameSyncData.prevTs = mFrameSyncData.ts;
+        mFrameSyncData.ts = sofMsg->timestamp;
+    }
 
     return NO_ERROR;
 }
 
-struct timeval AAAThread::getLastSOFTime()
+/**
+ * Get timestamp for frame wherefrom statistics are expected to get read
+ *
+ * Statistics event contains a timestamp of event creation in driver side.
+ * Driver is unable to provide proper linkage to know from which frame these
+ * statistics are. On other hand, the sequence numbers are not reliable enough
+ * to do the linkage based on them.
+ *
+ * STATISTICS_SYNC_DELTA_US is an estimated minimum latency from SOF-event
+ * (start-of-frame) to statistics ready. This static threshold is used to
+ * determine whether statistics belong to latest SOF or the one before.
+ */
+struct timeval AAAThread::getFrameSyncForStatistics(struct timeval *ts)
 {
     LOG2("@%s", __FUNCTION__);
-    Mutex::Autolock _l(mSOFTimeLock);
-    return mLastSOFTime;
+    Mutex::Autolock _l(mFrameSyncData.lock);
+    struct timeval *retTs = &mFrameSyncData.ts;
+
+    nsecs_t syncForTs = TIMEVAL2USECS(ts);
+    nsecs_t lastTs = TIMEVAL2USECS(&mFrameSyncData.ts);
+    nsecs_t delta = syncForTs - lastTs;
+
+    if (delta < STATISTICS_SYNC_DELTA_US
+        && (mFrameSyncData.prevTs.tv_usec != 0 ||
+            mFrameSyncData.prevTs.tv_sec != 0))
+    {
+        LOG2("FrameSync @%lld does not correspond to statistics %lld, using previous timestamp",
+                lastTs, syncForTs);
+        retTs = &mFrameSyncData.prevTs;
+    }
+
+    // validate the selected timestamp
+    //  - picked frame sync cannot be more recent than statistics
+    //  - picked frame sync cannot be older than STATISTICS_SYNC_DELTA_US_MAX
+    nsecs_t _retTs = TIMEVAL2USECS(retTs);
+    if (syncForTs < _retTs ||
+        syncForTs - _retTs > STATISTICS_SYNC_DELTA_US_MAX)
+    {
+        LOG1("FrameSync lost (stats ts %lld, sync ts %lld)",
+                syncForTs, _retTs);
+        retTs = ts;
+    }
+
+    LOG2("FrameSync @%lld given for statistics %lld",
+                TIMEVAL2USECS(retTs), syncForTs);
+
+    return *retTs;
 }
 
 status_t AAAThread::setFaces(const ia_face_state& faceState)
@@ -611,20 +662,21 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
     // We flush the queue and use the most recent timestamp.
     mMessageQueue.remove(MESSAGE_ID_NEW_STATS_READY, &messages);
     if(!messages.isEmpty()) {
-        Message recent_msg = *messages.begin();
+        Vector<Message>::iterator it = messages.begin();
         LOGW("%d frames in 3A process queue, handling timestamp "
              "%lld instead of %lld\n", messages.size(),
-        ((long long)(recent_msg.data.frame.capture_timestamp.tv_sec)*1000000LL +
-         (long long)(recent_msg.data.frame.capture_timestamp.tv_usec)),
+        ((long long)(it->data.stats.capture_timestamp.tv_sec)*1000000LL +
+         (long long)(it->data.stats.capture_timestamp.tv_usec)),
         ((long long)(capture_timestamp.tv_sec)*1000000LL +
          (long long)(capture_timestamp.tv_usec)));
-        capture_timestamp = recent_msg.data.frame.capture_timestamp;
-        capture_sequence_number = recent_msg.data.frame.sequence_number;
+        capture_timestamp = it->data.stats.capture_timestamp;
+        capture_sequence_number = it->data.stats.sequence_number;
     }
 
     if(m3ARunning){
         // Run 3A statistics
-        status = m3AControls->apply3AProcess(true, capture_timestamp, getLastSOFTime());
+        status = m3AControls->apply3AProcess(true, capture_timestamp,
+                    getFrameSyncForStatistics(&capture_timestamp));
 
         //dump 3A statistics
         if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))

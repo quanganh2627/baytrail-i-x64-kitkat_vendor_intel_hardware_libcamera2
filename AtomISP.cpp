@@ -41,7 +41,7 @@
 #define DEFAULT_SENSOR_FPS      15.0
 #define DEFAULT_PREVIEW_FPS     30.0
 
-#define MAX_FILE_INJECTION_SNAPSHOT_WIDTH    4192
+#define MAX_FILE_INJECTION_SNAPSHOT_WIDTH    4160
 #define MAX_FILE_INJECTION_SNAPSHOT_HEIGHT   3104
 #define MAX_FILE_INJECTION_PREVIEW_WIDTH     1280
 #define MAX_FILE_INJECTION_PREVIEW_HEIGHT    720
@@ -65,16 +65,16 @@
 
 // workaround begin for the imx135, this code will be removed in the future
 #define RESOLUTION_13MP_TABLE   \
-    "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448,3648x2736,4096x3072,4192x2352,4192x3104"
+    "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448,3648x2736,4096x3072,4160x2340,4160x3104"
 // workaround end for the imx135
 
 /**
  * Checks whether 'device' is a valid atomisp V4L2 device node
  */
 #define VALID_DEVICE(device, x) \
-    if ((device < V4L2_MAIN_DEVICE || device > mConfigLastDevice) \
+    if ((device < V4L2_MAIN_DEVICE) \
             && (device != V4L2_ISP_SUBDEV && device != V4L2_ISP_SUBDEV2)) { \
-        LOGE("%s: Wrong device %d (last %d)", __FUNCTION__, device, mConfigLastDevice); \
+        LOGE("%s: Wrong device %d ", __FUNCTION__, device); \
         return x; \
     }
 
@@ -148,7 +148,6 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
     ,mContCaptPriority(false)
     ,mInitialSkips(0)
     ,mConfigSnapshotPreviewDevice(V4L2_MAIN_DEVICE)
-    ,mConfigLastDevice(V4L2_PREVIEW_DEVICE)
     ,mPreviewDevice(V4L2_MAIN_DEVICE)
     ,mRecordingDevice(V4L2_MAIN_DEVICE)
     ,mSessionId(0)
@@ -165,6 +164,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
     ,mObserverManager()
     ,mPublicAeMode(CAM_AE_MODE_AUTO)
     ,mPublicAfMode(CAM_AF_MODE_AUTO)
+    ,mNoiseReductionEdgeEnhancement(true)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -185,7 +185,8 @@ status_t AtomISP::initDevice()
 {
     status_t status = NO_ERROR;
 
-    initDriverVersion();
+    mConfigSnapshotPreviewDevice = V4L2_PREVIEW_DEVICE;
+    mConfigRecordingPreviewDevice = V4L2_PREVIEW_DEVICE;
 
     // Open the main device first, this device will remain open during object life span
     // and will be closed in the object destructor
@@ -308,41 +309,6 @@ int AtomISP::zoomRatio(int zoomValue) {
 
     int zoomStep = (MAX_SUPPORT_ZOOM - MIN_SUPPORT_ZOOM) / MAX_ZOOM_LEVEL;
     return MIN_SUPPORT_ZOOM + zoomValue * zoomStep;
-}
-
-/**
- * Detects which AtomISP kernel driver is used in the system
- *
- * Only to be called from 2nd stage contructor AtomISP::init().
- */
-void AtomISP::initDriverVersion(void)
-{
-    struct stat buf;
-
-    /*
-     * This version of AtomISP supports two kernel driver variants:
-     *
-     *  1) driver that uses four distinct /dev/video device nodes and
-     *     has a separate device node for preview, and
-     *  2) driver that uses three /dev/video device nodes and uses
-     *     the first/main device both for snapshot preview and actual
-     *     main capture
-     */
-    int res = stat("/dev/video3", &buf);
-    if (!res) {
-        LOGD("Kernel with separate preview device node detected");
-
-        mConfigSnapshotPreviewDevice = V4L2_PREVIEW_DEVICE;
-        mConfigRecordingPreviewDevice = V4L2_PREVIEW_DEVICE;
-        mConfigLastDevice = 3;
-    }
-    else {
-        LOGD("Kernel with multiplexed preview and main devices detected");
-
-        mConfigSnapshotPreviewDevice = V4L2_MAIN_DEVICE;
-        mConfigRecordingPreviewDevice = V4L2_LEGACY_VIDEO_PREVIEW_DEVICE;
-        mConfigLastDevice = 2;
-    }
 }
 
 /**
@@ -608,6 +574,14 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     }
 
     /**
+     * DUAL VIDEO
+     */
+    if(PlatformData::supportDualVideo())
+    {
+        intel_params->set(IntelCameraParameters::KEY_DUAL_VIDEO_SUPPORTED,"true");
+    }
+
+    /**
      * MISCELLANEOUS
      */
     float vertical = 42.5;
@@ -764,6 +738,10 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     // GPS related (Intel extension)
     intel_params->set(IntelCameraParameters::KEY_GPS_IMG_DIRECTION_REF, "true-direction");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_GPS_IMG_DIRECTION_REF, "true-direction,magnetic-direction");
+
+    //Edge Enhancement and Noise Reduction
+    intel_params->set(IntelCameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT, "true");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT, "true,false");
 }
 
 Size AtomISP::getHALZSLResolution()
@@ -1499,7 +1477,10 @@ status_t AtomISP::configureContinuousMode(bool enable)
                               enable, "Continuous mode") < 0)
             return UNKNOWN_ERROR;
 
-    enable = !mContCaptPriority;
+    enable = (!mContCaptPriority &&
+              PlatformData::snapshotResolutionSupportedByCVF(mCameraId,
+                                                             mConfig.snapshot.width,
+                                                             mConfig.snapshot.height));
     if (atomisp_set_attribute(main_fd, V4L2_CID_ATOMISP_CONTINUOUS_VIEWFINDER,
                               enable, "Continuous viewfinder") < 0)
             return UNKNOWN_ERROR;
@@ -2002,24 +1983,6 @@ bool AtomISP::isOfflineCaptureRunning() const
     return false;
 }
 
-bool AtomISP::isOfflineCaptureSupported() const
-{
-    // TODO: device node count reveals version of CSS firmware
-    if (mConfigLastDevice >= 3)
-        return true;
-
-    return false;
-}
-
-bool AtomISP::isYUVvideoZoomingSupported() const
-{
-    // TODO: device node count reveals version of CSS firmware
-    if (mConfigLastDevice >= 3)
-        return true;
-
-    return false;
-}
-
 /**
  * Configures a particular device with a mode (preview, video or capture)
  *
@@ -2122,6 +2085,22 @@ int AtomISP::startDevice(int device, int buffer_count)
     int ret;
     int fd = video_fds[device];
     LOG1(" startDevice fd = %d", fd);
+
+    if (mNoiseReductionEdgeEnhancement == false) {
+        //Disable the Noise Reduction and Edge Enhancement
+        struct atomisp_ee_config ee_cfg;
+        struct atomisp_nr_config nr_cfg;
+        struct atomisp_de_config de_cfg;
+
+        memset(&ee_cfg, 0, sizeof(struct atomisp_ee_config));
+        memset(&nr_cfg, 0, sizeof(struct atomisp_nr_config));
+        memset(&de_cfg, 0, sizeof(struct atomisp_de_config));
+        ee_cfg.threshold = 65535;
+        setNrConfig(&nr_cfg);
+        setEeConfig(&ee_cfg);
+        setDeConfig(&de_cfg);
+        LOG1("Disabled NREE in %s", __func__);
+    }
 
     if (mDevices[device].state != DEVICE_PREPARED) {
         ret = prepareDevice(device, buffer_count);
@@ -2633,21 +2612,13 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
     return ret;
 }
 
-void AtomISP::getZoomRatios(bool videoMode, CameraParameters *params)
+void AtomISP::getZoomRatios(CameraParameters *params)
 {
     LOG1("@%s", __FUNCTION__);
     if (params) {
-        if (!isYUVvideoZoomingSupported() && videoMode && mSensorType == SENSOR_TYPE_SOC) {
-            // zoom is not supported. this is indicated by placing a single zoom ratio in params
-            params->set(CameraParameters::KEY_ZOOM, "0");
-            params->set(CameraParameters::KEY_MAX_ZOOM, "0"); // zoom index 0 indicates first (and only) zoom ratio
-            params->set(CameraParameters::KEY_ZOOM_RATIOS, "100");
-            params->set(CameraParameters::KEY_ZOOM_SUPPORTED, CameraParameters::FALSE);
-        } else {
-            params->set(CameraParameters::KEY_MAX_ZOOM, MAX_ZOOM_LEVEL);
-            params->set(CameraParameters::KEY_ZOOM_RATIOS, mZoomRatios);
-            params->set(CameraParameters::KEY_ZOOM_SUPPORTED, CameraParameters::TRUE);
-        }
+        params->set(CameraParameters::KEY_MAX_ZOOM, MAX_ZOOM_LEVEL);
+        params->set(CameraParameters::KEY_ZOOM_RATIOS, mZoomRatios);
+        params->set(CameraParameters::KEY_ZOOM_SUPPORTED, CameraParameters::TRUE);
     }
 }
 
@@ -3555,7 +3526,7 @@ status_t AtomISP::v4l2_capture_open(int device)
     int fd;
     struct stat st;
 
-    if ((device < V4L2_MAIN_DEVICE || device > mConfigLastDevice) &&
+    if ((device < V4L2_MAIN_DEVICE) &&
         (device != V4L2_ISP_SUBDEV && device != V4L2_ISP_SUBDEV2)) {
         LOGE("Wrong device node %d", device);
         return -1;
@@ -4340,14 +4311,6 @@ int AtomISP::pollCapture(int timeout)
     }
 
     return v4l2_poll(V4L2_MAIN_DEVICE, timeout);
-}
-
-bool AtomISP::isBufferValid(const AtomBuffer* buffer) const
-{
-    if(buffer->type == ATOM_BUFFER_PREVIEW_GFX)
-        return true;
-
-    return buffer->ispPrivate == this->mSessionId;
 }
 
 int AtomISP::grabFrame(int device, struct v4l2_buffer *buf)
@@ -5702,10 +5665,13 @@ int AtomISP::setAicParameter(struct atomisp_parameters *aic_param)
     LOG2("@%s", __FUNCTION__);
     int ret;
 
-    // TODO: this code will be removed when the CPF file is valid for saltbay in the future
-    if (strcmp(PlatformData::getBoardName(), "baylake") == 0) {
-       aic_param->ctc_table = NULL;
-       aic_param->gamma_table = NULL;
+    if (mNoiseReductionEdgeEnhancement == false) {
+        //Disable the Noise Reduction and Edge Enhancement
+        memset(aic_param->ee_config, 0, sizeof(struct atomisp_ee_config));
+        memset(aic_param->nr_config, 0, sizeof(struct atomisp_nr_config));
+        memset(aic_param->de_config, 0, sizeof(struct atomisp_de_config));
+        aic_param->ee_config->threshold = 65535;
+        LOG2("Disabled NREE in 3A");
     }
 
     ret = xioctl(main_fd, ATOMISP_IOC_S_PARAMETERS, aic_param);
@@ -7171,6 +7137,12 @@ AfMode AtomISP::getPublicAfMode()
 {
     LOG2("@%s", __FUNCTION__);
     return mPublicAfMode;
+}
+
+void AtomISP::setNrEE(bool en)
+{
+    LOG2("@%s", __FUNCTION__);
+    mNoiseReductionEdgeEnhancement = en;
 }
 
 } // namespace android

@@ -460,8 +460,10 @@ void ControlThread::deinit()
         mCallbacksThread.clear();
     }
 
-    if (mParamCache != NULL)
+    if (mParamCache != NULL) {
         free(mParamCache);
+        mParamCache = NULL;
+    }
 
     if (m3AControls != NULL) {
         m3AControls->deinit3A();
@@ -1277,12 +1279,6 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
     // Whether hardware (SoC, memories) supports continuous mode?
     if (PlatformData::supportsContinuousCapture(mCameraId) == false) {
         LOG1("@%s: Disabling continuous mode, not supported by platform", __FUNCTION__);
-        return STATE_PREVIEW_STILL;
-    }
-
-    // Whether the loaded ISP firmware supports continuous mode?
-    if (mISP->isOfflineCaptureSupported() == false) {
-        LOG1("@%s: Disabling continuous mode, not supported", __FUNCTION__);
         return STATE_PREVIEW_STILL;
     }
 
@@ -3898,14 +3894,12 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
-    // FLASH. About the checking: just the back camera support flash
-    if ((mCameraId == 0) && PlatformData::supportsBackFlash()) {
-        const char* flashMode = params->get(CameraParameters::KEY_FLASH_MODE);
-        const char* flashModes = params->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
-        if (!validateString(flashMode, flashModes)) {
-            LOGE("bad flash mode");
-            return BAD_VALUE;
-        }
+    // FLASH
+    const char* flashMode = params->get(CameraParameters::KEY_FLASH_MODE);
+    const char* flashModes = params->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
+    if (!validateString(flashMode, flashModes)) {
+        LOGE("bad flash mode");
+        return BAD_VALUE;
     }
 
     // SCENE MODE
@@ -4210,6 +4204,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     if (status == NO_ERROR) {
         // awb lock
         status = processParamAWBLock(oldParams, newParams);
+    }
+
+    if (status == NO_ERROR) {
+        // disable/enable Noise Reduction and Edge Enhancement
+        status = processParamNREE(oldParams, newParams);
     }
 
     if (m3AControls->isIntel3A()) {
@@ -5790,6 +5789,28 @@ status_t ControlThread::processParamMirroring(const CameraParameters *oldParams,
     return NO_ERROR;
 }
 
+status_t ControlThread::processParamNREE(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
+
+    if (!newVal.isEmpty()) {
+        if (newVal == CameraParameters::TRUE) {
+            //Disable Noise Reduction and Edge Enhancement
+            mISP->setNrEE(true);
+        } else {
+            mISP->setNrEE(false);
+        }
+
+        LOG1("Changed: %s -> %s",
+             IntelCameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT, newVal.string());
+    }
+
+    return NO_ERROR;
+}
+
 /*
  * Process parameters that require the ISP to be stopped.
  *
@@ -5947,21 +5968,25 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
  */
 status_t ControlThread::updateParameterCache()
 {
-    status_t status = BAD_VALUE;
+    status_t status = NO_ERROR;
 
     mParamCacheLock.lock();
 
     // let app know if we support zoom in the preview mode indicated
-    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-    mISP->getZoomRatios(videoMode, &mParameters);
+    mISP->getZoomRatios(&mParameters);
     mISP->getFocusDistances(&mParameters);
 
     String8 params = mParameters.flatten();
     int len = params.length();
-    if (mParamCache)
+    if (mParamCache) {
         free(mParamCache);
+        mParamCache = NULL;
+    }
     mParamCache = strndup(params.string(), sizeof(char) * len);
-    status = NO_ERROR;
+    if (!mParamCache) {
+        status = NO_MEMORY;
+        LOGE("@%s: strndup failed, len = %d", __FUNCTION__, len);
+    }
 
     mParamCacheLock.unlock();
 
@@ -6238,8 +6263,7 @@ status_t ControlThread::handleMessageGetParameters(MessageGetParameters *msg)
 
     if (msg->params) {
         // let app know if we support zoom in the preview mode indicated
-        bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-        mISP->getZoomRatios(videoMode, &mParameters);
+        mISP->getZoomRatios(&mParameters);
         mISP->getFocusDistances(&mParameters);
 
         String8 params = mParameters.flatten();
@@ -6870,8 +6894,8 @@ status_t ControlThread::startFaceRecognition()
 {
     LOG1("@%s", __FUNCTION__);
     if (mPostProcThread->isFaceRecognitionRunning()) {
-        LOGE("@%s: face recognition already started", __FUNCTION__);
-        return INVALID_OPERATION;
+        LOGW("@%s: face recognition already started", __FUNCTION__);
+        return NO_ERROR;
     }
     mPostProcThread->startFaceRecognition();
     return NO_ERROR;

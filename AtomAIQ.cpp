@@ -72,13 +72,6 @@ namespace android {
 #define MAX_STATISTICS_HEIGHT 150
 #define IA_AIQ_MAX_NUM_FACES 5
 
-/** Convert timeval struct to value in microseconds
- *
- *  Helper macro to convert timeval struct to microsecond values stored in a
- *  long long signed value (equivalent to int64_t)
- */
-#define TIMEVAL2USECS(x) (long long)(((x)->tv_sec*1000000000LL + (x)->tv_usec*1000LL)/1000LL)
-
 AtomAIQ* AtomAIQ::mInstance = NULL; // ToDo: remove
 
 AtomAIQ::AtomAIQ(AtomISP *anISP) :
@@ -277,6 +270,10 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
     /* Re-run AEC to re-calculate sensor exposure for potential changes
      * in sensor settings */
     status = runAeMain(true);
+
+    /* run AWB and GBCE to get initial values */
+    runAwbMain();
+    status |= runGBCEMain();
 
     /* Re-run AIC to get new results for new mode. LSC needs to be updated if resolution changes. */
     status |= runAICMain();
@@ -510,6 +507,8 @@ status_t AtomAIQ::setAeFlashMode(FlashMode mode)
         wr_val = ia_aiq_flash_mode_off;
         break;
     case CAM_AE_FLASH_MODE_AUTO:
+        wr_val = ia_aiq_flash_mode_auto;
+        break;
     default:
         LOGE("Set: invalid flash mode: %d. Using AUTO!", mode);
         mode = CAM_AE_FLASH_MODE_AUTO;
@@ -937,7 +936,7 @@ status_t AtomAIQ::setEv(float bias)
 
 status_t AtomAIQ::getEv(float *ret)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     *ret = mAeInputParameters.ev_shift;
     return NO_ERROR;
 }
@@ -1352,30 +1351,9 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct,
     {
         ia_err err = ia_err_none;
         ia_aiq_statistics_input_params statistics_input_parameters;
-        nsecs_t now = systemTime();
         memset(&statistics_input_parameters, 0, sizeof(ia_aiq_statistics_input_params));
 
-        long long eof_timestamp = TIMEVAL2USECS(frame_timestamp_struct);
-        long long sof_timestamp = TIMEVAL2USECS(sof_timestamp_struct);
-        unsigned long long diff = (now)/1000LL - sof_timestamp;
-
-        if (diff < MIN_SOF_DELAY && mAfState.previous_sof)
-        {
-            LOG2("SOF %lld does not correspond to the latest statistics %lld. Use the SOF from the previous frame %lld", sof_timestamp,
-                (now)/1000LL, mAfState.previous_sof);
-            statistics_input_parameters.frame_timestamp = mAfState.previous_sof;
-        }
-        else
-        {
-            statistics_input_parameters.frame_timestamp = sof_timestamp;
-        }
-        mAfState.previous_sof = sof_timestamp;
-
-        if (eof_timestamp < (long long)statistics_input_parameters.frame_timestamp ||
-            eof_timestamp - (long long)statistics_input_parameters.frame_timestamp > MAX_EOF_SOF_DIFF)
-        {
-            statistics_input_parameters.frame_timestamp = eof_timestamp - DEFAULT_EOF_SOF_DELAY;
-        }
+        statistics_input_parameters.frame_timestamp = TIMEVAL2USECS(sof_timestamp_struct);
 
         statistics_input_parameters.external_histogram = NULL;
 
@@ -1555,6 +1533,9 @@ status_t AtomAIQ::runAeMain(bool first_run)
             LOG2("AEC re-run, using manual exposure %ld", input_parameters.manual_exposure_time_us);
             LOG2("AEC re-run, using manual iso %d", input_parameters.manual_iso);
             err = ia_aiq_ae_run(m3aState.ia_aiq_handle, &input_parameters, &new_ae_results);
+            // Use only exposure from manual run
+            // TODO: need AIQ AEC to provide a way for plain re-calculation
+            new_ae_results->flash = mAeState.prev_results[restore_results_idx].flash;
         } else {
             LOG2("AEC manual_exposure_time_us: %ld manual_analog_gain: %f manual_iso: %d", mAeInputParameters.manual_exposure_time_us, mAeInputParameters.manual_analog_gain, mAeInputParameters.manual_iso);
             LOG2("AEC sensor_descriptor ->line_periods_per_field: %d", mAeInputParameters.sensor_descriptor->line_periods_per_field);

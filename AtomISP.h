@@ -140,20 +140,15 @@ public:
     inline int getNumBuffers(bool videoMode) { return videoMode? mNumBuffers : mNumPreviewBuffers; }
     AtomMode getMode() const { return mMode; };
 
-    void requestClearDriverState();
-    void clearDriverState();
-
     status_t startOfflineCapture(ContinuousCaptureConfig &config);
     status_t stopOfflineCapture();
     bool isOfflineCaptureRunning() const;
-    bool isOfflineCaptureSupported() const;
     int shutterLagZeroAlign() const;
     int continuousBurstNegMinOffset(void) const;
     int continuousBurstNegOffset(int skip, int startIndex) const;
     int getContinuousCaptureNumber() const;
     status_t prepareOfflineCapture(ContinuousCaptureConfig &config, bool capturePriority);
 
-    bool isYUVvideoZoomingSupported() const;
     status_t returnRecordingBuffers();
     bool isSharedPreviewBufferConfigured(bool *reserved = NULL) const;
 
@@ -173,7 +168,6 @@ public:
     int pollCapture(int timeout);
 
     bool dataAvailable();
-    bool isBufferValid(const AtomBuffer * buffer) const;
 
     bool isHALZSLEnabled() const { return mHALZSLEnabled; }
 
@@ -190,7 +184,7 @@ public:
     void getPreviewSize(int *width, int *height, int *stride);
     int getSnapshotNum();
 
-    void getZoomRatios(bool videoMode, CameraParameters *params);
+    void getZoomRatios(CameraParameters *params);
     void getFocusDistances(CameraParameters *params);
     status_t setZoom(int zoom);
     status_t setFlash(int numFrames);
@@ -248,13 +242,11 @@ public:
     int waitForFirmware(unsigned int fwHandle);
     int abortFirmware(unsigned int fwHandle, unsigned int timeout);
 
-    int getLastDevice() { return mConfigLastDevice; }
-
     // Enable metadata buffer mode API
     status_t storeMetaDataInBuffers(bool enabled);
 
     /* Sensor related controls */
-    int  sensorGetGocusStatus(int *status);
+
     int  sensorSetExposure(struct atomisp_exposure *exposure);
     int  sensorMoveFocusToPosition(int position);
     int  sensorMoveFocusToBySteps(int steps);
@@ -292,6 +284,8 @@ public:
     int setFlashIntensity(int intensity);
     /* file injection controls */
     void getSensorDataFromFile(const char *file_name, sensorPrivateData *sensor_data);
+
+    void setNrEE(bool en);
 
     // I3AControls
     virtual status_t init3A();
@@ -472,7 +466,6 @@ private:
 
     status_t initCameraInput();
     void initFileInject();
-    void initDriverVersion(void);
     void initFrameConfig();
 
     status_t configurePreview();
@@ -708,7 +701,6 @@ private:
 
     int mConfigSnapshotPreviewDevice;
     int mConfigRecordingPreviewDevice;
-    int mConfigLastDevice;
     int mPreviewDevice;
     int mRecordingDevice;
 
@@ -740,6 +732,8 @@ private:
     int mCssMinorVersion;
     int mIspHwMajorVersion;
     int mIspHwMinorVersion;
+
+    bool mNoiseReductionEdgeEnhancement;
 }; // class AtomISP
 
 }; // namespace android

@@ -559,8 +559,9 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageFrame *msg)
      *  of the postview and snapshot buffers. Once they are allocated like
      *  snapshots we can check again the postview.
      */
-    if (snapshotBuf.buff != NULL) {
+    if (snapshotBuf.dataPtr != NULL) {
         // Return the raw buffers back to ISP
+        LOG1("Returning ULL raw image now");
         snapshotBuf.type = ATOM_BUFFER_SNAPSHOT;  // reset the buffer type
         mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
     }

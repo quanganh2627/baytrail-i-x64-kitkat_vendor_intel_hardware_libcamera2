@@ -45,6 +45,10 @@ AtomCP::AtomCP(AtomISP *isp) :
     mISP(isp)
 {
     LOG1("@%s", __FUNCTION__);
+    int ispMinor, ispMajor;
+
+    ispMinor = mISP->getCssMinorVersion();
+    ispMajor = mISP->getCssMajorVersion();
 
     mPrintFunctions.vdebug = vdebug;
     mPrintFunctions.verror = verror;
@@ -62,7 +66,7 @@ AtomCP::AtomCP(AtomISP *isp) :
     /* Differentiate between CSS 1.5 and CSS 1.0.
      * If Acceleration API v1.5 specific functions stay NULL,
      * then Acceleration API v1.0 shall be called. */
-    if (isp->getLastDevice() == 3) {
+    if ((ispMajor*10 + ispMinor) > 10) {
         mAccAPI.map_firmware_arg   = map_firmware_arg;
         mAccAPI.unmap_firmware_arg = unmap_firmware_arg;
         mAccAPI.set_mapped_arg     = set_mapped_arg;
@@ -73,8 +77,8 @@ AtomCP::AtomCP(AtomISP *isp) :
         mAccAPI.set_mapped_arg     = NULL;
     }
 
-    mAccAPI.version_css.major = mISP->getCssMajorVersion();
-    mAccAPI.version_css.minor = mISP->getCssMinorVersion();
+    mAccAPI.version_css.major = ispMajor;
+    mAccAPI.version_css.minor = ispMinor;
     mAccAPI.version_isp.major = mISP->getIspHwMajorVersion();
     mAccAPI.version_isp.minor = mISP->getIspHwMinorVersion();
     LOG1("@%s: version infor css.major:%d, minor:%d, isp.major:%d, isp.minor:%d", __FUNCTION__,
@@ -178,11 +182,9 @@ status_t AtomCP::initializeHDR(unsigned width, unsigned height)
     LOG1("@%s, size=%ux%u", __FUNCTION__, width, height);
     ia_err ia_err;
 
-    if (mISP->getLastDevice() == 3) {
-        ia_err = ia_cp_hdr_init(width, height);
-        if (ia_err != ia_err_none)
-            return NO_MEMORY;
-    }
+    ia_err = ia_cp_hdr_init(width, height);
+    if (ia_err != ia_err_none)
+        return NO_MEMORY;
 
     return NO_ERROR;
 }
@@ -191,11 +193,10 @@ status_t AtomCP::uninitializeHDR(void)
 {
     ia_err ia_err;
 
-    if (mISP->getLastDevice() == 3) {
-        ia_err = ia_cp_hdr_uninit();
-        if (ia_err != ia_err_none)
-            return INVALID_OPERATION;
-    }
+    ia_err = ia_cp_hdr_uninit();
+    if (ia_err != ia_err_none)
+        return INVALID_OPERATION;
+
     PERFORMANCE_TRACES_BREAKDOWN_STEP_NOPARAM();
 
     return NO_ERROR;
@@ -203,7 +204,7 @@ status_t AtomCP::uninitializeHDR(void)
 
 status_t AtomCP::setIaFrameFormat(ia_frame* iaFrame, int v4l2Format)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     if (v4l2Format == V4L2_PIX_FMT_YUV420)
         iaFrame->format = ia_frame_format_yuv420;
     else if (v4l2Format == V4L2_PIX_FMT_NV12)

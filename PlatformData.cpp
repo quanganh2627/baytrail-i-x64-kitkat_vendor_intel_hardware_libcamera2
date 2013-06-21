@@ -356,6 +356,24 @@ int PlatformData::overlayRotation(int cameraId)
 
 }
 
+bool PlatformData::snapshotResolutionSupportedByCVF(int cameraId,
+                                                    int width, int height)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+        LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+        return true;
+    }
+
+    Vector<Size>::const_iterator it = i->mCameras[cameraId].mCVFUnsupportedSnapshotResolutions.begin();
+    for (;it != i->mCameras[cameraId].mCVFUnsupportedSnapshotResolutions.end(); ++it) {
+        if (it->width == width && it->height == height) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool PlatformData::supportsDVS(int cameraId)
 {
     PlatformBase *i = getInstance();
@@ -1109,6 +1127,12 @@ bool PlatformData::supportAIQ(void)
 {
     PlatformBase *i = getInstance();
     return i->mSupportAIQ;
+}
+
+bool PlatformData::supportDualVideo(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mSupportDualVideo;
 }
 
 int PlatformData::getPreviewFormat(void)
