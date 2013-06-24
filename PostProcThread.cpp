@@ -188,6 +188,7 @@ status_t PostProcThread::handleMessageStopFaceDetection()
     status_t status = NO_ERROR;
 
     mFaceDetectionRunning = false;
+    resetToOldAAAValues();
     mOldAfMode = CAM_AF_MODE_NOT_SET;
     mOldAeMeteringMode = CAM_AE_METERING_MODE_NOT_SET;
 
