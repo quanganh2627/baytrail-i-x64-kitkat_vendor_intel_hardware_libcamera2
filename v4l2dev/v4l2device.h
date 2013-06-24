@@ -95,7 +95,13 @@ protected:
  */
 class V4L2VideoNode: public V4L2DeviceBase {
 public:
-    V4L2VideoNode(const char *name, int id);
+    enum VideNodeDirection {
+        INPUT_VIDEO_NODE,   /*!< input video devices like cameras or capture cards */
+        OUTPUT_VIDEO_NODE  /*!< output video devices like displays */
+    };
+
+public:
+    V4L2VideoNode(const char *name, int id, VideNodeDirection nodeDirection = INPUT_VIDEO_NODE);
     virtual ~V4L2VideoNode();
 
     virtual status_t open();
@@ -156,6 +162,8 @@ private:
 
     Vector<struct v4l2_buffer_info> mSetBufferPool; /*!< This is the buffer pool set before the device is prepared*/
     Vector<struct v4l2_buffer_info> mBufferPool;    /*!< This is the active buffer pool */
+
+    VideNodeDirection mDirection;
 };
 
 /**

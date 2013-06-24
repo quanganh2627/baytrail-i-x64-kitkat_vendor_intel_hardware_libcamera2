@@ -33,11 +33,12 @@ namespace android {
 ////////////////////////////////////////////////////////////////////
 
 
-V4L2VideoNode::V4L2VideoNode(const char *name, int anId):
+V4L2VideoNode::V4L2VideoNode(const char *name, int anId, VideNodeDirection nodeDirection):
                                                         V4L2DeviceBase(name,anId),
                                                         mState(DEVICE_CLOSED),
                                                         mFrameCounter(0),
-                                                        mInitialSkips(0)
+                                                        mInitialSkips(0),
+                                                        mDirection(nodeDirection)
 {
     LOG1("@%s: device: %s", __FUNCTION__, name);
     mBufferPool.setCapacity(MAX_V4L2_BUFFERS);
@@ -79,7 +80,17 @@ status_t V4L2VideoNode::close()
     return status;
 }
 
-
+/**
+ * queries the capabilities of the device and it does some basic sanity checks
+ * based on the direction of the video device node
+ *
+ * \param cap: [OUT] V4L2 capability structure
+ *
+ * \return NO_ERROR  if everything went ok
+ * \return INVALID_OPERATION if the device was not in correct state
+ * \return UNKNOWN_ERROR if IOCTL operation failed
+ * \return DEAD_OBJECT if the basic checks for this object failed
+ */
 status_t V4L2VideoNode::queryCap(struct v4l2_capability *cap)
 {
     LOG1("@%s device : %s", __FUNCTION__, mName.string());
@@ -102,6 +113,26 @@ status_t V4L2VideoNode::queryCap(struct v4l2_capability *cap)
     LOG1( "bus_info:      '%s'", cap->bus_info);
     LOG1( "version:      %x", cap->version);
     LOG1( "capabilities:      %x", cap->capabilities);
+
+    /* Do some basic sanity check */
+
+    if (mDirection == INPUT_VIDEO_NODE) {
+        if (!(cap->capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
+           LOGW("No capture devices - But this is an input video node!");
+           return DEAD_OBJECT;
+        }
+
+        if (!(cap->capabilities & V4L2_CAP_STREAMING)) {
+            LOGW("Is not a video streaming device");
+            return DEAD_OBJECT;
+        }
+
+    } else {
+        if (!(cap->capabilities & V4L2_CAP_VIDEO_OUTPUT)) {
+            LOGW("No output devices - but this is an output video node!");
+            return DEAD_OBJECT;
+        }
+    }
 
     return NO_ERROR;
 }
@@ -532,7 +563,15 @@ int V4L2VideoNode::requestBuffers(uint num_buffers)
 
     req_buf.memory = V4L2_MEMORY_USERPTR;
     req_buf.count = num_buffers;
-    req_buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+    if (mDirection == INPUT_VIDEO_NODE)
+        req_buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    else if (mDirection == OUTPUT_VIDEO_NODE)
+        req_buf.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+    else {
+        LOGE("Unknown node direction (in/out) this should not happen");
+        return -1;
+    }
 
     LOG1("VIDIOC_REQBUFS, count=%d", req_buf.count);
     ret = ioctl(mFd, VIDIOC_REQBUFS, &req_buf);
@@ -666,7 +705,17 @@ int V4L2VideoNode::newBuffer(int index, struct v4l2_buffer_info &buf)
 
     vbuf->flags = 0x0;
     vbuf->memory = V4L2_MEMORY_USERPTR;
-    vbuf->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+    if (mDirection == INPUT_VIDEO_NODE)
+        vbuf->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    else if (mDirection == OUTPUT_VIDEO_NODE)
+        vbuf->type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+    else {
+        LOGE("Unknown node direction (in/out) this should not happen");
+        return -1;
+    }
+
+
     vbuf->index = index;
     ret = ioctl(mFd , VIDIOC_QUERYBUF, vbuf);
 
