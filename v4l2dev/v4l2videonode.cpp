@@ -292,8 +292,15 @@ int V4L2VideoNode::start(int buffer_count, int initial_skips)
  * - CONFIGURED
  * - PREPARED
  *
+ * This method is a convenience method for use in the context of video capture
+ * (INPUT_VIDEO_NODE)
+ * It makes use of the more detailed method that uses as input parameter the
+ * v4l2_format structure
+ * This method queries first the current format and updates capture format.
+ *
+ *
  * \param aConfig:[IN/OUT] reference to the new configuration.
- *                 This struct contains new values for width,height and format
+ *                 This structure contains new values for width,height and format
  *                 parameters, but the stride value is not known by the caller
  *                 of this method. The stride value is retrieved from the ISP
  *                 and the value updated, so aConfig.stride is an OUTPUT parameter
@@ -332,30 +339,72 @@ status_t V4L2VideoNode::setFormat(FrameInfo &aConfig)
     v4l2_fmt.fmt.pix.height = aConfig.height;
     v4l2_fmt.fmt.pix.pixelformat = aConfig.format;
     v4l2_fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
+
+    // Update current configuration with the new one
+    ret = setFormat(v4l2_fmt);
+    if (ret != NO_ERROR)
+        return ret;
+
+    // .. but get the stride from ISP
+    // and update the new configuration struct with it
+    aConfig.stride = mConfig.stride;
+
+    // Do the same for the frame size
+    aConfig.size = mConfig.size;
+
+    return NO_ERROR;
+}
+
+/**
+ * Update the current device node configuration (low-level)
+ *
+ * This called is allowed in the following states:
+ * - OPEN
+ * - CONFIGURED
+ * - PREPARED
+ *
+ * This methods allows more detailed control of the format than the previous one
+ * It updates the internal configuration used to check for discrepancies between
+ * configuration and buffer pool properties
+ *
+ * \param aFormat:[IN] reference to the new v4l2_format .
+ *
+ *  \return NO_ERROR if everything went well
+ *          INVALID_OPERATION if device is not in correct state (open)
+ *          UNKNOW_ERROR if we get an error from the v4l2 ioctl's
+ */
+status_t V4L2VideoNode::setFormat(struct v4l2_format &aFormat)
+{
+
+    LOG1("@%s device = %s", __FUNCTION__, mName.string());
+    int ret;
+
+    if ((mState != DEVICE_OPEN) &&
+        (mState != DEVICE_CONFIGURED) &&
+        (mState != DEVICE_PREPARED) ){
+        LOGE("%s invalid device state %d",__FUNCTION__, mState);
+        return INVALID_OPERATION;
+    }
+
+
     LOG1("VIDIOC_S_FMT: width: %d, height: %d, format: %d, field: %d",
-                v4l2_fmt.fmt.pix.width,
-                v4l2_fmt.fmt.pix.height,
-                v4l2_fmt.fmt.pix.pixelformat,
-                v4l2_fmt.fmt.pix.field);
-    ret = ioctl(mFd, VIDIOC_S_FMT, &v4l2_fmt);
+            aFormat.fmt.pix.width,
+            aFormat.fmt.pix.height,
+            aFormat.fmt.pix.pixelformat,
+            aFormat.fmt.pix.field);
+    ret = ioctl(mFd, VIDIOC_S_FMT, &aFormat);
     if (ret < 0) {
         LOGE("VIDIOC_S_FMT failed: %s", strerror(errno));
         return UNKNOWN_ERROR;
     }
 
-
     // Update current configuration with the new one
-    mConfig = aConfig;
-
-    // .. but get the stride from ISP
-    mConfig.stride = bytesPerLineToWidth(aConfig.format,v4l2_fmt.fmt.pix.bytesperline);
-    LOG1("stride: %d from ISP", mConfig.stride);
-    // and update the new configuration struct with it
-    aConfig.stride = mConfig.stride;
-
-    // Do the same for the frame size
+    mConfig.format = aFormat.fmt.pix.pixelformat;
+    mConfig.width = aFormat.fmt.pix.width;
+    mConfig.height = aFormat.fmt.pix.height;
+    mConfig.stride = bytesPerLineToWidth(mConfig.format,aFormat.fmt.pix.bytesperline);
     mConfig.size = frameSize(mConfig.format, mConfig.stride, mConfig.height);
-    aConfig.size = mConfig.size;
+    LOG1("stride: %d from ISP", mConfig.stride);
 
     mState = DEVICE_CONFIGURED;
     mSetBufferPool.clear();
