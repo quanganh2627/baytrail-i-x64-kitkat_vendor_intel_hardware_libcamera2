@@ -47,16 +47,29 @@ BracketManager::~BracketManager()
 
 /**
  *  For Exposure Bracketing, the applied exposure value will be available in
- *  current frame + 2. Therefore, in order to do a correct exposure bracketing
- *  we need to skip 2 frames. But, when burst-skip-frames parameter is set
- *  (>0) we have some special cases, described below.
- *
- *  We apply bracketing only for the first skipped frames, so the
+ *  current frame + CPF Exposure.Lag (2 by default). Therefore, in order to do
+ *  a correct exposure bracketing we need to skip this amount of frames
+ *  initially. When burst-skip-frames parameter is set (>0) we need to skip also
+ *  for the target fps. Bracketing itself follows the same logic but more than one
+ *  frames are given with the same exposure and skipped.
+*
+ *  We start applying bracketing for the initially skipped frames, so the
  *  desired result will be available in the real needed frame.
  *  Below is the explanation:
  *  (S stands for skipped frame)
- *  (F stands for forced skipped frame, in order to get the desired exposure
- *   in the next real frame)
+ *  (F stands for forced skipped frame, needed initially for Exposure.Lag)
+ *
+ *  Detailed descriptions for 3 different slow, medium and fast use cases
+ *  below (Where exposure.lag = 2)
+ *
+ *  For burst-skip-frames=0
+ *  Applied exposure value   EV0 EV1 EV2 EV3 EV4 EV5
+ *  Frame number             FS0 FS1   2   3   4   5   6   7
+ *  Output exposure value            EV0 EV1 EV2 EV3 EV4 EV5
+ *  Explanation: in the beginning, we need to force two frame skipping, so
+ *  that the applied exposure will be available in frame 2. Continuing the
+ *  burst, we don't need to skip, because we will apply the bracketing exposure
+ *  in burst sequence (see the timeline above).
  *
  *  For burst-skip-frames=1
  *  Applied exposure value   EV0     EV1     EV2     EV3     EV4     EV5
@@ -489,24 +502,28 @@ status_t BracketManager::startBracketing()
     // skip initial frames
     int doBracketNum = 0;
     int skipNum = 0;
-    if (mBracketing.mode == BRACKET_EXPOSURE && mFpsAdaptSkip < 2) {
-        /*
-         *  If we are in Exposure Bracketing, and mFpsAdaptSkip < 2, we need to
-         *  skip some initial frames and apply bracketing (explanation above):
-         *  2 frames for mFpsAdaptSkip == 0
-         *  1 frame  for mFpsAdaptSkip == 1
-         */
-         skipNum += 2 - mFpsAdaptSkip;
-         doBracketNum += 2 - mFpsAdaptSkip;
+    if (mBracketing.mode == BRACKET_EXPOSURE) {
         /*
          *  Because integration time and gain can not become effective immediately
-         *  for some sensors after it has been set into ISP, so need to skip first
-         *  several frames, the skip frame number is configured in CPF
+         *  and delays depend on sensors, we need to skip first several frames
+         *  See documentation for BracketManager::skipFrames()
          */
-         int aeBracketingSkipNum = 0;
-         PlatformData::HalConfig.getValue(aeBracketingSkipNum, CPF::Exposure, CPF::Lag);
-         skipNum += aeBracketingSkipNum;
-         doBracketNum += aeBracketingSkipNum;
+        int exposureLag = 0;
+        PlatformData::HalConfig.getValue(exposureLag, CPF::Exposure, CPF::Lag);
+        if (exposureLag == 0) {
+            LOG1("Exposure latency (CPF Exposure.Lag) zero, using static default in bracketing");
+            exposureLag = 2;
+        }
+
+        /*
+         *  If we are in Exposure Bracketing, and we need to skip frames for
+         *  mFpsAdaptSkip (target fps) we can count these out from initial
+         *  skips done at start.
+         */
+        if (mFpsAdaptSkip < exposureLag) {
+            skipNum += exposureLag - mFpsAdaptSkip;
+            doBracketNum += exposureLag - mFpsAdaptSkip;
+        }
     } else if (mBracketing.mode == BRACKET_FOCUS && mFpsAdaptSkip < 1) {
         /*
          *  If we are in Focus Bracketing, and mFpsAdaptSkip < 1, we need to
