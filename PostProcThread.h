@@ -252,7 +252,6 @@ private:
     bool mFaceDetectionRunning;
     bool mFaceRecognitionRunning;
     int mFaceAAAFlags;
-    AfMode mOldAfMode;
     MeteringMode mOldAeMeteringMode;
     SmartShutterParams mSmartShutter;
     void *mIspHandle;

@@ -43,7 +43,6 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     ,mFaceDetectionRunning(false)
     ,mFaceRecognitionRunning(false)
     ,mFaceAAAFlags(AAA_FLAG_ALL)
-    ,mOldAfMode(CAM_AF_MODE_NOT_SET)
     ,mOldAeMeteringMode(CAM_AE_METERING_MODE_NOT_SET)
     ,mZoomRatio(0)
     ,mRotation(0)
@@ -189,7 +188,6 @@ status_t PostProcThread::handleMessageStopFaceDetection()
 
     mFaceDetectionRunning = false;
     resetToOldAAAValues();
-    mOldAfMode = CAM_AF_MODE_NOT_SET;
     mOldAeMeteringMode = CAM_AE_METERING_MODE_NOT_SET;
 
     SensorThread::getInstance()->unRegisterOrientationListener(this);
@@ -900,7 +898,7 @@ void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata
         return;
     }
 
-    if (mFaceAAAFlags & AAA_FLAG_AF || mFaceAAAFlags & AAA_FLAG_AE) {
+    if (mFaceAAAFlags & AAA_FLAG_AE) {
         CameraWindow *windows = new CameraWindow[face_metadata.number_of_faces];
 
         // TODO: Move the loop to sort func? Or do we want to sort?
@@ -920,7 +918,6 @@ void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata
                 convertFromAndroidCoordinates(windows[i], windows[i], aaaWindow);
             }
 
-
             LOG2("Face window: (%d,%d,%d,%d)",
                 windows[i].x_left,
                 windows[i].y_top,
@@ -929,12 +926,10 @@ void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata
         }
 
         // Apply AE window if needed:
-        if (mFaceAAAFlags & AAA_FLAG_AE) {
-            // NOTE: AF uses first window for focus, use 1st win for AE as well...
-            CameraWindow aeWindow = windows[0];
-            aeWindow.weight = 5;
-            setAeMeteringArea(&aeWindow);
-        }
+        // NOTE: AF uses first window for focus, use 1st win for AE as well...
+        CameraWindow aeWindow = windows[0];
+        aeWindow.weight = 5;
+        setAeMeteringArea(&aeWindow);
 
         delete[] windows;
         windows = NULL;
@@ -949,13 +944,6 @@ void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata
 void PostProcThread::resetToOldAAAValues()
 {
         // No faces detected, reset to previous 3A values:
-
-        // Auto-focus:
-        if ((mFaceAAAFlags & AAA_FLAG_AF) && mOldAfMode != CAM_AF_MODE_NOT_SET) {
-            LOG2("Reset to old focus mode (%d)", mOldAfMode);
-            m3AControls->setAfMode(mOldAfMode);
-            mOldAfMode = CAM_AF_MODE_NOT_SET;
-        }
 
         // Auto-exposure metering mode:
         if ((mFaceAAAFlags & AAA_FLAG_AE) && mOldAeMeteringMode != CAM_AE_METERING_MODE_NOT_SET) {
