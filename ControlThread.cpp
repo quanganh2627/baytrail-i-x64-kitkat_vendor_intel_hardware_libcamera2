@@ -2104,7 +2104,11 @@ status_t ControlThread::skipFrames(size_t numFrames)
 {
     LOG1("@%s: numFrames=%d", __FUNCTION__, numFrames);
     status_t status = NO_ERROR;
-    AtomBuffer snapshotBuffer, postviewBuffer;
+
+    AtomBuffer snapshotBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+    AtomBuffer postviewBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
 
     for (size_t i = 0; i < numFrames; i++) {
         if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
@@ -2162,7 +2166,10 @@ status_t ControlThread::handleMessagePanoramaCaptureTrigger()
 {
     LOG1("@%s:", __FUNCTION__);
     status_t status = NO_ERROR;
-    AtomBuffer snapshotBuffer, postviewBuffer;
+    AtomBuffer snapshotBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+    AtomBuffer postviewBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
 
     status = capturePanoramaPic(snapshotBuffer, postviewBuffer);
     if (status != NO_ERROR) {
@@ -2699,7 +2706,10 @@ status_t ControlThread::captureStillPic()
 {
     LOG1("@%s: ", __FUNCTION__);
     status_t status = NO_ERROR;
-    AtomBuffer snapshotBuffer, postviewBuffer;
+    AtomBuffer snapshotBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+    AtomBuffer postviewBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
     int width, height, format, size;
     int pvWidth, pvHeight, pvSize;
     FlashMode flashMode = m3AControls->getAeFlashMode();
@@ -2983,7 +2993,12 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
 {
     LOG1("@%s: client request %d", __FUNCTION__, clientRequest);
     status_t status = NO_ERROR;
-    AtomBuffer snapshotBuffer, postviewBuffer;
+
+    AtomBuffer snapshotBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+    AtomBuffer postviewBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+
     int pvWidth, pvHeight;
     // Note: Burst (online mode) does not need to handle preview-update-mode
     //       preview is stopped and we always display postview when size matches
@@ -3151,7 +3166,12 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
 {
     LOG1("@%s: ", __FUNCTION__);
     status_t status = NO_ERROR;
-    AtomBuffer snapshotBuffer, postviewBuffer;
+
+    AtomBuffer snapshotBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+    AtomBuffer postviewBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+
     int pvW, pvH;
     // Note: Postview is not displayed with any of fixed burst scenarios,
     //       just having it here for conformity and noticing.
@@ -3234,7 +3254,10 @@ status_t ControlThread::captureULLPic()
 {
     LOG1("@%s: ", __FUNCTION__);
     status_t status = NO_ERROR;
-    AtomBuffer snapshotBuffer, postviewBuffer;
+    AtomBuffer snapshotBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+    AtomBuffer postviewBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
     int pvWidth, pvHeight;
     int picWidth, picHeight, format;
     int cachedBurstLength, cachedBurstStart;
@@ -7301,7 +7324,8 @@ bool ControlThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
 status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
 {
     LOG2("@%s", __FUNCTION__);
-    AtomBuffer buff;
+    AtomBuffer buff = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_VIDEO);
+
     status_t status = NO_ERROR;
 
     status = mISP->getRecordingFrame(&buff);
