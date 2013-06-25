@@ -47,14 +47,6 @@ namespace android {
 #define LARGEST_THUMBNAIL_WIDTH 320
 #define LARGEST_THUMBNAIL_HEIGHT 240
 
-struct v4l2_buffer_pool {
-    int active_buffers;
-    int width;
-    int height;
-    int format;
-    struct v4l2_buffer_info bufs [MAX_V4L2_BUFFERS];
-};
-
 struct devNameGroup
 {
     char dev[MAX_CAMERA_NODES + 1][MAX_DEVICE_NODE_CHAR_NR];
@@ -297,7 +289,6 @@ private:
     static const int V4L2_INJECT_DEVICE     = 3;
     static const int V4L2_ISP_SUBDEV        = 4;
     static const int V4L2_ISP_SUBDEV2       = 5;
-    static const int V4L2_LEGACY_VIDEO_PREVIEW_DEVICE = 1;
 
     /**
      * Maximum number of V4L2 devices node we support
@@ -326,28 +317,6 @@ private:
         int port;            //!< AtomISP port type
         uint32_t index;      //!< V4L2 index
         char name[MAX_SENSOR_NAME_LENGTH];
-    };
-
-    enum ResolutionIndex {
-        RESOLUTION_VGA = 0,
-        RESOLUTION_720P,
-        RESOLUTION_1_3MP,
-        RESOLUTION_2MP,
-        RESOLUTION_1080P,
-        RESOLUTION_3MP,
-        RESOLUTION_5MP,
-        RESOLUTION_8MP,
-        RESOLUTION_13MP,
-        RESOLUTION_14MP,
-    };
-
-    enum DeviceState {
-        DEVICE_CLOSED = 0,  /*!< kernel device closed */
-        DEVICE_OPEN,        /*!< device node opened */
-        DEVICE_CONFIGURED,  /*!< device format set, IOC_S_FMT */
-        DEVICE_PREPARED,    /*!< buffers queued, IOC_QBUF */
-        DEVICE_STARTED,     /*!< stream started, IOC_STREAMON */
-        DEVICE_ERROR        /*!< undefined state */
     };
 
 // private methods
@@ -413,44 +382,12 @@ private:
     status_t setTorchHelper(int intensity);
     status_t updateCaptureParams();
 
-    int  openDevice(int device);
-    void closeDevice(int device);
-    int v4l2_poll(int device, int timeout);
-    status_t v4l2_capture_open(int device);
-    status_t v4l2_capture_close(int fd);
-    status_t v4l2_capture_querycap(int device, struct v4l2_capability *cap);
-    status_t v4l2_capture_s_input(int fd, int index);
     int detectDeviceResolutions();
     int atomisp_set_capture_mode(int deviceMode);
-    int v4l2_capture_try_format(int device, int *w, int *h, int *format);
-    int configureDevice(int device, int deviceMode, FrameInfo* fInfo, bool raw);
+
     int configureDevice(V4L2VideoNode *device, int deviceMode, FrameInfo *fInfo, bool raw);
-    int v4l2_capture_g_framerate(int fd, float * framerate, int width,
-                                          int height, int pix_fmt);
-    int v4l2_capture_s_format(int fd, int device, int w, int h, int format, bool raw, int* stride);
-    int stopDevice(int device, bool leaveConfigured = false);
-    int v4l2_capture_streamoff(int fd);
-    void destroyBufferPool(int device);
-    int v4l2_capture_free_buffer(int device, struct v4l2_buffer_info *buf_info);
-    int v4l2_capture_release_buffers(int device);
-    int v4l2_capture_request_buffers(int device, uint num_buffers);
-    int prepareDevice(int device, int buffer_count);
-    int startDevice(int device, int buffer_count);
-    int createBufferPool(int device, int buffer_count);
-    int v4l2_capture_new_buffer(int device, int index, struct v4l2_buffer_info *buf);
-    int activateBufferPool(int device);
-    int v4l2_capture_streamon(int fd);
-    int v4l2_capture_qbuf(int fd, int index, struct v4l2_buffer_info *buf);
-    int grabFrame(int device, struct v4l2_buffer *buf);
-    int v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf);
-    int atomisp_set_attribute (int fd, int attribute_num,
-                               const int value, const char *name);
-    int atomisp_get_attribute (int fd, int attribute_num, int *value);
+
     int atomisp_set_zoom (int zoom);
-    int xioctl(int fd, int request, void *arg) const;
-    int v4l2_subscribe_event(int fd, int event);
-    int v4l2_unsubscribe_event(int fd, int event);
-    int v4l2_dqevent(int fd, struct v4l2_event *event);
 
     int startFileInject(void);
     int stopFileInject(void);
@@ -563,16 +500,9 @@ private:
     bool mContCaptPriority;
     unsigned int mInitialSkips;
 
-    // TODO: video_fds should be moved to mDevices
-    int video_fds[V4L2_MAX_DEVICE_COUNT];
-    struct {
-      unsigned int frameCounter;
-      DeviceState state;
-      Mutex       mutex;
-      unsigned int initialSkips;
-    } mDevices[V4L2_MAX_DEVICE_COUNT];
-
     int dumpFrameInfo(AtomMode mode);
+
+    Mutex mDeviceMutex[V4L2_MAX_DEVICE_COUNT];  /*!< Used to ensure thread safety in some operations on the devices*/
 
     sp<V4L2VideoNode>  mMainDevice;
     sp<V4L2VideoNode>  mPreviewDevice;
@@ -588,8 +518,6 @@ private:
     int dumpSnapshot(int snapshotIndex, int postviewIndex);
     int dumpRawImageFlush(void);
     bool isDumpRawImageReady(void);
-
-    struct v4l2_buffer_pool v4l2_buf_pool[V4L2_MAX_DEVICE_COUNT]; //pool[0] for device0 pool[1] for device1
 
     bool mIsFileInject;
     struct FileInject {

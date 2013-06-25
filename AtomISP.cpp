@@ -36,7 +36,6 @@
 #include "PerformanceTraces.h"
 
 #define PAGE_ALIGN(x) ((x + 0xfff) & 0xfffff000)
-#define main_fd video_fds[V4L2_MAIN_DEVICE]
 
 #define DEFAULT_SENSOR_FPS      15.0
 #define DEFAULT_PREVIEW_FPS     30.0
@@ -64,16 +63,6 @@
 #define RESOLUTION_13MP_TABLE   \
     "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448,3648x2736,4096x3072,4160x2336,4160x3104"
 // workaround end for the imx135
-
-/**
- * Checks whether 'device' is a valid atomisp V4L2 device node
- */
-#define VALID_DEVICE(device, x) \
-    if ((device < V4L2_MAIN_DEVICE) \
-            && (device != V4L2_ISP_SUBDEV && device != V4L2_ISP_SUBDEV2)) { \
-        LOGE("%s: Wrong device %d ", __FUNCTION__, device); \
-        return x; \
-    }
 
 namespace android {
 
@@ -143,7 +132,6 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
     mPreviewBuffers.clear();
     CLEAR(mConfig);
     mFileInject.clear();
-    memset(v4l2_buf_pool, 0, sizeof(v4l2_buf_pool));
 }
 
 status_t AtomISP::initDevice()
@@ -1866,7 +1854,6 @@ status_t AtomISP::startCapture()
         if (ret == NO_ERROR)
             ret = putSnapshot(&s,&p);
     }
-    mDevices[V4L2_POSTVIEW_DEVICE].initialSkips = 0;
 
 nopostview:
     mNumCapturegBuffersQueued = snapNum;
@@ -2085,72 +2072,6 @@ bool AtomISP::isOfflineCaptureRunning() const
  * width that the buffers need to have to meet the ISP constrains.
  * In effect the FrameInfo struct is an IN/OUT parameter.
  */
-int AtomISP::configureDevice(int device, int deviceMode, FrameInfo *fInfo, bool raw)
-{
-    LOG1("@%s", __FUNCTION__);
-    VALID_DEVICE(device, -1);
-    int ret = 0;
-    int w,h,format;
-    w = fInfo->width;
-    h = fInfo->height;
-    format = fInfo->format;
-    LOG1("device: %d, width:%d, height:%d, deviceMode:%d format:%d raw:%d", device,
-        w, h, deviceMode, format, raw);
-
-    if ((w <= 0) || (h <= 0)) {
-        LOGE("Wrong Width %d or Height %d", w, h);
-        return -1;
-    }
-
-    //Only update the configure for device
-    int fd = video_fds[device];
-
-    //Switch the Mode before set the format. This is the requirement of
-    //atomisp
-    ret = atomisp_set_capture_mode(deviceMode);
-    if (ret < 0)
-        return ret;
-
-    if (device == V4L2_MAIN_DEVICE ||
-        device == V4L2_PREVIEW_DEVICE)
-        applySensorFlip();
-
-    //Set the format
-    ret = v4l2_capture_s_format(fd, device, w, h, format, raw, &(fInfo->stride));
-    if (ret < 0)
-        return ret;
-    // update the size according to the stride from ISP
-    fInfo->size = frameSize(fInfo->format, fInfo->stride, fInfo->height);
-    v4l2_buf_pool[device].width = w;
-    v4l2_buf_pool[device].height = h;
-    v4l2_buf_pool[device].format = format;
-
-    /* 3A related initialization*/
-    //Reallocate the grid for 3A after format change
-    if (device == V4L2_MAIN_DEVICE ||
-        device == V4L2_PREVIEW_DEVICE) {
-        ret = v4l2_capture_g_framerate(fd, &mConfig.fps, w, h, format);
-        if (ret < 0) {
-        /*Error handler: if driver does not support FPS achieving,
-                       just give the default value.*/
-            mConfig.fps = DEFAULT_SENSOR_FPS;
-            ret = 0;
-        }
-    }
-
-    // reduce FPS for still capture
-    if (mFileInject.active == true) {
-        if (deviceMode == CI_MODE_STILL_CAPTURE)
-            mConfig.fps = DEFAULT_SENSOR_FPS;
-    }
-
-    mDevices[device].state = DEVICE_CONFIGURED;
-
-    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("DeviceId:", device);
-    //We need apply all the parameter settings when do the camera reset
-    return ret;
-}
-
 int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, FrameInfo *fInfo, bool raw)
 {
     LOG1("@%s", __FUNCTION__);
@@ -2205,230 +2126,6 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, FrameInfo *f
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("DeviceId:", device->mId);
     //We need apply all the parameter settings when do the camera reset
-    return ret;
-}
-
-int AtomISP::prepareDevice(int device, int buffer_count)
-{
-    LOG1("@%s, device = %d", __FUNCTION__, device);
-    VALID_DEVICE(device, -1);
-
-    int ret;
-    int fd = video_fds[device];
-    LOG1(" prepareDevice fd = %d", fd);
-
-    //request, query and mmap the buffer and save to the pool
-    ret = createBufferPool(device, buffer_count);
-    if (ret < 0)
-        return ret;
-
-    mDevices[device].state = DEVICE_PREPARED;
-
-    return 0;
-}
-
-int AtomISP::startDevice(int device, int buffer_count)
-{
-    LOG1("@%s, device = %d", __FUNCTION__, device);
-    VALID_DEVICE(device, -1);
-
-    int ret;
-    int fd = video_fds[device];
-    LOG1(" startDevice fd = %d", fd);
-
-    if (mDevices[device].state != DEVICE_PREPARED) {
-        ret = prepareDevice(device, buffer_count);
-        if (ret < 0) {
-            destroyBufferPool(device);
-            return ret;
-        }
-    }
-
-    //Qbuf
-    ret = activateBufferPool(device);
-    if (ret < 0)
-        return ret;
-
-    //stream on
-    ret = v4l2_capture_streamon(fd);
-    if (ret < 0)
-        return ret;
-
-    mDevices[device].frameCounter = 0;
-    mDevices[device].state = DEVICE_STARTED;
-    mDevices[device].initialSkips = mInitialSkips;
-
-    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("DeviceId:", device);
-    return ret;
-}
-
-int AtomISP::activateBufferPool(int device)
-{
-    LOG1("@%s: device = %d", __FUNCTION__, device);
-
-    int fd = video_fds[device];
-    int ret;
-    struct v4l2_buffer_pool *pool = &v4l2_buf_pool[device];
-
-    for (int i = 0; i < pool->active_buffers; i++) {
-        ret = v4l2_capture_qbuf(fd, i, &pool->bufs[i]);
-        if (ret < 0)
-            return ret;
-    }
-    return 0;
-}
-
-int AtomISP::createBufferPool(int device, int buffer_count)
-{
-    LOG1("@%s: device = %d", __FUNCTION__, device);
-    int i, ret;
-
-    struct v4l2_buffer_pool *pool = &v4l2_buf_pool[device];
-    int num_buffers = v4l2_capture_request_buffers(device, buffer_count);
-    LOG1("num_buffers = %d", num_buffers);
-
-    if (num_buffers <= 0)
-        return -1;
-
-    pool->active_buffers = num_buffers;
-
-    for (i = 0; i < num_buffers; i++) {
-        pool->bufs[i].width = pool->width;
-        pool->bufs[i].height = pool->height;
-        pool->bufs[i].format = pool->format;
-        ret = v4l2_capture_new_buffer(device, i, &pool->bufs[i]);
-        if (ret < 0)
-            goto error;
-    }
-    return 0;
-
-error:
-    for (int j = 0; j < i; j++)
-        v4l2_capture_free_buffer(device, &pool->bufs[j]);
-    pool->active_buffers = 0;
-    return ret;
-}
-
-int AtomISP::stopDevice(int device, bool leaveConfigured)
-{
-    LOG1("@%s: device = %d", __FUNCTION__, device);
-    VALID_DEVICE(device, -1);
-
-    int fd = video_fds[device];
-
-    if (fd >= 0 && mDevices[device].state == DEVICE_STARTED) {
-        //stream off
-        v4l2_capture_streamoff(fd);
-
-        if (!leaveConfigured) {
-            destroyBufferPool(device);
-            mDevices[device].state = DEVICE_CONFIGURED;
-        }
-        else {
-            mDevices[device].state = DEVICE_PREPARED;
-        }
-    }
-    return NO_ERROR;
-}
-
-void AtomISP::destroyBufferPool(int device)
-{
-    LOG1("@%s: device = %d", __FUNCTION__, device);
-
-    struct v4l2_buffer_pool *pool = &v4l2_buf_pool[device];
-
-    for (int i = 0; i < pool->active_buffers; i++)
-        v4l2_capture_free_buffer(device, &pool->bufs[i]);
-    pool->active_buffers = 0;
-    v4l2_capture_release_buffers(device);
-}
-
-int AtomISP::openDevice(int device)
-{
-    LOG1("@%s", __FUNCTION__);
-
-    if (device >= V4L2_MAX_DEVICE_COUNT) {
-        LOGE("Attempted to open device with illegal index (%d). V4L2_MAX_DEVICE_COUNT = %d",
-             device, V4L2_MAX_DEVICE_COUNT);
-        return -1;
-    }
-
-    if (video_fds[device] > 0) {
-        LOGW("MainDevice already opened!");
-        return video_fds[device];
-    }
-
-    video_fds[device] = v4l2_capture_open(device);
-
-    LOGW("Open device %d with fd %d", device, video_fds[device]);
-
-    if (video_fds[device] < 0) {
-        LOGE("V4L2: capture_open failed: %s", strerror(errno));
-        return -1;
-    }
-
-    // Query and check the capabilities (not needed for sub devices)
-    if ((device != V4L2_ISP_SUBDEV) && (device != V4L2_ISP_SUBDEV2)) {
-        struct v4l2_capability cap;
-        if (v4l2_capture_querycap(device, &cap) < 0) {
-            LOGE("V4L2: capture_querycap failed: %s", strerror(errno));
-            v4l2_capture_close(video_fds[device]);
-            video_fds[device] = -1;
-            return -1;
-        }
-    }
-
-    mDevices[device].state = DEVICE_OPEN;
-
-    return video_fds[device];
-}
-
-void AtomISP::closeDevice(int device)
-{
-    LOG1("@%s", __FUNCTION__);
-
-    if (video_fds[device] < 0) {
-        LOG1("Device %d already closed. Do nothing.", device);
-        return;
-    }
-
-    v4l2_capture_close(video_fds[device]);
-
-    video_fds[device] = -1;
-    mDevices[device].state = DEVICE_CLOSED;
-}
-
-/**
- * Waits for frame data to be available
- *
- * \param device V4L2 device id
- * \param timeout time to wait for data (in ms), timeout of -1
- *        means to wait indefinitely for data
- *
- * \return 0: timeout, -1: error happened, positive number: success
- */
-int AtomISP::v4l2_poll(int device, int timeout)
-{
-    LOG2("@%s", __FUNCTION__);
-    struct pollfd pfd;
-    int ret;
-
-    if (video_fds[device] < 0) {
-        LOG1("Device %d already closed. Do nothing.", device);
-        return -1;
-    }
-
-    pfd.fd = video_fds[device];
-    pfd.events = POLLPRI | POLLIN | POLLERR;
-
-
-    ret = poll(&pfd, 1, timeout);
-
-    if (pfd.revents & POLLERR) {
-        LOG1("%s received POLLERR", __FUNCTION__);
-        return -1;
-    }
-
     return ret;
 }
 
@@ -3036,97 +2733,6 @@ int AtomISP::atomisp_set_zoom (int zoom)
     return ret;
 }
 
-int AtomISP::atomisp_set_attribute (int fd, int attribute_num,
-                                             const int value, const char *name)
-{
-    LOG2("@%s", __FUNCTION__);
-    struct v4l2_control control;
-    struct v4l2_ext_controls controls;
-    struct v4l2_ext_control ext_control;
-
-    LOG2("setting attribute [%s] to %d", name, value);
-
-    if (fd < 0)
-        return -1;
-
-    CLEAR(control);
-    CLEAR(controls);
-    CLEAR(ext_control);
-
-    control.id = attribute_num;
-    control.value = value;
-    controls.ctrl_class = V4L2_CTRL_ID2CLASS(control.id);
-    controls.count = 1;
-    controls.controls = &ext_control;
-    ext_control.id = attribute_num;
-    ext_control.value = value;
-
-    if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &controls) == 0)
-        return 0;
-
-    if (ioctl(fd, VIDIOC_S_CTRL, &control) == 0)
-        return 0;
-
-    LOGE("Failed to set value %d for control %s (%d) on device '%d', %s",
-        value, name, attribute_num, fd, strerror(errno));
-    return -1;
-}
-
-/**
- * atomisp_get_attribute():
- * Try to get the value of one specific attribute
- * return value: 0 for success
- *               others are errors
- */
-int AtomISP::atomisp_get_attribute (int fd, int attribute_num,
-                                    int *value)
-{
-    struct v4l2_control control;
-    struct v4l2_ext_controls controls;
-    struct v4l2_ext_control ext_control;
-
-    if (fd < 0)
-        return -1;
-
-    CLEAR(control);
-    CLEAR(controls);
-    CLEAR(ext_control);
-
-    control.id = attribute_num;
-    controls.ctrl_class = V4L2_CTRL_ID2CLASS(control.id);
-    controls.count = 1;
-    controls.controls = &ext_control;
-    ext_control.id = attribute_num;
-
-    if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &controls) == 0) {
-        *value = ext_control.value;
-        return 0;
-    }
-
-    if (ioctl(fd, VIDIOC_G_CTRL, &control) == 0) {
-        *value = control.value;
-        return 0;
-    }
-
-    LOGE("Failed to get value for control (%d) on device '%d', %s",
-          attribute_num, fd, strerror(errno));
-    return -1;
-}
-
-int AtomISP::xioctl(int fd, int request, void *arg) const
-{
-    int ret;
-
-    do {
-        ret = ioctl (fd, request, arg);
-    } while (-1 == ret && EINTR == errno);
-
-    if (ret < 0)
-        LOGW ("%s: Request 0x%x failed: %s", __FUNCTION__, request, strerror(errno));
-
-    return ret;
-}
-
 /**
  * Start inject image data from a file using the special-purpose
  * V4L2 device node.
@@ -3298,304 +2904,6 @@ status_t AtomISP::fileInjectSetSize(void)
     return NO_ERROR;
 }
 
-int AtomISP::v4l2_capture_streamon(int fd)
-{
-    LOG1("@%s", __FUNCTION__);
-    int ret;
-    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-
-    ret = ioctl(fd, VIDIOC_STREAMON, &type);
-    if (ret < 0) {
-        LOGE("VIDIOC_STREAMON returned: %d (%s)", ret, strerror(errno));
-        return ret;
-    }
-    return ret;
-}
-
-int AtomISP::v4l2_capture_streamoff(int fd)
-{
-    LOG1("@%s", __FUNCTION__);
-    int ret;
-    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-
-    if (fd < 0){ //Device is closed
-        LOGE("Device is closed!");
-        return 0;
-    }
-    ret = ioctl(fd, VIDIOC_STREAMOFF, &type);
-    if (ret < 0) {
-        LOGE("VIDIOC_STREAMOFF returned: %d (%s)", ret, strerror(errno));
-        return ret;
-    }
-
-    return ret;
-}
-
-/* Unmap the buffer or free the userptr */
-int AtomISP::v4l2_capture_free_buffer(int device, struct v4l2_buffer_info *buf_info)
-{
-    LOG1("@%s", __FUNCTION__);
-    int ret = 0;
-    return ret;
-}
-
-int AtomISP::v4l2_capture_release_buffers(int device)
-{
-    LOG1("@%s", __FUNCTION__);
-    return v4l2_capture_request_buffers(device, 0);
-}
-
-int AtomISP::v4l2_capture_request_buffers(int device, uint num_buffers)
-{
-    LOG1("@%s dev %d buffers %d", __FUNCTION__, device, num_buffers);
-    struct v4l2_requestbuffers req_buf;
-    int ret;
-    CLEAR(req_buf);
-
-    int fd = video_fds[device];
-
-    if (fd < 0)
-        return 0;
-
-    req_buf.memory = V4L2_MEMORY_USERPTR;
-    req_buf.count = num_buffers;
-    req_buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-
-    LOG1("VIDIOC_REQBUFS, count=%d", req_buf.count);
-    ret = ioctl(fd, VIDIOC_REQBUFS, &req_buf);
-
-    if (ret < 0) {
-        LOGE("VIDIOC_REQBUFS(%d) returned: %d (%s)",
-            num_buffers, ret, strerror(errno));
-        return ret;
-    }
-
-    if (req_buf.count < num_buffers)
-        LOGW("Got less buffers than requested!");
-
-    return req_buf.count;
-}
-
-int AtomISP::v4l2_capture_new_buffer(int device, int index, struct v4l2_buffer_info *buf)
-{
-    LOG1("@%s", __FUNCTION__);
-
-    int ret;
-    int fd = video_fds[device];
-    struct v4l2_buffer *vbuf = &buf->vbuffer;
-    vbuf->flags = 0x0;
-
-    vbuf->memory = V4L2_MEMORY_USERPTR;
-
-    vbuf->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    vbuf->index = index;
-    ret = ioctl(fd , VIDIOC_QUERYBUF, vbuf);
-
-    if (ret < 0) {
-        LOGE("VIDIOC_QUERYBUF failed: %s", strerror(errno));
-        return ret;
-    }
-
-    vbuf->m.userptr = (unsigned int)(buf->data);
-
-    buf->length = vbuf->length;
-    LOG1("index %u", vbuf->index);
-    LOG1("type %d", vbuf->type);
-    LOG1("bytesused %u", vbuf->bytesused);
-    LOG1("flags %08x", vbuf->flags);
-    LOG1("memory %u", vbuf->memory);
-    LOG1("userptr:  %p", (void*)vbuf->m.userptr);
-    LOG1("length %u", vbuf->length);
-    return ret;
-}
-
-int AtomISP::v4l2_capture_g_framerate(int fd, float *framerate, int width,
-                                         int height, int pix_fmt)
-{
-    LOG1("@%s", __FUNCTION__);
-    int ret;
-    struct v4l2_frmivalenum frm_interval;
-
-    if (NULL == framerate)
-        return -EINVAL;
-
-    assert(fd > 0);
-    CLEAR(frm_interval);
-    frm_interval.pixel_format = pix_fmt;
-    frm_interval.width = width;
-    frm_interval.height = height;
-    *framerate = -1.0;
-
-    ret = ioctl(fd, VIDIOC_ENUM_FRAMEINTERVALS, &frm_interval);
-    if (ret < 0) {
-        LOGW("ioctl failed: %s", strerror(errno));
-        return ret;
-    }
-
-    assert(0 != frm_interval.discrete.denominator);
-
-    *framerate = 1.0 / (1.0 * frm_interval.discrete.numerator / frm_interval.discrete.denominator);
-
-    return 0;
-}
-
-int AtomISP::v4l2_capture_s_format(int fd, int device, int w, int h, int fourcc, bool raw, int* stride)
-{
-    LOG1("@%s", __FUNCTION__);
-    int ret;
-    struct v4l2_format v4l2_fmt;
-    CLEAR(v4l2_fmt);
-
-    v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    LOG1("VIDIOC_G_FMT");
-    ret = ioctl (fd,  VIDIOC_G_FMT, &v4l2_fmt);
-    if (ret < 0) {
-        LOGE("VIDIOC_G_FMT failed: %s", strerror(errno));
-        return -1;
-    }
-
-    v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-
-    v4l2_fmt.fmt.pix.width = w;
-    v4l2_fmt.fmt.pix.height = h;
-    v4l2_fmt.fmt.pix.pixelformat = fourcc;
-    v4l2_fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
-    LOG1("VIDIOC_S_FMT: width: %d, height: %d, format: %d, field: %d",
-                v4l2_fmt.fmt.pix.width,
-                v4l2_fmt.fmt.pix.height,
-                v4l2_fmt.fmt.pix.pixelformat,
-                v4l2_fmt.fmt.pix.field);
-    ret = ioctl(fd, VIDIOC_S_FMT, &v4l2_fmt);
-    if (ret < 0) {
-        LOGE("VIDIOC_S_FMT failed: %s", strerror(errno));
-        return -1;
-    }
-
-    //get stride from ISP
-    *stride = bytesPerLineToWidth(fourcc,v4l2_fmt.fmt.pix.bytesperline);
-    LOG1("stride: %d from ISP", *stride);
-    if (raw) {
-        mRawDataDumpSize = v4l2_fmt.fmt.pix.priv;
-        LOG1("raw data size from kernel %d\n", mRawDataDumpSize);
-    }
-
-    return 0;
-
-}
-
-int AtomISP::v4l2_capture_qbuf(int fd, int index, struct v4l2_buffer_info *buf)
-{
-    LOG2("@%s", __FUNCTION__);
-    struct v4l2_buffer *v4l2_buf = &buf->vbuffer;
-    int ret;
-
-    if (fd < 0) //Device is closed
-        return 0;
-
-    v4l2_buf->flags = buf->cache_flags;
-    ret = ioctl(fd, VIDIOC_QBUF, v4l2_buf);
-    if (ret < 0) {
-        LOGE("@%s VIDIOC_QBUF index %d failed: %s", __FUNCTION__,
-             index, strerror(errno));
-        return ret;
-    }
-    return ret;
-}
-
-status_t AtomISP::v4l2_capture_open(int device)
-{
-    LOG1("@%s", __FUNCTION__);
-    VALID_DEVICE(device, INVALID_OPERATION);
-
-    int fd;
-    struct stat st;
-
-    if ((device < V4L2_MAIN_DEVICE) &&
-        (device != V4L2_ISP_SUBDEV && device != V4L2_ISP_SUBDEV2)) {
-        LOGE("Wrong device node %d", device);
-        return -1;
-    }
-
-    const char *dev_name;
-    if ((device == V4L2_ISP_SUBDEV) || (device == V4L2_ISP_SUBDEV2))
-        dev_name = PlatformData::getISPSubDeviceName();
-    else
-        dev_name = devName[mGroupIndex].dev[device];
-
-    LOG1("---Open video device %s---", dev_name);
-
-    if (stat (dev_name, &st) == -1) {
-        LOGE("Error stat video device %s: %s",
-             dev_name, strerror(errno));
-        return -1;
-    }
-
-    if (!S_ISCHR (st.st_mode)) {
-        LOGE("%s is not a device", dev_name);
-        return -1;
-    }
-
-    fd = open(dev_name, O_RDWR);
-
-    if (fd < 0) {
-        LOGE("Error opening video device %s: %s",
-            dev_name, strerror(errno));
-        return -1;
-    }
-
-    return fd;
-}
-
-status_t AtomISP::v4l2_capture_close(int fd)
-{
-    LOG1("@%s", __FUNCTION__);
-    /* close video device */
-    LOG1("----close device ---");
-    if (fd < 0) {
-        LOGW("Device not opened!");
-        return INVALID_OPERATION;
-    }
-
-    if (close(fd) < 0) {
-        LOGE("Close video device failed: %s", strerror(errno));
-        return UNKNOWN_ERROR;
-    }
-    return NO_ERROR;
-}
-
-status_t AtomISP::v4l2_capture_querycap(int device, struct v4l2_capability *cap)
-{
-    LOG1("@%s", __FUNCTION__);
-    int ret = 0;
-    int fd = video_fds[device];
-
-    ret = ioctl(fd, VIDIOC_QUERYCAP, cap);
-
-    if (ret < 0) {
-        LOGE("VIDIOC_QUERYCAP returned: %d (%s)", ret, strerror(errno));
-        return ret;
-    }
-
-    if (!(cap->capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
-        LOGE("No capture devices");
-        return -1;
-    }
-
-    if (!(cap->capabilities & V4L2_CAP_STREAMING)) {
-        LOGE("Is not a video streaming device");
-        return -1;
-    }
-
-    LOG1( "driver:      '%s'", cap->driver);
-    LOG1( "card:        '%s'", cap->card);
-    LOG1( "bus_info:      '%s'", cap->bus_info);
-    LOG1( "version:      %x", cap->version);
-    LOG1( "capabilities:      %x", cap->capabilities);
-
-    return ret;
-}
-
-
 int AtomISP::atomisp_set_capture_mode(int deviceMode)
 {
     LOG1("@%s", __FUNCTION__);
@@ -3647,34 +2955,6 @@ int AtomISP::atomisp_set_capture_mode(int deviceMode)
     return 0;
 }
 
-int AtomISP::v4l2_capture_try_format(int device, int *w, int *h,
-                                         int *fourcc)
-{
-    LOG1("@%s", __FUNCTION__);
-    int ret;
-    int fd = video_fds[device];
-    struct v4l2_format v4l2_fmt;
-    CLEAR(v4l2_fmt);
-
-    v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-
-    v4l2_fmt.fmt.pix.width = *w;
-    v4l2_fmt.fmt.pix.height = *h;
-    v4l2_fmt.fmt.pix.pixelformat = *fourcc;
-    v4l2_fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
-
-    ret = ioctl(fd, VIDIOC_TRY_FMT, &v4l2_fmt);
-    if (ret < 0) {
-        LOGE("VIDIOC_TRY_FMT returned: %d (%s)", ret, strerror(errno));
-        return -1;
-    }
-
-    *w = v4l2_fmt.fmt.pix.width;
-    *h = v4l2_fmt.fmt.pix.height;
-    *fourcc = v4l2_fmt.fmt.pix.pixelformat;
-
-    return 0;
-}
 
 /**
  * Pushes all recording buffers back into driver except the ones already queued
@@ -3739,10 +3019,10 @@ bool AtomISP::waitForHALZSLBuffer(Vector<AtomBuffer> &vector)
         size = vector.size();
         if (size == 0) {
             mHALZSLLock.unlock();
-            mDevices[mPreviewDevice->mId].mutex.unlock();
+            mDeviceMutex[mPreviewDevice->mId].unlock();
             LOGW("@%s, AtomISP starving from ZSL buffers.", __FUNCTION__);
             usleep(sHALZSLRetryUSleep);
-            mDevices[mPreviewDevice->mId].mutex.lock(); // this locking order is significant!
+            mDeviceMutex[mPreviewDevice->mId].lock(); // this locking order is significant!
             mHALZSLLock.lock();
         }
     } while(retryCount-- && size == 0);
@@ -3803,7 +3083,7 @@ status_t AtomISP::getHALZSLPreviewFrame(AtomBuffer *buff)
 status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
-    Mutex::Autolock lock(mDevices[mPreviewDevice->mId].mutex);
+    Mutex::Autolock lock(mDeviceMutex[mPreviewDevice->mId]);
     struct v4l2_buffer_info bufInfo;
 
     if (mMode == MODE_NONE)
@@ -3865,7 +3145,7 @@ status_t AtomISP::putHALZSLPreviewFrame(AtomBuffer *buff)
 status_t AtomISP::putPreviewFrame(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
-    Mutex::Autolock lock(mDevices[mPreviewDevice->mId].mutex);
+    Mutex::Autolock lock(mDeviceMutex[mPreviewDevice->mId]);
     if (mMode == MODE_NONE)
         return INVALID_OPERATION;
 
@@ -3935,7 +3215,7 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
     struct v4l2_buffer_info buf;
-    Mutex::Autolock lock(mDevices[mRecordingDevice->mId].mutex);
+    Mutex::Autolock lock(mDeviceMutex[mRecordingDevice->mId]);
 
     if (mMode != MODE_VIDEO)
         return INVALID_OPERATION;
@@ -3967,7 +3247,7 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff)
 status_t AtomISP::putRecordingFrame(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
-    Mutex::Autolock lock(mDevices[mRecordingDevice->mId].mutex);
+    Mutex::Autolock lock(mDeviceMutex[mRecordingDevice->mId]);
 
     if (mMode != MODE_VIDEO)
         return INVALID_OPERATION;
@@ -4241,104 +3521,6 @@ int AtomISP::pollCapture(int timeout)
     }
 
     return mMainDevice->poll(timeout);
-}
-
-int AtomISP::grabFrame(int device, struct v4l2_buffer *buf)
-{
-    LOG2("@%s", __FUNCTION__);
-    int ret;
-
-    VALID_DEVICE(device, -1);
-
-    ret = v4l2_capture_dqbuf(video_fds[device], buf);
-
-    if (ret < 0)
-        return ret;
-
-    // inc frame counter but do no wrap to negative numbers
-    ++mDevices[device].frameCounter;
-    mDevices[device].frameCounter &= INT_MAX;
-
-    // atomisp_frame_status is a proprietary extension to v4l2_buffer flags
-    // that driver places into reserved keyword
-    // translate error flag into corrupt frame
-    if (buf->flags & V4L2_BUF_FLAG_ERROR)
-        buf->reserved = (unsigned int) ATOMISP_FRAME_STATUS_CORRUPTED;
-    // translate initial skips into corrupt frame
-    if (mDevices[device].initialSkips > 0) {
-        buf->reserved = (unsigned int) ATOMISP_FRAME_STATUS_CORRUPTED;
-        mDevices[device].initialSkips--;
-    }
-
-    return buf->index;
-}
-
-int AtomISP::v4l2_capture_dqbuf(int fd, struct v4l2_buffer *buf)
-{
-    LOG2("@%s", __FUNCTION__);
-    int ret;
-
-    buf->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf->memory = V4L2_MEMORY_USERPTR;
-
-    ret = ioctl(fd, VIDIOC_DQBUF, buf);
-
-    if (ret < 0) {
-        LOGE("error dequeuing buffers");
-        return ret;
-    }
-
-    return buf->index;
-}
-
-int AtomISP::v4l2_subscribe_event(int fd, int event)
-{
-    LOG1("@%s", __FUNCTION__);
-    int ret;
-    struct v4l2_event_subscription sub;
-
-    memset(&sub, 0, sizeof(sub));
-    sub.type = event;
-
-    ret = ioctl(fd, VIDIOC_SUBSCRIBE_EVENT, &sub);
-    if (ret < 0) {
-        LOGE("error subscribing event: %s", strerror(errno));
-        return ret;
-    }
-
-    return ret;
-}
-
-int AtomISP::v4l2_unsubscribe_event(int fd, int event)
-{
-    LOG1("@%s", __FUNCTION__);
-    int ret;
-    struct v4l2_event_subscription sub;
-
-    memset(&sub, 0, sizeof(sub));
-    sub.type = event;
-
-    ret = ioctl(fd, VIDIOC_UNSUBSCRIBE_EVENT, &sub);
-    if (ret < 0) {
-        LOGE("error unsubscribing event");
-        return ret;
-    }
-
-    return ret;
-}
-
-int AtomISP::v4l2_dqevent(int fd, struct v4l2_event *event)
-{
-    LOG2("@%s", __FUNCTION__);
-    int ret;
-
-    ret = ioctl(fd, VIDIOC_DQEVENT, event);
-    if (ret < 0) {
-        LOGE("error dequeuing event");
-        return ret;
-    }
-
-    return ret;
 }
 
 ////////////////////////////////////////////////////////////////////
@@ -5270,8 +4452,6 @@ int AtomISP::dumpSnapshot(int snapshotIndex, int postviewIndex)
         CameraDump *cameraDump = CameraDump::getInstance(mCameraId);
         if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_SNAPSHOT)) {
 
-            const struct v4l2_buffer_info *buf1 =
-               &v4l2_buf_pool[V4L2_POSTVIEW_DEVICE].bufs[postviewIndex];
             const char *name0 = "snap_v0.nv12";
             const char *name1 = "snap_v1.nv12";
             dump.buffer_raw = mSnapshotBuffers[snapshotIndex].dataPtr;
@@ -5280,7 +4460,7 @@ int AtomISP::dumpSnapshot(int snapshotIndex, int postviewIndex)
             dump.height = mSnapshotBuffers[snapshotIndex].height;
             dump.stride = mSnapshotBuffers[snapshotIndex].stride;
             cameraDump->dumpImage2File(&dump, name0);
-            dump.buffer_raw = buf1->data;
+            dump.buffer_raw = mPostviewBuffers[postviewIndex].dataPtr;
             dump.buffer_size = mConfig.postview.size;
             dump.width = mConfig.postview.width;
             dump.height = mConfig.postview.height;
