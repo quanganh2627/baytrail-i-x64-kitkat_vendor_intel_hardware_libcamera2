@@ -19,6 +19,7 @@
 
 #include "UltraLowLight.h"
 #include "AtomCommon.h"
+#include "CameraDump.h"
 #include "LogHelper.h"
 
 #include "morpho_image_stabilizer3.h"
@@ -352,6 +353,11 @@ status_t UltraLowLight::process()
 
     /* Initialize the morpho specific input buffer structures */
     for (i = 0; i < MAX_INPUT_BUFFERS; i++) {
+        if (gLogLevel & CAMERA_DEBUG_ULL_DUMP) {
+            String8 yuvName("/data/ull_yuv_dump_");
+            yuvName.appendFormat("id_%d_%d.yuv",mULLCounter,i);
+            CameraDump::dumpAtom2File(&mInputBuffers[i], yuvName.string());
+        }
         AtomToMorphoBuffer(&mInputBuffers[i], &mMorphoCtrl->input_image[i]);
     }
 
@@ -415,6 +421,11 @@ processComplete:
         setState(ULL_STATE_DONE);
         mOutputBuffer = mInputBuffers[0];
         mInputBuffers.removeAt(0);
+        if (gLogLevel & CAMERA_DEBUG_ULL_DUMP) {
+           String8 yuvName("/data/ull_yuv_processed_");
+           yuvName.appendFormat("id_%d.yuv",mULLCounter);
+           CameraDump::dumpAtom2File(&mOutputBuffer, yuvName.string());
+        }
     } else {
         LOGW("ULL was canceled during processing state = %d",getState());
     }

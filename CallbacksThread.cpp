@@ -20,6 +20,7 @@
 #include "Callbacks.h"
 #include "FaceDetector.h"
 #include "MemoryUtils.h"
+#include "CameraDump.h"
 #include "PerformanceTraces.h"
 
 namespace android {
@@ -414,6 +415,11 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
             MemoryUtils::freeAtomBuffer(tmpCopy);
         }
 
+        if (gLogLevel & CAMERA_DEBUG_JPEG_DUMP) {
+            String8 jpegDumpName("/data/cam_hal_jpeg_dump.jpeg");
+            CameraDump::dumpAtom2File(&jpegBuf, jpegDumpName.string());
+        }
+
         mCallbacks->compressedFrameDone(&jpegBuf);
         if (jpegBuf.buff == NULL) {
             LOGW("CallbacksThread received NULL jpegBuf.buff, which should not happen");
@@ -511,6 +517,12 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageFrame *msg)
         // Should not have NULL buffer here in any case, but checking to make Klockwork happy:
         LOGW("NULL jpegBuf.dataPtr received in CallbacksThread. Should not happen.");
         return UNKNOWN_ERROR;
+    }
+
+    if (gLogLevel & CAMERA_DEBUG_ULL_DUMP) {
+        String8 jpegName("/data/ull_jpeg_dump_");
+        jpegName.appendFormat("id_%d.jpg",mULLid);
+        CameraDump::dumpAtom2File(&jpegBuf, jpegName.string());
     }
 
     // Put put the metadata in place to the ULL image buffer. This will be
