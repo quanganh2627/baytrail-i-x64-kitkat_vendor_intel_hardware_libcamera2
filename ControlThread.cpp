@@ -2648,20 +2648,32 @@ bool ControlThread::selectPostviewSize(int &width, int &height)
     int picWidth, picHeight;
     int thuWidth, thuHeight;
     int preWidth, preHeight;
+    float preAspect = 0.0f, picAspect = 0.0f, aspectDiff = 0.0f;
+
     mParameters.getPictureSize(&picWidth, &picHeight);
     mParameters.getPreviewSize(&preWidth, &preHeight);
     thuWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
     thuHeight = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
 
+    // Need to use tolerance checking for picture sizes that do not strictly fall
+    // into 4:3 or 16:9 aspect ratios, like 13MP in our case
+    const float POSTVIEW_ASPECT_TOLERANCE = 0.005f;
+    preAspect = static_cast<float>(preHeight) / static_cast<float>(preWidth);
+    picAspect = static_cast<float>(picHeight) / static_cast<float>(picWidth);
+    aspectDiff = fabsf(picAspect - preAspect);
+
     // try preview size first
     if (preWidth > picWidth || preHeight > picHeight) {
         LOG1("Preferred postview size larger than picture size");
-    } else if (picWidth * preHeight / preWidth != picHeight) {
-        LOG1("Preferred postview size doesn't mach the picture aspect");
-    } else {
+    } else if (aspectDiff < POSTVIEW_ASPECT_TOLERANCE) {
+        LOG1("Postview aspect difference (%f) within aspect tolerance (%f)",
+             aspectDiff, POSTVIEW_ASPECT_TOLERANCE);
         width = preWidth;
         height = preHeight;
         return true;
+    } else {
+        LOGW("Postview aspect difference (%f) beyond tolerance (%f)",
+             aspectDiff, POSTVIEW_ASPECT_TOLERANCE);
     }
 
     // then thumbnail
