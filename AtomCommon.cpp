@@ -323,32 +323,6 @@ void trace_callstack () {
     }
 
 }
-/**
- * RD Helper methods to dump a YUV file stored in an AtomBuffer to a file
- * This function can be used during investigations anywhere in the HAL
- * codebase
- *
- */
-void dump(AtomBuffer *b, const char* name)
-{
-    int bytes = 0;
-
-    LOGE("Dumping %s resolution (%dx%d) format %s",name,b->width, b->height,v4l2Fmt2Str(b->format));
-
-    FILE *fd = fopen(name, "wb+");
-
-    if(fd == NULL) {
-        LOGE("%s could not open dump file ",__FUNCTION__);
-        return;
-    }
-
-    bytes = fwrite(b->dataPtr, 1, b->size, fd);
-    if (bytes != b->size) {
-        LOGE("ERROR DUMPING %s written %d size %d",name, bytes, b->size);
-    }
-
-    fclose(fd);
-}
 
 /**
  * RD Helper method to inject an YUV file to an Atombuffer

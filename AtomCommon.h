@@ -424,7 +424,6 @@ void flipBufferH(AtomBuffer *buffer);
 
 #ifdef LIBCAMERA_RD_FEATURES
 void trace_callstack();
-void dump(AtomBuffer *b, const char* name);
 void inject(AtomBuffer *b, const char* name);
 #endif
 
