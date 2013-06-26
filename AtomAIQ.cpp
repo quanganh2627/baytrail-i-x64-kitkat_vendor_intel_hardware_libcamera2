@@ -966,8 +966,21 @@ status_t AtomAIQ::setManualIso(int sensitivity)
 status_t AtomAIQ::getManualIso(int *ret)
 {
     LOG2("@%s - %d", __FUNCTION__, mAeInputParameters.manual_iso);
+
+    status_t status = NO_ERROR;
+
+    if (mAeInputParameters.manual_iso > 0) {
     *ret = mAeInputParameters.manual_iso;
-    return NO_ERROR;
+    } else if(mAeState.ae_results && mAeState.ae_results->exposure) {
+        // in auto iso mode result current real iso values
+        *ret = mAeState.ae_results->exposure->iso;
+    } else {
+        LOGW("no ae result available for ISO value");
+        *ret = 0;
+        status = UNKNOWN_ERROR;
+    }
+
+    return status;
 }
 
 status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)

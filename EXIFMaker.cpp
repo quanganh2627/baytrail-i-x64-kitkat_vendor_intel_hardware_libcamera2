@@ -154,7 +154,7 @@ void EXIFMaker::pictureTaken(void)
     }
 
     // indicates the ISO speed of the camera
-    int isoSpeed;
+    int isoSpeed(DEFAULT_ISO_SPEED);
     if (m3AControls->getManualIso(&isoSpeed) == NO_ERROR) {
         exifAttributes.iso_speed_rating = isoSpeed;
     } else {
