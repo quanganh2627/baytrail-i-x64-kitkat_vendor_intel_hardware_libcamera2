@@ -237,7 +237,7 @@ public:
     virtual AeMode getPublicAeMode();
     virtual void setPublicAfMode(AfMode mode);
     virtual AfMode getPublicAfMode();
-    virtual status_t setIsoMode(IsoMode mode){return NO_ERROR;};
+    virtual status_t setIsoMode(IsoMode mode);
     virtual IsoMode getIsoMode(void) {return CAM_AE_ISO_MODE_NOT_SET;};
 
     status_t setAeLock(bool en);

@@ -946,6 +946,16 @@ status_t AtomAIQ::setManualShutter(float expTime)
     return NO_ERROR;
 }
 
+status_t AtomAIQ::setIsoMode(IsoMode mode)
+{
+    LOG1("@%s - %d", __FUNCTION__, mode);
+
+    if (mode == CAM_AE_ISO_MODE_AUTO)
+        mAeInputParameters.manual_iso = -1;
+
+    return NO_ERROR;
+}
+
 status_t AtomAIQ::setManualIso(int sensitivity)
 {
     LOG1("@%s - %d", __FUNCTION__, sensitivity);
