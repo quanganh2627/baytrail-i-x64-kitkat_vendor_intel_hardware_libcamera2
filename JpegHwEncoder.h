@@ -87,6 +87,10 @@ private:
     int resetContext(const JpegCompressor::InputBuffer &in, unsigned int* aSurface);
     int restoreContext();
 private:
+    // true:use the libva's jpeg quality factor
+    // false:use jpeg quality factor which is in the JPEGHwEncoder, not in libva
+    static const bool mUseInternalJpegQualityFactor = true;
+
     // If the picture dimension is <= the below w x h
     // We should use the software jpeg encoder
     static const int MIN_HW_ENCODING_WIDTH = 640;

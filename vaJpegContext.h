@@ -21,7 +21,7 @@
 #include <va/va_tpi.h>
 #include <va/va_android.h>
 #include <utils/KeyedVector.h>
-
+#include <va/va_enc_jpeg.h>
 
 /**
  * \define CHECK_STATUS
