@@ -21,6 +21,7 @@
 #include "Callbacks.h"
 #include "CallbacksThread.h"
 #include "ImageScaler.h"
+#include "MemoryUtils.h"
 #include <utils/Timers.h>
 
 namespace android {
@@ -70,26 +71,18 @@ PictureThread::~PictureThread()
 {
     LOG1("@%s", __FUNCTION__);
 
-    if (mOutBuf.buff != NULL) {
-        LOGD("@%s: release mOutBuf", __FUNCTION__);
-        mOutBuf.buff->release(mOutBuf.buff);
-        mOutBuf.buff = NULL;
-    }
-    if (mExifBuf.buff != NULL) {
-        LOGD("@%s: release mExifBuf", __FUNCTION__);
-        mExifBuf.buff->release(mExifBuf.buff);
-        mExifBuf.buff = NULL;
-    }
-    if (mThumbBuf.buff != NULL) {
-        LOGD("@%s: release mThumbBuf", __FUNCTION__);
-        mThumbBuf.buff->release(mThumbBuf.buff);
-        mThumbBuf.buff = NULL;
-    }
-    if (mScaledPic.buff != NULL) {
-        LOGD("@%s: release mScaledPic", __FUNCTION__);
-        mScaledPic.buff->release(mScaledPic.buff);
-        mScaledPic.buff = NULL;
-    }
+    LOGD("@%s: release mOutBuf", __FUNCTION__);
+    MemoryUtils::freeAtomBuffer(mOutBuf);
+
+    LOGD("@%s: release mExifBuf", __FUNCTION__);
+    MemoryUtils::freeAtomBuffer(mExifBuf);
+
+    LOGD("@%s: release mThumbBuf", __FUNCTION__);
+    MemoryUtils::freeAtomBuffer(mThumbBuf);
+
+    LOGD("@%s: release mScaledPic", __FUNCTION__);
+    MemoryUtils::freeAtomBuffer(mScaledPic);
+
 
     LOGD("@%s: release InputBuffers", __FUNCTION__);
     freeInputBuffers();
@@ -125,9 +118,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
 
     size_t bufferSize = (mainBuf->width * mainBuf->height * 2);
     if (mOutBuf.dataPtr != NULL && bufferSize != (size_t) mOutBuf.size) {
-        mOutBuf.buff->release(mOutBuf.buff);
-        mOutBuf.dataPtr = NULL;
-        mOutBuf.buff = NULL;
+        MemoryUtils::freeAtomBuffer(mOutBuf);
     }
 
     if (mOutBuf.dataPtr == NULL) {
@@ -226,9 +217,7 @@ void PictureThread::initialize(const CameraParameters &params)
     mThumbBuf.size = frameSize(mThumbBuf.format, mThumbBuf.width, mThumbBuf.height);
     mThumbBuf.stride = mThumbBuf.width;
     if (mThumbBuf.dataPtr != NULL) {
-        mThumbBuf.buff->release(mThumbBuf.buff);
-        mThumbBuf.buff = NULL;
-        mThumbBuf.dataPtr = NULL;
+        MemoryUtils::freeAtomBuffer(mThumbBuf);
     }
 
     params.getPictureSize(&mScaledPic.width, &mScaledPic.height);
@@ -326,7 +315,7 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 {
     LOG1("@%s: snapshot ID = %d", __FUNCTION__, msg->snaphotBuf.id);
     status_t status = NO_ERROR;
-    AtomBuffer jpegBuf;
+    AtomBuffer jpegBuf = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT_JPEG);
 
     if (msg->snaphotBuf.width == 0 ||
         msg->snaphotBuf.height == 0 ||
@@ -334,8 +323,6 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
         LOGE("Picture information not set yet!");
         return UNKNOWN_ERROR;
     }
-
-    jpegBuf.buff = NULL;
 
     // prepare EXIF data
     setupExifWithMetaData(msg->metaData);
@@ -357,12 +344,8 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
     status = encodeToJpeg(&msg->snaphotBuf, postviewBuf, &jpegBuf);
     if (status != NO_ERROR) {
         LOGE("Error generating JPEG image!");
-        if (jpegBuf.dataPtr != NULL) {
-            LOG1("Releasing jpegBuf @%p", jpegBuf.dataPtr);
-            jpegBuf.buff->release(jpegBuf.buff);
-        }
-        jpegBuf.buff = NULL;
-        jpegBuf.dataPtr = NULL;
+        LOG1("Releasing jpegBuf @%p", jpegBuf.dataPtr);
+        MemoryUtils::freeAtomBuffer(jpegBuf);
     }
 
     jpegBuf.frameCounter = msg->snaphotBuf.frameCounter;
@@ -398,10 +381,8 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
     }
 
     /* Free old buffers if already allocated */
-    if (mOutBuf.dataPtr != NULL && bufferSize != (size_t) mOutBuf.size) {
-        mOutBuf.buff->release(mOutBuf.buff);
-        mOutBuf.dataPtr = NULL;
-        mOutBuf.buff = NULL;
+    if (bufferSize != (size_t) mOutBuf.size) {
+        MemoryUtils::freeAtomBuffer(mOutBuf);
     }
 
     /* Allocate Output buffer : JPEG and EXIF */
@@ -463,7 +444,8 @@ status_t PictureThread::allocateInputBuffers(int format, int width, int height, 
     mInputBuffers = numBufs;
 
     for (int i = 0; i < mInputBuffers; i++) {
-        mCallbacks->allocateGraphicBuffer(mInputBufferArray[i], width, height);
+        mInputBufferArray[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+        MemoryUtils::allocateGraphicBuffer(mInputBufferArray[i], width, height);
         if (mInputBufferArray[i].dataPtr == NULL) {
             mInputBuffers = i;
             goto bailout;
@@ -473,7 +455,6 @@ status_t PictureThread::allocateInputBuffers(int format, int width, int height, 
         mInputBufferArray[i].stride = stride;
         mInputBufferArray[i].format = format;
         mInputBufferArray[i].size = bufferSize;
-        mInputBufferArray[i].type = ATOM_BUFFER_SNAPSHOT;
         mInputBufferArray[i].status = FRAME_STATUS_OK;
         mInputBuffDataArray[i] = (char *) mInputBufferArray[i].dataPtr;
         if (registerToScaler)
@@ -496,17 +477,11 @@ void PictureThread::freeInputBuffers()
 
     if(mInputBufferArray != NULL) {
        for (int i = 0; i < mInputBuffers; i++) {
-           if (mInputBufferArray[i].gfxInfo.locked)
-               mInputBufferArray[i].gfxInfo.gfxBuffer->unlock();
            if (mInputBufferArray[i].gfxInfo.scalerId != -1) {
                mScaler->unRegisterBuffer(mInputBufferArray[i], ScalerService::SCALER_OUTPUT);
                mInputBufferArray[i].gfxInfo.scalerId = -1;
            }
-           mInputBufferArray[i].gfxInfo.gfxBuffer->decStrong(this);
-           if (mInputBufferArray[i].buff != NULL) {
-               mInputBufferArray[i].buff->release(mInputBufferArray[i].buff);
-               mInputBufferArray[i].buff = NULL;
-           }
+           MemoryUtils::freeAtomBuffer(mInputBufferArray[i]);
        }
        delete [] mInputBufferArray;
        mInputBufferArray = NULL;
@@ -955,13 +930,10 @@ status_t PictureThread::scaleMainPic(AtomBuffer *mainBuf)
         LOG1("Need to scale or trim from (%dx%d) s(%d)--> (%d,%d) s(%d)",mainBuf->width, mainBuf->height,mainBuf->stride,
                                                       mScaledPic.width, mScaledPic.height, mScaledPic.stride);
 
-        if (mScaledPic.buff != NULL) {
-            mScaledPic.buff->release(mScaledPic.buff);
-            mScaledPic.buff = NULL;
-        }
+        MemoryUtils::freeAtomBuffer(mScaledPic);
 
         mCallbacks->allocateMemory(&mScaledPic, mScaledPic.size);
-        if (mScaledPic.buff == NULL)
+        if (mScaledPic.dataPtr == NULL)
             goto exit;
 
         ImageScaler::downScaleImage(mainBuf, &mScaledPic);

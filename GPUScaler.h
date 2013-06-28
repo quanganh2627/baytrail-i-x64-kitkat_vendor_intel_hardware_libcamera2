@@ -45,9 +45,8 @@ public:
 
     void setZoomFactor(float zf);
     int processFrame(int inputBufferId, int outputBufferId);
-    // TODO see if addOutput/addInput API's can be made more symmetric
-    int addOutputBuffer(buffer_handle_t *pBufHandle, int width, int height);
-    int addInputBuffer(ANativeWindowBuffer *inNativeWindow); // alternative to setInputBuffer, returns id
+    int addOutputBuffer(buffer_handle_t *pBufHandle, int width, int height, int stride);
+    int addInputBuffer(buffer_handle_t *pBufHandle, int width, int height, int stride);
     void removeInputBuffer(int bufferId);
     void removeOutputBuffer(int bufferId);
 // private types

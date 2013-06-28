@@ -124,10 +124,6 @@ class AtomAIQ : public I3AControls {
 
 // constructor/destructor
 private:
-    static AtomAIQ* mInstance;
-    AtomAIQ(AtomISP *anISP);
-
-
     int setFpnTable(const ia_frame *fpn_table);
     status_t getAiqConfig(ia_binary_data *cpfData);
 
@@ -213,16 +209,7 @@ private:
     AtomAIQ& operator=(const AtomAIQ& other);
 
 public:
-    static AtomAIQ* getInstance(AtomISP *anISP = NULL) {
-        if (mInstance == NULL) {
-            if (anISP == NULL) {
-                LOGE("trying to get Intel 3A class before initializing it ");
-                return NULL;
-            }
-            mInstance = new AtomAIQ(anISP);
-        }
-        return mInstance;
-    }
+    AtomAIQ(AtomISP *anISP);
     ~AtomAIQ();
 
     virtual bool isIntel3A() { return true; }

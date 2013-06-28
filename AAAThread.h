@@ -19,7 +19,6 @@
 
 #include <utils/threads.h>
 #include <time.h>
-#include "AtomAAA.h"
 #include "AtomDvs.h"
 #include "UltraLowLight.h"
 #include "MessageQueue.h"
@@ -37,26 +36,18 @@ namespace android {
         virtual void sceneDetected(int sceneMode, bool sceneHdr) = 0;
     };
 
-class AtomAAA;
-
 /**
  * \class AAAThread
  *
  * AAAThread runs the actual 3A process for preview frames. In video
  * mode it also handles DVS.
  *
- * The implementation is done using AtomAAA singleton class,
- * but note that AtomAAA offers a much wider set of features and not
- * just 3A, so the two classes should not be confused. Please refer to
- * AtomAAA class documentation for more information.
+ * The implementation is done using I3AControls class, which have
+ * two derived class AtomAAA/AtomAIQ.
  *
  * AAAThread also checks 3A variables and updates the trigger status for
  * Ultra Low Light algorithm
  *
- * TODO: In long term, the goal is to get rid of AtomAAA singleton
- *       and use instance of Intel 3A libraries directly from
- *       AAAThread. But this is not yet supported by the underlying
- *       libraries so for now AtomAAA is used.
  */
 class AAAThread : public Thread, public IAtomIspObserver {
 

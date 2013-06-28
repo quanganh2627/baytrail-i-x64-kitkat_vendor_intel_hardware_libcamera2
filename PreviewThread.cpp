@@ -28,6 +28,7 @@
 #include "AtomCommon.h"
 #include "nv12rotation.h"
 #include "PlatformData.h"
+#include "MemoryUtils.h"
 
 namespace android {
 
@@ -573,11 +574,8 @@ status_t PreviewThread::handleMessageFlush()
 
 void PreviewThread::freeLocalPreviewBuf(void)
 {
-    if (mPreviewBuf.buff) {
-        LOG1("releasing existing preview buffer\n");
-        mPreviewBuf.buff->release(mPreviewBuf.buff);
-        mPreviewBuf.buff = 0;
-    }
+    LOG1("releasing existing preview buffer\n");
+    MemoryUtils::freeAtomBuffer(mPreviewBuf);
 }
 
 void PreviewThread::allocateLocalPreviewBuf(void)
@@ -938,7 +936,7 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
         allocateLocalPreviewBuf();
     }
 
-    if(mCallbacks->msgTypeEnabled(CAMERA_MSG_PREVIEW_FRAME) && mPreviewBuf.buff) {
+    if (mCallbacks->msgTypeEnabled(CAMERA_MSG_PREVIEW_FRAME) && mPreviewBuf.dataPtr) {
         void *src = msg->buff.dataPtr;
         switch(mPreviewFormat) {
                                   // Android definition: PIXEL_FORMAT_YUV420P-->YV12, please refer to
@@ -1040,7 +1038,7 @@ status_t PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
 
         LOG1("Setting new preview window %p (%dx%d)", mPreviewWindow,w,h);
         mPreviewWindow->set_usage(mPreviewWindow, usage);
-        mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, PlatformData::getGFXHALPixelFormat());
+        mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewFormat()));
     }
 
     return NO_ERROR;
@@ -1073,7 +1071,7 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
                 w = msg->height;
                 h = msg->width;
             }
-            mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, PlatformData::getGFXHALPixelFormat());
+            mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewFormat()));
         }
 
         /**

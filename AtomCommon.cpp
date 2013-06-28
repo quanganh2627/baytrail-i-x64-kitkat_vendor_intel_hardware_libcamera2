@@ -17,6 +17,9 @@
 
 #include "AtomCommon.h"
 #include <ia_coordinate.h>
+#ifndef GRAPHIC_IS_GEN // this will be removed if graphic provides one common header file
+#include <hal_public.h>
+#endif
 
 #ifdef LIBCAMERA_RD_FEATURES
 #include <dlfcn.h>
@@ -208,6 +211,32 @@ void flipBufferH(AtomBuffer *buffer) {
     }
 }
 
+int getGFXHALPixelFormatFromV4L2Format(int previewFormat)
+{
+    LOG1("@%s", __FUNCTION__);
+    int halPixelFormat = BAD_VALUE;
+
+    switch(previewFormat) {
+    case V4L2_PIX_FMT_NV12:
+#ifndef GRAPHIC_IS_GEN // this will be removed if graphic provides one common header file
+        halPixelFormat = HAL_PIXEL_FORMAT_NV12;
+#endif
+        break;
+    case V4L2_PIX_FMT_YVU420:
+        halPixelFormat = HAL_PIXEL_FORMAT_YV12;
+        break;
+    default: break;
+    }
+
+    if (halPixelFormat == BAD_VALUE) {
+        LOGE("@%s Unknown / unsupported preview pixel format: fatal error, aborting",
+                __FUNCTION__);
+        abort();
+    }
+
+    return halPixelFormat;
+}
+
 #ifdef LIBCAMERA_RD_FEATURES
 /************************************************************************
  * DEBUGGING UTILITIES
@@ -284,5 +313,58 @@ void trace_callstack () {
     }
 
 }
+/**
+ * RD Helper methods to dump a YUV file stored in an AtomBuffer to a file
+ * This function can be used during investigations anywhere in the HAL
+ * codebase
+ *
+ */
+void dump(AtomBuffer *b, const char* name)
+{
+    int bytes = 0;
+
+    LOGE("Dumping %s resolution (%dx%d) format %s",name,b->width, b->height,v4l2Fmt2Str(b->format));
+
+    FILE *fd = fopen(name, "wb+");
+
+    if(fd == NULL) {
+        LOGE("%s could not open dump file ",__FUNCTION__);
+        return;
+    }
+
+    bytes = fwrite(b->dataPtr, 1, b->size, fd);
+    if (bytes != b->size) {
+        LOGE("ERROR DUMPING %s written %d size %d",name, bytes, b->size);
+    }
+
+    fclose(fd);
+}
+
+/**
+ * RD Helper method to inject an YUV file to an Atombuffer
+ * This function can be used during investigations anywhere in the HAL
+ * codebase
+ */
+void inject(AtomBuffer *b, const char* name)
+{
+    int bytes = 0;
+
+    LOGE("Injecting yuv file %s resolution (%dx%d) format %s",name,b->width, b->height,v4l2Fmt2Str(b->format));
+
+    FILE *fd = fopen(name, "rb+");
+
+    if(fd == NULL) {
+        LOGE("%s: could not open inject file ", __FUNCTION__);
+        return;
+    }
+
+    bytes = fread(b->dataPtr, 1, b->size, fd);
+    if (bytes != b->size) {
+        LOGE("ERROR INJECTING %s read %d size %d",name, bytes, b->size);
+    }
+
+    fclose(fd);
+}
+
 #endif //LIBCAMERA_RD_FEATURES
 }

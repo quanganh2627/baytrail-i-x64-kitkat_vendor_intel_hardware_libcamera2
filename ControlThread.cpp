@@ -6079,9 +6079,9 @@ status_t ControlThread::createAtom3A()
 
     if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
         if(PlatformData::supportAIQ()) {
-            m3AControls = AtomAIQ::getInstance(mISP);
+            m3AControls = new AtomAIQ(mISP);
         } else {
-            m3AControls = AtomAAA::getInstance(mISP);
+            m3AControls = new AtomAAA(mISP);
         }
         if (m3AControls == NULL) {
             LOGE("error creating AAA");
