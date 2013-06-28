@@ -5085,56 +5085,62 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             mPostProcThread->enableFaceAAA(AAA_FLAG_AF);
         }
 
-        status = m3AControls->setAfEnabled(true);
-        if (status == NO_ERROR) {
-            status = m3AControls->setAfMode(afMode);
-        }
         if (status == NO_ERROR) {
             m3AControls->setPublicAfMode(afMode);
             LOG1("Changed: %s -> %s", CameraParameters::KEY_FOCUS_MODE, newVal.string());
         }
     }
 
-    if (!mFaceDetectionActive) {
+    AfMode publicAfMode = m3AControls->getPublicAfMode();
+    // Based on Google specs, focus area has not effect when face detection is runing
+    // and the focus area is effective only for modes:
+    // (framework side constants:) FOCUS_MODE_AUTO, FOCUS_MODE_MACRO, FOCUS_MODE_CONTINUOUS_VIDEO
+    // or FOCUS_MODE_CONTINUOUS_PICTURE.
+    if (!mFaceDetectionActive &&
+        (publicAfMode == CAM_AF_MODE_AUTO ||
+         publicAfMode == CAM_AF_MODE_CONTINUOUS ||
+         publicAfMode == CAM_AF_MODE_MACRO)) {
+        afMode = publicAfMode;
 
-        AfMode publicAfMode = m3AControls->getPublicAfMode();
-        // Based on Google specs, the focus area is effective only for modes:
-        // (framework side constants:) FOCUS_MODE_AUTO, FOCUS_MODE_MACRO, FOCUS_MODE_CONTINUOUS_VIDEO
-        // or FOCUS_MODE_CONTINUOUS_PICTURE.
-        if (publicAfMode == CAM_AF_MODE_AUTO ||
-            publicAfMode == CAM_AF_MODE_CONTINUOUS ||
-            publicAfMode == CAM_AF_MODE_MACRO) {
+        // See if any focus areas are set.
+        // NOTE: CAM_AF_MODE_TOUCH is for HAL internal use only
+        if (!mFocusAreas.isEmpty()) {
+            LOG1("Focus areas set, using AF mode \"touch \"");
+            afMode = CAM_AF_MODE_TOUCH;
+        }
 
-            afMode = publicAfMode;
-
-            // See if any focus areas are set.
-            // NOTE: CAM_AF_MODE_TOUCH is for HAL internal use only
-            if (!mFocusAreas.isEmpty()) {
-                LOG1("Focus areas set, using AF mode \"touch \"");
-                afMode = CAM_AF_MODE_TOUCH;
-            }
-
-            // See if we have to change the actual mode (it could be correct already)
-            AfMode curAfMode = m3AControls->getAfMode();
-            if (afMode != curAfMode) {
+        // See if we have to change the actual mode (it could be correct already)
+        AfMode curAfMode = m3AControls->getAfMode();
+        if (afMode != curAfMode) {
+            status = m3AControls->setAfEnabled(true);
+            if (status == NO_ERROR) {
                 m3AControls->setAfMode(afMode);
+            } else {
+                LOGE("setAfEnabled failed");
             }
+        }
 
-            // If in touch mode, we set the focus windows now
-            if (afMode == CAM_AF_MODE_TOUCH) {
-                size_t winCount(mFocusAreas.numOfAreas());
-                CameraWindow *focusWindows = new CameraWindow[winCount];
-                mFocusAreas.toWindows(focusWindows);
-                convertAfWindows(focusWindows, winCount);
-                if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
-                    // If focus windows couldn't be set, previous AF mode is used
-                    // (AfSetWindowMulti has its own safety checks for coordinates)
-                    LOGE("Could not set AF windows. Resetting the AF back to %d", curAfMode);
-                    m3AControls->setAfMode(curAfMode);
-                }
-                delete[] focusWindows;
-                focusWindows = NULL;
+        // If in touch mode, we set the focus windows now
+        if (afMode == CAM_AF_MODE_TOUCH) {
+            size_t winCount(mFocusAreas.numOfAreas());
+            CameraWindow *focusWindows = new CameraWindow[winCount];
+            mFocusAreas.toWindows(focusWindows);
+            convertAfWindows(focusWindows, winCount);
+            if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
+                // If focus windows couldn't be set, previous AF mode is used
+                // (AfSetWindowMulti has its own safety checks for coordinates)
+                LOGE("Could not set AF windows. Resetting the AF back to %d", curAfMode);
+                m3AControls->setAfMode(curAfMode);
             }
+            delete[] focusWindows;
+            focusWindows = NULL;
+        }
+    } else if (afMode != CAM_AF_MODE_NOT_SET) {
+        status = m3AControls->setAfEnabled(true);
+        if (status == NO_ERROR) {
+            status = m3AControls->setAfMode(afMode);
+        } else {
+            LOGE("setAfEnabled failed");
         }
     }
 
