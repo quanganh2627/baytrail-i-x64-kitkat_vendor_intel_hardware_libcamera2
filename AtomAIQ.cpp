@@ -87,6 +87,7 @@ AtomAIQ::AtomAIQ(HWControlGroup &hwcg):
     ,mSensorCI(hwcg.mSensorCI)
     ,mFlashCI(hwcg.mFlashCI)
     ,mLensCI(hwcg.mLensCI)
+    ,mISPAdaptor(NULL)
 {
     LOG1("@%s", __FUNCTION__);
     memset(&m3aState, 0, sizeof(aaa_state));
@@ -157,27 +158,29 @@ status_t AtomAIQ::init3A()
                                          mMkn);
 
     if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5)){
-        m3aState.ia_isp_handle = ia_isp_1_5_init((ia_binary_data*)&(cpfData),
-                                                 MAX_STATISTICS_WIDTH,
-                                                 MAX_STATISTICS_HEIGHT,
-                                                 cmc,
-                                                 mMkn);
+        mISPAdaptor = new IaIsp15();
     }
     else if ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0)){
-        m3aState.ia_isp_handle = ia_isp_2_2_init((ia_binary_data*)&(cpfData),
-                                                         MAX_STATISTICS_WIDTH,
-                                                         MAX_STATISTICS_HEIGHT,
-                                                         cmc,
-                                                         mMkn);
+        mISPAdaptor = new IaIsp22();
     }
-    else {
-        m3aState.ia_isp_handle = NULL;
+
+    if (mISPAdaptor == NULL) {
         LOGE("Ambiguous CSS version used: %d.%d", mISP->getCssMajorVersion(), mISP->getCssMinorVersion());
+        return UNKNOWN_ERROR;
     }
+
+
+    mISPAdaptor->initIaIspAdaptor((ia_binary_data*)&(cpfData),
+                         MAX_STATISTICS_WIDTH,
+                         MAX_STATISTICS_HEIGHT,
+                         cmc,
+                         mMkn);
+
 
     ia_cmc_parser_deinit(cmc);
 
-    if(!m3aState.ia_aiq_handle || !m3aState.ia_isp_handle) {
+
+    if (!m3aState.ia_aiq_handle) {
         cameranvm_delete(aicNvm);
         return UNKNOWN_ERROR;
     }
@@ -221,10 +224,7 @@ status_t AtomAIQ::deinit3A()
     m3aState.faces = NULL;
     freeStatistics(m3aState.stats);
     ia_aiq_deinit(m3aState.ia_aiq_handle);
-    if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5))
-        ia_isp_1_5_deinit(m3aState.ia_isp_handle);
-    else if ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0))
-        ia_isp_2_2_deinit(m3aState.ia_isp_handle);
+    delete mISPAdaptor;
     ia_mkn_uninit(mMkn);
     mISP = NULL;
     mAfMode = CAM_AF_MODE_NOT_SET;
@@ -763,11 +763,7 @@ status_t AtomAIQ::set3AColorEffect(const char *effect)
         status = -1;
         // Fall back to the effect NONE
     }
-    if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion()==5))
-        mISP15InputParameters.effects = aiqEffect;
-    else if ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion()==0))
-        mISP22InputParameters.effects = aiqEffect;
-
+    mIspInputParams.effects = aiqEffect;
     return status;
 }
 
@@ -1596,19 +1592,11 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct,
         statistics_input_parameters.wb_gains = NULL;
         statistics_input_parameters.cc_matrix = NULL;
 
-        bool statistics_converted = false;
-        if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5)) {
-            ia_isp_1_5_statistics_convert(m3aState.ia_isp_handle, m3aState.stats,
-                            const_cast<ia_aiq_rgbs_grid**>(&statistics_input_parameters.rgbs_grid),
-                            const_cast<ia_aiq_af_grid**>(&statistics_input_parameters.af_grid));
-            statistics_converted = true;
-        } else if ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0)) {
-            ia_isp_2_2_statistics_convert(m3aState.ia_isp_handle, m3aState.stats,
-                                        const_cast<ia_aiq_rgbs_grid**>(&statistics_input_parameters.rgbs_grid),
-                                        const_cast<ia_aiq_af_grid**>(&statistics_input_parameters.af_grid));
-            statistics_converted = true;
-        }
-        if(statistics_converted) {
+        ret = mISPAdaptor->convertIspStatistics(m3aState.stats,
+                                                const_cast<ia_aiq_rgbs_grid**>(&statistics_input_parameters.rgbs_grid),
+                                                const_cast<ia_aiq_af_grid**>(&statistics_input_parameters.af_grid));
+
+        if (ret == ia_err_none) {
             LOG2("m3aState.stats: grid_info: %d  %d %d ",
                   m3aState.stats->grid_info.s3a_width,m3aState.stats->grid_info.s3a_height,m3aState.stats->grid_info.s3a_bqs_per_grid_cell);
 
@@ -2057,90 +2045,51 @@ status_t AtomAIQ::runAICMain()
     if (m3aState.ia_aiq_handle) {
         ia_aiq_pa_input_params pa_input_params;
 
-        // NOTE: currently the input parameter structs are identical for CSS 1.5 and 2.0
-        // To reduce lots of if elses, the parameters are first stored into a 1.5 version
-        // A more intelligent way needs to be figured out. Such as hiding the CSS
-        // differencies into AIQ library.
-        ia_isp_1_5_input_params isp_15_input_params;
-
         pa_input_params.frame_use = m3aState.frame_use;
-        isp_15_input_params.frame_use = m3aState.frame_use;
+        mIspInputParams.frame_use = m3aState.frame_use;
 
         pa_input_params.awb_results = NULL;
-        isp_15_input_params.awb_results = NULL;
+        mIspInputParams.awb_results = NULL;
 
-        isp_15_input_params.exposure_results = (mAeState.ae_results) ? mAeState.ae_results->exposure : NULL;
+        mIspInputParams.exposure_results = (mAeState.ae_results) ? mAeState.ae_results->exposure : NULL;
         pa_input_params.exposure_params = (mAeState.ae_results) ? mAeState.ae_results->exposure : NULL;
 
         if (mAwbResults) {
             LOG2("awb factor:%f", mAwbResults->accurate_b_per_g);
         }
         pa_input_params.awb_results = mAwbResults;
-        isp_15_input_params.awb_results = mAwbResults;
+        mIspInputParams.awb_results = mAwbResults;
 
         if (mGBCEResults) {
             LOG2("gbce :%d", mGBCEResults->ctc_gains_lut_size);
         }
-        isp_15_input_params.gbce_results = mGBCEResults;
+        mIspInputParams.gbce_results = mGBCEResults;
 
         pa_input_params.sensor_frame_params = &m3aState.sensor_frame_params;
-        isp_15_input_params.sensor_frame_params = &m3aState.sensor_frame_params;
+        mIspInputParams.sensor_frame_params = &m3aState.sensor_frame_params;
         LOG2("@%s  2 sensor native width %d", __FUNCTION__, pa_input_params.sensor_frame_params->cropped_image_width);
 
         pa_input_params.cc_matrix = NULL;
         pa_input_params.wb_gains = NULL;
 
+        // Calculate ISP independent ISP parameters (e.g. LSC table, color correction matrix)
         ia_aiq_pa_results *pa_results;
         ret = ia_aiq_pa_run(m3aState.ia_aiq_handle, &pa_input_params, &pa_results);
         LOG2("@%s  ia_aiq_pa_run :%d", __FUNCTION__, ret);
 
-        isp_15_input_params.pa_results = pa_results;
+        mIspInputParams.pa_results = pa_results;
+        mIspInputParams.manual_brightness = 0;
+        mIspInputParams.manual_contrast = 0;
+        mIspInputParams.manual_hue = 0;
+        mIspInputParams.manual_saturation = 0;
+        mIspInputParams.manual_sharpness = 0;
 
-        if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() ==5))
-            isp_15_input_params.effects = mISP15InputParameters.effects;
-        else if ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() ==0))
-            isp_15_input_params.effects = mISP22InputParameters.effects;
-
-        isp_15_input_params.manual_brightness = 0;
-        isp_15_input_params.manual_contrast = 0;
-        isp_15_input_params.manual_hue = 0;
-        isp_15_input_params.manual_saturation = 0;
-        isp_15_input_params.manual_sharpness = 0;
-
-        int value = 0;
-        PlatformData::HalConfig.getValue(value, CPF::IspVamemType);
-        isp_15_input_params.isp_vamem_type = value;
-
-        if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5)) {
-            ret = ia_isp_1_5_run(m3aState.ia_isp_handle, &isp_15_input_params, &((m3aState.results).isp_output));
-            LOG2("@%s  ia_isp_1_5_run :%d", __FUNCTION__, ret);
-        }
-        else if ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0)) {
-            ia_isp_2_2_input_params isp_22_input_params;
-
-            isp_22_input_params.frame_use = isp_15_input_params.frame_use;
-            isp_22_input_params.sensor_frame_params = isp_15_input_params.sensor_frame_params;
-            isp_22_input_params.exposure_results = isp_15_input_params.exposure_results;
-            isp_22_input_params.awb_results = isp_15_input_params.awb_results;
-            isp_22_input_params.gbce_results = isp_15_input_params.gbce_results;
-            isp_22_input_params.pa_results = isp_15_input_params.pa_results;
-            isp_22_input_params.isp_vamem_type = isp_15_input_params.isp_vamem_type;
-            isp_22_input_params.manual_brightness = isp_15_input_params.manual_brightness;
-            isp_22_input_params.manual_contrast = isp_15_input_params.manual_contrast;
-            isp_22_input_params.manual_hue = isp_15_input_params.manual_hue;
-            isp_22_input_params.manual_saturation = isp_15_input_params.manual_saturation;
-            isp_22_input_params.manual_sharpness = isp_15_input_params.manual_sharpness;
-            isp_22_input_params.effects = isp_15_input_params.effects;
-
-            ret = ia_isp_2_2_run(m3aState.ia_isp_handle, &isp_22_input_params, &((m3aState.results).isp_output));
-            LOG2("@%s  ia_isp_2_2_run :%d", __FUNCTION__, ret);
-        }
+        ret = mISPAdaptor->calculateIspParams(&mIspInputParams, &((m3aState.results).isp_output));
 
         /* Apply ISP settings */
         if (m3aState.results.isp_output.data) {
             struct atomisp_parameters *aic_out_struct = (struct atomisp_parameters *)m3aState.results.isp_output.data;
             ret |= mISP->setAicParameter(aic_out_struct);
-            ret |= mISP->applyColorEffect();
         }
 
         if (mISP->isFileInjectionEnabled() && ret == 0 && mAwbResults != NULL) {
@@ -2325,6 +2274,133 @@ void AtomAIQ::getSensorFrameParams(ia_aiq_sensor_frame_params *frame_params)
         frame_params->vertical_scaling_numerator =
                 sensor_mode_data.output_height * 254 * sensor_mode_data.binning_factor_y / frame_params->cropped_image_height;
     }
+}
+
+/********************************
+        IaIsp15
+*********************************/
+IaIsp15::IaIsp15()
+{
+    LOG1("@%s", __FUNCTION__);
+}
+
+IaIsp15::~IaIsp15()
+{
+    LOG1("@%s", __FUNCTION__);
+    ia_isp_1_5_deinit(mIspHandle);
+}
+
+void IaIsp15::initIaIspAdaptor(const ia_binary_data *cpfData,
+                           unsigned int maxStatsWidth,
+                           unsigned int maxStatsHeight,
+                           ia_cmc_t *cmc,
+                           ia_mkn *mkn)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    int value = 0;
+    PlatformData::HalConfig.getValue(value, CPF::IspVamemType);
+    mIaIsp15InputParams.isp_vamem_type = value;
+
+    mIspHandle = ia_isp_1_5_init(cpfData,
+                                 maxStatsWidth,
+                                 maxStatsHeight,
+                                 cmc,
+                                 mkn);
+
+}
+
+ia_err IaIsp15::convertIspStatistics(void *statistics,
+                                          ia_aiq_rgbs_grid **out_rgbs_grid,
+                                          ia_aiq_af_grid **out_af_grid)
+{
+    LOG2("@%s", __FUNCTION__);
+    return ia_isp_1_5_statistics_convert(mIspHandle, statistics, out_rgbs_grid, out_af_grid);
+}
+
+ia_err IaIsp15::calculateIspParams(const ispInputParameters *isp_input_params,
+                            ia_binary_data *output_data)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    mIaIsp15InputParams.frame_use = isp_input_params->frame_use;
+    mIaIsp15InputParams.sensor_frame_params = isp_input_params->sensor_frame_params;
+    mIaIsp15InputParams.exposure_results = isp_input_params->exposure_results;
+    mIaIsp15InputParams.awb_results = isp_input_params->awb_results;
+    mIaIsp15InputParams.gbce_results = isp_input_params->gbce_results;
+    mIaIsp15InputParams.pa_results = isp_input_params->pa_results;
+    mIaIsp15InputParams.manual_brightness = isp_input_params->manual_brightness;
+    mIaIsp15InputParams.manual_contrast = isp_input_params->manual_contrast;
+    mIaIsp15InputParams.manual_hue = isp_input_params->manual_hue;
+    mIaIsp15InputParams.manual_saturation = isp_input_params->manual_saturation;
+    mIaIsp15InputParams.manual_sharpness = isp_input_params->manual_sharpness;
+    mIaIsp15InputParams.effects = isp_input_params->effects;
+
+    return ia_isp_1_5_run(mIspHandle, &mIaIsp15InputParams, output_data);
+}
+
+
+/********************************
+        IaIsp22
+*********************************/
+IaIsp22::IaIsp22()
+{
+    LOG1("@%s", __FUNCTION__);
+}
+
+IaIsp22::~IaIsp22()
+{
+    LOG1("@%s", __FUNCTION__);
+    ia_isp_2_2_deinit(mIspHandle);
+}
+
+void IaIsp22::initIaIspAdaptor(const ia_binary_data *cpfData,
+                           unsigned int maxStatsWidth,
+                           unsigned int maxStatsHeight,
+                           ia_cmc_t *cmc,
+                           ia_mkn *mkn)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    int value = 0;
+    PlatformData::HalConfig.getValue(value, CPF::IspVamemType);
+    mIaIsp22InputParams.isp_vamem_type = value;
+
+    mIspHandle = ia_isp_2_2_init(cpfData,
+                                 maxStatsWidth,
+                                 maxStatsHeight,
+                                 cmc,
+                                 mkn);
+
+}
+
+ia_err IaIsp22::convertIspStatistics(void *statistics,
+                                          ia_aiq_rgbs_grid **out_rgbs_grid,
+                                          ia_aiq_af_grid **out_af_grid)
+{
+    LOG2("@%s", __FUNCTION__);
+    return ia_isp_2_2_statistics_convert(mIspHandle, statistics, out_rgbs_grid, out_af_grid);
+}
+
+ia_err IaIsp22::calculateIspParams(const ispInputParameters *isp_input_params,
+                            ia_binary_data *output_data)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    mIaIsp22InputParams.frame_use = isp_input_params->frame_use;
+    mIaIsp22InputParams.sensor_frame_params = isp_input_params->sensor_frame_params;
+    mIaIsp22InputParams.exposure_results = isp_input_params->exposure_results;
+    mIaIsp22InputParams.awb_results = isp_input_params->awb_results;
+    mIaIsp22InputParams.gbce_results = isp_input_params->gbce_results;
+    mIaIsp22InputParams.pa_results = isp_input_params->pa_results;
+    mIaIsp22InputParams.manual_brightness = isp_input_params->manual_brightness;
+    mIaIsp22InputParams.manual_contrast = isp_input_params->manual_contrast;
+    mIaIsp22InputParams.manual_hue = isp_input_params->manual_hue;
+    mIaIsp22InputParams.manual_saturation = isp_input_params->manual_saturation;
+    mIaIsp22InputParams.manual_sharpness = isp_input_params->manual_sharpness;
+    mIaIsp22InputParams.effects = isp_input_params->effects;
+
+    return ia_isp_2_2_run(mIspHandle, &mIaIsp22InputParams, output_data);
 }
 
 } //  namespace android
