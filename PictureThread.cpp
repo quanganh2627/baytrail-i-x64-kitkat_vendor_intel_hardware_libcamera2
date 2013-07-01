@@ -438,7 +438,7 @@ status_t PictureThread::allocateInputBuffers(int format, int width, int height, 
     // requirements.... even the snapshot buffers that do not go to screen
     int stride = SGXandDisplayStride(format, width);
     LOG1("@%s stride %d", __FUNCTION__, stride);
-    size_t bufferSize = frameSize(format, stride, height);
+    FrameInfo aTmpFrameInfo;
 
     if(numBufs == 0)
         return NO_ERROR;
@@ -449,19 +449,20 @@ status_t PictureThread::allocateInputBuffers(int format, int width, int height, 
         goto bailout;
 
     mInputBuffers = numBufs;
+    aTmpFrameInfo.width = width;
+    aTmpFrameInfo.height = height;
+    aTmpFrameInfo.format = format;
+    aTmpFrameInfo.stride = stride;
+
 
     for (int i = 0; i < mInputBuffers; i++) {
         mInputBufferArray[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
-        MemoryUtils::allocateGraphicBuffer(mInputBufferArray[i], width, height);
+        MemoryUtils::allocateGraphicBuffer(mInputBufferArray[i], aTmpFrameInfo);
         if (mInputBufferArray[i].dataPtr == NULL) {
             mInputBuffers = i;
             goto bailout;
         }
-        mInputBufferArray[i].width = width;
-        mInputBufferArray[i].height = height;
-        mInputBufferArray[i].stride = stride;
-        mInputBufferArray[i].format = format;
-        mInputBufferArray[i].size = bufferSize;
+
         mInputBufferArray[i].status = FRAME_STATUS_OK;
         mInputBuffDataArray[i] = (char *) mInputBufferArray[i].dataPtr;
         if (registerToScaler)

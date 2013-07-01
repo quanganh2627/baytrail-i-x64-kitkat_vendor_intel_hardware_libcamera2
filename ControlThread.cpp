@@ -4345,7 +4345,12 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
     int picWidth, picHeight;
     unsigned int bufCount = MAX(mBurstLength, mISP->getContinuousCaptureNumber()+1);
     mParameters.getPictureSize(&picWidth, &picHeight);
-    int format = mISP->getSnapshotPixelFormat();
+   /**
+    * we currently use the NV12 as YUV format for snapshot buffers
+    * If this needs to be variated per platform then we should introduce a
+    * PlatformData::getSnapshotFormat()
+    */
+    int format = V4L2_PIX_FMT_NV12;
 
     if(videoMode){
        /**

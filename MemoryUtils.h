@@ -24,7 +24,7 @@ namespace android {
 
     namespace MemoryUtils {
 
-        status_t allocateGraphicBuffer(AtomBuffer &aBuff, int width, int height);
+        status_t allocateGraphicBuffer(AtomBuffer &aBuff, FrameInfo &aFrameInfo);
         void freeGraphicBuffer(AtomBuffer &aBuff);
         void freeAtomBuffer(AtomBuffer &aBuff);
 

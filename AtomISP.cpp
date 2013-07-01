@@ -1612,11 +1612,13 @@ status_t AtomISP::configureContinuousSOC()
     mConfig.HALZSL = mConfig.snapshot;
     mConfig.HALZSL.width = zslSize.width;
     mConfig.HALZSL.height = zslSize.height;
-    mConfig.HALZSL.stride = SGXandDisplayStride(V4L2_PIX_FMT_NV12, mConfig.HALZSL.width);
+    mConfig.HALZSL.format = PlatformData::getPreviewFormat();
+    mConfig.HALZSL.stride = SGXandDisplayStride(mConfig.HALZSL.format, mConfig.HALZSL.width);
     mConfig.HALZSL.size = frameSize(mConfig.HALZSL.format, mConfig.HALZSL.width, mConfig.HALZSL.height);
 
+
     // fix the Preview stride to have gfx stride, as preview never goes to ISP
-    mConfig.preview.stride = SGXandDisplayStride(V4L2_PIX_FMT_NV12, mConfig.preview.width);
+    mConfig.preview.stride = SGXandDisplayStride(mConfig.HALZSL.format, mConfig.preview.width);
 
     ret = configureDevice(
             mPreviewDevice,
@@ -2393,8 +2395,8 @@ status_t AtomISP::setSnapshotFrameFormat(int width, int height, int format)
     mConfig.snapshot.width  = width;
     mConfig.snapshot.height = height;
     mConfig.snapshot.format = format;
-    mConfig.snapshot.stride = width;
-    mConfig.snapshot.size = frameSize(format, width, height);
+    mConfig.snapshot.stride = SGXandDisplayStride(format, width);
+    mConfig.snapshot.size = frameSize(format, mConfig.snapshot.stride, height);
 
     if (isDumpRawImageReady())
         mConfig.snapshot.format = V4L2_PIX_FMT_SRGGB10;
@@ -4461,7 +4463,7 @@ status_t AtomISP::allocateHALZSLBuffers()
         for (int i = 0; i < sNumHALZSLBuffers; i++) {
             AtomBuffer *buff = &mHALZSLBuffers[i];
             *buff = AtomBufferFactory::createAtomBuffer(); // init fields
-            status = MemoryUtils::allocateGraphicBuffer(mHALZSLBuffers[i], mConfig.HALZSL.width, mConfig.HALZSL.height);
+            status = MemoryUtils::allocateGraphicBuffer(mHALZSLBuffers[i], mConfig.HALZSL);
 
             if(status != NO_ERROR) {
                 LOGE("@%s: Failed to allocate GraphicBuffer!", __FUNCTION__);
@@ -4519,7 +4521,7 @@ status_t AtomISP::allocatePreviewBuffers()
         LOG1("Allocating %d buffers of size %d", mNumPreviewBuffers, mConfig.preview.size);
         for (int i = 0; i < mNumPreviewBuffers; i++) {
             mPreviewBuffers[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_PREVIEW); // init fields
-            MemoryUtils::allocateGraphicBuffer(mPreviewBuffers[i], mConfig.preview.width, mConfig.preview.height);
+            MemoryUtils::allocateGraphicBuffer(mPreviewBuffers[i], mConfig.preview);
             if (mPreviewBuffers[i].dataPtr == NULL) {
                 LOGE("Error allocation memory for preview buffers!");
                 status = NO_MEMORY;
@@ -4696,7 +4698,7 @@ status_t AtomISP::allocateSnapshotBuffers()
                 postv.buff = NULL;
                 postv.dataPtr = NULL;
                 // for image data, actual sized buff
-                MemoryUtils::allocateGraphicBuffer(postv, mConfig.postview.width, mConfig.postview.height);
+                MemoryUtils::allocateGraphicBuffer(postv, mConfig.postview);
                 // for callbacks, a dummy buff
                 mCallbacks->allocateMemory(&postv.buff, 1, true);
                 if (postv.dataPtr == NULL || postv.buff == NULL) {
@@ -4710,10 +4712,6 @@ status_t AtomISP::allocateSnapshotBuffers()
                 vinfo->data = postv.dataPtr;
                 markBufferCached(vinfo, true);
                 postv.shared = false;
-                postv.width = mConfig.postview.width;
-                postv.height = mConfig.postview.height;
-                postv.stride = mConfig.postview.stride;
-                postv.size = mConfig.postview.size;
                 postv.buff->data = postv.dataPtr;
                 postv.buff->size = postv.size;
                 if (mHALZSLEnabled)

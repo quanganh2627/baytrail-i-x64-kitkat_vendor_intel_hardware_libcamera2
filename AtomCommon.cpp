@@ -228,12 +228,19 @@ int getGFXHALPixelFormatFromV4L2Format(int previewFormat)
 
     switch(previewFormat) {
     case V4L2_PIX_FMT_NV12:
-#ifndef GRAPHIC_IS_GEN // this will be removed if graphic provides one common header file
-        halPixelFormat = HAL_PIXEL_FORMAT_NV12;
-#endif
+#ifdef GRAPHIC_IS_GEN // this will be removed if graphic provides one common header file
+        // for the time being let's choose a format that has the same bpp as NV12
+        // This conversion is only used for memory allocation purposes
+        halPixelFormat = HAL_PIXEL_FORMAT_YV12;
+#else
+         halPixelFormat = HAL_PIXEL_FORMAT_NV12;
+ #endif
         break;
     case V4L2_PIX_FMT_YVU420:
         halPixelFormat = HAL_PIXEL_FORMAT_YV12;
+        break;
+    case V4L2_PIX_FMT_SRGGB10:
+        halPixelFormat = HAL_PIXEL_FORMAT_RGBA_8888;
         break;
     default: break;
     }

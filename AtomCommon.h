@@ -130,6 +130,16 @@ struct GFXBufferInfo {
     int scalerId;
 };
 
+struct FrameInfo {
+    int format;     // V4L2 format
+    int width;      // Frame width
+    int height;     // Frame height
+    int stride;     // Frame stride (can be bigger than width)
+    int maxWidth;   // Frame maximum width
+    int maxHeight;  // Frame maximum height
+    int size;       // Frame size in bytes
+};
+
 /*! \struct AtomBuffer
  *
  * Container struct for buffers passed to/from Atom ISP
