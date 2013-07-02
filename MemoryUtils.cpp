@@ -94,6 +94,30 @@ namespace android {
         aBuff.dataPtr = NULL;
     }
 
+    status_t allocateAtomBuffer(AtomBuffer &aBuff, FrameInfo &aFrameInfo, Callbacks *aCallbacks)
+    {
+        LOG1("%s with these properties: (%dx%d)s:%d format %s", __FUNCTION__,
+                aFrameInfo.width, aFrameInfo.height, aFrameInfo.stride, v4l2Fmt2Str(aFrameInfo.format));
+        status_t status = OK;
+        aBuff.dataPtr = NULL;
+
+        aCallbacks->allocateMemory(&aBuff, aFrameInfo.size);
+        if (aBuff.buff == NULL) {
+            LOGE("Failed to allocate AtomBuffer");
+            return NO_MEMORY;
+        }
+
+        aBuff.width = aFrameInfo.width;
+        aBuff.height = aFrameInfo.height;
+        aBuff.stride = aFrameInfo.stride;
+        aBuff.format = aFrameInfo.format;
+        aBuff.size = aFrameInfo.size;
+        aBuff.dataPtr = aBuff.buff->data;
+        aBuff.shared = false;
+
+        LOG1("@%s allocated heap buffer with pointer %p", __FUNCTION__, aBuff.dataPtr);
+        return status;
+    }
     void freeAtomBuffer(AtomBuffer &aBuff)
     {
         LOG1("@%s", __FUNCTION__);

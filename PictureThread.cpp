@@ -453,11 +453,22 @@ status_t PictureThread::allocateInputBuffers(int format, int width, int height, 
     aTmpFrameInfo.height = height;
     aTmpFrameInfo.format = format;
     aTmpFrameInfo.stride = stride;
+    aTmpFrameInfo.size = frameSize(format, stride, height);
 
 
     for (int i = 0; i < mInputBuffers; i++) {
         mInputBufferArray[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
-        MemoryUtils::allocateGraphicBuffer(mInputBufferArray[i], aTmpFrameInfo);
+        /*
+         * For some use cases there is not enough graphic memory to allocate the snapshot
+         * buffers. We limit the graphic allocation only when we need. This
+         * is signaled by the boolean registerToScaler. In other cases allocate
+         * from HEAP as usual
+         */
+        if (registerToScaler)
+            MemoryUtils::allocateGraphicBuffer(mInputBufferArray[i], aTmpFrameInfo);
+        else
+            MemoryUtils::allocateAtomBuffer(mInputBufferArray[i], aTmpFrameInfo, mCallbacks);
+
         if (mInputBufferArray[i].dataPtr == NULL) {
             mInputBuffers = i;
             goto bailout;
