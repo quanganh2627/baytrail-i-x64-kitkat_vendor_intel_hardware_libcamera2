@@ -72,15 +72,15 @@ LOCAL_SRC_FILES += AtomCP.cpp \
 endif
 
 LOCAL_C_INCLUDES += \
-	frameworks/base/include \
-	frameworks/base/include/binder \
-	frameworks/av/include/camera \
-	frameworks/native/include/media/openmax \
-	external/jpeg \
-	hardware/libhardware/include/hardware \
-	external/skia/include/core \
-	external/skia/include/images \
-	external/sqlite/dist \
+	$(call include-path-for, frameworks-base) \
+	$(call include-path-for, frameworks-base)/binder \
+	$(call include-path-for, frameworks-av)/camera \
+	$(call include-path-for, frameworks-native)/media/openmax \
+	$(call include-path-for, jpeg) \
+	$(call include-path-for, libhardware)/hardware \
+	$(call include-path-for, skia)/core \
+	$(call include-path-for, skia)/images \
+	$(call include-path-for, sqlite) \
 	$(TARGET_OUT_HEADERS)/libtbd \
 	$(TARGET_OUT_HEADERS)/libmix_videoencoder \
 	$(TARGET_OUT_HEADERS)/cameralibs \
