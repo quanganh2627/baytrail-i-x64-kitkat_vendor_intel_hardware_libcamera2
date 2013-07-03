@@ -3062,12 +3062,15 @@ void AtomISP::dumpHALZSLPreviewBufs() {
  * Waits for buffers to arrive in the given vector. If there aren't initially
  * any buffers, this sleeps and retries a predefined amount of cycles.
  *
- * Preconditions: mDevices[mPreviewDevice].mutex and mHALZSLLock are locked
- * in that order.
+ * Preconditions: snapshot case - mHALZSLLock is locked.
+ *                preview case - mDevices[mPreviewDevice].mutex and
+ *                               mHALZSLLock are locked in that order
  * \param vector of AtomBuffers
+ * \param snapshot: boolean to distinguish whether we are waiting for a
+ *                  ZSL buffer to get a snapshot or preview frame.
  * \return true if there are buffers in the vector, false if not
  */
-bool AtomISP::waitForHALZSLBuffer(Vector<AtomBuffer> &vector)
+bool AtomISP::waitForHALZSLBuffer(Vector<AtomBuffer> &vector, bool snapshot)
 {
     LOG2("@%s", __FUNCTION__);
     int retryCount = sHALZSLRetryCount;
@@ -3076,10 +3079,12 @@ bool AtomISP::waitForHALZSLBuffer(Vector<AtomBuffer> &vector)
         size = vector.size();
         if (size == 0) {
             mHALZSLLock.unlock();
-            mDeviceMutex[mPreviewDevice->mId].unlock();
+            if (!snapshot)
+                mDeviceMutex[mPreviewDevice->mId].unlock();
             LOGW("@%s, AtomISP starving from ZSL buffers.", __FUNCTION__);
             usleep(sHALZSLRetryUSleep);
-            mDeviceMutex[mPreviewDevice->mId].lock(); // this locking order is significant!
+            if (!snapshot)
+                mDeviceMutex[mPreviewDevice->mId].lock(); // this locking order is significant!
             mHALZSLLock.lock();
         }
     } while(retryCount-- && size == 0);
@@ -3112,7 +3117,7 @@ status_t AtomISP::getHALZSLPreviewFrame(AtomBuffer *buff)
     mHALZSLBuffers[index].frameSequenceNbr = bufInfo.vbuffer.sequence;
     mHALZSLBuffers[index].status = (FrameBufferStatus)bufInfo.vbuffer.reserved;
 
-    if (!waitForHALZSLBuffer(mHALZSLPreviewBuffers)) {
+    if (!waitForHALZSLBuffer(mHALZSLPreviewBuffers, false)) {
         LOGE("@%s no preview buffers in FIFO!", __FUNCTION__);
         return UNKNOWN_ERROR;
     }
@@ -3393,7 +3398,7 @@ status_t AtomISP::getHALZSLSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postvie
     LOG1("@%s", __FUNCTION__);
     Mutex::Autolock mLock(mHALZSLLock);
 
-    if (!waitForHALZSLBuffer(mHALZSLCaptureBuffers)) {
+    if (!waitForHALZSLBuffer(mHALZSLCaptureBuffers, true)) {
         LOGE("@%s no capture buffers in FIFO!", __FUNCTION__);
         return UNKNOWN_ERROR;
     }

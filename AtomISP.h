@@ -362,7 +362,7 @@ private:
     void copyOrScaleHALZSLBuffer(const AtomBuffer &captureBuf, const AtomBuffer *previewBuf,
             AtomBuffer *targetBuf, const AtomBuffer &localBuf, float zoomFactor) const;
     status_t getHALZSLSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
-    bool waitForHALZSLBuffer(Vector<AtomBuffer> &vector);
+    bool waitForHALZSLBuffer(Vector<AtomBuffer> &vector, bool snapshot);
     void dumpHALZSLBufs();
     void dumpHALZSLPreviewBufs();
 
