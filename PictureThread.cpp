@@ -209,8 +209,24 @@ void PictureThread::getDefaultParameters(CameraParameters *params)
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY, "50");
 }
 
-    void PictureThread::initialize(const CameraParameters &params, int zoomRatio)
+status_t PictureThread::initialize(const CameraParameters &params, int zoomRatio)
 {
+    LOG1("@%s", __FUNCTION__);
+
+    Message msg;
+    msg.id = MESSAGE_ID_INITIALIZE;
+    msg.data.param.params = &params;
+    msg.data.param.zoomRatio = zoomRatio;
+
+    return mMessageQueue.send(&msg, MESSAGE_ID_INITIALIZE);
+}
+
+status_t PictureThread::handleMessageInitialize(MessageParam *msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    CameraParameters params = *msg->params;
+    int zoomRatio = msg->zoomRatio;
+
     mExifMaker->initialize(params, zoomRatio);
     int q = params.getInt(CameraParameters::KEY_JPEG_QUALITY);
     if (q != 0)
@@ -231,6 +247,9 @@ void PictureThread::getDefaultParameters(CameraParameters *params)
     params.getPictureSize(&mScaledPic.width, &mScaledPic.height);
     mScaledPic.stride = mScaledPic.width;
     mScaledPic.size = frameSize(mScaledPic.format, mScaledPic.stride, mScaledPic.height);
+
+    mMessageQueue.reply(MESSAGE_ID_INITIALIZE, NO_ERROR);
+    return NO_ERROR;
 }
 
 status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuffersNum,
@@ -632,6 +651,10 @@ status_t PictureThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_FLUSH:
             status = handleMessageFlush();
+            break;
+
+        case MESSAGE_ID_INITIALIZE:
+            status = handleMessageInitialize(&msg.data.param);
             break;
 
         default:
