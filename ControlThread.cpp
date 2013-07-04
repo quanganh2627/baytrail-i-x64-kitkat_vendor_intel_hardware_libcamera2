@@ -3865,11 +3865,16 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
+    // PREVIEW_FPS_RANGE
     int minFPS, maxFPS;
     params->getPreviewFpsRange(&minFPS, &maxFPS);
-    if (minFPS > maxFPS || minFPS < 0) {
-        LOGE("invalid fps range [%d,%d]", minFPS, maxFPS);
-        return BAD_VALUE;
+    // getPreviewFrameRate() returns -1 fps value if the range-pair string is malformatted
+    const char* fpsRange = params->get(CameraParameters::KEY_PREVIEW_FPS_RANGE);
+    const char* fpsRanges = params->get(CameraParameters::KEY_SUPPORTED_PREVIEW_FPS_RANGE);
+    if ((fpsRange && fpsRanges && strstr(fpsRanges, fpsRange) == NULL) ||
+        minFPS < 0 || maxFPS < 0) {
+            LOGE("invalid fps range: %s; supported %s", fpsRange, fpsRanges);
+            return BAD_VALUE;
     }
 
     // VIDEO
