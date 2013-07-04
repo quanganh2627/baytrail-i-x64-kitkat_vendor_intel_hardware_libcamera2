@@ -4944,7 +4944,7 @@ void ControlThread::preProcessFlashMode(CameraParameters *newParams)
 
     // Don't do anything, if not using back camera. CTS fails,
     // if we meddle with invalid flash values it sets.
-    if (mCameraId != 0 || !PlatformData::supportsBackFlash())
+    if (!PlatformData::supportsFlash(mCameraId))
         return;
 
     const char* supportedFlashModes = newParams->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
@@ -5008,11 +5008,12 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
             }
-            if (PlatformData::supportsBackFlash()) {
+            if (PlatformData::supportsFlash(mCameraId)) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
                 selectFlashModeForScene(newParams);
             }
+
         } else if (newScene == CameraParameters::SCENE_MODE_SPORTS || newScene == CameraParameters::SCENE_MODE_PARTY) {
             sceneMode = (newScene == CameraParameters::SCENE_MODE_SPORTS) ? CAM_AE_SCENE_MODE_SPORTS : CAM_AE_SCENE_MODE_PARTY;
             if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
@@ -5028,7 +5029,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
             }
-            if (PlatformData::supportsBackFlash()) {
+            if (PlatformData::supportsFlash(mCameraId)) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
                 selectFlashModeForScene(newParams);
@@ -5048,7 +5049,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
             }
-            if (PlatformData::supportsBackFlash()) {
+            if (PlatformData::supportsFlash(mCameraId)) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
                 selectFlashModeForScene(newParams);
@@ -5068,7 +5069,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::TRUE);
             }
-            if (PlatformData::supportsBackFlash()) {
+            if (PlatformData::supportsFlash(mCameraId)) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
                 selectFlashModeForScene(newParams);
@@ -5088,7 +5089,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::TRUE);
             }
-            if (PlatformData::supportsBackFlash()) {
+            if (PlatformData::supportsFlash(mCameraId)) {
                 mSavedFlashSupported = String8("on");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_ON);
                 selectFlashModeForScene(newParams);
@@ -5106,7 +5107,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
             }
-            if (PlatformData::supportsBackFlash()) {
+            if (PlatformData::supportsFlash(mCameraId)) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
                 selectFlashModeForScene(newParams);
@@ -5126,7 +5127,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
             }
-            if (PlatformData::supportsBackFlash()) {
+            if (PlatformData::supportsFlash(mCameraId)) {
                 mSavedFlashSupported = String8("off");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
                 selectFlashModeForScene(newParams);
@@ -5146,7 +5147,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
             }
-            if (PlatformData::supportsBackFlash()) {
+            if (PlatformData::supportsFlash(mCameraId)) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
                 selectFlashModeForScene(newParams);
@@ -5181,7 +5182,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
             }
-            if (PlatformData::supportsBackFlash()) {
+            if (PlatformData::supportsFlash(mCameraId)) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
                 selectFlashModeForScene(newParams);

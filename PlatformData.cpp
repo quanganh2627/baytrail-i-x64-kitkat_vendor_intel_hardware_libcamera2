@@ -256,17 +256,6 @@ const char* PlatformData::supportedSnapshotSizes(int cameraId)
     return i->mCameras[cameraId].supportedSnapshotSizes;
 }
 
-bool PlatformData::supportsBackFlash(void)
-{
-    bool boolean;
-    if (!HalConfig.getBool(boolean, CPF::HasFlash)) {
-        return boolean;
-    }
-
-    PlatformBase *i = getInstance();
-    return i->mBackFlash;
-}
-
 bool PlatformData::supportsFileInject(void)
 {
     PlatformBase *i = getInstance();
@@ -1021,6 +1010,17 @@ bool PlatformData::supportsSlowMotion(int cameraId)
       return false;
     }
     return i->mCameras[cameraId].hasSlowMotion;
+}
+
+bool PlatformData::supportsFlash(int cameraId)
+{
+    bool boolean;
+    if (!HalConfig.getBool(boolean, CPF::HasFlash)) {
+        return boolean;
+    }
+
+    PlatformBase *i = getInstance();
+    return i->mCameras[cameraId].hasFlash;
 }
 
 const char* PlatformData::supportedFocusModes(int cameraId)

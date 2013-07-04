@@ -104,8 +104,6 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
         PlatformBase::mSubDevName = atts[1];
     } else if (strcmp(name, "fileInject") == 0) {
         PlatformBase::mFileInject = ((strcmp(atts[1], "true") == 0) ? true : false);
-    } else if (strcmp(name, "backFlash") == 0) {
-        PlatformBase::mBackFlash = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "productName") == 0) {
         PlatformBase::mProductName = atts[1];
     } else if (strcmp(name, "manufacturerName") == 0) {
@@ -276,6 +274,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->defaultPreviewUpdateMode = atts[1];
     } else if (strcmp(name, "hasSlowMotion") == 0) {
         pCurrentCam->hasSlowMotion = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "hasFlash") == 0) {
+        pCurrentCam->hasFlash = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "supportedAeLock") == 0) {
         pCurrentCam->supportedAeLock = atts[1];
     } else if (strcmp(name, "supportedAwbLock") == 0) {
@@ -440,7 +440,6 @@ void CameraProfiles::dump(void)
     LOGD("line%d, in DeviceData, for common settings ", __LINE__);
     LOGD("line%d, in DeviceData, mSubDevName:%s ", __LINE__, mSubDevName.string());
     LOGD("line%d, in DeviceData, mFileInject:%d ", __LINE__, mFileInject);
-    LOGD("line%d, in DeviceData, mBackFlash:%d ", __LINE__, mBackFlash);
     LOGD("line%d, in DeviceData, mVideoPreviewSizePref:%s ", __LINE__, mVideoPreviewSizePref.string());
     LOGD("line%d, in DeviceData, mProductName:%s ", __LINE__, mProductName.string());
     LOGD("line%d, in DeviceData, mManufacturerName:%s ", __LINE__, mManufacturerName.string());
