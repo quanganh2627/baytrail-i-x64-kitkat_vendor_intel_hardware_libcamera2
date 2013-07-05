@@ -618,6 +618,44 @@ AwbMode AtomAIQ::getAwbMode()
     return mAwbMode;
 }
 
+ia_3a_awb_light_source  AtomAIQ::getLightSource()
+{
+    LOG1("@%s", __FUNCTION__);
+    AwbMode mode = getAwbMode();
+    ia_3a_awb_light_source wr_val;
+    switch (mode) {
+    case CAM_AWB_MODE_DAYLIGHT:
+        wr_val = ia_3a_awb_light_source_fluorlamp_d;
+        break;
+    case CAM_AWB_MODE_CLOUDY:
+        wr_val = ia_3a_awb_light_source_cloudiness;
+        break;
+    case CAM_AWB_MODE_SUNSET:
+        wr_val = ia_3a_awb_light_source_other;
+        break;
+    case CAM_AWB_MODE_TUNGSTEN:
+        wr_val = ia_3a_awb_light_source_filament_lamp;
+        break;
+    case CAM_AWB_MODE_FLUORESCENT:
+        wr_val = ia_3a_awb_light_source_fluorlamp_w;
+        break;
+    case CAM_AWB_MODE_WARM_FLUORESCENT:
+        wr_val = ia_3a_awb_light_source_fluorlamp_w;
+        break;
+    case CAM_AWB_MODE_WARM_INCANDESCENT:
+        wr_val = ia_3a_awb_light_source_filament_lamp;
+        break;
+    case CAM_AWB_MODE_SHADOW:
+        wr_val = ia_3a_awb_light_source_shadow_area;
+        break;
+    case CAM_AWB_MODE_MANUAL_INPUT:
+    case CAM_AWB_MODE_AUTO:
+    default:
+        wr_val = ia_3a_awb_light_source_other;
+    }
+    return wr_val;
+}
+
 status_t AtomAIQ::setAeMeteringMode(MeteringMode mode)
 {
     LOG1("@%s: mode = %d", __FUNCTION__, mode);

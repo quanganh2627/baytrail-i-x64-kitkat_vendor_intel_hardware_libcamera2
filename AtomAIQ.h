@@ -341,7 +341,7 @@ public:
     bool getAeFlashNecessary();
     status_t setAwbMode(AwbMode mode);
     AwbMode getAwbMode();
-    ia_3a_awb_light_source getLightSource(){ return ia_3a_awb_light_source_other; };
+    ia_3a_awb_light_source getLightSource();
     status_t setAeMeteringMode(MeteringMode mode);
     MeteringMode getAeMeteringMode();
     status_t set3AColorEffect(const char *effect);
