@@ -1514,6 +1514,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     // takePicture(). This is done for faster shot2shot.
     // TODO: support for fluent transitions regardless of buffer type
     //       transparently
+
     bool useSharedGfxBuffers =
         (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS)
         && (mIntelParamsAllowed || mode != MODE_CONTINUOUS_CAPTURE);
@@ -1541,7 +1542,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     }
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Alloc_Preview_Buffer");
-    if (m3AControls->isIntel3A()) {
+    if (m3AControls->isIntel3A() && (!(gPowerLevel & CAMERA_POWERBREAKDOWN_DISABLE_3A))) {
         // Enable auto-focus by default
         m3AControls->setAfEnabled(true);
         m3AThread->enable3A();
@@ -1578,6 +1579,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (status == NO_ERROR) {
         mState = state;
         mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED);
+        // Check the camera.hal.power property if disable the Preview
+        if (gPowerLevel & CAMERA_POWERBREAKDOWN_DISABLE_PREVIEW) {
+            mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
+        }
     } else {
         LOGE("Error starting ISP!");
         mPreviewThread->returnPreviewBuffers();
@@ -6966,6 +6971,11 @@ void ControlThread::setExternalSnapshotBuffers(int format, int width, int height
 status_t ControlThread::startFaceDetection()
 {
     LOG2("@%s", __FUNCTION__);
+    // Check the camera.hal.power property if disable FDFR
+    if (gPowerLevel & CAMERA_POWERBREAKDOWN_DISABLE_FDFR) {
+        return NO_ERROR;
+    }
+
     if (mState == STATE_STOPPED || mFaceDetectionActive) {
         LOGE("starting FD in stop state");
         return INVALID_OPERATION;
