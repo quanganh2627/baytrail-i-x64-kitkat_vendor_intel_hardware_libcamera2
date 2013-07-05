@@ -31,7 +31,7 @@
 #include "AtomCommon.h"
 #include "CallbacksThread.h"
 #include "AAAThread.h"
-#include "AtomAAA.h"
+#include "I3AControls.h"
 #include "CameraConf.h"
 #include "PostProcThread.h"
 #include "PanoramaThread.h"
@@ -47,6 +47,7 @@
 #include "IAtomIspObserver.h"
 #include "PictureThread.h"
 #include "SensorThread.h"
+#include "SensorSyncManager.h"
 
 namespace android {
 
@@ -493,7 +494,6 @@ private:
 
     // parameters handling functions
     bool isParameterSet(const char* param);
-    bool isParameterSet(const char* param, const CameraParameters &params);
     String8 paramsReturnNewIfChanged(const CameraParameters *oldParams,
             CameraParameters *newParams,
             const char *key);
@@ -557,8 +557,6 @@ private:
     status_t processParamSharpness(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamShutter(const CameraParameters *oldParams,
-            CameraParameters *newParams);
-    status_t processParamBackLightingCorrectionMode(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamAwbMappingMode(const CameraParameters *oldParams,
             CameraParameters *newParams);
@@ -676,6 +674,7 @@ private:
     sp<SensorThread> mSensorThread;
     sp<BracketManager> mBracketManager;
     sp<PostCaptureThread> mPostCaptureThread;
+    sp<SensorSyncManager> mSensorSyncManager;
 
     MessageQueue<Message, MessageId> mMessageQueue;
     State mState;

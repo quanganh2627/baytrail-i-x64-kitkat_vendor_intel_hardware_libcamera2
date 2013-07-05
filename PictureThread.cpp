@@ -161,6 +161,12 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
 
     if (status != NO_ERROR)
         LOGE("Error while encoding JPEG");
+    else {
+        /* Update the fields in the AtomBuffer structure */
+        destBuf->width = mainBuf->width;
+        destBuf->height = mainBuf->height;
+        destBuf->format = V4L2_PIX_FMT_JPEG;
+    }
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("frameEncoded", mainBuf->frameCounter);
     LOG1("Total JPEG size: %d (time to encode: %ums)", destBuf->size, (unsigned)((systemTime() - startTime) / 1000000));
@@ -201,9 +207,9 @@ void PictureThread::getDefaultParameters(CameraParameters *params)
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY, "50");
 }
 
-void PictureThread::initialize(const CameraParameters &params)
+    void PictureThread::initialize(const CameraParameters &params, int zoomRatio)
 {
-    mExifMaker->initialize(params);
+    mExifMaker->initialize(params, zoomRatio);
     int q = params.getInt(CameraParameters::KEY_JPEG_QUALITY);
     if (q != 0)
         mPictureQuality = q;

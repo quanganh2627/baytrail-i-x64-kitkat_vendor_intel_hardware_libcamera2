@@ -52,7 +52,7 @@ public:
     class MetaData {
     public:
       bool flashFired;                       /*!< whether flash was fired */
-      SensorAeConfig *aeConfig;              /*!< defined in AtomAAA.h */
+      SensorAeConfig *aeConfig;              /*!< defined in I3AControls.h */
       atomisp_makernote_info *atomispMkNote; /*!< kernel provided metadata, defined linux/atomisp.h */
       ia_3a_mknote *ia3AMkNote;              /*!< defined in ia_3a_types.h */
       bool saveMirrored;                     /*!< whether to do mirroring */
@@ -68,7 +68,7 @@ public:
     status_t encode(MetaData &metaData, AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf = NULL);
 
     void getDefaultParameters(CameraParameters *params);
-    void initialize(const CameraParameters &params);
+    void initialize(const CameraParameters &params, int zoomRatio);
     status_t allocSharedBuffers(int width, int height, int sharedBuffersNum,
                                 int format, Vector<AtomBuffer> *bufs,
                                 bool registerToScaler);

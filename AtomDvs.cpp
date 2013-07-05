@@ -20,10 +20,10 @@
 
 namespace android {
 
-AtomDvs::AtomDvs(AtomISP *isp)
+AtomDvs::AtomDvs(AtomISP *isp) :
+    mIsp(isp)
+    ,mStatistics(NULL)
 {
-    mIsp = isp;
-    mStatistics = NULL;
     mState = ia_dvs_create();
     if (!mState)
         LOGE("Failed to create DVS state, DVS will be disabled\n");
@@ -107,6 +107,56 @@ status_t AtomDvs::run()
 
 end:
     return status;
+}
+
+bool AtomDvs::enable(const CameraParameters& params)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    int width = 0, height = 0;
+    bool isDVSActive = false;
+
+    if (isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED, params) &&
+        isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION, params)) {
+        isDVSActive = true;
+    }
+
+    params.getVideoSize(&width, &height);
+
+    if (width < MIN_DVS_WIDTH && height < MIN_DVS_HEIGHT)
+        isDVSActive = false;
+
+    status = mIsp->setDVS(isDVSActive);
+
+    if (status != NO_ERROR) {
+        LOGW("@%s: Failed to set DVS %s", __FUNCTION__, isDVSActive ? "enabled" : "disabled");
+        isDVSActive = false;
+    }
+
+    return isDVSActive;
+}
+
+/**
+ * override for IAtomIspObserver::atomIspNotify()
+ *
+ * AtomDvs gets attached to receive preview stream here.
+ */
+bool AtomDvs::atomIspNotify(Message *msg, const ObserverState state)
+{
+    if (!msg) {
+        LOG1("Received observer state change");
+        return false;
+    }
+
+    AtomBuffer *buff = &msg->data.frameBuffer.buff;
+    // We only want to run DVS process for non-corrupt frames:
+    if (buff && msg->id == MESSAGE_ID_FRAME && buff->status != FRAME_STATUS_CORRUPTED) {
+        // run() uses mLock, so this is thread-safe
+        run();
+    }
+
+    return false;
 }
 
 };

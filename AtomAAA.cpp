@@ -114,7 +114,7 @@ static ia_3a_af_hp_status cb_focus_home_position(void)
 
 } // extern "C"
 
-AtomAAA::AtomAAA(AtomISP *anISP) :
+AtomAAA::AtomAAA(HWControlGroup &hwcg, AtomISP *anISP) :
      mSensorType(SENSOR_TYPE_NONE)
     ,mAfMode(CAM_AF_MODE_NOT_SET)
     ,mPublicAeMode(CAM_AE_MODE_AUTO)
@@ -124,6 +124,7 @@ AtomAAA::AtomAAA(AtomISP *anISP) :
     ,mFocusPosition(0)
     ,mStillAfStart(0)
     ,mISP(anISP)
+    ,mSensorCI(hwcg.mSensorCI)
 {
     LOG1("@%s", __FUNCTION__);
     mPrintFunctions.vdebug = vdebug;
@@ -802,16 +803,6 @@ bool AtomAAA::getAwbLock()
     return ret;
 }
 
-status_t AtomAAA::setAeBacklightCorrection(bool en)
-{
-    Mutex::Autolock lock(m3aLock);
-    LOG1("@%s: en = %d", __FUNCTION__, en);
-
-    ia_3a_ae_enable_backlight_correction(en);
-
-    return NO_ERROR;
-}
-
 status_t AtomAAA::setAwbMapping(ia_3a_awb_map mode)
 {
     Mutex::Autolock lock(m3aLock);
@@ -1029,7 +1020,7 @@ status_t AtomAAA::applyEv(float bias)
     ret = applyResults();
     /* we should set everytime for bias */
     if (!m3ALibState.results.exposure_changed)
-      mISP->sensorSetExposure(&m3ALibState.results.exposure);
+        mSensorCI->setExposure(&m3ALibState.results.exposure);
 
     if (ret != 0)
         return UNKNOWN_ERROR;
@@ -1429,7 +1420,13 @@ int AtomAAA::applyResults(void)
 
     /* Apply Sensor settings */
     if (m3ALibState.results.exposure_changed) {
-        ret |= mISP->sensorSetExposure(&m3ALibState.results.exposure);
+        if (mSensorCI != NULL) {
+            int delay = mSensorCI->setExposure(&m3ALibState.results.exposure);
+            if (delay < 0)
+                ret |= delay;
+        } else {
+            LOGE("No interface for exposure control");
+        }
         m3ALibState.results.exposure_changed = false;
     }
 
@@ -1729,10 +1726,6 @@ void AtomAAA::getDefaultParams(CameraParameters *params, CameraParameters *intel
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SHARPENING, "none,normal,strong");
     intel_params->set(IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, "off");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL, "on,off");
-
-    // back lighting correction mode
-    intel_params->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, "off");
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BACK_LIGHTING_CORRECTION_MODES, "on,off");
 
     // AWB mapping mode
     intel_params->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);

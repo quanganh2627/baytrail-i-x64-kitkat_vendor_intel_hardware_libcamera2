@@ -1189,4 +1189,35 @@ status_t PlatformData::createVendorPlatformProductName(String8& name)
     return OK;
 }
 
+int PlatformData::getSensorGainLag(void)
+{
+    int value;
+    if (!HalConfig.getValue(value, CPF::Gain, CPF::Lag))
+        return value;
+
+    PlatformBase *i = getInstance();
+    return i->mSensorGainLag;
+}
+
+int PlatformData::getSensorExposureLag(void)
+{
+    int value;
+    if (!HalConfig.getValue(value, CPF::Exposure, CPF::Lag))
+        return value;
+
+    PlatformBase *i = getInstance();
+    return i->mSensorExposureLag;
+}
+
+bool PlatformData::synchronizeExposure(void)
+{
+
+    PlatformBase *i = getInstance();
+    if (mActiveCameraId < 0 || mActiveCameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, mActiveCameraId);
+      return false;
+    }
+    return i->mCameras[mActiveCameraId].synchronizeExposure;
+}
+
 }; // namespace android

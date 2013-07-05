@@ -20,12 +20,12 @@
 
 namespace android {
 class AtomAIQ;
+class I3AControls;
 };
 
 #include <utils/Errors.h>
 #include <utils/threads.h>
 #include <time.h>
-#include <ia_3a_types.h>
 #include <ia_types.h>
 #include <ia_aiq_types.h>
 #include <ia_aiq.h>
@@ -35,25 +35,18 @@ class AtomAIQ;
 #include "AtomISP.h"
 #include "I3AControls.h"
 #include "PlatformData.h"
-
+#include "AtomFifo.h"
+#include "ICameraHwControls.h"
 #include "ia_face.h"
 
 namespace android {
-// DetermineFlash: returns true if flash should be determined according to current exposure
-#define DetermineFlash(x) (x == CAM_AE_FLASH_MODE_AUTO || \
-                           x == CAM_AE_FLASH_MODE_DAY_SYNC || \
-                           x == CAM_AE_FLASH_MODE_SLOW_SYNC) \
-
-
 
 #define DEFAULT_GBCE            true
 #define DEFAULT_GBCE_STRENGTH   0
 #define AIQ_MAX_TIME_FOR_AF     2500 // milliseconds
 #define TORCH_INTENSITY         20   // 20%
-#define EV_LOWER_BOUND         -100
-#define EV_UPPER_BOUND          100
 #define MAX_NUM_AF_WINDOW       9
-#define AE_DELAY_FRAMES         2
+#define AE_DELAY_FRAMES_DEFAULT 2
 
 typedef struct {
     struct atomisp_parm               isp_params;
@@ -76,13 +69,19 @@ typedef struct {
 } af_state;
 
 typedef struct {
+    ia_aiq_ae_results                 results;
+    ia_aiq_hist_weight_grid           weight_grid;
+    ia_aiq_exposure_parameters        exposure;
+    ia_aiq_exposure_sensor_parameters sensor_exposure;
+    ia_aiq_flash_parameters           flash;
+} stored_ae_results;
+
+typedef struct {
     bool                              ae_locked;
-    struct atomisp_exposure           exposure; //ToDo: remove
     ia_aiq_ae_results                 *ae_results;
-    ia_aiq_ae_results                 prev_results[AE_DELAY_FRAMES+1];
-    ia_aiq_exposure_parameters        prev_exposure[AE_DELAY_FRAMES+1];
-    ia_aiq_exposure_sensor_parameters prev_sensor_exposure[AE_DELAY_FRAMES+1];
-    ia_aiq_flash_parameters           prev_flash[AE_DELAY_FRAMES+1];
+    stored_ae_results                 feedback_results;
+    unsigned int                      feedback_delay;
+    AtomFifo<stored_ae_results>       *stored_results;
 } ae_state;
 
 typedef struct {
@@ -171,9 +170,13 @@ private:
 
     //AE
     void resetAECParams();
-    status_t runAeMain(bool first_run = false);
+    status_t runAeMain();
     bool getAeResults();
     bool getAeFlashResults();
+    int applyExposure(ia_aiq_exposure_sensor_parameters *);
+    ia_aiq_ae_results* storeAeResults(ia_aiq_ae_results *, int updateIdx = -1);
+    ia_aiq_ae_results* peekAeStoredResults(unsigned int offset);
+    ia_aiq_ae_results* pickAeFeedbackResults();
 
     //AWB
     void resetAWBParams();
@@ -209,7 +212,7 @@ private:
     AtomAIQ& operator=(const AtomAIQ& other);
 
 public:
-    AtomAIQ(AtomISP *anISP);
+    AtomAIQ(HWControlGroup &hwcg, AtomISP *anISP);
     ~AtomAIQ();
 
     virtual bool isIntel3A() { return true; }
@@ -240,13 +243,12 @@ public:
     ia_3a_awb_light_source getLightSource(){ return ia_3a_awb_light_source_other; };
     status_t setAeMeteringMode(MeteringMode mode);
     MeteringMode getAeMeteringMode();
-    status_t setAeBacklightCorrection(bool en) { return INVALID_OPERATION; }
     status_t set3AColorEffect(const char *effect);
     virtual void setPublicAeMode(AeMode mode);
     virtual AeMode getPublicAeMode();
     virtual void setPublicAfMode(AfMode mode);
     virtual AfMode getPublicAfMode();
-    virtual status_t setIsoMode(IsoMode mode){return NO_ERROR;};
+    virtual status_t setIsoMode(IsoMode mode);
     virtual IsoMode getIsoMode(void) {return CAM_AE_ISO_MODE_NOT_SET;};
 
     status_t setAeLock(bool en);
@@ -388,6 +390,8 @@ private:
 
     //MKN
     ia_mkn  *mMkn;
+
+    IHWSensorControl*    mSensorCI;
 }; // class AtomAIQ
 
 }; // namespace android

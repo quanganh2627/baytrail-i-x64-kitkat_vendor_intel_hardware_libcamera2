@@ -21,18 +21,23 @@
 #include "CameraConf.h"
 #include "PreviewThread.h"
 #include "PictureThread.h"
+#include "AtomAIQ.h"
+#include "AtomAAA.h"
+#include "AtomSoc3A.h"
 #include "AtomISP.h"
 #include "Callbacks.h"
 #include "CallbacksThread.h"
 #include "ColorConverter.h"
 #include "PlatformData.h"
 #include "IntelParameters.h"
+#include "MemoryUtils.h"
 #include <utils/Vector.h>
 #include <math.h>
 #include <cutils/properties.h>
 #include <binder/IServiceManager.h>
 #include "intel_camera_extensions.h"
 #include "FeatureData.h"
+#include "ICameraHwControls.h"
 
 namespace android {
 
@@ -187,6 +192,18 @@ status_t ControlThread::init()
         goto bail;
     }
 
+    mSensorSyncManager = new SensorSyncManager((IHWSensorControl*) mISP);
+    if (mSensorSyncManager == NULL) {
+        LOGE("Error creating sensor sync manager");
+        goto bail;
+    }
+
+    status = mSensorSyncManager->init();
+    if (status != NO_ERROR) {
+        LOGD("Error initializing sensor sync manager");
+        mSensorSyncManager.clear();
+    }
+
     // Choose 3A interface based on the sensor type
     if (createAtom3A() != NO_ERROR) {
         LOGE("error creating AAA");
@@ -244,7 +261,7 @@ status_t ControlThread::init()
     }
 
     // we implement ICallbackAAA interface
-    m3AThread = new AAAThread(this, mDvs, mULL, m3AControls);
+    m3AThread = new AAAThread(this, mULL, m3AControls);
     if (m3AThread == NULL) {
         LOGE("error creating 3AThread");
         goto bail;
@@ -374,6 +391,8 @@ status_t ControlThread::init()
     mHdr.sharpening = NORMAL_SHARPENING;
     mHdr.vividness = GAUSSIAN_VIVIDNESS;
     mHdr.saveOrig = false;
+    mHdr.outMainBuf = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+    mHdr.outPostviewBuf = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
 
     //default flash modes
     mSavedFlashSupported = PlatformData::supportedFlashModes(mCameraId);
@@ -473,7 +492,12 @@ void ControlThread::deinit()
         }
     }
 
+    if (mSensorSyncManager != NULL)
+        mSensorSyncManager.clear();
+
     if (mCP != NULL) {
+        if (mHdr.enabled)
+            mCP->uninitializeHDR();
         delete mCP;
         mCP = NULL;
     }
@@ -736,19 +760,9 @@ void ControlThread::putParameters(char* params)
         free(params);
 }
 
-bool ControlThread::isParameterSet(const char *param, const CameraParameters &params)
-{
-    const char* strParam = params.get(param);
-    int len = strlen(CameraParameters::TRUE);
-    if (strParam != NULL && strncmp(strParam, CameraParameters::TRUE, len) == 0) {
-        return true;
-    }
-    return false;
-}
-
 bool ControlThread::isParameterSet(const char* param)
 {
-    return isParameterSet(param, mParameters);
+    return android::isParameterSet(param, mParameters);
 }
 
 /**
@@ -902,7 +916,7 @@ status_t ControlThread::handleMessagePanoramaFinalize(MessagePanoramaFinalize *m
     // Initialize the picture thread with the size of the final stiched image
     CameraParameters tmpParam = mParameters;
     tmpParam.setPictureSize(msg->buff.width, msg->buff.height);
-    mPictureThread->initialize(tmpParam);
+    mPictureThread->initialize(tmpParam, 1);
 
     AtomBuffer *pPvBuff = msg->pvBuff.buff ? &(msg->pvBuff) : NULL;
 
@@ -1180,7 +1194,7 @@ status_t ControlThread::initContinuousCapture()
     }
 
     // Configure PictureThread
-    mPictureThread->initialize(mParameters);
+    mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     mISP->setSnapshotFrameFormat(width, height, format);
     configureContinuousRingBuffer();
@@ -1378,9 +1392,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOG1("Starting preview in video mode");
         state = STATE_PREVIEW_VIDEO;
         mode = MODE_VIDEO;
-        if(isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED) &&
-           isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION))
-            isDVSActive = true;
+
+        mParameters.getVideoSize(&width, &height);
+        mISP->setVideoFrameFormat(width, height);
+        isDVSActive = mDvs->enable(mParameters);
     } else {
         LOG1("Starting preview in still mode");
         state = selectPreviewMode(mParameters);
@@ -1389,6 +1404,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         else
             mode = MODE_CONTINUOUS_CAPTURE;
     }
+
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
         m3AControls->init3aStatDump("preview");
 
@@ -1397,15 +1413,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (format == -1) {
         LOGE("Bad preview format. Cannot start the preview!");
         return BAD_VALUE;
-    }
-
-    // set video frame config
-    if (videoMode) {
-        mParameters.getVideoSize(&width, &height);
-        mISP->setVideoFrameFormat(width, height);
-        if(width < MIN_DVS_WIDTH && height < MIN_DVS_HEIGHT)
-            isDVSActive = false;
-        mISP->setDVS(isDVSActive);
     }
 
     if (state == STATE_CONTINUOUS_CAPTURE) {
@@ -1522,12 +1529,23 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Alloc_Preview_Buffer");
     if (m3AControls->isIntel3A()) {
+        // Enable auto-focus by default
+        m3AControls->setAfEnabled(true);
+        m3AThread->enable3A();
         if (m3AControls->switchModeAndRate(mode, mISP->getFrameRate()) != NO_ERROR)
             LOGE("Failed switching 3A at %.2f fps", mISP->getFrameRate());
-        if (isDVSActive && mDvs->reconfigure() != NO_ERROR)
+
+        if (isDVSActive && mDvs->reconfigure() == NO_ERROR) {
+            // Attach only when DVS is active:
+            mISP->attachObserver(mDvs, AtomISP::OBSERVE_PREVIEW_STREAM);
+        } else if (isDVSActive) {
             LOGE("Failed to reconfigure DVS grid");
+        }
+
         mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_3A_STAT_READY);
         mISP->attachObserver(m3AThread.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
+        if (mSensorSyncManager != NULL)
+            mISP->attachObserver(mSensorSyncManager.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
     }
     // ControlThread must be the observer before PreviewThread to ensure that
     // the recording buffer dequeue handling message is guaranteed to happen
@@ -1538,6 +1556,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     // dequeue has run before the preview return buffer handler runs.
     mISP->attachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
     mISP->attachObserver(mPreviewThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+
     mPreviewThread->setCallback(
             static_cast<ICallbackPreview*>(mPostProcThread.get()),
             ICallbackPreview::OUTPUT_WITH_DATA);
@@ -1546,17 +1565,18 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (status == NO_ERROR) {
         mState = state;
         mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED);
-        if (m3AControls->isIntel3A()) {
-            // Enable auto-focus by default
-            m3AControls->setAfEnabled(true);
-            m3AThread->enable3A();
-            m3AThread->enableDVS(isDVSActive);
-        }
     } else {
         LOGE("Error starting ISP!");
         mPreviewThread->returnPreviewBuffers();
         mISP->detachObserver(mPreviewThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+        mISP->detachObserver(mDvs, AtomISP::OBSERVE_PREVIEW_STREAM);
         mISP->detachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
+        if (m3AControls->isIntel3A()) {
+            mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_PREVIEW_STREAM);
+            mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
+            if (mSensorSyncManager != NULL)
+                mISP->detachObserver(mSensorSyncManager.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
+        }
     }
 
     return status;
@@ -1571,10 +1591,6 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-
-    if ((mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING) && m3AControls->isIntel3A()) {
-        m3AThread->enableDVS(false);
-    }
 
     // synchronize and pause the preview dequeueing
     mISP->pauseObserver(AtomISP::OBSERVE_FRAME_SYNC_SOF);
@@ -1612,6 +1628,13 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     if (m3AControls->isIntel3A()) {
         mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_3A_STAT_READY);
         mISP->detachObserver(m3AThread.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
+        if (mSensorSyncManager != NULL)
+            mISP->detachObserver(mSensorSyncManager.get(), AtomISP::OBSERVE_FRAME_SYNC_SOF);
+        // Detaching DVS observer. Just to make sure, although it might not be attached:
+        // might be a non-RAW sensor, or enabling failed on startPreviewCore().
+        // It is OK to detach; if the observer is not attached, detachObserver()
+        // returns BAD_VALUE.
+        mISP->detachObserver(mDvs, AtomISP::OBSERVE_PREVIEW_STREAM);
     }
     mISP->detachObserver(this, AtomISP::OBSERVE_PREVIEW_STREAM);
     mMessageQueue.remove(MESSAGE_ID_DEQUEUE_RECORDING);
@@ -2081,7 +2104,11 @@ status_t ControlThread::skipFrames(size_t numFrames)
 {
     LOG1("@%s: numFrames=%d", __FUNCTION__, numFrames);
     status_t status = NO_ERROR;
-    AtomBuffer snapshotBuffer, postviewBuffer;
+
+    AtomBuffer snapshotBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+    AtomBuffer postviewBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
 
     for (size_t i = 0; i < numFrames; i++) {
         if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
@@ -2113,7 +2140,8 @@ status_t ControlThread::setSmartSceneParams(void)
 
     if (scene_mode && !strcmp(scene_mode, CameraParameters::SCENE_MODE_AUTO)) {
         bool sceneDetectionSupported = strcmp(FeatureData::sceneDetectionSupported(mCameraId), "") != 0;
-        if (sceneDetectionSupported && m3AControls->getSmartSceneDetection()) {
+        //scene mode detection should always be working, but we shouldn't take it in account whenever HDR is on.
+        if (!mHdr.enabled && sceneDetectionSupported && m3AControls->getSmartSceneDetection()) {
             int sceneMode = 0;
             bool sceneHdr = false;
             m3AThread->getCurrentSmartScene(sceneMode, sceneHdr);
@@ -2138,7 +2166,10 @@ status_t ControlThread::handleMessagePanoramaCaptureTrigger()
 {
     LOG1("@%s:", __FUNCTION__);
     status_t status = NO_ERROR;
-    AtomBuffer snapshotBuffer, postviewBuffer;
+    AtomBuffer snapshotBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+    AtomBuffer postviewBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
 
     status = capturePanoramaPic(snapshotBuffer, postviewBuffer);
     if (status != NO_ERROR) {
@@ -2402,7 +2433,7 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     lpvSize = frameSize(format, lpvWidth, lpvHeight);
 
     // Configure PictureThread
-    mPictureThread->initialize(mParameters);
+    mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     // configure thumbnail size
     thumbnailWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
@@ -2617,20 +2648,32 @@ bool ControlThread::selectPostviewSize(int &width, int &height)
     int picWidth, picHeight;
     int thuWidth, thuHeight;
     int preWidth, preHeight;
+    float preAspect = 0.0f, picAspect = 0.0f, aspectDiff = 0.0f;
+
     mParameters.getPictureSize(&picWidth, &picHeight);
     mParameters.getPreviewSize(&preWidth, &preHeight);
     thuWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
     thuHeight = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
 
+    // Need to use tolerance checking for picture sizes that do not strictly fall
+    // into 4:3 or 16:9 aspect ratios, like 13MP in our case
+    const float POSTVIEW_ASPECT_TOLERANCE = 0.005f;
+    preAspect = static_cast<float>(preHeight) / static_cast<float>(preWidth);
+    picAspect = static_cast<float>(picHeight) / static_cast<float>(picWidth);
+    aspectDiff = fabsf(picAspect - preAspect);
+
     // try preview size first
     if (preWidth > picWidth || preHeight > picHeight) {
         LOG1("Preferred postview size larger than picture size");
-    } else if (picWidth * preHeight / preWidth != picHeight) {
-        LOG1("Preferred postview size doesn't mach the picture aspect");
-    } else {
+    } else if (aspectDiff < POSTVIEW_ASPECT_TOLERANCE) {
+        LOG1("Postview aspect difference (%f) within aspect tolerance (%f)",
+             aspectDiff, POSTVIEW_ASPECT_TOLERANCE);
         width = preWidth;
         height = preHeight;
         return true;
+    } else {
+        LOGW("Postview aspect difference (%f) beyond tolerance (%f)",
+             aspectDiff, POSTVIEW_ASPECT_TOLERANCE);
     }
 
     // then thumbnail
@@ -2675,7 +2718,10 @@ status_t ControlThread::captureStillPic()
 {
     LOG1("@%s: ", __FUNCTION__);
     status_t status = NO_ERROR;
-    AtomBuffer snapshotBuffer, postviewBuffer;
+    AtomBuffer snapshotBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+    AtomBuffer postviewBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
     int width, height, format, size;
     int pvWidth, pvHeight, pvSize;
     FlashMode flashMode = m3AControls->getAeFlashMode();
@@ -2684,7 +2730,8 @@ status_t ControlThread::captureStillPic()
     bool flashFired = false;
     bool flashSequenceStarted = false;
     // Decide whether we display the postview
-    bool displayPostview = selectPostviewSize(pvWidth, pvHeight) // postview matches size of preview
+    bool postviewDisplayable = selectPostviewSize(pvWidth, pvHeight);
+    bool displayPostview = postviewDisplayable                   // postview matches size of preview
                            && !mHdr.enabled                      // HDR not enabled
                            && (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD
                               || mBurstLength > 1)               // proprietary preview update mode or burst
@@ -2741,6 +2788,9 @@ status_t ControlThread::captureStillPic()
                     if (status != NO_ERROR) {
                         flashOn = false;
                     }
+                    // display postview when flash is triggered
+                    // regardless of preview update mode
+                    displayPostview = postviewDisplayable;
                 }
             }
         }
@@ -2773,7 +2823,7 @@ status_t ControlThread::captureStillPic()
     pvSize = frameSize(format, pvWidth, pvHeight);
 
     // Configure PictureThread
-    mPictureThread->initialize(mParameters);
+    mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     if (mState != STATE_CONTINUOUS_CAPTURE) {
         // Possible smart scene parameter changes (XNR, ANR)
@@ -2784,10 +2834,6 @@ status_t ControlThread::captureStillPic()
         mISP->setSnapshotFrameFormat(width, height, format);
         mISP->setPostviewFrameFormat(pvWidth, pvHeight,
                                      PlatformData::getPreviewFormat());
-        if (mHdr.enabled) {
-            mHdr.outMainBuf.buff = NULL;
-            mHdr.outPostviewBuf.buff = NULL;
-        }
 
         setExternalSnapshotBuffers(format, width, height);
 
@@ -2963,7 +3009,12 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
 {
     LOG1("@%s: client request %d", __FUNCTION__, clientRequest);
     status_t status = NO_ERROR;
-    AtomBuffer snapshotBuffer, postviewBuffer;
+
+    AtomBuffer snapshotBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+    AtomBuffer postviewBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+
     int pvWidth, pvHeight;
     // Note: Burst (online mode) does not need to handle preview-update-mode
     //       preview is stopped and we always display postview when size matches
@@ -3131,7 +3182,12 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
 {
     LOG1("@%s: ", __FUNCTION__);
     status_t status = NO_ERROR;
-    AtomBuffer snapshotBuffer, postviewBuffer;
+
+    AtomBuffer snapshotBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+    AtomBuffer postviewBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+
     int pvW, pvH;
     // Note: Postview is not displayed with any of fixed burst scenarios,
     //       just having it here for conformity and noticing.
@@ -3214,7 +3270,10 @@ status_t ControlThread::captureULLPic()
 {
     LOG1("@%s: ", __FUNCTION__);
     status_t status = NO_ERROR;
-    AtomBuffer snapshotBuffer, postviewBuffer;
+    AtomBuffer snapshotBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+    AtomBuffer postviewBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
     int pvWidth, pvHeight;
     int picWidth, picHeight, format;
     int cachedBurstLength, cachedBurstStart;
@@ -3250,7 +3309,7 @@ status_t ControlThread::captureULLPic()
     status = continuousStartStillCapture(false);
 
     // Configure PictureThread, inform of the picture and thumbnail resolutions
-    mPictureThread->initialize(mParameters);
+    mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     // Let application know that we are going to produce an ULL image
     mCallbacksThread->ullTriggered(mULL->getCurrentULLid());
@@ -3315,7 +3374,7 @@ status_t ControlThread::captureVideoSnap()
     mCallbacksThread->requestTakePicture(true, true);
 
     // Configure PictureThread
-    mPictureThread->initialize(mParameters);
+    mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     /* Request a new video snapshot in the next capture cycle
      * In the next call of dequeueRecording we will send the
@@ -4086,7 +4145,7 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     bool zoomSupported = isParameterSet(CameraParameters::KEY_ZOOM_SUPPORTED) ? true : false;
     if (zoomSupported) {
         status = mISP->setZoom(newZoom);
-        mPostProcThread->setZoom(AtomISP::zoomRatio(newZoom));
+        mPostProcThread->setZoom(mISP->zoomRatio(newZoom));
     }
     else
         LOGD("not supported zoom setting");
@@ -4230,11 +4289,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         if (status == NO_ERROR) {
             // shutter manual setting (Intel extension)
             status = processParamShutter(oldParams, newParams);
-        }
-
-        if (status == NO_ERROR) {
-            // back lighting correction (Intel extension)
-            status = processParamBackLightingCorrectionMode(oldParams, newParams);
         }
 
         if (status == NO_ERROR) {
@@ -4715,12 +4769,15 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         return INVALID_OPERATION;
     }
 
+    //TODO remove newValIntel whenever we only use HDR scene mode
     // Check the HDR parameters
-    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+    String8 newValIntel = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_HDR_IMAGING);
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              CameraParameters::KEY_SCENE_MODE);
 
-    if (!newVal.isEmpty()) {
-        if(newVal == "on") {
+    if (!newVal.isEmpty() || !newValIntel.isEmpty()) {
+        if(newValIntel == "on" || newVal == CameraParameters::SCENE_MODE_HDR) {
             mHdr.enabled = true;
             mHdr.bracketMode = BRACKET_EXPOSURE;
             mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
@@ -4733,7 +4790,8 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
             } else {
                 LOGE("HDR buffer allocation failed");
             }
-        } else if(newVal == "off") {
+        } else if ((newValIntel.isEmpty() && newVal != CameraParameters::SCENE_MODE_HDR)
+                    || (newValIntel == "off" && newVal != CameraParameters::SCENE_MODE_HDR)) {
             status = mCP->uninitializeHDR();
             if (status != NO_ERROR) {
                 LOGE("HDR buffer release failed");
@@ -4741,17 +4799,18 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
             mHdr.enabled = false;
             mBracketManager->setBracketMode(mHdr.savedBracketMode);
         } else {
+            if(!newValIntel.isEmpty()) {
             LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_IMAGING, newVal.string());
             status = BAD_VALUE;
-        }
-        if (status == NO_ERROR) {
-            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_IMAGING, newVal.string());
+            }
         }
     } else {
         // Re-allocate buffers if resolution changed and HDR was ON
-        const char* o = oldParams->get(IntelCameraParameters::KEY_HDR_IMAGING);
+        const char* oIntel = oldParams->get(IntelCameraParameters::KEY_HDR_IMAGING);
+        const char* o = oldParams->get(CameraParameters::KEY_SCENE_MODE);
         String8 oldVal (o, (o == NULL ? 0 : strlen(o)));
-        if(oldVal == "on" && (newWidth != oldWidth || newHeight != oldHeight)) {
+        String8 oldValIntel (oIntel, (oIntel == NULL ? 0 : strlen(oIntel)));
+        if((oldValIntel == "on" || oldVal == CameraParameters::SCENE_MODE_HDR) && (newWidth != oldWidth || newHeight != oldHeight)) {
             status = mCP->uninitializeHDR();
             if (status == NO_ERROR) {
                 status = mCP->initializeHDR(newWidth, newHeight);
@@ -4918,7 +4977,6 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
-                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
@@ -4939,7 +4997,6 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
@@ -4960,7 +5017,6 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_OUTDOOR);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
@@ -4981,7 +5037,6 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
@@ -5002,7 +5057,6 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
@@ -5011,6 +5065,24 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             if (PlatformData::supportsBackFlash()) {
                 mSavedFlashSupported = String8("on");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_ON);
+                selectFlashModeForScene(newParams);
+            }
+        } else if (newScene == CameraParameters::SCENE_MODE_HDR) {
+            sceneMode = CAM_AE_SCENE_MODE_AUTO;
+            if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
+                newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
+                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "false");
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
+                newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
+            }
+            if (PlatformData::supportsBackFlash()) {
+                mSavedFlashSupported = String8("off");
+                mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
                 selectFlashModeForScene(newParams);
             }
         } else if (newScene == CameraParameters::SCENE_MODE_FIREWORKS) {
@@ -5023,7 +5095,6 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
@@ -5044,7 +5115,6 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
@@ -5080,7 +5150,6 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center,spot");
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true,false");
@@ -5103,14 +5172,12 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
         // we should update Intel params setting to HW, and remove them here.
         if (!mIntelParamsAllowed) {
 
-            processParamBackLightingCorrectionMode(oldParams, newParams);
             processParamAwbMappingMode(oldParams, newParams);
             processParamXNR_ANR(oldParams, newParams, needRestart);
 
             newParams->remove(IntelCameraParameters::KEY_AWB_MAPPING_MODE);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES);
-            newParams->remove(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_XNR);
             newParams->remove(IntelCameraParameters::KEY_XNR);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_ANR);
@@ -5535,37 +5602,6 @@ status_t ControlThread::processParamShutter(const CameraParameters *oldParams,
 }
 
 /**
- * Sets Back Lighting Correction Mode
- *
- * Note, this is an Intel extension, so the values are not defined in
- * Android documentation.
- */
-status_t ControlThread::processParamBackLightingCorrectionMode(const CameraParameters *oldParams,
-        CameraParameters *newParams)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
-            IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE);
-    if (!newVal.isEmpty()) {
-        bool backlightCorrection;
-
-        if (newVal == "on") {
-            backlightCorrection= true;
-        } else if (newVal == "off") {
-            backlightCorrection= false;
-        } else {
-            backlightCorrection = true;
-        }
-
-        m3AControls->setAeBacklightCorrection(backlightCorrection);
-        LOGD("Changed ae backlight correction to \"%s\" (%d)",
-             newVal.string(), backlightCorrection);
-    }
-
-    return status;
-}
-/**
  * Sets AWB Mapping Mode
  *
  * Note, this is an Intel extension, so the values are not defined in
@@ -5826,8 +5862,8 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
     float previewAspectRatio = 0.0f;
     float videoAspectRatio = 0.0f;
     Vector<Size> sizes;
-    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT, *newParams) ? true : false;
-    bool dvsEnabled = isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION, *newParams) ?  true : false;
+    bool videoMode = android::isParameterSet(CameraParameters::KEY_RECORDING_HINT, *newParams) ? true : false;
+    bool dvsEnabled = android::isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION, *newParams) ?  true : false;
 
     int oldWidth, newWidth;
     int oldHeight, newHeight;
@@ -6078,17 +6114,24 @@ status_t ControlThread::createAtom3A()
     status_t status = NO_ERROR;
 
     if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+        HWControlGroup hwcg;
+
+        if (mSensorSyncManager != NULL)
+            hwcg.mSensorCI = (IHWSensorControl*) mSensorSyncManager.get();
+        else
+            hwcg.mSensorCI = (IHWSensorControl*) mISP;
+
         if(PlatformData::supportAIQ()) {
-            m3AControls = new AtomAIQ(mISP);
+            m3AControls = new AtomAIQ(hwcg, mISP);
         } else {
-            m3AControls = new AtomAAA(mISP);
-        }
-        if (m3AControls == NULL) {
-            LOGE("error creating AAA");
-            status = BAD_VALUE;
+            m3AControls = new AtomAAA(hwcg, mISP);
         }
     } else {
-        m3AControls = mISP;
+        m3AControls = new AtomSoc3A(mCameraId, mISP);
+    }
+    if (m3AControls == NULL) {
+        LOGE("error creating AAA");
+        status = BAD_VALUE;
     }
     return status;
 }
@@ -6124,7 +6167,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     String8 str_params(msg->params);
     newParams.unflatten(str_params);
 
-    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT, newParams) ? true : false;
+    bool videoMode = android::isParameterSet(CameraParameters::KEY_RECORDING_HINT, newParams) ? true : false;
 
     // print all old and new params for comparison (debug)
     LOG1("----------BEGIN PARAM DIFFERENCE----------");
@@ -6352,7 +6395,7 @@ status_t ControlThread::handleMessageSceneDetected(MessageSceneDetected *msg)
  */
 status_t ControlThread::startSmartSceneDetection()
 {
-    LOG2("@%s", __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     if (mState == STATE_STOPPED || m3AControls->getSmartSceneDetection()) {
         return INVALID_OPERATION;
     }
@@ -6364,7 +6407,7 @@ status_t ControlThread::startSmartSceneDetection()
 
 status_t ControlThread::stopSmartSceneDetection()
 {
-    LOG2("@%s", __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     if (mState == STATE_STOPPED || !m3AControls->getSmartSceneDetection()) {
         return INVALID_OPERATION;
     }
@@ -6492,7 +6535,7 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
     int format = mAllocatedSnapshotBuffers[0].format;
 
     mCallbacks->allocateMemory(&mHdr.outMainBuf, size);
-    if (mHdr.outMainBuf.buff == NULL) {
+    if (mHdr.outMainBuf.dataPtr == NULL) {
         LOGE("HDR: Error allocating memory for HDR main buffer!");
         return NO_MEMORY;
     }
@@ -6504,7 +6547,7 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
     LOG1("HDR: using %p as HDR main output buffer", mHdr.outMainBuf.dataPtr);
     // Postview output buffer
     mCallbacks->allocateMemory(&mHdr.outPostviewBuf, pvSize);
-    if (mHdr.outPostviewBuf.buff == NULL) {
+    if (mHdr.outPostviewBuf.dataPtr == NULL) {
         LOGE("HDR: Error allocating memory for HDR postview buffer!");
         return NO_MEMORY;
     }
@@ -6599,6 +6642,7 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
 
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].data = postviewBuffer->dataPtr;  /* postview buffers are never shared (i.e. coming from the PictureThread) */
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].width = postviewBuffer->width;
+    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].stride = postviewBuffer->stride;
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height = postviewBuffer->height;
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].size = postviewBuffer->size;
     AtomCP::setIaFrameFormat(&mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum], postviewBuffer->format);
@@ -6618,14 +6662,8 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
 void ControlThread::hdrRelease()
 {
     // Deallocate memory
-    if (mHdr.outMainBuf.buff != NULL) {
-        mHdr.outMainBuf.buff->release(mHdr.outMainBuf.buff);
-        mHdr.outMainBuf.buff = NULL;
-    }
-    if (mHdr.outPostviewBuf.buff != NULL) {
-        mHdr.outPostviewBuf.buff->release(mHdr.outPostviewBuf.buff);
-        mHdr.outPostviewBuf.buff = NULL;
-    }
+    MemoryUtils::freeAtomBuffer(mHdr.outMainBuf);
+    MemoryUtils::freeAtomBuffer(mHdr.outPostviewBuf);
     if (mHdr.ciBufIn.ciMainBuf != NULL) {
         delete[] mHdr.ciBufIn.ciMainBuf;
         mHdr.ciBufIn.ciMainBuf = NULL;
@@ -7256,7 +7294,8 @@ bool ControlThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
 status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
 {
     LOG2("@%s", __FUNCTION__);
-    AtomBuffer buff;
+    AtomBuffer buff = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_VIDEO);
+
     status_t status = NO_ERROR;
 
     status = mISP->getRecordingFrame(&buff);

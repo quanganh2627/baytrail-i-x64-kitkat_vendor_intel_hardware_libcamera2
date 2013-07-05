@@ -19,6 +19,7 @@
 
 #include <utils/Errors.h>
 #include "AtomISP.h"
+#include "IAtomIspObserver.h"
 
 extern "C" {
 #include <stdlib.h>
@@ -28,13 +29,19 @@ extern "C" {
 
 namespace android {
 
-class AtomDvs {
+class AtomDvs : public IAtomIspObserver {
 
 public:
     AtomDvs(AtomISP *isp);
     ~AtomDvs();
-    status_t run();
+
     status_t reconfigure();
+
+    // returns 'true' if DVS was activated, false otherwise.
+    bool enable(const CameraParameters& params);
+
+    // overrides from IAtomIspObserver
+    bool atomIspNotify(Message *msg, const ObserverState state);
 
 // prevent copy constructor and assignment operator
 private:
@@ -43,6 +50,8 @@ private:
 
 private:
     status_t reconfigureNoLock();
+    status_t run();
+private:
     AtomISP *mIsp;
     Mutex mLock;
     struct atomisp_dis_statistics *mStatistics;

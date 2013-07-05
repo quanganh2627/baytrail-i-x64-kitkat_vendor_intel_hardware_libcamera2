@@ -17,7 +17,7 @@
 #ifndef ANDROID_HARDWARE_CAMERA_DUMP_H
 #define ANDROID_HARDWARE_CAMERA_DUMP_H
 
-#include "AtomAAA.h"
+#include "I3AControls.h"
 #include "LogHelper.h"
 
 namespace android {
@@ -74,6 +74,7 @@ namespace android {
                    || sNeedDumpPreview || sNeedDumpVideo || sNeedDumpSnapshot;
             return ret;
         }
+        static int dumpAtom2File(const AtomBuffer *abuf, const char *filename);
         int dumpImage2Buf(camera_delay_dumpImage_T *aDumpImage);
         int dumpImage2File(camera_delay_dumpImage_T *aDumpImage, const char *filename);
         int dumpImage2FileFlush(bool bufflag = true);
