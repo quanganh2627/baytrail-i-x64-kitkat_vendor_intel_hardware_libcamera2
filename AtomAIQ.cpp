@@ -79,6 +79,7 @@ AtomAIQ::AtomAIQ(HWControlGroup &hwcg):
     ,mFocusPosition(0)
     ,mBracketingStops(0)
     ,mAeSceneMode(CAM_AE_SCENE_MODE_NOT_SET)
+    ,mFlashStage(CAM_FLASH_STAGE_NOT_SET)
     ,mBracketingRunning(false)
     ,mAEBracketingResult(NULL)
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
@@ -1061,6 +1062,8 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
     // Upper layer is skipping frames for exposure delay,
     // setting feedback delay to 0.
     mAeState.feedback_delay = 0;
+    // Flash stage needs to be set before getStatistics() gets called
+    mFlashStage = stage;
 
     if (stage == CAM_FLASH_STAGE_PRE || stage == CAM_FLASH_STAGE_MAIN)
     {
@@ -1604,12 +1607,12 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct,
     status_t ret = NO_ERROR;
 
     PERFORMANCE_TRACES_AAA_PROFILER_START();
-    ret = mISP->getIspStatistics(m3aState.stats);
+    ret = mISP->getIspStatistics(m3aState.stats, mFlashStage == CAM_FLASH_STAGE_PRE);
     if (ret == EAGAIN) {
         LOGV("buffer for isp statistics reallocated according resolution changing\n");
         if (changeSensorMode() == false)
             LOGE("error in calling changeSensorMode()\n");
-        ret = mISP->getIspStatistics(m3aState.stats);
+        ret = mISP->getIspStatistics(m3aState.stats, mFlashStage == CAM_FLASH_STAGE_PRE);
     }
     PERFORMANCE_TRACES_AAA_PROFILER_STOP();
 

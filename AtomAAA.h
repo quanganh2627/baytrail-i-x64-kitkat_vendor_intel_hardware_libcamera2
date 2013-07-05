@@ -261,6 +261,7 @@ private:
     AeMode mPublicAeMode;
     AfMode mPublicAfMode;
     FlashMode mFlashMode;
+    FlashStage mFlashStage;
     AwbMode mAwbMode;
     ia_3a_awb_light_source m3ALightSource;
     int mFocusPosition;

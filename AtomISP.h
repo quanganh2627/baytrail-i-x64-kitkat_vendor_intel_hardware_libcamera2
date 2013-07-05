@@ -33,6 +33,7 @@
 #include "CameraConf.h"
 #include "ScalerService.h"
 #include "ICameraHwControls.h"
+#include "AAAThread.h"
 
 namespace android {
 
@@ -244,7 +245,7 @@ public:
     /* ISP related controls */
     int setAicParameter(struct atomisp_parameters *aic_params);
     int setIspParameter(struct atomisp_parm *isp_params);
-    int getIspStatistics(struct atomisp_3a_statistics *statistics);
+    int getIspStatistics(struct atomisp_3a_statistics *statistics, bool isFlashUsed);
     int setGdcConfig(const struct atomisp_morph_table *tbl);
     int setShadingTable(struct atomisp_shading_table *table);
     int setMaccConfig(struct atomisp_macc_config *macc_cfg);
@@ -403,6 +404,10 @@ private:
     int getPrimaryCameraIndex(void) const;
     status_t applySensorFlip(void);
     void fetchIspVersions();
+
+    // TODO: Remove once BZ #119181 gets fixed by the firmware team!!
+    int detectCorruptStatistics(struct atomisp_3a_statistics *statistics,
+                                bool isFlashUsed);
 
 private:
     // AtomIspObserver

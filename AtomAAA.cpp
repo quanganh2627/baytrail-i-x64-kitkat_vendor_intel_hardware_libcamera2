@@ -121,6 +121,7 @@ AtomAAA::AtomAAA(HWControlGroup &hwcg) :
     ,mPublicAeMode(CAM_AE_MODE_AUTO)
     ,mPublicAfMode(CAM_AF_MODE_AUTO)
     ,mFlashMode(CAM_AE_FLASH_MODE_NOT_SET)
+    ,mFlashStage(CAM_FLASH_STAGE_NOT_SET)
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
     ,mFocusPosition(0)
     ,mStillAfStart(0)
@@ -1157,6 +1158,9 @@ status_t AtomAAA::applyPreFlashProcess(FlashStage stage)
         LOGE("Unknown flash stage: %d", stage);
         return UNKNOWN_ERROR;
     }
+
+    // Flash stage needs to be set before getStatistics() is called
+    mFlashStage = stage;
     processForFlash(wr_stage);
 
     return NO_ERROR;
@@ -1498,12 +1502,12 @@ int AtomAAA::getStatistics(void)
     int ret;
 
     PERFORMANCE_TRACES_AAA_PROFILER_START();
-    ret = mISP->getIspStatistics(m3ALibState.stats);
+    ret = mISP->getIspStatistics(m3ALibState.stats, mFlashStage == CAM_FLASH_STAGE_PRE);
     if (ret == EAGAIN) {
         LOGV("buffer for isp statistics reallocated according resolution changing\n");
         if (reconfigureGrid() == false)
             LOGE("error in calling reconfigureGrid()\n");
-        ret = mISP->getIspStatistics(m3ALibState.stats);
+        ret = mISP->getIspStatistics(m3ALibState.stats, mFlashStage == CAM_FLASH_STAGE_PRE);
     }
     PERFORMANCE_TRACES_AAA_PROFILER_STOP();
 

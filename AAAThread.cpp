@@ -580,6 +580,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
 
     if (mBlockForStage == mFlashStage) {
         LOG2("Releasing runFlashSequence()");
+        m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_NONE);
         mMessageQueue.reply(MESSAGE_ID_FLASH_STAGE, status);
         mBlockForStage = FLASH_STAGE_NA;
     }
