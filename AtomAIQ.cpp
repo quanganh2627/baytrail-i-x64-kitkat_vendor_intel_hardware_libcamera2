@@ -1729,7 +1729,7 @@ void AtomAIQ::resetAECParams()
     mAeInputParameters.priority_mode = ia_aiq_ae_priority_mode_normal;
     mAeInputParameters.flicker_reduction_mode = ia_aiq_ae_flicker_reduction_auto;
     mAeInputParameters.sensor_descriptor = &mAeSensorDescriptor;
-    mAeInputParameters.sensor_frame_params = NULL;
+    mAeInputParameters.isp_frame_params = NULL;
     mAeInputParameters.exposure_window = NULL; // TODO: exposure window should be used with digital zoom.
     mAeInputParameters.exposure_coordinate = NULL;
     mAeInputParameters.ev_shift = 0;
@@ -1776,7 +1776,10 @@ status_t AtomAIQ::runAeMain()
 
     ia_err err = ia_err_none;
     ia_aiq_ae_results *new_ae_results = NULL;
-    mAeInputParameters.sensor_frame_params = &m3aState.sensor_frame_params;
+
+    // ToDo:
+    // AE requires frame parameters which describe cropping/scaling done in ISP
+    mAeInputParameters.isp_frame_params = &m3aState.sensor_frame_params;
 
     if(m3aState.ia_aiq_handle){
         if (invalidated && mAeState.stored_results->getCount() > 1) {
@@ -2267,7 +2270,7 @@ void AtomAIQ::getDefaultParams(CameraParameters *params, CameraParameters *intel
 
 }
 
-void AtomAIQ::getSensorFrameParams(ia_aiq_sensor_frame_params *frame_params)
+void AtomAIQ::getSensorFrameParams(ia_aiq_frame_params *frame_params)
 {
     LOG2("@%s", __FUNCTION__);
 

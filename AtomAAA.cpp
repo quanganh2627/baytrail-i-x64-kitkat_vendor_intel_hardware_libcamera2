@@ -1389,7 +1389,7 @@ void AtomAAA::ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate)
         ia_3a_mknote_add_uint(ia_3a_mknote_field_name_boot_events, m3ALibState.boot_events);
     /* usually the grid changes as well when the mode changes. */
     reconfigureGrid();
-    ia_aiq_sensor_frame_params sensor_frame_params;
+    ia_aiq_frame_params sensor_frame_params;
     getSensorFrameParams(&sensor_frame_params, &m3ALibState.sensor_mode_data);
     ia_3a_reconfigure(mode, frame_rate, m3ALibState.stats, &sensor_frame_params, &m3ALibState.results);
     applyResults();
@@ -1725,7 +1725,7 @@ void AtomAAA::getDefaultParams(CameraParameters *params, CameraParameters *intel
     intel_params->set(IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE, CAM_RESO_STR(PANORAMA_DEF_PREV_WIDTH,PANORAMA_DEF_PREV_HEIGHT));
 }
 
-void AtomAAA::getSensorFrameParams(ia_aiq_sensor_frame_params *frame_params, struct atomisp_sensor_mode_data *sensor_mode_data)
+void AtomAAA::getSensorFrameParams(ia_aiq_frame_params *frame_params, struct atomisp_sensor_mode_data *sensor_mode_data)
 {
     frame_params->horizontal_crop_offset = sensor_mode_data->crop_horizontal_start;
     frame_params->vertical_crop_offset = sensor_mode_data->crop_vertical_start;
