@@ -60,6 +60,10 @@
 #define FRAME_SYNC_POLL_TIMEOUT 500
 
 
+// workaround for the imx132, this code will be removed in the future
+#define RESOLUTION_1080P_SNAPSHOT_TABLE   "320x240,640x480,1280x720,1920x1080"
+#define RESOLUTION_1080P_VIDEO_TABLE   "176x144,320x240,352x288,640x480,1280x720,1920x1080"
+
 namespace android {
 
 ////////////////////////////////////////////////////////////////////
@@ -301,6 +305,11 @@ void AtomISP::initFrameConfig()
     }
     else {
         getMaxSnapShotSize(mCameraId, &(mConfig.snapshot.maxWidth), &(mConfig.snapshot.maxHeight));
+        // workaround for the imx132, this code will be removed in the future
+        if (strstr(mCameraInput->name, "imx132")) {
+           mConfig.snapshot.maxWidth  = RESOLUTION_1080P_WIDTH;
+           mConfig.snapshot.maxHeight = RESOLUTION_1080P_HEIGHT;
+        }
     }
 
     if (mConfig.snapshot.maxWidth >= RESOLUTION_1080P_WIDTH
@@ -482,6 +491,9 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     params->setVideoSize(mConfig.recording.width, mConfig.recording.height);
     params->set(CameraParameters::KEY_PREFERRED_PREVIEW_SIZE_FOR_VIDEO, PlatformData::preferredPreviewSizeForVideo());
     params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, PlatformData::supportedVideoSizes(cameraId));
+    // workaround for the imx132, this code will be removed in the future
+    if (strstr(mCameraInput->name, "imx132"))
+        params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, RESOLUTION_1080P_VIDEO_TABLE);
     params->set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,
                 CameraParameters::PIXEL_FORMAT_YUV420SP);
     if (PlatformData::supportVideoSnapshot())
@@ -493,6 +505,9 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
      * SNAPSHOT
      */
     params->set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, PlatformData::supportedSnapshotSizes(cameraId));
+    // workaround for the imx132, this code will be removed in the future
+    if (strstr(mCameraInput->name, "imx132"))
+        params->set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, RESOLUTION_1080P_SNAPSHOT_TABLE);
     params->setPictureSize(mConfig.snapshot.width, mConfig.snapshot.height);
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH,"320");
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT,"240");
@@ -756,6 +771,9 @@ void AtomISP::getMaxSnapShotSize(int cameraId, int* width, int* height)
     int maxWidth = 0, maxHeight = 0;
 
     p.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, PlatformData::supportedSnapshotSizes(cameraId));
+    // workaround for the imx132, this code will be removed in the future
+    if (strstr(mCameraInput->name, "imx132"))
+        p.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, RESOLUTION_1080P_SNAPSHOT_TABLE);
     p.getSupportedPictureSizes(supportedSizes);
 
     for (unsigned int i = 0; i < supportedSizes.size(); i++) {
