@@ -1697,6 +1697,7 @@ status_t AtomISP::configureContinuous()
 {
     LOG1("@%s", __FUNCTION__);
     int ret;
+    float capture_fps;
     status_t status = NO_ERROR;
 
     if (!mContCaptPrepared) {
@@ -1732,6 +1733,8 @@ status_t AtomISP::configureContinuous()
         status = UNKNOWN_ERROR;
         goto errorFreeBuf;
     }
+    // save the capture fps
+    capture_fps = mConfig.fps;
 
     status = configurePreview();
     if (status != NO_ERROR) {
@@ -1765,6 +1768,9 @@ status_t AtomISP::configureContinuous()
 
     // need to resend the current zoom value
     atomisp_set_zoom(mConfig.zoom);
+
+    // restore the actual capture fps value
+    mConfig.fps = capture_fps;
 
     return status;
 

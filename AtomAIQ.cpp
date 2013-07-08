@@ -262,6 +262,7 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
     mAfInputParameters.frame_use = m3aState.frame_use;
     mAfState.previous_sof = 0;
     mAeInputParameters.frame_use = m3aState.frame_use;
+    mAeInputParameters.manual_frame_time_us_max = (long) 1/fps*1000000;
     mAwbInputParameters.frame_use = m3aState.frame_use;
 
     /* usually the grid changes as well when the mode changes. */
