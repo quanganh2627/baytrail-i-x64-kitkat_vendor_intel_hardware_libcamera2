@@ -59,10 +59,6 @@
 #define ATOMISP_MIN_CONTINUOUS_BUF_SIZE 3 // Min buffer len supported by CSS
 #define FRAME_SYNC_POLL_TIMEOUT 500
 
-// workaround begin for the imx135, this code will be removed in the future
-#define RESOLUTION_13MP_TABLE   \
-    "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448,3648x2736,4096x3072,4160x2336,4160x3104"
-// workaround end for the imx135
 
 namespace android {
 
@@ -305,15 +301,6 @@ void AtomISP::initFrameConfig()
     }
     else {
         getMaxSnapShotSize(mCameraId, &(mConfig.snapshot.maxWidth), &(mConfig.snapshot.maxHeight));
-	/* workround to support two main sensor for vv - need to removed when one main sensor used */
-        if (strstr(mCameraInput->name, "imx175")) {
-           mConfig.snapshot.maxWidth  = RESOLUTION_8MP_WIDTH;
-           mConfig.snapshot.maxHeight = RESOLUTION_8MP_HEIGHT;
-        }
-        if (strstr(mCameraInput->name, "imx135")) {
-           mConfig.snapshot.maxWidth  = RESOLUTION_13MP_WIDTH;
-           mConfig.snapshot.maxHeight = RESOLUTION_13MP_HEIGHT;
-        }
     }
 
     if (mConfig.snapshot.maxWidth >= RESOLUTION_1080P_WIDTH
@@ -506,10 +493,6 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
      * SNAPSHOT
      */
     params->set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, PlatformData::supportedSnapshotSizes(cameraId));
-// workaround begin for the imx135, this code will be removed in the future
-    if (strstr(mCameraInput->name, "imx135"))
-        params->set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, RESOLUTION_13MP_TABLE);
-// workaround end for the imx135.
     params->setPictureSize(mConfig.snapshot.width, mConfig.snapshot.height);
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH,"320");
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT,"240");
@@ -773,10 +756,6 @@ void AtomISP::getMaxSnapShotSize(int cameraId, int* width, int* height)
     int maxWidth = 0, maxHeight = 0;
 
     p.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, PlatformData::supportedSnapshotSizes(cameraId));
-// workaround begin for the imx135, this code will be removed in the future
-    if (strstr(mCameraInput->name, "imx135"))
-        p.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, RESOLUTION_13MP_TABLE);
-// workaround end for the imx135.
     p.getSupportedPictureSizes(supportedSizes);
 
     for (unsigned int i = 0; i < supportedSizes.size(); i++) {
