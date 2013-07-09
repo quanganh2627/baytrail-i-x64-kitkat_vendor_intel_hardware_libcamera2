@@ -96,8 +96,6 @@ class AtomAAA : public I3AControls {
 
 // constructor/destructor
 private:
-    int setFpnTable(const ia_frame *fpn_table);
-
     // Common functions for 3A, GBCE, AF etc.
     int applyResults();
     bool reconfigureGrid(void);

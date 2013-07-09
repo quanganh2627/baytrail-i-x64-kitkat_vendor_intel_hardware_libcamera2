@@ -224,7 +224,6 @@ class AtomAIQ : public I3AControls {
 
 // constructor/destructor
 private:
-    int setFpnTable(const ia_frame *fpn_table);
     status_t getAiqConfig(ia_binary_data *cpfData);
 
     // Common functions for 3A, GBCE, AF etc.

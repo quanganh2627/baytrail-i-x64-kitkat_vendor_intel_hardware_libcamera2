@@ -4894,15 +4894,6 @@ int AtomISP::setMaccConfig(struct atomisp_macc_config *macc_tbl)
     return ret;
 }
 
-int AtomISP::setFpnTable(struct v4l2_framebuffer *fb)
-{
-    LOG2("@%s", __FUNCTION__);
-    int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_ISP_FPN_TABLE, fb);
-    LOG2("%s IOCTL ATOMISP_IOC_S_ISP_FPN_TABLE ret: %d\n", __FUNCTION__, ret);
-    return ret;
-}
-
 int AtomISP::setGammaTable(const struct atomisp_gamma_table *gamma_tbl)
 {
     LOG2("@%s", __FUNCTION__);

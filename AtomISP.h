@@ -256,7 +256,6 @@ public:
     int setObConfig(struct atomisp_ob_config *ob_cfg);
     int set3aConfig(const struct atomisp_3a_config *cfg);
     int setGammaTable(const struct atomisp_gamma_table *gamma_tbl);
-    int setFpnTable(struct v4l2_framebuffer *fb);
     int setGcConfig(const struct atomisp_gc_config *gc_cfg);
     int getCssMajorVersion();
     int getCssMinorVersion();

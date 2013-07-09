@@ -1273,20 +1273,6 @@ status_t AtomAIQ::getGridWindow(AAAWindowInfo& window)
     return NO_ERROR;
 }
 
-int AtomAIQ::setFpnTable(const ia_frame *fpn_table)
-{
-    LOG1("@%s", __FUNCTION__);
-    struct v4l2_framebuffer fb;
-    fb.fmt.width        = fpn_table->width;
-    fb.fmt.height       = fpn_table->height;
-    fb.fmt.pixelformat  = V4L2_PIX_FMT_SBGGR16;
-    fb.fmt.bytesperline = fpn_table->stride * 2;
-    fb.fmt.sizeimage    = fb.fmt.height * fb.fmt.sizeimage;
-    fb.base             = fpn_table->data;
-
-    return mISP->setFpnTable(&fb);
-}
-
 struct atomisp_3a_statistics * AtomAIQ::allocateStatistics(int grid_size)
 {
     LOG2("@%s", __FUNCTION__);
