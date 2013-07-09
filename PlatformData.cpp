@@ -1053,6 +1053,15 @@ const char* PlatformData::defaultFocusMode(int cameraId)
     return i->mCameras[cameraId].defaultFocusMode;
 }
 
+bool PlatformData::isFixedFocusCamera(int cameraId)
+{
+    if (strcmp(PlatformData::defaultFocusMode(cameraId), "fixed") == 0) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 const char* PlatformData::productName(void)
 {
     PlatformBase *i = getInstance();

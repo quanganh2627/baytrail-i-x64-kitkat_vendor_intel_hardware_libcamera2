@@ -2244,8 +2244,13 @@ void AtomAIQ::getDefaultParams(CameraParameters *params, CameraParameters *intel
     intel_params->set(IntelCameraParameters::KEY_SHUTTER, "60");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SHUTTER, "1s,2,4,8,15,30,60,125,250,500");
 
-    // multipoint focus
-    params->set(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS, getAfMaxNumWindows());
+    if (!PlatformData::isFixedFocusCamera(cameraId)) {
+        // multipoint focus
+        params->set(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS, getAfMaxNumWindows());
+    } else {
+        params->set(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS, 0);
+    }
+
     // set empty area
     params->set(CameraParameters::KEY_FOCUS_AREAS, "(0,0,0,0,0)");
 

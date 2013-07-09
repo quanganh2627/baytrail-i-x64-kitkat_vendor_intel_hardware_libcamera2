@@ -608,6 +608,11 @@ class PlatformData {
      */
     static const char* defaultFocusMode(int cameraId);
 
+    /**
+     * Whether the raw camera's default focus mode is "fixed".
+     * \return true if its default focus mode is "fixed".
+     */
+    static bool isFixedFocusCamera(int cameraId);
 
     /**
      * supported video sizes
