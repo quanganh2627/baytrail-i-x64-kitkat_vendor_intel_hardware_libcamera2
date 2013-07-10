@@ -1528,10 +1528,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
                 return UNKNOWN_ERROR;
             }
             bool cached = isParameterSet(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING) ? true: false;
-            LOG2("Setting GFX preview: %d bufs, cached/overlay %d, shared 0-copy mode", mNumBuffers, cached);
+            LOG1("Setting GFX preview: %d bufs, cached/overlay %d, shared 0-copy mode", mNumBuffers, cached);
             mISP->setGraphicPreviewBuffers(sharedGfxBuffers.editArray(), mNumBuffers, cached);
         } else {
-            LOG2("PreviewThread not sharing Gfx buffers, using internal buffers");
+            LOG1("PreviewThread not sharing Gfx buffers, using internal buffers");
         }
     }
 

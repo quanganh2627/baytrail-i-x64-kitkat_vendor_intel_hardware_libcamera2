@@ -2373,8 +2373,10 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
             reducedVf = true;
         }
 
-        // Workaround 1+3, detail refer to the function description
-        if (reducedVf || dvsEnabled) {
+        // Workaround 1+3, detail refer to the function description, BYT
+        // doesn't need this WA to support 1080p preview
+        if ((reducedVf || dvsEnabled) &&
+            PlatformData::supportPreviewLimitation()) {
             if ((previewWidth > RESOLUTION_VGA_WIDTH || previewHeight > RESOLUTION_VGA_HEIGHT) &&
                 (videoWidth > RESOLUTION_720P_WIDTH || videoHeight > RESOLUTION_720P_HEIGHT)) {
                     ret = true;
@@ -2384,6 +2386,7 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
                     LOG1("no need change preview size: %dx%d", previewWidth, previewHeight);
                 }
         }
+
         //Workaround 2, detail refer to the function description
         params->getPreviewSize(&previewWidth, &previewHeight);
         params->getVideoSize(&videoWidth, &videoHeight);

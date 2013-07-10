@@ -762,6 +762,13 @@ class PlatformData {
     static bool supportDualVideo(void);
 
     /**
+     * Whether preview limitation is supported
+     *
+     * \return true if supported
+     */
+    static bool supportPreviewLimitation(void);
+
+    /**
      * Returns the preview format with V4l2 definition
      *
      * \return the preview format, V4L2_PIX_FMT_NV12 or V4L2_PIX_FMT_YVU420
@@ -828,6 +835,7 @@ public:
         mShutterLagCompensationMs = 40;
         mSupportAIQ = false;
         mSupportDualVideo = false;
+        mSupportPreviewLimitation = true;
         mPreviewFormat = V4L2_PIX_FMT_NV12;
         mSensorGainLag = 0;
         mSensorExposureLag = 1;
@@ -1084,6 +1092,9 @@ protected:
 
     /* For Dual Vidoe */
     bool mSupportDualVideo;
+
+    /* For Preview Size Limitation*/
+    bool mSupportPreviewLimitation;
 
     int mPreviewFormat;
 

@@ -135,6 +135,9 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
         PlatformBase::mPanoramaMaxSnapshotCount = atoi(atts[1]);
     } else if (strcmp(name, "supportDualVideo") == 0) {
         PlatformBase::mSupportDualVideo = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "supportPreviewLimitation") == 0) {
+        PlatformBase::mSupportPreviewLimitation = ((strcmp(atts[1], "false")
+                                                    == 0) ? false : true);
     }
 }
 

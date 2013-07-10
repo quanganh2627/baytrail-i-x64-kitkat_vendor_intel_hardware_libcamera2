@@ -1144,6 +1144,12 @@ bool PlatformData::supportDualVideo(void)
     return i->mSupportDualVideo;
 }
 
+bool PlatformData::supportPreviewLimitation(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mSupportPreviewLimitation;
+}
+
 int PlatformData::getPreviewFormat(void)
 {
     PlatformBase *i = getInstance();
