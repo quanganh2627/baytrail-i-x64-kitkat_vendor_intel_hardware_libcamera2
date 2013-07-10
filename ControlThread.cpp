@@ -4920,6 +4920,7 @@ status_t ControlThread::processParamULL(const CameraParameters *oldParams,
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    bool ullActive = false;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_ULL);
     if (!newVal.isEmpty()) {
@@ -4927,12 +4928,25 @@ status_t ControlThread::processParamULL(const CameraParameters *oldParams,
 
         if (newVal == "on") {
             mULL->setMode(UltraLowLight::ULL_ON);
+            ullActive = true;
         } else if (newVal == "auto") {
             mULL->setMode(UltraLowLight::ULL_AUTO);
+            ullActive = true;
         } else {
             mULL->setMode(UltraLowLight::ULL_OFF);
         }
-
+        /**
+         * If applications enables ULL while in Continuous Capture mode and
+         * the current ring buffer configuration is not big enough we need
+         * to re-start preview to make sure we have the correct configuration
+         *
+         */
+        if (ullActive && mState != STATE_STOPPED) {
+            if (mISP->getContinuousCaptureNumber() < mULL->MAX_INPUT_BUFFERS) {
+                if (restartPreview)
+                    *restartPreview = true;
+            }
+        }
     }
 
     return status;
