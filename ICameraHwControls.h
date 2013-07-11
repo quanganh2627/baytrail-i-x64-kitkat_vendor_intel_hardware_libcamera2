@@ -128,6 +128,7 @@ public:
 
     // For Video pipeline
     virtual status_t setVideoFrameFormat(int width, int height, int format = 0) = 0;
+    virtual status_t setHighSpeedResolutionFps(char* resolution, int fps) = 0;
     virtual void getVideoSize(int *width, int *height, int *stride) = 0;
     virtual status_t getRecordingFrame(AtomBuffer *buff) = 0;
     virtual status_t putRecordingFrame(AtomBuffer *buff) = 0;

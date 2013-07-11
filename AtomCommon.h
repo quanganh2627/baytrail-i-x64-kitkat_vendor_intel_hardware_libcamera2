@@ -243,6 +243,30 @@ struct CameraWindow {
     int weight;
 };
 
+/**
+ * parse the pair string, like "720x480", the "x" is passed by parameter "delim"
+ *
+ * @param str the source pair string
+ * @param first the first element of the pair, the memory need to be released by caller
+ * @param second the second element of the pair, the memory need to be released by caller
+ * @param delim delimiter of the pair
+ */
+static int parsePair(char *str, char **first, char **second, const char *delim)
+{
+    if(str == NULL)
+        return -1;
+    char* index = strstr(str, delim);
+    if(index == NULL)
+        return -1;
+    *first = (char*)malloc(strlen(str) - strlen(index));
+    *second = (char*)malloc(strlen(index) -1);
+    if(*first == NULL || *second == NULL)
+        return -1;
+    strncpy(*first, str, strlen(str) - strlen(index));
+    strncpy(*second, str + strlen(str) - strlen(index) + 1, strlen(index) - 1);
+    return 0;
+}
+
 static int frameSize(int format, int width, int height)
 {
     int size = 0;

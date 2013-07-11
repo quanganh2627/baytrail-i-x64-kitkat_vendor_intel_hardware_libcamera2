@@ -593,6 +593,14 @@ class PlatformData {
     static bool supportsSlowMotion(int cameraId);
 
     /**
+     * resolution and fps range supported value in high speed video recording mode
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value supported for resolution and fps range.
+     */
+    static const char* supportedHighSpeedResolutionFps(int cameraId);
+
+    /**
      * Focus mode supported value
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
@@ -950,6 +958,7 @@ protected:
             defaultPreviewUpdateMode = "standard";
             //For high speed recording, slow motion playback
             hasSlowMotion = false;
+            supportedHighSpeedResolutionFps = "";
             // Flash support
             hasFlash = false;
             // focus modes
@@ -1040,6 +1049,7 @@ protected:
         String8 supportedVideoSizes;
         // For high speed recording, slow motion playback
         bool hasSlowMotion;
+        String8 supportedHighSpeedResolutionFps;
         // Flash support
         bool hasFlash;
         // focus modes

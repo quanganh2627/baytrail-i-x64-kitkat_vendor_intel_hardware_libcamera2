@@ -4098,6 +4098,20 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
+    // HIGH SPEED
+    const char* highSpeed =  params->get(IntelCameraParameters::KEY_HIGH_SPEED);
+    const char* highSpeeds =  params->get(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED);
+    if (!validateString(highSpeed, highSpeeds)) {
+        LOGE("bad high speed value : %s", highSpeed);
+        return BAD_VALUE;
+    }
+    const char* highSpeedResolutionFps = params->get(IntelCameraParameters::KEY_HIGH_SPEED_RESOLUTION_FPS);
+    const char* highSpeedResolutionFpss = params->get(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED_RESOLUTION_FPS);
+    if (!validateString(highSpeedResolutionFps, highSpeedResolutionFpss)) {
+        LOGE("bad pair of resolution and fps value : %s", highSpeedResolutionFps);
+        return BAD_VALUE;
+    }
+
     return NO_ERROR;
 }
 
@@ -4202,6 +4216,11 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     // slow motion value settings in high speed recording mode
     if (status == NO_ERROR) {
         status = processParamSlowMotionRate(oldParams, newParams);
+    }
+
+    // fps settings in high speed recording mode
+    if (status == NO_ERROR) {
+        status = processParamHighSpeed(oldParams, newParams);
     }
 
     if (status == NO_ERROR) {
@@ -5869,6 +5888,58 @@ status_t ControlThread::processParamSlowMotionRate(const CameraParameters *oldPa
         status = mVideoThread->setSlowMotionRate(slowMotionRate);
         if(status == NO_ERROR)
             LOG1("Changed hs value to \"%s\" (%d)", newVal.string(), slowMotionRate);
+    }
+    return status;
+}
+
+/**
+ * Sets fps in high speed recording mode
+ *
+ * Note, this is an Intel extension, so the values are not defined in
+ * Android documentation.
+ */
+status_t ControlThread::processParamHighSpeed(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_HIGH_SPEED);
+    if (!newVal.isEmpty()) {
+       bool highSpeed = (newVal == CameraParameters::TRUE);
+       if(!highSpeed) {
+           mISP->setHighSpeedResolutionFps(NULL, -1);
+           newParams->set(IntelCameraParameters::KEY_HIGH_SPEED_RESOLUTION_FPS, "");
+           return status;
+       }
+    }
+
+    newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_HIGH_SPEED_RESOLUTION_FPS);
+    if (!newVal.isEmpty()) {
+        char* resoFps = strndup(newVal.string(), newVal.length());
+        if(resoFps == NULL)
+            return NO_MEMORY;
+        char *reso = NULL;
+        char *fps = NULL;
+        if(parsePair(resoFps, &reso, &fps, "@") != 0) {
+            if(resoFps != NULL)
+                free(resoFps);
+            if(reso != NULL)
+                free(reso);
+            if(fps != NULL)
+                free(fps);
+            return BAD_VALUE;
+        }
+        if(fps != NULL && reso != NULL)
+            mISP->setHighSpeedResolutionFps(reso, atoi(fps));
+        if(resoFps != NULL)
+            free(resoFps);
+        if(reso != NULL)
+            free(reso);
+        if(fps != NULL)
+            free(fps);
     }
     return status;
 }

@@ -123,6 +123,9 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
     ,mScaler(scalerService)
     ,mObserverManager()
     ,mNoiseReductionEdgeEnhancement(true)
+    ,mHighSpeedFps(0)
+    ,mHighSpeedResolution(0, 0)
+    ,mHighSpeedEnabled(false)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -288,6 +291,33 @@ const char * AtomISP::getSensorName(void)
  */
 int AtomISP::zoomRatio(int zoomValue) const {
     return mZoomRatioTable[zoomValue];
+}
+
+// high speed fps setting
+status_t AtomISP::setHighSpeedResolutionFps(char* resolution, int fps)
+{
+    LOG2("@%s fps: %d", __FUNCTION__, fps);
+    status_t ret = NO_ERROR;
+    if(fps <= 0) {
+        mHighSpeedEnabled = false;
+        return ret;
+    }
+    char *w = NULL;
+    char *h = NULL;
+    int success = parsePair(resolution, &w, &h, "x");
+    if (success == 0 && w != NULL && h != NULL) {
+        mHighSpeedFps = fps;
+        mHighSpeedResolution.width = atoi(w);
+        mHighSpeedResolution.height = atoi(h);
+        mHighSpeedEnabled = true;
+    } else {
+        ret = BAD_VALUE;
+    }
+    if(w != NULL)
+        free(w);
+    if(h != NULL)
+        free(h);
+    return ret;
 }
 
 /**
@@ -566,6 +596,18 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     if(PlatformData::supportDualVideo())
     {
         intel_params->set(IntelCameraParameters::KEY_DUAL_VIDEO_SUPPORTED,"true");
+    }
+
+    /**
+     * HIGH SPEED
+     */
+    if(strcmp(PlatformData::supportedHighSpeedResolutionFps(cameraId), ""))
+    {
+       intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED_RESOLUTION_FPS,
+                         PlatformData::supportedHighSpeedResolutionFps(cameraId));
+       intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED, "true,false");
+    } else {
+       intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED, "false");
     }
 
     /**
@@ -2097,6 +2139,19 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, FrameInfo *f
     if (ret < 0)
         return ret;
 
+    if(mHighSpeedEnabled) {
+        status_t status;
+        struct v4l2_streamparm parm;
+        parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        parm.parm.capture.capturemode = CI_MODE_NONE;
+        parm.parm.capture.timeperframe.numerator = 1;
+        parm.parm.capture.timeperframe.denominator = mHighSpeedFps;
+        status = mMainDevice->setParameter(&parm);
+        if (status != NO_ERROR) {
+            LOGE("error setting the mode %d", deviceMode);
+            return -1;
+        }
+    }
 
     /* 3A related initialization*/
     //Reallocate the grid for 3A after format change
@@ -2271,6 +2326,12 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
      */
     if(height % 16)
         height = (height + 15) / 16 * 16;
+
+    // Check if the resolution of high speed has been set, and the resolution
+    // of high speed matches with the video resolution set by app
+    if (mHighSpeedResolution.width != 0 && mHighSpeedResolution.height != 0
+         && (mHighSpeedResolution.width != width || mHighSpeedResolution.height != height))
+        mHighSpeedEnabled = false;
 
     if(format == 0)
          format = mConfig.recording.format;

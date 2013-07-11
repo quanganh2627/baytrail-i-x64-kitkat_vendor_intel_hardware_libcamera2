@@ -204,6 +204,11 @@ namespace android {
     const char IntelCameraParameters::SLOW_MOTION_RATE_3X[] = "3x";
     const char IntelCameraParameters::SLOW_MOTION_RATE_4X[] = "4x";
 
+    const char IntelCameraParameters::KEY_HIGH_SPEED[] = "high-speed";
+    const char IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED[] = "high-speed-values";
+    const char IntelCameraParameters::KEY_HIGH_SPEED_RESOLUTION_FPS[] = "high-speed-resolution-fps";
+    const char IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED_RESOLUTION_FPS[] = "high-speed-resolution-fps-values";
+
     // EXIF data
     const char IntelCameraParameters::KEY_EXIF_MAKER[] = "exif-maker-name";
     const char IntelCameraParameters::KEY_EXIF_MODEL[] = "exif-model-name";

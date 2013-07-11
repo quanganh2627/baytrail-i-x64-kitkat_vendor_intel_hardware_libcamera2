@@ -279,6 +279,9 @@ public:
     // return zoom ratio multiplied by 100 from given zoom value
     int zoomRatio(int zoomValue) const;
 
+    // high speed fps setting
+    status_t setHighSpeedResolutionFps(char* resolution, int fps);
+
 // private types
 private:
 
@@ -564,6 +567,12 @@ private:
     int mIspHwMinorVersion;
 
     bool mNoiseReductionEdgeEnhancement;
+
+    //high speed
+    int mHighSpeedFps;
+    Size mHighSpeedResolution;
+    bool mHighSpeedEnabled;
+
 }; // class AtomISP
 
 }; // namespace android

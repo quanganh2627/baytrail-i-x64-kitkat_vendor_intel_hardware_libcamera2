@@ -1023,6 +1023,16 @@ bool PlatformData::supportsFlash(int cameraId)
     return i->mCameras[cameraId].hasFlash;
 }
 
+const char* PlatformData::supportedHighSpeedResolutionFps(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      return "";
+    }
+    return i->mCameras[cameraId].supportedHighSpeedResolutionFps;
+}
+
 const char* PlatformData::supportedFocusModes(int cameraId)
 {
     const char *sPtr;
