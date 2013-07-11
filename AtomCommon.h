@@ -56,6 +56,7 @@
 #define MAX(a,b) ((a)>(b)?(a):(b))
 // macro ALIGN16 root value to value that is divisible by 16
 #define ALIGN16(x) (((x) + 15) & ~15)
+#define ALIGN32(x) (((x) + 31) & ~31)
 #define ALIGN64(x) (((x) + 63) & ~63)
 #define ALIGN128(x) (((x) + 127) & ~127)
 
@@ -270,32 +271,6 @@ static int frameSize(int format, int width, int height)
     return size;
 }
 
-/**
- * Calculates the frame stride following the limitations imposed by display subsystem
- *
- * The SGX limitation is that the number of bytes per line needs to be aligned
- * to 64
- * In case of Raw capture the requirement chnges
- *
- * \param format [in] V4L2 pixelf format of the image
- * \param width [in] width in pixels
- *
- * \return stride following the Display subsystem stride requirement
- **/
-static int SGXandDisplayStride(int format, int width)
-{
-    /**
-     * Raw format has special stride requirements
-     */
-    if (format == V4L2_PIX_FMT_SRGGB10)
-        return ALIGN128(width);
-
-    if (width <= 512)
-        return  512;
-    else
-        return ALIGN64(width);
-}
-
 static int bytesPerLineToWidth(int format, int bytesperline)
 {
     int width = 0;
@@ -430,6 +405,7 @@ inline static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
 void convertFromAndroidToIaCoordinates(const CameraWindow &srcWindow, CameraWindow &toWindow);
 bool isParameterSet(const char *param, const CameraParameters &params);
 
+int SGXandDisplayStride(int format, int width);
 void mirrorBuffer(AtomBuffer *buffer, int currentOrientation, int cameraOrientation);
 void flipBufferV(AtomBuffer *buffer);
 void flipBufferH(AtomBuffer *buffer);

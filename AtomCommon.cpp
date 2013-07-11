@@ -16,6 +16,7 @@
  */
 
 #include "AtomCommon.h"
+#include "PlatformData.h"
 #include <ia_coordinate.h>
 #ifndef GRAPHIC_IS_GEN // this will be removed if graphic provides one common header file
 #include <hal_public.h>
@@ -92,6 +93,42 @@ bool isParameterSet(const char *param, const CameraParameters &params)
         return true;
     }
     return false;
+}
+
+/**
+ * Calculates the frame stride following the limitations imposed by display subsystem
+ * This is used to model the HACK in a atomsisp that forces allocation
+ * to be aligned to the stride that SGX requires. This HACK is only active
+ * in CTP based platforms. It will be eventually removed once CSS API changes to
+ * support different strides
+ *
+ *
+ * The SGX limitation is that the number of bytes per line needs to be aligned
+ * to 64
+ * In case of Raw capture the requirement changes
+ *
+ * \param format [in] V4L2 pixel format of the image
+ * \param width [in] width in pixels
+ *
+ * \return stride following the Display subsystem stride requirement
+ **/
+int SGXandDisplayStride(int format, int width)
+{
+    /**
+     * Raw format has special stride requirements
+     */
+    if (format == V4L2_PIX_FMT_SRGGB10)
+        return ALIGN128(width);
+
+    if ((strcmp(PlatformData::getBoardName(), "victoriabay") == 0) ||
+        (strcmp(PlatformData::getBoardName(), "redhookbay") == 0)) {
+
+        if (width <= 512)
+            return  512;
+        else
+            return ALIGN64(width);
+    } else
+        return (width);
 }
 
 void convertFromAndroidToIaCoordinates(const CameraWindow &srcWindow, CameraWindow &toWindow)
