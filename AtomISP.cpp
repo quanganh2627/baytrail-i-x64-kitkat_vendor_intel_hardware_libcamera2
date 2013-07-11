@@ -1563,11 +1563,15 @@ status_t AtomISP::startCapture()
 
     /**
      * handle initial skips here for normal capture mode
+     * For continuous capture we cannot skip this way, we will control via the
+     * offset calculation
      */
     if (mMode != MODE_CONTINUOUS_CAPTURE)
         initialSkips = mDevices[V4L2_MAIN_DEVICE].initialSkips;
     else
         initialSkips = 0;
+
+
     for (i = 0; i < initialSkips; i++) {
         AtomBuffer s,p;
         if (mFrameSyncEnabled)
@@ -1721,6 +1725,15 @@ status_t AtomISP::startOfflineCapture(AtomISP::ContinuousCaptureConfig &config)
         LOGW("offline capture: too few preview frames, limiting ZSL offset");
     }
     mPreviewCountAtCapture = mDevices[mPreviewDevice].frameCounter;
+
+    /**
+     * If we are trying to take a picture when preview just started we need
+     * to add the number of preview skipped  frames  to the offset
+     * These frames are the ones skipped because sensor starts with
+     * corrupted images. In normal situation the initial skips will have gone
+     * down to 0.
+     */
+    offset += mDevices[V4L2_PREVIEW_DEVICE].initialSkips;
 
     res = requestContCapture(config.numCaptures,
                              offset,
