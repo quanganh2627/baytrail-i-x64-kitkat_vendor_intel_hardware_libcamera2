@@ -1344,16 +1344,15 @@ status_t AtomISP::startRecording()
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
     status_t status = NO_ERROR;
-    int initialSkips = 0;
 
-    ret = mRecordingDevice->start(mNumBuffers,initialSkips);
+    ret = mRecordingDevice->start(mNumBuffers,mInitialSkips);
     if (ret < 0) {
         LOGE("Start recording device failed");
         status = UNKNOWN_ERROR;
         goto err;
     }
 
-    ret = mPreviewDevice->start(mNumPreviewBuffers, initialSkips);
+    ret = mPreviewDevice->start(mNumPreviewBuffers, mInitialSkips);
     if (ret < 0) {
         LOGE("Start preview device failed!");
         status = UNKNOWN_ERROR;
