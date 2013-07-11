@@ -626,19 +626,19 @@ ia_3a_awb_light_source  AtomAIQ::getLightSource()
     ia_3a_awb_light_source wr_val;
     switch (mode) {
     case CAM_AWB_MODE_DAYLIGHT:
-        wr_val = ia_3a_awb_light_source_fluorlamp_d;
+        wr_val = ia_3a_awb_light_source_clear_sky;
         break;
     case CAM_AWB_MODE_CLOUDY:
         wr_val = ia_3a_awb_light_source_cloudiness;
         break;
     case CAM_AWB_MODE_SUNSET:
-        wr_val = ia_3a_awb_light_source_other;
+        wr_val = ia_3a_awb_light_source_filament_lamp;
         break;
     case CAM_AWB_MODE_TUNGSTEN:
         wr_val = ia_3a_awb_light_source_filament_lamp;
         break;
     case CAM_AWB_MODE_FLUORESCENT:
-        wr_val = ia_3a_awb_light_source_fluorlamp_w;
+        wr_val = ia_3a_awb_light_source_fluorlamp_n;
         break;
     case CAM_AWB_MODE_WARM_FLUORESCENT:
         wr_val = ia_3a_awb_light_source_fluorlamp_w;
