@@ -32,7 +32,6 @@ class I3AControls;
 #include <ia_isp_1_5.h>
 #include <ia_isp_2_2.h>
 #include "AtomCommon.h"
-#include "AtomISP.h"
 #include "I3AControls.h"
 #include "PlatformData.h"
 #include "AtomFifo.h"
@@ -89,7 +88,6 @@ typedef struct {
     bool                            reconfigured;
     ia_face_state                  *faces;
     ia_aiq                         *ia_aiq_handle;
-    ia_isp                         *ia_isp_handle;
     ia_aiq_scene_mode               detected_scene;
     ia_aiq_rgbs_grid                rgbs_grid;
     ia_aiq_af_grid                  af_grid;
@@ -106,6 +104,109 @@ typedef struct {
     struct timespec                 lens_timestamp;
     aiq_results                     results;
 } aaa_state;
+
+
+/*!
+ * \brief Common structure for IA ISP Configuration input parameters
+ *
+ * The structure is a combination of all the input parameters needed for
+ * different IA ISP Configuration versions.
+ *
+ */
+typedef struct {
+    ia_aiq_frame_use frame_use;                      /*!< Target frame type of the AIC calculations (Preview, Still, video etc.). */
+    ia_aiq_sensor_frame_params *sensor_frame_params; /*!< Sensor frame parameters (crop offsets, scaling denominators etc). */
+    ia_aiq_exposure_parameters *exposure_results;    /*!< Exposure parameters which are to be used to calculate next ISP parameters. */
+    ia_aiq_awb_results *awb_results;                 /*!< WB results which are to be used to calculate next ISP parameters (WB gains, color matrix,etc). */
+    ia_aiq_gbce_results *gbce_results;               /*!< GBCE Gamma tables which are to be used to calculate next ISP parameters.
+                                                          If NULL pointer is passed, AIC will use static gamma table from the CPF.  */
+    ia_aiq_pa_results *pa_results;                   /*!< Parameter adaptor results from AIQ. */
+    char manual_brightness;                          /*!< Manual brightness value range [-128,127]. */
+    char manual_contrast;                            /*!< Manual contrast value range [-128,127]. */
+    char manual_hue;                                 /*!< Manual hue value range [-128,127]. */
+    char manual_saturation;                          /*!< Manual saturation value range [-128,127]. */
+    char manual_sharpness;                           /*!< Manual setting for sharpness [-128,127]. */
+    ia_aiq_effect effects;                           /*!< Manual setting for special effects.*/
+
+} ispInputParameters;
+
+
+/*!
+ * \brief IIaIspAdaptor defines an interface for classes that interact
+ * with different IA ISP Adaptation libraries.
+ *
+ * The "IA ISP Adaptation libraries" is a generic name for the libraries
+ * running on the main IA CPU that implement conversions between HW specific
+ * data structures used by HW ISP and the generic algorithms running on CPU.
+ * this libraries are separated from the ones that implement generic algorithms
+ *
+ * This interface defines the common operation that different implementations
+ * will offer. We do that in order to keep the code in AtomAIQ as ISP version
+ * independent as possible.
+ *
+ * The specific conversions will be implemented in the classes that realize this
+ * interface. The decision to which class to instantiate is done at initialization
+ * time when we query the version of the HW ISP
+ *
+ * The classes should be named IaIspxx where xx stands for major and minor
+ * version of CSS. If there are different kinds of ISPs in the future, the naming
+ * needs to be adapted.
+ */
+class IIaIspAdaptor
+{
+
+public:
+    virtual ~IIaIspAdaptor() {}
+
+    /*!
+     * \brief Initializes IA_ISP adaptor library and its submodules.
+     *
+     * \param[in]     cpfData          AIQ block from CPF file. Contains ISP specific parameters.
+     * \param[in]     maxStatsWidth    Maximum width of RGBS and AF statistics grids from ISP.
+     * \param[in]     maxStatsHeight   Maximum height of RGBS and AF statistics grids from ISP.
+     * \param[in]     cmc              Parsed camera module characterization structure.
+     * \param[in,out] mkn              Makernote handle which can be initialized with ia_mkn library. If debug data from AIQ
+     *                                 is needed to be stored into EXIF, this parameter is needed.
+     */
+    virtual void initIaIspAdaptor(const ia_binary_data *cpfData,
+                           unsigned int maxStatsWidth,
+                           unsigned int maxStatsHeight,
+                           ia_cmc_t *cmc,
+                           ia_mkn *mkn) = 0;
+
+    /*!
+     * \brief Converts ISP HW specific statistics to IA_AIQ generic format.
+     * ISP generated statistics may not be in the format in which AIQ algorithms expect.
+     * Statistics need to be converted from various ISP formats into AIQ statistics format.
+     *
+     * \param[in]  statistics    Statistics in ISP specific format.
+     * \param[out] outRgbsGrid   Pointer's pointer where address of converted statistics are stored.
+     *                           Converted RGBS grid statistics. Output can be directly used as input in function ia_aiq_statistics_set.
+     * \param[out] outAfGrid     Pointer's pointer where address of converted statistics are stored.
+     *                           Converted AF grid statistics. Output can be directly used as input in function ia_aiq_statistics_set.
+     * \return                   Error code.
+    */
+    virtual ia_err convertIspStatistics(void *statistics,
+                                        ia_aiq_rgbs_grid **outRgbsGrid,
+                                        ia_aiq_af_grid **outAfGrid) = 0;
+
+    /*!
+     * \brief Converts the generic output results from 3A and other SW algorithms
+     * into HW specific configuration for the HW ISP
+     *
+     *
+     * \param[in]  ispInputParams   Outcome of the 3A and other algorithms, this is an input to ISP.
+     *                              This structure is the generic version produced by the SW algorithms.
+     *
+     * \param[out] ispOutputData    Opaque binary data structure with pointer to the ISP configuration structure.
+     *                              This is HW specific
+     * \return                      Error code.
+     */
+    virtual ia_err calculateIspParams(const ispInputParameters *ispInputParams,
+                                      ia_binary_data *outputData) = 0;
+protected:
+    ia_isp  *mIspHandle;
+}; //class IIaIspAdaptor
 
 /**
  * \class AtomAIQ
@@ -212,7 +313,7 @@ private:
     AtomAIQ& operator=(const AtomAIQ& other);
 
 public:
-    AtomAIQ(HWControlGroup &hwcg, AtomISP *anISP);
+    AtomAIQ(HWControlGroup &hwcg);
     ~AtomAIQ();
 
     virtual bool isIntel3A() { return true; }
@@ -240,7 +341,7 @@ public:
     bool getAeFlashNecessary();
     status_t setAwbMode(AwbMode mode);
     AwbMode getAwbMode();
-    ia_3a_awb_light_source getLightSource(){ return ia_3a_awb_light_source_other; };
+    ia_3a_awb_light_source getLightSource();
     status_t setAeMeteringMode(MeteringMode mode);
     MeteringMode getAeMeteringMode();
     status_t set3AColorEffect(const char *effect);
@@ -335,7 +436,7 @@ public:
 private:
 
     FILE *pFile3aStatDump;
-    AtomISP *mISP;
+    IHWIspControl *mISP;
     ia_env mPrintFunctions;
 
     aaa_state m3aState;
@@ -381,8 +482,7 @@ private:
 
 
     //ISP
-    ia_isp_1_5_input_params mISP15InputParameters;
-    ia_isp_2_2_input_params mISP22InputParameters;
+    ispInputParameters mIspInputParams;
 
     //DSD
     ia_aiq_dsd_input_params mDSDInputParameters;
@@ -392,7 +492,69 @@ private:
     ia_mkn  *mMkn;
 
     IHWSensorControl*    mSensorCI;
+    IHWFlashControl*    mFlashCI;
+    IHWLensControl*    mLensCI;
+
+    IIaIspAdaptor *mISPAdaptor;
+
 }; // class AtomAIQ
+
+
+/*!
+ * \brief  Realization of the IIaIspAdaptor interface for VIED ISP running
+ *         with CSS v1.5 firmware
+ */
+class IaIsp15 : public IIaIspAdaptor
+{
+public:
+    IaIsp15();
+    ~IaIsp15();
+
+    void initIaIspAdaptor(const ia_binary_data *cpfData,
+                 unsigned int maxStatsWidth,
+                 unsigned int maxStatsHeight,
+                 ia_cmc_t *cmc,
+                 ia_mkn *mkn);
+
+    ia_err convertIspStatistics(void *statistics,
+                                ia_aiq_rgbs_grid **outRgbsGrid,
+                                ia_aiq_af_grid **outAfGrid);
+
+    ia_err calculateIspParams(const ispInputParameters *ispInputParams,
+                  ia_binary_data *outputData);
+
+private:
+    ia_isp_1_5_input_params mIaIsp15InputParams;
+}; //class IaIsp15
+
+
+/*!
+ * \brief  Realization of the IIaIspAdaptor interface for VIED ISP running
+ *         with CSS v2.2 firmware
+ */
+class IaIsp22 : public IIaIspAdaptor
+{
+public:
+    IaIsp22();
+    ~IaIsp22();
+
+    void initIaIspAdaptor(const ia_binary_data *cpfData,
+                 unsigned int maxStatsWidth,
+                 unsigned int maxStatsHeight,
+                 ia_cmc_t *cmc,
+                 ia_mkn *mkn);
+
+    ia_err convertIspStatistics(void *statistics,
+                                ia_aiq_rgbs_grid **outRgbsGrid,
+                                ia_aiq_af_grid **outAfGrid);
+
+    ia_err calculateIspParams(const ispInputParameters *ispInputParams,
+                  ia_binary_data *outputData);
+
+
+private:
+    ia_isp_2_2_input_params mIaIsp22InputParams;
+}; //class IaIsp22
 
 }; // namespace android
 

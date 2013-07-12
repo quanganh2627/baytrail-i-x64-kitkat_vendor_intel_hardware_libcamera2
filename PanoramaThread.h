@@ -63,7 +63,7 @@ class PanoramaThread : public Thread, public IBufferOwner {
 // constructor/destructor
 public:
 #ifdef ENABLE_INTEL_EXTRAS
-    PanoramaThread(ICallbackPanorama *panoramaCallback, I3AControls *aaaControls);
+    PanoramaThread(ICallbackPanorama *panoramaCallback, I3AControls *aaaControls, int cameraId);
     ~PanoramaThread();
 
     void getDefaultParameters(CameraParameters *intel_params, int cameraId);
@@ -96,7 +96,7 @@ private:
         status_t requestExitAndWait();
         status_t flush(); // processes stitches in queue
         status_t cancel(ia_panorama_state* mContext); // drops stitches in queue without processing, cancels last stitch
-        status_t stitch(ia_panorama_state* mContext, AtomBuffer frame, int stitchId);
+        status_t stitch(ia_panorama_state* mContext, AtomBuffer frame, int stitchId, int cameraId);
 
     // prevent copy constructor and assignment operator
     private:
@@ -277,6 +277,7 @@ private:
     PanoramaThread(const PanoramaThread& other);
     PanoramaThread& operator=(const PanoramaThread& other);
 
+    int mCameraId;
     I3AControls* m3AControls;
 }; // class Panorama
 

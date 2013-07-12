@@ -30,6 +30,7 @@
 #include "PlatformData.h"
 #include "CameraConf.h"
 #include "I3AControls.h"
+#include "ICameraHwControls.h"
 
 namespace android {
 
@@ -52,7 +53,7 @@ private:
     AtomSoc3A& operator=(const AtomSoc3A& other);
 
 public:
-    AtomSoc3A(int cameraId, AtomISP * anISP);
+    AtomSoc3A(int cameraId, HWControlGroup &hwcg);
     virtual ~AtomSoc3A();
 
 // public methods
@@ -146,7 +147,10 @@ public:
 
 private:
     int mCameraId;
-    AtomISP * mISP;
+    IHWIspControl * mISP;
+    IHWSensorControl * mSensorCI;
+    IHWFlashControl * mFlashCI;
+    IHWLensControl * mLensCI;
     AeMode mPublicAeMode;
     AfMode mPublicAfMode;
 }; // class AtomSoc3A

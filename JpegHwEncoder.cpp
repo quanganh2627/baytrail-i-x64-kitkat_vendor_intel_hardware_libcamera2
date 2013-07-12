@@ -235,13 +235,24 @@ int JpegHwEncoder::encode(const JpegCompressor::InputBuffer &in, JpegCompressor:
     pic_jpeg.picture_height = mPicHeight;
     pic_jpeg.reconstructed_picture = 0;
     pic_jpeg.coded_buf = va->mCodedBuf;
+    pic_jpeg.pic_flags.bits.profile = 0; //Baseline
+    pic_jpeg.pic_flags.bits.progressive = 0; //Sequential
+    pic_jpeg.pic_flags.bits.huffman = 1; //Huffman
+    pic_jpeg.pic_flags.bits.interleaved = 0; //Non-interleaved
+    pic_jpeg.pic_flags.bits.differential = 0; //Non-differential
+    pic_jpeg.sample_bit_depth = 8; //8-bits
+    pic_jpeg.quality = 0; //JPEG ENC quality
+    pic_jpeg.num_components = 3; //3 components
+    pic_jpeg.quality = mUseInternalJpegQualityFactor ? CLIP(out.quality, 100, 1) : 0; //JPEG ENC quality
     status = vaCreateBuffer(va->mDpy, va->mContextId, VAEncPictureParameterBufferType,
                             sizeof(pic_jpeg), 1, &pic_jpeg, &va->mPicParamBuf);
     CHECK_STATUS(status, "vaCreateBuffer", __LINE__)
 
-    status = setJpegQuality(out.quality);
-    if (status)
-        goto exit;
+    if (!mUseInternalJpegQualityFactor) {
+        status = setJpegQuality(out.quality);
+        if (status)
+            goto exit;
+    }
 
     status = startJpegEncoding(aSurface);
     if (status)
@@ -296,13 +307,27 @@ int JpegHwEncoder::encodeAsync(const JpegCompressor::InputBuffer &in, JpegCompre
     pic_jpeg.picture_height = out.height;
     pic_jpeg.reconstructed_picture = 0;
     pic_jpeg.coded_buf = va->mCodedBuf;
+    pic_jpeg.picture_width  = mPicWidth;
+    pic_jpeg.picture_height = mPicHeight;
+    pic_jpeg.reconstructed_picture = 0;
+    pic_jpeg.coded_buf = va->mCodedBuf;
+    pic_jpeg.pic_flags.bits.profile = 0; //Baseline
+    pic_jpeg.pic_flags.bits.progressive = 0; //Sequential
+    pic_jpeg.pic_flags.bits.huffman = 1; //Huffman
+    pic_jpeg.pic_flags.bits.interleaved = 0; //Non-interleaved
+    pic_jpeg.pic_flags.bits.differential = 0; //Non-differential
+    pic_jpeg.sample_bit_depth = 8; //8-bits
+    pic_jpeg.num_components = 3; //3 components
+    pic_jpeg.quality = mUseInternalJpegQualityFactor ? CLIP(out.quality, 100, 1) : 0; //JPEG ENC quality
     status = vaCreateBuffer(va->mDpy, va->mContextId, VAEncPictureParameterBufferType,
                             sizeof(pic_jpeg), 1, &pic_jpeg, &(va->mPicParamBuf));
     CHECK_STATUS(status, "vaCreateBuffer", __LINE__)
 
-    status = setJpegQuality(out.quality);
-    if (status)
-        goto exit;
+    if (!mUseInternalJpegQualityFactor) {
+        status = setJpegQuality(out.quality);
+        if (status)
+            goto exit;
+    }
 
     status = startJpegEncoding(aSurface);
     if (status)
@@ -510,8 +535,10 @@ int JpegHwEncoder::startJpegEncoding(VASurfaceID aSurface)
     status = vaBeginPicture(va->mDpy, va->mContextId, aSurface);
     CHECK_STATUS(status, "vaBeginPicture", __LINE__)
 
-    status = vaRenderPicture(va->mDpy, va->mContextId, &va->mQMatrixBuf, 1);
-    CHECK_STATUS(status, "vaRenderPicture", __LINE__)
+    if (!mUseInternalJpegQualityFactor) {
+        status = vaRenderPicture(va->mDpy, va->mContextId, &va->mQMatrixBuf, 1);
+        CHECK_STATUS(status, "vaRenderPicture", __LINE__)
+    }
 
     status = vaRenderPicture(va->mDpy, va->mContextId, &va->mPicParamBuf, 1);
     CHECK_STATUS(status, "vaRenderPicture", __LINE__)

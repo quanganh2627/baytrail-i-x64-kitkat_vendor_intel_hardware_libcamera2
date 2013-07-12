@@ -17,14 +17,15 @@
 
 #include "ControlThread.h"
 #include "LogHelper.h"
-#include "AtomISP.h"
 #include "CameraConf.h"
 #include "PerformanceTraces.h"
 #include <utils/Log.h>
 #include <utils/threads.h>
+#include "PlatformData.h"
 
 using namespace android;
 
+#define MAX_HAL_INSTANCES 2
 
 ///////////////////////////////////////////////////////////////////////////////
 //                              DATA TYPES
@@ -33,6 +34,7 @@ using namespace android;
 struct atom_camera {
     int camera_id;
     sp<ControlThread> control_thread;
+    bool is_used;
 };
 
 
@@ -55,7 +57,7 @@ static int ATOM_GetCameraInfo(int camera_id,
 ///////////////////////////////////////////////////////////////////////////////
 
 
-static atom_camera atom_cam;
+static atom_camera atom_cam[MAX_HAL_INSTANCES] = {{-1, NULL, false}, {-1, NULL, false}};
 static int atom_instances = 0;
 static Mutex atom_instance_lock; // for locking atom_instances only
 
@@ -79,6 +81,28 @@ camera_module_t HAL_MODULE_INFO_SYM = {
     get_camera_info: ATOM_GetCameraInfo,
 };
 
+///////////////////////////////////////////////////////////////////////////////
+//                              LOCAL FUNCTIONS
+///////////////////////////////////////////////////////////////////////////////
+
+int openCameraHardware(int cameraId)
+{
+    atom_cam[cameraId].camera_id = cameraId;
+    atom_cam[cameraId].control_thread = new ControlThread(cameraId);
+    if (atom_cam[cameraId].control_thread == NULL) {
+        LOGE("Memory allocation error!");
+        return NO_MEMORY;
+    }
+    int status = atom_cam[cameraId].control_thread->init();
+    if (status != NO_ERROR) {
+        LOGE("Error initializing ControlThread");
+        atom_cam[cameraId].control_thread.clear();
+        return status;
+    }
+    atom_cam[cameraId].control_thread->run("CamHAL_CTRL");
+    atom_cam[cameraId].is_used = true;
+    return status;
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 //                              HAL OPERATION FUNCTIONS
@@ -357,31 +381,24 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
     Mutex::Autolock _l(atom_instance_lock);
 
     camera_device_t *camera_dev;
-
-    if (atom_instances > 0) {
-        LOGE("error: we only support a single instance");
+    if ((!PlatformData::supportDualVideo() && atom_instances == 1) || atom_instances > MAX_HAL_INSTANCES-1) {
+        LOGE("error:only support maximum  %d instances for front/primary sensor", atom_instances);
         return -EINVAL;
     }
 
-    atom_cam.camera_id = atoi(name);
-    CpfStore cpf(atom_cam.camera_id);
+    int cameraId = atoi(name);
+    if(cameraId < 0 || cameraId > 1 || atom_cam[cameraId].is_used)
+        return -EINVAL;
+    atom_cam[cameraId].camera_id = cameraId;
+    CpfStore cpf(cameraId);
     PlatformData::AiqConfig = cpf.AiqConfig;
     PlatformData::HalConfig = cpf.HalConfig;
 
-    atom_cam.control_thread = new ControlThread(atom_cam.camera_id);
-    if (atom_cam.control_thread == NULL) {
-        LOGE("Memory allocation error!");
-        return NO_MEMORY;
-    }
-
-    int status = atom_cam.control_thread->init();
+    int status = openCameraHardware(cameraId);
     if (status != NO_ERROR) {
         LOGE("Error initializing ControlThread");
-        atom_cam.control_thread.clear();
         return status;
     }
-
-    atom_cam.control_thread->run("CamHAL_CTRL");
 
     camera_dev = (camera_device_t*)malloc(sizeof(*camera_dev));
     if (camera_dev == NULL) {
@@ -394,7 +411,7 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
     camera_dev->common.module = (hw_module_t *)(module);
     camera_dev->common.close = ATOM_CloseCameraHardware;
     camera_dev->ops = &atom_ops;
-    camera_dev->priv = &atom_cam;
+    camera_dev->priv = &atom_cam[cameraId];
 
     *device = &camera_dev->common;
 
@@ -417,6 +434,7 @@ static int ATOM_CloseCameraHardware(hw_device_t* device)
     cam->control_thread->requestExitAndWait();
     cam->control_thread->deinit();
     cam->control_thread.clear();
+    cam->is_used = false;
 
     free(camera_dev);
 
@@ -428,11 +446,28 @@ static int ATOM_CloseCameraHardware(hw_device_t* device)
 static int ATOM_GetNumberOfCameras(void)
 {
     LOGD("%s", __FUNCTION__);
-    return AtomISP::getNumberOfCameras();
+    int nodes = PlatformData::numberOfCameras();
+    if (nodes > MAX_CAMERAS)
+        nodes = MAX_CAMERAS;
+
+    return nodes;
 }
 
 static int ATOM_GetCameraInfo(int camera_id, struct camera_info *info)
 {
     LOGD("%s", __FUNCTION__);
-    return AtomISP::getCameraInfo(camera_id, info);
+    if (camera_id >= PlatformData::numberOfCameras())
+        return BAD_VALUE;
+
+    info->facing = PlatformData::cameraFacing(camera_id);
+    info->orientation = PlatformData::cameraOrientation(camera_id);
+
+    LOG1("@%s: %d: facing %s, orientation %d",
+         __FUNCTION__,
+         camera_id,
+         ((info->facing == CAMERA_FACING_BACK) ?
+          "back" : "front/other"),
+         info->orientation);
+
+    return NO_ERROR;
 }

@@ -17,15 +17,16 @@
 //#define LOG_NDEBUG 0
 
 #include "LogHelper.h"
+#include "PlatformData.h"
 #include "BracketManager.h"
 #include "PerformanceTraces.h"
 
 namespace android {
 
-BracketManager::BracketManager(AtomISP *isp, I3AControls *aaaControls) :
+BracketManager::BracketManager(HWControlGroup &hwcg, I3AControls *aaaControls) :
     Thread(false)
     ,m3AControls(aaaControls)
-    ,mISP(isp)
+    ,mISP(hwcg.mIspCI)
     ,mFpsAdaptSkip(-1)
     ,mBurstLength(-1)
     ,mBurstCaptureNum(-1)

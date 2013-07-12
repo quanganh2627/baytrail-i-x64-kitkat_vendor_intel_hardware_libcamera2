@@ -43,16 +43,28 @@ class CallbacksThread :
 
 private:
     static CallbacksThread* mInstance;
-    CallbacksThread();
+    static CallbacksThread* mInstance_1;
+    CallbacksThread(int cameraId);
 // constructor destructor
 public:
-    static CallbacksThread* getInstance(ICallbackPicture *pictureDone = 0) {
-        if (mInstance == NULL) {
-            mInstance = new CallbacksThread();
+    static CallbacksThread* getInstance(ICallbackPicture *pictureDone = 0,
+                                        int cameraId = 0) {
+
+        if(cameraId == 0) {
+            if (mInstance == NULL) {
+                mInstance = new CallbacksThread(cameraId);
+            }
+            if(mInstance && pictureDone)
+                mInstance->setPictureDoneCallback(pictureDone);
+            return mInstance;
+        } else {
+            if (mInstance_1 == NULL) {
+                mInstance_1 = new CallbacksThread(cameraId);
+            }
+            if(mInstance_1 && pictureDone)
+                mInstance_1->setPictureDoneCallback(pictureDone);
+            return mInstance_1;
         }
-        if(mInstance && pictureDone)
-            mInstance->setPictureDoneCallback(pictureDone);
-        return mInstance;
     }
     virtual ~CallbacksThread();
 
@@ -282,6 +294,7 @@ private:
      */
     Vector<MessageFrame> mBuffers;
     camera_frame_metadata_t mFaceMetadata;
+    int mCameraId;
 
 // public data
 public:

@@ -18,7 +18,7 @@
 #define ANDROID_LIBCAMERA_ATOM_DVS
 
 #include <utils/Errors.h>
-#include "AtomISP.h"
+#include "ICameraHwControls.h"
 #include "IAtomIspObserver.h"
 
 extern "C" {
@@ -32,7 +32,7 @@ namespace android {
 class AtomDvs : public IAtomIspObserver {
 
 public:
-    AtomDvs(AtomISP *isp);
+    AtomDvs(HWControlGroup &hwcg);
     ~AtomDvs();
 
     status_t reconfigure();
@@ -52,7 +52,7 @@ private:
     status_t reconfigureNoLock();
     status_t run();
 private:
-    AtomISP *mIsp;
+    IHWIspControl *mIsp;
     Mutex mLock;
     struct atomisp_dis_statistics *mStatistics;
     ia_dvs_state *mState;

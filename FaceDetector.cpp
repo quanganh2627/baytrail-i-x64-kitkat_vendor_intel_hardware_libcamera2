@@ -22,7 +22,7 @@
 #include "LogHelper.h"
 #include "sqlite3.h"
 #include "cutils/properties.h"
-#include "AtomISP.h"
+#include "ICameraHwControls.h"
 #include "AtomCommon.h"
 #include "AtomAcc.h"
 
@@ -61,7 +61,7 @@ void FaceDetector::setAcc(void* isp)
 
     if (isp) {
         if (mAccApi.isp == NULL) {
-            AtomISP* atom_isp = (AtomISP*) isp;
+            IHWIspControl* atom_isp = (IHWIspControl*) isp;
             mAccApi.open_firmware     = open_firmware;
             mAccApi.load_firmware     = load_firmware_pipe; // beware this is not just load_firmware.
             mAccApi.unload_firmware   = unload_firmware;

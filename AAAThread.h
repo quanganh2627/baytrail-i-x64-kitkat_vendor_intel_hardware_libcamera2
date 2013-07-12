@@ -34,6 +34,7 @@ namespace android {
         virtual ~ICallbackAAA() {}
         virtual void autoFocusDone() = 0;
         virtual void sceneDetected(int sceneMode, bool sceneHdr) = 0;
+        virtual int getCameraID() = 0;
     };
 
 /**
@@ -202,9 +203,9 @@ private:
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
     I3AControls* m3AControls;
+    ICallbackAAA* mAAADoneCallback;
     CallbacksThread *mCallbacks;
     UltraLowLight *mULL;
-    ICallbackAAA* mAAADoneCallback;
 
     bool m3ARunning;
     bool mStartAF;

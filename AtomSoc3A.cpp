@@ -31,7 +31,7 @@
 #include <linux/atomisp.h>
 #include "PerformanceTraces.h"
 #include "AtomSoc3A.h"
-#include "AtomISP.h"
+#include "ICameraHwControls.h"
 
 namespace android {
 
@@ -39,9 +39,12 @@ namespace android {
 //                          PUBLIC METHODS
 ////////////////////////////////////////////////////////////////////
 
-AtomSoc3A::AtomSoc3A(int cameraId, AtomISP * anIsp) :
+AtomSoc3A::AtomSoc3A(int cameraId, HWControlGroup &hwcg) :
     mCameraId(cameraId)
-    ,mISP(anIsp)
+    ,mISP(hwcg.mIspCI)
+    ,mSensorCI(hwcg.mSensorCI)
+    ,mFlashCI(hwcg.mFlashCI)
+    ,mLensCI(hwcg.mLensCI)
     ,mPublicAeMode(CAM_AE_MODE_AUTO)
     ,mPublicAfMode(CAM_AF_MODE_AUTO)
 {
@@ -96,7 +99,7 @@ status_t AtomSoc3A::setAeMode(AeMode mode)
             v4lMode = V4L2_EXPOSURE_AUTO;
     }
 
-    int ret = mISP->sensorSetExposureMode(v4lMode);
+    int ret = mSensorCI->setExposureMode(v4lMode);
     if (ret != 0) {
         LOGE("Error setting AE mode (%d) in the driver", v4lMode);
         status = UNKNOWN_ERROR;
@@ -118,7 +121,7 @@ AeMode AtomSoc3A::getAeMode()
         return mode;
     }
 
-    int ret = mISP->sensorGetExposureMode(&v4lMode);
+    int ret = mSensorCI->getExposureMode(&v4lMode);
     if (ret != 0) {
         LOGE("Error getting AE mode from the driver");
         status = UNKNOWN_ERROR;
@@ -152,7 +155,7 @@ status_t AtomSoc3A::setEv(float bias)
     int evValue = (int)bias;
     LOG1("@%s: bias: %f, EV value: %d", __FUNCTION__, bias, evValue);
 
-    int ret = mISP->sensorSetExposure(evValue);
+    int ret = mSensorCI->setExposureBias(evValue);
     if (ret != 0) {
         LOGE("Error setting EV in the driver");
         status = UNKNOWN_ERROR;
@@ -167,7 +170,7 @@ status_t AtomSoc3A::getEv(float *bias)
     status_t status = NO_ERROR;
     int evValue = 0;
 
-    int ret = mISP->sensorGetExposure(&evValue);
+    int ret = mSensorCI->getExposureBias(&evValue);
     if (ret != 0) {
         LOGE("Error getting EV from the driver");
         status = UNKNOWN_ERROR;
@@ -240,7 +243,7 @@ status_t AtomSoc3A::setAeSceneMode(SceneMode mode)
             v4lMode = V4L2_SCENE_MODE_NONE;
     }
 
-    int ret = mISP->sensorSetSceneMode(v4lMode);
+    int ret = mSensorCI->setSceneMode(v4lMode);
     if (ret != 0) {
         LOGE("Error setting scene mode in the driver");
         status = UNKNOWN_ERROR;
@@ -261,7 +264,7 @@ SceneMode AtomSoc3A::getAeSceneMode()
         return mode;
     }
 
-    int ret = mISP->sensorGetSceneMode(&v4lMode);
+    int ret = mSensorCI->getSceneMode(&v4lMode);
     if (ret != 0) {
         LOGE("Error getting scene mode from the driver");
         status = UNKNOWN_ERROR;
@@ -367,7 +370,7 @@ status_t AtomSoc3A::setAwbMode(AwbMode mode)
             v4lMode = V4L2_WHITE_BALANCE_AUTO;
     }
 
-    int ret = mISP->sensorSetWhiteBalance(v4lMode);
+    int ret = mSensorCI->setWhiteBalance(v4lMode);
     if (ret != 0) {
         LOGE("Error setting WB mode (%d) in the driver", v4lMode);
         status = UNKNOWN_ERROR;
@@ -388,7 +391,7 @@ AwbMode AtomSoc3A::getAwbMode()
         return mode;
     }
 
-    int ret = mISP->sensorGetWhiteBalance(&v4lMode);
+    int ret = mSensorCI->getWhiteBalance(&v4lMode);
     if (ret != 0) {
         LOGE("Error getting WB mode from the driver");
         status = UNKNOWN_ERROR;
@@ -438,7 +441,7 @@ status_t AtomSoc3A::setManualIso(int iso)
         return UNKNOWN_ERROR;
     }
 
-    int ret = mISP->sensorSetIso(iso);
+    int ret = mSensorCI->setIso(iso);
     if (ret != 0) {
         LOGE("Error setting ISO in the driver");
         status = UNKNOWN_ERROR;
@@ -457,7 +460,7 @@ status_t AtomSoc3A::getManualIso(int *iso)
         return INVALID_OPERATION;
     }
 
-    int ret = mISP->sensorGetIso(iso);
+    int ret = mSensorCI->getIso(iso);
     if (ret != 0) {
         LOGE("Error getting ISO from the driver");
         status = UNKNOWN_ERROR;
@@ -506,7 +509,7 @@ status_t AtomSoc3A::setAeMeteringMode(MeteringMode mode)
             break;
     }
 
-    int ret = mISP->sensorSetAeMeteringMode(v4lMode);
+    int ret = mSensorCI->setAeMeteringMode(v4lMode);
     if (ret != 0) {
         LOGE("Error setting AE metering mode (%d) in the driver", v4lMode);
         status = UNKNOWN_ERROR;
@@ -527,7 +530,7 @@ MeteringMode AtomSoc3A::getAeMeteringMode()
         return mode;
     }
 
-    int ret = mISP->sensorGetAeMeteringMode(&v4lMode);
+    int ret = mSensorCI->getAeMeteringMode(&v4lMode);
     if (ret != 0) {
         LOGE("Error getting AE metering mode from the driver");
         status = UNKNOWN_ERROR;
@@ -617,7 +620,7 @@ status_t AtomSoc3A::setAeFlickerMode(FlickerMode flickerMode)
         return status;
     }
 
-    int ret = mISP->sensorSetAeFlickerMode(theMode);
+    int ret = mSensorCI->setAeFlickerMode(theMode);
     if (ret != 0) {
         LOGE("Error setting AE flicker mode (%d) in the driver", theMode);
         status = UNKNOWN_ERROR;
@@ -676,7 +679,7 @@ status_t AtomSoc3A::setAfMode(AfMode mode)
             break;
     }
 
-    int ret = mISP->sensorSetAfMode(v4lMode);
+    int ret = mSensorCI->setAfMode(v4lMode);
     if (ret != 0) {
         LOGE("Error setting AF  mode (%d) in the driver", v4lMode);
         status = UNKNOWN_ERROR;
@@ -698,7 +701,7 @@ AfMode AtomSoc3A::getAfMode()
         return mode;
     }
 
-    int ret = mISP->sensorGetAfMode(&v4lMode);
+    int ret = mSensorCI->getAfMode(&v4lMode);
     if (ret != 0) {
         LOGE("Error getting AF mode from the driver");
         status = UNKNOWN_ERROR;
@@ -750,7 +753,7 @@ status_t AtomSoc3A::setAfEnabled(bool enable)
         return INVALID_OPERATION;
     }
 
-    int ret = mISP->sensorSetAfEnabled(enable);
+    int ret = mSensorCI->setAfEnabled(enable);
     if (ret != 0) {
         LOGE("Error setting Auto Focus (%d) in the driver", enable);
         status = UNKNOWN_ERROR;
@@ -764,7 +767,7 @@ int AtomSoc3A::get3ALock()
     LOG1("@%s", __FUNCTION__);
     int aaaLock = 0;
 
-    int ret = mISP->sensorGet3ALock(&aaaLock);
+    int ret = mSensorCI->get3ALock(&aaaLock);
     if (ret != 0) {
         LOGE("Error getting 3A Lock setting from the driver");
     }
@@ -795,7 +798,7 @@ status_t AtomSoc3A::setAeLock(bool enable)
     else
         aaaLock &= ~V4L2_LOCK_EXPOSURE;
 
-    int ret = mISP->sensorSet3ALock(aaaLock);
+    int ret = mSensorCI->set3ALock(aaaLock);
     if (ret != 0) {
         LOGE("Error setting AE lock (%d) in the driver", enable);
         status = UNKNOWN_ERROR;
@@ -827,7 +830,7 @@ status_t AtomSoc3A::setAfLock(bool enable)
     else
         aaaLock &= ~V4L2_LOCK_FOCUS;
 
-    int ret = mISP->sensorSet3ALock(aaaLock);
+    int ret = mSensorCI->set3ALock(aaaLock);
     if (ret != 0) {
         LOGE("Error setting AF lock (%d) in the driver", enable);
         status = UNKNOWN_ERROR;
@@ -859,7 +862,7 @@ status_t AtomSoc3A::setAwbLock(bool enable)
     else
         aaaLock &= ~V4L2_LOCK_WHITE_BALANCE;
 
-    int ret = mISP->sensorSet3ALock(aaaLock);
+    int ret = mSensorCI->set3ALock(aaaLock);
     if (ret != 0) {
         LOGE("Error setting AWB lock (%d) in the driver", enable);
         status = UNKNOWN_ERROR;
@@ -873,7 +876,7 @@ status_t AtomSoc3A::getCurrentFocusPosition(int *pos)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    int ret = mISP->sensorGetFocusPosition(pos);
+    int ret = mLensCI->getFocusPosition(pos);
     if (ret != 0) {
         LOGE("Error getting Focus Position from the driver");
         status = UNKNOWN_ERROR;
@@ -893,7 +896,7 @@ status_t AtomSoc3A::setManualShutter(float expTime)
     status_t status = NO_ERROR;
     int time = expTime / 0.0001; // 100 usec units
 
-    int ret = mISP->sensorSetExposureTime(time);
+    int ret = mSensorCI->setExposureTime(time);
     if (ret != 0) {
         LOGE("Error setting Exposure time (%d) in the driver", time);
         status = UNKNOWN_ERROR;
@@ -930,7 +933,7 @@ status_t AtomSoc3A::setAeFlashMode(FlashMode mode)
             break;
     }
 
-    int ret = mISP->sensorSetAeFlashMode(v4lMode);
+    int ret = mSensorCI->setAeFlashMode(v4lMode);
     if (ret != 0) {
         LOGE("Error setting Flash mode (%d) in the driver", v4lMode);
         status = UNKNOWN_ERROR;
@@ -951,7 +954,7 @@ FlashMode AtomSoc3A::getAeFlashMode()
         return mode;
     }
 
-    int ret = mISP->sensorSetAeFlashMode(v4lMode);
+    int ret = mSensorCI->setAeFlashMode(v4lMode);
     if (ret != 0) {
         LOGE("Error getting Flash mode from the driver");
         status = UNKNOWN_ERROR;
@@ -1003,7 +1006,7 @@ AfMode AtomSoc3A::getPublicAfMode()
 
 status_t AtomSoc3A::setFlash(int numFrames)
 {
-    return mISP->setFlash(numFrames);
+    return mFlashCI->setFlash(numFrames);
 }
 
 } // namespace android

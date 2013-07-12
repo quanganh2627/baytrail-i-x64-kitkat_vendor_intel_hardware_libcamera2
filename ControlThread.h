@@ -48,10 +48,10 @@
 #include "PictureThread.h"
 #include "SensorThread.h"
 #include "SensorSyncManager.h"
+#include "ICameraHwControls.h"
 
 namespace android {
 
-class AtomISP;
 //
 // ControlThread implements most of the operations defined
 // by camera_device_ops_t. Refer to hardware/camera.h
@@ -418,7 +418,7 @@ private:
     status_t handleContinuousPreviewBackgrounding();
     status_t handleContinuousPreviewForegrounding();
     void flushContinuousPreviewToDisplay(nsecs_t snapshotTs);
-    void continuousConfigApplyLimits(AtomISP::ContinuousCaptureConfig &cfg) const;
+    void continuousConfigApplyLimits(ContinuousCaptureConfig &cfg) const;
     status_t configureContinuousRingBuffer();
     status_t continuousStartStillCapture(bool useFlash);
 
@@ -651,6 +651,8 @@ private:
     void enableFocusCallbacks();
     void disableFocusCallbacks();
 
+    int getCameraID();
+
 // inherited from Thread
 private:
     virtual bool threadLoop();
@@ -659,7 +661,8 @@ private:
 private:
 
     int mCameraId;
-    AtomISP *mISP;
+    HWControlGroup mHwcg;
+    IHWIspControl *mISP;
     AtomDvs *mDvs;
     AtomCP  *mCP;
     UltraLowLight *mULL;

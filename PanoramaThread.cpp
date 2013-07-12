@@ -26,7 +26,7 @@
 #include "FeatureData.h"
 #include "LogHelper.h"
 #include "AtomCommon.h"
-#include "AtomISP.h"
+#include "ICameraHwControls.h"
 #include "PlatformData.h"
 
 namespace android {
@@ -38,7 +38,7 @@ static const useconds_t STITCH_CHECK_INTERVAL_USEC = 500000; // 0.5 secs
 // Max count of stitch check tries:
 static const int STITCH_CHECK_LIMIT = 10;
 
-PanoramaThread::PanoramaThread(ICallbackPanorama *panoramaCallback, I3AControls *aaaControls) :
+PanoramaThread::PanoramaThread(ICallbackPanorama *panoramaCallback, I3AControls *aaaControls, int cameraId) :
     Thread(false)
     ,mPanoramaCallback(panoramaCallback)
     ,mContext(NULL)
@@ -46,8 +46,8 @@ PanoramaThread::PanoramaThread(ICallbackPanorama *panoramaCallback, I3AControls 
     ,mPanoramaTotalCount(0)
     ,mThreadRunning(false)
     ,mPanoramaWaitingForImage(false)
-    ,mCallbacksThread(CallbacksThread::getInstance())
-    ,mCallbacks(Callbacks::getInstance()) // for memory allocation
+    ,mCallbacksThread(CallbacksThread::getInstance(NULL, cameraId))
+    ,mCallbacks(Callbacks::getInstance(cameraId)) // for memory allocation
     ,mState(PANORAMA_STOPPED)
     ,mPreviewWidth(0)
     ,mPreviewHeight(0)
@@ -55,6 +55,7 @@ PanoramaThread::PanoramaThread(ICallbackPanorama *panoramaCallback, I3AControls 
     ,mThumbnailHeight(0)
     ,mPanoramaStitchThread(NULL)
     ,mStopInProgress(false)
+    ,mCameraId(cameraId)
     ,m3AControls(aaaControls)
 {
     LOG1("@%s", __FUNCTION__);
@@ -528,7 +529,7 @@ status_t PanoramaThread::handleStitch(const MessageStitch &stitch)
     status_t status = NO_ERROR;
     AtomBuffer postviewBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW));
 
-    int ret = mPanoramaStitchThread->stitch(mContext, stitch.img, stitch.stitchId);
+    int ret = mPanoramaStitchThread->stitch(mContext, stitch.img, stitch.stitchId, mCameraId);
 
     if (ret < 0) {
         LOGE("ia_panorama_stitch failed, error = %d", ret);
@@ -651,7 +652,7 @@ status_t PanoramaThread::PanoramaStitchThread::requestExitAndWait()
     return Thread::requestExitAndWait();
 }
 
-status_t PanoramaThread::PanoramaStitchThread::stitch(ia_panorama_state* mContext, AtomBuffer frame, int stitchId)
+status_t PanoramaThread::PanoramaStitchThread::stitch(ia_panorama_state* mContext, AtomBuffer frame, int stitchId, int cameraId)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -662,7 +663,7 @@ status_t PanoramaThread::PanoramaStitchThread::stitch(ia_panorama_state* mContex
     int retrySleepMillis = 50;
 
     do {
-        Callbacks::getInstance()->allocateMemory(&copy, size);
+        Callbacks::getInstance(cameraId)->allocateMemory(&copy, size);
         if (!copy.dataPtr) {
             LOGW("Failed to allocate panorama snapshot memory, sleeping %d milliseconds and retrying!", retrySleepMillis);
             usleep(1000 * retrySleepMillis);

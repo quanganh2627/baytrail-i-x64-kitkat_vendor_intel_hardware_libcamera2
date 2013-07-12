@@ -22,7 +22,7 @@
 #include <utils/List.h>
 #include <utils/UniquePtr.h>
 #include "I3AControls.h"
-#include "AtomISP.h"
+#include "ICameraHwControls.h"
 #include "MessageQueue.h"
 
 namespace android {
@@ -48,7 +48,7 @@ class BracketManager : public Thread {
 
 // constructor destructor
 public:
-    BracketManager(AtomISP *isp, I3AControls *aaaControls);
+    BracketManager(HWControlGroup &hwcg, I3AControls *aaaControls);
     virtual ~BracketManager();
 
 // prevent copy constructor and assignment operator
@@ -120,7 +120,7 @@ private:
 // private data
 private:
     I3AControls *m3AControls;
-    AtomISP *mISP;
+    IHWIspControl *mISP;
     int  mFpsAdaptSkip;
     int  mBurstLength;
     int  mBurstCaptureNum;
