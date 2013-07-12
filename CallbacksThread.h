@@ -98,6 +98,7 @@ public:
     status_t ullTriggered(int id);
     status_t postviewRendered();
     status_t sendError(int id);
+    status_t lowBattery();
 
 // private types
 private:
@@ -128,6 +129,8 @@ private:
 
         // Error callback
         MESSAGE_ID_ERROR_CALLBACK,
+        // low battery callback
+        MESSAGE_ID_LOW_BATTERY,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -261,6 +264,7 @@ private:
     status_t handleMessageUllTriggered(MessageULLSnapshot *msg);
     status_t handleMessageUllJpegDataReady(MessageFrame *msg);
     status_t handleMessageSendError(MessageError *msg);
+    status_t handleMessageLowBattery();
     // main message function
     status_t waitForAndExecuteMessage();
 

@@ -288,4 +288,14 @@ void Callbacks::ullTriggered(int id)
 
 }
 
+void Callbacks::lowBattery()
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if (mNotifyCB != NULL) {
+        LOG1("Sending message: CAMERA_MSG_LOW_BATTERY");
+        mNotifyCB(CAMERA_MSG_LOW_BATTERY, 1, 0, mUserToken);
+    }
+}
+
 };

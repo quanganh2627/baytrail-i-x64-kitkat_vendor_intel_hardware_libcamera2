@@ -4966,16 +4966,25 @@ void ControlThread::preProcessFlashMode(CameraParameters *newParams)
     if (!PlatformData::supportsFlash(mCameraId))
         return;
 
+    bool lowBattery = mHwcg.mFlashCI->lowBatteryForFlash();
+
     const char* supportedFlashModes = newParams->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
     String8 currSupportedFlashModes(supportedFlashModes, supportedFlashModes == NULL ? 0 : strlen(supportedFlashModes));
+    const char* requestedFlashMode  = newParams->get(CameraParameters::KEY_FLASH_MODE);
+    String8 currRequestedFlashMode(requestedFlashMode, requestedFlashMode == NULL ? 0 : strlen(requestedFlashMode));
 
     // If burst or HDR is enabled, the only supported flash mode is "off".
     // Also, we only want to record only the first change to "off".
-    if ((mBurstLength > 1 || mHdr.enabled)
-        && currSupportedFlashModes != CameraParameters::FLASH_MODE_OFF) {
+    if (((mBurstLength > 1 || mHdr.enabled) && currSupportedFlashModes != CameraParameters::FLASH_MODE_OFF)
+            || (lowBattery && currRequestedFlashMode != CameraParameters::FLASH_MODE_OFF)) {
+        if (lowBattery) {
+            LOGW("@%s low battery for flash, force set flash mode to off", __FUNCTION__);
+            //Callback to user
+            mCallbacksThread->lowBattery();
+        }
         newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, CameraParameters::FLASH_MODE_OFF);
         newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
-    } else if ((mBurstLength == 1 || mBurstLength == 0) && !mHdr.enabled) {
+    } else if ((mBurstLength == 1 || mBurstLength == 0) && !mHdr.enabled && !lowBattery) {
         // Restore the supported flash modes to the values prior to forcing to "off":
         newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, mSavedFlashSupported);
     }

@@ -294,6 +294,8 @@ public:
     virtual status_t setTorch(int intensity) = 0;
     /* Flash related controls */
     virtual int setFlashIntensity(int intensity) = 0;
+    /* Check if battery is too low for flash control*/
+    virtual bool lowBatteryForFlash() = 0;
 };
 
 /* Abstraction of HW lens control interface for 3A support */

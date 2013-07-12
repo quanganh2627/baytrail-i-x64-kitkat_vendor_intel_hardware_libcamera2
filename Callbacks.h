@@ -81,6 +81,8 @@ public:
     void ullTriggered(int id);
     void ullPictureDone(AtomBuffer *ullJpegPicture);
 
+    void lowBattery();
+
 private:
     camera_notify_callback mNotifyCB;
     camera_data_callback mDataCB;
