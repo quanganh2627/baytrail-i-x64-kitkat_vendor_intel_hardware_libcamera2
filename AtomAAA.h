@@ -106,6 +106,7 @@ private:
     int enableGbce(bool enable);
 
     // 3A control
+    status_t _init3A();
     int ciAdvInit(const SensorParams *paramFiles, const char *sensorOtpFile);
     void ciAdvUninit(void);
     void ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate);

@@ -146,6 +146,18 @@ AtomAAA::~AtomAAA()
 
 status_t AtomAAA::init3A()
 {
+    LOG1("@%s", __FUNCTION__);
+
+    status_t status = _init3A();
+
+    // We don't need this memory anymore
+    PlatformData::AiqConfig.clear();
+
+    return status;
+}
+
+status_t AtomAAA::_init3A()
+{
     Mutex::Autolock lock(m3aLock);
     status_t status;
     int init_result = 0;

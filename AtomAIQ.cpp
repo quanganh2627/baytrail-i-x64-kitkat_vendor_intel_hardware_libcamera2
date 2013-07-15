@@ -103,6 +103,16 @@ status_t AtomAIQ::init3A()
 {
     LOG1("@%s", __FUNCTION__);
 
+    status_t status = _init3A();
+
+    // We don't need this memory anymore
+    PlatformData::AiqConfig.clear();
+
+    return status;
+}
+
+status_t AtomAIQ::_init3A()
+{
     status_t status = NO_ERROR;
     ia_err ret = ia_err_none;
     String8 fullName, spIdName;
@@ -169,13 +179,11 @@ status_t AtomAIQ::init3A()
         return UNKNOWN_ERROR;
     }
 
-
     mISPAdaptor->initIaIspAdaptor((ia_binary_data*)&(cpfData),
                          MAX_STATISTICS_WIDTH,
                          MAX_STATISTICS_HEIGHT,
                          cmc,
                          mMkn);
-
 
     ia_cmc_parser_deinit(cmc);
 
@@ -205,8 +213,6 @@ status_t AtomAIQ::getAiqConfig(ia_binary_data *cpfData)
     if (PlatformData::AiqConfig && cpfData != NULL) {
         cpfData->data = PlatformData::AiqConfig.ptr();
         cpfData->size = PlatformData::AiqConfig.size();
-        // We don't need this memory anymore
-        PlatformData::AiqConfig.clear();
     } else {
         status = UNKNOWN_ERROR;
     }

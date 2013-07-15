@@ -408,9 +408,6 @@ status_t AtomISP::getSensorParams(SensorParams *paramsAndCPF)
         paramsAndCPF->cpfData.data = PlatformData::AiqConfig.ptr();
         paramsAndCPF->cpfData.size = PlatformData::AiqConfig.size();
     }
-    // We don't need this memory anymore
-    PlatformData::AiqConfig.clear();
-
 
     return status;
 }
