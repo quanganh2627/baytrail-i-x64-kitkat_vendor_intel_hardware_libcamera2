@@ -176,7 +176,10 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    if (m3AControls->init3A() != NO_ERROR) {
+    status = m3AControls->init3A();
+    // We don't need this memory anymore
+    PlatformData::AiqConfig.clear();
+    if (status != NO_ERROR) {
         LOGE("Error initializing 3A controls");
         goto bail;
     }
