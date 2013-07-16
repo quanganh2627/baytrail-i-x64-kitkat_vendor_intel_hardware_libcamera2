@@ -3756,7 +3756,7 @@ status_t AtomISP::allocateRecordingBuffers()
         mRecordingBuffers[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_VIDEO); // init fields
         // recording buffers use uncached memory
 
-        mCallbacks->allocateMemory(&mRecordingBuffers[i], size, cached);
+        mCallbacks->allocateMemory(&mRecordingBuffers[i], size);
         LOG1("allocate recording buffer[%d], buff=%p size=%d",
                 i, mRecordingBuffers[i].dataPtr, mRecordingBuffers[i].size);
         if (mRecordingBuffers[i].dataPtr == NULL) {
@@ -3857,7 +3857,7 @@ status_t AtomISP::allocateSnapshotBuffers()
                 // for image data, actual sized buff
                 MemoryUtils::allocateGraphicBuffer(postv, mConfig.postview);
                 // for callbacks, a dummy buff
-                mCallbacks->allocateMemory(&postv.buff, 1, true);
+                mCallbacks->allocateMemory(&postv.buff, 1);
                 if (postv.dataPtr == NULL || postv.buff == NULL) {
                     LOGE("Error allocation memory for postview buffers!");
                     status = NO_MEMORY;

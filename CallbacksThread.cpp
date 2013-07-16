@@ -403,7 +403,7 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
             } else if (snapshotBuf.dataPtr != NULL && mCallbacks->msgTypeEnabled(CAMERA_MSG_RAW_IMAGE)) {
                 LOG1("snapshotBuf.size:%d", snapshotBuf.size);
 
-                mCallbacks->allocateMemory(&tmpCopy.buff, snapshotBuf.size, false);
+                mCallbacks->allocateMemory(&tmpCopy.buff, snapshotBuf.size);
                 if (tmpCopy.dataPtr != NULL) {
                     memcpy(tmpCopy.dataPtr, snapshotBuf.dataPtr, snapshotBuf.size);
                     releaseTmp = true;
