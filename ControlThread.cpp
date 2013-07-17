@@ -3805,11 +3805,7 @@ bool ControlThread::validateSize(int width, int height, Vector<Size> &supportedS
     if (width < 0 || height < 0)
         return false;
 
-    for (Vector<Size>::iterator it = supportedSizes.begin(); it != supportedSizes.end(); ++it)
-        if (width == it->width && height == it->height)
-            return true;
-
-    return false;
+    return true;
 }
 
 bool ControlThread::validateString(const char* value,  const char* supportList) const{
