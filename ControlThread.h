@@ -499,6 +499,7 @@ private:
             const char *key);
     bool paramsHasPictureSizeChanged(const CameraParameters *oldParams,
             CameraParameters *newParams) const;
+    bool hasPictureFormatChanged();
 
     // Process flashmode based on shooting mode criteria etc.
     // E.g., changes supported flash modes in burst and HDR modes.
@@ -561,7 +562,7 @@ private:
     status_t processParamAwbMappingMode(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamRawDataFormat(const CameraParameters *oldParams,
-            CameraParameters *newParams);
+            CameraParameters *newParams, bool &previewRestartNeeded);
     // NOTE: processParamPreviewFrameRate is deprecated since Android API level 9
     status_t processParamPreviewFrameRate(const CameraParameters *oldParams,
             CameraParameters *newParams);

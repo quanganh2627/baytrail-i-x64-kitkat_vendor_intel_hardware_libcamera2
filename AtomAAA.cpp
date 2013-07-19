@@ -1290,20 +1290,6 @@ int AtomAAA::deinit3aStatDump(void)
     return NO_ERROR;
 }
 
-int AtomAAA::setFpnTable(const ia_frame *fpn_table)
-{
-    LOG1("@%s", __FUNCTION__);
-    struct v4l2_framebuffer fb;
-    fb.fmt.width        = fpn_table->width;
-    fb.fmt.height       = fpn_table->height;
-    fb.fmt.pixelformat  = V4L2_PIX_FMT_SBGGR16;
-    fb.fmt.bytesperline = fpn_table->stride * 2;
-    fb.fmt.sizeimage    = fb.fmt.height * fb.fmt.sizeimage;
-    fb.base             = fpn_table->data;
-
-    return mISP->setFpnTable(&fb);
-}
-
 int AtomAAA::ciAdvInit(const SensorParams *paramFiles, const char *sensorOtpFile)
 {
     LOG1("@%s", __FUNCTION__);
@@ -1403,7 +1389,7 @@ void AtomAAA::ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate)
         ia_3a_mknote_add_uint(ia_3a_mknote_field_name_boot_events, m3ALibState.boot_events);
     /* usually the grid changes as well when the mode changes. */
     reconfigureGrid();
-    ia_aiq_sensor_frame_params sensor_frame_params;
+    ia_aiq_frame_params sensor_frame_params;
     getSensorFrameParams(&sensor_frame_params, &m3ALibState.sensor_mode_data);
     ia_3a_reconfigure(mode, frame_rate, m3ALibState.stats, &sensor_frame_params, &m3ALibState.results);
     applyResults();
@@ -1739,7 +1725,7 @@ void AtomAAA::getDefaultParams(CameraParameters *params, CameraParameters *intel
     intel_params->set(IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE, CAM_RESO_STR(PANORAMA_DEF_PREV_WIDTH,PANORAMA_DEF_PREV_HEIGHT));
 }
 
-void AtomAAA::getSensorFrameParams(ia_aiq_sensor_frame_params *frame_params, struct atomisp_sensor_mode_data *sensor_mode_data)
+void AtomAAA::getSensorFrameParams(ia_aiq_frame_params *frame_params, struct atomisp_sensor_mode_data *sensor_mode_data)
 {
     frame_params->horizontal_crop_offset = sensor_mode_data->crop_horizontal_start;
     frame_params->vertical_crop_offset = sensor_mode_data->crop_vertical_start;

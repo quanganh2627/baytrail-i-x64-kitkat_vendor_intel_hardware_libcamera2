@@ -91,7 +91,7 @@ typedef struct {
     ia_aiq_scene_mode               detected_scene;
     ia_aiq_rgbs_grid                rgbs_grid;
     ia_aiq_af_grid                  af_grid;
-    ia_aiq_sensor_frame_params      sensor_frame_params;
+    ia_aiq_frame_params             sensor_frame_params;
     ia_aiq_awb_manual_cct_range     cct_range;
     bool                            dsd_enabled;
     bool                            aic_enabled;
@@ -115,7 +115,7 @@ typedef struct {
  */
 typedef struct {
     ia_aiq_frame_use frame_use;                      /*!< Target frame type of the AIC calculations (Preview, Still, video etc.). */
-    ia_aiq_sensor_frame_params *sensor_frame_params; /*!< Sensor frame parameters (crop offsets, scaling denominators etc). */
+    ia_aiq_frame_params        *sensor_frame_params; /*!< Sensor frame parameters (crop offsets, scaling denominators etc). */
     ia_aiq_exposure_parameters *exposure_results;    /*!< Exposure parameters which are to be used to calculate next ISP parameters. */
     ia_aiq_awb_results *awb_results;                 /*!< WB results which are to be used to calculate next ISP parameters (WB gains, color matrix,etc). */
     ia_aiq_gbce_results *gbce_results;               /*!< GBCE Gamma tables which are to be used to calculate next ISP parameters.
@@ -224,7 +224,6 @@ class AtomAIQ : public I3AControls {
 
 // constructor/destructor
 private:
-    int setFpnTable(const ia_frame *fpn_table);
     status_t getAiqConfig(ia_binary_data *cpfData);
 
     // Common functions for 3A, GBCE, AF etc.
@@ -304,7 +303,7 @@ private:
                      int *aec_apex_Tv, int *aec_apex_Sv, int *aec_apex_Av,
                      float *digital_gain);
 
-    void getSensorFrameParams(ia_aiq_sensor_frame_params *frame_params);
+    void getSensorFrameParams(ia_aiq_frame_params *frame_params);
     int dumpMknToFile();
 
 // prevent copy constructor and assignment operator

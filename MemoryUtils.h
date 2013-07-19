@@ -19,13 +19,15 @@
 #define MEMORYUTILS_H_
 
 #include "AtomCommon.h"
+#include "Callbacks.h"
 
 namespace android {
 
     namespace MemoryUtils {
 
-        status_t allocateGraphicBuffer(AtomBuffer &aBuff, int width, int height);
+        status_t allocateGraphicBuffer(AtomBuffer &aBuff, FrameInfo &aFrameInfo);
         void freeGraphicBuffer(AtomBuffer &aBuff);
+        status_t allocateAtomBuffer(AtomBuffer &aBuff, FrameInfo &aFrameInfo, Callbacks *aCallbacks);
         void freeAtomBuffer(AtomBuffer &aBuff);
 
     } // namespace MemoryUtils

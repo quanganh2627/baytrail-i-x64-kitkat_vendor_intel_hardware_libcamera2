@@ -174,7 +174,7 @@ class PlatformData {
      *
      * \return true if flash is available
      */
-    static bool supportsBackFlash(void);
+    static bool supportsFlash(int cameraId);
 
     /**
      * Whether image data injection from file is supported?
@@ -810,7 +810,6 @@ class PlatformBase {
 public:
     PlatformBase() {    //default
         mPanoramaMaxSnapshotCount = 10;
-        mBackFlash = false;
         mFileInject = false;
         mSupportVideoSnapshot = true;
         mMaxZoomFactor = 64;
@@ -933,6 +932,8 @@ protected:
             defaultPreviewUpdateMode = "standard";
             //For high speed recording, slow motion playback
             hasSlowMotion = false;
+            // Flash support
+            hasFlash = false;
             // focus modes
             supportedFocusModes.appendFormat("%s,%s,%s,%s,%s,%s"
                 ,CameraParameters::FOCUS_MODE_AUTO
@@ -1021,6 +1022,8 @@ protected:
         String8 supportedVideoSizes;
         // For high speed recording, slow motion playback
         bool hasSlowMotion;
+        // Flash support
+        bool hasFlash;
         // focus modes
         String8 supportedFocusModes;
         String8 defaultFocusMode;
@@ -1038,7 +1041,6 @@ protected:
 
     Vector<CameraInfo> mCameras;
 
-    bool mBackFlash;
     bool mFileInject;
     bool mSupportVideoSnapshot;
 

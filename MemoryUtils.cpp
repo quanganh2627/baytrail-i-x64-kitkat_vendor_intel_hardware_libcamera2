@@ -15,14 +15,13 @@
  * limitations under the License.
  */
 
-#include "LogHelper.h"
 #include "MemoryUtils.h"
 #include "PlatformData.h"
 
 namespace android {
     namespace MemoryUtils {
 
-    status_t allocateGraphicBuffer(AtomBuffer &aBuff, int width, int height)
+    status_t allocateGraphicBuffer(AtomBuffer &aBuff, FrameInfo &aFrameInfo)
     {
         LOG1("@%s", __FUNCTION__);
         status_t status = OK;
@@ -34,31 +33,41 @@ namespace android {
                     GRALLOC_USAGE_SW_WRITE_NEVER |
                     GRALLOC_USAGE_HW_COMPOSER;
 
-        GraphicBuffer *cameraGraphicBuffer = new GraphicBuffer(width, height, getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewFormat()),
+        LOG1("%s with these properties: (%dx%d)s:%d format %s", __FUNCTION__,
+                aFrameInfo.width, aFrameInfo.height, aFrameInfo.stride, v4l2Fmt2Str(aFrameInfo.format));
+
+        GraphicBuffer *cameraGraphicBuffer = new GraphicBuffer(aFrameInfo.width, aFrameInfo.height,getGFXHALPixelFormatFromV4L2Format(aFrameInfo.format),
                         GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_SW_WRITE_OFTEN | GraphicBuffer::USAGE_HW_TEXTURE);
 
-        if (!cameraGraphicBuffer)
+        if (!cameraGraphicBuffer) {
+            LOGE("No memory to allocate graphic buffer");
             return NO_MEMORY;
+        }
 
         ANativeWindowBuffer *cameraNativeWindowBuffer = cameraGraphicBuffer->getNativeBuffer();
         aBuff.buff = NULL;     // We do not allocate a normal camera_memory_t
-        aBuff.width = width;
-        aBuff.height = height;
+        aBuff.width = aFrameInfo.width;
+        aBuff.height = aFrameInfo.height;
+        if (aFrameInfo.stride != cameraNativeWindowBuffer->stride) {
+            LOGW("%s: potential stride problem requested %d, Gfx requries %d",__FUNCTION__, aFrameInfo.stride, cameraNativeWindowBuffer->stride);
+        } else {
+            LOG1("%s stride from Gfx is %d", __FUNCTION__, aFrameInfo.stride);
+        }
         aBuff.stride = cameraNativeWindowBuffer->stride;
-        aBuff.format = PlatformData::getPreviewFormat();
+        aBuff.format = aFrameInfo.format;
         aBuff.gfxInfo.scalerId = -1;
         aBuff.gfxInfo.gfxBufferHandle = &cameraGraphicBuffer->handle;
         aBuff.gfxInfo.gfxBuffer = cameraGraphicBuffer;
         cameraGraphicBuffer->incStrong(&aBuff);
-        aBuff.size = frameSize(V4L2_PIX_FMT_NV12, aBuff.stride, aBuff.height);
+        aBuff.size = frameSize(aFrameInfo.format, aBuff.stride, aBuff.height);
 
         status = cameraGraphicBuffer->lock(lockMode, &mapperPointer.ptr);
-        aBuff.gfxInfo.locked = true;
         if (status != NO_ERROR) {
-            LOGE("@%s: Failed to lock GraphicBuffer!", __FUNCTION__);
+            LOGE("@%s: Failed to lock GraphicBuffer! status=%d", __FUNCTION__, status);
             return UNKNOWN_ERROR;
         }
 
+        aBuff.gfxInfo.locked = true;
         aBuff.dataPtr = mapperPointer.ptr;
         aBuff.shared = false;
         LOG1("@%s allocated gfx buffer with pointer %p nativewindowbuf %p",
@@ -85,6 +94,30 @@ namespace android {
         aBuff.dataPtr = NULL;
     }
 
+    status_t allocateAtomBuffer(AtomBuffer &aBuff, FrameInfo &aFrameInfo, Callbacks *aCallbacks)
+    {
+        LOG1("%s with these properties: (%dx%d)s:%d format %s", __FUNCTION__,
+                aFrameInfo.width, aFrameInfo.height, aFrameInfo.stride, v4l2Fmt2Str(aFrameInfo.format));
+        status_t status = OK;
+        aBuff.dataPtr = NULL;
+
+        aCallbacks->allocateMemory(&aBuff, aFrameInfo.size);
+        if (aBuff.buff == NULL) {
+            LOGE("Failed to allocate AtomBuffer");
+            return NO_MEMORY;
+        }
+
+        aBuff.width = aFrameInfo.width;
+        aBuff.height = aFrameInfo.height;
+        aBuff.stride = aFrameInfo.stride;
+        aBuff.format = aFrameInfo.format;
+        aBuff.size = aFrameInfo.size;
+        aBuff.dataPtr = aBuff.buff->data;
+        aBuff.shared = false;
+
+        LOG1("@%s allocated heap buffer with pointer %p", __FUNCTION__, aBuff.dataPtr);
+        return status;
+    }
     void freeAtomBuffer(AtomBuffer &aBuff)
     {
         LOG1("@%s", __FUNCTION__);

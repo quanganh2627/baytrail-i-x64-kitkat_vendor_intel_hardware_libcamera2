@@ -262,6 +262,7 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
     mAfInputParameters.frame_use = m3aState.frame_use;
     mAfState.previous_sof = 0;
     mAeInputParameters.frame_use = m3aState.frame_use;
+    mAeInputParameters.manual_frame_time_us_max = (long) 1/fps*1000000;
     mAwbInputParameters.frame_use = m3aState.frame_use;
 
     /* usually the grid changes as well when the mode changes. */
@@ -625,19 +626,19 @@ ia_3a_awb_light_source  AtomAIQ::getLightSource()
     ia_3a_awb_light_source wr_val;
     switch (mode) {
     case CAM_AWB_MODE_DAYLIGHT:
-        wr_val = ia_3a_awb_light_source_fluorlamp_d;
+        wr_val = ia_3a_awb_light_source_clear_sky;
         break;
     case CAM_AWB_MODE_CLOUDY:
         wr_val = ia_3a_awb_light_source_cloudiness;
         break;
     case CAM_AWB_MODE_SUNSET:
-        wr_val = ia_3a_awb_light_source_other;
+        wr_val = ia_3a_awb_light_source_filament_lamp;
         break;
     case CAM_AWB_MODE_TUNGSTEN:
         wr_val = ia_3a_awb_light_source_filament_lamp;
         break;
     case CAM_AWB_MODE_FLUORESCENT:
-        wr_val = ia_3a_awb_light_source_fluorlamp_w;
+        wr_val = ia_3a_awb_light_source_fluorlamp_n;
         break;
     case CAM_AWB_MODE_WARM_FLUORESCENT:
         wr_val = ia_3a_awb_light_source_fluorlamp_w;
@@ -1273,20 +1274,6 @@ status_t AtomAIQ::getGridWindow(AAAWindowInfo& window)
     return NO_ERROR;
 }
 
-int AtomAIQ::setFpnTable(const ia_frame *fpn_table)
-{
-    LOG1("@%s", __FUNCTION__);
-    struct v4l2_framebuffer fb;
-    fb.fmt.width        = fpn_table->width;
-    fb.fmt.height       = fpn_table->height;
-    fb.fmt.pixelformat  = V4L2_PIX_FMT_SBGGR16;
-    fb.fmt.bytesperline = fpn_table->stride * 2;
-    fb.fmt.sizeimage    = fb.fmt.height * fb.fmt.sizeimage;
-    fb.base             = fpn_table->data;
-
-    return mISP->setFpnTable(&fb);
-}
-
 struct atomisp_3a_statistics * AtomAIQ::allocateStatistics(int grid_size)
 {
     LOG2("@%s", __FUNCTION__);
@@ -1742,7 +1729,7 @@ void AtomAIQ::resetAECParams()
     mAeInputParameters.priority_mode = ia_aiq_ae_priority_mode_normal;
     mAeInputParameters.flicker_reduction_mode = ia_aiq_ae_flicker_reduction_auto;
     mAeInputParameters.sensor_descriptor = &mAeSensorDescriptor;
-    mAeInputParameters.sensor_frame_params = NULL;
+    mAeInputParameters.isp_frame_params = NULL;
     mAeInputParameters.exposure_window = NULL; // TODO: exposure window should be used with digital zoom.
     mAeInputParameters.exposure_coordinate = NULL;
     mAeInputParameters.ev_shift = 0;
@@ -1789,7 +1776,10 @@ status_t AtomAIQ::runAeMain()
 
     ia_err err = ia_err_none;
     ia_aiq_ae_results *new_ae_results = NULL;
-    mAeInputParameters.sensor_frame_params = &m3aState.sensor_frame_params;
+
+    // ToDo:
+    // AE requires frame parameters which describe cropping/scaling done in ISP
+    mAeInputParameters.isp_frame_params = &m3aState.sensor_frame_params;
 
     if(m3aState.ia_aiq_handle){
         if (invalidated && mAeState.stored_results->getCount() > 1) {
@@ -2280,7 +2270,7 @@ void AtomAIQ::getDefaultParams(CameraParameters *params, CameraParameters *intel
 
 }
 
-void AtomAIQ::getSensorFrameParams(ia_aiq_sensor_frame_params *frame_params)
+void AtomAIQ::getSensorFrameParams(ia_aiq_frame_params *frame_params)
 {
     LOG2("@%s", __FUNCTION__);
 

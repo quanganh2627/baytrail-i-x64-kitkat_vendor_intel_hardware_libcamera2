@@ -96,8 +96,6 @@ class AtomAAA : public I3AControls {
 
 // constructor/destructor
 private:
-    int setFpnTable(const ia_frame *fpn_table);
-
     // Common functions for 3A, GBCE, AF etc.
     int applyResults();
     bool reconfigureGrid(void);
@@ -138,7 +136,7 @@ private:
                      int *aec_apex_Tv, int *aec_apex_Sv, int *aec_apex_Av,
                      float *digital_gain);
 
-    void getSensorFrameParams(ia_aiq_sensor_frame_params *frame_params,
+    void getSensorFrameParams(ia_aiq_frame_params *frame_params,
                               struct atomisp_sensor_mode_data *sensor_mode_data);
 
 // prevent copy constructor and assignment operator

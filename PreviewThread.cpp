@@ -1038,7 +1038,22 @@ status_t PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
 
         LOG1("Setting new preview window %p (%dx%d)", mPreviewWindow,w,h);
         mPreviewWindow->set_usage(mPreviewWindow, usage);
-        mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewFormat()));
+        /**
+         * In case we do the rotation in CPU (like in overlay case) the width and
+         * height do not need to be restricted by ISP stride. The original ISP stride is
+         * stored in mPreviewStride. The rotation routine will take care of this
+         *
+         */
+        if (mRotation == 90 || mRotation == 270) {
+            mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewFormat()));
+        } else {
+            /**
+             * For 0-copy path we need to configure the window with the stride required
+             * by ISP, and then set the crop rectangle accordingly
+             */
+            mPreviewWindow->set_buffers_geometry(mPreviewWindow, mPreviewStride, h, getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewFormat()));
+            mPreviewWindow->set_crop(mPreviewWindow, 0, 0, w, h);
+        }
     }
 
     return NO_ERROR;
@@ -1051,6 +1066,7 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
     status_t status = NO_ERROR;
     int w = msg->width;
     int h = msg->height;
+    int stride = msg->stride;
     int bufferCount = 0;
     int reservedBufferCount = 0;
 
@@ -1070,8 +1086,10 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
                 // we swap width and height
                 w = msg->height;
                 h = msg->width;
+                stride = msg->height;
             }
-            mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewFormat()));
+            mPreviewWindow->set_buffers_geometry(mPreviewWindow, stride, h, getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewFormat()));
+            mPreviewWindow->set_crop(mPreviewWindow, 0, 0, w, h);
         }
 
         /**

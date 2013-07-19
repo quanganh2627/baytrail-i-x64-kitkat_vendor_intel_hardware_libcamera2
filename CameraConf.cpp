@@ -33,10 +33,6 @@ const char *cpfConfigPath = "/etc/atomisp/";  // Where CPF files are located
 // FIXME: The spec for following is "dr%02d[0-9][0-9]??????????????.cpf"
 const char *cpfConfigPattern = "%02d*.cpf";  // How CPF file name should look
 
-// Indicates the number of files whose name contains the vendor,
-// platform and product id's
-static int mNumFilesWithFullNameFound = 0;
-
 // Defining and initializing static members
 Vector<struct CpfStore::SensorDriver> CpfStore::RegisteredDrivers;
 Vector<struct stat> CpfStore::ValidatedCpfFiles;
@@ -655,14 +651,12 @@ status_t CpfStore::findConfigWithDriver(String8& cpfName, int& drvIndex)
     status_t ret = 0;
     bool anyMatch = false;
 
-    mNumFilesWithFullNameFound = 0;
-
     // We go the directory containing CPF files thru one by one file,
     // and see if a particular file is something to react upon. If yes,
     // we then see if there is a corresponding driver registered. It
     // is allowed to have more than one CPF file for particular driver
-    // (logic therein decides which one to use, then), but having
-    // more than one suitable driver registered is a strict no no...
+    // (spId values are used for further distinguishing in that case),
+    // but having more than one suitable driver registered is a strict no no...
 
     DIR *dir = opendir(cpfConfigPath);
     if (!dir) {
@@ -747,17 +741,8 @@ status_t CpfStore::findConfigWithDriverHelper(const String8& fileName, String8& 
                     String8 vendorPlatformProduct;
                     if (PlatformData::createVendorPlatformProductName(vendorPlatformProduct) == 0) {
                         if (fileName.find(vendorPlatformProduct) >= 0) {
-                            mNumFilesWithFullNameFound++;
                             cpfName = fileName;
                         }
-                    }
-
-                    // Let's use the most recent one
-                    // if there are no files that match the vendorPlatformProduct string, then we'll
-                    // just compare the file names having only the sensor name
-                    if ((strcmp(fileName, cpfName) > 0) && ((mNumFilesWithFullNameFound = 0) ||
-                            (mNumFilesWithFullNameFound > 1)))  {
-                        cpfName = fileName;
                     }
                 } else {
                     // We just got lost:

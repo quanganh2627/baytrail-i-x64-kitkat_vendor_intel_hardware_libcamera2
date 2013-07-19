@@ -432,13 +432,13 @@ exit_fail:
 
 status_t PictureThread::allocateInputBuffers(int format, int width, int height, int numBufs, bool registerToScaler)
 {
-    LOG1("@%s size (%dx%d) num %d", __FUNCTION__, width, height, numBufs);
+    LOG1("@%s size (%dx%d) num %d format %s", __FUNCTION__, width, height, numBufs,v4l2Fmt2Str(format));
     // temporary workaround until CSS supports buffers with different strides
     // until then we need to align all buffers to display subsystem stride
     // requirements.... even the snapshot buffers that do not go to screen
     int stride = SGXandDisplayStride(format, width);
     LOG1("@%s stride %d", __FUNCTION__, stride);
-    size_t bufferSize = frameSize(format, stride, height);
+    FrameInfo aTmpFrameInfo;
 
     if(numBufs == 0)
         return NO_ERROR;
@@ -449,19 +449,31 @@ status_t PictureThread::allocateInputBuffers(int format, int width, int height, 
         goto bailout;
 
     mInputBuffers = numBufs;
+    aTmpFrameInfo.width = width;
+    aTmpFrameInfo.height = height;
+    aTmpFrameInfo.format = format;
+    aTmpFrameInfo.stride = stride;
+    aTmpFrameInfo.size = frameSize(format, stride, height);
+
 
     for (int i = 0; i < mInputBuffers; i++) {
         mInputBufferArray[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
-        MemoryUtils::allocateGraphicBuffer(mInputBufferArray[i], width, height);
+        /*
+         * For some use cases there is not enough graphic memory to allocate the snapshot
+         * buffers. We limit the graphic allocation only when we need. This
+         * is signaled by the boolean registerToScaler. In other cases allocate
+         * from HEAP as usual
+         */
+        if (registerToScaler)
+            MemoryUtils::allocateGraphicBuffer(mInputBufferArray[i], aTmpFrameInfo);
+        else
+            MemoryUtils::allocateAtomBuffer(mInputBufferArray[i], aTmpFrameInfo, mCallbacks);
+
         if (mInputBufferArray[i].dataPtr == NULL) {
             mInputBuffers = i;
             goto bailout;
         }
-        mInputBufferArray[i].width = width;
-        mInputBufferArray[i].height = height;
-        mInputBufferArray[i].stride = stride;
-        mInputBufferArray[i].format = format;
-        mInputBufferArray[i].size = bufferSize;
+
         mInputBufferArray[i].status = FRAME_STATUS_OK;
         mInputBuffDataArray[i] = (char *) mInputBufferArray[i].dataPtr;
         if (registerToScaler)
