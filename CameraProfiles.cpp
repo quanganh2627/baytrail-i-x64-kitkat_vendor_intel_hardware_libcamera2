@@ -125,6 +125,8 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
     } else if (strcmp(name, "previewFormat") == 0) {
         if (strcmp(atts[1], "V4L2_PIX_FMT_YVU420") == 0)
             PlatformBase::mPreviewFormat = V4L2_PIX_FMT_YVU420;
+        else if (strcmp(atts[1], "V4L2_PIX_FMT_YUYV") == 0) //Also known as YUY2
+            PlatformBase::mPreviewFormat = V4L2_PIX_FMT_YUYV;
         else
             PlatformBase::mPreviewFormat = V4L2_PIX_FMT_NV12;
     } else if (strcmp(name, "shutterLagCompensationMs") == 0) {
