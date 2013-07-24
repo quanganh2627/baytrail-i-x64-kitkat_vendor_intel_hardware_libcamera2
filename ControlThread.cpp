@@ -1101,6 +1101,10 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
     }
 
     mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED);
+    // Check the camera.hal.power property if disable the Preview
+    if (gPowerLevel & CAMERA_POWERBREAKDOWN_DISABLE_PREVIEW) {
+        mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
+    }
     LOG1("Continuous preview is resumed by foregrounding");
     return NO_ERROR;
 }
