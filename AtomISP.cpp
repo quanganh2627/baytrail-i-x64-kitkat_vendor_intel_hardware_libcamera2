@@ -4571,11 +4571,6 @@ int AtomISP::moveFocusToPosition(int position)
     if ((strcmp(PlatformData::getBoardName(), "saltbay") == 0) ||
         (strcmp(PlatformData::getBoardName(), "baylake") == 0)) {
         position = 1024 - position;
-        position = 100 + (position - 370) * 1.7;
-        if(position > 900)
-            position = 900;
-        if (position < 100)
-            position = 100;
     }
     return mMainDevice->setControl(V4L2_CID_FOCUS_ABSOLUTE, position, "Set focus position");
 }
