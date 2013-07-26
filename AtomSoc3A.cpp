@@ -60,6 +60,9 @@ AtomSoc3A::~AtomSoc3A()
 
 status_t AtomSoc3A::init3A()
 {
+    // We don't need this memory anymore
+    PlatformData::AiqConfig.clear();
+
     return NO_ERROR;
 }
 

@@ -71,8 +71,8 @@ public:
     void focusMove(bool start);
     void shutterSound();
 
-    void allocateMemory(AtomBuffer *buff, int size, bool cached = true);
-    void allocateMemory(camera_memory_t **buff, size_t size, bool cached = true);
+    void allocateMemory(AtomBuffer *buff, int size);
+    void allocateMemory(camera_memory_t **buff, size_t size);
     void facesDetected(camera_frame_metadata_t &face_metadata);
     void sceneDetected(int sceneMode, bool sceneHdr);
     void panoramaDisplUpdate(camera_panorama_metadata &metadata);
@@ -80,6 +80,8 @@ public:
     status_t storeMetaDataInBuffers(bool enabled);
     void ullTriggered(int id);
     void ullPictureDone(AtomBuffer *ullJpegPicture);
+
+    void lowBattery();
 
 private:
     camera_notify_callback mNotifyCB;

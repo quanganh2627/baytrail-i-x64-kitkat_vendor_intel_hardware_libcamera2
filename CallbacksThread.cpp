@@ -172,6 +172,15 @@ status_t CallbacksThread::postviewRendered()
     return mMessageQueue.send(&msg);
 }
 
+status_t CallbacksThread::lowBattery()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_LOW_BATTERY;
+
+    return mMessageQueue.send(&msg);
+}
+
 status_t CallbacksThread::handleMessagePostviewRendered()
 {
     LOG1("@%s", __FUNCTION__);
@@ -403,7 +412,7 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
             } else if (snapshotBuf.dataPtr != NULL && mCallbacks->msgTypeEnabled(CAMERA_MSG_RAW_IMAGE)) {
                 LOG1("snapshotBuf.size:%d", snapshotBuf.size);
 
-                mCallbacks->allocateMemory(&tmpCopy.buff, snapshotBuf.size, false);
+                mCallbacks->allocateMemory(&tmpCopy.buff, snapshotBuf.size);
                 if (tmpCopy.dataPtr != NULL) {
                     memcpy(tmpCopy.dataPtr, snapshotBuf.dataPtr, snapshotBuf.size);
                     releaseTmp = true;
@@ -494,6 +503,13 @@ status_t CallbacksThread::handleMessageUllTriggered(MessageULLSnapshot *msg)
     LOG1("@%s Done id:%d",__FUNCTION__,msg->id);
     int id = msg->id;
     mCallbacks->ullTriggered(id);
+    return NO_ERROR;
+}
+
+status_t CallbacksThread::handleMessageLowBattery()
+{
+    LOG1("@%s Done",__FUNCTION__);
+    mCallbacks->lowBattery();
     return NO_ERROR;
 }
 
@@ -711,6 +727,11 @@ status_t CallbacksThread::waitForAndExecuteMessage()
         case MESSAGE_ID_ERROR_CALLBACK:
             status = handleMessageSendError(&msg.data.error);
             break;
+
+        case MESSAGE_ID_LOW_BATTERY:
+            status = handleMessageLowBattery();
+            break;
+
         default:
             status = BAD_VALUE;
             break;

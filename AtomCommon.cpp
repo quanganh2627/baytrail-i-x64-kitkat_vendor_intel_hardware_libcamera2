@@ -20,6 +20,8 @@
 #include <ia_coordinate.h>
 #ifndef GRAPHIC_IS_GEN // this will be removed if graphic provides one common header file
 #include <hal_public.h>
+#else
+#include "PlatformData.h"
 #endif
 
 #ifdef LIBCAMERA_RD_FEATURES
@@ -265,13 +267,7 @@ int getGFXHALPixelFormatFromV4L2Format(int previewFormat)
 
     switch(previewFormat) {
     case V4L2_PIX_FMT_NV12:
-#ifdef GRAPHIC_IS_GEN // this will be removed if graphic provides one common header file
-        // for the time being let's choose a format that has the same bpp as NV12
-        // This conversion is only used for memory allocation purposes
-        halPixelFormat = HAL_PIXEL_FORMAT_YV12;
-#else
          halPixelFormat = HAL_PIXEL_FORMAT_NV12;
- #endif
         break;
     case V4L2_PIX_FMT_YVU420:
         halPixelFormat = HAL_PIXEL_FORMAT_YV12;

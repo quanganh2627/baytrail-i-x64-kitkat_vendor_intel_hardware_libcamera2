@@ -408,9 +408,6 @@ status_t AtomISP::getSensorParams(SensorParams *paramsAndCPF)
         paramsAndCPF->cpfData.data = PlatformData::AiqConfig.ptr();
         paramsAndCPF->cpfData.size = PlatformData::AiqConfig.size();
     }
-    // We don't need this memory anymore
-    PlatformData::AiqConfig.clear();
-
 
     return status;
 }
@@ -3759,7 +3756,7 @@ status_t AtomISP::allocateRecordingBuffers()
         mRecordingBuffers[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_VIDEO); // init fields
         // recording buffers use uncached memory
 
-        mCallbacks->allocateMemory(&mRecordingBuffers[i], size, cached);
+        mCallbacks->allocateMemory(&mRecordingBuffers[i], size);
         LOG1("allocate recording buffer[%d], buff=%p size=%d",
                 i, mRecordingBuffers[i].dataPtr, mRecordingBuffers[i].size);
         if (mRecordingBuffers[i].dataPtr == NULL) {
@@ -3860,7 +3857,7 @@ status_t AtomISP::allocateSnapshotBuffers()
                 // for image data, actual sized buff
                 MemoryUtils::allocateGraphicBuffer(postv, mConfig.postview);
                 // for callbacks, a dummy buff
-                mCallbacks->allocateMemory(&postv.buff, 1, true);
+                mCallbacks->allocateMemory(&postv.buff, 1);
                 if (postv.dataPtr == NULL || postv.buff == NULL) {
                     LOGE("Error allocation memory for postview buffers!");
                     status = NO_MEMORY;
@@ -5403,6 +5400,39 @@ void AtomISP::setNrEE(bool en)
 {
     LOG2("@%s", __FUNCTION__);
     mNoiseReductionEdgeEnhancement = en;
+}
+
+bool AtomISP::lowBatteryForFlash()
+{
+    static const char *CamFlashCtrlFS = "/dev/bcu/camflash_ctrl";
+
+    char buf[4];
+    FILE *fp = NULL;
+
+    LOG1("@%s", __FUNCTION__);
+    // return false directly if no this ctrl file
+    if (::access(CamFlashCtrlFS, R_OK)) {
+        LOG1("@%s, file %s is not readable", __FUNCTION__, CamFlashCtrlFS);
+        return false;
+    }
+
+    fp = ::fopen(CamFlashCtrlFS, "r");
+    if (NULL == fp) {
+        LOGW("@%s, file %s open with err:%s", __FUNCTION__, CamFlashCtrlFS, strerror(errno));
+        return false;
+    }
+    memset(buf, 0, 4);
+    size_t len = ::fread(buf, 1, 1, fp);
+    if (len == 0) {
+        LOGW("@%s, fail to read 1 byte from camflash_ctrl", __FUNCTION__);
+        return false;
+    }
+    ::fclose(fp);
+
+    if (atoi(buf) == 0)
+        return true;
+
+    return false;
 }
 
 } // namespace android

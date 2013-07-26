@@ -248,6 +248,7 @@ private:
     status_t runGBCEMain();
 
     // 3A control
+    status_t _init3A();
     int run3aInit();
     int processForFlash();
     void get3aGridInfo(struct atomisp_grid_info *pgrid);
@@ -440,7 +441,7 @@ private:
 
     aaa_state m3aState;
 
-    //STASTICS
+    //STATISTICS
     ia_aiq_statistics_input_params mStatisticsInputParameters;
 
     //AF
