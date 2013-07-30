@@ -516,7 +516,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
      * RECORDING
      */
     params->setVideoSize(mConfig.recording.width, mConfig.recording.height);
-    params->set(CameraParameters::KEY_PREFERRED_PREVIEW_SIZE_FOR_VIDEO, PlatformData::preferredPreviewSizeForVideo());
+    params->set(CameraParameters::KEY_PREFERRED_PREVIEW_SIZE_FOR_VIDEO, PlatformData::preferredPreviewSizeForVideo(cameraId));
     params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, PlatformData::supportedVideoSizes(cameraId));
     // workaround for the imx132, this code will be removed in the future
     if (strstr(mCameraInput->name, "imx132"))

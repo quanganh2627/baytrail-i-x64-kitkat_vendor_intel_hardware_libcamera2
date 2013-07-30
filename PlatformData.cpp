@@ -220,15 +220,19 @@ int PlatformData::numberOfCameras(void)
     return res;
 }
 
-const char* PlatformData::preferredPreviewSizeForVideo(void)
+const char* PlatformData::preferredPreviewSizeForVideo(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::PreviewSizeVideoDefault)) {
+    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::PreviewSizeVideoDefault)) {
         return sPtr;
     }
 
     PlatformBase *i = getInstance();
-    return i->mVideoPreviewSizePref;
+    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
+        LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+        return NULL;
+    }
+    return i->mCameras[cameraId].mVideoPreviewSizePref;
 }
 
 const char* PlatformData::supportedVideoSizes(int cameraId)
