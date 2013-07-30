@@ -61,7 +61,6 @@ class AtomCP {
 public:
     AtomCP(HWControlGroup &hwcg)STUB;
     ~AtomCP()STUB;
-    status_t computeCDF(const CiUserBuffer& inputBuf, size_t bufIndex)STAT_STUB;
     status_t composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& outputBuf,
                         unsigned vividness, unsigned sharpening)STAT_STUB;
     status_t initializeHDR(unsigned width, unsigned height)STAT_STUB;

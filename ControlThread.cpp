@@ -6987,7 +6987,6 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
 status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* postviewBuffer)
 {
     LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
 
     // Initialize the HDR CI input buffers (main/postview) for this capture
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer->dataPtr;
@@ -7022,12 +7021,10 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height,
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].format);
 
-    status = mCP->computeCDF(mHdr.ciBufIn, mBurstCaptureNum);
-    if (status == NO_ERROR) {
-        mHdr.inputBuffers[mBurstCaptureNum].snapshotBuf = *snapshotBuffer;
-        mHdr.inputBuffers[mBurstCaptureNum].postviewBuf = *postviewBuffer;
-    }
-    return status;
+    mHdr.inputBuffers[mBurstCaptureNum].snapshotBuf = *snapshotBuffer;
+    mHdr.inputBuffers[mBurstCaptureNum].postviewBuf = *postviewBuffer;
+
+    return NO_ERROR;
 }
 
 void ControlThread::hdrRelease()
