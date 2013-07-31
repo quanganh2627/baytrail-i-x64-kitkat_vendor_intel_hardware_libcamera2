@@ -28,7 +28,6 @@
 #include "PerformanceTraces.h"
 #include "cameranvm.h"
 #include "ia_cmc_parser.h"
-#include "PanoramaThread.h"
 #include "FeatureData.h"
 
 #include "AtomAIQ.h"
@@ -2275,9 +2274,6 @@ void AtomAIQ::getDefaultParams(CameraParameters *params, CameraParameters *intel
     // AWB mapping mode
     intel_params->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES, "auto,indoor,outdoor");
-
-    // panorama
-    intel_params->set(IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE, CAM_RESO_STR(PANORAMA_DEF_PREV_WIDTH,PANORAMA_DEF_PREV_HEIGHT));
 
 }
 
