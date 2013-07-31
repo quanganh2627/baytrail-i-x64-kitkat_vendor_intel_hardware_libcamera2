@@ -246,7 +246,7 @@ void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void
                                  "movl       %0,  %%eax      \n\t"
                                  "movl       %1,  %%edx      \n\t"
                                  "movl       %2,  %%ecx      \n\t"
-                                 "NEXT_16BYTES:     \n\t"
+                                 "1:     \n\t"
                                  "movdqa (%%eax), %%xmm1     \n\t"
                                  "movdqa  %%xmm1, %%xmm0     \n\t"
                                  "psllw       $8, %%xmm1     \n\t"
@@ -256,7 +256,7 @@ void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void
                                  "add        $16, %%eax      \n\t"
                                  "add        $16, %%edx      \n\t"
                                  "sub        $16, %%ecx      \n\t"
-                                 "jnz   NEXT_16BYTES \n\t"
+                                 "jnz   1b \n\t"
                                  : "+m"(ptr0), "+m"(ptr1), "+m"(width_16)
                                  :
                                  : "eax", "ecx", "edx", "xmm0", "xmm1"
@@ -267,7 +267,7 @@ void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void
                                  "movl       %0,  %%eax      \n\t"
                                  "movl       %1,  %%edx      \n\t"
                                  "movl       %2,  %%ecx      \n\t"
-                                 "NEXT_16BYTES_1:     \n\t"
+                                 "1:     \n\t"
                                  "lddqu  (%%eax), %%xmm1     \n\t"
                                  "movdqa  %%xmm1, %%xmm0     \n\t"
                                  "psllw       $8, %%xmm1     \n\t"
@@ -277,7 +277,7 @@ void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void
                                  "add        $16, %%eax      \n\t"
                                  "add        $16, %%edx      \n\t"
                                  "sub        $16, %%ecx      \n\t"
-                                 "jnz   NEXT_16BYTES_1 \n\t"
+                                 "jnz   1b \n\t"
                                  : "+m"(ptr0), "+m"(ptr1), "+m"(width_16)
                                  :
                                  : "eax", "ecx", "edx", "xmm0", "xmm1"
