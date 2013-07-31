@@ -29,8 +29,6 @@ namespace android {
 
 
 const char UltraLowLight::MORPHO_INPUT_FORMAT[] = "YUV420_SEMIPLANAR";  // This should be equivalent to NV12, our default
-const int UltraLowLight::MORPHO_INPUT_FORMAT_V4L2 = V4L2_PIX_FMT_NV12; // Keep these two constants in sync
-const int UltraLowLight::MAX_INPUT_BUFFERS = 3;
 
 // ULL bright threshold: from Normal to ULL
 int UltraLowLight::ULL_ACTIVATION_APEX_SV_THRESHOLD = 451799;

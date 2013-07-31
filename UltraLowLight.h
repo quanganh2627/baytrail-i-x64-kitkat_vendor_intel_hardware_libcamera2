@@ -65,8 +65,8 @@ public:
      *
      */
     static const char MORPHO_INPUT_FORMAT[];
-    static const int MORPHO_INPUT_FORMAT_V4L2;
-    static const int  MAX_INPUT_BUFFERS;
+    static const int  MORPHO_INPUT_FORMAT_V4L2 = V4L2_PIX_FMT_NV12; // Keep these two constants in sync;
+    static const int  MAX_INPUT_BUFFERS = 3;
 
     /**
      *  Activation Threshold
