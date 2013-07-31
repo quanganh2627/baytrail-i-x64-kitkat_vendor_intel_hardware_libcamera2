@@ -324,6 +324,7 @@ int GPUScaler::addOutputBuffer(buffer_handle_t *pBufHandle, int width, int heigh
             }
             glClear_EC(GL_COLOR_BUFFER_BIT);
         }
+        glBindFramebuffer_EC(GL_FRAMEBUFFER, 0);
         return bufferId;
     }
 }
