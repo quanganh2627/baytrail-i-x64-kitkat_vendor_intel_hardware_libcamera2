@@ -50,6 +50,9 @@
 namespace android {
 
 GPUScaler::GPUScaler() :
+        mDisplay(EGL_NO_DISPLAY),
+        mContext(EGL_NO_CONTEXT),
+        mSurface(EGL_NO_SURFACE),
         mNumFrames(0),
         mInputBufferCounter(0),
         mOutputBufferCounter(0)
@@ -134,17 +137,18 @@ GPUScaler::~GPUScaler() {
     LOG2("@%s done\n", __FUNCTION__);
 }
 
-int GPUScaler::initGPU() {
+status_t GPUScaler::initGPU() {
     EGLint context_attribs[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
-    EGLint majorVersion;
-    EGLint minorVersion;
-    EGLint w, h;
+    EGLint majorVersion(0);
+    EGLint minorVersion(0);
+    EGLint w(0);
+    EGLint h(0);
 
     LOG2("@%s\n", __FUNCTION__);
 
     // init EGL
-    mDisplay = eglGetDisplay_EC(EGL_DEFAULT_DISPLAY);eglInitialize_EC(
-            mDisplay, &majorVersion, &minorVersion);
+    mDisplay = eglGetDisplay_EC(EGL_DEFAULT_DISPLAY);
+    eglInitialize_EC(mDisplay, &majorVersion, &minorVersion);
     LOG2("EGL version %d.%d\n", majorVersion, minorVersion);
     eglBindAPI_EC(EGL_OPENGL_ES_API);
 
@@ -154,8 +158,10 @@ int GPUScaler::initGPU() {
                     ISurfaceComposer::eDisplayIdMain));
     DisplayInfo dinfo;
     status_t status = SurfaceComposerClient::getDisplayInfo(dtoken, &dinfo);
-    if (status)
-        LOG2("SurfaceComposerClient::getDisplayInfo failed\n");
+    if (status) {
+        LOGE("SurfaceComposerClient::getDisplayInfo failed\n");
+        return status;
+    }
     sp<SurfaceComposerClient> session = new SurfaceComposerClient();
     LOG2("@createSurface()\n");
     sp<SurfaceControl> control = session->createSurface(
@@ -175,8 +181,8 @@ int GPUScaler::initGPU() {
             EGL_BLUE_SIZE, 8, EGL_DEPTH_SIZE, 0, EGL_CONFORMANT,
             EGL_OPENGL_ES2_BIT, EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
             EGL_NONE };
-    EGLConfig config;
-    EGLint numConfigs;
+    EGLConfig config(0);
+    EGLint numConfigs(0);
 
     eglChooseConfig_EC(mDisplay, attribs, &config, 1, &numConfigs);
     mSurface = eglCreateWindowSurface_EC(mDisplay, config, s.get(), NULL);
@@ -193,7 +199,7 @@ int GPUScaler::initGPU() {
     // FIXME:  1-byte align perf penalty
     glPixelStorei_EC(GL_UNPACK_ALIGNMENT, 1);
 
-    return (0);
+    return NO_ERROR;
 }
 
 int GPUScaler::setDefaultConfig() {
@@ -426,8 +432,8 @@ int GPUScaler::addInputBuffer(buffer_handle_t *pBufHandle, int width, int height
 int GPUScaler::initShaders(void) {
     LOG2("@%s\n", __FUNCTION__);
 
-    GLuint fragShader[3], vertShader;
-    GLint stat;
+    GLuint fragShader[3] = {0,0,0}, vertShader(0);
+    GLint stat(0);
     // Vertex shader quad vertices and texture coordinates
     mVertices[0] = -1.0f;
     mVertices[1] = 1.0f;

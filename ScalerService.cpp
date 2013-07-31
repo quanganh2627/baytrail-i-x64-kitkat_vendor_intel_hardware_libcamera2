@@ -36,6 +36,10 @@ ScalerService::ScalerService() :
 ScalerService::~ScalerService()
 {
     LOG1("@%s", __FUNCTION__);
+    if (mGPUScaler) {
+        delete mGPUScaler;
+        mGPUScaler = NULL;
+    }
 }
 
 bool ScalerService::threadLoop()

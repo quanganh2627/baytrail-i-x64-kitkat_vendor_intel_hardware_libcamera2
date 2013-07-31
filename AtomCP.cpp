@@ -191,6 +191,7 @@ status_t AtomCP::initializeHDR(unsigned width, unsigned height)
 
 status_t AtomCP::uninitializeHDR(void)
 {
+    LOG1("@%s", __FUNCTION__);
     ia_err ia_err;
 
     ia_err = ia_cp_hdr_uninit();

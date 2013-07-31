@@ -492,10 +492,8 @@ void ControlThread::deinit()
 
     if (m3AControls != NULL) {
         m3AControls->deinit3A();
-        if (m3AControls->isIntel3A()) {
-            delete m3AControls;
-            m3AControls = NULL;
-        }
+        delete m3AControls;
+        m3AControls = NULL;
     }
 
     if (mSensorSyncManager != NULL)

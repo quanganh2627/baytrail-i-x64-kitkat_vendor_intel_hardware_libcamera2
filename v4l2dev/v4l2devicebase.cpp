@@ -101,7 +101,7 @@ status_t V4L2DeviceBase::close()
 
 int V4L2DeviceBase::xioctl(int request, void *arg) const
 {
-    int ret;
+    int ret(0);
     if (mFd == -1) {
         LOGE("%s invalid device closed!",__FUNCTION__);
         return INVALID_OPERATION;
@@ -128,8 +128,8 @@ int V4L2DeviceBase::xioctl(int request, void *arg) const
 int V4L2DeviceBase::poll(int timeout)
 {
     LOG2("@%s", __FUNCTION__);
-    struct pollfd pfd;
-    int ret;
+    struct pollfd pfd = {0,0,0};
+    int ret(0);
 
     if (mFd == -1) {
         LOG1("Device %s already closed. Do nothing.", mName.string());
@@ -152,7 +152,7 @@ int V4L2DeviceBase::poll(int timeout)
 int V4L2DeviceBase::subscribeEvent(int event)
 {
     LOG1("@%s", __FUNCTION__);
-    int ret;
+    int ret(0);
     struct v4l2_event_subscription sub;
 
     if (mFd == -1) {
@@ -175,7 +175,7 @@ int V4L2DeviceBase::subscribeEvent(int event)
 int V4L2DeviceBase::unsubscribeEvent(int event)
 {
     LOG1("@%s", __FUNCTION__);
-    int ret;
+    int ret(0);
     struct v4l2_event_subscription sub;
 
     if (mFd == -1) {
@@ -183,7 +183,7 @@ int V4L2DeviceBase::unsubscribeEvent(int event)
         return -1;
     }
 
-    memset(&sub, 0, sizeof(sub));
+    CLEAR(sub);
     sub.type = event;
 
     ret = ioctl(mFd, VIDIOC_UNSUBSCRIBE_EVENT, &sub);
@@ -198,7 +198,7 @@ int V4L2DeviceBase::unsubscribeEvent(int event)
 int V4L2DeviceBase::dequeueEvent(struct v4l2_event *event)
 {
     LOG2("@%s", __FUNCTION__);
-    int ret;
+    int ret(0);
 
     if (mFd == -1) {
         LOG1("Device %s closed. cannot dequeue event.", mName.string());
@@ -214,7 +214,6 @@ int V4L2DeviceBase::dequeueEvent(struct v4l2_event *event)
     return ret;
 }
 
-
 status_t V4L2DeviceBase::setControl (int aControlNum, const int value, const char *name)
 {
     LOG2("@%s", __FUNCTION__);
@@ -222,6 +221,10 @@ status_t V4L2DeviceBase::setControl (int aControlNum, const int value, const cha
     struct v4l2_control control;
     struct v4l2_ext_controls controls;
     struct v4l2_ext_control ext_control;
+
+    CLEAR(control);
+    CLEAR(controls);
+    CLEAR(ext_control);
 
     LOG1("setting attribute [%s] to %d", name, value);
 
@@ -257,6 +260,10 @@ status_t V4L2DeviceBase::getControl (int aControlNum, int *value)
     struct v4l2_control control;
     struct v4l2_ext_controls controls;
     struct v4l2_ext_control ext_control;
+
+    CLEAR(control);
+    CLEAR(controls);
+    CLEAR(ext_control);
 
     if (mFd == -1) {
         LOGE("Invalid state (CLOSED) to set an attribute");

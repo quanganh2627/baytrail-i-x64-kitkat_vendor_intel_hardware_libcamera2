@@ -1238,7 +1238,7 @@ status_t AtomISP::startPreview()
         LOG1("Disabled NREE in %s", __func__);
     }
 
-    ret = mPreviewDevice->start( bufcount,mInitialSkips);
+    ret = mPreviewDevice->start(bufcount, mInitialSkips);
     if (ret < 0) {
         LOGE("Start preview device failed!");
         status = UNKNOWN_ERROR;
@@ -1287,8 +1287,8 @@ status_t AtomISP::configureRecording()
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
     status_t status = NO_ERROR;
-    FrameInfo *previewConfig;
-    FrameInfo *recordingConfig;
+    FrameInfo *previewConfig(NULL);
+    FrameInfo *recordingConfig(NULL);
 
     ret = mPreviewDevice->open();
     if (ret < 0) {
@@ -3098,6 +3098,7 @@ status_t AtomISP::getHALZSLPreviewFrame(AtomBuffer *buff)
     // NOTE: mDevices[mPreviewDevice].mutex locked in getPreviewFrame
 
     struct v4l2_buffer_info bufInfo;
+    CLEAR(bufInfo);
 
     Mutex::Autolock mLock(mHALZSLLock);
 
@@ -3147,6 +3148,7 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
     LOG2("@%s", __FUNCTION__);
     Mutex::Autolock lock(mDeviceMutex[mPreviewDevice->mId]);
     struct v4l2_buffer_info bufInfo;
+    CLEAR(bufInfo);
 
     if (mMode == MODE_NONE)
         return INVALID_OPERATION;

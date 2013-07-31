@@ -39,7 +39,7 @@ JpegHwEncoder::JpegHwEncoder() :
 
     mVaEncoderContext = new vaJpegContext();
     if (mVaEncoderContext != NULL) {
-        VAStatus status;
+        VAStatus status(VA_STATUS_ERROR_UNKNOWN);
         mVaEncoderContext->mDpy = vaGetDisplay(&display_num);
         status = vaInitialize(mVaEncoderContext->mDpy, &major_ver, &minor_ver);
         if (status != VA_STATUS_SUCCESS) {

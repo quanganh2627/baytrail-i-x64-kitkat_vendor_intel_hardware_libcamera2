@@ -76,9 +76,9 @@ AtomBuffer AtomBufferFactory::createAtomBuffer(AtomBufferType type,
     buf.frameSequenceNbr = 0;
     if (dataPtr == NULL && buff != NULL)
         buf.dataPtr = buff->data;
-    if (gfxInfo)
+    if (gfxInfo) {
         buf.gfxInfo = *gfxInfo;
-    else {
+    } else {
         buf.gfxInfo.gfxBuffer = NULL;
         buf.gfxInfo.gfxBufferHandle = NULL;
         buf.gfxInfo.scalerId = -1;

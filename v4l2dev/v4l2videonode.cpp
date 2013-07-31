@@ -57,7 +57,7 @@ V4L2VideoNode::~V4L2VideoNode()
 
 status_t V4L2VideoNode::open()
 {
-    status_t status;
+    status_t status(NO_ERROR);
     status = V4L2DeviceBase::open();
     if (status == NO_ERROR)
         mState = DEVICE_OPEN;
@@ -66,7 +66,7 @@ status_t V4L2VideoNode::open()
 
 status_t V4L2VideoNode::close()
 {
-    status_t status;
+    status_t status(NO_ERROR);
 
     if (mState == DEVICE_STARTED) {
         stop();
@@ -94,7 +94,7 @@ status_t V4L2VideoNode::close()
 status_t V4L2VideoNode::queryCap(struct v4l2_capability *cap)
 {
     LOG1("@%s device : %s", __FUNCTION__, mName.string());
-    int ret;
+    int ret(0);
 
     if (mState != DEVICE_OPEN) {
         LOGE("%s invalid device state %d",__FUNCTION__, mState);
@@ -141,7 +141,7 @@ status_t V4L2VideoNode::queryCap(struct v4l2_capability *cap)
 status_t V4L2VideoNode::enumerateInputs(struct v4l2_input *anInput)
 {
     LOG1("@%s device : %s", __FUNCTION__, mName.string());
-    int ret;
+    int ret(0);
 
     if (mState == DEVICE_CLOSED) {
         LOGE("%s invalid device state %d",__FUNCTION__, mState);
@@ -163,7 +163,7 @@ status_t V4L2VideoNode::setInput(int index)
     LOG1("@%s", __FUNCTION__);
     struct v4l2_input input;
     status_t status = NO_ERROR;
-    int ret;
+    int ret(0);
 
     if (mState == DEVICE_CLOSED) {
         LOGE("%s invalid device state %d",__FUNCTION__, mState);
@@ -247,7 +247,7 @@ int V4L2VideoNode::stop(bool leavePopulated)
 int V4L2VideoNode::start(int buffer_count, int initial_skips)
 {
     LOG1("@%s, device = %s", __FUNCTION__, mName.string());
-    int ret;
+    int ret(0);
 
     if ((mState != DEVICE_POPULATED) &&
         (mState != DEVICE_PREPARED)) {
@@ -314,7 +314,7 @@ int V4L2VideoNode::start(int buffer_count, int initial_skips)
 status_t V4L2VideoNode::setFormat(FrameInfo &aConfig)
 {
     LOG1("@%s device = %s", __FUNCTION__, mName.string());
-    int ret;
+    int ret(0);
     struct v4l2_format v4l2_fmt;
     CLEAR(v4l2_fmt);
 
@@ -377,7 +377,7 @@ status_t V4L2VideoNode::setFormat(struct v4l2_format &aFormat)
 {
 
     LOG1("@%s device = %s", __FUNCTION__, mName.string());
-    int ret;
+    int ret(0);
 
     if ((mState != DEVICE_OPEN) &&
         (mState != DEVICE_CONFIGURED) &&
@@ -408,13 +408,14 @@ status_t V4L2VideoNode::setFormat(struct v4l2_format &aFormat)
 
     mState = DEVICE_CONFIGURED;
     mSetBufferPool.clear();
+    mSetBufferPool.setCapacity(MAX_V4L2_BUFFERS);
     return NO_ERROR;
 }
 
 int V4L2VideoNode::grabFrame(struct v4l2_buffer_info *buf)
 {
     LOG2("@%s", __FUNCTION__);
-    int ret;
+    int ret(0);
 
     if (mState != DEVICE_STARTED) {
         LOGE("%s invalid device state %d",__FUNCTION__, mState);
@@ -451,7 +452,7 @@ int V4L2VideoNode::grabFrame(struct v4l2_buffer_info *buf)
 int V4L2VideoNode::putFrame(unsigned int index)
 {
     LOG2("@%s", __FUNCTION__);
-    int ret;
+    int ret(0);
 
     if (index > mBufferPool.size()) {
         LOGE("%s Invalid index %d pool size %d", __FUNCTION__, index, mBufferPool.size());
@@ -482,7 +483,7 @@ status_t V4L2VideoNode::setParameter (struct v4l2_streamparm *aParam)
 int V4L2VideoNode::getFramerate(float * framerate, int width, int height, int pix_fmt)
 {
     LOG1("@%s", __FUNCTION__);
-    int ret;
+    int ret(0);
     struct v4l2_frmivalenum frm_interval;
 
     if (NULL == framerate)
@@ -538,6 +539,7 @@ status_t V4L2VideoNode::setBufferPool(void **pool, int poolSize,
 {
     LOG1("@%s: device = %s", __FUNCTION__, mName.string());
     struct v4l2_buffer_info vinfo;
+    CLEAR(vinfo);
     uint32_t cacheflags = V4L2_BUF_FLAG_NO_CACHE_INVALIDATE |
                           V4L2_BUF_FLAG_NO_CACHE_CLEAN;
 
@@ -567,6 +569,7 @@ status_t V4L2VideoNode::setBufferPool(void **pool, int poolSize,
     }
 
     mSetBufferPool.clear();
+    mSetBufferPool.setCapacity(MAX_V4L2_BUFFERS);
 
     for (int i = 0; i < poolSize; i++) {
         vinfo.data = pool[i];
@@ -596,6 +599,7 @@ void V4L2VideoNode::destroyBufferPool()
     LOG1("@%s: device = %s", __FUNCTION__, mName.string());
 
     mBufferPool.clear();
+    mBufferPool.setCapacity(MAX_V4L2_BUFFERS);
 
     requestBuffers(0);
 }
@@ -708,7 +712,8 @@ int V4L2VideoNode::dqbuf(struct v4l2_buffer_info *buf)
 int V4L2VideoNode::createBufferPool(unsigned int buffer_count)
 {
     LOG1("@%s: device = %s buf count %d", __FUNCTION__, mName.string(), buffer_count);
-    int i, ret;
+    int i(0);
+    int ret(0);
 
     if (mState != DEVICE_PREPARED) {
         LOGE("%s: Incorrect device state  %d", __FUNCTION__, mState);
@@ -728,6 +733,7 @@ int V4L2VideoNode::createBufferPool(unsigned int buffer_count)
     }
 
     mBufferPool.clear();
+    mBufferPool.setCapacity(MAX_V4L2_BUFFERS);
 
     for (i = 0; i < num_buffers; i++) {
         ret = newBuffer(i, mSetBufferPool.editItemAt(i));
@@ -742,6 +748,7 @@ int V4L2VideoNode::createBufferPool(unsigned int buffer_count)
 error:
     LOGE("Failed to VIDIOC_QUERYBUF some of the buffers, clearing the active buffer pool");
     mBufferPool.clear();
+    mBufferPool.setCapacity(MAX_V4L2_BUFFERS);
     return ret;
 }
 
