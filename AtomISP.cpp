@@ -5530,6 +5530,7 @@ bool AtomISP::lowBatteryForFlash()
     size_t len = ::fread(buf, 1, 1, fp);
     if (len == 0) {
         LOGW("@%s, fail to read 1 byte from camflash_ctrl", __FUNCTION__);
+        ::fclose(fp);
         return false;
     }
     ::fclose(fp);
