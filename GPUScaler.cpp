@@ -515,10 +515,8 @@ int GPUScaler::initShaders(void) {
     return (0);
 }
 
-void GPUScaler::setZoomFactor(float zf) {
-
-    GLfloat factor = (zf == (float)1.0 ? zf : (GLfloat)1 + (GLfloat)(zf / (float)10));
-    LOG2(" set zoom factor: %f", factor);
+void GPUScaler::setZoomFactor(float factor) {
+    LOG2("set zoom factor: %f", factor);
     glUseProgram_EC(mP_NV12z);
     glUniform1f_EC(mH_mx[0], factor);
     glUniform1f_EC(mH_my[0], factor);
