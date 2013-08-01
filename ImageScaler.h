@@ -30,6 +30,9 @@ public:
             int format, int src_skip_lines_top = 0,
             int src_skip_lines_bottom = 0);
 protected:
+    static void downScaleYUY2Image(unsigned char *dest, const unsigned char *src,
+        const int dest_w, const int dest_h, const int src_w, const int src_h);
+
     static void downScaleAndCropNv12Image(
         unsigned char *dest, const unsigned char *src,
         const int dest_w, const int dest_h, const int dest_stride,

@@ -59,7 +59,7 @@ public:
     void deInit(void);
     void setJpegQuality(int quality);
     int configEncoding(int width, int height, void *jpegBuf, int jpegBufSize);
-    int doJpegEncoding(const void* nv12_buf);
+    int doJpegEncoding(const void* yuv_buf, int format);
     void getJpegSize(int *jpegSize);
 
 // prevent copy constructor and assignment operator

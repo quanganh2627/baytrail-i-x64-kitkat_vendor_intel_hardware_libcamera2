@@ -22,6 +22,7 @@
 #include "CallbacksThread.h"
 #include "ImageScaler.h"
 #include "MemoryUtils.h"
+#include "PlatformData.h"
 #include <utils/Timers.h>
 
 namespace android {
@@ -218,7 +219,7 @@ void PictureThread::getDefaultParameters(CameraParameters *params)
     if (q != 0)
         mThumbnailQuality = q;
 
-    mThumbBuf.format = V4L2_PIX_FMT_NV12;
+    mThumbBuf.format = PlatformData::getPreviewFormat();
     mThumbBuf.width = params.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
     mThumbBuf.height = params.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
     mThumbBuf.size = frameSize(mThumbBuf.format, mThumbBuf.width, mThumbBuf.height);
@@ -741,6 +742,7 @@ void PictureThread::encodeExif(AtomBuffer *thumbBuf)
                 mThumbBuf.width, mThumbBuf.height, mThumbBuf.stride);
         if (mThumbBuf.dataPtr == NULL)
             mCallbacks->allocateMemory(&mThumbBuf,mThumbBuf.size);
+
         if (mThumbBuf.dataPtr == NULL) {
             LOGE("Could not allocate memory for ThumbBuf buffers!");
             mThumbBuf.size = 0;

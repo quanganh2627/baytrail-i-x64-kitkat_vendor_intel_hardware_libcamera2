@@ -116,17 +116,17 @@ int SWJpegEncoder::configEncoding(int width, int height, void *jpegBuf, int jpeg
 /**
  * Do the SW jpeg encoding.
  *
- * it will convert the NV12 data to P411 and then do jpeg encoding.
+ * it will convert the YUV data to P411 and then do jpeg encoding.
  *
- * \param nv12_buf: the source buffer for NV12 data
+ * \param yuv_buf: the source buffer for YUV data
  * \return 0 if the encoding is successful.
  * \return -1 if the encoding fails.
  */
-int SWJpegEncoder::doJpegEncoding(const void* nv12_buf)
+int SWJpegEncoder::doJpegEncoding(const void* yuv_buf, int format)
 {
     LOG1("@%s", __FUNCTION__);
 
-    unsigned char * nv12 = NULL;
+    unsigned char * src = NULL;
     unsigned char * p411 = NULL;
     JSAMPROW y[16],u[16],v[16];
     JSAMPARRAY data[3];
@@ -134,14 +134,24 @@ int SWJpegEncoder::doJpegEncoding(const void* nv12_buf)
 
     width= mCInfo.image_width;
     height=mCInfo.image_height;
-    nv12 = (unsigned char *)nv12_buf;
+    src = (unsigned char *)yuv_buf;
     p411 = (unsigned char *)malloc(width * height * 3 / 2);
     if (NULL == p411) {
         LOGE("@%s, line:%d, malloc fail", __FUNCTION__, __LINE__);
         return -1;
     }
 
-    NV12ToP411(width, height, nv12, p411);
+    switch (format) {
+    case V4L2_PIX_FMT_YUYV:
+        YUY2ToP411(width, height, src, p411);
+        break;
+    case V4L2_PIX_FMT_NV12:
+        NV12ToP411(width, height, src, p411);
+        break;
+    defaut:
+        LOGE("%s Unsupported format %d", __func__, format);
+        return -1;
+    }
 
     data[0] = y;
     data[1] = u;
@@ -181,7 +191,7 @@ void SWJpegEncoder::getJpegSize(int *jpegSize)
 /**
  * Setup the jpeg destination buffer manager
  *
- * it will convert the NV12 data to P411 and then do jpeg encoding.
+ * it will convert the YUV data to P411 and then do jpeg encoding.
  *
  * \param cInfo: the compress pointer
  * \param jpegBuf: the buffer pointer for jpeg data

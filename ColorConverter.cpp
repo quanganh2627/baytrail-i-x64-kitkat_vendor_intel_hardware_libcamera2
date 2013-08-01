@@ -360,6 +360,44 @@ void align16ConvertNV12ToYV12(int width, int height, int srcStride, void *src, v
     }
 }
 
+// P411's Y, U, V are seperated. But the YUY2's Y, U and V are interleaved.
+void YUY2ToP411(int width, int height, void *src, void *dst)
+{
+    int ySize = width * height;
+    int cSize = width * height / 4;
+    int wHalf = width >> 1;
+
+    unsigned char *srcPtr = (unsigned char *) src;
+    unsigned char *dstPtr = (unsigned char *) dst;
+    unsigned char *dstPtrU = (unsigned char *) dst + ySize;
+    unsigned char *dstPtrV = (unsigned char *) dst + ySize + cSize;
+
+    for (int i = 0; i < height; i++) {
+        //The first line of the source
+        //Copy first Y Plane first
+        for (int j=0; j < width; j++) {
+            dstPtr[j] = srcPtr[j*2];
+        }
+
+        if (i & 1) {
+            //Copy the V plane
+            for (int k = 0; k < wHalf; k++) {
+                dstPtrV[k] = srcPtr[k * 4 + 3];
+            }
+            dstPtrV = dstPtrV + wHalf;
+        } else {
+            //Copy the U plane
+            for (int k = 0; k< wHalf; k++) {
+                dstPtrU[k] = srcPtr[k * 4 + 1];
+            }
+            dstPtrU = dstPtrU + wHalf;
+        }
+
+        srcPtr = srcPtr + width * 2;
+        dstPtr = dstPtr + width;
+    }
+}
+
 // P411's Y, U, V are seperated. But the NV12's U and V are interleaved.
 void NV12ToP411(int width, int height, void *src, void *dst)
 {
@@ -448,31 +486,32 @@ void convertYUYVToYV12(int width, int height, int srcStride, int dstStride, void
 {
     int ySize = width * height;
     int cSize = ALIGN16(dstStride/2) * height / 2;
+    int wHalf = width >> 1;
 
     unsigned char *srcPtr = (unsigned char *) src;
     unsigned char *dstPtr = (unsigned char *) dst;
     unsigned char *dstPtrV = (unsigned char *) dst + ySize;
     unsigned char *dstPtrU = (unsigned char *) dst + ySize + cSize;
 
-    for (int i=0; i < height; i++) {
+    for (int i = 0; i < height; i++) {
         //The first line of the source
         //Copy first Y Plane first
         for (int j=0; j < width; j++) {
             dstPtr[j] = srcPtr[j*2];
         }
 
-        if (i % 2) {
+        if (i & 1) {
             //Copy the V plane
-            for (int k=0; k< width/2; k++) {
+            for (int k = 0; k< wHalf; k++) {
                 dstPtrV[k] = srcPtr[k * 4 + 3];
             }
-            dstPtrV = dstPtrV + ALIGN16(dstStride/2);
+            dstPtrV = dstPtrV + ALIGN16(dstStride>>1);
         } else {
             //Copy the U plane
-            for (int k=0; k< width/2; k++) {
+            for (int k = 0; k< wHalf; k++) {
                 dstPtrU[k] = srcPtr[k * 4 + 1];
             }
-            dstPtrU = dstPtrU + ALIGN16(dstStride/2);
+            dstPtrU = dstPtrU + ALIGN16(dstStride>>1);
         }
 
         srcPtr = srcPtr + srcStride * 2;
