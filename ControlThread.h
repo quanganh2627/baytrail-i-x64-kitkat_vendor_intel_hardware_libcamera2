@@ -683,6 +683,7 @@ private:
     sp<SensorSyncManager> mSensorSyncManager;
 
     MessageQueue<Message, MessageId> mMessageQueue;
+    List<Message> mPostponedMessages;
     State mState;
     CaptureSubState mCaptureSubState;
     ShootingMode    mShootingMode;
