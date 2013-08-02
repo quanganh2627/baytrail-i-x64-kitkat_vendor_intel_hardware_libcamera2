@@ -28,6 +28,7 @@
 #include "AtomCommon.h"
 #include "ICameraHwControls.h"
 #include "PlatformData.h"
+#include "AtomCP.h"
 
 namespace android {
 
@@ -267,7 +268,6 @@ bool PanoramaThread::detectOverlap(ia_frame *frame)
     LOG2("@%s", __FUNCTION__);
 
     if (mPanoramaTotalCount < mPanoramaMaxSnapshotCount) {
-        frame->format = ia_frame_format_nv12;
         int ret = ia_panorama_detect_overlap(mContext, frame);
         LOG2("@%s: direction: %d, H-displacement: %d, V-displacement: %d", __FUNCTION__,
             mContext->direction, mContext->horizontal_displacement, mContext->vertical_displacement);
@@ -497,6 +497,13 @@ void PanoramaThread::sendFrame(AtomBuffer &buf)
     frame.stride = buf.stride;
     frame.height = buf.height;
     frame.size = buf.size;
+    if (AtomCP::setIaFrameFormat(&frame, buf.format) != NO_ERROR) {
+        LOGE("@%s: setting ia_frame format failed", __FUNCTION__);
+    }
+
+    if (frame.format == ia_frame_format_yuy2) {
+        frame.stride = buf.size / buf.height;
+    }
 
     Message msg;
     msg.id = MESSAGE_ID_FRAME;
