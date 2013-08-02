@@ -914,6 +914,13 @@ class PlatformData {
     */
     static bool synchronizeExposure(void);
 
+    /**
+     * Used Ultra Low Light implementation
+     *
+     * \return true if Intel ULL implementation is used
+     */
+    static bool useIntelULL(void);
+
 };
 
 /**
@@ -943,6 +950,7 @@ public:
         mPreviewFormat = V4L2_PIX_FMT_NV12;
         mSensorGainLag = 0;
         mSensorExposureLag = 1;
+        mUseIntelULL = true;
    };
 
 protected:
@@ -1245,6 +1253,9 @@ protected:
     int mSensorGainLag;
 
     int mSensorExposureLag;
+
+    // Ultra Low Light
+    bool mUseIntelULL;
 };
 
 } /* namespace android */

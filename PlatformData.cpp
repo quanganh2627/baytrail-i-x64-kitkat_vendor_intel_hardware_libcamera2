@@ -1410,4 +1410,10 @@ bool PlatformData::synchronizeExposure(void)
     return i->mCameras[mActiveCameraId].synchronizeExposure;
 }
 
+bool PlatformData::useIntelULL(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mUseIntelULL;
+}
+
 }; // namespace android
