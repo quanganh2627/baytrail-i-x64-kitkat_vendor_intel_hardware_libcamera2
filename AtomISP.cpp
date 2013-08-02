@@ -900,6 +900,10 @@ status_t AtomISP::applySensorFlip(void)
 {
     int sensorFlip = PlatformData::sensorFlipping(mCameraId);
 
+    // workaround for the imx132, this code will be removed in the future
+    if (strstr(mCameraInput->name, "imx132"))
+        sensorFlip = PlatformData::SENSOR_FLIP_H;
+
     if (sensorFlip == PlatformData::SENSOR_FLIP_NA
         || sensorFlip == PlatformData::SENSOR_FLIP_OFF)
         return NO_ERROR;
