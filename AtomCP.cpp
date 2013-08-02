@@ -214,7 +214,7 @@ status_t AtomCP::setIaFrameFormat(ia_frame* iaFrame, int v4l2Format)
         iaFrame->format = ia_frame_format_nv12;
         break;
     case V4L2_PIX_FMT_YUYV:
-        iaFrame->format = ia_frame_format_nv12;
+        iaFrame->format = ia_frame_format_yuy2;
         break;
     default:
         return INVALID_OPERATION;
