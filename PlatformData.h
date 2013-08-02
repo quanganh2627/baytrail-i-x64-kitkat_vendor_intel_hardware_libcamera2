@@ -593,6 +593,14 @@ class PlatformData {
     static bool supportsSlowMotion(int cameraId);
 
     /**
+     * resolution and fps range supported value in high speed video recording mode
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value supported for resolution and fps range.
+     */
+    static const char* supportedHighSpeedResolutionFps(int cameraId);
+
+    /**
      * Focus mode supported value
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
@@ -762,6 +770,13 @@ class PlatformData {
     static bool supportDualVideo(void);
 
     /**
+     * Whether preview limitation is supported
+     *
+     * \return true if supported
+     */
+    static bool supportPreviewLimitation(void);
+
+    /**
      * Returns the preview format with V4l2 definition
      *
      * \return the preview format, V4L2_PIX_FMT_NV12 or V4L2_PIX_FMT_YVU420
@@ -828,6 +843,7 @@ public:
         mShutterLagCompensationMs = 40;
         mSupportAIQ = false;
         mSupportDualVideo = false;
+        mSupportPreviewLimitation = true;
         mPreviewFormat = V4L2_PIX_FMT_NV12;
         mSensorGainLag = 0;
         mSensorExposureLag = 1;
@@ -942,6 +958,7 @@ protected:
             defaultPreviewUpdateMode = "standard";
             //For high speed recording, slow motion playback
             hasSlowMotion = false;
+            supportedHighSpeedResolutionFps = "";
             // Flash support
             hasFlash = false;
             // focus modes
@@ -1032,6 +1049,7 @@ protected:
         String8 supportedVideoSizes;
         // For high speed recording, slow motion playback
         bool hasSlowMotion;
+        String8 supportedHighSpeedResolutionFps;
         // Flash support
         bool hasFlash;
         // focus modes
@@ -1084,6 +1102,9 @@ protected:
 
     /* For Dual Vidoe */
     bool mSupportDualVideo;
+
+    /* For Preview Size Limitation*/
+    bool mSupportPreviewLimitation;
 
     int mPreviewFormat;
 

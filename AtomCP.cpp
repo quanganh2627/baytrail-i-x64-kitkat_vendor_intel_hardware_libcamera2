@@ -205,12 +205,19 @@ status_t AtomCP::uninitializeHDR(void)
 status_t AtomCP::setIaFrameFormat(ia_frame* iaFrame, int v4l2Format)
 {
     LOG2("@%s", __FUNCTION__);
-    if (v4l2Format == V4L2_PIX_FMT_YUV420)
+    switch (v4l2Format) {
+    case V4L2_PIX_FMT_YUV420:
         iaFrame->format = ia_frame_format_yuv420;
-    else if (v4l2Format == V4L2_PIX_FMT_NV12)
+        break;
+    case V4L2_PIX_FMT_NV12:
         iaFrame->format = ia_frame_format_nv12;
-    else
+        break;
+    case V4L2_PIX_FMT_YUYV:
+        iaFrame->format = ia_frame_format_nv12;
+        break;
+    default:
         return INVALID_OPERATION;
+    }
 
     return NO_ERROR;
 }

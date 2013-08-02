@@ -89,6 +89,11 @@ AtomBuffer AtomBufferFactory::createAtomBuffer(AtomBufferType type,
 
 bool isParameterSet(const char *param, const CameraParameters &params)
 {
+    if (param == NULL) {
+        LOGW("param string is NULL in isParameterSet");
+        return false;
+    }
+
     const char* strParam = params.get(param);
     int len = strlen(CameraParameters::TRUE);
     if (strParam != NULL && strncmp(strParam, CameraParameters::TRUE, len) == 0) {
@@ -274,6 +279,9 @@ int getGFXHALPixelFormatFromV4L2Format(int previewFormat)
         break;
     case V4L2_PIX_FMT_SRGGB10:
         halPixelFormat = HAL_PIXEL_FORMAT_RGBA_8888;
+        break;
+    case V4L2_PIX_FMT_YUYV:
+        halPixelFormat = HAL_PIXEL_FORMAT_YCbCr_422_I;
         break;
     default: break;
     }

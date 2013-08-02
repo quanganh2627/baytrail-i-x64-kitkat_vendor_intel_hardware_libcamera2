@@ -34,6 +34,16 @@ void align16ConvertNV12ToYV12(int width, int height, int srcStride, void *src, v
 
 void NV12ToP411(int width, int height, void *src, void *dst);
 
+void convertYUYVToYV12(int width, int height, int srcStride, int dstStride, void *src, void *dst);
+
+void convertYUYVToNV21(int width, int height, int srcStride, void *src, void *dst);
+
+void convertBuftoYV12(int format, int width, int height, int srcStride, int
+                      dstStride, void *src, void *dst);
+
+void convertBuftoNV21(int format, int width, int height, int srcStride, int
+                      dstStride, void *src, void *dst);
+
 void repadYUV420(int width, int height, int srcStride, int dstStride, void *src, void *dst);
 
 const char *cameraParametersFormat(int v4l2Format);

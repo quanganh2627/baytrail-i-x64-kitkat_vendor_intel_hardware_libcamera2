@@ -443,6 +443,114 @@ void repadYUV420(int width, int height, int srcStride, int dstStride, void *src,
     }
 }
 
+// covert YUYV(YUY2, YUV422 format) to YV12 (Y plane, V plane, U plane)
+void convertYUYVToYV12(int width, int height, int srcStride, int dstStride, void *src, void *dst)
+{
+    int ySize = width * height;
+    int cSize = ALIGN16(dstStride/2) * height / 2;
+
+    unsigned char *srcPtr = (unsigned char *) src;
+    unsigned char *dstPtr = (unsigned char *) dst;
+    unsigned char *dstPtrV = (unsigned char *) dst + ySize;
+    unsigned char *dstPtrU = (unsigned char *) dst + ySize + cSize;
+
+    for (int i=0; i < height; i++) {
+        //The first line of the source
+        //Copy first Y Plane first
+        for (int j=0; j < width; j++) {
+            dstPtr[j] = srcPtr[j*2];
+        }
+
+        if (i % 2) {
+            //Copy the V plane
+            for (int k=0; k< width/2; k++) {
+                dstPtrV[k] = srcPtr[k * 4 + 3];
+            }
+            dstPtrV = dstPtrV + ALIGN16(dstStride/2);
+        } else {
+            //Copy the U plane
+            for (int k=0; k< width/2; k++) {
+                dstPtrU[k] = srcPtr[k * 4 + 1];
+            }
+            dstPtrU = dstPtrU + ALIGN16(dstStride/2);
+        }
+
+        srcPtr = srcPtr + srcStride * 2;
+        dstPtr = dstPtr + width;
+    }
+}
+
+// covert YUYV(YUY2, YUV422 format) to NV21 (Y plane, interlaced VU bytes)
+void convertYUYVToNV21(int width, int height, int srcStride, void *src, void *dst)
+{
+    int ySize = width * height;
+    int u_counter=1, v_counter=0;
+
+    unsigned char *srcPtr = (unsigned char *) src;
+    unsigned char *dstPtr = (unsigned char *) dst;
+    unsigned char *dstPtrUV = (unsigned char *) dst + ySize;
+
+    for (int i=0; i < height; i++) {
+        //The first line of the source
+        //Copy first Y Plane first
+        for (int j=0; j < width * 2; j++) {
+            if (j % 2 == 0)
+                dstPtr[j/2] = srcPtr[j];
+            if (i%2) {
+                if (( j % 4 ) == 3) {
+                    dstPtrUV[v_counter] = srcPtr[j]; //V plane
+                    v_counter += 2;
+                }
+                if (( j % 4 ) == 1) {
+                    dstPtrUV[u_counter] = srcPtr[j]; //U plane
+                    u_counter += 2;
+                }
+            }
+        }
+
+        srcPtr = srcPtr + srcStride * 2;
+        dstPtr = dstPtr + width;
+    }
+}
+
+void convertBuftoYV12(int format, int width, int height, int srcStride, int
+                      dstStride, void *src, void *dst)
+{
+    switch (format) {
+    case V4L2_PIX_FMT_NV12:
+        align16ConvertNV12ToYV12(width, height, srcStride, src, dst);
+        break;
+    case V4L2_PIX_FMT_YVU420:
+        copyYV12ToYV12(width, height, srcStride, dstStride, src, dst);
+        break;
+    case V4L2_PIX_FMT_YUYV:
+        convertYUYVToYV12(width, height, srcStride, dstStride, src, dst);
+        break;
+    default:
+        LOGE("%s: unsupported format %d", __func__, format);
+        break;
+    }
+}
+
+void convertBuftoNV21(int format, int width, int height, int srcStride, int
+                      dstStride, void *src, void *dst)
+{
+    switch (format) {
+    case V4L2_PIX_FMT_NV12:
+        trimConvertNV12ToNV21(width, height, srcStride, src, dst);
+        break;
+    case V4L2_PIX_FMT_YVU420:
+        convertYV12ToNV21(width, height, srcStride, dstStride, src, dst);
+        break;
+    case V4L2_PIX_FMT_YUYV:
+        convertYUYVToNV21(width, height, srcStride, src, dst);
+        break;
+    default:
+        LOGE("%s: unsupported format %d", __func__, format);
+        break;
+    }
+}
+
 const char *cameraParametersFormat(int v4l2Format)
 {
     switch (v4l2Format) {

@@ -125,6 +125,8 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
     } else if (strcmp(name, "previewFormat") == 0) {
         if (strcmp(atts[1], "V4L2_PIX_FMT_YVU420") == 0)
             PlatformBase::mPreviewFormat = V4L2_PIX_FMT_YVU420;
+        else if (strcmp(atts[1], "V4L2_PIX_FMT_YUYV") == 0) //Also known as YUY2
+            PlatformBase::mPreviewFormat = V4L2_PIX_FMT_YUYV;
         else
             PlatformBase::mPreviewFormat = V4L2_PIX_FMT_NV12;
     } else if (strcmp(name, "shutterLagCompensationMs") == 0) {
@@ -133,6 +135,9 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
         PlatformBase::mPanoramaMaxSnapshotCount = atoi(atts[1]);
     } else if (strcmp(name, "supportDualVideo") == 0) {
         PlatformBase::mSupportDualVideo = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "supportPreviewLimitation") == 0) {
+        PlatformBase::mSupportPreviewLimitation = ((strcmp(atts[1], "false")
+                                                    == 0) ? false : true);
     }
 }
 
@@ -276,6 +281,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->hasSlowMotion = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "hasFlash") == 0) {
         pCurrentCam->hasFlash = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "supportedHighSpeedResolutionFps") == 0) {
+        pCurrentCam->supportedHighSpeedResolutionFps = atts[1];
     } else if (strcmp(name, "supportedAeLock") == 0) {
         pCurrentCam->supportedAeLock = atts[1];
     } else if (strcmp(name, "supportedAwbLock") == 0) {

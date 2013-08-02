@@ -279,6 +279,9 @@ public:
     // return zoom ratio multiplied by 100 from given zoom value
     int zoomRatio(int zoomValue) const;
 
+    // high speed fps setting
+    status_t setHighSpeedResolutionFps(char* resolution, int fps);
+
 // private types
 private:
 
@@ -359,7 +362,7 @@ private:
     void copyOrScaleHALZSLBuffer(const AtomBuffer &captureBuf, const AtomBuffer *previewBuf,
             AtomBuffer *targetBuf, const AtomBuffer &localBuf, float zoomFactor) const;
     status_t getHALZSLSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
-    bool waitForHALZSLBuffer(Vector<AtomBuffer> &vector);
+    bool waitForHALZSLBuffer(Vector<AtomBuffer> &vector, bool snapshot);
     void dumpHALZSLBufs();
     void dumpHALZSLPreviewBufs();
 
@@ -564,6 +567,12 @@ private:
     int mIspHwMinorVersion;
 
     bool mNoiseReductionEdgeEnhancement;
+
+    //high speed
+    int mHighSpeedFps;
+    Size mHighSpeedResolution;
+    bool mHighSpeedEnabled;
+
 }; // class AtomISP
 
 }; // namespace android

@@ -580,6 +580,8 @@ private:
 
     status_t processParamSlowMotionRate(const CameraParameters *oldParams,
         CameraParameters *newParams);
+    status_t processParamHighSpeed(const CameraParameters *oldParams,
+        CameraParameters *newParams);
 
     status_t processParamMirroring(const CameraParameters *oldParams,
         CameraParameters *newParams);

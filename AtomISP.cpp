@@ -123,6 +123,9 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
     ,mScaler(scalerService)
     ,mObserverManager()
     ,mNoiseReductionEdgeEnhancement(true)
+    ,mHighSpeedFps(0)
+    ,mHighSpeedResolution(0, 0)
+    ,mHighSpeedEnabled(false)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -288,6 +291,33 @@ const char * AtomISP::getSensorName(void)
  */
 int AtomISP::zoomRatio(int zoomValue) const {
     return mZoomRatioTable[zoomValue];
+}
+
+// high speed fps setting
+status_t AtomISP::setHighSpeedResolutionFps(char* resolution, int fps)
+{
+    LOG2("@%s fps: %d", __FUNCTION__, fps);
+    status_t ret = NO_ERROR;
+    if(fps <= 0) {
+        mHighSpeedEnabled = false;
+        return ret;
+    }
+    char *w = NULL;
+    char *h = NULL;
+    int success = parsePair(resolution, &w, &h, "x");
+    if (success == 0 && w != NULL && h != NULL) {
+        mHighSpeedFps = fps;
+        mHighSpeedResolution.width = atoi(w);
+        mHighSpeedResolution.height = atoi(h);
+        mHighSpeedEnabled = true;
+    } else {
+        ret = BAD_VALUE;
+    }
+    if(w != NULL)
+        free(w);
+    if(h != NULL)
+        free(h);
+    return ret;
 }
 
 /**
@@ -566,6 +596,18 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     if(PlatformData::supportDualVideo())
     {
         intel_params->set(IntelCameraParameters::KEY_DUAL_VIDEO_SUPPORTED,"true");
+    }
+
+    /**
+     * HIGH SPEED
+     */
+    if(strcmp(PlatformData::supportedHighSpeedResolutionFps(cameraId), ""))
+    {
+       intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED_RESOLUTION_FPS,
+                         PlatformData::supportedHighSpeedResolutionFps(cameraId));
+       intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED, "true,false");
+    } else {
+       intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED, "false");
     }
 
     /**
@@ -2097,6 +2139,19 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, FrameInfo *f
     if (ret < 0)
         return ret;
 
+    if(mHighSpeedEnabled) {
+        status_t status;
+        struct v4l2_streamparm parm;
+        parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        parm.parm.capture.capturemode = CI_MODE_NONE;
+        parm.parm.capture.timeperframe.numerator = 1;
+        parm.parm.capture.timeperframe.denominator = mHighSpeedFps;
+        status = mMainDevice->setParameter(&parm);
+        if (status != NO_ERROR) {
+            LOGE("error setting the mode %d", deviceMode);
+            return -1;
+        }
+    }
 
     /* 3A related initialization*/
     //Reallocate the grid for 3A after format change
@@ -2272,6 +2327,12 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
     if(height % 16)
         height = (height + 15) / 16 * 16;
 
+    // Check if the resolution of high speed has been set, and the resolution
+    // of high speed matches with the video resolution set by app
+    if (mHighSpeedResolution.width != 0 && mHighSpeedResolution.height != 0
+         && (mHighSpeedResolution.width != width || mHighSpeedResolution.height != height))
+        mHighSpeedEnabled = false;
+
     if(format == 0)
          format = mConfig.recording.format;
     if (mConfig.recording.width == width &&
@@ -2373,8 +2434,10 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
             reducedVf = true;
         }
 
-        // Workaround 1+3, detail refer to the function description
-        if (reducedVf || dvsEnabled) {
+        // Workaround 1+3, detail refer to the function description, BYT
+        // doesn't need this WA to support 1080p preview
+        if ((reducedVf || dvsEnabled) &&
+            PlatformData::supportPreviewLimitation()) {
             if ((previewWidth > RESOLUTION_VGA_WIDTH || previewHeight > RESOLUTION_VGA_HEIGHT) &&
                 (videoWidth > RESOLUTION_720P_WIDTH || videoHeight > RESOLUTION_720P_HEIGHT)) {
                     ret = true;
@@ -2384,6 +2447,7 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
                     LOG1("no need change preview size: %dx%d", previewWidth, previewHeight);
                 }
         }
+
         //Workaround 2, detail refer to the function description
         params->getPreviewSize(&previewWidth, &previewHeight);
         params->getVideoSize(&videoWidth, &videoHeight);
@@ -2998,12 +3062,15 @@ void AtomISP::dumpHALZSLPreviewBufs() {
  * Waits for buffers to arrive in the given vector. If there aren't initially
  * any buffers, this sleeps and retries a predefined amount of cycles.
  *
- * Preconditions: mDevices[mPreviewDevice].mutex and mHALZSLLock are locked
- * in that order.
+ * Preconditions: snapshot case - mHALZSLLock is locked.
+ *                preview case - mDevices[mPreviewDevice].mutex and
+ *                               mHALZSLLock are locked in that order
  * \param vector of AtomBuffers
+ * \param snapshot: boolean to distinguish whether we are waiting for a
+ *                  ZSL buffer to get a snapshot or preview frame.
  * \return true if there are buffers in the vector, false if not
  */
-bool AtomISP::waitForHALZSLBuffer(Vector<AtomBuffer> &vector)
+bool AtomISP::waitForHALZSLBuffer(Vector<AtomBuffer> &vector, bool snapshot)
 {
     LOG2("@%s", __FUNCTION__);
     int retryCount = sHALZSLRetryCount;
@@ -3012,10 +3079,12 @@ bool AtomISP::waitForHALZSLBuffer(Vector<AtomBuffer> &vector)
         size = vector.size();
         if (size == 0) {
             mHALZSLLock.unlock();
-            mDeviceMutex[mPreviewDevice->mId].unlock();
+            if (!snapshot)
+                mDeviceMutex[mPreviewDevice->mId].unlock();
             LOGW("@%s, AtomISP starving from ZSL buffers.", __FUNCTION__);
             usleep(sHALZSLRetryUSleep);
-            mDeviceMutex[mPreviewDevice->mId].lock(); // this locking order is significant!
+            if (!snapshot)
+                mDeviceMutex[mPreviewDevice->mId].lock(); // this locking order is significant!
             mHALZSLLock.lock();
         }
     } while(retryCount-- && size == 0);
@@ -3048,7 +3117,7 @@ status_t AtomISP::getHALZSLPreviewFrame(AtomBuffer *buff)
     mHALZSLBuffers[index].frameSequenceNbr = bufInfo.vbuffer.sequence;
     mHALZSLBuffers[index].status = (FrameBufferStatus)bufInfo.vbuffer.reserved;
 
-    if (!waitForHALZSLBuffer(mHALZSLPreviewBuffers)) {
+    if (!waitForHALZSLBuffer(mHALZSLPreviewBuffers, false)) {
         LOGE("@%s no preview buffers in FIFO!", __FUNCTION__);
         return UNKNOWN_ERROR;
     }
@@ -3329,7 +3398,7 @@ status_t AtomISP::getHALZSLSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postvie
     LOG1("@%s", __FUNCTION__);
     Mutex::Autolock mLock(mHALZSLLock);
 
-    if (!waitForHALZSLBuffer(mHALZSLCaptureBuffers)) {
+    if (!waitForHALZSLBuffer(mHALZSLCaptureBuffers, true)) {
         LOGE("@%s no capture buffers in FIFO!", __FUNCTION__);
         return UNKNOWN_ERROR;
     }
@@ -4502,11 +4571,6 @@ int AtomISP::moveFocusToPosition(int position)
     if ((strcmp(PlatformData::getBoardName(), "saltbay") == 0) ||
         (strcmp(PlatformData::getBoardName(), "baylake") == 0)) {
         position = 1024 - position;
-        position = 100 + (position - 370) * 1.7;
-        if(position > 900)
-            position = 900;
-        if (position < 100)
-            position = 100;
     }
     return mMainDevice->setControl(V4L2_CID_FOCUS_ABSOLUTE, position, "Set focus position");
 }
