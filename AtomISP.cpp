@@ -35,8 +35,6 @@
 #include <linux/atomisp.h>
 #include "PerformanceTraces.h"
 
-#define PAGE_ALIGN(x) ((x + 0xfff) & 0xfffff000)
-
 #define DEFAULT_SENSOR_FPS      15.0
 #define DEFAULT_PREVIEW_FPS     30.0
 
@@ -3245,6 +3243,7 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
     mPreviewBuffers.editItemAt(index).capture_timestamp = bufInfo.vbuffer.timestamp;
     mPreviewBuffers.editItemAt(index).frameSequenceNbr = bufInfo.vbuffer.sequence;
     mPreviewBuffers.editItemAt(index).status = (FrameBufferStatus)bufInfo.vbuffer.reserved;
+    mPreviewBuffers.editItemAt(index).size = bufInfo.vbuffer.bytesused;
 
     *buff = mPreviewBuffers[index];
 

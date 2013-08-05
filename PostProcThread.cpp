@@ -770,10 +770,6 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
             LOGE("@%s: setting ia_frame format failed", __FUNCTION__);
         }
 
-        if (frameData.format == ia_frame_format_yuy2) {
-            frameData.stride = frame.img.size / frame.img.height;
-        }
-
         // correcting acceleration sensor orientation result
         // with camera sensor orientation
         if (mIsBackCamera)

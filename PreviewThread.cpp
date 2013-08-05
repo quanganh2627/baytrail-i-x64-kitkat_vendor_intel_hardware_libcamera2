@@ -47,10 +47,11 @@ PreviewThread::PreviewThread(int cameraId) :
     ,mNumOfPreviewBuffers(0)
     ,mFetchDone(false)
     ,mDebugFPS(new DebugFrameRate())
-    ,mPreviewWidth(640)
-    ,mPreviewHeight(480)
-    ,mPreviewStride(640)
-    ,mPreviewFormat(V4L2_PIX_FMT_NV21)
+    ,mPreviewWidth(0)
+    ,mPreviewHeight(0)
+    ,mPreviewStride(0)
+    ,mPreviewFormat(PlatformData::getPreviewFormat())
+    ,mPreviewCbFormat(V4L2_PIX_FMT_NV21)
     ,mGfxStride(640)
     ,mOverlayEnabled(false)
     ,mRotation(0)
@@ -165,7 +166,7 @@ void PreviewThread::getDefaultParameters(CameraParameters *params)
     /**
      * PREVIEW
      */
-    params->setPreviewFormat(cameraParametersFormat(mPreviewFormat));
+    params->setPreviewFormat(cameraParametersFormat(mPreviewCbFormat));
 
     char previewFormats[100] = {0};
     if (snprintf(previewFormats, sizeof(previewFormats), "%s,%s",
@@ -195,12 +196,12 @@ status_t PreviewThread::setPreviewWindow(struct preview_stream_ops *window)
  * \param preview_width     preview buffer width
  * \param preview_height    preview buffer height
  * \param preview_stride    preview buffer stride
- * \param preview_format    preview buffer format (fourcc)
+ * \param preview_cb_format preview callback buffer format (fourcc)
  * \param shared_mode       allocate buffers for shared mode (0-copy)
  * \param buffer_count      amount of buffers to allocate
  */
 status_t PreviewThread::setPreviewConfig(int preview_width, int preview_height, int preview_stride,
-                                         int preview_format, bool shared_mode, int buffer_count)
+                                         int preview_cb_format, bool shared_mode, int buffer_count)
 {
     LOG1("@%s", __FUNCTION__);
     // for non-shared mode, PreviewThread's client doesn't need to set the buffer count
@@ -211,7 +212,7 @@ status_t PreviewThread::setPreviewConfig(int preview_width, int preview_height, 
     msg.data.setPreviewConfig.width = preview_width;
     msg.data.setPreviewConfig.height = preview_height;
     msg.data.setPreviewConfig.stride = preview_stride;
-    msg.data.setPreviewConfig.format = preview_format;
+    msg.data.setPreviewConfig.cb_format = preview_cb_format;
     msg.data.setPreviewConfig.bufferCount = buffer_count;
     msg.data.setPreviewConfig.sharedMode = shared_mode;
     setState(STATE_CONFIGURED);
@@ -589,7 +590,7 @@ void PreviewThread::allocateLocalPreviewBuf(void)
     LOG1("allocating the preview buffer\n");
     freeLocalPreviewBuf();
 
-    switch(mPreviewFormat) {
+    switch(mPreviewCbFormat) {
     case V4L2_PIX_FMT_YVU420:
         stride = ALIGN16(mPreviewWidth);
         ySize = stride * mPreviewHeight;
@@ -607,13 +608,15 @@ void PreviewThread::allocateLocalPreviewBuf(void)
         break;
 
     default:
-        LOGE("invalid preview format: %d", mPreviewFormat);
+        LOGE("invalid preview format: %d", mPreviewCbFormat);
         break;
     }
 
-    mCallbacks->allocateMemory(&mPreviewBuf, size);
-    if(!mPreviewBuf.buff) {
-        LOGE("getting memory failed\n");
+    if (size > 0) {
+        mCallbacks->allocateMemory(&mPreviewBuf, size);
+        if(!mPreviewBuf.buff) {
+            LOGE("getting memory failed\n");
+        }
     }
 }
 
@@ -653,16 +656,17 @@ PreviewThread::GfxAtomBuffer* PreviewThread::dequeueFromWindow()
         // Typically at least two frames must be kept in native window
         // when streaming.
         if (mBuffersInWindow > mMinUndequeued) {
-            int err(-1), stride(0);
+            int err(-1), byte_stride(0), pixel_stride(0);
             buffer_handle_t *buf(NULL);
-            err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride);
+            err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &pixel_stride);
             if (err != 0 || buf == NULL) {
                 LOGW("Error dequeuing preview buffer");
             } else {
+                byte_stride = widthToBytesPerLine(mPreviewFormat, pixel_stride);
                 // If Gfx frame buffer stride is greater than ISP buffer stride, we can
                 // repad the shared buffer between Gfx and ISP to meet Gfx alignmnet
                 // requirement, so we should change the lockMode as CPU writable.
-                if (stride > mPreviewStride)
+                if (byte_stride > mPreviewStride)
                     lockMode |= GRALLOC_USAGE_SW_WRITE_OFTEN;
                 ret = lookForGfxBufferHandle(buf);
                 if (ret == NULL) {
@@ -678,11 +682,11 @@ PreviewThread::GfxAtomBuffer* PreviewThread::dequeueFromWindow()
                         tmpBuf.buff = NULL;     // We do not allocate a normal camera_memory_t
                         tmpBuf.id = mPreviewBuffers.size();
                         tmpBuf.type = ATOM_BUFFER_PREVIEW_GFX;
-                        tmpBuf.stride = stride;
+                        tmpBuf.stride = byte_stride;
                         tmpBuf.width = w;
                         tmpBuf.height = h;
-                        tmpBuf.size = frameSize(PlatformData::getPreviewFormat(), tmpBuf.stride, tmpBuf.height);
-                        tmpBuf.format = PlatformData::getPreviewFormat();
+                        tmpBuf.size = frameSize(mPreviewFormat, pixel_stride, tmpBuf.height);
+                        tmpBuf.format = mPreviewFormat;
                         tmpBuf.status = FRAME_STATUS_NA;
                         if(mapper.lock(*buf, lockMode, bounds, &mapperPointer.ptr) != NO_ERROR) {
                             LOGE("Failed to lock GraphicBufferMapper!");
@@ -740,14 +744,14 @@ PreviewThread::fetchReservedBuffers(int reservedBufferCount)
     if (reservedBufferCount > 0 && mReservedBuffers.isEmpty()) {
         GraphicBufferMapper &mapper = GraphicBufferMapper::get();
         AtomBuffer tmpBuf;
-        int err(-1), stride(0);
+        int err(-1), pixel_stride(0);
         buffer_handle_t *buf(NULL);
         MapperPointer mapperPointer;
         mapperPointer.ptr = NULL;
         int lockMode = GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_NEVER;
         const Rect bounds(mPreviewWidth, mPreviewHeight);
         for (int i = 0; i < reservedBufferCount; i++) {
-            err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &stride);
+            err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &pixel_stride);
             if(err != 0 || buf == NULL) {
                 LOGE("Surface::dequeueBuffer returned error %d (buf=%p)", err, buf);
                 status = UNKNOWN_ERROR;
@@ -757,12 +761,12 @@ PreviewThread::fetchReservedBuffers(int reservedBufferCount)
             // NOTE: distinquish reserved from normal stream buffers by id
             tmpBuf.id = i + MAX_NUMBER_PREVIEW_GFX_BUFFERS;
             tmpBuf.type = ATOM_BUFFER_PREVIEW_GFX;
-            tmpBuf.stride = stride;
+            tmpBuf.stride = widthToBytesPerLine(mPreviewFormat, pixel_stride);
             tmpBuf.width = mPreviewWidth;
             tmpBuf.height = mPreviewHeight;
             tmpBuf.status = FRAME_STATUS_NA;
-            tmpBuf.size = frameSize(V4L2_PIX_FMT_NV12, tmpBuf.stride, tmpBuf.height);
-            tmpBuf.format = V4L2_PIX_FMT_NV12;
+            tmpBuf.size = frameSize(mPreviewFormat, pixel_stride, tmpBuf.height);
+            tmpBuf.format = mPreviewFormat;
 
             status = mapper.lock(*buf, lockMode, bounds, &mapperPointer.ptr);
             if(status != NO_ERROR) {
@@ -860,13 +864,11 @@ void PreviewThread::padPreviewBuffer(GfxAtomBuffer* &gfxBuf, MessagePreview* &ms
  */
 status_t PreviewThread::handlePreview(MessagePreview *msg)
 {
-    LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     bool passedToGfx = false;
     GraphicBufferMapper &mapper = GraphicBufferMapper::get();
-    LOG2("Buff: id = %d, data = %p",
-            msg->buff.id,
-            msg->buff.dataPtr);
+    LOG2("@%s: id = %d, width = %d, height = %d, format = %s, stride = %d", __FUNCTION__,
+            msg->buff.id, msg->buff.width, msg->buff.height, v4l2Fmt2Str(msg->buff.format), msg->buff.stride);
 
     PreviewState state = getPreviewState();
     if (state != STATE_ENABLED) {
@@ -938,25 +940,25 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
 
     if (mCallbacks->msgTypeEnabled(CAMERA_MSG_PREVIEW_FRAME) && mPreviewBuf.dataPtr) {
         void *src = msg->buff.dataPtr;
-        switch(mPreviewFormat) {
+        switch(mPreviewCbFormat) {
                                   // Android definition: PIXEL_FORMAT_YUV420P-->YV12, please refer to
         case V4L2_PIX_FMT_YVU420: // header file: frameworks/av/include/camera/CameraParameters.h
-            convertBuftoYV12(PlatformData::getPreviewFormat(), mPreviewWidth,
+            convertBuftoYV12(mPreviewFormat, mPreviewWidth,
                              mPreviewHeight, msg->buff.stride,
                              mPreviewWidth, src, mPreviewBuf.dataPtr);
             break;
         case V4L2_PIX_FMT_NV21: // you need to do this for the first time
-            convertBuftoNV21(PlatformData::getPreviewFormat(), mPreviewWidth,
+            convertBuftoNV21(mPreviewFormat, mPreviewWidth,
                              mPreviewHeight, msg->buff.stride,
                              mPreviewWidth, src, mPreviewBuf.dataPtr);
             break;
         case V4L2_PIX_FMT_RGB565:
-            if (PlatformData::getPreviewFormat() == V4L2_PIX_FMT_NV12)
+            if (mPreviewFormat == V4L2_PIX_FMT_NV12)
                 trimConvertNV12ToRGB565(mPreviewWidth, mPreviewHeight, msg->buff.stride, src, mPreviewBuf.dataPtr);
             //TBD for other preview format, not supported yet
             break;
         default:
-            LOGE("invalid format: %d", mPreviewFormat);
+            LOGE("invalid preview callback format: %d", mPreviewCbFormat);
             status = -1;
             break;
         }
@@ -1040,13 +1042,13 @@ status_t PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
          *
          */
         if (mRotation == 90 || mRotation == 270) {
-            mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewFormat()));
+            mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, getGFXHALPixelFormatFromV4L2Format(mPreviewFormat));
         } else {
             /**
              * For 0-copy path we need to configure the window with the stride required
              * by ISP, and then set the crop rectangle accordingly
              */
-            mPreviewWindow->set_buffers_geometry(mPreviewWindow, mPreviewStride, h, getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewFormat()));
+            mPreviewWindow->set_buffers_geometry(mPreviewWindow, mPreviewStride, h, getGFXHALPixelFormatFromV4L2Format(mPreviewFormat));
             mPreviewWindow->set_crop(mPreviewWindow, 0, 0, w, h);
         }
     }
@@ -1056,20 +1058,19 @@ status_t PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
 
 status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
 {
-    LOG1("@%s: width = %d, height = %d, format = %x", __FUNCTION__,
-         msg->width, msg->height, msg->format);
+    LOG1("@%s: width = %d, height = %d, callback format = %s, stride = %d", __FUNCTION__,
+         msg->width, msg->height, v4l2Fmt2Str(msg->cb_format), msg->stride);
     status_t status = NO_ERROR;
     int w = msg->width;
     int h = msg->height;
-    int stride = msg->stride;
+    // Note: ANativeWindowBuffer defines stride with pixels
+    int pixel_stride = bytesPerLineToWidth(mPreviewFormat, msg->stride);
     int bufferCount = 0;
     int reservedBufferCount = 0;
 
-
     mSharedMode = msg->sharedMode;
 
-    if ((w != 0 && h != 0) &&
-        (mPreviewWidth != w || mPreviewHeight !=h)) {
+    if ((w != 0 && h != 0)) {
         LOG1("Setting new preview size: %dx%d, stride:%d", w, h, msg->stride);
         if (mPreviewWindow != NULL) {
 
@@ -1081,9 +1082,9 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
                 // we swap width and height
                 w = msg->height;
                 h = msg->width;
-                stride = msg->height;
+                pixel_stride = msg->height;
             }
-            mPreviewWindow->set_buffers_geometry(mPreviewWindow, stride, h, getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewFormat()));
+            mPreviewWindow->set_buffers_geometry(mPreviewWindow, pixel_stride, h, getGFXHALPixelFormatFromV4L2Format(mPreviewFormat));
             mPreviewWindow->set_crop(mPreviewWindow, 0, 0, w, h);
         }
 
@@ -1097,7 +1098,9 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
         mPreviewStride = msg->stride;
     }
 
-    mPreviewFormat = msg->format;
+    mPreviewCbFormat = msg->cb_format;
+
+    LOG1("%s: preview callback format %s", __FUNCTION__, v4l2Fmt2Str(mPreviewCbFormat));
 
     // allocate local buffer used with preview callbacks
     allocateLocalPreviewBuf();
@@ -1172,6 +1175,7 @@ status_t PreviewThread::handleFetchPreviewBuffers()
                        GRALLOC_USAGE_SW_WRITE_NEVER |
                        GRALLOC_USAGE_HW_COMPOSER;
         const Rect bounds(mPreviewWidth, mPreviewHeight);
+        int pixel_stride(0);
 
         if (mPreviewWindow == NULL) {
             LOGE("no PreviewWindow set, could not fetch previewBuffers");
@@ -1180,7 +1184,7 @@ status_t PreviewThread::handleFetchPreviewBuffers()
         }
 
         for (size_t i = 0; i < mNumOfPreviewBuffers; i++) {
-            err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &mGfxStride);
+            err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &pixel_stride);
             if(err != 0 || buf == NULL) {
                 LOGE("Surface::dequeueBuffer returned error %d (buf=%p)", err, buf);
                 status = UNKNOWN_ERROR;
@@ -1197,6 +1201,7 @@ status_t PreviewThread::handleFetchPreviewBuffers()
               Please notice, we could not support Gfx stride is less than ISP stride
               case, this should not happen.
             */
+            mGfxStride = widthToBytesPerLine(mPreviewFormat, pixel_stride);
             LOG1("%s stride-gfx=%d stride-preview=%d", __FUNCTION__, mGfxStride, mPreviewStride);
             if (mGfxStride >= mPreviewStride) {
                 tmpBuf.stride = mPreviewStride;
@@ -1208,8 +1213,8 @@ status_t PreviewThread::handleFetchPreviewBuffers()
 
             tmpBuf.width = mPreviewWidth;
             tmpBuf.height = mPreviewHeight;
-            tmpBuf.size = frameSize(PlatformData::getPreviewFormat(), tmpBuf.stride, tmpBuf.height);
-            tmpBuf.format = PlatformData::getPreviewFormat();
+            tmpBuf.size = frameSize(mPreviewFormat, pixel_stride, tmpBuf.height);
+            tmpBuf.format = mPreviewFormat;
             tmpBuf.status = FRAME_STATUS_NA;
 
             status = mapper.lock(*buf, lockMode, bounds, &mapperPointer.ptr);
@@ -1405,8 +1410,8 @@ status_t PreviewThread::handlePostview(MessagePreview *msg)
     if (msg->buff.status == FRAME_STATUS_SKIPPED)
         return NO_ERROR;
 
-    LOG1("@%s: width = %d, height = %d ", __FUNCTION__,
-         msg->buff.width, msg->buff.height);
+    LOG2("@%s: id = %d, width = %d, height = %d, format = %s, stride = %d", __FUNCTION__,
+            msg->buff.id, msg->buff.width, msg->buff.height, v4l2Fmt2Str(msg->buff.format), msg->buff.stride);
 
     if (!mPreviewWindow) {
         LOGW("Unable to display postview frame, no window!");
@@ -1459,16 +1464,18 @@ status_t PreviewThread::handlePostview(MessagePreview *msg)
         AtomBuffer tmpBuf = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
         getEffectiveDimensions(&tmpBuf.width,&tmpBuf.height);
         buffer_handle_t *buf(NULL);
+        int pixel_stride(0);
 
         const Rect bounds(tmpBuf.width, tmpBuf.height);
 
         // queue one from the window
-        err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &tmpBuf.stride);
+        err = mPreviewWindow->dequeue_buffer(mPreviewWindow, &buf, &pixel_stride);
         if (err != 0 || buf == NULL) {
             LOGW("Error dequeuing preview buffer for postview. error=%d (buf=%p)", err, buf);
             return UNKNOWN_ERROR;
         }
-
+        tmpBuf.stride = widthToBytesPerLine(mPreviewFormat, pixel_stride);
+        tmpBuf.size = frameSize(mPreviewFormat, pixel_stride, tmpBuf.height);
         MapperPointer mapperPointer;
         mapperPointer.ptr = NULL;
 
@@ -1528,7 +1535,7 @@ void PreviewThread::copyPreviewBuffer(AtomBuffer* src, AtomBuffer* dst)
         LOGE("@%s: 270 case not handled", __FUNCTION__);
         break;
     case 0:
-        memcpy((char *)dst->dataPtr, (const char*)src->dataPtr, src->size);
+        memcpy((char *)dst->dataPtr, (const char*)src->dataPtr, dst->size);
         break;
     }
 

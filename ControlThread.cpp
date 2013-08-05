@@ -1100,10 +1100,10 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
     }
     if (previewState == PreviewThread::STATE_STOPPED) {
         // just re-configure previewThread
-        int format, width, height, stride;
-        format = V4L2Format(mParameters.getPreviewFormat());
+        int cb_format, width, height, stride;
+        cb_format = V4L2Format(mParameters.getPreviewFormat());
         mISP->getPreviewSize(&width, &height,&stride);
-        mPreviewThread->setPreviewConfig(width, height, stride, format, false);
+        mPreviewThread->setPreviewConfig(width, height, stride, cb_format, false);
     } else if (previewState != PreviewThread::STATE_ENABLED
             && previewState != PreviewThread::STATE_ENABLED_HIDDEN) {
         LOGE("Trying to resume continuous preview from unexpected state!");
@@ -1394,7 +1394,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     status_t status = NO_ERROR;
     int width;
     int height;
-    int format;
+    int cb_format;
     int stride;
     State state;
     AtomMode mode;
@@ -1431,13 +1431,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
         m3AControls->init3aStatDump("preview");
-
-    // set preview frame config
-    format = V4L2Format(mParameters.getPreviewFormat());
-    if (format == -1) {
-        LOGE("Bad preview format. Cannot start the preview!");
-        return BAD_VALUE;
-    }
 
     if (state == STATE_CONTINUOUS_CAPTURE) {
         if (initContinuousCapture() != NO_ERROR) {
@@ -1495,7 +1488,11 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         meteringWindows = NULL;
     }
 
-    LOG1("Using preview format: %s", v4l2Fmt2Str(format));
+    const char* cb_format_s = mParameters.getPreviewFormat();
+    cb_format = V4L2Format(cb_format_s);
+    if (!cb_format) {
+        LOGW("Unsupported preview callback format : %s", cb_format_s ? cb_format_s : "not set");
+    }
     mParameters.getPreviewSize(&width, &height);
     mISP->setPreviewFrameFormat(width, height);
 
@@ -1532,7 +1529,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     bool useSharedGfxBuffers =
         (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS)
         && (mIntelParamsAllowed || mode != MODE_CONTINUOUS_CAPTURE);
-    mPreviewThread->setPreviewConfig(width, height, stride, format, useSharedGfxBuffers, mNumBuffers);
+    mPreviewThread->setPreviewConfig(width, height, stride, cb_format, useSharedGfxBuffers, mNumBuffers);
     if (useSharedGfxBuffers) {
         Vector<AtomBuffer> sharedGfxBuffers;
         status = mPreviewThread->fetchPreviewBuffers(sharedGfxBuffers);
@@ -6163,7 +6160,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
         previewWidth = newWidth;
         previewHeight = newHeight;
         previewAspectRatio = 1.0 * newWidth / newHeight;
-        LOG1("Preview size/format is changing: old=%dx%d %s; new=%dx%d %s; ratio=%.3f",
+        LOG1("Preview size/cb_format is changing: old=%dx%d %s; new=%dx%d %s; ratio=%.3f",
                 oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
                 newWidth, newHeight, v4l2Fmt2Str(newFormat),
                 previewAspectRatio);
@@ -6171,7 +6168,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
         mPreviewForceChanged = false;
     } else {
         previewAspectRatio = 1.0 * oldWidth / oldHeight;
-        LOG1("Preview size/format is unchanged: old=%dx%d %s; ratio=%.3f",
+        LOG1("Preview size/cb_format is unchanged: old=%dx%d %s; ratio=%.3f",
                 oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
                 previewAspectRatio);
     }

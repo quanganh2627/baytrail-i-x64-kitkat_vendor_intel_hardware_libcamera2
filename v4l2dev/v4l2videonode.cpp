@@ -435,7 +435,7 @@ status_t V4L2VideoNode::setFormat(struct v4l2_format &aFormat)
     mConfig.format = aFormat.fmt.pix.pixelformat;
     mConfig.width = aFormat.fmt.pix.width;
     mConfig.height = aFormat.fmt.pix.height;
-    mConfig.stride = bytesPerLineToWidth(mConfig.format,aFormat.fmt.pix.bytesperline);
+    mConfig.stride = aFormat.fmt.pix.bytesperline;
     mConfig.size = frameSize(mConfig.format, mConfig.stride, mConfig.height);
     LOG1("stride: %d from ISP", mConfig.stride);
 

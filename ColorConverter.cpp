@@ -547,7 +547,7 @@ void convertYUYVToNV21(int width, int height, int srcStride, void *src, void *ds
             }
         }
 
-        srcPtr = srcPtr + srcStride * 2;
+        srcPtr = srcPtr + srcStride;
         dstPtr = dstPtr + width;
     }
 }
@@ -612,7 +612,7 @@ int V4L2Format(const char *cameraParamsFormat)
     LOG1("@%s cameraParamsFormat=%s", __FUNCTION__, cameraParamsFormat);
     if (!cameraParamsFormat) {
         LOGE("null cameraParamsFormat");
-        return -1;
+        return 0;
     }
 
     int len = strlen(CameraParameters::PIXEL_FORMAT_YUV420SP);
@@ -632,7 +632,7 @@ int V4L2Format(const char *cameraParamsFormat)
         return V4L2_PIX_FMT_JPEG;
 
     LOGE("invalid format %s", cameraParamsFormat);
-    return -1;
+    return 0;
 }
 
 } // namespace android
