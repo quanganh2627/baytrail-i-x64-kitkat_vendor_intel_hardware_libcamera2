@@ -7539,7 +7539,14 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
 
     status_t status = NO_ERROR;
 
+    // after ISP timeout, we will get a burst of notifications without really that
+    // many recording buffers, so we need to skip the unnecessary notifications
     status = mISP->getRecordingFrame(&buff);
+    if (status == NOT_ENOUGH_DATA) {
+        LOGW("@%s - recording frame was not ready. Maybe there was an ISP timeout?", __FUNCTION__);
+        return NO_ERROR;
+    }
+
     if (status == NO_ERROR) {
        if (buff.status != FRAME_STATUS_CORRUPTED) {
             // Check whether driver has run out of buffers

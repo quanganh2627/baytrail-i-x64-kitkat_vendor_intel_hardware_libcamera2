@@ -3290,6 +3290,12 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff)
 
     CLEAR(buf);
 
+    int pollResult = mRecordingDevice->poll(0);
+    if (pollResult < 1) {
+        LOG2("No data in recording device, poll result: %d", pollResult);
+        return NOT_ENOUGH_DATA;
+    }
+
     int index = mRecordingDevice->grabFrame(&buf);
     LOG2("index = %d", index);
     if(index < 0) {
