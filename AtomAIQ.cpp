@@ -29,6 +29,7 @@
 #include "cameranvm.h"
 #include "ia_cmc_parser.h"
 #include "FeatureData.h"
+#include "gdctool.h"
 
 #include "AtomAIQ.h"
 #include "ia_mkn_encoder.h"
@@ -1549,6 +1550,18 @@ bool AtomAIQ::changeSensorMode(void)
     mSensorCI->getModeInfo(&sensor_mode_data);
     if (mISP->getIspParameters(&m3aState.results.isp_params) < 0)
         return false;
+
+    struct atomisp_morph_table *gdc_table = getGdcTable(sensor_mode_data.output_width, sensor_mode_data.output_height);
+    if (gdc_table) {
+        LOG1("Initialise gdc_table size %d x %d ", gdc_table->width, gdc_table->height);
+        mISP->setGdcConfig(gdc_table);
+        mISP->setGDC(true);
+        freeGdcTable(gdc_table);
+    }
+    else {
+        LOG1("Empty GDC table -> GDC disabled");
+        mISP->setGDC(false);
+    }
 
     /* Reconfigure 3A grid */
     ia_aiq_exposure_sensor_descriptor *sd = &mAeSensorDescriptor;

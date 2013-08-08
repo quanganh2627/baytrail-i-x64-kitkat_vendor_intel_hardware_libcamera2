@@ -145,6 +145,7 @@ endif
 
 LOCAL_STATIC_LIBRARIES := \
 	libcameranvm \
+	gdctool \
 	libia_coordinate \
         libmorpho_image_stabilizer3
 
