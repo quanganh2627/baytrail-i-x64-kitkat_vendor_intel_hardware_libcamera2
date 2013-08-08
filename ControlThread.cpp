@@ -391,6 +391,7 @@ status_t ControlThread::init()
     mBracketManager->setBracketMode(BRACKET_NONE);
 
     // Disable HDR by default
+    CLEAR(mHdr);
     mHdr.enabled = false;
     mHdr.inProgress = false;
     mHdr.savedBracketMode = BRACKET_NONE;
