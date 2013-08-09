@@ -286,7 +286,15 @@ bool AtomDvs2::enable(const CameraParameters& params)
         isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION, params)) {
         mEnabled = true;
     }
-    mIsp->setDVS(true);
+    /* workaround: The high speed and 1080P DVS can't be supported at same time
+     */
+    int width, height;
+    mIsp->getVideoSize(&width, &height, NULL);
+    if(mIsp->isHighSpeedEnabled() && width == RESOLUTION_1080P_WIDTH && height == RESOLUTION_1080P_HEIGHT) {
+        mIsp->setDVS(false);
+    } else {
+        mIsp->setDVS(true);
+    }
     return true;
 }
 

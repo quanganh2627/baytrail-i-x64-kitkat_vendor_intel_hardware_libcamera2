@@ -6177,20 +6177,11 @@ status_t ControlThread::processParamHighSpeed(const CameraParameters *oldParams,
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    m3AControls->enableHighSpeed(false);
+    mISP->setHighSpeedResolutionFps(NULL, -1);
 
-    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
-                                              IntelCameraParameters::KEY_HIGH_SPEED);
-    if (!newVal.isEmpty()) {
-       bool highSpeed = (newVal == CameraParameters::TRUE);
-       if(!highSpeed) {
-           mISP->setHighSpeedResolutionFps(NULL, -1);
-           newParams->set(IntelCameraParameters::KEY_HIGH_SPEED_RESOLUTION_FPS, "");
-           return status;
-       }
-    }
-
-    newVal = paramsReturnNewIfChanged(oldParams, newParams,
-                                              IntelCameraParameters::KEY_HIGH_SPEED_RESOLUTION_FPS);
+    const char* n = newParams->get(IntelCameraParameters::KEY_HIGH_SPEED_RESOLUTION_FPS);
+    String8 newVal = String8(n, (n == NULL ? 0 : strlen(n)));
     if (!newVal.isEmpty()) {
         char* resoFps = strndup(newVal.string(), newVal.length());
         if(resoFps == NULL)
@@ -6207,7 +6198,10 @@ status_t ControlThread::processParamHighSpeed(const CameraParameters *oldParams,
             return BAD_VALUE;
         }
         if(fps != NULL && reso != NULL)
-            mISP->setHighSpeedResolutionFps(reso, atoi(fps));
+            status = mISP->setHighSpeedResolutionFps(reso, atoi(fps));
+        if(status == NO_ERROR && mISP->isHighSpeedEnabled()) {
+            m3AControls->enableHighSpeed(true);
+        }
         if(resoFps != NULL)
             free(resoFps);
         if(reso != NULL)

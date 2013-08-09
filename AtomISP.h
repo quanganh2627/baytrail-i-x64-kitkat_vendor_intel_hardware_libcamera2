@@ -285,6 +285,7 @@ public:
 
     // high speed fps setting
     status_t setHighSpeedResolutionFps(char* resolution, int fps);
+    bool isHighSpeedEnabled(){ return mHighSpeedEnabled; }
 
 // private types
 private:

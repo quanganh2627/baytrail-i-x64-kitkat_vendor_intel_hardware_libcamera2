@@ -2189,7 +2189,6 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *
             return -1;
         }
     }
-
     /* 3A related initialization*/
     //Reallocate the grid for 3A after format change
     if (device->mId == V4L2_MAIN_DEVICE ||
@@ -2391,6 +2390,15 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
+    // Check if the resolution of high speed has been set, and the resolution
+    // of high speed matches with the video resolution set by app
+    if (mHighSpeedResolution.width != 0 && mHighSpeedResolution.height != 0
+         && (mHighSpeedResolution.width == width && mHighSpeedResolution.height == height)) {
+        mHighSpeedEnabled = true;
+    } else {
+        mHighSpeedEnabled = false;
+    }
+
     /**
      * Workaround: When video size is 1080P(1920x1080), because video HW codec
      * requests 16x16 pixel block as sub-block to encode, So whatever apps set recording
@@ -2400,12 +2408,6 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
      */
     if(height % 16)
         height = (height + 15) / 16 * 16;
-
-    // Check if the resolution of high speed has been set, and the resolution
-    // of high speed matches with the video resolution set by app
-    if (mHighSpeedResolution.width != 0 && mHighSpeedResolution.height != 0
-         && (mHighSpeedResolution.width != width || mHighSpeedResolution.height != height))
-        mHighSpeedEnabled = false;
 
     if(fourcc == 0)
          fourcc = mConfig.recording.fourcc;
@@ -5600,6 +5602,10 @@ status_t AtomISP::AAAStatSource::observe(IAtomIspObserver::Message *msg)
  */
 bool AtomISP::PreviewStreamSource::checkSkipFrame(int frameNum)
 {
+    // No frames skip in high speed
+    if(mISP->isHighSpeedEnabled())
+        return false;
+
     float sensorFPS = mISP->mConfig.fps;
     int targetFPS = mISP->mConfig.target_fps;
 

@@ -473,6 +473,22 @@ AeMode AtomAIQ::getAeMode()
     return mAeMode;
 }
 
+status_t AtomAIQ::enableHighSpeed(bool en)
+{
+    LOG1("@%s", __FUNCTION__);
+    //high speed recording only available in video mode
+    if (m3aState.frame_use != ia_aiq_frame_use_video)
+        return INVALID_OPERATION;
+    // When frame_use = video, ae_operation_mode = action, then the limits should
+    // be defined separately for "normal" and "high speed" video use cases.
+    if(en)
+        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_action;
+    else
+        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_automatic;
+
+    return NO_ERROR;
+}
+
 status_t AtomAIQ::setAfMode(AfMode mode)
 {
     LOG1("@%s: mode = %d", __FUNCTION__, mode);

@@ -338,6 +338,7 @@ public:
     AeMode getAeMode();
     virtual status_t setAfMode(AfMode mode);
     virtual AfMode getAfMode();
+    status_t enableHighSpeed(bool en);
     bool getAfNeedAssistLight();
     status_t setAeFlashMode(FlashMode mode);
     FlashMode getAeFlashMode();
