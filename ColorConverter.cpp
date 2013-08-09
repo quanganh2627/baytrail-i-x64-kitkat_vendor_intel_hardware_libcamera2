@@ -246,7 +246,7 @@ void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void
                                  "movl       %0,  %%eax      \n\t"
                                  "movl       %1,  %%edx      \n\t"
                                  "movl       %2,  %%ecx      \n\t"
-                                 "NEXT_16BYTES:     \n\t"
+                                 "1:     \n\t"
                                  "movdqa (%%eax), %%xmm1     \n\t"
                                  "movdqa  %%xmm1, %%xmm0     \n\t"
                                  "psllw       $8, %%xmm1     \n\t"
@@ -256,7 +256,7 @@ void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void
                                  "add        $16, %%eax      \n\t"
                                  "add        $16, %%edx      \n\t"
                                  "sub        $16, %%ecx      \n\t"
-                                 "jnz   NEXT_16BYTES \n\t"
+                                 "jnz   1b \n\t"
                                  : "+m"(ptr0), "+m"(ptr1), "+m"(width_16)
                                  :
                                  : "eax", "ecx", "edx", "xmm0", "xmm1"
@@ -267,7 +267,7 @@ void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void
                                  "movl       %0,  %%eax      \n\t"
                                  "movl       %1,  %%edx      \n\t"
                                  "movl       %2,  %%ecx      \n\t"
-                                 "NEXT_16BYTES_1:     \n\t"
+                                 "1:     \n\t"
                                  "lddqu  (%%eax), %%xmm1     \n\t"
                                  "movdqa  %%xmm1, %%xmm0     \n\t"
                                  "psllw       $8, %%xmm1     \n\t"
@@ -277,7 +277,7 @@ void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void
                                  "add        $16, %%eax      \n\t"
                                  "add        $16, %%edx      \n\t"
                                  "sub        $16, %%ecx      \n\t"
-                                 "jnz   NEXT_16BYTES_1 \n\t"
+                                 "jnz   1b \n\t"
                                  : "+m"(ptr0), "+m"(ptr1), "+m"(width_16)
                                  :
                                  : "eax", "ecx", "edx", "xmm0", "xmm1"
@@ -357,6 +357,44 @@ void align16ConvertNV12ToYV12(int width, int height, int srcStride, void *src, v
         srcPtr += srcStride;
         dstPtrV += cStride;
         dstPtrU += cStride;
+    }
+}
+
+// P411's Y, U, V are seperated. But the YUY2's Y, U and V are interleaved.
+void YUY2ToP411(int width, int height, void *src, void *dst)
+{
+    int ySize = width * height;
+    int cSize = width * height / 4;
+    int wHalf = width >> 1;
+
+    unsigned char *srcPtr = (unsigned char *) src;
+    unsigned char *dstPtr = (unsigned char *) dst;
+    unsigned char *dstPtrU = (unsigned char *) dst + ySize;
+    unsigned char *dstPtrV = (unsigned char *) dst + ySize + cSize;
+
+    for (int i = 0; i < height; i++) {
+        //The first line of the source
+        //Copy first Y Plane first
+        for (int j=0; j < width; j++) {
+            dstPtr[j] = srcPtr[j*2];
+        }
+
+        if (i & 1) {
+            //Copy the V plane
+            for (int k = 0; k < wHalf; k++) {
+                dstPtrV[k] = srcPtr[k * 4 + 3];
+            }
+            dstPtrV = dstPtrV + wHalf;
+        } else {
+            //Copy the U plane
+            for (int k = 0; k< wHalf; k++) {
+                dstPtrU[k] = srcPtr[k * 4 + 1];
+            }
+            dstPtrU = dstPtrU + wHalf;
+        }
+
+        srcPtr = srcPtr + width * 2;
+        dstPtr = dstPtr + width;
     }
 }
 
@@ -448,31 +486,32 @@ void convertYUYVToYV12(int width, int height, int srcStride, int dstStride, void
 {
     int ySize = width * height;
     int cSize = ALIGN16(dstStride/2) * height / 2;
+    int wHalf = width >> 1;
 
     unsigned char *srcPtr = (unsigned char *) src;
     unsigned char *dstPtr = (unsigned char *) dst;
     unsigned char *dstPtrV = (unsigned char *) dst + ySize;
     unsigned char *dstPtrU = (unsigned char *) dst + ySize + cSize;
 
-    for (int i=0; i < height; i++) {
+    for (int i = 0; i < height; i++) {
         //The first line of the source
         //Copy first Y Plane first
         for (int j=0; j < width; j++) {
             dstPtr[j] = srcPtr[j*2];
         }
 
-        if (i % 2) {
+        if (i & 1) {
             //Copy the V plane
-            for (int k=0; k< width/2; k++) {
+            for (int k = 0; k< wHalf; k++) {
                 dstPtrV[k] = srcPtr[k * 4 + 3];
             }
-            dstPtrV = dstPtrV + ALIGN16(dstStride/2);
+            dstPtrV = dstPtrV + ALIGN16(dstStride>>1);
         } else {
             //Copy the U plane
-            for (int k=0; k< width/2; k++) {
+            for (int k = 0; k< wHalf; k++) {
                 dstPtrU[k] = srcPtr[k * 4 + 1];
             }
-            dstPtrU = dstPtrU + ALIGN16(dstStride/2);
+            dstPtrU = dstPtrU + ALIGN16(dstStride>>1);
         }
 
         srcPtr = srcPtr + srcStride * 2;

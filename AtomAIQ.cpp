@@ -28,7 +28,6 @@
 #include "PerformanceTraces.h"
 #include "cameranvm.h"
 #include "ia_cmc_parser.h"
-#include "PanoramaThread.h"
 #include "FeatureData.h"
 
 #include "AtomAIQ.h"
@@ -268,7 +267,7 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
     mAfInputParameters.frame_use = m3aState.frame_use;
     mAfState.previous_sof = 0;
     mAeInputParameters.frame_use = m3aState.frame_use;
-    mAeInputParameters.manual_frame_time_us_max = (long) 1/fps*1000000;
+    mAeInputParameters.manual_frame_time_us_min = (long) 1/fps*1000000;
     mAwbInputParameters.frame_use = m3aState.frame_use;
 
     /* usually the grid changes as well when the mode changes. */
@@ -2275,9 +2274,6 @@ void AtomAIQ::getDefaultParams(CameraParameters *params, CameraParameters *intel
     // AWB mapping mode
     intel_params->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES, "auto,indoor,outdoor");
-
-    // panorama
-    intel_params->set(IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE, CAM_RESO_STR(PANORAMA_DEF_PREV_WIDTH,PANORAMA_DEF_PREV_HEIGHT));
 
 }
 

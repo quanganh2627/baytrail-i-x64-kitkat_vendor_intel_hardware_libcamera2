@@ -57,6 +57,10 @@ void ImageScaler::downScaleImage(void *src, void *dest,
 {
     unsigned char *m_dest = (unsigned char *)dest;
     const unsigned char * m_src = (const unsigned char *)src;
+
+    LOG1("%s: dest_w:%d, dest_h:%d, src_w:%d, src_h:%d, format:%d", __func__,
+         dest_w, dest_h, src_w, src_h, format);
+
     switch (format) {
         case V4L2_PIX_FMT_NV12: {
             if (dest_w == src_w && dest_h == src_h) {
@@ -74,9 +78,65 @@ void ImageScaler::downScaleImage(void *src, void *dest,
             }
             break;
         }
+        case V4L2_PIX_FMT_YUYV:
+            // downscale
+            ImageScaler::downScaleYUY2Image(m_dest, m_src,
+                dest_w, dest_h, src_w, src_h);
+            break;
         default: {
             LOGE("no downscale support for format = %d", format);
             break;
+        }
+    }
+}
+
+void ImageScaler::downScaleYUY2Image(unsigned char *dest, const unsigned char *src,
+    const int dest_w, const int dest_h, const int src_w, const int src_h)
+{
+    if (dest==NULL || dest_w <=0 || dest_h <=0 || src==NULL || src_w <=0 || src_h <= 0 )
+        return;
+
+    if (dest_w%2 != 0) // if the dest_w is not an even number, exit
+        return;
+
+    const int scale_w = (src_w<<8) / dest_w; // scale factors
+    const int scale_h = (src_h<<8) / dest_h;
+    int dx, dy;
+    int macro_pixel_width = dest_w >> 1;
+    int src_i, src_j; // the left up coordinates of src that correspond to (j,i) in dest
+    unsigned int val_1, val_2; // for bi-linear-interpolation
+    int i,j,k;
+
+    for(i=0; i < dest_h; ++i) {
+        src_i = i * scale_h;
+        dy = src_i & 0xff;
+        src_i >>= 8;
+        for(j=0; j < macro_pixel_width; ++j) {
+            src_j = j * scale_w;
+            dx = src_j & 0xff;
+            src_j = src_j >> 8;
+            for(k = 0; k < 4; ++k) {
+                // bi-linear-interpolation
+                if(dx == 0 && dy == 0) {
+                    dest[i * 2 * dest_w + 4 * j + k] = src[src_i * 2 * src_w + src_j * 4 + k];
+                } else if(dx == 0 && dy != 0){
+                    val_1 = (unsigned int)src[src_i * 2 * src_w + src_j * 4 + k];
+                    val_2 = (unsigned int)src[(src_i + 1) * 2 * src_w + src_j * 4 + k];
+                    val_1 = (val_1 * (256 - dy) + val_2 * dy) >> 8;
+                    dest[i * 2 * dest_w + 4 * j + k] = ((val_1 <= 255) ? val_1: 255);
+                } else if(dx != 0 && dy == 0) {
+                    val_1 = ((unsigned int)src[src_i * 2 * src_w + src_j * 4 + k] * (256 - dx)
+                        + (unsigned int)src[src_i * 2 * src_w + (src_j +1) * 4 + k] * dx) >> 8;
+                    dest[i * 2 * dest_w + 4 * j + k] = ((val_1 <= 255) ? val_1: 255);
+                } else {
+                    val_1 = ((unsigned int)src[src_i * 2 * src_w + src_j * 4 + k] * (256 - dx)
+                        + (unsigned int)src[src_i * 2 * src_w + (src_j +1) * 4 + k] * dx) >> 8;
+                    val_2 = ((unsigned int)src[(src_i + 1) * 2 * src_w + src_j * 4 + k] * (256 - dx)
+                        + (unsigned int)src[(src_i + 1) * 2 * src_w + (src_j+1) * 4 + k] * dx) >> 8;
+                    val_1 = (val_1 * (256 - dy) + val_2 * dy) >> 8;
+                    dest[i * 2 * dest_w + 4 * j + k] = ((val_1 <= 255) ? val_1: 255);
+                }
+            }
         }
     }
 }

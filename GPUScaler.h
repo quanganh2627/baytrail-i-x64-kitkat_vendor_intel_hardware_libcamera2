@@ -80,7 +80,7 @@ private:
 
 // private methods
 private:
-    int initGPU();
+    status_t initGPU();
     int initShaders();
     int initTexture();
     int setDefaultConfig();

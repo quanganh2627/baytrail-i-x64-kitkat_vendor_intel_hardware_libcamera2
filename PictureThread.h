@@ -68,7 +68,7 @@ public:
     status_t encode(MetaData &metaData, AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf = NULL);
 
     void getDefaultParameters(CameraParameters *params);
-    void initialize(const CameraParameters &params, int zoomRatio);
+    status_t initialize(const CameraParameters &params, int zoomRatio);
     status_t allocSharedBuffers(int width, int height, int sharedBuffersNum,
                                 int format, Vector<AtomBuffer> *bufs,
                                 bool registerToScaler);
@@ -93,6 +93,7 @@ private:
         MESSAGE_ID_ALLOC_BUFS,
         MESSAGE_ID_WAIT,
         MESSAGE_ID_FLUSH,
+        MESSAGE_ID_INITIALIZE,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -117,12 +118,18 @@ private:
         MetaData metaData;
     };
 
+    struct MessageParam {
+        const CameraParameters *params;
+        int zoomRatio;
+    };
+
     // union of all message data
     union MessageData {
 
         // MESSAGE_ID_ENCODE
         MessageEncode encode;
         MessageAllocBufs alloc;
+        MessageParam param;
     };
 
     // message id and message data
@@ -140,6 +147,7 @@ private:
     status_t handleMessageAllocBufs(MessageAllocBufs *alloc);
     status_t handleMessageWait();
     status_t handleMessageFlush();
+    status_t handleMessageInitialize(MessageParam *msg);
 
     // main message function
     status_t waitForAndExecuteMessage();

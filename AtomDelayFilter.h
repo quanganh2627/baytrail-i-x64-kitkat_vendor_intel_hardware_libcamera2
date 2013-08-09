@@ -34,7 +34,7 @@ template <class X> AtomDelayFilter<X>::AtomDelayFilter(X val, unsigned int depth
 template <class X> AtomDelayFilter<X>::~AtomDelayFilter()
 {
     if (buffer) {
-        delete buffer;
+        delete[] buffer;
         buffer = NULL;
     }
 }

@@ -34,6 +34,8 @@ void align16ConvertNV12ToYV12(int width, int height, int srcStride, void *src, v
 
 void NV12ToP411(int width, int height, void *src, void *dst);
 
+void YUY2ToP411(int width, int height, void *src, void *dst);
+
 void convertYUYVToYV12(int width, int height, int srcStride, int dstStride, void *src, void *dst);
 
 void convertYUYVToNV21(int width, int height, int srcStride, void *src, void *dst);

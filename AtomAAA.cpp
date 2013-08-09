@@ -25,7 +25,6 @@
 #include <time.h>
 #include <dlfcn.h>
 #include <ia_3a.h>
-#include "PanoramaThread.h"
 #include "FeatureData.h"
 
 namespace android {
@@ -1733,8 +1732,6 @@ void AtomAAA::getDefaultParams(CameraParameters *params, CameraParameters *intel
     intel_params->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES, "auto,indoor,outdoor");
 
-    // panorama
-    intel_params->set(IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE, CAM_RESO_STR(PANORAMA_DEF_PREV_WIDTH,PANORAMA_DEF_PREV_HEIGHT));
 }
 
 void AtomAAA::getSensorFrameParams(ia_aiq_frame_params *frame_params, struct atomisp_sensor_mode_data *sensor_mode_data)

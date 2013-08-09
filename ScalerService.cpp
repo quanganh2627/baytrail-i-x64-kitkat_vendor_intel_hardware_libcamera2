@@ -36,6 +36,10 @@ ScalerService::ScalerService() :
 ScalerService::~ScalerService()
 {
     LOG1("@%s", __FUNCTION__);
+    if (mGPUScaler) {
+        delete mGPUScaler;
+        mGPUScaler = NULL;
+    }
 }
 
 bool ScalerService::threadLoop()
@@ -140,8 +144,7 @@ status_t ScalerService::handleMessageScaleAndZoom(MessageScaleAndZoom &msg)
         mFrameCounter = 0;
     }
 
-    // set zoom - to pow2 because GPUScaler zooms the area, not axises
-    mGPUScaler->setZoomFactor(msg.zoomFactor * msg.zoomFactor);
+    mGPUScaler->setZoomFactor(msg.zoomFactor);
     mGPUScaler->processFrame(msg.input->gfxInfo.scalerId, msg.output->gfxInfo.scalerId);
 
     // handle locking for non shared case (in shared case, PreviewThread handles)

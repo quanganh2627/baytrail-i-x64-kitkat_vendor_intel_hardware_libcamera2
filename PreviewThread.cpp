@@ -1525,6 +1525,7 @@ void PreviewThread::copyPreviewBuffer(AtomBuffer* src, AtomBuffer* dst)
         break;
     case 270:
         // TODO: Not handled, waiting for Semi
+        LOGE("@%s: 270 case not handled", __FUNCTION__);
         break;
     case 0:
         memcpy((char *)dst->dataPtr, (const char*)src->dataPtr, src->size);

@@ -59,7 +59,7 @@ int JpegCompressor::swEncode(const InputBuffer &in, const OutputBuffer &out)
     if (status)
         goto exit;
 
-    status = mSWEncoder->doJpegEncoding(in.buf);
+    status = mSWEncoder->doJpegEncoding(in.buf, in.format);
     if (status)
         goto exit;
 

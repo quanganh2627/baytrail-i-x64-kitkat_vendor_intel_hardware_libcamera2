@@ -492,10 +492,8 @@ void ControlThread::deinit()
 
     if (m3AControls != NULL) {
         m3AControls->deinit3A();
-        if (m3AControls->isIntel3A()) {
-            delete m3AControls;
-            m3AControls = NULL;
-        }
+        delete m3AControls;
+        m3AControls = NULL;
     }
 
     if (mSensorSyncManager != NULL)
@@ -537,6 +535,7 @@ void ControlThread::deinit()
         delete mCallbacks;
         mCallbacks = NULL;
     }
+    mPostponedMessages.clear();
     LOG1("@%s- complete", __FUNCTION__);
 }
 
@@ -3686,6 +3685,20 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
     status_t status = NO_ERROR;
 
     mCaptureSubState = STATE_CAPTURE_PICTURE_DONE;
+    // handle postponed setparameters which may have occured during capture
+    List<Message>::iterator it = mPostponedMessages.begin();
+
+    while (it != mPostponedMessages.end()) {
+        if (it->id == MESSAGE_ID_SET_PARAMETERS) {
+            LOG1("@%s handling postponed setparameter message", __FUNCTION__);
+            handleMessageSetParameters(&it->data.setParameters);
+            free(it->data.setParameters.params); // was strdupped, needs free
+            it = mPostponedMessages.erase(it); // returns pointer to next item in list
+        } else {
+            it++;
+        }
+    }
+
     if (msg->snapshotBuf.type == ATOM_BUFFER_PANORAMA) {
         // panorama pictures are special, they use the panorama engine memory.
         // we return them to panorama for releasing
@@ -3807,11 +3820,7 @@ bool ControlThread::validateSize(int width, int height, Vector<Size> &supportedS
     if (width < 0 || height < 0)
         return false;
 
-    for (Vector<Size>::iterator it = supportedSizes.begin(); it != supportedSizes.end(); ++it)
-        if (width == it->width && height == it->height)
-            return true;
-
-    return false;
+    return true;
 }
 
 bool ControlThread::validateString(const char* value,  const char* supportList) const{
@@ -6395,8 +6404,13 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
 
     if (mCaptureSubState == STATE_CAPTURE_STARTED) {
         LOGE("setParameters happened during capturing. Changing parameters during capturing would produce "
-             "undeterministic results, so dropping the params! Fix your application!");
-        status = INVALID_OPERATION;
+             "undeterministic results, so postponing the params! Fix your application!");
+        Message message;
+        message.id = MESSAGE_ID_SET_PARAMETERS;
+        message.data.setParameters = *msg;
+        message.data.setParameters.params = strdup(msg->params); // need to copy, because mem could already be released when handled
+        mPostponedMessages.push_back(message);
+        status = NO_ERROR;
         goto exit;
     }
 

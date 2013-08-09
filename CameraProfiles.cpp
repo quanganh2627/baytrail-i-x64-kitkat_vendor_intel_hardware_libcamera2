@@ -116,8 +116,6 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
         PlatformBase::mNumRecordingBuffers = atoi(atts[1]);
     } else if (strcmp(name, "maxContinuousRawRingBuffer") == 0) {
         PlatformBase::mMaxContinuousRawRingBuffer = atoi(atts[1]);
-    } else if (strcmp(name, "videoPreviewSizePref") == 0) {
-        PlatformBase::mVideoPreviewSizePref = atts[1];
     } else if (strcmp(name, "boardName") == 0) {
         PlatformBase::mBoardName = atts[1];
     } else if (strcmp(name, "supportAIQ") == 0) {
@@ -171,6 +169,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->supportedPreviewSizes = atts[1];
     } else if (strcmp(name, "supportedVideoSizes") == 0) {
         pCurrentCam->supportedVideoSizes = atts[1];
+    }else if (strcmp(name, "videoPreviewSizePref") == 0) {
+        pCurrentCam->mVideoPreviewSizePref = atts[1];
     } else if (strcmp(name, "supportedSceneModes") == 0) {
         pCurrentCam->supportedSceneModes = atts[1];
     } else if (strcmp(name, "defaultSceneMode") == 0) {
@@ -419,6 +419,7 @@ void CameraProfiles::dump(void)
         LOGD("line%d, in DeviceData, pcam->defaultSceneMode:%s ", __LINE__, mCameras[i].defaultSceneMode.string());
         LOGD("line%d, in DeviceData, pcam->supportedPreviewSizes:%s ", __LINE__, mCameras[i].supportedPreviewSizes.string());
         LOGD("line%d, in DeviceData, mSupportedVideoSizes:%s ", __LINE__, mCameras[i].supportedVideoSizes.string());
+        LOGD("line%d, in DeviceData, pcam->mVideoPreviewSizePref:%s ", __LINE__, mCameras[i].mVideoPreviewSizePref.string());
         LOGD("line%d, in DeviceData, pcam->supportedBurstFPS:%s ", __LINE__, mCameras[i].supportedBurstFPS.string());
         LOGD("line%d, in DeviceData, pcam->orientation:%d ", __LINE__, mCameras[i].orientation);
         LOGD("line%d, in DeviceData, pcam->sensorType:%d ", __LINE__, mCameras[i].sensorType);
@@ -447,7 +448,6 @@ void CameraProfiles::dump(void)
     LOGD("line%d, in DeviceData, for common settings ", __LINE__);
     LOGD("line%d, in DeviceData, mSubDevName:%s ", __LINE__, mSubDevName.string());
     LOGD("line%d, in DeviceData, mFileInject:%d ", __LINE__, mFileInject);
-    LOGD("line%d, in DeviceData, mVideoPreviewSizePref:%s ", __LINE__, mVideoPreviewSizePref.string());
     LOGD("line%d, in DeviceData, mProductName:%s ", __LINE__, mProductName.string());
     LOGD("line%d, in DeviceData, mManufacturerName:%s ", __LINE__, mManufacturerName.string());
     LOGD("line%d, in DeviceData, mMaxZoomFactor:%d ", __LINE__, mMaxZoomFactor);

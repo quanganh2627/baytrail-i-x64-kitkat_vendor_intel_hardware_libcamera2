@@ -22,6 +22,7 @@
 #include "CallbacksThread.h"
 #include "ImageScaler.h"
 #include "MemoryUtils.h"
+#include "PlatformData.h"
 #include <utils/Timers.h>
 
 namespace android {
@@ -208,8 +209,24 @@ void PictureThread::getDefaultParameters(CameraParameters *params)
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY, "50");
 }
 
-    void PictureThread::initialize(const CameraParameters &params, int zoomRatio)
+status_t PictureThread::initialize(const CameraParameters &params, int zoomRatio)
 {
+    LOG1("@%s", __FUNCTION__);
+
+    Message msg;
+    msg.id = MESSAGE_ID_INITIALIZE;
+    msg.data.param.params = &params;
+    msg.data.param.zoomRatio = zoomRatio;
+
+    return mMessageQueue.send(&msg, MESSAGE_ID_INITIALIZE);
+}
+
+status_t PictureThread::handleMessageInitialize(MessageParam *msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    CameraParameters params = *msg->params;
+    int zoomRatio = msg->zoomRatio;
+
     mExifMaker->initialize(params, zoomRatio);
     int q = params.getInt(CameraParameters::KEY_JPEG_QUALITY);
     if (q != 0)
@@ -218,7 +235,7 @@ void PictureThread::getDefaultParameters(CameraParameters *params)
     if (q != 0)
         mThumbnailQuality = q;
 
-    mThumbBuf.format = V4L2_PIX_FMT_NV12;
+    mThumbBuf.format = PlatformData::getPreviewFormat();
     mThumbBuf.width = params.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
     mThumbBuf.height = params.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
     mThumbBuf.size = frameSize(mThumbBuf.format, mThumbBuf.width, mThumbBuf.height);
@@ -230,6 +247,9 @@ void PictureThread::getDefaultParameters(CameraParameters *params)
     params.getPictureSize(&mScaledPic.width, &mScaledPic.height);
     mScaledPic.stride = mScaledPic.width;
     mScaledPic.size = frameSize(mScaledPic.format, mScaledPic.stride, mScaledPic.height);
+
+    mMessageQueue.reply(MESSAGE_ID_INITIALIZE, NO_ERROR);
+    return NO_ERROR;
 }
 
 status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuffersNum,
@@ -633,6 +653,10 @@ status_t PictureThread::waitForAndExecuteMessage()
             status = handleMessageFlush();
             break;
 
+        case MESSAGE_ID_INITIALIZE:
+            status = handleMessageInitialize(&msg.data.param);
+            break;
+
         default:
             status = BAD_VALUE;
             break;
@@ -741,6 +765,7 @@ void PictureThread::encodeExif(AtomBuffer *thumbBuf)
                 mThumbBuf.width, mThumbBuf.height, mThumbBuf.stride);
         if (mThumbBuf.dataPtr == NULL)
             mCallbacks->allocateMemory(&mThumbBuf,mThumbBuf.size);
+
         if (mThumbBuf.dataPtr == NULL) {
             LOGE("Could not allocate memory for ThumbBuf buffers!");
             mThumbBuf.size = 0;

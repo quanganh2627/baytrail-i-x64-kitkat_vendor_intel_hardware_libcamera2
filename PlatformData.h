@@ -232,7 +232,7 @@ class PlatformData {
      *
      * \return string following getParameter value notation
      */
-    static const char* preferredPreviewSizeForVideo(void);
+    static const char* preferredPreviewSizeForVideo(int cameraId);
 
     /**
      * Whether the camera supports Digital Video Stabilization or not
@@ -1047,6 +1047,7 @@ protected:
         String8 supportedPreviewUpdateModes;
         String8 defaultPreviewUpdateMode;
         String8 supportedVideoSizes;
+        String8 mVideoPreviewSizePref;
         // For high speed recording, slow motion playback
         bool hasSlowMotion;
         String8 supportedHighSpeedResolutionFps;
@@ -1076,8 +1077,6 @@ protected:
     int mShutterLagCompensationMs;
 
     int mPanoramaMaxSnapshotCount;
-
-    String8 mVideoPreviewSizePref;
 
     /* For EXIF Metadata */
     String8 mProductName;
