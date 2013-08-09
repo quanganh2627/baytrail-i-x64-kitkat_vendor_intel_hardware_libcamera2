@@ -139,7 +139,13 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
 
 status_t AtomISP::initDevice()
 {
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+
+    if (mGroupIndex < 0) {
+        LOGE("No mGroupIndex set. Could not run device init!");
+        return NO_INIT;
+    }
 
     mMainDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_MAIN_DEVICE], V4L2_MAIN_DEVICE);
     mPreviewDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_PREVIEW_DEVICE], V4L2_PREVIEW_DEVICE);
@@ -199,6 +205,7 @@ status_t AtomISP::initDevice()
  */
 void AtomISP::deInitDevice()
 {
+    LOG1("@%s", __FUNCTION__);
     mMainDevice->close();
 }
 
@@ -207,11 +214,14 @@ void AtomISP::deInitDevice()
  */
 bool AtomISP::isDeviceInitialized() const
 {
+    LOG1("@%s", __FUNCTION__);
     return mMainDevice->isOpen();
 }
 
 status_t AtomISP::init()
 {
+    LOG1("@%s", __FUNCTION__);
+
     status_t status = NO_ERROR;
 
     Mutex::Autolock lock(sISPCountLock);
@@ -456,7 +466,10 @@ AtomISP::~AtomISP()
 {
     LOG1("@%s", __FUNCTION__);
     Mutex::Autolock lock(sISPCountLock);
-    devName[mGroupIndex].in_use = false;
+    if (mGroupIndex >= 0) {
+        devName[mGroupIndex].in_use = false;
+    }
+
     /*
      * The destructor is called when the hw_module close mehod is called. The close method is called
      * in general by the camera client when it's done with the camera device, but it is also called by
