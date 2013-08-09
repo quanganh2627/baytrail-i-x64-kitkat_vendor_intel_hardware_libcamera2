@@ -4053,12 +4053,15 @@ status_t AtomISP::allocateSnapshotBuffers()
             AtomBuffer postv = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
             for (int i = 0; i < mConfig.num_snapshot; i++) {
                 postv.buff = NULL;
+                postv.size = 0;
                 postv.dataPtr = NULL;
-                // for image data, actual sized buff
-                MemoryUtils::allocateGraphicBuffer(postv, mConfig.postview);
-                // for callbacks, a dummy buff
-                mCallbacks->allocateMemory(&postv.buff, 1);
-                if (postv.dataPtr == NULL || postv.buff == NULL) {
+                if (mHALZSLEnabled) {
+                    MemoryUtils::allocateGraphicBuffer(postv, mConfig.postview);
+                } else {
+                    mCallbacks->allocateMemory(&postv, mConfig.postview.size);
+                }
+
+                if (postv.dataPtr == NULL) {
                     LOGE("Error allocation memory for postview buffers!");
                     status = NO_MEMORY;
                     goto errorFree;
@@ -4067,13 +4070,10 @@ status_t AtomISP::allocateSnapshotBuffers()
                 bufPool[i] = postv.dataPtr;
 
                 postv.shared = false;
-                postv.buff->data = postv.dataPtr;
-                postv.buff->size = postv.size;
                 if (mHALZSLEnabled)
                     mScaler->registerBuffer(postv, ScalerService::SCALER_OUTPUT);
 
                 mPostviewBuffers.push(postv);
-
             }
     } else {
         for (size_t i = 0; i < mPostviewBuffers.size(); i++) {
