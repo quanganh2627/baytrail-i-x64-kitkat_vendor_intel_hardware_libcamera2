@@ -462,7 +462,7 @@ private:
 
     // Dual Video
     int mGroupIndex;
-    Mutex mISPCountLock;
+    static Mutex sISPCountLock;
 
     static cameraInfo sCamInfo[MAX_CAMERA_NODES];
 

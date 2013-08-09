@@ -70,7 +70,7 @@ namespace android {
 //                          STATIC DATA
 ////////////////////////////////////////////////////////////////////
 static sensorPrivateData gSensorDataCache[MAX_CAMERAS];
-
+Mutex AtomISP::sISPCountLock;
 static struct devNameGroup devName[MAX_CAMERAS] = {
     {{"/dev/video0", "/dev/video1", "/dev/video2", "/dev/video3"},
         false,},
@@ -214,7 +214,7 @@ status_t AtomISP::init()
 {
     status_t status = NO_ERROR;
 
-    Mutex::Autolock lock(mISPCountLock);
+    Mutex::Autolock lock(sISPCountLock);
     for (int i = 0; i < MAX_CAMERAS; i++) {
         if (devName[i].in_use == false) {
             mGroupIndex = i;
@@ -455,7 +455,7 @@ void AtomISP::initFileInject()
 AtomISP::~AtomISP()
 {
     LOG1("@%s", __FUNCTION__);
-    Mutex::Autolock lock(mISPCountLock);
+    Mutex::Autolock lock(sISPCountLock);
     devName[mGroupIndex].in_use = false;
     /*
      * The destructor is called when the hw_module close mehod is called. The close method is called
