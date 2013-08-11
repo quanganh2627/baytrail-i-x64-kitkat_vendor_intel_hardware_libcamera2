@@ -147,6 +147,15 @@ status_t AtomISP::initDevice()
         return NO_INIT;
     }
 
+    mMainDevice.clear();
+    mPreviewDevice.clear();
+    mPostViewDevice.clear();
+    mRecordingDevice.clear();
+    mIspSubdevice.clear();
+    m3AEventSubdevice.clear();
+    mFileInjectDevice.clear();
+    mOriginalPreviewDevice.clear();
+
     mMainDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_MAIN_DEVICE], V4L2_MAIN_DEVICE);
     mPreviewDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_PREVIEW_DEVICE], V4L2_PREVIEW_DEVICE);
     mPostViewDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_POSTVIEW_DEVICE], V4L2_POSTVIEW_DEVICE);
@@ -170,6 +179,7 @@ status_t AtomISP::initDevice()
     }
 
     struct v4l2_capability aCap;
+    CLEAR(aCap);
     status = mMainDevice->queryCap(&aCap);
     if (status != NO_ERROR) {
         LOGE("Failed basic capability check failed!");
@@ -224,13 +234,18 @@ status_t AtomISP::init()
 
     status_t status = NO_ERROR;
 
-    Mutex::Autolock lock(sISPCountLock);
-    for (int i = 0; i < MAX_CAMERAS; i++) {
-        if (devName[i].in_use == false) {
-            mGroupIndex = i;
-            devName[i].in_use = true;
-            break;
+    if (mGroupIndex < 0) {
+        Mutex::Autolock lock(sISPCountLock);
+        for (int i = 0; i < MAX_CAMERAS; i++) {
+            if (devName[i].in_use == false) {
+                mGroupIndex = i;
+                devName[i].in_use = true;
+                break;
+            }
         }
+        LOG1("@%s: new mGroupIndex = %d", __FUNCTION__, mGroupIndex);
+    } else {
+        LOG1("@%s: using old mGroupIndex = %d", __FUNCTION__, mGroupIndex);
     }
 
     if (mGroupIndex < 0) {
@@ -240,6 +255,7 @@ status_t AtomISP::init()
 
     status = initDevice();
     if (status != NO_ERROR) {
+        LOGE("Device inititialize failure. Inititialize Atomisp failed.");
         return NO_INIT;
     }
 
@@ -1731,7 +1747,7 @@ status_t AtomISP::configureContinuousSOC()
             false);
     if (ret < 0) {
         status = UNKNOWN_ERROR;
-        LOG1("@%s error", __FUNCTION__);
+        LOGE("@%s: configureDevice failed!", __FUNCTION__);
         goto err;
     }
 

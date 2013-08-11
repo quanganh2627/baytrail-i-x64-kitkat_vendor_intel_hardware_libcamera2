@@ -1931,11 +1931,12 @@ status_t ControlThread::handleMessageTimeout()
         status = mISP->init();
         if (status != NO_ERROR) {
             LOGE("Error initializing ISP");
+        } else {
+            bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
+            status = startPreviewCore(videoMode);
+            if (status)
+                LOGE("%s: Restart Preview failed", __FUNCTION__);
         }
-        bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-        status = startPreviewCore(videoMode);
-        if (status)
-            LOGE("%s: Restart Preview failed", __FUNCTION__);
     } else {
         LOG2("%s: nothing to do", __FUNCTION__);
     }
