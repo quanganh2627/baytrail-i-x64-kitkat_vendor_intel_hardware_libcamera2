@@ -22,7 +22,6 @@
 #include "CallbacksThread.h"
 #include "PostProcThread.h"
 #include "IFaceDetectionListener.h"
-#include "FeatureData.h"
 #include "PlatformData.h"
 #include <system/camera.h>
 #include "AtomCP.h"
@@ -111,11 +110,11 @@ void PostProcThread::getDefaultParameters(CameraParameters *params, CameraParame
     params->set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW, MAX_FACES_DETECTABLE);
     intel_params->set(IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD, STRINGIFY(SMILE_THRESHOLD));
     intel_params->set(IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD, STRINGIFY(BLINK_THRESHOLD));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER, FeatureData::smileShutterSupported(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BLINK_SHUTTER, FeatureData::blinkShutterSupported(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_DETECTION, FeatureData::faceDetectionSupported(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_RECOGNITION, FeatureData::faceRecognitionSupported(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SCENE_DETECTION, FeatureData::sceneDetectionSupported(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER, PlatformData::supportedSmileShutter(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BLINK_SHUTTER, PlatformData::supportedBlinkShutter(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_DETECTION, PlatformData::supportedFaceDetection(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_RECOGNITION, PlatformData::supportedFaceRecognition(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SCENE_DETECTION, PlatformData::supportedSceneDetection(cameraId));
 
     mCameraOrientation = PlatformData::cameraOrientation(cameraId);
     // TODO: make sure that CameraId = 0 is main Camera always

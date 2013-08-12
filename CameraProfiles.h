@@ -79,6 +79,7 @@ private:
     void checkField(CameraProfiles *profiles, const char *name, const char **atts);
 
     void handleSensor(CameraProfiles *profiles, const char *name, const char **atts);
+    void handleFeature(CameraProfiles *profiles, const char *name, const char **atts);
     void handleCommon(CameraProfiles *profiles, const char *name, const char **atts);
 
     void dump(void);

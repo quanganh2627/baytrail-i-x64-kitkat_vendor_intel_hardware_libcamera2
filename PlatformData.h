@@ -623,6 +623,102 @@ class PlatformData {
     static bool isFixedFocusCamera(int cameraId);
 
     /**
+     * Hdr default value on current product
+     * \return the value of the hdr default value.
+     */
+    static const char* defaultHdr(int cameraId);
+
+    /**
+     * Hdr mode supported value
+     * \return the value of the Hdr supported.
+     */
+    static const char* supportedHdr(int cameraId);
+
+    /**
+     * UltraLowLight default value
+     * \return the value of the UltraLowLight default.
+     */
+    static const char* defaultUltraLowLight(int cameraId);
+
+    /**
+     * UltraLowLight mode supported value
+     * \return the value of the UltraLowLight supported.
+     */
+    static const char* supportedUltraLowLight(int cameraId);
+
+    /**
+     * FaceDetection default value
+     * \return the value of the FaceDetection default value.
+     */
+    static const char* defaultFaceDetection(int cameraId);
+
+    /**
+     * FaceDetection mode supported value
+     * \return the value of the FaceDetection supported.
+     */
+    static const char* supportedFaceDetection(int cameraId);
+
+    /**
+     * FaceRecognition default value
+     * \return the value of the FaceRecognition default value.
+     */
+    static const char* defaultFaceRecognition(int cameraId);
+
+    /**
+     * FaceRecognition mode supported value
+     * \return the value of the FaceRecognition supported.
+     */
+    static const char* supportedFaceRecognition(int cameraId);
+
+    /**
+     * SmileShutter default value
+     * \return the value of the SmileShutter default value.
+     */
+    static const char* defaultSmileShutter(int cameraId);
+
+    /**
+     * SmileShutter mode supported value
+     * \return the value of the SmileShutter supported.
+     */
+    static const char* supportedSmileShutter(int cameraId);
+
+    /**
+     * BlinkShutter default value
+     * \return the value of the BlinkShutter default value.
+     */
+    static const char* defaultBlinkShutter(int cameraId);
+
+    /**
+     * BlinkShutter supported value
+     * \return the value of the BlinkShutter supported.
+     */
+    static const char* supportedBlinkShutter(int cameraId);
+
+    /**
+     * Panorama default value
+     * \return the value of the Panorama default value.
+     */
+    static const char* defaultPanorama(int cameraId);
+
+    /**
+     * Panorama mode supported value
+     * \return the value of the Panorama supported.
+     */
+    static const char* supportedPanorama(int cameraId);
+
+    /**
+     * SceneDetection default value
+     * \return the value of the SceneDetection default value.
+     */
+    static const char* defaultSceneDetection(int cameraId);
+
+    /**
+     * SceneDetection supported value
+     * \return the value of the SceneDetection supported.
+     */
+    static const char* supportedSceneDetection(int cameraId);
+
+    /**
      * supported video sizes
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
@@ -970,6 +1066,22 @@ protected:
                 ,CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO
                 ,CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
             defaultFocusMode.appendFormat("%s", CameraParameters::FOCUS_MODE_AUTO);
+            defaultHdr = "off";
+            supportedHdr = "on,off";
+            defaultUltraLowLight = "off";
+            supportedUltraLowLight = "auto,on,off";
+            defaultFaceDetection = "off";
+            supportedFaceDetection = "on,off";
+            defaultFaceRecognition = "off";
+            supportedFaceRecognition = "on,off";
+            defaultSmileShutter = "off";
+            supportedSmileShutter = "on,off";
+            defaultBlinkShutter = "off";
+            supportedBlinkShutter = "on,off";
+            defaultPanorama = "off";
+            supportedPanorama = "on,off";
+            defaultSceneDetection = "off";
+            supportedSceneDetection = "on,off";
             synchronizeExposure = false;
         };
 
@@ -1056,6 +1168,23 @@ protected:
         // focus modes
         String8 supportedFocusModes;
         String8 defaultFocusMode;
+        // INTEL Extras
+        String8 defaultHdr;
+        String8 supportedHdr;
+        String8 defaultUltraLowLight;
+        String8 supportedUltraLowLight;
+        String8 defaultFaceDetection;
+        String8 supportedFaceDetection;
+        String8 defaultFaceRecognition;
+        String8 supportedFaceRecognition;
+        String8 defaultSmileShutter;
+        String8 supportedSmileShutter;
+        String8 defaultBlinkShutter;
+        String8 supportedBlinkShutter;
+        String8 defaultPanorama;
+        String8 supportedPanorama;
+        String8 defaultSceneDetection;
+        String8 supportedSceneDetection;
 
         // SensorSyncManager
         // TODO: implement more control for how to synchronize, e.g. into

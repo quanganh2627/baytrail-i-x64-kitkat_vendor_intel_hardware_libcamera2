@@ -23,7 +23,6 @@
 
 #include "PanoramaThread.h"
 #include "IntelParameters.h"
-#include "FeatureData.h"
 #include "LogHelper.h"
 #include "AtomCommon.h"
 #include "ICameraHwControls.h"
@@ -85,7 +84,7 @@ void PanoramaThread::getDefaultParameters(CameraParameters *intel_params, int ca
     // Set if Panorama is available or not.
     // panorama
     intel_params->set(IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE, CAM_RESO_STR(PANORAMA_DEF_PREV_WIDTH,PANORAMA_DEF_PREV_HEIGHT));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PANORAMA, FeatureData::panoramaSupported(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PANORAMA, PlatformData::supportedPanorama(cameraId));
     intel_params->set(IntelCameraParameters::KEY_PANORAMA_MAX_SNAPSHOT_COUNT, mPanoramaMaxSnapshotCount);
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PANORAMA_LIVE_PREVIEW_SIZES,
             CAM_RESO_STR(PANORAMA_MAX_LIVE_PREV_WIDTH,PANORAMA_MAX_LIVE_PREV_HEIGHT)
