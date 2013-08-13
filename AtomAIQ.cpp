@@ -175,6 +175,7 @@ status_t AtomAIQ::_init3A()
 
     if (mISPAdaptor == NULL) {
         LOGE("Ambiguous CSS version used: %d.%d", mISP->getCssMajorVersion(), mISP->getCssMinorVersion());
+        cameranvm_delete(aicNvm);
         return UNKNOWN_ERROR;
     }
 
