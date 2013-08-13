@@ -3820,6 +3820,11 @@ bool ControlThread::validateSize(int width, int height, Vector<Size> &supportedS
     if (width < 0 || height < 0)
         return false;
 
+    for (Vector<Size>::iterator it = supportedSizes.begin(); it != supportedSizes.end(); ++it)
+        if (width == it->width && height == it->height)
+            return true;
+
+    LOGW("WARNING: The Size %dx%d is not fully supported. Some issues might occur!", width, height);
     return true;
 }
 
