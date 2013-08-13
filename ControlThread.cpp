@@ -133,7 +133,6 @@ ControlThread::ControlThread(int cameraId) :
     ,mFocusAreas()
     ,mMeteringAreas()
     ,mVideoSnapshotrequested(0)
-    ,mPanoramaFinalizationPending(false)
     ,mEnableFocusCbAtStart(false)
     ,mEnableFocusMoveCbAtStart(false)
     ,mStillCaptureInProgress(false)
@@ -915,7 +914,6 @@ void ControlThread::panoramaFinalized(AtomBuffer *buff, AtomBuffer *pvBuff)
 status_t ControlThread::handleMessagePanoramaFinalize(MessagePanoramaFinalize *msg)
 {
     LOG1("@%s", __FUNCTION__);
-    mPanoramaFinalizationPending = false;
     status_t status = mCallbacksThread->requestTakePicture(false, false);
 
     if (status != OK)
@@ -2231,7 +2229,6 @@ status_t ControlThread::handleMessagePanoramaPicture() {
         mPanoramaThread->startPanoramaCapture();
         handleMessagePanoramaCaptureTrigger();
     } else {
-        mPanoramaFinalizationPending = true;
         mPanoramaThread->finalize();
     }
 
@@ -7277,8 +7274,6 @@ status_t ControlThread::stopPanorama()
     LOG1("@%s", __FUNCTION__);
 
     if (mPanoramaThread != 0) {
-        if (mPanoramaFinalizationPending)
-
         if (mPanoramaThread->getState() == PANORAMA_STOPPED)
             return NO_ERROR;
 
