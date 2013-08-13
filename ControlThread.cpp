@@ -6468,12 +6468,8 @@ status_t ControlThread::createAtom3A()
     status_t status = NO_ERROR;
 
     if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
-        HWControlGroup hwcg;
-
         if (mSensorSyncManager != NULL)
-            hwcg.mSensorCI = (IHWSensorControl*) mSensorSyncManager.get();
-        else
-            hwcg.mSensorCI = (IHWSensorControl*) mISP;
+            mHwcg.mSensorCI = (IHWSensorControl*) mSensorSyncManager.get();
 
         if(PlatformData::supportAIQ()) {
             m3AControls = new AtomAIQ(mHwcg);
