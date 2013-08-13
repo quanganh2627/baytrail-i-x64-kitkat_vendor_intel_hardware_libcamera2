@@ -246,7 +246,7 @@ void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void
                                  "movl       %0,  %%eax      \n\t"
                                  "movl       %1,  %%edx      \n\t"
                                  "movl       %2,  %%ecx      \n\t"
-                                 "1:     \n\t"
+                                 "1:     \n\t" // NEXT_16BYTES label, using local label to avoid redefine error.
                                  "movdqa (%%eax), %%xmm1     \n\t"
                                  "movdqa  %%xmm1, %%xmm0     \n\t"
                                  "psllw       $8, %%xmm1     \n\t"
@@ -267,7 +267,7 @@ void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void
                                  "movl       %0,  %%eax      \n\t"
                                  "movl       %1,  %%edx      \n\t"
                                  "movl       %2,  %%ecx      \n\t"
-                                 "1:     \n\t"
+                                 "1:     \n\t" // NEXT_16BYTES label, using local label to avoid redefine error.
                                  "lddqu  (%%eax), %%xmm1     \n\t"
                                  "movdqa  %%xmm1, %%xmm0     \n\t"
                                  "psllw       $8, %%xmm1     \n\t"
