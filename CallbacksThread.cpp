@@ -228,6 +228,8 @@ status_t CallbacksThread::flushPictures()
        camera_memory_t* b = it->data.compressedFrame.jpegBuff.buff;
        b->release(b);
        b = NULL;
+       mPictureDoneCallback->pictureDone(&it->data.compressedFrame.snapshotBuff,
+               &it->data.compressedFrame.postviewBuff);
     }
 
     if (mWaitRendering) {
@@ -238,6 +240,9 @@ status_t CallbacksThread::flushPictures()
             b->release(b);
             b = NULL;
             mPostponedJpegReady.id = (MessageId) -1;
+            mPictureDoneCallback->pictureDone(&it->data.compressedFrame.snapshotBuff,
+               &it->data.compressedFrame.postviewBuff);
+
         }
     }
 

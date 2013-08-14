@@ -387,6 +387,7 @@ private:
         AtomBuffer outPostviewBuf;
         CiUserBuffer ciBufIn;
         CiUserBuffer ciBufOut;
+        MessagePicture *inputBuffers;
     };
 
     struct StillPicParamsCtx {
@@ -472,6 +473,10 @@ private:
     status_t startFaceRecognition();
     status_t stopFaceRecognition();
     status_t handleMessageRelease();
+
+    status_t cancelPictureThread();
+    status_t cancelPostCaptureThread();
+    status_t cancelCapture();
 
     // main message function
     status_t waitForAndExecuteMessage();
