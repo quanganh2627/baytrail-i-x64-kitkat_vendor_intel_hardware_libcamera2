@@ -352,12 +352,15 @@ private:
     };
 
     // capture substates
+    // Note: keep in sync with helper array of string used for logging
+    // CaptureSubstateStrings
     enum CaptureSubState {
         STATE_CAPTURE_INIT,          // initial capture state
         STATE_CAPTURE_STARTED,       // when takePicture is received
         STATE_CAPTURE_ENCODING_DONE, // when encoding done callback is received
         STATE_CAPTURE_PICTURE_DONE,  // when picture done callback is received
-        STATE_CAPTURE_IDLE           // when preview is started again
+        STATE_CAPTURE_IDLE,          // when preview is started again
+        STATE_CAPTURE_LAST           // Fake state used to calculate number of states keep always last
     };
 
     /**
@@ -779,6 +782,10 @@ private:
                                          saved as mirrored. The image will be mirrored based on the
                                          camera sensor orientation and device orientation. */
     int mRecordingOrientation;      /*!< Device orientation at the start of video recording. */
+
+    /*----------- Debugging helpers --------------------*/
+    static const char* sCaptureSubstateStrings[STATE_CAPTURE_LAST];
+
 }; // class ControlThread
 
 }; // namespace android

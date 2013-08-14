@@ -90,6 +90,14 @@ const int MIN_PREVIEW_FPS = 11;
 // TODO: This value should be gotten from sensor dynamically, instead of hardcoding:
 const int MAX_PREVIEW_FPS = 30;
 
+const char* ControlThread::sCaptureSubstateStrings[]= {
+      "INIT",
+      "STARTED",
+      "ENCODING_DONE",
+      "PICTURE_DONE",
+      "IDLE"
+};
+
 ControlThread::ControlThread(int cameraId) :
     Thread(true) // callbacks may call into java
     ,mCameraId(cameraId)
@@ -810,8 +818,6 @@ status_t ControlThread::takePicture()
 
     PERFORMANCE_TRACES_TAKE_PICTURE_QUEUE();
 
-    // TODO: make panorama and smart shutter consistent with shooting modes,
-    //       snapshots recygling and canceling.
     if (mPanoramaThread->getState() != PANORAMA_STOPPED)
         msg.id = MESSAGE_ID_PANORAMA_PICTURE;
     else if (mPostProcThread->isSmartRunning()) // delaying capture for smart shutter case
@@ -1795,6 +1801,7 @@ status_t ControlThread::handleMessageStartPreview()
     }
 
     mStillCaptureInProgress = false;
+    LOG1("CaptureSubState %s -> IDLE", sCaptureSubstateStrings[mCaptureSubState]);
     mCaptureSubState = STATE_CAPTURE_IDLE;
 
     // Check if we previously disabled focus callbacks
@@ -2090,6 +2097,7 @@ status_t ControlThread::handleMessageStopRecording()
     if (mCaptureSubState == STATE_CAPTURE_STARTED) {
         // cancel video snapshot
         mPictureThread->flushBuffers();
+        LOG1("CaptureSubState %s -> IDLE (stopRecording)", sCaptureSubstateStrings[mCaptureSubState]);
         mCaptureSubState = STATE_CAPTURE_IDLE;
     }
     // clear reserved lists
@@ -2216,6 +2224,8 @@ status_t ControlThread::handleMessagePanoramaPicture() {
     LOG1("@%s:", __FUNCTION__);
     status_t status = NO_ERROR;
     if (mPanoramaThread->getState() == PANORAMA_STARTED) {
+        LOG1("CaptureSubState %s -> STARTED (panorama)", sCaptureSubstateStrings[mCaptureSubState]);
+        mCaptureSubState = STATE_CAPTURE_STARTED;
         mPanoramaThread->startPanoramaCapture();
         handleMessagePanoramaCaptureTrigger();
     } else {
@@ -2277,6 +2287,7 @@ status_t ControlThread::handleMessageTakePicture() {
     status_t status = NO_ERROR;
 
     mShootingMode = selectShootingMode();
+    LOG1("CaptureSubState %s -> STARTED ", sCaptureSubstateStrings[mCaptureSubState]);
     mCaptureSubState = STATE_CAPTURE_STARTED;
 
     switch(mShootingMode) {
@@ -2310,8 +2321,10 @@ status_t ControlThread::handleMessageTakePicture() {
             break;
     }
 
-    if (status != OK)
+    if (status != OK) {
+        LOG2("CaptureSubState = IDLE (error)");
         mCaptureSubState = STATE_CAPTURE_IDLE;
+    }
 
     return status;
 }
@@ -3452,6 +3465,8 @@ status_t ControlThread::handleMessageTakeSmartShutterPicture()
         mPostProcThread->resetSmartCaptureTrigger();
         status = handleMessageTakePicture();
     } else {   //normal smart shutter capture
+        LOG1("CaptureSubState %s -> STARTED (smart shutter)", sCaptureSubstateStrings[mCaptureSubState]);
+        mCaptureSubState = STATE_CAPTURE_STARTED;
         mPostProcThread->captureOnTrigger();
         mState = selectPreviewMode(mParameters);
     }
@@ -3510,7 +3525,7 @@ status_t ControlThread::cancelPostCaptureThread()
  */
 status_t ControlThread::cancelCapture()
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s: CaptureSubState %d", __FUNCTION__, mCaptureSubState);
     status_t status = NO_ERROR;
 
     if (mCaptureSubState == STATE_CAPTURE_IDLE) {
@@ -3528,6 +3543,7 @@ status_t ControlThread::cancelCapture()
         status |= cancelPictureThread();
     }
     mStillCaptureInProgress = false;
+    LOG2("CaptureSubState %d -> IDLE (cancelCapture)", mCaptureSubState);
     mCaptureSubState = STATE_CAPTURE_IDLE;
     return status;
 }
@@ -3736,8 +3752,10 @@ AtomBuffer* ControlThread::findVideoSnapshotBuffer(int index)
 status_t ControlThread::handleMessageEncodingDone(MessagePicture *msg)
 {
     LOG1("@%s", __FUNCTION__);
-    // message content is provided for future use; not needed yet
+
+    LOG1("CaptureSubState %s -> ENCODING DONE", sCaptureSubstateStrings[mCaptureSubState]);
     mCaptureSubState = STATE_CAPTURE_ENCODING_DONE;
+
     return OK;
 }
 
@@ -3745,8 +3763,6 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-
-    mCaptureSubState = STATE_CAPTURE_PICTURE_DONE;
 
     if (msg->snapshotBuf.type == ATOM_BUFFER_PANORAMA) {
         // panorama pictures are special, they use the panorama engine memory.
@@ -3783,10 +3799,18 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
                     // drop from reserved list
                     mVideoSnapshotBuffers.erase(videoBuffer);
                 }
+
+                if (mVideoSnapshotBuffers.isEmpty()) {
+                    LOG1("CaptureSubState %s -> IDLE (videoSnapshot)", sCaptureSubstateStrings[mCaptureSubState]);
+                    mCaptureSubState = STATE_CAPTURE_IDLE;
+                }
             }
             return status;
         }
     } else if (mState == STATE_CAPTURE || mState == STATE_CONTINUOUS_CAPTURE) {
+
+        LOG1("CaptureSubState %s -> PICTURE DONE", sCaptureSubstateStrings[mCaptureSubState]);
+        mCaptureSubState = STATE_CAPTURE_PICTURE_DONE;
 
         /**
          * Snapshot buffer recycle
@@ -6559,6 +6583,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     ProcessOverlayEnable(&oldParams, &newParams);
 
     if (needRestartPreview == true) {
+
         if (msg->stopPreviewRequest) {
             if (mState != STATE_CONTINUOUS_CAPTURE)
                 LOGD("%s: Invalid stopPreviewRequest!", __FUNCTION__);
