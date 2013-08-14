@@ -535,6 +535,10 @@ void ControlThread::deinit()
         delete mCallbacks;
         mCallbacks = NULL;
     }
+    List<Message>::iterator it = mPostponedMessages.begin();
+    for ( ;it != mPostponedMessages.end(); it++)
+        if (it->id == MESSAGE_ID_SET_PARAMETERS)
+            free(it->data.setParameters.params); // was strdupped, needs free
     mPostponedMessages.clear();
     LOG1("@%s- complete", __FUNCTION__);
 }
@@ -3743,19 +3747,6 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
     status_t status = NO_ERROR;
 
     mCaptureSubState = STATE_CAPTURE_PICTURE_DONE;
-    // handle postponed setparameters which may have occured during capture
-    List<Message>::iterator it = mPostponedMessages.begin();
-
-    while (it != mPostponedMessages.end()) {
-        if (it->id == MESSAGE_ID_SET_PARAMETERS) {
-            LOG1("@%s handling postponed setparameter message", __FUNCTION__);
-            handleMessageSetParameters(&it->data.setParameters);
-            free(it->data.setParameters.params); // was strdupped, needs free
-            it = mPostponedMessages.erase(it); // returns pointer to next item in list
-        } else {
-            it++;
-        }
-    }
 
     if (msg->snapshotBuf.type == ATOM_BUFFER_PANORAMA) {
         // panorama pictures are special, they use the panorama engine memory.
@@ -3836,6 +3827,21 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
 
     } else {
         LOGW("Received a picture Done during invalid state %d; buf id:%d, ptr=%p", mState, msg->snapshotBuf.id, msg->snapshotBuf.buff);
+    }
+
+    // handle postponed setparameters which may have occured during capture
+    // TODO: ensure that this goes correctly with e.g ULL recycling more than
+    //       one buffers before capture process is done
+    List<Message>::iterator it = mPostponedMessages.begin();
+    while (it != mPostponedMessages.end()) {
+        if (it->id == MESSAGE_ID_SET_PARAMETERS) {
+            LOG1("@%s handling postponed setparameter message", __FUNCTION__);
+            handleMessageSetParameters(&it->data.setParameters);
+            free(it->data.setParameters.params); // was strdupped, needs free
+            it = mPostponedMessages.erase(it); // returns pointer to next item in list
+        } else {
+            it++;
+        }
     }
 
     return status;
