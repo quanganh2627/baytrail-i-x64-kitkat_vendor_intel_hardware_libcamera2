@@ -1810,7 +1810,7 @@ status_t AtomAIQ::runAeMain()
                 err = ia_aiq_ae_run(m3aState.ia_aiq_handle, &input_parameters, &new_ae_results);
                 // Use only exposure from manual run
                 // TODO: need AIQ AEC to provide a way for plain re-calculation
-                new_ae_results->flash = restore_results->flash;
+                *new_ae_results->flash = *restore_results->flash;
             } else {
                 LOGE("Failed to restore AE results");
                 err = ia_aiq_ae_run(m3aState.ia_aiq_handle, &mAeInputParameters, &new_ae_results);
