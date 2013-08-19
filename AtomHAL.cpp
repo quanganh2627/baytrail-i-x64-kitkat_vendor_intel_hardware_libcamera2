@@ -79,6 +79,7 @@ camera_module_t HAL_MODULE_INFO_SYM = {
     },
     get_number_of_cameras: ATOM_GetNumberOfCameras,
     get_camera_info: ATOM_GetCameraInfo,
+    set_callbacks: NULL /* FYI: CAMERA_MODULE_API_VERSION_1_0, CAMERA_MODULE_API_VERSION_2_0: Not provided by HAL module. Framework may not call this function.not used with HAL v1 */
 };
 
 ///////////////////////////////////////////////////////////////////////////////
