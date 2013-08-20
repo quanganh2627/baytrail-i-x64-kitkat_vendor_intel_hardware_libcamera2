@@ -1174,7 +1174,7 @@ status_t ControlThread::configureContinuousRingBuffer()
     if (mULL->isActive() || mBurstLength > 1)
         cfg.numCaptures = MAX(mULL->MAX_INPUT_BUFFERS, mBurstLength);
     else
-        cfg.numCaptures = 1;
+        cfg.numCaptures = ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0))? 3 : 1;
 
     cfg.offset = -(mISP->shutterLagZeroAlign());
     cfg.skip = 0;
