@@ -814,14 +814,14 @@ status_t AtomAIQ::set3AColorEffect(const char *effect)
 
 void AtomAIQ::setPublicAeMode(AeMode mode)
 {
-    LOG2("@%s, AeMode: %d", __FUNCTION__, mode);
-    mAeMode = mode;
+    LOG2("@%s, mPublicAeMode: %d", __FUNCTION__, mode);
+    mPublicAeMode = mode;
 }
 
 AeMode AtomAIQ::getPublicAeMode()
 {
-    LOG2("@%s, AeMode: %d", __FUNCTION__, mAeMode);
-    return mAeMode;
+    LOG2("@%s, mPublicAeMode: %d", __FUNCTION__, mPublicAeMode);
+    return mPublicAeMode;
 }
 
 void AtomAIQ::setPublicAfMode(AfMode mode)

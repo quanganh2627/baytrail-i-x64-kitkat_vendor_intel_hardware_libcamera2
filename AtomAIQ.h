@@ -459,6 +459,7 @@ private:
     ia_aiq_ae_input_params mAeInputParameters;
     ia_aiq_exposure_sensor_descriptor mAeSensorDescriptor;
     AeMode mAeMode;
+    AeMode mPublicAeMode;
     SceneMode mAeSceneMode;
     FlashMode mAeFlashMode;
     ae_state mAeState;
