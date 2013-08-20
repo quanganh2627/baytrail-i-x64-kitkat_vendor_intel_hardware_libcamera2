@@ -28,6 +28,8 @@ PostCaptureThread::PostCaptureThread(IPostCaptureProcessObserver *anObserver):
     ,mMessageQueue("PostCaptureThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
     ,mObserver(anObserver)
+    ,mCurrentTask(NULL)
+    ,mBusy(false)
 {
 
 }
@@ -35,6 +37,13 @@ PostCaptureThread::PostCaptureThread(IPostCaptureProcessObserver *anObserver):
 PostCaptureThread::~PostCaptureThread()
 {
 
+}
+
+bool PostCaptureThread::isBusy()
+{
+    LOG1("@%s", __FUNCTION__);
+    Mutex::Autolock _l(mBusyMutex);
+    return mBusy;
 }
 
 status_t PostCaptureThread::handleExit()
@@ -61,15 +70,40 @@ status_t PostCaptureThread::handleProcessItem(MessageProcessItem &msg)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    IPostCaptureProcessItem *processAlgo = msg.item;
 
-    status = processAlgo->process();
+    { // define scope for the auto lock
+        Mutex::Autolock _l(mBusyMutex);
+        mBusy = true;
+        mCurrentTask = msg.item;
+    }
 
-    mObserver->postCaptureProcesssingDone(processAlgo, status);
+    status = mCurrentTask->process();
 
+    mObserver->postCaptureProcesssingDone(mCurrentTask, status);
+
+    { // define scope for the auto lock
+        Mutex::Autolock _l(mBusyMutex);
+        mBusy = false;
+        mCurrentTask = NULL;
+    }
     return status;
 }
 
+/**
+ * Cancels the ongoing processing item
+ *
+ * This method runs in the context of the caller. It uses  the thread-safe method
+ * cancelProcess  and then it sends a synchronous message to the PostCaptureThread
+ * Q to make sure the current processing is completely cancel. It is the
+ * ControlThread responsibility to cleanup the messages this may trigger
+ * (i.e. MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE)
+ *
+ * TODO: If in the future we allow more than 1 task in the Q we should remove any
+ * new requests for processing here.
+ *
+ * \param item: Pointer to object of class IPostCaptureProcessItem to cancel
+ *              if NULL is provided the current task is canceled.
+ */
 status_t PostCaptureThread::cancelProcessingItem(IPostCaptureProcessItem* item)
 {
     LOG1("@%s", __FUNCTION__);
@@ -79,11 +113,13 @@ status_t PostCaptureThread::cancelProcessingItem(IPostCaptureProcessItem* item)
 
     /**
      * Before sending the message to the thread we already warn the processing
-     * item class that it has to cancel. This call should be thread safe.
+     * item class that it has to cancel. This call has to be thread safe.
      *
      */
     if (item != NULL)
         item->cancelProcess();
+    else if (mCurrentTask != NULL)
+        mCurrentTask->cancelProcess();
 
     /**
      * Now we can send the message to make sure processing completes. This

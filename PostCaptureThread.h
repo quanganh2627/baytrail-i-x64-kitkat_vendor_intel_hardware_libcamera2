@@ -87,7 +87,8 @@ public:
     virtual ~PostCaptureThread();
 
     status_t sendProcessItem(IPostCaptureProcessItem* item);
-    status_t cancelProcessingItem(IPostCaptureProcessItem* item);
+    status_t cancelProcessingItem(IPostCaptureProcessItem* item = NULL);
+    bool isBusy();
     // Thread class overrides
     status_t requestExitAndWait();
 
@@ -141,6 +142,11 @@ private:
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
     IPostCaptureProcessObserver *mObserver;
+    IPostCaptureProcessItem     *mCurrentTask;
+
+    bool mBusy;     /*!< Flag to signal and ongoing process is currently running
+                         queries to this boolean must be protected with mutex */
+    Mutex mBusyMutex;
 
 };
 }  // namespace android
