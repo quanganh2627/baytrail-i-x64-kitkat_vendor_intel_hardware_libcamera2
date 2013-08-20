@@ -21,6 +21,7 @@
 #include <utils/threads.h>
 #include <time.h>
 #include "MessageQueue.h"
+#include "AtomCommon.h"
 
 namespace android {
 /**
@@ -53,7 +54,7 @@ class IPostCaptureProcessObserver {
 public:
     IPostCaptureProcessObserver() {}
     virtual ~IPostCaptureProcessObserver() {}
-    virtual void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status) = 0;
+    virtual void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status, int retries = MAX_MSG_RETRIES) = 0;
 };
 
 
