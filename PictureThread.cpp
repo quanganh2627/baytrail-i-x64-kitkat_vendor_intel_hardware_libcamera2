@@ -760,6 +760,9 @@ void PictureThread::encodeExif(AtomBuffer *thumbBuf)
          mThumbBuf.height < thumbBuf->height ||
          mThumbBuf.width < thumbBuf->stride)) {
         int srcHeighByThumbAspect = thumbBuf->width * mThumbBuf.height / mThumbBuf.width;
+        mThumbBuf.format = thumbBuf->format;
+        mThumbBuf.size = frameSize(mThumbBuf.format, mThumbBuf.width, mThumbBuf.height);
+
         LOG1("Downscaling postview2thumbnail : %dx%d (%d) -> %dx%d (%d)",
                 thumbBuf->width, thumbBuf->height, thumbBuf->stride,
                 mThumbBuf.width, mThumbBuf.height, mThumbBuf.stride);
