@@ -343,6 +343,17 @@ status_t AtomAIQ::setAfWindow(const CameraWindow *window)
             window->y_bottom,
             window->weight);
 
+    // In case of null-window, the HAL can decide which metering is used. Use "auto".
+    if (window[0].x_left == window[0].x_right && window[0].y_top == window[0].y_bottom &&
+        window[0].x_left == 0 && window[0].y_top == 0) {
+            setAfMeteringMode(ia_aiq_af_metering_mode_auto);
+            LOGD("LASSI: Af window NULL, metering mode auto");
+    } else {
+        // When window is set, obey the coordinates. Use touch.
+        setAfMeteringMode(ia_aiq_af_metering_mode_touch);
+        LOGD("LASSI: Af window not NULL, metering mode touch");
+    }
+
     mAfInputParameters.focus_rect->left = window[0].x_left;
     mAfInputParameters.focus_rect->top = window[0].y_top;
     mAfInputParameters.focus_rect->width = window[0].x_right - window[0].x_left;
@@ -356,6 +367,14 @@ status_t AtomAIQ::setAfWindow(const CameraWindow *window)
 status_t AtomAIQ::setAfWindows(const CameraWindow *windows, size_t numWindows)
 {
     LOG2("@%s: windows = %p, num = %u", __FUNCTION__, windows, numWindows);
+
+    // If no windows given, equal to null-window. HAL meters as it wants -> "auto".
+    if (numWindows == 0) {
+        setAfMeteringMode(ia_aiq_af_metering_mode_auto);
+        return NO_ERROR;
+    }
+
+    // at the moment we only support one window
     return setAfWindow(windows);
 }
 
@@ -393,7 +412,7 @@ status_t AtomAIQ::setAeSceneMode(SceneMode mode)
         mAwbInputParameters.manual_cct_range = &m3aState.cct_range;
         break;
     default:
-        LOGE("Get: invalid AE scene mode!");
+        LOGE("Get: invalid AE scene mode (%d).", mode);
     }
     return NO_ERROR;
 }
@@ -467,17 +486,12 @@ status_t AtomAIQ::setAfMode(AfMode mode)
         break;
     case CAM_AF_MODE_AUTO:
         // we use hyperfocal default lens position in hyperfocal mode
-        setAfFocusMode(ia_aiq_af_operation_mode_hyperfocal);
+        setAfFocusMode(ia_aiq_af_operation_mode_manual);
         setAfFocusRange(ia_aiq_af_range_extended);
         setAfMeteringMode(ia_aiq_af_metering_mode_auto);
         break;
-    case CAM_AF_MODE_TOUCH:
-        setAfFocusMode(ia_aiq_af_operation_mode_auto);
-        setAfFocusRange(ia_aiq_af_range_extended);
-        setAfMeteringMode(ia_aiq_af_metering_mode_touch);
-        break;
     case CAM_AF_MODE_MACRO:
-        setAfFocusMode(ia_aiq_af_operation_mode_auto);
+        setAfFocusMode(ia_aiq_af_operation_mode_manual);
         setAfFocusRange(ia_aiq_af_range_macro);
         setAfMeteringMode(ia_aiq_af_metering_mode_auto);
         break;
@@ -846,11 +860,11 @@ status_t AtomAIQ::startStillAf()
 status_t AtomAIQ::stopStillAf()
 {
     LOG1("@%s", __FUNCTION__);
-    if (mAfMode == CAM_AF_MODE_AUTO) {
+    if (mAfMode == CAM_AF_MODE_AUTO || mAfMode == CAM_AF_MODE_MACRO) {
         setAfFocusMode(ia_aiq_af_operation_mode_manual);
     }
-    mAfInputParameters.frame_use = m3aState.frame_use;
 
+    mAfInputParameters.frame_use = m3aState.frame_use;
     mStillAfStart = 0;
     return NO_ERROR;
 }

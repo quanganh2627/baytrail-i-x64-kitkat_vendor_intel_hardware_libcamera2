@@ -1726,14 +1726,7 @@ status_t ControlThread::stopCapture()
 
     if (mBracketManager->getBracketMode() == BRACKET_FOCUS) {
         AfMode publicAfMode = m3AControls->getPublicAfMode();
-        if (!mFocusAreas.isEmpty() &&
-            (publicAfMode == CAM_AF_MODE_AUTO ||
-             publicAfMode == CAM_AF_MODE_CONTINUOUS ||
-             publicAfMode == CAM_AF_MODE_MACRO)) {
-            m3AControls->setAfMode(CAM_AF_MODE_TOUCH);
-        } else {
-            m3AControls->setAfMode(publicAfMode);
-        }
+        m3AControls->setAfMode(publicAfMode);
     }
 
     if (mHdr.enabled || mHdr.inProgress) {
@@ -5467,6 +5460,7 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
 
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, CameraParameters::KEY_FOCUS_MODE);
     AfMode afMode = CAM_AF_MODE_NOT_SET;
+    AfMode curAfMode = CAM_AF_MODE_NOT_SET;
 
     if (!newVal.isEmpty()) {
         if (newVal == CameraParameters::FOCUS_MODE_AUTO) {
@@ -5491,18 +5485,17 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             mPostProcThread->enableFaceAAA(AAA_FLAG_AF);
         }
 
-        status = m3AControls->setAfEnabled(true);
-        if (status == NO_ERROR) {
+        curAfMode = m3AControls->getAfMode();
+        m3AControls->setPublicAfMode(afMode);
+
+        if (status == NO_ERROR && curAfMode != afMode) {
+            // See if we have to change the actual mode (it could be correct already)
             status = m3AControls->setAfMode(afMode);
         }
-        if (status == NO_ERROR) {
-            m3AControls->setPublicAfMode(afMode);
-            LOG1("Changed: %s -> %s", CameraParameters::KEY_FOCUS_MODE, newVal.string());
-        }
+        LOG1("Changed: %s -> %s", CameraParameters::KEY_FOCUS_MODE, newVal.string());
     }
 
     if (!mFaceDetectionActive) {
-
         AfMode publicAfMode = m3AControls->getPublicAfMode();
         // Based on Google specs, the focus area is effective only for modes:
         // (framework side constants:) FOCUS_MODE_AUTO, FOCUS_MODE_MACRO, FOCUS_MODE_CONTINUOUS_VIDEO
@@ -5511,36 +5504,22 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             publicAfMode == CAM_AF_MODE_CONTINUOUS ||
             publicAfMode == CAM_AF_MODE_MACRO) {
 
-            afMode = publicAfMode;
+                afMode = publicAfMode;
 
-            // See if any focus areas are set.
-            // NOTE: CAM_AF_MODE_TOUCH is for HAL internal use only
-            if (!mFocusAreas.isEmpty()) {
-                LOG1("Focus areas set, using AF mode \"touch \"");
-                afMode = CAM_AF_MODE_TOUCH;
-            }
-
-            // See if we have to change the actual mode (it could be correct already)
-            AfMode curAfMode = m3AControls->getAfMode();
-            if (afMode != curAfMode) {
-                m3AControls->setAfMode(afMode);
-            }
-
-            // If in touch mode, we set the focus windows now
-            if (afMode == CAM_AF_MODE_TOUCH) {
                 size_t winCount(mFocusAreas.numOfAreas());
                 CameraWindow *focusWindows = new CameraWindow[winCount];
                 mFocusAreas.toWindows(focusWindows);
                 convertAfWindows(focusWindows, winCount);
+
                 if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
                     // If focus windows couldn't be set, previous AF mode is used
-                    // (AfSetWindowMulti has its own safety checks for coordinates)
+                    curAfMode = m3AControls->getAfMode();
                     LOGE("Could not set AF windows. Resetting the AF back to %d", curAfMode);
                     m3AControls->setAfMode(curAfMode);
                 }
+
                 delete[] focusWindows;
                 focusWindows = NULL;
-            }
         }
     }
 

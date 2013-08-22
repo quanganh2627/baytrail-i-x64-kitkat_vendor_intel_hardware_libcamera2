@@ -487,13 +487,8 @@ status_t AtomAAA::setAfMode(AfMode mode)
         ia_3a_af_set_focus_range(ia_3a_af_range_full);
         ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_auto);
         break;
-    case CAM_AF_MODE_TOUCH:
-        ia_3a_af_set_focus_mode(ia_3a_af_mode_auto);
-        ia_3a_af_set_focus_range(ia_3a_af_range_full);
-        ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_spot);
-        break;
     case CAM_AF_MODE_MACRO:
-        ia_3a_af_set_focus_mode(ia_3a_af_mode_auto);
+        ia_3a_af_set_focus_mode(ia_3a_af_mode_manual);
         ia_3a_af_set_focus_range(ia_3a_af_range_macro);
         ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_auto);
         break;
@@ -873,6 +868,13 @@ status_t AtomAAA::setAfWindows(const CameraWindow *windows, size_t numWindows)
     Mutex::Autolock lock(m3aLock);
     LOG2("@%s: windows = %p, num = %u", __FUNCTION__, windows, numWindows);
 
+    if (numWindows > 0) {
+        ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_spot);
+    } else {
+        // No windows set, handle as null-window -> "auto"
+        ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_auto);
+    }
+
     for (size_t i = 0; i < numWindows; ++i) {
         LOG2("@%s: window(%u) = (%d,%d,%d,%d,%d)", __FUNCTION__, i,
              windows[i].x_left,
@@ -891,6 +893,7 @@ status_t AtomAAA::startStillAf()
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
 
+    // We have to switch AF mode to auto in order for the AF sequence to run.
     ia_3a_af_set_focus_mode(ia_3a_af_mode_auto);
     ia_3a_af_still_start();
     mStillAfStart = systemTime();
@@ -903,7 +906,10 @@ status_t AtomAAA::stopStillAf()
     LOG1("@%s", __FUNCTION__);
 
     ia_3a_af_still_stop();
-    if (mAfMode == CAM_AF_MODE_AUTO) {
+    // AS the IA 3A library seems to forget that it was in manual mode
+    // after AF sequence was run once, force the state back to manual in
+    // the focus modes utilizing manual mode.
+    if (mAfMode == CAM_AF_MODE_AUTO || mAfMode == CAM_AF_MODE_MACRO) {
         ia_3a_af_set_focus_mode(ia_3a_af_mode_manual);
     }
     mStillAfStart = 0;
