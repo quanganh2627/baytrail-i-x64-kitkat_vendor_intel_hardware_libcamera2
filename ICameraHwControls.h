@@ -282,6 +282,7 @@ public:
     virtual int getAeFlashMode(v4l2_flash_led_mode * mode) = 0;
 
     virtual void getMotorData(sensorPrivateData *sensor_data) = 0;
+    virtual int getRawFormat() = 0;
 };
 
 /* Abstraction of HW flash control interface for 3A support */

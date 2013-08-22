@@ -52,42 +52,43 @@ public:
     status_t init();
     status_t config(unsigned int fifoDepth, unsigned int gainDelayFrames, unsigned int gainDefaultValue = 0);
 
-    // IIQSensorControl overloads
-    virtual const char * getSensorName(void) { return mSensorCI->getSensorName(); };
-    virtual float getFrameRate() const { return mSensorCI->getFrameRate(); };
-    virtual unsigned int getExposureDelay() { return mExposureLag; };
+    // IHWSensorControl overloads
+    virtual const char * getSensorName(void) { return mSensorCI->getSensorName(); }
+    virtual float getFrameRate() const { return mSensorCI->getFrameRate(); }
+    virtual unsigned int getExposureDelay() { return mExposureLag; }
     virtual int setExposure(struct atomisp_exposure *);
 
-    virtual status_t getSensorParams(SensorParams * sp) { return mSensorCI->getSensorParams(sp); };
+    virtual status_t getSensorParams(SensorParams * sp) { return mSensorCI->getSensorParams(sp); }
 
-    virtual void getSensorData(sensorPrivateData *sensor_data) { return mSensorCI->getSensorData(sensor_data); };
-    virtual int  getModeInfo(struct atomisp_sensor_mode_data *mode_data) { return mSensorCI->getModeInfo(mode_data); };
-    virtual int  getExposureTime(int *exposure_time) { return mSensorCI->getExposureTime(exposure_time); };
-    virtual int  getAperture(int *aperture) { return mSensorCI->getAperture(aperture); };
-    virtual int  getFNumber(unsigned short  *fnum_num, unsigned short *fnum_denom) { return mSensorCI->getFNumber(fnum_num, fnum_denom); };
-    virtual int setExposureTime(int time) { return mSensorCI->setExposureTime(time); };
-    virtual int setExposureMode(v4l2_exposure_auto_type type) { return mSensorCI->setExposureMode(type); };
-    virtual int getExposureMode(v4l2_exposure_auto_type * type) { return mSensorCI->getExposureMode(type); };
-    virtual int setExposureBias(int bias) { return mSensorCI->setExposureBias(bias); };
-    virtual int getExposureBias(int * bias) { return mSensorCI->getExposureBias(bias); };
-    virtual int setSceneMode(v4l2_scene_mode mode) { return mSensorCI->setSceneMode(mode); };
-    virtual int getSceneMode(v4l2_scene_mode * mode) { return mSensorCI->getSceneMode(mode); };
-    virtual int setWhiteBalance(v4l2_auto_n_preset_white_balance mode) { return mSensorCI->setWhiteBalance(mode); };
-    virtual int getWhiteBalance(v4l2_auto_n_preset_white_balance * mode) { return mSensorCI->getWhiteBalance(mode); };
-    virtual int setIso(int iso) { return mSensorCI->setIso(iso); };
-    virtual int getIso(int * iso) { return mSensorCI->getIso(iso); };
-    virtual int setAeMeteringMode(v4l2_exposure_metering mode) { return mSensorCI->setAeMeteringMode(mode); };
-    virtual int getAeMeteringMode(v4l2_exposure_metering * mode) { return mSensorCI->getAeMeteringMode(mode); };
-    virtual int setAeFlickerMode(v4l2_power_line_frequency mode) { return mSensorCI->setAeFlickerMode(mode); };
-    virtual int setAfMode(v4l2_auto_focus_range mode) { return mSensorCI->setAfMode(mode); };
-    virtual int getAfMode(v4l2_auto_focus_range * mode) { return mSensorCI->getAfMode(mode); };
-    virtual int setAfEnabled(bool enable) { return mSensorCI->setAfEnabled(enable); };
-    virtual int set3ALock(int aaaLock) { return mSensorCI->set3ALock(aaaLock); };
-    virtual int get3ALock(int * aaaLock) { return mSensorCI->get3ALock(aaaLock); };
-    virtual int setAeFlashMode(v4l2_flash_led_mode mode) { return mSensorCI->setAeFlashMode(mode); };
-    virtual int getAeFlashMode(v4l2_flash_led_mode * mode) { return mSensorCI->getAeFlashMode(mode); };
+    virtual void getSensorData(sensorPrivateData *sensor_data) { return mSensorCI->getSensorData(sensor_data); }
+    virtual int  getModeInfo(struct atomisp_sensor_mode_data *mode_data) { return mSensorCI->getModeInfo(mode_data); }
+    virtual int  getExposureTime(int *exposure_time) { return mSensorCI->getExposureTime(exposure_time); }
+    virtual int  getAperture(int *aperture) { return mSensorCI->getAperture(aperture); }
+    virtual int  getFNumber(unsigned short  *fnum_num, unsigned short *fnum_denom) { return mSensorCI->getFNumber(fnum_num, fnum_denom); }
+    virtual int setExposureTime(int time) { return mSensorCI->setExposureTime(time); }
+    virtual int setExposureMode(v4l2_exposure_auto_type type) { return mSensorCI->setExposureMode(type); }
+    virtual int getExposureMode(v4l2_exposure_auto_type * type) { return mSensorCI->getExposureMode(type); }
+    virtual int setExposureBias(int bias) { return mSensorCI->setExposureBias(bias); }
+    virtual int getExposureBias(int * bias) { return mSensorCI->getExposureBias(bias); }
+    virtual int setSceneMode(v4l2_scene_mode mode) { return mSensorCI->setSceneMode(mode); }
+    virtual int getSceneMode(v4l2_scene_mode * mode) { return mSensorCI->getSceneMode(mode); }
+    virtual int setWhiteBalance(v4l2_auto_n_preset_white_balance mode) { return mSensorCI->setWhiteBalance(mode); }
+    virtual int getWhiteBalance(v4l2_auto_n_preset_white_balance * mode) { return mSensorCI->getWhiteBalance(mode); }
+    virtual int setIso(int iso) { return mSensorCI->setIso(iso); }
+    virtual int getIso(int * iso) { return mSensorCI->getIso(iso); }
+    virtual int setAeMeteringMode(v4l2_exposure_metering mode) { return mSensorCI->setAeMeteringMode(mode); }
+    virtual int getAeMeteringMode(v4l2_exposure_metering * mode) { return mSensorCI->getAeMeteringMode(mode); }
+    virtual int setAeFlickerMode(v4l2_power_line_frequency mode) { return mSensorCI->setAeFlickerMode(mode); }
+    virtual int setAfMode(v4l2_auto_focus_range mode) { return mSensorCI->setAfMode(mode); }
+    virtual int getAfMode(v4l2_auto_focus_range * mode) { return mSensorCI->getAfMode(mode); }
+    virtual int setAfEnabled(bool enable) { return mSensorCI->setAfEnabled(enable); }
+    virtual int set3ALock(int aaaLock) { return mSensorCI->set3ALock(aaaLock); }
+    virtual int get3ALock(int * aaaLock) { return mSensorCI->get3ALock(aaaLock); }
+    virtual int setAeFlashMode(v4l2_flash_led_mode mode) { return mSensorCI->setAeFlashMode(mode); }
+    virtual int getAeFlashMode(v4l2_flash_led_mode * mode) { return mSensorCI->getAeFlashMode(mode); }
+    virtual int getRawFormat() { return mSensorCI->getRawFormat(); }
 
-    virtual void getMotorData(sensorPrivateData *sensor_data) { return mSensorCI->getMotorData(sensor_data); };
+    virtual void getMotorData(sensorPrivateData *sensor_data) { return mSensorCI->getMotorData(sensor_data); }
 
     // IAtomIspObserver overloads
     virtual bool atomIspNotify(Message *msg, const ObserverState state);
