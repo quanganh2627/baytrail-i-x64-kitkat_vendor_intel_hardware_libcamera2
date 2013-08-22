@@ -493,11 +493,6 @@ status_t AtomAIQ::setAfMode(AfMode mode)
         setAfFocusMode(ia_aiq_af_operation_mode_manual);
         setAfFocusRange(ia_aiq_af_range_extended);
         break;
-    case CAM_AF_MODE_FACE:
-        setAfFocusMode(ia_aiq_af_operation_mode_auto);
-        setAfFocusRange(ia_aiq_af_range_normal);
-        setAfMeteringMode(ia_aiq_af_metering_mode_touch);
-        break;
     default:
         LOGE("Set: invalid AF mode: %d. Using AUTO!", mode);
         mode = CAM_AF_MODE_AUTO;
