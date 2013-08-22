@@ -40,7 +40,8 @@ namespace android {
 #define MAX_V4L2_BUFFERS    MAX_BURST_BUFFERS
 #define MAX_CAMERA_NODES    MAX_CAMERAS + 1
 
-#define MAX_DEVICE_NODE_CHAR_NR	32
+#define MAX_DEVICE_NODE_CHAR_NR  32
+
 /**
  *  Minimum resolution of video frames to have DVS ON.
  *  Under this it will be disabled
@@ -237,6 +238,7 @@ public:
     int get3ALock(int * aaaLock);
     int setAeFlashMode(v4l2_flash_led_mode mode);
     int getAeFlashMode(v4l2_flash_led_mode * mode);
+    int getRawFormat();
     // TODO: replacing fixed value of AE_DELAY_FRAMES in AtomAIQ.h in non-functional API refactory
     //       this value exists in CPF and needs awareness of frames timing.
     virtual unsigned int getExposureDelay() { return PlatformData::getSensorExposureLag(); };
@@ -399,6 +401,7 @@ private:
     status_t fileInjectSetSize(void);
 
     status_t selectCameraSensor();
+    status_t sensorStoreRawFormat();
     size_t setupCameraInfo();
     unsigned int getNumOfSkipFrames(void);
     int getPrimaryCameraIndex(void) const;
@@ -577,6 +580,10 @@ private:
     int mHighSpeedFps;
     Size mHighSpeedResolution;
     bool mHighSpeedEnabled;
+
+    // Sensor helper fields
+    Vector <v4l2_fmtdesc>    mSensorSupportedFormats;     /*!> List of V4L2 pixel format supported by the sensor */
+    int                      mRawBayerFormat;
 
 }; // class AtomISP
 

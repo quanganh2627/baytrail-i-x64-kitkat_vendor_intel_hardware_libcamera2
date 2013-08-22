@@ -432,6 +432,7 @@ inline static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
 void convertFromAndroidToIaCoordinates(const CameraWindow &srcWindow, CameraWindow &toWindow);
 bool isParameterSet(const char *param, const CameraParameters &params);
 
+bool isBayerFormat(int fmt);
 int SGXandDisplayStride(int format, int width);
 void mirrorBuffer(AtomBuffer *buffer, int currentOrientation, int cameraOrientation);
 void flipBufferV(AtomBuffer *buffer);

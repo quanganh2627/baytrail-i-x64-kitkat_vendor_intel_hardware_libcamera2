@@ -126,6 +126,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
     ,mHighSpeedFps(0)
     ,mHighSpeedResolution(0, 0)
     ,mHighSpeedEnabled(false)
+    ,mRawBayerFormat(V4L2_PIX_FMT_SBGGR10)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -514,6 +515,7 @@ AtomISP::~AtomISP()
     m3AEventSubdevice.clear();
     mIspSubdevice.clear();
     mFileInjectDevice.clear();
+    mSensorSupportedFormats.clear();
 
     if (mZoomRatios) {
         delete[] mZoomRatios;
@@ -1858,7 +1860,7 @@ status_t AtomISP::startCapture()
     // snapshot number. Otherwise, the raw dump image would be corrupted.
     // also since CSS1.5 we cannot capture from postview at the same time
     int snapNum;
-    if (mConfig.snapshot.format == V4L2_PIX_FMT_SBGGR10)
+    if (mConfig.snapshot.format == mRawBayerFormat)
         snapNum = 1;
     else
         snapNum = mConfig.num_snapshot;
@@ -2149,8 +2151,8 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, FrameInfo *f
     w = fInfo->width;
     h = fInfo->height;
     format = fInfo->format;
-    LOG1("device: %d, width:%d, height:%d, deviceMode:%d format:%d raw:%d", device->mId,
-        w, h, deviceMode, format, raw);
+    LOG1("device: %d, width:%d, height:%d, deviceMode:%d format:%s raw:%d", device->mId,
+        w, h, deviceMode, v4l2Fmt2Str(format), raw);
 
     if ((w <= 0) || (h <= 0)) {
         LOGE("Wrong Width %d or Height %d", w, h);
@@ -2221,9 +2223,53 @@ status_t AtomISP::selectCameraSensor()
     if (ret != NO_ERROR) {
         mMainDevice->close();
         ret = UNKNOWN_ERROR;
+    } else {
+        PERFORMANCE_TRACES_BREAKDOWN_STEP("capture_s_input");
+
+        // Query now the support color format
+        ret = mMainDevice->queryCapturePixelFormats(mSensorSupportedFormats);
+        if (ret != NO_ERROR) {
+           LOGW("Cold not query capture formats from sensor: %s", mCameraInput->name);
+           ret = NO_ERROR;   // This is not critical
+        }
+        sensorStoreRawFormat();
     }
-    PERFORMANCE_TRACES_BREAKDOWN_STEP("capture_s_input");
     return ret;
+}
+
+/**
+ * Helper method for the sensor to select the prefered BAYER format
+ * the supported pixel formats are retrieved when the sensor is selected.
+ *
+ * The list is stored in  mSensorSupportedFormats.
+ *
+ * This helper method finds the first Bayer format and saves it to mRawBayerFormat
+ * so that if raw dump feature is enabled we know what is the sensor
+ * preferred format.
+ *
+ */
+status_t AtomISP::sensorStoreRawFormat()
+{
+    LOG1("@%s", __FUNCTION__);
+    Vector<v4l2_fmtdesc>::iterator it = mSensorSupportedFormats.begin();
+
+    for (;it != mSensorSupportedFormats.end(); ++it) {
+        /* store it only if is one of the Bayer formats */
+        if (isBayerFormat(it->pixelformat)) {
+            mRawBayerFormat = it->pixelformat;
+            break;  //we take the first one, sensors tend to support only one
+        }
+    }
+    return NO_ERROR;
+}
+
+/**
+ * Part of the IHWSensorControl interface.
+ * It returns the V4L2 Bayer format preferred by the sensor
+ */
+int AtomISP::getRawFormat()
+{
+    return mRawBayerFormat;
 }
 
 status_t AtomISP::setPreviewFrameFormat(int width, int height, int format)
@@ -2309,9 +2355,6 @@ status_t AtomISP::setSnapshotFrameFormat(int width, int height, int format)
     mConfig.snapshot.format = format;
     mConfig.snapshot.stride = SGXandDisplayStride(format, width);
     mConfig.snapshot.size = frameSize(format, mConfig.snapshot.stride, height);
-
-    if (isDumpRawImageReady())
-        mConfig.snapshot.format = V4L2_PIX_FMT_SRGGB10;
 
     if (mConfig.snapshot.size == 0)
         mConfig.snapshot.size = mConfig.snapshot.width * mConfig.snapshot.height * BPP;
@@ -3556,7 +3599,7 @@ status_t AtomISP::putSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 
     ret0 = mMainDevice->putFrame(snapshotBuf->id);
 
-    if (mConfig.snapshot.format == V4L2_PIX_FMT_SBGGR10) {
+    if (mConfig.snapshot.format == mRawBayerFormat) {
         // for RAW captures we do not dequeue the postview, therefore we do
         // not need to return it.
         ret1 = 0;
@@ -3990,7 +4033,8 @@ status_t AtomISP::allocateSnapshotBuffers()
             bufPool[i] = mPostviewBuffers[i].dataPtr;
         }
     }
-    if (!mHALZSLEnabled)
+    // In case of Raw capture we do not get postview, so no point in setting up the pool
+    if (!mHALZSLEnabled && !isBayerFormat(mConfig.snapshot.format))
         mPostViewDevice->setBufferPool((void**)&bufPool,mPostviewBuffers.size(),
                                         &mConfig.postview, true);
     return status;

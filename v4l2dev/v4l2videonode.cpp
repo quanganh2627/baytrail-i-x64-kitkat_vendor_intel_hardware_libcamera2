@@ -420,10 +420,10 @@ status_t V4L2VideoNode::setFormat(struct v4l2_format &aFormat)
     }
 
 
-    LOG1("VIDIOC_S_FMT: width: %d, height: %d, format: %d, field: %d",
+    LOG1("VIDIOC_S_FMT: width: %d, height: %d, format: %s, field: %d",
             aFormat.fmt.pix.width,
             aFormat.fmt.pix.height,
-            aFormat.fmt.pix.pixelformat,
+            v4l2Fmt2Str(aFormat.fmt.pix.pixelformat),
             aFormat.fmt.pix.field);
     ret = ioctl(mFd, VIDIOC_S_FMT, &aFormat);
     if (ret < 0) {

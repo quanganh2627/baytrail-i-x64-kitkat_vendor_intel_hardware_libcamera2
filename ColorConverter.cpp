@@ -566,7 +566,7 @@ void convertBuftoYV12(int format, int width, int height, int srcStride, int
         convertYUYVToYV12(width, height, srcStride, dstStride, src, dst);
         break;
     default:
-        LOGE("%s: unsupported format %d", __func__, format);
+        LOGE("%s: unsupported format %s", __func__, v4l2Fmt2Str(format));
         break;
     }
 }
@@ -585,7 +585,7 @@ void convertBuftoNV21(int format, int width, int height, int srcStride, int
         convertYUYVToNV21(width, height, srcStride, src, dst);
         break;
     default:
-        LOGE("%s: unsupported format %d", __func__, format);
+        LOGE("%s: unsupported format %s", __func__, v4l2Fmt2Str(format));
         break;
     }
 }
@@ -602,7 +602,7 @@ const char *cameraParametersFormat(int v4l2Format)
     case V4L2_PIX_FMT_JPEG:
         return CameraParameters::PIXEL_FORMAT_JPEG;
     default:
-        LOGE("failed to map format %x to a PIXEL_FORMAT\n", v4l2Format);
+        LOGE("failed to map format %s to a PIXEL_FORMAT\n", v4l2Fmt2Str(v4l2Format));
         return NULL;
     };
 }

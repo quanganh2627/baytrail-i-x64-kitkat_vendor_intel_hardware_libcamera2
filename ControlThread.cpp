@@ -4492,13 +4492,13 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
     mParameters.getPictureSize(&picWidth, &picHeight);
 
     /**
-     * Snapshot format is harcoded to NV12, this is the format between
+     * Snapshot format is hardcoded to NV12, this is the format between
      * camera and JPEG encoder. In cases where we need to capture bayer
      * then the format changes to RGB adn JPEG encoding breaks (i.e. image is
      * green) this is a known limitation of the raw capture sequence in ISP fW
      */
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW))
-        format = V4L2_PIX_FMT_SRGGB10;
+        format = mHwcg.mSensorCI->getRawFormat();
     else
         format = V4L2_PIX_FMT_NV12;
 
@@ -6480,7 +6480,7 @@ bool ControlThread::hasPictureFormatChanged()
     int newFormat = V4L2_PIX_FMT_NV12;
 
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW))
-       newFormat = V4L2_PIX_FMT_SRGGB10;
+       newFormat = mHwcg.mSensorCI->getRawFormat();
 
     return (newFormat != currentFormat);
 }
