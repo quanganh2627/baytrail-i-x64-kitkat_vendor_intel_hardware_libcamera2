@@ -263,9 +263,9 @@ bool isBayerFormat(int fourcc)
  * Calculates the frame bytes-per-line following the limitations imposed by display subsystem
  * This is used to model the HACK in a atomsisp that forces allocation
  * to be aligned to the bpl that SGX requires. This HACK is only active
- * in CTP based platforms. It will be eventually removed once CSS API changes to
- * support different bpl's
+ * in CTP based platforms.
  *
+ * TODO: This needs to be removed once CSS API changes to support different bpl's
  *
  * The SGX limitation is that the number of bytes per line needs to be aligned
  * to 64
@@ -283,6 +283,9 @@ int SGXandDisplayBpl(int fourcc, int width)
      */
     if (isBayerFormat(fourcc))
         width = ALIGN128(width);
+
+    // Alignment requirement of the display controller in CTP platform.
+    // Bytes per line needs to be aligned to 64 with a minimum of 512.
     else  if ((strcmp(PlatformData::getBoardName(), "victoriabay") == 0) ||
               (strcmp(PlatformData::getBoardName(), "redhookbay") == 0)) {
         if (width <= 512)

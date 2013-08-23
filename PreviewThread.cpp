@@ -195,23 +195,23 @@ status_t PreviewThread::setPreviewWindow(struct preview_stream_ops *window)
  *
  * \param preview_width     preview buffer width
  * \param preview_height    preview buffer height
- * \param preview_bpl    preview buffer bpl
  * \param preview_cb_format preview callback buffer format (fourcc)
  * \param shared_mode       allocate buffers for shared mode (0-copy)
  * \param buffer_count      amount of buffers to allocate
  */
-status_t PreviewThread::setPreviewConfig(int preview_width, int preview_height, int preview_bpl,
+status_t PreviewThread::setPreviewConfig(int preview_width, int preview_height,
                                          int preview_cb_format, bool shared_mode, int buffer_count)
 {
     LOG1("@%s", __FUNCTION__);
+
     // for non-shared mode, PreviewThread's client doesn't need to set the buffer count
     if (shared_mode && buffer_count < 1)
         return BAD_VALUE;
+
     Message msg;
     msg.id = MESSAGE_ID_SET_PREVIEW_CONFIG;
     msg.data.setPreviewConfig.width = preview_width;
     msg.data.setPreviewConfig.height = preview_height;
-    msg.data.setPreviewConfig.bpl = preview_bpl;
     msg.data.setPreviewConfig.cb_format = preview_cb_format;
     msg.data.setPreviewConfig.bufferCount = buffer_count;
     msg.data.setPreviewConfig.sharedMode = shared_mode;
@@ -250,6 +250,39 @@ status_t PreviewThread::fetchPreviewBuffers(Vector<AtomBuffer> &pvBufs)
         status = INVALID_OPERATION;
     }
     LOG1("@%s: got [%d] buffers", __FUNCTION__, pvBufs.size());
+    return status;
+}
+
+/**
+ * Retrieve the Preview buffers geometry
+ *
+ * synchronous message used by ControlThread to retrieve any bytes-per-line
+ * requirements imposed by the Gfx subsystem.
+ * ControlThread first configures the window, this will get the Gfx buffer
+ * requirements. Then it calls this method to pass it to the ISP
+ */
+status_t PreviewThread::fetchPreviewBufferGeometry(int *w, int *h, int *bpl)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if ((w == NULL) || (h == NULL) || (bpl == NULL))
+        return BAD_VALUE;
+
+    Message msg;
+    msg.id = MESSAGE_ID_FETCH_BUF_GEOMETRY;
+
+    status_t status;
+    status = mMessageQueue.send(&msg, MESSAGE_ID_FETCH_BUF_GEOMETRY);
+
+    if (status == NO_ERROR) {
+        *w = mPreviewWidth;
+        *h = mPreviewHeight;
+        *bpl = mPreviewBpl;
+        LOG1("@%s: got WxH (bpl): %dx%d (%d)", __FUNCTION__,*w,*h,*bpl);
+    } else {
+        LOGE("@%s: could not fetch buffer geometry ret=%d", __FUNCTION__,status);
+    }
+
     return status;
 }
 
@@ -526,6 +559,10 @@ status_t PreviewThread::waitForAndExecuteMessage()
             status = handleMessageSetCallback(&msg.data.setCallback);
             break;
 
+        case MESSAGE_ID_FETCH_BUF_GEOMETRY:
+            status = handleMessageFetchBufferGeometry();
+            break;
+
         default:
             LOGE("Invalid message");
             status = BAD_VALUE;
@@ -620,6 +657,18 @@ void PreviewThread::allocateLocalPreviewBuf(void)
     }
 }
 
+status_t PreviewThread::handleMessageFetchBufferGeometry()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    if (mState < STATE_CONFIGURED) {
+        LOGE("Trying to fetch buffer geometry when PreviewThread is not initialized");
+        status = INVALID_OPERATION;
+    }
+
+    mMessageQueue.reply(MESSAGE_ID_FETCH_BUF_GEOMETRY, status);
+    return status;
+}
 
 /**
  * stream-time dequeuing of buffers from preview_window_ops
@@ -1058,20 +1107,20 @@ status_t PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
 
 status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
 {
-    LOG1("@%s: width = %d, height = %d, callback format = %s, bpl = %d", __FUNCTION__,
-         msg->width, msg->height, v4l2Fmt2Str(msg->cb_format), msg->bpl);
+    LOG1("@%s: width = %d, height = %d, callback format = %s", __FUNCTION__,
+         msg->width, msg->height, v4l2Fmt2Str(msg->cb_format));
     status_t status = NO_ERROR;
     int w = msg->width;
     int h = msg->height;
     // Note: ANativeWindowBuffer defines stride with pixels
-    int pixel_stride = bytesToPixels(mPreviewFourcc, msg->bpl);
+    int pixel_stride =  w;
     int bufferCount = 0;
     int reservedBufferCount = 0;
 
     mSharedMode = msg->sharedMode;
 
     if ((w != 0 && h != 0)) {
-        LOG1("Setting new preview size: %dx%d, bpl:%d", w, h, msg->bpl);
+        LOG1("Setting new preview size: %dx%d", w, h);
         if (mPreviewWindow != NULL) {
 
             /**
@@ -1095,7 +1144,13 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
          */
         mPreviewWidth = msg->width;
         mPreviewHeight = msg->height;
-        mPreviewBpl = msg->bpl;
+        // If the preview has been rotated, calculate the bpl from the width.
+        // Calculate the bpl also if the preview window has not been set.
+        // Otherwise use the bpl of buffers dequeued from the preview window.
+        if (mRotation == 90 || mRotation == 270 || mPreviewWindow == NULL)
+            mPreviewBpl = pixelsToBytes(mPreviewFourcc, mPreviewWidth);
+        else
+            mPreviewBpl = getGfxBufferBytesPerLine();
     }
 
     mPreviewCbFormat = msg->cb_format;

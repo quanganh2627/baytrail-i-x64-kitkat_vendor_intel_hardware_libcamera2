@@ -185,7 +185,7 @@ extern timeval AtomBufferFactory_AtomBufDefTS; // default timestamp
 class AtomBufferFactory {
 public:
     static AtomBuffer createAtomBuffer(AtomBufferType type = ATOM_BUFFER_FORMAT_DESCRIPTOR,
-                           int format = V4L2_PIX_FMT_NV12,
+                           int fourcc = V4L2_PIX_FMT_NV12,
                            int width = 0,
                            int height = 0,
                            int bpl = 0,

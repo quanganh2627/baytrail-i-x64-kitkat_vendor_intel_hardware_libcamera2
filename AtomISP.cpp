@@ -269,7 +269,9 @@ status_t AtomISP::init()
     initFrameConfig();
 
     // Initialize the frame sizes
-    setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, PlatformData::getPreviewPixelFormat());
+    setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT,
+                          pixelsToBytes(PlatformData::getPreviewPixelFormat(), RESOLUTION_VGA_WIDTH),
+                          PlatformData::getPreviewPixelFormat());
     setPostviewFrameFormat(RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT, V4L2_PIX_FMT_NV12);
     setSnapshotFrameFormat(RESOLUTION_5MP_WIDTH, RESOLUTION_5MP_HEIGHT, V4L2_PIX_FMT_NV12);
     setVideoFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
@@ -2268,7 +2270,7 @@ int AtomISP::getRawFormat()
     return mRawBayerFormat;
 }
 
-status_t AtomISP::setPreviewFrameFormat(int width, int height, int fourcc)
+status_t AtomISP::setPreviewFrameFormat(int width, int height, int bpl, int fourcc)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -2282,10 +2284,10 @@ status_t AtomISP::setPreviewFrameFormat(int width, int height, int fourcc)
     mConfig.preview.width = width;
     mConfig.preview.height = height;
     mConfig.preview.fourcc = fourcc;
-    mConfig.preview.bpl = pixelsToBytes(fourcc, width);
-    mConfig.preview.size = frameSize(fourcc, mConfig.preview.width, height);
-    LOG1("width(%d), height(%d), pad_width(%d), size(%d), fourcc(%x)",
-        width, height, mConfig.preview.bpl, mConfig.preview.size, fourcc);
+    mConfig.preview.bpl = bpl;
+    mConfig.preview.size = frameSize(fourcc, bytesToPixels(fourcc, bpl), height);
+    LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%x)",
+        width, height, bpl, mConfig.preview.size, fourcc);
     return status;
 }
 
@@ -2325,12 +2327,13 @@ status_t AtomISP::setPostviewFrameFormat(int width, int height, int fourcc)
         width = RESOLUTION_POSTVIEW_WIDTH;
         height = RESOLUTION_POSTVIEW_HEIGHT;
     }
+
     mConfig.postview.width = width;
     mConfig.postview.height = height;
     mConfig.postview.fourcc = fourcc;
-    mConfig.postview.bpl = pixelsToBytes(fourcc, width);
-    mConfig.postview.size = frameSize(fourcc, width, height);
-    LOG1("width(%d), height(%d), pad_width(%d), size(%d), fourcc(%x)",
+    mConfig.postview.bpl = SGXandDisplayBpl(fourcc, width);
+    mConfig.postview.size = frameSize(fourcc, bytesToPixels(fourcc, mConfig.postview.bpl), height);
+    LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%x)",
             width, height, mConfig.postview.bpl, mConfig.postview.size, fourcc);
     return status;
 }
@@ -2349,7 +2352,7 @@ status_t AtomISP::setSnapshotFrameFormat(int width, int height, int fourcc)
     mConfig.snapshot.fourcc = fourcc;
     mConfig.snapshot.bpl = SGXandDisplayBpl(fourcc, width);
     mConfig.snapshot.size = frameSize(fourcc, bytesToPixels(fourcc, mConfig.snapshot.bpl), height);
-    LOG1("width(%d), height(%d), pad_width(%d), size(%d), fourcc(%x)",
+    LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%x)",
         width, height, mConfig.snapshot.bpl, mConfig.snapshot.size, fourcc);
     return status;
 }
@@ -2425,9 +2428,9 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
     mConfig.recording.width = width;
     mConfig.recording.height = height;
     mConfig.recording.fourcc = fourcc;
-    mConfig.recording.bpl = pixelsToBytes(fourcc, mConfig.recording.width);
-    mConfig.recording.size = frameSize(fourcc, mConfig.recording.width, height);
-    LOG1("width(%d), height(%d), pad_width(%d), fourcc(%x)",
+    mConfig.recording.bpl = SGXandDisplayBpl(fourcc, width);
+    mConfig.recording.size = frameSize(fourcc, bytesToPixels(fourcc, mConfig.recording.bpl), height);
+    LOG1("width(%d), height(%d), bpl(%d), fourcc(%x)",
             width, height, mConfig.recording.bpl, fourcc);
 
     return status;

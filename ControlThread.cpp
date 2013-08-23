@@ -1148,7 +1148,7 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
         int cb_fourcc, width, height, bpl;
         cb_fourcc = V4L2Format(mParameters.getPreviewFormat());
         mISP->getPreviewSize(&width, &height,&bpl);
-        mPreviewThread->setPreviewConfig(width, height, bpl, cb_fourcc, false);
+        mPreviewThread->setPreviewConfig(width, height, cb_fourcc, false);
     } else if (previewState != PreviewThread::STATE_ENABLED
             && previewState != PreviewThread::STATE_ENABLED_HIDDEN) {
         LOGE("Trying to resume continuous preview from unexpected state!");
@@ -1503,14 +1503,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOGW("Unsupported preview callback fourcc : %s", cb_fourcc_s ? cb_fourcc_s : "not set");
     }
     mParameters.getPreviewSize(&width, &height);
-    mISP->setPreviewFrameFormat(width, height);
 
-    // start the data flow
-    status = mISP->configure(mode);
-    if (status != NO_ERROR) {
-        LOGE("Error configuring ISP");
-        return status;
-    }
 
     // Load any ISP extensions before ISP is started
 
@@ -1524,7 +1517,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mAccManagerThread->loadIspExtensions();
     }
 
-    mISP->getPreviewSize(&width, &height,&bpl);
     if (videoMode)
         mNumBuffers = mISP->getNumVideoBuffers();
     else
@@ -1542,7 +1534,12 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     bool useSharedGfxBuffers =
         (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS)
         && (mIntelParamsAllowed || mode != MODE_CONTINUOUS_CAPTURE);
-    mPreviewThread->setPreviewConfig(width, height, bpl, cb_fourcc, useSharedGfxBuffers, mNumBuffers);
+    mPreviewThread->setPreviewConfig(width, height, cb_fourcc, useSharedGfxBuffers, mNumBuffers);
+
+    // Get the preview size from PreviewThread and pass the configuration to AtomISP.
+    mPreviewThread->fetchPreviewBufferGeometry(&width, &height, &bpl);
+    mISP->setPreviewFrameFormat(width, height, bpl);
+
     if (useSharedGfxBuffers) {
         Vector<AtomBuffer> sharedGfxBuffers;
         status = mPreviewThread->fetchPreviewBuffers(sharedGfxBuffers);
@@ -1557,6 +1554,12 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         } else {
             LOG1("PreviewThread not sharing Gfx buffers, using internal buffers");
         }
+    }
+
+    status = mISP->configure(mode);
+    if (status != NO_ERROR) {
+        LOGE("Error configuring ISP");
+        return status;
     }
 
     status = mISP->allocateBuffers(mode);
@@ -1650,6 +1653,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
                 ICallbackPreview::OUTPUT_WITH_DATA);
     }
 
+    // start the data flow
     status = mISP->start();
     if (status == NO_ERROR) {
         mState = state;

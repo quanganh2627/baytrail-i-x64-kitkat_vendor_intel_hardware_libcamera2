@@ -118,7 +118,7 @@ public:
     virtual int pollCapture(int timeout) = 0;
 
     // For preview pipeline
-    virtual status_t setPreviewFrameFormat(int width, int height, int fourcc = 0) = 0;
+    virtual status_t setPreviewFrameFormat(int width, int height, int bpl, int fourcc = 0) = 0;
     virtual void getPreviewSize(int *width, int *height, int *bpl) = 0;
     virtual status_t getPreviewFrame(AtomBuffer *buff) = 0;
     virtual status_t putPreviewFrame(AtomBuffer *buff) = 0;

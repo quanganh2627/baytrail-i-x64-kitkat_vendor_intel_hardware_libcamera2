@@ -125,7 +125,7 @@ public:
 
     bool isHALZSLEnabled() const { return mHALZSLEnabled; }
 
-    status_t setPreviewFrameFormat(int width, int height, int fourcc = 0);
+    status_t setPreviewFrameFormat(int width, int height, int bpl, int fourcc = 0);
     status_t setPostviewFrameFormat(int width, int height, int fourcc);
     void getPostviewFrameFormat(int &width, int &height, int &foucc) const;
     status_t setSnapshotFrameFormat(int width, int height, int fourcc);
