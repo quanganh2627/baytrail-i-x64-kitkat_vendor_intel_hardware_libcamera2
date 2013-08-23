@@ -43,7 +43,6 @@ LOCAL_SRC_FILES := \
 	MemoryUtils.cpp \
 	PlatformData.cpp \
 	CameraProfiles.cpp \
-	FeatureData.cpp \
 	IntelParameters.cpp \
 	exif/ExifCreater.cpp \
 	PostProcThread.cpp \

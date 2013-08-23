@@ -25,7 +25,6 @@
 #include <time.h>
 #include <dlfcn.h>
 #include <ia_3a.h>
-#include "FeatureData.h"
 
 namespace android {
 static IHWSensorControl *gSensorCI; // See BZ 61293
@@ -1719,8 +1718,8 @@ void AtomAAA::getDefaultParams(CameraParameters *params, CameraParameters *intel
     intel_params->set(IntelCameraParameters::KEY_CAPTURE_BRACKET, "none");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET, "none,exposure,focus");
 
-    intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, FeatureData::hdrDefault(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, FeatureData::hdrSupported(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, PlatformData::defaultHdr(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, PlatformData::supportedHdr(cameraId));
     intel_params->set(IntelCameraParameters::KEY_HDR_VIVIDNESS, "gaussian");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none,gaussian,gamma");
     intel_params->set(IntelCameraParameters::KEY_HDR_SHARPENING, "normal");

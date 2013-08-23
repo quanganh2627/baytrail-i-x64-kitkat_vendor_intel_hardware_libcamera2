@@ -21,7 +21,6 @@
 #include "Callbacks.h"
 #include "ColorConverter.h"
 #include "PlatformData.h"
-#include "FeatureData.h"
 #include "IntelParameters.h"
 #include "PanoramaThread.h"
 #include "CameraDump.h"
@@ -696,8 +695,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET, "none");
 
     // HDR imaging settings
-    intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, FeatureData::hdrDefault(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, FeatureData::hdrSupported(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, PlatformData::defaultHdr(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, PlatformData::supportedHdr(cameraId));
     intel_params->set(IntelCameraParameters::KEY_HDR_VIVIDNESS, "none");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none");
     intel_params->set(IntelCameraParameters::KEY_HDR_SHARPENING, "none");
@@ -708,8 +707,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * Ultra-low light (ULL)
      */
-    intel_params->set(IntelCameraParameters::KEY_ULL, FeatureData::ultraLowLightDefault(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_ULL, FeatureData::ultraLowLightSupported(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_ULL, PlatformData::defaultUltraLowLight(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_ULL, PlatformData::supportedUltraLowLight(cameraId));
 
     /**
      * Burst-mode

@@ -19,7 +19,6 @@
 #include "Callbacks.h"
 #include "ColorConverter.h"
 #include "PlatformData.h"
-#include "FeatureData.h"
 #include "IntelParameters.h"
 #include "CameraDump.h"
 #include <sys/mman.h>

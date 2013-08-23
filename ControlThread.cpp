@@ -39,7 +39,6 @@
 #include <cutils/properties.h>
 #include <binder/IServiceManager.h>
 #include "intel_camera_extensions.h"
-#include "FeatureData.h"
 #include "ICameraHwControls.h"
 
 namespace android {
@@ -2169,7 +2168,7 @@ status_t ControlThread::setSmartSceneParams(void)
         return INVALID_OPERATION;
 
     if (scene_mode && !strcmp(scene_mode, CameraParameters::SCENE_MODE_AUTO)) {
-        bool sceneDetectionSupported = strcmp(FeatureData::sceneDetectionSupported(mCameraId), "") != 0;
+        bool sceneDetectionSupported = strcmp(PlatformData::supportedSceneDetection(mCameraId), "") != 0;
         //scene mode detection should always be working, but we shouldn't take it in account whenever HDR is on.
         if (!mHdr.enabled && sceneDetectionSupported && m3AControls->getSmartSceneDetection()) {
             int sceneMode = 0;
