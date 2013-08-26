@@ -650,6 +650,7 @@ private:
     void restoreCurrentPictureParams();
 
     status_t createAtom3A();
+    status_t createAtomDvs();
 
     void enableFocusCallbacks();
     void disableFocusCallbacks();
@@ -666,7 +667,7 @@ private:
     int mCameraId;
     HWControlGroup mHwcg;
     IHWIspControl *mISP;
-    AtomDvs *mDvs;
+    IDvs *mDvs;
     AtomCP  *mCP;
     UltraLowLight *mULL;
     I3AControls *m3AControls;

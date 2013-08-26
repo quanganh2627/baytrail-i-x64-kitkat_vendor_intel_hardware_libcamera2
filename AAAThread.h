@@ -19,7 +19,7 @@
 
 #include <utils/threads.h>
 #include <time.h>
-#include "AtomDvs.h"
+#include "IDvs.h"
 #include "UltraLowLight.h"
 #include "MessageQueue.h"
 #include "IAtomIspObserver.h"

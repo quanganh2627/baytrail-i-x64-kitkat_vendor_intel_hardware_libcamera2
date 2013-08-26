@@ -21,7 +21,7 @@
 namespace android {
 
 AtomDvs::AtomDvs(HWControlGroup &hwcg) :
-    mIsp(hwcg.mIspCI)
+    IDvs(hwcg)
     ,mStatistics(NULL)
 {
     mState = ia_dvs_create();
