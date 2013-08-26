@@ -43,6 +43,7 @@ public:
     // overrides from IAtomIspObserver
     bool atomIspNotify(Message *msg, const ObserverState state);
 
+    status_t setZoom(int zoom) { return INVALID_OPERATION; }
 // prevent copy constructor and assignment operator
 private:
     AtomDvs(const AtomDvs& other);

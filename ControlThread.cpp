@@ -4208,8 +4208,12 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     int newZoom = newParams->getInt(CameraParameters::KEY_ZOOM);
     bool zoomSupported = isParameterSet(CameraParameters::KEY_ZOOM_SUPPORTED) ? true : false;
     if (zoomSupported) {
-        status = mISP->setZoom(newZoom);
-        mPostProcThread->setZoom(mISP->zoomRatio(newZoom));
+        if(mDvs != NULL && (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING)) {
+            mDvs->setZoom(newZoom);
+        } else {
+            status = mISP->setZoom(newZoom);
+            mPostProcThread->setZoom(mISP->zoomRatio(newZoom));
+        }
     }
     else
         LOGD("not supported zoom setting");

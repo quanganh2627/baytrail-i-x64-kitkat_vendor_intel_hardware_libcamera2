@@ -142,6 +142,7 @@ public:
     void getZoomRatios(CameraParameters *params) const;
     void getFocusDistances(CameraParameters *params);
     status_t setZoom(int zoom);
+    int getDrvZoom(int zoom);
     status_t setColorEffect(v4l2_colorfx effect);
     status_t applyColorEffect();
     status_t getMakerNote(atomisp_makernote_info *info);
