@@ -23,6 +23,7 @@
 #include "PictureThread.h"
 #include "AtomAIQ.h"
 #include "AtomAAA.h"
+#include "AtomDvs.h"
 #include "AtomSoc3A.h"
 #include "AtomISP.h"
 #include "Callbacks.h"
@@ -261,7 +262,11 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mDvs = new AtomDvs(mHwcg);
+    if (createAtomDvs() != NO_ERROR) {
+        LOGE("error creating DVS");
+        goto bail;
+    }
+
     if (mDvs == NULL) {
         LOGE("error creating DVS");
         goto bail;
@@ -6633,6 +6638,18 @@ status_t ControlThread::createAtom3A()
         LOGE("error creating AAA");
         status = BAD_VALUE;
     }
+    return status;
+}
+
+/**
+ * Create DVS instance according to platform requirement:
+ * - AtomDvs
+ * - AtomDvs2
+ */
+status_t ControlThread::createAtomDvs()
+{
+    status_t status = NO_ERROR;
+    mDvs = new AtomDvs(mHwcg);
     return status;
 }
 

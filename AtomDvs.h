@@ -19,7 +19,7 @@
 
 #include <utils/Errors.h>
 #include "ICameraHwControls.h"
-#include "IAtomIspObserver.h"
+#include "IDvs.h"
 
 extern "C" {
 #include <stdlib.h>
@@ -29,7 +29,7 @@ extern "C" {
 
 namespace android {
 
-class AtomDvs : public IAtomIspObserver {
+class AtomDvs : public IDvs {
 
 public:
     AtomDvs(HWControlGroup &hwcg);
@@ -52,7 +52,6 @@ private:
     status_t reconfigureNoLock();
     status_t run();
 private:
-    IHWIspControl *mIsp;
     Mutex mLock;
     struct atomisp_dis_statistics *mStatistics;
     ia_dvs_state *mState;
