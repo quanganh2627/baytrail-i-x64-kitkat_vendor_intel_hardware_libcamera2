@@ -32,6 +32,7 @@
 #include "CallbacksThread.h"
 #include "AAAThread.h"
 #include "I3AControls.h"
+#include "IDvs.h"
 #include "CameraConf.h"
 #include "PostProcThread.h"
 #include "PanoramaThread.h"

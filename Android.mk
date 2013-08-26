@@ -30,6 +30,7 @@ LOCAL_SRC_FILES := \
 	AtomAIQ.cpp \
 	AtomSoc3A.cpp \
 	AtomDvs.cpp \
+	AtomDvs2.cpp \
 	AtomHAL.cpp \
 	CameraConf.cpp \
 	ColorConverter.cpp \
@@ -122,6 +123,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libui \
 	libia_mkn \
 	libmfldadvci \
+	libia_dvs_2 \
 	libia_nvm \
 	libtbd \
 	libsqlite \

@@ -261,6 +261,7 @@ public:
     int set3aConfig(const struct atomisp_3a_config *cfg);
     int setGammaTable(const struct atomisp_gamma_table *gamma_tbl);
     int setGcConfig(const struct atomisp_gc_config *gc_cfg);
+    int setDvsConfig(const struct atomisp_dvs_6axis_config *dvs_6axis_cfg);
     int getCssMajorVersion();
     int getCssMinorVersion();
     int getIspHwMajorVersion();

@@ -26,6 +26,8 @@
 #include "AtomDvs.h"
 #include "AtomSoc3A.h"
 #include "AtomISP.h"
+#include "AtomDvs.h"
+#include "AtomDvs2.h"
 #include "Callbacks.h"
 #include "CallbacksThread.h"
 #include "ColorConverter.h"
@@ -1557,12 +1559,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         if (m3AControls->switchModeAndRate(mode, mHwcg.mSensorCI->getFrameRate()) != NO_ERROR)
             LOGE("Failed switching 3A at %.2f fps", mHwcg.mSensorCI->getFrameRate());
 
-        if (isDVSActive && mDvs->reconfigure() == NO_ERROR) {
-            // Attach only when DVS is active:
-            mISP->attachObserver(mDvs, OBSERVE_PREVIEW_STREAM);
-        } else if (isDVSActive) {
-            LOGE("Failed to reconfigure DVS grid");
-        }
 
         mISP->attachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
         mISP->attachObserver(m3AThread.get(), OBSERVE_FRAME_SYNC_SOF);
@@ -1590,6 +1586,13 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         // Check the camera.hal.power property if disable the Preview
         if (gPowerLevel & CAMERA_POWERBREAKDOWN_DISABLE_PREVIEW) {
             mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
+        }
+
+        if (isDVSActive && mDvs->reconfigure() == NO_ERROR) {
+            // Attach only when DVS is active:
+            mISP->attachObserver(mDvs, OBSERVE_PREVIEW_STREAM);
+        } else if (isDVSActive) {
+            LOGE("Failed to reconfigure DVS grid");
         }
     } else {
         LOGE("Error starting ISP!");
@@ -6365,8 +6368,16 @@ status_t ControlThread::createAtom3A()
  */
 status_t ControlThread::createAtomDvs()
 {
-    status_t status = NO_ERROR;
-    mDvs = new AtomDvs(mHwcg);
+    status_t status = NO_INIT;
+    if (mISP != NULL) {
+        if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5)){
+            mDvs = new AtomDvs(mHwcg);
+            status = NO_ERROR;
+        } else if ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0)){
+            mDvs = new AtomDvs2(mHwcg);
+            status = NO_ERROR;
+        }
+     }
     return status;
 }
 

@@ -190,6 +190,7 @@ public:
     virtual int set3aConfig(const struct atomisp_3a_config *cfg) = 0;
     virtual int setGammaTable(const struct atomisp_gamma_table *gamma_tbl) = 0;
     virtual int setGcConfig(const struct atomisp_gc_config *gc_cfg) = 0;
+    virtual int setDvsConfig(const struct atomisp_dvs_6axis_config *dvs_6axis_cfg) = 0;
 
     virtual bool getPreviewTooBigForVFPP() = 0; // TBD
 
