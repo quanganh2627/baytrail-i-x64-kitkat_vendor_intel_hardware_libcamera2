@@ -5234,6 +5234,15 @@ int AtomISP::setGcConfig(const struct atomisp_gc_config *gc_cfg)
     return ret;
 }
 
+int AtomISP::setDvsConfig(const struct atomisp_dvs_6axis_config *dvs_6axis_cfg)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = mMainDevice->xioctl(ATOMISP_IOC_S_6AXIS_CONFIG, (struct atomisp_dvs_6axis_config *)dvs_6axis_cfg);
+    LOG2("%s IOCTL ATOMISP_IOC_S_6AXIS_CONFIG ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
 int AtomISP::getCssMajorVersion()
 {
     return mCssMajorVersion;
