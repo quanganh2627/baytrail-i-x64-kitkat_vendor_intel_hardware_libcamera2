@@ -45,6 +45,8 @@ public:
     // overrides from IAtomIspObserver
     bool atomIspNotify(Message *msg, const ObserverState state);
 
+    status_t setZoom(int zoom);
+
 // prevent copy constructor and assignment operator
 private:
     AtomDvs2(const AtomDvs2& other);
@@ -65,6 +67,8 @@ private:
     ia_dvs2_gdc_configuration mGdcConfig;
     atomisp_dvs_6axis_config *mDvs2Config;
     bool mEnabled;
+    int mZoom;
+    bool mNeedRun;
 
 };
 

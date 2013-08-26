@@ -2750,6 +2750,11 @@ status_t AtomISP::setZoom(int zoom)
     return NO_ERROR;
 }
 
+int AtomISP::getDrvZoom(int zoom)
+{
+    return mZoomDriveTable[zoom];
+}
+
 status_t AtomISP::getMakerNote(atomisp_makernote_info *info)
 {
     LOG1("@%s: info = %p", __FUNCTION__, info);

@@ -33,6 +33,8 @@ AtomDvs2::AtomDvs2(HWControlGroup &hwcg) :
     ,mStatistics(NULL)
     ,mDvs2Config(NULL)
     ,mEnabled(false)
+    ,mZoom(0)
+    ,mNeedRun(false)
 {
     LOG1("@%s", __FUNCTION__);
     m_dvs2_characteristics.num_axis = ia_dvs2_algorihm_6_axis;
@@ -213,11 +215,15 @@ status_t AtomDvs2::reconfigureNoLock()
     }
     if (dvs_coefs)
         dvs_free_coefficients(dvs_coefs);
+
     return status;
 }
 
 status_t AtomDvs2::run()
 {
+    if( !mNeedRun )
+        return NO_ERROR;
+
     LOG1("@%s", __FUNCTION__);
 
     Mutex::Autolock lock(mLock);
@@ -260,6 +266,8 @@ status_t AtomDvs2::run()
         if (err == ia_err_none)
             status = mIsp->setDvsConfig(mDvs2Config);
     }
+    if (mZoom == 0 && !mEnabled)
+        mNeedRun = false;
 
 end:
     return status;
@@ -296,6 +304,26 @@ bool AtomDvs2::atomIspNotify(Message *msg, const ObserverState state)
     }
 
     return false;
+}
+
+status_t AtomDvs2::setZoom(int zoom)
+{
+    LOG1("@%s zoom:%d", __FUNCTION__, zoom);
+    if (zoom == mZoom)
+        return NO_ERROR;
+    ia_err err = ia_err_none;
+    int maxZoomFactor(PlatformData::getMaxZoomFactor());
+    int drv_zoom = mIsp->getDrvZoom(zoom);
+    err = dvs_set_digital_zoom_magnitude(mState, (float)maxZoomFactor /((float)maxZoomFactor - drv_zoom));
+    if (err != ia_err_none)
+        return UNKNOWN_ERROR;
+    mZoom = zoom;
+    if (mZoom != 0) {
+        Mutex::Autolock lock(mLock);
+        mNeedRun = true;
+    }
+
+    return NO_ERROR;
 }
 
 };

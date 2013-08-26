@@ -155,6 +155,7 @@ public:
     virtual void getZoomRatios(CameraParameters *params) const = 0;
     virtual void getFocusDistances(CameraParameters *params) = 0;
     virtual status_t setZoom(int zoom) = 0;
+    virtual int getDrvZoom(int zoom) = 0;
     virtual status_t setColorEffect(v4l2_colorfx effect) = 0;
     virtual status_t applyColorEffect() = 0;
     virtual status_t getMakerNote(atomisp_makernote_info *info) = 0;
