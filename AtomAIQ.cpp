@@ -1554,6 +1554,9 @@ bool AtomAIQ::changeSensorMode(void)
     sd->pixel_clock_freq_mhz = sensor_mode_data.vt_pix_clk_freq_mhz/1000000.0f;
     sd->pixel_periods_per_line = sensor_mode_data.line_length_pck;
     sd->line_periods_per_field = sensor_mode_data.frame_length_lines;
+    sd->line_periods_vertical_blanking = sensor_mode_data.frame_length_lines
+            - (sensor_mode_data.crop_vertical_end - sensor_mode_data.crop_vertical_start + 1)
+            / sensor_mode_data.binning_factor_y;
     sd->fine_integration_time_min = sensor_mode_data.fine_integration_time_def;
     sd->fine_integration_time_max_margin = sensor_mode_data.line_length_pck - sensor_mode_data.fine_integration_time_def;
     sd->coarse_integration_time_min = sensor_mode_data.coarse_integration_time_min;
@@ -1607,6 +1610,7 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct,
 
         statistics_input_parameters.frame_timestamp = TIMEVAL2USECS(sof_timestamp_struct);
 
+        statistics_input_parameters.frame_af_parameters = NULL;
         statistics_input_parameters.external_histogram = NULL;
 
         if(m3aState.faces)
@@ -1680,6 +1684,7 @@ void AtomAIQ::resetAFParams()
     mAfInputParameters.manual_focus_parameters->manual_focus_action = ia_aiq_manual_focus_action_none;
     mAfInputParameters.manual_focus_parameters->manual_focus_distance = 500;
     mAfInputParameters.manual_focus_parameters->manual_lens_position = 0;
+    mAfInputParameters.trigger_new_search = false;
 
     mAfState.af_locked = false;
     mAfState.aec_locked = false;
@@ -2290,8 +2295,11 @@ void AtomAIQ::getSensorFrameParams(ia_aiq_frame_params *frame_params)
     }
     frame_params->horizontal_crop_offset = sensor_mode_data.crop_horizontal_start;
     frame_params->vertical_crop_offset = sensor_mode_data.crop_vertical_start;
-    frame_params->cropped_image_height = sensor_mode_data.crop_vertical_end - sensor_mode_data.crop_vertical_start;
-    frame_params->cropped_image_width = sensor_mode_data.crop_horizontal_end - sensor_mode_data.crop_horizontal_start;
+    // The +1 needed as the *_end and *_start values are index values.
+    frame_params->cropped_image_height = sensor_mode_data.crop_vertical_end - sensor_mode_data.crop_vertical_start + 1;
+    frame_params->cropped_image_width = sensor_mode_data.crop_horizontal_end - sensor_mode_data.crop_horizontal_start +1;
+    frame_params->full_image_width = sensor_mode_data.crop_horizontal_end - sensor_mode_data.crop_horizontal_start + 1;
+    frame_params->full_image_height = sensor_mode_data.crop_vertical_end - sensor_mode_data.crop_vertical_start + 1;
     /* TODO: Get scaling factors from sensor configuration parameters */
     frame_params->horizontal_scaling_denominator = 254;
     frame_params->vertical_scaling_denominator = 254;
