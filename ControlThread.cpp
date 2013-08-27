@@ -133,7 +133,6 @@ ControlThread::ControlThread(int cameraId) :
     ,mFocusAreas()
     ,mMeteringAreas()
     ,mVideoSnapshotrequested(0)
-    ,mPanoramaFinalizationPending(false)
     ,mEnableFocusCbAtStart(false)
     ,mEnableFocusMoveCbAtStart(false)
     ,mStillCaptureInProgress(false)
@@ -391,6 +390,7 @@ status_t ControlThread::init()
     mBracketManager->setBracketMode(BRACKET_NONE);
 
     // Disable HDR by default
+    CLEAR(mHdr);
     mHdr.enabled = false;
     mHdr.inProgress = false;
     mHdr.savedBracketMode = BRACKET_NONE;
@@ -535,6 +535,10 @@ void ControlThread::deinit()
         delete mCallbacks;
         mCallbacks = NULL;
     }
+    List<Message>::iterator it = mPostponedMessages.begin();
+    for ( ;it != mPostponedMessages.end(); it++)
+        if (it->id == MESSAGE_ID_SET_PARAMETERS)
+            free(it->data.setParameters.params); // was strdupped, needs free
     mPostponedMessages.clear();
     LOG1("@%s- complete", __FUNCTION__);
 }
@@ -806,6 +810,8 @@ status_t ControlThread::takePicture()
 
     PERFORMANCE_TRACES_TAKE_PICTURE_QUEUE();
 
+    // TODO: make panorama and smart shutter consistent with shooting modes,
+    //       snapshots recygling and canceling.
     if (mPanoramaThread->getState() != PANORAMA_STOPPED)
         msg.id = MESSAGE_ID_PANORAMA_PICTURE;
     else if (mPostProcThread->isSmartRunning()) // delaying capture for smart shutter case
@@ -914,7 +920,6 @@ void ControlThread::panoramaFinalized(AtomBuffer *buff, AtomBuffer *pvBuff)
 status_t ControlThread::handleMessagePanoramaFinalize(MessagePanoramaFinalize *msg)
 {
     LOG1("@%s", __FUNCTION__);
-    mPanoramaFinalizationPending = false;
     status_t status = mCallbacksThread->requestTakePicture(false, false);
 
     if (status != OK)
@@ -1236,7 +1241,7 @@ void ControlThread::releaseContinuousCapture(bool flushPictures)
         // continuous mode to online mode to do a capture.
         // As capture is not runnning in these cases, flush
         // is not needed.
-        status = mPictureThread->flushBuffers();
+        status = cancelPictureThread();
         if (status != NO_ERROR) {
             LOGE("Error flushing PictureThread!");
         }
@@ -1618,7 +1623,6 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     mISP->pauseObserver(OBSERVE_PREVIEW_STREAM);
     mISP->pauseObserver(OBSERVE_3A_STAT_READY);
 
-
     // Before stopping the ISP, flush any buffers in picture
     // and video threads. This is needed as AtomISP::stop() may
     // deallocate buffers and the picture/video threads might
@@ -1689,12 +1693,9 @@ status_t ControlThread::stopCapture()
     if (mHdr.inProgress)
         mBracketManager->stopBracketing();
 
-    mAvailableSnapshotBuffers.clear();
-    mAvailableSnapshotBuffers = mAllocatedSnapshotBuffers;
-
-    status = mPictureThread->flushBuffers();
+    status = cancelPictureThread();
     if (status != NO_ERROR) {
-        LOGE("Error flushing PictureThread!");
+        LOGE("Error canceling PictureThread!");
         return status;
     }
 
@@ -1850,21 +1851,9 @@ status_t ControlThread::handleMessageStopPreview()
         //       against crashes.
         LOGW("stopPreview() called while capture in progress, canceling\n"
              "application should release the camera to cancel capture process");
-        if (mState == STATE_CAPTURE)
-            status = stopCapture();
-        else if (mState == STATE_CONTINUOUS_CAPTURE) {
-            stopOfflineCapture();
-        }
-        mBurstLength = 0;
-        mPictureThread->flushBuffers();
-        mStillCaptureInProgress = false;
-        mCaptureSubState = STATE_CAPTURE_IDLE;
-    }
-    /**
-     * We maybe in the middle of processing ULL image, make sure we cancel this
-     */
-    if (mULL && mULL->isProcessing()) {
-        mPostCaptureThread->cancelProcessingItem((IPostCaptureProcessItem *)mULL);
+        status = cancelCapture();
+        if (status != NO_ERROR)
+            LOGE("There was failures while canceling capture process");
     }
 
     // In STATE_CAPTURE, preview is already stopped, nothing to do
@@ -1931,11 +1920,12 @@ status_t ControlThread::handleMessageTimeout()
         status = mISP->init();
         if (status != NO_ERROR) {
             LOGE("Error initializing ISP");
+        } else {
+            bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
+            status = startPreviewCore(videoMode);
+            if (status)
+                LOGE("%s: Restart Preview failed", __FUNCTION__);
         }
-        bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-        status = startPreviewCore(videoMode);
-        if (status)
-            LOGE("%s: Restart Preview failed", __FUNCTION__);
     } else {
         LOG2("%s: nothing to do", __FUNCTION__);
     }
@@ -2229,7 +2219,6 @@ status_t ControlThread::handleMessagePanoramaPicture() {
         mPanoramaThread->startPanoramaCapture();
         handleMessagePanoramaCaptureTrigger();
     } else {
-        mPanoramaFinalizationPending = true;
         mPanoramaThread->finalize();
     }
 
@@ -3470,13 +3459,86 @@ status_t ControlThread::handleMessageTakeSmartShutterPicture()
     return status;
 }
 
+/**
+ * Cancel ongoig encoding
+ *
+ * Flushed PictureThread and handles pictureDone's received
+ */
+status_t ControlThread::cancelPictureThread()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = mPictureThread->flushBuffers();
+    Vector<Message> canceledPictures;
+    Vector<Message>::iterator it;
+    mMessageQueue.remove(MESSAGE_ID_PICTURE_DONE, &canceledPictures);
+    for (it = canceledPictures.begin(); it != canceledPictures.end(); it++) {
+        status = handleMessagePictureDone(&it->data.pictureDone);
+        if (status != NO_ERROR)
+            LOGD("Failed handling pictureDone-messages while canceling!");
+    }
+
+    return status;
+}
+
+/**
+ * Cancel ongoing capture post process
+ *
+ * Cancels ULL and handles postCaptureProcessingDone
+ * TODO: generalization, ULL atm the one and only post capture processing item
+ */
+status_t ControlThread::cancelPostCaptureThread()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    if (mULL && mULL->isProcessing()) {
+        status = mPostCaptureThread->cancelProcessingItem((IPostCaptureProcessItem *)mULL);
+    }
+    Vector<Message> canceledPictures;
+    Vector<Message>::iterator it;
+    mMessageQueue.remove(MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE, &canceledPictures);
+    for (it = canceledPictures.begin(); it != canceledPictures.end(); it++) {
+        status = handleMessagePostCaptureProcessingDone(&it->data.postCapture);
+        if (status != NO_ERROR)
+            LOGD("Failed handling postCaptureProcessingDone while canceling!");
+    }
+
+    return status;
+}
+
+/**
+ * Cancel ongoing capture
+ */
+status_t ControlThread::cancelCapture()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    if (mCaptureSubState == STATE_CAPTURE_IDLE) {
+        LOG1("No ongoing capture to cancel");
+        return status;
+    }
+
+    if (mState == STATE_CAPTURE) {
+        // online capture
+        status = stopCapture();
+    } else if (mState == STATE_CONTINUOUS_CAPTURE) {
+        // offline capture
+        stopOfflineCapture();
+        status |= cancelPostCaptureThread();
+        status |= cancelPictureThread();
+    }
+    mStillCaptureInProgress = false;
+    mCaptureSubState = STATE_CAPTURE_IDLE;
+    return status;
+}
+
 status_t ControlThread::handleMessageCancelPicture()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     mBurstLength = 0;
-    mPictureThread->flushBuffers();
+    status = cancelPictureThread();
 
     mStillCaptureInProgress = false;
 
@@ -3685,19 +3747,6 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
     status_t status = NO_ERROR;
 
     mCaptureSubState = STATE_CAPTURE_PICTURE_DONE;
-    // handle postponed setparameters which may have occured during capture
-    List<Message>::iterator it = mPostponedMessages.begin();
-
-    while (it != mPostponedMessages.end()) {
-        if (it->id == MESSAGE_ID_SET_PARAMETERS) {
-            LOG1("@%s handling postponed setparameter message", __FUNCTION__);
-            handleMessageSetParameters(&it->data.setParameters);
-            free(it->data.setParameters.params); // was strdupped, needs free
-            it = mPostponedMessages.erase(it); // returns pointer to next item in list
-        } else {
-            it++;
-        }
-    }
 
     if (msg->snapshotBuf.type == ATOM_BUFFER_PANORAMA) {
         // panorama pictures are special, they use the panorama engine memory.
@@ -3780,6 +3829,20 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
         LOGW("Received a picture Done during invalid state %d; buf id:%d, ptr=%p", mState, msg->snapshotBuf.id, msg->snapshotBuf.buff);
     }
 
+    // handle postponed setparameters which may have occured during capture
+    // TODO: ensure that this goes correctly with e.g ULL recycling more than
+    //       one buffers before capture process is done
+    List<Message>::iterator it = mPostponedMessages.begin();
+    while (it != mPostponedMessages.end()) {
+        if (it->id == MESSAGE_ID_SET_PARAMETERS) {
+            LOG1("@%s handling postponed setparameter message", __FUNCTION__);
+            handleMessageSetParameters(&it->data.setParameters);
+            free(it->data.setParameters.params); // was strdupped, needs free
+            it = mPostponedMessages.erase(it); // returns pointer to next item in list
+        } else {
+            it++;
+        }
+    }
 
     return status;
 }
@@ -3820,6 +3883,11 @@ bool ControlThread::validateSize(int width, int height, Vector<Size> &supportedS
     if (width < 0 || height < 0)
         return false;
 
+    for (Vector<Size>::iterator it = supportedSizes.begin(); it != supportedSizes.end(); ++it)
+        if (width == it->width && height == it->height)
+            return true;
+
+    LOGW("WARNING: The Size %dx%d is not fully supported. Some issues might occur!", width, height);
     return true;
 }
 
@@ -6491,7 +6559,6 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     ProcessOverlayEnable(&oldParams, &newParams);
 
     if (needRestartPreview == true) {
-
         if (msg->stopPreviewRequest) {
             if (mState != STATE_CONTINUOUS_CAPTURE)
                 LOGD("%s: Invalid stopPreviewRequest!", __FUNCTION__);
@@ -6792,6 +6859,10 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
 
     LOG1("HDR: using %p as HDR postview output buffer", mHdr.outPostviewBuf.dataPtr);
 
+    // Initialize the input buffers store
+    mHdr.inputBuffers = new MessagePicture[mHdr.bracketNum];
+    memset(mHdr.inputBuffers, 0, mHdr.bracketNum * sizeof(MessagePicture));
+
     // Initialize the CI input buffers (will be initialized later, when snapshots are taken)
     mHdr.ciBufIn.ciBufNum = mHdr.bracketNum;
     mHdr.ciBufIn.ciMainBuf = new ia_frame[mHdr.ciBufIn.ciBufNum];
@@ -6858,6 +6929,7 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
 status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* postviewBuffer)
 {
     LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
 
     // Initialize the HDR CI input buffers (main/postview) for this capture
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer->dataPtr;
@@ -6892,7 +6964,12 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height,
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].format);
 
-    return mCP->computeCDF(mHdr.ciBufIn, mBurstCaptureNum);
+    status = mCP->computeCDF(mHdr.ciBufIn, mBurstCaptureNum);
+    if (status == NO_ERROR) {
+        mHdr.inputBuffers[mBurstCaptureNum].snapshotBuf = *snapshotBuffer;
+        mHdr.inputBuffers[mBurstCaptureNum].postviewBuf = *postviewBuffer;
+    }
+    return status;
 }
 
 void ControlThread::hdrRelease()
@@ -6919,6 +6996,10 @@ void ControlThread::hdrRelease()
     if (mHdr.ciBufOut.ciPostviewBuf != NULL) {
         delete[] mHdr.ciBufOut.ciPostviewBuf;
         mHdr.ciBufOut.ciPostviewBuf = NULL;
+    }
+    if (mHdr.inputBuffers != NULL) {
+        delete[] mHdr.inputBuffers;
+        mHdr.inputBuffers = NULL;
     }
     mHdr.inProgress = false;
 }
@@ -6960,6 +7041,15 @@ status_t ControlThread::hdrCompose()
         if (hdrPicMetaData.aeConfig) {
             hdrPicMetaData.aeConfig->evBias = 0.0;
         }
+
+        // recycle HDR input buffers
+        for (int i = 0; i < mHdr.bracketNum; i++) {
+            if (mHdr.inputBuffers[i].snapshotBuf.dataPtr != NULL) {
+                handleMessagePictureDone(&mHdr.inputBuffers[i]);
+                mHdr.inputBuffers[i].snapshotBuf.dataPtr = NULL;
+            }
+        }
+
         // The output frame is allocated by the HDR module so it is not one of the
         // snapshot buffers allocated by the PictureThread. We mark this in the
         // status field as frame skipped. This field is only checked by the
@@ -7270,8 +7360,6 @@ status_t ControlThread::stopPanorama()
     LOG1("@%s", __FUNCTION__);
 
     if (mPanoramaThread != 0) {
-        if (mPanoramaFinalizationPending)
-
         if (mPanoramaThread->getState() == PANORAMA_STOPPED)
             return NO_ERROR;
 

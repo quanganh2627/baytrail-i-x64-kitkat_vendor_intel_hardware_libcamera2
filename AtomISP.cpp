@@ -70,7 +70,7 @@ namespace android {
 //                          STATIC DATA
 ////////////////////////////////////////////////////////////////////
 static sensorPrivateData gSensorDataCache[MAX_CAMERAS];
-
+Mutex AtomISP::sISPCountLock;
 static struct devNameGroup devName[MAX_CAMERAS] = {
     {{"/dev/video0", "/dev/video1", "/dev/video2", "/dev/video3"},
         false,},
@@ -139,7 +139,22 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
 
 status_t AtomISP::initDevice()
 {
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+
+    if (mGroupIndex < 0) {
+        LOGE("No mGroupIndex set. Could not run device init!");
+        return NO_INIT;
+    }
+
+    mMainDevice.clear();
+    mPreviewDevice.clear();
+    mPostViewDevice.clear();
+    mRecordingDevice.clear();
+    mIspSubdevice.clear();
+    m3AEventSubdevice.clear();
+    mFileInjectDevice.clear();
+    mOriginalPreviewDevice.clear();
 
     mMainDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_MAIN_DEVICE], V4L2_MAIN_DEVICE);
     mPreviewDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_PREVIEW_DEVICE], V4L2_PREVIEW_DEVICE);
@@ -164,6 +179,7 @@ status_t AtomISP::initDevice()
     }
 
     struct v4l2_capability aCap;
+    CLEAR(aCap);
     status = mMainDevice->queryCap(&aCap);
     if (status != NO_ERROR) {
         LOGE("Failed basic capability check failed!");
@@ -199,6 +215,7 @@ status_t AtomISP::initDevice()
  */
 void AtomISP::deInitDevice()
 {
+    LOG1("@%s", __FUNCTION__);
     mMainDevice->close();
 }
 
@@ -207,20 +224,28 @@ void AtomISP::deInitDevice()
  */
 bool AtomISP::isDeviceInitialized() const
 {
+    LOG1("@%s", __FUNCTION__);
     return mMainDevice->isOpen();
 }
 
 status_t AtomISP::init()
 {
+    LOG1("@%s", __FUNCTION__);
+
     status_t status = NO_ERROR;
 
-    Mutex::Autolock lock(mISPCountLock);
-    for (int i = 0; i < MAX_CAMERAS; i++) {
-        if (devName[i].in_use == false) {
-            mGroupIndex = i;
-            devName[i].in_use = true;
-            break;
+    if (mGroupIndex < 0) {
+        Mutex::Autolock lock(sISPCountLock);
+        for (int i = 0; i < MAX_CAMERAS; i++) {
+            if (devName[i].in_use == false) {
+                mGroupIndex = i;
+                devName[i].in_use = true;
+                break;
+            }
         }
+        LOG1("@%s: new mGroupIndex = %d", __FUNCTION__, mGroupIndex);
+    } else {
+        LOG1("@%s: using old mGroupIndex = %d", __FUNCTION__, mGroupIndex);
     }
 
     if (mGroupIndex < 0) {
@@ -230,6 +255,7 @@ status_t AtomISP::init()
 
     status = initDevice();
     if (status != NO_ERROR) {
+        LOGE("Device inititialize failure. Inititialize Atomisp failed.");
         return NO_INIT;
     }
 
@@ -455,8 +481,11 @@ void AtomISP::initFileInject()
 AtomISP::~AtomISP()
 {
     LOG1("@%s", __FUNCTION__);
-    Mutex::Autolock lock(mISPCountLock);
-    devName[mGroupIndex].in_use = false;
+    Mutex::Autolock lock(sISPCountLock);
+    if (mGroupIndex >= 0) {
+        devName[mGroupIndex].in_use = false;
+    }
+
     /*
      * The destructor is called when the hw_module close mehod is called. The close method is called
      * in general by the camera client when it's done with the camera device, but it is also called by
@@ -1718,7 +1747,7 @@ status_t AtomISP::configureContinuousSOC()
             false);
     if (ret < 0) {
         status = UNKNOWN_ERROR;
-        LOG1("@%s error", __FUNCTION__);
+        LOGE("@%s: configureDevice failed!", __FUNCTION__);
         goto err;
     }
 
@@ -5501,6 +5530,7 @@ bool AtomISP::lowBatteryForFlash()
     size_t len = ::fread(buf, 1, 1, fp);
     if (len == 0) {
         LOGW("@%s, fail to read 1 byte from camflash_ctrl", __FUNCTION__);
+        ::fclose(fp);
         return false;
     }
     ::fclose(fp);
