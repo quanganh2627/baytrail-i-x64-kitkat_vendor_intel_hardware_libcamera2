@@ -217,8 +217,6 @@ public:
     virtual status_t getSmartSceneMode(int *sceneMode, bool *sceneHdr);
     virtual void setPublicAeMode(AeMode mode);
     virtual AeMode getPublicAeMode();
-    virtual void setPublicAfMode(AfMode mode);
-    virtual AfMode getPublicAfMode();
     virtual ia_3a_af_status getCAFStatus();
     virtual status_t setFaces(const ia_face_state& faceState);
 
@@ -259,7 +257,6 @@ private:
     SensorType mSensorType;
     AfMode mAfMode;
     AeMode mPublicAeMode;
-    AfMode mPublicAfMode;
     FlashMode mFlashMode;
     FlashStage mFlashStage;
     AwbMode mAwbMode;

@@ -46,7 +46,6 @@ AtomSoc3A::AtomSoc3A(int cameraId, HWControlGroup &hwcg) :
     ,mFlashCI(hwcg.mFlashCI)
     ,mLensCI(hwcg.mLensCI)
     ,mPublicAeMode(CAM_AE_MODE_AUTO)
-    ,mPublicAfMode(CAM_AF_MODE_AUTO)
 {
     LOG2("@%s", __FUNCTION__);
 }
@@ -993,18 +992,6 @@ AeMode AtomSoc3A::getPublicAeMode()
 {
     LOG2("@%s", __FUNCTION__);
     return mPublicAeMode;
-}
-
-void AtomSoc3A::setPublicAfMode(AfMode mode)
-{
-    LOG2("@%s", __FUNCTION__);
-    mPublicAfMode = mode;
-}
-
-AfMode AtomSoc3A::getPublicAfMode()
-{
-    LOG2("@%s", __FUNCTION__);
-    return mPublicAfMode;
 }
 
 status_t AtomSoc3A::setFlash(int numFrames)

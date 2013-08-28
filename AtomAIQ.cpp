@@ -835,18 +835,6 @@ AeMode AtomAIQ::getPublicAeMode()
     return mPublicAeMode;
 }
 
-void AtomAIQ::setPublicAfMode(AfMode mode)
-{
-    LOG2("@%s, AfMode: %d", __FUNCTION__, mode);
-    mAfMode = mode;
-}
-
-AfMode AtomAIQ::getPublicAfMode()
-{
-    LOG2("@%s, AfMode: %d", __FUNCTION__, mAfMode);
-    return mAfMode;
-}
-
 status_t AtomAIQ::startStillAf()
 {
     LOG1("@%s", __FUNCTION__);

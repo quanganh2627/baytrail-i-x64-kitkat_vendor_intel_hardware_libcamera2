@@ -119,7 +119,6 @@ AtomAAA::AtomAAA(HWControlGroup &hwcg) :
      mSensorType(SENSOR_TYPE_NONE)
     ,mAfMode(CAM_AF_MODE_NOT_SET)
     ,mPublicAeMode(CAM_AE_MODE_AUTO)
-    ,mPublicAfMode(CAM_AF_MODE_AUTO)
     ,mFlashMode(CAM_AE_FLASH_MODE_NOT_SET)
     ,mFlashStage(CAM_FLASH_STAGE_NOT_SET)
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
@@ -541,20 +540,6 @@ AeMode AtomAAA::getPublicAeMode()
     return mPublicAeMode;
 }
 
-void AtomAAA::setPublicAfMode(AfMode mode)
-{
-    Mutex::Autolock lock(m3aLock);
-    LOG2("@%s", __FUNCTION__);
-    mPublicAfMode = mode;
-}
-
-AfMode AtomAAA::getPublicAfMode()
-{
-    Mutex::Autolock lock(m3aLock);
-    LOG2("@%s", __FUNCTION__);
-    return mPublicAfMode;
-}
-
 status_t AtomAAA::setAeFlashMode(FlashMode mode)
 {
     Mutex::Autolock lock(m3aLock);
@@ -871,7 +856,7 @@ status_t AtomAAA::setAfWindows(const CameraWindow *windows, size_t numWindows)
     if (numWindows > 0) {
         ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_spot);
     } else {
-        // No windows set, handle as null-window -> "auto"
+        // No windows set, handle as null-window -> set AF metering "auto"
         ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_auto);
     }
 

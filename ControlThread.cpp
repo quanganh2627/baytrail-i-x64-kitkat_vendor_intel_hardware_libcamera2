@@ -1725,8 +1725,8 @@ status_t ControlThread::stopCapture()
     }
 
     if (mBracketManager->getBracketMode() == BRACKET_FOCUS) {
-        AfMode publicAfMode = m3AControls->getPublicAfMode();
-        m3AControls->setAfMode(publicAfMode);
+        AfMode afMode = m3AControls->getAfMode();
+        m3AControls->setAfMode(afMode);
     }
 
     if (mHdr.enabled || mHdr.inProgress) {
@@ -5486,7 +5486,6 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
         }
 
         curAfMode = m3AControls->getAfMode();
-        m3AControls->setPublicAfMode(afMode);
 
         if (status == NO_ERROR && curAfMode != afMode) {
             // See if we have to change the actual mode (it could be correct already)
@@ -5496,15 +5495,13 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
     }
 
     if (!mFaceDetectionActive) {
-        AfMode publicAfMode = m3AControls->getPublicAfMode();
+        curAfMode = m3AControls->getAfMode();
         // Based on Google specs, the focus area is effective only for modes:
         // (framework side constants:) FOCUS_MODE_AUTO, FOCUS_MODE_MACRO, FOCUS_MODE_CONTINUOUS_VIDEO
         // or FOCUS_MODE_CONTINUOUS_PICTURE.
-        if (publicAfMode == CAM_AF_MODE_AUTO ||
-            publicAfMode == CAM_AF_MODE_CONTINUOUS ||
-            publicAfMode == CAM_AF_MODE_MACRO) {
-
-                afMode = publicAfMode;
+        if (curAfMode == CAM_AF_MODE_AUTO ||
+            curAfMode == CAM_AF_MODE_CONTINUOUS ||
+            curAfMode == CAM_AF_MODE_MACRO) {
 
                 size_t winCount(mFocusAreas.numOfAreas());
                 CameraWindow *focusWindows = new CameraWindow[winCount];

@@ -708,8 +708,8 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
             }
         }
 
-        AfMode currPublicAfMode = m3AControls->getPublicAfMode();
-        if (currPublicAfMode == CAM_AF_MODE_CONTINUOUS) {
+        AfMode currAfMode = m3AControls->getAfMode();
+        if (currAfMode == CAM_AF_MODE_CONTINUOUS) {
             ia_3a_af_status cafStatus = m3AControls->getCAFStatus();
             LOG2("CAF move lens status: %d", cafStatus);
             if (cafStatus != mPreviousCafStatus) {

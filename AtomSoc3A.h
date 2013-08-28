@@ -95,8 +95,6 @@ public:
     virtual FlashMode getAeFlashMode();
     virtual void setPublicAeMode(AeMode mode);
     virtual AeMode getPublicAeMode();
-    virtual void setPublicAfMode(AfMode mode);
-    virtual AfMode getPublicAfMode();
 
     // Only supported by Intel 3A
     virtual bool isIntel3A() { return false; }
@@ -152,7 +150,6 @@ private:
     IHWFlashControl * mFlashCI;
     IHWLensControl * mLensCI;
     AeMode mPublicAeMode;
-    AfMode mPublicAfMode;
 }; // class AtomSoc3A
 
 }; // namespace android
