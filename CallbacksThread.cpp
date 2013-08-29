@@ -174,6 +174,34 @@ status_t CallbacksThread::lowBattery()
     return mMessageQueue.send(&msg);
 }
 
+status_t CallbacksThread::rawFrameDone(AtomBuffer* snapshotBuf)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_RAW_FRAME_DONE;
+    msg.data.rawFrame.frame.buff = NULL;
+
+    if (snapshotBuf != NULL) {
+        msg.data.rawFrame.frame = *snapshotBuf;
+    }
+
+    return mMessageQueue.send(&msg);
+}
+
+status_t CallbacksThread::postviewFrameDone(AtomBuffer* postviewBuf)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_POSTVIEW_FRAME_DONE;
+    msg.data.postviewFrame.frame.buff = NULL;
+
+   if (postviewBuf != NULL) {
+        msg.data.postviewFrame.frame = *postviewBuf;
+    }
+
+    return mMessageQueue.send(&msg);
+}
+
 status_t CallbacksThread::handleMessagePostviewRendered()
 {
     LOG1("@%s", __FUNCTION__);
@@ -358,7 +386,7 @@ status_t CallbacksThread::videoFrameDone(AtomBuffer *buff, nsecs_t timestamp)
  * Process message received from Picture Thread when a the image compression
  * has completed.
  */
-status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
+status_t CallbacksThread::handleMessageJpegDataReady(MessageCompressed *msg)
 {
     LOG1("@%s: JPEG buffers queued: %d, mJpegRequested = %u, mPostviewRequested = %u, mRawRequested = %u, mULLRequested = %u",
             __FUNCTION__,
@@ -370,8 +398,6 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
     AtomBuffer jpegBuf = msg->jpegBuff;
     AtomBuffer snapshotBuf = msg->snapshotBuff;
     AtomBuffer postviewBuf= msg->postviewBuff;
-    AtomBuffer tmpCopy = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_PREVIEW);
-    bool    releaseTmp = false;
 
     mPictureDoneCallback->encodingDone(&snapshotBuf, &postviewBuf);
 
@@ -386,47 +412,6 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageFrame *msg)
     }
 
     if (mJpegRequested > 0) {
-        if (mPostviewRequested > 0) {
-            if (postviewBuf.type == ATOM_BUFFER_PREVIEW_GFX) {
-                convertGfx2Regular(&postviewBuf, &tmpCopy);
-                releaseTmp = true;
-            } else {
-                tmpCopy = postviewBuf;
-            }
-            mCallbacks->postviewFrameDone(&tmpCopy);
-            mPostviewRequested--;
-        }
-        if (tmpCopy.buff != NULL && releaseTmp) {
-            tmpCopy.buff->size = 0;     // we only allocated the camera_memory_t no any actual memory
-            tmpCopy.buff->data = NULL;
-            MemoryUtils::freeAtomBuffer(tmpCopy);
-            releaseTmp = false;
-        }
-
-        if (mRawRequested > 0) {
-            if (snapshotBuf.type == ATOM_BUFFER_PREVIEW_GFX) {
-                convertGfx2Regular(&snapshotBuf, &tmpCopy);
-                releaseTmp = true;
-            } else if (snapshotBuf.dataPtr != NULL && mCallbacks->msgTypeEnabled(CAMERA_MSG_RAW_IMAGE)) {
-                LOG1("snapshotBuf.size:%d", snapshotBuf.size);
-
-                mCallbacks->allocateMemory(&tmpCopy.buff, snapshotBuf.size);
-                if (tmpCopy.dataPtr != NULL) {
-                    memcpy(tmpCopy.dataPtr, snapshotBuf.dataPtr, snapshotBuf.size);
-                    releaseTmp = true;
-                }
-            } else {
-                tmpCopy = snapshotBuf;
-            }
-            mCallbacks->rawFrameDone(&tmpCopy);
-            mRawRequested--;
-        }
-        if (tmpCopy.buff != NULL && releaseTmp) {
-            tmpCopy.buff->size = 0;
-            tmpCopy.buff->data = NULL;
-            MemoryUtils::freeAtomBuffer(tmpCopy);
-        }
-
         if (gLogLevel & CAMERA_DEBUG_JPEG_DUMP) {
             String8 jpegDumpName("/data/cam_hal_jpeg_dump.jpeg");
             CameraDump::dumpAtom2File(&jpegBuf, jpegDumpName.string());
@@ -466,6 +451,7 @@ status_t CallbacksThread::handleMessageJpegDataRequest(MessageDataRequest *msg)
         AtomBuffer jpegBuf = mBuffers[0].jpegBuff;
         AtomBuffer snapshotBuf = mBuffers[0].snapshotBuff;
         AtomBuffer postviewBuf = mBuffers[0].postviewBuff;
+
         if (msg->postviewCallback) {
             mCallbacks->postviewFrameDone(&postviewBuf);
         }
@@ -519,7 +505,7 @@ status_t CallbacksThread::handleMessageUllJpegDataRequest(MessageULLSnapshot *ms
     return NO_ERROR;
 }
 
-status_t CallbacksThread::handleMessageUllJpegDataReady(MessageFrame *msg)
+status_t CallbacksThread::handleMessageUllJpegDataReady(MessageCompressed *msg)
 {
     LOG1("@%s",__FUNCTION__);
     AtomBuffer jpegBuf = msg->jpegBuff;
@@ -627,7 +613,7 @@ status_t CallbacksThread::handleMessageSceneDetected(MessageSceneDetected *msg)
     return status;
 }
 
-status_t CallbacksThread::handleMessagePreviewDone(MessagePreview *msg)
+status_t CallbacksThread::handleMessagePreviewDone(MessageFrame *msg)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -640,6 +626,49 @@ status_t CallbacksThread::handleMessageVideoDone(MessageVideo *msg)
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     mCallbacks->videoFrameDone(&(msg->frame), msg->timestamp);
+    return status;
+}
+
+status_t CallbacksThread::handleMessageRawFrameDone(MessageFrame *msg)
+{
+    LOG1("@%s",__FUNCTION__);
+    status_t status = NO_ERROR;
+    bool    releaseTmp = false;
+    AtomBuffer tmpCopy = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+    AtomBuffer snapshotBuf = msg->frame;
+    if (mRawRequested > 0) {
+        if (snapshotBuf.gfxInfo.gfxBufferHandle && mCallbacks->msgTypeEnabled(CAMERA_MSG_RAW_IMAGE)) {
+            LOG1("snapshotBuf.size:%d", snapshotBuf.size);
+            mCallbacks->allocateMemory(&tmpCopy.buff, snapshotBuf.size);
+            if (tmpCopy.buff != NULL) {
+                memcpy(tmpCopy.buff->data, snapshotBuf.dataPtr, snapshotBuf.size);
+                releaseTmp = true;
+            }
+        } else {
+            tmpCopy = snapshotBuf;
+        }
+        mCallbacks->rawFrameDone(&tmpCopy);
+        mRawRequested--;
+    }
+
+    if (tmpCopy.buff != NULL && releaseTmp) {
+        MemoryUtils::freeAtomBuffer(tmpCopy);
+    }
+
+    return status;
+}
+
+status_t CallbacksThread::handleMessagePostviewFrameDone(MessageFrame *msg)
+{
+    LOG1("@%s",__FUNCTION__);
+    status_t status = NO_ERROR;
+    AtomBuffer tmpCopy = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+    if (mPostviewRequested > 0) {
+        tmpCopy = msg->frame;
+        mCallbacks->postviewFrameDone(&tmpCopy);
+        mPostviewRequested--;
+    }
+
     return status;
 }
 
@@ -728,6 +757,14 @@ status_t CallbacksThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_LOW_BATTERY:
             status = handleMessageLowBattery();
+            break;
+
+        case MESSAGE_ID_RAW_FRAME_DONE:
+            status = handleMessageRawFrameDone(&msg.data.rawFrame);
+            break;
+
+        case MESSAGE_ID_POSTVIEW_FRAME_DONE:
+            status = handleMessagePostviewFrameDone(&msg.data.postviewFrame);
             break;
 
         default:

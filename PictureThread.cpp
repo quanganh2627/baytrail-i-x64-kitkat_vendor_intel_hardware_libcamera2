@@ -181,8 +181,10 @@ status_t PictureThread::encode(MetaData &metaData, AtomBuffer *snaphotBuf, AtomB
     msg.id = MESSAGE_ID_ENCODE;
     msg.data.encode.metaData = metaData;
     msg.data.encode.snaphotBuf = *snaphotBuf;
+    mCallbacksThread->rawFrameDone(snaphotBuf);
     if (postviewBuf) {
         msg.data.encode.postviewBuf = *postviewBuf;
+        mCallbacksThread->postviewFrameDone(postviewBuf);
     } else {
         // thumbnail is optional
         LOG1("@%s, encoding without Thumbnail", __FUNCTION__);

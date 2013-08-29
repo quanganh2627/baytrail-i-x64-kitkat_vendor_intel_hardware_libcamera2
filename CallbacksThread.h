@@ -76,6 +76,8 @@ public:
     status_t postviewRendered();
     status_t sendError(int id);
     status_t lowBattery();
+    status_t rawFrameDone(AtomBuffer* snapshotBuf);
+    status_t postviewFrameDone(AtomBuffer* postviewBuf);
 
 // private types
 private:
@@ -109,6 +111,9 @@ private:
         // low battery callback
         MESSAGE_ID_LOW_BATTERY,
 
+        MESSAGE_ID_RAW_FRAME_DONE,
+        MESSAGE_ID_POSTVIEW_FRAME_DONE,
+
         // max number of messages
         MESSAGE_ID_MAX
     };
@@ -117,13 +122,13 @@ private:
     // message data structures
     //
 
-    struct MessageFrame {
+    struct MessageCompressed {
         AtomBuffer jpegBuff;
         AtomBuffer postviewBuff;
         AtomBuffer snapshotBuff;
     };
 
-    struct MessagePreview {
+    struct MessageFrame {
         AtomBuffer frame;
     };
 
@@ -175,7 +180,13 @@ private:
     union MessageData {
 
         //MESSAGE_ID_JPEG_DATA_READY
-        MessageFrame compressedFrame;
+        MessageCompressed compressedFrame;
+
+        //MESSAGE_ID_RAW_FRAME_DONE
+        MessageFrame rawFrame;
+
+        //MESSAGE_ID_POSTVIEW_FRAME_DONE
+        MessageFrame postviewFrame;
 
         //MESSAGE_ID_JPEG_DATA_REQUEST
         MessageDataRequest dataRequest;
@@ -193,7 +204,7 @@ private:
         MessageSceneDetected    sceneDetected;
 
         // MESSAGE_ID_PREVIEW_DONE
-        MessagePreview  preview;
+        MessageFrame  preview;
 
         // MESSAGE_ID_VIDEO_DONE
         MessageVideo    video;
@@ -225,23 +236,25 @@ private:
     // thread message execution functions
     status_t handleMessageExit();
     status_t handleMessageCallbackShutter();
-    status_t handleMessageJpegDataReady(MessageFrame *msg);
+    status_t handleMessageJpegDataReady(MessageCompressed *msg);
     status_t handleMessageJpegDataRequest(MessageDataRequest *msg);
     status_t handleMessageAutoFocusDone(MessageAutoFocusDone *msg);
     status_t handleMessageFocusMove(MessageFocusMove *msg);
     status_t handleMessageFlush();
     status_t handleMessageFaces(MessageFaces *msg);
     status_t handleMessageSceneDetected(MessageSceneDetected *msg);
-    status_t handleMessagePreviewDone(MessagePreview *msg);
+    status_t handleMessagePreviewDone(MessageFrame *msg);
     status_t handleMessageVideoDone(MessageVideo *msg);
     status_t handleMessagePanoramaDisplUpdate(MessagePanoramaDisplUpdate *msg);
     status_t handleMessagePanoramaSnapshot(MessagePanoramaSnapshot *msg);
     status_t handleMessagePostviewRendered();
     status_t handleMessageUllJpegDataRequest(MessageULLSnapshot *msg);
     status_t handleMessageUllTriggered(MessageULLSnapshot *msg);
-    status_t handleMessageUllJpegDataReady(MessageFrame *msg);
+    status_t handleMessageUllJpegDataReady(MessageCompressed *msg);
     status_t handleMessageSendError(MessageError *msg);
     status_t handleMessageLowBattery();
+    status_t handleMessageRawFrameDone(MessageFrame *msg);
+    status_t handleMessagePostviewFrameDone(MessageFrame *msg);
     // main message function
     status_t waitForAndExecuteMessage();
 
@@ -271,7 +284,7 @@ private:
      * MAIN and POSTVIEW raw buffers. They need to be returned back to ISP when the
      * JPEG, RAW and POSTIVEW callbacks are sent to the camera client.
      */
-    Vector<MessageFrame> mBuffers;
+    Vector<MessageCompressed> mBuffers;
     camera_frame_metadata_t mFaceMetadata;
     int mCameraId;
 
