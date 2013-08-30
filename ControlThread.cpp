@@ -1343,7 +1343,7 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
     if (!PlatformData::snapshotResolutionSupportedByZSL(mCameraId, picWidth, picHeight)) {
         LOG1("@%s: picture-size %dx%d, disabling continuous mode",
              __FUNCTION__, picWidth, picHeight);
-        return STATE_PREVIEW_STILL;
+        goto online_preview;
     }
 
     // Low preview resolutions have known issues in continuous mode.
@@ -1352,19 +1352,19 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         vfWidth < 640 && vfHeight < 360) {
         LOG1("@%s: continuous mode not available for preview size %ux%u",
              __FUNCTION__, vfWidth, vfHeight);
-        return STATE_PREVIEW_STILL;
+        goto online_preview;
     }
 
     if (mHdr.enabled) {
         LOG1("@%s: HDR enabled, disabling continuous mode",
              __FUNCTION__);
-        return STATE_PREVIEW_STILL;
+        goto online_preview;
     }
 
     if (mBurstLength > 1 && mBurstStart >= 0) {
         LOG1("@%s: Burst length of %d requested, disabling continuous mode",
              __FUNCTION__, mBurstLength);
-        return STATE_PREVIEW_STILL;
+        goto online_preview;
     }
 
     if (mBurstStart < 0) {
@@ -1374,7 +1374,7 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         if (mBurstLength > maxBufSize - 1) {
              LOG1("@%s: Burst length of %d with offset %d requested, disabling continuous mode",
                   __FUNCTION__, mBurstLength, mBurstStart);
-            return STATE_PREVIEW_STILL;
+             goto online_preview;
         }
 
         // Bracketing not supported in continuous mode as the number
@@ -1382,22 +1382,30 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         if (mBracketManager->getBracketMode() != BRACKET_NONE) {
             LOG1("@%s: Bracketing requested, disabling continuous mode",
                  __FUNCTION__);
-            return STATE_PREVIEW_STILL;
+            goto online_preview;
         }
     }
 
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
         LOG1("@%s: Raw dump enabled, disabling continuous mode", __FUNCTION__);
-        return STATE_PREVIEW_STILL;
+        goto online_preview;
     }
 
     if (mISP->getLowLight()) {
         LOG1("@%s: ANR enabled, disabling continuous mode", __FUNCTION__);
-        return STATE_PREVIEW_STILL;
+        goto online_preview;
     }
-
     LOG1("@%s: Selecting continuous still preview mode", __FUNCTION__);
     return STATE_CONTINUOUS_CAPTURE;
+
+online_preview:
+    // In online preview we cannot support other than the standard update mode
+    if (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD) {
+        mPreviewUpdateMode = IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD;
+        LOGW("Forcing preview update mode to standard, conflicting settings");
+    }
+    return STATE_PREVIEW_STILL;
+
 }
 
 status_t ControlThread::startPreviewCore(bool videoMode)
