@@ -148,8 +148,27 @@ void Callbacks::postviewFrameDone(AtomBuffer *buff)
 {
     LOG1("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_POSTVIEW_FRAME) && mDataCB != NULL) {
-        LOGD("Sending message: CAMERA_MSG_POSTVIEW_FRAME, buff id = %d, size = %zu", buff->id,  buff->buff->size);
-        mDataCB(CAMERA_MSG_POSTVIEW_FRAME, buff->buff, 0, NULL, mUserToken);
+        if (buff->buff) {
+            LOG1("Sending message: CAMERA_MSG_POSTVIEW_FRAME, buff id = %d, size = %zu", buff->id,  buff->buff->size);
+            mDataCB(CAMERA_MSG_POSTVIEW_FRAME, buff->buff, 0, NULL, mUserToken);
+        } else {
+            if (buff->dataPtr && buff->size && buff->gfxInfo.gfxBufferHandle) {
+                // allocated from graphics (HAL ZSL use case, usually)
+                // callback memory allocation is deferred to here to conserve memory
+                allocateMemory(&buff->buff, buff->size);
+                if (buff->buff) {
+                    memcpy(buff->buff->data, buff->dataPtr, buff->size);
+                    LOG1("Sending message: CAMERA_MSG_POSTVIEW_FRAME, buff id = %d, size = %zu", buff->id,  buff->buff->size);
+                    mDataCB(CAMERA_MSG_POSTVIEW_FRAME, buff->buff, 0, NULL, mUserToken);
+                    buff->buff->release(buff->buff);
+                    buff->buff = 0;
+                } else {
+                    LOGE("@%s, Not enough memory for postview callback.", __FUNCTION__);
+                }
+            } else {
+                LOGE("@%s, unusable postview buffer", __FUNCTION__);
+            }
+        }
     }
 }
 
@@ -157,12 +176,12 @@ void Callbacks::rawFrameDone(AtomBuffer *buff)
 {
     LOG1("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_RAW_IMAGE_NOTIFY) && mNotifyCB != NULL) {
-        LOGD("Sending message: CAMERA_MSG_RAW_IMAGE_NOTIFY, buff id = %d", buff->id);
+        LOG1("Sending message: CAMERA_MSG_RAW_IMAGE_NOTIFY, buff id = %d", buff->id);
         mNotifyCB(CAMERA_MSG_RAW_IMAGE_NOTIFY, 0, 0, mUserToken);
     }
 
     if ((mMessageFlags & CAMERA_MSG_RAW_IMAGE) && mNotifyCB != NULL) {
-        LOGD("Sending message: CAMERA_MSG_RAW_IMAGE, buff id = %d, size = %zu", buff->id, buff->buff->size);
+        LOG1("Sending message: CAMERA_MSG_RAW_IMAGE, buff id = %d, size = %zu", buff->id, buff->buff->size);
         mDataCB(CAMERA_MSG_RAW_IMAGE, buff->buff, 0, NULL, mUserToken);
     }
 }

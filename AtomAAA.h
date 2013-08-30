@@ -271,6 +271,11 @@ private:
     IHWSensorControl *mSensorCI;
     ia_env mPrintFunctions;
     AAALibState m3ALibState;
+    uint64_t mTimePreviousFlash;
+    uint64_t mTimeAssistRequired;
+    static const uint32_t TIME_STICKY_FLASH_USAGE_NS = 1300000000; // 1300ms
+    static const uint32_t TIME_ASSIST_DECIDES_FLASH_USAGE_NS = 2000000000; // 2000ms
+
 }; // class AtomAAA
 
 }; // namespace android

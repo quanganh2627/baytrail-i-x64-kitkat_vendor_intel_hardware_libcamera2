@@ -21,6 +21,7 @@
 #include <utils/threads.h>
 #include <time.h>
 #include "MessageQueue.h"
+#include "AtomCommon.h"
 
 namespace android {
 /**
@@ -53,7 +54,7 @@ class IPostCaptureProcessObserver {
 public:
     IPostCaptureProcessObserver() {}
     virtual ~IPostCaptureProcessObserver() {}
-    virtual void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status) = 0;
+    virtual void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status, int retries = MAX_MSG_RETRIES) = 0;
 };
 
 
@@ -87,7 +88,8 @@ public:
     virtual ~PostCaptureThread();
 
     status_t sendProcessItem(IPostCaptureProcessItem* item);
-    status_t cancelProcessingItem(IPostCaptureProcessItem* item);
+    status_t cancelProcessingItem(IPostCaptureProcessItem* item = NULL);
+    bool isBusy();
     // Thread class overrides
     status_t requestExitAndWait();
 
@@ -141,6 +143,11 @@ private:
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
     IPostCaptureProcessObserver *mObserver;
+    IPostCaptureProcessItem     *mCurrentTask;
+
+    bool mBusy;     /*!< Flag to signal and ongoing process is currently running
+                         queries to this boolean must be protected with mutex */
+    Mutex mBusyMutex;
 
 };
 }  // namespace android

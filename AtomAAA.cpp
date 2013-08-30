@@ -26,6 +26,7 @@
 #include <dlfcn.h>
 #include <ia_3a.h>
 #include "FeatureData.h"
+#include "gdctool.h"
 
 namespace android {
 static IHWSensorControl *gSensorCI; // See BZ 61293
@@ -126,6 +127,8 @@ AtomAAA::AtomAAA(HWControlGroup &hwcg) :
     ,mISP(hwcg.mIspCI)
     ,mFlashCI(hwcg.mFlashCI)
     ,mSensorCI(hwcg.mSensorCI)
+    ,mTimePreviousFlash(0)
+    ,mTimeAssistRequired(0)
 {
     LOG1("@%s", __FUNCTION__);
     mPrintFunctions.vdebug = vdebug;
@@ -612,6 +615,9 @@ bool AtomAAA::getAfNeedAssistLight()
 
     bool en = ia_3a_af_need_assist_light();
 
+    if (en)
+        mTimeAssistRequired = systemTime();
+
     LOG1("%s returning %d", __FUNCTION__, en);
     return en;
 }
@@ -621,7 +627,13 @@ bool AtomAAA::getAeFlashNecessary()
     Mutex::Autolock lock(m3aLock);
     LOG2("@%s", __FUNCTION__);
 
-    bool en = ia_3a_ae_is_flash_necessary();
+    // due to this AE algorithm having slight issues with previous flash-illuminated
+    // frames affecting the decision, prefer sticky decision making from prior flash usage
+    bool en = true;
+    uint64_t now = systemTime();
+    if (now - mTimePreviousFlash > TIME_STICKY_FLASH_USAGE_NS &&
+        now - mTimeAssistRequired > TIME_ASSIST_DECIDES_FLASH_USAGE_NS)
+        en = ia_3a_ae_is_flash_necessary();
 
     LOG2("%s returning %d", __FUNCTION__, en);
     return en;
@@ -1139,6 +1151,7 @@ status_t AtomAAA::applyPreFlashProcess(FlashStage stage)
         break;
     case CAM_FLASH_STAGE_MAIN:
         wr_stage = ia_3a_flash_stage_main;
+        mTimePreviousFlash = systemTime();
         break;
     default:
         LOGE("Unknown flash stage: %d", stage);
@@ -1402,6 +1415,21 @@ void AtomAAA::ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate)
     reconfigureGrid();
     ia_aiq_frame_params sensor_frame_params;
     getSensorFrameParams(&sensor_frame_params, &m3ALibState.sensor_mode_data);
+
+    struct atomisp_morph_table *gdc_table = getGdcTable(m3ALibState.sensor_mode_data.output_width, m3ALibState.sensor_mode_data.output_height);
+    if (gdc_table) {
+        m3ALibState.gdc_table_loaded = true;
+        LOG1("Initialise gdc_table size %d x %d ", gdc_table->width, gdc_table->height);
+        mISP->setGdcConfig(gdc_table);
+        mISP->setGDC(true);
+        freeGdcTable(gdc_table);
+    }
+    else {
+        LOG1("Empty GDC table -> GDC disabled");
+        m3ALibState.gdc_table_loaded = false;
+        mISP->setGDC(false);
+    }
+
     ia_3a_reconfigure(mode, frame_rate, m3ALibState.stats, &sensor_frame_params, &m3ALibState.results);
     applyResults();
 }

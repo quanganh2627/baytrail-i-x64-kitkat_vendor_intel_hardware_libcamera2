@@ -59,6 +59,9 @@
 #define ALIGN32(x) (((x) + 31) & ~31)
 #define ALIGN64(x) (((x) + 63) & ~63)
 #define ALIGN128(x) (((x) + 127) & ~127)
+// macro MAX_MSG_RETRIES: max number of retries of handling messages that can be delayed
+//                        like for example ControlThread::MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE
+#define MAX_MSG_RETRIES 3
 
 /** Convert timeval struct to value in microseconds
  *
