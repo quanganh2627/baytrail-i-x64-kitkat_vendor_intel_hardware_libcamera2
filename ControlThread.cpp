@@ -1450,56 +1450,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         }
     }
 
-    // Update focus areas for the proper window size
-    if (!mFaceDetectionActive && !mFocusAreas.isEmpty()) {
-        size_t winCount(mFocusAreas.numOfAreas());
-        CameraWindow *focusWindows = new CameraWindow[winCount];
-        mFocusAreas.toWindows(focusWindows);
-        convertAfWindows(focusWindows, winCount);
-        if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
-            LOGE("Could not set AF windows. Resseting the AF to %d", CAM_AF_MODE_AUTO);
-            m3AControls->setAfMode(CAM_AF_MODE_AUTO);
-        }
-        delete[] focusWindows;
-        focusWindows = NULL;
-    }
-
-    // Update the spot mode window for the proper window size.
-    if (m3AControls->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT && mMeteringAreas.isEmpty()) {
-        // Update for the "fixed" AE spot window (Intel extension):
-        LOG1("%s: setting forced spot window.", __FUNCTION__);
-        AAAWindowInfo aaaWindow;
-        m3AControls->getGridWindow(aaaWindow);
-        updateSpotWindow(aaaWindow.width, aaaWindow.height);
-    } else if (m3AControls->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT) {
-        // This update is when the AE metering is internally set to
-        // "spot" mode by the HAL, when user has set the AE metering window.
-        LOG1("%s: setting metering area with spot window.", __FUNCTION__);
-        size_t winCount(mMeteringAreas.numOfAreas());
-        CameraWindow *meteringWindows = new CameraWindow[winCount];
-        CameraWindow aeWindow;
-        mMeteringAreas.toWindows(meteringWindows);
-
-        /**
-         * Temporary support for both 3A libs.
-         * Intel 3A (aka AIQ) uses different coordinates than
-         * Acute Logic 3A.
-         */
-        if (PlatformData::supportAIQ()) {
-            convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
-        } else {
-            AAAWindowInfo aaaWindow;
-            m3AControls->getGridWindow(aaaWindow);
-            convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
-        }
-
-        if (m3AControls->setAeWindow(&aeWindow) != NO_ERROR) {
-            LOGW("Error setting AE metering window. Metering will not work");
-        }
-        delete[] meteringWindows;
-        meteringWindows = NULL;
-    }
-
     const char* cb_format_s = mParameters.getPreviewFormat();
     cb_format = V4L2Format(cb_format_s);
     if (!cb_format) {
@@ -1584,6 +1534,57 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         if (mSensorSyncManager != NULL)
             mISP->attachObserver(mSensorSyncManager.get(), OBSERVE_FRAME_SYNC_SOF);
     }
+
+    // Update focus areas for the proper window size
+    if (!mFaceDetectionActive && !mFocusAreas.isEmpty()) {
+        size_t winCount(mFocusAreas.numOfAreas());
+        CameraWindow *focusWindows = new CameraWindow[winCount];
+        mFocusAreas.toWindows(focusWindows);
+        convertAfWindows(focusWindows, winCount);
+        if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
+            LOGE("Could not set AF windows. Resseting the AF to %d", CAM_AF_MODE_AUTO);
+            m3AControls->setAfMode(CAM_AF_MODE_AUTO);
+        }
+        delete[] focusWindows;
+        focusWindows = NULL;
+    }
+
+    // Update the spot mode window for the proper window size.
+    if (m3AControls->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT && mMeteringAreas.isEmpty()) {
+        // Update for the "fixed" AE spot window (Intel extension):
+        LOG1("%s: setting forced spot window.", __FUNCTION__);
+        AAAWindowInfo aaaWindow;
+        m3AControls->getGridWindow(aaaWindow);
+        updateSpotWindow(aaaWindow.width, aaaWindow.height);
+    } else if (m3AControls->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT) {
+        // This update is when the AE metering is internally set to
+        // "spot" mode by the HAL, when user has set the AE metering window.
+        LOG1("%s: setting metering area with spot window.", __FUNCTION__);
+        size_t winCount(mMeteringAreas.numOfAreas());
+        CameraWindow *meteringWindows = new CameraWindow[winCount];
+        CameraWindow aeWindow;
+        mMeteringAreas.toWindows(meteringWindows);
+
+        /**
+         * Temporary support for both 3A libs.
+         * Intel 3A (aka AIQ) uses different coordinates than
+         * Acute Logic 3A.
+         */
+        if (PlatformData::supportAIQ()) {
+            convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
+        } else {
+            AAAWindowInfo aaaWindow;
+            m3AControls->getGridWindow(aaaWindow);
+            convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
+        }
+
+        if (m3AControls->setAeWindow(&aeWindow) != NO_ERROR) {
+            LOGW("Error setting AE metering window. Metering will not work");
+        }
+        delete[] meteringWindows;
+        meteringWindows = NULL;
+    }
+
     // ControlThread must be the observer before PreviewThread to ensure that
     // the recording buffer dequeue handling message is guaranteed to happen
     // before any possible preview return buffer handlers. Since the preview
