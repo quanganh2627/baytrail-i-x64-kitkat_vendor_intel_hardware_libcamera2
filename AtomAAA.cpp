@@ -1417,9 +1417,7 @@ void AtomAAA::ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate)
     else {
         LOG1("Empty GDC table -> GDC disabled");
         m3ALibState.gdc_table_loaded = false;
-        //WORKAROUND FOR BZ:134261 - TO BE REMOVED once it is fixed
-        //mISP->setGDC(false);
-        //end of workaround
+        mISP->setGDC(false);
     }
 
     ia_3a_reconfigure(mode, frame_rate, m3ALibState.stats, &sensor_frame_params, &m3ALibState.results);
