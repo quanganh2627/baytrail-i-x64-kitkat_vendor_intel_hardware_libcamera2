@@ -2790,6 +2790,8 @@ status_t ControlThread::captureStillPic()
 
     stopFaceDetection();
 
+    sp<AutoReset> autoReset;
+
     if (mBurstLength <= 1) {
         if (m3AControls->isIntel3A()) {
             // If flash mode is not ON or TORCH, check for other
@@ -2813,6 +2815,20 @@ status_t ControlThread::captureStillPic()
             if (flashOn) {
                 if (m3AControls->getAeMode() != CAM_AE_MODE_MANUAL &&
                         flashMode != CAM_AE_FLASH_MODE_TORCH) {
+                    // first a workaround for BZ: 133025. Set ae metering mode to auto for the flash duration
+                    // we can safely use a temporary setting since any client setParameters will be postponed
+                    // for the duration of the capture
+                    // this class defines the temporary setting behavior
+                    class TemporaryAeMetering : public TemporarySetting {
+                    public:
+                        TemporaryAeMetering(ControlThread *controlThread) : TemporarySetting(controlThread) { mMode = mControlThread->m3AControls->getAeMeteringMode(); }
+                        void set() { mControlThread->m3AControls->setAeMeteringMode(CAM_AE_METERING_MODE_AUTO); }
+                        void reset() { mControlThread->m3AControls->setAeMeteringMode(mMode); }
+                        MeteringMode mMode;
+                    };
+                    // instantiate - the smart pointers take care of destruction
+                    autoReset = new AutoReset(new TemporaryAeMetering(this));
+
                     flashSequenceStarted = true;
                     // hide preview frames already during pre-flash sequence
                     mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
