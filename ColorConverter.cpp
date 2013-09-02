@@ -514,7 +514,7 @@ void convertYUYVToYV12(int width, int height, int srcStride, int dstStride, void
             dstPtrU = dstPtrU + ALIGN16(dstStride>>1);
         }
 
-        srcPtr = srcPtr + srcStride * 2;
+        srcPtr = srcPtr + srcStride;
         dstPtr = dstPtr + width;
     }
 }
