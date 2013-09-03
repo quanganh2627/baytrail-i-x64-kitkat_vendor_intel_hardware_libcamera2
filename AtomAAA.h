@@ -217,8 +217,6 @@ public:
     virtual status_t getSmartSceneMode(int *sceneMode, bool *sceneHdr);
     virtual void setPublicAeMode(AeMode mode);
     virtual AeMode getPublicAeMode();
-    virtual void setPublicAfMode(AfMode mode);
-    virtual AfMode getPublicAfMode();
     virtual ia_3a_af_status getCAFStatus();
     virtual status_t setFaces(const ia_face_state& faceState);
 
@@ -259,8 +257,8 @@ private:
     SensorType mSensorType;
     AfMode mAfMode;
     AeMode mPublicAeMode;
-    AfMode mPublicAfMode;
     FlashMode mFlashMode;
+    FlashStage mFlashStage;
     AwbMode mAwbMode;
     ia_3a_awb_light_source m3ALightSource;
     int mFocusPosition;
@@ -271,6 +269,11 @@ private:
     IHWSensorControl *mSensorCI;
     ia_env mPrintFunctions;
     AAALibState m3ALibState;
+    uint64_t mTimePreviousFlash;
+    uint64_t mTimeAssistRequired;
+    static const uint32_t TIME_STICKY_FLASH_USAGE_NS = 1300000000; // 1300ms
+    static const uint32_t TIME_ASSIST_DECIDES_FLASH_USAGE_NS = 2000000000; // 2000ms
+
 }; // class AtomAAA
 
 }; // namespace android

@@ -103,9 +103,7 @@ enum AfMode
     CAM_AF_MODE_MACRO,
     CAM_AF_MODE_INFINITY,
     CAM_AF_MODE_FIXED,
-    CAM_AF_MODE_TOUCH,
     CAM_AF_MODE_MANUAL,
-    CAM_AF_MODE_FACE,
     CAM_AF_MODE_CONTINUOUS
 };
 
@@ -228,8 +226,6 @@ public:
     virtual status_t getSmartSceneMode(int *sceneMode, bool *sceneHdr) = 0;
     virtual void setPublicAeMode(AeMode mode) = 0;
     virtual AeMode getPublicAeMode() = 0;
-    virtual void setPublicAfMode(AfMode mode) = 0;
-    virtual AfMode getPublicAfMode() = 0;
     virtual ia_3a_af_status getCAFStatus() = 0;
     virtual status_t setFaces(const ia_face_state& faceState) = 0;
     virtual status_t setFlash(int numFrames) = 0;

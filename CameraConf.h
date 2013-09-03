@@ -94,7 +94,7 @@ public:
     int32_t getFpoint(CPF::cpf_hal_tag_t tag, ...);
     float getFloat(CPF::cpf_hal_tag_t tag, ...);
 private:
-    status_t getAny(int32_t *& any, CPF::cpf_hal_tag_t tag, va_list args);
+    status_t getAny(void *anyPtr, cpf_hal_tagtype_t type, CPF::cpf_hal_tag_t tag, va_list args);
 };
 
 class CpfStore

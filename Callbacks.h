@@ -27,21 +27,8 @@ namespace android {
 
 class Callbacks {
 
-    static Callbacks* mInstance;
-    static Callbacks* mInstance_1;
-    Callbacks(int cameraId);
 public:
-    static Callbacks* getInstance(int cameraId) {
-        if(cameraId == 1) {
-            if(mInstance_1 == NULL)
-                mInstance_1 = new Callbacks(cameraId);
-            return mInstance_1;
-        } else {
-            if (mInstance == NULL)
-                mInstance = new Callbacks(cameraId);
-            return mInstance;
-        }
-    }
+    Callbacks();
     virtual ~Callbacks();
 
 // prevent copy constructor and assignment operator
@@ -56,6 +43,11 @@ public:
                       camera_data_timestamp_callback data_cb_timestamp,
                       camera_request_memory get_memory,
                       void* user);
+
+    struct MessageSceneDetected {
+        char scene[SCENE_STRING_LENGTH];
+        bool hdr;
+    };
 
     void enableMsgType(int32_t msgType);
     void disableMsgType(int32_t msgType);
@@ -74,7 +66,7 @@ public:
     void allocateMemory(AtomBuffer *buff, int size);
     void allocateMemory(camera_memory_t **buff, size_t size);
     void facesDetected(camera_frame_metadata_t &face_metadata);
-    void sceneDetected(int sceneMode, bool sceneHdr);
+    void sceneDetected(camera_scene_detection_metadata &metadata);
     void panoramaDisplUpdate(camera_panorama_metadata &metadata);
     void panoramaSnapshot(const AtomBuffer &livePreview);
     status_t storeMetaDataInBuffers(bool enabled);
@@ -92,8 +84,8 @@ private:
     uint32_t mMessageFlags;
     camera_memory_t* mDummyByte;
     camera_memory_t* mPanoramaMetadata;
+    camera_memory_t* mSceneDetectionMetadata;
     bool mStoreMetaDataInBuffers;
-    int mCameraId;
     };
 
 };

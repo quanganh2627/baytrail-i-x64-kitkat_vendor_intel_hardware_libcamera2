@@ -333,8 +333,8 @@ public:
     SceneMode getAeSceneMode();
     status_t setAeMode(AeMode mode);
     AeMode getAeMode();
-    status_t setAfMode(AfMode mode);
-    AfMode getAfMode();
+    virtual status_t setAfMode(AfMode mode);
+    virtual AfMode getAfMode();
     bool getAfNeedAssistLight();
     status_t setAeFlashMode(FlashMode mode);
     FlashMode getAeFlashMode();
@@ -347,8 +347,6 @@ public:
     status_t set3AColorEffect(const char *effect);
     virtual void setPublicAeMode(AeMode mode);
     virtual AeMode getPublicAeMode();
-    virtual void setPublicAfMode(AfMode mode);
-    virtual AfMode getPublicAfMode();
     virtual status_t setIsoMode(IsoMode mode);
     virtual IsoMode getIsoMode(void) {return CAM_AE_ISO_MODE_NOT_SET;};
 
@@ -459,8 +457,10 @@ private:
     ia_aiq_ae_input_params mAeInputParameters;
     ia_aiq_exposure_sensor_descriptor mAeSensorDescriptor;
     AeMode mAeMode;
+    AeMode mPublicAeMode;
     SceneMode mAeSceneMode;
     FlashMode mAeFlashMode;
+    FlashStage mFlashStage;
     ae_state mAeState;
     ia_coordinate mAeCoord;
 

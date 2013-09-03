@@ -122,304 +122,116 @@ void CameraBlob::clear()
      mPtr = 0;
 }
 
+// Common macro to all functions retrieving values from CPF HAL data
+#define GETANY(status, anyPtr, type, tag, warn_if_fail)             \
+    status_t status;                                                \
+                                                                    \
+    va_list args;                                                   \
+    va_start(args, tag);                                            \
+                                                                    \
+    switch ((status = getAny(anyPtr, type, tag, args))) {           \
+    case BAD_VALUE:                                                 \
+    case BAD_TYPE:                                                  \
+    default:                                                        \
+        LOGE("ERROR %d in %s, for tag %d of type 0x%08x!", status, __FUNCTION__, tag, type); \
+    case OK:                                                        \
+        break;                                                      \
+    case NO_INIT:                                                   \
+    case NAME_NOT_FOUND:                                            \
+        if (warn_if_fail) {                                         \
+            LOGW("WARNING %d in %s, using default value for tag %d!", status, __FUNCTION__, tag); \
+        }                                                           \
+    }                                                               \
+                                                                    \
+    va_end(args);
+// End of macro to functions retrieving values from CPF HAL data
+
 status_t HalConf::getValue(int& value, cpf_hal_tag_t tag, ...)
 {
-    int ret = 0;
-
-    va_list args;
-    va_start(args, tag);
-
-    int32_t *valueTag;
-    if ((ret = getAny(valueTag, tag, args))) {
-        goto exit;
-    }
-
-    if (*valueTag++ & 0xffff0000) {
-        ret = BAD_TYPE;
-        goto exit;
-    }
-
-    value = *valueTag;
-
-exit:
-    va_end(args);
+    GETANY(ret, &value, tag_value, tag, 0);
     return ret;
 }
 
 status_t HalConf::getBool(bool& boolean, cpf_hal_tag_t tag, ...)
 {
-    int ret = 0;
-
-    va_list args;
-    va_start(args, tag);
-
-    int32_t *booleanTag;
-    if ((ret = getAny(booleanTag, tag, args))) {
-        goto exit;
-    }
-
-    if (!(*booleanTag++ & tag_bool)) {
-        ret = BAD_TYPE;
-        goto exit;
-    }
-
-    boolean = *booleanTag;
-
-exit:
-    va_end(args);
+    GETANY(ret, &boolean, tag_bool, tag, 0);
     return ret;
 }
 
 status_t HalConf::getString(const char *& string, cpf_hal_tag_t tag, ...)
 {
-    int ret = 0;
-
-    va_list args;
-    va_start(args, tag);
-
-    cpf_hal_header_t *headerPtr;
-    char *stringPtr;
-
-    int32_t *stringTag;
-    if ((ret = getAny(stringTag, tag, args))) {
-        goto exit;
-    }
-
-    if (!(*stringTag++ & tag_string)) {
-        ret = BAD_TYPE;
-        goto exit;
-    }
-
-    headerPtr = (cpf_hal_header_t *)(ptr());
-    stringPtr = (char *)(headerPtr) + headerPtr->string_offset;
-    string = ((char *)(stringPtr) + *stringTag);
-
-exit:
-    va_end(args);
+    GETANY(ret, &string, tag_string, tag, 0);
     return ret;
 }
 
 status_t HalConf::getFpoint(int32_t& value, cpf_hal_tag_t tag, ...)
 {
-    int ret = 0;
-
-    va_list args;
-    va_start(args, tag);
-
-    int32_t *fpointTag;
-    if ((ret = getAny(fpointTag, tag, args))) {
-        goto exit;
-    }
-
-    if (!(*fpointTag++ & tag_fpoint)) {
-        ret = BAD_TYPE;
-        goto exit;
-    }
-
-    value = *fpointTag;
-
-exit:
-    va_end(args);
+    GETANY(ret, &value, tag_fpoint, tag, 0);
     return ret;
 }
 
 status_t HalConf::getFloat(float& value, cpf_hal_tag_t tag, ...)
 {
-    int ret = 0;
-
-    va_list args;
-    va_start(args, tag);
-
-    int32_t *fpointTag;
-    if ((ret = getAny(fpointTag, tag, args))) {
-        goto exit;
-    }
-
-    if (!(*fpointTag++ & tag_fpoint)) {
-        ret = BAD_TYPE;
-        goto exit;
-    }
-
-    value = (float)(*fpointTag) / 65536.0;
-
-exit:
-    va_end(args);
+    GETANY(ret, &value, tag_float, tag, 0);
     return ret;
 }
 
 int HalConf::getValue(cpf_hal_tag_t tag, ...)
 {
     int value = 0;
-    int ret = 0;
-
-    va_list args;
-    va_start(args, tag);
-
-    int32_t *valueTag;
-    if ((ret = getAny(valueTag, tag, args))) {
-        goto exit;
-    }
-
-    if (*valueTag++ & 0xffff0000) {
-        ret = BAD_TYPE;
-        goto exit;
-    }
-
-    value = *valueTag;
-
-exit:
-    va_end(args);
-
-    if (ret) {
-        LOGE("ERROR %d in %s!", ret, __FUNCTION__);
-    }
-
+    GETANY(dummy, &value, tag_value, tag, 1);
     return value;
 }
 
 bool HalConf::getBool(cpf_hal_tag_t tag, ...)
 {
     bool boolean = false;
-    int ret = 0;
-
-    va_list args;
-    va_start(args, tag);
-
-    int32_t *booleanTag;
-    if ((ret = getAny(booleanTag, tag, args))) {
-        goto exit;
-    }
-
-    if (!(*booleanTag++ & tag_bool)) {
-        ret = BAD_TYPE;
-        goto exit;
-    }
-
-    boolean = *booleanTag;
-
-exit:
-    va_end(args);
-
-    if (ret) {
-        LOGE("ERROR %d in %s!", ret, __FUNCTION__);
-    }
-
+    GETANY(dummy, &boolean, tag_bool, tag, 1);
     return boolean;
 }
 
 const char *HalConf::getString(cpf_hal_tag_t tag, ...)
 {
-    const char *string = 0;
-    int ret = 0;
-
-    va_list args;
-    va_start(args, tag);
-
-    cpf_hal_header_t *headerPtr;
-    char *stringPtr;
-
-    int32_t *stringTag;
-    if ((ret = getAny(stringTag, tag, args))) {
-        goto exit;
-    }
-
-    if (!(*stringTag++ & tag_string)) {
-        ret = BAD_TYPE;
-        goto exit;
-    }
-
-    headerPtr = (cpf_hal_header_t *)(ptr());
-    stringPtr = (char *)(headerPtr) + headerPtr->string_offset;
-    string = ((char *)(stringPtr) + *stringTag);
-
-exit:
-    va_end(args);
-
-    if (ret) {
-        LOGE("ERROR %d in %s!", ret, __FUNCTION__);
-    }
-
-    return string;
+    const char *stringPtr = 0;
+    GETANY(dummy, &stringPtr, tag_string, tag, 1);
+    return stringPtr;
 }
 
 int32_t HalConf::getFpoint(cpf_hal_tag_t tag, ...)
 {
     int32_t value = 0;
-    int ret = 0;
-
-    va_list args;
-    va_start(args, tag);
-
-    int32_t *fpointTag;
-    if ((ret = getAny(fpointTag, tag, args))) {
-        goto exit;
-    }
-
-    if (!(*fpointTag++ & tag_fpoint)) {
-        ret = BAD_TYPE;
-        goto exit;
-    }
-
-    value = *fpointTag;
-
-exit:
-    va_end(args);
-
-    if (ret) {
-        LOGE("ERROR %d in %s!", ret, __FUNCTION__);
-    }
-
+    GETANY(dummy, &value, tag_fpoint, tag, 1);
     return value;
 }
 
 float HalConf::getFloat(cpf_hal_tag_t tag, ...)
 {
-    int ret = 0;
     float value = 0;
-
-    va_list args;
-    va_start(args, tag);
-
-    int32_t *fpointTag;
-    if ((ret = getAny(fpointTag, tag, args))) {
-        goto exit;
-    }
-
-    if (!(*fpointTag++ & tag_fpoint)) {
-        ret = BAD_TYPE;
-        goto exit;
-    }
-
-    value = (float)(*fpointTag) / 65536.0;
-
-exit:
-    va_end(args);
-
-    if (ret) {
-        LOGE("ERROR %d in %s!", ret, __FUNCTION__);
-    }
-
+    GETANY(dummy, &value, tag_float, tag, 1);
     return value;
 }
 
-status_t HalConf::getAny(int32_t *& any, cpf_hal_tag_t tag, va_list args)
+status_t HalConf::getAny(void *anyPtr, cpf_hal_tagtype_t type, CPF::cpf_hal_tag_t tag, va_list args)
 {
-    any = 0;
-
-    if ((ptr() == 0) || (size() < int(sizeof(cpf_hal_header_t)))) {
+    // In case HAL CPF is not present, we will see that ptr == 0
+    if (ptr() == 0) {
         return NO_INIT;
     }
 
     cpf_hal_header_t *headerPtr = (cpf_hal_header_t *)(ptr());
-    int32_t *dataPtr   = (int32_t *)((char *)(headerPtr) + headerPtr->data_offset);
-    int32_t *tablePtr  = (int32_t *)((char *)(headerPtr) + headerPtr->table_offset);
-    char    *stringPtr = (char *)(headerPtr) + headerPtr->string_offset;
+    const int32_t *dataPtr   = (int32_t *)((char *)(headerPtr) + headerPtr->data_offset);
+    const int32_t *tablePtr  = (int32_t *)((char *)(headerPtr) + headerPtr->table_offset);
+    const char    *stringsPtr = (char *)(headerPtr) + headerPtr->string_offset;
 
-    if ((tag & 0xffff0000) || dataPtr == 0  || tablePtr == 0 || stringPtr == 0 || headerPtr->tags_count == 0 || tag < headerPtr->tags_min || tag > headerPtr->tags_max) {
+    if (tag & 0xffff0000) {
         return BAD_VALUE;
     }
 
-    int32_t *flaggedTagPtr;
+    if ((headerPtr->tags_count == 0) || (tag < headerPtr->tags_min) || (tag > headerPtr->tags_max)) {
+        return NAME_NOT_FOUND;
+    }
+
+    const int32_t *flaggedTagPtr;
     if (headerPtr->flags & sparse_en) {
         int count = headerPtr->tags_count;
         for (int i = 0; i < count; i++) {
@@ -428,14 +240,14 @@ status_t HalConf::getAny(int32_t *& any, cpf_hal_tag_t tag, va_list args)
                 goto loop;
             }
         }
-        return BAD_VALUE;
+        return NAME_NOT_FOUND;
     } else {
         flaggedTagPtr = dataPtr + 2 * (tag - headerPtr->tags_min);
     }
 
 loop:
     if (*flaggedTagPtr & tag_unused) {
-        return BAD_VALUE;
+        return NAME_NOT_FOUND;
     }
 
     if (*flaggedTagPtr & tag_table) {
@@ -451,10 +263,38 @@ loop:
                 goto loop;
             }
         }
+        return NAME_NOT_FOUND;
+    }
+
+    // Use of "tag_value" wasn't mandatory in old CPF files, so we are
+    // ignoring it for now. Also, floats are represented as fpoints...
+    cpf_hal_tagtype_t testType = (type == tag_float ? tag_fpoint : type);
+    if (((*flaggedTagPtr++ & 0xffff0000) ^ testType) & ~tag_value) {
+        return BAD_TYPE;
+    }
+
+    // Different types need to be handled differently
+    const int32_t &value = *flaggedTagPtr;
+    switch (type) {
+    case tag_string:
+        *((const char **)(anyPtr)) = stringsPtr + value;
+        break;
+    case tag_value:
+        *((int *)(anyPtr)) = value;
+        break;
+    case tag_bool:
+        *((bool *)(anyPtr)) = value;
+        break;
+    case tag_fpoint:
+        *((int32_t *)(anyPtr)) = value;
+        break;
+    case tag_float:
+        *((float *)(anyPtr)) = (float)(value) / 65536.0;
+        break;
+    default:
         return BAD_VALUE;
     }
 
-    any = flaggedTagPtr;
     return 0;
 }
 
@@ -740,6 +580,19 @@ status_t CpfStore::findConfigWithDriverHelper(const String8& fileName, String8& 
                     // Let's check for the vendor_id, platform_family_id and product_line_id
                     String8 vendorPlatformProduct;
                     if (PlatformData::createVendorPlatformProductName(vendorPlatformProduct) == 0) {
+
+                        // [R4.3] begin
+                        // the lines between [R4.3] tags are intended for the R4.3-stable
+                        // branch where both AcuteLogic and Intel 3A need to be supported for RHB
+                        // the string 0-0x2-0 stands for RHB
+                        if ((vendorPlatformProduct == "0-0x2-0") && (!PlatformData::supportAIQ())) {
+                            vendorPlatformProduct += String8("-acl");
+                        }
+                        else {
+                            vendorPlatformProduct += String8(".");
+                        }
+                        //[R43] end
+
                         if (fileName.find(vendorPlatformProduct) >= 0) {
                             cpfName = fileName;
                         }

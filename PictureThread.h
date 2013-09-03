@@ -36,7 +36,7 @@ class PictureThread : public Thread {
 
 // constructor destructor
 public:
-    PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler, int cameraId);
+    PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler, sp<CallbacksThread> callbacksThread, Callbacks *callbacks);
     virtual ~PictureThread();
 
 // prevent copy constructor and assignment operator
@@ -173,7 +173,7 @@ private:
     MessageQueue<Message, MessageId> mMessageQueue;
     bool        mThreadRunning;
     Callbacks       *mCallbacks;
-    CallbacksThread *mCallbacksThread;
+    sp<CallbacksThread> mCallbacksThread;
     JpegCompressor   mCompressor;
     JpegHwEncoder   *mHwCompressor;
     EXIFMaker       *mExifMaker;
@@ -206,7 +206,6 @@ private:
 
     // 3A controls
     I3AControls* m3AControls;
-    int mCameraId;
 }; // class PictureThread
 
 }; // namespace android

@@ -141,7 +141,7 @@ public:
     virtual void returnBuffer(AtomBuffer* buff);
 
     // Implementation of IPostCaptureProcessObserver interface
-    void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status);
+    void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status, int retries = MAX_MSG_RETRIES);
 
     // IOrientationListener
     void orientationChanged(int orientation);
@@ -261,7 +261,7 @@ private:
     };
 
     struct MessageSceneDetected {
-        int sceneMode;
+        char sceneMode[SCENE_STRING_LENGTH];
         bool sceneHdr;
     };
 
@@ -278,6 +278,7 @@ private:
     struct MessagePostCaptureProcDone {
         IPostCaptureProcessItem* item;
         status_t status;
+        int retriesLeft;
     };
 
     struct MessageOrientation {
@@ -352,12 +353,15 @@ private:
     };
 
     // capture substates
+    // Note: keep in sync with helper array of string used for logging
+    // CaptureSubstateStrings
     enum CaptureSubState {
         STATE_CAPTURE_INIT,          // initial capture state
         STATE_CAPTURE_STARTED,       // when takePicture is received
         STATE_CAPTURE_ENCODING_DONE, // when encoding done callback is received
         STATE_CAPTURE_PICTURE_DONE,  // when picture done callback is received
-        STATE_CAPTURE_IDLE           // when preview is started again
+        STATE_CAPTURE_IDLE,          // when preview is started again
+        STATE_CAPTURE_LAST           // Fake state used to calculate number of states keep always last
     };
 
     /**
@@ -387,6 +391,7 @@ private:
         AtomBuffer outPostviewBuf;
         CiUserBuffer ciBufIn;
         CiUserBuffer ciBufOut;
+        MessagePicture *inputBuffers;
     };
 
     struct StillPicParamsCtx {
@@ -472,6 +477,10 @@ private:
     status_t startFaceRecognition();
     status_t stopFaceRecognition();
     status_t handleMessageRelease();
+
+    status_t cancelPictureThread();
+    status_t cancelPostCaptureThread();
+    status_t cancelCapture();
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -752,7 +761,6 @@ private:
                                                     can be restore when video recording stops
                                                  */
 
-    bool mPanoramaFinalizationPending; /* state boolean for pending panorama finalization commands */
     bool mEnableFocusCbAtStart;     /* for internal control of focus cb's in continuous-mode */
     bool mEnableFocusMoveCbAtStart; /* for internal control of focus-move cb's in continuous-mode */
 
@@ -775,6 +783,10 @@ private:
                                          saved as mirrored. The image will be mirrored based on the
                                          camera sensor orientation and device orientation. */
     int mRecordingOrientation;      /*!< Device orientation at the start of video recording. */
+
+    /*----------- Debugging helpers --------------------*/
+    static const char* sCaptureSubstateStrings[STATE_CAPTURE_LAST];
+
 }; // class ControlThread
 
 }; // namespace android

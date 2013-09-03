@@ -48,18 +48,19 @@ namespace android {
         aBuff.buff = NULL;     // We do not allocate a normal camera_memory_t
         aBuff.width = aFrameInfo.width;
         aBuff.height = aFrameInfo.height;
-        if (aFrameInfo.stride != cameraNativeWindowBuffer->stride) {
+        // ANativeWindowBuffer defines stride in pixels
+        if (bytesPerLineToWidth(aFrameInfo.format, aFrameInfo.stride) != cameraNativeWindowBuffer->stride) {
             LOGW("%s: potential stride problem requested %d, Gfx requries %d",__FUNCTION__, aFrameInfo.stride, cameraNativeWindowBuffer->stride);
         } else {
             LOG1("%s stride from Gfx is %d", __FUNCTION__, aFrameInfo.stride);
         }
-        aBuff.stride = cameraNativeWindowBuffer->stride;
+        aBuff.stride = aFrameInfo.stride;
         aBuff.format = aFrameInfo.format;
         aBuff.gfxInfo.scalerId = -1;
         aBuff.gfxInfo.gfxBufferHandle = &cameraGraphicBuffer->handle;
         aBuff.gfxInfo.gfxBuffer = cameraGraphicBuffer;
         cameraGraphicBuffer->incStrong(&aBuff);
-        aBuff.size = frameSize(aFrameInfo.format, aBuff.stride, aBuff.height);
+        aBuff.size = frameSize(aFrameInfo.format, bytesPerLineToWidth(aFrameInfo.format, aFrameInfo.stride), aBuff.height);
 
         status = cameraGraphicBuffer->lock(lockMode, &mapperPointer.ptr);
         if (status != NO_ERROR) {

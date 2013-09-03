@@ -92,7 +92,7 @@ public:
     };
 
 public:
-    UltraLowLight(int cameraId) STUB_BODY
+    UltraLowLight(Callbacks *callbacks) STUB_BODY
     virtual ~UltraLowLight() STUB_BODY
 
     void setMode(ULLMode m) STUB_BODY

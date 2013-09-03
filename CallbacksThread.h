@@ -41,31 +41,8 @@ class CallbacksThread :
     public Thread,
     public IFaceDetectionListener {
 
-private:
-    static CallbacksThread* mInstance;
-    static CallbacksThread* mInstance_1;
-    CallbacksThread(int cameraId);
-// constructor destructor
 public:
-    static CallbacksThread* getInstance(ICallbackPicture *pictureDone = 0,
-                                        int cameraId = 0) {
-
-        if(cameraId == 0) {
-            if (mInstance == NULL) {
-                mInstance = new CallbacksThread(cameraId);
-            }
-            if(mInstance && pictureDone)
-                mInstance->setPictureDoneCallback(pictureDone);
-            return mInstance;
-        } else {
-            if (mInstance_1 == NULL) {
-                mInstance_1 = new CallbacksThread(cameraId);
-            }
-            if(mInstance_1 && pictureDone)
-                mInstance_1->setPictureDoneCallback(pictureDone);
-            return mInstance_1;
-        }
-    }
+    CallbacksThread(Callbacks *callbacks, ICallbackPicture *pictureDone = NULL);
     virtual ~CallbacksThread();
 
 // prevent copy constructor and assignment operator
@@ -89,7 +66,7 @@ public:
     status_t flushPictures();
     size_t   getQueuedBuffersNum() { return mBuffers.size(); }
     virtual void facesDetected(camera_frame_metadata_t &face_metadata);
-    status_t sceneDetected(int sceneMode, bool sceneHdr);
+    status_t sceneDetected(camera_scene_detection_metadata_t &metadata);
     void autofocusDone(bool status);
     void focusMove(bool start);
     void panoramaDisplUpdate(camera_panorama_metadata_t &metadata);
@@ -99,6 +76,8 @@ public:
     status_t postviewRendered();
     status_t sendError(int id);
     status_t lowBattery();
+    status_t rawFrameDone(AtomBuffer* snapshotBuf);
+    status_t postviewFrameDone(AtomBuffer* postviewBuf);
 
 // private types
 private:
@@ -132,6 +111,9 @@ private:
         // low battery callback
         MESSAGE_ID_LOW_BATTERY,
 
+        MESSAGE_ID_RAW_FRAME_DONE,
+        MESSAGE_ID_POSTVIEW_FRAME_DONE,
+
         // max number of messages
         MESSAGE_ID_MAX
     };
@@ -140,13 +122,13 @@ private:
     // message data structures
     //
 
-    struct MessageFrame {
+    struct MessageCompressed {
         AtomBuffer jpegBuff;
         AtomBuffer postviewBuff;
         AtomBuffer snapshotBuff;
     };
 
-    struct MessagePreview {
+    struct MessageFrame {
         AtomBuffer frame;
     };
 
@@ -174,7 +156,7 @@ private:
     };
 
     struct MessageSceneDetected {
-        int sceneMode;
+        char sceneMode[SCENE_STRING_LENGTH];
         bool sceneHdr;
     };
 
@@ -198,7 +180,13 @@ private:
     union MessageData {
 
         //MESSAGE_ID_JPEG_DATA_READY
-        MessageFrame compressedFrame;
+        MessageCompressed compressedFrame;
+
+        //MESSAGE_ID_RAW_FRAME_DONE
+        MessageFrame rawFrame;
+
+        //MESSAGE_ID_POSTVIEW_FRAME_DONE
+        MessageFrame postviewFrame;
 
         //MESSAGE_ID_JPEG_DATA_REQUEST
         MessageDataRequest dataRequest;
@@ -216,7 +204,7 @@ private:
         MessageSceneDetected    sceneDetected;
 
         // MESSAGE_ID_PREVIEW_DONE
-        MessagePreview  preview;
+        MessageFrame  preview;
 
         // MESSAGE_ID_VIDEO_DONE
         MessageVideo    video;
@@ -248,28 +236,28 @@ private:
     // thread message execution functions
     status_t handleMessageExit();
     status_t handleMessageCallbackShutter();
-    status_t handleMessageJpegDataReady(MessageFrame *msg);
+    status_t handleMessageJpegDataReady(MessageCompressed *msg);
     status_t handleMessageJpegDataRequest(MessageDataRequest *msg);
     status_t handleMessageAutoFocusDone(MessageAutoFocusDone *msg);
     status_t handleMessageFocusMove(MessageFocusMove *msg);
     status_t handleMessageFlush();
     status_t handleMessageFaces(MessageFaces *msg);
     status_t handleMessageSceneDetected(MessageSceneDetected *msg);
-    status_t handleMessagePreviewDone(MessagePreview *msg);
+    status_t handleMessagePreviewDone(MessageFrame *msg);
     status_t handleMessageVideoDone(MessageVideo *msg);
     status_t handleMessagePanoramaDisplUpdate(MessagePanoramaDisplUpdate *msg);
     status_t handleMessagePanoramaSnapshot(MessagePanoramaSnapshot *msg);
     status_t handleMessagePostviewRendered();
     status_t handleMessageUllJpegDataRequest(MessageULLSnapshot *msg);
     status_t handleMessageUllTriggered(MessageULLSnapshot *msg);
-    status_t handleMessageUllJpegDataReady(MessageFrame *msg);
+    status_t handleMessageUllJpegDataReady(MessageCompressed *msg);
     status_t handleMessageSendError(MessageError *msg);
     status_t handleMessageLowBattery();
+    status_t handleMessageRawFrameDone(MessageFrame *msg);
+    status_t handleMessagePostviewFrameDone(MessageFrame *msg);
     // main message function
     status_t waitForAndExecuteMessage();
 
-    // Intialization of Ctrl thread callback
-    void setPictureDoneCallback(ICallbackPicture *pictureDone) { mPictureDoneCallback = pictureDone; };
     void convertGfx2Regular(AtomBuffer* aGfxBuf, AtomBuffer* aRegularBuf);
 
 // inherited from Thread
@@ -279,7 +267,6 @@ private:
 // private data
 private:
 
-    ICallbackPicture *mPictureDoneCallback;
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
     Callbacks *mCallbacks;
@@ -290,13 +277,14 @@ private:
     unsigned mULLid;
     bool mWaitRendering;
     Message mPostponedJpegReady;
+    ICallbackPicture *mPictureDoneCallback;
 
     /*
      * This vector contains not only the JPEG buffers, but also their corresponding
      * MAIN and POSTVIEW raw buffers. They need to be returned back to ISP when the
      * JPEG, RAW and POSTIVEW callbacks are sent to the camera client.
      */
-    Vector<MessageFrame> mBuffers;
+    Vector<MessageCompressed> mBuffers;
     camera_frame_metadata_t mFaceMetadata;
     int mCameraId;
 

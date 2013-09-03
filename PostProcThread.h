@@ -49,7 +49,8 @@ class PostProcThread : public IFaceDetector,
 
 // constructor/destructor
 public:
-    PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread, I3AControls *aaaControls, int cameraId);
+    PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread, I3AControls *aaaControls,
+                   sp<CallbacksThread> callbacksThread, Callbacks *callbacks, int cameraId);
     virtual ~PostProcThread();
     status_t init(void* isp);
 

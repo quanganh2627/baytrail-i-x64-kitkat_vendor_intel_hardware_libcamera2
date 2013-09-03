@@ -31,7 +31,7 @@ class VideoThread : public Thread {
 
 // constructor destructor
 public:
-    VideoThread(int cameraId);
+    VideoThread(sp<CallbacksThread> callbacksThread);
     virtual ~VideoThread();
 
 // prevent copy constructor and assignment operator
@@ -113,7 +113,7 @@ private:
 
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
-    CallbacksThread *mCallbacksThread;
+    sp<CallbacksThread> mCallbacksThread;
     int mSlowMotionRate;
     nsecs_t mFirstFrameTimestamp;
 

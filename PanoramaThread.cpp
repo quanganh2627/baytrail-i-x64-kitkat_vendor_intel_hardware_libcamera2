@@ -23,11 +23,11 @@
 
 #include "PanoramaThread.h"
 #include "IntelParameters.h"
-#include "FeatureData.h"
 #include "LogHelper.h"
 #include "AtomCommon.h"
 #include "ICameraHwControls.h"
 #include "PlatformData.h"
+#include "AtomCP.h"
 
 namespace android {
 
@@ -38,7 +38,8 @@ static const useconds_t STITCH_CHECK_INTERVAL_USEC = 500000; // 0.5 secs
 // Max count of stitch check tries:
 static const int STITCH_CHECK_LIMIT = 10;
 
-PanoramaThread::PanoramaThread(ICallbackPanorama *panoramaCallback, I3AControls *aaaControls, int cameraId) :
+PanoramaThread::PanoramaThread(ICallbackPanorama *panoramaCallback, I3AControls *aaaControls,
+                               sp<CallbacksThread> callbacksThread, Callbacks *callbacks, int cameraId) :
     Thread(false)
     ,mPanoramaCallback(panoramaCallback)
     ,mContext(NULL)
@@ -46,8 +47,8 @@ PanoramaThread::PanoramaThread(ICallbackPanorama *panoramaCallback, I3AControls 
     ,mPanoramaTotalCount(0)
     ,mThreadRunning(false)
     ,mPanoramaWaitingForImage(false)
-    ,mCallbacksThread(CallbacksThread::getInstance(NULL, cameraId))
-    ,mCallbacks(Callbacks::getInstance(cameraId)) // for memory allocation
+    ,mCallbacksThread(callbacksThread)
+    ,mCallbacks(callbacks) // for memory allocation
     ,mState(PANORAMA_STOPPED)
     ,mPreviewWidth(0)
     ,mPreviewHeight(0)
@@ -83,7 +84,7 @@ void PanoramaThread::getDefaultParameters(CameraParameters *intel_params, int ca
     // Set if Panorama is available or not.
     // panorama
     intel_params->set(IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE, CAM_RESO_STR(PANORAMA_DEF_PREV_WIDTH,PANORAMA_DEF_PREV_HEIGHT));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PANORAMA, FeatureData::panoramaSupported(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PANORAMA, PlatformData::supportedPanorama(cameraId));
     intel_params->set(IntelCameraParameters::KEY_PANORAMA_MAX_SNAPSHOT_COUNT, mPanoramaMaxSnapshotCount);
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PANORAMA_LIVE_PREVIEW_SIZES,
             CAM_RESO_STR(PANORAMA_MAX_LIVE_PREV_WIDTH,PANORAMA_MAX_LIVE_PREV_HEIGHT)
@@ -115,7 +116,7 @@ status_t PanoramaThread::handleMessageStartPanorama(void)
         return UNKNOWN_ERROR;
     }
 
-    mPanoramaStitchThread = new PanoramaStitchThread();
+    mPanoramaStitchThread = new PanoramaStitchThread(mCallbacks);
     if (mPanoramaStitchThread == NULL) {
         LOGE("error creating PanoramaThread");
         assert(false);
@@ -267,7 +268,6 @@ bool PanoramaThread::detectOverlap(ia_frame *frame)
     LOG2("@%s", __FUNCTION__);
 
     if (mPanoramaTotalCount < mPanoramaMaxSnapshotCount) {
-        frame->format = ia_frame_format_nv12;
         int ret = ia_panorama_detect_overlap(mContext, frame);
         LOG2("@%s: direction: %d, H-displacement: %d, V-displacement: %d", __FUNCTION__,
             mContext->direction, mContext->horizontal_displacement, mContext->vertical_displacement);
@@ -497,6 +497,13 @@ void PanoramaThread::sendFrame(AtomBuffer &buf)
     frame.stride = buf.stride;
     frame.height = buf.height;
     frame.size = buf.size;
+    if (AtomCP::setIaFrameFormat(&frame, buf.format) != NO_ERROR) {
+        LOGE("@%s: setting ia_frame format failed", __FUNCTION__);
+    }
+
+    if (frame.format == ia_frame_format_yuy2) {
+        frame.stride = buf.size / buf.height;
+    }
 
     Message msg;
     msg.id = MESSAGE_ID_FRAME;
@@ -594,8 +601,9 @@ bool PanoramaThread::threadLoop()
     return false;
 }
 
-PanoramaThread::PanoramaStitchThread::PanoramaStitchThread() :
+PanoramaThread::PanoramaStitchThread::PanoramaStitchThread(Callbacks *callbacks) :
      mMessageQueue("PanoramaStitch", (int) MESSAGE_ID_MAX)
+    ,mCallbacks(callbacks)
 {
     LOG1("@%s", __FUNCTION__);
 }
@@ -665,7 +673,7 @@ status_t PanoramaThread::PanoramaStitchThread::stitch(ia_panorama_state* mContex
     int retrySleepMillis = 50;
 
     do {
-        Callbacks::getInstance(cameraId)->allocateMemory(&copy, size);
+        mCallbacks->allocateMemory(&copy, size);
         if (!copy.dataPtr) {
             LOGW("Failed to allocate panorama snapshot memory, sleeping %d milliseconds and retrying!", retrySleepMillis);
             usleep(1000 * retrySleepMillis);

@@ -95,7 +95,7 @@ class PreviewThread : public Thread, public IAtomIspObserver {
 
 // constructor destructor
 public:
-    PreviewThread(int cameraId);
+    PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* callbacks);
     virtual ~PreviewThread();
 
 // prevent copy constructor and assignment operator
@@ -132,7 +132,7 @@ public:
     status_t postview(AtomBuffer *buff, bool hidePreview = false, bool synchronous = false);
     status_t setPreviewWindow(struct preview_stream_ops *window);
     status_t setPreviewConfig(int preview_width, int preview_height, int preview_stride,
-                              int preview_format, bool shared_mode = true, int buffer_count = -1);
+                              int preview_cb_format, bool shared_mode = true, int buffer_count = -1);
     status_t fetchPreviewBuffers(Vector<AtomBuffer> &pvBufs);
     status_t returnPreviewBuffers();
     status_t flushBuffers();
@@ -182,7 +182,7 @@ private:
         int width;
         int height;
         int stride;
-        int format;
+        int cb_format;
         int bufferCount;
         bool sharedMode;
     };
@@ -284,7 +284,7 @@ private:
     CallbackVector mOutputBufferCb;
     nsecs_t         mLastFrameTs;
     unsigned int    mFramesDone;
-    CallbacksThread *mCallbacksThread;
+    sp<CallbacksThread> mCallbacksThread;
 
     preview_stream_ops_t *mPreviewWindow;   /*!< struct passed from Service to control the native window */
     AtomBuffer          mPreviewBuf;        /*!< Local preview buffer to give to the user */
@@ -301,7 +301,8 @@ private:
     int mPreviewWidth;
     int mPreviewHeight;
     int mPreviewStride;
-    int mPreviewFormat;
+    int mPreviewFormat; /*!< Native preview stream pixel format (PlatformData::getPreviewFormat()) */
+    int mPreviewCbFormat; /*!< Preview callback pixel format (CameraParameters::KEY_PREVIEW_FORMAT) */
     int mGfxStride;  /*!< Gfx buffer stride, due to hardware limitation Gfx
                           and ISP buffer stride alignment may be mismatched. */
 

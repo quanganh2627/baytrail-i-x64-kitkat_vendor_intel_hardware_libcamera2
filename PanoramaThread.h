@@ -63,7 +63,8 @@ class PanoramaThread : public Thread, public IBufferOwner {
 // constructor/destructor
 public:
 #ifdef ENABLE_INTEL_EXTRAS
-    PanoramaThread(ICallbackPanorama *panoramaCallback, I3AControls *aaaControls, int cameraId);
+    PanoramaThread(ICallbackPanorama *panoramaCallback, I3AControls *aaaControls,
+                   sp<CallbacksThread> callbacksThread, Callbacks *callbacks, int cameraId);
     ~PanoramaThread();
 
     void getDefaultParameters(CameraParameters *intel_params, int cameraId);
@@ -91,7 +92,7 @@ public:
 private:
     class PanoramaStitchThread : public Thread {
     public:
-        PanoramaStitchThread();
+        PanoramaStitchThread(Callbacks *callbacks);
         ~PanoramaStitchThread() {};
         status_t requestExitAndWait();
         status_t flush(); // processes stitches in queue
@@ -137,6 +138,7 @@ private:
         status_t handleFlush();
         MessageQueue<Message, MessageId> mMessageQueue;
         bool mThreadRunning;
+        Callbacks *mCallbacks;
     };
 
     // thread message id's
@@ -228,7 +230,7 @@ private:
     int mPanoramaMaxSnapshotCount;
     bool mThreadRunning;
     bool mPanoramaWaitingForImage;
-    CallbacksThread *mCallbacksThread;
+    sp<CallbacksThread> mCallbacksThread;
     Callbacks *mCallbacks;
     PanoramaState mState;
     int mPreviewWidth;

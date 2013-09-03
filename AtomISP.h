@@ -33,13 +33,15 @@
 #include "CameraConf.h"
 #include "ScalerService.h"
 #include "ICameraHwControls.h"
+#include "AAAThread.h"
 
 namespace android {
 
 #define MAX_V4L2_BUFFERS    MAX_BURST_BUFFERS
 #define MAX_CAMERA_NODES    MAX_CAMERAS + 1
 
-#define MAX_DEVICE_NODE_CHAR_NR	32
+#define MAX_DEVICE_NODE_CHAR_NR  32
+
 /**
  *  Minimum resolution of video frames to have DVS ON.
  *  Under this it will be disabled
@@ -64,7 +66,7 @@ class AtomISP :
 
 // constructor/destructor
 public:
-    explicit AtomISP(int cameraId, sp<ScalerService> scalerService);
+    explicit AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callbacks);
     virtual ~AtomISP();
 
     status_t initDevice();
@@ -236,6 +238,7 @@ public:
     int get3ALock(int * aaaLock);
     int setAeFlashMode(v4l2_flash_led_mode mode);
     int getAeFlashMode(v4l2_flash_led_mode * mode);
+    int getRawFormat();
     // TODO: replacing fixed value of AE_DELAY_FRAMES in AtomAIQ.h in non-functional API refactory
     //       this value exists in CPF and needs awareness of frames timing.
     virtual unsigned int getExposureDelay() { return PlatformData::getSensorExposureLag(); };
@@ -244,7 +247,7 @@ public:
     /* ISP related controls */
     int setAicParameter(struct atomisp_parameters *aic_params);
     int setIspParameter(struct atomisp_parm *isp_params);
-    int getIspStatistics(struct atomisp_3a_statistics *statistics);
+    int getIspStatistics(struct atomisp_3a_statistics *statistics, bool isFlashUsed);
     int setGdcConfig(const struct atomisp_morph_table *tbl);
     int setShadingTable(struct atomisp_shading_table *table);
     int setMaccConfig(struct atomisp_macc_config *macc_cfg);
@@ -398,11 +401,16 @@ private:
     status_t fileInjectSetSize(void);
 
     status_t selectCameraSensor();
+    status_t sensorStoreRawFormat();
     size_t setupCameraInfo();
     unsigned int getNumOfSkipFrames(void);
     int getPrimaryCameraIndex(void) const;
     status_t applySensorFlip(void);
     void fetchIspVersions();
+
+    // TODO: Remove once BZ #119181 gets fixed by the firmware team!!
+    int detectCorruptStatistics(struct atomisp_3a_statistics *statistics,
+                                bool isFlashUsed);
 
 private:
     // AtomIspObserver
@@ -462,7 +470,7 @@ private:
 
     // Dual Video
     int mGroupIndex;
-    Mutex mISPCountLock;
+    static Mutex sISPCountLock;
 
     static cameraInfo sCamInfo[MAX_CAMERA_NODES];
 
@@ -572,6 +580,10 @@ private:
     int mHighSpeedFps;
     Size mHighSpeedResolution;
     bool mHighSpeedEnabled;
+
+    // Sensor helper fields
+    Vector <v4l2_fmtdesc>    mSensorSupportedFormats;     /*!> List of V4L2 pixel format supported by the sensor */
+    int                      mRawBayerFormat;
 
 }; // class AtomISP
 

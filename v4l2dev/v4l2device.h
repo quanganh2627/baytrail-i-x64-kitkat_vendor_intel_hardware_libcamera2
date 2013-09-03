@@ -116,6 +116,7 @@ public:
     status_t setParameter (struct v4l2_streamparm *aParam);
     status_t setFormat(FrameInfo &aConfig);
     status_t setFormat(struct v4l2_format &aFormat);
+    status_t queryCapturePixelFormats(Vector<v4l2_fmtdesc> &formats);
 
     // Buffer pool management
     status_t setBufferPool(void **pool, int poolSize, FrameInfo *aFrameInfo, bool cached);

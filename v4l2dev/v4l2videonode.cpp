@@ -158,6 +158,39 @@ status_t V4L2VideoNode::enumerateInputs(struct v4l2_input *anInput)
     return NO_ERROR;
 }
 
+status_t V4L2VideoNode::queryCapturePixelFormats(Vector<v4l2_fmtdesc> &formats)
+{
+    LOG1("@%s device : %s", __FUNCTION__, mName.string());
+    struct v4l2_fmtdesc aFormat;
+
+    if (mState == DEVICE_CLOSED) {
+        LOGE("%s invalid device state %d",__FUNCTION__, mState);
+        return INVALID_OPERATION;
+    }
+
+    formats.clear();
+    CLEAR(aFormat);
+
+    aFormat.index = 0;
+    aFormat.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+    while (ioctl(mFd, VIDIOC_ENUM_FMT , &aFormat) == 0) {
+        formats.push(aFormat);
+        aFormat.index++;
+    };
+
+    aFormat.index = 0;
+    aFormat.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+
+    while (ioctl(mFd, VIDIOC_ENUM_FMT , &aFormat) == 0) {
+        formats.push(aFormat);
+        aFormat.index++;
+    };
+
+    LOG1("@%s device : %s %d format retrieved", __FUNCTION__, mName.string(), formats.size());
+    return NO_ERROR;
+}
+
 status_t V4L2VideoNode::setInput(int index)
 {
     LOG1("@%s", __FUNCTION__);
@@ -387,10 +420,10 @@ status_t V4L2VideoNode::setFormat(struct v4l2_format &aFormat)
     }
 
 
-    LOG1("VIDIOC_S_FMT: width: %d, height: %d, format: %d, field: %d",
+    LOG1("VIDIOC_S_FMT: width: %d, height: %d, format: %s, field: %d",
             aFormat.fmt.pix.width,
             aFormat.fmt.pix.height,
-            aFormat.fmt.pix.pixelformat,
+            v4l2Fmt2Str(aFormat.fmt.pix.pixelformat),
             aFormat.fmt.pix.field);
     ret = ioctl(mFd, VIDIOC_S_FMT, &aFormat);
     if (ret < 0) {
@@ -402,7 +435,7 @@ status_t V4L2VideoNode::setFormat(struct v4l2_format &aFormat)
     mConfig.format = aFormat.fmt.pix.pixelformat;
     mConfig.width = aFormat.fmt.pix.width;
     mConfig.height = aFormat.fmt.pix.height;
-    mConfig.stride = bytesPerLineToWidth(mConfig.format,aFormat.fmt.pix.bytesperline);
+    mConfig.stride = aFormat.fmt.pix.bytesperline;
     mConfig.size = frameSize(mConfig.format, mConfig.stride, mConfig.height);
     LOG1("stride: %d from ISP", mConfig.stride);
 
@@ -670,7 +703,7 @@ int V4L2VideoNode::qbuf(struct v4l2_buffer_info *buf)
     v4l2_buf->flags = buf->cache_flags;
     ret = ioctl(mFd, VIDIOC_QBUF, v4l2_buf);
     if (ret < 0) {
-        LOGE("VIDIOC_QBUF failed: %s", strerror(errno));
+        LOGE("VIDIOC_QBUF on %s failed: %s", mName.string(), strerror(errno));
         return ret;
     }
 

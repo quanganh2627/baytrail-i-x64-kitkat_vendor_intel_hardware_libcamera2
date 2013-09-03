@@ -47,9 +47,8 @@ struct UltraLowLight::MorphoULL {
     MorphoULL(): workingBuffer(NULL) {};
 };
 
-
-UltraLowLight::UltraLowLight(int cameraId) : mMorphoCtrl(NULL),
-                                 mCallbacks(Callbacks::getInstance(cameraId)),
+UltraLowLight::UltraLowLight(Callbacks *callbacks) : mMorphoCtrl(NULL),
+                                 mCallbacks(callbacks),
                                  mState(ULL_STATE_NULL),
                                  mULLCounter(0),
                                  mWidth(0),
@@ -137,6 +136,8 @@ status_t UltraLowLight::init( int w, int h, int aPreset)
 
     if (ret ==  NO_ERROR)
         setState(ULL_STATE_INIT);
+    else
+        LOGE("Error initializing ULL");
     return ret;
 
 }
@@ -151,6 +152,8 @@ status_t UltraLowLight::deinit()
         // do nothing
         break;
 
+    case ULL_STATE_CANCELING:
+    case ULL_STATE_DONE:
     case ULL_STATE_INIT:
          deinitMorphoLib();
          setState(ULL_STATE_UNINIT);
@@ -159,12 +162,6 @@ status_t UltraLowLight::deinit()
     case ULL_STATE_READY:
         mInputBuffers.clear();
         deinitMorphoLib();
-        setState(ULL_STATE_UNINIT);
-        break;
-
-    case ULL_STATE_CANCELING:
-    case ULL_STATE_DONE:
-        freeWorkingBuffer();
         setState(ULL_STATE_UNINIT);
         break;
 
@@ -278,11 +275,13 @@ status_t UltraLowLight::getInputBuffers(Vector<AtomBuffer> *inputs)
     Vector<AtomBuffer>::iterator it = mInputBuffers.begin();
 
     for (;it != mInputBuffers.end(); ++it) {
+        it->status = FRAME_STATUS_OK;
         inputs->push(*it);
     }
 
     mInputBuffers.clear();
-
+    // Reset the state back to INIT
+    setState(ULL_STATE_INIT);
     return NO_ERROR;
 }
 
@@ -325,6 +324,7 @@ status_t UltraLowLight::cancelProcess()
 bool UltraLowLight::trigger()
 {
     Mutex::Autolock lock(mStateMutex);
+
     // ULL is ready to start a capture in one of these 3 states
     if ( (mState != ULL_STATE_INIT) &&
          (mState != ULL_STATE_UNINIT) &&

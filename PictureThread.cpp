@@ -33,13 +33,13 @@ static const int SIZE_OF_APP0_MARKER = 18;      /* Size of the JFIF App0 marker
                                                  * This is introduced by SW encoder after
                                                  * SOI. And sometimes needs to be removed
                                                  */
-
-PictureThread::PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler, int cameraId) :
+PictureThread::PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler,
+                             sp<CallbacksThread> callbacksThread, Callbacks *callbacks) :
     Thread(true) // callbacks may call into java
     ,mMessageQueue("PictureThread", MESSAGE_ID_MAX)
     ,mThreadRunning(false)
-    ,mCallbacks(Callbacks::getInstance(cameraId))
-    ,mCallbacksThread(CallbacksThread::getInstance(NULL, cameraId))
+    ,mCallbacks(callbacks)
+    ,mCallbacksThread(callbacksThread)
     ,mHwCompressor(NULL)
     ,mExifMaker(NULL)
     ,mExifBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT_JPEG))
@@ -53,7 +53,6 @@ PictureThread::PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler,
     ,mInputBuffers(0)
     ,mScaler(scaler)
     ,m3AControls(aaaControls)
-    ,mCameraId(cameraId)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -182,8 +181,10 @@ status_t PictureThread::encode(MetaData &metaData, AtomBuffer *snaphotBuf, AtomB
     msg.id = MESSAGE_ID_ENCODE;
     msg.data.encode.metaData = metaData;
     msg.data.encode.snaphotBuf = *snaphotBuf;
+    mCallbacksThread->rawFrameDone(snaphotBuf);
     if (postviewBuf) {
         msg.data.encode.postviewBuf = *postviewBuf;
+        mCallbacksThread->postviewFrameDone(postviewBuf);
     } else {
         // thumbnail is optional
         LOG1("@%s, encoding without Thumbnail", __FUNCTION__);
@@ -760,6 +761,9 @@ void PictureThread::encodeExif(AtomBuffer *thumbBuf)
          mThumbBuf.height < thumbBuf->height ||
          mThumbBuf.width < thumbBuf->stride)) {
         int srcHeighByThumbAspect = thumbBuf->width * mThumbBuf.height / mThumbBuf.width;
+        mThumbBuf.format = thumbBuf->format;
+        mThumbBuf.size = frameSize(mThumbBuf.format, mThumbBuf.width, mThumbBuf.height);
+
         LOG1("Downscaling postview2thumbnail : %dx%d (%d) -> %dx%d (%d)",
                 thumbBuf->width, thumbBuf->height, thumbBuf->stride,
                 mThumbBuf.width, mThumbBuf.height, mThumbBuf.stride);

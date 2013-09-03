@@ -36,7 +36,6 @@
 #include <cutils/properties.h>
 #include <binder/IServiceManager.h>
 #include "intel_camera_extensions.h"
-#include "FeatureData.h"
 #include "ICameraHwControls.h"
 
 namespace android {
@@ -90,6 +89,26 @@ const int MIN_PREVIEW_FPS = 11;
 // TODO: This value should be gotten from sensor dynamically, instead of hardcoding:
 const int MAX_PREVIEW_FPS = 30;
 
+const char* ControlThread::sCaptureSubstateStrings[]= {
+      "INIT",
+      "STARTED",
+      "ENCODING_DONE",
+      "PICTURE_DONE",
+      "IDLE"
+};
+
+const char *scene_mode_detected[NUM_SCENE_DETECTED] = {
+                                                   "auto",
+                                                   "close_up_portrait",
+                                                   "portrait",
+                                                   "night_portrait",
+                                                   "night",
+                                                   "action",
+                                                   "backlight",
+                                                   "landscape",
+                                                   "barcode",
+                                                   "firework",
+};
 ControlThread::ControlThread(int cameraId) :
     Thread(true) // callbacks may call into java
     ,mCameraId(cameraId)
@@ -133,7 +152,6 @@ ControlThread::ControlThread(int cameraId) :
     ,mFocusAreas()
     ,mMeteringAreas()
     ,mVideoSnapshotrequested(0)
-    ,mPanoramaFinalizationPending(false)
     ,mEnableFocusCbAtStart(false)
     ,mEnableFocusMoveCbAtStart(false)
     ,mStillCaptureInProgress(false)
@@ -181,7 +199,20 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    isp = new AtomISP(mCameraId, mScalerService);
+    mCallbacks = new Callbacks();
+    if (mCallbacks == NULL) {
+        LOGE("error creating Callbacks");
+        goto bail;
+    }
+
+    // we implement ICallbackPicture interface
+    mCallbacksThread = new CallbacksThread(mCallbacks, this);
+    if (mCallbacksThread == NULL) {
+        LOGE("error creating CallbacksThread");
+        goto bail;
+    }
+
+    isp = new AtomISP(mCameraId, mScalerService, mCallbacks);
     if (isp == NULL) {
         LOGE("error creating ISP");
         goto bail;
@@ -233,7 +264,7 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mULL = new UltraLowLight(mCameraId);
+    mULL = new UltraLowLight(mCallbacks);
     if (mULL == NULL) {
         LOGE("error creating ULL");
         goto bail;
@@ -248,51 +279,38 @@ status_t ControlThread::init()
 
     // we implement the ICallbackPreview interface, so pass
     // this as argument
-    mPreviewThread = new PreviewThread(mCameraId);
+    mPreviewThread = new PreviewThread(mCallbacksThread, mCallbacks);
     if (mPreviewThread == NULL) {
         LOGE("error creating PreviewThread");
         goto bail;
     }
 
-    mPictureThread = new PictureThread(m3AControls, mScalerService, mCameraId);
+    mPictureThread = new PictureThread(m3AControls, mScalerService, mCallbacksThread, mCallbacks);
     if (mPictureThread == NULL) {
         LOGE("error creating PictureThread");
         goto bail;
     }
 
-    mVideoThread = new VideoThread(mCameraId);
+    mVideoThread = new VideoThread(mCallbacksThread);
     if (mVideoThread == NULL) {
         LOGE("error creating VideoThread");
         goto bail;
     }
 
     // we implement ICallbackAAA interface
-    m3AThread = new AAAThread(this, mULL, m3AControls);
+    m3AThread = new AAAThread(this, mULL, m3AControls, mCallbacksThread);
     if (m3AThread == NULL) {
         LOGE("error creating 3AThread");
         goto bail;
     }
 
-    mCallbacks = Callbacks::getInstance(mCameraId);
-    if (mCallbacks == NULL) {
-        LOGE("error creating Callbacks");
-        goto bail;
-    }
-
-    // we implement ICallbackPicture interface
-    mCallbacksThread = CallbacksThread::getInstance(this, mCameraId);
-    if (mCallbacksThread == NULL) {
-        LOGE("error creating CallbacksThread");
-        goto bail;
-    }
-
-    mPanoramaThread = new PanoramaThread(this, m3AControls, mCameraId);
+    mPanoramaThread = new PanoramaThread(this, m3AControls, mCallbacksThread, mCallbacks, mCameraId);
     if (mPanoramaThread == NULL) {
         LOGE("error creating PanoramaThread");
         goto bail;
     }
 
-    mPostProcThread = new PostProcThread(this, mPanoramaThread.get(), m3AControls, mCameraId);
+    mPostProcThread = new PostProcThread(this, mPanoramaThread.get(), m3AControls, mCallbacksThread, mCallbacks, mCameraId);
     if (mPostProcThread == NULL) {
         LOGE("error creating PostProcThread");
         goto bail;
@@ -391,6 +409,7 @@ status_t ControlThread::init()
     mBracketManager->setBracketMode(BRACKET_NONE);
 
     // Disable HDR by default
+    CLEAR(mHdr);
     mHdr.enabled = false;
     mHdr.inProgress = false;
     mHdr.savedBracketMode = BRACKET_NONE;
@@ -480,11 +499,6 @@ void ControlThread::deinit()
         m3AThread.clear();
     }
 
-    if (mCallbacksThread != NULL) {
-        mCallbacksThread->requestExitAndWait();
-        mCallbacksThread.clear();
-    }
-
     if (mParamCache != NULL) {
         free(mParamCache);
         mParamCache = NULL;
@@ -535,7 +549,17 @@ void ControlThread::deinit()
         delete mCallbacks;
         mCallbacks = NULL;
     }
+    List<Message>::iterator it = mPostponedMessages.begin();
+    for ( ;it != mPostponedMessages.end(); it++)
+        if (it->id == MESSAGE_ID_SET_PARAMETERS)
+            free(it->data.setParameters.params); // was strdupped, needs free
     mPostponedMessages.clear();
+
+    if (mCallbacksThread != NULL) {
+        mCallbacksThread->requestExitAndWait();
+        mCallbacksThread.clear();
+    }
+
     LOG1("@%s- complete", __FUNCTION__);
 }
 
@@ -882,7 +906,7 @@ void ControlThread::sceneDetected(int sceneMode, bool sceneHdr)
     LOG2("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_SCENE_DETECTED;
-    msg.data.sceneDetected.sceneMode = sceneMode;
+    strlcpy(msg.data.sceneDetected.sceneMode, scene_mode_detected[sceneMode], (size_t)SCENE_STRING_LENGTH);
     msg.data.sceneDetected.sceneHdr = sceneHdr;
     mMessageQueue.send(&msg);
 }
@@ -914,7 +938,6 @@ void ControlThread::panoramaFinalized(AtomBuffer *buff, AtomBuffer *pvBuff)
 status_t ControlThread::handleMessagePanoramaFinalize(MessagePanoramaFinalize *msg)
 {
     LOG1("@%s", __FUNCTION__);
-    mPanoramaFinalizationPending = false;
     status_t status = mCallbacksThread->requestTakePicture(false, false);
 
     if (status != OK)
@@ -1089,10 +1112,10 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
     }
     if (previewState == PreviewThread::STATE_STOPPED) {
         // just re-configure previewThread
-        int format, width, height, stride;
-        format = V4L2Format(mParameters.getPreviewFormat());
+        int cb_format, width, height, stride;
+        cb_format = V4L2Format(mParameters.getPreviewFormat());
         mISP->getPreviewSize(&width, &height,&stride);
-        mPreviewThread->setPreviewConfig(width, height, stride, format, false);
+        mPreviewThread->setPreviewConfig(width, height, stride, cb_format, false);
     } else if (previewState != PreviewThread::STATE_ENABLED
             && previewState != PreviewThread::STATE_ENABLED_HIDDEN) {
         LOGE("Trying to resume continuous preview from unexpected state!");
@@ -1169,7 +1192,7 @@ status_t ControlThread::configureContinuousRingBuffer()
     if (mULL->isActive() || mBurstLength > 1)
         cfg.numCaptures = MAX(mULL->MAX_INPUT_BUFFERS, mBurstLength);
     else
-        cfg.numCaptures = 1;
+        cfg.numCaptures = ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0))? 3 : 1;
 
     cfg.offset = -(mISP->shutterLagZeroAlign());
     cfg.skip = 0;
@@ -1236,7 +1259,7 @@ void ControlThread::releaseContinuousCapture(bool flushPictures)
         // continuous mode to online mode to do a capture.
         // As capture is not runnning in these cases, flush
         // is not needed.
-        status = mPictureThread->flushBuffers();
+        status = cancelPictureThread();
         if (status != NO_ERROR) {
             LOGE("Error flushing PictureThread!");
         }
@@ -1383,7 +1406,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     status_t status = NO_ERROR;
     int width;
     int height;
-    int format;
+    int cb_format;
     int stride;
     State state;
     AtomMode mode;
@@ -1420,13 +1443,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
         m3AControls->init3aStatDump("preview");
-
-    // set preview frame config
-    format = V4L2Format(mParameters.getPreviewFormat());
-    if (format == -1) {
-        LOGE("Bad preview format. Cannot start the preview!");
-        return BAD_VALUE;
-    }
 
     if (state == STATE_CONTINUOUS_CAPTURE) {
         if (initContinuousCapture() != NO_ERROR) {
@@ -1484,7 +1500,11 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         meteringWindows = NULL;
     }
 
-    LOG1("Using preview format: %s", v4l2Fmt2Str(format));
+    const char* cb_format_s = mParameters.getPreviewFormat();
+    cb_format = V4L2Format(cb_format_s);
+    if (!cb_format) {
+        LOGW("Unsupported preview callback format : %s", cb_format_s ? cb_format_s : "not set");
+    }
     mParameters.getPreviewSize(&width, &height);
     mISP->setPreviewFrameFormat(width, height);
 
@@ -1521,7 +1541,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     bool useSharedGfxBuffers =
         (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS)
         && (mIntelParamsAllowed || mode != MODE_CONTINUOUS_CAPTURE);
-    mPreviewThread->setPreviewConfig(width, height, stride, format, useSharedGfxBuffers, mNumBuffers);
+    mPreviewThread->setPreviewConfig(width, height, stride, cb_format, useSharedGfxBuffers, mNumBuffers);
     if (useSharedGfxBuffers) {
         Vector<AtomBuffer> sharedGfxBuffers;
         status = mPreviewThread->fetchPreviewBuffers(sharedGfxBuffers);
@@ -1618,7 +1638,6 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     mISP->pauseObserver(OBSERVE_PREVIEW_STREAM);
     mISP->pauseObserver(OBSERVE_3A_STAT_READY);
 
-
     // Before stopping the ISP, flush any buffers in picture
     // and video threads. This is needed as AtomISP::stop() may
     // deallocate buffers and the picture/video threads might
@@ -1689,12 +1708,9 @@ status_t ControlThread::stopCapture()
     if (mHdr.inProgress)
         mBracketManager->stopBracketing();
 
-    mAvailableSnapshotBuffers.clear();
-    mAvailableSnapshotBuffers = mAllocatedSnapshotBuffers;
-
-    status = mPictureThread->flushBuffers();
+    status = cancelPictureThread();
     if (status != NO_ERROR) {
-        LOGE("Error flushing PictureThread!");
+        LOGE("Error canceling PictureThread!");
         return status;
     }
 
@@ -1718,15 +1734,8 @@ status_t ControlThread::stopCapture()
     }
 
     if (mBracketManager->getBracketMode() == BRACKET_FOCUS) {
-        AfMode publicAfMode = m3AControls->getPublicAfMode();
-        if (!mFocusAreas.isEmpty() &&
-            (publicAfMode == CAM_AF_MODE_AUTO ||
-             publicAfMode == CAM_AF_MODE_CONTINUOUS ||
-             publicAfMode == CAM_AF_MODE_MACRO)) {
-            m3AControls->setAfMode(CAM_AF_MODE_TOUCH);
-        } else {
-            m3AControls->setAfMode(publicAfMode);
-        }
+        AfMode afMode = m3AControls->getAfMode();
+        m3AControls->setAfMode(afMode);
     }
 
     if (mHdr.enabled || mHdr.inProgress) {
@@ -1739,6 +1748,14 @@ status_t ControlThread::restartPreview(bool videoMode)
 {
     LOG1("@%s: mode = %s", __FUNCTION__, videoMode?"VIDEO":"STILL");
     bool faceActive = mFaceDetectionActive;
+    /**
+     * Postcapture processing items must be completed when preview is stopped
+     * or re-started. See the comment in handleMessageStopPreview
+     * The re-start because of change of settings is triggered by application
+     * that should wait for the post-capture processing to complete.
+     */
+    cancelPostCaptureThread();
+
     stopFaceDetection(true);
     status_t status = stopPreviewCore();
     if (status == NO_ERROR)
@@ -1794,6 +1811,7 @@ status_t ControlThread::handleMessageStartPreview()
     }
 
     mStillCaptureInProgress = false;
+    LOG1("Reset CaptureSubState %s -> IDLE (start preview)", sCaptureSubstateStrings[mCaptureSubState]);
     mCaptureSubState = STATE_CAPTURE_IDLE;
 
     // Check if we previously disabled focus callbacks
@@ -1833,39 +1851,27 @@ status_t ControlThread::handleMessageStopPreview()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if (mCaptureSubState == STATE_CAPTURE_STARTED) {
-        // We are going to cancel ongoing capture process based
-        // on assumption that application is no longer interested
-        // in receiving the jpeg. This is done to protect racing
-        // conditions with unfinished capture process and camera
-        // reconfiguration (setParameters) in general.
-        // Note: In case snapshot is already sent to PictureThread for
-        //       encoding, we may or may not end up calling picture
-        //       callbacks. Callback would get blocked until this
-        //       stopPreview finishes.
-        //       It is up to application to ensure it blocks for jpeg
-        //       before letting other API calls to happen or touches
-        //       into callback interfaces given with takePicture().
-        //       If we are here, ANR is expected - just protecting
-        //       against crashes.
-        LOGW("stopPreview() called while capture in progress, canceling\n"
-             "application should release the camera to cancel capture process");
-        if (mState == STATE_CAPTURE)
-            status = stopCapture();
-        else if (mState == STATE_CONTINUOUS_CAPTURE) {
-            stopOfflineCapture();
-        }
-        mBurstLength = 0;
-        mPictureThread->flushBuffers();
-        mStillCaptureInProgress = false;
-        mCaptureSubState = STATE_CAPTURE_IDLE;
-    }
     /**
-     * We maybe in the middle of processing ULL image, make sure we cancel this
+     * We cancel any ongoing capture process (and post-capture
+     * processing) based on assumption that application is no longer interested
+     * in receiving the jpeg if it is stoping the preview.
+     * This is done to protect racing conditions with unfinished capture
+     * process and camera reconfiguration (setParameters) in general.
+     *
+     * Note: In case snapshot is already sent to PictureThread for
+     *       encoding, we may or may not end up calling picture
+     *       callbacks. Callback would get blocked until this
+     *       stopPreview finishes.
+     *       It is up to application to ensure it blocks for jpeg
+     *       before letting other API calls to happen or touches
+     *       into callback interfaces given with takePicture().
+     *       If we are here, ANR is expected - just protecting
+     *       against crashes.
      */
-    if (mULL && mULL->isProcessing()) {
-        mPostCaptureThread->cancelProcessingItem((IPostCaptureProcessItem *)mULL);
-    }
+
+    status = cancelCapture();
+    if (status != NO_ERROR)
+        LOGE("There was failures while canceling capture process");
 
     // In STATE_CAPTURE, preview is already stopped, nothing to do
     if (mState != STATE_CAPTURE) {
@@ -1931,11 +1937,12 @@ status_t ControlThread::handleMessageTimeout()
         status = mISP->init();
         if (status != NO_ERROR) {
             LOGE("Error initializing ISP");
+        } else {
+            bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
+            status = startPreviewCore(videoMode);
+            if (status)
+                LOGE("%s: Restart Preview failed", __FUNCTION__);
         }
-        bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-        status = startPreviewCore(videoMode);
-        if (status)
-            LOGE("%s: Restart Preview failed", __FUNCTION__);
     } else {
         LOG2("%s: nothing to do", __FUNCTION__);
     }
@@ -2100,6 +2107,7 @@ status_t ControlThread::handleMessageStopRecording()
     if (mCaptureSubState == STATE_CAPTURE_STARTED) {
         // cancel video snapshot
         mPictureThread->flushBuffers();
+        LOG1("CaptureSubState %s -> IDLE (stopRecording)", sCaptureSubstateStrings[mCaptureSubState]);
         mCaptureSubState = STATE_CAPTURE_IDLE;
     }
     // clear reserved lists
@@ -2160,7 +2168,7 @@ status_t ControlThread::setSmartSceneParams(void)
         return INVALID_OPERATION;
 
     if (scene_mode && !strcmp(scene_mode, CameraParameters::SCENE_MODE_AUTO)) {
-        bool sceneDetectionSupported = strcmp(FeatureData::sceneDetectionSupported(mCameraId), "") != 0;
+        bool sceneDetectionSupported = strcmp(PlatformData::supportedSceneDetection(mCameraId), "") != 0;
         //scene mode detection should always be working, but we shouldn't take it in account whenever HDR is on.
         if (!mHdr.enabled && sceneDetectionSupported && m3AControls->getSmartSceneDetection()) {
             int sceneMode = 0;
@@ -2226,10 +2234,11 @@ status_t ControlThread::handleMessagePanoramaPicture() {
     LOG1("@%s:", __FUNCTION__);
     status_t status = NO_ERROR;
     if (mPanoramaThread->getState() == PANORAMA_STARTED) {
+        LOG1("CaptureSubState %s -> STARTED (panorama)", sCaptureSubstateStrings[mCaptureSubState]);
+        mCaptureSubState = STATE_CAPTURE_STARTED;
         mPanoramaThread->startPanoramaCapture();
         handleMessagePanoramaCaptureTrigger();
     } else {
-        mPanoramaFinalizationPending = true;
         mPanoramaThread->finalize();
     }
 
@@ -2288,6 +2297,7 @@ status_t ControlThread::handleMessageTakePicture() {
     status_t status = NO_ERROR;
 
     mShootingMode = selectShootingMode();
+    LOG1("CaptureSubState %s -> STARTED ", sCaptureSubstateStrings[mCaptureSubState]);
     mCaptureSubState = STATE_CAPTURE_STARTED;
 
     switch(mShootingMode) {
@@ -2321,8 +2331,10 @@ status_t ControlThread::handleMessageTakePicture() {
             break;
     }
 
-    if (status != OK)
+    if (status != OK) {
+        LOG2("CaptureSubState = IDLE (error)");
         mCaptureSubState = STATE_CAPTURE_IDLE;
+    }
 
     return status;
 }
@@ -3463,10 +3475,88 @@ status_t ControlThread::handleMessageTakeSmartShutterPicture()
         mPostProcThread->resetSmartCaptureTrigger();
         status = handleMessageTakePicture();
     } else {   //normal smart shutter capture
+        LOG1("CaptureSubState %s -> STARTED (smart shutter)", sCaptureSubstateStrings[mCaptureSubState]);
+        mCaptureSubState = STATE_CAPTURE_STARTED;
         mPostProcThread->captureOnTrigger();
         mState = selectPreviewMode(mParameters);
     }
 
+    return status;
+}
+
+/**
+ * Cancel ongoig encoding
+ *
+ * Flushed PictureThread and handles pictureDone's received
+ */
+status_t ControlThread::cancelPictureThread()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = mPictureThread->flushBuffers();
+    Vector<Message> canceledPictures;
+    Vector<Message>::iterator it;
+    mMessageQueue.remove(MESSAGE_ID_PICTURE_DONE, &canceledPictures);
+    for (it = canceledPictures.begin(); it != canceledPictures.end(); it++) {
+        status = handleMessagePictureDone(&it->data.pictureDone);
+        if (status != NO_ERROR)
+            LOGD("Failed handling pictureDone-messages while canceling!");
+    }
+
+    return status;
+}
+
+/**
+ * Cancel ongoing capture post process
+ *
+ * Cancels ULL and handles postCaptureProcessingDone
+ * TODO: generalization, ULL atm the one and only post capture processing item
+ */
+status_t ControlThread::cancelPostCaptureThread()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    if (mPostCaptureThread->isBusy()) {
+        status = mPostCaptureThread->cancelProcessingItem((IPostCaptureProcessItem *)mULL);
+    }
+
+    Vector<Message> canceledPictures;
+    Vector<Message>::iterator it;
+    mMessageQueue.remove(MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE, &canceledPictures);
+    for (it = canceledPictures.begin(); it != canceledPictures.end(); it++) {
+        status = handleMessagePostCaptureProcessingDone(&it->data.postCapture);
+        if (status != NO_ERROR)
+            LOGD("Failed handling postCaptureProcessingDone while canceling!");
+    }
+
+    return status;
+}
+
+/**
+ * Cancel ongoing capture and any ongoing post capture processing
+ */
+status_t ControlThread::cancelCapture()
+{
+    LOG1("@%s: CaptureSubState %s", __FUNCTION__, sCaptureSubstateStrings[mCaptureSubState]);
+    status_t status = NO_ERROR;
+
+    if (mCaptureSubState == STATE_CAPTURE_IDLE) {
+        LOG1("No ongoing capture to cancel");
+        status = cancelPostCaptureThread();
+        return status;
+    }
+
+    if (mState == STATE_CAPTURE) {
+        // online capture
+        status = stopCapture();
+    } else if (mState == STATE_CONTINUOUS_CAPTURE) {
+        // offline capture
+        stopOfflineCapture();
+        status |= cancelPostCaptureThread();
+        status |= cancelPictureThread();
+    }
+    mStillCaptureInProgress = false;
+    LOG1("CaptureSubState %s -> IDLE (cancelCapture)", sCaptureSubstateStrings[mCaptureSubState]);
+    mCaptureSubState = STATE_CAPTURE_IDLE;
     return status;
 }
 
@@ -3476,7 +3566,7 @@ status_t ControlThread::handleMessageCancelPicture()
     status_t status = NO_ERROR;
 
     mBurstLength = 0;
-    mPictureThread->flushBuffers();
+    status = cancelPictureThread();
 
     mStillCaptureInProgress = false;
 
@@ -3674,8 +3764,10 @@ AtomBuffer* ControlThread::findVideoSnapshotBuffer(int index)
 status_t ControlThread::handleMessageEncodingDone(MessagePicture *msg)
 {
     LOG1("@%s", __FUNCTION__);
-    // message content is provided for future use; not needed yet
+
+    LOG1("CaptureSubState %s -> ENCODING DONE", sCaptureSubstateStrings[mCaptureSubState]);
     mCaptureSubState = STATE_CAPTURE_ENCODING_DONE;
+
     return OK;
 }
 
@@ -3683,21 +3775,6 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-
-    mCaptureSubState = STATE_CAPTURE_PICTURE_DONE;
-    // handle postponed setparameters which may have occured during capture
-    List<Message>::iterator it = mPostponedMessages.begin();
-
-    while (it != mPostponedMessages.end()) {
-        if (it->id == MESSAGE_ID_SET_PARAMETERS) {
-            LOG1("@%s handling postponed setparameter message", __FUNCTION__);
-            handleMessageSetParameters(&it->data.setParameters);
-            free(it->data.setParameters.params); // was strdupped, needs free
-            it = mPostponedMessages.erase(it); // returns pointer to next item in list
-        } else {
-            it++;
-        }
-    }
 
     if (msg->snapshotBuf.type == ATOM_BUFFER_PANORAMA) {
         // panorama pictures are special, they use the panorama engine memory.
@@ -3734,10 +3811,22 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
                     // drop from reserved list
                     mVideoSnapshotBuffers.erase(videoBuffer);
                 }
+
+                if (mVideoSnapshotBuffers.isEmpty()) {
+                    LOG1("CaptureSubState %s -> IDLE (videoSnapshot)", sCaptureSubstateStrings[mCaptureSubState]);
+                    mCaptureSubState = STATE_CAPTURE_IDLE;
+                }
             }
             return status;
         }
     } else if (mState == STATE_CAPTURE || mState == STATE_CONTINUOUS_CAPTURE) {
+
+        if (mCaptureSubState == STATE_CAPTURE_IDLE) {
+            LOG1("Recycling buffer after canceled post-capture-processing");
+        } else {
+            LOG1("CaptureSubState %s -> PICTURE DONE", sCaptureSubstateStrings[mCaptureSubState]);
+            mCaptureSubState = STATE_CAPTURE_PICTURE_DONE;
+        }
 
         /**
          * Snapshot buffer recycle
@@ -3746,7 +3835,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
          *
          * We check if the buffer returned is in the array of allocated buffers
          * this should always be the case.
-         * Then we check that it is not already in in the list of available buffers
+         * Then we check that it is not already in the list of available buffers
          *
          * TODO: Have post-view allocation similar to snapshot.
          *
@@ -3766,6 +3855,12 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             }
         }
 
+        // transit to idle once all buffers are returned
+        if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
+            LOG1("CaptureSubState %s -> IDLE",sCaptureSubstateStrings[mCaptureSubState]);
+            mCaptureSubState = STATE_CAPTURE_IDLE;
+        }
+
         if (isBurstRunning()) {
             ++mBurstCaptureDoneNum;
             LOG2("Burst req %d done %d len %d",
@@ -3780,6 +3875,20 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
         LOGW("Received a picture Done during invalid state %d; buf id:%d, ptr=%p", mState, msg->snapshotBuf.id, msg->snapshotBuf.buff);
     }
 
+    // handle postponed setparameters which may have occured during capture
+    // TODO: ensure that this goes correctly with e.g ULL recycling more than
+    //       one buffers before capture process is done
+    List<Message>::iterator it = mPostponedMessages.begin();
+    while (it != mPostponedMessages.end()) {
+        if (it->id == MESSAGE_ID_SET_PARAMETERS) {
+            LOG1("@%s handling postponed setparameter message", __FUNCTION__);
+            handleMessageSetParameters(&it->data.setParameters);
+            free(it->data.setParameters.params); // was strdupped, needs free
+            it = mPostponedMessages.erase(it); // returns pointer to next item in list
+        } else {
+            it++;
+        }
+    }
 
     return status;
 }
@@ -3820,6 +3929,11 @@ bool ControlThread::validateSize(int width, int height, Vector<Size> &supportedS
     if (width < 0 || height < 0)
         return false;
 
+    for (Vector<Size>::iterator it = supportedSizes.begin(); it != supportedSizes.end(); ++it)
+        if (width == it->width && height == it->height)
+            return true;
+
+    LOGW("WARNING: The Size %dx%d is not fully supported. Some issues might occur!", width, height);
     return true;
 }
 
@@ -4380,13 +4494,13 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
     mParameters.getPictureSize(&picWidth, &picHeight);
 
     /**
-     * Snapshot format is harcoded to NV12, this is the format between
+     * Snapshot format is hardcoded to NV12, this is the format between
      * camera and JPEG encoder. In cases where we need to capture bayer
      * then the format changes to RGB adn JPEG encoding breaks (i.e. image is
      * green) this is a known limitation of the raw capture sequence in ISP fW
      */
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW))
-        format = V4L2_PIX_FMT_SRGGB10;
+        format = mHwcg.mSensorCI->getRawFormat();
     else
         format = V4L2_PIX_FMT_NV12;
 
@@ -5355,6 +5469,7 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
 
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, CameraParameters::KEY_FOCUS_MODE);
     AfMode afMode = CAM_AF_MODE_NOT_SET;
+    AfMode curAfMode = CAM_AF_MODE_NOT_SET;
 
     if (!newVal.isEmpty()) {
         if (newVal == CameraParameters::FOCUS_MODE_AUTO) {
@@ -5379,56 +5494,38 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             mPostProcThread->enableFaceAAA(AAA_FLAG_AF);
         }
 
-        status = m3AControls->setAfEnabled(true);
-        if (status == NO_ERROR) {
+        curAfMode = m3AControls->getAfMode();
+
+        if (status == NO_ERROR && curAfMode != afMode) {
+            // See if we have to change the actual mode (it could be correct already)
             status = m3AControls->setAfMode(afMode);
         }
-        if (status == NO_ERROR) {
-            m3AControls->setPublicAfMode(afMode);
-            LOG1("Changed: %s -> %s", CameraParameters::KEY_FOCUS_MODE, newVal.string());
-        }
+        LOG1("Changed: %s -> %s", CameraParameters::KEY_FOCUS_MODE, newVal.string());
     }
 
     if (!mFaceDetectionActive) {
-
-        AfMode publicAfMode = m3AControls->getPublicAfMode();
+        curAfMode = m3AControls->getAfMode();
         // Based on Google specs, the focus area is effective only for modes:
         // (framework side constants:) FOCUS_MODE_AUTO, FOCUS_MODE_MACRO, FOCUS_MODE_CONTINUOUS_VIDEO
         // or FOCUS_MODE_CONTINUOUS_PICTURE.
-        if (publicAfMode == CAM_AF_MODE_AUTO ||
-            publicAfMode == CAM_AF_MODE_CONTINUOUS ||
-            publicAfMode == CAM_AF_MODE_MACRO) {
+        if (curAfMode == CAM_AF_MODE_AUTO ||
+            curAfMode == CAM_AF_MODE_CONTINUOUS ||
+            curAfMode == CAM_AF_MODE_MACRO) {
 
-            afMode = publicAfMode;
-
-            // See if any focus areas are set.
-            // NOTE: CAM_AF_MODE_TOUCH is for HAL internal use only
-            if (!mFocusAreas.isEmpty()) {
-                LOG1("Focus areas set, using AF mode \"touch \"");
-                afMode = CAM_AF_MODE_TOUCH;
-            }
-
-            // See if we have to change the actual mode (it could be correct already)
-            AfMode curAfMode = m3AControls->getAfMode();
-            if (afMode != curAfMode) {
-                m3AControls->setAfMode(afMode);
-            }
-
-            // If in touch mode, we set the focus windows now
-            if (afMode == CAM_AF_MODE_TOUCH) {
                 size_t winCount(mFocusAreas.numOfAreas());
                 CameraWindow *focusWindows = new CameraWindow[winCount];
                 mFocusAreas.toWindows(focusWindows);
                 convertAfWindows(focusWindows, winCount);
+
                 if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
                     // If focus windows couldn't be set, previous AF mode is used
-                    // (AfSetWindowMulti has its own safety checks for coordinates)
+                    curAfMode = m3AControls->getAfMode();
                     LOGE("Could not set AF windows. Resetting the AF back to %d", curAfMode);
                     m3AControls->setAfMode(curAfMode);
                 }
+
                 delete[] focusWindows;
                 focusWindows = NULL;
-            }
         }
     }
 
@@ -6075,7 +6172,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
         previewWidth = newWidth;
         previewHeight = newHeight;
         previewAspectRatio = 1.0 * newWidth / newHeight;
-        LOG1("Preview size/format is changing: old=%dx%d %s; new=%dx%d %s; ratio=%.3f",
+        LOG1("Preview size/cb_format is changing: old=%dx%d %s; new=%dx%d %s; ratio=%.3f",
                 oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
                 newWidth, newHeight, v4l2Fmt2Str(newFormat),
                 previewAspectRatio);
@@ -6083,7 +6180,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
         mPreviewForceChanged = false;
     } else {
         previewAspectRatio = 1.0 * oldWidth / oldHeight;
-        LOG1("Preview size/format is unchanged: old=%dx%d %s; ratio=%.3f",
+        LOG1("Preview size/cb_format is unchanged: old=%dx%d %s; ratio=%.3f",
                 oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
                 previewAspectRatio);
     }
@@ -6362,7 +6459,7 @@ bool ControlThread::hasPictureFormatChanged()
     int newFormat = V4L2_PIX_FMT_NV12;
 
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW))
-       newFormat = V4L2_PIX_FMT_SRGGB10;
+       newFormat = mHwcg.mSensorCI->getRawFormat();
 
     return (newFormat != currentFormat);
 }
@@ -6612,9 +6709,12 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
 
 status_t ControlThread::handleMessageSceneDetected(MessageSceneDetected *msg)
 {
-    LOG2("@%s", __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    status = mCallbacksThread->sceneDetected(msg->sceneMode, msg->sceneHdr);
+    camera_scene_detection_metadata_t metadata;
+    strlcpy(metadata.scene, msg->sceneMode, (size_t)SCENE_STRING_LENGTH);
+    metadata.hdr = msg->sceneHdr;
+    status = mCallbacksThread->sceneDetected(metadata);
     return status;
 }
 
@@ -6671,7 +6771,7 @@ status_t ControlThread::handleMessageStoreMetaDataInBuffers(MessageStoreMetaData
     return status;
 }
 
-void ControlThread::postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t procStatus)
+void ControlThread::postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t procStatus, int retries)
 {
     LOG1("@%s", __FUNCTION__);
     // send message
@@ -6679,6 +6779,7 @@ void ControlThread::postCaptureProcesssingDone(IPostCaptureProcessItem* item, st
     msg.id = MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE;
     msg.data.postCapture.item = item;
     msg.data.postCapture.status = procStatus;
+    msg.data.postCapture.retriesLeft = retries;   /* Number of attempts to handle this message */
 
     mMessageQueue.send(&msg);
 }
@@ -6696,6 +6797,17 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
         goto cleanup;
     }
 
+    if(mCaptureSubState != STATE_CAPTURE_IDLE) {
+        // we are in the middle of another capture, let's delay this
+        LOG1("Delaying processing of post capture processed image, image capture in progress, CaptureSubState %s", sCaptureSubstateStrings[mCaptureSubState]);
+        if (msg->retriesLeft == 0) {
+            LOGE("@%s:Waited too long to handle this message, canceling post capture processing", __FUNCTION__);
+            goto cleanup;
+        }
+        postCaptureProcesssingDone(msg->item, msg->status,msg->retriesLeft--);
+        return NO_ERROR;
+    }
+
     // ATM the only post capture processing is ULL, no need to check which one
     status = mULL->getOuputResult(&snapshotBuffer,&postviewBuffer, &picMetaData, &ULLid);
     if (status != NO_ERROR) {
@@ -6703,6 +6815,8 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
         goto cleanup;
     }
 
+    LOG1("CaptureSubState %s -> STARTED (Post-Capture-Proc)", sCaptureSubstateStrings[mCaptureSubState]);
+    mCaptureSubState = STATE_CAPTURE_STARTED;
     mCallbacksThread->requestULLPicture(ULLid);
 
     /*
@@ -6786,6 +6900,10 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
 
     LOG1("HDR: using %p as HDR postview output buffer", mHdr.outPostviewBuf.dataPtr);
 
+    // Initialize the input buffers store
+    mHdr.inputBuffers = new MessagePicture[mHdr.bracketNum];
+    memset(mHdr.inputBuffers, 0, mHdr.bracketNum * sizeof(MessagePicture));
+
     // Initialize the CI input buffers (will be initialized later, when snapshots are taken)
     mHdr.ciBufIn.ciBufNum = mHdr.bracketNum;
     mHdr.ciBufIn.ciMainBuf = new ia_frame[mHdr.ciBufIn.ciBufNum];
@@ -6852,6 +6970,7 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
 status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* postviewBuffer)
 {
     LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
 
     // Initialize the HDR CI input buffers (main/postview) for this capture
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer->dataPtr;
@@ -6886,7 +7005,12 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height,
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].format);
 
-    return mCP->computeCDF(mHdr.ciBufIn, mBurstCaptureNum);
+    status = mCP->computeCDF(mHdr.ciBufIn, mBurstCaptureNum);
+    if (status == NO_ERROR) {
+        mHdr.inputBuffers[mBurstCaptureNum].snapshotBuf = *snapshotBuffer;
+        mHdr.inputBuffers[mBurstCaptureNum].postviewBuf = *postviewBuffer;
+    }
+    return status;
 }
 
 void ControlThread::hdrRelease()
@@ -6913,6 +7037,10 @@ void ControlThread::hdrRelease()
     if (mHdr.ciBufOut.ciPostviewBuf != NULL) {
         delete[] mHdr.ciBufOut.ciPostviewBuf;
         mHdr.ciBufOut.ciPostviewBuf = NULL;
+    }
+    if (mHdr.inputBuffers != NULL) {
+        delete[] mHdr.inputBuffers;
+        mHdr.inputBuffers = NULL;
     }
     mHdr.inProgress = false;
 }
@@ -6954,6 +7082,15 @@ status_t ControlThread::hdrCompose()
         if (hdrPicMetaData.aeConfig) {
             hdrPicMetaData.aeConfig->evBias = 0.0;
         }
+
+        // recycle HDR input buffers
+        for (int i = 0; i < mHdr.bracketNum; i++) {
+            if (mHdr.inputBuffers[i].snapshotBuf.dataPtr != NULL) {
+                handleMessagePictureDone(&mHdr.inputBuffers[i]);
+                mHdr.inputBuffers[i].snapshotBuf.dataPtr = NULL;
+            }
+        }
+
         // The output frame is allocated by the HDR module so it is not one of the
         // snapshot buffers allocated by the PictureThread. We mark this in the
         // status field as frame skipped. This field is only checked by the
@@ -7264,8 +7401,6 @@ status_t ControlThread::stopPanorama()
     LOG1("@%s", __FUNCTION__);
 
     if (mPanoramaThread != 0) {
-        if (mPanoramaFinalizationPending)
-
         if (mPanoramaThread->getState() == PANORAMA_STOPPED)
             return NO_ERROR;
 
@@ -7533,7 +7668,14 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
 
     status_t status = NO_ERROR;
 
+    // after ISP timeout, we will get a burst of notifications without really that
+    // many recording buffers, so we need to skip the unnecessary notifications
     status = mISP->getRecordingFrame(&buff);
+    if (status == NOT_ENOUGH_DATA) {
+        LOGW("@%s - recording frame was not ready. Maybe there was an ISP timeout?", __FUNCTION__);
+        return NO_ERROR;
+    }
+
     if (status == NO_ERROR) {
        if (buff.status != FRAME_STATUS_CORRUPTED) {
             // Check whether driver has run out of buffers
