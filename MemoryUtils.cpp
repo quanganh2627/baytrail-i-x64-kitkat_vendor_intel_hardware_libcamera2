@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+#define LOG_TAG "MemoryUtils"
 #include "MemoryUtils.h"
 #include "PlatformData.h"
 
@@ -36,7 +37,7 @@ namespace android {
         LOG1("%s with these properties: (%dx%d)s:%d format %s", __FUNCTION__,
                 aFrameInfo.width, aFrameInfo.height, aFrameInfo.stride, v4l2Fmt2Str(aFrameInfo.format));
 
-        GraphicBuffer *cameraGraphicBuffer = new GraphicBuffer(aFrameInfo.width, aFrameInfo.height,getGFXHALPixelFormatFromV4L2Format(aFrameInfo.format),
+        GraphicBuffer *cameraGraphicBuffer = new GraphicBuffer(aFrameInfo.stride, aFrameInfo.height,getGFXHALPixelFormatFromV4L2Format(aFrameInfo.format),
                         GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_SW_WRITE_OFTEN | GraphicBuffer::USAGE_HW_TEXTURE);
 
         if (!cameraGraphicBuffer) {
@@ -72,6 +73,26 @@ namespace android {
         aBuff.shared = false;
         LOG1("@%s allocated gfx buffer with pointer %p nativewindowbuf %p",
             __FUNCTION__, aBuff.dataPtr, cameraNativeWindowBuffer);
+
+        // It is used specially for BYT with Gen GPU. The video encoder need NV12 tiled format graphic buffer.
+        // Every recording buffer will be converted to this group of buffers which are really used for encoding.
+        if (aBuff.type == ATOM_BUFFER_VIDEO && graphic_is_gen) {
+            GraphicBuffer *gfxbuf = new GraphicBuffer(aFrameInfo.width, ALIGN32(aFrameInfo.height), HAL_PIXEL_FORMAT_NV12_TILED_INTEL,
+                    GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_HW_TEXTURE);
+
+            if (!gfxbuf) {
+                LOGE("No memory to allocate tiled graphic buffer");
+                return NO_MEMORY;
+            }
+
+            cameraNativeWindowBuffer = gfxbuf->getNativeBuffer();
+            aBuff.gfxInfo_rec.gfxBuffer = gfxbuf;
+            aBuff.gfxInfo_rec.gfxBufferHandle = &gfxbuf->handle;
+            gfxbuf->incStrong(&aBuff);
+            LOG1("@%s allocated rec gfx buffer size(%dx%d) stride:%d",
+                    __FUNCTION__, aFrameInfo.width, aFrameInfo.height, cameraNativeWindowBuffer->stride);
+        }
+
         return status;
     }
 
@@ -92,6 +113,19 @@ namespace android {
         aBuff.gfxInfo.scalerId = -1;
         aBuff.gfxInfo.locked = false;
         aBuff.dataPtr = NULL;
+
+        graphicBuffer = aBuff.gfxInfo_rec.gfxBuffer;
+        if (graphicBuffer) {
+            LOG1("@%s freeing gfx buffer %p refcount %d", __FUNCTION__, graphicBuffer, graphicBuffer->getStrongCount());
+            if (aBuff.gfxInfo_rec.locked)
+                graphicBuffer->unlock();
+
+            graphicBuffer->decStrong(&aBuff);
+        }
+        aBuff.gfxInfo_rec.gfxBuffer = NULL;
+        aBuff.gfxInfo_rec.gfxBufferHandle = NULL;
+        aBuff.gfxInfo_rec.scalerId = -1;
+        aBuff.gfxInfo_rec.locked = false;
     }
 
     status_t allocateAtomBuffer(AtomBuffer &aBuff, FrameInfo &aFrameInfo, Callbacks *aCallbacks)

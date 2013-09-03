@@ -84,6 +84,11 @@ AtomBuffer AtomBufferFactory::createAtomBuffer(AtomBufferType type,
         buf.gfxInfo.scalerId = -1;
         buf.gfxInfo.locked = false;
     }
+    buf.gfxInfo_rec.gfxBuffer = NULL;
+    buf.gfxInfo_rec.gfxBufferHandle = NULL;
+    buf.gfxInfo_rec.scalerId = -1;
+    buf.gfxInfo_rec.locked = false;
+
     return buf;
 }
 

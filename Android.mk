@@ -85,6 +85,8 @@ LOCAL_C_INCLUDES += \
 	$(call include-path-for, skia)/core \
 	$(call include-path-for, skia)/images \
 	$(call include-path-for, sqlite) \
+	$(TARGET_OUT_HEADERS)/libva \
+	$(TARGET_OUT_HEADERS)/libdrm \
 	$(TARGET_OUT_HEADERS)/libtbd \
 	$(TARGET_OUT_HEADERS)/libmix_videoencoder \
 	$(TARGET_OUT_HEADERS)/cameralibs \
@@ -93,6 +95,8 @@ LOCAL_C_INCLUDES += \
 	$(LOCAL_PATH)/v4l2dev/
 
 ifeq ($(BOARD_GRAPHIC_IS_GEN), true)
+LOCAL_C_INCLUDES += \
+	$(TARGET_OUT_HEADERS)/libmix_videovpp
 else
 LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/pvr/hal
@@ -101,11 +105,6 @@ endif
 ifeq (,$(wildcard frameworks/base/core/jni/android_hardware_Camera.h))
 LOCAL_C_INCLUDES += \
 	vendor/intel/hardware/camera_extension/include/
-endif
-
-ifeq ($(USE_INTEL_JPEG), true)
-LOCAL_C_INCLUDES += \
-	vendor/intel/hardware/libva
 endif
 
 LOCAL_C_FLAGS =+ -fno-pic
@@ -145,10 +144,15 @@ LOCAL_SHARED_LIBRARIES += \
 	libva-android
 endif
 
+ifeq ($(BOARD_GRAPHIC_IS_GEN), true)
+LOCAL_SHARED_LIBRARIES += \
+	libmix_videovpp
+endif
+
 LOCAL_STATIC_LIBRARIES := \
 	libcameranvm \
 	libia_coordinate \
-        libmorpho_image_stabilizer3
+	libmorpho_image_stabilizer3
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_CFLAGS += -DUSE_INTEL_JPEG
