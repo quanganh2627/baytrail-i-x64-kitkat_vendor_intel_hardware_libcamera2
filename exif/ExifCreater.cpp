@@ -457,10 +457,15 @@ void ExifCreater::writeExifIfd(unsigned char **pCur,
     *pCur += 2;
     memcpy(*pCur, &count, 4);
     *pCur += 4;
-    memcpy(*pCur, offset, 4);
-    *pCur += 4;
-    memcpy(start + *offset, pValue, count);
-    *offset += count;
+    if (count > 4) {
+        memcpy(*pCur, offset, 4);
+        *pCur += 4;
+        memcpy(start + *offset, pValue, count);
+        *offset += count;
+    } else {
+        memcpy(*pCur, pValue, 4);
+        *pCur += 4;
+    }
 }
 
 void ExifCreater::writeExifIfd(unsigned char **pCur,
