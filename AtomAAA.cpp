@@ -1771,10 +1771,7 @@ void AtomAAA::getDefaultParams(CameraParameters *params, CameraParameters *intel
 
     intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, PlatformData::defaultHdr(cameraId));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, PlatformData::supportedHdr(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_HDR_VIVIDNESS, "gaussian");
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none,gaussian,gamma");
-    intel_params->set(IntelCameraParameters::KEY_HDR_SHARPENING, "normal");
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SHARPENING, "none,normal,strong");
+
     intel_params->set(IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, "off");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL, "on,off");
 

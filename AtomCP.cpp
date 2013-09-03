@@ -96,13 +96,13 @@ AtomCP::~AtomCP()
     ia_cp_uninit();
 }
 
-status_t AtomCP::composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& outputBuf, unsigned vividness, unsigned sharpening)
+status_t AtomCP::composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& outputBuf)
 {
     Mutex::Autolock lock(mLock);
     ia_err ia_err;
     ia_cp_hdr_config cfg;
 
-    LOG1("@%s: inputBuf=%p, outputBuf=%p, vividness=%u, sharpening=%u", __FUNCTION__, &inputBuf, &outputBuf, vividness, sharpening);
+    LOG1("@%s: inputBuf=%p, outputBuf=%p", __FUNCTION__, &inputBuf, &outputBuf);
 
     ia_cp_hdr_init_config(&cfg);
 

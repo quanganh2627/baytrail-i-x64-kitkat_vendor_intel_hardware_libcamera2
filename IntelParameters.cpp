@@ -36,10 +36,6 @@ namespace android {
     const char IntelCameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET[] = "capture-bracket-values";
     const char IntelCameraParameters::KEY_HDR_IMAGING[] = "hdr-imaging";
     const char IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING[] = "hdr-imaging-values";
-    const char IntelCameraParameters::KEY_HDR_SHARPENING[] = "hdr-sharpening";
-    const char IntelCameraParameters::KEY_SUPPORTED_HDR_SHARPENING[] = "hdr-sharpening-values";
-    const char IntelCameraParameters::KEY_HDR_VIVIDNESS[] = "hdr-vividness";
-    const char IntelCameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS[] = "hdr-vividness-values";
     const char IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL[] = "hdr-save-original";
     const char IntelCameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL[] = "hdr-save-original-values";
     const char IntelCameraParameters::KEY_ROTATION_MODE[] = "rotation-mode";

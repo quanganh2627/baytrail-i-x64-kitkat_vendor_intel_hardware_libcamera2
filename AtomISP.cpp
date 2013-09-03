@@ -682,10 +682,6 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     // HDR imaging settings
     intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, PlatformData::defaultHdr(cameraId));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, PlatformData::supportedHdr(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_HDR_VIVIDNESS, "none");
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none");
-    intel_params->set(IntelCameraParameters::KEY_HDR_SHARPENING, "none");
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SHARPENING, "none");
     intel_params->set(IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, "off");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL, "off");
 
