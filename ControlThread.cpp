@@ -5323,7 +5323,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 }
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, PlatformData::supportedFocusModes(mCameraId));
                 newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
