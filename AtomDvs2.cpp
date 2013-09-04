@@ -135,7 +135,9 @@ status_t AtomDvs2::reconfigureNoLock()
     if (status != NO_ERROR)
         return status;
 
+#ifdef ATOMISP_CSS2
     dvs_grid = isp_params.dvs_grid;
+#endif
 
     int width = 0, height = 0;
     mIsp->getVideoSize(&width, &height, NULL);
@@ -150,8 +152,10 @@ status_t AtomDvs2::reconfigureNoLock()
     int dvs_env_height = DVS_MIN_ENVELOPE;
 
     //Configure DVS
+#ifdef ATOMISP_CSS2
     dvs_env_width = isp_params.dvs_envelop.width;
     dvs_env_height = isp_params.dvs_envelop.height;
+#endif
     support_config.input_y.width = bq_frame_width + dvs_env_width;
     support_config.input_y.height = bq_frame_height + dvs_env_height;
     support_config.grid_size = dvs_grid.bqs_per_grid_cell;
