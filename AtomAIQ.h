@@ -62,6 +62,7 @@ typedef struct {
     unsigned long long              previous_sof;
     int32_t                         lens_position;
     bool                            aec_locked;
+    bool                            assist_light;
     bool                            af_locked;
     AfMode                          afMode;
     int                             af_score_window_size;

@@ -59,7 +59,7 @@ public:
     void postviewFrameDone(AtomBuffer *buff);
     void rawFrameDone(AtomBuffer *buff);
     void cameraError(int err);
-    void autofocusDone(bool status);
+    void autoFocusDone(bool status);
     void focusMove(bool start);
     void shutterSound();
 

@@ -91,6 +91,7 @@ AtomAIQ::AtomAIQ(HWControlGroup &hwcg):
     LOG1("@%s", __FUNCTION__);
     memset(&m3aState, 0, sizeof(aaa_state));
     memset(&mAeCoord, 0, sizeof(ia_coordinate));
+    memset(&mAfState, 0, sizeof(af_state));
 }
 
 AtomAIQ::~AtomAIQ()
@@ -537,8 +538,12 @@ status_t AtomAIQ::setAeFlashMode(FlashMode mode)
     case CAM_AE_FLASH_MODE_SLOW_SYNC:
         wr_val = ia_aiq_flash_mode_on;
         break;
-    case CAM_AE_FLASH_MODE_OFF:
     case CAM_AE_FLASH_MODE_TORCH:
+        if (mAeFlashMode != CAM_AE_FLASH_MODE_TORCH)
+            mFlashCI->setTorch(TORCH_INTENSITY);
+        // Note: intentional omit of break, AEC is run with
+        //       ia_aiq_flash_mode_off when torch is used.
+    case CAM_AE_FLASH_MODE_OFF:
         wr_val = ia_aiq_flash_mode_off;
         break;
     case CAM_AE_FLASH_MODE_AUTO:
@@ -549,6 +554,9 @@ status_t AtomAIQ::setAeFlashMode(FlashMode mode)
         mode = CAM_AE_FLASH_MODE_AUTO;
         wr_val = ia_aiq_flash_mode_auto;
     }
+    if (mAeFlashMode == CAM_AE_FLASH_MODE_TORCH
+        && mode != CAM_AE_FLASH_MODE_TORCH)
+        mFlashCI->setTorch(0);
     mAeFlashMode = mode;
     mAeInputParameters.flash_mode = wr_val;
 
@@ -836,16 +844,29 @@ AeMode AtomAIQ::getPublicAeMode()
 status_t AtomAIQ::startStillAf()
 {
     LOG1("@%s", __FUNCTION__);
+    if (mAeFlashMode != CAM_AE_FLASH_MODE_TORCH
+        && mAeFlashMode != CAM_AE_FLASH_MODE_OFF) {
+        mAfState.assist_light = getAfNeedAssistLight();
+        if (mAfState.assist_light) {
+            LOG1("Using AF assist light with auto-focus");
+            mFlashCI->setTorch(TORCH_INTENSITY);
+        }
+    }
     setAfFocusMode(ia_aiq_af_operation_mode_auto);
     mAfInputParameters.frame_use = ia_aiq_frame_use_still;
     mStillAfStart = systemTime();
-
     return NO_ERROR;
 }
 
 status_t AtomAIQ::stopStillAf()
 {
     LOG1("@%s", __FUNCTION__);
+    if (mAfState.assist_light) {
+        LOG1("Turning off AF assist light");
+        mFlashCI->setTorch(0);
+        mAfState.assist_light = false;
+    }
+
     if (mAfMode == CAM_AF_MODE_AUTO || mAfMode == CAM_AF_MODE_MACRO) {
         setAfFocusMode(ia_aiq_af_operation_mode_manual);
     }
@@ -1818,6 +1839,8 @@ status_t AtomAIQ::runAeMain()
         bool apply_exposure = invalidated;
         bool apply_flash_intensity = invalidated;
         bool update_results_history = (mAeInputParameters.frame_use != ia_aiq_frame_use_still);
+
+        LOG2("AEC %s", new_ae_results->converged ? "converged":"converging");
 
         // Fill history with these values when invalidated
         if (invalidated && update_results_history)

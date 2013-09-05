@@ -275,7 +275,30 @@ status_t CallbacksThread::flushPictures()
     return mMessageQueue.send(&msg);
 }
 
-void CallbacksThread::autofocusDone(bool status)
+/**
+ * Inform CallbacksThread from auto-focus activation
+ *
+ * Android API contains a specific rule:
+ *
+ * "If the apps call autoFocus(AutoFocusCallback), the camera will stop sending face callbacks.
+ * The last face callback indicates the areas used to do autofocus. After focus completes, face
+ * detection will resume sending face callbacks. If the apps call cancelAutoFocus(), the face
+ * callbacks will also resume."
+ *
+ * While focusing sequence only might be triggered to focus into faces,
+ * we do commonly prevent the face callbacks in this level, while focusing is
+ * active.
+ */
+void CallbacksThread::autoFocusActive(bool focusActive)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.data.autoFocusActive.value = focusActive;
+    msg.id = MESSAGE_ID_AUTO_FOCUS_ACTIVE;
+    mMessageQueue.send(&msg);
+}
+
+void CallbacksThread::autoFocusDone(bool status)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
@@ -293,10 +316,18 @@ void CallbacksThread::focusMove(bool start)
     mMessageQueue.send(&msg);
 }
 
+status_t CallbacksThread::handleMessageAutoFocusActive(MessageAutoFocusActive *msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    mFocusActive = msg->value;
+    return NO_ERROR;
+}
+
 status_t CallbacksThread::handleMessageAutoFocusDone(MessageAutoFocusDone *msg)
 {
     LOG1("@%s", __FUNCTION__);
-    mCallbacks->autofocusDone(msg->status);
+    mCallbacks->autoFocusDone(msg->status);
+    mFocusActive = false;
     return NO_ERROR;
 }
 
@@ -660,7 +691,10 @@ status_t CallbacksThread::handleMessageFlush()
 status_t CallbacksThread::handleMessageFaces(MessageFaces *msg)
 {
     LOG2("@%s", __FUNCTION__);
-    mCallbacks->facesDetected(msg->meta_data);
+    if (!mFocusActive)
+        mCallbacks->facesDetected(msg->meta_data);
+    else
+        LOG1("Faces metadata dropped during focusing.");
     return NO_ERROR;
 }
 
@@ -814,6 +848,10 @@ status_t CallbacksThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_JPEG_DATA_REQUEST:
             status = handleMessageJpegDataRequest(&msg.data.dataRequest);
+            break;
+
+        case MESSAGE_ID_AUTO_FOCUS_ACTIVE:
+            status = handleMessageAutoFocusActive(&msg.data.autoFocusActive);
             break;
 
         case MESSAGE_ID_AUTO_FOCUS_DONE:

@@ -32,7 +32,6 @@ namespace android {
     public:
         ICallbackAAA() {}
         virtual ~ICallbackAAA() {}
-        virtual void autoFocusDone() = 0;
         virtual void sceneDetected(int sceneMode, bool sceneHdr) = 0;
         virtual int getCameraID() = 0;
     };
@@ -211,8 +210,8 @@ private:
     bool mStartAF;
     bool mStopAF;
     ia_3a_af_status mPreviousCafStatus;
-    bool mForceAeLock;
-    bool mForceAwbLock;
+    bool mPublicAeLock;
+    bool mPublicAwbLock;
     size_t mFramesTillAfComplete; // used for debugging only
     int mSmartSceneMode; // Current detected scene mode, as defined in ia_aiq_types.h
     bool mSmartSceneHdr; // Indicates whether the detected scene is valid for HDR

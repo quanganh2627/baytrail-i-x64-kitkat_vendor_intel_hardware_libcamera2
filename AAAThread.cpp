@@ -42,8 +42,8 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaa
     ,mStartAF(false)
     ,mStopAF(false)
     ,mPreviousCafStatus(ia_3a_af_status_idle)
-    ,mForceAeLock(false)
-    ,mForceAwbLock(false)
+    ,mPublicAeLock(false)
+    ,mPublicAwbLock(false)
     ,mSmartSceneMode(0)
     ,mSmartSceneHdr(false)
     ,mPreviousFaceCount(0)
@@ -360,7 +360,7 @@ status_t AAAThread::handleMessageEnableAeLock(MessageEnable* msg)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    mForceAeLock = msg->enable;
+    mPublicAeLock = msg->enable;
 
     // during AF, AE lock is controlled by AF, otherwise
     // set the value here
@@ -375,7 +375,7 @@ status_t AAAThread::handleMessageEnableAwbLock(MessageEnable* msg)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    mForceAwbLock = msg->enable;
+    mPublicAwbLock = msg->enable;
 
     // during AF, AWB lock is controlled by AF, otherwise
     // set the value here
@@ -398,16 +398,13 @@ status_t AAAThread::handleMessageAutoFocus()
     */
     ia_3a_af_status cafStatus = m3AControls->getCAFStatus();
     if (currAfMode == CAM_AF_MODE_CONTINUOUS && cafStatus != ia_3a_af_status_busy) {
-        mCallbacksThread->autofocusDone(cafStatus == ia_3a_af_status_success);
-        // Also notify ControlThread that the auto-focus is finished
-        mAAADoneCallback->autoFocusDone();
+        mCallbacksThread->autoFocusDone(cafStatus == ia_3a_af_status_success);
         return status;
     }
 
     if (m3AControls->isIntel3A() && currAfMode != CAM_AF_MODE_INFINITY &&
         currAfMode != CAM_AF_MODE_FIXED && currAfMode != CAM_AF_MODE_MANUAL) {
         m3AControls->setAfEnabled(true);
-
         // state of client requested 3A locks is kept, so it
         // is safe to override the values here
         m3AControls->setAeLock(true);
@@ -418,9 +415,7 @@ status_t AAAThread::handleMessageAutoFocus()
         mStartAF = true;
         mStopAF = false;
     } else {
-        mCallbacksThread->autofocusDone(true);
-        // Also notify ControlThread that the auto-focus is finished
-        mAAADoneCallback->autoFocusDone();
+        mCallbacksThread->autoFocusDone(true);
     }
 
     return status;
@@ -686,15 +681,13 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
 
             if (stopStillAf) {
                 m3AControls->stopStillAf();
-                m3AControls->setAeLock(mForceAeLock);
-                m3AControls->setAwbLock(mForceAwbLock);
+                m3AControls->setAeLock(mPublicAeLock);
+                m3AControls->setAwbLock(mPublicAwbLock);
                 m3AControls->setAfEnabled(false);
                 mStartAF = false;
                 mStopAF = false;
                 mFramesTillAfComplete = 0;
-                mCallbacksThread->autofocusDone(afStatus == ia_3a_af_status_success);
-                // Also notify ControlThread that the auto-focus is finished
-                mAAADoneCallback->autoFocusDone();
+                mCallbacksThread->autoFocusDone(afStatus == ia_3a_af_status_success);
                 /**
                  * Even if we complete AF, if the result was failure we keep
                  * trying to focus if we are in continuous focus mode.

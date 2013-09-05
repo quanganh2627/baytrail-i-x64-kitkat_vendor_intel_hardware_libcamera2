@@ -153,7 +153,6 @@ private:
     virtual void previewBufferCallback(AtomBuffer *buff, ICallbackPreview::CallbackType t);
     virtual void encodingDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
-    virtual void autoFocusDone();
     virtual void postProcCaptureTrigger();
     virtual void sceneDetected(int sceneMode, bool sceneHdr);
     virtual void facesDetected(const ia_face_state *faceState);
@@ -189,7 +188,6 @@ private:
         MESSAGE_ID_PICTURE_DONE,
         MESSAGE_ID_SET_PARAMETERS,
         MESSAGE_ID_GET_PARAMETERS,
-        MESSAGE_ID_AUTO_FOCUS_DONE,
         MESSAGE_ID_COMMAND,
         MESSAGE_ID_FACES_DETECTED,
         MESSAGE_ID_SET_PREVIEW_WINDOW,
@@ -467,7 +465,6 @@ private:
     status_t handleMessagePictureDone(MessagePicture *msg);
     status_t handleMessageSetParameters(MessageSetParameters *msg);
     status_t handleMessageGetParameters(MessageGetParameters *msg);
-    status_t handleMessageAutoFocusDone();
     status_t handleMessageCommand(MessageCommand* msg);
     status_t handleMessageSetPreviewWindow(MessagePreviewWindow *msg);
     status_t handleMessageStoreMetaDataInBuffers(MessageStoreMetaDataInBuffers *msg);
@@ -739,8 +736,6 @@ private:
                                     in case burst multi shot capture is called and forces flash to be off.*/
 
     bool mFaceDetectionActive;
-    bool mAutoFocusActive;
-    bool mFlashAutoFocus;
     bool mIspExtensionsEnabled;     /*<! Flag that signals whether the caller wants to run a 3rd party ISP extension*/
 
     /* Burst configuration: */

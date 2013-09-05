@@ -140,6 +140,8 @@ private:
     void getSensorFrameParams(ia_aiq_frame_params *frame_params,
                               struct atomisp_sensor_mode_data *sensor_mode_data);
 
+    virtual bool getAfNeedAssistLight_Locked();
+
 // prevent copy constructor and assignment operator
 private:
     AtomAAA(const AtomAAA& other);
@@ -262,6 +264,7 @@ private:
     ia_3a_awb_light_source m3ALightSource;
     int mFocusPosition;
     nsecs_t mStillAfStart;
+    bool    mStillAfAssist;
     FILE *pFile3aStatDump;
     IHWIspControl *mISP;
     IHWFlashControl *mFlashCI;

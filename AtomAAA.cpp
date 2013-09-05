@@ -30,6 +30,7 @@
 namespace android {
 static IHWSensorControl *gSensorCI; // See BZ 61293
 static IHWLensControl   *gLensCI;
+static IHWFlashControl  *gFlashCI;
 
 /**
  * When image data injection is used, read OTP data from
@@ -122,6 +123,7 @@ AtomAAA::AtomAAA(HWControlGroup &hwcg) :
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
     ,mFocusPosition(0)
     ,mStillAfStart(0)
+    ,mStillAfAssist(false)
     ,mISP(hwcg.mIspCI)
     ,mFlashCI(hwcg.mFlashCI)
     ,mSensorCI(hwcg.mSensorCI)
@@ -135,6 +137,7 @@ AtomAAA::AtomAAA(HWControlGroup &hwcg) :
 
     gSensorCI = hwcg.mSensorCI;
     gLensCI = hwcg.mLensCI;
+    gFlashCI = hwcg.mFlashCI;
     memset(&m3ALibState, 0, sizeof(AAALibState));
     mSensorType = PlatformData::sensorType(mISP->getCurrentCameraId());
 }
@@ -561,6 +564,8 @@ status_t AtomAAA::setAeFlashMode(FlashMode mode)
         wr_val = ia_3a_ae_flash_mode_slow_sync;
         break;
     case CAM_AE_FLASH_MODE_TORCH:
+        if (mFlashMode != CAM_AE_FLASH_MODE_TORCH)
+            gFlashCI->setTorch(TORCH_INTENSITY);
         wr_val = ia_3a_ae_flash_mode_off;
         break;
     default:
@@ -568,6 +573,9 @@ status_t AtomAAA::setAeFlashMode(FlashMode mode)
         mode = CAM_AE_FLASH_MODE_AUTO;
         wr_val = ia_3a_ae_flash_mode_auto;
     }
+    if (mFlashMode == CAM_AE_FLASH_MODE_TORCH
+        && mode != CAM_AE_FLASH_MODE_TORCH)
+        gFlashCI->setTorch(0);
     ia_3a_ae_set_flash_mode(wr_val);
     mFlashMode = mode;
 
@@ -585,6 +593,11 @@ FlashMode AtomAAA::getAeFlashMode()
 bool AtomAAA::getAfNeedAssistLight()
 {
     Mutex::Autolock lock(m3aLock);
+    return getAfNeedAssistLight_Locked();
+}
+
+bool AtomAAA::getAfNeedAssistLight_Locked()
+{
     LOG1("@%s", __FUNCTION__);
 
     bool en = ia_3a_af_need_assist_light();
@@ -876,6 +889,15 @@ status_t AtomAAA::startStillAf()
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
 
+    if (mFlashMode != CAM_AE_FLASH_MODE_TORCH
+        && mFlashMode != CAM_AE_FLASH_MODE_OFF) {
+        mStillAfAssist = getAfNeedAssistLight_Locked();
+        if (mStillAfAssist) {
+            LOG1("Using AF assist light with auto-focus");
+            gFlashCI->setTorch(TORCH_INTENSITY);
+        }
+    }
+
     // We have to switch AF mode to auto in order for the AF sequence to run.
     ia_3a_af_set_focus_mode(ia_3a_af_mode_auto);
     ia_3a_af_still_start();
@@ -895,6 +917,12 @@ status_t AtomAAA::stopStillAf()
     if (mAfMode == CAM_AF_MODE_AUTO || mAfMode == CAM_AF_MODE_MACRO) {
         ia_3a_af_set_focus_mode(ia_3a_af_mode_manual);
     }
+
+    if (mStillAfAssist) {
+        LOG1("Turning off Torch for auto-focus");
+        gFlashCI->setTorch(0);
+    }
+
     mStillAfStart = 0;
     return NO_ERROR;
 }
