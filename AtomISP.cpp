@@ -2453,17 +2453,22 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
  * change preview size to 640x360
  * BZ: 49330 51853
  *
- * Workaround 2: The camera firmware doesn't support preview dimensions that
+ * Workaround 2: The camera firmware doesn't support video downscaling. For the
+ * sensor ov5648, it doesn't support 480p output.
+ * To keep same FOV when recording at 480p. We need to configure preview size to
+ * the max supported sensor output size with the same aspect as 480p.
+ *
+ * Workaround 3: The camera firmware doesn't support preview dimensions that
  * are bigger than video dimensions. If a single preview dimension is larger
  * than the video dimension then the preview and recording devices will be
  * swapped to work around this limitation.
  *
- * Workaround 3: With some sensors, the configuration for 1080p
+ * Workaround 4: With some sensors, the configuration for 1080p
  * recording does not give enough processing time (blanking time) to
  * the ISP, so the viewfinder resolution must be limited.
  * BZ: 55640 59636
  *
- * Workaround 4: When sensor vertical blanking time is too low to run ISP
+ * Workaround 5: When sensor vertical blanking time is too low to run ISP
  * viewfinder postprocess binary (vf_pp) during it, every other frame would be
  * dropped leading to halved frame rate. Add control V4L2_CID_ENABLE_VFPP to
  * disable vf_pp for still preview.
@@ -2500,17 +2505,17 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
     params->getVideoSize(&videoWidth, &videoHeight);
 
     if (videoMode || mMode == MODE_VIDEO) {
-        // Workaround 3: with some sensors the VF resolution must be
+        // Workaround 4: with some sensors the VF resolution must be
         //               limited high-resolution video recordiing
         // TODO: if we get more cases like this, move to PlatformData.h
-        const char* sensorName = "ov8830";
+        const char sensorName[] = "ov8830";
         if (mCameraInput &&
             strncmp(mCameraInput->name, sensorName, sizeof(sensorName) - 1) == 0) {
             LOG1("Quirk for sensor %s, limiting video preview size", mCameraInput->name);
             reducedVf = true;
         }
 
-        // Workaround 1+3, detail refer to the function description, BYT
+        // Workaround 1+4, detail refer to the function description, BYT
         // doesn't need this WA to support 1080p preview
         if ((reducedVf || dvsEnabled) &&
             PlatformData::supportPreviewLimitation()) {
@@ -2524,7 +2529,24 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
                 }
         }
 
-        //Workaround 2, detail refer to the function description
+        //Workaround 2, video recording FOV issue
+        const char manUsensorBName[] = "ov5648";
+        const char manUsensorFName[] = "ov2722";
+        if (mCameraInput && (strncmp(mCameraInput->name, manUsensorBName, sizeof(manUsensorBName) - 1)
+                == 0 || strncmp(mCameraInput->name, manUsensorFName, sizeof(manUsensorFName) - 1) == 0)) {
+            if (((previewWidth == 720)&& (previewHeight == 480)) ||
+                ((previewWidth == 1620)&& (previewHeight == 1080))) {
+                LOGD("480p recording change preview size to 1620x1080 and \
+                     video size to 720x480");
+                params->setPreviewSize(1620,1080);
+                params->setVideoSize(720,480);
+            } else {
+                LOGD("1080p/720p recording change preview size to 1920x1080");
+                params->setPreviewSize(1920,1080);
+            }
+        }
+
+        //Workaround 3, detail refer to the function description
         params->getPreviewSize(&previewWidth, &previewHeight);
         params->getVideoSize(&videoWidth, &videoHeight);
         if((previewWidth*previewHeight) > (videoWidth*videoHeight)) {
@@ -2539,7 +2561,7 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
         }
     }
 
-    // workaround 4, detail refer to the function description
+    // workaround 5, detail refer to the function description
     bool previewSizeSupported = PlatformData::resolutionSupportedByVFPP(mCameraId, previewWidth, previewHeight);
     if (!previewSizeSupported) {
         if (videoMode || mMode == MODE_VIDEO) {
