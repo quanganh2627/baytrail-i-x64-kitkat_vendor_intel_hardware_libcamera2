@@ -1639,6 +1639,7 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct,
     {
         ia_err err = ia_err_none;
         ia_aiq_statistics_input_params statistics_input_parameters;
+        ia_aiq_af_results frame_af_parameters;
         memset(&statistics_input_parameters, 0, sizeof(ia_aiq_statistics_input_params));
 
         statistics_input_parameters.frame_timestamp = TIMEVAL2USECS(sof_timestamp_struct);
@@ -1654,6 +1655,16 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct,
 
         if (mAeState.ae_results) {
             statistics_input_parameters.frame_ae_parameters = pickAeFeedbackResults();
+        }
+
+        if (mAfState.af_results
+            && mAfInputParameters.frame_use == ia_aiq_frame_use_still) {
+            // pass AF results as AEC input during still AF, AIQ will
+            // internally let AEC to converge to assist light
+            frame_af_parameters = *mAfState.af_results;
+            frame_af_parameters.use_af_assist = mAfState.assist_light;
+            statistics_input_parameters.frame_af_parameters = &frame_af_parameters;
+            LOG2("AF assist light %s", (frame_af_parameters.use_af_assist) ? "on":"off");
         }
 
         statistics_input_parameters.wb_gains = NULL;
