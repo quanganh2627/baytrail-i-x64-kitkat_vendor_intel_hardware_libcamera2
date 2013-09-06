@@ -117,6 +117,13 @@ class PlatformData {
      */
     static status_t readSpId(String8& spIdName, int& spIdValue);
 
+    /**
+     * Validates whether the given cameraId is within the allowed range
+     *
+     * \param cameraId  The camera ID to validate
+     */
+    static bool validCameraId(int cameraId, const char* functionName);
+
  public:
 
     static AiqConf AiqConfig;
