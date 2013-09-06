@@ -30,13 +30,13 @@ namespace android {
 #define STATISTICS_SYNC_DELTA_US 20000
 #define STATISTICS_SYNC_DELTA_US_MAX 200000
 
-AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaaControls) :
+AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaaControls, sp<CallbacksThread> callbacksThread) :
     Thread(false)
     ,mMessageQueue("AAAThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
     ,m3AControls(aaaControls)
     ,mAAADoneCallback(aaaDone)
-    ,mCallbacks(CallbacksThread::getInstance(NULL, mAAADoneCallback->getCameraID()))
+    ,mCallbacksThread(callbacksThread)
     ,mULL(ull)
     ,m3ARunning(false)
     ,mStartAF(false)
@@ -398,7 +398,7 @@ status_t AAAThread::handleMessageAutoFocus()
     */
     ia_3a_af_status cafStatus = m3AControls->getCAFStatus();
     if (currAfMode == CAM_AF_MODE_CONTINUOUS && cafStatus != ia_3a_af_status_busy) {
-        mCallbacks->autofocusDone(cafStatus == ia_3a_af_status_success);
+        mCallbacksThread->autofocusDone(cafStatus == ia_3a_af_status_success);
         // Also notify ControlThread that the auto-focus is finished
         mAAADoneCallback->autoFocusDone();
         return status;
@@ -418,7 +418,7 @@ status_t AAAThread::handleMessageAutoFocus()
         mStartAF = true;
         mStopAF = false;
     } else {
-        mCallbacks->autofocusDone(true);
+        mCallbacksThread->autofocusDone(true);
         // Also notify ControlThread that the auto-focus is finished
         mAAADoneCallback->autoFocusDone();
     }
@@ -580,6 +580,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
 
     if (mBlockForStage == mFlashStage) {
         LOG2("Releasing runFlashSequence()");
+        m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_NONE);
         mMessageQueue.reply(MESSAGE_ID_FLASH_STAGE, status);
         mBlockForStage = FLASH_STAGE_NA;
     }
@@ -692,7 +693,7 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
                 mStartAF = false;
                 mStopAF = false;
                 mFramesTillAfComplete = 0;
-                mCallbacks->autofocusDone(afStatus == ia_3a_af_status_success);
+                mCallbacksThread->autofocusDone(afStatus == ia_3a_af_status_success);
                 // Also notify ControlThread that the auto-focus is finished
                 mAAADoneCallback->autoFocusDone();
                 /**
@@ -707,14 +708,14 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
             }
         }
 
-        AfMode currPublicAfMode = m3AControls->getPublicAfMode();
-        if (currPublicAfMode == CAM_AF_MODE_CONTINUOUS) {
+        AfMode currAfMode = m3AControls->getAfMode();
+        if (currAfMode == CAM_AF_MODE_CONTINUOUS) {
             ia_3a_af_status cafStatus = m3AControls->getCAFStatus();
             LOG2("CAF move lens status: %d", cafStatus);
             if (cafStatus != mPreviousCafStatus) {
                 LOG2("CAF move: %d", cafStatus == ia_3a_af_status_busy);
                 // Send the callback to upper layer and inform about the CAF status.
-                mCallbacks->focusMove(cafStatus == ia_3a_af_status_busy);
+                mCallbacksThread->focusMove(cafStatus == ia_3a_af_status_busy);
                 mPreviousCafStatus = cafStatus;
             }
 

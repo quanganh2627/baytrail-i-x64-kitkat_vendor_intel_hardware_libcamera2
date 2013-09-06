@@ -102,6 +102,26 @@ bool isParameterSet(const char *param, const CameraParameters &params)
     return false;
 }
 
+bool isBayerFormat(int fmt) {
+
+    if ((fmt == V4L2_PIX_FMT_SBGGR8 )||
+        (fmt == V4L2_PIX_FMT_SGBRG8) ||
+        (fmt == V4L2_PIX_FMT_SGRBG8) ||
+        (fmt == V4L2_PIX_FMT_SRGGB8) ||
+        (fmt == V4L2_PIX_FMT_SBGGR10) ||
+        (fmt == V4L2_PIX_FMT_SGBRG10) ||
+        (fmt == V4L2_PIX_FMT_SGRBG10) ||
+        (fmt == V4L2_PIX_FMT_SRGGB10) ||
+        (fmt == V4L2_PIX_FMT_SBGGR12) ||
+        (fmt == V4L2_PIX_FMT_SGBRG12) ||
+        (fmt == V4L2_PIX_FMT_SGRBG12) ||
+        (fmt == V4L2_PIX_FMT_SRGGB12))
+    {
+        return true;
+    }else {
+        return false;
+    }
+}
 /**
  * Calculates the frame stride following the limitations imposed by display subsystem
  * This is used to model the HACK in a atomsisp that forces allocation
@@ -124,7 +144,7 @@ int SGXandDisplayStride(int format, int width)
     /**
      * Raw format has special stride requirements
      */
-    if (format == V4L2_PIX_FMT_SRGGB10)
+    if (isBayerFormat(format))
         return ALIGN128(width);
 
     if ((strcmp(PlatformData::getBoardName(), "victoriabay") == 0) ||
@@ -277,6 +297,8 @@ int getGFXHALPixelFormatFromV4L2Format(int previewFormat)
     case V4L2_PIX_FMT_YVU420:
         halPixelFormat = HAL_PIXEL_FORMAT_YV12;
         break;
+    case V4L2_PIX_FMT_SGBRG10:
+    case V4L2_PIX_FMT_SBGGR10:
     case V4L2_PIX_FMT_SRGGB10:
         halPixelFormat = HAL_PIXEL_FORMAT_RGBA_8888;
         break;

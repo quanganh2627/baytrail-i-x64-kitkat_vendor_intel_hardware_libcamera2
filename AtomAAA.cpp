@@ -25,7 +25,6 @@
 #include <time.h>
 #include <dlfcn.h>
 #include <ia_3a.h>
-#include "FeatureData.h"
 #include "gdctool.h"
 
 namespace android {
@@ -119,8 +118,8 @@ AtomAAA::AtomAAA(HWControlGroup &hwcg) :
      mSensorType(SENSOR_TYPE_NONE)
     ,mAfMode(CAM_AF_MODE_NOT_SET)
     ,mPublicAeMode(CAM_AE_MODE_AUTO)
-    ,mPublicAfMode(CAM_AF_MODE_AUTO)
     ,mFlashMode(CAM_AE_FLASH_MODE_NOT_SET)
+    ,mFlashStage(CAM_FLASH_STAGE_NOT_SET)
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
     ,mFocusPosition(0)
     ,mStillAfStart(0)
@@ -486,13 +485,8 @@ status_t AtomAAA::setAfMode(AfMode mode)
         ia_3a_af_set_focus_range(ia_3a_af_range_full);
         ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_auto);
         break;
-    case CAM_AF_MODE_TOUCH:
-        ia_3a_af_set_focus_mode(ia_3a_af_mode_auto);
-        ia_3a_af_set_focus_range(ia_3a_af_range_full);
-        ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_spot);
-        break;
     case CAM_AF_MODE_MACRO:
-        ia_3a_af_set_focus_mode(ia_3a_af_mode_auto);
+        ia_3a_af_set_focus_mode(ia_3a_af_mode_manual);
         ia_3a_af_set_focus_range(ia_3a_af_range_macro);
         ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_auto);
         break;
@@ -507,11 +501,6 @@ status_t AtomAAA::setAfMode(AfMode mode)
     case CAM_AF_MODE_MANUAL:
         ia_3a_af_set_focus_mode(ia_3a_af_mode_manual);
         ia_3a_af_set_focus_range(ia_3a_af_range_full);
-        break;
-    case CAM_AF_MODE_FACE:
-        ia_3a_af_set_focus_mode(ia_3a_af_mode_auto);
-        ia_3a_af_set_focus_range(ia_3a_af_range_norm);
-        ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_spot);
         break;
     default:
         LOGE("Set: invalid AF mode: %d. Using AUTO!", mode);
@@ -548,20 +537,6 @@ AeMode AtomAAA::getPublicAeMode()
     LOG2("@%s", __FUNCTION__);
 
     return mPublicAeMode;
-}
-
-void AtomAAA::setPublicAfMode(AfMode mode)
-{
-    Mutex::Autolock lock(m3aLock);
-    LOG2("@%s", __FUNCTION__);
-    mPublicAfMode = mode;
-}
-
-AfMode AtomAAA::getPublicAfMode()
-{
-    Mutex::Autolock lock(m3aLock);
-    LOG2("@%s", __FUNCTION__);
-    return mPublicAfMode;
 }
 
 status_t AtomAAA::setAeFlashMode(FlashMode mode)
@@ -877,6 +852,13 @@ status_t AtomAAA::setAfWindows(const CameraWindow *windows, size_t numWindows)
     Mutex::Autolock lock(m3aLock);
     LOG2("@%s: windows = %p, num = %u", __FUNCTION__, windows, numWindows);
 
+    if (numWindows > 0) {
+        ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_spot);
+    } else {
+        // No windows set, handle as null-window -> set AF metering "auto"
+        ia_3a_af_set_metering_mode(ia_3a_af_metering_mode_auto);
+    }
+
     for (size_t i = 0; i < numWindows; ++i) {
         LOG2("@%s: window(%u) = (%d,%d,%d,%d,%d)", __FUNCTION__, i,
              windows[i].x_left,
@@ -895,6 +877,7 @@ status_t AtomAAA::startStillAf()
     Mutex::Autolock lock(m3aLock);
     LOG1("@%s", __FUNCTION__);
 
+    // We have to switch AF mode to auto in order for the AF sequence to run.
     ia_3a_af_set_focus_mode(ia_3a_af_mode_auto);
     ia_3a_af_still_start();
     mStillAfStart = systemTime();
@@ -907,7 +890,10 @@ status_t AtomAAA::stopStillAf()
     LOG1("@%s", __FUNCTION__);
 
     ia_3a_af_still_stop();
-    if (mAfMode == CAM_AF_MODE_AUTO) {
+    // AS the IA 3A library seems to forget that it was in manual mode
+    // after AF sequence was run once, force the state back to manual in
+    // the focus modes utilizing manual mode.
+    if (mAfMode == CAM_AF_MODE_AUTO || mAfMode == CAM_AF_MODE_MACRO) {
         ia_3a_af_set_focus_mode(ia_3a_af_mode_manual);
     }
     mStillAfStart = 0;
@@ -1157,6 +1143,9 @@ status_t AtomAAA::applyPreFlashProcess(FlashStage stage)
         LOGE("Unknown flash stage: %d", stage);
         return UNKNOWN_ERROR;
     }
+
+    // Flash stage needs to be set before getStatistics() is called
+    mFlashStage = stage;
     processForFlash(wr_stage);
 
     return NO_ERROR;
@@ -1427,7 +1416,9 @@ void AtomAAA::ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate)
     else {
         LOG1("Empty GDC table -> GDC disabled");
         m3ALibState.gdc_table_loaded = false;
-        mISP->setGDC(false);
+        //WORKAROUND FOR BZ:134261 - TO BE REMOVED once it is fixed
+        //mISP->setGDC(false);
+        //end of workaround
     }
 
     ia_3a_reconfigure(mode, frame_rate, m3ALibState.stats, &sensor_frame_params, &m3ALibState.results);
@@ -1498,12 +1489,12 @@ int AtomAAA::getStatistics(void)
     int ret;
 
     PERFORMANCE_TRACES_AAA_PROFILER_START();
-    ret = mISP->getIspStatistics(m3ALibState.stats);
+    ret = mISP->getIspStatistics(m3ALibState.stats, mFlashStage == CAM_FLASH_STAGE_PRE);
     if (ret == EAGAIN) {
         LOGV("buffer for isp statistics reallocated according resolution changing\n");
         if (reconfigureGrid() == false)
             LOGE("error in calling reconfigureGrid()\n");
-        ret = mISP->getIspStatistics(m3ALibState.stats);
+        ret = mISP->getIspStatistics(m3ALibState.stats, mFlashStage == CAM_FLASH_STAGE_PRE);
     }
     PERFORMANCE_TRACES_AAA_PROFILER_STOP();
 
@@ -1747,8 +1738,8 @@ void AtomAAA::getDefaultParams(CameraParameters *params, CameraParameters *intel
     intel_params->set(IntelCameraParameters::KEY_CAPTURE_BRACKET, "none");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET, "none,exposure,focus");
 
-    intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, FeatureData::hdrDefault(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, FeatureData::hdrSupported(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, PlatformData::defaultHdr(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, PlatformData::supportedHdr(cameraId));
     intel_params->set(IntelCameraParameters::KEY_HDR_VIVIDNESS, "gaussian");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none,gaussian,gamma");
     intel_params->set(IntelCameraParameters::KEY_HDR_SHARPENING, "normal");

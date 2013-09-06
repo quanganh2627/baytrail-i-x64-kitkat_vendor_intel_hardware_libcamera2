@@ -175,7 +175,7 @@ public:
 
     virtual int setAicParameter(struct atomisp_parameters *aic_params) = 0;
     virtual int setIspParameter(struct atomisp_parm *isp_params) = 0;
-    virtual int getIspStatistics(struct atomisp_3a_statistics *statistics) = 0;
+    virtual int getIspStatistics(struct atomisp_3a_statistics *statistics, bool isFlashUsed) = 0;
     virtual int setGdcConfig(const struct atomisp_morph_table *tbl) = 0;
     virtual int setShadingTable(struct atomisp_shading_table *table) = 0;
     virtual int setMaccConfig(struct atomisp_macc_config *macc_cfg) = 0;
@@ -282,6 +282,7 @@ public:
     virtual int getAeFlashMode(v4l2_flash_led_mode * mode) = 0;
 
     virtual void getMotorData(sensorPrivateData *sensor_data) = 0;
+    virtual int getRawFormat() = 0;
 };
 
 /* Abstraction of HW flash control interface for 3A support */

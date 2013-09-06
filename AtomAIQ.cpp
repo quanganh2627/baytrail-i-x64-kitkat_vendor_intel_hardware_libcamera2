@@ -28,7 +28,6 @@
 #include "PerformanceTraces.h"
 #include "cameranvm.h"
 #include "ia_cmc_parser.h"
-#include "FeatureData.h"
 #include "gdctool.h"
 
 #include "AtomAIQ.h"
@@ -79,6 +78,7 @@ AtomAIQ::AtomAIQ(HWControlGroup &hwcg):
     ,mFocusPosition(0)
     ,mBracketingStops(0)
     ,mAeSceneMode(CAM_AE_SCENE_MODE_NOT_SET)
+    ,mFlashStage(CAM_FLASH_STAGE_NOT_SET)
     ,mBracketingRunning(false)
     ,mAEBracketingResult(NULL)
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
@@ -342,6 +342,17 @@ status_t AtomAIQ::setAfWindow(const CameraWindow *window)
             window->y_bottom,
             window->weight);
 
+    // In case of null-window, the HAL can decide which metering is used. Use "auto".
+    if (window[0].x_left == window[0].x_right && window[0].y_top == window[0].y_bottom &&
+        window[0].x_left == 0 && window[0].y_top == 0) {
+            setAfMeteringMode(ia_aiq_af_metering_mode_auto);
+            LOGD("LASSI: Af window NULL, metering mode auto");
+    } else {
+        // When window is set, obey the coordinates. Use touch.
+        setAfMeteringMode(ia_aiq_af_metering_mode_touch);
+        LOGD("LASSI: Af window not NULL, metering mode touch");
+    }
+
     mAfInputParameters.focus_rect->left = window[0].x_left;
     mAfInputParameters.focus_rect->top = window[0].y_top;
     mAfInputParameters.focus_rect->width = window[0].x_right - window[0].x_left;
@@ -355,6 +366,14 @@ status_t AtomAIQ::setAfWindow(const CameraWindow *window)
 status_t AtomAIQ::setAfWindows(const CameraWindow *windows, size_t numWindows)
 {
     LOG2("@%s: windows = %p, num = %u", __FUNCTION__, windows, numWindows);
+
+    // If no windows given, equal to null-window. HAL meters as it wants -> "auto".
+    if (numWindows == 0) {
+        setAfMeteringMode(ia_aiq_af_metering_mode_auto);
+        return NO_ERROR;
+    }
+
+    // at the moment we only support one window
     return setAfWindow(windows);
 }
 
@@ -392,7 +411,7 @@ status_t AtomAIQ::setAeSceneMode(SceneMode mode)
         mAwbInputParameters.manual_cct_range = &m3aState.cct_range;
         break;
     default:
-        LOGE("Get: invalid AE scene mode!");
+        LOGE("Get: invalid AE scene mode (%d).", mode);
     }
     return NO_ERROR;
 }
@@ -466,17 +485,12 @@ status_t AtomAIQ::setAfMode(AfMode mode)
         break;
     case CAM_AF_MODE_AUTO:
         // we use hyperfocal default lens position in hyperfocal mode
-        setAfFocusMode(ia_aiq_af_operation_mode_hyperfocal);
+        setAfFocusMode(ia_aiq_af_operation_mode_manual);
         setAfFocusRange(ia_aiq_af_range_extended);
         setAfMeteringMode(ia_aiq_af_metering_mode_auto);
         break;
-    case CAM_AF_MODE_TOUCH:
-        setAfFocusMode(ia_aiq_af_operation_mode_auto);
-        setAfFocusRange(ia_aiq_af_range_extended);
-        setAfMeteringMode(ia_aiq_af_metering_mode_touch);
-        break;
     case CAM_AF_MODE_MACRO:
-        setAfFocusMode(ia_aiq_af_operation_mode_auto);
+        setAfFocusMode(ia_aiq_af_operation_mode_manual);
         setAfFocusRange(ia_aiq_af_range_macro);
         setAfMeteringMode(ia_aiq_af_metering_mode_auto);
         break;
@@ -491,11 +505,6 @@ status_t AtomAIQ::setAfMode(AfMode mode)
     case CAM_AF_MODE_MANUAL:
         setAfFocusMode(ia_aiq_af_operation_mode_manual);
         setAfFocusRange(ia_aiq_af_range_extended);
-        break;
-    case CAM_AF_MODE_FACE:
-        setAfFocusMode(ia_aiq_af_operation_mode_auto);
-        setAfFocusRange(ia_aiq_af_range_normal);
-        setAfMeteringMode(ia_aiq_af_metering_mode_touch);
         break;
     default:
         LOGE("Set: invalid AF mode: %d. Using AUTO!", mode);
@@ -825,18 +834,6 @@ AeMode AtomAIQ::getPublicAeMode()
     return mPublicAeMode;
 }
 
-void AtomAIQ::setPublicAfMode(AfMode mode)
-{
-    LOG2("@%s, AfMode: %d", __FUNCTION__, mode);
-    mAfMode = mode;
-}
-
-AfMode AtomAIQ::getPublicAfMode()
-{
-    LOG2("@%s, AfMode: %d", __FUNCTION__, mAfMode);
-    return mAfMode;
-}
-
 status_t AtomAIQ::startStillAf()
 {
     LOG1("@%s", __FUNCTION__);
@@ -850,11 +847,11 @@ status_t AtomAIQ::startStillAf()
 status_t AtomAIQ::stopStillAf()
 {
     LOG1("@%s", __FUNCTION__);
-    if (mAfMode == CAM_AF_MODE_AUTO) {
+    if (mAfMode == CAM_AF_MODE_AUTO || mAfMode == CAM_AF_MODE_MACRO) {
         setAfFocusMode(ia_aiq_af_operation_mode_manual);
     }
-    mAfInputParameters.frame_use = m3aState.frame_use;
 
+    mAfInputParameters.frame_use = m3aState.frame_use;
     mStillAfStart = 0;
     return NO_ERROR;
 }
@@ -1061,6 +1058,8 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
     // Upper layer is skipping frames for exposure delay,
     // setting feedback delay to 0.
     mAeState.feedback_delay = 0;
+    // Flash stage needs to be set before getStatistics() gets called
+    mFlashStage = stage;
 
     if (stage == CAM_FLASH_STAGE_PRE || stage == CAM_FLASH_STAGE_MAIN)
     {
@@ -1568,6 +1567,9 @@ bool AtomAIQ::changeSensorMode(void)
     sd->pixel_clock_freq_mhz = sensor_mode_data.vt_pix_clk_freq_mhz/1000000.0f;
     sd->pixel_periods_per_line = sensor_mode_data.line_length_pck;
     sd->line_periods_per_field = sensor_mode_data.frame_length_lines;
+    sd->line_periods_vertical_blanking = sensor_mode_data.frame_length_lines
+            - (sensor_mode_data.crop_vertical_end - sensor_mode_data.crop_vertical_start + 1)
+            / sensor_mode_data.binning_factor_y;
     sd->fine_integration_time_min = sensor_mode_data.fine_integration_time_def;
     sd->fine_integration_time_max_margin = sensor_mode_data.line_length_pck - sensor_mode_data.fine_integration_time_def;
     sd->coarse_integration_time_min = sensor_mode_data.coarse_integration_time_min;
@@ -1604,12 +1606,12 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct,
     status_t ret = NO_ERROR;
 
     PERFORMANCE_TRACES_AAA_PROFILER_START();
-    ret = mISP->getIspStatistics(m3aState.stats);
+    ret = mISP->getIspStatistics(m3aState.stats, mFlashStage == CAM_FLASH_STAGE_PRE);
     if (ret == EAGAIN) {
         LOGV("buffer for isp statistics reallocated according resolution changing\n");
         if (changeSensorMode() == false)
             LOGE("error in calling changeSensorMode()\n");
-        ret = mISP->getIspStatistics(m3aState.stats);
+        ret = mISP->getIspStatistics(m3aState.stats, mFlashStage == CAM_FLASH_STAGE_PRE);
     }
     PERFORMANCE_TRACES_AAA_PROFILER_STOP();
 
@@ -1621,6 +1623,7 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct,
 
         statistics_input_parameters.frame_timestamp = TIMEVAL2USECS(sof_timestamp_struct);
 
+        statistics_input_parameters.frame_af_parameters = NULL;
         statistics_input_parameters.external_histogram = NULL;
 
         if(m3aState.faces)
@@ -1694,6 +1697,7 @@ void AtomAIQ::resetAFParams()
     mAfInputParameters.manual_focus_parameters->manual_focus_action = ia_aiq_manual_focus_action_none;
     mAfInputParameters.manual_focus_parameters->manual_focus_distance = 500;
     mAfInputParameters.manual_focus_parameters->manual_lens_position = 0;
+    mAfInputParameters.trigger_new_search = false;
 
     mAfState.af_locked = false;
     mAfState.aec_locked = false;
@@ -2275,9 +2279,8 @@ void AtomAIQ::getDefaultParams(CameraParameters *params, CameraParameters *intel
     // Capture bracketing
     intel_params->set(IntelCameraParameters::KEY_CAPTURE_BRACKET, "none");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET, "none,exposure,focus");
-
-    intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, FeatureData::hdrDefault(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, FeatureData::hdrSupported(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, PlatformData::defaultHdr(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, PlatformData::supportedHdr(cameraId));
     intel_params->set(IntelCameraParameters::KEY_HDR_VIVIDNESS, "gaussian");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none,gaussian,gamma");
     intel_params->set(IntelCameraParameters::KEY_HDR_SHARPENING, "normal");
@@ -2304,8 +2307,11 @@ void AtomAIQ::getSensorFrameParams(ia_aiq_frame_params *frame_params)
     }
     frame_params->horizontal_crop_offset = sensor_mode_data.crop_horizontal_start;
     frame_params->vertical_crop_offset = sensor_mode_data.crop_vertical_start;
-    frame_params->cropped_image_height = sensor_mode_data.crop_vertical_end - sensor_mode_data.crop_vertical_start;
-    frame_params->cropped_image_width = sensor_mode_data.crop_horizontal_end - sensor_mode_data.crop_horizontal_start;
+    // The +1 needed as the *_end and *_start values are index values.
+    frame_params->cropped_image_height = sensor_mode_data.crop_vertical_end - sensor_mode_data.crop_vertical_start + 1;
+    frame_params->cropped_image_width = sensor_mode_data.crop_horizontal_end - sensor_mode_data.crop_horizontal_start +1;
+    frame_params->full_image_width = sensor_mode_data.crop_horizontal_end - sensor_mode_data.crop_horizontal_start + 1;
+    frame_params->full_image_height = sensor_mode_data.crop_vertical_end - sensor_mode_data.crop_vertical_start + 1;
     /* TODO: Get scaling factors from sensor configuration parameters */
     frame_params->horizontal_scaling_denominator = 254;
     frame_params->vertical_scaling_denominator = 254;

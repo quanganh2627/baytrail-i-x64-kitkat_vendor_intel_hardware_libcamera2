@@ -292,6 +292,75 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
     }
 }
 
+#ifdef ENABLE_INTEL_EXTRAS
+void CameraProfiles::handleFeature(CameraProfiles *profiles, const char *name, const char **atts)
+{
+    LOG1("@%s, name:%s, atts[0]:%s, profiles->mCurrentSensor:%d", __func__, name, atts[0], profiles->mCurrentSensor);
+
+    if (strcmp(atts[0], "value") != 0) {
+        LOGE("@%s, name:%s, atts[0]:%s, xml format wrong", __func__, name, atts[0]);
+        return;
+    }
+
+    if (strcmp(name, "defaultHdr") == 0) {
+        pCurrentCam->defaultHdr = atts[1];
+    } else if (strcmp(name, "supportedHdr") == 0) {
+        pCurrentCam->supportedHdr = atts[1];
+    } else if (strcmp(name, "defaultUltraLowLight") == 0) {
+        pCurrentCam->defaultUltraLowLight = atts[1];
+    } else if (strcmp(name, "supportedUltraLowLight") == 0) {
+        pCurrentCam->supportedUltraLowLight = atts[1];
+    } else if (strcmp(name, "defaultFaceDetection") == 0) {
+        pCurrentCam->defaultFaceDetection = atts[1];
+    } else if (strcmp(name, "supportedFaceDetection") == 0) {
+        pCurrentCam->supportedFaceDetection = atts[1];
+    } else if (strcmp(name, "defaultFaceRecognition") == 0) {
+        pCurrentCam->defaultFaceRecognition = atts[1];
+    } else if (strcmp(name, "supportedFaceRecognition") == 0) {
+        pCurrentCam->supportedFaceRecognition = atts[1];
+    } else if (strcmp(name, "defaultSmileShutter") == 0) {
+        pCurrentCam->defaultSmileShutter = atts[1];
+    } else if (strcmp(name, "supportedSmileShutter") == 0) {
+        pCurrentCam->supportedSmileShutter = atts[1];
+    } else if (strcmp(name, "defaultBlinkShutter") == 0) {
+        pCurrentCam->defaultBlinkShutter = atts[1];
+    } else if (strcmp(name, "supportedBlinkShutter") == 0) {
+        pCurrentCam->supportedBlinkShutter = atts[1];
+    } else if (strcmp(name, "defaultPanorama") == 0) {
+        pCurrentCam->defaultPanorama = atts[1];
+    } else if (strcmp(name, "supportedPanorama") == 0) {
+        pCurrentCam->supportedPanorama = atts[1];
+    } else if (strcmp(name, "defaultSceneDetection") == 0) {
+        pCurrentCam->defaultSceneDetection = atts[1];
+    } else if (strcmp(name, "supportedSceneDetection") == 0) {
+        pCurrentCam->supportedSceneDetection = atts[1];
+    }
+}
+#else
+void CameraProfiles::handleFeature(CameraProfiles *profiles, const char *name, const char **atts)
+{
+
+    LOG1("@%s, name:%s, atts[0]:%s, profiles->mCurrentSensor:%d", __func__, name, atts[0], profiles->mCurrentSensor);
+
+    pCurrentCam->defaultHdr = "";
+    pCurrentCam->supportedHdr = "";
+    pCurrentCam->defaultUltraLowLight = "";
+    pCurrentCam->supportedUltraLowLight = "";
+    pCurrentCam->defaultFaceDetection = "";
+    pCurrentCam->supportedFaceDetection = "";
+    pCurrentCam->defaultFaceRecognition = "";
+    pCurrentCam->supportedFaceRecognition = "";
+    pCurrentCam->defaultSmileShutter = "";
+    pCurrentCam->supportedSmileShutter = "";
+    pCurrentCam->defaultBlinkShutter = "";
+    pCurrentCam->supportedBlinkShutter = "";
+    pCurrentCam->defaultPanorama = "";
+    pCurrentCam->supportedPanorama = "";
+    pCurrentCam->defaultSceneDetection = "";
+    pCurrentCam->supportedSceneDetection = "";
+}
+#endif
+
 /**
  * the callback function of the libexpat for handling of one element start
  *
@@ -313,6 +382,7 @@ void CameraProfiles::startElement(void *userData, const char *name, const char *
         case FIELD_SENSOR_BACK:
         case FIELD_SENSOR_FRONT:
             profiles->handleSensor(profiles, name, atts);
+            profiles->handleFeature(profiles, name, atts);
             break;
         case FIELD_COMMON:
             profiles->handleCommon(profiles, name, atts);
@@ -443,6 +513,22 @@ void CameraProfiles::dump(void)
         LOGD("line%d, in DeviceData, pcam->supportedAeMetering:%s ", __LINE__, mCameras[i].supportedAeMetering.string());
         LOGD("line%d, in DeviceData, pcam->defaultFocusMode:%s ", __LINE__, mCameras[i].defaultFocusMode.string());
         LOGD("line%d, in DeviceData, pcam->supportedFocusModes:%s ", __LINE__, mCameras[i].supportedFocusModes.string());
+        LOGD("line%d, in DeviceData, pcam->defaultHdr:%s ", __LINE__, mCameras[i].defaultHdr.string());
+        LOGD("line%d, in DeviceData, pcam->supportedHdr:%s ", __LINE__, mCameras[i].supportedHdr.string());
+        LOGD("line%d, in DeviceData, pcam->defaultUltraLowLight:%s ", __LINE__, mCameras[i].defaultUltraLowLight.string());
+        LOGD("line%d, in DeviceData, pcam->supportedUltraLowLight:%s ", __LINE__, mCameras[i].supportedUltraLowLight.string());
+        LOGD("line%d, in DeviceData, pcam->defaultFaceDetection:%s ", __LINE__, mCameras[i].defaultFaceDetection.string());
+        LOGD("line%d, in DeviceData, pcam->supportedFaceDetection:%s ", __LINE__, mCameras[i].supportedFaceDetection.string());
+        LOGD("line%d, in DeviceData, pcam->defaultFaceRecognition:%s ", __LINE__, mCameras[i].defaultFaceRecognition.string());
+        LOGD("line%d, in DeviceData, pcam->supportedFaceRecognition:%s ", __LINE__, mCameras[i].supportedFaceRecognition.string());
+        LOGD("line%d, in DeviceData, pcam->defaultSmileShutter:%s ", __LINE__, mCameras[i].defaultSmileShutter.string());
+        LOGD("line%d, in DeviceData, pcam->supportedSmileShutter:%s ", __LINE__, mCameras[i].supportedSmileShutter.string());
+        LOGD("line%d, in DeviceData, pcam->defaultBlinkShutter:%s ", __LINE__, mCameras[i].defaultBlinkShutter.string());
+        LOGD("line%d, in DeviceData, pcam->supportedBlinkShutter:%s ", __LINE__, mCameras[i].supportedBlinkShutter.string());
+        LOGD("line%d, in DeviceData, pcam->defaultPanorama:%s ", __LINE__, mCameras[i].defaultPanorama.string());
+        LOGD("line%d, in DeviceData, pcam->supportedPanorama:%s ", __LINE__, mCameras[i].supportedPanorama.string());
+        LOGD("line%d, in DeviceData, pcam->defaultSceneDetection:%s ", __LINE__, mCameras[i].defaultSceneDetection.string());
+        LOGD("line%d, in DeviceData, pcam->supportedSceneDetection:%s ", __LINE__, mCameras[i].supportedSceneDetection.string());
     }
 
     LOGD("line%d, in DeviceData, for common settings ", __LINE__);

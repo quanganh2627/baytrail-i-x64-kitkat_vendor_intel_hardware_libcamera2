@@ -22,21 +22,21 @@
 #include "CallbacksThread.h"
 #include "PostProcThread.h"
 #include "IFaceDetectionListener.h"
-#include "FeatureData.h"
 #include "PlatformData.h"
 #include <system/camera.h>
 #include "AtomCP.h"
 
 namespace android {
 
-PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread, I3AControls *aaaControls, int cameraId) :
-    IFaceDetector(CallbacksThread::getInstance(NULL, cameraId))
+PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *panoramaThread, I3AControls *aaaControls,
+                               sp<CallbacksThread> callbacksThread, Callbacks *callbacks, int cameraId) :
+    IFaceDetector(callbacksThread.get())
     ,Thread(true) // callbacks may call into java
     ,mFaceDetector(NULL)
     ,mPanoramaThread(panoramaThread)
     ,mMessageQueue("PostProcThread", (int) MESSAGE_ID_MAX)
     ,mLastReportedNumberOfFaces(0)
-    ,mCallbacks(Callbacks::getInstance(cameraId))
+    ,mCallbacks(callbacks)
     ,mPostProcDoneCallback(postProcDone)
     ,m3AControls(aaaControls)
     ,mThreadRunning(false)
@@ -110,11 +110,11 @@ void PostProcThread::getDefaultParameters(CameraParameters *params, CameraParame
     params->set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW, MAX_FACES_DETECTABLE);
     intel_params->set(IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD, STRINGIFY(SMILE_THRESHOLD));
     intel_params->set(IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD, STRINGIFY(BLINK_THRESHOLD));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER, FeatureData::smileShutterSupported(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BLINK_SHUTTER, FeatureData::blinkShutterSupported(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_DETECTION, FeatureData::faceDetectionSupported(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_RECOGNITION, FeatureData::faceRecognitionSupported(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SCENE_DETECTION, FeatureData::sceneDetectionSupported(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER, PlatformData::supportedSmileShutter(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BLINK_SHUTTER, PlatformData::supportedBlinkShutter(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_DETECTION, PlatformData::supportedFaceDetection(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_RECOGNITION, PlatformData::supportedFaceRecognition(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SCENE_DETECTION, PlatformData::supportedSceneDetection(cameraId));
 
     mCameraOrientation = PlatformData::cameraOrientation(cameraId);
     // TODO: make sure that CameraId = 0 is main Camera always
@@ -768,10 +768,6 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         frameData.stride = frame.img.stride;
         if (AtomCP::setIaFrameFormat(&frameData, frame.img.format) != NO_ERROR) {
             LOGE("@%s: setting ia_frame format failed", __FUNCTION__);
-        }
-
-        if (frameData.format == ia_frame_format_yuy2) {
-            frameData.stride = frame.img.size / frame.img.height;
         }
 
         // correcting acceleration sensor orientation result

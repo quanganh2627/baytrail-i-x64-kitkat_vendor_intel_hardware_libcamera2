@@ -21,7 +21,6 @@
 #include "Callbacks.h"
 #include "ColorConverter.h"
 #include "PlatformData.h"
-#include "FeatureData.h"
 #include "IntelParameters.h"
 #include "PanoramaThread.h"
 #include "CameraDump.h"
@@ -34,8 +33,6 @@
 #include <linux/media.h>
 #include <linux/atomisp.h>
 #include "PerformanceTraces.h"
-
-#define PAGE_ALIGN(x) ((x + 0xfff) & 0xfffff000)
 
 #define DEFAULT_SENSOR_FPS      15.0
 #define DEFAULT_PREVIEW_FPS     30.0
@@ -83,14 +80,14 @@ AtomISP::cameraInfo AtomISP::sCamInfo[MAX_CAMERA_NODES];
 //                          PUBLIC METHODS
 ////////////////////////////////////////////////////////////////////
 
-AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
+AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callbacks) :
      mPreviewStreamSource("PreviewStreamSource", this)
     ,mFrameSyncSource("FrameSyncSource", this)
     ,m3AStatSource("AAAStatSource", this)
     ,mCameraId(cameraId)
     ,mGroupIndex (-1)
     ,mMode(MODE_NONE)
-    ,mCallbacks(Callbacks::getInstance(cameraId))
+    ,mCallbacks(callbacks)
     ,mNumBuffers(PlatformData::getRecordingBufNum())
     ,mNumPreviewBuffers(PlatformData::getRecordingBufNum())
     ,mPreviewBuffersCached(true)
@@ -126,6 +123,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService) :
     ,mHighSpeedFps(0)
     ,mHighSpeedResolution(0, 0)
     ,mHighSpeedEnabled(false)
+    ,mRawBayerFormat(V4L2_PIX_FMT_SBGGR10)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -514,6 +512,7 @@ AtomISP::~AtomISP()
     m3AEventSubdevice.clear();
     mIspSubdevice.clear();
     mFileInjectDevice.clear();
+    mSensorSupportedFormats.clear();
 
     if (mZoomRatios) {
         delete[] mZoomRatios;
@@ -693,8 +692,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET, "none");
 
     // HDR imaging settings
-    intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, FeatureData::hdrDefault(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, FeatureData::hdrSupported(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, PlatformData::defaultHdr(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, PlatformData::supportedHdr(cameraId));
     intel_params->set(IntelCameraParameters::KEY_HDR_VIVIDNESS, "none");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none");
     intel_params->set(IntelCameraParameters::KEY_HDR_SHARPENING, "none");
@@ -705,8 +704,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * Ultra-low light (ULL)
      */
-    intel_params->set(IntelCameraParameters::KEY_ULL, FeatureData::ultraLowLightDefault(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_ULL, FeatureData::ultraLowLightSupported(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_ULL, PlatformData::defaultUltraLowLight(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_ULL, PlatformData::supportedUltraLowLight(cameraId));
 
     /**
      * Burst-mode
@@ -1858,7 +1857,7 @@ status_t AtomISP::startCapture()
     // snapshot number. Otherwise, the raw dump image would be corrupted.
     // also since CSS1.5 we cannot capture from postview at the same time
     int snapNum;
-    if (mConfig.snapshot.format == V4L2_PIX_FMT_SBGGR10)
+    if (mConfig.snapshot.format == mRawBayerFormat)
         snapNum = 1;
     else
         snapNum = mConfig.num_snapshot;
@@ -2149,8 +2148,8 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, FrameInfo *f
     w = fInfo->width;
     h = fInfo->height;
     format = fInfo->format;
-    LOG1("device: %d, width:%d, height:%d, deviceMode:%d format:%d raw:%d", device->mId,
-        w, h, deviceMode, format, raw);
+    LOG1("device: %d, width:%d, height:%d, deviceMode:%d format:%s raw:%d", device->mId,
+        w, h, deviceMode, v4l2Fmt2Str(format), raw);
 
     if ((w <= 0) || (h <= 0)) {
         LOGE("Wrong Width %d or Height %d", w, h);
@@ -2221,9 +2220,53 @@ status_t AtomISP::selectCameraSensor()
     if (ret != NO_ERROR) {
         mMainDevice->close();
         ret = UNKNOWN_ERROR;
+    } else {
+        PERFORMANCE_TRACES_BREAKDOWN_STEP("capture_s_input");
+
+        // Query now the support color format
+        ret = mMainDevice->queryCapturePixelFormats(mSensorSupportedFormats);
+        if (ret != NO_ERROR) {
+           LOGW("Cold not query capture formats from sensor: %s", mCameraInput->name);
+           ret = NO_ERROR;   // This is not critical
+        }
+        sensorStoreRawFormat();
     }
-    PERFORMANCE_TRACES_BREAKDOWN_STEP("capture_s_input");
     return ret;
+}
+
+/**
+ * Helper method for the sensor to select the prefered BAYER format
+ * the supported pixel formats are retrieved when the sensor is selected.
+ *
+ * The list is stored in  mSensorSupportedFormats.
+ *
+ * This helper method finds the first Bayer format and saves it to mRawBayerFormat
+ * so that if raw dump feature is enabled we know what is the sensor
+ * preferred format.
+ *
+ */
+status_t AtomISP::sensorStoreRawFormat()
+{
+    LOG1("@%s", __FUNCTION__);
+    Vector<v4l2_fmtdesc>::iterator it = mSensorSupportedFormats.begin();
+
+    for (;it != mSensorSupportedFormats.end(); ++it) {
+        /* store it only if is one of the Bayer formats */
+        if (isBayerFormat(it->pixelformat)) {
+            mRawBayerFormat = it->pixelformat;
+            break;  //we take the first one, sensors tend to support only one
+        }
+    }
+    return NO_ERROR;
+}
+
+/**
+ * Part of the IHWSensorControl interface.
+ * It returns the V4L2 Bayer format preferred by the sensor
+ */
+int AtomISP::getRawFormat()
+{
+    return mRawBayerFormat;
 }
 
 status_t AtomISP::setPreviewFrameFormat(int width, int height, int format)
@@ -2309,9 +2352,6 @@ status_t AtomISP::setSnapshotFrameFormat(int width, int height, int format)
     mConfig.snapshot.format = format;
     mConfig.snapshot.stride = SGXandDisplayStride(format, width);
     mConfig.snapshot.size = frameSize(format, mConfig.snapshot.stride, height);
-
-    if (isDumpRawImageReady())
-        mConfig.snapshot.format = V4L2_PIX_FMT_SRGGB10;
 
     if (mConfig.snapshot.size == 0)
         mConfig.snapshot.size = mConfig.snapshot.width * mConfig.snapshot.height * BPP;
@@ -3202,6 +3242,7 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
     mPreviewBuffers.editItemAt(index).capture_timestamp = bufInfo.vbuffer.timestamp;
     mPreviewBuffers.editItemAt(index).frameSequenceNbr = bufInfo.vbuffer.sequence;
     mPreviewBuffers.editItemAt(index).status = (FrameBufferStatus)bufInfo.vbuffer.reserved;
+    mPreviewBuffers.editItemAt(index).size = bufInfo.vbuffer.bytesused;
 
     *buff = mPreviewBuffers[index];
 
@@ -3556,7 +3597,7 @@ status_t AtomISP::putSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 
     ret0 = mMainDevice->putFrame(snapshotBuf->id);
 
-    if (mConfig.snapshot.format == V4L2_PIX_FMT_SBGGR10) {
+    if (mConfig.snapshot.format == mRawBayerFormat) {
         // for RAW captures we do not dequeue the postview, therefore we do
         // not need to return it.
         ret1 = 0;
@@ -3990,7 +4031,8 @@ status_t AtomISP::allocateSnapshotBuffers()
             bufPool[i] = mPostviewBuffers[i].dataPtr;
         }
     }
-    if (!mHALZSLEnabled)
+    // In case of Raw capture we do not get postview, so no point in setting up the pool
+    if (!mHALZSLEnabled && !isBayerFormat(mConfig.snapshot.format))
         mPostViewDevice->setBufferPool((void**)&bufPool,mPostviewBuffers.size(),
                                         &mConfig.postview, true);
     return status;
@@ -4977,12 +5019,74 @@ int AtomISP::setIspParameter(struct atomisp_parm *isp_param)
     return ret;
 }
 
-int AtomISP::getIspStatistics(struct atomisp_3a_statistics *statistics)
+int AtomISP::getIspStatistics(struct atomisp_3a_statistics *statistics,
+                              bool isFlashUsed)
 {
     LOG2("@%s", __FUNCTION__);
-    int ret;
+
+    int ret = 0;
     ret = mMainDevice->xioctl(ATOMISP_IOC_G_3A_STAT, statistics);
     LOG2("%s IOCTL ATOMISP_IOC_G_3A_STAT ret: %d\n", __FUNCTION__, ret);
+
+    if (ret == 0 && isOfflineCaptureRunning()) {
+        // Detect the corrupt stats only for offline (continous) capture.
+        // TODO: This hack to be removed, when BZ #119181 is fixed
+        ret = detectCorruptStatistics(statistics, isFlashUsed);
+    }
+
+    return ret;
+}
+
+//
+// TODO: Remove this function once BZ #119181 gets fixed by the firmware team!
+//
+int AtomISP::detectCorruptStatistics(struct atomisp_3a_statistics *statistics, bool isFlashUsed)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret = 0;
+
+    static long long int prev_ae_y = 0;
+    static unsigned corruptCounter = 0;
+    long long int ae_y = 0;
+    double ae_ref;          /* Scene reflectance(18% ... center 144% ... saturated) */
+    // Constants for adjusting the "algorithm" behavior:
+    const int CORRUPT_STATS_DIFF_THRESHOLD = 200000;
+    const unsigned int CORRUPT_STATS_RETRY_THRESHOLD = 2;
+
+    for (unsigned int i = 0; i < statistics->grid_info.s3a_width*statistics->grid_info.s3a_height; ++i) {
+        ae_y += statistics->data[i].ae_y;
+    }
+
+    ae_y /= (statistics->grid_info.s3a_width * statistics->grid_info.s3a_height);
+    ae_ref = 1.0 * ae_y / (statistics->grid_info.s3a_bqs_per_grid_cell * statistics->grid_info.s3a_bqs_per_grid_cell);
+    ae_ref = ae_ref * 144 / (1<<13);
+
+    LOG2("AEStatistics (Ref:%3.1f Per Ave:%lld)", ae_ref, ae_y);
+    LOG2("flash used %d", isFlashUsed);
+
+    // Drop the stats, if decided that they are corrupt. This method is now a heuristic one,
+    // based on the decision what we consider corrupt. Threshold can be adjusted.
+    if (prev_ae_y != 0 && llabs(prev_ae_y - ae_y) > CORRUPT_STATS_DIFF_THRESHOLD &&
+        !isFlashUsed) {
+        // We have already got first stats (prev_ae_y != 0), consider the stats over the
+        // threshold corrupt.
+        // NOTE: we must not drop stats during pre-flash.
+        LOG2("@%s: \"corrupt\" stats.", __FUNCTION__);
+        ++corruptCounter;
+        ret = -1;
+    } else if (corruptCounter >= CORRUPT_STATS_RETRY_THRESHOLD) {
+        // clear counter once in a while, so we won't always do corrupt detection
+        // and allow some statistics to be passed,
+        // caller will re-run this function and try to refetch statistics upon EAGAIN
+        ae_y = 0;
+        corruptCounter = 0;
+        ret = EAGAIN;
+        LOG2("@%s: return EAGAIN", __FUNCTION__);
+    }
+
+    // Save the recent statistics
+    prev_ae_y = ae_y;
+
     return ret;
 }
 

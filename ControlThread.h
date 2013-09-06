@@ -261,7 +261,7 @@ private:
     };
 
     struct MessageSceneDetected {
-        int sceneMode;
+        char sceneMode[SCENE_STRING_LENGTH];
         bool sceneHdr;
     };
 

@@ -59,6 +59,7 @@
 #define ALIGN32(x) (((x) + 31) & ~31)
 #define ALIGN64(x) (((x) + 63) & ~63)
 #define ALIGN128(x) (((x) + 127) & ~127)
+#define PAGE_ALIGN(x) ((x + 0xfff) & 0xfffff000)
 // macro MAX_MSG_RETRIES: max number of retries of handling messages that can be delayed
 //                        like for example ControlThread::MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE
 #define MAX_MSG_RETRIES 3
@@ -169,7 +170,7 @@ struct AtomBuffer {
     int width;
     int height;
     int format;
-    int stride;             /*!< stride of the buffer*/
+    int stride;             /*!< stride of the buffer, bytes per line */
     int size;
     AtomBufferType type;                /*!< context in which the buffer is used */
     FrameBufferStatus status;           /*!< status information of carried frame buffer */
@@ -270,6 +271,9 @@ static int parsePair(char *str, char **first, char **second, const char *delim)
     return 0;
 }
 
+/**
+ * Return frame size (in bytes) based on image format description
+ */
 static int frameSize(int format, int width, int height)
 {
     int size = 0;
@@ -308,22 +312,50 @@ static int bytesPerLineToWidth(int format, int bytesperline)
     case V4L2_PIX_FMT_NV21:
     case V4L2_PIX_FMT_YUV411P:
     case V4L2_PIX_FMT_YUV422P:
-        width = (bytesperline * 2 / 3);
+        width = bytesperline;
         break;
     case V4L2_PIX_FMT_YUYV:
     case V4L2_PIX_FMT_Y41P:
     case V4L2_PIX_FMT_UYVY:
-        width = (bytesperline / 2);
-        break;
     case V4L2_PIX_FMT_RGB565:
     case V4L2_PIX_FMT_SRGGB10:
         width = (bytesperline / 2);
         break;
     default:
-        width = (bytesperline / 2);
+        LOGW("%s: no case for selected pixel format!", __FUNCTION__);
+        bytesperline = (width * 2);
+        break;
     }
 
     return width;
+}
+
+static int widthToBytesPerLine(int format, int width)
+{
+    int bytesperline = 0;
+    switch (format) {
+    case V4L2_PIX_FMT_YUV420:
+    case V4L2_PIX_FMT_YVU420:
+    case V4L2_PIX_FMT_NV12:
+    case V4L2_PIX_FMT_NV21:
+    case V4L2_PIX_FMT_YUV411P:
+    case V4L2_PIX_FMT_YUV422P:
+        bytesperline = width;
+        break;
+    case V4L2_PIX_FMT_YUYV:
+    case V4L2_PIX_FMT_Y41P:
+    case V4L2_PIX_FMT_UYVY:
+    case V4L2_PIX_FMT_RGB565:
+    case V4L2_PIX_FMT_SRGGB10:
+        bytesperline = (width * 2);
+        break;
+    default:
+        LOGW("%s: no case for selected pixel format!", __FUNCTION__);
+        bytesperline = (width * 2);
+        break;
+    }
+
+    return bytesperline;
 }
 
 static int paddingWidthNV12VED( int width, int height)
@@ -432,6 +464,7 @@ inline static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
 void convertFromAndroidToIaCoordinates(const CameraWindow &srcWindow, CameraWindow &toWindow);
 bool isParameterSet(const char *param, const CameraParameters &params);
 
+bool isBayerFormat(int fmt);
 int SGXandDisplayStride(int format, int width);
 void mirrorBuffer(AtomBuffer *buffer, int currentOrientation, int cameraOrientation);
 void flipBufferV(AtomBuffer *buffer);

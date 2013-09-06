@@ -36,7 +36,6 @@
 #include <cutils/properties.h>
 #include <binder/IServiceManager.h>
 #include "intel_camera_extensions.h"
-#include "FeatureData.h"
 #include "ICameraHwControls.h"
 
 namespace android {
@@ -98,6 +97,18 @@ const char* ControlThread::sCaptureSubstateStrings[]= {
       "IDLE"
 };
 
+const char *scene_mode_detected[NUM_SCENE_DETECTED] = {
+                                                   "auto",
+                                                   "close_up_portrait",
+                                                   "portrait",
+                                                   "night_portrait",
+                                                   "night",
+                                                   "action",
+                                                   "backlight",
+                                                   "landscape",
+                                                   "barcode",
+                                                   "firework",
+};
 ControlThread::ControlThread(int cameraId) :
     Thread(true) // callbacks may call into java
     ,mCameraId(cameraId)
@@ -188,7 +199,20 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    isp = new AtomISP(mCameraId, mScalerService);
+    mCallbacks = new Callbacks();
+    if (mCallbacks == NULL) {
+        LOGE("error creating Callbacks");
+        goto bail;
+    }
+
+    // we implement ICallbackPicture interface
+    mCallbacksThread = new CallbacksThread(mCallbacks, this);
+    if (mCallbacksThread == NULL) {
+        LOGE("error creating CallbacksThread");
+        goto bail;
+    }
+
+    isp = new AtomISP(mCameraId, mScalerService, mCallbacks);
     if (isp == NULL) {
         LOGE("error creating ISP");
         goto bail;
@@ -240,7 +264,7 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mULL = new UltraLowLight(mCameraId);
+    mULL = new UltraLowLight(mCallbacks);
     if (mULL == NULL) {
         LOGE("error creating ULL");
         goto bail;
@@ -255,51 +279,38 @@ status_t ControlThread::init()
 
     // we implement the ICallbackPreview interface, so pass
     // this as argument
-    mPreviewThread = new PreviewThread(mCameraId);
+    mPreviewThread = new PreviewThread(mCallbacksThread, mCallbacks);
     if (mPreviewThread == NULL) {
         LOGE("error creating PreviewThread");
         goto bail;
     }
 
-    mPictureThread = new PictureThread(m3AControls, mScalerService, mCameraId);
+    mPictureThread = new PictureThread(m3AControls, mScalerService, mCallbacksThread, mCallbacks);
     if (mPictureThread == NULL) {
         LOGE("error creating PictureThread");
         goto bail;
     }
 
-    mVideoThread = new VideoThread(mCameraId);
+    mVideoThread = new VideoThread(mCallbacksThread);
     if (mVideoThread == NULL) {
         LOGE("error creating VideoThread");
         goto bail;
     }
 
     // we implement ICallbackAAA interface
-    m3AThread = new AAAThread(this, mULL, m3AControls);
+    m3AThread = new AAAThread(this, mULL, m3AControls, mCallbacksThread);
     if (m3AThread == NULL) {
         LOGE("error creating 3AThread");
         goto bail;
     }
 
-    mCallbacks = Callbacks::getInstance(mCameraId);
-    if (mCallbacks == NULL) {
-        LOGE("error creating Callbacks");
-        goto bail;
-    }
-
-    // we implement ICallbackPicture interface
-    mCallbacksThread = CallbacksThread::getInstance(this, mCameraId);
-    if (mCallbacksThread == NULL) {
-        LOGE("error creating CallbacksThread");
-        goto bail;
-    }
-
-    mPanoramaThread = new PanoramaThread(this, m3AControls, mCameraId);
+    mPanoramaThread = new PanoramaThread(this, m3AControls, mCallbacksThread, mCallbacks, mCameraId);
     if (mPanoramaThread == NULL) {
         LOGE("error creating PanoramaThread");
         goto bail;
     }
 
-    mPostProcThread = new PostProcThread(this, mPanoramaThread.get(), m3AControls, mCameraId);
+    mPostProcThread = new PostProcThread(this, mPanoramaThread.get(), m3AControls, mCallbacksThread, mCallbacks, mCameraId);
     if (mPostProcThread == NULL) {
         LOGE("error creating PostProcThread");
         goto bail;
@@ -488,11 +499,6 @@ void ControlThread::deinit()
         m3AThread.clear();
     }
 
-    if (mCallbacksThread != NULL) {
-        mCallbacksThread->requestExitAndWait();
-        mCallbacksThread.clear();
-    }
-
     if (mParamCache != NULL) {
         free(mParamCache);
         mParamCache = NULL;
@@ -548,6 +554,12 @@ void ControlThread::deinit()
         if (it->id == MESSAGE_ID_SET_PARAMETERS)
             free(it->data.setParameters.params); // was strdupped, needs free
     mPostponedMessages.clear();
+
+    if (mCallbacksThread != NULL) {
+        mCallbacksThread->requestExitAndWait();
+        mCallbacksThread.clear();
+    }
+
     LOG1("@%s- complete", __FUNCTION__);
 }
 
@@ -894,7 +906,7 @@ void ControlThread::sceneDetected(int sceneMode, bool sceneHdr)
     LOG2("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_SCENE_DETECTED;
-    msg.data.sceneDetected.sceneMode = sceneMode;
+    strlcpy(msg.data.sceneDetected.sceneMode, scene_mode_detected[sceneMode], (size_t)SCENE_STRING_LENGTH);
     msg.data.sceneDetected.sceneHdr = sceneHdr;
     mMessageQueue.send(&msg);
 }
@@ -1100,10 +1112,10 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
     }
     if (previewState == PreviewThread::STATE_STOPPED) {
         // just re-configure previewThread
-        int format, width, height, stride;
-        format = V4L2Format(mParameters.getPreviewFormat());
+        int cb_format, width, height, stride;
+        cb_format = V4L2Format(mParameters.getPreviewFormat());
         mISP->getPreviewSize(&width, &height,&stride);
-        mPreviewThread->setPreviewConfig(width, height, stride, format, false);
+        mPreviewThread->setPreviewConfig(width, height, stride, cb_format, false);
     } else if (previewState != PreviewThread::STATE_ENABLED
             && previewState != PreviewThread::STATE_ENABLED_HIDDEN) {
         LOGE("Trying to resume continuous preview from unexpected state!");
@@ -1394,7 +1406,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     status_t status = NO_ERROR;
     int width;
     int height;
-    int format;
+    int cb_format;
     int stride;
     State state;
     AtomMode mode;
@@ -1431,13 +1443,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
         m3AControls->init3aStatDump("preview");
-
-    // set preview frame config
-    format = V4L2Format(mParameters.getPreviewFormat());
-    if (format == -1) {
-        LOGE("Bad preview format. Cannot start the preview!");
-        return BAD_VALUE;
-    }
 
     if (state == STATE_CONTINUOUS_CAPTURE) {
         if (initContinuousCapture() != NO_ERROR) {
@@ -1495,7 +1500,11 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         meteringWindows = NULL;
     }
 
-    LOG1("Using preview format: %s", v4l2Fmt2Str(format));
+    const char* cb_format_s = mParameters.getPreviewFormat();
+    cb_format = V4L2Format(cb_format_s);
+    if (!cb_format) {
+        LOGW("Unsupported preview callback format : %s", cb_format_s ? cb_format_s : "not set");
+    }
     mParameters.getPreviewSize(&width, &height);
     mISP->setPreviewFrameFormat(width, height);
 
@@ -1532,7 +1541,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     bool useSharedGfxBuffers =
         (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS)
         && (mIntelParamsAllowed || mode != MODE_CONTINUOUS_CAPTURE);
-    mPreviewThread->setPreviewConfig(width, height, stride, format, useSharedGfxBuffers, mNumBuffers);
+    mPreviewThread->setPreviewConfig(width, height, stride, cb_format, useSharedGfxBuffers, mNumBuffers);
     if (useSharedGfxBuffers) {
         Vector<AtomBuffer> sharedGfxBuffers;
         status = mPreviewThread->fetchPreviewBuffers(sharedGfxBuffers);
@@ -1725,15 +1734,8 @@ status_t ControlThread::stopCapture()
     }
 
     if (mBracketManager->getBracketMode() == BRACKET_FOCUS) {
-        AfMode publicAfMode = m3AControls->getPublicAfMode();
-        if (!mFocusAreas.isEmpty() &&
-            (publicAfMode == CAM_AF_MODE_AUTO ||
-             publicAfMode == CAM_AF_MODE_CONTINUOUS ||
-             publicAfMode == CAM_AF_MODE_MACRO)) {
-            m3AControls->setAfMode(CAM_AF_MODE_TOUCH);
-        } else {
-            m3AControls->setAfMode(publicAfMode);
-        }
+        AfMode afMode = m3AControls->getAfMode();
+        m3AControls->setAfMode(afMode);
     }
 
     if (mHdr.enabled || mHdr.inProgress) {
@@ -2166,7 +2168,7 @@ status_t ControlThread::setSmartSceneParams(void)
         return INVALID_OPERATION;
 
     if (scene_mode && !strcmp(scene_mode, CameraParameters::SCENE_MODE_AUTO)) {
-        bool sceneDetectionSupported = strcmp(FeatureData::sceneDetectionSupported(mCameraId), "") != 0;
+        bool sceneDetectionSupported = strcmp(PlatformData::supportedSceneDetection(mCameraId), "") != 0;
         //scene mode detection should always be working, but we shouldn't take it in account whenever HDR is on.
         if (!mHdr.enabled && sceneDetectionSupported && m3AControls->getSmartSceneDetection()) {
             int sceneMode = 0;
@@ -4492,13 +4494,13 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
     mParameters.getPictureSize(&picWidth, &picHeight);
 
     /**
-     * Snapshot format is harcoded to NV12, this is the format between
+     * Snapshot format is hardcoded to NV12, this is the format between
      * camera and JPEG encoder. In cases where we need to capture bayer
      * then the format changes to RGB adn JPEG encoding breaks (i.e. image is
      * green) this is a known limitation of the raw capture sequence in ISP fW
      */
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW))
-        format = V4L2_PIX_FMT_SRGGB10;
+        format = mHwcg.mSensorCI->getRawFormat();
     else
         format = V4L2_PIX_FMT_NV12;
 
@@ -5467,6 +5469,7 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
 
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, CameraParameters::KEY_FOCUS_MODE);
     AfMode afMode = CAM_AF_MODE_NOT_SET;
+    AfMode curAfMode = CAM_AF_MODE_NOT_SET;
 
     if (!newVal.isEmpty()) {
         if (newVal == CameraParameters::FOCUS_MODE_AUTO) {
@@ -5491,62 +5494,38 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             mPostProcThread->enableFaceAAA(AAA_FLAG_AF);
         }
 
-        if (status == NO_ERROR) {
-            m3AControls->setPublicAfMode(afMode);
-            LOG1("Changed: %s -> %s", CameraParameters::KEY_FOCUS_MODE, newVal.string());
+        curAfMode = m3AControls->getAfMode();
+
+        if (status == NO_ERROR && curAfMode != afMode) {
+            // See if we have to change the actual mode (it could be correct already)
+            status = m3AControls->setAfMode(afMode);
         }
+        LOG1("Changed: %s -> %s", CameraParameters::KEY_FOCUS_MODE, newVal.string());
     }
 
-    AfMode publicAfMode = m3AControls->getPublicAfMode();
-    // Based on Google specs, focus area has not effect when face detection is runing
-    // and the focus area is effective only for modes:
-    // (framework side constants:) FOCUS_MODE_AUTO, FOCUS_MODE_MACRO, FOCUS_MODE_CONTINUOUS_VIDEO
-    // or FOCUS_MODE_CONTINUOUS_PICTURE.
-    if (!mFaceDetectionActive &&
-        (publicAfMode == CAM_AF_MODE_AUTO ||
-         publicAfMode == CAM_AF_MODE_CONTINUOUS ||
-         publicAfMode == CAM_AF_MODE_MACRO)) {
-        afMode = publicAfMode;
+    if (!mFaceDetectionActive) {
+        curAfMode = m3AControls->getAfMode();
+        // Based on Google specs, the focus area is effective only for modes:
+        // (framework side constants:) FOCUS_MODE_AUTO, FOCUS_MODE_MACRO, FOCUS_MODE_CONTINUOUS_VIDEO
+        // or FOCUS_MODE_CONTINUOUS_PICTURE.
+        if (curAfMode == CAM_AF_MODE_AUTO ||
+            curAfMode == CAM_AF_MODE_CONTINUOUS ||
+            curAfMode == CAM_AF_MODE_MACRO) {
 
-        // See if any focus areas are set.
-        // NOTE: CAM_AF_MODE_TOUCH is for HAL internal use only
-        if (!mFocusAreas.isEmpty()) {
-            LOG1("Focus areas set, using AF mode \"touch \"");
-            afMode = CAM_AF_MODE_TOUCH;
-        }
+                size_t winCount(mFocusAreas.numOfAreas());
+                CameraWindow *focusWindows = new CameraWindow[winCount];
+                mFocusAreas.toWindows(focusWindows);
+                convertAfWindows(focusWindows, winCount);
 
-        // See if we have to change the actual mode (it could be correct already)
-        AfMode curAfMode = m3AControls->getAfMode();
-        if (afMode != curAfMode) {
-            status = m3AControls->setAfEnabled(true);
-            if (status == NO_ERROR) {
-                m3AControls->setAfMode(afMode);
-            } else {
-                LOGE("setAfEnabled failed");
-            }
-        }
+                if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
+                    // If focus windows couldn't be set, previous AF mode is used
+                    curAfMode = m3AControls->getAfMode();
+                    LOGE("Could not set AF windows. Resetting the AF back to %d", curAfMode);
+                    m3AControls->setAfMode(curAfMode);
+                }
 
-        // If in touch mode, we set the focus windows now
-        if (afMode == CAM_AF_MODE_TOUCH) {
-            size_t winCount(mFocusAreas.numOfAreas());
-            CameraWindow *focusWindows = new CameraWindow[winCount];
-            mFocusAreas.toWindows(focusWindows);
-            convertAfWindows(focusWindows, winCount);
-            if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
-                // If focus windows couldn't be set, previous AF mode is used
-                // (AfSetWindowMulti has its own safety checks for coordinates)
-                LOGE("Could not set AF windows. Resetting the AF back to %d", curAfMode);
-                m3AControls->setAfMode(curAfMode);
-            }
-            delete[] focusWindows;
-            focusWindows = NULL;
-        }
-    } else if (afMode != CAM_AF_MODE_NOT_SET) {
-        status = m3AControls->setAfEnabled(true);
-        if (status == NO_ERROR) {
-            status = m3AControls->setAfMode(afMode);
-        } else {
-            LOGE("setAfEnabled failed");
+                delete[] focusWindows;
+                focusWindows = NULL;
         }
     }
 
@@ -6193,7 +6172,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
         previewWidth = newWidth;
         previewHeight = newHeight;
         previewAspectRatio = 1.0 * newWidth / newHeight;
-        LOG1("Preview size/format is changing: old=%dx%d %s; new=%dx%d %s; ratio=%.3f",
+        LOG1("Preview size/cb_format is changing: old=%dx%d %s; new=%dx%d %s; ratio=%.3f",
                 oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
                 newWidth, newHeight, v4l2Fmt2Str(newFormat),
                 previewAspectRatio);
@@ -6201,7 +6180,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
         mPreviewForceChanged = false;
     } else {
         previewAspectRatio = 1.0 * oldWidth / oldHeight;
-        LOG1("Preview size/format is unchanged: old=%dx%d %s; ratio=%.3f",
+        LOG1("Preview size/cb_format is unchanged: old=%dx%d %s; ratio=%.3f",
                 oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
                 previewAspectRatio);
     }
@@ -6480,7 +6459,7 @@ bool ControlThread::hasPictureFormatChanged()
     int newFormat = V4L2_PIX_FMT_NV12;
 
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW))
-       newFormat = V4L2_PIX_FMT_SRGGB10;
+       newFormat = mHwcg.mSensorCI->getRawFormat();
 
     return (newFormat != currentFormat);
 }
@@ -6730,9 +6709,12 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
 
 status_t ControlThread::handleMessageSceneDetected(MessageSceneDetected *msg)
 {
-    LOG2("@%s", __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    status = mCallbacksThread->sceneDetected(msg->sceneMode, msg->sceneHdr);
+    camera_scene_detection_metadata_t metadata;
+    strlcpy(metadata.scene, msg->sceneMode, (size_t)SCENE_STRING_LENGTH);
+    metadata.hdr = msg->sceneHdr;
+    status = mCallbacksThread->sceneDetected(metadata);
     return status;
 }
 
