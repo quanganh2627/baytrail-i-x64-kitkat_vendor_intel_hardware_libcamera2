@@ -1010,6 +1010,10 @@ void AtomISP::fetchIspVersions()
                     mCssMinorVersion = 0;
                     LOG1("CSS version is: %d.%d", mCssMajorVersion, mCssMinorVersion);
                     break;
+                case ATOMISP_CSS_VERSION_21:
+                    mCssMajorVersion = 2;
+                    mCssMinorVersion = 1;
+                    break;
                 default:
                     LOGE("Unknown CSS version: %d", css_version);
             }
