@@ -79,7 +79,7 @@ public:
      *
      *  TODO: They should eventually come from CPF
      **/
-    static int ULL_ACTIVATION_APEX_SV_THRESHOLD;
+    static float ULL_ACTIVATION_GAIN_THRESHOLD;
 
 
     /**

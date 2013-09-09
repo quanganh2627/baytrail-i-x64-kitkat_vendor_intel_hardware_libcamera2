@@ -937,7 +937,8 @@ status_t AtomAAA::getExposureInfo(SensorAeConfig& aeConfig)
             &aeConfig.aecApexTv,
             &aeConfig.aecApexSv,
             &aeConfig.aecApexAv,
-            &aeConfig.digitalGain);
+            &aeConfig.digitalGain,
+            &aeConfig.totalGain);
 
     return NO_ERROR;
 }
@@ -1637,12 +1638,13 @@ int AtomAAA::getAfScore(bool average_enabled)
  * @param aec_apex_Sv - Sensitivity
  * @param aec_apex_Av - Aperture
  * @param digital_gain - digital_gain
+ * @param total_gain - total_gain
  */
 void AtomAAA::getAeExpCfg(int *exp_time,
                           short unsigned int *aperture_num,
                           short unsigned int *aperture_denum,
-                     int *aec_apex_Tv, int *aec_apex_Sv, int *aec_apex_Av,
-                     float *digital_gain)
+                          int *aec_apex_Tv, int *aec_apex_Sv, int *aec_apex_Av,
+                          float *digital_gain, float *total_gain)
 {
     LOG2("@%s", __FUNCTION__);
     ia_3a_ae_result ae_res;
@@ -1655,6 +1657,8 @@ void AtomAAA::getAeExpCfg(int *exp_time,
     *aec_apex_Tv = ae_res.tv;
     *aec_apex_Sv = ae_res.sv;
     *aec_apex_Av = ae_res.av;
+    *total_gain = ((pow(2.0, ((float)ae_res.sv)/65536.0))/(pow(2.0, -7.0/4.0)))/100;
+    LOG2("total_gain: %f", *total_gain);
 }
 
 status_t AtomAAA::set3AColorEffect(const char *effect)

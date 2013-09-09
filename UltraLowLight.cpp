@@ -36,7 +36,7 @@ namespace android {
 const char UltraLowLight::MORPHO_INPUT_FORMAT[] = "YUV420_SEMIPLANAR";  // This should be equivalent to NV12, our default
 
 // ULL bright threshold: from Normal to ULL
-int UltraLowLight::ULL_ACTIVATION_APEX_SV_THRESHOLD = 451799;
+float UltraLowLight::ULL_ACTIVATION_GAIN_THRESHOLD = 4.0;
 static status_t ia_error_to_status_t(ia_err status);
 
 /**
@@ -788,7 +788,7 @@ bool UltraLowLight::updateTrigger(SensorAeConfig &expInfo, bool flash)
 {
     LOG2("%s", __FUNCTION__);
     Mutex::Autolock lock(mStateMutex);
-    int apexSv = expInfo.aecApexSv;
+    float totalGain = expInfo.totalGain;
     bool change = false;
 
     if (flash) {
@@ -797,7 +797,7 @@ bool UltraLowLight::updateTrigger(SensorAeConfig &expInfo, bool flash)
 
     } else {
 
-        if (apexSv > ULL_ACTIVATION_APEX_SV_THRESHOLD) {
+        if (totalGain > ULL_ACTIVATION_GAIN_THRESHOLD) {
             change = (mTrigger? false:true);
             mTrigger = true;
         } else {
@@ -807,7 +807,7 @@ bool UltraLowLight::updateTrigger(SensorAeConfig &expInfo, bool flash)
     }
 
     if (change)
-        LOG1("trigger %s, flash %d, apexSv %d",mTrigger?"true":"false", flash, apexSv);
+        LOG1("trigger %s, flash %d, totalGain %f",mTrigger?"true":"false", flash, totalGain);
 
     return change;
 }
