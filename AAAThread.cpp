@@ -29,6 +29,7 @@ namespace android {
 // TODO: use values relative to real sensor timings or fps
 #define STATISTICS_SYNC_DELTA_US 20000
 #define STATISTICS_SYNC_DELTA_US_MAX 200000
+#define SKIP_PARTIALLY_EXPOSED  1
 
 AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaaControls, sp<CallbacksThread> callbacksThread) :
     Thread(false)
@@ -50,6 +51,7 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaa
     ,mFlashStage(FLASH_STAGE_NA)
     ,mFramesTillExposed(0)
     ,mBlockForStage(FLASH_STAGE_NA)
+    ,mSkipStatistics(0)
 {
     LOG1("@%s", __FUNCTION__);
     mFaceState.faces = new ia_face[MAX_FACES_DETECTABLE];
@@ -410,6 +412,14 @@ status_t AAAThread::handleMessageAutoFocus()
         m3AControls->setAwbLock(true);
 
         m3AControls->startStillAf();
+
+        // Turning on the flash as AF assist light doesn't support
+        // proper synchronisation with frames. We skip fixed amount
+        // of statistics in order to prevent partially exposed frames
+        // to get processed.
+        if (m3AControls->getAfNeedAssistLight())
+            mSkipStatistics = SKIP_PARTIALLY_EXPOSED;
+
         mFramesTillAfComplete = 0;
         mStartAF = true;
         mStopAF = false;
@@ -627,6 +637,11 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
     if (mFlashStage != FLASH_STAGE_NA)
         return status;
 
+    if (mSkipStatistics > 0) {
+        LOG1("Partially exposed 3A statistics skipped");
+        mSkipStatistics--;
+        return status;
+    }
     // 3A & DVS stats are read with proprietary ioctl that returns the
     // statistics of most recent frame done.
     // Multiple newFrames indicates we are late and 3A process is going
@@ -679,6 +694,9 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
             }
 
             if (stopStillAf) {
+                if (m3AControls->getAfNeedAssistLight()) {
+                    mSkipStatistics = SKIP_PARTIALLY_EXPOSED;
+                }
                 m3AControls->stopStillAf();
                 m3AControls->setAeLock(mPublicAeLock);
                 m3AControls->setAwbLock(mPublicAwbLock);

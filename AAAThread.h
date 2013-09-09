@@ -220,6 +220,7 @@ private:
     FlashStage mFlashStage;
     size_t mFramesTillExposed;
     FlashStage mBlockForStage;
+    int mSkipStatistics;
 
     struct
     {

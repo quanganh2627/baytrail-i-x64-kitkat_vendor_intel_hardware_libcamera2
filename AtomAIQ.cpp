@@ -573,7 +573,9 @@ bool AtomAIQ::getAfNeedAssistLight()
 {
     LOG1("@%s", __FUNCTION__);
     bool ret = false;
-    if(mAfState.af_results)
+    if (mAfState.assist_light)
+        ret = true;
+    else if (mAfState.af_results)
         ret = mAfState.af_results->use_af_assist;
     return ret;
 }
