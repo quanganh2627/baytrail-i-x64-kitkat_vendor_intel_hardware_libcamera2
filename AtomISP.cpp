@@ -976,39 +976,37 @@ void AtomISP::fetchIspVersions()
             switch(hw_version) {
                 case ATOMISP_HW_REVISION_ISP2300:
                     mIspHwMajorVersion = 23;
-                    LOG1("ISP HW version is: %d", mIspHwMajorVersion);
                     break;
                 case ATOMISP_HW_REVISION_ISP2400:
                     mIspHwMajorVersion = 24;
-                    LOG1("ISP HW version is: %d", mIspHwMajorVersion);
                     break;
                 default:
                     LOGE("Unknown ISP HW version: %d", hw_version);
             }
+            if (mIspHwMajorVersion > 0)
+                LOG1("ISP HW version is: %d", mIspHwMajorVersion);
 
             switch(hw_stepping) {
                 case ATOMISP_HW_STEPPING_A0:
                     mIspHwMinorVersion = 0;
-                    LOG1("ISP HW stepping is: %d", mIspHwMinorVersion);
                     break;
                 case ATOMISP_HW_STEPPING_B0:
                     mIspHwMinorVersion = 1;
-                    LOG1("ISP HW stepping is: %d", mIspHwMinorVersion);
                     break;
                 default:
                     LOGE("Unknown ISP HW stepping: %d", hw_stepping);
             }
+            if (mIspHwMinorVersion > 0)
+                LOG1("ISP HW stepping is: %d", mIspHwMinorVersion);
 
             switch(css_version) {
                 case ATOMISP_CSS_VERSION_15:
                     mCssMajorVersion = 1;
                     mCssMinorVersion = 5;
-                    LOG1("CSS version is: %d.%d", mCssMajorVersion, mCssMinorVersion);
                     break;
                 case ATOMISP_CSS_VERSION_20:
                     mCssMajorVersion = 2;
                     mCssMinorVersion = 0;
-                    LOG1("CSS version is: %d.%d", mCssMajorVersion, mCssMinorVersion);
                     break;
                 case ATOMISP_CSS_VERSION_21:
                     mCssMajorVersion = 2;
@@ -1017,6 +1015,8 @@ void AtomISP::fetchIspVersions()
                 default:
                     LOGE("Unknown CSS version: %d", css_version);
             }
+            if (mCssMajorVersion > 0)
+                LOG1("CSS version is: %d.%d", mCssMajorVersion, mCssMinorVersion);
         }
         close(fd);
     }
