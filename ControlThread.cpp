@@ -83,6 +83,12 @@ namespace android {
 
 #define ATOMISP_CAPTURE_POLL_TIMEOUT 2000
 
+/*
+ * RECONFIGURE_THUMBNAIL_HEIGHT_LIMIT: limit thumbnail size less than 480 to reduce thumbnail Jpeg size.
+ * Make sure total Exif size less than 64k.
+ */
+#define RECONFIGURE_THUMBNAIL_HEIGHT_LIMIT 480
+
 // Minimum value of our supported preview FPS
 const int MIN_PREVIEW_FPS = 11;
 // Max value of our supported preview fps:
@@ -2078,6 +2084,12 @@ status_t ControlThread::handleMessageStartRecording()
         heightPreview = height;
     }
 
+    // Limit thumbnail size less than 480p to reduce thumbnail Jpeg size.
+    // Make sure total Exif size less than 64k.
+    if (heightPreview >= RECONFIGURE_THUMBNAIL_HEIGHT_LIMIT) {
+        reconfigureThumbnailSize(widthPreview, heightPreview);
+    }
+
     LOG1("video snapshot thumbnail size %dx%d", widthPreview, heightPreview);
     mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH, widthPreview);
     mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT, heightPreview);
@@ -2137,6 +2149,47 @@ status_t ControlThread::handleMessageStopRecording()
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_STOP_RECORDING, status);
     return status;
+}
+
+/* This function is used to reduce thumbnail size in Video Snapshot Mode when start recording video.
+ * Make sure total Exif size less than 64k and include one thumbnail image.
+ * Reconfigure the thumbnail width and height to default value same with still capture.
+ * Based on aspect ratio, change it to jpeg-thumbnail-size-values(320x240,240x320,320x180,180x320).
+ */
+void ControlThread::reconfigureThumbnailSize(int &width, int &height)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    /* check input parameter */
+    if (height <= 0) {
+        LOGE("error input thumbnail height");
+        return;
+    }
+
+    float aspect = 0.0f;
+    const float tolerance = 0.005f;
+    aspect = static_cast<float>(width) / static_cast<float>(height);
+    if (fabsf(aspect - 1.333) < tolerance) {
+        /* into 4:3 aspect ratios */
+        width = 320;
+        height = 240;
+    } else if (fabsf(aspect - 1.777) < tolerance) {
+        /* into 16:9 aspect ratios */
+        width = 320;
+        height = 180;
+    } else if (fabsf(aspect - 0.75) < tolerance) {
+        /* into 3:4 aspect ratios */
+        width = 240;
+        height = 320;
+    } else if (fabsf(aspect - 0.562) < tolerance) {
+        /* into 9:16 aspect ratios */
+        width = 180;
+        height = 320;
+    } else {
+        /* default use 4:3 aspect ratios */
+        width = 320;
+        height = 240;
+    }
 }
 
 status_t ControlThread::skipFrames(size_t numFrames)
