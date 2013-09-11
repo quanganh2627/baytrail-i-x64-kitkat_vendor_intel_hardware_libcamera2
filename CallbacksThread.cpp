@@ -382,6 +382,65 @@ status_t CallbacksThread::videoFrameDone(AtomBuffer *buff, nsecs_t timestamp)
     return mMessageQueue.send(&msg);
 }
 
+status_t CallbacksThread::accManagerPointer(int isp_ptr, int idx)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_ACC_POINTER;
+    msg.data.accManager.isp_ptr = isp_ptr;
+    msg.data.accManager.idx = idx;
+
+    return mMessageQueue.send(&msg);
+}
+
+status_t CallbacksThread::accManagerFinished()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_ACC_FINISHED;
+
+    return mMessageQueue.send(&msg);
+}
+
+status_t CallbacksThread::accManagerPreviewBuffer(camera_memory_t *buffer)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    if(buffer == NULL) return BAD_VALUE;
+
+    Message msg;
+    msg.id = MESSAGE_ID_ACC_PREVIEW_BUFFER;
+    msg.data.accManager.buffer = *buffer;
+
+    return mMessageQueue.send(&msg);
+}
+
+status_t CallbacksThread::accManagerArgumentBuffer(camera_memory_t *buffer)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if(buffer == NULL) return BAD_VALUE;
+
+    Message msg;
+    msg.id = MESSAGE_ID_ACC_ARGUMENT_BUFFER;
+    msg.data.accManager.buffer = *buffer;
+
+    return mMessageQueue.send(&msg);
+}
+
+status_t CallbacksThread::accManagerMetadataBuffer(camera_memory_t *buffer)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if(buffer == NULL) return BAD_VALUE;
+
+    Message msg;
+    msg.id = MESSAGE_ID_ACC_METADATA_BUFFER;
+    msg.data.accManager.buffer = *buffer;
+
+    return mMessageQueue.send(&msg);
+}
+
 /**
  * Process message received from Picture Thread when a the image compression
  * has completed.
@@ -671,7 +730,46 @@ status_t CallbacksThread::handleMessagePostviewFrameDone(MessageFrame *msg)
         mCallbacks->postviewFrameDone(&tmpCopy);
         mPostviewRequested--;
     }
+    return status;
+}
 
+status_t CallbacksThread::handleMessageAccManagerPointer(MessageAccManager *msg)
+{
+    LOG2("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mCallbacks->accManagerPointer(msg->isp_ptr, msg->idx);
+    return status;
+}
+
+status_t CallbacksThread::handleMessageAccManagerFinished()
+{
+    LOG2("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mCallbacks->accManagerFinished();
+    return status;
+}
+
+status_t CallbacksThread::handleMessageAccManagerPreviewBuffer(MessageAccManager *msg)
+{
+    LOG2("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mCallbacks->accManagerPreviewBuffer(&(msg->buffer));
+    return status;
+}
+
+status_t CallbacksThread::handleMessageAccManagerArgumentBuffer(MessageAccManager *msg)
+{
+    LOG2("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mCallbacks->accManagerArgumentBuffer(&(msg->buffer));
+    return status;
+}
+
+status_t CallbacksThread::handleMessageAccManagerMetadataBuffer(MessageAccManager *msg)
+{
+    LOG2("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mCallbacks->accManagerMetadataBuffer(&(msg->buffer));
     return status;
 }
 
@@ -768,6 +866,26 @@ status_t CallbacksThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_POSTVIEW_FRAME_DONE:
             status = handleMessagePostviewFrameDone(&msg.data.postviewFrame);
+            break;
+
+        case MESSAGE_ID_ACC_POINTER:
+            status = handleMessageAccManagerPointer(&msg.data.accManager);
+            break;
+
+        case MESSAGE_ID_ACC_FINISHED:
+            status = handleMessageAccManagerFinished();
+            break;
+
+        case MESSAGE_ID_ACC_PREVIEW_BUFFER:
+            status = handleMessageAccManagerPreviewBuffer(&msg.data.accManager);
+            break;
+
+        case MESSAGE_ID_ACC_ARGUMENT_BUFFER:
+            status = handleMessageAccManagerArgumentBuffer(&msg.data.accManager);
+            break;
+
+        case MESSAGE_ID_ACC_METADATA_BUFFER:
+            status = handleMessageAccManagerMetadataBuffer(&msg.data.accManager);
             break;
 
         default:
