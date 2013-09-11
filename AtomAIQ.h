@@ -98,6 +98,7 @@ typedef struct {
     bool                            aic_enabled;
     ia_aiq_frame_use                frame_use;
     ia_aiq_statistics_input_params  statistics_input_parameters;
+    ia_aiq_af_results               af_results_feedback;
     ia_aiq_dsd_input_params         dsd_input_parameters;
     struct atomisp_3a_statistics   *stats;
     bool                            stats_valid;
