@@ -906,9 +906,13 @@ void ControlThread::sceneDetected(int sceneMode, bool sceneHdr)
     LOG2("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_SCENE_DETECTED;
-    strlcpy(msg.data.sceneDetected.sceneMode, scene_mode_detected[sceneMode], (size_t)SCENE_STRING_LENGTH);
-    msg.data.sceneDetected.sceneHdr = sceneHdr;
-    mMessageQueue.send(&msg);
+    if (sceneMode >= 0 && sceneMode < NUM_SCENE_DETECTED) {
+        strlcpy(msg.data.sceneDetected.sceneMode, scene_mode_detected[sceneMode], (size_t)SCENE_STRING_LENGTH);
+        msg.data.sceneDetected.sceneHdr = sceneHdr;
+        mMessageQueue.send(&msg);
+    } else {
+        LOGW("%s: the scene mode (%d) provided is not in the defined range", __FUNCTION__, sceneMode);
+    }
 }
 
 void ControlThread::facesDetected(const ia_face_state *faceState)
