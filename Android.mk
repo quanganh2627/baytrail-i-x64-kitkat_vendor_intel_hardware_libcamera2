@@ -130,7 +130,13 @@ LOCAL_SHARED_LIBRARIES := \
 	libEGL \
 	libGLESv2 \
 	libgui \
-	libexpat
+	libexpat \
+	libia_panorama
+
+ifeq ($(USE_SHARED_IA_FACE), true)
+LOCAL_SHARED_LIBRARIES += \
+	libia_face
+endif
 
 ifeq ($(USE_INTEL_METABUFFER),true)
 LOCAL_SHARED_LIBRARIES += \
