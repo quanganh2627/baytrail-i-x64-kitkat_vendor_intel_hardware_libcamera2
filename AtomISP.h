@@ -90,7 +90,6 @@ public:
     status_t allocateBuffers(AtomMode mode);
     status_t start();
     status_t stop();
-    status_t releaseCaptureBuffers();
 
     inline int getNumPreviewBuffers() { return mNumPreviewBuffers; }
     inline int getNumVideoBuffers() { return mNumBuffers; }

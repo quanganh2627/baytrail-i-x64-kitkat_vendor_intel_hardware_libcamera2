@@ -520,6 +520,11 @@ void ControlThread::deinit()
         mCP = NULL;
     }
 
+    if (mCallbacksThread != NULL) {
+        mCallbacksThread->requestExitAndWait();
+        mCallbacksThread.clear();
+    }
+
     if (mISP != NULL) {
         delete mISP;
         mISP = NULL;
@@ -554,11 +559,6 @@ void ControlThread::deinit()
         if (it->id == MESSAGE_ID_SET_PARAMETERS)
             free(it->data.setParameters.params); // was strdupped, needs free
     mPostponedMessages.clear();
-
-    if (mCallbacksThread != NULL) {
-        mCallbacksThread->requestExitAndWait();
-        mCallbacksThread.clear();
-    }
 
     LOG1("@%s- complete", __FUNCTION__);
 }
@@ -1268,8 +1268,6 @@ void ControlThread::releaseContinuousCapture(bool flushPictures)
             LOGE("Error flushing PictureThread!");
         }
     }
-
-    mISP->releaseCaptureBuffers();
 }
 
 /**
@@ -1734,7 +1732,6 @@ status_t ControlThread::stopCapture()
         LOGE("Error stopping ISP!");
         return status;
     }
-    status = mISP->releaseCaptureBuffers();
 
     mState = STATE_STOPPED;
     burstStateReset();
