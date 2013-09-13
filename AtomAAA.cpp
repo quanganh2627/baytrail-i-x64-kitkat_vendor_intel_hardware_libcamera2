@@ -1403,6 +1403,7 @@ void AtomAAA::ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate)
     /* usually the grid changes as well when the mode changes. */
     reconfigureGrid();
     ia_aiq_frame_params sensor_frame_params;
+    memset(&sensor_frame_params, 0, sizeof(sensor_frame_params));
     getSensorFrameParams(&sensor_frame_params, &m3ALibState.sensor_mode_data);
 
     struct atomisp_morph_table *gdc_table = getGdcTable(m3ALibState.sensor_mode_data.output_width, m3ALibState.sensor_mode_data.output_height);

@@ -1450,56 +1450,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         }
     }
 
-    // Update focus areas for the proper window size
-    if (!mFaceDetectionActive && !mFocusAreas.isEmpty()) {
-        size_t winCount(mFocusAreas.numOfAreas());
-        CameraWindow *focusWindows = new CameraWindow[winCount];
-        mFocusAreas.toWindows(focusWindows);
-        convertAfWindows(focusWindows, winCount);
-        if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
-            LOGE("Could not set AF windows. Resseting the AF to %d", CAM_AF_MODE_AUTO);
-            m3AControls->setAfMode(CAM_AF_MODE_AUTO);
-        }
-        delete[] focusWindows;
-        focusWindows = NULL;
-    }
-
-    // Update the spot mode window for the proper window size.
-    if (m3AControls->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT && mMeteringAreas.isEmpty()) {
-        // Update for the "fixed" AE spot window (Intel extension):
-        LOG1("%s: setting forced spot window.", __FUNCTION__);
-        AAAWindowInfo aaaWindow;
-        m3AControls->getGridWindow(aaaWindow);
-        updateSpotWindow(aaaWindow.width, aaaWindow.height);
-    } else if (m3AControls->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT) {
-        // This update is when the AE metering is internally set to
-        // "spot" mode by the HAL, when user has set the AE metering window.
-        LOG1("%s: setting metering area with spot window.", __FUNCTION__);
-        size_t winCount(mMeteringAreas.numOfAreas());
-        CameraWindow *meteringWindows = new CameraWindow[winCount];
-        CameraWindow aeWindow;
-        mMeteringAreas.toWindows(meteringWindows);
-
-        /**
-         * Temporary support for both 3A libs.
-         * Intel 3A (aka AIQ) uses different coordinates than
-         * Acute Logic 3A.
-         */
-        if (PlatformData::supportAIQ()) {
-            convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
-        } else {
-            AAAWindowInfo aaaWindow;
-            m3AControls->getGridWindow(aaaWindow);
-            convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
-        }
-
-        if (m3AControls->setAeWindow(&aeWindow) != NO_ERROR) {
-            LOGW("Error setting AE metering window. Metering will not work");
-        }
-        delete[] meteringWindows;
-        meteringWindows = NULL;
-    }
-
     const char* cb_format_s = mParameters.getPreviewFormat();
     cb_format = V4L2Format(cb_format_s);
     if (!cb_format) {
@@ -1584,6 +1534,57 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         if (mSensorSyncManager != NULL)
             mISP->attachObserver(mSensorSyncManager.get(), OBSERVE_FRAME_SYNC_SOF);
     }
+
+    // Update focus areas for the proper window size
+    if (!mFaceDetectionActive && !mFocusAreas.isEmpty()) {
+        size_t winCount(mFocusAreas.numOfAreas());
+        CameraWindow *focusWindows = new CameraWindow[winCount];
+        mFocusAreas.toWindows(focusWindows);
+        convertAfWindows(focusWindows, winCount);
+        if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
+            LOGE("Could not set AF windows. Resseting the AF to %d", CAM_AF_MODE_AUTO);
+            m3AControls->setAfMode(CAM_AF_MODE_AUTO);
+        }
+        delete[] focusWindows;
+        focusWindows = NULL;
+    }
+
+    // Update the spot mode window for the proper window size.
+    if (m3AControls->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT && mMeteringAreas.isEmpty()) {
+        // Update for the "fixed" AE spot window (Intel extension):
+        LOG1("%s: setting forced spot window.", __FUNCTION__);
+        AAAWindowInfo aaaWindow;
+        m3AControls->getGridWindow(aaaWindow);
+        updateSpotWindow(aaaWindow.width, aaaWindow.height);
+    } else if (m3AControls->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT) {
+        // This update is when the AE metering is internally set to
+        // "spot" mode by the HAL, when user has set the AE metering window.
+        LOG1("%s: setting metering area with spot window.", __FUNCTION__);
+        size_t winCount(mMeteringAreas.numOfAreas());
+        CameraWindow *meteringWindows = new CameraWindow[winCount];
+        CameraWindow aeWindow;
+        mMeteringAreas.toWindows(meteringWindows);
+
+        /**
+         * Temporary support for both 3A libs.
+         * Intel 3A (aka AIQ) uses different coordinates than
+         * Acute Logic 3A.
+         */
+        if (PlatformData::supportAIQ()) {
+            convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
+        } else {
+            AAAWindowInfo aaaWindow;
+            m3AControls->getGridWindow(aaaWindow);
+            convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
+        }
+
+        if (m3AControls->setAeWindow(&aeWindow) != NO_ERROR) {
+            LOGW("Error setting AE metering window. Metering will not work");
+        }
+        delete[] meteringWindows;
+        meteringWindows = NULL;
+    }
+
     // ControlThread must be the observer before PreviewThread to ensure that
     // the recording buffer dequeue handling message is guaranteed to happen
     // before any possible preview return buffer handlers. Since the preview
@@ -2790,6 +2791,8 @@ status_t ControlThread::captureStillPic()
 
     stopFaceDetection();
 
+    sp<AutoReset> autoReset;
+
     if (mBurstLength <= 1) {
         if (m3AControls->isIntel3A()) {
             // If flash mode is not ON or TORCH, check for other
@@ -2813,6 +2816,20 @@ status_t ControlThread::captureStillPic()
             if (flashOn) {
                 if (m3AControls->getAeMode() != CAM_AE_MODE_MANUAL &&
                         flashMode != CAM_AE_FLASH_MODE_TORCH) {
+                    // first a workaround for BZ: 133025. Set ae metering mode to auto for the flash duration
+                    // we can safely use a temporary setting since any client setParameters will be postponed
+                    // for the duration of the capture
+                    // this class defines the temporary setting behavior
+                    class TemporaryAeMetering : public TemporarySetting {
+                    public:
+                        TemporaryAeMetering(ControlThread *controlThread) : TemporarySetting(controlThread) { mMode = mControlThread->m3AControls->getAeMeteringMode(); }
+                        void set() { mControlThread->m3AControls->setAeMeteringMode(CAM_AE_METERING_MODE_AUTO); }
+                        void reset() { mControlThread->m3AControls->setAeMeteringMode(mMode); }
+                        MeteringMode mMode;
+                    };
+                    // instantiate - the smart pointers take care of destruction
+                    autoReset = new AutoReset(new TemporaryAeMetering(this));
+
                     flashSequenceStarted = true;
                     // hide preview frames already during pre-flash sequence
                     mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
@@ -5306,7 +5323,7 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 }
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, PlatformData::supportedFocusModes(mCameraId));
                 newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
@@ -6970,7 +6987,6 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
 status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* postviewBuffer)
 {
     LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
 
     // Initialize the HDR CI input buffers (main/postview) for this capture
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer->dataPtr;
@@ -7005,12 +7021,10 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height,
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].format);
 
-    status = mCP->computeCDF(mHdr.ciBufIn, mBurstCaptureNum);
-    if (status == NO_ERROR) {
-        mHdr.inputBuffers[mBurstCaptureNum].snapshotBuf = *snapshotBuffer;
-        mHdr.inputBuffers[mBurstCaptureNum].postviewBuf = *postviewBuffer;
-    }
-    return status;
+    mHdr.inputBuffers[mBurstCaptureNum].snapshotBuf = *snapshotBuffer;
+    mHdr.inputBuffers[mBurstCaptureNum].postviewBuf = *postviewBuffer;
+
+    return NO_ERROR;
 }
 
 void ControlThread::hdrRelease()

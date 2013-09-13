@@ -21,8 +21,13 @@
 #include "AtomCommon.h"
 #include "CameraDump.h"
 #include "LogHelper.h"
+#include "PlatformData.h"
 
 #include "morpho_image_stabilizer3.h"
+
+#include "ia_cp_types.h"
+#include "ia_types.h"
+#include "ia_cp.h"
 
 
 namespace android {
@@ -32,7 +37,7 @@ const char UltraLowLight::MORPHO_INPUT_FORMAT[] = "YUV420_SEMIPLANAR";  // This 
 
 // ULL bright threshold: from Normal to ULL
 int UltraLowLight::ULL_ACTIVATION_APEX_SV_THRESHOLD = 451799;
-
+static status_t ia_error_to_status_t(ia_err status);
 
 /**
  * \struct MorphoULL
@@ -55,15 +60,19 @@ UltraLowLight::UltraLowLight(Callbacks *callbacks) : mMorphoCtrl(NULL),
                                  mHeight(0),
                                  mCurrentPreset(0),
                                  mUserMode(ULL_OFF),
-                                 mTrigger(false)
+                                 mTrigger(false),
+                                 mUseIntelULL(PlatformData::useIntelULL())
 {
-
-    mMorphoCtrl = new MorphoULL();
-    if (mMorphoCtrl != NULL)
+    if (mUseIntelULL) {
         mState = ULL_STATE_UNINIT;
+    } else {
+        mMorphoCtrl = new MorphoULL();
+        if (mMorphoCtrl != NULL)
+            mState = ULL_STATE_UNINIT;
 
-    mPresets[0] = MorphoULLConfig( 100, 10, 0, 3, 1, 1, MORPHO_IMAGE_STABILIZER3_NR_SUPERFINE, MORPHO_IMAGE_STABILIZER3_NR_SUPERFINE );
-    mPresets[1] = MorphoULLConfig( 100, 10, 0, 3, 3, 3, 0, 0 );
+        mPresets[0] = MorphoULLConfig(100, 10, 0, 3, 1, 1, MORPHO_IMAGE_STABILIZER3_NR_SUPERFINE, MORPHO_IMAGE_STABILIZER3_NR_SUPERFINE);
+        mPresets[1] = MorphoULLConfig(100, 10, 0, 3, 3, 3, 0, 0);
+    }
 }
 
 UltraLowLight::~UltraLowLight()
@@ -112,14 +121,24 @@ status_t UltraLowLight::init( int w, int h, int aPreset)
     case ULL_STATE_INIT:
     case ULL_STATE_DONE:
         startTime= systemTime();
-        ret = initMorphoLib(w, h, aPreset);
+        if (mUseIntelULL)
+            ret = initIntelULL(w, h);
+        else
+            ret = initMorphoLib(w, h, aPreset);
+
         LOG1("ULL init completed (ret=%d) in %u ms", ret, (unsigned)((systemTime() - startTime) / 1000000))
         break;
 
     case ULL_STATE_READY:
-        deinitMorphoLib();
-        mInputBuffers.clear();
-        ret = initMorphoLib(w, h, aPreset);
+        if (mUseIntelULL) {
+            deinitIntelULL();
+            mInputBuffers.clear();
+            ret = initIntelULL(w, h);
+        } else {
+            deinitMorphoLib();
+            mInputBuffers.clear();
+            ret = initMorphoLib(w, h, aPreset);
+        }
         break;
 
     case ULL_STATE_NULL:
@@ -155,13 +174,19 @@ status_t UltraLowLight::deinit()
     case ULL_STATE_CANCELING:
     case ULL_STATE_DONE:
     case ULL_STATE_INIT:
-         deinitMorphoLib();
-         setState(ULL_STATE_UNINIT);
+        if (mUseIntelULL)
+            deinitIntelULL();
+        else
+            deinitMorphoLib();
+        setState(ULL_STATE_UNINIT);
         break;
 
     case ULL_STATE_READY:
         mInputBuffers.clear();
-        deinitMorphoLib();
+        if (mUseIntelULL)
+            deinitIntelULL();
+        else
+            deinitMorphoLib();
         setState(ULL_STATE_UNINIT);
         break;
 
@@ -211,7 +236,12 @@ status_t UltraLowLight::addInputFrame(AtomBuffer *snap, AtomBuffer *pv)
 
 
     if (mInputBuffers.size() == maxBufs) {
-        ret = configureMorphoLib();
+        if (mUseIntelULL) {
+            ret = NO_ERROR; // Intel ULL is configured when initialized
+        } else {
+            ret = configureMorphoLib();
+        }
+
         if (ret == NO_ERROR)
             setState(ULL_STATE_READY);
     }
@@ -222,6 +252,19 @@ status_t UltraLowLight::addInputFrame(AtomBuffer *snap, AtomBuffer *pv)
 status_t UltraLowLight::addSnapshotMetadata(PictureThread::MetaData &metadata)
 {
     mSnapMetadata = metadata;
+
+    if (mUseIntelULL && mSnapMetadata.aeConfig != NULL) {
+        LOG1("Passing snapshot metadata to Intel ULL");
+        mIntelUllCfg->apex_av        = mSnapMetadata.aeConfig->aecApexAv;
+        mIntelUllCfg->apex_sv        = mSnapMetadata.aeConfig->aecApexSv;
+        mIntelUllCfg->apex_tv        = mSnapMetadata.aeConfig->aecApexTv;
+        mIntelUllCfg->exposure       = mSnapMetadata.aeConfig->expTime;
+        mIntelUllCfg->ev_bias        = mSnapMetadata.aeConfig->evBias;
+        mIntelUllCfg->gain           = mSnapMetadata.aeConfig->digitalGain;
+        mIntelUllCfg->aperture_num   = mSnapMetadata.aeConfig->aperture_num;
+        mIntelUllCfg->aperture_denum = mSnapMetadata.aeConfig->aperture_denum;
+    }
+
     return NO_ERROR;
 }
 
@@ -347,6 +390,199 @@ status_t UltraLowLight::process()
 
     nsecs_t startTime = systemTime();
     setState(ULL_STATE_PROCESSING);
+
+    if (mUseIntelULL) {
+        ret = processIntelULL();
+    } else {
+        ret = processMorphoULL();
+    }
+
+    LOG1("ULL Processing completed (ret=%d) in %u ms", ret, (unsigned)((systemTime() - startTime) / 1000000))
+
+    return ret;
+}
+
+
+/****************************************************************************
+ *  PRIVATE PARTS
+ ****************************************************************************/
+
+static status_t ia_error_to_status_t(ia_err status)
+{
+    switch (status) {
+    case ia_err_none:
+        return NO_ERROR;
+    case ia_err_general:
+        return UNKNOWN_ERROR;
+    case ia_err_nomemory:
+        return NO_MEMORY;
+    case ia_err_data:
+        return BAD_VALUE;
+    case ia_err_internal:
+        return UNKNOWN_ERROR;
+    case ia_err_argument:
+        return BAD_VALUE;
+    default:
+        return UNKNOWN_ERROR;
+    }
+}
+
+status_t UltraLowLight::initIntelULL(int w, int h)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t ret = NO_ERROR;
+
+    mIntelUllCfg = new ia_cp_ull_config;
+    if (mIntelUllCfg == NULL)
+        return NO_MEMORY;
+
+    ia_err status = ia_cp_ull_init_config(mIntelUllCfg);
+    if (status != ia_err_none)
+        return ia_error_to_status_t(status);
+
+    mCurrentPreset = 0;
+    mWidth = w;
+    mHeight = h;
+    mInputBuffers.clear();
+
+    return ret;
+}
+
+status_t UltraLowLight::initMorphoLib(int w, int h, int idx)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t ret = NO_ERROR;
+    int workingBufferSize;
+
+    workingBufferSize = morpho_ImageStabilizer3_getBufferSize( w, h,
+                                                               MAX_INPUT_BUFFERS,
+                                                               MORPHO_INPUT_FORMAT);
+    LOG1("ULL working buf size %d", workingBufferSize);
+    if (w != mWidth || h != mHeight) {
+        if (mMorphoCtrl->workingBuffer != NULL) {
+            delete[] mMorphoCtrl->workingBuffer;
+            mMorphoCtrl->workingBuffer = NULL;
+        }
+        mMorphoCtrl->workingBuffer = new unsigned char[workingBufferSize];
+    }
+
+    if (mMorphoCtrl->workingBuffer == NULL) {
+        ret = NO_MEMORY;
+        goto bail;
+    }
+
+    memset(&mMorphoCtrl->stab,0,sizeof(morpho_ImageStabilizer3));
+
+    ret = morpho_ImageStabilizer3_initialize( &mMorphoCtrl->stab,
+                                              mMorphoCtrl->workingBuffer,
+                                              workingBufferSize );
+    if (ret != MORPHO_OK) {
+        LOGE("Error initializing working buffer to library");
+        ret = NO_INIT;
+        goto bailFree;
+    }
+
+    mCurrentPreset = idx;
+    mWidth = w;
+    mHeight = h;
+    mInputBuffers.clear();
+
+bail:
+    return ret;
+
+bailFree:
+    deinitMorphoLib();
+    return ret;
+}
+
+void UltraLowLight::deinitIntelULL()
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if (mIntelUllCfg != NULL) {
+        delete mIntelUllCfg;
+        mIntelUllCfg = NULL;
+    }
+
+    mWidth = 0;
+    mHeight = 0;
+    mCurrentPreset = 0;
+}
+
+void UltraLowLight::deinitMorphoLib()
+{
+    LOGE("@%s ", __FUNCTION__);
+    status_t ret;
+
+    ret = morpho_ImageStabilizer3_finalize( &mMorphoCtrl->stab );
+    if (ret != MORPHO_OK)
+       LOGW("Error closing the ImageSolid library");
+
+    mWidth = 0;
+    mHeight = 0;
+    mCurrentPreset = 0;
+    freeWorkingBuffer();
+
+    // Blank the Morpho control Block
+    memset(mMorphoCtrl,0,sizeof(UltraLowLight::MorphoULL));
+}
+
+status_t UltraLowLight::processIntelULL()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t ret = NO_ERROR;
+
+    ia_frame out, out_pv;
+    ia_frame * input = new ia_frame[mInputBuffers.size()];
+    if (input == NULL) {
+        LOGE("Input ia_frame sequence allocation failed.");
+        return NO_MEMORY;
+    }
+
+    int i = 0;
+    Vector<AtomBuffer>::const_iterator end = mInputBuffers.end();
+    for (Vector<AtomBuffer>::const_iterator iter = mInputBuffers.begin(); iter != end; ++iter) {
+        AtomToIaFrameBuffer(iter, &input[i++]);
+        if (gLogLevel & CAMERA_DEBUG_ULL_DUMP) {
+            String8 yuvName("/data/ull_yuv_dump_");
+            yuvName.appendFormat("id_%d_%d.yuv",mULLCounter,i);
+            CameraDump::dumpAtom2File(iter, yuvName.string());
+        }
+    }
+
+    mOutputBuffer = mInputBuffers[0];
+    AtomToIaFrameBuffer(&mOutputBuffer, &out);
+    AtomToIaFrameBuffer(&mOutputPostView, &out_pv);
+
+    LOG1("Intel ULL processing...");
+    ia_err error = ia_cp_ull_compose(&out, &out_pv, input, input, mInputBuffers.size(), *mIntelUllCfg);
+    if (error != ia_err_none) {
+        LOGE("Intel ULL failed with error status %d", error);
+        ret = ia_error_to_status_t(error);
+    }
+
+    if (getState() == ULL_STATE_PROCESSING) {
+        setState(ULL_STATE_DONE);
+        mInputBuffers.removeAt(0);
+        if (gLogLevel & CAMERA_DEBUG_ULL_DUMP) {
+           String8 yuvName("/data/ull_yuv_processed_");
+           yuvName.appendFormat("id_%d.yuv",mULLCounter);
+           CameraDump::dumpAtom2File(&mOutputBuffer, yuvName.string());
+        }
+    } else {
+        LOGW("ULL was canceled during processing state = %d",getState());
+    }
+
+    if (input != NULL)
+        delete[] input;
+
+    return ret;
+}
+
+status_t UltraLowLight::processMorphoULL()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t ret = NO_ERROR;
     int i;
 
     /* Initialize the morpho specific input buffer structures */
@@ -427,78 +663,8 @@ processComplete:
     } else {
         LOGW("ULL was canceled during processing state = %d",getState());
     }
-    LOG1("ULL Processing completed (ret=%d) in %u ms", ret, (unsigned)((systemTime() - startTime) / 1000000))
+
     return ret;
-}
-
-
-/****************************************************************************
- *  PRIVATE PARTS
- ****************************************************************************/
-
-status_t UltraLowLight::initMorphoLib(int w, int h, int idx)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t ret = NO_ERROR;
-    int workingBufferSize;
-
-    workingBufferSize = morpho_ImageStabilizer3_getBufferSize( w, h,
-                                                               MAX_INPUT_BUFFERS,
-                                                               MORPHO_INPUT_FORMAT);
-    LOG1("ULL working buf size %d", workingBufferSize);
-    if (w != mWidth || h != mHeight) {
-        if (mMorphoCtrl->workingBuffer != NULL) {
-            delete[] mMorphoCtrl->workingBuffer;
-            mMorphoCtrl->workingBuffer = NULL;
-        }
-        mMorphoCtrl->workingBuffer = new unsigned char[workingBufferSize];
-    }
-
-    if (mMorphoCtrl->workingBuffer == NULL) {
-        ret = NO_MEMORY;
-        goto bail;
-    }
-
-    memset(&mMorphoCtrl->stab,0,sizeof(morpho_ImageStabilizer3));
-
-    ret = morpho_ImageStabilizer3_initialize( &mMorphoCtrl->stab,
-                                              mMorphoCtrl->workingBuffer,
-                                              workingBufferSize );
-    if (ret != MORPHO_OK) {
-        LOGE("Error initializing working buffer to library");
-        ret = NO_INIT;
-        goto bailFree;
-    }
-
-    mCurrentPreset = idx;
-    mWidth = w;
-    mHeight = h;
-    mInputBuffers.clear();
-
-bail:
-    return ret;
-
-bailFree:
-    deinitMorphoLib();
-    return ret;
-}
-
-void UltraLowLight::deinitMorphoLib()
-{
-    LOGE("@%s ", __FUNCTION__);
-    status_t ret;
-
-    ret = morpho_ImageStabilizer3_finalize( &mMorphoCtrl->stab );
-    if (ret != MORPHO_OK)
-       LOGW("Error closing the ImageSolid library");
-
-    mWidth = 0;
-    mHeight = 0;
-    mCurrentPreset = 0;
-    freeWorkingBuffer();
-
-    // Blank the Morpho control Block
-    memset(mMorphoCtrl,0,sizeof(UltraLowLight::MorphoULL));
 }
 
 void UltraLowLight::freeWorkingBuffer()
@@ -578,6 +744,19 @@ status_t UltraLowLight::configureMorphoLib()
     PRINT_ERROR_AND_BAIL(" Failed to configure setNoiseReductionLevelChroma");
 
     return NO_ERROR;
+}
+
+void UltraLowLight::AtomToIaFrameBuffer(const AtomBuffer * atom, ia_frame * frame)
+{
+    LOG1("@%s (%dx%d)", __FUNCTION__, atom->width, atom->height);
+
+    frame->format = ia_frame_format_nv12;
+    frame->data = atom->dataPtr;
+    frame->width = atom->width;
+    frame->height = atom->height;
+    frame->stride = atom->stride;
+    frame->size = atom->size;
+    frame->rotation = 0;
 }
 
 void UltraLowLight::AtomToMorphoBuffer(const AtomBuffer *atom, void* m)

@@ -136,6 +136,8 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
     } else if (strcmp(name, "supportPreviewLimitation") == 0) {
         PlatformBase::mSupportPreviewLimitation = ((strcmp(atts[1], "false")
                                                     == 0) ? false : true);
+    } else if (strcmp(name, "useULLImpl") == 0) {
+        PlatformBase::mUseIntelULL = ((strcmp(atts[1], "IntelULL") == 0) ? true : false);
     }
 }
 
@@ -542,6 +544,7 @@ void CameraProfiles::dump(void)
     LOGD("line%d, in DeviceData, mMaxContinuousRawRingBuffer:%d ", __LINE__, mMaxContinuousRawRingBuffer);
     LOGD("line%d, in DeviceData, mBoardName:%s ", __LINE__, mBoardName.string());
     LOGD("line%d, in DeviceData, mSupportAIQ:%d ", __LINE__, mSupportAIQ);
+    LOGD("line%d, in DeviceData, mUseIntelULL:%d ", __LINE__, mUseIntelULL);
 }
 
 }
