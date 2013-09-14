@@ -3002,9 +3002,6 @@ status_t ControlThread::captureStillPic()
     size = frameSize(format, width, height);
     pvSize = frameSize(format, pvWidth, pvHeight);
 
-    // Configure PictureThread
-    mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
-
     if (mState != STATE_CONTINUOUS_CAPTURE) {
         // Possible smart scene parameter changes (XNR, ANR)
         if ((status = setSmartSceneParams()) != NO_ERROR)
@@ -3127,6 +3124,9 @@ status_t ControlThread::captureStillPic()
         LOGE("Error in grabbing snapshot!");
         return status;
     }
+
+    // Configure PictureThread
+    mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     PerformanceTraces::ShutterLag::snapshotTaken(&snapshotBuffer.capture_timestamp);
 
@@ -3483,7 +3483,7 @@ status_t ControlThread::captureULLPic()
 
     PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE();
 
-    mCallbacksThread->requestTakePicture(true, false, displayPostview);
+    mCallbacksThread->requestTakePicture(true, true, displayPostview);
 
     stopFaceDetection();
     // Initialize the burst control variables for the ULL burst
