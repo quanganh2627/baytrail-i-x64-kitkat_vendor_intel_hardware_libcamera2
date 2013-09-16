@@ -158,6 +158,7 @@ namespace android {
         LOG1("@%s allocated heap buffer with pointer %p", __FUNCTION__, aBuff.dataPtr);
         return status;
     }
+
     void freeAtomBuffer(AtomBuffer &aBuff)
     {
         LOG1("@%s: dataPtr %p", __FUNCTION__, aBuff.dataPtr);
@@ -169,12 +170,35 @@ namespace android {
             aBuff.buff = NULL;
         }
         // free metadata, if any
+        freeAtomBufferMetadata(aBuff);
+        aBuff.dataPtr = NULL;
+    }
+
+    status_t allocateAtomBufferMetadata(AtomBuffer &aBuff, uint32_t metaSize, Callbacks *aCallbacks)
+    {
+        LOG1("@%s size:%d", __FUNCTION__, metaSize);
+
+        if (aBuff.metadata_buff != NULL) {
+            freeAtomBufferMetadata(aBuff);
+        }
+
+        aCallbacks->allocateMemory(&aBuff.metadata_buff, metaSize);
+        if (aBuff.metadata_buff == NULL) {
+            LOGE("@%s Error allocation %d for metadata buffers!", __FUNCTION__, metaSize);
+            return NO_MEMORY;
+        }
+        return OK;
+    }
+
+    /* freeAtomBufferMetadata is not necessary 1:1 with allocateAtomBufferMetadata
+     * because meta data buffer could be released in freeAtomBuffer*/
+    void freeAtomBufferMetadata(AtomBuffer &aBuff)
+    {
+        LOG1("@%s", __FUNCTION__);
         if (aBuff.metadata_buff != NULL) {
             aBuff.metadata_buff->release(aBuff.metadata_buff);
             aBuff.metadata_buff = NULL;
         }
-        aBuff.dataPtr = NULL;
     }
-
     } // namespace MemoryUtils
 } // namespace android
