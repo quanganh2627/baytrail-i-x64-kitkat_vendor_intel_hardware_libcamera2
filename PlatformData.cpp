@@ -1176,6 +1176,14 @@ int PlatformData::getRecordingBufNum(void)
     return getInstance()->mNumRecordingBuffers;
 }
 
+int PlatformData::getMaxNumberSnapshotBuffers(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return 0;
+    }
+    return getInstance()->mCameras[cameraId].maxNumSnapshotBuffers;
+}
+
 bool PlatformData::supportAIQ(void)
 {
     return getInstance()->mSupportAIQ;

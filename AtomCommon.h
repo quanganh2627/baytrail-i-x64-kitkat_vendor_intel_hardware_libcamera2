@@ -51,8 +51,10 @@
 #define CLEAR(x) memset (&(x), 0, sizeof (x))
 // macro CLIP is used to clip the Number value to between the Min and Max
 #define CLIP(Number, Max, Min)    ((Number) > (Max) ? (Max) : ((Number) < (Min) ? (Min) : (Number)))
-// macro MAX
+// macro MAX and MIN
 #define MAX(a,b) ((a)>(b)?(a):(b))
+#define MIN(a,b) ((a)<(b)?(a):(b))
+
 // macros ALIGN?? root value to value that is divisible by ??
 #define ALIGN8(x) (((x) + 7) & ~7)
 #define ALIGN16(x) (((x) + 15) & ~15)

@@ -3591,6 +3591,8 @@ nopostview:
 
     dumpSnapshot(snapshotIndex, postviewIndex);
 
+    LOG1("@%s buffer id:%d frameCounter:%d frameSequenceNbr:%d", __FUNCTION__,
+            snapshotBuf->id, snapshotBuf->frameCounter, snapshotBuf->frameSequenceNbr);
     return NO_ERROR;
 }
 

@@ -68,8 +68,9 @@ public:
     void getNextAeConfig(SensorAeConfig *aeConfig);
     status_t startBracketing();
     status_t stopBracketing();
-    // wrapper for AtomISP getSnapShot()
+    // wrapper for AtomISP getSnapShot() and putSnapshot()
     status_t getSnapshot(AtomBuffer &snapshotBuf, AtomBuffer &postviewBuf);
+    status_t putSnapshot(AtomBuffer &snapshotBuf, AtomBuffer &postviewBuf);
 
 // inherited from Thread
 private:
@@ -85,14 +86,27 @@ private:
         MESSAGE_ID_START_BRACKETING,
         MESSAGE_ID_STOP_BRACKETING,
         MESSAGE_ID_GET_SNAPSHOT,
+        MESSAGE_ID_PUT_SNAPSHOT,
 
         // max number of messages
         MESSAGE_ID_MAX
     };
 
+    struct MessageCapture {
+        AtomBuffer snapshotBuf;
+        AtomBuffer postviewBuf;
+    };
+
+    // union of all message data
+    union MessageData {
+        // MESSAGE_ID_PUT_SNAPSHOT
+        MessageCapture capture;
+    };
+
     // message structure
     struct Message {
         MessageId id;
+        MessageData data;
     };
 
     // thread states
@@ -115,6 +129,7 @@ private:
     status_t handleMessageStartBracketing();
     status_t handleMessageStopBracketing();
     status_t handleMessageGetSnapshot();
+    status_t handleMessagePutSnapshot(MessageCapture capture);
     status_t handleExit();
 
 // private data
