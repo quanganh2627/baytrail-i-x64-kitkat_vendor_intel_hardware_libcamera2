@@ -2550,12 +2550,15 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
         params->getPreviewSize(&previewWidth, &previewHeight);
         params->getVideoSize(&videoWidth, &videoHeight);
         if((previewWidth*previewHeight) > (videoWidth*videoHeight)) {
+            if(videoWidth != mConfig.recording.width || videoHeight != mConfig.recording.height
+               || !mRecordingDeviceSwapped) {
                 ret = true;
                 mSwapRecordingDevice = true;
                 workaround2 = true;
                 LOG1("Video dimension(s) [%d, %d] is smaller than preview dimension(s) [%d, %d]. "
                      "Triggering swapping of preview and recording devices.",
                      videoWidth, videoHeight, previewWidth, previewHeight);
+            }
         } else {
             mSwapRecordingDevice = false;
         }
