@@ -1219,7 +1219,7 @@ status_t ControlThread::initContinuousCapture()
     mISP->setSnapshotFrameFormat(width, height, format);
     configureContinuousRingBuffer();
     mISP->setPostviewFrameFormat(pvWidth, pvHeight,
-                                 PlatformData::getPreviewFormat());
+                                 selectPostviewFormat());
 
     burstStateReset();
 
@@ -2473,7 +2473,7 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
         // Configure and start the ISP
         mISP->setSnapshotFrameFormat(width, height, format);
         mISP->setPostviewFrameFormat(lpvWidth, lpvHeight,
-                                     PlatformData::getPreviewFormat());
+                                     selectPostviewFormat());
 
         if ((status = mISP->configure(MODE_CAPTURE)) != NO_ERROR) {
             LOGE("Error configuring the ISP driver for CAPTURE mode");
@@ -2741,6 +2741,32 @@ bool ControlThread::selectPostviewSize(int &width, int &height)
     return false;
 }
 
+/**
+ * Select pixel format for postview pipeline suitable with current mode
+ * and configuration.
+ *
+ * Normally postview pipe is configured with preview size and format
+ * to be able to render snapshot postview frame buffers on viewfinder as
+ * they are and pass them through the generic operations in preview-pipeline
+ * when needed.
+ *
+ * Proprietary panorama feature is an exception where we expose custom
+ * live-preview callback and do not utilize the postview-pipe output to
+ * anything else. In case panorama is started, format is fixed to NV21.
+ */
+int ControlThread::selectPostviewFormat()
+{
+    int fourcc = 0;
+
+   if (mPanoramaThread->getState() == PANORAMA_STOPPED) {
+        fourcc = PlatformData::getPreviewFormat();
+    } else {
+        fourcc = V4L2_PIX_FMT_NV21;
+    }
+
+    return fourcc;
+}
+
 status_t ControlThread::captureStillPic()
 {
     LOG1("@%s: ", __FUNCTION__);
@@ -2860,7 +2886,7 @@ status_t ControlThread::captureStillPic()
         // Configure and start the ISP
         mISP->setSnapshotFrameFormat(width, height, format);
         mISP->setPostviewFrameFormat(pvWidth, pvHeight,
-                                     PlatformData::getPreviewFormat());
+                                     selectPostviewFormat());
 
         setExternalSnapshotBuffers(format, width, height);
 
@@ -7292,7 +7318,8 @@ status_t ControlThread::startPanorama()
             int lpwWidth, lpwHeight, pvWidth, pvHeight, pvFormat;
             IntelCameraParameters::getPanoramaLivePreviewSize(lpwWidth, lpwHeight, mParameters);
             mISP->getPostviewFrameFormat(pvWidth, pvHeight, pvFormat);
-            if (lpwWidth != pvWidth || lpwHeight != pvHeight)
+            if (lpwWidth != pvWidth || lpwHeight != pvHeight
+                || pvFormat != V4L2_PIX_FMT_NV21)
                 restartPreview(false);
         }
 
