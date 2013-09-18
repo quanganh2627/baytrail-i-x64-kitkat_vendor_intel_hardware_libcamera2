@@ -5013,8 +5013,10 @@ void ControlThread::preProcessFlashMode(CameraParameters *newParams)
 
     // Don't do anything, if not using back camera. CTS fails,
     // if we meddle with invalid flash values it sets.
-    if (!PlatformData::supportsFlash(mCameraId))
+    if (!PlatformData::supportsFlash(mCameraId)) {
+        m3AControls->setAeFlashMode(CAM_AE_FLASH_MODE_OFF);
         return;
+    }
 
     bool lowBattery = mHwcg.mFlashCI->lowBatteryForFlash();
 
