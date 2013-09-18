@@ -5260,10 +5260,12 @@ void ControlThread::preProcessFlashMode(CameraParameters *newParams)
 {
     LOG1("@%s", __FUNCTION__);
 
-    // Don't do anything, if not using back camera. CTS fails,
-    // if we meddle with invalid flash values it sets.
-    if (!PlatformData::supportsFlash(mCameraId))
+    // If there is no flash in device, then flash mode should be set
+    // as off, that shall avoid HAL to go through the preFlashSequence.
+    if (!PlatformData::supportsFlash(mCameraId)) {
+        m3AControls->setAeFlashMode(CAM_AE_FLASH_MODE_OFF);
         return;
+    }
 
     bool lowBattery = mHwcg.mFlashCI->lowBatteryForFlash();
 
