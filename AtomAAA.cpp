@@ -937,7 +937,8 @@ status_t AtomAAA::getExposureInfo(SensorAeConfig& aeConfig)
             &aeConfig.aecApexTv,
             &aeConfig.aecApexSv,
             &aeConfig.aecApexAv,
-            &aeConfig.digitalGain);
+            &aeConfig.digitalGain,
+            &aeConfig.totalGain);
 
     return NO_ERROR;
 }
@@ -1403,6 +1404,7 @@ void AtomAAA::ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate)
     /* usually the grid changes as well when the mode changes. */
     reconfigureGrid();
     ia_aiq_frame_params sensor_frame_params;
+    memset(&sensor_frame_params, 0, sizeof(sensor_frame_params));
     getSensorFrameParams(&sensor_frame_params, &m3ALibState.sensor_mode_data);
 
     struct atomisp_morph_table *gdc_table = getGdcTable(m3ALibState.sensor_mode_data.output_width, m3ALibState.sensor_mode_data.output_height);
@@ -1416,9 +1418,7 @@ void AtomAAA::ciAdvConfigure(ia_3a_isp_mode mode, float frame_rate)
     else {
         LOG1("Empty GDC table -> GDC disabled");
         m3ALibState.gdc_table_loaded = false;
-        //WORKAROUND FOR BZ:134261 - TO BE REMOVED once it is fixed
-        //mISP->setGDC(false);
-        //end of workaround
+        mISP->setGDC(false);
     }
 
     ia_3a_reconfigure(mode, frame_rate, m3ALibState.stats, &sensor_frame_params, &m3ALibState.results);
@@ -1638,12 +1638,13 @@ int AtomAAA::getAfScore(bool average_enabled)
  * @param aec_apex_Sv - Sensitivity
  * @param aec_apex_Av - Aperture
  * @param digital_gain - digital_gain
+ * @param total_gain - total_gain
  */
 void AtomAAA::getAeExpCfg(int *exp_time,
                           short unsigned int *aperture_num,
                           short unsigned int *aperture_denum,
-                     int *aec_apex_Tv, int *aec_apex_Sv, int *aec_apex_Av,
-                     float *digital_gain)
+                          int *aec_apex_Tv, int *aec_apex_Sv, int *aec_apex_Av,
+                          float *digital_gain, float *total_gain)
 {
     LOG2("@%s", __FUNCTION__);
     ia_3a_ae_result ae_res;
@@ -1656,6 +1657,8 @@ void AtomAAA::getAeExpCfg(int *exp_time,
     *aec_apex_Tv = ae_res.tv;
     *aec_apex_Sv = ae_res.sv;
     *aec_apex_Av = ae_res.av;
+    *total_gain = ((pow(2.0, ((float)ae_res.sv)/65536.0))/(pow(2.0, -7.0/4.0)))/100;
+    LOG2("total_gain: %f", *total_gain);
 }
 
 status_t AtomAAA::set3AColorEffect(const char *effect)

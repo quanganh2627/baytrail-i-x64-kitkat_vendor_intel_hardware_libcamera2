@@ -117,6 +117,7 @@ struct SensorAeConfig
     int aecApexSv;
     int aecApexAv;
     float digitalGain;
+    float totalGain;
 };
 
 enum FlashMode

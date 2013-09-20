@@ -494,13 +494,12 @@ AtomISP::~AtomISP()
      */
     if (mMode != MODE_NONE) {
         stop();
-
-        // note: AtomISP allows to stop capture without freeing, so
-        //       we need to make sure we free them here.
-        //       This is not needed for preview and recording buffers.
-        freeSnapshotBuffers();
-        freePostviewBuffers();
     }
+    // note: AtomISP allows to stop capture without freeing, so
+    //       we need to make sure we free them here.
+    //       This is not needed for preview and recording buffers.
+    freeSnapshotBuffers();
+    freePostviewBuffers();
 
     mMainDevice->close();
 
@@ -2013,15 +2012,6 @@ status_t AtomISP::stopCapture()
     dumpRawImageFlush();
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
     return NO_ERROR;
-}
-
-status_t AtomISP::releaseCaptureBuffers()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    status = freeSnapshotBuffers();
-    status |= freePostviewBuffers();
-    return status;
 }
 
 /**
@@ -3969,13 +3959,7 @@ status_t AtomISP::allocateSnapshotBuffers()
             }
         }
     } else {
-        // note: make sure client has called releaseCaptureBuffers()
-        //       at this point (clients may hold on to snapshot buffers
-        //       after capture has been stopped)
-        if (mSnapshotBuffers[0].buff != NULL) {
-            LOGW("@%s Client has not freed snapshot buffers!", __FUNCTION__);
-            freeSnapshotBuffers();
-        }
+        freeSnapshotBuffers();
 
         LOG1("@%s Allocating %d buffers of size: %d (snapshot), %d (postview)",
                 __FUNCTION__,
@@ -4193,7 +4177,7 @@ status_t AtomISP::freePostviewBuffers()
 
     for (size_t i = 0 ; i < mPostviewBuffers.size(); i++) {
         AtomBuffer &buffer = mPostviewBuffers.editItemAt(i);
-        if (mHALZSLEnabled)
+        if (buffer.gfxInfo.scalerId != -1)
             mScaler->unRegisterBuffer(buffer, ScalerService::SCALER_OUTPUT);
 
         MemoryUtils::freeAtomBuffer(buffer);
@@ -4218,6 +4202,8 @@ status_t AtomISP::freePostviewBuffers()
  */
 bool AtomISP::needNewPostviewBuffers()
 {
+    if (mHALZSLEnabled)
+        return true;
 
     if ((mPostviewBuffers.size() != (unsigned int)mConfig.num_snapshot) ||
          mPostviewBuffers.isEmpty())
@@ -4693,7 +4679,7 @@ int AtomISP::setExposure(struct atomisp_exposure *exposure)
 {
     int ret;
     ret = mMainDevice->xioctl(ATOMISP_IOC_S_EXPOSURE, exposure);
-    LOG2("%s IOCTL ATOMISP_IOC_S_EXPOSURE ret: %d\n", __FUNCTION__, ret);
+    LOG2("%s IOCTL ATOMISP_IOC_S_EXPOSURE ret: %d, gain %d, citg %d\n", __FUNCTION__, ret, exposure->gain[0], exposure->integration_time[0]);
     return ret;
 }
 

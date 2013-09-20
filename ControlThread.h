@@ -407,6 +407,26 @@ private:
         };
     };
 
+    class TemporarySetting : public RefBase
+    {
+    public:
+        TemporarySetting(ControlThread *controlThread) : mControlThread(controlThread) {}
+        virtual ~TemporarySetting() {}
+        virtual void set() = 0;   // generic setting "setter"
+        virtual void reset() = 0; // generic setting "resetter"
+    protected:
+        ControlThread *mControlThread;
+    };
+    friend class TemporarySetting;
+    class AutoReset : public RefBase // this class allows to do for arbitrary settings similar to what Mutex::AutoLock does for locks
+    {
+    public:
+        AutoReset(TemporarySetting *setting) : mTemporarySetting(setting) { mTemporarySetting->set(); }
+        ~AutoReset() { mTemporarySetting->reset(); }
+    private:
+        sp<TemporarySetting> mTemporarySetting;
+    };
+
 // private methods
 private:
 

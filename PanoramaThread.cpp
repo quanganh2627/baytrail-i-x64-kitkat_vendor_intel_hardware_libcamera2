@@ -338,7 +338,7 @@ void PanoramaThread::fullHeightSrcForThumb(AtomBuffer &img, int &srcWidth, int &
 {
     startPixel = img.width / 2 - mThumbnailWidth / 2;
     srcHeight = img.height;
-    srcWidth = img.height * mThumbnailWidth / mThumbnailHeight;
+    srcWidth = ceil((float) img.height * mThumbnailWidth / mThumbnailHeight);
     srcWidth = (srcWidth + 2) & ~0x3; // hack for scaler
 }
 

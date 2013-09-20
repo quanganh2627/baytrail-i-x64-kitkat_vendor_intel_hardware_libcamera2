@@ -520,6 +520,11 @@ void ControlThread::deinit()
         mCP = NULL;
     }
 
+    if (mCallbacksThread != NULL) {
+        mCallbacksThread->requestExitAndWait();
+        mCallbacksThread.clear();
+    }
+
     if (mISP != NULL) {
         delete mISP;
         mISP = NULL;
@@ -554,11 +559,6 @@ void ControlThread::deinit()
         if (it->id == MESSAGE_ID_SET_PARAMETERS)
             free(it->data.setParameters.params); // was strdupped, needs free
     mPostponedMessages.clear();
-
-    if (mCallbacksThread != NULL) {
-        mCallbacksThread->requestExitAndWait();
-        mCallbacksThread.clear();
-    }
 
     LOG1("@%s- complete", __FUNCTION__);
 }
@@ -906,9 +906,13 @@ void ControlThread::sceneDetected(int sceneMode, bool sceneHdr)
     LOG2("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_SCENE_DETECTED;
-    strlcpy(msg.data.sceneDetected.sceneMode, scene_mode_detected[sceneMode], (size_t)SCENE_STRING_LENGTH);
-    msg.data.sceneDetected.sceneHdr = sceneHdr;
-    mMessageQueue.send(&msg);
+    if (sceneMode >= 0 && sceneMode < NUM_SCENE_DETECTED) {
+        strlcpy(msg.data.sceneDetected.sceneMode, scene_mode_detected[sceneMode], (size_t)SCENE_STRING_LENGTH);
+        msg.data.sceneDetected.sceneHdr = sceneHdr;
+        mMessageQueue.send(&msg);
+    } else {
+        LOGW("%s: the scene mode (%d) provided is not in the defined range", __FUNCTION__, sceneMode);
+    }
 }
 
 void ControlThread::facesDetected(const ia_face_state *faceState)
@@ -1192,7 +1196,7 @@ status_t ControlThread::configureContinuousRingBuffer()
     if (mULL->isActive() || mBurstLength > 1)
         cfg.numCaptures = MAX(mULL->MAX_INPUT_BUFFERS, mBurstLength);
     else
-        cfg.numCaptures = ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0))? 3 : 1;
+        cfg.numCaptures = ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0))? 2 : 1;
 
     cfg.offset = -(mISP->shutterLagZeroAlign());
     cfg.skip = 0;
@@ -1264,8 +1268,6 @@ void ControlThread::releaseContinuousCapture(bool flushPictures)
             LOGE("Error flushing PictureThread!");
         }
     }
-
-    mISP->releaseCaptureBuffers();
 }
 
 /**
@@ -1343,7 +1345,7 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
     if (!PlatformData::snapshotResolutionSupportedByZSL(mCameraId, picWidth, picHeight)) {
         LOG1("@%s: picture-size %dx%d, disabling continuous mode",
              __FUNCTION__, picWidth, picHeight);
-        return STATE_PREVIEW_STILL;
+        goto online_preview;
     }
 
     // Low preview resolutions have known issues in continuous mode.
@@ -1352,19 +1354,19 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         vfWidth < 640 && vfHeight < 360) {
         LOG1("@%s: continuous mode not available for preview size %ux%u",
              __FUNCTION__, vfWidth, vfHeight);
-        return STATE_PREVIEW_STILL;
+        goto online_preview;
     }
 
     if (mHdr.enabled) {
         LOG1("@%s: HDR enabled, disabling continuous mode",
              __FUNCTION__);
-        return STATE_PREVIEW_STILL;
+        goto online_preview;
     }
 
     if (mBurstLength > 1 && mBurstStart >= 0) {
         LOG1("@%s: Burst length of %d requested, disabling continuous mode",
              __FUNCTION__, mBurstLength);
-        return STATE_PREVIEW_STILL;
+        goto online_preview;
     }
 
     if (mBurstStart < 0) {
@@ -1374,7 +1376,7 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         if (mBurstLength > maxBufSize - 1) {
              LOG1("@%s: Burst length of %d with offset %d requested, disabling continuous mode",
                   __FUNCTION__, mBurstLength, mBurstStart);
-            return STATE_PREVIEW_STILL;
+             goto online_preview;
         }
 
         // Bracketing not supported in continuous mode as the number
@@ -1382,22 +1384,30 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         if (mBracketManager->getBracketMode() != BRACKET_NONE) {
             LOG1("@%s: Bracketing requested, disabling continuous mode",
                  __FUNCTION__);
-            return STATE_PREVIEW_STILL;
+            goto online_preview;
         }
     }
 
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
         LOG1("@%s: Raw dump enabled, disabling continuous mode", __FUNCTION__);
-        return STATE_PREVIEW_STILL;
+        goto online_preview;
     }
 
     if (mISP->getLowLight()) {
         LOG1("@%s: ANR enabled, disabling continuous mode", __FUNCTION__);
-        return STATE_PREVIEW_STILL;
+        goto online_preview;
     }
-
     LOG1("@%s: Selecting continuous still preview mode", __FUNCTION__);
     return STATE_CONTINUOUS_CAPTURE;
+
+online_preview:
+    // In online preview we cannot support other than the standard update mode
+    if (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD) {
+        mPreviewUpdateMode = IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD;
+        LOGW("Forcing preview update mode to standard, conflicting settings");
+    }
+    return STATE_PREVIEW_STILL;
+
 }
 
 status_t ControlThread::startPreviewCore(bool videoMode)
@@ -1448,56 +1458,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         if (initContinuousCapture() != NO_ERROR) {
             return BAD_VALUE;
         }
-    }
-
-    // Update focus areas for the proper window size
-    if (!mFaceDetectionActive && !mFocusAreas.isEmpty()) {
-        size_t winCount(mFocusAreas.numOfAreas());
-        CameraWindow *focusWindows = new CameraWindow[winCount];
-        mFocusAreas.toWindows(focusWindows);
-        convertAfWindows(focusWindows, winCount);
-        if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
-            LOGE("Could not set AF windows. Resseting the AF to %d", CAM_AF_MODE_AUTO);
-            m3AControls->setAfMode(CAM_AF_MODE_AUTO);
-        }
-        delete[] focusWindows;
-        focusWindows = NULL;
-    }
-
-    // Update the spot mode window for the proper window size.
-    if (m3AControls->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT && mMeteringAreas.isEmpty()) {
-        // Update for the "fixed" AE spot window (Intel extension):
-        LOG1("%s: setting forced spot window.", __FUNCTION__);
-        AAAWindowInfo aaaWindow;
-        m3AControls->getGridWindow(aaaWindow);
-        updateSpotWindow(aaaWindow.width, aaaWindow.height);
-    } else if (m3AControls->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT) {
-        // This update is when the AE metering is internally set to
-        // "spot" mode by the HAL, when user has set the AE metering window.
-        LOG1("%s: setting metering area with spot window.", __FUNCTION__);
-        size_t winCount(mMeteringAreas.numOfAreas());
-        CameraWindow *meteringWindows = new CameraWindow[winCount];
-        CameraWindow aeWindow;
-        mMeteringAreas.toWindows(meteringWindows);
-
-        /**
-         * Temporary support for both 3A libs.
-         * Intel 3A (aka AIQ) uses different coordinates than
-         * Acute Logic 3A.
-         */
-        if (PlatformData::supportAIQ()) {
-            convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
-        } else {
-            AAAWindowInfo aaaWindow;
-            m3AControls->getGridWindow(aaaWindow);
-            convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
-        }
-
-        if (m3AControls->setAeWindow(&aeWindow) != NO_ERROR) {
-            LOGW("Error setting AE metering window. Metering will not work");
-        }
-        delete[] meteringWindows;
-        meteringWindows = NULL;
     }
 
     const char* cb_format_s = mParameters.getPreviewFormat();
@@ -1584,6 +1544,57 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         if (mSensorSyncManager != NULL)
             mISP->attachObserver(mSensorSyncManager.get(), OBSERVE_FRAME_SYNC_SOF);
     }
+
+    // Update focus areas for the proper window size
+    if (!mFaceDetectionActive && !mFocusAreas.isEmpty()) {
+        size_t winCount(mFocusAreas.numOfAreas());
+        CameraWindow *focusWindows = new CameraWindow[winCount];
+        mFocusAreas.toWindows(focusWindows);
+        convertAfWindows(focusWindows, winCount);
+        if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
+            LOGE("Could not set AF windows. Resseting the AF to %d", CAM_AF_MODE_AUTO);
+            m3AControls->setAfMode(CAM_AF_MODE_AUTO);
+        }
+        delete[] focusWindows;
+        focusWindows = NULL;
+    }
+
+    // Update the spot mode window for the proper window size.
+    if (m3AControls->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT && mMeteringAreas.isEmpty()) {
+        // Update for the "fixed" AE spot window (Intel extension):
+        LOG1("%s: setting forced spot window.", __FUNCTION__);
+        AAAWindowInfo aaaWindow;
+        m3AControls->getGridWindow(aaaWindow);
+        updateSpotWindow(aaaWindow.width, aaaWindow.height);
+    } else if (m3AControls->getAeMeteringMode() == CAM_AE_METERING_MODE_SPOT) {
+        // This update is when the AE metering is internally set to
+        // "spot" mode by the HAL, when user has set the AE metering window.
+        LOG1("%s: setting metering area with spot window.", __FUNCTION__);
+        size_t winCount(mMeteringAreas.numOfAreas());
+        CameraWindow *meteringWindows = new CameraWindow[winCount];
+        CameraWindow aeWindow;
+        mMeteringAreas.toWindows(meteringWindows);
+
+        /**
+         * Temporary support for both 3A libs.
+         * Intel 3A (aka AIQ) uses different coordinates than
+         * Acute Logic 3A.
+         */
+        if (PlatformData::supportAIQ()) {
+            convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
+        } else {
+            AAAWindowInfo aaaWindow;
+            m3AControls->getGridWindow(aaaWindow);
+            convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
+        }
+
+        if (m3AControls->setAeWindow(&aeWindow) != NO_ERROR) {
+            LOGW("Error setting AE metering window. Metering will not work");
+        }
+        delete[] meteringWindows;
+        meteringWindows = NULL;
+    }
+
     // ControlThread must be the observer before PreviewThread to ensure that
     // the recording buffer dequeue handling message is guaranteed to happen
     // before any possible preview return buffer handlers. Since the preview
@@ -1721,7 +1732,6 @@ status_t ControlThread::stopCapture()
         LOGE("Error stopping ISP!");
         return status;
     }
-    status = mISP->releaseCaptureBuffers();
 
     mState = STATE_STOPPED;
     burstStateReset();
@@ -2256,8 +2266,7 @@ status_t ControlThread::handleMessagePanoramaPicture() {
 bool ControlThread::isBurstRunning()
 {
     if (mBurstCaptureDoneNum != -1 &&
-        mBurstLength > 1 &&
-        mBurstCaptureDoneNum < mBurstLength)
+        mBurstLength > 1)
         return true;
 
     return false;
@@ -2790,6 +2799,8 @@ status_t ControlThread::captureStillPic()
 
     stopFaceDetection();
 
+    sp<AutoReset> autoReset;
+
     if (mBurstLength <= 1) {
         if (m3AControls->isIntel3A()) {
             // If flash mode is not ON or TORCH, check for other
@@ -2813,6 +2824,20 @@ status_t ControlThread::captureStillPic()
             if (flashOn) {
                 if (m3AControls->getAeMode() != CAM_AE_MODE_MANUAL &&
                         flashMode != CAM_AE_FLASH_MODE_TORCH) {
+                    // first a workaround for BZ: 133025. Set ae metering mode to auto for the flash duration
+                    // we can safely use a temporary setting since any client setParameters will be postponed
+                    // for the duration of the capture
+                    // this class defines the temporary setting behavior
+                    class TemporaryAeMetering : public TemporarySetting {
+                    public:
+                        TemporaryAeMetering(ControlThread *controlThread) : TemporarySetting(controlThread) { mMode = mControlThread->m3AControls->getAeMeteringMode(); }
+                        void set() { mControlThread->m3AControls->setAeMeteringMode(CAM_AE_METERING_MODE_AUTO); }
+                        void reset() { mControlThread->m3AControls->setAeMeteringMode(mMode); }
+                        MeteringMode mMode;
+                    };
+                    // instantiate - the smart pointers take care of destruction
+                    autoReset = new AutoReset(new TemporaryAeMetering(this));
+
                     flashSequenceStarted = true;
                     // hide preview frames already during pre-flash sequence
                     mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
@@ -3121,11 +3146,15 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     mBurstCaptureNum++;
 
     // Do jpeg encoding
-
+    bool hdrSaveOrig = (mHdr.enabled && mHdr.saveOrig && picMetaData.aeConfig->evBias == 0);
     bool doEncode = false;
-    if (!mHdr.enabled || (mHdr.enabled && mHdr.saveOrig && picMetaData.aeConfig->evBias == 0)) {
+    if (!mHdr.enabled || hdrSaveOrig) {
         doEncode = true;
         mCallbacksThread->shutterSound();
+        // in case of save-original, let hdrCompose do the recycling
+        if (hdrSaveOrig) {
+            snapshotBuffer.status = FRAME_STATUS_SKIPPED;
+        }
         LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
         status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
     }
@@ -3821,13 +3850,6 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
         }
     } else if (mState == STATE_CAPTURE || mState == STATE_CONTINUOUS_CAPTURE) {
 
-        if (mCaptureSubState == STATE_CAPTURE_IDLE) {
-            LOG1("Recycling buffer after canceled post-capture-processing");
-        } else {
-            LOG1("CaptureSubState %s -> PICTURE DONE", sCaptureSubstateStrings[mCaptureSubState]);
-            mCaptureSubState = STATE_CAPTURE_PICTURE_DONE;
-        }
-
         /**
          * Snapshot buffer recycle
          * Buffers marked with FRAME_STATUS SKIPPED are not meant to be made
@@ -3842,6 +3864,14 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
          *
          */
         if (msg->snapshotBuf.status != FRAME_STATUS_SKIPPED) {
+            if (mCaptureSubState == STATE_CAPTURE_IDLE) {
+                LOG1("Recycling buffer after canceled post-capture-processing");
+            } else {
+                LOG1("CaptureSubState %s -> PICTURE DONE", sCaptureSubstateStrings[mCaptureSubState]);
+                mCaptureSubState = STATE_CAPTURE_PICTURE_DONE;
+            }
+
+
             msg->snapshotBuf.status = FRAME_STATUS_OK;
             if (findBufferByData(&msg->snapshotBuf, &mAllocatedSnapshotBuffers) == NULL) {
                 LOGE("Stale snapshot buffer returned... this should not happen");
@@ -3855,20 +3885,21 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             }
         }
 
-        // transit to idle once all buffers are returned
-        if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
-            LOG1("CaptureSubState %s -> IDLE",sCaptureSubstateStrings[mCaptureSubState]);
-            mCaptureSubState = STATE_CAPTURE_IDLE;
-        }
-
         if (isBurstRunning()) {
             ++mBurstCaptureDoneNum;
             LOG2("Burst req %d done %d len %d",
                  mBurstCaptureNum, mBurstCaptureDoneNum, mBurstLength);
-            if (mBurstCaptureDoneNum >= mBurstLength) {
+            if (mBurstCaptureDoneNum >= mBurstLength &&
+                (!mHdr.enabled || msg->snapshotBuf.dataPtr == mHdr.outMainBuf.dataPtr)) {
                 LOGW("Last pic in burst received, terminating");
                 burstStateReset();
             }
+        }
+
+        // transit to idle once all buffers are returned
+        if (!isBurstRunning() && mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
+            LOG1("CaptureSubState %s -> IDLE",sCaptureSubstateStrings[mCaptureSubState]);
+            mCaptureSubState = STATE_CAPTURE_IDLE;
         }
 
     } else {
@@ -5178,6 +5209,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
+                newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
@@ -5201,6 +5234,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
                     newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
                 }
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
+                newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
                 newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
@@ -5227,6 +5262,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
                     newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
                 }
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
+                newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
                 newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
@@ -5253,6 +5290,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
                     newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
                 }
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
+                newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
                 newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
@@ -5279,6 +5318,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
                     newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
                 }
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
+                newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
                 newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
@@ -5304,9 +5345,11 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 if (!PlatformData::isFixedFocusCamera(mCameraId)) {
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
                 }
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
+                newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, PlatformData::supportedFocusModes(mCameraId));
                 newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
@@ -5329,6 +5372,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
                     newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
                 }
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
+                newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
                 newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
@@ -5355,6 +5400,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_MACRO);
                     newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "macro,continuous-picture");
                 }
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
+                newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
                 newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
@@ -5395,6 +5442,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
                     newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,infinity,fixed,macro,continuous-video,continuous-picture");
                 }
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::supportedIso(mCameraId));
+                newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
                 newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, "off,50hz,60hz,auto");
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
@@ -5427,11 +5476,14 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
         // we should update Intel params setting to HW, and remove them here.
         if (!mIntelParamsAllowed) {
 
+            processParamIso(oldParams, newParams);
             processParamAwbMappingMode(oldParams, newParams);
             processParamXNR_ANR(oldParams, newParams, needRestart);
 
-            newParams->remove(IntelCameraParameters::KEY_AWB_MAPPING_MODE);
+            newParams->remove(IntelCameraParameters::KEY_SUPPORTED_ISO);
+            newParams->remove(IntelCameraParameters::KEY_ISO);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES);
+            newParams->remove(IntelCameraParameters::KEY_AWB_MAPPING_MODE);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_XNR);
             newParams->remove(IntelCameraParameters::KEY_XNR);
@@ -6416,12 +6468,8 @@ status_t ControlThread::createAtom3A()
     status_t status = NO_ERROR;
 
     if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
-        HWControlGroup hwcg;
-
         if (mSensorSyncManager != NULL)
-            hwcg.mSensorCI = (IHWSensorControl*) mSensorSyncManager.get();
-        else
-            hwcg.mSensorCI = (IHWSensorControl*) mISP;
+            mHwcg.mSensorCI = (IHWSensorControl*) mSensorSyncManager.get();
 
         if(PlatformData::supportAIQ()) {
             m3AControls = new AtomAIQ(mHwcg);
@@ -6970,7 +7018,6 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
 status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* postviewBuffer)
 {
     LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
 
     // Initialize the HDR CI input buffers (main/postview) for this capture
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer->dataPtr;
@@ -7005,12 +7052,10 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height,
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].format);
 
-    status = mCP->computeCDF(mHdr.ciBufIn, mBurstCaptureNum);
-    if (status == NO_ERROR) {
-        mHdr.inputBuffers[mBurstCaptureNum].snapshotBuf = *snapshotBuffer;
-        mHdr.inputBuffers[mBurstCaptureNum].postviewBuf = *postviewBuffer;
-    }
-    return status;
+    mHdr.inputBuffers[mBurstCaptureNum].snapshotBuf = *snapshotBuffer;
+    mHdr.inputBuffers[mBurstCaptureNum].postviewBuf = *postviewBuffer;
+
+    return NO_ERROR;
 }
 
 void ControlThread::hdrRelease()

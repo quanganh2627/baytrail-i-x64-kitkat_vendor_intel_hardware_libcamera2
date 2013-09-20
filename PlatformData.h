@@ -117,6 +117,13 @@ class PlatformData {
      */
     static status_t readSpId(String8& spIdName, int& spIdValue);
 
+    /**
+     * Validates whether the given cameraId is within the allowed range
+     *
+     * \param cameraId  The camera ID to validate
+     */
+    static bool validCameraId(int cameraId, const char* functionName);
+
  public:
 
     static AiqConf AiqConfig;
@@ -914,6 +921,13 @@ class PlatformData {
     */
     static bool synchronizeExposure(void);
 
+    /**
+     * Used Ultra Low Light implementation
+     *
+     * \return true if Intel ULL implementation is used
+     */
+    static bool useIntelULL(void);
+
 };
 
 /**
@@ -943,6 +957,7 @@ public:
         mPreviewFormat = V4L2_PIX_FMT_NV12;
         mSensorGainLag = 0;
         mSensorExposureLag = 1;
+        mUseIntelULL = false;
    };
 
 protected:
@@ -1245,6 +1260,9 @@ protected:
     int mSensorGainLag;
 
     int mSensorExposureLag;
+
+    // Ultra Low Light
+    bool mUseIntelULL;
 };
 
 } /* namespace android */

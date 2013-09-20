@@ -21,6 +21,7 @@
 #include "Callbacks.h"  // For memory allocation only
 #include "PictureThread.h" // For Image metadata declaration
 #include "AtomCommon.h"
+#include "ia_cp_types.h"
 
 namespace android {
 
@@ -78,7 +79,7 @@ public:
      *
      *  TODO: They should eventually come from CPF
      **/
-    static int ULL_ACTIVATION_APEX_SV_THRESHOLD;
+    static float ULL_ACTIVATION_GAIN_THRESHOLD;
 
 
     /**
@@ -167,15 +168,23 @@ private:
 private:
     status_t initMorphoLib(int w, int h, int aPreset) STUB_BODY_STAT
     status_t configureMorphoLib(void) STUB_BODY_STAT
+    status_t processMorphoULL() STUB_BODY_STAT
     void deinitMorphoLib() STUB_BODY
     void freeWorkingBuffer() STUB_BODY
     void AtomToMorphoBuffer(const   AtomBuffer *atom, void* morpho) STUB_BODY
+
+    status_t processIntelULL() STUB_BODY_STAT
+    status_t initIntelULL(int w, int h) STUB_BODY_STAT
+    void deinitIntelULL() STUB_BODY
+    void AtomToIaFrameBuffer(const AtomBuffer *atom, ia_frame* frame) STUB_BODY
+
     void setState(enum State aState);
     enum State getState();
 
 private:
     struct MorphoULL;       /*!> Forward declaration of the opaque struct for Morpho's algo configuration */
-    MorphoULL   *mMorphoCtrl;
+    MorphoULL        *mMorphoCtrl;
+    ia_cp_ull_config *mIntelUllCfg;
     Callbacks   *mCallbacks;
     AtomBuffer  mOutputBuffer;  /*!> Output of the ULL processing. this is actually the first input buffer passed */
     AtomBuffer  mOutputPostView;  /*!> post view image for the first snapshot, used as output one */
@@ -196,6 +205,7 @@ private:
     ULLMode        mUserMode; /*!> User selected mode of operation of the ULL feature */
     Mutex          mStateMutex; /*!> Protects the trigger and state variable that are queried by different threads*/
     bool           mTrigger;  /*!> Only valid if in auto mode. It signal that ULL should be used. */
+    bool           mUseIntelULL; /*!> Use Intel ULL algorithm instead of Morpho. */
 };
 }  //namespace android
 #endif /* ANDROID_LIBCAMERA_ULTRALOWLIGHT_H_ */

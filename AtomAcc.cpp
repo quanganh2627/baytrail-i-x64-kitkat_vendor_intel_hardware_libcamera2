@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
+#define LOG_TAG "AtomAcc"
+
 #include "AtomAcc.h"
 #include "ICameraHwControls.h"
 #include <stdio.h>
-
 
 namespace android {
 
