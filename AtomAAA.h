@@ -135,7 +135,7 @@ private:
                      short unsigned int *aperture_num,
                      short unsigned int *aperture_denum,
                      int *aec_apex_Tv, int *aec_apex_Sv, int *aec_apex_Av,
-                     float *digital_gain);
+                     float *digital_gain, float *total_gain);
 
     void getSensorFrameParams(ia_aiq_frame_params *frame_params,
                               struct atomisp_sensor_mode_data *sensor_mode_data);

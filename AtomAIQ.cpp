@@ -892,7 +892,8 @@ status_t AtomAIQ::getExposureInfo(SensorAeConfig& aeConfig)
             &aeConfig.aecApexTv,
             &aeConfig.aecApexSv,
             &aeConfig.aecApexAv,
-            &aeConfig.digitalGain);
+            &aeConfig.digitalGain,
+            &aeConfig.totalGain);
 
     return NO_ERROR;
 }
@@ -2210,7 +2211,8 @@ void AtomAIQ::getAeExpCfg(int *exp_time,
                           short unsigned int *aperture_num,
                           short unsigned int *aperture_denum,
                      int *aec_apex_Tv, int *aec_apex_Sv, int *aec_apex_Av,
-                     float *digital_gain)
+                     float *digital_gain,
+                     float *total_gain)
 {
     LOG2("@%s", __FUNCTION__);
 
@@ -2228,6 +2230,14 @@ void AtomAIQ::getAeExpCfg(int *exp_time,
         *aec_apex_Tv = -1.0 * (log10((double)(latest_ae_results->exposure)->exposure_time_us/1000000) / log10(2.0)) * 65536;
         *aec_apex_Av = log10(pow((latest_ae_results->exposure)->aperture_fn, 2))/log10(2.0) * 65536;
         *aec_apex_Sv = log10(pow(2.0, -7.0/4.0) * (latest_ae_results->exposure)->iso) / log10(2.0) * 65536;
+        if (*digital_gain > float(0)) {
+            *total_gain = latest_ae_results->exposure->analog_gain * *digital_gain;
+        }
+        else {
+            *total_gain = latest_ae_results->exposure->analog_gain;
+        }
+
+        LOG2("total_gain: %f  digital gain: %f", *total_gain, *digital_gain);
     }
 }
 

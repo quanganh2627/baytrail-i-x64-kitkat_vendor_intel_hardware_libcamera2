@@ -906,9 +906,13 @@ void ControlThread::sceneDetected(int sceneMode, bool sceneHdr)
     LOG2("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_SCENE_DETECTED;
-    strlcpy(msg.data.sceneDetected.sceneMode, scene_mode_detected[sceneMode], (size_t)SCENE_STRING_LENGTH);
-    msg.data.sceneDetected.sceneHdr = sceneHdr;
-    mMessageQueue.send(&msg);
+    if (sceneMode >= 0 && sceneMode < NUM_SCENE_DETECTED) {
+        strlcpy(msg.data.sceneDetected.sceneMode, scene_mode_detected[sceneMode], (size_t)SCENE_STRING_LENGTH);
+        msg.data.sceneDetected.sceneHdr = sceneHdr;
+        mMessageQueue.send(&msg);
+    } else {
+        LOGW("%s: the scene mode (%d) provided is not in the defined range", __FUNCTION__, sceneMode);
+    }
 }
 
 void ControlThread::facesDetected(const ia_face_state *faceState)
@@ -1192,7 +1196,7 @@ status_t ControlThread::configureContinuousRingBuffer()
     if (mULL->isActive() || mBurstLength > 1)
         cfg.numCaptures = MAX(mULL->MAX_INPUT_BUFFERS, mBurstLength);
     else
-        cfg.numCaptures = ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0))? 3 : 1;
+        cfg.numCaptures = ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0))? 2 : 1;
 
     cfg.offset = -(mISP->shutterLagZeroAlign());
     cfg.skip = 0;
@@ -1343,7 +1347,7 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
     if (!PlatformData::snapshotResolutionSupportedByZSL(mCameraId, picWidth, picHeight)) {
         LOG1("@%s: picture-size %dx%d, disabling continuous mode",
              __FUNCTION__, picWidth, picHeight);
-        return STATE_PREVIEW_STILL;
+        goto online_preview;
     }
 
     // Low preview resolutions have known issues in continuous mode.
@@ -1352,19 +1356,19 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         vfWidth < 640 && vfHeight < 360) {
         LOG1("@%s: continuous mode not available for preview size %ux%u",
              __FUNCTION__, vfWidth, vfHeight);
-        return STATE_PREVIEW_STILL;
+        goto online_preview;
     }
 
     if (mHdr.enabled) {
         LOG1("@%s: HDR enabled, disabling continuous mode",
              __FUNCTION__);
-        return STATE_PREVIEW_STILL;
+        goto online_preview;
     }
 
     if (mBurstLength > 1 && mBurstStart >= 0) {
         LOG1("@%s: Burst length of %d requested, disabling continuous mode",
              __FUNCTION__, mBurstLength);
-        return STATE_PREVIEW_STILL;
+        goto online_preview;
     }
 
     if (mBurstStart < 0) {
@@ -1374,7 +1378,7 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         if (mBurstLength > maxBufSize - 1) {
              LOG1("@%s: Burst length of %d with offset %d requested, disabling continuous mode",
                   __FUNCTION__, mBurstLength, mBurstStart);
-            return STATE_PREVIEW_STILL;
+             goto online_preview;
         }
 
         // Bracketing not supported in continuous mode as the number
@@ -1382,22 +1386,30 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         if (mBracketManager->getBracketMode() != BRACKET_NONE) {
             LOG1("@%s: Bracketing requested, disabling continuous mode",
                  __FUNCTION__);
-            return STATE_PREVIEW_STILL;
+            goto online_preview;
         }
     }
 
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
         LOG1("@%s: Raw dump enabled, disabling continuous mode", __FUNCTION__);
-        return STATE_PREVIEW_STILL;
+        goto online_preview;
     }
 
     if (mISP->getLowLight()) {
         LOG1("@%s: ANR enabled, disabling continuous mode", __FUNCTION__);
-        return STATE_PREVIEW_STILL;
+        goto online_preview;
     }
-
     LOG1("@%s: Selecting continuous still preview mode", __FUNCTION__);
     return STATE_CONTINUOUS_CAPTURE;
+
+online_preview:
+    // In online preview we cannot support other than the standard update mode
+    if (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD) {
+        mPreviewUpdateMode = IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD;
+        LOGW("Forcing preview update mode to standard, conflicting settings");
+    }
+    return STATE_PREVIEW_STILL;
+
 }
 
 status_t ControlThread::startPreviewCore(bool videoMode)
@@ -5195,6 +5207,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
+                newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
@@ -5218,6 +5232,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
                     newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
                 }
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
+                newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
                 newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
@@ -5244,6 +5260,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
                     newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
                 }
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
+                newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
                 newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
@@ -5270,6 +5288,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
                     newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
                 }
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
+                newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
                 newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
@@ -5296,6 +5316,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
                     newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
                 }
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
+                newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
                 newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
@@ -5321,6 +5343,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                 if (!PlatformData::isFixedFocusCamera(mCameraId)) {
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
                 }
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
+                newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
                 newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, PlatformData::supportedFocusModes(mCameraId));
@@ -5346,6 +5370,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
                     newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
                 }
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
+                newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
                 newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
@@ -5372,6 +5398,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_MACRO);
                     newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "macro,continuous-picture");
                 }
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
+                newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
                 newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
@@ -5412,6 +5440,8 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
                     newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,infinity,fixed,macro,continuous-video,continuous-picture");
                 }
+                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::supportedIso(mCameraId));
+                newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
                 newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, "off,50hz,60hz,auto");
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
@@ -5444,11 +5474,14 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
         // we should update Intel params setting to HW, and remove them here.
         if (!mIntelParamsAllowed) {
 
+            processParamIso(oldParams, newParams);
             processParamAwbMappingMode(oldParams, newParams);
             processParamXNR_ANR(oldParams, newParams, needRestart);
 
-            newParams->remove(IntelCameraParameters::KEY_AWB_MAPPING_MODE);
+            newParams->remove(IntelCameraParameters::KEY_SUPPORTED_ISO);
+            newParams->remove(IntelCameraParameters::KEY_ISO);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES);
+            newParams->remove(IntelCameraParameters::KEY_AWB_MAPPING_MODE);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES);
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_XNR);
             newParams->remove(IntelCameraParameters::KEY_XNR);
