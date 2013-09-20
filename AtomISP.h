@@ -406,6 +406,9 @@ private:
     status_t applySensorFlip(void);
     void fetchIspVersions();
 
+    // TODO: Remove once BZ #119181 gets fixed by the firmware team!!
+    int detectCorruptStatistics(struct atomisp_3a_statistics *statistics);
+
 private:
     // AtomIspObserver
     IObserverSubject* observerSubjectByType(ObserverType t);
@@ -576,9 +579,10 @@ private:
     bool mHighSpeedEnabled;
 
     // Sensor helper fields
-    Vector <v4l2_fmtdesc>    mSensorSupportedFormats;     /*!> List of V4L2 pixel format supported by the sensor */
+    Vector <v4l2_fmtdesc>    mSensorSupportedFormats;     /*!< List of V4L2 pixel format supported by the sensor */
     int                      mRawBayerFormat;
-
+    bool mFlashIsOn;                                    //!< Used in corrupt statistics detection to avoid dropping
+                                                        // stats when flash is used */
 }; // class AtomISP
 
 }; // namespace android
