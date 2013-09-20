@@ -5005,74 +5005,12 @@ int AtomISP::setIspParameter(struct atomisp_parm *isp_param)
     return ret;
 }
 
-int AtomISP::getIspStatistics(struct atomisp_3a_statistics *statistics,
-                              bool isFlashUsed)
+int AtomISP::getIspStatistics(struct atomisp_3a_statistics *statistics)
 {
     LOG2("@%s", __FUNCTION__);
-
-    int ret = 0;
+    int ret;
     ret = mMainDevice->xioctl(ATOMISP_IOC_G_3A_STAT, statistics);
     LOG2("%s IOCTL ATOMISP_IOC_G_3A_STAT ret: %d\n", __FUNCTION__, ret);
-
-    if (ret == 0 && isOfflineCaptureRunning()) {
-        // Detect the corrupt stats only for offline (continous) capture.
-        // TODO: This hack to be removed, when BZ #119181 is fixed
-        ret = detectCorruptStatistics(statistics, isFlashUsed);
-    }
-
-    return ret;
-}
-
-//
-// TODO: Remove this function once BZ #119181 gets fixed by the firmware team!
-//
-int AtomISP::detectCorruptStatistics(struct atomisp_3a_statistics *statistics, bool isFlashUsed)
-{
-    LOG2("@%s", __FUNCTION__);
-    int ret = 0;
-
-    static long long int prev_ae_y = 0;
-    static unsigned corruptCounter = 0;
-    long long int ae_y = 0;
-    double ae_ref;          /* Scene reflectance(18% ... center 144% ... saturated) */
-    // Constants for adjusting the "algorithm" behavior:
-    const int CORRUPT_STATS_DIFF_THRESHOLD = 200000;
-    const unsigned int CORRUPT_STATS_RETRY_THRESHOLD = 2;
-
-    for (unsigned int i = 0; i < statistics->grid_info.s3a_width*statistics->grid_info.s3a_height; ++i) {
-        ae_y += statistics->data[i].ae_y;
-    }
-
-    ae_y /= (statistics->grid_info.s3a_width * statistics->grid_info.s3a_height);
-    ae_ref = 1.0 * ae_y / (statistics->grid_info.s3a_bqs_per_grid_cell * statistics->grid_info.s3a_bqs_per_grid_cell);
-    ae_ref = ae_ref * 144 / (1<<13);
-
-    LOG2("AEStatistics (Ref:%3.1f Per Ave:%lld)", ae_ref, ae_y);
-    LOG2("flash used %d", isFlashUsed);
-
-    // Drop the stats, if decided that they are corrupt. This method is now a heuristic one,
-    // based on the decision what we consider corrupt. Threshold can be adjusted.
-    if (prev_ae_y != 0 && llabs(prev_ae_y - ae_y) > CORRUPT_STATS_DIFF_THRESHOLD &&
-        !isFlashUsed) {
-        // We have already got first stats (prev_ae_y != 0), consider the stats over the
-        // threshold corrupt.
-        // NOTE: we must not drop stats during pre-flash.
-        LOG2("@%s: \"corrupt\" stats.", __FUNCTION__);
-        ++corruptCounter;
-        ret = -1;
-    } else if (corruptCounter >= CORRUPT_STATS_RETRY_THRESHOLD) {
-        // clear counter once in a while, so we won't always do corrupt detection
-        // and allow some statistics to be passed,
-        // caller will re-run this function and try to refetch statistics upon EAGAIN
-        ae_y = 0;
-        corruptCounter = 0;
-        ret = EAGAIN;
-        LOG2("@%s: return EAGAIN", __FUNCTION__);
-    }
-
-    // Save the recent statistics
-    prev_ae_y = ae_y;
-
     return ret;
 }
 
