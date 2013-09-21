@@ -2456,6 +2456,12 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
  * dropped leading to halved frame rate. Add control V4L2_CID_ENABLE_VFPP to
  * disable vf_pp for still preview.
  *
+ * Workaround 5: The camera firmware doesn't support video downscaling. For the
+ * sensor imx132, it doesn't support 480p output.
+ * To keep same FOV when recording at 480p. We need to configure preview size to
+ * the max supported sensor output size with the same aspect as 480p.
+ * BZ 116055
+ *
  * This mode can be enabled by setting VFPPLimitedResolutionList to a proper
  * value for the platform in the camera_profiles.xml. If e.g. for resolution
  * 1024*768 the FPS drops to half the normal because VFPP is too slow
@@ -2509,6 +2515,16 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
                     LOG1("change preview size to 640x360 due to DVS on");
                 } else {
                     LOG1("no need change preview size: %dx%d", previewWidth, previewHeight);
+                }
+        }
+        //Workaround 5, video recording FOV issue
+        const char manUsensorBName[] = "imx132";
+        if (mCameraInput && (strncmp(mCameraInput->name, manUsensorBName, sizeof(manUsensorBName) - 1) == 0)) {
+                if ((previewWidth == 720) && (previewHeight == 480)) {
+                        LOGI("480p recording change preview size to 1620x1080 and \
+                                        video size to 720x480");
+                        params->setPreviewSize(1620, 1080);
+                        params->setVideoSize(720, 480);
                 }
         }
 
