@@ -345,11 +345,10 @@ status_t AtomAIQ::setAfWindow(const CameraWindow *window)
     if (window[0].x_left == window[0].x_right && window[0].y_top == window[0].y_bottom &&
         window[0].x_left == 0 && window[0].y_top == 0) {
             setAfMeteringMode(ia_aiq_af_metering_mode_auto);
-            LOGD("LASSI: Af window NULL, metering mode auto");
     } else {
         // When window is set, obey the coordinates. Use touch.
         setAfMeteringMode(ia_aiq_af_metering_mode_touch);
-        LOGD("LASSI: Af window not NULL, metering mode touch");
+        LOG1("Af window not NULL, metering mode touch");
     }
 
     mAfInputParameters.focus_rect->left = window[0].x_left;
