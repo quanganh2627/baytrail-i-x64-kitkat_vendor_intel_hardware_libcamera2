@@ -930,7 +930,7 @@ status_t AtomISP::applySensorFlip(void)
 
     // workaround for the imx132, this code will be removed in the future
     if (strstr(mCameraInput->name, "imx132"))
-        sensorFlip = PlatformData::SENSOR_FLIP_H;
+        sensorFlip = PlatformData::SENSOR_FLIP_H | PlatformData::SENSOR_FLIP_V;
 
     if (sensorFlip == PlatformData::SENSOR_FLIP_NA
         || sensorFlip == PlatformData::SENSOR_FLIP_OFF)
