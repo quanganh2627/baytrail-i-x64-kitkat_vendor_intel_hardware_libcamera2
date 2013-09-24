@@ -28,7 +28,7 @@ public:
     /* **********************************************************
      * Constructor/Destructor
      */
-    IDvs(HWControlGroup &hwcg): mIsp(hwcg.mIspCI) {};
+    IDvs(HWControlGroup &hwcg): mIsp(hwcg.mIspCI), mSensorCI(hwcg.mSensorCI) {};
     virtual ~IDvs() {};
     virtual status_t reconfigure() = 0;
     virtual bool enable(const CameraParameters& params) = 0;
@@ -36,6 +36,7 @@ public:
 
 protected:
     IHWIspControl *mIsp;
+    IHWSensorControl *mSensorCI;
 
 };
 

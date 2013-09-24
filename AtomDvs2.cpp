@@ -20,32 +20,38 @@
 
 namespace android {
 
-#define DIGITAL_ZOOM_RATIO 1.0
+#define DIGITAL_ZOOM_RATIO 1.0f
 #define DVS_MIN_ENVELOPE 6
-#define NUMS_DVS2_STATS_BUF 8
+#define DUMP_DVSLOG     "/data/dvs_log"
+#define TEST_FRAMES 300
+#define LOG_LEN 4096
 
-static ia_dvs2_axis_weight axis_weight = {80, 15, 5, 0, 0};
-static ia_dvs2_distortion_coefs dvs2_distortion_coefs = {
-    0.f, 0.f, 0.f, 0.f, 0.f};
+//workaround: when DVS is on, the first 2 frames are greenish, need to be skipped.
+#define DVS_SKIP_FRAMES 2
 
+bool AtomDvs2::mDumpLogEnabled = false;
 AtomDvs2::AtomDvs2(HWControlGroup &hwcg) :
     IDvs(hwcg)
-    ,mStatistics(NULL)
+    ,mDvs2stats(NULL)
+    ,mState(NULL)
     ,mDvs2Config(NULL)
-    ,mEnabled(false)
+    ,mDVSEnabled(false)
     ,mZoom(0)
     ,mNeedRun(false)
 {
     LOG1("@%s", __FUNCTION__);
-    m_dvs2_characteristics.num_axis = ia_dvs2_algorihm_6_axis;
-
+    mDumpLogEnabled = gLogLevel & CAMERA_DEBUG_DVS2_DUMP;
+    mDvs2Env.vdebug = debugPrint;
+    mDvs2Env.verror = debugPrint;
+    mDvs2Env.vinfo = debugPrint;
+    mDvs2Characteristics.num_axis = ia_dvs2_algorihm_0_axis;
     /**< effective vertical scan ratio, used for rolling correction
       (Non-blanking ration of frame interval) */
-    m_dvs2_characteristics.nonblanking_ratio = 0.88f;
-    m_dvs2_characteristics.min_local_motion = 0.00f;
+    mDvs2Characteristics.nonblanking_ratio = 0.88f;
+    mDvs2Characteristics.min_local_motion = 0.0008f;
 
     for (int i = 0; i < 6; i++) {
-        m_dvs2_characteristics.cutoff_frequency[i] = 0.0f;
+        mDvs2Characteristics.cutoff_frequency[i] = 0.004f;
     }
     init();
 }
@@ -54,7 +60,7 @@ status_t AtomDvs2::init()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    ia_err err =  dvs_init(&mState, NULL, NULL);
+    ia_err err = dvs_init(&mState, NULL, &mDvs2Env);
     if (err != ia_err_none) {
         LOGE("Failed to initilize the DVS library");
         status = NO_INIT;
@@ -67,17 +73,24 @@ status_t AtomDvs2::init()
 
 AtomDvs2::~AtomDvs2()
 {
+    LOG1("@%s", __FUNCTION__);
+    if (mDumpLogEnabled) {
+       if (!mDumpParams.binaryDumpFailed)
+           writeBinaryDump(DUMP_DVSLOG);
+       dvs_deinit_dbglog();
+    }
     if(mDvs2Config) {
         dvs_free_morph_table(mDvs2Config);
         mDvs2Config = NULL;
     }
-
-    if(mStatistics) {
-        dvs_free_statistics(mStatistics);
-        mStatistics = NULL;
+    if(mDvs2stats) {
+        dvs_free_statistics(mDvs2stats);
+        mDvs2stats = NULL;
     }
-
-    dvs_deinit(mState);
+    if(mState) {
+        dvs_deinit(mState);
+        mState = NULL;
+    }
 }
 
 status_t AtomDvs2::reconfigure()
@@ -90,32 +103,34 @@ status_t AtomDvs2::allocateDvs2Statistics(atomisp_dvs_grid_info info)
 {
     status_t status = NO_ERROR;
     ia_err err;
-    if (mStatistics) {
-        free(mStatistics);
-        mStatistics = NULL;
-        m_ndvs2StatSize = 0;
+    if (mDvs2stats) {
+        dvs_free_statistics(mDvs2stats);
+        mDvs2stats = NULL;
     }
+    err = dvs_allocate_statistics(&info, &mDvs2stats);
+    if (err != ia_err_none) {
+        LOGW("dvs_allocate_statistics error:%d", err);
+        return UNKNOWN_ERROR;
+    }
+#ifdef ATOMISP_CSS2
+    memcpy(&(mStatistics.dvs2_stat), mDvs2stats, sizeof(struct atomisp_dvs2_statistics));
+#endif
+    return status;
+}
 
+status_t AtomDvs2::allocateDvs2MorphTable()
+{
+    status_t status = NO_ERROR;
+    ia_err err;
     if (mDvs2Config) {
         dvs_free_morph_table(mDvs2Config);
         mDvs2Config = NULL;
     }
-
-    int elems = info.aligned_width * info.aligned_height;
-    int nBufferLen = sizeof(atomisp_dis_statistics) + (NUMS_DVS2_STATS_BUF * elems * sizeof(int32_t));
-
-    err = dvs_allocate_statistics(&info, &mStatistics);
-    if (err != ia_err_none) {
-        LOG1("dvs_allocate_statistics error:%d", err);
-        return UNKNOWN_ERROR;
+    if(mState) {
+        err = dvs_allocate_morph_table(mState, &mDvs2Config);
+        if (err != ia_err_none)
+            return UNKNOWN_ERROR;
     }
-    if (mStatistics)
-        m_ndvs2StatSize = nBufferLen;
-
-    err = dvs_allocate_morph_table(mState, &mDvs2Config);
-    if (err != ia_err_none)
-        return UNKNOWN_ERROR;
-
     return status;
 }
 
@@ -155,9 +170,11 @@ status_t AtomDvs2::reconfigureNoLock()
 
     //Configure DVS
 #ifdef ATOMISP_CSS2
-    dvs_env_width = isp_params.dvs_envelop.width;
-    dvs_env_height = isp_params.dvs_envelop.height;
+    dvs_env_width = isp_params.dvs_envelop.width/2;
+    dvs_env_height = isp_params.dvs_envelop.height/2;
 #endif
+    dvs_env_width = dvs_env_width < DVS_MIN_ENVELOPE ? DVS_MIN_ENVELOPE : dvs_env_width;
+    dvs_env_height = dvs_env_height < DVS_MIN_ENVELOPE ? DVS_MIN_ENVELOPE : dvs_env_height;
     support_config.input_y.width = bq_frame_width + dvs_env_width;
     support_config.input_y.height = bq_frame_height + dvs_env_height;
     support_config.grid_size = dvs_grid.bqs_per_grid_cell;
@@ -168,9 +185,16 @@ status_t AtomDvs2::reconfigureNoLock()
     mGdcConfig.output_bq.height_bq = bq_frame_height; //crop
     mGdcConfig.ispfilter_bq.width_bq = 12/2;
     mGdcConfig.ispfilter_bq.height_bq = 12/2;
+    mGdcConfig.gdc_shift_x = 2;
+    mGdcConfig.gdc_shift_y = 2;
     mGdcConfig.envelope_bq.width_bq = dvs_env_width - mGdcConfig.ispfilter_bq.width_bq;
     mGdcConfig.envelope_bq.height_bq = dvs_env_height - mGdcConfig.ispfilter_bq.height_bq;
-    mGdcConfig.axis_weight = axis_weight;
+    mGdcConfig.axis_weight.xy = 80;
+    mGdcConfig.axis_weight.zoom = 5;
+    mGdcConfig.axis_weight.rot = 15;
+    mGdcConfig.axis_weight.pan = 0;
+    mGdcConfig.axis_weight.tilt = 0;
+
     mGdcConfig.oxdim_y = 64;
     mGdcConfig.oydim_y = 64;
     mGdcConfig.oxdim_uv = 64;
@@ -179,29 +203,53 @@ status_t AtomDvs2::reconfigureNoLock()
     mGdcConfig.hw_config.scan_mode = ia_dvs2_gdc_scan_mode_stb; //hardcoded
     mGdcConfig.hw_config.interpolation = ia_dvs2_gdc_interpolation_bli; //hardcoded
     mGdcConfig.hw_config.performance_point = ia_dvs2_gdc_performance_point_1x1; //hardcoded
-    memcpy(&mGdcConfig.distortion_coefs, &dvs2_distortion_coefs,
-           sizeof(ia_dvs2_distortion_coefs));
+    mGdcConfig.distortion_coefs.gdc_k1 = 0.f;
+    mGdcConfig.distortion_coefs.gdc_k2 = 0.f;
+    mGdcConfig.distortion_coefs.gdc_k3 = 0.f;
+    mGdcConfig.distortion_coefs.gdc_p1 = 0.f;
+    mGdcConfig.distortion_coefs.gdc_p2 = 0.f;
 
-    if (!mDvs2Config) {
-        err = dvs_config(mState, &support_config, &mGdcConfig,
-                   &m_dvs2_characteristics, DIGITAL_ZOOM_RATIO, NULL);
-    } else {
-        err = dvs_reconfig(mState, &support_config, &mGdcConfig,
-                   &m_dvs2_characteristics, DIGITAL_ZOOM_RATIO, NULL);
-    }
+    LOG2("DVS enabled:%s", mDVSEnabled ? "true": "false");
+    mNeedRun = mDVSEnabled;
+    if(mDVSEnabled)
+        mDvs2Characteristics.num_axis = ia_dvs2_algorihm_4_axis;
 
+    /* setup binary dump parameter */
+    mDumpParams.frames = TEST_FRAMES;
+    mDumpParams.endless = false;
+    err = dvs_config(mState, &support_config, &mGdcConfig,
+               &mDvs2Characteristics, DIGITAL_ZOOM_RATIO, &mDumpParams);
     if (err != ia_err_none) {
         LOGW("Configure DVS failed %d", err);
         return UNKNOWN_ERROR;
     }
-    LOG2("Configure DVS succeed");
-    LOG2("mEnabled:%s", mEnabled ? "true": "false");
-    dvs_disable_motion_compensation(mState, !mEnabled);
+    LOG2("Configure DVS success");
 
+    struct atomisp_sensor_mode_data sensor_mode_data;
+    if(mSensorCI->getModeInfo(&sensor_mode_data) < 0) {
+        sensor_mode_data.crop_horizontal_start = 0;
+        sensor_mode_data.crop_vertical_start = 0;
+        sensor_mode_data.crop_vertical_end = 0;
+        sensor_mode_data.crop_horizontal_end = 0;
+    }
+    if(sensor_mode_data.binning_factor_y != 0 && sensor_mode_data.output_height != 0
+       && sensor_mode_data.frame_length_lines != 0) {
+        float downscaling = (sensor_mode_data.crop_vertical_end - sensor_mode_data.crop_vertical_start + 1)
+                            / sensor_mode_data.binning_factor_y / sensor_mode_data.output_height;
+        float non_blanking_ratio = (float)((height + (dvs_env_height * 2))* downscaling)/sensor_mode_data.frame_length_lines;
+        dvs_set_non_blank_ratio(mState, non_blanking_ratio);
+    }
     //Allocate statistics
-    status = allocateDvs2Statistics(dvs_grid);
+    if(mDVSEnabled) {
+        status = allocateDvs2Statistics(dvs_grid);
+        if(status != NO_ERROR) {
+            LOGW("Allocate dvs statistics failed");
+            return UNKNOWN_ERROR;
+        }
+    }
+    status = allocateDvs2MorphTable();
     if(!mDvs2Config || status != NO_ERROR) {
-        LOGW("Allocate dvs buffers failed");
+        LOGW("Allocate dvs morph table failed");
         return UNKNOWN_ERROR;
     }
 
@@ -216,18 +264,20 @@ status_t AtomDvs2::reconfigureNoLock()
     err = dvs_get_coefficients(mState, dvs_coefs);
     if (err != ia_err_none) {
         LOGW("get dvs2 coeff failed: %d", err);
+        return UNKNOWN_ERROR;
     }else {
         mIsp->setDvsCoefficients(dvs_coefs);
     }
     if (dvs_coefs)
         dvs_free_coefficients(dvs_coefs);
+    dvs_coefs = NULL;
 
     return status;
 }
 
 status_t AtomDvs2::run()
 {
-    if( !mNeedRun )
+    if(!mNeedRun)
         return NO_ERROR;
 
     LOG1("@%s", __FUNCTION__);
@@ -237,42 +287,55 @@ status_t AtomDvs2::run()
     ia_err err = ia_err_none;
     bool try_again = false;
 
-    if (!mStatistics || !mState)
+    if (!mState)
         goto end;
 
-    status = mIsp->getDvsStatistics(mStatistics, &try_again);
-    if (status != NO_ERROR) {
-        LOGW("%s : Failed to get DVS statistics", __FUNCTION__);
-        goto end;
-    }
-    /* When the driver tells us to try again, it means the grid
-       has changed. Because of this, we reconfigure the DVS engine
-       which will use the updated grid information. */
-    if (try_again) {
-        reconfigureNoLock();
-        status = mIsp->getDvsStatistics(mStatistics, NULL);
+    if(mDVSEnabled) {
+        if(!mDvs2stats)
+            goto end;
+        status = mIsp->getDvsStatistics(&mStatistics, &try_again);
         if (status != NO_ERROR) {
-            LOGW("%s : Failed to get DVS statistics (again)", __FUNCTION__);
+            LOGW("%s : Failed to get DVS statistics", __FUNCTION__);
             goto end;
         }
+        /* When the driver tells us to try again, it means the grid
+           has changed. Because of this, we reconfigure the DVS engine
+           which will use the updated grid information. */
+        if (try_again) {
+            reconfigureNoLock();
+            status = mIsp->getDvsStatistics(&mStatistics, NULL);
+            if (status != NO_ERROR) {
+                LOGW("%s : Failed to get DVS statistics (again)", __FUNCTION__);
+                goto end;
+            }
+        }
+#ifdef ATOMISP_CSS2
+        memcpy(mDvs2stats, &(mStatistics.dvs2_stat), sizeof(struct atomisp_dvs2_statistics));
+#endif
+        err = dvs_set_statistics(mState, mDvs2stats);
+        if (err != ia_err_none)
+             LOGW(" dvs_set_statistics failed: %d", err);
+
     }
-
-    err = dvs_set_statistics(mState, mStatistics);
-    if (err != ia_err_none)
-         LOGW(" dvs_set_statistics failed: %d", err);
-
     if ((err = dvs_execute(mState)) != ia_err_none) {
         LOG2("DVS2 execution failed: %d", err);
         goto end;
     }
-
     if(mDvs2Config)
     {
+
         err = dvs_get_morph_table(mState, mDvs2Config);
-        if (err == ia_err_none)
+        if (err == ia_err_none) {
+#ifdef ATOMISP_CSS2
+            if(mDVSEnabled) {
+                mDvs2Config->exp_id = mStatistics.exp_id;
+                LOG2("exp_id:%d", mDvs2Config->exp_id);
+            }
+#endif
             status = mIsp->setDvsConfig(mDvs2Config);
+        }
     }
-    if (mZoom == 0 && !mEnabled)
+    if (mZoom == 0 && !mDVSEnabled)
         mNeedRun = false;
 
 end:
@@ -284,17 +347,24 @@ bool AtomDvs2::enable(const CameraParameters& params)
     LOG1("@%s", __FUNCTION__);
     if (isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED, params) &&
         isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION, params)) {
-        mEnabled = true;
-    }
-    /* workaround: The high speed and 1080P DVS can't be supported at same time
-     */
-    int width, height;
-    mIsp->getVideoSize(&width, &height, NULL);
-    if(mIsp->isHighSpeedEnabled() && width == RESOLUTION_1080P_WIDTH && height == RESOLUTION_1080P_HEIGHT) {
-        mIsp->setDVS(false);
+        /* workaround: The high speed and 1080P DVS can't be supported at same time
+        */
+        int width, height;
+        mIsp->getVideoSize(&width, &height, NULL);
+        if(mIsp->isHighSpeedEnabled() && width == RESOLUTION_1080P_WIDTH && height == RESOLUTION_1080P_HEIGHT) {
+            mIsp->setDVS(false);
+            mDVSEnabled = false;
+        } else {
+            mDVSEnabled = true;
+            //workaround: when DVS is on, the first 2 frames are greenish, need to be skipped.
+            mIsp->setDVSSkipFrames(DVS_SKIP_FRAMES);
+            mIsp->setDVS(true);
+        }
     } else {
-        mIsp->setDVS(true);
+        mDVSEnabled = false;
+        mIsp->setDVS(false);
     }
+    //Always return true because video zoom depends on DVS2 lib
     return true;
 }
 
@@ -323,8 +393,6 @@ bool AtomDvs2::atomIspNotify(Message *msg, const ObserverState state)
 status_t AtomDvs2::setZoom(int zoom)
 {
     LOG1("@%s zoom:%d", __FUNCTION__, zoom);
-    if (zoom == mZoom)
-        return NO_ERROR;
     ia_err err = ia_err_none;
     int maxZoomFactor(PlatformData::getMaxZoomFactor());
     int drv_zoom = mIsp->getDrvZoom(zoom);
@@ -338,6 +406,32 @@ status_t AtomDvs2::setZoom(int zoom)
     }
 
     return NO_ERROR;
+}
+
+void AtomDvs2::writeBinaryDump(const char *binary_dump_file)
+{
+     FILE *fp;
+     if (!binary_dump_file)
+         return;
+     fp = fopen(binary_dump_file, "wb");
+     if (fp) {
+         if (dvs_fwrite_dbglog(fp)) {
+             LOG2("ia_dvs2_fwrite_dbglog: failed to fwrite into [%s]\n", binary_dump_file);
+         } else {
+             LOG2("ia_dvs2_fwrite_dbglog: [%s] has been created.\n", binary_dump_file);
+         }
+         fclose(fp);
+     }
+}
+
+void AtomDvs2::debugPrint(const char *fmt, va_list ap)
+{
+     if (!mDumpLogEnabled)
+         return;
+     char string[LOG_LEN] = {0};
+     char* str0 = string;
+     vsnprintf(str0, LOG_LEN - 1, fmt, ap);
+     LOG2("%s",str0);
 }
 
 };

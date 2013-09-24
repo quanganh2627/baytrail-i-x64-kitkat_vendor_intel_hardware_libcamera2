@@ -56,17 +56,23 @@ private:
     status_t reconfigureNoLock();
     status_t run();
     status_t allocateDvs2Statistics(atomisp_dvs_grid_info info);
+    status_t allocateDvs2MorphTable();
+    void writeBinaryDump(const char *binary_dump_file);
+    static void debugPrint(const char *fmt, va_list ap);
 
 private:
     Mutex mLock;
 
-    ia_dvs2_characteristics m_dvs2_characteristics;
-    struct atomisp_dis_statistics *mStatistics;
-    int m_ndvs2StatSize;
+    ia_dvs2_binary_dump_params mDumpParams;
+    static bool mDumpLogEnabled;
+    ia_env mDvs2Env;
+    ia_dvs2_characteristics mDvs2Characteristics;
+    struct atomisp_dis_statistics mStatistics;
+    struct atomisp_dvs2_statistics *mDvs2stats;
     ia_dvs2_state *mState;
     ia_dvs2_gdc_configuration mGdcConfig;
     atomisp_dvs_6axis_config *mDvs2Config;
-    bool mEnabled;
+    bool mDVSEnabled;
     int mZoom;
     bool mNeedRun;
 

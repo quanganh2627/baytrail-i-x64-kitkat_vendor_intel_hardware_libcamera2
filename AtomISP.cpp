@@ -108,6 +108,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mContCaptPriority(false)
     ,mInitialSkips(0)
     ,mStatisticSkips(0)
+    ,mDVSFrameSkips(0)
     ,mSessionId(0)
     ,mLowLight(false)
     ,mXnr(0)
@@ -1391,14 +1392,15 @@ status_t AtomISP::startRecording()
     int ret = 0;
     status_t status = NO_ERROR;
 
-    ret = mRecordingDevice->start(mNumBuffers,mInitialSkips);
+    //workaround: when DVS is on, the first several frames are greenish, need to be skipped.
+    ret = mRecordingDevice->start(mNumBuffers,mInitialSkips + mDVSFrameSkips);
     if (ret < 0) {
         LOGE("Start recording device failed");
         status = UNKNOWN_ERROR;
         goto err;
     }
 
-    ret = mPreviewDevice->start(mNumPreviewBuffers, mInitialSkips);
+    ret = mPreviewDevice->start(mNumPreviewBuffers, mInitialSkips + mDVSFrameSkips);
     if (ret < 0) {
         LOGE("Start preview device failed!");
         status = UNKNOWN_ERROR;
@@ -2885,6 +2887,14 @@ status_t AtomISP::setDVS(bool enable)
         status = INVALID_OPERATION;
     }
 
+    return status;
+}
+
+status_t AtomISP::setDVSSkipFrames(unsigned int skips)
+{
+    LOG1("@%s: %d", __FUNCTION__, skips);
+    status_t status = NO_ERROR;
+    mDVSFrameSkips = skips;
     return status;
 }
 
