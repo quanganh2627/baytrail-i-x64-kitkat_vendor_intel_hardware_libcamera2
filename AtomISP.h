@@ -160,6 +160,7 @@ public:
     bool getLowLight() const { return mLowLight; };
 
     status_t setDVS(bool enable);
+    status_t setDVSSkipFrames(unsigned int skips);
     status_t getDvsStatistics(struct atomisp_dis_statistics *stats,
                               bool *tryAgain) const;
     status_t setMotionVector(const struct atomisp_dis_vector *vector) const;
@@ -511,6 +512,7 @@ private:
     bool mContCaptPrepared;
     bool mContCaptPriority;
     unsigned int mInitialSkips;
+    unsigned int mDVSFrameSkips;
 
     int dumpFrameInfo(AtomMode mode);
 
