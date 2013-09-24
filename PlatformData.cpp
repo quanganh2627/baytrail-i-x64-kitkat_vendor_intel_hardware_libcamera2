@@ -1314,4 +1314,13 @@ float PlatformData::horizontalFOV(int cameraId)
 }
 
 
+bool PlatformData::isGraphicGen(void)
+{
+#ifdef GRAPHIC_IS_GEN
+    return true;
+#else
+    return false;
+#endif
+}
+
 }; // namespace android

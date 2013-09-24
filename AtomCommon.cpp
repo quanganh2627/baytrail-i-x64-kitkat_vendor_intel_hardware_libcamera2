@@ -20,8 +20,6 @@
 #include <ia_coordinate.h>
 #ifndef GRAPHIC_IS_GEN // this will be removed if graphic provides one common header file
 #include <hal_public.h>
-#else
-#include "PlatformData.h"
 #endif
 
 #ifdef LIBCAMERA_RD_FEATURES
@@ -232,6 +230,11 @@ AtomBuffer AtomBufferFactory::createAtomBuffer(AtomBufferType type,
         buf.gfxInfo.scalerId = -1;
         buf.gfxInfo.locked = false;
     }
+    buf.gfxInfo_rec.gfxBuffer = NULL;
+    buf.gfxInfo_rec.gfxBufferHandle = NULL;
+    buf.gfxInfo_rec.scalerId = -1;
+    buf.gfxInfo_rec.locked = false;
+
     return buf;
 }
 

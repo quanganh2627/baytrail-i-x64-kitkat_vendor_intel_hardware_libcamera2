@@ -4119,8 +4119,13 @@ status_t AtomISP::allocateMetaDataBuffers()
     for (int i = 0; i < mNumBuffers; i++) {
         metaDataBuf = new IntelMetadataBuffer();
         if(metaDataBuf) {
-            initMetaDataBuf(metaDataBuf);
-            metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].dataPtr);
+            if (PlatformData::isGraphicGen()) {
+                metaDataBuf->SetType(MetadataBufferTypeGrallocSource);
+                metaDataBuf->SetValue((uint32_t)*mRecordingBuffers[i].gfxInfo_rec.gfxBufferHandle);
+            } else {
+                initMetaDataBuf(metaDataBuf);
+                metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].dataPtr);
+            }
             metaDataBuf->Serialize(meta_data_prt, meta_data_size);
             mRecordingBuffers[i].metadata_buff = NULL;
             mCallbacks->allocateMemory(&mRecordingBuffers[i].metadata_buff, meta_data_size);
