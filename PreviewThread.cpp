@@ -599,10 +599,12 @@ void PreviewThread::allocateLocalPreviewBuf(void)
         break;
 
     case V4L2_PIX_FMT_NV21:
+        stride = mPreviewWidth;
         size = mPreviewWidth*mPreviewHeight*3/2;
         break;
 
     case V4L2_PIX_FMT_RGB565:
+        stride = mPreviewWidth;
         size = mPreviewWidth*mPreviewHeight*2;
         break;
 
@@ -612,6 +614,7 @@ void PreviewThread::allocateLocalPreviewBuf(void)
     }
 
     mCallbacks->allocateMemory(&mPreviewBuf, size);
+    mPreviewBuf.stride = stride;
     if(!mPreviewBuf.buff) {
         LOGE("getting memory failed\n");
     }
@@ -943,7 +946,7 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
         case V4L2_PIX_FMT_YVU420: // header file: frameworks/av/include/camera/CameraParameters.h
             convertBuftoYV12(PlatformData::getPreviewFormat(), mPreviewWidth,
                              mPreviewHeight, msg->buff.stride,
-                             mPreviewWidth, src, mPreviewBuf.dataPtr);
+                             mPreviewBuf.stride, src, mPreviewBuf.dataPtr);
             break;
         case V4L2_PIX_FMT_NV21: // you need to do this for the first time
             convertBuftoNV21(PlatformData::getPreviewFormat(), mPreviewWidth,

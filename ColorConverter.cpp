@@ -484,9 +484,12 @@ void repadYUV420(int width, int height, int srcStride, int dstStride, void *src,
 // covert YUYV(YUY2, YUV422 format) to YV12 (Y plane, V plane, U plane)
 void convertYUYVToYV12(int width, int height, int srcStride, int dstStride, void *src, void *dst)
 {
-    int ySize = width * height;
-    int cSize = ALIGN16(dstStride/2) * height / 2;
-    int wHalf = width >> 1;
+
+    int ySize, cSize, wHalf;
+
+    ySize = dstStride * height;
+    cSize = ALIGN16(dstStride/2) * height / 2;
+    wHalf = dstStride >> 1;
 
     unsigned char *srcPtr = (unsigned char *) src;
     unsigned char *dstPtr = (unsigned char *) dst;
@@ -496,7 +499,7 @@ void convertYUYVToYV12(int width, int height, int srcStride, int dstStride, void
     for (int i = 0; i < height; i++) {
         //The first line of the source
         //Copy first Y Plane first
-        for (int j=0; j < width; j++) {
+        for (int j=0; j < dstStride; j++) {
             dstPtr[j] = srcPtr[j*2];
         }
 
@@ -515,7 +518,7 @@ void convertYUYVToYV12(int width, int height, int srcStride, int dstStride, void
         }
 
         srcPtr = srcPtr + srcStride * 2;
-        dstPtr = dstPtr + width;
+        dstPtr = dstPtr + dstStride;
     }
 }
 
