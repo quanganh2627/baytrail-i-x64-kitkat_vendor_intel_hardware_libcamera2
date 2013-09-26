@@ -370,7 +370,7 @@ status_t V4L2VideoNode::setFormat(AtomBuffer &formatDescriptor)
 
     v4l2_fmt.fmt.pix.width = formatDescriptor.width;
     v4l2_fmt.fmt.pix.height = formatDescriptor.height;
-    v4l2_fmt.fmt.pix.pixelformat = formatDescriptor.format;
+    v4l2_fmt.fmt.pix.pixelformat = formatDescriptor.fourcc;
     v4l2_fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
 
     // Update current configuration with the new one
@@ -378,9 +378,9 @@ status_t V4L2VideoNode::setFormat(AtomBuffer &formatDescriptor)
     if (ret != NO_ERROR)
         return ret;
 
-    // .. but get the stride from ISP
+    // .. but get the bpl from ISP
     // and update the new configuration struct with it
-    formatDescriptor.stride = mFormatDescriptor.stride;
+    formatDescriptor.bpl = mFormatDescriptor.bpl;
 
     // Do the same for the frame size
     formatDescriptor.size = mFormatDescriptor.size;
@@ -420,7 +420,7 @@ status_t V4L2VideoNode::setFormat(struct v4l2_format &aFormat)
     }
 
 
-    LOG1("VIDIOC_S_FMT: width: %d, height: %d, format: %s, field: %d",
+    LOG1("VIDIOC_S_FMT: width: %d, height: %d, fourcc: %s, field: %d",
             aFormat.fmt.pix.width,
             aFormat.fmt.pix.height,
             v4l2Fmt2Str(aFormat.fmt.pix.pixelformat),
@@ -432,15 +432,16 @@ status_t V4L2VideoNode::setFormat(struct v4l2_format &aFormat)
     }
 
     // Update current configuration with the new one
-    mFormatDescriptor.format = aFormat.fmt.pix.pixelformat;
+    mFormatDescriptor.fourcc = aFormat.fmt.pix.pixelformat;
     mFormatDescriptor.width = aFormat.fmt.pix.width;
     mFormatDescriptor.height = aFormat.fmt.pix.height;
-    mFormatDescriptor.stride = aFormat.fmt.pix.bytesperline;
-    // TODO: we should respect fmt.pix.sizeimage for our allocations
-    mFormatDescriptor.size = frameSize(mFormatDescriptor.format,
-                                       bytesPerLineToWidth(mFormatDescriptor.format, mFormatDescriptor.stride),
+    mFormatDescriptor.bpl = aFormat.fmt.pix.bytesperline;
+    // TODO: we should respect fmt.pix.sizeimage ensure its always
+    //       page aligned with our types of allocations
+    mFormatDescriptor.size = frameSize(mFormatDescriptor.fourcc,
+                                       bytesToPixels(mFormatDescriptor.fourcc, mFormatDescriptor.bpl),
                                        mFormatDescriptor.height);
-    LOG1("stride: %d from ISP", mFormatDescriptor.stride);
+    LOG1("bpl: %d from ISP", mFormatDescriptor.bpl);
 
     mState = DEVICE_CONFIGURED;
     mSetBufferPool.clear();
@@ -596,11 +597,11 @@ status_t V4L2VideoNode::setBufferPool(void **pool, int poolSize,
      */
     if ((formatDescriptor->width != mFormatDescriptor.width) ||
         (formatDescriptor->height != mFormatDescriptor.height) ||
-        (formatDescriptor->stride != mFormatDescriptor.stride) ||
-        (formatDescriptor->format != mFormatDescriptor.format) ) {
+        (formatDescriptor->bpl != mFormatDescriptor.bpl) ||
+        (formatDescriptor->fourcc != mFormatDescriptor.fourcc) ) {
         LOGE("Pool configuration does not match device configuration: (%dx%d) s:%d f:%s Pool is: (%dx%d) s:%d f:%s ",
-                mFormatDescriptor.width, mFormatDescriptor.height, mFormatDescriptor.stride, v4l2Fmt2Str(mFormatDescriptor.format),
-                formatDescriptor->width, formatDescriptor->height, formatDescriptor->stride, v4l2Fmt2Str(formatDescriptor->format));
+                mFormatDescriptor.width, mFormatDescriptor.height, mFormatDescriptor.bpl, v4l2Fmt2Str(mFormatDescriptor.fourcc),
+                formatDescriptor->width, formatDescriptor->height, formatDescriptor->bpl, v4l2Fmt2Str(formatDescriptor->fourcc));
         return BAD_VALUE;
     }
 
@@ -609,9 +610,9 @@ status_t V4L2VideoNode::setBufferPool(void **pool, int poolSize,
 
     for (int i = 0; i < poolSize; i++) {
         vinfo.data = pool[i];
-        vinfo.width = formatDescriptor->stride;
+        vinfo.width = formatDescriptor->width;
         vinfo.height = formatDescriptor->height;
-        vinfo.format = formatDescriptor->format;
+        vinfo.format = formatDescriptor->fourcc;
         vinfo.length = formatDescriptor->size;
         if (cached)
            vinfo.cache_flags = 0;

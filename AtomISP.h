@@ -125,17 +125,17 @@ public:
 
     bool isHALZSLEnabled() const { return mHALZSLEnabled; }
 
-    status_t setPreviewFrameFormat(int width, int height, int format = 0);
-    status_t setPostviewFrameFormat(int width, int height, int format);
-    void getPostviewFrameFormat(int &width, int &height, int &format) const;
-    status_t setSnapshotFrameFormat(int width, int height, int format);
-    status_t setVideoFrameFormat(int width, int height, int format = 0);
+    status_t setPreviewFrameFormat(int width, int height, int fourcc = 0);
+    status_t setPostviewFrameFormat(int width, int height, int fourcc);
+    void getPostviewFrameFormat(int &width, int &height, int &foucc) const;
+    status_t setSnapshotFrameFormat(int width, int height, int fourcc);
+    status_t setVideoFrameFormat(int width, int height, int fourcc = 0);
     bool applyISPLimitations(CameraParameters *params, bool dvsEnabled, bool videoMode);
 
     void setPreviewFramerate(int fps);
-    int getSnapshotPixelFormat() { return mConfig.snapshot.format; }
-    void getVideoSize(int *width, int *height, int *stride);
-    void getPreviewSize(int *width, int *height, int *stride);
+    int getSnapshotPixelFormat() { return mConfig.snapshot.fourcc; }
+    void getVideoSize(int *width, int *height, int *bpl);
+    void getPreviewSize(int *width, int *height, int *bpl);
     int getNumSnapshotBuffers();
 
     void getZoomRatios(CameraParameters *params) const;
@@ -167,7 +167,7 @@ public:
     status_t pollFrameSyncEvent();
 
     // file input/injection API
-    int configureFileInject(const char* fileName, int width, int height, int format, int bayerOrder);
+    int configureFileInject(const char* fileName, int width, int height, int fourcc, int bayerOrder);
     bool isFileInjectionEnabled(void) const { return mFileInject.active; }
     String8 getFileInjectionFileName(void) const { return mFileInject.fileName; }
 

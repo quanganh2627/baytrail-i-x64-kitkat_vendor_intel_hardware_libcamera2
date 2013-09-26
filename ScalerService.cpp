@@ -100,9 +100,9 @@ status_t ScalerService::handleMessageRegisterBuffer(MessageRegister &msg)
     mapper.unlock(*msg.buffer->gfxInfo.gfxBufferHandle);  // gpuscaler wants unlocked bufs
 
     if (msg.dir == SCALER_INPUT) {
-        id = mGPUScaler->addInputBuffer(msg.buffer->gfxInfo.gfxBufferHandle, msg.buffer->width, msg.buffer->height, msg.buffer->stride);
+        id = mGPUScaler->addInputBuffer(msg.buffer->gfxInfo.gfxBufferHandle, msg.buffer->width, msg.buffer->height, msg.buffer->bpl);
     } else { // BufferDirection == SCALER_OUTPUT
-        id = mGPUScaler->addOutputBuffer(msg.buffer->gfxInfo.gfxBufferHandle, msg.buffer->width, msg.buffer->height, msg.buffer->stride);
+        id = mGPUScaler->addOutputBuffer(msg.buffer->gfxInfo.gfxBufferHandle, msg.buffer->width, msg.buffer->height, msg.buffer->bpl);
     }
 
     if (id < 0)

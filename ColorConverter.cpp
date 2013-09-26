@@ -80,14 +80,14 @@ void YUV420ToRGB565(int width, int height, void *src, void *dst)
     }
 }
 
-void trimConvertNV12ToRGB565(int width, int height, int srcStride, void *src, void *dst)
+void trimConvertNV12ToRGB565(int width, int height, int srcBpl, void *src, void *dst)
 {
 
     unsigned char *yuvs = (unsigned char *) src;
     unsigned char *rgbs = (unsigned char *) dst;
 
     //the end of the luminance data
-    int lumEnd = srcStride * height;
+    int lumEnd = srcBpl * height;
     //points to the next luminance value pair
     int lumPtr = 0;
     //points to the next chromiance value pair
@@ -96,8 +96,8 @@ void trimConvertNV12ToRGB565(int width, int height, int srcStride, void *src, vo
     int i = 0, j = 0;
 
     for( i=0; i < height; i++) {
-        lumPtr = i * srcStride;
-        chrPtr = i / 2 * srcStride + lumEnd;
+        lumPtr = i * srcBpl;
+        chrPtr = i / 2 * srcBpl + lumEnd;
         for ( j=0; j < width; j+=2 ) {
             //read the luminance and chromiance values
             int Y1 = yuvs[lumPtr++] & 0xff;
@@ -132,30 +132,30 @@ void trimConvertNV12ToRGB565(int width, int height, int srcStride, void *src, vo
 }
 
 // covert YV12 (Y plane, V plane, U plane) to NV21 (Y plane, interlaced VU bytes)
-void convertYV12ToNV21(int width, int height, int srcStride, int dstStride, void *src, void *dst)
+void convertYV12ToNV21(int width, int height, int srcBpl, int dstBpl, void *src, void *dst)
 {
-    const int cStride = srcStride>>1;
-    const int vuStride = dstStride;
+    const int cBpl = srcBpl>>1;
+    const int vuBpl = dstBpl;
     const int hhalf = height>>1;
     const int whalf = width>>1;
 
     // copy the entire Y plane
     unsigned char *srcPtr = (unsigned char *)src;
     unsigned char *dstPtr = (unsigned char *)dst;
-    if (srcStride == dstStride) {
-        memcpy(dstPtr, srcPtr, dstStride*height);
+    if (srcBpl == dstBpl) {
+        memcpy(dstPtr, srcPtr, dstBpl*height);
     } else {
         for (int i = 0; i < height; i++) {
             memcpy(dstPtr, srcPtr, width);
-            srcPtr += srcStride;
-            dstPtr += dstStride;
+            srcPtr += srcBpl;
+            dstPtr += dstBpl;
         }
     }
 
     // interlace the VU data
-    unsigned char *srcPtrV = (unsigned char *)src + height*srcStride;
-    unsigned char *srcPtrU = srcPtrV + cStride*hhalf;
-    dstPtr = (unsigned char *)dst + dstStride*height;
+    unsigned char *srcPtrV = (unsigned char *)src + height*srcBpl;
+    unsigned char *srcPtrU = srcPtrV + cBpl*hhalf;
+    dstPtr = (unsigned char *)dst + dstBpl*height;
     for (int i = 0; i < hhalf; ++i) {
         unsigned char *pDstVU = dstPtr;
         unsigned char *pSrcV = srcPtrV;
@@ -164,76 +164,76 @@ void convertYV12ToNV21(int width, int height, int srcStride, int dstStride, void
             *pDstVU ++ = *pSrcV ++;
             *pDstVU ++ = *pSrcU ++;
         }
-        dstPtr += vuStride;
-        srcPtrV += cStride;
-        srcPtrU += cStride;
+        dstPtr += vuBpl;
+        srcPtrV += cBpl;
+        srcPtrU += cBpl;
     }
 }
 
-// copy YV12 to YV12 (Y plane, V plan, U plan) in case of different stride length
-void copyYV12ToYV12(int width, int height, int srcStride, int dstStride, void *src, void *dst)
+// copy YV12 to YV12 (Y plane, V plan, U plan) in case of different bpl length
+void copyYV12ToYV12(int width, int height, int srcBpl, int dstBpl, void *src, void *dst)
 {
     // copy the entire Y plane
-    if (srcStride == dstStride) {
-        memcpy(dst, src, dstStride * height);
+    if (srcBpl == dstBpl) {
+        memcpy(dst, src, dstBpl * height);
     } else {
         unsigned char *srcPtrY = (unsigned char *)src;
         unsigned char *dstPtrY = (unsigned char *)dst;
         for (int i = 0; i < height; i ++) {
             memcpy(dstPtrY, srcPtrY, width);
-            srcPtrY += srcStride;
-            dstPtrY += dstStride;
+            srcPtrY += srcBpl;
+            dstPtrY += dstBpl;
         }
     }
 
     // copy VU plane
-    const int scStride = srcStride >> 1;
-    const int dcStride = ALIGN16(dstStride >> 1); // Android CTS required: U/V plane needs 16 bytes aligned!
-    if (dcStride == scStride) {
-        unsigned char *srcPtrVU = (unsigned char *)src + height * srcStride;
-        unsigned char *dstPtrVU = (unsigned char *)dst + height * dstStride;
-        memcpy(dstPtrVU, srcPtrVU, height * dcStride);
+    const int scBpl = srcBpl >> 1;
+    const int dcBpl = ALIGN16(dstBpl >> 1); // Android CTS required: U/V plane needs 16 bytes aligned!
+    if (dcBpl == scBpl) {
+        unsigned char *srcPtrVU = (unsigned char *)src + height * srcBpl;
+        unsigned char *dstPtrVU = (unsigned char *)dst + height * dstBpl;
+        memcpy(dstPtrVU, srcPtrVU, height * dcBpl);
     } else {
         const int wHalf = width >> 1;
         const int hHalf = height >> 1;
-        unsigned char *srcPtrV = (unsigned char *)src + height * srcStride;
-        unsigned char *srcPtrU = srcPtrV + scStride * hHalf;
-        unsigned char *dstPtrV = (unsigned char *)dst + height * dstStride;
-        unsigned char *dstPtrU = dstPtrV + dcStride * hHalf;
+        unsigned char *srcPtrV = (unsigned char *)src + height * srcBpl;
+        unsigned char *srcPtrU = srcPtrV + scBpl * hHalf;
+        unsigned char *dstPtrV = (unsigned char *)dst + height * dstBpl;
+        unsigned char *dstPtrU = dstPtrV + dcBpl * hHalf;
         for (int i = 0; i < hHalf; i ++) {
             memcpy(dstPtrU, srcPtrU, wHalf);
             memcpy(dstPtrV, srcPtrV, wHalf);
-            dstPtrU += dcStride, srcPtrU += scStride;
-            dstPtrV += dcStride, srcPtrV += scStride;
+            dstPtrU += dcBpl, srcPtrU += scBpl;
+            dstPtrV += dcBpl, srcPtrV += scBpl;
         }
     }
 }
 
 // covert NV12 (Y plane, interlaced UV bytes) to
-// NV21 (Y plane, interlaced VU bytes) and trim stride width to real width
-void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void *dst)
+// NV21 (Y plane, interlaced VU bytes) and trim bpl to real width
+void trimConvertNV12ToNV21(int width, int height, int srcBpl, void *src, void *dst)
 {
     const int ysize = width * height;
     unsigned const char *pSrc = (unsigned char *)src;
     unsigned char *pDst = (unsigned char *)dst;
 
     // Copy Y component
-    if (srcStride == width) {
+    if (srcBpl == width) {
         memcpy(pDst, pSrc, ysize);
-    } else if (srcStride > width) {
+    } else if (srcBpl > width) {
         int j = height;
         while(j--) {
             memcpy(pDst, pSrc, width);
-            pSrc += srcStride;
+            pSrc += srcBpl;
             pDst += width;
         }
     } else {
-        LOGE("bad stride value");
+        LOGE("bad bpl value");
         return;
     }
 
     // Convert UV to VU
-    pSrc = (unsigned char *)src + srcStride * height;
+    pSrc = (unsigned char *)src + srcBpl * height;
     pDst = (unsigned char *)dst + width * height;
     for (int j = 0; j < height / 2; j++) {
         if (width >= 16) {
@@ -316,17 +316,17 @@ void trimConvertNV12ToNV21(int width, int height, int srcStride, void *src, void
             }
         }
         pDst += width;
-        pSrc += srcStride;
+        pSrc += srcBpl;
     }
 }
 
 // covert NV12 (Y plane, interlaced UV bytes) to YV12 (Y plane, V plane, U plane)
-void align16ConvertNV12ToYV12(int width, int height, int srcStride, void *src, void *dst)
+void align16ConvertNV12ToYV12(int width, int height, int srcBpl, void *src, void *dst)
 {
-    int yStride = ALIGN16(width);
-    size_t ySize = yStride * height;
-    int cStride = ALIGN16(yStride/2);
-    size_t cSize = cStride * height/2;
+    int yBpl = ALIGN16(width);
+    size_t ySize = yBpl * height;
+    int cBpl = ALIGN16(yBpl/2);
+    size_t cSize = cBpl * height/2;
 
     unsigned char *srcPtr = (unsigned char *) src;
     unsigned char *dstPtr = (unsigned char *) dst;
@@ -334,17 +334,17 @@ void align16ConvertNV12ToYV12(int width, int height, int srcStride, void *src, v
     unsigned char *dstPtrU = (unsigned char *) dst + ySize + cSize;
 
     // copy the entire Y plane
-    if (srcStride == yStride) {
+    if (srcBpl == yBpl) {
         memcpy(dstPtr, srcPtr, ySize);
         srcPtr += ySize;
-    } else if (srcStride > width) {
+    } else if (srcBpl > width) {
         for (int i = 0; i < height; i++) {
             memcpy(dstPtr, srcPtr, width);
-            srcPtr += srcStride;
-            dstPtr += yStride;
+            srcPtr += srcBpl;
+            dstPtr += yBpl;
         }
     } else {
-        LOGE("bad src stride value");
+        LOGE("bad src bpl value");
         return;
     }
 
@@ -354,9 +354,9 @@ void align16ConvertNV12ToYV12(int width, int height, int srcStride, void *src, v
             dstPtrV[j] = srcPtr[j * 2 + 1];
             dstPtrU[j] = srcPtr[j * 2];
         }
-        srcPtr += srcStride;
-        dstPtrV += cStride;
-        dstPtrU += cStride;
+        srcPtr += srcBpl;
+        dstPtrV += cBpl;
+        dstPtrU += cBpl;
     }
 }
 
@@ -426,9 +426,9 @@ void NV12ToP411(int width, int height, void *src, void *dst)
 }
 
 // Re-pad YUV420 format image, the format can be YV12, YU12 or YUV420 planar.
-// If buffer size: (height*dstStride*1.5) > (height*srcStride*1.5), src and dst
+// If buffer size: (height*dstBpl*1.5) > (height*srcBpl*1.5), src and dst
 // buffer start addresses are same, the re-padding can be done inplace.
-void repadYUV420(int width, int height, int srcStride, int dstStride, void *src, void *dst)
+void repadYUV420(int width, int height, int srcBpl, int dstBpl, void *src, void *dst)
 {
     unsigned char *dptr;
     unsigned char *sptr;
@@ -436,56 +436,56 @@ void repadYUV420(int width, int height, int srcStride, int dstStride, void *src,
 
     const int whalf = width >> 1;
     const int hhalf = height >> 1;
-    const int scStride = srcStride >> 1;
-    const int dcStride = dstStride >> 1;
-    const int sySize = height * srcStride;
-    const int dySize = height * dstStride;
-    const int scSize = hhalf * scStride;
-    const int dcSize = hhalf * dcStride;
+    const int scBpl = srcBpl >> 1;
+    const int dcBpl = dstBpl >> 1;
+    const int sySize = height * srcBpl;
+    const int dySize = height * dstBpl;
+    const int scSize = hhalf * scBpl;
+    const int dcSize = hhalf * dcBpl;
 
-    // directly copy, if (srcStride == dstStride)
-    if (srcStride == dstStride) {
+    // directly copy, if (srcBpl == dstBpl)
+    if (srcBpl == dstBpl) {
         memcpy(dst, src, dySize + 2*dcSize);
         return;
     }
 
     // copy V(YV12 case) or U(YU12 case) plane line by line
-    sptr = (unsigned char *)src + sySize + 2*scSize - scStride;
-    dptr = (unsigned char *)dst + dySize + 2*dcSize - dcStride;
+    sptr = (unsigned char *)src + sySize + 2*scSize - scBpl;
+    dptr = (unsigned char *)dst + dySize + 2*dcSize - dcBpl;
 
     // try to avoid overlapped memcpy()
-    myCopy = (abs(sptr -dptr) > dstStride) ? memcpy : memmove;
+    myCopy = (abs(sptr -dptr) > dstBpl) ? memcpy : memmove;
 
     for (int i = 0; i < hhalf; i ++) {
         myCopy(dptr, sptr, whalf);
-        sptr -= scStride;
-        dptr -= dcStride;
+        sptr -= scBpl;
+        dptr -= dcBpl;
     }
 
     // copy  V(YV12 case) or U(YU12 case) U/V plane line by line
-    sptr = (unsigned char *)src + sySize + scSize - scStride;
-    dptr = (unsigned char *)dst + dySize + dcSize - dcStride;
+    sptr = (unsigned char *)src + sySize + scSize - scBpl;
+    dptr = (unsigned char *)dst + dySize + dcSize - dcBpl;
     for (int i = 0; i < hhalf; i ++) {
         myCopy(dptr, sptr, whalf);
-        sptr -= scStride;
-        dptr -= dcStride;
+        sptr -= scBpl;
+        dptr -= dcBpl;
     }
 
     // copy Y plane line by line
-    sptr = (unsigned char *)src + sySize - srcStride;
-    dptr = (unsigned char *)dst + dySize - dstStride;
+    sptr = (unsigned char *)src + sySize - srcBpl;
+    dptr = (unsigned char *)dst + dySize - dstBpl;
     for (int i = 0; i < height; i ++) {
         myCopy(dptr, sptr, width);
-        sptr -= srcStride;
-        dptr -= dstStride;
+        sptr -= srcBpl;
+        dptr -= dstBpl;
     }
 }
 
 // covert YUYV(YUY2, YUV422 format) to YV12 (Y plane, V plane, U plane)
-void convertYUYVToYV12(int width, int height, int srcStride, int dstStride, void *src, void *dst)
+void convertYUYVToYV12(int width, int height, int srcBpl, int dstBpl, void *src, void *dst)
 {
     int ySize = width * height;
-    int cSize = ALIGN16(dstStride/2) * height / 2;
+    int cSize = ALIGN16(dstBpl/2) * height / 2;
     int wHalf = width >> 1;
 
     unsigned char *srcPtr = (unsigned char *) src;
@@ -505,22 +505,22 @@ void convertYUYVToYV12(int width, int height, int srcStride, int dstStride, void
             for (int k = 0; k< wHalf; k++) {
                 dstPtrV[k] = srcPtr[k * 4 + 3];
             }
-            dstPtrV = dstPtrV + ALIGN16(dstStride>>1);
+            dstPtrV = dstPtrV + ALIGN16(dstBpl>>1);
         } else {
             //Copy the U plane
             for (int k = 0; k< wHalf; k++) {
                 dstPtrU[k] = srcPtr[k * 4 + 1];
             }
-            dstPtrU = dstPtrU + ALIGN16(dstStride>>1);
+            dstPtrU = dstPtrU + ALIGN16(dstBpl>>1);
         }
 
-        srcPtr = srcPtr + srcStride;
+        srcPtr = srcPtr + srcBpl;
         dstPtr = dstPtr + width;
     }
 }
 
 // covert YUYV(YUY2, YUV422 format) to NV21 (Y plane, interlaced VU bytes)
-void convertYUYVToNV21(int width, int height, int srcStride, void *src, void *dst)
+void convertYUYVToNV21(int width, int height, int srcBpl, void *src, void *dst)
 {
     int ySize = width * height;
     int u_counter=1, v_counter=0;
@@ -547,23 +547,23 @@ void convertYUYVToNV21(int width, int height, int srcStride, void *src, void *ds
             }
         }
 
-        srcPtr = srcPtr + srcStride;
+        srcPtr = srcPtr + srcBpl;
         dstPtr = dstPtr + width;
     }
 }
 
-void convertBuftoYV12(int format, int width, int height, int srcStride, int
-                      dstStride, void *src, void *dst)
+void convertBuftoYV12(int format, int width, int height, int srcBpl, int
+                      dstBpl, void *src, void *dst)
 {
     switch (format) {
     case V4L2_PIX_FMT_NV12:
-        align16ConvertNV12ToYV12(width, height, srcStride, src, dst);
+        align16ConvertNV12ToYV12(width, height, srcBpl, src, dst);
         break;
     case V4L2_PIX_FMT_YVU420:
-        copyYV12ToYV12(width, height, srcStride, dstStride, src, dst);
+        copyYV12ToYV12(width, height, srcBpl, dstBpl, src, dst);
         break;
     case V4L2_PIX_FMT_YUYV:
-        convertYUYVToYV12(width, height, srcStride, dstStride, src, dst);
+        convertYUYVToYV12(width, height, srcBpl, dstBpl, src, dst);
         break;
     default:
         LOGE("%s: unsupported format %s", __func__, v4l2Fmt2Str(format));
@@ -571,18 +571,18 @@ void convertBuftoYV12(int format, int width, int height, int srcStride, int
     }
 }
 
-void convertBuftoNV21(int format, int width, int height, int srcStride, int
-                      dstStride, void *src, void *dst)
+void convertBuftoNV21(int format, int width, int height, int srcBpl, int
+                      dstBpl, void *src, void *dst)
 {
     switch (format) {
     case V4L2_PIX_FMT_NV12:
-        trimConvertNV12ToNV21(width, height, srcStride, src, dst);
+        trimConvertNV12ToNV21(width, height, srcBpl, src, dst);
         break;
     case V4L2_PIX_FMT_YVU420:
-        convertYV12ToNV21(width, height, srcStride, dstStride, src, dst);
+        convertYV12ToNV21(width, height, srcBpl, dstBpl, src, dst);
         break;
     case V4L2_PIX_FMT_YUYV:
-        convertYUYVToNV21(width, height, srcStride, src, dst);
+        convertYUYVToNV21(width, height, srcBpl, src, dst);
         break;
     default:
         LOGE("%s: unsupported format %s", __func__, v4l2Fmt2Str(format));

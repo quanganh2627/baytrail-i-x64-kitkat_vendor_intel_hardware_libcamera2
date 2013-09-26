@@ -33,12 +33,12 @@ namespace android {
                     GRALLOC_USAGE_SW_WRITE_NEVER |
                     GRALLOC_USAGE_HW_COMPOSER;
 
-        LOG1("%s with these properties: (%dx%d)s:%d format %s", __FUNCTION__,
+        LOG1("%s with these properties: (%dx%d)s:%d fourcc %s", __FUNCTION__,
                 formatDescriptor.width, formatDescriptor.height,
-                formatDescriptor.stride, v4l2Fmt2Str(formatDescriptor.format));
+                formatDescriptor.bpl, v4l2Fmt2Str(formatDescriptor.fourcc));
 
-        GraphicBuffer *cameraGraphicBuffer = new GraphicBuffer(bytesPerLineToWidth(formatDescriptor.format, formatDescriptor.stride),
-                        formatDescriptor.height, getGFXHALPixelFormatFromV4L2Format(formatDescriptor.format),
+        GraphicBuffer *cameraGraphicBuffer = new GraphicBuffer(bytesToPixels(formatDescriptor.fourcc, formatDescriptor.bpl),
+                        formatDescriptor.height, getGFXHALPixelFormatFromV4L2Format(formatDescriptor.fourcc),
                         GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_SW_WRITE_OFTEN | GraphicBuffer::USAGE_HW_TEXTURE);
 
         if (!cameraGraphicBuffer) {
@@ -50,21 +50,21 @@ namespace android {
         aBuff.buff = NULL;     // We do not allocate a normal camera_memory_t
         aBuff.width = formatDescriptor.width;
         aBuff.height = formatDescriptor.height;
-        // ANativeWindowBuffer defines stride in pixels
-        if (bytesPerLineToWidth(formatDescriptor.format, formatDescriptor.stride) != cameraNativeWindowBuffer->stride) {
-            LOGW("%s: potential stride problem requested %d, Gfx requries %d",__FUNCTION__, formatDescriptor.stride, cameraNativeWindowBuffer->stride);
+        // ANativeWindowBuffer defines bpl in pixels
+        if (bytesToPixels(formatDescriptor.fourcc, formatDescriptor.bpl) != cameraNativeWindowBuffer->stride) {
+            LOGW("%s: potential bpl problem requested %d, Gfx requries %d",__FUNCTION__, formatDescriptor.bpl, cameraNativeWindowBuffer->stride);
         } else {
-            LOG1("%s stride from Gfx is %d", __FUNCTION__, formatDescriptor.stride);
+            LOG1("%s bpl from Gfx is %d", __FUNCTION__, formatDescriptor.bpl);
         }
-        // Note: GraphicBuffer object will carry width == stride and stride
-        // can be bigger in resulting AtomBuffer
-        aBuff.stride = widthToBytesPerLine(formatDescriptor.format, cameraNativeWindowBuffer->stride);
-        aBuff.format = formatDescriptor.format;
+        // Note: GraphicBuffer object will carry width as was our pixel stride
+        // request basing bpl and resulting bpl may be bigger in the resulting AtomBuffer
+        aBuff.bpl = pixelsToBytes(formatDescriptor.fourcc, cameraNativeWindowBuffer->stride);
+        aBuff.fourcc = formatDescriptor.fourcc;
         aBuff.gfxInfo.scalerId = -1;
         aBuff.gfxInfo.gfxBufferHandle = &cameraGraphicBuffer->handle;
         aBuff.gfxInfo.gfxBuffer = cameraGraphicBuffer;
         cameraGraphicBuffer->incStrong(&aBuff);
-        aBuff.size = frameSize(formatDescriptor.format, bytesPerLineToWidth(formatDescriptor.format, aBuff.stride), aBuff.height);
+        aBuff.size = frameSize(aBuff.fourcc, bytesToPixels(aBuff.fourcc, aBuff.bpl), aBuff.height);
 
         status = cameraGraphicBuffer->lock(lockMode, &mapperPointer.ptr);
         if (status != NO_ERROR) {
@@ -101,9 +101,9 @@ namespace android {
 
     status_t allocateAtomBuffer(AtomBuffer &aBuff, const AtomBuffer &formatDescriptor, Callbacks *aCallbacks)
     {
-        LOG1("%s with these properties: (%dx%d)s:%d format %s", __FUNCTION__,
+        LOG1("%s with these properties: (%dx%d)s:%d fourcc %s", __FUNCTION__,
                 formatDescriptor.width, formatDescriptor.height,
-                formatDescriptor.stride, v4l2Fmt2Str(formatDescriptor.format));
+                formatDescriptor.bpl, v4l2Fmt2Str(formatDescriptor.fourcc));
         status_t status = OK;
         aBuff.dataPtr = NULL;
 
@@ -115,8 +115,8 @@ namespace android {
 
         aBuff.width = formatDescriptor.width;
         aBuff.height = formatDescriptor.height;
-        aBuff.stride = formatDescriptor.stride;
-        aBuff.format = formatDescriptor.format;
+        aBuff.bpl = formatDescriptor.bpl;
+        aBuff.fourcc = formatDescriptor.fourcc;
         aBuff.size = formatDescriptor.size;
         aBuff.dataPtr = aBuff.buff->data;
         aBuff.shared = false;

@@ -650,7 +650,7 @@ private:
     status_t hdrCompose();
     void     hdrRelease();
     status_t allocateSnapshotBuffers(bool videoMode);
-    void     setExternalSnapshotBuffers(int format, int width, int heigth);
+    void     setExternalSnapshotBuffers(int fourcc, int width, int heigth);
 
     // Capture Flow helpers
     status_t getFlashExposedSnapshot(AtomBuffer *snaphotBuffer, AtomBuffer *postviewBuffer);

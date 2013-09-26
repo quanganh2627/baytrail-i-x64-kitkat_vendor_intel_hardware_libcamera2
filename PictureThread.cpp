@@ -166,7 +166,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         /* Update the fields in the AtomBuffer structure */
         destBuf->width = mainBuf->width;
         destBuf->height = mainBuf->height;
-        destBuf->format = V4L2_PIX_FMT_JPEG;
+        destBuf->fourcc = V4L2_PIX_FMT_JPEG;
     }
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("frameEncoded", mainBuf->frameCounter);
@@ -236,25 +236,25 @@ status_t PictureThread::handleMessageInitialize(MessageParam *msg)
     if (q != 0)
         mThumbnailQuality = q;
 
-    mThumbBuf.format = PlatformData::getPreviewFormat();
+    mThumbBuf.fourcc = PlatformData::getPreviewPixelFormat();
     mThumbBuf.width = params.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
     mThumbBuf.height = params.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
-    mThumbBuf.size = frameSize(mThumbBuf.format, mThumbBuf.width, mThumbBuf.height);
-    mThumbBuf.stride = mThumbBuf.width;
+    mThumbBuf.bpl = pixelsToBytes(mThumbBuf.fourcc, mThumbBuf.width);
+    mThumbBuf.size = frameSize(mThumbBuf.fourcc, mThumbBuf.width, mThumbBuf.height);
     if (mThumbBuf.dataPtr != NULL) {
         MemoryUtils::freeAtomBuffer(mThumbBuf);
     }
 
     params.getPictureSize(&mScaledPic.width, &mScaledPic.height);
-    mScaledPic.stride = mScaledPic.width;
-    mScaledPic.size = frameSize(mScaledPic.format, mScaledPic.stride, mScaledPic.height);
+    mScaledPic.bpl = mScaledPic.width;
+    mScaledPic.size = frameSize(mScaledPic.fourcc, bytesToPixels(mScaledPic.fourcc, mScaledPic.bpl), mScaledPic.height);
 
     mMessageQueue.reply(MESSAGE_ID_INITIALIZE, NO_ERROR);
     return NO_ERROR;
 }
 
 status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuffersNum,
-                                           int format, Vector<AtomBuffer> *bufs,
+                                           int fourcc, Vector<AtomBuffer> *bufs,
                                            bool registerToScaler)
 {
     LOG1("@%s", __FUNCTION__);
@@ -263,7 +263,7 @@ status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuff
     msg.data.alloc.width = width;
     msg.data.alloc.height = height;
     msg.data.alloc.numBufs = sharedBuffersNum;
-    msg.data.alloc.format = format;
+    msg.data.alloc.fourcc = fourcc;
     msg.data.alloc.bufs = bufs;
     msg.data.alloc.registerToScaler = registerToScaler;
 
@@ -347,7 +347,7 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 
     if (msg->snaphotBuf.width == 0 ||
         msg->snaphotBuf.height == 0 ||
-        msg->snaphotBuf.format == 0) {
+        msg->snaphotBuf.fourcc == 0) {
         LOGE("Picture information not set yet!");
         return UNKNOWN_ERROR;
     }
@@ -389,21 +389,21 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 
 status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
 {
-    LOG1("@%s: width = %d, height = %d, format = %s, numBufs = %d",
+    LOG1("@%s: width = %d, height = %d, fourcc = %s, numBufs = %d",
             __FUNCTION__,
             msg->width,
             msg->height,
-            v4l2Fmt2Str(msg->format),
+            v4l2Fmt2Str(msg->fourcc),
             msg->numBufs);
     status_t status = NO_ERROR;
-    size_t bufferSize = frameSize(msg->format, msg->width, msg->height);
+    size_t bufferSize = frameSize(msg->fourcc, msg->width, msg->height);
 
     /* check if re-allocation is needed */
     if( (mInputBufferArray != NULL) &&
         (mInputBuffers == msg->numBufs) &&
         (mInputBufferArray[0].width == msg->width) &&
         (mInputBufferArray[0].height == msg->height) &&
-        (mInputBufferArray[0].format == msg->format)) {
+        (mInputBufferArray[0].fourcc == msg->fourcc)) {
         LOG1("Trying to allocate same number of buffers with same resolution... skipping");
         goto skip;
     }
@@ -428,7 +428,7 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
 
     /* re-allocates array of input buffers into mInputBufferArray */
     freeInputBuffers();
-    status = allocateInputBuffers(msg->format, msg->width, msg->height, msg->numBufs, msg->registerToScaler);
+    status = allocateInputBuffers(msg->fourcc, msg->width, msg->height, msg->numBufs, msg->registerToScaler);
     if(status != NO_ERROR)
         goto exit_fail;
 
@@ -451,14 +451,14 @@ exit_fail:
     return status;
 }
 
-status_t PictureThread::allocateInputBuffers(int format, int width, int height, int numBufs, bool registerToScaler)
+status_t PictureThread::allocateInputBuffers(int fourcc, int width, int height, int numBufs, bool registerToScaler)
 {
-    LOG1("@%s size (%dx%d) num %d format %s", __FUNCTION__, width, height, numBufs,v4l2Fmt2Str(format));
-    // temporary workaround until CSS supports buffers with different strides
-    // until then we need to align all buffers to display subsystem stride
+    LOG1("@%s size (%dx%d) num %d fourcc %s", __FUNCTION__, width, height, numBufs,v4l2Fmt2Str(fourcc));
+    // temporary workaround until CSS supports buffers with different bpls
+    // until then we need to align all buffers to display subsystem bpl
     // requirements.... even the snapshot buffers that do not go to screen
-    int stride = SGXandDisplayStride(format, width);
-    LOG1("@%s stride %d", __FUNCTION__, stride);
+    int bpl = SGXandDisplayBpl(fourcc, width);
+    LOG1("@%s bpl %d", __FUNCTION__, bpl);
     AtomBuffer formatDescriptor;
     CLEAR(formatDescriptor);
 
@@ -473,9 +473,9 @@ status_t PictureThread::allocateInputBuffers(int format, int width, int height, 
     mInputBuffers = numBufs;
     formatDescriptor.width = width;
     formatDescriptor.height = height;
-    formatDescriptor.format = format;
-    formatDescriptor.stride = stride;
-    formatDescriptor.size = frameSize(format, stride, height);
+    formatDescriptor.fourcc = fourcc;
+    formatDescriptor.bpl = bpl;
+    formatDescriptor.size = frameSize(fourcc, bytesToPixels(fourcc, bpl), height);
 
 
     for (int i = 0; i < mInputBuffers; i++) {
@@ -570,8 +570,8 @@ int PictureThread::encodeExifAndThumbnail(AtomBuffer *thumbBuf, unsigned char* e
     // setup the JpegCompressor input and output buffers
     inBuf.width = thumbBuf->width;
     inBuf.height = thumbBuf->height;
-    inBuf.format = thumbBuf->format;
-    inBuf.size = frameSize(thumbBuf->format, thumbBuf->width, thumbBuf->height);
+    inBuf.fourcc = thumbBuf->fourcc;
+    inBuf.size = frameSize(thumbBuf->fourcc, thumbBuf->width, thumbBuf->height);
 
     outBuf.buf = (unsigned char*)mOutBuf.dataPtr;
     outBuf.width = thumbBuf->width;
@@ -718,8 +718,8 @@ status_t PictureThread::startHwEncoding(AtomBuffer* mainBuf)
 
     inBuf.width = mainBuf->width;
     inBuf.height = mainBuf->height;
-    inBuf.format = mainBuf->format;
-    inBuf.size = frameSize(mainBuf->format, mainBuf->width, mainBuf->height);
+    inBuf.fourcc = mainBuf->fourcc;
+    inBuf.size = frameSize(mainBuf->fourcc, mainBuf->width, mainBuf->height);
     outBuf.clear();
     outBuf.width = mainBuf->width;
     outBuf.height = mainBuf->height;
@@ -760,14 +760,14 @@ void PictureThread::encodeExif(AtomBuffer *thumbBuf)
     } else if (thumbBuf &&
         (mThumbBuf.width < thumbBuf->width ||
          mThumbBuf.height < thumbBuf->height ||
-         mThumbBuf.width < thumbBuf->stride)) {
+         mThumbBuf.width < thumbBuf->bpl)) {
         int srcHeighByThumbAspect = thumbBuf->width * mThumbBuf.height / mThumbBuf.width;
-        mThumbBuf.format = thumbBuf->format;
-        mThumbBuf.size = frameSize(mThumbBuf.format, mThumbBuf.width, mThumbBuf.height);
+        mThumbBuf.fourcc = thumbBuf->fourcc;
+        mThumbBuf.size = frameSize(mThumbBuf.fourcc, mThumbBuf.width, mThumbBuf.height);
 
         LOG1("Downscaling postview2thumbnail : %dx%d (%d) -> %dx%d (%d)",
-                thumbBuf->width, thumbBuf->height, thumbBuf->stride,
-                mThumbBuf.width, mThumbBuf.height, mThumbBuf.stride);
+                thumbBuf->width, thumbBuf->height, thumbBuf->bpl,
+                mThumbBuf.width, mThumbBuf.height, mThumbBuf.bpl);
         if (mThumbBuf.dataPtr == NULL)
             mCallbacks->allocateMemory(&mThumbBuf,mThumbBuf.size);
 
@@ -847,12 +847,12 @@ status_t PictureThread::doSwEncode(AtomBuffer *mainBuf, AtomBuffer* destBuf)
         inBuf.buf = (unsigned char *) mainBuf->dataPtr;
     }
 
-    int realWidth = (mainBuf->stride > mainBuf->width)? mainBuf->stride:
+    int realWidth = (mainBuf->bpl > mainBuf->width)? mainBuf->bpl:
                                                        mainBuf->width;
     inBuf.width = realWidth;
     inBuf.height = mainBuf->height;
-    inBuf.format = mainBuf->format;
-    inBuf.size = frameSize(mainBuf->format, mainBuf->width, mainBuf->height);
+    inBuf.fourcc = mainBuf->fourcc;
+    inBuf.size = frameSize(mainBuf->fourcc, mainBuf->width, mainBuf->height);
     outBuf.clear();
     outBuf.buf = (unsigned char*)mOutBuf.dataPtr;
     outBuf.width = realWidth;
@@ -975,9 +975,9 @@ status_t PictureThread::scaleMainPic(AtomBuffer *mainBuf)
 
     if ((mainBuf->width > mScaledPic.width) ||
         (mainBuf->height > mScaledPic.height) ||
-        (mainBuf->stride > mScaledPic.width)) {
-        LOG1("Need to scale or trim from (%dx%d) s(%d)--> (%d,%d) s(%d)",mainBuf->width, mainBuf->height,mainBuf->stride,
-                                                      mScaledPic.width, mScaledPic.height, mScaledPic.stride);
+        (mainBuf->bpl > mScaledPic.width)) {
+        LOG1("Need to scale or trim from (%dx%d) s(%d)--> (%d,%d) s(%d)",mainBuf->width, mainBuf->height,mainBuf->bpl,
+                                                      mScaledPic.width, mScaledPic.height, mScaledPic.bpl);
 
         MemoryUtils::freeAtomBuffer(mScaledPic);
 

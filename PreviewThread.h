@@ -142,7 +142,7 @@ public:
     status_t preview(AtomBuffer *buff);
     status_t postview(AtomBuffer *buff, bool hidePreview = false, bool synchronous = false);
     status_t setPreviewWindow(struct preview_stream_ops *window);
-    status_t setPreviewConfig(int preview_width, int preview_height, int preview_stride,
+    status_t setPreviewConfig(int preview_width, int preview_height, int preview_bpl,
                               int preview_cb_format, bool shared_mode = true, int buffer_count = -1);
     status_t fetchPreviewBuffers(Vector<AtomBuffer> &pvBufs);
     status_t returnPreviewBuffers();
@@ -192,7 +192,7 @@ private:
     struct MessageSetPreviewConfig {
         int width;
         int height;
-        int stride;
+        int bpl;
         int cb_format;
         int bufferCount;
         bool sharedMode;
@@ -264,17 +264,11 @@ private:
     void frameDone(AtomBuffer &buff);
     status_t allocateGfxPreviewBuffers(int numberOfBuffers);
     status_t freeGfxPreviewBuffers();
-    int getGfxBufferStride();
+    int getGfxBufferBytesPerLine();
     void padPreviewBuffer(GfxAtomBuffer* &gfx, MessagePreview* &msg);
     GfxAtomBuffer* dequeueFromWindow();
     void copyPreviewBuffer(AtomBuffer* src, AtomBuffer* dst);
     void getEffectiveDimensions(int *w, int *h);
-    void strideCopy(const int   width,
-                    const int   height,
-                    const int   rstride,
-                    const int   wstride,
-                    const char* sptr,
-                    char*       dptr);
 
     GfxAtomBuffer* lookForGfxBufferHandle(buffer_handle_t *);
     GfxAtomBuffer* lookForAtomBuffer(AtomBuffer *buffer);
@@ -311,11 +305,11 @@ private:
                                                  track of the fps */
     int mPreviewWidth;
     int mPreviewHeight;
-    int mPreviewStride;
-    int mPreviewFormat; /*!< Native preview stream pixel format (PlatformData::getPreviewFormat()) */
+    int mPreviewBpl;
+    int mPreviewFourcc; /*!< Native preview stream pixel format (PlatformData::getPreviewFormat()) */
     int mPreviewCbFormat; /*!< Preview callback pixel format (CameraParameters::KEY_PREVIEW_FORMAT) */
-    int mGfxStride;  /*!< Gfx buffer stride, due to hardware limitation Gfx
-                          and ISP buffer stride alignment may be mismatched. */
+    int mGfxBpl;        /*!< Gfx buffer bpl, due to hardware limitation Gfx
+                          and ISP buffer bpl alignment may be mismatched. */
 
     bool mOverlayEnabled; /*!< */
     bool mSharedMode; /*!< true if gfx buffers are shared with AtomISP for 0-copy */

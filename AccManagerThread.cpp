@@ -174,8 +174,8 @@ status_t AccManagerThread::handleMessageFrame(MessageFrame msg)
         mFrameMetadata->frameCounter = msg.img.frameCounter;
         mFrameMetadata->width = msg.img.width;
         mFrameMetadata->height = msg.img.height;
-        mFrameMetadata->format = msg.img.format;
-        mFrameMetadata->stride = msg.img.stride;
+        mFrameMetadata->fourcc = msg.img.fourcc;
+        mFrameMetadata->bpl = msg.img.bpl;
         mFrameMetadata->size = msg.img.size;
 
         // copy finished, return frame

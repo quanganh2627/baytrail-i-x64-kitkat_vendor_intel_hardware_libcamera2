@@ -884,7 +884,7 @@ class PlatformData {
      *
      * \return the preview format, V4L2_PIX_FMT_NV12 or V4L2_PIX_FMT_YVU420
     */
-    static int getPreviewFormat(void);
+    static int getPreviewPixelFormat(void);
 
     /**
      * Returns the board name
@@ -954,7 +954,7 @@ public:
         mSupportAIQ = false;
         mSupportDualVideo = false;
         mSupportPreviewLimitation = true;
-        mPreviewFormat = V4L2_PIX_FMT_NV12;
+        mPreviewFourcc = V4L2_PIX_FMT_NV12;
         mSensorGainLag = 0;
         mSensorExposureLag = 1;
         mUseIntelULL = false;
@@ -1249,9 +1249,7 @@ protected:
     /* For Preview Size Limitation*/
     bool mSupportPreviewLimitation;
 
-    int mPreviewFormat;
-
-    int mHALPixelFormat;
+    int mPreviewFourcc;
 
     /* blackbay, or merr_vv, or redhookbay, or victoriabay... */
     String8 mBoardName;

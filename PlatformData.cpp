@@ -1191,9 +1191,9 @@ bool PlatformData::supportPreviewLimitation(void)
     return getInstance()->mSupportPreviewLimitation;
 }
 
-int PlatformData::getPreviewFormat(void)
+int PlatformData::getPreviewPixelFormat(void)
 {
-    return getInstance()->mPreviewFormat;
+    return getInstance()->mPreviewFourcc;
 }
 
 const char* PlatformData::getBoardName(void)

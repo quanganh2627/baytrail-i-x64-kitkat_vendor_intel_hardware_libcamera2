@@ -260,7 +260,7 @@ int GPUScaler::logConfig() {
     return (0);
 }
 
-int GPUScaler::addOutputBuffer(buffer_handle_t *pBufHandle, int width, int height, int stride)
+int GPUScaler::addOutputBuffer(buffer_handle_t *pBufHandle, int width, int height, int bpl)
 {
     mOutputBufferCounter++;
     LOG2("@%s output buffer count %d\n", __FUNCTION__, mOutputBufferCounter);
@@ -280,9 +280,9 @@ int GPUScaler::addOutputBuffer(buffer_handle_t *pBufHandle, int width, int heigh
         // increase the strong ref count. eglDestroyImageKHR will respectively decrease
         // the ref count, resulting in destruction.
         mGraphicBuffer[bufferId] = new GraphicBuffer(width, height,
-                getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewFormat()),
+                getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewPixelFormat()),
                 GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_SW_READ_OFTEN | GraphicBuffer::USAGE_HW_TEXTURE,
-                stride, (native_handle_t *)*pBufHandle, 0);
+                bytesToPixels(V4L2_PIX_FMT_NV12, bpl), (native_handle_t *)*pBufHandle, 0);
         mEglClientBuffer[bufferId] = (mGraphicBuffer[bufferId])->getNativeBuffer();
         EGLint eglImageAttribsY[] =
         {
@@ -361,7 +361,7 @@ void GPUScaler::removeOutputBuffer(int bufferId)
     dstRenderBuffers[bufferId][0] = dstRenderBuffers[bufferId][1] = 0;
 }
 
-int GPUScaler::addInputBuffer(buffer_handle_t *pBufHandle, int width, int height, int stride)
+int GPUScaler::addInputBuffer(buffer_handle_t *pBufHandle, int width, int height, int bpl)
 {
     mInputBufferCounter++;
     LOG1("@%s input buffer count %d\n", __FUNCTION__, mInputBufferCounter);
@@ -384,9 +384,9 @@ int GPUScaler::addInputBuffer(buffer_handle_t *pBufHandle, int width, int height
     // increase the strong ref count. eglDestroyImageKHR will respectively decrease
     // the ref count, resulting in destruction.
     GraphicBuffer *graphicBuffer = new GraphicBuffer(width, height,
-            getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewFormat()),
+            getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewPixelFormat()),
             GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_SW_WRITE_OFTEN | GraphicBuffer::USAGE_HW_TEXTURE,
-            width, (native_handle_t *)*pBufHandle, 0);
+            bytesToPixels(V4L2_PIX_FMT_NV12, bpl), (native_handle_t *)*pBufHandle, 0);
 
     if (graphicBuffer == NULL) {
         LOGE("Error: out of memory\n");

@@ -25,9 +25,9 @@ public:
     static void downScaleImage(AtomBuffer *src, AtomBuffer *dst,
             int src_skip_lines_top = 0, int src_skip_lines_bottom = 0);
     static void downScaleImage(void *src, void *dest,
-            int dest_w, int dest_h, int dest_stride,
-            int src_w, int src_h, int src_stride,
-            int format, int src_skip_lines_top = 0,
+            int dest_w, int dest_h, int dest_bpl,
+            int src_w, int src_h, int src_bpl,
+            int fourcc, int src_skip_lines_top = 0,
             int src_skip_lines_bottom = 0);
 protected:
     static void downScaleYUY2Image(unsigned char *dest, const unsigned char *src,
@@ -35,29 +35,29 @@ protected:
 
     static void downScaleAndCropNv12Image(
         unsigned char *dest, const unsigned char *src,
-        const int dest_w, const int dest_h, const int dest_stride,
-        const int src_w, const int src_h, const int src_stride,
+        const int dest_w, const int dest_h, const int dest_bpl,
+        const int src_w, const int src_h, const int src_bpl,
         const int src_skip_lines_top = 0,
         const int src_skip_lines_bottom = 0);
 
     static void trimNv12Image(
         unsigned char *dest, const unsigned char *src,
-        const int dest_w, const int dest_h, const int dest_stride,
-        const int src_w, const int src_h, const int src_stride,
+        const int dest_w, const int dest_h, const int dest_bpl,
+        const int src_w, const int src_h, const int src_bpl,
         const int src_skip_lines_top = 0,
         const int src_skip_lines_bottom = 0);
 
     static void downScaleAndCropNv12ImageQvga(
         unsigned char *dest, const unsigned char *src,
-        const int dest_stride, const int src_stride);
+        const int dest_bpl, const int src_bpl);
 
     static void downScaleAndCropNv12ImageQcif(
         unsigned char *dest, const unsigned char *src,
-        const int dest_stride, const int src_stride);
+        const int dest_bpl, const int src_bpl);
 
     static void downScaleNv12ImageFrom800x600ToQvga(
         unsigned char *dest, const unsigned char *src,
-        const int dest_stride, const int src_stride);
+        const int dest_bpl, const int src_bpl);
 };
 
 };

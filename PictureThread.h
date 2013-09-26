@@ -70,7 +70,7 @@ public:
     void getDefaultParameters(CameraParameters *params);
     status_t initialize(const CameraParameters &params, int zoomRatio);
     status_t allocSharedBuffers(int width, int height, int sharedBuffersNum,
-                                int format, Vector<AtomBuffer> *bufs,
+                                int fourcc, Vector<AtomBuffer> *bufs,
                                 bool registerToScaler);
 
 
@@ -107,7 +107,7 @@ private:
         int width;          /*!> width of the requested buffers */
         int height;         /*!> height of the requested buffers */
         int numBufs;        /*!> amount of buffers to allocate */
-        int format;         /*!> V4L2 pixel format */
+        int fourcc;         /*!> V4L2 pixel format */
         Vector<AtomBuffer> *bufs;      /*!> Vector where to store the buffers */
         bool registerToScaler; /*!> whether to register buffers to scaler */
     };
@@ -154,7 +154,7 @@ private:
 
     void setupExifWithMetaData(const MetaData &metaData);
     status_t encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, AtomBuffer *destBuf);
-    status_t allocateInputBuffers(int format, int width, int height, int numBufs, bool registerToScaler);
+    status_t allocateInputBuffers(int fourcc, int width, int height, int numBufs, bool registerToScaler);
     void     freeInputBuffers();
     int      encodeExifAndThumbnail(AtomBuffer *thumbnail, unsigned char* exifDst);
     status_t startHwEncoding(AtomBuffer *mainBuf);
