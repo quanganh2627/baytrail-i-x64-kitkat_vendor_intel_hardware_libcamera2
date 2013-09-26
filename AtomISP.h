@@ -302,12 +302,23 @@ private:
 
     static const int NUM_PREVIEW_BUFFERS = 6;
 
+    struct VideoNodeLimits {
+        int minWidht;
+        int minHeight;
+        int maxWidth;
+        int maxHeight;
+    };
+
     struct Config {
-        FrameInfo preview;    // preview
-        FrameInfo recording;  // recording
-        FrameInfo snapshot;   // snapshot
-        FrameInfo postview;   // postview (thumbnail for capture)
-        FrameInfo HALZSL;     // HAL ZSL
+        AtomBuffer preview;    // preview video node config
+        AtomBuffer recording;  // recording video node config
+        AtomBuffer snapshot;   // snapshot video node config
+        AtomBuffer postview;   // postview (thumbnail for capture) video node config
+        AtomBuffer HALZSL;     // HAL ZSL video node config
+        VideoNodeLimits previewLimits;
+        VideoNodeLimits recordingLimits;
+        VideoNodeLimits snapshotLimits;
+        VideoNodeLimits postviewLimits;
         float fps;            // preview/recording (shared) output by sensor
         int target_fps ;      // preview/recording requested by user
         int num_snapshot;     // number of snapshots to take
@@ -390,7 +401,7 @@ private:
     int detectDeviceResolutions();
     int atomisp_set_capture_mode(int deviceMode);
 
-    int configureDevice(V4L2VideoNode *device, int deviceMode, FrameInfo *fInfo, bool raw);
+    int configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *formatDescriptor, bool raw);
 
     int atomisp_set_zoom (int zoom);
 
@@ -532,13 +543,13 @@ private:
     struct FileInject {
         String8 fileName;
         bool active;
-        FrameInfo   frameInfo;
+        AtomBuffer   formatDescriptor;
         int bayerOrder;
         char *dataAddr;
         void clear() {
             fileName.clear();
             active = false;
-            CLEAR(frameInfo);
+            CLEAR(formatDescriptor);
             dataAddr = NULL;
         };
     } mFileInject;

@@ -258,10 +258,6 @@ status_t AtomISP::init()
         return NO_INIT;
     }
 
-    mConfig.fps = DEFAULT_PREVIEW_FPS;
-    mConfig.target_fps = DEFAULT_PREVIEW_FPS;
-    mConfig.num_snapshot = 1;
-    mConfig.zoom = 0;
 
     if (selectCameraSensor() != NO_ERROR) {
        LOGE("Could not select camera: %s", mCameraInput->name);
@@ -350,39 +346,44 @@ status_t AtomISP::setHighSpeedResolutionFps(char* resolution, int fps)
  */
 void AtomISP::initFrameConfig()
 {
+    mConfig.fps = DEFAULT_PREVIEW_FPS;
+    mConfig.target_fps = DEFAULT_PREVIEW_FPS;
+    mConfig.num_snapshot = 1;
+    mConfig.zoom = 0;
+
     if (mIsFileInject) {
-        mConfig.snapshot.maxWidth = MAX_FILE_INJECTION_SNAPSHOT_WIDTH;
-        mConfig.snapshot.maxHeight = MAX_FILE_INJECTION_SNAPSHOT_HEIGHT;
-        mConfig.preview.maxWidth = MAX_FILE_INJECTION_PREVIEW_WIDTH;
-        mConfig.preview.maxHeight = MAX_FILE_INJECTION_PREVIEW_HEIGHT;
-        mConfig.recording.maxWidth = MAX_FILE_INJECTION_RECORDING_WIDTH;
-        mConfig.recording.maxHeight = MAX_FILE_INJECTION_RECORDING_HEIGHT;
+        mConfig.snapshotLimits.maxWidth = MAX_FILE_INJECTION_SNAPSHOT_WIDTH;
+        mConfig.snapshotLimits.maxHeight = MAX_FILE_INJECTION_SNAPSHOT_HEIGHT;
+        mConfig.previewLimits.maxWidth = MAX_FILE_INJECTION_PREVIEW_WIDTH;
+        mConfig.previewLimits.maxHeight = MAX_FILE_INJECTION_PREVIEW_HEIGHT;
+        mConfig.recordingLimits.maxWidth = MAX_FILE_INJECTION_RECORDING_WIDTH;
+        mConfig.recordingLimits.maxHeight = MAX_FILE_INJECTION_RECORDING_HEIGHT;
     }
     else {
-        getMaxSnapShotSize(mCameraId, &(mConfig.snapshot.maxWidth), &(mConfig.snapshot.maxHeight));
+        getMaxSnapShotSize(mCameraId, &(mConfig.snapshotLimits.maxWidth), &(mConfig.snapshotLimits.maxHeight));
         // workaround for the imx132, this code will be removed in the future
         if (strstr(mCameraInput->name, "imx132")) {
-           mConfig.snapshot.maxWidth  = RESOLUTION_1080P_WIDTH;
-           mConfig.snapshot.maxHeight = RESOLUTION_1080P_HEIGHT;
+           mConfig.snapshotLimits.maxWidth  = RESOLUTION_1080P_WIDTH;
+           mConfig.snapshotLimits.maxHeight = RESOLUTION_1080P_HEIGHT;
         }
     }
 
-    if (mConfig.snapshot.maxWidth >= RESOLUTION_1080P_WIDTH
-        && mConfig.snapshot.maxHeight >= RESOLUTION_1080P_HEIGHT) {
-        mConfig.preview.maxWidth = RESOLUTION_1080P_WIDTH;
-        mConfig.preview.maxHeight = RESOLUTION_1080P_HEIGHT;
+    if (mConfig.snapshotLimits.maxWidth >= RESOLUTION_1080P_WIDTH
+        && mConfig.snapshotLimits.maxHeight >= RESOLUTION_1080P_HEIGHT) {
+        mConfig.previewLimits.maxWidth = RESOLUTION_1080P_WIDTH;
+        mConfig.previewLimits.maxHeight = RESOLUTION_1080P_HEIGHT;
     } else {
-        mConfig.preview.maxWidth = mConfig.snapshot.maxWidth;
-        mConfig.preview.maxHeight =  mConfig.snapshot.maxHeight;
+        mConfig.previewLimits.maxWidth = mConfig.snapshotLimits.maxWidth;
+        mConfig.previewLimits.maxHeight =  mConfig.snapshotLimits.maxHeight;
     }
 
-    if (mConfig.snapshot.maxWidth >= RESOLUTION_1080P_WIDTH
-        && mConfig.snapshot.maxHeight >= RESOLUTION_1080P_HEIGHT) {
-        mConfig.recording.maxWidth = RESOLUTION_1080P_WIDTH;
-        mConfig.recording.maxHeight = RESOLUTION_1080P_HEIGHT;
+    if (mConfig.snapshotLimits.maxWidth >= RESOLUTION_1080P_WIDTH
+        && mConfig.snapshotLimits.maxHeight >= RESOLUTION_1080P_HEIGHT) {
+        mConfig.recordingLimits.maxWidth = RESOLUTION_1080P_WIDTH;
+        mConfig.recordingLimits.maxHeight = RESOLUTION_1080P_HEIGHT;
     } else {
-        mConfig.recording.maxWidth = mConfig.snapshot.maxWidth;
-        mConfig.recording.maxHeight = mConfig.snapshot.maxHeight;
+        mConfig.recordingLimits.maxWidth = mConfig.snapshotLimits.maxWidth;
+        mConfig.recordingLimits.maxHeight = mConfig.snapshotLimits.maxHeight;
     }
 }
 
@@ -1319,8 +1320,8 @@ status_t AtomISP::configureRecording()
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
     status_t status = NO_ERROR;
-    FrameInfo *previewConfig(NULL);
-    FrameInfo *recordingConfig(NULL);
+    AtomBuffer *previewConfig(NULL);
+    AtomBuffer *recordingConfig(NULL);
 
     ret = mPreviewDevice->open();
     if (ret < 0) {
@@ -2130,15 +2131,15 @@ bool AtomISP::isOfflineCaptureRunning() const
  * width that the buffers need to have to meet the ISP constrains.
  * In effect the FrameInfo struct is an IN/OUT parameter.
  */
-int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, FrameInfo *fInfo, bool raw)
+int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *formatDescriptor, bool raw)
 {
     LOG1("@%s", __FUNCTION__);
 
     int ret = 0;
     int w,h,format;
-    w = fInfo->width;
-    h = fInfo->height;
-    format = fInfo->format;
+    w = formatDescriptor->width;
+    h = formatDescriptor->height;
+    format = formatDescriptor->format;
     LOG1("device: %d, width:%d, height:%d, deviceMode:%d format:%s raw:%d", device->mId,
         w, h, deviceMode, v4l2Fmt2Str(format), raw);
 
@@ -2158,7 +2159,7 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, FrameInfo *f
         applySensorFlip();
 
     //Set the format
-    ret = device->setFormat(*fInfo);
+    ret = device->setFormat(*formatDescriptor);
     if (ret < 0)
         return ret;
 
@@ -2267,10 +2268,10 @@ status_t AtomISP::setPreviewFrameFormat(int width, int height, int format)
 
     if(format == 0)
          format = mConfig.preview.format;
-    if (width > mConfig.preview.maxWidth || width <= 0)
-        width = mConfig.preview.maxWidth;
-    if (height > mConfig.preview.maxHeight || height <= 0)
-        height = mConfig.preview.maxHeight;
+    if (width > mConfig.previewLimits.maxWidth || width <= 0)
+        width = mConfig.previewLimits.maxWidth;
+    if (height > mConfig.previewLimits.maxHeight || height <= 0)
+        height = mConfig.previewLimits.maxHeight;
     mConfig.preview.width = width;
     mConfig.preview.height = height;
     mConfig.preview.format = format;
@@ -2334,10 +2335,10 @@ status_t AtomISP::setSnapshotFrameFormat(int width, int height, int format)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if (width > mConfig.snapshot.maxWidth || width <= 0)
-        width = mConfig.snapshot.maxWidth;
-    if (height > mConfig.snapshot.maxHeight || height <= 0)
-        height = mConfig.snapshot.maxHeight;
+    if (width > mConfig.snapshotLimits.maxWidth || width <= 0)
+        width = mConfig.snapshotLimits.maxWidth;
+    if (height > mConfig.snapshotLimits.maxHeight || height <= 0)
+        height = mConfig.snapshotLimits.maxHeight;
     mConfig.snapshot.width  = width;
     mConfig.snapshot.height = height;
     mConfig.snapshot.format = format;
@@ -2411,13 +2412,13 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
         return INVALID_OPERATION;
     }
 
-    if (width > mConfig.recording.maxWidth || width <= 0) {
-        LOGE("invalid recording width %d. override to %d", width, mConfig.recording.maxWidth);
-        width = mConfig.recording.maxWidth;
+    if (width > mConfig.recordingLimits.maxWidth || width <= 0) {
+        LOGE("invalid recording width %d. override to %d", width, mConfig.recordingLimits.maxWidth);
+        width = mConfig.recordingLimits.maxWidth;
     }
-    if (height > mConfig.recording.maxHeight || height <= 0) {
-        LOGE("invalid recording height %d. override to %d", height, mConfig.recording.maxHeight);
-        height = mConfig.recording.maxHeight;
+    if (height > mConfig.recordingLimits.maxHeight || height <= 0) {
+        LOGE("invalid recording height %d. override to %d", height, mConfig.recordingLimits.maxHeight);
+        height = mConfig.recordingLimits.maxHeight;
     }
     mConfig.recording.width = width;
     mConfig.recording.height = height;
@@ -2922,10 +2923,10 @@ int AtomISP::startFileInject(void)
 
     //Set the format
     struct v4l2_format format;
-    format.fmt.pix.width = mFileInject.frameInfo.width;
-    format.fmt.pix.height = mFileInject.frameInfo.height;
-    format.fmt.pix.pixelformat = mFileInject.frameInfo.format;
-    format.fmt.pix.sizeimage = PAGE_ALIGN(mFileInject.frameInfo.size);
+    format.fmt.pix.width = mFileInject.formatDescriptor.width;
+    format.fmt.pix.height = mFileInject.formatDescriptor.height;
+    format.fmt.pix.pixelformat = mFileInject.formatDescriptor.format;
+    format.fmt.pix.sizeimage = PAGE_ALIGN(mFileInject.formatDescriptor.size);
     format.fmt.pix.priv = mFileInject.bayerOrder;
 
     if (mFileInjectDevice->setFormat(format) != NO_ERROR)
@@ -2936,7 +2937,7 @@ int AtomISP::startFileInject(void)
     if (mFileInject.dataAddr != NULL)
         delete[] mFileInject.dataAddr;
 
-    mFileInject.dataAddr = new char[mFileInject.frameInfo.size];
+    mFileInject.dataAddr = new char[mFileInject.formatDescriptor.size];
     if (mFileInject.dataAddr == NULL) {
         LOGE("Not enough memory to allocate injection buffer");
         goto error1;
@@ -2948,12 +2949,12 @@ int AtomISP::startFileInject(void)
         LOGE("ERR(%s): Failed to open %s\n", __func__, mFileInject.fileName.string());
         goto error1;
     }
-    fread(mFileInject.dataAddr, 1,  mFileInject.frameInfo.size, file);
+    fread(mFileInject.dataAddr, 1,  mFileInject.formatDescriptor.size, file);
     fclose(file);
 
     // Set buffer pool
     ret = mFileInjectDevice->setBufferPool((void**)&mFileInject.dataAddr, buffer_count,
-                                           &mFileInject.frameInfo,true);
+                                           &mFileInject.formatDescriptor,true);
 
     ret = mFileInjectDevice->createBufferPool(buffer_count);
     if (ret < 0)
@@ -3006,9 +3007,9 @@ int AtomISP::configureFileInject(const char *fileName, int width, int height, in
     if (mFileInject.fileName.isEmpty() != true) {
         LOG1("Enabling file injection, image file=%s", mFileInject.fileName.string());
         mFileInject.active = true;
-        mFileInject.frameInfo.width = width;
-        mFileInject.frameInfo.height = height;
-        mFileInject.frameInfo.format = format;
+        mFileInject.formatDescriptor.width = width;
+        mFileInject.formatDescriptor.height = height;
+        mFileInject.formatDescriptor.format = format;
         mFileInject.bayerOrder = bayerOrder;
     }
     else {
@@ -3047,7 +3048,7 @@ status_t AtomISP::fileInjectSetSize(void)
 
     LOG1("%s: file %s size of %u", __FUNCTION__, fileName, fileSize);
 
-    mFileInject.frameInfo.size = fileSize;
+    mFileInject.formatDescriptor.size = fileSize;
 
     close(fileFd);
     return NO_ERROR;

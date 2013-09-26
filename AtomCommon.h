@@ -118,6 +118,9 @@ enum FrameBufferStatus {
  * Type relates to the usage of the buffer
  */
 enum AtomBufferType {
+    ATOM_BUFFER_FORMAT_DESCRIPTOR = 0, /*!< Buffer container with bare format description and no memory associations
+                                         Note: Cleared AtomBuffer structure becomes format descriptor, until it is
+                                         explicitly assigned to carry a buffer of certain type.*/
     ATOM_BUFFER_PREVIEW_GFX,        /*!< Buffer contains a preview frame allocated from GFx HW */
     ATOM_BUFFER_PREVIEW,            /*!< Buffer contains a preview frame allocated from AtomISP */
     ATOM_BUFFER_SNAPSHOT,           /*!< Buffer contains a full resolution snapshot image (uncompressed) */
@@ -135,16 +138,6 @@ struct GFXBufferInfo {
     buffer_handle_t *gfxBufferHandle;
     bool locked;
     int scalerId;
-};
-
-struct FrameInfo {
-    int format;     // V4L2 format
-    int width;      // Frame width
-    int height;     // Frame height
-    int stride;     // Frame stride (can be bigger than width)
-    int maxWidth;   // Frame maximum width
-    int maxHeight;  // Frame maximum height
-    int size;       // Frame size in bytes
 };
 
 /*! \struct AtomBuffer
@@ -188,7 +181,7 @@ struct AAAWindowInfo {
 extern timeval AtomBufferFactory_AtomBufDefTS; // default timestamp
 class AtomBufferFactory {
 public:
-    static AtomBuffer createAtomBuffer(AtomBufferType type = ATOM_BUFFER_PREVIEW_GFX,
+    static AtomBuffer createAtomBuffer(AtomBufferType type = ATOM_BUFFER_FORMAT_DESCRIPTOR,
                            int format = V4L2_PIX_FMT_NV12,
                            int width = 0,
                            int height = 0,

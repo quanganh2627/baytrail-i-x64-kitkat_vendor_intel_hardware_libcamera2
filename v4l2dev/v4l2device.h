@@ -114,12 +114,12 @@ public:
     // Video node configuration
     int getFramerate(float * framerate, int width, int height, int pix_fmt);
     status_t setParameter (struct v4l2_streamparm *aParam);
-    status_t setFormat(FrameInfo &aConfig);
+    status_t setFormat(AtomBuffer &aFormatDescriptor);
     status_t setFormat(struct v4l2_format &aFormat);
     status_t queryCapturePixelFormats(Vector<v4l2_fmtdesc> &formats);
 
     // Buffer pool management
-    status_t setBufferPool(void **pool, int poolSize, FrameInfo *aFrameInfo, bool cached);
+    status_t setBufferPool(void **pool, int poolSize, AtomBuffer *aFormatDescriptor, bool cached);
     void destroyBufferPool();
     int createBufferPool(unsigned int buffer_count);
     int activateBufferPool();
@@ -157,7 +157,7 @@ private:
 
     VideoNodeState  mState;
     // Device capture configuration
-    FrameInfo mConfig;
+    AtomBuffer mFormatDescriptor;
 
     unsigned int mFrameCounter;
     unsigned int mInitialSkips;
