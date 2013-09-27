@@ -461,7 +461,6 @@ private:
     AeMode mPublicAeMode;
     SceneMode mAeSceneMode;
     FlashMode mAeFlashMode;
-    FlashStage mFlashStage;
     ae_state mAeState;
     ia_coordinate mAeCoord;
 

@@ -685,6 +685,8 @@ private:
 
     int getCameraID();
 
+    void reconfigureThumbnailSize(int &width, int &height);
+
 // inherited from Thread
 private:
     virtual bool threadLoop();

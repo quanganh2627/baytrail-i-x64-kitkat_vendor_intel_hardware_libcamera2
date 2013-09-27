@@ -124,6 +124,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mHighSpeedResolution(0, 0)
     ,mHighSpeedEnabled(false)
     ,mRawBayerFormat(V4L2_PIX_FMT_SBGGR10)
+    ,mFlashIsOn(false)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -2621,10 +2622,16 @@ status_t AtomISP::setFlash(int numFrames)
             return UNKNOWN_ERROR;
         if (mMainDevice->setControl(V4L2_CID_REQUEST_FLASH, numFrames, "Request Flash") < 0)
             return UNKNOWN_ERROR;
+
+        mFlashIsOn = true;
     } else {
         if (mMainDevice->setControl(V4L2_CID_FLASH_MODE, ATOMISP_FLASH_MODE_OFF, "Flash Mode flash") < 0)
             return UNKNOWN_ERROR;
+
+        mFlashIsOn = false;
     }
+
+    LOGD("setFlash() mFlashIsOn: %d", mFlashIsOn);
     return NO_ERROR;
 }
 
@@ -2655,10 +2662,16 @@ status_t AtomISP::setTorchHelper(int intensity)
             return UNKNOWN_ERROR;
         if (mMainDevice->setControl(V4L2_CID_FLASH_MODE, ATOMISP_FLASH_MODE_TORCH, "Flash Mode") < 0)
             return UNKNOWN_ERROR;
+
+        mFlashIsOn = true;
     } else {
         if (mMainDevice->setControl(V4L2_CID_FLASH_MODE, ATOMISP_FLASH_MODE_OFF, "Flash Mode") < 0)
             return UNKNOWN_ERROR;
+
+        mFlashIsOn = false;
     }
+
+    LOGD("mFlashIsOn: %d", mFlashIsOn);
     return NO_ERROR;
 }
 
@@ -5005,8 +5018,7 @@ int AtomISP::setIspParameter(struct atomisp_parm *isp_param)
     return ret;
 }
 
-int AtomISP::getIspStatistics(struct atomisp_3a_statistics *statistics,
-                              bool isFlashUsed)
+int AtomISP::getIspStatistics(struct atomisp_3a_statistics *statistics)
 {
     LOG2("@%s", __FUNCTION__);
 
@@ -5017,7 +5029,7 @@ int AtomISP::getIspStatistics(struct atomisp_3a_statistics *statistics,
     if (ret == 0 && isOfflineCaptureRunning()) {
         // Detect the corrupt stats only for offline (continous) capture.
         // TODO: This hack to be removed, when BZ #119181 is fixed
-        ret = detectCorruptStatistics(statistics, isFlashUsed);
+        ret = detectCorruptStatistics(statistics);
     }
 
     return ret;
@@ -5026,7 +5038,7 @@ int AtomISP::getIspStatistics(struct atomisp_3a_statistics *statistics,
 //
 // TODO: Remove this function once BZ #119181 gets fixed by the firmware team!
 //
-int AtomISP::detectCorruptStatistics(struct atomisp_3a_statistics *statistics, bool isFlashUsed)
+int AtomISP::detectCorruptStatistics(struct atomisp_3a_statistics *statistics)
 {
     LOG2("@%s", __FUNCTION__);
     int ret = 0;
@@ -5048,12 +5060,12 @@ int AtomISP::detectCorruptStatistics(struct atomisp_3a_statistics *statistics, b
     ae_ref = ae_ref * 144 / (1<<13);
 
     LOG2("AEStatistics (Ref:%3.1f Per Ave:%lld)", ae_ref, ae_y);
-    LOG2("flash used %d", isFlashUsed);
+    LOG2("flash used: %d", mFlashIsOn);
 
     // Drop the stats, if decided that they are corrupt. This method is now a heuristic one,
     // based on the decision what we consider corrupt. Threshold can be adjusted.
     if (prev_ae_y != 0 && llabs(prev_ae_y - ae_y) > CORRUPT_STATS_DIFF_THRESHOLD &&
-        !isFlashUsed) {
+        !mFlashIsOn) {
         // We have already got first stats (prev_ae_y != 0), consider the stats over the
         // threshold corrupt.
         // NOTE: we must not drop stats during pre-flash.
