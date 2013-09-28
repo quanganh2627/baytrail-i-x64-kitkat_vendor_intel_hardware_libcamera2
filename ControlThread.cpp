@@ -520,6 +520,11 @@ void ControlThread::deinit()
         mCP = NULL;
     }
 
+    if (mCallbacksThread != NULL) {
+        mCallbacksThread->requestExitAndWait();
+        mCallbacksThread.clear();
+    }
+
     if (mISP != NULL) {
         delete mISP;
         mISP = NULL;
@@ -554,11 +559,6 @@ void ControlThread::deinit()
         if (it->id == MESSAGE_ID_SET_PARAMETERS)
             free(it->data.setParameters.params); // was strdupped, needs free
     mPostponedMessages.clear();
-
-    if (mCallbacksThread != NULL) {
-        mCallbacksThread->requestExitAndWait();
-        mCallbacksThread.clear();
-    }
 
     LOG1("@%s- complete", __FUNCTION__);
 }
@@ -1268,8 +1268,6 @@ void ControlThread::releaseContinuousCapture(bool flushPictures)
             LOGE("Error flushing PictureThread!");
         }
     }
-
-    mISP->releaseCaptureBuffers();
 }
 
 /**
@@ -1734,7 +1732,6 @@ status_t ControlThread::stopCapture()
         LOGE("Error stopping ISP!");
         return status;
     }
-    status = mISP->releaseCaptureBuffers();
 
     mState = STATE_STOPPED;
     burstStateReset();
@@ -2269,8 +2266,7 @@ status_t ControlThread::handleMessagePanoramaPicture() {
 bool ControlThread::isBurstRunning()
 {
     if (mBurstCaptureDoneNum != -1 &&
-        mBurstLength > 1 &&
-        mBurstCaptureDoneNum < mBurstLength)
+        mBurstLength > 1)
         return true;
 
     return false;
@@ -3150,11 +3146,15 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     mBurstCaptureNum++;
 
     // Do jpeg encoding
-
+    bool hdrSaveOrig = (mHdr.enabled && mHdr.saveOrig && picMetaData.aeConfig->evBias == 0);
     bool doEncode = false;
-    if (!mHdr.enabled || (mHdr.enabled && mHdr.saveOrig && picMetaData.aeConfig->evBias == 0)) {
+    if (!mHdr.enabled || hdrSaveOrig) {
         doEncode = true;
         mCallbacksThread->shutterSound();
+        // in case of save-original, let hdrCompose do the recycling
+        if (hdrSaveOrig) {
+            snapshotBuffer.status = FRAME_STATUS_SKIPPED;
+        }
         LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
         status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
     }
@@ -3850,13 +3850,6 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
         }
     } else if (mState == STATE_CAPTURE || mState == STATE_CONTINUOUS_CAPTURE) {
 
-        if (mCaptureSubState == STATE_CAPTURE_IDLE) {
-            LOG1("Recycling buffer after canceled post-capture-processing");
-        } else {
-            LOG1("CaptureSubState %s -> PICTURE DONE", sCaptureSubstateStrings[mCaptureSubState]);
-            mCaptureSubState = STATE_CAPTURE_PICTURE_DONE;
-        }
-
         /**
          * Snapshot buffer recycle
          * Buffers marked with FRAME_STATUS SKIPPED are not meant to be made
@@ -3871,6 +3864,14 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
          *
          */
         if (msg->snapshotBuf.status != FRAME_STATUS_SKIPPED) {
+            if (mCaptureSubState == STATE_CAPTURE_IDLE) {
+                LOG1("Recycling buffer after canceled post-capture-processing");
+            } else {
+                LOG1("CaptureSubState %s -> PICTURE DONE", sCaptureSubstateStrings[mCaptureSubState]);
+                mCaptureSubState = STATE_CAPTURE_PICTURE_DONE;
+            }
+
+
             msg->snapshotBuf.status = FRAME_STATUS_OK;
             if (findBufferByData(&msg->snapshotBuf, &mAllocatedSnapshotBuffers) == NULL) {
                 LOGE("Stale snapshot buffer returned... this should not happen");
@@ -3884,20 +3885,21 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             }
         }
 
-        // transit to idle once all buffers are returned
-        if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
-            LOG1("CaptureSubState %s -> IDLE",sCaptureSubstateStrings[mCaptureSubState]);
-            mCaptureSubState = STATE_CAPTURE_IDLE;
-        }
-
         if (isBurstRunning()) {
             ++mBurstCaptureDoneNum;
             LOG2("Burst req %d done %d len %d",
                  mBurstCaptureNum, mBurstCaptureDoneNum, mBurstLength);
-            if (mBurstCaptureDoneNum >= mBurstLength) {
+            if (mBurstCaptureDoneNum >= mBurstLength &&
+                (!mHdr.enabled || msg->snapshotBuf.dataPtr == mHdr.outMainBuf.dataPtr)) {
                 LOGW("Last pic in burst received, terminating");
                 burstStateReset();
             }
+        }
+
+        // transit to idle once all buffers are returned
+        if (!isBurstRunning() && mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
+            LOG1("CaptureSubState %s -> IDLE",sCaptureSubstateStrings[mCaptureSubState]);
+            mCaptureSubState = STATE_CAPTURE_IDLE;
         }
 
     } else {
@@ -6466,12 +6468,8 @@ status_t ControlThread::createAtom3A()
     status_t status = NO_ERROR;
 
     if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
-        HWControlGroup hwcg;
-
         if (mSensorSyncManager != NULL)
-            hwcg.mSensorCI = (IHWSensorControl*) mSensorSyncManager.get();
-        else
-            hwcg.mSensorCI = (IHWSensorControl*) mISP;
+            mHwcg.mSensorCI = (IHWSensorControl*) mSensorSyncManager.get();
 
         if(PlatformData::supportAIQ()) {
             m3AControls = new AtomAIQ(mHwcg);

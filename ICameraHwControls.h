@@ -100,7 +100,6 @@ public:
     virtual status_t allocateBuffers(AtomMode mode) = 0;
     virtual status_t start() = 0;
     virtual status_t stop() = 0;
-    virtual status_t releaseCaptureBuffers() = 0;
 
     // For continous mode
     virtual bool isHALZSLEnabled() const = 0;

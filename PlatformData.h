@@ -957,7 +957,7 @@ public:
         mPreviewFormat = V4L2_PIX_FMT_NV12;
         mSensorGainLag = 0;
         mSensorExposureLag = 1;
-        mUseIntelULL = true;
+        mUseIntelULL = false;
    };
 
 protected:

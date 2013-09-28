@@ -58,7 +58,7 @@
 
 
 // workaround for the imx132, this code will be removed in the future
-#define RESOLUTION_1080P_SNAPSHOT_TABLE   "320x240,640x480,1280x720,1920x1080"
+#define RESOLUTION_1080P_SNAPSHOT_TABLE   "320x240,640x480,1280x720,1920x1080,1920x1184"
 #define RESOLUTION_1080P_VIDEO_TABLE   "176x144,320x240,352x288,640x480,1280x720,1920x1080"
 
 namespace android {
@@ -494,13 +494,12 @@ AtomISP::~AtomISP()
      */
     if (mMode != MODE_NONE) {
         stop();
-
-        // note: AtomISP allows to stop capture without freeing, so
-        //       we need to make sure we free them here.
-        //       This is not needed for preview and recording buffers.
-        freeSnapshotBuffers();
-        freePostviewBuffers();
     }
+    // note: AtomISP allows to stop capture without freeing, so
+    //       we need to make sure we free them here.
+    //       This is not needed for preview and recording buffers.
+    freeSnapshotBuffers();
+    freePostviewBuffers();
 
     mMainDevice->close();
 
@@ -2013,15 +2012,6 @@ status_t AtomISP::stopCapture()
     dumpRawImageFlush();
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
     return NO_ERROR;
-}
-
-status_t AtomISP::releaseCaptureBuffers()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    status = freeSnapshotBuffers();
-    status |= freePostviewBuffers();
-    return status;
 }
 
 /**
@@ -3969,13 +3959,7 @@ status_t AtomISP::allocateSnapshotBuffers()
             }
         }
     } else {
-        // note: make sure client has called releaseCaptureBuffers()
-        //       at this point (clients may hold on to snapshot buffers
-        //       after capture has been stopped)
-        if (mSnapshotBuffers[0].buff != NULL) {
-            LOGW("@%s Client has not freed snapshot buffers!", __FUNCTION__);
-            freeSnapshotBuffers();
-        }
+        freeSnapshotBuffers();
 
         LOG1("@%s Allocating %d buffers of size: %d (snapshot), %d (postview)",
                 __FUNCTION__,
@@ -4193,7 +4177,7 @@ status_t AtomISP::freePostviewBuffers()
 
     for (size_t i = 0 ; i < mPostviewBuffers.size(); i++) {
         AtomBuffer &buffer = mPostviewBuffers.editItemAt(i);
-        if (mHALZSLEnabled)
+        if (buffer.gfxInfo.scalerId != -1)
             mScaler->unRegisterBuffer(buffer, ScalerService::SCALER_OUTPUT);
 
         MemoryUtils::freeAtomBuffer(buffer);
@@ -4218,6 +4202,8 @@ status_t AtomISP::freePostviewBuffers()
  */
 bool AtomISP::needNewPostviewBuffers()
 {
+    if (mHALZSLEnabled)
+        return true;
 
     if ((mPostviewBuffers.size() != (unsigned int)mConfig.num_snapshot) ||
          mPostviewBuffers.isEmpty())
