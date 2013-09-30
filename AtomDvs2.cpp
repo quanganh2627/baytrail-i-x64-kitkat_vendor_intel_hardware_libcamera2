@@ -350,7 +350,7 @@ bool AtomDvs2::enable(const CameraParameters& params)
         // workaround: The high speed and 1080P DVS can't be supported at same time
         int width, height;
         mIsp->getVideoSize(&width, &height, NULL);
-        if(mIsp->isHighSpeedEnabled() && !isHighSpeedDvsSupported(width, height)) {
+        if (mIsp->getRecordingFramerate() > DEFAULT_RECORDING_FPS && !isHighSpeedDvsSupported(width, height)) {
             mIsp->setDVS(false);
             mDVSEnabled = false;
         } else {

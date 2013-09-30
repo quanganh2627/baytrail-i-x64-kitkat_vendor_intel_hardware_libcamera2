@@ -200,11 +200,6 @@ status_t AtomAIQ::_init3A()
 
     run3aInit();
 
-    // In high speed, the Scene mode should be SPORT, set AE operation as action
-    // to notice AIQ
-    if(mAeSceneMode == CAM_AE_SCENE_MODE_SPORTS)
-        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_action;
-
     cameranvm_delete(aicNvm);
     m3aState.stats = NULL;
     m3aState.stats_valid = false;
@@ -277,6 +272,11 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
     mAeInputParameters.frame_use = m3aState.frame_use;
     mAeInputParameters.manual_frame_time_us_min = (long) 1/fps*1000000;
     mAwbInputParameters.frame_use = m3aState.frame_use;
+
+    // In high speed recording, the scene mode should be SPORTS
+    // Set AE operation mode as action to notify AIQ
+    if (mode == MODE_VIDEO && fps > DEFAULT_RECORDING_FPS)
+        setAeSceneMode(CAM_AE_SCENE_MODE_SPORTS);
 
     /* usually the grid changes as well when the mode changes. */
     changeSensorMode();

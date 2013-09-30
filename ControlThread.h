@@ -607,7 +607,7 @@ private:
 
     status_t processParamSlowMotionRate(const CameraParameters *oldParams,
         CameraParameters *newParams);
-    status_t processParamHighSpeed(const CameraParameters *oldParams,
+    status_t processParamRecordingFramerate(const CameraParameters *oldParams,
         CameraParameters *newParams);
 
     status_t processParamMirroring(const CameraParameters *oldParams,
@@ -635,6 +635,7 @@ private:
     // validation helpers
     bool validateSize(int width, int height, Vector<Size> &supportedSizes) const;
     bool validateString(const char* value,  const char* supportList) const;
+    bool validateHighSpeedResolutionFps(int width, int height, int fps) const;
 
     status_t stopCapture();
     void     stopOfflineCapture();
