@@ -78,6 +78,11 @@ public:
     status_t lowBattery();
     status_t rawFrameDone(AtomBuffer* snapshotBuf);
     status_t postviewFrameDone(AtomBuffer* postviewBuf);
+    status_t accManagerPointer(int isp_ptr, int idx);
+    status_t accManagerFinished();
+    status_t accManagerPreviewBuffer(camera_memory_t *buffer);
+    status_t accManagerArgumentBuffer(camera_memory_t *buffer);
+    status_t accManagerMetadataBuffer(camera_memory_t *buffer);
 
 // private types
 private:
@@ -113,6 +118,13 @@ private:
 
         MESSAGE_ID_RAW_FRAME_DONE,
         MESSAGE_ID_POSTVIEW_FRAME_DONE,
+
+        // AccManager Callbacks
+        MESSAGE_ID_ACC_POINTER,
+        MESSAGE_ID_ACC_FINISHED,
+        MESSAGE_ID_ACC_PREVIEW_BUFFER,
+        MESSAGE_ID_ACC_ARGUMENT_BUFFER,
+        MESSAGE_ID_ACC_METADATA_BUFFER,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -176,6 +188,13 @@ private:
     struct MessageError {
         int id;
     };
+
+    struct MessageAccManager {
+        camera_memory_t buffer;
+        int isp_ptr;
+        int idx;
+    };
+
     // union of all message data
     union MessageData {
 
@@ -222,6 +241,10 @@ private:
         // MESSAGE_ID_ERROR_CALLBACK
         MessageError error;
 
+        // MESSAGE_ID_ACC_NOTIFY
+        // MESSAGE_ID_ACC_BUFFER
+        MessageAccManager accManager;
+
     };
 
     // message id and message data
@@ -255,6 +278,11 @@ private:
     status_t handleMessageLowBattery();
     status_t handleMessageRawFrameDone(MessageFrame *msg);
     status_t handleMessagePostviewFrameDone(MessageFrame *msg);
+    status_t handleMessageAccManagerPointer(MessageAccManager *msg);
+    status_t handleMessageAccManagerFinished();
+    status_t handleMessageAccManagerPreviewBuffer(MessageAccManager *msg);
+    status_t handleMessageAccManagerArgumentBuffer(MessageAccManager *msg);
+    status_t handleMessageAccManagerMetadataBuffer(MessageAccManager *msg);
     // main message function
     status_t waitForAndExecuteMessage();
 

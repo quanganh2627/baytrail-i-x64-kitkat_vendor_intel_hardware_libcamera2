@@ -310,4 +310,54 @@ void Callbacks::lowBattery()
     }
 }
 
+void Callbacks::accManagerPointer(int isp_ptr, int idx)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if (mNotifyCB != NULL) {
+        LOG1("Sending message: CAMERA_MSG_ACC_POINTER, isp_ptr = %d, idx = %d", isp_ptr, idx);
+        mNotifyCB(CAMERA_MSG_ACC_POINTER, isp_ptr, idx, mUserToken);
+    }
+}
+
+void Callbacks::accManagerFinished()
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if (mNotifyCB != NULL) {
+        LOG1("Sending message: CAMERA_MSG_ACC_FINISHED");
+        mNotifyCB(CAMERA_MSG_ACC_FINISHED, 0, 0, mUserToken);
+    }
+}
+
+void Callbacks::accManagerPreviewBuffer(camera_memory_t *buffer)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    if (mDataCB != NULL) {
+        LOG2("Sending message: CAMERA_MSG_ACC_PREVIEW_BUFFER");
+        mDataCB(CAMERA_MSG_ACC_PREVIEW_BUFFER, buffer, 0, NULL, mUserToken);
+    }
+}
+
+void Callbacks::accManagerArgumentBuffer(camera_memory_t *buffer)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if (mDataCB != NULL) {
+        LOG1("Sending message: CAMERA_MSG_ACC_ARGUMENT_BUFFER");
+        mDataCB(CAMERA_MSG_ACC_ARGUMENT_BUFFER, buffer, 0, NULL, mUserToken);
+    }
+}
+
+void Callbacks::accManagerMetadataBuffer(camera_memory_t *buffer)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if (mDataCB != NULL) {
+        LOG1("Sending message: CAMERA_MSG_ACC_METADATA_BUFFER");
+        mDataCB(CAMERA_MSG_ACC_METADATA_BUFFER, buffer, 0, NULL, mUserToken);
+    }
+}
+
 };

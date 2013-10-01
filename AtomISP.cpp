@@ -930,7 +930,7 @@ status_t AtomISP::applySensorFlip(void)
 
     // workaround for the imx132, this code will be removed in the future
     if (strstr(mCameraInput->name, "imx132"))
-        sensorFlip = PlatformData::SENSOR_FLIP_H;
+        sensorFlip = PlatformData::SENSOR_FLIP_H | PlatformData::SENSOR_FLIP_V;
 
     if (sensorFlip == PlatformData::SENSOR_FLIP_NA
         || sensorFlip == PlatformData::SENSOR_FLIP_OFF)
@@ -3909,8 +3909,8 @@ status_t AtomISP::allocateRecordingBuffers()
     for (int i = 0; i < mNumBuffers; i++) {
         mRecordingBuffers[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_VIDEO); // init fields
         // recording buffers use uncached memory
+        MemoryUtils::allocateGraphicBuffer(mRecordingBuffers[i], mConfig.recording);
 
-        mCallbacks->allocateMemory(&mRecordingBuffers[i], size);
         LOG1("allocate recording buffer[%d], buff=%p size=%d",
                 i, mRecordingBuffers[i].dataPtr, mRecordingBuffers[i].size);
         if (mRecordingBuffers[i].dataPtr == NULL) {
@@ -3920,13 +3920,6 @@ status_t AtomISP::allocateRecordingBuffers()
         }
         allocatedBufs++;
         bufPool[i] = mRecordingBuffers[i].dataPtr;
-
-        mRecordingBuffers[i].shared = false;
-        mRecordingBuffers[i].width = mConfig.recording.width;
-        mRecordingBuffers[i].height = mConfig.recording.height;
-        mRecordingBuffers[i].size = mConfig.recording.size;
-        mRecordingBuffers[i].stride = mConfig.recording.stride;
-        mRecordingBuffers[i].format = mConfig.recording.format;
     }
     mRecordingDevice->setBufferPool((void**)&bufPool,mNumBuffers,
                                      &mConfig.recording,cached);
@@ -4094,8 +4087,13 @@ status_t AtomISP::allocateMetaDataBuffers()
     for (int i = 0; i < mNumBuffers; i++) {
         metaDataBuf = new IntelMetadataBuffer();
         if(metaDataBuf) {
-            initMetaDataBuf(metaDataBuf);
-            metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].dataPtr);
+            if (graphic_is_gen) {
+                metaDataBuf->SetType(MetadataBufferTypeGrallocSource);
+                metaDataBuf->SetValue((uint32_t)*mRecordingBuffers[i].gfxInfo_rec.gfxBufferHandle);
+            } else {
+                initMetaDataBuf(metaDataBuf);
+                metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].dataPtr);
+            }
             metaDataBuf->Serialize(meta_data_prt, meta_data_size);
             mRecordingBuffers[i].metadata_buff = NULL;
             mCallbacks->allocateMemory(&mRecordingBuffers[i].metadata_buff, meta_data_size);
