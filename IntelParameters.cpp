@@ -124,9 +124,7 @@ namespace android {
     const char IntelCameraParameters::KEY_PANORAMA[] = "panorama";
     const char IntelCameraParameters::KEY_SUPPORTED_PANORAMA[] = "panorama-values";
     const char IntelCameraParameters::KEY_PANORAMA_MAX_SNAPSHOT_COUNT[] = "panorama-max-snapshot-count";
-    const char IntelCameraParameters::KEY_FACE_DETECTION[] = "face-detection";
     const char IntelCameraParameters::KEY_SUPPORTED_FACE_DETECTION[] = "face-detection-values";
-    const char IntelCameraParameters::KEY_FACE_RECOGNITION[] = "face-recognition";
     const char IntelCameraParameters::KEY_SUPPORTED_FACE_RECOGNITION[] = "face-recognition-values";
     const char IntelCameraParameters::KEY_SCENE_DETECTION[] = "scene-detection";
     const char IntelCameraParameters::KEY_SUPPORTED_SCENE_DETECTION[] = "scene-detection-values";
