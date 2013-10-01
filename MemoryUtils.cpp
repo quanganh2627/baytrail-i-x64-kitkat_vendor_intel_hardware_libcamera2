@@ -37,8 +37,7 @@ namespace android {
         LOG1("%s with these properties: (%dx%d)s:%d format %s", __FUNCTION__,
                 aFrameInfo.width, aFrameInfo.height, aFrameInfo.stride, v4l2Fmt2Str(aFrameInfo.format));
 
-        GraphicBuffer *cameraGraphicBuffer = new GraphicBuffer(bytesPerLineToWidth(aFrameInfo.format, aFrameInfo.stride), aFrameInfo.height,
-                        getGFXHALPixelFormatFromV4L2Format(aFrameInfo.format),
+        GraphicBuffer *cameraGraphicBuffer = new GraphicBuffer(aFrameInfo.width, aFrameInfo.height,getGFXHALPixelFormatFromV4L2Format(aFrameInfo.format),
                         GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_SW_WRITE_OFTEN | GraphicBuffer::USAGE_HW_TEXTURE);
 
         if (!cameraGraphicBuffer) {
@@ -56,7 +55,7 @@ namespace android {
         } else {
             LOG1("%s stride from Gfx is %d", __FUNCTION__, aFrameInfo.stride);
         }
-        aBuff.stride = cameraNativeWindowBuffer->stride;
+        aBuff.stride = aFrameInfo.stride;
         aBuff.format = aFrameInfo.format;
         aBuff.gfxInfo.scalerId = -1;
         aBuff.gfxInfo.gfxBufferHandle = &cameraGraphicBuffer->handle;
