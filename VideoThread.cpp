@@ -32,23 +32,11 @@ VideoThread::VideoThread(sp<CallbacksThread> callbacksThread) :
     ,mFirstFrameTimestamp(0)
 {
     LOG1("@%s", __FUNCTION__);
-#ifdef GRAPHIC_IS_GEN
-    mVpp = new VideoVPPBase();
-    if (!mVpp) {
-        LOGE("Fail to construct VPP");
-    }
-#endif
 }
 
 VideoThread::~VideoThread()
 {
     LOG1("@%s", __FUNCTION__);
-#ifdef GRAPHIC_IS_GEN
-    if (mVpp) {
-        delete mVpp;
-        mVpp = NULL;
-    }
-#endif
 }
 
 status_t VideoThread::video(AtomBuffer *buff)
@@ -100,52 +88,6 @@ status_t VideoThread::handleMessageExit()
     return status;
 }
 
-status_t VideoThread::convertNV12Linear2Tiled(AtomBuffer &buff)
-{
-#ifdef GRAPHIC_IS_GEN
-    VAStatus ret;
-    RenderTarget Src, Dst;
-    ANativeWindowBuffer *nativeBuffer = buff.gfxInfo_rec.gfxBuffer->getNativeBuffer();
-
-    if (mVpp == NULL) {
-        LOGE("@%s vpp is not valid", __FUNCTION__);
-        return UNKNOWN_ERROR;
-    }
-
-    Src.width  = buff.stride;
-    Src.height = buff.height;
-    Src.stride = buff.stride;
-    Src.format = VA_RT_FORMAT_YUV420;
-    Src.pixel_format = VA_FOURCC_NV12;
-    Src.type   = RenderTarget::ANDROID_GRALLOC;
-    Src.handle = (int)*buff.gfxInfo.gfxBufferHandle;
-    Src.rect.x = Src.rect.y = 0;
-    Src.rect.width = buff.width;
-    Src.rect.height = buff.height;
-
-    // Specific format information is in graphic handle.
-    Dst.width  = nativeBuffer->stride;
-    Dst.height = ALIGN32(buff.height);
-    Dst.stride = nativeBuffer->stride;
-    Dst.format = VA_RT_FORMAT_YUV420;
-    Dst.pixel_format = VA_FOURCC_NV12;
-    Dst.type   = RenderTarget::ANDROID_GRALLOC;
-    Dst.handle = (int)*buff.gfxInfo_rec.gfxBufferHandle;
-    Dst.rect.x = Dst.rect.y = 0;
-    Dst.rect.width = buff.width;
-    Dst.rect.height = buff.height;
-
-    LOG2("@%s Src %dx%d s:%d handle:%x", __FUNCTION__, Src.width, Src.height, Src.stride, Src.handle);
-    LOG2("@%s Dst %dx%d s:%d handle:%x", __FUNCTION__, Dst.width, Dst.height, Dst.stride, Dst.handle);
-    ret = mVpp->perform(Src, Dst, NULL, false);
-    if (ret != VA_STATUS_SUCCESS) {
-        LOGE("@%s error:%x", __FUNCTION__, ret);
-        return UNKNOWN_ERROR;
-    }
-#endif //GRAPHIC_IS_GEN
-    return OK;
-}
-
 status_t VideoThread::handleMessageVideo(MessageVideo *msg)
 {
     LOG2("@%s", __FUNCTION__);
@@ -158,12 +100,6 @@ status_t VideoThread::handleMessageVideo(MessageVideo *msg)
             mFirstFrameTimestamp = timestamp;
         timestamp = (timestamp - mFirstFrameTimestamp) * mSlowMotionRate + mFirstFrameTimestamp;
     }
-
-    if (convertNV12Linear2Tiled(msg->buff)) {
-        // Print err and do nothing here
-        LOGE("Fail to convertNV12Linear2Tiled");
-    }
-
     mCallbacksThread->videoFrameDone(&msg->buff, timestamp);
 
     return status;

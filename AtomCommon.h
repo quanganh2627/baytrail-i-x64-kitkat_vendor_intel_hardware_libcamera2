@@ -178,7 +178,6 @@ struct AtomBuffer {
     struct timeval  capture_timestamp;  /*!< system timestamp from when the frame was captured */
     void *dataPtr;                      /*!< pointer to the actual data mapped from the buffer provider */
     GFXBufferInfo gfxInfo;              /*!< graphics buffer information */
-    GFXBufferInfo gfxInfo_rec;          /*!< for video recording only, to store codec specific data for video encoding*/
 };
 
 struct AAAWindowInfo {

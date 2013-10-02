@@ -23,11 +23,6 @@
 #include "MessageQueue.h"
 #include "AtomCommon.h"
 
-#ifdef GRAPHIC_IS_GEN
-#include <VideoVPPBase.h>
-#include <intel_bufmgr.h>
-#endif
-
 namespace android {
 
 class CallbacksThread;
@@ -109,8 +104,6 @@ private:
     // main message function
     status_t waitForAndExecuteMessage();
 
-    // BYT need this conversion for video encoding. do nothing for others
-    status_t convertNV12Linear2Tiled(AtomBuffer &buff);
 // inherited from Thread
 private:
     virtual bool threadLoop();
@@ -123,9 +116,6 @@ private:
     sp<CallbacksThread> mCallbacksThread;
     int mSlowMotionRate;
     nsecs_t mFirstFrameTimestamp;
-#if GRAPHIC_IS_GEN //only availble with Gen GPU
-    VideoVPPBase *mVpp;
-#endif
 
 }; // class VideoThread
 
