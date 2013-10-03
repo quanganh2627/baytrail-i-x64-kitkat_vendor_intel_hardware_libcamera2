@@ -407,7 +407,6 @@ status_t AAAThread::handleMessageAutoFocus()
         m3AControls->setAfEnabled(true);
         // state of client requested 3A locks is kept, so it
         // is safe to override the values here
-        m3AControls->setAeLock(true);
         m3AControls->setAwbLock(true);
 
         m3AControls->startStillAf();

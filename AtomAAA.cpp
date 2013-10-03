@@ -897,6 +897,10 @@ status_t AtomAAA::startStillAf()
             gFlashCI->setTorch(TORCH_INTENSITY);
         }
     }
+    // AE lock was taken by the client (See. AAAThread::handleMessageAutoFocus)
+    // for AF, this lock was removed for added IA AIQ feature. In AtomAAA side
+    // we take the lock here to retain the old functionality.
+    ia_3a_ae_lock(true);
 
     // We have to switch AF mode to auto in order for the AF sequence to run.
     ia_3a_af_set_focus_mode(ia_3a_af_mode_auto);
