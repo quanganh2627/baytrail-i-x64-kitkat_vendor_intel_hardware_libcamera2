@@ -49,6 +49,7 @@
 #include "SensorThread.h"
 #include "SensorSyncManager.h"
 #include "ICameraHwControls.h"
+#include "AccManagerThread.h"
 
 namespace android {
 
@@ -496,6 +497,7 @@ private:
     status_t stopPanorama();
     status_t startFaceRecognition();
     status_t stopFaceRecognition();
+    status_t enableIspExtensions();
     status_t handleMessageRelease();
 
     status_t cancelPictureThread();
@@ -685,6 +687,8 @@ private:
 
     int getCameraID();
 
+    void reconfigureThumbnailSize(int &width, int &height);
+
 // inherited from Thread
 private:
     virtual bool threadLoop();
@@ -710,6 +714,7 @@ private:
     sp<BracketManager> mBracketManager;
     sp<PostCaptureThread> mPostCaptureThread;
     sp<SensorSyncManager> mSensorSyncManager;
+    sp<AccManagerThread> mAccManagerThread;
 
     MessageQueue<Message, MessageId> mMessageQueue;
     List<Message> mPostponedMessages;
@@ -733,6 +738,7 @@ private:
     bool mFaceDetectionActive;
     bool mAutoFocusActive;
     bool mFlashAutoFocus;
+    bool mIspExtensionsEnabled;     /*<! Flag that signals whether the caller wants to run a 3rd party ISP extension*/
 
     /* Burst configuration: */
 

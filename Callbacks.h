@@ -74,6 +74,11 @@ public:
     void ullPictureDone(AtomBuffer *ullJpegPicture);
 
     void lowBattery();
+    void accManagerPointer(int isp_ptr, int idx);
+    void accManagerFinished();
+    void accManagerPreviewBuffer(camera_memory_t *buffer);
+    void accManagerArgumentBuffer(camera_memory_t *buffer);
+    void accManagerMetadataBuffer(camera_memory_t *buffer);
 
 private:
     camera_notify_callback mNotifyCB;

@@ -83,6 +83,12 @@ namespace android {
 
 #define ATOMISP_CAPTURE_POLL_TIMEOUT 2000
 
+/*
+ * RECONFIGURE_THUMBNAIL_HEIGHT_LIMIT: limit thumbnail size less than 480 to reduce thumbnail Jpeg size.
+ * Make sure total Exif size less than 64k.
+ */
+#define RECONFIGURE_THUMBNAIL_HEIGHT_LIMIT 480
+
 // Minimum value of our supported preview FPS
 const int MIN_PREVIEW_FPS = 11;
 // Max value of our supported preview fps:
@@ -126,6 +132,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mScalerService(NULL)
     ,mBracketManager(NULL)
     ,mPostCaptureThread(NULL)
+    ,mAccManagerThread(NULL)
     ,mMessageQueue("ControlThread", (int) MESSAGE_ID_MAX)
     ,mState(STATE_STOPPED)
     ,mCaptureSubState(STATE_CAPTURE_INIT)
@@ -137,6 +144,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mIntelParamsAllowed(false)
     ,mFaceDetectionActive(false)
     ,mFlashAutoFocus(false)
+    ,mIspExtensionsEnabled(false)
     ,mFpsAdaptSkip(0)
     ,mBurstLength(0)
     ,mBurstStart(0)
@@ -339,6 +347,12 @@ status_t ControlThread::init()
         goto bail;
     }
 
+    mAccManagerThread = new AccManagerThread(mHwcg, mCallbacksThread, mCallbacks, mCameraId);
+    if (mAccManagerThread == NULL) {
+        LOGE("error creating AccManagerThread");
+        goto bail;
+    }
+
     // get default params from AtomISP and JPEG encoder
     mISP->getDefaultParameters(&mParameters, &mIntelParameters);
     m3AControls->getDefaultParams(&mParameters, &mIntelParameters);
@@ -405,6 +419,13 @@ status_t ControlThread::init()
         LOGW("Error Starting PostCaptureThread!");
         goto bail;
     }
+
+    status = mAccManagerThread->run("CamHAL_ACCMANAGER");
+    if (status != NO_ERROR) {
+        LOGW("Error starting Acceleration Manager thread!");
+        goto bail;
+    }
+
     // Disable bracketing by default
     mBracketManager->setBracketMode(BRACKET_NONE);
 
@@ -472,6 +493,11 @@ void ControlThread::deinit()
     if (mPostProcThread != NULL) {
         mPostProcThread->requestExitAndWait();
         mPostProcThread.clear();
+    }
+
+    if (mAccManagerThread != NULL) {
+        mAccManagerThread->requestExitAndWait();
+        mAccManagerThread.clear();
     }
 
     if (mPanoramaThread != NULL) {
@@ -1397,12 +1423,20 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         LOG1("@%s: ANR enabled, disabling continuous mode", __FUNCTION__);
         goto online_preview;
     }
+
+    // No continuous mode for 3rd party firmware
+    if (mIspExtensionsEnabled) {
+        LOG1("@%s: ISP Extensions enabled, disabling continuous mode", __FUNCTION__);
+        goto online_preview;
+    }
+
     LOG1("@%s: Selecting continuous still preview mode", __FUNCTION__);
     return STATE_CONTINUOUS_CAPTURE;
 
 online_preview:
-    // In online preview we cannot support other than the standard update mode
-    if (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD) {
+    // In online preview we cannot support preview update modes 'during_capture' and 'continuous'
+    if (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_DURING_CAPTURE ||
+        mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_CONTINUOUS) {
         mPreviewUpdateMode = IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD;
         LOGW("Forcing preview update mode to standard, conflicting settings");
     }
@@ -1478,10 +1512,14 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     // Load any ISP extensions before ISP is started
 
     // workaround for FR during HAL ZSL - do not use extensions
-    if (mISP->isHALZSLEnabled())
+    if (mISP->isHALZSLEnabled()) {
         mPostProcThread->unloadIspExtensions(); // sends NULL to ia_face_set_acceleration -> enables SW FR
-    else
+    } else if (!mIspExtensionsEnabled) {
         mPostProcThread->loadIspExtensions(videoMode);
+    } else {
+        // load 3rd party ISP extensions
+        mAccManagerThread->loadIspExtensions();
+    }
 
     mISP->getPreviewSize(&width, &height,&stride);
     if (videoMode)
@@ -1605,9 +1643,15 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     mISP->attachObserver(this, OBSERVE_PREVIEW_STREAM);
     mISP->attachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
 
-    mPreviewThread->setCallback(
+    if (!mIspExtensionsEnabled) {
+        mPreviewThread->setCallback(
             static_cast<ICallbackPreview*>(mPostProcThread.get()),
             ICallbackPreview::OUTPUT_WITH_DATA);
+    } else {
+        mPreviewThread->setCallback(
+                static_cast<ICallbackPreview*>(mAccManagerThread.get()),
+                ICallbackPreview::OUTPUT_WITH_DATA);
+    }
 
     status = mISP->start();
     if (status == NO_ERROR) {
@@ -1691,7 +1735,12 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     mMessageQueue.remove(MESSAGE_ID_DEQUEUE_RECORDING);
 
     status = mPreviewThread->returnPreviewBuffers();
-    mPostProcThread->unloadIspExtensions();
+    if (!mIspExtensionsEnabled) {
+        mPostProcThread->unloadIspExtensions();
+    } else {
+        mAccManagerThread->unloadIspExtensions();
+        mIspExtensionsEnabled = false;
+    }
 
     if (oldState == STATE_CONTINUOUS_CAPTURE)
         releaseContinuousCapture(flushPictures);
@@ -2078,6 +2127,12 @@ status_t ControlThread::handleMessageStartRecording()
         heightPreview = height;
     }
 
+    // Limit thumbnail size less than 480p to reduce thumbnail Jpeg size.
+    // Make sure total Exif size less than 64k.
+    if (heightPreview >= RECONFIGURE_THUMBNAIL_HEIGHT_LIMIT) {
+        reconfigureThumbnailSize(widthPreview, heightPreview);
+    }
+
     LOG1("video snapshot thumbnail size %dx%d", widthPreview, heightPreview);
     mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH, widthPreview);
     mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT, heightPreview);
@@ -2137,6 +2192,47 @@ status_t ControlThread::handleMessageStopRecording()
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_STOP_RECORDING, status);
     return status;
+}
+
+/* This function is used to reduce thumbnail size in Video Snapshot Mode when start recording video.
+ * Make sure total Exif size less than 64k and include one thumbnail image.
+ * Reconfigure the thumbnail width and height to default value same with still capture.
+ * Based on aspect ratio, change it to jpeg-thumbnail-size-values(320x240,240x320,320x180,180x320).
+ */
+void ControlThread::reconfigureThumbnailSize(int &width, int &height)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    /* check input parameter */
+    if (height <= 0) {
+        LOGE("error input thumbnail height");
+        return;
+    }
+
+    float aspect = 0.0f;
+    const float tolerance = 0.005f;
+    aspect = static_cast<float>(width) / static_cast<float>(height);
+    if (fabsf(aspect - 1.333) < tolerance) {
+        /* into 4:3 aspect ratios */
+        width = 320;
+        height = 240;
+    } else if (fabsf(aspect - 1.777) < tolerance) {
+        /* into 16:9 aspect ratios */
+        width = 320;
+        height = 180;
+    } else if (fabsf(aspect - 0.75) < tolerance) {
+        /* into 3:4 aspect ratios */
+        width = 240;
+        height = 320;
+    } else if (fabsf(aspect - 0.562) < tolerance) {
+        /* into 9:16 aspect ratios */
+        width = 180;
+        height = 320;
+    } else {
+        /* default use 4:3 aspect ratios */
+        width = 320;
+        height = 240;
+    }
 }
 
 status_t ControlThread::skipFrames(size_t numFrames)
@@ -6746,6 +6842,34 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
         break;
     case CAMERA_CMD_ENABLE_FOCUS_MOVE_MSG:
         status = enableFocusMoveMsg(static_cast<bool>(msg->arg1));
+        break;
+    case CAMERA_CMD_ENABLE_ISP_EXTENSION:
+        status = enableIspExtensions();
+        break;
+    case CAMERA_CMD_ACC_LOAD:
+        status = mAccManagerThread->load(msg->arg1);
+        break;
+    case CAMERA_CMD_ACC_ALLOC:
+        status = mAccManagerThread->alloc(msg->arg1);
+        break;
+    case CAMERA_CMD_ACC_FREE:
+        status = mAccManagerThread->free(msg->arg1);
+        break;
+    case CAMERA_CMD_ACC_MAP:
+        status = mAccManagerThread->map(msg->arg1);
+        break;
+    case CAMERA_CMD_ACC_UNMAP:
+        status = mAccManagerThread->unmap(msg->arg1);
+        break;
+    case CAMERA_CMD_ACC_SEND_ARG:
+        status = mAccManagerThread->setArgToBeSend(msg->arg1);
+        break;
+    case CAMERA_CMD_ACC_CONFIGURE_ISP_STANDALONE:
+        status = mAccManagerThread->configureIspStandalone(msg->arg1);
+        break;
+    case CAMERA_CMD_ACC_RETURN_BUFFER:
+        status = mAccManagerThread->returnBuffer(msg->arg1);
+        break;
     default:
         break;
     }
@@ -7460,6 +7584,25 @@ status_t ControlThread::stopPanorama()
         // function. The finalization message includes pointers to released memory.
         mMessageQueue.remove(MESSAGE_ID_PANORAMA_FINALIZE); // drop message
 
+        return NO_ERROR;
+    } else {
+        return INVALID_OPERATION;
+    }
+}
+
+status_t ControlThread::enableIspExtensions()
+{
+    LOG2("@%s", __FUNCTION__);
+    if (mState != STATE_STOPPED) {
+        LOGE("Must enable ISP extensions in stop state");
+        return INVALID_OPERATION;
+    }
+    if (mIspExtensionsEnabled) {
+        LOGD("ISP extensions already enabled");
+        return NO_ERROR;
+    }
+    if (mAccManagerThread != NULL) {
+        mIspExtensionsEnabled = true;
         return NO_ERROR;
     } else {
         return INVALID_OPERATION;

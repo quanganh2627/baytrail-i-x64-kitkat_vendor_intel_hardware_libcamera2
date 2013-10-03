@@ -33,7 +33,6 @@
 #include "CameraConf.h"
 #include "ScalerService.h"
 #include "ICameraHwControls.h"
-#include "AAAThread.h"
 
 namespace android {
 
@@ -246,7 +245,7 @@ public:
     /* ISP related controls */
     int setAicParameter(struct atomisp_parameters *aic_params);
     int setIspParameter(struct atomisp_parm *isp_params);
-    int getIspStatistics(struct atomisp_3a_statistics *statistics, bool isFlashUsed);
+    int getIspStatistics(struct atomisp_3a_statistics *statistics);
     int setGdcConfig(const struct atomisp_morph_table *tbl);
     int setShadingTable(struct atomisp_shading_table *table);
     int setMaccConfig(struct atomisp_macc_config *macc_cfg);
@@ -408,8 +407,7 @@ private:
     void fetchIspVersions();
 
     // TODO: Remove once BZ #119181 gets fixed by the firmware team!!
-    int detectCorruptStatistics(struct atomisp_3a_statistics *statistics,
-                                bool isFlashUsed);
+    int detectCorruptStatistics(struct atomisp_3a_statistics *statistics);
 
 private:
     // AtomIspObserver
@@ -581,9 +579,10 @@ private:
     bool mHighSpeedEnabled;
 
     // Sensor helper fields
-    Vector <v4l2_fmtdesc>    mSensorSupportedFormats;     /*!> List of V4L2 pixel format supported by the sensor */
+    Vector <v4l2_fmtdesc>    mSensorSupportedFormats;     /*!< List of V4L2 pixel format supported by the sensor */
     int                      mRawBayerFormat;
-
+    bool mFlashIsOn;                                    //!< Used in corrupt statistics detection to avoid dropping
+                                                        // stats when flash is used */
 }; // class AtomISP
 
 }; // namespace android
