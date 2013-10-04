@@ -332,10 +332,6 @@ void CameraProfiles::handleFeature(CameraProfiles *profiles, const char *name, c
         pCurrentCam->defaultUltraLowLight = atts[1];
     } else if (strcmp(name, "supportedUltraLowLight") == 0) {
         pCurrentCam->supportedUltraLowLight = atts[1];
-    } else if (strcmp(name, "defaultFaceDetection") == 0) {
-        pCurrentCam->defaultFaceDetection = atts[1];
-    } else if (strcmp(name, "supportedFaceDetection") == 0) {
-        pCurrentCam->supportedFaceDetection = atts[1];
     } else if (strcmp(name, "defaultFaceRecognition") == 0) {
         pCurrentCam->defaultFaceRecognition = atts[1];
     } else if (strcmp(name, "supportedFaceRecognition") == 0) {
@@ -368,8 +364,6 @@ void CameraProfiles::handleFeature(CameraProfiles *profiles, const char *name, c
     pCurrentCam->supportedHdr = "";
     pCurrentCam->defaultUltraLowLight = "";
     pCurrentCam->supportedUltraLowLight = "";
-    pCurrentCam->defaultFaceDetection = "";
-    pCurrentCam->supportedFaceDetection = "";
     pCurrentCam->defaultFaceRecognition = "";
     pCurrentCam->supportedFaceRecognition = "";
     pCurrentCam->defaultSmileShutter = "";
@@ -539,8 +533,6 @@ void CameraProfiles::dump(void)
         LOGD("line%d, in DeviceData, pcam->supportedHdr:%s ", __LINE__, mCameras[i].supportedHdr.string());
         LOGD("line%d, in DeviceData, pcam->defaultUltraLowLight:%s ", __LINE__, mCameras[i].defaultUltraLowLight.string());
         LOGD("line%d, in DeviceData, pcam->supportedUltraLowLight:%s ", __LINE__, mCameras[i].supportedUltraLowLight.string());
-        LOGD("line%d, in DeviceData, pcam->defaultFaceDetection:%s ", __LINE__, mCameras[i].defaultFaceDetection.string());
-        LOGD("line%d, in DeviceData, pcam->supportedFaceDetection:%s ", __LINE__, mCameras[i].supportedFaceDetection.string());
         LOGD("line%d, in DeviceData, pcam->defaultFaceRecognition:%s ", __LINE__, mCameras[i].defaultFaceRecognition.string());
         LOGD("line%d, in DeviceData, pcam->supportedFaceRecognition:%s ", __LINE__, mCameras[i].supportedFaceRecognition.string());
         LOGD("line%d, in DeviceData, pcam->defaultSmileShutter:%s ", __LINE__, mCameras[i].defaultSmileShutter.string());

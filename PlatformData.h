@@ -657,18 +657,6 @@ class PlatformData {
     static const char* supportedUltraLowLight(int cameraId);
 
     /**
-     * FaceDetection default value
-     * \return the value of the FaceDetection default value.
-     */
-    static const char* defaultFaceDetection(int cameraId);
-
-    /**
-     * FaceDetection mode supported value
-     * \return the value of the FaceDetection supported.
-     */
-    static const char* supportedFaceDetection(int cameraId);
-
-    /**
      * FaceRecognition default value
      * \return the value of the FaceRecognition default value.
      */
@@ -1140,8 +1128,6 @@ protected:
             supportedHdr = "on,off";
             defaultUltraLowLight = "off";
             supportedUltraLowLight = "auto,on,off";
-            defaultFaceDetection = "off";
-            supportedFaceDetection = "on,off";
             defaultFaceRecognition = "off";
             supportedFaceRecognition = "on,off";
             defaultSmileShutter = "off";
@@ -1248,8 +1234,6 @@ protected:
         String8 supportedHdr;
         String8 defaultUltraLowLight;
         String8 supportedUltraLowLight;
-        String8 defaultFaceDetection;
-        String8 supportedFaceDetection;
         String8 defaultFaceRecognition;
         String8 supportedFaceRecognition;
         String8 defaultSmileShutter;

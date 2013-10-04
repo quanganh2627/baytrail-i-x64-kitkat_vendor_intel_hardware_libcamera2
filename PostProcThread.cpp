@@ -112,7 +112,6 @@ void PostProcThread::getDefaultParameters(CameraParameters *params, CameraParame
     intel_params->set(IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD, STRINGIFY(BLINK_THRESHOLD));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER, PlatformData::supportedSmileShutter(cameraId));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BLINK_SHUTTER, PlatformData::supportedBlinkShutter(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_DETECTION, PlatformData::supportedFaceDetection(cameraId));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_RECOGNITION, PlatformData::supportedFaceRecognition(cameraId));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SCENE_DETECTION, PlatformData::supportedSceneDetection(cameraId));
 

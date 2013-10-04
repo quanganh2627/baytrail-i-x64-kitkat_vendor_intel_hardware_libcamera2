@@ -993,26 +993,6 @@ const char* PlatformData::supportedUltraLowLight(int cameraId)
     return i->mCameras[cameraId].supportedUltraLowLight;
 }
 
-const char* PlatformData::defaultFaceDetection(int cameraId)
-{
-    PlatformBase *i = getInstance();
-    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
-      return "";
-    }
-    return i->mCameras[cameraId].defaultFaceDetection;
-}
-
-const char* PlatformData::supportedFaceDetection(int cameraId)
-{
-    PlatformBase *i = getInstance();
-    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
-      return "";
-    }
-    return i->mCameras[cameraId].supportedFaceDetection;
-}
-
 const char* PlatformData::defaultFaceRecognition(int cameraId)
 {
     PlatformBase *i = getInstance();
