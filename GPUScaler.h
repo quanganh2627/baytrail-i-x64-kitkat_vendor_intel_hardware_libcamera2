@@ -18,6 +18,8 @@
 #define ANDROID_LIBCAMERA_GPUSCALER_H
 
 #include <gui/Surface.h>
+#include <GLES/gl.h>
+#include <GLES2/gl2.h>
 
 #ifndef EGL_IMG_image_plane_attribs
 #define EGL_IMG_image_plane_attribs 1
