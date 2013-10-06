@@ -20,14 +20,15 @@
 #include "PlatformData.h"
 #include "BracketManager.h"
 #include "PerformanceTraces.h"
+#include "AtomISP.h"
 
 namespace android {
 
-BracketManager::BracketManager(HWControlGroup &hwcg, I3AControls *aaaControls) :
+BracketManager::BracketManager(AtomISP *atomISP, I3AControls *aaaControls) :
     Thread(false)
     ,m3AControls(aaaControls)
-    ,mISP(hwcg.mIspCI)
-    ,mSensorCI(hwcg.mSensorCI)
+    ,mIspCI(atomISP)
+    ,mISP(atomISP)
     ,mFpsAdaptSkip(-1)
     ,mBurstLength(-1)
     ,mBurstCaptureNum(-1)
@@ -449,7 +450,7 @@ status_t BracketManager::startBracketing()
          * TODO: apply initial already before start, or implement async
          *       parameter queue
          */
-        if (mISP->getCssMajorVersion() == 2) {
+        if (mIspCI->getCssMajorVersion() == 2) {
             exposureLag++;
         }
 

@@ -52,6 +52,7 @@
 
 namespace android {
 
+class AtomISP;
 //
 // ControlThread implements most of the operations defined
 // by camera_device_ops_t. Refer to hardware/camera.h
@@ -693,7 +694,9 @@ private:
 
     int mCameraId;
     HWControlGroup mHwcg;
-    IHWIspControl *mISP;
+
+    AtomISP *mISP;
+
     AtomCP  *mCP;
     UltraLowLight *mULL;
     I3AControls *m3AControls;

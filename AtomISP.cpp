@@ -51,8 +51,6 @@
 #define ZOOM_RATIO              100     // Conversion between zoom to really zoom effect
 #define VIDEO_ZOOM_SKIP_FRAMES  3
 
-#define INTEL_FILE_INJECT_CAMERA_ID 2
-
 #define ATOMISP_PREVIEW_POLL_TIMEOUT 1000
 #define ATOMISP_GETFRAME_RETRY_COUNT 60  // Times to retry poll/dqbuf in case of error
 #define ATOMISP_GETFRAME_STARVING_WAIT 33000 // Time to usleep between retry's when stream is starving from buffers.
@@ -4752,53 +4750,52 @@ int AtomISP::getFocusStatus(int *status)
         return -1;
 }
 
-void AtomISP::getSensorDataFromFile(const char *file_name, sensorPrivateData *sensor_data)
+int AtomISP::getModeInfo(struct atomisp_sensor_mode_data *mode_data)
 {
     LOG2("@%s", __FUNCTION__);
-    int otp_fd = -1;
-    struct stat st;
-    struct v4l2_private_int_data otpdata;
+    int ret;
+    ret = mMainDevice->xioctl(ATOMISP_IOC_G_SENSOR_MODE_DATA, mode_data);
+    LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_MODE_DATA ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
 
-    otpdata.size = 0;
-    otpdata.data = NULL;
-    otpdata.reserved[0] = 0;
-    otpdata.reserved[1] = 0;
+int AtomISP::setExposure(struct atomisp_exposure *exposure)
+{
+    int ret;
+    ret = mMainDevice->xioctl(ATOMISP_IOC_S_EXPOSURE, exposure);
+    LOG2("%s IOCTL ATOMISP_IOC_S_EXPOSURE ret: %d, gain %d, citg %d\n", __FUNCTION__, ret, exposure->gain[0], exposure->integration_time[0]);
+    return ret;
+}
 
-    sensor_data->data = NULL;
-    sensor_data->size = 0;
+int AtomISP::setExposureTime(int time)
+{
+    LOG2("@%s", __FUNCTION__);
 
-    /* Open the otp data file */
-    if ((otp_fd = open(file_name, O_RDONLY)) == -1) {
-        LOGE("ERR(%s): Failed to open %s\n", __func__, file_name);
-        return;
-    }
+    return mMainDevice->setControl(V4L2_CID_EXPOSURE_ABSOLUTE, time, "Exposure time");
+}
 
-    memset(&st, 0, sizeof (st));
-    if (fstat(otp_fd, &st) < 0) {
-        LOGE("ERR(%s): fstat %s failed\n", __func__, file_name);
-        close(otp_fd);
-        return;
-    }
+int AtomISP::getExposureTime(int *time)
+{
+    LOG2("@%s", __FUNCTION__);
+    return mMainDevice->getControl(V4L2_CID_EXPOSURE_ABSOLUTE, time);
+}
 
-    otpdata.size = st.st_size;
-    otpdata.data = malloc(otpdata.size);
-    if (otpdata.data == NULL) {
-        LOGD("Failed to allocate memory for OTP data.");
-        close(otp_fd);
-        return;
-    }
+int AtomISP::getAperture(int *aperture)
+{
+    LOG2("@%s", __FUNCTION__);
+    return mMainDevice->getControl(V4L2_CID_IRIS_ABSOLUTE, aperture);
+}
 
-    if ( (read(otp_fd, otpdata.data, otpdata.size)) == -1) {
-        LOGD("Failed to read OTP data\n");
-        free(otpdata.data);
-        close(otp_fd);
-        return;
-    }
+int AtomISP::getFNumber(unsigned short *fnum_num, unsigned short *fnum_denom)
+{
+    LOG2("@%s", __FUNCTION__);
+    int fnum = 0, ret;
 
-    sensor_data->data = otpdata.data;
-    sensor_data->size = otpdata.size;
-    sensor_data->fetched = true;
-    close(otp_fd);
+    ret = mMainDevice->getControl(V4L2_CID_FNUMBER_ABSOLUTE, &fnum);
+
+    *fnum_num = (unsigned short)(fnum >> 16);
+    *fnum_denom = (unsigned short)(fnum & 0xFFFF);
+    return ret;
 }
 
 int AtomISP::setAicParameter(struct atomisp_parameters *aic_param)

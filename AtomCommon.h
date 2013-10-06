@@ -44,6 +44,8 @@
 #define BURST_SPEED_LOW_SKIP_NUM 3  // 1/4 full speed
 #define DEFAULT_RECORDING_FPS 30
 
+#define INTEL_FILE_INJECT_CAMERA_ID 2
+
 // macro STRINGIFY to change a number in a string.
 #define STRINGIFY(s) STRINGIFY_(s)
 #define STRINGIFY_(s) #s
@@ -65,6 +67,8 @@
 // macro MAX_MSG_RETRIES: max number of retries of handling messages that can be delayed
 //                        like for example ControlThread::MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE
 #define MAX_MSG_RETRIES 3
+
+#define INTEL_FILE_INJECT_CAMERA_ID 2
 
 /** Convert timeval struct to value in microseconds
  *

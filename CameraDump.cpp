@@ -25,6 +25,8 @@
 #include "LogHelper.h"
 #include "CameraDump.h"
 #include "ia_aiq_types.h"
+#include "ia_3a_types.h"
+#include "AtomISP.h"
 
 namespace android {
 
@@ -429,6 +431,51 @@ void CameraDump::set3AControls(I3AControls *aaaControls)
 {
     LOG1("@%s", __FUNCTION__);
     m3AControls = aaaControls;
+}
+
+// set AtomISP object
+//
+// CameraDump needs custom access to interface of AtomISP
+void CameraDump::setAtomISP(AtomISP *atomISP)
+{
+    LOG1("@%s", __FUNCTION__);
+    mISP = atomISP;
+}
+
+/**
+ * Dumps current makernote into file
+ *
+ * This is custom-made for use case with file injection and
+ * file name is set according to file name of file injection.
+ */
+void CameraDump::dumpMkn2File()
+{
+    LOG1("@%s", __FUNCTION__);
+    FILE *fp;
+    size_t size;
+    String8 fileName;
+
+    if (!m3AControls || !mISP) {
+        LOGW("Cannot file dump the makernote!");
+        return;
+    }
+
+    //get binary of makernote and store
+    ia_binary_data *aaaMkNote = m3AControls->get3aMakerNote(ia_mkn_trg_section_2);
+    if(aaaMkNote) {
+        fileName = mISP->getFileInjectionFileName();
+        fileName += ".mkn";
+        LOG2("filename:%s",  fileName.string());
+        fp = fopen (fileName.string(), "w+");
+        if (fp == NULL) {
+            LOGE("open file %s failed %s", fileName.string(), strerror(errno));
+            m3AControls->put3aMakerNote(aaaMkNote);
+            return;
+        }
+        if ((size = fwrite(aaaMkNote->data, aaaMkNote->size, 1, fp)) < (size_t)aaaMkNote->size)
+            LOGW("Makernote not fully written to %s: %d, %d", fileName.string(), aaaMkNote->size, size);
+        fclose (fp);
+    }
 }
 
 }; // namespace android

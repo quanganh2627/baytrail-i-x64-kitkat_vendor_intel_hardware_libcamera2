@@ -476,6 +476,7 @@ private:
 
     IIaIspAdaptor *mISPAdaptor;
 
+    bool mFileInjection; // Note: AtomAIQ contains custom logic when file injection is enabled
 }; // class AtomAIQ
 
 

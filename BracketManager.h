@@ -44,11 +44,13 @@ struct BracketingType {
     UniquePtr<float[]> values;
 };
 
+class AtomISP;
+
 class BracketManager : public Thread {
 
 // constructor destructor
 public:
-    BracketManager(HWControlGroup &hwcg, I3AControls *aaaControls);
+    BracketManager(AtomISP *atomISP, I3AControls *aaaControls);
     virtual ~BracketManager();
 
 // prevent copy constructor and assignment operator
@@ -135,8 +137,9 @@ private:
 // private data
 private:
     I3AControls *m3AControls;
-    IHWIspControl *mISP;
-    IHWSensorControl *mSensorCI;
+    IHWIspControl *mIspCI;
+    AtomISP *mISP;
+
     int  mFpsAdaptSkip;
     int  mBurstLength;
     int  mBurstCaptureNum;

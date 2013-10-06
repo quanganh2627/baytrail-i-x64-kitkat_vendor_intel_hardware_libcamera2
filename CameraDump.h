@@ -34,6 +34,8 @@ namespace android {
     #define DUMPIMAGE_SD_INT_PATH      "/sdcard/DCIM/100ANDRO/"
     #define DUMPIMAGE_MEM_INT_PATH     "/data/"
 
+    class AtomISP;
+
     enum err_wf_code{
         ERR_D2F_SUCESS = 0,
         ERR_D2F_NOPATH = 1,
@@ -85,7 +87,9 @@ namespace android {
         int dumpImage2Buf(camera_delay_dumpImage_T *aDumpImage);
         int dumpImage2File(camera_delay_dumpImage_T *aDumpImage, const char *filename);
         int dumpImage2FileFlush(bool bufflag = true);
+        void dumpMkn2File();
         void set3AControls(I3AControls *aaaControls);
+        void setAtomISP(AtomISP *atomISP);
 
     // prevent copy constructor and assignment operator
     private:
@@ -105,6 +109,7 @@ namespace android {
         static bool sNeedDump3aStat;
         bool mNeedDumpFlush;
         I3AControls* m3AControls;
+        AtomISP*    mISP;
         camera_delay_dumpImage_T mDelayDump;
         int mCameraId;
     };// class CameraDump

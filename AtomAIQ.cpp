@@ -33,6 +33,7 @@
 #include "AtomAIQ.h"
 #include "ia_mkn_encoder.h"
 #include "ia_mkn_decoder.h"
+#include "CameraDump.h"
 
 #define MAX_EOF_SOF_DIFF 200000
 #define DEFAULT_EOF_SOF_DELAY 66000
@@ -94,6 +95,7 @@ AtomAIQ::AtomAIQ(HWControlGroup &hwcg):
     ,mFlashCI(hwcg.mFlashCI)
     ,mLensCI(hwcg.mLensCI)
     ,mISPAdaptor(NULL)
+    ,mFileInjection(false)
 {
     LOG1("@%s", __FUNCTION__);
     CLEAR(mPrintFunctions);
@@ -120,6 +122,8 @@ AtomAIQ::~AtomAIQ()
 status_t AtomAIQ::init3A()
 {
     LOG1("@%s", __FUNCTION__);
+
+    mFileInjection = (mSensorCI->getCurrentCameraId() == INTEL_FILE_INJECT_CAMERA_ID);
 
     status_t status = _init3A();
 
@@ -2078,14 +2082,14 @@ status_t AtomAIQ::run3aMain()
     status_t ret = NO_ERROR;
 
     mBracketingRunning = false;
-    if(!mISP->isFileInjectionEnabled())
+    if(!mFileInjection)
         ret |= runAfMain();
 
     // if no DSD enable, should disable that
-    if(!mISP->isFileInjectionEnabled())
+    if(!mFileInjection)
         ret |= runDSDMain();
 
-    if(!mISP->isFileInjectionEnabled())
+    if(!mFileInjection)
         ret |= runAeMain();
 
     runAwbMain();
@@ -2239,14 +2243,14 @@ status_t AtomAIQ::runAICMain()
             ret |= mISP->setAicParameter(aic_out_struct);
         }
 
-        if (mISP->isFileInjectionEnabled() && ret == 0 && mAwbResults != NULL) {
+        if (mFileInjection && ret == 0 && mAwbResults != NULL) {
             // When the awb result converged, and reach the max try count,
             // dump the makernote into file
             if ((mAwbResults->distance_from_convergence >= -EPSILON &&
                  mAwbResults->distance_from_convergence <= EPSILON) &&
                  mAwbRunCount > RETRY_COUNT ) {
                 mAwbRunCount = 0;
-                dumpMknToFile();
+                CameraDump::getInstance(mSensorCI->getCurrentCameraId())->dumpMkn2File();
             } else if(mAwbResults->distance_from_convergence >= -EPSILON &&
                       mAwbResults->distance_from_convergence <= EPSILON){
                 mAwbRunCount++;

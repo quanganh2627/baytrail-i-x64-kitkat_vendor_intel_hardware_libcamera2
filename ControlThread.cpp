@@ -261,6 +261,7 @@ status_t ControlThread::init()
         goto bail;
     }
     mCameraDump->set3AControls(m3AControls);
+    mCameraDump->setAtomISP(isp);
 
     // we implement the ICallbackPreview interface, so pass
     // this as argument
@@ -312,7 +313,7 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mBracketManager = new BracketManager(mHwcg, m3AControls);
+    mBracketManager = new BracketManager(mISP, m3AControls);
     if (mBracketManager == NULL) {
         LOGE("error creating BracketManager");
         goto bail;
@@ -1214,7 +1215,7 @@ status_t ControlThread::configureContinuousRingBuffer()
     if (mULL->isActive() || mBurstLength > 1)
         cfg.numCaptures = MAX(mULL->MAX_INPUT_BUFFERS, mBurstLength);
     else
-        cfg.numCaptures = 1;
+        cfg.numCaptures = ((mHwcg.mIspCI->getCssMajorVersion() == 2) && (mHwcg.mIspCI->getCssMinorVersion() == 0))? 2 : 1;
 
     cfg.offset = -(mISP->shutterLagZeroAlign());
     cfg.skip = 0;
@@ -1257,7 +1258,7 @@ status_t ControlThread::initContinuousCapture()
     AtomBuffer formatDescriptorPv
         = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, selectPostviewFormat(), pvWidth, pvHeight);
     // Configure PictureThread
-    mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
+    mPictureThread->initialize(mParameters, mHwcg.mIspCI->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     mISP->setSnapshotFrameFormat(formatDescriptorSs);
     configureContinuousRingBuffer();
@@ -1415,7 +1416,7 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         goto online_preview;
     }
 
-    if (mISP->getLowLight()) {
+    if (mHwcg.mIspCI->getLowLight()) {
         LOG1("@%s: ANR enabled, disabling continuous mode", __FUNCTION__);
         goto online_preview;
     }
@@ -1478,7 +1479,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
         mISP->setVideoFrameFormat(width, height);
 
-        status = mISP->setDVS(mDvsEnable);
+        status = mHwcg.mIspCI->setDVS(mDvsEnable);
 
         if (status != NO_ERROR) {
             LOGW("@%s: Failed to set DVS %s", __FUNCTION__, mDvsEnable ? "enabled" : "disabled");
@@ -2288,11 +2289,11 @@ status_t ControlThread::setSmartSceneParams(void)
             // Force XNR and ANR in case of lowlight scene
             if (sceneMode == "night_portrait" || sceneMode == "night") {
                 LOG1("Low-light scene detected, forcing XNR and ANR");
-                mISP->setXNR(true);
+                mHwcg.mIspCI->setXNR(true);
                 // Forcing mParameters to true, to be in sync with app update.
                 mParameters.set(IntelCameraParameters::KEY_XNR, "true");
 
-                mISP->setLowLight(true);
+                mHwcg.mIspCI->setLowLight(true);
                 // Forcing mParameters to true, to be in sync with app update.
                 mParameters.set(IntelCameraParameters::KEY_ANR, "true");
             }
@@ -2524,7 +2525,7 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
     }
 
     atomisp_makernote_info tmp;
-    status_t status = mISP->getMakerNote(&tmp);
+    status_t status = mHwcg.mIspCI->getMakerNote(&tmp);
     if (status == NO_ERROR) {
         atomispMkNote = new atomisp_makernote_info;
         *atomispMkNote = tmp;
@@ -2576,7 +2577,7 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     lpvSize = frameSize(fourcc, lpvWidth, lpvHeight);
 
     // Configure PictureThread
-    mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
+    mPictureThread->initialize(mParameters, mHwcg.mIspCI->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     // configure thumbnail size
     thumbnailWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
@@ -3004,6 +3005,9 @@ status_t ControlThread::captureStillPic()
     size = frameSize(fourcc, width, height);
     pvSize = frameSize(fourcc, pvWidth, pvHeight);
 
+    // Configure PictureThread
+    mPictureThread->initialize(mParameters, mHwcg.mIspCI->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
+
     if (mState != STATE_CONTINUOUS_CAPTURE) {
         // Possible smart scene parameter changes (XNR, ANR)
         if ((status = setSmartSceneParams()) != NO_ERROR)
@@ -3131,7 +3135,7 @@ status_t ControlThread::captureStillPic()
     }
 
     // Configure PictureThread
-    mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
+    mPictureThread->initialize(mParameters, mHwcg.mIspCI->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     PerformanceTraces::ShutterLag::snapshotTaken(&snapshotBuffer.capture_timestamp);
 
@@ -3504,7 +3508,7 @@ status_t ControlThread::captureULLPic()
     status = continuousStartStillCapture(false);
 
     // Configure PictureThread, inform of the picture and thumbnail resolutions
-    mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
+    mPictureThread->initialize(mParameters, mHwcg.mIspCI->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     // Let application know that we are going to produce an ULL image
     mCallbacksThread->ullTriggered(mULL->getCurrentULLid());
@@ -3573,7 +3577,7 @@ status_t ControlThread::captureVideoSnap()
     mCallbacksThread->requestTakePicture(true, true);
 
     // Configure PictureThread
-    mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
+    mPictureThread->initialize(mParameters, mHwcg.mIspCI->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     /* Request a new video snapshot in the next capture cycle
      * In the next call of dequeueRecording we will send the
@@ -4177,8 +4181,8 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     int newZoom = newParams->getInt(CameraParameters::KEY_ZOOM);
     bool zoomSupported = isParameterSet(CameraParameters::KEY_ZOOM_SUPPORTED) ? true : false;
     if (zoomSupported) {
-        status = mISP->setZoom(newZoom);
-        mPostProcThread->setZoom(mISP->zoomRatio(newZoom));
+        status = mHwcg.mIspCI->setZoom(newZoom);
+        mPostProcThread->setZoom(mHwcg.mIspCI->zoomRatio(newZoom));
     } else {
         LOGD("not supported zoom setting");
     }
@@ -4582,10 +4586,10 @@ status_t ControlThread::processParamXNR_ANR(const CameraParameters *oldParams,
         bool xnr = (newVal == CameraParameters::TRUE);
         // note: due add/remove of intel parameters newVal doesn't always
         // reflect changes of value in AtomISP level
-        if (mISP->getXNR() != xnr) {
+        if (mHwcg.mIspCI->getXNR() != xnr) {
             LOG2("XNR value new %s", newVal.string());
             XNR_ANR_changed = true;
-            mISP->setXNR(xnr);
+            mHwcg.mIspCI->setXNR(xnr);
         }
     }
 
@@ -4596,10 +4600,10 @@ status_t ControlThread::processParamXNR_ANR(const CameraParameters *oldParams,
         bool anr = (newVal == CameraParameters::TRUE);
         // note: due add/remove of intel parameters newVal doesn't always
         // reflect changes of value in AtomISP level
-        if (mISP->getLowLight() != anr) {
+        if (mHwcg.mIspCI->getLowLight() != anr) {
             LOG2("ANR value new %s", newVal.string());
             XNR_ANR_changed = true;
-            mISP->setLowLight(anr);
+            mHwcg.mIspCI->setLowLight(anr);
         }
     }
 
@@ -5686,7 +5690,7 @@ status_t ControlThread::processParamContrast(const CameraParameters *oldParams,
         else
             value = EXIF_CONTRAST_NORMAL;
 
-        mISP->setContrast(value);
+        mHwcg.mIspCI->setContrast(value);
     }
     return status;
 }
@@ -5707,7 +5711,7 @@ status_t ControlThread::processParamSaturation(const CameraParameters *oldParams
         else
             value = EXIF_SATURATION_NORMAL;
 
-        mISP->setSaturation(value);
+        mHwcg.mIspCI->setSaturation(value);
     }
     return status;
 }
@@ -5728,7 +5732,7 @@ status_t ControlThread::processParamSharpness(const CameraParameters *oldParams,
         else
             value = EXIF_SHARPNESS_NORMAL;
 
-        mISP->setSharpness(value);
+        mHwcg.mIspCI->setSharpness(value);
     }
     return status;
 }
@@ -6002,6 +6006,10 @@ status_t ControlThread::processParamMirroring(const CameraParameters *oldParams,
     return NO_ERROR;
 }
 
+
+/**
+ * Noise Reduction and Edge Enhancement
+ */
 status_t ControlThread::processParamNREE(const CameraParameters *oldParams,
         CameraParameters *newParams)
 {
@@ -6010,13 +6018,7 @@ status_t ControlThread::processParamNREE(const CameraParameters *oldParams,
                                               IntelCameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
 
     if (!newVal.isEmpty()) {
-        if (newVal == CameraParameters::TRUE) {
-            //Disable Noise Reduction and Edge Enhancement
-            mISP->setNrEE(true);
-        } else {
-            mISP->setNrEE(false);
-        }
-
+        mHwcg.mIspCI->setNrEE((newVal == CameraParameters::TRUE));
         LOG1("Changed: %s -> %s",
              IntelCameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT, newVal.string());
     }
