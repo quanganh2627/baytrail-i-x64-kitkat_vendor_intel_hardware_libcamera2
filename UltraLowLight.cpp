@@ -32,7 +32,7 @@
 
 namespace android {
 
-
+#ifdef ENABLE_INTEL_EXTRAS
 const char UltraLowLight::MORPHO_INPUT_FORMAT[] = "YUV420_SEMIPLANAR";  // This should be equivalent to NV12, our default
 
 // ULL bright threshold: from Normal to ULL
@@ -833,4 +833,6 @@ UltraLowLight::State UltraLowLight::getState()
     Mutex::Autolock lock(mStateMutex);
     return mState;
 }
+
+#endif // ENABLE_INTEL_EXTRAS
 } //namespace android

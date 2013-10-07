@@ -41,6 +41,7 @@ static void vinfo(const char *fmt, va_list ap)
 }
 }
 
+#ifdef ENABLE_INTEL_EXTRAS
 AtomCP::AtomCP(HWControlGroup &hwcg) :
     mISP(hwcg.mIspCI)
 {
@@ -164,5 +165,5 @@ status_t AtomCP::setIaFrameFormat(ia_frame* iaFrame, int v4l2Format)
 
     return NO_ERROR;
 }
-
-};
+#endif // ENABLE_INTEL_EXTRAS
+}
