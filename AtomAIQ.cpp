@@ -1792,37 +1792,12 @@ status_t AtomAIQ::runAeMain()
     mAeInputParameters.isp_frame_params = &m3aState.sensor_frame_params;
 
     if(m3aState.ia_aiq_handle){
-        if (invalidated && mAeState.stored_results->getCount() > 1) {
-            // Restoring results by running manual mode
-            // using index 0 (latest) for still and index 1 (previous) for preview
-            // Note: while in still, only index 0 results are updated.
-            int restore_results_index = (mAeInputParameters.frame_use == ia_aiq_frame_use_still) ? 0 : 1;
-            ia_aiq_ae_results *restore_results = peekAeStoredResults(restore_results_index);
-            if (restore_results) {
-                LOG2("AEC re-run to recalculate sensor_exposure for changed sensor settings");
-                LOG2("AEC sensor_descriptor ->line_periods_per_field: %d", mAeInputParameters.sensor_descriptor->line_periods_per_field);
-                LOG2("AEC frame_use: %d",mAeInputParameters.frame_use);
-                ia_aiq_ae_input_params input_parameters = mAeInputParameters;
-                input_parameters.manual_exposure_time_us = restore_results->exposure->exposure_time_us;
-                input_parameters.manual_iso = restore_results->exposure->iso;
-                LOG2("AEC re-run, using manual exposure %ld", input_parameters.manual_exposure_time_us);
-                LOG2("AEC re-run, using manual iso %d", input_parameters.manual_iso);
-                err = ia_aiq_ae_run(m3aState.ia_aiq_handle, &input_parameters, &new_ae_results);
-                // Use only exposure from manual run
-                // TODO: need AIQ AEC to provide a way for plain re-calculation
-                *new_ae_results->flash = *restore_results->flash;
-            } else {
-                LOGE("Failed to restore AE results");
-                err = ia_aiq_ae_run(m3aState.ia_aiq_handle, &mAeInputParameters, &new_ae_results);
-            }
-        } else {
-            LOG2("AEC manual_exposure_time_us: %ld manual_analog_gain: %f manual_iso: %d", mAeInputParameters.manual_exposure_time_us, mAeInputParameters.manual_analog_gain, mAeInputParameters.manual_iso);
-            LOG2("AEC sensor_descriptor ->line_periods_per_field: %d", mAeInputParameters.sensor_descriptor->line_periods_per_field);
-            LOG2("AEC mAeInputParameters.frame_use: %d",mAeInputParameters.frame_use);
+        LOG2("AEC manual_exposure_time_us: %ld manual_analog_gain: %f manual_iso: %d", mAeInputParameters.manual_exposure_time_us, mAeInputParameters.manual_analog_gain, mAeInputParameters.manual_iso);
+        LOG2("AEC sensor_descriptor ->line_periods_per_field: %d", mAeInputParameters.sensor_descriptor->line_periods_per_field);
+        LOG2("AEC mAeInputParameters.frame_use: %d",mAeInputParameters.frame_use);
 
-            err = ia_aiq_ae_run(m3aState.ia_aiq_handle, &mAeInputParameters, &new_ae_results);
-            LOG2("@%s result: %d", __FUNCTION__, err);
-        }
+        err = ia_aiq_ae_run(m3aState.ia_aiq_handle, &mAeInputParameters, &new_ae_results);
+        LOG2("@%s result: %d", __FUNCTION__, err);
     }
 
     if (new_ae_results != NULL)
