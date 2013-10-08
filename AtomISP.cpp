@@ -5651,38 +5651,43 @@ void AtomISP::setNrEE(bool en)
     mNoiseReductionEdgeEnhancement = en;
 }
 
-bool AtomISP::lowBatteryForFlash()
+BatteryStatus AtomISP::getBatteryStatus()
 {
     static const char *CamFlashCtrlFS = "/dev/bcu/camflash_ctrl";
 
+    int  status;
     char buf[4];
     FILE *fp = NULL;
 
     LOG1("@%s", __FUNCTION__);
-    // return false directly if no this ctrl file
+    // return BATTERY_STATUS_NORMAL directly if the sysfs file doesn't exist
     if (::access(CamFlashCtrlFS, R_OK)) {
         LOG1("@%s, file %s is not readable", __FUNCTION__, CamFlashCtrlFS);
-        return false;
+        return BATTERY_STATUS_INVALID;
     }
 
     fp = ::fopen(CamFlashCtrlFS, "r");
     if (NULL == fp) {
         LOGW("@%s, file %s open with err:%s", __FUNCTION__, CamFlashCtrlFS, strerror(errno));
-        return false;
+        return BATTERY_STATUS_INVALID;
     }
     memset(buf, 0, 4);
     size_t len = ::fread(buf, 1, 1, fp);
     if (len == 0) {
         LOGW("@%s, fail to read 1 byte from camflash_ctrl", __FUNCTION__);
         ::fclose(fp);
-        return false;
+        return BATTERY_STATUS_INVALID;
     }
     ::fclose(fp);
 
-    if (atoi(buf) == 0)
-        return true;
+    status = atoi(buf);
+    if (status > BATTERY_STATUS_CRITICAL || status < BATTERY_STATUS_NORMAL)
+        return BATTERY_STATUS_INVALID;
 
-    return false;
+    if (status > BATTERY_STATUS_NORMAL)
+        LOGW("@%s warning battery status:%d", __FUNCTION__, status);
+
+    return (BatteryStatus)status;
 }
 
 } // namespace android

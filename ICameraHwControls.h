@@ -54,6 +54,17 @@ struct ContinuousCaptureConfig {
     int skip;               /*!< skip factor */
 };
 
+/**
+ * Define 4 states for current battery condition
+ * Camera flash will be controlled more precisely
+ */
+enum BatteryStatus {
+    BATTERY_STATUS_INVALID = -1, //invalid
+    BATTERY_STATUS_NORMAL  = 0,  //flash on with 1.8A
+    BATTERY_STATUS_WARNING,      //flash on with 1A
+    BATTERY_STATUS_ALERT,        //flash on with <1A/Unused
+    BATTERY_STATUS_CRITICAL,     //disable flash
+};
 /* Abstraction of HW algorithms control interface for 3A support*/
 // Temporarily current AtomISP APIs are in IHWIspControl, as the top level IF for the reset of the HAL.
 // Our target is APIs will be seperated to several interface classes in the near future
@@ -297,8 +308,8 @@ public:
     virtual status_t setTorch(int intensity) = 0;
     /* Flash related controls */
     virtual int setFlashIntensity(int intensity) = 0;
-    /* Check if battery is too low for flash control*/
-    virtual bool lowBatteryForFlash() = 0;
+    /* Check battery status for flash control */
+    virtual BatteryStatus getBatteryStatus() = 0;
 };
 
 /* Abstraction of HW lens control interface for 3A support */

@@ -5237,7 +5237,29 @@ void ControlThread::preProcessFlashMode(CameraParameters *newParams)
         return;
     }
 
-    bool lowBattery = mHwcg.mFlashCI->lowBatteryForFlash();
+    bool lowBattery = false;
+    BatteryStatus bs = mHwcg.mFlashCI->getBatteryStatus();
+    switch (bs) {
+        case BATTERY_STATUS_WARNING:
+            LOGW("@%s low battery status warning", __FUNCTION__);
+            //TODO call 3a interface
+            break;
+        case BATTERY_STATUS_ALERT:
+            LOGW("@%s low battery status alert", __FUNCTION__);
+            //TODO call 3a interface
+            break;
+        case BATTERY_STATUS_CRITICAL:
+            LOGW("@%s critical low battery status", __FUNCTION__);
+            //TODO call 3a interface
+            lowBattery = true;
+            break;
+        case BATTERY_STATUS_INVALID:
+            LOGW("@%s invalid battery status", __FUNCTION__);
+        case BATTERY_STATUS_NORMAL:
+            //do nothing
+        default:
+            break;
+    }
 
     const char* supportedFlashModes = newParams->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
     String8 currSupportedFlashModes(supportedFlashModes, supportedFlashModes == NULL ? 0 : strlen(supportedFlashModes));

@@ -201,7 +201,7 @@ public:
     status_t setTorch(int intensity);
     int setFlashIntensity(int intensity);
     // Check if battery is too low for flash control
-    bool lowBatteryForFlash();
+    BatteryStatus getBatteryStatus();
 
     /* IHWLensControl overloads, */
     int moveFocusToPosition(int position);
