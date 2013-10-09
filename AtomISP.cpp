@@ -3933,8 +3933,8 @@ status_t AtomISP::allocateRecordingBuffers()
     for (int i = 0; i < mNumBuffers; i++) {
         mRecordingBuffers[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_VIDEO); // init fields
         // recording buffers use uncached memory
+        MemoryUtils::allocateGraphicBuffer(mRecordingBuffers[i], mConfig.recording);
 
-        mCallbacks->allocateMemory(&mRecordingBuffers[i], mConfig.recording.size);
         LOG1("allocate recording buffer[%d], buff=%p size=%d",
                 i, mRecordingBuffers[i].dataPtr, mRecordingBuffers[i].size);
         if (mRecordingBuffers[i].dataPtr == NULL) {
@@ -3948,6 +3948,7 @@ status_t AtomISP::allocateRecordingBuffers()
         mRecordingBuffers[i].shared = false;
         mRecordingBuffers[i].width = mConfig.recording.width;
         mRecordingBuffers[i].height = mConfig.recording.height;
+        mRecordingBuffers[i].size = mConfig.recording.size;
         mRecordingBuffers[i].bpl = mConfig.recording.bpl;
         mRecordingBuffers[i].fourcc = mConfig.recording.fourcc;
     }
