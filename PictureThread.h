@@ -24,7 +24,6 @@
 #include "AtomCommon.h"
 #include "EXIFMaker.h"
 #include "JpegHwEncoder.h"
-#include "JpegCompressor.h"
 #include "ScalerService.h"
 
 namespace android {
@@ -174,7 +173,6 @@ private:
     bool        mThreadRunning;
     Callbacks       *mCallbacks;
     sp<CallbacksThread> mCallbacksThread;
-    JpegCompressor   mCompressor;
     JpegHwEncoder   *mHwCompressor;
     EXIFMaker       *mExifMaker;
     AtomBuffer      mExifBuf;

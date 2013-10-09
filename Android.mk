@@ -36,7 +36,6 @@ LOCAL_SRC_FILES := \
 	ColorConverter.cpp \
 	ImageScaler.cpp \
 	EXIFMaker.cpp \
-	JpegCompressor.cpp \
 	SWJpegEncoder.cpp \
 	CallbacksThread.cpp \
 	LogHelper.cpp \

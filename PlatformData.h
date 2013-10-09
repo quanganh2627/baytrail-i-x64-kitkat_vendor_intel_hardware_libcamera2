@@ -970,6 +970,11 @@ class PlatformData {
      */
     static int faceCallbackDivider();
 
+    /**
+     * get the number of CPU cores
+     * \return the number of CPU cores
+     */
+    static unsigned int getNumOfCPUCores();
 };
 
 /**

@@ -1332,5 +1332,22 @@ int PlatformData::faceCallbackDivider()
     return (retVal > 0) ? retVal : 1;
 }
 
+unsigned int PlatformData::getNumOfCPUCores()
+{
+    LOG1("@%s, line:%d", __FUNCTION__, __LINE__);
+    unsigned int cpuCores = 1;
+
+    char buf[20];
+    FILE *cpuOnline = fopen("/sys/devices/system/cpu/online", "r");
+    if (cpuOnline) {
+        memset(buf, 0, sizeof(buf));
+        fread(buf, 1, sizeof(buf), cpuOnline);
+        buf[sizeof(buf) - 1] = '\0';
+        cpuCores = 1 + atoi(strstr(buf, "-") + 1);
+        fclose(cpuOnline);
+    }
+    LOG1("@%s, line:%d, cpu core number:%d", __FUNCTION__, __LINE__, cpuCores);
+    return cpuCores;
+}
 
 }; // namespace android

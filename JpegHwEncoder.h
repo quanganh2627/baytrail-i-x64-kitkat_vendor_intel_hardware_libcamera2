@@ -26,14 +26,13 @@
  * All libVA API are stored inside the vaJpegContext struct to confine the
  * libVA types as an implementation detail of this class
  *
- * The JpegCompressor class is the main user of this class
  *
  */
 
 #ifndef JPEGHWENCODER_H_
 #define JPEGHWENCODER_H_
 
-#include "JpegCompressor.h"
+#include "AtomCommon.h"
 
 namespace android {
 
@@ -46,7 +45,6 @@ struct vaJpegContext;
  */
 #define SIZE_OF_JPEG_MARKER 2
 
-#ifdef USE_INTEL_JPEG
 /**
  * \class JpegHwEncoder
  *
@@ -55,9 +53,50 @@ struct vaJpegContext;
  * asynchronous interfaces to the encoding
  */
 class JpegHwEncoder {
-
 public:
+    struct InputBuffer {
+        unsigned char *buf;
+        int width;
+        int height;
+        int fourcc;
+        int size;
 
+        void clear()
+        {
+            buf = NULL;
+            width = 0;
+            height = 0;
+            fourcc = 0;
+            size = 0;
+        }
+    };
+
+    struct OutputBuffer {
+        unsigned char *buf;
+        int width;
+        int height;
+        int size;
+        int quality;
+        int length;     /*>! amount of the data actually written to the buffer. Always smaller than size field*/
+
+        void clear()
+        {
+            buf = NULL;
+            width = 0;
+            height = 0;
+            size = 0;
+            quality = 0;
+            length = 0;
+        }
+    };
+
+// prevent copy constructor and assignment operator
+private:
+    JpegHwEncoder(const JpegHwEncoder& other);
+    JpegHwEncoder& operator=(const JpegHwEncoder& other);
+
+#ifdef USE_INTEL_JPEG
+public:
     JpegHwEncoder();
     virtual ~JpegHwEncoder();
 
@@ -66,26 +105,21 @@ public:
     bool isInitialized() {return mHWInitialized;};
     int setInputBuffers(AtomBuffer* inputBuffersArray, int inputBuffersNum);
     int setJpegQuality(int quality);
-    int encode(const JpegCompressor::InputBuffer &in, JpegCompressor::OutputBuffer &out);
+    int encode(const InputBuffer &in, OutputBuffer &out);
     /* Async encode */
-    int encodeAsync(const JpegCompressor::InputBuffer &in, JpegCompressor::OutputBuffer &out);
+    int encodeAsync(const InputBuffer &in, OutputBuffer &out);
     int waitToComplete(int *jpegSize);
-    int getOutput(JpegCompressor::OutputBuffer &out);
-
-// prevent copy constructor and assignment operator
-private:
-    JpegHwEncoder(const JpegHwEncoder& other);
-    JpegHwEncoder& operator=(const JpegHwEncoder& other);
+    int getOutput(OutputBuffer &out);
 
 private:
-
     int configSurfaces(AtomBuffer* inputBuffersArray, int inputBuffersNum);
     int destroySurfaces(void);
     int startJpegEncoding(unsigned int aSurface);
     int getJpegData(void *pdst, int dstSize, int *jpegSize);
     int getJpegSize(int *jpegSize);
-    int resetContext(const JpegCompressor::InputBuffer &in, unsigned int* aSurface);
+    int resetContext(const InputBuffer &in, unsigned int* aSurface);
     int restoreContext();
+
 private:
     // true:use the libva's jpeg quality factor
     // false:use jpeg quality factor which is in the JPEGHwEncoder, not in libva
@@ -107,12 +141,8 @@ private:
     int mPicHeight;         /*!< Input frame height */
     int mMaxOutJpegBufSize; /*!< the max JPEG Buffer Size. This is initialized to
                                  the size of the input YUV buffer*/
-};
 #else  //USE_INTEL_JPEG
 //Stub implementation if HW encoder is disabled
-
-class JpegHwEncoder {
-
 public:
     JpegHwEncoder(){};
     virtual ~JpegHwEncoder(){};
@@ -121,17 +151,12 @@ public:
     int deInit(void){return -1;};
     bool isInitialized() {return false;};
     int setInputBuffers(AtomBuffer* inputBuffersArray, int inputBuffersNum){return -1;};
-    int encode(const JpegCompressor::InputBuffer &in, JpegCompressor::OutputBuffer &out){return -1;};
-    int encodeAsync(const JpegCompressor::InputBuffer &in, JpegCompressor::OutputBuffer &out){return -1;};
+    int encode(const InputBuffer &in, OutputBuffer &out){return -1;};
+    int encodeAsync(const InputBuffer &in, OutputBuffer &out){return -1;};
     int waitToComplete(int *jpegSize){return -1;};
-    int getOutput(JpegCompressor::OutputBuffer &out){return -1;};
-
-// prevent copy constructor and assignment operator
-private:
-    JpegHwEncoder(const JpegHwEncoder& other);
-    JpegHwEncoder& operator=(const JpegHwEncoder& other);
-};
+    int getOutput(OutputBuffer &out){return -1;};
 #endif
+};
 }; // namespace android
 
 #endif /* JPEGHWENCODER_H_ */
