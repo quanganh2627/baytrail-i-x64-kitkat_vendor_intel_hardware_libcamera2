@@ -54,6 +54,7 @@
 #define ATOMISP_GETFRAME_STARVING_WAIT 33000 // Time to usleep between retry's when stream is starving from buffers.
 #define ATOMISP_EVENT_RECOVERY_WAIT 33000 // Time to usleep between retry's after erros from v4l2_event receiving.
 #define ATOMISP_MIN_CONTINUOUS_BUF_SIZE 3 // Min buffer len supported by CSS
+#define ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X 5 // Min buffer len supported by CSS2.x
 #define FRAME_SYNC_POLL_TIMEOUT 500
 
 
@@ -1616,6 +1617,12 @@ status_t AtomISP::configureContinuousRingBuffer()
         numBuffers += lookback;
     else
         numBuffers += captures;
+
+    // for css2.x, the minimum raw ring buffers number is ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X
+    if (getCssMajorVersion() >= 2) {
+        if (numBuffers < ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X)
+            numBuffers = ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X;
+    }
 
     if (numBuffers > PlatformData::maxContinuousRawRingBufferSize(mCameraId))
         numBuffers = PlatformData::maxContinuousRawRingBufferSize(mCameraId);
