@@ -643,12 +643,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * MISCELLANEOUS
      */
-    float vertical = 42.5;
-    float horizontal = 54.8;
-    PlatformData::HalConfig.getFloat(vertical, CPF::Fov, CPF::Vertical);
-    PlatformData::HalConfig.getFloat(horizontal, CPF::Fov, CPF::Horizontal);
-    params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, vertical);
-    params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, horizontal);
+    params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, PlatformData::verticalFOV(cameraId));
+    params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, PlatformData::horizontalFOV(cameraId));
 
     /**
      * OVERLAY

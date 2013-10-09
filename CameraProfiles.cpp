@@ -293,6 +293,20 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->synchronizeExposure = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "maxNumSnapshotBuffers") == 0) {
         pCurrentCam->maxNumSnapshotBuffers = atoi(atts[1]);
+    } else if (strcmp(name, "verticalFOV") == 0) {
+        float angle = atof(atts[1]);
+        if (angle > 0 && angle < 180) {
+            pCurrentCam->verticalFOV = angle;
+        } else {
+            LOGE("@%s, name:%s, atts[0]:%s, angle format wrong", __func__, name, atts[0]);
+        }
+    } else if (strcmp(name, "horizontalFOV") == 0) {
+        float angle = atof(atts[1]);
+        if (angle > 0 && angle < 180) {
+            pCurrentCam->horizontalFOV = angle;
+        } else {
+            LOGE("@%s, name:%s, atts[0]:%s, angle format wrong", __func__, name, atts[0]);
+        }
     }
 }
 

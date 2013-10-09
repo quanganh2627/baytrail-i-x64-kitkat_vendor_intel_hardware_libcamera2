@@ -935,6 +935,20 @@ class PlatformData {
      */
     static bool useIntelULL(void);
 
+    /**
+     * Returns vertical FOV
+     *
+     * \return float angle in degrees
+     */
+    static float verticalFOV(int cameraId);
+
+    /**
+     * Retrns horizontal FOV
+     *
+     * \return float angle in degrees
+     */
+    static float horizontalFOV(int cameraId);
+
 };
 
 /**
@@ -1106,6 +1120,9 @@ protected:
             supportedSceneDetection = "on,off";
             synchronizeExposure = false;
             maxNumSnapshotBuffers = 10;
+            // FOV
+            verticalFOV = 42.5f;
+            horizontalFOV = 54.8f;
         };
 
         SensorType sensorType;
@@ -1224,6 +1241,11 @@ protected:
          * Bracketing of AE and AF also affects it
          */
         int maxNumSnapshotBuffers;
+
+        // FOV
+        float verticalFOV;
+        float horizontalFOV;
+
     };
 
     // note: Android NDK does not yet support C++11 and
