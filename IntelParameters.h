@@ -161,9 +161,7 @@ namespace android {
     static const char KEY_BLINK_SHUTTER_THRESHOLD[];
 
     // Face features
-    static const char KEY_FACE_DETECTION[];
     static const char KEY_SUPPORTED_FACE_DETECTION[];
-    static const char KEY_FACE_RECOGNITION[];
     static const char KEY_SUPPORTED_FACE_RECOGNITION[];
 
     // Scene detection
