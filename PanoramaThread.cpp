@@ -402,9 +402,9 @@ status_t PanoramaThread::handleMessageFinalize()
     AtomBuffer img = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_PANORAMA);
     img.width = pFrame->width;
     img.height = pFrame->height;
-    img.stride = pFrame->stride;
-    img.format = V4L2_PIX_FMT_NV12;
-    img.size = frameSize(V4L2_PIX_FMT_NV12, img.stride, img.height); // because pFrame->size from panorama is currently incorrectly zero
+    img.bpl = pFrame->stride;
+    img.fourcc = V4L2_PIX_FMT_NV12;
+    img.size = frameSize(V4L2_PIX_FMT_NV12, img.bpl, img.height); // because pFrame->size from panorama is currently incorrectly zero
     img.buff = NULL;
     img.owner = this;
     img.dataPtr = pFrame->data;
@@ -414,9 +414,9 @@ status_t PanoramaThread::handleMessageFinalize()
         AtomBuffer pvImg = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
         pvImg.width = mThumbnailWidth;
         pvImg.height = mThumbnailHeight;
-        pvImg.stride = mThumbnailWidth;
-        pvImg.format = V4L2_PIX_FMT_NV12;
-        pvImg.size = frameSize(V4L2_PIX_FMT_NV12, pvImg.stride, pvImg.height);
+        pvImg.bpl = mThumbnailWidth;
+        pvImg.fourcc = V4L2_PIX_FMT_NV12;
+        pvImg.size = frameSize(V4L2_PIX_FMT_NV12, pvImg.bpl, pvImg.height);
         pvImg.owner = this;
         mCallbacks->allocateMemory(&pvImg, pvImg.size);
         if (pvImg.dataPtr == NULL) {
@@ -445,7 +445,7 @@ status_t PanoramaThread::handleMessageFinalize()
         }
 
         ImageScaler::downScaleImage(((char *)img.dataPtr) + startPixel, pvImg.dataPtr, mThumbnailWidth,
-                mThumbnailHeight, mThumbnailWidth, srcWidth, srcHeight, img.stride, V4L2_PIX_FMT_NV12,
+                mThumbnailHeight, mThumbnailWidth, srcWidth, srcHeight, img.bpl, V4L2_PIX_FMT_NV12,
                 skipLinesTop, skipLinesBottom);
 
         mPanoramaCallback->panoramaFinalized(&img, &pvImg);
@@ -494,17 +494,12 @@ void PanoramaThread::sendFrame(AtomBuffer &buf)
     ia_frame frame;
     frame.data = (unsigned char*) buf.dataPtr;
     frame.width = buf.width;
-    frame.stride = buf.stride;
+    frame.stride = buf.bpl;
     frame.height = buf.height;
     frame.size = buf.size;
-    if (AtomCP::setIaFrameFormat(&frame, buf.format) != NO_ERROR) {
+    if (AtomCP::setIaFrameFormat(&frame, buf.fourcc) != NO_ERROR) {
         LOGE("@%s: setting ia_frame format failed", __FUNCTION__);
     }
-
-    if (frame.format == ia_frame_format_yuy2) {
-        frame.stride = buf.size / buf.height;
-    }
-
     Message msg;
     msg.id = MESSAGE_ID_FRAME;
     msg.data.frame.frame = frame;
@@ -570,7 +565,7 @@ status_t PanoramaThread::handleStitch(const MessageStitch &stitch)
         postviewBuf.width = stitch.pv.width;
         postviewBuf.height = stitch.pv.height;
         postviewBuf.size = stitch.pv.size;
-        postviewBuf.stride = stitch.pv.stride;
+        postviewBuf.bpl = stitch.pv.bpl;
 
         mCallbacksThread->panoramaSnapshot(postviewBuf);
         postviewBuf.buff = NULL; // callbacks thread responsible memory release
@@ -667,7 +662,7 @@ status_t PanoramaThread::PanoramaStitchThread::stitch(ia_panorama_state* mContex
     LOG1("@%s", __FUNCTION__);
 
     AtomBuffer copy = frame;
-    size_t size = frameSize(V4L2_PIX_FMT_NV12, frame.width, frame.height);
+    size_t size = frameSize(V4L2_PIX_FMT_NV12, frame.bpl, frame.height);
 
     int retryTimeMillis = 5000;
     int retrySleepMillis = 50;
@@ -710,7 +705,7 @@ status_t PanoramaThread::PanoramaStitchThread::handleMessageStitch(MessageStitch
     iaFrame.size = stitch.img.size;
     iaFrame.width = stitch.img.width;
     iaFrame.height = stitch.img.height;
-    iaFrame.stride = stitch.img.stride;
+    iaFrame.stride = stitch.img.bpl;
     iaFrame.format = ia_frame_format_nv12;
 
     if (iaFrame.stride == 0) {

@@ -213,7 +213,7 @@ int JpegHwEncoder::encode(const JpegCompressor::InputBuffer &in, JpegCompressor:
     vaJpegContext *va = mVaEncoderContext;
 
     if ((in.width <= MIN_HW_ENCODING_WIDTH && in.height <= MIN_HW_ENCODING_HEIGHT)
-       || in.format != V4L2_PIX_FMT_NV12) {
+       || in.fourcc != V4L2_PIX_FMT_NV12) {
          LOG1("@%s, line:%d, do not use the hw jpeg encoder", __FUNCTION__, __LINE__);
          return -1;
      }

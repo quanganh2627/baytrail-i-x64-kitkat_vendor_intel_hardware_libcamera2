@@ -21,7 +21,7 @@
 namespace android {
     namespace MemoryUtils {
 
-    status_t allocateGraphicBuffer(AtomBuffer &aBuff, FrameInfo &aFrameInfo)
+    status_t allocateGraphicBuffer(AtomBuffer &aBuff, const AtomBuffer &formatDescriptor)
     {
         LOG1("@%s", __FUNCTION__);
         status_t status = OK;
@@ -33,10 +33,12 @@ namespace android {
                     GRALLOC_USAGE_SW_WRITE_NEVER |
                     GRALLOC_USAGE_HW_COMPOSER;
 
-        LOG1("%s with these properties: (%dx%d)s:%d format %s", __FUNCTION__,
-                aFrameInfo.width, aFrameInfo.height, aFrameInfo.stride, v4l2Fmt2Str(aFrameInfo.format));
+        LOG1("%s with these properties: (%dx%d)s:%d fourcc %s", __FUNCTION__,
+                formatDescriptor.width, formatDescriptor.height,
+                formatDescriptor.bpl, v4l2Fmt2Str(formatDescriptor.fourcc));
 
-        GraphicBuffer *cameraGraphicBuffer = new GraphicBuffer(aFrameInfo.width, aFrameInfo.height,getGFXHALPixelFormatFromV4L2Format(aFrameInfo.format),
+        GraphicBuffer *cameraGraphicBuffer = new GraphicBuffer(bytesToPixels(formatDescriptor.fourcc, formatDescriptor.bpl),
+                        formatDescriptor.height, getGFXHALPixelFormatFromV4L2Format(formatDescriptor.fourcc),
                         GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_SW_WRITE_OFTEN | GraphicBuffer::USAGE_HW_TEXTURE);
 
         if (!cameraGraphicBuffer) {
@@ -46,21 +48,23 @@ namespace android {
 
         ANativeWindowBuffer *cameraNativeWindowBuffer = cameraGraphicBuffer->getNativeBuffer();
         aBuff.buff = NULL;     // We do not allocate a normal camera_memory_t
-        aBuff.width = aFrameInfo.width;
-        aBuff.height = aFrameInfo.height;
-        // ANativeWindowBuffer defines stride in pixels
-        if (bytesPerLineToWidth(aFrameInfo.format, aFrameInfo.stride) != cameraNativeWindowBuffer->stride) {
-            LOGW("%s: potential stride problem requested %d, Gfx requries %d",__FUNCTION__, aFrameInfo.stride, cameraNativeWindowBuffer->stride);
+        aBuff.width = formatDescriptor.width;
+        aBuff.height = formatDescriptor.height;
+        // ANativeWindowBuffer defines bpl in pixels
+        if (bytesToPixels(formatDescriptor.fourcc, formatDescriptor.bpl) != cameraNativeWindowBuffer->stride) {
+            LOGW("%s: potential bpl problem requested %d, Gfx requries %d",__FUNCTION__, formatDescriptor.bpl, cameraNativeWindowBuffer->stride);
         } else {
-            LOG1("%s stride from Gfx is %d", __FUNCTION__, aFrameInfo.stride);
+            LOG1("%s bpl from Gfx is %d", __FUNCTION__, formatDescriptor.bpl);
         }
-        aBuff.stride = aFrameInfo.stride;
-        aBuff.format = aFrameInfo.format;
+        // Note: GraphicBuffer object will carry width as was our pixel stride
+        // request basing bpl and resulting bpl may be bigger in the resulting AtomBuffer
+        aBuff.bpl = pixelsToBytes(formatDescriptor.fourcc, cameraNativeWindowBuffer->stride);
+        aBuff.fourcc = formatDescriptor.fourcc;
         aBuff.gfxInfo.scalerId = -1;
         aBuff.gfxInfo.gfxBufferHandle = &cameraGraphicBuffer->handle;
         aBuff.gfxInfo.gfxBuffer = cameraGraphicBuffer;
         cameraGraphicBuffer->incStrong(&aBuff);
-        aBuff.size = frameSize(aFrameInfo.format, bytesPerLineToWidth(aFrameInfo.format, aFrameInfo.stride), aBuff.height);
+        aBuff.size = frameSize(aBuff.fourcc, bytesToPixels(aBuff.fourcc, aBuff.bpl), aBuff.height);
 
         status = cameraGraphicBuffer->lock(lockMode, &mapperPointer.ptr);
         if (status != NO_ERROR) {
@@ -95,24 +99,25 @@ namespace android {
         aBuff.dataPtr = NULL;
     }
 
-    status_t allocateAtomBuffer(AtomBuffer &aBuff, FrameInfo &aFrameInfo, Callbacks *aCallbacks)
+    status_t allocateAtomBuffer(AtomBuffer &aBuff, const AtomBuffer &formatDescriptor, Callbacks *aCallbacks)
     {
-        LOG1("%s with these properties: (%dx%d)s:%d format %s", __FUNCTION__,
-                aFrameInfo.width, aFrameInfo.height, aFrameInfo.stride, v4l2Fmt2Str(aFrameInfo.format));
+        LOG1("%s with these properties: (%dx%d)s:%d fourcc %s", __FUNCTION__,
+                formatDescriptor.width, formatDescriptor.height,
+                formatDescriptor.bpl, v4l2Fmt2Str(formatDescriptor.fourcc));
         status_t status = OK;
         aBuff.dataPtr = NULL;
 
-        aCallbacks->allocateMemory(&aBuff, aFrameInfo.size);
+        aCallbacks->allocateMemory(&aBuff, formatDescriptor.size);
         if (aBuff.buff == NULL) {
             LOGE("Failed to allocate AtomBuffer");
             return NO_MEMORY;
         }
 
-        aBuff.width = aFrameInfo.width;
-        aBuff.height = aFrameInfo.height;
-        aBuff.stride = aFrameInfo.stride;
-        aBuff.format = aFrameInfo.format;
-        aBuff.size = aFrameInfo.size;
+        aBuff.width = formatDescriptor.width;
+        aBuff.height = formatDescriptor.height;
+        aBuff.bpl = formatDescriptor.bpl;
+        aBuff.fourcc = formatDescriptor.fourcc;
+        aBuff.size = formatDescriptor.size;
         aBuff.dataPtr = aBuff.buff->data;
         aBuff.shared = false;
 

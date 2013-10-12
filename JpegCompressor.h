@@ -35,7 +35,7 @@ public:
         unsigned char *buf;
         int width;
         int height;
-        int format;
+        int fourcc;
         int size;
 
         void clear()
@@ -43,7 +43,7 @@ public:
             buf = NULL;
             width = 0;
             height = 0;
-            format = 0;
+            fourcc = 0;
             size = 0;
         }
     };

@@ -754,7 +754,7 @@ void UltraLowLight::AtomToIaFrameBuffer(const AtomBuffer * atom, ia_frame * fram
     frame->data = atom->dataPtr;
     frame->width = atom->width;
     frame->height = atom->height;
-    frame->stride = atom->stride;
+    frame->stride = atom->bpl;
     frame->size = atom->size;
     frame->rotation = 0;
 }

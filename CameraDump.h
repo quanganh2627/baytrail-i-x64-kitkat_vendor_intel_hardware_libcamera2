@@ -53,7 +53,7 @@ namespace android {
         unsigned int buffer_size;
         unsigned int width;
         unsigned int height;
-        unsigned int stride;
+        unsigned int bpl;
     } camera_delay_dumpImage_T;
 
     class CameraDump {

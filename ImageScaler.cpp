@@ -44,36 +44,36 @@ void ImageScaler::downScaleImage(AtomBuffer *src, AtomBuffer *dst,
         dstPtr = dst->dataPtr;
 
     downScaleImage(srcPtr, dstPtr,
-        dst->width, dst->height, dst->stride,
-        src->width, src->height, src->stride,
-        src->format, src_skip_lines_top, src_skip_lines_bottom);
+        dst->width, dst->height, dst->bpl,
+        src->width, src->height, src->bpl,
+        src->fourcc, src_skip_lines_top, src_skip_lines_bottom);
 }
 
 void ImageScaler::downScaleImage(void *src, void *dest,
-    int dest_w, int dest_h, int dest_stride,
-    int src_w, int src_h, int src_stride,
-    int format, int src_skip_lines_top, // number of lines that are skipped from src image start pointer
+    int dest_w, int dest_h, int dest_bpl,
+    int src_w, int src_h, int src_bpl,
+    int fourcc, int src_skip_lines_top, // number of lines that are skipped from src image start pointer
     int src_skip_lines_bottom) // number of lines that are skipped after reading src_h (should be set always to reach full image height)
 {
     unsigned char *m_dest = (unsigned char *)dest;
     const unsigned char * m_src = (const unsigned char *)src;
 
-    LOG1("%s: dest_w:%d, dest_h:%d, src_w:%d, src_h:%d, format:%d", __func__,
-         dest_w, dest_h, src_w, src_h, format);
+    LOG1("%s: dest_w:%d, dest_h:%d, src_w:%d, src_h:%d, fourcc:%d", __func__,
+         dest_w, dest_h, src_w, src_h, fourcc);
 
-    switch (format) {
+    switch (fourcc) {
         case V4L2_PIX_FMT_NV12: {
             if (dest_w == src_w && dest_h == src_h) {
                 // trim only
                 ImageScaler::trimNv12Image(m_dest, m_src,
-                    dest_w, dest_h, dest_stride,
-                    src_w, src_h, src_stride,
+                    dest_w, dest_h, dest_bpl,
+                    src_w, src_h, src_bpl,
                     src_skip_lines_top, src_skip_lines_bottom);
             } else {
                 // downscale & crop
                 ImageScaler::downScaleAndCropNv12Image(m_dest, m_src,
-                    dest_w, dest_h, dest_stride,
-                    src_w, src_h, src_stride,
+                    dest_w, dest_h, dest_bpl,
+                    src_w, src_h, src_bpl,
                     src_skip_lines_top, src_skip_lines_bottom);
             }
             break;
@@ -84,7 +84,7 @@ void ImageScaler::downScaleImage(void *src, void *dest,
                 dest_w, dest_h, src_w, src_h);
             break;
         default: {
-            LOGE("no downscale support for format = %d", format);
+            LOGE("no downscale support for fourcc = %d", fourcc);
             break;
         }
     }
@@ -142,58 +142,58 @@ void ImageScaler::downScaleYUY2Image(unsigned char *dest, const unsigned char *s
 }
 
 void ImageScaler::trimNv12Image(unsigned char *dst, const unsigned char *src,
-    const int dest_w, const int dest_h, const int dest_stride,
-    const int src_w, const int src_h, const int src_stride,
+    const int dest_w, const int dest_h, const int dest_bpl,
+    const int src_w, const int src_h, const int src_bpl,
     const int src_skip_lines_top, // number of lines that are skipped from src image start pointer
     const int src_skip_lines_bottom) // number of lines that are skipped after reading src_h (should be set always to reach full image height)
 {
-    LOG1("@%s: dest_w: %d, dest_h: %d, dest_stride:%d, src_w: %d, src_h: %d, src_stride: %d, skip_top: %d, skip_bottom: %d", __FUNCTION__, dest_w,dest_h,dest_stride,src_w,src_h,src_stride,src_skip_lines_top,src_skip_lines_bottom);
+    LOG1("@%s: dest_w: %d, dest_h: %d, dest_bpl:%d, src_w: %d, src_h: %d, src_bpl: %d, skip_top: %d, skip_bottom: %d", __FUNCTION__, dest_w,dest_h,dest_bpl,src_w,src_h,src_bpl,src_skip_lines_top,src_skip_lines_bottom);
 
     // Y
     for (int i = 0; i < dest_h; i++) {
-        memcpy(dst,src,dest_stride);
-        dst += dest_stride;
-        src += src_stride;
+        memcpy(dst,src,dest_bpl);
+        dst += dest_bpl;
+        src += src_bpl;
     }
     //UV
     for (int i = 0; i < dest_h/2; i++) {
-        memcpy(dst,src,dest_stride);
-        dst += dest_stride;
-        src += src_stride;
+        memcpy(dst,src,dest_bpl);
+        dst += dest_bpl;
+        src += src_bpl;
     }
 }
 
 // VGA-QCIF begin (Enzo specific)
 void ImageScaler::downScaleAndCropNv12Image(unsigned char *dest, const unsigned char *src,
-    const int dest_w, const int dest_h, const int dest_stride,
-    const int src_w, const int src_h, const int src_stride,
+    const int dest_w, const int dest_h, const int dest_bpl,
+    const int src_w, const int src_h, const int src_bpl,
     const int src_skip_lines_top, // number of lines that are skipped from src image start pointer
     const int src_skip_lines_bottom) // number of lines that are skipped after reading src_h (should be set always to reach full image height)
 {
-    LOG1("@%s: dest_w: %d, dest_h: %d, dest_stride: %d, src_w: %d, src_h: %d, src_stride: %d, skip_top: %d, skip_bottom: %d, dest: %p, src: %p",
-         __FUNCTION__, dest_w, dest_h, dest_stride, src_w, src_h, src_stride, src_skip_lines_top, src_skip_lines_bottom, dest, src);
+    LOG1("@%s: dest_w: %d, dest_h: %d, dest_bpl: %d, src_w: %d, src_h: %d, src_bpl: %d, skip_top: %d, skip_bottom: %d, dest: %p, src: %p",
+         __FUNCTION__, dest_w, dest_h, dest_bpl, src_w, src_h, src_bpl, src_skip_lines_top, src_skip_lines_bottom, dest, src);
 
     if (src_w == 800 && src_h == 600 && src_skip_lines_top == 0 && src_skip_lines_bottom == 0
         && dest_w == RESOLUTION_QVGA_WIDTH && dest_h == RESOLUTION_QVGA_HEIGHT) {
-        downScaleNv12ImageFrom800x600ToQvga(dest, src, dest_stride, src_stride);
+        downScaleNv12ImageFrom800x600ToQvga(dest, src, dest_bpl, src_bpl);
         return;
     }
     if (src_w == RESOLUTION_VGA_WIDTH && src_h == RESOLUTION_VGA_HEIGHT
         && src_skip_lines_top == 0 && src_skip_lines_bottom == 0
         && dest_w == RESOLUTION_QVGA_WIDTH && dest_h == RESOLUTION_QVGA_HEIGHT) {
-        downScaleAndCropNv12ImageQvga(dest, src, dest_stride, src_stride);
+        downScaleAndCropNv12ImageQvga(dest, src, dest_bpl, src_bpl);
         return;
     }
     if (src_w == RESOLUTION_VGA_WIDTH && src_h == RESOLUTION_VGA_HEIGHT
         && src_skip_lines_top == 0 && src_skip_lines_bottom == 0
         && dest_w == RESOLUTION_QCIF_WIDTH && dest_h == RESOLUTION_QCIF_WIDTH) {
-        downScaleAndCropNv12ImageQcif(dest, src, dest_stride, src_stride);
+        downScaleAndCropNv12ImageQcif(dest, src, dest_bpl, src_bpl);
         return;
     }
 
     // skip lines from top
     if (src_skip_lines_top > 0)
-        src += src_skip_lines_top * src_stride;
+        src += src_skip_lines_top * src_bpl;
 
     // Correct aspect ratio is defined by destination buffer
     long int aspect_ratio = (dest_w << 16) / dest_h;
@@ -214,8 +214,8 @@ void ImageScaler::downScaleAndCropNv12Image(unsigned char *dest, const unsigned 
     int i, j, x1, y1, x2, y2;
     unsigned int val_1, val_2;
     int dx, dy;
-    int src_Y_data = src_stride * (src_h + src_skip_lines_bottom + (src_skip_lines_top >> 1));
-    int dest_Y_data = dest_stride * dest_h;
+    int src_Y_data = src_bpl * (src_h + src_skip_lines_bottom + (src_skip_lines_top >> 1));
+    int dest_Y_data = dest_bpl * dest_h;
     int flag, width, height;
     if (0 == dest_w || 0 == dest_h) {
         LOGE("%s,dest_w or dest_h should not be 0", __func__);
@@ -234,11 +234,11 @@ void ImageScaler::downScaleAndCropNv12Image(unsigned char *dest, const unsigned 
             x1 = j * scaling_w;
             dx = x1 & 0xff;
             x2 = (x1 >> 8) + l_skip;
-            val_1 = ((unsigned int)src[y2 * src_stride + x2] * (256 - dx)
-                    + (unsigned int)src[y2 * src_stride + x2 + 1] * dx) >> 8;
-            val_2 = ((unsigned int)src[(y2 + 1) * src_stride + x2] * (256 - dx)
-                    + (unsigned int)src[(y2 + 1) * src_stride + x2 + 1] * dx) >> 8;
-            dest[i * dest_stride + j] = MIN(((val_1 * (256 - dy) + val_2 * dy) >> 8), 0xff);
+            val_1 = ((unsigned int)src[y2 * src_bpl + x2] * (256 - dx)
+                    + (unsigned int)src[y2 * src_bpl + x2 + 1] * dx) >> 8;
+            val_2 = ((unsigned int)src[(y2 + 1) * src_bpl + x2] * (256 - dx)
+                    + (unsigned int)src[(y2 + 1) * src_bpl + x2 + 1] * dx) >> 8;
+            dest[i * dest_bpl + j] = MIN(((val_1 * (256 - dy) + val_2 * dy) >> 8), 0xff);
         }
     }
     flag = 0;
@@ -256,23 +256,23 @@ void ImageScaler::downScaleAndCropNv12Image(unsigned char *dest, const unsigned 
             dx = x1 & 0xff;
             x2 = (x1 >> 8) + l_skip / 2;
             //fill U data
-            val_1 = ((unsigned int)src[y2 * src_stride + (x2 << 1) + src_Y_data] * (256 - dx)
-                     + (unsigned int)src[y2 * src_stride + ((x2 + 1) << 1) + src_Y_data] * dx) >> 8;
-            val_2 = ((unsigned int)src[(y2 + 1) * src_stride + (x2 << 1) + src_Y_data] * (256 -dx)
-                     + (unsigned int)src[(y2 +1) * src_stride + ((x2 + 1) << 1) + src_Y_data] * dx) >> 8;
-            dest[i * dest_stride + (j << 1) + dest_Y_data] = MIN(((val_1 * (256 - dy) + val_2 * dy) >> 8), 0xff);
+            val_1 = ((unsigned int)src[y2 * src_bpl + (x2 << 1) + src_Y_data] * (256 - dx)
+                     + (unsigned int)src[y2 * src_bpl + ((x2 + 1) << 1) + src_Y_data] * dx) >> 8;
+            val_2 = ((unsigned int)src[(y2 + 1) * src_bpl + (x2 << 1) + src_Y_data] * (256 -dx)
+                     + (unsigned int)src[(y2 +1) * src_bpl + ((x2 + 1) << 1) + src_Y_data] * dx) >> 8;
+            dest[i * dest_bpl + (j << 1) + dest_Y_data] = MIN(((val_1 * (256 - dy) + val_2 * dy) >> 8), 0xff);
             //fill V data
-            val_1 = ((unsigned int)src[y2 * src_stride + (x2 << 1) + 1 + src_Y_data] * (256 - dx)
-                     + (unsigned int)src[y2 * src_stride + ((x2 + 1) << 1) + 1 + src_Y_data] * dx) >> 8;
-            val_2 = ((unsigned int)src[(y2 + 1) * src_stride + (x2 << 1) + 1 + src_Y_data] * (256 -dx)
-                     + (unsigned int)src[(y2 +1) * src_stride + ((x2 + 1) << 1) + 1 + src_Y_data] * dx) >> 8;
-            dest[i * dest_stride + (j << 1) + 1 + dest_Y_data] = MIN(((val_1 * (256 - dy) + val_2 * dy) >> 8), 0xff);
+            val_1 = ((unsigned int)src[y2 * src_bpl + (x2 << 1) + 1 + src_Y_data] * (256 - dx)
+                     + (unsigned int)src[y2 * src_bpl + ((x2 + 1) << 1) + 1 + src_Y_data] * dx) >> 8;
+            val_2 = ((unsigned int)src[(y2 + 1) * src_bpl + (x2 << 1) + 1 + src_Y_data] * (256 -dx)
+                     + (unsigned int)src[(y2 +1) * src_bpl + ((x2 + 1) << 1) + 1 + src_Y_data] * dx) >> 8;
+            dest[i * dest_bpl + (j << 1) + 1 + dest_Y_data] = MIN(((val_1 * (256 - dy) + val_2 * dy) >> 8), 0xff);
         }
     }
 }
 
 void ImageScaler::downScaleAndCropNv12ImageQvga(unsigned char *dest, const unsigned char *src,
-    const int dest_stride, const int src_stride)
+    const int dest_bpl, const int src_bpl)
 {
     LOG1("@%s", __FUNCTION__);
     const int dest_w = RESOLUTION_QVGA_WIDTH;
@@ -282,9 +282,9 @@ void ImageScaler::downScaleAndCropNv12ImageQvga(unsigned char *dest, const unsig
 
     // Y component
     for (int i = 0; i < dest_h; i++) {
-        u_int32_t *s1 = (u_int32_t *)(&src[(i * scale + 0) * src_stride]);
-        u_int32_t *s2 = (u_int32_t *)(&src[(i * scale + 1) * src_stride]);
-        u_int32_t  *d = (u_int32_t *)(&dest[i * dest_stride]);
+        u_int32_t *s1 = (u_int32_t *)(&src[(i * scale + 0) * src_bpl]);
+        u_int32_t *s2 = (u_int32_t *)(&src[(i * scale + 1) * src_bpl]);
+        u_int32_t  *d = (u_int32_t *)(&dest[i * dest_bpl]);
         // This processes 4 dest pixels at a time
         for (int j = 0; j < dest_w; j+=4) {
             u_int32_t a1; // Input data upper row
@@ -303,13 +303,13 @@ void ImageScaler::downScaleAndCropNv12ImageQvga(unsigned char *dest, const unsig
     }
 
     // UV components
-    src = &src[src_stride * src_h];
-    dest = &dest[dest_stride * dest_h];
+    src = &src[src_bpl * src_h];
+    dest = &dest[dest_bpl * dest_h];
 
     for (int i = 0; i < dest_h/2; i++) {
-        u_int32_t *s1 = (u_int32_t *)(&src[(i * scale + 0) * src_stride]);
-        u_int32_t *s2 = (u_int32_t *)(&src[(i * scale + 1) * src_stride]);
-        u_int32_t  *d = (u_int32_t *)(&dest[i * dest_stride]);
+        u_int32_t *s1 = (u_int32_t *)(&src[(i * scale + 0) * src_bpl]);
+        u_int32_t *s2 = (u_int32_t *)(&src[(i * scale + 1) * src_bpl]);
+        u_int32_t  *d = (u_int32_t *)(&dest[i * dest_bpl]);
         // This processes 2 dest UV pairs at a time
         for (int j = 0; j < dest_w/2; j+=2) {
             u_int32_t a1; // Input data upper row
@@ -329,7 +329,7 @@ void ImageScaler::downScaleAndCropNv12ImageQvga(unsigned char *dest, const unsig
 }
 
 void ImageScaler::downScaleAndCropNv12ImageQcif(unsigned char *dest, const unsigned char *src,
-    const int dest_stride, const int src_stride)
+    const int dest_bpl, const int src_bpl)
 {
     LOG1("@%s", __FUNCTION__);
     const int dest_w = RESOLUTION_QCIF_WIDTH;
@@ -356,8 +356,8 @@ void ImageScaler::downScaleAndCropNv12ImageQcif(unsigned char *dest, const unsig
     int i, j, x1, y1, x2, y2;
     unsigned int val_1, val_2;
     int dx, dy;
-    int src_Y_data = src_stride * src_h;
-    int dest_Y_data = dest_stride * dest_h;
+    int src_Y_data = src_bpl * src_h;
+    int dest_Y_data = dest_bpl * dest_h;
     int flag, width, height;
     const int scaling_w = ((src_w - skip) << 8) / dest_w;
     const int scaling_h = (src_h << 8) / dest_h;
@@ -372,11 +372,11 @@ void ImageScaler::downScaleAndCropNv12ImageQcif(unsigned char *dest, const unsig
             x1 = j * scaling_w;
             dx = x1 & 0xff;
             x2 = (x1 >> 8) + l_skip;
-            val_1 = ((unsigned int)src[y2 * src_stride + x2] * (256 - dx)
-                    + (unsigned int)src[y2 * src_stride + x2 + 1] * dx) >> 8;
-            val_2 = ((unsigned int)src[(y2 + 1) * src_stride + x2] * (256 - dx)
-                    + (unsigned int)src[(y2 + 1) * src_stride + x2 + 1] * dx) >> 8;
-            dest[i * dest_stride + j] = MIN(((val_1 * (256 - dy) + val_2 * dy) >> 8), 0xff);
+            val_1 = ((unsigned int)src[y2 * src_bpl + x2] * (256 - dx)
+                    + (unsigned int)src[y2 * src_bpl + x2 + 1] * dx) >> 8;
+            val_2 = ((unsigned int)src[(y2 + 1) * src_bpl + x2] * (256 - dx)
+                    + (unsigned int)src[(y2 + 1) * src_bpl + x2 + 1] * dx) >> 8;
+            dest[i * dest_bpl + j] = MIN(((val_1 * (256 - dy) + val_2 * dy) >> 8), 0xff);
         }
     }
     flag = 0;
@@ -394,23 +394,23 @@ void ImageScaler::downScaleAndCropNv12ImageQcif(unsigned char *dest, const unsig
             dx = x1 & 0xff;
             x2 = (x1 >> 8) + l_skip / 2;
             //fill U data
-            val_1 = ((unsigned int)src[y2 * src_stride + (x2 << 1) + src_Y_data] * (256 - dx)
-                     + (unsigned int)src[y2 * src_stride + ((x2 + 1) << 1) + src_Y_data] * dx) >> 8;
-            val_2 = ((unsigned int)src[(y2 + 1) * src_stride + (x2 << 1) + src_Y_data] * (256 -dx)
-                     + (unsigned int)src[(y2 +1) * src_stride + ((x2 + 1) << 1) + src_Y_data] * dx) >> 8;
-            dest[i * dest_stride + (j << 1) + dest_Y_data] = MIN(((val_1 * (256 - dy) + val_2 * dy) >> 8), 0xff);
+            val_1 = ((unsigned int)src[y2 * src_bpl + (x2 << 1) + src_Y_data] * (256 - dx)
+                     + (unsigned int)src[y2 * src_bpl + ((x2 + 1) << 1) + src_Y_data] * dx) >> 8;
+            val_2 = ((unsigned int)src[(y2 + 1) * src_bpl + (x2 << 1) + src_Y_data] * (256 -dx)
+                     + (unsigned int)src[(y2 +1) * src_bpl + ((x2 + 1) << 1) + src_Y_data] * dx) >> 8;
+            dest[i * dest_bpl + (j << 1) + dest_Y_data] = MIN(((val_1 * (256 - dy) + val_2 * dy) >> 8), 0xff);
             //fill V data
             val_1 = ((unsigned int)src[y2 * src_w + (x2 << 1) + 1 + src_Y_data] * (256 - dx)
                      + (unsigned int)src[y2 * src_w + ((x2 + 1) << 1) + 1 + src_Y_data] * dx) >> 8;
             val_2 = ((unsigned int)src[(y2 + 1) * src_w + (x2 << 1) + 1 + src_Y_data] * (256 -dx)
                      + (unsigned int)src[(y2 +1) * src_w + ((x2 + 1) << 1) + 1 + src_Y_data] * dx) >> 8;
-            dest[i * dest_stride + (j << 1) + 1 + dest_Y_data] = MIN(((val_1 * (256 - dy) + val_2 * dy) >> 8), 0xff);
+            dest[i * dest_bpl + (j << 1) + 1 + dest_Y_data] = MIN(((val_1 * (256 - dy) + val_2 * dy) >> 8), 0xff);
         }
     }
 }
 
 void ImageScaler::downScaleNv12ImageFrom800x600ToQvga(unsigned char *dest, const unsigned char *src,
-    const int dest_stride, const int src_stride)
+    const int dest_bpl, const int src_bpl)
 {
     LOG1("@%s", __FUNCTION__);
     const int dest_w = RESOLUTION_QVGA_WIDTH;
@@ -421,10 +421,10 @@ void ImageScaler::downScaleNv12ImageFrom800x600ToQvga(unsigned char *dest, const
 
     // Processing 2 dest rows and 5 src rows at a time
     for (int i = 0; i < dest_h / 2; i++) {
-        u_int32_t *s1 = (u_int32_t *)(&src[(i * 5 + 0) * src_stride]);
-        u_int32_t *s2 = (u_int32_t *)(&src[(i * 5 + 1) * src_stride]);
-        u_int32_t *s3 = (u_int32_t *)(&src[(i * 5 + 2) * src_stride]);
-        u_int32_t *d = (u_int32_t *)(&dest[(i * 2 + 0) * dest_stride]);
+        u_int32_t *s1 = (u_int32_t *)(&src[(i * 5 + 0) * src_bpl]);
+        u_int32_t *s2 = (u_int32_t *)(&src[(i * 5 + 1) * src_bpl]);
+        u_int32_t *s3 = (u_int32_t *)(&src[(i * 5 + 2) * src_bpl]);
+        u_int32_t *d = (u_int32_t *)(&dest[(i * 2 + 0) * dest_bpl]);
         // This processes 8 dest pixels at a time
         for (int j = 0; j < dest_w; j+=8) {
             u_int32_t a1; // Input data upper row
@@ -502,10 +502,10 @@ void ImageScaler::downScaleNv12ImageFrom800x600ToQvga(unsigned char *dest, const
             b |= t << 24; // Eigth pixel
             *d++ = b;
         }
-        s1 = (u_int32_t *)(&src[(i * 5 + 4) * src_stride]);
-        s2 = (u_int32_t *)(&src[(i * 5 + 3) * src_stride]);
-        s3 = (u_int32_t *)(&src[(i * 5 + 2) * src_stride]);
-        d = (u_int32_t *)(&dest[(i * 2 + 1) * dest_stride]);
+        s1 = (u_int32_t *)(&src[(i * 5 + 4) * src_bpl]);
+        s2 = (u_int32_t *)(&src[(i * 5 + 3) * src_bpl]);
+        s3 = (u_int32_t *)(&src[(i * 5 + 2) * src_bpl]);
+        d = (u_int32_t *)(&dest[(i * 2 + 1) * dest_bpl]);
         // This processes 8 dest pixels at a time
         for (int j = 0; j < dest_w; j+=8) {
             u_int32_t a1; // Input data lower row
@@ -586,15 +586,15 @@ void ImageScaler::downScaleNv12ImageFrom800x600ToQvga(unsigned char *dest, const
     }
 
     // UV components
-    src = &src[src_stride * src_h];
-    dest = &dest[dest_stride * dest_h];
+    src = &src[src_bpl * src_h];
+    dest = &dest[dest_bpl * dest_h];
 
     // Processing 2 dest rows and 5 src rows at a time
     for (int i = 0; i < (dest_h/2) / 2; i++) {
-        u_int32_t *s1 = (u_int32_t *)(&src[(i * 5 + 0) * src_stride]);
-        u_int32_t *s2 = (u_int32_t *)(&src[(i * 5 + 1) * src_stride]);
-        u_int32_t *s3 = (u_int32_t *)(&src[(i * 5 + 2) * src_stride]);
-        u_int16_t *d = (u_int16_t *)(&dest[(i * 2 + 0) * dest_stride]);
+        u_int32_t *s1 = (u_int32_t *)(&src[(i * 5 + 0) * src_bpl]);
+        u_int32_t *s2 = (u_int32_t *)(&src[(i * 5 + 1) * src_bpl]);
+        u_int32_t *s3 = (u_int32_t *)(&src[(i * 5 + 2) * src_bpl]);
+        u_int16_t *d = (u_int16_t *)(&dest[(i * 2 + 0) * dest_bpl]);
         // This processes 4 dest UV pairs at a time
         for (int j = 0; j < dest_w/2; j+=4) {
             u_int32_t a1; // Input data upper row
@@ -678,10 +678,10 @@ void ImageScaler::downScaleNv12ImageFrom800x600ToQvga(unsigned char *dest, const
             v = (v + 12) / 25;
             *d++ = u | (v << 8); // Fourth uv pair;
         }
-        s1 = (u_int32_t *)(&src[(i * 5 + 4) * src_stride]);
-        s2 = (u_int32_t *)(&src[(i * 5 + 3) * src_stride]);
-        s3 = (u_int32_t *)(&src[(i * 5 + 2) * src_stride]);
-        d = (u_int16_t *)(&dest[(i * 2 + 1) * dest_stride]);
+        s1 = (u_int32_t *)(&src[(i * 5 + 4) * src_bpl]);
+        s2 = (u_int32_t *)(&src[(i * 5 + 3) * src_bpl]);
+        s3 = (u_int32_t *)(&src[(i * 5 + 2) * src_bpl]);
+        d = (u_int16_t *)(&dest[(i * 2 + 1) * dest_bpl]);
         // This processes 4 dest UV pairs at a time
         for (int j = 0; j < dest_w/2; j+=4) {
             u_int32_t a1; // Input data lower row

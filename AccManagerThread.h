@@ -143,8 +143,8 @@ private:
         int frameCounter;       // Frame counter. Reset upon preview_start
         int width;              // Pixel width of image
         int height;             // Pixel height of image
-        int format;             // XXX TODO not valid at preset
-        int stride;             // Stride of the buffer
+        int fourcc;             // XXX TODO not valid at preset
+        int bpl;                // Bpl of the buffer
         int size;               // Size of img_data in bytes. For NV12 size==1.5*width*height
     };
 

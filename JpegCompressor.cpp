@@ -59,7 +59,7 @@ int JpegCompressor::swEncode(const InputBuffer &in, const OutputBuffer &out)
     if (status)
         goto exit;
 
-    status = mSWEncoder->doJpegEncoding(in.buf, in.format);
+    status = mSWEncoder->doJpegEncoding(in.buf, in.fourcc);
     if (status)
         goto exit;
 
@@ -80,10 +80,10 @@ int JpegCompressor::encode(const InputBuffer &in, const OutputBuffer &out)
     LOG1("@%s:\n\t IN  = {buf:%p, w:%u, h:%u, sz:%u, f:%s}" \
              "\n\t OUT = {buf:%p, w:%u, h:%u, sz:%u, q:%d}",
             __FUNCTION__,
-            in.buf, in.width, in.height, in.size, v4l2Fmt2Str(in.format),
+            in.buf, in.width, in.height, in.size, v4l2Fmt2Str(in.fourcc),
             out.buf, out.width, out.height, out.size, out.quality);
 
-    if (in.width == 0 || in.height == 0 || in.format == 0) {
+    if (in.width == 0 || in.height == 0 || in.fourcc == 0) {
         LOGE("Invalid input received!");
         mJpegSize = -1;
         goto exit;

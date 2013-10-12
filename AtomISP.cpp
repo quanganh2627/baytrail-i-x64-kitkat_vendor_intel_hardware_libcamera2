@@ -258,10 +258,6 @@ status_t AtomISP::init()
         return NO_INIT;
     }
 
-    mConfig.fps = DEFAULT_PREVIEW_FPS;
-    mConfig.target_fps = DEFAULT_PREVIEW_FPS;
-    mConfig.num_snapshot = 1;
-    mConfig.zoom = 0;
 
     if (selectCameraSensor() != NO_ERROR) {
        LOGE("Could not select camera: %s", mCameraInput->name);
@@ -272,7 +268,7 @@ status_t AtomISP::init()
     initFrameConfig();
 
     // Initialize the frame sizes
-    setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, PlatformData::getPreviewFormat());
+    setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, PlatformData::getPreviewPixelFormat());
     setPostviewFrameFormat(RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT, V4L2_PIX_FMT_NV12);
     setSnapshotFrameFormat(RESOLUTION_5MP_WIDTH, RESOLUTION_5MP_HEIGHT, V4L2_PIX_FMT_NV12);
     setVideoFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
@@ -350,39 +346,44 @@ status_t AtomISP::setHighSpeedResolutionFps(char* resolution, int fps)
  */
 void AtomISP::initFrameConfig()
 {
+    mConfig.fps = DEFAULT_PREVIEW_FPS;
+    mConfig.target_fps = DEFAULT_PREVIEW_FPS;
+    mConfig.num_snapshot = 1;
+    mConfig.zoom = 0;
+
     if (mIsFileInject) {
-        mConfig.snapshot.maxWidth = MAX_FILE_INJECTION_SNAPSHOT_WIDTH;
-        mConfig.snapshot.maxHeight = MAX_FILE_INJECTION_SNAPSHOT_HEIGHT;
-        mConfig.preview.maxWidth = MAX_FILE_INJECTION_PREVIEW_WIDTH;
-        mConfig.preview.maxHeight = MAX_FILE_INJECTION_PREVIEW_HEIGHT;
-        mConfig.recording.maxWidth = MAX_FILE_INJECTION_RECORDING_WIDTH;
-        mConfig.recording.maxHeight = MAX_FILE_INJECTION_RECORDING_HEIGHT;
+        mConfig.snapshotLimits.maxWidth = MAX_FILE_INJECTION_SNAPSHOT_WIDTH;
+        mConfig.snapshotLimits.maxHeight = MAX_FILE_INJECTION_SNAPSHOT_HEIGHT;
+        mConfig.previewLimits.maxWidth = MAX_FILE_INJECTION_PREVIEW_WIDTH;
+        mConfig.previewLimits.maxHeight = MAX_FILE_INJECTION_PREVIEW_HEIGHT;
+        mConfig.recordingLimits.maxWidth = MAX_FILE_INJECTION_RECORDING_WIDTH;
+        mConfig.recordingLimits.maxHeight = MAX_FILE_INJECTION_RECORDING_HEIGHT;
     }
     else {
-        getMaxSnapShotSize(mCameraId, &(mConfig.snapshot.maxWidth), &(mConfig.snapshot.maxHeight));
+        getMaxSnapShotSize(mCameraId, &(mConfig.snapshotLimits.maxWidth), &(mConfig.snapshotLimits.maxHeight));
         // workaround for the imx132, this code will be removed in the future
         if (strstr(mCameraInput->name, "imx132")) {
-           mConfig.snapshot.maxWidth  = RESOLUTION_1080P_WIDTH;
-           mConfig.snapshot.maxHeight = RESOLUTION_1080P_HEIGHT;
+           mConfig.snapshotLimits.maxWidth  = RESOLUTION_1080P_WIDTH;
+           mConfig.snapshotLimits.maxHeight = RESOLUTION_1080P_HEIGHT;
         }
     }
 
-    if (mConfig.snapshot.maxWidth >= RESOLUTION_1080P_WIDTH
-        && mConfig.snapshot.maxHeight >= RESOLUTION_1080P_HEIGHT) {
-        mConfig.preview.maxWidth = RESOLUTION_1080P_WIDTH;
-        mConfig.preview.maxHeight = RESOLUTION_1080P_HEIGHT;
+    if (mConfig.snapshotLimits.maxWidth >= RESOLUTION_1080P_WIDTH
+        && mConfig.snapshotLimits.maxHeight >= RESOLUTION_1080P_HEIGHT) {
+        mConfig.previewLimits.maxWidth = RESOLUTION_1080P_WIDTH;
+        mConfig.previewLimits.maxHeight = RESOLUTION_1080P_HEIGHT;
     } else {
-        mConfig.preview.maxWidth = mConfig.snapshot.maxWidth;
-        mConfig.preview.maxHeight =  mConfig.snapshot.maxHeight;
+        mConfig.previewLimits.maxWidth = mConfig.snapshotLimits.maxWidth;
+        mConfig.previewLimits.maxHeight =  mConfig.snapshotLimits.maxHeight;
     }
 
-    if (mConfig.snapshot.maxWidth >= RESOLUTION_1080P_WIDTH
-        && mConfig.snapshot.maxHeight >= RESOLUTION_1080P_HEIGHT) {
-        mConfig.recording.maxWidth = RESOLUTION_1080P_WIDTH;
-        mConfig.recording.maxHeight = RESOLUTION_1080P_HEIGHT;
+    if (mConfig.snapshotLimits.maxWidth >= RESOLUTION_1080P_WIDTH
+        && mConfig.snapshotLimits.maxHeight >= RESOLUTION_1080P_HEIGHT) {
+        mConfig.recordingLimits.maxWidth = RESOLUTION_1080P_WIDTH;
+        mConfig.recordingLimits.maxHeight = RESOLUTION_1080P_HEIGHT;
     } else {
-        mConfig.recording.maxWidth = mConfig.snapshot.maxWidth;
-        mConfig.recording.maxHeight = mConfig.snapshot.maxHeight;
+        mConfig.recordingLimits.maxWidth = mConfig.snapshotLimits.maxWidth;
+        mConfig.recordingLimits.maxHeight = mConfig.snapshotLimits.maxHeight;
     }
 }
 
@@ -1319,8 +1320,8 @@ status_t AtomISP::configureRecording()
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
     status_t status = NO_ERROR;
-    FrameInfo *previewConfig(NULL);
-    FrameInfo *recordingConfig(NULL);
+    AtomBuffer *previewConfig(NULL);
+    AtomBuffer *recordingConfig(NULL);
 
     ret = mPreviewDevice->open();
     if (ret < 0) {
@@ -1373,8 +1374,8 @@ status_t AtomISP::configureRecording()
     if (mPreviewTooBigForVFPP) {
         // since we only support recording == preview resolution, we can simply do:
         *previewConfig = *recordingConfig;
-        // now the configuration and the stride in it will be correct,
-        // when HAL uses it. Buffer allocation will be for the big size, stride
+        // now the configuration and the bpl in it will be correct,
+        // when HAL uses it. Buffer allocation will be for the big size, bpl
         // etc. will be also for the big size, only ISP will use the small size
         // for VFPP. Notice the device swap is on in this case, so the fake size
         // was actually stored in the mConfig.recording and we just copied the
@@ -1731,13 +1732,13 @@ status_t AtomISP::configureContinuousSOC()
     mConfig.HALZSL = mConfig.snapshot;
     mConfig.HALZSL.width = zslSize.width;
     mConfig.HALZSL.height = zslSize.height;
-    mConfig.HALZSL.format = PlatformData::getPreviewFormat();
-    mConfig.HALZSL.stride = SGXandDisplayStride(mConfig.HALZSL.format, mConfig.HALZSL.width);
-    mConfig.HALZSL.size = frameSize(mConfig.HALZSL.format, mConfig.HALZSL.width, mConfig.HALZSL.height);
+    mConfig.HALZSL.fourcc = PlatformData::getPreviewPixelFormat();
+    mConfig.HALZSL.bpl = SGXandDisplayBpl(mConfig.HALZSL.fourcc, mConfig.HALZSL.width);
+    mConfig.HALZSL.size = frameSize(mConfig.HALZSL.fourcc, mConfig.HALZSL.width, mConfig.HALZSL.height);
 
 
-    // fix the Preview stride to have gfx stride, as preview never goes to ISP
-    mConfig.preview.stride = SGXandDisplayStride(mConfig.HALZSL.format, mConfig.preview.width);
+    // fix the Preview bpl to have gfx bpl, as preview never goes to ISP
+    mConfig.preview.bpl = SGXandDisplayBpl(mConfig.HALZSL.fourcc, mConfig.preview.width);
 
     ret = configureDevice(
             mPreviewDevice.get(),
@@ -1750,7 +1751,7 @@ status_t AtomISP::configureContinuousSOC()
         goto err;
     }
 
-    LOG1("@%s configured %dx%d stride %d", __FUNCTION__, mConfig.HALZSL.width, mConfig.HALZSL.height, mConfig.HALZSL.stride);
+    LOG1("@%s configured %dx%d bpl %d", __FUNCTION__, mConfig.HALZSL.width, mConfig.HALZSL.height, mConfig.HALZSL.bpl);
 
     return status;
 err:
@@ -1857,7 +1858,7 @@ status_t AtomISP::startCapture()
     // snapshot number. Otherwise, the raw dump image would be corrupted.
     // also since CSS1.5 we cannot capture from postview at the same time
     int snapNum;
-    if (mConfig.snapshot.format == mRawBayerFormat)
+    if (mConfig.snapshot.fourcc == mRawBayerFormat)
         snapNum = 1;
     else
         snapNum = mConfig.num_snapshot;
@@ -2124,30 +2125,30 @@ bool AtomISP::isOfflineCaptureRunning() const
 /**
  * Configures a particular device with a mode (preview, video or capture)
  *
- * The FrameInfo struct contains information about the frame dimensions that
+ * The formatDescriptor contains information about the frame dimensions that
  * we are requesting to ISP
- * the field stride of the FrameInfo struct will be updated with the actual
- * width that the buffers need to have to meet the ISP constrains.
- * In effect the FrameInfo struct is an IN/OUT parameter.
+ * the fields bpl and size of the descriptor will be updated with the actual
+ * bpl that the buffers need to have to meet the ISP constrains.
+ * In effect the formatDescriptor struct is an IN/OUT parameter.
  */
-int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, FrameInfo *fInfo, bool raw)
+int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *formatDescriptor, bool raw)
 {
     LOG1("@%s", __FUNCTION__);
 
     int ret = 0;
-    int w,h,format;
-    w = fInfo->width;
-    h = fInfo->height;
-    format = fInfo->format;
-    LOG1("device: %d, width:%d, height:%d, deviceMode:%d format:%s raw:%d", device->mId,
-        w, h, deviceMode, v4l2Fmt2Str(format), raw);
+    int w,h,fourcc;
+    w = formatDescriptor->width;
+    h = formatDescriptor->height;
+    fourcc = formatDescriptor->fourcc;
+    LOG1("device: %d, width:%d, height:%d, deviceMode:%d fourcc:%s raw:%d", device->mId,
+        w, h, deviceMode, v4l2Fmt2Str(fourcc), raw);
 
     if ((w <= 0) || (h <= 0)) {
         LOGE("Wrong Width %d or Height %d", w, h);
         return -1;
     }
 
-    //Switch the Mode before set the format. This is the requirement of
+    //Switch the Mode before set the fourcc. This is the requirement of
     //atomisp
     ret = atomisp_set_capture_mode(deviceMode);
     if (ret < 0)
@@ -2158,7 +2159,7 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, FrameInfo *f
         applySensorFlip();
 
     //Set the format
-    ret = device->setFormat(*fInfo);
+    ret = device->setFormat(*formatDescriptor);
     if (ret < 0)
         return ret;
 
@@ -2180,7 +2181,7 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, FrameInfo *f
     //Reallocate the grid for 3A after format change
     if (device->mId == V4L2_MAIN_DEVICE ||
         device->mId == V4L2_PREVIEW_DEVICE) {
-        ret = device->getFramerate(&mConfig.fps, w, h, format);
+        ret = device->getFramerate(&mConfig.fps, w, h, fourcc);
         if (ret != NO_ERROR) {
         /*Error handler: if driver does not support FPS achieving,
                        just give the default value.*/
@@ -2214,7 +2215,7 @@ status_t AtomISP::selectCameraSensor()
     } else {
         PERFORMANCE_TRACES_BREAKDOWN_STEP("capture_s_input");
 
-        // Query now the support color format
+        // Query now the supported pixel formats
         ret = mMainDevice->queryCapturePixelFormats(mSensorSupportedFormats);
         if (ret != NO_ERROR) {
            LOGW("Cold not query capture formats from sensor: %s", mCameraInput->name);
@@ -2260,24 +2261,24 @@ int AtomISP::getRawFormat()
     return mRawBayerFormat;
 }
 
-status_t AtomISP::setPreviewFrameFormat(int width, int height, int format)
+status_t AtomISP::setPreviewFrameFormat(int width, int height, int fourcc)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if(format == 0)
-         format = mConfig.preview.format;
-    if (width > mConfig.preview.maxWidth || width <= 0)
-        width = mConfig.preview.maxWidth;
-    if (height > mConfig.preview.maxHeight || height <= 0)
-        height = mConfig.preview.maxHeight;
+    if(fourcc == 0)
+         fourcc = mConfig.preview.fourcc;
+    if (width > mConfig.previewLimits.maxWidth || width <= 0)
+        width = mConfig.previewLimits.maxWidth;
+    if (height > mConfig.previewLimits.maxHeight || height <= 0)
+        height = mConfig.previewLimits.maxHeight;
     mConfig.preview.width = width;
     mConfig.preview.height = height;
-    mConfig.preview.format = format;
-    mConfig.preview.stride = width;
-    mConfig.preview.size = frameSize(format, mConfig.preview.stride, height);
-    LOG1("width(%d), height(%d), pad_width(%d), size(%d), format(%x)",
-        width, height, mConfig.preview.stride, mConfig.preview.size, format);
+    mConfig.preview.fourcc = fourcc;
+    mConfig.preview.bpl = pixelsToBytes(fourcc, width);
+    mConfig.preview.size = frameSize(fourcc, mConfig.preview.width, height);
+    LOG1("width(%d), height(%d), pad_width(%d), size(%d), fourcc(%x)",
+        width, height, mConfig.preview.bpl, mConfig.preview.size, fourcc);
     return status;
 }
 
@@ -2293,21 +2294,21 @@ void AtomISP::setPreviewFramerate(int fps)
     mConfig.target_fps = fps;
 }
 
-void AtomISP::getPostviewFrameFormat(int &width, int &height, int &format) const
+void AtomISP::getPostviewFrameFormat(int &width, int &height, int &fourcc) const
 {
     LOG1("@%s", __FUNCTION__);
     width = mConfig.postview.width;
     height = mConfig.postview.height;
-    format = mConfig.postview.format;
+    fourcc = mConfig.postview.fourcc;
 }
 
-status_t AtomISP::setPostviewFrameFormat(int width, int height, int format)
+status_t AtomISP::setPostviewFrameFormat(int width, int height, int fourcc)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    LOG1("@%s width(%d), height(%d), format(%x)", __FUNCTION__,
-         width, height, format);
+    LOG1("@%s width(%d), height(%d), fourcc(%x)", __FUNCTION__,
+         width, height, fourcc);
     if (width < 0 || height < 0) {
         LOGE("Invalid postview size requested!");
         return BAD_VALUE;
@@ -2319,56 +2320,51 @@ status_t AtomISP::setPostviewFrameFormat(int width, int height, int format)
     }
     mConfig.postview.width = width;
     mConfig.postview.height = height;
-    mConfig.postview.format = format;
-    mConfig.postview.stride = width;
-    mConfig.postview.size = frameSize(format, width, height);
-    if (mConfig.postview.size == 0)
-        mConfig.postview.size = mConfig.postview.width * mConfig.postview.height * BPP;
-    LOG1("width(%d), height(%d), pad_width(%d), size(%d), format(%x)",
-            width, height, mConfig.postview.stride, mConfig.postview.size, format);
+    mConfig.postview.fourcc = fourcc;
+    mConfig.postview.bpl = pixelsToBytes(fourcc, width);
+    mConfig.postview.size = frameSize(fourcc, width, height);
+    LOG1("width(%d), height(%d), pad_width(%d), size(%d), fourcc(%x)",
+            width, height, mConfig.postview.bpl, mConfig.postview.size, fourcc);
     return status;
 }
 
-status_t AtomISP::setSnapshotFrameFormat(int width, int height, int format)
+status_t AtomISP::setSnapshotFrameFormat(int width, int height, int fourcc)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if (width > mConfig.snapshot.maxWidth || width <= 0)
-        width = mConfig.snapshot.maxWidth;
-    if (height > mConfig.snapshot.maxHeight || height <= 0)
-        height = mConfig.snapshot.maxHeight;
+    if (width > mConfig.snapshotLimits.maxWidth || width <= 0)
+        width = mConfig.snapshotLimits.maxWidth;
+    if (height > mConfig.snapshotLimits.maxHeight || height <= 0)
+        height = mConfig.snapshotLimits.maxHeight;
     mConfig.snapshot.width  = width;
     mConfig.snapshot.height = height;
-    mConfig.snapshot.format = format;
-    mConfig.snapshot.stride = SGXandDisplayStride(format, width);
-    mConfig.snapshot.size = frameSize(format, mConfig.snapshot.stride, height);
-
-    if (mConfig.snapshot.size == 0)
-        mConfig.snapshot.size = mConfig.snapshot.width * mConfig.snapshot.height * BPP;
-    LOG1("width(%d), height(%d), pad_width(%d), size(%d), format(%x)",
-        width, height, mConfig.snapshot.stride, mConfig.snapshot.size, format);
+    mConfig.snapshot.fourcc = fourcc;
+    mConfig.snapshot.bpl = SGXandDisplayBpl(fourcc, width);
+    mConfig.snapshot.size = frameSize(fourcc, bytesToPixels(fourcc, mConfig.snapshot.bpl), height);
+    LOG1("width(%d), height(%d), pad_width(%d), size(%d), fourcc(%x)",
+        width, height, mConfig.snapshot.bpl, mConfig.snapshot.size, fourcc);
     return status;
 }
 
-void AtomISP::getVideoSize(int *width, int *height, int *stride = NULL)
+void AtomISP::getVideoSize(int *width, int *height, int *bpl = NULL)
 {
     if (width && height) {
         *width = mConfig.recording.width;
         *height = mConfig.recording.height;
     }
-    if (stride)
-        *stride = mConfig.recording.stride;
+    if (bpl)
+        *bpl = mConfig.recording.bpl;
 }
 
-void AtomISP::getPreviewSize(int *width, int *height, int *stride = NULL)
+void AtomISP::getPreviewSize(int *width, int *height, int *bpl = NULL)
 {
     if (width && height) {
         *width = mConfig.preview.width;
         *height = mConfig.preview.height;
     }
-    if (stride)
-        *stride = mConfig.preview.stride;
+    if (bpl)
+        *bpl = mConfig.preview.bpl;
 }
 
 int AtomISP::getNumSnapshotBuffers()
@@ -2376,7 +2372,7 @@ int AtomISP::getNumSnapshotBuffers()
     return mConfig.num_snapshot;
 }
 
-status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
+status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -2397,11 +2393,11 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
          && (mHighSpeedResolution.width != width || mHighSpeedResolution.height != height))
         mHighSpeedEnabled = false;
 
-    if(format == 0)
-         format = mConfig.recording.format;
+    if(fourcc == 0)
+         fourcc = mConfig.recording.fourcc;
     if (mConfig.recording.width == width &&
         mConfig.recording.height == height &&
-        mConfig.recording.format == format) {
+        mConfig.recording.fourcc == fourcc) {
         // Do nothing
         return status;
     }
@@ -2411,23 +2407,21 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
         return INVALID_OPERATION;
     }
 
-    if (width > mConfig.recording.maxWidth || width <= 0) {
-        LOGE("invalid recording width %d. override to %d", width, mConfig.recording.maxWidth);
-        width = mConfig.recording.maxWidth;
+    if (width > mConfig.recordingLimits.maxWidth || width <= 0) {
+        LOGE("invalid recording width %d. override to %d", width, mConfig.recordingLimits.maxWidth);
+        width = mConfig.recordingLimits.maxWidth;
     }
-    if (height > mConfig.recording.maxHeight || height <= 0) {
-        LOGE("invalid recording height %d. override to %d", height, mConfig.recording.maxHeight);
-        height = mConfig.recording.maxHeight;
+    if (height > mConfig.recordingLimits.maxHeight || height <= 0) {
+        LOGE("invalid recording height %d. override to %d", height, mConfig.recordingLimits.maxHeight);
+        height = mConfig.recordingLimits.maxHeight;
     }
     mConfig.recording.width = width;
     mConfig.recording.height = height;
-    mConfig.recording.format = format;
-    mConfig.recording.stride = width;
-    mConfig.recording.size = frameSize(format, width, height);
-    if (mConfig.recording.size == 0)
-        mConfig.recording.size = mConfig.recording.width * mConfig.recording.height * BPP;
-    LOG1("width(%d), height(%d), pad_width(%d), format(%x)",
-            width, height, mConfig.recording.stride, format);
+    mConfig.recording.fourcc = fourcc;
+    mConfig.recording.bpl = pixelsToBytes(fourcc, mConfig.recording.width);
+    mConfig.recording.size = frameSize(fourcc, mConfig.recording.width, height);
+    LOG1("width(%d), height(%d), pad_width(%d), fourcc(%x)",
+            width, height, mConfig.recording.bpl, fourcc);
 
     return status;
 }
@@ -2455,6 +2449,12 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int format)
  * viewfinder postprocess binary (vf_pp) during it, every other frame would be
  * dropped leading to halved frame rate. Add control V4L2_CID_ENABLE_VFPP to
  * disable vf_pp for still preview.
+ *
+ * Workaround 5: The camera firmware doesn't support video downscaling. For the
+ * sensor imx132, it doesn't support 480p output.
+ * To keep same FOV when recording at 480p. We need to configure preview size to
+ * the max supported sensor output size with the same aspect as 480p.
+ * BZ 116055
  *
  * This mode can be enabled by setting VFPPLimitedResolutionList to a proper
  * value for the platform in the camera_profiles.xml. If e.g. for resolution
@@ -2509,6 +2509,16 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
                     LOG1("change preview size to 640x360 due to DVS on");
                 } else {
                     LOG1("no need change preview size: %dx%d", previewWidth, previewHeight);
+                }
+        }
+        //Workaround 5, video recording FOV issue
+        const char manUsensorBName[] = "imx132";
+        if (mCameraInput && (strncmp(mCameraInput->name, manUsensorBName, sizeof(manUsensorBName) - 1) == 0)) {
+                if ((previewWidth == 720) && (previewHeight == 480)) {
+                        LOGI("480p recording change preview size to 1620x1080 and \
+                                        video size to 720x480");
+                        params->setPreviewSize(1620, 1080);
+                        params->setVideoSize(720, 480);
                 }
         }
 
@@ -2906,10 +2916,10 @@ int AtomISP::startFileInject(void)
 
     //Set the format
     struct v4l2_format format;
-    format.fmt.pix.width = mFileInject.frameInfo.width;
-    format.fmt.pix.height = mFileInject.frameInfo.height;
-    format.fmt.pix.pixelformat = mFileInject.frameInfo.format;
-    format.fmt.pix.sizeimage = PAGE_ALIGN(mFileInject.frameInfo.size);
+    format.fmt.pix.width = mFileInject.formatDescriptor.width;
+    format.fmt.pix.height = mFileInject.formatDescriptor.height;
+    format.fmt.pix.pixelformat = mFileInject.formatDescriptor.fourcc;
+    format.fmt.pix.sizeimage = PAGE_ALIGN(mFileInject.formatDescriptor.size);
     format.fmt.pix.priv = mFileInject.bayerOrder;
 
     if (mFileInjectDevice->setFormat(format) != NO_ERROR)
@@ -2920,7 +2930,7 @@ int AtomISP::startFileInject(void)
     if (mFileInject.dataAddr != NULL)
         delete[] mFileInject.dataAddr;
 
-    mFileInject.dataAddr = new char[mFileInject.frameInfo.size];
+    mFileInject.dataAddr = new char[mFileInject.formatDescriptor.size];
     if (mFileInject.dataAddr == NULL) {
         LOGE("Not enough memory to allocate injection buffer");
         goto error1;
@@ -2932,12 +2942,12 @@ int AtomISP::startFileInject(void)
         LOGE("ERR(%s): Failed to open %s\n", __func__, mFileInject.fileName.string());
         goto error1;
     }
-    fread(mFileInject.dataAddr, 1,  mFileInject.frameInfo.size, file);
+    fread(mFileInject.dataAddr, 1,  mFileInject.formatDescriptor.size, file);
     fclose(file);
 
     // Set buffer pool
     ret = mFileInjectDevice->setBufferPool((void**)&mFileInject.dataAddr, buffer_count,
-                                           &mFileInject.frameInfo,true);
+                                           &mFileInject.formatDescriptor,true);
 
     ret = mFileInjectDevice->createBufferPool(buffer_count);
     if (ret < 0)
@@ -2983,16 +2993,16 @@ int AtomISP::stopFileInject(void)
  * start() is issued, and stopped when stop() is issued. Injection
  * applies to all device modes.
  */
-int AtomISP::configureFileInject(const char *fileName, int width, int height, int format, int bayerOrder)
+int AtomISP::configureFileInject(const char *fileName, int width, int height, int fourcc, int bayerOrder)
 {
     LOG1("%s: enter", __FUNCTION__);
     mFileInject.fileName = String8(fileName);
     if (mFileInject.fileName.isEmpty() != true) {
         LOG1("Enabling file injection, image file=%s", mFileInject.fileName.string());
         mFileInject.active = true;
-        mFileInject.frameInfo.width = width;
-        mFileInject.frameInfo.height = height;
-        mFileInject.frameInfo.format = format;
+        mFileInject.formatDescriptor.width = width;
+        mFileInject.formatDescriptor.height = height;
+        mFileInject.formatDescriptor.fourcc = fourcc;
         mFileInject.bayerOrder = bayerOrder;
     }
     else {
@@ -3031,7 +3041,7 @@ status_t AtomISP::fileInjectSetSize(void)
 
     LOG1("%s: file %s size of %u", __FUNCTION__, fileName, fileSize);
 
-    mFileInject.frameInfo.size = fileSize;
+    mFileInject.formatDescriptor.size = fileSize;
 
     close(fileFd);
     return NO_ERROR;
@@ -3382,7 +3392,7 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff)
     mRecordingBuffers[index].capture_timestamp = buf.vbuffer.timestamp;
     mRecordingBuffers[index].status = (FrameBufferStatus) buf.vbuffer.reserved;
     *buff = mRecordingBuffers[index];
-    buff->stride = mConfig.recording.stride;
+    buff->bpl = mConfig.recording.bpl;
 
     mNumRecordingBuffersQueued--;
 
@@ -3459,9 +3469,9 @@ void AtomISP::copyOrScaleHALZSLBuffer(const AtomBuffer &captureBuf, const AtomBu
     targetBuf->ispPrivate = mSessionId;
     targetBuf->width = localBuf.width;
     targetBuf->height = localBuf.height;
-    targetBuf->format = localBuf.format;
+    targetBuf->fourcc = localBuf.fourcc;
     targetBuf->size = localBuf.size;
-    targetBuf->stride = SGXandDisplayStride(V4L2_PIX_FMT_NV12, localBuf.stride);
+    targetBuf->bpl = SGXandDisplayBpl(V4L2_PIX_FMT_NV12, localBuf.width);
     targetBuf->type = localBuf.type;
     targetBuf->gfxInfo = localBuf.gfxInfo;
     targetBuf->buff = localBuf.buff;
@@ -3563,9 +3573,9 @@ nopostview:
     *snapshotBuf = mSnapshotBuffers[snapshotIndex];
     snapshotBuf->width = mConfig.snapshot.width;
     snapshotBuf->height = mConfig.snapshot.height;
-    snapshotBuf->format = mConfig.snapshot.format;
+    snapshotBuf->fourcc = mConfig.snapshot.fourcc;
     snapshotBuf->size = mConfig.snapshot.size;
-    snapshotBuf->stride = mConfig.snapshot.stride;
+    snapshotBuf->bpl = mConfig.snapshot.bpl;
 
     mPostviewBuffers.editItemAt(postviewIndex).id = postviewIndex;
     mPostviewBuffers.editItemAt(postviewIndex).frameCounter = mPostViewDevice->getFrameCount();
@@ -3573,9 +3583,9 @@ nopostview:
     *postviewBuf = mPostviewBuffers[postviewIndex];
     postviewBuf->width = mConfig.postview.width;
     postviewBuf->height = mConfig.postview.height;
-    postviewBuf->format = mConfig.postview.format;
+    postviewBuf->fourcc = mConfig.postview.fourcc;
     postviewBuf->size = mConfig.postview.size;
-    postviewBuf->stride = mConfig.postview.stride;
+    postviewBuf->bpl = mConfig.postview.bpl;
 
     mNumCapturegBuffersQueued--;
 
@@ -3600,7 +3610,7 @@ status_t AtomISP::putSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 
     ret0 = mMainDevice->putFrame(snapshotBuf->id);
 
-    if (mConfig.snapshot.format == mRawBayerFormat) {
+    if (mConfig.snapshot.fourcc == mRawBayerFormat) {
         // for RAW captures we do not dequeue the postview, therefore we do
         // not need to return it.
         ret1 = 0;
@@ -3894,10 +3904,7 @@ status_t AtomISP::allocateRecordingBuffers()
     status_t status = NO_ERROR;
     void *bufPool[MAX_V4L2_BUFFERS];
     int allocatedBufs = 0;
-    int size;
     bool cached = false;
-
-    size = mConfig.recording.stride * mConfig.recording.height * 3 / 2;
 
     mRecordingBuffers = new AtomBuffer[mNumBuffers];
     if (!mRecordingBuffers) {
@@ -3910,7 +3917,7 @@ status_t AtomISP::allocateRecordingBuffers()
         mRecordingBuffers[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_VIDEO); // init fields
         // recording buffers use uncached memory
 
-        mCallbacks->allocateMemory(&mRecordingBuffers[i], size);
+        mCallbacks->allocateMemory(&mRecordingBuffers[i], mConfig.recording.size);
         LOG1("allocate recording buffer[%d], buff=%p size=%d",
                 i, mRecordingBuffers[i].dataPtr, mRecordingBuffers[i].size);
         if (mRecordingBuffers[i].dataPtr == NULL) {
@@ -3924,9 +3931,8 @@ status_t AtomISP::allocateRecordingBuffers()
         mRecordingBuffers[i].shared = false;
         mRecordingBuffers[i].width = mConfig.recording.width;
         mRecordingBuffers[i].height = mConfig.recording.height;
-        mRecordingBuffers[i].size = mConfig.recording.size;
-        mRecordingBuffers[i].stride = mConfig.recording.stride;
-        mRecordingBuffers[i].format = mConfig.recording.format;
+        mRecordingBuffers[i].bpl = mConfig.recording.bpl;
+        mRecordingBuffers[i].fourcc = mConfig.recording.fourcc;
     }
     mRecordingDevice->setBufferPool((void**)&bufPool,mNumBuffers,
                                      &mConfig.recording,cached);
@@ -4029,7 +4035,7 @@ status_t AtomISP::allocateSnapshotBuffers()
         }
     }
     // In case of Raw capture we do not get postview, so no point in setting up the pool
-    if (!mHALZSLEnabled && !isBayerFormat(mConfig.snapshot.format))
+    if (!mHALZSLEnabled && !isBayerFormat(mConfig.snapshot.fourcc))
         mPostViewDevice->setBufferPool((void**)&bufPool,mPostviewBuffers.size(),
                                         &mConfig.postview, true);
     return status;
@@ -4054,10 +4060,11 @@ void AtomISP::initMetaDataBuf(IntelMetadataBuffer* metaDatabuf)
     vinfo->width = mConfig.recording.width;
     vinfo->height = mConfig.recording.height;
     vinfo->size = mConfig.recording.size;
-    //stride need to fill
-    vinfo->lumaStride = mConfig.recording.stride;
-    vinfo->chromStride = mConfig.recording.stride;
-    LOG2("weight:%d  height:%d size:%d stride:%d ", vinfo->width,
+    // NOTE: We assume here that ValueInfo defines stride in pixels
+    //       While format is also fixed to NV12 below, we are safe.
+    vinfo->lumaStride = bytesToPixels(mConfig.recording.fourcc, mConfig.recording.bpl);
+    vinfo->chromStride = vinfo->chromStride;
+    LOG2("weight:%d  height:%d size:%d bpl:%d ", vinfo->width,
           vinfo->height, vinfo->size, vinfo->lumaStride);
     vinfo->format = STRING_TO_FOURCC("NV12");
     vinfo->s3dformat = 0xFFFFFFFF;
@@ -4532,14 +4539,14 @@ int AtomISP::dumpFrameInfo(AtomMode mode)
                                     "ContinuousCapture"};
 
         LOGD("FrameInfo: PreviewMode: %s", previewMode[mode+1]);
-        LOGD("FrameInfo: previewSize: %dx%d, stride: %d",
-                mConfig.preview.width, mConfig.preview.height, mConfig.preview.stride);
-        LOGD("FrameInfo: PostviewSize: %dx%d, stride: %d",
-                mConfig.postview.width, mConfig.postview.height, mConfig.postview.stride);
-        LOGD("FrameInfo: PictureSize: %dx%d, stride: %d",
-                mConfig.snapshot.width, mConfig.snapshot.height, mConfig.snapshot.stride);
-        LOGD("FrameInfo: videoSize: %dx%d, stride: %d",
-                mConfig.recording.width, mConfig.recording.height, mConfig.recording.stride);
+        LOGD("FrameInfo: previewSize: %dx%d, bpl: %d",
+                mConfig.preview.width, mConfig.preview.height, mConfig.preview.bpl);
+        LOGD("FrameInfo: PostviewSize: %dx%d, bpl: %d",
+                mConfig.postview.width, mConfig.postview.height, mConfig.postview.bpl);
+        LOGD("FrameInfo: PictureSize: %dx%d, bpl: %d",
+                mConfig.snapshot.width, mConfig.snapshot.height, mConfig.snapshot.bpl);
+        LOGD("FrameInfo: videoSize: %dx%d, bpl: %d",
+                mConfig.recording.width, mConfig.recording.height, mConfig.recording.bpl);
     }
 
     return 0;
@@ -4558,7 +4565,7 @@ int AtomISP::dumpPreviewFrame(int previewIndex)
         dump.buffer_size =  mConfig.preview.size;
         dump.width =  mConfig.preview.width;
         dump.height = mConfig.preview.height;
-        dump.stride = mConfig.preview.stride;
+        dump.bpl = mConfig.preview.bpl;
         if (mMode == MODE_VIDEO)
             cameraDump->dumpImage2File(&dump, DUMPIMAGE_RECORD_PREVIEW_FILENAME);
         else
@@ -4580,7 +4587,7 @@ int AtomISP::dumpRecordingFrame(int recordingIndex)
         dump.buffer_size =  mConfig.recording.size;
         dump.width =  mConfig.recording.width;
         dump.height = mConfig.recording.height;
-        dump.stride = mConfig.recording.stride;
+        dump.bpl = mConfig.recording.bpl;
         const char *name = DUMPIMAGE_RECORD_STORE_FILENAME;
         cameraDump->dumpImage2File(&dump, name);
     }
@@ -4602,13 +4609,13 @@ int AtomISP::dumpSnapshot(int snapshotIndex, int postviewIndex)
             dump.buffer_size = mSnapshotBuffers[snapshotIndex].size;
             dump.width = mSnapshotBuffers[snapshotIndex].width;
             dump.height = mSnapshotBuffers[snapshotIndex].height;
-            dump.stride = mSnapshotBuffers[snapshotIndex].stride;
+            dump.bpl = mSnapshotBuffers[snapshotIndex].bpl;
             cameraDump->dumpImage2File(&dump, name0);
             dump.buffer_raw = mPostviewBuffers[postviewIndex].dataPtr;
             dump.buffer_size = mConfig.postview.size;
             dump.width = mConfig.postview.width;
             dump.height = mConfig.postview.height;
-            dump.stride = mConfig.postview.stride;
+            dump.bpl = mConfig.postview.bpl;
             cameraDump->dumpImage2File(&dump, name1);
         }
 
@@ -4618,7 +4625,7 @@ int AtomISP::dumpSnapshot(int snapshotIndex, int postviewIndex)
             dump.buffer_size = mSnapshotBuffers[snapshotIndex].size;
             dump.width = mSnapshotBuffers[snapshotIndex].width;
             dump.height = mSnapshotBuffers[snapshotIndex].height;
-            dump.stride = mSnapshotBuffers[snapshotIndex].stride;
+            dump.bpl = mSnapshotBuffers[snapshotIndex].bpl;
             cameraDump->dumpImage2Buf(&dump);
         }
 

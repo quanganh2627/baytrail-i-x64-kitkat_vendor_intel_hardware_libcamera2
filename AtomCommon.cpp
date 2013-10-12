@@ -39,12 +39,160 @@ struct stack_crawl_state_t {
 #endif
 namespace android {
 
+/*
+ * supported V4L2 fmts and resolutions
+ */
+const struct AtomFormatBridge sV4L2PixelFormatBridge[] = {
+    {
+        .pixelformat = V4L2_PIX_FMT_YUV420,
+        .depth = 12,
+        .planar = true,
+        .bayer = false
+    }, {
+        .pixelformat = V4L2_PIX_FMT_YVU420,
+        .depth = 12,
+        .planar = true,
+        .bayer = false
+    }, {
+        .pixelformat = V4L2_PIX_FMT_YUV422P,
+        .depth = 16,
+        .planar = true,
+        .bayer = false
+    }, {
+        .pixelformat = V4L2_PIX_FMT_YUV444,
+        .depth = 24,
+        .planar = false,
+        .bayer = false
+    }, {
+        .pixelformat = V4L2_PIX_FMT_NV12,
+        .depth = 12,
+        .planar = true,
+        .bayer = false
+    }, {
+        .pixelformat = V4L2_PIX_FMT_NV21,
+        .depth = 12,
+        .planar = true,
+        .bayer = false
+    }, {
+        .pixelformat = V4L2_PIX_FMT_NV16,
+        .depth = 16,
+        .planar = true,
+        .bayer = false
+    }, {
+        .pixelformat = V4L2_PIX_FMT_YUYV,
+        .depth = 16,
+        .planar = false,
+        .bayer = false
+    }, {
+        .pixelformat = V4L2_PIX_FMT_UYVY,
+        .depth = 16,
+        .planar = false,
+        .bayer = false
+    }, { /* This one is for parallel sensors! DO NOT USE! */
+        .pixelformat = V4L2_PIX_FMT_UYVY,
+        .depth = 16,
+        .planar = false,
+        .bayer = false
+    }, {
+        .pixelformat = V4L2_PIX_FMT_SBGGR16,
+        .depth = 16,
+        .planar = false,
+        .bayer = true
+    }, {
+        .pixelformat = V4L2_PIX_FMT_SBGGR8,
+        .depth = 8,
+        .planar = false,
+        .bayer = true
+    }, {
+        .pixelformat = V4L2_PIX_FMT_SGBRG8,
+        .depth = 8,
+        .planar = false,
+        .bayer = true
+    }, {
+        .pixelformat = V4L2_PIX_FMT_SGRBG8,
+        .depth = 8,
+        .planar = false,
+        .bayer = true
+    }, {
+        .pixelformat = V4L2_PIX_FMT_SRGGB8,
+        .depth = 8,
+        .planar = false,
+        .bayer = true
+    }, {
+        .pixelformat = V4L2_PIX_FMT_SBGGR10,
+        .depth = 16,
+        .planar = false,
+        .bayer = true
+    }, {
+        .pixelformat = V4L2_PIX_FMT_SGBRG10,
+        .depth = 16,
+        .planar = false,
+        .bayer = true
+    }, {
+        .pixelformat = V4L2_PIX_FMT_SGRBG10,
+        .depth = 16,
+        .planar = false,
+        .bayer = true
+    }, {
+        .pixelformat = V4L2_PIX_FMT_SRGGB10,
+        .depth = 16,
+        .planar = false,
+        .bayer = true
+    }, {
+        .pixelformat = V4L2_PIX_FMT_SBGGR12,
+        .depth = 16,
+        .planar = false,
+        .bayer = true
+    }, {
+        .pixelformat = V4L2_PIX_FMT_SGBRG12,
+        .depth = 16,
+        .planar = false,
+        .bayer = true
+    }, {
+        .pixelformat = V4L2_PIX_FMT_SGRBG12,
+        .depth = 16,
+        .planar = false,
+        .bayer = true
+    }, {
+        .pixelformat = V4L2_PIX_FMT_SRGGB12,
+        .depth = 16,
+        .planar = false,
+        .bayer = true
+    }, {
+        .pixelformat = V4L2_PIX_FMT_RGB32,
+        .depth = 32,
+        .planar = false,
+        .bayer = true
+    }, {
+        .pixelformat = V4L2_PIX_FMT_RGB565,
+        .depth = 16,
+        .planar = false,
+        .bayer = true
+    },
+};
+
+/**
+ * returns sAtomFormatBrige* for given V4L2 pixelformat (fourcc)
+ */
+const struct AtomFormatBridge* getAtomFormatBridge(unsigned int fourcc)
+{
+    unsigned int i;
+    for (i = 0;i < sizeof(sV4L2PixelFormatBridge)/sizeof(AtomFormatBridge);i++) {
+        if (fourcc == sV4L2PixelFormatBridge[i].pixelformat)
+            return &sV4L2PixelFormatBridge[i];
+    }
+
+    LOGE("Unknown pixel format being used : %s, aborting!", v4l2Fmt2Str(fourcc));
+    abort();
+    return NULL;
+}
+
 timeval AtomBufferFactory_AtomBufDefTS = {0, 0}; // default timestamp (see AtomCommon.h)
 AtomBuffer AtomBufferFactory::createAtomBuffer(AtomBufferType type,
-                                               int format,
+                                               int fourcc,
                                                int width,
                                                int height,
-                                               int stride,
+                                               int bpl,
                                                int size,
                                                IBufferOwner *owner,
                                                camera_memory_t *buff,
@@ -57,11 +205,11 @@ AtomBuffer AtomBufferFactory::createAtomBuffer(AtomBufferType type,
                                                void *dataPtr,
                                                GFXBufferInfo *gfxInfo) {
     AtomBuffer buf;
-    buf.format = format;
+    buf.fourcc = fourcc;
     buf.type = type;
     buf.width = width;
     buf.height = height;
-    buf.stride = stride;
+    buf.bpl = bpl;
     buf.size = size;
     buf.owner = owner;
     buf.buff = buff;
@@ -102,32 +250,18 @@ bool isParameterSet(const char *param, const CameraParameters &params)
     return false;
 }
 
-bool isBayerFormat(int fmt) {
-
-    if ((fmt == V4L2_PIX_FMT_SBGGR8 )||
-        (fmt == V4L2_PIX_FMT_SGBRG8) ||
-        (fmt == V4L2_PIX_FMT_SGRBG8) ||
-        (fmt == V4L2_PIX_FMT_SRGGB8) ||
-        (fmt == V4L2_PIX_FMT_SBGGR10) ||
-        (fmt == V4L2_PIX_FMT_SGBRG10) ||
-        (fmt == V4L2_PIX_FMT_SGRBG10) ||
-        (fmt == V4L2_PIX_FMT_SRGGB10) ||
-        (fmt == V4L2_PIX_FMT_SBGGR12) ||
-        (fmt == V4L2_PIX_FMT_SGBRG12) ||
-        (fmt == V4L2_PIX_FMT_SGRBG12) ||
-        (fmt == V4L2_PIX_FMT_SRGGB12))
-    {
-        return true;
-    }else {
-        return false;
-    }
+bool isBayerFormat(int fourcc)
+{
+    const AtomFormatBridge* afb = getAtomFormatBridge(fourcc);
+    return afb->bayer;
 }
+
 /**
- * Calculates the frame stride following the limitations imposed by display subsystem
+ * Calculates the frame bytes-per-line following the limitations imposed by display subsystem
  * This is used to model the HACK in a atomsisp that forces allocation
- * to be aligned to the stride that SGX requires. This HACK is only active
+ * to be aligned to the bpl that SGX requires. This HACK is only active
  * in CTP based platforms. It will be eventually removed once CSS API changes to
- * support different strides
+ * support different bpl's
  *
  *
  * The SGX limitation is that the number of bytes per line needs to be aligned
@@ -137,25 +271,24 @@ bool isBayerFormat(int fmt) {
  * \param format [in] V4L2 pixel format of the image
  * \param width [in] width in pixels
  *
- * \return stride following the Display subsystem stride requirement
+ * \return bpl following the Display subsystem requirement
  **/
-int SGXandDisplayStride(int format, int width)
+int SGXandDisplayBpl(int fourcc, int width)
 {
     /**
-     * Raw format has special stride requirements
+     * Raw format has special aligning requirements
      */
-    if (isBayerFormat(format))
-        return ALIGN128(width);
-
-    if ((strcmp(PlatformData::getBoardName(), "victoriabay") == 0) ||
-        (strcmp(PlatformData::getBoardName(), "redhookbay") == 0)) {
-
+    if (isBayerFormat(fourcc))
+        width = ALIGN128(width);
+    else  if ((strcmp(PlatformData::getBoardName(), "victoriabay") == 0) ||
+              (strcmp(PlatformData::getBoardName(), "redhookbay") == 0)) {
         if (width <= 512)
-            return  512;
+            width = 512;
         else
-            return ALIGN64(width);
-    } else
-        return (width);
+            width = ALIGN64(width);
+    }
+
+    return pixelsToBytes(fourcc, width);
 }
 
 void convertFromAndroidToIaCoordinates(const CameraWindow &srcWindow, CameraWindow &toWindow)
@@ -200,7 +333,7 @@ void mirrorBuffer(AtomBuffer *buffer, int currentOrientation, int cameraOrientat
 
 void flipBufferV(AtomBuffer *buffer) {
     LOG1("@%s", __FUNCTION__);
-    int width, height, stride;
+    int width, height, bpl;
     unsigned char *data = NULL;
 
     void *ptr = NULL;
@@ -212,7 +345,7 @@ void flipBufferV(AtomBuffer *buffer) {
     data = (unsigned char *) ptr;
     width = buffer->width;
     height = buffer->height;
-    stride = buffer->stride;
+    bpl = buffer->bpl;
     int w = width / 2;
     unsigned char temp = 0;
 
@@ -223,7 +356,7 @@ void flipBufferV(AtomBuffer *buffer) {
             data[i] = data[width-i-1];
             data[width-i-1] = temp;
         }
-        data = data + stride;
+        data = data + bpl;
     }
 
     int h = height / 2;
@@ -240,13 +373,13 @@ void flipBufferV(AtomBuffer *buffer) {
             data[width-i-2] = tempu;
             data[width-i-1] = tempv;
         }
-        data = data + stride;
+        data = data + bpl;
     }
 }
 
 void flipBufferH(AtomBuffer *buffer) {
     LOG1("@%s", __FUNCTION__);
-    int width, height, stride;
+    int width, height, bpl;
     unsigned char *data = NULL;
 
     void *ptr = NULL;
@@ -258,29 +391,29 @@ void flipBufferH(AtomBuffer *buffer) {
     data = (unsigned char *) ptr;
     width = buffer->width;
     height = buffer->height;
-    stride = buffer->stride;
+    bpl = buffer->bpl;
     int h = height / 2;
     unsigned char temp = 0;
 
     // Y
     for (int j=0; j < width; j++) {
         for (int i=0; i < h; i++) {
-            temp = data[i*stride + j];
-            data[i*stride + j] = data[(height-1-i)*stride + j];
-            data[(height-1-i)*stride + j] = temp;
+            temp = data[i*bpl + j];
+            data[i*bpl + j] = data[(height-1-i)*bpl + j];
+            data[(height-1-i)*bpl + j] = temp;
         }
     }
 
     // U+V
-    data = data + stride * height;
+    data = data + bpl * height;
     h = height / 4;
     int heightUV = height / 2;
 
     for (int j=0; j < width; j++) {
         for (int i=0; i < h; i++) {
-            temp = data[i*stride + j];
-            data[i*stride + j] = data[(heightUV-1-i)*stride + j];
-            data[(heightUV-1-i)*stride + j] = temp;
+            temp = data[i*bpl + j];
+            data[i*bpl + j] = data[(heightUV-1-i)*bpl + j];
+            data[(heightUV-1-i)*bpl + j] = temp;
         }
     }
 }
@@ -403,7 +536,7 @@ void inject(AtomBuffer *b, const char* name)
 {
     int bytes = 0;
 
-    LOGE("Injecting yuv file %s resolution (%dx%d) format %s",name,b->width, b->height,v4l2Fmt2Str(b->format));
+    LOGE("Injecting yuv file %s resolution (%dx%d) format %s",name,b->width, b->height,v4l2Fmt2Str(b->fourcc));
 
     FILE *fd = fopen(name, "rb+");
 

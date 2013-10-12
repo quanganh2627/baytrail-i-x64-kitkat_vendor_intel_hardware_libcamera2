@@ -125,17 +125,17 @@ public:
 
     bool isHALZSLEnabled() const { return mHALZSLEnabled; }
 
-    status_t setPreviewFrameFormat(int width, int height, int format = 0);
-    status_t setPostviewFrameFormat(int width, int height, int format);
-    void getPostviewFrameFormat(int &width, int &height, int &format) const;
-    status_t setSnapshotFrameFormat(int width, int height, int format);
-    status_t setVideoFrameFormat(int width, int height, int format = 0);
+    status_t setPreviewFrameFormat(int width, int height, int fourcc = 0);
+    status_t setPostviewFrameFormat(int width, int height, int fourcc);
+    void getPostviewFrameFormat(int &width, int &height, int &foucc) const;
+    status_t setSnapshotFrameFormat(int width, int height, int fourcc);
+    status_t setVideoFrameFormat(int width, int height, int fourcc = 0);
     bool applyISPLimitations(CameraParameters *params, bool dvsEnabled, bool videoMode);
 
     void setPreviewFramerate(int fps);
-    int getSnapshotPixelFormat() { return mConfig.snapshot.format; }
-    void getVideoSize(int *width, int *height, int *stride);
-    void getPreviewSize(int *width, int *height, int *stride);
+    int getSnapshotPixelFormat() { return mConfig.snapshot.fourcc; }
+    void getVideoSize(int *width, int *height, int *bpl);
+    void getPreviewSize(int *width, int *height, int *bpl);
     int getNumSnapshotBuffers();
 
     void getZoomRatios(CameraParameters *params) const;
@@ -167,7 +167,7 @@ public:
     status_t pollFrameSyncEvent();
 
     // file input/injection API
-    int configureFileInject(const char* fileName, int width, int height, int format, int bayerOrder);
+    int configureFileInject(const char* fileName, int width, int height, int fourcc, int bayerOrder);
     bool isFileInjectionEnabled(void) const { return mFileInject.active; }
     String8 getFileInjectionFileName(void) const { return mFileInject.fileName; }
 
@@ -302,12 +302,23 @@ private:
 
     static const int NUM_PREVIEW_BUFFERS = 6;
 
+    struct VideoNodeLimits {
+        int minWidht;
+        int minHeight;
+        int maxWidth;
+        int maxHeight;
+    };
+
     struct Config {
-        FrameInfo preview;    // preview
-        FrameInfo recording;  // recording
-        FrameInfo snapshot;   // snapshot
-        FrameInfo postview;   // postview (thumbnail for capture)
-        FrameInfo HALZSL;     // HAL ZSL
+        AtomBuffer preview;    // preview video node config
+        AtomBuffer recording;  // recording video node config
+        AtomBuffer snapshot;   // snapshot video node config
+        AtomBuffer postview;   // postview (thumbnail for capture) video node config
+        AtomBuffer HALZSL;     // HAL ZSL video node config
+        VideoNodeLimits previewLimits;
+        VideoNodeLimits recordingLimits;
+        VideoNodeLimits snapshotLimits;
+        VideoNodeLimits postviewLimits;
         float fps;            // preview/recording (shared) output by sensor
         int target_fps ;      // preview/recording requested by user
         int num_snapshot;     // number of snapshots to take
@@ -390,7 +401,7 @@ private:
     int detectDeviceResolutions();
     int atomisp_set_capture_mode(int deviceMode);
 
-    int configureDevice(V4L2VideoNode *device, int deviceMode, FrameInfo *fInfo, bool raw);
+    int configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *formatDescriptor, bool raw);
 
     int atomisp_set_zoom (int zoom);
 
@@ -532,13 +543,13 @@ private:
     struct FileInject {
         String8 fileName;
         bool active;
-        FrameInfo   frameInfo;
+        AtomBuffer   formatDescriptor;
         int bayerOrder;
         char *dataAddr;
         void clear() {
             fileName.clear();
             active = false;
-            CLEAR(frameInfo);
+            CLEAR(formatDescriptor);
             dataAddr = NULL;
         };
     } mFileInject;
