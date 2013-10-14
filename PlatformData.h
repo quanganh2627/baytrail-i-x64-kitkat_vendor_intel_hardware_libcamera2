@@ -852,6 +852,13 @@ class PlatformData {
     static int getRecordingBufNum(void);
 
     /**
+     * Returns the max number of snapshot buffers
+     *
+     * \return the max number of snapshot buffers
+    */
+    static int getMaxNumberSnapshotBuffers(int cameraId);
+
+    /**
      * Whether Intel3A ia_aiq is supported?
      *
      * \return true if supported
@@ -1098,6 +1105,7 @@ protected:
             defaultSceneDetection = "off";
             supportedSceneDetection = "on,off";
             synchronizeExposure = false;
+            maxNumSnapshotBuffers = 10;
         };
 
         SensorType sensorType;
@@ -1206,6 +1214,16 @@ protected:
         //       which event and how (per sensor specific implementations
         //       available)
         bool synchronizeExposure;
+
+        /**
+         * For max number of snapshot buffers.
+         * Make it configurable for each sensor
+         * The number of snapshot buffers is not necessary equal to burst length as before.
+         * Here we set a value to control the max number of buffer we allocate in any capture case
+         * The number value is mainly depends on the speed of jpeg encoder.
+         * Bracketing of AE and AF also affects it
+         */
+        int maxNumSnapshotBuffers;
     };
 
     // note: Android NDK does not yet support C++11 and

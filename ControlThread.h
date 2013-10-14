@@ -759,6 +759,9 @@ private:
                                   1...N, where N is mBurstLength. */
     int  mBurstQbufs;           /*<! Number of buffers queued so far
                                   to ISP, 1..N where N is mBurstLength */
+    int  mBurstBufsToReturn; /*<! Number of buffers should be returned to ISP for reuse
+                                exp:mBurstLength is 9, mAllocatedSnapshotBuffers is 5,
+                                mBurstBufsToReturn should be 4*/
     HdrImaging mHdr;
     bool mAELockFlashNeed;
     float mPublicShutter;       /* Shutter set by application */

@@ -169,7 +169,8 @@ status_t AtomAIQ::_init3A()
     if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5)){
         mISPAdaptor = new IaIsp15();
     }
-    else if ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0)){
+    else if (((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0)) ||
+             ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 1))){
         mISPAdaptor = new IaIsp22();
     }
 
