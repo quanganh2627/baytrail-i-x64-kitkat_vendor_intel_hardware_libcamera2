@@ -4130,49 +4130,46 @@ status_t AtomISP::allocateMetaDataBuffers()
     uint32_t meta_data_size;
     IntelMetadataBuffer* metaDataBuf = NULL;
 
-    if(mRecordingBuffers) {
-        for (int i = 0 ; i < mNumBuffers; i++) {
-            if (mRecordingBuffers[i].metadata_buff != NULL) {
+    if(mRecordingBuffers != NULL) {
+        for (int i = 0; i < mNumBuffers; i++) {
+            if ((mRecordingBuffers + i) != NULL && mRecordingBuffers[i].metadata_buff != NULL) {
                 mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
                 mRecordingBuffers[i].metadata_buff = NULL;
+            }
+            metaDataBuf = new IntelMetadataBuffer();
+            if(metaDataBuf) {
+                if (graphic_is_gen) {
+                    metaDataBuf->SetType(MetadataBufferTypeGrallocSource);
+                    metaDataBuf->SetValue((uint32_t)*mRecordingBuffers[i].gfxInfo_rec.gfxBufferHandle);
+                } else {
+                    initMetaDataBuf(metaDataBuf);
+                    metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].dataPtr);
+                }
+                metaDataBuf->Serialize(meta_data_prt, meta_data_size);
+                mRecordingBuffers[i].metadata_buff = NULL;
+                mCallbacks->allocateMemory(&mRecordingBuffers[i].metadata_buff, meta_data_size);
+                LOG1("allocate metadata buffer[%d]  buff=%p size=%d",
+                    i, mRecordingBuffers[i].metadata_buff->data,
+                    mRecordingBuffers[i].metadata_buff->size);
+                if (mRecordingBuffers[i].metadata_buff == NULL) {
+                    LOGE("Error allocation memory for metadata buffers!");
+                    status = NO_MEMORY;
+                    goto errorFree;
+                }
+                memcpy(mRecordingBuffers[i].metadata_buff->data, meta_data_prt, meta_data_size);
+                allocatedBufs++;
+
+                delete metaDataBuf;
+                metaDataBuf = NULL;
+            } else {
+                LOGE("Error allocation memory for metaDataBuf!");
+                status = NO_MEMORY;
+                goto errorFree;
             }
         }
     } else {
         // mRecordingBuffers is not ready, so it's invalid to allocate metadata buffers
         return INVALID_OPERATION;
-    }
-
-    for (int i = 0; i < mNumBuffers; i++) {
-        metaDataBuf = new IntelMetadataBuffer();
-        if(metaDataBuf) {
-            if (graphic_is_gen) {
-                metaDataBuf->SetType(MetadataBufferTypeGrallocSource);
-                metaDataBuf->SetValue((uint32_t)*mRecordingBuffers[i].gfxInfo_rec.gfxBufferHandle);
-            } else {
-                initMetaDataBuf(metaDataBuf);
-                metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].dataPtr);
-            }
-            metaDataBuf->Serialize(meta_data_prt, meta_data_size);
-            mRecordingBuffers[i].metadata_buff = NULL;
-            mCallbacks->allocateMemory(&mRecordingBuffers[i].metadata_buff, meta_data_size);
-            LOG1("allocate metadata buffer[%d]  buff=%p size=%d",
-                i, mRecordingBuffers[i].metadata_buff->data,
-                mRecordingBuffers[i].metadata_buff->size);
-            if (mRecordingBuffers[i].metadata_buff == NULL) {
-                LOGE("Error allocation memory for metadata buffers!");
-                status = NO_MEMORY;
-                goto errorFree;
-            }
-            memcpy(mRecordingBuffers[i].metadata_buff->data, meta_data_prt, meta_data_size);
-            allocatedBufs++;
-
-            delete metaDataBuf;
-            metaDataBuf = NULL;
-        } else {
-            LOGE("Error allocation memory for metaDataBuf!");
-            status = NO_MEMORY;
-            goto errorFree;
-        }
     }
     return status;
 

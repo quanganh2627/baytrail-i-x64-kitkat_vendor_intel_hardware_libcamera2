@@ -1739,6 +1739,8 @@ void AtomAAA::getSensorFrameParams(ia_aiq_frame_params *frame_params, struct ato
     frame_params->vertical_crop_offset = sensor_mode_data->crop_vertical_start;
     frame_params->cropped_image_height = sensor_mode_data->crop_vertical_end - sensor_mode_data->crop_vertical_start;
     frame_params->cropped_image_width = sensor_mode_data->crop_horizontal_end - sensor_mode_data->crop_horizontal_start;
+    frame_params->full_image_width = sensor_mode_data->crop_horizontal_end - sensor_mode_data->crop_horizontal_start;
+    frame_params->full_image_height = sensor_mode_data->crop_vertical_end - sensor_mode_data->crop_vertical_start;
     /* TODO: Get scaling factors from sensor configuration parameters */
     frame_params->horizontal_scaling_denominator = 254;
     frame_params->vertical_scaling_denominator = 254;
