@@ -135,6 +135,8 @@ status_t AtomDvs2::reconfigureNoLock()
     if (status != NO_ERROR)
         return status;
 
+    memset(&dvs_grid, 0, sizeof(atomisp_dvs_grid_info));
+
 #ifdef ATOMISP_CSS2
     dvs_grid = isp_params.dvs_grid;
 #endif
