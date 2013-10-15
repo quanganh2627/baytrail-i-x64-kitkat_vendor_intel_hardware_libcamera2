@@ -147,8 +147,10 @@ bool FaceDetector::blinkDetect(ia_frame *frame)
     for (int i = 0; i < mContext->num_faces; i++)
     {
         ia_face face = mContext->faces[i];
-        if (face.left_eye.blink_confidence < mBlinkThreshold  &&
-            face.right_eye.blink_confidence < mBlinkThreshold) {
+        if ((face.left_eye.blink_confidence >= 0 &&
+             face.right_eye.blink_confidence >= 0) &&
+            (face.left_eye.blink_confidence < mBlinkThreshold &&
+             face.right_eye.blink_confidence < mBlinkThreshold)) {
             blink = false;
         } else {
             blink = true;
