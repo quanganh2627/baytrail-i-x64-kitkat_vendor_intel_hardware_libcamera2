@@ -4488,7 +4488,8 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     int newZoom = newParams->getInt(CameraParameters::KEY_ZOOM);
     bool zoomSupported = isParameterSet(CameraParameters::KEY_ZOOM_SUPPORTED) ? true : false;
     if (zoomSupported) {
-        if(mDvs != NULL && (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING)) {
+        if(mDvs != NULL && mISP->getCssMajorVersion() == 2 &&
+           (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING)) {
             mDvs->setZoom(newZoom);
         } else {
             status = mISP->setZoom(newZoom);
@@ -6660,7 +6661,7 @@ status_t ControlThread::createAtomDvs()
         if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5)){
             mDvs = new AtomDvs(mHwcg);
             status = NO_ERROR;
-        } else if ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0)){
+        } else if (mISP->getCssMajorVersion() == 2) {
             mDvs = new AtomDvs2(mHwcg);
             status = NO_ERROR;
         }
