@@ -521,7 +521,7 @@ status_t AtomAIQ::setAfMode(AfMode mode)
 
 AfMode AtomAIQ::getAfMode()
 {
-    LOG1("@%s, afMode: %d", __FUNCTION__, mAfMode);
+    LOG2("@%s, afMode: %d", __FUNCTION__, mAfMode);
     return mAfMode;
 }
 
