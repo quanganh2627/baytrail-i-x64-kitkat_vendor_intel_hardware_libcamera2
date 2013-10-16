@@ -2069,11 +2069,9 @@ status_t ControlThread::handleMessageStartRecording()
         heightPreview = height;
     }
 
-    LOG1("video snapshot thumbnail size %dx%d", widthPreview, heightPreview);
-    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH, widthPreview);
-    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT, heightPreview);
-    snprintf(sizes, 25, "%dx%d,0x0", widthPreview,heightPreview);
-    mParameters.set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES, sizes);
+    LOG1("video snapshot thumbnail size %dx%d",
+                mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH),
+                mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT));
     updateParameterCache();
 
     // Store device orientation at the start of video recording
