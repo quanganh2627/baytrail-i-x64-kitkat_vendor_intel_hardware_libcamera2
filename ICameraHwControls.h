@@ -155,6 +155,7 @@ public:
     virtual void getZoomRatios(CameraParameters *params) const = 0;
     virtual void getFocusDistances(CameraParameters *params) = 0;
     virtual status_t setZoom(int zoom) = 0;
+    virtual int getDrvZoom(int zoom) = 0;
     virtual status_t setColorEffect(v4l2_colorfx effect) = 0;
     virtual status_t applyColorEffect() = 0;
     virtual status_t getMakerNote(atomisp_makernote_info *info) = 0;
@@ -189,6 +190,7 @@ public:
     virtual int set3aConfig(const struct atomisp_3a_config *cfg) = 0;
     virtual int setGammaTable(const struct atomisp_gamma_table *gamma_tbl) = 0;
     virtual int setGcConfig(const struct atomisp_gc_config *gc_cfg) = 0;
+    virtual int setDvsConfig(const struct atomisp_dvs_6axis_config *dvs_6axis_cfg) = 0;
 
     virtual bool getPreviewTooBigForVFPP() = 0; // TBD
 

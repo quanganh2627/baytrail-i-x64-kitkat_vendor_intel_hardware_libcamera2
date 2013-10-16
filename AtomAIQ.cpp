@@ -960,6 +960,7 @@ status_t AtomAIQ::applyEv(float bias)
 {
     LOG1("@%s: bias=%.2f", __FUNCTION__, bias);
     mAeBracketingInputParameters.ev_shift = bias;
+    mAeBracketingInputParameters.flash_mode = ia_aiq_flash_mode_off;
     status_t ret = NO_ERROR;
     if (m3aState.ia_aiq_handle){
         ia_aiq_ae_run(m3aState.ia_aiq_handle, &mAeBracketingInputParameters, &mAEBracketingResult);

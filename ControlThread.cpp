@@ -23,8 +23,11 @@
 #include "PictureThread.h"
 #include "AtomAIQ.h"
 #include "AtomAAA.h"
+#include "AtomDvs.h"
 #include "AtomSoc3A.h"
 #include "AtomISP.h"
+#include "AtomDvs.h"
+#include "AtomDvs2.h"
 #include "Callbacks.h"
 #include "CallbacksThread.h"
 #include "ColorConverter.h"
@@ -261,7 +264,11 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mDvs = new AtomDvs(mHwcg);
+    if (createAtomDvs() != NO_ERROR) {
+        LOGE("error creating DVS");
+        goto bail;
+    }
+
     if (mDvs == NULL) {
         LOGE("error creating DVS");
         goto bail;
@@ -1223,7 +1230,7 @@ status_t ControlThread::configureContinuousRingBuffer()
     if (mULL->isActive() || mBurstLength > 1)
         cfg.numCaptures = MAX(mULL->MAX_INPUT_BUFFERS, mBurstLength);
     else
-        cfg.numCaptures = (mISP->getCssMajorVersion() >= 2) ? 2 : 1;
+        cfg.numCaptures = 1;
 
     cfg.offset = -(mISP->shutterLagZeroAlign());
     cfg.skip = 0;
@@ -1571,12 +1578,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         if (m3AControls->switchModeAndRate(mode, mHwcg.mSensorCI->getFrameRate()) != NO_ERROR)
             LOGE("Failed switching 3A at %.2f fps", mHwcg.mSensorCI->getFrameRate());
 
-        if (isDVSActive && mDvs->reconfigure() == NO_ERROR) {
-            // Attach only when DVS is active:
-            mISP->attachObserver(mDvs, OBSERVE_PREVIEW_STREAM);
-        } else if (isDVSActive) {
-            LOGE("Failed to reconfigure DVS grid");
-        }
 
         mISP->attachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
         mISP->attachObserver(m3AThread.get(), OBSERVE_FRAME_SYNC_SOF);
@@ -1661,6 +1662,13 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         // Check the camera.hal.power property if disable the Preview
         if (gPowerLevel & CAMERA_POWERBREAKDOWN_DISABLE_PREVIEW) {
             mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
+        }
+
+        if (isDVSActive && mDvs->reconfigure() == NO_ERROR) {
+            // Attach only when DVS is active:
+            mISP->attachObserver(mDvs, OBSERVE_PREVIEW_STREAM);
+        } else if (isDVSActive) {
+            LOGE("Failed to reconfigure DVS grid");
         }
     } else {
         LOGE("Error starting ISP!");
@@ -4480,8 +4488,13 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     int newZoom = newParams->getInt(CameraParameters::KEY_ZOOM);
     bool zoomSupported = isParameterSet(CameraParameters::KEY_ZOOM_SUPPORTED) ? true : false;
     if (zoomSupported) {
-        status = mISP->setZoom(newZoom);
-        mPostProcThread->setZoom(mISP->zoomRatio(newZoom));
+        if(mDvs != NULL && mISP->getCssMajorVersion() == 2 &&
+           (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING)) {
+            mDvs->setZoom(newZoom);
+        } else {
+            status = mISP->setZoom(newZoom);
+            mPostProcThread->setZoom(mISP->zoomRatio(newZoom));
+        }
     }
     else
         LOGD("not supported zoom setting");
@@ -6633,6 +6646,26 @@ status_t ControlThread::createAtom3A()
         LOGE("error creating AAA");
         status = BAD_VALUE;
     }
+    return status;
+}
+
+/**
+ * Create DVS instance according to platform requirement:
+ * - AtomDvs
+ * - AtomDvs2
+ */
+status_t ControlThread::createAtomDvs()
+{
+    status_t status = NO_INIT;
+    if (mISP != NULL) {
+        if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5)){
+            mDvs = new AtomDvs(mHwcg);
+            status = NO_ERROR;
+        } else if (mISP->getCssMajorVersion() == 2) {
+            mDvs = new AtomDvs2(mHwcg);
+            status = NO_ERROR;
+        }
+     }
     return status;
 }
 

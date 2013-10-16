@@ -32,6 +32,7 @@
 #include "CallbacksThread.h"
 #include "AAAThread.h"
 #include "I3AControls.h"
+#include "IDvs.h"
 #include "CameraConf.h"
 #include "PostProcThread.h"
 #include "PanoramaThread.h"
@@ -682,6 +683,7 @@ private:
     void restoreCurrentPictureParams();
 
     status_t createAtom3A();
+    status_t createAtomDvs();
 
     void enableFocusCallbacks();
     void disableFocusCallbacks();
@@ -700,7 +702,7 @@ private:
     int mCameraId;
     HWControlGroup mHwcg;
     IHWIspControl *mISP;
-    AtomDvs *mDvs;
+    IDvs *mDvs;
     AtomCP  *mCP;
     UltraLowLight *mULL;
     I3AControls *m3AControls;

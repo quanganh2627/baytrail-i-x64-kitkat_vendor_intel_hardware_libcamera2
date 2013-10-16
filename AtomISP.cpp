@@ -54,12 +54,13 @@
 #define ATOMISP_GETFRAME_STARVING_WAIT 33000 // Time to usleep between retry's when stream is starving from buffers.
 #define ATOMISP_EVENT_RECOVERY_WAIT 33000 // Time to usleep between retry's after erros from v4l2_event receiving.
 #define ATOMISP_MIN_CONTINUOUS_BUF_SIZE 3 // Min buffer len supported by CSS
+#define ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X 5 // Min buffer len supported by CSS2.x
 #define FRAME_SYNC_POLL_TIMEOUT 500
 
 
 // workaround for the imx132, this code will be removed in the future
-#define RESOLUTION_1080P_SNAPSHOT_TABLE   "320x240,640x480,1280x720,1920x1080,1920x1184"
-#define RESOLUTION_1080P_VIDEO_TABLE   "176x144,320x240,352x288,640x480,1280x720,1920x1080"
+#define RESOLUTION_1080P_SNAPSHOT_TABLE   "320x240,640x480,1280x720,1920x1080"
+#define RESOLUTION_1080P_VIDEO_TABLE   "176x144,320x240,352x288,640x480,720x480,1280x720,1920x1080"
 
 namespace android {
 
@@ -1617,6 +1618,12 @@ status_t AtomISP::configureContinuousRingBuffer()
     else
         numBuffers += captures;
 
+    // for css2.x, the minimum raw ring buffers number is ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X
+    if (getCssMajorVersion() >= 2) {
+        if (numBuffers < ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X)
+            numBuffers = ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X;
+    }
+
     if (numBuffers > PlatformData::maxContinuousRawRingBufferSize(mCameraId))
         numBuffers = PlatformData::maxContinuousRawRingBufferSize(mCameraId);
 
@@ -2741,6 +2748,11 @@ status_t AtomISP::setZoom(int zoom)
     }
     mConfig.zoom = zoom;
     return NO_ERROR;
+}
+
+int AtomISP::getDrvZoom(int zoom)
+{
+    return mZoomDriveTable[zoom];
 }
 
 status_t AtomISP::getMakerNote(atomisp_makernote_info *info)
@@ -5224,6 +5236,15 @@ int AtomISP::setGcConfig(const struct atomisp_gc_config *gc_cfg)
     int ret;
     ret = mMainDevice->xioctl(ATOMISP_IOC_S_ISP_GAMMA_CORRECTION, (struct atomisp_gc_config *)gc_cfg);
     LOG2("%s IOCTL ATOMISP_IOC_S_ISP_GAMMA_CORRECTION ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::setDvsConfig(const struct atomisp_dvs_6axis_config *dvs_6axis_cfg)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = mMainDevice->xioctl(ATOMISP_IOC_S_DIS_VECTOR, (struct atomisp_dvs_6axis_config *)dvs_6axis_cfg);
+    LOG2("%s IOCTL ATOMISP_IOC_S_6AXIS_CONFIG ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
 
