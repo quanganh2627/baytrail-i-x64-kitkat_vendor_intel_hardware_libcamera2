@@ -417,6 +417,7 @@ private:
     status_t sensorStoreRawFormat();
     size_t setupCameraInfo();
     unsigned int getNumOfSkipFrames(void);
+    unsigned int getNumOfSkipStatistics(void);
     int getPrimaryCameraIndex(void) const;
     status_t applySensorFlip(void);
     void fetchIspVersions();
@@ -524,6 +525,7 @@ private:
     bool mContCaptPrepared;
     bool mContCaptPriority;
     unsigned int mInitialSkips;
+    unsigned int mStatisticSkips;
 
     int dumpFrameInfo(AtomMode mode);
 

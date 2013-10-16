@@ -107,6 +107,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mContCaptPrepared(false)
     ,mContCaptPriority(false)
     ,mInitialSkips(0)
+    ,mStatisticSkips(0)
     ,mSessionId(0)
     ,mLowLight(false)
     ,mXnr(0)
@@ -1036,6 +1037,7 @@ status_t AtomISP::configure(AtomMode mode)
      * at start.
      */
     mInitialSkips = getNumOfSkipFrames();
+    mStatisticSkips = getNumOfSkipStatistics();
 
     return status;
 }
@@ -4334,8 +4336,6 @@ size_t AtomISP::setupCameraInfo()
     return numCameras;
 }
 
-
-
 unsigned int AtomISP::getNumOfSkipFrames(void)
 {
     int ret = 0;
@@ -4352,6 +4352,16 @@ unsigned int AtomISP::getNumOfSkipFrames(void)
     LOG1("%s: skipping %d initial frames", __FUNCTION__, num_skipframes);
     return (unsigned int)num_skipframes;
 }
+
+unsigned int AtomISP::getNumOfSkipStatistics(void)
+{
+    int num_skipstats = 0;
+    PlatformData::HalConfig.getValue(num_skipstats, CPF::Statistics, CPF::InitialSkip);
+
+    LOG1("%s: skipping %d initial statistics", __FUNCTION__, num_skipstats);
+    return (unsigned int)num_skipstats;
+}
+
 
 /* ===================  ACCELERATION API EXTENSIONS ====================== */
 /*
@@ -5580,6 +5590,11 @@ status_t AtomISP::AAAStatSource::observe(IAtomIspObserver::Message *msg)
     msg->data.event.timestamp.tv_sec  = event.timestamp.tv_sec;
     msg->data.event.timestamp.tv_usec = event.timestamp.tv_nsec / 1000;
     msg->data.event.sequence = event.sequence;
+
+    if (mISP->mStatisticSkips > event.sequence) {
+        LOG2("Skipping statistics num: %d", event.sequence);
+        msg->data.event.type = IAtomIspObserver::EVENT_TYPE_STATISTICS_SKIPPED;
+    }
 
     return NO_ERROR;
 }
