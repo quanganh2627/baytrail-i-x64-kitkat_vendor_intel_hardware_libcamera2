@@ -1313,7 +1313,6 @@ float PlatformData::horizontalFOV(int cameraId)
     return getInstance()->mCameras[cameraId].horizontalFOV;
 }
 
-
 bool PlatformData::isGraphicGen(void)
 {
 #ifdef GRAPHIC_IS_GEN
@@ -1322,5 +1321,16 @@ bool PlatformData::isGraphicGen(void)
     return false;
 #endif
 }
+
+int PlatformData::faceCallbackDivider()
+{
+
+    PlatformBase *i = getInstance();
+    int retVal = i->mFaceCallbackDivider;
+
+    // Always return a positive integer:
+    return (retVal > 0) ? retVal : 1;
+}
+
 
 }; // namespace android

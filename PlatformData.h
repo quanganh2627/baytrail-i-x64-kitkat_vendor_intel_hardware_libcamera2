@@ -957,6 +957,19 @@ class PlatformData {
      * \return true if it's GEN. false, if it's not GEN.
      */
     static bool isGraphicGen(void);
+
+    /**
+     * \brief Divider to restrict the frequency of face callbacks
+     *
+     * The face callbacks need to be restricted to relieve the application
+     * from calculation overhead, especially when several dozen of faces are
+     * provided (up to MAX_FACES_DETECTABLE).
+     *
+     * \return a positive integer divider (N) for sending face callbacks.
+     * Every Nth callback will be sent.
+     */
+    static int faceCallbackDivider();
+
 };
 
 /**
@@ -987,6 +1000,7 @@ public:
         mSensorGainLag = 0;
         mSensorExposureLag = 1;
         mUseIntelULL = false;
+        mFaceCallbackDivider = 1;
    };
 
 protected:
@@ -1309,6 +1323,9 @@ protected:
 
     // Ultra Low Light
     bool mUseIntelULL;
+
+    // Used for reducing the frequency of face callbacks
+    int mFaceCallbackDivider;
 };
 
 } /* namespace android */

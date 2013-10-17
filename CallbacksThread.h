@@ -54,6 +54,10 @@ private:
 public:
     status_t requestExitAndWait();
 
+// IFaceDetectionListener overrides
+public:
+    virtual void facesDetected(camera_frame_metadata_t *face_metadata);
+
 // public methods
 public:
 
@@ -65,7 +69,6 @@ public:
                                 bool rawCallback = false, bool waitRendering = false);
     status_t flushPictures();
     size_t   getQueuedBuffersNum() { return mBuffers.size(); }
-    virtual void facesDetected(camera_frame_metadata_t &face_metadata);
     status_t sceneDetected(camera_scene_detection_metadata_t &metadata);
     void autoFocusActive(bool focusActive);
     void autoFocusDone(bool status);
@@ -315,6 +318,9 @@ private:
     unsigned mULLid;
     bool mFocusActive;
     bool mWaitRendering;
+    int mLastReportedNumberOfFaces;
+    int mFaceCbCount;
+    int mFaceCbFreqDivider;
     Message mPostponedJpegReady;
     ICallbackPicture *mPictureDoneCallback;
 

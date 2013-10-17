@@ -134,10 +134,12 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
     } else if (strcmp(name, "supportDualVideo") == 0) {
         PlatformBase::mSupportDualVideo = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "supportPreviewLimitation") == 0) {
-        PlatformBase::mSupportPreviewLimitation = ((strcmp(atts[1], "false")
-                                                    == 0) ? false : true);
+        PlatformBase::mSupportPreviewLimitation
+            = ((strcmp(atts[1], "false") == 0) ? false : true);
     } else if (strcmp(name, "useULLImpl") == 0) {
         PlatformBase::mUseIntelULL = ((strcmp(atts[1], "IntelULL") == 0) ? true : false);
+    } else if (strcmp(name, "faceCallbackDivider") == 0) {
+        PlatformBase::mFaceCallbackDivider = atoi(atts[1]);
     }
 }
 

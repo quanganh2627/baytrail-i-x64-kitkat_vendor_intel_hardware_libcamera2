@@ -20,6 +20,7 @@
 #include "Callbacks.h"
 #include "FaceDetector.h"
 #include "MemoryUtils.h"
+#include "PlatformData.h"
 #include "CameraDump.h"
 #include "PerformanceTraces.h"
 
@@ -35,6 +36,9 @@ CallbacksThread::CallbacksThread(Callbacks *callbacks, ICallbackPicture *picture
     ,mRawRequested(0)
     ,mULLRequested(0)
     ,mWaitRendering(false)
+    ,mLastReportedNumberOfFaces(0)
+    ,mFaceCbCount(0)
+    ,mFaceCbFreqDivider(1)
     ,mPictureDoneCallback(pictureDone)
 {
     LOG1("@%s", __FUNCTION__);
@@ -42,6 +46,9 @@ CallbacksThread::CallbacksThread(Callbacks *callbacks, ICallbackPicture *picture
     memset(mFaceMetadata.faces, 0, MAX_FACES_DETECTABLE * sizeof(camera_face_t));
     mFaceMetadata.number_of_faces = 0;
     mPostponedJpegReady.id = (MessageId) -1;
+
+    // Trying to slighly optimize here, instead of calling this for each face callback
+    mFaceCbFreqDivider =  PlatformData::faceCallbackDivider();
 }
 
 CallbacksThread::~CallbacksThread()
@@ -356,21 +363,45 @@ status_t CallbacksThread::handleMessageSendError(MessageError *msg)
     return NO_ERROR;
 }
 
-void CallbacksThread::facesDetected(camera_frame_metadata_t &face_metadata)
+void CallbacksThread::facesDetected(camera_frame_metadata_t *face_metadata)
 {
-    LOG2("@%s", __FUNCTION__);
+    LOG2("@%s: face_metadata ptr = %p", __FUNCTION__, face_metadata);
+
+    // Null face data -> reset IFaceDetectionListener
+    if (face_metadata == NULL) {
+        mLastReportedNumberOfFaces = 0;
+        mFaceCbCount = 0;
+        return;
+    }
+
+    // Count the callbacks to adjust sending frequency.
+    // We want to do this to relieve the application face indicator rendering load,
+    // as it seems to get heavy when large number of faces are presented.
+    // TODO: Dynamic adjustment of frequency, depending on number of faces
+    ++mFaceCbCount; // Ok to wrap around
+
+    if (face_metadata->number_of_faces > 0 || mLastReportedNumberOfFaces != 0) {
+        mLastReportedNumberOfFaces = face_metadata->number_of_faces;
+        // Not the time to send cb -> do nothing
+        if (!(mFaceCbCount % mFaceCbFreqDivider == 0 || mLastReportedNumberOfFaces == 0)) {
+            return;
+        }
+    }
+
     int num_faces;
-    if (face_metadata.number_of_faces > MAX_FACES_DETECTABLE) {
+    if (face_metadata->number_of_faces > MAX_FACES_DETECTABLE) {
         LOGW("@%s: %d faces detected, limiting to %d", __FUNCTION__,
-            face_metadata.number_of_faces, MAX_FACES_DETECTABLE);
+            face_metadata->number_of_faces, MAX_FACES_DETECTABLE);
         num_faces = MAX_FACES_DETECTABLE;
     } else {
-        num_faces = face_metadata.number_of_faces;
+        num_faces = face_metadata->number_of_faces;
     }
+
     if (num_faces > 0)
         PerformanceTraces::FaceLock::stop(num_faces);
+
     mFaceMetadata.number_of_faces = num_faces;
-    memcpy(mFaceMetadata.faces, face_metadata.faces, mFaceMetadata.number_of_faces * sizeof(camera_face_t));
+    memcpy(mFaceMetadata.faces, face_metadata->faces, mFaceMetadata.number_of_faces * sizeof(camera_face_t));
 
     Message msg;
     msg.id = MESSAGE_ID_FACES;
