@@ -26,6 +26,7 @@
 
 int32_t gLogLevel = 0;
 int32_t gPowerLevel = 0;
+int32_t gControlLevel = 0;
 
 using namespace android;
 
@@ -36,6 +37,7 @@ void android::LogHelper::setDebugLevel(void)
 {
     char gLogLevelProp[PROPERTY_VALUE_MAX];
     char gPowerLevelProp[PROPERTY_VALUE_MAX];
+    char gControlLevelProp[PROPERTY_VALUE_MAX];
     PerformanceTraces::reset();
 
     if (property_get("camera.hal.debug", gLogLevelProp, NULL)) {
@@ -77,6 +79,17 @@ void android::LogHelper::setDebugLevel(void)
         if (gPowerLevel >= INT_MAX || gPowerLevel <= INT_MIN) {
             LOGE("Invalid camera.hal.power property integer value: %s",gPowerLevelProp);
             gPowerLevel = 0;
+        }
+    }
+
+    if (property_get("camera.hal.control", gControlLevelProp, NULL)) {
+        gControlLevel = atoi(gControlLevelProp);
+        LOGD("Control level is %d", gControlLevel);
+
+        // Check that the property value is a valid integer
+        if (gControlLevel >= INT_MAX || gControlLevel <= INT_MIN) {
+            LOGE("Invalid camera.hal.control property integer value: %s",gControlLevelProp);
+            gControlLevel = 0;
         }
     }
 }

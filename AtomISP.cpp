@@ -4921,48 +4921,54 @@ void AtomISP::getSensorData(sensorPrivateData *sensor_data)
     LOG2("@%s", __FUNCTION__);
     int rc;
     struct v4l2_private_int_data otpdata;
-
-    otpdata.size = 0;
-    otpdata.data = NULL;
-    otpdata.reserved[0] = 0;
-    otpdata.reserved[1] = 0;
+    int cameraId = getCurrentCameraId();
 
     sensor_data->data = NULL;
     sensor_data->size = 0;
 
-    int cameraId = getCurrentCameraId();
-    if (gSensorDataCache[cameraId].fetched) {
-        sensor_data->data = gSensorDataCache[cameraId].data;
-        sensor_data->size = gSensorDataCache[cameraId].size;
-        return;
+    if ((gControlLevel & CAMERA_DISABLE_FRONT_NVM) || (gControlLevel & CAMERA_DISABLE_BACK_NVM)) {
+        LOG1("NVM data reading disabled");
+        sensor_data->fetched = false;
     }
-    // First call with size = 0 will return OTP data size.
-    rc = mMainDevice->xioctl(ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
-    LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data size ret: %d\n", __FUNCTION__, rc);
-    if (rc != 0 || otpdata.size == 0) {
-        LOGD("Failed to get OTP size. Error: %d", rc);
-        return;
+    else {
+        otpdata.size = 0;
+        otpdata.data = NULL;
+        otpdata.reserved[0] = 0;
+        otpdata.reserved[1] = 0;
+
+        if (gSensorDataCache[cameraId].fetched) {
+            sensor_data->data = gSensorDataCache[cameraId].data;
+            sensor_data->size = gSensorDataCache[cameraId].size;
+            return;
+        }
+        // First call with size = 0 will return OTP data size.
+        rc = mMainDevice->xioctl(ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
+        LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data size ret: %d\n", __FUNCTION__, rc);
+        if (rc != 0 || otpdata.size == 0) {
+            LOGD("Failed to get OTP size. Error: %d", rc);
+            return;
+        }
+
+        otpdata.data = calloc(otpdata.size, 1);
+        if (otpdata.data == NULL) {
+            LOGD("Failed to allocate memory for OTP data.");
+            return;
+        }
+
+        // Second call with correct size will return OTP data.
+        rc = mMainDevice->xioctl(ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
+        LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data ret: %d\n", __FUNCTION__, rc);
+
+        if (rc != 0 || otpdata.size == 0) {
+            LOGD("Failed to read OTP data. Error: %d", rc);
+            free(otpdata.data);
+            return;
+        }
+
+        sensor_data->data = otpdata.data;
+        sensor_data->size = otpdata.size;
+        sensor_data->fetched = true;
     }
-
-    otpdata.data = calloc(otpdata.size, 1);
-    if (otpdata.data == NULL) {
-        LOGD("Failed to allocate memory for OTP data.");
-        return;
-    }
-
-    // Second call with correct size will return OTP data.
-    rc = mMainDevice->xioctl(ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
-    LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data ret: %d\n", __FUNCTION__, rc);
-
-    if (rc != 0 || otpdata.size == 0) {
-        LOGD("Failed to read OTP data. Error: %d", rc);
-        free(otpdata.data);
-        return;
-    }
-
-    sensor_data->data = otpdata.data;
-    sensor_data->size = otpdata.size;
-    sensor_data->fetched = true;
     gSensorDataCache[cameraId] = *sensor_data;
 }
 

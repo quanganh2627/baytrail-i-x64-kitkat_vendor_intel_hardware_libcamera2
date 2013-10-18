@@ -1281,7 +1281,6 @@ protected:
         // FOV
         float verticalFOV;
         float horizontalFOV;
-
     };
 
     // note: Android NDK does not yet support C++11 and
