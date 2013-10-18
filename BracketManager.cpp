@@ -586,15 +586,41 @@ status_t BracketManager::getSnapshot(AtomBuffer &snapshotBuf, AtomBuffer &postvi
     status_t status = NO_ERROR;
     Message msg;
 
-    msg.id = MESSAGE_ID_GET_SNAPSHOT;
-    if ((status = mMessageQueue.send(&msg, MESSAGE_ID_GET_SNAPSHOT)) != NO_ERROR) {
-        return status;
+    // If we already have enough buffers to use, no need to block and wait
+    // This will improve Bracketing performance.
+    if (mSnapshotReqNum >= mBurstCaptureNum) {
+        LOG1("@%s, no buffer is ready, try to wait...", __FUNCTION__);
+        msg.id = MESSAGE_ID_GET_SNAPSHOT;
+        if ((status = mMessageQueue.send(&msg, MESSAGE_ID_GET_SNAPSHOT)) != NO_ERROR) {
+            return status;
+        }
     }
 
     snapshotBuf = mSnapshotBufs[mSnapshotReqNum];
     postviewBuf = mPostviewBufs[mSnapshotReqNum];
     mSnapshotReqNum++;
     LOG1("@%s: grabbing snapshot %d / %d (%d frames captured)", __FUNCTION__, mSnapshotReqNum, mBurstLength, mBurstCaptureNum);
+
+    return status;
+}
+
+/*
+ * Bracketing get snapshot buffer via BracketManager:getSnapshot
+ * It's better to return the buffer via BracketManager too.
+ */
+status_t BracketManager::putSnapshot(AtomBuffer &snapshotBuf, AtomBuffer &postviewBuf)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    Message msg;
+
+    msg.id = MESSAGE_ID_PUT_SNAPSHOT;
+    msg.data.capture.snapshotBuf = snapshotBuf;
+    msg.data.capture.postviewBuf = postviewBuf;
+
+    if ((status = mMessageQueue.send(&msg, MESSAGE_ID_PUT_SNAPSHOT)) != NO_ERROR) {
+        LOGE("@%s: put snapshot error:%d", __FUNCTION__, status);
+    }
 
     return status;
 }
@@ -610,6 +636,22 @@ status_t BracketManager::handleMessageGetSnapshot()
     }
 
     mMessageQueue.reply(MESSAGE_ID_GET_SNAPSHOT, status);
+    return status;
+}
+
+status_t BracketManager::handleMessagePutSnapshot(MessageCapture capture)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    if (mState != STATE_CAPTURE && mState != STATE_BRACKETING) {
+        LOGE("@%s: wrong state (%d)", __FUNCTION__, mState);
+        status = INVALID_OPERATION;
+    }
+
+    status = mISP->putSnapshot(&capture.snapshotBuf, &capture.postviewBuf);
+
+    mMessageQueue.reply(MESSAGE_ID_PUT_SNAPSHOT, status);
     return status;
 }
 
@@ -672,6 +714,9 @@ status_t BracketManager::waitForAndExecuteMessage()
             break;
         case MESSAGE_ID_GET_SNAPSHOT:
             status = handleMessageGetSnapshot();
+            break;
+        case MESSAGE_ID_PUT_SNAPSHOT:
+            status = handleMessagePutSnapshot(msg.data.capture);
             break;
         default:
             status = INVALID_OPERATION;

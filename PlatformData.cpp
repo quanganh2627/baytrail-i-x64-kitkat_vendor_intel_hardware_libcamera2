@@ -1176,6 +1176,14 @@ int PlatformData::getRecordingBufNum(void)
     return getInstance()->mNumRecordingBuffers;
 }
 
+int PlatformData::getMaxNumberSnapshotBuffers(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return 0;
+    }
+    return getInstance()->mCameras[cameraId].maxNumSnapshotBuffers;
+}
+
 bool PlatformData::supportAIQ(void)
 {
     return getInstance()->mSupportAIQ;
@@ -1191,9 +1199,9 @@ bool PlatformData::supportPreviewLimitation(void)
     return getInstance()->mSupportPreviewLimitation;
 }
 
-int PlatformData::getPreviewFormat(void)
+int PlatformData::getPreviewPixelFormat(void)
 {
-    return getInstance()->mPreviewFormat;
+    return getInstance()->mPreviewFourcc;
 }
 
 const char* PlatformData::getBoardName(void)

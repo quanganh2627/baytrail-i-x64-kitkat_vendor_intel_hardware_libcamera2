@@ -19,7 +19,7 @@
 
 #include <utils/threads.h>
 #include <time.h>
-#include "AtomDvs.h"
+#include "IDvs.h"
 #include "UltraLowLight.h"
 #include "MessageQueue.h"
 #include "IAtomIspObserver.h"
@@ -95,7 +95,7 @@ public:
     status_t newFrame(AtomBuffer* b);
     status_t newStats(timeval &t, unsigned int seqNo);
     status_t newFrameSync(IAtomIspObserver::MessageEvent *sofMsg);
-    status_t applyRedEyeRemoval(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer, int width, int height, int format);
+    status_t applyRedEyeRemoval(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer, int width, int height, int fourcc);
     status_t setFaces(const ia_face_state& faceState);
     void getCurrentSmartScene(int &sceneMode, bool &sceneHdr);
     void resetSmartSceneValues();
@@ -133,7 +133,7 @@ private:
         AtomBuffer postviewBuf;
         int width;
         int height;
-        int format;
+        int fourcc;
     };
 
     struct MessageFlashStage {

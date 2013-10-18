@@ -43,7 +43,7 @@ V4L2VideoNode::V4L2VideoNode(const char *name, int anId, VideNodeDirection nodeD
     LOG1("@%s: device: %s", __FUNCTION__, name);
     mBufferPool.setCapacity(MAX_V4L2_BUFFERS);
     mSetBufferPool.setCapacity(MAX_V4L2_BUFFERS);
-    CLEAR(mConfig);
+    CLEAR(mFormatDescriptor);
 }
 
 V4L2VideoNode::~V4L2VideoNode()
@@ -332,19 +332,19 @@ int V4L2VideoNode::start(int buffer_count, int initial_skips)
  * This method queries first the current format and updates capture format.
  *
  *
- * \param aConfig:[IN/OUT] reference to the new configuration.
+ * \param formatDescriptor:[IN/OUT] reference to the new configuration.
  *                 This structure contains new values for width,height and format
  *                 parameters, but the stride value is not known by the caller
  *                 of this method. The stride value is retrieved from the ISP
- *                 and the value updated, so aConfig.stride is an OUTPUT parameter
+ *                 and the value updated, so formatDescriptor.stride is an OUTPUT parameter
  *                 The same applies for the expected size of the buffer
- *                 aConfig.size is also an OUTPUT parameter
+ *                 formatDescriptor.size is also an OUTPUT parameter
  *
  *  \return NO_ERROR if everything went well
  *          INVALID_OPERATION if device is not in correct state (open)
  *          UNKNOW_ERROR if we get an error from the v4l2 ioctl's
  */
-status_t V4L2VideoNode::setFormat(FrameInfo &aConfig)
+status_t V4L2VideoNode::setFormat(AtomBuffer &formatDescriptor)
 {
     LOG1("@%s device = %s", __FUNCTION__, mName.string());
     int ret(0);
@@ -368,9 +368,9 @@ status_t V4L2VideoNode::setFormat(FrameInfo &aConfig)
 
     v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
-    v4l2_fmt.fmt.pix.width = aConfig.width;
-    v4l2_fmt.fmt.pix.height = aConfig.height;
-    v4l2_fmt.fmt.pix.pixelformat = aConfig.format;
+    v4l2_fmt.fmt.pix.width = formatDescriptor.width;
+    v4l2_fmt.fmt.pix.height = formatDescriptor.height;
+    v4l2_fmt.fmt.pix.pixelformat = formatDescriptor.fourcc;
     v4l2_fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
 
     // Update current configuration with the new one
@@ -378,12 +378,12 @@ status_t V4L2VideoNode::setFormat(FrameInfo &aConfig)
     if (ret != NO_ERROR)
         return ret;
 
-    // .. but get the stride from ISP
+    // .. but get the bpl from ISP
     // and update the new configuration struct with it
-    aConfig.stride = mConfig.stride;
+    formatDescriptor.bpl = mFormatDescriptor.bpl;
 
     // Do the same for the frame size
-    aConfig.size = mConfig.size;
+    formatDescriptor.size = mFormatDescriptor.size;
 
     return NO_ERROR;
 }
@@ -420,7 +420,7 @@ status_t V4L2VideoNode::setFormat(struct v4l2_format &aFormat)
     }
 
 
-    LOG1("VIDIOC_S_FMT: width: %d, height: %d, format: %s, field: %d",
+    LOG1("VIDIOC_S_FMT: width: %d, height: %d, fourcc: %s, field: %d",
             aFormat.fmt.pix.width,
             aFormat.fmt.pix.height,
             v4l2Fmt2Str(aFormat.fmt.pix.pixelformat),
@@ -432,12 +432,16 @@ status_t V4L2VideoNode::setFormat(struct v4l2_format &aFormat)
     }
 
     // Update current configuration with the new one
-    mConfig.format = aFormat.fmt.pix.pixelformat;
-    mConfig.width = aFormat.fmt.pix.width;
-    mConfig.height = aFormat.fmt.pix.height;
-    mConfig.stride = aFormat.fmt.pix.bytesperline;
-    mConfig.size = frameSize(mConfig.format, mConfig.stride, mConfig.height);
-    LOG1("stride: %d from ISP", mConfig.stride);
+    mFormatDescriptor.fourcc = aFormat.fmt.pix.pixelformat;
+    mFormatDescriptor.width = aFormat.fmt.pix.width;
+    mFormatDescriptor.height = aFormat.fmt.pix.height;
+    mFormatDescriptor.bpl = aFormat.fmt.pix.bytesperline;
+    // TODO: we should respect fmt.pix.sizeimage ensure its always
+    //       page aligned with our types of allocations
+    mFormatDescriptor.size = frameSize(mFormatDescriptor.fourcc,
+                                       bytesToPixels(mFormatDescriptor.fourcc, mFormatDescriptor.bpl),
+                                       mFormatDescriptor.height);
+    LOG1("bpl: %d from ISP", mFormatDescriptor.bpl);
 
     mState = DEVICE_CONFIGURED;
     mSetBufferPool.clear();
@@ -556,7 +560,7 @@ int V4L2VideoNode::getFramerate(float * framerate, int width, int height, int pi
  * This pool will become active after calling start()
  * \param pool: array of void* where the memory is available
  * \param poolSize: amount of buffers in the pool
- * \param aFrameInfo: description of the properties of the buffers
+ * \param formatDescriptor: description of the properties of the buffers
  *                   it should match the configuration passed during setFormat
  * \param cached: boolean to detect whether the buffers are cached or not
  *                A cached buffer in this context means that the buffer
@@ -568,7 +572,7 @@ int V4L2VideoNode::getFramerate(float * framerate, int width, int height, int pi
  *                invalidation/flushes are needed for this buffer.
  */
 status_t V4L2VideoNode::setBufferPool(void **pool, int poolSize,
-                                     FrameInfo *aFrameInfo, bool cached)
+                                     AtomBuffer *formatDescriptor, bool cached)
 {
     LOG1("@%s: device = %s", __FUNCTION__, mName.string());
     struct v4l2_buffer_info vinfo;
@@ -582,8 +586,8 @@ status_t V4L2VideoNode::setBufferPool(void **pool, int poolSize,
         return INVALID_OPERATION;
     }
 
-    if (pool == NULL || aFrameInfo == NULL) {
-        LOGE("Invalid parameters, pool %p frameInfo %p",pool, aFrameInfo);
+    if (pool == NULL || formatDescriptor == NULL) {
+        LOGE("Invalid parameters, pool %p frameInfo %p",pool, formatDescriptor);
         return BAD_TYPE;
     }
 
@@ -591,13 +595,13 @@ status_t V4L2VideoNode::setBufferPool(void **pool, int poolSize,
      * check that the configuration of these buffers matches what we have already
      * told the driver.
      */
-    if ((aFrameInfo->width != mConfig.width) ||
-        (aFrameInfo->height != mConfig.height) ||
-        (aFrameInfo->stride != mConfig.stride) ||
-        (aFrameInfo->format != mConfig.format) ) {
+    if ((formatDescriptor->width != mFormatDescriptor.width) ||
+        (formatDescriptor->height != mFormatDescriptor.height) ||
+        (formatDescriptor->bpl != mFormatDescriptor.bpl) ||
+        (formatDescriptor->fourcc != mFormatDescriptor.fourcc) ) {
         LOGE("Pool configuration does not match device configuration: (%dx%d) s:%d f:%s Pool is: (%dx%d) s:%d f:%s ",
-                mConfig.width, mConfig.height, mConfig.stride, v4l2Fmt2Str(mConfig.format),
-                aFrameInfo->width, aFrameInfo->height, aFrameInfo->stride, v4l2Fmt2Str(aFrameInfo->format));
+                mFormatDescriptor.width, mFormatDescriptor.height, mFormatDescriptor.bpl, v4l2Fmt2Str(mFormatDescriptor.fourcc),
+                formatDescriptor->width, formatDescriptor->height, formatDescriptor->bpl, v4l2Fmt2Str(formatDescriptor->fourcc));
         return BAD_VALUE;
     }
 
@@ -606,10 +610,10 @@ status_t V4L2VideoNode::setBufferPool(void **pool, int poolSize,
 
     for (int i = 0; i < poolSize; i++) {
         vinfo.data = pool[i];
-        vinfo.width = aFrameInfo->stride;
-        vinfo.height = aFrameInfo->height;
-        vinfo.format = aFrameInfo->format;
-        vinfo.length = aFrameInfo->size;
+        vinfo.width = formatDescriptor->width;
+        vinfo.height = formatDescriptor->height;
+        vinfo.format = formatDescriptor->fourcc;
+        vinfo.length = formatDescriptor->size;
         if (cached)
            vinfo.cache_flags = 0;
        else

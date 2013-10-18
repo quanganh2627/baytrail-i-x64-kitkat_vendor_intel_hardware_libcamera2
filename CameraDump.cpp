@@ -168,7 +168,7 @@ int CameraDump::dumpImage2Buf(camera_delay_dumpImage_T *aDumpImage)
     unsigned int size = aDumpImage->buffer_size;
     unsigned int width = aDumpImage->width;
     unsigned int height = aDumpImage->height;
-    unsigned int stride = aDumpImage->stride;
+    unsigned int bpl = aDumpImage->bpl;
     if ((0 == size) || (0 == width) || (0 == height)) {
         LOGE("value is err(size=%d,width=%d,height=%d)", size, width, height);
         return -ERR_D2F_EVALUE;
@@ -185,7 +185,7 @@ int CameraDump::dumpImage2Buf(camera_delay_dumpImage_T *aDumpImage)
             mDelayDump.buffer_size = 0;
             mDelayDump.width = 0;
             mDelayDump.height = 0;
-            mDelayDump.stride = 0;
+            mDelayDump.bpl = 0;
             mNeedDumpFlush = false;
             return -ERR_D2F_NOMEM;
         }
@@ -193,7 +193,7 @@ int CameraDump::dumpImage2Buf(camera_delay_dumpImage_T *aDumpImage)
     mDelayDump.buffer_size = size;
     mDelayDump.width = width;
     mDelayDump.height = height;
-    mDelayDump.stride = stride;
+    mDelayDump.bpl = bpl;
     memcpy(mDelayDump.buffer_raw, buffer, size);
     mNeedDumpFlush = true;
 
@@ -207,7 +207,7 @@ int CameraDump::dumpImage2File(camera_delay_dumpImage_T *aDumpImage, const char 
     unsigned int size = aDumpImage->buffer_size;
     unsigned int width = aDumpImage->width;
     unsigned int height = aDumpImage->height;
-    unsigned int stride = aDumpImage->stride;
+    unsigned int bpl = aDumpImage->bpl;
     char filename[80];
     static unsigned int count = 0;
     size_t bytes;
@@ -254,7 +254,7 @@ int CameraDump::dumpImage2File(camera_delay_dumpImage_T *aDumpImage, const char 
         raw_info.raw_image.bayer_order = ia_aiq_bayer_order_grbg;
         raw_info.raw_image.data_format_bpp = 16;
         raw_info.raw_image.data_bpp = 10;
-        raw_info.raw_image.width_cols = stride;
+        raw_info.raw_image.width_cols = bytesToPixels(V4L2_PIX_FMT_SBGGR10, bpl);
         raw_info.raw_image.height_lines = height;
         raw_info.header_size_bytes = 0;
         raw_info.footer_size_bytes = 0;
@@ -345,7 +345,7 @@ int CameraDump::dumpImage2FileFlush(bool bufflag)
             mDelayDump.buffer_size = 0;
             mDelayDump.width = 0;
             mDelayDump.height = 0;
-            mDelayDump.stride = 0;
+            mDelayDump.bpl = 0;
         }
         mNeedDumpFlush = false;
     }
@@ -364,7 +364,7 @@ int CameraDump::dumpAtom2File(const AtomBuffer *b, const char *name)
 {
     int bytes = 0;
 
-    LOGE("Dumping %s resolution (%dx%d) format %s",name,b->width, b->height,v4l2Fmt2Str(b->format));
+    LOGE("Dumping %s resolution (%dx%d) format %s",name,b->width, b->height,v4l2Fmt2Str(b->fourcc));
 
     FILE *fd = fopen(name, "wb+");
 

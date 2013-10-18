@@ -122,7 +122,7 @@ int SWJpegEncoder::configEncoding(int width, int height, void *jpegBuf, int jpeg
  * \return 0 if the encoding is successful.
  * \return -1 if the encoding fails.
  */
-int SWJpegEncoder::doJpegEncoding(const void* yuv_buf, int format)
+int SWJpegEncoder::doJpegEncoding(const void* yuv_buf, int fourcc)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -141,7 +141,7 @@ int SWJpegEncoder::doJpegEncoding(const void* yuv_buf, int format)
         return -1;
     }
 
-    switch (format) {
+    switch (fourcc) {
     case V4L2_PIX_FMT_YUYV:
         YUY2ToP411(width, height, src, p411);
         break;
@@ -149,7 +149,7 @@ int SWJpegEncoder::doJpegEncoding(const void* yuv_buf, int format)
         NV12ToP411(width, height, src, p411);
         break;
     defaut:
-        LOGE("%s Unsupported format %d", __func__, format);
+        LOGE("%s Unsupported fourcc %d", __func__, fourcc);
         return -1;
     }
 

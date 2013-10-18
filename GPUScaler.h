@@ -47,8 +47,8 @@ public:
 
     void setZoomFactor(float zf);
     int processFrame(int inputBufferId, int outputBufferId);
-    int addOutputBuffer(buffer_handle_t *pBufHandle, int width, int height, int stride);
-    int addInputBuffer(buffer_handle_t *pBufHandle, int width, int height, int stride);
+    int addOutputBuffer(buffer_handle_t *pBufHandle, int width, int height, int bpl);
+    int addInputBuffer(buffer_handle_t *pBufHandle, int width, int height, int bpl);
     void removeInputBuffer(int bufferId);
     void removeOutputBuffer(int bufferId);
 // private types

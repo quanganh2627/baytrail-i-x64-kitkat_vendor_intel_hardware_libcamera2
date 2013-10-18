@@ -37,7 +37,6 @@
 
 //This file define the general configuration for the atomisp camera
 
-#define BPP 2 // bytes per pixel
 #define MAX_PARAM_VALUE_LENGTH 32
 #define MAX_BURST_BUFFERS 32
 #define MAX_BURST_FRAMERATE 15
@@ -52,9 +51,12 @@
 #define CLEAR(x) memset (&(x), 0, sizeof (x))
 // macro CLIP is used to clip the Number value to between the Min and Max
 #define CLIP(Number, Max, Min)    ((Number) > (Max) ? (Max) : ((Number) < (Min) ? (Min) : (Number)))
-// macro MAX
+// macro MAX and MIN
 #define MAX(a,b) ((a)>(b)?(a):(b))
-// macro ALIGN16 root value to value that is divisible by 16
+#define MIN(a,b) ((a)<(b)?(a):(b))
+
+// macros ALIGN?? root value to value that is divisible by ??
+#define ALIGN8(x) (((x) + 7) & ~7)
 #define ALIGN16(x) (((x) + 15) & ~15)
 #define ALIGN32(x) (((x) + 31) & ~31)
 #define ALIGN64(x) (((x) + 63) & ~63)
@@ -118,6 +120,9 @@ enum FrameBufferStatus {
  * Type relates to the usage of the buffer
  */
 enum AtomBufferType {
+    ATOM_BUFFER_FORMAT_DESCRIPTOR = 0, /*!< Buffer container with bare format description and no memory associations
+                                         Note: Cleared AtomBuffer structure becomes format descriptor, until it is
+                                         explicitly assigned to carry a buffer of certain type.*/
     ATOM_BUFFER_PREVIEW_GFX,        /*!< Buffer contains a preview frame allocated from GFx HW */
     ATOM_BUFFER_PREVIEW,            /*!< Buffer contains a preview frame allocated from AtomISP */
     ATOM_BUFFER_SNAPSHOT,           /*!< Buffer contains a full resolution snapshot image (uncompressed) */
@@ -135,16 +140,6 @@ struct GFXBufferInfo {
     buffer_handle_t *gfxBufferHandle;
     bool locked;
     int scalerId;
-};
-
-struct FrameInfo {
-    int format;     // V4L2 format
-    int width;      // Frame width
-    int height;     // Frame height
-    int stride;     // Frame stride (can be bigger than width)
-    int maxWidth;   // Frame maximum width
-    int maxHeight;  // Frame maximum height
-    int size;       // Frame size in bytes
 };
 
 /*! \struct AtomBuffer
@@ -169,9 +164,9 @@ struct AtomBuffer {
                                  prevent ISP to de-allocate it */
     int width;
     int height;
-    int format;
-    int stride;             /*!< stride of the buffer, bytes per line */
-    int size;
+    int fourcc;             /*!< FOURCC pixel format of buffer accessible with dataPtr*/
+    int bpl;                /*!< bytes per line */
+    int size;               /*!< maximum accessible size in bytes from dataPtr*/
     AtomBufferType type;                /*!< context in which the buffer is used */
     FrameBufferStatus status;           /*!< status information of carried frame buffer */
     IBufferOwner* owner;                /*!< owner who is responsible to enqueue back to AtomISP*/
@@ -188,11 +183,11 @@ struct AAAWindowInfo {
 extern timeval AtomBufferFactory_AtomBufDefTS; // default timestamp
 class AtomBufferFactory {
 public:
-    static AtomBuffer createAtomBuffer(AtomBufferType type = ATOM_BUFFER_PREVIEW_GFX,
+    static AtomBuffer createAtomBuffer(AtomBufferType type = ATOM_BUFFER_FORMAT_DESCRIPTOR,
                            int format = V4L2_PIX_FMT_NV12,
                            int width = 0,
                            int height = 0,
-                           int stride = 0,
+                           int bpl = 0,
                            int size = 0,
                            IBufferOwner *owner = NULL,
                            camera_memory_t *buff = NULL,
@@ -247,6 +242,21 @@ struct CameraWindow {
     int weight;
 };
 
+// Structure to hold static array of formats with their depths, description
+// and information often needed in image buffer processing.
+//
+// This is derived concept from camera driver (atomisp_format_bridge), with
+// redifintion of info we are interested.
+struct AtomFormatBridge {
+    unsigned int pixelformat;
+    unsigned int depth;
+    bool planar;
+    bool bayer;
+};
+
+extern const struct AtomFormatBridge sV4l2PixelFormatBridge[];
+const struct AtomFormatBridge* getAtomFormatBridge(unsigned int fourcc);
+
 /**
  * parse the pair string, like "720x480", the "x" is passed by parameter "delim"
  *
@@ -272,90 +282,48 @@ static int parsePair(char *str, char **first, char **second, const char *delim)
 }
 
 /**
+ * return pixels based on bytes
+ *
+ * commonly used to calculate bytes-per-line as per pixel width
+ */
+static int bytesToPixels(int fourcc, int bytes)
+{
+    const AtomFormatBridge* afb = getAtomFormatBridge(fourcc);
+
+    if (afb->planar) {
+        // All our planar YUV formats are with depth 8 luma
+        // and here byte means one pixel. Chroma planes are
+        // to be handled according to fourcc respectively
+        return bytes;
+    }
+
+    return (bytes * 8) / afb->depth;
+}
+
+/**
+ * return bytes-per-line based on given pixels
+ */
+static int pixelsToBytes(int fourcc, int pixels)
+{
+    const AtomFormatBridge* afb = getAtomFormatBridge(fourcc);
+
+    if (afb->planar) {
+        // All our planar YUV formats are with depth 8 luma
+        // and here byte means one pixel. Chroma planes are
+        // to be handled according to fourcc respectively
+        return pixels;
+    }
+
+    return ALIGN8(afb->depth * pixels) / 8;
+}
+
+/**
  * Return frame size (in bytes) based on image format description
  */
-static int frameSize(int format, int width, int height)
+static int frameSize(int fourcc, int width, int height)
 {
-    int size = 0;
-    switch (format) {
-        case V4L2_PIX_FMT_YUV420:
-        case V4L2_PIX_FMT_YVU420:
-        case V4L2_PIX_FMT_NV12:
-        case V4L2_PIX_FMT_NV21:
-        case V4L2_PIX_FMT_YUV411P:
-        case V4L2_PIX_FMT_YUV422P:
-            size = (width * height * 3 / 2);
-            break;
-        case V4L2_PIX_FMT_YUYV:
-        case V4L2_PIX_FMT_Y41P:
-        case V4L2_PIX_FMT_UYVY:
-            size = (width * height *  2);
-            break;
-        case V4L2_PIX_FMT_RGB565:
-        case V4L2_PIX_FMT_SRGGB10:
-            size = (width * height * BPP);
-            break;
-        default:
-            size = (width * height * 2);
-    }
-
-    return size;
-}
-
-static int bytesPerLineToWidth(int format, int bytesperline)
-{
-    int width = 0;
-    switch (format) {
-    case V4L2_PIX_FMT_YUV420:
-    case V4L2_PIX_FMT_YVU420:
-    case V4L2_PIX_FMT_NV12:
-    case V4L2_PIX_FMT_NV21:
-    case V4L2_PIX_FMT_YUV411P:
-    case V4L2_PIX_FMT_YUV422P:
-        width = bytesperline;
-        break;
-    case V4L2_PIX_FMT_YUYV:
-    case V4L2_PIX_FMT_Y41P:
-    case V4L2_PIX_FMT_UYVY:
-    case V4L2_PIX_FMT_RGB565:
-    case V4L2_PIX_FMT_SRGGB10:
-        width = (bytesperline / 2);
-        break;
-    default:
-        LOGW("%s: no case for selected pixel format!", __FUNCTION__);
-        bytesperline = (width * 2);
-        break;
-    }
-
-    return width;
-}
-
-static int widthToBytesPerLine(int format, int width)
-{
-    int bytesperline = 0;
-    switch (format) {
-    case V4L2_PIX_FMT_YUV420:
-    case V4L2_PIX_FMT_YVU420:
-    case V4L2_PIX_FMT_NV12:
-    case V4L2_PIX_FMT_NV21:
-    case V4L2_PIX_FMT_YUV411P:
-    case V4L2_PIX_FMT_YUV422P:
-        bytesperline = width;
-        break;
-    case V4L2_PIX_FMT_YUYV:
-    case V4L2_PIX_FMT_Y41P:
-    case V4L2_PIX_FMT_UYVY:
-    case V4L2_PIX_FMT_RGB565:
-    case V4L2_PIX_FMT_SRGGB10:
-        bytesperline = (width * 2);
-        break;
-    default:
-        LOGW("%s: no case for selected pixel format!", __FUNCTION__);
-        bytesperline = (width * 2);
-        break;
-    }
-
-    return bytesperline;
+    const AtomFormatBridge* afb = getAtomFormatBridge(fourcc);
+    return height * ALIGN8(afb->depth * width) / 8;
 }
 
 static int paddingWidthNV12VED( int width, int height)
@@ -375,11 +343,11 @@ static int paddingWidthNV12VED( int width, int height)
     return padding;
 }
 
-static const char* v4l2Fmt2Str(int format)
+static const char* v4l2Fmt2Str(int fourcc)
 {
     static char fourccBuf[5];
     memset(&fourccBuf[0], 0, sizeof(fourccBuf));
-    char *fourccPtr = (char*) &format;
+    char *fourccPtr = (char*) &fourcc;
     snprintf(fourccBuf, sizeof(fourccBuf), "%c%c%c%c", *fourccPtr, *(fourccPtr+1), *(fourccPtr+2), *(fourccPtr+3));
     return &fourccBuf[0];
 }
@@ -439,7 +407,7 @@ inline static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
     toWindow.y_bottom = bottom;
 }
 
-int getGFXHALPixelFormatFromV4L2Format(int previewFormat);
+int getGFXHALPixelFormatFromV4L2Format(int previewFourcc);
 
 /**
  * Converts window from Android coordinate system [-1000, 1000] to user defined width
@@ -465,7 +433,7 @@ void convertFromAndroidToIaCoordinates(const CameraWindow &srcWindow, CameraWind
 bool isParameterSet(const char *param, const CameraParameters &params);
 
 bool isBayerFormat(int fmt);
-int SGXandDisplayStride(int format, int width);
+int SGXandDisplayBpl(int fourcc, int width);
 void mirrorBuffer(AtomBuffer *buffer, int currentOrientation, int cameraOrientation);
 void flipBufferV(AtomBuffer *buffer);
 void flipBufferH(AtomBuffer *buffer);

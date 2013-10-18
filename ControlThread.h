@@ -32,6 +32,7 @@
 #include "CallbacksThread.h"
 #include "AAAThread.h"
 #include "I3AControls.h"
+#include "IDvs.h"
 #include "CameraConf.h"
 #include "PostProcThread.h"
 #include "PanoramaThread.h"
@@ -650,7 +651,7 @@ private:
     status_t hdrCompose();
     void     hdrRelease();
     status_t allocateSnapshotBuffers(bool videoMode);
-    void     setExternalSnapshotBuffers(int format, int width, int heigth);
+    void     setExternalSnapshotBuffers(int fourcc, int width, int heigth);
 
     // Capture Flow helpers
     status_t getFlashExposedSnapshot(AtomBuffer *snaphotBuffer, AtomBuffer *postviewBuffer);
@@ -682,6 +683,7 @@ private:
     void restoreCurrentPictureParams();
 
     status_t createAtom3A();
+    status_t createAtomDvs();
 
     void enableFocusCallbacks();
     void disableFocusCallbacks();
@@ -700,7 +702,7 @@ private:
     int mCameraId;
     HWControlGroup mHwcg;
     IHWIspControl *mISP;
-    AtomDvs *mDvs;
+    IDvs *mDvs;
     AtomCP  *mCP;
     UltraLowLight *mULL;
     I3AControls *m3AControls;
@@ -759,6 +761,9 @@ private:
                                   1...N, where N is mBurstLength. */
     int  mBurstQbufs;           /*<! Number of buffers queued so far
                                   to ISP, 1..N where N is mBurstLength */
+    int  mBurstBufsToReturn; /*<! Number of buffers should be returned to ISP for reuse
+                                exp:mBurstLength is 9, mAllocatedSnapshotBuffers is 5,
+                                mBurstBufsToReturn should be 4*/
     HdrImaging mHdr;
     bool mAELockFlashNeed;
     float mPublicShutter;       /* Shutter set by application */

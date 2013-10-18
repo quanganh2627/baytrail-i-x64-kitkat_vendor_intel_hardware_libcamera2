@@ -23,8 +23,11 @@
 #include "PictureThread.h"
 #include "AtomAIQ.h"
 #include "AtomAAA.h"
+#include "AtomDvs.h"
 #include "AtomSoc3A.h"
 #include "AtomISP.h"
+#include "AtomDvs.h"
+#include "AtomDvs2.h"
 #include "Callbacks.h"
 #include "CallbacksThread.h"
 #include "ColorConverter.h"
@@ -151,6 +154,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mBurstCaptureNum(-1)
     ,mBurstCaptureDoneNum(-1)
     ,mBurstQbufs(0)
+    ,mBurstBufsToReturn(0)
     ,mAELockFlashNeed(false)
     ,mPublicShutter(-1)
     ,mParamCache(NULL)
@@ -260,7 +264,11 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mDvs = new AtomDvs(mHwcg);
+    if (createAtomDvs() != NO_ERROR) {
+        LOGE("error creating DVS");
+        goto bail;
+    }
+
     if (mDvs == NULL) {
         LOGE("error creating DVS");
         goto bail;
@@ -1142,10 +1150,10 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
     }
     if (previewState == PreviewThread::STATE_STOPPED) {
         // just re-configure previewThread
-        int cb_format, width, height, stride;
-        cb_format = V4L2Format(mParameters.getPreviewFormat());
-        mISP->getPreviewSize(&width, &height,&stride);
-        mPreviewThread->setPreviewConfig(width, height, stride, cb_format, false);
+        int cb_fourcc, width, height, bpl;
+        cb_fourcc = V4L2Format(mParameters.getPreviewFormat());
+        mISP->getPreviewSize(&width, &height,&bpl);
+        mPreviewThread->setPreviewConfig(width, height, bpl, cb_fourcc, false);
     } else if (previewState != PreviewThread::STATE_ENABLED
             && previewState != PreviewThread::STATE_ENABLED_HIDDEN) {
         LOGE("Trying to resume continuous preview from unexpected state!");
@@ -1222,7 +1230,7 @@ status_t ControlThread::configureContinuousRingBuffer()
     if (mULL->isActive() || mBurstLength > 1)
         cfg.numCaptures = MAX(mULL->MAX_INPUT_BUFFERS, mBurstLength);
     else
-        cfg.numCaptures = ((mISP->getCssMajorVersion() == 2) && (mISP->getCssMinorVersion() == 0))? 2 : 1;
+        cfg.numCaptures = 1;
 
     cfg.offset = -(mISP->shutterLagZeroAlign());
     cfg.skip = 0;
@@ -1247,7 +1255,7 @@ status_t ControlThread::initContinuousCapture()
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    int format = mISP->getSnapshotPixelFormat();
+    int fourcc = mISP->getSnapshotPixelFormat();
     int width, height;
     mParameters.getPictureSize(&width, &height);
 
@@ -1263,7 +1271,7 @@ status_t ControlThread::initContinuousCapture()
     // Configure PictureThread
     mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
-    mISP->setSnapshotFrameFormat(width, height, format);
+    mISP->setSnapshotFrameFormat(width, height, fourcc);
     configureContinuousRingBuffer();
     mISP->setPostviewFrameFormat(pvWidth, pvHeight,
                                  selectPostviewFormat());
@@ -1450,8 +1458,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     status_t status = NO_ERROR;
     int width;
     int height;
-    int cb_format;
-    int stride;
+    int cb_fourcc;
+    int bpl;
     State state;
     AtomMode mode;
     bool isDVSActive = false;
@@ -1494,10 +1502,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         }
     }
 
-    const char* cb_format_s = mParameters.getPreviewFormat();
-    cb_format = V4L2Format(cb_format_s);
-    if (!cb_format) {
-        LOGW("Unsupported preview callback format : %s", cb_format_s ? cb_format_s : "not set");
+    const char* cb_fourcc_s = mParameters.getPreviewFormat();
+    cb_fourcc = V4L2Format(cb_fourcc_s);
+    if (!cb_fourcc) {
+        LOGW("Unsupported preview callback fourcc : %s", cb_fourcc_s ? cb_fourcc_s : "not set");
     }
     mParameters.getPreviewSize(&width, &height);
     mISP->setPreviewFrameFormat(width, height);
@@ -1521,7 +1529,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mAccManagerThread->loadIspExtensions();
     }
 
-    mISP->getPreviewSize(&width, &height,&stride);
+    mISP->getPreviewSize(&width, &height,&bpl);
     if (videoMode)
         mNumBuffers = mISP->getNumVideoBuffers();
     else
@@ -1539,7 +1547,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     bool useSharedGfxBuffers =
         (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS)
         && (mIntelParamsAllowed || mode != MODE_CONTINUOUS_CAPTURE);
-    mPreviewThread->setPreviewConfig(width, height, stride, cb_format, useSharedGfxBuffers, mNumBuffers);
+    mPreviewThread->setPreviewConfig(width, height, bpl, cb_fourcc, useSharedGfxBuffers, mNumBuffers);
     if (useSharedGfxBuffers) {
         Vector<AtomBuffer> sharedGfxBuffers;
         status = mPreviewThread->fetchPreviewBuffers(sharedGfxBuffers);
@@ -1570,12 +1578,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         if (m3AControls->switchModeAndRate(mode, mHwcg.mSensorCI->getFrameRate()) != NO_ERROR)
             LOGE("Failed switching 3A at %.2f fps", mHwcg.mSensorCI->getFrameRate());
 
-        if (isDVSActive && mDvs->reconfigure() == NO_ERROR) {
-            // Attach only when DVS is active:
-            mISP->attachObserver(mDvs, OBSERVE_PREVIEW_STREAM);
-        } else if (isDVSActive) {
-            LOGE("Failed to reconfigure DVS grid");
-        }
 
         mISP->attachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
         mISP->attachObserver(m3AThread.get(), OBSERVE_FRAME_SYNC_SOF);
@@ -1660,6 +1662,13 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         // Check the camera.hal.power property if disable the Preview
         if (gPowerLevel & CAMERA_POWERBREAKDOWN_DISABLE_PREVIEW) {
             mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
+        }
+
+        if (isDVSActive && mDvs->reconfigure() == NO_ERROR) {
+            // Attach only when DVS is active:
+            mISP->attachObserver(mDvs, OBSERVE_PREVIEW_STREAM);
+        } else if (isDVSActive) {
+            LOGE("Failed to reconfigure DVS grid");
         }
     } else {
         LOGE("Error starting ISP!");
@@ -2394,6 +2403,7 @@ void ControlThread::burstStateReset()
     mBurstCaptureNum = -1;
     mBurstCaptureDoneNum = -1;
     mBurstQbufs = 0;
+    mBurstBufsToReturn = 0;
 }
 
 
@@ -2546,7 +2556,7 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
 {
     LOG1("@%s: ", __FUNCTION__);
     status_t status = NO_ERROR;
-    int format, size, width, height;
+    int fourcc, size, width, height;
     int lpvWidth, lpvHeight, lpvSize;
     int thumbnailWidth, thumbnailHeight;
 
@@ -2566,9 +2576,9 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     // Get the current params
     mParameters.getPictureSize(&width, &height);
     IntelCameraParameters::getPanoramaLivePreviewSize(lpvWidth, lpvHeight, mParameters);
-    format = mISP->getSnapshotPixelFormat();
-    size = frameSize(format, width, height);
-    lpvSize = frameSize(format, lpvWidth, lpvHeight);
+    fourcc = mISP->getSnapshotPixelFormat();
+    size = frameSize(fourcc, width, height);
+    lpvSize = frameSize(fourcc, lpvWidth, lpvHeight);
 
     // Configure PictureThread
     mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
@@ -2578,11 +2588,11 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     thumbnailHeight= mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
     mPanoramaThread->setThumbnailSize(thumbnailWidth, thumbnailHeight);
 
-    setExternalSnapshotBuffers(format,width,height);
+    setExternalSnapshotBuffers(fourcc,width,height);
 
     if (mState != STATE_CONTINUOUS_CAPTURE) {
         // Configure and start the ISP
-        mISP->setSnapshotFrameFormat(width, height, format);
+        mISP->setSnapshotFrameFormat(width, height, fourcc);
         mISP->setPostviewFrameFormat(lpvWidth, lpvHeight,
                                      selectPostviewFormat());
 
@@ -2721,7 +2731,7 @@ status_t ControlThread::continuousStartStillCapture(bool useFlash)
 {
     LOG2("@%s: ", __FUNCTION__);
     status_t status = NO_ERROR;
-    int picWidth, picHeight, format;
+    int picWidth, picHeight, fourcc;
     int size;
 
     if (useFlash == false) {
@@ -2741,10 +2751,10 @@ status_t ControlThread::continuousStartStillCapture(bool useFlash)
          *
          */
         mParameters.getPictureSize(&picWidth, &picHeight);
-        format = mISP->getSnapshotPixelFormat();
-        size = frameSize(format, picWidth, picHeight);
+        fourcc = mISP->getSnapshotPixelFormat();
+        size = frameSize(fourcc, picWidth, picHeight);
 
-        setExternalSnapshotBuffers(format, picWidth, picHeight);
+        setExternalSnapshotBuffers(fourcc, picWidth, picHeight);
 
         status = mISP->allocateBuffers(MODE_CAPTURE);
         if (status != NO_ERROR) {
@@ -2870,7 +2880,7 @@ int ControlThread::selectPostviewFormat()
     int fourcc = 0;
 
    if (mPanoramaThread->getState() == PANORAMA_STOPPED) {
-        fourcc = PlatformData::getPreviewFormat();
+        fourcc = PlatformData::getPreviewPixelFormat();
     } else {
         fourcc = V4L2_PIX_FMT_NV21;
     }
@@ -2886,7 +2896,7 @@ status_t ControlThread::captureStillPic()
             = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
     AtomBuffer postviewBuffer
             = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
-    int width, height, format, size;
+    int width, height, fourcc, size;
     int pvWidth, pvHeight, pvSize;
     FlashMode flashMode = m3AControls->getAeFlashMode();
     bool flashOn = (flashMode == CAM_AE_FLASH_MODE_TORCH ||
@@ -2998,12 +3008,9 @@ status_t ControlThread::captureStillPic()
     mBurstQbufs = 0;
     // Get the current params
     mParameters.getPictureSize(&width, &height);
-    format = mISP->getSnapshotPixelFormat();
-    size = frameSize(format, width, height);
-    pvSize = frameSize(format, pvWidth, pvHeight);
-
-    // Configure PictureThread
-    mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
+    fourcc = mISP->getSnapshotPixelFormat();
+    size = frameSize(fourcc, width, height);
+    pvSize = frameSize(fourcc, pvWidth, pvHeight);
 
     if (mState != STATE_CONTINUOUS_CAPTURE) {
         // Possible smart scene parameter changes (XNR, ANR)
@@ -3011,11 +3018,11 @@ status_t ControlThread::captureStillPic()
             LOG1("set smart scene parameters failed");
 
         // Configure and start the ISP
-        mISP->setSnapshotFrameFormat(width, height, format);
+        mISP->setSnapshotFrameFormat(width, height, fourcc);
         mISP->setPostviewFrameFormat(pvWidth, pvHeight,
                                      selectPostviewFormat());
 
-        setExternalSnapshotBuffers(format, width, height);
+        setExternalSnapshotBuffers(fourcc, width, height);
 
         // Initialize bracketing manager before streaming starts
         if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE) {
@@ -3127,6 +3134,9 @@ status_t ControlThread::captureStillPic()
         LOGE("Error in grabbing snapshot!");
         return status;
     }
+
+    // Configure PictureThread
+    mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     PerformanceTraces::ShutterLag::snapshotTaken(&snapshotBuffer.capture_timestamp);
 
@@ -3459,7 +3469,7 @@ status_t ControlThread::captureULLPic()
     AtomBuffer postviewBuffer
             = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
     int pvWidth, pvHeight;
-    int picWidth, picHeight, format;
+    int picWidth, picHeight, fourcc;
     int cachedBurstLength, cachedBurstStart;
     // In case ULL gets triggered with standard preview update mode
     // we display the first postview frame, sync and hide the preview as
@@ -3472,7 +3482,7 @@ status_t ControlThread::captureULLPic()
     cachedBurstStart = mBurstStart;
 
     mParameters.getPictureSize(&picWidth, &picHeight);
-    format = mISP->getSnapshotPixelFormat();
+    fourcc = mISP->getSnapshotPixelFormat();
 
     status = mULL->init(picWidth,picHeight,0);
     if (status != NO_ERROR) {
@@ -3483,7 +3493,7 @@ status_t ControlThread::captureULLPic()
 
     PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE();
 
-    mCallbacksThread->requestTakePicture(true, false, displayPostview);
+    mCallbacksThread->requestTakePicture(true, true, displayPostview);
 
     stopFaceDetection();
     // Initialize the burst control variables for the ULL burst
@@ -3576,8 +3586,8 @@ void ControlThread::encodeVideoSnapshot(AtomBuffer &buff)
 
     fillPicMetaData(aDummyMetaData, false);
     LOG1("Encoding a video snapshot couple buf id:%d", buff.id);
-    LOG2("snapshot size %dx%d stride %d format %d", buff.width
-            ,buff.height, buff.stride, buff.format);
+    LOG2("snapshot size %dx%d bpl %d fourcc %d", buff.width
+            ,buff.height, buff.bpl, buff.fourcc);
 
     mVideoSnapshotBuffers.push(buff);
 
@@ -3999,9 +4009,26 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
                 LOGE("Stale snapshot buffer returned... this should not happen");
 
             } else if (findBufferByData(&msg->snapshotBuf, &mAvailableSnapshotBuffers) == NULL) {
-                mAvailableSnapshotBuffers.push(msg->snapshotBuf);
-                LOG1("%s  pushed %p to mAvailableSnapshotBuffers, size %d",
-                      __FUNCTION__, msg->snapshotBuf.dataPtr, mAvailableSnapshotBuffers.size());
+                // It's safe to recycle this buffer if needed
+                if (mBurstLength > 1 && mBurstBufsToReturn > 0) {
+                    if (mBracketManager->getBracketMode() != BRACKET_NONE) {
+                        status = mBracketManager->putSnapshot(msg->snapshotBuf, msg->postviewBuf);
+                    } else {
+                        status = mISP->putSnapshot(&msg->snapshotBuf, &msg->postviewBuf);
+                    }
+
+                    if (status != NO_ERROR) {
+                        LOGE("Error %d in putting snapshot buffer:%p postviewBuf:%p!", status,
+                                msg->snapshotBuf.dataPtr, msg->postviewBuf.dataPtr);
+                    } else {
+                        LOG1("Recycle snapshot buffer:%p postviewBuf:%p", msg->snapshotBuf.dataPtr, msg->postviewBuf.dataPtr);
+                    }
+                    mBurstBufsToReturn--;
+                } else {
+                    mAvailableSnapshotBuffers.push(msg->snapshotBuf);
+                    LOG1("%s  pushed %p to mAvailableSnapshotBuffers, size %d",
+                            __FUNCTION__, msg->snapshotBuf.dataPtr, mAvailableSnapshotBuffers.size());
+                }
             } else {
                 LOGE("%s Already available snapshot buffer arrived. Find the bug!!", __FUNCTION__);
             }
@@ -4220,7 +4247,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char* picFormat = params->get(CameraParameters::KEY_PICTURE_FORMAT);
     const char* picFormats = params->get(CameraParameters::KEY_SUPPORTED_PICTURE_FORMATS);
     if (!validateString(picFormat, picFormats)) {
-        LOGE("bad picture format: %s", picFormat);
+        LOGE("bad picture fourcc: %s", picFormat);
         return BAD_VALUE;
     }
 
@@ -4228,7 +4255,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char* preFormat = params->get(CameraParameters::KEY_PREVIEW_FORMAT);
     const char* preFormats = params->get(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS);
     if (!validateString(preFormat, preFormats))  {
-        LOGE("bad preview format: %s", preFormat);
+        LOGE("bad preview fourcc: %s", preFormat);
         return BAD_VALUE;
     }
 
@@ -4461,8 +4488,13 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     int newZoom = newParams->getInt(CameraParameters::KEY_ZOOM);
     bool zoomSupported = isParameterSet(CameraParameters::KEY_ZOOM_SUPPORTED) ? true : false;
     if (zoomSupported) {
-        status = mISP->setZoom(newZoom);
-        mPostProcThread->setZoom(mISP->zoomRatio(newZoom));
+        if(mDvs != NULL && mISP->getCssMajorVersion() == 2 &&
+           (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING)) {
+            mDvs->setZoom(newZoom);
+        } else {
+            status = mISP->setZoom(newZoom);
+            mPostProcThread->setZoom(mISP->zoomRatio(newZoom));
+        }
     }
     else
         LOGD("not supported zoom setting");
@@ -4641,7 +4673,7 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    int picWidth, picHeight, format;
+    int picWidth, picHeight, fourcc;
     unsigned int bufCount = MAX(mBurstLength, mISP->getContinuousCaptureNumber()+1);
 
     mParameters.getPictureSize(&picWidth, &picHeight);
@@ -4653,9 +4685,16 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
      * green) this is a known limitation of the raw capture sequence in ISP fW
      */
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW))
-        format = mHwcg.mSensorCI->getRawFormat();
+        fourcc = mHwcg.mSensorCI->getRawFormat();
     else
-        format = V4L2_PIX_FMT_NV12;
+        fourcc = V4L2_PIX_FMT_NV12;
+
+    /**
+     * Get the buffer required and clip it to ensure we
+     * allocate proper number of YUV buffers.
+     */
+    unsigned int clipTo = MAX(PlatformData::getMaxNumberSnapshotBuffers(mCameraId), (mISP->getContinuousCaptureNumber()+1));
+    bufCount = CLIP(bufCount, clipTo, 1);
 
     if(videoMode){
        /**
@@ -4667,7 +4706,7 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
        bufCount = 0;
     }
 
-    LOG1("Request to allocate %d bufs of (%dx%d) format: %d",bufCount, picWidth,picHeight,format);
+    LOG1("Request to allocate %d bufs of (%dx%d) fourcc: %d",bufCount, picWidth,picHeight,fourcc);
     LOG1("Currently allocated: %d , available %d",mAllocatedSnapshotBuffers.size(),
                                                   mAvailableSnapshotBuffers.size());
 
@@ -4678,7 +4717,7 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
 
         if ( (tmp.width == picWidth) &&
              (tmp.height == picHeight) &&
-             (tmp.format == format) &&
+             (tmp.fourcc == fourcc) &&
              (mAllocatedSnapshotBuffers.size() == bufCount)) {
             LOG1("No need to request Snapshot, buffers already available");
             return NO_ERROR;
@@ -4694,7 +4733,7 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
     bool registerToScaler = (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) &&
             (state == STATE_CONTINUOUS_CAPTURE);
 
-    status = mPictureThread->allocSharedBuffers(picWidth, picHeight, bufCount,format,
+    status = mPictureThread->allocSharedBuffers(picWidth, picHeight, bufCount,fourcc,
                                                 &mAllocatedSnapshotBuffers, registerToScaler);
 
     if (status != NO_ERROR) {
@@ -4704,7 +4743,7 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
     }
 
     // update configuration inside  AtomISP class
-    mISP->setSnapshotFrameFormat(picWidth,picHeight,format);
+    mISP->setSnapshotFrameFormat(picWidth,picHeight,fourcc);
     return status;
 }
 
@@ -4712,7 +4751,7 @@ void ControlThread::processParamFileInject(CameraParameters *newParams)
 {
     LOG1("@%s", __FUNCTION__);
 
-    unsigned int width = 0, height = 0, bayerOrder = 0, format = 0;
+    unsigned int width = 0, height = 0, bayerOrder = 0, fourcc = 0;
     const char *fileName = newParams->get(IntelCameraParameters::KEY_FILE_INJECT_FILENAME);
     if (!fileName || !strncmp(fileName, "off", sizeof("off")))
         return;
@@ -4720,12 +4759,12 @@ void ControlThread::processParamFileInject(CameraParameters *newParams)
     width = newParams->getInt(IntelCameraParameters::KEY_FILE_INJECT_WIDTH);
     height = newParams->getInt(IntelCameraParameters::KEY_FILE_INJECT_HEIGHT);
     bayerOrder = newParams->getInt(IntelCameraParameters::KEY_FILE_INJECT_BAYER_ORDER);
-    format = newParams->getInt(IntelCameraParameters::KEY_FILE_INJECT_FORMAT);
+    fourcc = newParams->getInt(IntelCameraParameters::KEY_FILE_INJECT_FORMAT);
 
     LOG1("FILE INJECTION new parameter dumping:");
-    LOG1("file name=%s,width=%d,height=%d,format=%d,bayer-order=%d.",
-          fileName, width, height, format, bayerOrder);
-    mISP->configureFileInject(fileName, width, height, format, bayerOrder);
+    LOG1("file name=%s,width=%d,height=%d,fourcc=%d,bayer-order=%d.",
+          fileName, width, height, fourcc, bayerOrder);
+    mISP->configureFileInject(fileName, width, height, fourcc, bayerOrder);
 
 }
 status_t ControlThread::processParamAFLock(const CameraParameters *oldParams,
@@ -5260,10 +5299,12 @@ void ControlThread::preProcessFlashMode(CameraParameters *newParams)
 {
     LOG1("@%s", __FUNCTION__);
 
-    // Don't do anything, if not using back camera. CTS fails,
-    // if we meddle with invalid flash values it sets.
-    if (!PlatformData::supportsFlash(mCameraId))
+    // If there is no flash in device, then flash mode should be set
+    // as off, that shall avoid HAL to go through the preFlashSequence.
+    if (!PlatformData::supportsFlash(mCameraId)) {
+        m3AControls->setAeFlashMode(CAM_AE_FLASH_MODE_OFF);
         return;
+    }
 
     bool lowBattery = mHwcg.mFlashCI->lowBatteryForFlash();
 
@@ -6346,7 +6387,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
         previewWidth = newWidth;
         previewHeight = newHeight;
         previewAspectRatio = 1.0 * newWidth / newHeight;
-        LOG1("Preview size/cb_format is changing: old=%dx%d %s; new=%dx%d %s; ratio=%.3f",
+        LOG1("Preview size/cb_fourcc is changing: old=%dx%d %s; new=%dx%d %s; ratio=%.3f",
                 oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
                 newWidth, newHeight, v4l2Fmt2Str(newFormat),
                 previewAspectRatio);
@@ -6354,7 +6395,7 @@ status_t ControlThread::processStaticParameters(const CameraParameters *oldParam
         mPreviewForceChanged = false;
     } else {
         previewAspectRatio = 1.0 * oldWidth / oldHeight;
-        LOG1("Preview size/cb_format is unchanged: old=%dx%d %s; ratio=%.3f",
+        LOG1("Preview size/cb_fourcc is unchanged: old=%dx%d %s; ratio=%.3f",
                 oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
                 previewAspectRatio);
     }
@@ -6605,6 +6646,26 @@ status_t ControlThread::createAtom3A()
         LOGE("error creating AAA");
         status = BAD_VALUE;
     }
+    return status;
+}
+
+/**
+ * Create DVS instance according to platform requirement:
+ * - AtomDvs
+ * - AtomDvs2
+ */
+status_t ControlThread::createAtomDvs()
+{
+    status_t status = NO_INIT;
+    if (mISP != NULL) {
+        if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5)){
+            mDvs = new AtomDvs(mHwcg);
+            status = NO_ERROR;
+        } else if (mISP->getCssMajorVersion() == 2) {
+            mDvs = new AtomDvs2(mHwcg);
+            status = NO_ERROR;
+        }
+     }
     return status;
 }
 
@@ -7072,9 +7133,9 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
 
     int size = mAllocatedSnapshotBuffers[0].size;
     int width = mAllocatedSnapshotBuffers[0].width;
-    int stride = mAllocatedSnapshotBuffers[0].stride;
+    int bpl = mAllocatedSnapshotBuffers[0].bpl;
     int height = mAllocatedSnapshotBuffers[0].height;
-    int format = mAllocatedSnapshotBuffers[0].format;
+    int fourcc = mAllocatedSnapshotBuffers[0].fourcc;
 
     mCallbacks->allocateMemory(&mHdr.outMainBuf, size);
     if (mHdr.outMainBuf.dataPtr == NULL) {
@@ -7123,20 +7184,20 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
         return NO_MEMORY;
     }
 
-    status = AtomCP::setIaFrameFormat(&mHdr.ciBufOut.ciMainBuf[0], format);
+    status = AtomCP::setIaFrameFormat(&mHdr.ciBufOut.ciMainBuf[0], fourcc);
     if (status != NO_ERROR) {
-        LOGE("HDR: pixel format %d not supported", format);
+        LOGE("HDR: pixel format %d not supported", fourcc);
         return status;
     }
 
     mHdr.ciBufOut.ciMainBuf->data = mHdr.outMainBuf.dataPtr;
     mHdr.ciBufOut.ciMainBuf[0].width = mHdr.outMainBuf.width = width;
-    mHdr.ciBufOut.ciMainBuf[0].stride = mHdr.outMainBuf.stride = stride;
+    mHdr.ciBufOut.ciMainBuf[0].stride = mHdr.outMainBuf.bpl = bpl;
     mHdr.ciBufOut.ciMainBuf[0].height = mHdr.outMainBuf.height = height;
-    mHdr.outMainBuf.format = format;
+    mHdr.outMainBuf.fourcc = fourcc;
     mHdr.ciBufOut.ciMainBuf[0].size = mHdr.outMainBuf.size = size;
 
-    LOG1("HDR: Initialized output CI main     buff @%p: (data=%p, size=%d, width=%d, height=%d, format=%d)",
+    LOG1("HDR: Initialized output CI main     buff @%p: (data=%p, size=%d, width=%d, height=%d, fourcc=%d)",
             &mHdr.ciBufOut.ciMainBuf[0],
             mHdr.ciBufOut.ciMainBuf[0].data,
             mHdr.ciBufOut.ciMainBuf[0].size,
@@ -7146,13 +7207,13 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
 
     mHdr.ciBufOut.ciPostviewBuf[0].data = mHdr.outPostviewBuf.dataPtr;
     mHdr.ciBufOut.ciPostviewBuf[0].width = mHdr.outPostviewBuf.width = pvWidth;
-    mHdr.ciBufOut.ciPostviewBuf[0].stride = mHdr.outPostviewBuf.stride = pvWidth;
+    mHdr.ciBufOut.ciPostviewBuf[0].stride = mHdr.outPostviewBuf.bpl = pvWidth;
     mHdr.ciBufOut.ciPostviewBuf[0].height = mHdr.outPostviewBuf.height = pvHeight;
-    AtomCP::setIaFrameFormat(&mHdr.ciBufOut.ciPostviewBuf[0], format);
-    mHdr.outPostviewBuf.format = format;
+    AtomCP::setIaFrameFormat(&mHdr.ciBufOut.ciPostviewBuf[0], fourcc);
+    mHdr.outPostviewBuf.fourcc = fourcc;
     mHdr.ciBufOut.ciPostviewBuf[0].size = mHdr.outPostviewBuf.size = pvSize;
 
-    LOG1("HDR: Initialized output CI postview buff @%p: (data=%p, size=%d, width=%d, height=%d, format=%d)",
+    LOG1("HDR: Initialized output CI postview buff @%p: (data=%p, size=%d, width=%d, height=%d, fourcc=%d)",
             &mHdr.ciBufOut.ciPostviewBuf[0],
             mHdr.ciBufOut.ciPostviewBuf[0].data,
             mHdr.ciBufOut.ciPostviewBuf[0].size,
@@ -7172,12 +7233,12 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
     // Initialize the HDR CI input buffers (main/postview) for this capture
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data = snapshotBuffer->dataPtr;
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].width = snapshotBuffer->width;
-    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].stride = snapshotBuffer->stride;
+    mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].stride = snapshotBuffer->bpl;
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height = snapshotBuffer->height;
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].size = snapshotBuffer->size;
-    AtomCP::setIaFrameFormat(&mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum], snapshotBuffer->format);
+    AtomCP::setIaFrameFormat(&mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum], snapshotBuffer->fourcc);
 
-    LOG1("HDR: Initialized input CI main     buff %d @%p: (addr=%p, length=%d, width=%d, height=%d, format=%d)",
+    LOG1("HDR: Initialized input CI main     buff %d @%p: (addr=%p, length=%d, width=%d, height=%d, fourcc=%d)",
             mBurstCaptureNum,
             &mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum],
             mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data,
@@ -7188,12 +7249,12 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
 
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].data = postviewBuffer->dataPtr;  /* postview buffers are never shared (i.e. coming from the PictureThread) */
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].width = postviewBuffer->width;
-    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].stride = postviewBuffer->stride;
+    mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].stride = postviewBuffer->bpl;
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height = postviewBuffer->height;
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].size = postviewBuffer->size;
-    AtomCP::setIaFrameFormat(&mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum], postviewBuffer->format);
+    AtomCP::setIaFrameFormat(&mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum], postviewBuffer->fourcc);
 
-    LOG1("HDR: Initialized input CI postview buff %d @%p: (addr=%p, length=%d, width=%d, height=%d, format=%d)",
+    LOG1("HDR: Initialized input CI postview buff %d @%p: (addr=%p, length=%d, width=%d, height=%d, fourcc=%d)",
             mBurstCaptureNum,
             &mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum],
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].data,
@@ -7335,36 +7396,37 @@ status_t ControlThread::hdrCompose()
  * \param [in] width width in pixels
  * \param [in] height height in lines
  */
-void ControlThread::setExternalSnapshotBuffers(int format, int width, int height)
+void ControlThread::setExternalSnapshotBuffers(int fourcc, int width, int height)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    unsigned int bufCount = MAX(mBurstLength, mISP->getContinuousCaptureNumber()+1);
+    int clipTo = MAX(PlatformData::getMaxNumberSnapshotBuffers(mCameraId), (mISP->getContinuousCaptureNumber()+1));
+    unsigned int bufNeeded = CLIP(MAX(mBurstLength, mISP->getContinuousCaptureNumber()+1), clipTo, 1);
 
-    /**
-     * This is needed for cases when we receive the take_picture request before
-     * start preview has completed, which is the normal place to allocate
-     * the snapshot buffers. This can happen with CTS or instantly tapping shutter
-     * after mode change.
-     */
-    if (mAllocatedSnapshotBuffers.isEmpty() ||
-        mAllocatedSnapshotBuffers.size() != bufCount ||
-        mAllocatedSnapshotBuffers[0].width != width ||
-        mAllocatedSnapshotBuffers[0].height != height) {
-
-        if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
-            allocateSnapshotBuffers(false);
-        } else {
-            LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
-        };
+    if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
+        // allocatedSnapshotbuffers will decide if really need to allocate
+        allocateSnapshotBuffers(false);
+    } else {
+        LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
     }
 
     unsigned int numberOfSnapshots = MAX(1,mBurstLength);
-    LOG1("Required Buffers for snapshot %d: Available %d Allocated: %d", numberOfSnapshots,
-                                                                         mAvailableSnapshotBuffers.size(),
-                                                                         mAllocatedSnapshotBuffers.size());
+    unsigned int numToSet = MIN(numberOfSnapshots, mAvailableSnapshotBuffers.size());
+    if (numToSet < numberOfSnapshots)
+        mBurstBufsToReturn = numberOfSnapshots - numToSet;
+    LOG1("Number of snapshots %d: Buffers needed:%d numToSet:%d To be returned:%d Available %d Allocated: %d ",
+            numberOfSnapshots, bufNeeded, numToSet, mBurstBufsToReturn,
+            mAvailableSnapshotBuffers.size(), mAllocatedSnapshotBuffers.size());
 
-    if (numberOfSnapshots <= mAvailableSnapshotBuffers.size()) {
+    /**
+     * Here size of mAvailableSnapshotBuffers maybe < mAvailableSnapshotBuffers
+     * In case that some buffers are still in process. But if only available buffer
+     * is enough to use, go ahead.
+     * For Example:
+     *  ULL needs 3 buffers, it will take a long time to process and here the number of
+     *  available buffer maybe only 1. But it's ok for ZSL shooting to use.
+     */
+    if (mAvailableSnapshotBuffers.size() >= numToSet) {
         if ((mAllocatedSnapshotBuffers[0].width != width) ||
             (mAllocatedSnapshotBuffers[0].height != height)) {
             LOGE("We got allocated snapshot buffers of wrong resolution (%dx%d), "
@@ -7374,7 +7436,7 @@ void ControlThread::setExternalSnapshotBuffers(int format, int width, int height
                   width, height);
         }
         bool cached = false;
-        status = mISP->setSnapshotBuffers(&mAvailableSnapshotBuffers, numberOfSnapshots, cached  );
+        status = mISP->setSnapshotBuffers(&mAvailableSnapshotBuffers, numToSet, cached);
     } else {
         /**
          * The places when we allocate snapshot buffers should ensure that at take
@@ -7386,7 +7448,6 @@ void ControlThread::setExternalSnapshotBuffers(int format, int width, int height
          */
         LOGE("Not enough available buffers for this request. This should not happen");
     }
-
 }
 
 /**
@@ -7958,8 +8019,7 @@ bool ControlThread::threadLoop()
                 status = waitForAndExecuteMessage();
             } else {
                 // make sure ISP has data before we ask for some
-                if (mISP->dataAvailable() &&
-                    (mBurstLength > 1 && mBurstCaptureNum < mBurstLength)) {
+                if (mISP->dataAvailable() && burstMoreCapturesNeeded()) {
                     status = captureBurstPic();
                 } else {
                     status = waitForAndExecuteMessage();
