@@ -25,6 +25,7 @@
 
 extern int32_t gLogLevel;
 extern int32_t gPowerLevel;
+extern int32_t gControlLevel;
 
 static void setLogLevel(int level) {
     android_atomic_write(level, &gLogLevel);
@@ -60,6 +61,12 @@ enum  {
     CAMERA_POWERBREAKDOWN_DISABLE_PREVIEW = 1<<0,
     CAMERA_POWERBREAKDOWN_DISABLE_FDFR = 1<<1,
     CAMERA_POWERBREAKDOWN_DISABLE_3A = 1<<2,
+};
+
+//TODO: we will combine the gPowerLevel to gControlLevel.
+enum  {
+    CAMERA_DISABLE_FRONT_NVM = 1<<3,
+    CAMERA_DISABLE_BACK_NVM = 1<<4
 };
 
 #define LOG1(...) LOGD_IF(gLogLevel & CAMERA_DEBUG_LOG_LEVEL1, __VA_ARGS__);
