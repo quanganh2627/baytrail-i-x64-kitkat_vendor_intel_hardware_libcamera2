@@ -384,11 +384,11 @@ status_t V4L2VideoNode::setFormat(AtomBuffer &formatDescriptor)
     formatDescriptor.size = mFormatDescriptor.size;
 
     // Also update the configuration struct with the bpl from ISP, if there is a mismatch
-    if (formatDescriptor.bpl != mFormatDescriptor.bpl) {
+    if (formatDescriptor.bpl != 0 && formatDescriptor.bpl != mFormatDescriptor.bpl) {
         LOGW("@%s: Mismatch between requested bpl (%d) and bpl from ISP (%d), using the value from ISP",
                 __FUNCTION__, formatDescriptor.bpl, mFormatDescriptor.bpl);
-        formatDescriptor.bpl = mFormatDescriptor.bpl;
     }
+    formatDescriptor.bpl = mFormatDescriptor.bpl;
 
     return NO_ERROR;
 }

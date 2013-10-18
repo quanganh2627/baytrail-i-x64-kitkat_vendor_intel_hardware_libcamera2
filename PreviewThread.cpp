@@ -897,7 +897,7 @@ PreviewThread::lookForAtomBuffer(AtomBuffer *buffer)
  */
 void PreviewThread::padPreviewBuffer(GfxAtomBuffer* &gfxBuf, MessagePreview* &msg)
 {
-    if (msg->buff.bpl < mGfxBpl && msg->buff.type == ATOM_BUFFER_PREVIEW_GFX) {
+    if (mPreviewBpl != 0 && msg->buff.bpl < mGfxBpl && msg->buff.type == ATOM_BUFFER_PREVIEW_GFX) {
         LOG2("@%s bpl-gfx=%d, bpl-msg=%d", __FUNCTION__, mGfxBpl, msg->buff.bpl);
         repadYUV420(gfxBuf->buffer.width, gfxBuf->buffer.height, gfxBuf->buffer.bpl,
                     mGfxBpl, gfxBuf->buffer.dataPtr, gfxBuf->buffer.dataPtr);
@@ -936,7 +936,7 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
             // parameter for callback conversions
             if (msg->buff.width != mPreviewWidth ||
                 msg->buff.height != mPreviewHeight ||
-                msg->buff.bpl != mPreviewBpl) {
+                (msg->buff.bpl != mPreviewBpl && mPreviewBpl != 0)) {
                 LOG1("%s: not passing buffer to window, conflicting format", __FUNCTION__);
                 LOG1(", input : %dx%d(%d:%x:%s)",
                      msg->buff.width, msg->buff.height, msg->buff.bpl, msg->buff.fourcc,
@@ -1086,9 +1086,10 @@ status_t PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
         mPreviewWindow->set_usage(mPreviewWindow, usage);
         /**
          * In case we do the rotation in CPU (like in overlay case) the width and
-         * height do not need to be restricted by ISP bpl. The original ISP bpl is
-         * stored in mPreviewBpl. The rotation routine will take care of this
-         *
+         * height do not need to be restricted by ISP bpl. PreviewThread does not
+         * request any bpl and therefore sets its mPreviewBpl to zero. The rotation
+         * routine will take care of arbitrary bytes per line sizes of input
+         * frames.
          */
         if (mRotation == 90 || mRotation == 270) {
             mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, getGFXHALPixelFormatFromV4L2Format(mPreviewFourcc));
@@ -1144,11 +1145,11 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
          */
         mPreviewWidth = msg->width;
         mPreviewHeight = msg->height;
-        // If the preview has been rotated, calculate the bpl from the width.
-        // Calculate the bpl also if the preview window has not been set.
+        // If the preview needs to be rotated, let AtomISP decide the bpl
+        // since nv12rotateBy90() supports arbitrary line-badding.
         // Otherwise use the bpl of buffers dequeued from the preview window.
         if (mRotation == 90 || mRotation == 270 || mPreviewWindow == NULL)
-            mPreviewBpl = pixelsToBytes(mPreviewFourcc, mPreviewWidth);
+            mPreviewBpl = 0;
         else
             mPreviewBpl = getGfxBufferBytesPerLine();
     }
