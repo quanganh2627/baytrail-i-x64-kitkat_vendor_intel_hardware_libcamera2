@@ -643,12 +643,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * MISCELLANEOUS
      */
-    float vertical = 42.5;
-    float horizontal = 54.8;
-    PlatformData::HalConfig.getFloat(vertical, CPF::Fov, CPF::Vertical);
-    PlatformData::HalConfig.getFloat(horizontal, CPF::Fov, CPF::Horizontal);
-    params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, vertical);
-    params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, horizontal);
+    params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, PlatformData::verticalFOV(cameraId));
+    params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, PlatformData::horizontalFOV(cameraId));
 
     /**
      * OVERLAY
@@ -2537,12 +2533,15 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
         params->getPreviewSize(&previewWidth, &previewHeight);
         params->getVideoSize(&videoWidth, &videoHeight);
         if((previewWidth*previewHeight) > (videoWidth*videoHeight)) {
+            if(videoWidth != mConfig.recording.width || videoHeight != mConfig.recording.height
+               || !mRecordingDeviceSwapped) {
                 ret = true;
                 mSwapRecordingDevice = true;
                 workaround2 = true;
                 LOG1("Video dimension(s) [%d, %d] is smaller than preview dimension(s) [%d, %d]. "
                      "Triggering swapping of preview and recording devices.",
                      videoWidth, videoHeight, previewWidth, previewHeight);
+            }
         } else {
             mSwapRecordingDevice = false;
         }
@@ -3934,8 +3933,8 @@ status_t AtomISP::allocateRecordingBuffers()
     for (int i = 0; i < mNumBuffers; i++) {
         mRecordingBuffers[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_VIDEO); // init fields
         // recording buffers use uncached memory
+        MemoryUtils::allocateGraphicBuffer(mRecordingBuffers[i], mConfig.recording);
 
-        mCallbacks->allocateMemory(&mRecordingBuffers[i], mConfig.recording.size);
         LOG1("allocate recording buffer[%d], buff=%p size=%d",
                 i, mRecordingBuffers[i].dataPtr, mRecordingBuffers[i].size);
         if (mRecordingBuffers[i].dataPtr == NULL) {
@@ -3949,6 +3948,7 @@ status_t AtomISP::allocateRecordingBuffers()
         mRecordingBuffers[i].shared = false;
         mRecordingBuffers[i].width = mConfig.recording.width;
         mRecordingBuffers[i].height = mConfig.recording.height;
+        mRecordingBuffers[i].size = mConfig.recording.size;
         mRecordingBuffers[i].bpl = mConfig.recording.bpl;
         mRecordingBuffers[i].fourcc = mConfig.recording.fourcc;
     }
@@ -4119,8 +4119,13 @@ status_t AtomISP::allocateMetaDataBuffers()
     for (int i = 0; i < mNumBuffers; i++) {
         metaDataBuf = new IntelMetadataBuffer();
         if(metaDataBuf) {
-            initMetaDataBuf(metaDataBuf);
-            metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].dataPtr);
+            if (PlatformData::isGraphicGen()) {
+                metaDataBuf->SetType(MetadataBufferTypeGrallocSource);
+                metaDataBuf->SetValue((uint32_t)*mRecordingBuffers[i].gfxInfo_rec.gfxBufferHandle);
+            } else {
+                initMetaDataBuf(metaDataBuf);
+                metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].dataPtr);
+            }
             metaDataBuf->Serialize(meta_data_prt, meta_data_size);
             mRecordingBuffers[i].metadata_buff = NULL;
             mCallbacks->allocateMemory(&mRecordingBuffers[i].metadata_buff, meta_data_size);
