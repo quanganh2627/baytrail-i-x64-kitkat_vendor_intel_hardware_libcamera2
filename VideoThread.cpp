@@ -90,6 +90,8 @@ void VideoThread::getDefaultParameters(CameraParameters *intel_params, int camer
         intel_params->set(IntelCameraParameters::KEY_SLOW_MOTION_RATE, IntelCameraParameters::SLOW_MOTION_RATE_1X);
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SLOW_MOTION_RATE, "1x,2x,3x,4x");
     }
+
+    intel_params->set(IntelCameraParameters::REC_BUFFER_SHARING_SESSION_ID, "0");
 }
 
 status_t VideoThread::handleMessageExit()

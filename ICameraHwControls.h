@@ -145,7 +145,7 @@ public:
     virtual int getNumVideoBuffers(void) = 0;
     virtual status_t returnRecordingBuffers() = 0;
     // Enable metadata buffer mode API
-    virtual status_t storeMetaDataInBuffers(bool enabled) = 0;
+    virtual status_t storeMetaDataInBuffers(bool enabled, int sID) = 0;
 
     // For capture pipelines
     virtual status_t setSnapshotFrameFormat(int width, int height, int fourcc = 0) = 0;

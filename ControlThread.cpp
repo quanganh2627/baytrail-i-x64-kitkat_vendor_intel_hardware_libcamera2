@@ -6972,8 +6972,11 @@ status_t ControlThread::handleMessageStoreMetaDataInBuffers(MessageStoreMetaData
         return status;
     }
 
+    //find the setted buffer sharing session ID
+    int sID = mParameters.getInt(IntelCameraParameters::REC_BUFFER_SHARING_SESSION_ID);
+
     mStoreMetaDataInBuffers = msg->enabled;
-    status = mISP->storeMetaDataInBuffers(msg->enabled);
+    status = mISP->storeMetaDataInBuffers(msg->enabled, sID);
     if(status == NO_ERROR)
         status = mCallbacks->storeMetaDataInBuffers(msg->enabled);
     else

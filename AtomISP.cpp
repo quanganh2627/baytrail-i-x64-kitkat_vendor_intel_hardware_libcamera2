@@ -33,6 +33,9 @@
 #include <linux/media.h>
 #include <linux/atomisp.h>
 #include "PerformanceTraces.h"
+#include <binder/IMemory.h>
+#include <binder/MemoryBase.h>
+#include <binder/MemoryHeapBase.h>
 
 #define DEFAULT_SENSOR_FPS      15.0
 #define DEFAULT_PREVIEW_FPS     30.0
@@ -101,6 +104,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mClientSnapshotBuffersCached(true)
     ,mUsingClientSnapshotBuffers(false)
     ,mStoreMetaDataInBuffers(false)
+    ,mBufferSharingSessionID(DEFAULT_BUFFER_SHARING_SESSION_ID)
     ,mNumPreviewBuffersQueued(0)
     ,mNumRecordingBuffersQueued(0)
     ,mNumCapturegBuffersQueued(0)
@@ -3935,8 +3939,19 @@ status_t AtomISP::allocateRecordingBuffers()
 
     for (int i = 0; i < mNumBuffers; i++) {
         mRecordingBuffers[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_VIDEO); // init fields
-        // recording buffers use uncached memory
+#ifdef INTEL_VIDEO_XPROC_SHARING
+        /**
+         * To share the buffer cross process, it should be MemoryHeap or Graphic buffer.
+         * Prefer to use Graphic buffer but can not currently because:
+         * 1. Graphic recording buffers are all locked in Camera HAL. It's hard to make it unlock for encoder.
+         * 2. Encoder is a bit premature to support graphic buffer well for all platforms.
+         * FIXME: Unified use graphic buffer if above case are all resolved.
+         */
+        MemoryUtils::allocateAtomBuffer(mRecordingBuffers[i], mConfig.recording, mCallbacks);
+#else
+        //recording buffers use uncached memory
         MemoryUtils::allocateGraphicBuffer(mRecordingBuffers[i], mConfig.recording);
+#endif
 
         LOG1("allocate recording buffer[%d], buff=%p size=%d",
                 i, mRecordingBuffers[i].dataPtr, mRecordingBuffers[i].size);
@@ -4090,11 +4105,39 @@ void AtomISP::initMetaDataBuf(IntelMetadataBuffer* metaDatabuf)
     vinfo->format = STRING_TO_FOURCC("NV12");
     vinfo->s3dformat = 0xFFFFFFFF;
     metaDatabuf->SetValueInfo(vinfo);
+    metaDatabuf->SetType(MetadataBufferTypeCameraSource);
     delete vinfo;
     vinfo = NULL;
 
 }
 #endif
+
+/**
+ * Have to copy this private class here because we want to access the MemoryBase object
+ * which is hiding in the handle of camera_memory_t
+ * It's for camera recording to share MemoryHeap buffer only.
+ * FIXME: remove it if we are able to share graphic buffer in the fulture
+ */
+class CameraHeapMemory : public RefBase {
+public:
+    CameraHeapMemory(int fd, size_t buf_size, uint_t num_buffers = 1) :
+        mBufSize(buf_size),
+        mNumBufs(num_buffers) {}
+
+    CameraHeapMemory(size_t buf_size, uint_t num_buffers = 1) :
+        mBufSize(buf_size),
+        mNumBufs(num_buffers) {}
+
+    void commonInitialization() {}
+
+    virtual ~CameraHeapMemory() {}
+
+    size_t mBufSize;
+    uint_t mNumBufs;
+    sp<MemoryHeapBase> mHeap;
+    sp<MemoryBase> *mBuffers;
+    camera_memory_t handle;
+};
 
 status_t AtomISP::allocateMetaDataBuffers()
 {
@@ -4112,6 +4155,9 @@ status_t AtomISP::allocateMetaDataBuffers()
             if (mRecordingBuffers[i].metadata_buff != NULL) {
                 mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
                 mRecordingBuffers[i].metadata_buff = NULL;
+#ifdef INTEL_VIDEO_XPROC_SHARING
+                IntelMetadataBuffer::ClearContext(mBufferSharingSessionID, true);
+#endif
             }
         }
     } else {
@@ -4127,14 +4173,22 @@ status_t AtomISP::allocateMetaDataBuffers()
                 metaDataBuf->SetValue((uint32_t)*mRecordingBuffers[i].gfxInfo_rec.gfxBufferHandle);
             } else {
                 initMetaDataBuf(metaDataBuf);
+#ifdef INTEL_VIDEO_XPROC_SHARING
+                // for cross-process sharing
+                metaDataBuf->SetSessionFlag(mBufferSharingSessionID);
+                sp<CameraHeapMemory> mem(static_cast<CameraHeapMemory *>(mRecordingBuffers[i].buff->handle));
+                metaDataBuf->ShareValue(mem->mBuffers[0]);
+#else
+                // for video recording only
                 metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].dataPtr);
+#endif
             }
             metaDataBuf->Serialize(meta_data_prt, meta_data_size);
             mRecordingBuffers[i].metadata_buff = NULL;
             mCallbacks->allocateMemory(&mRecordingBuffers[i].metadata_buff, meta_data_size);
-            LOG1("allocate metadata buffer[%d]  buff=%p size=%d",
+            LOG1("allocate metadata buffer[%d]  buff=%p size=%d sID:%d",
                 i, mRecordingBuffers[i].metadata_buff->data,
-                mRecordingBuffers[i].metadata_buff->size);
+                mRecordingBuffers[i].metadata_buff->size, mBufferSharingSessionID);
             if (mRecordingBuffers[i].metadata_buff == NULL) {
                 LOGE("Error allocation memory for metadata buffers!");
                 status = NO_MEMORY;
@@ -4196,6 +4250,11 @@ status_t AtomISP::freeRecordingBuffers()
     if(mRecordingBuffers != NULL) {
         for (int i = 0 ; i < mNumBuffers; i++)
             MemoryUtils::freeAtomBuffer(mRecordingBuffers[i]);
+
+#ifdef INTEL_VIDEO_XPROC_SHARING
+        if (mStoreMetaDataInBuffers)
+            IntelMetadataBuffer::ClearContext(mBufferSharingSessionID, true);
+#endif
 
         delete[] mRecordingBuffers;
         mRecordingBuffers = NULL;
@@ -4521,11 +4580,12 @@ int AtomISP::abortFirmware(unsigned int fwHandle, unsigned int timeout)
     return ret;
 }
 
-status_t AtomISP::storeMetaDataInBuffers(bool enabled)
+status_t AtomISP::storeMetaDataInBuffers(bool enabled, int sID)
 {
     LOG1("@%s: enabled = %d", __FUNCTION__, enabled);
     status_t status = NO_ERROR;
     mStoreMetaDataInBuffers = enabled;
+    mBufferSharingSessionID = (sID == -1)? DEFAULT_BUFFER_SHARING_SESSION_ID : sID;
 
     /**
      * if we are not in video mode we just store the value
@@ -4546,6 +4606,9 @@ exitFreeRec:
             if (mRecordingBuffers[i].metadata_buff != NULL) {
                 mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
                 mRecordingBuffers[i].metadata_buff = NULL;
+#ifdef INTEL_VIDEO_XPROC_SHARING
+                IntelMetadataBuffer::ClearContext(mBufferSharingSessionID, true);
+#endif
             }
         }
     }

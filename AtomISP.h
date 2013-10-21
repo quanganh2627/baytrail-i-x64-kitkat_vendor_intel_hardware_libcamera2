@@ -48,6 +48,7 @@ namespace android {
 #define LARGEST_THUMBNAIL_WIDTH 320
 #define LARGEST_THUMBNAIL_HEIGHT 240
 
+#define DEFAULT_BUFFER_SHARING_SESSION_ID 0
 struct devNameGroup
 {
     char dev[MAX_CAMERA_NODES + 1][MAX_DEVICE_NODE_CHAR_NR];
@@ -193,7 +194,7 @@ public:
     int abortFirmware(unsigned int fwHandle, unsigned int timeout);
 
     // Enable metadata buffer mode API
-    status_t storeMetaDataInBuffers(bool enabled);
+    status_t storeMetaDataInBuffers(bool enabled, int sID);
 
     /* IHWFlashControl overloads, */
     status_t setFlash(int numFrames);
@@ -509,6 +510,7 @@ private:
     bool mClientSnapshotBuffersCached;
     bool mUsingClientSnapshotBuffers;
     bool mStoreMetaDataInBuffers;
+    int  mBufferSharingSessionID;
 
     AtomBuffer mSnapshotBuffers[MAX_BURST_BUFFERS];
     Vector <AtomBuffer> mPostviewBuffers;
