@@ -1747,7 +1747,7 @@ void AtomAIQ::resetAECParams()
     mAeInputParameters.manual_iso = -1;
     mAeInputParameters.manual_frame_time_us_min = -1;
     mAeInputParameters.manual_frame_time_us_max = -1;
-    mAeInputParameters.aec_features = ia_aiq_ae_feature_tuning;
+    mAeInputParameters.aec_features = NULL; // Using AEC feature definitions from CPF
 }
 
 status_t AtomAIQ::runAeMain()
