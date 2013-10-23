@@ -855,11 +855,18 @@ class PlatformData {
     static int getRecordingBufNum(void);
 
     /**
-     * Returns the max number of snapshot buffers
+     * Returns the max number of YUV buffers for burst capture
      *
-     * \return the max number of snapshot buffers
+     * \return the max number of YUV buffers for burst capture
     */
-    static int getMaxNumberSnapshotBuffers(int cameraId);
+    static int getMaxNumYUVBufferForBurst(int cameraId);
+
+    /**
+     * Returns the max number of YUV buffers for bracketing
+     *
+     * \return the max number of YUV buffers for bracketing
+    */
+    static int getMaxNumYUVBufferForBracket(int cameraId);
 
     /**
      * Whether Intel3A ia_aiq is supported?
@@ -1146,7 +1153,8 @@ protected:
             defaultSceneDetection = "off";
             supportedSceneDetection = "on,off";
             synchronizeExposure = false;
-            maxNumSnapshotBuffers = 10;
+            maxNumYUVBufferForBurst = 10;
+            maxNumYUVBufferForBracket = 10;
             // FOV
             verticalFOV = 42.5f;
             horizontalFOV = 54.8f;
@@ -1265,9 +1273,10 @@ protected:
          * The number of snapshot buffers is not necessary equal to burst length as before.
          * Here we set a value to control the max number of buffer we allocate in any capture case
          * The number value is mainly depends on the speed of jpeg encoder.
-         * Bracketing of AE and AF also affects it
+         * Bracketing of AE and AF needs more buffers
          */
-        int maxNumSnapshotBuffers;
+        int maxNumYUVBufferForBurst;
+        int maxNumYUVBufferForBracket;
 
         // FOV
         float verticalFOV;

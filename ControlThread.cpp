@@ -4628,11 +4628,13 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
     else
         fourcc = V4L2_PIX_FMT_NV12;
 
+    int recommendedNum = ((mBracketManager->getBracketMode() != BRACKET_NONE)?
+        PlatformData::getMaxNumYUVBufferForBracket(mCameraId) : PlatformData::getMaxNumYUVBufferForBurst(mCameraId));
     /**
      * Get the buffer required and clip it to ensure we
      * allocate proper number of YUV buffers.
      */
-    unsigned int clipTo = MAX(PlatformData::getMaxNumberSnapshotBuffers(mCameraId), (mISP->getContinuousCaptureNumber()+1));
+    unsigned int clipTo = MAX(recommendedNum, (mISP->getContinuousCaptureNumber()+1));
     bufCount = CLIP(bufCount, clipTo, 1);
 
     if(videoMode){
@@ -7350,7 +7352,15 @@ void ControlThread::setExternalSnapshotBuffers(int fourcc, int width, int height
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    int clipTo = MAX(PlatformData::getMaxNumberSnapshotBuffers(mCameraId), (mISP->getContinuousCaptureNumber()+1));
+
+    /**
+     * Bracketing needs more buffers than burst.
+     * so we make a difference between them
+     */
+    int recommendedNum = ((mBracketManager->getBracketMode() != BRACKET_NONE)?
+        PlatformData::getMaxNumYUVBufferForBracket(mCameraId) : PlatformData::getMaxNumYUVBufferForBurst(mCameraId));
+
+    int clipTo = MAX(recommendedNum, (mISP->getContinuousCaptureNumber()+1));
     unsigned int bufNeeded = CLIP(MAX(mBurstLength, mISP->getContinuousCaptureNumber()+1), clipTo, 1);
 
     if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {

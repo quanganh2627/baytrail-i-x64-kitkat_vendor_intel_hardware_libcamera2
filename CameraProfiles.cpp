@@ -293,8 +293,10 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->supportedAwbLock = atts[1];
     } else if (strcmp(name, "synchronizeExposure") == 0) {
         pCurrentCam->synchronizeExposure = ((strcmp(atts[1], "true") == 0) ? true : false);
-    } else if (strcmp(name, "maxNumSnapshotBuffers") == 0) {
-        pCurrentCam->maxNumSnapshotBuffers = atoi(atts[1]);
+    } else if (strcmp(name, "maxNumYUVBufferForBurst") == 0) {
+        pCurrentCam->maxNumYUVBufferForBurst = atoi(atts[1]);
+    } else if (strcmp(name, "maxNumYUVBufferForBracket") == 0) {
+        pCurrentCam->maxNumYUVBufferForBracket = atoi(atts[1]);
     } else if (strcmp(name, "verticalFOV") == 0) {
         float angle = atof(atts[1]);
         if (angle > 0 && angle < 180) {
@@ -549,7 +551,8 @@ void CameraProfiles::dump(void)
         LOGD("line%d, in DeviceData, pcam->supportedPanorama:%s ", __LINE__, mCameras[i].supportedPanorama.string());
         LOGD("line%d, in DeviceData, pcam->defaultSceneDetection:%s ", __LINE__, mCameras[i].defaultSceneDetection.string());
         LOGD("line%d, in DeviceData, pcam->supportedSceneDetection:%s ", __LINE__, mCameras[i].supportedSceneDetection.string());
-        LOGD("line%d, in DeviceData, pcam->maxNumSnapshotBuffers:%d ", __LINE__, mCameras[i].maxNumSnapshotBuffers);
+        LOGD("line%d, in DeviceData, pcam->maxNumYUVBufferForBurst:%d ", __LINE__, mCameras[i].maxNumYUVBufferForBurst);
+        LOGD("line%d, in DeviceData, pcam->maxNumYUVBufferForBracket:%d ", __LINE__, mCameras[i].maxNumYUVBufferForBracket);
     }
 
     LOGD("line%d, in DeviceData, for common settings ", __LINE__);
