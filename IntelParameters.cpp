@@ -96,8 +96,6 @@ namespace android {
     const char IntelCameraParameters::KEY_BURST_FPS[] = "burst-fps"; // TODO: old API, it will be deleted in the future.
     const char IntelCameraParameters::KEY_SUPPORTED_BURST_SPEED[] = "burst-speed-values";
     const char IntelCameraParameters::KEY_BURST_SPEED[] = "burst-speed";
-    const char IntelCameraParameters::KEY_SUPPORTED_BURST_CONTINUOUS[] = "burst-continuous-values";
-    const char IntelCameraParameters::KEY_BURST_CONTINUOUS[] = "burst-continuous";
     const char IntelCameraParameters::KEY_BURST_START_INDEX[] = "burst-start-index";
     const char IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX[] = "burst-start-index-values";
     //values for burst speed

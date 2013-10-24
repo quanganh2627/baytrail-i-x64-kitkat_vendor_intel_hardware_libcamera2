@@ -75,8 +75,6 @@ namespace android {
     static const char KEY_BURST_FPS[]; // TODO: old API, it will be deleted in the future.
     static const char KEY_SUPPORTED_BURST_SPEED[];
     static const char KEY_BURST_SPEED[];
-    static const char KEY_BURST_CONTINUOUS[];
-    static const char KEY_SUPPORTED_BURST_CONTINUOUS[];
     //values for burst speed
     static const char BURST_SPEED_FAST[];
     static const char BURST_SPEED_MEDIUM[];
