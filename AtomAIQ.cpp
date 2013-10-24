@@ -299,9 +299,23 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
     mAeState.ae_results = NULL;
     status = runAeMain();
 
-    /* run AWB and GBCE to get initial values */
-    runAwbMain();
-    status |= runGBCEMain();
+    /* GBCE is disabled only with flash.
+     * We use it to indicate when to restore results from
+     * pre-flash start condition.
+     * Note:
+     * - AWB is run during flash sequence and results are therefore explicitly stored
+     * - GBCE is not run during flash sequence, so its previous results just get used in
+     *   runAICMain()
+     */
+    if (!mGBCEEnable && isp_mode != ia_aiq_frame_use_still) {
+        LOG1("Restoring AWB & GBCE results that preceded flash");
+        mGBCEEnable = true;
+        mAwbResults = &mAwbStoredResults;
+    } else {
+        /* run AWB and GBCE to get initial values */
+        runAwbMain();
+        status |= runGBCEMain();
+    }
 
     /* Re-run AIC to get new results for new mode. LSC needs to be updated if resolution changes. */
     status |= runAICMain();
@@ -1107,7 +1121,6 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
         bool prev_af_lock = getAfLock();
         bool prev_ae_lock = getAeLock();
         bool prev_awb_lock = getAwbLock();
-        resetGBCEParams();
         mGBCEEnable = false;
 
         /* AF is not run during flash sequence. */
@@ -1127,11 +1140,13 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
         setAfLock(prev_af_lock);
         setAeLock(prev_ae_lock);
         setAwbLock(prev_awb_lock);
-        resetGBCEParams();
     }
     else
     {
         ret = apply3AProcess(true, dummy_time, dummy_time);
+
+        if (mAwbResults)
+            mAwbStoredResults = *mAwbResults;
     }
     return ret;
 }
@@ -2158,10 +2173,10 @@ status_t AtomAIQ::runAICMain()
         pa_input_params.awb_results = mAwbResults;
         mIspInputParams.awb_results = mAwbResults;
 
-        if (mGBCEResults) {
+        if (mGBCEEnable && mGBCEResults) {
             LOG2("gbce :%d", mGBCEResults->ctc_gains_lut_size);
         }
-        mIspInputParams.gbce_results = mGBCEResults;
+        mIspInputParams.gbce_results = mGBCEEnable ? mGBCEResults : NULL;
 
         pa_input_params.sensor_frame_params = &m3aState.sensor_frame_params;
         mIspInputParams.sensor_frame_params = &m3aState.sensor_frame_params;
