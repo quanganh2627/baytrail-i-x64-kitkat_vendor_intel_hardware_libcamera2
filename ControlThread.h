@@ -32,7 +32,6 @@
 #include "CallbacksThread.h"
 #include "AAAThread.h"
 #include "I3AControls.h"
-#include "IDvs.h"
 #include "CameraConf.h"
 #include "PostProcThread.h"
 #include "PanoramaThread.h"
@@ -538,6 +537,7 @@ private:
     // set while the isp is stopped as well).
     status_t processDynamicParameters(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    status_t processParamDvs(const CameraParameters *oldParams, CameraParameters *newParams);
     status_t processParamBurst(const CameraParameters *oldParams,
                 CameraParameters *newParams);
     status_t processParamFlash(const CameraParameters *oldParams,
@@ -677,7 +677,6 @@ private:
     void restoreCurrentPictureParams();
 
     status_t createAtom3A();
-    status_t createAtomDvs();
 
     void enableFocusCallbacks();
     void disableFocusCallbacks();
@@ -696,7 +695,6 @@ private:
     int mCameraId;
     HWControlGroup mHwcg;
     IHWIspControl *mISP;
-    IDvs *mDvs;
     AtomCP  *mCP;
     UltraLowLight *mULL;
     I3AControls *m3AControls;
@@ -759,6 +757,8 @@ private:
     HdrImaging mHdr;
     bool mAELockFlashNeed;
     float mPublicShutter;       /* Shutter set by application */
+
+    bool mDvsEnable;
 
     Mutex mParamCacheLock;
     char* mParamCache;

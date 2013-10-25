@@ -84,6 +84,8 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mFrameSyncSource("FrameSyncSource", this)
     ,m3AStatSource("AAAStatSource", this)
     ,mCameraId(cameraId)
+    ,mDvs(NULL)
+    ,mDvsEnabled(false)
     ,mGroupIndex (-1)
     ,mMode(MODE_NONE)
     ,mCallbacks(callbacks)
@@ -199,6 +201,25 @@ status_t AtomISP::initDevice()
     return status;
 }
 
+status_t AtomISP::initDVS()
+{
+
+    status_t status = NO_ERROR;
+    HWControlGroup hwcg;
+    hwcg.mIspCI = (IHWIspControl*) this;
+    hwcg.mSensorCI = (IHWSensorControl*) this;
+    mDvs = IDvs::createAtomDvs(hwcg);
+    if (!mDvs)
+        return NO_INIT;
+
+    status = mDvs->dvsInit();
+    if (status != NO_ERROR) {
+        LOGE("%s: Failed to initiate DVS", __FUNCTION__);
+        delete mDvs;
+        mDvs = NULL;
+    }
+    return status;
+}
 /**
  * Closes the main device
  *
@@ -212,6 +233,11 @@ status_t AtomISP::initDevice()
  */
 void AtomISP::deInitDevice()
 {
+    if (mDvs != NULL) {
+        delete mDvs;
+        mDvs = NULL;
+    }
+
     LOG1("@%s", __FUNCTION__);
     mMainDevice->close();
 }
@@ -559,7 +585,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
      */
     if(PlatformData::supportsDVS(cameraId))
     {
-        params->set(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED,"true");
+        params->set(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED,"true,false");
         params->set(CameraParameters::KEY_VIDEO_STABILIZATION,"true");
     }
 
@@ -1058,6 +1084,14 @@ status_t AtomISP::start()
         status = startPreview();
         break;
     case MODE_VIDEO:
+        // in CSS2.0 mDvs is mandatory for zoom functionality
+        if (mDvs && (mCssMajorVersion == 2 || mDvsEnabled)) {
+            if (mDvs->reconfigure() == NO_ERROR) {
+                attachObserver(mDvs, OBSERVE_PREVIEW_STREAM);
+                LOG1("%s: attach mDvs to Preview Stream Observer", __FUNCTION__);
+                mDvs->setZoom(mConfig.zoom);
+            }
+        }
         status = startRecording();
         break;
     case MODE_CAPTURE:
@@ -1073,6 +1107,11 @@ status_t AtomISP::start()
         mSessionId++;
     } else {
         mMode = MODE_NONE;
+        if (mDvs) {
+            setDVS(false);
+            detachObserver(mDvs, OBSERVE_PREVIEW_STREAM);
+            LOG1("%s: detach mDvs from Preview Stream Observer", __FUNCTION__);
+        }
     }
 
     return status;
@@ -1137,6 +1176,11 @@ status_t AtomISP::stop()
     if (status == NO_ERROR)
         mMode = MODE_NONE;
 
+    if (mDvs) {
+        detachObserver(mDvs, OBSERVE_PREVIEW_STREAM);
+        LOG1("%s: detach mDvs from Preview Stream Observer", __FUNCTION__);
+    }
+
     return status;
 }
 
@@ -1174,7 +1218,10 @@ status_t AtomISP::configurePreview()
     }
 
     // need to resend the current zoom value
-    atomisp_set_zoom(mConfig.zoom);
+    if (mMode == MODE_VIDEO && mDvs && mCssMajorVersion == 2)
+        mDvs->setZoom(mConfig.zoom);
+    else
+        atomisp_set_zoom(mConfig.zoom);
 
     return status;
 
@@ -1461,7 +1508,10 @@ nopostview:
     }
 
     // need to resend the current zoom value
-    atomisp_set_zoom(mConfig.zoom);
+    if (mMode == MODE_VIDEO && mDvs && mCssMajorVersion == 2)
+        mDvs->setZoom(mConfig.zoom);
+    else
+        atomisp_set_zoom(mConfig.zoom);
 
     return status;
 
@@ -1552,8 +1602,8 @@ status_t AtomISP::configureContinuousRingBuffer()
     else
         numBuffers += captures;
 
+    if (mCssMajorVersion >= 2) {
     // for css2.x, the minimum raw ring buffers number is ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X
-    if (getCssMajorVersion() >= 2) {
         //when offset is -1 , one ring buffer is able to be optimized
         if (offset == -1)
             numBuffers -= 1;
@@ -1781,7 +1831,10 @@ status_t AtomISP::configureContinuous()
     }
 
     // need to resend the current zoom value
-    atomisp_set_zoom(mConfig.zoom);
+    if (mMode == MODE_VIDEO && mDvs && mCssMajorVersion == 2)
+        mDvs->setZoom(mConfig.zoom);
+    else
+        atomisp_set_zoom(mConfig.zoom);
 
     // restore the actual capture fps value
     mConfig.fps = capture_fps;
@@ -2702,16 +2755,20 @@ status_t AtomISP::applyColorEffect()
 
 status_t AtomISP::setZoom(int zoom)
 {
-    LOG1("@%s: zoom = %d", __FUNCTION__, zoom);
+    LOG1("@%s: zoom = %d - %d", __FUNCTION__, zoom, mConfig.zoom);
     if (zoom == mConfig.zoom)
         return NO_ERROR;
     if (mMode == MODE_CAPTURE)
         return NO_ERROR;
 
-    int ret = atomisp_set_zoom(zoom);
-    if (ret < 0) {
-        LOGE("Error setting zoom to %d", zoom);
-        return UNKNOWN_ERROR;
+    if (mMode == MODE_VIDEO && mDvs && mCssMajorVersion == 2) {
+        mDvs->setZoom(zoom);
+    } else {
+        int ret = atomisp_set_zoom(zoom);
+        if (ret < 0) {
+            LOGE("Error setting zoom to %d", zoom);
+            return UNKNOWN_ERROR;
+        }
     }
     mConfig.zoom = zoom;
     return NO_ERROR;
@@ -2817,15 +2874,33 @@ status_t AtomISP::setDVS(bool enable)
 {
     LOG1("@%s: %d", __FUNCTION__, enable);
     status_t status = NO_ERROR;
+
+    if (mMode != MODE_NONE) {
+        LOGW("@%s: Cannot change DVS status while ISP is running, mode = %d", __FUNCTION__, mMode);
+        return INVALID_OPERATION;
+    }
+
+    if (enable && mDvs && !mDvs->isDvsValid()) {
+        mDvsEnabled = false;
+        LOGW("@%s: Cannot start DVS due to some restrictions in size or frame rate", __FUNCTION__);
+        return INVALID_OPERATION;
+    }
+
     status = mMainDevice->setControl(V4L2_CID_ATOMISP_VIDEO_STABLIZATION,
                                     enable, "Video Stabilization");
     if(status != 0)
     {
         LOGE("Error setting DVS in the driver");
         status = INVALID_OPERATION;
+    } else {
+        mDvsEnabled = enable;
     }
-
     return status;
+}
+
+bool AtomISP::dvsEnabled()
+{
+    return mDvsEnabled;
 }
 
 status_t AtomISP::setDVSSkipFrames(unsigned int skips)

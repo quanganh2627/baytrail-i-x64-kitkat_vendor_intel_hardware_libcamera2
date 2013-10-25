@@ -239,6 +239,24 @@ struct AtomFormatBridge {
 extern const struct AtomFormatBridge sV4l2PixelFormatBridge[];
 const struct AtomFormatBridge* getAtomFormatBridge(unsigned int fourcc);
 
+static int parseResolutionPair(const char *p, int &width, int &height,
+           char **endptr)
+{
+    LOG1("@%s", __FUNCTION__);
+    char *xptr = NULL;
+    width = (int) strtol(p, &xptr, 10);
+    if (xptr == NULL || *xptr != 'x') // strtol stores location of x into xptr
+        return BAD_VALUE;
+
+    height = (int) strtol(xptr + 1, &xptr, 10);
+
+    if (endptr) {
+        *endptr = xptr;
+    }
+
+    return OK;
+}
+
 /**
  * parse the pair string, like "720x480", the "x" is passed by parameter "delim"
  *

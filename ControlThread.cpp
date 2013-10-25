@@ -22,11 +22,8 @@
 #include "PreviewThread.h"
 #include "PictureThread.h"
 #include "AtomAIQ.h"
-#include "AtomDvs.h"
 #include "AtomSoc3A.h"
 #include "AtomISP.h"
-#include "AtomDvs.h"
-#include "AtomDvs2.h"
 #include "Callbacks.h"
 #include "CallbacksThread.h"
 #include "ColorConverter.h"
@@ -125,7 +122,6 @@ ControlThread::ControlThread(int cameraId) :
     Thread(true) // callbacks may call into java
     ,mCameraId(cameraId)
     ,mISP(NULL)
-    ,mDvs(NULL)
     ,mCP(NULL)
     ,mULL(NULL)
     ,m3AControls(NULL)
@@ -159,6 +155,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mBurstBufsToReturn(0)
     ,mAELockFlashNeed(false)
     ,mPublicShutter(-1)
+    ,mDvsEnable(false)
     ,mParamCache(NULL)
     ,mStoreMetaDataInBuffers(false)
     ,mPreviewForceChanged(false)
@@ -266,16 +263,6 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    if (createAtomDvs() != NO_ERROR) {
-        LOGE("error creating DVS");
-        goto bail;
-    }
-
-    if (mDvs == NULL) {
-        LOGE("error creating DVS");
-        goto bail;
-    }
-
     mCP = new AtomCP(mHwcg);
     if (mCP == NULL) {
         LOGE("error creating CP");
@@ -360,6 +347,13 @@ status_t ControlThread::init()
     mAccManagerThread = new AccManagerThread(mHwcg, mCallbacksThread, mCallbacks, mCameraId);
     if (mAccManagerThread == NULL) {
         LOGE("error creating AccManagerThread");
+        goto bail;
+    }
+
+    // DVS needs to be started after AIQ init.
+    status = mISP->initDVS();
+    if (status != NO_ERROR) {
+        LOGE("Error in initializing DVS");
         goto bail;
     }
 
@@ -580,10 +574,6 @@ void ControlThread::deinit()
         mCameraDump = NULL;
     }
 
-    if (mDvs != NULL) {
-        delete mDvs;
-        mDvs = NULL;
-    }
     if (mCallbacks != NULL) {
         delete mCallbacks;
         mCallbacks = NULL;
@@ -1466,7 +1456,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     int bpl;
     State state;
     AtomMode mode;
-    bool isDVSActive = false;
 
     if (mState != STATE_STOPPED) {
         LOGE("Must be in STATE_STOPPED to start preview");
@@ -1493,7 +1482,13 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         }
 
         mISP->setVideoFrameFormat(width, height);
-        isDVSActive = mDvs->enable(mParameters);
+
+        status = mISP->setDVS(mDvsEnable);
+
+        if (status != NO_ERROR) {
+            LOGW("@%s: Failed to set DVS %s", __FUNCTION__, mDvsEnable ? "enabled" : "disabled");
+        }
+
     } else {
         LOG1("Starting preview in still mode");
         state = selectPreviewMode(mParameters);
@@ -1671,18 +1666,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         if (gPowerLevel & CAMERA_POWERBREAKDOWN_DISABLE_PREVIEW) {
             mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
         }
-
-        if (isDVSActive && mDvs->reconfigure() == NO_ERROR) {
-            // Attach only when DVS is active:
-            mISP->attachObserver(mDvs, OBSERVE_PREVIEW_STREAM);
-        } else if (isDVSActive) {
-            LOGE("Failed to reconfigure DVS grid");
-        }
     } else {
         LOGE("Error starting ISP!");
         mPreviewThread->returnPreviewBuffers();
         mISP->detachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
-        mISP->detachObserver(mDvs, OBSERVE_PREVIEW_STREAM);
         mISP->detachObserver(this, OBSERVE_PREVIEW_STREAM);
         if (m3AControls->isIntel3A()) {
             mISP->detachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
@@ -1746,7 +1733,6 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
         // might be a non-RAW sensor, or enabling failed on startPreviewCore().
         // It is OK to detach; if the observer is not attached, detachObserver()
         // returns BAD_VALUE.
-        mISP->detachObserver(mDvs, OBSERVE_PREVIEW_STREAM);
     }
     mISP->detachObserver(this, OBSERVE_PREVIEW_STREAM);
     mMessageQueue.remove(MESSAGE_ID_DEQUEUE_RECORDING);
@@ -2105,10 +2091,7 @@ status_t ControlThread::handleMessageStartRecording()
          * we first need to stop AtomISP and restart it with MODE_VIDEO
          */
         bool videoMode = true;
-        mISP->applyISPLimitations(&mParameters,
-                isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION)
-                && isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED),
-                videoMode);
+        mISP->applyISPLimitations(&mParameters, mDvsEnable, videoMode);
         status = restartPreview(videoMode);
         if (status != NO_ERROR) {
             LOGE("Error restarting preview in video mode");
@@ -4379,6 +4362,14 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
+    //DVS
+    const char* dvsEnable = params->get(CameraParameters::KEY_VIDEO_STABILIZATION);
+    const char* dvsEnables = params->get(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED);
+    if (!validateString(dvsEnable, dvsEnables)) {
+        LOGE("bad value for dvs enable : %s, supported are: %s", dvsEnable, dvsEnables);
+        return BAD_VALUE;
+    }
+
     return NO_ERROR;
 }
 
@@ -4420,6 +4411,22 @@ status_t ControlThread::ProcessOverlayEnable(const CameraParameters *oldParams,
         } else {
             LOGW("Overlay cannot be enabled in other state than stop, ignoring request");
         }
+    }
+    return status;
+}
+
+status_t ControlThread::processParamDvs(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, CameraParameters::KEY_VIDEO_STABILIZATION);
+    if (!newVal.isEmpty()) {
+        if (newVal == CameraParameters::TRUE)
+            mDvsEnable = true;
+        else
+            mDvsEnable = false;
     }
     return status;
 }
@@ -4466,19 +4473,15 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
+    // Zoom processing
     int newZoom = newParams->getInt(CameraParameters::KEY_ZOOM);
     bool zoomSupported = isParameterSet(CameraParameters::KEY_ZOOM_SUPPORTED) ? true : false;
     if (zoomSupported) {
-        if(mDvs != NULL && mISP->getCssMajorVersion() == 2 &&
-           (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING)) {
-            mDvs->setZoom(newZoom);
-        } else {
-            status = mISP->setZoom(newZoom);
-            mPostProcThread->setZoom(mISP->zoomRatio(newZoom));
-        }
-    }
-    else
+        status = mISP->setZoom(newZoom);
+        mPostProcThread->setZoom(mISP->zoomRatio(newZoom));
+    } else {
         LOGD("not supported zoom setting");
+    }
 
     // Preview update mode
     if (status == NO_ERROR) {
@@ -6292,8 +6295,6 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
     float videoAspectRatio = 0.0f;
     Vector<Size> sizes;
     bool videoMode = android::isParameterSet(CameraParameters::KEY_RECORDING_HINT, *newParams) ? true : false;
-    bool dvsEnabled = android::isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION, *newParams) ?  true : false;
-
     int oldWidth, newWidth;
     int oldHeight, newHeight;
     int previewWidth, previewHeight;
@@ -6392,6 +6393,8 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
         restartNeeded = true;
     }
 
+    status = processParamDvs(oldParams,newParams);
+
     status = processParamULL(oldParams,newParams, &restartNeeded);
 
     /*
@@ -6414,7 +6417,7 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
      * in AtomISP.cpp to see detailed description of the limitations.
      *
      */
-    if (mISP->applyISPLimitations(newParams, dvsEnabled, videoMode)) {
+    if (mISP->applyISPLimitations(newParams, mDvsEnable, videoMode)) {
         mPreviewForceChanged = true;
         restartNeeded = true;
     }
@@ -6564,26 +6567,6 @@ status_t ControlThread::createAtom3A()
         LOGE("error creating AAA");
         status = BAD_VALUE;
     }
-    return status;
-}
-
-/**
- * Create DVS instance according to platform requirement:
- * - AtomDvs
- * - AtomDvs2
- */
-status_t ControlThread::createAtomDvs()
-{
-    status_t status = NO_INIT;
-    if (mISP != NULL) {
-        if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5)){
-            mDvs = new AtomDvs(mHwcg);
-            status = NO_ERROR;
-        } else if (mISP->getCssMajorVersion() == 2) {
-            mDvs = new AtomDvs2(mHwcg);
-            status = NO_ERROR;
-        }
-     }
     return status;
 }
 

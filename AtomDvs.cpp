@@ -18,6 +18,9 @@
 #include <ia_dvs.h>
 #include "AtomDvs.h"
 
+const unsigned int DVS_MIN_WIDTH = 384;
+const unsigned int DVS_MIN_HEIGHT = 384;
+
 namespace android {
 
 AtomDvs::AtomDvs(HWControlGroup &hwcg) :
@@ -35,6 +38,11 @@ AtomDvs::~AtomDvs()
         ia_dvs_free_statistics(mStatistics);
     if (mState)
         ia_dvs_destroy(mState);
+}
+
+IDvs* IDvs::createAtomDvs(HWControlGroup &hwcg)
+{
+    return new AtomDvs(hwcg);
 }
 
 status_t AtomDvs::reconfigure()
@@ -107,34 +115,6 @@ status_t AtomDvs::run()
 
 end:
     return status;
-}
-
-bool AtomDvs::enable(const CameraParameters& params)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-
-    int width = 0, height = 0;
-    bool isDVSActive = false;
-
-    if (isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED, params) &&
-        isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION, params)) {
-        isDVSActive = true;
-    }
-
-    params.getVideoSize(&width, &height);
-
-    if (width < MIN_DVS_WIDTH && height < MIN_DVS_HEIGHT)
-        isDVSActive = false;
-
-    status = mIsp->setDVS(isDVSActive);
-
-    if (status != NO_ERROR) {
-        LOGW("@%s: Failed to set DVS %s", __FUNCTION__, isDVSActive ? "enabled" : "disabled");
-        isDVSActive = false;
-    }
-
-    return isDVSActive;
 }
 
 /**

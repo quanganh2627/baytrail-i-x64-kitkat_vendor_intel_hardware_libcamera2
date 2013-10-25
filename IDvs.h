@@ -21,7 +21,6 @@
 #include "IAtomIspObserver.h"
 
 namespace android {
-
 class IDvs : public IAtomIspObserver {
 
 public:
@@ -30,8 +29,10 @@ public:
      */
     IDvs(HWControlGroup &hwcg): mIsp(hwcg.mIspCI), mSensorCI(hwcg.mSensorCI) {};
     virtual ~IDvs() {};
+    static IDvs* createAtomDvs(HWControlGroup &hwcg);
+    virtual status_t dvsInit() = 0;
     virtual status_t reconfigure() = 0;
-    virtual bool enable(const CameraParameters& params) = 0;
+    virtual bool isDvsValid() = 0;
     virtual status_t setZoom(int zoom) = 0;
 
 protected:

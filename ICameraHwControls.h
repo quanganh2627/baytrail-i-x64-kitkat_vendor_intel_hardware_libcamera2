@@ -28,9 +28,6 @@ namespace android {
 #define CAM_WXH_STR(w,h) STRINGIFY_(w##x##h)
 #define CAM_RESO_STR(w,h) CAM_WXH_STR(w,h) // example: CAM_RESO_STR(VGA_WIDTH,VGA_HEIGHT) -> "640x480"
 
-#define MIN_DVS_WIDTH   384
-#define MIN_DVS_HEIGHT  384
-
 struct sensorPrivateData
 {
     void *data;
@@ -185,8 +182,10 @@ public:
     virtual status_t setLowLight(bool enable) = 0;
     virtual bool getLowLight() const = 0;
     virtual status_t setGDC(bool enable) = 0;
-    virtual status_t setDVS(bool enable) = 0;
+    virtual status_t initDVS() = 0;
     virtual status_t setDVSSkipFrames(unsigned int skips) = 0;
+    virtual status_t setDVS(bool enable) = 0;
+    virtual bool dvsEnabled() = 0;
     virtual void setNrEE(bool en) = 0;
 
     virtual int setAicParameter(struct atomisp_parameters *aic_params) = 0;

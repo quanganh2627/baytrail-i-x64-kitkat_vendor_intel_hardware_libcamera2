@@ -33,6 +33,7 @@
 #include "CameraConf.h"
 #include "ScalerService.h"
 #include "ICameraHwControls.h"
+#include "IDvs.h"
 
 namespace android {
 
@@ -160,8 +161,10 @@ public:
     bool getLowLight() const { return mLowLight; };
     void setPreviewBufNum(int num);
 
-    status_t setDVS(bool enable);
+    status_t initDVS();
     status_t setDVSSkipFrames(unsigned int skips);
+    status_t setDVS(bool enable);
+    bool dvsEnabled();
     status_t getDvsStatistics(struct atomisp_dis_statistics *stats,
                               bool *tryAgain) const;
     status_t setMotionVector(const struct atomisp_dis_vector *vector) const;
@@ -482,6 +485,10 @@ private:
 private:
 
     int mCameraId;
+
+    // Dvs
+    IDvs *mDvs;
+    bool mDvsEnabled;
 
     // Dual Video
     int mGroupIndex;
