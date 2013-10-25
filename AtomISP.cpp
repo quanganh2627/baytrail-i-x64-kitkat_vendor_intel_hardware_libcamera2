@@ -2438,9 +2438,20 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
  * disable vf_pp for still preview.
  *
  * Workaround 5: The camera firmware doesn't support video downscaling. For the
- * sensor imx132, it doesn't support 480p output.
- * To keep same FOV when recording at 480p. We need to configure preview size to
- * the max supported sensor output size with the same aspect as 480p.
+ * sensor imx132, it cannot keep the same FOV for different resolutions.
+ * To keep the same FOV when recording at different resolutions, IMX132 driver has
+ * provided a series of resolution settings with fixed full FOV height (1080).
+ * To select a proper sensor setting, we need to re-calculate the preview
+ * size with the same height of IMX132 full FOV height.
+ * The mapping for video size and preview size would be:
+ * Video Size		- Preview Size		- Sensor Setting
+ * 1280x720		- 1920x1080		- 1936x1096
+ * 720x480		- 1620x1080		- 1636x1096
+ * 640x480&320x240	- 1440x1080		- 1056x1096
+ * 352x288&176x144	- 1320x1080		- 1336x1096
+ * If DVS is enabled, the preview size should be cut off by 20% so that driver can
+ * add envelope for DVS.
+ *
  * BZ 116055
  *
  * This mode can be enabled by setting VFPPLimitedResolutionList to a proper
@@ -2501,12 +2512,14 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
         //Workaround 5, video recording FOV issue
         const char manUsensorBName[] = "imx132";
         if (mCameraInput && (strncmp(mCameraInput->name, manUsensorBName, sizeof(manUsensorBName) - 1) == 0)) {
-                if ((previewWidth == 720) && (previewHeight == 480)) {
-                        LOGI("480p recording change preview size to 1620x1080 and \
-                                        video size to 720x480");
-                        params->setPreviewSize(1620, 1080);
-                        params->setVideoSize(720, 480);
-                }
+            // If DVS is not enabled, keep preview height as 1080 which is full FOV height for IMX132.
+            // If DVS is enabled, keep preview height as 900 which is 20% cut off by 1080.
+            // 1080 = 900 * (1 + 20%)
+            // Refer to function description for more details.
+            if (dvsEnabled)
+                params->setPreviewSize(videoWidth*900/videoHeight, 900);
+            else
+                params->setPreviewSize(videoWidth*1080/videoHeight, 1080);
         }
 
         //Workaround 2, detail refer to the function description
