@@ -140,6 +140,8 @@ private:
     void getSensorFrameParams(ia_aiq_frame_params *frame_params,
                               struct atomisp_sensor_mode_data *sensor_mode_data);
 
+    virtual bool getAfNeedAssistLight_Locked();
+
 // prevent copy constructor and assignment operator
 private:
     AtomAAA(const AtomAAA& other);
@@ -250,6 +252,9 @@ public:
     virtual status_t initAfBracketing(int stops,  AFBracketingMode mode) { return INVALID_OPERATION; }
     virtual status_t initAeBracketing() { return INVALID_OPERATION; }
 
+    // high speed video recording
+    virtual status_t enableHighSpeed(bool en) { return INVALID_OPERATION; }
+
 // private members
 private:
 
@@ -262,6 +267,7 @@ private:
     ia_3a_awb_light_source m3ALightSource;
     int mFocusPosition;
     nsecs_t mStillAfStart;
+    bool    mStillAfAssist;
     FILE *pFile3aStatDump;
     IHWIspControl *mISP;
     IHWFlashControl *mFlashCI;

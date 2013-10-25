@@ -62,6 +62,7 @@ typedef struct {
     unsigned long long              previous_sof;
     int32_t                         lens_position;
     bool                            aec_locked;
+    bool                            assist_light;
     bool                            af_locked;
     AfMode                          afMode;
     int                             af_score_window_size;
@@ -97,6 +98,7 @@ typedef struct {
     bool                            aic_enabled;
     ia_aiq_frame_use                frame_use;
     ia_aiq_statistics_input_params  statistics_input_parameters;
+    ia_aiq_af_results               af_results_feedback;
     ia_aiq_dsd_input_params         dsd_input_parameters;
     struct atomisp_3a_statistics   *stats;
     bool                            stats_valid;
@@ -336,6 +338,7 @@ public:
     AeMode getAeMode();
     virtual status_t setAfMode(AfMode mode);
     virtual AfMode getAfMode();
+    status_t enableHighSpeed(bool en);
     bool getAfNeedAssistLight();
     status_t setAeFlashMode(FlashMode mode);
     FlashMode getAeFlashMode();

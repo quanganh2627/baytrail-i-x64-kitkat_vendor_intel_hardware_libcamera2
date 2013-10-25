@@ -1285,4 +1285,42 @@ bool PlatformData::useIntelULL(void)
     return i->mUseIntelULL;
 }
 
+float PlatformData::verticalFOV(int cameraId)
+{
+    float retVal = 0.0f;
+    if (cameraId == mActiveCameraId && !HalConfig.getFloat(retVal, CPF::Fov, CPF::Vertical)) {
+        return retVal;
+    }
+
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return retVal;
+    }
+
+    return getInstance()->mCameras[cameraId].verticalFOV;
+}
+
+float PlatformData::horizontalFOV(int cameraId)
+{
+    float retVal = 0.0f;
+    if (cameraId == mActiveCameraId && !HalConfig.getFloat(retVal, CPF::Fov, CPF::Horizontal)) {
+        return retVal;
+    }
+
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return retVal;
+    }
+
+    return getInstance()->mCameras[cameraId].horizontalFOV;
+}
+
+
+bool PlatformData::isGraphicGen(void)
+{
+#ifdef GRAPHIC_IS_GEN
+    return true;
+#else
+    return false;
+#endif
+}
+
 }; // namespace android

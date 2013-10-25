@@ -33,6 +33,9 @@
 #include <linux/media.h>
 #include <linux/atomisp.h>
 #include "PerformanceTraces.h"
+#include <binder/IMemory.h>
+#include <binder/MemoryBase.h>
+#include <binder/MemoryHeapBase.h>
 
 #define DEFAULT_SENSOR_FPS      15.0
 #define DEFAULT_PREVIEW_FPS     30.0
@@ -101,6 +104,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mClientSnapshotBuffersCached(true)
     ,mUsingClientSnapshotBuffers(false)
     ,mStoreMetaDataInBuffers(false)
+    ,mBufferSharingSessionID(DEFAULT_BUFFER_SHARING_SESSION_ID)
     ,mNumPreviewBuffersQueued(0)
     ,mNumRecordingBuffersQueued(0)
     ,mNumCapturegBuffersQueued(0)
@@ -269,7 +273,9 @@ status_t AtomISP::init()
     initFrameConfig();
 
     // Initialize the frame sizes
-    setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, PlatformData::getPreviewPixelFormat());
+    setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT,
+                          pixelsToBytes(PlatformData::getPreviewPixelFormat(), RESOLUTION_VGA_WIDTH),
+                          PlatformData::getPreviewPixelFormat());
     setPostviewFrameFormat(RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT, V4L2_PIX_FMT_NV12);
     setSnapshotFrameFormat(RESOLUTION_5MP_WIDTH, RESOLUTION_5MP_HEIGHT, V4L2_PIX_FMT_NV12);
     setVideoFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
@@ -643,12 +649,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * MISCELLANEOUS
      */
-    float vertical = 42.5;
-    float horizontal = 54.8;
-    PlatformData::HalConfig.getFloat(vertical, CPF::Fov, CPF::Vertical);
-    PlatformData::HalConfig.getFloat(horizontal, CPF::Fov, CPF::Horizontal);
-    params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, vertical);
-    params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, horizontal);
+    params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, PlatformData::verticalFOV(cameraId));
+    params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, PlatformData::horizontalFOV(cameraId));
 
     /**
      * OVERLAY
@@ -2187,7 +2189,6 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *
             return -1;
         }
     }
-
     /* 3A related initialization*/
     //Reallocate the grid for 3A after format change
     if (device->mId == V4L2_MAIN_DEVICE ||
@@ -2272,7 +2273,7 @@ int AtomISP::getRawFormat()
     return mRawBayerFormat;
 }
 
-status_t AtomISP::setPreviewFrameFormat(int width, int height, int fourcc)
+status_t AtomISP::setPreviewFrameFormat(int width, int height, int bpl, int fourcc)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -2286,10 +2287,10 @@ status_t AtomISP::setPreviewFrameFormat(int width, int height, int fourcc)
     mConfig.preview.width = width;
     mConfig.preview.height = height;
     mConfig.preview.fourcc = fourcc;
-    mConfig.preview.bpl = pixelsToBytes(fourcc, width);
-    mConfig.preview.size = frameSize(fourcc, mConfig.preview.width, height);
-    LOG1("width(%d), height(%d), pad_width(%d), size(%d), fourcc(%x)",
-        width, height, mConfig.preview.bpl, mConfig.preview.size, fourcc);
+    mConfig.preview.bpl = bpl;
+    mConfig.preview.size = frameSize(fourcc, bytesToPixels(fourcc, bpl), height);
+    LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%x)",
+        width, height, bpl, mConfig.preview.size, fourcc);
     return status;
 }
 
@@ -2329,12 +2330,13 @@ status_t AtomISP::setPostviewFrameFormat(int width, int height, int fourcc)
         width = RESOLUTION_POSTVIEW_WIDTH;
         height = RESOLUTION_POSTVIEW_HEIGHT;
     }
+
     mConfig.postview.width = width;
     mConfig.postview.height = height;
     mConfig.postview.fourcc = fourcc;
-    mConfig.postview.bpl = pixelsToBytes(fourcc, width);
-    mConfig.postview.size = frameSize(fourcc, width, height);
-    LOG1("width(%d), height(%d), pad_width(%d), size(%d), fourcc(%x)",
+    mConfig.postview.bpl = SGXandDisplayBpl(fourcc, width);
+    mConfig.postview.size = frameSize(fourcc, bytesToPixels(fourcc, mConfig.postview.bpl), height);
+    LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%x)",
             width, height, mConfig.postview.bpl, mConfig.postview.size, fourcc);
     return status;
 }
@@ -2353,7 +2355,7 @@ status_t AtomISP::setSnapshotFrameFormat(int width, int height, int fourcc)
     mConfig.snapshot.fourcc = fourcc;
     mConfig.snapshot.bpl = SGXandDisplayBpl(fourcc, width);
     mConfig.snapshot.size = frameSize(fourcc, bytesToPixels(fourcc, mConfig.snapshot.bpl), height);
-    LOG1("width(%d), height(%d), pad_width(%d), size(%d), fourcc(%x)",
+    LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%x)",
         width, height, mConfig.snapshot.bpl, mConfig.snapshot.size, fourcc);
     return status;
 }
@@ -2388,6 +2390,15 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
+    // Check if the resolution of high speed has been set, and the resolution
+    // of high speed matches with the video resolution set by app
+    if (mHighSpeedResolution.width != 0 && mHighSpeedResolution.height != 0
+         && (mHighSpeedResolution.width == width && mHighSpeedResolution.height == height)) {
+        mHighSpeedEnabled = true;
+    } else {
+        mHighSpeedEnabled = false;
+    }
+
     /**
      * Workaround: When video size is 1080P(1920x1080), because video HW codec
      * requests 16x16 pixel block as sub-block to encode, So whatever apps set recording
@@ -2397,12 +2408,6 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
      */
     if(height % 16)
         height = (height + 15) / 16 * 16;
-
-    // Check if the resolution of high speed has been set, and the resolution
-    // of high speed matches with the video resolution set by app
-    if (mHighSpeedResolution.width != 0 && mHighSpeedResolution.height != 0
-         && (mHighSpeedResolution.width != width || mHighSpeedResolution.height != height))
-        mHighSpeedEnabled = false;
 
     if(fourcc == 0)
          fourcc = mConfig.recording.fourcc;
@@ -2429,9 +2434,9 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
     mConfig.recording.width = width;
     mConfig.recording.height = height;
     mConfig.recording.fourcc = fourcc;
-    mConfig.recording.bpl = pixelsToBytes(fourcc, mConfig.recording.width);
-    mConfig.recording.size = frameSize(fourcc, mConfig.recording.width, height);
-    LOG1("width(%d), height(%d), pad_width(%d), fourcc(%x)",
+    mConfig.recording.bpl = SGXandDisplayBpl(fourcc, width);
+    mConfig.recording.size = frameSize(fourcc, bytesToPixels(fourcc, mConfig.recording.bpl), height);
+    LOG1("width(%d), height(%d), bpl(%d), fourcc(%x)",
             width, height, mConfig.recording.bpl, fourcc);
 
     return status;
@@ -2537,12 +2542,15 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
         params->getPreviewSize(&previewWidth, &previewHeight);
         params->getVideoSize(&videoWidth, &videoHeight);
         if((previewWidth*previewHeight) > (videoWidth*videoHeight)) {
+            if(videoWidth != mConfig.recording.width || videoHeight != mConfig.recording.height
+               || !mRecordingDeviceSwapped) {
                 ret = true;
                 mSwapRecordingDevice = true;
                 workaround2 = true;
                 LOG1("Video dimension(s) [%d, %d] is smaller than preview dimension(s) [%d, %d]. "
                      "Triggering swapping of preview and recording devices.",
                      videoWidth, videoHeight, previewWidth, previewHeight);
+            }
         } else {
             mSwapRecordingDevice = false;
         }
@@ -3933,9 +3941,20 @@ status_t AtomISP::allocateRecordingBuffers()
 
     for (int i = 0; i < mNumBuffers; i++) {
         mRecordingBuffers[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_VIDEO); // init fields
-        // recording buffers use uncached memory
+#ifdef INTEL_VIDEO_XPROC_SHARING
+        /**
+         * To share the buffer cross process, it should be MemoryHeap or Graphic buffer.
+         * Prefer to use Graphic buffer but can not currently because:
+         * 1. Graphic recording buffers are all locked in Camera HAL. It's hard to make it unlock for encoder.
+         * 2. Encoder is a bit premature to support graphic buffer well for all platforms.
+         * FIXME: Unified use graphic buffer if above case are all resolved.
+         */
+        MemoryUtils::allocateAtomBuffer(mRecordingBuffers[i], mConfig.recording, mCallbacks);
+#else
+        //recording buffers use uncached memory
+        MemoryUtils::allocateGraphicBuffer(mRecordingBuffers[i], mConfig.recording);
+#endif
 
-        mCallbacks->allocateMemory(&mRecordingBuffers[i], mConfig.recording.size);
         LOG1("allocate recording buffer[%d], buff=%p size=%d",
                 i, mRecordingBuffers[i].dataPtr, mRecordingBuffers[i].size);
         if (mRecordingBuffers[i].dataPtr == NULL) {
@@ -3949,6 +3968,7 @@ status_t AtomISP::allocateRecordingBuffers()
         mRecordingBuffers[i].shared = false;
         mRecordingBuffers[i].width = mConfig.recording.width;
         mRecordingBuffers[i].height = mConfig.recording.height;
+        mRecordingBuffers[i].size = mConfig.recording.size;
         mRecordingBuffers[i].bpl = mConfig.recording.bpl;
         mRecordingBuffers[i].fourcc = mConfig.recording.fourcc;
     }
@@ -4087,11 +4107,39 @@ void AtomISP::initMetaDataBuf(IntelMetadataBuffer* metaDatabuf)
     vinfo->format = STRING_TO_FOURCC("NV12");
     vinfo->s3dformat = 0xFFFFFFFF;
     metaDatabuf->SetValueInfo(vinfo);
+    metaDatabuf->SetType(MetadataBufferTypeCameraSource);
     delete vinfo;
     vinfo = NULL;
 
 }
 #endif
+
+/**
+ * Have to copy this private class here because we want to access the MemoryBase object
+ * which is hiding in the handle of camera_memory_t
+ * It's for camera recording to share MemoryHeap buffer only.
+ * FIXME: remove it if we are able to share graphic buffer in the fulture
+ */
+class CameraHeapMemory : public RefBase {
+public:
+    CameraHeapMemory(int fd, size_t buf_size, uint_t num_buffers = 1) :
+        mBufSize(buf_size),
+        mNumBufs(num_buffers) {}
+
+    CameraHeapMemory(size_t buf_size, uint_t num_buffers = 1) :
+        mBufSize(buf_size),
+        mNumBufs(num_buffers) {}
+
+    void commonInitialization() {}
+
+    virtual ~CameraHeapMemory() {}
+
+    size_t mBufSize;
+    uint_t mNumBufs;
+    sp<MemoryHeapBase> mHeap;
+    sp<MemoryBase> *mBuffers;
+    camera_memory_t handle;
+};
 
 status_t AtomISP::allocateMetaDataBuffers()
 {
@@ -4109,6 +4157,9 @@ status_t AtomISP::allocateMetaDataBuffers()
             if (mRecordingBuffers[i].metadata_buff != NULL) {
                 mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
                 mRecordingBuffers[i].metadata_buff = NULL;
+#ifdef INTEL_VIDEO_XPROC_SHARING
+                IntelMetadataBuffer::ClearContext(mBufferSharingSessionID, true);
+#endif
             }
         }
     } else {
@@ -4119,14 +4170,27 @@ status_t AtomISP::allocateMetaDataBuffers()
     for (int i = 0; i < mNumBuffers; i++) {
         metaDataBuf = new IntelMetadataBuffer();
         if(metaDataBuf) {
-            initMetaDataBuf(metaDataBuf);
-            metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].dataPtr);
+            if (PlatformData::isGraphicGen()) {
+                metaDataBuf->SetType(MetadataBufferTypeGrallocSource);
+                metaDataBuf->SetValue((uint32_t)*mRecordingBuffers[i].gfxInfo_rec.gfxBufferHandle);
+            } else {
+                initMetaDataBuf(metaDataBuf);
+#ifdef INTEL_VIDEO_XPROC_SHARING
+                // for cross-process sharing
+                metaDataBuf->SetSessionFlag(mBufferSharingSessionID);
+                sp<CameraHeapMemory> mem(static_cast<CameraHeapMemory *>(mRecordingBuffers[i].buff->handle));
+                metaDataBuf->ShareValue(mem->mBuffers[0]);
+#else
+                // for video recording only
+                metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].dataPtr);
+#endif
+            }
             metaDataBuf->Serialize(meta_data_prt, meta_data_size);
             mRecordingBuffers[i].metadata_buff = NULL;
             mCallbacks->allocateMemory(&mRecordingBuffers[i].metadata_buff, meta_data_size);
-            LOG1("allocate metadata buffer[%d]  buff=%p size=%d",
+            LOG1("allocate metadata buffer[%d]  buff=%p size=%d sID:%d",
                 i, mRecordingBuffers[i].metadata_buff->data,
-                mRecordingBuffers[i].metadata_buff->size);
+                mRecordingBuffers[i].metadata_buff->size, mBufferSharingSessionID);
             if (mRecordingBuffers[i].metadata_buff == NULL) {
                 LOGE("Error allocation memory for metadata buffers!");
                 status = NO_MEMORY;
@@ -4188,6 +4252,11 @@ status_t AtomISP::freeRecordingBuffers()
     if(mRecordingBuffers != NULL) {
         for (int i = 0 ; i < mNumBuffers; i++)
             MemoryUtils::freeAtomBuffer(mRecordingBuffers[i]);
+
+#ifdef INTEL_VIDEO_XPROC_SHARING
+        if (mStoreMetaDataInBuffers)
+            IntelMetadataBuffer::ClearContext(mBufferSharingSessionID, true);
+#endif
 
         delete[] mRecordingBuffers;
         mRecordingBuffers = NULL;
@@ -4513,11 +4582,12 @@ int AtomISP::abortFirmware(unsigned int fwHandle, unsigned int timeout)
     return ret;
 }
 
-status_t AtomISP::storeMetaDataInBuffers(bool enabled)
+status_t AtomISP::storeMetaDataInBuffers(bool enabled, int sID)
 {
     LOG1("@%s: enabled = %d", __FUNCTION__, enabled);
     status_t status = NO_ERROR;
     mStoreMetaDataInBuffers = enabled;
+    mBufferSharingSessionID = (sID == -1)? DEFAULT_BUFFER_SHARING_SESSION_ID : sID;
 
     /**
      * if we are not in video mode we just store the value
@@ -4538,6 +4608,9 @@ exitFreeRec:
             if (mRecordingBuffers[i].metadata_buff != NULL) {
                 mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
                 mRecordingBuffers[i].metadata_buff = NULL;
+#ifdef INTEL_VIDEO_XPROC_SHARING
+                IntelMetadataBuffer::ClearContext(mBufferSharingSessionID, true);
+#endif
             }
         }
     }
@@ -5529,6 +5602,10 @@ status_t AtomISP::AAAStatSource::observe(IAtomIspObserver::Message *msg)
  */
 bool AtomISP::PreviewStreamSource::checkSkipFrame(int frameNum)
 {
+    // No frames skip in high speed
+    if(mISP->isHighSpeedEnabled())
+        return false;
+
     float sensorFPS = mISP->mConfig.fps;
     int targetFPS = mISP->mConfig.target_fps;
 
@@ -5643,38 +5720,43 @@ void AtomISP::setNrEE(bool en)
     mNoiseReductionEdgeEnhancement = en;
 }
 
-bool AtomISP::lowBatteryForFlash()
+BatteryStatus AtomISP::getBatteryStatus()
 {
     static const char *CamFlashCtrlFS = "/dev/bcu/camflash_ctrl";
 
+    int  status;
     char buf[4];
     FILE *fp = NULL;
 
     LOG1("@%s", __FUNCTION__);
-    // return false directly if no this ctrl file
+    // return BATTERY_STATUS_NORMAL directly if the sysfs file doesn't exist
     if (::access(CamFlashCtrlFS, R_OK)) {
         LOG1("@%s, file %s is not readable", __FUNCTION__, CamFlashCtrlFS);
-        return false;
+        return BATTERY_STATUS_INVALID;
     }
 
     fp = ::fopen(CamFlashCtrlFS, "r");
     if (NULL == fp) {
         LOGW("@%s, file %s open with err:%s", __FUNCTION__, CamFlashCtrlFS, strerror(errno));
-        return false;
+        return BATTERY_STATUS_INVALID;
     }
     memset(buf, 0, 4);
     size_t len = ::fread(buf, 1, 1, fp);
     if (len == 0) {
         LOGW("@%s, fail to read 1 byte from camflash_ctrl", __FUNCTION__);
         ::fclose(fp);
-        return false;
+        return BATTERY_STATUS_INVALID;
     }
     ::fclose(fp);
 
-    if (atoi(buf) == 0)
-        return true;
+    status = atoi(buf);
+    if (status > BATTERY_STATUS_CRITICAL || status < BATTERY_STATUS_NORMAL)
+        return BATTERY_STATUS_INVALID;
 
-    return false;
+    if (status > BATTERY_STATUS_NORMAL)
+        LOGW("@%s warning battery status:%d", __FUNCTION__, status);
+
+    return (BatteryStatus)status;
 }
 
 } // namespace android

@@ -245,7 +245,7 @@ void Callbacks::allocateMemory(camera_memory_t **buff, size_t size)
     }
 }
 
-void Callbacks::autofocusDone(bool status)
+void Callbacks::autoFocusDone(bool status)
 {
     LOG1("@%s", __FUNCTION__);
     if (mMessageFlags & CAMERA_MSG_FOCUS) {

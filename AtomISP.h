@@ -48,6 +48,7 @@ namespace android {
 #define LARGEST_THUMBNAIL_WIDTH 320
 #define LARGEST_THUMBNAIL_HEIGHT 240
 
+#define DEFAULT_BUFFER_SHARING_SESSION_ID 0
 struct devNameGroup
 {
     char dev[MAX_CAMERA_NODES + 1][MAX_DEVICE_NODE_CHAR_NR];
@@ -125,7 +126,7 @@ public:
 
     bool isHALZSLEnabled() const { return mHALZSLEnabled; }
 
-    status_t setPreviewFrameFormat(int width, int height, int fourcc = 0);
+    status_t setPreviewFrameFormat(int width, int height, int bpl, int fourcc = 0);
     status_t setPostviewFrameFormat(int width, int height, int fourcc);
     void getPostviewFrameFormat(int &width, int &height, int &foucc) const;
     status_t setSnapshotFrameFormat(int width, int height, int fourcc);
@@ -193,7 +194,7 @@ public:
     int abortFirmware(unsigned int fwHandle, unsigned int timeout);
 
     // Enable metadata buffer mode API
-    status_t storeMetaDataInBuffers(bool enabled);
+    status_t storeMetaDataInBuffers(bool enabled, int sID);
 
     /* IHWFlashControl overloads, */
     status_t setFlash(int numFrames);
@@ -201,7 +202,7 @@ public:
     status_t setTorch(int intensity);
     int setFlashIntensity(int intensity);
     // Check if battery is too low for flash control
-    bool lowBatteryForFlash();
+    BatteryStatus getBatteryStatus();
 
     /* IHWLensControl overloads, */
     int moveFocusToPosition(int position);
@@ -284,6 +285,7 @@ public:
 
     // high speed fps setting
     status_t setHighSpeedResolutionFps(char* resolution, int fps);
+    bool isHighSpeedEnabled(){ return mHighSpeedEnabled; }
 
 // private types
 private:
@@ -509,6 +511,7 @@ private:
     bool mClientSnapshotBuffersCached;
     bool mUsingClientSnapshotBuffers;
     bool mStoreMetaDataInBuffers;
+    int  mBufferSharingSessionID;
 
     AtomBuffer mSnapshotBuffers[MAX_BURST_BUFFERS];
     Vector <AtomBuffer> mPostviewBuffers;

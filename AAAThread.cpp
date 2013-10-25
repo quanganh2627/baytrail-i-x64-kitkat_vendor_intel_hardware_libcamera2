@@ -29,6 +29,7 @@ namespace android {
 // TODO: use values relative to real sensor timings or fps
 #define STATISTICS_SYNC_DELTA_US 20000
 #define STATISTICS_SYNC_DELTA_US_MAX 200000
+#define SKIP_PARTIALLY_EXPOSED  1
 
 AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaaControls, sp<CallbacksThread> callbacksThread) :
     Thread(false)
@@ -42,14 +43,15 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaa
     ,mStartAF(false)
     ,mStopAF(false)
     ,mPreviousCafStatus(ia_3a_af_status_idle)
-    ,mForceAeLock(false)
-    ,mForceAwbLock(false)
+    ,mPublicAeLock(false)
+    ,mPublicAwbLock(false)
     ,mSmartSceneMode(0)
     ,mSmartSceneHdr(false)
     ,mPreviousFaceCount(0)
     ,mFlashStage(FLASH_STAGE_NA)
     ,mFramesTillExposed(0)
     ,mBlockForStage(FLASH_STAGE_NA)
+    ,mSkipStatistics(0)
 {
     LOG1("@%s", __FUNCTION__);
     mFaceState.faces = new ia_face[MAX_FACES_DETECTABLE];
@@ -360,7 +362,7 @@ status_t AAAThread::handleMessageEnableAeLock(MessageEnable* msg)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    mForceAeLock = msg->enable;
+    mPublicAeLock = msg->enable;
 
     // during AF, AE lock is controlled by AF, otherwise
     // set the value here
@@ -375,7 +377,7 @@ status_t AAAThread::handleMessageEnableAwbLock(MessageEnable* msg)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    mForceAwbLock = msg->enable;
+    mPublicAwbLock = msg->enable;
 
     // during AF, AWB lock is controlled by AF, otherwise
     // set the value here
@@ -398,29 +400,31 @@ status_t AAAThread::handleMessageAutoFocus()
     */
     ia_3a_af_status cafStatus = m3AControls->getCAFStatus();
     if (currAfMode == CAM_AF_MODE_CONTINUOUS && cafStatus != ia_3a_af_status_busy) {
-        mCallbacksThread->autofocusDone(cafStatus == ia_3a_af_status_success);
-        // Also notify ControlThread that the auto-focus is finished
-        mAAADoneCallback->autoFocusDone();
+        mCallbacksThread->autoFocusDone(cafStatus == ia_3a_af_status_success);
         return status;
     }
 
     if (m3AControls->isIntel3A() && currAfMode != CAM_AF_MODE_INFINITY &&
         currAfMode != CAM_AF_MODE_FIXED && currAfMode != CAM_AF_MODE_MANUAL) {
         m3AControls->setAfEnabled(true);
-
         // state of client requested 3A locks is kept, so it
         // is safe to override the values here
-        m3AControls->setAeLock(true);
         m3AControls->setAwbLock(true);
 
         m3AControls->startStillAf();
+
+        // Turning on the flash as AF assist light doesn't support
+        // proper synchronisation with frames. We skip fixed amount
+        // of statistics in order to prevent partially exposed frames
+        // to get processed.
+        if (m3AControls->getAfNeedAssistLight())
+            mSkipStatistics = SKIP_PARTIALLY_EXPOSED;
+
         mFramesTillAfComplete = 0;
         mStartAF = true;
         mStopAF = false;
     } else {
-        mCallbacksThread->autofocusDone(true);
-        // Also notify ControlThread that the auto-focus is finished
-        mAAADoneCallback->autoFocusDone();
+        mCallbacksThread->autoFocusDone(true);
     }
 
     return status;
@@ -633,6 +637,11 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
     if (mFlashStage != FLASH_STAGE_NA)
         return status;
 
+    if (mSkipStatistics > 0) {
+        LOG1("Partially exposed 3A statistics skipped");
+        mSkipStatistics--;
+        return status;
+    }
     // 3A & DVS stats are read with proprietary ioctl that returns the
     // statistics of most recent frame done.
     // Multiple newFrames indicates we are late and 3A process is going
@@ -685,16 +694,17 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
             }
 
             if (stopStillAf) {
+                if (m3AControls->getAfNeedAssistLight()) {
+                    mSkipStatistics = SKIP_PARTIALLY_EXPOSED;
+                }
                 m3AControls->stopStillAf();
-                m3AControls->setAeLock(mForceAeLock);
-                m3AControls->setAwbLock(mForceAwbLock);
+                m3AControls->setAeLock(mPublicAeLock);
+                m3AControls->setAwbLock(mPublicAwbLock);
                 m3AControls->setAfEnabled(false);
                 mStartAF = false;
                 mStopAF = false;
                 mFramesTillAfComplete = 0;
-                mCallbacksThread->autofocusDone(afStatus == ia_3a_af_status_success);
-                // Also notify ControlThread that the auto-focus is finished
-                mAAADoneCallback->autoFocusDone();
+                mCallbacksThread->autoFocusDone(afStatus == ia_3a_af_status_success);
                 /**
                  * Even if we complete AF, if the result was failure we keep
                  * trying to focus if we are in continuous focus mode.

@@ -146,7 +146,6 @@ ControlThread::ControlThread(int cameraId) :
     ,mNumBuffers(0)
     ,mIntelParamsAllowed(false)
     ,mFaceDetectionActive(false)
-    ,mFlashAutoFocus(false)
     ,mIspExtensionsEnabled(false)
     ,mFpsAdaptSkip(0)
     ,mBurstLength(0)
@@ -898,6 +897,9 @@ status_t ControlThread::autoFocus()
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_AUTO_FOCUS;
+    // Inform focus activation to CallbacksThread
+    // (See CallbacksThred::autoFocusActive())
+    mCallbacksThread->autoFocusActive(true);
     return mMessageQueue.send(&msg);
 }
 
@@ -906,6 +908,7 @@ status_t ControlThread::cancelAutoFocus()
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_CANCEL_AUTO_FOCUS;
+    mCallbacksThread->autoFocusActive(false);
     return mMessageQueue.send(&msg);
 }
 
@@ -1046,14 +1049,6 @@ void ControlThread::sendCommand(int32_t cmd, int32_t arg1, int32_t arg2)
         mMessageQueue.send(&msg);
 }
 
-void ControlThread::autoFocusDone()
-{
-    LOG1("@%s", __FUNCTION__);
-    Message msg;
-    msg.id = MESSAGE_ID_AUTO_FOCUS_DONE;
-    mMessageQueue.send(&msg);
-}
-
 void ControlThread::postProcCaptureTrigger()
 {
     LOG1("@%s", __FUNCTION__);
@@ -1153,7 +1148,7 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
         int cb_fourcc, width, height, bpl;
         cb_fourcc = V4L2Format(mParameters.getPreviewFormat());
         mISP->getPreviewSize(&width, &height,&bpl);
-        mPreviewThread->setPreviewConfig(width, height, bpl, cb_fourcc, false);
+        mPreviewThread->setPreviewConfig(width, height, cb_fourcc, false);
     } else if (previewState != PreviewThread::STATE_ENABLED
             && previewState != PreviewThread::STATE_ENABLED_HIDDEN) {
         LOGE("Trying to resume continuous preview from unexpected state!");
@@ -1508,14 +1503,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOGW("Unsupported preview callback fourcc : %s", cb_fourcc_s ? cb_fourcc_s : "not set");
     }
     mParameters.getPreviewSize(&width, &height);
-    mISP->setPreviewFrameFormat(width, height);
 
-    // start the data flow
-    status = mISP->configure(mode);
-    if (status != NO_ERROR) {
-        LOGE("Error configuring ISP");
-        return status;
-    }
 
     // Load any ISP extensions before ISP is started
 
@@ -1529,7 +1517,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mAccManagerThread->loadIspExtensions();
     }
 
-    mISP->getPreviewSize(&width, &height,&bpl);
     if (videoMode)
         mNumBuffers = mISP->getNumVideoBuffers();
     else
@@ -1547,7 +1534,12 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     bool useSharedGfxBuffers =
         (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS)
         && (mIntelParamsAllowed || mode != MODE_CONTINUOUS_CAPTURE);
-    mPreviewThread->setPreviewConfig(width, height, bpl, cb_fourcc, useSharedGfxBuffers, mNumBuffers);
+    mPreviewThread->setPreviewConfig(width, height, cb_fourcc, useSharedGfxBuffers, mNumBuffers);
+
+    // Get the preview size from PreviewThread and pass the configuration to AtomISP.
+    mPreviewThread->fetchPreviewBufferGeometry(&width, &height, &bpl);
+    mISP->setPreviewFrameFormat(width, height, bpl);
+
     if (useSharedGfxBuffers) {
         Vector<AtomBuffer> sharedGfxBuffers;
         status = mPreviewThread->fetchPreviewBuffers(sharedGfxBuffers);
@@ -1562,6 +1554,12 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         } else {
             LOG1("PreviewThread not sharing Gfx buffers, using internal buffers");
         }
+    }
+
+    status = mISP->configure(mode);
+    if (status != NO_ERROR) {
+        LOGE("Error configuring ISP");
+        return status;
     }
 
     status = mISP->allocateBuffers(mode);
@@ -1655,6 +1653,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
                 ICallbackPreview::OUTPUT_WITH_DATA);
     }
 
+    // start the data flow
     status = mISP->start();
     if (status == NO_ERROR) {
         mState = state;
@@ -2933,55 +2932,48 @@ status_t ControlThread::captureStillPic()
 
     sp<AutoReset> autoReset;
 
-    if (mBurstLength <= 1) {
-        if (m3AControls->isIntel3A()) {
-            // If flash mode is not ON or TORCH, check for other
-            // modes: AUTO, DAY_SYNC, SLOW_SYNC
+    if (m3AControls->isIntel3A()) {
+        // If flash mode is not ON or TORCH, check for other
+        // modes: AUTO, DAY_SYNC, SLOW_SYNC
 
-            if (!flashOn && DetermineFlash(flashMode)) {
-                // note: getAeFlashNecessary() should not be called when
-                //       assist light (or TORCH) is on.
-                if (mFlashAutoFocus)
-                    LOGW("Assist light on when running pre-flash sequence");
-
-                if (m3AControls->getAeLock()) {
-                    LOG1("AE was locked in %s, using old flash decision from AE "
-                         "locking time (%s)", __FUNCTION__, mAELockFlashNeed ? "ON" : "OFF");
-                    flashOn = mAELockFlashNeed;
-                }
-                else
-                    flashOn = m3AControls->getAeFlashNecessary();
+        if (!flashOn && DetermineFlash(flashMode)) {
+            if (m3AControls->getAeLock()) {
+                LOG1("AE was locked in %s, using old flash decision from AE "
+                     "locking time (%s)", __FUNCTION__, mAELockFlashNeed ? "ON" : "OFF");
+                flashOn = mAELockFlashNeed;
             }
+            else
+                flashOn = m3AControls->getAeFlashNecessary();
+        }
 
-            if (flashOn) {
-                if (m3AControls->getAeMode() != CAM_AE_MODE_MANUAL &&
-                        flashMode != CAM_AE_FLASH_MODE_TORCH) {
-                    // first a workaround for BZ: 133025. Set ae metering mode to auto for the flash duration
-                    // we can safely use a temporary setting since any client setParameters will be postponed
-                    // for the duration of the capture
-                    // this class defines the temporary setting behavior
-                    class TemporaryAeMetering : public TemporarySetting {
-                    public:
-                        TemporaryAeMetering(ControlThread *controlThread) : TemporarySetting(controlThread) { mMode = mControlThread->m3AControls->getAeMeteringMode(); }
-                        void set() { mControlThread->m3AControls->setAeMeteringMode(CAM_AE_METERING_MODE_AUTO); }
-                        void reset() { mControlThread->m3AControls->setAeMeteringMode(mMode); }
-                        MeteringMode mMode;
-                    };
-                    // instantiate - the smart pointers take care of destruction
-                    autoReset = new AutoReset(new TemporaryAeMetering(this));
+        if (flashOn) {
+            if (m3AControls->getAeMode() != CAM_AE_MODE_MANUAL &&
+                    flashMode != CAM_AE_FLASH_MODE_TORCH) {
+                // first a workaround for BZ: 133025. Set ae metering mode to auto for the flash duration
+                // we can safely use a temporary setting since any client setParameters will be postponed
+                // for the duration of the capture
+                // this class defines the temporary setting behavior
+                class TemporaryAeMetering : public TemporarySetting {
+                public:
+                    TemporaryAeMetering(ControlThread *controlThread) : TemporarySetting(controlThread) { mMode = mControlThread->m3AControls->getAeMeteringMode(); }
+                    void set() { mControlThread->m3AControls->setAeMeteringMode(CAM_AE_METERING_MODE_AUTO); }
+                    void reset() { mControlThread->m3AControls->setAeMeteringMode(mMode); }
+                    MeteringMode mMode;
+                };
+                // instantiate - the smart pointers take care of destruction
+                autoReset = new AutoReset(new TemporaryAeMetering(this));
 
-                    flashSequenceStarted = true;
-                    // hide preview frames already during pre-flash sequence
-                    mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
-                    mISP->attachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
-                    status = m3AThread->enterFlashSequence(AAAThread::FLASH_STAGE_PRE_EXPOSED);
-                    if (status != NO_ERROR) {
-                        flashOn = false;
-                    }
-                    // display postview when flash is triggered
-                    // regardless of preview update mode
-                    displayPostview = postviewDisplayable;
+                flashSequenceStarted = true;
+                // hide preview frames already during pre-flash sequence
+                mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
+                mISP->attachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
+                status = m3AThread->enterFlashSequence(AAAThread::FLASH_STAGE_PRE_EXPOSED);
+                if (status != NO_ERROR) {
+                    flashOn = false;
                 }
+                // display postview when flash is triggered
+                // regardless of preview update mode
+                displayPostview = postviewDisplayable;
             }
         }
     }
@@ -3753,40 +3745,8 @@ status_t ControlThread::handleMessageAutoFocus()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    FlashMode flashMode = m3AControls->getAeFlashMode();
-
     PERFORMANCE_TRACES_BREAKDOWN_STEP("In");
-
-    // Implement pre auto-focus functions
-    if (flashMode != CAM_AE_FLASH_MODE_TORCH && m3AControls->isIntel3A() && mBurstLength <= 1) {
-        if (!mFlashAutoFocus && (DetermineFlash(flashMode) || flashMode == CAM_AE_FLASH_MODE_ON)) {
-            LOG1("Flash mode = %d", flashMode);
-            if (m3AControls->getAfNeedAssistLight()) {
-                mFlashAutoFocus = true;
-            }
-        }
-
-        if (mFlashAutoFocus) {
-            LOG1("Using Torch for auto-focus");
-            mHwcg.mFlashCI->setTorch(TORCH_INTENSITY);
-        }
-    }
-
-    //If the apps call autoFocus(AutoFocusCallback), the camera will stop sending face callbacks.
-    // The last face callback indicates the areas used to do autofocus. After focus completes,
-    // face detection will resume sending face callbacks.
-    //If the apps call cancelAutoFocus(), the face callbacks will also resume.
-    LOG2("auto focus is on");
-    if (mFaceDetectionActive)
-        disableMsgType(CAMERA_MSG_PREVIEW_METADATA);
-    // Auto-focus should be done in AAAThread, so send a message directly to it
     status = m3AThread->autoFocus();
-
-    // If start auto-focus failed and we enabled torch, disable it now
-    if (status != NO_ERROR && mFlashAutoFocus) {
-        mHwcg.mFlashCI->setTorch(0);
-        mFlashAutoFocus = false;
-    }
 
     return status;
 }
@@ -3797,12 +3757,6 @@ status_t ControlThread::handleMessageCancelAutoFocus()
     status_t status = NO_ERROR;
     status = m3AThread->cancelAutoFocus();
     LOG2("auto focus is off");
-    if (mFaceDetectionActive)
-        enableMsgType(CAMERA_MSG_PREVIEW_METADATA);
-    if (mFlashAutoFocus) {
-        mHwcg.mFlashCI->setTorch(0);
-        mFlashAutoFocus = false;
-    }
     /*
      * The normal autoFocus sequence is:
      * - camera client is calling autoFocus (we run the AF sequence and lock AF)
@@ -4087,21 +4041,6 @@ AtomBuffer* ControlThread::findBufferByData(AtomBuffer *buf,Vector<AtomBuffer> *
     }
 
     return NULL;
-}
-
-status_t ControlThread::handleMessageAutoFocusDone()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    if (mFaceDetectionActive)
-        enableMsgType(CAMERA_MSG_PREVIEW_METADATA);
-    // Implement post auto-focus functions
-    if (mFlashAutoFocus) {
-        mHwcg.mFlashCI->setTorch(0);
-        mFlashAutoFocus = false;
-    }
-
-    return status;
 }
 
 bool ControlThread::validateSize(int width, int height, Vector<Size> &supportedSizes) const
@@ -4993,14 +4932,6 @@ status_t ControlThread::processParamFlash(const CameraParameters *oldParams,
 
         mSavedFlashMode = newVal;
 
-        if (flash == CAM_AE_FLASH_MODE_TORCH && m3AControls->getAeFlashMode() != CAM_AE_FLASH_MODE_TORCH) {
-            mHwcg.mFlashCI->setTorch(TORCH_INTENSITY);
-        }
-
-        if (flash != CAM_AE_FLASH_MODE_TORCH && m3AControls->getAeFlashMode() == CAM_AE_FLASH_MODE_TORCH) {
-            mHwcg.mFlashCI->setTorch(0);
-        }
-
         status = m3AControls->setAeFlashMode(flash);
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_FLASH_MODE, newVal.string());
@@ -5306,7 +5237,29 @@ void ControlThread::preProcessFlashMode(CameraParameters *newParams)
         return;
     }
 
-    bool lowBattery = mHwcg.mFlashCI->lowBatteryForFlash();
+    bool lowBattery = false;
+    BatteryStatus bs = mHwcg.mFlashCI->getBatteryStatus();
+    switch (bs) {
+        case BATTERY_STATUS_WARNING:
+            LOGW("@%s low battery status warning", __FUNCTION__);
+            //TODO call 3a interface
+            break;
+        case BATTERY_STATUS_ALERT:
+            LOGW("@%s low battery status alert", __FUNCTION__);
+            //TODO call 3a interface
+            break;
+        case BATTERY_STATUS_CRITICAL:
+            LOGW("@%s critical low battery status", __FUNCTION__);
+            //TODO call 3a interface
+            lowBattery = true;
+            break;
+        case BATTERY_STATUS_INVALID:
+            LOGW("@%s invalid battery status", __FUNCTION__);
+        case BATTERY_STATUS_NORMAL:
+            //do nothing
+        default:
+            break;
+    }
 
     const char* supportedFlashModes = newParams->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
     String8 currSupportedFlashModes(supportedFlashModes, supportedFlashModes == NULL ? 0 : strlen(supportedFlashModes));
@@ -6224,20 +6177,11 @@ status_t ControlThread::processParamHighSpeed(const CameraParameters *oldParams,
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    m3AControls->enableHighSpeed(false);
+    mISP->setHighSpeedResolutionFps(NULL, -1);
 
-    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
-                                              IntelCameraParameters::KEY_HIGH_SPEED);
-    if (!newVal.isEmpty()) {
-       bool highSpeed = (newVal == CameraParameters::TRUE);
-       if(!highSpeed) {
-           mISP->setHighSpeedResolutionFps(NULL, -1);
-           newParams->set(IntelCameraParameters::KEY_HIGH_SPEED_RESOLUTION_FPS, "");
-           return status;
-       }
-    }
-
-    newVal = paramsReturnNewIfChanged(oldParams, newParams,
-                                              IntelCameraParameters::KEY_HIGH_SPEED_RESOLUTION_FPS);
+    const char* n = newParams->get(IntelCameraParameters::KEY_HIGH_SPEED_RESOLUTION_FPS);
+    String8 newVal = String8(n, (n == NULL ? 0 : strlen(n)));
     if (!newVal.isEmpty()) {
         char* resoFps = strndup(newVal.string(), newVal.length());
         if(resoFps == NULL)
@@ -6254,7 +6198,10 @@ status_t ControlThread::processParamHighSpeed(const CameraParameters *oldParams,
             return BAD_VALUE;
         }
         if(fps != NULL && reso != NULL)
-            mISP->setHighSpeedResolutionFps(reso, atoi(fps));
+            status = mISP->setHighSpeedResolutionFps(reso, atoi(fps));
+        if(status == NO_ERROR && mISP->isHighSpeedEnabled()) {
+            m3AControls->enableHighSpeed(true);
+        }
         if(resoFps != NULL)
             free(resoFps);
         if(reso != NULL)
@@ -7019,8 +6966,11 @@ status_t ControlThread::handleMessageStoreMetaDataInBuffers(MessageStoreMetaData
         return status;
     }
 
+    //find the setted buffer sharing session ID
+    int sID = mParameters.getInt(IntelCameraParameters::REC_BUFFER_SHARING_SESSION_ID);
+
     mStoreMetaDataInBuffers = msg->enabled;
-    status = mISP->storeMetaDataInBuffers(msg->enabled);
+    status = mISP->storeMetaDataInBuffers(msg->enabled, sID);
     if(status == NO_ERROR)
         status = mCallbacks->storeMetaDataInBuffers(msg->enabled);
     else
@@ -7775,10 +7725,6 @@ status_t ControlThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_PICTURE_DONE:
             status = handleMessagePictureDone(&msg.data.pictureDone);
-            break;
-
-        case MESSAGE_ID_AUTO_FOCUS_DONE:
-            status = handleMessageAutoFocusDone();
             break;
 
         case MESSAGE_ID_SET_PARAMETERS:

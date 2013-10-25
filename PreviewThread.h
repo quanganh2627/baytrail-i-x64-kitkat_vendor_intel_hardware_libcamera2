@@ -142,9 +142,10 @@ public:
     status_t preview(AtomBuffer *buff);
     status_t postview(AtomBuffer *buff, bool hidePreview = false, bool synchronous = false);
     status_t setPreviewWindow(struct preview_stream_ops *window);
-    status_t setPreviewConfig(int preview_width, int preview_height, int preview_bpl,
+    status_t setPreviewConfig(int preview_width, int preview_height,
                               int preview_cb_format, bool shared_mode = true, int buffer_count = -1);
     status_t fetchPreviewBuffers(Vector<AtomBuffer> &pvBufs);
+    status_t fetchPreviewBufferGeometry(int *w, int *h, int *bpl);
     status_t returnPreviewBuffers();
     status_t flushBuffers();
     status_t enableOverlay(bool set = true, int rotation = 90);
@@ -165,6 +166,7 @@ private:
         MESSAGE_ID_FLUSH,
         MESSAGE_ID_WINDOW_QUERY,
         MESSAGE_ID_SET_CALLBACK,
+        MESSAGE_ID_FETCH_BUF_GEOMETRY,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -192,7 +194,6 @@ private:
     struct MessageSetPreviewConfig {
         int width;
         int height;
-        int bpl;
         int cb_format;
         int bufferCount;
         bool sharedMode;
@@ -250,6 +251,7 @@ private:
     status_t handleFetchPreviewBuffers(void);
     status_t handleReturnPreviewBuffers(void);
     status_t handlePostview(MessagePreview *msg);
+    status_t handleMessageFetchBufferGeometry(void);
 
     // main message function
     status_t waitForAndExecuteMessage();

@@ -370,6 +370,7 @@ status_t V4L2VideoNode::setFormat(AtomBuffer &formatDescriptor)
 
     v4l2_fmt.fmt.pix.width = formatDescriptor.width;
     v4l2_fmt.fmt.pix.height = formatDescriptor.height;
+    v4l2_fmt.fmt.pix.bytesperline = formatDescriptor.bpl;
     v4l2_fmt.fmt.pix.pixelformat = formatDescriptor.fourcc;
     v4l2_fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
 
@@ -378,12 +379,16 @@ status_t V4L2VideoNode::setFormat(AtomBuffer &formatDescriptor)
     if (ret != NO_ERROR)
         return ret;
 
-    // .. but get the bpl from ISP
+    // .. but get the frame size from ISP
     // and update the new configuration struct with it
-    formatDescriptor.bpl = mFormatDescriptor.bpl;
-
-    // Do the same for the frame size
     formatDescriptor.size = mFormatDescriptor.size;
+
+    // Also update the configuration struct with the bpl from ISP, if there is a mismatch
+    if (formatDescriptor.bpl != 0 && formatDescriptor.bpl != mFormatDescriptor.bpl) {
+        LOGW("@%s: Mismatch between requested bpl (%d) and bpl from ISP (%d), using the value from ISP",
+                __FUNCTION__, formatDescriptor.bpl, mFormatDescriptor.bpl);
+    }
+    formatDescriptor.bpl = mFormatDescriptor.bpl;
 
     return NO_ERROR;
 }
@@ -420,9 +425,10 @@ status_t V4L2VideoNode::setFormat(struct v4l2_format &aFormat)
     }
 
 
-    LOG1("VIDIOC_S_FMT: width: %d, height: %d, fourcc: %s, field: %d",
+    LOG1("VIDIOC_S_FMT: width: %d, height: %d, bpl: %d, fourcc: %s, field: %d",
             aFormat.fmt.pix.width,
             aFormat.fmt.pix.height,
+            aFormat.fmt.pix.bytesperline,
             v4l2Fmt2Str(aFormat.fmt.pix.pixelformat),
             aFormat.fmt.pix.field);
     ret = ioctl(mFd, VIDIOC_S_FMT, &aFormat);

@@ -251,6 +251,9 @@ namespace android {
     const char IntelCameraParameters::GPS_IMG_DIRECTION_REF_TRUE[] = "true-direction";
     const char IntelCameraParameters::GPS_IMG_DIRECTION_REF_MAGNETIC[] = "magnetic-direction";
 
+    // Others
+    const char IntelCameraParameters::REC_BUFFER_SHARING_SESSION_ID[] = "buffer-sharing-session-id";
+
     void IntelCameraParameters::getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params)
     {
         width = height = -1;

@@ -49,9 +49,12 @@
 #include "AtomCommon.h"
 #include <IntelParameters.h>
 
+// if graphic is gen, this value will be use. if not, only for build.
+#define HAL_PIXEL_FORMAT_NV12_TILED_INTEL 0x7FA00F00
 #ifdef GRAPHIC_IS_GEN // this will be remove if graphic provides one common header file
 #define HAL_PIXEL_FORMAT_YUV420PackedSemiPlanar_INTEL 0x7FA00E00
-#define HAL_PIXEL_FORMAT_NV12 HAL_PIXEL_FORMAT_YUV420PackedSemiPlanar_INTEL
+#define HAL_PIXEL_FORMAT_NV12_LINEAR_PACKED_INTEL 0x103
+#define HAL_PIXEL_FORMAT_NV12 HAL_PIXEL_FORMAT_NV12_LINEAR_PACKED_INTEL
 #endif
 
 namespace android {
@@ -935,6 +938,25 @@ class PlatformData {
      */
     static bool useIntelULL(void);
 
+    /**
+     * Returns vertical FOV
+     *
+     * \return float angle in degrees
+     */
+    static float verticalFOV(int cameraId);
+
+    /**
+     * Retrns horizontal FOV
+     *
+     * \return float angle in degrees
+     */
+    static float horizontalFOV(int cameraId);
+
+    /**
+     * Whether the graphic is GEN.
+     * \return true if it's GEN. false, if it's not GEN.
+     */
+    static bool isGraphicGen(void);
 };
 
 /**
@@ -1106,6 +1128,9 @@ protected:
             supportedSceneDetection = "on,off";
             synchronizeExposure = false;
             maxNumSnapshotBuffers = 10;
+            // FOV
+            verticalFOV = 42.5f;
+            horizontalFOV = 54.8f;
         };
 
         SensorType sensorType;
@@ -1224,6 +1249,11 @@ protected:
          * Bracketing of AE and AF also affects it
          */
         int maxNumSnapshotBuffers;
+
+        // FOV
+        float verticalFOV;
+        float horizontalFOV;
+
     };
 
     // note: Android NDK does not yet support C++11 and

@@ -259,6 +259,9 @@ namespace android {
     static const char GPS_IMG_DIRECTION_REF_TRUE[];
     static const char GPS_IMG_DIRECTION_REF_MAGNETIC[];
 
+    // Others
+    static const char REC_BUFFER_SHARING_SESSION_ID[];
+
     static void getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params);
     static const char* getSupportedPanoramaLivePreviewSizes(const CameraParameters &params);
     static void parseResolutionList(const char *sizeStr, Vector<Size> &sizes);
