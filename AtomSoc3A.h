@@ -143,8 +143,6 @@ public:
     status_t setFaces(const ia_face_state& faceState) { return INVALID_OPERATION; }
     status_t setFlash(int numFrames);
 
-    virtual status_t enableHighSpeed(bool en) { return INVALID_OPERATION; }
-
 private:
     int mCameraId;
     IHWIspControl * mISP;

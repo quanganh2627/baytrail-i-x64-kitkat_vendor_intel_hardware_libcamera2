@@ -192,8 +192,6 @@ namespace android {
     static const char SLOW_MOTION_RATE_2X[];
     static const char SLOW_MOTION_RATE_3X[];
     static const char SLOW_MOTION_RATE_4X[];
-    static const char KEY_HIGH_SPEED[];
-    static const char KEY_SUPPORTED_HIGH_SPEED[];
     static const char KEY_HIGH_SPEED_RESOLUTION_FPS[];
     static const char KEY_SUPPORTED_HIGH_SPEED_RESOLUTION_FPS[];
 

@@ -637,9 +637,6 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     {
        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED_RESOLUTION_FPS,
                          PlatformData::supportedHighSpeedResolutionFps(cameraId));
-       intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED, "true,false");
-    } else {
-       intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED, "false");
     }
 
     /**

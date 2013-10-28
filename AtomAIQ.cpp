@@ -200,6 +200,11 @@ status_t AtomAIQ::_init3A()
 
     run3aInit();
 
+    // In high speed, the Scene mode should be SPORT, set AE operation as action
+    // to notice AIQ
+    if(mAeSceneMode == CAM_AE_SCENE_MODE_SPORTS)
+        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_action;
+
     cameranvm_delete(aicNvm);
     m3aState.stats = NULL;
     m3aState.stats_valid = false;
@@ -485,22 +490,6 @@ AeMode AtomAIQ::getAeMode()
 {
     LOG1("@%s", __FUNCTION__);
     return mAeMode;
-}
-
-status_t AtomAIQ::enableHighSpeed(bool en)
-{
-    LOG1("@%s", __FUNCTION__);
-    //high speed recording only available in video mode
-    if (m3aState.frame_use != ia_aiq_frame_use_video)
-        return INVALID_OPERATION;
-    // When frame_use = video, ae_operation_mode = action, then the limits should
-    // be defined separately for "normal" and "high speed" video use cases.
-    if(en)
-        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_action;
-    else
-        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_automatic;
-
-    return NO_ERROR;
 }
 
 status_t AtomAIQ::setAfMode(AfMode mode)

@@ -4344,12 +4344,6 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     }
 
     // HIGH SPEED
-    const char* highSpeed =  params->get(IntelCameraParameters::KEY_HIGH_SPEED);
-    const char* highSpeeds =  params->get(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED);
-    if (!validateString(highSpeed, highSpeeds)) {
-        LOGE("bad high speed value : %s", highSpeed);
-        return BAD_VALUE;
-    }
     const char* highSpeedResolutionFps = params->get(IntelCameraParameters::KEY_HIGH_SPEED_RESOLUTION_FPS);
     const char* highSpeedResolutionFpss = params->get(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED_RESOLUTION_FPS);
     if (!validateString(highSpeedResolutionFps, highSpeedResolutionFpss)) {
@@ -6153,7 +6147,6 @@ status_t ControlThread::processParamHighSpeed(const CameraParameters *oldParams,
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    m3AControls->enableHighSpeed(false);
     mISP->setHighSpeedResolutionFps(NULL, -1);
 
     const char* n = newParams->get(IntelCameraParameters::KEY_HIGH_SPEED_RESOLUTION_FPS);
@@ -6176,7 +6169,7 @@ status_t ControlThread::processParamHighSpeed(const CameraParameters *oldParams,
         if(fps != NULL && reso != NULL)
             status = mISP->setHighSpeedResolutionFps(reso, atoi(fps));
         if(status == NO_ERROR && mISP->isHighSpeedEnabled()) {
-            m3AControls->enableHighSpeed(true);
+            m3AControls->setAeSceneMode(CAM_AE_SCENE_MODE_SPORTS);
         }
         if(resoFps != NULL)
             free(resoFps);
