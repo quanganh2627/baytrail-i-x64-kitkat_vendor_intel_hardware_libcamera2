@@ -658,6 +658,7 @@ private:
     void disableFocusCallbacks();
 
     int getCameraID();
+    int timestampCompare(struct timeval *tv1, struct timeval *tv2);
 
 // inherited from Thread
 private:
@@ -778,6 +779,8 @@ private:
                                          saved as mirrored. The image will be mirrored based on the
                                          camera sensor orientation and device orientation. */
     int mRecordingOrientation;      /*!< Device orientation at the start of video recording. */
+    struct timeval mRecordingStartTimestamp; /*!< store the timestamp of start recording */
+    bool mVideoFrameSkipNeed;
 }; // class ControlThread
 
 }; // namespace android

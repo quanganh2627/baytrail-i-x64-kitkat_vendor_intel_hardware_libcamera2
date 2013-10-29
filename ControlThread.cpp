@@ -143,12 +143,14 @@ ControlThread::ControlThread(int cameraId) :
     ,mSaveMirrored(false)
     ,mCurrentOrientation(0)
     ,mRecordingOrientation(0)
+    ,mVideoFrameSkipNeed(false)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
     // This is a workaround for an issue with Thread reference counting.
 
     LOG1("@%s", __FUNCTION__);
+    memset(&mRecordingStartTimestamp, 0, sizeof(mRecordingStartTimestamp));
 
     PlatformData::setActiveCameraId(mCameraId);
 }
@@ -658,6 +660,11 @@ status_t ControlThread::errorPreview()
 status_t ControlThread::startRecording()
 {
     LOG1("@%s", __FUNCTION__);
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    mRecordingStartTimestamp.tv_sec = ts.tv_sec;
+    mRecordingStartTimestamp.tv_usec = ts.tv_nsec / 1000;
+
     // send message and block until thread processes message
     Message msg;
     msg.id = MESSAGE_ID_START_RECORDING;
@@ -902,6 +909,27 @@ void ControlThread::facesDetected(const ia_face_state *faceState)
 int ControlThread::getCameraID()
 {
     return mCameraId;
+}
+
+/**
+ * Compares the two timeval tv1 and tv2.
+ * It returns an integer less than, equal to, or greater than zero,
+ * if s1 is found, respectively, to be less than, to match, or be greater than s2.
+*/
+int ControlThread::timestampCompare(struct timeval *tv1, struct timeval *tv2)
+{
+    if(tv1 == NULL || tv2 == NULL)
+        return 0;
+    if (tv1->tv_sec > tv2->tv_sec)
+        return 1;
+    else if (tv1->tv_sec < tv2->tv_sec)
+        return -1;
+    else if (tv1->tv_usec > tv2->tv_usec)
+        return 1;
+    else if (tv1->tv_usec < tv2->tv_usec)
+        return -1;
+    else
+        return 0;
 }
 
 void ControlThread::panoramaFinalized(AtomBuffer *buff, AtomBuffer *pvBuff)
@@ -2022,6 +2050,7 @@ status_t ControlThread::handleMessageStartRecording()
 
     if (mState == STATE_PREVIEW_VIDEO) {
         mState = STATE_RECORDING;
+        mVideoFrameSkipNeed = true;
     } else if (mState == STATE_PREVIEW_STILL ||
                mState == STATE_CONTINUOUS_CAPTURE) {
         /* We are in PREVIEW_STILL mode; in order to start recording
@@ -7618,6 +7647,11 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
                 LOGE("Video frame dropped, buffers reserved : %d video encoder, %d video snapshot",
                         mRecordingBuffers.size(), mVideoSnapshotBuffers.size());
                 msg->skipFrame = true;
+            }
+            if(mVideoFrameSkipNeed && timestampCompare(&mRecordingStartTimestamp, &(buff.capture_timestamp)) > 0) {
+                msg->skipFrame = true;
+            } else {
+                mVideoFrameSkipNeed = false;
             }
             // See if recording has started (state).
             // If it has, process the buffer, unless frame is to be dropped.
