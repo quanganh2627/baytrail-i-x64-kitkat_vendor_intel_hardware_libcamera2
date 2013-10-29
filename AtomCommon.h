@@ -266,7 +266,7 @@ const struct AtomFormatBridge* getAtomFormatBridge(unsigned int fourcc);
  * @param second the second element of the pair, the memory need to be released by caller
  * @param delim delimiter of the pair
  */
-static int parsePair(char *str, char **first, char **second, const char *delim)
+static int parsePair(const char *str, char **first, char **second, const char *delim)
 {
     if(str == NULL)
         return -1;
@@ -280,6 +280,28 @@ static int parsePair(char *str, char **first, char **second, const char *delim)
     strncpy(*first, str, strlen(str) - strlen(index));
     strncpy(*second, str + strlen(str) - strlen(index) + 1, strlen(index) - 1);
     return 0;
+}
+
+/** If forgetting to free, parsePair may have memleak.
+ *  ParsePairToInt avoids this memleak.
+ */
+static int parsePairToInt(const char *str, int *first, int *second, const char *delim)
+{
+    char *a = NULL;
+    char *b = NULL;
+    int ret = parsePair(str, &a, &b, delim);
+
+    if (ret == 0 && a != NULL && b != NULL) {
+        *first = atoi(a);
+        *second = atoi(b);
+    }
+
+    if(a != NULL)
+        free(a);
+    if(b != NULL)
+        free(b);
+
+    return ret;
 }
 
 /**
