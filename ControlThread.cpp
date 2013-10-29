@@ -5269,7 +5269,7 @@ void ControlThread::selectFlashModeForScene(CameraParameters *newParams)
     }
 }
 
-status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
+status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
         CameraParameters *newParams, bool &needRestart)
 {
     LOG1("@%s", __FUNCTION__);
@@ -5553,6 +5553,16 @@ status_t ControlThread::processParamSceneMode(const CameraParameters *oldParams,
             LOG1("Changed: %s -> %s", CameraParameters::KEY_SCENE_MODE, newScene.string());
         }
 
+        // Forget current parameters to enforce refreshing the parameters to 3A
+        // this is done due that setAeSceneMode() resets AIQ configuration to initial defaults
+        oldParams->remove(CameraParameters::KEY_FOCUS_MODE);
+        oldParams->remove(CameraParameters::KEY_FLASH_MODE);
+        oldParams->remove(CameraParameters::KEY_WHITE_BALANCE);
+        oldParams->remove(CameraParameters::KEY_ANTIBANDING);
+        oldParams->remove(IntelCameraParameters::KEY_ISO);
+        oldParams->remove(IntelCameraParameters::KEY_AWB_MAPPING_MODE);
+        oldParams->remove(IntelCameraParameters::KEY_AE_METERING_MODE);
+        oldParams->remove(CameraParameters::KEY_EXPOSURE_COMPENSATION);
 
         // If Intel params are not allowed,
         // we should update Intel params setting to HW, and remove them here.
@@ -6273,7 +6283,7 @@ status_t ControlThread::processParamNREE(const CameraParameters *oldParams,
  * @param[in] newParams the new parameters which are being set
  * @param[out] restartNeeded boolean to detect whether a preview re-start is needed.
  */
-status_t ControlThread::processStaticParameters(const CameraParameters *oldParams,
+status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
         CameraParameters *newParams, bool &restartNeeded)
 {
     LOG1("@%s", __FUNCTION__);

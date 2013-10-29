@@ -550,7 +550,7 @@ private:
             CameraParameters *newParams);
     status_t processParamEffect(const CameraParameters *oldParams,
             CameraParameters *newParams);
-    status_t processParamSceneMode(const CameraParameters *oldParams,
+    status_t processParamSceneMode(CameraParameters *oldParams,
             CameraParameters *newParams, bool &restartNeeded);
     status_t processParamXNR_ANR(const CameraParameters *oldParams,
             CameraParameters *newParams, bool &restartNeeded);
@@ -629,7 +629,7 @@ private:
     // changed while the ISP is running, the ISP will need to be stopped, reconfigured, and
     // restarted. Static parameters will most likely affect buffer size and/or format so buffers
     // must be deallocated and reallocated accordingly.
-    status_t processStaticParameters(const CameraParameters *oldParams,
+    status_t processStaticParameters(CameraParameters *oldParams,
             CameraParameters *newParams, bool &restartNeeded);
     status_t validateParameters(const CameraParameters *params);
     // validation helpers
