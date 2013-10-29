@@ -1813,6 +1813,11 @@ status_t ControlThread::restartPreview(bool videoMode)
 {
     LOG1("@%s: mode = %s", __FUNCTION__, videoMode?"VIDEO":"STILL");
     bool faceActive = mFaceDetectionActive;
+    // Check if the preview is actually running while restart is requested.
+    // We don't want to trigger preview start, e.g., during setParameters(), unless
+    // the preview was running in the first place.
+    bool previewEn = previewEnabled();
+
     /**
      * Postcapture processing items must be completed when preview is stopped
      * or re-started. See the comment in handleMessageStopPreview
@@ -1823,7 +1828,7 @@ status_t ControlThread::restartPreview(bool videoMode)
 
     stopFaceDetection(true);
     status_t status = stopPreviewCore();
-    if (status == NO_ERROR)
+    if (status == NO_ERROR && previewEn)
         status = startPreviewCore(videoMode);
     if (faceActive)
         startFaceDetection();
