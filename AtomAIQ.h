@@ -413,8 +413,6 @@ public:
 
 // private members
 private:
-
-    FILE *pFile3aStatDump;
     IHWIspControl *mISP;
     ia_env mPrintFunctions;
 

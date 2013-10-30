@@ -76,12 +76,19 @@ AtomAIQ::AtomAIQ(HWControlGroup &hwcg):
     ,mAfMode(CAM_AF_MODE_NOT_SET)
     ,mStillAfStart(0)
     ,mFocusPosition(0)
+    ,mAfBracketingResult(NULL)
     ,mBracketingStops(0)
+    ,mAeMode(CAM_AE_MODE_NOT_SET)
+    ,mPublicAeMode(CAM_AE_MODE_NOT_SET)
     ,mAeSceneMode(CAM_AE_SCENE_MODE_NOT_SET)
+    ,mAeFlashMode(CAM_AE_FLASH_MODE_NOT_SET)
     ,mBracketingRunning(false)
     ,mAEBracketingResult(NULL)
+    ,mAwbResults(NULL)
     ,mAwbMode(CAM_AWB_MODE_NOT_SET)
+    ,mAwbLocked(false)
     ,mAwbRunCount(0)
+    ,mGBCEResults(NULL)
     ,mMkn(NULL)
     ,mSensorCI(hwcg.mSensorCI)
     ,mFlashCI(hwcg.mFlashCI)
@@ -89,10 +96,20 @@ AtomAIQ::AtomAIQ(HWControlGroup &hwcg):
     ,mISPAdaptor(NULL)
 {
     LOG1("@%s", __FUNCTION__);
-    memset(&m3aState, 0, sizeof(aaa_state));
-    memset(&mAeCoord, 0, sizeof(ia_coordinate));
-    memset(&mAfState, 0, sizeof(af_state));
-    memset(&mAeState, 0, sizeof(ae_state));
+    CLEAR(mPrintFunctions);
+    CLEAR(m3aState);
+    CLEAR(mStatisticsInputParameters);
+    CLEAR(mAfInputParameters);
+    CLEAR(mAfState);
+    CLEAR(mAeInputParameters);
+    CLEAR(mAeSensorDescriptor);
+    CLEAR(mAeState);
+    CLEAR(mAeCoord);
+    CLEAR(mAeBracketingInputParameters);
+    CLEAR(mAwbInputParameters);
+    CLEAR(mIspInputParams);
+    CLEAR(mDSDInputParameters);
+    CLEAR(mDetectedSceneMode);
 }
 
 AtomAIQ::~AtomAIQ()
@@ -206,7 +223,7 @@ status_t AtomAIQ::_init3A()
     cameranvm_delete(aicNvm);
     m3aState.stats = NULL;
     m3aState.stats_valid = false;
-    memset(&m3aState.results, 0, sizeof(m3aState.results));
+    CLEAR(m3aState.results);
 
     return status;
 }
@@ -1355,7 +1372,7 @@ void AtomAIQ::freeStatistics(struct atomisp_3a_statistics *stats)
  * frame wherefrom the statistics get read.
  *
  * AIQ API expects to receive feedback as a compound struct ia_aiq_ae_results,
- * compining 5 result structures (ae_results, weight_grid, exposure,
+ * combining 5 result structures (ae_results, weight_grid, exposure,
  * sensor_exposure and flash). New compound struct stored_ae_results is
  * defined to be able to keep the history in a generic container (AtomFifo).
  *
@@ -1501,7 +1518,7 @@ int AtomAIQ::applyExposure(ia_aiq_exposure_sensor_parameters *sensor_exposure)
     int ret = 0;
     // create struct atomisp_exposure for sensor interface
     struct atomisp_exposure atomispExposure;
-    memset(&atomispExposure, 0, sizeof(struct atomisp_exposure));
+    CLEAR(atomispExposure);
 
     atomispExposure.integration_time[0] = sensor_exposure->coarse_integration_time;
     atomispExposure.integration_time[1] = sensor_exposure->fine_integration_time;
@@ -1527,9 +1544,9 @@ int AtomAIQ::applyExposure(ia_aiq_exposure_sensor_parameters *sensor_exposure)
 int AtomAIQ::run3aInit()
 {
     LOG1("@%s", __FUNCTION__);
-    memset(&m3aState.curr_grid_info, 0, sizeof(m3aState.curr_grid_info));
-    memset(&m3aState.rgbs_grid, 0, sizeof(m3aState.rgbs_grid));
-    memset(&m3aState.af_grid, 0, sizeof(m3aState.af_grid));
+    CLEAR(m3aState.curr_grid_info);
+    CLEAR(m3aState.rgbs_grid);
+    CLEAR(m3aState.af_grid);
 
     m3aState.faces = (ia_face_state*)malloc(sizeof(ia_face_state) + IA_AIQ_MAX_NUM_FACES*sizeof(ia_face));
     if (m3aState.faces) {
@@ -1541,8 +1558,8 @@ int AtomAIQ::run3aInit()
 
     resetAFParams();
     mAfState.af_results = NULL;
-    memset(&mAeCoord, 0, sizeof(mAeCoord));
-    memset(&mAeState, 0, sizeof(mAeState));
+    CLEAR(mAeCoord);
+    CLEAR(mAeState);
     if (mSensorCI == NULL)
         return -1;
     unsigned int store_size = mSensorCI->getExposureDelay() + 1; /* max delay + current results */
@@ -1645,7 +1662,7 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct)
     if (ret == 0)
     {
         ia_err err = ia_err_none;
-        memset(&m3aState.statistics_input_parameters, 0, sizeof(ia_aiq_statistics_input_params));
+        CLEAR(m3aState.statistics_input_parameters);
 
         m3aState.statistics_input_parameters.frame_timestamp = TIMEVAL2USECS(frame_timestamp_struct);
 
