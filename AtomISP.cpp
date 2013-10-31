@@ -60,11 +60,6 @@
 #define ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X 5 // Min buffer len supported by CSS2.x
 #define FRAME_SYNC_POLL_TIMEOUT 500
 
-
-// workaround for the imx132, this code will be removed in the future
-#define RESOLUTION_1080P_SNAPSHOT_TABLE   "320x240,640x480,1280x720,1920x1080"
-#define RESOLUTION_1080P_VIDEO_TABLE   "176x144,320x240,352x288,640x480,720x480,1280x720,1920x1080"
-
 namespace android {
 
 ////////////////////////////////////////////////////////////////////
@@ -368,11 +363,6 @@ void AtomISP::initFrameConfig()
     }
     else {
         getMaxSnapShotSize(mCameraId, &(mConfig.snapshotLimits.maxWidth), &(mConfig.snapshotLimits.maxHeight));
-        // workaround for the imx132, this code will be removed in the future
-        if (strstr(mCameraInput->name, "imx132")) {
-           mConfig.snapshotLimits.maxWidth  = RESOLUTION_1080P_WIDTH;
-           mConfig.snapshotLimits.maxHeight = RESOLUTION_1080P_HEIGHT;
-        }
     }
 
     if (mConfig.snapshotLimits.maxWidth >= RESOLUTION_1080P_WIDTH
@@ -554,9 +544,6 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     params->setVideoSize(mConfig.recording.width, mConfig.recording.height);
     params->set(CameraParameters::KEY_PREFERRED_PREVIEW_SIZE_FOR_VIDEO, PlatformData::preferredPreviewSizeForVideo(cameraId));
     params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, PlatformData::supportedVideoSizes(cameraId));
-    // workaround for the imx132, this code will be removed in the future
-    if (strstr(mCameraInput->name, "imx132"))
-        params->set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, RESOLUTION_1080P_VIDEO_TABLE);
     params->set(CameraParameters::KEY_VIDEO_FRAME_FORMAT,
                 CameraParameters::PIXEL_FORMAT_YUV420SP);
     if (PlatformData::supportVideoSnapshot())
@@ -568,9 +555,6 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
      * SNAPSHOT
      */
     params->set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, PlatformData::supportedSnapshotSizes(cameraId));
-    // workaround for the imx132, this code will be removed in the future
-    if (strstr(mCameraInput->name, "imx132"))
-        params->set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, RESOLUTION_1080P_SNAPSHOT_TABLE);
     params->setPictureSize(mConfig.snapshot.width, mConfig.snapshot.height);
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH,"320");
     params->set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT,"240");
@@ -698,10 +682,6 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     // HDR imaging settings
     intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, PlatformData::defaultHdr(cameraId));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, PlatformData::supportedHdr(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_HDR_VIVIDNESS, "none");
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS, "none");
-    intel_params->set(IntelCameraParameters::KEY_HDR_SHARPENING, "none");
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SHARPENING, "none");
     intel_params->set(IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, "off");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL, "off");
 
@@ -726,8 +706,6 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_SPEED, "fast,medium,low");
     intel_params->set(IntelCameraParameters::KEY_BURST_START_INDEX, "0");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX, startIndexValues);
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BURST_CONTINUOUS, "true,false");
-    intel_params->set(IntelCameraParameters::KEY_BURST_CONTINUOUS, "false");
 
     // TODO: move to platform data
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_PREVIEW_UPDATE_MODE, PlatformData::supportedPreviewUpdateModes(cameraId));
@@ -836,9 +814,6 @@ void AtomISP::getMaxSnapShotSize(int cameraId, int* width, int* height)
     int maxWidth = 0, maxHeight = 0;
 
     p.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, PlatformData::supportedSnapshotSizes(cameraId));
-    // workaround for the imx132, this code will be removed in the future
-    if (strstr(mCameraInput->name, "imx132"))
-        p.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, RESOLUTION_1080P_SNAPSHOT_TABLE);
     p.getSupportedPictureSizes(supportedSizes);
 
     for (unsigned int i = 0; i < supportedSizes.size(); i++) {
@@ -931,10 +906,6 @@ status_t AtomISP::getIspParameters(struct atomisp_parm *isp_param) const
 status_t AtomISP::applySensorFlip(void)
 {
     int sensorFlip = PlatformData::sensorFlipping(mCameraId);
-
-    // workaround for the imx132, this code will be removed in the future
-    if (strstr(mCameraInput->name, "imx132"))
-        sensorFlip = PlatformData::SENSOR_FLIP_H | PlatformData::SENSOR_FLIP_V;
 
     if (sensorFlip == PlatformData::SENSOR_FLIP_NA
         || sensorFlip == PlatformData::SENSOR_FLIP_OFF)
@@ -4921,48 +4892,54 @@ void AtomISP::getSensorData(sensorPrivateData *sensor_data)
     LOG2("@%s", __FUNCTION__);
     int rc;
     struct v4l2_private_int_data otpdata;
-
-    otpdata.size = 0;
-    otpdata.data = NULL;
-    otpdata.reserved[0] = 0;
-    otpdata.reserved[1] = 0;
+    int cameraId = getCurrentCameraId();
 
     sensor_data->data = NULL;
     sensor_data->size = 0;
 
-    int cameraId = getCurrentCameraId();
-    if (gSensorDataCache[cameraId].fetched) {
-        sensor_data->data = gSensorDataCache[cameraId].data;
-        sensor_data->size = gSensorDataCache[cameraId].size;
-        return;
+    if ((gControlLevel & CAMERA_DISABLE_FRONT_NVM) || (gControlLevel & CAMERA_DISABLE_BACK_NVM)) {
+        LOG1("NVM data reading disabled");
+        sensor_data->fetched = false;
     }
-    // First call with size = 0 will return OTP data size.
-    rc = mMainDevice->xioctl(ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
-    LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data size ret: %d\n", __FUNCTION__, rc);
-    if (rc != 0 || otpdata.size == 0) {
-        LOGD("Failed to get OTP size. Error: %d", rc);
-        return;
+    else {
+        otpdata.size = 0;
+        otpdata.data = NULL;
+        otpdata.reserved[0] = 0;
+        otpdata.reserved[1] = 0;
+
+        if (gSensorDataCache[cameraId].fetched) {
+            sensor_data->data = gSensorDataCache[cameraId].data;
+            sensor_data->size = gSensorDataCache[cameraId].size;
+            return;
+        }
+        // First call with size = 0 will return OTP data size.
+        rc = mMainDevice->xioctl(ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
+        LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data size ret: %d\n", __FUNCTION__, rc);
+        if (rc != 0 || otpdata.size == 0) {
+            LOGD("Failed to get OTP size. Error: %d", rc);
+            return;
+        }
+
+        otpdata.data = calloc(otpdata.size, 1);
+        if (otpdata.data == NULL) {
+            LOGD("Failed to allocate memory for OTP data.");
+            return;
+        }
+
+        // Second call with correct size will return OTP data.
+        rc = mMainDevice->xioctl(ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
+        LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data ret: %d\n", __FUNCTION__, rc);
+
+        if (rc != 0 || otpdata.size == 0) {
+            LOGD("Failed to read OTP data. Error: %d", rc);
+            free(otpdata.data);
+            return;
+        }
+
+        sensor_data->data = otpdata.data;
+        sensor_data->size = otpdata.size;
+        sensor_data->fetched = true;
     }
-
-    otpdata.data = calloc(otpdata.size, 1);
-    if (otpdata.data == NULL) {
-        LOGD("Failed to allocate memory for OTP data.");
-        return;
-    }
-
-    // Second call with correct size will return OTP data.
-    rc = mMainDevice->xioctl(ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
-    LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data ret: %d\n", __FUNCTION__, rc);
-
-    if (rc != 0 || otpdata.size == 0) {
-        LOGD("Failed to read OTP data. Error: %d", rc);
-        free(otpdata.data);
-        return;
-    }
-
-    sensor_data->data = otpdata.data;
-    sensor_data->size = otpdata.size;
-    sensor_data->fetched = true;
     gSensorDataCache[cameraId] = *sensor_data;
 }
 

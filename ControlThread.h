@@ -385,8 +385,6 @@ private:
         bool enabled;
         bool inProgress;
         bool saveOrig;
-        HdrSharpening sharpening;
-        HdrVividness vividness;
         AtomBuffer outMainBuf;
         AtomBuffer outPostviewBuf;
         CiUserBuffer ciBufIn;

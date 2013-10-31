@@ -243,7 +243,8 @@ private:
 #else
     // function stubs for building without Intel extra features
 public:
-    PanoramaThread(ICallbackPanorama *panoramaCallback, I3AControls *aaaControls, int cameraId): m3AControls(aaaControls){}
+    PanoramaThread(ICallbackPanorama *panoramaCallback, I3AControls *aaaControls,
+                   sp<CallbacksThread> callbacksThread, Callbacks *callbacks, int cameraId): m3AControls(aaaControls) {}
     ~PanoramaThread() {}
 
     // getDefaultParameters() defined in PanoramaThread.cpp:

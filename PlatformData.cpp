@@ -993,26 +993,6 @@ const char* PlatformData::supportedUltraLowLight(int cameraId)
     return i->mCameras[cameraId].supportedUltraLowLight;
 }
 
-const char* PlatformData::defaultFaceDetection(int cameraId)
-{
-    PlatformBase *i = getInstance();
-    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
-      return "";
-    }
-    return i->mCameras[cameraId].defaultFaceDetection;
-}
-
-const char* PlatformData::supportedFaceDetection(int cameraId)
-{
-    PlatformBase *i = getInstance();
-    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
-      return "";
-    }
-    return i->mCameras[cameraId].supportedFaceDetection;
-}
-
 const char* PlatformData::defaultFaceRecognition(int cameraId)
 {
     PlatformBase *i = getInstance();
@@ -1176,12 +1156,20 @@ int PlatformData::getRecordingBufNum(void)
     return getInstance()->mNumRecordingBuffers;
 }
 
-int PlatformData::getMaxNumberSnapshotBuffers(int cameraId)
+int PlatformData::getMaxNumYUVBufferForBurst(int cameraId)
 {
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return 0;
     }
-    return getInstance()->mCameras[cameraId].maxNumSnapshotBuffers;
+    return getInstance()->mCameras[cameraId].maxNumYUVBufferForBurst;
+}
+
+int PlatformData::getMaxNumYUVBufferForBracket(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return 0;
+    }
+    return getInstance()->mCameras[cameraId].maxNumYUVBufferForBracket;
 }
 
 bool PlatformData::supportAIQ(void)
@@ -1313,7 +1301,6 @@ float PlatformData::horizontalFOV(int cameraId)
     return getInstance()->mCameras[cameraId].horizontalFOV;
 }
 
-
 bool PlatformData::isGraphicGen(void)
 {
 #ifdef GRAPHIC_IS_GEN
@@ -1321,6 +1308,34 @@ bool PlatformData::isGraphicGen(void)
 #else
     return false;
 #endif
+}
+
+int PlatformData::faceCallbackDivider()
+{
+
+    PlatformBase *i = getInstance();
+    int retVal = i->mFaceCallbackDivider;
+
+    // Always return a positive integer:
+    return (retVal > 0) ? retVal : 1;
+}
+
+unsigned int PlatformData::getNumOfCPUCores()
+{
+    LOG1("@%s, line:%d", __FUNCTION__, __LINE__);
+    unsigned int cpuCores = 1;
+
+    char buf[20];
+    FILE *cpuOnline = fopen("/sys/devices/system/cpu/online", "r");
+    if (cpuOnline) {
+        memset(buf, 0, sizeof(buf));
+        fread(buf, 1, sizeof(buf), cpuOnline);
+        buf[sizeof(buf) - 1] = '\0';
+        cpuCores = 1 + atoi(strstr(buf, "-") + 1);
+        fclose(cpuOnline);
+    }
+    LOG1("@%s, line:%d, cpu core number:%d", __FUNCTION__, __LINE__, cpuCores);
+    return cpuCores;
 }
 
 }; // namespace android

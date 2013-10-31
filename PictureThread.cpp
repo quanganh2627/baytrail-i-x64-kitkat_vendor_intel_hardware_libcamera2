@@ -24,6 +24,7 @@
 #include "MemoryUtils.h"
 #include "PlatformData.h"
 #include <utils/Timers.h>
+#include "SWJpegEncoder.h"
 
 namespace android {
 
@@ -549,8 +550,9 @@ int PictureThread::encodeExifAndThumbnail(AtomBuffer *thumbBuf, unsigned char* e
     int size = 0;
     int exifSize = 0;
     nsecs_t endTime;
-    JpegCompressor::InputBuffer inBuf;
-    JpegCompressor::OutputBuffer outBuf;
+    SWJpegEncoder swEncoder;
+    SWJpegEncoder::InputBuffer inBuf;
+    SWJpegEncoder::OutputBuffer outBuf;
 
     if (thumbBuf == NULL || exifDst == NULL)
         goto exit;
@@ -567,7 +569,7 @@ int PictureThread::encodeExifAndThumbnail(AtomBuffer *thumbBuf, unsigned char* e
         inBuf.buf = (unsigned char*)thumbBuf->dataPtr;
     }
 
-    // setup the JpegCompressor input and output buffers
+    // setup the SWJpegEncoder input and output buffers
     inBuf.width = thumbBuf->width;
     inBuf.height = thumbBuf->height;
     inBuf.fourcc = thumbBuf->fourcc;
@@ -591,7 +593,7 @@ int PictureThread::encodeExifAndThumbnail(AtomBuffer *thumbBuf, unsigned char* e
 
     do {
         endTime = systemTime();
-        size = mCompressor.encode(inBuf, outBuf);
+        size = swEncoder.encode(inBuf, outBuf);
         LOG1("Thumbnail JPEG size: %d (time to encode: %ums)", size, (unsigned)((systemTime() - endTime) / 1000000));
         if (size > 0) {
             mExifMaker->setThumbnail(outBuf.buf, size);
@@ -702,8 +704,8 @@ status_t PictureThread::requestExitAndWait()
  */
 status_t PictureThread::startHwEncoding(AtomBuffer* mainBuf)
 {
-    JpegCompressor::InputBuffer inBuf;
-    JpegCompressor::OutputBuffer outBuf;
+    JpegHwEncoder::InputBuffer inBuf;
+    JpegHwEncoder::OutputBuffer outBuf;
     nsecs_t endTime;
     status_t status = NO_ERROR;
 
@@ -836,8 +838,9 @@ status_t PictureThread::doSwEncode(AtomBuffer *mainBuf, AtomBuffer* destBuf)
 {
     status_t status= NO_ERROR;
     nsecs_t endTime;
-    JpegCompressor::InputBuffer inBuf;
-    JpegCompressor::OutputBuffer outBuf;
+    SWJpegEncoder swEncoder;
+    SWJpegEncoder::InputBuffer inBuf;
+    SWJpegEncoder::OutputBuffer outBuf;
     int finalSize = 0;
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("In",mainBuf->frameCounter);
@@ -861,7 +864,7 @@ status_t PictureThread::doSwEncode(AtomBuffer *mainBuf, AtomBuffer* destBuf)
     outBuf.quality = mPictureQuality;
     outBuf.size = mOutBuf.size;
     endTime = systemTime();
-    int mainSize = mCompressor.encode(inBuf, outBuf) - sizeof(JPEG_MARKER_SOI) - SIZE_OF_APP0_MARKER;
+    int mainSize = swEncoder.encode(inBuf, outBuf) - sizeof(JPEG_MARKER_SOI) - SIZE_OF_APP0_MARKER;
     LOG1("Picture JPEG size: %d (time to encode: %ums)", mainSize, (unsigned)((systemTime() - endTime) / 1000000));
     if (mainSize > 0) {
         finalSize = mExifBuf.size + mainSize;
@@ -908,7 +911,7 @@ status_t PictureThread::completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBu
 {
     status_t status= NO_ERROR;
     nsecs_t endTime;
-    JpegCompressor::OutputBuffer outBuf;
+    JpegHwEncoder::OutputBuffer outBuf;
     int mainSize = 0;
     int finalSize = 0;
 

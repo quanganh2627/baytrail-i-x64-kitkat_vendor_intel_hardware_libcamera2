@@ -441,8 +441,6 @@ status_t ControlThread::init()
     mHdr.enabled = false;
     mHdr.inProgress = false;
     mHdr.savedBracketMode = BRACKET_NONE;
-    mHdr.sharpening = NORMAL_SHARPENING;
-    mHdr.vividness = GAUSSIAN_VIVIDNESS;
     mHdr.saveOrig = false;
     mHdr.outMainBuf = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
     mHdr.outPostviewBuf = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
@@ -4628,11 +4626,13 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
     else
         fourcc = V4L2_PIX_FMT_NV12;
 
+    int recommendedNum = ((mBracketManager->getBracketMode() != BRACKET_NONE)?
+        PlatformData::getMaxNumYUVBufferForBracket(mCameraId) : PlatformData::getMaxNumYUVBufferForBurst(mCameraId));
     /**
      * Get the buffer required and clip it to ensure we
      * allocate proper number of YUV buffers.
      */
-    unsigned int clipTo = MAX(PlatformData::getMaxNumberSnapshotBuffers(mCameraId), (mISP->getContinuousCaptureNumber()+1));
+    unsigned int clipTo = MAX(recommendedNum, (mISP->getContinuousCaptureNumber()+1));
     bufCount = CLIP(bufCount, clipTo, 1);
 
     if(videoMode){
@@ -5127,45 +5127,6 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         // Dependency parameters
         mBurstLength = mHdr.bracketNum;
         mBracketManager->setBracketMode(mHdr.bracketMode);
-    }
-
-    newVal = paramsReturnNewIfChanged(oldParams, newParams,
-                                              IntelCameraParameters::KEY_HDR_SHARPENING);
-    if (!newVal.isEmpty()) {
-        localStatus = NO_ERROR;
-        if(newVal == "normal") {
-            mHdr.sharpening = NORMAL_SHARPENING;
-        } else if(newVal == "strong") {
-            mHdr.sharpening = STRONG_SHARPENING;
-        } else if(newVal == "none") {
-            mHdr.sharpening = NO_SHARPENING;
-        } else {
-            LOGW("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_SHARPENING, newVal.string());
-            localStatus = BAD_VALUE;
-        }
-        if (localStatus == NO_ERROR) {
-            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_SHARPENING, newVal.string());
-        }
-    }
-
-    newVal = paramsReturnNewIfChanged(oldParams, newParams,
-                                              IntelCameraParameters::KEY_HDR_VIVIDNESS);
-    if (!newVal.isEmpty()) {
-        localStatus = NO_ERROR;
-        if(newVal == "gaussian") {
-            mHdr.vividness = GAUSSIAN_VIVIDNESS;
-        } else if(newVal == "gamma") {
-            mHdr.vividness = GAMMA_VIVIDNESS;
-        } else if(newVal == "none") {
-            mHdr.vividness = NO_VIVIDNESS;
-        } else {
-            // the default value is kept
-            LOGW("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_VIVIDNESS, newVal.string());
-            localStatus = BAD_VALUE;
-        }
-        if (localStatus == NO_ERROR) {
-            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_VIVIDNESS, newVal.string());
-        }
     }
 
     newVal = paramsReturnNewIfChanged(oldParams, newParams,
@@ -7280,7 +7241,7 @@ status_t ControlThread::hdrCompose()
     }
 
     bool doEncode = false;
-    status = mCP->composeHDR(mHdr.ciBufIn, mHdr.ciBufOut, mHdr.vividness, mHdr.sharpening);
+    status = mCP->composeHDR(mHdr.ciBufIn, mHdr.ciBufOut);
     if (status == NO_ERROR) {
         mHdr.outMainBuf.width = mHdr.ciBufOut.ciMainBuf->width;
         mHdr.outMainBuf.height = mHdr.ciBufOut.ciMainBuf->height;
@@ -7350,7 +7311,15 @@ void ControlThread::setExternalSnapshotBuffers(int fourcc, int width, int height
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    int clipTo = MAX(PlatformData::getMaxNumberSnapshotBuffers(mCameraId), (mISP->getContinuousCaptureNumber()+1));
+
+    /**
+     * Bracketing needs more buffers than burst.
+     * so we make a difference between them
+     */
+    int recommendedNum = ((mBracketManager->getBracketMode() != BRACKET_NONE)?
+        PlatformData::getMaxNumYUVBufferForBracket(mCameraId) : PlatformData::getMaxNumYUVBufferForBurst(mCameraId));
+
+    int clipTo = MAX(recommendedNum, (mISP->getContinuousCaptureNumber()+1));
     unsigned int bufNeeded = CLIP(MAX(mBurstLength, mISP->getContinuousCaptureNumber()+1), clipTo, 1);
 
     if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {

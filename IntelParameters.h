@@ -75,8 +75,6 @@ namespace android {
     static const char KEY_BURST_FPS[]; // TODO: old API, it will be deleted in the future.
     static const char KEY_SUPPORTED_BURST_SPEED[];
     static const char KEY_BURST_SPEED[];
-    static const char KEY_BURST_CONTINUOUS[];
-    static const char KEY_SUPPORTED_BURST_CONTINUOUS[];
     //values for burst speed
     static const char BURST_SPEED_FAST[];
     static const char BURST_SPEED_MEDIUM[];
@@ -143,12 +141,6 @@ namespace android {
     // HDR imaging
     static const char KEY_HDR_IMAGING[];
     static const char KEY_SUPPORTED_HDR_IMAGING[];
-    // HDR sharpening
-    static const char KEY_HDR_SHARPENING[];
-    static const char KEY_SUPPORTED_HDR_SHARPENING[];
-    // HDR vividness enhancement
-    static const char KEY_HDR_VIVIDNESS[];
-    static const char KEY_SUPPORTED_HDR_VIVIDNESS[];
     // HDR save original
     static const char KEY_HDR_SAVE_ORIGINAL[];
     static const char KEY_SUPPORTED_HDR_SAVE_ORIGINAL[];

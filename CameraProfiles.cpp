@@ -134,10 +134,12 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
     } else if (strcmp(name, "supportDualVideo") == 0) {
         PlatformBase::mSupportDualVideo = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "supportPreviewLimitation") == 0) {
-        PlatformBase::mSupportPreviewLimitation = ((strcmp(atts[1], "false")
-                                                    == 0) ? false : true);
+        PlatformBase::mSupportPreviewLimitation
+            = ((strcmp(atts[1], "false") == 0) ? false : true);
     } else if (strcmp(name, "useULLImpl") == 0) {
         PlatformBase::mUseIntelULL = ((strcmp(atts[1], "IntelULL") == 0) ? true : false);
+    } else if (strcmp(name, "faceCallbackDivider") == 0) {
+        PlatformBase::mFaceCallbackDivider = atoi(atts[1]);
     }
 }
 
@@ -291,8 +293,10 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->supportedAwbLock = atts[1];
     } else if (strcmp(name, "synchronizeExposure") == 0) {
         pCurrentCam->synchronizeExposure = ((strcmp(atts[1], "true") == 0) ? true : false);
-    } else if (strcmp(name, "maxNumSnapshotBuffers") == 0) {
-        pCurrentCam->maxNumSnapshotBuffers = atoi(atts[1]);
+    } else if (strcmp(name, "maxNumYUVBufferForBurst") == 0) {
+        pCurrentCam->maxNumYUVBufferForBurst = atoi(atts[1]);
+    } else if (strcmp(name, "maxNumYUVBufferForBracket") == 0) {
+        pCurrentCam->maxNumYUVBufferForBracket = atoi(atts[1]);
     } else if (strcmp(name, "verticalFOV") == 0) {
         float angle = atof(atts[1]);
         if (angle > 0 && angle < 180) {
@@ -328,10 +332,6 @@ void CameraProfiles::handleFeature(CameraProfiles *profiles, const char *name, c
         pCurrentCam->defaultUltraLowLight = atts[1];
     } else if (strcmp(name, "supportedUltraLowLight") == 0) {
         pCurrentCam->supportedUltraLowLight = atts[1];
-    } else if (strcmp(name, "defaultFaceDetection") == 0) {
-        pCurrentCam->defaultFaceDetection = atts[1];
-    } else if (strcmp(name, "supportedFaceDetection") == 0) {
-        pCurrentCam->supportedFaceDetection = atts[1];
     } else if (strcmp(name, "defaultFaceRecognition") == 0) {
         pCurrentCam->defaultFaceRecognition = atts[1];
     } else if (strcmp(name, "supportedFaceRecognition") == 0) {
@@ -364,8 +364,6 @@ void CameraProfiles::handleFeature(CameraProfiles *profiles, const char *name, c
     pCurrentCam->supportedHdr = "";
     pCurrentCam->defaultUltraLowLight = "";
     pCurrentCam->supportedUltraLowLight = "";
-    pCurrentCam->defaultFaceDetection = "";
-    pCurrentCam->supportedFaceDetection = "";
     pCurrentCam->defaultFaceRecognition = "";
     pCurrentCam->supportedFaceRecognition = "";
     pCurrentCam->defaultSmileShutter = "";
@@ -535,8 +533,6 @@ void CameraProfiles::dump(void)
         LOGD("line%d, in DeviceData, pcam->supportedHdr:%s ", __LINE__, mCameras[i].supportedHdr.string());
         LOGD("line%d, in DeviceData, pcam->defaultUltraLowLight:%s ", __LINE__, mCameras[i].defaultUltraLowLight.string());
         LOGD("line%d, in DeviceData, pcam->supportedUltraLowLight:%s ", __LINE__, mCameras[i].supportedUltraLowLight.string());
-        LOGD("line%d, in DeviceData, pcam->defaultFaceDetection:%s ", __LINE__, mCameras[i].defaultFaceDetection.string());
-        LOGD("line%d, in DeviceData, pcam->supportedFaceDetection:%s ", __LINE__, mCameras[i].supportedFaceDetection.string());
         LOGD("line%d, in DeviceData, pcam->defaultFaceRecognition:%s ", __LINE__, mCameras[i].defaultFaceRecognition.string());
         LOGD("line%d, in DeviceData, pcam->supportedFaceRecognition:%s ", __LINE__, mCameras[i].supportedFaceRecognition.string());
         LOGD("line%d, in DeviceData, pcam->defaultSmileShutter:%s ", __LINE__, mCameras[i].defaultSmileShutter.string());
@@ -547,7 +543,8 @@ void CameraProfiles::dump(void)
         LOGD("line%d, in DeviceData, pcam->supportedPanorama:%s ", __LINE__, mCameras[i].supportedPanorama.string());
         LOGD("line%d, in DeviceData, pcam->defaultSceneDetection:%s ", __LINE__, mCameras[i].defaultSceneDetection.string());
         LOGD("line%d, in DeviceData, pcam->supportedSceneDetection:%s ", __LINE__, mCameras[i].supportedSceneDetection.string());
-        LOGD("line%d, in DeviceData, pcam->maxNumSnapshotBuffers:%d ", __LINE__, mCameras[i].maxNumSnapshotBuffers);
+        LOGD("line%d, in DeviceData, pcam->maxNumYUVBufferForBurst:%d ", __LINE__, mCameras[i].maxNumYUVBufferForBurst);
+        LOGD("line%d, in DeviceData, pcam->maxNumYUVBufferForBracket:%d ", __LINE__, mCameras[i].maxNumYUVBufferForBracket);
     }
 
     LOGD("line%d, in DeviceData, for common settings ", __LINE__);

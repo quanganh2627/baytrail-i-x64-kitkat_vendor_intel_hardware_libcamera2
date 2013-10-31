@@ -398,17 +398,17 @@ void YUY2ToP411(int width, int height, void *src, void *dst)
     }
 }
 
-// P411's Y, U, V are seperated. But the NV12's U and V are interleaved.
-void NV12ToP411(int width, int height, void *src, void *dst)
+// P411's Y, U, V are separated. But the NV12's U and V are interleaved.
+void NV12ToP411Separate(int width, int height, void *srcY, void *srcUV, void *dst)
 {
     int i, j, p, q;
     unsigned char *pdstU, *pdstV;
     unsigned char *psrcUV;
 
     // copy Y data
-    memcpy(dst, src, width * height);
+    memcpy(dst, srcY, width * height);
     // copy U data and V data
-    psrcUV = (unsigned char *)src + width * height;
+    psrcUV = (unsigned char *)srcUV;
     pdstU = (unsigned char *)dst + width * height;
     pdstV = pdstU + width * height / 4;
     p = q = 0;
@@ -423,6 +423,12 @@ void NV12ToP411(int width, int height, void *src, void *dst)
             }
         }
     }
+}
+
+// P411's Y, U, V are seperated. But the NV12's U and V are interleaved.
+void NV12ToP411(int width, int height, void *src, void *dst)
+{
+    NV12ToP411Separate(width, height, src, (void *)((unsigned char *)src + width * height), dst);
 }
 
 // Re-pad YUV420 format image, the format can be YV12, YU12 or YUV420 planar.

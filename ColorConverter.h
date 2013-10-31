@@ -33,6 +33,7 @@ void trimConvertNV12ToNV21(int width, int height, int srcBpl, void *src, void *d
 void align16ConvertNV12ToYV12(int width, int height, int srcBpl, void *src, void *dst);
 
 void NV12ToP411(int width, int height, void *src, void *dst);
+void NV12ToP411Separate(int width, int height, void *srcY, void *srcUV, void *dst);
 
 void YUY2ToP411(int width, int height, void *src, void *dst);
 

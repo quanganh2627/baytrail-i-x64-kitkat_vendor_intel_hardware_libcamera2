@@ -657,18 +657,6 @@ class PlatformData {
     static const char* supportedUltraLowLight(int cameraId);
 
     /**
-     * FaceDetection default value
-     * \return the value of the FaceDetection default value.
-     */
-    static const char* defaultFaceDetection(int cameraId);
-
-    /**
-     * FaceDetection mode supported value
-     * \return the value of the FaceDetection supported.
-     */
-    static const char* supportedFaceDetection(int cameraId);
-
-    /**
      * FaceRecognition default value
      * \return the value of the FaceRecognition default value.
      */
@@ -855,11 +843,18 @@ class PlatformData {
     static int getRecordingBufNum(void);
 
     /**
-     * Returns the max number of snapshot buffers
+     * Returns the max number of YUV buffers for burst capture
      *
-     * \return the max number of snapshot buffers
+     * \return the max number of YUV buffers for burst capture
     */
-    static int getMaxNumberSnapshotBuffers(int cameraId);
+    static int getMaxNumYUVBufferForBurst(int cameraId);
+
+    /**
+     * Returns the max number of YUV buffers for bracketing
+     *
+     * \return the max number of YUV buffers for bracketing
+    */
+    static int getMaxNumYUVBufferForBracket(int cameraId);
 
     /**
      * Whether Intel3A ia_aiq is supported?
@@ -957,6 +952,24 @@ class PlatformData {
      * \return true if it's GEN. false, if it's not GEN.
      */
     static bool isGraphicGen(void);
+
+    /**
+     * \brief Divider to restrict the frequency of face callbacks
+     *
+     * The face callbacks need to be restricted to relieve the application
+     * from calculation overhead, especially when several dozen of faces are
+     * provided (up to MAX_FACES_DETECTABLE).
+     *
+     * \return a positive integer divider (N) for sending face callbacks.
+     * Every Nth callback will be sent.
+     */
+    static int faceCallbackDivider();
+
+    /**
+     * get the number of CPU cores
+     * \return the number of CPU cores
+     */
+    static unsigned int getNumOfCPUCores();
 };
 
 /**
@@ -987,6 +1000,7 @@ public:
         mSensorGainLag = 0;
         mSensorExposureLag = 1;
         mUseIntelULL = false;
+        mFaceCallbackDivider = 1;
    };
 
 protected:
@@ -1114,8 +1128,6 @@ protected:
             supportedHdr = "on,off";
             defaultUltraLowLight = "off";
             supportedUltraLowLight = "auto,on,off";
-            defaultFaceDetection = "off";
-            supportedFaceDetection = "on,off";
             defaultFaceRecognition = "off";
             supportedFaceRecognition = "on,off";
             defaultSmileShutter = "off";
@@ -1127,7 +1139,8 @@ protected:
             defaultSceneDetection = "off";
             supportedSceneDetection = "on,off";
             synchronizeExposure = false;
-            maxNumSnapshotBuffers = 10;
+            maxNumYUVBufferForBurst = 10;
+            maxNumYUVBufferForBracket = 10;
             // FOV
             verticalFOV = 42.5f;
             horizontalFOV = 54.8f;
@@ -1221,8 +1234,6 @@ protected:
         String8 supportedHdr;
         String8 defaultUltraLowLight;
         String8 supportedUltraLowLight;
-        String8 defaultFaceDetection;
-        String8 supportedFaceDetection;
         String8 defaultFaceRecognition;
         String8 supportedFaceRecognition;
         String8 defaultSmileShutter;
@@ -1246,14 +1257,14 @@ protected:
          * The number of snapshot buffers is not necessary equal to burst length as before.
          * Here we set a value to control the max number of buffer we allocate in any capture case
          * The number value is mainly depends on the speed of jpeg encoder.
-         * Bracketing of AE and AF also affects it
+         * Bracketing of AE and AF needs more buffers
          */
-        int maxNumSnapshotBuffers;
+        int maxNumYUVBufferForBurst;
+        int maxNumYUVBufferForBracket;
 
         // FOV
         float verticalFOV;
         float horizontalFOV;
-
     };
 
     // note: Android NDK does not yet support C++11 and
@@ -1309,6 +1320,9 @@ protected:
 
     // Ultra Low Light
     bool mUseIntelULL;
+
+    // Used for reducing the frequency of face callbacks
+    int mFaceCallbackDivider;
 };
 
 } /* namespace android */

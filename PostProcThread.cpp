@@ -112,7 +112,6 @@ void PostProcThread::getDefaultParameters(CameraParameters *params, CameraParame
     intel_params->set(IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD, STRINGIFY(BLINK_THRESHOLD));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER, PlatformData::supportedSmileShutter(cameraId));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_BLINK_SHUTTER, PlatformData::supportedBlinkShutter(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_DETECTION, PlatformData::supportedFaceDetection(cameraId));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_FACE_RECOGNITION, PlatformData::supportedFaceRecognition(cameraId));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SCENE_DETECTION, PlatformData::supportedSceneDetection(cameraId));
 
@@ -167,7 +166,11 @@ status_t PostProcThread::handleMessageStartFaceDetection()
 
     mRotation = SensorThread::getInstance(this->getCameraID())->registerOrientationListener(this);
 
+    // Reset the face detection state:
     mLastReportedNumberOfFaces = 0;
+    // .. also keep the CallbacksThread in sync with the face status:
+    mpListener->facesDetected(NULL);
+
     mFaceDetectionRunning = true;
     return status;
 }
@@ -840,12 +843,13 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         }
 
         // call face detection listener and pass faces for 3A (AF) and smart scene detection
-        if ((face_metadata.number_of_faces > 0) || (mLastReportedNumberOfFaces != 0)) {
+        if (face_metadata.number_of_faces > 0 || mLastReportedNumberOfFaces != 0) {
             mLastReportedNumberOfFaces = face_metadata.number_of_faces;
             useFacesForAAA(face_metadata);
-            mpListener->facesDetected(face_metadata);
             mPostProcDoneCallback->facesDetected(&faceState);
         }
+
+        mpListener->facesDetected(&face_metadata);
 
         delete[] faceState.faces;
         faceState.faces = NULL;

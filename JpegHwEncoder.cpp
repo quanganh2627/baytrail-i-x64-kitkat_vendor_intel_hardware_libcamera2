@@ -16,7 +16,6 @@
  */
 #define LOG_TAG "Camera_JpegHwEncoder"
 
-#include "JpegCompressor.h"
 #include "LogHelper.h"
 #include "JpegHwEncoder.h"
 #include "vaJpegContext.h"
@@ -204,7 +203,7 @@ status_t JpegHwEncoder::setInputBuffers(AtomBuffer* inputBuffersArray, int input
  * \return 0 if encoding was successful
  * \return -1 if encoding failed
  */
-int JpegHwEncoder::encode(const JpegCompressor::InputBuffer &in, JpegCompressor::OutputBuffer &out)
+int JpegHwEncoder::encode(const InputBuffer &in, OutputBuffer &out)
 {
     LOG1("@%s", __FUNCTION__);
     int status;
@@ -282,7 +281,7 @@ exit:
  * \param out [in]: output buffer descriptor. It contains details like
  *                  quality and buffer size
  */
-int JpegHwEncoder::encodeAsync(const JpegCompressor::InputBuffer &in, JpegCompressor::OutputBuffer &out)
+int JpegHwEncoder::encodeAsync(const InputBuffer &in, OutputBuffer &out)
 {
     LOG1("@%s", __FUNCTION__);
     int status = 0;
@@ -378,7 +377,7 @@ int JpegHwEncoder::waitToComplete(int *jpegSize)
  *
  *  \param out [in] buffer descriptor for the output of the encoding process
  */
-int JpegHwEncoder::getOutput(JpegCompressor::OutputBuffer &out)
+int JpegHwEncoder::getOutput(OutputBuffer &out)
 {
     LOG1("@%s", __FUNCTION__);
     int status = 0;
@@ -695,7 +694,7 @@ int JpegHwEncoder::destroySurfaces(void)
  *  \return -1 on failure
  *  \return Other VAStatus values in case of failure
  */
-int JpegHwEncoder::resetContext(const JpegCompressor::InputBuffer &in, unsigned int* aSurface)
+int JpegHwEncoder::resetContext(const InputBuffer &in, unsigned int* aSurface)
 {
     LOG1("@%s", __FUNCTION__);
 

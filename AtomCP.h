@@ -29,18 +29,6 @@ extern "C" {
 
 namespace android {
 
-enum HdrSharpening {
-    NO_SHARPENING = 0,
-    NORMAL_SHARPENING,
-    STRONG_SHARPENING
-};
-
-enum HdrVividness {
-    NO_VIVIDNESS = 0,
-    GAUSSIAN_VIVIDNESS,
-    GAMMA_VIVIDNESS
-};
-
 struct CiUserBuffer {
     ia_frame *ciMainBuf;
     ia_frame *ciPostviewBuf;
@@ -61,8 +49,7 @@ class AtomCP {
 public:
     AtomCP(HWControlGroup &hwcg)STUB;
     ~AtomCP()STUB;
-    status_t composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& outputBuf,
-                        unsigned vividness, unsigned sharpening)STAT_STUB;
+    status_t composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& outputBuf)STAT_STUB;
     status_t initializeHDR(unsigned width, unsigned height)STAT_STUB;
     status_t uninitializeHDR(void)STAT_STUB;
     static status_t setIaFrameFormat(ia_frame *inputBuf, int v4l2Format)STAT_STUB;

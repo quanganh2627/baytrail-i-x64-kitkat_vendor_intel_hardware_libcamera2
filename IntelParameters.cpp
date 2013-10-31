@@ -36,10 +36,6 @@ namespace android {
     const char IntelCameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET[] = "capture-bracket-values";
     const char IntelCameraParameters::KEY_HDR_IMAGING[] = "hdr-imaging";
     const char IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING[] = "hdr-imaging-values";
-    const char IntelCameraParameters::KEY_HDR_SHARPENING[] = "hdr-sharpening";
-    const char IntelCameraParameters::KEY_SUPPORTED_HDR_SHARPENING[] = "hdr-sharpening-values";
-    const char IntelCameraParameters::KEY_HDR_VIVIDNESS[] = "hdr-vividness";
-    const char IntelCameraParameters::KEY_SUPPORTED_HDR_VIVIDNESS[] = "hdr-vividness-values";
     const char IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL[] = "hdr-save-original";
     const char IntelCameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL[] = "hdr-save-original-values";
     const char IntelCameraParameters::KEY_ROTATION_MODE[] = "rotation-mode";
@@ -96,8 +92,6 @@ namespace android {
     const char IntelCameraParameters::KEY_BURST_FPS[] = "burst-fps"; // TODO: old API, it will be deleted in the future.
     const char IntelCameraParameters::KEY_SUPPORTED_BURST_SPEED[] = "burst-speed-values";
     const char IntelCameraParameters::KEY_BURST_SPEED[] = "burst-speed";
-    const char IntelCameraParameters::KEY_SUPPORTED_BURST_CONTINUOUS[] = "burst-continuous-values";
-    const char IntelCameraParameters::KEY_BURST_CONTINUOUS[] = "burst-continuous";
     const char IntelCameraParameters::KEY_BURST_START_INDEX[] = "burst-start-index";
     const char IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX[] = "burst-start-index-values";
     //values for burst speed
