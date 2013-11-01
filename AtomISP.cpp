@@ -944,7 +944,11 @@ void AtomISP::fetchIspVersions()
                     mIspHwMajorVersion = 23;
                     break;
                 case ATOMISP_HW_REVISION_ISP2400:
+                case ATOMISP_HW_REVISION_ISP2401_LEGACY:
                     mIspHwMajorVersion = 24;
+                    break;
+                case ATOMISP_HW_REVISION_ISP2401:
+                    mIspHwMajorVersion = 2401;
                     break;
                 default:
                     LOGE("Unknown ISP HW version: %d", hw_version);
