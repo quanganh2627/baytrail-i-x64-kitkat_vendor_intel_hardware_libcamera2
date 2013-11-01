@@ -68,6 +68,7 @@ public:
     bool blinkDetect(ia_frame *frame);
     status_t startFaceRecognition();
     status_t stopFaceRecognition();
+    status_t clearFacesDetected();
     status_t reset();
     void faceRecognize(ia_frame *frame);
 
@@ -80,6 +81,7 @@ private:
     status_t handleExit();
     status_t handleMessageStartFaceRecognition();
     status_t handleMessageStopFaceRecognition();
+    status_t handleMessageClearFacesDetected();
     status_t handleMessageReset();
 
     // main message function
@@ -97,6 +99,7 @@ private:
         MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
         MESSAGE_ID_START_FACE_RECOGNITION,
         MESSAGE_ID_STOP_FACE_RECOGNITION,
+        MESSAGE_ID_CLEAR_FACES_DETECTED,
         MESSAGE_ID_RESET,
 
         // max number of messages

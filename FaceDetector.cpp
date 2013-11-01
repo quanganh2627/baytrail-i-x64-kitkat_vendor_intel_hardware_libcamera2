@@ -208,6 +208,26 @@ status_t FaceDetector::handleMessageStopFaceRecognition()
     return status;
 }
 
+status_t FaceDetector::clearFacesDetected()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    Message msg;
+    msg.id = MESSAGE_ID_CLEAR_FACES_DETECTED;
+    mMessageQueue.send(&msg);
+    return status;
+}
+
+status_t FaceDetector::handleMessageClearFacesDetected()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    if (mContext != NULL)
+        ia_face_clear_result(mContext);
+    else
+        status = INVALID_OPERATION;
+    return status;
+}
 
 status_t FaceDetector::reset()
 {
@@ -411,6 +431,9 @@ status_t FaceDetector::waitForAndExecuteMessage()
             break;
         case MESSAGE_ID_STOP_FACE_RECOGNITION:
             status = handleMessageStopFaceRecognition();
+            break;
+        case MESSAGE_ID_CLEAR_FACES_DETECTED:
+            status = handleMessageClearFacesDetected();
             break;
         case MESSAGE_ID_RESET:
             status = handleMessageReset();
