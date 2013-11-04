@@ -611,6 +611,14 @@ class PlatformData {
     static const char* supportedHighSpeedResolutionFps(int cameraId);
 
     /**
+     * Max Dvs Resolution in high speed mode
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the max resolution.
+     */
+    static const char* maxHighSpeedDvsResolution(int cameraId);
+
+    /**
      * Focus mode supported value
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
@@ -1113,6 +1121,8 @@ protected:
             //For high speed recording, slow motion playback
             hasSlowMotion = false;
             supportedHighSpeedResolutionFps = "";
+            //For max Dvs in high speed mode
+            maxHighSpeedDvsResolution = "";
             // Flash support
             hasFlash = false;
             // focus modes
@@ -1224,6 +1234,8 @@ protected:
         // For high speed recording, slow motion playback
         bool hasSlowMotion;
         String8 supportedHighSpeedResolutionFps;
+        // For max Dvs resolution in high speed mode
+        String8 maxHighSpeedDvsResolution;
         // Flash support
         bool hasFlash;
         // focus modes

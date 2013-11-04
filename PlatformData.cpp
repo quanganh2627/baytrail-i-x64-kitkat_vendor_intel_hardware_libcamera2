@@ -917,6 +917,14 @@ const char* PlatformData::supportedHighSpeedResolutionFps(int cameraId)
     return getInstance()->mCameras[cameraId].supportedHighSpeedResolutionFps;
 }
 
+const char* PlatformData::maxHighSpeedDvsResolution(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return "";
+    }
+    return getInstance()->mCameras[cameraId].maxHighSpeedDvsResolution;
+}
+
 const char* PlatformData::supportedFocusModes(int cameraId)
 {
     const char *sPtr;

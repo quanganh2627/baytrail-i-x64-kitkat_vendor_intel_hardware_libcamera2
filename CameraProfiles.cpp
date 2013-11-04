@@ -287,6 +287,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->hasFlash = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "supportedHighSpeedResolutionFps") == 0) {
         pCurrentCam->supportedHighSpeedResolutionFps = atts[1];
+    } else if (strcmp(name, "maxHighSpeedDvsResolution") == 0) {
+        pCurrentCam->maxHighSpeedDvsResolution = atts[1];
     } else if (strcmp(name, "supportedAeLock") == 0) {
         pCurrentCam->supportedAeLock = atts[1];
     } else if (strcmp(name, "supportedAwbLock") == 0) {
@@ -545,6 +547,7 @@ void CameraProfiles::dump(void)
         LOGD("line%d, in DeviceData, pcam->supportedSceneDetection:%s ", __LINE__, mCameras[i].supportedSceneDetection.string());
         LOGD("line%d, in DeviceData, pcam->maxNumYUVBufferForBurst:%d ", __LINE__, mCameras[i].maxNumYUVBufferForBurst);
         LOGD("line%d, in DeviceData, pcam->maxNumYUVBufferForBracket:%d ", __LINE__, mCameras[i].maxNumYUVBufferForBracket);
+        LOGD("line%d, in DeviceData, pcam->maxHighSpeedDvsResolution:%s ",__LINE__, mCameras[i].maxHighSpeedDvsResolution.string());
     }
 
     LOGD("line%d, in DeviceData, for common settings ", __LINE__);

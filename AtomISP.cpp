@@ -2146,11 +2146,6 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *
         device->mId == V4L2_PREVIEW_DEVICE)
         applySensorFlip();
 
-    //Set the format
-    ret = device->setFormat(*formatDescriptor);
-    if (ret < 0)
-        return ret;
-
     if(mHighSpeedEnabled) {
         status_t status;
         struct v4l2_streamparm parm;
@@ -2164,6 +2159,12 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *
             return -1;
         }
     }
+
+    //Set the format
+    ret = device->setFormat(*formatDescriptor);
+    if (ret < 0)
+        return ret;
+
     /* 3A related initialization*/
     //Reallocate the grid for 3A after format change
     if (device->mId == V4L2_MAIN_DEVICE ||

@@ -347,11 +347,10 @@ bool AtomDvs2::enable(const CameraParameters& params)
     LOG1("@%s", __FUNCTION__);
     if (isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED, params) &&
         isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION, params)) {
-        /* workaround: The high speed and 1080P DVS can't be supported at same time
-        */
+        // workaround: The high speed and 1080P DVS can't be supported at same time
         int width, height;
         mIsp->getVideoSize(&width, &height, NULL);
-        if(mIsp->isHighSpeedEnabled() && width == RESOLUTION_1080P_WIDTH && height == RESOLUTION_1080P_HEIGHT) {
+        if(mIsp->isHighSpeedEnabled() && !isHighSpeedDvsSupported(width, height)) {
             mIsp->setDVS(false);
             mDVSEnabled = false;
         } else {
@@ -366,6 +365,45 @@ bool AtomDvs2::enable(const CameraParameters& params)
     }
     //Always return true because video zoom depends on DVS2 lib
     return true;
+}
+
+/**
+ * If the input resolution is supported in high speed mode, return true.
+ */
+bool AtomDvs2::isHighSpeedDvsSupported(int width, int height)
+{
+    LOG1("@%s", __FUNCTION__);
+    int cameraId = mIsp->getCurrentCameraId();
+    if(strcmp(PlatformData::maxHighSpeedDvsResolution(cameraId), "")) {
+        const char* resolution = PlatformData::maxHighSpeedDvsResolution(cameraId);
+        if (resolution != NULL) {
+            char* maxResolution = strndup(resolution, strlen(resolution));
+            if (maxResolution == NULL) {
+                LOGE("@%s:fail to strndup max high speed dvs resolution = [%s]", __FUNCTION__, resolution);
+                return false;
+            }
+            char* pWidth = NULL;
+            char* pHeight = NULL;
+            int w = 0;
+            int h = 0;
+            int success = parsePair(maxResolution, &pWidth, &pHeight, "x");
+            if (success == 0 && pWidth != NULL && pHeight != NULL) {
+                w = atoi(pWidth);
+                h = atoi(pHeight);
+            }
+            if (maxResolution != NULL)
+                free(maxResolution);
+            if (pWidth != NULL)
+                free(pWidth);
+            if (pHeight != NULL)
+                free(pHeight);
+            LOGI("max Dvs resolution = [%dX%d], current=[%dx%d] in high speed mode", w, h, width, height);
+            if (w >= width && h >= height) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 /**
