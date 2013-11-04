@@ -4135,7 +4135,7 @@ void AtomISP::initMetaDataBuf(IntelMetadataBuffer* metaDatabuf)
     vinfo->format = STRING_TO_FOURCC("NV12");
     vinfo->s3dformat = 0xFFFFFFFF;
     metaDatabuf->SetValueInfo(vinfo);
-    metaDatabuf->SetType(MetadataBufferTypeCameraSource);
+    metaDatabuf->SetType(IntelMetadataBufferTypeCameraSource);
     delete vinfo;
     vinfo = NULL;
 
@@ -4199,7 +4199,7 @@ status_t AtomISP::allocateMetaDataBuffers()
         metaDataBuf = new IntelMetadataBuffer();
         if(metaDataBuf) {
             if (PlatformData::isGraphicGen()) {
-                metaDataBuf->SetType(MetadataBufferTypeGrallocSource);
+                metaDataBuf->SetType(IntelMetadataBufferTypeGrallocSource);
                 metaDataBuf->SetValue((uint32_t)*mRecordingBuffers[i].gfxInfo_rec.gfxBufferHandle);
             } else {
                 initMetaDataBuf(metaDataBuf);
