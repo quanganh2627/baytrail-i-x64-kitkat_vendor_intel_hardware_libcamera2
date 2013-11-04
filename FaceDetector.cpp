@@ -42,6 +42,9 @@ FaceDetector::FaceDetector() : Thread()
 {
     LOG1("@%s", __FUNCTION__);
     PERFORMANCE_TRACES_BREAKDOWN_STEP("NewFD-Done");
+    memset(mPrevLeftEyeCoordinate, 0, sizeof(ia_coordinate)*MAX_FACES_DETECTABLE);
+    memset(mPrevRightEyeCoordinate, 0, sizeof(ia_coordinate)*MAX_FACES_DETECTABLE);
+    memset(mFaceTrackingId, 0, sizeof(int)*MAX_FACES_DETECTABLE);
 }
 
 FaceDetector::~FaceDetector()
@@ -143,14 +146,19 @@ bool FaceDetector::blinkDetect(ia_frame *frame)
     ia_face_blink_detect(mContext, frame);
 
     // None of the detected faces should have eyes blinked
+    bool eyeMotionless = false;
     bool blink = true;
     for (int i = 0; i < mContext->num_faces; i++)
     {
         ia_face face = mContext->faces[i];
+
+        eyeMotionless = isEyeMotionless(face.left_eye.position, face.right_eye.position, i, face.tracking_id);
+
         if ((face.left_eye.blink_confidence >= 0 &&
              face.right_eye.blink_confidence >= 0) &&
             (face.left_eye.blink_confidence < mBlinkThreshold &&
-             face.right_eye.blink_confidence < mBlinkThreshold)) {
+             face.right_eye.blink_confidence < mBlinkThreshold) &&
+            eyeMotionless) {
             blink = false;
         } else {
             blink = true;
@@ -158,6 +166,41 @@ bool FaceDetector::blinkDetect(ia_frame *frame)
         }
     }
     return blink;
+}
+
+static int eyeAbsDist(ia_coordinate p1, ia_coordinate p2)
+{
+    int dx = p1.x - p2.x;
+    int dy = p1.y - p2.y;
+    int sum = ((dx >= 0) ? dx : -dx) + ((dy >= 0) ? dy : -dy);
+    return sum;
+}
+
+bool FaceDetector::isEyeMotionless(ia_coordinate leftEye, ia_coordinate rightEye, int idx, int trackingId)
+{
+    int leftMotion = 0;
+    int rightMotion = 0;
+    int betweenEye = eyeAbsDist(leftEye, rightEye);
+    int leftEyeDist = eyeAbsDist(mPrevLeftEyeCoordinate[idx], leftEye);
+    int rightEyeDist = eyeAbsDist(mPrevRightEyeCoordinate[idx], rightEye);
+
+    if (betweenEye == 0 || trackingId != mFaceTrackingId[idx]) { //false
+        leftMotion = EYE_M_THRESHOLD;
+        rightMotion = EYE_M_THRESHOLD;
+        mFaceTrackingId[idx] = trackingId;
+    }
+    else {
+        leftMotion = (leftEyeDist<<10)/betweenEye;
+        rightMotion = (rightEyeDist<<10)/betweenEye;
+    }
+
+    // store eye coordinate
+    mPrevLeftEyeCoordinate[idx].x = leftEye.x;
+    mPrevLeftEyeCoordinate[idx].y = leftEye.y;
+    mPrevRightEyeCoordinate[idx].x = rightEye.x;
+    mPrevRightEyeCoordinate[idx].y = rightEye.y;
+
+    return (leftMotion + rightMotion) < EYE_M_THRESHOLD? true : false;
 }
 
 status_t FaceDetector::startFaceRecognition()

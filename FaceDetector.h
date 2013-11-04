@@ -33,6 +33,8 @@ namespace android {
 #define SMILE_THRESHOLD 48
 #define BLINK_THRESHOLD 50
 
+static const int EYE_M_THRESHOLD=307;
+
 // Smart Shutter Parameters
 enum SmartShutterMode {
     SMILE_MODE = 0,
@@ -83,6 +85,7 @@ private:
     status_t handleMessageStopFaceRecognition();
     status_t handleMessageClearFacesDetected();
     status_t handleMessageReset();
+    bool isEyeMotionless(ia_coordinate leftEye, ia_coordinate rightEye, int index, int trackingID);
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -120,6 +123,9 @@ private:
     bool mFaceRecognitionRunning;
     bool mThreadRunning;
     ia_acceleration mAccApi;
+    ia_coordinate mPrevLeftEyeCoordinate[MAX_FACES_DETECTABLE];
+    ia_coordinate mPrevRightEyeCoordinate[MAX_FACES_DETECTABLE];
+    int mFaceTrackingId[MAX_FACES_DETECTABLE];    // unique face tracking ID (bigger than 0)
 
 // function stubs for building without Intel extra features
 #else
@@ -151,6 +157,7 @@ public:
 // inherited from Thread
 private:
     virtual bool threadLoop() { return false; }
+    bool isEyeMotionless(ia_coordinate leftEye, ia_coordinate rightEye, int index, int trackingID) { return false; }
 #endif
 
 // prevent copy constructor and assignment operator
