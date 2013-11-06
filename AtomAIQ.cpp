@@ -152,7 +152,7 @@ status_t AtomAIQ::_init3A()
                       &motorData,
                       &aicNvm);
 
-    mMkn = ia_mkn_init(ia_mkn_cfg_compression);
+    mMkn = ia_mkn_init(ia_mkn_cfg_compression, 32000, 100000);
     if(mMkn == NULL)
         LOGE("Error makernote init");
     ret = ia_mkn_enable(mMkn, true);
@@ -1218,7 +1218,7 @@ status_t AtomAIQ::setFaces(const ia_face_state& faceState)
 ia_3a_mknote *AtomAIQ::get3aMakerNote(ia_3a_mknote_mode mknMode)
 {
     LOG2("@%s", __FUNCTION__);
-    ia_mkn_trg mknTarget = ia_mkn_trg_exif;
+    ia_mkn_trg mknTarget = ia_mkn_trg_section_1;
 
     ia_3a_mknote *me;
     me = (ia_3a_mknote *)malloc(sizeof(ia_3a_mknote));
@@ -1227,7 +1227,7 @@ ia_3a_mknote *AtomAIQ::get3aMakerNote(ia_3a_mknote_mode mknMode)
         return NULL;
     }
     if(mknMode == ia_3a_mknote_mode_raw)
-        mknTarget = ia_mkn_trg_raw;
+        mknTarget = ia_mkn_trg_section_2;
     ia_binary_data mkn_binary_data = ia_mkn_prepare(mMkn, mknTarget);
 
     me->bytes = mkn_binary_data.size;
