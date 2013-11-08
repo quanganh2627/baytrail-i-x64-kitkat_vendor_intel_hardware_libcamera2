@@ -160,6 +160,7 @@ public:
     bool getLowLight() const { return mLowLight; };
 
     status_t setDVS(bool enable);
+    status_t setDVSSkipFrames(unsigned int skips);
     status_t getDvsStatistics(struct atomisp_dis_statistics *stats,
                               bool *tryAgain) const;
     status_t setMotionVector(const struct atomisp_dis_vector *vector) const;
@@ -417,6 +418,7 @@ private:
     status_t sensorStoreRawFormat();
     size_t setupCameraInfo();
     unsigned int getNumOfSkipFrames(void);
+    unsigned int getNumOfSkipStatistics(void);
     int getPrimaryCameraIndex(void) const;
     status_t applySensorFlip(void);
     void fetchIspVersions();
@@ -524,6 +526,8 @@ private:
     bool mContCaptPrepared;
     bool mContCaptPriority;
     unsigned int mInitialSkips;
+    unsigned int mStatisticSkips;
+    unsigned int mDVSFrameSkips;
 
     int dumpFrameInfo(AtomMode mode);
 

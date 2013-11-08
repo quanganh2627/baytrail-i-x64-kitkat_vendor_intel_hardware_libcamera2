@@ -475,6 +475,7 @@ private:
     //AW
     ia_aiq_awb_input_params mAwbInputParameters;
     ia_aiq_awb_results *mAwbResults;
+    ia_aiq_awb_results mAwbStoredResults;
     AwbMode mAwbMode;
     bool mAwbLocked;
     int mAwbRunCount;

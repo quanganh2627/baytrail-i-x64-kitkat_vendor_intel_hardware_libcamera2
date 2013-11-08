@@ -40,6 +40,7 @@ public:
     enum EventType {
         EVENT_TYPE_SOF,
         EVENT_TYPE_STATISTICS_READY,
+        EVENT_TYPE_STATISTICS_SKIPPED
     };
 
     struct MessageFrameBuffer {

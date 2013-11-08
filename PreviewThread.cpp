@@ -1134,6 +1134,19 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
                 h = msg->width;
                 pixel_stride = msg->height;
             }
+
+            /**
+             * Overlay buffer width needs to be aligned to 64 in saltbay. Suppose gralloc
+             * should cover this work, no need to consider it in camera HAL. But it doesn't work
+             * because now preview is also using graphic buffer while ISP wrongly takes it as 32
+             * byte aligned (css2.0)
+             * So, it's a workaround here to make only overlay graphic buffer align to 64.
+             * TODO: remove it if ISP is able use the bpl passed from HAL.
+             */
+            if (mOverlayEnabled && (strcmp(PlatformData::getBoardName(), "saltbay") == 0)) {
+                pixel_stride = ALIGN64(pixel_stride);
+                LOG1("Buffer width is aligned to %d for saltbay overlay", pixel_stride);
+            }
             mPreviewWindow->set_buffers_geometry(mPreviewWindow, pixel_stride, h, getGFXHALPixelFormatFromV4L2Format(mPreviewFourcc));
             mPreviewWindow->set_crop(mPreviewWindow, 0, 0, w, h);
         }

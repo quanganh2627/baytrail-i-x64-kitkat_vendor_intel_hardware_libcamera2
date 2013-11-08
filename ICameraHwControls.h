@@ -183,6 +183,7 @@ public:
     virtual bool getLowLight() const = 0;
     virtual status_t setGDC(bool enable) = 0;
     virtual status_t setDVS(bool enable) = 0;
+    virtual status_t setDVSSkipFrames(unsigned int skips) = 0;
     virtual void setNrEE(bool en) = 0;
 
     virtual int setAicParameter(struct atomisp_parameters *aic_params) = 0;

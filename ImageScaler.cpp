@@ -150,12 +150,15 @@ void ImageScaler::trimNv12Image(unsigned char *dst, const unsigned char *src,
     LOG1("@%s: dest_w: %d, dest_h: %d, dest_bpl:%d, src_w: %d, src_h: %d, src_bpl: %d, skip_top: %d, skip_bottom: %d", __FUNCTION__, dest_w,dest_h,dest_bpl,src_w,src_h,src_bpl,src_skip_lines_top,src_skip_lines_bottom);
 
     // Y
+    src += src_bpl * src_skip_lines_top;  //skip the top lines
     for (int i = 0; i < dest_h; i++) {
         memcpy(dst,src,dest_bpl);
         dst += dest_bpl;
         src += src_bpl;
     }
+    src += src_bpl * src_skip_lines_bottom; //skip the bottom lines
     //UV
+    src += src_bpl * src_skip_lines_top / 2;
     for (int i = 0; i < dest_h/2; i++) {
         memcpy(dst,src,dest_bpl);
         dst += dest_bpl;

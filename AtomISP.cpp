@@ -107,6 +107,8 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mContCaptPrepared(false)
     ,mContCaptPriority(false)
     ,mInitialSkips(0)
+    ,mStatisticSkips(0)
+    ,mDVSFrameSkips(0)
     ,mSessionId(0)
     ,mLowLight(false)
     ,mXnr(0)
@@ -272,7 +274,17 @@ status_t AtomISP::init()
                           pixelsToBytes(PlatformData::getPreviewPixelFormat(), RESOLUTION_VGA_WIDTH),
                           PlatformData::getPreviewPixelFormat());
     setPostviewFrameFormat(RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT, V4L2_PIX_FMT_NV12);
-    setSnapshotFrameFormat(RESOLUTION_5MP_WIDTH, RESOLUTION_5MP_HEIGHT, V4L2_PIX_FMT_NV12);
+
+    int w = 0;
+    int h = 0;
+    int ret = parsePairToInt(PlatformData::defaultSnapshotSize(mCameraId), &w, &h, "x");
+    if (ret == 0) {
+        setSnapshotFrameFormat(w, h, V4L2_PIX_FMT_NV12);
+    } else {
+        setSnapshotFrameFormat(RESOLUTION_5MP_WIDTH, RESOLUTION_5MP_HEIGHT, V4L2_PIX_FMT_NV12);
+        LOGE("set Snapshot default size from config file error : %d", ret);
+    }
+
     setVideoFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
 
     status = computeZoomRatios();
@@ -1036,6 +1048,7 @@ status_t AtomISP::configure(AtomMode mode)
      * at start.
      */
     mInitialSkips = getNumOfSkipFrames();
+    mStatisticSkips = getNumOfSkipStatistics();
 
     return status;
 }
@@ -1389,14 +1402,15 @@ status_t AtomISP::startRecording()
     int ret = 0;
     status_t status = NO_ERROR;
 
-    ret = mRecordingDevice->start(mNumBuffers,mInitialSkips);
+    //workaround: when DVS is on, the first several frames are greenish, need to be skipped.
+    ret = mRecordingDevice->start(mNumBuffers,mInitialSkips + mDVSFrameSkips);
     if (ret < 0) {
         LOGE("Start recording device failed");
         status = UNKNOWN_ERROR;
         goto err;
     }
 
-    ret = mPreviewDevice->start(mNumPreviewBuffers, mInitialSkips);
+    ret = mPreviewDevice->start(mNumPreviewBuffers, mInitialSkips + mDVSFrameSkips);
     if (ret < 0) {
         LOGE("Start preview device failed!");
         status = UNKNOWN_ERROR;
@@ -2142,11 +2156,6 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *
         device->mId == V4L2_PREVIEW_DEVICE)
         applySensorFlip();
 
-    //Set the format
-    ret = device->setFormat(*formatDescriptor);
-    if (ret < 0)
-        return ret;
-
     if(mHighSpeedEnabled) {
         status_t status;
         struct v4l2_streamparm parm;
@@ -2160,6 +2169,12 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *
             return -1;
         }
     }
+
+    //Set the format
+    ret = device->setFormat(*formatDescriptor);
+    if (ret < 0)
+        return ret;
+
     /* 3A related initialization*/
     //Reallocate the grid for 3A after format change
     if (device->mId == V4L2_MAIN_DEVICE ||
@@ -2438,10 +2453,34 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
  * disable vf_pp for still preview.
  *
  * Workaround 5: The camera firmware doesn't support video downscaling. For the
- * sensor imx132, it doesn't support 480p output.
- * To keep same FOV when recording at 480p. We need to configure preview size to
- * the max supported sensor output size with the same aspect as 480p.
+ * sensor imx132, it cannot keep the same FOV for different resolutions.
+ * To keep the same FOV when recording at different resolutions, IMX132 driver has
+ * provided a series of resolution settings with fixed full FOV height (1080).
+ * To select a proper sensor setting, we need to re-calculate the preview
+ * size with the same height of IMX132 full FOV height.
+ * The mapping for video size and preview size would be:
+ * Video Size		- Preview Size		- Sensor Setting
+ * 1280x720		- 1920x1080		- 1936x1096
+ * 720x480		- 1620x1080		- 1636x1096
+ * 640x480&320x240	- 1440x1080		- 1056x1096
+ * 352x288&176x144	- 1320x1080		- 1336x1096
+ * If DVS is enabled, the preview size should be cut off by 20% so that driver can
+ * add envelope for DVS.
+ *
  * BZ 116055
+ *
+ * Workaround 6: For imx132 sensor, there should be two groups of view angle value
+ * Because view angle changes along with the resolution of aspect ratio(4:3 and 16:9).
+ * The max resolution of imx132 sensor is 1976x1200, both cropping and downscaling are
+ * necessary when the aspect ratio of image's resolution is 4:3, so horizontal pixels
+ * are cropped And the FOV calculation case in CtsVerifiler.apk is test horizontal FOV
+ * only. So the view angle about horizontal should be changed with aspect ratio.
+ *
+ * Resolving it in a workaround, and It can be reverted in the future.
+ * Aspect Ratio          view angle(horizontal)
+ * 16:9                     61.6
+ * 4:3                      48.5
+ * BZ: 147077
  *
  * This mode can be enabled by setting VFPPLimitedResolutionList to a proper
  * value for the platform in the camera_profiles.xml. If e.g. for resolution
@@ -2501,12 +2540,14 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
         //Workaround 5, video recording FOV issue
         const char manUsensorBName[] = "imx132";
         if (mCameraInput && (strncmp(mCameraInput->name, manUsensorBName, sizeof(manUsensorBName) - 1) == 0)) {
-                if ((previewWidth == 720) && (previewHeight == 480)) {
-                        LOGI("480p recording change preview size to 1620x1080 and \
-                                        video size to 720x480");
-                        params->setPreviewSize(1620, 1080);
-                        params->setVideoSize(720, 480);
-                }
+            // If DVS is not enabled, keep preview height as 1080 which is full FOV height for IMX132.
+            // If DVS is enabled, keep preview height as 900 which is 20% cut off by 1080.
+            // 1080 = 900 * (1 + 20%)
+            // Refer to function description for more details.
+            if (dvsEnabled)
+                params->setPreviewSize(videoWidth*900/videoHeight, 900);
+            else
+                params->setPreviewSize(videoWidth*1080/videoHeight, 1080);
         }
 
         //Workaround 2, detail refer to the function description
@@ -2524,6 +2565,26 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
             }
         } else {
             mSwapRecordingDevice = false;
+        }
+    } else {
+        /*Workaround 6, select horizontal and vertical dynamically along with resolution aspect ratio*/
+        const char manUsensorBName[] = "imx132";
+        if (mCameraInput && (strncmp(mCameraInput->name, manUsensorBName, sizeof(manUsensorBName) - 1) == 0)) {
+            int picWidth, picHeight;
+            const float tolerance = 0.005f;
+            float picAspectRatio = 0.0f;
+
+            params->getPictureSize(&picWidth, &picHeight);
+            picAspectRatio = 1.0 * picWidth / picHeight;
+            if (fabsf(picAspectRatio - 1.333) < tolerance) {
+                /* into 4:3 aspect ratios */
+                params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, 29.4);
+                params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, 48.5);
+            } else if (fabsf(picAspectRatio - 1.777) < tolerance) {
+                /* into 16:9 aspect ratios */
+                params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, 37.3);
+                params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, 61.6);
+            }
         }
     }
 
@@ -2837,6 +2898,14 @@ status_t AtomISP::setDVS(bool enable)
         status = INVALID_OPERATION;
     }
 
+    return status;
+}
+
+status_t AtomISP::setDVSSkipFrames(unsigned int skips)
+{
+    LOG1("@%s: %d", __FUNCTION__, skips);
+    status_t status = NO_ERROR;
+    mDVSFrameSkips = skips;
     return status;
 }
 
@@ -4321,8 +4390,6 @@ size_t AtomISP::setupCameraInfo()
     return numCameras;
 }
 
-
-
 unsigned int AtomISP::getNumOfSkipFrames(void)
 {
     int ret = 0;
@@ -4339,6 +4406,16 @@ unsigned int AtomISP::getNumOfSkipFrames(void)
     LOG1("%s: skipping %d initial frames", __FUNCTION__, num_skipframes);
     return (unsigned int)num_skipframes;
 }
+
+unsigned int AtomISP::getNumOfSkipStatistics(void)
+{
+    int num_skipstats = 0;
+    PlatformData::HalConfig.getValue(num_skipstats, CPF::Statistics, CPF::InitialSkip);
+
+    LOG1("%s: skipping %d initial statistics", __FUNCTION__, num_skipstats);
+    return (unsigned int)num_skipstats;
+}
+
 
 /* ===================  ACCELERATION API EXTENSIONS ====================== */
 /*
@@ -5567,6 +5644,11 @@ status_t AtomISP::AAAStatSource::observe(IAtomIspObserver::Message *msg)
     msg->data.event.timestamp.tv_sec  = event.timestamp.tv_sec;
     msg->data.event.timestamp.tv_usec = event.timestamp.tv_nsec / 1000;
     msg->data.event.sequence = event.sequence;
+
+    if (mISP->mStatisticSkips > event.sequence) {
+        LOG2("Skipping statistics num: %d", event.sequence);
+        msg->data.event.type = IAtomIspObserver::EVENT_TYPE_STATISTICS_SKIPPED;
+    }
 
     return NO_ERROR;
 }

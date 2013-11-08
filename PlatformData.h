@@ -611,6 +611,14 @@ class PlatformData {
     static const char* supportedHighSpeedResolutionFps(int cameraId);
 
     /**
+     * Max Dvs Resolution in high speed mode
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the max resolution.
+     */
+    static const char* maxHighSpeedDvsResolution(int cameraId);
+
+    /**
      * Focus mode supported value
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
@@ -731,6 +739,14 @@ class PlatformData {
      * \return the value of the supported snapshot sizes as a string.
      */
     static const char* supportedSnapshotSizes(int cameraId);
+
+    /**
+     * default snapshot size
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the default snapshot size as a string.
+     */
+    static const char* defaultSnapshotSize(int cameraId);
 
     /**
      * Returns the name of the product
@@ -1018,6 +1034,7 @@ protected:
             flipping = PlatformData::SENSOR_FLIP_NA;
             dvs = true;
             supportedSnapshotSizes = "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448";
+            defaultSnapshotSize = "2560x1920";
             mPreviewViaOverlay = false;
             overlayRelativeRotation = 90;
             continuousCapture = false;
@@ -1113,6 +1130,8 @@ protected:
             //For high speed recording, slow motion playback
             hasSlowMotion = false;
             supportedHighSpeedResolutionFps = "";
+            //For max Dvs in high speed mode
+            maxHighSpeedDvsResolution = "";
             // Flash support
             hasFlash = false;
             // focus modes
@@ -1152,6 +1171,7 @@ protected:
         int flipping;
         bool dvs;
         String8 supportedSnapshotSizes;
+        String8 defaultSnapshotSize;
         bool mPreviewViaOverlay;
         int overlayRelativeRotation;  /*<! Relative rotation between the native scan order of the
                                            camera and the display attached to the overlay */
@@ -1224,6 +1244,8 @@ protected:
         // For high speed recording, slow motion playback
         bool hasSlowMotion;
         String8 supportedHighSpeedResolutionFps;
+        // For max Dvs resolution in high speed mode
+        String8 maxHighSpeedDvsResolution;
         // Flash support
         bool hasFlash;
         // focus modes
