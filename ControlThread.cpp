@@ -201,7 +201,7 @@ status_t ControlThread::init()
 {
     LOG1("@%s: cameraId = %d", __FUNCTION__, mCameraId);
 
-    status_t status = UNKNOWN_ERROR;
+    status_t status = NO_ERROR;
     CameraDump::setDumpDataFlag();
 
     AtomISP * isp = NULL;
@@ -463,6 +463,9 @@ bail:
 
     // this should clean up only what NEEDS to be cleaned up
     deinit();
+
+    if (status == NO_ERROR)
+        status = UNKNOWN_ERROR;    // If we get here, it is always an error
 
     return status;
 }
