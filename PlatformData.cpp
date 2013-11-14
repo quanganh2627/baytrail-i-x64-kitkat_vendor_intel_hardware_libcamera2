@@ -26,86 +26,6 @@
 #include <utils/Log.h>
 namespace android {
 
-/* config files for DIS14 and default settings */
-static const SensorParams dis14mParameters ={
-    {
-        "/etc/atomisp/Preview_UserParameter_DIS14M.prm",
-        "/etc/atomisp/Video_UserParameter_DIS14M.prm",
-        "/etc/atomisp/Primary_UserParameter_DIS14M.prm",
-    },
-    "/system/lib/libSh3aParamsDIS14M.so",
-    ci_adv_load_camera_4,
-    {
-      NULL,
-      0,
-    },
-    false
-};
-
-/* config files for Liteon 8M settings */
-static const SensorParams liteon8mParamFiles = {
-    {
-        "/etc/atomisp/Preview_UserParameter_LiteOn8M.prm",
-        "/etc/atomisp/Video_UserParameter_LiteOn8M.prm",
-        "/etc/atomisp/Primary_UserParameter_LiteOn8M.prm",
-    },
-    "/system/lib/libSh3aParamsLiteOn8M.so",
-    ci_adv_load_camera_2,
-    {
-      NULL,
-      0,
-    },
-    false
-};
-
-/* config files for SONY 13M settings */
-static const SensorParams imx135ParamFiles = {
-    {
-        "/etc/atomisp/Preview_UserParameter_imx135.prm",
-        "/etc/atomisp/Video_UserParameter_imx135.prm",
-        "/etc/atomisp/Primary_UserParameter_imx135.prm",
-    },
-    "/system/lib/libSh3aParamsimx135.so",
-    ci_adv_load_camera_2,
-    {
-      NULL,
-      0,
-    },
-    false
-};
-
-
-/* config files for Abico FI86A086 settings */
-static const SensorParams abicoFi86a086Parameters = {
-    {
-        "/etc/atomisp/Preview_UserParameter_AbicoFI86A086.prm",
-        "/etc/atomisp/Video_UserParameter_AbicoFI86A086.prm",
-        "/etc/atomisp/Primary_UserParameter_AbicoFI86A086.prm",
-    },
-    "/system/lib/libSh3aParamsAbicoFI86A086.so",
-    ci_adv_load_camera_3,
-    {
-      NULL,
-      0,
-    },
-    false
-};
-
-/* config files for Semco lc898211 settings */
-static const SensorParams semcoLc898211Parameters = {
-    {
-        "/etc/atomisp/Preview_UserParameter_SemcoLc898211.prm",
-        "/etc/atomisp/Video_UserParameter_SemcoLc898211.prm",
-        "/etc/atomisp/Primary_UserParameter_SemcoLc898211.prm",
-    },
-    "/system/lib/libSh3aParamsSemcoLc898211.so",
-    ci_adv_load_camera_1,
-    {
-      NULL,
-      0,
-    },
-    true
-};
 
 static const int spIdLength = 4;
 
@@ -1131,21 +1051,6 @@ const char* PlatformData::manufacturerName(void)
 const SensorParams *PlatformData::getSensorParamsFile(char *sensorId)
 {
     const SensorParams *sensorParameters = NULL;
-
-    if (strstr(sensorId, "mt9e013")) {
-        if (strstr(sensorId, "lc898211")) {
-            sensorParameters = &semcoLc898211Parameters;
-        } else {
-            sensorParameters = &liteon8mParamFiles;
-        }
-    } else if (strstr(sensorId, "ov8830")) {
-        sensorParameters = &abicoFi86a086Parameters;
-    } else if (strstr(sensorId, "dis71430m")) {
-        sensorParameters = &dis14mParameters;
-    } else if (strstr(sensorId, "imx135") || strstr(sensorId, "imx175")) {
-        sensorParameters = &imx135ParamFiles;
-    }
-
     return sensorParameters;
 }
 
