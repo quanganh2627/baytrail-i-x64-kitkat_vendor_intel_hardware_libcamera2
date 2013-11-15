@@ -139,7 +139,11 @@ status_t VideoThread::convertNV12Linear2Tiled(const AtomBuffer &buff)
 
     LOG2("@%s Src %dx%d s:%d handle:%x", __FUNCTION__, Src.width, Src.height, Src.stride, Src.handle);
     LOG2("@%s Dst %dx%d s:%d handle:%x", __FUNCTION__, Dst.width, Dst.height, Dst.stride, Dst.handle);
-    // No need to wait for driver complete, encoder will do the sync.
+
+    /**
+     * vpp start will be called automatically inside perform
+     * perform asynchronously to speed up recording process.
+     */
     ret = mVpp->perform(Src, Dst, NULL, true);
     if (ret != VA_STATUS_SUCCESS) {
         LOGE("@%s error:%x", __FUNCTION__, ret);
@@ -177,6 +181,11 @@ status_t VideoThread::handleMessageFlush()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     mFirstFrameTimestamp = 0;
+#ifdef GRAPHIC_IS_GEN
+    // vpp also needs to flush the buffers that were registered internally, stop will do it.
+    if (mVpp)
+        mVpp->stop();
+#endif
     mMessageQueue.reply(MESSAGE_ID_FLUSH, status);
     return status;
 }
