@@ -139,7 +139,8 @@ status_t VideoThread::convertNV12Linear2Tiled(const AtomBuffer &buff)
 
     LOG2("@%s Src %dx%d s:%d handle:%x", __FUNCTION__, Src.width, Src.height, Src.stride, Src.handle);
     LOG2("@%s Dst %dx%d s:%d handle:%x", __FUNCTION__, Dst.width, Dst.height, Dst.stride, Dst.handle);
-    ret = mVpp->perform(Src, Dst, NULL, false);
+    // No need to wait for driver complete, encoder will do the sync.
+    ret = mVpp->perform(Src, Dst, NULL, true);
     if (ret != VA_STATUS_SUCCESS) {
         LOGE("@%s error:%x", __FUNCTION__, ret);
         return UNKNOWN_ERROR;
