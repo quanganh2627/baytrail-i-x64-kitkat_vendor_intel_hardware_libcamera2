@@ -120,8 +120,6 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
         PlatformBase::mMaxContinuousRawRingBuffer = atoi(atts[1]);
     } else if (strcmp(name, "boardName") == 0) {
         PlatformBase::mBoardName = atts[1];
-    } else if (strcmp(name, "supportAIQ") == 0) {
-        PlatformBase::mSupportAIQ = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "previewFormat") == 0) {
         if (strcmp(atts[1], "V4L2_PIX_FMT_YVU420") == 0)
             PlatformBase::mPreviewFourcc = V4L2_PIX_FMT_YVU420;
@@ -558,7 +556,6 @@ void CameraProfiles::dump(void)
     LOGD("line%d, in DeviceData, mNumPreviewBuffers:%d ", __LINE__, mNumPreviewBuffers);
     LOGD("line%d, in DeviceData, mMaxContinuousRawRingBuffer:%d ", __LINE__, mMaxContinuousRawRingBuffer);
     LOGD("line%d, in DeviceData, mBoardName:%s ", __LINE__, mBoardName.string());
-    LOGD("line%d, in DeviceData, mSupportAIQ:%d ", __LINE__, mSupportAIQ);
     LOGD("line%d, in DeviceData, mUseIntelULL:%d ", __LINE__, mUseIntelULL);
 }
 

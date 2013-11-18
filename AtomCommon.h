@@ -27,7 +27,6 @@
 #include <math.h>
 #include <stdio.h>
 #include <time.h>
-#include <ia_3a_types.h>
 #include <ui/GraphicBuffer.h>
 #include <camera/CameraParameters.h>
 
@@ -215,25 +214,6 @@ enum AAAFlags {
     AAA_FLAG_AF = 0x2,
     AAA_FLAG_AWB = 0x4,
     AAA_FLAG_ALL = AAA_FLAG_AE | AAA_FLAG_AF | AAA_FLAG_AWB
-};
-
-/*! Bit '1' means successful result of selected event */
-const int ci_adv_init_state         = 0;            /*!< Init. state */
-const int ci_adv_load_camera_1      = (1 << 1);     /*!< Loaded camera module #1 */
-const int ci_adv_load_camera_2      = (1 << 2);     /*!< Loaded camera module #2 */
-const int ci_adv_load_camera_3      = (1 << 3);     /*!< Loaded camera module #3 */
-const int ci_adv_load_camera_4      = (1 << 4);     /*!< Loaded camera module #4 */
-const int ci_adv_cam_sensor_data    = (1 << 5);     /*!< Sensor calibration data from camera presents */
-const int ci_adv_file_sensor_data   = (1 << 6);     /*!< Sensor calibration data from file presents */
-const int ci_adv_cam_motor_data     = (1 << 7);     /*!< Motor calibration data presents */
-
-struct SensorParams
-{
-    ia_3a_prm_files prmFiles;
-    const char *tuning3aFile;
-    int bootEvent;
-    ia_3a_private_data cpfData;
-    bool hasMotorData;
 };
 
 struct CameraWindow {

@@ -872,19 +872,6 @@ status_t AtomSoc3A::setAwbLock(bool enable)
     return status;
 }
 
-status_t AtomSoc3A::getCurrentFocusPosition(int *pos)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-
-    int ret = mLensCI->getFocusPosition(pos);
-    if (ret != 0) {
-        LOGE("Error getting Focus Position from the driver");
-        status = UNKNOWN_ERROR;
-    }
-    return status;
-}
-
 status_t AtomSoc3A::applyEv(float bias)
 {
     LOG1("@%s: bias: %f", __FUNCTION__, bias);

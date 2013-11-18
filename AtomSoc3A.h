@@ -88,7 +88,6 @@ public:
     virtual status_t setAfLock(bool en);
     virtual status_t setAwbLock(bool en);
     virtual bool     getAwbLock();
-    virtual status_t getCurrentFocusPosition(int *pos);
     virtual status_t applyEv(float bias);
     virtual status_t setManualShutter(float expTime);
     virtual status_t setAeFlashMode(FlashMode mode);
@@ -103,30 +102,26 @@ public:
     virtual size_t   getAfMaxNumWindows() { return 0; }
     virtual status_t setAeWindow(const CameraWindow *window) { return INVALID_OPERATION; }
     virtual status_t setAfWindows(const CameraWindow *windows, size_t numWindows) { return INVALID_OPERATION; }
-    virtual status_t getAfLensPosRange(ia_3a_af_lens_range *lens_range) { return INVALID_OPERATION; }
     virtual status_t setManualFocusIncrement(int step) { return INVALID_OPERATION; }
     virtual status_t initAfBracketing(int stops,  AFBracketingMode mode) { return INVALID_OPERATION; }
     virtual status_t initAeBracketing() { return INVALID_OPERATION; }
-    virtual status_t updateManualFocus() { return INVALID_OPERATION; }
     virtual status_t getExposureInfo(SensorAeConfig& sensorAeConfig) { return INVALID_OPERATION; }
     virtual status_t getGridWindow(AAAWindowInfo& window);
     virtual bool getAfNeedAssistLight() { return false; }
     virtual bool getAeFlashNecessary() { return false; }
-    virtual ia_3a_awb_light_source getLightSource() { return ia_3a_awb_light_source_other; }
+    virtual AwbMode getLightSource() { return CAM_AWB_MODE_NOT_SET; }
     virtual status_t setAeBacklightCorrection(bool en) { return INVALID_OPERATION; }
-    virtual status_t setAwbMapping(ia_3a_awb_map mode) { return INVALID_OPERATION; }
-
     virtual status_t apply3AProcess(bool read_stats, struct timeval capture_timestamp, struct timeval sof_timestamp) { return INVALID_OPERATION; }
     virtual status_t startStillAf() { return INVALID_OPERATION; }
     virtual status_t stopStillAf() { return INVALID_OPERATION; }
-    virtual ia_3a_af_status isStillAfComplete() { return ia_3a_af_status_error; }
+    virtual AfStatus isStillAfComplete() { return CAM_AF_STATUS_FAIL; }
     virtual status_t applyPreFlashProcess(FlashStage stage) { return INVALID_OPERATION; }
 
-    virtual ia_3a_mknote *get3aMakerNote(ia_3a_mknote_mode mode) { return NULL; }
-    virtual void put3aMakerNote(ia_3a_mknote *mknData) { }
+    virtual ia_binary_data *get3aMakerNote(ia_mkn_trg mode) { return NULL; }
+    virtual void put3aMakerNote(ia_binary_data *mknData) { }
     virtual void reset3aMakerNote(void) { }
-    virtual int add3aMakerNoteRecord(ia_3a_mknote_field_type mkn_format_id,
-                                     ia_3a_mknote_field_name mkn_name_id,
+    virtual int add3aMakerNoteRecord(ia_mkn_dfid mkn_format_id,
+                                     ia_mkn_dnid mkn_name_id,
                                      const void *record,
                                      unsigned short record_size) { return -1; }
 
@@ -134,11 +129,7 @@ public:
     virtual bool     getSmartSceneDetection() { return false; }
     virtual status_t switchModeAndRate(AtomMode mode, float fps) { return INVALID_OPERATION; }
 
-    virtual int dumpCurrent3aStatToFile(void) { return -1; }
-    virtual int init3aStatDump(const char * str_mode) { return INVALID_OPERATION; }
-    virtual int deinit3aStatDump(void) { return INVALID_OPERATION; }
-
-    virtual ia_3a_af_status getCAFStatus() { return ia_3a_af_status_error; }
+    virtual AfStatus getCAFStatus() { return CAM_AF_STATUS_FAIL; }
     status_t getSmartSceneMode(int *sceneMode, bool *sceneHdr) { return INVALID_OPERATION; }
     status_t setFaces(const ia_face_state& faceState) { return INVALID_OPERATION; }
     status_t setFlash(int numFrames);

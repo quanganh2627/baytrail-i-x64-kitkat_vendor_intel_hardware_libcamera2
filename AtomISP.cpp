@@ -425,43 +425,6 @@ status_t AtomISP::initCameraInput()
 }
 
 /**
- * Retrieves the sensor parameters and  CPFStore AIQ configuration
- * Only to be called after AtomISP initialization
- *
- * These parameters are needed for Intel 3A initialization
- * This method is called by AtomAAA during init3A()
- *
- * \param paramsAndCPF pointer to an allocated SensorParams structure
- */
-status_t AtomISP::getSensorParams(SensorParams *paramsAndCPF)
-{
-    status_t status = NO_ERROR;
-    const SensorParams *paramFiles;
-
-    if (paramsAndCPF == NULL)
-        return BAD_VALUE;
-
-    if (mIsFileInject) {
-        int maincam = getPrimaryCameraIndex();
-        paramFiles = PlatformData::getSensorParamsFile(sCamInfo[maincam].name);
-    } else {
-        paramFiles = PlatformData::getSensorParamsFile(mCameraInput->name);
-    }
-
-    if (paramFiles == NULL)
-        return UNKNOWN_ERROR;
-
-    *paramsAndCPF = *paramFiles;
-    if (PlatformData::AiqConfig) {
-        paramsAndCPF->cpfData.data = PlatformData::AiqConfig.ptr();
-        paramsAndCPF->cpfData.size = PlatformData::AiqConfig.size();
-    }
-
-    return status;
-}
-
-
-/**
  * Only to be called from 2nd stage contructor AtomISP::init().
  */
 void AtomISP::initFileInject()

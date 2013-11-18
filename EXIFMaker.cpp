@@ -45,12 +45,12 @@ EXIFMaker::~EXIFMaker()
 /**
  * Sets MakerNote field data.
  */
-void EXIFMaker::setMakerNote(const ia_3a_mknote &aaaMkNoteData)
+void EXIFMaker::setMakerNote(const ia_binary_data &aaaMkNoteData)
 {
-    LOG1("@%s: %d bytes", __FUNCTION__, aaaMkNoteData.bytes);
+    LOG1("@%s: %d bytes", __FUNCTION__, aaaMkNoteData.size);
 
     if (aaaMkNoteData.data) {
-        exifAttributes.makerNoteDataSize = aaaMkNoteData.bytes;
+        exifAttributes.makerNoteDataSize = aaaMkNoteData.size;
         exifAttributes.makerNoteData = (unsigned char*) aaaMkNoteData.data;
     }
 }
@@ -205,31 +205,36 @@ void EXIFMaker::pictureTaken(void)
         exifAttributes.light_source = EXIF_LIGHT_SOURCE_UNKNOWN;
     }
     else {
-        ia_3a_awb_light_source  ia_3a_light_source = m3AControls->getLightSource();
-        switch (ia_3a_light_source) {
-        case ia_3a_awb_light_source_other:
+        AwbMode lightSource = m3AControls->getLightSource();
+        switch (lightSource) {
+        case CAM_AWB_MODE_MANUAL_INPUT:
+        case CAM_AWB_MODE_AUTO:
+        case CAM_AWB_MODE_NOT_SET:
             exifAttributes.light_source  = EXIF_LIGHT_SOURCE_OTHER_LIGHT_SOURCE;
             break;
-        case ia_3a_awb_light_source_filament_lamp:
+        case CAM_AWB_MODE_SUNSET:
             exifAttributes.light_source  = EXIF_LIGHT_SOURCE_TUNGSTEN;
             break;
-        case ia_3a_awb_light_source_clear_sky:
+        case CAM_AWB_MODE_DAYLIGHT:
             exifAttributes.light_source = EXIF_LIGHT_SOURCE_FINE_WEATHER;
             break;
-        case ia_3a_awb_light_source_cloudiness:
+        case CAM_AWB_MODE_CLOUDY:
             exifAttributes.light_source = EXIF_LIGHT_SOURCE_CLOUDY_WEATHER;
             break;
-        case ia_3a_awb_light_source_shadow_area:
+        case CAM_AWB_MODE_SHADOW:
             exifAttributes.light_source = EXIF_LIGHT_SOURCE_SHADE;
             break;
-        case ia_3a_awb_light_source_fluorlamp_w:
-            exifAttributes.light_source = EXIF_LIGHT_SOURCE_COOL_WHITE_FLUORESCENT;
+        case CAM_AWB_MODE_TUNGSTEN:
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_TUNGSTEN;
             break;
-        case ia_3a_awb_light_source_fluorlamp_n:
-            exifAttributes.light_source = EXIF_LIGHT_SOURCE_DAY_WHITE_FLUORESCENT;
+        case CAM_AWB_MODE_WARM_FLUORESCENT:
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_WARM_WHITE_FLUORESCENT;
             break;
-        case ia_3a_awb_light_source_fluorlamp_d:
-            exifAttributes.light_source = EXIF_LIGHT_SOURCE_DAYLIGHT_FLUORESCENT;
+        case CAM_AWB_MODE_FLUORESCENT:
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_FLUORESCENT;
+            break;
+        case CAM_AWB_MODE_WARM_INCANDESCENT:
+            exifAttributes.light_source = EXIF_LIGHT_SOURCE_TUNGSTEN;
             break;
         default:
             exifAttributes.light_source = EXIF_LIGHT_SOURCE_OTHER_LIGHT_SOURCE;

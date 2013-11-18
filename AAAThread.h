@@ -42,8 +42,8 @@ namespace android {
  * AAAThread runs the actual 3A process for preview frames. In video
  * mode it also handles DVS.
  *
- * The implementation is done using I3AControls class, which have
- * two derived class AtomAAA/AtomAIQ.
+ * The implementation is done using I3AControls class, which has two
+ * derived classes: AtomAIQ for RAW cameras and AtomSoc3A for SoC cameras.
  *
  * AAAThread also checks 3A variables and updates the trigger status for
  * Ultra Low Light algorithm
@@ -209,11 +209,11 @@ private:
     bool m3ARunning;
     bool mStartAF;
     bool mStopAF;
-    ia_3a_af_status mPreviousCafStatus;
+    AfStatus mPreviousCafStatus;
     bool mPublicAeLock;
     bool mPublicAwbLock;
     size_t mFramesTillAfComplete; // used for debugging only
-    int mSmartSceneMode; // Current detected scene mode, as defined in ia_aiq_types.h
+    int mSmartSceneMode; // Current detected scene mode, as defined in I3AControls.h
     bool mSmartSceneHdr; // Indicates whether the detected scene is valid for HDR
     ia_face_state mFaceState; // face metadata for 3A use
     int mPreviousFaceCount;

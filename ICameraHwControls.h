@@ -267,9 +267,6 @@ public:
     virtual unsigned int getExposureDelay() = 0;
 
     virtual int setExposure(struct atomisp_exposure *) = 0;
-
-    virtual status_t getSensorParams(SensorParams *sp) = 0;
-
     virtual void getSensorData(sensorPrivateData *sensor_data) = 0;
     virtual int  getModeInfo(struct atomisp_sensor_mode_data *mode_data) = 0;
     virtual int  getExposureTime(int *exposure_time) = 0;

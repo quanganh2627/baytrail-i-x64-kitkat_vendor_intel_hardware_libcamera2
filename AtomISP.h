@@ -175,9 +175,6 @@ public:
     bool isFileInjectionEnabled(void) const { return mFileInject.active; }
     String8 getFileInjectionFileName(void) const { return mFileInject.fileName; }
 
-    // camera hardware information
-    status_t getSensorParams(SensorParams *sp);
-
     float getFrameRate() const { return mConfig.fps; }
 
     /* Acceleration API extensions */

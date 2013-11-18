@@ -22,7 +22,6 @@
 #include "PreviewThread.h"
 #include "PictureThread.h"
 #include "AtomAIQ.h"
-#include "AtomAAA.h"
 #include "AtomDvs.h"
 #include "AtomSoc3A.h"
 #include "AtomISP.h"
@@ -1504,9 +1503,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             mode = MODE_CONTINUOUS_CAPTURE;
     }
 
-    if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
-        m3AControls->init3aStatDump("preview");
-
     if (state == STATE_CONTINUOUS_CAPTURE) {
         if (initContinuousCapture() != NO_ERROR) {
             return BAD_VALUE;
@@ -1637,19 +1633,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         CameraWindow *meteringWindows = new CameraWindow[winCount];
         CameraWindow aeWindow;
         mMeteringAreas.toWindows(meteringWindows);
-
-        /**
-         * Temporary support for both 3A libs.
-         * Intel 3A (aka AIQ) uses different coordinates than
-         * Acute Logic 3A.
-         */
-        if (PlatformData::supportAIQ()) {
-            convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
-        } else {
-            AAAWindowInfo aaaWindow;
-            m3AControls->getGridWindow(aaaWindow);
-            convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
-        }
+        convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
 
         if (m3AControls->setAeWindow(&aeWindow) != NO_ERROR) {
             LOGW("Error setting AE metering window. Metering will not work");
@@ -1777,9 +1761,6 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
 
     if (oldState == STATE_CONTINUOUS_CAPTURE)
         releaseContinuousCapture(flushPictures);
-
-    if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
-        m3AControls->deinit3aStatDump();
 
     mPreviewThread->setPreviewState(PreviewThread::STATE_STOPPED);
 
@@ -2532,7 +2513,7 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
 {
     LOG1("@%s: ", __FUNCTION__);
 
-    ia_3a_mknote *aaaMkNote = 0;
+    ia_binary_data *aaaMkNote = 0;
     atomisp_makernote_info *atomispMkNote = 0;
     SensorAeConfig *aeConfig = new SensorAeConfig;
 
@@ -2552,7 +2533,7 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
     mBracketManager->getNextAeConfig(aeConfig);
     if (m3AControls->isIntel3A()) {
         // TODO: add support for raw mknote
-        aaaMkNote = m3AControls->get3aMakerNote(ia_3a_mknote_mode_jpeg);
+        aaaMkNote = m3AControls->get3aMakerNote(ia_mkn_trg_section_1);
         if (!aaaMkNote)
             LOGW("No 3A makernote data available");
     }
@@ -4639,11 +4620,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
             // shutter manual setting (Intel extension)
             status = processParamShutter(oldParams, newParams);
         }
-
-        if (status == NO_ERROR) {
-            // AWB mapping mode (Intel extension)
-            status = processParamAwbMappingMode(oldParams, newParams);
-        }
     }
 
     return status;
@@ -5673,7 +5649,6 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
         if (!mIntelParamsAllowed) {
 
             processParamIso(oldParams, newParams);
-            processParamAwbMappingMode(oldParams, newParams);
             processParamXNR_ANR(oldParams, newParams, needRestart);
 
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_ISO);
@@ -5794,18 +5769,7 @@ status_t ControlThread:: processParamSetMeteringAreas(const CameraParameters *ol
         CameraWindow aeWindow;
 
         mMeteringAreas.toWindows(meteringWindows);
-
-        if (PlatformData::supportAIQ()) {
-            convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
-        } else {
-            AAAWindowInfo aaaWindow;
-            m3AControls->getGridWindow(aaaWindow);
-            //in our AE bg weight is 1, max is 255, thus working values are inside [2, 255].
-            //Google probably expects bg weight to be zero, therefore sending happily 1 from
-            //default camera app. To have some kind of visual effect, we start our range from 5
-
-            convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
-        }
+        convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
 
         if (m3AControls->setAeMeteringMode(CAM_AE_METERING_MODE_SPOT) == NO_ERROR) {
             LOG1("@%s, Got metering area, and \"spot\" mode set. Setting window.", __FUNCTION__ );
@@ -6081,51 +6045,6 @@ status_t ControlThread::processParamShutter(const CameraParameters *oldParams,
                 m3AControls->setManualShutter(mPublicShutter);
                 LOGD("Changed shutter to \"%s\" (%f)", newVal.string(), shutter);
             }
-        }
-    }
-
-    return status;
-}
-
-/**
- * Sets AWB Mapping Mode
- *
- * Note, this is an Intel extension, so the values are not defined in
- * Android documentation.
- */
-status_t ControlThread::processParamAwbMappingMode(const CameraParameters *oldParams,
-        CameraParameters *newParams)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status(NO_ERROR);
-    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
-            IntelCameraParameters::KEY_AWB_MAPPING_MODE);
-    if (!newVal.isEmpty()) {
-        ia_3a_awb_map awbMappingMode(ia_3a_awb_map_auto);
-
-        if (newVal == IntelCameraParameters::AWB_MAPPING_OUTDOOR) {
-            mPostProcThread->disableFaceAAA(AAA_FLAG_AWB);
-        } else {
-            mPostProcThread->enableFaceAAA(AAA_FLAG_AWB);
-        }
-
-        if (newVal == IntelCameraParameters::AWB_MAPPING_AUTO) {
-            awbMappingMode = ia_3a_awb_map_auto;
-        } else if (newVal == IntelCameraParameters::AWB_MAPPING_INDOOR) {
-            awbMappingMode = ia_3a_awb_map_indoor;
-        } else if (newVal == IntelCameraParameters::AWB_MAPPING_OUTDOOR) {
-            awbMappingMode = ia_3a_awb_map_outdoor;
-        } else {
-            awbMappingMode = ia_3a_awb_map_auto;
-        }
-
-        status = m3AControls->setAwbMapping(awbMappingMode);
-        if (status ==  NO_ERROR) {
-            LOGD("Changed AWB mapping mode to \"%s\" (%d)",
-                 newVal.string(), awbMappingMode);
-        } else {
-            LOGE("Error setting AWB mapping mode (\"%s\" (%d))",
-                 newVal.string(), awbMappingMode);
         }
     }
 
@@ -6626,23 +6545,18 @@ void ControlThread::restoreCurrentPictureParams()
 
 /**
  * Create 3A instance according to sensor type and platform requirement:
- * - AtomAAA for AcuteLogic 3A
- * - AtomAIQ for IA AIQ
- * - AtomISP for SoC 3A
+ * - AtomAIQ for RAW cameras that use IA AIQ
+ * - AtomSoc3A for SoC cameras that have their own 3A
  */
 status_t ControlThread::createAtom3A()
 {
     status_t status = NO_ERROR;
 
     if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
-        if (mSensorSyncManager != NULL)
+        if (mSensorSyncManager != NULL) {
             mHwcg.mSensorCI = (IHWSensorControl*) mSensorSyncManager.get();
-
-        if(PlatformData::supportAIQ()) {
-            m3AControls = new AtomAIQ(mHwcg);
-        } else {
-            m3AControls = new AtomAAA(mHwcg);
         }
+        m3AControls = new AtomAIQ(mHwcg);
     } else {
         m3AControls = new AtomSoc3A(mCameraId, mHwcg);
     }

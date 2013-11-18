@@ -212,7 +212,7 @@ int CameraDump::dumpImage2File(camera_delay_dumpImage_T *aDumpImage, const char 
     static unsigned int count = 0;
     size_t bytes;
     FILE *fp;
-    ia_3a_mknote * uMknData = NULL;
+    ia_binary_data *uMknData = NULL;
     char rawdpp[100];
     int ret;
 
@@ -268,12 +268,12 @@ int CameraDump::dumpImage2File(camera_delay_dumpImage_T *aDumpImage, const char 
         raw_info.spatial_sampling = 0;
 
         // Add raw image info to the maker note.
-        m3AControls->add3aMakerNoteRecord(ia_3a_mknote_field_type_uint8, ia_3a_mknote_field_name_raw_info, &raw_info, sizeof(ia_aiq_raw_image_full_info));
+        m3AControls->add3aMakerNoteRecord(ia_mkn_dfid_unsigned_char, ia_mkn_dnid_hal_records, &raw_info, sizeof(ia_aiq_raw_image_full_info));
 
-        // Get maker note data
-        uMknData = m3AControls->get3aMakerNote(ia_3a_mknote_mode_raw);
+        // Get detailed maker note data
+        uMknData = m3AControls->get3aMakerNote(ia_mkn_trg_section_2);
         if (uMknData) {
-            LOGD("RAW, mknSize: %d", uMknData->bytes);
+            LOGD("RAW, mknSize: %d", uMknData->size);
         } else {
             LOGW("RAW, no makernote");
         }
@@ -297,10 +297,10 @@ int CameraDump::dumpImage2File(camera_delay_dumpImage_T *aDumpImage, const char 
 
     LOG1("Begin write image %s", filename);
 
-    if (uMknData && uMknData->bytes > 0)
+    if (uMknData && uMknData->size > 0)
     {
-        if ((bytes = fwrite(uMknData->data, uMknData->bytes, 1, fp)) < (size_t)uMknData->bytes)
-            LOGW("Write less mkn bytes to %s: %d, %d", filename, uMknData->bytes, bytes);
+        if ((bytes = fwrite(uMknData->data, uMknData->size, 1, fp)) < (size_t)uMknData->size)
+            LOGW("Write less mkn bytes to %s: %d, %d", filename, uMknData->size, bytes);
     }
 
     if ((bytes = fwrite(data, size, 1, fp)) < (size_t)size)

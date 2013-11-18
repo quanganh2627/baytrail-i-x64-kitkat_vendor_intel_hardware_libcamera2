@@ -26,7 +26,6 @@ LOCAL_SRC_FILES := \
 	DebugFrameRate.cpp \
 	PerformanceTraces.cpp \
 	Callbacks.cpp \
-	AtomAAA.cpp \
 	AtomAIQ.cpp \
 	AtomSoc3A.cpp \
 	AtomDvs.cpp \

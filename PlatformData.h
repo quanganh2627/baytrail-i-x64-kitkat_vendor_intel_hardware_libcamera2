@@ -773,14 +773,6 @@ class PlatformData {
     static const char* manufacturerName(void);
 
     /**
-     * Returns sensor parameter files for input sensor
-     *
-     * \param sensor_id identifier to sensor
-     * \return pointer to sensor parameter file
-    */
-    static const SensorParams *getSensorParamsFile(char *sensorId);
-
-    /**
      * Returns the ISP sub device name
      *
      * \return the ISP sub device name, it'll return NULL when it fails
@@ -886,14 +878,6 @@ class PlatformData {
      * \return the max number of YUV buffers for bracketing
     */
     static int getMaxNumYUVBufferForBracket(int cameraId);
-
-    /**
-     * Whether Intel3A ia_aiq is supported?
-     *
-     * \return true if supported
-     */
-    // TODO: remove this until official ia_aiq is adopted
-    static bool supportAIQ(void);
 
     /**
      * Returns Graphics HAL pixel format
@@ -1029,7 +1013,6 @@ public:
         mNumPreviewBuffers = 6;
         mMaxContinuousRawRingBuffer = 0;
         mShutterLagCompensationMs = 40;
-        mSupportAIQ = false;
         mSupportDualVideo = false;
         mSupportPreviewLimitation = true;
         mPreviewFourcc = V4L2_PIX_FMT_NV12;
@@ -1345,10 +1328,7 @@ protected:
 
     int mNumPreviewBuffers;
 
-    /* For Intel3A ia_aiq */
-    bool mSupportAIQ;
-
-    /* For Dual Vidoe */
+    /* For Dual Video */
     bool mSupportDualVideo;
 
     /* For Preview Size Limitation*/

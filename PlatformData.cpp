@@ -1057,14 +1057,6 @@ const char* PlatformData::manufacturerName(void)
     return getInstance()->mManufacturerName;
 }
 
-//TODO: needs to be extended so that derived platforms can set the sensor
-//param file
-const SensorParams *PlatformData::getSensorParamsFile(char *sensorId)
-{
-    const SensorParams *sensorParameters = NULL;
-    return sensorParameters;
-}
-
 const char* PlatformData::getISPSubDeviceName(void)
 {
     return getInstance()->mSubDevName;
@@ -1109,11 +1101,6 @@ int PlatformData::getMaxNumYUVBufferForBracket(int cameraId)
         return 0;
     }
     return getInstance()->mCameras[cameraId].maxNumYUVBufferForBracket;
-}
-
-bool PlatformData::supportAIQ(void)
-{
-    return getInstance()->mSupportAIQ;
 }
 
 bool PlatformData::supportDualVideo(void)

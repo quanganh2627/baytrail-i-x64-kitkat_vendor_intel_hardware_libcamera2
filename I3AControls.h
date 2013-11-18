@@ -18,8 +18,8 @@
 #define I3ACONTROLS_H_
 
 #include <camera/CameraParameters.h>
+#include <ia_mkn_types.h>
 #include "AtomCommon.h"
-#include <ia_3a_types.h>
 #include "ia_face.h"
 
 namespace android {
@@ -42,6 +42,14 @@ enum AeMode
     CAM_AE_MODE_MANUAL,
     CAM_AE_MODE_SHUTTER_PRIORITY,
     CAM_AE_MODE_APERTURE_PRIORITY
+};
+
+enum AfStatus
+{
+    CAM_AF_STATUS_FAIL = -1,
+    CAM_AF_STATUS_IDLE,
+    CAM_AF_STATUS_BUSY,
+    CAM_AF_STATUS_SUCCESS
 };
 
 enum SceneMode
@@ -161,8 +169,8 @@ enum AFBracketingMode
  * and for SoC cameras they are set via V4L2 commands and handled
  * in the driver.
  *
- * This interface is implemented by AtomAAA (Intel 3A) and
- * AtomISP (V4L2 3A) classes.
+ * This interface is implemented by AtomAIQ (for RAW) and
+ * AtomSoc3A (for SoC) classes.
  */
 class I3AControls
 {
@@ -198,11 +206,8 @@ public:
     // Intel 3A specific
     virtual bool isIntel3A() = 0;
     virtual status_t getAeManualBrightness(float *ret) = 0;
-    virtual status_t getAfLensPosRange(ia_3a_af_lens_range *lens_range) = 0;
-    virtual status_t getCurrentFocusPosition(int *pos) = 0;
     virtual status_t setManualFocusIncrement(int step) = 0;
-    virtual status_t initAfBracketing(int stops,  AFBracketingMode mode) = 0;
-    virtual status_t updateManualFocus() = 0;
+    virtual status_t initAfBracketing(int stops, AFBracketingMode mode) = 0;
     virtual status_t initAeBracketing() = 0;
     virtual status_t applyEv(float bias) = 0;
     virtual status_t getExposureInfo(SensorAeConfig& sensorAeConfig) = 0;
@@ -219,15 +224,14 @@ public:
     virtual FlashMode getAeFlashMode() = 0;
     virtual bool getAfNeedAssistLight() = 0;
     virtual bool getAeFlashNecessary() = 0;
-    virtual ia_3a_awb_light_source getLightSource() = 0;
+    virtual AwbMode getLightSource() = 0;
     virtual status_t setManualShutter(float expTime) = 0;
-    virtual status_t setAwbMapping(ia_3a_awb_map mode) = 0;
     virtual status_t setSmartSceneDetection(bool en) = 0;
     virtual bool     getSmartSceneDetection() = 0;
     virtual status_t getSmartSceneMode(int *sceneMode, bool *sceneHdr) = 0;
     virtual void setPublicAeMode(AeMode mode) = 0;
     virtual AeMode getPublicAeMode() = 0;
-    virtual ia_3a_af_status getCAFStatus() = 0;
+    virtual AfStatus getCAFStatus() = 0;
     virtual status_t setFaces(const ia_face_state& faceState) = 0;
     virtual status_t setFlash(int numFrames) = 0;
 
@@ -235,23 +239,17 @@ public:
     virtual status_t apply3AProcess(bool read_stats, struct timeval capture_timestamp, const struct timeval sof_timestamp) = 0;
     virtual status_t startStillAf() = 0;
     virtual status_t stopStillAf() = 0;
-    virtual ia_3a_af_status isStillAfComplete() = 0;
+    virtual AfStatus isStillAfComplete() = 0;
     virtual status_t applyPreFlashProcess(FlashStage stage) = 0;
 
     // Makernote
-    virtual ia_3a_mknote *get3aMakerNote(ia_3a_mknote_mode mode) = 0;
-    virtual void put3aMakerNote(ia_3a_mknote *mknData) = 0;
+    virtual ia_binary_data *get3aMakerNote(ia_mkn_trg mode) = 0;
+    virtual void put3aMakerNote(ia_binary_data *mknData) = 0;
     virtual void reset3aMakerNote(void) = 0;
-    virtual int add3aMakerNoteRecord(ia_3a_mknote_field_type mkn_format_id,
-                                     ia_3a_mknote_field_name mkn_name_id,
+    virtual int add3aMakerNoteRecord(ia_mkn_dfid mkn_format_id,
+                                     ia_mkn_dnid mkn_name_id,
                                      const void *record,
                                      unsigned short record_size) = 0;
-
-    //dump 3A statistics
-    virtual int dumpCurrent3aStatToFile(void) = 0;
-    virtual int init3aStatDump(const char * str_mode) = 0;
-    virtual int deinit3aStatDump(void) = 0;
-
 };
 
 }

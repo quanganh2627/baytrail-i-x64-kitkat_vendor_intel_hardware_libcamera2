@@ -344,7 +344,7 @@ public:
     bool getAeFlashNecessary();
     status_t setAwbMode(AwbMode mode);
     AwbMode getAwbMode();
-    ia_3a_awb_light_source getLightSource();
+    AwbMode getLightSource();
     status_t setAeMeteringMode(MeteringMode mode);
     MeteringMode getAeMeteringMode();
     status_t set3AColorEffect(const char *effect);
@@ -357,12 +357,9 @@ public:
     bool     getAeLock();
     status_t setAfLock(bool en);
     bool     getAfLock();
-    ia_3a_af_status getCAFStatus();
+    AfStatus getCAFStatus();
     status_t setAwbLock(bool en);
     bool     getAwbLock();
-    //Keep backwards compability with Acute Logic 3A
-    status_t setAwbMapping(ia_3a_awb_map mode) { return 0; }
-    ia_3a_awb_map getAwbMapping();
     // returning an error in the following functions will cause some functions
     // not to be run in ControlThread
     size_t   getAeMaxNumWindows() { return 1; }
@@ -372,10 +369,6 @@ public:
     status_t getAeManualBrightness(float *ret);
     status_t setManualFocus(int focus, bool applyNow);
     status_t setManualFocusIncrement(int step);
-    status_t updateManualFocus() { return INVALID_OPERATION; }
-    status_t getAfLensPosRange(ia_3a_af_lens_range *lens_range) { return INVALID_OPERATION; }
-    status_t getNextFocusPosition(int *pos) { return INVALID_OPERATION; }
-    status_t getCurrentFocusPosition(int *pos) { return INVALID_OPERATION; }
     status_t applyEv(float bias);
     status_t setEv(float bias);
     status_t getEv(float *ret);
@@ -405,33 +398,17 @@ public:
 
     status_t startStillAf();
     status_t stopStillAf();
-    ia_3a_af_status isStillAfComplete();
+    AfStatus isStillAfComplete();
     status_t applyPreFlashProcess(FlashStage stage);
 
     // Makernote
-    ia_3a_mknote *get3aMakerNote(ia_3a_mknote_mode mode);
-    void put3aMakerNote(ia_3a_mknote *mknData);
+    ia_binary_data *get3aMakerNote(ia_mkn_trg mode);
+    void put3aMakerNote(ia_binary_data *mknData);
     void reset3aMakerNote(void);
-    int add3aMakerNoteRecord(ia_3a_mknote_field_type mkn_format_id,
-                             ia_3a_mknote_field_name mkn_name_id,
+    int add3aMakerNoteRecord(ia_mkn_dfid mkn_format_id,
+                             ia_mkn_dnid mkn_name_id,
                              const void *record,
                              unsigned short record_size);
-
-    //dump 3A statistics
-    int dumpCurrent3aStatToFile(void) { return INVALID_OPERATION; }
-    int init3aStatDump(const char * str_mode) { return INVALID_OPERATION; }
-    int deinit3aStatDump(void) { return INVALID_OPERATION; }
-
-
-        // TODO: no support, should be removed
-    status_t setGDC(bool en){return false;}
-    status_t setTNR(bool en) {return false;}
-
-
-    // Not supported by Intel 3A
-    virtual status_t setSaturation(int saturation) { return INVALID_OPERATION; }
-    virtual status_t setContrast(int contrast) { return INVALID_OPERATION; }
-    virtual status_t setSharpness(int sharpness) { return INVALID_OPERATION; }
 
 // private members
 private:
