@@ -1945,6 +1945,20 @@ status_t AtomAIQ::runGBCEMain()
     return NO_ERROR;
 }
 
+status_t AtomAIQ::getGBCEResults(ia_aiq_gbce_results *gbce_results)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    if (!gbce_results)
+        return BAD_VALUE;
+
+    if (mGBCEResults)
+        *gbce_results = *mGBCEResults;
+    else
+        return INVALID_OPERATION;
+
+    return NO_ERROR;
+}
 
 void AtomAIQ::resetDSDParams()
 {

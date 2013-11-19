@@ -117,6 +117,7 @@ public:
     virtual status_t stopStillAf() { return INVALID_OPERATION; }
     virtual AfStatus isStillAfComplete() { return CAM_AF_STATUS_FAIL; }
     virtual status_t applyPreFlashProcess(FlashStage stage) { return INVALID_OPERATION; }
+    virtual status_t getGBCEResults(ia_aiq_gbce_results *gbce_results) { return INVALID_OPERATION; }
 
     virtual ia_binary_data *get3aMakerNote(ia_mkn_trg mode) { return NULL; }
     virtual void put3aMakerNote(ia_binary_data *mknData) { }

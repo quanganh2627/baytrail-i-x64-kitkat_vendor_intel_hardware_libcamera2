@@ -7285,11 +7285,22 @@ status_t ControlThread::hdrCompose()
 {
     LOG1("%s",__FUNCTION__);
     status_t status = NO_ERROR;
+    ia_aiq_gbce_results gbce_results;
 
     // initialize the meta data with last picture of
     // the HDR sequence
     PictureThread::MetaData hdrPicMetaData;
     fillPicMetaData(hdrPicMetaData, false);
+
+    // Collect the GBCE results if Intel 3A is available
+    if (m3AControls->isIntel3A()) {
+        status = m3AControls->getGBCEResults(&gbce_results);
+        if (status != NO_ERROR) {
+            hdrPicMetaData.free(m3AControls);
+            LOGE("Error collecting the GBCE results!");
+            return status;
+        }
+    }
 
     /*
      * Stop ISP before composing HDR since standalone acceleration requires ISP to be stopped.
@@ -7310,7 +7321,7 @@ status_t ControlThread::hdrCompose()
     }
 
     bool doEncode = false;
-    status = mCP->composeHDR(mHdr.ciBufIn, mHdr.ciBufOut);
+    status = mCP->composeHDR(mHdr.ciBufIn, mHdr.ciBufOut, gbce_results);
     if (status == NO_ERROR) {
         mHdr.outMainBuf.width = mHdr.ciBufOut.ciMainBuf->width;
         mHdr.outMainBuf.height = mHdr.ciBufOut.ciMainBuf->height;

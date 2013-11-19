@@ -184,7 +184,7 @@ private:
 private:
     struct MorphoULL;       /*!> Forward declaration of the opaque struct for Morpho's algo configuration */
     MorphoULL        *mMorphoCtrl;
-    ia_cp_ull_config *mIntelUllCfg;
+    ia_cp_ull_cfg *mIntelUllCfg;
     Callbacks   *mCallbacks;
     AtomBuffer  mOutputBuffer;  /*!> Output of the ULL processing. this is actually the first input buffer passed */
     AtomBuffer  mOutputPostView;  /*!> post view image for the first snapshot, used as output one */

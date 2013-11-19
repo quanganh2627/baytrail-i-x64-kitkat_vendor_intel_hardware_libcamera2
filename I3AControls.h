@@ -19,6 +19,7 @@
 
 #include <camera/CameraParameters.h>
 #include <ia_mkn_types.h>
+#include <ia_aiq_types.h>
 #include "AtomCommon.h"
 #include "ia_face.h"
 
@@ -236,7 +237,7 @@ public:
     virtual AfStatus getCAFStatus() = 0;
     virtual status_t setFaces(const ia_face_state& faceState) = 0;
     virtual status_t setFlash(int numFrames) = 0;
-
+    virtual status_t getGBCEResults(ia_aiq_gbce_results *gbce_results) = 0;
     virtual status_t switchModeAndRate(AtomMode mode, float fps) = 0;
     virtual status_t apply3AProcess(bool read_stats, struct timeval capture_timestamp, const struct timeval sof_timestamp) = 0;
     virtual status_t startStillAf() = 0;

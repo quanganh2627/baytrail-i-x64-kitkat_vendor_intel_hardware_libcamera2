@@ -255,12 +255,18 @@ status_t UltraLowLight::addSnapshotMetadata(PictureThread::MetaData &metadata)
 
     if (mUseIntelULL && mSnapMetadata.aeConfig != NULL) {
         LOG1("Passing snapshot metadata to Intel ULL");
+
+        /* TODO: pass the tuning parameters here, all are set to default currently */
+        mIntelUllCfg->deghost        = 110;
+        mIntelUllCfg->luma_denoise   = 127;
+        mIntelUllCfg->chroma_denoise = 127;
         mIntelUllCfg->apex_av        = mSnapMetadata.aeConfig->aecApexAv;
         mIntelUllCfg->apex_sv        = mSnapMetadata.aeConfig->aecApexSv;
         mIntelUllCfg->apex_tv        = mSnapMetadata.aeConfig->aecApexTv;
         mIntelUllCfg->exposure       = mSnapMetadata.aeConfig->expTime;
         mIntelUllCfg->ev_bias        = mSnapMetadata.aeConfig->evBias;
-        mIntelUllCfg->gain           = mSnapMetadata.aeConfig->digitalGain;
+        mIntelUllCfg->digital_gain   = mSnapMetadata.aeConfig->digitalGain;
+        mIntelUllCfg->total_gain     = mSnapMetadata.aeConfig->totalGain;
         mIntelUllCfg->aperture_num   = mSnapMetadata.aeConfig->aperture_num;
         mIntelUllCfg->aperture_denum = mSnapMetadata.aeConfig->aperture_denum;
     }
@@ -451,13 +457,9 @@ status_t UltraLowLight::initIntelULL(int w, int h)
     LOG1("@%s", __FUNCTION__);
     status_t ret = NO_ERROR;
 
-    mIntelUllCfg = new ia_cp_ull_config;
-    if (mIntelUllCfg == NULL)
+    mIntelUllCfg = new ia_cp_ull_cfg;
+    if (!mIntelUllCfg)
         return NO_MEMORY;
-
-    ia_err status = ia_cp_ull_init_config(mIntelUllCfg);
-    if (status != ia_err_none)
-        return ia_error_to_status_t(status);
 
     mCurrentPreset = 0;
     mWidth = w;
@@ -518,7 +520,7 @@ void UltraLowLight::deinitIntelULL()
 {
     LOG1("@%s", __FUNCTION__);
 
-    if (mIntelUllCfg != NULL) {
+    if (mIntelUllCfg) {
         delete mIntelUllCfg;
         mIntelUllCfg = NULL;
     }
@@ -575,7 +577,7 @@ status_t UltraLowLight::processIntelULL()
     AtomToIaFrameBuffer(&mOutputPostView, &out_pv);
 
     LOG1("Intel ULL processing...");
-    ia_err error = ia_cp_ull_compose(&out, &out_pv, input, input, mInputBuffers.size(), *mIntelUllCfg);
+    ia_err error = ia_cp_ull_compose(&out, &out_pv, input, input, mInputBuffers.size(), mIntelUllCfg);
     if (error != ia_err_none) {
         LOGE("Intel ULL failed with error status %d", error);
         ret = ia_error_to_status_t(error);
