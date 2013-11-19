@@ -272,16 +272,18 @@ status_t AtomISP::init()
                           PlatformData::getPreviewPixelFormat());
     setPostviewFrameFormat(RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT, V4L2_PIX_FMT_NV12);
 
-    int w = 0;
-    int h = 0;
-    int ret = parsePairToInt(PlatformData::defaultSnapshotSize(mCameraId), &w, &h, "x");
-    if (ret == 0) {
-        setSnapshotFrameFormat(w, h, V4L2_PIX_FMT_NV12);
-    } else {
-        setSnapshotFrameFormat(RESOLUTION_5MP_WIDTH, RESOLUTION_5MP_HEIGHT, V4L2_PIX_FMT_NV12);
-        LOGE("set Snapshot default size from config file error : %d", ret);
+    AtomBuffer formatDescriptorSs
+        = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, V4L2_PIX_FMT_NV12);
+
+    int ret = parsePairToInt(PlatformData::defaultSnapshotSize(mCameraId),
+                             &formatDescriptorSs.width, &formatDescriptorSs.height, "x");
+    if (ret != 0) {
+        LOGW("config file error: %d. Using snapshot default size", ret);
+        formatDescriptorSs.width = RESOLUTION_5MP_WIDTH;
+        formatDescriptorSs.height = RESOLUTION_5MP_HEIGHT;
     }
 
+    setSnapshotFrameFormat(formatDescriptorSs);
     setVideoFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
 
     status = computeZoomRatios();
@@ -2330,22 +2332,21 @@ status_t AtomISP::setPostviewFrameFormat(int width, int height, int fourcc)
     return status;
 }
 
-status_t AtomISP::setSnapshotFrameFormat(int width, int height, int fourcc)
+status_t AtomISP::setSnapshotFrameFormat(AtomBuffer& formatDescriptor)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if (width > mConfig.snapshotLimits.maxWidth || width <= 0)
-        width = mConfig.snapshotLimits.maxWidth;
-    if (height > mConfig.snapshotLimits.maxHeight || height <= 0)
-        height = mConfig.snapshotLimits.maxHeight;
-    mConfig.snapshot.width  = width;
-    mConfig.snapshot.height = height;
-    mConfig.snapshot.fourcc = fourcc;
-    mConfig.snapshot.bpl = SGXandDisplayBpl(fourcc, width);
-    mConfig.snapshot.size = frameSize(fourcc, bytesToPixels(fourcc, mConfig.snapshot.bpl), height);
+    if (formatDescriptor.width > mConfig.snapshotLimits.maxWidth || formatDescriptor.width <= 0)
+        formatDescriptor.width = mConfig.snapshotLimits.maxWidth;
+    if (formatDescriptor.height > mConfig.snapshotLimits.maxHeight || formatDescriptor.height <= 0)
+        formatDescriptor.height = mConfig.snapshotLimits.maxHeight;
+
+    mConfig.snapshot = formatDescriptor;
+    mConfig.snapshot.bpl = SGXandDisplayBpl(formatDescriptor.fourcc, formatDescriptor.width);
+    mConfig.snapshot.size = frameSize(formatDescriptor.fourcc, bytesToPixels(formatDescriptor.fourcc, mConfig.snapshot.bpl), formatDescriptor.height);
     LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%x)",
-        width, height, mConfig.snapshot.bpl, mConfig.snapshot.size, fourcc);
+        formatDescriptor.width, formatDescriptor.height, mConfig.snapshot.bpl, mConfig.snapshot.size, formatDescriptor.fourcc);
     return status;
 }
 

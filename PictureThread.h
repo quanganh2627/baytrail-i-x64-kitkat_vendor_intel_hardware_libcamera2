@@ -68,8 +68,9 @@ public:
 
     void getDefaultParameters(CameraParameters *params);
     status_t initialize(const CameraParameters &params, int zoomRatio);
-    status_t allocSharedBuffers(int width, int height, int sharedBuffersNum,
-                                int fourcc, Vector<AtomBuffer> *bufs,
+    status_t allocSharedBuffers(const AtomBuffer& formatDescriptorSs,
+                                int sharedBuffersNum,
+                                Vector<AtomBuffer> *bufs,
                                 bool registerToScaler);
 
 

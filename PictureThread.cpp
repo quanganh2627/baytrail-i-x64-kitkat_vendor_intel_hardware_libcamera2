@@ -254,17 +254,18 @@ status_t PictureThread::handleMessageInitialize(MessageParam *msg)
     return NO_ERROR;
 }
 
-status_t PictureThread::allocSharedBuffers(int width, int height, int sharedBuffersNum,
-                                           int fourcc, Vector<AtomBuffer> *bufs,
+status_t PictureThread::allocSharedBuffers(const AtomBuffer& formatDescriptorSs,
+                                           int sharedBuffersNum,
+                                           Vector<AtomBuffer> *bufs,
                                            bool registerToScaler)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_ALLOC_BUFS;
-    msg.data.alloc.width = width;
-    msg.data.alloc.height = height;
+    msg.data.alloc.width = formatDescriptorSs.width;
+    msg.data.alloc.height = formatDescriptorSs.height;
     msg.data.alloc.numBufs = sharedBuffersNum;
-    msg.data.alloc.fourcc = fourcc;
+    msg.data.alloc.fourcc = formatDescriptorSs.fourcc;
     msg.data.alloc.bufs = bufs;
     msg.data.alloc.registerToScaler = registerToScaler;
 

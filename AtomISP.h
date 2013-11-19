@@ -129,7 +129,7 @@ public:
     status_t setPreviewFrameFormat(int width, int height, int bpl, int fourcc = 0);
     status_t setPostviewFrameFormat(int width, int height, int fourcc);
     void getPostviewFrameFormat(int &width, int &height, int &foucc) const;
-    status_t setSnapshotFrameFormat(int width, int height, int fourcc);
+    status_t setSnapshotFrameFormat(AtomBuffer& formatDescriptor);
     status_t setVideoFrameFormat(int width, int height, int fourcc = 0);
     bool applyISPLimitations(CameraParameters *params, bool dvsEnabled, bool videoMode);
 

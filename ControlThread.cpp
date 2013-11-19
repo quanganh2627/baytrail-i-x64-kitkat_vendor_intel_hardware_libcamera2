@@ -1252,9 +1252,11 @@ status_t ControlThread::initContinuousCapture()
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
+
     int fourcc = mISP->getSnapshotPixelFormat();
-    int width, height;
-    mParameters.getPictureSize(&width, &height);
+    AtomBuffer formatDescriptorSs = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, fourcc);
+
+    mParameters.getPictureSize(&formatDescriptorSs.width, &formatDescriptorSs.height);
 
     int pvWidth;
     int pvHeight;
@@ -1268,7 +1270,7 @@ status_t ControlThread::initContinuousCapture()
     // Configure PictureThread
     mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
-    mISP->setSnapshotFrameFormat(width, height, fourcc);
+    mISP->setSnapshotFrameFormat(formatDescriptorSs);
     configureContinuousRingBuffer();
     mISP->setPostviewFrameFormat(pvWidth, pvHeight,
                                  selectPostviewFormat());
@@ -2604,7 +2606,9 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
 
     if (mState != STATE_CONTINUOUS_CAPTURE) {
         // Configure and start the ISP
-        mISP->setSnapshotFrameFormat(width, height, fourcc);
+        AtomBuffer formatDescriptorSs
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, fourcc, width, height);
+        mISP->setSnapshotFrameFormat(formatDescriptorSs);
         mISP->setPostviewFrameFormat(lpvWidth, lpvHeight,
                                      selectPostviewFormat());
 
@@ -3023,7 +3027,9 @@ status_t ControlThread::captureStillPic()
             LOG1("set smart scene parameters failed");
 
         // Configure and start the ISP
-        mISP->setSnapshotFrameFormat(width, height, fourcc);
+        AtomBuffer formatDescriptorSs
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, fourcc, width, height);
+        mISP->setSnapshotFrameFormat(formatDescriptorSs);
         mISP->setPostviewFrameFormat(pvWidth, pvHeight,
                                      selectPostviewFormat());
 
@@ -4636,10 +4642,10 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    int picWidth, picHeight, fourcc;
+    AtomBuffer formatDescriptorSs = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR);
     unsigned int bufCount = MAX(mBurstLength, mISP->getContinuousCaptureNumber()+1);
 
-    mParameters.getPictureSize(&picWidth, &picHeight);
+    mParameters.getPictureSize(&formatDescriptorSs.width, &formatDescriptorSs.height);
 
     /**
      * Snapshot format is hardcoded to NV12, this is the format between
@@ -4648,9 +4654,9 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
      * green) this is a known limitation of the raw capture sequence in ISP fW
      */
     if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW))
-        fourcc = mHwcg.mSensorCI->getRawFormat();
+        formatDescriptorSs.fourcc = mHwcg.mSensorCI->getRawFormat();
     else
-        fourcc = V4L2_PIX_FMT_NV12;
+        formatDescriptorSs.fourcc = V4L2_PIX_FMT_NV12;
 
     int recommendedNum = ((mBracketManager->getBracketMode() != BRACKET_NONE)?
         PlatformData::getMaxNumYUVBufferForBracket(mCameraId) : PlatformData::getMaxNumYUVBufferForBurst(mCameraId));
@@ -4671,18 +4677,19 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
        bufCount = 0;
     }
 
-    LOG1("Request to allocate %d bufs of (%dx%d) fourcc: %d",bufCount, picWidth,picHeight,fourcc);
-    LOG1("Currently allocated: %d , available %d",mAllocatedSnapshotBuffers.size(),
-                                                  mAvailableSnapshotBuffers.size());
+    LOG1("Request to allocate %d bufs of (%dx%d) fourcc: %d",bufCount,
+         formatDescriptorSs.width, formatDescriptorSs.height, formatDescriptorSs.fourcc);
+    LOG1("Currently allocated: %d , available %d",
+         mAllocatedSnapshotBuffers.size(), mAvailableSnapshotBuffers.size());
 
 
     if (!mAllocatedSnapshotBuffers.isEmpty()) {
         AtomBuffer tmp;
         tmp = mAllocatedSnapshotBuffers.itemAt(0);
 
-        if ( (tmp.width == picWidth) &&
-             (tmp.height == picHeight) &&
-             (tmp.fourcc == fourcc) &&
+        if ( (tmp.width == formatDescriptorSs.width) &&
+             (tmp.height == formatDescriptorSs.height) &&
+             (tmp.fourcc == formatDescriptorSs.fourcc) &&
              (mAllocatedSnapshotBuffers.size() == bufCount)) {
             LOG1("No need to request Snapshot, buffers already available");
             return NO_ERROR;
@@ -4698,7 +4705,7 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
     bool registerToScaler = (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) &&
             (state == STATE_CONTINUOUS_CAPTURE);
 
-    status = mPictureThread->allocSharedBuffers(picWidth, picHeight, bufCount,fourcc,
+    status = mPictureThread->allocSharedBuffers(formatDescriptorSs, bufCount,
                                                 &mAllocatedSnapshotBuffers, registerToScaler);
 
     if (status != NO_ERROR) {
@@ -4708,7 +4715,7 @@ status_t ControlThread::allocateSnapshotBuffers(bool videoMode)
     }
 
     // update configuration inside  AtomISP class
-    mISP->setSnapshotFrameFormat(picWidth,picHeight,fourcc);
+    mISP->setSnapshotFrameFormat(formatDescriptorSs);
     return status;
 }
 
