@@ -92,6 +92,10 @@ namespace android {
  */
 #define RECONFIGURE_THUMBNAIL_HEIGHT_LIMIT 480
 
+/*BATTERY_CHECK_INTERVAL_FRAME_UNIT: battery check interval base on frames to make sure to turn off
+flash when battery is lower than 15%*/
+const int BATTERY_CHECK_INTERVAL_FRAME_UNIT = 300;
+
 // Minimum value of our supported preview FPS
 const int MIN_PREVIEW_FPS = 11;
 // Max value of our supported preview fps:
@@ -7908,6 +7912,17 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
                 mRecordingBuffers.push(buff);
             } else {
                 mISP->putRecordingFrame(&buff);
+            }
+
+            //Check the battery status regularly during recording.
+            //If the battery level is too low, turn off the flash, notify the application and update the parameters.
+            if (buff.frameSequenceNbr % BATTERY_CHECK_INTERVAL_FRAME_UNIT == 0) {
+               String8 val(mParameters.get(CameraParameters::KEY_FLASH_MODE));
+               if (val != CameraParameters::FLASH_MODE_OFF) {
+                   CameraParameters param(mParameters);
+                   preProcessFlashMode(&param);
+                   processParamFlash(&mParameters,&param);
+               }
             }
         } else {
             LOGD("Recording frame %d corrupted, ignoring", buff.id);
