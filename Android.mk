@@ -103,7 +103,7 @@ endif
 
 ifeq (,$(wildcard frameworks/base/core/jni/android_hardware_Camera.h))
 LOCAL_C_INCLUDES += \
-	vendor/intel/hardware/camera_extension/include/
+	$(TARGET_OUT_HEADERS)/camera_extension
 endif
 
 LOCAL_C_FLAGS =+ -fno-pic
