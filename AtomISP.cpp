@@ -1598,6 +1598,10 @@ status_t AtomISP::configureContinuousRingBuffer()
 
     // for css2.x, the minimum raw ring buffers number is ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X
     if (getCssMajorVersion() >= 2) {
+        //when offset is -1 , one ring buffer is able to be optimized
+        if (offset == -1)
+            numBuffers -= 1;
+
         if (numBuffers < ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X)
             numBuffers = ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X;
     }
