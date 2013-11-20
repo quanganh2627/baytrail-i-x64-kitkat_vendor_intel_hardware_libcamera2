@@ -215,6 +215,9 @@ status_t UltraLowLight::addInputFrame(AtomBuffer *snap, AtomBuffer *pv)
     status_t ret = NO_ERROR;
     unsigned int maxBufs = MAX_INPUT_BUFFERS;
 
+    if (snap == NULL || pv == NULL)
+        return BAD_VALUE;
+
     if (getState() != ULL_STATE_INIT)
         return INVALID_OPERATION;
 
@@ -228,12 +231,9 @@ status_t UltraLowLight::addInputFrame(AtomBuffer *snap, AtomBuffer *pv)
 
     mInputBuffers.push(*snap);
 
-    /**
-     * We use the first postview as the final one
-     */
-    if (mInputBuffers.size() == 1)
-        mOutputPostView = *pv;
-
+    // Store the postview here, although no processing done with it yet.
+    // This is to make more uniform buffer flow with the snapshot buffs.
+    mPostviewBuffs.push(*pv);
 
     if (mInputBuffers.size() == maxBufs) {
         if (mUseIntelULL) {
@@ -325,6 +325,25 @@ status_t UltraLowLight::getInputBuffers(Vector<AtomBuffer> *inputs)
     mInputBuffers.clear();
     // Reset the state back to INIT
     setState(ULL_STATE_INIT);
+    return NO_ERROR;
+}
+
+/**
+ * returns the postview buffers given as input with addInputFrame()
+ * NOTE: no processing done for the postviews at the moment
+ */
+status_t UltraLowLight::getPostviewBuffers(Vector<AtomBuffer> *postviews)
+{
+    if (postviews == NULL) {
+        LOGE("@%s: Null vector given. Invalid.", __FUNCTION__);
+        return BAD_VALUE;
+    }
+
+    // No need to iterate, like in getInputBuffers(), as
+    // we don't need to alter buffer status (at the moment).
+    *postviews = mPostviewBuffs;
+    mPostviewBuffs.clear();
+
     return NO_ERROR;
 }
 
@@ -551,6 +570,7 @@ status_t UltraLowLight::processIntelULL()
     }
 
     mOutputBuffer = mInputBuffers[0];
+    mOutputPostView = mPostviewBuffs[0];
     AtomToIaFrameBuffer(&mOutputBuffer, &out);
     AtomToIaFrameBuffer(&mOutputPostView, &out_pv);
 
@@ -564,6 +584,7 @@ status_t UltraLowLight::processIntelULL()
     if (getState() == ULL_STATE_PROCESSING) {
         setState(ULL_STATE_DONE);
         mInputBuffers.removeAt(0);
+        mPostviewBuffs.removeAt(0);
         if (gLogLevel & CAMERA_DEBUG_ULL_DUMP) {
            String8 yuvName("/data/ull_yuv_processed_");
            yuvName.appendFormat("id_%d.yuv",mULLCounter);
@@ -655,6 +676,7 @@ processComplete:
         setState(ULL_STATE_DONE);
         mOutputBuffer = mInputBuffers[0];
         mInputBuffers.removeAt(0);
+        mPostviewBuffs.removeAt(0);
         if (gLogLevel & CAMERA_DEBUG_ULL_DUMP) {
            String8 yuvName("/data/ull_yuv_processed_");
            yuvName.appendFormat("id_%d.yuv",mULLCounter);

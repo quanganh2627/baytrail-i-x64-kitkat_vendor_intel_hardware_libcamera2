@@ -119,6 +119,8 @@ public:
     status_t getSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
     status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
 
+    status_t setPostviewBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bool cached);
+
     int pollPreview(int timeout);
     int pollCapture(int timeout);
 
@@ -515,6 +517,7 @@ private:
 
     bool mClientSnapshotBuffersCached;
     bool mUsingClientSnapshotBuffers;
+    bool mUsingClientPostviewBuffers;
     bool mStoreMetaDataInBuffers;
     int  mBufferSharingSessionID;
 

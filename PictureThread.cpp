@@ -52,6 +52,8 @@ PictureThread::PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler,
     ,mInputBufferArray(NULL)
     ,mInputBuffDataArray(NULL)
     ,mInputBuffers(0)
+    ,mPostviewBufferArray(NULL)
+    ,mPostviewBuffers(0)
     ,mScaler(scaler)
     ,m3AControls(aaaControls)
 {
@@ -88,6 +90,9 @@ PictureThread::~PictureThread()
 
     LOGD("@%s: release InputBuffers", __FUNCTION__);
     freeInputBuffers();
+
+    LOGD("@%s: release postview buffers", __FUNCTION__);
+    freePostviewBuffers();
 
     if (mHwCompressor) {
         LOGD("@%s: release mHwCompressor", __FUNCTION__);
@@ -254,22 +259,36 @@ status_t PictureThread::handleMessageInitialize(MessageParam *msg)
     return NO_ERROR;
 }
 
-status_t PictureThread::allocSharedBuffers(const AtomBuffer& formatDescriptorSs,
-                                           int sharedBuffersNum,
-                                           Vector<AtomBuffer> *bufs,
-                                           bool registerToScaler)
+status_t PictureThread::allocSnapshotBuffers(const AtomBuffer& formatDescriptor,
+                                             int sharedBuffersNum,
+                                             Vector<AtomBuffer> *bufs,
+                                             bool registerToScaler)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_ALLOC_BUFS;
-    msg.data.alloc.width = formatDescriptorSs.width;
-    msg.data.alloc.height = formatDescriptorSs.height;
+    msg.data.alloc.formatDesc = formatDescriptor;
     msg.data.alloc.numBufs = sharedBuffersNum;
-    msg.data.alloc.fourcc = formatDescriptorSs.fourcc;
     msg.data.alloc.bufs = bufs;
     msg.data.alloc.registerToScaler = registerToScaler;
 
     return mMessageQueue.send(&msg, MESSAGE_ID_ALLOC_BUFS);
+}
+
+status_t PictureThread::allocPostviewBuffers(const AtomBuffer& formatDescriptor,
+                                             int sharedBuffersNum,
+                                             Vector<AtomBuffer> *bufs,
+                                             bool registerToScaler)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_ALLOC_POSTVIEW_BUFS;
+    msg.data.alloc.formatDesc = formatDescriptor;
+    msg.data.alloc.numBufs = sharedBuffersNum;
+    msg.data.alloc.bufs = bufs;
+    msg.data.alloc.registerToScaler = registerToScaler;
+
+    return mMessageQueue.send(&msg, MESSAGE_ID_ALLOC_POSTVIEW_BUFS);
 }
 
 status_t PictureThread::wait()
@@ -393,19 +412,19 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
 {
     LOG1("@%s: width = %d, height = %d, fourcc = %s, numBufs = %d",
             __FUNCTION__,
-            msg->width,
-            msg->height,
-            v4l2Fmt2Str(msg->fourcc),
+            msg->formatDesc.width,
+            msg->formatDesc.height,
+            v4l2Fmt2Str(msg->formatDesc.fourcc),
             msg->numBufs);
     status_t status = NO_ERROR;
-    size_t bufferSize = frameSize(msg->fourcc, msg->width, msg->height);
+    size_t bufferSize = frameSize(msg->formatDesc.fourcc, msg->formatDesc.width, msg->formatDesc.height);
 
     /* check if re-allocation is needed */
     if( (mInputBufferArray != NULL) &&
         (mInputBuffers == msg->numBufs) &&
-        (mInputBufferArray[0].width == msg->width) &&
-        (mInputBufferArray[0].height == msg->height) &&
-        (mInputBufferArray[0].fourcc == msg->fourcc)) {
+        (mInputBufferArray[0].width == msg->formatDesc.width) &&
+        (mInputBufferArray[0].height == msg->formatDesc.height) &&
+        (mInputBufferArray[0].fourcc == msg->formatDesc.fourcc)) {
         LOG1("Trying to allocate same number of buffers with same resolution... skipping");
         goto skip;
     }
@@ -430,8 +449,8 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
 
     /* re-allocates array of input buffers into mInputBufferArray */
     freeInputBuffers();
-    status = allocateInputBuffers(msg->fourcc, msg->width, msg->height, msg->numBufs, msg->registerToScaler);
-    if(status != NO_ERROR)
+    status = allocateInputBuffers(msg->formatDesc, msg->numBufs, msg->registerToScaler);
+    if (status != NO_ERROR)
         goto exit_fail;
 
     /* Now let the encoder know about the new buffers for the surfaces*/
@@ -444,25 +463,65 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
     }
 
 skip:
-
-    for (int i = 0; i < mInputBuffers; i++)
+    for (int i = 0; i < mInputBuffers; ++i) {
         msg->bufs->push(mInputBufferArray[i]);
+    }
 
 exit_fail:
     mMessageQueue.reply(MESSAGE_ID_ALLOC_BUFS, status);
     return status;
 }
 
-status_t PictureThread::allocateInputBuffers(int fourcc, int width, int height, int numBufs, bool registerToScaler)
+status_t PictureThread::handleMessageAllocPostviewBufs(MessageAllocBufs *msg)
 {
-    LOG1("@%s size (%dx%d) num %d fourcc %s", __FUNCTION__, width, height, numBufs,v4l2Fmt2Str(fourcc));
+    LOG1("@%s: width = %d, height = %d, fourcc = %s, numBufs = %d",
+            __FUNCTION__,
+            msg->formatDesc.width,
+            msg->formatDesc.height,
+            v4l2Fmt2Str(msg->formatDesc.fourcc),
+            msg->numBufs);
+
+    status_t status = NO_ERROR;
+
+    /* check if re-allocation is needed */
+    if( (mPostviewBufferArray != NULL) &&
+        (mPostviewBuffers == msg->numBufs) &&
+        (mPostviewBufferArray[0].width == msg->formatDesc.width) &&
+        (mPostviewBufferArray[0].height == msg->formatDesc.height) &&
+        (mPostviewBufferArray[0].fourcc == msg->formatDesc.fourcc)) {
+        LOG1("Trying to allocate same number of postview buffers with same resolution... skipping");
+        goto skip;
+    }
+
+    freePostviewBuffers();
+    status = allocatePostviewBuffers(msg->formatDesc, msg->numBufs, msg->registerToScaler);
+    if (status != NO_ERROR)
+        goto exit_fail;
+
+skip:
+    for (int i = 0; i < mInputBuffers; ++i) {
+        msg->bufs->push(mPostviewBufferArray[i]);
+    }
+
+exit_fail:
+    mMessageQueue.reply(MESSAGE_ID_ALLOC_POSTVIEW_BUFS, status);
+    return status;
+}
+
+status_t PictureThread::allocateInputBuffers(AtomBuffer& formatDescriptor, int numBufs, bool registerToScaler)
+{
+    LOG1("@%s size (%dx%d) num %d fourcc %s", __FUNCTION__, formatDescriptor.width,
+         formatDescriptor.height, numBufs, v4l2Fmt2Str(formatDescriptor.fourcc));
     // temporary workaround until CSS supports buffers with different bpls
     // until then we need to align all buffers to display subsystem bpl
     // requirements.... even the snapshot buffers that do not go to screen
-    int bpl = SGXandDisplayBpl(fourcc, width);
+    int bpl = SGXandDisplayBpl(formatDescriptor.fourcc, formatDescriptor.width);
     LOG1("@%s bpl %d", __FUNCTION__, bpl);
-    AtomBuffer formatDescriptor;
-    CLEAR(formatDescriptor);
+
+    formatDescriptor.bpl = bpl;
+    formatDescriptor.size = frameSize(formatDescriptor.fourcc,
+                                      bytesToPixels(formatDescriptor.fourcc, bpl),
+                                      formatDescriptor.height);
 
     if(numBufs == 0)
         return NO_ERROR;
@@ -473,12 +532,6 @@ status_t PictureThread::allocateInputBuffers(int fourcc, int width, int height, 
         goto bailout;
 
     mInputBuffers = numBufs;
-    formatDescriptor.width = width;
-    formatDescriptor.height = height;
-    formatDescriptor.fourcc = fourcc;
-    formatDescriptor.bpl = bpl;
-    formatDescriptor.size = frameSize(fourcc, bytesToPixels(fourcc, bpl), height);
-
 
     for (int i = 0; i < mInputBuffers; i++) {
         mInputBufferArray[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
@@ -518,24 +571,96 @@ void PictureThread::freeInputBuffers()
 {
     LOG1("@%s", __FUNCTION__);
 
-    if(mInputBufferArray != NULL) {
-       for (int i = 0; i < mInputBuffers; i++) {
-           if (mInputBufferArray[i].gfxInfo.scalerId != -1) {
-               mScaler->unRegisterBuffer(mInputBufferArray[i], ScalerService::SCALER_OUTPUT);
-               mInputBufferArray[i].gfxInfo.scalerId = -1;
-           }
-           MemoryUtils::freeAtomBuffer(mInputBufferArray[i]);
-       }
+    if (mInputBufferArray != NULL) {
+       unregisterFromGpuScalerAndFree(mInputBufferArray, mInputBuffers);
        delete [] mInputBufferArray;
        mInputBufferArray = NULL;
        mInputBuffers = 0;
     }
 
-    if(mInputBuffDataArray != NULL) {
+    if (mInputBuffDataArray != NULL) {
        delete [] mInputBuffDataArray;
        mInputBuffDataArray = NULL;
     }
 }
+
+void PictureThread::unregisterFromGpuScalerAndFree(AtomBuffer bufferArray[], int numBuffs)
+{
+    LOG1("@%s", __FUNCTION__);
+    for (int i = 0; i < numBuffs; ++i) {
+        if (bufferArray[i].gfxInfo.scalerId != -1) {
+            mScaler->unRegisterBuffer(bufferArray[i], ScalerService::SCALER_OUTPUT);
+            bufferArray[i].gfxInfo.scalerId = -1;
+        }
+        MemoryUtils::freeAtomBuffer(bufferArray[i]);
+    }
+}
+
+status_t PictureThread::allocatePostviewBuffers(const AtomBuffer &formatDescriptor,
+                                                int numBufs, bool registerToScaler)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    status_t status = NO_ERROR;
+
+    if (numBufs == 0)
+        return NO_ERROR;
+
+    mPostviewBufferArray = new AtomBuffer[numBufs];
+
+    if (mPostviewBufferArray == NULL) {
+        return NO_MEMORY;
+    }
+
+    mPostviewBuffers = numBufs;
+    AtomBuffer postv = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+
+    for (int i = 0; i < numBufs; ++i) {
+        LOGD("allocating postview %d", i+1);
+        postv.buff = NULL;
+        postv.size = 0;
+        postv.dataPtr = NULL;
+
+        if (registerToScaler) {
+            MemoryUtils::allocateGraphicBuffer(postv, formatDescriptor);
+        } else {
+            mCallbacks->allocateMemory(&postv, formatDescriptor.size);
+        }
+
+        if (postv.dataPtr == NULL) {
+            status = NO_MEMORY;
+        } else if (status == NO_ERROR) {
+            if (registerToScaler)
+                mScaler->registerBuffer(postv, ScalerService::SCALER_OUTPUT);
+            LOGD("postview dataPtr %p", postv.dataPtr);
+            mPostviewBufferArray[i] = postv;
+        } else {
+            status = UNKNOWN_ERROR;
+        }
+
+        if (status != NO_ERROR) {
+            LOGE("Error in postview allocation (%d)", status);
+            mPostviewBuffers = i;
+            break;
+        }
+    }
+
+    return status;
+}
+
+void PictureThread::freePostviewBuffers()
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if (mPostviewBufferArray != NULL) {
+        unregisterFromGpuScalerAndFree(mPostviewBufferArray, mPostviewBuffers);
+
+        delete[] mPostviewBufferArray;
+        mPostviewBufferArray = NULL;
+        mPostviewBuffers = 0;
+    }
+}
+
 
 /**
  * Encode Thumbnail picture into mOutBuf
@@ -648,6 +773,10 @@ status_t PictureThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_ALLOC_BUFS:
             status = handleMessageAllocBufs(&msg.data.alloc);
+            break;
+
+        case MESSAGE_ID_ALLOC_POSTVIEW_BUFS:
+            status = handleMessageAllocPostviewBufs(&msg.data.alloc);
             break;
 
         case MESSAGE_ID_WAIT:

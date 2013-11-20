@@ -646,7 +646,7 @@ private:
     status_t hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* postviewBuffer);
     status_t hdrCompose();
     void     hdrRelease();
-    status_t allocateSnapshotBuffers(bool videoMode);
+    status_t allocateSnapshotAndPostviewBuffers(bool videoMode);
     void     setExternalSnapshotBuffers(int fourcc, int width, int heigth);
 
     // Capture Flow helpers
@@ -803,6 +803,9 @@ private:
 
     Vector<AtomBuffer> mAllocatedSnapshotBuffers; /*!< Current set of allocated snapshot buffers */
     Vector<AtomBuffer> mAvailableSnapshotBuffers; /*!< Current set of available snapshot buffers */
+
+    Vector<AtomBuffer> mAllocatedPostviewBuffers; /*!< Current set of allocated postview buffers */
+    Vector<AtomBuffer> mAvailablePostviewBuffers; /*!< Current set of available postview buffers */
 
     bool mSaveMirrored;
     int mCurrentOrientation;        /*!< Current orientation of the device. Used in case the image is

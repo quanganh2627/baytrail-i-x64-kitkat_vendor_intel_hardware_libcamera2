@@ -98,6 +98,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mHALZSLBuffers(NULL)
     ,mClientSnapshotBuffersCached(true)
     ,mUsingClientSnapshotBuffers(false)
+    ,mUsingClientPostviewBuffers(false)
     ,mStoreMetaDataInBuffers(false)
     ,mBufferSharingSessionID(DEFAULT_BUFFER_SHARING_SESSION_ID)
     ,mNumPreviewBuffersQueued(0)
@@ -1999,6 +2000,11 @@ status_t AtomISP::stopCapture()
         mUsingClientSnapshotBuffers = false;
     }
 
+    if (mUsingClientPostviewBuffers) {
+        mConfig.num_postviews = 0;
+        mUsingClientPostviewBuffers = false;
+    }
+
     dumpRawImageFlush();
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
     return NO_ERROR;
@@ -3459,12 +3465,35 @@ status_t AtomISP::setSnapshotBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bo
 
     mClientSnapshotBuffersCached = cached;
     mConfig.num_snapshot = numBuffs;
-    mConfig.num_postviews = numBuffs;
     mUsingClientSnapshotBuffers = true;
     for (int i = 0; i < numBuffs; i++) {
         mSnapshotBuffers[i] = buffs->top();
         buffs->pop();
         LOG1("Snapshot buffer %d = %p", i, mSnapshotBuffers[i].dataPtr);
+    }
+
+    return NO_ERROR;
+}
+
+/**
+ * Initializes the postview buffers to the internal array
+ */
+status_t AtomISP::setPostviewBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bool cached)
+{
+    LOG1("@%s: buffs = %p, numBuffs = %d", __FUNCTION__, buffs, numBuffs);
+    if (buffs == NULL || numBuffs <= 0)
+        return BAD_VALUE;
+
+    mClientSnapshotBuffersCached = cached;
+    mConfig.num_postviews = numBuffs;
+    mUsingClientPostviewBuffers = true;
+
+    mPostviewBuffers.clear();
+
+    for (int i = 0; i < numBuffs; i++) {
+        mPostviewBuffers.push(buffs->top());
+        buffs->pop();
+        LOG1("@%s: postview buffer %d = %p", __FUNCTION__, i, mPostviewBuffers[i].dataPtr);
     }
 
     return NO_ERROR;
@@ -3993,12 +4022,9 @@ errorFree:
 /**
  * Prepares V4L2  buffer info's for snapshot and postview buffers
  *
- * Currently snapshot buffers are always set externally, so there is no allocation
- * done here, only the preparation of the v4l2 buffer pools
- *
- * For postview we are still allocating in this method.
- * TODO: In the future we will also allocate externally the postviews to have a
- * similar flow of buffers as the snapshots
+ * The snapshot and postview buffers are allocated by the client,
+ * so there is no allocation done here, but only the preparation
+ * of the v4l2 buffer pools.
  */
 status_t AtomISP::allocateSnapshotBuffers()
 {
@@ -4042,33 +4068,45 @@ status_t AtomISP::allocateSnapshotBuffers()
         mMainDevice->setBufferPool((void**)&bufPool,mConfig.num_snapshot,
                                    &mConfig.snapshot, mClientSnapshotBuffersCached);
 
-    if (needNewPostviewBuffers()) {
-            freePostviewBuffers();
-            AtomBuffer postv = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
-            for (int i = 0; i < mConfig.num_snapshot; i++) {
-                postv.buff = NULL;
-                postv.size = 0;
-                postv.dataPtr = NULL;
-                if (mHALZSLEnabled) {
-                    MemoryUtils::allocateGraphicBuffer(postv, mConfig.postview);
-                } else {
-                    mCallbacks->allocateMemory(&postv, mConfig.postview.size);
-                }
 
-                if (postv.dataPtr == NULL) {
-                    LOGE("Error allocation memory for postview buffers!");
-                    status = NO_MEMORY;
-                    goto errorFree;
-                }
+    if (mUsingClientPostviewBuffers) {
+        LOG1("@%s using %d client postview buffers",__FUNCTION__, mConfig.num_postviews);
+        for (int i = 0; i < mConfig.num_postviews; ++i) {
+            mPostviewBuffers.editItemAt(i).type = ATOM_BUFFER_POSTVIEW;
+            mPostviewBuffers.editItemAt(i).shared = false;
 
-                bufPool[i] = postv.dataPtr;
-
-                postv.shared = false;
-                if (mHALZSLEnabled)
-                    mScaler->registerBuffer(postv, ScalerService::SCALER_OUTPUT);
-
-                mPostviewBuffers.push(postv);
+            if (!mHALZSLEnabled) {
+                bufPool[i] = mPostviewBuffers[i].dataPtr;
             }
+        }
+    } else if (needNewPostviewBuffers()) {
+        // TODO: Remove this allocation stuff, it is done in PictureThread now...
+        freePostviewBuffers();
+        AtomBuffer postv = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+        for (int i = 0; i < mConfig.num_snapshot; i++) {
+            postv.buff = NULL;
+            postv.size = 0;
+            postv.dataPtr = NULL;
+            if (mHALZSLEnabled) {
+                MemoryUtils::allocateGraphicBuffer(postv, mConfig.postview);
+            } else {
+                mCallbacks->allocateMemory(&postv, mConfig.postview.size);
+            }
+
+            if (postv.dataPtr == NULL) {
+                LOGE("Error allocation memory for postview buffers!");
+                status = NO_MEMORY;
+                goto errorFree;
+            }
+
+            bufPool[i] = postv.dataPtr;
+
+            postv.shared = false;
+            if (mHALZSLEnabled)
+                mScaler->registerBuffer(postv, ScalerService::SCALER_OUTPUT);
+
+            mPostviewBuffers.push(postv);
+        }
     } else {
         for (size_t i = 0; i < mPostviewBuffers.size(); i++) {
             bufPool[i] = mPostviewBuffers[i].dataPtr;
@@ -4282,16 +4320,24 @@ status_t AtomISP::freeSnapshotBuffers()
 
 status_t AtomISP::freePostviewBuffers()
 {
-    LOG1("@%s: freeing %d", __FUNCTION__, mPostviewBuffers.size());
+    LOG1("@%s", __FUNCTION__);
 
-    for (size_t i = 0 ; i < mPostviewBuffers.size(); i++) {
+   if (mUsingClientPostviewBuffers) {
+        LOG1("Using client\'s postview buffers, nothing to free");
+        return NO_ERROR;
+    }
+
+    LOG1("@%s: freeing %d", __FUNCTION__, mPostviewBuffers.size());
+    for (int i = 0 ; i < mConfig.num_postviews; i++) {
         AtomBuffer &buffer = mPostviewBuffers.editItemAt(i);
         if (buffer.gfxInfo.scalerId != -1)
             mScaler->unRegisterBuffer(buffer, ScalerService::SCALER_OUTPUT);
 
         MemoryUtils::freeAtomBuffer(buffer);
     }
+
     mPostviewBuffers.clear();
+
     return NO_ERROR;
 }
 

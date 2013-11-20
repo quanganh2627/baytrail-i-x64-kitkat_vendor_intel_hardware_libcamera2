@@ -160,6 +160,7 @@ public:
 
     virtual status_t setPostviewFrameFormat(AtomBuffer& formatDescriptor) = 0;
     virtual void getPostviewFrameFormat(AtomBuffer& formatDescriptor) const = 0;
+    virtual status_t setPostviewBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bool cached) = 0;
 
     virtual bool dataAvailable() = 0;
 

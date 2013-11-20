@@ -68,10 +68,15 @@ public:
 
     void getDefaultParameters(CameraParameters *params);
     status_t initialize(const CameraParameters &params, int zoomRatio);
-    status_t allocSharedBuffers(const AtomBuffer& formatDescriptorSs,
+    status_t allocSnapshotBuffers(const AtomBuffer& formatDescriptor,
                                 int sharedBuffersNum,
                                 Vector<AtomBuffer> *bufs,
                                 bool registerToScaler);
+
+    status_t allocPostviewBuffers(const AtomBuffer& formatDescriptor,
+                                  int sharedBuffersNum,
+                                  Vector<AtomBuffer> *bufs,
+                                  bool registerToScaler);
 
 
     status_t wait(); // wait to finish queued messages (sync)
@@ -91,6 +96,7 @@ private:
         MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
         MESSAGE_ID_ENCODE,
         MESSAGE_ID_ALLOC_BUFS,
+        MESSAGE_ID_ALLOC_POSTVIEW_BUFS,
         MESSAGE_ID_WAIT,
         MESSAGE_ID_FLUSH,
         MESSAGE_ID_INITIALIZE,
@@ -104,12 +110,10 @@ private:
     //
 
     struct MessageAllocBufs {
-        int width;          /*!> width of the requested buffers */
-        int height;         /*!> height of the requested buffers */
-        int numBufs;        /*!> amount of buffers to allocate */
-        int fourcc;         /*!> V4L2 pixel format */
-        Vector<AtomBuffer> *bufs;      /*!> Vector where to store the buffers */
-        bool registerToScaler; /*!> whether to register buffers to scaler */
+        AtomBuffer formatDesc;      /*!< format descriptor the buffers to allocate: width, height, fourcc */
+        int numBufs;                /*!< amount of buffers to allocate */
+        Vector<AtomBuffer> *bufs;   /*!< Vector where to store the return buffers */
+        bool registerToScaler;      /*!< whether to register buffers to scaler */
     };
 
     struct MessageEncode {
@@ -144,7 +148,8 @@ private:
     // thread message execution functions
     status_t handleMessageExit();
     status_t handleMessageEncode(MessageEncode *encode);
-    status_t handleMessageAllocBufs(MessageAllocBufs *alloc);
+    status_t handleMessageAllocBufs(MessageAllocBufs *msg);
+    status_t handleMessageAllocPostviewBufs(MessageAllocBufs *msg);
     status_t handleMessageWait();
     status_t handleMessageFlush();
     status_t handleMessageInitialize(MessageParam *msg);
@@ -154,8 +159,15 @@ private:
 
     void setupExifWithMetaData(const MetaData &metaData);
     status_t encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, AtomBuffer *destBuf);
-    status_t allocateInputBuffers(int fourcc, int width, int height, int numBufs, bool registerToScaler);
+
+    status_t allocateInputBuffers(AtomBuffer& formatDescriptor, int numBufs, bool registerToScaler);
     void     freeInputBuffers();
+
+    status_t allocatePostviewBuffers(const AtomBuffer& formatDescriptor, int numBufs, bool registerToScaler);
+    void freePostviewBuffers();
+
+    void unregisterFromGpuScalerAndFree(AtomBuffer bufferArray[], int numBuffs);
+
     int      encodeExifAndThumbnail(AtomBuffer *thumbnail, unsigned char* exifDst);
     status_t startHwEncoding(AtomBuffer *mainBuf);
     status_t completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBuf);
@@ -196,6 +208,11 @@ private:
     AtomBuffer *mInputBufferArray;
     char       **mInputBuffDataArray;   /*!< Convenience variable. TODO remove and use mInputBufferArray */
     int        mInputBuffers;
+
+    /* Postview buffers */
+    AtomBuffer *mPostviewBufferArray;
+    int mPostviewBuffers;
+
     sp<ScalerService> mScaler;
 
     // Exif data

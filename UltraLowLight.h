@@ -110,7 +110,7 @@ public:
     status_t getOuputResult(AtomBuffer *snap, AtomBuffer * pv,
                             PictureThread::MetaData *metadata, int *ULLid) STUB_BODY_STAT
     status_t getInputBuffers(Vector<AtomBuffer> *inputs) STUB_BODY_STAT
-
+    status_t getPostviewBuffers(Vector<AtomBuffer> *postviews) STUB_BODY_STAT
     int getCurrentULLid() { return mULLCounter; };
     int getULLBurstLength() STUB_BODY_STAT
 
@@ -195,7 +195,8 @@ private:
     int mCurrentPreset;
     MorphoULLConfig mPresets[ULL_PRESET_MAX];
 
-    Vector<AtomBuffer> mInputBuffers;      /*!> snapshots */
+    Vector<AtomBuffer> mInputBuffers;      /*!< snapshots */
+    Vector<AtomBuffer> mPostviewBuffs;     /*!< postview buffers. NOTE: Not used for processing atm */
 
     PictureThread::MetaData mSnapMetadata;  /*!> metadata of the first snapshot taken */
 
