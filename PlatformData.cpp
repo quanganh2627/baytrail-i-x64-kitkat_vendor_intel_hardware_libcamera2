@@ -35,6 +35,9 @@ int PlatformData::mActiveCameraId = -1;
 AiqConf PlatformData::AiqConfig;
 HalConf PlatformData::HalConfig;
 
+// Max width and height string length, like "1920x1080".
+const int MAX_WIDTH_HEIGHT_STRING_LENGTH = 25;
+
 PlatformBase* PlatformData::getInstance(void)
 {
     if (mInstance == 0) {
@@ -1204,32 +1207,66 @@ bool PlatformData::useIntelULL(void)
     return i->mUseIntelULL;
 }
 
-float PlatformData::verticalFOV(int cameraId)
+float PlatformData::verticalFOV(int cameraId, int width, int height)
 {
     float retVal = 0.0f;
+
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return retVal;
+    }
+
+    const char* strFOV = getInstance()->mCameras[cameraId].verticalFOV;
+    if (strFOV) {
+        char str[MAX_WIDTH_HEIGHT_STRING_LENGTH];
+        snprintf(str, sizeof(str), "%dx%d", width, height);
+        char* ptr = strstr(strFOV, str);
+        if (ptr) {
+            ptr = ptr + strlen(str);
+            if ((ptr != NULL) && (*ptr == '@')) {
+                retVal = strtod(ptr+1, NULL);
+                return retVal;
+            }
+        }
+    }
+
     if (cameraId == mActiveCameraId && !HalConfig.getFloat(retVal, CPF::Fov, CPF::Vertical)) {
         return retVal;
     }
 
+    // if don't configure vertical FOV angle, just set one default for it.
+    retVal = 42.5;
+    return retVal;
+}
+
+float PlatformData::horizontalFOV(int cameraId, int width, int height)
+{
+    float retVal = 0.0f;
+
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return retVal;
     }
 
-    return getInstance()->mCameras[cameraId].verticalFOV;
-}
+    const char* strFOV = getInstance()->mCameras[cameraId].horizontalFOV;
+    if (strFOV) {
+        char str[MAX_WIDTH_HEIGHT_STRING_LENGTH];
+        snprintf(str, sizeof(str), "%dx%d", width, height);
+        char* ptr = strstr(strFOV, str);
+        if (ptr) {
+            ptr = ptr + strlen(str);
+            if ((ptr != NULL) && (*ptr == '@')) {
+                retVal = strtod(ptr+1, NULL);
+                return retVal;
+            }
+        }
+    }
 
-float PlatformData::horizontalFOV(int cameraId)
-{
-    float retVal = 0.0f;
     if (cameraId == mActiveCameraId && !HalConfig.getFloat(retVal, CPF::Fov, CPF::Horizontal)) {
         return retVal;
     }
 
-    if (!validCameraId(cameraId, __FUNCTION__)) {
-        return retVal;
-    }
-
-    return getInstance()->mCameras[cameraId].horizontalFOV;
+    // if don't configure vertical FOV angle, just set one default for it.
+    retVal = 54.8;
+    return retVal;
 }
 
 bool PlatformData::isGraphicGen(void)

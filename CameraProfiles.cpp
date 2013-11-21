@@ -304,19 +304,9 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
     } else if (strcmp(name, "maxNumYUVBufferForBracket") == 0) {
         pCurrentCam->maxNumYUVBufferForBracket = atoi(atts[1]);
     } else if (strcmp(name, "verticalFOV") == 0) {
-        float angle = atof(atts[1]);
-        if (angle > 0 && angle < 180) {
-            pCurrentCam->verticalFOV = angle;
-        } else {
-            LOGE("@%s, name:%s, atts[0]:%s, angle format wrong", __func__, name, atts[0]);
-        }
+        pCurrentCam->verticalFOV = atts[1];
     } else if (strcmp(name, "horizontalFOV") == 0) {
-        float angle = atof(atts[1]);
-        if (angle > 0 && angle < 180) {
-            pCurrentCam->horizontalFOV = angle;
-        } else {
-            LOGE("@%s, name:%s, atts[0]:%s, angle format wrong", __func__, name, atts[0]);
-        }
+        pCurrentCam->horizontalFOV = atts[1];
     }
 }
 

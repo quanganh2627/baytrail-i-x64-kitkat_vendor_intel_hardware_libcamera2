@@ -960,16 +960,20 @@ class PlatformData {
     /**
      * Returns vertical FOV
      *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \param snapshot width and height.
      * \return float angle in degrees
      */
-    static float verticalFOV(int cameraId);
+    static float verticalFOV(int cameraId, int width, int height);
 
     /**
      * Retrns horizontal FOV
      *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \param snapshot width and height.
      * \return float angle in degrees
      */
-    static float horizontalFOV(int cameraId);
+    static float horizontalFOV(int cameraId, int width, int height);
 
     /**
      * Whether the graphic is GEN.
@@ -1170,8 +1174,8 @@ protected:
             maxNumYUVBufferForBurst = 10;
             maxNumYUVBufferForBracket = 10;
             // FOV
-            verticalFOV = 42.5f;
-            horizontalFOV = 54.8f;
+            verticalFOV = "";
+            horizontalFOV = "";
         };
 
         SensorType sensorType;
@@ -1295,8 +1299,8 @@ protected:
         int maxNumYUVBufferForBracket;
 
         // FOV
-        float verticalFOV;
-        float horizontalFOV;
+        String8 verticalFOV;
+        String8 horizontalFOV;
     };
 
     // note: Android NDK does not yet support C++11 and

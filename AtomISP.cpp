@@ -625,8 +625,10 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * MISCELLANEOUS
      */
-    params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, PlatformData::verticalFOV(cameraId));
-    params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, PlatformData::horizontalFOV(cameraId));
+    params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE,
+                     PlatformData::verticalFOV(cameraId, mConfig.snapshot.width, mConfig.snapshot.height));
+    params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE,
+                     PlatformData::horizontalFOV(cameraId, mConfig.snapshot.width, mConfig.snapshot.height));
 
     /**
      * OVERLAY
@@ -2461,19 +2463,6 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
  *
  * BZ 116055
  *
- * Workaround 6: For imx132 sensor, there should be two groups of view angle value
- * Because view angle changes along with the resolution of aspect ratio(4:3 and 16:9).
- * The max resolution of imx132 sensor is 1976x1200, both cropping and downscaling are
- * necessary when the aspect ratio of image's resolution is 4:3, so horizontal pixels
- * are cropped And the FOV calculation case in CtsVerifiler.apk is test horizontal FOV
- * only. So the view angle about horizontal should be changed with aspect ratio.
- *
- * Resolving it in a workaround, and It can be reverted in the future.
- * Aspect Ratio          view angle(horizontal)
- * 16:9                     61.6
- * 4:3                      48.5
- * BZ: 147077
- *
  * This mode can be enabled by setting VFPPLimitedResolutionList to a proper
  * value for the platform in the camera_profiles.xml. If e.g. for resolution
  * 1024*768 the FPS drops to half the normal because VFPP is too slow
@@ -2557,26 +2546,6 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
             }
         } else {
             mSwapRecordingDevice = false;
-        }
-    } else {
-        /*Workaround 6, select horizontal and vertical dynamically along with resolution aspect ratio*/
-        const char manUsensorBName[] = "imx132";
-        if (mCameraInput && (strncmp(mCameraInput->name, manUsensorBName, sizeof(manUsensorBName) - 1) == 0)) {
-            int picWidth, picHeight;
-            const float tolerance = 0.005f;
-            float picAspectRatio = 0.0f;
-
-            params->getPictureSize(&picWidth, &picHeight);
-            picAspectRatio = 1.0 * picWidth / picHeight;
-            if (fabsf(picAspectRatio - 1.333) < tolerance) {
-                /* into 4:3 aspect ratios */
-                params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, 29.4);
-                params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, 48.5);
-            } else if (fabsf(picAspectRatio - 1.777) < tolerance) {
-                /* into 16:9 aspect ratios */
-                params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, 37.3);
-                params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, 61.6);
-            }
         }
     }
 

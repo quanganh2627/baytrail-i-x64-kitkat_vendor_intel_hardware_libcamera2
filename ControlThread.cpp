@@ -6686,6 +6686,14 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     if (paramsHasPictureSizeChanged(&oldParams, &newParams)) {
         LOG1("Picture size has changed while camera is active!");
 
+        // get current picture size, update FOV
+        int picWidth, picHeight;
+        newParams.getPictureSize(&picWidth, &picHeight);
+        newParams.setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE,
+                            PlatformData::horizontalFOV(mCameraId, picWidth, picHeight));
+        newParams.setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE,
+                            PlatformData::verticalFOV(mCameraId, picWidth, picHeight));
+
         if (mState == STATE_CAPTURE) {
             status = stopCapture();
         }
