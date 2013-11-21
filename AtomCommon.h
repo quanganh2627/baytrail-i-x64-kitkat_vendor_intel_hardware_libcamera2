@@ -263,28 +263,6 @@ static int parsePair(const char *str, char **first, char **second, const char *d
     return 0;
 }
 
-/** If forgetting to free, parsePair may have memleak.
- *  ParsePairToInt avoids this memleak.
- */
-static int parsePairToInt(const char *str, int *first, int *second, const char *delim)
-{
-    char *a = NULL;
-    char *b = NULL;
-    int ret = parsePair(str, &a, &b, delim);
-
-    if (ret == 0 && a != NULL && b != NULL) {
-        *first = atoi(a);
-        *second = atoi(b);
-    }
-
-    if(a != NULL)
-        free(a);
-    if(b != NULL)
-        free(b);
-
-    return ret;
-}
-
 /**
  * return pixels based on bytes
  *

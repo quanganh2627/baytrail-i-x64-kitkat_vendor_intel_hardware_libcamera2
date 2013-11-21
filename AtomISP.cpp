@@ -279,15 +279,10 @@ status_t AtomISP::init()
     AtomBuffer formatDescriptorSs
         = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, V4L2_PIX_FMT_NV12);
 
-    int ret = parsePairToInt(PlatformData::defaultSnapshotSize(mCameraId),
-                             &formatDescriptorSs.width, &formatDescriptorSs.height, "x");
-    if (ret != 0) {
-        LOGW("config file error: %d. Using snapshot default size", ret);
-        formatDescriptorSs.width = RESOLUTION_5MP_WIDTH;
-        formatDescriptorSs.height = RESOLUTION_5MP_HEIGHT;
-    }
-
+    formatDescriptorSs.width = RESOLUTION_5MP_WIDTH;
+    formatDescriptorSs.height = RESOLUTION_5MP_HEIGHT;
     setSnapshotFrameFormat(formatDescriptorSs);
+
     setVideoFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
 
     status = computeZoomRatios();

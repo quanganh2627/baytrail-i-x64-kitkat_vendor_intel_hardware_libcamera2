@@ -749,14 +749,6 @@ class PlatformData {
     static const char* supportedSnapshotSizes(int cameraId);
 
     /**
-     * default snapshot size
-     *
-     * \param cameraId identifier passed to android.hardware.Camera.open()
-     * \return the value of the default snapshot size as a string.
-     */
-    static const char* defaultSnapshotSize(int cameraId);
-
-    /**
      * Returns the name of the product
      * This is meant to be used in the EXIF metadata
      *
@@ -1037,7 +1029,6 @@ protected:
             flipping = PlatformData::SENSOR_FLIP_NA;
             dvs = true;
             supportedSnapshotSizes = "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448";
-            defaultSnapshotSize = "2560x1920";
             mPreviewViaOverlay = false;
             overlayRelativeRotation = 90;
             continuousCapture = false;
@@ -1175,7 +1166,6 @@ protected:
         int flipping;
         bool dvs;
         String8 supportedSnapshotSizes;
-        String8 defaultSnapshotSize;
         bool mPreviewViaOverlay;
         int overlayRelativeRotation;  /*<! Relative rotation between the native scan order of the
                                            camera and the display attached to the overlay */

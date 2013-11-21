@@ -197,8 +197,6 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->continuousCapture = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "supportedSnapshotSizes") == 0) {
         pCurrentCam->supportedSnapshotSizes = atts[1];
-    } else if (strcmp(name, "defaultSnapshotSize") == 0) {
-        pCurrentCam->defaultSnapshotSize = atts[1];
     } else if (strcmp(name, "defaultBurstLength") == 0) {
         pCurrentCam->defaultBurstLength = atts[1];
     } else if (strcmp(name, "supportedBurstLength") == 0) {
@@ -507,7 +505,6 @@ void CameraProfiles::dump(void)
         LOGD("line%d, in DeviceData, pcam->sensorType:%d ", __LINE__, mCameras[i].sensorType);
         LOGD("line%d, in DeviceData, pcam->dvs:%d ", __LINE__, mCameras[i].dvs);
         LOGD("line%d, in DeviceData, pcam->supportedSnapshotSizes:%s ", __LINE__, mCameras[i].supportedSnapshotSizes.string());
-        LOGD("line%d, in DeviceData, pcam->defaultSnapshotSize:%s ", __LINE__, mCameras[i].defaultSnapshotSize.string());
         LOGD("line%d, in DeviceData, pcam->flipping:%d ", __LINE__, mCameras[i].flipping);
         LOGD("line%d, in DeviceData, pcam->continuousCapture:%d ", __LINE__, mCameras[i].continuousCapture);
         LOGD("line%d, in DeviceData, pcam->mPreviewViaOverlay:%d ", __LINE__, mCameras[i].mPreviewViaOverlay);

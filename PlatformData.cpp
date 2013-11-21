@@ -178,16 +178,6 @@ const char* PlatformData::supportedSnapshotSizes(int cameraId)
     return getInstance()->mCameras[cameraId].supportedSnapshotSizes;
 }
 
-const char* PlatformData::defaultSnapshotSize(int cameraId)
-{
-    PlatformBase *i = getInstance();
-    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
-      return NULL;
-    }
-    return i->mCameras[cameraId].defaultSnapshotSize;
-}
-
 bool PlatformData::supportsFileInject(void)
 {
     return getInstance()->mFileInject;
