@@ -867,6 +867,13 @@ class PlatformData {
     static int getRecordingBufNum(void);
 
     /**
+     * Returns the Preview buffers number
+     *
+     * \return the preview buffers number
+    */
+    static int getPreviewBufNum(void);
+
+    /**
      * Returns the max number of YUV buffers for burst capture
      *
      * \return the max number of YUV buffers for burst capture
@@ -1019,6 +1026,7 @@ public:
         mSupportVideoSnapshot = true;
         mMaxZoomFactor = 64;
         mNumRecordingBuffers = 9;
+        mNumPreviewBuffers = 6;
         mMaxContinuousRawRingBuffer = 0;
         mShutterLagCompensationMs = 40;
         mSupportAIQ = false;
@@ -1334,6 +1342,8 @@ protected:
      * So we need to make the recording buffers can be configured.
     */
     int mNumRecordingBuffers;
+
+    int mNumPreviewBuffers;
 
     /* For Intel3A ia_aiq */
     bool mSupportAIQ;

@@ -87,8 +87,6 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mGroupIndex (-1)
     ,mMode(MODE_NONE)
     ,mCallbacks(callbacks)
-    ,mNumBuffers(PlatformData::getRecordingBufNum())
-    ,mNumPreviewBuffers(PlatformData::getRecordingBufNum())
     ,mPreviewBuffersCached(true)
     ,mRecordingBuffers(NULL)
     ,mSwapRecordingDevice(false)
@@ -232,6 +230,9 @@ status_t AtomISP::init()
     LOG1("@%s", __FUNCTION__);
 
     status_t status = NO_ERROR;
+
+    mConfig.num_recording_buffers = PlatformData::getRecordingBufNum();
+    mConfig.num_preview_buffers = PlatformData::getPreviewBufNum();
 
     if (mGroupIndex < 0) {
         Mutex::Autolock lock(sISPCountLock);
@@ -1188,7 +1189,6 @@ status_t AtomISP::configurePreview()
     status_t status = NO_ERROR;
     sp<V4L2VideoNode> activePreviewNode;
 
-    mNumPreviewBuffers = NUM_PREVIEW_BUFFERS;
     activePreviewNode = mPreviewTooBigForVFPP ? mRecordingDevice : mPreviewDevice;
 
     ret = activePreviewNode->open();
@@ -1230,7 +1230,7 @@ status_t AtomISP::startPreview()
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
     status_t status = NO_ERROR;
-    int bufcount = mHALZSLEnabled ? sNumHALZSLBuffers : mNumPreviewBuffers;
+    int bufcount = mHALZSLEnabled ? sNumHALZSLBuffers : mConfig.num_preview_buffers;
 
     /**
      * moving the hack from Gang to disable these ISP parameters, only needed
@@ -1339,8 +1339,6 @@ status_t AtomISP::configureRecording()
         goto err;
     }
 
-    mNumPreviewBuffers = PlatformData::getRecordingBufNum();
-
     // fake preview config size if VFPP is too slow, so that VFPP will not
     // cause FPS to drop
     if (mPreviewTooBigForVFPP) {
@@ -1394,22 +1392,22 @@ status_t AtomISP::startRecording()
     status_t status = NO_ERROR;
 
     //workaround: when DVS is on, the first several frames are greenish, need to be skipped.
-    ret = mRecordingDevice->start(mNumBuffers,mInitialSkips + mDVSFrameSkips);
+    ret = mRecordingDevice->start(mConfig.num_recording_buffers, mInitialSkips + mDVSFrameSkips);
     if (ret < 0) {
         LOGE("Start recording device failed");
         status = UNKNOWN_ERROR;
         goto err;
     }
 
-    ret = mPreviewDevice->start(mNumPreviewBuffers, mInitialSkips + mDVSFrameSkips);
+    ret = mPreviewDevice->start(mConfig.num_preview_buffers, mInitialSkips + mDVSFrameSkips);
     if (ret < 0) {
         LOGE("Start preview device failed!");
         status = UNKNOWN_ERROR;
         goto err;
     }
 
-    mNumPreviewBuffersQueued = mNumPreviewBuffers;
-    mNumRecordingBuffersQueued = mNumBuffers;
+    mNumPreviewBuffersQueued = mConfig.num_preview_buffers;
+    mNumRecordingBuffersQueued = mConfig.num_recording_buffers;
 
     return status;
 
@@ -1702,7 +1700,6 @@ status_t AtomISP::configureContinuousSOC()
     int ret = 0;
     status_t status = OK;
 
-    mNumPreviewBuffers = NUM_PREVIEW_BUFFERS;
     mPreviewDevice = mRecordingDevice;
 
     if (!mPreviewDevice->isOpen()) {
@@ -2891,6 +2888,12 @@ status_t AtomISP::setGDC(bool enable)
     return status;
 }
 
+void AtomISP::setPreviewBufNum(int num)
+{
+    LOG1("@%s: %d", __FUNCTION__, num);
+    mConfig.num_preview_buffers = num;
+}
+
 status_t AtomISP::setLowLight(bool enable)
 {
     LOG1("@%s: %d", __FUNCTION__, (int) enable);
@@ -3144,7 +3147,7 @@ status_t AtomISP::returnRecordingBuffers()
 {
     LOG1("@%s", __FUNCTION__);
     if (mRecordingBuffers) {
-        for (int i = 0 ; i < mNumBuffers; i++) {
+        for (int i = 0 ; i < mConfig.num_recording_buffers; i++) {
             if (mRecordingBuffers[i].shared)
                 return UNKNOWN_ERROR;
             if (mRecordingBuffers[i].buff == NULL)
@@ -3383,8 +3386,14 @@ void AtomISP::returnBuffer(AtomBuffer* buff)
 status_t AtomISP::setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs, bool cached)
 {
     LOG1("@%s: buffs = %p, numBuffs = %d", __FUNCTION__, buffs, numBuffs);
+
     if (buffs == NULL || numBuffs <= 0)
         return BAD_VALUE;
+
+    if (mConfig.num_preview_buffers != numBuffs) {
+        LOGE("Invalid shared preview buffer count configuration");
+        return UNKNOWN_ERROR;
+    }
 
     freePreviewBuffers();
 
@@ -3392,7 +3401,6 @@ status_t AtomISP::setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs
         mPreviewBuffers.push(buffs[i]);
     }
 
-    mNumPreviewBuffers = numBuffs;
     mPreviewBuffersCached = cached;
 
     return NO_ERROR;
@@ -3910,8 +3918,8 @@ status_t AtomISP::allocatePreviewBuffers()
         AtomBuffer tmp = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_PREVIEW); // init fields
         mPreviewBuffersCached = true;
 
-        LOG1("Allocating %d buffers of size %d", mNumPreviewBuffers, mConfig.preview.size);
-        for (int i = 0; i < mNumPreviewBuffers; i++) {
+        LOG1("Allocating %d buffers of size %d", mConfig.num_preview_buffers, mConfig.preview.size);
+        for (int i = 0; i < mConfig.num_preview_buffers; i++) {
             MemoryUtils::allocateGraphicBuffer(tmp, mConfig.preview);
             if (tmp.dataPtr == NULL) {
                 LOGE("Error allocation memory for preview buffers!");
@@ -3967,14 +3975,14 @@ status_t AtomISP::allocateRecordingBuffers()
     int allocatedBufs = 0;
     bool cached = false;
 
-    mRecordingBuffers = new AtomBuffer[mNumBuffers];
+    mRecordingBuffers = new AtomBuffer[mConfig.num_recording_buffers];
     if (!mRecordingBuffers) {
         LOGE("Not enough mem for recording buffer array");
         status = NO_MEMORY;
         goto errorFree;
     }
 
-    for (int i = 0; i < mNumBuffers; i++) {
+    for (int i = 0; i < mConfig.num_recording_buffers; i++) {
         mRecordingBuffers[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_VIDEO); // init fields
 #ifdef INTEL_VIDEO_XPROC_SHARING
         /**
@@ -4007,7 +4015,7 @@ status_t AtomISP::allocateRecordingBuffers()
         mRecordingBuffers[i].bpl = mConfig.recording.bpl;
         mRecordingBuffers[i].fourcc = mConfig.recording.fourcc;
     }
-    mRecordingDevice->setBufferPool((void**)&bufPool,mNumBuffers,
+    mRecordingDevice->setBufferPool((void**)&bufPool,mConfig.num_recording_buffers,
                                      &mConfig.recording,cached);
     return status;
 
@@ -4197,7 +4205,7 @@ status_t AtomISP::allocateMetaDataBuffers()
     IntelMetadataBuffer* metaDataBuf = NULL;
 
     if(mRecordingBuffers) {
-        for (int i = 0 ; i < mNumBuffers; i++) {
+        for (int i = 0 ; i < mConfig.num_recording_buffers; i++) {
             if (mRecordingBuffers[i].metadata_buff != NULL) {
                 mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
                 mRecordingBuffers[i].metadata_buff = NULL;
@@ -4211,7 +4219,7 @@ status_t AtomISP::allocateMetaDataBuffers()
         return INVALID_OPERATION;
     }
 
-    for (int i = 0; i < mNumBuffers; i++) {
+    for (int i = 0; i < mConfig.num_recording_buffers; i++) {
         metaDataBuf = new IntelMetadataBuffer();
         if(metaDataBuf) {
             if (PlatformData::isGraphicGen()) {
@@ -4273,7 +4281,7 @@ status_t AtomISP::freePreviewBuffers()
 
     if (!mPreviewBuffers.isEmpty()) {
         for (size_t i = 0 ; i < mPreviewBuffers.size(); i++) {
-            LOG1("@%s mHALZSLEnabled = %d i=%d, mNum = %d", __FUNCTION__, mHALZSLEnabled, i, mNumPreviewBuffers);
+            LOG1("@%s mHALZSLEnabled = %d i=%d, mNum = %d", __FUNCTION__, mHALZSLEnabled, i, mConfig.num_preview_buffers);
             if (mHALZSLEnabled)
                 mScaler->unRegisterBuffer(mPreviewBuffers.editItemAt(i), ScalerService::SCALER_OUTPUT);
 
@@ -4294,7 +4302,7 @@ status_t AtomISP::freeRecordingBuffers()
 {
     LOG1("@%s", __FUNCTION__);
     if(mRecordingBuffers != NULL) {
-        for (int i = 0 ; i < mNumBuffers; i++)
+        for (int i = 0 ; i < mConfig.num_recording_buffers; i++)
             MemoryUtils::freeAtomBuffer(mRecordingBuffers[i]);
 
 #ifdef INTEL_VIDEO_XPROC_SHARING
@@ -4664,7 +4672,7 @@ status_t AtomISP::storeMetaDataInBuffers(bool enabled, int sID)
 exitFreeRec:
     LOGE("Error allocating metadata buffers!");
     if(mRecordingBuffers) {
-        for (int i = 0 ; i < mNumBuffers; i++) {
+        for (int i = 0 ; i < mConfig.num_recording_buffers; i++) {
             if (mRecordingBuffers[i].metadata_buff != NULL) {
                 mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
                 mRecordingBuffers[i].metadata_buff = NULL;

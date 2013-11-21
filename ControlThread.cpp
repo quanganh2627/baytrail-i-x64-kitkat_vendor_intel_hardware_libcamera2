@@ -1533,10 +1533,19 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mAccManagerThread->loadIspExtensions();
     }
 
-    if (videoMode)
-        mNumBuffers = mISP->getNumVideoBuffers();
-    else
-        mNumBuffers = mISP->getNumPreviewBuffers();
+    // By default, the number of preview and video buffers are set
+    // based on PlatformData.
+    // Exception to this is that in video-mode we currently use
+    // as many preview-buffers as recording-buffers. This decision
+    // is done explicitly here.
+    // TODO: Preview and recording buffers are no longer coupled and
+    //       one can consider removing this rule.
+    if (videoMode) {
+        mNumBuffers = PlatformData::getRecordingBufNum();
+    } else {
+        mNumBuffers = PlatformData::getPreviewBufNum();
+    }
+    mISP->setPreviewBufNum(mNumBuffers);
 
     // using mIntelParamsAllowed to distinquish applications using public
     // API from ones using agreed sequences when in continuous mode.

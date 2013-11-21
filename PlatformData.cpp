@@ -1090,6 +1090,11 @@ int PlatformData::getRecordingBufNum(void)
     return getInstance()->mNumRecordingBuffers;
 }
 
+int PlatformData::getPreviewBufNum(void)
+{
+    return getInstance()->mNumPreviewBuffers;
+}
+
 int PlatformData::getMaxNumYUVBufferForBurst(int cameraId)
 {
     if (!validCameraId(cameraId, __FUNCTION__)) {

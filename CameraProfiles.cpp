@@ -114,6 +114,8 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
         PlatformBase::mSupportVideoSnapshot = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "numRecordingBuffers") == 0) {
         PlatformBase::mNumRecordingBuffers = atoi(atts[1]);
+    } else if (strcmp(name, "numPreviewBuffers") == 0) {
+        PlatformBase::mNumPreviewBuffers = atoi(atts[1]);
     } else if (strcmp(name, "maxContinuousRawRingBuffer") == 0) {
         PlatformBase::mMaxContinuousRawRingBuffer = atoi(atts[1]);
     } else if (strcmp(name, "boardName") == 0) {
@@ -553,6 +555,7 @@ void CameraProfiles::dump(void)
     LOGD("line%d, in DeviceData, mMaxZoomFactor:%d ", __LINE__, mMaxZoomFactor);
     LOGD("line%d, in DeviceData, mSupportVideoSnapshot:%d ", __LINE__, mSupportVideoSnapshot);
     LOGD("line%d, in DeviceData, mNumRecordingBuffers:%d ", __LINE__, mNumRecordingBuffers);
+    LOGD("line%d, in DeviceData, mNumPreviewBuffers:%d ", __LINE__, mNumPreviewBuffers);
     LOGD("line%d, in DeviceData, mMaxContinuousRawRingBuffer:%d ", __LINE__, mMaxContinuousRawRingBuffer);
     LOGD("line%d, in DeviceData, mBoardName:%s ", __LINE__, mBoardName.string());
     LOGD("line%d, in DeviceData, mSupportAIQ:%d ", __LINE__, mSupportAIQ);
