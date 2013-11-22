@@ -4808,6 +4808,8 @@ int AtomISP::moveFocusToPosition(int position)
         (strcmp(PlatformData::getBoardName(), "baylake") == 0)) {
         position = 1024 - position;
     }
+
+    LOG2("@%s: V4L2_CID_FOCUS_ABSOLUTE = %d", __FUNCTION__, position);
     return mMainDevice->setControl(V4L2_CID_FOCUS_ABSOLUTE, position, "Set focus position");
 }
 
@@ -4846,7 +4848,7 @@ int AtomISP::setExposure(struct atomisp_exposure *exposure)
 {
     int ret;
     ret = mMainDevice->xioctl(ATOMISP_IOC_S_EXPOSURE, exposure);
-    LOG2("%s IOCTL ATOMISP_IOC_S_EXPOSURE ret: %d, gain %d, citg %d\n", __FUNCTION__, ret, exposure->gain[0], exposure->integration_time[0]);
+    LOG2("%s IOCTL ATOMISP_IOC_S_EXPOSURE ret: %d, gain %d %d, citg %d %d\n", __FUNCTION__, ret, exposure->gain[0], exposure->gain[1], exposure->integration_time[0], exposure->integration_time[0]);
     return ret;
 }
 
@@ -5162,6 +5164,15 @@ int AtomISP::setAicParameter(struct atomisp_parameters *aic_param)
         memset(aic_param->de_config, 0, sizeof(struct atomisp_de_config));
         aic_param->ee_config->threshold = 65535;
         LOG2("Disabled NREE in 3A");
+    }
+
+    if (aic_param->wb_config == NULL) {
+        LOG2("@%s: wb is NULL", __FUNCTION__);
+    } else {
+        LOG2("@%s: wb integer_bits=%u gr=%u r=%u b=%u gb=%u",
+             __FUNCTION__, aic_param->wb_config->integer_bits,
+             aic_param->wb_config->gr, aic_param->wb_config->r,
+             aic_param->wb_config->b, aic_param->wb_config->gb);
     }
 
     ret = mMainDevice->xioctl(ATOMISP_IOC_S_PARAMETERS, aic_param);
