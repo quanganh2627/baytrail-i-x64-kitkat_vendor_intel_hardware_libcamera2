@@ -266,11 +266,13 @@ status_t AtomISP::init()
 
     initFrameConfig();
 
+    AtomBuffer formatDescriptorPv
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, V4L2_PIX_FMT_NV12, RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT);
     // Initialize the frame sizes
     setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT,
                           pixelsToBytes(PlatformData::getPreviewPixelFormat(), RESOLUTION_VGA_WIDTH),
                           PlatformData::getPreviewPixelFormat());
-    setPostviewFrameFormat(RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT, V4L2_PIX_FMT_NV12);
+    setPostviewFrameFormat(formatDescriptorPv);
 
     AtomBuffer formatDescriptorSs
         = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, V4L2_PIX_FMT_NV12);
@@ -2297,38 +2299,36 @@ void AtomISP::setPreviewFramerate(int fps)
     mConfig.preview_fps = fps;
 }
 
-void AtomISP::getPostviewFrameFormat(int &width, int &height, int &fourcc) const
+void AtomISP::getPostviewFrameFormat(AtomBuffer& formatDescriptor) const
 {
     LOG1("@%s", __FUNCTION__);
-    width = mConfig.postview.width;
-    height = mConfig.postview.height;
-    fourcc = mConfig.postview.fourcc;
+    formatDescriptor = mConfig.postview;
 }
 
-status_t AtomISP::setPostviewFrameFormat(int width, int height, int fourcc)
+status_t AtomISP::setPostviewFrameFormat(AtomBuffer& formatDescriptor)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     LOG1("@%s width(%d), height(%d), fourcc(%x)", __FUNCTION__,
-         width, height, fourcc);
-    if (width < 0 || height < 0) {
+         formatDescriptor.width, formatDescriptor.height, formatDescriptor.fourcc);
+    if (formatDescriptor.width < 0 || formatDescriptor.height < 0) {
         LOGE("Invalid postview size requested!");
         return BAD_VALUE;
     }
-    if (width == 0 || height == 0) {
+    if (formatDescriptor.width == 0 || formatDescriptor.height == 0) {
         // No thumbnail requested, we should anyway use postview to dequeue frames from ISP
-        width = RESOLUTION_POSTVIEW_WIDTH;
-        height = RESOLUTION_POSTVIEW_HEIGHT;
+        formatDescriptor.width = RESOLUTION_POSTVIEW_WIDTH;
+        formatDescriptor.height = RESOLUTION_POSTVIEW_HEIGHT;
     }
 
-    mConfig.postview.width = width;
-    mConfig.postview.height = height;
-    mConfig.postview.fourcc = fourcc;
-    mConfig.postview.bpl = SGXandDisplayBpl(fourcc, width);
-    mConfig.postview.size = frameSize(fourcc, bytesToPixels(fourcc, mConfig.postview.bpl), height);
+    mConfig.postview = formatDescriptor;
+    mConfig.postview.bpl = SGXandDisplayBpl(formatDescriptor.fourcc, formatDescriptor.width);
+    mConfig.postview.size = frameSize(formatDescriptor.fourcc,
+                                      bytesToPixels(formatDescriptor.fourcc, mConfig.postview.bpl),
+                                      formatDescriptor.height);
     LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%x)",
-            width, height, mConfig.postview.bpl, mConfig.postview.size, fourcc);
+         formatDescriptor.width, formatDescriptor.height, mConfig.postview.bpl, mConfig.postview.size, formatDescriptor.fourcc);
     return status;
 }
 

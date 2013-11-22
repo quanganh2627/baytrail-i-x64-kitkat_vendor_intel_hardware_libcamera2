@@ -152,12 +152,14 @@ public:
     // For capture pipelines
     virtual status_t setSnapshotFrameFormat(AtomBuffer& formatDescriptor) = 0;
     virtual int getSnapshotPixelFormat() = 0;
-    virtual status_t setPostviewFrameFormat(int width, int height, int fourcc) = 0;
-    virtual void getPostviewFrameFormat(int &width, int &height, int &fourcc) const = 0;
+
     virtual status_t getSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf) = 0;
     virtual status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf) = 0;
     virtual int getNumSnapshotBuffers() = 0;
     virtual status_t setSnapshotBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bool cached) = 0;
+
+    virtual status_t setPostviewFrameFormat(AtomBuffer& formatDescriptor) = 0;
+    virtual void getPostviewFrameFormat(AtomBuffer& formatDescriptor) const = 0;
 
     virtual bool dataAvailable() = 0;
 

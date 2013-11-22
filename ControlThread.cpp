@@ -1267,13 +1267,14 @@ status_t ControlThread::initContinuousCapture()
         IntelCameraParameters::getPanoramaLivePreviewSize(pvWidth, pvHeight, mParameters);
     }
 
+    AtomBuffer formatDescriptorPv
+        = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, selectPostviewFormat(), pvWidth, pvHeight);
     // Configure PictureThread
     mPictureThread->initialize(mParameters, mISP->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     mISP->setSnapshotFrameFormat(formatDescriptorSs);
     configureContinuousRingBuffer();
-    mISP->setPostviewFrameFormat(pvWidth, pvHeight,
-                                 selectPostviewFormat());
+    mISP->setPostviewFrameFormat(formatDescriptorPv);
 
     burstStateReset();
 
@@ -2608,9 +2609,11 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
         // Configure and start the ISP
         AtomBuffer formatDescriptorSs
             = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, fourcc, width, height);
+        AtomBuffer formatDescriptorPv
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, selectPostviewFormat(), lpvWidth, lpvHeight);
+
         mISP->setSnapshotFrameFormat(formatDescriptorSs);
-        mISP->setPostviewFrameFormat(lpvWidth, lpvHeight,
-                                     selectPostviewFormat());
+        mISP->setPostviewFrameFormat(formatDescriptorPv);
 
         if ((status = mISP->configure(MODE_CAPTURE)) != NO_ERROR) {
             LOGE("Error configuring the ISP driver for CAPTURE mode");
@@ -3029,9 +3032,10 @@ status_t ControlThread::captureStillPic()
         // Configure and start the ISP
         AtomBuffer formatDescriptorSs
             = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, fourcc, width, height);
+        AtomBuffer formatDescriptorPv
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, selectPostviewFormat(), pvWidth, pvHeight);
         mISP->setSnapshotFrameFormat(formatDescriptorSs);
-        mISP->setPostviewFrameFormat(pvWidth, pvHeight,
-                                     selectPostviewFormat());
+        mISP->setPostviewFrameFormat(formatDescriptorPv);
 
         setExternalSnapshotBuffers(fourcc, width, height);
 
@@ -7586,11 +7590,13 @@ status_t ControlThread::startPanorama()
         // in continuous capture mode, check if postview size matches live preview size.
         // if not, restart preview so that pv size gets set to lpv size
         if (mState == STATE_CONTINUOUS_CAPTURE) {
-            int lpwWidth, lpwHeight, pvWidth, pvHeight, pvFormat;
+            int lpwWidth, lpwHeight;
             IntelCameraParameters::getPanoramaLivePreviewSize(lpwWidth, lpwHeight, mParameters);
-            mISP->getPostviewFrameFormat(pvWidth, pvHeight, pvFormat);
-            if (lpwWidth != pvWidth || lpwHeight != pvHeight
-                || pvFormat != V4L2_PIX_FMT_NV21)
+            AtomBuffer formatDescriptor = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR);
+            mISP->getPostviewFrameFormat(formatDescriptor);
+
+            if (lpwWidth != formatDescriptor.width || lpwHeight != formatDescriptor.height
+                || formatDescriptor.fourcc != V4L2_PIX_FMT_NV21)
                 restartPreview(false);
         }
 
