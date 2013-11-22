@@ -69,9 +69,9 @@ namespace android {
 static sensorPrivateData gSensorDataCache[MAX_CAMERAS];
 Mutex AtomISP::sISPCountLock;
 static struct devNameGroup devName[MAX_CAMERAS] = {
-    {{"/dev/video0", "/dev/video1", "/dev/video2", "/dev/video3"},
+    {{"/dev/video0", "/dev/video1", "/dev/video2", "/dev/video3", "/dev/video4"},
         false,},
-    {{"/dev/video4", "/dev/video5", "/dev/video6", "/dev/video7"},
+    {{"/dev/video5", "/dev/video6", "/dev/video7", "/dev/video8", "/dev/video9"},
         false,},
 };
 AtomISP::cameraInfo AtomISP::sCamInfo[MAX_CAMERA_NODES];
@@ -160,7 +160,7 @@ status_t AtomISP::initDevice()
     mMainDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_MAIN_DEVICE], V4L2_MAIN_DEVICE);
     mPreviewDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_PREVIEW_DEVICE], V4L2_PREVIEW_DEVICE);
     mPostViewDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_POSTVIEW_DEVICE], V4L2_POSTVIEW_DEVICE);
-    mRecordingDevice = mMainDevice;
+    mRecordingDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_RECORDING_DEVICE], V4L2_RECORDING_DEVICE);
     mIspSubdevice = new V4L2Subdevice(PlatformData::getISPSubDeviceName(),V4L2_ISP_SUBDEV);
     m3AEventSubdevice = new V4L2Subdevice(PlatformData::getISPSubDeviceName(),V4L2_ISP_SUBDEV);
     mFileInjectDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_INJECT_DEVICE], V4L2_INJECT_DEVICE,
@@ -1050,7 +1050,7 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
          * We will restore this when we stop the preview. see stopPreview()
          **/
         if (mPreviewTooBigForVFPP || mHALZSLEnabled) {
-            mPreviewDevice = mRecordingDevice;
+            mPreviewDevice = mMainDevice;
         }
         if ((status = allocatePreviewBuffers()) != NO_ERROR)
             mPreviewDevice->stop();
@@ -1199,7 +1199,7 @@ status_t AtomISP::configurePreview()
     status_t status = NO_ERROR;
     sp<V4L2VideoNode> activePreviewNode;
 
-    activePreviewNode = mPreviewTooBigForVFPP ? mRecordingDevice : mPreviewDevice;
+    activePreviewNode = mPreviewTooBigForVFPP ? mMainDevice : mPreviewDevice;
 
     ret = activePreviewNode->open();
     if (ret < 0) {
@@ -1341,6 +1341,20 @@ status_t AtomISP::configureRecording()
         recordingConfig = &(mConfig.recording);
     }
 
+    //open recording device
+    ret = mRecordingDevice->open();
+    if (ret < 0) {
+        LOGE("Open recording device failed!");
+        status = UNKNOWN_ERROR;
+        goto err;
+    }
+
+    status = mRecordingDevice->queryCap(&aCap);
+    if (status != NO_ERROR) {
+        LOGE("Failed basic capability check failed!");
+        return NO_INIT;
+    }
+
     ret = configureDevice(
             mRecordingDevice.get(),
             CI_MODE_VIDEO,
@@ -1447,6 +1461,7 @@ status_t AtomISP::stopRecording()
     mPreviewDevice->stop();
     freePreviewBuffers();
     mPreviewDevice->close();
+    mRecordingDevice->close();
 
     return NO_ERROR;
 }
@@ -1716,7 +1731,7 @@ status_t AtomISP::configureContinuousSOC()
     int ret = 0;
     status_t status = OK;
 
-    mPreviewDevice = mRecordingDevice;
+    mPreviewDevice = mMainDevice;
 
     if (!mPreviewDevice->isOpen()) {
         ret = mPreviewDevice->open();
@@ -2169,21 +2184,16 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *
         return ret;
 
     if (device->mId == V4L2_MAIN_DEVICE ||
-        device->mId == V4L2_PREVIEW_DEVICE)
-        applySensorFlip();
-
-    /* 3A related initialization*/
-    //Reallocate the grid for 3A after format change
-    if (device->mId == V4L2_MAIN_DEVICE ||
+        device->mId == V4L2_RECORDING_DEVICE ||
         device->mId == V4L2_PREVIEW_DEVICE) {
+        applySensorFlip();
 
         // Set high-speed video recording frame rate
         // Configure ISP with higher fps and do the frame skipping for
         // the other stream if needed.
         int fps = MAX(mConfig.preview_fps, mConfig.recording_fps);
         if (deviceMode == CI_MODE_VIDEO && fps > DEFAULT_RECORDING_FPS) {
-            // Only need to configure the main device
-            if (device->mId == V4L2_MAIN_DEVICE) {
+            if (device->mId == V4L2_RECORDING_DEVICE) {
                 status_t status;
                 struct v4l2_streamparm parm;
                 parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
