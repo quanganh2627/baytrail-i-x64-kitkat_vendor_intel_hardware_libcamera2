@@ -481,7 +481,7 @@ private:
 
     //GBCE
     ia_aiq_gbce_results *mGBCEResults;
-    bool mGBCEEnable;
+    bool mGBCEDefault;
 
 
     //ISP
