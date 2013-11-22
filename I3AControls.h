@@ -173,7 +173,6 @@ public:
 
     virtual void getDefaultParams(CameraParameters *params, CameraParameters *intel_params) = 0;
     virtual status_t setAeMode(AeMode mode) = 0;
-    virtual status_t enableHighSpeed(bool en) = 0;
     virtual AeMode getAeMode() = 0;
     virtual status_t setEv(float bias) = 0;
     virtual status_t getEv(float *ret) = 0;

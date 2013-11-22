@@ -138,9 +138,10 @@ public:
 
     // For Video pipeline
     virtual status_t setVideoFrameFormat(int width, int height, int fourcc = 0) = 0;
-    virtual status_t setHighSpeedResolutionFps(char* resolution, int fps) = 0;
+    virtual void setRecordingFramerate(int fps) = 0;
+    virtual int getRecordingFramerate() = 0;
+    virtual bool checkSkipFrameRecording(int frameNum) = 0;
     virtual void getVideoSize(int *width, int *height, int *bpl) = 0;
-    virtual bool isHighSpeedEnabled() = 0;
     virtual status_t getRecordingFrame(AtomBuffer *buff) = 0;
     virtual status_t putRecordingFrame(AtomBuffer *buff) = 0;
     virtual int getNumVideoBuffers(void) = 0;

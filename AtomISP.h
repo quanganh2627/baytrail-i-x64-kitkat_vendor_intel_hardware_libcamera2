@@ -284,9 +284,10 @@ public:
     // return zoom ratio multiplied by 100 from given zoom value
     int zoomRatio(int zoomValue) const;
 
-    // high speed fps setting
-    status_t setHighSpeedResolutionFps(char* resolution, int fps);
-    bool isHighSpeedEnabled(){ return mHighSpeedEnabled; }
+    // set/get recording frame rate
+    void setRecordingFramerate(int fps);
+    int getRecordingFramerate() { return mConfig.recording_fps; }
+    bool checkSkipFrameRecording(int frameNum);
 
 // private types
 private:
@@ -325,7 +326,8 @@ private:
         VideoNodeLimits snapshotLimits;
         VideoNodeLimits postviewLimits;
         float fps;            // preview/recording (shared) output by sensor
-        int target_fps ;      // preview/recording requested by user
+        int preview_fps;      // preview fps requested by user
+        int recording_fps;    // recording fps requested by user
         int num_snapshot;     // number of snapshots to take
         int num_postviews;    // number of allocated postviews
         int zoom;             // zoom value
@@ -426,6 +428,8 @@ private:
     // TODO: Remove once BZ #119181 gets fixed by the firmware team!!
     int detectCorruptStatistics(struct atomisp_3a_statistics *statistics);
 
+    bool checkSkipFrame(int frameNum, int targetFPS);
+
 private:
     // AtomIspObserver
     IObserverSubject* observerSubjectByType(ObserverType t);
@@ -440,7 +444,6 @@ private:
         // IObserverSubject override
         virtual const char* getName() { return mName.string(); };
         virtual status_t observe(IAtomIspObserver::Message *msg);
-        virtual bool checkSkipFrame(int frameNum);
 
     private:
         String8  mName;
@@ -592,11 +595,6 @@ private:
     int mIspHwMinorVersion;
 
     bool mNoiseReductionEdgeEnhancement;
-
-    //high speed
-    int mHighSpeedFps;
-    Size mHighSpeedResolution;
-    bool mHighSpeedEnabled;
 
     // Sensor helper fields
     Vector <v4l2_fmtdesc>    mSensorSupportedFormats;     /*!< List of V4L2 pixel format supported by the sensor */

@@ -122,9 +122,6 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mScaler(scalerService)
     ,mObserverManager()
     ,mNoiseReductionEdgeEnhancement(true)
-    ,mHighSpeedFps(0)
-    ,mHighSpeedResolution(0, 0)
-    ,mHighSpeedEnabled(false)
     ,mRawBayerFormat(V4L2_PIX_FMT_SBGGR10)
     ,mFlashIsOn(false)
 {
@@ -328,31 +325,10 @@ int AtomISP::zoomRatio(int zoomValue) const {
     return mZoomRatioTable[zoomValue];
 }
 
-// high speed fps setting
-status_t AtomISP::setHighSpeedResolutionFps(char* resolution, int fps)
+void AtomISP::setRecordingFramerate(int fps)
 {
-    LOG2("@%s fps: %d", __FUNCTION__, fps);
-    status_t ret = NO_ERROR;
-    if(fps <= 0) {
-        mHighSpeedEnabled = false;
-        return ret;
-    }
-    char *w = NULL;
-    char *h = NULL;
-    int success = parsePair(resolution, &w, &h, "x");
-    if (success == 0 && w != NULL && h != NULL) {
-        mHighSpeedFps = fps;
-        mHighSpeedResolution.width = atoi(w);
-        mHighSpeedResolution.height = atoi(h);
-        mHighSpeedEnabled = true;
-    } else {
-        ret = BAD_VALUE;
-    }
-    if(w != NULL)
-        free(w);
-    if(h != NULL)
-        free(h);
-    return ret;
+    LOG1("@%s fps: %d", __FUNCTION__, fps);
+    mConfig.recording_fps = fps;
 }
 
 /**
@@ -361,7 +337,8 @@ status_t AtomISP::setHighSpeedResolutionFps(char* resolution, int fps)
 void AtomISP::initFrameConfig()
 {
     mConfig.fps = DEFAULT_PREVIEW_FPS;
-    mConfig.target_fps = DEFAULT_PREVIEW_FPS;
+    mConfig.preview_fps = DEFAULT_PREVIEW_FPS;
+    mConfig.recording_fps = 0; // Default is the same as preview
     mConfig.num_snapshot = 1;
     mConfig.zoom = 0;
 
@@ -637,10 +614,13 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     {
        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED_RESOLUTION_FPS,
                          PlatformData::supportedHighSpeedResolutionFps(cameraId));
-       intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED, "true,false");
-    } else {
-       intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED, "false");
     }
+
+    /**
+     * RECORDING FRAME RATE
+     */
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_RECORDING_FRAME_RATES,
+                      PlatformData::supportedRecordingFramerates(cameraId));
 
     /**
      * MISCELLANEOUS
@@ -2156,17 +2136,47 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *
         device->mId == V4L2_PREVIEW_DEVICE)
         applySensorFlip();
 
-    if(mHighSpeedEnabled) {
-        status_t status;
-        struct v4l2_streamparm parm;
-        parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        parm.parm.capture.capturemode = CI_MODE_NONE;
-        parm.parm.capture.timeperframe.numerator = 1;
-        parm.parm.capture.timeperframe.denominator = mHighSpeedFps;
-        status = mMainDevice->setParameter(&parm);
-        if (status != NO_ERROR) {
-            LOGE("error setting the mode %d", deviceMode);
-            return -1;
+    /* 3A related initialization*/
+    //Reallocate the grid for 3A after format change
+    if (device->mId == V4L2_MAIN_DEVICE ||
+        device->mId == V4L2_PREVIEW_DEVICE) {
+
+        // Set high-speed video recording frame rate
+        // Configure ISP with higher fps and do the frame skipping for
+        // the other stream if needed.
+        int fps = MAX(mConfig.preview_fps, mConfig.recording_fps);
+        if (deviceMode == CI_MODE_VIDEO && fps > DEFAULT_RECORDING_FPS) {
+            // Only need to configure the main device
+            if (device->mId == V4L2_MAIN_DEVICE) {
+                status_t status;
+                struct v4l2_streamparm parm;
+                parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+                parm.parm.capture.capturemode = CI_MODE_NONE;
+                parm.parm.capture.timeperframe.numerator = 1;
+                parm.parm.capture.timeperframe.denominator = fps;
+                LOG1("setting fps: %d", fps);
+                status = mMainDevice->setParameter(&parm);
+                if (status != NO_ERROR) {
+                    LOGE("error setting fps: %d", fps);
+                    return -1;
+                }
+                // Update the configuration with fps from the driver
+                if (parm.parm.capture.timeperframe.denominator && parm.parm.capture.timeperframe.numerator) {
+                    mConfig.fps = (float) parm.parm.capture.timeperframe.denominator / parm.parm.capture.timeperframe.numerator;
+                    LOG1("Sensor fps: %.2f", mConfig.fps);
+                } else {
+                    LOGW("Sensor driver returned invalid frame rate, using default");
+                    mConfig.fps = DEFAULT_SENSOR_FPS;
+                }
+            }
+        } else {
+            ret = device->getFramerate(&mConfig.fps, w, h, fourcc);
+            if (ret != NO_ERROR) {
+            /*Error handler: if driver does not support FPS achieving,
+                           just give the default value.*/
+                mConfig.fps = DEFAULT_SENSOR_FPS;
+                ret = 0;
+            }
         }
     }
 
@@ -2174,19 +2184,6 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *
     ret = device->setFormat(*formatDescriptor);
     if (ret < 0)
         return ret;
-
-    /* 3A related initialization*/
-    //Reallocate the grid for 3A after format change
-    if (device->mId == V4L2_MAIN_DEVICE ||
-        device->mId == V4L2_PREVIEW_DEVICE) {
-        ret = device->getFramerate(&mConfig.fps, w, h, fourcc);
-        if (ret != NO_ERROR) {
-        /*Error handler: if driver does not support FPS achieving,
-                       just give the default value.*/
-            mConfig.fps = DEFAULT_SENSOR_FPS;
-            ret = 0;
-        }
-    }
 
     // reduce FPS for still capture
     if (mFileInject.active == true) {
@@ -2289,7 +2286,7 @@ status_t AtomISP::setPreviewFrameFormat(int width, int height, int bpl, int four
 void AtomISP::setPreviewFramerate(int fps)
 {
     LOG1("@%s: %d", __FUNCTION__, fps);
-    mConfig.target_fps = fps;
+    mConfig.preview_fps = fps;
 }
 
 void AtomISP::getPostviewFrameFormat(int &width, int &height, int &fourcc) const
@@ -2375,15 +2372,6 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-
-    // Check if the resolution of high speed has been set, and the resolution
-    // of high speed matches with the video resolution set by app
-    if (mHighSpeedResolution.width != 0 && mHighSpeedResolution.height != 0
-         && (mHighSpeedResolution.width == width && mHighSpeedResolution.height == height)) {
-        mHighSpeedEnabled = true;
-    } else {
-        mHighSpeedEnabled = false;
-    }
 
     /**
      * Workaround: When video size is 1080P(1920x1080), because video HW codec
@@ -4147,7 +4135,7 @@ void AtomISP::initMetaDataBuf(IntelMetadataBuffer* metaDatabuf)
     vinfo->format = STRING_TO_FOURCC("NV12");
     vinfo->s3dformat = 0xFFFFFFFF;
     metaDatabuf->SetValueInfo(vinfo);
-    metaDatabuf->SetType(MetadataBufferTypeCameraSource);
+    metaDatabuf->SetType(IntelMetadataBufferTypeCameraSource);
     delete vinfo;
     vinfo = NULL;
 
@@ -4211,7 +4199,7 @@ status_t AtomISP::allocateMetaDataBuffers()
         metaDataBuf = new IntelMetadataBuffer();
         if(metaDataBuf) {
             if (PlatformData::isGraphicGen()) {
-                metaDataBuf->SetType(MetadataBufferTypeGrallocSource);
+                metaDataBuf->SetType(IntelMetadataBufferTypeGrallocSource);
                 metaDataBuf->SetValue((uint32_t)*mRecordingBuffers[i].gfxInfo_rec.gfxBufferHandle);
             } else {
                 initMetaDataBuf(metaDataBuf);
@@ -5653,28 +5641,36 @@ status_t AtomISP::AAAStatSource::observe(IAtomIspObserver::Message *msg)
     return NO_ERROR;
 }
 
+bool AtomISP::checkSkipFrameRecording(int frameNum)
+{
+    LOG2("@%s", __FUNCTION__);
+    int targetFPS;
+    if (mConfig.recording_fps)
+        targetFPS = mConfig.recording_fps;
+    else
+        targetFPS = mConfig.preview_fps;
+
+    return checkSkipFrame(frameNum, targetFPS);
+}
+
 /**
- * This function implements the frame skip algorithm.
+ * This function implements the frame skip algorithm for preview and video recording.
  * - If user requests half of sensor fps, drop every even frame
  * - If user requests third of sensor fps, drop two frames every three frames
  * @returns true: skip,  false: not skip
  */
-bool AtomISP::PreviewStreamSource::checkSkipFrame(int frameNum)
+bool AtomISP::checkSkipFrame(int frameNum, int targetFPS)
 {
-    // No frames skip in high speed
-    if(mISP->isHighSpeedEnabled())
-        return false;
-
-    float sensorFPS = mISP->mConfig.fps;
-    int targetFPS = mISP->mConfig.target_fps;
+    LOG2("@%s", __FUNCTION__);
+    float sensorFPS = mConfig.fps;
 
     if (fabs(sensorFPS / targetFPS - 2) < 0.1f && (frameNum % 2 == 0)) {
-        LOG2("Preview FPS: %d. Skipping frame num: %d", targetFPS, frameNum);
+        LOG2("Target FPS: %d. Skipping frame num: %d", targetFPS, frameNum);
         return true;
     }
 
     if (fabs(sensorFPS / targetFPS - 3) < 0.1f && (frameNum % 3 != 0)) {
-        LOG2("Preview FPS: %d. Skipping frame num: %d", targetFPS, frameNum);
+        LOG2("Target FPS: %d. Skipping frame num: %d", targetFPS, frameNum);
         return true;
     }
 
@@ -5709,7 +5705,7 @@ try_again:
         } else {
             msg->data.frameBuffer.buff.owner = mISP;
             msg->id = IAtomIspObserver::MESSAGE_ID_FRAME;
-            if (checkSkipFrame(msg->data.frameBuffer.buff.frameCounter))
+            if (mISP->checkSkipFrame(msg->data.frameBuffer.buff.frameCounter, mISP->mConfig.preview_fps))
                 msg->data.frameBuffer.buff.status = FRAME_STATUS_SKIPPED;
         }
     } else {

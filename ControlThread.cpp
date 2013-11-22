@@ -1475,6 +1475,12 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mode = MODE_VIDEO;
 
         mParameters.getVideoSize(&width, &height);
+
+        // Video size is updated later than other parameters, so validate high speed  params here
+        if (!validateHighSpeedResolutionFps(width, height, mISP->getRecordingFramerate())) {
+            return BAD_VALUE;
+        }
+
         mISP->setVideoFrameFormat(width, height);
         isDVSActive = mDvs->enable(mParameters);
     } else {
@@ -4140,6 +4146,14 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
+    // RECORDING FRAME RATE
+    const char* recordingFps = params->get(IntelCameraParameters::KEY_RECORDING_FRAME_RATE);
+    const char* supportedRecordingFps = params->get(IntelCameraParameters::KEY_SUPPORTED_RECORDING_FRAME_RATES);
+    if (!validateString(recordingFps, supportedRecordingFps)) {
+        LOGE("bad recording frame rate: %s, supported: %s", recordingFps, supportedRecordingFps);
+        return BAD_VALUE;
+    }
+
     // SNAPSHOT
     params->getPictureSize(&width, &height);
     supportedSizes.clear();
@@ -4343,21 +4357,24 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
-    // HIGH SPEED
-    const char* highSpeed =  params->get(IntelCameraParameters::KEY_HIGH_SPEED);
-    const char* highSpeeds =  params->get(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED);
-    if (!validateString(highSpeed, highSpeeds)) {
-        LOGE("bad high speed value : %s", highSpeed);
-        return BAD_VALUE;
-    }
-    const char* highSpeedResolutionFps = params->get(IntelCameraParameters::KEY_HIGH_SPEED_RESOLUTION_FPS);
-    const char* highSpeedResolutionFpss = params->get(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED_RESOLUTION_FPS);
-    if (!validateString(highSpeedResolutionFps, highSpeedResolutionFpss)) {
-        LOGE("bad pair of resolution and fps value : %s", highSpeedResolutionFps);
-        return BAD_VALUE;
-    }
-
     return NO_ERROR;
+}
+
+bool ControlThread::validateHighSpeedResolutionFps(int width, int height, int fps) const
+{
+    LOG1("@%s size: %dx%d @ %d", __FUNCTION__, width, height, fps);
+
+    if (fps > DEFAULT_RECORDING_FPS) {
+        LOG1("high speed video recording mode");
+        char sizeFpsStr[20];
+        snprintf(sizeFpsStr, 20, "%dx%d@%d", width, height, fps);
+        const char* supportedSizeFpsCombos = mParameters.get(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED_RESOLUTION_FPS);
+        if (!validateString(sizeFpsStr, supportedSizeFpsCombos)) {
+            LOGE("Unsupported high-speed video size@fps combination: %s, supported: %s", sizeFpsStr, supportedSizeFpsCombos);
+            return false;
+        }
+    }
+    return true;
 }
 
 status_t ControlThread::ProcessOverlayEnable(const CameraParameters *oldParams,
@@ -4468,9 +4485,9 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         status = processParamSlowMotionRate(oldParams, newParams);
     }
 
-    // fps settings in high speed recording mode
+    // recording fps setting
     if (status == NO_ERROR) {
-        status = processParamHighSpeed(oldParams, newParams);
+        status = processParamRecordingFramerate(oldParams, newParams);
     }
 
     if (status == NO_ERROR) {
@@ -6148,42 +6165,19 @@ status_t ControlThread::processParamSlowMotionRate(const CameraParameters *oldPa
  * Note, this is an Intel extension, so the values are not defined in
  * Android documentation.
  */
-status_t ControlThread::processParamHighSpeed(const CameraParameters *oldParams,
+status_t ControlThread::processParamRecordingFramerate(const CameraParameters *oldParams,
         CameraParameters *newParams)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    m3AControls->enableHighSpeed(false);
-    mISP->setHighSpeedResolutionFps(NULL, -1);
 
-    const char* n = newParams->get(IntelCameraParameters::KEY_HIGH_SPEED_RESOLUTION_FPS);
-    String8 newVal = String8(n, (n == NULL ? 0 : strlen(n)));
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_RECORDING_FRAME_RATE);
+
     if (!newVal.isEmpty()) {
-        char* resoFps = strndup(newVal.string(), newVal.length());
-        if(resoFps == NULL)
-            return NO_MEMORY;
-        char *reso = NULL;
-        char *fps = NULL;
-        if(parsePair(resoFps, &reso, &fps, "@") != 0) {
-            if(resoFps != NULL)
-                free(resoFps);
-            if(reso != NULL)
-                free(reso);
-            if(fps != NULL)
-                free(fps);
-            return BAD_VALUE;
-        }
-        if(fps != NULL && reso != NULL)
-            status = mISP->setHighSpeedResolutionFps(reso, atoi(fps));
-        if(status == NO_ERROR && mISP->isHighSpeedEnabled()) {
-            m3AControls->enableHighSpeed(true);
-        }
-        if(resoFps != NULL)
-            free(resoFps);
-        if(reso != NULL)
-            free(reso);
-        if(fps != NULL)
-            free(fps);
+        int fps = newParams->getInt(IntelCameraParameters::KEY_RECORDING_FRAME_RATE);
+        LOG1("Got new recording fps: %d", fps);
+        mISP->setRecordingFramerate(fps);
     }
     return status;
 }
@@ -7855,12 +7849,13 @@ bool ControlThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
             if (mISP->getPreviewTooBigForVFPP())
                 buff->owner = this;
 
+            bool skipFrame = mISP->checkSkipFrameRecording(msg->data.frameBuffer.buff.frameCounter);
+
             Message local_msg;
             local_msg.id = MESSAGE_ID_DEQUEUE_RECORDING;
             local_msg.data.dequeueRecording.previewFrame = *buff;
             local_msg.data.dequeueRecording.skipFrame =
-               (buff->status == FRAME_STATUS_CORRUPTED)
-                || (buff->status == FRAME_STATUS_SKIPPED);
+               (buff->status == FRAME_STATUS_CORRUPTED) || skipFrame;
             mMessageQueue.send(&local_msg);
         }
     }

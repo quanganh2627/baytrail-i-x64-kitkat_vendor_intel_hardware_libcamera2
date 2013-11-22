@@ -273,6 +273,11 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
     mAeInputParameters.manual_frame_time_us_min = (long) 1/fps*1000000;
     mAwbInputParameters.frame_use = m3aState.frame_use;
 
+    // In high speed recording, the scene mode should be SPORTS
+    // Set AE operation mode as action to notify AIQ
+    if (mode == MODE_VIDEO && fps > DEFAULT_RECORDING_FPS)
+        setAeSceneMode(CAM_AE_SCENE_MODE_SPORTS);
+
     /* usually the grid changes as well when the mode changes. */
     changeSensorMode();
     if (mBracketingRunning) {
@@ -485,22 +490,6 @@ AeMode AtomAIQ::getAeMode()
 {
     LOG1("@%s", __FUNCTION__);
     return mAeMode;
-}
-
-status_t AtomAIQ::enableHighSpeed(bool en)
-{
-    LOG1("@%s", __FUNCTION__);
-    //high speed recording only available in video mode
-    if (m3aState.frame_use != ia_aiq_frame_use_video)
-        return INVALID_OPERATION;
-    // When frame_use = video, ae_operation_mode = action, then the limits should
-    // be defined separately for "normal" and "high speed" video use cases.
-    if(en)
-        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_action;
-    else
-        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_automatic;
-
-    return NO_ERROR;
 }
 
 status_t AtomAIQ::setAfMode(AfMode mode)
