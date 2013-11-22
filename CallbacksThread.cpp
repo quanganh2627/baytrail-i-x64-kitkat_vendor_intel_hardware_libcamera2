@@ -657,7 +657,7 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageCompressed *msg)
         CameraDump::dumpAtom2File(&jpegBuf, jpegName.string());
     }
 
-    // Put put the metadata in place to the ULL image buffer. This will be
+    // Put the metadata in place to the ULL image buffer. This will be
     // split into separate JPEG buffer and ULL metadata in the service (JNI) layer
     // before passing to application via the Java callback
     camera_ull_metadata_t metadata;
@@ -691,10 +691,8 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageCompressed *msg)
     }
 
     /**
-     *  even if postview is NULL we return the buffer anyway.
-     *  at the moment ULL cannot use postview because of the different lifecycle
-     *  of the postview and snapshot buffers. Once they are allocated like
-     *  snapshots we can check again the postview.
+     *  TODO even if postview is NULL we return the buffer anyway.
+     *  at the moment ULL does not process postview. Should we process it as well?
      */
     if (snapshotBuf.dataPtr != NULL) {
         // Return the raw buffers back to ISP

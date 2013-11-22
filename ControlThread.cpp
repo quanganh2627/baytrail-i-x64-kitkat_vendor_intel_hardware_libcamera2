@@ -1008,6 +1008,7 @@ void ControlThread::panoramaCaptureTrigger()
     mMessageQueue.send(&msg);
 }
 
+// -- ICallbackPicture implementations
 void ControlThread::encodingDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 {
     LOG2("@%s: snapshotBuf = %p, postviewBuf = %p, id = %d",
@@ -1024,7 +1025,7 @@ void ControlThread::encodingDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBu
 
 void ControlThread::pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 {
-    LOG2("@%s: snapshotBuf = %p, postviewBuf = %p, id = %d",
+    LOG1("@%s: snapshotBuf = %p, postviewBuf = %p, id = %d",
             __FUNCTION__,
             snapshotBuf->dataPtr,
             postviewBuf->dataPtr,
@@ -1033,8 +1034,11 @@ void ControlThread::pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf
     msg.id = MESSAGE_ID_PICTURE_DONE;
     msg.data.pictureDone.snapshotBuf = *snapshotBuf;
     msg.data.pictureDone.postviewBuf = *postviewBuf;
+
     mMessageQueue.send(&msg);
 }
+
+// -- end ICallbackPicture implementations
 
 void ControlThread::sendCommand(int32_t cmd, int32_t arg1, int32_t arg2)
 {
@@ -3545,7 +3549,7 @@ status_t ControlThread::captureULLPic()
             *  This is done so that the snapshot buffer is not made available after
             *  the JPEG encoding. This buffer will be made available after
             *  the ULL processing completes.
-            *  By making available we mean, that it is not pushed to the
+            *  By "making available" we mean the buffer is to be pushed to the
             *  mAvailableSnapshotBuffers vector
             */
            snapshotBuffer.status = FRAME_STATUS_SKIPPED;
@@ -3958,19 +3962,15 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             return status;
         }
     } else if (mState == STATE_CAPTURE || mState == STATE_CONTINUOUS_CAPTURE) {
-
         /**
          * Snapshot buffer recycle
          * Buffers marked with FRAME_STATUS SKIPPED are not meant to be made
-         * available, this is used for example in HDR and ULL first snapshots
+         * available, this is used for example in case of HDR composed image
+         * and the first snapshot in ULL sequence
          *
-         * We check if the buffer returned is in the array of allocated buffers
+         * We check if the buffer returned is in the array of allocated buffers,
          * this should always be the case.
          * Then we check that it is not already in the list of available buffers
-         *
-         * TODO: Have post-view allocation similar to snapshot.
-         *
-         *
          */
         if (msg->snapshotBuf.status != FRAME_STATUS_SKIPPED) {
             if (mCaptureSubState == STATE_CAPTURE_IDLE) {
@@ -3980,10 +3980,9 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
                 mCaptureSubState = STATE_CAPTURE_PICTURE_DONE;
             }
 
-
             msg->snapshotBuf.status = FRAME_STATUS_OK;
             if (findBufferByData(&msg->snapshotBuf, &mAllocatedSnapshotBuffers) == NULL) {
-                LOGE("Stale snapshot buffer returned... this should not happen");
+                LOGE("Stale snapshot buffer %p returned... this should not happen", msg->snapshotBuf.dataPtr);
 
             } else if (findBufferByData(&msg->snapshotBuf, &mAvailableSnapshotBuffers) == NULL) {
                 // It's safe to recycle this buffer if needed
