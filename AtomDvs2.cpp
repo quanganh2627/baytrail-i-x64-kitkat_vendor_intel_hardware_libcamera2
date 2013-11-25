@@ -16,6 +16,7 @@
 #define LOG_TAG "Camera_DVS2"
 
 #include "PlatformData.h"
+#include "ia_cmc_parser.h"
 #include "AtomDvs2.h"
 
 namespace android {
@@ -34,25 +35,19 @@ AtomDvs2::AtomDvs2(HWControlGroup &hwcg) :
     IDvs(hwcg)
     ,mDvs2stats(NULL)
     ,mState(NULL)
-    ,mDvs2Config(NULL)
+    ,mMorphTable(NULL)
     ,mDVSEnabled(false)
-    ,mZoom(0)
-    ,mNeedRun(false)
+    ,mZoomRatioChanged(true)
 {
     LOG1("@%s", __FUNCTION__);
     mDumpLogEnabled = gLogLevel & CAMERA_DEBUG_DVS2_DUMP;
     mDvs2Env.vdebug = debugPrint;
     mDvs2Env.verror = debugPrint;
     mDvs2Env.vinfo = debugPrint;
-    mDvs2Characteristics.num_axis = ia_dvs2_algorihm_0_axis;
+    mDvs2Config.num_axis = ia_dvs2_algorihm_0_axis;
     /**< effective vertical scan ratio, used for rolling correction
       (Non-blanking ration of frame interval) */
-    mDvs2Characteristics.nonblanking_ratio = 0.88f;
-    mDvs2Characteristics.min_local_motion = 0.0008f;
-
-    for (int i = 0; i < 6; i++) {
-        mDvs2Characteristics.cutoff_frequency[i] = 0.004f;
-    }
+    mDvs2Config.nonblanking_ratio = 0.88f;
     init();
 }
 
@@ -60,12 +55,20 @@ status_t AtomDvs2::init()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    ia_err err = dvs_init(&mState, NULL, &mDvs2Env);
+    ia_err err;
+
+    if (PlatformData::AiqConfig) {
+        ia_binary_data cpfData;
+        cpfData.data = PlatformData::AiqConfig.ptr();
+        cpfData.size = PlatformData::AiqConfig.size();
+        ia_cmc_t *cmc = ia_cmc_parser_init((ia_binary_data*)&(cpfData));
+        err = dvs_init(&mState, &cpfData, cmc, NULL, &mDvs2Env);
+    } else {
+        err = dvs_init(&mState, NULL, NULL, NULL, &mDvs2Env);
+    }
     if (err != ia_err_none) {
         LOGE("Failed to initilize the DVS library");
         status = NO_INIT;
-    }else {
-        memset(&mGdcConfig, 0, sizeof(mGdcConfig));
     }
 
     return status;
@@ -79,9 +82,9 @@ AtomDvs2::~AtomDvs2()
            writeBinaryDump(DUMP_DVSLOG);
        dvs_deinit_dbglog();
     }
-    if(mDvs2Config) {
-        dvs_free_morph_table(mDvs2Config);
-        mDvs2Config = NULL;
+    if(mMorphTable) {
+        dvs_free_morph_table(mMorphTable);
+        mMorphTable = NULL;
     }
     if(mDvs2stats) {
         dvs_free_statistics(mDvs2stats);
@@ -122,12 +125,12 @@ status_t AtomDvs2::allocateDvs2MorphTable()
 {
     status_t status = NO_ERROR;
     ia_err err;
-    if (mDvs2Config) {
-        dvs_free_morph_table(mDvs2Config);
-        mDvs2Config = NULL;
+    if (mMorphTable) {
+        dvs_free_morph_table(mMorphTable);
+        mMorphTable = NULL;
     }
     if(mState) {
-        err = dvs_allocate_morph_table(mState, &mDvs2Config);
+        err = dvs_allocate_morph_table(mState, &mMorphTable);
         if (err != ia_err_none)
             return UNKNOWN_ERROR;
     }
@@ -137,7 +140,6 @@ status_t AtomDvs2::allocateDvs2MorphTable()
 status_t AtomDvs2::reconfigureNoLock()
 {
     status_t status = NO_ERROR;
-    ia_dvs2_support_configuration support_config;
     ia_err err = ia_err_none;
 
     struct atomisp_parm isp_params;
@@ -175,50 +177,34 @@ status_t AtomDvs2::reconfigureNoLock()
 #endif
     dvs_env_width = dvs_env_width < DVS_MIN_ENVELOPE ? DVS_MIN_ENVELOPE : dvs_env_width;
     dvs_env_height = dvs_env_height < DVS_MIN_ENVELOPE ? DVS_MIN_ENVELOPE : dvs_env_height;
-    support_config.input_y.width = bq_frame_width + dvs_env_width;
-    support_config.input_y.height = bq_frame_height + dvs_env_height;
-    support_config.grid_size = dvs_grid.bqs_per_grid_cell;
-    support_config.grid_per_area = 1;
-    mGdcConfig.source_bq.width_bq = bq_frame_width + dvs_env_width;
-    mGdcConfig.source_bq.height_bq = bq_frame_height + dvs_env_height;
-    mGdcConfig.output_bq.width_bq = bq_frame_width;
-    mGdcConfig.output_bq.height_bq = bq_frame_height; //crop
-    mGdcConfig.ispfilter_bq.width_bq = 12/2;
-    mGdcConfig.ispfilter_bq.height_bq = 12/2;
-    mGdcConfig.gdc_shift_x = 2;
-    mGdcConfig.gdc_shift_y = 2;
-    mGdcConfig.envelope_bq.width_bq = dvs_env_width - mGdcConfig.ispfilter_bq.width_bq;
-    mGdcConfig.envelope_bq.height_bq = dvs_env_height - mGdcConfig.ispfilter_bq.height_bq;
-    mGdcConfig.axis_weight.xy = 80;
-    mGdcConfig.axis_weight.zoom = 5;
-    mGdcConfig.axis_weight.rot = 15;
-    mGdcConfig.axis_weight.pan = 0;
-    mGdcConfig.axis_weight.tilt = 0;
+    mDvs2Config.grid_size = dvs_grid.bqs_per_grid_cell;
+    mDvs2Config.source_bq.width_bq = bq_frame_width + dvs_env_width;
+    mDvs2Config.source_bq.height_bq = bq_frame_height + dvs_env_height;
+    mDvs2Config.output_bq.width_bq = bq_frame_width;
+    mDvs2Config.output_bq.height_bq = bq_frame_height; //crop
+    mDvs2Config.ispfilter_bq.width_bq = 12/2;
+    mDvs2Config.ispfilter_bq.height_bq = 12/2;
+    mDvs2Config.envelope_bq.width_bq = dvs_env_width - mDvs2Config.ispfilter_bq.width_bq;
+    mDvs2Config.envelope_bq.height_bq = dvs_env_height - mDvs2Config.ispfilter_bq.height_bq;
+    mDvs2Config.gdc_shift_x = 2;
+    mDvs2Config.gdc_shift_y = 2;
+    mDvs2Config.oxdim_y = 64;
+    mDvs2Config.oydim_y = 64;
+    mDvs2Config.oxdim_uv = 64;
+    mDvs2Config.oydim_uv = 32;
 
-    mGdcConfig.oxdim_y = 64;
-    mGdcConfig.oydim_y = 64;
-    mGdcConfig.oxdim_uv = 64;
-    mGdcConfig.oydim_uv = 32;
-
-    mGdcConfig.hw_config.scan_mode = ia_dvs2_gdc_scan_mode_stb; //hardcoded
-    mGdcConfig.hw_config.interpolation = ia_dvs2_gdc_interpolation_bli; //hardcoded
-    mGdcConfig.hw_config.performance_point = ia_dvs2_gdc_performance_point_1x1; //hardcoded
-    mGdcConfig.distortion_coefs.gdc_k1 = 0.f;
-    mGdcConfig.distortion_coefs.gdc_k2 = 0.f;
-    mGdcConfig.distortion_coefs.gdc_k3 = 0.f;
-    mGdcConfig.distortion_coefs.gdc_p1 = 0.f;
-    mGdcConfig.distortion_coefs.gdc_p2 = 0.f;
+    mDvs2Config.hw_config.scan_mode = ia_dvs2_gdc_scan_mode_stb; //hardcoded
+    mDvs2Config.hw_config.interpolation = ia_dvs2_gdc_interpolation_bli; //hardcoded
+    mDvs2Config.hw_config.performance_point = ia_dvs2_gdc_performance_point_1x1; //hardcoded
 
     LOG2("DVS enabled:%s", mDVSEnabled ? "true": "false");
-    mNeedRun = mDVSEnabled;
     if(mDVSEnabled)
-        mDvs2Characteristics.num_axis = ia_dvs2_algorihm_4_axis;
+        mDvs2Config.num_axis = ia_dvs2_algorihm_4_axis;
 
     /* setup binary dump parameter */
     mDumpParams.frames = TEST_FRAMES;
     mDumpParams.endless = false;
-    err = dvs_config(mState, &support_config, &mGdcConfig,
-               &mDvs2Characteristics, DIGITAL_ZOOM_RATIO, &mDumpParams);
+    err = dvs_config(mState, &mDvs2Config, DIGITAL_ZOOM_RATIO, &mDumpParams);
     if (err != ia_err_none) {
         LOGW("Configure DVS failed %d", err);
         return UNKNOWN_ERROR;
@@ -248,7 +234,7 @@ status_t AtomDvs2::reconfigureNoLock()
         }
     }
     status = allocateDvs2MorphTable();
-    if(!mDvs2Config || status != NO_ERROR) {
+    if(!mMorphTable || status != NO_ERROR) {
         LOGW("Allocate dvs morph table failed");
         return UNKNOWN_ERROR;
     }
@@ -277,12 +263,11 @@ status_t AtomDvs2::reconfigureNoLock()
 
 status_t AtomDvs2::run()
 {
-    if(!mNeedRun)
+    Mutex::Autolock lock(mLock);
+    if(!mZoomRatioChanged && !mDVSEnabled)
         return NO_ERROR;
 
     LOG1("@%s", __FUNCTION__);
-
-    Mutex::Autolock lock(mLock);
     status_t status = NO_ERROR;
     ia_err err = ia_err_none;
     bool try_again = false;
@@ -321,22 +306,20 @@ status_t AtomDvs2::run()
         LOG2("DVS2 execution failed: %d", err);
         goto end;
     }
-    if(mDvs2Config)
-    {
+    if(mMorphTable) {
 
-        err = dvs_get_morph_table(mState, mDvs2Config);
+        err = dvs_get_morph_table(mState, mMorphTable);
         if (err == ia_err_none) {
 #ifdef ATOMISP_CSS2
             if(mDVSEnabled) {
-                mDvs2Config->exp_id = mStatistics.exp_id;
-                LOG2("exp_id:%d", mDvs2Config->exp_id);
+                mMorphTable->exp_id = mStatistics.exp_id;
+                LOG2("exp_id:%d", mMorphTable->exp_id);
             }
 #endif
-            status = mIsp->setDvsConfig(mDvs2Config);
+            status = mIsp->setDvsConfig(mMorphTable);
         }
     }
-    if (mZoom == 0 && !mDVSEnabled)
-        mNeedRun = false;
+    mZoomRatioChanged = false;
 
 end:
     return status;
@@ -430,6 +413,7 @@ bool AtomDvs2::atomIspNotify(Message *msg, const ObserverState state)
 
 status_t AtomDvs2::setZoom(int zoom)
 {
+    Mutex::Autolock lock(mLock);
     LOG1("@%s zoom:%d", __FUNCTION__, zoom);
     ia_err err = ia_err_none;
     int maxZoomFactor(PlatformData::getMaxZoomFactor());
@@ -437,11 +421,7 @@ status_t AtomDvs2::setZoom(int zoom)
     err = dvs_set_digital_zoom_magnitude(mState, (float)maxZoomFactor /((float)maxZoomFactor - drv_zoom));
     if (err != ia_err_none)
         return UNKNOWN_ERROR;
-    mZoom = zoom;
-    if (mZoom != 0) {
-        Mutex::Autolock lock(mLock);
-        mNeedRun = true;
-    }
+    mZoomRatioChanged = true;
 
     return NO_ERROR;
 }

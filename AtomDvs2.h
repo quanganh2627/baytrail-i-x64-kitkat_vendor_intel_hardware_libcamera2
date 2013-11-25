@@ -67,15 +67,13 @@ private:
     ia_dvs2_binary_dump_params mDumpParams;
     static bool mDumpLogEnabled;
     ia_env mDvs2Env;
-    ia_dvs2_characteristics mDvs2Characteristics;
     struct atomisp_dis_statistics mStatistics;
     struct atomisp_dvs2_statistics *mDvs2stats;
     ia_dvs2_state *mState;
-    ia_dvs2_gdc_configuration mGdcConfig;
-    atomisp_dvs_6axis_config *mDvs2Config;
+    ia_dvs2_configuration mDvs2Config;
+    atomisp_dvs_6axis_config *mMorphTable;
     bool mDVSEnabled;
-    int mZoom;
-    bool mNeedRun;
+    bool mZoomRatioChanged;
 
 };
 
