@@ -35,6 +35,8 @@ CallbacksThread::CallbacksThread(Callbacks *callbacks, ICallbackPicture *picture
     ,mPostviewRequested(0)
     ,mRawRequested(0)
     ,mULLRequested(0)
+    ,mULLid(UINT_MAX)
+    ,mFocusActive(false)
     ,mWaitRendering(false)
     ,mLastReportedNumberOfFaces(0)
     ,mFaceCbCount(0)
