@@ -20,14 +20,25 @@
 #include "SensorHW.h"
 #include "v4l2device.h"
 #include "PerformanceTraces.h"
+#include <assert.h>
 
 namespace android {
 
 static sensorPrivateData gSensorDataCache[MAX_CAMERAS];
 
+static const int ADJUST_ESTIMATE_DELTA_THRESHOLD_US = 2000; // Threshold for adjusting frame timestamp estimate at real frame sync
+
 SensorHW::SensorHW(int cameraId):
     mCameraId(cameraId),
-    mInitialModeDataValid(false)
+    mStarted(false),
+    mInitialModeDataValid(false),
+    mFrameSyncEnabled(false),
+    mCssVersion(0),
+    mActiveItemIndex(0),
+    mImmediateIo(true),
+    mImmediateIoSet(false),
+    mUseExposureSync(false),
+    mExposureLag(0)
 {
     CLEAR(mCameraInput);
     CLEAR(mInitialModeData);
@@ -35,9 +46,11 @@ SensorHW::SensorHW(int cameraId):
 
 SensorHW::~SensorHW()
 {
-   mSensorSubdevice.clear();
-   mIspSubdevice.clear();
-   mSyncEventDevice.clear();
+    mSensorSubdevice.clear();
+    mIspSubdevice.clear();
+    mSyncEventDevice.clear();
+    delete mGainDelayFilter;
+    delete mExposureHistory;
 }
 
 int SensorHW::getCurrentCameraId(void)
@@ -151,6 +164,9 @@ status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
         sensorStoreRawFormat(formats);
     }
 
+    status = initializeExposureFilter();
+    if (status != NO_ERROR)
+        LOGE("Failed to configure exposure filter");
     return status;
 }
 
@@ -201,6 +217,7 @@ status_t SensorHW::openSubdevices()
     }
 
     LOG1("Media device : %s", mediaDeviceInfo.driver);
+    mCssVersion = mediaDeviceInfo.driver_version & ATOMISP_CSS_VERSION_MASK;
 
     status = findMediaEntityByName(mediaCtl, mCameraInput.name, mediaEntityDesc);
     if (status != NO_ERROR) {
@@ -435,6 +452,8 @@ status_t SensorHW::prepare()
 
     LOG1("Sensor output size %dx%d, FPS %f", mOutputWidth, mOutputHeight, getFramerate());
 
+    mExposureHistory->reset();
+
     return status;
 }
 
@@ -464,6 +483,7 @@ status_t SensorHW::start()
         }
         mFrameSyncEnabled = true;
     }
+    mStarted = true;
     return NO_ERROR;
 }
 
@@ -483,6 +503,9 @@ status_t SensorHW::stop()
         mIspSubdevice->unsubscribeEvent(V4L2_EVENT_FRAME_SYNC);
         mFrameSyncEnabled = false;
     }
+    mStarted = false;
+    mImmediateIoSet = false;
+    mImmediateIo = true;
     return NO_ERROR;
 }
 
@@ -740,7 +763,7 @@ int SensorHW::getModeInfo(struct atomisp_sensor_mode_data *mode_data)
     return ret;
 }
 
-int SensorHW::setExposure(struct atomisp_exposure *exposure)
+int SensorHW::setSensorExposure(struct atomisp_exposure *exposure)
 {
     int ret;
     ret = mDevice->xioctl(ATOMISP_IOC_S_EXPOSURE, exposure);
@@ -859,6 +882,8 @@ float SensorHW::getFramerate() const
     return fps;
 }
 
+
+
 /**
  * polls and dequeues frame synchronization events into IAtomIspObserver::Message
  */
@@ -867,18 +892,19 @@ status_t SensorHW::observe(IAtomIspObserver::Message *msg)
     LOG2("@%s", __FUNCTION__);
     struct v4l2_event event;
     int ret;
+    nsecs_t ts = 0;
 
     ret = mIspSubdevice->poll(FRAME_SYNC_POLL_TIMEOUT);
     if (ret <= 0) {
         LOGE("FrameSync poll failed (%s), waiting recovery..", (ret == 0) ? "timeout" : "error");
         ret = -1;
     } else {
-        mFrameSyncCondition.signal();
         // poll was successful, dequeue the event right away
         do {
             ret = mIspSubdevice->dequeueEvent(&event);
             if (ret < 0) {
                 LOGE("Dequeue FrameSync event failed");
+                break;
             }
         } while (event.pending > 0);
     }
@@ -891,15 +917,458 @@ status_t SensorHW::observe(IAtomIspObserver::Message *msg)
         return NO_ERROR;
     }
 
-    // fill observer message
+    // Fill observer message
     msg->id = IAtomIspObserver::MESSAGE_ID_EVENT;
     msg->data.event.type = IAtomIspObserver::EVENT_TYPE_SOF;
+    // TODO: useless timestamp for delayed event
     msg->data.event.timestamp.tv_sec  = event.timestamp.tv_sec;
     msg->data.event.timestamp.tv_usec = event.timestamp.tv_nsec / 1000;
     msg->data.event.sequence = event.sequence;
 
+    // Process exposure synchronization
+    ts = TIMEVAL2USECS(&msg->data.event.timestamp);
+    LOG2("-- FrameSync@%lldus --", ts);
+    mFrameSyncMutex.lock();
+    if (mCssVersion != ATOMISP_CSS_VERSION_15) {
+        // In CSS20, the buffered sensor mode and the event being close to
+        // ~MIPI EOF means that we are at vbi when receiving the event here.
+        // We delay sending the FrameSync event based on estimated active item vbi.
+        // Note: Active item index is the estimated exposure item managed by
+        //       updateExposureEstimate() below and produceExposureHistory()
+        //       based on timestamp we receive and want to manipulate in case
+        //       of CSS20 here. As update for this particular event has not yet
+        //       happened, the active item is one more recent than at previous
+        //       frame sync. Hereby, mActiveItemIndex-1.
+        // TODO: Consider latency from event ts to wakeup.
+        unsigned int vbiOffset = vbiIntervalForItem(mActiveItemIndex-1);
+        LOG2("FrameSync: delaying over %dus timeout, active item index %d", vbiOffset, mActiveItemIndex);
+        ts = ts + vbiOffset;
+        msg->data.event.timestamp.tv_sec = ts / 1000000;
+        msg->data.event.timestamp.tv_usec = (ts % 1000000);
+        mFrameSyncMutex.unlock();
+        usleep(vbiOffset);
+        LOG2("FrameSync: timestamp offset %lldus, delta %lldus", TIMEVAL2USECS(&msg->data.event.timestamp), systemTime()/1000 - ts);
+        mFrameSyncMutex.lock();
+    }
+    processExposureHistory(ts);
+    mFrameSyncMutex.unlock();
+    mFrameSyncCondition.signal();
+
     return NO_ERROR;
 }
 
+/* Port of SensorSyncManager role [START] */
+
+unsigned int SensorHW::getExposureDelay()
+{
+    unsigned int ret = PlatformData::getSensorExposureLag();
+    if (mUseExposureSync)
+        ret++;
+    return ret;
+}
+
+status_t SensorHW::initializeExposureFilter()
+{
+    LOG1("@%s", __FUNCTION__);
+    int gainLag = PlatformData::getSensorGainLag();
+    int exposureLag = PlatformData::getSensorExposureLag();
+    bool useExposureSync = PlatformData::synchronizeExposure();
+    unsigned int gainDelay = 0;
+
+    LOG1("Exposure synchronization config read, gain lag %d, exposure lag %d, synchronize %s",
+            gainLag, exposureLag, useExposureSync ? "true" : "false");
+
+    if (gainLag == 0 || exposureLag == 0)
+        LOGE("Check sensor gain/exposure latencies configuration!");
+
+    if (gainLag == exposureLag) {
+        LOG1("Gain/Exposure re-aligning not needed");
+    } else if (gainLag > exposureLag) {
+        LOGE("Check sensor latencies configuration, not supported");
+    } else if (gainLag > 0 && !useExposureSync) {
+        LOGW("Analog gain re-aligning without synchronization!");
+        // TODO: applying of final delayed gain not implemented
+        gainDelay = exposureLag - gainLag;
+    } else {
+        gainDelay = exposureLag - gainLag;
+    }
+
+    mExposureLag = (gainLag <= exposureLag) ? exposureLag : gainLag;
+    mUseExposureSync = useExposureSync;
+
+    LOG1("sensor delays: gain %d, exposure %d", gainLag, exposureLag);
+    LOG1("using sw gain delay %d, %s", gainDelay, mUseExposureSync ? "frame synchronized":"direct");
+
+    // Note Fifo also used for continuous exposure history tracking
+    mGainDelayFilter = new AtomDelayFilter <unsigned int> (0, gainDelay);
+    mExposureHistory = new AtomFifo <struct exposure_history_item> (mExposureLag * 2 + 1);
+
+    return NO_ERROR;
+}
+
+inline void SensorHW::processGainDelay(struct atomisp_exposure *exposure)
+{
+    exposure->gain[0] = mGainDelayFilter->enqueue(exposure->gain[0]);
+}
+
+/**
+ * Implements IHWSensorControl::setExposure()
+ */
+int SensorHW::setExposure(struct atomisp_exposure *exposure)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    if (!exposure)
+        return -1;
+
+    Mutex::Autolock lock(mFrameSyncMutex);
+
+    struct exposure_history_item *headItem = NULL;
+
+    if (mStarted) {
+        headItem = mExposureHistory->peek(0);
+        if (headItem && !headItem->applied) {
+            // This indicates that statistics event + 3A processing
+            // ends up varying both sides of the FrameSync event and
+            // though giving more than one exposure to apply in one frame
+            // interval. If this value + mExposurelag grows higher than
+            // mExposureHistory depth the exposure syncrhonization fails.
+            // Ocassionally this is expected, and is know to cause momentary
+            // AE miss sync until activate values are fed back properly.
+            // In case of syncrhonizeExposure=true the decision is to apply
+            // the most recently given parameters next. The same logic
+            // works for direct applying, but we cannot rely what really
+            // gets in before sensor readout.
+            LOG1("Received two exposure controls in single frame interval");
+            headItem->exposure = *exposure;
+            // TODO: gain delay not handled here. would need to update filter.
+        } else {
+            processGainDelay(exposure);
+            headItem = produceExposureHistory(exposure, 0);
+            mActiveItemIndex++;
+        }
+    } else {
+        mGainDelayFilter->reset(exposure->gain[0]);
+        for (unsigned int i = 0; i <= mExposureLag; i++) {
+            headItem = produceExposureHistory(exposure, 0);
+            if (headItem != NULL)
+                headItem->applied = true;
+        }
+    }
+
+    if (!mUseExposureSync || mImmediateIo) {
+        // In immediate IO we expect that the apply we do below
+        // reaches sensor registers before its readout for the next
+        // frame. We are somewhere in middle of exposing frame N-1.
+        // When this does not work well enough, the option is to
+        // use exposureSynchronization.
+        if (headItem)
+            headItem->applied = true;
+        return setSensorExposure(exposure);
+    }
+
+    LOG2("@%s enqueued exposure, gain %d, citg %d", __FUNCTION__,
+            exposure->gain[0], exposure->integration_time[0]);
+    return 0;
+}
+
+/**
+ * Control immediate exposure applying
+ *
+ * When exposure applying with FrameSync is active
+ * (synchronizeExposure = true), client can enable immediate IO
+ * to bypass the logic and apply immediately.
+ *
+ * Note: SensorSyncManager used this to control direct applying
+ *       in mode switches, stream start and stop. Which is now
+ *       controlled by SensorHW::start() and SensorHW::stop(),
+ *       the mStarted boolean instead. This partially deprecates
+ *       setImmediateIo().
+ *
+ * Note: Client (AtomISP) still uses this to bypass synchronization
+ *       always in MODE_CAPTURE. Exposure control in MODE_CAPTURE
+ *       can only mean exposure bracketing, which uses
+ *       SensorHW::waitForFrameSync() and synchronizes exposure
+ *       applying itself.
+ */
+int SensorHW::setImmediateIo(bool enable)
+{
+    LOG1("@%s(%d)", __FUNCTION__, enable);
+    Mutex::Autolock lock(mFrameSyncMutex);
+    mImmediateIoSet = mImmediateIo = enable;
+    if (enable) {
+        mExposureHistory->reset();
+    }
+    return NO_ERROR;
+}
+
+/**
+ * Implement IAtomIspObserver::atomIspNotify()
+ *
+ * Note: almost nothing to do here. After moving SensorSyncManager
+ * implementation, it is processed directly in SensorHW::observe().
+ */
+bool SensorHW::atomIspNotify(Message *msg, const ObserverState state)
+{
+   LOG2("@%s: msg id %d, state %d", __FUNCTION__, (msg) ? msg->id : -1, state);
+   if (msg == NULL && !mImmediateIoSet) {
+       mImmediateIo = (state != OBSERVER_STATE_RUNNING);
+   }
+   return false;
+}
+
+void SensorHW::resetEstimates(struct exposure_history_item *activeItem)
+{
+    struct exposure_history_item *tmpItem = NULL;
+    unsigned int frameInterval = 0;
+    int prevItemIdx = 0;
+    struct exposure_history_item *item = getPrevAppliedItem(prevItemIdx);
+    item = activeItem;
+    for (int i = mActiveItemIndex - 1; i > prevItemIdx; i--) {
+        tmpItem = mExposureHistory->peek(i);
+        if (tmpItem) {
+            frameInterval = frameIntervalForItem(i);
+            tmpItem->frame_ts = item->frame_ts + frameInterval;
+            item = tmpItem;
+        }
+    }
+}
+
+/**
+ * Update frame timing estimate for previously applied exposure.
+ *
+ * Estimate is calculated according to timestamp of frame synchronization event
+ * increased with the cumulated frame intervals of previously applied values.
+ */
+void SensorHW::updateExposureEstimate(nsecs_t timestamp)
+{
+    LOG2("@%s", __FUNCTION__);
+    struct exposure_history_item *activeItem = NULL;
+    int prevItemIdx = 0;
+
+    struct exposure_history_item *item = getPrevAppliedItem(prevItemIdx);
+    // This assertion failure would mean that applyExposureFromHistory() was
+    // not called
+    if (item == NULL) {
+        LOGE("getPrevAppliedItem error");
+        return;
+    }
+
+    // Our estimate at FrameSync occurrence is that previously
+    // applied item is N and active exposure would hereby be
+    // N - mExposurLag where mExposureLag != 0.
+    mActiveItemIndex = prevItemIdx + mExposureLag;
+    activeItem = mExposureHistory->peek(mActiveItemIndex);
+    if (activeItem == NULL) {
+        LOGE("peek active exposure error");
+        return;
+    }
+
+    if (activeItem->frame_ts == 0) {
+        LOG1("FrameSync: No estimate for active item, filling initials");
+        activeItem->frame_ts = timestamp;
+        resetEstimates(activeItem);
+    }
+
+    unsigned int frameLatency = cumulateFrameIntervals(prevItemIdx, mExposureLag);
+    LOG2("FrameSync: latency for recently applied exposure %dus", frameLatency);
+    assert(item->frame_ts == 0);
+    item->frame_ts = timestamp + frameLatency;
+
+    long deltaToReceived = (long) (timestamp - activeItem->frame_ts);
+    // This print should reveal if use of exposureSynchronization is
+    // preferred (ocassional deltas of frame-interval in cases when
+    // exposure applying didn't reach the frame in time)
+    // This is also useful to trace how the estimation logic performs
+    // and how the configured exposure lags match with reality.
+    LOG2("FrameSync: delta to active item estimate %ldus, act index %d, prev index %d",
+          deltaToReceived, mActiveItemIndex, prevItemIdx);
+    if (deltaToReceived > ADJUST_ESTIMATE_DELTA_THRESHOLD_US
+        || deltaToReceived < -ADJUST_ESTIMATE_DELTA_THRESHOLD_US) {
+        // update with received ts
+        activeItem->frame_ts = timestamp;
+    }
+}
+
+/**
+ * Return the most recently applied exposure_history_item
+ */
+SensorHW::exposure_history_item* SensorHW::getPrevAppliedItem(int &id)
+{
+    struct exposure_history_item *appliedExposure = NULL;
+    for (unsigned int i = 0; i < mExposureHistory->getCount(); i++) {
+        appliedExposure = mExposureHistory->peek(i);
+        if (appliedExposure->applied) {
+            id = i;
+            return appliedExposure;
+        }
+    }
+    return NULL;
+}
+
+/**
+ * Return vbi latency for exposure history item
+ */
+unsigned int SensorHW::vbiIntervalForItem(unsigned int index)
+{
+    struct exposure_history_item *item = mExposureHistory->peek(index);
+    unsigned int fll = (item) ? MAX(mInitialModeData.frame_length_lines, item->exposure.integration_time[0]) : mInitialModeData.frame_length_lines;
+
+    unsigned int vbiLL = fll - (mInitialModeData.crop_vertical_end - mInitialModeData.crop_vertical_start + 1) / mInitialModeData.binning_factor_y;
+
+    return ((long long) mInitialModeData.line_length_pck * vbiLL * 1000000)
+           / mInitialModeData.vt_pix_clk_freq_mhz;
+}
+
+unsigned int SensorHW::frameIntervalForItem(unsigned int index)
+{
+    struct exposure_history_item *item = mExposureHistory->peek(index);
+    unsigned int fll = (item) ? MAX(mInitialModeData.frame_length_lines, item->exposure.integration_time[0]) : mInitialModeData.frame_length_lines;
+    return ((long long) mInitialModeData.line_length_pck * fll * 1000000)
+            / mInitialModeData.vt_pix_clk_freq_mhz;
+}
+
+/**
+ * Return cumulated frame intervals from exposure history
+ *
+ * \param index start index (normally the frame N-1)
+ * \param frames number of items to cumulate (exposure lag)
+ */
+unsigned int SensorHW::cumulateFrameIntervals(unsigned int index, unsigned int frames)
+{
+    struct exposure_history_item *appliedExposure = NULL;
+    unsigned int cumulatedFrameLengths = 0;
+    unsigned int cumulatedFrameCount = 0;
+    unsigned int retUs = 0;
+
+    for (unsigned i = index; i < mExposureHistory->getCount() && cumulatedFrameCount < frames; i++) {
+        appliedExposure = mExposureHistory->peek(i);
+        if (appliedExposure) {
+            assert(appliedExposure->applied);
+            cumulatedFrameLengths += MAX(mInitialModeData.frame_length_lines,
+                                     appliedExposure->exposure.integration_time[0]);
+            cumulatedFrameCount++;
+        }
+    }
+
+    if (cumulatedFrameCount < frames) {
+        cumulatedFrameLengths += (frames - cumulatedFrameCount) * mInitialModeData.frame_length_lines;
+        LOG2("Cumulated initial mode data, ll %d", cumulatedFrameLengths);
+    }
+
+    retUs = ((long long)mInitialModeData.line_length_pck * cumulatedFrameLengths * 1000000)
+            / mInitialModeData.vt_pix_clk_freq_mhz;
+
+    LOG2("Cumulated history, %d frames, timeUs %dus", cumulatedFrameCount, retUs);
+
+    return retUs;
+}
+
+/**
+ * Produce new exposure_history_item into FiFo
+ */
+SensorHW::exposure_history_item* SensorHW::produceExposureHistory(struct atomisp_exposure *exposure, nsecs_t frame_ts)
+{
+    LOG2("@%s", __FUNCTION__);
+    struct exposure_history_item item;
+
+    item.frame_ts = frame_ts;
+    item.exposure = *exposure;
+    item.applied = false;
+
+    // when fifo is full drop the oldest
+    if (mExposureHistory->getCount() >= mExposureHistory->getDepth())
+        mExposureHistory->dequeue();
+
+    mExposureHistory->enqueue(item);
+
+    return mExposureHistory->peek(0);
+}
+
+/**
+ * Do operations needed for exposure history tracking
+ *
+ * To be called once for each FrameSyncEvent with timestamp close
+ * to the beginning of frame integration.
+ *
+ * If there is nothing to apply, we roll the history here.
+ *
+ * Note: Even when syncronizeExposure=false this function is called to
+ *       roll the history and potentially apply the delayed gain(s).
+ */
+void SensorHW::processExposureHistory(nsecs_t ts)
+{
+    LOG2("@%s", __FUNCTION__);
+    struct exposure_history_item *item = NULL;
+    unsigned int itemsToApply = 0;
+    bool applyToSensor = false;
+    int ret = 0;
+
+    // find prev applied and quantity of not applied
+    for (unsigned int i = 0; i < mExposureHistory->getDepth(); i++) {
+        item = mExposureHistory->peek(i);
+        if (!item || item->applied)
+            break;
+        itemsToApply++;
+    }
+
+    if (itemsToApply == 0) {
+        if (item == NULL) {
+            // No initials from 3A or FiFo has been filled with
+            // new exposures in between FrameSyncs.
+            LOGW("No initial exposure set by 3A!");
+            struct atomisp_exposure dummyExposure;
+            CLEAR(dummyExposure);
+            // TODO: Could use sensor initials here
+            item = produceExposureHistory(&dummyExposure, 0);
+            if (item != NULL)
+                item->applied = true;
+        } else if (item->frame_ts != 0) {
+            // there is already estimated ts for previously applied
+            // item. This means we rolled over one frame without
+            // updating exposure (setExposure() was not called)
+            // Keep rolling and pick delayd gain
+            item = produceExposureHistory(&item->exposure, 0);
+            if (item == NULL) {
+                LOGE("produceExposureHistory error");
+                return;
+            }
+            unsigned int prevGain = item->exposure.gain[0];
+            unsigned int gainTail = mGainDelayFilter->tail();
+            item->exposure.gain[0] = mGainDelayFilter->enqueue(gainTail);
+            LOG2("Gain filter values, prev %d, tail %d => %d",
+                 prevGain, gainTail, item->exposure.gain[0]);
+            if (item->exposure.gain[0] != prevGain) {
+                applyToSensor = true;
+            } else {
+                item->applied = true;
+            }
+        }
+    } else {
+#ifdef LIBCAMERA_RD_FEATURES
+        if (mUseExposureSync && itemsToApply > 1) {
+            LOG1("## More than one new exposure to apply (%d)", itemsToApply);
+        }
+#endif
+        applyToSensor = true;
+        item = mExposureHistory->peek(itemsToApply - 1);
+        if (item == NULL) {
+            LOGE("peek %d exposure history error", itemsToApply-1);
+            return;
+        }
+    }
+
+    if (applyToSensor) {
+        ret = setSensorExposure(&item->exposure);
+        if (ret != 0) {
+            LOGE("Setting sensor exposure failed!");
+        }
+        item->applied = true;
+    }
+
+    updateExposureEstimate(ts);
+}
+
+/* Port of SensorSyncManager role [END] */
 
 }

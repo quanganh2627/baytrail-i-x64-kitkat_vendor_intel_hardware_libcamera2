@@ -20,6 +20,8 @@
 #include "ICameraHwControls.h"
 #include "PlatformData.h"
 #include "AtomIspObserverManager.h" // IObserverSubject
+#include "AtomDelayFilter.h"
+#include "AtomFifo.h"
 
 namespace android {
 
@@ -41,6 +43,7 @@ public:
     status_t start();
     status_t stop();
     IObserverSubject* getFrameSyncSource() { return (IObserverSubject*) this; };
+    int setImmediateIo(bool enable);
 
     /* IHWSensorControl overloads, */
     virtual const char * getSensorName(void);
@@ -74,7 +77,7 @@ public:
     virtual int getAeFlashMode(v4l2_flash_led_mode * mode);
     virtual int getRawFormat();
 
-    virtual unsigned int getExposureDelay() { return PlatformData::getSensorExposureLag(); };
+    virtual unsigned int getExposureDelay();
     virtual int setExposure(struct atomisp_exposure *exposure);
 
     virtual float getFramerate() const;
@@ -83,7 +86,7 @@ public:
     virtual status_t waitForFrameSync();
 
     /* IAtomIspObserver overloads */
-    virtual bool atomIspNotify(Message *msg, const ObserverState state) { return true; };
+    virtual bool atomIspNotify(Message *msg, const ObserverState state);
 
 private:
     virtual const char* getName() { return "FrameSyncSource"; }
@@ -113,6 +116,26 @@ private:
     status_t openSubdevices();
     void getPadFormat(sp<V4L2DeviceBase> &subdev, int padIndex, int &width, int &height);
 
+    // Exposure synchronization
+    struct exposure_history_item {
+        bool    applied;
+        nsecs_t frame_ts;
+        struct atomisp_exposure exposure;
+    };
+    status_t initializeExposureFilter();
+    int frameSyncProc(nsecs_t timestamp);
+    inline void processGainDelay(struct atomisp_exposure *);
+    int setSensorExposure(struct atomisp_exposure *exposure);
+    unsigned int vbiIntervalForItem(unsigned int index);
+    unsigned int frameIntervalForItem(unsigned int index);
+    unsigned int cumulateFrameIntervals(unsigned int index, unsigned int frames);
+    struct exposure_history_item* produceExposureHistory(struct atomisp_exposure *exposure, nsecs_t frame_ts);
+    void processExposureHistory(nsecs_t timestamp);
+    void updateExposureEstimate(nsecs_t timestamp);
+    struct exposure_history_item* getPrevAppliedItem(int &id);
+    void resetEstimates(struct exposure_history_item *activeItem);
+
+
 private:
     sp<V4L2DeviceBase> mSensorSubdevice;
     sp<V4L2DeviceBase> mIspSubdevice;
@@ -121,6 +144,7 @@ private:
     SensorType        mSensorType;
     struct cameraInfo mCameraInput;
     int mCameraId;
+    bool mStarted; //<! state used to indentify controls in streamon state
 
     // ModeData stored
     struct atomisp_sensor_mode_data mInitialModeData;
@@ -130,9 +154,22 @@ private:
     int mOutputWidth;
     int mOutputHeight;
 
+    // Common frame synchronization
     Mutex mFrameSyncMutex;
     Condition mFrameSyncCondition;
     bool mFrameSyncEnabled;
+    int mCssVersion;
+
+    // Exposure synchronization
+    unsigned int mActiveItemIndex;
+    bool mDelayedEvent;
+    bool mImmediateIo;          /* set exposure immediately */
+    bool mImmediateIoSet;       /* immediate mode set explicitly, see setImmediateIo() */
+    bool mUseExposureSync;      /* use frameSyncProc() to synchronize exposure applying */
+    unsigned int mExposureLag;  /* delay of exposure applying based on configuration */
+    AtomDelayFilter <unsigned int>   *mGainDelayFilter;
+    AtomFifo <struct exposure_history_item> *mExposureHistory;
+    struct atomisp_exposure          mCurrentExposure;
 }; // class SensorHW
 
 }; // namespace android

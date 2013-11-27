@@ -55,7 +55,6 @@ LOCAL_SRC_FILES := \
 	SensorThread.cpp \
 	ScalerService.cpp \
 	PostCaptureThread.cpp \
-	SensorSyncManager.cpp \
 	AccManagerThread.cpp \
 	SensorHW.cpp \
 	v4l2dev/v4l2devicebase.cpp \

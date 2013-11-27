@@ -242,18 +242,6 @@ status_t ControlThread::init()
     mHwcg.mFlashCI = (IHWFlashControl*)isp;
     mHwcg.mLensCI = (IHWLensControl*)isp;
 
-    mSensorSyncManager = new SensorSyncManager(mHwcg.mSensorCI);
-    if (mSensorSyncManager == NULL) {
-        LOGE("Error creating sensor sync manager");
-        goto bail;
-    }
-
-    status = mSensorSyncManager->init();
-    if (status != NO_ERROR) {
-        LOGD("Error initializing sensor sync manager");
-        mSensorSyncManager.clear();
-    }
-
     // Choose 3A interface based on the sensor type
     if (createAtom3A() != NO_ERROR) {
         LOGE("error creating AAA");
@@ -544,9 +532,6 @@ void ControlThread::deinit()
         delete m3AControls;
         m3AControls = NULL;
     }
-
-    if (mSensorSyncManager != NULL)
-        mSensorSyncManager.clear();
 
     if (mCP != NULL) {
         if (mHdr.enabled)
@@ -1624,8 +1609,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
         mISP->attachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
         mISP->attachObserver(m3AThread.get(), OBSERVE_FRAME_SYNC_SOF);
-        if (mSensorSyncManager != NULL)
-            mISP->attachObserver(mSensorSyncManager.get(), OBSERVE_FRAME_SYNC_SOF);
     }
 
     // Update focus areas for the proper window size
@@ -1704,8 +1687,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         if (m3AControls->isIntel3A()) {
             mISP->detachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
             mISP->detachObserver(m3AThread.get(), OBSERVE_FRAME_SYNC_SOF);
-            if (mSensorSyncManager != NULL)
-                mISP->detachObserver(mSensorSyncManager.get(), OBSERVE_FRAME_SYNC_SOF);
         }
     }
 
@@ -1757,8 +1738,6 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     if (m3AControls->isIntel3A()) {
         mISP->detachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
         mISP->detachObserver(m3AThread.get(), OBSERVE_FRAME_SYNC_SOF);
-        if (mSensorSyncManager != NULL)
-            mISP->detachObserver(mSensorSyncManager.get(), OBSERVE_FRAME_SYNC_SOF);
         // Detaching DVS observer. Just to make sure, although it might not be attached:
         // might be a non-RAW sensor, or enabling failed on startPreviewCore().
         // It is OK to detach; if the observer is not attached, detachObserver()
@@ -6649,9 +6628,6 @@ status_t ControlThread::createAtom3A()
     status_t status = NO_ERROR;
 
     if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
-        if (mSensorSyncManager != NULL) {
-            mHwcg.mSensorCI = (IHWSensorControl*) mSensorSyncManager.get();
-        }
         m3AControls = new AtomAIQ(mHwcg);
     } else {
         m3AControls = new AtomSoc3A(mCameraId, mHwcg);
