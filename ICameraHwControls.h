@@ -261,7 +261,7 @@ public:
     virtual const char * getSensorName(void) = 0;
     virtual int getCurrentCameraId(void) = 0;
 
-    virtual float getFrameRate() const = 0;
+    virtual float getFramerate() const = 0;
 
     virtual unsigned int getExposureDelay() = 0;
 

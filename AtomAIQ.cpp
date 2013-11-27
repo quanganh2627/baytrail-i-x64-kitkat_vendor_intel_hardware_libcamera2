@@ -278,11 +278,6 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
     mAeInputParameters.manual_frame_time_us_min = (long) 1/fps*1000000;
     mAwbInputParameters.frame_use = m3aState.frame_use;
 
-    // In high speed recording, the scene mode should be SPORTS
-    // Set AE operation mode as action to notify AIQ
-    if (mode == MODE_VIDEO && fps > DEFAULT_RECORDING_FPS)
-        setAeSceneMode(CAM_AE_SCENE_MODE_SPORTS);
-
     /* usually the grid changes as well when the mode changes. */
     changeSensorMode();
     if (mBracketingRunning) {
@@ -1564,6 +1559,7 @@ bool AtomAIQ::changeSensorMode(void)
     LOG2("sensor descriptor: line_periods_per_field %d", sd->line_periods_per_field);
     LOG2("sensor descriptor: coarse_integration_time_min %d", sd->coarse_integration_time_min);
     LOG2("sensor descriptor: coarse_integration_time_max_margin %d", sd->coarse_integration_time_max_margin);
+    LOG2("sensor descriptor: binning_factor_y %d", sensor_mode_data.binning_factor_y);
 
     if (m3aState.stats)
         freeStatistics(m3aState.stats);

@@ -1476,6 +1476,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     int height;
     int cb_fourcc;
     int bpl;
+    int fps;
     State state;
     AtomMode mode;
 
@@ -1495,13 +1496,18 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOG1("Starting preview in video mode");
         state = STATE_PREVIEW_VIDEO;
         mode = MODE_VIDEO;
-
+        fps = mISP->getRecordingFramerate();
         mParameters.getVideoSize(&width, &height);
 
         // Video size is updated later than other parameters, so validate high speed  params here
-        if (!validateHighSpeedResolutionFps(width, height, mISP->getRecordingFramerate())) {
+        if (!validateHighSpeedResolutionFps(width, height, fps)) {
             return BAD_VALUE;
         }
+
+        // Workaround: In high speed recording, the scene mode should be SPORTS
+        // Note: scene mode setting resets all 3A parameters
+        if (fps > DEFAULT_RECORDING_FPS)
+            m3AControls->setAeSceneMode(CAM_AE_SCENE_MODE_SPORTS);
 
         mISP->setVideoFrameFormat(width, height);
 
@@ -1612,8 +1618,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         // Enable auto-focus by default
         m3AControls->setAfEnabled(true);
         m3AThread->enable3A();
-        if (m3AControls->switchModeAndRate(mode, mHwcg.mSensorCI->getFrameRate()) != NO_ERROR)
-            LOGE("Failed switching 3A at %.2f fps", mHwcg.mSensorCI->getFrameRate());
+        if (m3AControls->switchModeAndRate(mode, mHwcg.mSensorCI->getFramerate()) != NO_ERROR)
+            LOGE("Failed switching 3A at %.2f fps", mHwcg.mSensorCI->getFramerate());
 
 
         mISP->attachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
@@ -2643,8 +2649,8 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
             return status;
         }
 
-        if (m3AControls->switchModeAndRate(MODE_CAPTURE, mHwcg.mSensorCI->getFrameRate()) != NO_ERROR)
-            LOGE("Failed to switch 3A to capture mode at %.2f fps",mHwcg.mSensorCI->getFrameRate());
+        if (m3AControls->switchModeAndRate(MODE_CAPTURE, mHwcg.mSensorCI->getFramerate()) != NO_ERROR)
+            LOGE("Failed to switch 3A to capture mode at %.2f fps",mHwcg.mSensorCI->getFramerate());
 
         if ((status = mISP->start()) != NO_ERROR) {
             LOGE("Error starting the ISP driver in CAPTURE mode!");
@@ -3072,8 +3078,8 @@ status_t ControlThread::captureStillPic()
             return status;
         }
 
-        if (m3AControls->switchModeAndRate(MODE_CAPTURE, mHwcg.mSensorCI->getFrameRate()) != NO_ERROR)
-            LOGE("Failed to switch 3A to capture mode at %.2f fps", mHwcg.mSensorCI->getFrameRate());
+        if (m3AControls->switchModeAndRate(MODE_CAPTURE, mHwcg.mSensorCI->getFramerate()) != NO_ERROR)
+            LOGE("Failed to switch 3A to capture mode at %.2f fps", mHwcg.mSensorCI->getFramerate());
         if ((status = mISP->start()) != NO_ERROR) {
             LOGE("Error starting the ISP driver in CAPTURE mode");
             return status;

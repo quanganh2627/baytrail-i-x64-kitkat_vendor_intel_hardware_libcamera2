@@ -22,14 +22,16 @@
 
 namespace android {
 
+class V4L2DeviceBase;
 class V4L2VideoNode;
 
 class SensorHW:public IHWSensorControl {
 
 public:
-    SensorHW(int cameraId):mCameraId(cameraId) { }
-    ~SensorHW() { mDevice.clear(); };
+    SensorHW(int cameraId);
+    ~SensorHW();
     status_t selectActiveSensor(sp<V4L2VideoNode> &device);
+    status_t prepare();
 
     /* IHWSensorControl overloads, */
     virtual const char * getSensorName(void);
@@ -66,7 +68,8 @@ public:
     virtual unsigned int getExposureDelay() { return PlatformData::getSensorExposureLag(); };
     virtual int setExposure(struct atomisp_exposure *exposure);
 
-    virtual float getFrameRate() const;
+    virtual float getFramerate() const;
+    virtual status_t setFramerate(int fps);
 
 private:
     static const int MAX_SENSOR_NAME_LENGTH = 32;
@@ -79,13 +82,34 @@ private:
     size_t enumerateInputs(Vector<struct cameraInfo> &);
     status_t sensorStoreRawFormat(Vector<v4l2_fmtdesc> &formats);
 
+    // Helper methods for Media Controller usage
+    // TODO: generalize into Media device class
+    status_t findConnectedEntity(sp<V4L2DeviceBase> &mediaCtl,
+        const struct media_entity_desc &mediaEntityDescSrc,
+        struct media_entity_desc &mediaEntityDescDst, int &padIndex);
+    status_t findMediaEntityByName(sp<V4L2DeviceBase> &mediaCtl,
+            char const* entityName, struct media_entity_desc &mediaEntityDesc);
+    status_t findMediaEntityById(sp<V4L2DeviceBase> &mediaCtl, int index,
+        struct media_entity_desc &mediaEntityDesc);
+    status_t openSubdevice(sp<V4L2DeviceBase> &subdev, int major, int minor);
+    status_t openSubdevices();
+    void getPadFormat(sp<V4L2DeviceBase> &subdev, int padIndex, int &width, int &height);
 
 private:
+    sp<V4L2DeviceBase> mSensorSubdevice;
+    sp<V4L2DeviceBase> mIspSubdevice;
     sp<V4L2VideoNode> mDevice;
     SensorType        mSensorType;
-    int mCameraId;
     struct cameraInfo mCameraInput;
+    int mCameraId;
+
+    // ModeData stored
+    struct atomisp_sensor_mode_data mInitialModeData;
+    bool mInitialModeDataValid;
+
     int mRawBayerFormat;
+    int mOutputWidth;
+    int mOutputHeight;
 }; // class SensorHW
 
 }; // namespace android

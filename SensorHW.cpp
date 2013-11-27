@@ -15,6 +15,8 @@
  */
 #define LOG_TAG "Camera_SensorHW"
 
+#include <linux/media.h>
+#include <linux/v4l2-subdev.h>
 #include "SensorHW.h"
 #include "v4l2device.h"
 #include "PerformanceTraces.h"
@@ -22,6 +24,20 @@
 namespace android {
 
 static sensorPrivateData gSensorDataCache[MAX_CAMERAS];
+
+SensorHW::SensorHW(int cameraId):
+    mCameraId(cameraId),
+    mInitialModeDataValid(false)
+{
+    CLEAR(mCameraInput);
+    CLEAR(mInitialModeData);
+}
+
+SensorHW::~SensorHW()
+{
+   mSensorSubdevice.clear();
+   mIspSubdevice.clear();
+}
 
 int SensorHW::getCurrentCameraId(void)
 {
@@ -56,13 +72,37 @@ size_t SensorHW::enumerateInputs(Vector<struct cameraInfo> &inputs)
     return numCameras;
 }
 
+void SensorHW::getPadFormat(sp<V4L2DeviceBase> &subdev, int padIndex, int &width, int &height)
+{
+    LOG1("@%s", __FUNCTION__);
+    struct v4l2_subdev_format subdevFormat;
+    int ret = 0;
+    width = 0;
+    height = 0;
+    if (subdev == NULL)
+        return;
+
+    CLEAR(subdevFormat);
+    subdevFormat.pad = padIndex;
+    subdevFormat.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+    ret = subdev->xioctl(VIDIOC_SUBDEV_G_FMT, &subdevFormat);
+    if (ret < 0) {
+        LOGE("Failed VIDIOC_SUBDEV_G_FMT");
+    } else {
+        width = subdevFormat.format.width;
+        height = subdevFormat.format.height;
+    }
+}
+
 status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
 {
     LOG1("@%s", __FUNCTION__);
     mDevice = device;
-    status_t ret = NO_ERROR;
+    status_t status = NO_ERROR;
     Vector<struct cameraInfo> camInfo;
     size_t numCameras = enumerateInputs(camInfo);
+
+    mInitialModeDataValid = false;
 
     if (numCameras < (size_t) PlatformData::numberOfCameras()) {
         LOGE("Number of detected sensors not matching static Platform data!");
@@ -84,25 +124,309 @@ status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
 
     // Choose the camera sensor
     LOG1("Selecting camera sensor: %s", mCameraInput.name);
-    ret = mDevice->setInput(mCameraInput.index);
-    if (ret != NO_ERROR) {
-        ret = UNKNOWN_ERROR;
+    status = mDevice->setInput(mCameraInput.index);
+    if (status != NO_ERROR) {
+        status = UNKNOWN_ERROR;
     } else {
         PERFORMANCE_TRACES_BREAKDOWN_STEP("capture_s_input");
         // Query now the supported pixel formats
         Vector<v4l2_fmtdesc> formats;
-        ret = mDevice->queryCapturePixelFormats(formats);
-        if (ret != NO_ERROR) {
+        status = mDevice->queryCapturePixelFormats(formats);
+        if (status != NO_ERROR) {
             LOGW("Cold not query capture formats from sensor: %s", mCameraInput.name);
-            ret = NO_ERROR;   // This is not critical
+            status = NO_ERROR;   // This is not critical
         }
         sensorStoreRawFormat(formats);
     }
 
-    return ret;
+    return status;
 }
 
 /**
+ * Find and open V4L2 subdevices for direct access
+ *
+ * SensorHW class needs access to both sensor subdevice
+ * and ATOMISP subdevice at the moment. In CSS2 there
+ * are multiple ATOMISP subdevices (dual stream). To find
+ * the correct one we travel through the pads and links
+ * exposed by Media Controller API.
+ *
+ * Note: Current sensor selection above uses VIDIOC_ENUMINPUTS and
+ *       VIDIOC_S_INPUT on  atomisp main device. The preferred method
+ *       would be to have separate control over V4L2 subdevices, their
+ *       pad formats and links using Media Controller API. Here in
+ *       SensorHW class it would be natural to have direct controls and
+ *       queries to sensor subdevice. This is not fully supported in our
+ *       drivers so workarounds are done here to hide the facts from
+ *       above layers.
+ *
+ * Workaround 1: use ISP subdev sink pad format temporarily to fetch
+ *               reliable sensor output size.
+ */
+status_t SensorHW::openSubdevices()
+{
+    LOG1("@%s", __FUNCTION__);
+    struct media_device_info mediaDeviceInfo;
+    struct media_entity_desc mediaEntityDesc;
+    struct media_entity_desc mediaEntityDescTmp;
+    status_t status = NO_ERROR;
+    int sinkPadIndex = -1;
+    int ret = 0;
+
+    sp<V4L2DeviceBase> mediaCtl = new V4L2DeviceBase("/dev/media0", 0);
+    status = mediaCtl->open();
+    if (status != NO_ERROR) {
+        LOGE("Failed to open media device");
+        return status;
+    }
+
+    CLEAR(mediaDeviceInfo);
+    ret = mediaCtl->xioctl(MEDIA_IOC_DEVICE_INFO, &mediaDeviceInfo);
+    if (ret < 0) {
+        LOGE("Failed to get media device information");
+        mediaCtl.clear();
+        return UNKNOWN_ERROR;
+    }
+
+    LOG1("Media device : %s", mediaDeviceInfo.driver);
+
+    status = findMediaEntityByName(mediaCtl, mCameraInput.name, mediaEntityDesc);
+    if (status != NO_ERROR) {
+        LOGE("Failed to find sensor subdevice");
+        return status;
+    }
+
+    status = openSubdevice(mSensorSubdevice, mediaEntityDesc.v4l.major, mediaEntityDesc.v4l.minor);
+    if (status != NO_ERROR) {
+        LOGE("Failed to open sensor subdevice");
+        return status;
+    }
+
+    while (status == NO_ERROR) {
+        CLEAR(mediaEntityDescTmp);
+        status = findConnectedEntity(mediaCtl, mediaEntityDesc, mediaEntityDescTmp, sinkPadIndex);
+        if (status != NO_ERROR) {
+            LOGE("Failed to find connections");
+            break;
+        }
+        mediaEntityDesc = mediaEntityDescTmp;
+        if (strncmp(mediaEntityDescTmp.name, "ATOM ISP SUBDEV", MAX_SENSOR_NAME_LENGTH) == 0) {
+            LOG1("Connected ISP subdevice found");
+            break;
+        }
+    }
+
+    if (status != NO_ERROR) {
+        LOGE("Unable to find connected ISP subdevice!");
+        return status;
+    }
+
+    status = openSubdevice(mIspSubdevice, mediaEntityDescTmp.v4l.major, mediaEntityDescTmp.v4l.minor);
+    if (status != NO_ERROR) {
+        LOGE("Failed to open sensor subdevice");
+        return status;
+    }
+
+    // Currently only ISP sink pad format gives reliable size information
+    // so we store it in the beginning.
+    getPadFormat(mIspSubdevice, sinkPadIndex, mOutputWidth, mOutputHeight);
+
+    mediaCtl->close();
+    mediaCtl.clear();
+
+    return status;
+}
+
+/**
+ * Find description for given entity index
+ *
+ * Using media controller temporarily here to query entity with given name.
+ */
+status_t SensorHW::findMediaEntityById(sp<V4L2DeviceBase> &mediaCtl, int index,
+        struct media_entity_desc &mediaEntityDesc)
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret = 0;
+    CLEAR(mediaEntityDesc);
+    mediaEntityDesc.id = index;
+    ret = mediaCtl->xioctl(MEDIA_IOC_ENUM_ENTITIES, &mediaEntityDesc);
+    if (ret < 0) {
+        LOG1("No more media entities");
+        return UNKNOWN_ERROR;
+    }
+    return NO_ERROR;
+}
+
+
+/**
+ * Find description for given entity name
+ *
+ * Using media controller temporarily here to query entity with given name.
+ */
+status_t SensorHW::findMediaEntityByName(sp<V4L2DeviceBase> &mediaCtl, char const* entityName,
+        struct media_entity_desc &mediaEntityDesc)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = UNKNOWN_ERROR;
+    for (int i = 0; ; i++) {
+        status = findMediaEntityById(mediaCtl, i | MEDIA_ENT_ID_FLAG_NEXT, mediaEntityDesc);
+        if (status != NO_ERROR)
+            break;
+        LOG2("Media entity %d : %s", i, mediaEntityDesc.name);
+        if (strncmp(mediaEntityDesc.name, entityName, MAX_SENSOR_NAME_LENGTH) == 0)
+            break;
+    }
+
+    return status;
+}
+
+/**
+ * Find entity description for first outbound connection
+ */
+status_t SensorHW::findConnectedEntity(sp<V4L2DeviceBase> &mediaCtl,
+        const struct media_entity_desc &mediaEntityDescSrc,
+        struct media_entity_desc &mediaEntityDescDst, int &padIndex)
+{
+    LOG1("@%s", __FUNCTION__);
+    struct media_links_enum links;
+    status_t status = UNKNOWN_ERROR;
+    int connectedEntity = -1;
+    int ret = 0;
+
+    LOG2("%s : pads %d links %d", mediaEntityDescSrc.name, mediaEntityDescSrc.pads, mediaEntityDescSrc.links);
+
+    links.entity = mediaEntityDescSrc.id;
+    links.pads = (struct media_pad_desc*) malloc(mediaEntityDescSrc.pads * sizeof(struct media_pad_desc));
+    links.links = (struct media_link_desc*) malloc(mediaEntityDescSrc.links * sizeof(struct media_link_desc));
+
+    ret = mediaCtl->xioctl(MEDIA_IOC_ENUM_LINKS, &links);
+    if (ret < 0) {
+        LOGE("Failed to query any links");
+    } else {
+        for (int i = 0; i < mediaEntityDescSrc.links; i++) {
+            if (links.links[i].sink.entity != mediaEntityDescSrc.id) {
+                connectedEntity = links.links[0].sink.entity;
+                padIndex = links.links[0].sink.index;
+            }
+        }
+        if (connectedEntity >= 0)
+            status = NO_ERROR;
+    }
+
+    free(links.pads);
+    free(links.links);
+
+    if (status != NO_ERROR)
+        return status;
+
+    status = findMediaEntityById(mediaCtl, connectedEntity, mediaEntityDescDst);
+    if (status != NO_ERROR)
+        return status;
+
+    LOG2("Connected entity ==> %s, pad %d", mediaEntityDescDst.name, padIndex);
+    return status;
+}
+
+/**
+ * Open device node based on device identifier
+ *
+ * Helper method to find the device node name for V4L2 subdevices
+ * from sysfs.
+ */
+status_t SensorHW::openSubdevice(sp<V4L2DeviceBase> &subdev, int major, int minor)
+{
+    LOG1("@%s :  major %d, minor %d", __FUNCTION__, major, minor);
+    status_t status = UNKNOWN_ERROR;
+    int ret = 0;
+    char sysname[1024];
+    char devname[1024];
+    sprintf(devname, "/sys/dev/char/%u:%u", major, minor);
+    ret = readlink(devname, sysname, sizeof(sysname));
+    if (ret < 0) {
+        LOGE("Unable to find subdevice node");
+    } else {
+        sysname[ret] = 0;
+        char *lastSlash = strrchr(sysname, '/');
+        if (lastSlash == NULL) {
+            LOGE("Invalid sysfs subdev path");
+            return status;
+        }
+        sprintf(devname, "/dev/%s", lastSlash + 1);
+        LOG1("Subdevide node : %s", devname);
+        subdev.clear();
+        subdev = new V4L2DeviceBase(devname, 0);
+        status = subdev->open();
+        if (status != NO_ERROR) {
+            LOGE("Failed to open subdevice");
+            subdev.clear();
+        }
+    }
+    return status;
+}
+
+/**
+ * Prepare Sensor HW for start streaming
+ *
+ * This function is to be called once V4L2 pipeline is fully
+ * configured. Here we do the final settings or query the initial
+ * sensor parameters.
+*
+ * Note: Set or query means hiding the fact that sensor controls
+ * in legacy V4L2 are passed through ISP driver and mostly basing
+ * on its format configuration. Media Controller API is not used to
+ * build the links, but drivers are exposing the subdevices with
+ * certain controls provided. SensorHW class is in roadmap to
+ * utilize direct v4l2 subdevice IO meanwhile maintaining
+ * transparent controls to clients through IHWSensorControl.
+ *
+ * After this call certain IHWSensorControls
+ * are unavailable (controls that are not supported while streaming)
+ *
+ * TODO: Make controls not available during streaming more explicit
+ *       by protecting the IOCs with streaming state.
+ */
+status_t SensorHW::prepare()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    int ret = 0;
+
+    // Open subdevice for direct IOCTL.
+    //
+    status = openSubdevices();
+
+    // Sensor is configured, readout the initial mode info
+    ret = getModeInfo(&mInitialModeData);
+    if (ret != 0)
+        LOGW("Reading initial sensor mode info failed!");
+
+    if (mInitialModeData.frame_length_lines != 0 &&
+        mInitialModeData.binning_factor_y != 0 &&
+        mInitialModeData.vt_pix_clk_freq_mhz != 0) {
+        mInitialModeDataValid = true;
+
+#ifdef LIBCAMERA_RD_FEATURES
+        // Debug logging for timings from SensorModeData
+        long long vbi_ll = mInitialModeData.frame_length_lines - (mInitialModeData.crop_vertical_end - mInitialModeData.crop_vertical_start + 1) / mInitialModeData.binning_factor_y;
+
+        LOG2("SensorModeData timings: FL %lldus, VBI %lldus, FPS %f",
+             ((long long) mInitialModeData.line_length_pck
+              * mInitialModeData.frame_length_lines) * 1000000
+              / mInitialModeData.vt_pix_clk_freq_mhz,
+             ((long long) mInitialModeData.line_length_pck * vbi_ll) * 1000000
+              / mInitialModeData.vt_pix_clk_freq_mhz,
+             ((double) mInitialModeData.vt_pix_clk_freq_mhz)
+              / (mInitialModeData.line_length_pck
+              * mInitialModeData.frame_length_lines));
+#endif
+    }
+
+    LOG1("Sensor output size %dx%d, FPS %f", mOutputWidth, mOutputHeight, getFramerate());
+
+    return status;
+}
+
+/*
  * Helper method for the sensor to select the prefered BAYER format
  * the supported pixel formats are retrieved when the sensor is selected.
  *
@@ -367,7 +691,6 @@ int SensorHW::setExposure(struct atomisp_exposure *exposure)
 int SensorHW::setExposureTime(int time)
 {
     LOG2("@%s", __FUNCTION__);
-
     return mDevice->setControl(V4L2_CID_EXPOSURE_ABSOLUTE, time, "Exposure time");
 }
 
@@ -408,10 +731,72 @@ const char * SensorHW::getSensorName(void)
     return mCameraInput.name;
 }
 
-float SensorHW::getFrameRate() const
+/**
+ * Set sensor framerate
+ *
+ * This function shall be called only before starting the stream and
+ * also before querying sensor mode data.
+ *
+ * TODO: Make controls not available during streaming more explicit
+ *       by protecting the IOCs with streaming state.
+ */
+status_t SensorHW::setFramerate(int fps)
 {
-    // TODO:
-    return 24.0;
+    int ret = 0;
+    LOG1("@%s: fps %d", __FUNCTION__, fps);
+
+    if (mSensorSubdevice == NULL)
+        return NO_INIT;
+
+    struct v4l2_subdev_frame_interval subdevFrameInterval;
+    CLEAR(subdevFrameInterval);
+    subdevFrameInterval.pad = 0;
+    subdevFrameInterval.interval.numerator = 1;
+    subdevFrameInterval.interval.denominator = fps;
+    ret = mSensorSubdevice->xioctl(VIDIOC_SUBDEV_S_FRAME_INTERVAL, &subdevFrameInterval);
+    if (ret < 0){
+        LOGE("Failed to set framerate to sensor subdevice");
+        return UNKNOWN_ERROR;
+    }
+    return NO_ERROR;
+}
+
+/**
+ * Returns maximum sensor framerate for active configuration
+ */
+float SensorHW::getFramerate() const
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret = 0;
+
+    // Try initial mode data first
+    if (mInitialModeDataValid) {
+        LOG1("Using framerate from mode data");
+        return ((float) mInitialModeData.vt_pix_clk_freq_mhz) /
+               ( mInitialModeData.line_length_pck * mInitialModeData.frame_length_lines);
+    }
+
+    // Then subdev G_FRAME_INTERVAL
+    if (mSensorSubdevice != NULL) {
+        struct v4l2_subdev_frame_interval subdevFrameInterval;
+        CLEAR(subdevFrameInterval);
+        subdevFrameInterval.pad = 0;
+        ret = mSensorSubdevice->xioctl(VIDIOC_SUBDEV_G_FRAME_INTERVAL, &subdevFrameInterval);
+        if (ret >= 0 && subdevFrameInterval.interval.numerator != 0) {
+            LOG1("Using framerate from sensor subdevice");
+            return ((float) subdevFrameInterval.interval.denominator) / subdevFrameInterval.interval.numerator;
+        }
+    }
+
+    // Finally fall into videonode given framerate
+    float fps = 0.0;
+    ret = mDevice->getFramerate(&fps, mOutputWidth, mOutputHeight, mRawBayerFormat);
+    if (ret < 0) {
+        LOGW("Failed to query the framerate");
+        return 30.0;
+    }
+    LOG1("Using framerate provided by main video node");
+    return fps;
 }
 
 

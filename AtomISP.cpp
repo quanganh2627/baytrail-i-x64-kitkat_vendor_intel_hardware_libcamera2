@@ -954,6 +954,8 @@ status_t AtomISP::configure(AtomMode mode)
     {
         mMode = mode;
         dumpFrameInfo(mode);
+        // Pipeline configured, triggering SensorHW::prepare()
+        status = mSensorHW.prepare();
     }
 
     /**
