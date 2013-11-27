@@ -19,19 +19,28 @@
 
 #include "ICameraHwControls.h"
 #include "PlatformData.h"
+#include "AtomIspObserverManager.h" // IObserverSubject
 
 namespace android {
 
 class V4L2DeviceBase;
 class V4L2VideoNode;
+class V4L2Subdevice;
 
-class SensorHW:public IHWSensorControl {
+class SensorHW
+    :public IHWSensorControl //!< Provides sensor control interface
+    ,private IObserverSubject //!< Provides frame synchronization source
+    ,private IAtomIspObserver //!< for temporary workaround, see AtomISP::start()
+{
 
 public:
     SensorHW(int cameraId);
     ~SensorHW();
     status_t selectActiveSensor(sp<V4L2VideoNode> &device);
     status_t prepare();
+    status_t start();
+    status_t stop();
+    IObserverSubject* getFrameSyncSource() { return (IObserverSubject*) this; };
 
     /* IHWSensorControl overloads, */
     virtual const char * getSensorName(void);
@@ -71,6 +80,15 @@ public:
     virtual float getFramerate() const;
     virtual status_t setFramerate(int fps);
 
+    virtual status_t waitForFrameSync();
+
+    /* IAtomIspObserver overloads */
+    virtual bool atomIspNotify(Message *msg, const ObserverState state) { return true; };
+
+private:
+    virtual const char* getName() { return "FrameSyncSource"; }
+    virtual status_t observe(IAtomIspObserver::Message *msg);
+
 private:
     static const int MAX_SENSOR_NAME_LENGTH = 32;
 
@@ -99,6 +117,7 @@ private:
     sp<V4L2DeviceBase> mSensorSubdevice;
     sp<V4L2DeviceBase> mIspSubdevice;
     sp<V4L2VideoNode> mDevice;
+    sp<V4L2Subdevice> mSyncEventDevice;
     SensorType        mSensorType;
     struct cameraInfo mCameraInput;
     int mCameraId;
@@ -110,6 +129,10 @@ private:
     int mRawBayerFormat;
     int mOutputWidth;
     int mOutputHeight;
+
+    Mutex mFrameSyncMutex;
+    Condition mFrameSyncCondition;
+    bool mFrameSyncEnabled;
 }; // class SensorHW
 
 }; // namespace android

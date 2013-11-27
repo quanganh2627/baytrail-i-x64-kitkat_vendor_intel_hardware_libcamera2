@@ -88,6 +88,8 @@ public:
 
     virtual void getMotorData(sensorPrivateData *sensor_data) { return mSensorCI->getMotorData(sensor_data); }
 
+    virtual status_t waitForFrameSync() { return mSensorCI->waitForFrameSync(); }
+
     // IAtomIspObserver overloads
     virtual bool atomIspNotify(Message *msg, const ObserverState state);
 

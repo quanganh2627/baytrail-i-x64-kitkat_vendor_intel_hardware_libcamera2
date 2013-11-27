@@ -247,8 +247,6 @@ public:
     virtual status_t attachObserver(IAtomIspObserver *observer, ObserverType t) = 0;
     virtual status_t detachObserver(IAtomIspObserver *observer, ObserverType t) = 0;
     virtual void pauseObserver(ObserverType t) = 0;
-    virtual status_t enableFrameSyncEvent(bool enable) = 0;
-    virtual status_t pollFrameSyncEvent() = 0;
 
 };
 
@@ -262,6 +260,7 @@ public:
     virtual int getCurrentCameraId(void) = 0;
 
     virtual float getFramerate() const = 0;
+    virtual status_t waitForFrameSync() = 0;
 
     virtual unsigned int getExposureDelay() = 0;
 
@@ -271,7 +270,6 @@ public:
     virtual int  getExposureTime(int *exposure_time) = 0;
     virtual int  getAperture(int *aperture) = 0;
     virtual int  getFNumber(unsigned short  *fnum_num, unsigned short *fnum_denom) = 0;
-    // Sensor setting, ISP bypass?
     virtual int setExposureTime(int time) = 0;
     virtual int setExposureMode(v4l2_exposure_auto_type type) = 0;
     virtual int getExposureMode(v4l2_exposure_auto_type * type) = 0;

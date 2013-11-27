@@ -27,6 +27,7 @@ BracketManager::BracketManager(HWControlGroup &hwcg, I3AControls *aaaControls) :
     Thread(false)
     ,m3AControls(aaaControls)
     ,mISP(hwcg.mIspCI)
+    ,mSensorCI(hwcg.mSensorCI)
     ,mFpsAdaptSkip(-1)
     ,mBurstLength(-1)
     ,mBurstCaptureNum(-1)
@@ -118,9 +119,9 @@ status_t BracketManager::skipFrames(int numFrames, int doBracket)
                     return status;
                 }
             } else if (mBracketing.mode != BRACKET_NONE) {
-                // poll and dequeue SOF event
-                if (mISP->pollFrameSyncEvent() != NO_ERROR) {
-                    LOGE("@%s: Error in polling frame sync event", __FUNCTION__);
+                // wait for frame sync
+                if (mSensorCI->waitForFrameSync() != NO_ERROR) {
+                    LOGE("@%s: Error waiting frame sync", __FUNCTION__);
                 }
             }
             if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
@@ -267,9 +268,6 @@ status_t BracketManager::initBracketing(int length, int skip, float *bracketValu
         break;
     }
 
-    // Enable Start-Of-Frame event
-    mISP->enableFrameSyncEvent(true);
-
     // Allocate internal buffers for captured frames
     mSnapshotBufs.reset(new AtomBuffer[mBurstLength]);
     mPostviewBufs.reset(new AtomBuffer[mBurstLength]);
@@ -313,9 +311,9 @@ status_t BracketManager::applyBracketing()
             LOGE("Error applying bracketing params!");
         }
     } else {
-        // poll and dequeue SOF event before getSnapshot()
-        if (mISP->pollFrameSyncEvent() != NO_ERROR) {
-            LOGE("@%s: Error in polling frame sync event", __FUNCTION__);
+        // wait for frame sync before getSnapshot()
+        if (mSensorCI->waitForFrameSync()  != NO_ERROR) {
+            LOGE("@%s: Error in waiting frame sync", __FUNCTION__);
         }
     }
 
@@ -343,9 +341,9 @@ status_t BracketManager::applyBracketing()
             getRecoveryParams(skip, doBracket);
             skipFrames(skip, doBracket);
             if (skip > doBracket) {
-                // poll and dequeue SOF event before getSnapshot()
-                if (mISP->pollFrameSyncEvent() != NO_ERROR) {
-                    LOGE("@%s: Error in polling frame sync event", __FUNCTION__);
+                // wait frame sync before getSnapshot()
+                if (mSensorCI->waitForFrameSync() != NO_ERROR) {
+                    LOGE("@%s: Error waiting frame sync", __FUNCTION__);
                 }
             }
             retryCount++;
@@ -359,8 +357,6 @@ status_t BracketManager::applyBracketing()
 
     if (mBurstCaptureNum == mBurstLength) {
         LOG1("@%s: All frames captured", __FUNCTION__);
-        // Last setting applied, disable SOF event
-        mISP->enableFrameSyncEvent(false);
         mState = STATE_CAPTURE;
     }
 
@@ -374,9 +370,9 @@ status_t BracketManager::applyBracketingParams()
     SensorAeConfig aeConfig;
     memset(&aeConfig, 0, sizeof(aeConfig));
 
-    // Poll frame sync event
-    if (mISP->pollFrameSyncEvent() != NO_ERROR) {
-        LOGE("@%s: Error in polling frame sync event", __FUNCTION__);
+    // wait frame sync
+    if (mSensorCI->waitForFrameSync() != NO_ERROR) {
+        LOGE("@%s: Error waiting frame sync", __FUNCTION__);
     }
 
     switch (mBracketing.mode) {
@@ -520,9 +516,6 @@ status_t BracketManager::handleMessageStopBracketing()
     mSnapshotBufs.reset();
     mPostviewBufs.reset();
     mBracketing.values.reset();
-    // disable SOF event
-    mISP->enableFrameSyncEvent(false);
-
     mMessageQueue.reply(MESSAGE_ID_STOP_BRACKETING, status);
     return status;
 }

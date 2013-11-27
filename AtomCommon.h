@@ -73,6 +73,9 @@
  */
 #define TIMEVAL2USECS(x) (long long)(((x)->tv_sec*1000000000LL + (x)->tv_usec*1000LL)/1000LL)
 
+#define ATOMISP_EVENT_RECOVERY_WAIT 33000 // Time to usleep between retry's after erros from v4l2_event receiving.
+#define FRAME_SYNC_POLL_TIMEOUT 500
+
 namespace android {
 struct AtomBuffer;
 class IBufferOwner

@@ -56,11 +56,8 @@
 #define ATOMISP_PREVIEW_POLL_TIMEOUT 1000
 #define ATOMISP_GETFRAME_RETRY_COUNT 60  // Times to retry poll/dqbuf in case of error
 #define ATOMISP_GETFRAME_STARVING_WAIT 33000 // Time to usleep between retry's when stream is starving from buffers.
-#define ATOMISP_EVENT_RECOVERY_WAIT 33000 // Time to usleep between retry's after erros from v4l2_event receiving.
 #define ATOMISP_MIN_CONTINUOUS_BUF_SIZE 3 // Min buffer len supported by CSS
 #define ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X 5 // Min buffer len supported by CSS2.x
-#define FRAME_SYNC_POLL_TIMEOUT 500
-
 namespace android {
 
 ////////////////////////////////////////////////////////////////////
@@ -80,7 +77,6 @@ static struct devNameGroup devName[MAX_CAMERAS] = {
 
 AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callbacks) :
      mPreviewStreamSource("PreviewStreamSource", this)
-    ,mFrameSyncSource("FrameSyncSource", this)
     ,m3AStatSource("AAAStatSource", this)
     ,mCameraId(cameraId)
     ,mDvs(NULL)
@@ -116,9 +112,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mXnr(0)
     ,mZoomRatios(NULL)
     ,mRawDataDumpSize(0)
-    ,mFrameSyncRequested(0)
     ,m3AStatRequested(0)
-    ,mFrameSyncEnabled(false)
     ,m3AStatscEnabled(false)
     ,mColorEffect(V4L2_COLORFX_NONE)
     ,mScaler(scalerService)
@@ -151,7 +145,6 @@ status_t AtomISP::initDevice()
     mPreviewDevice.clear();
     mPostViewDevice.clear();
     mRecordingDevice.clear();
-    mIspSubdevice.clear();
     m3AEventSubdevice.clear();
     mFileInjectDevice.clear();
     mOriginalPreviewDevice.clear();
@@ -160,7 +153,6 @@ status_t AtomISP::initDevice()
     mPreviewDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_PREVIEW_DEVICE], V4L2_PREVIEW_DEVICE);
     mPostViewDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_POSTVIEW_DEVICE], V4L2_POSTVIEW_DEVICE);
     mRecordingDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_RECORDING_DEVICE], V4L2_RECORDING_DEVICE);
-    mIspSubdevice = new V4L2Subdevice(PlatformData::getISPSubDeviceName(),V4L2_ISP_SUBDEV);
     m3AEventSubdevice = new V4L2Subdevice(PlatformData::getISPSubDeviceName(),V4L2_ISP_SUBDEV);
     mFileInjectDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_INJECT_DEVICE], V4L2_INJECT_DEVICE,
                                           V4L2VideoNode::OUTPUT_VIDEO_NODE);
@@ -314,7 +306,7 @@ status_t AtomISP::init()
 /**
  * Returns IHWSensorControl interface
  *
- * Note: not reference counted
+ * Note: not ref counted
  *
  * Local mSensorHW is SensorHW object that implements IHWSensorControl.
  * Interface accessor is valid once AtomISP is initialized and remains
@@ -427,7 +419,6 @@ AtomISP::~AtomISP()
     mPostViewDevice.clear();
     mRecordingDevice.clear();
     m3AEventSubdevice.clear();
-    mIspSubdevice.clear();
     mFileInjectDevice.clear();
     mSensorSupportedFormats.clear();
 
@@ -1021,6 +1012,16 @@ status_t AtomISP::start()
     LOG1("mode = %d", mMode);
     status_t status = NO_ERROR;
 
+    if (mSensorType == SENSOR_TYPE_RAW) {
+        // TODO: Workaround to be removed.
+        // This is temporary workaround to support old FrameSyncSource
+        // implementation moved from AtomISP into SensorHW class. To
+        // ensure the observing thread is created regardless whether
+        // there are clients attaching, we attach SensorHW itself.
+        attachObserver((IAtomIspObserver *) &mSensorHW, OBSERVE_FRAME_SYNC_SOF);
+    }
+    mSensorHW.start();
+
     switch (mMode) {
     case MODE_CONTINUOUS_CAPTURE:
     case MODE_PREVIEW:
@@ -1094,6 +1095,11 @@ status_t AtomISP::stop()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
+    if (mSensorType == SENSOR_TYPE_RAW) {
+        // TODO: Workaround to be removed, See AtomISP::start()
+        detachObserver((IAtomIspObserver *) &mSensorHW, OBSERVE_FRAME_SYNC_SOF);
+    }
+
     runStopISPActions();
 
     switch (mMode) {
@@ -1116,6 +1122,9 @@ status_t AtomISP::stop()
     default:
         break;
     };
+
+    mSensorHW.stop();
+
     if (mFileInject.active == true)
         stopFileInject();
 
@@ -1452,22 +1461,6 @@ status_t AtomISP::configureCapture()
     }
 
 nopostview:
-    // Subscribe to frame sync event if in bracketing mode
-    if ((mFrameSyncRequested > 0) && (!mFrameSyncEnabled)) {
-        ret = mIspSubdevice->open();
-        if (ret < 0) {
-            LOGE("Failed to open V4L2_ISP_SUBDEV!");
-            goto errorCloseSecond;
-        }
-
-        ret = mIspSubdevice->subscribeEvent(V4L2_EVENT_FRAME_SYNC);
-        if (ret < 0) {
-            LOGE("Failed to subscribe to frame sync event!");
-            goto errorCloseSubdev;
-        }
-        mFrameSyncEnabled = true;
-    }
-
     // need to resend the current zoom value
     if (mMode == MODE_VIDEO && mDvs && mCssMajorVersion == 2)
         mDvs->setZoom(mConfig.zoom);
@@ -1476,8 +1469,6 @@ nopostview:
 
     return status;
 
-errorCloseSubdev:
-    mIspSubdevice->close();
 errorCloseSecond:
     mPostViewDevice->close();
 errorFreeBuf:
@@ -1878,8 +1869,6 @@ status_t AtomISP::startCapture()
 
     for (i = 0; i < initialSkips; i++) {
         AtomBuffer s,p;
-        if (mFrameSyncEnabled)
-            pollFrameSyncEvent();
         ret = getSnapshot(&s,&p);
         if (ret == NO_ERROR)
             ret = putSnapshot(&s,&p);
@@ -1960,13 +1949,6 @@ status_t AtomISP::stopCapture()
     // note: MAIN device is kept open on purpose
     if (mPostViewDevice->isOpen())
         mPostViewDevice->close();
-
-    // if SOF event is enabled, unsubscribe and close the device
-    if (mFrameSyncEnabled) {
-        mIspSubdevice->unsubscribeEvent(V4L2_EVENT_FRAME_SYNC);
-        mIspSubdevice->close();
-        mFrameSyncEnabled = false;
-    }
 
     if (mUsingClientSnapshotBuffers) {
         mConfig.num_snapshot = 0;
@@ -5071,21 +5053,6 @@ int AtomISP::setFlashIntensity(int intensity)
 }
 
 /**
- * TODO: deprecated, utilize observer. See mFrameSyncSource
- */
-status_t AtomISP::enableFrameSyncEvent(bool enable)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    if (enable) {
-        mFrameSyncRequested++;
-    } else if (mFrameSyncRequested > 0) {
-        mFrameSyncRequested--;
-    }
-    return status;
-}
-
-/**
  * Return IObserverSubject for ObserverType
  */
 IObserverSubject* AtomISP::observerSubjectByType(ObserverType t)
@@ -5096,7 +5063,7 @@ IObserverSubject* AtomISP::observerSubjectByType(ObserverType t)
             s = &mPreviewStreamSource;
             break;
         case OBSERVE_FRAME_SYNC_SOF:
-            s = &mFrameSyncSource;
+            s = mSensorHW.getFrameSyncSource();
             break;
         case OBSERVE_3A_STAT_READY:
             s = &m3AStatSource;
@@ -5113,27 +5080,6 @@ IObserverSubject* AtomISP::observerSubjectByType(ObserverType t)
 status_t AtomISP::attachObserver(IAtomIspObserver *observer, ObserverType t)
 {
     status_t ret;
-
-    if (t == OBSERVE_FRAME_SYNC_SOF) {
-        mFrameSyncRequested++;
-        if (mFrameSyncRequested == 1) {
-           // Subscribe to frame sync event only the first time is requested
-           ret = mIspSubdevice->open();
-           if (ret < 0) {
-               LOGE("Failed to open V4L2_ISP_SUBDEV!");
-               return UNKNOWN_ERROR;
-           }
-
-           ret =  mIspSubdevice->subscribeEvent(V4L2_EVENT_FRAME_SYNC);
-           if (ret < 0) {
-               LOGE("Failed to subscribe to frame sync event!");
-               mIspSubdevice->close();
-               return UNKNOWN_ERROR;
-           }
-           mFrameSyncEnabled = true;
-
-        }
-    }
 
     if (t == OBSERVE_3A_STAT_READY) {
         m3AStatRequested++;
@@ -5174,15 +5120,6 @@ status_t AtomISP::detachObserver(IAtomIspObserver *observer, ObserverType t)
         return ret;
     }
 
-    if (t == OBSERVE_FRAME_SYNC_SOF) {
-        if (--mFrameSyncRequested <= 0 && mFrameSyncEnabled) {
-            mIspSubdevice->unsubscribeEvent(V4L2_EVENT_FRAME_SYNC);
-            mIspSubdevice->close();
-            mFrameSyncEnabled = false;
-            mFrameSyncRequested = 0;
-        }
-    }
-
     if (t == OBSERVE_3A_STAT_READY) {
         if (--m3AStatRequested <= 0 && m3AStatscEnabled) {
             m3AEventSubdevice->unsubscribeEvent(V4L2_EVENT_ATOMISP_3A_STATS_READY);
@@ -5219,54 +5156,6 @@ void AtomISP::pauseObserver(ObserverType t)
 {
     mObserverManager.setState(OBSERVER_STATE_PAUSED,
             observerSubjectByType(t), true);
-}
-
-/**
- * polls and dequeues SOF event into IAtomIspObserver::Message
- */
-status_t AtomISP::FrameSyncSource::observe(IAtomIspObserver::Message *msg)
-{
-    LOG2("@%s", __FUNCTION__);
-    struct v4l2_event event;
-    int ret;
-
-    if (!mISP->mFrameSyncEnabled) {
-        msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
-        LOGE("Frame sync not enabled");
-        return INVALID_OPERATION;
-    }
-
-    ret = mISP->mIspSubdevice->poll(FRAME_SYNC_POLL_TIMEOUT);
-
-    if (ret <= 0) {
-        LOGE("SOF sync poll failed (%s), waiting recovery..", (ret == 0) ? "timeout" : "error");
-        ret = -1;
-    } else {
-        // poll was successful, dequeue the event right away
-        do {
-            ret = mISP->mIspSubdevice->dequeueEvent(&event);
-            if (ret < 0) {
-                LOGE("Dequeue SOF event failed");
-            }
-        } while (event.pending > 0);
-    }
-
-    if (ret < 0) {
-        msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
-        // We sleep a moment but keep passing error messages to observers
-        // until further client controls.
-        usleep(ATOMISP_EVENT_RECOVERY_WAIT);
-        return NO_ERROR;
-    }
-
-    // fill observer message
-    msg->id = IAtomIspObserver::MESSAGE_ID_EVENT;
-    msg->data.event.type = IAtomIspObserver::EVENT_TYPE_SOF;
-    msg->data.event.timestamp.tv_sec  = event.timestamp.tv_sec;
-    msg->data.event.timestamp.tv_usec = event.timestamp.tv_nsec / 1000;
-    msg->data.event.sequence = event.sequence;
-
-    return NO_ERROR;
 }
 
 /**
@@ -5427,42 +5316,6 @@ try_again:
     }
 
     return status;
-}
-
-/**
- * TODO: deprecated, utilize observer. See mFrameSyncSource.
- */
-int AtomISP::pollFrameSyncEvent()
-{
-    LOG1("@%s", __FUNCTION__);
-    struct v4l2_event event;
-    int ret;
-
-    if (!mFrameSyncEnabled) {
-        LOGE("Frame sync not enabled");
-        return INVALID_OPERATION;
-    }
-
-    ret = mIspSubdevice->poll(FRAME_SYNC_POLL_TIMEOUT);
-
-    if (ret <= 0) {
-        LOGE("Poll failed, disabling SOF event");
-        mIspSubdevice->unsubscribeEvent(V4L2_EVENT_FRAME_SYNC);
-        mIspSubdevice->close();
-        mFrameSyncEnabled = false;
-        return UNKNOWN_ERROR;
-    }
-
-    // poll was successful, dequeue the event right away
-    do {
-        ret = mIspSubdevice->dequeueEvent(&event);
-        if (ret < 0) {
-            LOGE("Dequeue event failed");
-            return UNKNOWN_ERROR;
-        }
-    } while (event.pending > 0);
-
-    return NO_ERROR;
 }
 
 void AtomISP::setNrEE(bool en)

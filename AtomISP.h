@@ -169,8 +169,6 @@ public:
     status_t setMotionVector(const struct atomisp_dis_vector *vector) const;
     status_t setDvsCoefficients(const struct atomisp_dis_coefficients *coefs) const;
     status_t getIspParameters(struct atomisp_parm *isp_param) const;
-    status_t enableFrameSyncEvent(bool enable);
-    status_t pollFrameSyncEvent();
 
     // file input/injection API
     int configureFileInject(const char* fileName, int width, int height, int fourcc, int bayerOrder);
@@ -403,21 +401,6 @@ private:
         AtomISP *mISP;
     } mPreviewStreamSource;
 
-    class FrameSyncSource: public IObserverSubject
-    {
-    public:
-        FrameSyncSource(const char*name, AtomISP *aisp)
-            :mName(name), mISP(aisp) { };
-
-        // IObserverSubject override
-        virtual const char* getName() { return mName.string(); };
-        virtual status_t observe(IAtomIspObserver::Message *msg);
-
-    private:
-        String8  mName;
-        AtomISP *mISP;
-    } mFrameSyncSource;
-
     class AAAStatSource: public IObserverSubject
     {
     public:
@@ -493,7 +476,6 @@ private:
     sp<V4L2VideoNode>  mPreviewDevice;
     sp<V4L2VideoNode>  mRecordingDevice;
     sp<V4L2VideoNode>  mPostViewDevice;
-    sp<V4L2Subdevice>  mIspSubdevice;
     sp<V4L2Subdevice>  m3AEventSubdevice;
     sp<V4L2VideoNode>  mOriginalPreviewDevice;
     sp<V4L2VideoNode>  mFileInjectDevice;
@@ -532,9 +514,7 @@ private:
     char *mZoomRatios;
 
     int mRawDataDumpSize;
-    int mFrameSyncRequested;
     int m3AStatRequested;
-    bool mFrameSyncEnabled;
     bool m3AStatscEnabled;
     v4l2_colorfx mColorEffect;
 

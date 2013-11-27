@@ -37,6 +37,7 @@ SensorHW::~SensorHW()
 {
    mSensorSubdevice.clear();
    mIspSubdevice.clear();
+   mSyncEventDevice.clear();
 }
 
 int SensorHW::getCurrentCameraId(void)
@@ -94,6 +95,15 @@ void SensorHW::getPadFormat(sp<V4L2DeviceBase> &subdev, int padIndex, int &width
     }
 }
 
+status_t SensorHW::waitForFrameSync()
+{
+    Mutex::Autolock lock(mFrameSyncMutex);
+    if (!mFrameSyncEnabled)
+        return NO_INIT;
+
+    return mFrameSyncCondition.wait(mFrameSyncMutex);
+}
+
 status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
 {
     LOG1("@%s", __FUNCTION__);
@@ -129,6 +139,8 @@ status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
         status = UNKNOWN_ERROR;
     } else {
         PERFORMANCE_TRACES_BREAKDOWN_STEP("capture_s_input");
+        mSensorType = PlatformData::sensorType(mCameraId);
+
         // Query now the supported pixel formats
         Vector<v4l2_fmtdesc> formats;
         status = mDevice->queryCapturePixelFormats(formats);
@@ -426,7 +438,55 @@ status_t SensorHW::prepare()
     return status;
 }
 
-/*
+/**
+ * Start sensor HW (virtual concept)
+ *
+ * Atomisp driver is responsible of starting the actual sensor streaming IO
+ * after its pipeline is configured and it has received VIDIOC_STREAMON for
+ * video nodes it exposes.
+ *
+ * In virtual concept the SensorHW shall be started once the pipeline
+ * configuration is ready and before the actual VIDIOC_STREAMON in order to
+ * not to loose track of the initial frames. This context is also the first
+ * place to query or set the initial sensor parameters.
+ */
+status_t SensorHW::start()
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret = 0;
+    Mutex::Autolock lock(mFrameSyncMutex);
+    // Subscribe to frame sync event in case of RAW sensor
+    if (mIspSubdevice != NULL && mSensorType == SENSOR_TYPE_RAW) {
+        ret = mIspSubdevice->subscribeEvent(V4L2_EVENT_FRAME_SYNC);
+        if (ret < 0) {
+            LOGE("Failed to subscribe to frame sync event!");
+            return UNKNOWN_ERROR;
+        }
+        mFrameSyncEnabled = true;
+    }
+    return NO_ERROR;
+}
+
+/**
+ * Stop sensor HW (virtual concept)
+ *
+ * Atomisp driver is responsible of stopping the actual sensor streaming IO.
+ *
+ * In virtual concept the SensorHW shall be stopped once sensor controls or
+ * frame synchronization provided by the object are no longer needed.
+ */
+status_t SensorHW::stop()
+{
+    LOG1("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mFrameSyncMutex);
+    if (mIspSubdevice != NULL) {
+        mIspSubdevice->unsubscribeEvent(V4L2_EVENT_FRAME_SYNC);
+        mFrameSyncEnabled = false;
+    }
+    return NO_ERROR;
+}
+
+/**
  * Helper method for the sensor to select the prefered BAYER format
  * the supported pixel formats are retrieved when the sensor is selected.
  *
@@ -797,6 +857,48 @@ float SensorHW::getFramerate() const
     }
     LOG1("Using framerate provided by main video node");
     return fps;
+}
+
+/**
+ * polls and dequeues frame synchronization events into IAtomIspObserver::Message
+ */
+status_t SensorHW::observe(IAtomIspObserver::Message *msg)
+{
+    LOG2("@%s", __FUNCTION__);
+    struct v4l2_event event;
+    int ret;
+
+    ret = mIspSubdevice->poll(FRAME_SYNC_POLL_TIMEOUT);
+    if (ret <= 0) {
+        LOGE("FrameSync poll failed (%s), waiting recovery..", (ret == 0) ? "timeout" : "error");
+        ret = -1;
+    } else {
+        mFrameSyncCondition.signal();
+        // poll was successful, dequeue the event right away
+        do {
+            ret = mIspSubdevice->dequeueEvent(&event);
+            if (ret < 0) {
+                LOGE("Dequeue FrameSync event failed");
+            }
+        } while (event.pending > 0);
+    }
+
+    if (ret < 0) {
+        msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
+        // We sleep a moment but keep passing error messages to observers
+        // until further client controls.
+        usleep(ATOMISP_EVENT_RECOVERY_WAIT);
+        return NO_ERROR;
+    }
+
+    // fill observer message
+    msg->id = IAtomIspObserver::MESSAGE_ID_EVENT;
+    msg->data.event.type = IAtomIspObserver::EVENT_TYPE_SOF;
+    msg->data.event.timestamp.tv_sec  = event.timestamp.tv_sec;
+    msg->data.event.timestamp.tv_usec = event.timestamp.tv_nsec / 1000;
+    msg->data.event.sequence = event.sequence;
+
+    return NO_ERROR;
 }
 
 
