@@ -110,6 +110,7 @@ void SensorHW::getPadFormat(sp<V4L2DeviceBase> &subdev, int padIndex, int &width
 
 status_t SensorHW::waitForFrameSync()
 {
+    LOG1("@%s", __FUNCTION__);
     Mutex::Autolock lock(mFrameSyncMutex);
     if (!mFrameSyncEnabled)
         return NO_INIT;

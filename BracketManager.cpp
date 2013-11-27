@@ -460,6 +460,16 @@ status_t BracketManager::startBracketing()
         }
 
         /*
+         * CSS2.0 frame sync is triggered at EOF, so we miss the first
+         * valid apply time here.
+         * TODO: apply initial already before start, or implement async
+         *       parameter queue
+         */
+        if (mISP->getCssMajorVersion() == 2) {
+            exposureLag++;
+        }
+
+        /*
          *  If we are in Exposure Bracketing, and we need to skip frames for
          *  mFpsAdaptSkip (target fps) we can count these out from initial
          *  skips done at start.
