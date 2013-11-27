@@ -342,7 +342,7 @@ end:
 bool AtomDvs2::isHighSpeedDvsSupported(int width, int height)
 {
     LOG1("@%s", __FUNCTION__);
-    int cameraId = mIsp->getCurrentCameraId();
+    int cameraId = mSensorCI->getCurrentCameraId();
     if (strcmp(PlatformData::maxHighSpeedDvsResolution(cameraId), "")) {
         const char* resolution = PlatformData::maxHighSpeedDvsResolution(cameraId);
         if (resolution != NULL) {

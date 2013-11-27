@@ -152,7 +152,9 @@ status_t V4L2VideoNode::enumerateInputs(struct v4l2_input *anInput)
 
     ret = ioctl(mFd, VIDIOC_ENUMINPUT, anInput);
 
-    if (ret < 0) {
+    if (ret == EINVAL) {
+        return BAD_INDEX;
+    } else if (ret < 0) {
         LOGE("VIDIOC_ENUMINPUT failed returned: %d (%s)", ret, strerror(errno));
         return UNKNOWN_ERROR;
     }

@@ -34,6 +34,7 @@
 #include "ScalerService.h"
 #include "ICameraHwControls.h"
 #include "IDvs.h"
+#include "SensorHW.h"
 
 namespace android {
 
@@ -60,7 +61,6 @@ class Callbacks;
 
 class AtomISP :
     public IHWIspControl,
-    public IHWSensorControl, // implements sensor support for IA 3A
     public IHWFlashControl,
     public IHWLensControl,
     public IBufferOwner {
@@ -83,8 +83,7 @@ private:
 // public methods
 public:
 
-    int getCurrentCameraId(void);
-    const char * getSensorName(void);
+    IHWSensorControl* getSensorControlInterface();
     void getDefaultParameters(CameraParameters *params, CameraParameters *intel_params);
 
     status_t configure(AtomMode mode);
@@ -178,8 +177,6 @@ public:
     bool isFileInjectionEnabled(void) const { return mFileInject.active; }
     String8 getFileInjectionFileName(void) const { return mFileInject.fileName; }
 
-    float getFrameRate() const { return mConfig.fps; }
-
     /* Acceleration API extensions */
     int loadAccFirmware(void *fw, size_t size, unsigned int *fwHandle);
     int loadAccPipeFirmware(void *fw, size_t size, unsigned int *fwHandle);
@@ -211,40 +208,6 @@ public:
     int moveFocusToBySteps(int steps);
     int getFocusPosition(int * position);
     int getFocusStatus(int *status);
-
-    /* IHWSensorControl overloads, */
-    void getMotorData(sensorPrivateData *sensor_data);
-    void getSensorData(sensorPrivateData *sensor_data);
-    int getModeInfo(struct atomisp_sensor_mode_data *mode_data);
-    int setExposureTime(int time);
-    int getExposureTime(int *exposure_time);
-    int getAperture(int *aperture);
-    int getFNumber(unsigned short  *fnum_num, unsigned short *fnum_denom);
-    int setExposureMode(v4l2_exposure_auto_type type);
-    int getExposureMode(v4l2_exposure_auto_type * type);
-    int setExposureBias(int bias);
-    int getExposureBias(int * bias);
-    int setSceneMode(v4l2_scene_mode mode);
-    int getSceneMode(v4l2_scene_mode * mode);
-    int setWhiteBalance(v4l2_auto_n_preset_white_balance mode);
-    int getWhiteBalance(v4l2_auto_n_preset_white_balance * mode);
-    int setIso(int iso);
-    int getIso(int * iso);
-    int setAeMeteringMode(v4l2_exposure_metering mode);
-    int getAeMeteringMode(v4l2_exposure_metering * mode);
-    int setAeFlickerMode(v4l2_power_line_frequency mode);
-    int setAfMode(v4l2_auto_focus_range mode);
-    int getAfMode(v4l2_auto_focus_range * mode);
-    int setAfEnabled(bool enable);
-    int set3ALock(int aaaLock);
-    int get3ALock(int * aaaLock);
-    int setAeFlashMode(v4l2_flash_led_mode mode);
-    int getAeFlashMode(v4l2_flash_led_mode * mode);
-    int getRawFormat();
-    // TODO: replacing fixed value of AE_DELAY_FRAMES in AtomAIQ.h in non-functional API refactory
-    //       this value exists in CPF and needs awareness of frames timing.
-    virtual unsigned int getExposureDelay() { return PlatformData::getSensorExposureLag(); };
-    virtual int setExposure(struct atomisp_exposure *exposure);
 
     /* ISP related controls */
     int setAicParameter(struct atomisp_parameters *aic_params);
@@ -294,8 +257,6 @@ public:
 // private types
 private:
 
-    static const int MAX_SENSOR_NAME_LENGTH = 32;
-
     static const int V4L2_MAIN_DEVICE       = 0;
     static const int V4L2_POSTVIEW_DEVICE   = 1;
     static const int V4L2_PREVIEW_DEVICE    = 2;
@@ -334,15 +295,6 @@ private:
         int num_recording_buffers;  // number of recording buffers used
         int num_preview_buffers;    // number of preview buffers used
         int zoom;                   // zoom value
-    };
-
-    struct cameraInfo {
-        int androidCameraId; /*!< Index used by android to select this camera. This index is passed
-                              *   when the camera HAL is open. Used to differentiate back and front camera
-                              */
-        int port;            //!< AtomISP port type
-        uint32_t index;      //!< V4L2 index
-        char name[MAX_SENSOR_NAME_LENGTH];
     };
 
 // private methods
@@ -419,12 +371,9 @@ private:
     int stopFileInject(void);
     status_t fileInjectSetSize(void);
 
-    status_t selectCameraSensor();
-    status_t sensorStoreRawFormat();
     size_t setupCameraInfo();
     unsigned int getNumOfSkipFrames(void);
     unsigned int getNumOfSkipStatistics(void);
-    int getPrimaryCameraIndex(void) const;
     status_t applySensorFlip(void);
     void fetchIspVersions();
 
@@ -486,7 +435,6 @@ private:
 
 // private members
 private:
-
     int mCameraId;
 
     // Dvs
@@ -496,8 +444,6 @@ private:
     // Dual Video
     int mGroupIndex;
     static Mutex sISPCountLock;
-
-    static cameraInfo sCamInfo[MAX_CAMERA_NODES];
 
     AtomMode mMode;
     Callbacks *mCallbacks;
@@ -543,7 +489,6 @@ private:
     int dumpFrameInfo(AtomMode mode);
 
     Mutex mDeviceMutex[V4L2_MAX_DEVICE_COUNT];  /*!< Used to ensure thread safety in some operations on the devices*/
-
     sp<V4L2VideoNode>  mMainDevice;
     sp<V4L2VideoNode>  mPreviewDevice;
     sp<V4L2VideoNode>  mRecordingDevice;
@@ -552,6 +497,7 @@ private:
     sp<V4L2Subdevice>  m3AEventSubdevice;
     sp<V4L2VideoNode>  mOriginalPreviewDevice;
     sp<V4L2VideoNode>  mFileInjectDevice;
+    SensorHW           mSensorHW;
 
     int dumpPreviewFrame(int previewIndex);
     int dumpRecordingFrame(int recordingIndex);
@@ -577,7 +523,6 @@ private:
     int mSessionId; // uniquely identify each session
 
     SensorType mSensorType;
-    struct cameraInfo *mCameraInput;
 
     bool mLowLight;
     int mXnr;

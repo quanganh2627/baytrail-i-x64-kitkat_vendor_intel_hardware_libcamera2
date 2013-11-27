@@ -54,6 +54,7 @@ public:
 
     // IHWSensorControl overloads
     virtual const char * getSensorName(void) { return mSensorCI->getSensorName(); }
+    virtual int getCurrentCameraId(void) { return mSensorCI->getCurrentCameraId(); }
     virtual float getFrameRate() const { return mSensorCI->getFrameRate(); }
     virtual unsigned int getExposureDelay() { return mExposureLag; }
     virtual int setExposure(struct atomisp_exposure *);

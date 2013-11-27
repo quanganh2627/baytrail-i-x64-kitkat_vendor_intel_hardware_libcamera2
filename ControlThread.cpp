@@ -230,16 +230,17 @@ status_t ControlThread::init()
         goto bail;
     }
     mISP = isp;
-    mHwcg.mIspCI = (IHWIspControl*)isp;
-    mHwcg.mSensorCI = (IHWSensorControl*)isp;
-    mHwcg.mFlashCI = (IHWFlashControl*)isp;
-    mHwcg.mLensCI = (IHWLensControl*)isp;
-
     status = mISP->init();
     if (status != NO_ERROR) {
         LOGE("Error initializing ISP");
         goto bail;
     }
+
+    // Assign local HWControlGroup
+    mHwcg.mIspCI = (IHWIspControl*)isp;
+    mHwcg.mSensorCI = isp->getSensorControlInterface();
+    mHwcg.mFlashCI = (IHWFlashControl*)isp;
+    mHwcg.mLensCI = (IHWLensControl*)isp;
 
     mSensorSyncManager = new SensorSyncManager(mHwcg.mSensorCI);
     if (mSensorSyncManager == NULL) {
@@ -2540,7 +2541,7 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
 
     if (m3AControls->isIntel3A()) {
         m3AControls->getExposureInfo(*aeConfig);
-        if (PlatformData::supportEV(mISP->getCurrentCameraId())) {
+        if (PlatformData::supportEV(mHwcg.mSensorCI->getCurrentCameraId())) {
             if (m3AControls->getEv(&aeConfig->evBias) != NO_ERROR)
                 aeConfig->evBias = EV_UPPER_BOUND;
         }
@@ -5881,10 +5882,10 @@ status_t ControlThread::processParamExposureCompensation(const CameraParameters 
     if (!newVal.isEmpty()) {
         int exposure = newParams->getInt(CameraParameters::KEY_EXPOSURE_COMPENSATION);
         float comp_step = newParams->getFloat(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP);
-        if (PlatformData::supportEV(mISP->getCurrentCameraId()))
+        if (PlatformData::supportEV(mHwcg.mSensorCI->getCurrentCameraId()))
             status = m3AControls->setEv(exposure * comp_step);
         float ev = 0;
-        if (PlatformData::supportEV(mISP->getCurrentCameraId()))
+        if (PlatformData::supportEV(mHwcg.mSensorCI->getCurrentCameraId()))
             m3AControls->getEv(&ev);
         LOGD("exposure compensation to \"%s\" (%d), ev value %f, res %d",
              newVal.string(), exposure, ev, status);

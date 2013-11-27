@@ -57,9 +57,10 @@ LOCAL_SRC_FILES := \
 	PostCaptureThread.cpp \
 	SensorSyncManager.cpp \
 	AccManagerThread.cpp \
+	SensorHW.cpp \
 	v4l2dev/v4l2devicebase.cpp \
 	v4l2dev/v4l2videonode.cpp \
-	v4l2dev/v4l2subdevice.cpp 
+	v4l2dev/v4l2subdevice.cpp
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SRC_FILES += \

@@ -83,7 +83,6 @@ public:
     /* **********************************************************
      * General
      */
-    virtual int getCurrentCameraId(void) = 0;
     virtual void getDefaultParameters(CameraParameters *params, CameraParameters *intel_params) = 0;
 
     /* **********************************************************
@@ -260,6 +259,7 @@ public:
     virtual ~IHWSensorControl() { };
 
     virtual const char * getSensorName(void) = 0;
+    virtual int getCurrentCameraId(void) = 0;
 
     virtual float getFrameRate() const = 0;
 

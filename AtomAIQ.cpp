@@ -2274,7 +2274,7 @@ void AtomAIQ::getDefaultParams(CameraParameters *params, CameraParameters *intel
         return;
     }
 
-    int cameraId = mISP->getCurrentCameraId();
+    int cameraId = mSensorCI->getCurrentCameraId();
     // ae mode
     intel_params->set(IntelCameraParameters::KEY_AE_MODE, "auto");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_AE_MODES, "auto,manual,shutter-priority,aperture-priority");
