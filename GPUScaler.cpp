@@ -186,6 +186,10 @@ status_t GPUScaler::initGPU() {
 
     eglChooseConfig_EC(mDisplay, attribs, &config, 1, &numConfigs);
     mSurface = eglCreateWindowSurface_EC(mDisplay, config, s.get(), NULL);
+    if (mSurface == NULL) {
+        LOGE("eglCreateWindowSurface_EC error");
+        return UNKNOWN_ERROR;
+    }
     mContext = eglCreateContext_EC(mDisplay, config, NULL, context_attribs);
     eglMakeCurrent_EC(mDisplay, mSurface, mSurface, mContext);
     eglQuerySurface_EC(mDisplay, mSurface, EGL_WIDTH, &w);
