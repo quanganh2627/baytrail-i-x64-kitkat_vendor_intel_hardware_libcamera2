@@ -7940,7 +7940,9 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
             //Check the battery status regularly during recording.
             //If the battery level is too low, turn off the flash, notify the application and update the parameters.
             if (buff.frameSequenceNbr % BATTERY_CHECK_INTERVAL_FRAME_UNIT == 0) {
-               String8 val(mParameters.get(CameraParameters::KEY_FLASH_MODE));
+               // note: String8 segfaults if given a NULL, so thus check it for that here
+               const char* flash_mode = mParameters.get(CameraParameters::KEY_FLASH_MODE);
+               String8 val(flash_mode, (flash_mode == NULL ? 0 : strlen(flash_mode)));
                if (val != CameraParameters::FLASH_MODE_OFF) {
                    CameraParameters param(mParameters);
                    preProcessFlashMode(&param);
