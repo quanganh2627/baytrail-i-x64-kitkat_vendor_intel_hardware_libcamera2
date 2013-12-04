@@ -350,7 +350,7 @@ bool nv12rotateBy90(const int   width,
     bool rotated;
 
 #define NV12_ROTATION_GEOMETRY(COLUMNS, ROWS, RSTRIDE, WSTRIDE, MACROBLOCK) \
-    if (width == COLUMNS && height == ROWS && rstride == RSTRIDE) { \
+    if (width == COLUMNS && height == ROWS && rstride == RSTRIDE && wstride == WSTRIDE) { \
         rotate##COLUMNS##x##ROWS##x##RSTRIDE##x##WSTRIDE##x##MACROBLOCK \
             ((const unsigned char*)sptr, (unsigned char*)dptr); \
         rotated = true; \
