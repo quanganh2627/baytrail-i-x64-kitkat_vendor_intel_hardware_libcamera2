@@ -48,23 +48,6 @@ public:
     virtual void startSmartShutter(SmartShutterMode mode, int level) = 0;
     virtual void stopSmartShutter(SmartShutterMode mode) = 0;
 
-    /**
-     * Enable the AAA functions to be applied using the face information
-     *
-     * \param flags Flags to enable the AAA functions with. User can provide a single flag or a bitwise combination
-     * of flags, for example, using AAA_FLAG_AE | AAA_FLAG_AF enables using AF and AE with face info.
-     */
-    virtual void enableFaceAAA(AAAFlags flags) = 0;
-    /**
-     * Disable the AAA functions to be applied using the face information
-     * This is useful if some of AAA functions are manually set and it is not wanted for the
-     * face info to override those.
-     *
-     * \param flags Flags to disable the AAA functions with. User can provide a single flag or a bitwise combination
-     * of flags, for example, using AAA_FLAG_AE | AAA_FLAG_AF disables using AF and AE with face info.
-     */
-    virtual void disableFaceAAA(AAAFlags flags) = 0;
-
     virtual void startFaceRecognition() = 0;
     virtual void stopFaceRecognition() = 0;
 

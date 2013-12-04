@@ -5755,13 +5755,6 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             afMode = CAM_AF_MODE_MANUAL;
         }
 
-        // If the focus mode was explicitly set to infinity or fixed, disable AF
-        if (afMode == CAM_AF_MODE_INFINITY || afMode == CAM_AF_MODE_FIXED) {
-            mPostProcThread->disableFaceAAA(AAA_FLAG_AF);
-        } else {
-            mPostProcThread->enableFaceAAA(AAA_FLAG_AF);
-        }
-
         curAfMode = m3AControls->getAfMode();
 
         if (status == NO_ERROR && curAfMode != afMode) {

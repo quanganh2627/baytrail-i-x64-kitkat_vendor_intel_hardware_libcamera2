@@ -90,8 +90,6 @@ public:
     virtual bool isSmartCaptureTriggered();
     virtual void resetSmartCaptureTrigger();
     virtual void stopCaptureOnTrigger();
-    virtual void enableFaceAAA(AAAFlags flags);
-    virtual void disableFaceAAA(AAAFlags flags);
     virtual void startFaceRecognition();
     virtual void stopFaceRecognition();
     virtual void loadIspExtensions(bool videoMode);
@@ -136,8 +134,6 @@ private:
         MESSAGE_ID_GET_SMILE_THRESHOLD,
         MESSAGE_ID_IS_BLINK_RUNNING,
         MESSAGE_ID_GET_BLINK_THRESHOLD,
-        MESSAGE_ID_ENABLE_FACE_AAA,
-        MESSAGE_ID_DISABLE_FACE_AAA,
         MESSAGE_ID_START_FACE_RECOGNITION,
         MESSAGE_ID_STOP_FACE_RECOGNITION,
         MESSAGE_ID_IS_FACE_RECOGNITION_RUNNING,
@@ -166,10 +162,6 @@ private:
         int level;
     };
 
-    struct MessageFaceAAA {
-        AAAFlags flags;
-    };
-
     struct MessageLoadIspExtensions {
         bool videoMode;
     };
@@ -181,8 +173,6 @@ private:
         // MESSAGE_START_SMART_SHUTTER
         // MESSAGE_STOP_SMART_SHUTTER
         MessageSmartShutter smartShutterParam;
-        //MESSAGE_ID_FACE_AAA
-        MessageFaceAAA faceAAA;
         // MESSAGE_ID_LOAD_ISP_EXTENSIONS
         MessageLoadIspExtensions loadIspExtensions;
         // MESSAGE_ID_SET_ZOOM
@@ -224,8 +214,6 @@ private:
     status_t handleMessageStartSmartShutter();
     status_t handleMessageStopSmartShutter();
     status_t handleMessageGetBlinkThreshold();
-    status_t handleMessageEnableFaceAAA(const MessageFaceAAA& msg);
-    status_t handleMessageDisableFaceAAA(const MessageFaceAAA& msg);
     status_t handleMessageStartFaceRecognition();
     status_t handleMessageStopFaceRecognition();
     status_t handleMessageIsFaceRecognitionRunning();
@@ -236,10 +224,6 @@ private:
 
     // main message function
     status_t waitForAndExecuteMessage();
-
-    void setAeMeteringArea(const CameraWindow* window);
-    void useFacesForAAA(const camera_frame_metadata_t& face_metadata);
-    void resetToOldAAAValues();
 
 // private data
 private:
@@ -253,8 +237,6 @@ private:
     bool mThreadRunning;
     bool mFaceDetectionRunning;
     bool mFaceRecognitionRunning;
-    int mFaceAAAFlags;
-    MeteringMode mOldAeMeteringMode;
     SmartShutterParams mSmartShutter;
     void *mIspHandle;
     int mZoomRatio;
