@@ -253,6 +253,7 @@ private:
 
     struct MessagePreviewWindow {
         struct preview_stream_ops *window;
+        bool synchronous;
     };
 
     struct MessageStoreMetaDataInBuffers {

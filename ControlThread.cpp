@@ -596,7 +596,18 @@ status_t ControlThread::setPreviewWindow(struct preview_stream_ops *window)
     Message msg;
     msg.id = MESSAGE_ID_SET_PREVIEW_WINDOW;
     msg.data.previewWin.window = window;
-    return mMessageQueue.send(&msg);
+    msg.data.previewWin.synchronous = false;
+
+    if (mPreviewThread->getPreviewState() == PreviewThread::STATE_NO_WINDOW) {
+        // In case of "deferred start" for preview, we need to be synchronous
+        // with the window setting, to properly go through the start preview
+        // sequence that is supposed to be synchronous.
+        msg.data.previewWin.synchronous = true;
+        return mMessageQueue.send(&msg, MESSAGE_ID_SET_PREVIEW_WINDOW);
+    } else {
+        // Otherwise we can act asynchronously
+        return mMessageQueue.send(&msg);
+    }
 }
 
 void ControlThread::setCallbacks(camera_notify_callback notify_cb,
@@ -2032,8 +2043,8 @@ status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
         return NO_INIT;
 
     bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-
     PreviewThread::PreviewState currentState = mPreviewThread->getPreviewState();
+
     if (currentState == PreviewThread::STATE_NO_WINDOW
         && (msg->window != NULL)) {
         status = mPreviewThread->setPreviewWindow(msg->window);
@@ -2076,6 +2087,10 @@ status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
         //     startPreview(), with the handle that was previosly set.
         status = mPreviewThread->setPreviewWindow(msg->window);
     }
+
+    // Send the reply, in case we need to be synchronous. See: setPreviewWindow()
+    if (msg->synchronous)
+        mMessageQueue.reply(MESSAGE_ID_SET_PREVIEW_WINDOW, status);
 
     return status;
 }
