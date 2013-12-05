@@ -1608,7 +1608,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
 
         mISP->attachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
-        mISP->attachObserver(m3AThread.get(), OBSERVE_FRAME_SYNC_SOF);
     }
 
     // Update focus areas for the proper window size
@@ -1686,7 +1685,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mISP->detachObserver(this, OBSERVE_PREVIEW_STREAM);
         if (m3AControls->isIntel3A()) {
             mISP->detachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
-            mISP->detachObserver(m3AThread.get(), OBSERVE_FRAME_SYNC_SOF);
         }
     }
 
@@ -1737,7 +1735,6 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     // when we use the 3A algorithm running on Atom
     if (m3AControls->isIntel3A()) {
         mISP->detachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
-        mISP->detachObserver(m3AThread.get(), OBSERVE_FRAME_SYNC_SOF);
         // Detaching DVS observer. Just to make sure, although it might not be attached:
         // might be a non-RAW sensor, or enabling failed on startPreviewCore().
         // It is OK to detach; if the observer is not attached, detachObserver()

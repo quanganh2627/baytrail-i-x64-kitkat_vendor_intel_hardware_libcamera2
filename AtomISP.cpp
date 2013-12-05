@@ -4828,6 +4828,9 @@ int AtomISP::setIspParameter(struct atomisp_parm *isp_param)
     return ret;
 }
 
+/**
+ * Retreive 3A statistics from driver
+ */
 int AtomISP::getIspStatistics(struct atomisp_3a_statistics *statistics)
 {
     LOG2("@%s", __FUNCTION__);
@@ -5202,19 +5205,25 @@ status_t AtomISP::AAAStatSource::observe(IAtomIspObserver::Message *msg)
         usleep(ATOMISP_EVENT_RECOVERY_WAIT);
         return NO_ERROR;
     }
-
-    // fill observer message
+     // fill observer message
     msg->id = IAtomIspObserver::MESSAGE_ID_EVENT;
-    msg->data.event.type = IAtomIspObserver::EVENT_TYPE_STATISTICS_READY;
+    msg->data.event.sequence = event.sequence;
     msg->data.event.timestamp.tv_sec  = event.timestamp.tv_sec;
     msg->data.event.timestamp.tv_usec = event.timestamp.tv_nsec / 1000;
-    msg->data.event.sequence = event.sequence;
-
     if (mISP->mStatisticSkips > event.sequence) {
         LOG2("Skipping statistics num: %d", event.sequence);
         msg->data.event.type = IAtomIspObserver::EVENT_TYPE_STATISTICS_SKIPPED;
+    } else {
+        msg->data.event.type = IAtomIspObserver::EVENT_TYPE_STATISTICS_READY;
+        // Note: Timestamp and sequence number of the event are useless.
+        // Timestamp is from the event creation time and sequence is running
+        // number of events - not providing the identifier for a frame.
+        // Workaroud: Using exposure synchronization in SensorHW to identify
+        // timestamp for the frame of statistics origin.
+        nsecs_t frameTs = mISP->mSensorHW.getFrameTimestamp(TIMEVAL2USECS(&msg->data.event.timestamp));
+        msg->data.event.timestamp.tv_sec = frameTs / 1000000;
+        msg->data.event.timestamp.tv_usec = (frameTs % 1000000);
     }
-
     return NO_ERROR;
 }
 

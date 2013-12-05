@@ -940,7 +940,9 @@ status_t SensorHW::observe(IAtomIspObserver::Message *msg)
         //       of CSS20 here. As update for this particular event has not yet
         //       happened, the active item is one more recent than at previous
         //       frame sync. Hereby, mActiveItemIndex-1.
-        // TODO: Consider latency from event ts to wakeup.
+        // TODO: once CSS2.0 provides option for disabling buffered sensor mode,
+        //       this info should be used as the condition here. The information
+        //       should become available by the fact that we can subscribe to SOF.
         unsigned int vbiOffset = vbiIntervalForItem(mActiveItemIndex-1);
         LOG2("FrameSync: delaying over %dus timeout, active item index %d", vbiOffset, mActiveItemIndex);
         ts = ts + vbiOffset;
@@ -1189,6 +1191,8 @@ void SensorHW::updateExposureEstimate(nsecs_t timestamp)
         // update with received ts
         activeItem->frame_ts = timestamp;
     }
+
+    activeItem->received = true;
 }
 
 /**
@@ -1276,6 +1280,7 @@ SensorHW::exposure_history_item* SensorHW::produceExposureHistory(struct atomisp
     item.frame_ts = frame_ts;
     item.exposure = *exposure;
     item.applied = false;
+    item.received = false;
 
     // when fifo is full drop the oldest
     if (mExposureHistory->getCount() >= mExposureHistory->getDepth())
@@ -1368,6 +1373,67 @@ void SensorHW::processExposureHistory(nsecs_t ts)
     }
 
     updateExposureEstimate(ts);
+}
+
+/**
+ * Return timestamp estimate of frame by event timestamp
+ *
+ * This is place for platform specific workarounds needed
+ * to couple incoming events like 3A statistics into active
+ * sensor parameter data only by the timestamp of event.
+ */
+nsecs_t SensorHW::getFrameTimestamp(nsecs_t event_ts)
+{
+    LOG2("@%s-%lld", __FUNCTION__, event_ts);
+    Mutex::Autolock lock(mFrameSyncMutex);
+    struct exposure_history_item *receivedItem = NULL;
+    long deltaToReceived = 0;
+    long itgInterval = 0;
+    nsecs_t retTs = 0;
+
+    // Travel through items with received frame sync event
+    // and consider delta to each. Consider that if delta
+    // is smaller than integration interval of that item,
+    // any event received at that time must origin from the
+    // previous frame.
+    for (unsigned int i = 0; i < mExposureHistory->getCount(); i++) {
+        receivedItem = mExposureHistory->peek(i);
+        if (receivedItem && receivedItem->received) {
+            if (mCssVersion != ATOMISP_CSS_VERSION_15) {
+                //NOTE: In CSS2.0 where FrameSync is delayed from EOF event to
+                //      reprecent the next SOF and Sensor Buffered Mode
+                //      increases the latency of events, we consider that
+                //      receiving ISP events for frame during its vbi is
+                //      impossible.
+                //      Using full frame interval comparison
+                //TODO: once CSS2.0 provides option for disabling
+                //      buffered sensor mode, this info should be used as
+                //      the condition here. The information should become
+                //      available by the fact that we can subscribe to SOF.
+                itgInterval = frameIntervalForItem(i);
+            } else {
+                itgInterval = frameIntervalForItem(i) - vbiIntervalForItem(i);
+            }
+            retTs = receivedItem->frame_ts;
+            deltaToReceived = (long)(event_ts - retTs);
+            LOG2("%s: received item %i delta %ldus, itg interval %ldus", __FUNCTION__, i, deltaToReceived, itgInterval);
+            if (deltaToReceived > itgInterval) {
+                break;
+            } else {
+                //NOTE: In CSS2.0 where FrameSync is delayed from EOF event to
+                //      reprecent the next SOF, it is usual that we get
+                //      negative delta here. This means we receive 3A stats
+                //      during the VBI, but that origins from frame before.
+                LOG2("%s: negative delta to FrameSync", __FUNCTION__);
+            }
+        }
+    }
+    assert(receivedItem);
+    // Note: if the above logic fails e.g due heavy cpu burden there isn't
+    //       enough exposure history, we returns the closest match there is
+    //       or 0 in corner cases. Enable asserts to trace related issues.
+    LOG2("%s: frame timestamp %lldus returned", __FUNCTION__, retTs);
+    return retTs;
 }
 
 /* Port of SensorSyncManager role [END] */

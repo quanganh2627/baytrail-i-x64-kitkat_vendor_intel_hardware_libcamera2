@@ -44,6 +44,7 @@ public:
     status_t stop();
     IObserverSubject* getFrameSyncSource() { return (IObserverSubject*) this; };
     int setImmediateIo(bool enable);
+    nsecs_t getFrameTimestamp(nsecs_t event_ts);
 
     /* IHWSensorControl overloads, */
     virtual const char * getSensorName(void);
@@ -118,6 +119,7 @@ private:
 
     // Exposure synchronization
     struct exposure_history_item {
+        bool    received;
         bool    applied;
         nsecs_t frame_ts;
         struct atomisp_exposure exposure;

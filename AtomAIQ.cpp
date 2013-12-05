@@ -1091,7 +1091,7 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
 
         mAeInputParameters.frame_use = ia_aiq_frame_use_still;
 
-        ret =  apply3AProcess(true, dummy_time, dummy_time);
+        ret = apply3AProcess(true, &dummy_time);
 
         mAeInputParameters.frame_use = m3aState.frame_use;
 
@@ -1102,7 +1102,7 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
     }
     else
     {
-        ret = apply3AProcess(true, dummy_time, dummy_time);
+        ret = apply3AProcess(true, &dummy_time);
 
         if (mAwbResults)
             mAwbStoredResults = *mAwbResults;
@@ -1118,13 +1118,13 @@ status_t AtomAIQ::setFlash(int numFrames)
 }
 
 status_t AtomAIQ::apply3AProcess(bool read_stats,
-    const struct timeval capture_timestamp, struct timeval sof_timestamp)
+    struct timeval *frame_timestamp)
 {
     LOG2("@%s: read_stats = %d", __FUNCTION__, read_stats);
     status_t status = NO_ERROR;
 
     if (read_stats) {
-        status = getStatistics(&capture_timestamp, &sof_timestamp);
+        status = getStatistics(frame_timestamp);
     }
 
     if (m3aState.stats_valid) {
@@ -1577,8 +1577,7 @@ bool AtomAIQ::changeSensorMode(void)
     return true;
 }
 
-status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct,
-                                const struct timeval *sof_timestamp_struct)
+status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct)
 {
     LOG2("@%s", __FUNCTION__);
     status_t ret = NO_ERROR;
@@ -1598,7 +1597,7 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct,
         ia_err err = ia_err_none;
         memset(&m3aState.statistics_input_parameters, 0, sizeof(ia_aiq_statistics_input_params));
 
-        m3aState.statistics_input_parameters.frame_timestamp = TIMEVAL2USECS(sof_timestamp_struct);
+        m3aState.statistics_input_parameters.frame_timestamp = TIMEVAL2USECS(frame_timestamp_struct);
 
         m3aState.statistics_input_parameters.frame_af_parameters = NULL;
         m3aState.statistics_input_parameters.external_histogram = NULL;
