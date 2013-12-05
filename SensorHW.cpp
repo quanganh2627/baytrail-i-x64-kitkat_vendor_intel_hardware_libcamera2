@@ -34,7 +34,7 @@ SensorHW::SensorHW(int cameraId):
     mCameraId(cameraId),
     mStarted(false),
     mInitialModeDataValid(false),
-    mFrameSyncEnabled(false),
+    mFrameSyncSource(FRAME_SYNC_NA),
     mCssVersion(0),
     mActiveItemIndex(0),
     mDirectExposureIo(true),
@@ -122,7 +122,7 @@ status_t SensorHW::waitForFrameSync()
 {
     LOG1("@%s", __FUNCTION__);
     Mutex::Autolock lock(mFrameSyncMutex);
-    if (!mFrameSyncEnabled)
+    if (mFrameSyncSource == FRAME_SYNC_NA)
         return NO_INIT;
 
     return mFrameSyncCondition.wait(mFrameSyncMutex);
@@ -520,12 +520,20 @@ status_t SensorHW::start()
     Mutex::Autolock lock(mFrameSyncMutex);
     // Subscribe to frame sync event in case of RAW sensor
     if (mIspSubdevice != NULL && mSensorType == SENSOR_TYPE_RAW) {
-        ret = mIspSubdevice->subscribeEvent(V4L2_EVENT_FRAME_SYNC);
+        ret = mIspSubdevice->subscribeEvent(FRAME_SYNC_SOF);
         if (ret < 0) {
-            LOGE("Failed to subscribe to frame sync event!");
-            return UNKNOWN_ERROR;
+            ret = mIspSubdevice->subscribeEvent(FRAME_SYNC_EOF);
+            if (ret < 0) {
+                LOGE("Failed to subscribe to frame sync event!");
+                return UNKNOWN_ERROR;
+            } else {
+                mFrameSyncSource = FRAME_SYNC_EOF;
+                LOG1("@%s Using EOF event", __FUNCTION__);
+            }
+        } else {
+            mFrameSyncSource = FRAME_SYNC_SOF;
+            LOG1("@%s Using SOF event", __FUNCTION__);
         }
-        mFrameSyncEnabled = true;
     }
     mStarted = true;
     return NO_ERROR;
@@ -543,9 +551,9 @@ status_t SensorHW::stop()
 {
     LOG1("@%s", __FUNCTION__);
     Mutex::Autolock lock(mFrameSyncMutex);
-    if (mIspSubdevice != NULL) {
-        mIspSubdevice->unsubscribeEvent(V4L2_EVENT_FRAME_SYNC);
-        mFrameSyncEnabled = false;
+    if (mIspSubdevice != NULL && mFrameSyncSource != FRAME_SYNC_NA) {
+        mIspSubdevice->unsubscribeEvent(mFrameSyncSource);
+        mFrameSyncSource = FRAME_SYNC_NA;
     }
     mStarted = false;
     mDirectExposureIo = true;
@@ -981,7 +989,7 @@ status_t SensorHW::observe(IAtomIspObserver::Message *msg)
     ts = TIMEVAL2USECS(&msg->data.event.timestamp);
     LOG2("-- FrameSync@%lldus --", ts);
     mFrameSyncMutex.lock();
-    if (mCssVersion != ATOMISP_CSS_VERSION_15) {
+    if (mFrameSyncSource == FRAME_SYNC_EOF) {
         // In CSS20, the buffered sensor mode and the event being close to
         // ~MIPI EOF means that we are at vbi when receiving the event here.
         // We delay sending the FrameSync event based on estimated active item vbi.
@@ -991,9 +999,6 @@ status_t SensorHW::observe(IAtomIspObserver::Message *msg)
         //       of CSS20 here. As update for this particular event has not yet
         //       happened, the active item is one more recent than at previous
         //       frame sync. Hereby, mActiveItemIndex-1.
-        // TODO: once CSS2.0 provides option for disabling buffered sensor mode,
-        //       this info should be used as the condition here. The information
-        //       should become available by the fact that we can subscribe to SOF.
         unsigned int vbiOffset = vbiIntervalForItem(mActiveItemIndex-1);
         LOG2("FrameSync: delaying over %dus timeout, active item index %d", vbiOffset, mActiveItemIndex);
         ts = ts + vbiOffset;
@@ -1419,17 +1424,13 @@ nsecs_t SensorHW::getFrameTimestamp(nsecs_t event_ts)
     for (unsigned int i = 0; i < mExposureHistory->getCount(); i++) {
         receivedItem = mExposureHistory->peek(i);
         if (receivedItem && receivedItem->received) {
-            if (mCssVersion != ATOMISP_CSS_VERSION_15) {
+            if (mFrameSyncSource == FRAME_SYNC_EOF) {
                 //NOTE: In CSS2.0 where FrameSync is delayed from EOF event to
                 //      reprecent the next SOF and Sensor Buffered Mode
                 //      increases the latency of events, we consider that
                 //      receiving ISP events for frame during its vbi is
                 //      impossible.
                 //      Using full frame interval comparison
-                //TODO: once CSS2.0 provides option for disabling
-                //      buffered sensor mode, this info should be used as
-                //      the condition here. The information should become
-                //      available by the fact that we can subscribe to SOF.
                 itgInterval = frameIntervalForItem(i);
             } else {
                 itgInterval = frameIntervalForItem(i) - vbiIntervalForItem(i);

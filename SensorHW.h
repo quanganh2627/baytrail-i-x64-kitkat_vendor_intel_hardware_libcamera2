@@ -159,7 +159,11 @@ private:
     // Common frame synchronization
     Mutex mFrameSyncMutex;
     Condition mFrameSyncCondition;
-    bool mFrameSyncEnabled;
+    enum FrameSyncSource {
+        FRAME_SYNC_NA,
+        FRAME_SYNC_SOF = V4L2_EVENT_FRAME_SYNC,
+        FRAME_SYNC_EOF = V4L2_EVENT_FRAME_END
+    } mFrameSyncSource;
     int mCssVersion;
 
     // Exposure synchronization
