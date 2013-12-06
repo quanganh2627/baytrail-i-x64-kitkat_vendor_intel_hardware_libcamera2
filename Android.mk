@@ -168,6 +168,10 @@ ifeq ($(USE_CSS_2_0), true)
 LOCAL_CFLAGS += -DATOMISP_CSS2
 endif
 
+ifeq ($(USE_CSS_2_1), true)
+LOCAL_CFLAGS += -DATOMISP_CSS2 -DATOMISP_CSS21
+endif
+
 # enable R&D features only in R&D builds
 ifneq ($(filter userdebug eng tests, $(TARGET_BUILD_VARIANT)),)
 LOCAL_CFLAGS += -DLIBCAMERA_RD_FEATURES -Wunused-variable -Werror

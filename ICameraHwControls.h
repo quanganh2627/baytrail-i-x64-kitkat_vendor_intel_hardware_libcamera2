@@ -133,8 +133,8 @@ public:
     virtual void getPreviewSize(int *width, int *height, int *bpl) = 0;
     virtual status_t getPreviewFrame(AtomBuffer *buff) = 0;
     virtual status_t putPreviewFrame(AtomBuffer *buff) = 0;
-    virtual int getNumPreviewBuffers() = 0;
     virtual status_t setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs, bool cached) = 0;
+    virtual void setPreviewBufNum(int num) = 0;
 
     // For Video pipeline
     virtual status_t setVideoFrameFormat(int width, int height, int fourcc = 0) = 0;
@@ -144,20 +144,22 @@ public:
     virtual void getVideoSize(int *width, int *height, int *bpl) = 0;
     virtual status_t getRecordingFrame(AtomBuffer *buff) = 0;
     virtual status_t putRecordingFrame(AtomBuffer *buff) = 0;
-    virtual int getNumVideoBuffers(void) = 0;
     virtual status_t returnRecordingBuffers() = 0;
     // Enable metadata buffer mode API
     virtual status_t storeMetaDataInBuffers(bool enabled, int sID) = 0;
 
     // For capture pipelines
-    virtual status_t setSnapshotFrameFormat(int width, int height, int fourcc = 0) = 0;
+    virtual status_t setSnapshotFrameFormat(AtomBuffer& formatDescriptor) = 0;
     virtual int getSnapshotPixelFormat() = 0;
-    virtual status_t setPostviewFrameFormat(int width, int height, int fourcc) = 0;
-    virtual void getPostviewFrameFormat(int &width, int &height, int &fourcc) const = 0;
+
     virtual status_t getSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf) = 0;
     virtual status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf) = 0;
     virtual int getNumSnapshotBuffers() = 0;
     virtual status_t setSnapshotBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bool cached) = 0;
+
+    virtual status_t setPostviewFrameFormat(AtomBuffer& formatDescriptor) = 0;
+    virtual void getPostviewFrameFormat(AtomBuffer& formatDescriptor) const = 0;
+    virtual status_t setPostviewBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bool cached) = 0;
 
     virtual bool dataAvailable() = 0;
 

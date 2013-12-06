@@ -160,7 +160,7 @@ namespace android {
     }
     void freeAtomBuffer(AtomBuffer &aBuff)
     {
-        LOG1("@%s", __FUNCTION__);
+        LOG1("@%s: dataPtr %p", __FUNCTION__, aBuff.dataPtr);
         // free GFX memory, if any
         freeGraphicBuffer(aBuff);
         // free memory allocated through callbacks, if any

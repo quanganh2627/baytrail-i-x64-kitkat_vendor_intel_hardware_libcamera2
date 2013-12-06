@@ -87,8 +87,6 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mGroupIndex (-1)
     ,mMode(MODE_NONE)
     ,mCallbacks(callbacks)
-    ,mNumBuffers(PlatformData::getRecordingBufNum())
-    ,mNumPreviewBuffers(PlatformData::getRecordingBufNum())
     ,mPreviewBuffersCached(true)
     ,mRecordingBuffers(NULL)
     ,mSwapRecordingDevice(false)
@@ -98,6 +96,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mHALZSLBuffers(NULL)
     ,mClientSnapshotBuffersCached(true)
     ,mUsingClientSnapshotBuffers(false)
+    ,mUsingClientPostviewBuffers(false)
     ,mStoreMetaDataInBuffers(false)
     ,mBufferSharingSessionID(DEFAULT_BUFFER_SHARING_SESSION_ID)
     ,mNumPreviewBuffersQueued(0)
@@ -232,6 +231,9 @@ status_t AtomISP::init()
 
     status_t status = NO_ERROR;
 
+    mConfig.num_recording_buffers = PlatformData::getRecordingBufNum();
+    mConfig.num_preview_buffers = PlatformData::getPreviewBufNum();
+
     if (mGroupIndex < 0) {
         Mutex::Autolock lock(sISPCountLock);
         for (int i = 0; i < MAX_CAMERAS; i++) {
@@ -266,22 +268,26 @@ status_t AtomISP::init()
 
     initFrameConfig();
 
+    AtomBuffer formatDescriptorPv
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, V4L2_PIX_FMT_NV12, RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT);
     // Initialize the frame sizes
     setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT,
                           pixelsToBytes(PlatformData::getPreviewPixelFormat(), RESOLUTION_VGA_WIDTH),
                           PlatformData::getPreviewPixelFormat());
-    setPostviewFrameFormat(RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT, V4L2_PIX_FMT_NV12);
+    setPostviewFrameFormat(formatDescriptorPv);
 
-    int w = 0;
-    int h = 0;
-    int ret = parsePairToInt(PlatformData::defaultSnapshotSize(mCameraId), &w, &h, "x");
-    if (ret == 0) {
-        setSnapshotFrameFormat(w, h, V4L2_PIX_FMT_NV12);
-    } else {
-        setSnapshotFrameFormat(RESOLUTION_5MP_WIDTH, RESOLUTION_5MP_HEIGHT, V4L2_PIX_FMT_NV12);
-        LOGE("set Snapshot default size from config file error : %d", ret);
+    AtomBuffer formatDescriptorSs
+        = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, V4L2_PIX_FMT_NV12);
+
+    int ret = parsePairToInt(PlatformData::defaultSnapshotSize(mCameraId),
+                             &formatDescriptorSs.width, &formatDescriptorSs.height, "x");
+    if (ret != 0) {
+        LOGW("config file error: %d. Using snapshot default size", ret);
+        formatDescriptorSs.width = RESOLUTION_5MP_WIDTH;
+        formatDescriptorSs.height = RESOLUTION_5MP_HEIGHT;
     }
 
+    setSnapshotFrameFormat(formatDescriptorSs);
     setVideoFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
 
     status = computeZoomRatios();
@@ -625,8 +631,10 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * MISCELLANEOUS
      */
-    params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, PlatformData::verticalFOV(cameraId));
-    params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, PlatformData::horizontalFOV(cameraId));
+    params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE,
+                     PlatformData::verticalFOV(cameraId, mConfig.snapshot.width, mConfig.snapshot.height));
+    params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE,
+                     PlatformData::horizontalFOV(cameraId, mConfig.snapshot.width, mConfig.snapshot.height));
 
     /**
      * OVERLAY
@@ -1181,7 +1189,6 @@ status_t AtomISP::configurePreview()
     status_t status = NO_ERROR;
     sp<V4L2VideoNode> activePreviewNode;
 
-    mNumPreviewBuffers = NUM_PREVIEW_BUFFERS;
     activePreviewNode = mPreviewTooBigForVFPP ? mRecordingDevice : mPreviewDevice;
 
     ret = activePreviewNode->open();
@@ -1223,7 +1230,7 @@ status_t AtomISP::startPreview()
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
     status_t status = NO_ERROR;
-    int bufcount = mHALZSLEnabled ? sNumHALZSLBuffers : mNumPreviewBuffers;
+    int bufcount = mHALZSLEnabled ? sNumHALZSLBuffers : mConfig.num_preview_buffers;
 
     /**
      * moving the hack from Gang to disable these ISP parameters, only needed
@@ -1332,8 +1339,6 @@ status_t AtomISP::configureRecording()
         goto err;
     }
 
-    mNumPreviewBuffers = PlatformData::getRecordingBufNum();
-
     // fake preview config size if VFPP is too slow, so that VFPP will not
     // cause FPS to drop
     if (mPreviewTooBigForVFPP) {
@@ -1387,22 +1392,22 @@ status_t AtomISP::startRecording()
     status_t status = NO_ERROR;
 
     //workaround: when DVS is on, the first several frames are greenish, need to be skipped.
-    ret = mRecordingDevice->start(mNumBuffers,mInitialSkips + mDVSFrameSkips);
+    ret = mRecordingDevice->start(mConfig.num_recording_buffers, mInitialSkips + mDVSFrameSkips);
     if (ret < 0) {
         LOGE("Start recording device failed");
         status = UNKNOWN_ERROR;
         goto err;
     }
 
-    ret = mPreviewDevice->start(mNumPreviewBuffers, mInitialSkips + mDVSFrameSkips);
+    ret = mPreviewDevice->start(mConfig.num_preview_buffers, mInitialSkips + mDVSFrameSkips);
     if (ret < 0) {
         LOGE("Start preview device failed!");
         status = UNKNOWN_ERROR;
         goto err;
     }
 
-    mNumPreviewBuffersQueued = mNumPreviewBuffers;
-    mNumRecordingBuffersQueued = mNumBuffers;
+    mNumPreviewBuffersQueued = mConfig.num_preview_buffers;
+    mNumRecordingBuffersQueued = mConfig.num_recording_buffers;
 
     return status;
 
@@ -1591,6 +1596,10 @@ status_t AtomISP::configureContinuousRingBuffer()
 
     // for css2.x, the minimum raw ring buffers number is ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X
     if (getCssMajorVersion() >= 2) {
+        //when offset is -1 , one ring buffer is able to be optimized
+        if (offset == -1)
+            numBuffers -= 1;
+
         if (numBuffers < ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X)
             numBuffers = ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X;
     }
@@ -1691,7 +1700,6 @@ status_t AtomISP::configureContinuousSOC()
     int ret = 0;
     status_t status = OK;
 
-    mNumPreviewBuffers = NUM_PREVIEW_BUFFERS;
     mPreviewDevice = mRecordingDevice;
 
     if (!mPreviewDevice->isOpen()) {
@@ -1991,6 +1999,11 @@ status_t AtomISP::stopCapture()
     if (mUsingClientSnapshotBuffers) {
         mConfig.num_snapshot = 0;
         mUsingClientSnapshotBuffers = false;
+    }
+
+    if (mUsingClientPostviewBuffers) {
+        mConfig.num_postviews = 0;
+        mUsingClientPostviewBuffers = false;
     }
 
     dumpRawImageFlush();
@@ -2293,57 +2306,54 @@ void AtomISP::setPreviewFramerate(int fps)
     mConfig.preview_fps = fps;
 }
 
-void AtomISP::getPostviewFrameFormat(int &width, int &height, int &fourcc) const
+void AtomISP::getPostviewFrameFormat(AtomBuffer& formatDescriptor) const
 {
     LOG1("@%s", __FUNCTION__);
-    width = mConfig.postview.width;
-    height = mConfig.postview.height;
-    fourcc = mConfig.postview.fourcc;
+    formatDescriptor = mConfig.postview;
 }
 
-status_t AtomISP::setPostviewFrameFormat(int width, int height, int fourcc)
+status_t AtomISP::setPostviewFrameFormat(AtomBuffer& formatDescriptor)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     LOG1("@%s width(%d), height(%d), fourcc(%x)", __FUNCTION__,
-         width, height, fourcc);
-    if (width < 0 || height < 0) {
+         formatDescriptor.width, formatDescriptor.height, formatDescriptor.fourcc);
+    if (formatDescriptor.width < 0 || formatDescriptor.height < 0) {
         LOGE("Invalid postview size requested!");
         return BAD_VALUE;
     }
-    if (width == 0 || height == 0) {
+    if (formatDescriptor.width == 0 || formatDescriptor.height == 0) {
         // No thumbnail requested, we should anyway use postview to dequeue frames from ISP
-        width = RESOLUTION_POSTVIEW_WIDTH;
-        height = RESOLUTION_POSTVIEW_HEIGHT;
+        formatDescriptor.width = RESOLUTION_POSTVIEW_WIDTH;
+        formatDescriptor.height = RESOLUTION_POSTVIEW_HEIGHT;
     }
 
-    mConfig.postview.width = width;
-    mConfig.postview.height = height;
-    mConfig.postview.fourcc = fourcc;
-    mConfig.postview.bpl = SGXandDisplayBpl(fourcc, width);
-    mConfig.postview.size = frameSize(fourcc, bytesToPixels(fourcc, mConfig.postview.bpl), height);
+    mConfig.postview = formatDescriptor;
+    mConfig.postview.bpl = SGXandDisplayBpl(formatDescriptor.fourcc, formatDescriptor.width);
+    mConfig.postview.size = frameSize(formatDescriptor.fourcc,
+                                      bytesToPixels(formatDescriptor.fourcc, mConfig.postview.bpl),
+                                      formatDescriptor.height);
     LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%x)",
-            width, height, mConfig.postview.bpl, mConfig.postview.size, fourcc);
+         formatDescriptor.width, formatDescriptor.height, mConfig.postview.bpl, mConfig.postview.size, formatDescriptor.fourcc);
     return status;
 }
 
-status_t AtomISP::setSnapshotFrameFormat(int width, int height, int fourcc)
+status_t AtomISP::setSnapshotFrameFormat(AtomBuffer& formatDescriptor)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if (width > mConfig.snapshotLimits.maxWidth || width <= 0)
-        width = mConfig.snapshotLimits.maxWidth;
-    if (height > mConfig.snapshotLimits.maxHeight || height <= 0)
-        height = mConfig.snapshotLimits.maxHeight;
-    mConfig.snapshot.width  = width;
-    mConfig.snapshot.height = height;
-    mConfig.snapshot.fourcc = fourcc;
-    mConfig.snapshot.bpl = SGXandDisplayBpl(fourcc, width);
-    mConfig.snapshot.size = frameSize(fourcc, bytesToPixels(fourcc, mConfig.snapshot.bpl), height);
+    if (formatDescriptor.width > mConfig.snapshotLimits.maxWidth || formatDescriptor.width <= 0)
+        formatDescriptor.width = mConfig.snapshotLimits.maxWidth;
+    if (formatDescriptor.height > mConfig.snapshotLimits.maxHeight || formatDescriptor.height <= 0)
+        formatDescriptor.height = mConfig.snapshotLimits.maxHeight;
+
+    mConfig.snapshot = formatDescriptor;
+    mConfig.snapshot.bpl = SGXandDisplayBpl(formatDescriptor.fourcc, formatDescriptor.width);
+    mConfig.snapshot.size = frameSize(formatDescriptor.fourcc, bytesToPixels(formatDescriptor.fourcc, mConfig.snapshot.bpl), formatDescriptor.height);
     LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%x)",
-        width, height, mConfig.snapshot.bpl, mConfig.snapshot.size, fourcc);
+        formatDescriptor.width, formatDescriptor.height, mConfig.snapshot.bpl, mConfig.snapshot.size, formatDescriptor.fourcc);
     return status;
 }
 
@@ -2461,19 +2471,6 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
  *
  * BZ 116055
  *
- * Workaround 6: For imx132 sensor, there should be two groups of view angle value
- * Because view angle changes along with the resolution of aspect ratio(4:3 and 16:9).
- * The max resolution of imx132 sensor is 1976x1200, both cropping and downscaling are
- * necessary when the aspect ratio of image's resolution is 4:3, so horizontal pixels
- * are cropped And the FOV calculation case in CtsVerifiler.apk is test horizontal FOV
- * only. So the view angle about horizontal should be changed with aspect ratio.
- *
- * Resolving it in a workaround, and It can be reverted in the future.
- * Aspect Ratio          view angle(horizontal)
- * 16:9                     61.6
- * 4:3                      48.5
- * BZ: 147077
- *
  * This mode can be enabled by setting VFPPLimitedResolutionList to a proper
  * value for the platform in the camera_profiles.xml. If e.g. for resolution
  * 1024*768 the FPS drops to half the normal because VFPP is too slow
@@ -2557,26 +2554,6 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
             }
         } else {
             mSwapRecordingDevice = false;
-        }
-    } else {
-        /*Workaround 6, select horizontal and vertical dynamically along with resolution aspect ratio*/
-        const char manUsensorBName[] = "imx132";
-        if (mCameraInput && (strncmp(mCameraInput->name, manUsensorBName, sizeof(manUsensorBName) - 1) == 0)) {
-            int picWidth, picHeight;
-            const float tolerance = 0.005f;
-            float picAspectRatio = 0.0f;
-
-            params->getPictureSize(&picWidth, &picHeight);
-            picAspectRatio = 1.0 * picWidth / picHeight;
-            if (fabsf(picAspectRatio - 1.333) < tolerance) {
-                /* into 4:3 aspect ratios */
-                params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, 29.4);
-                params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, 48.5);
-            } else if (fabsf(picAspectRatio - 1.777) < tolerance) {
-                /* into 16:9 aspect ratios */
-                params->setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, 37.3);
-                params->setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, 61.6);
-            }
         }
     }
 
@@ -2911,6 +2888,12 @@ status_t AtomISP::setGDC(bool enable)
     return status;
 }
 
+void AtomISP::setPreviewBufNum(int num)
+{
+    LOG1("@%s: %d", __FUNCTION__, num);
+    mConfig.num_preview_buffers = num;
+}
+
 status_t AtomISP::setLowLight(bool enable)
 {
     LOG1("@%s: %d", __FUNCTION__, (int) enable);
@@ -3164,7 +3147,7 @@ status_t AtomISP::returnRecordingBuffers()
 {
     LOG1("@%s", __FUNCTION__);
     if (mRecordingBuffers) {
-        for (int i = 0 ; i < mNumBuffers; i++) {
+        for (int i = 0 ; i < mConfig.num_recording_buffers; i++) {
             if (mRecordingBuffers[i].shared)
                 return UNKNOWN_ERROR;
             if (mRecordingBuffers[i].buff == NULL)
@@ -3403,8 +3386,14 @@ void AtomISP::returnBuffer(AtomBuffer* buff)
 status_t AtomISP::setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs, bool cached)
 {
     LOG1("@%s: buffs = %p, numBuffs = %d", __FUNCTION__, buffs, numBuffs);
+
     if (buffs == NULL || numBuffs <= 0)
         return BAD_VALUE;
+
+    if (mConfig.num_preview_buffers != numBuffs) {
+        LOGE("Invalid shared preview buffer count configuration");
+        return UNKNOWN_ERROR;
+    }
 
     freePreviewBuffers();
 
@@ -3412,7 +3401,6 @@ status_t AtomISP::setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs
         mPreviewBuffers.push(buffs[i]);
     }
 
-    mNumPreviewBuffers = numBuffs;
     mPreviewBuffersCached = cached;
 
     return NO_ERROR;
@@ -3489,12 +3477,35 @@ status_t AtomISP::setSnapshotBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bo
 
     mClientSnapshotBuffersCached = cached;
     mConfig.num_snapshot = numBuffs;
-    mConfig.num_postviews = numBuffs;
     mUsingClientSnapshotBuffers = true;
     for (int i = 0; i < numBuffs; i++) {
         mSnapshotBuffers[i] = buffs->top();
         buffs->pop();
         LOG1("Snapshot buffer %d = %p", i, mSnapshotBuffers[i].dataPtr);
+    }
+
+    return NO_ERROR;
+}
+
+/**
+ * Initializes the postview buffers to the internal array
+ */
+status_t AtomISP::setPostviewBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bool cached)
+{
+    LOG1("@%s: buffs = %p, numBuffs = %d", __FUNCTION__, buffs, numBuffs);
+    if (buffs == NULL || numBuffs <= 0)
+        return BAD_VALUE;
+
+    mClientSnapshotBuffersCached = cached;
+    mConfig.num_postviews = numBuffs;
+    mUsingClientPostviewBuffers = true;
+
+    mPostviewBuffers.clear();
+
+    for (int i = 0; i < numBuffs; i++) {
+        mPostviewBuffers.push(buffs->top());
+        buffs->pop();
+        LOG1("@%s: postview buffer %d = %p", __FUNCTION__, i, mPostviewBuffers[i].dataPtr);
     }
 
     return NO_ERROR;
@@ -3907,8 +3918,8 @@ status_t AtomISP::allocatePreviewBuffers()
         AtomBuffer tmp = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_PREVIEW); // init fields
         mPreviewBuffersCached = true;
 
-        LOG1("Allocating %d buffers of size %d", mNumPreviewBuffers, mConfig.preview.size);
-        for (int i = 0; i < mNumPreviewBuffers; i++) {
+        LOG1("Allocating %d buffers of size %d", mConfig.num_preview_buffers, mConfig.preview.size);
+        for (int i = 0; i < mConfig.num_preview_buffers; i++) {
             MemoryUtils::allocateGraphicBuffer(tmp, mConfig.preview);
             if (tmp.dataPtr == NULL) {
                 LOGE("Error allocation memory for preview buffers!");
@@ -3964,14 +3975,14 @@ status_t AtomISP::allocateRecordingBuffers()
     int allocatedBufs = 0;
     bool cached = false;
 
-    mRecordingBuffers = new AtomBuffer[mNumBuffers];
+    mRecordingBuffers = new AtomBuffer[mConfig.num_recording_buffers];
     if (!mRecordingBuffers) {
         LOGE("Not enough mem for recording buffer array");
         status = NO_MEMORY;
         goto errorFree;
     }
 
-    for (int i = 0; i < mNumBuffers; i++) {
+    for (int i = 0; i < mConfig.num_recording_buffers; i++) {
         mRecordingBuffers[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_VIDEO); // init fields
 #ifdef INTEL_VIDEO_XPROC_SHARING
         /**
@@ -4004,7 +4015,7 @@ status_t AtomISP::allocateRecordingBuffers()
         mRecordingBuffers[i].bpl = mConfig.recording.bpl;
         mRecordingBuffers[i].fourcc = mConfig.recording.fourcc;
     }
-    mRecordingDevice->setBufferPool((void**)&bufPool,mNumBuffers,
+    mRecordingDevice->setBufferPool((void**)&bufPool,mConfig.num_recording_buffers,
                                      &mConfig.recording,cached);
     return status;
 
@@ -4023,12 +4034,9 @@ errorFree:
 /**
  * Prepares V4L2  buffer info's for snapshot and postview buffers
  *
- * Currently snapshot buffers are always set externally, so there is no allocation
- * done here, only the preparation of the v4l2 buffer pools
- *
- * For postview we are still allocating in this method.
- * TODO: In the future we will also allocate externally the postviews to have a
- * similar flow of buffers as the snapshots
+ * The snapshot and postview buffers are allocated by the client,
+ * so there is no allocation done here, but only the preparation
+ * of the v4l2 buffer pools.
  */
 status_t AtomISP::allocateSnapshotBuffers()
 {
@@ -4072,33 +4080,45 @@ status_t AtomISP::allocateSnapshotBuffers()
         mMainDevice->setBufferPool((void**)&bufPool,mConfig.num_snapshot,
                                    &mConfig.snapshot, mClientSnapshotBuffersCached);
 
-    if (needNewPostviewBuffers()) {
-            freePostviewBuffers();
-            AtomBuffer postv = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
-            for (int i = 0; i < mConfig.num_snapshot; i++) {
-                postv.buff = NULL;
-                postv.size = 0;
-                postv.dataPtr = NULL;
-                if (mHALZSLEnabled) {
-                    MemoryUtils::allocateGraphicBuffer(postv, mConfig.postview);
-                } else {
-                    mCallbacks->allocateMemory(&postv, mConfig.postview.size);
-                }
 
-                if (postv.dataPtr == NULL) {
-                    LOGE("Error allocation memory for postview buffers!");
-                    status = NO_MEMORY;
-                    goto errorFree;
-                }
+    if (mUsingClientPostviewBuffers) {
+        LOG1("@%s using %d client postview buffers",__FUNCTION__, mConfig.num_postviews);
+        for (int i = 0; i < mConfig.num_postviews; ++i) {
+            mPostviewBuffers.editItemAt(i).type = ATOM_BUFFER_POSTVIEW;
+            mPostviewBuffers.editItemAt(i).shared = false;
 
-                bufPool[i] = postv.dataPtr;
-
-                postv.shared = false;
-                if (mHALZSLEnabled)
-                    mScaler->registerBuffer(postv, ScalerService::SCALER_OUTPUT);
-
-                mPostviewBuffers.push(postv);
+            if (!mHALZSLEnabled) {
+                bufPool[i] = mPostviewBuffers[i].dataPtr;
             }
+        }
+    } else if (needNewPostviewBuffers()) {
+        // TODO: Remove this allocation stuff, it is done in PictureThread now...
+        freePostviewBuffers();
+        AtomBuffer postv = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+        for (int i = 0; i < mConfig.num_snapshot; i++) {
+            postv.buff = NULL;
+            postv.size = 0;
+            postv.dataPtr = NULL;
+            if (mHALZSLEnabled) {
+                MemoryUtils::allocateGraphicBuffer(postv, mConfig.postview);
+            } else {
+                mCallbacks->allocateMemory(&postv, mConfig.postview.size);
+            }
+
+            if (postv.dataPtr == NULL) {
+                LOGE("Error allocation memory for postview buffers!");
+                status = NO_MEMORY;
+                goto errorFree;
+            }
+
+            bufPool[i] = postv.dataPtr;
+
+            postv.shared = false;
+            if (mHALZSLEnabled)
+                mScaler->registerBuffer(postv, ScalerService::SCALER_OUTPUT);
+
+            mPostviewBuffers.push(postv);
+        }
     } else {
         for (size_t i = 0; i < mPostviewBuffers.size(); i++) {
             bufPool[i] = mPostviewBuffers[i].dataPtr;
@@ -4185,7 +4205,7 @@ status_t AtomISP::allocateMetaDataBuffers()
     IntelMetadataBuffer* metaDataBuf = NULL;
 
     if(mRecordingBuffers) {
-        for (int i = 0 ; i < mNumBuffers; i++) {
+        for (int i = 0 ; i < mConfig.num_recording_buffers; i++) {
             if (mRecordingBuffers[i].metadata_buff != NULL) {
                 mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
                 mRecordingBuffers[i].metadata_buff = NULL;
@@ -4199,7 +4219,7 @@ status_t AtomISP::allocateMetaDataBuffers()
         return INVALID_OPERATION;
     }
 
-    for (int i = 0; i < mNumBuffers; i++) {
+    for (int i = 0; i < mConfig.num_recording_buffers; i++) {
         metaDataBuf = new IntelMetadataBuffer();
         if(metaDataBuf) {
             if (PlatformData::isGraphicGen()) {
@@ -4261,7 +4281,7 @@ status_t AtomISP::freePreviewBuffers()
 
     if (!mPreviewBuffers.isEmpty()) {
         for (size_t i = 0 ; i < mPreviewBuffers.size(); i++) {
-            LOG1("@%s mHALZSLEnabled = %d i=%d, mNum = %d", __FUNCTION__, mHALZSLEnabled, i, mNumPreviewBuffers);
+            LOG1("@%s mHALZSLEnabled = %d i=%d, mNum = %d", __FUNCTION__, mHALZSLEnabled, i, mConfig.num_preview_buffers);
             if (mHALZSLEnabled)
                 mScaler->unRegisterBuffer(mPreviewBuffers.editItemAt(i), ScalerService::SCALER_OUTPUT);
 
@@ -4282,7 +4302,7 @@ status_t AtomISP::freeRecordingBuffers()
 {
     LOG1("@%s", __FUNCTION__);
     if(mRecordingBuffers != NULL) {
-        for (int i = 0 ; i < mNumBuffers; i++)
+        for (int i = 0 ; i < mConfig.num_recording_buffers; i++)
             MemoryUtils::freeAtomBuffer(mRecordingBuffers[i]);
 
 #ifdef INTEL_VIDEO_XPROC_SHARING
@@ -4312,16 +4332,24 @@ status_t AtomISP::freeSnapshotBuffers()
 
 status_t AtomISP::freePostviewBuffers()
 {
-    LOG1("@%s: freeing %d", __FUNCTION__, mPostviewBuffers.size());
+    LOG1("@%s", __FUNCTION__);
 
-    for (size_t i = 0 ; i < mPostviewBuffers.size(); i++) {
+   if (mUsingClientPostviewBuffers) {
+        LOG1("Using client\'s postview buffers, nothing to free");
+        return NO_ERROR;
+    }
+
+    LOG1("@%s: freeing %d", __FUNCTION__, mPostviewBuffers.size());
+    for (int i = 0 ; i < mConfig.num_postviews; i++) {
         AtomBuffer &buffer = mPostviewBuffers.editItemAt(i);
         if (buffer.gfxInfo.scalerId != -1)
             mScaler->unRegisterBuffer(buffer, ScalerService::SCALER_OUTPUT);
 
         MemoryUtils::freeAtomBuffer(buffer);
     }
+
     mPostviewBuffers.clear();
+
     return NO_ERROR;
 }
 
@@ -4644,7 +4672,7 @@ status_t AtomISP::storeMetaDataInBuffers(bool enabled, int sID)
 exitFreeRec:
     LOGE("Error allocating metadata buffers!");
     if(mRecordingBuffers) {
-        for (int i = 0 ; i < mNumBuffers; i++) {
+        for (int i = 0 ; i < mConfig.num_recording_buffers; i++) {
             if (mRecordingBuffers[i].metadata_buff != NULL) {
                 mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
                 mRecordingBuffers[i].metadata_buff = NULL;
@@ -4792,6 +4820,8 @@ int AtomISP::moveFocusToPosition(int position)
         (strcmp(PlatformData::getBoardName(), "baylake") == 0)) {
         position = 1024 - position;
     }
+
+    LOG2("@%s: V4L2_CID_FOCUS_ABSOLUTE = %d", __FUNCTION__, position);
     return mMainDevice->setControl(V4L2_CID_FOCUS_ABSOLUTE, position, "Set focus position");
 }
 
@@ -4830,7 +4860,7 @@ int AtomISP::setExposure(struct atomisp_exposure *exposure)
 {
     int ret;
     ret = mMainDevice->xioctl(ATOMISP_IOC_S_EXPOSURE, exposure);
-    LOG2("%s IOCTL ATOMISP_IOC_S_EXPOSURE ret: %d, gain %d, citg %d\n", __FUNCTION__, ret, exposure->gain[0], exposure->integration_time[0]);
+    LOG2("%s IOCTL ATOMISP_IOC_S_EXPOSURE ret: %d, gain %d %d, citg %d %d\n", __FUNCTION__, ret, exposure->gain[0], exposure->gain[1], exposure->integration_time[0], exposure->integration_time[0]);
     return ret;
 }
 
@@ -5146,6 +5176,15 @@ int AtomISP::setAicParameter(struct atomisp_parameters *aic_param)
         memset(aic_param->de_config, 0, sizeof(struct atomisp_de_config));
         aic_param->ee_config->threshold = 65535;
         LOG2("Disabled NREE in 3A");
+    }
+
+    if (aic_param->wb_config == NULL) {
+        LOG2("@%s: wb is NULL", __FUNCTION__);
+    } else {
+        LOG2("@%s: wb integer_bits=%u gr=%u r=%u b=%u gb=%u",
+             __FUNCTION__, aic_param->wb_config->integer_bits,
+             aic_param->wb_config->gr, aic_param->wb_config->r,
+             aic_param->wb_config->b, aic_param->wb_config->gb);
     }
 
     ret = mMainDevice->xioctl(ATOMISP_IOC_S_PARAMETERS, aic_param);

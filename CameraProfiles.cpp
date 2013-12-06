@@ -114,6 +114,8 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
         PlatformBase::mSupportVideoSnapshot = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "numRecordingBuffers") == 0) {
         PlatformBase::mNumRecordingBuffers = atoi(atts[1]);
+    } else if (strcmp(name, "numPreviewBuffers") == 0) {
+        PlatformBase::mNumPreviewBuffers = atoi(atts[1]);
     } else if (strcmp(name, "maxContinuousRawRingBuffer") == 0) {
         PlatformBase::mMaxContinuousRawRingBuffer = atoi(atts[1]);
     } else if (strcmp(name, "boardName") == 0) {
@@ -304,19 +306,9 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
     } else if (strcmp(name, "maxNumYUVBufferForBracket") == 0) {
         pCurrentCam->maxNumYUVBufferForBracket = atoi(atts[1]);
     } else if (strcmp(name, "verticalFOV") == 0) {
-        float angle = atof(atts[1]);
-        if (angle > 0 && angle < 180) {
-            pCurrentCam->verticalFOV = angle;
-        } else {
-            LOGE("@%s, name:%s, atts[0]:%s, angle format wrong", __func__, name, atts[0]);
-        }
+        pCurrentCam->verticalFOV = atts[1];
     } else if (strcmp(name, "horizontalFOV") == 0) {
-        float angle = atof(atts[1]);
-        if (angle > 0 && angle < 180) {
-            pCurrentCam->horizontalFOV = angle;
-        } else {
-            LOGE("@%s, name:%s, atts[0]:%s, angle format wrong", __func__, name, atts[0]);
-        }
+        pCurrentCam->horizontalFOV = atts[1];
     }
 }
 
@@ -563,6 +555,7 @@ void CameraProfiles::dump(void)
     LOGD("line%d, in DeviceData, mMaxZoomFactor:%d ", __LINE__, mMaxZoomFactor);
     LOGD("line%d, in DeviceData, mSupportVideoSnapshot:%d ", __LINE__, mSupportVideoSnapshot);
     LOGD("line%d, in DeviceData, mNumRecordingBuffers:%d ", __LINE__, mNumRecordingBuffers);
+    LOGD("line%d, in DeviceData, mNumPreviewBuffers:%d ", __LINE__, mNumPreviewBuffers);
     LOGD("line%d, in DeviceData, mMaxContinuousRawRingBuffer:%d ", __LINE__, mMaxContinuousRawRingBuffer);
     LOGD("line%d, in DeviceData, mBoardName:%s ", __LINE__, mBoardName.string());
     LOGD("line%d, in DeviceData, mSupportAIQ:%d ", __LINE__, mSupportAIQ);

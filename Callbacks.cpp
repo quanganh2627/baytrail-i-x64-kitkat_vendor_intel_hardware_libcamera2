@@ -140,11 +140,11 @@ void Callbacks::postviewFrameDone(AtomBuffer *buff)
 {
     LOG1("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_POSTVIEW_FRAME) && mDataCB != NULL) {
-        if (buff->buff) {
-            LOG1("Sending message: CAMERA_MSG_POSTVIEW_FRAME, buff id = %d, size = %zu", buff->id,  buff->buff->size);
+        if (buff && buff->buff) {
+            LOG1("Sending message: CAMERA_MSG_POSTVIEW_FRAME, buff id = %d, dataPtr: %p, size = %zu", buff->id, buff->dataPtr, buff->buff->size);
             mDataCB(CAMERA_MSG_POSTVIEW_FRAME, buff->buff, 0, NULL, mUserToken);
         } else {
-            if (buff->dataPtr && buff->size && buff->gfxInfo.gfxBufferHandle) {
+            if (buff && buff->dataPtr && buff->size && buff->gfxInfo.gfxBufferHandle) {
                 // allocated from graphics (HAL ZSL use case, usually)
                 // callback memory allocation is deferred to here to conserve memory
                 allocateMemory(&buff->buff, buff->size);

@@ -91,8 +91,6 @@ public:
     status_t start();
     status_t stop();
 
-    inline int getNumPreviewBuffers() { return mNumPreviewBuffers; }
-    inline int getNumVideoBuffers() { return mNumBuffers; }
     AtomMode getMode() const { return mMode; };
 
     status_t startOfflineCapture(ContinuousCaptureConfig &config);
@@ -119,6 +117,8 @@ public:
     status_t getSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
     status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf);
 
+    status_t setPostviewBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bool cached);
+
     int pollPreview(int timeout);
     int pollCapture(int timeout);
 
@@ -127,9 +127,9 @@ public:
     bool isHALZSLEnabled() const { return mHALZSLEnabled; }
 
     status_t setPreviewFrameFormat(int width, int height, int bpl, int fourcc = 0);
-    status_t setPostviewFrameFormat(int width, int height, int fourcc);
-    void getPostviewFrameFormat(int &width, int &height, int &foucc) const;
-    status_t setSnapshotFrameFormat(int width, int height, int fourcc);
+    status_t setPostviewFrameFormat(AtomBuffer& formatDescriptor);
+    void getPostviewFrameFormat(AtomBuffer& formatDescriptor) const;
+    status_t setSnapshotFrameFormat(AtomBuffer& formatDescriptor);
     status_t setVideoFrameFormat(int width, int height, int fourcc = 0);
     bool applyISPLimitations(CameraParameters *params, bool dvsEnabled, bool videoMode);
 
@@ -158,6 +158,7 @@ public:
     bool getPreviewTooBigForVFPP() { return mPreviewTooBigForVFPP; }
     bool getXNR() const { return mXnr; };
     bool getLowLight() const { return mLowLight; };
+    void setPreviewBufNum(int num);
 
     status_t setDVS(bool enable);
     status_t setDVSSkipFrames(unsigned int skips);
@@ -306,8 +307,6 @@ private:
      */
     static const int V4L2_MAX_DEVICE_COUNT  = V4L2_ISP_SUBDEV2 + 1;
 
-    static const int NUM_PREVIEW_BUFFERS = 6;
-
     struct VideoNodeLimits {
         int minWidht;
         int minHeight;
@@ -325,12 +324,14 @@ private:
         VideoNodeLimits recordingLimits;
         VideoNodeLimits snapshotLimits;
         VideoNodeLimits postviewLimits;
-        float fps;            // preview/recording (shared) output by sensor
-        int preview_fps;      // preview fps requested by user
-        int recording_fps;    // recording fps requested by user
-        int num_snapshot;     // number of snapshots to take
-        int num_postviews;    // number of allocated postviews
-        int zoom;             // zoom value
+        float fps;                  // preview/recording (shared) output by sensor
+        int preview_fps;            // preview fps requested by user
+        int recording_fps;          // recording fps requested by user
+        int num_snapshot;           // number of snapshots to take
+        int num_postviews;          // number of allocated postviews
+        int num_recording_buffers;  // number of recording buffers used
+        int num_preview_buffers;    // number of preview buffers used
+        int zoom;                   // zoom value
     };
 
     struct cameraInfo {
@@ -494,8 +495,6 @@ private:
     AtomMode mMode;
     Callbacks *mCallbacks;
 
-    int mNumBuffers;
-    int mNumPreviewBuffers;
     Vector <AtomBuffer> mPreviewBuffers;
     bool mPreviewBuffersCached;
     AtomBuffer *mRecordingBuffers;
@@ -515,6 +514,7 @@ private:
 
     bool mClientSnapshotBuffersCached;
     bool mUsingClientSnapshotBuffers;
+    bool mUsingClientPostviewBuffers;
     bool mStoreMetaDataInBuffers;
     int  mBufferSharingSessionID;
 

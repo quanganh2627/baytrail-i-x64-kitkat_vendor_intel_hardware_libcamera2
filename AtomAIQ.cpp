@@ -304,22 +304,24 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
     mAeState.ae_results = NULL;
     status = runAeMain();
 
-    /* GBCE is disabled only with flash.
-     * We use it to indicate when to restore results from
+    /* Default GBCE is used with flash.
+     * We use default GBCE flag to indicate when to restore results from
      * pre-flash start condition.
      * Note:
      * - AWB is run during flash sequence and results are therefore explicitly stored
-     * - GBCE is not run during flash sequence, so its previous results just get used in
+     * - GBCE is run during flash sequence with default gamma
      *   runAICMain()
      */
-    if (!mGBCEEnable && isp_mode != ia_aiq_frame_use_still) {
-        LOG1("Restoring AWB & GBCE results that preceded flash");
-        mGBCEEnable = true;
+
+    status |= runGBCEMain();
+
+    if (mGBCEDefault && isp_mode != ia_aiq_frame_use_still) {
+        LOG1("Restoring AWBresults that preceded flash");
+        mGBCEDefault = false;
         mAwbResults = &mAwbStoredResults;
     } else {
-        /* run AWB and GBCE to get initial values */
+        /* run AWB to get initial values */
         runAwbMain();
-        status |= runGBCEMain();
     }
 
     /* Re-run AIC to get new results for new mode. LSC needs to be updated if resolution changes. */
@@ -1110,7 +1112,7 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
         bool prev_af_lock = getAfLock();
         bool prev_ae_lock = getAeLock();
         bool prev_awb_lock = getAwbLock();
-        mGBCEEnable = false;
+        mGBCEDefault = true;
 
         /* AF is not run during flash sequence. */
         setAfLock(true);
@@ -1987,16 +1989,22 @@ void AtomAIQ::runAwbMain()
 
 void AtomAIQ::resetGBCEParams()
 {
-    mGBCEEnable = true;
+    mGBCEDefault = false;
     mGBCEResults = NULL;
 }
 
 status_t AtomAIQ::runGBCEMain()
 {
     LOG2("@%s", __FUNCTION__);
-    if (m3aState.ia_aiq_handle && mGBCEEnable) {
+    if (m3aState.ia_aiq_handle) {
         ia_aiq_gbce_input_params gbce_input_params;
-        gbce_input_params.gbce_level = ia_aiq_gbce_level_use_tuning;
+        if (mGBCEDefault)
+        {
+            gbce_input_params.gbce_level = ia_aiq_gbce_level_bypass;
+        } else
+        {
+            gbce_input_params.gbce_level = ia_aiq_gbce_level_use_tuning;
+        }
         gbce_input_params.frame_use = m3aState.frame_use;
         getEv(&gbce_input_params.ev_shift);
         ia_err err = ia_aiq_gbce_run(m3aState.ia_aiq_handle, &gbce_input_params, &mGBCEResults);
@@ -2162,10 +2170,10 @@ status_t AtomAIQ::runAICMain()
         pa_input_params.awb_results = mAwbResults;
         mIspInputParams.awb_results = mAwbResults;
 
-        if (mGBCEEnable && mGBCEResults) {
+        if (mGBCEResults) {
             LOG2("gbce :%d", mGBCEResults->ctc_gains_lut_size);
         }
-        mIspInputParams.gbce_results = mGBCEEnable ? mGBCEResults : NULL;
+        mIspInputParams.gbce_results = mGBCEResults;
 
         pa_input_params.sensor_frame_params = &m3aState.sensor_frame_params;
         mIspInputParams.sensor_frame_params = &m3aState.sensor_frame_params;
