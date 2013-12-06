@@ -201,10 +201,16 @@ status_t AtomDvs2::reconfigureNoLock()
     mDvs2Config.hw_config.performance_point = ia_dvs2_gdc_performance_point_1x1; //hardcoded
 
     mDVSEnabled = mIsp->dvsEnabled();
+    if(mDVSEnabled) {
+        // Check if DVS is enabled in driver by the envelope value
+        if(dvs_env_width > DVS_MIN_ENVELOPE && dvs_env_height > DVS_MIN_ENVELOPE) {
+            mDvs2Config.num_axis = ia_dvs2_algorihm_4_axis;
+        } else {
+            mDvs2Config.num_axis = ia_dvs2_algorihm_0_axis;
+            mDVSEnabled = false;
+        }
+    }
     LOG2("DVS enabled:%s", mDVSEnabled ? "true": "false");
-    if(mDVSEnabled)
-        mDvs2Config.num_axis = ia_dvs2_algorihm_4_axis;
-
     /* setup binary dump parameter */
     mDumpParams.frames = TEST_FRAMES;
     mDumpParams.endless = false;
