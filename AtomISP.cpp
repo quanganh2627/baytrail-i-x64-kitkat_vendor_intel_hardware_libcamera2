@@ -2529,7 +2529,7 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
 
         // Workaround 1+3, detail refer to the function description, BYT
         // doesn't need this WA to support 1080p preview
-        if ((reducedVf || dvsEnabled) &&
+        if ((reducedVf || (dvsEnabled && mCssMajorVersion == 1)) &&
             PlatformData::supportPreviewLimitation()) {
             if ((previewWidth > RESOLUTION_VGA_WIDTH || previewHeight > RESOLUTION_VGA_HEIGHT) &&
                 (videoWidth > RESOLUTION_720P_WIDTH || videoHeight > RESOLUTION_720P_HEIGHT)) {
