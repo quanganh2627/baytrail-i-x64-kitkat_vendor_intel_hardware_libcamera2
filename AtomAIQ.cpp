@@ -2007,6 +2007,25 @@ status_t AtomAIQ::getGBCEResults(ia_aiq_gbce_results *gbce_results)
     return NO_ERROR;
 }
 
+status_t AtomAIQ::getExposureParameters(ia_aiq_exposure_parameters *exposure)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    ia_aiq_ae_results *ae_results;
+
+    if (!exposure)
+        return BAD_VALUE;
+
+    ae_results = peekAeStoredResults(0);
+
+    if (ae_results)
+        *exposure = *ae_results->exposure;
+    else
+        return INVALID_OPERATION;
+
+    return NO_ERROR;
+}
+
 void AtomAIQ::resetDSDParams()
 {
     m3aState.dsd_enabled = false;

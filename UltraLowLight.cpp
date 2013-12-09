@@ -53,6 +53,7 @@ struct UltraLowLight::MorphoULL {
 };
 
 UltraLowLight::UltraLowLight(Callbacks *callbacks) : mMorphoCtrl(NULL),
+                                 mIntelUllCfg(NULL),
                                  mCallbacks(callbacks),
                                  mState(ULL_STATE_NULL),
                                  mULLCounter(0),
@@ -102,7 +103,7 @@ void UltraLowLight::setMode(ULLMode aMode) {
  * \param h height of the images to process
  * \param aPreset One of the ULL algorithm presets
  */
-status_t UltraLowLight::init( int w, int h, int aPreset)
+status_t UltraLowLight::init( int w, int h, int aPreset, ia_binary_data *aiqb_data)
 {
     LOG1("@%s : w=%d h=%d preset=%d", __FUNCTION__, w, h, aPreset);
     status_t ret = NO_ERROR;
@@ -122,7 +123,7 @@ status_t UltraLowLight::init( int w, int h, int aPreset)
     case ULL_STATE_DONE:
         startTime= systemTime();
         if (mUseIntelULL)
-            ret = initIntelULL(w, h);
+            ret = initIntelULL(w, h, aiqb_data);
         else
             ret = initMorphoLib(w, h, aPreset);
 
@@ -133,7 +134,7 @@ status_t UltraLowLight::init( int w, int h, int aPreset)
         if (mUseIntelULL) {
             deinitIntelULL();
             mInputBuffers.clear();
-            ret = initIntelULL(w, h);
+            ret = initIntelULL(w, h, aiqb_data);
         } else {
             deinitMorphoLib();
             mInputBuffers.clear();
@@ -249,26 +250,14 @@ status_t UltraLowLight::addInputFrame(AtomBuffer *snap, AtomBuffer *pv)
     return ret;
 }
 
-status_t UltraLowLight::addSnapshotMetadata(PictureThread::MetaData &metadata)
+status_t UltraLowLight::addSnapshotMetadata(PictureThread::MetaData &metadata, ia_aiq_exposure_parameters &exposure)
 {
+    LOG1("@%s", __FUNCTION__);
     mSnapMetadata = metadata;
 
-    if (mUseIntelULL && mSnapMetadata.aeConfig != NULL) {
-        LOG1("Passing snapshot metadata to Intel ULL");
-
-        /* TODO: pass the tuning parameters here, all are set to default currently */
-        mIntelUllCfg->deghost        = 110;
-        mIntelUllCfg->luma_denoise   = 127;
-        mIntelUllCfg->chroma_denoise = 127;
-        mIntelUllCfg->apex_av        = mSnapMetadata.aeConfig->aecApexAv;
-        mIntelUllCfg->apex_sv        = mSnapMetadata.aeConfig->aecApexSv;
-        mIntelUllCfg->apex_tv        = mSnapMetadata.aeConfig->aecApexTv;
-        mIntelUllCfg->exposure       = mSnapMetadata.aeConfig->expTime;
-        mIntelUllCfg->ev_bias        = mSnapMetadata.aeConfig->evBias;
-        mIntelUllCfg->digital_gain   = mSnapMetadata.aeConfig->digitalGain;
-        mIntelUllCfg->total_gain     = mSnapMetadata.aeConfig->totalGain;
-        mIntelUllCfg->aperture_num   = mSnapMetadata.aeConfig->aperture_num;
-        mIntelUllCfg->aperture_denum = mSnapMetadata.aeConfig->aperture_denum;
+    if (mUseIntelULL) {
+        LOG1("Passing exposure parameters to Intel ULL");
+        mIntelUllCfg->exposure = exposure;
     }
 
     return NO_ERROR;
@@ -452,21 +441,29 @@ static status_t ia_error_to_status_t(ia_err status)
     }
 }
 
-status_t UltraLowLight::initIntelULL(int w, int h)
+status_t UltraLowLight::initIntelULL(int w, int h, ia_binary_data *aiqb_data)
 {
     LOG1("@%s", __FUNCTION__);
-    status_t ret = NO_ERROR;
+    ia_err err;
 
     mIntelUllCfg = new ia_cp_ull_cfg;
-    if (!mIntelUllCfg)
+    if (!mIntelUllCfg) {
+        LOGE("@%s: cannot allocate ULL configuration structure", __FUNCTION__);
         return NO_MEMORY;
+    }
+
+    err = ia_cp_ull_init(w, h, aiqb_data);
+    if (err != ia_err_none) {
+        LOGE("@%s: failed to initialize ULL capture", __FUNCTION__);
+        return ia_error_to_status_t(err);
+    }
 
     mCurrentPreset = 0;
     mWidth = w;
     mHeight = h;
     mInputBuffers.clear();
 
-    return ret;
+    return NO_ERROR;
 }
 
 status_t UltraLowLight::initMorphoLib(int w, int h, int idx)

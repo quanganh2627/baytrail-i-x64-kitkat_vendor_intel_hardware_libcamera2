@@ -101,12 +101,12 @@ public:
     bool trigger() STUB_BODY_BOOL
     bool isProcessing() STUB_BODY_BOOL
 
-    status_t init( int w, int h, int aPreset) STUB_BODY_STAT
+    status_t init(int w, int h, int aPreset, ia_binary_data *aiqb_data) STUB_BODY_STAT
     status_t deinit() STUB_BODY_STAT
 
 
     status_t addInputFrame(AtomBuffer *snapshot, AtomBuffer *postview) STUB_BODY_STAT
-    status_t addSnapshotMetadata(PictureThread::MetaData &metadata) STUB_BODY_STAT
+    status_t addSnapshotMetadata(PictureThread::MetaData &metadata, ia_aiq_exposure_parameters &exposure) STUB_BODY_STAT
     status_t getOuputResult(AtomBuffer *snap, AtomBuffer * pv,
                             PictureThread::MetaData *metadata, int *ULLid) STUB_BODY_STAT
     status_t getInputBuffers(Vector<AtomBuffer> *inputs) STUB_BODY_STAT
@@ -174,7 +174,7 @@ private:
     void AtomToMorphoBuffer(const   AtomBuffer *atom, void* morpho) STUB_BODY
 
     status_t processIntelULL() STUB_BODY_STAT
-    status_t initIntelULL(int w, int h) STUB_BODY_STAT
+    status_t initIntelULL(int w, int h, ia_binary_data *aiqb_data) STUB_BODY_STAT
     void deinitIntelULL() STUB_BODY
     void AtomToIaFrameBuffer(const AtomBuffer *atom, ia_frame* frame) STUB_BODY
 

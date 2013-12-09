@@ -226,8 +226,6 @@ class AtomAIQ : public I3AControls {
 
 // constructor/destructor
 private:
-    status_t getAiqConfig(ia_binary_data *cpfData);
-
     // Common functions for 3A, GBCE, AF etc.
     status_t run3aMain();
 
@@ -329,6 +327,7 @@ public:
     virtual status_t switchModeAndRate(AtomMode mode, float fps);
 
     // Getters and Setters
+    virtual status_t getAiqConfig(ia_binary_data *cpfData);
     status_t setAeWindow(const CameraWindow *window);
     status_t setAfWindow(const CameraWindow *window);
     status_t setAeFlickerMode(FlickerMode mode);
@@ -354,6 +353,7 @@ public:
     virtual status_t setIsoMode(IsoMode mode);
     virtual IsoMode getIsoMode(void) { return CAM_AE_ISO_MODE_NOT_SET; }
     status_t getGBCEResults(ia_aiq_gbce_results *gbce_results);
+    virtual status_t getExposureParameters(ia_aiq_exposure_parameters *exposure);
     virtual bool getAeUllTrigger();
 
     status_t setAeLock(bool en);

@@ -21,6 +21,7 @@
 #include "LogHelper.h"
 #include "AtomAcc.h"
 #include "PerformanceTraces.h"
+#include "I3AControls.h"
 
 namespace android {
 
@@ -43,7 +44,8 @@ static void vinfo(const char *fmt, va_list ap)
 
 #ifdef ENABLE_INTEL_EXTRAS
 AtomCP::AtomCP(HWControlGroup &hwcg) :
-    mISP(hwcg.mIspCI), mIntelHdrCfg(NULL)
+    mISP(hwcg.mIspCI),
+    mIntelHdrCfg(NULL)
 {
     LOG1("@%s", __FUNCTION__);
     int ispMinor, ispMajor;
@@ -103,19 +105,10 @@ status_t AtomCP::composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& ou
 
     LOG1("@%s: inputBuf=%p, outputBuf=%p", __FUNCTION__, &inputBuf, &outputBuf);
 
-    // TODO: Pass the HDR tuning parameters here, values are hard-coded currently
-    mIntelHdrCfg->dg_luma_thr            = 63;
-    mIntelHdrCfg->dg_chroma_thr          = 63;
-    mIntelHdrCfg->luma_highlights        = 127;
-    mIntelHdrCfg->luma_mid_tones         = 127;
-    mIntelHdrCfg->luma_shadows           = 127;
-    mIntelHdrCfg->luma_sharpness         = 63;
-    mIntelHdrCfg->chroma_highlights_sat  = 191;
-    mIntelHdrCfg->chroma_transient_width = 63;
-    mIntelHdrCfg->gamma_lut_size         = gbce_results.ygamma_lut_size;
-    mIntelHdrCfg->gamma_lut              = gbce_results.ygamma_lut;
-    mIntelHdrCfg->ctc_gains_lut_size     = gbce_results.ctc_gains_lut_size;
-    mIntelHdrCfg->ctc_gains_lut          = gbce_results.ctc_gains_lut;
+    mIntelHdrCfg->gbce.ygamma_lut_size    = gbce_results.ygamma_lut_size;
+    mIntelHdrCfg->gbce.ygamma_lut         = gbce_results.ygamma_lut;
+    mIntelHdrCfg->gbce.ctc_gains_lut_size = gbce_results.ctc_gains_lut_size;
+    mIntelHdrCfg->gbce.ctc_gains_lut      = gbce_results.ctc_gains_lut;
 
     status = ia_cp_hdr_compose(outputBuf.ciMainBuf,
                                outputBuf.ciPostviewBuf,
@@ -132,18 +125,22 @@ status_t AtomCP::composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& ou
     return NO_ERROR;
 }
 
-status_t AtomCP::initializeHDR(unsigned width, unsigned height)
+status_t AtomCP::initializeHDR(unsigned width, unsigned height, ia_binary_data *aiqb_data)
 {
     LOG1("@%s, size=%ux%u", __FUNCTION__, width, height);
     ia_err ia_err;
 
     mIntelHdrCfg = new ia_cp_hdr_cfg;
-    if (!mIntelHdrCfg)
+    if (!mIntelHdrCfg) {
+        LOGE("@%s: cannot allocate HDR configuration structure", __FUNCTION__);
         return NO_MEMORY;
+    }
 
-    ia_err = ia_cp_hdr_init(width, height);
-    if (ia_err != ia_err_none)
+    ia_err = ia_cp_hdr_init(width, height, aiqb_data);
+    if (ia_err != ia_err_none) {
+        LOGE("@%s: failed to allocate HDR intermediate buffers", __FUNCTION__);
         return NO_MEMORY;
+    }
 
     return NO_ERROR;
 }

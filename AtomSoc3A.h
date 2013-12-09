@@ -98,6 +98,7 @@ public:
 
     // Only supported by Intel 3A
     virtual bool isIntel3A() { return false; }
+    virtual status_t getAiqConfig(ia_binary_data *cpfData) { return INVALID_OPERATION; }
     virtual status_t getAeManualBrightness(float *ret) { return INVALID_OPERATION; }
     virtual size_t   getAeMaxNumWindows() { return 0; }
     virtual size_t   getAfMaxNumWindows() { return 0; }
@@ -118,6 +119,7 @@ public:
     virtual AfStatus isStillAfComplete() { return CAM_AF_STATUS_FAIL; }
     virtual status_t applyPreFlashProcess(FlashStage stage) { return INVALID_OPERATION; }
     virtual status_t getGBCEResults(ia_aiq_gbce_results *gbce_results) { return INVALID_OPERATION; }
+    virtual status_t getExposureParameters(ia_aiq_exposure_parameters *exposure) { return INVALID_OPERATION; }
 
     virtual ia_binary_data *get3aMakerNote(ia_mkn_trg mode) { return NULL; }
     virtual void put3aMakerNote(ia_binary_data *mknData) { }

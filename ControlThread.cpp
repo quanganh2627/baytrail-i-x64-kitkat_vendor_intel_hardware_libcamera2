@@ -3478,7 +3478,13 @@ status_t ControlThread::captureULLPic()
     mParameters.getPictureSize(&picWidth, &picHeight);
     fourcc = mISP->getSnapshotPixelFormat();
 
-    status = mULL->init(picWidth,picHeight,0);
+    ia_binary_data aiqb_data;
+    CLEAR(aiqb_data);
+    status = m3AControls->getAiqConfig(&aiqb_data);
+    if (status != NO_ERROR)
+        LOGW("@%s: cannot retrieve CPF binary data for ULL capture", __FUNCTION__);
+
+    status = mULL->init(picWidth,picHeight,0,&aiqb_data);
     if (status != NO_ERROR) {
       mULL->deinit();
       LOGE("Failed to initialize the ULL algorithm");
@@ -3516,7 +3522,11 @@ status_t ControlThread::captureULLPic()
            PictureThread::MetaData ullPicMetaData;
            fillPicMetaData(firstPicMetaData, false);
            fillPicMetaData(ullPicMetaData, false);
-           mULL->addSnapshotMetadata(ullPicMetaData);
+           ia_aiq_exposure_parameters exposure;
+           CLEAR(exposure);
+           m3AControls->getExposureParameters(&exposure);
+           mULL->addSnapshotMetadata(ullPicMetaData, exposure);
+
            if (displayPostview)
                mPreviewThread->postview(&postviewBuffer, true);
            /*
@@ -5179,7 +5189,14 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
             mHdr.enabled = true;
             mHdr.bracketMode = BRACKET_EXPOSURE;
             mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
-            status = mCP->initializeHDR(newWidth, newHeight);
+
+            ia_binary_data aiqb_data;
+            memset(&aiqb_data, 0, sizeof(aiqb_data));
+            status = m3AControls->getAiqConfig(&aiqb_data);
+            if (status != NO_ERROR)
+                LOGW("@%s: cannot retrieve CPF binary data for HDR capture", __FUNCTION__);
+
+            status = mCP->initializeHDR(newWidth, newHeight, &aiqb_data);
             if (status == NO_ERROR) {
                 mHdr.enabled = true;
                 mHdr.bracketMode = BRACKET_EXPOSURE;
@@ -5212,7 +5229,13 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
         if((oldValIntel == "on" || oldVal == CameraParameters::SCENE_MODE_HDR) && (newWidth != oldWidth || newHeight != oldHeight)) {
             status = mCP->uninitializeHDR();
             if (status == NO_ERROR) {
-                status = mCP->initializeHDR(newWidth, newHeight);
+                ia_binary_data aiqb_data;
+                CLEAR(aiqb_data);
+                status = m3AControls->getAiqConfig(&aiqb_data);
+                if (status != NO_ERROR)
+                    LOGW("@%s: cannot retrieve CPF binary data for HDR capture", __FUNCTION__);
+
+                status = mCP->initializeHDR(newWidth, newHeight, &aiqb_data);
                 if (status != NO_ERROR) {
                     LOGE("HDR buffer allocation failed");
                 }
@@ -7289,6 +7312,7 @@ status_t ControlThread::hdrCompose()
     LOG1("%s",__FUNCTION__);
     status_t status = NO_ERROR;
     ia_aiq_gbce_results gbce_results;
+    CLEAR(gbce_results);
 
     // initialize the meta data with last picture of
     // the HDR sequence

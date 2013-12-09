@@ -51,7 +51,7 @@ public:
     AtomCP(HWControlGroup &hwcg)STUB;
     ~AtomCP()STUB;
     status_t composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& outputBuf, const ia_aiq_gbce_results gbce_results)STAT_STUB;
-    status_t initializeHDR(unsigned width, unsigned height)STAT_STUB;
+    status_t initializeHDR(unsigned width, unsigned height, ia_binary_data *aiqb_data)STAT_STUB;
     status_t uninitializeHDR(void)STAT_STUB;
     static status_t setIaFrameFormat(ia_frame *inputBuf, int v4l2Format)STAT_STUB;
 

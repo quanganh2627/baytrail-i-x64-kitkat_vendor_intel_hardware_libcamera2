@@ -208,6 +208,7 @@ public:
 
     // Intel 3A specific
     virtual bool isIntel3A() = 0;
+    virtual status_t getAiqConfig(ia_binary_data *cpfData) = 0;
     virtual status_t getAeManualBrightness(float *ret) = 0;
     virtual status_t setManualFocusIncrement(int step) = 0;
     virtual status_t initAfBracketing(int stops, AFBracketingMode mode) = 0;
@@ -238,6 +239,7 @@ public:
     virtual status_t setFaces(const ia_face_state& faceState) = 0;
     virtual status_t setFlash(int numFrames) = 0;
     virtual status_t getGBCEResults(ia_aiq_gbce_results *gbce_results) = 0;
+    virtual status_t getExposureParameters(ia_aiq_exposure_parameters *exposure) = 0;
     virtual bool getAeUllTrigger() = 0;
 
     virtual status_t switchModeAndRate(AtomMode mode, float fps) = 0;
