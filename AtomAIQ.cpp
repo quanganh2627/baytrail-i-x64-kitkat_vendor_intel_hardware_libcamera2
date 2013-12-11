@@ -1154,8 +1154,8 @@ status_t AtomAIQ::getSmartSceneMode(int *sceneMode, bool *sceneHdr)
 {
     LOG1("@%s", __FUNCTION__);
     if(sceneMode != NULL && sceneHdr != NULL) {
-        *sceneMode = mDetectedSceneMode & ~ia_aiq_scene_mode_hdr;
-        *sceneHdr = mDetectedSceneMode & ia_aiq_scene_mode_hdr;
+        *sceneMode = mDetectedSceneMode;
+        *sceneHdr = mAeState.ae_results->multiframe == ia_aiq_bracket_mode_hdr ? true : false;
         return UNKNOWN_ERROR;
     }
     return NO_ERROR;
@@ -1623,7 +1623,8 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct,
             m3aState.statistics_input_parameters.frame_af_parameters = &m3aState.af_results_feedback;
             LOG2("AF assist light %s", (mAfState.assist_light) ? "on":"off");
         }
-
+        // TODO: take into account camera mount orientation. AIQ needs device orientation to handle statistics.
+        m3aState.statistics_input_parameters.camera_orientation = ia_aiq_camera_orientation_unknown;
         m3aState.statistics_input_parameters.wb_gains = NULL;
         m3aState.statistics_input_parameters.cc_matrix = NULL;
 
@@ -1742,7 +1743,6 @@ void AtomAIQ::resetAECParams()
     mAeInputParameters.priority_mode = ia_aiq_ae_priority_mode_normal;
     mAeInputParameters.flicker_reduction_mode = ia_aiq_ae_flicker_reduction_auto;
     mAeInputParameters.sensor_descriptor = &mAeSensorDescriptor;
-    mAeInputParameters.isp_frame_params = NULL;
     mAeInputParameters.exposure_window = NULL; // TODO: exposure window should be used with digital zoom.
     mAeInputParameters.exposure_coordinate = NULL;
     mAeInputParameters.ev_shift = 0;
@@ -1789,10 +1789,6 @@ status_t AtomAIQ::runAeMain()
 
     ia_err err = ia_err_none;
     ia_aiq_ae_results *new_ae_results = NULL;
-
-    // ToDo:
-    // AE requires frame parameters which describe cropping/scaling done in ISP
-    mAeInputParameters.isp_frame_params = &m3aState.sensor_frame_params;
 
     if (mAfState.assist_light) {
         // HACK: This workaround is needed in order to get and restore
@@ -1961,6 +1957,17 @@ status_t AtomAIQ::runDSDMain()
     if (m3aState.ia_aiq_handle && m3aState.dsd_enabled)
     {
         mDSDInputParameters.af_results = mAfState.af_results;
+        mDSDInputParameters.scene_modes_selection = (ia_aiq_scene_mode)
+            (ia_aiq_scene_mode_close_up_portrait |
+            ia_aiq_scene_mode_portrait |
+            ia_aiq_scene_mode_lowlight_portrait |
+            ia_aiq_scene_mode_low_light |
+            ia_aiq_scene_mode_action |
+            ia_aiq_scene_mode_backlight |
+            ia_aiq_scene_mode_landscape |
+            ia_aiq_scene_mode_document |
+            ia_aiq_scene_mode_firework);
+
         ia_err ret = ia_aiq_dsd_run(m3aState.ia_aiq_handle, &mDSDInputParameters, &mDetectedSceneMode);
         if(ret == ia_err_none)
             LOG2("@%s success, detected scene mode: %d", __FUNCTION__, mDetectedSceneMode);
@@ -2308,8 +2315,6 @@ void AtomAIQ::getSensorFrameParams(ia_aiq_frame_params *frame_params)
     // The +1 needed as the *_end and *_start values are index values.
     frame_params->cropped_image_height = sensor_mode_data.crop_vertical_end - sensor_mode_data.crop_vertical_start + 1;
     frame_params->cropped_image_width = sensor_mode_data.crop_horizontal_end - sensor_mode_data.crop_horizontal_start +1;
-    frame_params->full_image_width = sensor_mode_data.crop_horizontal_end - sensor_mode_data.crop_horizontal_start + 1;
-    frame_params->full_image_height = sensor_mode_data.crop_vertical_end - sensor_mode_data.crop_vertical_start + 1;
     /* TODO: Get scaling factors from sensor configuration parameters */
     frame_params->horizontal_scaling_denominator = 254;
     frame_params->vertical_scaling_denominator = 254;
