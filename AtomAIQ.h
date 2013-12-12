@@ -355,6 +355,7 @@ public:
     virtual status_t setIsoMode(IsoMode mode);
     virtual IsoMode getIsoMode(void) { return CAM_AE_ISO_MODE_NOT_SET; }
     status_t getGBCEResults(ia_aiq_gbce_results *gbce_results);
+    virtual bool getAeUllTrigger();
 
     status_t setAeLock(bool en);
     bool     getAeLock();

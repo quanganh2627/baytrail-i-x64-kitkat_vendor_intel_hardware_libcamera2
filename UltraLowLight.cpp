@@ -796,42 +796,27 @@ void UltraLowLight::AtomToMorphoBuffer(const AtomBuffer *atom, void* m)
 }
 
 /**
- *  update the status of the trigger for ULL capture.
- *  This method is used to update the current exposure values and let the ULL
- *  class to decide whether ULL capture should be used or not.
+ *  Update the status of the trigger for ULL capture.
+ *  This method is used to update the ULL decision from AE.
  *
  *  This method is called from the 3A Thread for each 3A iteration.
  *  The status of the trigger can be queried using the method trigger()
  *
- *  \param expInfo [in] current exposure settings
- *  \param flash [in] true if flash should be used
+ *  \param trigger [in] AE decision whether to trigger ULL
  *  \return true if the state of the trigger changed
  *  \return false if the trigger state remained the same.
  */
-bool UltraLowLight::updateTrigger(SensorAeConfig &expInfo, bool flash)
+bool UltraLowLight::updateTrigger(bool trigger)
 {
     LOG2("%s", __FUNCTION__);
     Mutex::Autolock lock(mStateMutex);
-    float totalGain = expInfo.totalGain;
     bool change = false;
 
-    if (flash) {
-        change = (mTrigger? true:false);
-        mTrigger = false;
-
-    } else {
-
-        if (totalGain > ULL_ACTIVATION_GAIN_THRESHOLD) {
-            change = (mTrigger? false:true);
-            mTrigger = true;
-        } else {
-            change = (mTrigger? true:false);
-            mTrigger = false;
-        }
-    }
+    change = mTrigger == trigger ? false:true;
+    mTrigger = trigger;
 
     if (change)
-        LOG1("trigger %s, flash %d, totalGain %f",mTrigger?"true":"false", flash, totalGain);
+        LOG1("New trigger: %s", mTrigger?"true":"false");
 
     return change;
 }

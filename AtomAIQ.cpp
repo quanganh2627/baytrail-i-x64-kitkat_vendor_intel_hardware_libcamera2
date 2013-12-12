@@ -2253,6 +2253,16 @@ void AtomAIQ::getAeExpCfg(int *exp_time,
     }
 }
 
+bool AtomAIQ::getAeUllTrigger()
+{
+    LOG2("@%s", __FUNCTION__);
+    if (mAeState.ae_results) {
+        return (mAeState.ae_results->multiframe & ia_aiq_bracket_mode_ull) ? true : false;
+    } else {
+        return false;
+    }
+}
+
 void AtomAIQ::getDefaultParams(CameraParameters *params, CameraParameters *intel_params)
 {
     LOG2("@%s", __FUNCTION__);

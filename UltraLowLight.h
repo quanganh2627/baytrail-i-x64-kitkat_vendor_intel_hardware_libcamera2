@@ -118,7 +118,7 @@ public:
     status_t process() STUB_BODY_STAT
     status_t cancelProcess() STUB_BODY_STAT
 
-    bool updateTrigger(SensorAeConfig &expInfo, bool flash) STUB_BODY_BOOL;
+    bool updateTrigger(bool trigger) STUB_BODY_BOOL;
 
 // prevent copy constructor and assignment operator
 private:

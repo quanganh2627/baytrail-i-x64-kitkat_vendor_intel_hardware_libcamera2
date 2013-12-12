@@ -135,6 +135,7 @@ public:
     status_t getSmartSceneMode(int *sceneMode, bool *sceneHdr) { return INVALID_OPERATION; }
     status_t setFaces(const ia_face_state& faceState) { return INVALID_OPERATION; }
     status_t setFlash(int numFrames);
+    virtual bool getAeUllTrigger() { return false; }
 
 private:
     int mCameraId;

@@ -773,16 +773,10 @@ void AAAThread::getCurrentSmartScene(int &sceneMode, bool &sceneHdr)
 void AAAThread::updateULLTrigger()
 {
     LOG2("%s",__FUNCTION__);
-    SensorAeConfig expInfo;
 
     if (mULL) {
-        m3AControls->getExposureInfo(expInfo);
-        bool flashOn;
-        if (m3AControls->getAeFlashMode() == CAM_AE_FLASH_MODE_OFF)
-            flashOn = false;
-        else
-            flashOn = m3AControls->getAeFlashNecessary();
-        mULL->updateTrigger(expInfo, flashOn);
+        bool trigger = m3AControls->getAeUllTrigger();
+        mULL->updateTrigger(trigger);
     }
 }
 
