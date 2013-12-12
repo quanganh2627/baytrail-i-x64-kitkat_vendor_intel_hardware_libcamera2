@@ -713,6 +713,7 @@ private:
 
     MessageQueue<Message, MessageId> mMessageQueue;
     List<Message> mPostponedMessages;
+    bool mPostponedMsgProcessing;
     State mState;
     CaptureSubState mCaptureSubState;
     ShootingMode    mShootingMode;

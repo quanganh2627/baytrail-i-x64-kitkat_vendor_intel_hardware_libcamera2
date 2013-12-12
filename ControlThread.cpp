@@ -136,6 +136,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mPostCaptureThread(NULL)
     ,mAccManagerThread(NULL)
     ,mMessageQueue("ControlThread", (int) MESSAGE_ID_MAX)
+    ,mPostponedMsgProcessing(false)
     ,mState(STATE_STOPPED)
     ,mCaptureSubState(STATE_CAPTURE_INIT)
     ,mShootingMode(SHOOTING_MODE_NONE)
@@ -1819,6 +1820,9 @@ status_t ControlThread::restartPreview(bool videoMode)
      * that should wait for the post-capture processing to complete.
      */
     cancelPostCaptureThread();
+    // cancelPictureThread as well to avoid it happens in stopPreviewCore
+    if (mState == STATE_CONTINUOUS_CAPTURE)
+        cancelPictureThread();
 
     stopFaceDetection(true);
     status_t status = stopPreviewCore();
@@ -4023,6 +4027,13 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
         LOGW("Received a picture Done during invalid state %d; buf id:%d, ptr=%p", mState, msg->snapshotBuf.id, msg->snapshotBuf.buff);
     }
 
+    // It is possible that handleMessageSetParameters here will callback to
+    // handleMessagePictureDone again in some cases with processing postponed
+    // messages. We need to avoid the dead loop
+    if (mPostponedMsgProcessing) {
+        LOG1("skip to handle postponed messages since they are already being processed.");
+        return status;
+    }
     // handle postponed setparameters which may have occured during capture
     // TODO: ensure that this goes correctly with e.g ULL recycling more than
     //       one buffers before capture process is done
@@ -4030,9 +4041,11 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
     while (it != mPostponedMessages.end()) {
         if (it->id == MESSAGE_ID_SET_PARAMETERS) {
             LOG1("@%s handling postponed setparameter message", __FUNCTION__);
+            mPostponedMsgProcessing = true;
             handleMessageSetParameters(&it->data.setParameters);
             free(it->data.setParameters.params); // was strdupped, needs free
             it = mPostponedMessages.erase(it); // returns pointer to next item in list
+            mPostponedMsgProcessing = false;
         } else {
             it++;
         }
