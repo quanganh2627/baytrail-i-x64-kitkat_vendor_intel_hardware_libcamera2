@@ -641,6 +641,7 @@ status_t PictureThread::allocatePostviewBuffers(const AtomBuffer &formatDescript
         if (status != NO_ERROR) {
             LOGE("Error in postview allocation (%d)", status);
             mPostviewBuffers = i;
+            freePostviewBuffers();
             break;
         }
     }

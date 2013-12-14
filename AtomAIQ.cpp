@@ -113,6 +113,7 @@ status_t AtomAIQ::init3A()
 
 status_t AtomAIQ::_init3A()
 {
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     ia_err ret = ia_err_none;
     String8 fullName, spIdName;
@@ -210,6 +211,7 @@ status_t AtomAIQ::_init3A()
 
 status_t AtomAIQ::getAiqConfig(ia_binary_data *cpfData)
 {
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     if (PlatformData::AiqConfig && cpfData != NULL) {
@@ -665,42 +667,11 @@ AwbMode AtomAIQ::getAwbMode()
     return mAwbMode;
 }
 
-ia_3a_awb_light_source  AtomAIQ::getLightSource()
+AwbMode AtomAIQ::getLightSource()
 {
     LOG1("@%s", __FUNCTION__);
     AwbMode mode = getAwbMode();
-    ia_3a_awb_light_source wr_val;
-    switch (mode) {
-    case CAM_AWB_MODE_DAYLIGHT:
-        wr_val = ia_3a_awb_light_source_clear_sky;
-        break;
-    case CAM_AWB_MODE_CLOUDY:
-        wr_val = ia_3a_awb_light_source_cloudiness;
-        break;
-    case CAM_AWB_MODE_SUNSET:
-        wr_val = ia_3a_awb_light_source_filament_lamp;
-        break;
-    case CAM_AWB_MODE_TUNGSTEN:
-        wr_val = ia_3a_awb_light_source_filament_lamp;
-        break;
-    case CAM_AWB_MODE_FLUORESCENT:
-        wr_val = ia_3a_awb_light_source_fluorlamp_n;
-        break;
-    case CAM_AWB_MODE_WARM_FLUORESCENT:
-        wr_val = ia_3a_awb_light_source_fluorlamp_w;
-        break;
-    case CAM_AWB_MODE_WARM_INCANDESCENT:
-        wr_val = ia_3a_awb_light_source_filament_lamp;
-        break;
-    case CAM_AWB_MODE_SHADOW:
-        wr_val = ia_3a_awb_light_source_shadow_area;
-        break;
-    case CAM_AWB_MODE_MANUAL_INPUT:
-    case CAM_AWB_MODE_AUTO:
-    default:
-        wr_val = ia_3a_awb_light_source_other;
-    }
-    return wr_val;
+    return mode;
 }
 
 status_t AtomAIQ::setAeMeteringMode(MeteringMode mode)
@@ -786,26 +757,26 @@ bool AtomAIQ::getAfLock()
     return ret;
 }
 
-ia_3a_af_status AtomAIQ::getCAFStatus()
+AfStatus AtomAIQ::getCAFStatus()
 {
     LOG2("@%s", __FUNCTION__);
-    ia_3a_af_status status = ia_3a_af_status_busy;
+    AfStatus status = CAM_AF_STATUS_BUSY;
     if (mAfState.af_results != NULL) {
         if (mAfState.af_results->status == ia_aiq_af_status_success && (mAfState.af_results->final_lens_position_reached || mStillAfStart == 0)) {
-            status = ia_3a_af_status_success;
+            status = CAM_AF_STATUS_SUCCESS;
         }
         else if (mAfState.af_results->status == ia_aiq_af_status_fail && (mAfState.af_results->final_lens_position_reached || mStillAfStart == 0)) {
-            status  = ia_3a_af_status_error;
+            status  = CAM_AF_STATUS_FAIL;
         }
         else {
-            status = ia_3a_af_status_busy;
+            status = CAM_AF_STATUS_BUSY;
         }
     }
 
-    if (status == ia_3a_af_status_busy && mStillAfStart != 0) {
+    if (mStillAfStart != 0 && status == CAM_AF_STATUS_BUSY) {
         if (((systemTime() - mStillAfStart) / 1000000) > AIQ_MAX_TIME_FOR_AF) {
             LOGW("Auto-focus sequence for still capture is taking too long. Cancelling!");
-            status = ia_3a_af_status_cancelled;
+            status = CAM_AF_STATUS_FAIL;
         }
     }
     LOG2("af_results->status:%d", status);
@@ -906,16 +877,15 @@ status_t AtomAIQ::stopStillAf()
     return NO_ERROR;
 }
 
-ia_3a_af_status AtomAIQ::isStillAfComplete()
+AfStatus AtomAIQ::isStillAfComplete()
 {
     LOG2("@%s", __FUNCTION__);
     if (mStillAfStart == 0) {
         // startStillAf wasn't called? return error
         LOGE("Call startStillAf before calling %s!", __FUNCTION__);
-        return ia_3a_af_status_error;
+        return CAM_AF_STATUS_FAIL;
     }
-
-    ia_3a_af_status ret = getCAFStatus();
+    AfStatus ret = getCAFStatus();
     return ret;
 }
 
@@ -1193,7 +1163,7 @@ status_t AtomAIQ::getSmartSceneMode(int *sceneMode, bool *sceneHdr)
 
 status_t AtomAIQ::setFaces(const ia_face_state& faceState)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
 
     m3aState.faces->num_faces = faceState.num_faces;
     if(m3aState.faces->num_faces > IA_AIQ_MAX_NUM_FACES)
@@ -1205,36 +1175,36 @@ status_t AtomAIQ::setFaces(const ia_face_state& faceState)
     return NO_ERROR;
 }
 
-/* TODO: Replace ia_3a_mknote with ia_binary_data in this API. */
-ia_3a_mknote *AtomAIQ::get3aMakerNote(ia_3a_mknote_mode mknMode)
+ia_binary_data *AtomAIQ::get3aMakerNote(ia_mkn_trg mknMode)
 {
     LOG2("@%s", __FUNCTION__);
     ia_mkn_trg mknTarget = ia_mkn_trg_section_1;
 
-    ia_3a_mknote *me;
-    me = (ia_3a_mknote *)malloc(sizeof(ia_3a_mknote));
-    if (!me) {
+    ia_binary_data *makerNote;
+    makerNote = (ia_binary_data *)malloc(sizeof(ia_binary_data));
+    if (!makerNote) {
         LOGE("Error allocation memory for mknote!");
         return NULL;
     }
-    if(mknMode == ia_3a_mknote_mode_raw)
+    // detailed makernote data for RAW images
+    if(mknMode == ia_mkn_trg_section_2)
         mknTarget = ia_mkn_trg_section_2;
     ia_binary_data mkn_binary_data = ia_mkn_prepare(mMkn, mknTarget);
 
-    me->bytes = mkn_binary_data.size;
-    me->data = (char*)malloc(me->bytes);
-    if (me->data)
+    makerNote->size = mkn_binary_data.size;
+    makerNote->data = (char*)malloc(makerNote->size);
+    if (makerNote->data)
     {
-        memcpy(me->data, mkn_binary_data.data, me->bytes);
+        memcpy(makerNote->data, mkn_binary_data.data, makerNote->size);
     } else {
         LOGE("Error allocation memory for mknote data!");
-        free(me);
+        free(makerNote);
         return NULL;
     }
-    return me;
+    return makerNote;
 }
 
-void AtomAIQ::put3aMakerNote(ia_3a_mknote *mknData)
+void AtomAIQ::put3aMakerNote(ia_binary_data *mknData)
 {
     LOG2("@%s", __FUNCTION__);
 
@@ -1254,52 +1224,15 @@ void AtomAIQ::reset3aMakerNote(void)
     ia_mkn_reset(mMkn);
 }
 
-int AtomAIQ::add3aMakerNoteRecord(ia_3a_mknote_field_type mkn_format_id,
-                                   ia_3a_mknote_field_name mkn_name_id,
-                                   const void *record,
-                                   unsigned short record_size)
+int AtomAIQ::add3aMakerNoteRecord(ia_mkn_dfid mkn_format_id,
+                                  ia_mkn_dnid mkn_name_id,
+                                  const void *record,
+                                  unsigned short record_size)
 {
     LOG2("@%s", __FUNCTION__);
-    ia_mkn_dfid field_type;
-    switch (mkn_format_id) {
-    case ia_3a_mknote_field_type_int8:
-        field_type = ia_mkn_dfid_signed_char;
-        break;
-    case ia_3a_mknote_field_type_uint8:
-        field_type = ia_mkn_dfid_unsigned_char;
-        break;
-    case ia_3a_mknote_field_type_int16:
-        field_type = ia_mkn_dfid_signed_short;
-        break;
-    case ia_3a_mknote_field_type_uint16:
-        field_type = ia_mkn_dfid_unsigned_short;
-        break;
-    case ia_3a_mknote_field_type_int32:
-        field_type = ia_mkn_dfid_signed_int;
-        break;
-    case ia_3a_mknote_field_type_uint32:
-        field_type = ia_mkn_dfid_unsigned_int;
-        break;
-    case ia_3a_mknote_field_type_int64:
-        field_type = ia_mkn_dfid_signed_long_long;
-        break;
-    case ia_3a_mknote_field_type_uint64:
-        field_type = ia_mkn_dfid_unsigned_long_long;
-        break;
-    default:
-        LOGW("Wrong 3A MakerNote Field type: %d", mkn_format_id);
-        return -1;
-    }
-
-    ia_mkn_dnid name_id;
-    switch (mkn_name_id) {
-    case ia_3a_mknote_field_name_raw_info:
-    default:
-        name_id = ia_mkn_dnid_hal_records;
-    }
 
     if(record != NULL)
-        ia_mkn_add_record(mMkn, field_type, name_id, record, record_size, NULL);
+        ia_mkn_add_record(mMkn, mkn_format_id, mkn_name_id, record, record_size, NULL);
 
     return 0;
 }
@@ -1872,7 +1805,7 @@ status_t AtomAIQ::runAeMain()
         // according to latest AF results and therefore update the input
         // parameters passed with statistics.
         if (m3aState.stats_valid &&
-            getCAFStatus() != ia_3a_af_status_busy) {
+            getCAFStatus() != CAM_AF_STATUS_BUSY) {
             m3aState.af_results_feedback.use_af_assist = false;
             m3aState.statistics_input_parameters.frame_af_parameters = &m3aState.af_results_feedback;
             LOG1("AEC: AF with assist light ended, updating af results for AEC run");
@@ -2227,8 +2160,8 @@ int AtomAIQ::dumpMknToFile()
     size_t bytes;
     String8 fileName;
     //get binary of makernote and store
-    ia_3a_mknote *aaaMkNote;
-    aaaMkNote = get3aMakerNote(ia_3a_mknote_mode_raw);
+    ia_binary_data *aaaMkNote;
+    aaaMkNote = get3aMakerNote(ia_mkn_trg_section_2);
     if(aaaMkNote) {
         fileName = mISP->getFileInjectionFileName();
         fileName += ".mkn";
@@ -2239,8 +2172,8 @@ int AtomAIQ::dumpMknToFile()
             put3aMakerNote(aaaMkNote);
             return -1;
         }
-        if ((bytes = fwrite(aaaMkNote->data, aaaMkNote->bytes, 1, fp)) < (size_t)aaaMkNote->bytes)
-            LOGW("Write less mkn bytes to %s: %d, %d", fileName.string(), aaaMkNote->bytes, bytes);
+        if ((bytes = fwrite(aaaMkNote->data, aaaMkNote->size, 1, fp)) < (size_t)aaaMkNote->size)
+            LOGW("Write less mkn bytes to %s: %d, %d", fileName.string(), aaaMkNote->size, bytes);
         fclose (fp);
     }
     return 0;

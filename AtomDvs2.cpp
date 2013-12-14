@@ -19,6 +19,9 @@
 #include "ia_cmc_parser.h"
 #include "AtomDvs2.h"
 
+const unsigned int DVS_MAX_WIDTH = RESOLUTION_1080P_WIDTH;
+const unsigned int DVS_MAX_HEIGHT = RESOLUTION_1080P_HEIGHT;
+
 namespace android {
 
 #define DIGITAL_ZOOM_RATIO 1.0f
@@ -48,10 +51,36 @@ AtomDvs2::AtomDvs2(HWControlGroup &hwcg) :
     /**< effective vertical scan ratio, used for rolling correction
       (Non-blanking ration of frame interval) */
     mDvs2Config.nonblanking_ratio = 0.88f;
-    init();
 }
 
-status_t AtomDvs2::init()
+AtomDvs2::~AtomDvs2()
+{
+    LOG1("@%s", __FUNCTION__);
+    if (mDumpLogEnabled) {
+       if (!mDumpParams.binaryDumpFailed)
+           writeBinaryDump(DUMP_DVSLOG);
+       dvs_deinit_dbglog();
+    }
+    if(mMorphTable) {
+        dvs_free_morph_table(mMorphTable);
+        mMorphTable = NULL;
+    }
+    if (mDvs2stats) {
+        dvs_free_statistics(mDvs2stats);
+        mDvs2stats = NULL;
+    }
+    if (mState) {
+        dvs_deinit(mState);
+        mState = NULL;
+    }
+}
+
+IDvs* IDvs::createAtomDvs(HWControlGroup &hwcg)
+{
+    return new AtomDvs2(hwcg);
+}
+
+status_t AtomDvs2::dvsInit()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -74,30 +103,9 @@ status_t AtomDvs2::init()
     return status;
 }
 
-AtomDvs2::~AtomDvs2()
-{
-    LOG1("@%s", __FUNCTION__);
-    if (mDumpLogEnabled) {
-       if (!mDumpParams.binaryDumpFailed)
-           writeBinaryDump(DUMP_DVSLOG);
-       dvs_deinit_dbglog();
-    }
-    if(mMorphTable) {
-        dvs_free_morph_table(mMorphTable);
-        mMorphTable = NULL;
-    }
-    if(mDvs2stats) {
-        dvs_free_statistics(mDvs2stats);
-        mDvs2stats = NULL;
-    }
-    if(mState) {
-        dvs_deinit(mState);
-        mState = NULL;
-    }
-}
-
 status_t AtomDvs2::reconfigure()
 {
+    LOG1("@%s", __FUNCTION__);
     Mutex::Autolock lock(mLock);
     return reconfigureNoLock();
 }
@@ -115,14 +123,13 @@ status_t AtomDvs2::allocateDvs2Statistics(atomisp_dvs_grid_info info)
         LOGW("dvs_allocate_statistics error:%d", err);
         return UNKNOWN_ERROR;
     }
-#ifdef ATOMISP_CSS2
     memcpy(&(mStatistics.dvs2_stat), mDvs2stats, sizeof(struct atomisp_dvs2_statistics));
-#endif
     return status;
 }
 
 status_t AtomDvs2::allocateDvs2MorphTable()
 {
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     ia_err err;
     if (mMorphTable) {
@@ -139,9 +146,9 @@ status_t AtomDvs2::allocateDvs2MorphTable()
 
 status_t AtomDvs2::reconfigureNoLock()
 {
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     ia_err err = ia_err_none;
-
     struct atomisp_parm isp_params;
     struct atomisp_dvs_grid_info dvs_grid;
 
@@ -154,9 +161,7 @@ status_t AtomDvs2::reconfigureNoLock()
 
     memset(&dvs_grid, 0, sizeof(atomisp_dvs_grid_info));
 
-#ifdef ATOMISP_CSS2
     dvs_grid = isp_params.dvs_grid;
-#endif
 
     int width = 0, height = 0;
     mIsp->getVideoSize(&width, &height, NULL);
@@ -171,10 +176,8 @@ status_t AtomDvs2::reconfigureNoLock()
     int dvs_env_height = DVS_MIN_ENVELOPE;
 
     //Configure DVS
-#ifdef ATOMISP_CSS2
     dvs_env_width = isp_params.dvs_envelop.width/2;
     dvs_env_height = isp_params.dvs_envelop.height/2;
-#endif
     dvs_env_width = dvs_env_width < DVS_MIN_ENVELOPE ? DVS_MIN_ENVELOPE : dvs_env_width;
     dvs_env_height = dvs_env_height < DVS_MIN_ENVELOPE ? DVS_MIN_ENVELOPE : dvs_env_height;
     mDvs2Config.grid_size = dvs_grid.bqs_per_grid_cell;
@@ -197,6 +200,7 @@ status_t AtomDvs2::reconfigureNoLock()
     mDvs2Config.hw_config.interpolation = ia_dvs2_gdc_interpolation_bli; //hardcoded
     mDvs2Config.hw_config.performance_point = ia_dvs2_gdc_performance_point_1x1; //hardcoded
 
+    mDVSEnabled = mIsp->dvsEnabled();
     LOG2("DVS enabled:%s", mDVSEnabled ? "true": "false");
     if(mDVSEnabled)
         mDvs2Config.num_axis = ia_dvs2_algorihm_4_axis;
@@ -218,7 +222,7 @@ status_t AtomDvs2::reconfigureNoLock()
         sensor_mode_data.crop_vertical_end = 0;
         sensor_mode_data.crop_horizontal_end = 0;
     }
-    if(sensor_mode_data.binning_factor_y != 0 && sensor_mode_data.output_height != 0
+    if (sensor_mode_data.binning_factor_y != 0 && sensor_mode_data.output_height != 0
        && sensor_mode_data.frame_length_lines != 0) {
         float downscaling = (sensor_mode_data.crop_vertical_end - sensor_mode_data.crop_vertical_start + 1)
                             / sensor_mode_data.binning_factor_y / sensor_mode_data.output_height;
@@ -226,9 +230,9 @@ status_t AtomDvs2::reconfigureNoLock()
         dvs_set_non_blank_ratio(mState, non_blanking_ratio);
     }
     //Allocate statistics
-    if(mDVSEnabled) {
+    if (mDVSEnabled) {
         status = allocateDvs2Statistics(dvs_grid);
-        if(status != NO_ERROR) {
+        if (status != NO_ERROR) {
             LOGW("Allocate dvs statistics failed");
             return UNKNOWN_ERROR;
         }
@@ -251,7 +255,7 @@ status_t AtomDvs2::reconfigureNoLock()
     if (err != ia_err_none) {
         LOGW("get dvs2 coeff failed: %d", err);
         return UNKNOWN_ERROR;
-    }else {
+    } else {
         mIsp->setDvsCoefficients(dvs_coefs);
     }
     if (dvs_coefs)
@@ -271,12 +275,11 @@ status_t AtomDvs2::run()
     status_t status = NO_ERROR;
     ia_err err = ia_err_none;
     bool try_again = false;
-
     if (!mState)
         goto end;
 
-    if(mDVSEnabled) {
-        if(!mDvs2stats)
+    if (mDVSEnabled) {
+        if (!mDvs2stats)
             goto end;
         status = mIsp->getDvsStatistics(&mStatistics, &try_again);
         if (status != NO_ERROR) {
@@ -294,28 +297,24 @@ status_t AtomDvs2::run()
                 goto end;
             }
         }
-#ifdef ATOMISP_CSS2
         memcpy(mDvs2stats, &(mStatistics.dvs2_stat), sizeof(struct atomisp_dvs2_statistics));
-#endif
         err = dvs_set_statistics(mState, mDvs2stats);
         if (err != ia_err_none)
-             LOGW(" dvs_set_statistics failed: %d", err);
+            LOGW(" dvs_set_statistics failed: %d", err);
 
-    }
-    if ((err = dvs_execute(mState)) != ia_err_none) {
-        LOG2("DVS2 execution failed: %d", err);
-        goto end;
+        if ((err = dvs_execute(mState)) != ia_err_none) {
+            LOG2("DVS2 execution failed: %d", err);
+            goto end;
+        }
     }
     if(mMorphTable) {
 
         err = dvs_get_morph_table(mState, mMorphTable);
         if (err == ia_err_none) {
-#ifdef ATOMISP_CSS2
             if(mDVSEnabled) {
                 mMorphTable->exp_id = mStatistics.exp_id;
                 LOG2("exp_id:%d", mMorphTable->exp_id);
             }
-#endif
             status = mIsp->setDvsConfig(mMorphTable);
         }
     }
@@ -325,31 +324,6 @@ end:
     return status;
 }
 
-bool AtomDvs2::enable(const CameraParameters& params)
-{
-    LOG1("@%s", __FUNCTION__);
-    if (isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED, params) &&
-        isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION, params)) {
-        // workaround: The high speed and 1080P DVS can't be supported at same time
-        int width, height;
-        mIsp->getVideoSize(&width, &height, NULL);
-        if (mIsp->getRecordingFramerate() > DEFAULT_RECORDING_FPS && !isHighSpeedDvsSupported(width, height)) {
-            mIsp->setDVS(false);
-            mDVSEnabled = false;
-        } else {
-            mDVSEnabled = true;
-            //workaround: when DVS is on, the first 2 frames are greenish, need to be skipped.
-            mIsp->setDVSSkipFrames(DVS_SKIP_FRAMES);
-            mIsp->setDVS(true);
-        }
-    } else {
-        mDVSEnabled = false;
-        mIsp->setDVS(false);
-    }
-    //Always return true because video zoom depends on DVS2 lib
-    return true;
-}
-
 /**
  * If the input resolution is supported in high speed mode, return true.
  */
@@ -357,36 +331,36 @@ bool AtomDvs2::isHighSpeedDvsSupported(int width, int height)
 {
     LOG1("@%s", __FUNCTION__);
     int cameraId = mIsp->getCurrentCameraId();
-    if(strcmp(PlatformData::maxHighSpeedDvsResolution(cameraId), "")) {
+    if (strcmp(PlatformData::maxHighSpeedDvsResolution(cameraId), "")) {
         const char* resolution = PlatformData::maxHighSpeedDvsResolution(cameraId);
         if (resolution != NULL) {
-            char* maxResolution = strndup(resolution, strlen(resolution));
-            if (maxResolution == NULL) {
-                LOGE("@%s:fail to strndup max high speed dvs resolution = [%s]", __FUNCTION__, resolution);
-                return false;
-            }
-            char* pWidth = NULL;
-            char* pHeight = NULL;
             int w = 0;
             int h = 0;
-            int success = parsePair(maxResolution, &pWidth, &pHeight, "x");
-            if (success == 0 && pWidth != NULL && pHeight != NULL) {
-                w = atoi(pWidth);
-                h = atoi(pHeight);
-            }
-            if (maxResolution != NULL)
-                free(maxResolution);
-            if (pWidth != NULL)
-                free(pWidth);
-            if (pHeight != NULL)
-                free(pHeight);
-            LOGI("max Dvs resolution = [%dX%d], current=[%dx%d] in high speed mode", w, h, width, height);
+            int retval = parseResolutionPair(resolution, w, h, NULL);
+            if (retval)
+                return false;
+
+            LOG1 ("max Dvs resolution = [%dX%d], current=[%dx%d] in high speed mode", w, h, width, height);
             if (w >= width && h >= height) {
                 return true;
             }
         }
     }
     return false;
+}
+
+bool AtomDvs2::isDvsValid()
+{
+    LOG1("@%s", __FUNCTION__);
+    int width, height;
+    mIsp->getVideoSize(&width, &height, NULL);
+    if (mIsp->getRecordingFramerate() > DEFAULT_RECORDING_FPS && !isHighSpeedDvsSupported(width, height)) {
+        LOGW("%s:DVS cannot be set when HighSpeed Capture and the selected resolution", __FUNCTION__);
+        return false;
+    } else {
+        mIsp->setDVSSkipFrames(DVS_SKIP_FRAMES);
+        return true;
+    }
 }
 
 /**

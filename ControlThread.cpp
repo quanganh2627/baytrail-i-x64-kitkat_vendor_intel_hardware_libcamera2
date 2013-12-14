@@ -22,12 +22,8 @@
 #include "PreviewThread.h"
 #include "PictureThread.h"
 #include "AtomAIQ.h"
-#include "AtomAAA.h"
-#include "AtomDvs.h"
 #include "AtomSoc3A.h"
 #include "AtomISP.h"
-#include "AtomDvs.h"
-#include "AtomDvs2.h"
 #include "Callbacks.h"
 #include "CallbacksThread.h"
 #include "ColorConverter.h"
@@ -126,7 +122,6 @@ ControlThread::ControlThread(int cameraId) :
     Thread(true) // callbacks may call into java
     ,mCameraId(cameraId)
     ,mISP(NULL)
-    ,mDvs(NULL)
     ,mCP(NULL)
     ,mULL(NULL)
     ,m3AControls(NULL)
@@ -160,6 +155,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mBurstBufsToReturn(0)
     ,mAELockFlashNeed(false)
     ,mPublicShutter(-1)
+    ,mDvsEnable(false)
     ,mParamCache(NULL)
     ,mStoreMetaDataInBuffers(false)
     ,mPreviewForceChanged(false)
@@ -267,16 +263,6 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    if (createAtomDvs() != NO_ERROR) {
-        LOGE("error creating DVS");
-        goto bail;
-    }
-
-    if (mDvs == NULL) {
-        LOGE("error creating DVS");
-        goto bail;
-    }
-
     mCP = new AtomCP(mHwcg);
     if (mCP == NULL) {
         LOGE("error creating CP");
@@ -361,6 +347,13 @@ status_t ControlThread::init()
     mAccManagerThread = new AccManagerThread(mHwcg, mCallbacksThread, mCallbacks, mCameraId);
     if (mAccManagerThread == NULL) {
         LOGE("error creating AccManagerThread");
+        goto bail;
+    }
+
+    // DVS needs to be started after AIQ init.
+    status = mISP->initDVS();
+    if (status != NO_ERROR) {
+        LOGE("Error in initializing DVS");
         goto bail;
     }
 
@@ -581,10 +574,6 @@ void ControlThread::deinit()
         mCameraDump = NULL;
     }
 
-    if (mDvs != NULL) {
-        delete mDvs;
-        mDvs = NULL;
-    }
     if (mCallbacks != NULL) {
         delete mCallbacks;
         mCallbacks = NULL;
@@ -1467,7 +1456,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     int bpl;
     State state;
     AtomMode mode;
-    bool isDVSActive = false;
 
     if (mState != STATE_STOPPED) {
         LOGE("Must be in STATE_STOPPED to start preview");
@@ -1494,7 +1482,13 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         }
 
         mISP->setVideoFrameFormat(width, height);
-        isDVSActive = mDvs->enable(mParameters);
+
+        status = mISP->setDVS(mDvsEnable);
+
+        if (status != NO_ERROR) {
+            LOGW("@%s: Failed to set DVS %s", __FUNCTION__, mDvsEnable ? "enabled" : "disabled");
+        }
+
     } else {
         LOG1("Starting preview in still mode");
         state = selectPreviewMode(mParameters);
@@ -1503,9 +1497,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         else
             mode = MODE_CONTINUOUS_CAPTURE;
     }
-
-    if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
-        m3AControls->init3aStatDump("preview");
 
     if (state == STATE_CONTINUOUS_CAPTURE) {
         if (initContinuousCapture() != NO_ERROR) {
@@ -1637,19 +1628,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         CameraWindow *meteringWindows = new CameraWindow[winCount];
         CameraWindow aeWindow;
         mMeteringAreas.toWindows(meteringWindows);
-
-        /**
-         * Temporary support for both 3A libs.
-         * Intel 3A (aka AIQ) uses different coordinates than
-         * Acute Logic 3A.
-         */
-        if (PlatformData::supportAIQ()) {
-            convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
-        } else {
-            AAAWindowInfo aaaWindow;
-            m3AControls->getGridWindow(aaaWindow);
-            convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
-        }
+        convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
 
         if (m3AControls->setAeWindow(&aeWindow) != NO_ERROR) {
             LOGW("Error setting AE metering window. Metering will not work");
@@ -1687,18 +1666,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         if (gPowerLevel & CAMERA_POWERBREAKDOWN_DISABLE_PREVIEW) {
             mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
         }
-
-        if (isDVSActive && mDvs->reconfigure() == NO_ERROR) {
-            // Attach only when DVS is active:
-            mISP->attachObserver(mDvs, OBSERVE_PREVIEW_STREAM);
-        } else if (isDVSActive) {
-            LOGE("Failed to reconfigure DVS grid");
-        }
     } else {
         LOGE("Error starting ISP!");
         mPreviewThread->returnPreviewBuffers();
         mISP->detachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
-        mISP->detachObserver(mDvs, OBSERVE_PREVIEW_STREAM);
         mISP->detachObserver(this, OBSERVE_PREVIEW_STREAM);
         if (m3AControls->isIntel3A()) {
             mISP->detachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
@@ -1762,7 +1733,6 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
         // might be a non-RAW sensor, or enabling failed on startPreviewCore().
         // It is OK to detach; if the observer is not attached, detachObserver()
         // returns BAD_VALUE.
-        mISP->detachObserver(mDvs, OBSERVE_PREVIEW_STREAM);
     }
     mISP->detachObserver(this, OBSERVE_PREVIEW_STREAM);
     mMessageQueue.remove(MESSAGE_ID_DEQUEUE_RECORDING);
@@ -1777,9 +1747,6 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
 
     if (oldState == STATE_CONTINUOUS_CAPTURE)
         releaseContinuousCapture(flushPictures);
-
-    if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
-        m3AControls->deinit3aStatDump();
 
     mPreviewThread->setPreviewState(PreviewThread::STATE_STOPPED);
 
@@ -2124,10 +2091,7 @@ status_t ControlThread::handleMessageStartRecording()
          * we first need to stop AtomISP and restart it with MODE_VIDEO
          */
         bool videoMode = true;
-        mISP->applyISPLimitations(&mParameters,
-                isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION)
-                && isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED),
-                videoMode);
+        mISP->applyISPLimitations(&mParameters, mDvsEnable, videoMode);
         status = restartPreview(videoMode);
         if (status != NO_ERROR) {
             LOGE("Error restarting preview in video mode");
@@ -2532,7 +2496,7 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
 {
     LOG1("@%s: ", __FUNCTION__);
 
-    ia_3a_mknote *aaaMkNote = 0;
+    ia_binary_data *aaaMkNote = 0;
     atomisp_makernote_info *atomispMkNote = 0;
     SensorAeConfig *aeConfig = new SensorAeConfig;
 
@@ -2552,7 +2516,7 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
     mBracketManager->getNextAeConfig(aeConfig);
     if (m3AControls->isIntel3A()) {
         // TODO: add support for raw mknote
-        aaaMkNote = m3AControls->get3aMakerNote(ia_3a_mknote_mode_jpeg);
+        aaaMkNote = m3AControls->get3aMakerNote(ia_mkn_trg_section_1);
         if (!aaaMkNote)
             LOGW("No 3A makernote data available");
     }
@@ -4398,6 +4362,14 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
+    //DVS
+    const char* dvsEnable = params->get(CameraParameters::KEY_VIDEO_STABILIZATION);
+    const char* dvsEnables = params->get(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED);
+    if (!validateString(dvsEnable, dvsEnables)) {
+        LOGE("bad value for dvs enable : %s, supported are: %s", dvsEnable, dvsEnables);
+        return BAD_VALUE;
+    }
+
     return NO_ERROR;
 }
 
@@ -4439,6 +4411,22 @@ status_t ControlThread::ProcessOverlayEnable(const CameraParameters *oldParams,
         } else {
             LOGW("Overlay cannot be enabled in other state than stop, ignoring request");
         }
+    }
+    return status;
+}
+
+status_t ControlThread::processParamDvs(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, CameraParameters::KEY_VIDEO_STABILIZATION);
+    if (!newVal.isEmpty()) {
+        if (newVal == CameraParameters::TRUE)
+            mDvsEnable = true;
+        else
+            mDvsEnable = false;
     }
     return status;
 }
@@ -4485,19 +4473,15 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
+    // Zoom processing
     int newZoom = newParams->getInt(CameraParameters::KEY_ZOOM);
     bool zoomSupported = isParameterSet(CameraParameters::KEY_ZOOM_SUPPORTED) ? true : false;
     if (zoomSupported) {
-        if(mDvs != NULL && mISP->getCssMajorVersion() == 2 &&
-           (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING)) {
-            mDvs->setZoom(newZoom);
-        } else {
-            status = mISP->setZoom(newZoom);
-            mPostProcThread->setZoom(mISP->zoomRatio(newZoom));
-        }
-    }
-    else
+        status = mISP->setZoom(newZoom);
+        mPostProcThread->setZoom(mISP->zoomRatio(newZoom));
+    } else {
         LOGD("not supported zoom setting");
+    }
 
     // Preview update mode
     if (status == NO_ERROR) {
@@ -4638,11 +4622,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         if (status == NO_ERROR) {
             // shutter manual setting (Intel extension)
             status = processParamShutter(oldParams, newParams);
-        }
-
-        if (status == NO_ERROR) {
-            // AWB mapping mode (Intel extension)
-            status = processParamAwbMappingMode(oldParams, newParams);
         }
     }
 
@@ -5673,7 +5652,6 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
         if (!mIntelParamsAllowed) {
 
             processParamIso(oldParams, newParams);
-            processParamAwbMappingMode(oldParams, newParams);
             processParamXNR_ANR(oldParams, newParams, needRestart);
 
             newParams->remove(IntelCameraParameters::KEY_SUPPORTED_ISO);
@@ -5794,18 +5772,7 @@ status_t ControlThread:: processParamSetMeteringAreas(const CameraParameters *ol
         CameraWindow aeWindow;
 
         mMeteringAreas.toWindows(meteringWindows);
-
-        if (PlatformData::supportAIQ()) {
-            convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
-        } else {
-            AAAWindowInfo aaaWindow;
-            m3AControls->getGridWindow(aaaWindow);
-            //in our AE bg weight is 1, max is 255, thus working values are inside [2, 255].
-            //Google probably expects bg weight to be zero, therefore sending happily 1 from
-            //default camera app. To have some kind of visual effect, we start our range from 5
-
-            convertFromAndroidCoordinates(meteringWindows[0], aeWindow, aaaWindow, 5, 255);
-        }
+        convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
 
         if (m3AControls->setAeMeteringMode(CAM_AE_METERING_MODE_SPOT) == NO_ERROR) {
             LOG1("@%s, Got metering area, and \"spot\" mode set. Setting window.", __FUNCTION__ );
@@ -6087,51 +6054,6 @@ status_t ControlThread::processParamShutter(const CameraParameters *oldParams,
     return status;
 }
 
-/**
- * Sets AWB Mapping Mode
- *
- * Note, this is an Intel extension, so the values are not defined in
- * Android documentation.
- */
-status_t ControlThread::processParamAwbMappingMode(const CameraParameters *oldParams,
-        CameraParameters *newParams)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status(NO_ERROR);
-    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
-            IntelCameraParameters::KEY_AWB_MAPPING_MODE);
-    if (!newVal.isEmpty()) {
-        ia_3a_awb_map awbMappingMode(ia_3a_awb_map_auto);
-
-        if (newVal == IntelCameraParameters::AWB_MAPPING_OUTDOOR) {
-            mPostProcThread->disableFaceAAA(AAA_FLAG_AWB);
-        } else {
-            mPostProcThread->enableFaceAAA(AAA_FLAG_AWB);
-        }
-
-        if (newVal == IntelCameraParameters::AWB_MAPPING_AUTO) {
-            awbMappingMode = ia_3a_awb_map_auto;
-        } else if (newVal == IntelCameraParameters::AWB_MAPPING_INDOOR) {
-            awbMappingMode = ia_3a_awb_map_indoor;
-        } else if (newVal == IntelCameraParameters::AWB_MAPPING_OUTDOOR) {
-            awbMappingMode = ia_3a_awb_map_outdoor;
-        } else {
-            awbMappingMode = ia_3a_awb_map_auto;
-        }
-
-        status = m3AControls->setAwbMapping(awbMappingMode);
-        if (status ==  NO_ERROR) {
-            LOGD("Changed AWB mapping mode to \"%s\" (%d)",
-                 newVal.string(), awbMappingMode);
-        } else {
-            LOGE("Error setting AWB mapping mode (\"%s\" (%d))",
-                 newVal.string(), awbMappingMode);
-        }
-    }
-
-    return status;
-}
-
 status_t ControlThread::processParamWhiteBalance(const CameraParameters *oldParams,
         CameraParameters *newParams)
 {
@@ -6370,14 +6292,14 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     float previewAspectRatio = 0.0f;
+    float pictureAspectRatio = 0.0f;
     float videoAspectRatio = 0.0f;
     Vector<Size> sizes;
     bool videoMode = android::isParameterSet(CameraParameters::KEY_RECORDING_HINT, *newParams) ? true : false;
-    bool dvsEnabled = android::isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION, *newParams) ?  true : false;
-
     int oldWidth, newWidth;
     int oldHeight, newHeight;
     int previewWidth, previewHeight;
+    int pictureWidth, pictureHeight;
     int oldFormat, newFormat;
     // see if preview params have changed
     newParams->getPreviewSize(&newWidth, &newHeight);
@@ -6386,11 +6308,11 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
     oldFormat = V4L2Format(oldParams->getPreviewFormat());
     previewWidth = oldWidth;
     previewHeight = oldHeight;
+    previewAspectRatio = 1.0 * newWidth / newHeight;
     if (newWidth != oldWidth || newHeight != oldHeight ||
             oldFormat != newFormat) {
         previewWidth = newWidth;
         previewHeight = newHeight;
-        previewAspectRatio = 1.0 * newWidth / newHeight;
         LOG1("Preview size/cb_fourcc is changing: old=%dx%d %s; new=%dx%d %s; ratio=%.3f",
                 oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
                 newWidth, newHeight, v4l2Fmt2Str(newFormat),
@@ -6398,10 +6320,24 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
         restartNeeded = true;
         mPreviewForceChanged = false;
     } else {
-        previewAspectRatio = 1.0 * oldWidth / oldHeight;
         LOG1("Preview size/cb_fourcc is unchanged: old=%dx%d %s; ratio=%.3f",
                 oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
                 previewAspectRatio);
+    }
+
+    newParams->getPictureSize(&pictureWidth, &pictureHeight);
+    if (pictureWidth == 0 || pictureHeight == 0) {
+        newParams->getSupportedPictureSizes(sizes);
+        for (size_t i = 0; i < sizes.size(); i++) {
+            pictureAspectRatio = 1.0 * sizes[i].width / sizes[i].height;
+            if (fabsf(pictureAspectRatio - previewAspectRatio) <= ASPECT_TOLERANCE) {
+                pictureWidth = sizes[i].width;
+                pictureHeight = sizes[i].height;
+                newParams->setPictureSize(pictureWidth, pictureHeight);
+                break;
+            }
+        }
+        LOGD("Application doesn't set picture size, hal chooses %dx%d to match preview size", pictureWidth, pictureHeight);
     }
 
     if(videoMode) {
@@ -6473,6 +6409,8 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
         restartNeeded = true;
     }
 
+    status = processParamDvs(oldParams,newParams);
+
     status = processParamULL(oldParams,newParams, &restartNeeded);
 
     /*
@@ -6495,7 +6433,7 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
      * in AtomISP.cpp to see detailed description of the limitations.
      *
      */
-    if (mISP->applyISPLimitations(newParams, dvsEnabled, videoMode)) {
+    if (mISP->applyISPLimitations(newParams, mDvsEnable, videoMode)) {
         mPreviewForceChanged = true;
         restartNeeded = true;
     }
@@ -6626,23 +6564,18 @@ void ControlThread::restoreCurrentPictureParams()
 
 /**
  * Create 3A instance according to sensor type and platform requirement:
- * - AtomAAA for AcuteLogic 3A
- * - AtomAIQ for IA AIQ
- * - AtomISP for SoC 3A
+ * - AtomAIQ for RAW cameras that use IA AIQ
+ * - AtomSoc3A for SoC cameras that have their own 3A
  */
 status_t ControlThread::createAtom3A()
 {
     status_t status = NO_ERROR;
 
     if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
-        if (mSensorSyncManager != NULL)
+        if (mSensorSyncManager != NULL) {
             mHwcg.mSensorCI = (IHWSensorControl*) mSensorSyncManager.get();
-
-        if(PlatformData::supportAIQ()) {
-            m3AControls = new AtomAIQ(mHwcg);
-        } else {
-            m3AControls = new AtomAAA(mHwcg);
         }
+        m3AControls = new AtomAIQ(mHwcg);
     } else {
         m3AControls = new AtomSoc3A(mCameraId, mHwcg);
     }
@@ -6650,26 +6583,6 @@ status_t ControlThread::createAtom3A()
         LOGE("error creating AAA");
         status = BAD_VALUE;
     }
-    return status;
-}
-
-/**
- * Create DVS instance according to platform requirement:
- * - AtomDvs
- * - AtomDvs2
- */
-status_t ControlThread::createAtomDvs()
-{
-    status_t status = NO_INIT;
-    if (mISP != NULL) {
-        if ((mISP->getCssMajorVersion() == 1) && (mISP->getCssMinorVersion() == 5)){
-            mDvs = new AtomDvs(mHwcg);
-            status = NO_ERROR;
-        } else if (mISP->getCssMajorVersion() == 2) {
-            mDvs = new AtomDvs2(mHwcg);
-            status = NO_ERROR;
-        }
-     }
     return status;
 }
 
@@ -8026,7 +7939,9 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
             //Check the battery status regularly during recording.
             //If the battery level is too low, turn off the flash, notify the application and update the parameters.
             if (buff.frameSequenceNbr % BATTERY_CHECK_INTERVAL_FRAME_UNIT == 0) {
-               String8 val(mParameters.get(CameraParameters::KEY_FLASH_MODE));
+               // note: String8 segfaults if given a NULL, so thus check it for that here
+               const char* flash_mode = mParameters.get(CameraParameters::KEY_FLASH_MODE);
+               String8 val(flash_mode, (flash_mode == NULL ? 0 : strlen(flash_mode)));
                if (val != CameraParameters::FLASH_MODE_OFF) {
                    CameraParameters param(mParameters);
                    preProcessFlashMode(&param);

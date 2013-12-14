@@ -27,7 +27,6 @@
 #include <math.h>
 #include <stdio.h>
 #include <time.h>
-#include <ia_3a_types.h>
 #include <ui/GraphicBuffer.h>
 #include <camera/CameraParameters.h>
 
@@ -217,25 +216,6 @@ enum AAAFlags {
     AAA_FLAG_ALL = AAA_FLAG_AE | AAA_FLAG_AF | AAA_FLAG_AWB
 };
 
-/*! Bit '1' means successful result of selected event */
-const int ci_adv_init_state         = 0;            /*!< Init. state */
-const int ci_adv_load_camera_1      = (1 << 1);     /*!< Loaded camera module #1 */
-const int ci_adv_load_camera_2      = (1 << 2);     /*!< Loaded camera module #2 */
-const int ci_adv_load_camera_3      = (1 << 3);     /*!< Loaded camera module #3 */
-const int ci_adv_load_camera_4      = (1 << 4);     /*!< Loaded camera module #4 */
-const int ci_adv_cam_sensor_data    = (1 << 5);     /*!< Sensor calibration data from camera presents */
-const int ci_adv_file_sensor_data   = (1 << 6);     /*!< Sensor calibration data from file presents */
-const int ci_adv_cam_motor_data     = (1 << 7);     /*!< Motor calibration data presents */
-
-struct SensorParams
-{
-    ia_3a_prm_files prmFiles;
-    const char *tuning3aFile;
-    int bootEvent;
-    ia_3a_private_data cpfData;
-    bool hasMotorData;
-};
-
 struct CameraWindow {
     int x_left;
     int x_right;
@@ -259,6 +239,24 @@ struct AtomFormatBridge {
 extern const struct AtomFormatBridge sV4l2PixelFormatBridge[];
 const struct AtomFormatBridge* getAtomFormatBridge(unsigned int fourcc);
 
+static int parseResolutionPair(const char *p, int &width, int &height,
+           char **endptr)
+{
+    LOG1("@%s", __FUNCTION__);
+    char *xptr = NULL;
+    width = (int) strtol(p, &xptr, 10);
+    if (xptr == NULL || *xptr != 'x') // strtol stores location of x into xptr
+        return BAD_VALUE;
+
+    height = (int) strtol(xptr + 1, &xptr, 10);
+
+    if (endptr) {
+        *endptr = xptr;
+    }
+
+    return OK;
+}
+
 /**
  * parse the pair string, like "720x480", the "x" is passed by parameter "delim"
  *
@@ -281,28 +279,6 @@ static int parsePair(const char *str, char **first, char **second, const char *d
     strncpy(*first, str, strlen(str) - strlen(index));
     strncpy(*second, str + strlen(str) - strlen(index) + 1, strlen(index) - 1);
     return 0;
-}
-
-/** If forgetting to free, parsePair may have memleak.
- *  ParsePairToInt avoids this memleak.
- */
-static int parsePairToInt(const char *str, int *first, int *second, const char *delim)
-{
-    char *a = NULL;
-    char *b = NULL;
-    int ret = parsePair(str, &a, &b, delim);
-
-    if (ret == 0 && a != NULL && b != NULL) {
-        *first = atoi(a);
-        *second = atoi(b);
-    }
-
-    if(a != NULL)
-        free(a);
-    if(b != NULL)
-        free(b);
-
-    return ret;
 }
 
 /**

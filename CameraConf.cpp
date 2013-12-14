@@ -579,23 +579,9 @@ status_t CpfStore::findConfigWithDriverHelper(const String8& fileName, String8& 
                     // the files are distinguished by spId
                     // Let's check for the vendor_id, platform_family_id and product_line_id
                     String8 vendorPlatformProduct;
-                    if (PlatformData::createVendorPlatformProductName(vendorPlatformProduct) == 0) {
-
-                        // [R4.3] begin
-                        // the lines between [R4.3] tags are intended for the R4.3-stable
-                        // branch where both AcuteLogic and Intel 3A need to be supported for RHB
-                        // the string 0-0x2-0 stands for RHB
-                        if ((vendorPlatformProduct == "0-0x2-0") && (!PlatformData::supportAIQ())) {
-                            vendorPlatformProduct += String8("-acl");
-                        }
-                        else {
-                            vendorPlatformProduct += String8(".");
-                        }
-                        //[R43] end
-
-                        if (fileName.find(vendorPlatformProduct) >= 0) {
+                    if ((PlatformData::createVendorPlatformProductName(vendorPlatformProduct) == 0) &&
+                        (fileName.find(vendorPlatformProduct) >= 0)) {
                             cpfName = fileName;
-                        }
                     }
                 } else {
                     // We just got lost:

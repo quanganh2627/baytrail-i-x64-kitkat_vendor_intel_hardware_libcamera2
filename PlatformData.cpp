@@ -178,16 +178,6 @@ const char* PlatformData::supportedSnapshotSizes(int cameraId)
     return getInstance()->mCameras[cameraId].supportedSnapshotSizes;
 }
 
-const char* PlatformData::defaultSnapshotSize(int cameraId)
-{
-    PlatformBase *i = getInstance();
-    if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
-      return NULL;
-    }
-    return i->mCameras[cameraId].defaultSnapshotSize;
-}
-
 bool PlatformData::supportsFileInject(void)
 {
     return getInstance()->mFileInject;
@@ -1057,14 +1047,6 @@ const char* PlatformData::manufacturerName(void)
     return getInstance()->mManufacturerName;
 }
 
-//TODO: needs to be extended so that derived platforms can set the sensor
-//param file
-const SensorParams *PlatformData::getSensorParamsFile(char *sensorId)
-{
-    const SensorParams *sensorParameters = NULL;
-    return sensorParameters;
-}
-
 const char* PlatformData::getISPSubDeviceName(void)
 {
     return getInstance()->mSubDevName;
@@ -1109,11 +1091,6 @@ int PlatformData::getMaxNumYUVBufferForBracket(int cameraId)
         return 0;
     }
     return getInstance()->mCameras[cameraId].maxNumYUVBufferForBracket;
-}
-
-bool PlatformData::supportAIQ(void)
-{
-    return getInstance()->mSupportAIQ;
 }
 
 bool PlatformData::supportDualVideo(void)

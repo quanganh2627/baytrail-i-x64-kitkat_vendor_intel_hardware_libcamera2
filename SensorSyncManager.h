@@ -57,9 +57,6 @@ public:
     virtual float getFrameRate() const { return mSensorCI->getFrameRate(); }
     virtual unsigned int getExposureDelay() { return mExposureLag; }
     virtual int setExposure(struct atomisp_exposure *);
-
-    virtual status_t getSensorParams(SensorParams * sp) { return mSensorCI->getSensorParams(sp); }
-
     virtual void getSensorData(sensorPrivateData *sensor_data) { return mSensorCI->getSensorData(sensor_data); }
     virtual int  getModeInfo(struct atomisp_sensor_mode_data *mode_data) { return mSensorCI->getModeInfo(mode_data); }
     virtual int  getExposureTime(int *exposure_time) { return mSensorCI->getExposureTime(exposure_time); }

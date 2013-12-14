@@ -26,11 +26,8 @@ LOCAL_SRC_FILES := \
 	DebugFrameRate.cpp \
 	PerformanceTraces.cpp \
 	Callbacks.cpp \
-	AtomAAA.cpp \
 	AtomAIQ.cpp \
 	AtomSoc3A.cpp \
-	AtomDvs.cpp \
-	AtomDvs2.cpp \
 	AtomHAL.cpp \
 	CameraConf.cpp \
 	ColorConverter.cpp \
@@ -67,6 +64,21 @@ LOCAL_SRC_FILES := \
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SRC_FILES += \
 	JpegHwEncoder.cpp
+endif
+
+ifeq ($(USE_CSS_2_0), true)
+LOCAL_SRC_FILES += \
+	AtomDvs2.cpp
+LOCAL_CFLAGS += -DATOMISP_CSS2
+else
+ifeq ($(USE_CSS_2_1), true)
+LOCAL_SRC_FILES += \
+	AtomDvs2.cpp
+LOCAL_CFLAGS += -DATOMISP_CSS2 -DATOMISP_CSS21
+else
+LOCAL_SRC_FILES += \
+	AtomDvs.cpp
+endif
 endif
 
 ifeq ($(USE_INTEL_CAMERA_EXTRAS),true)
@@ -162,14 +174,6 @@ LOCAL_STATIC_LIBRARIES := \
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_CFLAGS += -DUSE_INTEL_JPEG
-endif
-
-ifeq ($(USE_CSS_2_0), true)
-LOCAL_CFLAGS += -DATOMISP_CSS2
-endif
-
-ifeq ($(USE_CSS_2_1), true)
-LOCAL_CFLAGS += -DATOMISP_CSS2 -DATOMISP_CSS21
 endif
 
 # enable R&D features only in R&D builds

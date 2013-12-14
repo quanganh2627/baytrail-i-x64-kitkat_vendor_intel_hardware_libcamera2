@@ -950,7 +950,17 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
                     LOG2("copying frame %p -> %p : size %d", msg->buff.dataPtr, bufToEnqueue->buffer.dataPtr, msg->buff.size);
                     LOG2("src frame  %dx%d bpl %d ", msg->buff.width, msg->buff.height,msg->buff.bpl);
                     LOG2("dst frame  %dx%d bpl %d ", bufToEnqueue->buffer.width, bufToEnqueue->buffer.height, bufToEnqueue->buffer.bpl);
-                    copyPreviewBuffer(&msg->buff, &bufToEnqueue->buffer);
+                    // If mPreviewBpl is not equal with 0, it had set to Gfx bpl when window configuration.
+                    // If Gfx current bpl is not equal with window configuration setting, this frame should be dropped.
+                    if ((mPreviewBpl != 0) && (bufToEnqueue->buffer.bpl != mPreviewBpl)) {
+                        LOGE("msg->buff.bpl=%d, bufToEnqueue->buffer.bpl=%d, bpl don't match for a frame copy",msg->buff.bpl,bufToEnqueue->buffer.bpl);
+                        mapper.unlock(*(bufToEnqueue->buffer.gfxInfo.gfxBufferHandle));
+                        mPreviewWindow->cancel_buffer(mPreviewWindow, bufToEnqueue->buffer.gfxInfo.gfxBufferHandle);
+                        bufToEnqueue->owner = OWNER_WINDOW;
+                        bufToEnqueue = NULL;
+                    } else {
+                        copyPreviewBuffer(&msg->buff, &bufToEnqueue->buffer);
+                    }
                 } else {
                     LOGE("failed to dequeue from window");
                 }

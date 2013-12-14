@@ -36,12 +36,9 @@ public:
     AtomDvs2(HWControlGroup &hwcg);
     ~AtomDvs2();
 
-    status_t init();
+    status_t dvsInit();
     status_t reconfigure();
-
-    // returns 'true' if DVS was activated, false otherwise.
-    bool enable(const CameraParameters& params);
-
+    bool isDvsValid();
     // overrides from IAtomIspObserver
     bool atomIspNotify(Message *msg, const ObserverState state);
 
@@ -74,7 +71,6 @@ private:
     atomisp_dvs_6axis_config *mMorphTable;
     bool mDVSEnabled;
     bool mZoomRatioChanged;
-
 };
 
 };

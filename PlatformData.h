@@ -749,14 +749,6 @@ class PlatformData {
     static const char* supportedSnapshotSizes(int cameraId);
 
     /**
-     * default snapshot size
-     *
-     * \param cameraId identifier passed to android.hardware.Camera.open()
-     * \return the value of the default snapshot size as a string.
-     */
-    static const char* defaultSnapshotSize(int cameraId);
-
-    /**
      * Returns the name of the product
      * This is meant to be used in the EXIF metadata
      *
@@ -771,14 +763,6 @@ class PlatformData {
      * \return string with product manufacturer
      */
     static const char* manufacturerName(void);
-
-    /**
-     * Returns sensor parameter files for input sensor
-     *
-     * \param sensor_id identifier to sensor
-     * \return pointer to sensor parameter file
-    */
-    static const SensorParams *getSensorParamsFile(char *sensorId);
 
     /**
      * Returns the ISP sub device name
@@ -886,14 +870,6 @@ class PlatformData {
      * \return the max number of YUV buffers for bracketing
     */
     static int getMaxNumYUVBufferForBracket(int cameraId);
-
-    /**
-     * Whether Intel3A ia_aiq is supported?
-     *
-     * \return true if supported
-     */
-    // TODO: remove this until official ia_aiq is adopted
-    static bool supportAIQ(void);
 
     /**
      * Returns Graphics HAL pixel format
@@ -1029,7 +1005,6 @@ public:
         mNumPreviewBuffers = 6;
         mMaxContinuousRawRingBuffer = 0;
         mShutterLagCompensationMs = 40;
-        mSupportAIQ = false;
         mSupportDualVideo = false;
         mSupportPreviewLimitation = true;
         mPreviewFourcc = V4L2_PIX_FMT_NV12;
@@ -1054,7 +1029,6 @@ protected:
             flipping = PlatformData::SENSOR_FLIP_NA;
             dvs = true;
             supportedSnapshotSizes = "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448";
-            defaultSnapshotSize = "2560x1920";
             mPreviewViaOverlay = false;
             overlayRelativeRotation = 90;
             continuousCapture = false;
@@ -1192,7 +1166,6 @@ protected:
         int flipping;
         bool dvs;
         String8 supportedSnapshotSizes;
-        String8 defaultSnapshotSize;
         bool mPreviewViaOverlay;
         int overlayRelativeRotation;  /*<! Relative rotation between the native scan order of the
                                            camera and the display attached to the overlay */
@@ -1345,10 +1318,7 @@ protected:
 
     int mNumPreviewBuffers;
 
-    /* For Intel3A ia_aiq */
-    bool mSupportAIQ;
-
-    /* For Dual Vidoe */
+    /* For Dual Video */
     bool mSupportDualVideo;
 
     /* For Preview Size Limitation*/

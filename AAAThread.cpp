@@ -42,7 +42,7 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaa
     ,m3ARunning(false)
     ,mStartAF(false)
     ,mStopAF(false)
-    ,mPreviousCafStatus(ia_3a_af_status_idle)
+    ,mPreviousCafStatus(CAM_AF_STATUS_IDLE)
     ,mPublicAeLock(false)
     ,mPublicAwbLock(false)
     ,mSmartSceneMode(0)
@@ -398,9 +398,9 @@ status_t AAAThread::handleMessageAutoFocus()
     * If we are in continuous focus mode we should return immediately with
     * the current status if we  are not busy.
     */
-    ia_3a_af_status cafStatus = m3AControls->getCAFStatus();
-    if (currAfMode == CAM_AF_MODE_CONTINUOUS && cafStatus != ia_3a_af_status_busy) {
-        mCallbacksThread->autoFocusDone(cafStatus == ia_3a_af_status_success);
+    AfStatus cafStatus = m3AControls->getCAFStatus();
+    if (currAfMode == CAM_AF_MODE_CONTINUOUS && cafStatus != CAM_AF_STATUS_BUSY) {
+        mCallbacksThread->autoFocusDone(cafStatus == CAM_AF_STATUS_SUCCESS);
         return status;
     }
 
@@ -665,31 +665,25 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
         status = m3AControls->apply3AProcess(true, capture_timestamp,
                     getFrameSyncForStatistics(&capture_timestamp));
 
-        //dump 3A statistics
-        if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_3A_STATISTICS))
-            m3AControls->dumpCurrent3aStatToFile();
-
         // If auto-focus was requested, run auto-focus sequence
         if (status == NO_ERROR && mStartAF) {
             // Check for cancel-focus
-            ia_3a_af_status afStatus = ia_3a_af_status_error;
+            AfStatus afStatus = CAM_AF_STATUS_FAIL;
             if (mStopAF) {
-                afStatus = ia_3a_af_status_cancelled;
+                afStatus = CAM_AF_STATUS_FAIL;
             } else {
                 afStatus = m3AControls->isStillAfComplete();
                 mFramesTillAfComplete++;
             }
             bool stopStillAf = false;
-            if (afStatus == ia_3a_af_status_busy) {
+
+            if (afStatus == CAM_AF_STATUS_BUSY) {
                 LOG1("StillAF@Frame %d: BUSY    (continuing...)", mFramesTillAfComplete);
-            } else if (afStatus == ia_3a_af_status_success) {
+            } else if (afStatus == CAM_AF_STATUS_SUCCESS) {
                 LOG1("StillAF@Frame %d: SUCCESS (stopping...)", mFramesTillAfComplete);
                 stopStillAf = true;
-            } else if (afStatus == ia_3a_af_status_error) {
+            } else if (afStatus == CAM_AF_STATUS_FAIL) {
                 LOG1("StillAF@Frame %d: FAIL    (stopping...)", mFramesTillAfComplete);
-                stopStillAf = true;
-            } else if (afStatus == ia_3a_af_status_cancelled) {
-                LOG1("StillAF@Frame %d: CANCEL  (stopping...)", mFramesTillAfComplete);
                 stopStillAf = true;
             }
 
@@ -704,14 +698,14 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
                 mStartAF = false;
                 mStopAF = false;
                 mFramesTillAfComplete = 0;
-                mCallbacksThread->autoFocusDone(afStatus == ia_3a_af_status_success);
+                mCallbacksThread->autoFocusDone(afStatus == CAM_AF_STATUS_SUCCESS);
                 /**
                  * Even if we complete AF, if the result was failure we keep
                  * trying to focus if we are in continuous focus mode.
                  *
                  */
                 if((m3AControls->getAfMode() == CAM_AF_MODE_CONTINUOUS) &&
-                   (afStatus != ia_3a_af_status_success) ) {
+                   (afStatus != CAM_AF_STATUS_SUCCESS) ) {
                     m3AControls->setAfEnabled(true);
                 }
             }
@@ -719,16 +713,20 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
 
         AfMode currAfMode = m3AControls->getAfMode();
         if (currAfMode == CAM_AF_MODE_CONTINUOUS) {
-            ia_3a_af_status cafStatus = m3AControls->getCAFStatus();
+            AfStatus cafStatus = m3AControls->getCAFStatus();
             LOG2("CAF move lens status: %d", cafStatus);
             if (cafStatus != mPreviousCafStatus) {
-                LOG2("CAF move: %d", cafStatus == ia_3a_af_status_busy);
+                bool focusMoving = false;
+                if (cafStatus == CAM_AF_STATUS_BUSY) {
+                    focusMoving = true;
+                }
+                LOG2("CAF move: %d", focusMoving);
                 // Send the callback to upper layer and inform about the CAF status.
-                mCallbacksThread->focusMove(cafStatus == ia_3a_af_status_busy);
+                mCallbacksThread->focusMove(focusMoving);
                 mPreviousCafStatus = cafStatus;
             }
 
-            if (cafStatus == ia_3a_af_status_success)
+            if (cafStatus == CAM_AF_STATUS_SUCCESS)
                 PerformanceTraces::Launch2FocusLock::stop();
         }
 

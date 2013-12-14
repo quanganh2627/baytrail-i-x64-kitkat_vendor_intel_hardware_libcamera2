@@ -919,15 +919,7 @@ void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata
             windows[i].y_top = face.rect[1];
             windows[i].x_right = face.rect[2];
             windows[i].y_bottom = face.rect[3];
-
-            // TODO: Once we support only one set of AAA libs we can remove this.
-            if (PlatformData::supportAIQ()) {
-                convertFromAndroidToIaCoordinates(windows[i], windows[i]);
-            } else {
-                AAAWindowInfo aaaWindow;
-                m3AControls->getGridWindow(aaaWindow);
-                convertFromAndroidCoordinates(windows[i], windows[i], aaaWindow);
-            }
+            convertFromAndroidToIaCoordinates(windows[i], windows[i]);
 
             LOG2("Face window: (%d,%d,%d,%d)",
                 windows[i].x_left,

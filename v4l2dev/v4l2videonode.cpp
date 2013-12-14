@@ -740,7 +740,7 @@ int V4L2VideoNode::dqbuf(struct v4l2_buffer_info *buf)
 
     ret = ioctl(mFd, VIDIOC_DQBUF, v4l2_buf);
     if (ret < 0) {
-        LOGE("VIDIOC_QBUF failed: %s", strerror(errno));
+        LOGE("VIDIOC_DQBUF failed: %s", strerror(errno));
         return ret;
     }
 

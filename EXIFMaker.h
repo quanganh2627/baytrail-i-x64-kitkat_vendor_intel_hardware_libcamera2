@@ -42,7 +42,7 @@ public:
 
     void initialize(const CameraParameters &params, int zoomRatio);
     bool isInitialized() { return initialized; }
-    void setMakerNote(const ia_3a_mknote &aaaMkNoteData);
+    void setMakerNote(const ia_binary_data &aaaMkNoteData);
     void setDriverData(const atomisp_makernote_info &ispData);
     void setSensorAeConfig(const SensorAeConfig &sensorParams);
     void pictureTaken();

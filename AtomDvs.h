@@ -28,22 +28,20 @@ extern "C" {
 }
 
 namespace android {
-
 class AtomDvs : public IDvs {
 
 public:
     AtomDvs(HWControlGroup &hwcg);
     ~AtomDvs();
 
+    status_t dvsInit() { return NO_ERROR; }
     status_t reconfigure();
-
-    // returns 'true' if DVS was activated, false otherwise.
-    bool enable(const CameraParameters& params);
-
-    // overrides from IAtomIspObserver
+    bool isDvsValid();
+    // overrides from IAtomIspObservr
     bool atomIspNotify(Message *msg, const ObserverState state);
 
     status_t setZoom(int zoom) { return INVALID_OPERATION; }
+
 // prevent copy constructor and assignment operator
 private:
     AtomDvs(const AtomDvs& other);
