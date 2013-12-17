@@ -5379,7 +5379,7 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, PlatformData::supportedStepEV(mCameraId));
             }
             if (PlatformData::supportsFlash(mCameraId)) {
-                mSavedFlashSupported = String8("on");
+                mSavedFlashSupported = String8("off,on");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_ON);
                 selectFlashModeForScene(newParams);
             }
