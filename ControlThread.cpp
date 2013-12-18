@@ -5036,9 +5036,16 @@ status_t ControlThread::processParamFlash(const CameraParameters *oldParams,
         status = m3AControls->setAeFlashMode(flash);
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_FLASH_MODE, newVal.string());
+        } else {
+            // Ok in general for SOC sensors.
+            // TODO: Kernel driver should support querying which controls the sensors support
+            LOGW("Error in setting flash mode \'%s\' (%d), 3A ctrl type: %d",
+                 newVal.string(), flash, m3AControls->getType());
         }
     }
-    return status;
+
+    // Return no error always, as we check and indicate the failure above.
+    return NO_ERROR;
 }
 
 status_t ControlThread::processPreviewUpdateMode(const CameraParameters *oldParams,
@@ -5739,7 +5746,15 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             // See if we have to change the actual mode (it could be correct already)
             status = m3AControls->setAfMode(afMode);
         }
-        LOG1("Changed: %s -> %s", CameraParameters::KEY_FOCUS_MODE, newVal.string());
+
+        if (status == NO_ERROR) {
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_FOCUS_MODE, newVal.string());
+        } else {
+            // Ok in general for SOC sensors.
+            // TODO: Kernel driver should support querying which controls the sensors support
+            LOGW("Could not set AF mode to \'%s\' (%d),  3A ctrl type: %d",
+                 newVal.string(), afMode, m3AControls->getType());
+        }
     }
 
     if (!mFaceDetectionActive) {
@@ -5759,7 +5774,7 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
                 if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
                     // If focus windows couldn't be set, previous AF mode is used
                     curAfMode = m3AControls->getAfMode();
-                    LOGE("Could not set AF windows. Resetting the AF back to %d", curAfMode);
+                    LOGW("Could not set AF windows. Resetting the AF back to %d", curAfMode);
                     m3AControls->setAfMode(curAfMode);
                 }
 
@@ -5768,7 +5783,9 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
         }
     }
 
-    return status;
+    // Return NO_ERROR always. Setting AF to SOC sensor may fail, but
+    // we don't consider this as an error.
+    return NO_ERROR;
 }
 
 status_t ControlThread:: processParamSetMeteringAreas(const CameraParameters *oldParams,
@@ -6104,9 +6121,17 @@ status_t ControlThread::processParamWhiteBalance(const CameraParameters *oldPara
 
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_WHITE_BALANCE, newVal.string());
+        } else {
+            // For SOC sensors, this is generally OK.
+            // TODO: should query the support from kernel driver, when driver supports this.
+            LOGW("Error while setting AWB mode \'%s\' (%d), 3A ctrl type: %d",
+                 newVal.string() , wbMode, m3AControls->getType());
         }
     }
-    return status;
+
+    // Return NO_ERROR always, although setting the AWB might fail, for example on SOC sensors
+    // that do not support this.
+    return NO_ERROR;
 }
 
 status_t ControlThread::processParamRawDataFormat(const CameraParameters *oldParams,
