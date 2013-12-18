@@ -100,6 +100,8 @@ status_t AtomSoc3A::setAeMode(AeMode mode)
             v4lMode = V4L2_EXPOSURE_AUTO;
     }
 
+    // TODO: If the sensor does not support the setting, we should return NO_ERROR
+
     int ret = mSensorCI->setExposureMode(v4lMode);
     if (ret != 0) {
         LOGE("Error setting AE mode (%d) in the driver", v4lMode);
@@ -244,6 +246,8 @@ status_t AtomSoc3A::setAeSceneMode(SceneMode mode)
             v4lMode = V4L2_SCENE_MODE_NONE;
     }
 
+    // TODO: If the sensor does not support the setting, we should return NO_ERROR
+
     int ret = mSensorCI->setSceneMode(v4lMode);
     if (ret != 0) {
         LOGE("Error setting scene mode in the driver");
@@ -370,6 +374,8 @@ status_t AtomSoc3A::setAwbMode(AwbMode mode)
             LOGW("Unsupported AWB mode %d", mode);
             v4lMode = V4L2_WHITE_BALANCE_AUTO;
     }
+
+    // TODO: If the sensor does not support the setting, we should return NO_ERROR
 
     int ret = mSensorCI->setWhiteBalance(v4lMode);
     if (ret != 0) {
@@ -679,6 +685,8 @@ status_t AtomSoc3A::setAfMode(AfMode mode)
             v4lMode = V4L2_AUTO_FOCUS_RANGE_AUTO;
             break;
     }
+
+    // TODO: If the sensor does not support the setting, we should return NO_ERROR
 
     int ret = mSensorCI->setAfMode(v4lMode);
     if (ret != 0) {

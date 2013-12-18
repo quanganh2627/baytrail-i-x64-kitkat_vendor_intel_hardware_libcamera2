@@ -58,6 +58,7 @@ public:
 
 // public methods
 public:
+    virtual SensorType getType() { return SENSOR_TYPE_SOC; }
     virtual status_t init3A();
     virtual status_t deinit3A();
     virtual void getDefaultParams(CameraParameters *params, CameraParameters *intel_params);

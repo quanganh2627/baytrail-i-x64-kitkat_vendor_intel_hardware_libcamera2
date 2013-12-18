@@ -319,6 +319,8 @@ public:
     AtomAIQ(HWControlGroup &hwcg);
     ~AtomAIQ();
 
+    virtual SensorType getType() { return SENSOR_TYPE_RAW; }
+
     virtual bool isIntel3A() { return true; }
     void getDefaultParams(CameraParameters *params, CameraParameters *intel_params);
 
