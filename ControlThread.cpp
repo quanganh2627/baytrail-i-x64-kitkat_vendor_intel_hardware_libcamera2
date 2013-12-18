@@ -6740,6 +6740,8 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
                 mState == STATE_CONTINUOUS_CAPTURE) {
                 needRestartPreview = true;
                 videoMode = false;
+                // cancel picture processing to get all snapshot buffers back to its nest
+                cancelPictureThread();
             }
         }
 
