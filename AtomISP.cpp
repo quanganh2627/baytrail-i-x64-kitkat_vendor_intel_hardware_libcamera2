@@ -305,8 +305,11 @@ status_t AtomISP::init()
     AtomBuffer formatDescriptorSs
         = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, V4L2_PIX_FMT_NV12);
 
-    formatDescriptorSs.width = RESOLUTION_5MP_WIDTH;
-    formatDescriptorSs.height = RESOLUTION_5MP_HEIGHT;
+    /* for stretch problems(BZ: 152956 and BZ: 140905),
+     * hal doesn't set default picture size here, uses 0x0 as default.
+     * then, in processStaticParameters(), if hal finds no valid picture size is set,
+     * it will choose a picture size, if there is a valid picture size, it will use it.
+     */
     setSnapshotFrameFormat(formatDescriptorSs);
 
     setVideoFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
@@ -2355,9 +2358,9 @@ status_t AtomISP::setSnapshotFrameFormat(AtomBuffer& formatDescriptor)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if (formatDescriptor.width > mConfig.snapshotLimits.maxWidth || formatDescriptor.width <= 0)
+    if (formatDescriptor.width > mConfig.snapshotLimits.maxWidth || formatDescriptor.width < 0)
         formatDescriptor.width = mConfig.snapshotLimits.maxWidth;
-    if (formatDescriptor.height > mConfig.snapshotLimits.maxHeight || formatDescriptor.height <= 0)
+    if (formatDescriptor.height > mConfig.snapshotLimits.maxHeight || formatDescriptor.height < 0)
         formatDescriptor.height = mConfig.snapshotLimits.maxHeight;
 
     mConfig.snapshot = formatDescriptor;

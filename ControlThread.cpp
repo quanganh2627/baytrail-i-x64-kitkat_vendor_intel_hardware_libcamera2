@@ -6305,12 +6305,14 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     float previewAspectRatio = 0.0f;
+    float pictureAspectRatio = 0.0f;
     float videoAspectRatio = 0.0f;
     Vector<Size> sizes;
     bool videoMode = android::isParameterSet(CameraParameters::KEY_RECORDING_HINT, *newParams) ? true : false;
     int oldWidth, newWidth;
     int oldHeight, newHeight;
     int previewWidth, previewHeight;
+    int pictureWidth, pictureHeight;
     int oldFormat, newFormat;
     // see if preview params have changed
     newParams->getPreviewSize(&newWidth, &newHeight);
@@ -6319,11 +6321,11 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
     oldFormat = V4L2Format(oldParams->getPreviewFormat());
     previewWidth = oldWidth;
     previewHeight = oldHeight;
+    previewAspectRatio = 1.0 * newWidth / newHeight;
     if (newWidth != oldWidth || newHeight != oldHeight ||
             oldFormat != newFormat) {
         previewWidth = newWidth;
         previewHeight = newHeight;
-        previewAspectRatio = 1.0 * newWidth / newHeight;
         LOG1("Preview size/cb_fourcc is changing: old=%dx%d %s; new=%dx%d %s; ratio=%.3f",
                 oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
                 newWidth, newHeight, v4l2Fmt2Str(newFormat),
@@ -6331,10 +6333,24 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
         restartNeeded = true;
         mPreviewForceChanged = false;
     } else {
-        previewAspectRatio = 1.0 * oldWidth / oldHeight;
         LOG1("Preview size/cb_fourcc is unchanged: old=%dx%d %s; ratio=%.3f",
                 oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
                 previewAspectRatio);
+    }
+
+    newParams->getPictureSize(&pictureWidth, &pictureHeight);
+    if (pictureWidth == 0 || pictureHeight == 0) {
+        newParams->getSupportedPictureSizes(sizes);
+        for (size_t i = 0; i < sizes.size(); i++) {
+            pictureAspectRatio = 1.0 * sizes[i].width / sizes[i].height;
+            if (fabsf(pictureAspectRatio - previewAspectRatio) <= ASPECT_TOLERANCE) {
+                pictureWidth = sizes[i].width;
+                pictureHeight = sizes[i].height;
+                newParams->setPictureSize(pictureWidth, pictureHeight);
+                break;
+            }
+        }
+        LOGD("Application doesn't set picture size, hal chooses %dx%d to match preview size", pictureWidth, pictureHeight);
     }
 
     if(videoMode) {
