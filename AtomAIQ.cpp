@@ -163,6 +163,7 @@ status_t AtomAIQ::_init3A()
     ia_cmc_t *cmc = ia_cmc_parser_init((ia_binary_data*)&(cpfData));
     m3aState.ia_aiq_handle = ia_aiq_init((ia_binary_data*)&(cpfData),
                                          (ia_binary_data*)aicNvm,
+                                         NULL,
                                          MAX_STATISTICS_WIDTH,
                                          MAX_STATISTICS_HEIGHT,
                                          cmc,
@@ -1155,7 +1156,7 @@ status_t AtomAIQ::getSmartSceneMode(int *sceneMode, bool *sceneHdr)
     LOG1("@%s", __FUNCTION__);
     if(sceneMode != NULL && sceneHdr != NULL) {
         *sceneMode = mDetectedSceneMode;
-        *sceneHdr = mAeState.ae_results->multiframe == ia_aiq_bracket_mode_hdr ? true : false;
+        *sceneHdr = (mAeState.ae_results->multiframe & ia_aiq_bracket_mode_hdr) ? true : false;
         return UNKNOWN_ERROR;
     }
     return NO_ERROR;
@@ -1979,8 +1980,8 @@ status_t AtomAIQ::runDSDMain()
             ia_aiq_scene_mode_action |
             ia_aiq_scene_mode_backlight |
             ia_aiq_scene_mode_landscape |
-            ia_aiq_scene_mode_document |
-            ia_aiq_scene_mode_firework);
+            ia_aiq_scene_mode_firework |
+            ia_aiq_scene_mode_lowlight_action);
 
         ia_err ret = ia_aiq_dsd_run(m3aState.ia_aiq_handle, &mDSDInputParameters, &mDetectedSceneMode);
         if(ret == ia_err_none)
