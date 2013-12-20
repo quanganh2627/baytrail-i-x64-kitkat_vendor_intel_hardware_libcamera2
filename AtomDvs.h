@@ -36,7 +36,7 @@ public:
 
     status_t dvsInit() { return NO_ERROR; }
     status_t reconfigure();
-    bool isDvsValid() { return true; }
+    bool isDvsValid();
     // overrides from IAtomIspObservr
     bool atomIspNotify(Message *msg, const ObserverState state);
 
