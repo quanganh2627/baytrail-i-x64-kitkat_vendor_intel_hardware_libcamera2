@@ -117,16 +117,6 @@ end:
     return status;
 }
 
-bool AtomDvs::isDvsValid()
-{
-    LOG1("@%s", __FUNCTION__);
-    int width, height;
-    mIsp->getVideoSize(&width, &height, NULL);
-    if ((unsigned int)width < DVS_MIN_WIDTH && (unsigned int)height < DVS_MIN_HEIGHT)
-        return false;
-    else
-        return true;
-}
 /**
  * override for IAtomIspObserver::atomIspNotify()
  *
