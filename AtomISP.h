@@ -289,6 +289,7 @@ public:
     void setRecordingFramerate(int fps);
     int getRecordingFramerate() { return mConfig.recording_fps; }
     bool checkSkipFrameRecording(int frameNum);
+    bool checkSkipFrameForVideoZoom();
 
 // private types
 private:
@@ -430,6 +431,7 @@ private:
     int detectCorruptStatistics(struct atomisp_3a_statistics *statistics);
 
     bool checkSkipFrame(int frameNum, int targetFPS);
+    status_t setSkipFramesForVideoZoom();
 
 private:
     // AtomIspObserver
@@ -535,6 +537,7 @@ private:
     unsigned int mInitialSkips;
     unsigned int mStatisticSkips;
     unsigned int mDVSFrameSkips;
+    unsigned int mVideoZoomFrameSkips;
 
     int dumpFrameInfo(AtomMode mode);
 
