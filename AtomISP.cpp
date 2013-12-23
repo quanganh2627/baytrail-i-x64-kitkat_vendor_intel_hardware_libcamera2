@@ -2884,9 +2884,8 @@ status_t AtomISP::setDVS(bool enable)
     }
 
     if (enable && mDvs && !mDvs->isDvsValid()) {
-        mDvsEnabled = false;
+        enable = false;
         LOGW("@%s: Cannot start DVS due to some restrictions in size or frame rate", __FUNCTION__);
-        return INVALID_OPERATION;
     }
 
     status = mMainDevice->setControl(V4L2_CID_ATOMISP_VIDEO_STABLIZATION,
