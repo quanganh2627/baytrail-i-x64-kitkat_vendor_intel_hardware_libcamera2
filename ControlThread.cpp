@@ -5215,9 +5215,10 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
             }
         } else if ((newValIntel.isEmpty() && newVal != CameraParameters::SCENE_MODE_HDR)
                     || (newValIntel == "off" && newVal != CameraParameters::SCENE_MODE_HDR)) {
-            status = mCP->uninitializeHDR();
-            if (status != NO_ERROR) {
-                LOGE("HDR buffer release failed");
+            if(mHdr.enabled) {
+                status = mCP->uninitializeHDR();
+                if (status != NO_ERROR)
+                    LOGE("HDR buffer release failed");
             }
             mHdr.enabled = false;
             mBracketManager->setBracketMode(mHdr.savedBracketMode);
