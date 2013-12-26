@@ -6169,6 +6169,17 @@ status_t ControlThread::processParamRawDataFormat(const CameraParameters *oldPar
     return NO_ERROR;
 }
 
+status_t ControlThread::processPreviewCallbackSize(const CameraParameters *newParams, int videomode)
+{
+    LOG1("@%s", __FUNCTION__);
+    int width, height;
+
+    newParams->getPreviewSize(&width, &height);
+    mPreviewThread->setCallbackPreviewSize(width, height, videomode);
+
+    return NO_ERROR;
+}
+
 status_t ControlThread::processParamPreviewFrameRate(const CameraParameters *oldParams,
         CameraParameters *newParams)
 {
@@ -6476,6 +6487,15 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
     if (status == NO_ERROR) {
         status = processParamRawDataFormat(oldParams, newParams, restartNeeded);
     }
+
+    /*
+     *  Process preview size for Callbacks, preview size will be changed by
+     *  ISPLimitations in video mode, but some application allocate buffer
+     *  according to the original setting size to store preview JPEG data. So
+     *  the original preview size is useful for callbacks when allocating buffer.
+     */
+    if (status == NO_ERROR)
+        processPreviewCallbackSize(newParams, videoMode);
 
     /**
      * There are multiple workarounds related to what preview and video

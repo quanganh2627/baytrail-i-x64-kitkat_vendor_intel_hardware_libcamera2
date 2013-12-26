@@ -19,6 +19,7 @@
 #include "LogHelper.h"
 #include "DebugFrameRate.h"
 #include "Callbacks.h"
+#include "ImageScaler.h"
 #include "CallbacksThread.h"
 #include "ColorConverter.h"
 #include <gui/Surface.h>
@@ -42,6 +43,7 @@ PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* cal
     ,mCallbacksThread(callbacksThread)
     ,mPreviewWindow(NULL)
     ,mPreviewBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_PREVIEW))
+    ,mTransferingBuffer(NULL)
     ,mCallbacks(callbacks)
     ,mBuffersInWindow(0)
     ,mNumOfPreviewBuffers(0)
@@ -97,6 +99,33 @@ status_t PreviewThread::handleMessageSetCallback(MessageSetCallback *msg)
 
     cbVector->push(callback_pair_t(msg->type, msg->icallback));
     return NO_ERROR;
+}
+
+/*
+ * This is the real preview size that app requested.
+ */
+void PreviewThread::setCallbackPreviewSize(int width, int height, int videoMode)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_SET_CALLBACK_PREVIEW_SIZE;
+    msg.data.callbackPreviewSize.width  = width;
+    msg.data.callbackPreviewSize.height = height;
+    msg.data.callbackPreviewSize.videoMode = videoMode;
+    mMessageQueue.send(&msg);
+}
+
+status_t PreviewThread::handleMessageSetCallbackPreviewSize(MessageSetCallbackPreviewSize *msg)
+{
+    if (msg->videoMode) {
+        mCallbackPreviewWidth  = msg->width;
+        mCallbackPreviewHeight = msg->height;
+    } else {
+        // use default value in setPreviewConfig
+        mCallbackPreviewWidth  = 0;
+        mCallbackPreviewHeight = 0;
+    }
+    return OK;
 }
 
 void PreviewThread::inputBufferCallback()
@@ -569,6 +598,10 @@ status_t PreviewThread::waitForAndExecuteMessage()
             status = handleMessageSetCallback(&msg.data.setCallback);
             break;
 
+        case MESSAGE_ID_SET_CALLBACK_PREVIEW_SIZE:
+            status = handleMessageSetCallbackPreviewSize(&msg.data.callbackPreviewSize);
+            break;
+
         case MESSAGE_ID_FETCH_BUF_GEOMETRY:
             status = handleMessageFetchBufferGeometry();
             break;
@@ -624,6 +657,10 @@ void PreviewThread::freeLocalPreviewBuf(void)
 {
     LOG1("releasing existing preview buffer\n");
     MemoryUtils::freeAtomBuffer(mPreviewBuf);
+    if (mTransferingBuffer) {
+        free(mTransferingBuffer);
+        mTransferingBuffer = NULL;
+    }
 }
 
 void PreviewThread::allocateLocalPreviewBuf(void)
@@ -637,21 +674,34 @@ void PreviewThread::allocateLocalPreviewBuf(void)
     LOG1("allocating the preview buffer\n");
     freeLocalPreviewBuf();
 
+    if (mCallbackPreviewWidth > 0 && mCallbackPreviewHeight > 0) {
+        //This is the actually requested buffer size that app wants.
+        mPreviewBuf.width  = mCallbackPreviewWidth;
+        mPreviewBuf.height = mCallbackPreviewHeight;
+        LOGW("Preview size is changed, old=(%dx%d), new=(%dx%d), using old size for callbacks",
+            mPreviewBuf.width, mPreviewBuf.height, mPreviewWidth, mPreviewHeight);
+    } else {
+        mPreviewBuf.width  = mPreviewWidth;
+        mPreviewBuf.height = mPreviewHeight;
+    }
+
     switch(mPreviewCbFormat) {
     case V4L2_PIX_FMT_YVU420:
-        bpl = ALIGN16(mPreviewWidth);
-        ySize = bpl * mPreviewHeight;
-        cBpl = ALIGN16(bpl/2);
-        cSize = cBpl * mPreviewHeight/2;
-        size = ySize + cSize * 2;
+        bpl   = ALIGN16(mPreviewBuf.width);
+        ySize = bpl * mPreviewBuf.height;
+        cBpl  = ALIGN16(bpl/2);
+        cSize = cBpl * mPreviewBuf.height/2;
+        size  = ySize + cSize * 2;
         break;
 
     case V4L2_PIX_FMT_NV21:
-        size = mPreviewWidth*mPreviewHeight*3/2;
+        bpl  = mPreviewBuf.width;
+        size = bpl * mPreviewBuf.height * 3/2;
         break;
 
     case V4L2_PIX_FMT_RGB565:
-        size = mPreviewWidth*mPreviewHeight*2;
+        bpl  = mPreviewBuf.width * 2;
+        size = bpl * mPreviewBuf.height;
         break;
 
     default:
@@ -659,10 +709,22 @@ void PreviewThread::allocateLocalPreviewBuf(void)
         break;
     }
 
+    mPreviewBuf.size = size;
+    mPreviewBuf.bpl  = bpl;
+    LOG1("allocate buffer %dx%d bpl:%d, size is %d", mPreviewBuf.width, mPreviewBuf.height, bpl, size);
     if (size > 0) {
         mCallbacks->allocateMemory(&mPreviewBuf, size);
         if(!mPreviewBuf.buff) {
             LOGE("getting memory failed\n");
+        }
+    }
+
+    //allocate local transitional buffer for preview callback
+    if (mPreviewBuf.width != mPreviewWidth || mPreviewBuf.height != mPreviewHeight) {
+        LOG1("allocating extra %d bytes buffer for transfering", mPreviewBuf.size);
+        mTransferingBuffer = (unsigned char*)malloc(mPreviewBuf.size);
+        if (mTransferingBuffer == NULL) {
+            LOGE("failed to allocate transfering buffer.");
         }
     }
 }
@@ -1009,21 +1071,33 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
 
     if (mCallbacks->msgTypeEnabled(CAMERA_MSG_PREVIEW_FRAME) && mPreviewBuf.dataPtr) {
         void *src = msg->buff.dataPtr;
+        int src_bpl = msg->buff.bpl;
+        if (mTransferingBuffer) {
+            int transfer_bpl = pixelsToBytes(mPreviewFourcc, mPreviewBuf.width);
+            // scale to transfering buffer if requested preview size is not equal to actual preview size
+            ImageScaler::downScaleImage(src, mTransferingBuffer,
+                    mPreviewBuf.width, mPreviewBuf.height, transfer_bpl,
+                    mPreviewWidth, mPreviewHeight, msg->buff.bpl,
+                    mPreviewFourcc, 0, 0);
+            src = mTransferingBuffer;
+            src_bpl = transfer_bpl;
+        }
+
         switch(mPreviewCbFormat) {
                                   // Android definition: PIXEL_FORMAT_YUV420P-->YV12, please refer to
         case V4L2_PIX_FMT_YVU420: // header file: frameworks/av/include/camera/CameraParameters.h
-            convertBuftoYV12(mPreviewFourcc, mPreviewWidth,
-                             mPreviewHeight, msg->buff.bpl,
-                             mPreviewWidth, src, mPreviewBuf.dataPtr);
+            convertBuftoYV12(mPreviewFourcc, mPreviewBuf.width,
+                             mPreviewBuf.height, src_bpl,
+                             mPreviewBuf.bpl, src, mPreviewBuf.dataPtr);
             break;
         case V4L2_PIX_FMT_NV21: // you need to do this for the first time
-            convertBuftoNV21(mPreviewFourcc, mPreviewWidth,
-                             mPreviewHeight, msg->buff.bpl,
-                             mPreviewWidth, src, mPreviewBuf.dataPtr);
+            convertBuftoNV21(mPreviewFourcc, mPreviewBuf.width,
+                             mPreviewBuf.height, src_bpl,
+                             mPreviewBuf.bpl, src, mPreviewBuf.dataPtr);
             break;
         case V4L2_PIX_FMT_RGB565:
             if (mPreviewFourcc == V4L2_PIX_FMT_NV12)
-                trimConvertNV12ToRGB565(mPreviewWidth, mPreviewHeight, msg->buff.bpl, src, mPreviewBuf.dataPtr);
+                trimConvertNV12ToRGB565(mPreviewBuf.width, mPreviewBuf.height, src_bpl, src, mPreviewBuf.dataPtr);
             //TBD for other preview format, not supported yet
             break;
         default:

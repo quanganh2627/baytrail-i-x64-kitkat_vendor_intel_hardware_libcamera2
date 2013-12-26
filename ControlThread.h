@@ -591,6 +591,8 @@ private:
     // NOTE: processParamPreviewFrameRate is deprecated since Android API level 9
     status_t processParamPreviewFrameRate(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    status_t processPreviewCallbackSize(const CameraParameters *oldParams,
+            int videomode);
     status_t ProcessOverlayEnable(const CameraParameters *oldParams,
             CameraParameters *newParams);
     // EXIF data
