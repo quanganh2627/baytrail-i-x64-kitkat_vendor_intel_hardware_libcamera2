@@ -215,6 +215,9 @@ private:
 
     sp<ScalerService> mScaler;
 
+    int mMaxOutJpegBufSize; /*!< the max JPEG Buffer Size. This is initialized to
+                                 the size of the input YUV buffer*/
+
     // Exif data
     String8 mExifMakerName;
     String8 mExifModelName;

@@ -58,6 +58,7 @@ public:
 
 // public methods
 public:
+    virtual SensorType getType() { return SENSOR_TYPE_SOC; }
     virtual status_t init3A();
     virtual status_t deinit3A();
     virtual void getDefaultParams(CameraParameters *params, CameraParameters *intel_params);
@@ -116,6 +117,7 @@ public:
     virtual status_t stopStillAf() { return INVALID_OPERATION; }
     virtual AfStatus isStillAfComplete() { return CAM_AF_STATUS_FAIL; }
     virtual status_t applyPreFlashProcess(FlashStage stage) { return INVALID_OPERATION; }
+    virtual status_t getGBCEResults(ia_aiq_gbce_results *gbce_results) { return INVALID_OPERATION; }
 
     virtual ia_binary_data *get3aMakerNote(ia_mkn_trg mode) { return NULL; }
     virtual void put3aMakerNote(ia_binary_data *mknData) { }
@@ -133,6 +135,7 @@ public:
     status_t getSmartSceneMode(int *sceneMode, bool *sceneHdr) { return INVALID_OPERATION; }
     status_t setFaces(const ia_face_state& faceState) { return INVALID_OPERATION; }
     status_t setFlash(int numFrames);
+    virtual bool getAeUllTrigger() { return false; }
 
 private:
     int mCameraId;

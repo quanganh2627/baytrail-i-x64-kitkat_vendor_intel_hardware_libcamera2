@@ -136,6 +136,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mPostCaptureThread(NULL)
     ,mAccManagerThread(NULL)
     ,mMessageQueue("ControlThread", (int) MESSAGE_ID_MAX)
+    ,mPostponedMsgProcessing(false)
     ,mState(STATE_STOPPED)
     ,mCaptureSubState(STATE_CAPTURE_INIT)
     ,mShootingMode(SHOOTING_MODE_NONE)
@@ -595,7 +596,18 @@ status_t ControlThread::setPreviewWindow(struct preview_stream_ops *window)
     Message msg;
     msg.id = MESSAGE_ID_SET_PREVIEW_WINDOW;
     msg.data.previewWin.window = window;
-    return mMessageQueue.send(&msg);
+    msg.data.previewWin.synchronous = false;
+
+    if (mPreviewThread->getPreviewState() == PreviewThread::STATE_NO_WINDOW) {
+        // In case of "deferred start" for preview, we need to be synchronous
+        // with the window setting, to properly go through the start preview
+        // sequence that is supposed to be synchronous.
+        msg.data.previewWin.synchronous = true;
+        return mMessageQueue.send(&msg, MESSAGE_ID_SET_PREVIEW_WINDOW);
+    } else {
+        // Otherwise we can act asynchronously
+        return mMessageQueue.send(&msg);
+    }
 }
 
 void ControlThread::setCallbacks(camera_notify_callback notify_cb,
@@ -1819,6 +1831,9 @@ status_t ControlThread::restartPreview(bool videoMode)
      * that should wait for the post-capture processing to complete.
      */
     cancelPostCaptureThread();
+    // cancelPictureThread as well to avoid it happens in stopPreviewCore
+    if (mState == STATE_CONTINUOUS_CAPTURE)
+        cancelPictureThread();
 
     stopFaceDetection(true);
     status_t status = stopPreviewCore();
@@ -2028,8 +2043,8 @@ status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
         return NO_INIT;
 
     bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-
     PreviewThread::PreviewState currentState = mPreviewThread->getPreviewState();
+
     if (currentState == PreviewThread::STATE_NO_WINDOW
         && (msg->window != NULL)) {
         status = mPreviewThread->setPreviewWindow(msg->window);
@@ -2072,6 +2087,10 @@ status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
         //     startPreview(), with the handle that was previosly set.
         status = mPreviewThread->setPreviewWindow(msg->window);
     }
+
+    // Send the reply, in case we need to be synchronous. See: setPreviewWindow()
+    if (msg->synchronous)
+        mMessageQueue.reply(MESSAGE_ID_SET_PREVIEW_WINDOW, status);
 
     return status;
 }
@@ -4023,6 +4042,13 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
         LOGW("Received a picture Done during invalid state %d; buf id:%d, ptr=%p", mState, msg->snapshotBuf.id, msg->snapshotBuf.buff);
     }
 
+    // It is possible that handleMessageSetParameters here will callback to
+    // handleMessagePictureDone again in some cases with processing postponed
+    // messages. We need to avoid the dead loop
+    if (mPostponedMsgProcessing) {
+        LOG1("skip to handle postponed messages since they are already being processed.");
+        return status;
+    }
     // handle postponed setparameters which may have occured during capture
     // TODO: ensure that this goes correctly with e.g ULL recycling more than
     //       one buffers before capture process is done
@@ -4030,9 +4056,11 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
     while (it != mPostponedMessages.end()) {
         if (it->id == MESSAGE_ID_SET_PARAMETERS) {
             LOG1("@%s handling postponed setparameter message", __FUNCTION__);
+            mPostponedMsgProcessing = true;
             handleMessageSetParameters(&it->data.setParameters);
             free(it->data.setParameters.params); // was strdupped, needs free
             it = mPostponedMessages.erase(it); // returns pointer to next item in list
+            mPostponedMsgProcessing = false;
         } else {
             it++;
         }
@@ -5023,9 +5051,16 @@ status_t ControlThread::processParamFlash(const CameraParameters *oldParams,
         status = m3AControls->setAeFlashMode(flash);
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_FLASH_MODE, newVal.string());
+        } else {
+            // Ok in general for SOC sensors.
+            // TODO: Kernel driver should support querying which controls the sensors support
+            LOGW("Error in setting flash mode \'%s\' (%d), 3A ctrl type: %d",
+                 newVal.string(), flash, m3AControls->getType());
         }
     }
-    return status;
+
+    // Return no error always, as we check and indicate the failure above.
+    return NO_ERROR;
 }
 
 status_t ControlThread::processPreviewUpdateMode(const CameraParameters *oldParams,
@@ -5726,7 +5761,15 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             // See if we have to change the actual mode (it could be correct already)
             status = m3AControls->setAfMode(afMode);
         }
-        LOG1("Changed: %s -> %s", CameraParameters::KEY_FOCUS_MODE, newVal.string());
+
+        if (status == NO_ERROR) {
+            LOG1("Changed: %s -> %s", CameraParameters::KEY_FOCUS_MODE, newVal.string());
+        } else {
+            // Ok in general for SOC sensors.
+            // TODO: Kernel driver should support querying which controls the sensors support
+            LOGW("Could not set AF mode to \'%s\' (%d),  3A ctrl type: %d",
+                 newVal.string(), afMode, m3AControls->getType());
+        }
     }
 
     if (!mFaceDetectionActive) {
@@ -5746,7 +5789,7 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
                 if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
                     // If focus windows couldn't be set, previous AF mode is used
                     curAfMode = m3AControls->getAfMode();
-                    LOGE("Could not set AF windows. Resetting the AF back to %d", curAfMode);
+                    LOGW("Could not set AF windows. Resetting the AF back to %d", curAfMode);
                     m3AControls->setAfMode(curAfMode);
                 }
 
@@ -5755,7 +5798,9 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
         }
     }
 
-    return status;
+    // Return NO_ERROR always. Setting AF to SOC sensor may fail, but
+    // we don't consider this as an error.
+    return NO_ERROR;
 }
 
 status_t ControlThread:: processParamSetMeteringAreas(const CameraParameters *oldParams,
@@ -6091,9 +6136,17 @@ status_t ControlThread::processParamWhiteBalance(const CameraParameters *oldPara
 
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_WHITE_BALANCE, newVal.string());
+        } else {
+            // For SOC sensors, this is generally OK.
+            // TODO: should query the support from kernel driver, when driver supports this.
+            LOGW("Error while setting AWB mode \'%s\' (%d), 3A ctrl type: %d",
+                 newVal.string() , wbMode, m3AControls->getType());
         }
     }
-    return status;
+
+    // Return NO_ERROR always, although setting the AWB might fail, for example on SOC sensors
+    // that do not support this.
+    return NO_ERROR;
 }
 
 status_t ControlThread::processParamRawDataFormat(const CameraParameters *oldParams,
@@ -6292,12 +6345,14 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     float previewAspectRatio = 0.0f;
+    float pictureAspectRatio = 0.0f;
     float videoAspectRatio = 0.0f;
     Vector<Size> sizes;
     bool videoMode = android::isParameterSet(CameraParameters::KEY_RECORDING_HINT, *newParams) ? true : false;
     int oldWidth, newWidth;
     int oldHeight, newHeight;
     int previewWidth, previewHeight;
+    int pictureWidth, pictureHeight;
     int oldFormat, newFormat;
     // see if preview params have changed
     newParams->getPreviewSize(&newWidth, &newHeight);
@@ -6306,11 +6361,11 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
     oldFormat = V4L2Format(oldParams->getPreviewFormat());
     previewWidth = oldWidth;
     previewHeight = oldHeight;
+    previewAspectRatio = 1.0 * newWidth / newHeight;
     if (newWidth != oldWidth || newHeight != oldHeight ||
             oldFormat != newFormat) {
         previewWidth = newWidth;
         previewHeight = newHeight;
-        previewAspectRatio = 1.0 * newWidth / newHeight;
         LOG1("Preview size/cb_fourcc is changing: old=%dx%d %s; new=%dx%d %s; ratio=%.3f",
                 oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
                 newWidth, newHeight, v4l2Fmt2Str(newFormat),
@@ -6318,10 +6373,24 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
         restartNeeded = true;
         mPreviewForceChanged = false;
     } else {
-        previewAspectRatio = 1.0 * oldWidth / oldHeight;
         LOG1("Preview size/cb_fourcc is unchanged: old=%dx%d %s; ratio=%.3f",
                 oldWidth, oldHeight, v4l2Fmt2Str(oldFormat),
                 previewAspectRatio);
+    }
+
+    newParams->getPictureSize(&pictureWidth, &pictureHeight);
+    if (pictureWidth == 0 || pictureHeight == 0) {
+        newParams->getSupportedPictureSizes(sizes);
+        for (size_t i = 0; i < sizes.size(); i++) {
+            pictureAspectRatio = 1.0 * sizes[i].width / sizes[i].height;
+            if (fabsf(pictureAspectRatio - previewAspectRatio) <= ASPECT_TOLERANCE) {
+                pictureWidth = sizes[i].width;
+                pictureHeight = sizes[i].height;
+                newParams->setPictureSize(pictureWidth, pictureHeight);
+                break;
+            }
+        }
+        LOGD("Application doesn't set picture size, hal chooses %dx%d to match preview size", pictureWidth, pictureHeight);
     }
 
     if(videoMode) {
@@ -6686,6 +6755,8 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
                 mState == STATE_CONTINUOUS_CAPTURE) {
                 needRestartPreview = true;
                 videoMode = false;
+                // cancel picture processing to get all snapshot buffers back to its nest
+                cancelPictureThread();
             }
         }
 
@@ -7231,11 +7302,22 @@ status_t ControlThread::hdrCompose()
 {
     LOG1("%s",__FUNCTION__);
     status_t status = NO_ERROR;
+    ia_aiq_gbce_results gbce_results;
 
     // initialize the meta data with last picture of
     // the HDR sequence
     PictureThread::MetaData hdrPicMetaData;
     fillPicMetaData(hdrPicMetaData, false);
+
+    // Collect the GBCE results if Intel 3A is available
+    if (m3AControls->isIntel3A()) {
+        status = m3AControls->getGBCEResults(&gbce_results);
+        if (status != NO_ERROR) {
+            hdrPicMetaData.free(m3AControls);
+            LOGE("Error collecting the GBCE results!");
+            return status;
+        }
+    }
 
     /*
      * Stop ISP before composing HDR since standalone acceleration requires ISP to be stopped.
@@ -7256,7 +7338,7 @@ status_t ControlThread::hdrCompose()
     }
 
     bool doEncode = false;
-    status = mCP->composeHDR(mHdr.ciBufIn, mHdr.ciBufOut);
+    status = mCP->composeHDR(mHdr.ciBufIn, mHdr.ciBufOut, gbce_results);
     if (status == NO_ERROR) {
         mHdr.outMainBuf.width = mHdr.ciBufOut.ciMainBuf->width;
         mHdr.outMainBuf.height = mHdr.ciBufOut.ciMainBuf->height;

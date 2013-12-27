@@ -319,6 +319,8 @@ public:
     AtomAIQ(HWControlGroup &hwcg);
     ~AtomAIQ();
 
+    virtual SensorType getType() { return SENSOR_TYPE_RAW; }
+
     virtual bool isIntel3A() { return true; }
     void getDefaultParams(CameraParameters *params, CameraParameters *intel_params);
 
@@ -351,7 +353,9 @@ public:
     virtual void setPublicAeMode(AeMode mode);
     virtual AeMode getPublicAeMode();
     virtual status_t setIsoMode(IsoMode mode);
-    virtual IsoMode getIsoMode(void) {return CAM_AE_ISO_MODE_NOT_SET;};
+    virtual IsoMode getIsoMode(void) { return CAM_AE_ISO_MODE_NOT_SET; }
+    status_t getGBCEResults(ia_aiq_gbce_results *gbce_results);
+    virtual bool getAeUllTrigger();
 
     status_t setAeLock(bool en);
     bool     getAeLock();

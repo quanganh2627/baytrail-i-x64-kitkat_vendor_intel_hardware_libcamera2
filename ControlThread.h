@@ -253,6 +253,7 @@ private:
 
     struct MessagePreviewWindow {
         struct preview_stream_ops *window;
+        bool synchronous;
     };
 
     struct MessageStoreMetaDataInBuffers {
@@ -713,6 +714,7 @@ private:
 
     MessageQueue<Message, MessageId> mMessageQueue;
     List<Message> mPostponedMessages;
+    bool mPostponedMsgProcessing;
     State mState;
     CaptureSubState mCaptureSubState;
     ShootingMode    mShootingMode;

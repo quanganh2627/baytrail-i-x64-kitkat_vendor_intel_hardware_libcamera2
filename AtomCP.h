@@ -21,6 +21,7 @@
 #include <utils/threads.h>
 #include "ICameraHwControls.h"
 #include <ia_cp_types.h>
+#include "AtomAIQ.h"
 
 extern "C" {
 #include <stdlib.h>
@@ -49,7 +50,7 @@ class AtomCP {
 public:
     AtomCP(HWControlGroup &hwcg)STUB;
     ~AtomCP()STUB;
-    status_t composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& outputBuf)STAT_STUB;
+    status_t composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& outputBuf, const ia_aiq_gbce_results gbce_results)STAT_STUB;
     status_t initializeHDR(unsigned width, unsigned height)STAT_STUB;
     status_t uninitializeHDR(void)STAT_STUB;
     static status_t setIaFrameFormat(ia_frame *inputBuf, int v4l2Format)STAT_STUB;
@@ -64,6 +65,7 @@ private:
     ia_acceleration mAccAPI;
     IHWIspControl *mISP;
     Mutex mLock;
+    ia_cp_hdr_cfg *mIntelHdrCfg;
 };
 
 };

@@ -43,7 +43,7 @@ static void vinfo(const char *fmt, va_list ap)
 
 #ifdef ENABLE_INTEL_EXTRAS
 AtomCP::AtomCP(HWControlGroup &hwcg) :
-    mISP(hwcg.mIspCI)
+    mISP(hwcg.mIspCI), mIntelHdrCfg(NULL)
 {
     LOG1("@%s", __FUNCTION__);
     int ispMinor, ispMajor;
@@ -96,24 +96,36 @@ AtomCP::~AtomCP()
     ia_cp_uninit();
 }
 
-status_t AtomCP::composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& outputBuf)
+status_t AtomCP::composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& outputBuf, const ia_aiq_gbce_results gbce_results)
 {
     Mutex::Autolock lock(mLock);
-    ia_err ia_err;
-    ia_cp_hdr_config cfg;
+    ia_err status = ia_err_none;
 
     LOG1("@%s: inputBuf=%p, outputBuf=%p", __FUNCTION__, &inputBuf, &outputBuf);
 
-    ia_cp_hdr_init_config(&cfg);
+    // TODO: Pass the HDR tuning parameters here, values are hard-coded currently
+    mIntelHdrCfg->dg_luma_thr            = 63;
+    mIntelHdrCfg->dg_chroma_thr          = 63;
+    mIntelHdrCfg->luma_highlights        = 127;
+    mIntelHdrCfg->luma_mid_tones         = 127;
+    mIntelHdrCfg->luma_shadows           = 127;
+    mIntelHdrCfg->luma_sharpness         = 63;
+    mIntelHdrCfg->chroma_highlights_sat  = 191;
+    mIntelHdrCfg->chroma_transient_width = 63;
+    mIntelHdrCfg->gamma_lut_size         = gbce_results.ygamma_lut_size;
+    mIntelHdrCfg->gamma_lut              = gbce_results.ygamma_lut;
+    mIntelHdrCfg->ctc_gains_lut_size     = gbce_results.ctc_gains_lut_size;
+    mIntelHdrCfg->ctc_gains_lut          = gbce_results.ctc_gains_lut;
 
-    ia_err = ia_cp_hdr_compose(outputBuf.ciMainBuf,
+    status = ia_cp_hdr_compose(outputBuf.ciMainBuf,
                                outputBuf.ciPostviewBuf,
                                inputBuf.ciMainBuf,
                                inputBuf.ciPostviewBuf,
                                inputBuf.ciBufNum,
-                               cfg);
-    if (ia_err != ia_err_none)
-            return INVALID_OPERATION;
+                               mIntelHdrCfg);
+    if (status != ia_err_none)
+        return INVALID_OPERATION;
+
     PERFORMANCE_TRACES_HDR_SHOT2PREVIEW_CALLED();
     PERFORMANCE_TRACES_BREAKDOWN_STEP_NOPARAM();
 
@@ -124,6 +136,10 @@ status_t AtomCP::initializeHDR(unsigned width, unsigned height)
 {
     LOG1("@%s, size=%ux%u", __FUNCTION__, width, height);
     ia_err ia_err;
+
+    mIntelHdrCfg = new ia_cp_hdr_cfg;
+    if (!mIntelHdrCfg)
+        return NO_MEMORY;
 
     ia_err = ia_cp_hdr_init(width, height);
     if (ia_err != ia_err_none)
@@ -140,6 +156,11 @@ status_t AtomCP::uninitializeHDR(void)
     ia_err = ia_cp_hdr_uninit();
     if (ia_err != ia_err_none)
         return INVALID_OPERATION;
+
+    if (mIntelHdrCfg) {
+        delete mIntelHdrCfg;
+        mIntelHdrCfg = NULL;
+    }
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP_NOPARAM();
 

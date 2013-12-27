@@ -55,6 +55,7 @@ PictureThread::PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler,
     ,mPostviewBufferArray(NULL)
     ,mPostviewBuffers(0)
     ,mScaler(scaler)
+    ,mMaxOutJpegBufSize(0)
     ,m3AControls(aaaControls)
 {
     LOG1("@%s", __FUNCTION__);
@@ -454,9 +455,9 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
         goto exit_fail;
 
     /* Now let the encoder know about the new buffers for the surfaces*/
-    if(mHwCompressor) {
+    if (mHwCompressor) {
         status = mHwCompressor->setInputBuffers(mInputBufferArray, mInputBuffers);
-        if(status) {
+        if (status) {
             LOGW("HW Encoder cannot use pre-allocate buffers");
             status = NO_ERROR; // this is not critical, we still return some buffers
         }
@@ -843,24 +844,23 @@ status_t PictureThread::startHwEncoding(AtomBuffer* mainBuf)
     PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("In",mainBuf->frameCounter);
     inBuf.clear();
     if (mainBuf->shared) {
-       inBuf.buf = (unsigned char *) *((char **)mainBuf->dataPtr);
+        inBuf.buf = (unsigned char *) *((char **)mainBuf->dataPtr);
     } else {
-       inBuf.buf = (unsigned char *) mainBuf->dataPtr;
+        inBuf.buf = (unsigned char *) mainBuf->dataPtr;
     }
-
 
     inBuf.width = mainBuf->width;
     inBuf.height = mainBuf->height;
     inBuf.fourcc = mainBuf->fourcc;
+    inBuf.bpl = mainBuf->bpl;
     inBuf.size = frameSize(mainBuf->fourcc, mainBuf->width, mainBuf->height);
     outBuf.clear();
     outBuf.width = mainBuf->width;
     outBuf.height = mainBuf->height;
     outBuf.quality = mPictureQuality;
     endTime = systemTime();
-
-    if(mHwCompressor && mHwCompressor->isInitialized() &&
-       mHwCompressor->encodeAsync(inBuf, outBuf) == 0) {
+    if (mHwCompressor &&
+        mHwCompressor->encodeAsync(inBuf, outBuf, mMaxOutJpegBufSize) == 0) {
         LOG1("Picture JPEG (time to start encode: %ums)", (unsigned)((systemTime() - endTime) / 1000000));
     } else {
         LOGW("JPEG HW encoding failed, falling back to SW");
@@ -1041,23 +1041,12 @@ status_t PictureThread::doSwEncode(AtomBuffer *mainBuf, AtomBuffer* destBuf)
 status_t PictureThread::completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBuf)
 {
     status_t status= NO_ERROR;
-    nsecs_t endTime;
-    JpegHwEncoder::OutputBuffer outBuf;
-    int mainSize = 0;
+    unsigned int mainSize = 0;
     int finalSize = 0;
+    unsigned char* dstPtr = NULL;
 
-    endTime = systemTime();
-    mHwCompressor->waitToComplete(&mainSize);
-    if (mainSize > 0) {
-        finalSize += mExifBuf.size + mainSize - sizeof(JPEG_MARKER_SOI);
-    } else {
-        LOGE("HW JPEG Encoding failed to complete!");
-        return UNKNOWN_ERROR;
-    }
-
-    LOG1("Picture JPEG size: %d (waited for encode to finish: %ums)", mainSize, (unsigned)((systemTime() - endTime) / 1000000));
     if (status == NO_ERROR) {
-        mCallbacks->allocateMemory(destBuf, finalSize);
+        mCallbacks->allocateMemory(destBuf, mExifBuf.size + mMaxOutJpegBufSize);
         if (destBuf->dataPtr == NULL) {
             LOGE("No memory for final JPEG file!");
             status = NO_MEMORY;
@@ -1065,23 +1054,26 @@ status_t PictureThread::completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBu
     }
 
     if (status == NO_ERROR) {
-        destBuf->size = finalSize;
-
         // Copy EXIF (it will also have the SOI marker)
         memcpy(destBuf->dataPtr, mExifBuf.dataPtr, mExifBuf.size);
         destBuf->id = mainBuf->id;
 
-        outBuf.clear();
-        outBuf.buf = (unsigned char*)destBuf->dataPtr + mExifBuf.size;
-        outBuf.width = mainBuf->width;
-        outBuf.height = mainBuf->height;
-        outBuf.quality = mPictureQuality;
-        outBuf.size = mainSize - sizeof(JPEG_MARKER_SOI);
-        if(mHwCompressor->getOutput(outBuf) < 0) {
+        /*Since the jpeg got from libmix JPEG encoder start with SOI marker, and EXIF also have the SOI marker
+         *so need to remove SOI marker fom jpeg data
+         */
+        dstPtr = (unsigned char*)destBuf->dataPtr + mExifBuf.size - sizeof(JPEG_MARKER_SOI);
+        if (mHwCompressor->getOutput(dstPtr, mainSize) < 0) {
             LOGE("Could not encode picture stream!");
             status = UNKNOWN_ERROR;
         } else {
+            finalSize += mExifBuf.size + mainSize - sizeof(JPEG_MARKER_SOI);
+            destBuf->size = finalSize;
+            //revert the last two bytes to EXIF data
             char *copyTo = (char*)destBuf->dataPtr +
+                            mExifBuf.size - sizeof(JPEG_MARKER_SOI);
+            memcpy(copyTo, (char*)mExifBuf.dataPtr + mExifBuf.size - sizeof(JPEG_MARKER_SOI), sizeof(JPEG_MARKER_SOI));
+
+            copyTo = (char*)destBuf->dataPtr +
                 finalSize - sizeof(JPEG_MARKER_EOI);
             memcpy(copyTo, (void*)JPEG_MARKER_EOI, sizeof(JPEG_MARKER_EOI));
         }

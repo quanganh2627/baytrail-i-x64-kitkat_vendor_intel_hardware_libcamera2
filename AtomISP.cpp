@@ -305,8 +305,11 @@ status_t AtomISP::init()
     AtomBuffer formatDescriptorSs
         = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, V4L2_PIX_FMT_NV12);
 
-    formatDescriptorSs.width = RESOLUTION_5MP_WIDTH;
-    formatDescriptorSs.height = RESOLUTION_5MP_HEIGHT;
+    /* for stretch problems(BZ: 152956 and BZ: 140905),
+     * hal doesn't set default picture size here, uses 0x0 as default.
+     * then, in processStaticParameters(), if hal finds no valid picture size is set,
+     * it will choose a picture size, if there is a valid picture size, it will use it.
+     */
     setSnapshotFrameFormat(formatDescriptorSs);
 
     setVideoFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
@@ -2355,9 +2358,9 @@ status_t AtomISP::setSnapshotFrameFormat(AtomBuffer& formatDescriptor)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if (formatDescriptor.width > mConfig.snapshotLimits.maxWidth || formatDescriptor.width <= 0)
+    if (formatDescriptor.width > mConfig.snapshotLimits.maxWidth || formatDescriptor.width < 0)
         formatDescriptor.width = mConfig.snapshotLimits.maxWidth;
-    if (formatDescriptor.height > mConfig.snapshotLimits.maxHeight || formatDescriptor.height <= 0)
+    if (formatDescriptor.height > mConfig.snapshotLimits.maxHeight || formatDescriptor.height < 0)
         formatDescriptor.height = mConfig.snapshotLimits.maxHeight;
 
     mConfig.snapshot = formatDescriptor;
@@ -2881,9 +2884,8 @@ status_t AtomISP::setDVS(bool enable)
     }
 
     if (enable && mDvs && !mDvs->isDvsValid()) {
-        mDvsEnabled = false;
+        enable = false;
         LOGW("@%s: Cannot start DVS due to some restrictions in size or frame rate", __FUNCTION__);
-        return INVALID_OPERATION;
     }
 
     status = mMainDevice->setControl(V4L2_CID_ATOMISP_VIDEO_STABLIZATION,
@@ -4040,13 +4042,6 @@ status_t AtomISP::allocateRecordingBuffers()
         }
         allocatedBufs++;
         bufPool[i] = mRecordingBuffers[i].dataPtr;
-
-        mRecordingBuffers[i].shared = false;
-        mRecordingBuffers[i].width = mConfig.recording.width;
-        mRecordingBuffers[i].height = mConfig.recording.height;
-        mRecordingBuffers[i].size = mConfig.recording.size;
-        mRecordingBuffers[i].bpl = mConfig.recording.bpl;
-        mRecordingBuffers[i].fourcc = mConfig.recording.fourcc;
     }
     mRecordingDevice->setBufferPool((void**)&bufPool,mConfig.num_recording_buffers,
                                      &mConfig.recording,cached);
@@ -4098,7 +4093,8 @@ status_t AtomISP::allocateSnapshotBuffers()
                 mConfig.postview.size);
         for (int i = 0; i < mConfig.num_snapshot; i++) {
             mSnapshotBuffers[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
-            mCallbacks->allocateMemory(&mSnapshotBuffers[i], snapshotSize);
+
+            MemoryUtils::allocateAtomBuffer(mSnapshotBuffers[i], mConfig.snapshot, mCallbacks);
             if (mSnapshotBuffers[i].dataPtr == NULL) {
                 LOGE("Error allocation memory for snapshot buffers!");
                 status = NO_MEMORY;
@@ -4106,13 +4102,11 @@ status_t AtomISP::allocateSnapshotBuffers()
             }
             allocatedSnaphotBufs++;
             bufPool[i] = mSnapshotBuffers[i].dataPtr;
-            mSnapshotBuffers[i].shared = false;
         }
     } // if (mUsingClientSnapshotBuffers)
     if (!mHALZSLEnabled)
         mMainDevice->setBufferPool((void**)&bufPool,mConfig.num_snapshot,
                                    &mConfig.snapshot, mClientSnapshotBuffersCached);
-
 
     if (mUsingClientPostviewBuffers) {
         LOG1("@%s using %d client postview buffers",__FUNCTION__, mConfig.num_postviews);
@@ -4135,7 +4129,7 @@ status_t AtomISP::allocateSnapshotBuffers()
             if (mHALZSLEnabled) {
                 MemoryUtils::allocateGraphicBuffer(postv, mConfig.postview);
             } else {
-                mCallbacks->allocateMemory(&postv, mConfig.postview.size);
+                MemoryUtils::allocateAtomBuffer(postv, mConfig.postview, mCallbacks);
             }
 
             if (postv.dataPtr == NULL) {
@@ -4239,13 +4233,10 @@ status_t AtomISP::allocateMetaDataBuffers()
 
     if(mRecordingBuffers) {
         for (int i = 0 ; i < mConfig.num_recording_buffers; i++) {
-            if (mRecordingBuffers[i].metadata_buff != NULL) {
-                mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
-                mRecordingBuffers[i].metadata_buff = NULL;
+            MemoryUtils::freeAtomBufferMetadata(mRecordingBuffers[i]);
 #ifdef INTEL_VIDEO_XPROC_SHARING
-                IntelMetadataBuffer::ClearContext(mBufferSharingSessionID, true);
+            IntelMetadataBuffer::ClearContext(mBufferSharingSessionID, true);
 #endif
-            }
         }
     } else {
         // mRecordingBuffers is not ready, so it's invalid to allocate metadata buffers
@@ -4271,8 +4262,7 @@ status_t AtomISP::allocateMetaDataBuffers()
 #endif
             }
             metaDataBuf->Serialize(meta_data_prt, meta_data_size);
-            mRecordingBuffers[i].metadata_buff = NULL;
-            mCallbacks->allocateMemory(&mRecordingBuffers[i].metadata_buff, meta_data_size);
+            MemoryUtils::allocateAtomBufferMetadata(mRecordingBuffers[i], meta_data_size, mCallbacks);
             LOG1("allocate metadata buffer[%d]  buff=%p size=%d sID:%d",
                 i, mRecordingBuffers[i].metadata_buff->data,
                 mRecordingBuffers[i].metadata_buff->size, mBufferSharingSessionID);
@@ -4706,13 +4696,10 @@ exitFreeRec:
     LOGE("Error allocating metadata buffers!");
     if(mRecordingBuffers) {
         for (int i = 0 ; i < mConfig.num_recording_buffers; i++) {
-            if (mRecordingBuffers[i].metadata_buff != NULL) {
-                mRecordingBuffers[i].metadata_buff->release(mRecordingBuffers[i].metadata_buff);
-                mRecordingBuffers[i].metadata_buff = NULL;
+            MemoryUtils::freeAtomBufferMetadata(mRecordingBuffers[i]);
 #ifdef INTEL_VIDEO_XPROC_SHARING
-                IntelMetadataBuffer::ClearContext(mBufferSharingSessionID, true);
+            IntelMetadataBuffer::ClearContext(mBufferSharingSessionID, true);
 #endif
-            }
         }
     }
     return status;

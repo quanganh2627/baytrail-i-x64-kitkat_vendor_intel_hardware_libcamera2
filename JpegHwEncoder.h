@@ -22,9 +22,7 @@
  * Abstracts the HW accelerated JPEG encoder
  *
  * It allow synchronous and asynchronous encoding
- * It interfaces with libVA to access the HW that encoder in JPEG
- * All libVA API are stored inside the vaJpegContext struct to confine the
- * libVA types as an implementation detail of this class
+ * It interfaces with imageencoder in libmix to access the HW that encoder in JPEG
  *
  *
  */
@@ -34,16 +32,12 @@
 
 #include "AtomCommon.h"
 
+#ifdef USE_INTEL_JPEG
+#include <ImageEncoder.h>
+#endif
+
 namespace android {
 
-// Forward declarations
-struct vaJpegContext;
-
-/**
- * \define
- * size of the JPEG markers (SOI or EOI) in bytes
- */
-#define SIZE_OF_JPEG_MARKER 2
 
 /**
  * \class JpegHwEncoder
@@ -58,6 +52,7 @@ public:
         unsigned char *buf;
         int width;
         int height;
+        int bpl;   //stride
         int fourcc;
         int size;
 
@@ -66,6 +61,7 @@ public:
             buf = NULL;
             width = 0;
             height = 0;
+            bpl = 0;
             fourcc = 0;
             size = 0;
         }
@@ -75,7 +71,7 @@ public:
         unsigned char *buf;
         int width;
         int height;
-        int size;
+        unsigned int size;
         int quality;
         int length;     /*>! amount of the data actually written to the buffer. Always smaller than size field*/
 
@@ -89,7 +85,6 @@ public:
             length = 0;
         }
     };
-
 // prevent copy constructor and assignment operator
 private:
     JpegHwEncoder(const JpegHwEncoder& other);
@@ -103,44 +98,44 @@ public:
     int init(void);
     int deInit(void);
     bool isInitialized() {return mHWInitialized;};
-    int setInputBuffers(AtomBuffer* inputBuffersArray, int inputBuffersNum);
-    int setJpegQuality(int quality);
+    status_t setInputBuffers(AtomBuffer* inputBuffersArray, int inputBuffersNum);
     int encode(const InputBuffer &in, OutputBuffer &out);
     /* Async encode */
-    int encodeAsync(const InputBuffer &in, OutputBuffer &out);
-    int waitToComplete(int *jpegSize);
-    int getOutput(OutputBuffer &out);
+    int encodeAsync(const InputBuffer &in, OutputBuffer &out, int &mMaxCodedSize);
+    int getOutput(void* outBuf, unsigned int& outSize);
 
 private:
-    int configSurfaces(AtomBuffer* inputBuffersArray, int inputBuffersNum);
-    int destroySurfaces(void);
-    int startJpegEncoding(unsigned int aSurface);
-    int getJpegData(void *pdst, int dstSize, int *jpegSize);
-    int getJpegSize(int *jpegSize);
-    int resetContext(const InputBuffer &in, unsigned int* aSurface);
+    int V4L2Fmt2VAFmt(unsigned int v4l2Fmt, unsigned int &vaFmt);
+    int resetContext(const InputBuffer &in, int &imgSeq);
     int restoreContext();
 
 private:
-    // true:use the libva's jpeg quality factor
-    // false:use jpeg quality factor which is in the JPEGHwEncoder, not in libva
-    static const bool mUseInternalJpegQualityFactor = true;
+    /**
+      * \define
+      * size of the JPEG encoder should be aligned in width
+      */
+    #define SIZE_OF_WIDTH_ALIGNMENT 64
+    /**
+      * \define ERROR_POINTER_NOT_FOUND
+      * \brief default value used to detect that a buffer address does not have an
+      * \assigned VA Surface
+      */
+    #define ERROR_POINTER_NOT_FOUND 0x1EADBEEF
+
+    IntelImageEncoder* mHwImageEncoder;
+    DefaultKeyedVector<void*, int> mBuffer2SurfaceId;      /*!> Vector where to store the buffer and surface id */
 
     // If the picture dimension is <= the below w x h
     // We should use the software jpeg encoder
     static const int MIN_HW_ENCODING_WIDTH = 640;
     static const int MIN_HW_ENCODING_HEIGHT = 480;
 
-    vaJpegContext*  mVaEncoderContext;
     bool            mHWInitialized;
-    bool            mContextRestoreNeeded;       /*!< flags the need for a libVA context restore */
-    int             mVaInputSurfacesNum;         /*!< number of input surface created from buffers
-                                                      allocated by PictureThread */
-    unsigned int    mBuffers[MAX_BURST_BUFFERS]; /*!< it's used to store camera buffers addresses*/
-
-    int mPicWidth;          /*!< Input frame width  */
-    int mPicHeight;         /*!< Input frame height */
-    int mMaxOutJpegBufSize; /*!< the max JPEG Buffer Size. This is initialized to
-                                 the size of the input YUV buffer*/
+    bool            mContextRestoreNeeded;       /*!< flags the need for a context restore */
+    int firstImageSeq;      /*!< record the first image seq for multi buffer*/
+    int singelSeq;          /*!< record the image seq for the singel buffer*/
+    unsigned int mMaxOutJpegBufSize; /*!< the max JPEG Buffer Size. This is initialized to
+                                      the size of the input YUV buffer*/
 #else  //USE_INTEL_JPEG
 //Stub implementation if HW encoder is disabled
 public:
@@ -152,9 +147,8 @@ public:
     bool isInitialized() {return false;};
     int setInputBuffers(AtomBuffer* inputBuffersArray, int inputBuffersNum){return -1;};
     int encode(const InputBuffer &in, OutputBuffer &out){return -1;};
-    int encodeAsync(const InputBuffer &in, OutputBuffer &out){return -1;};
-    int waitToComplete(int *jpegSize){return -1;};
-    int getOutput(OutputBuffer &out){return -1;};
+    int encodeAsync(const InputBuffer &in, OutputBuffer &out, int &mMaxCodedSize){return -1;};
+    int getOutput(void* outBuf, unsigned int& outSize){return -1;};
 #endif
 };
 }; // namespace android

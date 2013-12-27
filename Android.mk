@@ -103,6 +103,7 @@ LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/cameralibs \
 	$(TARGET_OUT_HEADERS)/libmfldadvci \
 	$(TARGET_OUT_HEADERS)/libCameraFaceDetection \
+        $(TARGET_OUT_HEADERS)/libmix_imageencoder \
 	$(LOCAL_PATH)/v4l2dev/
 
 ifeq ($(BOARD_GRAPHIC_IS_GEN), true)
@@ -156,9 +157,7 @@ endif
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SHARED_LIBRARIES += \
-	libva \
-	libva-tpi \
-	libva-android
+	libmix_imageencoder
 endif
 
 ifeq ($(BOARD_GRAPHIC_IS_GEN), true)
