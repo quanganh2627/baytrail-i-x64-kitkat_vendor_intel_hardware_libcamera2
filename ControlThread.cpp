@@ -4045,8 +4045,9 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
     // It is possible that handleMessageSetParameters here will callback to
     // handleMessagePictureDone again in some cases with processing postponed
     // messages. We need to avoid the dead loop
-    if (mPostponedMsgProcessing) {
-        LOG1("skip to handle postponed messages since they are already being processed.");
+    // It's also not safe to set parameter when mCaptureSubState is not IDLE.
+    if (mPostponedMsgProcessing || mCaptureSubState != STATE_CAPTURE_IDLE) {
+        LOG1("skip to handle postponed messages mPostponedMsgProcessing:%d mCaptureSubState:%d", mPostponedMsgProcessing, mCaptureSubState);
         return status;
     }
     // handle postponed setparameters which may have occured during capture
@@ -5189,6 +5190,8 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
 
     if (mHdr.inProgress) {
         LOGW("%s: attempt to change hdr parameters during hdr capture", __FUNCTION__);
+        // keep the value of mBurstLength when hdr is still runing.
+        mBurstLength = mHdr.bracketNum;
         return INVALID_OPERATION;
     }
 
