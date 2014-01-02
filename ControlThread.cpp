@@ -263,6 +263,7 @@ status_t ControlThread::init()
         LOGE("Error initializing 3A controls");
         goto bail;
     }
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("Init_3A");
 
     mCP = new AtomCP(mHwcg);
     if (mCP == NULL) {
@@ -524,6 +525,7 @@ void ControlThread::deinit()
     if (mPictureThread != NULL) {
         mPictureThread->requestExitAndWait();
         mPictureThread.clear();
+        PERFORMANCE_TRACES_BREAKDOWN_STEP("PictureThread-Clear");
     }
 
     if (m3AThread != NULL) {
@@ -1538,6 +1540,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         // load 3rd party ISP extensions
         mAccManagerThread->loadIspExtensions();
     }
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("loadIspExt");
 
     // By default, the number of preview and video buffers are set
     // based on PlatformData.
@@ -1582,6 +1585,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             bool cached = isParameterSet(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING) ? true: false;
             LOG1("Setting GFX preview: %d bufs, cached/overlay %d, shared 0-copy mode", mNumBuffers, cached);
             mISP->setGraphicPreviewBuffers(sharedGfxBuffers.editArray(), mNumBuffers, cached);
+            PERFORMANCE_TRACES_BREAKDOWN_STEP("setGFXPreviewBuffers");
         } else {
             LOG1("PreviewThread not sharing Gfx buffers, using internal buffers");
         }
@@ -1599,7 +1603,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         return status;
     }
 
-    PERFORMANCE_TRACES_BREAKDOWN_STEP("Alloc_Preview_Buffer");
     if (m3AControls->isIntel3A() && (!(gPowerLevel & CAMERA_POWERBREAKDOWN_DISABLE_3A))) {
         // Enable auto-focus by default
         m3AControls->setAfEnabled(true);
@@ -1672,6 +1675,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
                 ICallbackPreview::OUTPUT_WITH_DATA);
     }
 
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("set3AParams");
     // start the data flow
     status = mISP->start();
     if (status == NO_ERROR) {

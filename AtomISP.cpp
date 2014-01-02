@@ -292,7 +292,6 @@ status_t AtomISP::init()
        LOGE("Could not select camera: %s", mCameraInput->name);
        return NO_INIT;
     }
-    PERFORMANCE_TRACES_BREAKDOWN_STEP("Init_3A");
 
     initFrameConfig();
 
@@ -1074,6 +1073,7 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
         break;
     }
 
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("Mode:", mode);
     return status;
 }
 
