@@ -49,6 +49,7 @@
 
 #define MAX_SUPPORT_ZOOM        1600    // Support upto 16x and should not bigger than 99x
 #define ZOOM_RATIO              100     // Conversion between zoom to really zoom effect
+#define VIDEO_ZOOM_SKIP_FRAMES  3
 
 #define INTEL_FILE_INJECT_CAMERA_ID 2
 
@@ -110,6 +111,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mInitialSkips(0)
     ,mStatisticSkips(0)
     ,mDVSFrameSkips(0)
+    ,mVideoZoomFrameSkips(0)
     ,mSessionId(0)
     ,mLowLight(false)
     ,mXnr(0)
@@ -1094,6 +1096,9 @@ status_t AtomISP::start()
                 LOG1("%s: attach mDvs to Preview Stream Observer", __FUNCTION__);
                 mDvs->setZoom(mConfig.zoom);
             }
+            //Because DVS2 lib calculates the morph table for video zoom by the first frame,
+            //so the first several frames should have no zoom effect, need to be skipped
+            setSkipFramesForVideoZoom();
         }
         status = startRecording();
         break;
@@ -2897,6 +2902,23 @@ status_t AtomISP::setDVS(bool enable)
     } else {
         mDvsEnabled = enable;
     }
+    return status;
+}
+/**
+ * Because first frame should be the reference frame for DVS2 lib to calculate
+ * morph table, and zoom factor should not take effect on first 3 frames, so those
+ * frames should be skipped.
+ * The function implements to set the skip frames number for video recording when
+ * zoom factor is not equal zero.
+ */
+status_t AtomISP::setSkipFramesForVideoZoom()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    if(mCssMajorVersion != 2)
+        return status;
+    if(mConfig.zoom != 0)
+        mVideoZoomFrameSkips = VIDEO_ZOOM_SKIP_FRAMES;
     return status;
 }
 
@@ -5743,6 +5765,20 @@ bool AtomISP::checkSkipFrame(int frameNum, int targetFPS)
 }
 
 /**
+ * This function implements the frame skip algorithm for video preview
+ * when video recording start.
+ */
+bool AtomISP::checkSkipFrameForVideoZoom()
+{
+    LOG2("@%s", __FUNCTION__);
+    if(mVideoZoomFrameSkips > 0) {
+        mVideoZoomFrameSkips --;
+        return true;
+    }
+    return false;
+}
+
+/**
  * polls and dequeues a preview frame into IAtomIspObserver::Message
  */
 status_t AtomISP::PreviewStreamSource::observe(IAtomIspObserver::Message *msg)
@@ -5768,7 +5804,8 @@ try_again:
         } else {
             msg->data.frameBuffer.buff.owner = mISP;
             msg->id = IAtomIspObserver::MESSAGE_ID_FRAME;
-            if (mISP->checkSkipFrame(msg->data.frameBuffer.buff.frameCounter, mISP->mConfig.preview_fps))
+            if (mISP->checkSkipFrame(msg->data.frameBuffer.buff.frameCounter, mISP->mConfig.preview_fps) ||
+                mISP->checkSkipFrameForVideoZoom())
                 msg->data.frameBuffer.buff.status = FRAME_STATUS_SKIPPED;
         }
     } else {
