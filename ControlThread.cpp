@@ -6560,7 +6560,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     newParamLogger.dump();
     LOG2("----------- END NEW PARAMS -------- ");
 
-    status = validateParameters(&newParams);
+    status = validateParameters(&oldParams, &newParams);
     if (status != NO_ERROR)
         goto exit;
 

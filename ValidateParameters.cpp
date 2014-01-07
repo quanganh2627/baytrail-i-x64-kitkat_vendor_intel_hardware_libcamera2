@@ -85,9 +85,151 @@ bool validateString(const char* value,  const char* supportList)
     return false;
 }
 
-status_t validateParameters(const CameraParameters *params)
+static bool isParamsEqual(const char *oldParam, const char *newParam)
 {
-    LOG1("@%s: params = %p", __FUNCTION__, params);
+    // same if both are null
+    if (oldParam == NULL && newParam == NULL) {
+        return true;
+    }
+
+    // different if one is null
+    if (oldParam == NULL || newParam == NULL) {
+        return false;
+    }
+
+    // both set, so compare strings
+    return (strcmp(oldParam,newParam) == 0);
+}
+
+/**
+ * Validate read-only prarameters
+ *
+ * This function check that values of given parameters are same in old and
+ * new parameters sets.
+ *
+ * \param oldParams    is pointer to old parameters
+ * \param params       is pointer new parameters
+ * \param ...          is NULL terminated list of parameters to validate
+ *
+ * \return true if no change, false if if some of parameter is changed
+ */
+static bool validateReadOnlyParameters(const CameraParameters *oldParams, const CameraParameters *params, ...)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    va_list arguments;
+    const char* name = NULL;
+
+    va_start(arguments, params);
+    name = va_arg(arguments, const char*);
+
+    while (name != NULL) {
+        if(!isParamsEqual(oldParams->get(name), params->get(name))) {
+              va_end(arguments);
+              LOGE("change of read-only parameter %s", name);
+              return false;
+        }
+        name = va_arg(arguments, const char*);
+    }
+
+    va_end(arguments);
+    return true;
+}
+
+status_t validateParameters(const CameraParameters *oldParams, const CameraParameters *params)
+{
+    LOG1("@%s: oldparams= %p, params = %p", __FUNCTION__, oldParams, params);
+
+    // READ-ONLY PARAMETERS
+    if (!validateReadOnlyParameters(oldParams, params,
+                                    // Google Parameters
+                                    CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES,
+                                    CameraParameters::KEY_SUPPORTED_PREVIEW_FPS_RANGE,
+                                    CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS,
+                                    CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES,
+                                    CameraParameters::KEY_SUPPORTED_PICTURE_SIZES,
+                                    CameraParameters::KEY_SUPPORTED_PICTURE_FORMATS,
+                                    CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES,
+                                    CameraParameters::KEY_SUPPORTED_WHITE_BALANCE,
+                                    CameraParameters::KEY_SUPPORTED_EFFECTS,
+                                    CameraParameters::KEY_SUPPORTED_SCENE_MODES,
+                                    CameraParameters::KEY_MAX_NUM_FOCUS_AREAS,
+                                    CameraParameters::KEY_AUTO_EXPOSURE_LOCK_SUPPORTED,
+                                    CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK_SUPPORTED,
+                                    CameraParameters::KEY_MAX_ZOOM,
+                                    CameraParameters::KEY_ZOOM_RATIOS,
+                                    CameraParameters::KEY_ZOOM_SUPPORTED,
+                                    CameraParameters::KEY_SMOOTH_ZOOM_SUPPORTED,
+                                    CameraParameters::KEY_SUPPORTED_VIDEO_SIZES,
+                                    CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW,
+                                    CameraParameters::KEY_MAX_NUM_DETECTED_FACES_SW,
+                                    CameraParameters::KEY_VIDEO_SNAPSHOT_SUPPORTED,
+                                    CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED,
+                                    // Intel Parameters
+                                    IntelCameraParameters::KEY_SUPPORTED_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT,
+                                    IntelCameraParameters::KEY_SUPPORTED_MULTI_ACCESS_COLOR_CORRECTIONS,
+                                    IntelCameraParameters::KEY_SUPPORTED_AE_MODES,
+                                    IntelCameraParameters::KEY_SUPPORTED_SHUTTER,
+                                    IntelCameraParameters::KEY_SUPPORTED_APERTURE,
+                                    IntelCameraParameters::KEY_SUPPORTED_AF_LOCK_MODES,
+                                    IntelCameraParameters::KEY_SUPPORTED_BACK_LIGHTING_CORRECTION_MODES,
+                                    IntelCameraParameters::KEY_SUPPORTED_AF_METERING_MODES,
+                                    IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH,
+                                    IntelCameraParameters::KEY_SUPPORTED_BURST_FPS,
+                                    IntelCameraParameters::KEY_SUPPORTED_BURST_SPEED,
+                                    IntelCameraParameters::KEY_SUPPORTED_PREVIEW_UPDATE_MODE,
+                                    IntelCameraParameters::KEY_SUPPORTED_RAW_DATA_FORMATS,
+                                    IntelCameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET,
+                                    IntelCameraParameters::KEY_SUPPORTED_ROTATION_MODES,
+                                    IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING,
+                                    IntelCameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL,
+                                    IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER,
+                                    IntelCameraParameters::KEY_SUPPORTED_BLINK_SHUTTER,
+                                    IntelCameraParameters::KEY_SUPPORTED_FACE_DETECTION,
+                                    IntelCameraParameters::KEY_SUPPORTED_FACE_RECOGNITION,
+                                    IntelCameraParameters::KEY_SUPPORTED_SCENE_DETECTION,
+                                    IntelCameraParameters::KEY_SUPPORTED_PANORAMA,
+                                    IntelCameraParameters::KEY_SUPPORTED_PANORAMA_LIVE_PREVIEW_SIZES,
+                                    IntelCameraParameters::KEY_PANORAMA_MAX_SNAPSHOT_COUNT,
+                                    IntelCameraParameters::KEY_HW_OVERLAY_RENDERING_SUPPORTED,
+                                    IntelCameraParameters::KEY_SUPPORTED_SLOW_MOTION_RATE,
+                                    IntelCameraParameters::KEY_SUPPORTED_RECORDING_FRAME_RATES,
+                                    IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED_RESOLUTION_FPS,
+                                    IntelCameraParameters::KEY_DUAL_VIDEO_SUPPORTED,
+                                    IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX,
+                                    IntelCameraParameters::KEY_MAX_BURST_LENGTH_WITH_NEGATIVE_START_INDEX,
+                                    IntelCameraParameters::KEY_SUPPORTED_CONTRAST_MODES,
+                                    IntelCameraParameters::KEY_SUPPORTED_SATURATION_MODES,
+                                    IntelCameraParameters::KEY_SUPPORTED_SHARPNESS_MODES,
+                                    IntelCameraParameters::KEY_SUPPORTED_ULL,
+                                    IntelCameraParameters::KEY_SUPPORTED_SAVE_MIRRORED,
+                                    IntelCameraParameters::KEY_SUPPORTED_GPS_IMG_DIRECTION_REF,
+                                    NULL)) {
+        LOGE("change of read-only parameters");
+        return BAD_VALUE;
+    }
+
+    // scene mode change overdrive some read-only parameters in process parameters, so we check
+    // those only if scene mode is not changed.
+    if(isParamsEqual(oldParams->get(CameraParameters::KEY_SCENE_MODE), params->get(CameraParameters::KEY_SCENE_MODE))) {
+        if (!validateReadOnlyParameters(oldParams, params,
+                                        // Google Parameters
+                                        CameraParameters::KEY_SUPPORTED_FOCUS_MODES,
+                                        CameraParameters::KEY_SUPPORTED_ANTIBANDING,
+                                        CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION,
+                                        CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION,
+                                        CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP,
+                                        // Intel Parameters
+                                        IntelCameraParameters::KEY_SUPPORTED_ISO,
+                                        IntelCameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES,
+                                        IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES,
+                                        IntelCameraParameters::KEY_SUPPORTED_XNR,
+                                        IntelCameraParameters::KEY_SUPPORTED_ANR,
+                                        NULL)) {
+            LOGE("change of read-only parameters");
+            return BAD_VALUE;
+        }
+    }
 
     // PREVIEW
     int width, height;
@@ -341,7 +483,5 @@ status_t validateParameters(const CameraParameters *params)
 
     return NO_ERROR;
 }
-
-
 
 }

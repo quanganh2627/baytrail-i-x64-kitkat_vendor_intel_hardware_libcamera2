@@ -21,7 +21,7 @@
 #include "IntelParameters.h"
 
 namespace android {
-    status_t validateParameters(const CameraParameters *params);
+    status_t validateParameters(const CameraParameters *oldParams, const CameraParameters *params);
     bool validateString(const char* value,  const char* supportList);
 }
 
