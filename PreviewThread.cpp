@@ -187,7 +187,14 @@ status_t PreviewThread::setPreviewWindow(struct preview_stream_ops *window)
     Message msg;
     msg.id = MESSAGE_ID_SET_PREVIEW_WINDOW;
     msg.data.setPreviewWindow.window = window;
-    return mMessageQueue.send(&msg);
+    msg.data.setPreviewWindow.synchronous = false;
+    if (window == NULL) {
+        // When the window is set to NULL, we should release all Graphic buffer handles synchronously.
+        msg.data.setPreviewWindow.synchronous = true;
+        return mMessageQueue.send(&msg, MESSAGE_ID_SET_PREVIEW_WINDOW);
+    } else {
+        return mMessageQueue.send(&msg);
+    }
 }
 
 /**
@@ -413,8 +420,10 @@ PreviewThread::PreviewState PreviewThread::getPreviewState() const
  *  - preview gets enabled normally through supported transition
  * _ENABLED_HIDDEN -> _ENABLED:
  *  - preview gets restored visible (currently no-op internally)
- *  _ENABLED -> _HIDDEN:
+ * _ENABLED -> _HIDDEN:
  *  - preview stream active, but do not send buffers to display
+ * _ENABLED -> _NO_WINDOW:
+ *  - preview stream active, but without window handle
  */
 status_t PreviewThread::setPreviewState(PreviewState state)
 {
@@ -427,7 +436,8 @@ status_t PreviewThread::setPreviewState(PreviewState state)
 
     switch (state) {
         case STATE_NO_WINDOW:
-           if (mState == STATE_STOPPED)
+            if (mState == STATE_STOPPED
+             || mState == STATE_ENABLED)
                 status = NO_ERROR;
             break;
         case STATE_STOPPED:
@@ -1054,66 +1064,69 @@ skip_displaying:
 status_t PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
 {
     LOG1("@%s: preview_window = %p", __FUNCTION__, msg->window);
+    status_t status = NO_ERROR;
 
-    if (mPreviewWindow == msg->window) {
-        LOG1("Received the same window handle, nothing needs to be done.");
-        return NO_ERROR;
-    }
+    if (mPreviewWindow != msg->window) {
+        LOG1("Received the different window handle, update window setting.");
 
-    if (mPreviewWindow != NULL) {
-        freeGfxPreviewBuffers();
-    }
-
-    mPreviewWindow = msg->window;
-    int w = mPreviewWidth;
-    int h = mPreviewHeight;
-    int usage;
-
-    getEffectiveDimensions(&w,&h);
-
-    if (mPreviewWindow != NULL) {
-
-        if (mOverlayEnabled) {
-            // write-often: overlay copy into the buffer
-            // read-never: we do not use this buffer for callbacks. We never read from it
-            usage = GRALLOC_USAGE_SW_WRITE_OFTEN |
-                    GRALLOC_USAGE_SW_READ_NEVER  |
-                    GRALLOC_USAGE_HW_COMPOSER    |
-                    GRALLOC_USAGE_HW_RENDER      |
-                    GRALLOC_USAGE_HW_TEXTURE;
-
-        } else {
-            // write-never: main use-case, stream image data to window by ISP only
-            // read-rarely: 2nd use-case, memcpy to application data callback
-            usage = GRALLOC_USAGE_SW_READ_RARELY |
-                    GRALLOC_USAGE_SW_WRITE_NEVER |
-                    GRALLOC_USAGE_HW_COMPOSER    |
-                    GRALLOC_USAGE_HW_RENDER      |
-                    GRALLOC_USAGE_HW_TEXTURE;
+        if (mPreviewWindow != NULL) {
+            freeGfxPreviewBuffers();
         }
 
-        LOG1("Setting new preview window %p (%dx%d)", mPreviewWindow,w,h);
-        mPreviewWindow->set_usage(mPreviewWindow, usage);
-        /**
-         * In case we do the rotation in CPU (like in overlay case) the width and
-         * height do not need to be restricted by ISP bpl. PreviewThread does not
-         * request any bpl and therefore sets its mPreviewBpl to zero. The rotation
-         * routine will take care of arbitrary bytes per line sizes of input
-         * frames.
-         */
-        if (mRotation == 90 || mRotation == 270) {
-            mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, getGFXHALPixelFormatFromV4L2Format(mPreviewFourcc));
-        } else {
+        mPreviewWindow = msg->window;
+
+        if (mPreviewWindow != NULL) {
+            int w = mPreviewWidth;
+            int h = mPreviewHeight;
+            int usage;
+
+            getEffectiveDimensions(&w,&h);
+
+            if (mOverlayEnabled) {
+                // write-often: overlay copy into the buffer
+                // read-never: we do not use this buffer for callbacks. We never read from it
+                usage = GRALLOC_USAGE_SW_WRITE_OFTEN |
+                        GRALLOC_USAGE_SW_READ_NEVER  |
+                        GRALLOC_USAGE_HW_COMPOSER    |
+                        GRALLOC_USAGE_HW_RENDER      |
+                        GRALLOC_USAGE_HW_TEXTURE;
+
+            } else {
+                // write-never: main use-case, stream image data to window by ISP only
+                // read-rarely: 2nd use-case, memcpy to application data callback
+                usage = GRALLOC_USAGE_SW_READ_RARELY |
+                        GRALLOC_USAGE_SW_WRITE_NEVER |
+                        GRALLOC_USAGE_HW_COMPOSER    |
+                        GRALLOC_USAGE_HW_RENDER      |
+                        GRALLOC_USAGE_HW_TEXTURE;
+            }
+
+            LOG1("Setting new preview window %p (%dx%d)", mPreviewWindow,w,h);
+            mPreviewWindow->set_usage(mPreviewWindow, usage);
             /**
-             * For 0-copy path we need to configure the window with the stride required
-             * by ISP, and then set the crop rectangle accordingly
+             * In case we do the rotation in CPU (like in overlay case) the width and
+             * height do not need to be restricted by ISP bpl. PreviewThread does not
+             * request any bpl and therefore sets its mPreviewBpl to zero. The rotation
+             * routine will take care of arbitrary bytes per line sizes of input
+             * frames.
              */
-            mPreviewWindow->set_buffers_geometry(mPreviewWindow, bytesToPixels(mPreviewFourcc, mPreviewBpl), h, getGFXHALPixelFormatFromV4L2Format(mPreviewFourcc));
-            mPreviewWindow->set_crop(mPreviewWindow, 0, 0, w, h);
+            if (mRotation == 90 || mRotation == 270) {
+                mPreviewWindow->set_buffers_geometry(mPreviewWindow, w, h, getGFXHALPixelFormatFromV4L2Format(mPreviewFourcc));
+            } else {
+                /**
+                 * For 0-copy path we need to configure the window with the stride required
+                 * by ISP, and then set the crop rectangle accordingly
+                 */
+                mPreviewWindow->set_buffers_geometry(mPreviewWindow, bytesToPixels(mPreviewFourcc, mPreviewBpl), h, getGFXHALPixelFormatFromV4L2Format(mPreviewFourcc));
+                mPreviewWindow->set_crop(mPreviewWindow, 0, 0, w, h);
+            }
         }
     }
 
-    return NO_ERROR;
+    if (msg->synchronous)
+        mMessageQueue.reply(MESSAGE_ID_SET_PREVIEW_WINDOW, status);
+
+    return status;
 }
 
 status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)

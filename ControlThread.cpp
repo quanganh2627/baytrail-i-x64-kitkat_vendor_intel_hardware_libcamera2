@@ -602,8 +602,8 @@ status_t ControlThread::setPreviewWindow(struct preview_stream_ops *window)
     msg.id = MESSAGE_ID_SET_PREVIEW_WINDOW;
     msg.data.previewWin.window = window;
     msg.data.previewWin.synchronous = false;
-
-    if (mPreviewThread->getPreviewState() == PreviewThread::STATE_NO_WINDOW) {
+    // When the window is set to NULL, we should release all Graphic buffer handles synchronously.
+    if ((window == NULL) || (mPreviewThread->getPreviewState() == PreviewThread::STATE_NO_WINDOW)) {
         // In case of "deferred start" for preview, we need to be synchronous
         // with the window setting, to properly go through the start preview
         // sequence that is supposed to be synchronous.
@@ -2080,17 +2080,25 @@ status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
         // and window is set to null, then stop review
         stopPreviewCore();
         status = mPreviewThread->setPreviewWindow(msg->window);
+    } else if (msg->window == NULL
+               && currentState == PreviewThread::STATE_ENABLED) {
+        // Notes:
+        //  1. msg->window == NULL comes from CameraService
+        //     before calling stopPreview().
+        //  2. when the window is set to NULL, must free all Graphic buffer
+        //     handles synchronously.
+        //  3. change preview state to STATE_NO_WINDOW.
+        //  4. don't know if application will set a new window to Camera
+        //     HAL after window was set to NULL.
+        status = mPreviewThread->setPreviewWindow(msg->window);
+        mPreviewThread->setPreviewState(PreviewThread::STATE_NO_WINDOW);
     } else {
         // Notes:
-        //  1. msg->window == NULL comes only from CameraService in release
-        //     stack, explicit NULL from application never reaches HAL.
-        //     -> Application must call stopPreview() to have GfxBuffers
-        //        freed first.
-        //  2. msg->window != NULL may come from applications explicit call
+        //  1. msg->window != NULL may come from applications explicit call
         //     to setPreviewDisplay() or setPreviewTexture():
         //      - API if preview is stopped
         //      - running preview does not currently continue
-        //  3. msg->window != NULL is always called by CameraService before
+        //  2. msg->window != NULL is always called by CameraService before
         //     startPreview(), with the handle that was previosly set.
         status = mPreviewThread->setPreviewWindow(msg->window);
     }
