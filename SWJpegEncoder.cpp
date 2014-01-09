@@ -601,6 +601,7 @@ doJpegEncoding(const void *y_buf, const void *uv_buf, int fourcc)
     jpeg_finish_compress(&mCInfo);
 
     free(p411);
+    p411 = NULL;
 
     return 0;
 }

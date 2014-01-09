@@ -114,10 +114,14 @@ status_t SensorSyncManager::config(unsigned int fifoDepth, unsigned int gainDela
     if (fifoDepth < MIN_DEPTH_OF_EXPOSURE_FIFO)
         return BAD_VALUE;
 
-    if (mGainDelayFilter)
+    if (mGainDelayFilter) {
         delete mGainDelayFilter;
-    if (mExposureFifo)
+        mGainDelayFilter = NULL;
+    }
+    if (mExposureFifo) {
         delete mExposureFifo;
+        mExposureFifo = NULL;
+    }
 
     mGainDelayFilter = new AtomDelayFilter <unsigned int> (gainDefaultValue, gainDelayFrames);
     mExposureFifo = new AtomFifo <struct atomisp_exposure> (fifoDepth);

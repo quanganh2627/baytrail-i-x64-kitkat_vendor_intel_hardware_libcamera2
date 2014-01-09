@@ -3033,8 +3033,10 @@ int AtomISP::startFileInject(void)
 
     // allocate buffer and copy file content into it
 
-    if (mFileInject.dataAddr != NULL)
+    if (mFileInject.dataAddr != NULL) {
         delete[] mFileInject.dataAddr;
+        mFileInject.dataAddr = NULL;
+    }
 
     mFileInject.dataAddr = new char[mFileInject.formatDescriptor.size];
     if (mFileInject.dataAddr == NULL) {
@@ -3083,8 +3085,10 @@ int AtomISP::stopFileInject(void)
 {
     LOG1("%s: enter", __FUNCTION__);
 
-    if (mFileInject.dataAddr != NULL)
+    if (mFileInject.dataAddr != NULL) {
         delete[] mFileInject.dataAddr;
+        mFileInject.dataAddr = NULL;
+    }
 
     mFileInjectDevice->close();
 
@@ -3879,6 +3883,7 @@ status_t AtomISP::computeZoomRatios()
 
     if (mZoomRatios != NULL) {
         delete[] mZoomRatios;
+        mZoomRatios = NULL;
     }
 
     mZoomRatios = new char[stringSize];

@@ -586,8 +586,10 @@ void ControlThread::deinit()
     }
     List<Message>::iterator it = mPostponedMessages.begin();
     for ( ;it != mPostponedMessages.end(); it++)
-        if (it->id == MESSAGE_ID_SET_PARAMETERS)
+        if (it->id == MESSAGE_ID_SET_PARAMETERS) {
             free(it->data.setParameters.params); // was strdupped, needs free
+            it->data.setParameters.params = NULL;
+        }
     mPostponedMessages.clear();
 
     LOG1("@%s- complete", __FUNCTION__);
@@ -826,8 +828,10 @@ char* ControlThread::getParameters()
 void ControlThread::putParameters(char* params)
 {
     LOG2("@%s: params = %p", __FUNCTION__, params);
-    if (params)
+    if (params) {
         free(params);
+        params = NULL;
+    }
 }
 
 bool ControlThread::isParameterSet(const char* param)
@@ -4075,6 +4079,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             mPostponedMsgProcessing = true;
             handleMessageSetParameters(&it->data.setParameters);
             free(it->data.setParameters.params); // was strdupped, needs free
+            it->data.setParameters.params = NULL;
             it = mPostponedMessages.erase(it); // returns pointer to next item in list
             mPostponedMsgProcessing = false;
         } else {

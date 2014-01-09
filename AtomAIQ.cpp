@@ -237,6 +237,7 @@ status_t AtomAIQ::deinit3A()
     freeStatistics(m3aState.stats);
     ia_aiq_deinit(m3aState.ia_aiq_handle);
     delete mISPAdaptor;
+    mISPAdaptor = NULL;
     ia_mkn_uninit(mMkn);
     mISP = NULL;
     mAfMode = CAM_AF_MODE_NOT_SET;
