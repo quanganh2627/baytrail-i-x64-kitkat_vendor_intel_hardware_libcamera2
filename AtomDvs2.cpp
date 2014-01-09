@@ -43,6 +43,12 @@ AtomDvs2::AtomDvs2(HWControlGroup &hwcg) :
     ,mZoomRatioChanged(true)
 {
     LOG1("@%s", __FUNCTION__);
+    ia_err err;
+    char const *version;
+    err = dvs_get_version(&version);
+    if(err == ia_err_none)
+        LOG2("DVS2 lib Version: %s", version);
+
     mDumpLogEnabled = gLogLevel & CAMERA_DEBUG_DVS2_DUMP;
     mDvs2Env.vdebug = debugPrint;
     mDvs2Env.verror = debugPrint;
