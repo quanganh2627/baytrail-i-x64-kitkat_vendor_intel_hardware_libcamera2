@@ -114,7 +114,11 @@ LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/pvr/hal
 endif
 
+# HACK to access camera_extension headers when compiling PDK
 ifeq (,$(wildcard frameworks/base/core/jni/android_hardware_Camera.h))
+LOCAL_C_INCLUDES += \
+	vendor/intel/hardware/camera_extension/include/
+else
 LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/camera_extension
 endif
