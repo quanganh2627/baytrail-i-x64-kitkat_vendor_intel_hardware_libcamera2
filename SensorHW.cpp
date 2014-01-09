@@ -27,6 +27,8 @@ namespace android {
 static sensorPrivateData gSensorDataCache[MAX_CAMERAS];
 
 static const int ADJUST_ESTIMATE_DELTA_THRESHOLD_US = 2000; // Threshold for adjusting frame timestamp estimate at real frame sync
+static const int MAX_EXPOSURE_HISTORY_SIZE = 10;
+static const int DEFAULT_EXPOSURE_DELAY = 2;
 
 SensorHW::SensorHW(int cameraId):
     mCameraId(cameraId),
@@ -35,9 +37,8 @@ SensorHW::SensorHW(int cameraId):
     mFrameSyncEnabled(false),
     mCssVersion(0),
     mActiveItemIndex(0),
-    mImmediateIo(true),
-    mImmediateIoSet(false),
-    mUseExposureSync(false),
+    mDirectExposureIo(true),
+    mPostponePrequeued(false),
     mExposureLag(0)
 {
     CLEAR(mCameraInput);
@@ -168,6 +169,7 @@ status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
     status = initializeExposureFilter();
     if (status != NO_ERROR)
         LOGE("Failed to configure exposure filter");
+
     return status;
 }
 
@@ -414,15 +416,21 @@ status_t SensorHW::openSubdevice(sp<V4L2DeviceBase> &subdev, int major, int mino
  *
  * TODO: Make controls not available during streaming more explicit
  *       by protecting the IOCs with streaming state.
+ *
+ * @param preQueuedExposure enable operation mode for exposure bracketing
+ *                          where exposure parameters are kept in queue
+ *                          for applying regardless of when they arrive.
  */
-status_t SensorHW::prepare()
+status_t SensorHW::prepare(bool preQueuedExposure)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     int ret = 0;
 
+    mPostponePrequeued = preQueuedExposure;
+    mDirectExposureIo = (mPostponePrequeued) ? false : !PlatformData::synchronizeExposure();
+
     // Open subdevice for direct IOCTL.
-    //
     status = openSubdevices();
 
     // Sensor is configured, readout the initial mode info
@@ -452,8 +460,6 @@ status_t SensorHW::prepare()
     }
 
     LOG1("Sensor output size %dx%d, FPS %f", mOutputWidth, mOutputHeight, getFramerate());
-
-    mExposureHistory->reset();
 
     return status;
 }
@@ -505,8 +511,7 @@ status_t SensorHW::stop()
         mFrameSyncEnabled = false;
     }
     mStarted = false;
-    mImmediateIoSet = false;
-    mImmediateIo = true;
+    mDirectExposureIo = true;
     return NO_ERROR;
 }
 
@@ -948,6 +953,7 @@ status_t SensorHW::observe(IAtomIspObserver::Message *msg)
         ts = ts + vbiOffset;
         msg->data.event.timestamp.tv_sec = ts / 1000000;
         msg->data.event.timestamp.tv_usec = (ts % 1000000);
+        msg->data.event.sequence++;
         mFrameSyncMutex.unlock();
         usleep(vbiOffset);
         LOG2("FrameSync: timestamp offset %lldus, delta %lldus", TIMEVAL2USECS(&msg->data.event.timestamp), systemTime()/1000 - ts);
@@ -964,8 +970,8 @@ status_t SensorHW::observe(IAtomIspObserver::Message *msg)
 
 unsigned int SensorHW::getExposureDelay()
 {
-    unsigned int ret = PlatformData::getSensorExposureLag();
-    if (mUseExposureSync)
+    unsigned int ret = mExposureLag;
+    if (!mDirectExposureIo)
         ret++;
     return ret;
 }
@@ -981,8 +987,10 @@ status_t SensorHW::initializeExposureFilter()
     LOG1("Exposure synchronization config read, gain lag %d, exposure lag %d, synchronize %s",
             gainLag, exposureLag, useExposureSync ? "true" : "false");
 
-    if (gainLag == 0 || exposureLag == 0)
-        LOGE("Check sensor gain/exposure latencies configuration!");
+    // By default use exposure lag according to DEFAULT_EXPOSURE_DELAY
+    // and align gain with it.
+    exposureLag = (exposureLag == 0) ? DEFAULT_EXPOSURE_DELAY : exposureLag;
+    gainLag = (gainLag == 0) ? exposureLag : gainLag;
 
     if (gainLag == exposureLag) {
         LOG1("Gain/Exposure re-aligning not needed");
@@ -997,14 +1005,16 @@ status_t SensorHW::initializeExposureFilter()
     }
 
     mExposureLag = (gainLag <= exposureLag) ? exposureLag : gainLag;
-    mUseExposureSync = useExposureSync;
 
     LOG1("sensor delays: gain %d, exposure %d", gainLag, exposureLag);
-    LOG1("using sw gain delay %d, %s", gainDelay, mUseExposureSync ? "frame synchronized":"direct");
+    LOG1("using sw gain delay %d, %s", gainDelay, useExposureSync ? "frame synchronized":"direct");
 
     // Note Fifo also used for continuous exposure history tracking
     mGainDelayFilter = new AtomDelayFilter <unsigned int> (0, gainDelay);
-    mExposureHistory = new AtomFifo <struct exposure_history_item> (mExposureLag * 2 + 1);
+    mExposureHistory = new AtomFifo <struct exposure_history_item> (MAX_EXPOSURE_HISTORY_SIZE + mExposureLag);
+
+    if (useExposureSync)
+        mDirectExposureIo = false;
 
     return NO_ERROR;
 }
@@ -1027,10 +1037,12 @@ int SensorHW::setExposure(struct atomisp_exposure *exposure)
     Mutex::Autolock lock(mFrameSyncMutex);
 
     struct exposure_history_item *headItem = NULL;
+    bool overwriteHead = false;
 
     if (mStarted) {
         headItem = mExposureHistory->peek(0);
-        if (headItem && !headItem->applied) {
+        overwriteHead = (headItem && !headItem->applied && !mDirectExposureIo && !mPostponePrequeued);
+        if (overwriteHead) {
             // This indicates that statistics event + 3A processing
             // ends up varying both sides of the FrameSync event and
             // though giving more than one exposure to apply in one frame
@@ -1054,55 +1066,21 @@ int SensorHW::setExposure(struct atomisp_exposure *exposure)
         mGainDelayFilter->reset(exposure->gain[0]);
         for (unsigned int i = 0; i <= mExposureLag; i++) {
             headItem = produceExposureHistory(exposure, 0);
-            if (headItem != NULL)
-                headItem->applied = true;
         }
     }
 
-    if (!mUseExposureSync || mImmediateIo) {
+    if (headItem && headItem->applied == false &&
+        (mDirectExposureIo || !mStarted)) {
         // In immediate IO we expect that the apply we do below
         // reaches sensor registers before its readout for the next
         // frame. We are somewhere in middle of exposing frame N-1.
         // When this does not work well enough, the option is to
         // use exposureSynchronization.
-        if (headItem)
-            headItem->applied = true;
+        headItem->applied = true;
         return setSensorExposure(exposure);
     }
 
-    LOG2("@%s enqueued exposure, gain %d, citg %d", __FUNCTION__,
-            exposure->gain[0], exposure->integration_time[0]);
     return 0;
-}
-
-/**
- * Control immediate exposure applying
- *
- * When exposure applying with FrameSync is active
- * (synchronizeExposure = true), client can enable immediate IO
- * to bypass the logic and apply immediately.
- *
- * Note: SensorSyncManager used this to control direct applying
- *       in mode switches, stream start and stop. Which is now
- *       controlled by SensorHW::start() and SensorHW::stop(),
- *       the mStarted boolean instead. This partially deprecates
- *       setImmediateIo().
- *
- * Note: Client (AtomISP) still uses this to bypass synchronization
- *       always in MODE_CAPTURE. Exposure control in MODE_CAPTURE
- *       can only mean exposure bracketing, which uses
- *       SensorHW::waitForFrameSync() and synchronizes exposure
- *       applying itself.
- */
-int SensorHW::setImmediateIo(bool enable)
-{
-    LOG1("@%s(%d)", __FUNCTION__, enable);
-    Mutex::Autolock lock(mFrameSyncMutex);
-    mImmediateIoSet = mImmediateIo = enable;
-    if (enable) {
-        mExposureHistory->reset();
-    }
-    return NO_ERROR;
 }
 
 /**
@@ -1114,9 +1092,6 @@ int SensorHW::setImmediateIo(bool enable)
 bool SensorHW::atomIspNotify(Message *msg, const ObserverState state)
 {
    LOG2("@%s: msg id %d, state %d", __FUNCTION__, (msg) ? msg->id : -1, state);
-   if (msg == NULL && !mImmediateIoSet) {
-       mImmediateIo = (state != OBSERVER_STATE_RUNNING);
-   }
    return false;
 }
 
@@ -1249,7 +1224,6 @@ unsigned int SensorHW::cumulateFrameIntervals(unsigned int index, unsigned int f
     for (unsigned i = index; i < mExposureHistory->getCount() && cumulatedFrameCount < frames; i++) {
         appliedExposure = mExposureHistory->peek(i);
         if (appliedExposure) {
-            assert(appliedExposure->applied);
             cumulatedFrameLengths += MAX(mInitialModeData.frame_length_lines,
                                      appliedExposure->exposure.integration_time[0]);
             cumulatedFrameCount++;
@@ -1352,7 +1326,7 @@ void SensorHW::processExposureHistory(nsecs_t ts)
         }
     } else {
 #ifdef LIBCAMERA_RD_FEATURES
-        if (mUseExposureSync && itemsToApply > 1) {
+        if (itemsToApply > 1) {
             LOG1("## More than one new exposure to apply (%d)", itemsToApply);
         }
 #endif

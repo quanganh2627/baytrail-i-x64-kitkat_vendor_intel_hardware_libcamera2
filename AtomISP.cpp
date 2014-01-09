@@ -931,12 +931,6 @@ status_t AtomISP::configure(AtomMode mode)
         status = configureRecording();
         break;
     case MODE_CAPTURE:
-        // Bracketing is the only place where we control sensor parameters in
-        // capture state. Its implementation uses blocking call
-        // IHWSensorControl::waitForFrameSync() to syncronize controls. To support
-        // this in SensorHW, we enable immediate exposure IO in case of online
-        // capture mode.
-        mSensorHW.setImmediateIo(true);
         status = configureCapture();
         break;
     case MODE_CONTINUOUS_CAPTURE:
@@ -952,7 +946,7 @@ status_t AtomISP::configure(AtomMode mode)
         mMode = mode;
         dumpFrameInfo(mode);
         // Pipeline configured, triggering SensorHW::prepare()
-        status = mSensorHW.prepare();
+        status = mSensorHW.prepare(mode == MODE_CAPTURE);
     }
 
     /**

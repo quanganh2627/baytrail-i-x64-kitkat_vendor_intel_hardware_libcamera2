@@ -39,11 +39,10 @@ public:
     SensorHW(int cameraId);
     ~SensorHW();
     status_t selectActiveSensor(sp<V4L2VideoNode> &device);
-    status_t prepare();
+    status_t prepare(bool preQueuedExposure);
     status_t start();
     status_t stop();
     IObserverSubject* getFrameSyncSource() { return (IObserverSubject*) this; };
-    int setImmediateIo(bool enable);
     nsecs_t getFrameTimestamp(nsecs_t event_ts);
 
     /* IHWSensorControl overloads, */
@@ -164,10 +163,8 @@ private:
 
     // Exposure synchronization
     unsigned int mActiveItemIndex;
-    bool mDelayedEvent;
-    bool mImmediateIo;          /* set exposure immediately */
-    bool mImmediateIoSet;       /* immediate mode set explicitly, see setImmediateIo() */
-    bool mUseExposureSync;      /* use frameSyncProc() to synchronize exposure applying */
+    bool mDirectExposureIo;     /* set exposure directly in setExposure() caller context*/
+    bool mPostponePrequeued;    /* do not discard if more than one exposure settings applied per frame */
     unsigned int mExposureLag;  /* delay of exposure applying based on configuration */
     AtomDelayFilter <unsigned int>   *mGainDelayFilter;
     AtomFifo <struct exposure_history_item> *mExposureHistory;

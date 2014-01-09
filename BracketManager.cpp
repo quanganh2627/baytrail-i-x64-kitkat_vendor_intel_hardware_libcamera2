@@ -118,11 +118,6 @@ status_t BracketManager::skipFrames(int numFrames, int doBracket)
                     LOGE("@%s: Error applying bracketing params for frame %d!", __FUNCTION__, i);
                     return status;
                 }
-            } else if (mBracketing.mode != BRACKET_NONE) {
-                // wait for frame sync
-                if (mSensorCI->waitForFrameSync() != NO_ERROR) {
-                    LOGE("@%s: Error waiting frame sync", __FUNCTION__);
-                }
             }
             if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
                 LOGE("@%s: Error in grabbing warm-up frame %d!", __FUNCTION__, i);
@@ -130,6 +125,9 @@ status_t BracketManager::skipFrames(int numFrames, int doBracket)
             }
 
             // Check if frame loss recovery is needed.
+            // Note: Does not work with CSS2 due buffered sensor mode. Driver
+            //       does not receive interrupts to increment sequence counter
+            //       for skipped frames.
             numLost = getNumLostFrames(snapshotBuffer.frameSequenceNbr);
 
             status = mISP->putSnapshot(&snapshotBuffer, &postviewBuffer);
@@ -310,13 +308,7 @@ status_t BracketManager::applyBracketing()
         if (applyBracketingParams() != NO_ERROR) {
             LOGE("Error applying bracketing params!");
         }
-    } else {
-        // wait for frame sync before getSnapshot()
-        if (mSensorCI->waitForFrameSync()  != NO_ERROR) {
-            LOGE("@%s: Error in waiting frame sync", __FUNCTION__);
-        }
     }
-
 
     do {
         recoveryNeeded = false;
@@ -324,6 +316,9 @@ status_t BracketManager::applyBracketing()
         status = mISP->getSnapshot(&mSnapshotBufs[mBurstCaptureNum], &mPostviewBufs[mBurstCaptureNum]);
 
         // Check number of lost frames
+        // Note: Does not work with CSS2 due buffered sensor mode. Driver
+        //       does not receive interrupts to increment sequence counter
+        //       for skipped frames.
         numLost = getNumLostFrames(mSnapshotBufs[mBurstCaptureNum].frameSequenceNbr);
 
         // Frame loss recovery. Currently only supported for exposure bracketing.
@@ -340,12 +335,6 @@ status_t BracketManager::applyBracketing()
             int skip, doBracket;
             getRecoveryParams(skip, doBracket);
             skipFrames(skip, doBracket);
-            if (skip > doBracket) {
-                // wait frame sync before getSnapshot()
-                if (mSensorCI->waitForFrameSync() != NO_ERROR) {
-                    LOGE("@%s: Error waiting frame sync", __FUNCTION__);
-                }
-            }
             retryCount++;
             recoveryNeeded = true;
         }
@@ -369,11 +358,6 @@ status_t BracketManager::applyBracketingParams()
     status_t status = NO_ERROR;
     SensorAeConfig aeConfig;
     memset(&aeConfig, 0, sizeof(aeConfig));
-
-    // wait frame sync
-    if (mSensorCI->waitForFrameSync() != NO_ERROR) {
-        LOGE("@%s: Error waiting frame sync", __FUNCTION__);
-    }
 
     switch (mBracketing.mode) {
     case BRACKET_EXPOSURE:
