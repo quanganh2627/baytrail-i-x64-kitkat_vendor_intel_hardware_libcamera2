@@ -360,8 +360,10 @@ status_t PanoramaThread::handleMessageFinalize()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if (mState == PANORAMA_DETECTING_OVERLAP || mState == PANORAMA_WAITING_FOR_SNAPSHOT)
-        handleMessageStopPanoramaCapture(); // drops state to PANORAMA_STARTED
+    if (mState == PANORAMA_STARTED) {
+        LOG1("@%s: nothing to finalize", __FUNCTION__);
+        return status;
+    }
 
     mPanoramaStitchThread->flush();
 
@@ -451,6 +453,9 @@ status_t PanoramaThread::handleMessageFinalize()
         mPanoramaCallback->panoramaFinalized(&img, &pvImg);
     } else
         mPanoramaCallback->panoramaFinalized(&img, NULL);
+
+    if (mState == PANORAMA_DETECTING_OVERLAP || mState == PANORAMA_WAITING_FOR_SNAPSHOT)
+        handleMessageStopPanoramaCapture(); // drops state to PANORAMA_STARTED
 
     return status;
 }

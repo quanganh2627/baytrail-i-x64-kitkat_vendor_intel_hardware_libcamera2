@@ -201,7 +201,7 @@ status_t ControlThread::init()
 {
     LOG1("@%s: cameraId = %d", __FUNCTION__, mCameraId);
 
-    status_t status = UNKNOWN_ERROR;
+    status_t status = NO_ERROR;
     CameraDump::setDumpDataFlag();
 
     AtomISP * isp = NULL;
@@ -463,6 +463,9 @@ bail:
 
     // this should clean up only what NEEDS to be cleaned up
     deinit();
+
+    if (status == NO_ERROR)
+        status = UNKNOWN_ERROR;    // If we get here, it is always an error
 
     return status;
 }
@@ -4045,8 +4048,9 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
     // It is possible that handleMessageSetParameters here will callback to
     // handleMessagePictureDone again in some cases with processing postponed
     // messages. We need to avoid the dead loop
-    if (mPostponedMsgProcessing) {
-        LOG1("skip to handle postponed messages since they are already being processed.");
+    // It's also not safe to set parameter when mCaptureSubState is not IDLE.
+    if (mPostponedMsgProcessing || mCaptureSubState != STATE_CAPTURE_IDLE) {
+        LOG1("skip to handle postponed messages mPostponedMsgProcessing:%d mCaptureSubState:%d", mPostponedMsgProcessing, mCaptureSubState);
         return status;
     }
     // handle postponed setparameters which may have occured during capture
@@ -5189,6 +5193,8 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
 
     if (mHdr.inProgress) {
         LOGW("%s: attempt to change hdr parameters during hdr capture", __FUNCTION__);
+        // keep the value of mBurstLength when hdr is still runing.
+        mBurstLength = mHdr.bracketNum;
         return INVALID_OPERATION;
     }
 
@@ -5747,13 +5753,6 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             afMode = CAM_AF_MODE_CONTINUOUS;
         } else {
             afMode = CAM_AF_MODE_MANUAL;
-        }
-
-        // If the focus mode was explicitly set to infinity or fixed, disable AF
-        if (afMode == CAM_AF_MODE_INFINITY || afMode == CAM_AF_MODE_FIXED) {
-            mPostProcThread->disableFaceAAA(AAA_FLAG_AF);
-        } else {
-            mPostProcThread->enableFaceAAA(AAA_FLAG_AF);
         }
 
         curAfMode = m3AControls->getAfMode();

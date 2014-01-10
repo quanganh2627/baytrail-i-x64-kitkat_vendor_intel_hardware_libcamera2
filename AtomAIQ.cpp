@@ -92,6 +92,7 @@ AtomAIQ::AtomAIQ(HWControlGroup &hwcg):
     memset(&m3aState, 0, sizeof(aaa_state));
     memset(&mAeCoord, 0, sizeof(ia_coordinate));
     memset(&mAfState, 0, sizeof(af_state));
+    memset(&mAeState, 0, sizeof(ae_state));
 }
 
 AtomAIQ::~AtomAIQ()

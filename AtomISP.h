@@ -38,7 +38,7 @@
 namespace android {
 
 #define MAX_V4L2_BUFFERS    MAX_BURST_BUFFERS
-#define MAX_CAMERA_NODES    MAX_CAMERAS + 1
+#define MAX_CAMERA_NODES    5
 
 #define MAX_DEVICE_NODE_CHAR_NR  32
 
@@ -299,9 +299,10 @@ private:
     static const int V4L2_MAIN_DEVICE       = 0;
     static const int V4L2_POSTVIEW_DEVICE   = 1;
     static const int V4L2_PREVIEW_DEVICE    = 2;
-    static const int V4L2_INJECT_DEVICE     = 3;
-    static const int V4L2_ISP_SUBDEV        = 4;
-    static const int V4L2_ISP_SUBDEV2       = 5;
+    static const int V4L2_RECORDING_DEVICE  = 3;
+    static const int V4L2_INJECT_DEVICE     = 4;
+    static const int V4L2_ISP_SUBDEV        = 5;
+    static const int V4L2_ISP_SUBDEV2       = 6;
 
     /**
      * Maximum number of V4L2 devices node we support

@@ -31,14 +31,21 @@ namespace android {
         mapperPointer.ptr = NULL;
 
         int lockMode = GRALLOC_USAGE_SW_READ_OFTEN |
-                    GRALLOC_USAGE_SW_WRITE_NEVER |
-                    GRALLOC_USAGE_HW_COMPOSER;
+                       GRALLOC_USAGE_SW_WRITE_NEVER |
+                       GRALLOC_USAGE_HW_COMPOSER;
 
         LOG1("%s with these properties: (%dx%d)s:%d fourcc %s", __FUNCTION__,
                 formatDescriptor.width, formatDescriptor.height,
                 formatDescriptor.bpl, v4l2Fmt2Str(formatDescriptor.fourcc));
 
-        GraphicBuffer *cameraGraphicBuffer = new GraphicBuffer(bytesToPixels(formatDescriptor.fourcc, formatDescriptor.bpl),
+        // Note: GraphicBuffer object is created using width according to bpl request in formatDescriptor.
+        // The resulting stride in NativeWindow may be bigger than this. Here we only ensure that enough
+        // memory is allocated, so AtomBuffer descriptor carries the requested stride and size while the
+        // real allocated size may be more and description in GraphicBuffer object may give false
+        // information about pixel data.
+        int allocateWidth = (formatDescriptor.bpl != 0) ?
+            bytesToPixels(formatDescriptor.fourcc, formatDescriptor.bpl) : formatDescriptor.width;
+        GraphicBuffer *cameraGraphicBuffer = new GraphicBuffer(allocateWidth,
                         formatDescriptor.height, getGFXHALPixelFormatFromV4L2Format(formatDescriptor.fourcc),
                         GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_SW_WRITE_OFTEN | GraphicBuffer::USAGE_HW_TEXTURE);
 
@@ -48,18 +55,19 @@ namespace android {
         }
 
         ANativeWindowBuffer *cameraNativeWindowBuffer = cameraGraphicBuffer->getNativeBuffer();
-        aBuff.buff = NULL;     // We do not allocate a normal camera_memory_t
+        // ANativeWindowBuffer defines stride in pixels
+        int nwbBpl = pixelsToBytes(formatDescriptor.fourcc, cameraNativeWindowBuffer->stride);
+        aBuff.bpl = formatDescriptor.bpl;
+        if (aBuff.bpl == 0)
+            aBuff.bpl = pixelsToBytes(formatDescriptor.fourcc, formatDescriptor.width);
+        aBuff.buff = NULL; // We do not allocate a normal camera_memory_t
         aBuff.width = formatDescriptor.width;
         aBuff.height = formatDescriptor.height;
-        // ANativeWindowBuffer defines bpl in pixels
-        if (bytesToPixels(formatDescriptor.fourcc, formatDescriptor.bpl) != cameraNativeWindowBuffer->stride) {
-            LOGW("%s: potential bpl problem requested %d, Gfx requries %d",__FUNCTION__, formatDescriptor.bpl, cameraNativeWindowBuffer->stride);
+        if (aBuff.bpl != nwbBpl) {
+            LOGW("%s: potential bpl problem requested %d, NW requries %d",__FUNCTION__, aBuff.bpl, nwbBpl);
         } else {
-            LOG1("%s bpl from Gfx is %d", __FUNCTION__, formatDescriptor.bpl);
+            LOG1("%s: bpl from NW is %d", __FUNCTION__, nwbBpl);
         }
-        // Note: GraphicBuffer object will carry width as was our pixel stride
-        // request basing bpl and resulting bpl may be bigger in the resulting AtomBuffer
-        aBuff.bpl = pixelsToBytes(formatDescriptor.fourcc, cameraNativeWindowBuffer->stride);
         aBuff.fourcc = formatDescriptor.fourcc;
         aBuff.gfxInfo.scalerId = -1;
         aBuff.gfxInfo.gfxBufferHandle = &cameraGraphicBuffer->handle;

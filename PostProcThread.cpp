@@ -42,8 +42,6 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     ,mThreadRunning(false)
     ,mFaceDetectionRunning(false)
     ,mFaceRecognitionRunning(false)
-    ,mFaceAAAFlags(AAA_FLAG_ALL)
-    ,mOldAeMeteringMode(CAM_AE_METERING_MODE_NOT_SET)
     ,mZoomRatio(0)
     ,mRotation(0)
     ,mCameraOrientation(0)
@@ -197,8 +195,6 @@ status_t PostProcThread::handleMessageStopFaceDetection()
 
     mFaceDetectionRunning = false;
     status = mFaceDetector->clearFacesDetected();
-    resetToOldAAAValues();
-    mOldAeMeteringMode = CAM_AE_METERING_MODE_NOT_SET;
 
     SensorThread::getInstance(this->getCameraID())->unRegisterOrientationListener(this);
 
@@ -601,41 +597,6 @@ int PostProcThread::sendFrame(AtomBuffer *img)
         return -1;
 }
 
-void PostProcThread::enableFaceAAA(AAAFlags flags)
-{
-    LOG1("@%s: flags = %d" , __FUNCTION__, (int)flags);
-    Message msg;
-    msg.id = MESSAGE_ID_ENABLE_FACE_AAA;
-    msg.data.faceAAA.flags = flags;
-
-    mMessageQueue.send(&msg);
-}
-
-void PostProcThread::disableFaceAAA(AAAFlags flags)
-{
-    LOG1("@%s: flags = %d", __FUNCTION__, (int)flags);
-    Message msg;
-    msg.id = MESSAGE_ID_DISABLE_FACE_AAA;
-    msg.data.faceAAA.flags = flags;
-
-    mMessageQueue.send(&msg);
-}
-
-status_t PostProcThread::handleMessageEnableFaceAAA(const MessageFaceAAA& msg)
-{
-    mFaceAAAFlags = mFaceAAAFlags | msg.flags;
-    LOG1("@%s: enabled %d flags, after mFaceAAAFlags is %d", __FUNCTION__,  (int)msg.flags, (int)mFaceAAAFlags);
-
-    return NO_ERROR;
-}
-
-status_t PostProcThread::handleMessageDisableFaceAAA(const MessageFaceAAA& msg)
-{
-    mFaceAAAFlags = mFaceAAAFlags & ~msg.flags;
-    LOG1("@%s: disabled %d flags, after mFaceAAAFlags is %d", __FUNCTION__, (int)msg.flags, (int)mFaceAAAFlags);
-    return NO_ERROR;
-}
-
 bool PostProcThread::threadLoop()
 {
     LOG2("@%s", __FUNCTION__);
@@ -699,12 +660,6 @@ status_t PostProcThread::waitForAndExecuteMessage()
             break;
         case MESSAGE_ID_FORCE_SMART_CAPTURE_TRIGGER:
             status = handleMessageForceSmartCaptureTrigger();
-            break;
-        case MESSAGE_ID_ENABLE_FACE_AAA:
-            status = handleMessageEnableFaceAAA(msg.data.faceAAA);
-            break;
-        case MESSAGE_ID_DISABLE_FACE_AAA:
-            status = handleMessageDisableFaceAAA(msg.data.faceAAA);
             break;
         case MESSAGE_ID_START_FACE_RECOGNITION:
             status = handleMessageStartFaceRecognition();
@@ -843,19 +798,19 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
             face_metadata.faces[faceForFocusInd] = faceMetaTmp;
         }
 
-        // call face detection listener and pass faces for 3A (AF) and smart scene detection
+        // pass face info to the callback listener (to be used for 3A)
         if (face_metadata.number_of_faces > 0 || mLastReportedNumberOfFaces != 0) {
             mLastReportedNumberOfFaces = face_metadata.number_of_faces;
-            useFacesForAAA(face_metadata);
             mPostProcDoneCallback->facesDetected(&faceState);
         }
 
+        // .. and towards the application
         mpListener->facesDetected(&face_metadata);
 
         delete[] faceState.faces;
         faceState.faces = NULL;
 
-    // trigger for smart shutter
+        // trigger for smart shutter
         if (mSmartShutter.captureOnTrigger) {
             // if
             // smile and blink detection runnning and both detected
@@ -885,77 +840,6 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
     }
 
     return status;
-}
-
-void PostProcThread::setAeMeteringArea(const CameraWindow* window)
-{
-    LOG2("@%s", __FUNCTION__);
-
-    if (m3AControls->setAeWindow(window) == NO_ERROR) {
-        MeteringMode curAeMeteringMode = m3AControls->getAeMeteringMode();
-        if (curAeMeteringMode != CAM_AE_METERING_MODE_SPOT) {
-            LOG2("Setting AE metering mode to spot for face exposure");
-            mOldAeMeteringMode = m3AControls->getAeMeteringMode();
-            m3AControls->setAeMeteringMode(CAM_AE_METERING_MODE_SPOT);
-        }
-    }
-}
-
-void PostProcThread::useFacesForAAA(const camera_frame_metadata_t& face_metadata)
-{
-    LOG2("@%s", __FUNCTION__);
-    if (face_metadata.number_of_faces <= 0) {
-        resetToOldAAAValues();
-        return;
-    }
-
-    if (mFaceAAAFlags & AAA_FLAG_AE) {
-        CameraWindow *windows = new CameraWindow[face_metadata.number_of_faces];
-
-        // TODO: Move the loop to sort func? Or do we want to sort?
-        for (int i = 0; i < face_metadata.number_of_faces; i++) {
-            camera_face_t face = face_metadata.faces[i];
-            windows[i].x_left = face.rect[0];
-            windows[i].y_top = face.rect[1];
-            windows[i].x_right = face.rect[2];
-            windows[i].y_bottom = face.rect[3];
-            convertFromAndroidToIaCoordinates(windows[i], windows[i]);
-
-            LOG2("Face window: (%d,%d,%d,%d)",
-                windows[i].x_left,
-                windows[i].y_top,
-                windows[i].x_right,
-                windows[i].y_bottom);
-        }
-
-        // Apply AE window if needed:
-        // NOTE: AF uses first window for focus, use 1st win for AE as well...
-        CameraWindow aeWindow = windows[0];
-        aeWindow.weight = 5;
-        setAeMeteringArea(&aeWindow);
-
-        delete[] windows;
-        windows = NULL;
-    }
-
-    // NOTE: Face AF is done by the ia_face_state information, sent as callback to ControlThread
-    // and on to AAAThread.
-
-    //TODO: spec says we need also do AWB. Currently no support.
-}
-
-void PostProcThread::resetToOldAAAValues()
-{
-        // No faces detected, reset to previous 3A values:
-
-        // Auto-exposure metering mode:
-        if ((mFaceAAAFlags & AAA_FLAG_AE) && mOldAeMeteringMode != CAM_AE_METERING_MODE_NOT_SET) {
-            LOG2("Reset to old AE metering mode (%d)", mOldAeMeteringMode);
-            m3AControls->setAeMeteringMode(mOldAeMeteringMode);
-            mOldAeMeteringMode = CAM_AE_METERING_MODE_NOT_SET;
-        }
-
-        // TODO: Reset AWB also, once taken into use above.
 }
 
 void PostProcThread::orientationChanged(int orientation)
