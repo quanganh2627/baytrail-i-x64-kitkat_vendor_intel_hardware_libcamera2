@@ -7625,21 +7625,33 @@ status_t ControlThread::enableFocusMoveMsg(bool enable)
 
 status_t ControlThread::enableIntelParameters()
 {
+    LOG1("@%s", __FUNCTION__);
     // intel parameters support more effects
     // so use supported effects list stored in mIntelParameters.
     if (mIntelParameters.get(CameraParameters::KEY_SUPPORTED_EFFECTS))
         mParameters.remove(CameraParameters::KEY_SUPPORTED_EFFECTS);
 
+    status_t status = NO_ERROR;
     String8 params(mParameters.flatten());
     String8 intel_params(mIntelParameters.flatten());
     String8 delimiter(";");
     params += delimiter;
     params += intel_params;
-    mParameters.unflatten(params);
-    updateParameterCache();
 
-    mIntelParamsAllowed = true;
-    return NO_ERROR;
+    CameraParameters mergedParameters;
+    mergedParameters.unflatten(params);
+
+    status = processDynamicParameters(&mParameters, &mergedParameters);
+    if (status != NO_ERROR) {
+        LOGE("@%s - processDynamicParameters failed", __FUNCTION__);
+        mIntelParamsAllowed = false;
+    } else {
+        mParameters = mergedParameters;
+        updateParameterCache();
+        mIntelParamsAllowed = true;
+    }
+
+    return status;
 }
 
 status_t ControlThread::cancelSmartShutterPicture()
