@@ -1608,8 +1608,7 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct)
             m3aState.statistics_input_parameters.frame_ae_parameters = pickAeFeedbackResults();
         }
 
-        if (mAfState.af_results
-            && mAfInputParameters.frame_use == ia_aiq_frame_use_still) {
+        if (mAfState.af_results) {
             // pass AF results as AEC input during still AF, AIQ will
             // internally let AEC to converge to assist light
             m3aState.af_results_feedback = *mAfState.af_results;
