@@ -404,7 +404,6 @@ status_t AtomAIQ::setAeSceneMode(SceneMode mode)
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
 
     mAeSceneMode = mode;
-    resetAFParams();
     resetAECParams();
     resetAWBParams();
     switch (mode) {
@@ -416,15 +415,12 @@ status_t AtomAIQ::setAeSceneMode(SceneMode mode)
         mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_action;
         break;
     case CAM_AE_SCENE_MODE_LANDSCAPE:
-        mAfInputParameters.focus_mode = ia_aiq_af_operation_mode_infinity;
         break;
     case CAM_AE_SCENE_MODE_NIGHT:
-        mAfInputParameters.focus_mode = ia_aiq_af_operation_mode_hyperfocal;
         mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_long_exposure;
         mAeInputParameters.flash_mode = ia_aiq_flash_mode_off;
         break;
     case CAM_AE_SCENE_MODE_FIREWORKS:
-        mAfInputParameters.focus_mode = ia_aiq_af_operation_mode_infinity;
         mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_fireworks;
         mAwbInputParameters.scene_mode = ia_aiq_awb_operation_mode_manual_cct_range;
         m3aState.cct_range.min_cct = 5500;
