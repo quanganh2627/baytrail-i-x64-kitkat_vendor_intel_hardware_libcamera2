@@ -49,6 +49,7 @@
 #include "SensorThread.h"
 #include "ICameraHwControls.h"
 #include "AccManagerThread.h"
+#include "ThermalThrottleThread.h"
 
 namespace android {
 
@@ -708,6 +709,7 @@ private:
     sp<BracketManager> mBracketManager;
     sp<PostCaptureThread> mPostCaptureThread;
     sp<AccManagerThread> mAccManagerThread;
+    sp<ThermalThrottleThread> mThermalThrottleThread;
 
     MessageQueue<Message, MessageId> mMessageQueue;
     List<Message> mPostponedMessages;
