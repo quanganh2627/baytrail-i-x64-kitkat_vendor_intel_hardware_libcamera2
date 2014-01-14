@@ -4395,10 +4395,9 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     }
 
     //DVS
-    const char* dvsEnable = params->get(CameraParameters::KEY_VIDEO_STABILIZATION);
-    const char* dvsEnables = params->get(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED);
-    if (!validateString(dvsEnable, dvsEnables)) {
-        LOGE("bad value for dvs enable : %s, supported are: %s", dvsEnable, dvsEnables);
+    if(isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION)
+       && !isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED)) {
+        LOGE("bad value for DVS, DVS not support");
         return BAD_VALUE;
     }
 

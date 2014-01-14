@@ -514,10 +514,12 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * DIGITAL VIDEO STABILIZATION
      */
-    if(PlatformData::supportsDVS(cameraId))
-    {
-        params->set(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED,"true,false");
-        params->set(CameraParameters::KEY_VIDEO_STABILIZATION,"true");
+    if (PlatformData::supportsDVS(cameraId)) {
+        params->set(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED, CameraParameters::TRUE);
+        params->set(CameraParameters::KEY_VIDEO_STABILIZATION, CameraParameters::TRUE);
+    } else {
+        params->set(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED, CameraParameters::FALSE);
+        params->set(CameraParameters::KEY_VIDEO_STABILIZATION, CameraParameters::FALSE);
     }
 
     /**
