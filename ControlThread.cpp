@@ -1489,11 +1489,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             return BAD_VALUE;
         }
 
-        // Workaround: In high speed recording, the scene mode should be SPORTS
-        // Note: scene mode setting resets all 3A parameters
-        if (fps > DEFAULT_RECORDING_FPS)
-            m3AControls->setAeSceneMode(CAM_AE_SCENE_MODE_SPORTS);
-
         mISP->setVideoFrameFormat(width, height);
 
         status = mISP->setDVS(mDvsEnable);

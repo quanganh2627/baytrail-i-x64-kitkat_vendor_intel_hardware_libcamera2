@@ -278,6 +278,16 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
     mAeInputParameters.manual_frame_time_us_min = (long) 1/fps*1000000;
     mAwbInputParameters.frame_use = m3aState.frame_use;
 
+    // In high speed recording, set the AE operation mode as action to notify AIQ
+    if (mode == MODE_VIDEO && fps > DEFAULT_RECORDING_FPS) {
+        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_action;
+    } else if (mAeSceneMode == CAM_AE_SCENE_MODE_NOT_SET || mAeSceneMode == CAM_AE_SCENE_MODE_AUTO) {
+        // When the default AE scene mode (AUTO) is used, the application will not set the
+        // scene mode when switching between different capture modes. Reset the AE operation
+        // mode to default value when not in HS recording mode
+        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_automatic;
+    }
+
     /* usually the grid changes as well when the mode changes. */
     changeSensorMode();
     if (mBracketingRunning) {
