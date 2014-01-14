@@ -51,6 +51,7 @@ LOCAL_SRC_FILES := \
 	BracketManager.cpp \
 	GPUScaler.cpp \
 	AtomAcc.cpp \
+	ThermalThrottleThread.cpp \
 	AtomIspObserverManager.cpp \
 	SensorThread.cpp \
 	ScalerService.cpp \

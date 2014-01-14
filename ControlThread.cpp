@@ -125,6 +125,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mBracketManager(NULL)
     ,mPostCaptureThread(NULL)
     ,mAccManagerThread(NULL)
+    ,mThermalThrottleThread(NULL)
     ,mMessageQueue("ControlThread", (int) MESSAGE_ID_MAX)
     ,mPostponedMsgProcessing(false)
     ,mState(STATE_STOPPED)
@@ -330,6 +331,12 @@ status_t ControlThread::init()
         goto bail;
     }
 
+    mThermalThrottleThread = new ThermalThrottleThread(mHwcg.mSensorCI);
+    if (mThermalThrottleThread == NULL) {
+        LOGE("error creating ThermalThrottleThread");
+        goto bail;
+    }
+
     // DVS needs to be started after AIQ init.
     status = mISP->initDVS();
     if (status != NO_ERROR) {
@@ -410,6 +417,12 @@ status_t ControlThread::init()
         goto bail;
     }
 
+    status = mThermalThrottleThread->run("CamHAL_THERMALTHROTTLE");
+    if (status != NO_ERROR) {
+        LOGW("Error starting thermal throttle thread!");
+        goto bail;
+    }
+
     // Disable bracketing by default
     mBracketManager->setBracketMode(BRACKET_NONE);
 
@@ -483,6 +496,13 @@ void ControlThread::deinit()
     if (mAccManagerThread != NULL) {
         mAccManagerThread->requestExitAndWait();
         mAccManagerThread.clear();
+    }
+
+    if (mThermalThrottleThread != NULL) {
+        if (mThermalThrottleThread->isMonitoring())
+            mThermalThrottleThread->stopMonitoring();
+        mThermalThrottleThread->requestExitAndWait();
+        mThermalThrottleThread.clear();
     }
 
     if (mPanoramaThread != NULL) {
@@ -1983,13 +2003,22 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         }
     }
 
-    /**
-     * The CameraParameters must be changed for SDV configuration in video preview
-     * But we don't want it affect the preview mode include video preview.
-     * Restore the parameters here. It could be updated again when start recording.
-     */
-    if (videoMode)
+    if (videoMode) {
+        /**
+         * The CameraParameters must be changed for SDV configuration in video preview
+         * But we don't want it affect the preview mode include video preview.
+         * Restore the parameters here. It could be updated again when start recording.
+         */
         sdvRestoreParams(false);
+
+        // start monitoring the thermal throttle notify when recording in 60fps or
+        // stop monitoring in normal fps case
+        if (mISP->getRecordingFramerate() > DEFAULT_RECORDING_FPS) {
+            mThermalThrottleThread->startMonitoring();
+        } else if (mThermalThrottleThread->isMonitoring()) {
+            mThermalThrottleThread->stopMonitoring();
+        }
+    }
 
     return status;
 }
