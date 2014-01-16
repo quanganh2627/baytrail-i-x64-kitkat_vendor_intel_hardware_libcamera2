@@ -31,7 +31,7 @@ namespace android {
     public:
         ICallbackAAA() {}
         virtual ~ICallbackAAA() {}
-        virtual void sceneDetected(int sceneMode, bool sceneHdr) = 0;
+        virtual void sceneDetected(String8 sceneMode, bool sceneHdr) = 0;
         virtual int getCameraID() = 0;
     };
 
@@ -94,7 +94,7 @@ public:
     status_t newStats(timeval &t, unsigned int seqNo);
     status_t applyRedEyeRemoval(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer, int width, int height, int fourcc);
     status_t setFaces(const ia_face_state& faceState);
-    void getCurrentSmartScene(int &sceneMode, bool &sceneHdr);
+    void getCurrentSmartScene(String8 &sceneMode, bool &sceneHdr);
     void resetSmartSceneValues();
 
 // private types
@@ -210,7 +210,7 @@ private:
     bool mPublicAeLock;
     bool mPublicAwbLock;
     size_t mFramesTillAfComplete; // used for debugging only
-    int mSmartSceneMode; // Current detected scene mode, as defined in I3AControls.h
+    String8 mSmartSceneMode; // Current detected scene mode, as defined in I3AControls.h
     bool mSmartSceneHdr; // Indicates whether the detected scene is valid for HDR
     ia_face_state mFaceState; // face metadata for 3A use
     int mPreviousFaceCount;

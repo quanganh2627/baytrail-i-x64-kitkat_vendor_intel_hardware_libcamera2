@@ -1154,15 +1154,59 @@ bool AtomAIQ::getSmartSceneDetection()
     return m3aState.dsd_enabled;
 }
 
-status_t AtomAIQ::getSmartSceneMode(int *sceneMode, bool *sceneHdr)
+status_t AtomAIQ::getSmartSceneMode(String8 &sceneMode, bool &sceneHdr)
 {
     LOG1("@%s", __FUNCTION__);
-    if(sceneMode != NULL && sceneHdr != NULL) {
-        *sceneMode = mDetectedSceneMode;
-        *sceneHdr = (mAeState.ae_results->multiframe & ia_aiq_bracket_mode_hdr) ? true : false;
-        return UNKNOWN_ERROR;
-    }
-    return NO_ERROR;
+
+    switch (mDetectedSceneMode) {
+    case ia_aiq_scene_mode_none:
+        sceneMode.setTo("auto");
+        break;
+    case ia_aiq_scene_mode_close_up_portrait:
+        sceneMode.setTo("close_up_portrait");
+        break;
+    case ia_aiq_scene_mode_portrait:
+        sceneMode.setTo("portrait");
+        break;
+    case ia_aiq_scene_mode_lowlight_portrait:
+        sceneMode.setTo("night_portrait");
+        break;
+    case ia_aiq_scene_mode_low_light:
+        sceneMode.setTo("night");
+        break;
+    case ia_aiq_scene_mode_action:
+        sceneMode.setTo("action");
+        break;
+    case ia_aiq_scene_mode_backlight:
+        sceneMode.setTo("backlight");
+        break;
+    case ia_aiq_scene_mode_landscape:
+        sceneMode.setTo("landscape");
+        break;
+    case ia_aiq_scene_mode_document:
+        sceneMode.setTo("document");
+        break;
+    case ia_aiq_scene_mode_firework:
+        sceneMode.setTo("firework");
+        break;
+    case ia_aiq_scene_mode_lowlight_action:
+        sceneMode.setTo("lowlight_action");
+        break;
+    case ia_aiq_scene_mode_baby:
+        sceneMode.setTo("baby");
+        break;
+    case ia_aiq_scene_mode_barcode:
+        sceneMode.setTo("barcode");
+        break;
+    default:
+        LOGW("Unhandled detected scene mode: 0x%x", mDetectedSceneMode);
+        sceneMode.setTo("auto");
+        break;
+   }
+
+   sceneHdr = (mAeState.ae_results->multiframe & ia_aiq_bracket_mode_hdr) ? true : false;
+   LOG1("scene detected: %s - hdr hint: %d", sceneMode.string(), sceneHdr);
+   return NO_ERROR;
 }
 
 status_t AtomAIQ::setFaces(const ia_face_state& faceState)

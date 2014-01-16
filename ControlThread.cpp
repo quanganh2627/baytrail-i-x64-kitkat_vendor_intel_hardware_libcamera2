@@ -106,18 +106,6 @@ const char* ControlThread::sCaptureSubstateStrings[]= {
       "IDLE"
 };
 
-const char *scene_mode_detected[NUM_SCENE_DETECTED] = {
-                                                   "auto",
-                                                   "close_up_portrait",
-                                                   "portrait",
-                                                   "night_portrait",
-                                                   "night",
-                                                   "action",
-                                                   "backlight",
-                                                   "landscape",
-                                                   "barcode",
-                                                   "firework",
-};
 ControlThread::ControlThread(int cameraId) :
     Thread(true) // callbacks may call into java
     ,mCameraId(cameraId)
@@ -936,17 +924,15 @@ void ControlThread::atomRelease()
     mMessageQueue.send(&msg, MESSAGE_ID_RELEASE);
 }
 
-void ControlThread::sceneDetected(int sceneMode, bool sceneHdr)
+void ControlThread::sceneDetected(String8 sceneMode, bool sceneHdr)
 {
     LOG2("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_SCENE_DETECTED;
-    if (sceneMode >= 0 && sceneMode < NUM_SCENE_DETECTED) {
-        strlcpy(msg.data.sceneDetected.sceneMode, scene_mode_detected[sceneMode], (size_t)SCENE_STRING_LENGTH);
+    if (!sceneMode.isEmpty()) {
+        strlcpy(msg.data.sceneDetected.sceneMode, sceneMode.string(), (size_t)SCENE_STRING_LENGTH);
         msg.data.sceneDetected.sceneHdr = sceneHdr;
         mMessageQueue.send(&msg);
-    } else {
-        LOGW("%s: the scene mode (%d) provided is not in the defined range", __FUNCTION__, sceneMode);
     }
 }
 
@@ -2295,12 +2281,11 @@ status_t ControlThread::setSmartSceneParams(void)
         bool sceneDetectionSupported = strcmp(PlatformData::supportedSceneDetection(mCameraId), "") != 0;
         //scene mode detection should always be working, but we shouldn't take it in account whenever HDR is on.
         if (!mHdr.enabled && sceneDetectionSupported && m3AControls->getSmartSceneDetection()) {
-            int sceneMode = 0;
+            String8 sceneMode;
             bool sceneHdr = false;
             m3AThread->getCurrentSmartScene(sceneMode, sceneHdr);
             // Force XNR and ANR in case of lowlight scene
-            if (sceneMode == ia_aiq_scene_mode_lowlight_portrait ||
-                sceneMode == ia_aiq_scene_mode_low_light) {
+            if (sceneMode == "night_portrait" || sceneMode == "night") {
                 LOG1("Low-light scene detected, forcing XNR and ANR");
                 mISP->setXNR(true);
                 // Forcing mParameters to true, to be in sync with app update.

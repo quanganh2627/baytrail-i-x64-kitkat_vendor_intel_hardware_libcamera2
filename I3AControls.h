@@ -231,7 +231,7 @@ public:
     virtual status_t setManualShutter(float expTime) = 0;
     virtual status_t setSmartSceneDetection(bool en) = 0;
     virtual bool     getSmartSceneDetection() = 0;
-    virtual status_t getSmartSceneMode(int *sceneMode, bool *sceneHdr) = 0;
+    virtual status_t getSmartSceneMode(String8 &sceneMode, bool &sceneHdr) = 0;
     virtual void setPublicAeMode(AeMode mode) = 0;
     virtual AeMode getPublicAeMode() = 0;
     virtual AfStatus getCAFStatus() = 0;
