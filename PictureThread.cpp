@@ -383,7 +383,7 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 
     // Encode the image
     AtomBuffer *postviewBuf;
-    if (msg->postviewBuf.dataPtr == NULL)
+    if (msg->postviewBuf.dataPtr == NULL || msg->postviewBuf.status == FRAME_STATUS_SKIPPED)
         postviewBuf = NULL;
     else
         postviewBuf = &msg->postviewBuf;

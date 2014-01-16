@@ -3971,6 +3971,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             }
 
             msg->snapshotBuf.status = FRAME_STATUS_OK;
+            msg->postviewBuf.status = FRAME_STATUS_OK;
             if (findBufferByData(&msg->snapshotBuf, &mAllocatedSnapshotBuffers) == NULL) {
                 LOGE("Stale snapshot buffer %p returned... this should not happen", msg->snapshotBuf.dataPtr);
 
@@ -3987,34 +3988,23 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
                         LOGE("Error %d in putting snapshot buffer:%p postviewBuf:%p!", status,
                                 msg->snapshotBuf.dataPtr, msg->postviewBuf.dataPtr);
                     } else {
-                        LOG1("Recycle snapshot buffer:%p postviewBuf:%p", msg->snapshotBuf.dataPtr, msg->postviewBuf.dataPtr);
+                        LOG1("Recycle snapshot buffer:%p postview buffer:%p", msg->snapshotBuf.dataPtr, msg->postviewBuf.dataPtr);
                     }
                     mBurstBufsToReturn--;
                 } else {
                     mAvailableSnapshotBuffers.push(msg->snapshotBuf);
-                    LOG1("%s  pushed %p to mAvailableSnapshotBuffers, size %d",
-                            __FUNCTION__, msg->snapshotBuf.dataPtr, mAvailableSnapshotBuffers.size());
+                    if (findBufferByData(&msg->postviewBuf, &mAllocatedPostviewBuffers) != NULL &&
+                            findBufferByData(&msg->postviewBuf, &mAvailablePostviewBuffers) == NULL) {
+                        mAvailablePostviewBuffers.push(msg->postviewBuf);
+                    } else {
+                        LOGW("Exceptional postview buffer returned, should not happen");
+                    }
+                    LOG1("%s  pushed snapshot buffer:%p postview buffer:%p to available queue, size %d:%d",
+                            __FUNCTION__, msg->snapshotBuf.dataPtr, msg->postviewBuf.dataPtr,
+                            mAvailableSnapshotBuffers.size(), mAvailablePostviewBuffers.size());
                 }
             } else {
                 LOGE("%s Already available snapshot buffer arrived. Find the bug!!", __FUNCTION__);
-            }
-        }
-
-        if (msg->postviewBuf.status != FRAME_STATUS_SKIPPED) {
-            // Postview buffer availability:
-            if (msg->postviewBuf.dataPtr == NULL) {
-                // Recycled postview buffer was null. This is OK in some cases,
-                // like for ULL post-processed image: a NULL postview image is sent to encoding.
-                LOG1("@%s NULL postview buffer cycled", __FUNCTION__);
-            } else if (findBufferByData(&msg->postviewBuf, &mAllocatedPostviewBuffers) == NULL) {
-                LOGE("Stale postview buffer, dataPtr = %p returned... this should not happen",
-                    msg->postviewBuf.dataPtr);
-            } else if (findBufferByData(&msg->postviewBuf, &mAvailablePostviewBuffers) == NULL) {
-                mAvailablePostviewBuffers.push(msg->postviewBuf);
-                LOG1("%s: pushed postview buffer ptr = %p to mAvailablePostviewBuffers, size %d",
-                    __FUNCTION__, msg->postviewBuf.dataPtr, mAvailablePostviewBuffers.size());
-            } else {
-                LOGE("%s Already available postview buffer arrived. Find the bug!!", __FUNCTION__);
             }
         }
 
@@ -7085,7 +7075,7 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
     processedBuffer.status = FRAME_STATUS_OK;
     processedBuffer.type = ATOM_BUFFER_ULL;
 
-    status = mPictureThread->encode(picMetaData, &processedBuffer, NULL);
+    status = mPictureThread->encode(picMetaData, &processedBuffer, &postviewBuffer);
     if (status != NO_ERROR) {
         // normally this is done by PictureThread, but as no
         // encoding was done, free the allocated metadata
