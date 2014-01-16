@@ -215,6 +215,8 @@ status_t AtomDvs2::reconfigureNoLock()
             mDvs2Config.num_axis = ia_dvs2_algorihm_0_axis;
             mDVSEnabled = false;
         }
+    } else {
+        mDvs2Config.num_axis = ia_dvs2_algorihm_0_axis;
     }
     LOG2("DVS enabled:%s", mDVSEnabled ? "true": "false");
     /* setup binary dump parameter */
