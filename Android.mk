@@ -57,6 +57,7 @@ LOCAL_SRC_FILES := \
 	PostCaptureThread.cpp \
 	AccManagerThread.cpp \
 	SensorHW.cpp \
+	ValidateParameters.cpp \
 	v4l2dev/v4l2devicebase.cpp \
 	v4l2dev/v4l2videonode.cpp \
 	v4l2dev/v4l2subdevice.cpp \

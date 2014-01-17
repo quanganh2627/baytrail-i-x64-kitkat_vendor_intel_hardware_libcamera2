@@ -631,10 +631,7 @@ private:
     // must be deallocated and reallocated accordingly.
     status_t processStaticParameters(CameraParameters *oldParams,
             CameraParameters *newParams, bool &restartNeeded);
-    status_t validateParameters(const CameraParameters *params);
-    // validation helpers
-    bool validateSize(int width, int height, Vector<Size> &supportedSizes) const;
-    bool validateString(const char* value,  const char* supportList) const;
+
     bool validateHighSpeedResolutionFps(int width, int height, int fps) const;
 
     status_t stopCapture();
