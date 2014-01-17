@@ -237,6 +237,7 @@ status_t AtomAIQ::deinit3A()
     freeStatistics(m3aState.stats);
     ia_aiq_deinit(m3aState.ia_aiq_handle);
     delete mISPAdaptor;
+    mISPAdaptor = NULL;
     ia_mkn_uninit(mMkn);
     mISP = NULL;
     mAfMode = CAM_AF_MODE_NOT_SET;
@@ -276,11 +277,6 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
     mAeInputParameters.frame_use = m3aState.frame_use;
     mAeInputParameters.manual_frame_time_us_min = (long) 1/fps*1000000;
     mAwbInputParameters.frame_use = m3aState.frame_use;
-
-    // In high speed recording, the scene mode should be SPORTS
-    // Set AE operation mode as action to notify AIQ
-    if (mode == MODE_VIDEO && fps > DEFAULT_RECORDING_FPS)
-        setAeSceneMode(CAM_AE_SCENE_MODE_SPORTS);
 
     /* usually the grid changes as well when the mode changes. */
     changeSensorMode();
@@ -1095,7 +1091,7 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
 
         mAeInputParameters.frame_use = ia_aiq_frame_use_still;
 
-        ret =  apply3AProcess(true, dummy_time, dummy_time);
+        ret = apply3AProcess(true, &dummy_time);
 
         mAeInputParameters.frame_use = m3aState.frame_use;
 
@@ -1106,7 +1102,7 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
     }
     else
     {
-        ret = apply3AProcess(true, dummy_time, dummy_time);
+        ret = apply3AProcess(true, &dummy_time);
 
         if (mAwbResults)
             mAwbStoredResults = *mAwbResults;
@@ -1122,13 +1118,13 @@ status_t AtomAIQ::setFlash(int numFrames)
 }
 
 status_t AtomAIQ::apply3AProcess(bool read_stats,
-    const struct timeval capture_timestamp, struct timeval sof_timestamp)
+    struct timeval *frame_timestamp)
 {
     LOG2("@%s: read_stats = %d", __FUNCTION__, read_stats);
     status_t status = NO_ERROR;
 
     if (read_stats) {
-        status = getStatistics(&capture_timestamp, &sof_timestamp);
+        status = getStatistics(frame_timestamp);
     }
 
     if (m3aState.stats_valid) {
@@ -1563,6 +1559,7 @@ bool AtomAIQ::changeSensorMode(void)
     LOG2("sensor descriptor: line_periods_per_field %d", sd->line_periods_per_field);
     LOG2("sensor descriptor: coarse_integration_time_min %d", sd->coarse_integration_time_min);
     LOG2("sensor descriptor: coarse_integration_time_max_margin %d", sd->coarse_integration_time_max_margin);
+    LOG2("sensor descriptor: binning_factor_y %d", sensor_mode_data.binning_factor_y);
 
     if (m3aState.stats)
         freeStatistics(m3aState.stats);
@@ -1580,8 +1577,7 @@ bool AtomAIQ::changeSensorMode(void)
     return true;
 }
 
-status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct,
-                                const struct timeval *sof_timestamp_struct)
+status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct)
 {
     LOG2("@%s", __FUNCTION__);
     status_t ret = NO_ERROR;
@@ -1601,7 +1597,7 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct,
         ia_err err = ia_err_none;
         memset(&m3aState.statistics_input_parameters, 0, sizeof(ia_aiq_statistics_input_params));
 
-        m3aState.statistics_input_parameters.frame_timestamp = TIMEVAL2USECS(sof_timestamp_struct);
+        m3aState.statistics_input_parameters.frame_timestamp = TIMEVAL2USECS(frame_timestamp_struct);
 
         m3aState.statistics_input_parameters.frame_af_parameters = NULL;
         m3aState.statistics_input_parameters.external_histogram = NULL;
@@ -2273,7 +2269,7 @@ void AtomAIQ::getDefaultParams(CameraParameters *params, CameraParameters *intel
         return;
     }
 
-    int cameraId = mISP->getCurrentCameraId();
+    int cameraId = mSensorCI->getCurrentCameraId();
     // ae mode
     intel_params->set(IntelCameraParameters::KEY_AE_MODE, "auto");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_AE_MODES, "auto,manual,shutter-priority,aperture-priority");

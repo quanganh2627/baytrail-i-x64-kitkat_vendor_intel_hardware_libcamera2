@@ -112,7 +112,7 @@ public:
     virtual bool getAeFlashNecessary() { return false; }
     virtual AwbMode getLightSource() { return CAM_AWB_MODE_NOT_SET; }
     virtual status_t setAeBacklightCorrection(bool en) { return INVALID_OPERATION; }
-    virtual status_t apply3AProcess(bool read_stats, struct timeval capture_timestamp, struct timeval sof_timestamp) { return INVALID_OPERATION; }
+    virtual status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp) { return INVALID_OPERATION; }
     virtual status_t startStillAf() { return INVALID_OPERATION; }
     virtual status_t stopStillAf() { return INVALID_OPERATION; }
     virtual AfStatus isStillAfComplete() { return CAM_AF_STATUS_FAIL; }

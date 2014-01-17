@@ -56,17 +56,13 @@
 #define ATOMISP_PREVIEW_POLL_TIMEOUT 1000
 #define ATOMISP_GETFRAME_RETRY_COUNT 60  // Times to retry poll/dqbuf in case of error
 #define ATOMISP_GETFRAME_STARVING_WAIT 33000 // Time to usleep between retry's when stream is starving from buffers.
-#define ATOMISP_EVENT_RECOVERY_WAIT 33000 // Time to usleep between retry's after erros from v4l2_event receiving.
 #define ATOMISP_MIN_CONTINUOUS_BUF_SIZE 3 // Min buffer len supported by CSS
 #define ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X 5 // Min buffer len supported by CSS2.x
-#define FRAME_SYNC_POLL_TIMEOUT 500
-
 namespace android {
 
 ////////////////////////////////////////////////////////////////////
 //                          STATIC DATA
 ////////////////////////////////////////////////////////////////////
-static sensorPrivateData gSensorDataCache[MAX_CAMERAS];
 Mutex AtomISP::sISPCountLock;
 static struct devNameGroup devName[MAX_CAMERAS] = {
     {{"/dev/video0", "/dev/video1", "/dev/video2", "/dev/video3", "/dev/video4"},
@@ -74,7 +70,6 @@ static struct devNameGroup devName[MAX_CAMERAS] = {
     {{"/dev/video5", "/dev/video6", "/dev/video7", "/dev/video8", "/dev/video9"},
         false,},
 };
-AtomISP::cameraInfo AtomISP::sCamInfo[MAX_CAMERA_NODES];
 
 ////////////////////////////////////////////////////////////////////
 //                          PUBLIC METHODS
@@ -82,7 +77,6 @@ AtomISP::cameraInfo AtomISP::sCamInfo[MAX_CAMERA_NODES];
 
 AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callbacks) :
      mPreviewStreamSource("PreviewStreamSource", this)
-    ,mFrameSyncSource("FrameSyncSource", this)
     ,m3AStatSource("AAAStatSource", this)
     ,mCameraId(cameraId)
     ,mDvs(NULL)
@@ -112,14 +106,13 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mStatisticSkips(0)
     ,mDVSFrameSkips(0)
     ,mVideoZoomFrameSkips(0)
+    ,mSensorHW(cameraId)
     ,mSessionId(0)
     ,mLowLight(false)
     ,mXnr(0)
     ,mZoomRatios(NULL)
     ,mRawDataDumpSize(0)
-    ,mFrameSyncRequested(0)
     ,m3AStatRequested(0)
-    ,mFrameSyncEnabled(false)
     ,m3AStatscEnabled(false)
     ,mColorEffect(V4L2_COLORFX_NONE)
     ,mScaler(scalerService)
@@ -152,7 +145,6 @@ status_t AtomISP::initDevice()
     mPreviewDevice.clear();
     mPostViewDevice.clear();
     mRecordingDevice.clear();
-    mIspSubdevice.clear();
     m3AEventSubdevice.clear();
     mFileInjectDevice.clear();
     mOriginalPreviewDevice.clear();
@@ -161,7 +153,6 @@ status_t AtomISP::initDevice()
     mPreviewDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_PREVIEW_DEVICE], V4L2_PREVIEW_DEVICE);
     mPostViewDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_POSTVIEW_DEVICE], V4L2_POSTVIEW_DEVICE);
     mRecordingDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_RECORDING_DEVICE], V4L2_RECORDING_DEVICE);
-    mIspSubdevice = new V4L2Subdevice(PlatformData::getISPSubDeviceName(),V4L2_ISP_SUBDEV);
     m3AEventSubdevice = new V4L2Subdevice(PlatformData::getISPSubDeviceName(),V4L2_ISP_SUBDEV);
     mFileInjectDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_INJECT_DEVICE], V4L2_INJECT_DEVICE,
                                           V4L2VideoNode::OUTPUT_VIDEO_NODE);
@@ -191,12 +182,7 @@ status_t AtomISP::initDevice()
 
     initFileInject();
 
-    // Select the input port to use
-    status = initCameraInput();
-    if (status != NO_ERROR) {
-        LOGE("Unable to initialize camera input %d", mCameraId);
-        return NO_INIT;
-    }
+    mSensorHW.selectActiveSensor(mMainDevice);
 
     mSensorType = PlatformData::sensorType(mCameraId);
     LOG1("Sensor type detected: %s", (mSensorType == SENSOR_TYPE_RAW)?"RAW":"SOC");
@@ -209,7 +195,7 @@ status_t AtomISP::initDVS()
     status_t status = NO_ERROR;
     HWControlGroup hwcg;
     hwcg.mIspCI = (IHWIspControl*) this;
-    hwcg.mSensorCI = (IHWSensorControl*) this;
+    hwcg.mSensorCI = getSensorControlInterface();
     mDvs = IDvs::createAtomDvs(hwcg);
     if (!mDvs)
         return NO_INIT;
@@ -287,11 +273,6 @@ status_t AtomISP::init()
         return NO_INIT;
     }
 
-
-    if (selectCameraSensor() != NO_ERROR) {
-       LOGE("Could not select camera: %s", mCameraInput->name);
-       return NO_INIT;
-    }
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Init_3A");
 
     initFrameConfig();
@@ -322,29 +303,20 @@ status_t AtomISP::init()
     return status;
 }
 
-int AtomISP::getPrimaryCameraIndex(void) const
+/**
+ * Returns IHWSensorControl interface
+ *
+ * Note: not ref counted
+ *
+ * Local mSensorHW is SensorHW object that implements IHWSensorControl.
+ * Interface accessor is valid once AtomISP is initialized and remains
+ * valid through AtomISP composition. This lifespan means roughly the
+ * time when camera device remains open.
+ */
+IHWSensorControl* AtomISP::getSensorControlInterface()
 {
-    int res = 0;
-    int items = sizeof(sCamInfo) / sizeof(cameraInfo);
-    for (int i = 0; i < items; i++) {
-        if (sCamInfo[i].port == ATOMISP_CAMERA_PORT_PRIMARY) {
-            res = i;
-            break;
-        }
-    }
-    return res;
+    return isDeviceInitialized() ? (IHWSensorControl*) &mSensorHW : NULL;
 }
-
-int AtomISP::getCurrentCameraId(void)
-{
-    return mCameraId;
-}
-
-const char * AtomISP::getSensorName(void)
-{
-    return mCameraInput->name;
-}
-
 
 /**
  * Convert zoom value to zoom ratio
@@ -406,51 +378,6 @@ void AtomISP::initFrameConfig()
 }
 
 /**
- * Maps the requested 'cameraId' to a V4L2 input.
- *
- * Only to be called from constructor
- * The cameraId  is passed to the HAL during creation as is currently stored in
- * the Camera Configuration Class (CPF Store)
- * This CameraID is used to identify a particular camera, it maps always 0 to back
- * camera and 1 to front whereas the index in the sCamInfo is filled from V4L2
- * The order how front and back camera are returned
- * may be different. This Android camera id will be used
- * to select parameters from back or front camera
- */
-status_t AtomISP::initCameraInput()
-{
-    status_t status = NO_INIT;
-    size_t numCameras = setupCameraInfo();
-    mCameraInput = 0;
-
-    for (size_t i = 0; i < numCameras; i++) {
-
-        // BACK camera -> AtomISP/V4L2 primary port
-        // FRONT camera -> AomISP/V4L2 secondary port
-
-        if ((PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_BACK &&
-             sCamInfo[i].port == ATOMISP_CAMERA_PORT_PRIMARY) ||
-            (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT &&
-             sCamInfo[i].port == ATOMISP_CAMERA_PORT_SECONDARY)) {
-            mCameraInput = &sCamInfo[i];
-            mCameraInput->androidCameraId = mCameraId;
-            LOG1("Camera found, v4l2 dev %d, android cameraId %d", i, mCameraId);
-            status = NO_ERROR;
-            break;
-        }
-    }
-
-    if (mIsFileInject) {
-        LOG1("AtomISP opened with file inject camera id");
-        mCameraInput = &sCamInfo[INTEL_FILE_INJECT_CAMERA_ID];
-        mFileInject.active = true;
-        status = NO_ERROR;
-    }
-
-    return status;
-}
-
-/**
  * Only to be called from 2nd stage contructor AtomISP::init().
  */
 void AtomISP::initFileInject()
@@ -492,7 +419,6 @@ AtomISP::~AtomISP()
     mPostViewDevice.clear();
     mRecordingDevice.clear();
     m3AEventSubdevice.clear();
-    mIspSubdevice.clear();
     mFileInjectDevice.clear();
     mSensorSupportedFormats.clear();
 
@@ -638,7 +564,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * flicker mode
      */
-    if(mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
+    if(mSensorType == SENSOR_TYPE_RAW) {
         params->set(CameraParameters::KEY_ANTIBANDING, "auto");
         params->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, "off,50hz,60hz,auto");
     } else {
@@ -1019,6 +945,8 @@ status_t AtomISP::configure(AtomMode mode)
     {
         mMode = mode;
         dumpFrameInfo(mode);
+        // Pipeline configured, triggering SensorHW::prepare()
+        status = mSensorHW.prepare(mode == MODE_CAPTURE);
     }
 
     /**
@@ -1074,6 +1002,7 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
         break;
     }
 
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("Mode:", mode);
     return status;
 }
 
@@ -1082,6 +1011,16 @@ status_t AtomISP::start()
     LOG1("@%s", __FUNCTION__);
     LOG1("mode = %d", mMode);
     status_t status = NO_ERROR;
+
+    if (mSensorType == SENSOR_TYPE_RAW) {
+        // TODO: Workaround to be removed.
+        // This is temporary workaround to support old FrameSyncSource
+        // implementation moved from AtomISP into SensorHW class. To
+        // ensure the observing thread is created regardless whether
+        // there are clients attaching, we attach SensorHW itself.
+        attachObserver((IAtomIspObserver *) &mSensorHW, OBSERVE_FRAME_SYNC_SOF);
+    }
+    mSensorHW.start();
 
     switch (mMode) {
     case MODE_CONTINUOUS_CAPTURE:
@@ -1156,6 +1095,11 @@ status_t AtomISP::stop()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
+    if (mSensorType == SENSOR_TYPE_RAW) {
+        // TODO: Workaround to be removed, See AtomISP::start()
+        detachObserver((IAtomIspObserver *) &mSensorHW, OBSERVE_FRAME_SYNC_SOF);
+    }
+
     runStopISPActions();
 
     switch (mMode) {
@@ -1178,6 +1122,9 @@ status_t AtomISP::stop()
     default:
         break;
     };
+
+    mSensorHW.stop();
+
     if (mFileInject.active == true)
         stopFileInject();
 
@@ -1514,22 +1461,6 @@ status_t AtomISP::configureCapture()
     }
 
 nopostview:
-    // Subscribe to frame sync event if in bracketing mode
-    if ((mFrameSyncRequested > 0) && (!mFrameSyncEnabled)) {
-        ret = mIspSubdevice->open();
-        if (ret < 0) {
-            LOGE("Failed to open V4L2_ISP_SUBDEV!");
-            goto errorCloseSecond;
-        }
-
-        ret = mIspSubdevice->subscribeEvent(V4L2_EVENT_FRAME_SYNC);
-        if (ret < 0) {
-            LOGE("Failed to subscribe to frame sync event!");
-            goto errorCloseSubdev;
-        }
-        mFrameSyncEnabled = true;
-    }
-
     // need to resend the current zoom value
     if (mMode == MODE_VIDEO && mDvs && mCssMajorVersion == 2)
         mDvs->setZoom(mConfig.zoom);
@@ -1538,8 +1469,6 @@ nopostview:
 
     return status;
 
-errorCloseSubdev:
-    mIspSubdevice->close();
 errorCloseSecond:
     mPostViewDevice->close();
 errorFreeBuf:
@@ -1878,6 +1807,7 @@ status_t AtomISP::startCapture()
     int ret;
     status_t status = NO_ERROR;
     int i, initialSkips;
+
     // Limited by driver, raw bayer image dump can support only 1 frame when setting
     // snapshot number. Otherwise, the raw dump image would be corrupted.
     // also since CSS1.5 we cannot capture from postview at the same time
@@ -1940,8 +1870,6 @@ status_t AtomISP::startCapture()
 
     for (i = 0; i < initialSkips; i++) {
         AtomBuffer s,p;
-        if (mFrameSyncEnabled)
-            pollFrameSyncEvent();
         ret = getSnapshot(&s,&p);
         if (ret == NO_ERROR)
             ret = putSnapshot(&s,&p);
@@ -2022,13 +1950,6 @@ status_t AtomISP::stopCapture()
     // note: MAIN device is kept open on purpose
     if (mPostViewDevice->isOpen())
         mPostViewDevice->close();
-
-    // if SOF event is enabled, unsubscribe and close the device
-    if (mFrameSyncEnabled) {
-        mIspSubdevice->unsubscribeEvent(V4L2_EVENT_FRAME_SYNC);
-        mIspSubdevice->close();
-        mFrameSyncEnabled = false;
-    }
 
     if (mUsingClientSnapshotBuffers) {
         mConfig.num_snapshot = 0;
@@ -2240,66 +2161,6 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *
     PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("DeviceId:", device->mId);
     //We need apply all the parameter settings when do the camera reset
     return ret;
-}
-
-status_t AtomISP::selectCameraSensor()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t ret = NO_ERROR;
-
-    //Choose the camera sensor
-    LOG1("Selecting camera sensor: %s", mCameraInput->name);
-    ret = mMainDevice->setInput(mCameraInput->index);
-    if (ret != NO_ERROR) {
-        mMainDevice->close();
-        ret = UNKNOWN_ERROR;
-    } else {
-        PERFORMANCE_TRACES_BREAKDOWN_STEP("capture_s_input");
-
-        // Query now the supported pixel formats
-        ret = mMainDevice->queryCapturePixelFormats(mSensorSupportedFormats);
-        if (ret != NO_ERROR) {
-           LOGW("Cold not query capture formats from sensor: %s", mCameraInput->name);
-           ret = NO_ERROR;   // This is not critical
-        }
-        sensorStoreRawFormat();
-    }
-    return ret;
-}
-
-/**
- * Helper method for the sensor to select the prefered BAYER format
- * the supported pixel formats are retrieved when the sensor is selected.
- *
- * The list is stored in  mSensorSupportedFormats.
- *
- * This helper method finds the first Bayer format and saves it to mRawBayerFormat
- * so that if raw dump feature is enabled we know what is the sensor
- * preferred format.
- *
- */
-status_t AtomISP::sensorStoreRawFormat()
-{
-    LOG1("@%s", __FUNCTION__);
-    Vector<v4l2_fmtdesc>::iterator it = mSensorSupportedFormats.begin();
-
-    for (;it != mSensorSupportedFormats.end(); ++it) {
-        /* store it only if is one of the Bayer formats */
-        if (isBayerFormat(it->pixelformat)) {
-            mRawBayerFormat = it->pixelformat;
-            break;  //we take the first one, sensors tend to support only one
-        }
-    }
-    return NO_ERROR;
-}
-
-/**
- * Part of the IHWSensorControl interface.
- * It returns the V4L2 Bayer format preferred by the sensor
- */
-int AtomISP::getRawFormat()
-{
-    return mRawBayerFormat;
 }
 
 status_t AtomISP::setPreviewFrameFormat(int width, int height, int bpl, int fourcc)
@@ -2536,9 +2397,8 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
         //               limited high-resolution video recordiing
         // TODO: if we get more cases like this, move to PlatformData.h
         const char* sensorName = "ov8830";
-        if (mCameraInput &&
-            strncmp(mCameraInput->name, sensorName, sizeof(sensorName) - 1) == 0) {
-            LOG1("Quirk for sensor %s, limiting video preview size", mCameraInput->name);
+        if (strncmp(mSensorHW.getSensorName(), sensorName, sizeof(sensorName) - 1) == 0) {
+            LOG1("Quirk for sensor %s, limiting video preview size", sensorName);
             reducedVf = true;
         }
 
@@ -2557,7 +2417,7 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
         }
         //Workaround 5, video recording FOV issue
         const char manUsensorBName[] = "imx132";
-        if (mCameraInput && (strncmp(mCameraInput->name, manUsensorBName, sizeof(manUsensorBName) - 1) == 0)) {
+        if (strncmp(mSensorHW.getSensorName(), manUsensorBName, sizeof(manUsensorBName) - 1) == 0) {
             // If DVS is not enabled, keep preview height as 1080 which is full FOV height for IMX132.
             // If DVS is enabled, keep preview height as 900 which is 20% cut off by 1080.
             // 1080 = 900 * (1 + 20%)
@@ -2637,7 +2497,7 @@ void AtomISP::getFocusDistances(CameraParameters *params)
     float fDistances[3] = {0};  // 3 distances: near, optimal, and far
 
     // would be better if we could get these from driver instead of hard-coding
-    if(mCameraInput->port == ATOMISP_CAMERA_PORT_PRIMARY) {
+    if (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_BACK) {
         fDistances[0] = 2.0;
         fDistances[1] = 2.0;
         fDistances[2] = INFINITY;
@@ -2672,7 +2532,7 @@ void AtomISP::getFocusDistances(CameraParameters *params)
 status_t AtomISP::setFlash(int numFrames)
 {
     LOG1("@%s: numFrames = %d", __FUNCTION__, numFrames);
-    if (mCameraInput->port != ATOMISP_CAMERA_PORT_PRIMARY) {
+    if (PlatformData::cameraFacing(mCameraId) != CAMERA_FACING_BACK) {
         LOGE("Flash is supported only for primary camera!");
         return INVALID_OPERATION;
     }
@@ -2697,7 +2557,7 @@ status_t AtomISP::setFlash(int numFrames)
 status_t AtomISP::setFlashIndicator(int intensity)
 {
     LOG1("@%s: intensity = %d", __FUNCTION__, intensity);
-    if (mCameraInput->port != ATOMISP_CAMERA_PORT_PRIMARY) {
+    if (PlatformData::cameraFacing(mCameraId) != CAMERA_FACING_BACK) {
         LOGE("Indicator intensity is supported only for primary camera!");
         return INVALID_OPERATION;
     }
@@ -2738,7 +2598,7 @@ status_t AtomISP::setTorch(int intensity)
 {
     LOG1("@%s: intensity = %d", __FUNCTION__, intensity);
 
-    if (mCameraInput->port != ATOMISP_CAMERA_PORT_PRIMARY) {
+    if (PlatformData::cameraFacing(mCameraId) != CAMERA_FACING_BACK) {
         LOGE("Indicator intensity is supported only for primary camera!");
         return INVALID_OPERATION;
     }
@@ -3033,8 +2893,10 @@ int AtomISP::startFileInject(void)
 
     // allocate buffer and copy file content into it
 
-    if (mFileInject.dataAddr != NULL)
+    if (mFileInject.dataAddr != NULL) {
         delete[] mFileInject.dataAddr;
+        mFileInject.dataAddr = NULL;
+    }
 
     mFileInject.dataAddr = new char[mFileInject.formatDescriptor.size];
     if (mFileInject.dataAddr == NULL) {
@@ -3083,8 +2945,10 @@ int AtomISP::stopFileInject(void)
 {
     LOG1("%s: enter", __FUNCTION__);
 
-    if (mFileInject.dataAddr != NULL)
+    if (mFileInject.dataAddr != NULL) {
         delete[] mFileInject.dataAddr;
+        mFileInject.dataAddr = NULL;
+    }
 
     mFileInjectDevice->close();
 
@@ -3879,6 +3743,7 @@ status_t AtomISP::computeZoomRatios()
 
     if (mZoomRatios != NULL) {
         delete[] mZoomRatios;
+        mZoomRatios = NULL;
     }
 
     mZoomRatios = new char[stringSize];
@@ -4437,34 +4302,6 @@ bool AtomISP::needNewPostviewBuffers()
     return true;
 }
 
-size_t AtomISP::setupCameraInfo()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t ret;
-    size_t numCameras = 0;
-    struct v4l2_input input;
-
-    for (int i = 0; i < PlatformData::numberOfCameras(); i++) {
-        memset(&input, 0, sizeof(input));
-        memset(&sCamInfo[i], 0, sizeof(sCamInfo[i]));
-        input.index = i;
-        ret = mMainDevice->enumerateInputs(&input);
-        if (ret != NO_ERROR) {
-            sCamInfo[i].port = -1;
-            LOGE("Device input enumeration failed for sensor input %d", i);
-            if (ret == INVALID_OPERATION)
-                break;
-        } else {
-            sCamInfo[i].port = input.reserved[1];
-            sCamInfo[i].index = i;
-            strncpy(sCamInfo[i].name, (const char *)input.name, sizeof(sCamInfo[i].name)-1);
-            LOG1("Detected sensor \"%s\"", sCamInfo[i].name);
-        }
-        numCameras++;
-    }
-    return numCameras;
-}
-
 unsigned int AtomISP::getNumOfSkipFrames(void)
 {
     int ret = 0;
@@ -4899,54 +4736,6 @@ int AtomISP::getFocusStatus(int *status)
     return mMainDevice->getControl(V4L2_CID_FOCUS_STATUS, status);
 }
 
-int AtomISP::getModeInfo(struct atomisp_sensor_mode_data *mode_data)
-{
-    LOG2("@%s", __FUNCTION__);
-    int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_G_SENSOR_MODE_DATA, mode_data);
-    LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_MODE_DATA ret: %d\n", __FUNCTION__, ret);
-    return ret;
-}
-
-int AtomISP::setExposure(struct atomisp_exposure *exposure)
-{
-    int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_EXPOSURE, exposure);
-    LOG2("%s IOCTL ATOMISP_IOC_S_EXPOSURE ret: %d, gain %d %d, citg %d %d\n", __FUNCTION__, ret, exposure->gain[0], exposure->gain[1], exposure->integration_time[0], exposure->integration_time[0]);
-    return ret;
-}
-
-int AtomISP::setExposureTime(int time)
-{
-    LOG2("@%s", __FUNCTION__);
-
-    return mMainDevice->setControl(V4L2_CID_EXPOSURE_ABSOLUTE, time, "Exposure time");
-}
-
-int AtomISP::getExposureTime(int *time)
-{
-    LOG2("@%s", __FUNCTION__);
-    return mMainDevice->getControl(V4L2_CID_EXPOSURE_ABSOLUTE, time);
-}
-
-int AtomISP::getAperture(int *aperture)
-{
-    LOG2("@%s", __FUNCTION__);
-    return mMainDevice->getControl(V4L2_CID_IRIS_ABSOLUTE, aperture);
-}
-
-int AtomISP::getFNumber(unsigned short *fnum_num, unsigned short *fnum_denom)
-{
-    LOG2("@%s", __FUNCTION__);
-    int fnum = 0, ret;
-
-    ret = mMainDevice->getControl(V4L2_CID_FNUMBER_ABSOLUTE, &fnum);
-
-    *fnum_num = (unsigned short)(fnum >> 16);
-    *fnum_denom = (unsigned short)(fnum & 0xFFFF);
-    return ret;
-}
-
 void AtomISP::getSensorDataFromFile(const char *file_name, sensorPrivateData *sensor_data)
 {
     LOG2("@%s", __FUNCTION__);
@@ -4996,226 +4785,6 @@ void AtomISP::getSensorDataFromFile(const char *file_name, sensorPrivateData *se
     close(otp_fd);
 }
 
-void AtomISP::getMotorData(sensorPrivateData *sensor_data)
-{
-    LOG2("@%s", __FUNCTION__);
-    int rc;
-    struct v4l2_private_int_data motorPrivateData;
-
-    motorPrivateData.size = 0;
-    motorPrivateData.data = NULL;
-    motorPrivateData.reserved[0] = 0;
-    motorPrivateData.reserved[1] = 0;
-
-    sensor_data->data = NULL;
-    sensor_data->size = 0;
-    // First call with size = 0 will return motor private data size.
-    rc = mMainDevice->xioctl(ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA, &motorPrivateData);
-    LOG2("%s IOCTL ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA to get motor private data size ret: %d\n", __FUNCTION__, rc);
-    if (rc != 0 || motorPrivateData.size == 0) {
-        LOGD("Failed to get motor private data size. Error: %d", rc);
-        return;
-    }
-
-    motorPrivateData.data = malloc(motorPrivateData.size);
-    if (motorPrivateData.data == NULL) {
-        LOGD("Failed to allocate memory for motor private data.");
-        return;
-    }
-
-    // Second call with correct size will return motor private data.
-    rc = mMainDevice->xioctl(ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA, &motorPrivateData);
-    LOG2("%s IOCTL ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA to get motor private data ret: %d\n", __FUNCTION__, rc);
-
-    if (rc != 0 || motorPrivateData.size == 0) {
-        LOGD("Failed to read motor private data. Error: %d", rc);
-        free(motorPrivateData.data);
-        return;
-    }
-
-    sensor_data->data = motorPrivateData.data;
-    sensor_data->size = motorPrivateData.size;
-    sensor_data->fetched = true;
-}
-
-void AtomISP::getSensorData(sensorPrivateData *sensor_data)
-{
-    LOG2("@%s", __FUNCTION__);
-    int rc;
-    struct v4l2_private_int_data otpdata;
-    int cameraId = getCurrentCameraId();
-
-    sensor_data->data = NULL;
-    sensor_data->size = 0;
-
-    if ((gControlLevel & CAMERA_DISABLE_FRONT_NVM) || (gControlLevel & CAMERA_DISABLE_BACK_NVM)) {
-        LOG1("NVM data reading disabled");
-        sensor_data->fetched = false;
-    }
-    else {
-        otpdata.size = 0;
-        otpdata.data = NULL;
-        otpdata.reserved[0] = 0;
-        otpdata.reserved[1] = 0;
-
-        if (gSensorDataCache[cameraId].fetched) {
-            sensor_data->data = gSensorDataCache[cameraId].data;
-            sensor_data->size = gSensorDataCache[cameraId].size;
-            return;
-        }
-        // First call with size = 0 will return OTP data size.
-        rc = mMainDevice->xioctl(ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
-        LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data size ret: %d\n", __FUNCTION__, rc);
-        if (rc != 0 || otpdata.size == 0) {
-            LOGD("Failed to get OTP size. Error: %d", rc);
-            return;
-        }
-
-        otpdata.data = calloc(otpdata.size, 1);
-        if (otpdata.data == NULL) {
-            LOGD("Failed to allocate memory for OTP data.");
-            return;
-        }
-
-        // Second call with correct size will return OTP data.
-        rc = mMainDevice->xioctl(ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
-        LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data ret: %d\n", __FUNCTION__, rc);
-
-        if (rc != 0 || otpdata.size == 0) {
-            LOGD("Failed to read OTP data. Error: %d", rc);
-            free(otpdata.data);
-            return;
-        }
-
-        sensor_data->data = otpdata.data;
-        sensor_data->size = otpdata.size;
-        sensor_data->fetched = true;
-    }
-    gSensorDataCache[cameraId] = *sensor_data;
-}
-
-int AtomISP::setExposureMode(v4l2_exposure_auto_type v4l2Mode)
-{
-    LOG2("@%s: %d", __FUNCTION__, v4l2Mode);
-    return mMainDevice->setControl(V4L2_CID_EXPOSURE_AUTO, v4l2Mode, "AE mode");
-}
-
-int AtomISP::getExposureMode(v4l2_exposure_auto_type * type)
-{
-    LOG2("@%s", __FUNCTION__);
-    return mMainDevice->getControl(V4L2_CID_EXPOSURE_AUTO, (int*)type);
-}
-
-int AtomISP::setExposureBias(int bias)
-{
-    LOG2("@%s: bias: %d", __FUNCTION__, bias);
-    return mMainDevice->setControl(V4L2_CID_EXPOSURE, bias, "exposure");
-}
-
-int AtomISP::getExposureBias(int * bias)
-{
-    LOG2("@%s", __FUNCTION__);
-    return mMainDevice->getControl(V4L2_CID_EXPOSURE, bias);
-}
-
-int AtomISP::setSceneMode(v4l2_scene_mode mode)
-{
-    LOG2("@%s: %d", __FUNCTION__, mode);
-    return mMainDevice->setControl(V4L2_CID_SCENE_MODE, mode, "scene mode");
-}
-
-int AtomISP::getSceneMode(v4l2_scene_mode * mode)
-{
-    LOG2("@%s", __FUNCTION__);
-    return mMainDevice->getControl(V4L2_CID_SCENE_MODE, (int*)mode);
-}
-
-int AtomISP::setWhiteBalance(v4l2_auto_n_preset_white_balance mode)
-{
-    LOG2("@%s: %d", __FUNCTION__, mode);
-    return mMainDevice->setControl(V4L2_CID_AUTO_N_PRESET_WHITE_BALANCE, mode, "white balance");
-}
-
-int AtomISP::getWhiteBalance(v4l2_auto_n_preset_white_balance * mode)
-{
-    LOG2("@%s", __FUNCTION__);
-    return mMainDevice->getControl(V4L2_CID_AUTO_N_PRESET_WHITE_BALANCE, (int*)mode);
-}
-
-int AtomISP::setIso(int iso)
-{
-    LOG2("@%s: ISO: %d", __FUNCTION__, iso);
-    return mMainDevice->setControl(V4L2_CID_ISO_SENSITIVITY, iso, "iso");
-}
-
-int AtomISP::getIso(int * iso)
-{
-    LOG2("@%s", __FUNCTION__);
-    return mMainDevice->getControl(V4L2_CID_ISO_SENSITIVITY, iso);
-}
-
-int AtomISP::setAeMeteringMode(v4l2_exposure_metering mode)
-{
-    LOG2("@%s: %d", __FUNCTION__, mode);
-    return mMainDevice->setControl(V4L2_CID_EXPOSURE_METERING, mode, "AE metering mode");
-}
-
-int AtomISP::getAeMeteringMode(v4l2_exposure_metering * mode)
-{
-    LOG2("@%s", __FUNCTION__);
-    return mMainDevice->getControl(V4L2_CID_EXPOSURE_METERING, (int*)mode);
-}
-
-int AtomISP::setAeFlickerMode(v4l2_power_line_frequency mode)
-{
-    LOG2("@%s: %d", __FUNCTION__, (int) mode);
-    return mMainDevice->setControl(V4L2_CID_POWER_LINE_FREQUENCY,
-                                    mode, "light frequency");
-}
-
-int AtomISP::setAfMode(v4l2_auto_focus_range mode)
-{
-    LOG2("@%s: %d", __FUNCTION__, mode);
-    return mMainDevice->setControl(V4L2_CID_AUTO_FOCUS_RANGE , mode, "AF mode");
-}
-
-int AtomISP::getAfMode(v4l2_auto_focus_range * mode)
-{
-    LOG2("@%s", __FUNCTION__);
-    return mMainDevice->getControl(V4L2_CID_AUTO_FOCUS_RANGE, (int*)mode);
-}
-
-int AtomISP::setAfEnabled(bool enable)
-{
-    LOG2("@%s", __FUNCTION__);
-    return mMainDevice->setControl(V4L2_CID_FOCUS_AUTO, enable, "Auto Focus");
-}
-
-int AtomISP::set3ALock(int aaaLock)
-{
-    LOG2("@%s", __FUNCTION__);
-    return mMainDevice->setControl(V4L2_CID_3A_LOCK, aaaLock, "AE Lock");
-}
-
-int AtomISP::get3ALock(int * aaaLock)
-{
-    LOG2("@%s", __FUNCTION__);
-    return mMainDevice->getControl(V4L2_CID_3A_LOCK, aaaLock);
-}
-
-
-int AtomISP::setAeFlashMode(v4l2_flash_led_mode mode)
-{
-    LOG2("@%s: %d", __FUNCTION__, mode);
-    return mMainDevice->setControl(V4L2_CID_FLASH_LED_MODE, mode, "Flash mode");
-}
-
-int AtomISP::getAeFlashMode(v4l2_flash_led_mode * mode)
-{
-    LOG2("@%s", __FUNCTION__);
-    return mMainDevice->getControl(V4L2_CID_FLASH_LED_MODE, (int*)mode);
-}
-
 int AtomISP::setAicParameter(struct atomisp_parameters *aic_param)
 {
     LOG2("@%s", __FUNCTION__);
@@ -5253,6 +4822,9 @@ int AtomISP::setIspParameter(struct atomisp_parm *isp_param)
     return ret;
 }
 
+/**
+ * Retreive 3A statistics from driver
+ */
 int AtomISP::getIspStatistics(struct atomisp_3a_statistics *statistics)
 {
     LOG2("@%s", __FUNCTION__);
@@ -5485,21 +5057,6 @@ int AtomISP::setFlashIntensity(int intensity)
 }
 
 /**
- * TODO: deprecated, utilize observer. See mFrameSyncSource
- */
-status_t AtomISP::enableFrameSyncEvent(bool enable)
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    if (enable) {
-        mFrameSyncRequested++;
-    } else if (mFrameSyncRequested > 0) {
-        mFrameSyncRequested--;
-    }
-    return status;
-}
-
-/**
  * Return IObserverSubject for ObserverType
  */
 IObserverSubject* AtomISP::observerSubjectByType(ObserverType t)
@@ -5510,7 +5067,7 @@ IObserverSubject* AtomISP::observerSubjectByType(ObserverType t)
             s = &mPreviewStreamSource;
             break;
         case OBSERVE_FRAME_SYNC_SOF:
-            s = &mFrameSyncSource;
+            s = mSensorHW.getFrameSyncSource();
             break;
         case OBSERVE_3A_STAT_READY:
             s = &m3AStatSource;
@@ -5527,27 +5084,6 @@ IObserverSubject* AtomISP::observerSubjectByType(ObserverType t)
 status_t AtomISP::attachObserver(IAtomIspObserver *observer, ObserverType t)
 {
     status_t ret;
-
-    if (t == OBSERVE_FRAME_SYNC_SOF) {
-        mFrameSyncRequested++;
-        if (mFrameSyncRequested == 1) {
-           // Subscribe to frame sync event only the first time is requested
-           ret = mIspSubdevice->open();
-           if (ret < 0) {
-               LOGE("Failed to open V4L2_ISP_SUBDEV!");
-               return UNKNOWN_ERROR;
-           }
-
-           ret =  mIspSubdevice->subscribeEvent(V4L2_EVENT_FRAME_SYNC);
-           if (ret < 0) {
-               LOGE("Failed to subscribe to frame sync event!");
-               mIspSubdevice->close();
-               return UNKNOWN_ERROR;
-           }
-           mFrameSyncEnabled = true;
-
-        }
-    }
 
     if (t == OBSERVE_3A_STAT_READY) {
         m3AStatRequested++;
@@ -5586,15 +5122,6 @@ status_t AtomISP::detachObserver(IAtomIspObserver *observer, ObserverType t)
     if (ret != NO_ERROR) {
         LOGE("%s failed!", __FUNCTION__);
         return ret;
-    }
-
-    if (t == OBSERVE_FRAME_SYNC_SOF) {
-        if (--mFrameSyncRequested <= 0 && mFrameSyncEnabled) {
-            mIspSubdevice->unsubscribeEvent(V4L2_EVENT_FRAME_SYNC);
-            mIspSubdevice->close();
-            mFrameSyncEnabled = false;
-            mFrameSyncRequested = 0;
-        }
     }
 
     if (t == OBSERVE_3A_STAT_READY) {
@@ -5636,54 +5163,6 @@ void AtomISP::pauseObserver(ObserverType t)
 }
 
 /**
- * polls and dequeues SOF event into IAtomIspObserver::Message
- */
-status_t AtomISP::FrameSyncSource::observe(IAtomIspObserver::Message *msg)
-{
-    LOG2("@%s", __FUNCTION__);
-    struct v4l2_event event;
-    int ret;
-
-    if (!mISP->mFrameSyncEnabled) {
-        msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
-        LOGE("Frame sync not enabled");
-        return INVALID_OPERATION;
-    }
-
-    ret = mISP->mIspSubdevice->poll(FRAME_SYNC_POLL_TIMEOUT);
-
-    if (ret <= 0) {
-        LOGE("SOF sync poll failed (%s), waiting recovery..", (ret == 0) ? "timeout" : "error");
-        ret = -1;
-    } else {
-        // poll was successful, dequeue the event right away
-        do {
-            ret = mISP->mIspSubdevice->dequeueEvent(&event);
-            if (ret < 0) {
-                LOGE("Dequeue SOF event failed");
-            }
-        } while (event.pending > 0);
-    }
-
-    if (ret < 0) {
-        msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
-        // We sleep a moment but keep passing error messages to observers
-        // until further client controls.
-        usleep(ATOMISP_EVENT_RECOVERY_WAIT);
-        return NO_ERROR;
-    }
-
-    // fill observer message
-    msg->id = IAtomIspObserver::MESSAGE_ID_EVENT;
-    msg->data.event.type = IAtomIspObserver::EVENT_TYPE_SOF;
-    msg->data.event.timestamp.tv_sec  = event.timestamp.tv_sec;
-    msg->data.event.timestamp.tv_usec = event.timestamp.tv_nsec / 1000;
-    msg->data.event.sequence = event.sequence;
-
-    return NO_ERROR;
-}
-
-/**
  * polls and dequeues 3A statistics ready event into IAtomIspObserver::Message
  */
 status_t AtomISP::AAAStatSource::observe(IAtomIspObserver::Message *msg)
@@ -5720,19 +5199,25 @@ status_t AtomISP::AAAStatSource::observe(IAtomIspObserver::Message *msg)
         usleep(ATOMISP_EVENT_RECOVERY_WAIT);
         return NO_ERROR;
     }
-
-    // fill observer message
+     // fill observer message
     msg->id = IAtomIspObserver::MESSAGE_ID_EVENT;
-    msg->data.event.type = IAtomIspObserver::EVENT_TYPE_STATISTICS_READY;
+    msg->data.event.sequence = event.sequence;
     msg->data.event.timestamp.tv_sec  = event.timestamp.tv_sec;
     msg->data.event.timestamp.tv_usec = event.timestamp.tv_nsec / 1000;
-    msg->data.event.sequence = event.sequence;
-
     if (mISP->mStatisticSkips > event.sequence) {
         LOG2("Skipping statistics num: %d", event.sequence);
         msg->data.event.type = IAtomIspObserver::EVENT_TYPE_STATISTICS_SKIPPED;
+    } else {
+        msg->data.event.type = IAtomIspObserver::EVENT_TYPE_STATISTICS_READY;
+        // Note: Timestamp and sequence number of the event are useless.
+        // Timestamp is from the event creation time and sequence is running
+        // number of events - not providing the identifier for a frame.
+        // Workaroud: Using exposure synchronization in SensorHW to identify
+        // timestamp for the frame of statistics origin.
+        nsecs_t frameTs = mISP->mSensorHW.getFrameTimestamp(TIMEVAL2USECS(&msg->data.event.timestamp));
+        msg->data.event.timestamp.tv_sec = frameTs / 1000000;
+        msg->data.event.timestamp.tv_usec = (frameTs % 1000000);
     }
-
     return NO_ERROR;
 }
 
@@ -5841,42 +5326,6 @@ try_again:
     }
 
     return status;
-}
-
-/**
- * TODO: deprecated, utilize observer. See mFrameSyncSource.
- */
-int AtomISP::pollFrameSyncEvent()
-{
-    LOG1("@%s", __FUNCTION__);
-    struct v4l2_event event;
-    int ret;
-
-    if (!mFrameSyncEnabled) {
-        LOGE("Frame sync not enabled");
-        return INVALID_OPERATION;
-    }
-
-    ret = mIspSubdevice->poll(FRAME_SYNC_POLL_TIMEOUT);
-
-    if (ret <= 0) {
-        LOGE("Poll failed, disabling SOF event");
-        mIspSubdevice->unsubscribeEvent(V4L2_EVENT_FRAME_SYNC);
-        mIspSubdevice->close();
-        mFrameSyncEnabled = false;
-        return UNKNOWN_ERROR;
-    }
-
-    // poll was successful, dequeue the event right away
-    do {
-        ret = mIspSubdevice->dequeueEvent(&event);
-        if (ret < 0) {
-            LOGE("Dequeue event failed");
-            return UNKNOWN_ERROR;
-        }
-    } while (event.pending > 0);
-
-    return NO_ERROR;
 }
 
 void AtomISP::setNrEE(bool en)

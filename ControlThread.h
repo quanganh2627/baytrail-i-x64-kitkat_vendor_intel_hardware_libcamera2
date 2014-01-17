@@ -47,7 +47,6 @@
 #include "IAtomIspObserver.h"
 #include "PictureThread.h"
 #include "SensorThread.h"
-#include "SensorSyncManager.h"
 #include "ICameraHwControls.h"
 #include "AccManagerThread.h"
 
@@ -709,7 +708,6 @@ private:
     sp<SensorThread> mSensorThread;
     sp<BracketManager> mBracketManager;
     sp<PostCaptureThread> mPostCaptureThread;
-    sp<SensorSyncManager> mSensorSyncManager;
     sp<AccManagerThread> mAccManagerThread;
 
     MessageQueue<Message, MessageId> mMessageQueue;

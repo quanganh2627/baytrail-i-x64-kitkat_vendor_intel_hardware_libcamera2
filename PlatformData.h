@@ -1008,8 +1008,8 @@ public:
         mSupportDualVideo = false;
         mSupportPreviewLimitation = true;
         mPreviewFourcc = V4L2_PIX_FMT_NV12;
-        mSensorGainLag = 0;
-        mSensorExposureLag = 1;
+        mSensorGainLag = 2;
+        mSensorExposureLag = 2;
         mUseIntelULL = false;
         mFaceCallbackDivider = 1;
    };

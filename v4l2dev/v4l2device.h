@@ -161,6 +161,7 @@ private:
 
     unsigned int mFrameCounter;
     unsigned int mInitialSkips;
+    unsigned int mDeviceId;
 
     Vector<struct v4l2_buffer_info> mSetBufferPool; /*!< This is the buffer pool set before the device is prepared*/
     Vector<struct v4l2_buffer_info> mBufferPool;    /*!< This is the active buffer pool */

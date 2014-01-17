@@ -41,6 +41,7 @@ V4L2VideoNode::V4L2VideoNode(const char *name, int anId, VideNodeDirection nodeD
                                                         mDirection(nodeDirection)
 {
     LOG1("@%s: device: %s", __FUNCTION__, name);
+    mDeviceId = anId;
     mBufferPool.setCapacity(MAX_V4L2_BUFFERS);
     mSetBufferPool.setCapacity(MAX_V4L2_BUFFERS);
     CLEAR(mFormatDescriptor);
@@ -77,6 +78,7 @@ status_t V4L2VideoNode::close()
     status = V4L2DeviceBase::close();
     if (status == NO_ERROR)
         mState = DEVICE_CLOSED;
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("DeviceId:", mDeviceId);
     return status;
 }
 
@@ -150,7 +152,9 @@ status_t V4L2VideoNode::enumerateInputs(struct v4l2_input *anInput)
 
     ret = ioctl(mFd, VIDIOC_ENUMINPUT, anInput);
 
-    if (ret < 0) {
+    if (ret == EINVAL) {
+        return BAD_INDEX;
+    } else if (ret < 0) {
         LOGE("VIDIOC_ENUMINPUT failed returned: %d (%s)", ret, strerror(errno));
         return UNKNOWN_ERROR;
     }
@@ -254,6 +258,7 @@ int V4L2VideoNode::stop(bool leavePopulated)
         LOGW("Trying to stop a device not started");
         ret = -1;
     }
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("DeviceId:", mDeviceId);
 
     return ret;
 }
@@ -313,7 +318,7 @@ int V4L2VideoNode::start(int buffer_count, int initial_skips)
     mState = DEVICE_STARTED;
     mInitialSkips = initial_skips;
 
-    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("Device id:", 0);
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("DeviceId:", mDeviceId);
     return ret;
 }
 

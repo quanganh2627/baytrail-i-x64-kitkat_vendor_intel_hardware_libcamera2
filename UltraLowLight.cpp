@@ -596,8 +596,11 @@ status_t UltraLowLight::processIntelULL()
         LOGW("ULL was canceled during processing state = %d",getState());
     }
 
-    if (input != NULL)
+    if (input != NULL) {
         delete[] input;
+        input = NULL;
+
+    }
 
     return ret;
 }

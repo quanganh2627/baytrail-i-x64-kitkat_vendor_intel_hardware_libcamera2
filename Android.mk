@@ -55,11 +55,11 @@ LOCAL_SRC_FILES := \
 	SensorThread.cpp \
 	ScalerService.cpp \
 	PostCaptureThread.cpp \
-	SensorSyncManager.cpp \
 	AccManagerThread.cpp \
+	SensorHW.cpp \
 	v4l2dev/v4l2devicebase.cpp \
 	v4l2dev/v4l2videonode.cpp \
-	v4l2dev/v4l2subdevice.cpp 
+	v4l2dev/v4l2subdevice.cpp
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SRC_FILES += \
@@ -114,7 +114,11 @@ LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/pvr/hal
 endif
 
+# HACK to access camera_extension headers when compiling PDK
 ifeq (,$(wildcard frameworks/base/core/jni/android_hardware_Camera.h))
+LOCAL_C_INCLUDES += \
+	vendor/intel/hardware/camera_extension/include/
+else
 LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/camera_extension
 endif

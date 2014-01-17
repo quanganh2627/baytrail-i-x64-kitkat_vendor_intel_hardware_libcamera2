@@ -184,6 +184,7 @@ private:
 
     struct MessageSetPreviewWindow {
         struct preview_stream_ops *window;
+        bool synchronous;
     };
 
     struct MessageSetCallback {

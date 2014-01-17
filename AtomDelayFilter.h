@@ -13,21 +13,21 @@ public:
     virtual ~AtomDelayFilter();
     unsigned int delay() { return depth; };
     X enqueue(X);
-    X dequeue();
+    X tail();
     void reset(X val);
 };
 
 // depth == 0 means non delay
-template <class X> AtomDelayFilter<X>::AtomDelayFilter(X val, unsigned int depth = 1)
+template <class X> AtomDelayFilter<X>::AtomDelayFilter(X val, unsigned int delay = 1)
 {
-    this->depth = depth;
+    this->depth = delay;
     defaultVal = val;
     wrIdx = 0;
     buffer = NULL;
-    if (depth == 0)
-        return;
+    if (delay == 0)
+        delay = 1;
 
-    buffer = new X[depth];
+    buffer = new X[delay];
     reset(defaultVal);
 }
 
@@ -58,7 +58,7 @@ template <class X> X AtomDelayFilter<X>::enqueue(X val)
     X ret;
 
     if (depth == 0) {
-        ret = val;
+        buffer[0] = ret = val;
     } else {
         ret = buffer[wrIdx];
         push(val);
@@ -66,15 +66,18 @@ template <class X> X AtomDelayFilter<X>::enqueue(X val)
     return ret;
 }
 
-template <class X> X AtomDelayFilter<X>::dequeue()
+template <class X> X AtomDelayFilter<X>::tail()
 {
-    return enqueue(defaultVal);
+    if (depth == 0)
+        return buffer[0];
+    return buffer[(wrIdx + depth - 1) % depth];
 }
 
 template <class X> void AtomDelayFilter<X>::reset(X val)
 {
     defaultVal = val;
     wrIdx = 0;
+    buffer[0] = val;
     for (unsigned int i=0; i<depth; i++)
         buffer[i] = val;
 }

@@ -136,6 +136,7 @@ private:
 private:
     I3AControls *m3AControls;
     IHWIspControl *mISP;
+    IHWSensorControl *mSensorCI;
     int  mFpsAdaptSkip;
     int  mBurstLength;
     int  mBurstCaptureNum;

@@ -230,28 +230,17 @@ status_t ControlThread::init()
         goto bail;
     }
     mISP = isp;
-    mHwcg.mIspCI = (IHWIspControl*)isp;
-    mHwcg.mSensorCI = (IHWSensorControl*)isp;
-    mHwcg.mFlashCI = (IHWFlashControl*)isp;
-    mHwcg.mLensCI = (IHWLensControl*)isp;
-
     status = mISP->init();
     if (status != NO_ERROR) {
         LOGE("Error initializing ISP");
         goto bail;
     }
 
-    mSensorSyncManager = new SensorSyncManager(mHwcg.mSensorCI);
-    if (mSensorSyncManager == NULL) {
-        LOGE("Error creating sensor sync manager");
-        goto bail;
-    }
-
-    status = mSensorSyncManager->init();
-    if (status != NO_ERROR) {
-        LOGD("Error initializing sensor sync manager");
-        mSensorSyncManager.clear();
-    }
+    // Assign local HWControlGroup
+    mHwcg.mIspCI = (IHWIspControl*)isp;
+    mHwcg.mSensorCI = isp->getSensorControlInterface();
+    mHwcg.mFlashCI = (IHWFlashControl*)isp;
+    mHwcg.mLensCI = (IHWLensControl*)isp;
 
     // Choose 3A interface based on the sensor type
     if (createAtom3A() != NO_ERROR) {
@@ -263,6 +252,7 @@ status_t ControlThread::init()
         LOGE("Error initializing 3A controls");
         goto bail;
     }
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("Init_3A");
 
     mCP = new AtomCP(mHwcg);
     if (mCP == NULL) {
@@ -524,6 +514,7 @@ void ControlThread::deinit()
     if (mPictureThread != NULL) {
         mPictureThread->requestExitAndWait();
         mPictureThread.clear();
+        PERFORMANCE_TRACES_BREAKDOWN_STEP("PictureThread-Clear");
     }
 
     if (m3AThread != NULL) {
@@ -541,9 +532,6 @@ void ControlThread::deinit()
         delete m3AControls;
         m3AControls = NULL;
     }
-
-    if (mSensorSyncManager != NULL)
-        mSensorSyncManager.clear();
 
     if (mCP != NULL) {
         if (mHdr.enabled)
@@ -584,8 +572,10 @@ void ControlThread::deinit()
     }
     List<Message>::iterator it = mPostponedMessages.begin();
     for ( ;it != mPostponedMessages.end(); it++)
-        if (it->id == MESSAGE_ID_SET_PARAMETERS)
+        if (it->id == MESSAGE_ID_SET_PARAMETERS) {
             free(it->data.setParameters.params); // was strdupped, needs free
+            it->data.setParameters.params = NULL;
+        }
     mPostponedMessages.clear();
 
     LOG1("@%s- complete", __FUNCTION__);
@@ -600,8 +590,8 @@ status_t ControlThread::setPreviewWindow(struct preview_stream_ops *window)
     msg.id = MESSAGE_ID_SET_PREVIEW_WINDOW;
     msg.data.previewWin.window = window;
     msg.data.previewWin.synchronous = false;
-
-    if (mPreviewThread->getPreviewState() == PreviewThread::STATE_NO_WINDOW) {
+    // When the window is set to NULL, we should release all Graphic buffer handles synchronously.
+    if ((window == NULL) || (mPreviewThread->getPreviewState() == PreviewThread::STATE_NO_WINDOW)) {
         // In case of "deferred start" for preview, we need to be synchronous
         // with the window setting, to properly go through the start preview
         // sequence that is supposed to be synchronous.
@@ -824,8 +814,10 @@ char* ControlThread::getParameters()
 void ControlThread::putParameters(char* params)
 {
     LOG2("@%s: params = %p", __FUNCTION__, params);
-    if (params)
+    if (params) {
         free(params);
+        params = NULL;
+    }
 }
 
 bool ControlThread::isParameterSet(const char* param)
@@ -1469,6 +1461,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     int height;
     int cb_fourcc;
     int bpl;
+    int fps;
     State state;
     AtomMode mode;
 
@@ -1488,13 +1481,18 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOG1("Starting preview in video mode");
         state = STATE_PREVIEW_VIDEO;
         mode = MODE_VIDEO;
-
+        fps = mISP->getRecordingFramerate();
         mParameters.getVideoSize(&width, &height);
 
         // Video size is updated later than other parameters, so validate high speed  params here
-        if (!validateHighSpeedResolutionFps(width, height, mISP->getRecordingFramerate())) {
+        if (!validateHighSpeedResolutionFps(width, height, fps)) {
             return BAD_VALUE;
         }
+
+        // Workaround: In high speed recording, the scene mode should be SPORTS
+        // Note: scene mode setting resets all 3A parameters
+        if (fps > DEFAULT_RECORDING_FPS)
+            m3AControls->setAeSceneMode(CAM_AE_SCENE_MODE_SPORTS);
 
         mISP->setVideoFrameFormat(width, height);
 
@@ -1538,6 +1536,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         // load 3rd party ISP extensions
         mAccManagerThread->loadIspExtensions();
     }
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("loadIspExt");
 
     // By default, the number of preview and video buffers are set
     // based on PlatformData.
@@ -1582,6 +1581,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             bool cached = isParameterSet(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING) ? true: false;
             LOG1("Setting GFX preview: %d bufs, cached/overlay %d, shared 0-copy mode", mNumBuffers, cached);
             mISP->setGraphicPreviewBuffers(sharedGfxBuffers.editArray(), mNumBuffers, cached);
+            PERFORMANCE_TRACES_BREAKDOWN_STEP("setGFXPreviewBuffers");
         } else {
             LOG1("PreviewThread not sharing Gfx buffers, using internal buffers");
         }
@@ -1599,19 +1599,15 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         return status;
     }
 
-    PERFORMANCE_TRACES_BREAKDOWN_STEP("Alloc_Preview_Buffer");
     if (m3AControls->isIntel3A() && (!(gPowerLevel & CAMERA_POWERBREAKDOWN_DISABLE_3A))) {
         // Enable auto-focus by default
         m3AControls->setAfEnabled(true);
         m3AThread->enable3A();
-        if (m3AControls->switchModeAndRate(mode, mHwcg.mSensorCI->getFrameRate()) != NO_ERROR)
-            LOGE("Failed switching 3A at %.2f fps", mHwcg.mSensorCI->getFrameRate());
+        if (m3AControls->switchModeAndRate(mode, mHwcg.mSensorCI->getFramerate()) != NO_ERROR)
+            LOGE("Failed switching 3A at %.2f fps", mHwcg.mSensorCI->getFramerate());
 
 
         mISP->attachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
-        mISP->attachObserver(m3AThread.get(), OBSERVE_FRAME_SYNC_SOF);
-        if (mSensorSyncManager != NULL)
-            mISP->attachObserver(mSensorSyncManager.get(), OBSERVE_FRAME_SYNC_SOF);
     }
 
     // Update focus areas for the proper window size
@@ -1672,6 +1668,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
                 ICallbackPreview::OUTPUT_WITH_DATA);
     }
 
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("set3AParams");
     // start the data flow
     status = mISP->start();
     if (status == NO_ERROR) {
@@ -1688,9 +1685,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mISP->detachObserver(this, OBSERVE_PREVIEW_STREAM);
         if (m3AControls->isIntel3A()) {
             mISP->detachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
-            mISP->detachObserver(m3AThread.get(), OBSERVE_FRAME_SYNC_SOF);
-            if (mSensorSyncManager != NULL)
-                mISP->detachObserver(mSensorSyncManager.get(), OBSERVE_FRAME_SYNC_SOF);
         }
     }
 
@@ -1741,9 +1735,6 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     // when we use the 3A algorithm running on Atom
     if (m3AControls->isIntel3A()) {
         mISP->detachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
-        mISP->detachObserver(m3AThread.get(), OBSERVE_FRAME_SYNC_SOF);
-        if (mSensorSyncManager != NULL)
-            mISP->detachObserver(mSensorSyncManager.get(), OBSERVE_FRAME_SYNC_SOF);
         // Detaching DVS observer. Just to make sure, although it might not be attached:
         // might be a non-RAW sensor, or enabling failed on startPreviewCore().
         // It is OK to detach; if the observer is not attached, detachObserver()
@@ -2076,17 +2067,25 @@ status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
         // and window is set to null, then stop review
         stopPreviewCore();
         status = mPreviewThread->setPreviewWindow(msg->window);
+    } else if (msg->window == NULL
+               && currentState == PreviewThread::STATE_ENABLED) {
+        // Notes:
+        //  1. msg->window == NULL comes from CameraService
+        //     before calling stopPreview().
+        //  2. when the window is set to NULL, must free all Graphic buffer
+        //     handles synchronously.
+        //  3. change preview state to STATE_NO_WINDOW.
+        //  4. don't know if application will set a new window to Camera
+        //     HAL after window was set to NULL.
+        status = mPreviewThread->setPreviewWindow(msg->window);
+        mPreviewThread->setPreviewState(PreviewThread::STATE_NO_WINDOW);
     } else {
         // Notes:
-        //  1. msg->window == NULL comes only from CameraService in release
-        //     stack, explicit NULL from application never reaches HAL.
-        //     -> Application must call stopPreview() to have GfxBuffers
-        //        freed first.
-        //  2. msg->window != NULL may come from applications explicit call
+        //  1. msg->window != NULL may come from applications explicit call
         //     to setPreviewDisplay() or setPreviewTexture():
         //      - API if preview is stopped
         //      - running preview does not currently continue
-        //  3. msg->window != NULL is always called by CameraService before
+        //  2. msg->window != NULL is always called by CameraService before
         //     startPreview(), with the handle that was previosly set.
         status = mPreviewThread->setPreviewWindow(msg->window);
     }
@@ -2524,7 +2523,7 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
 
     if (m3AControls->isIntel3A()) {
         m3AControls->getExposureInfo(*aeConfig);
-        if (PlatformData::supportEV(mISP->getCurrentCameraId())) {
+        if (PlatformData::supportEV(mHwcg.mSensorCI->getCurrentCameraId())) {
             if (m3AControls->getEv(&aeConfig->evBias) != NO_ERROR)
                 aeConfig->evBias = EV_UPPER_BOUND;
         }
@@ -2626,8 +2625,8 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
             return status;
         }
 
-        if (m3AControls->switchModeAndRate(MODE_CAPTURE, mHwcg.mSensorCI->getFrameRate()) != NO_ERROR)
-            LOGE("Failed to switch 3A to capture mode at %.2f fps",mHwcg.mSensorCI->getFrameRate());
+        if (m3AControls->switchModeAndRate(MODE_CAPTURE, mHwcg.mSensorCI->getFramerate()) != NO_ERROR)
+            LOGE("Failed to switch 3A to capture mode at %.2f fps",mHwcg.mSensorCI->getFramerate());
 
         if ((status = mISP->start()) != NO_ERROR) {
             LOGE("Error starting the ISP driver in CAPTURE mode!");
@@ -3055,8 +3054,8 @@ status_t ControlThread::captureStillPic()
             return status;
         }
 
-        if (m3AControls->switchModeAndRate(MODE_CAPTURE, mHwcg.mSensorCI->getFrameRate()) != NO_ERROR)
-            LOGE("Failed to switch 3A to capture mode at %.2f fps", mHwcg.mSensorCI->getFrameRate());
+        if (m3AControls->switchModeAndRate(MODE_CAPTURE, mHwcg.mSensorCI->getFramerate()) != NO_ERROR)
+            LOGE("Failed to switch 3A to capture mode at %.2f fps", mHwcg.mSensorCI->getFramerate());
         if ((status = mISP->start()) != NO_ERROR) {
             LOGE("Error starting the ISP driver in CAPTURE mode");
             return status;
@@ -4063,6 +4062,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             mPostponedMsgProcessing = true;
             handleMessageSetParameters(&it->data.setParameters);
             free(it->data.setParameters.params); // was strdupped, needs free
+            it->data.setParameters.params = NULL;
             it = mPostponedMessages.erase(it); // returns pointer to next item in list
             mPostponedMsgProcessing = false;
         } else {
@@ -5864,10 +5864,10 @@ status_t ControlThread::processParamExposureCompensation(const CameraParameters 
     if (!newVal.isEmpty()) {
         int exposure = newParams->getInt(CameraParameters::KEY_EXPOSURE_COMPENSATION);
         float comp_step = newParams->getFloat(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP);
-        if (PlatformData::supportEV(mISP->getCurrentCameraId()))
+        if (PlatformData::supportEV(mHwcg.mSensorCI->getCurrentCameraId()))
             status = m3AControls->setEv(exposure * comp_step);
         float ev = 0;
-        if (PlatformData::supportEV(mISP->getCurrentCameraId()))
+        if (PlatformData::supportEV(mHwcg.mSensorCI->getCurrentCameraId()))
             m3AControls->getEv(&ev);
         LOGD("exposure compensation to \"%s\" (%d), ev value %f, res %d",
              newVal.string(), exposure, ev, status);
@@ -6625,9 +6625,6 @@ status_t ControlThread::createAtom3A()
     status_t status = NO_ERROR;
 
     if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
-        if (mSensorSyncManager != NULL) {
-            mHwcg.mSensorCI = (IHWSensorControl*) mSensorSyncManager.get();
-        }
         m3AControls = new AtomAIQ(mHwcg);
     } else {
         m3AControls = new AtomSoc3A(mCameraId, mHwcg);

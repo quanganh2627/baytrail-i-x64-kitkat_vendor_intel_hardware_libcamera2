@@ -50,7 +50,7 @@ public:
     struct MessageEvent {
         EventType       type;
         struct timeval  timestamp;
-        unsigned int    sequence;
+        unsigned int    sequence;   // for debugging, not reliable as frame indentifier
     };
 
     union MessageData {
