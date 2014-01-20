@@ -4713,29 +4713,42 @@ int AtomISP::moveFocusToPosition(int position)
     }
 
     LOG2("@%s: V4L2_CID_FOCUS_ABSOLUTE = %d", __FUNCTION__, position);
-    return mMainDevice->setControl(V4L2_CID_FOCUS_ABSOLUTE, position, "Set focus position");
+    if (!PlatformData::isFixedFocusCamera(mCameraId))
+        return mMainDevice->setControl(V4L2_CID_FOCUS_ABSOLUTE, position, "Set focus position");
+    else
+        return -1;
 }
 
 int AtomISP::moveFocusToBySteps(int steps)
 {
     int val = 0, rval;
     LOG2("@%s", __FUNCTION__);
-    rval = mMainDevice->getControl(V4L2_CID_FOCUS_ABSOLUTE, &val);
-    if (rval)
-        return rval;
-    return moveFocusToPosition(val + steps);
+    if (!PlatformData::isFixedFocusCamera(mCameraId)) {
+        rval = mMainDevice->getControl(V4L2_CID_FOCUS_ABSOLUTE, &val);
+        if (rval)
+            return rval;
+        return moveFocusToPosition(val + steps);
+    } else {
+        return -1;
+    }
 }
 
 int AtomISP::getFocusPosition(int * position)
 {
     LOG2("@%s", __FUNCTION__);
-    return mMainDevice->getControl(V4L2_CID_FOCUS_ABSOLUTE , position);
+    if (!PlatformData::isFixedFocusCamera(mCameraId))
+        return mMainDevice->getControl(V4L2_CID_FOCUS_ABSOLUTE , position);
+    else
+        return -1;
 }
 
 int AtomISP::getFocusStatus(int *status)
 {
     LOG2("@%s", __FUNCTION__);
-    return mMainDevice->getControl(V4L2_CID_FOCUS_STATUS, status);
+    if (!PlatformData::isFixedFocusCamera(mCameraId))
+        return mMainDevice->getControl(V4L2_CID_FOCUS_STATUS, status);
+    else
+        return -1;
 }
 
 void AtomISP::getSensorDataFromFile(const char *file_name, sensorPrivateData *sensor_data)

@@ -720,19 +720,28 @@ int SensorHW::setAeFlickerMode(v4l2_power_line_frequency mode)
 int SensorHW::setAfMode(v4l2_auto_focus_range mode)
 {
     LOG2("@%s: %d", __FUNCTION__, mode);
-    return mDevice->setControl(V4L2_CID_AUTO_FOCUS_RANGE , mode, "AF mode");
+    if (!PlatformData::isFixedFocusCamera(mCameraId))
+        return mDevice->setControl(V4L2_CID_AUTO_FOCUS_RANGE , mode, "AF mode");
+    else
+        return -1;
 }
 
 int SensorHW::getAfMode(v4l2_auto_focus_range * mode)
 {
     LOG2("@%s", __FUNCTION__);
-    return mDevice->getControl(V4L2_CID_AUTO_FOCUS_RANGE, (int*)mode);
+    if (!PlatformData::isFixedFocusCamera(mCameraId))
+        return mDevice->getControl(V4L2_CID_AUTO_FOCUS_RANGE, (int*)mode);
+    else
+        return -1;
 }
 
 int SensorHW::setAfEnabled(bool enable)
 {
     LOG2("@%s", __FUNCTION__);
-    return mDevice->setControl(V4L2_CID_FOCUS_AUTO, enable, "Auto Focus");
+    if (!PlatformData::isFixedFocusCamera(mCameraId))
+        return mDevice->setControl(V4L2_CID_FOCUS_AUTO, enable, "Auto Focus");
+    else
+        return -1;
 }
 
 int SensorHW::set3ALock(int aaaLock)
