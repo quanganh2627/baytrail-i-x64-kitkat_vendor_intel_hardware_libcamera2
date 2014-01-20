@@ -281,7 +281,7 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mPictureThread = new PictureThread(m3AControls, mScalerService, mCallbacksThread, mCallbacks);
+    mPictureThread = new PictureThread(m3AControls, mScalerService, mCallbacksThread, mCallbacks, this);
     if (mPictureThread == NULL) {
         LOGE("error creating PictureThread");
         goto bail;
