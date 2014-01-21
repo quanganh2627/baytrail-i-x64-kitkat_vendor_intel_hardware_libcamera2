@@ -102,6 +102,7 @@ public:
     int encode(const InputBuffer &in, OutputBuffer &out);
     /* Async encode */
     int encodeAsync(const InputBuffer &in, OutputBuffer &out, int &mMaxCodedSize);
+    int getOutputSize(unsigned int& outSize);
     int getOutput(void* outBuf, unsigned int& outSize);
 
 private:
@@ -148,6 +149,7 @@ public:
     int setInputBuffers(AtomBuffer* inputBuffersArray, int inputBuffersNum){return -1;};
     int encode(const InputBuffer &in, OutputBuffer &out){return -1;};
     int encodeAsync(const InputBuffer &in, OutputBuffer &out, int &mMaxCodedSize){return -1;};
+    int getOutputSize(unsigned int& outSize) {return -1;};
     int getOutput(void* outBuf, unsigned int& outSize){return -1;};
 #endif
 };

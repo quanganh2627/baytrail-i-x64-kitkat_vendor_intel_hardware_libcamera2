@@ -1049,19 +1049,22 @@ status_t PictureThread::completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBu
     int finalSize = 0;
     unsigned char* dstPtr = NULL;
 
-    if (status == NO_ERROR) {
-        mCallbacks->allocateMemory(destBuf, mExifBuf.size + mMaxOutJpegBufSize);
-        if (destBuf->dataPtr == NULL) {
-            LOGE("No memory for final JPEG file!");
-            status = NO_MEMORY;
-        }
+    //get JPEG size
+    if (mHwCompressor->getOutputSize(mainSize) < 0) {
+        LOGE("Could not get Coded size!");
+        return UNKNOWN_ERROR;
     }
 
-    if (status == NO_ERROR) {
-        // Copy EXIF (it will also have the SOI marker)
-        memcpy(destBuf->dataPtr, mExifBuf.dataPtr, mExifBuf.size);
+    finalSize = mExifBuf.size + mainSize - sizeof(JPEG_MARKER_SOI);
+    //allocate JPEG buffer base on the actual coded JPEG size
+    mCallbacks->allocateMemory(destBuf, finalSize);
+    if (destBuf->dataPtr == NULL) {
+        LOGE("No memory for final JPEG file!");
+        status = NO_MEMORY;
+    } else {
         destBuf->id = mainBuf->id;
 
+        //get the JPEG data
         /*Since the jpeg got from libmix JPEG encoder start with SOI marker, and EXIF also have the SOI marker
          *so need to remove SOI marker fom jpeg data
          */
@@ -1070,15 +1073,10 @@ status_t PictureThread::completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBu
             LOGE("Could not encode picture stream!");
             status = UNKNOWN_ERROR;
         } else {
-            finalSize += mExifBuf.size + mainSize - sizeof(JPEG_MARKER_SOI);
-            destBuf->size = finalSize;
-            //revert the last two bytes to EXIF data
-            char *copyTo = (char*)destBuf->dataPtr +
-                            mExifBuf.size - sizeof(JPEG_MARKER_SOI);
-            memcpy(copyTo, (char*)mExifBuf.dataPtr + mExifBuf.size - sizeof(JPEG_MARKER_SOI), sizeof(JPEG_MARKER_SOI));
+            //Copy EXIF (it will also have the SOI marker)
+            memcpy(destBuf->dataPtr, mExifBuf.dataPtr, mExifBuf.size);
 
-            copyTo = (char*)destBuf->dataPtr +
-                finalSize - sizeof(JPEG_MARKER_EOI);
+            char *copyTo = (char*)destBuf->dataPtr + finalSize - sizeof(JPEG_MARKER_EOI);
             memcpy(copyTo, (void*)JPEG_MARKER_EOI, sizeof(JPEG_MARKER_EOI));
         }
     }

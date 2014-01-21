@@ -205,7 +205,13 @@ int JpegHwEncoder::encode(const InputBuffer &in, OutputBuffer &out)
         LOGW("JPEG HW encoding failed, falling back to SW");
         return -1;
     }
-    if (mHwImageEncoder->getCoded((void*)out.buf, mMaxOutJpegBufSize, &out.size) < 0) {
+    //according to libmix Jpegencoder function call flow, getCodedSize must be called before getCoded
+    if (mHwImageEncoder->getCodedSize(&out.size) < 0) {
+        LOGE("Could not get coded JPEG size!");
+        return -1;
+    }
+
+    if (mHwImageEncoder->getCoded((void*)out.buf, mMaxOutJpegBufSize) < 0) {
         LOGE("Could not encode picture stream!");
         status = -1;
     }
@@ -259,6 +265,25 @@ int JpegHwEncoder::encodeAsync(const InputBuffer &in, OutputBuffer &out, int &mM
 }
 
 /**
+ *  Retrieve the encoded JPEG size
+ *
+ *  Part of the asynchronous encoding process.
+ *
+ *  \param outSize: actual size of jpeg
+ */
+int JpegHwEncoder::getOutputSize(unsigned int& outSize)
+{
+    LOG1("@%s", __FUNCTION__);
+    int status = 0;
+
+    if (mHwImageEncoder->getCodedSize(&outSize) < 0) {
+        LOGE("Could not get coded size!");
+        status = -1;
+    }
+    return status;
+}
+
+/**
  *  Retrieve the encoded bitstream
  *
  *  Part of the asynchronous encoding process.
@@ -273,7 +298,7 @@ int JpegHwEncoder::getOutput(void* outBuf, unsigned int& outSize)
     LOG1("@%s", __FUNCTION__);
     int status = 0;
 
-    if (mHwImageEncoder->getCoded(outBuf, mMaxOutJpegBufSize, &outSize) < 0) {
+    if (mHwImageEncoder->getCoded(outBuf, mMaxOutJpegBufSize) < 0) {
         LOGE("Could not encode picture stream!");
         status = -1;
     }
