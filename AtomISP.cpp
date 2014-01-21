@@ -5063,6 +5063,52 @@ int AtomISP::getIspHwMinorVersion()
     return mIspHwMinorVersion;
 }
 
+/**
+ * Returns the ISP output frame size for main pipeline
+ * \param[out] width width of the output frame
+ * \param[out] height height of the output frame
+ * \param[out] output frame bytes-per-line (optional)
+ *
+ * Note: returns zero width and height if HAL ZSL is currently configured
+ */
+void AtomISP::getOutputSize(int *width, int *height, int *bpl)
+{
+    LOG1("@%s", __FUNCTION__)
+    // check which value to return if mSwapRecordingDevice = true
+    int widthTmp = 0, heightTmp = 0, bplTmp = 0;
+
+    if (width == NULL || height == NULL) {
+        LOGE("%s: NULL width or height output parameter", __FUNCTION__);
+        return;
+    }
+
+    if (mConfig.HALZSL.width != 0 && mConfig.HALZSL.height != 0) {
+        LOGW("Requesting ISP pipeline output size, while HAL ZSL configured (GPU output).");
+        widthTmp = mConfig.HALZSL.width;
+        heightTmp = mConfig.HALZSL.height;
+        bplTmp =  mConfig.HALZSL.bpl;
+    } else if (mSwapRecordingDevice) {
+        // Device configurations swapped, see Workaroud 2 in applyISPLimitations().
+        // Return preview device informaton as main device info
+        widthTmp = mConfig.preview.width;
+        heightTmp = mConfig.preview.height;
+        bplTmp = mConfig.preview.bpl;
+    } else if (!mSwapRecordingDevice) {
+        // Normal device configuration
+        widthTmp = mConfig.recording.width;
+        heightTmp = mConfig.recording.height;
+        bplTmp = mConfig.recording.bpl;
+    } else {
+        LOGE("%s: Invalid ISP pipeline output size query.", __FUNCTION__);
+    }
+
+    *width = widthTmp;
+    *height = heightTmp;
+
+    if (bpl)
+        *bpl = bplTmp;
+}
+
 int AtomISP::setFlashIntensity(int intensity)
 {
     LOG2("@%s", __FUNCTION__);

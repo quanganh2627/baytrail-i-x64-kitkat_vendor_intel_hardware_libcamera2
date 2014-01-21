@@ -170,11 +170,7 @@ status_t AtomDvs2::reconfigureNoLock()
     dvs_grid = isp_params.dvs_grid;
 
     int width = 0, height = 0;
-    mIsp->getVideoSize(&width, &height, NULL);
-    int preview_width = 0, preview_height = 0;
-    mIsp->getPreviewSize(&preview_width, &preview_height, NULL);
-    width = MAX(width, preview_width);
-    height = MAX(height, preview_height);
+    mIsp->getOutputSize(&width, &height, NULL);
 
     int bq_frame_width = width/2;
     int bq_frame_height = height/2;
@@ -367,12 +363,16 @@ bool AtomDvs2::isDvsValid()
 {
     LOG1("@%s", __FUNCTION__);
     int width, height;
-    mIsp->getVideoSize(&width, &height, NULL);
-    // Workaround 1: disable DVS functionality in hi-speed recording due to performance issue
-    if (mIsp->getRecordingFramerate() > DEFAULT_RECORDING_FPS && !isHighSpeedDvsSupported(width, height)) {
+    int sensorFps = floor(mSensorCI->getFramerate());
+
+    mIsp->getOutputSize(&width, &height);
+
+    if (sensorFps > DEFAULT_RECORDING_FPS && !isHighSpeedDvsSupported(width, height)) {
+        // Workaround 1: disable DVS functionality in hi-speed recording due to performance issue
         LOGW("%s:DVS cannot be set when HighSpeed Capture and the selected resolution", __FUNCTION__);
         return false;
     }
+
     // Workaround 2: disable DVS functionality when the recording resolution is less than VGA,
     //               because current grid size is 64, the minimum resolution for grid size 64 is
     //               384 x 384, so FW should provide grid size 32 in low resolution for DVS functionality.

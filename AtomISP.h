@@ -243,6 +243,8 @@ protected:
     int getCssMinorVersion();
     int getIspHwMajorVersion();
     int getIspHwMinorVersion();
+    // Get the ISP pipeline output frame size
+    void getOutputSize(int *width, int *height, int *bpl = NULL);
     // return zoom ratio multiplied by 100 from given zoom value
     int zoomRatio(int zoomValue) const;
     status_t setZoom(int zoom);

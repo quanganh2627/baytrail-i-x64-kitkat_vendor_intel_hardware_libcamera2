@@ -86,6 +86,7 @@ public:
     /* **********************************************************
      * ISP features
      */
+    virtual void getOutputSize(int *width, int *height, int *bpl = NULL) = 0;
 
     virtual int zoomRatio(int zoomValue) const = 0;
     virtual status_t setZoom(int zoom) = 0;
