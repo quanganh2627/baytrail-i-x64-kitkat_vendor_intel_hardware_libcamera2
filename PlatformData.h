@@ -627,6 +627,20 @@ class PlatformData {
     static const char* supportedRecordingFramerates(int cameraId);
 
     /**
+     * Whether the full resolution SDV is supported?
+     * \return true if full resolution SDV is supported
+     */
+    static bool isFullResSdvSupported(int cameraId);
+
+    /**
+     * supported SDV sizes in difference aspect ratio
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the supported SDV sizes as a string.
+     */
+    static const char* supportedSdvSizes(int cameraId);
+
+    /**
      * Focus mode supported value
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
@@ -1117,6 +1131,8 @@ protected:
             supportedPreviewFPSRange = "(10500,30304),(11000,30304),(11500,30304)";
             defaultPreviewFPSRange = "10500,30304";
             supportedVideoSizes = "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1080";
+            //full resolution SDV
+            supportedSdvSizes = "";
             // Leaving this empty. NOTE: values need to be given in derived classes.
             supportedPreviewSizes = "";
             supportedPreviewUpdateModes = "standard,continuous,during-capture,windowless";
@@ -1241,6 +1257,8 @@ protected:
         String8 supportedRecordingFramerates;
         // For max Dvs resolution in high speed mode
         String8 maxHighSpeedDvsResolution;
+        // full resolution SDV
+        String8 supportedSdvSizes;
         // Flash support
         bool hasFlash;
         // focus modes

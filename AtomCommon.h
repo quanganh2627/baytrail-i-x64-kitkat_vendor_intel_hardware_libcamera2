@@ -103,7 +103,8 @@ enum AtomMode {
     MODE_PREVIEW = 0,
     MODE_CAPTURE = 1,
     MODE_VIDEO = 2,
-    MODE_CONTINUOUS_CAPTURE = 3
+    MODE_CONTINUOUS_CAPTURE = 3,
+    MODE_CONTINUOUS_VIDEO = 4
 };
 
 /*!\enum FrameBufferStatus

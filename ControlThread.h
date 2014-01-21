@@ -665,16 +665,22 @@ private:
     status_t captureFixedBurstPic(bool clientRequest);
     status_t capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffer &postviewBuffer);
     status_t captureULLPic();
-    status_t captureVideoSnap(void);
+    // snapshot during video functions
+    status_t initSdv(bool offline);
+    status_t deinitSdv(bool offline);
+    status_t captureSdv(bool offline);
+    status_t cancelCaptureSdv();
+    status_t sdvUpdateParams(bool offline, bool updateCache);
+    status_t sdvRestoreParams(bool updateCache);
+    void saveCurrentPictureParams();
+    void clearSavedPictureParams();
+    bool selectSdvSize(int &width, int &height);
     AtomBuffer* findVideoSnapshotBuffer(int index);
-    void     encodeVideoSnapshot(AtomBuffer &buff);
+    void encodeVideoSnapshot(AtomBuffer &buff);
 
     status_t updateSpotWindow(const int &width, const int &height);
 
     MeteringMode aeMeteringModeFromString(const String8& modeStr);
-
-    void storeCurrentPictureParams();
-    void restoreCurrentPictureParams();
 
     status_t createAtom3A();
 
@@ -812,6 +818,7 @@ private:
                                          saved as mirrored. The image will be mirrored based on the
                                          camera sensor orientation and device orientation. */
     int mRecordingOrientation;      /*!< Device orientation at the start of video recording. */
+    bool mFullSizeSdv;                  /*!< is full resolution sdv?*/
 
     /*----------- Debugging helpers --------------------*/
     static const char* sCaptureSubstateStrings[STATE_CAPTURE_LAST];

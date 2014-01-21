@@ -372,9 +372,11 @@ private:
     status_t configureContinuousRingBuffer();
     status_t configureContinuous();
     status_t configureContinuousSOC();
+    status_t configureContinuousVideo();
     status_t startCapture();
     status_t stopCapture();
     status_t stopContinuousPreview();
+    status_t stopContinuousVideo();
 
     status_t requestContCapture(int numCaptures, int offset, unsigned int skip);
 
@@ -438,6 +440,8 @@ private:
 
     bool checkSkipFrame(int frameNum, int targetFPS);
     status_t setSkipFramesForVideoZoom();
+    inline bool inContinuousMode() const;
+    inline bool inVideoMode() const;
 
 private:
     // AtomIspObserver

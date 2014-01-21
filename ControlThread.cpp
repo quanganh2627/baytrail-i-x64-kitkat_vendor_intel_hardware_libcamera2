@@ -160,6 +160,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mSaveMirrored(false)
     ,mCurrentOrientation(0)
     ,mRecordingOrientation(0)
+    ,mFullSizeSdv(false)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -1208,7 +1209,8 @@ status_t ControlThread::configureContinuousRingBuffer()
 {
     LOG2("@%s", __FUNCTION__);
     bool capturePriority = true;
-    if (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_CONTINUOUS)
+    if (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_CONTINUOUS ||
+            (mFullSizeSdv && (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING)))
         capturePriority = false;
 
     ContinuousCaptureConfig cfg;
@@ -1229,6 +1231,266 @@ status_t ControlThread::configureContinuousRingBuffer()
     return mISP->prepareOfflineCapture(cfg, capturePriority);
 }
 
+/**
+ * Save the current context of camera parameters that describe:
+ * - picture size
+ * - thumbnail size
+ * - supported picture sizes
+ * - supported thumbnail sizes
+ *
+ * This is used in initSdv when we start video preview because we need to
+ * impose restrictions on these values to implement video snapshot feature
+ * Use clearSavedPictureParams() to clear it.
+ */
+void ControlThread::saveCurrentPictureParams()
+{
+    clearSavedPictureParams();
+    mParameters.getPictureSize(&mStillPictContext.snapshotWidth,
+                               &mStillPictContext.snapshotHeight);
+    mStillPictContext.thumbnailWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
+    mStillPictContext.thumbnailHeigth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
+
+    const char* supportedSnapshotSizes = mParameters.get(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES);
+    if (supportedSnapshotSizes) {
+        mStillPictContext.supportedSnapshotSizes = supportedSnapshotSizes;
+    } else {
+        LOGE("Missing supported picture sizes");
+        mStillPictContext.supportedSnapshotSizes = "";
+    }
+
+    const char* supportedThumbnailSizes = mParameters.get(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES);
+    if (supportedThumbnailSizes) {
+        mStillPictContext.suportedThumnailSizes = supportedThumbnailSizes;
+    } else {
+        LOGE("Missing supported thumbnail sizes");
+        mStillPictContext.suportedThumnailSizes = "";
+    }
+}
+
+/**
+ * Clear the saved picture parameters.
+ */
+void ControlThread::clearSavedPictureParams()
+{
+    mStillPictContext.thumbnailWidth  = 0;
+    mStillPictContext.thumbnailHeigth = 0;
+    mStillPictContext.snapshotWidth   = 0;
+    mStillPictContext.snapshotHeight  = 0;
+    mStillPictContext.clear();
+}
+
+/**
+ * update current parameters according to video size
+ * to update:
+ * 1. KEY_PICTURE_SIZE
+ * 2. KEY_SUPPORTED_PICTURE_SIZES
+ * 3. KEY_JPEG_THUMBNAIL_SIZE
+ * 4. KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES
+ * When recording is stopped a reciprocal call to sdvRestoreParams()
+ * will be done
+ */
+status_t ControlThread::sdvUpdateParams(bool offline, bool updateCache)
+{
+    int  width, height, vidWidth, vidHeight;
+    char sizes[25];
+    // decide picture size
+    if (offline) {
+        if (!selectSdvSize(width, height)) {
+            LOGE("no proper picture size.");
+            return UNKNOWN_ERROR;
+        }
+    } else {
+        //picture size equal to video size in online mode
+        mISP->getVideoSize(&width, &height, NULL);
+    }
+    mParameters.setPictureSize(width, height);
+    snprintf(sizes, 25, "%dx%d", width,height);
+    mParameters.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, sizes);
+    LOG1("video snapshot size %dx%d", width, height);
+
+    //decide postview(used for thumbnail) size
+    selectPostviewSize(width, height);
+    mParameters.getVideoSize(&vidWidth, &vidHeight);
+    if (width > vidWidth) {
+        width  = vidWidth;
+        height = vidHeight;
+    }
+
+    // Limit thumbnail size less than 480p to reduce thumbnail Jpeg size.
+    // Make sure total Exif size less than 64k.
+    if (height >= RECONFIGURE_THUMBNAIL_HEIGHT_LIMIT) {
+        reconfigureThumbnailSize(width, height);
+    }
+
+    LOG1("video snapshot thumbnail size %dx%d", width, height);
+    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH, width);
+    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT, height);
+    snprintf(sizes, 25, "%dx%d,0x0", width, height);
+    mParameters.set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES, sizes);
+
+    if (updateCache)
+        return updateParameterCache();
+
+    return NO_ERROR;
+}
+
+/**
+ * Restores from the member variable mStillPictContext the following camera
+ * parameters:
+ * - picture size
+ * - thumbnail size
+ * - supported picture sizes
+ * - supported thumbnail sizes
+ * This is used when video recording stops to restore the state before video
+ * recording started and to lift the limitations of the current video snapshot
+ */
+status_t ControlThread::sdvRestoreParams(bool updateCache)
+{
+    mParameters.setPictureSize(mStillPictContext.snapshotWidth,
+                               mStillPictContext.snapshotHeight);
+    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH,
+                    mStillPictContext.thumbnailWidth);
+    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT,
+                    mStillPictContext.thumbnailHeigth);
+
+    mParameters.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES,
+                    mStillPictContext.supportedSnapshotSizes.string());
+    mParameters.set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES,
+                    mStillPictContext.suportedThumnailSizes.string());
+
+    if (updateCache)
+        return updateParameterCache();
+
+    return NO_ERROR;
+}
+
+/**
+ * Configures parameters for SDV.
+ *
+ * In online video mode, we support the snapshot size equal to video size only
+ * In offline video mode, snapshot during video can be 8M or 5M decided by ISP limitation
+ * Parameters for both capture and preview need to be set up before starting the ISP.
+ */
+status_t ControlThread::initSdv(bool offline)
+{
+    LOG1("@%s %s", __FUNCTION__, offline?"offline":"online");
+    status_t status = NO_ERROR;
+
+    // store old parameters.
+    saveCurrentPictureParams();
+
+    // update new parameters for SDV
+    sdvUpdateParams(offline, false);
+
+    if (offline) {
+        int thumbWidth, thumbHeight;
+        int fourcc = mISP->getSnapshotPixelFormat();
+        AtomBuffer formatDescriptorSdv = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, fourcc);
+        mParameters.getPictureSize(&formatDescriptorSdv.width, &formatDescriptorSdv.height);
+        thumbWidth  = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
+        thumbHeight = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
+        AtomBuffer formatDescriptorPv
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, selectPostviewFormat(), thumbWidth, thumbHeight);
+
+        mISP->setSnapshotFrameFormat(formatDescriptorSdv);
+        configureContinuousRingBuffer();
+        mISP->setPostviewFrameFormat(formatDescriptorPv);
+
+        burstStateReset();
+    }
+
+    // restore since we are in preview mode
+    sdvRestoreParams(false);
+
+    //allocate snapshot buffer and postview buffer if necessary
+    if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
+        allocateSnapshotAndPostviewBuffers(true);
+    } else {
+        LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+    }
+
+    return status;
+}
+
+status_t ControlThread::captureSdv(bool offline)
+{
+    LOG1("@%s: ", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    mCallbacksThread->requestTakePicture(true, true);
+    mPictureThread->initialize(mParameters, mHwcg.mIspCI->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
+
+    if (offline) {
+        // allocate buffer struct
+        AtomBuffer snapshotBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+        AtomBuffer postviewBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+        // stop face detection if necessary
+        stopFaceDetection();
+
+        // start offline capture
+        status = continuousStartStillCapture(false);
+
+        // ControlThread is also doing "dequeueRecording" in other side, here the wait will block recording somehow.
+        // TODO: move recording work to VideoThread
+        status = waitForCaptureStart();
+        if (status != NO_ERROR) {
+            LOGE("Error while waiting for capture to start");
+            return status;
+        }
+        status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
+        if (status != NO_ERROR) {
+            LOGE("Error in grabbing snapshot!");
+            return status;
+        }
+
+        // encode a frame
+        PictureThread::MetaData picMetaData;
+        fillPicMetaData(picMetaData, false);
+        LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
+        status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
+        if (status != NO_ERROR) {
+            picMetaData.free(m3AControls);
+            LOGE("@%s: failed to call PictureThread to encode", __FUNCTION__);
+        }
+
+        // stop offline capture
+        stopOfflineCapture();
+    } else {
+        LOG1("@%s online SDV, just request +1", __FUNCTION__);
+        mVideoSnapshotrequested++;
+    }
+
+    return status;
+}
+
+status_t ControlThread::cancelCaptureSdv()
+{
+    status_t status = NO_ERROR;
+    if (mCaptureSubState == STATE_CAPTURE_STARTED && mState == STATE_RECORDING) {
+        // cancel video snapshot
+        mPictureThread->flushBuffers();
+        LOG1("CaptureSubState %s -> IDLE", sCaptureSubstateStrings[mCaptureSubState]);
+        mCaptureSubState = STATE_CAPTURE_IDLE;
+    }
+
+    // clear reserved lists
+    mVideoSnapshotBuffers.clear();
+    mRecordingBuffers.clear();
+    return status;
+}
+
+status_t ControlThread::deinitSdv(bool offline)
+{
+    LOG1("@%s %s", __FUNCTION__, offline?"offline":"online");
+    status_t status = NO_ERROR;
+
+    // cancel SDV if we are doing it
+    cancelCaptureSdv();
+    clearSavedPictureParams();
+    return status;
+}
 /**
  * Configures parameters for continuous capture.
  *
@@ -1466,9 +1728,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mISP->init();
 
     if (videoMode) {
-        LOG1("Starting preview in video mode");
         state = STATE_PREVIEW_VIDEO;
-        mode = MODE_VIDEO;
+
         fps = mISP->getRecordingFramerate();
         mParameters.getVideoSize(&width, &height);
 
@@ -1478,6 +1739,13 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         }
 
         mISP->setVideoFrameFormat(width, height);
+
+        // High speed and continuous SDV can not coexist due to ISP limitation. If user enable high speed and
+        // if the setting is valid, we should disable continuous video.
+        mFullSizeSdv = (!PlatformData::isFullResSdvSupported(mCameraId) || fps > DEFAULT_RECORDING_FPS)? false : true;
+        mode = mFullSizeSdv ? MODE_CONTINUOUS_VIDEO : MODE_VIDEO;
+        LOG1("Starting preview in %s mode", mode == MODE_VIDEO? "video":"continuous video");
+        initSdv(mFullSizeSdv);
 
         status = mHwcg.mIspCI->setDVS(mDvsEnable);
 
@@ -1507,9 +1775,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     }
     mParameters.getPreviewSize(&width, &height);
 
-
     // Load any ISP extensions before ISP is started
-
     // workaround for FR during HAL ZSL - do not use extensions
     if (mISP->isHALZSLEnabled()) {
         mPostProcThread->unloadIspExtensions(); // sends NULL to ia_face_set_acceleration -> enables SW FR
@@ -1703,6 +1969,7 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     if (mState == STATE_PREVIEW_VIDEO ||
         mState == STATE_RECORDING) {
         status = mVideoThread->flushBuffers();
+        deinitSdv(mFullSizeSdv);
     }
     State oldState = mState;
     status = mISP->stop();
@@ -1818,6 +2085,10 @@ status_t ControlThread::restartPreview(bool videoMode)
         status = startPreviewCore(videoMode);
     if (faceActive)
         startFaceDetection();
+
+    // if restart preview in video mode, we need the message to update SDV parameter
+    if (videoMode)
+        mPreviewThread->setCallback(this, ICallbackPreview::INPUT_ONCE);
     return status;
 }
 
@@ -2084,8 +2355,6 @@ status_t ControlThread::handleMessageStartRecording()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    int width,height,widthPreview,heightPreview;
-    char sizes[25];
 
     if (mState == STATE_PREVIEW_VIDEO) {
         mState = STATE_RECORDING;
@@ -2106,50 +2375,13 @@ status_t ControlThread::handleMessageStartRecording()
         status = INVALID_OPERATION;
     }
 
-   /* Change the snapshot size and thumbnail size as per current video
-    * snapshot limitations.
-    * Only supported size is the size of the video
-    * and thumbnail size is the size of preview.
-    */
-    storeCurrentPictureParams();
-
-    mISP->getVideoSize(&width, &height, NULL);
-    mParameters.setPictureSize(width, height);
-
-    if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
-        allocateSnapshotAndPostviewBuffers(true);
-    } else {
-        LOG1("%s not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
-    }
-
-    snprintf(sizes, 25, "%dx%d", width,height);
-    LOG1("video snapshot size %dx%d", width, height);
-    mParameters.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES, sizes);
-    mParameters.getPreviewSize(&widthPreview, &heightPreview);
-
-    // avoid that thumbnail is larger than image in case of small video size
-    if (widthPreview > width) {
-        widthPreview = width;
-        heightPreview = height;
-    }
-
-    // Limit thumbnail size less than 480p to reduce thumbnail Jpeg size.
-    // Make sure total Exif size less than 64k.
-    if (heightPreview >= RECONFIGURE_THUMBNAIL_HEIGHT_LIMIT) {
-        reconfigureThumbnailSize(widthPreview, heightPreview);
-    }
-
-    LOG1("video snapshot thumbnail size %dx%d", widthPreview, heightPreview);
-    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH, widthPreview);
-    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT, heightPreview);
-    snprintf(sizes, 25, "%dx%d,0x0", widthPreview,heightPreview);
-    mParameters.set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES, sizes);
-    updateParameterCache();
-
     // Store device orientation at the start of video recording
     if (mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT)) {
         mRecordingOrientation = mCurrentOrientation;
     }
+
+    // update parameter for SDV
+    sdvUpdateParams(mFullSizeSdv, true);
 
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_START_RECORDING, status);
@@ -2160,6 +2392,11 @@ status_t ControlThread::handleMessageStopRecording()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+
+    // finalize on-going capture during video
+    cancelCaptureSdv();
+    // restore picture parameters
+    sdvRestoreParams(true);
 
     if (mState == STATE_RECORDING) {
         /*
@@ -2175,26 +2412,8 @@ status_t ControlThread::handleMessageStopRecording()
         status = INVALID_OPERATION;
     }
 
-    if (mCaptureSubState == STATE_CAPTURE_STARTED) {
-        // cancel video snapshot
-        mPictureThread->flushBuffers();
-        LOG1("CaptureSubState %s -> IDLE (stopRecording)", sCaptureSubstateStrings[mCaptureSubState]);
-        mCaptureSubState = STATE_CAPTURE_IDLE;
-    }
-    // clear reserved lists
-    mVideoSnapshotBuffers.clear();
-    mRecordingBuffers.clear();
-
     // release buffers owned by encoder since it is not going to return them
     mISP->returnRecordingBuffers();
-
-    /**
-     * Restore the actual still picture parameters before we started video
-     * In this way we lift the restrictions that we imposed because of
-     * video snapshot implementation
-     */
-    restoreCurrentPictureParams();
-
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_STOP_RECORDING, status);
     return status;
@@ -2430,7 +2649,7 @@ status_t ControlThread::handleMessageTakePicture() {
             break;
 
         case SHOOTING_MODE_VIDEO_SNAP:
-            status = captureVideoSnap();
+            status = captureSdv(mFullSizeSdv);
             break;
 
         case SHOOTING_MODE_ULL:
@@ -2663,7 +2882,7 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
 void ControlThread::stopOfflineCapture()
 {
     LOG1("@%s: ", __FUNCTION__);
-    if (mState == STATE_CONTINUOUS_CAPTURE &&
+    if ((mState == STATE_CONTINUOUS_CAPTURE || mState == STATE_RECORDING) &&
             mISP->isOfflineCaptureRunning()) {
         mISP->stopOfflineCapture();
     }
@@ -2725,7 +2944,7 @@ status_t ControlThread::burstCaptureSkipFrames()
 }
 
 /**
- * Starts the capture process in continuous capture mode.
+ * Starts the capture process in continuous capture mode or continuous video mode.
  */
 status_t ControlThread::continuousStartStillCapture(bool useFlash)
 {
@@ -2735,7 +2954,9 @@ status_t ControlThread::continuousStartStillCapture(bool useFlash)
     int size;
 
     if (useFlash == false) {
-        mCallbacksThread->shutterSound();
+        // snapshot has no shutterSound during video
+        if (mState != STATE_RECORDING && mState != STATE_PREVIEW_VIDEO)
+            mCallbacksThread->shutterSound();
 
         /**
          * At this stage we need to re-configure the v4l2 buffer pools
@@ -2779,6 +3000,32 @@ status_t ControlThread::continuousStartStillCapture(bool useFlash)
     return status;
 }
 
+bool ControlThread::selectSdvSize(int &width, int &height)
+{
+    LOG1("@%s ", __FUNCTION__);
+
+    Vector<Size> supportedSizes;
+    int vidWidth, vidHeight;
+    float vidAspect = 0.0f, picAspect = 0.0f;
+
+    mParameters.getVideoSize(&vidWidth, &vidHeight);
+    vidAspect = static_cast<float>(vidWidth) / static_cast<float>(vidHeight);
+
+    //find proper picture size in suported SDV list
+    parseSizesList(PlatformData::supportedSdvSizes(mCameraId), supportedSizes);
+    for (unsigned int i = 0 ; i < supportedSizes.size() ; i++) {
+        picAspect = static_cast<float>(supportedSizes[i].width) / static_cast<float>(supportedSizes[i].height);
+        if (fabsf(picAspect - vidAspect) < 0.009f) {
+            width  = supportedSizes[i].width;
+            height = supportedSizes[i].height;
+            LOG1("@%s prefer picture size:%dx%d", __FUNCTION__, width, height);
+            return true;
+        }
+    }
+
+    LOGW("failed to select a proper size for video snapshot");
+    return false;
+}
 /**
  * Select resolution to be used as capture postview size
  *
@@ -3569,25 +3816,6 @@ exit:
     return status;
 }
 
-status_t ControlThread::captureVideoSnap()
-{
-    LOG1("@%s: ", __FUNCTION__);
-    status_t status = NO_ERROR;
-
-    mCallbacksThread->requestTakePicture(true, true);
-
-    // Configure PictureThread
-    mPictureThread->initialize(mParameters, mHwcg.mIspCI->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
-
-    /* Request a new video snapshot in the next capture cycle
-     * In the next call of dequeueRecording we will send the
-     * recording frame to encode
-     */
-    mVideoSnapshotrequested++;
-
-    return status;
-}
-
 void ControlThread::encodeVideoSnapshot(AtomBuffer &buff)
 {
     LOG1("@%s: ", __FUNCTION__);
@@ -3868,7 +4096,6 @@ status_t ControlThread::handleMessagePreviewStarted()
      * to start the allocation of snapshot buffers.
      */
     bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-
     /**
      * if we have all the allocated buffers available then it is safe to re-allocate
      *
@@ -3915,7 +4142,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
         msg->snapshotBuf.owner->returnBuffer(&msg->postviewBuf);
     } else if (mState == STATE_RECORDING) {
         int curBuff = msg->snapshotBuf.id;
-        if (!mVideoSnapshotBuffers.empty()) {
+        if (!mVideoSnapshotBuffers.empty()) { //online sdv
             AtomBuffer *videoBuffer = findVideoSnapshotBuffer(curBuff);
 
             if (videoBuffer) {
@@ -3949,8 +4176,19 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
                     mCaptureSubState = STATE_CAPTURE_IDLE;
                 }
             }
-            return status;
+        } else { //offline SDV
+            if (findBufferByData(&msg->snapshotBuf, &mAllocatedSnapshotBuffers) == NULL) {
+                LOGE("Stale snapshot buffer %p returned... this should not happen", msg->snapshotBuf.dataPtr);
+            } else if (findBufferByData(&msg->snapshotBuf, &mAvailableSnapshotBuffers) == NULL) {
+                mAvailableSnapshotBuffers.push(msg->snapshotBuf);
+                // recycal postview buffer as well since they are 1:1
+                mAvailablePostviewBuffers.push(msg->postviewBuf);
+                LOG1("%s offline SDV: pushed %p to mAvailableSnapshotBuffers, size %d",
+                        __FUNCTION__, msg->snapshotBuf.dataPtr, mAvailableSnapshotBuffers.size());
+            }
+
         }
+        return status;
     } else if (mState == STATE_CAPTURE || mState == STATE_CONTINUOUS_CAPTURE) {
         /**
          * Snapshot buffer recycle
@@ -4382,7 +4620,7 @@ status_t ControlThread::allocateSnapshotAndPostviewBuffers(bool videoMode)
     unsigned int clipTo = MAX(recommendedNum, (mISP->getContinuousCaptureNumber()+1));
     bufCount = CLIP(bufCount, clipTo, 1);
 
-    if(videoMode){
+    if(videoMode && !mFullSizeSdv){
        /**
         * In video mode we configure the Picture thread not to pre-allocate
         * the snapshot buffers. This means that there will be no active libVA
@@ -6245,80 +6483,6 @@ status_t ControlThread::updateParameterCache()
 }
 
 /**
- * Save the current context of camera parameters that describe:
- * - picture size
- * - thumbnail size
- * - supported picture sizes
- * - supported thumbnail sizes
- *
- * This is used when we start video recording because we need to impose restric
- * tions on these values to implement video snapshot feature
- * When recording is stopped a reciprocal call to restoreCurrentPictureParams
- * will be done
- */
-void ControlThread::storeCurrentPictureParams()
-{
-    mStillPictContext.clear();
-
-    mParameters.getPictureSize(&mStillPictContext.snapshotWidth,
-                               &mStillPictContext.snapshotHeight);
-    mStillPictContext.thumbnailWidth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
-    mStillPictContext.thumbnailHeigth = mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
-
-    const char* supportedSnapshotSizes = mParameters.get(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES);
-    if (supportedSnapshotSizes) {
-        mStillPictContext.supportedSnapshotSizes = supportedSnapshotSizes;
-    } else {
-        LOGE("Missing supported picture sizes");
-        mStillPictContext.supportedSnapshotSizes = "";
-    }
-
-    const char* supportedThumbnailSizes = mParameters.get(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES);
-    if (supportedThumbnailSizes) {
-        mStillPictContext.suportedThumnailSizes = supportedThumbnailSizes;
-    } else {
-        LOGE("Missing supported thumbnail sizes");
-        mStillPictContext.suportedThumnailSizes = "";
-    }
-}
-
-/**
- * Restores from the member variable mStillPictContext the following camera
- * parameters:
- * - picture size
- * - thumbnail size
- * - supported picture sizes
- * - supported thumbnail sizes
- * This is used when video recording stops to restore the state before video
- * recording started and to lift the limitations of the current video snapshot
- */
-void ControlThread::restoreCurrentPictureParams()
-{
-    mParameters.setPictureSize(mStillPictContext.snapshotWidth,
-                               mStillPictContext.snapshotHeight);
-    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH,
-                    mStillPictContext.thumbnailWidth);
-    mParameters.set(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT,
-                    mStillPictContext.thumbnailHeigth);
-
-    mParameters.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES,
-                    mStillPictContext.supportedSnapshotSizes.string());
-    mParameters.set(CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES,
-                    mStillPictContext.suportedThumnailSizes.string());
-
-    mStillPictContext.clear();
-    updateParameterCache();
-
-    if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
-        allocateSnapshotAndPostviewBuffers(false);
-    } else {
-        LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
-    }
-
-
-}
-
-/**
  * Create 3A instance according to sensor type and platform requirement:
  * - AtomAIQ for RAW cameras that use IA AIQ
  * - AtomSoc3A for SoC cameras that have their own 3A
@@ -7645,7 +7809,7 @@ bool ControlThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
             return false;
         }
 
-        if (mISP->getMode() == MODE_VIDEO) {
+        if (mISP->getMode() == MODE_VIDEO || mISP->getMode() == MODE_CONTINUOUS_VIDEO) {
             // steal the owner, if vfpp has no time for processing - in that
             // case the preview will be used for creating the recording content,
             // and we need to steal the ownership to ensure the dequeue

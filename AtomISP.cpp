@@ -937,6 +937,9 @@ status_t AtomISP::configure(AtomMode mode)
     case MODE_CONTINUOUS_CAPTURE:
         status = configureContinuous();
         break;
+    case MODE_CONTINUOUS_VIDEO:
+        status = configureContinuousVideo();
+        break;
     default:
         status = UNKNOWN_ERROR;
         break;
@@ -984,6 +987,7 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
         if ((status = allocatePreviewBuffers()) != NO_ERROR)
             mPreviewDevice->stop();
         break;
+    case MODE_CONTINUOUS_VIDEO:
     case MODE_VIDEO:
         if ((status = allocateRecordingBuffers()) != NO_ERROR)
             return status;
@@ -1029,6 +1033,7 @@ status_t AtomISP::start()
         status = startPreview();
         break;
     case MODE_VIDEO:
+    case MODE_CONTINUOUS_VIDEO:
         // in CSS2.0 mDvs is mandatory for zoom functionality
         if (mDvs && (mCssMajorVersion == 2 || mDvsEnabled)) {
             if (mDvs->reconfigure() == NO_ERROR) {
@@ -1118,6 +1123,10 @@ status_t AtomISP::stop()
 
     case MODE_CONTINUOUS_CAPTURE:
         status = stopContinuousPreview();
+        break;
+
+    case MODE_CONTINUOUS_VIDEO:
+        status = stopContinuousVideo();
         break;
 
     default:
@@ -1405,6 +1414,7 @@ status_t AtomISP::stopRecording()
 
     mRecordingDevice->stop();
     freeRecordingBuffers();
+    mRecordingDevice->close();
 
     mPreviewDevice->stop();
     freePreviewBuffers();
@@ -1710,6 +1720,84 @@ err:
     return status;
 }
 
+status_t AtomISP::configureContinuousVideo()
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret;
+    float capture_fps;
+    status_t status = NO_ERROR;
+
+    ret = configureContinuousMode(true);
+    if (ret != NO_ERROR) {
+        LOGE("setting continuous mode failed");
+        return ret;
+    }
+
+    ret = configureContinuousRingBuffer();
+    if (ret != NO_ERROR) {
+        LOGE("setting continuous capture params failed");
+        return ret;
+    }
+
+    ret = configureDevice(
+            mMainDevice.get(),
+            CI_MODE_VIDEO,
+            &(mConfig.snapshot),
+            isDumpRawImageReady());
+    if (ret < 0) {
+        LOGE("configure first device failed!");
+        status = UNKNOWN_ERROR;
+        goto errorFreeBuf;
+    }
+    // save the capture fps
+    capture_fps = mConfig.fps;
+
+    status = configureRecording();
+    if (status != NO_ERROR) {
+        return status;
+    }
+
+    ret = mPostViewDevice->open();
+    if (ret < 0) {
+        LOGE("Open second device failed!");
+        status = UNKNOWN_ERROR;
+        goto errorFreeBuf;
+    }
+
+    struct v4l2_capability aCap;
+    status = mPostViewDevice->queryCap(&aCap);
+    if (status != NO_ERROR) {
+        LOGE("Failed basic capability check failed!");
+        return NO_INIT;
+    }
+
+    ret = configureDevice(
+            mPostViewDevice.get(),
+            CI_MODE_VIDEO,
+            &(mConfig.postview),
+            false);
+    if (ret < 0) {
+        LOGE("configure second device failed!");
+        status = UNKNOWN_ERROR;
+        goto errorCloseSecond;
+    }
+
+    // need to resend the current zoom value
+    atomisp_set_zoom(mConfig.zoom);
+
+    // restore the actual capture fps value
+    mConfig.fps = capture_fps;
+
+    return status;
+
+errorCloseSecond:
+    mPostViewDevice->close();
+errorFreeBuf:
+    freeSnapshotBuffers();
+    freePostviewBuffers();
+
+    return status;
+}
 status_t AtomISP::configureContinuous()
 {
     LOG1("@%s", __FUNCTION__);
@@ -1823,17 +1911,17 @@ status_t AtomISP::startCapture()
      * For continuous capture we cannot skip this way, we will control via the
      * offset calculation
      */
-    if (mMode != MODE_CONTINUOUS_CAPTURE)
-       initialSkips = mInitialSkips;
-    else
+    if (inContinuousMode())
        initialSkips = 0;
+    else
+       initialSkips = mInitialSkips;
 
    /**
     * moving the hack from Gang to disable these ISP parameters, only needed
     * when starting preview in continuous capture mode and when starting capture
     * in online mode. This was required to enable SuperZoom POC.
     **/
-    if (mMode != MODE_CONTINUOUS_CAPTURE &&  mNoiseReductionEdgeEnhancement == false) {
+    if (!inContinuousMode() && mNoiseReductionEdgeEnhancement == false) {
        //Disable the Noise Reduction and Edge Enhancement
        struct atomisp_ee_config ee_cfg;
        struct atomisp_nr_config nr_cfg;
@@ -1890,6 +1978,28 @@ errorFreeBuf:
 
 end:
     return status;
+}
+
+status_t AtomISP::stopContinuousVideo()
+{
+    LOG1("@%s", __FUNCTION__);
+    int error = 0;
+    if (stopCapture() != NO_ERROR)
+        ++error;
+    // TODO: this call to requestContCapture() can be
+    //       removed once PSI BZ 101676 is solved
+    if (requestContCapture(0, 0, 0) != NO_ERROR)
+        ++error;
+    if (configureContinuousMode(false) != NO_ERROR)
+        ++error;
+    if (stopRecording() != NO_ERROR)
+        ++error;
+    if (error) {
+        LOGE("@%s: errors (%d) in stopping continuous capture",
+             __FUNCTION__, error);
+        return UNKNOWN_ERROR;
+    }
+    return NO_ERROR;
 }
 
 status_t AtomISP::stopContinuousPreview()
@@ -1988,7 +2098,7 @@ status_t AtomISP::startOfflineCapture(ContinuousCaptureConfig &config)
     if (mHALZSLEnabled)
         return OK;
 
-    if (mMode != MODE_CONTINUOUS_CAPTURE) {
+    if (!inContinuousMode()) {
         LOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
         return INVALID_OPERATION;
     }
@@ -2031,7 +2141,7 @@ status_t AtomISP::startOfflineCapture(ContinuousCaptureConfig &config)
 status_t AtomISP::stopOfflineCapture()
 {
     LOG1("@%s", __FUNCTION__);
-    if (mMode != MODE_CONTINUOUS_CAPTURE) {
+    if (!inContinuousMode()) {
         LOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
         return INVALID_OPERATION;
     }
@@ -2067,7 +2177,7 @@ status_t AtomISP::prepareOfflineCapture(ContinuousCaptureConfig &cfg, bool captu
 
 bool AtomISP::isOfflineCaptureRunning() const
 {
-    if (mMode == MODE_CONTINUOUS_CAPTURE &&  mMainDevice->isStarted())
+    if (inContinuousMode() && mMainDevice->isStarted())
         return true;
 
     return false;
@@ -2297,7 +2407,7 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
         return status;
     }
 
-    if (mMode == MODE_VIDEO) {
+    if (inVideoMode()) {
         LOGE("Reconfiguration in video mode unsupported. Stop the ISP first");
         return INVALID_OPERATION;
     }
@@ -2393,7 +2503,7 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
     params->getPreviewSize(&previewWidth, &previewHeight);
     params->getVideoSize(&videoWidth, &videoHeight);
 
-    if (videoMode || mMode == MODE_VIDEO) {
+    if (videoMode || inVideoMode()) {
         // Workaround 3: with some sensors the VF resolution must be
         //               limited high-resolution video recordiing
         // TODO: if we get more cases like this, move to PlatformData.h
@@ -2450,7 +2560,7 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
     // workaround 4, detail refer to the function description
     bool previewSizeSupported = PlatformData::resolutionSupportedByVFPP(mCameraId, previewWidth, previewHeight);
     if (!previewSizeSupported) {
-        if (videoMode || mMode == MODE_VIDEO) {
+        if (videoMode || inVideoMode()) {
             if (workaround2) {
                 // swapping is on already due to preview bigger than video (workaround 2)
                 // we don't need to do anything vfpp related anymore
@@ -2791,6 +2901,16 @@ status_t AtomISP::setSkipFramesForVideoZoom()
     if(mConfig.zoom != 0)
         mVideoZoomFrameSkips = VIDEO_ZOOM_SKIP_FRAMES;
     return status;
+}
+
+inline bool AtomISP::inContinuousMode() const
+{
+    return mMode == MODE_CONTINUOUS_VIDEO || mMode == MODE_CONTINUOUS_CAPTURE;
+}
+
+inline bool AtomISP::inVideoMode() const
+{
+    return mMode == MODE_CONTINUOUS_VIDEO || mMode == MODE_VIDEO;
 }
 
 bool AtomISP::dvsEnabled()
@@ -3344,7 +3464,7 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff)
     struct v4l2_buffer_info buf;
     Mutex::Autolock lock(mDeviceMutex[mRecordingDevice->mId]);
 
-    if (mMode != MODE_VIDEO)
+    if (!inVideoMode())
         return INVALID_OPERATION;
 
     CLEAR(buf);
@@ -3382,7 +3502,7 @@ status_t AtomISP::putRecordingFrame(AtomBuffer *buff)
     LOG2("@%s", __FUNCTION__);
     Mutex::Autolock lock(mDeviceMutex[mRecordingDevice->mId]);
 
-    if (mMode != MODE_VIDEO)
+    if (!inVideoMode())
         return INVALID_OPERATION;
 
     if (buff->ispPrivate != mSessionId)
@@ -3519,7 +3639,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
     struct v4l2_buffer_info vinfo;
     int snapshotIndex, postviewIndex;
 
-    if (mMode != MODE_CAPTURE && mMode != MODE_CONTINUOUS_CAPTURE)
+    if (mMode != MODE_CAPTURE && !inContinuousMode())
         return INVALID_OPERATION;
 
     if (mHALZSLEnabled)
@@ -3600,7 +3720,7 @@ status_t AtomISP::putSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
     LOG1("@%s", __FUNCTION__);
     int ret0, ret1;
 
-    if (mMode != MODE_CAPTURE && mMode != MODE_CONTINUOUS_CAPTURE)
+    if (mMode != MODE_CAPTURE && !inContinuousMode())
         return INVALID_OPERATION;
 
     if (mHALZSLEnabled)
@@ -3631,7 +3751,7 @@ bool AtomISP::dataAvailable()
     LOG2("@%s", __FUNCTION__);
 
     // For video/recording, make sure isp has a preview and a recording buffer
-    if (mMode == MODE_VIDEO)
+    if (inVideoMode())
         return mNumRecordingBuffersQueued > 0 && mNumPreviewBuffersQueued > 0;
 
     // For capture, just make sure isp has a capture buffer
@@ -4556,7 +4676,7 @@ status_t AtomISP::storeMetaDataInBuffers(bool enabled, int sID)
      * if we are in video mode we can allocate the buffers
      * now and start using them
      */
-    if (mStoreMetaDataInBuffers && mMode == MODE_VIDEO) {
+    if (mStoreMetaDataInBuffers && inVideoMode()) {
       if ((status = allocateMetaDataBuffers()) != NO_ERROR)
           goto exitFreeRec;
     }
@@ -4581,11 +4701,12 @@ int AtomISP::dumpFrameInfo(AtomMode mode)
     LOG2("@%s", __FUNCTION__);
 
     if (gLogLevel & CAMERA_DEBUG_LOG_PERF_TRACES) {
-        const char *previewMode[5]={"NoPreview",
+        const char *previewMode[6]={"NoPreview",
                                     "Preview",
                                     "Capture",
                                     "Video",
-                                    "ContinuousCapture"};
+                                    "ContinuousCapture",
+                                    "ContinuousVideo"};
 
         LOGD("FrameInfo: PreviewMode: %s", previewMode[mode+1]);
         LOGD("FrameInfo: previewSize: %dx%d, bpl: %d",
@@ -4615,7 +4736,7 @@ int AtomISP::dumpPreviewFrame(int previewIndex)
         dump.width =  mConfig.preview.width;
         dump.height = mConfig.preview.height;
         dump.bpl = mConfig.preview.bpl;
-        if (mMode == MODE_VIDEO)
+        if (inVideoMode())
             cameraDump->dumpImage2File(&dump, DUMPIMAGE_RECORD_PREVIEW_FILENAME);
         else
             cameraDump->dumpImage2File(&dump, DUMPIMAGE_PREVIEW_FILENAME);

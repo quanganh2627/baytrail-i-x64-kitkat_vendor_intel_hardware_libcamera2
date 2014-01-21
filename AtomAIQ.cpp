@@ -284,6 +284,7 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
     case MODE_VIDEO:
         isp_mode = ia_aiq_frame_use_video;
         break;
+    case MODE_CONTINUOUS_VIDEO:
     case MODE_CONTINUOUS_CAPTURE:
         isp_mode = ia_aiq_frame_use_continuous;
         break;

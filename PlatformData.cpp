@@ -856,6 +856,22 @@ const char* PlatformData::maxHighSpeedDvsResolution(int cameraId)
     return getInstance()->mCameras[cameraId].maxHighSpeedDvsResolution;
 }
 
+bool PlatformData::isFullResSdvSupported(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return false;
+    }
+    return (strlen(supportedSdvSizes(cameraId)) != 0);
+}
+
+const char* PlatformData::supportedSdvSizes(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return "";
+    }
+    return getInstance()->mCameras[cameraId].supportedSdvSizes;
+}
+
 const char* PlatformData::supportedFocusModes(int cameraId)
 {
     const char *sPtr;
