@@ -94,6 +94,7 @@ namespace android {
     const char IntelCameraParameters::KEY_BURST_SPEED[] = "burst-speed";
     const char IntelCameraParameters::KEY_BURST_START_INDEX[] = "burst-start-index";
     const char IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX[] = "burst-start-index-values";
+    const char IntelCameraParameters::KEY_MAX_BURST_LENGTH_WITH_NEGATIVE_START_INDEX[] = "burst-max-length-negative";
     //values for burst speed
     const char IntelCameraParameters::BURST_SPEED_FAST[] = "fast";
     const char IntelCameraParameters::BURST_SPEED_MEDIUM[] = "medium";

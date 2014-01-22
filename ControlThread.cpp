@@ -4283,6 +4283,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     // BURST LENGTH
     const char* burstLength = params->get(IntelCameraParameters::KEY_BURST_LENGTH);
     const char* burstLengths = params->get(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH);
+    int burstMaxLengthNegative = params->getInt(IntelCameraParameters::KEY_MAX_BURST_LENGTH_WITH_NEGATIVE_START_INDEX);
     if (!validateString(burstLength, burstLengths)) {
         LOGE("bad burst length: %s; supported: %s", burstLength, burstLengths);
         return BAD_VALUE;
@@ -4297,7 +4298,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
                 return BAD_VALUE;
             }
             int len = burstLength ? atoi(burstLength) : 0;
-            if (len > PlatformData::maxContinuousRawRingBufferSize(mCameraId)-1) {
+            if (len > burstMaxLengthNegative) {
                 LOGE("negative start-index and burst-length=%d not supported concurrently", len);
                 return BAD_VALUE;
             }

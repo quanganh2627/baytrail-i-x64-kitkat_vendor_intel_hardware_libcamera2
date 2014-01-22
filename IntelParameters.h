@@ -202,6 +202,7 @@ namespace android {
     // Time nudge
     static const char KEY_BURST_START_INDEX[];
     static const char KEY_SUPPORTED_BURST_START_INDEX[];
+    static const char KEY_MAX_BURST_LENGTH_WITH_NEGATIVE_START_INDEX[];
 
     // EXIF data
     static const char KEY_EXIF_MAKER[];
