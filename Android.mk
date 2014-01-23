@@ -59,7 +59,8 @@ LOCAL_SRC_FILES := \
 	SensorHW.cpp \
 	v4l2dev/v4l2devicebase.cpp \
 	v4l2dev/v4l2videonode.cpp \
-	v4l2dev/v4l2subdevice.cpp
+	v4l2dev/v4l2subdevice.cpp \
+	AtomDvs2.cpp
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SRC_FILES += \
@@ -67,17 +68,10 @@ LOCAL_SRC_FILES += \
 endif
 
 ifeq ($(USE_CSS_2_0), true)
-LOCAL_SRC_FILES += \
-	AtomDvs2.cpp
 LOCAL_CFLAGS += -DATOMISP_CSS2
 else
 ifeq ($(USE_CSS_2_1), true)
-LOCAL_SRC_FILES += \
-	AtomDvs2.cpp
 LOCAL_CFLAGS += -DATOMISP_CSS2 -DATOMISP_CSS21
-else
-LOCAL_SRC_FILES += \
-	AtomDvs.cpp
 endif
 endif
 
