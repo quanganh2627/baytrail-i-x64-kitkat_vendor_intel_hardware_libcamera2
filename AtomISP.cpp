@@ -2640,7 +2640,7 @@ status_t AtomISP::setZoom(int zoom)
     if (mMode == MODE_CAPTURE)
         return NO_ERROR;
 
-    if (mMode == MODE_VIDEO && mDvs && mCssMajorVersion == 2) {
+    if (mMode == MODE_VIDEO && mDvs && mCssMajorVersion == 2 && mSensorType == SENSOR_TYPE_RAW) {
         mDvs->setZoom(zoom);
     } else {
         int ret = atomisp_set_zoom(zoom);
