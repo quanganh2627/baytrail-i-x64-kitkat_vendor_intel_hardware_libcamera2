@@ -264,7 +264,7 @@ int GPUScaler::logConfig() {
     return (0);
 }
 
-int GPUScaler::addOutputBuffer(buffer_handle_t *pBufHandle, int width, int height, int bpl)
+int GPUScaler::addOutputBuffer(buffer_handle_t *pBufHandle, int width, int height, int bpl, int format)
 {
     mOutputBufferCounter++;
     LOG2("@%s output buffer count %d\n", __FUNCTION__, mOutputBufferCounter);
@@ -365,7 +365,7 @@ void GPUScaler::removeOutputBuffer(int bufferId)
     dstRenderBuffers[bufferId][0] = dstRenderBuffers[bufferId][1] = 0;
 }
 
-int GPUScaler::addInputBuffer(buffer_handle_t *pBufHandle, int width, int height, int bpl)
+int GPUScaler::addInputBuffer(buffer_handle_t *pBufHandle, int width, int height, int bpl, int format)
 {
     mInputBufferCounter++;
     LOG1("@%s input buffer count %d\n", __FUNCTION__, mInputBufferCounter);
