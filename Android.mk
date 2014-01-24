@@ -68,6 +68,11 @@ LOCAL_SRC_FILES += \
 	JpegHwEncoder.cpp
 endif
 
+ifeq ($(BOARD_GRAPHIC_IS_GEN), true)
+LOCAL_SRC_FILES += \
+	VAScaler.cpp
+endif
+
 ifeq ($(USE_CSS_2_0), true)
 LOCAL_CFLAGS += -DATOMISP_CSS2
 else
@@ -162,6 +167,13 @@ endif
 ifeq ($(BOARD_GRAPHIC_IS_GEN), true)
 LOCAL_SHARED_LIBRARIES += \
 	libmix_videovpp
+endif
+
+ifeq ($(BOARD_GRAPHIC_IS_GEN), true)
+LOCAL_SHARED_LIBRARIES += \
+	libva \
+	libva-tpi \
+	libva-android
 endif
 
 LOCAL_STATIC_LIBRARIES := \

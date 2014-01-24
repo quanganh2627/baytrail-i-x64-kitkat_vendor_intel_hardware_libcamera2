@@ -20,7 +20,7 @@
 
 #include "MessageQueue.h"
 #include "AtomCommon.h"
-#include "GPUScaler.h"
+#include "IHWScaler.h"
 
 namespace android {
 
@@ -105,7 +105,7 @@ private:
 
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
-    GPUScaler *mGPUScaler;
+    IHWScaler *mHWScaler;
     unsigned int mFrameCounter;
 };
 

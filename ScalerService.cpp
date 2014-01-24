@@ -21,13 +21,15 @@
 #include "LogHelper.h"
 #include <ui/GraphicBuffer.h>
 #include <ui/GraphicBufferMapper.h>
+#include "GPUScaler.h"
+#include "VAScaler.h"
 namespace android {
 
 ScalerService::ScalerService() :
     Thread(false)
     ,mMessageQueue("ScalerService", MESSAGE_ID_MAX)
     ,mThreadRunning(false)
-    ,mGPUScaler(NULL)
+    ,mHWScaler(NULL)
     ,mFrameCounter(0)
 {
     LOG1("@%s", __FUNCTION__);
@@ -36,9 +38,9 @@ ScalerService::ScalerService() :
 ScalerService::~ScalerService()
 {
     LOG1("@%s", __FUNCTION__);
-    if (mGPUScaler) {
-        delete mGPUScaler;
-        mGPUScaler = NULL;
+    if (mHWScaler) {
+        delete mHWScaler;
+        mHWScaler = NULL;
     }
 }
 
@@ -90,8 +92,12 @@ status_t ScalerService::handleMessageRegisterBuffer(MessageRegister &msg)
 {
     LOG1("@%s", __FUNCTION__);
 
-    if (mGPUScaler == NULL) {
-        mGPUScaler = new GPUScaler();
+    if (mHWScaler == NULL) {
+#ifdef GRAPHIC_IS_GEN
+        mHWScaler = new VAScaler();
+#else
+        mHWScaler = new GPUScaler();
+#endif
         mFrameCounter = 0;
     }
 
@@ -100,9 +106,9 @@ status_t ScalerService::handleMessageRegisterBuffer(MessageRegister &msg)
     mapper.unlock(*msg.buffer->gfxInfo.gfxBufferHandle);  // gpuscaler wants unlocked bufs
 
     if (msg.dir == SCALER_INPUT) {
-        id = mGPUScaler->addInputBuffer(msg.buffer->gfxInfo.gfxBufferHandle, msg.buffer->width, msg.buffer->height, msg.buffer->bpl);
+        id = mHWScaler->addInputBuffer(msg.buffer->gfxInfo.gfxBufferHandle, msg.buffer->width, msg.buffer->height, msg.buffer->bpl, getGFXHALPixelFormatFromV4L2Format(msg.buffer->fourcc));
     } else { // BufferDirection == SCALER_OUTPUT
-        id = mGPUScaler->addOutputBuffer(msg.buffer->gfxInfo.gfxBufferHandle, msg.buffer->width, msg.buffer->height, msg.buffer->bpl);
+        id = mHWScaler->addOutputBuffer(msg.buffer->gfxInfo.gfxBufferHandle, msg.buffer->width, msg.buffer->height, msg.buffer->bpl, getGFXHALPixelFormatFromV4L2Format(msg.buffer->fourcc));
     }
 
     if (id < 0)
@@ -127,9 +133,9 @@ status_t ScalerService::handleMessageUnregisterBuffer(MessageRegister &msg)
 {
     LOG1("@%s", __FUNCTION__);
     if (msg.dir == SCALER_INPUT) {
-        mGPUScaler->removeInputBuffer(msg.buffer->gfxInfo.scalerId);
+        mHWScaler->removeInputBuffer(msg.buffer->gfxInfo.scalerId);
     } else { // BufferDirection == SCALER_OUTPUT
-        mGPUScaler->removeOutputBuffer(msg.buffer->gfxInfo.scalerId);
+        mHWScaler->removeOutputBuffer(msg.buffer->gfxInfo.scalerId);
     }
     mMessageQueue.reply(MESSAGE_ID_UNREGISTER_BUFFER, OK);
     return OK;
@@ -139,13 +145,14 @@ status_t ScalerService::handleMessageScaleAndZoom(MessageScaleAndZoom &msg)
 {
     LOG2("@%s", __FUNCTION__);
 
-    if (mGPUScaler == NULL) {
-        mGPUScaler = new GPUScaler();
-        mFrameCounter = 0;
+    if (mHWScaler == NULL) {
+        LOGE("Process before register buffer, It should not happen.");
+        mMessageQueue.reply(MESSAGE_ID_SCALE_AND_ZOOM, INVALID_OPERATION);
+        return INVALID_OPERATION;
     }
 
-    mGPUScaler->setZoomFactor(msg.zoomFactor);
-    mGPUScaler->processFrame(msg.input->gfxInfo.scalerId, msg.output->gfxInfo.scalerId);
+    mHWScaler->setZoomFactor(msg.zoomFactor);
+    mHWScaler->processFrame(msg.input->gfxInfo.scalerId, msg.output->gfxInfo.scalerId);
 
     // handle locking for non shared case (in shared case, PreviewThread handles)
     if (!msg.output->shared) {
@@ -201,9 +208,9 @@ status_t ScalerService::handleMessageExit()
     status_t status = NO_ERROR;
     mThreadRunning = false;
 
-    if (mGPUScaler) {
-        delete mGPUScaler;
-        mGPUScaler = NULL;
+    if (mHWScaler) {
+        delete mHWScaler;
+        mHWScaler = NULL;
     }
     LOG1("@%s returning..", __FUNCTION__);
     return status;

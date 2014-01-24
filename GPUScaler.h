@@ -20,6 +20,7 @@
 #include <gui/Surface.h>
 #include <GLES/gl.h>
 #include <GLES2/gl2.h>
+#include "IHWScaler.h"
 
 #ifndef EGL_IMG_image_plane_attribs
 #define EGL_IMG_image_plane_attribs 1
@@ -35,7 +36,8 @@ namespace android {
 #define        NUMBER_GFX_BUFFERS      20
 #define        MAX_EGL_IMAGE_HANDLE                3                                     // use for r/rg exetension
 
-class GPUScaler {
+class GPUScaler :
+    public IHWScaler {
 
 // constructor destructor
 public:
@@ -47,8 +49,8 @@ public:
 
     void setZoomFactor(float zf);
     int processFrame(int inputBufferId, int outputBufferId);
-    int addOutputBuffer(buffer_handle_t *pBufHandle, int width, int height, int bpl);
-    int addInputBuffer(buffer_handle_t *pBufHandle, int width, int height, int bpl);
+    int addOutputBuffer(buffer_handle_t *pBufHandle, int width, int height, int bpl, int format);
+    int addInputBuffer(buffer_handle_t *pBufHandle, int width, int height, int bpl, int format);
     void removeInputBuffer(int bufferId);
     void removeOutputBuffer(int bufferId);
 // private types

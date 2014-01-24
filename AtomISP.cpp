@@ -3567,10 +3567,13 @@ void AtomISP::copyOrScaleHALZSLBuffer(const AtomBuffer &captureBuf, const AtomBu
     targetBuf->shared = localBuf.shared;
 
     // optimizations, if right sized frame already exists (captureBuf is not zoomed so memcpy only works for zoomFactor 1.0)
-    if (zoomFactor == 1.0f && targetBuf->width == mConfig.HALZSL.width && targetBuf->height == mConfig.HALZSL.height) {
+    // Graphic HW have the capability to scale and colorconvert at the same time. Copy only if color format is also the same.
+    // FIXME, even if buffer can be copy directly, HW copy should be faster than memcpy. So maybe we can use HW copy instead.
+    if (zoomFactor == 1.0f && targetBuf->fourcc == mConfig.HALZSL.fourcc &&
+            targetBuf->width == mConfig.HALZSL.width && targetBuf->height == mConfig.HALZSL.height) {
         memcpy(targetBuf->dataPtr, captureBuf.dataPtr, captureBuf.size);
     } else if (targetBuf->width == mConfig.preview.width && targetBuf->height == mConfig.preview.height &&
-            previewBuf != NULL) {
+            previewBuf != NULL && targetBuf->fourcc == mConfig.HALZSL.fourcc) {
         memcpy(targetBuf->dataPtr, previewBuf->dataPtr, previewBuf->size);
     } else
         mScaler->scaleAndZoom(&captureBuf, targetBuf, zoomFactor);
