@@ -44,6 +44,7 @@ public:
     bool isInitialized() { return initialized; }
     void setMakerNote(const ia_binary_data &aaaMkNoteData);
     void setDriverData(const atomisp_makernote_info &ispData);
+    void setFaceData(const ia_face_state &faceState);
     void setSensorAeConfig(const SensorAeConfig &sensorParams);
     void pictureTaken();
     void enableFlash();

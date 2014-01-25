@@ -264,7 +264,7 @@ typedef struct {
     uint8_t software[32];
     uint8_t exif_version[4];
     uint8_t date_time[20];
-    uint8_t user_comment[150];
+    uint8_t user_comment[1024];
 
     uint32_t width;
     uint32_t height;

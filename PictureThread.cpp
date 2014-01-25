@@ -346,6 +346,11 @@ void PictureThread::MetaData::free(I3AControls *aaaControls)
         delete aeConfig;
         aeConfig = NULL;
     }
+
+    if (faceState.faces) {
+        delete[] faceState.faces;
+        faceState.faces = NULL;
+    }
 }
 
 /**
@@ -362,6 +367,8 @@ void PictureThread::setupExifWithMetaData(const PictureThread::MetaData &metaDat
         mExifMaker->setSensorAeConfig(*metaData.aeConfig);
     if (metaData.flashFired)
         mExifMaker->enableFlash();
+    if (metaData.faceState.num_faces > 0)
+        mExifMaker->setFaceData(metaData.faceState);
 }
 
 status_t PictureThread::handleMessageEncode(MessageEncode *msg)

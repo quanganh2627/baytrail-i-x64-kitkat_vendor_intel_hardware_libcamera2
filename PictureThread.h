@@ -60,6 +60,7 @@ public:
       bool saveMirrored;                     /*!< whether to do mirroring */
       int cameraOrientation;                 /*!< camera sensor orientation */
       int currentOrientation;                /*!< Current orientation of the device */
+      ia_face_state faceState;
 
       void free(I3AControls* aaaControls);
     };

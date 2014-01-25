@@ -56,6 +56,37 @@ void EXIFMaker::setMakerNote(const ia_binary_data &aaaMkNoteData)
 }
 
 /**
+ *  Sets face detection information which contain the number of face,
+ *  and the location of every face.
+ *  These informations are recorded in user_commment member of EXIF.
+ */
+void EXIFMaker::setFaceData(const ia_face_state &faceState)
+{
+    LOG1("@%s: Face number is %d", __FUNCTION__, faceState.num_faces);
+
+    if (faceState.num_faces > 0) {
+        int i;
+        int val = 0;
+        int maxLen = sizeof(exifAttributes.user_comment);
+        char *ptr = (char *)exifAttributes.user_comment;
+        val += sprintf((ptr + val), "Face Number:%d ", faceState.num_faces);
+        val += sprintf((ptr + val), "Location:");
+        for (i = 0; i < faceState.num_faces; i++) {
+            if (val >= maxLen)
+                break;
+            val += snprintf((ptr + val), (maxLen - val), " (%d,%d,%d,%d)",
+                    faceState.faces[i].face_area.left,
+                    faceState.faces[i].face_area.top,
+                    faceState.faces[i].face_area.right,
+                    faceState.faces[i].face_area.bottom);
+        }
+        if (i != faceState.num_faces)
+            LOGW("Face information is too large, only save first %d groups of face data", i);
+    }
+    LOG1("Face information written to Exif = %s\n", exifAttributes.user_comment);
+}
+
+/**
  * Sets picture meta data retrieved from atomisp kernel driver.
  *
  * @param ispData struct retrieved with ATOMISP_IOC_ISP_MAKERNOTE

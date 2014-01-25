@@ -94,6 +94,8 @@ public:
     status_t newStats(timeval &t, unsigned int seqNo);
     status_t applyRedEyeRemoval(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer, int width, int height, int fourcc);
     status_t setFaces(const ia_face_state& faceState);
+    int32_t getFaceNum(void) const;
+    status_t getFaces(ia_face_state& faceState) const;
     void getCurrentSmartScene(String8 &sceneMode, bool &sceneHdr);
     void resetSmartSceneValues();
 

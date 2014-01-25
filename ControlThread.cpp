@@ -2776,6 +2776,7 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
     LOG1("@%s: ", __FUNCTION__);
 
     ia_binary_data *aaaMkNote = 0;
+    int32_t numFaces = 0;
     atomisp_makernote_info *atomispMkNote = 0;
     SensorAeConfig *aeConfig = new SensorAeConfig;
 
@@ -2808,6 +2809,19 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
     }
     else {
         LOGW("Could not get AtomISP makernote information!");
+    }
+
+    numFaces = m3AThread->getFaceNum();
+    if (numFaces > 0) {
+        metaData.faceState.faces = new ia_face[numFaces];
+        if (metaData.faceState.faces == NULL) {
+            metaData.faceState.num_faces = 0;
+            LOGE("Error allocation face detection memory");
+        } else
+            m3AThread->getFaces(metaData.faceState);
+    } else {
+        metaData.faceState.faces = NULL;
+        metaData.faceState.num_faces = 0;
     }
 
     metaData.flashFired = flashFired;

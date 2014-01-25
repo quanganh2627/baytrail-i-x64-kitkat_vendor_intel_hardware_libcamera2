@@ -246,6 +246,38 @@ status_t AAAThread::setFaces(const ia_face_state& faceState)
     return status;
 }
 
+int32_t AAAThread::getFaceNum(void) const
+{
+    LOG1("@%s", __FUNCTION__);
+    return mFaceState.num_faces;
+}
+
+status_t AAAThread::getFaces(ia_face_state &faceState) const
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if (mFaceState.faces == NULL) {
+        LOGE("face state not allocated");
+        return NO_INIT;
+    }
+
+    if (mFaceState.num_faces == 0) {
+        LOG1("No face detection information can be gotten");
+        return INVALID_OPERATION;
+    }
+
+    faceState.num_faces = mFaceState.num_faces;
+    if (faceState.num_faces > MAX_FACES_DETECTABLE) {
+        LOGW("@%s: %d faces detected, limiting to %d", __FUNCTION__,
+                faceState.num_faces, MAX_FACES_DETECTABLE);
+        faceState.num_faces = MAX_FACES_DETECTABLE;
+    }
+
+    memcpy(faceState.faces, mFaceState.faces, faceState.num_faces * sizeof(ia_face));
+
+    return NO_ERROR;
+}
+
 status_t AAAThread::handleMessageExit()
 {
     LOG1("@%s", __FUNCTION__);
