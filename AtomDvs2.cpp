@@ -215,6 +215,8 @@ status_t AtomDvs2::reconfigureNoLock()
             mDvs2Config.num_axis = ia_dvs2_algorihm_0_axis;
             mDVSEnabled = false;
         }
+    } else {
+        mDvs2Config.num_axis = ia_dvs2_algorihm_0_axis;
     }
     LOG2("DVS enabled:%s", mDVSEnabled ? "true": "false");
     /* setup binary dump parameter */
@@ -366,13 +368,21 @@ bool AtomDvs2::isDvsValid()
     LOG1("@%s", __FUNCTION__);
     int width, height;
     mIsp->getVideoSize(&width, &height, NULL);
+    // Workaround 1: disable DVS functionality in hi-speed recording due to performance issue
     if (mIsp->getRecordingFramerate() > DEFAULT_RECORDING_FPS && !isHighSpeedDvsSupported(width, height)) {
         LOGW("%s:DVS cannot be set when HighSpeed Capture and the selected resolution", __FUNCTION__);
         return false;
-    } else {
-        mIsp->setDVSSkipFrames(DVS_SKIP_FRAMES);
-        return true;
     }
+    // Workaround 2: disable DVS functionality when the recording resolution is less than VGA,
+    //               because current grid size is 64, the minimum resolution for grid size 64 is
+    //               384 x 384, so FW should provide grid size 32 in low resolution for DVS functionality.
+    if (width < RESOLUTION_VGA_WIDTH || height < RESOLUTION_VGA_HEIGHT) {
+        LOGW("%s:DVS cannot be set when the selected resolution is less than VGA", __FUNCTION__);
+        return false;
+    }
+
+    mIsp->setDVSSkipFrames(DVS_SKIP_FRAMES);
+    return true;
 }
 
 /**

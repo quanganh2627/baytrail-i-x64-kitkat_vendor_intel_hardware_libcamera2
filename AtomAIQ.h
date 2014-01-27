@@ -382,7 +382,7 @@ public:
     status_t getManualShutter(float *expTime);
     status_t setSmartSceneDetection(bool en);
     bool     getSmartSceneDetection();
-    status_t getSmartSceneMode(int *sceneMode, bool *sceneHdr);
+    status_t getSmartSceneMode(String8 &sceneMode, bool &sceneHdr);
     status_t setFaces(const ia_face_state& faceState);
 
     status_t getGridWindow(AAAWindowInfo& window);

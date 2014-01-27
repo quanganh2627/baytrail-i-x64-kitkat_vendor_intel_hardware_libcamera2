@@ -575,6 +575,9 @@ status_t UltraLowLight::processIntelULL()
     mOutputPostView = mPostviewBuffs[0];
     AtomToIaFrameBuffer(&mOutputBuffer, &out);
     AtomToIaFrameBuffer(&mOutputPostView, &out_pv);
+    // Intel ull does not process postview buffer
+    // set postview buffer status to FRAME_STATUS_SKIPPED to indicate it's not ULL processed
+    mOutputPostView.status = FRAME_STATUS_SKIPPED;
 
     LOG1("Intel ULL processing...");
     ia_err error = ia_cp_ull_compose(&out, &out_pv, input, input, mInputBuffers.size(), mIntelUllCfg);
@@ -680,6 +683,7 @@ processComplete:
     if (getState() == ULL_STATE_PROCESSING) {
         setState(ULL_STATE_DONE);
         mOutputBuffer = mInputBuffers[0];
+        mOutputPostView = mPostviewBuffs[0];
         mInputBuffers.removeAt(0);
         mPostviewBuffs.removeAt(0);
         if (gLogLevel & CAMERA_DEBUG_ULL_DUMP) {
@@ -687,6 +691,8 @@ processComplete:
            yuvName.appendFormat("id_%d.yuv",mULLCounter);
            CameraDump::dumpAtom2File(&mOutputBuffer, yuvName.string());
         }
+        // set postview buffer status to FRAME_STATUS_SKIPPED to indicate it's not ULL processed
+        mOutputPostView.status = FRAME_STATUS_SKIPPED;
     } else {
         LOGW("ULL was canceled during processing state = %d",getState());
     }

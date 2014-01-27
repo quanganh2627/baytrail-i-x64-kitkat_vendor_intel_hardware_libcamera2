@@ -152,7 +152,7 @@ private:
     virtual void encodingDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void postProcCaptureTrigger();
-    virtual void sceneDetected(int sceneMode, bool sceneHdr);
+    virtual void sceneDetected(String8 sceneMode, bool sceneHdr);
     virtual void facesDetected(const ia_face_state *faceState);
     virtual void panoramaCaptureTrigger();
     virtual void panoramaFinalized(AtomBuffer *buff, AtomBuffer *pvBuff);
@@ -591,6 +591,8 @@ private:
     // NOTE: processParamPreviewFrameRate is deprecated since Android API level 9
     status_t processParamPreviewFrameRate(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    status_t processPreviewCallbackSize(const CameraParameters *oldParams,
+            int videomode);
     status_t ProcessOverlayEnable(const CameraParameters *oldParams,
             CameraParameters *newParams);
     // EXIF data

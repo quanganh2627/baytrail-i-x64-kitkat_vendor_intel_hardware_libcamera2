@@ -278,6 +278,16 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
     mAeInputParameters.manual_frame_time_us_min = (long) 1/fps*1000000;
     mAwbInputParameters.frame_use = m3aState.frame_use;
 
+    // In high speed recording, set the AE operation mode as action to notify AIQ
+    if (mode == MODE_VIDEO && fps > DEFAULT_RECORDING_FPS) {
+        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_action;
+    } else if (mAeSceneMode == CAM_AE_SCENE_MODE_NOT_SET || mAeSceneMode == CAM_AE_SCENE_MODE_AUTO) {
+        // When the default AE scene mode (AUTO) is used, the application will not set the
+        // scene mode when switching between different capture modes. Reset the AE operation
+        // mode to default value when not in HS recording mode
+        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_automatic;
+    }
+
     /* usually the grid changes as well when the mode changes. */
     changeSensorMode();
     if (mBracketingRunning) {
@@ -404,7 +414,6 @@ status_t AtomAIQ::setAeSceneMode(SceneMode mode)
     LOG1("@%s: mode = %d", __FUNCTION__, mode);
 
     mAeSceneMode = mode;
-    resetAFParams();
     resetAECParams();
     resetAWBParams();
     switch (mode) {
@@ -416,15 +425,12 @@ status_t AtomAIQ::setAeSceneMode(SceneMode mode)
         mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_action;
         break;
     case CAM_AE_SCENE_MODE_LANDSCAPE:
-        mAfInputParameters.focus_mode = ia_aiq_af_operation_mode_infinity;
         break;
     case CAM_AE_SCENE_MODE_NIGHT:
-        mAfInputParameters.focus_mode = ia_aiq_af_operation_mode_hyperfocal;
         mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_long_exposure;
         mAeInputParameters.flash_mode = ia_aiq_flash_mode_off;
         break;
     case CAM_AE_SCENE_MODE_FIREWORKS:
-        mAfInputParameters.focus_mode = ia_aiq_af_operation_mode_infinity;
         mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_fireworks;
         mAwbInputParameters.scene_mode = ia_aiq_awb_operation_mode_manual_cct_range;
         m3aState.cct_range.min_cct = 5500;
@@ -1148,15 +1154,59 @@ bool AtomAIQ::getSmartSceneDetection()
     return m3aState.dsd_enabled;
 }
 
-status_t AtomAIQ::getSmartSceneMode(int *sceneMode, bool *sceneHdr)
+status_t AtomAIQ::getSmartSceneMode(String8 &sceneMode, bool &sceneHdr)
 {
     LOG1("@%s", __FUNCTION__);
-    if(sceneMode != NULL && sceneHdr != NULL) {
-        *sceneMode = mDetectedSceneMode;
-        *sceneHdr = (mAeState.ae_results->multiframe & ia_aiq_bracket_mode_hdr) ? true : false;
-        return UNKNOWN_ERROR;
-    }
-    return NO_ERROR;
+
+    switch (mDetectedSceneMode) {
+    case ia_aiq_scene_mode_none:
+        sceneMode.setTo("auto");
+        break;
+    case ia_aiq_scene_mode_close_up_portrait:
+        sceneMode.setTo("close_up_portrait");
+        break;
+    case ia_aiq_scene_mode_portrait:
+        sceneMode.setTo("portrait");
+        break;
+    case ia_aiq_scene_mode_lowlight_portrait:
+        sceneMode.setTo("night_portrait");
+        break;
+    case ia_aiq_scene_mode_low_light:
+        sceneMode.setTo("night");
+        break;
+    case ia_aiq_scene_mode_action:
+        sceneMode.setTo("action");
+        break;
+    case ia_aiq_scene_mode_backlight:
+        sceneMode.setTo("backlight");
+        break;
+    case ia_aiq_scene_mode_landscape:
+        sceneMode.setTo("landscape");
+        break;
+    case ia_aiq_scene_mode_document:
+        sceneMode.setTo("document");
+        break;
+    case ia_aiq_scene_mode_firework:
+        sceneMode.setTo("firework");
+        break;
+    case ia_aiq_scene_mode_lowlight_action:
+        sceneMode.setTo("lowlight_action");
+        break;
+    case ia_aiq_scene_mode_baby:
+        sceneMode.setTo("baby");
+        break;
+    case ia_aiq_scene_mode_barcode:
+        sceneMode.setTo("barcode");
+        break;
+    default:
+        LOGW("Unhandled detected scene mode: 0x%x", mDetectedSceneMode);
+        sceneMode.setTo("auto");
+        break;
+   }
+
+   sceneHdr = (mAeState.ae_results->multiframe & ia_aiq_bracket_mode_hdr) ? true : false;
+   LOG1("scene detected: %s - hdr hint: %d", sceneMode.string(), sceneHdr);
+   return NO_ERROR;
 }
 
 status_t AtomAIQ::setFaces(const ia_face_state& faceState)
@@ -1612,8 +1662,7 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct)
             m3aState.statistics_input_parameters.frame_ae_parameters = pickAeFeedbackResults();
         }
 
-        if (mAfState.af_results
-            && mAfInputParameters.frame_use == ia_aiq_frame_use_still) {
+        if (mAfState.af_results) {
             // pass AF results as AEC input during still AF, AIQ will
             // internally let AEC to converge to assist light
             m3aState.af_results_feedback = *mAfState.af_results;

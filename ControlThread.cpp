@@ -106,18 +106,6 @@ const char* ControlThread::sCaptureSubstateStrings[]= {
       "IDLE"
 };
 
-const char *scene_mode_detected[NUM_SCENE_DETECTED] = {
-                                                   "auto",
-                                                   "close_up_portrait",
-                                                   "portrait",
-                                                   "night_portrait",
-                                                   "night",
-                                                   "action",
-                                                   "backlight",
-                                                   "landscape",
-                                                   "barcode",
-                                                   "firework",
-};
 ControlThread::ControlThread(int cameraId) :
     Thread(true) // callbacks may call into java
     ,mCameraId(cameraId)
@@ -281,7 +269,7 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mPictureThread = new PictureThread(m3AControls, mScalerService, mCallbacksThread, mCallbacks);
+    mPictureThread = new PictureThread(m3AControls, mScalerService, mCallbacksThread, mCallbacks, this);
     if (mPictureThread == NULL) {
         LOGE("error creating PictureThread");
         goto bail;
@@ -936,17 +924,15 @@ void ControlThread::atomRelease()
     mMessageQueue.send(&msg, MESSAGE_ID_RELEASE);
 }
 
-void ControlThread::sceneDetected(int sceneMode, bool sceneHdr)
+void ControlThread::sceneDetected(String8 sceneMode, bool sceneHdr)
 {
     LOG2("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_SCENE_DETECTED;
-    if (sceneMode >= 0 && sceneMode < NUM_SCENE_DETECTED) {
-        strlcpy(msg.data.sceneDetected.sceneMode, scene_mode_detected[sceneMode], (size_t)SCENE_STRING_LENGTH);
+    if (!sceneMode.isEmpty()) {
+        strlcpy(msg.data.sceneDetected.sceneMode, sceneMode.string(), (size_t)SCENE_STRING_LENGTH);
         msg.data.sceneDetected.sceneHdr = sceneHdr;
         mMessageQueue.send(&msg);
-    } else {
-        LOGW("%s: the scene mode (%d) provided is not in the defined range", __FUNCTION__, sceneMode);
     }
 }
 
@@ -1488,11 +1474,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         if (!validateHighSpeedResolutionFps(width, height, fps)) {
             return BAD_VALUE;
         }
-
-        // Workaround: In high speed recording, the scene mode should be SPORTS
-        // Note: scene mode setting resets all 3A parameters
-        if (fps > DEFAULT_RECORDING_FPS)
-            m3AControls->setAeSceneMode(CAM_AE_SCENE_MODE_SPORTS);
 
         mISP->setVideoFrameFormat(width, height);
 
@@ -2300,12 +2281,11 @@ status_t ControlThread::setSmartSceneParams(void)
         bool sceneDetectionSupported = strcmp(PlatformData::supportedSceneDetection(mCameraId), "") != 0;
         //scene mode detection should always be working, but we shouldn't take it in account whenever HDR is on.
         if (!mHdr.enabled && sceneDetectionSupported && m3AControls->getSmartSceneDetection()) {
-            int sceneMode = 0;
+            String8 sceneMode;
             bool sceneHdr = false;
             m3AThread->getCurrentSmartScene(sceneMode, sceneHdr);
             // Force XNR and ANR in case of lowlight scene
-            if (sceneMode == ia_aiq_scene_mode_lowlight_portrait ||
-                sceneMode == ia_aiq_scene_mode_low_light) {
+            if (sceneMode == "night_portrait" || sceneMode == "night") {
                 LOG1("Low-light scene detected, forcing XNR and ANR");
                 mISP->setXNR(true);
                 // Forcing mParameters to true, to be in sync with app update.
@@ -3976,6 +3956,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             }
 
             msg->snapshotBuf.status = FRAME_STATUS_OK;
+            msg->postviewBuf.status = FRAME_STATUS_OK;
             if (findBufferByData(&msg->snapshotBuf, &mAllocatedSnapshotBuffers) == NULL) {
                 LOGE("Stale snapshot buffer %p returned... this should not happen", msg->snapshotBuf.dataPtr);
 
@@ -3992,34 +3973,23 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
                         LOGE("Error %d in putting snapshot buffer:%p postviewBuf:%p!", status,
                                 msg->snapshotBuf.dataPtr, msg->postviewBuf.dataPtr);
                     } else {
-                        LOG1("Recycle snapshot buffer:%p postviewBuf:%p", msg->snapshotBuf.dataPtr, msg->postviewBuf.dataPtr);
+                        LOG1("Recycle snapshot buffer:%p postview buffer:%p", msg->snapshotBuf.dataPtr, msg->postviewBuf.dataPtr);
                     }
                     mBurstBufsToReturn--;
                 } else {
                     mAvailableSnapshotBuffers.push(msg->snapshotBuf);
-                    LOG1("%s  pushed %p to mAvailableSnapshotBuffers, size %d",
-                            __FUNCTION__, msg->snapshotBuf.dataPtr, mAvailableSnapshotBuffers.size());
+                    if (findBufferByData(&msg->postviewBuf, &mAllocatedPostviewBuffers) != NULL &&
+                            findBufferByData(&msg->postviewBuf, &mAvailablePostviewBuffers) == NULL) {
+                        mAvailablePostviewBuffers.push(msg->postviewBuf);
+                    } else {
+                        LOGW("Exceptional postview buffer returned, should not happen");
+                    }
+                    LOG1("%s  pushed snapshot buffer:%p postview buffer:%p to available queue, size %d:%d",
+                            __FUNCTION__, msg->snapshotBuf.dataPtr, msg->postviewBuf.dataPtr,
+                            mAvailableSnapshotBuffers.size(), mAvailablePostviewBuffers.size());
                 }
             } else {
                 LOGE("%s Already available snapshot buffer arrived. Find the bug!!", __FUNCTION__);
-            }
-        }
-
-        if (msg->postviewBuf.status != FRAME_STATUS_SKIPPED) {
-            // Postview buffer availability:
-            if (msg->postviewBuf.dataPtr == NULL) {
-                // Recycled postview buffer was null. This is OK in some cases,
-                // like for ULL post-processed image: a NULL postview image is sent to encoding.
-                LOG1("@%s NULL postview buffer cycled", __FUNCTION__);
-            } else if (findBufferByData(&msg->postviewBuf, &mAllocatedPostviewBuffers) == NULL) {
-                LOGE("Stale postview buffer, dataPtr = %p returned... this should not happen",
-                    msg->postviewBuf.dataPtr);
-            } else if (findBufferByData(&msg->postviewBuf, &mAvailablePostviewBuffers) == NULL) {
-                mAvailablePostviewBuffers.push(msg->postviewBuf);
-                LOG1("%s: pushed postview buffer ptr = %p to mAvailablePostviewBuffers, size %d",
-                    __FUNCTION__, msg->postviewBuf.dataPtr, mAvailablePostviewBuffers.size());
-            } else {
-                LOGE("%s Already available postview buffer arrived. Find the bug!!", __FUNCTION__);
             }
         }
 
@@ -4395,10 +4365,9 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     }
 
     //DVS
-    const char* dvsEnable = params->get(CameraParameters::KEY_VIDEO_STABILIZATION);
-    const char* dvsEnables = params->get(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED);
-    if (!validateString(dvsEnable, dvsEnables)) {
-        LOGE("bad value for dvs enable : %s, supported are: %s", dvsEnable, dvsEnables);
+    if(isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION)
+       && !isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED)) {
+        LOGE("bad value for DVS, DVS not support");
         return BAD_VALUE;
     }
 
@@ -6169,6 +6138,17 @@ status_t ControlThread::processParamRawDataFormat(const CameraParameters *oldPar
     return NO_ERROR;
 }
 
+status_t ControlThread::processPreviewCallbackSize(const CameraParameters *newParams, int videomode)
+{
+    LOG1("@%s", __FUNCTION__);
+    int width, height;
+
+    newParams->getPreviewSize(&width, &height);
+    mPreviewThread->setCallbackPreviewSize(width, height, videomode);
+
+    return NO_ERROR;
+}
+
 status_t ControlThread::processParamPreviewFrameRate(const CameraParameters *oldParams,
         CameraParameters *newParams)
 {
@@ -6476,6 +6456,15 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
     if (status == NO_ERROR) {
         status = processParamRawDataFormat(oldParams, newParams, restartNeeded);
     }
+
+    /*
+     *  Process preview size for Callbacks, preview size will be changed by
+     *  ISPLimitations in video mode, but some application allocate buffer
+     *  according to the original setting size to store preview JPEG data. So
+     *  the original preview size is useful for callbacks when allocating buffer.
+     */
+    if (status == NO_ERROR)
+        processPreviewCallbackSize(newParams, videoMode);
 
     /**
      * There are multiple workarounds related to what preview and video
@@ -7071,7 +7060,7 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
     processedBuffer.status = FRAME_STATUS_OK;
     processedBuffer.type = ATOM_BUFFER_ULL;
 
-    status = mPictureThread->encode(picMetaData, &processedBuffer, NULL);
+    status = mPictureThread->encode(picMetaData, &processedBuffer, &postviewBuffer);
     if (status != NO_ERROR) {
         // normally this is done by PictureThread, but as no
         // encoding was done, free the allocated metadata
@@ -7605,21 +7594,33 @@ status_t ControlThread::enableFocusMoveMsg(bool enable)
 
 status_t ControlThread::enableIntelParameters()
 {
+    LOG1("@%s", __FUNCTION__);
     // intel parameters support more effects
     // so use supported effects list stored in mIntelParameters.
     if (mIntelParameters.get(CameraParameters::KEY_SUPPORTED_EFFECTS))
         mParameters.remove(CameraParameters::KEY_SUPPORTED_EFFECTS);
 
+    status_t status = NO_ERROR;
     String8 params(mParameters.flatten());
     String8 intel_params(mIntelParameters.flatten());
     String8 delimiter(";");
     params += delimiter;
     params += intel_params;
-    mParameters.unflatten(params);
-    updateParameterCache();
 
-    mIntelParamsAllowed = true;
-    return NO_ERROR;
+    CameraParameters mergedParameters;
+    mergedParameters.unflatten(params);
+
+    status = processDynamicParameters(&mParameters, &mergedParameters);
+    if (status != NO_ERROR) {
+        LOGE("@%s - processDynamicParameters failed", __FUNCTION__);
+        mIntelParamsAllowed = false;
+    } else {
+        mParameters = mergedParameters;
+        updateParameterCache();
+        mIntelParamsAllowed = true;
+    }
+
+    return status;
 }
 
 status_t ControlThread::cancelSmartShutterPicture()

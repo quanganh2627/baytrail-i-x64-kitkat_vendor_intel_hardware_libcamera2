@@ -43,7 +43,6 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaa
     ,mPreviousCafStatus(CAM_AF_STATUS_IDLE)
     ,mPublicAeLock(false)
     ,mPublicAwbLock(false)
-    ,mSmartSceneMode(0)
     ,mSmartSceneHdr(false)
     ,mPreviousFaceCount(0)
     ,mFlashStage(FLASH_STAGE_NA)
@@ -532,7 +531,7 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    int sceneMode = 0;
+    String8 sceneMode;
     bool sceneHdr = false;
     Vector<Message> messages;
     struct timeval capture_timestamp = msgFrame->capture_timestamp;
@@ -646,10 +645,9 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
 
         // Query the detected scene and notify the application
         if (m3AControls->getSmartSceneDetection()) {
-            m3AControls->getSmartSceneMode(&sceneMode, &sceneHdr);
-
-            if ((sceneMode != mSmartSceneMode) || (sceneHdr != mSmartSceneHdr)) {
-                LOG1("SmartScene: new scene detected: %d, HDR: %d", sceneMode, sceneHdr);
+            m3AControls->getSmartSceneMode(sceneMode, sceneHdr);
+            if (sceneMode != mSmartSceneMode || sceneHdr != mSmartSceneHdr) {
+                LOG1("SmartScene: new scene detected: %s, HDR: %d", sceneMode.string(), sceneHdr);
                 mSmartSceneMode = sceneMode;
                 mSmartSceneHdr = sceneHdr;
                 mAAADoneCallback->sceneDetected(sceneMode, sceneHdr);
@@ -664,7 +662,7 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
     return status;
 }
 
-void AAAThread::getCurrentSmartScene(int &sceneMode, bool &sceneHdr)
+void AAAThread::getCurrentSmartScene(String8 &sceneMode, bool &sceneHdr)
 {
     LOG1("@%s", __FUNCTION__);
     sceneMode = mSmartSceneMode;
@@ -690,7 +688,7 @@ void AAAThread::updateULLTrigger()
 void AAAThread::resetSmartSceneValues()
 {
     LOG1("@%s", __FUNCTION__);
-    mSmartSceneMode = 0;
+    mSmartSceneMode.clear();
     mSmartSceneHdr = false;
 }
 

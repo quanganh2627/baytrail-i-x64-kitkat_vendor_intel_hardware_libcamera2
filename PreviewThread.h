@@ -138,6 +138,7 @@ public:
     status_t hidePreview(struct timeval &after_frame);
     status_t setCallback(ICallbackPreview *cb, ICallbackPreview::CallbackType t);
     void getDefaultParameters(CameraParameters *params);
+    void setCallbackPreviewSize(int width, int height, int videoMode);
     bool isWindowConfigured();
     status_t preview(AtomBuffer *buff);
     status_t postview(AtomBuffer *buff, bool hidePreview = false, bool synchronous = false);
@@ -166,6 +167,7 @@ private:
         MESSAGE_ID_FLUSH,
         MESSAGE_ID_WINDOW_QUERY,
         MESSAGE_ID_SET_CALLBACK,
+        MESSAGE_ID_SET_CALLBACK_PREVIEW_SIZE,
         MESSAGE_ID_FETCH_BUF_GEOMETRY,
 
         // max number of messages
@@ -192,6 +194,12 @@ private:
         ICallbackPreview::CallbackType type;
     };
 
+    struct MessageSetCallbackPreviewSize {
+        int width;
+        int height;
+        bool videoMode;
+    };
+
     struct MessageSetPreviewConfig {
         int width;
         int height;
@@ -214,6 +222,9 @@ private:
 
         // MESSAGE_ID_SET_CALLBACK
         MessageSetCallback setCallback;
+
+        // MESSAGE_ID_SET_CALLBACK_PREVIEW_SIZE
+        MessageSetCallbackPreviewSize callbackPreviewSize;
 
     };
 
@@ -246,6 +257,7 @@ private:
     status_t handleMessageFlush();
     status_t handleMessageIsWindowConfigured();
     status_t handleMessageSetCallback(MessageSetCallback *msg);
+    status_t handleMessageSetCallbackPreviewSize(MessageSetCallbackPreviewSize *msg);
     status_t handleSetPreviewWindow(MessageSetPreviewWindow *msg);
     status_t handleSetPreviewConfig(MessageSetPreviewConfig *msg);
     status_t handlePreview(MessagePreview *msg);
@@ -296,6 +308,7 @@ private:
 
     preview_stream_ops_t *mPreviewWindow;   /*!< struct passed from Service to control the native window */
     AtomBuffer          mPreviewBuf;        /*!< Local preview buffer to give to the user */
+    unsigned char       *mTransferingBuffer;/*!< Local transfering buffer for real preview callback*/
     Callbacks           *mCallbacks;
     int                 mMinUndequeued;     /*!< Minimum number frames
                                                  to keep in window */
@@ -306,6 +319,8 @@ private:
     bool                mFetchDone;
     sp<DebugFrameRate>  mDebugFPS;          /*!< reference to the object that keeps
                                                  track of the fps */
+    int mCallbackPreviewWidth;
+    int mCallbackPreviewHeight;
     int mPreviewWidth;
     int mPreviewHeight;
     int mPreviewBpl;

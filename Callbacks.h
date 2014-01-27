@@ -45,7 +45,7 @@ public:
                       void* user);
 
     struct MessageSceneDetected {
-        char scene[SCENE_STRING_LENGTH];
+        char sceneMode[SCENE_STRING_LENGTH];
         bool hdr;
     };
 

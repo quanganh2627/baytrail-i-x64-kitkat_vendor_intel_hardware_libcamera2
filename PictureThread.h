@@ -30,12 +30,15 @@ namespace android {
 
 class Callbacks;
 class CallbacksThread;
+class ICallbackPicture;
 
 class PictureThread : public Thread {
 
 // constructor destructor
 public:
-    PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler, sp<CallbacksThread> callbacksThread, Callbacks *callbacks);
+    PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler,
+            sp<CallbacksThread> callbacksThread, Callbacks *callbacks,
+            ICallbackPicture *pictureDone);
     virtual ~PictureThread();
 
 // prevent copy constructor and assignment operator
@@ -64,7 +67,7 @@ public:
 // public methods
 public:
 
-    status_t encode(MetaData &metaData, AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf = NULL);
+    status_t encode(MetaData &metaData, AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf = NULL);
 
     void getDefaultParameters(CameraParameters *params);
     status_t initialize(const CameraParameters &params, int zoomRatio);
@@ -117,7 +120,7 @@ private:
     };
 
     struct MessageEncode {
-        AtomBuffer snaphotBuf;
+        AtomBuffer snapshotBuf;
         AtomBuffer postviewBuf;
         MetaData metaData;
     };
@@ -225,6 +228,8 @@ private:
 
     // 3A controls
     I3AControls* m3AControls;
+    // for flushing buffers
+    ICallbackPicture *mPictureDoneCallback;
 }; // class PictureThread
 
 }; // namespace android

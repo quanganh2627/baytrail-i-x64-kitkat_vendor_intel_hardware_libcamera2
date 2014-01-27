@@ -35,7 +35,8 @@ static const int SIZE_OF_APP0_MARKER = 18;      /* Size of the JFIF App0 marker
                                                  * SOI. And sometimes needs to be removed
                                                  */
 PictureThread::PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler,
-                             sp<CallbacksThread> callbacksThread, Callbacks *callbacks) :
+                             sp<CallbacksThread> callbacksThread, Callbacks *callbacks,
+                             ICallbackPicture *pictureDone) :
     Thread(true) // callbacks may call into java
     ,mMessageQueue("PictureThread", MESSAGE_ID_MAX)
     ,mThreadRunning(false)
@@ -57,6 +58,7 @@ PictureThread::PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler,
     ,mScaler(scaler)
     ,mMaxOutJpegBufSize(0)
     ,m3AControls(aaaControls)
+    ,mPictureDoneCallback(pictureDone)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -181,14 +183,14 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     return status;
 }
 
-status_t PictureThread::encode(MetaData &metaData, AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf)
+status_t PictureThread::encode(MetaData &metaData, AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_ENCODE;
     msg.data.encode.metaData = metaData;
-    msg.data.encode.snaphotBuf = *snaphotBuf;
-    mCallbacksThread->rawFrameDone(snaphotBuf);
+    msg.data.encode.snapshotBuf = *snapshotBuf;
+    mCallbacksThread->rawFrameDone(snapshotBuf);
     if (postviewBuf) {
         msg.data.encode.postviewBuf = *postviewBuf;
         mCallbacksThread->postviewFrameDone(postviewBuf);
@@ -312,7 +314,9 @@ status_t PictureThread::flushBuffers()
     mMessageQueue.remove(MESSAGE_ID_ENCODE, &pending);
     Vector<Message>::iterator it;
     for(it = pending.begin(); it != pending.end(); ++it) {
-      it->data.encode.metaData.free(m3AControls);
+        it->data.encode.metaData.free(m3AControls);
+        LOG1("@%s gives buffers back to owner", __FUNCTION__);
+        mPictureDoneCallback->pictureDone(&it->data.encode.snapshotBuf, &it->data.encode.postviewBuf);
     }
 
     return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
@@ -363,13 +367,13 @@ void PictureThread::setupExifWithMetaData(const PictureThread::MetaData &metaDat
 
 status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 {
-    LOG1("@%s: snapshot ID = %d", __FUNCTION__, msg->snaphotBuf.id);
+    LOG1("@%s: snapshot ID = %d", __FUNCTION__, msg->snapshotBuf.id);
     status_t status = NO_ERROR;
     AtomBuffer jpegBuf = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT_JPEG);
 
-    if (msg->snaphotBuf.width == 0 ||
-        msg->snaphotBuf.height == 0 ||
-        msg->snaphotBuf.fourcc == 0) {
+    if (msg->snapshotBuf.width == 0 ||
+        msg->snapshotBuf.height == 0 ||
+        msg->snapshotBuf.fourcc == 0) {
         LOGE("Picture information not set yet!");
         return UNKNOWN_ERROR;
     }
@@ -379,28 +383,28 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 
     // Encode the image
     AtomBuffer *postviewBuf;
-    if (msg->postviewBuf.dataPtr == NULL)
+    if (msg->postviewBuf.dataPtr == NULL || msg->postviewBuf.status == FRAME_STATUS_SKIPPED)
         postviewBuf = NULL;
     else
         postviewBuf = &msg->postviewBuf;
 
     // Mirror snapshot and postview buffers if requested
     if (msg->metaData.saveMirrored) {
-        mirrorBuffer(&msg->snaphotBuf, msg->metaData.currentOrientation, msg->metaData.cameraOrientation);
+        mirrorBuffer(&msg->snapshotBuf, msg->metaData.currentOrientation, msg->metaData.cameraOrientation);
         if (postviewBuf)
             mirrorBuffer(postviewBuf, msg->metaData.currentOrientation, msg->metaData.cameraOrientation);
     }
 
-    status = encodeToJpeg(&msg->snaphotBuf, postviewBuf, &jpegBuf);
+    status = encodeToJpeg(&msg->snapshotBuf, postviewBuf, &jpegBuf);
     if (status != NO_ERROR) {
         LOGE("Error generating JPEG image!");
         LOG1("Releasing jpegBuf @%p", jpegBuf.dataPtr);
         MemoryUtils::freeAtomBuffer(jpegBuf);
     }
 
-    jpegBuf.frameCounter = msg->snaphotBuf.frameCounter;
+    jpegBuf.frameCounter = msg->snapshotBuf.frameCounter;
 
-    mCallbacksThread->compressedFrameDone(&jpegBuf, &msg->snaphotBuf, &msg->postviewBuf);
+    mCallbacksThread->compressedFrameDone(&jpegBuf, &msg->snapshotBuf, &msg->postviewBuf);
 
     // ownership was transferred to us from ControlThread, so we need
     // to free resources here after encoding
