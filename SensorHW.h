@@ -98,6 +98,7 @@ private:
     struct cameraInfo {
         uint32_t index;      //!< V4L2 index
         char name[MAX_SENSOR_NAME_LENGTH];
+        atomisp_camera_port ispPort;
     };
 
     size_t enumerateInputs(Vector<struct cameraInfo> &);
