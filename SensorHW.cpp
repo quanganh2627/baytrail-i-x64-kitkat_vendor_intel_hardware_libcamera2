@@ -62,14 +62,14 @@ int SensorHW::getCurrentCameraId(void)
 size_t SensorHW::enumerateInputs(Vector<struct cameraInfo> &inputs)
 {
     LOG1("@%s", __FUNCTION__);
-    status_t ret;
+    status_t ret = NO_ERROR;
     size_t numCameras = 0;
     struct v4l2_input input;
     struct cameraInfo sCamInfo;
 
-    for (int i = 0; i < PlatformData::numberOfCameras(); i++) {
-        memset(&input, 0, sizeof(input));
-        memset(&sCamInfo, 0, sizeof(sCamInfo));
+    for (int i = 0; i < PlatformData::numberOfCameras(); ++i) {
+        CLEAR(input);
+        CLEAR(sCamInfo);
         input.index = i;
         ret = mDevice->enumerateInputs(&input);
         if (ret != NO_ERROR) {
@@ -79,10 +79,11 @@ size_t SensorHW::enumerateInputs(Vector<struct cameraInfo> &inputs)
         } else {
             sCamInfo.index = i;
             strncpy(sCamInfo.name, (const char *)input.name, sizeof(sCamInfo.name)-1);
-            LOG1("Detected sensor \"%s\"", sCamInfo.name);
+            sCamInfo.ispPort = (atomisp_camera_port)input.reserved[1];
+            LOG1("Detected sensor %d: \"%s\" (port=%d)", i, sCamInfo.name, sCamInfo.ispPort);
         }
         inputs.push(sCamInfo);
-        numCameras++;
+        ++numCameras;
     }
     return numCameras;
 }
@@ -138,13 +139,41 @@ status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
         return UNKNOWN_ERROR;
     }
 
-    // Static mapping of v4l2_input.index to android camera id
+    // find v4l2_input.index using static mapping of isp port to
+    // android camera id
     if (numCameras == 1) {
         mCameraInput = camInfo[0];
-    } else if (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_BACK) {
-        mCameraInput = camInfo[0];
-    } else if (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT) {
-        mCameraInput = camInfo[1];
+    } else {
+        atomisp_camera_port targetPort;
+
+        switch (mCameraId) {
+        case 0:
+            targetPort = ATOMISP_CAMERA_PORT_PRIMARY;
+            break;
+        case 1:
+            targetPort = ATOMISP_CAMERA_PORT_SECONDARY;
+            break;
+        case 2:
+            targetPort = ATOMISP_CAMERA_PORT_TERTIARY;
+            break;
+        default :
+            LOGE("Invalid camera id %d!", mCameraId);
+            return BAD_VALUE;
+        }
+
+        size_t i = 0;
+
+        for (i = 0; i < numCameras ; ++i) {
+            if (camInfo[i].ispPort == targetPort) {
+                mCameraInput = camInfo[i];
+                break;
+            }
+        }
+
+        if (i == numCameras) {
+            LOGE("No sensor with right port!");
+            return UNKNOWN_ERROR;
+        }
     }
 
     // Choose the camera sensor
