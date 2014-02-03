@@ -102,6 +102,7 @@ AtomAIQ::AtomAIQ(HWControlGroup &hwcg):
     CLEAR(mAfInputParameters);
     CLEAR(mAfState);
     CLEAR(mAeInputParameters);
+    CLEAR(mAeManualLimits);
     CLEAR(mAeSensorDescriptor);
     CLEAR(mAeState);
     CLEAR(mAeCoord);
@@ -292,7 +293,7 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
     mAfInputParameters.frame_use = m3aState.frame_use;
     mAfState.previous_sof = 0;
     mAeInputParameters.frame_use = m3aState.frame_use;
-    mAeInputParameters.manual_frame_time_us_min = (long) 1/fps*1000000;
+    mAeInputParameters.manual_limits->manual_frame_time_us_min = (long) 1/fps*1000000;
     mAwbInputParameters.frame_use = m3aState.frame_use;
 
     // In high speed recording, set the AE operation mode as action to notify AIQ
@@ -1712,11 +1713,12 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct)
             LOG2("m3aState.stats: grid_info: %d  %d %d ",
                   m3aState.stats->grid_info.s3a_width,m3aState.stats->grid_info.s3a_height,m3aState.stats->grid_info.s3a_bqs_per_grid_cell);
 
-            LOG2("rgb_grid: grid_width:%u, grid_height:%u, thr_r:%u, thr_gr:%u,thr_gb:%u",
+            LOG2("rgb_grid: grid_width:%u, grid_height:%u, thr_r:%u, thr_gr:%u,thr_gb:%u, thr_b:%u",
                   m3aState.statistics_input_parameters.rgbs_grid->grid_width,
                   m3aState.statistics_input_parameters.rgbs_grid->grid_height,
                   m3aState.statistics_input_parameters.rgbs_grid->blocks_ptr->avg_r,
-                  m3aState.statistics_input_parameters.rgbs_grid->blocks_ptr->avg_g,
+                  m3aState.statistics_input_parameters.rgbs_grid->blocks_ptr->avg_gr,
+                  m3aState.statistics_input_parameters.rgbs_grid->blocks_ptr->avg_gb,
                   m3aState.statistics_input_parameters.rgbs_grid->blocks_ptr->avg_b);
 
             err = ia_aiq_statistics_set(m3aState.ia_aiq_handle, &m3aState.statistics_input_parameters);
@@ -1825,8 +1827,13 @@ void AtomAIQ::resetAECParams()
     mAeInputParameters.manual_exposure_time_us = -1;
     mAeInputParameters.manual_analog_gain = -1;
     mAeInputParameters.manual_iso = -1;
-    mAeInputParameters.manual_frame_time_us_min = -1;
-    mAeInputParameters.manual_frame_time_us_max = -1;
+    mAeInputParameters.manual_limits = &mAeManualLimits;
+    mAeInputParameters.manual_limits->manual_exposure_time_min = -1;
+    mAeInputParameters.manual_limits->manual_exposure_time_max = -1;
+    mAeInputParameters.manual_limits->manual_frame_time_us_min = -1;
+    mAeInputParameters.manual_limits->manual_frame_time_us_max = -1;
+    mAeInputParameters.manual_limits->manual_iso_min = -1;
+    mAeInputParameters.manual_limits->manual_iso_max = -1;
     mAeInputParameters.aec_features = NULL; // Using AEC feature definitions from CPF
 }
 
