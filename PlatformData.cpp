@@ -1251,6 +1251,23 @@ float PlatformData::horizontalFOV(int cameraId, int width, int height)
     return retVal;
 }
 
+float PlatformData::matchEVShiftFactor(int cameraId)
+{
+    float retVal = 0.0f;
+
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return retVal;
+    }
+
+    if (cameraId == mActiveCameraId && !HalConfig.getFloat(retVal, CPF::EVShiftFactor)) {
+        return retVal;
+    }
+
+    // if don't configure EV shift factor, just set one default for it.
+    retVal = 0.5;
+    return retVal;
+}
+
 bool PlatformData::isGraphicGen(void)
 {
 #ifdef GRAPHIC_IS_GEN

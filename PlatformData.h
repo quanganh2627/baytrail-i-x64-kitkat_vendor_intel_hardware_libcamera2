@@ -959,6 +959,13 @@ class PlatformData {
     static float horizontalFOV(int cameraId, int width, int height);
 
     /**
+     * Returns EV shift factor
+     *
+     * \return float EV shift factor
+     */
+    static float matchEVShiftFactor(int cameraId);
+
+    /**
      * Whether the graphic is GEN.
      * \return true if it's GEN. false, if it's not GEN.
      */

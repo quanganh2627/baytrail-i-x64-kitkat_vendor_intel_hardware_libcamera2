@@ -1025,6 +1025,18 @@ status_t AtomAIQ::setEv(float bias)
     LOG1("@%s: bias=%.2f", __FUNCTION__, bias);
     if(bias > 4 || bias < -4)
         return BAD_VALUE;
+
+    int cameraId = mSensorCI->getCurrentCameraId();
+    /*
+     * When application set EV +2, Camera HAL will set EV shift to 2
+     * (Max Exposure Compensation * Exposure Compensation Step => 6*0.333333 = 2).
+     * It is too large for AE algorithm, and image is overexposed seriously.
+     * So make a work around to decrease EV shift value.
+     */
+    float factor = PlatformData::matchEVShiftFactor(cameraId);
+    if (factor < 1 && factor > 0)
+        bias = bias * factor;
+
     mAeInputParameters.ev_shift = bias;
 
     return NO_ERROR;
