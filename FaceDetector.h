@@ -50,7 +50,7 @@ enum SmileState {
 #define PERSONDB_FILENAME   ".PersonDB.db"
 #define PERSONDB_DEFAULT_PATH   "/sdcard/DCIM"
 
-class FaceDetector : public Thread {
+class FaceDetector {
 
 // constructor/destructor
 public:
@@ -73,60 +73,44 @@ public:
     status_t clearFacesDetected();
     status_t reset();
     void faceRecognize(ia_frame *frame);
+    int faceDatabaseRegister(const void* feature, int personId, int featureId,
+                             int timeStamp, int condition, int checksum, int version);
 
-// Thread overrides
-public:
-    status_t requestExitAndWait();
+    // Use FaceDBLoaderThread to load database and register to face lib.
+    class FaceDBLoaderThread : public Thread {
+    public:
+        FaceDBLoaderThread(FaceDetector* faceDetector);
+        ~FaceDBLoaderThread();
+
+        status_t requestExitAndWait();
+
+    private:
+        virtual bool threadLoop();
+
+        status_t loadFaceDb();
+
+    // private data
+    private:
+        FaceDetector* mFaceDetector;
+    };
 
 private:
-    status_t loadFaceDb();
-    status_t handleExit();
-    status_t handleMessageStartFaceRecognition();
-    status_t handleMessageStopFaceRecognition();
-    status_t handleMessageClearFacesDetected();
-    status_t handleMessageReset();
     bool isEyeMotionless(ia_coordinate leftEye, ia_coordinate rightEye, int index, int trackingID);
-
-    // main message function
-    status_t waitForAndExecuteMessage();
-
-// inherited from Thread
-private:
-    virtual bool threadLoop();
-
-// private types
-private:
-    // thread message id's
-    enum MessageId {
-
-        MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
-        MESSAGE_ID_START_FACE_RECOGNITION,
-        MESSAGE_ID_STOP_FACE_RECOGNITION,
-        MESSAGE_ID_CLEAR_FACES_DETECTED,
-        MESSAGE_ID_RESET,
-
-        // max number of messages
-        MESSAGE_ID_MAX
-    };
-
-    // message id and message data
-    struct Message {
-        MessageId id;
-    };
 
 // private data
 private:
     ia_face_state* mContext;
-    MessageQueue<Message, MessageId> mMessageQueue;
     int mSmileThreshold;
     int mBlinkThreshold;
     bool mFaceRecognitionRunning;
-    bool mThreadRunning;
+    bool mFaceDBLoaded;
     ia_acceleration mAccApi;
     ia_coordinate mPrevLeftEyeCoordinate[MAX_FACES_DETECTABLE];
     ia_coordinate mPrevRightEyeCoordinate[MAX_FACES_DETECTABLE];
     int mFaceTrackingId[MAX_FACES_DETECTABLE];    // unique face tracking ID (bigger than 0)
 
+    mutable Mutex mLock;
+    sp<FaceDBLoaderThread> mFaceDBLoaderThread;
 // function stubs for building without Intel extra features
 #else
     FaceDetector() {}

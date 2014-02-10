@@ -31,25 +31,37 @@
 
 namespace android {
 
-FaceDetector::FaceDetector() : Thread()
-    ,mContext(ia_face_init(NULL))
-    ,mMessageQueue("FaceDetector", (int) MESSAGE_ID_MAX)
+FaceDetector::FaceDetector() :
+    mContext(ia_face_init(NULL))
     ,mSmileThreshold(0)
     ,mBlinkThreshold(0)
     ,mFaceRecognitionRunning(false)
-    ,mThreadRunning(false)
+    ,mFaceDBLoaded(false)
     ,mAccApi()
+    ,mFaceDBLoaderThread(NULL)
 {
     LOG1("@%s", __FUNCTION__);
     PERFORMANCE_TRACES_BREAKDOWN_STEP("NewFD-Done");
     memset(mPrevLeftEyeCoordinate, 0, sizeof(ia_coordinate)*MAX_FACES_DETECTABLE);
     memset(mPrevRightEyeCoordinate, 0, sizeof(ia_coordinate)*MAX_FACES_DETECTABLE);
     memset(mFaceTrackingId, 0, sizeof(int)*MAX_FACES_DETECTABLE);
+
+    mFaceDBLoaderThread = new FaceDBLoaderThread(this);
+    if (mFaceDBLoaderThread == NULL) {
+        LOGE("Create mFaceDBLoaderThread fail!");
+    }
 }
 
 FaceDetector::~FaceDetector()
 {
     LOG1("@%s", __FUNCTION__);
+
+    if (mFaceDBLoaderThread != NULL) {
+        mFaceDBLoaderThread->requestExitAndWait();
+        mFaceDBLoaderThread.clear();
+    }
+
+    Mutex::Autolock lock(mLock);
     ia_face_uninit(mContext);
     mContext = NULL;
 }
@@ -57,6 +69,7 @@ FaceDetector::~FaceDetector()
 void FaceDetector::setAcc(void* isp)
 {
     LOG2("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mLock);
     ia_acceleration *accApiPtr = NULL;
 
     if (isp == mAccApi.isp)
@@ -92,6 +105,7 @@ void FaceDetector::setAcc(void* isp)
 int FaceDetector::faceDetect(ia_frame *frame)
 {
     LOG2("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mLock);
     ia_face_detect(mContext, frame);
     return mContext->num_faces;
 }
@@ -99,12 +113,14 @@ int FaceDetector::faceDetect(ia_frame *frame)
 void FaceDetector::eyeDetect(ia_frame *frame)
 {
     LOG2("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mLock);
     ia_face_eye_detect(mContext, frame);
 }
 
 void FaceDetector::setSmileThreshold(int threshold)
 {
     LOG1("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mLock);
     ia_face_parameters faceLibParams;
     if (threshold >= 0) {
         ia_face_get_parameters(mContext, &faceLibParams);
@@ -116,6 +132,7 @@ void FaceDetector::setSmileThreshold(int threshold)
 bool FaceDetector::smileDetect(ia_frame *frame)
 {
     LOG2("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mLock);
     ia_face_smile_detect(mContext, frame);
 
     // All detected faces have to smile for positive detection
@@ -136,6 +153,7 @@ bool FaceDetector::smileDetect(ia_frame *frame)
 void FaceDetector::setBlinkThreshold(int threshold)
 {
     LOG1("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mLock);
     if (threshold >= 0)
         mBlinkThreshold = threshold;
 }
@@ -143,6 +161,7 @@ void FaceDetector::setBlinkThreshold(int threshold)
 bool FaceDetector::blinkDetect(ia_frame *frame)
 {
     LOG2("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mLock);
     ia_face_blink_detect(mContext, frame);
 
     // None of the detected faces should have eyes blinked
@@ -206,16 +225,7 @@ bool FaceDetector::isEyeMotionless(ia_coordinate leftEye, ia_coordinate rightEye
 status_t FaceDetector::startFaceRecognition()
 {
     LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    Message msg;
-    msg.id = MESSAGE_ID_START_FACE_RECOGNITION;
-    mMessageQueue.send(&msg);
-    return status;
-}
-
-status_t FaceDetector::handleMessageStartFaceRecognition()
-{
-    LOG1("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mLock);
     status_t status = NO_ERROR;
 
     if (mFaceRecognitionRunning) {
@@ -223,29 +233,24 @@ status_t FaceDetector::handleMessageStartFaceRecognition()
         return INVALID_OPERATION;
     }
 
-    status = loadFaceDb();
-    if (status == NO_ERROR) {
-        mFaceRecognitionRunning = true;
-    } else {
-        LOGE("loadFaceDb() failed: %x", status);
-        status = UNKNOWN_ERROR;
+    // Start FaceDBLoader thread to load and register DB.
+    if ((mFaceDBLoaderThread != NULL) && !mFaceDBLoaded) {
+        status = mFaceDBLoaderThread->run("CameHAL_FACEDBLOADER");
+        if (status != NO_ERROR) {
+            LOGE("Error starting FaceDBLoader Thread!");
+        } else {
+            mFaceDBLoaded = true;
+        }
     }
+
+    mFaceRecognitionRunning = true;
     return status;
 }
 
 status_t FaceDetector::stopFaceRecognition()
 {
     LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    Message msg;
-    msg.id = MESSAGE_ID_STOP_FACE_RECOGNITION;
-    mMessageQueue.send(&msg);
-    return status;
-}
-
-status_t FaceDetector::handleMessageStopFaceRecognition()
-{
-    LOG1("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mLock);
     status_t status = NO_ERROR;
     mFaceRecognitionRunning = false;
     return status;
@@ -255,16 +260,7 @@ status_t FaceDetector::clearFacesDetected()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    Message msg;
-    msg.id = MESSAGE_ID_CLEAR_FACES_DETECTED;
-    mMessageQueue.send(&msg);
-    return status;
-}
-
-status_t FaceDetector::handleMessageClearFacesDetected()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
+    Mutex::Autolock lock(mLock);
     if (mContext != NULL)
         ia_face_clear_result(mContext);
     else
@@ -276,16 +272,7 @@ status_t FaceDetector::reset()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    Message msg;
-    msg.id = MESSAGE_ID_RESET;
-    mMessageQueue.send(&msg);
-    return status;
-}
-
-status_t FaceDetector::handleMessageReset()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
+    Mutex::Autolock lock(mLock);
 
     if (mContext != NULL)
         ia_face_reinit(mContext);
@@ -298,61 +285,19 @@ status_t FaceDetector::handleMessageReset()
 void FaceDetector::faceRecognize(ia_frame *frame)
 {
     LOG2("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mLock);
     if (mFaceRecognitionRunning && mContext->num_faces > 0)
         ia_face_recognize(mContext, frame);
 }
 
-status_t FaceDetector::loadFaceDb()
+
+int FaceDetector::faceDatabaseRegister(const void* feature, int personId, int featureId,
+                                       int timeStamp, int condition, int checksum, int version)
 {
-    LOG1("@%s", __FUNCTION__);
-    int ret;
-    sqlite3 *pDb;
-    sqlite3_stmt *pStmt;
-    int featureId, version, personId, timeStamp;
-    const void* feature;
-    int featureCount = 0;
-    char dbPath[150];
-
-    // Get face DB path from system property if available, or use the default path
-    property_get("gallery.dbpath", dbPath, PERSONDB_DEFAULT_PATH);
-    strcat(dbPath, "/");
-    strcat(dbPath, PERSONDB_FILENAME);
-    LOG1("@%s: Opening face DB from: %s", __FUNCTION__, dbPath);
-
-    ret = sqlite3_open(dbPath, &pDb);
-    if (ret != SQLITE_OK) {
-        LOGE("sqlite3_open error : %s", sqlite3_errmsg(pDb));
-        return UNKNOWN_ERROR;
-    }
-
-    const char *select_query = "SELECT featureId, version, personId, feature, timeStamp FROM Feature";
-    ret = sqlite3_prepare_v2(pDb, select_query, -1, &pStmt, NULL);
-    if (ret != SQLITE_OK) {
-        LOGE("sqlite3_prepare_v2 error : %s", sqlite3_errmsg(pDb));
-        sqlite3_close(pDb);
-        return UNKNOWN_ERROR;
-    }
-
-    while (sqlite3_step(pStmt) == SQLITE_ROW) {
-        featureId = sqlite3_column_int(pStmt, 0);
-        version = sqlite3_column_int(pStmt, 1);
-        personId = sqlite3_column_int(pStmt, 2);
-        feature = sqlite3_column_blob(pStmt, 3);
-        timeStamp = sqlite3_column_int(pStmt, 4);
-        ret = ia_face_register_feature(mContext, (uint8_t*)feature, personId, featureId, timeStamp, 0, 0, version);
-        LOG2("Register feature (%d): face ID: %d, feature ID: %d, timestamp: %d, version: %d", featureCount, personId, featureId, timeStamp, version);
-        if (ret < 0) {
-            LOGE("Error on loading feature data(%d) : %d", featureCount, ret);
-        }
-        featureCount++;
-    }
-
-    sqlite3_finalize(pStmt);
-    sqlite3_close(pDb);
-
-    return NO_ERROR;
+    LOG2("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mLock);
+    return ia_face_register_feature(mContext, (uint8_t*)feature, personId, featureId, timeStamp, 0, 0, version);
 }
-
 
 /**
  * Converts the detected faces from ia_face format to Google format.
@@ -366,6 +311,7 @@ status_t FaceDetector::loadFaceDb()
 int FaceDetector::getFaces(camera_face_t *faces_out, int width, int height)
 {
     LOG2("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mLock);
 
     // Coordinate range defined in camera_face_t: [-1000 ... 1000]
     const int coord_range = 2000;
@@ -420,8 +366,10 @@ int FaceDetector::getFaces(camera_face_t *faces_out, int width, int height)
  *
  * @return Number of faces
  */
-void FaceDetector::getFaceState(ia_face_state *faceStateOut, int width, int height, int zoomRatio) {
+void FaceDetector::getFaceState(ia_face_state *faceStateOut, int width, int height, int zoomRatio)
+{
     LOG2("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mLock);
 
     assert(faceStateOut != NULL);
 
@@ -447,69 +395,88 @@ void FaceDetector::getFaceState(ia_face_state *faceStateOut, int width, int heig
     ia_coordinate_convert_faces(faceStateOut, &srcCoordinateSystem, &trgCoordinateSystem);
 }
 
-bool FaceDetector::threadLoop()
+// FaceDBLoaderThread interface defination.
+FaceDetector::FaceDBLoaderThread::FaceDBLoaderThread(FaceDetector* faceDetector) :
+    mFaceDetector(faceDetector)
 {
     LOG2("@%s", __FUNCTION__);
-    mThreadRunning = true;
-    while (mThreadRunning)
-        waitForAndExecuteMessage();
+}
 
+FaceDetector::FaceDBLoaderThread::~FaceDBLoaderThread()
+{
+    LOG2("@%s", __FUNCTION__);
+}
+
+bool FaceDetector::FaceDBLoaderThread::threadLoop()
+{
+    LOG2("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    status = loadFaceDb();
+    if (status != NO_ERROR) {
+        LOGE("loadFaceDb failed: %x", status);
+    }
     return false;
 }
 
-status_t FaceDetector::waitForAndExecuteMessage()
+status_t FaceDetector::FaceDBLoaderThread::requestExitAndWait()
 {
     LOG2("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    Message msg;
-    mMessageQueue.receive(&msg);
-
-    switch (msg.id)
-    {
-        case MESSAGE_ID_EXIT:
-            status = handleExit();
-            break;
-        case MESSAGE_ID_START_FACE_RECOGNITION:
-            status = handleMessageStartFaceRecognition();
-            break;
-        case MESSAGE_ID_STOP_FACE_RECOGNITION:
-            status = handleMessageStopFaceRecognition();
-            break;
-        case MESSAGE_ID_CLEAR_FACES_DETECTED:
-            status = handleMessageClearFacesDetected();
-            break;
-        case MESSAGE_ID_RESET:
-            status = handleMessageReset();
-            break;
-        default:
-            status = INVALID_OPERATION;
-            break;
-    }
-    if (status != NO_ERROR) {
-        LOGE("operation failed, ID = %d, status = %d", msg.id, status);
-    }
-    return status;
-}
-
-status_t FaceDetector::handleExit()
-{
-    LOG1("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    mThreadRunning = false;
-    return status;
-}
-
-status_t FaceDetector::requestExitAndWait()
-{
-    LOG2("@%s", __FUNCTION__);
-    Message msg;
-    msg.id = MESSAGE_ID_EXIT;
-    // tell thread to exit
-    // send message asynchronously
-    mMessageQueue.send(&msg);
 
     // propagate call to base class
     return Thread::requestExitAndWait();
+}
+
+status_t FaceDetector::FaceDBLoaderThread::loadFaceDb()
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret;
+    sqlite3 *pDb;
+    sqlite3_stmt *pStmt;
+    int featureId, version, personId, timeStamp;
+    const void* feature;
+    int featureCount = 0;
+    char dbPath[150];
+
+    // Get face DB path from system property if available, or use the default path
+    property_get("gallery.dbpath", dbPath, PERSONDB_DEFAULT_PATH);
+    strcat(dbPath, "/");
+    strcat(dbPath, PERSONDB_FILENAME);
+    LOG1("@%s: Opening face DB from: %s", __FUNCTION__, dbPath);
+
+    ret = sqlite3_open(dbPath, &pDb);
+    if (ret != SQLITE_OK) {
+        LOGE("sqlite3_open error : %s", sqlite3_errmsg(pDb));
+        return UNKNOWN_ERROR;
+    }
+
+    const char *select_query = "SELECT featureId, version, personId, feature, timeStamp FROM Feature";
+    ret = sqlite3_prepare_v2(pDb, select_query, -1, &pStmt, NULL);
+    if (ret != SQLITE_OK) {
+        LOGE("sqlite3_prepare_v2 error : %s", sqlite3_errmsg(pDb));
+        sqlite3_close(pDb);
+        return UNKNOWN_ERROR;
+    }
+
+    while (sqlite3_step(pStmt) == SQLITE_ROW) {
+        featureId = sqlite3_column_int(pStmt, 0);
+        version = sqlite3_column_int(pStmt, 1);
+        personId = sqlite3_column_int(pStmt, 2);
+        feature = sqlite3_column_blob(pStmt, 3);
+        timeStamp = sqlite3_column_int(pStmt, 4);
+        // register info to face lib.
+        mFaceDetector->faceDatabaseRegister(feature, personId, featureId, timeStamp, 0, 0, version);
+        LOG2("Register feature (%d): face ID: %d, feature ID: %d, timestamp: %d, version: %d", featureCount, personId, featureId, timeStamp, version);
+        if (ret < 0) {
+            LOGE("Error on loading feature data(%d) : %d", featureCount, ret);
+        }
+        featureCount++;
+    }
+
+    sqlite3_finalize(pStmt);
+    sqlite3_close(pDb);
+
+    return NO_ERROR;
 }
 
 }; // namespace android
