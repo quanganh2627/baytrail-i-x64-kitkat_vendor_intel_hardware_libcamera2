@@ -346,7 +346,7 @@ bool AtomDvs2::isHighSpeedDvsSupported(int width, int height)
         if (resolution != NULL) {
             int w = 0;
             int h = 0;
-            int retval = parseResolutionPair(resolution, w, h, NULL);
+            int retval = parsePair(resolution, &w, &h, 'x');
             if (retval)
                 return false;
 

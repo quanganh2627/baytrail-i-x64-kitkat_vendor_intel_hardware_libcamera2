@@ -246,46 +246,60 @@ struct AtomFormatBridge {
 extern const struct AtomFormatBridge sV4l2PixelFormatBridge[];
 const struct AtomFormatBridge* getAtomFormatBridge(unsigned int fourcc);
 
-static int parseResolutionPair(const char *p, int &width, int &height,
-           char **endptr)
+// Parse string like "640x480" or "10000,20000"
+// copy from android CameraParameters.cpp
+static int parsePair(const char *str, int *first, int *second, char delim,
+                      char **endptr = NULL)
 {
-    LOG1("@%s", __FUNCTION__);
-    char *xptr = NULL;
-    width = (int) strtol(p, &xptr, 10);
-    if (xptr == NULL || *xptr != 'x') // strtol stores location of x into xptr
-        return BAD_VALUE;
-
-    height = (int) strtol(xptr + 1, &xptr, 10);
-
-    if (endptr) {
-        *endptr = xptr;
+    // Find the first integer.
+    char *end;
+    int w = (int)strtol(str, &end, 10);
+    // If a delimiter does not immediately follow, give up.
+    if (*end != delim) {
+        LOGE("Cannot find delimiter (%c) in str=%s", delim, str);
+        return -1;
     }
 
-    return OK;
+    // Find the second integer, immediately after the delimiter.
+    int h = (int)strtol(end+1, &end, 10);
+
+    *first = w;
+    *second = h;
+
+    if (endptr) {
+        *endptr = end;
+    }
+
+    return 0;
 }
 
 /**
- * parse the pair string, like "720x480", the "x" is passed by parameter "delim"
- *
- * @param str the source pair string
- * @param first the first element of the pair, the memory need to be released by caller
- * @param second the second element of the pair, the memory need to be released by caller
- * @param delim delimiter of the pair
+ * Parse string like "1024x768,640x480"
+ * Output integer vector list
  */
-static int parsePair(const char *str, char **first, char **second, const char *delim)
+static void parseSizesList(const char *sizesStr, Vector<Size> &sizes)
 {
-    if(str == NULL)
-        return -1;
-    char* index = strstr(str, delim);
-    if(index == NULL)
-        return -1;
-    *first = (char*)malloc(strlen(str) - strlen(index));
-    *second = (char*)malloc(strlen(index) -1);
-    if(*first == NULL || *second == NULL)
-        return -1;
-    strncpy(*first, str, strlen(str) - strlen(index));
-    strncpy(*second, str + strlen(str) - strlen(index) + 1, strlen(index) - 1);
-    return 0;
+    if (sizesStr == 0) {
+        return;
+    }
+
+    char *sizeStartPtr = (char *)sizesStr;
+
+    while (true) {
+        int width, height;
+        int success = parsePair(sizeStartPtr, &width, &height, 'x',
+                                 &sizeStartPtr);
+        if (success == -1 || (*sizeStartPtr != ',' && *sizeStartPtr != '\0')) {
+            LOGE("Picture sizes string \"%s\" contains invalid character.", sizesStr);
+            return;
+        }
+        sizes.push(Size(width, height));
+
+        if (*sizeStartPtr == '\0') {
+            return;
+        }
+        sizeStartPtr++;
+    }
 }
 
 /**
