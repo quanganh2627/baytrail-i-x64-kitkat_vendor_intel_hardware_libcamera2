@@ -227,7 +227,7 @@ private:
 
 // private data
 private:
-    sp<FaceDetector> mFaceDetector;
+    FaceDetector* mFaceDetector;
     PanoramaThread *mPanoramaThread;
     MessageQueue<Message, MessageId> mMessageQueue;
     int mLastReportedNumberOfFaces;

@@ -2327,6 +2327,8 @@ status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
         status = mPreviewThread->setPreviewWindow(msg->window);
     } else if (msg->window == NULL
                && currentState == PreviewThread::STATE_ENABLED) {
+        // stop face detection before free preview buffer.
+        stopFaceDetection(true);
         // Notes:
         //  1. msg->window == NULL comes from CameraService
         //     before calling stopPreview().

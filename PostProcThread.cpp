@@ -65,8 +65,8 @@ PostProcThread::~PostProcThread()
 {
     LOG1("@%s", __FUNCTION__);
     if (mFaceDetector != NULL) {
-        mFaceDetector->requestExitAndWait();
-        mFaceDetector.clear();
+        delete mFaceDetector;
+        mFaceDetector = NULL;
     }
 }
 
@@ -84,11 +84,6 @@ status_t PostProcThread::init(void* isp)
     mFaceDetector = new FaceDetector();
     if (mFaceDetector == NULL) {
         LOGE("Error creating FaceDetector");
-        return UNKNOWN_ERROR;
-    }
-
-    if (mFaceDetector->run("CamHAL_FACE") != NO_ERROR) {
-        LOGE("Error starting FaceDetector thread!");
         return UNKNOWN_ERROR;
     }
 
