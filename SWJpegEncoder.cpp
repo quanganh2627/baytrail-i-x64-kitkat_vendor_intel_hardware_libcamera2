@@ -553,7 +553,7 @@ configEncoding(int width, int height, void *jpegBuf, int jpegBufSize)
 int SWJpegEncoder::Codec::
 doJpegEncoding(const void *y_buf, const void *uv_buf, int fourcc)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s, fourcc:%d, yuyv:%d, nv12:%d", __FUNCTION__, fourcc, V4L2_PIX_FMT_YUYV, V4L2_PIX_FMT_NV12);
 
     unsigned char *srcY = NULL;
     unsigned char *srcUV = NULL;

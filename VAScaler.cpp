@@ -26,6 +26,9 @@
 #include <drm_fourcc.h>
 #include "LogHelper.h"
 #include "VAScaler.h"
+#include <ufo/graphics.h>
+#include <ufo/gralloc.h>
+#include <hardware/hardware.h>
 
 #define CHECK_VASTATUS(str) \
     do { \
@@ -35,31 +38,6 @@
     }while(0)
 
 namespace android {
-
-/*
- * This structs is copy from graphic area.
- * It's only to get buffer name from buffer handle.
- * Will be remove when buffer handle can be use directly in surface creation
- */
-struct mfx_gralloc_drm_handle_t {
-    native_handle_t base;
-    int magic;
-
-    int width;
-    int height;
-    int format;
-    int usage;
-
-    int name;
-    int pid;    // creator
-
-    mutable int other;                                       // registered owner (pid)
-    mutable union { int data1; mutable drm_intel_bo *bo; };  // drm buffer object
-    union { int data2; uint32_t fb; };                       // framebuffer id
-    int pitch;                                               // buffer pitch (in bytes)
-    int allocWidth;                                          // Allocated buffer width in pixels.
-    int allocHeight;                                         // Allocated buffer height in lines.
-};
 
 VAScaler::VAScaler():
     mInitialized(false),
@@ -192,6 +170,17 @@ int VAScaler::processFrame(int inputBufferId, int outputBufferId)
     //correct rect information according to zoom factor
     setZoomRegion(in->rect, in->width, in->height, mZoomFactor);
 
+    LOG2("@%s,IN::w:%d,h:%d,stride:%d,type:%d,format:%x,pixel_format:%x,handle:%d",
+        __FUNCTION__, in->width, in->height, in->stride, in->type,
+        in->format, in->pixel_format, in->handle);
+    LOG2("@%s,IN::rect.w:%d,h:%d,x:%d,y:%d",
+        __FUNCTION__, in->rect.width, in->rect.height, in->rect.x, in->rect.y);
+    LOG2("@%s,OUT::w:%d,h:%d,stride:%d,type:%d,format:%x,pixel_format:%x,handle:%d",
+        __FUNCTION__, out->width, out->height, out->stride, out->type,
+        out->format, out->pixel_format, out->handle);
+    LOG2("@%s,OUT::rect.w:%d,h:%d,x:%d,y:%d",
+        __FUNCTION__, out->rect.width, out->rect.height, out->rect.x, out->rect.y);
+
     vaStatus = mVA->perform(*in, *out, mVPP, false);
     CHECK_VASTATUS("perform");
 
@@ -220,30 +209,27 @@ status_t VAScaler::mapGraphicFmtToVAFmt(int &vaRTFormat, int &vaFourcc, int grap
 
 int VAScaler::addOutputBuffer(buffer_handle_t *pBufHandle, int width, int height, int stride, int format)
 {
-    RenderTarget *rt;
-    struct mfx_gralloc_drm_handle_t *pGrallocHandle;
-
     LOG1("@%s %dx%d stride:%d format:%x current count:%d", __FUNCTION__, width, height, stride, format, mOIDKey);
-    //double the stride for YUY2
-    if (format == HAL_PIXEL_FORMAT_YCbCr_422_I)
-        stride *= 2;
 
-    rt = new RenderTarget();
+    RenderTarget *rt = new RenderTarget();
     if (rt == NULL) {
         LOGE("Fail to allocate RenderTarget");
         return -1;
     }
 
-    //FIXME, will be removed when va driver support buffer handle directly.
-    pGrallocHandle = (struct mfx_gralloc_drm_handle_t *) *pBufHandle;
-    LOG1("info of handle %dx%d stride:%d name:%x format:%x", pGrallocHandle->width, pGrallocHandle->height,
-            pGrallocHandle->pitch, pGrallocHandle->name, pGrallocHandle->format);
+    hw_module_t const* module;
+    struct gralloc_module_t *gralloc_module;
+    hw_get_module(GRALLOC_HARDWARE_MODULE_ID, &module);
+    gralloc_module = (struct gralloc_module_t*)module;
+    intel_ufo_buffer_details_t info;
+    gralloc_module->perform(gralloc_module, INTEL_UFO_GRALLOC_MODULE_PERFORM_GET_BO_INFO, *pBufHandle, &info);
+    LOG2("@%s get information from gfx, w:%d,h:%d,pitch:%d",__FUNCTION__, info.width, info.height, info.pitch);
 
-    rt->width    = width;
-    rt->height   = height;
-    rt->stride   = pGrallocHandle->pitch;
-    rt->type     = RenderTarget::KERNEL_DRM;
-    rt->handle   = pGrallocHandle->name;
+    rt->width    = info.width;
+    rt->height   = info.height;
+    rt->stride = info.pitch;
+    rt->type     = RenderTarget::ANDROID_GRALLOC;
+    rt->handle   = (int)*pBufHandle;
     rt->rect.x   = rt->rect.y = 0;
     rt->rect.width   = rt->width;
     rt->rect.height  = rt->height;
@@ -257,29 +243,27 @@ int VAScaler::addOutputBuffer(buffer_handle_t *pBufHandle, int width, int height
 
 int VAScaler::addInputBuffer(buffer_handle_t *pBufHandle, int width, int height, int stride, int format)
 {
-    RenderTarget *rt;
-    struct mfx_gralloc_drm_handle_t *pGrallocHandle;
-
     LOG1("@%s %dx%d stride:%d format:%x current count:%d", __FUNCTION__, width, height, stride, format, mIIDKey);
-    //double the stride for YUY2
-    if (format == HAL_PIXEL_FORMAT_YCbCr_422_I)
-        stride *= 2;
 
-    rt = new RenderTarget();
+    RenderTarget *rt = new RenderTarget();
     if (rt == NULL) {
         LOGE("Fail to allocate RenderTarget");
         return -1;
     }
 
-    pGrallocHandle = (struct mfx_gralloc_drm_handle_t *) *pBufHandle;
-    LOG1("info of handle %dx%d stride:%d name:%x format:%x", pGrallocHandle->width, pGrallocHandle->height,
-            pGrallocHandle->pitch, pGrallocHandle->name, pGrallocHandle->format);
+    hw_module_t const* module;
+    struct gralloc_module_t *gralloc_module;
+    hw_get_module(GRALLOC_HARDWARE_MODULE_ID, &module);
+    gralloc_module = (struct gralloc_module_t*)module;
+    intel_ufo_buffer_details_t info;
+    gralloc_module->perform(gralloc_module, INTEL_UFO_GRALLOC_MODULE_PERFORM_GET_BO_INFO, *pBufHandle, &info);
+    LOG2("@%s get information from gfx, w:%d,h:%d,pitch:%d", __FUNCTION__, info.width, info.height, info.pitch);
 
-    rt->width    = width;
-    rt->height   = height;
-    rt->stride   = pGrallocHandle->pitch;
-    rt->type     = RenderTarget::KERNEL_DRM;
-    rt->handle   = pGrallocHandle->name;
+    rt->width    = info.width;
+    rt->height   = info.height;
+    rt->stride   = info.pitch;
+    rt->type     = RenderTarget::ANDROID_GRALLOC;
+    rt->handle   = (int)*pBufHandle;
     rt->rect.x   = rt->rect.y = 0;
     rt->rect.width   = rt->width;
     rt->rect.height  = rt->height;

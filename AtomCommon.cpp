@@ -18,8 +18,11 @@
 #include "AtomCommon.h"
 #include "PlatformData.h"
 #include <ia_coordinate.h>
-#ifndef GRAPHIC_IS_GEN // this will be removed if graphic provides one common header file
+#ifndef GRAPHIC_IS_GEN
 #include <hal_public.h>
+#else
+#include <ufo/graphics.h>
+#include "VAScaler.h"
 #endif
 
 #ifdef LIBCAMERA_RD_FEATURES

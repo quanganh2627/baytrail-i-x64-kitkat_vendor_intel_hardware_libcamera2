@@ -22,7 +22,9 @@
 #include <ui/GraphicBuffer.h>
 #include <ui/GraphicBufferMapper.h>
 #include "GPUScaler.h"
+#ifdef GRAPHIC_IS_GEN
 #include "VAScaler.h"
+#endif
 namespace android {
 
 ScalerService::ScalerService() :

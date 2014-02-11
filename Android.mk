@@ -148,7 +148,8 @@ LOCAL_SHARED_LIBRARIES := \
 	libGLESv2 \
 	libgui \
 	libexpat \
-	libia_panorama
+	libia_panorama \
+	libhardware
 
 ifeq ($(USE_SHARED_IA_FACE), true)
 LOCAL_SHARED_LIBRARIES += \

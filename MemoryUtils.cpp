@@ -18,6 +18,9 @@
 #define LOG_TAG "Camera_MemoryUtils"
 #include "MemoryUtils.h"
 #include "PlatformData.h"
+#ifdef GRAPHIC_IS_GEN
+#include <ufo/graphics.h>
+#endif
 
 namespace android {
     namespace MemoryUtils {
@@ -89,7 +92,8 @@ namespace android {
 
         // It is used specially for BYT with Gen GPU. The video encoder need NV12 tiled format graphic buffer.
         // Every recording buffer will be converted to this group of buffers which are really used for encoding.
-        if (aBuff.type == ATOM_BUFFER_VIDEO && PlatformData::isGraphicGen()) {
+#ifdef GRAPHIC_IS_GEN
+        if (aBuff.type == ATOM_BUFFER_VIDEO) {
             GraphicBuffer *gfxbuf = new GraphicBuffer(formatDescriptor.width, ALIGN32(formatDescriptor.height), HAL_PIXEL_FORMAT_NV12_TILED_INTEL,
                     GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_HW_TEXTURE);
 
@@ -105,6 +109,7 @@ namespace android {
             LOG1("@%s allocated rec gfx buffer size(%dx%d) stride:%d",
                     __FUNCTION__, formatDescriptor.width, formatDescriptor.height, cameraNativeWindowBuffer->stride);
         }
+#endif
 
         return status;
     }
