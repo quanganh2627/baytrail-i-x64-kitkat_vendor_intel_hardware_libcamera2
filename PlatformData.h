@@ -49,14 +49,6 @@
 #include "AtomCommon.h"
 #include <IntelParameters.h>
 
-// if graphic is gen, this value will be use. if not, only for build.
-#define HAL_PIXEL_FORMAT_NV12_TILED_INTEL 0x7FA00F00
-#ifdef GRAPHIC_IS_GEN // this will be remove if graphic provides one common header file
-#define HAL_PIXEL_FORMAT_YUV420PackedSemiPlanar_INTEL 0x7FA00E00
-#define HAL_PIXEL_FORMAT_NV12_LINEAR_PACKED_INTEL 0x103
-#define HAL_PIXEL_FORMAT_NV12 HAL_PIXEL_FORMAT_NV12_LINEAR_PACKED_INTEL
-#endif
-
 namespace android {
 
 /**
