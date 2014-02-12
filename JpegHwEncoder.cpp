@@ -211,7 +211,7 @@ int JpegHwEncoder::encode(const InputBuffer &in, OutputBuffer &out)
         return -1;
     }
 
-    if (mHwImageEncoder->getCoded((void*)out.buf, mMaxOutJpegBufSize) < 0) {
+    if (mHwImageEncoder->getCoded((void*)out.buf, out.size) < 0) {
         LOGE("Could not encode picture stream!");
         status = -1;
     }
@@ -298,7 +298,7 @@ int JpegHwEncoder::getOutput(void* outBuf, unsigned int& outSize)
     LOG1("@%s", __FUNCTION__);
     int status = 0;
 
-    if (mHwImageEncoder->getCoded(outBuf, mMaxOutJpegBufSize) < 0) {
+    if (mHwImageEncoder->getCoded(outBuf, outSize) < 0) {
         LOGE("Could not encode picture stream!");
         status = -1;
     }
