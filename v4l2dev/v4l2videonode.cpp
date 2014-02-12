@@ -98,7 +98,7 @@ status_t V4L2VideoNode::queryCap(struct v4l2_capability *cap)
     LOG1("@%s device : %s", __FUNCTION__, mName.string());
     int ret(0);
 
-    if (mState != DEVICE_OPEN) {
+    if (mState < DEVICE_OPEN || mState == DEVICE_ERROR) {
         LOGE("%s invalid device state %d",__FUNCTION__, mState);
         return INVALID_OPERATION;
     }
