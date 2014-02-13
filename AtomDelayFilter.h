@@ -9,7 +9,7 @@ template <class X> class AtomDelayFilter {
 
     void push(X);
 public:
-    AtomDelayFilter(X defaultVal, unsigned int depth);
+    AtomDelayFilter(X defaultVal, unsigned int depth = 1);
     virtual ~AtomDelayFilter();
     unsigned int delay() { return depth; };
     X enqueue(X);
@@ -18,7 +18,7 @@ public:
 };
 
 // depth == 0 means non delay
-template <class X> AtomDelayFilter<X>::AtomDelayFilter(X val, unsigned int delay = 1)
+template <class X> AtomDelayFilter<X>::AtomDelayFilter(X val, unsigned int delay)
 {
     this->depth = delay;
     defaultVal = val;
