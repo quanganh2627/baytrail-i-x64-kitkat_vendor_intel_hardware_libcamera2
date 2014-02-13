@@ -409,6 +409,7 @@ private:
 #endif
 
     void getMaxSnapShotSize(int cameraId, int* width, int* height);
+    void getMaxVideoSize(int cameraId, int* width, int* height);
 
     status_t updateLowLight();
     status_t setTorchHelper(int intensity);

@@ -364,14 +364,8 @@ void AtomISP::initFrameConfig()
         mConfig.previewLimits.maxHeight =  mConfig.snapshotLimits.maxHeight;
     }
 
-    if (mConfig.snapshotLimits.maxWidth >= RESOLUTION_1080P_WIDTH
-        && mConfig.snapshotLimits.maxHeight >= RESOLUTION_1080P_HEIGHT) {
-        mConfig.recordingLimits.maxWidth = RESOLUTION_1080P_WIDTH;
-        mConfig.recordingLimits.maxHeight = RESOLUTION_1080P_HEIGHT;
-    } else {
-        mConfig.recordingLimits.maxWidth = mConfig.snapshotLimits.maxWidth;
-        mConfig.recordingLimits.maxHeight = mConfig.snapshotLimits.maxHeight;
-    }
+    // Supported video sizes list already exist in camera_profiles.xml. So we should get limitation from it.
+    getMaxVideoSize(mCameraId, &(mConfig.recordingLimits.maxWidth), &(mConfig.recordingLimits.maxHeight));
 }
 
 /**
@@ -732,9 +726,31 @@ void AtomISP::getMaxSnapShotSize(int cameraId, int* width, int* height)
     p.getSupportedPictureSizes(supportedSizes);
 
     for (unsigned int i = 0; i < supportedSizes.size(); i++) {
-        if (maxWidth < supportedSizes[i].width)
+        if ((maxWidth < supportedSizes[i].width) || (maxHeight < supportedSizes[i].height)) {
             maxWidth = supportedSizes[i].width;
             maxHeight = supportedSizes[i].height;
+        }
+    }
+
+    *width = maxWidth;
+    *height = maxHeight;
+}
+
+void AtomISP::getMaxVideoSize(int cameraId, int* width, int* height)
+{
+    LOG1("@%s", __FUNCTION__);
+    CameraParameters p;
+    Vector<Size> supportedSizes;
+    int maxWidth = 0, maxHeight = 0;
+
+    p.set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES, PlatformData::supportedVideoSizes(cameraId));
+    p.getSupportedVideoSizes(supportedSizes);
+
+    for (unsigned int i = 0; i < supportedSizes.size(); i++) {
+        if ((maxWidth < supportedSizes[i].width) || (maxHeight < supportedSizes[i].height)) {
+            maxWidth = supportedSizes[i].width;
+            maxHeight = supportedSizes[i].height;
+        }
     }
 
     *width = maxWidth;
