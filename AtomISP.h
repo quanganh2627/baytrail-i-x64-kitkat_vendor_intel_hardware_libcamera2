@@ -120,7 +120,6 @@ public:
 
     status_t setPostviewBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bool cached);
 
-    int pollPreview(int timeout);
     int pollCapture(int timeout);
 
     bool dataAvailable();
@@ -382,8 +381,6 @@ private:
 
     void runStartISPActions();
     void runStopISPActions();
-
-    void markBufferCached(struct v4l2_buffer_info *vinfo, bool cached);
 
     Size getHALZSLResolution();
     status_t allocateHALZSLBuffers();

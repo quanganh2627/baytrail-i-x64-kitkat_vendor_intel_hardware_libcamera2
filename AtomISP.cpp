@@ -3767,19 +3767,6 @@ bool AtomISP::dataAvailable()
     return false;
 }
 
-/**
- * Polls the preview device node fd for data
- *
- * \param timeout time to wait for data (in ms), timeout of -1
- *        means to wait indefinitely for data
- * \return -1 for error, 0 if time out, positive number
- *         if poll was successful
- */
-int AtomISP::pollPreview(int timeout)
-{
-    LOG2("@%s", __FUNCTION__);
-    return mPreviewDevice->poll(timeout);
-}
 
 /**
  * Polls the capture device node fd for data
@@ -3881,30 +3868,6 @@ status_t AtomISP::computeZoomRatios()
 
     LOG2("@%s: zoom ratios list: %s", __FUNCTION__, mZoomRatios);
     return NO_ERROR;
-}
-
-/**
- * Marks the given buffers as cached
- *
- * A cached buffer in this context means that the buffer
- * memory may be accessed through some system caches, and
- * the V4L2 driver must do cache invalidation in case
- * the image data source is not updating system caches
- * in hardware.
- *
- * When false (not cached), V4L2 driver can assume no cache
- * invalidation/flushes are needed for this buffer.
- */
-void AtomISP::markBufferCached(struct v4l2_buffer_info *vinfo, bool cached)
-{
-    LOG2("@%s, cached %d", __FUNCTION__, cached);
-    uint32_t cacheflags =
-        V4L2_BUF_FLAG_NO_CACHE_INVALIDATE |
-        V4L2_BUF_FLAG_NO_CACHE_CLEAN;
-    if (cached)
-        vinfo->cache_flags = 0;
-    else
-        vinfo->cache_flags = cacheflags;
 }
 
 
