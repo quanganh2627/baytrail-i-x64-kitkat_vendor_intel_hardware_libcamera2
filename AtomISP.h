@@ -290,6 +290,7 @@ protected:
     status_t getDvsStatistics(struct atomisp_dis_statistics *stats,
                               bool *tryAgain) const;
     status_t setMotionVector(const struct atomisp_dis_vector *vector) const;
+    status_t getIspDvs2BqResolutions(struct atomisp_dvs2_bq_resolutions *bq_res) const;
     status_t setDvsCoefficients(const struct atomisp_dis_coefficients *coefs) const;
     status_t getIspParameters(struct atomisp_parm *isp_param) const;
 

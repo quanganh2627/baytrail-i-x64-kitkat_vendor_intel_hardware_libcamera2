@@ -156,6 +156,7 @@ status_t AtomDvs2::reconfigureNoLock()
     status_t status = NO_ERROR;
     ia_err err = ia_err_none;
     struct atomisp_parm isp_params;
+    struct atomisp_dvs2_bq_resolutions bq_res;
     struct atomisp_dvs_grid_info dvs_grid;
 
     if (!mState)
@@ -165,32 +166,24 @@ status_t AtomDvs2::reconfigureNoLock()
     if (status != NO_ERROR)
         return status;
 
+    status = mIsp->getIspDvs2BqResolutions(&bq_res);
+    if (status != NO_ERROR)
+        return status;
+
     memset(&dvs_grid, 0, sizeof(atomisp_dvs_grid_info));
 
     dvs_grid = isp_params.dvs_grid;
 
-    int width = 0, height = 0;
-    mIsp->getOutputSize(&width, &height, NULL);
-
-    int bq_frame_width = width/2;
-    int bq_frame_height = height/2;
-    int dvs_env_width = DVS_MIN_ENVELOPE;
-    int dvs_env_height = DVS_MIN_ENVELOPE;
-
     //Configure DVS
-    dvs_env_width = isp_params.dvs_envelop.width/2;
-    dvs_env_height = isp_params.dvs_envelop.height/2;
-    dvs_env_width = dvs_env_width < DVS_MIN_ENVELOPE ? DVS_MIN_ENVELOPE : dvs_env_width;
-    dvs_env_height = dvs_env_height < DVS_MIN_ENVELOPE ? DVS_MIN_ENVELOPE : dvs_env_height;
     mDvs2Config.grid_size = dvs_grid.bqs_per_grid_cell;
-    mDvs2Config.source_bq.width_bq = bq_frame_width + dvs_env_width;
-    mDvs2Config.source_bq.height_bq = bq_frame_height + dvs_env_height;
-    mDvs2Config.output_bq.width_bq = bq_frame_width;
-    mDvs2Config.output_bq.height_bq = bq_frame_height; //crop
-    mDvs2Config.ispfilter_bq.width_bq = 12/2;
-    mDvs2Config.ispfilter_bq.height_bq = 12/2;
-    mDvs2Config.envelope_bq.width_bq = dvs_env_width - mDvs2Config.ispfilter_bq.width_bq;
-    mDvs2Config.envelope_bq.height_bq = dvs_env_height - mDvs2Config.ispfilter_bq.height_bq;
+    mDvs2Config.source_bq.width_bq = bq_res.source_bq.width_bq;
+    mDvs2Config.source_bq.height_bq = bq_res.source_bq.height_bq;
+    mDvs2Config.output_bq.width_bq = bq_res.output_bq.width_bq;
+    mDvs2Config.output_bq.height_bq = bq_res.output_bq.height_bq;
+    mDvs2Config.ispfilter_bq.width_bq = bq_res.ispfilter_bq.width_bq;
+    mDvs2Config.ispfilter_bq.height_bq = bq_res.ispfilter_bq.height_bq;
+    mDvs2Config.envelope_bq.width_bq = bq_res.envelope_bq.width_bq;
+    mDvs2Config.envelope_bq.height_bq = bq_res.envelope_bq.height_bq;
     mDvs2Config.gdc_shift_x = 2;
     mDvs2Config.gdc_shift_y = 2;
     mDvs2Config.oxdim_y = 64;
@@ -205,7 +198,7 @@ status_t AtomDvs2::reconfigureNoLock()
     mDVSEnabled = mIsp->dvsEnabled();
     if(mDVSEnabled) {
         // Check if DVS is enabled in driver by the envelope value
-        if(dvs_env_width > DVS_MIN_ENVELOPE && dvs_env_height > DVS_MIN_ENVELOPE) {
+        if(mDvs2Config.envelope_bq.width_bq && mDvs2Config.envelope_bq.height_bq) {
             mDvs2Config.num_axis = ia_dvs2_algorihm_4_axis;
         } else {
             mDvs2Config.num_axis = ia_dvs2_algorihm_0_axis;
@@ -236,7 +229,7 @@ status_t AtomDvs2::reconfigureNoLock()
        && sensor_mode_data.frame_length_lines != 0) {
         float downscaling = (sensor_mode_data.crop_vertical_end - sensor_mode_data.crop_vertical_start + 1)
                             / sensor_mode_data.binning_factor_y / sensor_mode_data.output_height;
-        float non_blanking_ratio = (float)((height + (dvs_env_height * 2))* downscaling)/sensor_mode_data.frame_length_lines;
+        float non_blanking_ratio = (float)(mDvs2Config.output_bq.height_bq * 2 + (mDvs2Config.envelope_bq.height_bq + mDvs2Config.ispfilter_bq.height_bq) * 4 * downscaling)/sensor_mode_data.frame_length_lines;
         dvs_set_non_blank_ratio(mState, non_blanking_ratio);
     }
     //Allocate statistics
@@ -254,23 +247,25 @@ status_t AtomDvs2::reconfigureNoLock()
     }
 
     //Set coefficient
-    atomisp_dis_coefficients *dvs_coefs = NULL;
-    err = dvs_allocate_coefficients(&dvs_grid, &dvs_coefs);
-    if (err != ia_err_none) {
-        LOGW("allocate dvs2 coeff failed:%d", err);
-        return UNKNOWN_ERROR;
-    }
+    if (dvs_grid.enable) {
+        atomisp_dis_coefficients *dvs_coefs = NULL;
+        err = dvs_allocate_coefficients(&dvs_grid, &dvs_coefs);
+        if (err != ia_err_none) {
+            LOGW("allocate dvs2 coeff failed:%d", err);
+            return UNKNOWN_ERROR;
+        }
 
-    err = dvs_get_coefficients(mState, dvs_coefs);
-    if (err != ia_err_none) {
-        LOGW("get dvs2 coeff failed: %d", err);
-        return UNKNOWN_ERROR;
-    } else {
-        mIsp->setDvsCoefficients(dvs_coefs);
+        err = dvs_get_coefficients(mState, dvs_coefs);
+        if (err != ia_err_none) {
+            LOGW("get dvs2 coeff failed: %d", err);
+            return UNKNOWN_ERROR;
+        } else {
+            mIsp->setDvsCoefficients(dvs_coefs);
+        }
+        if (dvs_coefs)
+            dvs_free_coefficients(dvs_coefs);
+        dvs_coefs = NULL;
     }
-    if (dvs_coefs)
-        dvs_free_coefficients(dvs_coefs);
-    dvs_coefs = NULL;
 
     return status;
 }

@@ -809,6 +809,17 @@ status_t AtomISP::setDvsCoefficients(const struct atomisp_dis_coefficients *coef
     return status;
 }
 
+status_t AtomISP::getIspDvs2BqResolutions(struct atomisp_dvs2_bq_resolutions *bq_res) const
+{
+    status_t status = NO_ERROR;
+    if (mMainDevice->xioctl(ATOMISP_IOC_G_DVS2_BQ_RESOLUTIONS, bq_res) < 0) {
+        LOGE("failed to get ISP dvs2 bq resolutions");
+        status = UNKNOWN_ERROR;
+    }
+    return status;
+}
+
+
 status_t AtomISP::getIspParameters(struct atomisp_parm *isp_param) const
 {
     status_t status = NO_ERROR;
