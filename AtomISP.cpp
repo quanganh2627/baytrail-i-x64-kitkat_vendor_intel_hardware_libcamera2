@@ -1051,6 +1051,8 @@ status_t AtomISP::start()
                 attachObserver(mDvs, OBSERVE_PREVIEW_STREAM);
                 LOG1("%s: attach mDvs to Preview Stream Observer", __FUNCTION__);
                 mDvs->setZoom(mConfig.zoom);
+                if (mMode == MODE_CONTINUOUS_VIDEO)
+                    atomisp_set_zoom(mConfig.zoom);
             }
             //Because DVS2 lib calculates the morph table for video zoom by the first frame,
             //so the first several frames should have no zoom effect, need to be skipped
@@ -1194,11 +1196,13 @@ status_t AtomISP::configurePreview()
     }
 
     // need to resend the current zoom value
-    if (mMode == MODE_VIDEO && mDvs && mCssMajorVersion == 2)
+    if ((mMode == MODE_VIDEO || mMode == MODE_CONTINUOUS_VIDEO) && mDvs && mCssMajorVersion == 2) {
         mDvs->setZoom(mConfig.zoom);
-    else
+        if (mMode == MODE_CONTINUOUS_VIDEO)
+            atomisp_set_zoom(mConfig.zoom);
+    } else {
         atomisp_set_zoom(mConfig.zoom);
-
+    }
     return status;
 
 err:
@@ -1484,10 +1488,13 @@ status_t AtomISP::configureCapture()
 
 nopostview:
     // need to resend the current zoom value
-    if (mMode == MODE_VIDEO && mDvs && mCssMajorVersion == 2)
+    if ((mMode == MODE_VIDEO || mMode == MODE_CONTINUOUS_VIDEO) && mDvs && mCssMajorVersion == 2) {
         mDvs->setZoom(mConfig.zoom);
-    else
+        if (mMode == MODE_CONTINUOUS_VIDEO)
+            atomisp_set_zoom(mConfig.zoom);
+    } else {
         atomisp_set_zoom(mConfig.zoom);
+    }
 
     return status;
 
@@ -1794,6 +1801,9 @@ status_t AtomISP::configureContinuousVideo()
     }
 
     // need to resend the current zoom value
+    if (mDvs && mCssMajorVersion == 2)
+        mDvs->setZoom(mConfig.zoom);
+
     atomisp_set_zoom(mConfig.zoom);
 
     // restore the actual capture fps value
@@ -1883,10 +1893,13 @@ status_t AtomISP::configureContinuous()
     }
 
     // need to resend the current zoom value
-    if (mMode == MODE_VIDEO && mDvs && mCssMajorVersion == 2)
+    if ((mMode == MODE_VIDEO || mMode == MODE_CONTINUOUS_VIDEO) && mDvs && mCssMajorVersion == 2) {
         mDvs->setZoom(mConfig.zoom);
-    else
+        if (mMode == MODE_CONTINUOUS_VIDEO)
+            atomisp_set_zoom(mConfig.zoom);
+    } else {
         atomisp_set_zoom(mConfig.zoom);
+    }
 
     // restore the actual capture fps value
     mConfig.fps = capture_fps;
@@ -2761,8 +2774,15 @@ status_t AtomISP::setZoom(int zoom)
     if (mMode == MODE_CAPTURE)
         return NO_ERROR;
 
-    if (mMode == MODE_VIDEO && mDvs && mCssMajorVersion == 2 && mSensorType == SENSOR_TYPE_RAW) {
+    if ((mMode == MODE_VIDEO || mMode == MODE_CONTINUOUS_VIDEO) && mDvs && mCssMajorVersion == 2 && mSensorType == SENSOR_TYPE_RAW) {
         mDvs->setZoom(zoom);
+        if (mMode == MODE_CONTINUOUS_VIDEO) {
+            int ret = atomisp_set_zoom(zoom);
+            if (ret < 0) {
+                LOGE("Error setting zoom to %d", zoom);
+                return UNKNOWN_ERROR;
+            }
+        }
     } else {
         int ret = atomisp_set_zoom(zoom);
         if (ret < 0) {
