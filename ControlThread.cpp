@@ -7810,19 +7810,10 @@ bool ControlThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
         }
 
         if (mISP->getMode() == MODE_VIDEO || mISP->getMode() == MODE_CONTINUOUS_VIDEO) {
-            // steal the owner, if vfpp has no time for processing - in that
-            // case the preview will be used for creating the recording content,
-            // and we need to steal the ownership to ensure the dequeue
-            // recording message is always handled before the preview buffer is
-            // returned to the ISP
-            if (mISP->getPreviewTooBigForVFPP())
-                buff->owner = this;
-
             bool skipFrame = mISP->checkSkipFrameRecording(msg->data.frameBuffer.buff.frameCounter);
 
             Message local_msg;
             local_msg.id = MESSAGE_ID_DEQUEUE_RECORDING;
-            local_msg.data.dequeueRecording.previewFrame = *buff;
             local_msg.data.dequeueRecording.skipFrame =
                (buff->status == FRAME_STATUS_CORRUPTED) || skipFrame;
             mMessageQueue.send(&local_msg);
@@ -7858,11 +7849,6 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
             // If it has, process the buffer, unless frame is to be dropped.
             // If recording hasn't started or frame is dropped, return the buffer to the driver
             if (mState == STATE_RECORDING && !msg->skipFrame) {
-                // check recording
-                if (mISP->getPreviewTooBigForVFPP()) {
-                    memcpy(buff.dataPtr, msg->previewFrame.dataPtr, msg->previewFrame.size);
-                }
-
                 // Mirror the recording buffer if mirroring is enabled (only for front camera)
                 // TODO: this should be moved into VideoThread
                 if (mSaveMirrored && PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT) {

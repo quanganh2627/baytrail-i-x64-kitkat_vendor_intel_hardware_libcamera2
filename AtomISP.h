@@ -175,8 +175,6 @@ public:
     // high speed fps setting
     status_t setHighSpeedResolutionFps(char* resolution, int fps);
 
-    bool getPreviewTooBigForVFPP() { return mPreviewTooBigForVFPP; }
-
 protected:
     /* [BEGIN] IHWFlashControl overloads, */
     status_t setFlash(int numFrames);
@@ -496,7 +494,6 @@ private:
     AtomBuffer *mRecordingBuffers;
     bool mSwapRecordingDevice;
     bool mRecordingDeviceSwapped;
-    bool mPreviewTooBigForVFPP;
 
     bool mHALZSLEnabled;
     AtomBuffer *mHALZSLBuffers;

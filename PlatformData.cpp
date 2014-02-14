@@ -212,23 +212,6 @@ bool PlatformData::renderPreviewViaOverlay(int cameraId)
     return getInstance()->mCameras[cameraId].mPreviewViaOverlay;
 }
 
-bool PlatformData::resolutionSupportedByVFPP(int cameraId,
-                                             int width, int height)
-{
-    if (!validCameraId(cameraId, __FUNCTION__)) {
-        return false;
-    }
-
-    PlatformBase *i = getInstance();
-    Vector<Size>::const_iterator it = i->mCameras[cameraId].mVFPPLimitedResolutions.begin();
-    for (;it != i->mCameras[cameraId].mVFPPLimitedResolutions.end(); ++it) {
-        if (it->width == width && it->height == height) {
-            return false;
-        }
-    }
-    return true;
-}
-
 bool PlatformData::snapshotResolutionSupportedByZSL(int cameraId,
                                                     int width, int height)
 {

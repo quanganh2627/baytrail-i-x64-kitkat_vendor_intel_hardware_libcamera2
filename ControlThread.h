@@ -272,7 +272,6 @@ private:
 
     struct MessageDequeueRecording {
         bool    skipFrame;
-        AtomBuffer previewFrame; // special case for VFPP limited cases, where recording frame is created from preview
     };
 
     struct MessagePostCaptureProcDone {

@@ -86,7 +86,6 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mRecordingBuffers(NULL)
     ,mSwapRecordingDevice(false)
     ,mRecordingDeviceSwapped(false)
-    ,mPreviewTooBigForVFPP(false)
     ,mHALZSLEnabled(false)
     ,mHALZSLBuffers(NULL)
     ,mClientSnapshotBuffersCached(true)
@@ -986,15 +985,8 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
     switch (mode) {
     case MODE_PREVIEW:
     case MODE_CONTINUOUS_CAPTURE:
-        /* Swap the preview device for the video recording device in case the preview is
-         * too big to run VFPP or if we are using the HAL based ZSL implementation
-         * This is just a trick to use a faster path inside the ISP
-         *
-         * We will restore this when we stop the preview. see stopPreview()
-         **/
-        if (mPreviewTooBigForVFPP || mHALZSLEnabled) {
+        if (mHALZSLEnabled)
             mPreviewDevice = mMainDevice;
-        }
         if ((status = allocatePreviewBuffers()) != NO_ERROR)
             mPreviewDevice->stop();
         break;
@@ -1167,11 +1159,8 @@ status_t AtomISP::configurePreview()
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
     status_t status = NO_ERROR;
-    sp<V4L2VideoNode> activePreviewNode;
 
-    activePreviewNode = mPreviewTooBigForVFPP ? mMainDevice : mPreviewDevice;
-
-    ret = activePreviewNode->open();
+    ret = mPreviewDevice->open();
     if (ret < 0) {
         LOGE("Open preview device failed!");
         status = UNKNOWN_ERROR;
@@ -1179,14 +1168,14 @@ status_t AtomISP::configurePreview()
     }
 
     struct v4l2_capability aCap;
-    status = activePreviewNode->queryCap(&aCap);
+    status = mPreviewDevice->queryCap(&aCap);
     if (status != NO_ERROR) {
         LOGE("Failed basic capability check failed!");
         return NO_INIT;
     }
 
     ret = configureDevice(
-            activePreviewNode.get(),
+            mPreviewDevice.get(),
             CI_MODE_PREVIEW,
             &(mConfig.preview),
             false);
@@ -1206,7 +1195,7 @@ status_t AtomISP::configurePreview()
     return status;
 
 err:
-    activePreviewNode->stop();
+    mPreviewDevice->stop();
     return status;
 }
 
@@ -1265,10 +1254,9 @@ status_t AtomISP::stopPreview()
 
     freePreviewBuffers();
 
-    // In case some cases like HAL ZSL is enabled or preview is too big for VFPP
+    // In case some cases like HAL ZSL is enabled
     // we have swapped preview and main devices, in this situation we do not close it
     // otherwise we will power down the ISP
-
     if (mPreviewDevice->mId != V4L2_MAIN_DEVICE) {
         mPreviewDevice->close();
     }
@@ -1338,30 +1326,11 @@ status_t AtomISP::configureRecording()
         goto err;
     }
 
-    // fake preview config size if VFPP is too slow, so that VFPP will not
-    // cause FPS to drop
-    if (mPreviewTooBigForVFPP) {
-        previewConfig->width = 176;
-        previewConfig->height = 144;
-    }
     ret = configureDevice(
             mPreviewDevice.get(),
             CI_MODE_VIDEO,
             previewConfig,
             false);
-    // restore original preview config size if VFPP was too slow
-    if (mPreviewTooBigForVFPP) {
-        // since we only support recording == preview resolution, we can simply do:
-        *previewConfig = *recordingConfig;
-        // now the configuration and the bpl in it will be correct,
-        // when HAL uses it. Buffer allocation will be for the big size, bpl
-        // etc. will be also for the big size, only ISP will use the small size
-        // for VFPP. Notice the device swap is on in this case, so the fake size
-        // was actually stored in the mConfig.recording and we just copied the
-        // preview config back to recording config, even though the pointer
-        // names suggest the other way around
-    }
-
     if (ret < 0) {
         LOGE("Configure recording device failed!");
         status = UNKNOWN_ERROR;
@@ -2474,10 +2443,8 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
  * the ISP, so the viewfinder resolution must be limited.
  * BZ: 55640 59636
  *
- * Workaround 4: When sensor vertical blanking time is too low to run ISP
- * viewfinder postprocess binary (vf_pp) during it, every other frame would be
- * dropped leading to halved frame rate. Add control V4L2_CID_ENABLE_VFPP to
- * disable vf_pp for still preview.
+ * Workaround 4: In case that preview is too big for VFPP. was removed since
+ * it's only valid in CTP
  *
  * Workaround 5: The camera firmware doesn't support video downscaling. For the
  * sensor imx132, it cannot keep the same FOV for different resolutions.
@@ -2495,19 +2462,6 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
  * add envelope for DVS.
  *
  * BZ 116055
- *
- * This mode can be enabled by setting VFPPLimitedResolutionList to a proper
- * value for the platform in the camera_profiles.xml. If e.g. for resolution
- * 1024*768 the FPS drops to half the normal because VFPP is too slow
- * to process the frame during the sensor dependent blanking time, add
- * 1024x768 to the XML resolution list.
- *
- * In case of video recording, the vf_pp is configured to small size, preview
- * and video are swapped and the video frames are created from preview frames.
- * Currently preview and recording resolutions must be the same in this case.
- *
- * In case of still mode preview, vf_pp is entirely disabled for the resolutions
- * in VFPPLimitedResolutionList.
  *
  * @param params
  * @param dvsEabled
@@ -2579,37 +2533,6 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
         } else {
             mSwapRecordingDevice = false;
         }
-    }
-
-    // workaround 4, detail refer to the function description
-    bool previewSizeSupported = PlatformData::resolutionSupportedByVFPP(mCameraId, previewWidth, previewHeight);
-    if (!previewSizeSupported) {
-        if (videoMode || inVideoMode()) {
-            if (workaround2) {
-                // swapping is on already due to preview bigger than video (workaround 2)
-                // we don't need to do anything vfpp related anymore
-                // TODO support for situations where preview is bigger than
-                // video, swapping is on due to workaround 2, but vfpp size is still too big
-                mPreviewTooBigForVFPP = false;
-                bool videoSizeSupported = PlatformData::resolutionSupportedByVFPP(mCameraId, videoWidth, videoWidth);
-                if (!videoSizeSupported) {
-                    LOGE("@%s ERROR: Video recording with preview > video "
-                         "resolution and video resolution > maxPreviewPixelCountForVFPP "
-                         "is not yet supported.", __FUNCTION__);
-                }
-            } else {
-                mPreviewTooBigForVFPP = true; // video mode, too big preview, not yet swapped for workaround 2
-                mSwapRecordingDevice = true; // swap for this workaround 4, since vfpp is too slow
-                if (previewWidth * previewHeight != videoWidth * videoHeight) {
-                    LOGE("@%s ERROR: Video recording with preview resolution > "
-                         "maxPreviewPixelCountForVFPP and recording resolution > "
-                         "preview resolution is not yet supported.", __FUNCTION__);
-                }
-            }
-        } else
-            mPreviewTooBigForVFPP = true; // not video mode, too big preview
-    } else {
-        mPreviewTooBigForVFPP = false; // preview size is small enough for vfpp
     }
 
     return ret;
@@ -3175,9 +3098,8 @@ int AtomISP::atomisp_set_capture_mode(int deviceMode)
     struct v4l2_streamparm parm;
     status_t status;
     int vfpp_mode = ATOMISP_VFPP_ENABLE;
-    if (deviceMode == CI_MODE_PREVIEW && mPreviewTooBigForVFPP)
-        vfpp_mode = ATOMISP_VFPP_DISABLE_SCALER;
-    else if(mHALZSLEnabled)
+
+    if(mHALZSLEnabled)
         vfpp_mode = ATOMISP_VFPP_DISABLE_LOWLAT;
 
     CLEAR(parm);
