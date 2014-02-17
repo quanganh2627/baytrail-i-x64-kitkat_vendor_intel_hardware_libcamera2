@@ -37,6 +37,46 @@ static bool validateSize(int width, int height, Vector<Size> &supportedSizes)
     return true;
 }
 
+/**
+ * Validate that given parameter value is allowed boolean string
+ * ("true","false" or not set) and true value is only set, when
+ * isSupported() is true.
+ *
+ * \param paramName [in] name of parameter to validate
+ * \param paramSupportedName [in] isSupported parameter name
+ * \param params [in] camera parameters set
+ *
+ *  \return true if parameter value is valid, else false
+ **/
+static bool validateBoolParameter(const char* paramName, const char* paramSupportedName, const CameraParameters *params)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    if (paramName == NULL || paramSupportedName == NULL || params == NULL) {
+        LOGE("%s: Invalid argument!",  __FUNCTION__);
+        return false;
+    }
+
+    const char* value = params->get(paramName);
+
+    // allow not set (it mean false value)
+    if (value == NULL)  {
+        return true;
+    }
+
+    if (strcmp(value, CameraParameters::TRUE) != 0  && strcmp(value, CameraParameters::FALSE) != 0) {
+        LOGE("Bad value(%s) for %s. Not bool value.", value,  paramName);
+        return false;
+    }
+
+    if (isParameterSet(paramName, *params) && !isParameterSet(paramSupportedName, *params)) {
+        LOGE("bad value for %s, is set, but not supported", paramName);
+        return false;
+    }
+
+    return true;
+}
+
 bool validateString(const char* value,  const char* supportList)
 {
     // value should not set if support list is empty
@@ -474,10 +514,21 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
         return BAD_VALUE;
     }
 
-    //DVS
-    if(isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION, *params)
-       && !isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED, *params)) {
-        LOGE("bad value for DVS, DVS not support");
+    // AUTO EXPOSURE LOCK
+    if (!validateBoolParameter(CameraParameters::KEY_AUTO_EXPOSURE_LOCK,CameraParameters::KEY_AUTO_EXPOSURE_LOCK_SUPPORTED, params)) {
+        LOGE("bad value for auto exporsure lock");
+        return BAD_VALUE;
+    }
+
+    // AUTO WHITEBALANCE LOCK
+    if (!validateBoolParameter(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK_SUPPORTED, params)) {
+        LOGE("bad value for auto whitebalance lock");
+        return BAD_VALUE;
+    }
+
+    //  DVS (VIDEO STABILIZATION)
+    if (!validateBoolParameter(CameraParameters::KEY_VIDEO_STABILIZATION, CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED, params)) {
+        LOGE("bad value for DVS");
         return BAD_VALUE;
     }
 
