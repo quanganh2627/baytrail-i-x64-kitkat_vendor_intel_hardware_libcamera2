@@ -179,6 +179,7 @@ public:
     virtual int getCurrentCameraId(void) = 0;
 
     virtual float getFramerate() const = 0;
+    virtual status_t setFramerate(int fps) = 0;
     virtual status_t waitForFrameSync() = 0;
 
     virtual unsigned int getExposureDelay() = 0;
