@@ -80,12 +80,12 @@ private:
     ControlThread(const ControlThread& other);
     ControlThread& operator=(const ControlThread& other);
 
+public:
+    virtual bool atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state);
+
 // Thread overrides
 public:
     status_t requestExitAndWait();
-
-public:
-    virtual bool atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state);
 
 // public methods
 public:
@@ -133,7 +133,7 @@ public:
     status_t autoFocus();
     status_t cancelAutoFocus();
 
-    // return recording frame to driver (asynchronous)
+    // return recording frame.
     status_t releaseRecordingFrame(void *buff);
 
     void atomRelease();
@@ -176,7 +176,6 @@ private:
         MESSAGE_ID_CANCEL_PICTURE,
         MESSAGE_ID_AUTO_FOCUS,
         MESSAGE_ID_CANCEL_AUTO_FOCUS,
-        MESSAGE_ID_RELEASE_RECORDING_FRAME,
         MESSAGE_ID_RELEASE_PREVIEW_FRAME,//This is only a callback from other
                                          // HAL threads to signal preview buffer
                                          // is not used and is free to queue back
@@ -200,7 +199,6 @@ private:
         // Message for enabling metadata buffer mode
         MESSAGE_ID_STORE_METADATA_IN_BUFFER,
 
-        MESSAGE_ID_DEQUEUE_RECORDING,
         MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE,
         MESSAGE_ID_SET_ORIENTATION,
 
@@ -213,10 +211,6 @@ private:
     //
     // message data structures
     //
-
-    struct MessageReleaseRecordingFrame {
-        void *buff;
-    };
 
     struct MessageReturnBuffer {
         AtomBuffer returnBuf;
@@ -270,10 +264,6 @@ private:
         AtomBuffer pvBuff;
     };
 
-    struct MessageDequeueRecording {
-        bool    skipFrame;
-    };
-
     struct MessagePostCaptureProcDone {
         IPostCaptureProcessItem* item;
         status_t status;
@@ -286,9 +276,6 @@ private:
 
     // union of all message data
     union MessageData {
-
-        // MESSAGE_ID_RELEASE_RECORDING_FRAME
-        MessageReleaseRecordingFrame releaseRecordingFrame;
 
         // MESSAGE_ID_ENCODING_DONE
         MessagePicture encodingDone;
@@ -318,9 +305,6 @@ private:
 
         // MESSAGE_ID_PANORAMA_FINALIZE
         MessagePanoramaFinalize   panoramaFinalized;
-
-        // MESSAGE_ID_DEQUEUE_RECORDING
-        MessageDequeueRecording   dequeueRecording;
 
         // MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE
         MessagePostCaptureProcDone postCapture;
@@ -456,7 +440,6 @@ private:
     status_t handleMessageCancelPicture();
     status_t handleMessageAutoFocus();
     status_t handleMessageCancelAutoFocus();
-    status_t handleMessageReleaseRecordingFrame(MessageReleaseRecordingFrame *msg);
     status_t handleMessagePreviewStarted();
     status_t handleMessageEncodingDone(MessagePicture *msg);
     status_t handleMessagePictureDone(MessagePicture *msg);
@@ -502,12 +485,7 @@ private:
     // main message function
     status_t waitForAndExecuteMessage();
 
-    AtomBuffer* findRecordingBuffer(void *findMe);
     AtomBuffer* findBufferByData(AtomBuffer *buf,Vector<AtomBuffer> *aVector);
-
-    // dequeue buffers from driver and deliver them
-    status_t dequeuePreview();
-    status_t dequeueRecording(MessageDequeueRecording *msg);
 
     status_t skipFrames(size_t numFrames);
     status_t initBracketing();
@@ -674,7 +652,6 @@ private:
     void saveCurrentPictureParams();
     void clearSavedPictureParams();
     bool selectSdvSize(int &width, int &height);
-    AtomBuffer* findVideoSnapshotBuffer(int index);
     void encodeVideoSnapshot(AtomBuffer &buff);
 
     status_t updateSpotWindow(const int &width, const int &height);
@@ -699,9 +676,7 @@ private:
 
     int mCameraId;
     HWControlGroup mHwcg;
-
     AtomISP *mISP;
-
     AtomCP  *mCP;
     UltraLowLight *mULL;
     I3AControls *m3AControls;
@@ -770,8 +745,6 @@ private:
     Mutex mParamCacheLock;
     char* mParamCache;
 
-    bool mStoreMetaDataInBuffers;
-
     bool mPreviewForceChanged; /*!< Stores whether preview size has been forced and no further fixing of aspect
                                     ratios or similar should be done.
                                     NOTE: Do not touch this variable from other threads than the camera service
@@ -782,10 +755,6 @@ private:
 
     CameraAreas mFocusAreas;
     CameraAreas mMeteringAreas;
-
-    int mVideoSnapshotrequested;    /*!< number of video snapshots requested */
-    Vector<AtomBuffer> mVideoSnapshotBuffers; /*!< buffers reserved from stream for videosnapshot */
-    Vector<AtomBuffer> mRecordingBuffers; /*!< buffers reserverd from stream for video encoding */
 
     struct StillPicParamsCtx mStillPictContext; /*!< we store the current still image parameters
                                                     It is used when video recording starts so the settings
@@ -816,8 +785,7 @@ private:
     int mCurrentOrientation;        /*!< Current orientation of the device. Used in case the image is
                                          saved as mirrored. The image will be mirrored based on the
                                          camera sensor orientation and device orientation. */
-    int mRecordingOrientation;      /*!< Device orientation at the start of video recording. */
-    bool mFullSizeSdv;                  /*!< is full resolution sdv?*/
+    bool mFullSizeSdv;              /*!< is full resolution sdv?*/
 
     /*----------- Debugging helpers --------------------*/
     static const char* sCaptureSubstateStrings[STATE_CAPTURE_LAST];

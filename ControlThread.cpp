@@ -147,19 +147,16 @@ ControlThread::ControlThread(int cameraId) :
     ,mPublicShutter(-1)
     ,mDvsEnable(false)
     ,mParamCache(NULL)
-    ,mStoreMetaDataInBuffers(false)
     ,mPreviewForceChanged(false)
     ,mCameraDump(NULL)
     ,mFocusAreas()
     ,mMeteringAreas()
-    ,mVideoSnapshotrequested(0)
     ,mEnableFocusCbAtStart(false)
     ,mEnableFocusMoveCbAtStart(false)
     ,mStillCaptureInProgress(false)
     ,mPreviewUpdateMode(IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD)
     ,mSaveMirrored(false)
     ,mCurrentOrientation(0)
-    ,mRecordingOrientation(0)
     ,mFullSizeSdv(false)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
@@ -278,7 +275,7 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mVideoThread = new VideoThread(mCallbacksThread);
+    mVideoThread = new VideoThread(mISP, mCallbacksThread);
     if (mVideoThread == NULL) {
         LOGE("error creating VideoThread");
         goto bail;
@@ -903,11 +900,9 @@ status_t ControlThread::cancelAutoFocus()
 
 status_t ControlThread::releaseRecordingFrame(void *buff)
 {
-    LOG2("@%s: buff = %p", __FUNCTION__, buff);
-    Message msg;
-    msg.id = MESSAGE_ID_RELEASE_RECORDING_FRAME;
-    msg.data.releaseRecordingFrame.buff = buff;
-    return mMessageQueue.send(&msg);
+    LOG2("@%s", __FUNCTION__);
+    // handled by video thread
+    return mVideoThread->releaseRecordingFrame(buff);
 }
 
 status_t ControlThread::storeMetaDataInBuffers(bool enabled)
@@ -1399,9 +1394,6 @@ status_t ControlThread::initSdv(bool offline)
         burstStateReset();
     }
 
-    // restore since we are in preview mode
-    sdvRestoreParams(false);
-
     //allocate snapshot buffer and postview buffer if necessary
     if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
         allocateSnapshotAndPostviewBuffers(true);
@@ -1414,7 +1406,7 @@ status_t ControlThread::initSdv(bool offline)
 
 status_t ControlThread::captureSdv(bool offline)
 {
-    LOG1("@%s: ", __FUNCTION__);
+    LOG1("@%s: %s", __FUNCTION__, offline ? "offline" : "online");
     status_t status = NO_ERROR;
 
     mCallbacksThread->requestTakePicture(true, true);
@@ -1432,8 +1424,6 @@ status_t ControlThread::captureSdv(bool offline)
         // start offline capture
         status = continuousStartStillCapture(false);
 
-        // ControlThread is also doing "dequeueRecording" in other side, here the wait will block recording somehow.
-        // TODO: move recording work to VideoThread
         status = waitForCaptureStart();
         if (status != NO_ERROR) {
             LOGE("Error while waiting for capture to start");
@@ -1458,8 +1448,16 @@ status_t ControlThread::captureSdv(bool offline)
         // stop offline capture
         stopOfflineCapture();
     } else {
-        LOG1("@%s online SDV, just request +1", __FUNCTION__);
-        mVideoSnapshotrequested++;
+        AtomBuffer snapshotBuffer;
+        // get snapshotBuffer from VideoThread
+        status = mVideoThread->getVideoSnapshot(snapshotBuffer);
+        if (status != NO_ERROR) {
+            LOGE("Error in getVideoSnapshot from VideoThread");
+            return UNKNOWN_ERROR;
+        }
+
+        // encode this buffer
+        encodeVideoSnapshot(snapshotBuffer);
     }
 
     return status;
@@ -1475,9 +1473,6 @@ status_t ControlThread::cancelCaptureSdv()
         mCaptureSubState = STATE_CAPTURE_IDLE;
     }
 
-    // clear reserved lists
-    mVideoSnapshotBuffers.clear();
-    mRecordingBuffers.clear();
     return status;
 }
 
@@ -1897,7 +1892,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         meteringWindows = NULL;
     }
 
-    // ControlThread must be the observer before PreviewThread to ensure that
+    // VideoThread must be the observer before PreviewThread to ensure that
     // the recording buffer dequeue handling message is guaranteed to happen
     // before any possible preview return buffer handlers. Since the preview
     // thread will get the observer notification later with this order, that is
@@ -1905,6 +1900,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     // preview buffer data for encoding, the handler for the recording buffer
     // dequeue has run before the preview return buffer handler runs.
     mISP->attachObserver(this, OBSERVE_PREVIEW_STREAM);
+    if (videoMode)
+        mISP->attachObserver(mVideoThread.get(), OBSERVE_PREVIEW_STREAM);
     mISP->attachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
 
     if (!mIspExtensionsEnabled) {
@@ -1932,10 +1929,20 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mPreviewThread->returnPreviewBuffers();
         mISP->detachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
         mISP->detachObserver(this, OBSERVE_PREVIEW_STREAM);
+        if (videoMode)
+            mISP->detachObserver(mVideoThread.get(), OBSERVE_PREVIEW_STREAM);
         if (m3AControls->isIntel3A()) {
             mISP->detachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
         }
     }
+
+    /**
+     * The CameraParameters must be changed for SDV configuration in video preview
+     * But we don't want it affect the preview mode include video preview.
+     * Restore the parameters here. It could be updated again when start recording.
+     */
+    if (videoMode)
+        sdvRestoreParams(false);
 
     return status;
 }
@@ -1961,22 +1968,20 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     // otherwise hold invalid references.
     mPreviewThread->flushBuffers();
 
-    // Flush also the pending messages done based on Preview
-    mMessageQueue.remove(MESSAGE_ID_DEQUEUE_RECORDING);
-
     mPostProcThread->flushFrames();
 
-    if (mState == STATE_PREVIEW_VIDEO ||
-        mState == STATE_RECORDING) {
-        status = mVideoThread->flushBuffers();
-        deinitSdv(mFullSizeSdv);
-    }
     State oldState = mState;
     status = mISP->stop();
     if (status == NO_ERROR) {
         mState = STATE_STOPPED;
     } else {
         LOGE("Error stopping ISP in preview mode!");
+    }
+
+    if (oldState == STATE_PREVIEW_VIDEO || oldState == STATE_RECORDING) {
+        mISP->detachObserver(mVideoThread.get(), OBSERVE_PREVIEW_STREAM);
+        status = mVideoThread->flushBuffers();
+        deinitSdv(mFullSizeSdv);
     }
 
     mISP->detachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
@@ -1991,7 +1996,6 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
         // returns BAD_VALUE.
     }
     mISP->detachObserver(this, OBSERVE_PREVIEW_STREAM);
-    mMessageQueue.remove(MESSAGE_ID_DEQUEUE_RECORDING);
 
     status = mPreviewThread->returnPreviewBuffers();
     if (!mIspExtensionsEnabled) {
@@ -2377,11 +2381,14 @@ status_t ControlThread::handleMessageStartRecording()
 
     // Store device orientation at the start of video recording
     if (mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT)) {
-        mRecordingOrientation = mCurrentOrientation;
+        mVideoThread->setRecordingMirror(true, mCurrentOrientation, PlatformData::cameraOrientation(mCameraId));
     }
 
     // update parameter for SDV
     sdvUpdateParams(mFullSizeSdv, true);
+
+    // call video thread to start recording
+    mVideoThread->startRecording();
 
     // return status and unblock message sender
     mMessageQueue.reply(MESSAGE_ID_START_RECORDING, status);
@@ -2399,13 +2406,14 @@ status_t ControlThread::handleMessageStopRecording()
     sdvRestoreParams(true);
 
     if (mState == STATE_RECORDING) {
+        // request video thread to stop recording
+        status = mVideoThread->stopRecording();
+        if (status != NO_ERROR)
+            LOGE("Error in video thread stopRecording");
         /*
          * Even if startRecording was called from PREVIEW_STILL mode, we can
          * switch back to PREVIEW_VIDEO now since we got a startRecording
          */
-        status = mVideoThread->flushBuffers();
-        if (status != NO_ERROR)
-            LOGE("Error flushing video thread");
         mState = STATE_PREVIEW_VIDEO;
     } else {
         LOGE("Error stopping recording. Invalid state!");
@@ -2760,7 +2768,7 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
     metaData.atomispMkNote = atomispMkNote;
 
     // Request mirroring for snapshot and postview buffers (only for front camera)
-    // Do mirroring only in still capture mode, video snapshots are mirrored in dequeueRecording()
+    // Do mirroring only in still capture mode
     metaData.saveMirrored = mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT) &&
                             (mState != STATE_RECORDING);
     metaData.cameraOrientation = PlatformData::cameraOrientation(mCameraId);
@@ -3826,8 +3834,6 @@ void ControlThread::encodeVideoSnapshot(AtomBuffer &buff)
     LOG2("snapshot size %dx%d bpl %d fourcc %d", buff.width
             ,buff.height, buff.bpl, buff.fourcc);
 
-    mVideoSnapshotBuffers.push(buff);
-
     mCallbacksThread->shutterSound();
 
     // TODO: PictureThread create thumbnail from single input.
@@ -4018,52 +4024,6 @@ status_t ControlThread::handleMessageCancelAutoFocus()
     return status;
 }
 
-status_t ControlThread::handleMessageReleaseRecordingFrame(MessageReleaseRecordingFrame *msg)
-{
-    LOG2("@%s", __FUNCTION__);
-    status_t status = NO_ERROR;
-    if (mState == STATE_RECORDING) {
-        AtomBuffer *recBuff = findRecordingBuffer(msg->buff);
-        if (recBuff == NULL) {
-            // This may happen with buffer sharing. When the omx component is stopped
-            // it disables buffer sharing and deallocates its buffers. Internally we check
-            // to see if sharing was disabled then we restart the ISP with new buffers. In
-            // the mean time, the app is returning us shared buffers when we are no longer
-            // using them.
-            LOGE("Could not find recording buffer: %p", msg->buff);
-            return DEAD_OBJECT;
-        }
-        int curBuff = recBuff->id;
-        LOG2("Recording buffer released from encoder, buff id = %d", curBuff);
-        if (curBuff < mNumBuffers) {
-            // check if also reserved by snapshot
-            if (!mVideoSnapshotBuffers.empty()) {
-                AtomBuffer *videoBuffer = findVideoSnapshotBuffer(curBuff);
-                if (videoBuffer) {
-                    LOG1("Recording buffer found reserved for video snapshot");
-                    // drop from reserved list
-                    mRecordingBuffers.erase(recBuff);
-                    return NO_ERROR;
-                }
-            }
-
-            // return to AtomISP
-            status = mISP->putRecordingFrame(recBuff);
-            if (status == DEAD_OBJECT) {
-                LOGW("Stale recording buffer returned to ISP");
-            } else if (status != NO_ERROR) {
-                LOGE("Error putting recording frame to ISP");
-            } else {
-                // drop from reserved list
-                mRecordingBuffers.erase(recBuff);
-            }
-        } else {
-            LOGE("Recording buffer out of array");
-        }
-    }
-    return status;
-}
-
 void ControlThread::previewBufferCallback(AtomBuffer *buff, ICallbackPreview::CallbackType t)
 {
     LOG2("@%s", __FUNCTION__);
@@ -4110,16 +4070,6 @@ status_t ControlThread::handleMessagePreviewStarted()
     return NO_ERROR;
 }
 
-AtomBuffer* ControlThread::findVideoSnapshotBuffer(int index)
-{
-    Vector<AtomBuffer>::iterator it = mVideoSnapshotBuffers.begin();
-    for (;it != mVideoSnapshotBuffers.end(); ++it)
-        if (it->id == index) {
-            return it;
-        }
-    return NULL;
-}
-
 status_t ControlThread::handleMessageEncodingDone(MessagePicture *msg)
 {
     LOG1("@%s", __FUNCTION__);
@@ -4141,41 +4091,8 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
         msg->snapshotBuf.owner->returnBuffer(&msg->snapshotBuf);
         msg->snapshotBuf.owner->returnBuffer(&msg->postviewBuf);
     } else if (mState == STATE_RECORDING) {
-        int curBuff = msg->snapshotBuf.id;
-        if (!mVideoSnapshotBuffers.empty()) { //online sdv
-            AtomBuffer *videoBuffer = findVideoSnapshotBuffer(curBuff);
-
-            if (videoBuffer) {
-                // check if also reserved by encoder
-                if (!mRecordingBuffers.empty()) {
-                    AtomBuffer *recBuffer = NULL;
-                    if(mStoreMetaDataInBuffers)
-                        recBuffer = findRecordingBuffer((void*) videoBuffer->metadata_buff->data);
-                    else
-                        recBuffer = findRecordingBuffer((void*) videoBuffer->dataPtr);
-                    if (recBuffer) {
-                        LOG1("Snapshot buffer found reserved for video encoding");
-                        // drop from reserved list
-                        mVideoSnapshotBuffers.erase(videoBuffer);
-                        return NO_ERROR;
-                    }
-                }
-
-                status = mISP->putRecordingFrame(videoBuffer);
-                if (status == DEAD_OBJECT) {
-                    LOG1("Stale preview buffer returned to ISP");
-                } else if (status != NO_ERROR) {
-                    LOGE("Error putting preview frame to ISP");
-                } else {
-                    // drop from reserved list
-                    mVideoSnapshotBuffers.erase(videoBuffer);
-                }
-
-                if (mVideoSnapshotBuffers.isEmpty()) {
-                    LOG1("CaptureSubState %s -> IDLE (videoSnapshot)", sCaptureSubstateStrings[mCaptureSubState]);
-                    mCaptureSubState = STATE_CAPTURE_IDLE;
-                }
-            }
+        if (!mFullSizeSdv) { //online sdv
+            mVideoThread->putVideoSnapshot(&msg->snapshotBuf);
         } else { //offline SDV
             if (findBufferByData(&msg->snapshotBuf, &mAllocatedSnapshotBuffers) == NULL) {
                 LOGE("Stale snapshot buffer %p returned... this should not happen", msg->snapshotBuf.dataPtr);
@@ -4311,9 +4228,6 @@ AtomBuffer* ControlThread::findBufferByData(AtomBuffer *buf,Vector<AtomBuffer> *
 
     return NULL;
 }
-
-
-
 
 bool ControlThread::validateHighSpeedResolutionFps(int width, int height, int fps) const
 {
@@ -6865,8 +6779,6 @@ status_t ControlThread::handleMessageStoreMetaDataInBuffers(MessageStoreMetaData
 
     //find the setted buffer sharing session ID
     int sID = mParameters.getInt(IntelCameraParameters::REC_BUFFER_SHARING_SESSION_ID);
-
-    mStoreMetaDataInBuffers = msg->enabled;
     status = mISP->storeMetaDataInBuffers(msg->enabled, sID);
     if(status == NO_ERROR)
         status = mCallbacks->storeMetaDataInBuffers(msg->enabled);
@@ -7658,10 +7570,6 @@ status_t ControlThread::waitForAndExecuteMessage()
             status = handleMessageCancelAutoFocus();
             break;
 
-        case MESSAGE_ID_RELEASE_RECORDING_FRAME:
-            status = handleMessageReleaseRecordingFrame(&msg.data.releaseRecordingFrame);
-            break;
-
         case MESSAGE_ID_PREVIEW_STARTED:
             status = handleMessagePreviewStarted();
             break;
@@ -7714,9 +7622,6 @@ status_t ControlThread::waitForAndExecuteMessage()
              status = handleMessagePanoramaFinalize(&msg.data.panoramaFinalized);
              break;
 
-        case MESSAGE_ID_DEQUEUE_RECORDING:
-            status = dequeueRecording(&msg.data.dequeueRecording);
-            break;
         case MESSAGE_ID_RELEASE:
             status = handleMessageRelease();
             break;
@@ -7742,22 +7647,6 @@ status_t ControlThread::waitForAndExecuteMessage()
     if (status != NO_ERROR)
         LOGE("Error handling message: %d", (int) msg.id);
     return status;
-}
-
-AtomBuffer* ControlThread::findRecordingBuffer(void *ptr)
-{
-    Vector<AtomBuffer>::iterator it = mRecordingBuffers.begin();
-    for (;it != mRecordingBuffers.end(); ++it) {
-        if(mStoreMetaDataInBuffers) {
-            if (it->metadata_buff->data == ptr)
-                return it;
-        } else {
-             if (it->dataPtr == ptr)
-                return it;
-        }
-    }
-
-    return NULL;
 }
 
 /**
@@ -7787,13 +7676,6 @@ status_t ControlThread::handleMessageReturnBuffer(MessageReturnBuffer *msg)
     return OK;
 }
 
-/**
- * override for IAtomIspObserver::atomIspNotify()
- *
- * ControlThread is attached to receive preview stream notifications
- * to handle dequeueing of recording frames in video mode.
- * NOTE: not touching Preview buffer here and ignoring state changes
- */
 bool ControlThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state)
 {
     LOG2("@%s", __FUNCTION__);
@@ -7809,83 +7691,20 @@ bool ControlThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
             return false;
         }
 
-        if (mISP->getMode() == MODE_VIDEO || mISP->getMode() == MODE_CONTINUOUS_VIDEO) {
-            bool skipFrame = mISP->checkSkipFrameRecording(msg->data.frameBuffer.buff.frameCounter);
-
-            Message local_msg;
-            local_msg.id = MESSAGE_ID_DEQUEUE_RECORDING;
-            local_msg.data.dequeueRecording.skipFrame =
-               (buff->status == FRAME_STATUS_CORRUPTED) || skipFrame;
-            mMessageQueue.send(&local_msg);
+        //Check the battery status regularly during recording.
+        //If the battery level is too low, turn off the flash, notify the application and update the parameters.
+        if (mState == STATE_RECORDING && (buff->frameSequenceNbr % BATTERY_CHECK_INTERVAL_FRAME_UNIT) == 0) {
+            // note: String8 segfaults if given a NULL, so thus check it for that here
+            const char* flash_mode = mParameters.get(CameraParameters::KEY_FLASH_MODE);
+            String8 val(flash_mode, (flash_mode == NULL ? 0 : strlen(flash_mode)));
+            if (val != CameraParameters::FLASH_MODE_OFF) {
+                CameraParameters param(mParameters);
+                preProcessFlashMode(&param);
+                processParamFlash(&mParameters,&param);
+            }
         }
     }
     return false;
-}
-
-status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
-{
-    LOG2("@%s", __FUNCTION__);
-    AtomBuffer buff = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_VIDEO);
-
-    status_t status = NO_ERROR;
-
-    // after ISP timeout, we will get a burst of notifications without really that
-    // many recording buffers, so we need to skip the unnecessary notifications
-    status = mISP->getRecordingFrame(&buff);
-    if (status == NOT_ENOUGH_DATA) {
-        LOGW("@%s - recording frame was not ready. Maybe there was an ISP timeout?", __FUNCTION__);
-        return NO_ERROR;
-    }
-
-    if (status == NO_ERROR) {
-       if (buff.status != FRAME_STATUS_CORRUPTED) {
-            // Check whether driver has run out of buffers
-            if (!mISP->dataAvailable()) {
-                LOGE("Video frame dropped, buffers reserved : %d video encoder, %d video snapshot",
-                        mRecordingBuffers.size(), mVideoSnapshotBuffers.size());
-                msg->skipFrame = true;
-            }
-            // See if recording has started (state).
-            // If it has, process the buffer, unless frame is to be dropped.
-            // If recording hasn't started or frame is dropped, return the buffer to the driver
-            if (mState == STATE_RECORDING && !msg->skipFrame) {
-                // Mirror the recording buffer if mirroring is enabled (only for front camera)
-                // TODO: this should be moved into VideoThread
-                if (mSaveMirrored && PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT) {
-                    mirrorBuffer(&buff, mRecordingOrientation, PlatformData::cameraOrientation(mCameraId));
-                }
-
-                if (mVideoSnapshotrequested && mVideoSnapshotBuffers.size() < 3) {
-                    mVideoSnapshotrequested--;
-                    encodeVideoSnapshot(buff);
-                }
-                mVideoThread->video(&buff);
-                mRecordingBuffers.push(buff);
-            } else {
-                mISP->putRecordingFrame(&buff);
-            }
-
-            //Check the battery status regularly during recording.
-            //If the battery level is too low, turn off the flash, notify the application and update the parameters.
-            if (buff.frameSequenceNbr % BATTERY_CHECK_INTERVAL_FRAME_UNIT == 0) {
-               // note: String8 segfaults if given a NULL, so thus check it for that here
-               const char* flash_mode = mParameters.get(CameraParameters::KEY_FLASH_MODE);
-               String8 val(flash_mode, (flash_mode == NULL ? 0 : strlen(flash_mode)));
-               if (val != CameraParameters::FLASH_MODE_OFF) {
-                   CameraParameters param(mParameters);
-                   preProcessFlashMode(&param);
-                   processParamFlash(&mParameters,&param);
-               }
-            }
-        } else {
-            LOGD("Recording frame %d corrupted, ignoring", buff.id);
-            mISP->putRecordingFrame(&buff);
-        }
-    } else {
-        LOGE("Error: getting recording from isp\n");
-    }
-
-    return status;
 }
 
 bool ControlThread::threadLoop()
