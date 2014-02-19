@@ -38,9 +38,10 @@ public:
     };
 
     enum EventType {
-        EVENT_TYPE_SOF,
-        EVENT_TYPE_STATISTICS_READY,
-        EVENT_TYPE_STATISTICS_SKIPPED
+        EVENT_TYPE_SOF = 1,
+        EVENT_TYPE_METADATA_READY = 2,
+        EVENT_TYPE_STATISTICS_READY = 1<<2,
+        EVENT_TYPE_STATISTICS_SKIPPED = 1<<3
     };
 
     struct MessageFrameBuffer {

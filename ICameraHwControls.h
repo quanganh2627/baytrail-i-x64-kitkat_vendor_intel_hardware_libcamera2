@@ -19,6 +19,7 @@
 
 #include <utils/String8.h>
 #include <camera/CameraParameters.h>
+#include "ia_aiq_types.h"
 #include "IntelParameters.h"
 #include "AtomCommon.h"
 #include "AtomIspObserverManager.h"
@@ -139,6 +140,8 @@ public:
     virtual status_t getIspDvs2BqResolutions(struct atomisp_dvs2_bq_resolutions *bq_res) const = 0;
 
     virtual int getSensorEmbeddedMetaData(atomisp_metadata *metaData) const = 0;
+    virtual status_t getDecodedExposureParams(ia_aiq_exposure_sensor_parameters* sensor_exp_p,
+                                              ia_aiq_exposure_parameters* generic_exp_p, unsigned int exp_id = 0) = 0;
 
     /* **********************************************************
      * Acceleration API extensions

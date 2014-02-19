@@ -1756,6 +1756,11 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct)
             statistics_input_parameters.frame_ae_parameters = pickAeFeedbackResults();
         }
 
+        //update the exposure params with the sensor metadata
+        if (statistics_input_parameters.frame_ae_parameters)
+            mISP->getDecodedExposureParams(statistics_input_parameters.frame_ae_parameters->sensor_exposure,
+                                           statistics_input_parameters.frame_ae_parameters->exposure);
+
         if (mAfState.af_results) {
             // pass AF results as AEC input during still AF, AIQ will
             // internally let AEC to converge to assist light

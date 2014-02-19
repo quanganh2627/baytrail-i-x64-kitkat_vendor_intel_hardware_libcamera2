@@ -232,6 +232,10 @@ private:
     FlashStage mBlockForStage;
     unsigned int mSkipStatistics;
     unsigned int mSkipForEv; // for flash sequence
+    bool mSensorEmbeddedMetaDataEnabled;
+    int32_t mTrigger3A;
+    IAtomIspObserver::Message mCachedStatsEventMsg;
+
 }; // class AAAThread
 
 }; // namespace android

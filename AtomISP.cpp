@@ -77,6 +77,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
      mPreviewStreamSource("PreviewStreamSource", this)
     ,m3AStatSource("AAAStatSource", this)
     ,mCameraId(cameraId)
+    ,mSensorEmbeddedMetaData(NULL)
     ,mDvs(NULL)
     ,mDvsEnabled(false)
     ,mGroupIndex (-1)
@@ -115,6 +116,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mRawDataDumpSize(0)
     ,m3AStatRequested(0)
     ,m3AStatscEnabled(false)
+    ,mSensorEmbeddedMetaDataSupported(false)
     ,mColorEffect(V4L2_COLORFX_NONE)
     ,mScaler(scalerService)
     ,mObserverManager()
@@ -197,6 +199,10 @@ status_t AtomISP::initDevice()
 
     mSensorType = PlatformData::sensorType(mCameraId);
     LOG1("Sensor type detected: %s", (mSensorType == SENSOR_TYPE_RAW)?"RAW":"SOC");
+
+    HWControlGroup hwcg;
+    hwcg.mIspCI = this;
+    mSensorEmbeddedMetaData = new SensorEmbeddedMetaData(hwcg);
     return status;
 }
 
@@ -442,6 +448,9 @@ AtomISP::~AtomISP()
         delete[] mZoomRatios;
         mZoomRatios = NULL;
     }
+
+    delete mSensorEmbeddedMetaData;
+    mSensorEmbeddedMetaData = NULL;
 }
 
 void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *intel_params)
@@ -1083,6 +1092,15 @@ status_t AtomISP::start()
         attachObserver((IAtomIspObserver *) &mSensorHW, OBSERVE_FRAME_SYNC_SOF);
     }
     mSensorHW.start();
+
+    /** The reason to call the function "mSensorEmbeddedMetadata.init()" here is
+     * the mSensorEmbeddedMetadata need the metadata buffer size from ISP to
+     * malloc the buffer, but the size should be ready after format setting.
+     */
+    if (mSensorEmbeddedMetaData) {
+        mSensorEmbeddedMetaData->init();
+        mSensorEmbeddedMetaDataSupported = mSensorEmbeddedMetaData->isSensorEmbeddedMetaDataSupported();
+    }
 
     switch (mMode) {
     case MODE_CONTINUOUS_CAPTURE:
@@ -5525,6 +5543,17 @@ int AtomISP::setIspParameter(struct atomisp_parm *isp_param)
     return ret;
 }
 
+status_t AtomISP::getDecodedExposureParams(ia_aiq_exposure_sensor_parameters* sensor_exp_p,
+                                            ia_aiq_exposure_parameters* generic_exp_p, unsigned int exp_id)
+{
+    LOG2("@%s", __FUNCTION__);
+    status_t ret = UNKNOWN_ERROR;
+    if (mSensorEmbeddedMetaData)
+        ret = mSensorEmbeddedMetaData->getDecodedExposureParams(sensor_exp_p, generic_exp_p, exp_id);
+
+    return ret;
+}
+
 /**
  * Retreive 3A statistics from driver
  */
@@ -5861,6 +5890,13 @@ status_t AtomISP::attachObserver(IAtomIspObserver *observer, ObserverType t)
               return UNKNOWN_ERROR;
           }
           m3AStatscEnabled = true;
+
+          ret = m3AEventSubdevice->subscribeEvent(V4L2_EVENT_ATOMISP_METADATA_READY);
+          if (ret < 0) {
+              LOGE("Failed to subscribe to sensor metadata event!");
+              m3AEventSubdevice->close();
+              return UNKNOWN_ERROR;
+          }
         }
     }
 
@@ -5931,7 +5967,7 @@ status_t AtomISP::AAAStatSource::observe(IAtomIspObserver::Message *msg)
 
     if (!mISP->m3AStatscEnabled) {
         msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
-        LOGE("3A stat event enabled");
+        LOGE("3A stat event and sensor metadata event not enabled");
         return INVALID_OPERATION;
     }
 
@@ -5957,24 +5993,32 @@ status_t AtomISP::AAAStatSource::observe(IAtomIspObserver::Message *msg)
         usleep(ATOMISP_EVENT_RECOVERY_WAIT);
         return NO_ERROR;
     }
-     // fill observer message
-    msg->id = IAtomIspObserver::MESSAGE_ID_EVENT;
-    msg->data.event.sequence = event.sequence;
-    msg->data.event.timestamp.tv_sec  = event.timestamp.tv_sec;
-    msg->data.event.timestamp.tv_usec = event.timestamp.tv_nsec / 1000;
-    if (mISP->mStatisticSkips > event.sequence) {
-        LOG2("Skipping statistics num: %d", event.sequence);
-        msg->data.event.type = IAtomIspObserver::EVENT_TYPE_STATISTICS_SKIPPED;
+
+    // poll was successful
+    if (mISP->mSensorEmbeddedMetaDataSupported && event.type == V4L2_EVENT_ATOMISP_METADATA_READY) {
+        mISP->mSensorEmbeddedMetaData->handleSensorEmbeddedMetaData();
+        msg->id = IAtomIspObserver::MESSAGE_ID_EVENT;
+        msg->data.event.type = IAtomIspObserver::EVENT_TYPE_METADATA_READY;
     } else {
-        msg->data.event.type = IAtomIspObserver::EVENT_TYPE_STATISTICS_READY;
-        // Note: Timestamp and sequence number of the event are useless.
-        // Timestamp is from the event creation time and sequence is running
-        // number of events - not providing the identifier for a frame.
-        // Workaroud: Using exposure synchronization in SensorHW to identify
-        // timestamp for the frame of statistics origin.
-        nsecs_t frameTs = mISP->mSensorHW.getFrameTimestamp(TIMEVAL2USECS(&msg->data.event.timestamp));
-        msg->data.event.timestamp.tv_sec = frameTs / 1000000;
-        msg->data.event.timestamp.tv_usec = (frameTs % 1000000);
+        // fill observer message
+        msg->id = IAtomIspObserver::MESSAGE_ID_EVENT;
+        msg->data.event.sequence = event.sequence;
+        msg->data.event.timestamp.tv_sec  = event.timestamp.tv_sec;
+        msg->data.event.timestamp.tv_usec = event.timestamp.tv_nsec / 1000;
+        if (mISP->mStatisticSkips > event.sequence) {
+            LOG2("Skipping statistics num: %d", event.sequence);
+            msg->data.event.type = IAtomIspObserver::EVENT_TYPE_STATISTICS_SKIPPED;
+        } else {
+            msg->data.event.type = IAtomIspObserver::EVENT_TYPE_STATISTICS_READY;
+            // Note: Timestamp and sequence number of the event are useless.
+            // Timestamp is from the event creation time and sequence is running
+            // number of events - not providing the identifier for a frame.
+            // Workaroud: Using exposure synchronization in SensorHW to identify
+            // timestamp for the frame of statistics origin.
+            nsecs_t frameTs = mISP->mSensorHW.getFrameTimestamp(TIMEVAL2USECS(&msg->data.event.timestamp));
+            msg->data.event.timestamp.tv_sec = frameTs / 1000000;
+            msg->data.event.timestamp.tv_usec = (frameTs % 1000000);
+        }
     }
     return NO_ERROR;
 }

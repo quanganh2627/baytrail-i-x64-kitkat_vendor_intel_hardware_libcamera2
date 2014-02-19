@@ -35,6 +35,7 @@
 #include "ICameraHwControls.h"
 #include "IDvs.h"
 #include "SensorHW.h"
+#include "SensorEmbeddedMetaData.h"
 
 namespace android {
 
@@ -292,7 +293,10 @@ protected:
     status_t setDvsCoefficients(const struct atomisp_dis_coefficients *coefs) const;
     status_t getIspParameters(struct atomisp_parm *isp_param) const;
 
+    /* Sensor Embedded Metadata */
     int getSensorEmbeddedMetaData(atomisp_metadata *metaData) const;
+    status_t getDecodedExposureParams(ia_aiq_exposure_sensor_parameters* sensor_exp_p,
+                                      ia_aiq_exposure_parameters* generic_exp_p, unsigned int exp_id = 0);
 
     /* Acceleration API extensions */
     int loadAccFirmware(void *fw, size_t size, unsigned int *fwHandle);
@@ -492,6 +496,9 @@ private:
 private:
     int mCameraId;
 
+    // Embedded Metadata
+    SensorEmbeddedMetaData*  mSensorEmbeddedMetaData;
+
     // Dvs
     IDvs *mDvs;
     bool mDvsEnabled;
@@ -595,6 +602,7 @@ private:
     int mRawDataDumpSize;
     int m3AStatRequested;
     bool m3AStatscEnabled;
+    bool mSensorEmbeddedMetaDataSupported;
     v4l2_colorfx mColorEffect;
 
     sp<ScalerService> mScaler;

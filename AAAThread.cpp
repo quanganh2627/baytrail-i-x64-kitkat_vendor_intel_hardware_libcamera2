@@ -51,6 +51,8 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaa
     ,mBlockForStage(FLASH_STAGE_NA)
     ,mSkipStatistics(0)
     ,mSkipForEv(0)
+    ,mSensorEmbeddedMetaDataEnabled(false)
+    ,mTrigger3A(0)
 {
     LOG1("@%s", __FUNCTION__);
     mFaceState.faces = new ia_face[MAX_FACES_DETECTABLE];
@@ -60,6 +62,7 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaa
         memset(mFaceState.faces, 0, MAX_FACES_DETECTABLE * sizeof(ia_face));
     }
     mFaceState.num_faces = 0;
+    CLEAR(mCachedStatsEventMsg);
 }
 
 AAAThread::~AAAThread()
@@ -68,6 +71,7 @@ AAAThread::~AAAThread()
     delete [] mFaceState.faces;
     mFaceState.faces = NULL;
     mFaceState.num_faces = 0;
+    CLEAR(mCachedStatsEventMsg);
 }
 
 status_t AAAThread::enable3A()
@@ -179,14 +183,34 @@ status_t AAAThread::cancelAutoFocus()
 bool AAAThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state)
 {
     if(msg && msg->id == IAtomIspObserver::MESSAGE_ID_EVENT) {
-
-        if (msg->data.event.type == EVENT_TYPE_STATISTICS_READY) {
+        if (mSensorEmbeddedMetaDataEnabled || msg->data.event.type == EVENT_TYPE_METADATA_READY) {
+            mSensorEmbeddedMetaDataEnabled = true;
+            // When both sensor metadata event and statistics event are ready, then triggers 3A run
+            if (msg->data.event.type == EVENT_TYPE_METADATA_READY) {
+                mTrigger3A |= EVENT_TYPE_METADATA_READY;
+                if (mTrigger3A & EVENT_TYPE_STATISTICS_READY) {
+                    mTrigger3A = 0;
+                    newStats(mCachedStatsEventMsg.data.event.timestamp, mCachedStatsEventMsg.data.event.sequence);
+                    CLEAR(mCachedStatsEventMsg);
+                }
+                return NO_ERROR;
+            }
+            if (msg->data.event.type == EVENT_TYPE_STATISTICS_READY) {
+                mTrigger3A |= EVENT_TYPE_STATISTICS_READY;
+                if (mTrigger3A & EVENT_TYPE_METADATA_READY) {
+                    mTrigger3A = 0;
+                    newStats(msg->data.event.timestamp, msg->data.event.sequence);
+                } else {
+                    mCachedStatsEventMsg = *msg;
+                }
+                return NO_ERROR;
+            }
+        }else if (msg->data.event.type == EVENT_TYPE_STATISTICS_READY) {
             LOG2("-- STATS READY, seq %d, ts %lldus, systemTime %lldms ---",
                                    msg->data.event.sequence,
                                      nsecs_t(msg->data.event.timestamp.tv_sec)*1000000LL
                                    + nsecs_t(msg->data.event.timestamp.tv_usec),
                                    systemTime()/1000/1000);
-
             newStats(msg->data.event.timestamp, msg->data.event.sequence);
         }
     } else if (msg && msg->id == IAtomIspObserver::MESSAGE_ID_FRAME) {
