@@ -5545,6 +5545,15 @@ int AtomISP::getIspStatistics(struct atomisp_3a_statistics *statistics)
     return ret;
 }
 
+int AtomISP::getSensorEmbeddedMetaData(atomisp_metadata *metaData) const
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = mMainDevice->xioctl(ATOMISP_IOC_G_METADATA, metaData);
+    LOG2("%s IOCTL ATOMISP_IOC_G_METADATA ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
 //
 // TODO: Remove this function once BZ #119181 gets fixed by the firmware team!
 //

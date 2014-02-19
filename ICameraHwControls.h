@@ -138,6 +138,8 @@ public:
     virtual status_t getIspParameters(struct atomisp_parm *isp_param) const = 0;
     virtual status_t getIspDvs2BqResolutions(struct atomisp_dvs2_bq_resolutions *bq_res) const = 0;
 
+    virtual int getSensorEmbeddedMetaData(atomisp_metadata *metaData) const = 0;
+
     /* **********************************************************
      * Acceleration API extensions
      */

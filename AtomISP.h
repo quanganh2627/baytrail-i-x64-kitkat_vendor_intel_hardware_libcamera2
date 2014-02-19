@@ -292,6 +292,8 @@ protected:
     status_t setDvsCoefficients(const struct atomisp_dis_coefficients *coefs) const;
     status_t getIspParameters(struct atomisp_parm *isp_param) const;
 
+    int getSensorEmbeddedMetaData(atomisp_metadata *metaData) const;
+
     /* Acceleration API extensions */
     int loadAccFirmware(void *fw, size_t size, unsigned int *fwHandle);
     int loadAccPipeFirmware(void *fw, size_t size, unsigned int *fwHandle);
