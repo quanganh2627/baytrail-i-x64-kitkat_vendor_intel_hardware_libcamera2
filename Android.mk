@@ -23,6 +23,7 @@ LOCAL_SRC_FILES := \
 	VideoThread.cpp \
 	AAAThread.cpp \
 	AtomISP.cpp \
+	SensorEmbeddedMetaData.cpp \
 	DebugFrameRate.cpp \
 	PerformanceTraces.cpp \
 	Callbacks.cpp \
@@ -140,6 +141,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libia_cmc_parser \
 	libia_aiq_cp \
 	libia_log \
+	libia_emd_decoder \
 	libui \
 	libia_mkn \
 	libia_dvs_2 \
