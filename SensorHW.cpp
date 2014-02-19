@@ -39,7 +39,9 @@ SensorHW::SensorHW(int cameraId):
     mActiveItemIndex(0),
     mDirectExposureIo(true),
     mPostponePrequeued(false),
-    mExposureLag(0)
+    mExposureLag(0),
+    mGainDelayFilter(NULL),
+    mExposureHistory(NULL)
 {
     CLEAR(mCameraInput);
     CLEAR(mInitialModeData);
@@ -50,8 +52,14 @@ SensorHW::~SensorHW()
     mSensorSubdevice.clear();
     mIspSubdevice.clear();
     mSyncEventDevice.clear();
-    delete mGainDelayFilter;
-    delete mExposureHistory;
+    if (mGainDelayFilter) {
+        delete mGainDelayFilter;
+        mGainDelayFilter = NULL;
+    }
+    if (mExposureHistory) {
+        delete mExposureHistory;
+        mExposureHistory = NULL;
+    }
 }
 
 int SensorHW::getCurrentCameraId(void)
