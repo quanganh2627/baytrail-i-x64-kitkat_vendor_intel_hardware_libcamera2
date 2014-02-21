@@ -6791,7 +6791,7 @@ status_t ControlThread::handleMessageStoreMetaDataInBuffers(MessageStoreMetaData
     return status;
 }
 
-void ControlThread::postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t procStatus, int retries)
+void ControlThread::postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t procStatus)
 {
     LOG1("@%s", __FUNCTION__);
     // send message
@@ -6799,7 +6799,6 @@ void ControlThread::postCaptureProcesssingDone(IPostCaptureProcessItem* item, st
     msg.id = MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE;
     msg.data.postCapture.item = item;
     msg.data.postCapture.status = procStatus;
-    msg.data.postCapture.retriesLeft = retries;   /* Number of attempts to handle this message */
 
     mMessageQueue.send(&msg);
 }
@@ -6815,17 +6814,6 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
     if(msg->status != NO_ERROR)  {
         LOGW("PostCapture Processing failed !!");
         goto cleanup;
-    }
-
-    if(mCaptureSubState != STATE_CAPTURE_IDLE) {
-        // we are in the middle of another capture, let's delay this
-        LOG1("Delaying processing of post capture processed image, image capture in progress, CaptureSubState %s", sCaptureSubstateStrings[mCaptureSubState]);
-        if (msg->retriesLeft == 0) {
-            LOGE("@%s:Waited too long to handle this message, canceling post capture processing", __FUNCTION__);
-            goto cleanup;
-        }
-        postCaptureProcesssingDone(msg->item, msg->status,msg->retriesLeft--);
-        return NO_ERROR;
     }
 
     // ATM the only post capture processing is ULL, no need to check which one

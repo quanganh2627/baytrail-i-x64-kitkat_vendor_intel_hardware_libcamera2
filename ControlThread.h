@@ -142,7 +142,7 @@ public:
     virtual void returnBuffer(AtomBuffer* buff);
 
     // Implementation of IPostCaptureProcessObserver interface
-    void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status, int retries = MAX_MSG_RETRIES);
+    void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status);
 
     // IOrientationListener
     void orientationChanged(int orientation);
@@ -267,7 +267,6 @@ private:
     struct MessagePostCaptureProcDone {
         IPostCaptureProcessItem* item;
         status_t status;
-        int retriesLeft;
     };
 
     struct MessageOrientation {
