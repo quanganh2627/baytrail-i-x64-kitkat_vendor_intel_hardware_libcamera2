@@ -52,15 +52,15 @@ AtomSoc3A::AtomSoc3A(int cameraId, HWControlGroup &hwcg) :
 AtomSoc3A::~AtomSoc3A()
 {
     LOG2("@%s", __FUNCTION__);
+
+    // We don't need this memory anymore
+    PlatformData::AiqConfig.clear();
 }
 
 // I3AControls
 
 status_t AtomSoc3A::init3A()
 {
-    // We don't need this memory anymore
-    PlatformData::AiqConfig.clear();
-
     return NO_ERROR;
 }
 

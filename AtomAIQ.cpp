@@ -118,6 +118,9 @@ AtomAIQ::AtomAIQ(HWControlGroup &hwcg):
 AtomAIQ::~AtomAIQ()
 {
     LOG1("@%s", __FUNCTION__);
+
+    // We don't need this memory anymore
+    PlatformData::AiqConfig.clear();
 }
 
 status_t AtomAIQ::init3A()
@@ -127,9 +130,6 @@ status_t AtomAIQ::init3A()
     mFileInjection = (mSensorCI->getCurrentCameraId() == INTEL_FILE_INJECT_CAMERA_ID);
 
     status_t status = _init3A();
-
-    // We don't need this memory anymore
-    PlatformData::AiqConfig.clear();
 
     return status;
 }
