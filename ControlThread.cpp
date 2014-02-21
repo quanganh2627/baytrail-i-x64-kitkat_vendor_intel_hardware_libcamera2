@@ -3196,7 +3196,10 @@ int ControlThread::selectPostviewFormat()
 {
     int fourcc = 0;
 
-   if (mPanoramaThread->getState() == PANORAMA_STOPPED) {
+    if (mHdr.enabled) {
+        // HDR library only support NV12 format.
+        fourcc = V4L2_PIX_FMT_NV12;
+    } else if (mPanoramaThread->getState() == PANORAMA_STOPPED) {
         fourcc = PlatformData::getPreviewPixelFormat();
     } else {
         fourcc = V4L2_PIX_FMT_NV21;
