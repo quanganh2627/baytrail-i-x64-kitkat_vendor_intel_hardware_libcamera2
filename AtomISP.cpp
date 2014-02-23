@@ -369,6 +369,17 @@ void AtomISP::initFrameConfig()
 
     // Supported video sizes list already exist in camera_profiles.xml. So we should get limitation from it.
     getMaxVideoSize(mCameraId, &(mConfig.recordingLimits.maxWidth), &(mConfig.recordingLimits.maxHeight));
+
+    /*
+     * Since the snapshot size is same with video size in videosnapshot mode when online
+     * SDV is running. So the limitation of max snapshot size shouldn't be less than max
+     * video size. Thus, select max width and height for snapshot size in both max
+     * snapshot and video size.
+     */
+    if (mConfig.snapshotLimits.maxWidth < mConfig.recordingLimits.maxWidth)
+        mConfig.snapshotLimits.maxWidth = mConfig.recordingLimits.maxWidth;
+    if (mConfig.snapshotLimits.maxHeight < mConfig.recordingLimits.maxHeight)
+        mConfig.snapshotLimits.maxHeight = mConfig.recordingLimits.maxHeight;
 }
 
 /**
