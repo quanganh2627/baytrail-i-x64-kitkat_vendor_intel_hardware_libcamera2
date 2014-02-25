@@ -128,7 +128,7 @@ typedef struct {
     char manual_hue;                                 /*!< Manual hue value range [-128,127]. */
     char manual_saturation;                          /*!< Manual saturation value range [-128,127]. */
     char manual_sharpness;                           /*!< Manual setting for sharpness [-128,127]. */
-    ia_aiq_effect effects;                           /*!< Manual setting for special effects.*/
+    ia_isp_effect effects;                           /*!< Manual setting for special effects.*/
 
 } ispInputParameters;
 
