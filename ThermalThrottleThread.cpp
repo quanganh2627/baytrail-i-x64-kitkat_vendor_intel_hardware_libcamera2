@@ -147,7 +147,7 @@ status_t ThermalThrottleThread::handleNotify()
 
     memset(attrData, 0, ATTR_LEN);
     ::lseek(mNotifyFd, 0, SEEK_SET);
-    int count = ::read(mNotifyFd, attrData, ATTR_LEN);
+    int count = ::read(mNotifyFd, attrData, ATTR_LEN - 1);
     if (count > 0) {
         //attr_Data is percentage of frame rate.
         int fps_percent;
