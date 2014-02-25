@@ -171,15 +171,13 @@ status_t PostProcThread::handleMessageStartFaceDetection()
 void PostProcThread::stopFaceDetection(bool wait)
 {
     LOG1("@%s", __FUNCTION__);
-    if (mFaceDetectionRunning) {
-        Message msg;
-        msg.id = MESSAGE_ID_STOP_FACE_DETECTION;
+    Message msg;
+    msg.id = MESSAGE_ID_STOP_FACE_DETECTION;
 
-        if (wait) {
-            mMessageQueue.send(&msg, MESSAGE_ID_STOP_FACE_DETECTION); // wait for reply
-        } else {
-            mMessageQueue.send(&msg);
-        }
+    if (wait) {
+        mMessageQueue.send(&msg, MESSAGE_ID_STOP_FACE_DETECTION); // wait for reply
+    } else {
+        mMessageQueue.send(&msg);
     }
 }
 
@@ -188,10 +186,12 @@ status_t PostProcThread::handleMessageStopFaceDetection()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    mFaceDetectionRunning = false;
-    status = mFaceDetector->clearFacesDetected();
+    if (mFaceDetectionRunning) {
+        mFaceDetectionRunning = false;
+        status = mFaceDetector->clearFacesDetected();
 
-    SensorThread::getInstance(this->getCameraID())->unRegisterOrientationListener(this);
+        SensorThread::getInstance(this->getCameraID())->unRegisterOrientationListener(this);
+    }
 
     mMessageQueue.reply(MESSAGE_ID_STOP_FACE_DETECTION, status);
 
