@@ -25,7 +25,6 @@
 #include "LogHelper.h"
 #include "CameraDump.h"
 #include "ia_aiq_types.h"
-#include "ia_3a_types.h"
 #include "AtomISP.h"
 
 namespace android {
