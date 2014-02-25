@@ -136,6 +136,8 @@ LOCAL_SHARED_LIBRARIES := \
 	libia_isp_1_5 \
 	libia_isp_2_2 \
 	libia_cmc_parser \
+	libia_aiq_cp \
+	libia_log \
 	libui \
 	libia_mkn \
 	libia_dvs_2 \
@@ -148,12 +150,13 @@ LOCAL_SHARED_LIBRARIES := \
 	libgui \
 	libexpat \
 	libia_panorama \
-	libhardware
-
-ifeq ($(USE_SHARED_IA_FACE), true)
-LOCAL_SHARED_LIBRARIES += \
+	libhardware \
+	libgnustl_shared \
+	libcilkrts \
+	libintlc \
+	libimf \
+	libsvml \
 	libia_face
-endif
 
 ifeq ($(USE_INTEL_METABUFFER),true)
 LOCAL_SHARED_LIBRARIES += \
@@ -182,6 +185,16 @@ LOCAL_STATIC_LIBRARIES := \
 	gdctool \
 	libia_coordinate \
 	libmorpho_image_stabilizer3
+
+LOCAL_STATIC_LIBRARIES += \
+	libiacp \
+	libippi \
+	libipps \
+	libippcv \
+	libippcc \
+	libippm \
+	libippvm \
+	libippcore
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_CFLAGS += -DUSE_INTEL_JPEG
