@@ -1359,6 +1359,39 @@ status_t ControlThread::sdvRestoreParams(bool updateCache)
     return NO_ERROR;
 }
 
+bool ControlThread::isFullSizeSdvSupportedVideoSize(int width, int height)
+{
+    int minW, minH;
+    getSdvSupportedMinVideoSize(minW, minH);
+    return (width >= minW && height >= minH) ? true : false;
+}
+
+status_t ControlThread::getSdvSupportedMinVideoSize(int &width, int &height)
+{
+    int w, h;
+    // current max bayer downscaling factor is 8X
+    const float maxBdsFactor = 8.0f;
+    // Max yuv downscaling factor is 1.45x (DVS2 library limitation)
+    const float maxYuvDsFactor = 1.45f;
+    // Thus, the max downscaling factor is 8x1.45 = 11.6
+    float maxDsFactor = maxBdsFactor * maxYuvDsFactor;
+
+    // Video pipe is downscaled from main output frame. So we caculate the max
+    // supported video size from the max main output size
+    if (selectSdvSize(w, h)) {
+        width  = (float)w / maxDsFactor;
+        height = (float)h / maxDsFactor;
+        LOG1("@%s get SDV supported min video size %dx%d", __FUNCTION__, width, height);
+        return NO_ERROR;
+    }
+
+    // set to a default value
+    width  = RESOLUTION_VGA_WIDTH;
+    height = RESOLUTION_VGA_HEIGHT;
+    LOGW("@%s SDV size is not found, set min video size to defaut value %dx%d", __FUNCTION__, width, height);
+    return UNKNOWN_ERROR;
+}
+
 /**
  * Configures parameters for SDV.
  *
@@ -1735,9 +1768,16 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
         mISP->setVideoFrameFormat(width, height);
 
-        // High speed and continuous SDV can not coexist due to ISP limitation. If user enable high speed and
-        // if the setting is valid, we should disable continuous video.
-        mFullSizeSdv = (!PlatformData::isFullResSdvSupported(mCameraId) || fps > DEFAULT_RECORDING_FPS)? false : true;
+        /**
+         * SDV Limitations:
+         * 1. High speed and continuous SDV can not coexist due to ISP limitation. If user enable high speed and
+         *    if the setting is valid, we should disable continuous video.
+         * 2. Currently bayer downcaling + yuv downscaling can not downscale to a too small size
+         */
+        mFullSizeSdv = PlatformData::isFullResSdvSupported(mCameraId) && // platform supported
+            fps <= DEFAULT_RECORDING_FPS && // not high speed mode
+            isFullSizeSdvSupportedVideoSize(width, height); // video size limitation
+
         mode = mFullSizeSdv ? MODE_CONTINUOUS_VIDEO : MODE_VIDEO;
         LOG1("Starting preview in %s mode", mode == MODE_VIDEO? "video":"continuous video");
         initSdv(mFullSizeSdv);
