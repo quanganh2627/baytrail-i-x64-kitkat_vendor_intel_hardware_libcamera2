@@ -629,7 +629,7 @@ status_t PictureThread::allocatePostviewBuffers(const AtomBuffer &formatDescript
         if (registerToScaler) {
             MemoryUtils::allocateGraphicBuffer(postv, formatDescriptor);
         } else {
-            mCallbacks->allocateMemory(&postv, formatDescriptor.size);
+            MemoryUtils::allocateAtomBuffer(postv, formatDescriptor, mCallbacks);
         }
 
         if (postv.dataPtr == NULL) {
