@@ -29,6 +29,7 @@
 #include "cameranvm.h"
 #include "ia_cmc_parser.h"
 #include "gdctool.h"
+#include "ia_isp_types.h"
 
 #include "AtomAIQ.h"
 #include "ia_mkn_encoder.h"
@@ -824,31 +825,31 @@ status_t AtomAIQ::set3AColorEffect(const char *effect)
     LOG1("@%s: effect = %s", __FUNCTION__, effect);
     status_t status = NO_ERROR;
 
-    ia_aiq_effect aiqEffect = ia_aiq_effect_none;
+    ia_isp_effect ispEffect = ia_isp_effect_none;
     if (strncmp(effect, CameraParameters::EFFECT_MONO, strlen(effect)) == 0)
-        aiqEffect = ia_aiq_effect_black_and_white;
+        ispEffect = ia_isp_effect_grayscale;
     else if (strncmp(effect, CameraParameters::EFFECT_NEGATIVE, strlen(effect)) == 0)
-        aiqEffect = ia_aiq_effect_negative;
+        ispEffect = ia_isp_effect_negative;
     else if (strncmp(effect, CameraParameters::EFFECT_SEPIA, strlen(effect)) == 0)
-        aiqEffect = ia_aiq_effect_sepia;
+        ispEffect = ia_isp_effect_sepia;
     else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_SKY_BLUE, strlen(effect)) == 0)
-        aiqEffect = ia_aiq_effect_sky_blue;
+        ispEffect = ia_isp_effect_sky_blue;
     else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_GRASS_GREEN, strlen(effect)) == 0)
-        aiqEffect = ia_aiq_effect_grass_green;
+        ispEffect = ia_isp_effect_grass_green;
     else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_LOW, strlen(effect)) == 0)
-        aiqEffect = ia_aiq_effect_skin_whiten_low;
+        ispEffect = ia_isp_effect_skin_whiten_low;
     else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_MEDIUM, strlen(effect)) == 0)
-        aiqEffect = ia_aiq_effect_skin_whiten;
+        ispEffect = ia_isp_effect_skin_whiten;
     else if (strncmp(effect, IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_HIGH, strlen(effect)) == 0)
-        aiqEffect = ia_aiq_effect_skin_whiten_high;
+        ispEffect = ia_isp_effect_skin_whiten_high;
     else if (strncmp(effect, IntelCameraParameters::EFFECT_VIVID, strlen(effect)) == 0)
-        aiqEffect = ia_aiq_effect_vivid;
+        ispEffect = ia_isp_effect_vivid;
     else if (strncmp(effect, CameraParameters::EFFECT_NONE, strlen(effect)) != 0){
         LOGE("Color effect not found.");
         status = -1;
         // Fall back to the effect NONE
     }
-    mIspInputParams.effects = aiqEffect;
+    mIspInputParams.effects = ispEffect;
     return status;
 }
 
@@ -967,7 +968,7 @@ status_t AtomAIQ::initAfBracketing(int stops, AFBracketingMode mode)
     memcpy(&param.af_results, mAfState.af_results, sizeof(ia_aiq_af_results));
     ia_aiq_af_bracket(m3aState.ia_aiq_handle, &param, &mAfBracketingResult);
     for(int i = 0; i < stops; i++)
-        LOG1("i=%d, postion=%ld", i, mAfBracketingResult->lens_positions_bracketing[i]);
+        LOG1("i=%d, postion=%d", i, mAfBracketingResult->lens_positions_bracketing[i]);
 
     return  NO_ERROR;
 }
@@ -1739,8 +1740,6 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct)
         }
         // TODO: take into account camera mount orientation. AIQ needs device orientation to handle statistics.
         m3aState.statistics_input_parameters.camera_orientation = ia_aiq_camera_orientation_unknown;
-        m3aState.statistics_input_parameters.wb_gains = NULL;
-        m3aState.statistics_input_parameters.cc_matrix = NULL;
 
         ret = mISPAdaptor->convertIspStatistics(m3aState.stats,
                                                 const_cast<ia_aiq_rgbs_grid**>(&m3aState.statistics_input_parameters.rgbs_grid),
@@ -1833,7 +1832,7 @@ status_t AtomAIQ::runAfMain()
     LOG2("lens_driver_action:%d", af_results_ptr->lens_driver_action);
     if (err == ia_err_none && af_results_ptr->lens_driver_action == ia_aiq_lens_driver_action_move_to_unit)
     {
-        LOG2("next lens position:%ld", af_results_ptr->next_lens_position);
+        LOG2("next lens position:%d", af_results_ptr->next_lens_position);
         ret = mLensCI->moveFocusToPosition(af_results_ptr->next_lens_position);
         if (ret == NO_ERROR)
         {
@@ -1930,7 +1929,7 @@ status_t AtomAIQ::runAeMain()
     }
 
     if(m3aState.ia_aiq_handle){
-        LOG2("AEC manual_exposure_time_us: %ld manual_analog_gain: %f manual_iso: %d", mAeInputParameters.manual_exposure_time_us, mAeInputParameters.manual_analog_gain, mAeInputParameters.manual_iso);
+        LOG2("AEC manual_exposure_time_us: %d manual_analog_gain: %f manual_iso: %d", mAeInputParameters.manual_exposure_time_us, mAeInputParameters.manual_analog_gain, mAeInputParameters.manual_iso);
         LOG2("AEC sensor_descriptor ->line_periods_per_field: %d", mAeInputParameters.sensor_descriptor->line_periods_per_field);
         LOG2("AEC mAeInputParameters.frame_use: %d",mAeInputParameters.frame_use);
 
@@ -2272,9 +2271,6 @@ status_t AtomAIQ::runAICMain()
         mIspInputParams.sensor_frame_params = &m3aState.sensor_frame_params;
         LOG2("@%s  2 sensor native width %d", __FUNCTION__, pa_input_params.sensor_frame_params->cropped_image_width);
 
-        pa_input_params.cc_matrix = NULL;
-        pa_input_params.wb_gains = NULL;
-
         // Calculate ISP independent ISP parameters (e.g. LSC table, color correction matrix)
         ia_aiq_pa_results *pa_results;
         ret = ia_aiq_pa_run(m3aState.ia_aiq_handle, &pa_input_params, &pa_results);
@@ -2551,7 +2547,10 @@ ia_err IaIsp15::calculateIspParams(const ispInputParameters *isp_input_params,
     mIaIsp15InputParams.manual_contrast = isp_input_params->manual_contrast;
     mIaIsp15InputParams.manual_hue = isp_input_params->manual_hue;
     mIaIsp15InputParams.manual_saturation = isp_input_params->manual_saturation;
-    mIaIsp15InputParams.manual_sharpness = isp_input_params->manual_sharpness;
+    mIaIsp15InputParams.nr_setting.feature_level = ia_isp_feature_level_high;
+    mIaIsp15InputParams.nr_setting.strength = 0;
+    mIaIsp15InputParams.ee_setting.feature_level = ia_isp_feature_level_high;
+    mIaIsp15InputParams.ee_setting.strength = 0;
     mIaIsp15InputParams.effects = isp_input_params->effects;
 
     return ia_isp_1_5_run(mIspHandle, &mIaIsp15InputParams, output_data);
@@ -2615,7 +2614,10 @@ ia_err IaIsp22::calculateIspParams(const ispInputParameters *isp_input_params,
     mIaIsp22InputParams.manual_contrast = isp_input_params->manual_contrast;
     mIaIsp22InputParams.manual_hue = isp_input_params->manual_hue;
     mIaIsp22InputParams.manual_saturation = isp_input_params->manual_saturation;
-    mIaIsp22InputParams.manual_sharpness = isp_input_params->manual_sharpness;
+    mIaIsp22InputParams.nr_setting.feature_level = ia_isp_feature_level_high;
+    mIaIsp22InputParams.nr_setting.strength = 0;
+    mIaIsp22InputParams.ee_setting.feature_level = ia_isp_feature_level_high;
+    mIaIsp22InputParams.ee_setting.strength = 0;
     mIaIsp22InputParams.effects = isp_input_params->effects;
 
     return ia_isp_2_2_run(mIspHandle, &mIaIsp22InputParams, output_data);

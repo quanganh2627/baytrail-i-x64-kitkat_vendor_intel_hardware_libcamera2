@@ -138,7 +138,6 @@ LOCAL_SHARED_LIBRARIES := \
 	libia_cmc_parser \
 	libui \
 	libia_mkn \
-	libmfldadvci \
 	libia_dvs_2 \
 	libia_nvm \
 	libtbd \
