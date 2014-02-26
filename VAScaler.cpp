@@ -220,6 +220,10 @@ int VAScaler::addOutputBuffer(buffer_handle_t *pBufHandle, int width, int height
     hw_module_t const* module;
     struct gralloc_module_t *gralloc_module;
     hw_get_module(GRALLOC_HARDWARE_MODULE_ID, &module);
+    if (NULL == module) {
+        LOGE("Hw get module failed");
+        return -1;
+    }
     gralloc_module = (struct gralloc_module_t*)module;
     intel_ufo_buffer_details_t info;
     gralloc_module->perform(gralloc_module, INTEL_UFO_GRALLOC_MODULE_PERFORM_GET_BO_INFO, *pBufHandle, &info);
@@ -254,6 +258,10 @@ int VAScaler::addInputBuffer(buffer_handle_t *pBufHandle, int width, int height,
     hw_module_t const* module;
     struct gralloc_module_t *gralloc_module;
     hw_get_module(GRALLOC_HARDWARE_MODULE_ID, &module);
+    if (NULL == module) {
+        LOGE("Hw get module failed");
+        return -1;
+    }
     gralloc_module = (struct gralloc_module_t*)module;
     intel_ufo_buffer_details_t info;
     gralloc_module->perform(gralloc_module, INTEL_UFO_GRALLOC_MODULE_PERFORM_GET_BO_INFO, *pBufHandle, &info);
