@@ -6492,8 +6492,6 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     status_t status = NO_ERROR;
     CameraParameters newParams;
     CameraParameters oldParams = mParameters;
-    CameraParamsLogger newParamLogger (msg->params);
-    CameraParamsLogger oldParamLogger (mParameters.flatten().string());
     bool needRestartPreview = false;
 
     CameraAreas newFocusAreas;
@@ -6504,17 +6502,22 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     bool videoMode = android::isParameterSet(CameraParameters::KEY_RECORDING_HINT, newParams) ? true : false;
 
     // print all old and new params for comparison (debug)
-    LOG1("----------BEGIN PARAM DIFFERENCE----------");
-    newParamLogger.dumpDifference(oldParamLogger);
-    LOG1("----------END PARAM DIFFERENCE----------");
+    if (gLogLevel & CAMERA_DEBUG_LOG_LEVEL1) {
+        CameraParamsLogger newParamLogger (msg->params);
+        CameraParamsLogger oldParamLogger (mParameters.flatten().string());
 
-    LOG2("----------- BEGIN OLD PARAMS -------- ");
-    oldParamLogger.dump();
-    LOG2("----------- END OLD PARAMS -------- ");
+        LOG1("----------BEGIN PARAM DIFFERENCE----------");
+        newParamLogger.dumpDifference(oldParamLogger);
+        LOG1("----------END PARAM DIFFERENCE----------");
 
-    LOG2("----------- BEGIN NEW PARAMS -------- ");
-    newParamLogger.dump();
-    LOG2("----------- END NEW PARAMS -------- ");
+        LOG2("----------- BEGIN OLD PARAMS -------- ");
+        oldParamLogger.dump();
+        LOG2("----------- END OLD PARAMS -------- ");
+
+        LOG2("----------- BEGIN NEW PARAMS -------- ");
+        newParamLogger.dump();
+        LOG2("----------- END NEW PARAMS -------- ");
+    }
 
     status = validateParameters(&oldParams, &newParams);
     if (status != NO_ERROR)
