@@ -4936,8 +4936,6 @@ status_t ControlThread::processParamFlash(const CameraParameters *oldParams,
         else if(newVal == IntelCameraParameters::FLASH_MODE_DAY_SYNC)
             flash = CAM_AE_FLASH_MODE_DAY_SYNC;
 
-        mSavedFlashMode = newVal;
-
         status = m3AControls->setAeFlashMode(flash);
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_FLASH_MODE, newVal.string());
@@ -5265,11 +5263,22 @@ void ControlThread::preProcessFlashMode(CameraParameters *newParams)
             //Callback to user
             mCallbacksThread->lowBattery();
         }
+
+        // Save flash mode in burst mode or low battery state.
+        mSavedFlashMode = currRequestedFlashMode;
+
         newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, CameraParameters::FLASH_MODE_OFF);
         newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
     } else if ((mBurstLength == 1 || mBurstLength == 0) && !mHdr.enabled && !lowBattery) {
-        // Restore the supported flash modes to the values prior to forcing to "off":
-        newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, mSavedFlashSupported);
+        // When not in burst mode or low battery state, we should restore flash mode
+        // if supported flash mode is still only off mode.
+        if (currSupportedFlashModes == CameraParameters::FLASH_MODE_OFF) {
+            // Restore the supported flash modes to the values prior to forcing to "off":
+            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, mSavedFlashSupported.string());
+            // Restore flash mode in single mode.
+            newParams->set(CameraParameters::KEY_FLASH_MODE, mSavedFlashMode.string());
+            LOG2("force to restore flash mode[%s] and support list[%s]", mSavedFlashMode.string(), mSavedFlashSupported.string());
+        }
     }
 }
 
