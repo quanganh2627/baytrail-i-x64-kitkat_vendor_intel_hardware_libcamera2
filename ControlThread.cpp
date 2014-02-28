@@ -5754,7 +5754,7 @@ status_t ControlThread::processParamExposureCompensation(const CameraParameters 
         float ev = 0;
         if (PlatformData::supportEV(mHwcg.mSensorCI->getCurrentCameraId()))
             m3AControls->getEv(&ev);
-        LOGD("exposure compensation to \"%s\" (%d), ev value %f, res %d",
+        LOG1("exposure compensation to \"%s\" (%d), ev value %f, res %d",
              newVal.string(), exposure, ev, status);
     }
     return status;
@@ -5793,13 +5793,13 @@ status_t ControlThread::processParamAutoExposureMode(const CameraParameters *old
         }
         m3AControls->setPublicAeMode(ae_mode);
         m3AControls->setAeMode(ae_mode);
-        LOGD("Changed ae mode to \"%s\" (%d)", newVal.string(), ae_mode);
+        LOG1("Changed ae mode to \"%s\" (%d)", newVal.string(), ae_mode);
 
         if (mPublicShutter >= 0 &&
                 (ae_mode == CAM_AE_MODE_SHUTTER_PRIORITY ||
                 ae_mode == CAM_AE_MODE_MANUAL)) {
             m3AControls->setManualShutter(mPublicShutter);
-            LOGD("Changed shutter to %f", mPublicShutter);
+            LOG1("Changed shutter to %f", mPublicShutter);
         }
     }
     return status;
@@ -5836,7 +5836,7 @@ status_t ControlThread::processParamAutoExposureMeteringMode(
         }
 
         m3AControls->setAeMeteringMode(mode);
-        LOGD("Changed ae metering mode to \"%s\" (%d)", newVal.string(), mode);
+        LOG1("Changed ae metering mode to \"%s\" (%d)", newVal.string(), mode);
     }
 
     return status;
@@ -5865,9 +5865,9 @@ status_t ControlThread::processParamIso(const CameraParameters *oldParams,
             iso_mode = CAM_AE_ISO_MODE_MANUAL;
             int iso = atoi(isostr);
             m3AControls->setManualIso(iso);
-            LOGD("Changed manual iso to \"%s\" (%d)", newVal.string(), iso);
+            LOG1("Changed manual iso to \"%s\" (%d)", newVal.string(), iso);
         } else {
-            LOGD("Changed auto iso to \"%s\"", newVal.string());
+            LOG1("Changed auto iso to \"%s\"", newVal.string());
         }
         m3AControls->setIsoMode(iso_mode);
     }
@@ -5976,7 +5976,7 @@ status_t ControlThread::processParamShutter(const CameraParameters *oldParams,
             if (m3AControls->getAeMode() == CAM_AE_MODE_MANUAL ||
                 (m3AControls->getAeMode() == CAM_AE_MODE_SHUTTER_PRIORITY)) {
                 m3AControls->setManualShutter(mPublicShutter);
-                LOGD("Changed shutter to \"%s\" (%f)", newVal.string(), shutter);
+                LOG1("Changed shutter to \"%s\" (%f)", newVal.string(), shutter);
             }
         }
     }

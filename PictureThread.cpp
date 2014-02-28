@@ -78,33 +78,32 @@ PictureThread::~PictureThread()
 {
     LOG1("@%s", __FUNCTION__);
 
-    LOGD("@%s: release mOutBuf", __FUNCTION__);
+    LOG2("@%s: release mOutBuf", __FUNCTION__);
     MemoryUtils::freeAtomBuffer(mOutBuf);
 
-    LOGD("@%s: release mExifBuf", __FUNCTION__);
+    LOG2("@%s: release mExifBuf", __FUNCTION__);
     MemoryUtils::freeAtomBuffer(mExifBuf);
 
-    LOGD("@%s: release mThumbBuf", __FUNCTION__);
+    LOG2("@%s: release mThumbBuf", __FUNCTION__);
     MemoryUtils::freeAtomBuffer(mThumbBuf);
 
-    LOGD("@%s: release mScaledPic", __FUNCTION__);
+    LOG2("@%s: release mScaledPic", __FUNCTION__);
     MemoryUtils::freeAtomBuffer(mScaledPic);
 
-
-    LOGD("@%s: release InputBuffers", __FUNCTION__);
+    LOG2("@%s: release InputBuffers", __FUNCTION__);
     freeInputBuffers();
 
-    LOGD("@%s: release postview buffers", __FUNCTION__);
+    LOG2("@%s: release postview buffers", __FUNCTION__);
     freePostviewBuffers();
 
     if (mHwCompressor) {
-        LOGD("@%s: release mHwCompressor", __FUNCTION__);
+        LOG2("@%s: release mHwCompressor", __FUNCTION__);
         delete mHwCompressor;
         mHwCompressor = NULL;
     }
 
     if (mExifMaker) {
-        LOGD("@%s: release mExifMaker", __FUNCTION__);
+        LOG2("@%s: release mExifMaker", __FUNCTION__);
         delete mExifMaker;
         mExifMaker = NULL;
     }
@@ -621,7 +620,7 @@ status_t PictureThread::allocatePostviewBuffers(const AtomBuffer &formatDescript
     AtomBuffer postv = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
 
     for (int i = 0; i < numBufs; ++i) {
-        LOGD("allocating postview %d", i+1);
+        LOG1("allocating postview %d", i+1);
         postv.buff = NULL;
         postv.size = 0;
         postv.dataPtr = NULL;
@@ -637,7 +636,7 @@ status_t PictureThread::allocatePostviewBuffers(const AtomBuffer &formatDescript
         } else if (status == NO_ERROR) {
             if (registerToScaler)
                 mScaler->registerBuffer(postv, ScalerService::SCALER_OUTPUT);
-            LOGD("postview dataPtr %p", postv.dataPtr);
+            LOG1("postview dataPtr %p", postv.dataPtr);
             mPostviewBufferArray[i] = postv;
         } else {
             status = UNKNOWN_ERROR;
