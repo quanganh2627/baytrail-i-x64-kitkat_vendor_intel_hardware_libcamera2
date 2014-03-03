@@ -1468,6 +1468,59 @@ status_t ControlThread::initSdv(bool offline)
     return status;
 }
 
+status_t ControlThread::captureSdvSoC(bool fullsize)
+{
+    LOG1("@%s: %s", __FUNCTION__, fullsize ? "full size" : "not full size");
+    status_t status = NO_ERROR;
+
+    mCallbacksThread->requestTakePicture(true, true);
+    mPictureThread->initialize(mParameters, mHwcg.mIspCI->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
+
+    if (fullsize) {
+        // allocate buffer struct
+        AtomBuffer snapshotBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+        AtomBuffer postviewBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+        // stop face detection if necessary
+        stopFaceDetection();
+
+        status = waitForCaptureStart();
+        if (status != NO_ERROR) {
+            LOGE("Error while waiting for capture to start");
+            return status;
+        }
+        status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
+        if (status != NO_ERROR) {
+            LOGE("Error in grabbing snapshot!");
+            return status;
+        }
+
+        // encode a frame
+        PictureThread::MetaData picMetaData;
+        fillPicMetaData(picMetaData, false);
+        LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
+        status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
+        if (status != NO_ERROR) {
+            picMetaData.free(m3AControls);
+            LOGE("@%s: failed to call PictureThread to encode", __FUNCTION__);
+        }
+    } else {
+        AtomBuffer snapshotBuffer;
+        // get snapshotBuffer from VideoThread
+        status = mVideoThread->getVideoSnapshot(snapshotBuffer);
+        if (status != NO_ERROR) {
+            LOGE("Error in getVideoSnapshot from VideoThread");
+            return UNKNOWN_ERROR;
+        }
+
+        // encode this buffer
+        encodeVideoSnapshot(snapshotBuffer);
+    }
+
+    return status;
+}
+
 status_t ControlThread::captureSdv(bool offline)
 {
     LOG1("@%s: %s", __FUNCTION__, offline ? "offline" : "online");
@@ -2748,7 +2801,11 @@ status_t ControlThread::handleMessageTakePicture() {
             break;
 
         case SHOOTING_MODE_VIDEO_SNAP:
-            status = captureSdv(mFullSizeSdv);
+            if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC
+                    && PlatformData::useMultiStreamsForSoC(mCameraId))
+                status = captureSdvSoC(mFullSizeSdv);
+            else
+                status = captureSdv(mFullSizeSdv);
             break;
 
         case SHOOTING_MODE_ULL:

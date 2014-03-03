@@ -87,7 +87,11 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mSwapRecordingDevice(false)
     ,mRecordingDeviceSwapped(false)
     ,mHALZSLEnabled(false)
+    ,mHALSDVEnabled(false)
+    ,mUseMultiStreamsForSoC(PlatformData::useMultiStreamsForSoC(mCameraId))
     ,mHALZSLBuffers(NULL)
+    ,mMultiStreamsHALZSLCaptureBuffers(NULL)
+    ,mMultiStreamsHALZSLPostviewBuffers(NULL)
     ,mClientSnapshotBuffersCached(true)
     ,mUsingClientSnapshotBuffers(false)
     ,mUsingClientPostviewBuffers(false)
@@ -970,6 +974,7 @@ status_t AtomISP::configure(AtomMode mode)
     LOG1("mode = %d", mode);
     status_t status = NO_ERROR;
     mHALZSLEnabled = false; // configureContinuous turns this on, when needed
+    mHALSDVEnabled = false;
     if (mFileInject.active == true)
         startFileInject();
     switch (mode) {
@@ -1023,7 +1028,7 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
     switch (mode) {
     case MODE_PREVIEW:
     case MODE_CONTINUOUS_CAPTURE:
-        if (mHALZSLEnabled)
+        if (mHALZSLEnabled && (false == mUseMultiStreamsForSoC))
             mPreviewDevice = mMainDevice;
         if ((status = allocatePreviewBuffers()) != NO_ERROR)
             mPreviewDevice->stop();
@@ -1265,11 +1270,37 @@ status_t AtomISP::startPreview()
         LOG1("Disabled NREE in %s", __func__);
     }
 
+    if (mHALZSLEnabled && mUseMultiStreamsForSoC) {
+        ret = mMainDevice->start(mConfig.num_snapshot_buffers, mInitialSkips);
+        if (ret < 0) {
+            LOGE("start capture on first device failed!");
+            status = UNKNOWN_ERROR;
+            goto err;
+        }
+    }
+
     ret = mPreviewDevice->start(bufcount, mInitialSkips);
     if (ret < 0) {
         LOGE("Start preview device failed!");
         status = UNKNOWN_ERROR;
         goto err;
+    }
+
+    if (mHALZSLEnabled && mUseMultiStreamsForSoC) {
+        // TODO: BZ: 179405. the current YUVPP pipe has bug for 3 streams output. remove the recording device when the fw has fixed this bug.
+        ret = mRecordingDevice->start(mConfig.num_recording_buffers, mInitialSkips + mDVSFrameSkips);
+        if (ret < 0) {
+            LOGE("Start preview device failed!");
+            status = UNKNOWN_ERROR;
+            goto err;
+        }
+
+        ret = mPostViewDevice->start(mConfig.num_postview_buffers, mInitialSkips);
+        if (ret < 0) {
+            LOGE("start capture on second device failed!");
+            status = UNKNOWN_ERROR;
+            goto err;
+        }
     }
 
     mNumPreviewBuffersQueued = bufcount;
@@ -1289,6 +1320,16 @@ status_t AtomISP::stopPreview()
 
     if (mPreviewDevice->isStarted())
         mPreviewDevice->stop();
+
+    if (mHALZSLEnabled && mUseMultiStreamsForSoC) {
+        mMainDevice->stop();
+        mPostViewDevice->stop();
+        mPostViewDevice->close();
+
+        // TODO: BZ: 179405. the current YUVPP pipe has bug for 3 streams output. remove the recording device when the fw has fixed this bug.
+        mRecordingDevice->stop();
+        mRecordingDevice->close();
+    }
 
     freePreviewBuffers();
 
@@ -1397,6 +1438,22 @@ status_t AtomISP::startRecording()
     int ret = 0;
     status_t status = NO_ERROR;
 
+    if (mHALSDVEnabled && mUseMultiStreamsForSoC) {
+        ret = mMainDevice->start(mConfig.num_snapshot_buffers, mInitialSkips);
+        if (ret < 0) {
+            LOGE("start capture on first device failed!");
+            status = UNKNOWN_ERROR;
+            goto err;
+        }
+
+        ret = mPostViewDevice->start(mConfig.num_postview_buffers, mInitialSkips);
+        if (ret < 0) {
+            LOGE("start capture on second device failed!");
+            status = UNKNOWN_ERROR;
+            goto err;
+        }
+    }
+
     //workaround: when DVS is on, the first several frames are greenish, need to be skipped.
     ret = mRecordingDevice->start(mConfig.num_recording_buffers, mInitialSkips + mDVSFrameSkips);
     if (ret < 0) {
@@ -1442,6 +1499,12 @@ status_t AtomISP::stopRecording()
     freePreviewBuffers();
     mPreviewDevice->close();
     mRecordingDevice->close();
+
+    if (mHALSDVEnabled && mUseMultiStreamsForSoC) {
+        mMainDevice->stop();
+        mPostViewDevice->stop();
+        mPostViewDevice->close();
+    }
 
     return NO_ERROR;
 }
@@ -1745,6 +1808,241 @@ err:
     return status;
 }
 
+/**
+ * Configures the ISP to work on a mode where Continuous capture is implemented
+ * in the HAL. This is currently only available for SoC sensors, hence the name.
+ * the difference with the configureContinuousSOC() is that the configureContinuousSOC() just use one stream from driver
+ * but the configureMultiStreamsContinuousSOC will use the yuvpp pipe and let the driver output more streams.
+ */
+status_t AtomISP::configureMultiStreamsContinuousSOC()
+{
+    LOG1("@%s", __FUNCTION__);
+
+    int ret = 0;
+    status_t status = OK;
+    struct v4l2_capability aCap;
+
+    mHALZSLEnabled = true;
+
+    requestContCapture(-1, -1, 0);
+
+    ret = configureContinuousMode(true);
+    if (ret != NO_ERROR) {
+        LOGE("@%s, set continuous mode failed", __FUNCTION__);
+        return ret;
+    }
+
+    // configure the main device
+    Size zslSize = getHALZSLResolution();
+    mConfig.snapshot.width = zslSize.width;
+    mConfig.snapshot.height = zslSize.height;
+    //mConfig.snapshot.fourcc = PlatformData::getPreviewPixelFormat();
+    mConfig.snapshot.bpl = SGXandDisplayBpl(mConfig.snapshot.fourcc, mConfig.snapshot.width);
+    mConfig.snapshot.size = frameSize(mConfig.snapshot.fourcc, mConfig.snapshot.width, mConfig.snapshot.height);
+    LOG1("@%s configured %dx%d bpl %d", __FUNCTION__, mConfig.snapshot.width, mConfig.snapshot.height, mConfig.snapshot.bpl);
+
+    ret = configureDevice(
+            mMainDevice.get(),
+            CI_MODE_VIDEO,
+            &(mConfig.snapshot),
+            isDumpRawImageReady());
+    if (ret < 0) {
+        LOGE("@%s, configure main device failed!", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+    // configure the postview device
+    ret = mPostViewDevice->open();
+    if (ret < 0) {
+        LOGE("@%s, open postview device failed!", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+    status = mPostViewDevice->queryCap(&aCap);
+    if (status != NO_ERROR) {
+        LOGE("@%s, query postview device failed!", __FUNCTION__);
+        return NO_INIT;
+    }
+
+    ret = configureDevice(
+            mPostViewDevice.get(),
+            CI_MODE_VIDEO,
+            &(mConfig.postview),
+            false);
+    if (ret < 0) {
+        LOGE("@%s, configure postview device failed!", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+    // configure the preview device
+    ret = mPreviewDevice->open();
+    if (ret < 0) {
+        LOGE("Open preview device failed!");
+        status = UNKNOWN_ERROR;
+        return NO_INIT;
+    }
+
+    status = mPreviewDevice->queryCap(&aCap);
+    if (status != NO_ERROR) {
+        LOGE("Failed basic capability check failed!");
+        return NO_INIT;
+    }
+
+    mConfig.preview.bpl = SGXandDisplayBpl(mConfig.preview.fourcc, mConfig.preview.width);
+    ret = configureDevice(
+            mPreviewDevice.get(),
+            CI_MODE_VIDEO,
+            &(mConfig.preview),
+            false);
+    if (ret < 0) {
+        LOGE("@%s, configure preview device failed!", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+    // TODO: BZ: 179405. the current YUVPP pipe has bug for 3 streams output. remove the recording device when the fw has fixed this bug.
+    // configure the recording device
+    ret = mRecordingDevice->open();
+    if (ret < 0) {
+        LOGE("Open recording device failed!");
+        status = UNKNOWN_ERROR;
+        return NO_INIT;
+    }
+
+    status = mRecordingDevice->queryCap(&aCap);
+    if (status != NO_ERROR) {
+        LOGE("Failed basic capability check failed!");
+        return NO_INIT;
+    }
+
+    mConfig.recording.width = mConfig.preview.width;
+    mConfig.recording.height = mConfig.preview.height;
+    mConfig.recording.fourcc = mConfig.snapshot.fourcc;
+    mConfig.recording.bpl = SGXandDisplayBpl(mConfig.recording.fourcc, mConfig.recording.width);
+    mConfig.recording.size = frameSize(mConfig.recording.fourcc, mConfig.preview.width, mConfig.preview.height);
+
+    ret = configureDevice(
+            mRecordingDevice.get(),
+            CI_MODE_VIDEO,
+            &(mConfig.recording),
+            false);
+    if (ret < 0) {
+        LOGE("@%s, configure recording device failed!", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+    return status;
+}
+
+status_t AtomISP::configureMultiStreamsContinuousVideoSOC()
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret = 0;
+    status_t status = OK;
+    struct v4l2_capability aCap;
+
+    mHALSDVEnabled = true;
+
+    requestContCapture(-1, -1, 0);
+
+    ret = configureContinuousMode(true);
+    if (ret != NO_ERROR) {
+        LOGE("@%s, set continuous mode failed", __FUNCTION__);
+        return ret;
+    }
+
+    // configure the main device
+    Size zslSize = getHALZSLResolution();
+    mConfig.snapshot.width = zslSize.width;
+    mConfig.snapshot.height = zslSize.height;
+    mConfig.snapshot.bpl = SGXandDisplayBpl(mConfig.snapshot.fourcc, mConfig.snapshot.width);
+    mConfig.snapshot.size = frameSize(mConfig.snapshot.fourcc, mConfig.snapshot.width, mConfig.snapshot.height);
+    LOG1("@%s configured %dx%d bpl %d", __FUNCTION__, mConfig.snapshot.width, mConfig.snapshot.height, mConfig.snapshot.bpl);
+
+    ret = configureDevice(
+            mMainDevice.get(),
+            CI_MODE_VIDEO,
+            &(mConfig.snapshot),
+            isDumpRawImageReady());
+    if (ret < 0) {
+        LOGE("@%s, configure main device failed!", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+    // configure the recording device
+    ret = mRecordingDevice->open();
+    if (ret < 0) {
+        LOGE("Open recording device failed!");
+        status = UNKNOWN_ERROR;
+        return NO_INIT;
+    }
+
+    status = mRecordingDevice->queryCap(&aCap);
+    if (status != NO_ERROR) {
+        LOGE("Failed basic capability check failed!");
+        return NO_INIT;
+    }
+
+    ret = configureDevice(
+            mRecordingDevice.get(),
+            CI_MODE_VIDEO,
+            &(mConfig.recording),
+            false);
+    if (ret < 0) {
+        LOGE("@%s, configure recording device failed!", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+    // configure the preview device
+    ret = mPreviewDevice->open();
+    if (ret < 0) {
+        LOGE("Open preview device failed!");
+        status = UNKNOWN_ERROR;
+        return NO_INIT;
+    }
+
+    status = mPreviewDevice->queryCap(&aCap);
+    if (status != NO_ERROR) {
+        LOGE("Failed basic capability check failed!");
+        return NO_INIT;
+    }
+
+    mConfig.preview.bpl = SGXandDisplayBpl(mConfig.preview.fourcc, mConfig.preview.width);
+    ret = configureDevice(
+            mPreviewDevice.get(),
+            CI_MODE_VIDEO,
+            &(mConfig.preview),
+            false);
+    if (ret < 0) {
+        LOGE("@%s, configure preview device failed!", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+    // configure the postview device
+    ret = mPostViewDevice->open();
+    if (ret < 0) {
+        LOGE("@%s, open postview device failed!", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+    status = mPostViewDevice->queryCap(&aCap);
+    if (status != NO_ERROR) {
+        LOGE("@%s, query postview device failed!", __FUNCTION__);
+        return NO_INIT;
+    }
+
+    ret = configureDevice(
+            mPostViewDevice.get(),
+            CI_MODE_VIDEO,
+            &(mConfig.postview),
+            false);
+    if (ret < 0) {
+        LOGE("@%s, configure postview device failed!", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+     return status;
+}
+
 status_t AtomISP::configureContinuousVideo()
 {
     LOG1("@%s", __FUNCTION__);
@@ -1755,6 +2053,10 @@ status_t AtomISP::configureContinuousVideo()
     // continuous mode does not support low_light mode capture
     setLowLight(false);
     updateCaptureParams();
+
+    if(mSensorType == SENSOR_TYPE_SOC && mUseMultiStreamsForSoC) {
+        return configureMultiStreamsContinuousVideoSOC();
+    }
 
     ret = configureContinuousMode(true);
     if (ret != NO_ERROR) {
@@ -1830,6 +2132,7 @@ errorFreeBuf:
 
     return status;
 }
+
 status_t AtomISP::configureContinuous()
 {
     LOG1("@%s", __FUNCTION__);
@@ -1845,7 +2148,9 @@ status_t AtomISP::configureContinuous()
     updateCaptureParams();
 
     if(mSensorType == SENSOR_TYPE_SOC) {
-        return configureContinuousSOC();
+        return mUseMultiStreamsForSoC
+                ? configureMultiStreamsContinuousSOC()
+                : configureContinuousSOC();
     }
 
     ret = configureContinuousMode(true);
@@ -2130,7 +2435,7 @@ status_t AtomISP::startOfflineCapture(ContinuousCaptureConfig &config)
     status_t res = NO_ERROR;
 
     LOG1("@%s", __FUNCTION__);
-    if (mHALZSLEnabled)
+    if (mHALZSLEnabled || mHALSDVEnabled)
         return OK;
 
     if (!inContinuousMode()) {
@@ -2181,7 +2486,7 @@ status_t AtomISP::stopOfflineCapture()
         return INVALID_OPERATION;
     }
 
-    if (mHALZSLEnabled)
+    if (mHALZSLEnabled || mHALSDVEnabled)
         return OK;
 
     mMainDevice->stop(false);
@@ -2950,7 +3255,7 @@ int AtomISP::atomisp_set_zoom (int zoom)
     LOG1("@%s : value %d", __FUNCTION__, zoom);
     int ret = 0;
 
-    if (!mHALZSLEnabled) { // fix for driver zoom bug, prevent setting in HAL ZSL mode
+    if (!mHALZSLEnabled && !mHALSDVEnabled) { // fix for driver zoom bug, prevent setting in HAL ZSL mode
         int zoom_driver(mZoomDriveTable[zoom]);
         LOG1("set zoom %d to driver with %d", zoom, zoom_driver);
         ret = mMainDevice->setControl (V4L2_CID_ZOOM_ABSOLUTE, zoom_driver, "zoom");
@@ -3155,7 +3460,7 @@ int AtomISP::atomisp_set_capture_mode(int deviceMode)
     status_t status;
     int vfpp_mode = ATOMISP_VFPP_ENABLE;
 
-    if(mHALZSLEnabled)
+    if(mHALZSLEnabled && (false == mUseMultiStreamsForSoC))
         vfpp_mode = ATOMISP_VFPP_DISABLE_LOWLAT;
 
     CLEAR(parm);
@@ -3329,6 +3634,97 @@ status_t AtomISP::getHALZSLPreviewFrame(AtomBuffer *buff)
 
 }
 
+status_t AtomISP::getMultiStreamsHALZSLPreviewFrame(AtomBuffer *buff)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    int previewIndex, snapshotIndex, postviewIndex, recordingIndex;
+    struct v4l2_buffer_info bufInfo;
+
+    Mutex::Autolock mLock(mHALZSLLock);
+
+    // get the preview buffers
+    CLEAR(bufInfo);
+    previewIndex = mPreviewDevice->grabFrame(&bufInfo);
+    LOG2("@%s, previewIndex = %d", __FUNCTION__, previewIndex);
+    if(previewIndex < 0) {
+        LOGE("@%s, Error in grabbing preview frame!", __FUNCTION__);
+        return BAD_INDEX;
+    }
+    LOG2("Device: %d. Grabbed frame of size: %d", mPreviewDevice->mId, bufInfo.vbuffer.bytesused);
+
+    mPreviewBuffers.editItemAt(previewIndex).id = previewIndex;
+    mPreviewBuffers.editItemAt(previewIndex).frameCounter = mPreviewDevice->getFrameCount();
+    mPreviewBuffers.editItemAt(previewIndex).ispPrivate = mSessionId;
+    mPreviewBuffers.editItemAt(previewIndex).capture_timestamp = bufInfo.vbuffer.timestamp;
+    mPreviewBuffers.editItemAt(previewIndex).frameSequenceNbr = bufInfo.vbuffer.sequence;
+    mPreviewBuffers.editItemAt(previewIndex).status = (FrameBufferStatus)bufInfo.vbuffer.reserved;
+    mPreviewBuffers.editItemAt(previewIndex).size = bufInfo.vbuffer.bytesused;
+
+    *buff = mPreviewBuffers[previewIndex];
+
+    mNumPreviewBuffersQueued--;
+    dumpPreviewFrame(previewIndex);
+
+    // get the capture buffers
+    CLEAR(bufInfo);
+    snapshotIndex = mMainDevice->grabFrame(&bufInfo);
+    LOG2("@%s, snapshotIndex = %d", __FUNCTION__, snapshotIndex);
+    if (snapshotIndex < 0) {
+        LOGE("@%s, Error in grabbing snapshot frame!", __FUNCTION__);
+        return BAD_INDEX;
+    }
+    LOG2("Device: %d. Grabbed frame of size: %d", mMainDevice->mId, bufInfo.vbuffer.bytesused);
+
+    mMultiStreamsHALZSLCaptureBuffers[snapshotIndex].id = snapshotIndex;
+    mMultiStreamsHALZSLCaptureBuffers[snapshotIndex].capture_timestamp = bufInfo.vbuffer.timestamp;
+    mMultiStreamsHALZSLCaptureBuffers[snapshotIndex].frameSequenceNbr = bufInfo.vbuffer.sequence;
+    mMultiStreamsHALZSLCaptureBuffers[snapshotIndex].status = (FrameBufferStatus)bufInfo.vbuffer.reserved;
+    mMultiStreamsHALZSLCaptureBuffersQueue.push_front(mMultiStreamsHALZSLCaptureBuffers[snapshotIndex]);
+
+    // get the postview buffers
+    CLEAR(bufInfo);
+    postviewIndex = mPostViewDevice->grabFrame(&bufInfo);
+    LOG2("@%s, postviewIndex = %d", __FUNCTION__, postviewIndex);
+    if (postviewIndex < 0) {
+        LOGE("@%s, Error in grabbing postview frame!", __FUNCTION__);
+        // If we failed with the second device, return the frame to the first device
+        mMainDevice->putFrame(snapshotIndex);
+        return BAD_INDEX;
+    }
+    LOG2("Device: %d. Grabbed frame of size: %d", mPostViewDevice->mId, bufInfo.vbuffer.bytesused);
+
+    mMultiStreamsHALZSLPostviewBuffers[postviewIndex].id = postviewIndex;
+    mMultiStreamsHALZSLPostviewBuffers[postviewIndex].capture_timestamp = bufInfo.vbuffer.timestamp;
+    mMultiStreamsHALZSLPostviewBuffers[postviewIndex].frameSequenceNbr = bufInfo.vbuffer.sequence;
+    mMultiStreamsHALZSLPostviewBuffers[postviewIndex].status = (FrameBufferStatus)bufInfo.vbuffer.reserved;
+    mMultiStreamsHALZSLPostviewBuffersQueue.push_front(mMultiStreamsHALZSLPostviewBuffers[postviewIndex]);
+
+    // TODO: BZ: 179405. the current YUVPP pipe has bug for 3 streams output. remove the recording device when the fw has fixed this bug.
+    // get and put the recording buffers
+    if (mMode == MODE_CONTINUOUS_CAPTURE) {
+        int pollResult = mRecordingDevice->poll(0);
+        if (pollResult < 1) {
+            LOG2("No data in recording device, poll result: %d", pollResult);
+            return NOT_ENOUGH_DATA;
+        }
+
+        CLEAR(bufInfo);
+        recordingIndex = mRecordingDevice->grabFrame(&bufInfo);
+        LOG2("@%s, recordingIndex = %d", __FUNCTION__, recordingIndex);
+        if(recordingIndex < 0) {
+            LOGE("@%s, Error in grabbing recording frame!", __FUNCTION__);
+            return BAD_INDEX;
+        }
+        LOG2("Device: %d. Grabbed frame of size: %d", mRecordingDevice->mId, bufInfo.vbuffer.bytesused);
+
+        mRecordingDevice->putFrame(recordingIndex);
+        dumpRecordingFrame(recordingIndex);
+    }
+
+    return NO_ERROR;
+}
+
 status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
@@ -3339,8 +3735,11 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
     if (mMode == MODE_NONE)
         return INVALID_OPERATION;
 
-    if (mHALZSLEnabled)
-        return getHALZSLPreviewFrame(buff);
+    if (mHALZSLEnabled || mHALSDVEnabled) {
+        return mUseMultiStreamsForSoC
+                ? getMultiStreamsHALZSLPreviewFrame(buff)
+                : getHALZSLPreviewFrame(buff);
+    }
 
     int index = mPreviewDevice->grabFrame(&bufInfo);
     if(index < 0){
@@ -3393,6 +3792,49 @@ status_t AtomISP::putHALZSLPreviewFrame(AtomBuffer *buff)
     return NO_ERROR;
 }
 
+status_t AtomISP::putMultiStreamsHALZSLPreviewFrame(AtomBuffer *buff)
+{
+    LOG2("@%s", __FUNCTION__);
+    size_t size;
+
+    Mutex::Autolock mLock(mHALZSLLock);
+
+    // put preview
+    if (mPreviewDevice->putFrame(buff->id) < 0) {
+        LOGE("@%s, mPreviewDevice, putFrame fail, id:%d", __FUNCTION__, buff->id);
+        return UNKNOWN_ERROR;
+    }
+    mNumPreviewBuffersQueued++;
+    LOG2("@%s mNumPreviewBuffersQueued:%d", __FUNCTION__, mNumPreviewBuffersQueued);
+
+    // put snapshot
+    size = mMultiStreamsHALZSLCaptureBuffersQueue.size();
+    LOG2("@%s: mNewHALZSLCaptureBuffersQueue size was %d", __FUNCTION__, size);
+    if (size > sMaxHALZSLBuffersHeldInHAL) {
+        AtomBuffer buf = mMultiStreamsHALZSLCaptureBuffersQueue.top();
+        mMultiStreamsHALZSLCaptureBuffersQueue.pop();
+        LOG2("@%s: mMaindevice, putFrame:%d", __FUNCTION__, buf.id);
+        if (mMainDevice->putFrame(buf.id) < 0) {
+            LOGE("@%s, mMainDevice, putFrame fail, id:%d", __FUNCTION__, buf.id);
+            return UNKNOWN_ERROR;
+        }
+    }
+
+    // put postview
+    size = mMultiStreamsHALZSLPostviewBuffersQueue.size();
+    LOG2("@%s: mMultiStreamsHALZSLPostviewBuffersQueue size was %d", __FUNCTION__, size);
+    if (size > sMaxHALZSLBuffersHeldInHAL) {
+        AtomBuffer buf = mMultiStreamsHALZSLPostviewBuffersQueue.top();
+        mMultiStreamsHALZSLPostviewBuffersQueue.pop();
+        if (mPostViewDevice->putFrame(buf.id) < 0) {
+            LOGE("@%s, mPostViewDevice, putFrame fail, id:%d", __FUNCTION__, buf.id);
+            return UNKNOWN_ERROR;
+        }
+    }
+
+    return NO_ERROR;
+}
+
 status_t AtomISP::putPreviewFrame(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
@@ -3400,9 +3842,11 @@ status_t AtomISP::putPreviewFrame(AtomBuffer *buff)
     if (mMode == MODE_NONE)
         return INVALID_OPERATION;
 
-    if (mHALZSLEnabled)
-        return putHALZSLPreviewFrame(buff);
-
+    if (mHALZSLEnabled || mHALSDVEnabled) {
+        return mUseMultiStreamsForSoC
+                ? putMultiStreamsHALZSLPreviewFrame(buff)
+                : putHALZSLPreviewFrame(buff);
+    }
     if ((buff->type == ATOM_BUFFER_PREVIEW) && (buff->ispPrivate != mSessionId))
         return DEAD_OBJECT;
 
@@ -3645,6 +4089,25 @@ status_t AtomISP::getHALZSLSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postvie
     return OK;
 }
 
+status_t AtomISP::getMultiStreamsHALZSLSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
+{
+    LOG1("@%s", __FUNCTION__);
+    Mutex::Autolock mLock(mHALZSLLock);
+
+    if (!waitForHALZSLBuffer(mMultiStreamsHALZSLCaptureBuffersQueue, true)) {
+        LOGE("@%s no capture buffers in FIFO!", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+    AtomBuffer captureBuf = mMultiStreamsHALZSLCaptureBuffersQueue.itemAt(0);
+    LOG1("@%s capture buffer framecounter %d timestamp %ld.%ld", __FUNCTION__, captureBuf.frameCounter, captureBuf.capture_timestamp.tv_sec, captureBuf.capture_timestamp.tv_usec);
+
+    *snapshotBuf = captureBuf;
+    *postviewBuf = mMultiStreamsHALZSLPostviewBuffersQueue.itemAt(0);
+
+    return OK;
+}
+
 status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 {
     LOG1("@%s", __FUNCTION__);
@@ -3654,8 +4117,11 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
     if (mMode != MODE_CAPTURE && !inContinuousMode())
         return INVALID_OPERATION;
 
-    if (mHALZSLEnabled)
-        return getHALZSLSnapshot(snapshotBuf, postviewBuf);
+    if (mHALZSLEnabled || mHALSDVEnabled) {
+        return mUseMultiStreamsForSoC
+                ? getMultiStreamsHALZSLSnapshot(snapshotBuf, postviewBuf)
+                : getHALZSLSnapshot(snapshotBuf, postviewBuf);
+    }
 
     CLEAR(vinfo);
 
@@ -3735,7 +4201,7 @@ status_t AtomISP::putSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
     if (mMode != MODE_CAPTURE && !inContinuousMode())
         return INVALID_OPERATION;
 
-    if (mHALZSLEnabled)
+    if (mHALZSLEnabled || mHALSDVEnabled)
         return OK;
 
     if (snapshotBuf->ispPrivate != mSessionId || postviewBuf->ispPrivate != mSessionId)
@@ -3792,7 +4258,7 @@ int AtomISP::pollCapture(int timeout)
 {
     LOG2("@%s", __FUNCTION__);
 
-    if (mHALZSLEnabled) {
+    if (mHALZSLEnabled || mHALSDVEnabled) {
         if (mHALZSLCaptureBuffers.size() > 0)
             return 1;
     }
@@ -3936,6 +4402,116 @@ status_t AtomISP::freeHALZSLBuffers()
     return NO_ERROR;
 }
 
+void AtomISP::initBufferArray(AtomBuffer *buffers, AtomBuffer &formatDescriptor, void **bufPool, int bufPoolNum)
+{
+    status_t status = NO_ERROR;
+
+    for (int i = 0; i < bufPoolNum; ++i) {
+        AtomBuffer *buff = &buffers[i];
+        *buff = AtomBufferFactory::createAtomBuffer();
+        status = MemoryUtils::allocateAtomBuffer(buffers[i], formatDescriptor, mCallbacks);
+        if(status != NO_ERROR) {
+            LOGE("@%s: Failed to allocate the %i GraphicBuffer for capture!", __FUNCTION__, i);
+            break;
+        }
+
+        bufPool[i] = buff->dataPtr;
+        LOG1("%s, allocateAtomBuffer [%d], buff=%p size=%d", __FUNCTION__, i, buff->dataPtr, buff->size);
+    }
+}
+
+status_t AtomISP::allocateMultiStreamsHALZSLBuffers()
+{
+    LOG1("@%s", __FUNCTION__);
+    int i;
+    status_t status = NO_ERROR;
+    void *bufPool[sNumHALZSLBuffers];
+
+    // TODO: BZ: 179405. the current YUVPP pipe has bug for 3 streams output. remove the recording device when the fw has fixed this bug.
+    // allocate recording buffers
+    if (mMode == MODE_CONTINUOUS_CAPTURE)
+        allocateRecordingBuffers();
+
+    // allocate capture buffers
+    if (mMultiStreamsHALZSLCaptureBuffers == NULL) {
+        mMultiStreamsHALZSLCaptureBuffers = new AtomBuffer[sNumHALZSLBuffers];
+        if (NULL == mMultiStreamsHALZSLCaptureBuffers) {
+            LOGE("@%s: allocate mNewHALZSLCaptureBuffers fail", __FUNCTION__);
+            return NO_MEMORY;
+        }
+
+        CLEAR(bufPool);
+        initBufferArray(mMultiStreamsHALZSLCaptureBuffers, mConfig.snapshot, bufPool, sNumHALZSLBuffers);
+    }
+
+    if (status != NO_ERROR) {
+        for (int j = 0; j < i; ++j)
+            MemoryUtils::freeAtomBuffer(mMultiStreamsHALZSLCaptureBuffers[j]);
+        delete[] mMultiStreamsHALZSLCaptureBuffers;
+        mMultiStreamsHALZSLCaptureBuffers = NULL;
+
+        return status;
+    }
+
+    mMainDevice->setBufferPool((void**)&bufPool, sNumHALZSLBuffers,
+                                      &mConfig.snapshot, false);
+    mConfig.num_snapshot_buffers = sNumHALZSLBuffers;
+
+    // allocate postview buffers
+    if (mMultiStreamsHALZSLPostviewBuffers == NULL) {
+        mMultiStreamsHALZSLPostviewBuffers = new AtomBuffer[sNumHALZSLBuffers];
+        if (NULL == mMultiStreamsHALZSLPostviewBuffers) {
+            LOGE("@%s: allocate mMultiStreamsHALZSLPostviewBuffers fail", __FUNCTION__);
+            return NO_MEMORY;
+        }
+
+        CLEAR(bufPool);
+        initBufferArray(mMultiStreamsHALZSLPostviewBuffers, mConfig.postview, bufPool, sNumHALZSLBuffers);
+    }
+
+    if (status != NO_ERROR) {
+        for (int j = 0; j < sNumHALZSLBuffers; ++j)
+            MemoryUtils::freeAtomBuffer(mMultiStreamsHALZSLCaptureBuffers[j]);
+        delete[] mMultiStreamsHALZSLCaptureBuffers;
+        mMultiStreamsHALZSLCaptureBuffers = NULL;
+
+        for (int j = 0; j < i; ++j)
+            MemoryUtils::freeAtomBuffer(mMultiStreamsHALZSLPostviewBuffers[j]);
+        delete[] mMultiStreamsHALZSLPostviewBuffers;
+        mMultiStreamsHALZSLPostviewBuffers = NULL;
+
+        return status;
+    }
+
+    mPostViewDevice->setBufferPool((void**)&bufPool, sNumHALZSLBuffers,
+                                      &mConfig.postview, false);
+    mConfig.num_postview_buffers = sNumHALZSLBuffers;
+
+    return status;
+}
+
+status_t AtomISP::freeMultiStreamsHALZSLBuffers()
+{
+    LOG1("@%s", __FUNCTION__);
+    Mutex::Autolock mLock(mHALZSLLock);
+
+    if (mMultiStreamsHALZSLCaptureBuffers) {
+        for (int i = 0 ; i < sNumHALZSLBuffers; i++)
+            MemoryUtils::freeAtomBuffer(mMultiStreamsHALZSLCaptureBuffers[i]);
+        delete[] mMultiStreamsHALZSLCaptureBuffers;
+        mMultiStreamsHALZSLCaptureBuffers = NULL;
+    }
+
+    if (mMultiStreamsHALZSLPostviewBuffers) {
+        for (int i = 0 ; i < sNumHALZSLBuffers; i++)
+            MemoryUtils::freeAtomBuffer(mMultiStreamsHALZSLPostviewBuffers[i]);
+        delete[] mMultiStreamsHALZSLPostviewBuffers;
+        mMultiStreamsHALZSLPostviewBuffers = NULL;
+    }
+
+    return NO_ERROR;
+}
+
 status_t AtomISP::allocatePreviewBuffers()
 {
     LOG1("@%s", __FUNCTION__);
@@ -3955,8 +4531,9 @@ status_t AtomISP::allocatePreviewBuffers()
                 goto errorFree;
             }
             bufPool[i] = tmp.dataPtr;
+            LOG2("allocate preview buffer[%d], buff=%p size=%d", i, tmp.dataPtr, tmp.size);
 
-            if (mHALZSLEnabled) {
+            if ((mHALZSLEnabled || mHALSDVEnabled) && (false == mUseMultiStreamsForSoC)) {
                 mScaler->registerBuffer(tmp, ScalerService::SCALER_OUTPUT);
                 mHALZSLPreviewBuffers.push(tmp);
             }
@@ -3966,16 +4543,16 @@ status_t AtomISP::allocatePreviewBuffers()
     } else {
         for (size_t i = 0; i < mPreviewBuffers.size(); i++) {
             bufPool[i] = mPreviewBuffers[i].dataPtr;
+            LOG2("preview buffer[%d], buff=%p size=%d", i, mPreviewBuffers[i].dataPtr, mPreviewBuffers[i].size);
             mPreviewBuffers.editItemAt(i).shared = true;
-            if (mHALZSLEnabled) {
+            if ((mHALZSLEnabled || mHALSDVEnabled) && (false == mUseMultiStreamsForSoC)) {
                 mScaler->registerBuffer(mPreviewBuffers.editItemAt(i), ScalerService::SCALER_OUTPUT);
                 mHALZSLPreviewBuffers.push(mPreviewBuffers[i]);
             }
         }
     }
 
-
-    if (mHALZSLEnabled) {
+    if ((mHALZSLEnabled || mHALSDVEnabled) && (false == mUseMultiStreamsForSoC)) {
         status = allocateHALZSLBuffers();
         if (status != OK) {
             LOGE("Error allocation memory for HAL ZSL buffers!");
@@ -3984,6 +4561,14 @@ status_t AtomISP::allocatePreviewBuffers()
     } else {
         mPreviewDevice->setBufferPool((void**)&bufPool, mPreviewBuffers.size(),
                                       &mConfig.preview, mPreviewBuffersCached);
+    }
+
+    if ((mHALZSLEnabled || mHALSDVEnabled) && mUseMultiStreamsForSoC) {
+        status = allocateMultiStreamsHALZSLBuffers();
+        if (status != OK) {
+            LOGE("Error allocation memory for HAL ZSL buffers!");
+            goto errorFree;
+        }
     }
 
     return status;
@@ -4072,7 +4657,7 @@ status_t AtomISP::allocateSnapshotBuffers()
         for (int i = 0; i < mConfig.num_snapshot; i++) {
             mSnapshotBuffers[i].type = ATOM_BUFFER_SNAPSHOT;
             mSnapshotBuffers[i].shared = false;
-            if (!mHALZSLEnabled) {
+            if (!mHALZSLEnabled && !mHALSDVEnabled) {
                 bufPool[i] = mSnapshotBuffers[i].dataPtr;
             }
         }
@@ -4097,7 +4682,7 @@ status_t AtomISP::allocateSnapshotBuffers()
             bufPool[i] = mSnapshotBuffers[i].dataPtr;
         }
     } // if (mUsingClientSnapshotBuffers)
-    if (!mHALZSLEnabled)
+    if (!mHALZSLEnabled && !mHALSDVEnabled)
         mMainDevice->setBufferPool((void**)&bufPool,mConfig.num_snapshot,
                                    &mConfig.snapshot, mClientSnapshotBuffersCached);
 
@@ -4107,7 +4692,7 @@ status_t AtomISP::allocateSnapshotBuffers()
             mPostviewBuffers.editItemAt(i).type = ATOM_BUFFER_POSTVIEW;
             mPostviewBuffers.editItemAt(i).shared = false;
 
-            if (!mHALZSLEnabled) {
+            if (!mHALZSLEnabled && !mHALSDVEnabled) {
                 bufPool[i] = mPostviewBuffers[i].dataPtr;
             }
         }
@@ -4119,7 +4704,7 @@ status_t AtomISP::allocateSnapshotBuffers()
             postv.buff = NULL;
             postv.size = 0;
             postv.dataPtr = NULL;
-            if (mHALZSLEnabled) {
+            if (mHALZSLEnabled || mHALSDVEnabled) {
                 MemoryUtils::allocateGraphicBuffer(postv, mConfig.postview);
             } else {
                 MemoryUtils::allocateAtomBuffer(postv, mConfig.postview, mCallbacks);
@@ -4134,7 +4719,7 @@ status_t AtomISP::allocateSnapshotBuffers()
             bufPool[i] = postv.dataPtr;
 
             postv.shared = false;
-            if (mHALZSLEnabled)
+            if (mHALZSLEnabled || mHALSDVEnabled)
                 mScaler->registerBuffer(postv, ScalerService::SCALER_OUTPUT);
 
             mPostviewBuffers.push(postv);
@@ -4145,7 +4730,7 @@ status_t AtomISP::allocateSnapshotBuffers()
         }
     }
     // In case of Raw capture we do not get postview, so no point in setting up the pool
-    if (!mHALZSLEnabled && !isBayerFormat(mConfig.snapshot.fourcc))
+    if (!mHALZSLEnabled && !mHALSDVEnabled && !isBayerFormat(mConfig.snapshot.fourcc))
         mPostViewDevice->setBufferPool((void**)&bufPool,mPostviewBuffers.size(),
                                         &mConfig.postview, true);
     return status;
@@ -4298,7 +4883,7 @@ status_t AtomISP::freePreviewBuffers()
     if (!mPreviewBuffers.isEmpty()) {
         for (size_t i = 0 ; i < mPreviewBuffers.size(); i++) {
             LOG1("@%s mHALZSLEnabled = %d i=%d, mNum = %d", __FUNCTION__, mHALZSLEnabled, i, mConfig.num_preview_buffers);
-            if (mHALZSLEnabled)
+            if ((mHALZSLEnabled || mHALSDVEnabled) && (false == mUseMultiStreamsForSoC))
                 mScaler->unRegisterBuffer(mPreviewBuffers.editItemAt(i), ScalerService::SCALER_OUTPUT);
 
             MemoryUtils::freeAtomBuffer(mPreviewBuffers.editItemAt(i));
@@ -4306,9 +4891,13 @@ status_t AtomISP::freePreviewBuffers()
         mPreviewBuffers.clear();
     }
 
-    if (mHALZSLEnabled) {
-        freeHALZSLBuffers();
-        mHALZSLPreviewBuffers.clear();
+    if (mHALZSLEnabled || mHALSDVEnabled) {
+        if (mUseMultiStreamsForSoC)
+            freeMultiStreamsHALZSLBuffers();
+        else {
+            freeHALZSLBuffers();
+            mHALZSLPreviewBuffers.clear();
+        }
     }
 
     return NO_ERROR;
@@ -4385,7 +4974,7 @@ status_t AtomISP::freePostviewBuffers()
  */
 bool AtomISP::needNewPostviewBuffers()
 {
-    if (mHALZSLEnabled)
+    if (mHALZSLEnabled || mHALSDVEnabled)
         return true;
 
     if ((mPostviewBuffers.size() != (unsigned int)mConfig.num_snapshot) ||

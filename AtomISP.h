@@ -348,6 +348,8 @@ private:
         int num_postviews;          // number of allocated postviews
         int num_recording_buffers;  // number of recording buffers used
         int num_preview_buffers;    // number of preview buffers used
+        int num_snapshot_buffers;   // number of snapshot buffer used
+        int num_postview_buffers;   // number of postview buffer used
         int zoom;                   // zoom value
     };
 
@@ -440,6 +442,15 @@ private:
     inline bool inContinuousMode() const;
     inline bool inVideoMode() const;
 
+    void initBufferArray(AtomBuffer *buffers, AtomBuffer &formatDescriptor, void **bufPool, int bufPoolNum);
+    status_t configureMultiStreamsContinuousSOC();
+    status_t allocateMultiStreamsHALZSLBuffers();
+    status_t freeMultiStreamsHALZSLBuffers();
+    status_t getMultiStreamsHALZSLPreviewFrame(AtomBuffer *buff);
+    status_t putMultiStreamsHALZSLPreviewFrame(AtomBuffer *buff);
+    status_t getMultiStreamsHALZSLSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
+    status_t configureMultiStreamsContinuousVideoSOC();
+
 private:
     // AtomIspObserver
     IObserverSubject* observerSubjectByType(ObserverType t);
@@ -496,16 +507,23 @@ private:
     bool mSwapRecordingDevice;
     bool mRecordingDeviceSwapped;
 
-    bool mHALZSLEnabled;
-    AtomBuffer *mHALZSLBuffers;
-    Vector<AtomBuffer> mHALZSLPreviewBuffers;
-    Vector<AtomBuffer> mHALZSLCaptureBuffers;
+    bool mHALZSLEnabled; // use only one stream or 3 streams. not use raw ring buffers in driver like the raw sesnor, use buffer queue in hal instead.
+    bool mHALSDVEnabled; // use 4 streams. not use raw ring buffers in driver like the raw sensor, use buffer queue in hal instead.
+    bool mUseMultiStreamsForSoC; // this could be configured by according to the configuration file
+    AtomBuffer *mHALZSLBuffers; // the 1 stream hal zsl will use it
+    Vector<AtomBuffer> mHALZSLPreviewBuffers; // the 1 stream hal zsl will use it
+    Vector<AtomBuffer> mHALZSLCaptureBuffers; // store the capture data in the hal
     Mutex mHALZSLLock;
     static const unsigned int sMaxHALZSLBuffersHeldInHAL = 2;
     static const int sNumHALZSLBuffers = sMaxHALZSLBuffersHeldInHAL + 4;
     static const int sHALZSLRetryCount = 5;
     static const int sHALZSLRetryUSleep = 33000;
     static const int ISP_DEVICE_NAME_LENGTH_MAX = 1024;
+
+    AtomBuffer *mMultiStreamsHALZSLCaptureBuffers;
+    AtomBuffer *mMultiStreamsHALZSLPostviewBuffers;
+    Vector<AtomBuffer> mMultiStreamsHALZSLCaptureBuffersQueue; // this queue is used to buffer the capture stream in hal
+    Vector<AtomBuffer> mMultiStreamsHALZSLPostviewBuffersQueue; // this queue is used to buffer the postview stream in hal
 
     bool mClientSnapshotBuffersCached;
     bool mUsingClientSnapshotBuffers;

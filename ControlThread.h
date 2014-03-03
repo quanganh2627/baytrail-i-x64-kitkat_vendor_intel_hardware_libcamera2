@@ -649,6 +649,7 @@ private:
     // snapshot during video functions
     status_t initSdv(bool offline);
     status_t deinitSdv(bool offline);
+    status_t captureSdvSoC(bool fullsize);
     status_t captureSdv(bool offline);
     status_t cancelCaptureSdv();
     status_t sdvUpdateParams(bool offline, bool updateCache);
