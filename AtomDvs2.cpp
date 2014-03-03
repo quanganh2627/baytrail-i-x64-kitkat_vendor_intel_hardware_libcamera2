@@ -185,8 +185,8 @@ status_t AtomDvs2::reconfigureNoLock()
     mDvs2Config.ispfilter_bq.height_bq = bq_res.ispfilter_bq.height_bq;
     mDvs2Config.envelope_bq.width_bq = bq_res.envelope_bq.width_bq;
     mDvs2Config.envelope_bq.height_bq = bq_res.envelope_bq.height_bq;
-    mDvs2Config.gdc_shift_x = 2;
-    mDvs2Config.gdc_shift_y = 2;
+    mDvs2Config.gdc_shift_x = bq_res.gdc_shift_bq.width_bq;
+    mDvs2Config.gdc_shift_y = bq_res.gdc_shift_bq.height_bq;
     mDvs2Config.oxdim_y = 64;
     mDvs2Config.oydim_y = 64;
     mDvs2Config.oxdim_uv = 64;
