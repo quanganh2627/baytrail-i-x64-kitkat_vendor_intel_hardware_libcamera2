@@ -44,6 +44,8 @@ public:
 
     status_t setZoom(int zoom);
 
+    const static float maxDvs2YUVDSRatio = 1.3f;
+
 // prevent copy constructor and assignment operator
 private:
     AtomDvs2(const AtomDvs2& other);

@@ -37,6 +37,7 @@
 #include <binder/IServiceManager.h>
 #include "intel_camera_extensions.h"
 #include "ICameraHwControls.h"
+#include "AtomDvs2.h"
 
 namespace android {
 
@@ -1371,10 +1372,8 @@ status_t ControlThread::getSdvSupportedMinVideoSize(int &width, int &height)
     int w, h;
     // current max bayer downscaling factor is 8X
     const float maxBdsFactor = 8.0f;
-    // Max yuv downscaling factor is 1.45x (DVS2 library limitation)
-    const float maxYuvDsFactor = 1.45f;
-    // Thus, the max downscaling factor is 8x1.45 = 11.6
-    float maxDsFactor = maxBdsFactor * maxYuvDsFactor;
+    // Thus, the max downscaling factor is 8 x max_YUV_downscaling_ratio
+    float maxDsFactor = maxBdsFactor * AtomDvs2::maxDvs2YUVDSRatio;
 
     // Video pipe is downscaled from main output frame. So we caculate the max
     // supported video size from the max main output size

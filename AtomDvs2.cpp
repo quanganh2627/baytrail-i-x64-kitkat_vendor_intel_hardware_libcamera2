@@ -158,6 +158,7 @@ status_t AtomDvs2::reconfigureNoLock()
     struct atomisp_parm isp_params;
     struct atomisp_dvs2_bq_resolutions bq_res;
     struct atomisp_dvs_grid_info dvs_grid;
+    int bq_max_width, bq_max_height;
 
     if (!mState)
         return status;
@@ -211,6 +212,18 @@ status_t AtomDvs2::reconfigureNoLock()
     /* setup binary dump parameter */
     mDumpParams.frames = TEST_FRAMES;
     mDumpParams.endless = false;
+
+    bq_max_width = int(maxDvs2YUVDSRatio * float(mDvs2Config.output_bq.width_bq));
+    bq_max_height = int(maxDvs2YUVDSRatio * float(mDvs2Config.output_bq.height_bq));
+
+    // scaling_ratio = (output_bq) / (source_bq - envelope_bq - ispfilter_bq)
+    // do crop by envelope if the YUV downscaling ratio exceeds the limitation
+    if(mDvs2Config.source_bq.width_bq - mDvs2Config.envelope_bq.width_bq - mDvs2Config.ispfilter_bq.width_bq > bq_max_width)
+        mDvs2Config.envelope_bq.width_bq = mDvs2Config.source_bq.width_bq - mDvs2Config.ispfilter_bq.width_bq - bq_max_width;
+
+    if(mDvs2Config.source_bq.height_bq - mDvs2Config.envelope_bq.height_bq - mDvs2Config.ispfilter_bq.height_bq > bq_max_height)
+        mDvs2Config.envelope_bq.height_bq = mDvs2Config.source_bq.height_bq - mDvs2Config.ispfilter_bq.height_bq - bq_max_height;
+
     err = dvs_config(mState, &mDvs2Config, DIGITAL_ZOOM_RATIO, &mDumpParams);
     if (err != ia_err_none) {
         LOGW("Configure DVS failed %d", err);
