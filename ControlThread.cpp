@@ -1781,6 +1781,14 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOG1("Starting preview in %s mode", mode == MODE_VIDEO? "video":"continuous video");
         initSdv(mFullSizeSdv);
 
+        /**
+         * To disable DVS when full size SDV is runing.
+         * It's a temporary solution to enable SDV due to the conflict of SDV and DVS
+         * TODO: remove it when VIED BZ1838 is fixed
+         */
+        if (mFullSizeSdv)
+            mDvsEnable = false;
+
         status = mHwcg.mIspCI->setDVS(mDvsEnable);
 
         if (status != NO_ERROR) {
