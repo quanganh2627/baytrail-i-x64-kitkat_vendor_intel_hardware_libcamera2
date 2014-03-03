@@ -3011,9 +3011,8 @@ status_t ControlThread::continuousStartStillCapture(bool useFlash)
     int size;
 
     if (useFlash == false) {
-        // snapshot has no shutterSound during video
-        if (mState != STATE_RECORDING && mState != STATE_PREVIEW_VIDEO)
-            mCallbacksThread->shutterSound();
+        //To play or not to play is decided by App, however the callback is needed
+        mCallbacksThread->shutterSound();
 
         /**
          * At this stage we need to re-configure the v4l2 buffer pools
