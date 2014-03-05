@@ -5200,6 +5200,9 @@ status_t ControlThread::processParamULL(const CameraParameters *oldParams,
         } else {
             mULL->setMode(UltraLowLight::ULL_OFF);
         }
+
+        m3AControls->setUllEnabled(ullActive);
+
         /**
          * If applications enables ULL while in Continuous Capture mode and
          * the current ring buffer configuration is not big enough we need

@@ -636,6 +636,11 @@ status_t AtomSoc3A::setAeFlickerMode(FlickerMode flickerMode)
     return status;
 }
 
+status_t AtomSoc3A::setUllEnabled(bool enabled)
+{
+    return NO_ERROR;
+}
+
 void AtomSoc3A::getDefaultParams(CameraParameters *params, CameraParameters *intel_params)
 {
     LOG1("@%s", __FUNCTION__);

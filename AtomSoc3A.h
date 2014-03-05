@@ -79,6 +79,7 @@ public:
     virtual MeteringMode getAeMeteringMode();
     virtual status_t set3AColorEffect(const char *effect);
     virtual status_t setAeFlickerMode(FlickerMode flickerMode);
+    virtual status_t setUllEnabled(bool enabled);
     virtual status_t setAfMode(AfMode mode);
     virtual AfMode getAfMode();
     virtual status_t setAfEnabled(bool en);

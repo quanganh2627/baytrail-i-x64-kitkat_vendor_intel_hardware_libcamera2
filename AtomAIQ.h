@@ -270,6 +270,7 @@ private:
 
     //AE
     void resetAECParams();
+    void setAeOperationModeAutoOrUll();
     status_t runAeMain();
     bool getAeResults();
     bool getAeFlashResults();
@@ -331,6 +332,7 @@ public:
     status_t setAeWindow(const CameraWindow *window);
     status_t setAfWindow(const CameraWindow *window);
     status_t setAeFlickerMode(FlickerMode mode);
+    status_t setUllEnabled(bool enabled);
     status_t setAfEnabled(bool en) { return 0; }
     status_t setAeSceneMode(SceneMode mode);
     SceneMode getAeSceneMode();
@@ -442,6 +444,7 @@ private:
     FlashMode mAeFlashMode;
     ae_state mAeState;
     ia_coordinate mAeCoord;
+    bool mUllEnabled;
 
     //AE bracketing
     ia_aiq_ae_input_params mAeBracketingInputParameters;

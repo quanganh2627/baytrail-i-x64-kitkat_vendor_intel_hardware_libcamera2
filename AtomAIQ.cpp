@@ -83,6 +83,7 @@ AtomAIQ::AtomAIQ(HWControlGroup &hwcg):
     ,mPublicAeMode(CAM_AE_MODE_NOT_SET)
     ,mAeSceneMode(CAM_AE_SCENE_MODE_NOT_SET)
     ,mAeFlashMode(CAM_AE_FLASH_MODE_NOT_SET)
+    ,mUllEnabled(false)
     ,mBracketingRunning(false)
     ,mAEBracketingResult(NULL)
     ,mAwbResults(NULL)
@@ -308,7 +309,7 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
         // When the default AE scene mode (AUTO) is used, the application will not set the
         // scene mode when switching between different capture modes. Reset the AE operation
         // mode to default value when not in HS recording mode
-        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_automatic;
+        setAeOperationModeAutoOrUll();
     }
 
     /* usually the grid changes as well when the mode changes. */
@@ -495,6 +496,20 @@ status_t AtomAIQ::setAeFlickerMode(FlickerMode mode)
     return NO_ERROR;
 }
 
+status_t AtomAIQ::setUllEnabled(bool enabled)
+{
+    LOG1("@%s: enabled = %s", __FUNCTION__, enabled?"true":"false");
+
+    mUllEnabled = enabled;
+
+    if (mAeInputParameters.operation_mode == ia_aiq_ae_operation_mode_ultra_low_light ||
+        mAeInputParameters.operation_mode == ia_aiq_ae_operation_mode_automatic) {
+        setAeOperationModeAutoOrUll();
+    }
+
+    return NO_ERROR;
+}
+
 // No support for aperture priority, always in shutter priority mode
 status_t AtomAIQ::setAeMode(AeMode mode)
 {
@@ -511,7 +526,7 @@ status_t AtomAIQ::setAeMode(AeMode mode)
         mAeInputParameters.manual_analog_gain = -1;
         mAeInputParameters.manual_iso = -1;
         mAeInputParameters.manual_exposure_time_us = -1;
-        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_automatic;
+        setAeOperationModeAutoOrUll();
         break;
     }
     return NO_ERROR;
@@ -1807,7 +1822,7 @@ void AtomAIQ::resetAECParams()
 
     mAeInputParameters.frame_use = m3aState.frame_use;
     mAeInputParameters.flash_mode = ia_aiq_flash_mode_auto;
-    mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_automatic;
+    setAeOperationModeAutoOrUll();
     mAeInputParameters.metering_mode = ia_aiq_ae_metering_mode_evaluative;
     mAeInputParameters.priority_mode = ia_aiq_ae_priority_mode_normal;
     mAeInputParameters.flicker_reduction_mode = ia_aiq_ae_flicker_reduction_auto;
@@ -1826,6 +1841,15 @@ void AtomAIQ::resetAECParams()
     mAeInputParameters.manual_limits->manual_iso_min = -1;
     mAeInputParameters.manual_limits->manual_iso_max = -1;
     mAeInputParameters.aec_features = NULL; // Using AEC feature definitions from CPF
+}
+
+void AtomAIQ::setAeOperationModeAutoOrUll()
+{
+    if (mUllEnabled) {
+        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_ultra_low_light;
+    } else {
+        mAeInputParameters.operation_mode = ia_aiq_ae_operation_mode_automatic;
+    }
 }
 
 status_t AtomAIQ::runAeMain()

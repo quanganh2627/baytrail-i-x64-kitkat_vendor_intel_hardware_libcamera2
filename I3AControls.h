@@ -205,6 +205,7 @@ public:
     virtual status_t setAeWindow(const CameraWindow *window) = 0;
     virtual status_t setAfWindows(const CameraWindow *windows, size_t numWindows) = 0;
     virtual status_t setAeFlickerMode(FlickerMode mode) = 0;
+    virtual status_t setUllEnabled(bool enabled) = 0;
 
     // Intel 3A specific
     virtual bool isIntel3A() = 0;
