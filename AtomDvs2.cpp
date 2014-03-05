@@ -224,6 +224,27 @@ status_t AtomDvs2::reconfigureNoLock()
     if(mDvs2Config.source_bq.height_bq - mDvs2Config.envelope_bq.height_bq - mDvs2Config.ispfilter_bq.height_bq > bq_max_height)
         mDvs2Config.envelope_bq.height_bq = mDvs2Config.source_bq.height_bq - mDvs2Config.ispfilter_bq.height_bq - bq_max_height;
 
+    LOG2("mDvs2Config.num_axis %d", mDvs2Config.num_axis);
+    LOG2("mDvs2Config.nonblanking_ratio %f", mDvs2Config.nonblanking_ratio);
+    LOG2("mDvs2Config.grid_size %d", mDvs2Config.grid_size);
+    LOG2("mDvs2Config.source_bq.width_bq %d", mDvs2Config.source_bq.width_bq);
+    LOG2("mDvs2Config.source_bq.height_bq %d", mDvs2Config.source_bq.height_bq);
+    LOG2("mDvs2Config.output_bq.width_bq %d", mDvs2Config.output_bq.width_bq);
+    LOG2("mDvs2Config.output_bq.height_bq %d", mDvs2Config.output_bq.height_bq);
+    LOG2("mDvs2Config.envelope_bq.width_bq %d", mDvs2Config.envelope_bq.width_bq);
+    LOG2("mDvs2Config.envelope_bq.height_bq %d", mDvs2Config.envelope_bq.height_bq);
+    LOG2("mDvs2Config.ispfilter_bq.width_bq %d", mDvs2Config.ispfilter_bq.width_bq);
+    LOG2("mDvs2Config.ispfilter_bq.height_bq %d", mDvs2Config.ispfilter_bq.height_bq);
+    LOG2("mDvs2Config.gdc_shift_x %d", mDvs2Config.gdc_shift_x);
+    LOG2("mDvs2Config.gdc_shift_y %d", mDvs2Config.gdc_shift_y);
+    LOG2("mDvs2Config.oxdim_y %d", mDvs2Config.oxdim_y);
+    LOG2("mDvs2Config.oydim_y %d", mDvs2Config.oydim_y);
+    LOG2("mDvs2Config.oxdim_uv %d", mDvs2Config.oxdim_uv);
+    LOG2("mDvs2Config.oydim_uv %d", mDvs2Config.oydim_uv);
+    LOG2("mDvs2Config.hw_config.scan_mode %d", mDvs2Config.hw_config.scan_mode);
+    LOG2("mDvs2Config.hw_config.interpolation %d", mDvs2Config.hw_config.interpolation);
+    LOG2("mDvs2Config.hw_config.performance_point %d", mDvs2Config.hw_config.performance_point);
+
     err = dvs_config(mState, &mDvs2Config, DIGITAL_ZOOM_RATIO, &mDumpParams);
     if (err != ia_err_none) {
         LOGW("Configure DVS failed %d", err);
