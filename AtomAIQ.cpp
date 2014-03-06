@@ -1046,7 +1046,20 @@ status_t AtomAIQ::setEv(float bias)
 status_t AtomAIQ::getEv(float *ret)
 {
     LOG2("@%s", __FUNCTION__);
-    *ret = mAeInputParameters.ev_shift;
+
+    int cameraId = mSensorCI->getCurrentCameraId();
+    /*
+     * If factor is an effective value(0<factor<1),
+     * we should restore the real EV shift which application had set.
+     * Then return the real EV shift.
+     */
+    float factor = PlatformData::matchEVShiftFactor(cameraId);
+    if (factor < 1 && factor > 0)
+        *ret = mAeInputParameters.ev_shift / factor;
+    else
+        *ret = mAeInputParameters.ev_shift;
+
+    LOG1("getEV bias=%.2f", *ret);
     return NO_ERROR;
 }
 
@@ -2018,7 +2031,7 @@ status_t AtomAIQ::runGBCEMain()
             gbce_input_params.gbce_level = ia_aiq_gbce_level_use_tuning;
         }
         gbce_input_params.frame_use = m3aState.frame_use;
-        getEv(&gbce_input_params.ev_shift);
+        gbce_input_params.ev_shift = mAeInputParameters.ev_shift;
         ia_err err = ia_aiq_gbce_run(m3aState.ia_aiq_handle, &gbce_input_params, &mGBCEResults);
         if(err == ia_err_none)
             LOG2("@%s success", __FUNCTION__);
