@@ -28,8 +28,6 @@
 #include "PerformanceTraces.h"
 #include "cameranvm.h"
 #include "ia_cmc_parser.h"
-#include "gdctool.h"
-
 #include "AtomAIQ.h"
 #include "ia_mkn_encoder.h"
 #include "ia_mkn_decoder.h"
@@ -1600,7 +1598,7 @@ bool AtomAIQ::changeSensorMode(void)
     if (mISP->getIspParameters(&m3aState.results.isp_params) < 0)
         return false;
 
-    struct atomisp_morph_table *gdc_table = getGdcTable(sensor_mode_data.output_width, sensor_mode_data.output_height);
+    struct morph_table *gdc_table = getGdcTable(sensor_mode_data.output_width, sensor_mode_data.output_height);
     if (gdc_table) {
         LOG1("Initialise gdc_table size %d x %d ", gdc_table->width, gdc_table->height);
         mISP->setGdcConfig(gdc_table);

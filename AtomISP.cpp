@@ -5019,11 +5019,11 @@ int AtomISP::setCtcTable(const struct atomisp_ctc_table *ctc_tbl)
     return ret;
 }
 
-int AtomISP::setGdcConfig(const struct atomisp_morph_table *tbl)
+int AtomISP::setGdcConfig(const struct morph_table *tbl)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_ISP_GDC_TAB, (struct atomisp_morph_table *)tbl);
+    ret = mMainDevice->xioctl(ATOMISP_IOC_S_ISP_GDC_TAB, (struct morph_table *)tbl);
     LOG2("%s IOCTL ATOMISP_IOC_S_ISP_GDC_TAB ret: %d\n", __FUNCTION__, ret);
     return ret;
 }

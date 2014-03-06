@@ -268,7 +268,7 @@ protected:
     int setAicParameter(struct atomisp_parameters *aic_params);
     int setIspParameter(struct atomisp_parm *isp_params);
     int getIspStatistics(struct atomisp_3a_statistics *statistics);
-    int setGdcConfig(const struct atomisp_morph_table *tbl);
+    int setGdcConfig(const struct morph_table *tbl);
     int setShadingTable(struct atomisp_shading_table *table);
     int setMaccConfig(struct atomisp_macc_config *macc_cfg);
     int setCtcTable(const struct atomisp_ctc_table *ctc_tbl);
