@@ -115,7 +115,6 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mScaler(scalerService)
     ,mObserverManager()
     ,mNoiseReductionEdgeEnhancement(true)
-    ,mRawBayerFormat(V4L2_PIX_FMT_SBGGR10)
     ,mFlashIsOn(false)
 {
     LOG1("@%s", __FUNCTION__);
@@ -1935,7 +1934,7 @@ status_t AtomISP::startCapture()
     // snapshot number. Otherwise, the raw dump image would be corrupted.
     // also since CSS1.5 we cannot capture from postview at the same time
     int snapNum;
-    if (mConfig.snapshot.fourcc == mRawBayerFormat)
+    if (mConfig.snapshot.fourcc == mSensorHW.getRawFormat())
         snapNum = 1;
     else
         snapNum = mConfig.num_snapshot;
@@ -3737,7 +3736,7 @@ status_t AtomISP::putSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 
     ret0 = mMainDevice->putFrame(snapshotBuf->id);
 
-    if (mConfig.snapshot.fourcc == mRawBayerFormat) {
+    if (mConfig.snapshot.fourcc == mSensorHW.getRawFormat()) {
         // for RAW captures we do not dequeue the postview, therefore we do
         // not need to return it.
         ret1 = 0;
