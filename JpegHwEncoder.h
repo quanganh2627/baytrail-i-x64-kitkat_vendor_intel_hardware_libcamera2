@@ -65,6 +65,14 @@ public:
             fourcc = 0;
             size = 0;
         }
+
+        bool sameAttrWith(const InputBuffer &b)
+        {
+            return (b.width  == width  &&
+                    b.height == height &&
+                    b.bpl    == bpl    &&
+                    b.fourcc == fourcc);
+        }
     };
 
     struct OutputBuffer {
@@ -107,8 +115,8 @@ public:
 
 private:
     int V4L2Fmt2VAFmt(unsigned int v4l2Fmt, unsigned int &vaFmt);
-    int resetContext(const InputBuffer &in, int &imgSeq);
-    int restoreContext();
+    status_t handleDynamicBuffer(const InputBuffer &in, int &imgSeq);
+    status_t finalizeDynamicBuffer();
 
 private:
     /**
@@ -133,10 +141,11 @@ private:
 
     bool            mHWInitialized;
     bool            mContextRestoreNeeded;       /*!< flags the need for a context restore */
-    int firstImageSeq;      /*!< record the first image seq for multi buffer*/
-    int singelSeq;          /*!< record the image seq for the singel buffer*/
-    unsigned int mMaxOutJpegBufSize; /*!< the max JPEG Buffer Size. This is initialized to
+    int             mFirstImageSeq;      /*!< record the first image seq for multi buffer*/
+    int             mDynamicImageSeq;          /*!< record the image seq for the singel buffer*/
+    unsigned int    mMaxOutJpegBufSize; /*!< the max JPEG Buffer Size. This is initialized to
                                       the size of the input YUV buffer*/
+    InputBuffer     mBufferAttribute; /*!< default surface buffer attribute*/
 #else  //USE_INTEL_JPEG
 //Stub implementation if HW encoder is disabled
 public:
