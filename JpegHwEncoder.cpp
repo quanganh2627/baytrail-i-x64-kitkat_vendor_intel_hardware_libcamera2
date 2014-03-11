@@ -25,8 +25,8 @@ JpegHwEncoder::JpegHwEncoder() :
     mBuffer2SurfaceId(ERROR_POINTER_NOT_FOUND),
     mHWInitialized(false),
     mContextRestoreNeeded(false),
-    firstImageSeq(ERROR_POINTER_NOT_FOUND),
-    singelSeq(ERROR_POINTER_NOT_FOUND),
+    mFirstImageSeq(ERROR_POINTER_NOT_FOUND),
+    mDynamicImageSeq(ERROR_POINTER_NOT_FOUND),
     mMaxOutJpegBufSize(0)
 {
     LOG1("@%s", __FUNCTION__);
@@ -35,6 +35,7 @@ JpegHwEncoder::JpegHwEncoder() :
     if (mHwImageEncoder == NULL) {
         LOGE("mHwImageEncoder allocation failed");
     }
+    mBufferAttribute.clear();
 }
 
 JpegHwEncoder::~JpegHwEncoder()
@@ -71,8 +72,9 @@ int JpegHwEncoder::init(void)
     }
 
     mBuffer2SurfaceId.clear();
-    firstImageSeq = ERROR_POINTER_NOT_FOUND;
-    singelSeq = ERROR_POINTER_NOT_FOUND;
+    mBufferAttribute.clear();
+    mFirstImageSeq = ERROR_POINTER_NOT_FOUND;
+    mDynamicImageSeq = ERROR_POINTER_NOT_FOUND;
     mHWInitialized = true;
     return 0;
 }
@@ -151,10 +153,17 @@ status_t JpegHwEncoder::setInputBuffers(AtomBuffer* inputBuffersArray, int input
         }
         mBuffer2SurfaceId.add(inputBuffersArray[i].dataPtr, imageSeq);
         if (i == 0)
-           firstImageSeq = imageSeq;
+           mFirstImageSeq = imageSeq;
     }
+
+    //record default buffer attributes
+    mBufferAttribute.width  = inputBuffersArray[0].width;
+    mBufferAttribute.height = inputBuffersArray[0].height;
+    mBufferAttribute.bpl    = inputBuffersArray[0].bpl;
+    mBufferAttribute.fourcc = inputBuffersArray[0].fourcc;
+
     //create context
-    status = mHwImageEncoder->createContext(firstImageSeq, &mMaxOutJpegBufSize);
+    status = mHwImageEncoder->createContext(mFirstImageSeq, &mMaxOutJpegBufSize);
     if (status != 0) {
         LOGE("createContext failed");
         return UNKNOWN_ERROR;
@@ -185,6 +194,10 @@ int JpegHwEncoder::encode(const InputBuffer &in, OutputBuffer &out)
         return -1;
     }
 
+    if (mContextRestoreNeeded == true) {
+        LOGW("@%s Not allowed to call in parallel, this should not happen", __FUNCTION__);
+    }
+
     if ((in.width <= MIN_HW_ENCODING_WIDTH && in.height <= MIN_HW_ENCODING_HEIGHT)
         || V4L2Fmt2VAFmt(in.fourcc, vaFmt) < 0) {
          LOGW("@%s, line:%d, do not use the hw jpeg encoder", __FUNCTION__, __LINE__);
@@ -193,10 +206,10 @@ int JpegHwEncoder::encode(const InputBuffer &in, OutputBuffer &out)
 
     imgSeq = mBuffer2SurfaceId.valueFor((void*)in.buf);
     if (imgSeq == ERROR_POINTER_NOT_FOUND) {
-        status = resetContext(in, imgSeq);
-        mContextRestoreNeeded = true;
+        status = handleDynamicBuffer(in, imgSeq);
         if (status) {
-            LOGE("Encoder failed to reset the context, falling back to SW");
+            LOGE("failed to handle dynamic buffer, falling back to SW");
+            finalizeDynamicBuffer();
             return -1;
         }
     }
@@ -215,14 +228,13 @@ int JpegHwEncoder::encode(const InputBuffer &in, OutputBuffer &out)
         LOGE("Could not encode picture stream!");
         status = -1;
     }
-    if (mContextRestoreNeeded) {
-        status = restoreContext();
+    if (mDynamicImageSeq != ERROR_POINTER_NOT_FOUND) {
+        status = finalizeDynamicBuffer();
         if (status != 0) {
-            LOGW("restoreContext failed");
+            LOGW("finalizeDynamicBuffer failed");
         }
-        mContextRestoreNeeded = false;
     }
-exit:
+
     return status;
 }
 
@@ -243,16 +255,18 @@ int JpegHwEncoder::encodeAsync(const InputBuffer &in, OutputBuffer &out, int &mM
     int status = 0;
     void* dataPtr = (void*)in.buf;
 
-    mContextRestoreNeeded = false;
+    if (mContextRestoreNeeded == true) {
+        LOGW("@%s Not allowed to call in parallel, this should not happen", __FUNCTION__);
+    }
 
     imgSeq = mBuffer2SurfaceId.valueFor(dataPtr);
     if (imgSeq == ERROR_POINTER_NOT_FOUND) {
-        status = resetContext(in, imgSeq);
+        status = handleDynamicBuffer(in, imgSeq);
         if (status) {
-            LOGE("Encoder failed to reset the context, falling back to SW");
+            LOGE("failed to handle dynamic buffer, falling back to SW");
+            finalizeDynamicBuffer();
             return -1;
         }
-        mContextRestoreNeeded = true;
     }
     if (mHwImageEncoder &&
         mHwImageEncoder->encode(imgSeq, CLIP(out.quality, 100, 1)) == 0) {
@@ -302,12 +316,12 @@ int JpegHwEncoder::getOutput(void* outBuf, unsigned int& outSize)
         LOGE("Could not encode picture stream!");
         status = -1;
     }
-    if (mContextRestoreNeeded) {
-        status = restoreContext();
+
+    if (mDynamicImageSeq != ERROR_POINTER_NOT_FOUND) {
+        status = finalizeDynamicBuffer();
         if (status != 0) {
-            LOGW("restoreContext failed");
+            LOGW("finalizeDynamicBuffer failed");
         }
-        mContextRestoreNeeded = false;
     }
     return status;
 }
@@ -333,86 +347,110 @@ int JpegHwEncoder::V4L2Fmt2VAFmt(unsigned int v4l2Fmt, unsigned int &vaFmt)
     }
     return status;
 }
+
 /**
- *  Resets the current context and creates a new one with only 1 surface
- *  This is used when the encoder receives an input frame pointer to encode
- *  that is not mapped to a surface.
- *  A call to restoreContext is needed to revert this operation
+ * Generally we have a group of default buffers registered and the input buffer
+ * should be in it. This method is going to handle an exceptional case that
+ * the requested input buffer is a new one which is not in default group.
+ * For this situation, if the new buffer has the same attribute with default
+ * buffer, just needs to create a new surface for this buffer. Otherwise, we have
+ * to destroy the old context and create a new one for the dynamic surface.
  *
- *  \param in Input image buffer descriptor
- *  \param image sequence id created in the new context
+ * A call to finalizeDynamicBuffer is needed to fallback to default
  *
- *  \return 0 on success
- *  \return -1 on failure
+ * \param in Input image buffer descriptor
+ * \param image sequence id created in the new context
+ *
+ * \return NO_ERROR on success
  */
-int JpegHwEncoder::resetContext(const InputBuffer &in, int &imgSeq)
+status_t JpegHwEncoder::handleDynamicBuffer(const InputBuffer &in, int &imgSeq)
 {
     LOG1("@%s", __FUNCTION__);
-    int status = 0;
+    status_t status = NO_ERROR;
     unsigned int vaFmt = 0;
 
     if (in.height % 2 || in.bpl % SIZE_OF_WIDTH_ALIGNMENT) {
         LOGW("@%s, line:%d, width:%d or height:%d, we can't support", __FUNCTION__, __LINE__, in.width, in.height);
-        return -1;
+        return BAD_VALUE;
     }
     if (V4L2Fmt2VAFmt(in.fourcc, vaFmt) < 0) {
         LOGW("@%s, unsupport format, do not use the hw jpeg encoder", __FUNCTION__);
-        return -1;
+        return BAD_VALUE;
     }
     if (! isInitialized()) {
         if (init() < 0) {
             LOGE("HW encoder failed to initialize when setting the input buffers");
-            return -1;
+            return NO_INIT;
         }
     }
 
-    /*create surface for the signel buffer
-     * buffer had been mapped when allocated by GraphicBuffer, so use SURFACE_TYPE_USER_PTR for gralloc buffer.
-     */
+
+    // create surface for the dynamic buffer
     status = mHwImageEncoder->createSourceSurface(SURFACE_TYPE_USER_PTR, in.buf, in.width, in.height, in.bpl, vaFmt, &imgSeq);
-    if (status != 0) {
+    if (status != NO_ERROR) {
         LOGE("create source surface failed");
-        return -1;
+        return UNKNOWN_ERROR;
     }
-    singelSeq = imgSeq;
-    //create context
+    mDynamicImageSeq = imgSeq;
+
+    // no need to reset context for same attribute buffer
+    if (mBufferAttribute.sameAttrWith(in)) {
+        LOG1("create new surface :%d for dynamic buffer, keep the old context", mDynamicImageSeq);
+        return status;
+    }
+
+    // destroy context first
+    status = mHwImageEncoder->destroyContext();
+    if (status != NO_ERROR) {
+        LOGW("destroy context failed, try to create new context");
+    }
+    // create new context
     status = mHwImageEncoder->createContext(imgSeq, &mMaxOutJpegBufSize);
-    if (status != 0) {
-        LOGE("createContext failed");
-        return -1;
+    if (status != NO_ERROR) {
+        LOGE("failed to creat new context");
+        return UNKNOWN_ERROR;
     }
-    return 0;
+    mContextRestoreNeeded = true;
+
+    return status;
 }
 
 /**
- *  Restores the context with the buffers originally allocated by PictureThread
- *  that were passed to encoder in setInputBuffers()
- *  This method is only needed if a context was reset. This is track by the boolean
- *  member mContextRestoreNeeded.
+ * Finalize the previous dynamic buffer handling.
+ * This method must be called if we hanlded a dynamic buffer before.
+ * The condition could be if mDynamicImageSeq is valid.
+ * Restore the context if needed.
  *
- *  \return 0 on success
- *  \return -1 on failure
+ *  \return NO_ERROR on success
  */
-int JpegHwEncoder::restoreContext()
+status_t JpegHwEncoder::finalizeDynamicBuffer()
 {
     LOG1("@%s", __FUNCTION__);
-    int status = 0;
-    //destroy context if there is one before
+    status_t status = NO_ERROR;
+
+    // destroy surface
+    if (mDynamicImageSeq != ERROR_POINTER_NOT_FOUND) {
+        status = mHwImageEncoder->destroySourceSurface(mDynamicImageSeq);
+        if (status != NO_ERROR) {
+            LOGW("failed to destroy surface:%d", mDynamicImageSeq);
+        }
+        mDynamicImageSeq = ERROR_POINTER_NOT_FOUND;
+    }
+
+    if (!mContextRestoreNeeded) {
+        LOG1("%s no need to restore context", __FUNCTION__);
+        return status;
+    }
+
+    mContextRestoreNeeded = false;
+    // destroy temporary context
     status = mHwImageEncoder->destroyContext();
-    if (status != 0) {
+    if (status != NO_ERROR) {
         LOGW("destroy context failed");
     }
-    //destroy surface
-    if (singelSeq != ERROR_POINTER_NOT_FOUND) {
-        status = mHwImageEncoder->destroySourceSurface(singelSeq);
-        if (status != 0) {
-            LOGW("destroy surface failed");
-        }
-    }
-    //surfaces for multi buffer create in setInputBuffers aren't been destroyed, so there is no need to recreate.
-    //create context
-    if (firstImageSeq != ERROR_POINTER_NOT_FOUND) {
-        status = mHwImageEncoder->createContext(firstImageSeq, &mMaxOutJpegBufSize);
+    // create context if needed
+    if (mFirstImageSeq != ERROR_POINTER_NOT_FOUND) {
+        status = mHwImageEncoder->createContext(mFirstImageSeq, &mMaxOutJpegBufSize);
         if (status != 0) {
             LOGE("createContext failed");
             return -1;
@@ -421,5 +459,4 @@ int JpegHwEncoder::restoreContext()
     return status;
 }
 
-
-}
+} // namespace android
