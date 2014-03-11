@@ -549,7 +549,6 @@ private:
 
     // Sensor helper fields
     Vector <v4l2_fmtdesc>    mSensorSupportedFormats;     /*!< List of V4L2 pixel format supported by the sensor */
-    int                      mRawBayerFormat;
     bool mFlashIsOn;                                    //!< Used in corrupt statistics detection to avoid dropping
                                                         // stats when flash is used */
 }; // class AtomISP

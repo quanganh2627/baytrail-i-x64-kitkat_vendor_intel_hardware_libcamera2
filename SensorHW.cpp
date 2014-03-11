@@ -34,6 +34,7 @@ SensorHW::SensorHW(int cameraId):
     mCameraId(cameraId),
     mStarted(false),
     mInitialModeDataValid(false),
+    mRawBayerFormat(V4L2_PIX_FMT_SBGGR10),
     mFrameSyncEnabled(false),
     mCssVersion(0),
     mActiveItemIndex(0),
