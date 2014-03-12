@@ -70,6 +70,12 @@ private:
         MESSAGE_ID_MAX
     };
 
+    enum mFpsThrottleState {
+        FPS_THROTTLE_DISABLE = 0,
+        FPS_THROTTLE_ENABLE,
+        FPS_THROTTLE_SUCCESS
+    };
+
     // message id and message data
     struct Message {
         MessageId id;
