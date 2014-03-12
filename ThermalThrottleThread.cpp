@@ -47,6 +47,7 @@ status_t ThermalThrottleThread::openThermalThrottle()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+
     if ((mNotifyFd = ::open(SYSFS_THERMAL_THROTTLE_NOTIFY, O_RDONLY)) < 0)
     {
         LOGW("Unable to open notify: %s", strerror(errno));
@@ -157,7 +158,7 @@ status_t ThermalThrottleThread::handleNotify()
             //if setting FPS success, notice the thermal Throttling module
             if(status == NO_ERROR) {
                 memset(attrData, 0, ATTR_LEN);
-                sprintf(attrData, "%d", SUCCESS);
+                sprintf(attrData, "%d", FPS_THROTTLE_SUCCESS);
                 count = ::write(mHandshakeFd, attrData, 1);
             }
         }
@@ -194,8 +195,15 @@ status_t ThermalThrottleThread::handleMessageExit()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    char attrData[ATTR_LEN];
+
     mThreadRunning = false;
     if (mMonitoring) {
+        //Disable fps throttle.
+        memset(attrData, 0, ATTR_LEN);
+        sprintf(attrData, "%d", FPS_THROTTLE_DISABLED);
+        ::write(mHandshakeFd, attrData, 2);
+
         closeThermalThrottle();
         mMonitoring = false;
     }
@@ -207,6 +215,8 @@ status_t ThermalThrottleThread::handleMessageStartMonitoring()
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    char attrData[ATTR_LEN];
+
     if (mMonitoring)
         return INVALID_OPERATION;
 
@@ -216,6 +226,32 @@ status_t ThermalThrottleThread::handleMessageStartMonitoring()
         mMonitoring = true;
     }
 
+    //set the default throttling fps first.
+    memset(attrData, 0, ATTR_LEN);
+    ::lseek(mNotifyFd, 0, SEEK_SET);
+    int count = ::read(mNotifyFd, attrData, ATTR_LEN - 1);
+    if (count > 0) {
+        //attr_Data is percentage of frame rate.
+        int fps_percent;
+        sscanf(attrData, "%d", &fps_percent);
+        LOG2("mFps: %d, fps_percent: %d", mFps, fps_percent);
+        if(fps_percent > 0 && fps_percent < 100 && mSensorCI != NULL) {
+            LOG2("fps changed as per thermal request.");
+            int fps = mFps * fps_percent / 100;
+            status = mSensorCI->setFramerate(fps);
+            //if setting FPS failed, reset the notify to default.
+            if(status != NO_ERROR) {
+                memset(attrData, 0, ATTR_LEN);
+                sprintf(attrData, "%d", DEFAULT_FPS_PERCENT);
+                count = ::write(mNotifyFd, attrData, 1);
+            }
+        }
+    }
+
+    memset(attrData, 0, ATTR_LEN);
+    sprintf(attrData, "%d", FPS_THROTTLE_ENABLED);
+    count = ::write(mHandshakeFd, attrData, 1);
+
     monitorNotify();
     return status;
 }
@@ -224,8 +260,14 @@ status_t ThermalThrottleThread::handleMessageStopMonitoring()
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    char attrData[ATTR_LEN];
+
     if (!mMonitoring)
         return INVALID_OPERATION;
+
+    memset(attrData, 0, ATTR_LEN);
+    sprintf(attrData, "%d", FPS_THROTTLE_DISABLED);
+    ::write(mHandshakeFd, attrData, 1);
 
     status = closeThermalThrottle();
     mMonitoring = false;

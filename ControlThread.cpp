@@ -2013,7 +2013,9 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
         // start monitoring the thermal throttle notify when recording in 60fps or
         // stop monitoring in normal fps case
-        if (mISP->getRecordingFramerate() > DEFAULT_RECORDING_FPS) {
+        mParameters.getVideoSize(&width, &height);
+        if (mISP->getRecordingFramerate() > DEFAULT_RECORDING_FPS
+                        && height == RESOLUTION_1080P_HEIGHT) {
             mThermalThrottleThread->startMonitoring();
         } else if (mThermalThrottleThread->isMonitoring()) {
             mThermalThrottleThread->stopMonitoring();
@@ -6226,6 +6228,7 @@ status_t ControlThread::processParamRecordingFramerate(const CameraParameters *o
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    int width, height;
 
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_RECORDING_FRAME_RATE);
@@ -6233,6 +6236,12 @@ status_t ControlThread::processParamRecordingFramerate(const CameraParameters *o
     if (!newVal.isEmpty()) {
         int fps = newParams->getInt(IntelCameraParameters::KEY_RECORDING_FRAME_RATE);
         LOG1("Got new recording fps: %d", fps);
+        // stop monitoring if not in 1080p@60fps case.
+        mParameters.getVideoSize(&width, &height);
+        if ((fps <= DEFAULT_RECORDING_FPS || height != RESOLUTION_1080P_HEIGHT) &&
+                mThermalThrottleThread->isMonitoring())
+            mThermalThrottleThread->stopMonitoring();
+
         mISP->setRecordingFramerate(fps);
     }
     return status;

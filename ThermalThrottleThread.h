@@ -70,6 +70,12 @@ private:
         MESSAGE_ID_MAX
     };
 
+    enum mFpsThrottleState {
+        FPS_THROTTLE_DISABLED = 0,
+        FPS_THROTTLE_ENABLED,
+        FPS_THROTTLE_SUCCESS
+    };
+
     // message id and message data
     struct Message {
         MessageId id;
@@ -100,8 +106,8 @@ private:
 private:
     static const char SYSFS_THERMAL_THROTTLE_NOTIFY[];
     static const char SYSFS_THERMAL_THROTTLE_HANDSHAKE[];
-    static const int SUCCESS = 1;
     static const int ATTR_LEN = 16;
+    static const int DEFAULT_FPS_PERCENT = 100;
     static const int THERMAL_THROTTLE_POLL_TIMEOUT = 500;
 
 // private data
