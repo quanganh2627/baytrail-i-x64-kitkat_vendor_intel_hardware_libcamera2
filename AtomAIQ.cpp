@@ -1672,7 +1672,7 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct)
 
     PERFORMANCE_TRACES_AAA_PROFILER_START();
     ret = mISP->getIspStatistics(m3aState.stats);
-    if (ret == EAGAIN) {
+    if (ret == -EAGAIN) {
         LOGV("buffer for isp statistics reallocated according resolution changing\n");
         if (changeSensorMode() == false)
             LOGE("error in calling changeSensorMode()\n");

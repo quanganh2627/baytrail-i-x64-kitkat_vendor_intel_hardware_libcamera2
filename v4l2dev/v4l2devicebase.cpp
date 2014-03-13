@@ -111,8 +111,10 @@ int V4L2DeviceBase::xioctl(int request, void *arg) const
         ret = ioctl (mFd, request, arg);
     } while (-1 == ret && EINTR == errno);
 
-    if (ret < 0)
+    if (ret < 0) {
         LOGW ("%s: Request 0x%x failed: %s", __FUNCTION__, request, strerror(errno));
+        ret = -errno;
+    }
 
     return ret;
 }
