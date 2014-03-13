@@ -117,6 +117,7 @@ enum FrameBufferStatus {
     FRAME_STATUS_FLASH_PARTIAL = ATOMISP_FRAME_STATUS_FLASH_PARTIAL,
     FRAME_STATUS_FLASH_FAILED = ATOMISP_FRAME_STATUS_FLASH_FAILED,
     FRAME_STATUS_SKIPPED,
+    FRAME_STATUS_MASK = 0x0000ffff, /*!< Use low 16bit of v4l2_buffer.reserved for status*/
 };
 
 /*!\enum AtomBufferType
