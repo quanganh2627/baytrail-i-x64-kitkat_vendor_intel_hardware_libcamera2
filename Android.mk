@@ -50,11 +50,13 @@ LOCAL_SRC_FILES := \
 	CameraAreas.cpp \
 	BracketManager.cpp \
 	GPUScaler.cpp \
+	GPUWarper.cpp \
 	AtomAcc.cpp \
 	ThermalThrottleThread.cpp \
 	AtomIspObserverManager.cpp \
 	SensorThread.cpp \
 	ScalerService.cpp \
+	WarperService.cpp \
 	PostCaptureThread.cpp \
 	AccManagerThread.cpp \
 	SensorHW.cpp \

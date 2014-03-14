@@ -116,6 +116,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mPostProcThread(NULL)
     ,mPanoramaThread(NULL)
     ,mScalerService(NULL)
+    ,mWarperService(NULL)
     ,mBracketManager(NULL)
     ,mPostCaptureThread(NULL)
     ,mAccManagerThread(NULL)
@@ -192,6 +193,12 @@ status_t ControlThread::init()
     mScalerService = new ScalerService();
     if (mScalerService == NULL) {
         LOGE("error creating ScalerService");
+        goto bail;
+    }
+
+    mWarperService = new WarperService();
+    if (mWarperService == NULL) {
+        LOGE("error creating WarperService");
         goto bail;
     }
 
@@ -357,6 +364,11 @@ status_t ControlThread::init()
     status = mScalerService->run("CamHAL_SCALER");
     if (status != NO_ERROR) {
         LOGE("Error starting scaler service!");
+        goto bail;
+    }
+    status = mWarperService->run("CamHAL_WARPER");
+    if (status != NO_ERROR) {
+        LOGE("Error starting warper service!");
         goto bail;
     }
     status = m3AThread->run("CamHAL_3A");
@@ -558,6 +570,11 @@ void ControlThread::deinit()
     if (mScalerService != NULL) {
         mScalerService->requestExitAndWait();
         mScalerService.clear();
+    }
+
+    if (mWarperService != NULL) {
+        mWarperService->requestExitAndWait();
+        mWarperService.clear();
     }
 
     if (mULL != NULL) {
