@@ -445,6 +445,22 @@ const char* PlatformData::supportedStepSaturation(int cameraId)
     return getInstance()->mCameras[cameraId].stepSaturation;
 }
 
+int PlatformData::lowSaturation(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return 0;
+    }
+    return getInstance()->mCameras[cameraId].lowSaturation;
+}
+
+int PlatformData::highSaturation(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return 0;
+    }
+    return getInstance()->mCameras[cameraId].highSaturation;
+}
+
 const char* PlatformData::supportedMaxContrast(int cameraId)
 {
     const char *sPtr;
@@ -510,6 +526,22 @@ const char* PlatformData::supportedStepContrast(int cameraId)
     return getInstance()->mCameras[cameraId].stepContrast;
 }
 
+int PlatformData::softContrast(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return 0;
+    }
+    return getInstance()->mCameras[cameraId].softContrast;
+}
+
+int PlatformData::hardContrast(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return 0;
+    }
+    return getInstance()->mCameras[cameraId].hardContrast;
+}
+
 const char* PlatformData::supportedMaxSharpness(int cameraId)
 {
     const char *sPtr;
@@ -573,6 +605,22 @@ const char* PlatformData::supportedStepSharpness(int cameraId)
         return "";
     }
     return getInstance()->mCameras[cameraId].stepSharpness;
+}
+
+int PlatformData::softSharpness(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return 0;
+    }
+    return getInstance()->mCameras[cameraId].softSharpness;
+}
+
+int PlatformData::hardSharpness(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return 0;
+    }
+    return getInstance()->mCameras[cameraId].hardSharpness;
 }
 
 const char* PlatformData::supportedFlashModes(int cameraId)

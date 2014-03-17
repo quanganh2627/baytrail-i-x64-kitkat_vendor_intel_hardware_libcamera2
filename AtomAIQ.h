@@ -413,6 +413,11 @@ public:
                              const void *record,
                              unsigned short record_size);
 
+    // Saturation, Sharpness, Contrast
+    status_t setSaturation(char saturation);
+    status_t setSharpness(char sharpness);
+    status_t setContrast(char contrast);
+
 // private members
 private:
     IHWIspControl *mISP;

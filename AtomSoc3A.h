@@ -140,6 +140,10 @@ public:
     status_t setFlash(int numFrames);
     virtual bool getAeUllTrigger() { return false; }
 
+    // Saturation, Sharpness, Contrast
+    virtual status_t setSaturation(char saturation) { return INVALID_OPERATION; }
+    virtual status_t setSharpness(char sharpness) { return INVALID_OPERATION; }
+    virtual status_t setContrast(char contrast) { return INVALID_OPERATION; }
 private:
     int mCameraId;
     IHWIspControl * mISP;

@@ -1066,6 +1066,30 @@ status_t AtomAIQ::setManualShutter(float expTime)
     return NO_ERROR;
 }
 
+// Saturation
+status_t AtomAIQ::setSaturation(char saturation)
+{
+    LOG1("@%s - %d", __FUNCTION__, saturation);
+    mIspInputParams.manual_saturation = saturation;
+    return NO_ERROR;
+}
+
+// Sharpness,
+status_t AtomAIQ::setSharpness(char sharpness)
+{
+    LOG1("@%s - %d", __FUNCTION__, sharpness)
+    mIspInputParams.manual_sharpness = sharpness;
+    return NO_ERROR;
+}
+
+// Contrast
+status_t AtomAIQ::setContrast(char contrast)
+{
+    LOG1("@%s - %d", __FUNCTION__, contrast)
+    mIspInputParams.manual_contrast = contrast;
+    return NO_ERROR;
+}
+
 status_t AtomAIQ::setIsoMode(IsoMode mode)
 {
     LOG1("@%s - %d", __FUNCTION__, mode);
@@ -2257,10 +2281,7 @@ status_t AtomAIQ::runAICMain()
 
         mIspInputParams.pa_results = pa_results;
         mIspInputParams.manual_brightness = 0;
-        mIspInputParams.manual_contrast = 0;
         mIspInputParams.manual_hue = 0;
-        mIspInputParams.manual_saturation = 0;
-        mIspInputParams.manual_sharpness = 0;
 
         ret = mISPAdaptor->calculateIspParams(&mIspInputParams, &((m3aState.results).isp_output));
 
@@ -2599,7 +2620,7 @@ ia_err IaIsp22::calculateIspParams(const ispInputParameters *isp_input_params,
     mIaIsp22InputParams.nr_setting.feature_level = ia_isp_feature_level_high;
     mIaIsp22InputParams.nr_setting.strength = 0;
     mIaIsp22InputParams.ee_setting.feature_level = ia_isp_feature_level_high;
-    mIaIsp22InputParams.ee_setting.strength = 0;
+    mIaIsp22InputParams.ee_setting.strength = isp_input_params->manual_sharpness;
     mIaIsp22InputParams.effects = isp_input_params->effects;
 
     return ia_isp_2_2_run(mIspHandle, &mIaIsp22InputParams, output_data);
