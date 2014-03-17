@@ -1754,6 +1754,10 @@ status_t AtomISP::configureContinuousVideo()
     float capture_fps;
     status_t status = NO_ERROR;
 
+    // continuous mode does not support low_light mode capture
+    setLowLight(false);
+    updateCaptureParams();
+
     ret = configureContinuousMode(true);
     if (ret != NO_ERROR) {
         LOGE("setting continuous mode failed");
