@@ -5718,19 +5718,31 @@ status_t ControlThread::processParamContrast(const CameraParameters *oldParams,
         CameraParameters *newParams)
 {
     LOG1("@%s", __FUNCTION__);
-    int value;
     status_t status = NO_ERROR;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_CONTRAST_MODE);
     if (!newVal.isEmpty()) {
-        if (!strcmp(newVal.string(), IntelCameraParameters::CONTRAST_MODE_SOFT))
-            value = EXIF_CONTRAST_SOFT;
-        else if (!strcmp(newVal.string(), IntelCameraParameters::CONTRAST_MODE_HARD))
-            value = EXIF_CONTRAST_HARD;
-        else
-            value = EXIF_CONTRAST_NORMAL;
+        if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+            char value;
+            if (!strcmp(newVal.string(), IntelCameraParameters::CONTRAST_MODE_SOFT))
+                value = PlatformData::softContrast(mCameraId);
+            else if (!strcmp(newVal.string(), IntelCameraParameters::CONTRAST_MODE_HARD))
+                value = PlatformData::hardContrast(mCameraId);
+            else
+                value = 0;
 
-        mISP->setContrast(value);
+            m3AControls->setContrast(value);
+        } else {
+            int value;
+            if (!strcmp(newVal.string(), IntelCameraParameters::CONTRAST_MODE_SOFT))
+                value = EXIF_CONTRAST_SOFT;
+            else if (!strcmp(newVal.string(), IntelCameraParameters::CONTRAST_MODE_HARD))
+                value = EXIF_CONTRAST_HARD;
+            else
+                value = EXIF_CONTRAST_NORMAL;
+
+            mISP->setContrast(value);
+        }
     }
     return status;
 }
@@ -5739,19 +5751,31 @@ status_t ControlThread::processParamSaturation(const CameraParameters *oldParams
         CameraParameters *newParams)
 {
     LOG1("@%s", __FUNCTION__);
-    int value;
     status_t status = NO_ERROR;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_SATURATION_MODE);
     if (!newVal.isEmpty()) {
-        if (!strcmp(newVal.string(), IntelCameraParameters::SATURATION_MODE_LOW))
-            value = EXIF_SATURATION_LOW;
-        else if (!strcmp(newVal.string(), IntelCameraParameters::SATURATION_MODE_HIGH))
-            value = EXIF_SATURATION_HIGH;
-        else
-            value = EXIF_SATURATION_NORMAL;
+        if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+            char value;
+            if (!strcmp(newVal.string(), IntelCameraParameters::SATURATION_MODE_LOW))
+                value = PlatformData::lowSaturation(mCameraId);
+            else if (!strcmp(newVal.string(), IntelCameraParameters::SATURATION_MODE_HIGH))
+                value = PlatformData::highSaturation(mCameraId);
+            else
+                value = 0;
 
-        mISP->setSaturation(value);
+            m3AControls->setSaturation(value);
+        } else {
+            int value;
+            if (!strcmp(newVal.string(), IntelCameraParameters::SATURATION_MODE_LOW))
+                value = EXIF_SATURATION_LOW;
+            else if (!strcmp(newVal.string(), IntelCameraParameters::SATURATION_MODE_HIGH))
+                value = EXIF_SATURATION_HIGH;
+            else
+                value = EXIF_SATURATION_NORMAL;
+
+            mISP->setSaturation(value);
+        }
     }
     return status;
 }
@@ -5760,19 +5784,31 @@ status_t ControlThread::processParamSharpness(const CameraParameters *oldParams,
         CameraParameters *newParams)
 {
     LOG1("@%s", __FUNCTION__);
-    int value;
     status_t status = NO_ERROR;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_SHARPNESS_MODE);
     if (!newVal.isEmpty()) {
-        if (!strcmp(newVal.string(), IntelCameraParameters::SHARPNESS_MODE_SOFT))
-            value = EXIF_SHARPNESS_SOFT;
-        else if (!strcmp(newVal.string(), IntelCameraParameters::SHARPNESS_MODE_HARD))
-            value = EXIF_SHARPNESS_HARD;
-        else
-            value = EXIF_SHARPNESS_NORMAL;
+        if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+            char value;
+            if (!strcmp(newVal.string(), IntelCameraParameters::SHARPNESS_MODE_SOFT))
+                value = PlatformData::softSharpness(mCameraId);
+            else if (!strcmp(newVal.string(), IntelCameraParameters::SHARPNESS_MODE_HARD))
+                value = PlatformData::hardSharpness(mCameraId);
+            else
+                value = 0;
 
-        mISP->setSharpness(value);
+            m3AControls->setSharpness(value);
+        } else {
+            int value;
+            if (!strcmp(newVal.string(), IntelCameraParameters::SHARPNESS_MODE_SOFT))
+                value = EXIF_SHARPNESS_SOFT;
+            else if (!strcmp(newVal.string(), IntelCameraParameters::SHARPNESS_MODE_HARD))
+                value = EXIF_SHARPNESS_HARD;
+            else
+                value = EXIF_SHARPNESS_NORMAL;
+
+            mISP->setSharpness(value);
+        }
     }
     return status;
 }

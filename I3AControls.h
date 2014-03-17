@@ -206,6 +206,11 @@ public:
     virtual status_t setAfWindows(const CameraWindow *windows, size_t numWindows) = 0;
     virtual status_t setAeFlickerMode(FlickerMode mode) = 0;
 
+    // Saturation, Sharpness, Contrast
+    virtual status_t setSaturation(char saturation) = 0;
+    virtual status_t setSharpness(char sharpness) = 0;
+    virtual status_t setContrast(char contrast) = 0;
+
     // Intel 3A specific
     virtual bool isIntel3A() = 0;
     virtual status_t getAiqConfig(ia_binary_data *cpfData) = 0;

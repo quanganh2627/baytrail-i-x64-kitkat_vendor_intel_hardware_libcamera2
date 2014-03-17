@@ -339,6 +339,30 @@ status_t validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
+    // CONTRAST
+    const char* contrastMode = params->get(IntelCameraParameters::KEY_CONTRAST_MODE);
+    const char* contrastModes = params->get(IntelCameraParameters::KEY_SUPPORTED_CONTRAST_MODES);
+    if (!validateString(contrastMode, contrastModes)) {
+        LOGE("bad contrast mode: %s", contrastMode);
+        return BAD_VALUE;
+    }
+
+    // SATURATION
+    const char* saturationMode = params->get(IntelCameraParameters::KEY_SATURATION_MODE);
+    const char* saturationModes = params->get(IntelCameraParameters::KEY_SUPPORTED_SATURATION_MODES);
+    if (!validateString(saturationMode, saturationModes)) {
+        LOGE("bad saturation mode: %s", saturationMode);
+        return BAD_VALUE;
+    }
+
+    // SHARPNESS
+    const char* sharpnessmode = params->get(IntelCameraParameters::KEY_SHARPNESS_MODE);
+    const char* sharpnessmodes = params->get(IntelCameraParameters::KEY_SUPPORTED_SHARPNESS_MODES);
+    if (!validateString(sharpnessmode, sharpnessmodes)) {
+        LOGE("bad sharpness mode: %s", sharpnessmode);
+        return BAD_VALUE;
+    }
+
     return NO_ERROR;
 }
 

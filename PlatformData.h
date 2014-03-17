@@ -369,6 +369,22 @@ class PlatformData {
     static const char* supportedStepSaturation(int cameraId);
 
     /**
+     * Saturation low mode value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the saturation low mode as a integer.
+     */
+    static int lowSaturation(int cameraId);
+
+    /**
+     * Saturation high mode value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the saturation high mode as a integer.
+     */
+    static int highSaturation(int cameraId);
+
+    /**
      * Contrast default value
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
@@ -409,6 +425,22 @@ class PlatformData {
     static const char* supportedStepContrast(int cameraId);
 
     /**
+     * Contrast soft mode value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the contrast soft mode as a integer.
+     */
+    static int softContrast(int cameraId);
+
+    /**
+     * Contrast hard mode value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the contrast hard mode as a integer.
+     */
+    static int hardContrast(int cameraId);
+
+    /**
      * Sharpness default value
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
@@ -447,6 +479,22 @@ class PlatformData {
      * \return the value of the sharpness step as a string.
      */
     static const char* supportedStepSharpness(int cameraId);
+
+    /**
+     * Sharpness soft mode value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the sharpness soft mode as a integer.
+     */
+    static int softSharpness(int cameraId);
+
+    /**
+     * Sharpness hard mode value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the sharpness hard mode as a integer.
+     */
+    static int hardSharpness(int cameraId);
 
     /**
      * Flash mode supported value
@@ -1046,18 +1094,24 @@ protected:
             stepSaturation = "";
             defaultSaturation = "";
             supportedSaturation = "";
+            lowSaturation = 0;
+            highSaturation = 0;
             //Contrast
             maxContrast = "";
             minContrast = "";
             stepContrast = "";
             defaultContrast = "";
             supportedContrast = "";
+            softContrast = 0;
+            hardContrast = 0;
             //Sharpness
             maxSharpness = "";
             minSharpness = "";
             stepSharpness = "";
             defaultSharpness = "";
             supportedSharpness = "";
+            softSharpness = 0;
+            hardSharpness = 0;
             //FlashMode
             supportedFlashModes.appendFormat("%s,%s,%s,%s"
                 ,CameraParameters::FLASH_MODE_AUTO
@@ -1196,18 +1250,24 @@ protected:
         String8 stepSaturation;
         String8 defaultSaturation;
         String8 supportedSaturation;
+        int lowSaturation;
+        int highSaturation;
         // contrast
         String8 maxContrast;
         String8 minContrast;
         String8 stepContrast;
         String8 defaultContrast;
         String8 supportedContrast;
+        int softContrast;
+        int hardContrast;
         // sharpness
         String8 maxSharpness;
         String8 minSharpness;
         String8 stepSharpness;
         String8 defaultSharpness;
         String8 supportedSharpness;
+        int softSharpness;
+        int hardSharpness;
         // flash
         String8 supportedFlashModes;
         String8 defaultFlashMode;

@@ -249,6 +249,10 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->defaultSaturation = atts[1];
     } else if (strcmp(name, "supportedSaturation") == 0) {
         pCurrentCam->supportedSaturation = atts[1];
+    } else if (strcmp(name, "lowSaturation") == 0) {
+        pCurrentCam->lowSaturation = atoi(atts[1]);
+    } else if (strcmp(name, "highSaturation") == 0) {
+        pCurrentCam->highSaturation = atoi(atts[1]);
     } else if (strcmp(name, "maxContrast") == 0) {
         pCurrentCam->maxContrast = atts[1];
     } else if (strcmp(name, "minContrast") == 0) {
@@ -259,6 +263,10 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->defaultContrast = atts[1];
     } else if (strcmp(name, "supportedContrast") == 0) {
         pCurrentCam->supportedContrast = atts[1];
+    } else if (strcmp(name, "softContrast") == 0) {
+        pCurrentCam->softContrast = atoi(atts[1]);
+    } else if (strcmp(name, "hardContrast") == 0) {
+        pCurrentCam->hardContrast = atoi(atts[1]);
     } else if (strcmp(name, "maxSharpness") == 0) {
         pCurrentCam->maxSharpness = atts[1];
     } else if (strcmp(name, "minSharpness") == 0) {
@@ -269,6 +277,10 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->defaultSharpness = atts[1];
     } else if (strcmp(name, "supportedSharpness") == 0) {
         pCurrentCam->supportedSharpness = atts[1];
+    } else if (strcmp(name, "softSharpness") == 0) {
+        pCurrentCam->softSharpness = atoi(atts[1]);
+    } else if (strcmp(name, "hardSharpness") == 0) {
+        pCurrentCam->hardSharpness = atoi(atts[1]);
     } else if (strcmp(name, "defaultEffectMode") == 0) {
         pCurrentCam->defaultEffectMode = atts[1];
     } else if (strcmp(name, "supportedPreviewFrameRate") == 0) {
