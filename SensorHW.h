@@ -44,6 +44,7 @@ public:
     status_t stop();
     IObserverSubject* getFrameSyncSource() { return (IObserverSubject*) this; };
     nsecs_t getFrameTimestamp(nsecs_t event_ts);
+    status_t getIspDevicePath(char *fd, int size);
 
     /* IHWSensorControl overloads, */
     virtual const char * getSensorName(void);

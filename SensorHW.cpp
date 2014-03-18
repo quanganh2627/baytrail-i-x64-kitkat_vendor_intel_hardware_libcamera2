@@ -29,6 +29,7 @@ static sensorPrivateData gSensorDataCache[MAX_CAMERAS];
 static const int ADJUST_ESTIMATE_DELTA_THRESHOLD_US = 2000; // Threshold for adjusting frame timestamp estimate at real frame sync
 static const int MAX_EXPOSURE_HISTORY_SIZE = 10;
 static const int DEFAULT_EXPOSURE_DELAY = 2;
+static const char *ISP_SUBDEV_NAME = "ATOM ISP SUBDEV";
 
 SensorHW::SensorHW(int cameraId):
     mCameraId(cameraId),
@@ -212,6 +213,99 @@ status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
 }
 
 /**
+ * Find V4L2 ATOMISP subdevice
+ *
+ * In CSS2 there are multiple ATOMISP subdevices (dual stream).
+ * To find the correct one we travel through the pads and links
+ * exposed by Media Controller API.
+ */
+status_t SensorHW::getIspDevicePath(char *ispDevPath, int size)
+{
+    LOG1("@%s", __FUNCTION__);
+    int ret = 0;
+    int sinkPadIndex = -1;
+    status_t status = NO_ERROR;
+    char *sysName = new char[size];
+    char *devName = new char[size];
+    struct media_device_info mediaDeviceInfo;
+    struct media_entity_desc mediaEntityDesc;
+    struct media_entity_desc mediaEntityDescTmp;
+
+    sp<V4L2DeviceBase> mediaCtl = new V4L2DeviceBase("/dev/media0", 0);
+    status = mediaCtl->open();
+    if (status != NO_ERROR) {
+        LOGE("Failed to open media device");
+        goto exit_clean_mem;
+    }
+
+    if (!ispDevPath) {
+        status = UNKNOWN_ERROR;
+        LOGE("ispDevPath is NULL, return");
+        goto exit_clean_mem;
+    }
+
+    CLEAR(mediaDeviceInfo);
+    ret = mediaCtl->xioctl(MEDIA_IOC_DEVICE_INFO, &mediaDeviceInfo);
+    if (ret < 0) {
+        status = UNKNOWN_ERROR;
+        LOGE("Failed to get media device information");
+        goto exit;
+    }
+
+    status = findMediaEntityByName(mediaCtl, mCameraInput.name, mediaEntityDesc);
+    if (status != NO_ERROR) {
+        LOGE("Failed to find sensor subdevice");
+        goto exit;
+    }
+
+    while (status == NO_ERROR) {
+        CLEAR(mediaEntityDescTmp);
+        status = findConnectedEntity(mediaCtl, mediaEntityDesc, mediaEntityDescTmp, sinkPadIndex);
+        if (status != NO_ERROR) {
+            LOGE("Failed to find connections");
+            break;
+        }
+        mediaEntityDesc = mediaEntityDescTmp;
+        if (strncmp(mediaEntityDescTmp.name, ISP_SUBDEV_NAME, MAX_SENSOR_NAME_LENGTH) == 0) {
+            LOG1("Connected ISP subdevice found");
+            break;
+        }
+    }
+
+    if (status != NO_ERROR) {
+        LOGE("Unable to find connected ISP subdevice!");
+        goto exit;
+    }
+
+    sprintf(devName, "/sys/dev/char/%u:%u", mediaEntityDescTmp.v4l.major, mediaEntityDescTmp.v4l.minor);
+    ret = readlink(devName, sysName, size);
+    if (ret < 0) {
+        status = UNKNOWN_ERROR;
+        LOGE("Unable to find subdevice node");
+        goto exit;
+    } else {
+        sysName[ret] = 0;
+        char *lastSlash = strrchr(sysName, '/');
+        if (lastSlash == NULL) {
+            status = UNKNOWN_ERROR;
+            LOGE("Invalid sysfs subdev path devName %s sysName %s", devName, sysName);
+            goto exit;
+        }
+        sprintf(devName, "/dev/%s", lastSlash + 1);
+        LOG1("Subdevide node : %s", devName);
+        memcpy(ispDevPath, devName, size);
+    }
+
+exit:
+    mediaCtl->close();
+    mediaCtl.clear();
+exit_clean_mem:
+    delete[] sysName;
+    delete[] devName;
+    return status;
+}
+
+/**
  * Find and open V4L2 subdevices for direct access
  *
  * SensorHW class needs access to both sensor subdevice
@@ -280,7 +374,7 @@ status_t SensorHW::openSubdevices()
             break;
         }
         mediaEntityDesc = mediaEntityDescTmp;
-        if (strncmp(mediaEntityDescTmp.name, "ATOM ISP SUBDEV", MAX_SENSOR_NAME_LENGTH) == 0) {
+        if (strncmp(mediaEntityDescTmp.name, ISP_SUBDEV_NAME, MAX_SENSOR_NAME_LENGTH) == 0) {
             LOG1("Connected ISP subdevice found");
             break;
         }

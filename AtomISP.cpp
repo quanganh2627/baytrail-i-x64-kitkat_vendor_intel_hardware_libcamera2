@@ -149,7 +149,6 @@ status_t AtomISP::initDevice()
     mPreviewDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_PREVIEW_DEVICE], V4L2_PREVIEW_DEVICE);
     mPostViewDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_POSTVIEW_DEVICE], V4L2_POSTVIEW_DEVICE);
     mRecordingDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_RECORDING_DEVICE], V4L2_RECORDING_DEVICE);
-    m3AEventSubdevice = new V4L2Subdevice(PlatformData::getISPSubDeviceName(),V4L2_ISP_SUBDEV);
     mFileInjectDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_INJECT_DEVICE], V4L2_INJECT_DEVICE,
                                           V4L2VideoNode::OUTPUT_VIDEO_NODE);
 
@@ -179,6 +178,18 @@ status_t AtomISP::initDevice()
     initFileInject();
 
     mSensorHW.selectActiveSensor(mMainDevice);
+
+    /**
+     * open ATOMISP subdevice according to sensor
+     */
+    char ispDev[ISP_DEVICE_NAME_LENGTH_MAX];
+    status = mSensorHW.getIspDevicePath(ispDev, ISP_DEVICE_NAME_LENGTH_MAX);
+    if (status == NO_ERROR) {
+        m3AEventSubdevice = new V4L2Subdevice(ispDev, V4L2_ISP_SUBDEV);
+    } else {
+        LOGW("Failed to get isp device path! Failing back to XML config %s", PlatformData::getISPSubDeviceName());
+        m3AEventSubdevice = new V4L2Subdevice(PlatformData::getISPSubDeviceName(), V4L2_ISP_SUBDEV);
+    }
 
     mSensorType = PlatformData::sensorType(mCameraId);
     LOG1("Sensor type detected: %s", (mSensorType == SENSOR_TYPE_RAW)?"RAW":"SOC");
