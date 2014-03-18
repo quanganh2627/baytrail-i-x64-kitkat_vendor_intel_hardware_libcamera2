@@ -448,6 +448,7 @@ private:
     static const int sNumHALZSLBuffers = sMaxHALZSLBuffersHeldInHAL + 4;
     static const int sHALZSLRetryCount = 5;
     static const int sHALZSLRetryUSleep = 33000;
+    static const int ISP_DEVICE_NAME_LENGTH_MAX = 1024;
 
     bool mClientSnapshotBuffersCached;
     bool mUsingClientSnapshotBuffers;
