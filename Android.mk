@@ -150,11 +150,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libexpat \
 	libia_panorama \
 	libhardware \
-	libgnustl_shared \
 	libcilkrts \
-	libintlc \
-	libimf \
-	libsvml \
 	libia_face
 
 ifeq ($(USE_INTEL_METABUFFER),true)
@@ -183,10 +179,11 @@ LOCAL_STATIC_LIBRARIES := \
 	libcameranvm \
 	gdctool \
 	libia_coordinate \
+	libiacp \
 	libmorpho_image_stabilizer3
 
+# IPP libraries
 LOCAL_STATIC_LIBRARIES += \
-	libiacp \
 	libippi \
 	libipps \
 	libippcv \
@@ -194,6 +191,12 @@ LOCAL_STATIC_LIBRARIES += \
 	libippm \
 	libippvm \
 	libippcore
+
+# ICC libraries
+LOCAL_STATIC_LIBRARIES += \
+        libsvml_14_0 \
+        libimf \
+        libirc
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_CFLAGS += -DUSE_INTEL_JPEG
