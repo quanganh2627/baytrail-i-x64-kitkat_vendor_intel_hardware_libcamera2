@@ -540,6 +540,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     if(PlatformData::supportDualVideo())
     {
         intel_params->set(IntelCameraParameters::KEY_DUAL_VIDEO_SUPPORTED,"true");
+        intel_params->set(IntelCameraParameters::KEY_DUAL_VIDEO,"false");
     }
 
     /**

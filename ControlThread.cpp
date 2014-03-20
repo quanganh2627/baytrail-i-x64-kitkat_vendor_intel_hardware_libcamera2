@@ -141,6 +141,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mAELockFlashNeed(false)
     ,mPublicShutter(-1)
     ,mDvsEnable(false)
+    ,mDualVideo(false)
     ,mParamCache(NULL)
     ,mPreviewForceChanged(false)
     ,mCameraDump(NULL)
@@ -1729,6 +1730,12 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         goto online_preview;
     }
 
+    // Online mode for dual video
+    if (mDualVideo) {
+        LOG1("@%s: Dual video, disabling continuous mode", __FUNCTION__);
+        goto online_preview;
+    }
+
     LOG1("@%s: Selecting continuous still preview mode", __FUNCTION__);
     return STATE_CONTINUOUS_CAPTURE;
 
@@ -1787,6 +1794,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
          * 2. Currently bayer downcaling + yuv downscaling can not downscale to a too small size
          */
         mFullSizeSdv = PlatformData::isFullResSdvSupported(mCameraId) && // platform supported
+            !mDualVideo && // not dual video
             fps <= DEFAULT_RECORDING_FPS && // not high speed mode
             isFullSizeSdvSupportedVideoSize(width, height); // video size limitation
 
@@ -4367,6 +4375,23 @@ status_t ControlThread::ProcessOverlayEnable(const CameraParameters *oldParams,
     return status;
 }
 
+status_t ControlThread::processParamDualVideo(const CameraParameters *oldParams,
+        CameraParameters *newParams, bool &restartNeeded)
+{
+    LOG1("@%s restartNeeded:%d", __FUNCTION__, restartNeeded);
+    status_t status = NO_ERROR;
+
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, IntelCameraParameters::KEY_DUAL_VIDEO);
+    if (!newVal.isEmpty()) {
+        mDvsEnable = (newVal == CameraParameters::TRUE);
+        // Dual video only prefer online mode
+        if ((mDualVideo == true && (mState == STATE_CONTINUOUS_CAPTURE || mISP->getMode() == MODE_CONTINUOUS_VIDEO))
+                || (mDualVideo == false && (mState == STATE_PREVIEW_STILL || mState == STATE_CAPTURE)))
+            restartNeeded = true;
+    }
+    return status;
+}
+
 status_t ControlThread::processParamDvs(const CameraParameters *oldParams,
         CameraParameters *newParams)
 {
@@ -6458,6 +6483,8 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
         LOG1("Burst configuration changed, restarting preview");
         restartNeeded = true;
     }
+
+    status = processParamDualVideo(oldParams,newParams, restartNeeded);
 
     status = processParamDvs(oldParams,newParams);
 

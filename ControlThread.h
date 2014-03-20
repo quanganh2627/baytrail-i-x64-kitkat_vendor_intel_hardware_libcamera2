@@ -516,6 +516,8 @@ private:
     status_t processDynamicParameters(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamDvs(const CameraParameters *oldParams, CameraParameters *newParams);
+    status_t processParamDualVideo(const CameraParameters *oldParams,
+            CameraParameters *newParams, bool &restartPreview);
     status_t processParamBurst(const CameraParameters *oldParams,
                 CameraParameters *newParams);
     status_t processParamFlash(const CameraParameters *oldParams,
@@ -744,6 +746,7 @@ private:
     float mPublicShutter;       /* Shutter set by application */
 
     bool mDvsEnable;
+    bool mDualVideo;
 
     Mutex mParamCacheLock;
     char* mParamCache;

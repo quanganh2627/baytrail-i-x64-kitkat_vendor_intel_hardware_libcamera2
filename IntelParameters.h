@@ -197,6 +197,7 @@ namespace android {
     static const char KEY_SUPPORTED_HIGH_SPEED_RESOLUTION_FPS[];
 
     // dual video
+    static const char KEY_DUAL_VIDEO[];
     static const char KEY_DUAL_VIDEO_SUPPORTED[];
 
     // Time nudge
