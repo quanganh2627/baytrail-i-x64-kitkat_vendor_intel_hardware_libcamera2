@@ -93,6 +93,7 @@ public:
     status_t newFrame(AtomBuffer* b);
     status_t newStats(timeval &t, unsigned int seqNo);
     status_t applyRedEyeRemoval(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer, int width, int height, int fourcc);
+    status_t switchModeAndRate(AtomMode mode, float fps);
     status_t setFaces(const ia_face_state& faceState);
     int32_t getFaceNum(void) const;
     status_t getFaces(ia_face_state& faceState) const;
@@ -115,6 +116,7 @@ private:
         MESSAGE_ID_ENABLE_AE_LOCK,
         MESSAGE_ID_ENABLE_AWB_LOCK,
         MESSAGE_ID_FLASH_STAGE,
+        MESSAGE_ID_SWITCH_MODE_AND_RATE,
         // max number of messages
         MESSAGE_ID_MAX
     };
@@ -152,6 +154,12 @@ private:
         unsigned int    sequence_number;
     };
 
+    // for MESSAGE_ID_SWITCH_MODE_AND_RATE
+    struct MessageSwitchInfo {
+        AtomMode mode;
+        float fps;
+    };
+
     // union of all message data
     union MessageData {
         MessageEnable enable;
@@ -159,6 +167,7 @@ private:
         MessageNewStats stats;
         MessageNewFrame frame;
         MessageFlashStage flashStage;
+        MessageSwitchInfo switchInfo;
     };
 
     // message id and message data
@@ -181,6 +190,7 @@ private:
     status_t handleMessageEnableAeLock(MessageEnable* msg);
     status_t handleMessageEnableAwbLock(MessageEnable* msg);
     status_t handleMessageFlashStage(MessageFlashStage* msg);
+    status_t handleMessageSwitchModeAndRate(MessageSwitchInfo *msg);
 
     // Miscellaneous helper methods
     void updateULLTrigger(void);

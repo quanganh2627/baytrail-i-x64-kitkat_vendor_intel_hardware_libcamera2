@@ -223,6 +223,18 @@ status_t AAAThread::newFrame(AtomBuffer *b)
     return status;
 }
 
+status_t AAAThread::switchModeAndRate(AtomMode mode, float fps)
+{
+    LOG2("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    Message msg;
+    msg.id = MESSAGE_ID_SWITCH_MODE_AND_RATE;
+    msg.data.switchInfo.mode = mode;
+    msg.data.switchInfo.fps = fps;
+    status = mMessageQueue.send(&msg, MESSAGE_ID_SWITCH_MODE_AND_RATE);
+    return status;
+}
+
 status_t AAAThread::setFaces(const ia_face_state& faceState)
 {
     LOG2("@%s", __FUNCTION__);
@@ -694,6 +706,16 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
     return status;
 }
 
+status_t AAAThread::handleMessageSwitchModeAndRate(MessageSwitchInfo *msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    status = m3AControls->switchModeAndRate(msg->mode, msg->fps);
+    mMessageQueue.reply(MESSAGE_ID_SWITCH_MODE_AND_RATE, status);
+    return status;
+}
+
 void AAAThread::getCurrentSmartScene(String8 &sceneMode, bool &sceneHdr)
 {
     LOG1("@%s", __FUNCTION__);
@@ -767,6 +789,10 @@ status_t AAAThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_FLASH_STAGE:
             status = handleMessageFlashStage(&msg.data.flashStage);
+            break;
+
+        case MESSAGE_ID_SWITCH_MODE_AND_RATE:
+            status = handleMessageSwitchModeAndRate(&msg.data.switchInfo);
             break;
 
         default:

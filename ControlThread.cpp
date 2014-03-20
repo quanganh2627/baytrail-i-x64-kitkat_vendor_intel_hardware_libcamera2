@@ -1894,7 +1894,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         // Enable auto-focus by default
         m3AControls->setAfEnabled(true);
         m3AThread->enable3A();
-        if (m3AControls->switchModeAndRate(mode, mHwcg.mSensorCI->getFramerate()) != NO_ERROR)
+        if (m3AThread->switchModeAndRate(mode, mHwcg.mSensorCI->getFramerate()) != NO_ERROR)
             LOGE("Failed switching 3A at %.2f fps", mHwcg.mSensorCI->getFramerate());
 
 
@@ -2897,8 +2897,10 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
             return status;
         }
 
-        if (m3AControls->switchModeAndRate(MODE_CAPTURE, mHwcg.mSensorCI->getFramerate()) != NO_ERROR)
+        if (m3AControls->isIntel3A()
+            && (m3AThread->switchModeAndRate(MODE_CAPTURE, mHwcg.mSensorCI->getFramerate()) != NO_ERROR)) {
             LOGE("Failed to switch 3A to capture mode at %.2f fps",mHwcg.mSensorCI->getFramerate());
+        }
 
         if ((status = mISP->start()) != NO_ERROR) {
             LOGE("Error starting the ISP driver in CAPTURE mode!");
@@ -3359,8 +3361,10 @@ status_t ControlThread::captureStillPic()
             return status;
         }
 
-        if (m3AControls->switchModeAndRate(MODE_CAPTURE, mHwcg.mSensorCI->getFramerate()) != NO_ERROR)
-            LOGE("Failed to switch 3A to capture mode at %.2f fps", mHwcg.mSensorCI->getFramerate());
+        if (m3AControls->isIntel3A()
+            && (m3AThread->switchModeAndRate(MODE_CAPTURE, mHwcg.mSensorCI->getFramerate()) != NO_ERROR)) {
+            LOGE("Failed to switch 3A to capture mode at %.2f fps",mHwcg.mSensorCI->getFramerate());
+        }
         if ((status = mISP->start()) != NO_ERROR) {
             LOGE("Error starting the ISP driver in CAPTURE mode");
             return status;
