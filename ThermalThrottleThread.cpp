@@ -24,7 +24,7 @@ namespace android {
 #define SYSFS_THERMAL_THROTTLE_HANDSHAKE  "/sys/fps_throttle/handshake"
 #define DEFAULT_FPS_PERCENT 100
 #define ATTR_LEN 16
-#define THERMAL_THROTTLE_POLL_TIMEOUT 5000
+#define THERMAL_THROTTLE_POLL_TIMEOUT 500
 
 ThermalThrottleThread::ThermalThrottleThread(IHWSensorControl *SensorControl) :
     Thread(true) // callbacks may call into java
