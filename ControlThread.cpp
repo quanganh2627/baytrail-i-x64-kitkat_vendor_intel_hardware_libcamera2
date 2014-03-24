@@ -140,6 +140,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mBurstCaptureDoneNum(-1)
     ,mBurstQbufs(0)
     ,mBurstBufsToReturn(0)
+    ,mUllBurstLength(UltraLowLight::MAX_INPUT_BUFFERS)
     ,mAELockFlashStage(CAM_FLASH_STAGE_NONE)
     ,mPublicShutter(-1)
     ,mDvsEnable(false)
@@ -256,6 +257,7 @@ status_t ControlThread::init()
         LOGE("error creating ULL");
         goto bail;
     }
+    mUllBurstLength = mULL->getULLBurstLength();
 
     mCameraDump = CameraDump::getInstance(mCameraId);
     if (mCameraDump == NULL) {
@@ -1243,7 +1245,7 @@ status_t ControlThread::configureContinuousRingBuffer()
 
     ContinuousCaptureConfig cfg;
     if (mULL->isActive() || mBurstLength > 1)
-        cfg.numCaptures = MAX(mULL->MAX_INPUT_BUFFERS, mBurstLength);
+        cfg.numCaptures = MAX(mUllBurstLength, mBurstLength);
     else
         cfg.numCaptures = ((mHwcg.mIspCI->getCssMajorVersion() == 2) && (mHwcg.mIspCI->getCssMinorVersion() == 0))? 2 : 1;
 
@@ -1458,12 +1460,7 @@ status_t ControlThread::initSdv(bool offline)
         burstStateReset();
     }
 
-    //allocate snapshot buffer and postview buffer if necessary
-    if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
-        allocateSnapshotAndPostviewBuffers(true);
-    } else {
-        LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
-    }
+    allocateSnapshotAndPostviewBuffers(true);
 
     return status;
 }
@@ -1700,8 +1697,8 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
                 ret = SHOOTING_MODE_ZSL;
             /* Trigger ULL only when user did not force flash and when we have enough available buffers */
             if (mULL->isActive() && mULL->trigger() && !flashOn &&
-                mAvailableSnapshotBuffers.size() >= static_cast<size_t>(mULL->MAX_INPUT_BUFFERS) &&
-                mAvailablePostviewBuffers.size() >= static_cast<size_t>(mULL->MAX_INPUT_BUFFERS) /* TODO Use getULLBurstLength()*/)
+                mAvailableSnapshotBuffers.size() >= (size_t)mUllBurstLength &&
+                mAvailablePostviewBuffers.size() >= (size_t)mUllBurstLength)
                 ret = SHOOTING_MODE_ULL;
             break;
 
@@ -2989,7 +2986,11 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     thumbnailHeight= mParameters.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
     mPanoramaThread->setThumbnailSize(thumbnailWidth, thumbnailHeight);
 
-    setExternalSnapshotBuffers(fourcc,width,height);
+    status = setExternalSnapshotBuffers(fourcc, width, height);
+    if (status != NO_ERROR) {
+        LOGE("Error %d in capture panoroma picture when set snapshot buffers", status);
+        return status;
+    }
 
     if (mState != STATE_CONTINUOUS_CAPTURE) {
         // Configure and start the ISP
@@ -3164,7 +3165,11 @@ status_t ControlThread::continuousStartStillCapture(bool useFlash)
         fourcc = mISP->getSnapshotPixelFormat();
         size = frameSize(fourcc, picWidth, picHeight);
 
-        setExternalSnapshotBuffers(fourcc, picWidth, picHeight);
+        status = setExternalSnapshotBuffers(fourcc, picWidth, picHeight);
+        if (status != NO_ERROR) {
+            LOGE("Error %d in starting contunuous capture when set snapshot buffers", status);
+            return status;
+        }
 
         status = mISP->allocateBuffers(MODE_CAPTURE);
         if (status != NO_ERROR) {
@@ -3457,7 +3462,11 @@ status_t ControlThread::captureStillPic()
         mISP->setSnapshotFrameFormat(formatDescriptorSs);
         mISP->setPostviewFrameFormat(formatDescriptorPv);
 
-        setExternalSnapshotBuffers(fourcc, width, height);
+        status = setExternalSnapshotBuffers(fourcc, width, height);
+        if (status != NO_ERROR) {
+            LOGE("Error %d in still capture when set snapshot buffers", status);
+            return status;
+        }
 
         // Initialize bracketing manager before streaming starts
         if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE) {
@@ -3933,7 +3942,7 @@ status_t ControlThread::captureULLPic()
 
     stopFaceDetection();
     // Initialize the burst control variables for the ULL burst
-    mBurstLength = mULL->getULLBurstLength();
+    mBurstLength = mUllBurstLength;
     mBurstStart = 0;
 
     status = continuousStartStillCapture(false);
@@ -4232,16 +4241,9 @@ status_t ControlThread::handleMessagePreviewStarted()
      * to start the allocation of snapshot buffers.
      */
     bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
-    /**
-     * if we have all the allocated buffers available then it is safe to re-allocate
-     *
-     */
 
-    if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
-        allocateSnapshotAndPostviewBuffers(videoMode);
-    } else {
-        LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
-    };
+    // allocate snapshot buffers right after preview started
+    allocateSnapshotAndPostviewBuffers(videoMode);
 
     return NO_ERROR;
 }
@@ -4676,6 +4678,45 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
 
     return status;
 }
+
+/**
+ * get the number of snapshot buffers that we actually need
+ */
+int ControlThread::getNeededSnapshotBufNum(bool videoMode)
+{
+    LOG1("@%s video mode:%d", __FUNCTION__, videoMode);
+    int maxNum, recommendedNum, contShootingLimit, clipTo;
+
+    if(videoMode && !mFullSizeSdv){
+        // online video mode doesn't need extra snapshot buffer
+        return 0;
+    }
+
+    /**
+     * Bracketing needs more buffers than burst.
+     * so we make a difference between them
+     */
+    recommendedNum = ((mBracketManager->getBracketMode() != BRACKET_NONE) ?
+        PlatformData::getMaxNumYUVBufferForBracket(mCameraId) :
+        PlatformData::getMaxNumYUVBufferForBurst(mCameraId));
+
+    // continuous shooting need one more buffer reserved
+    if (mISP->getContinuousCaptureNumber() > mUllBurstLength) { // timenudge
+        contShootingLimit = mISP->getContinuousCaptureNumber();
+    } else {
+        contShootingLimit = mISP->getContinuousCaptureNumber() + 1;
+    }
+
+    /**
+     * Get the buffer required and clip it to ensure we
+     * allocate proper number of YUV buffers.
+     */
+    clipTo = MAX(recommendedNum, contShootingLimit);
+    maxNum = MAX(mBurstLength, contShootingLimit);
+
+    return CLIP(maxNum, clipTo, 1);
+}
+
 /**
  * Sends a request to PictureThread to allocate the snapshot and postview buffers
  *
@@ -4686,7 +4727,7 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
  *
  * The buffers are allocated in the PictureThread to register the allocated
  * buffers with the HW JPEG encoder in this way the snapshot buffers are
- * already known to the HW encoder. This  speeds up the encoding.
+ * already known to the HW encoder. This speeds up the encoding.
  *
  * This call is used in the following situations:
  * - when preview has already started
@@ -4695,18 +4736,28 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
  * care needs to be taken not to allocate the buffers at a time when ControlThread
  * needs to be fast for some performance metric, like when taking a snapshot
  * or when we are starting preview
- *
  */
 status_t ControlThread::allocateSnapshotAndPostviewBuffers(bool videoMode)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    uint32_t numBufRequired = 0;
+    bool allocSnapshot = true;
+    bool allocPostview = true;
+    AtomBuffer tmpBuffer;
+
+    // check if it's safe to allocate buffer now
+    if (mAllocatedSnapshotBuffers.size() != mAvailableSnapshotBuffers.size()) {
+        LOGW("not safe to allocate now, maybe some snapshot buffers are not returned %d:%d",
+                mAllocatedSnapshotBuffers.size(), mAvailableSnapshotBuffers.size());
+        return INVALID_OPERATION;
+    }
+
+    // check if really need to allocate buffer
+    numBufRequired = getNeededSnapshotBufNum(videoMode);
+
     AtomBuffer formatDescriptorPv = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR);
     AtomBuffer formatDescriptorSs = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR);
-    unsigned int bufCount = MAX(mBurstLength, mISP->getContinuousCaptureNumber()+1);
-
-    mParameters.getPictureSize(&formatDescriptorSs.width, &formatDescriptorSs.height);
-
     /**
      * Snapshot format is hardcoded to NV12, this is the format between
      * camera and JPEG encoder. In cases where we need to capture bayer
@@ -4718,58 +4769,27 @@ status_t ControlThread::allocateSnapshotAndPostviewBuffers(bool videoMode)
     else
         formatDescriptorSs.fourcc = V4L2_PIX_FMT_NV12;
 
-    int recommendedNum = ((mBracketManager->getBracketMode() != BRACKET_NONE)?
-        PlatformData::getMaxNumYUVBufferForBracket(mCameraId) : PlatformData::getMaxNumYUVBufferForBurst(mCameraId));
-    /**
-     * Get the buffer required and clip it to ensure we
-     * allocate proper number of YUV buffers.
-     */
-    unsigned int clipTo = MAX(recommendedNum, (mISP->getContinuousCaptureNumber()+1));
-    bufCount = CLIP(bufCount, clipTo, 1);
-
-    if(videoMode && !mFullSizeSdv){
-       /**
-        * In video mode we configure the Picture thread not to pre-allocate
-        * the snapshot buffers. This means that there will be no active libVA
-        * context created. we cannot have more than one libVA (encoder) context
-        * active, and in video mode the video encoder already creates one.
-        */
-       bufCount = 0;
-    }
-
-    LOG1("Request to allocate %d bufs of (%dx%d) fourcc: %d",bufCount,
-         formatDescriptorSs.width, formatDescriptorSs.height, formatDescriptorSs.fourcc);
-    LOG1("Currently allocated: %d , available %d",
-         mAllocatedSnapshotBuffers.size(), mAvailableSnapshotBuffers.size());
-
-
-    bool allocSnapshot = true;
-    bool allocPostview = true;
-
-    // Check if we need to allocate new snapshot buffers
+    mParameters.getPictureSize(&formatDescriptorSs.width, &formatDescriptorSs.height);
     if (!mAllocatedSnapshotBuffers.isEmpty()) {
-        AtomBuffer tmp;
-        tmp = mAllocatedSnapshotBuffers.itemAt(0);
+        tmpBuffer = mAllocatedSnapshotBuffers.itemAt(0);
 
-        if ( (tmp.width == formatDescriptorSs.width) &&
-             (tmp.height == formatDescriptorSs.height) &&
-             (tmp.fourcc == formatDescriptorSs.fourcc) &&
-             (mAllocatedSnapshotBuffers.size() == bufCount)) {
+        if ( (tmpBuffer.width  == formatDescriptorSs.width) &&
+             (tmpBuffer.height == formatDescriptorSs.height) &&
+             (tmpBuffer.fourcc == formatDescriptorSs.fourcc) &&
+             (mAllocatedSnapshotBuffers.size() == numBufRequired)) {
             LOG1("No need to request Snapshot, buffers already available");
             allocSnapshot = false;
         }
     }
 
     mISP->getPostviewFrameFormat(formatDescriptorPv);
-
-    // Check if we need to allocate new postview buffers
     if (!mAllocatedPostviewBuffers.isEmpty()) {
-        AtomBuffer tmp = mAllocatedPostviewBuffers.itemAt(0);
+        tmpBuffer = mAllocatedPostviewBuffers.itemAt(0);
 
-        if ((tmp.width == formatDescriptorPv.width) &&
-            (tmp.height == formatDescriptorPv.height) &&
-            (tmp.fourcc == formatDescriptorPv.fourcc) &&
-            (mAllocatedPostviewBuffers.size() == bufCount)) {
+        if ((tmpBuffer.width  == formatDescriptorPv.width) &&
+            (tmpBuffer.height == formatDescriptorPv.height) &&
+            (tmpBuffer.fourcc == formatDescriptorPv.fourcc) &&
+            (mAllocatedPostviewBuffers.size() == numBufRequired)) {
             LOG1("No need to request Postview, buffers already available");
             allocPostview = false;
         }
@@ -4779,6 +4799,11 @@ status_t ControlThread::allocateSnapshotAndPostviewBuffers(bool videoMode)
         LOG1("@%s: No need to allocate postview or snapshot buffers. Already available.", __FUNCTION__);
         return NO_ERROR;
     }
+
+    LOGI("Request to allocate %d bufs of (%dx%d) fourcc: %d", numBufRequired,
+         formatDescriptorSs.width, formatDescriptorSs.height, formatDescriptorSs.fourcc);
+    LOG1("Currently allocated: %d , available %d",
+         mAllocatedSnapshotBuffers.size(), mAvailableSnapshotBuffers.size());
 
     // check need to register bufs to scaler.. can't use ISP since ISP isn't
     // configured yet, so do it by checking the preview mode and sensor type
@@ -4790,7 +4815,7 @@ status_t ControlThread::allocateSnapshotAndPostviewBuffers(bool videoMode)
         mAllocatedSnapshotBuffers.clear();
         mAvailableSnapshotBuffers.clear();
 
-        status = mPictureThread->allocSnapshotBuffers(formatDescriptorSs, bufCount,
+        status = mPictureThread->allocSnapshotBuffers(formatDescriptorSs, numBufRequired,
                                                       &mAllocatedSnapshotBuffers,
                                                       registerToScaler);
 
@@ -4808,8 +4833,7 @@ status_t ControlThread::allocateSnapshotAndPostviewBuffers(bool videoMode)
         mAllocatedPostviewBuffers.clear();
         mAvailablePostviewBuffers.clear();
 
-
-        status = mPictureThread->allocPostviewBuffers(formatDescriptorPv, bufCount,
+        status = mPictureThread->allocPostviewBuffers(formatDescriptorPv, numBufRequired,
                                                       &mAllocatedPostviewBuffers,
                                                       registerToScaler);
 
@@ -5361,7 +5385,7 @@ status_t ControlThread::processParamULL(const CameraParameters *oldParams,
          *
          */
         if (ullActive && mState != STATE_STOPPED) {
-            if (mISP->getContinuousCaptureNumber() < mULL->MAX_INPUT_BUFFERS) {
+            if (mISP->getContinuousCaptureNumber() < mUllBurstLength) {
                 if (restartPreview)
                     *restartPreview = true;
             }
@@ -6838,12 +6862,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
      * taking a picture.
      */
     if ((paramsHasPictureSizeChanged(&oldParams, &newParams) || hasPictureFormatChanged())&& mState != STATE_STOPPED) {
-
-        if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
-            allocateSnapshotAndPostviewBuffers(videoMode);
-        } else {
-            LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
-        }
+        allocateSnapshotAndPostviewBuffers(videoMode);
     }
 
     ProcessOverlayEnable(&oldParams, &newParams);
@@ -7447,68 +7466,47 @@ status_t ControlThread::hdrCompose()
  * \param [in] format V4L2 color space format of the frame (not used, see TODO)
  * \param [in] width width in pixels
  * \param [in] height height in lines
+ * \return error if failed
  */
-void ControlThread::setExternalSnapshotBuffers(int fourcc, int width, int height)
+status_t ControlThread::setExternalSnapshotBuffers(int fourcc, int width, int height)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    uint32_t numberOfSnapshots, numToSet;
 
-    /**
-     * Bracketing needs more buffers than burst.
-     * so we make a difference between them
-     */
-    int recommendedNum = ((mBracketManager->getBracketMode() != BRACKET_NONE)?
-        PlatformData::getMaxNumYUVBufferForBracket(mCameraId) : PlatformData::getMaxNumYUVBufferForBurst(mCameraId));
-
-    int clipTo = MAX(recommendedNum, (mISP->getContinuousCaptureNumber()+1));
-    unsigned int bufNeeded = CLIP(MAX(mBurstLength, mISP->getContinuousCaptureNumber()+1), clipTo, 1);
-
-    if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
-        // allocatedSnapshotbuffers will decide if really need to allocate
-        allocateSnapshotAndPostviewBuffers(false);
-    } else {
-        LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+    status = allocateSnapshotAndPostviewBuffers(false);
+    if (status == INVALID_OPERATION && mAvailableSnapshotBuffers.size()) {
+        LOGW("@%s can't allocate buffer atm, available:%d", __FUNCTION__, mAvailableSnapshotBuffers.size());
+    } else if (status != NO_ERROR) {
+        LOGE("allocateSnapshotAndPostviewBuffers error:%d", status);
+        return status;
+    } else if (mAvailableSnapshotBuffers.size() == 0) {
+        LOGE("@%s no available buffer after allocation, find the bug", __FUNCTION__);
+        return UNKNOWN_ERROR;
     }
 
-    unsigned int numberOfSnapshots = MAX(1,mBurstLength);
-    unsigned int numToSet = MIN(numberOfSnapshots, mAvailableSnapshotBuffers.size());
+    numberOfSnapshots = MAX(1,mBurstLength);
+    numToSet = MIN(numberOfSnapshots, mAvailableSnapshotBuffers.size());
     if (numToSet < numberOfSnapshots)
         mBurstBufsToReturn = numberOfSnapshots - numToSet;
-    LOG1("Number of snapshots %d: Buffers needed:%d numToSet:%d To be returned:%d Available %d Allocated: %d ",
-            numberOfSnapshots, bufNeeded, numToSet, mBurstBufsToReturn,
+
+    LOG1("@%s number of snapshots %d: numToSet:%d return for burst:%d Available %d Allocated: %d ",
+            __FUNCTION__, numberOfSnapshots, numToSet, mBurstBufsToReturn,
             mAvailableSnapshotBuffers.size(), mAllocatedSnapshotBuffers.size());
 
-    /**
-     * Here size of mAvailableSnapshotBuffers maybe < mAvailableSnapshotBuffers
-     * In case that some buffers are still in process. But if only available buffer
-     * is enough to use, go ahead.
-     * For Example:
-     *  ULL needs 3 buffers, it will take a long time to process and here the number of
-     *  available buffer maybe only 1. But it's ok for ZSL shooting to use.
-     */
-    if (mAvailableSnapshotBuffers.size() >= numToSet) {
-        if ((mAllocatedSnapshotBuffers[0].width != width) ||
+    if ((mAllocatedSnapshotBuffers[0].width != width) ||
             (mAllocatedSnapshotBuffers[0].height != height)) {
-            LOGE("We got allocated snapshot buffers of wrong resolution (%dx%d), "
-                  "this should not happen!! we wanted (%dx%d)",
-                  mAllocatedSnapshotBuffers[0].width,
-                  mAllocatedSnapshotBuffers[0].height,
-                  width, height);
-        }
-        bool cached = false;
-        status = mISP->setSnapshotBuffers(&mAvailableSnapshotBuffers, numToSet, cached);
-        status = mISP->setPostviewBuffers(&mAvailablePostviewBuffers, numToSet, cached);
-    } else {
-        /**
-         * The places when we allocate snapshot buffers should ensure that at take
-         * picture time there are enough buffers. This situation may arise if
-         * not enough buffers were allocated, and some buffers are in used
-         * ControlThread needs to ensure it allocates enough.
-         * It is not possible to re-allocate now if we do not have all the
-         * snapshot buffers back in mAvailableSnapshotBuffers.
-         */
-        LOGE("Not enough available buffers for this request. This should not happen");
+        LOGE("We got allocated snapshot buffers of wrong resolution (%dx%d), "
+                "this should not happen!! we wanted (%dx%d)",
+                mAllocatedSnapshotBuffers[0].width,
+                mAllocatedSnapshotBuffers[0].height,
+                width, height);
+        return UNKNOWN_ERROR;
     }
+    bool cached = false;
+    status = mISP->setSnapshotBuffers(&mAvailableSnapshotBuffers, numToSet, cached);
+    status = mISP->setPostviewBuffers(&mAvailablePostviewBuffers, numToSet, cached);
+    return NO_ERROR;
 }
 
 /**

@@ -627,8 +627,9 @@ private:
     status_t hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* postviewBuffer);
     status_t hdrCompose();
     void     hdrRelease();
+    int      getNeededSnapshotBufNum(bool videoMode);
     status_t allocateSnapshotAndPostviewBuffers(bool videoMode);
-    void     setExternalSnapshotBuffers(int fourcc, int width, int heigth);
+    status_t setExternalSnapshotBuffers(int fourcc, int width, int heigth);
 
     // Capture Flow helpers
     status_t getFlashExposedSnapshot(AtomBuffer *snaphotBuffer, AtomBuffer *postviewBuffer);
@@ -727,7 +728,6 @@ private:
     bool mIspExtensionsEnabled;     /*<! Flag that signals whether the caller wants to run a 3rd party ISP extension*/
 
     /* Burst configuration: */
-
     int  mFpsAdaptSkip;
     int  mBurstLength;          /*<! Burst length 1..N */
     int  mBurstStart;           /*<! Relative offset at which burst
@@ -747,6 +747,7 @@ private:
     int  mBurstBufsToReturn; /*<! Number of buffers should be returned to ISP for reuse
                                 exp:mBurstLength is 9, mAllocatedSnapshotBuffers is 5,
                                 mBurstBufsToReturn should be 4*/
+    int mUllBurstLength;     /*<! Burst length for ULL*/
     HdrImaging mHdr;
     FlashStage mAELockFlashStage;
     float mPublicShutter;       /* Shutter set by application */
