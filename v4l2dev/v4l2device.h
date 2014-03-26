@@ -133,7 +133,6 @@ public:
 
     // Convenience accessors
     bool isStarted() const { return mState == DEVICE_STARTED; };
-    bool isOpened() const { return !(mState == DEVICE_CLOSED || mState == DEVICE_ERROR); };
     unsigned int getFrameCount() const { return mFrameCounter; };
     unsigned int getInitialFrameSkips() const { return mInitialSkips; };
 

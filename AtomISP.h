@@ -539,10 +539,6 @@ private:
     sp<V4L2VideoNode>  mFileInjectDevice;
     SensorHW           mSensorHW;
 
-    /* for SoC sensor */
-    sp<V4L2VideoNode>  mPreviewDeviceBackup;
-    sp<V4L2VideoNode>  mRecordingDeviceBackup;
-
     int dumpPreviewFrame(int previewIndex);
     int dumpRecordingFrame(int recordingIndex);
     int dumpSnapshot(int snapshotIndex, int postviewIndex);

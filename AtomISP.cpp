@@ -153,9 +153,6 @@ status_t AtomISP::initDevice()
     mFileInjectDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_INJECT_DEVICE], V4L2_INJECT_DEVICE,
                                           V4L2VideoNode::OUTPUT_VIDEO_NODE);
 
-    mPreviewDeviceBackup = mPreviewDevice;
-    mRecordingDeviceBackup = mRecordingDevice;
-
     /**
      * In some situation we are swapping the preview device to be capturing device
      * like in HAL ZSL, or in cases where there is a limitation in ISP.
@@ -1307,28 +1304,11 @@ status_t AtomISP::configureRecording()
     AtomBuffer *previewConfig(NULL);
     AtomBuffer *recordingConfig(NULL);
 
-    /*
-        for SoC sensor, we need to use ISP capture mode which has zoom function. so:
-        for preview node which is video2, it should use the postview node which is video1
-        for recording node which is video3, it should use the still node which is video0
-    */
-    if (mSensorType == SENSOR_TYPE_SOC) {
-        mPreviewDevice = mPostViewDevice;
-        mRecordingDevice = mMainDevice;
-    } else {
-        if (mPreviewDevice != mPreviewDeviceBackup)
-            mPreviewDevice = mPreviewDeviceBackup;
-        if (mRecordingDevice != mRecordingDeviceBackup)
-            mRecordingDevice = mRecordingDeviceBackup;
-    }
-
-    if (!mPreviewDevice->isOpened()) {
-        ret = mPreviewDevice->open();
-        if (ret < 0) {
-            LOGE("Open preview device failed!");
-            status = UNKNOWN_ERROR;
-            goto err;
-        }
+    ret = mPreviewDevice->open();
+    if (ret < 0) {
+        LOGE("Open preview device failed!");
+        status = UNKNOWN_ERROR;
+        goto err;
     }
 
     struct v4l2_capability aCap;
@@ -1348,13 +1328,11 @@ status_t AtomISP::configureRecording()
     }
 
     //open recording device
-    if (!mRecordingDevice->isOpened()) {
-        ret = mRecordingDevice->open();
-        if (ret < 0) {
-            LOGE("Open recording device failed!");
-            status = UNKNOWN_ERROR;
-            goto err;
-        }
+    ret = mRecordingDevice->open();
+    if (ret < 0) {
+        LOGE("Open recording device failed!");
+        status = UNKNOWN_ERROR;
+        goto err;
     }
 
     status = mRecordingDevice->queryCap(&aCap);
@@ -2257,10 +2235,8 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *
     //Switch the Mode before set the fourcc. This is the requirement of
     //atomisp
     ret = atomisp_set_capture_mode(deviceMode);
-    if (ret < 0) {
-        LOGE("Error, %s@line:%d, device:%d", __FUNCTION__, __LINE__, device->mId);
+    if (ret < 0)
         return ret;
-    }
 
     if (device->mId == V4L2_MAIN_DEVICE ||
         device->mId == V4L2_RECORDING_DEVICE ||
@@ -2307,10 +2283,8 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *
 
     //Set the format
     ret = device->setFormat(*formatDescriptor);
-    if (ret < 0) {
-        LOGE("Error, %s@line:%d, device:%d", __FUNCTION__, __LINE__, device->mId);
+    if (ret < 0)
         return ret;
-    }
 
     // reduce FPS for still capture
     if (mFileInject.active == true) {
@@ -3153,11 +3127,6 @@ int AtomISP::atomisp_set_capture_mode(int deviceMode)
     LOG1("@%s", __FUNCTION__);
     struct v4l2_streamparm parm;
     status_t status;
-    if (mSensorType == SENSOR_TYPE_SOC) {
-        if (deviceMode == CI_MODE_VIDEO)
-            deviceMode = CI_MODE_STILL_CAPTURE;
-    }
-
     int vfpp_mode = ATOMISP_VFPP_ENABLE;
 
     if(mHALZSLEnabled)
