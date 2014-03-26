@@ -963,10 +963,6 @@ status_t AtomISP::configure(AtomMode mode)
     mHALZSLEnabled = false; // configureContinuous turns this on, when needed
     if (mFileInject.active == true)
         startFileInject();
-
-    if (mSensorType == SENSOR_TYPE_SOC)
-        restoreDeviceNode();
-
     switch (mode) {
     case MODE_PREVIEW:
         status = configurePreview();
@@ -1311,8 +1307,20 @@ status_t AtomISP::configureRecording()
     AtomBuffer *previewConfig(NULL);
     AtomBuffer *recordingConfig(NULL);
 
-    if (mSensorType == SENSOR_TYPE_SOC)
-        swapDeviceNodeForSOC();
+    /*
+        for SoC sensor, we need to use ISP capture mode which has zoom function. so:
+        for preview node which is video2, it should use the postview node which is video1
+        for recording node which is video3, it should use the still node which is video0
+    */
+    if (mSensorType == SENSOR_TYPE_SOC) {
+        mPreviewDevice = mPostViewDevice;
+        mRecordingDevice = mMainDevice;
+    } else {
+        if (mPreviewDevice != mPreviewDeviceBackup)
+            mPreviewDevice = mPreviewDeviceBackup;
+        if (mRecordingDevice != mRecordingDeviceBackup)
+            mRecordingDevice = mRecordingDeviceBackup;
+    }
 
     if (!mPreviewDevice->isOpened()) {
         ret = mPreviewDevice->open();
@@ -5518,18 +5526,5 @@ BatteryStatus AtomISP::getBatteryStatus()
 
     return (BatteryStatus)status;
 }
-
-void AtomISP::swapDeviceNodeForSOC(void)
-{
-    mPreviewDevice = mPostViewDevice;
-    mRecordingDevice = mMainDevice;
-}
-
-void AtomISP::restoreDeviceNode(void)
-{
-    mPreviewDevice = mPreviewDeviceBackup;
-    mRecordingDevice = mRecordingDeviceBackup;
-}
-
 
 } // namespace android

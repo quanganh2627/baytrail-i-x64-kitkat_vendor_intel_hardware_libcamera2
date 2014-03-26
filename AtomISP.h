@@ -543,19 +543,6 @@ private:
     sp<V4L2VideoNode>  mPreviewDeviceBackup;
     sp<V4L2VideoNode>  mRecordingDeviceBackup;
 
-    /**
-     * for SoC sensor's video preview and recording,
-     * we need to use ISP capture mode which has zoom function. so:
-     * for preview node which is video2, it should use the postview node which is video1
-     * for recording node which is video3, it should use the still node which is video0
-     */
-    void swapDeviceNodeForSOC(void);
-    /**
-     * this function will restore to the original device node,
-     * even the swapDeviceNodeForSOC function has been called.
-     */
-    void restoreDeviceNode(void);
-
     int dumpPreviewFrame(int previewIndex);
     int dumpRecordingFrame(int recordingIndex);
     int dumpSnapshot(int snapshotIndex, int postviewIndex);
