@@ -1040,23 +1040,23 @@ class PlatformBase {
     friend class PlatformData;
 
 public:
-    PlatformBase() {    //default
-        mPanoramaMaxSnapshotCount = 10;
-        mFileInject = false;
-        mSupportVideoSnapshot = true;
-        mMaxZoomFactor = 64;
-        mNumRecordingBuffers = 9;
-        mNumPreviewBuffers = 6;
-        mMaxContinuousRawRingBuffer = 0;
-        mShutterLagCompensationMs = 40;
-        mSupportDualVideo = false;
-        mSupportPreviewLimitation = true;
-        mPreviewFourcc = V4L2_PIX_FMT_NV12;
-        mSensorGainLag = 2;
-        mSensorExposureLag = 2;
-        mUseIntelULL = false;
-        mFaceCallbackDivider = 1;
-   };
+    PlatformBase()  //default
+        :mFileInject(false)
+        ,mSupportVideoSnapshot(true)
+        ,mMaxContinuousRawRingBuffer(0)
+        ,mShutterLagCompensationMs(40)
+        ,mPanoramaMaxSnapshotCount(10)
+        ,mMaxZoomFactor(64)
+        ,mNumRecordingBuffers(9)
+        ,mNumPreviewBuffers(6)
+        ,mSupportDualVideo(false)
+        ,mSupportPreviewLimitation(true)
+        ,mPreviewFourcc(V4L2_PIX_FMT_NV12)
+        ,mSensorGainLag(2)
+        ,mSensorExposureLag(2)
+        ,mUseIntelULL(false)
+        ,mFaceCallbackDivider(1)
+    {}
 
 protected:
 
