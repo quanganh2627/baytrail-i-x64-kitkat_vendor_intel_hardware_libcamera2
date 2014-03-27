@@ -1025,6 +1025,17 @@ class PlatformData {
      * \return the number of CPU cores
      */
     static unsigned int getNumOfCPUCores();
+
+    /**
+     * \brief Get the number of warm-up frames for the still image capture:
+     *
+     * Some sensors (or ISP) may need warm-up skips in image capture. For example
+     * some SoC sensors need initial capture frame skips in order to have their 3A (or 2A)
+     * algorithms to converge before the actual good capture frame
+     *
+     * \return The number of warm-up frames needed for the platform
+     */
+    static int getNumOfCaptureWarmUpFrames(int cameraId);
 };
 
 /**
@@ -1210,7 +1221,8 @@ protected:
             // FOV
             verticalFOV = "";
             horizontalFOV = "";
-        };
+            captureWarmUpFrames = 0;
+        }
 
         SensorType sensorType;
         int facing;
@@ -1340,6 +1352,11 @@ protected:
         // FOV
         String8 verticalFOV;
         String8 horizontalFOV;
+
+        // For defining amount of needed warm-up frames, when skipping frames
+        // at image capture. For example, some SoC sensors need some frames to
+        // be skipped in order for the SoC sensor's 3A (or 2A) to converge.
+        int captureWarmUpFrames;
     };
 
     // note: Android NDK does not yet support C++11 and

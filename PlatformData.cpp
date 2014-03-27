@@ -1335,4 +1335,20 @@ unsigned int PlatformData::getNumOfCPUCores()
     return cpuCores;
 }
 
+int PlatformData::getNumOfCaptureWarmUpFrames(int cameraId)
+{
+    int retVal = 0;
+
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+       return retVal;
+    }
+
+    PlatformBase *i = getInstance();
+    retVal = i->mCameras[cameraId].captureWarmUpFrames;
+
+    // Always return a non-negative integer:
+    return (retVal > 0) ? retVal : 0;
+}
+
+
 }; // namespace android
