@@ -42,13 +42,6 @@
 namespace android {
 
 /*
- * NUM_WARMUP_FRAMES: used for front camera only
- * Since front camera does not 3A, it actually has 2A (auto-exposure and auto-whitebalance),
- * it needs about 4 for internal 2A from driver to gather enough information and establish
- * the correct values for 2A.
- */
-#define NUM_WARMUP_FRAMES 4
-/*
  * RAW_CAPTURE_SKIP: Number of frames we skip from capture device before we dump
  * a raw image.
  */
@@ -2958,7 +2951,9 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
      *  frames in order to allow the sensor to warm up.
      */
     if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) {
-        if ((status = skipFrames(NUM_WARMUP_FRAMES)) != NO_ERROR) {
+        int warmUpFrames = PlatformData::getNumOfCaptureWarmUpFrames(mCameraId);
+        // Only try to skip, if it is meaningful (more than 0 frames)
+        if (warmUpFrames > 0 && (status = skipFrames(warmUpFrames)) != NO_ERROR) {
             LOGE("Error skipping warm-up frames!");
             return status;
         }
@@ -3427,7 +3422,8 @@ status_t ControlThread::captureStillPic()
          CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
 
         int framesToSkip = CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW) ?
-                         RAW_CAPTURE_SKIP:NUM_WARMUP_FRAMES;
+                RAW_CAPTURE_SKIP : PlatformData::getNumOfCaptureWarmUpFrames(mCameraId);
+
         if ((status = skipFrames(framesToSkip)) != NO_ERROR) {
             LOGE("Error skipping warm-up frames!");
             return status;
