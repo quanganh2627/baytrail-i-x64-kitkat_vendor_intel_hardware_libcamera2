@@ -3133,7 +3133,7 @@ status_t AtomISP::returnRecordingBuffers()
         for (int i = 0 ; i < mConfig.num_recording_buffers; i++) {
             if (mRecordingBuffers[i].shared)
                 return UNKNOWN_ERROR;
-            if (mRecordingBuffers[i].buff == NULL)
+            if (mRecordingBuffers[i].dataPtr == NULL)
                 return UNKNOWN_ERROR;
             // identifying already queued frames with negative id
             if (mRecordingBuffers[i].id == -1)
