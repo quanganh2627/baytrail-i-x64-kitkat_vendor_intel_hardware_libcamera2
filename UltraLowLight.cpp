@@ -52,7 +52,7 @@ struct UltraLowLight::MorphoULL {
     MorphoULL(): workingBuffer(NULL) {};
 };
 
-UltraLowLight::UltraLowLight(Callbacks *callbacks) : mMorphoCtrl(NULL),
+UltraLowLight::UltraLowLight(Callbacks *callbacks, sp<WarperService> warperService) : mMorphoCtrl(NULL),
                                  mIntelUllCfg(NULL),
                                  mCallbacks(callbacks),
                                  mState(ULL_STATE_NULL),
@@ -62,7 +62,8 @@ UltraLowLight::UltraLowLight(Callbacks *callbacks) : mMorphoCtrl(NULL),
                                  mCurrentPreset(0),
                                  mUserMode(ULL_OFF),
                                  mTrigger(false),
-                                 mUseIntelULL(PlatformData::useIntelULL())
+                                 mUseIntelULL(PlatformData::useIntelULL()),
+                                 mWarper(warperService)
 {
     if (mUseIntelULL) {
         mState = ULL_STATE_UNINIT;
@@ -256,8 +257,10 @@ status_t UltraLowLight::addSnapshotMetadata(PictureThread::MetaData &metadata, i
     mSnapMetadata = metadata;
 
     if (mUseIntelULL) {
-        LOG1("Passing exposure parameters to Intel ULL");
+        LOG1("Passing configuration parameters to Intel ULL");
         mIntelUllCfg->exposure = exposure;
+        // set alligment and warping to be done inside ia_cp_ull_compose (on CPU)
+        mIntelUllCfg->imreg_fallback = NULL;
     }
 
     return NO_ERROR;
@@ -557,10 +560,35 @@ status_t UltraLowLight::processIntelULL()
         return NO_MEMORY;
     }
 
+    bool genGraphicUsed = PlatformData::isGraphicGen();
+
+    if (!genGraphicUsed) {
+        mIntelUllCfg->imreg_fallback = new int[mInputBuffers.size()];
+        if (mIntelUllCfg->imreg_fallback == NULL) {
+            LOGE("imreg_fallback array allocation failed.");
+            return NO_MEMORY;
+        }
+    }
+
     int i = 0;
     Vector<AtomBuffer>::const_iterator end = mInputBuffers.end();
     for (Vector<AtomBuffer>::const_iterator iter = mInputBuffers.begin(); iter != end; ++iter) {
-        AtomToIaFrameBuffer(iter, &input[i++]);
+        AtomToIaFrameBuffer(iter, &input[i]);
+
+        if (!genGraphicUsed) {
+            mIntelUllCfg->imreg_fallback[i] = 0;
+            if (i != 0) {
+                ret = gpuImageRegistration((AtomBuffer*) &mInputBuffers[0], (AtomBuffer*) &mInputBuffers[i], &(mIntelUllCfg->imreg_fallback[i]));
+                if (ret != NO_ERROR) {
+                    LOGE("GPU image registration failed.");
+                    delete[] mIntelUllCfg->imreg_fallback;
+                    mIntelUllCfg->imreg_fallback = NULL;
+                    return ret;
+                }
+            }
+        }
+
+        i++;
         if (gLogLevel & CAMERA_DEBUG_ULL_DUMP) {
             String8 yuvName("/data/ull_yuv_dump_");
             yuvName.appendFormat("id_%d_%d.yuv",mULLCounter,i);
@@ -600,6 +628,11 @@ status_t UltraLowLight::processIntelULL()
         delete[] input;
         input = NULL;
 
+    }
+
+    if (mIntelUllCfg->imreg_fallback != NULL) {
+        delete[] mIntelUllCfg->imreg_fallback;
+        mIntelUllCfg->imreg_fallback = NULL;
     }
 
     return ret;
@@ -847,6 +880,42 @@ UltraLowLight::State UltraLowLight::getState()
 {
     Mutex::Autolock lock(mStateMutex);
     return mState;
+}
+
+status_t UltraLowLight::gpuImageRegistration(AtomBuffer *target, AtomBuffer *source, int *imregFallback) {
+
+    status_t status = NO_ERROR;
+
+    ia_frame target_ia, source_ia;
+    AtomToIaFrameBuffer(target, &target_ia);
+    AtomToIaFrameBuffer(source, &source_ia);
+
+    ia_cp_me_cfg cfg;
+    cfg.pyr_depth = 4;
+    cfg.model = ia_cp_me_projective;
+    ia_cp_me_result result;
+    ia_cp_global_me(&target_ia, &source_ia, &cfg, &result);
+
+    // warping on the GPU
+    if (!result.fallback) {
+        double projective[PROJ_MTRX_DIM][PROJ_MTRX_DIM];
+        for (int i = 0; i < PROJ_MTRX_DIM; i++) {
+            for (int j = 0; j < PROJ_MTRX_DIM; j++) {
+                projective[i][j] = result.transform[i][j];
+                LOG1("projective[%d][%d] %f", i, j, projective[i][j]);
+            }
+        }
+        status = mWarper->warpBackFrame(source, projective);
+        if (status != NO_ERROR) {
+            LOGE("GPU warping failed.");
+            return status;
+        }
+    }
+    else {
+        *imregFallback = 1;
+    }
+
+    return NO_ERROR;
 }
 
 #endif // ENABLE_INTEL_EXTRAS

@@ -251,7 +251,7 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mULL = new UltraLowLight(mCallbacks);
+    mULL = new UltraLowLight(mCallbacks, mWarperService);
     if (mULL == NULL) {
         LOGE("error creating ULL");
         goto bail;

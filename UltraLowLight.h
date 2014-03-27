@@ -22,6 +22,7 @@
 #include "PictureThread.h" // For Image metadata declaration
 #include "AtomCommon.h"
 #include "ia_cp_types.h"
+#include "WarperService.h"
 
 namespace android {
 
@@ -93,7 +94,7 @@ public:
     };
 
 public:
-    UltraLowLight(Callbacks *callbacks) STUB_BODY
+    UltraLowLight(Callbacks *callbacks, sp<WarperService> warperService) STUB_BODY
     virtual ~UltraLowLight() STUB_BODY
 
     void setMode(ULLMode m) STUB_BODY
@@ -181,6 +182,8 @@ private:
     void setState(enum State aState);
     enum State getState();
 
+    status_t gpuImageRegistration(AtomBuffer *target, AtomBuffer *source, int *imregFallback);
+
 private:
     struct MorphoULL;       /*!> Forward declaration of the opaque struct for Morpho's algo configuration */
     MorphoULL        *mMorphoCtrl;
@@ -207,6 +210,8 @@ private:
     Mutex          mStateMutex; /*!> Protects the trigger and state variable that are queried by different threads*/
     bool           mTrigger;  /*!> Only valid if in auto mode. It signal that ULL should be used. */
     bool           mUseIntelULL; /*!> Use Intel ULL algorithm instead of Morpho. */
+
+    sp<WarperService> mWarper; /*!> Service used to perform frame warping on GPU */
 };
 }  //namespace android
 #endif /* ANDROID_LIBCAMERA_ULTRALOWLIGHT_H_ */
