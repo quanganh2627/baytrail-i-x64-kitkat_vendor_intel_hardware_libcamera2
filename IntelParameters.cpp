@@ -50,6 +50,10 @@ namespace android {
     const char IntelCameraParameters::KEY_ULL[] = "ull";
     const char IntelCameraParameters::KEY_SUPPORTED_ULL[] = "ull-values";
 
+    // SDV
+    const char IntelCameraParameters::KEY_SDV[] = "sdv";
+    const char IntelCameraParameters::KEY_SDV_SUPPORTED[] = "sdv-supported";
+
     // 3A related
     const char IntelCameraParameters::KEY_AE_MODE[] = "ae-mode";
     const char IntelCameraParameters::KEY_SUPPORTED_AE_MODES[] = "ae-mode-values";

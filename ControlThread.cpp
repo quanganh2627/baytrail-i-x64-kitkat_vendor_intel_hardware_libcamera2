@@ -1864,8 +1864,11 @@ status_t ControlThread::startPreviewCore(bool videoMode)
          *    if the setting is valid, we should disable continuous video.
          * 2. Currently bayer downcaling + yuv downscaling can not downscale to a too small size
          */
+        const char *sdvValue = mIntelParameters.get(IntelCameraParameters::KEY_SDV);
+        String8 sdvParam (sdvValue, (sdvValue == NULL ? 0 : strlen(sdvValue)));
         mFullSizeSdv = PlatformData::isFullResSdvSupported(mCameraId) && // platform supported
             !mDualVideo && // not dual video
+            sdvParam == CameraParameters::TRUE && // user doesn't request to disable sdv by parameter
             fps <= DEFAULT_RECORDING_FPS && // not high speed mode
             isFullSizeSdvSupportedVideoSize(width, height); // video size limitation
 
@@ -5293,6 +5296,28 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
     return status;
 }
 
+status_t ControlThread::processParamSDV(const CameraParameters *oldParams,
+        CameraParameters *newParams, bool *restartPreview)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_SDV);
+    if (!newVal.isEmpty()) {
+        LOG1("SDV param new value: %s", newVal.string());
+
+        if (restartPreview && mState == STATE_PREVIEW_VIDEO) {
+            *restartPreview = true;
+        } else {
+            LOGD("@%s value changes to %s in state:%d, no need to restart preview",
+                    __FUNCTION__, newVal.string(), mState);
+        }
+    }
+
+    return status;
+}
+
 status_t ControlThread::processParamULL(const CameraParameters *oldParams,
         CameraParameters *newParams, bool *restartPreview)
 {
@@ -6544,6 +6569,8 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
     status = processParamDualVideo(oldParams,newParams, restartNeeded);
 
     status = processParamDvs(oldParams,newParams);
+
+    status = processParamSDV(oldParams,newParams, &restartNeeded);
 
     status = processParamULL(oldParams,newParams, &restartNeeded);
 

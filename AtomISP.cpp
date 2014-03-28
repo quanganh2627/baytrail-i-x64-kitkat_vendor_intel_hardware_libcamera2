@@ -539,6 +539,17 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     }
 
     /**
+     * SDV(still during video)
+     */
+    if (PlatformData::isFullResSdvSupported(cameraId)) {
+        intel_params->set(IntelCameraParameters::KEY_SDV_SUPPORTED, CameraParameters::TRUE);
+        intel_params->set(IntelCameraParameters::KEY_SDV, CameraParameters::TRUE);
+    } else {
+        intel_params->set(IntelCameraParameters::KEY_SDV_SUPPORTED, CameraParameters::FALSE);
+        intel_params->set(IntelCameraParameters::KEY_SDV, CameraParameters::FALSE);
+    }
+
+    /**
      * DUAL VIDEO
      */
     if(PlatformData::supportDualVideo())

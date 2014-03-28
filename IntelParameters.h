@@ -252,6 +252,10 @@ namespace android {
     static const char GPS_IMG_DIRECTION_REF_TRUE[];
     static const char GPS_IMG_DIRECTION_REF_MAGNETIC[];
 
+    // SDV
+    static const char KEY_SDV[];
+    static const char KEY_SDV_SUPPORTED[];
+
     // Others
     static const char REC_BUFFER_SHARING_SESSION_ID[];
 

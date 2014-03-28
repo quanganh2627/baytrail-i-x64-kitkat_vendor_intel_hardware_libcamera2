@@ -242,6 +242,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
                                     IntelCameraParameters::KEY_SUPPORTED_SATURATION_MODES,
                                     IntelCameraParameters::KEY_SUPPORTED_SHARPNESS_MODES,
                                     IntelCameraParameters::KEY_SUPPORTED_ULL,
+                                    IntelCameraParameters::KEY_SDV_SUPPORTED,
                                     IntelCameraParameters::KEY_SUPPORTED_SAVE_MIRRORED,
                                     IntelCameraParameters::KEY_SUPPORTED_GPS_IMG_DIRECTION_REF,
                                     NULL)) {
@@ -526,9 +527,15 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
         return BAD_VALUE;
     }
 
-    //  DVS (VIDEO STABILIZATION)
+    // DVS (VIDEO STABILIZATION)
     if (!validateBoolParameter(CameraParameters::KEY_VIDEO_STABILIZATION, CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED, params)) {
         LOGE("bad value for DVS");
+        return BAD_VALUE;
+    }
+
+    // SDV (still during video)
+    if (!validateBoolParameter(IntelCameraParameters::KEY_SDV, IntelCameraParameters::KEY_SDV_SUPPORTED, params)) {
+        LOGE("bad value for SDV");
         return BAD_VALUE;
     }
 
