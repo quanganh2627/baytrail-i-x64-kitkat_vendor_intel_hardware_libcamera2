@@ -57,6 +57,7 @@ private:
     void writeBinaryDump(const char *binary_dump_file);
     static void debugPrint(const char *fmt, va_list ap);
     bool isHighSpeedDvsSupported(int width, int height);
+    bool isDvsSupportedSize(int width, int height);
 
 private:
     Mutex mLock;

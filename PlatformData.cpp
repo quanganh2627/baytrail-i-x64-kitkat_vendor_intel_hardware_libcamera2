@@ -1316,6 +1316,14 @@ float PlatformData::matchEVShiftFactor(int cameraId)
     return retVal;
 }
 
+const char* PlatformData::supportedDvsSizes(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return NULL;
+    }
+    return getInstance()->mCameras[cameraId].supportedDvsSizes;
+}
+
 bool PlatformData::isGraphicGen(void)
 {
 #ifdef GRAPHIC_IS_GEN

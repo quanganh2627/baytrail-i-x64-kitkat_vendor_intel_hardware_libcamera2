@@ -1006,6 +1006,14 @@ class PlatformData {
     static float matchEVShiftFactor(int cameraId);
 
     /**
+     * supported DVS sizes
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the supported dvs sizes as a string.
+     */
+    static const char* supportedDvsSizes(int cameraId);
+
+    /**
      * Whether the graphic is GEN.
      * \return true if it's GEN. false, if it's not GEN.
      */
@@ -1211,6 +1219,8 @@ protected:
             // FOV
             verticalFOV = "";
             horizontalFOV = "";
+            // DVS
+            supportedDvsSizes = "640x480,720x480,720x576,1280x720,1920x1080";
         };
 
         SensorType sensorType;
@@ -1341,6 +1351,8 @@ protected:
         // FOV
         String8 verticalFOV;
         String8 horizontalFOV;
+        //DVS
+        String8 supportedDvsSizes;
     };
 
     // note: Android NDK does not yet support C++11 and

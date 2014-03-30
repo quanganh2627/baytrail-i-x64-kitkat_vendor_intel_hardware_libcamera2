@@ -317,6 +317,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->verticalFOV = atts[1];
     } else if (strcmp(name, "horizontalFOV") == 0) {
         pCurrentCam->horizontalFOV = atts[1];
+    } else if (strcmp(name, "supportedDvsSizes") == 0) {
+        pCurrentCam->supportedDvsSizes = atts[1];
     }
 }
 
