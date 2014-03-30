@@ -2965,8 +2965,8 @@ int AtomISP::atomisp_set_zoom (int zoom)
  */
 int AtomISP::startFileInject(void)
 {
+#ifdef ENABLE_FILE_INJECTION
     LOG1("%s: enter", __FUNCTION__);
-
     int ret = 0;
     int buffer_count = 1;
 
@@ -3050,6 +3050,9 @@ error0:
 error1:
     mFileInjectDevice->close();
     return -1;
+#else
+    return 0;
+#endif
 }
 
 /**
@@ -3060,8 +3063,8 @@ error1:
  */
 int AtomISP::stopFileInject(void)
 {
+#ifdef ENABLE_FILE_INJECTION
     LOG1("%s: enter", __FUNCTION__);
-
     if (mFileInject.dataAddr != NULL) {
         delete[] mFileInject.dataAddr;
         mFileInject.dataAddr = NULL;
@@ -3070,6 +3073,9 @@ int AtomISP::stopFileInject(void)
     mFileInjectDevice->close();
 
     return 0;
+#else
+    return 0;
+#endif
 }
 
 /**
@@ -3082,6 +3088,7 @@ int AtomISP::stopFileInject(void)
  */
 int AtomISP::configureFileInject(const char *fileName, int width, int height, int fourcc, int bayerOrder)
 {
+#ifdef ENABLE_FILE_INJECTION
     LOG1("%s: enter", __FUNCTION__);
     mFileInject.fileName = String8(fileName);
     if (mFileInject.fileName.isEmpty() != true) {
@@ -3097,10 +3104,14 @@ int AtomISP::configureFileInject(const char *fileName, int width, int height, in
         LOG1("Disabling file injection");
     }
     return 0;
+#else
+    return 0;
+#endif
 }
 
 status_t AtomISP::fileInjectSetSize(void)
 {
+#ifdef ENABLE_FILE_INJECTION
     int fileFd = -1;
     int fileSize = 0;
     struct stat st;
@@ -3132,6 +3143,9 @@ status_t AtomISP::fileInjectSetSize(void)
 
     close(fileFd);
     return NO_ERROR;
+#else
+    return NO_ERROR;
+#endif
 }
 
 int AtomISP::atomisp_set_capture_mode(int deviceMode)

@@ -208,6 +208,9 @@ ifneq ($(filter userdebug eng tests, $(TARGET_BUILD_VARIANT)),)
 LOCAL_CFLAGS += -DLIBCAMERA_RD_FEATURES -Wunused-variable -Werror
 endif
 
+# This micro is used for file injection. Set it when file injection is needed.
+#LOCAL_CFLAGS += -DENABLE_FILE_INJECTION
+
 # The camera.<TARGET_DEVICE>.so will be built for each platform
 # (which should be unique to the TARGET_DEVICE environment)
 # to use Camera Imaging(CI) supported by intel.

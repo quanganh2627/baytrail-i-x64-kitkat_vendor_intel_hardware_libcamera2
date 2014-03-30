@@ -543,6 +543,7 @@ void trace_callstack () {
  */
 void inject(AtomBuffer *b, const char* name)
 {
+#ifdef ENABLE_FILE_INJECTION
     int bytes = 0;
 
     LOGE("Injecting yuv file %s resolution (%dx%d) format %s",name,b->width, b->height,v4l2Fmt2Str(b->fourcc));
@@ -560,6 +561,7 @@ void inject(AtomBuffer *b, const char* name)
     }
 
     fclose(fd);
+#endif
 }
 
 #endif //LIBCAMERA_RD_FEATURES

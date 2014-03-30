@@ -4753,6 +4753,7 @@ status_t ControlThread::allocateSnapshotAndPostviewBuffers(bool videoMode)
 
 void ControlThread::processParamFileInject(CameraParameters *newParams)
 {
+#ifdef ENABLE_FILE_INJECTION
     LOG1("@%s", __FUNCTION__);
 
     unsigned int width = 0, height = 0, bayerOrder = 0, fourcc = 0;
@@ -4769,7 +4770,7 @@ void ControlThread::processParamFileInject(CameraParameters *newParams)
     LOG1("file name=%s,width=%d,height=%d,fourcc=%d,bayer-order=%d.",
           fileName, width, height, fourcc, bayerOrder);
     mISP->configureFileInject(fileName, width, height, fourcc, bayerOrder);
-
+#endif
 }
 status_t ControlThread::processParamAFLock(const CameraParameters *oldParams,
         CameraParameters *newParams)
