@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 Intel Corporation
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,11 +27,6 @@ namespace android {
 
 #define EV_MIN -2
 #define EV_MAX 2
-
-// DetermineFlash: returns true if flash should be determined according to current exposure
-#define DetermineFlash(x) (x == CAM_AE_FLASH_MODE_AUTO || \
-                           x == CAM_AE_FLASH_MODE_DAY_SYNC || \
-                           x == CAM_AE_FLASH_MODE_SLOW_SYNC) \
 
 #define EV_LOWER_BOUND         -100
 #define EV_UPPER_BOUND          100
@@ -232,7 +227,7 @@ public:
     virtual status_t setAeFlashMode(FlashMode mode) = 0;
     virtual FlashMode getAeFlashMode() = 0;
     virtual bool getAfNeedAssistLight() = 0;
-    virtual bool getAeFlashNecessary() = 0;
+    virtual FlashStage getAeFlashNecessity() = 0;
     virtual AwbMode getLightSource() = 0;
     virtual status_t setManualShutter(float expTime) = 0;
     virtual status_t setSmartSceneDetection(bool en) = 0;

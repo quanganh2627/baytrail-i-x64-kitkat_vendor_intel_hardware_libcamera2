@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (c) 2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -462,15 +463,24 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
         case FLASH_STAGE_PRE_WAITING:
             mFramesTillExposed++;
             if (frameStatus == FRAME_STATUS_FLASH_EXPOSED) {
-                LOG1("PreFlash@Frame %d: SUCCESS    (stopping...)", mFramesTillExposed);
-                mFlashStage = (mFlashStage == FLASH_STAGE_SHOT_WAITING) ?
-                               FLASH_STAGE_SHOT_EXPOSED:FLASH_STAGE_PRE_EXPOSED;
                 m3AControls->setFlash(0);
                 m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_MAIN);
+                if (mFlashStage == FLASH_STAGE_SHOT_WAITING) {
+                    LOG1("ShotFlash@Frame %d: SUCCESS    (stopping...)", mFramesTillExposed);
+                    mFlashStage = FLASH_STAGE_SHOT_EXPOSED;
+                } else if ((m3AControls->getAeFlashNecessity()) == CAM_FLASH_STAGE_PRE) {
+                    LOG1("PreFlash@Frame %d: SUCCESS     (repeat...)", mFramesTillExposed);
+                    mFramesTillExposed = 0;
+                    skipForEv = 2;
+                    mFlashStage = FLASH_STAGE_PRE_PHASE2;
+                } else {
+                    LOG1("PreFlash@Frame %d: SUCCESS    (stopping...)", mFramesTillExposed);
+                    mFlashStage = FLASH_STAGE_PRE_EXPOSED;
+                }
             } else if(mFramesTillExposed > FLASH_FRAME_TIMEOUT
                    || ( frameStatus != FRAME_STATUS_OK
                         && frameStatus != FRAME_STATUS_FLASH_PARTIAL) ) {
-                LOG1("PreFlash@Frame %d: FAILED     (stopping...)", mFramesTillExposed);
+                LOGW("PreFlash@Frame %d: FAILED     (stopping...)", mFramesTillExposed);
                 status = UNKNOWN_ERROR;
                 m3AControls->setFlash(0);
                 break;
