@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 Intel Corporation.
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
  */
 
 #define LOG_TAG "Camera_AtomAIQ"
-
 
 #include <math.h>
 #include <time.h>
@@ -647,13 +646,31 @@ bool AtomAIQ::getAfNeedAssistLight()
 
 // ToDo: check if this function is needed or if the info
 // could be used directly from AE results
-bool AtomAIQ::getAeFlashNecessary()
+FlashStage AtomAIQ::getAeFlashNecessity()
 {
-    LOG2("@%s", __FUNCTION__);
-    if(mAeState.ae_results)
-        return mAeState.ae_results->flash->status;
-    else
-        return false;
+    FlashStage ret(CAM_FLASH_STAGE_NONE);
+
+    if(mAeState.ae_results) {
+        switch(mAeState.ae_results->flash->status) {
+        case ia_aiq_flash_status_no:
+            ret = CAM_FLASH_STAGE_NONE;
+            break;
+        case ia_aiq_flash_status_torch:
+        case ia_aiq_flash_status_red_eye_reduction:
+        case ia_aiq_flash_status_pre:
+            ret = CAM_FLASH_STAGE_PRE;
+            break;
+        case ia_aiq_flash_status_main:
+            ret = CAM_FLASH_STAGE_MAIN;
+            break;
+        default:
+            LOGE("Unkown ae results flash status!");
+            ret = CAM_FLASH_STAGE_NONE;
+            break;
+        }
+    }
+
+    return ret;
 }
 
 status_t AtomAIQ::setAwbMode (AwbMode mode)
@@ -1879,6 +1896,7 @@ void AtomAIQ::setAeOperationModeAutoOrUll()
 status_t AtomAIQ::runAeMain()
 {
     LOG2("@%s", __FUNCTION__);
+
     status_t ret = NO_ERROR;
     bool invalidated = false;
 

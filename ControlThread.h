@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (c) 2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -742,7 +743,7 @@ private:
                                 exp:mBurstLength is 9, mAllocatedSnapshotBuffers is 5,
                                 mBurstBufsToReturn should be 4*/
     HdrImaging mHdr;
-    bool mAELockFlashNeed;
+    FlashStage mAELockFlashStage;
     float mPublicShutter;       /* Shutter set by application */
 
     bool mDvsEnable;

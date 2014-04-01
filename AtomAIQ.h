@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 Intel Corporation.
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -343,7 +343,7 @@ public:
     bool getAfNeedAssistLight();
     status_t setAeFlashMode(FlashMode mode);
     FlashMode getAeFlashMode();
-    bool getAeFlashNecessary();
+    FlashStage getAeFlashNecessity();
     status_t setAwbMode(AwbMode mode);
     AwbMode getAwbMode();
     AwbMode getLightSource();

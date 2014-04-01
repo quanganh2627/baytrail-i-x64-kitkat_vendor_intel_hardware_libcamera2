@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Intel Corporation.
+ * Copyright (c) 2013-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -111,7 +111,7 @@ public:
     virtual status_t getExposureInfo(SensorAeConfig& sensorAeConfig) { return INVALID_OPERATION; }
     virtual status_t getGridWindow(AAAWindowInfo& window);
     virtual bool getAfNeedAssistLight() { return false; }
-    virtual bool getAeFlashNecessary() { return false; }
+    virtual FlashStage getAeFlashNecessity() { return CAM_FLASH_STAGE_NONE; }
     virtual AwbMode getLightSource() { return CAM_AWB_MODE_NOT_SET; }
     virtual status_t setAeBacklightCorrection(bool en) { return INVALID_OPERATION; }
     virtual status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp) { return INVALID_OPERATION; }

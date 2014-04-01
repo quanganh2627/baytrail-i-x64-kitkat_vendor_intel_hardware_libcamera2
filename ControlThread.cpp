@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (c) 2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -138,7 +139,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mBurstCaptureDoneNum(-1)
     ,mBurstQbufs(0)
     ,mBurstBufsToReturn(0)
-    ,mAELockFlashNeed(false)
+    ,mAELockFlashStage(CAM_FLASH_STAGE_NONE)
     ,mPublicShutter(-1)
     ,mDvsEnable(false)
     ,mDualVideo(false)
@@ -3255,8 +3256,7 @@ status_t ControlThread::captureStillPic()
     int width, height, fourcc, size;
     int pvWidth, pvHeight, pvSize;
     FlashMode flashMode = m3AControls->getAeFlashMode();
-    bool flashOn = (flashMode == CAM_AE_FLASH_MODE_TORCH ||
-                    flashMode == CAM_AE_FLASH_MODE_ON);
+    FlashStage flashStage(CAM_FLASH_STAGE_NONE);
     bool flashFired = false;
     bool flashSequenceStarted = false;
     // Decide whether we display the postview
@@ -3289,54 +3289,52 @@ status_t ControlThread::captureStillPic()
 
     sp<AutoReset> autoReset;
 
-    if (m3AControls->isIntel3A()) {
-        // If flash mode is not ON or TORCH, check for other
-        // modes: AUTO, DAY_SYNC, SLOW_SYNC
+    if (m3AControls->isIntel3A() && flashMode != CAM_AE_FLASH_MODE_TORCH) {
 
-        if (!flashOn && DetermineFlash(flashMode)) {
-            if (m3AControls->getAeLock()) {
-                LOG1("AE was locked in %s, using old flash decision from AE "
-                     "locking time (%s)", __FUNCTION__, mAELockFlashNeed ? "ON" : "OFF");
-                flashOn = mAELockFlashNeed;
-            }
-            else
-                flashOn = m3AControls->getAeFlashNecessary();
+        // If flash mode is not TORCH, check need for flash
+        if (m3AControls->getAeLock()) {
+            LOG1("AE was locked in %s, using old flash decision from AE "
+                 "locking time (%d)", __FUNCTION__, mAELockFlashStage);
+            flashStage = mAELockFlashStage;
+        } else {
+            flashStage = m3AControls->getAeFlashNecessity();
         }
 
-        if (flashOn) {
-            if (m3AControls->getAeMode() != CAM_AE_MODE_MANUAL &&
-                    flashMode != CAM_AE_FLASH_MODE_TORCH) {
-                // first a workaround for BZ: 133025. Set ae metering mode to auto for the flash duration
-                // we can safely use a temporary setting since any client setParameters will be postponed
-                // for the duration of the capture
-                // this class defines the temporary setting behavior
-                class TemporaryAeMetering : public TemporarySetting {
-                public:
-                    TemporaryAeMetering(ControlThread *controlThread) : TemporarySetting(controlThread) { mMode = mControlThread->m3AControls->getAeMeteringMode(); }
-                    void set() { mControlThread->m3AControls->setAeMeteringMode(CAM_AE_METERING_MODE_AUTO); }
-                    void reset() { mControlThread->m3AControls->setAeMeteringMode(mMode); }
-                    MeteringMode mMode;
-                };
-                // instantiate - the smart pointers take care of destruction
-                autoReset = new AutoReset(new TemporaryAeMetering(this));
+        if (flashStage == CAM_FLASH_STAGE_PRE) {
+            // first a workaround for BZ: 133025. Set ae metering mode to auto for the flash duration
+            // we can safely use a temporary setting since any client setParameters will be postponed
+            // for the duration of the capture
+            // this class defines the temporary setting behavior
+            class TemporaryAeMetering : public TemporarySetting {
+            public:
+                TemporaryAeMetering(ControlThread *controlThread) : TemporarySetting(controlThread) { mMode = mControlThread->m3AControls->getAeMeteringMode(); }
+                void set() { mControlThread->m3AControls->setAeMeteringMode(CAM_AE_METERING_MODE_AUTO); }
+                void reset() { mControlThread->m3AControls->setAeMeteringMode(mMode); }
+                MeteringMode mMode;
+            };
+            // instantiate - the smart pointers take care of destruction
+            autoReset = new AutoReset(new TemporaryAeMetering(this));
 
-                flashSequenceStarted = true;
-                // hide preview frames already during pre-flash sequence
-                mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
-                mISP->attachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
-                status = m3AThread->enterFlashSequence(AAAThread::FLASH_STAGE_PRE_EXPOSED);
-                if (status != NO_ERROR) {
-                    flashOn = false;
-                }
-                // display postview when flash is triggered
-                // regardless of preview update mode
-                displayPostview = postviewDisplayable;
+            flashSequenceStarted = true;
+            // hide preview frames already during pre-flash sequence
+            mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
+            mISP->attachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
+            status = m3AThread->enterFlashSequence(AAAThread::FLASH_STAGE_PRE_EXPOSED);
+            if (status != NO_ERROR) {
+                LOGE("Pre-flash sequence failed");
+                flashStage = CAM_FLASH_STAGE_NONE;
+            } else {
+                flashStage = m3AControls->getAeFlashNecessity();
             }
+
+            // display postview when flash is triggered
+            // regardless of preview update mode
+            displayPostview = postviewDisplayable;
         }
     }
 
     if (mState == STATE_CONTINUOUS_CAPTURE) {
-        bool useFlash = flashOn && flashMode != CAM_AE_FLASH_MODE_TORCH;
+        bool useFlash = flashStage == CAM_FLASH_STAGE_MAIN;
         status = continuousStartStillCapture(useFlash);
     } else {
         status = stopPreviewCore();
@@ -3439,16 +3437,13 @@ status_t ControlThread::captureStillPic()
     }
 
     // Turn on flash. If flash mode is torch, then torch is already on
-    if (flashOn && flashMode != CAM_AE_FLASH_MODE_TORCH && mBurstLength <= 1) {
-        LOG1("Requesting flash");
+    if (flashStage == CAM_FLASH_STAGE_MAIN && mBurstLength <= 1) {
         if (mHwcg.mFlashCI->setFlash(1) != NO_ERROR) {
             LOGE("Failed to enable the Flash!");
         }
         else {
             flashFired = true;
         }
-    } else if (DetermineFlash(flashMode)) {
-        mHwcg.mFlashCI->setFlashIndicator(TORCH_INTENSITY);
     }
 
     status = burstCaptureSkipFrames();
@@ -3515,11 +3510,6 @@ status_t ControlThread::captureStillPic()
             (!mHdr.enabled || (mHdr.enabled && mBurstCaptureNum == 1))) {
         // Send request to play the Shutter Sound: in single shots or when burst-length is specified
         mCallbacksThread->shutterSound();
-    }
-
-    // Turn off flash
-    if (!flashOn && DetermineFlash(flashMode) && mBurstLength <= 1) {
-        mHwcg.mFlashCI->setFlashIndicator(0);
     }
 
     // Do postview for preview-keep-alive feature synchronously before the possible mirroring.
@@ -4964,8 +4954,8 @@ status_t ControlThread::processParamAELock(const CameraParameters *oldParams,
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK, newVal.string());
             if (ae_lock) {
-                mAELockFlashNeed = m3AControls->getAeFlashNecessary();
-                LOG1("AE locked, storing flash necessity decision (%s)", mAELockFlashNeed ? "ON" : "OFF");
+                mAELockFlashStage = m3AControls->getAeFlashNecessity();
+                LOG1("AE locked, storing flash necessity decision (%d)",  mAELockFlashStage);
             }
         }
     }
