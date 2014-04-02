@@ -223,6 +223,7 @@ status_t SensorHW::getIspDevicePath(char *ispDevPath, int size)
 {
     LOG1("@%s", __FUNCTION__);
     int ret = 0;
+    int val = 0;
     int sinkPadIndex = -1;
     status_t status = NO_ERROR;
     char *sysName = new char[size];
@@ -277,7 +278,8 @@ status_t SensorHW::getIspDevicePath(char *ispDevPath, int size)
         goto exit;
     }
 
-    sprintf(devName, "/sys/dev/char/%u:%u", mediaEntityDescTmp.v4l.major, mediaEntityDescTmp.v4l.minor);
+    val += snprintf(devName, (size - val), "/sys/dev/char/%u:%u",
+            mediaEntityDescTmp.v4l.major, mediaEntityDescTmp.v4l.minor);
     ret = readlink(devName, sysName, size);
     if (ret < 0) {
         status = UNKNOWN_ERROR;
@@ -291,9 +293,10 @@ status_t SensorHW::getIspDevicePath(char *ispDevPath, int size)
             LOGE("Invalid sysfs subdev path devName %s sysName %s", devName, sysName);
             goto exit;
         }
-        sprintf(devName, "/dev/%s", lastSlash + 1);
+        val += snprintf(devName, (size - val), "/dev/%s", lastSlash + 1);
         LOG1("Subdevide node : %s", devName);
-        memcpy(ispDevPath, devName, size);
+        strncpy(ispDevPath, devName, size);
+        ispDevPath[size - 1] = '\0';
     }
 
 exit:
