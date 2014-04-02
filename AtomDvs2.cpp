@@ -98,6 +98,7 @@ status_t AtomDvs2::dvsInit()
         cpfData.size = PlatformData::AiqConfig.size();
         ia_cmc_t *cmc = ia_cmc_parser_init((ia_binary_data*)&(cpfData));
         err = dvs_init(&mState, &cpfData, cmc, NULL, &mDvs2Env);
+        ia_cmc_parser_deinit(cmc);
     } else {
         err = dvs_init(&mState, NULL, NULL, NULL, &mDvs2Env);
     }

@@ -555,6 +555,7 @@ void ControlThread::deinit()
     }
 
     if (mISP != NULL) {
+        mISP->deInitDevice();
         delete mISP;
         mISP = NULL;
         PERFORMANCE_TRACES_BREAKDOWN_STEP("DeleteISP");
