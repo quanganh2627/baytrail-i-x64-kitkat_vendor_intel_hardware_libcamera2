@@ -41,6 +41,7 @@ class I3AControls;
 namespace android {
 
 #define MAX_NUM_AF_WINDOW       9
+const unsigned int NUM_EXPOSURES = 1;
 
 typedef struct {
     struct atomisp_parm               isp_params;
@@ -66,8 +67,9 @@ typedef struct {
 typedef struct {
     ia_aiq_ae_results                 results;
     ia_aiq_hist_weight_grid           weight_grid;
-    ia_aiq_exposure_parameters        exposure;
-    ia_aiq_exposure_sensor_parameters sensor_exposure;
+    ia_aiq_exposure_parameters        exposures[NUM_EXPOSURES];
+    ia_aiq_exposure_sensor_parameters sensor_exposures[NUM_EXPOSURES];
+    ia_aiq_ae_exposure_result         exposure_result_array[NUM_EXPOSURES];
     ia_aiq_flash_parameters           flash;
 } stored_ae_results;
 
@@ -418,6 +420,8 @@ private:
     ia_env mPrintFunctions;
 
     aaa_state m3aState;
+    const ia_aiq_rgbs_grid* mRgbsGridArray[NUM_EXPOSURES];
+    const ia_aiq_af_grid* mAfGridArray[NUM_EXPOSURES];
 
     //STATISTICS
     ia_aiq_statistics_input_params mStatisticsInputParameters;
@@ -463,6 +467,8 @@ private:
     ia_aiq_gbce_results *mGBCEResults;
     bool mGBCEDefault;
 
+    //PA
+    ia_aiq_pa_results *mPaResults;
 
     //ISP
     ispInputParameters mIspInputParams;

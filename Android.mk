@@ -140,7 +140,6 @@ LOCAL_SHARED_LIBRARIES := \
 	libia_isp_1_5 \
 	libia_isp_2_2 \
 	libia_cmc_parser \
-	libia_aiq_cp \
 	libia_log \
 	libia_emd_decoder \
 	libui \
@@ -158,7 +157,8 @@ LOCAL_SHARED_LIBRARIES := \
 	libhardware \
 	libcilkrts \
 	libia_face \
-	libiacp
+	libiacp \
+	libia_exc
 
 ifeq ($(USE_INTEL_METABUFFER),true)
 LOCAL_SHARED_LIBRARIES += \
