@@ -2506,8 +2506,21 @@ status_t ControlThread::handleMessageStartRecording()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    int vidWidth, vidHeight, width, height;
 
     if (mState == STATE_PREVIEW_VIDEO) {
+        mParameters.getVideoSize(&vidWidth, &vidHeight);
+        mISP->getVideoSize(&width, &height, NULL);
+
+        if (vidWidth != width || vidHeight != height) {
+            LOG1("video size doesn't match, restartPreview %dx%d => %dx%d", width, height, vidWidth, vidHeight);
+            bool videoMode = true;
+            mISP->applyISPLimitations(&mParameters, mDvsEnable, videoMode);
+            status = restartPreview(videoMode);
+            if (status != NO_ERROR) {
+                LOGE("Error restarting preview in video mode");
+            }
+        }
         mState = STATE_RECORDING;
     } else if (mState == STATE_PREVIEW_STILL ||
                mState == STATE_CONTINUOUS_CAPTURE) {
