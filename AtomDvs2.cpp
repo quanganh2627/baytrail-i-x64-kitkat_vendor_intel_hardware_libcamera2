@@ -392,7 +392,7 @@ bool AtomDvs2::isDvsValid()
 {
     LOG1("@%s", __FUNCTION__);
     int width, height;
-    int sensorFps = floor(mSensorCI->getFramerate());
+    int sensorFps = mIsp->getRecordingFramerate();
 
     mIsp->getOutputSize(&width, &height);
 
