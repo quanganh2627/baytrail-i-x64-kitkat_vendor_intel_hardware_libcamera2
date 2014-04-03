@@ -23,6 +23,7 @@
 #include "FaceDetector.h"
 #include "CameraDump.h"
 #include "PerformanceTraces.h"
+#include "PlatformData.h"
 
 namespace android {
 
@@ -788,6 +789,12 @@ status_t AAAThread::waitForAndExecuteMessage()
     status_t status = NO_ERROR;
     Message msg;
     mMessageQueue.receive(&msg);
+
+    if (msg.id != MESSAGE_ID_EXIT && PlatformData::isDisable3A()) {
+        if (msg.id == MESSAGE_ID_AUTO_FOCUS)
+            mCallbacksThread->autoFocusDone(true);
+        mMessageQueue.reply(msg.id, status);
+    }
 
     switch (msg.id) {
 

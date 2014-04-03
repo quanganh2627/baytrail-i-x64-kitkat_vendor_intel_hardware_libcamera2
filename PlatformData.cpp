@@ -52,6 +52,11 @@ PlatformBase* PlatformData::getInstance(void)
     return mInstance;
 }
 
+bool PlatformData::isDisable3A(void)
+{
+    return getInstance()->mCameras[mActiveCameraId].disable3A;
+}
+
 status_t PlatformData::readSpId(String8& spIdName, int& spIdValue)
 {
         FILE *file;

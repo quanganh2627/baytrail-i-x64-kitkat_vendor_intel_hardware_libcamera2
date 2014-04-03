@@ -132,6 +132,14 @@ class PlatformData {
     };
 
     /**
+     * to check if the 3A is needed to be disabled
+     *
+     * if the camera should disable 3A, this function will return true.
+     *
+     */
+    static bool isDisable3A(void);
+
+    /**
      * Sets the ID of active camera
      *
      * This function should be called every time an instance of CameraHAL
@@ -1257,6 +1265,8 @@ protected:
             supportedDvsSizes = "640x480,720x480,720x576,1280x720,1920x1080";
             captureWarmUpFrames = 0;
 
+            disable3A = false;
+
             useMultiStreamsForSoC = false;
         }
 
@@ -1399,6 +1409,10 @@ protected:
         // at image capture. For example, some SoC sensors need some frames to
         // be skipped in order for the SoC sensor's 3A (or 2A) to converge.
         int captureWarmUpFrames;
+
+        // in some test purpose, we need to disable 3A.
+        // if this is needed, please make the disable3A to true
+        bool disable3A;
 
         /**
          * if the sensor is SoC, this variable is valuable
