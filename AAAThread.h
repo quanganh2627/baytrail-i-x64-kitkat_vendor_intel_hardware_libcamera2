@@ -230,7 +230,7 @@ private:
     FlashStage mFlashStage;
     size_t mFramesTillExposed;
     FlashStage mBlockForStage;
-    int mSkipStatistics;
+    unsigned int mSkipStatistics;
     unsigned int mSkipForEv; // for flash sequence
 }; // class AAAThread
 
