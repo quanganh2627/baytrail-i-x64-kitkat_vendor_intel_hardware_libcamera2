@@ -1114,6 +1114,11 @@ bool PlatformData::supportVideoSnapshot(void)
     return getInstance()->mSupportVideoSnapshot;
 }
 
+bool PlatformData::supportsOfflineBurst(void)
+{
+    return getInstance()->mSupportsOfflineBurst;
+}
+
 int PlatformData::getRecordingBufNum(void)
 {
     return getInstance()->mNumRecordingBuffers;

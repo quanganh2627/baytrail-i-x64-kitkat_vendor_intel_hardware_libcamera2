@@ -199,6 +199,13 @@ class PlatformData {
     static bool supportsContinuousCapture(int cameraId);
 
     /**
+     * Whether platform can support burst capture in offlie mode
+     *
+     * \return true if supported
+     */
+    static bool supportsOfflineBurst(void);
+
+    /**
      * What's the maximum supported size of the RAW ringbuffer
      * for continuous capture maintained by the ISP.
      *
@@ -1060,6 +1067,7 @@ public:
     PlatformBase()  //default
         :mFileInject(false)
         ,mSupportVideoSnapshot(true)
+        ,mSupportsOfflineBurst(false)
         ,mMaxContinuousRawRingBuffer(0)
         ,mShutterLagCompensationMs(40)
         ,mPanoramaMaxSnapshotCount(10)
@@ -1382,6 +1390,7 @@ protected:
 
     bool mFileInject;
     bool mSupportVideoSnapshot;
+    bool mSupportsOfflineBurst;
 
     int mMaxContinuousRawRingBuffer;
     int mShutterLagCompensationMs;

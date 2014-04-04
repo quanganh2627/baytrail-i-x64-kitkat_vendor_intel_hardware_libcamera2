@@ -1549,6 +1549,9 @@ status_t ControlThread::captureSdv(bool offline)
             return status;
         }
 
+        // request to play the sound although it would be shielded by up layer
+        mCallbacksThread->shutterSound();
+
         // encode a frame
         PictureThread::MetaData picMetaData;
         fillPicMetaData(picMetaData, false);
@@ -1695,8 +1698,9 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
                 ret = SHOOTING_MODE_ZSL_BURST;
             else
                 ret = SHOOTING_MODE_ZSL;
-            /* Trigger ULL only when user did not force flash and when we have enough available buffers */
-            if (mULL->isActive() && mULL->trigger() && !flashOn &&
+            // Trigger ULL in single capture only when user did not force flash
+            // and when we have enough available buffers
+            if (mULL->isActive() && mULL->trigger() && !flashOn && mBurstLength <= 1 &&
                 mAvailableSnapshotBuffers.size() >= (size_t)mUllBurstLength &&
                 mAvailablePostviewBuffers.size() >= (size_t)mUllBurstLength)
                 ret = SHOOTING_MODE_ULL;
@@ -1757,9 +1761,16 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         goto online_preview;
     }
 
-    if (mBurstLength > 1 && mBurstStart >= 0) {
-        LOG1("@%s: Burst length of %d requested, disabling continuous mode",
-             __FUNCTION__, mBurstLength);
+    // Bracketing not supported in continuous mode as the number captures is not fixed.
+    if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE) {
+        LOG1("@%s: Bracketing requested, disabling continuous mode",
+                __FUNCTION__);
+        goto online_preview;
+    }
+
+    if (mBurstLength > 1 && mBurstStart >= 0 && !PlatformData::supportsOfflineBurst()) {
+        LOG1("@%s: platform doesn't support offline burst, disabling continuous mode",
+                __FUNCTION__);
         goto online_preview;
     }
 
@@ -1771,14 +1782,6 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
              LOG1("@%s: Burst length of %d with offset %d requested, disabling continuous mode",
                   __FUNCTION__, mBurstLength, mBurstStart);
              goto online_preview;
-        }
-
-        // Bracketing not supported in continuous mode as the number
-        // captures is not fixed.
-        if (mBracketManager->getBracketMode() != BRACKET_NONE) {
-            LOG1("@%s: Bracketing requested, disabling continuous mode",
-                 __FUNCTION__);
-            goto online_preview;
         }
     }
 
@@ -3145,9 +3148,6 @@ status_t ControlThread::continuousStartStillCapture(bool useFlash)
     int size;
 
     if (useFlash == false) {
-        //To play or not to play is decided by App, however the callback is needed
-        mCallbacksThread->shutterSound();
-
         /**
          * At this stage we need to re-configure the v4l2 buffer pools
          * in case the number of buffers have change.
@@ -3350,8 +3350,9 @@ status_t ControlThread::captureStillPic()
     bool postviewDisplayable = selectPostviewSize(pvWidth, pvHeight);
     bool displayPostview = postviewDisplayable                   // postview matches size of preview
                            && !mHdr.enabled                      // HDR not enabled
+                           && !(mBurstLength > 1 && mState == STATE_CONTINUOUS_CAPTURE) // not offline burst
                            && (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD
-                              || mBurstLength > 1)               // proprietary preview update mode or burst
+                              || mBurstLength > 1)               // proprietary preview update mode or online burst
                            && mBurstStart >= 0;                  // negative fixed burst start index
     // Synchronise jpeg callback with postview rendering in case of single capture
     bool syncJpegCbWithPostview = !mHdr.enabled && (mBurstLength <= 1) &&
@@ -3597,11 +3598,8 @@ status_t ControlThread::captureStillPic()
 
     mBurstCaptureNum++;
 
-    if (mState != STATE_CONTINUOUS_CAPTURE &&
-            (!mHdr.enabled || (mHdr.enabled && mBurstCaptureNum == 1))) {
-        // Send request to play the Shutter Sound: in single shots or when burst-length is specified
-        mCallbacksThread->shutterSound();
-    }
+    // Send request to play the Shutter Sound for both online and offlien capture
+    mCallbacksThread->shutterSound();
 
     // Do postview for preview-keep-alive feature synchronously before the possible mirroring.
     // Otherwise mirrored image will be shown in postview.
@@ -3821,14 +3819,11 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
     AtomBuffer postviewBuffer
             = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
 
-    int pvW, pvH;
     // Note: Postview is not displayed with any of fixed burst scenarios,
     //       just having it here for conformity and noticing.
     //       Continuous mode with negative mBurstStart index would lead to
     //       disordered displaying of postview and preview frames.
-    bool displayPostview = selectPostviewSize(pvW, pvH)
-                           && mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD
-                           && mBurstStart >= 0;
+    bool displayPostview = false;
 
     assert(mState == STATE_CONTINUOUS_CAPTURE);
 
@@ -3869,6 +3864,9 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
     if (displayPostview)
         mPreviewThread->postview(&postviewBuffer, false);
 
+    if (!mHdr.enabled) {
+        mCallbacksThread->shutterSound();
+    }
     // Do jpeg encoding
     LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
     status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
@@ -3955,45 +3953,47 @@ status_t ControlThread::captureULLPic()
 
     // Get the snapshots
     for (int i=0; i< mBurstLength; i++) {
-       status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
-       if (status != NO_ERROR) {
-           LOGE("Error in grabbing snapshot!");
-           goto exit;
-       }
-       if (i == 0) {
-           PerformanceTraces::ShutterLag::snapshotTaken(&snapshotBuffer.capture_timestamp);
+        status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
+        if (status != NO_ERROR) {
+            LOGE("Error in grabbing snapshot!");
+            goto exit;
+        }
+        if (i == 0) {
+            PerformanceTraces::ShutterLag::snapshotTaken(&snapshotBuffer.capture_timestamp);
+            // request shutter sound only for first image
+            mCallbacksThread->shutterSound();
 
-           PictureThread::MetaData firstPicMetaData;
-           PictureThread::MetaData ullPicMetaData;
-           fillPicMetaData(firstPicMetaData, false);
-           fillPicMetaData(ullPicMetaData, false);
-           ia_aiq_exposure_parameters exposure;
-           CLEAR(exposure);
-           m3AControls->getExposureParameters(&exposure);
-           mULL->addSnapshotMetadata(ullPicMetaData, exposure);
+            PictureThread::MetaData firstPicMetaData;
+            PictureThread::MetaData ullPicMetaData;
+            fillPicMetaData(firstPicMetaData, false);
+            fillPicMetaData(ullPicMetaData, false);
+            ia_aiq_exposure_parameters exposure;
+            CLEAR(exposure);
+            m3AControls->getExposureParameters(&exposure);
+            mULL->addSnapshotMetadata(ullPicMetaData, exposure);
 
-           if (displayPostview)
-               mPreviewThread->postview(&postviewBuffer, true);
-           /*
-            *  Mark the snapshot as skipped.
-            *  This is done so that the snapshot buffer is not made available after
-            *  the JPEG encoding. This buffer will be made available after
-            *  the ULL processing completes.
-            *  By "making available" we mean the buffer is to be pushed to the
-            *  mAvailableSnapshotBuffers vector
-            */
-           snapshotBuffer.status = FRAME_STATUS_SKIPPED;
-           status = mPictureThread->encode(firstPicMetaData,&snapshotBuffer, &postviewBuffer);
-           if (status != NO_ERROR) {
-               // normally this is done by PictureThread, but as no
-               // encoding was done, free the allocated metadata
-               firstPicMetaData.free(m3AControls);
-               LOGE("Error encoding first image of the ULL burst");
-               goto exit;
-           }
-       }
+            if (displayPostview)
+                mPreviewThread->postview(&postviewBuffer, true);
+            /*
+             *  Mark the snapshot as skipped.
+             *  This is done so that the snapshot buffer is not made available after
+             *  the JPEG encoding. This buffer will be made available after
+             *  the ULL processing completes.
+             *  By "making available" we mean the buffer is to be pushed to the
+             *  mAvailableSnapshotBuffers vector
+             */
+            snapshotBuffer.status = FRAME_STATUS_SKIPPED;
+            status = mPictureThread->encode(firstPicMetaData,&snapshotBuffer, &postviewBuffer);
+            if (status != NO_ERROR) {
+                // normally this is done by PictureThread, but as no
+                // encoding was done, free the allocated metadata
+                firstPicMetaData.free(m3AControls);
+                LOGE("Error encoding first image of the ULL burst");
+                goto exit;
+            }
+        }
 
-       mULL->addInputFrame(&snapshotBuffer,  &postviewBuffer);
+        mULL->addInputFrame(&snapshotBuffer,  &postviewBuffer);
     }
 
     // send the  ULL processing to the postcapture thread. once it completes it
