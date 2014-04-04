@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (c) 2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -442,7 +443,9 @@ static int ATOM_CloseCameraHardware(hw_device_t* device)
     free(camera_dev);
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Close_HAL_Done");
-    atom_instances--;
+    --atom_instances;
+
+    LOGD("%s: Camera close done (open instances after close: %d)", __FUNCTION__, atom_instances);
     return 0;
 }
 
