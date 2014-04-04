@@ -891,6 +891,23 @@ status_t AtomAIQ::startStillAf()
         if (mAfState.assist_light) {
             LOG1("Using AF assist light with auto-focus");
             mFlashCI->setTorch(TORCH_INTENSITY);
+            mAeInputParameters.frame_use = ia_aiq_frame_use_still;
+            if (mAeState.ae_results) {
+                memcpy(&(mPreAssistLightAeResults.results), mAeState.ae_results, sizeof(ia_aiq_ae_results));
+                memcpy(&(mPreAssistLightAeResults.weight_grid), mAeState.ae_results->weight_grid, sizeof(ia_aiq_hist_weight_grid));
+                memcpy(&(mPreAssistLightAeResults.exposure), mAeState.ae_results->exposure, sizeof(ia_aiq_exposure_parameters));
+                memcpy(&(mPreAssistLightAeResults.sensor_exposure), mAeState.ae_results->sensor_exposure, sizeof(ia_aiq_exposure_sensor_parameters));
+                memcpy(&(mPreAssistLightAeResults.flash), mAeState.ae_results->flash, sizeof(ia_aiq_flash_parameters));
+                // fixes cross-dependencies for container
+                mPreAssistLightAeResults.results.weight_grid =  &mPreAssistLightAeResults.weight_grid;
+                mPreAssistLightAeResults.results.exposure =  &mPreAssistLightAeResults.exposure;
+                mPreAssistLightAeResults.results.sensor_exposure =  &mPreAssistLightAeResults.sensor_exposure;
+                mPreAssistLightAeResults.results.flash =  &mPreAssistLightAeResults.flash;
+                LOG1("@%s: AE results copy to pre assist results. (flash status = %d)", __FUNCTION__, mPreAssistLightAeResults.results.flash->status);
+            } else {
+                LOG1("@%s: No current AE results, clean pre assist light AE result.", __FUNCTION__ );
+                CLEAR(mPreAssistLightAeResults);
+            }
         }
     }
     setAfFocusMode(ia_aiq_af_operation_mode_auto);
@@ -906,6 +923,7 @@ status_t AtomAIQ::stopStillAf()
         LOG1("Turning off AF assist light");
         mFlashCI->setTorch(0);
         mAfState.assist_light = false;
+        mAeInputParameters.frame_use = m3aState.frame_use;
     }
 
     if (mAfMode == CAM_AF_MODE_AUTO || mAfMode == CAM_AF_MODE_MACRO) {
@@ -1030,8 +1048,8 @@ status_t AtomAIQ::applyEv(float bias)
         exposure.aperture = 100;
         LOG2("AEC integration_time[0]: %d", exposure.integration_time[0]);
         LOG2("AEC integration_time[1]: %d", exposure.integration_time[1]);
-        LOG2("AEC gain[0]: %x", exposure.gain[0]);
-        LOG2("AEC gain[1]: %x", exposure.gain[1]);
+        LOG2("AEC gain[0]: %d", exposure.gain[0]);
+        LOG2("AEC gain[1]: %d", exposure.gain[1]);
         LOG2("AEC aperture: %d\n", exposure.aperture);
         /* Apply Sensor settings */
         ret |= mSensorCI->setExposure(&exposure);
@@ -1596,8 +1614,8 @@ int AtomAIQ::applyExposure(ia_aiq_exposure_sensor_parameters *sensor_exposure)
 
     LOG2("AEC integration_time[0]: %d", atomispExposure.integration_time[0]);
     LOG2("AEC integration_time[1]: %d", atomispExposure.integration_time[1]);
-    LOG2("AEC gain[0]: %x", atomispExposure.gain[0]);
-    LOG2("AEC gain[1]: %x", atomispExposure.gain[1]);
+    LOG2("AEC gain[0]: %d", atomispExposure.gain[0]);
+    LOG2("AEC gain[1]: %d", atomispExposure.gain[1]);
     LOG2("AEC aperture: %d\n", atomispExposure.aperture);
 
     /* Apply Sensor settings as exposure changes*/
@@ -1725,51 +1743,54 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct)
     if (ret == 0)
     {
         ia_err err = ia_err_none;
-        CLEAR(m3aState.statistics_input_parameters);
+        ia_aiq_statistics_input_params statistics_input_parameters;
+        ia_aiq_af_results frame_af_parameters;
+        CLEAR(statistics_input_parameters);
 
-        m3aState.statistics_input_parameters.frame_timestamp = TIMEVAL2USECS(frame_timestamp_struct);
+        statistics_input_parameters.frame_timestamp = TIMEVAL2USECS(frame_timestamp_struct);
 
-        m3aState.statistics_input_parameters.frame_af_parameters = NULL;
-        m3aState.statistics_input_parameters.external_histogram = NULL;
+        statistics_input_parameters.frame_af_parameters = NULL;
+        statistics_input_parameters.external_histogram = NULL;
 
         if(m3aState.faces)
-            m3aState.statistics_input_parameters.faces = m3aState.faces;
+            statistics_input_parameters.faces = m3aState.faces;
 
         if(mAwbResults)
-            m3aState.statistics_input_parameters.frame_awb_parameters = mAwbResults;
+            statistics_input_parameters.frame_awb_parameters = mAwbResults;
 
         if (mAeState.ae_results) {
-            m3aState.statistics_input_parameters.frame_ae_parameters = pickAeFeedbackResults();
+            statistics_input_parameters.frame_ae_parameters = pickAeFeedbackResults();
         }
 
         if (mAfState.af_results) {
             // pass AF results as AEC input during still AF, AIQ will
             // internally let AEC to converge to assist light
-            m3aState.af_results_feedback = *mAfState.af_results;
-            m3aState.af_results_feedback.use_af_assist = mAfState.assist_light;
-            m3aState.statistics_input_parameters.frame_af_parameters = &m3aState.af_results_feedback;
-            LOG2("AF assist light %s", (mAfState.assist_light) ? "on":"off");
+            frame_af_parameters = *mAfState.af_results;
+            frame_af_parameters.use_af_assist = mAfState.assist_light;
+            statistics_input_parameters.frame_af_parameters = &frame_af_parameters;
+            LOG2("AF assist light %s", (frame_af_parameters.use_af_assist) ? "on":"off");
         }
+
         // TODO: take into account camera mount orientation. AIQ needs device orientation to handle statistics.
-        m3aState.statistics_input_parameters.camera_orientation = ia_aiq_camera_orientation_unknown;
+        statistics_input_parameters.camera_orientation = ia_aiq_camera_orientation_unknown;
 
         ret = mISPAdaptor->convertIspStatistics(m3aState.stats,
-                                                const_cast<ia_aiq_rgbs_grid**>(&m3aState.statistics_input_parameters.rgbs_grid),
-                                                const_cast<ia_aiq_af_grid**>(&m3aState.statistics_input_parameters.af_grid));
+                                                const_cast<ia_aiq_rgbs_grid**>(&statistics_input_parameters.rgbs_grid),
+                                                const_cast<ia_aiq_af_grid**>(&statistics_input_parameters.af_grid));
 
         if (ret == ia_err_none) {
             LOG2("m3aState.stats: grid_info: %d  %d %d ",
-                  m3aState.stats->grid_info.s3a_width,m3aState.stats->grid_info.s3a_height,m3aState.stats->grid_info.s3a_bqs_per_grid_cell);
+                 m3aState.stats->grid_info.s3a_width,m3aState.stats->grid_info.s3a_height,m3aState.stats->grid_info.s3a_bqs_per_grid_cell);
 
             LOG2("rgb_grid: grid_width:%u, grid_height:%u, thr_r:%u, thr_gr:%u,thr_gb:%u, thr_b:%u",
-                  m3aState.statistics_input_parameters.rgbs_grid->grid_width,
-                  m3aState.statistics_input_parameters.rgbs_grid->grid_height,
-                  m3aState.statistics_input_parameters.rgbs_grid->blocks_ptr->avg_r,
-                  m3aState.statistics_input_parameters.rgbs_grid->blocks_ptr->avg_gr,
-                  m3aState.statistics_input_parameters.rgbs_grid->blocks_ptr->avg_gb,
-                  m3aState.statistics_input_parameters.rgbs_grid->blocks_ptr->avg_b);
+                 statistics_input_parameters.rgbs_grid->grid_width,
+                 statistics_input_parameters.rgbs_grid->grid_height,
+                 statistics_input_parameters.rgbs_grid->blocks_ptr->avg_r,
+                 statistics_input_parameters.rgbs_grid->blocks_ptr->avg_gr,
+                 statistics_input_parameters.rgbs_grid->blocks_ptr->avg_gb,
+                 statistics_input_parameters.rgbs_grid->blocks_ptr->avg_b);
 
-            err = ia_aiq_statistics_set(m3aState.ia_aiq_handle, &m3aState.statistics_input_parameters);
+            err = ia_aiq_statistics_set(m3aState.ia_aiq_handle, &statistics_input_parameters);
 
             m3aState.stats_valid = true;
         }
@@ -1892,8 +1913,7 @@ status_t AtomAIQ::runAeMain()
     status_t ret = NO_ERROR;
     bool invalidated = false;
 
-    if (mAeState.ae_results == NULL)
-    {
+    if (mAeState.ae_results == NULL) {
         LOG2("AEC invalidated, frame_use %d", mAeInputParameters.frame_use);
         // Note: Invalidation means different behaviour in still and preview
         //  - In preview, invalidation will flush the AEC results history
@@ -1922,26 +1942,11 @@ status_t AtomAIQ::runAeMain()
     ia_err err = ia_err_none;
     ia_aiq_ae_results *new_ae_results = NULL;
 
-    if (mAfState.assist_light) {
-        // HACK: This workaround is needed in order to get and restore
-        //       sensor exposure for preview after AF with assist light
-        //       ends but still before application is informed from focus
-        //       done. It is done here because AIQ AEC itself provides the
-        //       logic for storing and restoring over the custom AF assist
-        //       mode it provides.
-        // To restore preview exposure in single run, we need to run AEC
-        // according to latest AF results and therefore update the input
-        // parameters passed with statistics.
-        if (m3aState.stats_valid &&
-            getCAFStatus() != CAM_AF_STATUS_BUSY) {
-            m3aState.af_results_feedback.use_af_assist = false;
-            m3aState.statistics_input_parameters.frame_af_parameters = &m3aState.af_results_feedback;
-            LOG1("AEC: AF with assist light ended, updating af results for AEC run");
-            ia_aiq_statistics_set(m3aState.ia_aiq_handle, &m3aState.statistics_input_parameters);
-        }
-    }
-
-    if(m3aState.ia_aiq_handle){
+    if (mAfState.assist_light && m3aState.stats_valid && getCAFStatus() != CAM_AF_STATUS_BUSY) {
+        // In case assist light is turned off, return ae state before assist light turn on
+        invalidated = true;
+        new_ae_results = &mPreAssistLightAeResults.results;
+    } else if (m3aState.ia_aiq_handle) {
         LOG2("AEC manual_exposure_time_us: %d manual_analog_gain: %f manual_iso: %d", mAeInputParameters.manual_exposure_time_us, mAeInputParameters.manual_analog_gain, mAeInputParameters.manual_iso);
         LOG2("AEC sensor_descriptor ->line_periods_per_field: %d", mAeInputParameters.sensor_descriptor->line_periods_per_field);
         LOG2("AEC mAeInputParameters.frame_use: %d",mAeInputParameters.frame_use);
@@ -1950,18 +1955,16 @@ status_t AtomAIQ::runAeMain()
         LOG2("@%s result: %d", __FUNCTION__, err);
     }
 
-    if (new_ae_results != NULL)
-    {
+    if (new_ae_results != NULL) {
         // always apply when invalidated
         bool apply_exposure = invalidated;
         bool apply_flash_intensity = invalidated;
-        bool update_results_history = (mAeInputParameters.frame_use != ia_aiq_frame_use_still);
+        bool update_results_history = (mAeInputParameters.frame_use != ia_aiq_frame_use_still || mAfState.assist_light);
 
         LOG2("AEC %s", new_ae_results->converged ? "converged":"converging");
 
         // Fill history with these values when invalidated
-        if (invalidated && update_results_history)
-        {
+        if (invalidated && update_results_history) {
             /*
              * Fill AE results history with first AE results because there is no AE delay in the beginning OR
              * Fill AE results history with first AE results because there is no AE delay after mode change (handled with 'first_run' flag - see switchModeAndRate()) OR
@@ -1972,8 +1975,7 @@ status_t AtomAIQ::runAeMain()
         }
 
         // when there's previous values, compare and apply only if changed
-        if (mAeState.ae_results)
-        {
+        if (mAeState.ae_results) {
             // Compare sensor exposure parameters instead of generic exposure parameters to take into account mode changes when exposure time doesn't change but sensor parameters do change.
             if (!apply_exposure) {
                 ia_aiq_exposure_sensor_parameters *prev_exposure = mAeState.ae_results->sensor_exposure;
@@ -2019,6 +2021,7 @@ status_t AtomAIQ::runAeMain()
     } else {
         LOG1("%s: no new results", __FUNCTION__);
     }
+
     return ret;
 }
 

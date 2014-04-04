@@ -26,9 +26,9 @@
 
 namespace android {
 
-#define FLASH_FRAME_TIMEOUT 5
+const size_t FLASH_FRAME_TIMEOUT = 5;
 // TODO: use values relative to real sensor timings or fps
-#define SKIP_PARTIALLY_EXPOSED  1
+const unsigned int SKIP_PARTIALLY_EXPOSED = 1;
 
 AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaaControls, sp<CallbacksThread> callbacksThread) :
     Thread(false)
@@ -305,7 +305,7 @@ status_t AAAThread::handleMessageAutoFocus()
 
    /**
     * If we are in continuous focus mode we should return immediately with
-    * the current status if we  are not busy.
+    * the current status if we are not busy.
     */
     AfStatus cafStatus = m3AControls->getCAFStatus();
     if (currAfMode == CAM_AF_MODE_CONTINUOUS && cafStatus != CAM_AF_STATUS_BUSY) {
@@ -555,8 +555,8 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
         return status;
 
     if (mSkipStatistics > 0) {
-        LOG1("Partially exposed 3A statistics skipped");
-        mSkipStatistics--;
+        LOG1("3A statistics skipped. Partially exposed or wait for exposure. (%d)", mSkipStatistics);
+        --mSkipStatistics;
         return status;
     }
     // 3A & DVS stats are read with proprietary ioctl that returns the
@@ -605,7 +605,9 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
 
             if (stopStillAf) {
                 if (m3AControls->getAfNeedAssistLight()) {
-                    mSkipStatistics = SKIP_PARTIALLY_EXPOSED;
+                    // skip frames until we get result with orginal exposure settings
+                    unsigned int exposureDelay = m3AControls->getExposureDelay();
+                    mSkipStatistics = MAX(SKIP_PARTIALLY_EXPOSED, exposureDelay);
                 }
                 m3AControls->stopStillAf();
                 m3AControls->setAeLock(mPublicAeLock);
