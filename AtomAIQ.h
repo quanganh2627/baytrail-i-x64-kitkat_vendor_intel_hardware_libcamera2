@@ -40,12 +40,7 @@ class I3AControls;
 
 namespace android {
 
-#define DEFAULT_GBCE            true
-#define DEFAULT_GBCE_STRENGTH   0
-#define AIQ_MAX_TIME_FOR_AF     2500 // milliseconds
-#define TORCH_INTENSITY         20   // 20%
 #define MAX_NUM_AF_WINDOW       9
-#define AE_DELAY_FRAMES_DEFAULT 2
 
 typedef struct {
     struct atomisp_parm               isp_params;
@@ -317,6 +312,7 @@ public:
     ~AtomAIQ();
 
     virtual SensorType getType() { return SENSOR_TYPE_RAW; }
+    virtual unsigned int getExposureDelay() const;
 
     virtual bool isIntel3A() { return true; }
     void getDefaultParams(CameraParameters *params, CameraParameters *intel_params);

@@ -34,19 +34,11 @@
 #include "ia_mkn_encoder.h"
 #include "ia_mkn_decoder.h"
 
-#define MAX_EOF_SOF_DIFF 200000
-#define DEFAULT_EOF_SOF_DELAY 66000
-/**
- * \define MIN_SOF_DELAY
- * Minimum time in microseconds between latest SOF event reported and 3A running
- * to consider that the SOF event time given to 3A belongs to the same frame as
- * the current stats.
- * This means that if last SOF reported happen less than 20ms before 3A stats
- * we assume that this SOF belongs to the next frame.
- */
-#define MIN_SOF_DELAY 20000
-#define EPSILON 0.00001
-#define RETRY_COUNT 5
+const unsigned int AE_DELAY_FRAMES_DEFAULT = 2;
+const nsecs_t AIQ_MAX_TIME_FOR_AF = 2500; // milliseconds
+const int TORCH_INTENSITY = 20; // 20%
+const float EPSILON = 0.00001;
+const int RETRY_COUNT = 5;
 
 namespace android {
 
@@ -264,6 +256,17 @@ status_t AtomAIQ::deinit3A()
     return NO_ERROR;
 }
 
+unsigned int AtomAIQ::getExposureDelay() const {
+    LOG2("@%s", __FUNCTION__);
+
+    unsigned int ret(mSensorCI->getExposureDelay());
+
+    if (ret == 0)
+        ret = AE_DELAY_FRAMES_DEFAULT;
+
+    return ret;
+}
+
 status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
 {
     status_t status = NO_ERROR;
@@ -321,11 +324,8 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
     // TODO: Use API's further to control this setting
     if (mAeInputParameters.frame_use == ia_aiq_frame_use_still)
         mAeState.feedback_delay = 0;
-    else {
-        mAeState.feedback_delay = mSensorCI->getExposureDelay();
-        if (mAeState.feedback_delay == 0)
-            mAeState.feedback_delay = AE_DELAY_FRAMES_DEFAULT;
-    }
+    else
+        mAeState.feedback_delay = getExposureDelay();
 
     /* Invalidate and re-run AEC to re-calculate sensor exposure for potential changes
      * in sensor settings */
@@ -1630,12 +1630,7 @@ int AtomAIQ::run3aInit()
     CLEAR(mAeState);
     if (mSensorCI == NULL)
         return -1;
-    unsigned int store_size = mSensorCI->getExposureDelay() + 1; /* max delay + current results */
-    if (store_size == 1) {
-        // IHWSensorControl API returned 0 delay this means not set,
-        // using default
-        store_size += AE_DELAY_FRAMES_DEFAULT;
-    }
+    unsigned int store_size = getExposureDelay() + 1; /* max delay + current results */
     mAeState.stored_results = new AtomFifo<stored_ae_results>(store_size);
     if (mAeState.stored_results == NULL)
         return -1;
