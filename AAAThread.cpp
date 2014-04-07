@@ -465,18 +465,18 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
     switch (mFlashStage) {
         case FLASH_STAGE_PRE_START:
             // hued images fix (BZ: 72908)
-            if (mSkipForEv++ < 2) {
+            if (mSkipForEv++ < m3AControls->getExposureDelay()) {
                 LOG2("@%s : Frame skipped to wait correct exposure", __FUNCTION__);
                 break;
             }
             // Enter Stage 1
             mFramesTillExposed = 0;
-            mSkipForEv = 2;
+            mSkipForEv = m3AControls->getExposureDelay();
             status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_NONE);
             mFlashStage = FLASH_STAGE_PRE_PHASE1;
             break;
         case FLASH_STAGE_PRE_PHASE1:
-            // Stage 1.5: Skip 2 frames to get exposure from Stage 1.
+            // Stage 1.5: Skip frames to get exposure from Stage 1.
             //            First frame is for sensor to pick up the new value
             //            and second for sensor to apply it.
             if (mSkipForEv-- > 0) {
@@ -484,7 +484,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
                 break;
             }
             // Enter Stage 2
-            mSkipForEv = 2;
+            mSkipForEv = m3AControls->getExposureDelay();
             status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_PRE);
             mFlashStage = FLASH_STAGE_PRE_PHASE2;
             break;
@@ -512,10 +512,10 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
                 if (mFlashStage == FLASH_STAGE_SHOT_WAITING) {
                     LOG1("ShotFlash@Frame %d: SUCCESS    (stopping...)", mFramesTillExposed);
                     mFlashStage = FLASH_STAGE_SHOT_EXPOSED;
-                } else if ((m3AControls->getAeFlashNecessity()) == CAM_FLASH_STAGE_PRE) {
+                } else if (m3AControls->getAeFlashNecessity() == CAM_FLASH_STAGE_PRE) {
                     LOG1("PreFlash@Frame %d: SUCCESS     (repeat...)", mFramesTillExposed);
                     mFramesTillExposed = 0;
-                    mSkipForEv = 2;
+                    mSkipForEv = m3AControls->getExposureDelay();
                     mFlashStage = FLASH_STAGE_PRE_PHASE2;
                 } else {
                     LOG1("PreFlash@Frame %d: SUCCESS    (stopping...)", mFramesTillExposed);

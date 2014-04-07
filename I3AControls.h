@@ -176,6 +176,7 @@ public:
     virtual status_t deinit3A() = 0;
 
     virtual SensorType getType() = 0;
+    virtual unsigned int getExposureDelay() const = 0;
 
     virtual void getDefaultParams(CameraParameters *params, CameraParameters *intel_params) = 0;
     virtual status_t setAeMode(AeMode mode) = 0;
