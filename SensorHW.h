@@ -48,6 +48,7 @@ public:
     IObserverSubject* getFrameSyncSource() { return (IObserverSubject*) this; };
     nsecs_t getFrameTimestamp(nsecs_t event_ts);
     status_t getIspDevicePath(char *fd, int size);
+    status_t setIspSubDevId(int id);
 
     /* IHWSensorControl overloads, */
     virtual const char * getSensorName(void);
@@ -116,6 +117,10 @@ private:
     status_t findConnectedEntity(sp<V4L2DeviceBase> &mediaCtl,
         const struct media_entity_desc &mediaEntityDescSrc,
         struct media_entity_desc &mediaEntityDescDst, int &padIndex);
+    status_t findConnectedEntityByName(sp<V4L2DeviceBase> &mediaCtl,
+        struct media_entity_desc mediaEntityDescSrc,
+        struct media_entity_desc &mediaEntityDescDst,
+        int &padIndex, char const *name, int nameLen, int depth);
     status_t findMediaEntityByName(sp<V4L2DeviceBase> &mediaCtl,
             char const* entityName, struct media_entity_desc &mediaEntityDesc);
     status_t findMediaEntityById(sp<V4L2DeviceBase> &mediaCtl, int index,
@@ -155,6 +160,7 @@ protected:
     struct cameraInfo mCameraInput;
     int mCameraId;
     bool mStarted; //<! state used to indentify controls in streamon state
+    char mIspSubDevName[MAX_SENSOR_NAME_LENGTH];
 
 // private member variables:
 private:
@@ -185,6 +191,7 @@ private:
     AtomDelayFilter <unsigned int>   *mGainDelayFilter;
     AtomFifo <struct exposure_history_item> *mExposureHistory;
     struct atomisp_exposure          mCurrentExposure;
+    int mGroupId;
 }; // class SensorHW
 
 }; // namespace android

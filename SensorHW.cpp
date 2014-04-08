@@ -30,7 +30,9 @@ static sensorPrivateData gSensorDataCache[MAX_CAMERAS];
 static const int ADJUST_ESTIMATE_DELTA_THRESHOLD_US = 2000; // Threshold for adjusting frame timestamp estimate at real frame sync
 static const int MAX_EXPOSURE_HISTORY_SIZE = 10;
 static const int DEFAULT_EXPOSURE_DELAY = 2;
-static const char *ISP_SUBDEV_NAME = "ATOM ISP SUBDEV";
+static const char *ISP_SUBDEV_NAME_PREFIX = "ATOMISP_SUBDEV_";
+static const int MAX_DEPTH = 5;
+
 
 SensorHW::SensorHW(int cameraId):
     mSensorType(SENSOR_TYPE_NONE),
@@ -46,10 +48,12 @@ SensorHW::SensorHW(int cameraId):
     mExposureLag(0),
     mLatestExpId(EXP_ID_INVALID),
     mGainDelayFilter(NULL),
-    mExposureHistory(NULL)
+    mExposureHistory(NULL),
+    mGroupId(0)
 {
     CLEAR(mCameraInput);
     CLEAR(mInitialModeData);
+    sprintf(mIspSubDevName, "%s%d", ISP_SUBDEV_NAME_PREFIX, mGroupId);
 }
 
 SensorHW::~SensorHW()
@@ -221,6 +225,15 @@ status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
     return status;
 }
 
+status_t SensorHW:: setIspSubDevId(int id)
+{
+    LOG1("@%s", __FUNCTION__);
+    if(id >= 0) {
+        sprintf(mIspSubDevName, "%s%d", ISP_SUBDEV_NAME_PREFIX, id);
+        mGroupId = id;
+    }
+    return NO_ERROR;
+}
 /**
  * Find V4L2 ATOMISP subdevice
  *
@@ -234,6 +247,7 @@ status_t SensorHW::getIspDevicePath(char *ispDevPath, int size)
     int ret = 0;
     int val = 0;
     int sinkPadIndex = -1;
+    int depth = 0;
     status_t status = NO_ERROR;
     char *sysName = new char[size];
     char *devName = new char[size];
@@ -268,19 +282,8 @@ status_t SensorHW::getIspDevicePath(char *ispDevPath, int size)
         goto exit;
     }
 
-    while (status == NO_ERROR) {
-        CLEAR(mediaEntityDescTmp);
-        status = findConnectedEntity(mediaCtl, mediaEntityDesc, mediaEntityDescTmp, sinkPadIndex);
-        if (status != NO_ERROR) {
-            LOGE("Failed to find connections");
-            break;
-        }
-        mediaEntityDesc = mediaEntityDescTmp;
-        if (strncmp(mediaEntityDescTmp.name, ISP_SUBDEV_NAME, MAX_SENSOR_NAME_LENGTH) == 0) {
-            LOG1("Connected ISP subdevice found");
-            break;
-        }
-    }
+    CLEAR(mediaEntityDescTmp);
+    status = findConnectedEntityByName(mediaCtl, mediaEntityDesc, mediaEntityDescTmp, sinkPadIndex, mIspSubDevName, MAX_SENSOR_NAME_LENGTH, depth);
 
     if (status != NO_ERROR) {
         LOGE("Unable to find connected ISP subdevice!");
@@ -378,19 +381,9 @@ status_t SensorHW::openSubdevices()
         return status;
     }
 
-    while (status == NO_ERROR) {
-        CLEAR(mediaEntityDescTmp);
-        status = findConnectedEntity(mediaCtl, mediaEntityDesc, mediaEntityDescTmp, sinkPadIndex);
-        if (status != NO_ERROR) {
-            LOGE("Failed to find connections");
-            break;
-        }
-        mediaEntityDesc = mediaEntityDescTmp;
-        if (strncmp(mediaEntityDescTmp.name, ISP_SUBDEV_NAME, MAX_SENSOR_NAME_LENGTH) == 0) {
-            LOG1("Connected ISP subdevice found");
-            break;
-        }
-    }
+    CLEAR(mediaEntityDescTmp);
+    int depth = 0;
+    status = findConnectedEntityByName(mediaCtl, mediaEntityDesc, mediaEntityDescTmp, sinkPadIndex, mIspSubDevName, MAX_SENSOR_NAME_LENGTH, depth);
 
     if (status != NO_ERROR) {
         LOGE("Unable to find connected ISP subdevice!");
@@ -501,6 +494,71 @@ status_t SensorHW::findConnectedEntity(sp<V4L2DeviceBase> &mediaCtl,
 
     LOG2("Connected entity ==> %s, pad %d", mediaEntityDescDst.name, padIndex);
     return status;
+}
+
+/**
+ * Find entity description for first outbound connection
+ */
+status_t SensorHW::findConnectedEntityByName(sp<V4L2DeviceBase> &mediaCtl,
+        struct media_entity_desc mediaEntityDescSrc,
+        struct media_entity_desc &mediaEntityDescDst,
+        int &padIndex, char const *name, int nameLen, int depth)
+{
+    LOG1("@%s", __FUNCTION__);
+    struct media_links_enum links;
+    status_t status = NAME_NOT_FOUND;
+    int connectedEntity = -1;
+    int ret = 0;
+
+    LOG2("%s : pads %d links %d depth:%d", mediaEntityDescSrc.name, mediaEntityDescSrc.pads, mediaEntityDescSrc.links, depth);
+    if (depth > MAX_DEPTH) {
+        LOG1("reach max depth, exit");
+        return status;
+    }
+
+    links.entity = mediaEntityDescSrc.id;
+    links.pads = (struct media_pad_desc*) malloc(mediaEntityDescSrc.pads * sizeof(struct media_pad_desc));
+    links.links = (struct media_link_desc*) malloc(mediaEntityDescSrc.links * sizeof(struct media_link_desc));
+
+    if(links.pads == NULL || links.links == NULL)
+        return NO_MEMORY;
+
+    ret = mediaCtl->xioctl(MEDIA_IOC_ENUM_LINKS, &links);
+    if (ret < 0) {
+        LOGE("Failed to query any links");
+    } else {
+        if( mediaEntityDescSrc.links == 0)
+            goto exit;
+        for (int i = 0; i < mediaEntityDescSrc.links; i++) {
+            if (links.links[i].sink.entity != mediaEntityDescSrc.id) {
+                connectedEntity = links.links[i].sink.entity;
+                if (connectedEntity >= 0) {
+                    padIndex = links.links[i].sink.index;
+                    if (findMediaEntityById(mediaCtl, connectedEntity, mediaEntityDescSrc) == NO_ERROR) {
+                        LOG2("Connected entity ==> %s, pad %d", mediaEntityDescSrc.name, padIndex);
+                        if (strncmp(mediaEntityDescSrc.name, name, nameLen) == 0) {
+                            LOG1("Connected ISP subdevice found");
+                            CLEAR(mediaEntityDescDst);
+                            memcpy(&mediaEntityDescDst, &mediaEntityDescSrc, sizeof(media_entity_desc));
+                            status = NO_ERROR;
+                            goto exit;
+                        } else {
+                            depth++;
+                            status = findConnectedEntityByName(mediaCtl, mediaEntityDescSrc, mediaEntityDescDst, padIndex, name, nameLen, depth);
+                            if (status == NO_ERROR)
+                                goto exit;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+exit:
+    free(links.pads);
+    free(links.links);
+    return status;
+
 }
 
 /**

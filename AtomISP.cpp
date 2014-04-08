@@ -191,6 +191,7 @@ status_t AtomISP::initDevice()
     /**
      * open ATOMISP subdevice according to sensor
      */
+    mSensorHW->setIspSubDevId(mGroupIndex);
     char ispDev[ISP_DEVICE_NAME_LENGTH_MAX];
     status = mSensorHW->getIspDevicePath(ispDev, ISP_DEVICE_NAME_LENGTH_MAX);
     if (status == NO_ERROR) {
