@@ -67,14 +67,6 @@ public:
     inline virtual ~AiqConf() {}
 };
 
-class DrvConf : public CameraBlob
-{
-public:
-    explicit inline DrvConf() {}
-    inline DrvConf(const CameraBlob& refBlob) : CameraBlob(refBlob) {}
-    inline virtual ~DrvConf() {}
-};
-
 class HalConf : public CameraBlob
 {
 public:
@@ -111,24 +103,22 @@ public:
     AiqConf AiqConfig;
     HalConf HalConfig;
 private:
-    status_t initFileNames(String8& cpfPathName, String8& sysfsPathName);
+    status_t initFileNames(String8& cpfPathName);
     status_t initDriverList();
     status_t initDriverListHelper(unsigned major, unsigned minor, SensorDriver& drvInfo);
     status_t findConfigWithDriver(String8& cpfName, int& drvIndex);
     status_t findConfigWithDriverHelper(const String8& fileName, String8& cpfName, int& index);
     status_t findBusAddress(const int drvIndex, int& i2cBus, int& i2cAddress);
-    status_t initConf(CameraBlob& aiqConf, CameraBlob& drvConf, CameraBlob& halConf);
+    status_t initConf(CameraBlob& aiqConf, CameraBlob& halConf);
     status_t loadConf(CameraBlob& allConf);
     status_t validateConf(const CameraBlob& allConf, const struct stat& statCurrent);
     status_t fetchConf(const CameraBlob& allConf, CameraBlob& recConf, tbd_class_t recordClass, const char *blockDebugName = 0);
     status_t processAiqConf(CameraBlob& aiqConf);
-    status_t processDrvConf(CameraBlob& drvConf);
     status_t processHalConf(CameraBlob& halConf);
 private:
     int mCameraId;
     bool mIsOldConfig;
     String8 mCpfPathName;
-    String8 mSysfsPathName;
     static Vector<struct SensorDriver> RegisteredDrivers;
     static Vector<struct stat> ValidatedCpfFiles;
     // Disallow copy and assignment

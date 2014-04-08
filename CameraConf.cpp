@@ -302,7 +302,7 @@ CpfStore::CpfStore(const int cameraId)
     : mCameraId(cameraId)
     , mIsOldConfig(false)
 {
-    CameraBlob aiqConf, drvConf, halConf;
+    CameraBlob aiqConf, halConf;
 
     // If anything goes wrong here, we simply return silently.
     // CPF should merely be seen as a way to do multiple configurations
@@ -316,13 +316,13 @@ CpfStore::CpfStore(const int cameraId)
     }
 
     // Find out the related file names
-    if (initFileNames(mCpfPathName, mSysfsPathName)) {
+    if (initFileNames(mCpfPathName)) {
         // Error message given already
         return;
     }
 
     // Obtain the configurations
-    if (initConf(aiqConf, drvConf, halConf)) {
+    if (initConf(aiqConf, halConf)) {
         // Error message given already
         return;
     }
@@ -332,11 +332,6 @@ CpfStore::CpfStore(const int cameraId)
     // Pointer to that data is cleared later, whenever seen suitable,
     // so that the memory reserved for CPF data can then be freed
     processAiqConf(aiqConf);
-
-    // Provide configuration data to driver, and continue further even
-    // if errors did occur. Clean pointer to that data, so that
-    // the memory reserved for CPF data can then be freed
-    processDrvConf(drvConf);
 
     // Process (make a copy of...) configuration data to HAL, and
     // continue further even if errors did occur. Clean pointer to
@@ -349,7 +344,7 @@ CpfStore::~CpfStore()
 {
 }
 
-status_t CpfStore::initFileNames(String8& cpfPathName, String8& sysfsPathName)
+status_t CpfStore::initFileNames(String8& cpfPathName)
 {
     status_t ret = 0;
 
@@ -367,24 +362,11 @@ status_t CpfStore::initFileNames(String8& cpfPathName, String8& sysfsPathName)
         return ret;
     }
 
-    // Thirdly, we will find out the I²C bus and address for the driver
-    int i2cBus;
-    int i2cAddress;
-    if ((ret = findBusAddress(drvIndex, i2cBus, i2cAddress))) {
-        // Error message given already
-        return ret;
-    }
-
     // Here is the correct CPF file
     cpfPathName = cpfConfigPath;
     cpfPathName.appendPath(cpfFileName);
 
-    // Here is the correct sysfs file
-    const char *sysfsPath = "/sys/class/i2c-dev/i2c-%d/device/%d-%04x/sensordata";
-    sysfsPathName = String8::format(sysfsPath, i2cBus, i2cBus, i2cAddress);
-
     LOGD("cpf config file name: %s", cpfPathName.string());
-    LOGD("cpf sysfs file name: %s", sysfsPathName.string());
 
     return ret;
 }
@@ -430,8 +412,7 @@ status_t CpfStore::initDriverList()
                 // A driver has been found!
                 // The driver is using sensor name when registering
                 // to media controller (we will truncate that to
-                // first space, if any); but we also have to find the
-                // proper driver name for sysfs usage
+                // first space, if any)
                 SensorDriver drvInfo;
                 drvInfo.mSensorName = entity.name;
                 // Cut the name to first space
@@ -596,38 +577,7 @@ status_t CpfStore::findConfigWithDriverHelper(const String8& fileName, String8& 
     return ret;
 }
 
-status_t CpfStore::findBusAddress(const int drvIndex, int& i2cBus, int& i2cAddress)
-{
-    FILE *file;
-    status_t ret = 0;
-
-    const char *sysfsInfoPathName = "/sys/class/video4linux/%s/name";
-    String8 i2cInfoPathName = String8::format(sysfsInfoPathName, RegisteredDrivers[drvIndex].mDeviceName.string());
-
-    file = fopen(i2cInfoPathName, "rb");
-    if (!file) {
-        LOGE("ERROR in opening file \"%s\" for I²C info: %s!", i2cInfoPathName.string(), strerror(errno));
-        return NAME_NOT_FOUND;
-    }
-
-    do {
-        if (fscanf(file, " %*s %d-%x", &i2cBus, &i2cAddress) < 2) {
-            LOGE("ERROR reading file \"%s\"!", i2cInfoPathName.string());
-            ret = EIO;
-            break;
-        }
-
-    } while (0);
-
-    if (fclose(file)) {
-        LOGE("ERROR in closing file \"%s\": %s!", i2cInfoPathName.string(), strerror(errno));
-        if (!ret) ret = EPERM;
-    }
-
-    return ret;
-}
-
-status_t CpfStore::initConf(CameraBlob& aiqConf, CameraBlob& drvConf, CameraBlob& halConf)
+status_t CpfStore::initConf(CameraBlob& aiqConf, CameraBlob& halConf)
 {
     CameraBlob allConf;
     status_t ret = 0;
@@ -644,8 +594,6 @@ status_t CpfStore::initConf(CameraBlob& aiqConf, CameraBlob& drvConf, CameraBlob
     // reference counting MemoryBase memory descriptors.
     // We only need to verify checksum once
     if ((ret = fetchConf(allConf, aiqConf, tbd_class_aiq, "AIQ")))
-        return ret;
-    if ((ret = fetchConf(allConf, drvConf, tbd_class_drv, "DRV")))
         return ret;
     if ((ret = fetchConf(allConf, halConf, tbd_class_hal, "HAL")))
         return ret;
@@ -798,58 +746,6 @@ status_t CpfStore::processAiqConf(CameraBlob& aiqConf)
     return 0;
 }
 
-status_t CpfStore::processDrvConf(CameraBlob& drvConf)
-{
-    // Only act if CPF file has been updated and there is some data
-    // to be sent
-    if (mIsOldConfig || !drvConf) {
-        return 0;
-    }
-
-    status_t ret = 0;
-
-    // We are only interested in actual HAL data, not the header
-    void *data;
-    size_t size;
-    if (tbd_get_record(drvConf, tbd_class_drv, tbd_format_any, &data, &size) || (data == 0) || (size == 0)) {
-        // Looks like the DRV record was broken
-        LOGE("ERROR corrupted DRV record!");
-        return DEAD_OBJECT;
-    }
-
-    // There is a limitation in sysfs; maximum data size to be sent
-    // is one page
-    if (size > (size_t)(getpagesize())) {
-        LOGE("ERROR too big driver configuration record!");
-        return EOVERFLOW;
-    }
-
-    // Now, let's write the driver configuration data via sysfs
-    LOGD("Writing %d bytes to sysfs file \"%s\"", size, mSysfsPathName.string());
-    int fd = open(mSysfsPathName, O_WRONLY);
-    if (fd == -1) {
-        LOGE("ERROR in opening sysfs write file \"%s\": %s!", mSysfsPathName.string(), strerror(errno));
-        return NO_INIT;
-    }
-
-    // Writing the driver data record...
-    int bytes = write(fd, data, size);
-    if (bytes < 0) {
-        LOGE("ERROR in writing sysfs data: %s!", strerror(errno));
-        ret = EIO;
-    } else if ((bytes == 0) || ((size_t)(bytes) != size)) {
-        LOGE("ERROR in writing sysfs data: %d bytes written (expecting %d)!", bytes, size);
-        ret = EIO;
-    }
-
-    if (close(fd)) {
-        LOGE("ERROR in closing sysfs write file \"%s\": %s!", mSysfsPathName.string(), strerror(errno));
-        if (!ret) ret = EPERM;
-    }
-
-    return ret;
-}
-
 status_t CpfStore::processHalConf(CameraBlob& halConf)
 {
     if (halConf) {
@@ -862,7 +758,7 @@ status_t CpfStore::processHalConf(CameraBlob& halConf)
             return DEAD_OBJECT;
         }
         // CPF HAL contains lot of strings, so the easiest way to allow
-        // freeing of the original CPF data (with AIQ and DRV data) and
+        // freeing of the original CPF data (with AIQ data) and
         // still having the strings stored somewhere is to make a copy
         // of the entire CPF HAL data
         HalConfig = CameraBlob(halConf, data, size).copy();
