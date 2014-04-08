@@ -195,6 +195,12 @@ public:
 
     status_t allocateMetaDataBuffers(AtomBuffer *buffers, int numBuffers);
 
+    status_t setSRESmode(bool mode);
+
+    AtomBuffer getSnapshotDescriptor() const { return mConfig.snapshot; }
+
+    AtomBuffer getPostviewDescriptor() const { return mConfig.postview; }
+
 protected:
     /* [BEGIN] IHWFlashControl overloads, */
     status_t setFlash(int numFrames);

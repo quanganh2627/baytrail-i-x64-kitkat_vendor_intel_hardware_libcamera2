@@ -6699,4 +6699,18 @@ BatteryStatus AtomISP::getBatteryStatus()
     return (BatteryStatus)status;
 }
 
+status_t AtomISP::setSRESmode(bool mode)
+{
+    status_t status = NO_ERROR;
+    unsigned int val = mode ? 1 : 0;
+
+    LOG1("@%s", __FUNCTION__);
+
+    if (mMainDevice->xioctl(ATOMISP_IOC_S_ENABLE_DZ_CAPT_PIPE, &val) < 0) {
+        LOGE("Failed to set enable flag for capture pipe digital zoom");
+        status = UNKNOWN_ERROR;
+    }
+    return status;
+}
+
 } // namespace android

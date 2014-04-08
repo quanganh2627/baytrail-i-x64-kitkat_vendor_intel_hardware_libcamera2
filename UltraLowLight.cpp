@@ -22,6 +22,7 @@
 #include "CameraDump.h"
 #include "LogHelper.h"
 #include "PlatformData.h"
+#include "MemoryUtils.h"
 
 #include "morpho_image_stabilizer3.h"
 
@@ -63,7 +64,9 @@ UltraLowLight::UltraLowLight(Callbacks *callbacks, sp<WarperService> warperServi
                                  mUserMode(ULL_OFF),
                                  mTrigger(false),
                                  mUseIntelULL(PlatformData::useIntelULL()),
-                                 mWarper(warperService)
+                                 mWarper(warperService),
+                                 mZoomFactor(0),
+                                 mCopyBuffsAllocated(false)
 {
     if (mUseIntelULL) {
         mState = ULL_STATE_UNINIT;
@@ -86,6 +89,11 @@ UltraLowLight::~UltraLowLight()
     if (mMorphoCtrl != NULL) {
         delete mMorphoCtrl;
         mMorphoCtrl = NULL;
+    }
+
+    if (mCopyBuffsAllocated) {
+        MemoryUtils::freeAtomBuffer(mSnapshotCopy);
+        MemoryUtils::freeAtomBuffer(mPostviewCopy);
     }
 }
 
@@ -614,6 +622,9 @@ status_t UltraLowLight::processIntelULL()
     AtomToIaFrameBuffer(&mOutputBuffer, &out);
     AtomToIaFrameBuffer(&mOutputPostView, &out_pv);
 
+    mIntelUllCfg->zoom_factor = mZoomFactor;
+    mIntelUllCfg->imreg_fallback = NULL;
+
     LOG1("Intel ULL processing...");
     ia_err error = ia_cp_ull_compose(&out, &out_pv, input, postview, mInputBuffers.size(), mIntelUllCfg);
     if (error != ia_err_none) {
@@ -934,5 +945,62 @@ status_t UltraLowLight::gpuImageRegistration(AtomBuffer *target, AtomBuffer *sou
     return NO_ERROR;
 }
 
+void UltraLowLight::setZoomFactor(unsigned int zoom)
+{
+    LOG1("@%s :zoomFactor=%d", __FUNCTION__, zoom);
+    mZoomFactor = zoom;
+}
+
+void UltraLowLight::allocateCopyBuffers(AtomBuffer snapshotDescr, AtomBuffer postviewDescr)
+{
+    LOG1("@%s :copyBuffersAllocated=%d", __FUNCTION__, mCopyBuffsAllocated);
+    if (!mCopyBuffsAllocated) {
+        mSnapshotCopy = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+        MemoryUtils::allocateAtomBuffer(mSnapshotCopy, snapshotDescr, mCallbacks);
+
+        mPostviewCopy = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+        MemoryUtils::allocateAtomBuffer(mPostviewCopy, postviewDescr, mCallbacks);
+
+        mCopyBuffsAllocated = true;
+    }
+}
+
+AtomBuffer* UltraLowLight::getSnapshotCopyZoom(AtomBuffer *snapshotBuff)
+{
+    ia_err error;
+    ia_frame tmpFrame;
+
+    LOG1("@%s", __FUNCTION__);
+
+    if (mCopyBuffsAllocated) {
+        memcpy(mSnapshotCopy.dataPtr, snapshotBuff->dataPtr, snapshotBuff->size);
+        AtomToIaFrameBuffer(&mSnapshotCopy, &tmpFrame);
+        error = ia_cp_zoom_frame(&tmpFrame, mZoomFactor);
+        if (error != ia_err_none) {
+            LOGE("Zoom snapshot frame failed %d", error);
+        }
+    }
+
+    return &mSnapshotCopy;
+}
+
+AtomBuffer* UltraLowLight::getPostviewCopyZoom(AtomBuffer *postviewBuff)
+{
+    ia_err error;
+    ia_frame tmpFrame;
+
+    LOG1("@%s", __FUNCTION__);
+
+    if (mCopyBuffsAllocated) {
+        memcpy(mPostviewCopy.dataPtr, postviewBuff->dataPtr, postviewBuff->size);
+        AtomToIaFrameBuffer(&mPostviewCopy, &tmpFrame);
+        error = ia_cp_zoom_frame(&tmpFrame, mZoomFactor);
+        if (error != ia_err_none) {
+            LOGE("Zoom postview frame failed %d", error);
+        }
+    }
+
+    return &mPostviewCopy;
+}
 #endif // ENABLE_INTEL_EXTRAS
 } //namespace android
