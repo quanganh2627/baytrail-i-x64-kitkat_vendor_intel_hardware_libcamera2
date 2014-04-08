@@ -1350,5 +1350,18 @@ int PlatformData::getNumOfCaptureWarmUpFrames(int cameraId)
     return (retVal > 0) ? retVal : 0;
 }
 
+bool PlatformData::useMultiStreamsForSoC(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return false;
+    }
+
+    PlatformBase *i = getInstance();
+    if (i->mCameras[cameraId].sensorType == SENSOR_TYPE_RAW) {
+        return false;
+    }
+
+    return i->mCameras[cameraId].useMultiStreamsForSoC ? true : false;
+}
 
 }; // namespace android

@@ -1036,6 +1036,12 @@ class PlatformData {
      * \return The number of warm-up frames needed for the platform
      */
     static int getNumOfCaptureWarmUpFrames(int cameraId);
+
+    /**
+     * check if we use multi streams for SoC sensor
+     * \return true or false
+     */
+    static bool useMultiStreamsForSoC(int cameraId);
 };
 
 /**
@@ -1222,6 +1228,8 @@ protected:
             verticalFOV = "";
             horizontalFOV = "";
             captureWarmUpFrames = 0;
+
+            useMultiStreamsForSoC = false;
         }
 
         SensorType sensorType;
@@ -1357,6 +1365,13 @@ protected:
         // at image capture. For example, some SoC sensors need some frames to
         // be skipped in order for the SoC sensor's 3A (or 2A) to converge.
         int captureWarmUpFrames;
+
+        /**
+            * if the sensor is SoC, this variable is valuable
+            * if the FW could provide more than one stream, the useMultiStreamsForSoC should be set to true
+            * for example, the FW could provide all four streams for SDV case
+            */
+        bool useMultiStreamsForSoC;
     };
 
     // note: Android NDK does not yet support C++11 and

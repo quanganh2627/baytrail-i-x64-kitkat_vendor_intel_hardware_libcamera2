@@ -319,6 +319,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->horizontalFOV = atts[1];
     } else if (strcmp(name, "captureWarmUpFrames") == 0) {
         pCurrentCam->captureWarmUpFrames = atoi(atts[1]);
+    } else if (strcmp(name, "useMultiStreamsForSoC") == 0) {
+        pCurrentCam->useMultiStreamsForSoC = ((strcmp(atts[1], "true") == 0) ? true : false);
     }
 }
 
