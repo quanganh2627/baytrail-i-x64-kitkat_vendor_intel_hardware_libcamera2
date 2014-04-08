@@ -539,6 +539,12 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
         return BAD_VALUE;
     }
 
+    // Dual video
+    if (!validateBoolParameter(IntelCameraParameters::KEY_DUAL_VIDEO, IntelCameraParameters::KEY_DUAL_VIDEO_SUPPORTED, params)) {
+        LOGE("bad value for dual video");
+        return BAD_VALUE;
+    }
+
     // CONTRAST
     const char* contrastMode = params->get(IntelCameraParameters::KEY_CONTRAST_MODE);
     const char* contrastModes = params->get(IntelCameraParameters::KEY_SUPPORTED_CONTRAST_MODES);

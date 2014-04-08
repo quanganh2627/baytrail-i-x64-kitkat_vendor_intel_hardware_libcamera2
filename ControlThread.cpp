@@ -4457,7 +4457,7 @@ status_t ControlThread::processParamDualVideo(const CameraParameters *oldParams,
 
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, IntelCameraParameters::KEY_DUAL_VIDEO);
     if (!newVal.isEmpty()) {
-        mDvsEnable = (newVal == CameraParameters::TRUE);
+        mDualVideo = (newVal == CameraParameters::TRUE);
         // Dual video only prefer online mode
         if ((mDualVideo == true && (mState == STATE_CONTINUOUS_CAPTURE || mISP->getMode() == MODE_CONTINUOUS_VIDEO))
                 || (mDualVideo == false && (mState == STATE_PREVIEW_STILL || mState == STATE_CAPTURE)))
