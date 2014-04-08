@@ -23,6 +23,7 @@
 #include "MessageQueue.h"
 #include "AtomCommon.h"
 #include "ICameraHwControls.h"
+#include "PreviewThread.h"
 
 #ifdef GRAPHIC_IS_GEN
 #include <VideoVPPBase.h>
@@ -36,20 +37,27 @@ class AtomISP;
 
 class VideoThread :
     public Thread,
-    public IAtomIspObserver {
+    public IAtomIspObserver,
+    public ICallbackPreview {
 
 // constructor destructor
 public:
     VideoThread(AtomISP *atomIsp, sp<CallbacksThread> callbacksThread);
     virtual ~VideoThread();
 
-public:
-    virtual bool atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state);
-
 // prevent copy constructor and assignment operator
 private:
     VideoThread(const VideoThread& other);
     VideoThread& operator=(const VideoThread& other);
+
+// ICallbackPreview overrides
+public:
+    virtual void previewBufferCallback(AtomBuffer *memory, ICallbackPreview::CallbackType t);
+    virtual int getCameraID();
+
+// IAtomIspObserver overrides
+public:
+    virtual bool atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state);
 
 // Thread overrides
 public:
@@ -66,6 +74,7 @@ public:
     status_t releaseRecordingFrame(void *buff);
     status_t getVideoSnapshot(AtomBuffer &buff);
     status_t putVideoSnapshot(AtomBuffer *buff);
+    void setHALVideoStabilization(bool value);
     status_t setRecordingMirror(bool mirror, int recOrientation, int camOrientation);
 
 // private types
@@ -79,6 +88,8 @@ private:
         MESSAGE_ID_STOP_RECORDING,
         MESSAGE_ID_FLUSH,
         MESSAGE_ID_SET_SLOWMOTION_RATE,
+        MESSAGE_ID_PUSH_FRAME,
+        MESSAGE_ID_HAL_VIDEO_STABILIZATION,
         MESSAGE_ID_RELEASE_RECORDING_FRAME,
         MESSAGE_ID_DEQUEUE_RECORDING,
 
@@ -93,8 +104,16 @@ private:
         void *buff;
     };
 
+    struct MessagePushFrame {
+        AtomBuffer *buf;
+    };
+
     struct MessageDequeueRecording {
         bool skipFrame;
+    };
+
+    struct MessageHALVideoStabilization {
+        bool halVS;
     };
 
     struct MessageSetSlowMotionRate {
@@ -107,6 +126,10 @@ private:
         MessageSetSlowMotionRate setSlowMotionRate;
         // MESSAGE_ID_RELEASE_RECORDING_FRAME
         MessageReleaseRecordingFrame releaseRecordingFrame;
+        // MESSAGE_ID_PUSH_FRAME
+        MessagePushFrame pushFrame;
+        // MESSAGE_ID_HAL_VIDEO_STABILIZATION
+        MessageHALVideoStabilization halVS;
         // MESSAGE_ID_DEQUEUE_RECORDING
         MessageDequeueRecording   dequeueRecording;
     };
@@ -134,6 +157,8 @@ private:
     status_t handleMessageSetSlowMotionRate(MessageSetSlowMotionRate* msg);
     status_t handleMessageReleaseRecordingFrame(MessageReleaseRecordingFrame *msg);
     status_t handleMessageDequeueRecording(MessageDequeueRecording *msg);
+    status_t handleMessagePushFrame(MessagePushFrame *msg);
+    status_t handleMessageHALVS(MessageHALVideoStabilization *msg);
     AtomBuffer* findVideoSnapshotBuffer(int index);
     AtomBuffer* findRecordingBuffer(void *findMe);
     AtomBuffer* findRecordingBuffer(int index);
@@ -167,8 +192,10 @@ private:
     Vector<AtomBuffer> mRecordingBuffers; /*!< buffers reserverd from stream for video encoding */
     VideoState mState;
     bool mMirror;
+    bool mHALVideoStabilization;
     int mRecOrientation;
     int mCamOrientation;
+    int mCameraId;
 
 }; // class VideoThread
 

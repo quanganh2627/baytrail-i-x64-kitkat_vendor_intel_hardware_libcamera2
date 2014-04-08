@@ -795,6 +795,7 @@ private:
     Vector<AtomBuffer> mAvailablePostviewBuffers; /*!< Current set of available postview buffers */
 
     bool mSaveMirrored;
+    bool mHALVideoStabilization;    /*!< HAL video stabilization being used (implies also single-output video) */
     int mCurrentOrientation;        /*!< Current orientation of the device. Used in case the image is
                                          saved as mirrored. The image will be mirrored based on the
                                          camera sensor orientation and device orientation. */

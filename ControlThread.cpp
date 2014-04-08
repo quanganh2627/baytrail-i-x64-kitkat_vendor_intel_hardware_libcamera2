@@ -155,6 +155,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mStillCaptureInProgress(false)
     ,mPreviewUpdateMode(IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD)
     ,mSaveMirrored(false)
+    ,mHALVideoStabilization(false)
     ,mCurrentOrientation(0)
     ,mFullSizeSdv(false)
 {
@@ -1846,11 +1847,29 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (!mISP->isDeviceInitialized())
         mISP->init();
 
+    mHALVideoStabilization = false; // do not use hal stabilization by default
+    mISP->setHALVideoStabilization(mHALVideoStabilization); // set it off from ISP also
     if (videoMode) {
         state = STATE_PREVIEW_VIDEO;
 
         fps = mISP->getRecordingFramerate();
         mParameters.getVideoSize(&width, &height);
+
+        // set halVideoStabilization on if it is configured and settings allow
+        int previewWidth, previewHeight;
+        mParameters.getPreviewSize(&previewWidth, &previewHeight);
+        if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC &&
+            PlatformData::useHALVS(mCameraId)) {
+            mHALVideoStabilization = true; //temporarily always on for SOC
+        } else {
+            mHALVideoStabilization = PlatformData::useHALVS(mCameraId) &&
+                                     width == previewWidth &&
+                                     height == previewHeight &&
+                                     mDvsEnable;
+        }
+
+        mVideoThread->setHALVideoStabilization(mHALVideoStabilization);
+        mISP->setHALVideoStabilization(mHALVideoStabilization);
 
         // Video size is updated later than other parameters, so validate high speed  params here
         if (!validateHighSpeedResolutionFps(width, height, fps)) {
@@ -1871,13 +1890,17 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             !mDualVideo && // not dual video
             sdvParam == CameraParameters::TRUE && // user doesn't request to disable sdv by parameter
             fps <= DEFAULT_RECORDING_FPS && // not high speed mode
-            isFullSizeSdvSupportedVideoSize(width, height); // video size limitation
+            isFullSizeSdvSupportedVideoSize(width, height) && // video size limitation
+            !mHALVideoStabilization;
 
         mode = mFullSizeSdv ? MODE_CONTINUOUS_VIDEO : MODE_VIDEO;
         LOG1("Starting preview in %s mode", mode == MODE_VIDEO? "video":"continuous video");
         initSdv(mFullSizeSdv);
 
-        status = mHwcg.mIspCI->setDVS(mDvsEnable);
+        if (mHALVideoStabilization)
+            status = mHwcg.mIspCI->setDVS(false); // disable isp stabilization, use hal version
+        else
+            status = mHwcg.mIspCI->setDVS(mDvsEnable);
 
         if (status != NO_ERROR) {
             LOGW("@%s: Failed to set DVS %s", __FUNCTION__, mDvsEnable ? "enabled" : "disabled");
@@ -1943,7 +1966,14 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     bool useSharedGfxBuffers =
         (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS)
         && (mIntelParamsAllowed || mode != MODE_CONTINUOUS_CAPTURE);
-    mPreviewThread->setPreviewConfig(width, height, cb_fourcc, useSharedGfxBuffers, mNumBuffers);
+
+    if (mHALVideoStabilization) {
+        // hal video stabilization needs bigger capture buffers of its own, so
+        // it can't use the smaller preview buffers for capturing -> sharing off
+        useSharedGfxBuffers = false;
+    }
+
+    mPreviewThread->setPreviewConfig(width, height, cb_fourcc, useSharedGfxBuffers, mHALVideoStabilization && videoMode, mNumBuffers);
 
     // Get the preview size from PreviewThread and pass the configuration to AtomISP.
     mPreviewThread->fetchPreviewBufferGeometry(&width, &height, &bpl);
@@ -2039,10 +2069,26 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mISP->attachObserver(mVideoThread.get(), OBSERVE_PREVIEW_STREAM);
     mISP->attachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
 
+    // TODO: do not attach VideoThread to listen atomIspNotify in hal VS case
+
     if (!mIspExtensionsEnabled) {
-        mPreviewThread->setCallback(
-            static_cast<ICallbackPreview*>(mPostProcThread.get()),
-            ICallbackPreview::OUTPUT_WITH_DATA);
+
+        mPreviewThread->detachCallback(NULL, ICallbackPreview::OUTPUT_WITH_DATA);
+
+        if (mHALVideoStabilization) {
+            // TODO LASSI: Do this better?
+            // PreviewThread->VideoThread is special flow for HAL video stabilization.
+            // Can be done, as in our normal case video mode does not use post proc (Face detection etc, for now..)
+            // - In the normal flow VideoThread "pulls" the buffers from AtomISP,
+            // and is attached to AtomISP using attachObserver() above, in halVS we "push" the frames via previewBufferCallback()
+            mPreviewThread->setCallback(
+                static_cast<ICallbackPreview*>(mVideoThread.get()),
+                ICallbackPreview::OUTPUT_WITH_DATA);
+        } else {
+            mPreviewThread->setCallback(
+                static_cast<ICallbackPreview*>(mPostProcThread.get()),
+                ICallbackPreview::OUTPUT_WITH_DATA);
+        }
     } else {
         mPreviewThread->setCallback(
                 static_cast<ICallbackPreview*>(mAccManagerThread.get()),

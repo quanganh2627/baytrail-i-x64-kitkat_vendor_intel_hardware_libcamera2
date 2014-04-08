@@ -1036,6 +1036,15 @@ class PlatformData {
     static int faceCallbackDivider();
 
     /**
+     * \brief To check if HAL Video Stabilization-specific code paths are to be
+     * enabled
+     *
+     * HAL VS allows customers to integrate their own VS algorithm. It requires
+     * special preview-to-video flow in the HAL.
+     */
+    static bool useHALVS(int cameraId);
+
+    /**
      * get the number of CPU cores
      * \return the number of CPU cores
      */
@@ -1057,6 +1066,7 @@ class PlatformData {
      * \return true or false
      */
     static bool useMultiStreamsForSoC(int cameraId);
+    
 };
 
 /**
@@ -1240,6 +1250,7 @@ protected:
             synchronizeExposure = false;
             maxNumYUVBufferForBurst = 10;
             maxNumYUVBufferForBracket = 10;
+            useHALVS = false;
             // FOV
             verticalFOV = "";
             horizontalFOV = "";
@@ -1364,6 +1375,10 @@ protected:
         //       available)
         bool synchronizeExposure;
 
+        // For enabling the HAL video stabilization buffer flow
+        // code paths
+        bool useHALVS;
+
         /**
          * For max number of snapshot buffers.
          * Make it configurable for each sensor
@@ -1387,10 +1402,10 @@ protected:
         int captureWarmUpFrames;
 
         /**
-            * if the sensor is SoC, this variable is valuable
-            * if the FW could provide more than one stream, the useMultiStreamsForSoC should be set to true
-            * for example, the FW could provide all four streams for SDV case
-            */
+         * if the sensor is SoC, this variable is valuable
+         * if the FW could provide more than one stream, the useMultiStreamsForSoC should be set to true
+         * for example, the FW could provide all four streams for SDV case
+         */
         bool useMultiStreamsForSoC;
     };
 

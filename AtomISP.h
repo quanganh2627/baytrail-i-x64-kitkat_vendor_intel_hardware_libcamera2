@@ -104,6 +104,8 @@ public:
     int getContinuousCaptureNumber() const;
     status_t prepareOfflineCapture(ContinuousCaptureConfig &config, bool capturePriority);
 
+    void setHALVideoStabilization(bool value) { mHALVideoStabilization = value; }
+
     status_t returnRecordingBuffers();
     bool isSharedPreviewBufferConfigured(bool *reserved = NULL) const;
 
@@ -175,6 +177,8 @@ public:
 
     // high speed fps setting
     status_t setHighSpeedResolutionFps(char* resolution, int fps);
+
+    status_t allocateMetaDataBuffers(AtomBuffer *buffers, int numBuffers);
 
 protected:
     /* [BEGIN] IHWFlashControl overloads, */
@@ -379,6 +383,7 @@ private:
     status_t configureContinuous();
     status_t configureContinuousSOC();
     status_t configureContinuousVideo();
+    status_t configureHALVSVideo();
     status_t startCapture();
     status_t stopCapture();
     status_t stopContinuousPreview();
@@ -614,6 +619,7 @@ private:
     int mIspHwMajorVersion;
     int mIspHwMinorVersion;
 
+    bool mHALVideoStabilization;
     bool mNoiseReductionEdgeEnhancement;
 
     // Sensor helper fields

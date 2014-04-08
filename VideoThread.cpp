@@ -35,6 +35,7 @@ VideoThread::VideoThread(AtomISP *atomIsp, sp<CallbacksThread> callbacksThread) 
     ,mMirror(false)
     ,mRecOrientation(0)
     ,mCamOrientation(0)
+    ,mCameraId(-1)
 {
     LOG1("@%s", __FUNCTION__);
 #ifdef GRAPHIC_IS_GEN
@@ -43,6 +44,14 @@ VideoThread::VideoThread(AtomISP *atomIsp, sp<CallbacksThread> callbacksThread) 
         LOGE("Fail to construct VPP");
     }
 #endif
+    IHWSensorControl *hwSensorCtl = mIsp->getSensorControlInterface();
+
+    if (hwSensorCtl != NULL)
+        mCameraId = hwSensorCtl->getCurrentCameraId();
+    else
+        LOGW("Sensor HW not initialized");
+
+    hwSensorCtl = NULL;
     reset();
 }
 
@@ -55,6 +64,7 @@ VideoThread::~VideoThread()
         mVpp = NULL;
     }
 #endif
+
     reset();
 }
 
@@ -68,6 +78,12 @@ VideoThread::~VideoThread()
 bool VideoThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state)
 {
     LOG2("@%s", __FUNCTION__);
+
+    // TODO: We should not even attach VideoThread to listen atomIspNotify in
+    // HAL Video stabilization case
+
+    if (mHALVideoStabilization)
+        return false;
 
     if (msg) {
         AtomBuffer *buff = &msg->data.frameBuffer.buff;
@@ -89,6 +105,7 @@ bool VideoThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverSt
             mMessageQueue.send(&local_msg);
         }
     }
+
     return false;
 }
 
@@ -266,7 +283,10 @@ status_t VideoThread::putVideoSnapshot(AtomBuffer *buff)
             }
         }
 
+        videoBuffer->owner->returnBuffer(videoBuffer);
+        mSnapshotBuffers.erase(videoBuffer);
         status = mIsp->putRecordingFrame(videoBuffer);
+
         if (status == DEAD_OBJECT) {
             LOG1("Stale preview buffer returned to ISP");
             return UNKNOWN_ERROR;
@@ -319,17 +339,24 @@ status_t VideoThread::handleMessageReleaseRecordingFrame(MessageReleaseRecording
             }
         }
 
-        // return to AtomISP
-        status = mIsp->putRecordingFrame(recBuff);
-        if (status == DEAD_OBJECT) {
-            LOGW("Stale recording buffer returned to ISP");
-        } else if (status != NO_ERROR) {
-            LOGE("Error putting recording frame to ISP");
-        } else {
-            // drop from reserved list
+        if (mHALVideoStabilization) {
+            // Do we need to detect errors here before erase()?
+            recBuff->owner->returnBuffer(recBuff);
             mRecordingBuffers.erase(recBuff);
+        } else {
+            // return to AtomISP
+            status = mIsp->putRecordingFrame(recBuff);
+            if (status == DEAD_OBJECT) {
+                LOGW("Stale recording buffer returned to ISP");
+            } else if (status != NO_ERROR) {
+                LOGE("Error putting recording frame to ISP");
+            } else {
+                // drop from reserved list
+                mRecordingBuffers.erase(recBuff);
+            }
         }
     }
+
     return status;
 }
 
@@ -471,6 +498,7 @@ status_t VideoThread::processVideoBuffer(AtomBuffer &buff)
     status_t status = NO_ERROR;
     nsecs_t timestamp = (buff.capture_timestamp.tv_sec)*1000000000LL
                         + (buff.capture_timestamp.tv_usec)*1000LL;
+
     if(mSlowMotionRate > 1)
     {
         if(mFirstFrameTimestamp == 0)
@@ -543,6 +571,14 @@ status_t VideoThread::waitForAndExecuteMessage()
             status = handleMessageStartRecording();
             break;
 
+        case MESSAGE_ID_PUSH_FRAME:
+            status = handleMessagePushFrame(&msg.data.pushFrame);
+            break;
+
+        case MESSAGE_ID_HAL_VIDEO_STABILIZATION:
+            status = handleMessageHALVS(&msg.data.halVS);
+            break;
+
         case MESSAGE_ID_STOP_RECORDING:
             status = handleMessageStopRecording();
             break;
@@ -579,6 +615,89 @@ status_t VideoThread::requestExitAndWait()
 
     // propagate call to base class
     return Thread::requestExitAndWait();
+}
+
+void VideoThread::setHALVideoStabilization(bool value) {
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_HAL_VIDEO_STABILIZATION;
+    msg.data.halVS.halVS = value;
+    mMessageQueue.send(&msg);
+}
+
+status_t VideoThread::handleMessageHALVS(MessageHALVideoStabilization *msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    mHALVideoStabilization = msg->halVS;
+    return OK;
+}
+
+/**
+ * override for ICallbackPreview::previewBufferCallback()
+ *
+ * For now this callback is used for implementing single stream preview/video
+ * 0-copy buffer flow to be used with HAL video stabilization component.
+ */
+void VideoThread::previewBufferCallback(AtomBuffer *buff, ICallbackPreview::CallbackType t)
+{
+    LOG2("@%s", __FUNCTION__);
+    if (t != ICallbackPreview::OUTPUT_WITH_DATA) {
+        LOGE("Unexpected preview/video buffer callback type!");
+        return;
+    }
+
+    // If we are in recording mode, pass to encoder. Otherwise we're in preview,
+    // and no need to encode -> ignore frame
+
+    // this is done synchronously so that the possibly on-the-fly-allocated
+    // metadata buffer is stored straight into the caller's atombuffer
+    // pointer.
+    Message msg;
+    msg.id = MESSAGE_ID_PUSH_FRAME;
+    msg.data.pushFrame.buf = buff;
+    mMessageQueue.send(&msg, MESSAGE_ID_PUSH_FRAME);
+
+}
+
+status_t VideoThread::handleMessagePushFrame(MessagePushFrame *msg)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    if (mState == STATE_RECORDING) {
+        mLock.lock();
+        // Mirror the recording buffer if mirroring is enabled
+        if (mMirror) {
+            mirrorBuffer(msg->buf, mRecOrientation, mCamOrientation);
+        }
+
+        // process video buffers
+        // if there is no metadata, allocate it now
+        if (msg->buf->metadata_buff == NULL) {
+            mIsp->allocateMetaDataBuffers(msg->buf, 1);
+        }
+
+        mRecordingBuffers.push(*msg->buf);
+
+        mFrameCondition.signal();
+        mLock.unlock();
+        processVideoBuffer(*msg->buf);
+    } else {
+        if (mState == STATE_IDLE) {
+            LOG1("VideoThread switch to preview mode");
+            mState = STATE_PREVIEW;
+        }
+        // return buffer from video thread, since it is idling
+        msg->buf->owner->returnBuffer(msg->buf);
+    }
+
+    mMessageQueue.reply(MESSAGE_ID_PUSH_FRAME, OK);
+
+    return OK;
+}
+
+int VideoThread::getCameraID()
+{
+    return mCameraId;
 }
 
 } // namespace android

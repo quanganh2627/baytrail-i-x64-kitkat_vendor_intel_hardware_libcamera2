@@ -1002,7 +1002,10 @@ status_t AtomISP::configure(AtomMode mode)
         status = configurePreview();
         break;
     case MODE_VIDEO:
-        status = configureRecording();
+        if (mHALVideoStabilization)
+            status = configureHALVSVideo();
+        else
+            status = configureRecording();
         break;
     case MODE_CAPTURE:
         status = configureCapture();
@@ -1055,8 +1058,9 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
         break;
     case MODE_CONTINUOUS_VIDEO:
     case MODE_VIDEO:
-        if ((status = allocateRecordingBuffers()) != NO_ERROR)
-            return status;
+        if (!mHALVideoStabilization) // no need to allocate in halVS mode which uses preview bufs for recording
+            if ((status = allocateRecordingBuffers()) != NO_ERROR)
+                return status;
         if ((status = allocatePreviewBuffers()) != NO_ERROR)
             stopRecording();
         if (mStoreMetaDataInBuffers) {
@@ -1467,28 +1471,30 @@ status_t AtomISP::startRecording()
     int ret = 0;
     status_t status = NO_ERROR;
 
-    if (mHALSDVEnabled && mUseMultiStreamsForSoC) {
-        ret = mMainDevice->start(mConfig.num_snapshot_buffers, mInitialSkips);
+    if (!mHALVideoStabilization) {
+        if (mHALSDVEnabled && mUseMultiStreamsForSoC) {
+            ret = mMainDevice->start(mConfig.num_snapshot_buffers, mInitialSkips);
+            if (ret < 0) {
+                LOGE("start capture on first device failed!");
+                status = UNKNOWN_ERROR;
+                goto err;
+            }
+
+            ret = mPostViewDevice->start(mConfig.num_postview_buffers, mInitialSkips);
+            if (ret < 0) {
+                LOGE("start capture on second device failed!");
+                status = UNKNOWN_ERROR;
+                goto err;
+            }
+        }
+
+        //workaround: when DVS is on, the first several frames are greenish, need to be skipped.
+        ret = mRecordingDevice->start(mConfig.num_recording_buffers, mInitialSkips + mDVSFrameSkips);
         if (ret < 0) {
-            LOGE("start capture on first device failed!");
+            LOGE("Start recording device failed");
             status = UNKNOWN_ERROR;
             goto err;
         }
-
-        ret = mPostViewDevice->start(mConfig.num_postview_buffers, mInitialSkips);
-        if (ret < 0) {
-            LOGE("start capture on second device failed!");
-            status = UNKNOWN_ERROR;
-            goto err;
-        }
-    }
-
-    //workaround: when DVS is on, the first several frames are greenish, need to be skipped.
-    ret = mRecordingDevice->start(mConfig.num_recording_buffers, mInitialSkips + mDVSFrameSkips);
-    if (ret < 0) {
-        LOGE("Start recording device failed");
-        status = UNKNOWN_ERROR;
-        goto err;
     }
 
     ret = mPreviewDevice->start(mConfig.num_preview_buffers, mInitialSkips + mDVSFrameSkips);
@@ -1499,7 +1505,12 @@ status_t AtomISP::startRecording()
     }
 
     mNumPreviewBuffersQueued = mConfig.num_preview_buffers;
-    mNumRecordingBuffersQueued = mConfig.num_recording_buffers;
+
+    if (!mHALVideoStabilization) {
+        mNumRecordingBuffersQueued = mConfig.num_recording_buffers;
+    } else {
+        mNumRecordingBuffersQueued = 0; // halVS doesn't use rec bufs
+    }
 
     return status;
 
@@ -2160,6 +2171,71 @@ errorFreeBuf:
     freePostviewBuffers();
 
     return status;
+}
+
+status_t AtomISP::configureHALVSVideo()
+{
+    LOG1("@%s", __FUNCTION__);
+    if(mSensorType == SENSOR_TYPE_RAW) {
+        int ret;
+        float capture_fps;
+        status_t status = NO_ERROR;
+
+        // continuous mode does not support low_light mode capture
+        setLowLight(false);
+        updateCaptureParams();
+
+        ret = configureContinuousMode(true);
+        if (ret != NO_ERROR) {
+            LOGE("setting continuous mode failed");
+            return ret;
+        }
+
+        ret = configureContinuousRingBuffer();
+        if (ret != NO_ERROR) {
+            LOGE("setting continuous capture params failed");
+            return ret;
+        }
+
+        ret = configureDevice(
+                mMainDevice.get(),
+                CI_MODE_PREVIEW,
+                &(mConfig.snapshot),
+                isDumpRawImageReady());
+        if (ret < 0) {
+            LOGE("configure first device failed!");
+            status = UNKNOWN_ERROR;
+            goto errorFreeBuf;
+        }
+        // save the capture fps
+        capture_fps = mConfig.fps;
+
+        status = configurePreview();
+        if (status != NO_ERROR) {
+            return status;
+        }
+
+        // need to resend the current zoom value
+        if (mDvs && mCssMajorVersion == 2)
+            mDvs->setZoom(mConfig.zoom);
+
+        atomisp_set_zoom(mConfig.zoom);
+
+        // restore the actual capture fps value
+        mConfig.fps = capture_fps;
+
+        return status;
+
+    errorCloseSecond:
+        mPostViewDevice->close();
+    errorFreeBuf:
+        freeSnapshotBuffers();
+        freePostviewBuffers();
+
+        return status;
+    } else {
+        return configurePreview();
+    }
 }
 
 status_t AtomISP::configureContinuous()
@@ -3073,7 +3149,8 @@ status_t AtomISP::setZoom(int zoom)
     if (mMode == MODE_CAPTURE)
         return NO_ERROR;
 
-    if ((mMode == MODE_VIDEO || mMode == MODE_CONTINUOUS_VIDEO) && mDvs && mCssMajorVersion == 2 && mSensorType == SENSOR_TYPE_RAW) {
+    if ((mMode == MODE_VIDEO || mMode == MODE_CONTINUOUS_VIDEO) && mDvs && mCssMajorVersion == 2 && mSensorType == SENSOR_TYPE_RAW &&
+        !mHALVideoStabilization) {
         mDvs->setZoom(zoom);
         if (mMode == MODE_CONTINUOUS_VIDEO) {
             int ret = atomisp_set_zoom(zoom);
@@ -3900,16 +3977,33 @@ status_t AtomISP::putPreviewFrame(AtomBuffer *buff)
 void AtomISP::returnBuffer(AtomBuffer* buff)
 {
     LOG2("@%s", __FUNCTION__);
-    status_t status;
-    if ((buff->type != ATOM_BUFFER_PREVIEW_GFX) &&
-        (buff->type != ATOM_BUFFER_PREVIEW)) {
-        LOGE("Received unexpected buffer!");
-    } else {
+    status_t status = NO_ERROR;
+
+    if (buff == NULL) {
+        LOGW("Null buffer returned to ISP");
+        return;
+    }
+
+    if (buff->type == ATOM_BUFFER_VIDEO) {
+        buff->owner = 0;
+        status = putRecordingFrame(buff);
+
+        if (status == DEAD_OBJECT) {
+            LOGW("Stale recording buffer returned to ISP");
+        } else if (status != NO_ERROR) {
+            LOGE("Error putting recording frame to ISP");
+        }
+
+    } else if (buff->type == ATOM_BUFFER_PREVIEW_GFX ||
+               buff->type == ATOM_BUFFER_PREVIEW) {
         buff->owner = 0;
         status = putPreviewFrame(buff);
-        if (status != NO_ERROR) {
-            LOGE("Failed queueing preview frame!");
-        }
+    } else {
+        LOGE("Received unexpected buffer!");
+    }
+
+    if (status != NO_ERROR) {
+        LOGE("Failed queueing frame to ISP, type %d", buff->type);
     }
 }
 
@@ -3969,6 +4063,7 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff)
     mRecordingBuffers[index].ispPrivate = mSessionId;
     mRecordingBuffers[index].capture_timestamp = buf.vbuffer.timestamp;
     mRecordingBuffers[index].status = (FrameBufferStatus)(buf.vbuffer.reserved & FRAME_STATUS_MASK);
+    mRecordingBuffers[index].owner = this;
     *buff = mRecordingBuffers[index];
     buff->bpl = mConfig.recording.bpl;
 
@@ -4552,6 +4647,7 @@ status_t AtomISP::allocatePreviewBuffers()
         mPreviewBuffersCached = true;
 
         LOG1("Allocating %d buffers of size %d", mConfig.num_preview_buffers, mConfig.preview.size);
+
         for (int i = 0; i < mConfig.num_preview_buffers; i++) {
             MemoryUtils::allocateGraphicBuffer(tmp, mConfig.preview);
             if (tmp.dataPtr == NULL) {
@@ -4827,7 +4923,7 @@ public:
     camera_memory_t handle;
 };
 
-status_t AtomISP::allocateMetaDataBuffers()
+status_t AtomISP::allocateMetaDataBuffers(AtomBuffer *buffers, int numBuffers)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -4838,47 +4934,41 @@ status_t AtomISP::allocateMetaDataBuffers()
     uint32_t meta_data_size;
     IntelMetadataBuffer* metaDataBuf = NULL;
 
-    if(mRecordingBuffers) {
-        for (int i = 0 ; i < mConfig.num_recording_buffers; i++) {
-            MemoryUtils::freeAtomBufferMetadata(mRecordingBuffers[i]);
-#ifdef INTEL_VIDEO_XPROC_SHARING
-            IntelMetadataBuffer::ClearContext(mBufferSharingSessionID, true);
-#endif
-        }
-    } else {
-        // mRecordingBuffers is not ready, so it's invalid to allocate metadata buffers
-        return INVALID_OPERATION;
-    }
-
-    for (int i = 0; i < mConfig.num_recording_buffers; i++) {
+    for (int i = 0; i < numBuffers; i++) {
         metaDataBuf = new IntelMetadataBuffer();
         if(metaDataBuf) {
             if (PlatformData::isGraphicGen()) {
                 metaDataBuf->SetType(IntelMetadataBufferTypeGrallocSource);
-                metaDataBuf->SetValue((uint32_t)*mRecordingBuffers[i].gfxInfo_rec.gfxBufferHandle);
+                metaDataBuf->SetValue((uint32_t)*buffers[i].gfxInfo_rec.gfxBufferHandle);
             } else {
-                initMetaDataBuf(metaDataBuf);
+                // TODO: Safe to combine to upper-level if-else ?
+                if (mHALVideoStabilization) {
+                    metaDataBuf->SetType(IntelMetadataBufferTypeGrallocSource);
+                    metaDataBuf->SetValue((uint32_t)*buffers[i].gfxInfo.gfxBufferHandle);
+                } else {
+                    initMetaDataBuf(metaDataBuf);
 #ifdef INTEL_VIDEO_XPROC_SHARING
-                // for cross-process sharing
-                metaDataBuf->SetSessionFlag(mBufferSharingSessionID);
-                sp<CameraHeapMemory> mem(static_cast<CameraHeapMemory *>(mRecordingBuffers[i].buff->handle));
-                metaDataBuf->ShareValue(mem->mBuffers[0]);
+                    // for cross-process sharing
+                    metaDataBuf->SetSessionFlag(mBufferSharingSessionID);
+                    sp<CameraHeapMemory> mem(static_cast<CameraHeapMemory *>(buffers[i].buff->handle));
+                    metaDataBuf->ShareValue(mem->mBuffers[0]);
 #else
-                // for video recording only
-                metaDataBuf->SetValue((uint32_t)mRecordingBuffers[i].dataPtr);
-#endif
+                    // for video recording only
+                    metaDataBuf->SetValue((uint32_t)buffers[i].dataPtr);
+#endif // INTEL_VIDEO_XPROC_SHARING
+                }
             }
             metaDataBuf->Serialize(meta_data_prt, meta_data_size);
-            MemoryUtils::allocateAtomBufferMetadata(mRecordingBuffers[i], meta_data_size, mCallbacks);
+            MemoryUtils::allocateAtomBufferMetadata(buffers[i], meta_data_size, mCallbacks);
             LOG1("allocate metadata buffer[%d]  buff=%p size=%d sID:%d",
-                i, mRecordingBuffers[i].metadata_buff->data,
-                mRecordingBuffers[i].metadata_buff->size, mBufferSharingSessionID);
-            if (mRecordingBuffers[i].metadata_buff == NULL) {
+                i, buffers[i].metadata_buff->data,
+                buffers[i].metadata_buff->size, mBufferSharingSessionID);
+            if (buffers[i].metadata_buff == NULL) {
                 LOGE("Error allocation memory for metadata buffers!");
                 status = NO_MEMORY;
                 goto errorFree;
             }
-            memcpy(mRecordingBuffers[i].metadata_buff->data, meta_data_prt, meta_data_size);
+            memcpy(buffers[i].metadata_buff->data, meta_data_prt, meta_data_size);
             allocatedBufs++;
 
             delete metaDataBuf;
@@ -4893,16 +4983,41 @@ status_t AtomISP::allocateMetaDataBuffers()
 
 errorFree:
     // On error, free the allocated buffers
-    if (mRecordingBuffers != NULL) {
+    if (buffers != NULL) {
         for (int i = 0 ; i < allocatedBufs; i++)
-            MemoryUtils::freeAtomBuffer(mRecordingBuffers[i]);
+            MemoryUtils::freeAtomBuffer(buffers[i]);
     }
     if (metaDataBuf) {
         delete metaDataBuf;
         metaDataBuf = NULL;
     }
-#endif
+#endif // ENABLE_INTEL_METABUFFER
     return status;
+
+}
+
+status_t AtomISP::allocateMetaDataBuffers()
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if (mHALVideoStabilization) {
+        return OK; // halVS allocates metadatabuffers on the fly to preview bufs
+    }
+
+#ifdef ENABLE_INTEL_METABUFFER
+    if(mRecordingBuffers) {
+        for (int i = 0 ; i < mConfig.num_recording_buffers; i++) {
+            MemoryUtils::freeAtomBufferMetadata(mRecordingBuffers[i]);
+#ifdef INTEL_VIDEO_XPROC_SHARING
+            IntelMetadataBuffer::ClearContext(mBufferSharingSessionID, true);
+#endif
+        }
+    } else {
+        LOGE("mRecordingBuffers is not ready, so it's invalid to allocate metadata buffers");
+        return INVALID_OPERATION;
+    }
+#endif
+    return allocateMetaDataBuffers(mRecordingBuffers, mConfig.num_recording_buffers);
 }
 
 status_t AtomISP::freePreviewBuffers()

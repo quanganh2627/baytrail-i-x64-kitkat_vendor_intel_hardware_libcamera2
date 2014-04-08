@@ -303,6 +303,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->supportedHighSpeedResolutionFps = atts[1];
     } else if (strcmp(name, "maxHighSpeedDvsResolution") == 0) {
         pCurrentCam->maxHighSpeedDvsResolution = atts[1];
+    } else if (strcmp(name, "useHALVideoStabilization") == 0) {
+        pCurrentCam->useHALVS = (strcmp(atts[1], "true") == 0) ? true : false;
     } else if (strcmp(name, "supportedSdvSizes") == 0) {
         pCurrentCam->supportedSdvSizes = atts[1];
     } else if (strcmp(name, "supportedAeLock") == 0) {

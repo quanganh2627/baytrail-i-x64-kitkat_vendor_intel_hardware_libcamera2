@@ -1348,6 +1348,25 @@ unsigned int PlatformData::getNumOfCPUCores()
     return cpuCores;
 }
 
+/**
+ * \brief For checking whether we enable HAL-video stabilization specific
+ * functionality.
+ *
+ * NOTE: this mode requires customers to integrate their own video stabilization
+ * algorithm
+ */
+bool PlatformData::useHALVS(int cameraId)
+{
+
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return false;
+    }
+
+    PlatformBase *i = getInstance();
+
+    return i->mCameras[cameraId].useHALVS;
+}
+
 int PlatformData::getNumOfCaptureWarmUpFrames(int cameraId)
 {
     int retVal = 0;
