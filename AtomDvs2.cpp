@@ -364,6 +364,22 @@ end:
     return status;
 }
 
+bool AtomDvs2::isDvsSupportedSize(int width, int height)
+{
+    LOG1("@%s", __FUNCTION__);
+    const int MaxStringLen = 10;
+    int cameraId = mSensorCI->getCurrentCameraId();
+    const char* strDvs = PlatformData::supportedDvsSizes(cameraId);
+    if (strDvs && strcmp(strDvs, "")) {
+        char str[MaxStringLen];
+        snprintf(str, sizeof(str), "%dx%d", width, height);
+        char* ptr = strstr(strDvs, str);
+        if (ptr != NULL)
+            return true;
+    }
+    return false;
+}
+
 /**
  * If the input resolution is supported in high speed mode, return true.
  */
@@ -397,17 +413,15 @@ bool AtomDvs2::isDvsValid()
 
     mIsp->getOutputSize(&width, &height);
 
-    if (sensorFps > DEFAULT_RECORDING_FPS && !isHighSpeedDvsSupported(width, height)) {
-        // Workaround 1: disable DVS functionality in hi-speed recording due to performance issue
-        LOGW("%s:DVS cannot be set when HighSpeed Capture and the selected resolution", __FUNCTION__);
+    // Judge whether the current video size is supported for DVS
+    if (!isDvsSupportedSize(width, height)) {
+        LOGW("%s:DVS can not be supported for video size (%dx%d)", __FUNCTION__, width, height);
         return false;
     }
 
-    // Workaround 2: disable DVS functionality when the recording resolution is less than VGA,
-    //               because current grid size is 64, the minimum resolution for grid size 64 is
-    //               384 x 384, so FW should provide grid size 32 in low resolution for DVS functionality.
-    if (width < RESOLUTION_VGA_WIDTH || height < RESOLUTION_VGA_HEIGHT) {
-        LOGW("%s:DVS cannot be set when the selected resolution is less than VGA", __FUNCTION__);
+    if (sensorFps > DEFAULT_RECORDING_FPS && !isHighSpeedDvsSupported(width, height)) {
+        // Workaround 1: disable DVS functionality in hi-speed recording due to performance issue
+        LOGW("%s:DVS cannot be set when HighSpeed Capture and the selected resolution", __FUNCTION__);
         return false;
     }
 

@@ -1010,6 +1010,14 @@ class PlatformData {
     static float horizontalFOV(int cameraId, int width, int height);
 
     /**
+     * supported DVS sizes
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * return the value of the supported dvs sizes as a string.
+     */
+    static const char* supportedDvsSizes(int cameraId);
+
+    /**
      * Whether the graphic is GEN.
      * \return true if it's GEN. false, if it's not GEN.
      */
@@ -1235,6 +1243,8 @@ protected:
             // FOV
             verticalFOV = "";
             horizontalFOV = "";
+            //DVS
+            supportedDvsSizes = "640x480,720x480,720x576,1280x720,1920x1080";
             captureWarmUpFrames = 0;
 
             useMultiStreamsForSoC = false;
@@ -1368,6 +1378,8 @@ protected:
         // FOV
         String8 verticalFOV;
         String8 horizontalFOV;
+        //DVS
+        String8 supportedDvsSizes;
 
         // For defining amount of needed warm-up frames, when skipping frames
         // at image capture. For example, some SoC sensors need some frames to
