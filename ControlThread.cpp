@@ -1928,6 +1928,16 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
     int vfWidth = 0, vfHeight = 0;
     params.getPictureSize(&picWidth, &picHeight);
     params.getPreviewSize(&vfWidth, &vfHeight);
+
+    const float tolerance = 0.005f;
+    float picAspect = static_cast<float>(picWidth) / static_cast<float>(picHeight);
+    float vfAspect = static_cast<float>(vfWidth) / static_cast<float>(vfHeight);
+    if (fabsf(picAspect - vfAspect) > tolerance) {
+        LOG1("@%s: picture aspect [%f] is different with preview aspect [%f]",
+             __FUNCTION__, picAspect, vfAspect);
+        goto online_preview;
+    }
+
     if (!PlatformData::snapshotResolutionSupportedByZSL(mCameraId, picWidth, picHeight)) {
         LOG1("@%s: picture-size %dx%d, disabling continuous mode",
              __FUNCTION__, picWidth, picHeight);
