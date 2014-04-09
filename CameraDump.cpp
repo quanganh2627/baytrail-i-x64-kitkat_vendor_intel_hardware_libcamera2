@@ -255,7 +255,7 @@ int CameraDump::dumpImage2File(camera_delay_dumpImage_T *aDumpImage, const char 
         raw_info.raw_image.bayer_order = ia_aiq_bayer_order_grbg;
         raw_info.raw_image.data_format_bpp = 16;
         raw_info.raw_image.data_bpp = 10;
-        raw_info.raw_image.width_cols = bytesToPixels(V4L2_PIX_FMT_SBGGR10, bpl);
+        raw_info.raw_image.width_cols = width;
         raw_info.raw_image.height_lines = height;
         raw_info.header_size_bytes = 0;
         raw_info.footer_size_bytes = 0;
@@ -263,7 +263,7 @@ int CameraDump::dumpImage2File(camera_delay_dumpImage_T *aDumpImage, const char 
         raw_info.extra_bytes_right = 0;
         raw_info.extra_lines_top = 0;
         raw_info.extra_cols_left = 0;
-        raw_info.extra_cols_right = 0;
+        raw_info.extra_cols_right = bytesToPixels(V4L2_PIX_FMT_SBGGR10, bpl) - width;
         raw_info.extra_lines_bottom = 0;
         raw_info.byte_order_xor = 0;
         raw_info.spatial_sampling = 0;
