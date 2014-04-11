@@ -206,6 +206,12 @@ status_t GPUWarper::setupWarper() {
 
     status_t status;
 
+    // check if picture height exceeds maximally allowed texture size
+    if (mMaxTextureSize < mHeight) {
+        LOGE("Failed to setup GPUWarper: input picture height exceeds parameter GL_MAX_TEXTURE_SIZE of the GPU.");
+        return INVALID_OPERATION;
+    }
+
     findMeshParameters();
 
     status = allocateHostArrays();
@@ -287,7 +293,8 @@ status_t GPUWarper::initGPU() {
     GLint max = 1024;
     glGetIntegerv_EC(GL_MAX_TEXTURE_SIZE, &max);
     LOGI("GL_MAX_TEXTURE_SIZE: %d\n", max);
-    mMaxTextureSize = (max < 4096) ? max : 4096;
+    mMaxTextureSize = max;
+    mMaxTextureSizeX = (max < 4096) ? max : 4096;
 
     glPixelStorei_EC(GL_PACK_ALIGNMENT, 1);
     glPixelStorei_EC(GL_UNPACK_ALIGNMENT, 1);
@@ -363,7 +370,10 @@ void GPUWarper::clearWarper() {
 
 void GPUWarper::findMeshParameters() {
 
-    mNTilesX = (mWidth - 1) / (mMaxTextureSize) + 1;
+    mNTilesX = (mWidth - 1) / (mMaxTextureSizeX) + 1;
+
+    // since it is not allowed to process input pictures with height
+    // larger than mMaxTextureSize, mNTilesY will always be 1
     mNTilesY = (mHeight - 1) / (mMaxTextureSize) + 1;
 
     mTileSizeX = (mWidth - 1) / mNTilesX + 1;
@@ -379,11 +389,13 @@ void GPUWarper::findMeshParameters() {
 
     mTileExpansionCoeff = 1.2;
     mInBuffWidth = static_cast<double>(mTileSizeX) * mTileExpansionCoeff;
-    if ((mInBuffWidth - mTileSizeX) % 2 != 0)
-        mInBuffWidth += 1;
+    GLuint diff = mInBuffWidth - mTileSizeX;
+    if (diff % 4 != 0)
+        mInBuffWidth = mTileSizeX + (diff / 4 + 1) * 4;
     mInBuffHeight = static_cast<double>(mTileSizeY) * mTileExpansionCoeff;
-    if ((mInBuffHeight - mTileSizeY) % 2 != 0)
-        mInBuffHeight += 1;
+    diff = mInBuffHeight - mTileSizeY;
+    if (diff % 4 != 0)
+        mInBuffHeight = mTileSizeY + (diff / 4 + 1) * 4;
 
     if (mNTilesX == 1)
         mInBuffWidth = mWidth;
@@ -413,7 +425,14 @@ status_t GPUWarper::processFrame() {
 
             // transfer data from current tile to input textures
             status = fillInputGraphicBuffers(i, j, startX, startY);
-            if(status != NO_ERROR) return status;
+            if (status != NO_ERROR) return status;
+
+            // if current tile is not the first tile in the row
+            // transfer data from output GraphicBuffer to previous output tile
+            if (i > 0) {
+                status = readOutputGraphicBuffer(i - 1, j);
+                if (status != NO_ERROR) return status;
+            }
 
             ///////// Y
             RGBATexToREDorRG(mInTextureY, GL_TEXTURE0, mInEGLImageY, mMidFbY, mInBuffWidth, mInBuffHeight, mGlslProgramStY, mVertexPosStY, mVertexTexCoordStY);
@@ -432,11 +451,12 @@ status_t GPUWarper::processFrame() {
 
             glFinish();
 
-            // transfer data from output GraphicBuffer to current output tile
-            status = readOutputGraphicBuffer(i, j);
-            if (status != NO_ERROR) return status;
-
         }
+
+        // transfer data from output GraphicBuffer to the last output tile in the row
+        status = readOutputGraphicBuffer(mNTilesX - 1, j);
+        if (status != NO_ERROR) return status;
+
     }
 
     return NO_ERROR;
@@ -475,7 +495,6 @@ void GPUWarper::warping(GLuint iTexID, GLenum actTex, GLint fb, GLint w, GLint h
 #endif
 
     glBindFramebuffer_EC(GL_FRAMEBUFFER, fb);
-    glBindTexture_EC(GL_TEXTURE_2D, 0);
     glViewport_EC(0, 0, w, h);
     glClearColor_EC(0.0f, 0.0f, 0.0f, 1.0f);
     glClear_EC(GL_COLOR_BUFFER_BIT);
@@ -532,9 +551,9 @@ void GPUWarper::combYandUVTexsIntoNV12() {
     glClearColor_EC(0.0f, 0.0f, 0.0f, 1.0f);
     glClear_EC(GL_COLOR_BUFFER_BIT);
     glUseProgram_EC(mGlslProgramNV12);
-    glActiveTexture_EC(GL_TEXTURE2);
+    glActiveTexture_EC(GL_TEXTURE4);
     glBindTexture_EC(GL_TEXTURE_2D, mOutTextureY);
-    glActiveTexture_EC(GL_TEXTURE3);
+    glActiveTexture_EC(GL_TEXTURE5);
     glBindTexture_EC(GL_TEXTURE_2D, mOutTextureUV);
     glEnableVertexAttribArray_EC(mVertexPosNV12);
     glEnableVertexAttribArray_EC(mVertexTexCoordNV12);
@@ -995,6 +1014,7 @@ status_t GPUWarper::warpBackFrame(AtomBuffer *frame, double projective[PROJ_MTRX
     }
 
     mInFrame = (GLubyte *) frame->dataPtr;
+    // the same buffer is used to store warped frame
     mOutFrame = (GLubyte *) frame->dataPtr;
 
     for (int i = 0; i < PROJ_MTRX_DIM; i++) {

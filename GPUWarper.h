@@ -92,15 +92,39 @@ private:
     // picture strides
     GLuint mStride;
 
-    // when one of the picture dimensions is larger than mMaxTextureSize,
-    // picture is divided into tiles.
     // mMaxTextureSize is equal to GL maximum texture size (GL_MAX_TEXTURE_SIZE)
-    // and is used as maximum tile size
-    // it was noticed that texture allocation and sampling from textures
-    // which one dimension is larger than 4096 (GL_MAX_TEXTURE_SIZE on SGX GPU)is very slow
-    // in current implementation mMaxTextureSize = min(4096, GL_MAX_TEXTURE_SIZE)
-    // (GL_MAX_TEXTURE_SIZE on RGX GPU is 8192)
+    // 4096 on SGX GPU, and 8192 on RGX GPU.
+    // When one of the picture dimensions is larger than mMaxTextureSize,
+    // picture should be divided into matrix of tiles in order to be processed.
+    // To obtain warped output tile, besides input tile pixels,
+    // some additional (border) pixels are needed.
+    // If warping operation is performed in-place, i.e. if warped tile is stored
+    // in the input tile buffer, currently warped tile can not be stored
+    // before its adjacent tiles to be processed are read.
+    // Depending on its position in the matrix, tile can have 1 to 8 adjacent tiles.
+    // Warping is performed in several stages, and independent textures
+    // are used as output of each stage. This allows us to start processing
+    // of new tile, before warping of current tile is finished, i.e. to use
+    // in-place implementation.
+    // However, if processing of only one adjacent tile can be started before
+    // finishing current tile, picture have to be divided into tiles only in one
+    // dimension, so that each tile has up to 2 adjacent tiles.
+    // Minimal GL_MAX_TEXTURE_SIZE on used Imagination GPUs is 4096.
+    // It is enough to cover height of input pictures of up to 13MP,
+    // so, although algorithm formally iterates through tiles in both,
+    // horizontal and vertical dimension, vertical dimension of tile's matrix
+    // will be 1, i.e. picture will be divided only horizontally.
+    // If height of input picture is larger than mMaxTextureSize,
+    // INVALID_OPERATION will be reported.
+    // TODO: In order to enable warping on pictures with height larger than
+    // GL_MAX_TEXTURE_SIZE, additional output buffer should be provided.
     GLuint mMaxTextureSize;
+
+    // When working on textures which dimension is larger than 4096,
+    // some inconsistent behavior was noticed, so we decided to limit
+    // tile width to 4096, although it can go up to 8192 on RGX GPU.
+    // mMaxTextureSizeX = min(4096, GL_MAX_TEXTURE_SIZE)
+    GLuint mMaxTextureSizeX;
 
     // each tile is divided into number of squares
     // that compose mesh grid
