@@ -240,7 +240,7 @@ void SWJpegEncoder::config(const InputBuffer &in, const OutputBuffer &out)
         encThread->setConfig(cfg);
         LOG1("@%s, line:%d, the %d picture thread cfg", __FUNCTION__, __LINE__, i);
         LOG1("@%s, line:%d, cfg.width:%d, cfg.height:%d", __FUNCTION__, __LINE__, cfg.width, cfg.height);
-        LOG1("@%s, line:%d, cfg.fourcc:%d, cfg.quality:%d", __FUNCTION__, __LINE__, cfg.fourcc, cfg.quality);
+        LOG1("@%s, line:%d, cfg.fourcc:%s 0x%x, cfg.quality:%d", __FUNCTION__, __LINE__, v4l2Fmt2Str(cfg.fourcc), cfg.fourcc, cfg.quality);
         LOG1("@%s, line:%d, cfg.inBufY:0x%p, cfg.inBufUV:0x%p", __FUNCTION__, __LINE__, cfg.inBufY, cfg.inBufUV);
         LOG1("@%s, line:%d, cfg.outBuf:0x%p, cfg.outBufSize:%d", __FUNCTION__, __LINE__, cfg.outBuf, cfg.outBufSize);
     }
@@ -580,7 +580,7 @@ doJpegEncoding(const void *y_buf, const void *uv_buf, int fourcc)
         NV12ToP411Separate(width, height, srcY, srcUV, p411);
         break;
     defaut:
-        LOGE("%s Unsupported fourcc %d", __func__, fourcc);
+        LOGE("%s Unsupported fourcc %s 0x%x", __func__,v4l2Fmt2Str(fourcc), fourcc);
         return -1;
     }
 

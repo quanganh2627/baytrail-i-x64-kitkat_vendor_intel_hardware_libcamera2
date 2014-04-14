@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Intel Corporation
+ * Copyright (c) 2013-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -439,17 +439,26 @@ status_t V4L2VideoNode::setFormat(struct v4l2_format &aFormat)
     }
 
 
-    LOG1("VIDIOC_S_FMT: width: %d, height: %d, bpl: %d, fourcc: %s, field: %d",
+    LOG1("VIDIOC_S_FMT: width: %d, height: %d, bpl: %d, fourcc: %s 0x%x, field: %d",
             aFormat.fmt.pix.width,
             aFormat.fmt.pix.height,
             aFormat.fmt.pix.bytesperline,
             v4l2Fmt2Str(aFormat.fmt.pix.pixelformat),
+            aFormat.fmt.pix.pixelformat,
             aFormat.fmt.pix.field);
     ret = ioctl(mFd, VIDIOC_S_FMT, &aFormat);
     if (ret < 0) {
         LOGE("VIDIOC_S_FMT failed: %s", strerror(errno));
         return UNKNOWN_ERROR;
     }
+
+    LOG1("res from ISP: width: %d, height: %d, bpl: %d, fourcc: %s 0x%x, field: %d",
+            aFormat.fmt.pix.width,
+            aFormat.fmt.pix.height,
+            aFormat.fmt.pix.bytesperline,
+            v4l2Fmt2Str(aFormat.fmt.pix.pixelformat),
+            aFormat.fmt.pix.pixelformat,
+            aFormat.fmt.pix.field);
 
     // Update current configuration with the new one
     mFormatDescriptor.fourcc = aFormat.fmt.pix.pixelformat;
@@ -461,7 +470,6 @@ status_t V4L2VideoNode::setFormat(struct v4l2_format &aFormat)
     mFormatDescriptor.size = frameSize(mFormatDescriptor.fourcc,
                                        bytesToPixels(mFormatDescriptor.fourcc, mFormatDescriptor.bpl),
                                        mFormatDescriptor.height);
-    LOG1("bpl: %d from ISP", mFormatDescriptor.bpl);
 
     mState = DEVICE_CONFIGURED;
     mSetBufferPool.clear();

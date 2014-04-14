@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 Intel Corporation.
+ * Copyright (c) 2012-2014 Intel Corporation.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,8 +59,8 @@ void ImageScaler::downScaleImage(void *src, void *dest,
     unsigned char *m_dest = (unsigned char *)dest;
     const unsigned char * m_src = (const unsigned char *)src;
 
-    LOG1("%s: dest_w:%d, dest_h:%d, src_w:%d, src_h:%d, fourcc:%d", __func__,
-         dest_w, dest_h, src_w, src_h, fourcc);
+    LOG1("%s: dest_w:%d, dest_h:%d, src_w:%d, src_h:%d, fourcc:%s 0x%x", __func__,
+         dest_w, dest_h, src_w, src_h, v4l2Fmt2Str(fourcc), fourcc);
 
     switch (fourcc) {
         case V4L2_PIX_FMT_NV12: {
@@ -85,7 +85,7 @@ void ImageScaler::downScaleImage(void *src, void *dest,
                 dest_w, dest_h, src_w, src_h);
             break;
         default: {
-            LOGE("no downscale support for fourcc = %d", fourcc);
+            LOGE("no downscale support for fourcc = %s 0x%x", v4l2Fmt2Str(fourcc), fourcc);
             break;
         }
     }

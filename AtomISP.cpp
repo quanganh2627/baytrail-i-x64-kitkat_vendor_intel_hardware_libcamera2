@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
- * Copyright (C) 2011,2012,2013 Intel Corporation
+ * Copyright (c) 2011-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -2339,6 +2339,8 @@ errorFreeBuf:
 
 status_t AtomISP::startCapture()
 {
+    LOG1("@%s", __FUNCTION__);
+
     int ret;
     status_t status = NO_ERROR;
     int i, initialSkips;
@@ -2647,8 +2649,8 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *
     w = formatDescriptor->width;
     h = formatDescriptor->height;
     fourcc = formatDescriptor->fourcc;
-    LOG1("device: %d, width:%d, height:%d, deviceMode:%d fourcc:%s raw:%d", device->mId,
-        w, h, deviceMode, v4l2Fmt2Str(fourcc), raw);
+    LOG1("device: %d, width:%d, height:%d, deviceMode:%d fourcc:%s 0x%x raw:%d", device->mId,
+         w, h, deviceMode, v4l2Fmt2Str(fourcc), fourcc, raw);
 
     if ((w <= 0) || (h <= 0)) {
         LOGE("Wrong Width %d or Height %d", w, h);
@@ -2744,8 +2746,8 @@ status_t AtomISP::setPreviewFrameFormat(int width, int height, int bpl, int four
     mConfig.preview.fourcc = fourcc;
     mConfig.preview.bpl = bpl;
     mConfig.preview.size = frameSize(fourcc, bytesToPixels(fourcc, bpl), height);
-    LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%x)",
-        width, height, bpl, mConfig.preview.size, fourcc);
+    LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%s 0x%x)",
+         width, height, bpl, mConfig.preview.size, v4l2Fmt2Str(fourcc),fourcc);
     return status;
 }
 
@@ -2772,8 +2774,9 @@ status_t AtomISP::setPostviewFrameFormat(AtomBuffer& formatDescriptor)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    LOG1("@%s width(%d), height(%d), fourcc(%x)", __FUNCTION__,
-         formatDescriptor.width, formatDescriptor.height, formatDescriptor.fourcc);
+    LOG1("@%s width(%d), height(%d), fourcc(%s 0x%x)", __FUNCTION__,
+         formatDescriptor.width, formatDescriptor.height,
+         v4l2Fmt2Str(formatDescriptor.fourcc), formatDescriptor.fourcc);
     if (formatDescriptor.width < 0 || formatDescriptor.height < 0) {
         LOGE("Invalid postview size requested!");
         return BAD_VALUE;
@@ -2789,8 +2792,8 @@ status_t AtomISP::setPostviewFrameFormat(AtomBuffer& formatDescriptor)
     mConfig.postview.size = frameSize(formatDescriptor.fourcc,
                                       bytesToPixels(formatDescriptor.fourcc, mConfig.postview.bpl),
                                       formatDescriptor.height);
-    LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%x)",
-         formatDescriptor.width, formatDescriptor.height, mConfig.postview.bpl, mConfig.postview.size, formatDescriptor.fourcc);
+    LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%s 0x%x)",
+         formatDescriptor.width, formatDescriptor.height, mConfig.postview.bpl, mConfig.postview.size, v4l2Fmt2Str(formatDescriptor.fourcc), formatDescriptor.fourcc);
     return status;
 }
 
@@ -2807,8 +2810,8 @@ status_t AtomISP::setSnapshotFrameFormat(AtomBuffer& formatDescriptor)
     mConfig.snapshot = formatDescriptor;
     mConfig.snapshot.bpl = SGXandDisplayBpl(formatDescriptor.fourcc, formatDescriptor.width);
     mConfig.snapshot.size = frameSize(formatDescriptor.fourcc, bytesToPixels(formatDescriptor.fourcc, mConfig.snapshot.bpl), formatDescriptor.height);
-    LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%x)",
-        formatDescriptor.width, formatDescriptor.height, mConfig.snapshot.bpl, mConfig.snapshot.size, formatDescriptor.fourcc);
+    LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%s 0x%x)",
+         formatDescriptor.width, formatDescriptor.height, mConfig.snapshot.bpl, mConfig.snapshot.size,v4l2Fmt2Str(formatDescriptor.fourcc), formatDescriptor.fourcc);
     return status;
 }
 
@@ -2879,8 +2882,8 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
     mConfig.recording.fourcc = fourcc;
     mConfig.recording.bpl = SGXandDisplayBpl(fourcc, width);
     mConfig.recording.size = frameSize(fourcc, bytesToPixels(fourcc, mConfig.recording.bpl), height);
-    LOG1("width(%d), height(%d), bpl(%d), fourcc(%x)",
-            width, height, mConfig.recording.bpl, fourcc);
+    LOG1("width(%d), height(%d), bpl(%d), fourcc(%s 0x%x)",
+         width, height, mConfig.recording.bpl, v4l2Fmt2Str(fourcc), fourcc);
 
     return status;
 }

@@ -3380,7 +3380,7 @@ int ControlThread::selectPostviewFormat()
 
 status_t ControlThread::captureStillPic()
 {
-    LOG1("@%s: ", __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     AtomBuffer snapshotBuffer
             = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
@@ -4064,8 +4064,8 @@ void ControlThread::encodeVideoSnapshot(AtomBuffer &buff)
 
     fillPicMetaData(aDummyMetaData, false);
     LOG1("Encoding a video snapshot couple buf id:%d", buff.id);
-    LOG2("snapshot size %dx%d bpl %d fourcc %d", buff.width
-            ,buff.height, buff.bpl, buff.fourcc);
+    LOG2("snapshot size %dx%d bpl %d fourcc %s 0x%x", buff.width
+         ,buff.height, buff.bpl, v4l2Fmt2Str(buff.fourcc), buff.fourcc);
 
     mCallbacksThread->shutterSound();
 
@@ -4848,8 +4848,8 @@ status_t ControlThread::allocateSnapshotAndPostviewBuffers(bool videoMode)
         return NO_ERROR;
     }
 
-    LOGI("Request to allocate %d bufs of (%dx%d) fourcc: %d", numBufRequired,
-         formatDescriptorSs.width, formatDescriptorSs.height, formatDescriptorSs.fourcc);
+    LOGI("Request to allocate %d bufs of (%dx%d) fourcc: %s 0x%x", numBufRequired,
+         formatDescriptorSs.width, formatDescriptorSs.height, v4l2Fmt2Str(formatDescriptorSs.fourcc), formatDescriptorSs.fourcc);
     LOG1("Currently allocated: %d , available %d",
          mAllocatedSnapshotBuffers.size(), mAvailableSnapshotBuffers.size());
 
@@ -4911,8 +4911,8 @@ void ControlThread::processParamFileInject(CameraParameters *newParams)
     fourcc = newParams->getInt(IntelCameraParameters::KEY_FILE_INJECT_FORMAT);
 
     LOG1("FILE INJECTION new parameter dumping:");
-    LOG1("file name=%s,width=%d,height=%d,fourcc=%d,bayer-order=%d.",
-          fileName, width, height, fourcc, bayerOrder);
+    LOG1("file name=%s,width=%d,height=%d,fourcc=%s 0x%x,bayer-order=%d.",
+         fileName, width, height,v4l2Fmt2Str(fourcc), fourcc, bayerOrder);
     mISP->configureFileInject(fileName, width, height, fourcc, bayerOrder);
 #endif
 }
@@ -7292,7 +7292,7 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
 
     status = AtomCP::setIaFrameFormat(&mHdr.ciBufOut.ciMainBuf[0], fourcc);
     if (status != NO_ERROR) {
-        LOGE("HDR: pixel format %d not supported", fourcc);
+        LOGE("HDR: pixel format %s 0x%x not supported", v4l2Fmt2Str(fourcc), fourcc);
         return status;
     }
 
@@ -7303,12 +7303,13 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
     mHdr.outMainBuf.fourcc = fourcc;
     mHdr.ciBufOut.ciMainBuf[0].size = mHdr.outMainBuf.size = size;
 
-    LOG1("HDR: Initialized output CI main     buff @%p: (data=%p, size=%d, width=%d, height=%d, fourcc=%d)",
+    LOG1("HDR: Initialized output CI main     buff @%p: (data=%p, size=%d, width=%d, height=%d, fourcc=%s 0x%x)",
             &mHdr.ciBufOut.ciMainBuf[0],
             mHdr.ciBufOut.ciMainBuf[0].data,
             mHdr.ciBufOut.ciMainBuf[0].size,
             mHdr.ciBufOut.ciMainBuf[0].width,
             mHdr.ciBufOut.ciMainBuf[0].height,
+            v4l2Fmt2Str(mHdr.ciBufOut.ciMainBuf[0].format),
             mHdr.ciBufOut.ciMainBuf[0].format);
 
     mHdr.ciBufOut.ciPostviewBuf[0].data = mHdr.outPostviewBuf.dataPtr;
@@ -7319,12 +7320,13 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
     mHdr.outPostviewBuf.fourcc = fourcc;
     mHdr.ciBufOut.ciPostviewBuf[0].size = mHdr.outPostviewBuf.size = pvSize;
 
-    LOG1("HDR: Initialized output CI postview buff @%p: (data=%p, size=%d, width=%d, height=%d, fourcc=%d)",
+    LOG1("HDR: Initialized output CI postview buff @%p: (data=%p, size=%d, width=%d, height=%d, fourcc=%s 0x%x",
             &mHdr.ciBufOut.ciPostviewBuf[0],
             mHdr.ciBufOut.ciPostviewBuf[0].data,
             mHdr.ciBufOut.ciPostviewBuf[0].size,
             mHdr.ciBufOut.ciPostviewBuf[0].width,
             mHdr.ciBufOut.ciPostviewBuf[0].height,
+            v4l2Fmt2Str(mHdr.ciBufOut.ciPostviewBuf[0].format),
             mHdr.ciBufOut.ciPostviewBuf[0].format);
 
     mHdr.inProgress = true;
@@ -7344,13 +7346,14 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
     mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].size = snapshotBuffer->size;
     AtomCP::setIaFrameFormat(&mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum], snapshotBuffer->fourcc);
 
-    LOG1("HDR: Initialized input CI main     buff %d @%p: (addr=%p, length=%d, width=%d, height=%d, fourcc=%d)",
+    LOG1("HDR: Initialized input CI main     buff %d @%p: (addr=%p, length=%d, width=%d, height=%d, fourcc=%s 0x%x)",
             mBurstCaptureNum,
             &mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum],
             mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].data,
             mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].size,
             mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].width,
             mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].height,
+            v4l2Fmt2Str(mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].format),
             mHdr.ciBufIn.ciMainBuf[mBurstCaptureNum].format);
 
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].data = postviewBuffer->dataPtr;
@@ -7360,13 +7363,14 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
     mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].size = postviewBuffer->size;
     AtomCP::setIaFrameFormat(&mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum], postviewBuffer->fourcc);
 
-    LOG1("HDR: Initialized input CI postview buff %d @%p: (addr=%p, length=%d, width=%d, height=%d, fourcc=%d)",
+    LOG1("HDR: Initialized input CI postview buff %d @%p: (addr=%p, length=%d, width=%d, height=%d, fourcc=%s 0x%x)",
             mBurstCaptureNum,
             &mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum],
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].data,
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].size,
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].width,
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].height,
+            v4l2Fmt2Str(mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].format),
             mHdr.ciBufIn.ciPostviewBuf[mBurstCaptureNum].format);
 
     mHdr.inputBuffers[mBurstCaptureNum].snapshotBuf = *snapshotBuffer;
