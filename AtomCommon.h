@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +32,7 @@
 #include <camera/CameraParameters.h>
 
 #include "LogHelper.h"
+#include "JpegCapture.h"
 
 #define MAX_CAMERAS 2
 
@@ -342,6 +344,9 @@ static int pixelsToBytes(int fourcc, int pixels)
  */
 static int frameSize(int fourcc, int width, int height)
 {
+    if (fourcc == V4L2_PIX_FMT_JPEG)
+        return JPEG_FRAME_SIZE;
+
     const AtomFormatBridge* afb = getAtomFormatBridge(fourcc);
     return height * ALIGN8(afb->depth * width) / 8;
 }

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012 The Android Open Source Project
- * Copyright (c) 2012 Intel Corporation
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -169,6 +169,11 @@ const struct AtomFormatBridge sV4L2PixelFormatBridge[] = {
         .depth = 16,
         .planar = false,
         .bayer = true
+    }, {
+        .pixelformat = V4L2_PIX_FMT_JPEG,
+        .depth = 8,
+        .planar = false,
+        .bayer = false
     },
 };
 
