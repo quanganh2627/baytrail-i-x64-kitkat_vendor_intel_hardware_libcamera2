@@ -1456,6 +1456,9 @@ protected:
 
     // Used for reducing the frequency of face callbacks
     int mFaceCallbackDivider;
+
+private:
+    static status_t getSensorNames(Vector<String8>& sensorNames);
 };
 
 } /* namespace android */

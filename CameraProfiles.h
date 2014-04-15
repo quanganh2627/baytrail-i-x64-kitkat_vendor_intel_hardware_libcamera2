@@ -50,7 +50,7 @@ namespace android {
  */
 class CameraProfiles : public PlatformBase {
 public:
-    CameraProfiles();
+    CameraProfiles(const Vector<String8>& sensorNames = Vector<String8>());
     ~CameraProfiles(){};
 
     unsigned getSensorNum(void) {return mSensorNum;};
@@ -71,6 +71,8 @@ private:
     unsigned mCurrentSensor;
     bool mCurrentSensorIsExtendedCamera;
     CameraInfo *pCurrentCam;
+
+    Vector<String8> mSensorNames;
 
     static const int mBufSize = 4*1024;
     static void startElement(void *userData, const char *name, const char **atts);

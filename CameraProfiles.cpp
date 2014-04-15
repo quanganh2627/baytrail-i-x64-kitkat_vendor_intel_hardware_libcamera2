@@ -25,15 +25,19 @@
 
 namespace android {
 
-CameraProfiles::CameraProfiles()
+CameraProfiles::CameraProfiles(const Vector<String8>& sensorNames)
 {
+    LOG2("@%s", __FUNCTION__);
     mCurrentSensor = 0;
     mCurrentSensorIsExtendedCamera = false;
     mCurrentDataField = FIELD_INVALID;
     mSensorNum = 0;
     pCurrentCam = NULL;
-    LOG1("@%s", __func__);
 
+    // Assumption: Driver enumeration order will match the CameraId
+    // CameraId in camera_profiles.xml. Main camera is always at
+    // index 0, front camera at index 1.
+    mSensorNames = sensorNames;
     getDataFromXmlFile();
 //    dump();
 }
@@ -50,7 +54,7 @@ CameraProfiles::CameraProfiles()
  */
 void CameraProfiles::checkField(CameraProfiles *profiles, const char *name, const char **atts)
 {
-    LOG1("@%s, name:%s", __func__, name);
+    LOG2("@%s, name:%s", __func__, name);
 
     if (strcmp(name, "CameraSettings") == 0) {
         profiles->mCurrentDataField = FIELD_INVALID;
@@ -64,6 +68,13 @@ void CameraProfiles::checkField(CameraProfiles *profiles, const char *name, cons
             if (NULL == profiles->pCurrentCam) {
                 LOGE("@%s, Cannot create CameraInfo!", __func__);
                 return;
+            }
+            // Set sensor name if specified
+            // XML is always parsed fully, but if sensor name does
+            // not match it is discarded in endElement.
+            if (atts[2] && strcmp(atts[2], "name") == 0) {
+                LOG1("@%s: xmlname = %s, currentSensor = %d", __FUNCTION__, atts[3], profiles->mCurrentSensor);
+                profiles->pCurrentCam->sensorName = atts[3];
             }
         }
         if (0 == profiles->mCurrentSensor) {
@@ -94,7 +105,7 @@ void CameraProfiles::checkField(CameraProfiles *profiles, const char *name, cons
  */
 void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, const char **atts)
 {
-    LOG1("@%s, name:%s, atts[0]:%s", __func__, name, atts[0]);
+    LOG2("@%s, name:%s, atts[0]:%s", __func__, name, atts[0]);
 
     if (strcmp(atts[0], "value") != 0) {
         LOGE("@%s, name:%s, atts[0]:%s, xml format wrong", __func__, name, atts[0]);
@@ -148,7 +159,7 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
  */
 void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, const char **atts)
 {
-    LOG1("@%s, name:%s, atts[0]:%s, profiles->mCurrentSensor:%d", __func__, name, atts[0], profiles->mCurrentSensor);
+    LOG2("@%s, name:%s, atts[0]:%s, profiles->mCurrentSensor:%d", __func__, name, atts[0], profiles->mCurrentSensor);
 
     if (strcmp(atts[0], "value") != 0) {
         LOGE("@%s, name:%s, atts[0]:%s, xml format wrong", __func__, name, atts[0]);
@@ -333,7 +344,7 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
 #ifdef ENABLE_INTEL_EXTRAS
 void CameraProfiles::handleFeature(CameraProfiles *profiles, const char *name, const char **atts)
 {
-    LOG1("@%s, name:%s, atts[0]:%s, profiles->mCurrentSensor:%d", __func__, name, atts[0], profiles->mCurrentSensor);
+    LOG2("@%s, name:%s, atts[0]:%s, profiles->mCurrentSensor:%d", __func__, name, atts[0], profiles->mCurrentSensor);
 
     if (strcmp(atts[0], "value") != 0) {
         LOGE("@%s, name:%s, atts[0]:%s, xml format wrong", __func__, name, atts[0]);
@@ -374,7 +385,7 @@ void CameraProfiles::handleFeature(CameraProfiles *profiles, const char *name, c
 void CameraProfiles::handleFeature(CameraProfiles *profiles, const char *name, const char **atts)
 {
 
-    LOG1("@%s, name:%s, atts[0]:%s, profiles->mCurrentSensor:%d", __func__, name, atts[0], profiles->mCurrentSensor);
+    LOG2("@%s, name:%s, atts[0]:%s, profiles->mCurrentSensor:%d", __func__, name, atts[0], profiles->mCurrentSensor);
 
     pCurrentCam->defaultHdr = "";
     pCurrentCam->supportedHdr = "";
@@ -435,12 +446,60 @@ void CameraProfiles::startElement(void *userData, const char *name, const char *
  */
 void CameraProfiles::endElement(void *userData, const char *name)
 {
+    LOG2("@%s %s", __FUNCTION__, name);
+
     CameraProfiles *profiles = (CameraProfiles *)userData;
 
     if (strcmp(name, "Profiles") == 0) {
         profiles->mCurrentDataField = FIELD_INVALID;
         if (profiles->pCurrentCam) {
-            profiles->mCameras.push(*(profiles->pCurrentCam));
+            // There may be multiple entries in xml.
+            // 1. Use first entry that matches sensor name from driver.
+            // 2. Default to unnamed entry, if no match found.
+            bool useEntry = true;
+            String8 sensorName;
+            if (profiles->mSensorNames.size() > profiles->mCurrentSensor)
+                sensorName = profiles->mSensorNames[profiles->mCurrentSensor];
+
+            // mCameras must be in order, and so does the XML file.
+            // So for example, it is not possible to add CameraId N
+            // before CameraId N-1 exists.
+            if (profiles->mCurrentSensor > profiles->mCameras.size()) {
+                LOGE("@%s: CameraId %d is out of order in camera_profiles.xml",
+                    __FUNCTION__, profiles->mCurrentSensor);
+                useEntry = false;
+            }
+
+            // If name attribute was non-empty, it must match exactly.
+            if (useEntry && !profiles->pCurrentCam->sensorName.isEmpty()) {
+                if (profiles->pCurrentCam->sensorName != sensorName) {
+                    LOG1("@%s: skip camera id %d for %s, not supported in HW (%s)",
+                        __FUNCTION__, profiles->mCurrentSensor,
+                        profiles->pCurrentCam->sensorName.string(), sensorName.string());
+                    useEntry = false;
+                }
+            }
+
+            // Need to replace existing entry?
+            if (useEntry && profiles->mCameras.size() > profiles->mCurrentSensor) {
+                // Always replace an unnamed entry.
+                // Otherwise replace only if name matches.
+                if (sensorName.isEmpty() ||
+                    profiles->pCurrentCam->sensorName == sensorName) {
+                    LOG1("@%s: cameraId %d already exists, replace with %s",
+                        __FUNCTION__, profiles->mCurrentSensor,
+                       profiles->pCurrentCam->sensorName.string());
+                    profiles->mCameras.removeAt(profiles->mCurrentSensor);
+                } else {
+                    useEntry = false;
+                }
+            }
+            if (useEntry) {
+                LOG1("@%s: Add camera id %d (%s)",
+                    __FUNCTION__, profiles->mCurrentSensor,
+                    profiles->pCurrentCam->sensorName.string());
+                profiles->mCameras.insertAt(*(profiles->pCurrentCam), profiles->mCurrentSensor);
+            }
             delete profiles->pCurrentCam;
             profiles->pCurrentCam = NULL;
 
@@ -469,7 +528,7 @@ void CameraProfiles::getDataFromXmlFile(void)
     int done;
     void *pBuf = NULL;
     FILE *fp = NULL;
-    LOG1("@%s", __func__);
+    LOG1("@%s", __FUNCTION__);
 
     static const char *defaultXmlFile = "/etc/camera_profiles.xml";
 

@@ -24,6 +24,8 @@
 #include "PlatformData.h"
 #include "CameraProfiles.h"
 #include <utils/Log.h>
+#include "v4l2device.h"
+
 namespace android {
 
 
@@ -38,10 +40,59 @@ HalConf PlatformData::HalConfig;
 // Max width and height string length, like "1920x1080".
 const int MAX_WIDTH_HEIGHT_STRING_LENGTH = 25;
 
+status_t PlatformBase::getSensorNames(Vector<String8>& names)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    status_t ret = NO_ERROR;
+    int i = 0;
+    String8 sensorName;
+    ssize_t idx;
+    struct v4l2_input input;
+
+    V4L2VideoNode *mainDevice = new V4L2VideoNode("/dev/video0", 0);
+    if (mainDevice->open() != NO_ERROR) {
+        LOGE("@%s, Failed to open first device!", __FUNCTION__);
+        return NO_INIT;
+    }
+
+    while (ret == NO_ERROR) {
+        idx = -1;
+        CLEAR(input);
+        input.index = i;
+
+        if (NO_ERROR == (ret = mainDevice->enumerateInputs(&input))) {
+            sensorName.clear();
+            idx = String8((const char*)input.name).find(" ");
+            if (idx == -1)
+                sensorName.append((const char*)input.name);
+            else
+                sensorName.append((const char*)input.name, idx);
+            names.push(sensorName);
+            LOG1("@%s: %s at index %d", __FUNCTION__, sensorName.string(), i);
+            i++;
+        }
+    }
+    if (ret == BAD_INDEX) {
+        // Not an error: all devices were enumerated.
+        ret = NO_ERROR;
+    } else {
+        LOGE("@%s: Device input enumeration failed for sensor index %d (err = %d)", __FUNCTION__, i,  ret);
+    }
+
+    mainDevice->close();
+    return ret;
+}
+
 PlatformBase* PlatformData::getInstance(void)
 {
     if (mInstance == 0) {
-        mInstance = new CameraProfiles();
+        // Get the sensor names from driver
+        Vector<String8> sensorNames;
+        if (NO_ERROR != PlatformBase::getSensorNames(sensorNames))
+            mInstance = new CameraProfiles();
+        else
+            mInstance = new CameraProfiles(sensorNames);
 
         // add an extra camera which is copied from the first one as a fake camera
         // for file injection
