@@ -468,7 +468,7 @@ status_t UltraLowLight::initIntelULL(int w, int h, ia_binary_data *aiqb_data)
     // set image registration to be done inside ia_cp_ull_compose()
     mIntelUllCfg->imreg_fallback = NULL;
 
-    err = ia_cp_ull_init(w, h, aiqb_data, ia_cp_tgt_ia);
+    err = ia_cp_ull_init(w, h, aiqb_data, ia_cp_tgt_ipu);
     if (err != ia_err_none) {
         ALOGE("@%s: failed to initialize ULL capture", __FUNCTION__);
         return ia_error_to_status_t(err);
@@ -636,6 +636,11 @@ status_t UltraLowLight::processIntelULL()
     ia_err error = ia_cp_ull_compose(&out, &out_pv, input, postview, mInputBuffers.size(), mIntelUllCfg);
     if (error != ia_err_none) {
         ALOGE("Intel ULL failed with error status %d", error);
+        ret = ia_error_to_status_t(error);
+    }
+    error = ia_cp_ull_uninit();
+    if (error != ia_err_none) {
+        LOGE("Failed to uninit Intel ULL %d", error);
         ret = ia_error_to_status_t(error);
     }
 

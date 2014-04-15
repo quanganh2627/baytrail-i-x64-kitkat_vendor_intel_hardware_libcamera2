@@ -895,6 +895,8 @@ private:
     /*----------- Debugging helpers --------------------*/
     static const char* sCaptureSubstateStrings[STATE_CAPTURE_LAST];
 
+    bool mCPExtensionsLoaded;
+
 }; // class ControlThread
 
 }; // namespace android

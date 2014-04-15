@@ -40,6 +40,7 @@
 #include "intel_camera_extensions.h"
 #include "ICameraHwControls.h"
 #include "AtomDvs2.h"
+#include "ia_cp.h"
 
 namespace android {
 /*
@@ -178,6 +179,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mContShootingSkipFirstFrame(false)
     ,mContinuousPicsReady(0)
     ,mTimeoutTimestamp(0)
+    ,mCPExtensionsLoaded(false)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -2179,6 +2181,11 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (videoMode) {
         mNumBuffers = PlatformData::getRecordingBufNum();
     } else {
+        if (mode == MODE_CONTINUOUS_CAPTURE) {
+            mCP->initIACP();
+            ia_cp_load_extensions();
+            mCPExtensionsLoaded = true;
+        }
         mNumBuffers = PlatformData::getPreviewBufNum();
     }
     mISP->setPreviewBufNum(mNumBuffers);
@@ -2460,6 +2467,11 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
         mState = STATE_STOPPED;
     } else {
         ALOGE("Error stopping ISP in preview mode!");
+    }
+
+    if (mCPExtensionsLoaded) {
+        ia_cp_unload_extensions();
+        mCPExtensionsLoaded = false;
     }
 
     if (oldState == STATE_PREVIEW_VIDEO || oldState == STATE_RECORDING) {
