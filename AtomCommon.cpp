@@ -289,12 +289,16 @@ int SGXandDisplayBpl(int fourcc, int width)
 
     // Alignment requirement of the display controller in CTP platform.
     // Bytes per line needs to be aligned to 64 with a minimum of 512.
-    else  if ((strcmp(PlatformData::getBoardName(), "victoriabay") == 0) ||
+    else if ((strcmp(PlatformData::getBoardName(), "victoriabay") == 0) ||
               (strcmp(PlatformData::getBoardName(), "redhookbay") == 0)) {
         if (width <= 512)
             width = 512;
         else
             width = ALIGN64(width);
+    }
+    // Bytes per line needs to be aligned to 32 in CSS firmware.
+    else if (width % 32 != 0) {
+        width = ALIGN32(width);
     }
 
     return pixelsToBytes(fourcc, width);
