@@ -452,6 +452,11 @@ static int ATOM_CloseCameraHardware(hw_device_t* device)
 static int ATOM_GetNumberOfCameras(void)
 {
     LOGD("%s", __FUNCTION__);
+
+    // This is called again in ATOM_OpenCameraHardware to allow
+    // setting log level without restarting media server.
+    LogHelper::setDebugLevel();
+
     int nodes = PlatformData::numberOfCameras();
     if (nodes > MAX_CAMERAS)
         nodes = MAX_CAMERAS;
