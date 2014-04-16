@@ -2490,10 +2490,8 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
          const char manUsensorBName[] = "ov5648";
 
          if (mCameraInput && (strncmp(mCameraInput->name, manUsensorBName, sizeof(manUsensorBName) - 1)== 0)) {
-             if (((previewWidth == 720)&& (previewHeight == 480)) ||
-                 ((previewWidth == 1272)&& (previewHeight == 848))) {
-                 LOGD("480p recording change preview size to 1272x848 and \
-                      video size to 720x480");
+             if (((previewWidth == 720)&& (previewHeight == 480)) || ((previewWidth == 1272)&& (previewHeight == 848))) {
+                 LOGD("480p recording change preview size to 1272x848 and video size to 720x480");
                  params->setPreviewSize(1272,848);
                  params->setVideoSize(720,480);
              } else {
@@ -2501,6 +2499,17 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
                  params->setPreviewSize(1280,720);
              }
           }
+
+        if (mCameraInput && (strncmp(mCameraInput->name, "gc5004", sizeof("gc5004") - 1) == 0)) {
+            if (((previewWidth == 720)&& (previewHeight == 480)) ||  ((previewWidth == 1272)&& (previewHeight == 848))) {
+                LOGD("480p recording change preview size to 1272x848 and video size to 720x480");
+                params->setPreviewSize(1272,848);
+                params->setVideoSize(720,480);
+            } else {
+                LOGD("1080p/720p recording change preview size to 1280x720");
+                params->setPreviewSize(1280,720);
+            }
+        }
 
         //Workaround 2, detail refer to the function description
         params->getPreviewSize(&previewWidth, &previewHeight);
