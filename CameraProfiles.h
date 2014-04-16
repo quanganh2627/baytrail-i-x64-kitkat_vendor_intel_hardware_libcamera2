@@ -49,6 +49,10 @@ namespace android {
  * This class will use the expat lib to do the xml parser.
  */
 class CameraProfiles : public PlatformBase {
+    struct SensorDriver {
+        String8 mSensorName;
+        String8 mCameraProfileName;
+    };
 public:
     CameraProfiles();
     ~CameraProfiles(){};
@@ -83,6 +87,12 @@ private:
     void handleCommon(CameraProfiles *profiles, const char *name, const char **atts);
 
     void dump(void);
+
+    static void endElementSpec(void *userData, const char *name);
+	void getDataFromSpecXmlFile(void);
+
+    status_t initSensorList();
+    static Vector<struct SensorDriver> RegisteredDrivers;
 };
 
 }; // namespace android

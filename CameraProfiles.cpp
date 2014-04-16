@@ -19,9 +19,17 @@
 #include "LogHelper.h"
 #include <string.h>
 #include <libexpat/expat.h>
+#include <cutils/properties.h>
 #include "PlatformData.h"
 #include "CameraProfiles.h"
 #include "IntelParameters.h"
+
+#include <dirent.h>
+#include <fnmatch.h>
+#include <fcntl.h>
+#include <linux/media.h>
+#include <linux/kdev_t.h>
+#include <utils/Errors.h>
 
 namespace android {
 
@@ -35,6 +43,8 @@ CameraProfiles::CameraProfiles()
 
     getDataFromXmlFile();
 //    dump();
+	getDataFromSpecXmlFile();
+	//dump();//////
 }
 
 /**
@@ -440,6 +450,152 @@ void CameraProfiles::endElement(void *userData, const char *name)
     if (strcmp(name, "Common") == 0)
         profiles->mCurrentDataField = FIELD_INVALID;
 }
+
+void CameraProfiles::endElementSpec(void *userData, const char *name)
+{
+    CameraProfiles *profiles = (CameraProfiles *)userData;
+
+    if (strcmp(name, "Profiles") == 0) {
+        profiles->mCurrentDataField = FIELD_INVALID;
+        if (profiles->pCurrentCam) {
+            profiles->mCameras.removeAt(profiles->mCurrentSensor);
+            profiles->mCameras.insertAt(*(profiles->pCurrentCam),profiles->mCurrentSensor);
+			profiles->mSensorNum--;
+            delete profiles->pCurrentCam;
+            profiles->pCurrentCam = NULL;
+        }
+    }
+    if (strcmp(name, "Common") == 0)
+        profiles->mCurrentDataField = FIELD_INVALID;
+}
+
+Vector<struct CameraProfiles::SensorDriver> CameraProfiles::RegisteredDrivers;
+status_t CameraProfiles::initSensorList()
+{
+    status_t ret = 0;
+
+	char medProPath[128] = {0};
+    const char *mcPathName = "/dev/media0";
+    const char *mProfilePathName = "/etc/camera_profiles_%s.xml";
+    int fd = open(mcPathName, O_RDONLY);
+    if (fd == -1) {
+        LOGE("ERROR in opening media controller: %s!", strerror(errno));
+        return ENXIO;
+    }
+
+    struct media_entity_desc entity;
+    memset(&entity, 0, sizeof(entity));
+	RegisteredDrivers.clear();
+    do {
+        entity.id |= MEDIA_ENT_ID_FLAG_NEXT;
+        if (ioctl(fd, MEDIA_IOC_ENUM_ENTITIES, &entity) < 0) {
+            if (errno == EINVAL) {
+                if (RegisteredDrivers.size() == 0) {
+                    LOGE("ERROR no sensor driver registered in media controller!");
+                    ret = NO_INIT;
+                }
+            } else {
+                LOGE("ERROR in browsing media controller entities: %s!", strerror(errno));
+                ret = FAILED_TRANSACTION;
+            }
+            break;
+        } else {
+            if (entity.type == MEDIA_ENT_T_V4L2_SUBDEV_SENSOR) {
+                SensorDriver drvInfo;
+                drvInfo.mSensorName = entity.name;
+                for (int i = 0; (i = drvInfo.mSensorName.find(" ")) > 0; drvInfo.mSensorName.setTo(drvInfo.mSensorName, i));
+				drvInfo.mCameraProfileName = String8::format(mProfilePathName,drvInfo.mSensorName.string());
+				LOGD("@%s,drvInfo.mProfileName:%s",__func__,drvInfo.mCameraProfileName.string());
+				sprintf(medProPath,"%s_%s",medProPath,drvInfo.mSensorName.string());
+
+				RegisteredDrivers.push(drvInfo);
+
+            }
+        }
+    } while (!ret);
+
+	if(medProPath[0]){
+		char pathName[128];
+		sprintf(pathName,"/etc/media_profiles%s.xml",medProPath);
+		property_set("media.settings.xml",pathName);
+		LOGD("@%s,MediaProfilePath:%s\n",__func__,pathName);
+	}
+
+    return ret;
+}
+
+void CameraProfiles::getDataFromSpecXmlFile(void)
+{
+    int done;
+	void *pBuf = NULL;
+	FILE *fp = NULL;
+	XML_Parser parser = NULL;
+	LOG1("@%s", __func__);
+
+	initSensorList();
+
+	for (int i = RegisteredDrivers.size(); i-- > 0; ) {
+
+		fp = ::fopen(RegisteredDrivers[i].mCameraProfileName.string(), "r");
+		if (NULL == fp) {
+			LOGE("@%s, Camera profile:%s not found!", __func__, RegisteredDrivers[i].mCameraProfileName.string());
+			continue;
+		}
+
+		LOGD("@%s,Parse camera profile:%s\n",__func__,RegisteredDrivers[i].mCameraProfileName.string());
+
+		parser = ::XML_ParserCreate(NULL);
+		if (NULL == parser) {
+			LOGE("@%s, line:%d, parser is NULL", __func__, __LINE__);
+			goto exit;
+		}
+		::XML_SetUserData(parser, this);
+		::XML_SetElementHandler(parser, startElement, endElementSpec);
+
+		pBuf = malloc(mBufSize);
+			if (NULL == pBuf) {
+			LOGE("@%s, line:%d, pBuf is NULL", __func__, __LINE__);
+			goto exit;
+		}
+
+		do {
+			int len = (int)::fread(pBuf, 1, mBufSize, fp);
+			if (!len) {
+				if (ferror(fp)) {
+					clearerr(fp);
+					goto exit;
+				}
+			}
+			done = len < mBufSize;
+			if (XML_Parse(parser, (const char *)pBuf, len, done) == XML_STATUS_ERROR) {
+				LOGE("@%s, line:%d, XML_Parse error", __func__, __LINE__);
+				goto exit;
+			}
+		} while (!done);
+    	
+		if (parser){
+			::XML_ParserFree(parser);
+			parser = NULL;
+		}
+		if (pBuf){
+			free(pBuf);
+			pBuf = NULL;
+		}
+		if (fp){
+			::fclose(fp);
+			fp = NULL;
+		}
+
+	}
+exit:
+	if (parser)
+		::XML_ParserFree(parser);
+	if (pBuf)
+		free(pBuf);
+	if (fp)
+	::fclose(fp);
+}
+
 
 /**
  * Get camera configuration from xml file
