@@ -32,6 +32,7 @@
 #include <poll.h>
 #include <linux/media.h>
 #include <linux/atomisp.h>
+#include "HALVideoStabilization.h"
 #include "PerformanceTraces.h"
 #include <binder/IMemory.h>
 #include <binder/MemoryBase.h>
@@ -2730,6 +2731,14 @@ status_t AtomISP::setPreviewFrameFormat(int width, int height, int bpl, int four
         width = mConfig.previewLimits.maxWidth;
     if (height > mConfig.previewLimits.maxHeight || height <= 0)
         height = mConfig.previewLimits.maxHeight;
+
+    // add the envelope size for the hal videostabilization, if it is enabled
+    if (mHALVideoStabilization) {
+        double oldWidth = width;
+        HALVideoStabilization::getEnvelopeSize(width, height, width, height);
+        bpl = bpl * (width / oldWidth);
+    }
+
     mConfig.preview.width = width;
     mConfig.preview.height = height;
     mConfig.preview.fourcc = fourcc;

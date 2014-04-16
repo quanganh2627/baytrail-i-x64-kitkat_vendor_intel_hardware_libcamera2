@@ -42,6 +42,7 @@ LOCAL_SRC_FILES := \
 	CameraProfiles.cpp \
 	IntelParameters.cpp \
 	exif/ExifCreater.cpp \
+	HALVideoStabilization.cpp \
 	PostProcThread.cpp \
 	PanoramaThread.cpp \
 	AtomCommon.cpp \

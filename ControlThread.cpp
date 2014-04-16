@@ -2065,21 +2065,18 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     // preview buffer data for encoding, the handler for the recording buffer
     // dequeue has run before the preview return buffer handler runs.
     mISP->attachObserver(this, OBSERVE_PREVIEW_STREAM);
-    if (videoMode)
+    if (videoMode && !mHALVideoStabilization)
         mISP->attachObserver(mVideoThread.get(), OBSERVE_PREVIEW_STREAM);
     mISP->attachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
-
-    // TODO: do not attach VideoThread to listen atomIspNotify in hal VS case
 
     if (!mIspExtensionsEnabled) {
 
         mPreviewThread->detachCallback(NULL, ICallbackPreview::OUTPUT_WITH_DATA);
 
         if (mHALVideoStabilization) {
-            // TODO LASSI: Do this better?
             // PreviewThread->VideoThread is special flow for HAL video stabilization.
-            // Can be done, as in our normal case video mode does not use post proc (Face detection etc, for now..)
-            // - In the normal flow VideoThread "pulls" the buffers from AtomISP,
+            // This can be done, since in our normal case video mode does not use post proc (Face detection etc, for now..)
+            // In the normal flow VideoThread "pulls" the buffers from AtomISP,
             // and is attached to AtomISP using attachObserver() above, in halVS we "push" the frames via previewBufferCallback()
             mPreviewThread->setCallback(
                 static_cast<ICallbackPreview*>(mVideoThread.get()),

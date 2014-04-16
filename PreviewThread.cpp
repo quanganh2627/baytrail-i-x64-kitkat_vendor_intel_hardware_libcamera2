@@ -41,6 +41,7 @@ PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* cal
     ,mLastFrameTs(0)
     ,mFramesDone(0)
     ,mCallbacksThread(callbacksThread)
+    ,mHALVS(NULL)
     ,mPreviewWindow(NULL)
     ,mPreviewBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_PREVIEW))
     ,mTransferingBuffer(NULL)
@@ -1068,44 +1069,29 @@ status_t PreviewThread::handleVSPreview(PreviewThread::MessagePreview *msg)
     if (mPreviewWindow != 0) {
         GfxAtomBuffer *bufToEnqueue = NULL;
         if (msg->buff.type != ATOM_BUFFER_PREVIEW_GFX) {
-            // client not passing our buffers, not in 0-copy path
-            // do basic checks that configuration matches for a frame copy
-            // Note: ignoring format, as we seem to use fixed NV12
-            // while PreviewThread is configured according to public
-            // parameter for callback conversions
-            if (msg->buff.width != mPreviewWidth ||
-                msg->buff.height != mPreviewHeight ||
-                (msg->buff.bpl != mPreviewBpl && mPreviewBpl != 0)) {
-                LOG1("%s: not passing buffer to window, conflicting format", __FUNCTION__);
-                LOG1(", input : %dx%d(%d:%x:%s)",
-                     msg->buff.width, msg->buff.height, msg->buff.bpl, msg->buff.fourcc,
-                    v4l2Fmt2Str(msg->buff.fourcc));
-                LOG1(", preview : %dx%d(%d:%x:%s)",
-                     mPreviewWidth, mPreviewHeight,
-                     mPreviewBpl, mPreviewFourcc, v4l2Fmt2Str(mPreviewFourcc));
+            // dequeue ready frames from window
+            do {
+                bufToEnqueue = dequeueFromWindow();
+            } while (bufToEnqueue != NULL);
+            // find first free buffer
+            bufToEnqueue = lookForFreeGfxBufferHandle();
+
+            if (bufToEnqueue) {
+                // process VS, push to window
+                // todo: have the processVS function change the flag
+                bufToEnqueue->queuedToWindow = true;
+                processVS(&msg->buff, &bufToEnqueue->buffer);
+
+                status = handlePreviewCallback(bufToEnqueue->buffer);
+
+                // tell others to return the buffer to us
+                bufToEnqueue->buffer.owner = this;
+                bufToEnqueue->buffer.capture_timestamp = msg->buff.capture_timestamp;
+                // send the buffer to callbacks (to video)
+                bufToEnqueue->queuedToVideo = true;
+                outputBufferCallback(&bufToEnqueue->buffer);
             } else {
-                // dequeue ready frames from window
-                do {
-                    bufToEnqueue = dequeueFromWindow();
-                } while (bufToEnqueue != NULL);
-                // find first free buffer
-                bufToEnqueue = lookForFreeGfxBufferHandle();
-
-                if (bufToEnqueue) {
-                    // process VS, push to window
-                    // todo: have the processVS function change the flag
-                    bufToEnqueue->queuedToWindow = true;
-                    processVS(&msg->buff, &bufToEnqueue->buffer);
-
-                    // tell others to return the buffer to us
-                    bufToEnqueue->buffer.owner = this;
-                    bufToEnqueue->buffer.capture_timestamp = msg->buff.capture_timestamp;
-                    // send the buffer to callbacks (to video)
-                    bufToEnqueue->queuedToVideo = true;
-                    outputBufferCallback(&bufToEnqueue->buffer);
-                } else {
-                    LOGE("failed to find free buffer");
-                }
+                LOGE("failed to find free buffer");
             }
         }
     }
@@ -1113,6 +1099,60 @@ status_t PreviewThread::handleVSPreview(PreviewThread::MessagePreview *msg)
     return status;
 }
 
+/**
+ * This method handles the preview callback during preview
+ * (split off from handlePreview)
+ */
+status_t PreviewThread::handlePreviewCallback(AtomBuffer &srcBuff)
+{
+    status_t status = OK;
+
+    if(!mPreviewBuf.buff) {
+        allocateLocalPreviewBuf();
+    }
+
+    if (mCallbacks->msgTypeEnabled(CAMERA_MSG_PREVIEW_FRAME) && mPreviewBuf.dataPtr) {
+        void *src = srcBuff.dataPtr;
+        int src_bpl = srcBuff.bpl;
+        if (mTransferingBuffer) {
+            int transfer_bpl = pixelsToBytes(mPreviewFourcc, mPreviewBuf.width);
+            // scale to transfering buffer if requested preview size is not equal to actual preview size
+            ImageScaler::downScaleImage(src, mTransferingBuffer,
+                    mPreviewBuf.width, mPreviewBuf.height, transfer_bpl,
+                    mPreviewWidth, mPreviewHeight, src_bpl,
+                    mPreviewFourcc, 0, 0);
+            src = mTransferingBuffer;
+            src_bpl = transfer_bpl;
+        }
+
+        switch(mPreviewCbFormat) {
+                                  // Android definition: PIXEL_FORMAT_YUV420P-->YV12, please refer to
+        case V4L2_PIX_FMT_YVU420: // header file: frameworks/av/include/camera/CameraParameters.h
+            convertBuftoYV12(mPreviewFourcc, mPreviewBuf.width,
+                             mPreviewBuf.height, src_bpl,
+                             mPreviewBuf.bpl, src, mPreviewBuf.dataPtr);
+            break;
+        case V4L2_PIX_FMT_NV21: // you need to do this for the first time
+            convertBuftoNV21(mPreviewFourcc, mPreviewBuf.width,
+                             mPreviewBuf.height, src_bpl,
+                             mPreviewBuf.bpl, src, mPreviewBuf.dataPtr);
+            break;
+        case V4L2_PIX_FMT_RGB565:
+            if (mPreviewFourcc == V4L2_PIX_FMT_NV12)
+                trimConvertNV12ToRGB565(mPreviewBuf.width, mPreviewBuf.height, src_bpl, src, mPreviewBuf.dataPtr);
+            //TBD for other preview format, not supported yet
+            break;
+        default:
+            LOGE("invalid preview callback format: %d", mPreviewCbFormat);
+            status = -1;
+            break;
+        }
+        if (status == NO_ERROR)
+            mCallbacksThread->previewFrameDone(&mPreviewBuf);
+    }
+
+    return status;
+}
 
 /**
  *  This method gets executed for each preview frames that the Thread
@@ -1205,49 +1245,7 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
         }
     }
 
-    if(!mPreviewBuf.buff) {
-        allocateLocalPreviewBuf();
-    }
-
-    if (mCallbacks->msgTypeEnabled(CAMERA_MSG_PREVIEW_FRAME) && mPreviewBuf.dataPtr) {
-        void *src = msg->buff.dataPtr;
-        int src_bpl = msg->buff.bpl;
-        if (mTransferingBuffer) {
-            int transfer_bpl = pixelsToBytes(mPreviewFourcc, mPreviewBuf.width);
-            // scale to transfering buffer if requested preview size is not equal to actual preview size
-            ImageScaler::downScaleImage(src, mTransferingBuffer,
-                    mPreviewBuf.width, mPreviewBuf.height, transfer_bpl,
-                    mPreviewWidth, mPreviewHeight, msg->buff.bpl,
-                    mPreviewFourcc, 0, 0);
-            src = mTransferingBuffer;
-            src_bpl = transfer_bpl;
-        }
-
-        switch(mPreviewCbFormat) {
-                                  // Android definition: PIXEL_FORMAT_YUV420P-->YV12, please refer to
-        case V4L2_PIX_FMT_YVU420: // header file: frameworks/av/include/camera/CameraParameters.h
-            convertBuftoYV12(mPreviewFourcc, mPreviewBuf.width,
-                             mPreviewBuf.height, src_bpl,
-                             mPreviewBuf.bpl, src, mPreviewBuf.dataPtr);
-            break;
-        case V4L2_PIX_FMT_NV21: // you need to do this for the first time
-            convertBuftoNV21(mPreviewFourcc, mPreviewBuf.width,
-                             mPreviewBuf.height, src_bpl,
-                             mPreviewBuf.bpl, src, mPreviewBuf.dataPtr);
-            break;
-        case V4L2_PIX_FMT_RGB565:
-            if (mPreviewFourcc == V4L2_PIX_FMT_NV12)
-                trimConvertNV12ToRGB565(mPreviewBuf.width, mPreviewBuf.height, src_bpl, src, mPreviewBuf.dataPtr);
-            //TBD for other preview format, not supported yet
-            break;
-        default:
-            LOGE("invalid preview callback format: %d", mPreviewCbFormat);
-            status = -1;
-            break;
-        }
-        if (status == NO_ERROR)
-            mCallbacksThread->previewFrameDone(&mPreviewBuf);
-    }
+    status = handlePreviewCallback(msg->buff);
 
 skip_displaying:
     inputBufferCallback();
@@ -1278,9 +1276,7 @@ skip_displaying:
 void PreviewThread::processVS(AtomBuffer *src, AtomBuffer *dst)
 {
     status_t err = OK;
-    // here we should push this to the Video Stabilization object, but since we
-    // don't have one just yet, we fake the "process" here with memcopy
-    memcpy((char *)dst->dataPtr, (const char*)src->dataPtr, dst->size);
+    mHALVS->process(src, dst);
     dst->capture_timestamp = src->capture_timestamp;
 
     // enqueue the buffer to window
@@ -1412,6 +1408,9 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
     int reservedBufferCount = 0;
 
     mHALVideoStabilization = msg->halVSVideo;
+    if (mHALVideoStabilization && mHALVS == NULL)
+        mHALVS = new HALVideoStabilization();
+
     mSharedMode = msg->sharedMode;
 
     if ((w != 0 && h != 0)) {

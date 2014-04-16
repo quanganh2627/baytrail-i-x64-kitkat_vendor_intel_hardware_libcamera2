@@ -79,12 +79,6 @@ bool VideoThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverSt
 {
     LOG2("@%s", __FUNCTION__);
 
-    // TODO: We should not even attach VideoThread to listen atomIspNotify in
-    // HAL Video stabilization case
-
-    if (mHALVideoStabilization)
-        return false;
-
     if (msg) {
         AtomBuffer *buff = &msg->data.frameBuffer.buff;
         if (msg->id != IAtomIspObserver::MESSAGE_ID_FRAME) {

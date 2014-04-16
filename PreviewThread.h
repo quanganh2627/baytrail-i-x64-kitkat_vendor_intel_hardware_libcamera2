@@ -24,6 +24,7 @@
 #include "MessageQueue.h"
 #include "AtomCommon.h"
 #include "IAtomIspObserver.h"
+#include "HALVideoStabilization.h"
 
 namespace android {
 
@@ -287,6 +288,8 @@ private:
     status_t handleMessageFetchBufferGeometry(void);
     status_t handleVSPreview(MessagePreview *msg);
 
+    status_t handlePreviewCallback(AtomBuffer &srcBuf);
+
     // main message function
     status_t waitForAndExecuteMessage();
 
@@ -327,6 +330,7 @@ private:
     nsecs_t         mLastFrameTs;
     unsigned int    mFramesDone;
     sp<CallbacksThread> mCallbacksThread;
+    sp<HALVideoStabilization> mHALVS;
 
     preview_stream_ops_t *mPreviewWindow;   /*!< struct passed from Service to control the native window */
     AtomBuffer          mPreviewBuf;        /*!< Local preview buffer to give to the user */

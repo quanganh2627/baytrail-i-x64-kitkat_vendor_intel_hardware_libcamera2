@@ -17,6 +17,7 @@
 #include "AtomCommon.h"
 #include "LogHelper.h"
 #include "ImageScaler.h"
+#include "assert.h"
 
 #define RESOLUTION_VGA_WIDTH    640
 #define RESOLUTION_VGA_HEIGHT   480
@@ -772,6 +773,75 @@ void ImageScaler::downScaleNv12ImageFrom800x600ToQvga(unsigned char *dest, const
 
 }
 // VGA-QCIF end
+
+/**
+ * Crops then input image to destination size. The params must be such that
+ * cropping is possible:
+ * (src->bpl    - leftCrop - rightCrop)  must equal dst->bpl
+ * (src->height - topCrop  - bottomCrop) must equal dst->height
+ */
+void ImageScaler::cropNV12orNV21Image(const AtomBuffer *src, AtomBuffer *dst,
+                                      int leftCrop, int rightCrop,
+                                      int topCrop,  int bottomCrop)
+{
+    LOG2("@%s", __FUNCTION__);
+    // assert inputs
+    assert(src);
+    assert(dst);
+    assert(leftCrop   >= 0);
+    assert(rightCrop  >= 0);
+    assert(topCrop    >= 0);
+    assert(bottomCrop >= 0);
+    assert(src->bpl    - leftCrop - rightCrop  == dst->bpl);
+    assert(src->height - topCrop  - bottomCrop == dst->height);
+
+    // crop the Y
+    int inBpl    = src->bpl;
+    int outBpl   = dst->bpl;
+    char *inPtr  = (char *) src->dataPtr;
+    // move inPtr to crop start position
+    inPtr       += topCrop * inBpl + leftCrop;
+    char *outPtr = (char *) dst->dataPtr;
+    int height = dst->height;
+    for (int i = 0; i < height; i++) {
+        memcpy((void *)outPtr, (void *)inPtr, outBpl);
+        outPtr += outBpl;
+        inPtr  += inBpl;
+    }
+    // crop UV - it has the same bpl, but height is half of Y, so halve the Crop and height also
+    topCrop = topCrop / 2;
+    height  = height  / 2;
+    // move inPtr to crop start position: first move to start of UV (dataPtr + height * bpl) and add the halved topCrop * bpl + leftCrop.
+    inPtr   = ((char *) src->dataPtr) + (src->height + topCrop) * inBpl + leftCrop;
+    for (int i = 0; i < height; i++) {
+        memcpy((void *)outPtr, (void *)inPtr, outBpl);
+        outPtr += outBpl;
+        inPtr  += inBpl;
+    }
+}
+
+/**
+ * Crops then input image to destination size. The sizes must be such that
+ * center cropping is possible:
+ * (src->bpl - dst->bpl) must be an even value
+ * (src->height - dst-> height) must be an even value
+ */
+void ImageScaler::centerCropNV12orNV21Image(const AtomBuffer *src, AtomBuffer *dst)
+{
+    LOG2("@%s", __FUNCTION__);
+    // assert inputs
+    assert(src);
+    assert(dst);
+    assert(src->bpl    >= dst->bpl);
+    assert(src->height >= dst->height);
+    assert(!((src->bpl    - dst->bpl)    & 1)); // only accept if crop can be centered
+    assert(!((src->height - dst->height) & 1)); // only accept if crop can be centered
+
+    int leftCrop, rightCrop, topCrop, bottomCrop;
+    leftCrop = rightCrop = (src->bpl    - dst->bpl)    / 2;
+    topCrop = bottomCrop = (src->height - dst->height) / 2;
+    cropNV12orNV21Image(src, dst, leftCrop, rightCrop, topCrop, bottomCrop);
+}
 
 };
 

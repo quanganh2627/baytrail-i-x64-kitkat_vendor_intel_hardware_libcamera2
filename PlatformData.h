@@ -1066,7 +1066,6 @@ class PlatformData {
      * \return true or false
      */
     static bool useMultiStreamsForSoC(int cameraId);
-    
 };
 
 /**

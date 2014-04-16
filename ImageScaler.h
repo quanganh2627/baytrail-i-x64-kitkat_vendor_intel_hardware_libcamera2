@@ -29,6 +29,11 @@ public:
             int src_w, int src_h, int src_bpl,
             int fourcc, int src_skip_lines_top = 0,
             int src_skip_lines_bottom = 0);
+
+    static void cropNV12orNV21Image(const AtomBuffer *src, AtomBuffer *dst,
+                                    int leftCrop, int rightCrop, int topCrop, int bottomCrop);
+    static void centerCropNV12orNV21Image(const AtomBuffer *src, AtomBuffer *dst);
+
 protected:
     static void downScaleYUY2Image(unsigned char *dest, const unsigned char *src,
         const int dest_w, const int dest_h, const int src_w, const int src_h);
@@ -58,6 +63,7 @@ protected:
     static void downScaleNv12ImageFrom800x600ToQvga(
         unsigned char *dest, const unsigned char *src,
         const int dest_bpl, const int src_bpl);
+
 };
 
 };
