@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012 The Android Open Source Project
- * Copyright (c) 2013 Intel Corporation. All Rights Reserved.
+ * Copyright (c) 2013-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -190,6 +190,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
             pCurrentCam->flipping |= PlatformData::SENSOR_FLIP_V;
     } else if (strcmp(name, "continuousCapture") == 0) {
         pCurrentCam->continuousCapture = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "continuousJpegCapture") == 0) {
+        pCurrentCam->continuousJpegCapture = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "supportedSnapshotSizes") == 0) {
         pCurrentCam->supportedSnapshotSizes = atts[1];
     } else if (strcmp(name, "defaultBurstLength") == 0) {

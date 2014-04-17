@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012 The Android Open Source Project
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -212,6 +213,14 @@ class PlatformData {
      * \return true if supported
      */
     static bool supportsOfflineBurst(void);
+
+    /**
+     * Whether platform support continuous Jpeg mode capture with
+     * external ISP
+     *
+     * \return true if supported
+     */
+    static bool supportsContinuousJpegCapture(int cameraId);
 
     /**
      * What's the maximum supported size of the RAW ringbuffer
@@ -1125,6 +1134,7 @@ protected:
             mPreviewViaOverlay = false;
             overlayRelativeRotation = 90;
             continuousCapture = false;
+            continuousJpegCapture = false;
             //burst
             supportedBurstFPS = "1,3,5,7,15";
             supportedBurstLength = "1,3,5,10";
@@ -1286,6 +1296,7 @@ protected:
         Vector<Size> mCVFUnsupportedSnapshotResolutions;
 
         bool continuousCapture;
+        bool continuousJpegCapture;
         // burst
         String8 supportedBurstFPS; // TODO: it will be removed in the future
         String8 supportedBurstLength;
