@@ -3378,9 +3378,11 @@ status_t ControlThread::captureStillPic()
 
     sp<AutoReset> autoReset;
 
-    if (m3AControls->isIntel3A() && flashMode != CAM_AE_FLASH_MODE_TORCH) {
+    if (m3AControls->isIntel3A()
+        && flashMode != CAM_AE_FLASH_MODE_TORCH
+        && flashMode != CAM_AE_FLASH_MODE_OFF) {
 
-        // If flash mode is not TORCH, check need for flash
+        // If flash mode is not TORCH or OFF, check need for flash
         if (m3AControls->getAeLock()) {
             LOG1("AE was locked in %s, using old flash decision from AE "
                  "locking time (%d)", __FUNCTION__, mAELockFlashStage);
