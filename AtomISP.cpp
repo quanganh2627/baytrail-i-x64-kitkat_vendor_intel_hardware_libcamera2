@@ -2473,23 +2473,11 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
                     LOG1("no need change preview size: %dx%d", previewWidth, previewHeight);
                 }
         }
-        //Workaround 5, video recording FOV issue
-        const char manUsensorBName[] = "imx132";
-        if (strncmp(mSensorHW.getSensorName(), manUsensorBName, sizeof(manUsensorBName) - 1) == 0) {
-            // If DVS is not enabled, keep preview height as 1080 which is full FOV height for IMX132.
-            // If DVS is enabled, keep preview height as 900 which is 20% cut off by 1080.
-            // 1080 = 900 * (1 + 20%)
-            // Refer to function description for more details.
-            if (dvsEnabled)
-                params->setPreviewSize(videoWidth*900/videoHeight, 900);
-            else
-                params->setPreviewSize(videoWidth*1080/videoHeight, 1080);
-        }
 
          //Workaround 2, video recording FOV issue
          const char manUsensorBName[] = "ov5648";
 
-         if (mCameraInput && (strncmp(mCameraInput->name, manUsensorBName, sizeof(manUsensorBName) - 1)== 0)) {
+         if (strncmp(mSensorHW.getSensorName(), manUsensorBName, sizeof(manUsensorBName) - 1)== 0) {
              if (((previewWidth == 720)&& (previewHeight == 480)) || ((previewWidth == 1272)&& (previewHeight == 848))) {
                  LOGD("480p recording change preview size to 1272x848 and video size to 720x480");
                  params->setPreviewSize(1272,848);
@@ -2500,7 +2488,7 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
              }
           }
 
-        if (mCameraInput && (strncmp(mCameraInput->name, "gc5004", sizeof("gc5004") - 1) == 0)) {
+        if (strncmp(mSensorHW.getSensorName(), "gc5004", sizeof("gc5004") - 1) == 0) {
             if (((previewWidth == 720)&& (previewHeight == 480)) ||  ((previewWidth == 1272)&& (previewHeight == 848))) {
                 LOGD("480p recording change preview size to 1272x848 and video size to 720x480");
                 params->setPreviewSize(1272,848);
