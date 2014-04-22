@@ -94,12 +94,34 @@ bool PlatformData::validCameraId(int cameraId, const char* functionName)
     }
 }
 
+int PlatformData::getActiveCamIdx(int cameraId)
+{
+    int id;
+    PlatformBase *i = getInstance();
+    if (i->mUseExtendedCamera
+        && i->mHasExtendedCamera
+        && cameraId == i->mExtendedCameraId)
+        id = i->mExtendedCameraIndex;
+    else
+        id = cameraId;
+
+    return id;
+}
+
+const char* PlatformData::sensorName(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return "";
+    }
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].sensorName;
+}
+
 SensorType PlatformData::sensorType(int cameraId)
 {
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return SENSOR_TYPE_NONE;
     }
-    return getInstance()->mCameras[cameraId].sensorType;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].sensorType;
 }
 
 int PlatformData::cameraFacing(int cameraId)
@@ -107,7 +129,7 @@ int PlatformData::cameraFacing(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return -1;
     }
-    return getInstance()->mCameras[cameraId].facing;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].facing;
 }
 
 int PlatformData::cameraOrientation(int cameraId)
@@ -115,7 +137,7 @@ int PlatformData::cameraOrientation(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return -1;
     }
-    return getInstance()->mCameras[cameraId].orientation;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].orientation;
 }
 
 int PlatformData::sensorFlipping(int cameraId)
@@ -123,7 +145,7 @@ int PlatformData::sensorFlipping(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return -1;
     }
-    return getInstance()->mCameras[cameraId].flipping;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].flipping;
 }
 
 void PlatformData::setActiveCameraId(int cameraId)
@@ -159,7 +181,7 @@ const char* PlatformData::preferredPreviewSizeForVideo(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return NULL;
     }
-    return getInstance()->mCameras[cameraId].mVideoPreviewSizePref;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].mVideoPreviewSizePref;
 }
 
 const char* PlatformData::supportedVideoSizes(int cameraId)
@@ -172,7 +194,7 @@ const char* PlatformData::supportedVideoSizes(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return NULL;
     }
-    return getInstance()->mCameras[cameraId].supportedVideoSizes;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedVideoSizes;
 }
 
 const char* PlatformData::supportedSnapshotSizes(int cameraId)
@@ -180,7 +202,7 @@ const char* PlatformData::supportedSnapshotSizes(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return NULL;
     }
-    return getInstance()->mCameras[cameraId].supportedSnapshotSizes;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedSnapshotSizes;
 }
 
 bool PlatformData::supportsFileInject(void)
@@ -193,7 +215,7 @@ bool PlatformData::supportsContinuousCapture(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return false;
     }
-    return getInstance()->mCameras[cameraId].continuousCapture;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].continuousCapture;
 }
 
 bool PlatformData::supportsContinuousJpegCapture(int cameraId)
@@ -201,7 +223,7 @@ bool PlatformData::supportsContinuousJpegCapture(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return false;
     }
-    return getInstance()->mCameras[cameraId].continuousJpegCapture;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].continuousJpegCapture;
 }
 
 int PlatformData::maxContinuousRawRingBufferSize(int cameraId)
@@ -222,7 +244,7 @@ bool PlatformData::renderPreviewViaOverlay(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return false;
     }
-    return getInstance()->mCameras[cameraId].mPreviewViaOverlay;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].mPreviewViaOverlay;
 }
 
 bool PlatformData::snapshotResolutionSupportedByZSL(int cameraId,
@@ -233,8 +255,8 @@ bool PlatformData::snapshotResolutionSupportedByZSL(int cameraId,
     }
 
     PlatformBase *i = getInstance();
-    Vector<Size>::const_iterator it = i->mCameras[cameraId].mZSLUnsupportedSnapshotResolutions.begin();
-    for (;it != i->mCameras[cameraId].mZSLUnsupportedSnapshotResolutions.end(); ++it) {
+    Vector<Size>::const_iterator it = i->mCameras[getActiveCamIdx(cameraId)].mZSLUnsupportedSnapshotResolutions.begin();
+    for (;it != i->mCameras[getActiveCamIdx(cameraId)].mZSLUnsupportedSnapshotResolutions.end(); ++it) {
         if (it->width == width && it->height == height) {
             return false;
         }
@@ -247,7 +269,7 @@ int PlatformData::overlayRotation(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return false;
     }
-    return getInstance()->mCameras[cameraId].overlayRelativeRotation;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].overlayRelativeRotation;
 
 }
 
@@ -259,8 +281,8 @@ bool PlatformData::snapshotResolutionSupportedByCVF(int cameraId,
     }
 
     PlatformBase *i = getInstance();
-    Vector<Size>::const_iterator it = i->mCameras[cameraId].mCVFUnsupportedSnapshotResolutions.begin();
-    for (;it != i->mCameras[cameraId].mCVFUnsupportedSnapshotResolutions.end(); ++it) {
+    Vector<Size>::const_iterator it = i->mCameras[getActiveCamIdx(cameraId)].mCVFUnsupportedSnapshotResolutions.begin();
+    for (;it != i->mCameras[getActiveCamIdx(cameraId)].mCVFUnsupportedSnapshotResolutions.end(); ++it) {
         if (it->width == width && it->height == height) {
             return false;
         }
@@ -273,7 +295,7 @@ bool PlatformData::supportsDVS(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return false;
     }
-    return getInstance()->mCameras[cameraId].dvs;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].dvs;
 }
 
 const char* PlatformData::supportedBurstFPS(int cameraId)
@@ -281,7 +303,7 @@ const char* PlatformData::supportedBurstFPS(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return NULL;
     }
-    return getInstance()->mCameras[cameraId].supportedBurstFPS;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedBurstFPS;
 }
 
 const char* PlatformData::supportedBurstLength(int cameraId)
@@ -289,7 +311,7 @@ const char* PlatformData::supportedBurstLength(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return NULL;
     }
-    return getInstance()->mCameras[cameraId].supportedBurstLength;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedBurstLength;
 }
 
 bool PlatformData::supportEV(int cameraId)
@@ -298,8 +320,8 @@ bool PlatformData::supportEV(int cameraId)
         return false;
     }
     PlatformBase *i = getInstance();
-    const char* minEV = i->mCameras[cameraId].minEV;
-    const char* maxEV = i->mCameras[cameraId].maxEV;
+    const char* minEV = i->mCameras[getActiveCamIdx(cameraId)].minEV;
+    const char* maxEV = i->mCameras[getActiveCamIdx(cameraId)].maxEV;
     if(!strcmp(minEV, "0") && !strcmp(maxEV, "0")) {
         LOG1("@%s: not supported by current camera", __FUNCTION__);
         return false;
@@ -317,7 +339,7 @@ const char* PlatformData::supportedMaxEV(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].maxEV;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].maxEV;
 }
 
 const char* PlatformData::supportedMinEV(int cameraId)
@@ -330,7 +352,7 @@ const char* PlatformData::supportedMinEV(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
       return "";
     }
-    return getInstance()->mCameras[cameraId].minEV;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].minEV;
 }
 
 const char* PlatformData::supportedDefaultEV(int cameraId)
@@ -343,7 +365,7 @@ const char* PlatformData::supportedDefaultEV(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].defaultEV;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].defaultEV;
 }
 
 const char* PlatformData::supportedStepEV(int cameraId)
@@ -356,7 +378,7 @@ const char* PlatformData::supportedStepEV(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].stepEV;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].stepEV;
 }
 
 const char* PlatformData::supportedAeMetering(int cameraId)
@@ -369,7 +391,7 @@ const char* PlatformData::supportedAeMetering(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].supportedAeMetering;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedAeMetering;
 }
 
 const char* PlatformData::defaultAeMetering(int cameraId)
@@ -382,7 +404,7 @@ const char* PlatformData::defaultAeMetering(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].defaultAeMetering;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].defaultAeMetering;
 }
 
 const char* PlatformData::supportedAeLock(int cameraId)
@@ -390,7 +412,7 @@ const char* PlatformData::supportedAeLock(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return NULL;
     }
-    return getInstance()->mCameras[cameraId].supportedAeLock;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedAeLock;
 }
 
 const char* PlatformData::supportedMaxSaturation(int cameraId)
@@ -403,7 +425,7 @@ const char* PlatformData::supportedMaxSaturation(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].maxSaturation;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].maxSaturation;
 }
 
 const char* PlatformData::supportedMinSaturation(int cameraId)
@@ -416,7 +438,7 @@ const char* PlatformData::supportedMinSaturation(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].minSaturation;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].minSaturation;
 }
 
 const char* PlatformData::defaultSaturation(int cameraId)
@@ -429,7 +451,7 @@ const char* PlatformData::defaultSaturation(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].defaultSaturation;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].defaultSaturation;
 }
 
 const char* PlatformData::supportedSaturation(int cameraId)
@@ -442,7 +464,7 @@ const char* PlatformData::supportedSaturation(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].supportedSaturation;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedSaturation;
 }
 
 const char* PlatformData::supportedStepSaturation(int cameraId)
@@ -455,7 +477,7 @@ const char* PlatformData::supportedStepSaturation(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].stepSaturation;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].stepSaturation;
 }
 
 int PlatformData::lowSaturation(int cameraId)
@@ -463,7 +485,7 @@ int PlatformData::lowSaturation(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return 0;
     }
-    return getInstance()->mCameras[cameraId].lowSaturation;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].lowSaturation;
 }
 
 int PlatformData::highSaturation(int cameraId)
@@ -471,7 +493,7 @@ int PlatformData::highSaturation(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return 0;
     }
-    return getInstance()->mCameras[cameraId].highSaturation;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].highSaturation;
 }
 
 const char* PlatformData::supportedMaxContrast(int cameraId)
@@ -484,7 +506,7 @@ const char* PlatformData::supportedMaxContrast(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].maxContrast;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].maxContrast;
 }
 
 const char* PlatformData::supportedMinContrast(int cameraId)
@@ -497,7 +519,7 @@ const char* PlatformData::supportedMinContrast(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].minContrast;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].minContrast;
 }
 
 const char* PlatformData::defaultContrast(int cameraId)
@@ -510,7 +532,7 @@ const char* PlatformData::defaultContrast(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].defaultContrast;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].defaultContrast;
 }
 
 const char* PlatformData::supportedContrast(int cameraId)
@@ -523,7 +545,7 @@ const char* PlatformData::supportedContrast(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].supportedContrast;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedContrast;
 }
 
 const char* PlatformData::supportedStepContrast(int cameraId)
@@ -536,7 +558,7 @@ const char* PlatformData::supportedStepContrast(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].stepContrast;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].stepContrast;
 }
 
 int PlatformData::softContrast(int cameraId)
@@ -544,7 +566,7 @@ int PlatformData::softContrast(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return 0;
     }
-    return getInstance()->mCameras[cameraId].softContrast;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].softContrast;
 }
 
 int PlatformData::hardContrast(int cameraId)
@@ -552,7 +574,7 @@ int PlatformData::hardContrast(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return 0;
     }
-    return getInstance()->mCameras[cameraId].hardContrast;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].hardContrast;
 }
 
 const char* PlatformData::supportedMaxSharpness(int cameraId)
@@ -565,7 +587,7 @@ const char* PlatformData::supportedMaxSharpness(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
        return "";
     }
-    return getInstance()->mCameras[cameraId].maxSharpness;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].maxSharpness;
 }
 
 const char* PlatformData::supportedMinSharpness(int cameraId)
@@ -578,7 +600,7 @@ const char* PlatformData::supportedMinSharpness(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].minSharpness;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].minSharpness;
 }
 
 const char* PlatformData::defaultSharpness(int cameraId)
@@ -591,7 +613,7 @@ const char* PlatformData::defaultSharpness(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].defaultSharpness;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].defaultSharpness;
 }
 
 const char* PlatformData::supportedSharpness(int cameraId)
@@ -604,7 +626,7 @@ const char* PlatformData::supportedSharpness(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].supportedSharpness;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedSharpness;
 }
 
 const char* PlatformData::supportedStepSharpness(int cameraId)
@@ -617,7 +639,7 @@ const char* PlatformData::supportedStepSharpness(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].stepSharpness;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].stepSharpness;
 }
 
 int PlatformData::softSharpness(int cameraId)
@@ -625,7 +647,7 @@ int PlatformData::softSharpness(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return 0;
     }
-    return getInstance()->mCameras[cameraId].softSharpness;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].softSharpness;
 }
 
 int PlatformData::hardSharpness(int cameraId)
@@ -633,7 +655,7 @@ int PlatformData::hardSharpness(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return 0;
     }
-    return getInstance()->mCameras[cameraId].hardSharpness;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].hardSharpness;
 }
 
 const char* PlatformData::supportedFlashModes(int cameraId)
@@ -646,7 +668,7 @@ const char* PlatformData::supportedFlashModes(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].supportedFlashModes;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedFlashModes;
 }
 
 const char* PlatformData::defaultFlashMode(int cameraId)
@@ -659,7 +681,7 @@ const char* PlatformData::defaultFlashMode(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].defaultFlashMode;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].defaultFlashMode;
 }
 
 const char* PlatformData::supportedIso(int cameraId)
@@ -672,7 +694,7 @@ const char* PlatformData::supportedIso(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].supportedIso;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedIso;
 }
 
 const char* PlatformData::defaultIso(int cameraId)
@@ -685,7 +707,7 @@ const char* PlatformData::defaultIso(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].defaultIso;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].defaultIso;
 }
 
 const char* PlatformData::supportedSceneModes(int cameraId)
@@ -698,7 +720,7 @@ const char* PlatformData::supportedSceneModes(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].supportedSceneModes;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedSceneModes;
 }
 
 const char* PlatformData::defaultSceneMode(int cameraId)
@@ -711,7 +733,7 @@ const char* PlatformData::defaultSceneMode(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].defaultSceneMode;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].defaultSceneMode;
 }
 
 const char* PlatformData::supportedEffectModes(int cameraId)
@@ -724,7 +746,7 @@ const char* PlatformData::supportedEffectModes(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].supportedEffectModes;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedEffectModes;
 }
 
 const char* PlatformData::supportedIntelEffectModes(int cameraId)
@@ -737,7 +759,7 @@ const char* PlatformData::supportedIntelEffectModes(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].supportedIntelEffectModes;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedIntelEffectModes;
 }
 
 const char* PlatformData::defaultEffectMode(int cameraId)
@@ -750,7 +772,7 @@ const char* PlatformData::defaultEffectMode(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].defaultEffectMode;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].defaultEffectMode;
 }
 
 const char* PlatformData::supportedAwbModes(int cameraId)
@@ -763,7 +785,7 @@ const char* PlatformData::supportedAwbModes(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].supportedAwbModes;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedAwbModes;
 }
 
 const char* PlatformData::defaultAwbMode(int cameraId)
@@ -776,7 +798,7 @@ const char* PlatformData::defaultAwbMode(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].defaultAwbMode;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].defaultAwbMode;
 }
 
 const char* PlatformData::supportedPreviewFrameRate(int cameraId)
@@ -789,7 +811,7 @@ const char* PlatformData::supportedPreviewFrameRate(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].supportedPreviewFrameRate;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedPreviewFrameRate;
 }
 
 const char* PlatformData::supportedAwbLock(int cameraId)
@@ -797,7 +819,7 @@ const char* PlatformData::supportedAwbLock(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return NULL;
     }
-    return getInstance()->mCameras[cameraId].supportedAwbLock;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedAwbLock;
 }
 
 const char* PlatformData::supportedPreviewFPSRange(int cameraId)
@@ -810,7 +832,7 @@ const char* PlatformData::supportedPreviewFPSRange(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].supportedPreviewFPSRange;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedPreviewFPSRange;
 }
 
 const char* PlatformData::defaultPreviewFPSRange(int cameraId)
@@ -823,7 +845,7 @@ const char* PlatformData::defaultPreviewFPSRange(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].defaultPreviewFPSRange;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].defaultPreviewFPSRange;
 }
 
 const char* PlatformData::supportedPreviewSizes(int cameraId)
@@ -836,7 +858,7 @@ const char* PlatformData::supportedPreviewSizes(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].supportedPreviewSizes;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedPreviewSizes;
 }
 
 const char* PlatformData::supportedPreviewUpdateModes(int cameraId)
@@ -844,7 +866,7 @@ const char* PlatformData::supportedPreviewUpdateModes(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].supportedPreviewUpdateModes;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedPreviewUpdateModes;
 }
 
 const char* PlatformData::defaultPreviewUpdateMode(int cameraId)
@@ -852,7 +874,7 @@ const char* PlatformData::defaultPreviewUpdateMode(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].defaultPreviewUpdateMode;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].defaultPreviewUpdateMode;
 }
 
 bool PlatformData::supportsSlowMotion(int cameraId)
@@ -860,7 +882,7 @@ bool PlatformData::supportsSlowMotion(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return false;
     }
-    return getInstance()->mCameras[cameraId].hasSlowMotion;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].hasSlowMotion;
 }
 
 bool PlatformData::supportsFlash(int cameraId)
@@ -873,7 +895,7 @@ bool PlatformData::supportsFlash(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return false;
     }
-    return getInstance()->mCameras[cameraId].hasFlash;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].hasFlash;
 }
 
 const char* PlatformData::supportedHighSpeedResolutionFps(int cameraId)
@@ -881,7 +903,7 @@ const char* PlatformData::supportedHighSpeedResolutionFps(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].supportedHighSpeedResolutionFps;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedHighSpeedResolutionFps;
 }
 
 const char* PlatformData::supportedRecordingFramerates(int cameraId)
@@ -889,7 +911,7 @@ const char* PlatformData::supportedRecordingFramerates(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].supportedRecordingFramerates;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedRecordingFramerates;
 }
 
 const char* PlatformData::maxHighSpeedDvsResolution(int cameraId)
@@ -897,7 +919,7 @@ const char* PlatformData::maxHighSpeedDvsResolution(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].maxHighSpeedDvsResolution;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].maxHighSpeedDvsResolution;
 }
 
 bool PlatformData::isFullResSdvSupported(int cameraId)
@@ -913,7 +935,7 @@ const char* PlatformData::supportedSdvSizes(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].supportedSdvSizes;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedSdvSizes;
 }
 
 const char* PlatformData::supportedFocusModes(int cameraId)
@@ -926,7 +948,7 @@ const char* PlatformData::supportedFocusModes(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].supportedFocusModes;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedFocusModes;
 }
 
 const char* PlatformData::defaultFocusMode(int cameraId)
@@ -939,7 +961,7 @@ const char* PlatformData::defaultFocusMode(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return "";
     }
-    return getInstance()->mCameras[cameraId].defaultFocusMode;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].defaultFocusMode;
 }
 
 bool PlatformData::isFixedFocusCamera(int cameraId)
@@ -958,7 +980,7 @@ const char* PlatformData::defaultHdr(int cameraId)
       LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
-    return i->mCameras[cameraId].defaultHdr;
+    return i->mCameras[getActiveCamIdx(cameraId)].defaultHdr;
 }
 
 const char* PlatformData::supportedHdr(int cameraId)
@@ -968,7 +990,7 @@ const char* PlatformData::supportedHdr(int cameraId)
       LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
-    return i->mCameras[cameraId].supportedHdr;
+    return i->mCameras[getActiveCamIdx(cameraId)].supportedHdr;
 
 }
 
@@ -979,7 +1001,7 @@ const char* PlatformData::defaultUltraLowLight(int cameraId)
       LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
-    return i->mCameras[cameraId].defaultUltraLowLight;
+    return i->mCameras[getActiveCamIdx(cameraId)].defaultUltraLowLight;
 }
 
 const char* PlatformData::supportedUltraLowLight(int cameraId)
@@ -989,7 +1011,7 @@ const char* PlatformData::supportedUltraLowLight(int cameraId)
       LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
-    return i->mCameras[cameraId].supportedUltraLowLight;
+    return i->mCameras[getActiveCamIdx(cameraId)].supportedUltraLowLight;
 }
 
 const char* PlatformData::defaultFaceRecognition(int cameraId)
@@ -999,7 +1021,7 @@ const char* PlatformData::defaultFaceRecognition(int cameraId)
       LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
-    return i->mCameras[cameraId].defaultFaceRecognition;
+    return i->mCameras[getActiveCamIdx(cameraId)].defaultFaceRecognition;
 }
 
 const char* PlatformData::supportedFaceRecognition(int cameraId)
@@ -1009,7 +1031,7 @@ const char* PlatformData::supportedFaceRecognition(int cameraId)
       LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
-    return i->mCameras[cameraId].supportedFaceRecognition;
+    return i->mCameras[getActiveCamIdx(cameraId)].supportedFaceRecognition;
 }
 
 const char* PlatformData::defaultSmileShutter(int cameraId)
@@ -1019,7 +1041,7 @@ const char* PlatformData::defaultSmileShutter(int cameraId)
       LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
-    return i->mCameras[cameraId].defaultSmileShutter;
+    return i->mCameras[getActiveCamIdx(cameraId)].defaultSmileShutter;
 }
 
 const char* PlatformData::supportedSmileShutter(int cameraId)
@@ -1029,7 +1051,7 @@ const char* PlatformData::supportedSmileShutter(int cameraId)
       LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
-    return i->mCameras[cameraId].supportedSmileShutter;
+    return i->mCameras[getActiveCamIdx(cameraId)].supportedSmileShutter;
 }
 
 const char* PlatformData::defaultBlinkShutter(int cameraId)
@@ -1039,7 +1061,7 @@ const char* PlatformData::defaultBlinkShutter(int cameraId)
       LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
-    return i->mCameras[cameraId].defaultBlinkShutter;
+    return i->mCameras[getActiveCamIdx(cameraId)].defaultBlinkShutter;
 }
 
 const char* PlatformData::supportedBlinkShutter(int cameraId)
@@ -1049,7 +1071,7 @@ const char* PlatformData::supportedBlinkShutter(int cameraId)
       LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
-    return i->mCameras[cameraId].supportedBlinkShutter;
+    return i->mCameras[getActiveCamIdx(cameraId)].supportedBlinkShutter;
 }
 
 const char* PlatformData::defaultPanorama(int cameraId)
@@ -1059,7 +1081,7 @@ const char* PlatformData::defaultPanorama(int cameraId)
       LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
-    return i->mCameras[cameraId].defaultPanorama;
+    return i->mCameras[getActiveCamIdx(cameraId)].defaultPanorama;
 }
 
 const char* PlatformData::supportedPanorama(int cameraId)
@@ -1069,7 +1091,7 @@ const char* PlatformData::supportedPanorama(int cameraId)
       LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
-    return i->mCameras[cameraId].supportedPanorama;
+    return i->mCameras[getActiveCamIdx(cameraId)].supportedPanorama;
 }
 
 const char* PlatformData::defaultSceneDetection(int cameraId)
@@ -1079,7 +1101,7 @@ const char* PlatformData::defaultSceneDetection(int cameraId)
       LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
-    return i->mCameras[cameraId].defaultSceneDetection;
+    return i->mCameras[getActiveCamIdx(cameraId)].defaultSceneDetection;
 }
 
 const char* PlatformData::supportedSceneDetection(int cameraId)
@@ -1089,7 +1111,7 @@ const char* PlatformData::supportedSceneDetection(int cameraId)
       LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
-    return i->mCameras[cameraId].supportedSceneDetection;
+    return i->mCameras[getActiveCamIdx(cameraId)].supportedSceneDetection;
 }
 
 const char* PlatformData::productName(void)
@@ -1157,7 +1179,7 @@ int PlatformData::getMaxNumYUVBufferForBurst(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return 0;
     }
-    return getInstance()->mCameras[cameraId].maxNumYUVBufferForBurst;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].maxNumYUVBufferForBurst;
 }
 
 int PlatformData::getMaxNumYUVBufferForBracket(int cameraId)
@@ -1165,7 +1187,7 @@ int PlatformData::getMaxNumYUVBufferForBracket(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return 0;
     }
-    return getInstance()->mCameras[cameraId].maxNumYUVBufferForBracket;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].maxNumYUVBufferForBracket;
 }
 
 bool PlatformData::supportDualVideo(void)
@@ -1180,7 +1202,7 @@ bool PlatformData::supportPreviewLimitation(void)
 
 int PlatformData::getPreviewPixelFormat(void)
 {
-    return getInstance()->mCameras[mActiveCameraId].mPreviewFourcc;
+    return getInstance()->mCameras[getActiveCamIdx(mActiveCameraId)].mPreviewFourcc;
 }
 
 const char* PlatformData::getBoardName(void)
@@ -1272,7 +1294,7 @@ float PlatformData::verticalFOV(int cameraId, int width, int height)
         return retVal;
     }
 
-    const char* strFOV = getInstance()->mCameras[cameraId].verticalFOV;
+    const char* strFOV = getInstance()->mCameras[getActiveCamIdx(cameraId)].verticalFOV;
     if (strFOV) {
         char str[MAX_WIDTH_HEIGHT_STRING_LENGTH];
         snprintf(str, sizeof(str), "%dx%d", width, height);
@@ -1303,7 +1325,7 @@ float PlatformData::horizontalFOV(int cameraId, int width, int height)
         return retVal;
     }
 
-    const char* strFOV = getInstance()->mCameras[cameraId].horizontalFOV;
+    const char* strFOV = getInstance()->mCameras[getActiveCamIdx(cameraId)].horizontalFOV;
     if (strFOV) {
         char str[MAX_WIDTH_HEIGHT_STRING_LENGTH];
         snprintf(str, sizeof(str), "%dx%d", width, height);
@@ -1331,7 +1353,7 @@ const char* PlatformData::supportedDvsSizes(int cameraId)
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return NULL;
     }
-    return getInstance()->mCameras[cameraId].supportedDvsSizes;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedDvsSizes;
 }
 
 bool PlatformData::isGraphicGen(void)
@@ -1387,7 +1409,7 @@ bool PlatformData::useHALVS(int cameraId)
 
     PlatformBase *i = getInstance();
 
-    return i->mCameras[cameraId].useHALVS;
+    return i->mCameras[getActiveCamIdx(cameraId)].useHALVS;
 }
 
 int PlatformData::getNumOfCaptureWarmUpFrames(int cameraId)
@@ -1399,7 +1421,7 @@ int PlatformData::getNumOfCaptureWarmUpFrames(int cameraId)
     }
 
     PlatformBase *i = getInstance();
-    retVal = i->mCameras[cameraId].captureWarmUpFrames;
+    retVal = i->mCameras[getActiveCamIdx(cameraId)].captureWarmUpFrames;
 
     // Always return a non-negative integer:
     return (retVal > 0) ? retVal : 0;
@@ -1412,11 +1434,27 @@ bool PlatformData::useMultiStreamsForSoC(int cameraId)
     }
 
     PlatformBase *i = getInstance();
-    if (i->mCameras[cameraId].sensorType == SENSOR_TYPE_RAW) {
+    if (i->mCameras[getActiveCamIdx(cameraId)].sensorType == SENSOR_TYPE_RAW) {
         return false;
     }
 
-    return i->mCameras[cameraId].useMultiStreamsForSoC ? true : false;
+    return i->mCameras[getActiveCamIdx(cameraId)].useMultiStreamsForSoC ? true : false;
+}
+
+void PlatformData::useExtendedCamera(bool val)
+{
+    getInstance()->mUseExtendedCamera = val;
+}
+
+bool PlatformData::isExtendedCamera(int cameraId)
+{
+    PlatformBase *i = getInstance();
+    if (i->mUseExtendedCamera
+        && i->mHasExtendedCamera
+        && cameraId == i->mExtendedCameraId)
+        return true;
+    else
+        return false;
 }
 
 }; // namespace android

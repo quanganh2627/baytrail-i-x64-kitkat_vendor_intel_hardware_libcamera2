@@ -176,6 +176,12 @@ status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
 
         for (i = 0; i < numCameras ; ++i) {
             if (camInfo[i].ispPort == targetPort) {
+
+                unsigned minLen = MIN(strlen(PlatformData::sensorName(mCameraId)), strlen(camInfo[i].name));
+                if (minLen && PlatformData::isExtendedCamera(mCameraId))
+                    if (memcmp(PlatformData::sensorName(mCameraId), camInfo[i].name, minLen))
+                        continue;
+
                 mCameraInput = camInfo[i];
                 break;
             }

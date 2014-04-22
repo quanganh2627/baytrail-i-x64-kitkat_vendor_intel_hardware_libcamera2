@@ -120,6 +120,19 @@ class PlatformData {
      */
     static bool validCameraId(int cameraId, const char* functionName);
 
+    /**
+     * this function will return the camera index which is one of the getInstance()->mCameras[index]
+     * for Kevlar, there are 3 sensors totally. From the software aspect, 1 is back, 2 are front.
+     * so we need to distinguish the 2 front camera.
+     * For the back camera, the camera id is 0. and for the front camera, the camera id is 1.
+     * the parser of the camera profiles will store the back camera setting in the mCameras[0]
+     * and it will store one of the front camera in the mCameras[1], another is in the mCameras[2]
+     * in the camera_profiles.xml, we will use the "extendedCamera" to distinguish two front camera
+     * this function will return the real index in the mCamera.
+     * \param cameraId  The camera ID to validate
+     */
+    static int getActiveCamIdx(int cameraId);
+
  public:
 
     static AiqConf AiqConfig;
@@ -169,6 +182,14 @@ class PlatformData {
      * \return a non-negative integer
      */
     static int numberOfCameras(void);
+
+    /**
+     * get the sensor Name
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return string which is the sensor Name
+     */
+    static const char* sensorName(int cameraId);
 
     /**
      * Sensor type of camera id
@@ -1097,6 +1118,19 @@ class PlatformData {
      * \return true or false
      */
     static bool useMultiStreamsForSoC(int cameraId);
+
+    /**
+     * set true to use the extended camera
+     * set false to not use the extended camera
+     */
+    static void useExtendedCamera(bool val);
+
+    /**
+     * it will check if the current cameraId camera is the extended camera
+     * \return true or false
+     */    
+    static bool isExtendedCamera(int cameraId);
+
 };
 
 /**
@@ -1113,7 +1147,11 @@ class PlatformBase {
 
 public:
     PlatformBase()  //default
-        :mFileInject(false)
+        :mUseExtendedCamera(false)
+        ,mHasExtendedCamera(false)
+        ,mExtendedCameraId(-1)
+        ,mExtendedCameraIndex(-1)
+        ,mFileInject(false)
         ,mSupportVideoSnapshot(true)
         ,mSupportsOfflineBurst(false)
         ,mSupportsOfflineBracket(false)
@@ -1141,6 +1179,8 @@ protected:
     class CameraInfo {
     public:
         CameraInfo() {
+            sensorName = "";
+            extendedCamera = false;
             sensorType = SENSOR_TYPE_RAW;
             facing = CAMERA_FACING_BACK;
             orientation = 90;
@@ -1296,6 +1336,8 @@ protected:
             mPreviewFourcc = V4L2_PIX_FMT_NV12;
         }
 
+        String8 sensorName;
+        bool extendedCamera;
         SensorType sensorType;
         int facing;
         int orientation;
@@ -1457,6 +1499,12 @@ protected:
     //       in these definitions (2012/May)
 
     Vector<CameraInfo> mCameras;
+
+    // to support the device which has extended camera, it means the device has 3 cameras
+    bool mUseExtendedCamera; // this will be set by the app
+    bool mHasExtendedCamera; // it will set by the parser
+    int mExtendedCameraId; // which must be 0 (back) or 1(front)
+    int mExtendedCameraIndex; // the position in the mCameras, it could be o, 1, 2
 
     bool mFileInject;
     bool mSupportVideoSnapshot;

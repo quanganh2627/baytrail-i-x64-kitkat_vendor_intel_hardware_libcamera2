@@ -28,6 +28,7 @@ namespace android {
 CameraProfiles::CameraProfiles()
 {
     mCurrentSensor = 0;
+    mCurrentSensorIsExtendedCamera = false;
     mCurrentDataField = FIELD_INVALID;
     mSensorNum = 0;
     pCurrentCam = NULL;
@@ -160,7 +161,12 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         return;
     }
 
-    if (strcmp(name, "maxEV") == 0) {
+    if (strcmp(name, "sensorName") == 0) {
+        pCurrentCam->sensorName = atts[1];
+    } else if (strcmp(name, "extendedCamera") == 0) {
+        pCurrentCam->extendedCamera = ((strcmp(atts[1], "true") == 0) ? true : false);
+        profiles->mCurrentSensorIsExtendedCamera = pCurrentCam->extendedCamera ? true : false;
+     } else if (strcmp(name, "maxEV") == 0) {
         pCurrentCam->maxEV = atts[1];
     } else if (strcmp(name, "minEV") == 0) {
         pCurrentCam->minEV = atts[1];
@@ -453,6 +459,13 @@ void CameraProfiles::endElement(void *userData, const char *name)
             profiles->mCameras.push(*(profiles->pCurrentCam));
             delete profiles->pCurrentCam;
             profiles->pCurrentCam = NULL;
+
+            if (profiles->mCurrentSensorIsExtendedCamera) {
+                profiles->mHasExtendedCamera = true;
+                profiles->mExtendedCameraIndex = profiles->mCameras.size() - 1;
+                profiles->mExtendedCameraId = profiles->mCurrentSensor;
+            }
+            profiles->mCurrentSensorIsExtendedCamera = false;
         }
     }
     if (strcmp(name, "Common") == 0)
