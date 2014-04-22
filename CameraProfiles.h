@@ -69,6 +69,7 @@ private:
     } mCurrentDataField;
     unsigned mSensorNum;
     unsigned mCurrentSensor;
+    bool mCurrentSensorIsExtendedCamera;
     CameraInfo *pCurrentCam;
 
     static const int mBufSize = 4*1024;

@@ -45,6 +45,9 @@ enum  {
     /* Print out detailed timing analysis */
     CAMERA_DEBUG_LOG_PERF_TRACES_BREAKDOWN = 1<<8,
 
+    /* the kevlar has three sensors, so we need to use this debug setting to test the 3rd sensor */
+    CAMERA_DEBUG_USE_EXTENDED_CAMERA = 1<<17,
+
     /* following 5 need to be used by CameraDump module */
     CAMERA_DEBUG_DUMP_RAW = 1<<2,
     CAMERA_DEBUG_DUMP_YUV = 1<<3,
