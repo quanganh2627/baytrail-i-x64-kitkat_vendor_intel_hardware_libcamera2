@@ -1607,6 +1607,40 @@ status_t ControlThread::deinitSdv(bool offline)
     clearSavedPictureParams();
     return status;
 }
+
+/**
+ * Configures parameters for continuous jpeg capture.
+ *
+ * In continuous jpeg capture mode, parameters for both capture
+ * and preview need to be set up before starting the ISP.
+ */
+status_t ControlThread::initContinuousJpegCapture()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status(NO_ERROR);
+
+    int fourccSs(V4L2_PIX_FMT_CONTINUOUS_JPEG);
+    int widthSs(0);
+    int heightSs(0);
+
+    mParameters.getPictureSize(&widthSs, &heightSs);
+    AtomBuffer formatDescriptorSs = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, fourccSs,widthSs, heightSs);
+    int fourccPv(PlatformData::getPreviewPixelFormat());
+    int widthPv(0);
+    int heightPv(0);
+    int bplPv = SGXandDisplayBpl(fourccPv, widthPv);
+
+    mParameters.getPreviewSize(&widthPv, &heightPv);
+    AtomBuffer formatDescriptorPv = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, fourccPv, widthPv, heightPv);
+
+    mISP->setSnapshotFrameFormat(formatDescriptorSs);
+    mISP->setPostviewFrameFormat(formatDescriptorPv);
+    mISP->setPreviewFrameFormat(widthPv, heightPv, bplPv, fourccPv);
+
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
+    return status;
+}
+
 /**
  * Configures parameters for continuous capture.
  *
@@ -1617,7 +1651,6 @@ status_t ControlThread::initContinuousCapture()
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-
 
     int fourcc = mISP->getSnapshotPixelFormat();
     AtomBuffer formatDescriptorSs = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, fourcc);
@@ -1720,7 +1753,7 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
             LOGW("Unexpected state (%d) to select the shooting mode",mState);
             break;
     }
-    LOG1("Shooting Mode selected: %d",ret);
+    LOG1("Shooting Mode selected: %d", ret);
     return ret;
 }
 
@@ -1915,6 +1948,13 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             mode = MODE_PREVIEW;
         else
             mode = MODE_CONTINUOUS_CAPTURE;
+    }
+
+    if (!videoMode && PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+        mode = MODE_CONTINUOUS_JPEG;
+        if (initContinuousJpegCapture() != NO_ERROR) {
+            return BAD_VALUE;
+        }
     }
 
     if (state == STATE_CONTINUOUS_CAPTURE) {
@@ -4735,7 +4775,12 @@ int ControlThread::getNeededSnapshotBufNum(bool videoMode)
     LOG1("@%s video mode:%d", __FUNCTION__, videoMode);
     int maxNum, recommendedNum, contShootingLimit, clipTo;
 
-    if(videoMode && !mFullSizeSdv){
+    if (!videoMode && PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+        // In continousJpegCapture use buffers allocated in AtomISP
+        return 0;
+    }
+
+    if (videoMode && !mFullSizeSdv) {
         // online video mode doesn't need extra snapshot buffer
         return 0;
     }
@@ -4804,15 +4849,23 @@ status_t ControlThread::allocateSnapshotAndPostviewBuffers(bool videoMode)
     // check if really need to allocate buffer
     numBufRequired = getNeededSnapshotBufNum(videoMode);
 
+    if (numBufRequired == 0 && mAllocatedSnapshotBuffers.size() == 0 && mAllocatedPostviewBuffers.size() == 0) {
+        LOG1("No need to request Snapshot or Postview, zero buffers is needed.");
+        return NO_ERROR;
+    }
+
     AtomBuffer formatDescriptorPv = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR);
     AtomBuffer formatDescriptorSs = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR);
     /**
-     * Snapshot format is hardcoded to NV12, this is the format between
+     * if in continuous JPEG capture mark that to snapshot format, else
+     * snapshot format is hardcoded to NV12, this is the format between
      * camera and JPEG encoder. In cases where we need to capture bayer
      * then the format changes to RGB adn JPEG encoding breaks (i.e. image is
      * green) this is a known limitation of the raw capture sequence in ISP fW
      */
-    if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW))
+    if (!videoMode && PlatformData::supportsContinuousJpegCapture(mCameraId))
+        formatDescriptorSs.fourcc = V4L2_PIX_FMT_CONTINUOUS_JPEG;
+    else if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW))
         formatDescriptorSs.fourcc = mHwcg.mSensorCI->getRawFormat();
     else
         formatDescriptorSs.fourcc = V4L2_PIX_FMT_NV12;

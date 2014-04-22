@@ -334,7 +334,8 @@ private:
         STATE_PREVIEW_VIDEO,
         STATE_RECORDING,
         STATE_CAPTURE,
-        STATE_CONTINUOUS_CAPTURE
+        STATE_CONTINUOUS_CAPTURE,
+        STATE_JPEG_CAPTURE
     };
 
     // capture substates
@@ -418,6 +419,7 @@ private:
     status_t startPreviewCore(bool videoMode);
     status_t stopPreviewCore(bool flushPictures = true);
 
+    status_t initContinuousJpegCapture();
     status_t initContinuousCapture();
     void releaseContinuousCapture(bool flushPictures);
     status_t startOfflineCapture();

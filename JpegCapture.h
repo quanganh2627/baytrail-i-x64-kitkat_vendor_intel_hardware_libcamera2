@@ -19,6 +19,8 @@
 
 #include <stdint.h>
 
+#define V4L2_PIX_FMT_CONTINUOUS_JPEG V4L2_PIX_FMT_JPEG
+
 namespace android {
 
 enum JpegFrameType {
@@ -34,6 +36,8 @@ const size_t JPEG_DATA_SIZE = 0x800000;
 const size_t JPEG_FRAME_SIZE = JPEG_INFO_SIZE + NV12_META_SIZE + JPEG_META_SIZE + JPEG_DATA_SIZE;
 
 const size_t JPEG_DATA_START = JPEG_INFO_SIZE + NV12_META_SIZE + JPEG_META_SIZE;
+
+const int NUM_OF_JPEG_CAPTURE_SNAPSHOT_BUF = 6;
 
 } // namespace
 

@@ -359,7 +359,7 @@ status_t V4L2VideoNode::setFormat(AtomBuffer &formatDescriptor)
     if ((mState != DEVICE_OPEN) &&
         (mState != DEVICE_CONFIGURED) &&
         (mState != DEVICE_PREPARED) ){
-        LOGE("%s invalid device state %d",__FUNCTION__, mState);
+        LOGE("@%s: invalid device state %d",__FUNCTION__, mState);
         return INVALID_OPERATION;
     }
 

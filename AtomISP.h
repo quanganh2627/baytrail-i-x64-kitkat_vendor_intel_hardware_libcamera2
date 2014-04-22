@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (c) 2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -112,6 +113,9 @@ public:
     // TODO: client no longer using, can be moved to privates
     status_t getPreviewFrame(AtomBuffer *buff);
     status_t putPreviewFrame(AtomBuffer *buff);
+
+    status_t getJpegCapturePreviewFrame(AtomBuffer *buff);
+    status_t putJpegCapturePreviewFrame(AtomBuffer *buff);
 
     status_t setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs, bool cached);
     status_t getRecordingFrame(AtomBuffer *buff);
@@ -381,6 +385,7 @@ private:
     status_t configureContinuousMode(bool enable);
     status_t configureContinuousRingBuffer();
     status_t configureContinuous();
+    status_t configureContinuousJpegCapture();
     status_t configureContinuousSOC();
     status_t configureContinuousVideo();
     status_t configureHALVSVideo();
@@ -534,8 +539,11 @@ private:
     static const int sHALZSLRetryUSleep = 33000;
     static const int ISP_DEVICE_NAME_LENGTH_MAX = 1024;
 
+    bool mContinuousJpegCaptureEnabled;
+
     AtomBuffer *mMultiStreamsHALZSLCaptureBuffers;
     AtomBuffer *mMultiStreamsHALZSLPostviewBuffers;
+    Vector<AtomBuffer> mJpegCaptureBufferQueue;
     Vector<AtomBuffer> mMultiStreamsHALZSLCaptureBuffersQueue; // this queue is used to buffer the capture stream in hal
     Vector<AtomBuffer> mMultiStreamsHALZSLPostviewBuffersQueue; // this queue is used to buffer the postview stream in hal
 

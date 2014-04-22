@@ -92,6 +92,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mHALSDVEnabled(false)
     ,mUseMultiStreamsForSoC(PlatformData::useMultiStreamsForSoC(mCameraId))
     ,mHALZSLBuffers(NULL)
+    ,mContinuousJpegCaptureEnabled(false)
     ,mMultiStreamsHALZSLCaptureBuffers(NULL)
     ,mMultiStreamsHALZSLPostviewBuffers(NULL)
     ,mClientSnapshotBuffersCached(true)
@@ -996,6 +997,7 @@ status_t AtomISP::configure(AtomMode mode)
     status_t status = NO_ERROR;
     mHALZSLEnabled = false; // configureContinuous turns this on, when needed
     mHALSDVEnabled = false;
+    mContinuousJpegCaptureEnabled = false;
     if (mFileInject.active == true)
         startFileInject();
     switch (mode) {
@@ -1016,6 +1018,9 @@ status_t AtomISP::configure(AtomMode mode)
         break;
     case MODE_CONTINUOUS_VIDEO:
         status = configureContinuousVideo();
+        break;
+    case MODE_CONTINUOUS_JPEG:
+        status = configureContinuousJpegCapture();
         break;
     default:
         status = UNKNOWN_ERROR;
@@ -1073,6 +1078,15 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
         if ((status = allocateSnapshotBuffers()) != NO_ERROR)
             return status;
         break;
+    case MODE_CONTINUOUS_JPEG:
+        if ((status = allocatePreviewBuffers()) != NO_ERROR) {
+            mPreviewDevice->stop();
+            return status;
+        }
+        if ((status = allocateSnapshotBuffers()) != NO_ERROR) {
+            return status;
+        }
+        break;
     default:
         status = UNKNOWN_ERROR;
         break;
@@ -1109,6 +1123,7 @@ status_t AtomISP::start()
 
     switch (mMode) {
     case MODE_CONTINUOUS_CAPTURE:
+    case MODE_CONTINUOUS_JPEG:
     case MODE_PREVIEW:
         status = startPreview();
         break;
@@ -1133,6 +1148,7 @@ status_t AtomISP::start()
         status = startCapture();
         break;
     default:
+        LOGE("Invalid mode!");
         status = UNKNOWN_ERROR;
         break;
     };
@@ -1191,6 +1207,7 @@ status_t AtomISP::stop()
     runStopISPActions();
 
     switch (mMode) {
+    case MODE_CONTINUOUS_JPEG:
     case MODE_PREVIEW:
         status = stopPreview();
         break;
@@ -1212,6 +1229,7 @@ status_t AtomISP::stop()
         break;
 
     default:
+        LOGW("ISP stop called in wrong mode!");
         break;
     };
 
@@ -1304,13 +1322,14 @@ status_t AtomISP::startPreview()
         LOG1("Disabled NREE in %s", __func__);
     }
 
-    if (mHALZSLEnabled && mUseMultiStreamsForSoC) {
+    if (mContinuousJpegCaptureEnabled || (mHALZSLEnabled && mUseMultiStreamsForSoC)) {
         ret = mMainDevice->start(mConfig.num_snapshot_buffers, mInitialSkips);
         if (ret < 0) {
             LOGE("start capture on first device failed!");
             status = UNKNOWN_ERROR;
             goto err;
         }
+        mNumCapturegBuffersQueued = mConfig.num_snapshot_buffers;
     }
 
     ret = mPreviewDevice->start(bufcount, mInitialSkips);
@@ -1354,6 +1373,11 @@ status_t AtomISP::stopPreview()
 
     if (mPreviewDevice->isStarted())
         mPreviewDevice->stop();
+
+    if (mContinuousJpegCaptureEnabled) {
+        mMainDevice->stop();
+        freeSnapshotBuffers();
+    }
 
     if (mHALZSLEnabled && mUseMultiStreamsForSoC) {
         mMainDevice->stop();
@@ -1846,6 +1870,64 @@ status_t AtomISP::configureContinuousSOC()
     return status;
 err:
     mPreviewDevice->close();
+    return status;
+}
+
+
+status_t AtomISP::configureContinuousJpegCapture()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status(OK);
+    int ret(0);
+
+    mContinuousJpegCaptureEnabled = true;
+
+    // configure the main device
+    mConfig.snapshot.fourcc = V4L2_PIX_FMT_CONTINUOUS_JPEG;
+    mConfig.snapshot.bpl = SGXandDisplayBpl(mConfig.snapshot.fourcc, mConfig.snapshot.width);
+    mConfig.snapshot.size = frameSize(mConfig.snapshot.fourcc, mConfig.snapshot.width, mConfig.snapshot.height);
+    LOG1("@%s configured main %dx%d bpl %d size %d", __FUNCTION__, mConfig.snapshot.width, mConfig.snapshot.height, mConfig.snapshot.bpl,  mConfig.snapshot.size);
+
+    ret = configureDevice(
+        mMainDevice.get(),
+        CI_MODE_PREVIEW,
+        &(mConfig.snapshot),
+        isDumpRawImageReady());
+    if (ret < 0) {
+        LOGE("@%s, configure main device failed!", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+    // configure the preview device
+    ret = mPreviewDevice->open();
+    if (ret < 0) {
+        LOGE("Open preview device failed!");
+        status = UNKNOWN_ERROR;
+        return NO_INIT;
+    }
+
+    struct v4l2_capability aCap;
+    status = mPreviewDevice->queryCap(&aCap);
+    if (status != NO_ERROR) {
+        LOGE("Failed basic capability check failed!");
+        return NO_INIT;
+    }
+
+    mConfig.preview.bpl = SGXandDisplayBpl(mConfig.preview.fourcc, mConfig.preview.width);
+    ret = configureDevice(
+            mPreviewDevice.get(),
+            CI_MODE_PREVIEW,
+            &(mConfig.preview),
+            false);
+    if (ret < 0) {
+        LOGE("@%s, configure preview device failed!", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+    mConfig.num_snapshot = NUM_OF_JPEG_CAPTURE_SNAPSHOT_BUF;
+    mConfig.num_snapshot_buffers = NUM_OF_JPEG_CAPTURE_SNAPSHOT_BUF;
+    mUsingClientSnapshotBuffers = false;
+
     return status;
 }
 
@@ -3843,6 +3925,58 @@ status_t AtomISP::getMultiStreamsHALZSLPreviewFrame(AtomBuffer *buff)
     return NO_ERROR;
 }
 
+status_t AtomISP::getJpegCapturePreviewFrame(AtomBuffer *buff)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    int previewIndex(-1);
+    int snapshotIndex(-1);
+    struct v4l2_buffer_info bufInfo;
+
+    // get the preview buffers
+    CLEAR(bufInfo);
+    previewIndex = mPreviewDevice->grabFrame(&bufInfo);
+    LOG2("@%s, previewIndex = %d", __FUNCTION__, previewIndex);
+    if(previewIndex < 0) {
+        LOGE("@%s, Error in grabbing preview frame!", __FUNCTION__);
+        return BAD_INDEX;
+    }
+    LOG2("Device: %d. Grabbed frame of size: %d", mPreviewDevice->mId, bufInfo.vbuffer.bytesused);
+
+    mPreviewBuffers.editItemAt(previewIndex).id = previewIndex;
+    mPreviewBuffers.editItemAt(previewIndex).frameCounter = mPreviewDevice->getFrameCount();
+    mPreviewBuffers.editItemAt(previewIndex).ispPrivate = mSessionId;
+    mPreviewBuffers.editItemAt(previewIndex).capture_timestamp = bufInfo.vbuffer.timestamp;
+    mPreviewBuffers.editItemAt(previewIndex).frameSequenceNbr = bufInfo.vbuffer.sequence;
+    mPreviewBuffers.editItemAt(previewIndex).status = (FrameBufferStatus)bufInfo.vbuffer.reserved;
+    mPreviewBuffers.editItemAt(previewIndex).size = bufInfo.vbuffer.bytesused;
+
+    *buff = mPreviewBuffers[previewIndex];
+
+    --mNumPreviewBuffersQueued;
+    dumpPreviewFrame(previewIndex);
+
+    // get the capture buffers
+    CLEAR(bufInfo);
+    snapshotIndex = mMainDevice->grabFrame(&bufInfo);
+    LOG2("@%s, snapshotIndex = %d", __FUNCTION__, snapshotIndex);
+    if (snapshotIndex < 0) {
+        LOGE("@%s, Error in grabbing snapshot frame!", __FUNCTION__);
+        return BAD_INDEX;
+    }
+
+    --mNumCapturegBuffersQueued;
+    LOG2("Device: %d. Grabbed frame of size: %d", mMainDevice->mId, bufInfo.vbuffer.bytesused);
+
+    mSnapshotBuffers[snapshotIndex].id = snapshotIndex;
+    mSnapshotBuffers[snapshotIndex].capture_timestamp = bufInfo.vbuffer.timestamp;
+    mSnapshotBuffers[snapshotIndex].frameSequenceNbr = bufInfo.vbuffer.sequence;
+    mSnapshotBuffers[snapshotIndex].status = (FrameBufferStatus)bufInfo.vbuffer.reserved;
+    mJpegCaptureBufferQueue.push_front(mSnapshotBuffers[snapshotIndex]);
+
+    return NO_ERROR;
+}
+
 status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
@@ -3852,6 +3986,9 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
 
     if (mMode == MODE_NONE)
         return INVALID_OPERATION;
+
+    if (mContinuousJpegCaptureEnabled)
+        return getJpegCapturePreviewFrame(buff);
 
     if (mHALZSLEnabled || mHALSDVEnabled) {
         return mUseMultiStreamsForSoC
@@ -3953,12 +4090,46 @@ status_t AtomISP::putMultiStreamsHALZSLPreviewFrame(AtomBuffer *buff)
     return NO_ERROR;
 }
 
+status_t AtomISP::putJpegCapturePreviewFrame(AtomBuffer *buff)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    // put preview
+    if (mPreviewDevice->putFrame(buff->id) < 0) {
+        LOGE("@%s, mPreviewDevice, putFrame fail, id:%d", __FUNCTION__, buff->id);
+        return UNKNOWN_ERROR;
+    }
+    ++mNumPreviewBuffersQueued;
+    LOG2("@%s mNumPreviewBuffersQueued:%d", __FUNCTION__, mNumPreviewBuffersQueued);
+
+    // put snapshot
+    if (!mJpegCaptureBufferQueue.empty()) {
+        AtomBuffer buf = mJpegCaptureBufferQueue.top();
+        mJpegCaptureBufferQueue.pop();
+        LOG2("@%s: mMaindevice, putFrame:%d", __FUNCTION__, buf.id);
+        if (mMainDevice->putFrame(buf.id) < 0) {
+            LOGE("@%s, mMainDevice, putFrame fail, id:%d", __FUNCTION__, buf.id);
+            return UNKNOWN_ERROR;
+        }
+        ++mNumCapturegBuffersQueued;
+    } else {
+        LOGE("No capture frame in jpeg capture");
+    }
+
+    return NO_ERROR;
+}
+
+
 status_t AtomISP::putPreviewFrame(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
     Mutex::Autolock lock(mDeviceMutex[mPreviewDevice->mId]);
     if (mMode == MODE_NONE)
         return INVALID_OPERATION;
+
+    if (mContinuousJpegCaptureEnabled) {
+        return putJpegCapturePreviewFrame(buff);
+    }
 
     if (mHALZSLEnabled || mHALSDVEnabled) {
         return mUseMultiStreamsForSoC
@@ -4116,8 +4287,14 @@ status_t AtomISP::setSnapshotBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bo
     if (buffs == NULL || numBuffs <= 0)
         return BAD_VALUE;
 
+    if (mContinuousJpegCaptureEnabled) {
+        LOGE("Not external snapshot buffers can use in continuous jpeg capture!");
+        return INVALID_OPERATION;
+    }
+
     mClientSnapshotBuffersCached = cached;
     mConfig.num_snapshot = numBuffs;
+    mConfig.num_snapshot_buffers = numBuffs;
     mUsingClientSnapshotBuffers = true;
     for (int i = 0; i < numBuffs; i++) {
         mSnapshotBuffers[i] = buffs->top();
@@ -4136,6 +4313,11 @@ status_t AtomISP::setPostviewBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bo
     LOG1("@%s: buffs = %p, numBuffs = %d", __FUNCTION__, buffs, numBuffs);
     if (buffs == NULL || numBuffs <= 0)
         return BAD_VALUE;
+
+    if (mContinuousJpegCaptureEnabled) {
+        LOGE("Not external postview buffers can use in continuous jpeg capture!");
+        return INVALID_OPERATION;
+    }
 
     mClientSnapshotBuffersCached = cached;
     mConfig.num_postviews = numBuffs;
@@ -4276,7 +4458,6 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
         goto nopostview;
     }
 
-
     postviewIndex = mPostViewDevice->grabFrame(&vinfo);
     if (postviewIndex < 0) {
         LOGE("Error in grabbing frame from 2'nd device!");
@@ -4380,7 +4561,6 @@ bool AtomISP::dataAvailable()
 
     return false;
 }
-
 
 /**
  * Polls the capture device node fd for data
@@ -4833,6 +5013,8 @@ status_t AtomISP::allocateSnapshotBuffers()
                 bufPool[i] = mPostviewBuffers[i].dataPtr;
             }
         }
+    } else if (mContinuousJpegCaptureEnabled) {
+        LOG1("@%s no postview needed for continuous JPEG capture", __FUNCTION__);
     } else if (needNewPostviewBuffers()) {
         // TODO: Remove this allocation stuff, it is done in PictureThread now...
         freePostviewBuffers();
@@ -4867,7 +5049,7 @@ status_t AtomISP::allocateSnapshotBuffers()
         }
     }
     // In case of Raw capture we do not get postview, so no point in setting up the pool
-    if (!mHALZSLEnabled && !mHALSDVEnabled && !isBayerFormat(mConfig.snapshot.fourcc))
+    if (!mContinuousJpegCaptureEnabled && !mHALZSLEnabled && !mHALSDVEnabled && !isBayerFormat(mConfig.snapshot.fourcc))
         mPostViewDevice->setBufferPool((void**)&bufPool,mPostviewBuffers.size(),
                                         &mConfig.postview, true);
     return status;
@@ -5693,7 +5875,7 @@ int AtomISP::getIspStatistics(struct atomisp_3a_statistics *statistics)
     LOG2("%s IOCTL ATOMISP_IOC_G_3A_STAT ret: %d\n", __FUNCTION__, ret);
 
     if (ret == 0 && isOfflineCaptureRunning()) {
-        // Detect the corrupt stats only for offline (continous) capture.
+        // Detect the corrupt stats only for offline (continuous) capture.
         // TODO: This hack to be removed, when BZ #119181 is fixed
         ret = detectCorruptStatistics(statistics);
     }
