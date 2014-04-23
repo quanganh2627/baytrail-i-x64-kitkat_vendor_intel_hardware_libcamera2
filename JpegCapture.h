@@ -65,6 +65,8 @@ const size_t NV12_META_EXPOSURE_BIAS_VALUE_ADDR = 0X2C;
 const size_t NV12_META_EXPOSURE_TIME_DENOMINATOR_ADDR = 0X2C;
 const size_t NV12_META_AF_STATE_ADDR = 0x846;
 const size_t NV12_META_END_MARKER_ADDR = 0xFF4;
+const size_t NV12_META_TOP_OFFSET_ADDR  = 0x13E;
+const size_t NV12_META_LEFT_OFFSET_ADDR = 0x13C;
 
 
 // NV12 META data
@@ -79,6 +81,15 @@ static uint32_t getU32fromFrame(uint8_t* framePtr, size_t addr) {
     uint32_t result = *((uint32_t*)(framePtr + addr));
 
     result = be32toh(result);
+
+    return result;
+}
+
+static uint16_t getU16fromFrame(uint8_t* framePtr, size_t addr) {
+
+    uint16_t result = *((uint16_t*)(framePtr + addr));
+
+    result = be16toh(result);
 
     return result;
 }

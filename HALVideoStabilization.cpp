@@ -20,25 +20,16 @@
 #include "LogHelper.h"
 #include "ImageScaler.h"
 #include "assert.h"
+#include "JpegCapture.h"
 
 namespace android {
 
 void HALVideoStabilization::getEnvelopeSize(int previewWidth, int previewHeight, int &envelopeWidth, int &envelopeHeight)
 {
     LOG1("@%s", __FUNCTION__);
-    envelopeWidth  = 0;
-    envelopeHeight = 0;
-    if (previewWidth == 1920 && previewHeight == 1080) {
-        // because envelope size configuring doesn't work yet (driver issue) for
-        // all resolutions, don't configure it yet for 1080p.
-        // TODO: remove this if-section after driver works
-        envelopeWidth  = 1920;
-        envelopeHeight = 1080;
-    } else {
-        // this is the default. This should be used for all resolutions, but see above 1080p exception..
-        envelopeWidth = (previewWidth * ENVELOPE_MULTIPLIER) / ENVELOPE_DIVIDER;
-        envelopeHeight = (previewHeight * ENVELOPE_MULTIPLIER) / ENVELOPE_DIVIDER;
-    }
+    envelopeWidth = (previewWidth * ENVELOPE_MULTIPLIER) / ENVELOPE_DIVIDER;
+    envelopeHeight = (previewHeight * ENVELOPE_MULTIPLIER) / ENVELOPE_DIVIDER;
+
     LOG1("@%s: selected envelope size %dx%d for preview %dx%d", __FUNCTION__,
          envelopeWidth, envelopeHeight, previewWidth, previewHeight);
 }
@@ -46,16 +37,22 @@ void HALVideoStabilization::getEnvelopeSize(int previewWidth, int previewHeight,
 void HALVideoStabilization::process(const AtomBuffer *inBuf, AtomBuffer *outBuf)
 {
     LOG2("@%s", __FUNCTION__);
-    // this function is just an example, this should be replaced with a call to
-    // the real VS library
     assert(inBuf && outBuf && inBuf->width >= outBuf->width);
+    assert(inBuf->auxBuf);
+    unsigned char *nv12meta = ((unsigned char*)inBuf->auxBuf->dataPtr) + NV12_META_START;
 
-    if (inBuf->width  != outBuf->width) {
-        ImageScaler::centerCropNV12orNV21Image(inBuf, outBuf);
-    } else {
-        // default (1080p, which can't be configured for bigger, envelope size yet)
+    if (inBuf->width == outBuf->width) {
+        // todo remove this if-statement when we have working non-dvs scaling multi-output from driver
         memcpy((char *)outBuf->dataPtr, (const char*)inBuf->dataPtr, outBuf->size);
+        return;
     }
+
+    uint16_t leftCrop(getU16fromFrame(nv12meta, NV12_META_LEFT_OFFSET_ADDR));
+    uint16_t topCrop(getU16fromFrame(nv12meta, NV12_META_TOP_OFFSET_ADDR));
+
+    int rightCrop = inBuf->width - outBuf->width - leftCrop;
+    int bottomCrop = inBuf->height - outBuf->height - topCrop;
+    ImageScaler::cropNV12orNV21Image(inBuf, outBuf, leftCrop, rightCrop, topCrop, bottomCrop);
 }
 
 }

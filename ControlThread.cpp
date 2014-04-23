@@ -1947,9 +1947,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOG1("Starting preview in %s mode", mode == MODE_VIDEO? "video":"continuous video");
         initSdv(mFullSizeSdv);
 
-        if (mHALVideoStabilization)
+        if (mHALVideoStabilization) {
+            mode = MODE_CONTINUOUS_JPEG;
             status = mHwcg.mIspCI->setDVS(false); // disable isp stabilization, use hal version
-        else
+        } else
             status = mHwcg.mIspCI->setDVS(mDvsEnable);
 
         if (status != NO_ERROR) {
@@ -1982,7 +1983,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         }
     }
 
-    if (state == STATE_JPEG_CAPTURE) {
+    if (state == STATE_JPEG_CAPTURE || (videoMode && mode == MODE_CONTINUOUS_JPEG)) {
         if (initContinuousJpegCapture() != NO_ERROR) {
             LOGE("failed to init continuous jpeg capture");
             return BAD_VALUE;
@@ -2135,8 +2136,9 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (videoMode && !mHALVideoStabilization)
         mISP->attachObserver(mVideoThread.get(), OBSERVE_PREVIEW_STREAM);
     mISP->attachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
-    if (state == STATE_JPEG_CAPTURE)
+    if (state == STATE_JPEG_CAPTURE || mHALVideoStabilization) {
         mISP->attachObserver(mPictureThread.get(), OBSERVE_PREVIEW_STREAM);
+    }
 
     if (!mIspExtensionsEnabled) {
 
@@ -2175,7 +2177,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOGE("Error starting ISP!");
         mPreviewThread->returnPreviewBuffers();
         mISP->detachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
-        if (state == STATE_JPEG_CAPTURE)
+        if (state == STATE_JPEG_CAPTURE || mHALVideoStabilization)
             mISP->detachObserver(mPictureThread.get(), OBSERVE_PREVIEW_STREAM);
         mISP->detachObserver(this, OBSERVE_PREVIEW_STREAM);
         if (videoMode)
@@ -2253,7 +2255,7 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
 
     mISP->detachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
 
-    if (oldState == STATE_JPEG_CAPTURE) {
+    if (oldState == STATE_JPEG_CAPTURE || mHALVideoStabilization) {
         mISP->detachObserver(mPictureThread.get(), OBSERVE_PREVIEW_STREAM);
     }
 

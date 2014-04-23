@@ -1004,9 +1004,10 @@ status_t AtomISP::configure(AtomMode mode)
         status = configurePreview();
         break;
     case MODE_VIDEO:
-        if (mHALVideoStabilization)
+        if (mHALVideoStabilization) {
+            // todo unused, remove?
             status = configureHALVSVideo();
-        else
+        } else
             status = configureRecording();
         break;
     case MODE_CAPTURE:
@@ -2257,6 +2258,7 @@ errorFreeBuf:
     return status;
 }
 
+// todo unused, remove?
 status_t AtomISP::configureHALVSVideo()
 {
     LOG1("@%s", __FUNCTION__);

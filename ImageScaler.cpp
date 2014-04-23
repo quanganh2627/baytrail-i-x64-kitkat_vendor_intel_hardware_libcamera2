@@ -811,6 +811,7 @@ void ImageScaler::cropNV12orNV21Image(const AtomBuffer *src, AtomBuffer *dst,
     // crop UV - it has the same bpl, but height is half of Y, so halve the Crop and height also
     topCrop = topCrop / 2;
     height  = height  / 2;
+    leftCrop &= ~1; // start at even positions
     // move inPtr to crop start position: first move to start of UV (dataPtr + height * bpl) and add the halved topCrop * bpl + leftCrop.
     inPtr   = ((char *) src->dataPtr) + (src->height + topCrop) * inBpl + leftCrop;
     for (int i = 0; i < height; i++) {
