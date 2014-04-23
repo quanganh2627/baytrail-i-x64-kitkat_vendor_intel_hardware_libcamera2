@@ -129,6 +129,8 @@ public:
 
     int pollCapture(int timeout);
 
+    status_t requestJpegCapture();
+
     bool dataAvailable();
 
     bool isHALZSLEnabled() const { return mHALZSLEnabled; }

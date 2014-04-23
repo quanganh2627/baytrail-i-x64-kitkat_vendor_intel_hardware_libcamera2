@@ -4582,6 +4582,23 @@ int AtomISP::pollCapture(int timeout)
     return mMainDevice->poll(timeout);
 }
 
+/**
+ * Send jpeg capture command to kernel
+ *
+ */
+status_t AtomISP::requestJpegCapture()
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if (!mContinuousJpegCaptureEnabled) {
+        LOGE("Jpeg capture can take only in continuous jpeg capture mode!");
+        return INVALID_OPERATION;
+    }
+
+    // ATOMISP_IOC_S_CONT_CAPTURE_CONFIG is used to ask jpeg capture
+    return requestContCapture(1, 0, 0);
+}
+
 ////////////////////////////////////////////////////////////////////
 //                          PRIVATE METHODS
 ////////////////////////////////////////////////////////////////////

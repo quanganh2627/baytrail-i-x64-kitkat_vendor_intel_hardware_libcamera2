@@ -1189,7 +1189,6 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
     return NO_ERROR;
 }
 
-
 /**
  * Adapts continuous capture params to fit platform limits.
  *
@@ -1753,6 +1752,12 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
             LOGW("Unexpected state (%d) to select the shooting mode",mState);
             break;
     }
+
+    //TODO CJC
+    if (mState == STATE_PREVIEW_STILL && PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+        ret = SHOOTING_MODE_JPEG;
+    }
+
     LOG1("Shooting Mode selected: %d", ret);
     return ret;
 }
@@ -2056,7 +2061,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         m3AThread->enable3A();
         if (m3AThread->switchModeAndRate(mode, mHwcg.mSensorCI->getFramerate()) != NO_ERROR)
             LOGE("Failed switching 3A at %.2f fps", mHwcg.mSensorCI->getFramerate());
-
 
         mISP->attachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
     }
@@ -2913,6 +2917,11 @@ status_t ControlThread::handleMessageTakePicture() {
         case SHOOTING_MODE_ULL:
             status = captureULLPic();
             break;
+
+        case SHOOTING_MODE_JPEG:
+            status = captureJpegPic();
+            break;
+
         default:
             LOGE("Taking picture when recording is not supported!");
             status = INVALID_OPERATION;
@@ -4095,6 +4104,33 @@ exit:
     mBurstLength = cachedBurstLength;
     mBurstStart = cachedBurstStart;
     return status;
+}
+
+/**
+ * Captures a pictures using Continuous JPEG capture
+ */
+status_t ControlThread::captureJpegPic()
+{
+    LOG1("@%s: ", __FUNCTION__);
+
+    // Configure PictureThread, inform of the picture and thumbnail resolutions
+    mPictureThread->initialize(mParameters, mHwcg.mIspCI->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
+
+    // TODO CJC
+    stopFaceDetection();
+
+    // Notify CallbacksThread that a picture was requested, so grab one from queue
+    bool syncJpegCbWithPostview = false;  // TODO CJC: (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD);
+    bool requestPostviewCallback = false; // TODO CJC: true; 
+    bool requestRawCallback = true;
+    mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback, syncJpegCbWithPostview);
+
+    // Send request to play the Shutter Sound
+    mCallbacksThread->shutterSound();
+
+    mISP->requestJpegCapture();
+
+    return NO_ERROR;
 }
 
 void ControlThread::encodeVideoSnapshot(AtomBuffer &buff)

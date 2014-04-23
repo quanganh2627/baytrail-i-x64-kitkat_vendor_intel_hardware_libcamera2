@@ -362,6 +362,7 @@ private:
         SHOOTING_MODE_VIDEO_SNAP,   /*!< Picture taking while recording is active */
         SHOOTING_MODE_ZSL_BURST,    /*!< Burst of ZSL where we can take images before the shutter is pressed */
         SHOOTING_MODE_ULL,          /*!< Ultra LowLight */
+        SHOOTING_MODE_JPEG,         /*!< Continuous JPEG capture */
     };
 
     struct HdrImaging {
@@ -651,6 +652,7 @@ private:
     status_t captureFixedBurstPic(bool clientRequest);
     status_t capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffer &postviewBuffer);
     status_t captureULLPic();
+    status_t captureJpegPic();
     // snapshot during video functions
     status_t initSdv(bool offline);
     status_t deinitSdv(bool offline);
