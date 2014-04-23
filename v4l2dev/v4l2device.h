@@ -24,6 +24,65 @@
 #include <linux/atomisp.h>
 #include <linux/videodev2.h>
 
+#ifdef USE_CAMERA_IO_BREAKDOWN
+#define pioctl(fd, ctrlId, attr) \
+({ \
+    int reti; \
+    PERFORMANCE_TRACES_IO_BREAKDOWN(#ctrlId); \
+    reti = ioctl(fd, ctrlId, attr); \
+    reti; \
+ })
+
+#define popen(name, attr) \
+({ \
+    int fd; \
+    PERFORMANCE_TRACES_IO_BREAKDOWN("open"); \
+    fd = ::open(name, attr); \
+    fd; \
+})
+
+#define pclose(fd) \
+({ \
+    int ret; \
+    PERFORMANCE_TRACES_IO_BREAKDOWN("Close"); \
+    ret = ::close(fd); \
+    ret; \
+})
+
+#define pxioctl(device, ctrlId, attr) \
+({ \
+    int reti; \
+    PERFORMANCE_TRACES_IO_BREAKDOWN(#ctrlId); \
+    reti = device->xioctl(ctrlId, attr); \
+    reti; \
+})
+
+#define ppoll(fd, value, timeout) \
+({ \
+    int reti; \
+    PERFORMANCE_TRACES_IO_BREAKDOWN("poll"); \
+    reti = ::poll(fd, value, timeout); \
+    reti; \
+})
+
+#else
+#define pioctl(fd, ctrlId, attr) \
+    ioctl(fd, ctrlId, attr)
+
+#define popen(name, attr) \
+    ::open(name, attr)
+
+#define pclose(fd) \
+    ::close(fd)
+
+#define pxioctl(device, ctrlId, attr) \
+    device->xioctl(ctrlId, attr)
+
+#define ppoll(fd, value, timeout) \
+    ::poll(fd, value, timeout)
+
+#endif // USE_CAMERA_IO_BREAKDOWN
+
 namespace android {
 
 

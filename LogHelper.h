@@ -24,6 +24,7 @@
 #include <utils/String8.h>
 
 extern int32_t gLogLevel;
+extern int32_t gPerfLevel;
 extern int32_t gPowerLevel;
 extern int32_t gControlLevel;
 
@@ -39,12 +40,6 @@ enum  {
     // bitmask of debug features
     // -------------------------
 
-    /* Emit well-formed performance traces */
-    CAMERA_DEBUG_LOG_PERF_TRACES = 1<<7,
-
-    /* Print out detailed timing analysis */
-    CAMERA_DEBUG_LOG_PERF_TRACES_BREAKDOWN = 1<<8,
-
     /* the kevlar has three sensors, so we need to use this debug setting to test the 3rd sensor */
     CAMERA_DEBUG_USE_EXTENDED_CAMERA = 1<<17,
 
@@ -59,6 +54,20 @@ enum  {
     CAMERA_DEBUG_ULL_DUMP = 1<<10,
     CAMERA_DEBUG_JPEG_DUMP = 1<<11,
     CAMERA_DEBUG_DVS2_DUMP = 1<<12
+};
+
+enum  {
+    /* Emit well-formed performance traces */
+    CAMERA_DEBUG_LOG_PERF_TRACES = 1,
+
+    /* Print out detailed timing analysis */
+    CAMERA_DEBUG_LOG_PERF_TRACES_BREAKDOWN = 2,
+
+    /* Print out detailed timing analysis for IOCTL */
+    CAMERA_DEBUG_LOG_PERF_IO_BREAKDOWN = 1<<2,
+
+    /* Print out detailed memory information analysis for IOCTL */
+    CAMERA_DEBUG_LOG_PERF_IO_MEMORY = 1<<3
 };
 
 enum  {

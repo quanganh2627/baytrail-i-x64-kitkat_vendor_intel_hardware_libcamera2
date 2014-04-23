@@ -17,6 +17,10 @@
 #ifndef ANDROID_LIBCAMERA_PERFORMANCE_TRACES
 #define ANDROID_LIBCAMERA_PERFORMANCE_TRACES
 
+#include <utils/threads.h>
+#include "LogHelper.h"
+#include "PlatformData.h"
+
 namespace android {
 
 /**
@@ -118,6 +122,26 @@ namespace PerformanceTraces {
     static void stop(void) STUB_BODY
   };
 
+  class IOBreakdown {
+  public:
+    IOBreakdown(const char*, const char*) STUB_BODY
+    ~IOBreakdown() STUB_BODY
+  public:
+    static void start(void) STUB_BODY
+    static void enableBD(bool) STUB_BODY
+    static void enableMemInfo(bool) STUB_BODY
+    static void stop(void) STUB_BODY
+  private:
+    const char *mFuncName;
+    const char *mNote;
+    static bool mMemInfoEnabled;
+    static int mPipeFD;
+    static int mDbgFD;
+    static int mPipeflushFD;
+    static Mutex mMemMutex;
+  };
+
+
   /**
    * Helper function to disable all the performance traces
    */
@@ -202,8 +226,17 @@ namespace PerformanceTraces {
           PerformanceTraces::PnPBreakdown::start(); \
           PerformanceTraces::Launch2FocusLock::start(); \
           PerformanceTraces::Launch2Preview::start(); \
+          PerformanceTraces::IOBreakdown::start(); \
       } while(0)
 
+  #define PERFORMANCE_TRACES_IO_STOP() \
+      PerformanceTraces::IOBreakdown::stop();
+
+  #define PERFORMANCE_TRACES_IO_BREAKDOWN(note) \
+  { \
+      if (gPerfLevel & CAMERA_DEBUG_LOG_PERF_IO_BREAKDOWN) \
+          PerformanceTraces::IOBreakdown p(__FUNCTION__, note); \
+  }
 }; // ns PerformanceTraces
 }; // ns android
 

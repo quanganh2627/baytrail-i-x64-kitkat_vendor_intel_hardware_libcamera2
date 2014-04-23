@@ -847,7 +847,7 @@ status_t AtomISP::updateCaptureParams()
             status = UNKNOWN_ERROR;
         }
 
-        if (mMainDevice->xioctl(ATOMISP_IOC_S_XNR, &mXnr) < 0) {
+        if (pxioctl(mMainDevice, ATOMISP_IOC_S_XNR, &mXnr) < 0) {
             LOGE("set XNR failure");
             status = UNKNOWN_ERROR;
         }
@@ -865,7 +865,7 @@ status_t AtomISP::getDvsStatistics(struct atomisp_dis_statistics *stats,
        is const, so the mutex is not needed anyway. */
     status_t status = NO_ERROR;
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_G_DIS_STAT, stats);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_G_DIS_STAT, stats);
     if (tryAgain)
         *tryAgain = (errno == EAGAIN);
     if (errno == EAGAIN)
@@ -881,7 +881,7 @@ status_t AtomISP::getDvsStatistics(struct atomisp_dis_statistics *stats,
 status_t AtomISP::setMotionVector(const struct atomisp_dis_vector *vector) const
 {
     status_t status = NO_ERROR;
-    if (mMainDevice->xioctl(ATOMISP_IOC_S_DIS_VECTOR, (struct atomisp_dis_vector *)vector) < 0) {
+    if (pxioctl(mMainDevice, ATOMISP_IOC_S_DIS_VECTOR, (struct atomisp_dis_vector *)vector) < 0) {
         LOGE("failed to set motion vector");
         status = UNKNOWN_ERROR;
     }
@@ -891,7 +891,7 @@ status_t AtomISP::setMotionVector(const struct atomisp_dis_vector *vector) const
 status_t AtomISP::setDvsCoefficients(const struct atomisp_dis_coefficients *coefs) const
 {
     status_t status = NO_ERROR;
-    if (mMainDevice->xioctl(ATOMISP_IOC_S_DIS_COEFS, (struct atomisp_dis_coefficients *)coefs) < 0) {
+    if (pxioctl(mMainDevice, ATOMISP_IOC_S_DIS_COEFS, (struct atomisp_dis_coefficients *)coefs) < 0) {
         LOGE("failed to set dvs coefficients");
         status = UNKNOWN_ERROR;
     }
@@ -901,7 +901,7 @@ status_t AtomISP::setDvsCoefficients(const struct atomisp_dis_coefficients *coef
 status_t AtomISP::getIspDvs2BqResolutions(struct atomisp_dvs2_bq_resolutions *bq_res) const
 {
     status_t status = NO_ERROR;
-    if (mMainDevice->xioctl(ATOMISP_IOC_G_DVS2_BQ_RESOLUTIONS, bq_res) < 0) {
+    if (pxioctl(mMainDevice, ATOMISP_IOC_G_DVS2_BQ_RESOLUTIONS, bq_res) < 0) {
         LOGE("failed to get ISP dvs2 bq resolutions");
         status = UNKNOWN_ERROR;
     }
@@ -912,7 +912,7 @@ status_t AtomISP::getIspDvs2BqResolutions(struct atomisp_dvs2_bq_resolutions *bq
 status_t AtomISP::getIspParameters(struct atomisp_parm *isp_param) const
 {
     status_t status = NO_ERROR;
-    if (mMainDevice->xioctl(ATOMISP_IOC_G_ISP_PARM, isp_param) < 0) {
+    if (pxioctl(mMainDevice, ATOMISP_IOC_G_ISP_PARM, isp_param) < 0) {
         LOGE("failed to get ISP parameters");
         status = UNKNOWN_ERROR;
     }
@@ -1689,7 +1689,7 @@ status_t AtomISP::requestContCapture(int numCaptures, int offset, unsigned int s
     conf.offset = offset;
     conf.skip_frames = skip;
 
-    int res = mMainDevice->xioctl(ATOMISP_IOC_S_CONT_CAPTURE_CONFIG, &conf);
+    int res = pxioctl(mMainDevice, ATOMISP_IOC_S_CONT_CAPTURE_CONFIG, &conf);
     LOG1("@%s: CONT_CAPTURE_CONFIG num %d, offset %d, skip %u, res %d",
          __FUNCTION__, numCaptures, offset, skip, res);
     if (res != 0) {
@@ -3371,7 +3371,7 @@ status_t AtomISP::getMakerNote(atomisp_makernote_info *info)
     info->f_number_curr = 0;
     info->f_number_range = 0;
 
-    if (mMainDevice->xioctl(ATOMISP_IOC_ISP_MAKERNOTE, info) < 0) {
+    if (pxioctl(mMainDevice, ATOMISP_IOC_ISP_MAKERNOTE, info) < 0) {
         LOGW("WARNING: get maker note from driver failed!");
         return UNKNOWN_ERROR;
     }
@@ -5559,7 +5559,7 @@ int AtomISP::loadAccFirmware(void *fw, size_t size,
         (unsigned int)&fwData, (unsigned int)fwData.data );
 
 
-    ret = mMainDevice->xioctl(ATOMISP_IOC_ACC_LOAD, &fwData);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_ACC_LOAD, &fwData);
     LOG1("%s IOCTL ATOMISP_IOC_ACC_LOAD ret : %d fwData->fw_handle: %d \n"\
             , __FUNCTION__, ret, fwData.fw_handle);
 
@@ -5590,7 +5590,7 @@ int AtomISP::loadAccPipeFirmware(void *fw, size_t size,
     fwDataPipe.size = size;
     fwDataPipe.data = fw;
 
-    ret = mMainDevice->xioctl(ATOMISP_IOC_ACC_LOAD_TO_PIPE, &fwDataPipe);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_ACC_LOAD_TO_PIPE, &fwDataPipe);
     LOG1("%s IOCTL ATOMISP_IOC_ACC_LOAD_TO_PIPE ret : %d fwDataPipe->fw_handle: %d"\
             , __FUNCTION__, ret, fwDataPipe.fw_handle);
 
@@ -5616,7 +5616,7 @@ int AtomISP::unloadAccFirmware(unsigned int fwHandle)
     LOG1("@ %s fw_Handle: %d\n",__FUNCTION__, fwHandle);
     int ret = -1;
 
-    ret = mMainDevice->xioctl(ATOMISP_IOC_ACC_UNLOAD, &fwHandle);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_ACC_UNLOAD, &fwHandle);
     LOG1("%s IOCTL ATOMISP_IOC_ACC_UNLOAD ret: %d \n", __FUNCTION__,ret);
 
     return ret;
@@ -5632,7 +5632,7 @@ int AtomISP::mapFirmwareArgument(void *val, size_t size, unsigned long *ptr)
     map.length = size;
     map.user_ptr = val;
 
-    ret =  mMainDevice->xioctl(ATOMISP_IOC_ACC_MAP, &map);
+    ret =  pxioctl(mMainDevice, ATOMISP_IOC_ACC_MAP, &map);
     LOG1("%s ATOMISP_IOC_ACC_MAP ret: %d\n", __FUNCTION__, ret);
 
     *ptr = map.css_ptr;
@@ -5650,7 +5650,7 @@ int AtomISP::unmapFirmwareArgument(unsigned long val, size_t size)
     map.css_ptr = val;
     map.length = size;
 
-    ret =  mMainDevice->xioctl(ATOMISP_IOC_ACC_UNMAP, &map);
+    ret =  pxioctl(mMainDevice, ATOMISP_IOC_ACC_UNMAP, &map);
     LOG1("%s ATOMISP_IOC_ACC_UNMAP ret: %d\n", __FUNCTION__, ret);
 
     return ret;
@@ -5673,7 +5673,7 @@ int AtomISP::setFirmwareArgument(unsigned int fwHandle, unsigned int num,
     arg.value = val;
     arg.size = size;
 
-    ret = mMainDevice->xioctl(ATOMISP_IOC_ACC_S_ARG, &arg);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_ACC_S_ARG, &arg);
     LOG1("%s IOCTL ATOMISP_IOC_ACC_S_ARG ret: %d \n", __FUNCTION__, ret);
 
     return ret;
@@ -5692,7 +5692,7 @@ int AtomISP::setMappedFirmwareArgument(unsigned int fwHandle, unsigned int mem,
     arg.css_ptr = val;
     arg.length = size;
 
-    ret =  mMainDevice->xioctl(ATOMISP_IOC_ACC_S_MAPPED_ARG, &arg);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_ACC_S_MAPPED_ARG, &arg);
     LOG1("%s IOCTL ATOMISP_IOC_ACC_S_MAPPED_ARG ret: %d \n", __FUNCTION__, ret);
 
     return ret;
@@ -5716,7 +5716,7 @@ int AtomISP::unsetFirmwareArgument(unsigned int fwHandle, unsigned int num)
     arg.value = NULL;
     arg.size = 0;
 
-    ret = mMainDevice->xioctl(ATOMISP_IOC_ACC_DESTAB, &arg);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_ACC_DESTAB, &arg);
     LOG1("%s IOCTL ATOMISP_IOC_ACC_DESTAB ret: %d \n", __FUNCTION__, ret);
 
     return ret;
@@ -5725,7 +5725,7 @@ int AtomISP::unsetFirmwareArgument(unsigned int fwHandle, unsigned int num)
 int AtomISP::startFirmware(unsigned int fwHandle)
 {
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_ACC_START, &fwHandle);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_ACC_START, &fwHandle);
     LOG1("%s IOCTL ATOMISP_IOC_ACC_START ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -5733,7 +5733,7 @@ int AtomISP::startFirmware(unsigned int fwHandle)
 int AtomISP::waitForFirmware(unsigned int fwHandle)
 {
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_ACC_WAIT, &fwHandle);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_ACC_WAIT, &fwHandle);
     LOG1("%s IOCTL ATOMISP_IOC_ACC_WAIT ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -5746,7 +5746,7 @@ int AtomISP::abortFirmware(unsigned int fwHandle, unsigned int timeout)
     abort.fw_handle = fwHandle;
     abort.timeout = timeout;
 
-    ret = mMainDevice->xioctl(ATOMISP_IOC_ACC_ABORT, &abort);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_ACC_ABORT, &abort);
     LOG1("%s IOCTL ATOMISP_IOC_ACC_ABORT ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -5788,7 +5788,7 @@ int AtomISP::dumpFrameInfo(AtomMode mode)
 {
     LOG2("@%s", __FUNCTION__);
 
-    if (gLogLevel & CAMERA_DEBUG_LOG_PERF_TRACES) {
+    if (gPerfLevel & CAMERA_DEBUG_LOG_PERF_TRACES) {
         /**
          * XXX: Don't forget to adjust the array size when adding support
          * for more modes; the extra +1 is to compensate for the enum
@@ -5968,7 +5968,7 @@ int AtomISP::getModeInfo(struct atomisp_sensor_mode_data *mode_data)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_G_SENSOR_MODE_DATA, mode_data);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_G_SENSOR_MODE_DATA, mode_data);
     LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_MODE_DATA ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -5976,7 +5976,7 @@ int AtomISP::getModeInfo(struct atomisp_sensor_mode_data *mode_data)
 int AtomISP::setExposure(struct atomisp_exposure *exposure)
 {
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_EXPOSURE, exposure);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_S_EXPOSURE, exposure);
     LOG2("%s IOCTL ATOMISP_IOC_S_EXPOSURE ret: %d, gain %d, citg %d\n", __FUNCTION__, ret, exposure->gain[0], exposure->integration_time[0]);
     return ret;
 }
@@ -6035,7 +6035,7 @@ int AtomISP::setAicParameter(struct atomisp_parameters *aic_param)
              aic_param->wb_config->b, aic_param->wb_config->gb);
     }
 
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_PARAMETERS, aic_param);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_S_PARAMETERS, aic_param);
     LOG2("%s IOCTL ATOMISP_IOC_S_PARAMETERS ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -6044,7 +6044,7 @@ int AtomISP::setIspParameter(struct atomisp_parm *isp_param)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_ISP_PARM, isp_param);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_S_ISP_PARM, isp_param);
     LOG2("%s IOCTL ATOMISP_IOC_S_ISP_PARM ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -6068,7 +6068,7 @@ int AtomISP::getIspStatistics(struct atomisp_3a_statistics *statistics)
     LOG2("@%s", __FUNCTION__);
 
     int ret = 0;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_G_3A_STAT, statistics);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_G_3A_STAT, statistics);
     LOG2("%s IOCTL ATOMISP_IOC_G_3A_STAT ret: %d\n", __FUNCTION__, ret);
 
     if (ret == 0 && isOfflineCaptureRunning()) {
@@ -6084,7 +6084,7 @@ int AtomISP::getSensorEmbeddedMetaData(atomisp_metadata *metaData) const
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_G_METADATA, metaData);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_G_METADATA, metaData);
     LOG2("%s IOCTL ATOMISP_IOC_G_METADATA ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -6146,7 +6146,7 @@ int AtomISP::setMaccConfig(struct atomisp_macc_config *macc_tbl)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_ISP_MACC,macc_tbl);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_S_ISP_MACC,macc_tbl);
     LOG2("%s IOCTL ATOMISP_IOC_S_ISP_MACC ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -6155,7 +6155,7 @@ int AtomISP::setGammaTable(const struct atomisp_gamma_table *gamma_tbl)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_ISP_GAMMA, (struct atomisp_gamma_table *)gamma_tbl);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_S_ISP_GAMMA, (struct atomisp_gamma_table *)gamma_tbl);
     LOG2("%s IOCTL ATOMISP_IOC_S_ISP_GAMMA ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -6164,7 +6164,7 @@ int AtomISP::setCtcTable(const struct atomisp_ctc_table *ctc_tbl)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_ISP_CTC, (struct atomisp_ctc_table *)ctc_tbl);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_S_ISP_CTC, (struct atomisp_ctc_table *)ctc_tbl);
     LOG2("%s IOCTL ATOMISP_IOC_S_ISP_CTC ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -6173,7 +6173,7 @@ int AtomISP::setGdcConfig(const struct morph_table *tbl)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_ISP_GDC_TAB, (struct morph_table *)tbl);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_S_ISP_GDC_TAB, (struct morph_table *)tbl);
     LOG2("%s IOCTL ATOMISP_IOC_S_ISP_GDC_TAB ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -6182,7 +6182,7 @@ int AtomISP::setShadingTable(struct atomisp_shading_table *table)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_ISP_SHD_TAB, table);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_S_ISP_SHD_TAB, table);
     LOG2("%s IOCTL ATOMISP_IOC_S_ISP_SHD_TAB ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -6191,7 +6191,7 @@ int AtomISP::setDeConfig(struct atomisp_de_config *de_cfg)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_ISP_FALSE_COLOR_CORRECTION, de_cfg);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_S_ISP_FALSE_COLOR_CORRECTION, de_cfg);
     LOG2("%s IOCTL ATOMISP_IOC_S_ISP_FALSE_COLOR_CORRECTION ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -6200,7 +6200,7 @@ int AtomISP::setTnrConfig(struct atomisp_tnr_config *tnr_cfg)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_TNR, tnr_cfg);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_S_TNR, tnr_cfg);
     LOG2("%s IOCTL ATOMISP_IOC_S_TNR ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -6209,7 +6209,7 @@ int AtomISP::setEeConfig(struct atomisp_ee_config *ee_cfg)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_EE, ee_cfg);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_S_EE, ee_cfg);
     LOG2("%s IOCTL ATOMISP_IOC_S_EE ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -6218,7 +6218,7 @@ int AtomISP::setNrConfig(struct atomisp_nr_config *nr_cfg)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_NR, nr_cfg);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_S_NR, nr_cfg);
     LOG2("%s IOCTL ATOMISP_IOC_S_NR ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -6227,7 +6227,7 @@ int AtomISP::setDpConfig(struct atomisp_dp_config *dp_cfg)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_ISP_BAD_PIXEL_DETECTION, dp_cfg);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_S_ISP_BAD_PIXEL_DETECTION, dp_cfg);
     LOG2("%s IOCTL ATOMISP_IOC_S_ISP_BAD_PIXEL_DETECTION ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -6236,7 +6236,7 @@ int AtomISP::setWbConfig(struct atomisp_wb_config *wb_cfg)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_ISP_WHITE_BALANCE, wb_cfg);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_S_ISP_WHITE_BALANCE, wb_cfg);
     LOG2("%s IOCTL ATOMISP_IOC_S_ISP_WHITE_BALANCE ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -6245,7 +6245,7 @@ int AtomISP::set3aConfig(const struct atomisp_3a_config *cfg)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_3A_CONFIG, (struct atomisp_3a_config *)cfg);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_S_3A_CONFIG, (struct atomisp_3a_config *)cfg);
     LOG2("%s IOCTL ATOMISP_IOC_S_3A_CONFIG ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -6254,7 +6254,7 @@ int AtomISP::setObConfig(struct atomisp_ob_config *ob_cfg)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_BLACK_LEVEL_COMP, ob_cfg);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_S_BLACK_LEVEL_COMP, ob_cfg);
     LOG2("%s IOCTL ATOMISP_IOC_S_BLACK_LEVEL_COMP ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -6263,7 +6263,7 @@ int AtomISP::setGcConfig(const struct atomisp_gc_config *gc_cfg)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_ISP_GAMMA_CORRECTION, (struct atomisp_gc_config *)gc_cfg);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_S_ISP_GAMMA_CORRECTION, (struct atomisp_gc_config *)gc_cfg);
     LOG2("%s IOCTL ATOMISP_IOC_S_ISP_GAMMA_CORRECTION ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -6272,7 +6272,7 @@ int AtomISP::setDvsConfig(const struct atomisp_dvs_6axis_config *dvs_6axis_cfg)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mMainDevice->xioctl(ATOMISP_IOC_S_DIS_VECTOR, (struct atomisp_dvs_6axis_config *)dvs_6axis_cfg);
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_S_DIS_VECTOR, (struct atomisp_dvs_6axis_config *)dvs_6axis_cfg);
     LOG2("%s IOCTL ATOMISP_IOC_S_6AXIS_CONFIG ret: %d\n", __FUNCTION__, ret);
     return ret;
 }

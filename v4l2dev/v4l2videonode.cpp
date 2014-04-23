@@ -103,7 +103,7 @@ status_t V4L2VideoNode::queryCap(struct v4l2_capability *cap)
         return INVALID_OPERATION;
     }
 
-    ret = ioctl(mFd, VIDIOC_QUERYCAP, cap);
+    ret = pioctl(mFd, VIDIOC_QUERYCAP, cap);
 
     if (ret < 0) {
         LOGE("VIDIOC_QUERYCAP returned: %d (%s)", ret, strerror(errno));
@@ -150,7 +150,7 @@ status_t V4L2VideoNode::enumerateInputs(struct v4l2_input *anInput)
         return INVALID_OPERATION;
     }
 
-    ret = ioctl(mFd, VIDIOC_ENUMINPUT, anInput);
+    ret = pioctl(mFd, VIDIOC_ENUMINPUT, anInput);
 
     if (ret < 0) {
         if (errno == EINVAL) {
@@ -180,7 +180,7 @@ status_t V4L2VideoNode::queryCapturePixelFormats(Vector<v4l2_fmtdesc> &formats)
     aFormat.index = 0;
     aFormat.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
-    while (ioctl(mFd, VIDIOC_ENUM_FMT , &aFormat) == 0) {
+    while (pioctl(mFd, VIDIOC_ENUM_FMT , &aFormat) == 0) {
         formats.push(aFormat);
         aFormat.index++;
     };
@@ -188,7 +188,7 @@ status_t V4L2VideoNode::queryCapturePixelFormats(Vector<v4l2_fmtdesc> &formats)
     aFormat.index = 0;
     aFormat.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 
-    while (ioctl(mFd, VIDIOC_ENUM_FMT , &aFormat) == 0) {
+    while (pioctl(mFd, VIDIOC_ENUM_FMT , &aFormat) == 0) {
         formats.push(aFormat);
         aFormat.index++;
     };
@@ -211,7 +211,7 @@ status_t V4L2VideoNode::setInput(int index)
 
     input.index = index;
 
-    ret = ioctl(mFd, VIDIOC_S_INPUT, &input);
+    ret = pioctl(mFd, VIDIOC_S_INPUT, &input);
 
     if (ret < 0) {
        LOGE("VIDIOC_S_INPUT index %d returned: %d (%s)",
@@ -243,7 +243,7 @@ int V4L2VideoNode::stop(bool leavePopulated)
     if (mState == DEVICE_STARTED) {
         enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         //stream off
-        ret = ioctl(mFd, VIDIOC_STREAMOFF, &type);
+        ret = pioctl(mFd, VIDIOC_STREAMOFF, &type);
         if (ret < 0) {
             LOGE("VIDIOC_STREAMOFF returned: %d (%s)", ret, strerror(errno));
             return ret;
@@ -310,7 +310,7 @@ int V4L2VideoNode::start(int buffer_count, int initial_skips)
 
     //stream on
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    ret = ioctl(mFd, VIDIOC_STREAMON, &type);
+    ret = pioctl(mFd, VIDIOC_STREAMON, &type);
     if (ret < 0) {
         LOGE("VIDIOC_STREAMON returned: %d (%s)", ret, strerror(errno));
         return ret;
@@ -367,7 +367,7 @@ status_t V4L2VideoNode::setFormat(AtomBuffer &formatDescriptor)
 
     v4l2_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     LOG1("VIDIOC_G_FMT");
-    ret = ioctl (mFd, VIDIOC_G_FMT, &v4l2_fmt);
+    ret = pioctl (mFd, VIDIOC_G_FMT, &v4l2_fmt);
     if (ret < 0) {
         LOGE("VIDIOC_G_FMT failed: %s", strerror(errno));
         return UNKNOWN_ERROR;
@@ -448,7 +448,7 @@ status_t V4L2VideoNode::setFormat(struct v4l2_format &aFormat)
             v4l2Fmt2Str(aFormat.fmt.pix.pixelformat),
             aFormat.fmt.pix.pixelformat,
             aFormat.fmt.pix.field);
-    ret = ioctl(mFd, VIDIOC_S_FMT, &aFormat);
+    ret = pioctl(mFd, VIDIOC_S_FMT, &aFormat);
     if (ret < 0) {
         LOGE("VIDIOC_S_FMT failed: %s", strerror(errno));
         return UNKNOWN_ERROR;
@@ -539,7 +539,7 @@ status_t V4L2VideoNode::setParameter (struct v4l2_streamparm *aParam)
     if (mState == DEVICE_CLOSED)
         return INVALID_OPERATION;
 
-    ret = ioctl(mFd, VIDIOC_S_PARM, aParam);
+    ret = pioctl(mFd, VIDIOC_S_PARM, aParam);
     if (ret < 0) {
         LOGE("VIDIOC_S_PARM failed ret %d : %s", ret, strerror(errno));
         ret = UNKNOWN_ERROR;
@@ -567,7 +567,7 @@ int V4L2VideoNode::getFramerate(float * framerate, int width, int height, int pi
     frm_interval.height = height;
     *framerate = -1.0;
 
-    ret = ioctl(mFd, VIDIOC_ENUM_FRAMEINTERVALS, &frm_interval);
+    ret = pioctl(mFd, VIDIOC_ENUM_FRAMEINTERVALS, &frm_interval);
     if (ret < 0) {
         LOGW("ioctl VIDIOC_ENUM_FRAMEINTERVALS failed: %s", strerror(errno));
         return UNKNOWN_ERROR;
@@ -694,7 +694,7 @@ int V4L2VideoNode::requestBuffers(uint num_buffers)
     }
 
     LOG1("VIDIOC_REQBUFS, count=%d", req_buf.count);
-    ret = ioctl(mFd, VIDIOC_REQBUFS, &req_buf);
+    ret = pioctl(mFd, VIDIOC_REQBUFS, &req_buf);
 
     if (ret < 0) {
         LOGE("VIDIOC_REQBUFS(%d) returned: %d (%s)",
@@ -735,9 +735,10 @@ int V4L2VideoNode::qbuf(struct v4l2_buffer_info *buf)
     int ret = 0;
 
     v4l2_buf->flags = buf->cache_flags;
+
     // set to 0 as reserved2 will be used for per-frame setting feature on HAL v3
     v4l2_buf->reserved2 = 0;
-    ret = ioctl(mFd, VIDIOC_QBUF, v4l2_buf);
+    ret = pioctl(mFd, VIDIOC_QBUF, v4l2_buf);
     if (ret < 0) {
         LOGE("VIDIOC_QBUF on %s failed: %s", mName.string(), strerror(errno));
         return ret;
@@ -755,7 +756,7 @@ int V4L2VideoNode::dqbuf(struct v4l2_buffer_info *buf)
     v4l2_buf->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     v4l2_buf->memory = V4L2_MEMORY_USERPTR;
 
-    ret = ioctl(mFd, VIDIOC_DQBUF, v4l2_buf);
+    ret = pioctl(mFd, VIDIOC_DQBUF, v4l2_buf);
     if (ret < 0) {
         LOGE("VIDIOC_DQBUF failed: %s", strerror(errno));
         return ret;
@@ -842,7 +843,7 @@ int V4L2VideoNode::newBuffer(int index, struct v4l2_buffer_info &buf)
 
 
     vbuf->index = index;
-    ret = ioctl(mFd , VIDIOC_QUERYBUF, vbuf);
+    ret = pioctl(mFd , VIDIOC_QUERYBUF, vbuf);
 
     if (ret < 0) {
         LOGE("VIDIOC_QUERYBUF failed: %s", strerror(errno));

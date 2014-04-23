@@ -118,7 +118,7 @@ void SensorHW::getPadFormat(sp<V4L2DeviceBase> &subdev, int padIndex, int &width
     CLEAR(subdevFormat);
     subdevFormat.pad = padIndex;
     subdevFormat.which = V4L2_SUBDEV_FORMAT_ACTIVE;
-    ret = subdev->xioctl(VIDIOC_SUBDEV_G_FMT, &subdevFormat);
+    ret = pxioctl(subdev, VIDIOC_SUBDEV_G_FMT, &subdevFormat);
     if (ret < 0) {
         LOGE("Failed VIDIOC_SUBDEV_G_FMT");
     } else {
@@ -269,7 +269,7 @@ status_t SensorHW::getIspDevicePath(char *ispDevPath, int size)
     }
 
     CLEAR(mediaDeviceInfo);
-    ret = mediaCtl->xioctl(MEDIA_IOC_DEVICE_INFO, &mediaDeviceInfo);
+    ret = pxioctl(mediaCtl, MEDIA_IOC_DEVICE_INFO, &mediaDeviceInfo);
     if (ret < 0) {
         status = UNKNOWN_ERROR;
         LOGE("Failed to get media device information");
@@ -359,7 +359,7 @@ status_t SensorHW::openSubdevices()
     }
 
     CLEAR(mediaDeviceInfo);
-    ret = mediaCtl->xioctl(MEDIA_IOC_DEVICE_INFO, &mediaDeviceInfo);
+    ret = pxioctl(mediaCtl, MEDIA_IOC_DEVICE_INFO, &mediaDeviceInfo);
     if (ret < 0) {
         LOGE("Failed to get media device information");
         mediaCtl.clear();
@@ -418,7 +418,7 @@ status_t SensorHW::findMediaEntityById(sp<V4L2DeviceBase> &mediaCtl, int index,
     int ret = 0;
     CLEAR(mediaEntityDesc);
     mediaEntityDesc.id = index;
-    ret = mediaCtl->xioctl(MEDIA_IOC_ENUM_ENTITIES, &mediaEntityDesc);
+    ret = pxioctl(mediaCtl, MEDIA_IOC_ENUM_ENTITIES, &mediaEntityDesc);
     if (ret < 0) {
         LOG1("No more media entities");
         return UNKNOWN_ERROR;
@@ -468,7 +468,7 @@ status_t SensorHW::findConnectedEntity(sp<V4L2DeviceBase> &mediaCtl,
     links.pads = (struct media_pad_desc*) malloc(mediaEntityDescSrc.pads * sizeof(struct media_pad_desc));
     links.links = (struct media_link_desc*) malloc(mediaEntityDescSrc.links * sizeof(struct media_link_desc));
 
-    ret = mediaCtl->xioctl(MEDIA_IOC_ENUM_LINKS, &links);
+    ret = pxioctl(mediaCtl, MEDIA_IOC_ENUM_LINKS, &links);
     if (ret < 0) {
         LOGE("Failed to query any links");
     } else {
@@ -764,7 +764,7 @@ void SensorHW::getMotorData(sensorPrivateData *sensor_data)
     sensor_data->data = NULL;
     sensor_data->size = 0;
     // First call with size = 0 will return motor private data size.
-    rc = mDevice->xioctl(ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA, &motorPrivateData);
+    rc = pxioctl(mDevice, ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA, &motorPrivateData);
     LOG2("%s IOCTL ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA to get motor private data size ret: %d\n", __FUNCTION__, rc);
     if (rc != 0 || motorPrivateData.size == 0) {
         LOGD("Failed to get motor private data size. Error: %d", rc);
@@ -778,7 +778,7 @@ void SensorHW::getMotorData(sensorPrivateData *sensor_data)
     }
 
     // Second call with correct size will return motor private data.
-    rc = mDevice->xioctl(ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA, &motorPrivateData);
+    rc = pxioctl(mDevice, ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA, &motorPrivateData);
     LOG2("%s IOCTL ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA to get motor private data ret: %d\n", __FUNCTION__, rc);
 
     if (rc != 0 || motorPrivateData.size == 0) {
@@ -818,7 +818,7 @@ void SensorHW::getSensorData(sensorPrivateData *sensor_data)
             return;
         }
         // First call with size = 0 will return OTP data size.
-        rc = mDevice->xioctl(ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
+        rc = pxioctl(mDevice, ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
         LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data size ret: %d\n", __FUNCTION__, rc);
         if (rc != 0 || otpdata.size == 0) {
             LOGD("Failed to get OTP size. Error: %d", rc);
@@ -832,7 +832,7 @@ void SensorHW::getSensorData(sensorPrivateData *sensor_data)
         }
 
         // Second call with correct size will return OTP data.
-        rc = mDevice->xioctl(ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
+        rc = pxioctl(mDevice, ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
         LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data ret: %d\n", __FUNCTION__, rc);
 
         if (rc != 0 || otpdata.size == 0) {
@@ -999,7 +999,7 @@ int SensorHW::getModeInfo(struct atomisp_sensor_mode_data *mode_data)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mDevice->xioctl(ATOMISP_IOC_G_SENSOR_MODE_DATA, mode_data);
+    ret = pxioctl(mDevice, ATOMISP_IOC_G_SENSOR_MODE_DATA, mode_data);
     LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_MODE_DATA ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -1007,7 +1007,7 @@ int SensorHW::getModeInfo(struct atomisp_sensor_mode_data *mode_data)
 int SensorHW::setSensorExposure(struct atomisp_exposure *exposure)
 {
     int ret;
-    ret = mDevice->xioctl(ATOMISP_IOC_S_EXPOSURE, exposure);
+    ret = pxioctl(mDevice, ATOMISP_IOC_S_EXPOSURE, exposure);
     LOG2("%s IOCTL ATOMISP_IOC_S_EXPOSURE ret: %d, gain A:%d D:%d, itg C:%d F:%d\n", __FUNCTION__, ret, exposure->gain[0], exposure->gain[1], exposure->integration_time[0], exposure->integration_time[1]);
     return ret;
 }
@@ -1077,7 +1077,7 @@ status_t SensorHW::setFramerate(int fps)
     subdevFrameInterval.pad = 0;
     subdevFrameInterval.interval.numerator = 1;
     subdevFrameInterval.interval.denominator = fps;
-    ret = mSensorSubdevice->xioctl(VIDIOC_SUBDEV_S_FRAME_INTERVAL, &subdevFrameInterval);
+    ret = pxioctl(mSensorSubdevice, VIDIOC_SUBDEV_S_FRAME_INTERVAL, &subdevFrameInterval);
     if (ret < 0){
         LOGE("Failed to set framerate to sensor subdevice");
         return UNKNOWN_ERROR;
@@ -1105,7 +1105,7 @@ float SensorHW::getFramerate() const
         struct v4l2_subdev_frame_interval subdevFrameInterval;
         CLEAR(subdevFrameInterval);
         subdevFrameInterval.pad = 0;
-        ret = mSensorSubdevice->xioctl(VIDIOC_SUBDEV_G_FRAME_INTERVAL, &subdevFrameInterval);
+        ret = pxioctl(mSensorSubdevice, VIDIOC_SUBDEV_G_FRAME_INTERVAL, &subdevFrameInterval);
         if (ret >= 0 && subdevFrameInterval.interval.numerator != 0) {
             LOG1("Using framerate from sensor subdevice");
             return ((float) subdevFrameInterval.interval.denominator) / subdevFrameInterval.interval.numerator;

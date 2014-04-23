@@ -12,6 +12,10 @@ ifeq ($(BOARD_GRAPHIC_IS_GEN),true)
 LOCAL_CFLAGS += -DGRAPHIC_IS_GEN
 endif
 
+ifeq ($(USE_CAMERA_IO_BREAKDOWN),true)
+LOCAL_CFLAGS += -DUSE_CAMERA_IO_BREAKDOWN
+endif
+
 # Intel camera extras (HDR, face detection, etc.)
 ifeq ($(USE_INTEL_CAMERA_EXTRAS),true)
 LOCAL_CFLAGS += -DENABLE_INTEL_EXTRAS

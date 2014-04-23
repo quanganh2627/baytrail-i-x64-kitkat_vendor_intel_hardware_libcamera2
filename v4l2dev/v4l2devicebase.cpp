@@ -70,7 +70,7 @@ status_t V4L2DeviceBase::open()
         return UNKNOWN_ERROR;
     }
 
-    mFd = ::open(mName.string(), O_RDWR);
+    mFd = popen(mName.string(), O_RDWR);
 
     if (mFd < 0) {
         LOGE("Error opening video device %s: %s",
@@ -90,7 +90,7 @@ status_t V4L2DeviceBase::close()
         return INVALID_OPERATION;
     }
 
-    if (::close(mFd) < 0) {
+    if (pclose(mFd) < 0) {
         LOGE("Close video device failed: %s", strerror(errno));
         return UNKNOWN_ERROR;
     }
@@ -141,7 +141,7 @@ int V4L2DeviceBase::poll(int timeout)
     pfd.fd = mFd;
     pfd.events = POLLPRI | POLLIN | POLLERR;
 
-    ret = ::poll(&pfd, 1, timeout);
+    ret = ppoll(&pfd, 1, timeout);
 
     if (pfd.revents & POLLERR) {
         LOG1("%s received POLLERR", __FUNCTION__);
@@ -165,7 +165,7 @@ int V4L2DeviceBase::subscribeEvent(int event)
     memset(&sub, 0, sizeof(sub));
     sub.type = event;
 
-    ret = ioctl(mFd, VIDIOC_SUBSCRIBE_EVENT, &sub);
+    ret = pioctl(mFd, VIDIOC_SUBSCRIBE_EVENT, &sub);
     if (ret < 0) {
         LOGE("error subscribing event %x: %s", event, strerror(errno));
         return ret;
@@ -188,7 +188,7 @@ int V4L2DeviceBase::unsubscribeEvent(int event)
     CLEAR(sub);
     sub.type = event;
 
-    ret = ioctl(mFd, VIDIOC_UNSUBSCRIBE_EVENT, &sub);
+    ret = pioctl(mFd, VIDIOC_UNSUBSCRIBE_EVENT, &sub);
     if (ret < 0) {
         LOGE("error unsubscribing event %x :%s",event,strerror(errno));
         return ret;
@@ -207,7 +207,7 @@ int V4L2DeviceBase::dequeueEvent(struct v4l2_event *event)
         return -1;
     }
 
-    ret = ioctl(mFd, VIDIOC_DQEVENT, event);
+    ret = pioctl(mFd, VIDIOC_DQEVENT, event);
     if (ret < 0) {
         LOGE("error dequeuing event");
         return ret;
@@ -243,10 +243,10 @@ status_t V4L2DeviceBase::setControl (int aControlNum, const int value, const cha
     ext_control.id = aControlNum;
     ext_control.value = value;
 
-    if (ioctl(mFd, VIDIOC_S_EXT_CTRLS, &controls) == 0)
+    if (pioctl(mFd, VIDIOC_S_EXT_CTRLS, &controls) == 0)
         return NO_ERROR;
 
-    if (ioctl(mFd, VIDIOC_S_CTRL, &control) == 0)
+    if (pioctl(mFd, VIDIOC_S_CTRL, &control) == 0)
         return NO_ERROR;
 
     LOGE("Failed to set value %d for control %s (%d) on device '%s', %s",
@@ -278,12 +278,12 @@ status_t V4L2DeviceBase::getControl (int aControlNum, int *value)
     controls.controls = &ext_control;
     ext_control.id = aControlNum;
 
-    if (ioctl(mFd, VIDIOC_G_EXT_CTRLS, &controls) == 0) {
+    if (pioctl(mFd, VIDIOC_G_EXT_CTRLS, &controls) == 0) {
        *value = ext_control.value;
        return NO_ERROR;
     }
 
-    if (ioctl(mFd, VIDIOC_G_CTRL, &control) == 0) {
+    if (pioctl(mFd, VIDIOC_G_CTRL, &control) == 0) {
        *value = control.value;
        return NO_ERROR;
     }

@@ -442,10 +442,12 @@ static int ATOM_CloseCameraHardware(hw_device_t* device)
 
     free(camera_dev);
 
-    PERFORMANCE_TRACES_BREAKDOWN_STEP("Close_HAL_Done");
     --atom_instances;
 
     LOGD("%s: Camera close done (open instances after close: %d)", __FUNCTION__, atom_instances);
+
+    PERFORMANCE_TRACES_BREAKDOWN_STEP("Close_HAL_Done");
+    PERFORMANCE_TRACES_IO_STOP();
     return 0;
 }
 
