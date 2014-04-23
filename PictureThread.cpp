@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,6 +49,7 @@ PictureThread::PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler,
     ,mOutBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT_JPEG))
     ,mThumbBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW))
     ,mScaledPic(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT))
+    ,mFirstPartBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT))
     ,mPictureQuality(80)
     ,mThumbnailQuality(50)
     ,mInputBufferArray(NULL)
@@ -326,6 +328,193 @@ status_t PictureThread::handleMessageExit()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     mThreadRunning = false;
+    return status;
+}
+
+bool PictureThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state)
+{
+    LOG2("@%s", __FUNCTION__);
+    // if this frame is identified to be carrying the thumbnail, the preview copy should
+    // be done here, lock protected, in the caller (observer) context, to ensure
+    // that the preview frame is not returned and overwritten by the sensor before
+    // creating the thumbnail
+
+    if (!msg) {
+        LOG1("Received observer state change");
+        // We are currently not receiving MESSAGE_ID_END_OF_STREAM when stream
+        // stops. Observer gets paused when device is about to be stopped and
+        // after pausing, we no longer receive new frames for the same session.
+        // Reset frame counter based on any observer state change
+        return false;
+    }
+
+    // send to processing, if there is a connected capture buffer with the preview
+    if (msg->id == MESSAGE_ID_FRAME && msg->data.frameBuffer.buff.auxBuf) {
+        Message mesg;
+        mesg.id = MESSAGE_ID_CAPTURE;
+        mesg.data.capture.captureBuf = *msg->data.frameBuffer.buff.auxBuf;
+        mMessageQueue.send(&mesg);
+    }
+    return false;
+}
+
+status_t PictureThread::handleMessageCapture(MessageCapture *msg)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    /******* temporary logging of jpeginfo and metainfo - todo cjc remove */
+    char array[16];
+    unsigned char *meta = ((unsigned char*)msg->captureBuf.dataPtr)+0x800;
+    strncpy(array, (char*) meta, 15);
+    array[15] = 0;
+    uint32_t yuvFrameId  = *(uint32_t*)(meta+0x17);
+    yuvFrameId = be32toh(yuvFrameId);
+    meta += 15;
+
+    LOG2("@%s JPEGINFO '%s'(%d) %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx", __FUNCTION__, array, yuvFrameId,
+         meta[0] , meta[1], meta[2], meta[3], meta[4], meta[5], meta[6], meta[7], meta[8] , meta[9], meta[10], meta[11], meta[12], meta[13], meta[14], meta[15]);
+
+    meta = ((unsigned char*)msg->captureBuf.dataPtr)+0x1000;
+    strncpy(array, (char *) meta, 14);
+    array[14] = 0;
+    meta += 14;
+    uint32_t frameCount  = *(uint32_t*)(meta);
+    frameCount = be32toh(frameCount);
+    LOG2("@%s METAINFO '%s'(%d) %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx ", __FUNCTION__, array, frameCount,
+         meta[0] , meta[1], meta[2], meta[3], meta[4], meta[5], meta[6], meta[7], meta[8] , meta[9], meta[10], meta[11], meta[12], meta[13], meta[14], meta[15]);
+    /******* end temporary logging */
+
+    unsigned char *jpeginfo = ((unsigned char*)msg->captureBuf.dataPtr) + JPEG_INFO_START;
+
+    switch (jpeginfo[JPEG_MODE_ADDR]) {
+    case JPEG_FRAME_TYPE_META:
+        // this is the default preview + metadata case. We just return the buffer.
+        LOG2("@%s: normal preview with metadata.", __FUNCTION__);
+        // return the buffer to isp -> putSnapshot
+        msg->captureBuf.owner->returnBuffer(&msg->captureBuf);
+        break;
+
+    case JPEG_FRAME_TYPE_FULL:
+        LOG1("@%s: full jpeg", __FUNCTION__);
+        assembleJpeg(&msg->captureBuf, NULL, NULL); //TODO CJC: add thumbnail
+        // return the buffer to isp -> putSnapshot
+        msg->captureBuf.owner->returnBuffer(&msg->captureBuf);
+        LOG1("@%s: full jpeg done", __FUNCTION__);
+        break;
+
+    case JPEG_FRAME_TYPE_SPLITED:
+        LOG1("@%s: split jpeg", __FUNCTION__);
+        switch (jpeginfo[JPEG_COUNT_ADDR]) {
+        case 0x00:
+            LOG1("@%s: split jpeg first part", __FUNCTION__);
+            mFirstPartBuf = msg->captureBuf;
+            break;
+        case 0x01:
+            LOG1("@%s: split jpeg second part", __FUNCTION__);
+            assembleJpeg(&mFirstPartBuf, &msg->captureBuf, NULL); //TODO CJC: add thumbnail
+            // return the buffer to isp -> putSnapshot
+            mFirstPartBuf.owner->returnBuffer(&mFirstPartBuf);
+            mFirstPartBuf.owner = NULL;
+            msg->captureBuf.owner->returnBuffer(&msg->captureBuf);
+            break;
+         default:
+             LOGE("Unknown jpeg count!");
+             // return the buffer to isp -> putSnapshot
+             msg->captureBuf.owner->returnBuffer(&msg->captureBuf);
+             return UNKNOWN_ERROR;
+             break;
+        }
+        break;
+
+    default:
+        LOGE("Unknown jpeg mode!");
+        // return the buffer to isp -> putSnapshot
+        msg->captureBuf.owner->returnBuffer(&msg->captureBuf);
+        return UNKNOWN_ERROR;
+        break;
+    }
+
+    return OK;
+}
+
+/*
+ * Get jpeg data size from continuous jpeg capture frame
+ */
+uint32_t PictureThread::getJpegDataSize(const void* framePtr) const
+{
+    uint32_t result = *((uint32_t*)((uint8_t*)framePtr + JPEG_INFO_START + JPEG_SIZE_ADDR));
+
+    //conversion from big-endia
+    result = be32toh(result);
+
+    LOG2("@%s: frame jpeg data size = %d", __FUNCTION__, result);
+
+    return result;
+}
+
+status_t PictureThread::assembleJpeg(AtomBuffer *mainBuf, AtomBuffer *mainBuf2, AtomBuffer *thumbBuf)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status(NO_ERROR);
+    int finalSize(0);
+    int mainSize(0);
+    int mainSize1(0);
+    int mainSize2(0);
+    char *copyTo(0);
+
+    AtomBuffer destBuf = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT_JPEG);
+
+    if (mExifBuf.dataPtr == NULL) {
+        mCallbacks->allocateMemory(&mExifBuf, EXIF_SIZE_LIMITATION + sizeof(JPEG_MARKER_SOI));
+    }
+
+    // TODO CJC: Read exif info from META data
+
+    // Convert and encode the thumbnail, if present and EXIF maker is initialized
+    if (mExifMaker->isInitialized()) {
+        encodeExif(thumbBuf);
+    }
+
+    // skip SOI MARKER start of JPEG data because it is already in EXIF
+    mainSize1 = getJpegDataSize(mainBuf->dataPtr) - sizeof(JPEG_MARKER_SOI);
+    if (mainBuf2 == NULL) {
+        mainSize = mainSize1;
+    } else {
+        mainSize2 = getJpegDataSize(mainBuf2->dataPtr);
+        mainSize = mainSize1 + mainSize2;
+    }
+
+    finalSize = mExifBuf.size + mainSize;
+    //allocate JPEG buffer base on the actual coded JPEG size
+    mCallbacks->allocateMemory(&destBuf, finalSize);
+    if (destBuf.dataPtr == NULL) {
+        LOGE("No memory for final JPEG file!");
+        status = NO_MEMORY;
+        return status;
+    }
+
+    //Copy EXIF (it will also have the SOI marker)
+    memcpy(destBuf.dataPtr, mExifBuf.dataPtr, mExifBuf.size);
+
+    // Copy Jpeg data
+    if (mainBuf2 == NULL) {
+        copyTo = (char*)destBuf.dataPtr + mExifBuf.size;
+        memcpy(copyTo, (char*)mainBuf->dataPtr + JPEG_DATA_START + sizeof(JPEG_MARKER_SOI), mainSize1);
+    } else {
+        copyTo = (char*)destBuf.dataPtr + mExifBuf.size;
+        memcpy(copyTo, (char*)mainBuf->dataPtr + JPEG_DATA_START + sizeof(JPEG_MARKER_SOI), mainSize1);
+        copyTo = (char*)destBuf.dataPtr + mExifBuf.size + mainSize1;
+        memcpy(copyTo, (char*)mainBuf2->dataPtr + JPEG_DATA_START, mainSize2);
+    }
+
+    /* Update the fields in the AtomBuffer structure */
+    destBuf.width = mainBuf->width;
+    destBuf.height = mainBuf->height;
+    destBuf.fourcc = V4L2_PIX_FMT_JPEG;
+    destBuf.frameCounter = mainBuf->frameCounter;
+
+    mCallbacksThread->compressedFrameDone(&destBuf, NULL, NULL);
+
     return status;
 }
 
@@ -797,6 +986,10 @@ status_t PictureThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_FLUSH:
             status = handleMessageFlush();
+            break;
+
+        case MESSAGE_ID_CAPTURE:
+            status = handleMessageCapture(&msg.data.capture);
             break;
 
         case MESSAGE_ID_INITIALIZE:

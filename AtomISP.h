@@ -545,7 +545,6 @@ private:
 
     AtomBuffer *mMultiStreamsHALZSLCaptureBuffers;
     AtomBuffer *mMultiStreamsHALZSLPostviewBuffers;
-    Vector<AtomBuffer> mJpegCaptureBufferQueue;
     Vector<AtomBuffer> mMultiStreamsHALZSLCaptureBuffersQueue; // this queue is used to buffer the capture stream in hal
     Vector<AtomBuffer> mMultiStreamsHALZSLPostviewBuffersQueue; // this queue is used to buffer the postview stream in hal
 

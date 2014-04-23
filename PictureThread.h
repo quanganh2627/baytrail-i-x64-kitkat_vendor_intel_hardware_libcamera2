@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +26,7 @@
 #include "EXIFMaker.h"
 #include "JpegHwEncoder.h"
 #include "ScalerService.h"
+#include "IAtomIspObserver.h"
 
 namespace android {
 
@@ -32,7 +34,8 @@ class Callbacks;
 class CallbacksThread;
 class ICallbackPicture;
 
-class PictureThread : public Thread {
+class PictureThread : public Thread
+                     ,public IAtomIspObserver {
 
 // constructor destructor
 public:
@@ -64,6 +67,10 @@ public:
 
       void free(I3AControls* aaaControls);
     };
+
+// IAtomIspObserver overrides
+public:
+    virtual bool atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state);
 
 // public methods
 public:
@@ -104,6 +111,7 @@ private:
         MESSAGE_ID_WAIT,
         MESSAGE_ID_FLUSH,
         MESSAGE_ID_INITIALIZE,
+        MESSAGE_ID_CAPTURE,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -118,6 +126,10 @@ private:
         int numBufs;                /*!< amount of buffers to allocate */
         Vector<AtomBuffer> *bufs;   /*!< Vector where to store the return buffers */
         bool registerToScaler;      /*!< whether to register buffers to scaler */
+    };
+
+    struct MessageCapture {
+        AtomBuffer captureBuf; /*!< can be metadata or jpeg */
     };
 
     struct MessageEncode {
@@ -138,6 +150,7 @@ private:
         MessageEncode encode;
         MessageAllocBufs alloc;
         MessageParam param;
+        MessageCapture capture;
     };
 
     // message id and message data
@@ -157,6 +170,7 @@ private:
     status_t handleMessageWait();
     status_t handleMessageFlush();
     status_t handleMessageInitialize(MessageParam *msg);
+    status_t handleMessageCapture(MessageCapture *msg);
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -179,6 +193,9 @@ private:
     status_t doSwEncode(AtomBuffer *mainBuf, AtomBuffer* destBuf);
     status_t scaleMainPic(AtomBuffer *mainBuf);
 
+    uint32_t getJpegDataSize(const void* framePtr) const;
+    status_t assembleJpeg(AtomBuffer *mainBuf, AtomBuffer *mainBuf2, AtomBuffer *thumbBuf);
+
 // inherited from Thread
 private:
     virtual bool threadLoop();
@@ -198,6 +215,7 @@ private:
     AtomBuffer      mScaledPic; /*!< Temporary local buffer where we scale the main
                                      picture (snapshot) in case is of a different
                                      resolution than the image requested by the client */
+    AtomBuffer      mFirstPartBuf;
 
     /*
      * The resolution below is set up during initialize in case the receiving buffer

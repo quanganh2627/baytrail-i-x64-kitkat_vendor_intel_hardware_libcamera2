@@ -3951,8 +3951,6 @@ status_t AtomISP::getJpegCapturePreviewFrame(AtomBuffer *buff)
     mPreviewBuffers.editItemAt(previewIndex).status = (FrameBufferStatus)bufInfo.vbuffer.reserved;
     mPreviewBuffers.editItemAt(previewIndex).size = bufInfo.vbuffer.bytesused;
 
-    *buff = mPreviewBuffers[previewIndex];
-
     --mNumPreviewBuffersQueued;
     dumpPreviewFrame(previewIndex);
 
@@ -3972,7 +3970,11 @@ status_t AtomISP::getJpegCapturePreviewFrame(AtomBuffer *buff)
     mSnapshotBuffers[snapshotIndex].capture_timestamp = bufInfo.vbuffer.timestamp;
     mSnapshotBuffers[snapshotIndex].frameSequenceNbr = bufInfo.vbuffer.sequence;
     mSnapshotBuffers[snapshotIndex].status = (FrameBufferStatus)bufInfo.vbuffer.reserved;
-    mJpegCaptureBufferQueue.push_front(mSnapshotBuffers[snapshotIndex]);
+
+    mSnapshotBuffers[snapshotIndex].owner = this;
+    mPreviewBuffers.editItemAt(previewIndex).auxBuf = &mSnapshotBuffers[snapshotIndex];
+
+    *buff = mPreviewBuffers[previewIndex];
 
     return NO_ERROR;
 }
@@ -4102,20 +4104,6 @@ status_t AtomISP::putJpegCapturePreviewFrame(AtomBuffer *buff)
     ++mNumPreviewBuffersQueued;
     LOG2("@%s mNumPreviewBuffersQueued:%d", __FUNCTION__, mNumPreviewBuffersQueued);
 
-    // put snapshot
-    if (!mJpegCaptureBufferQueue.empty()) {
-        AtomBuffer buf = mJpegCaptureBufferQueue.top();
-        mJpegCaptureBufferQueue.pop();
-        LOG2("@%s: mMaindevice, putFrame:%d", __FUNCTION__, buf.id);
-        if (mMainDevice->putFrame(buf.id) < 0) {
-            LOGE("@%s, mMainDevice, putFrame fail, id:%d", __FUNCTION__, buf.id);
-            return UNKNOWN_ERROR;
-        }
-        ++mNumCapturegBuffersQueued;
-    } else {
-        LOGE("No capture frame in jpeg capture");
-    }
-
     return NO_ERROR;
 }
 
@@ -4161,32 +4149,39 @@ void AtomISP::returnBuffer(AtomBuffer* buff)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    switch (buff->type) {
+        case ATOM_BUFFER_PREVIEW_GFX:
+        case ATOM_BUFFER_PREVIEW:
+            buff->owner = 0;
+            status = putPreviewFrame(buff);
+            if (status != NO_ERROR) {
+                LOGE("Failed queueing preview frame!");
+            }
+            break;
 
-    if (buff == NULL) {
-        LOGW("Null buffer returned to ISP");
-        return;
-    }
+        case ATOM_BUFFER_VIDEO:
+            buff->owner = 0;
+            status = putRecordingFrame(buff);
 
-    if (buff->type == ATOM_BUFFER_VIDEO) {
-        buff->owner = 0;
-        status = putRecordingFrame(buff);
+            if (status == DEAD_OBJECT) {
+                LOGW("Stale recording buffer returned to ISP");
+            } else if (status != NO_ERROR) {
+                LOGE("Error putting recording frame to ISP");
+            }
+            break;
 
-        if (status == DEAD_OBJECT) {
-            LOGW("Stale recording buffer returned to ISP");
-        } else if (status != NO_ERROR) {
-            LOGE("Error putting recording frame to ISP");
-        }
+        case ATOM_BUFFER_SNAPSHOT:
+            buff->owner = 0;
+            if (mMainDevice->putFrame(buff->id) < 0) {
+                LOGE("@%s, mMainDevice, putFrame fail, id:%d", __FUNCTION__, buff->id);
+                break;
+            }
+            ++mNumCapturegBuffersQueued;
+            break;
 
-    } else if (buff->type == ATOM_BUFFER_PREVIEW_GFX ||
-               buff->type == ATOM_BUFFER_PREVIEW) {
-        buff->owner = 0;
-        status = putPreviewFrame(buff);
-    } else {
-        LOGE("Received unexpected buffer!");
-    }
-
-    if (status != NO_ERROR) {
-        LOGE("Failed queueing frame to ISP, type %d", buff->type);
+        default:
+            LOGE("Received unexpected buffer!");
+            break;
     }
 }
 

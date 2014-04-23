@@ -183,6 +183,7 @@ struct AtomBuffer {
     void *dataPtr;                      /*!< pointer to the actual data mapped from the buffer provider */
     GFXBufferInfo gfxInfo;              /*!< graphics buffer information */
     GFXBufferInfo gfxInfo_rec;          /*!< for video recording only, to store codec specific data for video encoding*/
+    AtomBuffer *auxBuf;                 /*!< auxiliary buffer (metadata/jepg), used in jpec capture mode */
 };
 
 struct AAAWindowInfo {

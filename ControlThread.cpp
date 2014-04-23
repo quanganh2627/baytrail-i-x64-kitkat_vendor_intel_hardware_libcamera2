@@ -2114,6 +2114,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (videoMode && !mHALVideoStabilization)
         mISP->attachObserver(mVideoThread.get(), OBSERVE_PREVIEW_STREAM);
     mISP->attachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
+    mISP->attachObserver(mPictureThread.get(), OBSERVE_PREVIEW_STREAM);
 
     if (!mIspExtensionsEnabled) {
 
@@ -2152,6 +2153,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOGE("Error starting ISP!");
         mPreviewThread->returnPreviewBuffers();
         mISP->detachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
+        mISP->detachObserver(mPictureThread.get(), OBSERVE_PREVIEW_STREAM);
         mISP->detachObserver(this, OBSERVE_PREVIEW_STREAM);
         if (videoMode)
             mISP->detachObserver(mVideoThread.get(), OBSERVE_PREVIEW_STREAM);
@@ -2220,6 +2222,7 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     }
 
     mISP->detachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
+    mISP->detachObserver(mPictureThread.get(), OBSERVE_PREVIEW_STREAM);
 
     // we only need to attach the 3AThread to preview stream for RAW type of cameras
     // when we use the 3A algorithm running on Atom
