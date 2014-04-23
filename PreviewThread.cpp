@@ -230,7 +230,7 @@ status_t PreviewThread::enableOverlay(bool set, int rotation)
     return status;
 }
 
-void PreviewThread::getDefaultParameters(CameraParameters *params)
+void PreviewThread::getDefaultParameters(CameraParameters *params, int cameraId)
 {
     LOG2("@%s", __FUNCTION__);
     if (!params) {
@@ -244,15 +244,22 @@ void PreviewThread::getDefaultParameters(CameraParameters *params)
     params->setPreviewFormat(cameraParametersFormat(mPreviewCbFormat));
 
     char previewFormats[100] = {0};
-    if (snprintf(previewFormats, sizeof(previewFormats), "%s,%s",
-                 CameraParameters::PIXEL_FORMAT_YUV420SP,
-                 CameraParameters::PIXEL_FORMAT_YUV420P) < 0) {
+    int ret = 0;
+    if (PlatformData::isExtendedCamera(cameraId))
+        ret = snprintf(previewFormats, sizeof(previewFormats), "%s,%s,%s",
+                 CameraParameters::PIXEL_FORMAT_YUV420SP, CameraParameters::PIXEL_FORMAT_YUV420P,
+                 CameraParameters::PIXEL_FORMAT_YUV422I);
+    else
+        ret = snprintf(previewFormats, sizeof(previewFormats), "%s,%s",
+                 CameraParameters::PIXEL_FORMAT_YUV420SP, CameraParameters::PIXEL_FORMAT_YUV420P);
+    if (ret < 0) {
         LOGE("Could not generate %s string: %s", CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, strerror(errno));
         return;
     }
     else {
         LOG1("supported preview cb formats %s\n", previewFormats);
     }
+
     params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, previewFormats);
 }
 
@@ -751,6 +758,7 @@ void PreviewThread::allocateLocalPreviewBuf(void)
         break;
 
     case V4L2_PIX_FMT_RGB565:
+    case V4L2_PIX_FMT_YUYV:
         bpl  = mPreviewBuf.width * 2;
         size = bpl * mPreviewBuf.height;
         break;
@@ -1132,6 +1140,11 @@ status_t PreviewThread::handlePreviewCallback(AtomBuffer &srcBuff)
                              mPreviewBuf.height, src_bpl,
                              mPreviewBuf.bpl, src, mPreviewBuf.dataPtr);
             break;
+
+        case V4L2_PIX_FMT_YUYV:
+            memcpy(mPreviewBuf.dataPtr, src, mPreviewBuf.height * src_bpl);
+            break;
+
         case V4L2_PIX_FMT_NV21: // you need to do this for the first time
             convertBuftoNV21(mPreviewFourcc, mPreviewBuf.width,
                              mPreviewBuf.height, src_bpl,

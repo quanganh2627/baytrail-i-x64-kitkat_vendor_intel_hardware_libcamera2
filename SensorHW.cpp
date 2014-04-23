@@ -194,7 +194,7 @@ status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
     }
 
     // Choose the camera sensor
-    LOG1("Selecting camera sensor: %s", mCameraInput.name);
+    LOG1("Selecting camera sensor: %s, index: %d", mCameraInput.name, mCameraInput.index);
     status = mDevice->setInput(mCameraInput.index);
     if (status != NO_ERROR) {
         status = UNKNOWN_ERROR;

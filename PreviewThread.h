@@ -142,7 +142,7 @@ public:
     status_t hidePreview(struct timeval &after_frame);
     status_t setCallback(ICallbackPreview *cb, ICallbackPreview::CallbackType t);
     status_t detachCallback(ICallbackPreview *cb, ICallbackPreview::CallbackType t);
-    void getDefaultParameters(CameraParameters *params);
+    void getDefaultParameters(CameraParameters *params, int cameraId);
     void setCallbackPreviewSize(int width, int height, int videoMode);
     bool isWindowConfigured();
     status_t preview(AtomBuffer *buff);

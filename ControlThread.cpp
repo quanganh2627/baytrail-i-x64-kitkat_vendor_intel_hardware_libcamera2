@@ -359,7 +359,7 @@ status_t ControlThread::init()
     mISP->getDefaultParameters(&mParameters, &mIntelParameters);
     m3AControls->getDefaultParams(&mParameters, &mIntelParameters);
     mPictureThread->getDefaultParameters(&mParameters);
-    mPreviewThread->getDefaultParameters(&mParameters);
+    mPreviewThread->getDefaultParameters(&mParameters, mCameraId);
     mPanoramaThread->getDefaultParameters(&mIntelParameters, mCameraId);
     mPostProcThread->getDefaultParameters(&mParameters, &mIntelParameters, mCameraId);
     mVideoThread->getDefaultParameters(&mIntelParameters, mCameraId);
@@ -2416,6 +2416,7 @@ status_t ControlThread::handleMessageStartPreview()
 
         if (mPreviewThread->isWindowConfigured() || mISP->isFileInjectionEnabled()
             || mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS) {
+            LOGI("Preview windowless mode");
             bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT);
             status = startPreviewCore(videoMode);
         } else {

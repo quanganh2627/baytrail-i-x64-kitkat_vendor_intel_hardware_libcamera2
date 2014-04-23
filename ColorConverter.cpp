@@ -637,6 +637,10 @@ int V4L2Format(const char *cameraParamsFormat)
     if (strncmp(cameraParamsFormat, CameraParameters::PIXEL_FORMAT_JPEG, len) == 0)
         return V4L2_PIX_FMT_JPEG;
 
+    len = strlen(CameraParameters::PIXEL_FORMAT_YUV422I);
+    if (strncmp(cameraParamsFormat, CameraParameters::PIXEL_FORMAT_YUV422I, len) == 0)
+        return V4L2_PIX_FMT_YUYV;
+
     LOGE("invalid format %s", cameraParamsFormat);
     return 0;
 }
