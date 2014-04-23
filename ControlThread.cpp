@@ -343,10 +343,12 @@ status_t ControlThread::init()
     }
 
     // DVS needs to be started after AIQ init.
-    status = mISP->initDVS();
-    if (status != NO_ERROR) {
-        LOGE("Error in initializing DVS");
-        goto bail;
+    if (!PlatformData::useHALVS(mCameraId)) {
+        status = mISP->initDVS();
+        if (status != NO_ERROR) {
+            LOGE("Error in initializing DVS");
+            goto bail;
+        }
     }
 
     // get default params from AtomISP and JPEG encoder
