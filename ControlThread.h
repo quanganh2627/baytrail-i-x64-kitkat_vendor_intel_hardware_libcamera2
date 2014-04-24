@@ -644,7 +644,6 @@ private:
     void     burstStateReset();
     void     requestTakePicture();
     bool     compressedFrameQueueFull();
-    status_t queueSnapshotBuffers();
     status_t burstCaptureSkipFrames();
 
     status_t captureStillPic();
@@ -746,8 +745,6 @@ private:
     int  mBurstCaptureDoneNum;  /*<! Number of the most recent burst
                                   capture that was completed. In range
                                   1...N, where N is mBurstLength. */
-    int  mBurstQbufs;           /*<! Number of buffers queued so far
-                                  to ISP, 1..N where N is mBurstLength */
     int  mBurstBufsToReturn; /*<! Number of buffers should be returned to ISP for reuse
                                 exp:mBurstLength is 9, mAllocatedSnapshotBuffers is 5,
                                 mBurstBufsToReturn should be 4*/

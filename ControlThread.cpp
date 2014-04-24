@@ -138,7 +138,6 @@ ControlThread::ControlThread(int cameraId) :
     ,mBurstStart(0)
     ,mBurstCaptureNum(-1)
     ,mBurstCaptureDoneNum(-1)
-    ,mBurstQbufs(0)
     ,mBurstBufsToReturn(0)
     ,mUllBurstLength(UltraLowLight::MAX_INPUT_BUFFERS)
     ,mAELockFlashStage(CAM_FLASH_STAGE_NONE)
@@ -2878,7 +2877,6 @@ void ControlThread::burstStateReset()
 {
     mBurstCaptureNum = -1;
     mBurstCaptureDoneNum = -1;
-    mBurstQbufs = 0;
     mBurstBufsToReturn = 0;
 }
 
@@ -3540,7 +3538,6 @@ status_t ControlThread::captureStillPic()
 
     mBurstCaptureNum = 0;
     mBurstCaptureDoneNum = 0;
-    mBurstQbufs = 0;
     // Get the current params
     mParameters.getPictureSize(&width, &height);
     fourcc = mISP->getSnapshotPixelFormat();
@@ -3645,10 +3642,6 @@ status_t ControlThread::captureStillPic()
     }
 
     if (mState == STATE_CONTINUOUS_CAPTURE) {
-        // TODO: to be removed once preview data flow is moved fully to
-        //       a separate thread
-        if (mBurstLength > 1)
-            mBurstQbufs = mISP->getNumSnapshotBuffers();
         status = waitForCaptureStart();
         if (status != NO_ERROR) {
             LOGE("Error while waiting for capture to start");
@@ -3874,39 +3867,6 @@ bool ControlThread::compressedFrameQueueFull()
 }
 
 /**
- * TEMPORARILY DISABLED
- * Queues unused snapshot buffers to ISP.
- *
- * Note: in certain use-cases like single captures,
- * this step can be omitted to save in capture time.
- *
- * TODO: Once postview buffers are allocated same as snapshots then we
- * can allocage less buffers than the burst length required. In this
- * case we can re-sue this method
- */
-status_t ControlThread::queueSnapshotBuffers()
-{
-    LOG1("@%s:", __FUNCTION__);
-    status_t status = NO_ERROR;
-    /*for (size_t i = 0; i < mAvailableSnapshotBuffers.size(); i++) {
-        AtomBuffer snapshotBuf = mAvailableSnapshotBuffers[i].snapshotBuf;
-
-        LOG2("return snapshot buffer %u to ISP", i);
-        status = mISP->putSnapshot(&snapshotBuf, &postviewBuf);
-        if (status == NO_ERROR) {
-            ++mBurstQbufs;
-        }
-        else if (status == DEAD_OBJECT) {
-            LOG1("Stale snapshot buffer returned to ISP");
-        } else if (status != NO_ERROR) {
-            LOGE("Error in putting snapshot!");
-        }
-    }
-    mAvailableSnapshotBuffers.clear();*/
-    return status;
-}
-
-/**
  * Starts capture of the next picture of the ongoing fixed-size burst.
  */
 status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
@@ -3975,15 +3935,6 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
     // can be stopped. Otherwise requeue buffers back to ISP.
     if (mBurstCaptureNum == mBurstLength) {
         stopOfflineCapture();
-    }
-    else if (mBurstLength > mISP->getNumSnapshotBuffers() &&
-             mBurstQbufs < mBurstLength) {
-        // To save capture time, only requeue buffers if total
-        // burst length exceeds the ISP buffer queue size, and
-        // more buffers are needed.
-        //queueSnapshotBuffers();
-        // This i sno longer possible: TODO: allow less buffers than the
-        // burst length to be allocated.
     }
 
     return status;
