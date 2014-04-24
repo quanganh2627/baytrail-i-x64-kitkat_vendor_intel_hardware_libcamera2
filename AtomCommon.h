@@ -45,6 +45,9 @@
 #define BURST_SPEED_MEDIUM_SKIP_NUM 1  // 1/2 full speed
 #define BURST_SPEED_LOW_SKIP_NUM 3  // 1/4 full speed
 #define DEFAULT_RECORDING_FPS 30
+#define EXP_ID_INVALID 0
+#define EXP_ID_MIN 1
+#define EXP_ID_MAX 250
 
 #define INTEL_FILE_INJECT_CAMERA_ID 2
 
@@ -165,6 +168,7 @@ struct AtomBuffer {
     camera_memory_t *buff;  /*!< Pointer to the memory allocated via the client provided callback */
     camera_memory_t *metadata_buff; /*!< Pointer to the memory allocated by callback, used to store metadata info for recording */
     int id;                 /*!< id for debugging data flow path */
+    unsigned int expId;     /*!< id for tracking exposure id of the frame, from v4l2 buffer high 16bit of reserved*/
     int frameCounter;       /*!< Monotonic frame counter set by AtomISP class. Used in performance traces. */
     int frameSequenceNbr;   /*!< V4L2 Frame sequence number set by kernel. Used in bracketing to detect frame drops in the driver.  */
     int ispPrivate;         /*!< Private to the AtomISP class.

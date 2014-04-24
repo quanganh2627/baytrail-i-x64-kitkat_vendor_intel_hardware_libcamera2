@@ -172,6 +172,7 @@ private:
     bool mDirectExposureIo;     /* set exposure directly in setExposure() caller context*/
     bool mPostponePrequeued;    /* do not discard if more than one exposure settings applied per frame */
     unsigned int mExposureLag;  /* delay of exposure applying based on configuration */
+    unsigned int mLatestExpId;  /* the latest exposure id from SOF or EOF event */
     AtomDelayFilter <unsigned int>   *mGainDelayFilter;
     AtomFifo <struct exposure_history_item> *mExposureHistory;
     struct atomisp_exposure          mCurrentExposure;

@@ -4006,6 +4006,7 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
 
     LOG2("Device: %d. Grabbed frame of size: %d", mPreviewDevice->mId, bufInfo.vbuffer.bytesused);
     mPreviewBuffers.editItemAt(index).id = index;
+    mPreviewBuffers.editItemAt(index).expId = (bufInfo.vbuffer.reserved >> 16) & 0xFFFF;
     mPreviewBuffers.editItemAt(index).frameCounter = mPreviewDevice->getFrameCount();
     mPreviewBuffers.editItemAt(index).ispPrivate = mSessionId;
     mPreviewBuffers.editItemAt(index).capture_timestamp = bufInfo.vbuffer.timestamp;
@@ -4237,6 +4238,7 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff)
     }
     LOG2("Device: %d. Grabbed frame of size: %d", mRecordingDevice->mId, buf.vbuffer.bytesused);
     mRecordingBuffers[index].id = index;
+    mRecordingBuffers[index].expId = (buf.vbuffer.reserved >> 16) & 0xFFFF;
     mRecordingBuffers[index].frameCounter = mRecordingDevice->getFrameCount();
     mRecordingBuffers[index].ispPrivate = mSessionId;
     mRecordingBuffers[index].capture_timestamp = buf.vbuffer.timestamp;
@@ -4447,6 +4449,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
     mSnapshotBuffers[snapshotIndex].capture_timestamp = vinfo.vbuffer.timestamp;
     mSnapshotBuffers[snapshotIndex].frameSequenceNbr = vinfo.vbuffer.sequence;
     mSnapshotBuffers[snapshotIndex].status = (FrameBufferStatus)(vinfo.vbuffer.reserved & FRAME_STATUS_MASK);
+    mSnapshotBuffers[snapshotIndex].expId = (vinfo.vbuffer.reserved >> 16) & 0xFFFF;
 
     if (isDumpRawImageReady()) {
         postviewIndex = snapshotIndex;

@@ -221,6 +221,7 @@ AtomBuffer AtomBufferFactory::createAtomBuffer(AtomBufferType type,
     buf.buff = buff;
     buf.metadata_buff = metadata_buff;
     buf.id = id;
+    buf.expId = EXP_ID_INVALID;
     buf.frameCounter = frameCounter;
     buf.ispPrivate = ispPrivate;
     buf.status = FRAME_STATUS_NA;

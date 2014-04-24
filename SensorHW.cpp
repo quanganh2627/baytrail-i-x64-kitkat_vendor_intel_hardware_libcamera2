@@ -42,6 +42,7 @@ SensorHW::SensorHW(int cameraId):
     mDirectExposureIo(true),
     mPostponePrequeued(false),
     mExposureLag(0),
+    mLatestExpId(EXP_ID_INVALID),
     mGainDelayFilter(NULL),
     mExposureHistory(NULL)
 {
@@ -1082,6 +1083,7 @@ status_t SensorHW::observe(IAtomIspObserver::Message *msg)
     msg->data.event.timestamp.tv_sec  = event.timestamp.tv_sec;
     msg->data.event.timestamp.tv_usec = event.timestamp.tv_nsec / 1000;
     msg->data.event.sequence = event.sequence;
+    mLatestExpId = event.u.frame_sync.frame_sequence;
 
     // Process exposure synchronization
     ts = TIMEVAL2USECS(&msg->data.event.timestamp);
