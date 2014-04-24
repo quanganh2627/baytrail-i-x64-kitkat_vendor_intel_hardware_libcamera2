@@ -120,13 +120,6 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
         PlatformBase::mMaxContinuousRawRingBuffer = atoi(atts[1]);
     } else if (strcmp(name, "boardName") == 0) {
         PlatformBase::mBoardName = atts[1];
-    } else if (strcmp(name, "previewFormat") == 0) {
-        if (strcmp(atts[1], "V4L2_PIX_FMT_YVU420") == 0)
-            PlatformBase::mPreviewFourcc = V4L2_PIX_FMT_YVU420;
-        else if (strcmp(atts[1], "V4L2_PIX_FMT_YUYV") == 0) //Also known as YUY2
-            PlatformBase::mPreviewFourcc = V4L2_PIX_FMT_YUYV;
-        else
-            PlatformBase::mPreviewFourcc = V4L2_PIX_FMT_NV12;
     } else if (strcmp(name, "shutterLagCompensationMs") == 0) {
         PlatformBase::mShutterLagCompensationMs = atoi(atts[1]);
     } else if (strcmp(name, "mPanoramaMaxSnapshotCount") == 0) {
@@ -317,6 +310,15 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->verticalFOV = atts[1];
     } else if (strcmp(name, "horizontalFOV") == 0) {
         pCurrentCam->horizontalFOV = atts[1];
+    } else if (strcmp(name, "previewFormat") == 0) {
+        if (strcmp(atts[1], "V4L2_PIX_FMT_YVU420") == 0)
+            pCurrentCam->mPreviewFourcc = V4L2_PIX_FMT_YVU420;
+        else if (strcmp(atts[1], "V4L2_PIX_FMT_YUYV") == 0) //Also known as YUY2
+            pCurrentCam->mPreviewFourcc = V4L2_PIX_FMT_YUYV;
+        else if (strcmp(atts[1], "V4L2_PIX_FMT_UYVY") == 0)
+            pCurrentCam->mPreviewFourcc = V4L2_PIX_FMT_UYVY;
+        else
+            pCurrentCam->mPreviewFourcc = V4L2_PIX_FMT_NV12;
     } else if (strcmp(name, "supportedDvsSizes") == 0) {
         pCurrentCam->supportedDvsSizes = atts[1];
     }

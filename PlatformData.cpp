@@ -1153,7 +1153,7 @@ bool PlatformData::supportPreviewLimitation(void)
 
 int PlatformData::getPreviewPixelFormat(void)
 {
-    return getInstance()->mPreviewFourcc;
+    return getInstance()->mCameras[mActiveCameraId].mPreviewFourcc;
 }
 
 const char* PlatformData::getBoardName(void)

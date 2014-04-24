@@ -1062,7 +1062,6 @@ public:
         mShutterLagCompensationMs = 40;
         mSupportDualVideo = false;
         mSupportPreviewLimitation = true;
-        mPreviewFourcc = V4L2_PIX_FMT_NV12;
         mSensorGainLag = 2;
         mSensorExposureLag = 2;
         mUseIntelULL = false;
@@ -1221,7 +1220,8 @@ protected:
             horizontalFOV = "";
             // DVS
             supportedDvsSizes = "640x480,720x480,720x576,1280x720,1920x1080";
-        };
+            mPreviewFourcc = V4L2_PIX_FMT_NV12;
+        }
 
         SensorType sensorType;
         int facing;
@@ -1353,6 +1353,7 @@ protected:
         String8 horizontalFOV;
         //DVS
         String8 supportedDvsSizes;
+        int mPreviewFourcc;
     };
 
     // note: Android NDK does not yet support C++11 and
@@ -1394,8 +1395,6 @@ protected:
 
     /* For Preview Size Limitation*/
     bool mSupportPreviewLimitation;
-
-    int mPreviewFourcc;
 
     /* blackbay, or merr_vv, or redhookbay, or victoriabay... */
     String8 mBoardName;
