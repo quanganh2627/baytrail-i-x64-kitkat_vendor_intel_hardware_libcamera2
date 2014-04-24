@@ -1101,7 +1101,6 @@ public:
         ,mNumPreviewBuffers(6)
         ,mSupportDualVideo(false)
         ,mSupportPreviewLimitation(true)
-        ,mPreviewFourcc(V4L2_PIX_FMT_NV12)
         ,mSensorGainLag(2)
         ,mSensorExposureLag(2)
         ,mUseIntelULL(false)
@@ -1268,6 +1267,7 @@ protected:
             disable3A = false;
 
             useMultiStreamsForSoC = false;
+            mPreviewFourcc = V4L2_PIX_FMT_NV12;
         }
 
         SensorType sensorType;
@@ -1420,6 +1420,9 @@ protected:
          * for example, the FW could provide all four streams for SDV case
          */
         bool useMultiStreamsForSoC;
+
+        // the preview format setting for seperate sensors
+        int mPreviewFourcc;
     };
 
     // note: Android NDK does not yet support C++11 and
@@ -1462,8 +1465,6 @@ protected:
 
     /* For Preview Size Limitation*/
     bool mSupportPreviewLimitation;
-
-    int mPreviewFourcc;
 
     /* blackbay, or merr_vv, or redhookbay, or victoriabay... */
     String8 mBoardName;
