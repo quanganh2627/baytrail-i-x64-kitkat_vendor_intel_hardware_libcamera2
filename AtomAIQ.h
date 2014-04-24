@@ -371,6 +371,7 @@ public:
     status_t setManualFocus(int focus, bool applyNow);
     status_t setManualFocusIncrement(int step);
     status_t applyEv(float bias);
+    int      applyEvGroup(float biases[], int depth, SensorAeConfig aeResults[]);
     status_t setEv(float bias);
     status_t getEv(float *ret);
 
@@ -388,6 +389,7 @@ public:
     //Bracketing
     status_t initAfBracketing(int stop, AFBracketingMode mode);
     virtual status_t initAeBracketing();
+    virtual status_t deinitAeBracketing();
 
     // Flash control
     virtual status_t setFlash(int numFrames);

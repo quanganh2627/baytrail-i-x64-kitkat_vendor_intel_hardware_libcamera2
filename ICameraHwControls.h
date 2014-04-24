@@ -190,6 +190,7 @@ public:
     virtual unsigned int getExposureDelay() = 0;
 
     virtual int setExposure(struct atomisp_exposure *) = 0;
+    virtual int setExposureGroup(struct atomisp_exposure exposures[], int depth) = 0;
     virtual void getSensorData(sensorPrivateData *sensor_data) = 0;
     virtual int  getModeInfo(struct atomisp_sensor_mode_data *mode_data) = 0;
     virtual int  getExposureTime(int *exposure_time) = 0;

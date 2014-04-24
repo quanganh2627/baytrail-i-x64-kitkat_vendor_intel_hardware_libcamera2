@@ -80,6 +80,7 @@ public:
 
     virtual unsigned int getExposureDelay();
     virtual int setExposure(struct atomisp_exposure *exposure);
+    virtual int setExposureGroup(struct atomisp_exposure exposures[], int depth);
 
     virtual float getFramerate() const;
     virtual status_t setFramerate(int fps);

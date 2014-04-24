@@ -1057,6 +1057,76 @@ status_t AtomAIQ::initAeBracketing()
     return NO_ERROR;
 }
 
+status_t AtomAIQ::deinitAeBracketing()
+{
+    LOG1("@%s", __FUNCTION__);
+    mBracketingRunning = false;
+    return NO_ERROR;
+}
+
+/**
+ * Apply a group of EV value for offline exposure bracketing
+ *
+ * return the expected applied exposure id. -1 in error
+ */
+int AtomAIQ::applyEvGroup(float biases[], int depth, SensorAeConfig aeResults[])
+{
+    struct atomisp_exposure exposures[depth];
+    if (biases == NULL || aeResults == NULL || depth <= 1) {
+        LOGE("Invalid ev group setting");
+        return -1;
+    }
+
+    if (!m3aState.ia_aiq_handle) {
+        LOGE("Invalid aiq handle to apply ae group");
+        return -1;
+    }
+
+    if (!mBracketingRunning) {
+        LOGE("not allowed to apply group of Ev in normal mode");
+        return -1;
+    } else {
+        mAeBracketingInputParameters = mAeInputParameters;
+        mAeBracketingInputParameters.frame_use =  m3aState.frame_use;
+        mAeBracketingInputParameters.flash_mode = ia_aiq_flash_mode_off;
+    }
+
+    for (int i = 0 ; i < depth ; i++) {
+        mAeBracketingInputParameters.ev_shift = biases[i];
+        ia_aiq_ae_run(m3aState.ia_aiq_handle, &mAeBracketingInputParameters, &mAEBracketingResult);
+
+        if (mAEBracketingResult != NULL) {
+            exposures[i].integration_time[0] = mAEBracketingResult->exposures[0].sensor_exposure->coarse_integration_time;
+            exposures[i].integration_time[1] = mAEBracketingResult->exposures[0].sensor_exposure->fine_integration_time;
+            exposures[i].gain[0] = mAEBracketingResult->exposures[0].sensor_exposure->analog_gain_code_global;
+            exposures[i].gain[1] = mAEBracketingResult->exposures[0].sensor_exposure->digital_gain_global;
+            exposures[i].aperture = 100;
+
+            LOGD("@%s I%d itime0:%d itime1:%d gain0:%d gain1:%d",__FUNCTION__, i,
+                    exposures[i].integration_time[0], exposures[i].integration_time[1],
+                    exposures[i].gain[0], exposures[i].gain[1]);
+            aeResults[i].expTime = 0;
+            aeResults[i].evBias = biases[i];
+            aeResults[i].aperture_num = 0;
+            aeResults[i].aperture_denum = 1;
+            aeResults[i].aecApexTv = -1.0 * (log10((double)(mAEBracketingResult->exposures[0].exposure)->exposure_time_us/1000000) / log10(2.0)) * 65536;
+            aeResults[i].aecApexSv = log10(pow(2.0, -7.0/4.0) * (mAEBracketingResult->exposures[0].exposure)->iso) / log10(2.0) * 65536;
+            aeResults[i].aecApexAv = log10(pow((mAEBracketingResult->exposures[0].exposure)->aperture_fn, 2))/log10(2.0) * 65536;
+            aeResults[i].digitalGain = (mAEBracketingResult->exposures[0].exposure)->digital_gain;
+            if (aeResults[i].digitalGain > float(0))
+                aeResults[i].totalGain = (mAEBracketingResult->exposures[0].exposure)->analog_gain * aeResults[i].digitalGain;
+            else
+                aeResults[i].totalGain = (mAEBracketingResult->exposures[0].exposure)->digital_gain;
+        } else {
+            LOGE("Invalid AE bracketing result");
+            return -1;
+        }
+    }
+
+    /* Apply ae group settings */
+    return mSensorCI->setExposureGroup(exposures, depth);
+}
+
 // Exposure operations
 // For exposure bracketing
 status_t AtomAIQ::applyEv(float bias)
@@ -2181,7 +2251,11 @@ status_t AtomAIQ::run3aMain()
     LOG2("@%s", __FUNCTION__);
     status_t ret = NO_ERROR;
 
-    mBracketingRunning = false;
+    if (mBracketingRunning) {
+        LOG1("@%s bracketing now, skip 3a running", __FUNCTION__);
+        return ret;
+    }
+
     if(!mFileInjection)
         ret |= runAfMain();
 

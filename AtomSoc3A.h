@@ -109,6 +109,8 @@ public:
     virtual status_t setManualFocusIncrement(int step) { return INVALID_OPERATION; }
     virtual status_t initAfBracketing(int stops,  AFBracketingMode mode) { return INVALID_OPERATION; }
     virtual status_t initAeBracketing() { return INVALID_OPERATION; }
+    virtual status_t deinitAeBracketing() { return INVALID_OPERATION; }
+    virtual int      applyEvGroup(float biases[], int depth, SensorAeConfig aeConfig[]) { return -1; }
     virtual status_t getExposureInfo(SensorAeConfig& sensorAeConfig) { return INVALID_OPERATION; }
     virtual status_t getGridWindow(AAAWindowInfo& window);
     virtual bool getAfNeedAssistLight() { return false; }

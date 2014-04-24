@@ -1083,7 +1083,6 @@ status_t SensorHW::observe(IAtomIspObserver::Message *msg)
     msg->data.event.timestamp.tv_sec  = event.timestamp.tv_sec;
     msg->data.event.timestamp.tv_usec = event.timestamp.tv_nsec / 1000;
     msg->data.event.sequence = event.sequence;
-    mLatestExpId = event.u.frame_sync.frame_sequence;
 
     // Process exposure synchronization
     ts = TIMEVAL2USECS(&msg->data.event.timestamp);
@@ -1111,6 +1110,8 @@ status_t SensorHW::observe(IAtomIspObserver::Message *msg)
         mFrameSyncMutex.lock();
     }
     processExposureHistory(ts);
+    // update mLatestExpId within lock
+    mLatestExpId = event.u.frame_sync.frame_sequence;
     mFrameSyncMutex.unlock();
     mFrameSyncCondition.signal();
 
@@ -1173,6 +1174,54 @@ status_t SensorHW::initializeExposureFilter()
 inline void SensorHW::processGainDelay(struct atomisp_exposure *exposure)
 {
     exposure->gain[0] = mGainDelayFilter->enqueue(exposure->gain[0]);
+}
+
+/**
+ * Implements IHWSensorControl::setExposureGroup()
+ */
+int SensorHW::setExposureGroup(struct atomisp_exposure exposures[], int depth)
+{
+    int i, numItemNotApplied = 0;
+    struct exposure_history_item *item = NULL;
+
+    LOG2("@%s", __FUNCTION__);
+    if (!exposures)
+        return -1;
+
+    Mutex::Autolock lock(mFrameSyncMutex);
+    // cover the items which have not been applied
+    for (i = 0; i < (int)mExposureHistory->getDepth(); i++) {
+        item = mExposureHistory->peek(i);
+        if (!item || item->applied)
+            break;
+        numItemNotApplied++;
+    }
+
+    LOG2("@%s numItemNotApplied:%d", __FUNCTION__, numItemNotApplied);
+    // insert group
+    for (i = 0 ; i < depth ; i++) {
+        if (numItemNotApplied) {
+            item = mExposureHistory->peek(numItemNotApplied - 1);
+            if (item == NULL) {
+                LOGE("Has item that has not been applied but peek NULL");
+                continue;
+            }
+            item->exposure = exposures[i];
+            numItemNotApplied--;
+        } else {
+            processGainDelay(&exposures[i]);
+            item = produceExposureHistory(&exposures[i], 0);
+            mActiveItemIndex++;
+        }
+    }
+
+    LOG1("@%s depth:%d mActiveItemIndex:%d, current exp id:%d",
+            __FUNCTION__, depth, mActiveItemIndex, mLatestExpId);
+
+    // For EOF event, current exposure id is N, It's the SOF of N+1.
+    // Next exposure will be set from N+2, so setupLag is 2
+    int setupLag = (mFrameSyncSource == FRAME_SYNC_EOF) ? 2 : 1;
+    return (mLatestExpId + mExposureLag + setupLag) % EXP_ID_MAX;
 }
 
 /**
