@@ -103,7 +103,7 @@ public:
     virtual status_t getAiqConfig(ia_binary_data *cpfData) { return INVALID_OPERATION; }
     virtual status_t getAeManualBrightness(float *ret) { return INVALID_OPERATION; }
     virtual size_t   getAeMaxNumWindows() { return 0; }
-    virtual size_t   getAfMaxNumWindows() { return 0; }
+    virtual size_t   getAfMaxNumWindows() { return mMaxNumAfAreas; }
     virtual status_t setAeWindow(const CameraWindow *window) { return INVALID_OPERATION; }
     virtual status_t setAfWindows(const CameraWindow *windows, size_t numWindows) { return INVALID_OPERATION; }
     virtual status_t setManualFocusIncrement(int step) { return INVALID_OPERATION; }
@@ -154,6 +154,7 @@ private:
     IHWFlashControl * mFlashCI;
     IHWLensControl * mLensCI;
     AeMode mPublicAeMode;
+    size_t mMaxNumAfAreas;
 }; // class AtomSoc3A
 
 }; // namespace android

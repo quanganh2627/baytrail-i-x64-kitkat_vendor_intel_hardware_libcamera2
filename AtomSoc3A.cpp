@@ -45,8 +45,10 @@ AtomSoc3A::AtomSoc3A(int cameraId, HWControlGroup &hwcg) :
     ,mFlashCI(hwcg.mFlashCI)
     ,mLensCI(hwcg.mLensCI)
     ,mPublicAeMode(CAM_AE_MODE_AUTO)
+    ,mMaxNumAfAreas(0)
 {
     LOG2("@%s", __FUNCTION__);
+    mMaxNumAfAreas = PlatformData::getMaxNumFocusAreas(mCameraId);
 }
 
 AtomSoc3A::~AtomSoc3A()
@@ -650,7 +652,7 @@ void AtomSoc3A::getDefaultParams(CameraParameters *params, CameraParameters *int
     }
 
     // multipoint focus
-    params->set(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS, 0);
+    params->set(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS, getAfMaxNumWindows());
     // set empty area
     params->set(CameraParameters::KEY_FOCUS_AREAS, "(0,0,0,0,0)");
 
