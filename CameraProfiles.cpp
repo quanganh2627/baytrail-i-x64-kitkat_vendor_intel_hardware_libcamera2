@@ -245,6 +245,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->defaultFocusMode = atts[1];
     } else if (strcmp(name, "supportedFocusModes") == 0) {
         pCurrentCam->supportedFocusModes = atts[1];
+    } else if (strcmp(name, "maxNumFocusAreas") == 0) {
+        pCurrentCam->maxNumFocusAreas = static_cast<size_t>(atoi(atts[1]));
     } else if (strcmp(name, "supportedBurstFPS") == 0) {
         pCurrentCam->supportedBurstFPS = atts[1];
     } else if (strcmp(name, "previewViaOverlay") == 0) {

@@ -1048,6 +1048,16 @@ const char* PlatformData::defaultFocusMode(int cameraId)
     return getInstance()->mCameras[getActiveCamIdx(cameraId)].defaultFocusMode;
 }
 
+size_t PlatformData::getMaxNumFocusAreas(int cameraId)
+{
+
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return 0;
+    }
+    return getInstance()->mCameras[cameraId].maxNumFocusAreas;
+}
+
+
 bool PlatformData::isFixedFocusCamera(int cameraId)
 {
     if (strcmp(PlatformData::defaultFocusMode(cameraId), "fixed") == 0) {

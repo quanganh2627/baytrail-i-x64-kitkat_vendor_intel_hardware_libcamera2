@@ -758,6 +758,14 @@ class PlatformData {
     static const char* defaultFocusMode(int cameraId);
 
     /**
+     * \brief Number of supported focus areas
+     *
+     * this is the maximum amount of AF areas the camera supports for a given sensor/3A
+     * configuration
+     */
+    static size_t getMaxNumFocusAreas(int cameraId);
+
+    /**
      * Whether the raw camera's default focus mode is "fixed".
      * \return true if its default focus mode is "fixed".
      */
@@ -1307,6 +1315,7 @@ protected:
                 ,CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO
                 ,CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
             defaultFocusMode.appendFormat("%s", CameraParameters::FOCUS_MODE_AUTO);
+            maxNumFocusAreas = 0;
             defaultHdr = "off";
             supportedHdr = "on,off";
             defaultUltraLowLight = "off";
@@ -1433,6 +1442,7 @@ protected:
         // focus modes
         String8 supportedFocusModes;
         String8 defaultFocusMode;
+        size_t maxNumFocusAreas;
         // INTEL Extras
         String8 defaultHdr;
         String8 supportedHdr;
