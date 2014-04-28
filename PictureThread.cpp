@@ -320,6 +320,18 @@ status_t PictureThread::flushBuffers()
         mPictureDoneCallback->pictureDone(&it->data.encode.snapshotBuf, &it->data.encode.postviewBuf);
     }
 
+    Vector<Message> pendingCapture;
+    mMessageQueue.remove(MESSAGE_ID_CAPTURE, &pendingCapture);
+    for(it = pendingCapture.begin(); it != pendingCapture.end(); ++it) {
+        LOG1("@%s returning capture buffers back to owner", __FUNCTION__);
+        it->data.capture.captureBuf.owner->returnBuffer(&it->data.capture.captureBuf);
+    }
+
+    if (mFirstPartBuf.owner) {
+        LOG1("@%s returning stored capture buffers back to owner", __FUNCTION__);
+        mFirstPartBuf.owner->returnBuffer(&mFirstPartBuf);
+    }
+
     return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
 }
 
