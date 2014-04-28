@@ -1095,6 +1095,7 @@ status_t ControlThread::handleMessageExit(MessageExit *msg)
     case STATE_PREVIEW_STILL:
     case STATE_PREVIEW_VIDEO:
     case STATE_CONTINUOUS_CAPTURE:
+    case STATE_JPEG_CAPTURE:
         handleMessageStopPreview();
         break;
     case STATE_RECORDING:
@@ -1757,15 +1758,14 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
                 ret = SHOOTING_MODE_BURST;
             break;
 
+        case STATE_JPEG_CAPTURE:
+           ret = SHOOTING_MODE_JPEG;
+           break;
+
         case STATE_STOPPED:
         default:
             LOGW("Unexpected state (%d) to select the shooting mode",mState);
             break;
-    }
-
-    //TODO CJC
-    if (mState == STATE_PREVIEW_STILL && PlatformData::supportsContinuousJpegCapture(mCameraId)) {
-        ret = SHOOTING_MODE_JPEG;
     }
 
     LOG1("Shooting Mode selected: %d", ret);
@@ -1779,6 +1779,12 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
  */
 ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &params)
 {
+    // If continuous JPEG capture is supported select
+    if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+        LOG1("@%s: Selecting jpeg mode, supported by platform", __FUNCTION__);
+        return STATE_JPEG_CAPTURE;
+    }
+
     // Whether hardware (SoC, memories) supports continuous mode?
     if (PlatformData::supportsContinuousCapture(mCameraId) == false) {
         LOG1("@%s: Disabling continuous mode, not supported by platform", __FUNCTION__);
@@ -1963,21 +1969,32 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     } else {
         LOG1("Starting preview in still mode");
         state = selectPreviewMode(mParameters);
-        if (state == STATE_PREVIEW_STILL)
-            mode = MODE_PREVIEW;
-        else
-            mode = MODE_CONTINUOUS_CAPTURE;
-    }
 
-    if (!videoMode && PlatformData::supportsContinuousJpegCapture(mCameraId)) {
-        mode = MODE_CONTINUOUS_JPEG;
-        if (initContinuousJpegCapture() != NO_ERROR) {
-            return BAD_VALUE;
+        switch (state) {
+        case STATE_PREVIEW_STILL:
+            mode = MODE_PREVIEW;
+            break;
+
+        case STATE_JPEG_CAPTURE:
+            mode = MODE_CONTINUOUS_JPEG;
+            break;
+
+        default:
+            mode = MODE_CONTINUOUS_CAPTURE;
+            break;
         }
     }
 
     if (state == STATE_CONTINUOUS_CAPTURE) {
         if (initContinuousCapture() != NO_ERROR) {
+            LOGE("failed to init continuous capture");
+            return BAD_VALUE;
+        }
+    }
+
+    if (state == STATE_JPEG_CAPTURE) {
+        if (initContinuousJpegCapture() != NO_ERROR) {
+            LOGE("failed to init continuous jpeg capture");
             return BAD_VALUE;
         }
     }
@@ -2128,7 +2145,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (videoMode && !mHALVideoStabilization)
         mISP->attachObserver(mVideoThread.get(), OBSERVE_PREVIEW_STREAM);
     mISP->attachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
-    mISP->attachObserver(mPictureThread.get(), OBSERVE_PREVIEW_STREAM);
+    if (state == STATE_JPEG_CAPTURE)
+        mISP->attachObserver(mPictureThread.get(), OBSERVE_PREVIEW_STREAM);
 
     if (!mIspExtensionsEnabled) {
 
@@ -2167,7 +2185,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOGE("Error starting ISP!");
         mPreviewThread->returnPreviewBuffers();
         mISP->detachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
-        mISP->detachObserver(mPictureThread.get(), OBSERVE_PREVIEW_STREAM);
+        if (state == STATE_JPEG_CAPTURE)
+            mISP->detachObserver(mPictureThread.get(), OBSERVE_PREVIEW_STREAM);
         mISP->detachObserver(this, OBSERVE_PREVIEW_STREAM);
         if (videoMode)
             mISP->detachObserver(mVideoThread.get(), OBSERVE_PREVIEW_STREAM);
@@ -2221,6 +2240,13 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
 
     mPostProcThread->flushFrames();
 
+    if (mState == STATE_JPEG_CAPTURE) {
+        status = cancelPictureThread();
+        if (status != NO_ERROR) {
+            LOGE("Error canceling PictureThread!");
+        }
+    }
+
     State oldState = mState;
     status = mISP->stop();
     if (status == NO_ERROR) {
@@ -2236,7 +2262,10 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     }
 
     mISP->detachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
-    mISP->detachObserver(mPictureThread.get(), OBSERVE_PREVIEW_STREAM);
+
+    if (oldState == STATE_JPEG_CAPTURE) {
+        mISP->detachObserver(mPictureThread.get(), OBSERVE_PREVIEW_STREAM);
+    }
 
     // we only need to attach the 3AThread to preview stream for RAW type of cameras
     // when we use the 3A algorithm running on Atom
@@ -2332,7 +2361,7 @@ status_t ControlThread::restartPreview(bool videoMode)
      */
     cancelPostCaptureThread();
     // cancelPictureThread as well to avoid it happens in stopPreviewCore
-    if (mState == STATE_CONTINUOUS_CAPTURE)
+    if (mState == STATE_CONTINUOUS_CAPTURE || mState == STATE_JPEG_CAPTURE)
         cancelPictureThread();
 
     stopFaceDetection(true);
@@ -2584,7 +2613,7 @@ status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
             startFaceDetection();
     } else if (msg->window == NULL
                && currentState == PreviewThread::STATE_STOPPED
-               && mState == STATE_CONTINUOUS_CAPTURE) {
+               && (mState == STATE_CONTINUOUS_CAPTURE  || mState == STATE_JPEG_CAPTURE)) {
         // if we are in continuous-mode and backgrounding-state
         // and window is set to null, then stop review
         stopPreviewCore();
@@ -4251,7 +4280,7 @@ status_t ControlThread::captureJpegPic()
     stopFaceDetection();
 
     // Notify CallbacksThread that a picture was requested, so grab one from queue
-    bool syncJpegCbWithPostview = false;  // TODO CJC: (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD);
+    bool syncJpegCbWithPostview = false;
     bool requestPostviewCallback = false; // TODO CJC: true; 
     bool requestRawCallback = true;
     mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback, syncJpegCbWithPostview);
@@ -4613,7 +4642,21 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             LOG1("CaptureSubState %s -> IDLE",sCaptureSubstateStrings[mCaptureSubState]);
             mCaptureSubState = STATE_CAPTURE_IDLE;
         }
+    } else if (mState == STATE_JPEG_CAPTURE) {
+        LOG1("@%s: STATE_JPEG_CAPTURE", __FUNCTION__);
+        // continuous jpeg capture use atomisp frame not snapshot or postview here
+        LOG1("CaptureSubState %s -> IDLE",sCaptureSubstateStrings[mCaptureSubState]);
+        mCaptureSubState = STATE_CAPTURE_IDLE;
 
+        // standard goole api request stop preview on take picture
+        if (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD) {
+            LOG1("@%s: stopping continuous jpeg capture devices.", __FUNCTION__);
+            //TODO CJC: make syncronication that last preview is same as capture
+            status = handleMessageStopPreview();
+            if(status != NO_ERROR) {
+                LOGE("Could not stop preview");
+            }
+        }
     } else {
         LOGW("Received a picture Done during invalid state %d; buf id:%d, ptr=%p", mState, msg->snapshotBuf.id, msg->snapshotBuf.buff);
     }
@@ -4640,7 +4683,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
             it = mPostponedMessages.erase(it); // returns pointer to next item in list
             mPostponedMsgProcessing = false;
         } else {
-            it++;
+            ++it;
         }
     }
 
@@ -4943,7 +4986,7 @@ int ControlThread::getNeededSnapshotBufNum(bool videoMode)
     int maxNum, recommendedNum, contShootingLimit, clipTo;
 
     if (!videoMode && PlatformData::supportsContinuousJpegCapture(mCameraId)) {
-        // In continousJpegCapture use buffers allocated in AtomISP
+        // In continuousJpegCapture use buffers allocated in AtomISP
         return 0;
     }
 
@@ -7110,7 +7153,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
             // Preview needs to be restarted if the preview mode changes, or
             // with any picture size change when in continuous mode.
             if (selectPreviewMode(newParams) != mState ||
-                mState == STATE_CONTINUOUS_CAPTURE) {
+                mState == STATE_CONTINUOUS_CAPTURE || mState == STATE_JPEG_CAPTURE) {
                 needRestartPreview = true;
                 videoMode = false;
                 // cancel picture processing to get all snapshot buffers back to its nest
@@ -7169,6 +7212,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
             case STATE_PREVIEW_VIDEO:
             case STATE_PREVIEW_STILL:
             case STATE_CONTINUOUS_CAPTURE:
+            case STATE_JPEG_CAPTURE:
                 status = restartPreview(videoMode);
                 break;
             case STATE_STOPPED:
@@ -8319,6 +8363,11 @@ bool ControlThread::threadLoop()
                 else
                     status = waitForAndExecuteMessage();
             }
+            break;
+
+        case STATE_JPEG_CAPTURE:
+            LOG2("In STATE_JPEG_CAPTURE...");
+            status = waitForAndExecuteMessage();
             break;
 
         default:

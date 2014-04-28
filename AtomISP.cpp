@@ -4223,7 +4223,6 @@ void AtomISP::returnBuffer(AtomBuffer* buff)
         case ATOM_BUFFER_VIDEO:
             buff->owner = 0;
             status = putRecordingFrame(buff);
-
             if (status == DEAD_OBJECT) {
                 LOGW("Stale recording buffer returned to ISP");
             } else if (status != NO_ERROR) {
@@ -4233,8 +4232,12 @@ void AtomISP::returnBuffer(AtomBuffer* buff)
 
         case ATOM_BUFFER_SNAPSHOT:
             buff->owner = 0;
+            if (mMode != MODE_CONTINUOUS_JPEG) {
+                LOGE("Capture frame return on wrong mode");
+                break;
+            }
             if (mMainDevice->putFrame(buff->id) < 0) {
-                LOGE("@%s, mMainDevice, putFrame fail, id:%d", __FUNCTION__, buff->id);
+                LOGE("While frame return, mMainDevice putFrame fail, id:%d", buff->id);
                 break;
             }
             ++mNumCapturegBuffersQueued;
