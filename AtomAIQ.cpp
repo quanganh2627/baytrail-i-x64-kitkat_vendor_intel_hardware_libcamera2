@@ -1744,6 +1744,12 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct)
             LOGE("error in calling changeSensorMode()\n");
         ret = mISP->getIspStatistics(m3aState.stats);
     }
+
+    if (m3aState.stats) {
+        LOG2("m3aState.stats: grid_info: %d  %d %d ",
+              m3aState.stats->grid_info.s3a_width,m3aState.stats->grid_info.s3a_height,m3aState.stats->grid_info.s3a_bqs_per_grid_cell);
+    }
+
     PERFORMANCE_TRACES_AAA_PROFILER_STOP();
 
     if (ret == 0)
@@ -1774,9 +1780,14 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct)
         }
 
         //update the exposure params with the sensor metadata
-        if (statistics_input_parameters.frame_ae_parameters)
+        if (statistics_input_parameters.frame_ae_parameters) {
+            unsigned int exp_id = 0;
+            if (m3aState.stats)
+                exp_id = m3aState.stats->exp_id;
             mISP->getDecodedExposureParams(statistics_input_parameters.frame_ae_parameters->exposures[0].sensor_exposure,
-                                           statistics_input_parameters.frame_ae_parameters->exposures[0].exposure);
+                                           statistics_input_parameters.frame_ae_parameters->exposures[0].exposure,
+                                           exp_id);
+        }
 
         if (mAfState.af_results) {
             // pass AF results as AEC input during still AF, AIQ will
@@ -1795,9 +1806,6 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct)
                                                 const_cast<ia_aiq_af_grid**>(&statistics_input_parameters.af_grids[0]));
 
         if (ret == ia_err_none) {
-            LOG2("m3aState.stats: grid_info: %d  %d %d ",
-                 m3aState.stats->grid_info.s3a_width,m3aState.stats->grid_info.s3a_height,m3aState.stats->grid_info.s3a_bqs_per_grid_cell);
-
             LOG2("rgb_grid: grid_width:%u, grid_height:%u, thr_r:%u, thr_gr:%u,thr_gb:%u, thr_b:%u",
                   statistics_input_parameters.rgbs_grids[0]->grid_width,
                   statistics_input_parameters.rgbs_grids[0]->grid_height,
