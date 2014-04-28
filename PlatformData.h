@@ -223,6 +223,13 @@ class PlatformData {
     static bool supportsContinuousJpegCapture(int cameraId);
 
     /**
+     * Whether platform can support bracket capture in offlie mode
+     *
+     * \return true if supported
+     */
+    static bool supportsOfflineBracket(void);
+
+    /**
      * What's the maximum supported size of the RAW ringbuffer
      * for continuous capture maintained by the ISP.
      *
@@ -1102,6 +1109,7 @@ public:
         :mFileInject(false)
         ,mSupportVideoSnapshot(true)
         ,mSupportsOfflineBurst(false)
+        ,mSupportsOfflineBracket(false)
         ,mMaxContinuousRawRingBuffer(0)
         ,mShutterLagCompensationMs(40)
         ,mPanoramaMaxSnapshotCount(10)
@@ -1445,6 +1453,7 @@ protected:
     bool mFileInject;
     bool mSupportVideoSnapshot;
     bool mSupportsOfflineBurst;
+    bool mSupportsOfflineBracket;
 
     int mMaxContinuousRawRingBuffer;
     int mShutterLagCompensationMs;

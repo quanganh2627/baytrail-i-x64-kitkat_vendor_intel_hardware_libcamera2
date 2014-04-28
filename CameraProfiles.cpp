@@ -114,6 +114,8 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
         PlatformBase::mSupportVideoSnapshot = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "supportsOfflineBurst") == 0) {
         PlatformBase::mSupportsOfflineBurst = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "supportsOfflineBracket") == 0) {
+        PlatformBase::mSupportsOfflineBracket = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "numRecordingBuffers") == 0) {
         PlatformBase::mNumRecordingBuffers = atoi(atts[1]);
     } else if (strcmp(name, "numPreviewBuffers") == 0) {
@@ -579,6 +581,7 @@ void CameraProfiles::dump(void)
     LOGD("line%d, in DeviceData, mMaxZoomFactor:%d ", __LINE__, mMaxZoomFactor);
     LOGD("line%d, in DeviceData, mSupportVideoSnapshot:%d ", __LINE__, mSupportVideoSnapshot);
     LOGD("line%d, in DeviceData, mSupportsOfflineBurst:%d ", __LINE__, mSupportsOfflineBurst);
+    LOGD("line%d, in DeviceData, mSupportsOfflineBracket:%d ", __LINE__, mSupportsOfflineBracket);
     LOGD("line%d, in DeviceData, mNumRecordingBuffers:%d ", __LINE__, mNumRecordingBuffers);
     LOGD("line%d, in DeviceData, mNumPreviewBuffers:%d ", __LINE__, mNumPreviewBuffers);
     LOGD("line%d, in DeviceData, mMaxContinuousRawRingBuffer:%d ", __LINE__, mMaxContinuousRawRingBuffer);

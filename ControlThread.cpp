@@ -1797,7 +1797,8 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
     }
 
     // Bracketing not supported in continuous mode as the number captures is not fixed.
-    if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE) {
+    if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE &&
+            !PlatformData::supportsOfflineBracket()) {
         LOG1("@%s: Bracketing requested, disabling continuous mode",
                 __FUNCTION__);
         goto online_preview;
