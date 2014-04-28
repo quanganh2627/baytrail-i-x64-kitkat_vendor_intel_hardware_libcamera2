@@ -48,6 +48,9 @@
 #define EXP_ID_INVALID 0
 #define EXP_ID_MIN 1
 #define EXP_ID_MAX 250
+// get the next or next n exposure id value after the current
+#define NEXT_EID(x) ((((x)+1) > EXP_ID_MAX) ? EXP_ID_MIN : ((x)+1))
+#define NEXTN_EID(x,n) ((((x)+(n)) > EXP_ID_MAX) ? (((x)+(n)) % EXP_ID_MAX) : ((x)+(n)))
 
 #define INTEL_FILE_INJECT_CAMERA_ID 2
 

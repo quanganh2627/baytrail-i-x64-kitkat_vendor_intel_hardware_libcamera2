@@ -109,6 +109,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mCP(NULL)
     ,mULL(NULL)
     ,m3AControls(NULL)
+    ,mBracketManager(NULL)
     ,mPreviewThread(NULL)
     ,mPictureThread(NULL)
     ,mVideoThread(NULL)
@@ -117,7 +118,6 @@ ControlThread::ControlThread(int cameraId) :
     ,mPanoramaThread(NULL)
     ,mScalerService(NULL)
     ,mWarperService(NULL)
-    ,mBracketManager(NULL)
     ,mPostCaptureThread(NULL)
     ,mAccManagerThread(NULL)
     ,mThermalThrottleThread(NULL)
@@ -410,12 +410,6 @@ status_t ControlThread::init()
         LOGW("Error Starting Panorama Thread!");
         goto bail;
     }
-    status = mBracketManager->run("CamHAL_BRACKET");
-    if (status != NO_ERROR) {
-        LOGW("Error Starting Bracketing Manager!");
-        goto bail;
-    }
-
     status = mPostCaptureThread->run("CamHAL_POSTCAP");
     if (status != NO_ERROR) {
         LOGW("Error Starting PostCaptureThread!");
@@ -490,8 +484,8 @@ void ControlThread::deinit()
     }
 
     if (mBracketManager != NULL) {
-        mBracketManager->requestExitAndWait();
-        mBracketManager.clear();
+        delete mBracketManager;
+        mBracketManager = NULL;
     }
 
     if (mSensorThread != NULL) {
@@ -3272,6 +3266,11 @@ status_t ControlThread::continuousStartStillCapture(bool useFlash)
            LOGE("Error allocate buffers in ISP");
             return status;
         }
+
+        // offline bracketing start capture inside BracketManager
+        if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE)
+            return status;
+
         startOfflineCapture();
     }
     else {
@@ -3520,6 +3519,10 @@ status_t ControlThread::captureStillPic()
     }
 
     if (mState == STATE_CONTINUOUS_CAPTURE) {
+        // initialize offline bracketing
+        if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE) {
+            mBracketManager->initBracketing(mBurstLength, mFpsAdaptSkip, IMPL_OFFLINE);
+        }
         bool useFlash = flashStage == CAM_FLASH_STAGE_MAIN;
         status = continuousStartStillCapture(useFlash);
     } else {
@@ -3568,7 +3571,7 @@ status_t ControlThread::captureStillPic()
 
         // Initialize bracketing manager before streaming starts
         if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE) {
-            mBracketManager->initBracketing(mBurstLength, mFpsAdaptSkip);
+            mBracketManager->initBracketing(mBurstLength, mFpsAdaptSkip, IMPL_ONLINE);
         }
 
         if ((status = mISP->configure(MODE_CAPTURE)) != NO_ERROR) {
@@ -3893,6 +3896,12 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
         // Check whether more frames are needed
         if (compressedFrameQueueFull())
             return NO_ERROR;
+
+        // Check if ISP has free buffers we can use
+        if (!mISP->dataAvailable()) {
+            // If ISP has no data, do nothing and return
+            return NO_ERROR;
+        }
     }
 
     if (mBurstCaptureNum != -1 &&
@@ -3908,8 +3917,11 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
     PictureThread::MetaData picMetaData;
     fillPicMetaData(picMetaData, false);
 
-    // Get the snapshot
-    status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
+    if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE) {
+        status = mBracketManager->getSnapshot(snapshotBuffer, postviewBuffer);
+    } else {
+        status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
+    }
 
     if (status != NO_ERROR) {
         LOGE("Error in grabbing snapshot!");
@@ -3927,13 +3939,18 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
     if (!mHdr.enabled) {
         mCallbacksThread->shutterSound();
     }
+
     // Do jpeg encoding
     LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
     status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
 
     // If all captures have been requested, ISP capture device
     // can be stopped. Otherwise requeue buffers back to ISP.
-    if (mBurstCaptureNum == mBurstLength) {
+    if (mBurstCaptureNum == mBurstLength && mBurstLength > 1) {
+        if (mBracketManager->getBracketMode() != BRACKET_NONE ) {
+            LOG1("@%s: Bracketing done, got all %d snapshots", __FUNCTION__, mBurstLength);
+            mBracketManager->stopBracketing();
+        }
         stopOfflineCapture();
     }
 

@@ -51,6 +51,8 @@ LOCAL_SRC_FILES := \
 	CameraDump.cpp \
 	CameraAreas.cpp \
 	BracketManager.cpp \
+	OnlineBracket.cpp \
+	OfflineBracket.cpp \
 	GPUScaler.cpp \
 	GPUWarper.cpp \
 	AtomAcc.cpp \

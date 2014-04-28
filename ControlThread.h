@@ -693,6 +693,7 @@ private:
     AtomCP  *mCP;
     UltraLowLight *mULL;
     I3AControls *m3AControls;
+    BracketManager *mBracketManager;
     sp<PreviewThread> mPreviewThread;
     sp<PictureThread> mPictureThread;
     sp<VideoThread> mVideoThread;
@@ -702,7 +703,6 @@ private:
     sp<ScalerService> mScalerService;
     sp<WarperService> mWarperService;
     sp<SensorThread> mSensorThread;
-    sp<BracketManager> mBracketManager;
     sp<PostCaptureThread> mPostCaptureThread;
     sp<AccManagerThread> mAccManagerThread;
     sp<ThermalThrottleThread> mThermalThrottleThread;

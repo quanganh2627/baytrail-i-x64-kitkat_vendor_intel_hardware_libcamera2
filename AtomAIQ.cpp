@@ -1132,7 +1132,9 @@ int AtomAIQ::applyEvGroup(float biases[], int depth, SensorAeConfig aeResults[])
 status_t AtomAIQ::applyEv(float bias)
 {
     LOG1("@%s: bias=%.2f", __FUNCTION__, bias);
+    mAeBracketingInputParameters = mAeInputParameters;
     mAeBracketingInputParameters.ev_shift = bias;
+    mAeBracketingInputParameters.frame_use =  m3aState.frame_use;
     mAeBracketingInputParameters.flash_mode = ia_aiq_flash_mode_off;
     status_t ret = NO_ERROR;
     if (m3aState.ia_aiq_handle){
