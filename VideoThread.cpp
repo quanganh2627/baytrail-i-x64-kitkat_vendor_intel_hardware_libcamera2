@@ -259,7 +259,6 @@ status_t VideoThread::getVideoSnapshot(AtomBuffer &buff)
 
 status_t VideoThread::putVideoSnapshot(AtomBuffer *buff)
 {
-    status_t status = NO_ERROR;
     Mutex::Autolock lock(mLock);
 
     LOG1("@%s", __FUNCTION__);
@@ -279,18 +278,6 @@ status_t VideoThread::putVideoSnapshot(AtomBuffer *buff)
 
         videoBuffer->owner->returnBuffer(videoBuffer);
         mSnapshotBuffers.erase(videoBuffer);
-        status = mIsp->putRecordingFrame(videoBuffer);
-
-        if (status == DEAD_OBJECT) {
-            LOG1("Stale preview buffer returned to ISP");
-            return UNKNOWN_ERROR;
-        } else if (status != NO_ERROR) {
-            LOGE("Error putting preview frame to ISP");
-            return UNKNOWN_ERROR;
-        } else {
-            // drop from reserved list
-            mSnapshotBuffers.erase(videoBuffer);
-        }
     }
     return NO_ERROR;
 }
@@ -333,22 +320,9 @@ status_t VideoThread::handleMessageReleaseRecordingFrame(MessageReleaseRecording
             }
         }
 
-        if (mHALVideoStabilization) {
-            // Do we need to detect errors here before erase()?
-            recBuff->owner->returnBuffer(recBuff);
-            mRecordingBuffers.erase(recBuff);
-        } else {
-            // return to AtomISP
-            status = mIsp->putRecordingFrame(recBuff);
-            if (status == DEAD_OBJECT) {
-                LOGW("Stale recording buffer returned to ISP");
-            } else if (status != NO_ERROR) {
-                LOGE("Error putting recording frame to ISP");
-            } else {
-                // drop from reserved list
-                mRecordingBuffers.erase(recBuff);
-            }
-        }
+        // Do we need to detect errors here before erase()?
+        recBuff->owner->returnBuffer(recBuff);
+        mRecordingBuffers.erase(recBuff);
     }
 
     return status;
@@ -569,10 +543,6 @@ status_t VideoThread::waitForAndExecuteMessage()
             status = handleMessagePushFrame(&msg.data.pushFrame);
             break;
 
-        case MESSAGE_ID_HAL_VIDEO_STABILIZATION:
-            status = handleMessageHALVS(&msg.data.halVS);
-            break;
-
         case MESSAGE_ID_STOP_RECORDING:
             status = handleMessageStopRecording();
             break;
@@ -609,21 +579,6 @@ status_t VideoThread::requestExitAndWait()
 
     // propagate call to base class
     return Thread::requestExitAndWait();
-}
-
-void VideoThread::setHALVideoStabilization(bool value) {
-    LOG1("@%s", __FUNCTION__);
-    Message msg;
-    msg.id = MESSAGE_ID_HAL_VIDEO_STABILIZATION;
-    msg.data.halVS.halVS = value;
-    mMessageQueue.send(&msg);
-}
-
-status_t VideoThread::handleMessageHALVS(MessageHALVideoStabilization *msg)
-{
-    LOG1("@%s", __FUNCTION__);
-    mHALVideoStabilization = msg->halVS;
-    return OK;
 }
 
 /**

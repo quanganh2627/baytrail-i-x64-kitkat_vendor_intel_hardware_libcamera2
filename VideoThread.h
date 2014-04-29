@@ -74,7 +74,6 @@ public:
     status_t releaseRecordingFrame(void *buff);
     status_t getVideoSnapshot(AtomBuffer &buff);
     status_t putVideoSnapshot(AtomBuffer *buff);
-    void setHALVideoStabilization(bool value);
     status_t setRecordingMirror(bool mirror, int recOrientation, int camOrientation);
 
 // private types
@@ -112,10 +111,6 @@ private:
         bool skipFrame;
     };
 
-    struct MessageHALVideoStabilization {
-        bool halVS;
-    };
-
     struct MessageSetSlowMotionRate {
         int rate;
     };
@@ -128,8 +123,6 @@ private:
         MessageReleaseRecordingFrame releaseRecordingFrame;
         // MESSAGE_ID_PUSH_FRAME
         MessagePushFrame pushFrame;
-        // MESSAGE_ID_HAL_VIDEO_STABILIZATION
-        MessageHALVideoStabilization halVS;
         // MESSAGE_ID_DEQUEUE_RECORDING
         MessageDequeueRecording   dequeueRecording;
     };
@@ -158,7 +151,6 @@ private:
     status_t handleMessageReleaseRecordingFrame(MessageReleaseRecordingFrame *msg);
     status_t handleMessageDequeueRecording(MessageDequeueRecording *msg);
     status_t handleMessagePushFrame(MessagePushFrame *msg);
-    status_t handleMessageHALVS(MessageHALVideoStabilization *msg);
     AtomBuffer* findVideoSnapshotBuffer(int index);
     AtomBuffer* findRecordingBuffer(void *findMe);
     AtomBuffer* findRecordingBuffer(int index);

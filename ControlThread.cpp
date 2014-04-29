@@ -1921,7 +1921,6 @@ status_t ControlThread::startPreviewCore(bool videoMode)
                                      mDvsEnable;
         }
 
-        mVideoThread->setHALVideoStabilization(mHALVideoStabilization);
         mISP->setHALVideoStabilization(mHALVideoStabilization);
 
         // Video size is updated later than other parameters, so validate high speed  params here
