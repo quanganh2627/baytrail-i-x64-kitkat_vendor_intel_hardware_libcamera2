@@ -379,26 +379,44 @@ status_t PictureThread::handleMessageCapture(MessageCapture *msg)
     unsigned char *meta = ((unsigned char*)msg->captureBuf.dataPtr)+0x800;
     strncpy(array, (char*) meta, 15);
     array[15] = 0;
-    uint32_t yuvFrameId  = *(uint32_t*)(meta+0x17);
-    yuvFrameId = be32toh(yuvFrameId);
+    uint32_t yuvFrameIdDebug  = *(uint32_t*)(meta+0x17);
+    yuvFrameIdDebug = be32toh(yuvFrameIdDebug);
     meta += 15;
 
-    LOG2("@%s JPEGINFO '%s'(%d) %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx", __FUNCTION__, array, yuvFrameId,
+    LOG2("@%s JPEGINFO '%s'(%d) %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx", __FUNCTION__, array, yuvFrameIdDebug,
          meta[0] , meta[1], meta[2], meta[3], meta[4], meta[5], meta[6], meta[7], meta[8] , meta[9], meta[10], meta[11], meta[12], meta[13], meta[14], meta[15]);
 
     meta = ((unsigned char*)msg->captureBuf.dataPtr)+0x1000;
     strncpy(array, (char *) meta, 14);
     array[14] = 0;
     meta += 14;
-    uint32_t frameCount  = *(uint32_t*)(meta);
+    uint32_t frameCount = *(uint32_t*)(meta);
     frameCount = be32toh(frameCount);
     LOG2("@%s METAINFO '%s'(%d) %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx ", __FUNCTION__, array, frameCount,
          meta[0] , meta[1], meta[2], meta[3], meta[4], meta[5], meta[6], meta[7], meta[8] , meta[9], meta[10], meta[11], meta[12], meta[13], meta[14], meta[15]);
     /******* end temporary logging */
 
     unsigned char *jpeginfo = ((unsigned char*)msg->captureBuf.dataPtr) + JPEG_INFO_START;
+    unsigned char *nv12meta = ((unsigned char*)msg->captureBuf.dataPtr) + NV12_META_START;
 
-    switch (jpeginfo[JPEG_MODE_ADDR]) {
+    // Check markers
+    if (strncmp((char*) &jpeginfo[JPEG_INFO_START_MARKER_ADDR], JPEG_INFO_START_MARKER, sizeof(JPEG_INFO_START_MARKER) - 1) != 0 ||
+        strncmp((char*) &jpeginfo[JPEG_INFO_END_MARKER_ADDR], JPEG_INFO_END_MARKER, sizeof(JPEG_INFO_END_MARKER) - 1) != 0 ||
+        strncmp((char*) &nv12meta[NV12_META_START_MARKER_ADDR], NV12_META_START_MARKER, sizeof(NV12_META_START_MARKER) - 1) != 0 ||
+        strncmp((char*) &nv12meta[NV12_META_END_MARKER_ADDR], NV12_META_END_MARKER, sizeof(NV12_META_END_MARKER) - 1) != 0) {
+        LOGE("jpeg info or nv12 meta marker not found in frame. skip frame.");
+        // return the buffer to isp -> putSnapshot
+        msg->captureBuf.owner->returnBuffer(&msg->captureBuf);
+        return NO_ERROR;
+    }
+
+    uint32_t yuvFrameId(getU32fromFrame(jpeginfo, JPEG_INFO_YUV_FRAME_ID_ADDR));
+    uint32_t thumbnailFrameId(getU32fromFrame(jpeginfo, JPEG_INFO_THUMBNAIL_FRAME_ID_ADDR));
+    uint32_t nv12metaFrameCount(getU32fromFrame(nv12meta, NV12_META_FRAME_COUNT_ADDR));
+
+    LOG2("@%s: yuvFrameId = %d, thumbnailFrameId = %d, nv12metaFrameCount = %d", __FUNCTION__, yuvFrameId, thumbnailFrameId , nv12metaFrameCount);
+
+    switch (jpeginfo[JPEG_INFO_MODE_ADDR]) {
     case JPEG_FRAME_TYPE_META:
         // this is the default preview + metadata case. We just return the buffer.
         LOG2("@%s: normal preview with metadata.", __FUNCTION__);
@@ -414,9 +432,9 @@ status_t PictureThread::handleMessageCapture(MessageCapture *msg)
         LOG1("@%s: full jpeg done", __FUNCTION__);
         break;
 
-    case JPEG_FRAME_TYPE_SPLITED:
+    case JPEG_FRAME_TYPE_SPLIT:
         LOG1("@%s: split jpeg", __FUNCTION__);
-        switch (jpeginfo[JPEG_COUNT_ADDR]) {
+        switch (jpeginfo[JPEG_INFO_COUNT_ADDR]) {
         case 0x00:
             LOG1("@%s: split jpeg first part", __FUNCTION__);
             mFirstPartBuf = msg->captureBuf;
@@ -428,6 +446,7 @@ status_t PictureThread::handleMessageCapture(MessageCapture *msg)
             mFirstPartBuf.owner->returnBuffer(&mFirstPartBuf);
             mFirstPartBuf.owner = NULL;
             msg->captureBuf.owner->returnBuffer(&msg->captureBuf);
+            LOG1("@%s: split jpeg done", __FUNCTION__);
             break;
          default:
              LOGE("Unknown jpeg count!");
@@ -446,7 +465,7 @@ status_t PictureThread::handleMessageCapture(MessageCapture *msg)
         break;
     }
 
-    return OK;
+    return NO_ERROR;
 }
 
 /*
@@ -454,7 +473,7 @@ status_t PictureThread::handleMessageCapture(MessageCapture *msg)
  */
 uint32_t PictureThread::getJpegDataSize(const void* framePtr) const
 {
-    uint32_t result = *((uint32_t*)((uint8_t*)framePtr + JPEG_INFO_START + JPEG_SIZE_ADDR));
+    uint32_t result = *((uint32_t*)((uint8_t*)framePtr + JPEG_INFO_START + JPEG_INFO_SIZE_ADDR));
 
     //conversion from big-endia
     result = be32toh(result);
