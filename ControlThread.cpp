@@ -1049,6 +1049,7 @@ void ControlThread::pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf
             snapshotBuf->id);
     Message msg;
     msg.id = MESSAGE_ID_PICTURE_DONE;
+
     msg.data.pictureDone.snapshotBuf = *snapshotBuf;
     msg.data.pictureDone.postviewBuf = *postviewBuf;
 
@@ -4339,7 +4340,7 @@ status_t ControlThread::cancelPictureThread()
     Vector<Message> canceledPictures;
     Vector<Message>::iterator it;
     mMessageQueue.remove(MESSAGE_ID_PICTURE_DONE, &canceledPictures);
-    for (it = canceledPictures.begin(); it != canceledPictures.end(); it++) {
+    for (it = canceledPictures.begin(); it != canceledPictures.end(); ++it) {
         status = handleMessagePictureDone(&it->data.pictureDone);
         if (status != NO_ERROR)
             LOGD("Failed handling pictureDone-messages while canceling!");
@@ -4653,6 +4654,10 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
  */
 AtomBuffer* ControlThread::findBufferByData(AtomBuffer *buf,Vector<AtomBuffer> *aVector)
 {
+    if (buf == NULL || buf->dataPtr == NULL || aVector == NULL) {
+        return NULL;
+    }
+
     Vector<AtomBuffer>::iterator it = aVector->begin();
     for (;it != aVector->end(); ++it) {
         if (buf->dataPtr == it->dataPtr)

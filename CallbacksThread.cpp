@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -103,21 +104,34 @@ status_t CallbacksThread::handleMessagePanoramaSnapshot(MessagePanoramaSnapshot 
 
 status_t CallbacksThread::compressedFrameDone(AtomBuffer* jpegBuf, AtomBuffer* snapshotBuf, AtomBuffer* postviewBuf)
 {
-    LOG1("@%s: ID = %d", __FUNCTION__, jpegBuf->id);
+    LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_JPEG_DATA_READY;
-    msg.data.compressedFrame.jpegBuff.buff = NULL;
-    msg.data.compressedFrame.snapshotBuff.buff = NULL;
-    msg.data.compressedFrame.postviewBuff.buff = NULL;
+
     if (jpegBuf != NULL) {
+        LOG1("@%s: ID = %d", __FUNCTION__, jpegBuf->id);
         msg.data.compressedFrame.jpegBuff = *jpegBuf;
+    } else {
+        msg.data.compressedFrame.jpegBuff = AtomBufferFactory::createAtomBuffer();
+        msg.data.compressedFrame.jpegBuff.id = -1;
     }
+
     if (snapshotBuf != NULL) {
         msg.data.compressedFrame.snapshotBuff = *snapshotBuf;
+    } else {
+        msg.data.compressedFrame.snapshotBuff = AtomBufferFactory::createAtomBuffer();
+        msg.data.compressedFrame.snapshotBuff.status = FRAME_STATUS_SKIPPED;
+        msg.data.compressedFrame.snapshotBuff.id = -1;
     }
+
     if (postviewBuf != NULL) {
         msg.data.compressedFrame.postviewBuff = *postviewBuf;
+    } else {
+        msg.data.compressedFrame.postviewBuff = AtomBufferFactory::createAtomBuffer();
+        msg.data.compressedFrame.postviewBuff.status = FRAME_STATUS_SKIPPED;
+        msg.data.compressedFrame.postviewBuff.id = -1;
     }
+
     return mMessageQueue.send(&msg);
 }
 
@@ -528,7 +542,7 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageCompressed *msg)
 
     mPictureDoneCallback->encodingDone(&snapshotBuf, &postviewBuf);
 
-    if (jpegBuf.dataPtr == NULL && snapshotBuf.dataPtr != NULL && postviewBuf.dataPtr != NULL) {
+    if (jpegBuf.dataPtr == NULL) {
         LOGW("@%s: returning raw frames used in failed encoding", __FUNCTION__);
         mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
         return NO_ERROR;
@@ -553,11 +567,8 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageCompressed *msg)
         }
         mJpegRequested--;
 
-        if ((snapshotBuf.dataPtr != NULL && postviewBuf.dataPtr != NULL)
-            || snapshotBuf.type == ATOM_BUFFER_PANORAMA) {
-            // Return the raw buffers back to ControlThread
-            mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
-        }
+        // Return the raw buffers back to ControlThread
+        mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
     } else {
         // Insert the buffer on the top
         mBuffers.push(*msg);
@@ -590,10 +601,9 @@ status_t CallbacksThread::handleMessageJpegDataRequest(MessageDataRequest *msg)
         LOG1("Releasing jpegBuf.buff %p, dataPtr %p", jpegBuf.buff, jpegBuf.dataPtr);
         MemoryUtils::freeAtomBuffer(jpegBuf);
 
-        if (snapshotBuf.dataPtr != NULL && postviewBuf.dataPtr != NULL) {
-            // Return the raw buffers back to ISP
-            mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
-        }
+        // Return the raw buffers back
+        mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
+
         mBuffers.removeAt(0);
     } else {
         mJpegRequested++;
@@ -639,16 +649,12 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageCompressed *msg)
     AtomBuffer snapshotBuf = msg->snapshotBuff;
     AtomBuffer postviewBuf= msg->postviewBuff;
 
-    mULLRequested--;
+    --mULLRequested;
 
-    if (jpegBuf.dataPtr == NULL && snapshotBuf.dataPtr != NULL && postviewBuf.dataPtr != NULL) {
+    if (jpegBuf.dataPtr == NULL) {
         LOGW("@%s: returning raw frames used in failed encoding", __FUNCTION__);
         mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
         return NO_ERROR;
-    } else if (jpegBuf.dataPtr == NULL) {
-        // Should not have NULL buffer here in any case, but checking to make Klockwork happy:
-        LOGW("NULL jpegBuf.dataPtr received in CallbacksThread. Should not happen.");
-        return UNKNOWN_ERROR;
     }
 
     if (gLogLevel & CAMERA_DEBUG_ULL_DUMP) {
@@ -691,15 +697,15 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageCompressed *msg)
     }
 
     /**
-     *  TODO even if postview is NULL we return the buffer anyway.
-     *  at the moment ULL does not process postview. Should we process it as well?
+     *  TODO at the moment ULL does not process postview. Should we process it as well?
      */
+
     if (snapshotBuf.dataPtr != NULL) {
         // Return the raw buffers back to ISP
         LOG1("Returning ULL raw image now");
         snapshotBuf.type = ATOM_BUFFER_SNAPSHOT;  // reset the buffer type
-        mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
     }
+    mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
 
     return NO_ERROR;
 
