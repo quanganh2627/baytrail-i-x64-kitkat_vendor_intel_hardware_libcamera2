@@ -25,6 +25,7 @@
 namespace android {
 
 const int NUM_OF_JPEG_CAPTURE_SNAPSHOT_BUF = 6;
+const int FMT_CONTINUOUS_JPEG_BPL = 2048;
 
 // Frame size and place
 const size_t JPEG_INFO_START = 2048;

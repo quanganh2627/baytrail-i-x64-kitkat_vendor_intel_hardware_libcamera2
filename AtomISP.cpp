@@ -1915,7 +1915,6 @@ status_t AtomISP::configureContinuousJpegCapture()
         return NO_INIT;
     }
 
-    mConfig.preview.bpl = SGXandDisplayBpl(mConfig.preview.fourcc, mConfig.preview.width);
     ret = configureDevice(
             mPreviewDevice.get(),
             CI_MODE_PREVIEW,

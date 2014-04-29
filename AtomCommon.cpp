@@ -289,6 +289,12 @@ bool isBayerFormat(int fourcc)
 int SGXandDisplayBpl(int fourcc, int width)
 {
     /**
+     * continuous jpeg capture isp has always 2048 virtual bpl
+     */
+    if (fourcc ==  V4L2_PIX_FMT_CONTINUOUS_JPEG)
+        return FMT_CONTINUOUS_JPEG_BPL;
+
+    /**
      * Raw format has special aligning requirements
      */
     if (isBayerFormat(fourcc))

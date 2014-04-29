@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
- * Copyright (c) 2014 Intel Corporation
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1635,17 +1635,7 @@ status_t ControlThread::initContinuousJpegCapture()
 
     mParameters.getPictureSize(&widthSs, &heightSs);
     AtomBuffer formatDescriptorSs = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, fourccSs,widthSs, heightSs);
-    int fourccPv(PlatformData::getPreviewPixelFormat());
-    int widthPv(0);
-    int heightPv(0);
-    int bplPv = SGXandDisplayBpl(fourccPv, widthPv);
-
-    mParameters.getPreviewSize(&widthPv, &heightPv);
-    AtomBuffer formatDescriptorPv = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, fourccPv, widthPv, heightPv);
-
     mISP->setSnapshotFrameFormat(formatDescriptorSs);
-    mISP->setPostviewFrameFormat(formatDescriptorPv);
-    mISP->setPreviewFrameFormat(widthPv, heightPv, bplPv, fourccPv);
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Done");
     return status;
