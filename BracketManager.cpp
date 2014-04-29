@@ -189,7 +189,7 @@ status_t BracketManager::initBracketing(int length, int skip, BracketImplMethod 
     return status;
 }
 
-status_t BracketManager::startBracketing()
+status_t BracketManager::startBracketing(int *expIdFrom)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -202,7 +202,7 @@ status_t BracketManager::startBracketing()
         LOGE("No braket mode specified for starting");
     }
 
-    status = mBracketImpl->startBracketing();
+    status = mBracketImpl->startBracketing(expIdFrom);
     if (status == NO_ERROR)
         mState = STATE_BRACKETING;
 

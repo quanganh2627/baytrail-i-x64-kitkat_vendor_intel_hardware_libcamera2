@@ -54,7 +54,7 @@ status_t OfflineBracket::init(int length, int skip)
     return status;
 }
 
-status_t OfflineBracket::startBracketing()
+status_t OfflineBracket::startBracketing(int *expIdFrom)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -66,6 +66,8 @@ status_t OfflineBracket::startBracketing()
         for (int i = 0 ; i < mBurstLength ; i++)
             mBracketingParams->push_front(aeConfig[i]);
 
+        if (expIdFrom != NULL)
+            *expIdFrom = mExpectedExpId;
     } else if (mBracketing->mode == BRACKET_FOCUS) {
 
     }

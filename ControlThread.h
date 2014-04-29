@@ -667,6 +667,11 @@ private:
     bool selectSdvSize(int &width, int &height);
     void encodeVideoSnapshot(AtomBuffer &buff);
 
+    // offline burst capture shutter sound control
+    void triggerShutterSoundControl(int numSounds, int startId);
+    void resetShutterSoundControl();
+    void handleShutterSoundControl(AtomBuffer *buff);
+
     status_t updateSpotWindow(const int &width, const int &height);
 
     MeteringMode aeMeteringModeFromString(const String8& modeStr);
@@ -801,6 +806,12 @@ private:
                                          saved as mirrored. The image will be mirrored based on the
                                          camera sensor orientation and device orientation. */
     bool mFullSizeSdv;              /*!< is full resolution sdv?*/
+
+    // shutter sound control, trigger shutter sound by EOF/preview buffer event
+    Mutex mOfflineControlLock;
+    unsigned int mCurrentExpID;     /*!< exposure ID of current preview frame*/
+    unsigned int mNextExpID;        /*!< next expected buffer exposure ID */
+    int mNumSounds;                 /*!< shutter sound times */
 
     /*----------- Debugging helpers --------------------*/
     static const char* sCaptureSubstateStrings[STATE_CAPTURE_LAST];

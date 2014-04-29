@@ -55,7 +55,7 @@ public:
 // public methods
 public:
     virtual status_t init(int length, int skip) = 0;
-    virtual status_t startBracketing() = 0;
+    virtual status_t startBracketing(int *expIdFrom = NULL) = 0;
     virtual status_t stopBracketing() = 0;
     virtual status_t getSnapshot(AtomBuffer &snapshotBuf, AtomBuffer &postviewBuf) = 0;
     virtual status_t putSnapshot(AtomBuffer &snapshotBuf, AtomBuffer &postviewBuf) = 0;
@@ -79,7 +79,7 @@ public:
     void setBracketMode(BracketingMode mode);
     BracketingMode getBracketMode();
     void getNextAeConfig(SensorAeConfig *aeConfig);
-    status_t startBracketing();
+    status_t startBracketing(int *expIdFrom = NULL);
     status_t stopBracketing();
     // wrapper for AtomISP getSnapShot() and putSnapshot()
     status_t getSnapshot(AtomBuffer &snapshotBuf, AtomBuffer &postviewBuf);

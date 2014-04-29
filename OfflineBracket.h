@@ -41,7 +41,7 @@ private:
 // public methods inherited from BracketImpl
 public:
     virtual status_t init(int length, int skip);
-    virtual status_t startBracketing();
+    virtual status_t startBracketing(int *expIdFrom = NULL);
     virtual status_t stopBracketing();
     virtual status_t getSnapshot(AtomBuffer &snapshotBuf, AtomBuffer &postviewBuf);
     virtual status_t putSnapshot(AtomBuffer &snapshotBuf, AtomBuffer &postviewBuf);

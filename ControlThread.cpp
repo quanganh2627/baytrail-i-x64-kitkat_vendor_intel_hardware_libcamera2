@@ -157,6 +157,9 @@ ControlThread::ControlThread(int cameraId) :
     ,mHALVideoStabilization(false)
     ,mCurrentOrientation(0)
     ,mFullSizeSdv(false)
+    ,mCurrentExpID(EXP_ID_INVALID)
+    ,mNextExpID(EXP_ID_INVALID)
+    ,mNumSounds(0)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -2353,6 +2356,12 @@ status_t ControlThread::startOfflineCapture()
     if (framesDone < -cfg.offset)
         cfg.offset = -framesDone;
 
+    // trigger shutter sound for offline burst
+    if (mBurstLength > 1) {
+        // from the next frame. Maybe it's not very accurate, never mind.
+        triggerShutterSoundControl(mBurstLength, NEXT_EID(mCurrentExpID));
+    }
+
     mISP->startOfflineCapture(cfg);
 
     return NO_ERROR;
@@ -3170,6 +3179,7 @@ void ControlThread::stopOfflineCapture()
     if ((mState == STATE_CONTINUOUS_CAPTURE || mState == STATE_RECORDING) &&
             mISP->isOfflineCaptureRunning()) {
         mISP->stopOfflineCapture();
+        resetShutterSoundControl();
     }
 }
 
@@ -3428,6 +3438,58 @@ int ControlThread::selectPostviewFormat()
     return fourcc;
 }
 
+void ControlThread::resetShutterSoundControl()
+{
+    mNextExpID   = -1;
+    mNumSounds   = 0;
+}
+
+void ControlThread::triggerShutterSoundControl(int numSounds, int startId)
+{
+    LOG1("@%s num sound:%d start exp id:%d", __FUNCTION__, numSounds, startId);
+    Mutex::Autolock lock(mOfflineControlLock);
+    if (startId < EXP_ID_MIN || startId > EXP_ID_MAX)
+        return;
+
+    mNextExpID   = startId;
+    mNumSounds   = numSounds;
+}
+
+/**
+ * Controlling shutter sound for offline burst capture
+ */
+void ControlThread::handleShutterSoundControl(AtomBuffer *buff)
+{
+    Mutex::Autolock lock(mOfflineControlLock);
+    // update current exposure ID
+    mCurrentExpID = buff->expId;
+
+    LOG2("@%s for id:%d", __FUNCTION__, mCurrentExpID)
+    if (mNumSounds > 0) {
+        LOG1("@%s num sound:%d current ID:%d expected exposure id:%d", __FUNCTION__,
+                mNumSounds, mCurrentExpID, mNextExpID);
+
+        if (mCurrentExpID > mNextExpID && ((mCurrentExpID - mNextExpID) < (EXP_ID_MAX >> 1))) {
+            // trigger late or frame droped
+            LOGW("late trigger comes at :%d while current is :%d", mNextExpID, mCurrentExpID);
+            mNextExpID = mCurrentExpID;
+        }
+
+        if (mCurrentExpID == mNextExpID) {
+            // play shutter sound
+            mCallbacksThread->shutterSound();
+            mNumSounds--;
+
+            // next one
+            if (mFpsAdaptSkip > 0) {
+                mNextExpID = NEXTN_EID(mNextExpID, mFpsAdaptSkip + 1);
+            } else {
+                mNextExpID = NEXT_EID(mNextExpID);
+            }
+        }
+    }
+}
+
 status_t ControlThread::captureStillPic()
 {
     LOG1("@%s", __FUNCTION__);
@@ -3598,7 +3660,15 @@ status_t ControlThread::captureStillPic()
 
     // Start the actual bracketing sequence
     if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE) {
-        mBracketManager->startBracketing();
+        int startExpId;
+        mBracketManager->startBracketing(&startExpId);
+        // offline bracketing
+        if (mState == STATE_CONTINUOUS_CAPTURE) {
+            if (mHdr.enabled) // HDR capture 3 with 1 shutter sound only
+                triggerShutterSoundControl(1, startExpId);
+            else
+                triggerShutterSoundControl(mBurstLength, startExpId);
+        }
     }
 
     // HDR init
@@ -3695,8 +3765,9 @@ status_t ControlThread::captureStillPic()
 
     mBurstCaptureNum++;
 
-    // Send request to play the Shutter Sound for both online and offlien capture
-    mCallbacksThread->shutterSound();
+    // here the shutter sound is for single capture or online burst
+    if (mBurstLength <= 1 || mState != STATE_CONTINUOUS_CAPTURE)
+        mCallbacksThread->shutterSound();
 
     // Do postview for preview-keep-alive feature synchronously before the possible mirroring.
     // Otherwise mirrored image will be shown in postview.
@@ -3936,10 +4007,6 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
 
     if (displayPostview)
         mPreviewThread->postview(&postviewBuffer, false);
-
-    if (!mHdr.enabled) {
-        mCallbacksThread->shutterSound();
-    }
 
     // Do jpeg encoding
     LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
@@ -8067,6 +8134,9 @@ bool ControlThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
             }
             return false;
         }
+
+        //shutter sound control
+        handleShutterSoundControl(buff);
 
         //Check the battery status regularly during recording.
         //If the battery level is too low, turn off the flash, notify the application and update the parameters.

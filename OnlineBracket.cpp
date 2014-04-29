@@ -344,7 +344,7 @@ status_t OnlineBracket::applyBracketingParams()
     return status;
 }
 
-status_t OnlineBracket::startBracketing()
+status_t OnlineBracket::startBracketing(int *expIdFrom)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
