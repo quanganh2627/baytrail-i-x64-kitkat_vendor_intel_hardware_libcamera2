@@ -230,6 +230,13 @@ class PlatformData {
     static bool supportsOfflineBracket(void);
 
     /**
+     * Whether platform can support HDR capture in offlie mode
+     *
+     * \return true if supported
+     */
+
+    static bool supportsOfflineHdr(void);
+    /**
      * What's the maximum supported size of the RAW ringbuffer
      * for continuous capture maintained by the ISP.
      *
@@ -1110,6 +1117,7 @@ public:
         ,mSupportVideoSnapshot(true)
         ,mSupportsOfflineBurst(false)
         ,mSupportsOfflineBracket(false)
+        ,mSupportsOfflineHdr(false)
         ,mMaxContinuousRawRingBuffer(0)
         ,mShutterLagCompensationMs(40)
         ,mPanoramaMaxSnapshotCount(10)
@@ -1454,6 +1462,7 @@ protected:
     bool mSupportVideoSnapshot;
     bool mSupportsOfflineBurst;
     bool mSupportsOfflineBracket;
+    bool mSupportsOfflineHdr;
 
     int mMaxContinuousRawRingBuffer;
     int mShutterLagCompensationMs;

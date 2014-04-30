@@ -1137,6 +1137,11 @@ bool PlatformData::supportsOfflineBracket(void)
     return getInstance()->mSupportsOfflineBracket;
 }
 
+bool PlatformData::supportsOfflineHdr(void)
+{
+    return getInstance()->mSupportsOfflineHdr;
+}
+
 int PlatformData::getRecordingBufNum(void)
 {
     return getInstance()->mNumRecordingBuffers;

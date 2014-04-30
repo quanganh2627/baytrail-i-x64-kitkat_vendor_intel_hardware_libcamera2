@@ -41,7 +41,6 @@
 #include "AtomDvs2.h"
 
 namespace android {
-
 /*
  * RAW_CAPTURE_SKIP: Number of frames we skip from capture device before we dump
  * a raw image.
@@ -1793,7 +1792,7 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         goto online_preview;
     }
 
-    if (mHdr.enabled) {
+    if (mHdr.enabled && !PlatformData::supportsOfflineHdr()) {
         LOG1("@%s: HDR enabled, disabling continuous mode",
              __FUNCTION__);
         goto online_preview;
@@ -2393,6 +2392,11 @@ status_t ControlThread::handleMessageStartPreview()
         // API says apps should call startFaceDetection when resuming preview
         // stop FD here to avoid accidental FD.
         stopFaceDetection();
+
+        // for offline mode HDR
+        if (mHdr.enabled || mHdr.inProgress)
+            hdrRelease();
+
         if (mPreviewThread->isWindowConfigured() || mISP->isFileInjectionEnabled()
             || mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS) {
             bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT);
@@ -3440,7 +3444,7 @@ int ControlThread::selectPostviewFormat()
 
 void ControlThread::resetShutterSoundControl()
 {
-    mNextExpID   = -1;
+    mNextExpID   = EXP_ID_INVALID;
     mNumSounds   = 0;
 }
 
@@ -4003,14 +4007,31 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
         return status;
     }
 
+    // HDR Processing
+    if ( mHdr.enabled &&
+        (status = hdrProcess(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
+        LOGE("Error processing HDR!");
+        picMetaData.free(m3AControls);
+        stopOfflineCapture();
+        burstStateReset();
+        return status;
+    }
+
     mBurstCaptureNum++;
 
     if (displayPostview)
         mPreviewThread->postview(&postviewBuffer, false);
 
-    // Do jpeg encoding
-    LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
-    status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
+    bool hdrSaveOrig = (mHdr.enabled && mHdr.saveOrig && picMetaData.aeConfig->evBias == 0);
+    if (!mHdr.enabled || hdrSaveOrig) {
+        if (hdrSaveOrig)
+            snapshotBuffer.status = FRAME_STATUS_SKIPPED;
+        // Do jpeg encoding
+        LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
+        status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
+    } else {
+        picMetaData.free(m3AControls);
+    }
 
     // If all captures have been requested, ISP capture device
     // can be stopped. Otherwise requeue buffers back to ISP.
@@ -4020,6 +4041,14 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
             mBracketManager->stopBracketing();
         }
         stopOfflineCapture();
+    }
+
+    if (mHdr.enabled && mBurstCaptureNum == mHdr.bracketNum) {
+        // This was the last capture in HDR sequence, compose the final HDR image
+        LOG1("HDR: last capture, composing HDR image...");
+        status = hdrCompose();
+        if (status != NO_ERROR)
+            LOGE("Error composing HDR picture");
     }
 
     return status;
@@ -4447,7 +4476,8 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
 
         }
         return status;
-    } else if (mState == STATE_CAPTURE || mState == STATE_CONTINUOUS_CAPTURE) {
+    } else if (mState == STATE_CAPTURE || mState == STATE_CONTINUOUS_CAPTURE ||
+            (mState == STATE_STOPPED && mHdr.inProgress)) {
         /**
          * Snapshot buffer recycle
          * Buffers marked with FRAME_STATUS SKIPPED are not meant to be made
@@ -7509,6 +7539,7 @@ status_t ControlThread::hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* post
 
 void ControlThread::hdrRelease()
 {
+    LOG1("@%s", __FUNCTION__);
     // Deallocate memory
     MemoryUtils::freeAtomBuffer(mHdr.outMainBuf);
     MemoryUtils::freeAtomBuffer(mHdr.outPostviewBuf);
@@ -7566,17 +7597,15 @@ status_t ControlThread::hdrCompose()
      * The below call won't release the capture buffers since they are needed by HDR compose
      * method. The capture buffers will be released in stopCapture method.
      */
-    status = mISP->stop();
+    if (mState == STATE_CONTINUOUS_CAPTURE) {
+        status = stopPreviewCore(false);
+    } else if (mState == STATE_CAPTURE) {
+        status = mISP->stop();
+    }
     if (status != NO_ERROR) {
         hdrPicMetaData.free(m3AControls);
         LOGE("Error stopping ISP!");
         return status;
-    }
-
-    if (status != NO_ERROR) {
-        hdrPicMetaData.free(m3AControls);
-        LOGE("HDR buffer allocation failed");
-        return UNKNOWN_ERROR;
     }
 
     bool doEncode = false;
