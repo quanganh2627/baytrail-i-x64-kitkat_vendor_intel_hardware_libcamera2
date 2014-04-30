@@ -71,6 +71,9 @@ const size_t NV12_META_END_MARKER_ADDR = 0xFF4;
 const char NV12_META_START_MARKER[] =  "METADATA-START";
 const char NV12_META_END_MARKER[] = "METADATA-END";
 
+// JPEG META addresses
+const size_t JPEG_META_FRAME_COUNT_ADDR = 0x13;
+
 static uint32_t getU32fromFrame(uint8_t* framePtr, size_t addr) {
 
     uint32_t result = *((uint32_t*)(framePtr + addr));

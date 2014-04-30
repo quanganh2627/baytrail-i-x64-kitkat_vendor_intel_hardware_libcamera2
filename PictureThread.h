@@ -194,7 +194,7 @@ private:
     status_t scaleMainPic(AtomBuffer *mainBuf);
 
     uint32_t getJpegDataSize(const void* framePtr) const;
-    status_t assembleJpeg(AtomBuffer *mainBuf, AtomBuffer *mainBuf2, AtomBuffer *thumbBuf);
+    status_t assembleJpeg(AtomBuffer *mainBuf, AtomBuffer *mainBuf2);
 
 // inherited from Thread
 private:
@@ -216,6 +216,9 @@ private:
                                      picture (snapshot) in case is of a different
                                      resolution than the image requested by the client */
     AtomBuffer      mFirstPartBuf;
+
+    AtomBuffer      mCapturePostViewBuf;
+    Mutex           mCapturePostViewBufLock; // protect mCapturePostViewBuf
 
     /*
      * The resolution below is set up during initialize in case the receiving buffer
