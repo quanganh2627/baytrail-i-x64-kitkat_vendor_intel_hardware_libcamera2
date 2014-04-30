@@ -7436,7 +7436,7 @@ status_t ControlThread::createAtom3A()
 {
     status_t status = NO_ERROR;
 
-    if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
+    if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW && false == PlatformData::isDisable3A(mCameraId)) {
         m3AControls = new AtomAIQ(mHwcg, mCameraId);
     } else if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
         m3AControls = new AtomExtIsp3A(mCameraId, mHwcg);

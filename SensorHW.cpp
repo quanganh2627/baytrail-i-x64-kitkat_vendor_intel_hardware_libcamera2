@@ -704,7 +704,7 @@ status_t SensorHW::start()
     int ret = 0;
     Mutex::Autolock lock(mFrameSyncMutex);
     // Subscribe to frame sync event in case of RAW sensor
-    if (mIspSubdevice != NULL && mSensorType == SENSOR_TYPE_RAW) {
+    if (mIspSubdevice != NULL && mSensorType == SENSOR_TYPE_RAW && false == PlatformData::isDisable3A(mCameraId)) {
         ret = mIspSubdevice->subscribeEvent(FRAME_SYNC_SOF);
         if (ret < 0) {
             ret = mIspSubdevice->subscribeEvent(FRAME_SYNC_EOF);

@@ -155,26 +155,6 @@ class PlatformData {
     static bool isDisable3A(int cameraId);
 
     /**
-     * Sets the ID of active camera
-     *
-     * This function should be called every time an instance of CameraHAL
-     * is created with given cameraId
-     *
-     * \param cameraId identifier passed to android.hardware.Camera.open()
-     */
-    static void setActiveCameraId(int cameraId);
-
-    /**
-     * Frees the ID of active camera
-     *
-     * This function should be called every time an instance of CameraHAL
-     * using the given Id is terminated
-     *
-     * \param cameraId identifier passed to android.hardware.Camera.open()
-     */
-    static void freeActiveCameraId(int cameraId);
-
-    /**
      * Number of cameras
      *
      * Returns number of cameras that may be opened with

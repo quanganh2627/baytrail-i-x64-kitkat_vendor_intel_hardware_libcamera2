@@ -930,6 +930,7 @@ status_t AAAThread::waitForAndExecuteMessage()
         if (msg.id == MESSAGE_ID_AUTO_FOCUS)
             mCallbacksThread->autoFocusDone(true);
         mMessageQueue.reply(msg.id, status);
+        return status;
     }
 
     switch (msg.id) {

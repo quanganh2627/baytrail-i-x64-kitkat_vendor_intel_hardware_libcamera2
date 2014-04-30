@@ -121,12 +121,6 @@ status_t AtomAIQ::init3A()
     LOG1("@%s", __FUNCTION__);
 
     mFileInjection = (mCameraId == INTEL_FILE_INJECT_CAMERA_ID);
-
-    if (PlatformData::isDisable3A(mCameraId)) {
-        LOG2("@%s, the 3A is disabled, return NO_ERROR", __FUNCTION__);
-        return NO_ERROR;
-    }
-
     status_t status = _init3A();
 
     return status;
@@ -431,9 +425,6 @@ status_t AtomAIQ::setAfWindow(const CameraWindow *window)
 status_t AtomAIQ::setAfWindows(CameraWindow *windows, size_t numWindows, const AAAWindowInfo*)
 {
     LOG2("@%s: windows = %p, num = %u", __FUNCTION__, windows, numWindows);
-
-    if (PlatformData::isDisable3A(mCameraId))
-        return NO_ERROR;
 
     // If no windows given, equal to null-window. HAL meters as it wants -> "auto".
     if (numWindows == 0) {
