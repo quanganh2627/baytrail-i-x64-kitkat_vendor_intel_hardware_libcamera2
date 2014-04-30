@@ -1338,7 +1338,7 @@ status_t ControlThread::sdvUpdateParams(bool offline, bool updateCache)
     int  width, height, vidWidth, vidHeight;
     char sizes[25];
     // decide picture size
-    if (offline) {
+    if (offline || PlatformData::supportsContinuousJpegCapture(mCameraId)) {
         if (!selectSdvSize(width, height)) {
             LOGE("no proper picture size.");
             return UNKNOWN_ERROR;
@@ -1727,7 +1727,10 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
             break;
 
         case STATE_RECORDING:
-            ret = SHOOTING_MODE_VIDEO_SNAP;
+            if (PlatformData::supportsContinuousJpegCapture(mCameraId))
+                ret = SHOOTING_MODE_JPEG;
+            else
+                ret = SHOOTING_MODE_VIDEO_SNAP;
             break;
 
         case STATE_CONTINUOUS_CAPTURE:
@@ -4545,8 +4548,9 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
         msg->snapshotBuf.owner->returnBuffer(&msg->snapshotBuf);
         msg->snapshotBuf.owner->returnBuffer(&msg->postviewBuf);
     } else if (mState == STATE_RECORDING) {
-        if (!mFullSizeSdv) { //online sdv
-            mVideoThread->putVideoSnapshot(&msg->snapshotBuf);
+        if (!mFullSizeSdv) { //online sdv or continuous JpegCapture mode
+            if (!PlatformData::supportsContinuousJpegCapture(mCameraId))
+                mVideoThread->putVideoSnapshot(&msg->snapshotBuf);
         } else { //offline SDV
             if (findBufferByData(&msg->snapshotBuf, &mAllocatedSnapshotBuffers) == NULL) {
                 LOGE("Stale snapshot buffer %p returned... this should not happen", msg->snapshotBuf.dataPtr);
