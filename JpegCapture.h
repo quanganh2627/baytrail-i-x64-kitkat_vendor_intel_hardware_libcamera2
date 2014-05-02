@@ -61,8 +61,12 @@ enum JpegFrameType {
 const size_t NV12_META_START_MARKER_ADDR = 0x0;
 const size_t NV12_META_FRAME_COUNT_ADDR = 0xE;
 const size_t NV12_META_ISO_ADDR = 0x1C;
-const size_t NV12_META_EXPOSURE_BIAS_VALUE_ADDR = 0X2C;
+const size_t NV12_META_EXPOSURE_BIAS_ADDR = 0X20;
+const size_t NV12_META_TV_ADDR = 0x24;
+const size_t NV12_META_BV_ADDR = 0x28;
 const size_t NV12_META_EXPOSURE_TIME_DENOMINATOR_ADDR = 0X2C;
+const size_t NV12_META_FLASH_ADDR = 0x3C;
+const size_t NV12_META_AV_ADDR = 0x228;
 const size_t NV12_META_AF_STATE_ADDR = 0x846;
 const size_t NV12_META_END_MARKER_ADDR = 0xFF4;
 const size_t NV12_META_TOP_OFFSET_ADDR  = 0x13E;

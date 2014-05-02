@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012 The Android Open Source Project
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -596,6 +597,53 @@ void EXIFMaker::initializeLocation(const CameraParameters &params)
             exifAttributes.gps_img_direction.num,
             exifAttributes.gps_img_direction.den);
     }
+}
+
+
+void EXIFMaker::setExtIspAeConfig(uint32_t iso, uint32_t exposureBias, uint32_t tv, uint32_t bv, uint32_t exposureTimeDenominator, uint16_t av) {
+    LOG1("@%s", __FUNCTION__);
+
+    // ISO
+    exifAttributes.iso_speed_rating = iso;
+
+    // exposure bias
+    exifAttributes.exposure_bias.num =  exposureBias;
+    exifAttributes.exposure_bias.den = 10;
+
+    // APEX shutter speed
+    exifAttributes.shutter_speed.num = tv;
+    exifAttributes.shutter_speed.den = 65536;
+
+    // brightness
+    exifAttributes.brightness.num = bv;
+    exifAttributes.brightness.den = 65536;
+
+    // Exposure time
+    exifAttributes.exposure_time.num = 1;
+    exifAttributes.exposure_time.den = exposureTimeDenominator;
+
+    // APEX aperture value
+    exifAttributes.aperture.num = av;
+    exifAttributes.aperture.den = 100;
+
+    // F-number
+    // F-number = sqrt(2) ^ apertur
+    double fnumber = pow(sqrt(2.0), ((double) av) / 100);
+    exifAttributes.fnumber.num = fnumber * 100;
+    exifAttributes.fnumber.den = 100;
+
+
+    LOG1("EXIF: ISO=%u", exifAttributes.iso_speed_rating);
+    LOG1("EXIF: Ev=%u/%u", exifAttributes.exposure_bias.num, exifAttributes.exposure_bias.den);
+    LOG1("EXIF: brightness=%u/%u", exifAttributes.brightness.num, exifAttributes.brightness.den);
+    LOG1("EXIF: shutter speed=%u/%u", exifAttributes.shutter_speed.num,
+         exifAttributes.shutter_speed.den);
+    LOG1("EXIF: exposure time=%u/%u", exifAttributes.exposure_time.num,
+         exifAttributes.exposure_time.den);
+    LOG1("EXIF: aperture=%u/%u", exifAttributes.aperture.num,
+         exifAttributes.aperture.den);
+    LOG1("EXIF: F-number=%u/%u", exifAttributes.fnumber.num,
+         exifAttributes.fnumber.den);
 }
 
 void EXIFMaker::setSensorAeConfig(const SensorAeConfig& aeConfig)

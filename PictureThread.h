@@ -194,6 +194,7 @@ private:
     status_t scaleMainPic(AtomBuffer *mainBuf);
 
     uint32_t getJpegDataSize(const void* framePtr) const;
+    void setupExifWithNv12Meta(AtomBuffer *mainBuf);
     status_t assembleJpeg(AtomBuffer *mainBuf, AtomBuffer *mainBuf2);
 
 // inherited from Thread

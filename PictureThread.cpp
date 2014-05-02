@@ -514,6 +514,34 @@ uint32_t PictureThread::getJpegDataSize(const void* framePtr) const
     return result;
 }
 
+void PictureThread::setupExifWithNv12Meta(AtomBuffer *mainBuf)
+{
+    LOG1("@%s", __FUNCTION__);
+    unsigned char *nv12meta = (unsigned char*)mainBuf->dataPtr + NV12_META_START;
+    uint32_t nv12metaFrameCount(getU32fromFrame(nv12meta, NV12_META_FRAME_COUNT_ADDR));
+    LOG2("@%s: frame count = %d", __FUNCTION__, nv12metaFrameCount);
+    uint32_t iso(getU32fromFrame(nv12meta, NV12_META_ISO_ADDR));
+    uint32_t exposureBias(getU32fromFrame(nv12meta, NV12_META_EXPOSURE_BIAS_ADDR));
+    uint32_t tv(getU32fromFrame(nv12meta, NV12_META_TV_ADDR));
+    uint32_t bv(getU32fromFrame(nv12meta, NV12_META_BV_ADDR));
+    uint32_t exposureTimeDenominator(getU32fromFrame(nv12meta, NV12_META_EXPOSURE_TIME_DENOMINATOR_ADDR));
+    uint32_t flash(getU32fromFrame(nv12meta, NV12_META_FLASH_ADDR));
+    uint16_t av(getU16fromFrame(nv12meta, NV12_META_AV_ADDR));
+
+    LOG2("@%s: ISO = %d", __FUNCTION__, iso);
+    LOG2("@%s: exposureBias = %d", __FUNCTION__, exposureBias);
+    LOG2("@%s: TV = %d", __FUNCTION__, tv);
+    LOG2("@%s: BV = %d", __FUNCTION__, bv);
+    LOG2("@%s: exposureTimeDenominator = %d", __FUNCTION__, exposureTimeDenominator);
+    LOG2("@%s: flash = %d", __FUNCTION__, flash);
+    LOG2("@%s: av = %d", __FUNCTION__, av);
+
+    mExifMaker->setExtIspAeConfig(iso, exposureBias, tv, bv, exposureTimeDenominator, av);
+
+    if (flash != 0)
+        mExifMaker->enableFlash();
+}
+
 status_t PictureThread::assembleJpeg(AtomBuffer *mainBuf, AtomBuffer *mainBuf2)
 {
     LOG1("@%s", __FUNCTION__);
@@ -536,7 +564,8 @@ status_t PictureThread::assembleJpeg(AtomBuffer *mainBuf, AtomBuffer *mainBuf2)
         mCallbacks->allocateMemory(&mOutBuf, EXIF_SIZE_LIMITATION);
     }
 
-    // TODO CJC: Read exif info from META data
+    // Read exif info from META data
+    setupExifWithNv12Meta(mainBuf);
 
     mCapturePostViewBufLock.lock();
     if (mCapturePostViewBuf.dataPtr != NULL) {
