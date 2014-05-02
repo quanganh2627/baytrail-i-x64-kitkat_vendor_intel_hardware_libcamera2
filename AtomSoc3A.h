@@ -104,8 +104,8 @@ public:
     virtual status_t getAeManualBrightness(float *ret) { return INVALID_OPERATION; }
     virtual size_t   getAeMaxNumWindows() { return 0; }
     virtual size_t   getAfMaxNumWindows() { return mMaxNumAfAreas; }
-    virtual status_t setAeWindow(const CameraWindow *window) { return INVALID_OPERATION; }
-    virtual status_t setAfWindows(const CameraWindow *windows, size_t numWindows) { return INVALID_OPERATION; }
+    virtual status_t setAeWindow(CameraWindow *window, const AAAWindowInfo *convWindow = NULL) { return INVALID_OPERATION; }
+    virtual status_t setAfWindows(CameraWindow *windows, size_t numWindows, const AAAWindowInfo *convWindow = NULL) { return INVALID_OPERATION; }
     virtual status_t setManualFocusIncrement(int step) { return INVALID_OPERATION; }
     virtual status_t initAfBracketing(int stops,  AFBracketingMode mode) { return INVALID_OPERATION; }
     virtual status_t initAeBracketing() { return INVALID_OPERATION; }

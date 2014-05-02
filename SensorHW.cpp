@@ -17,10 +17,11 @@
 
 #include <linux/media.h>
 #include <linux/v4l2-subdev.h>
+#include <assert.h>
 #include "SensorHW.h"
 #include "v4l2device.h"
 #include "PerformanceTraces.h"
-#include <assert.h>
+#include "AtomCommon.h"
 
 namespace android {
 
@@ -32,6 +33,7 @@ static const int DEFAULT_EXPOSURE_DELAY = 2;
 static const char *ISP_SUBDEV_NAME = "ATOM ISP SUBDEV";
 
 SensorHW::SensorHW(int cameraId):
+    mSensorType(SENSOR_TYPE_NONE),
     mCameraId(cameraId),
     mStarted(false),
     mInitialModeDataValid(false),
@@ -867,7 +869,7 @@ int SensorHW::setAeFlickerMode(v4l2_power_line_frequency mode)
                                     mode, "light frequency");
 }
 
-int SensorHW::setAfMode(v4l2_auto_focus_range mode)
+int SensorHW::setAfMode(int mode)
 {
     LOG2("@%s: %d", __FUNCTION__, mode);
     if (!PlatformData::isFixedFocusCamera(mCameraId))
@@ -876,7 +878,7 @@ int SensorHW::setAfMode(v4l2_auto_focus_range mode)
         return -1;
 }
 
-int SensorHW::getAfMode(v4l2_auto_focus_range * mode)
+int SensorHW::getAfMode(int *mode)
 {
     LOG2("@%s", __FUNCTION__);
     if (!PlatformData::isFixedFocusCamera(mCameraId))
@@ -892,6 +894,16 @@ int SensorHW::setAfEnabled(bool enable)
         return mDevice->setControl(V4L2_CID_FOCUS_AUTO, enable, "Auto Focus");
     else
         return -1;
+}
+
+int SensorHW::setAfWindows(const CameraWindow *windows, int numWindows)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if (!PlatformData::isFixedFocusCamera(mCameraId))
+        return -1;
+
+    return NO_ERROR;
 }
 
 int SensorHW::set3ALock(int aaaLock)

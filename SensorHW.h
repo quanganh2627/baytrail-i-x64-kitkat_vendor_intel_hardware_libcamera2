@@ -72,9 +72,10 @@ public:
     virtual int setAeMeteringMode(v4l2_exposure_metering mode);
     virtual int getAeMeteringMode(v4l2_exposure_metering * mode);
     virtual int setAeFlickerMode(v4l2_power_line_frequency mode);
-    virtual int setAfMode(v4l2_auto_focus_range mode);
-    virtual int getAfMode(v4l2_auto_focus_range * mode);
+    virtual int setAfMode(int mode);
+    virtual int getAfMode(int *mode);
     virtual int setAfEnabled(bool enable);
+    virtual int setAfWindows(const CameraWindow *windows, int numWindows);
     virtual int set3ALock(int aaaLock);
     virtual int get3ALock(int * aaaLock);
     virtual int setAeFlashMode(v4l2_flash_led_mode mode);
@@ -142,8 +143,9 @@ private:
     struct exposure_history_item* getPrevAppliedItem(int &id);
     void resetEstimates(struct exposure_history_item *activeItem);
 
-
-private:
+// protected member variables, accessible by subclasses
+// TODO: Rename to p* instead of m*
+protected:
     sp<V4L2DeviceBase> mSensorSubdevice;
     sp<V4L2DeviceBase> mIspSubdevice;
     sp<V4L2VideoNode> mDevice;
@@ -153,6 +155,8 @@ private:
     int mCameraId;
     bool mStarted; //<! state used to indentify controls in streamon state
 
+// private member variables:
+private:
     // ModeData stored
     struct atomisp_sensor_mode_data mInitialModeData;
     bool mInitialModeDataValid;

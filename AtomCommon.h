@@ -446,6 +446,8 @@ inline static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
 
 int getGFXHALPixelFormatFromV4L2Format(int previewFourcc);
 
+void convertAfWindows(CameraWindow* focusWindows, size_t winCount, const AAAWindowInfo *convWindow = NULL);
+
 /**
  * Converts window from Android coordinate system [-1000, 1000] to user defined width
  * and height coordinates [0, width], [0, height], and google weight [1, 1000] to

@@ -313,6 +313,34 @@ int SGXandDisplayBpl(int fourcc, int width)
     return pixelsToBytes(fourcc, width);
 }
 
+/**
+ * Converts AF windows based on provided conversion information
+ * \param focusWindows [in,out] windows to convert
+ * \param winCount number of windows in focusWindows
+ * \param convWindow [in] User-defined conversion window that will be used for conversion scaling (optional)
+ */
+void convertAfWindows(CameraWindow* focusWindows, size_t winCount, const AAAWindowInfo *convWindow)
+{
+    LOG1("@%s", __FUNCTION__);
+    if (winCount > 0) {
+
+        for (size_t i = 0; i < winCount; i++) {
+            // Camera KEY_FOCUS_AREAS Coordinates range from -1000 to 1000. Let's convert..
+            if (convWindow == NULL) {
+                convertFromAndroidToIaCoordinates(focusWindows[i], focusWindows[i]);
+            } else {
+                convertFromAndroidCoordinates(focusWindows[i], focusWindows[i], *convWindow);
+            }
+            LOG1("Converted AF window %d: (%d,%d,%d,%d)",
+                    i,
+                    focusWindows[i].x_left,
+                    focusWindows[i].y_top,
+                    focusWindows[i].x_right,
+                    focusWindows[i].y_bottom);
+        }
+    }
+}
+
 void convertFromAndroidToIaCoordinates(const CameraWindow &srcWindow, CameraWindow &toWindow)
 {
     const ia_coordinate_system androidCoord = {-1000, -1000, 1000, 1000};

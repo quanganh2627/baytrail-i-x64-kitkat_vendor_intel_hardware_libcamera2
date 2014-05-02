@@ -259,7 +259,13 @@ status_t AtomISP::init()
 
     status_t status = NO_ERROR;
 
-    mSensorHW = new SensorHW(mCameraId);
+    if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+        // This is for external ISP...
+        mSensorHW = new SensorHWExtIsp(mCameraId);
+    } else {
+        // "Normal" sensor HW:
+        mSensorHW = new SensorHW(mCameraId);
+    }
 
     if (mSensorHW == NULL) {
         LOGE("Failed to allocate SensorHW");

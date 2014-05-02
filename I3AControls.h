@@ -108,7 +108,8 @@ enum AfMode
     CAM_AF_MODE_INFINITY,
     CAM_AF_MODE_FIXED,
     CAM_AF_MODE_MANUAL,
-    CAM_AF_MODE_CONTINUOUS
+    CAM_AF_MODE_CONTINUOUS,
+    CAM_AF_MODE_CONTINUOUS_VIDEO
 };
 
 struct SensorAeConfig
@@ -198,8 +199,8 @@ public:
     virtual status_t setAfMode(AfMode mode) = 0;
     virtual AfMode getAfMode() = 0;
     virtual status_t setAfEnabled(bool en) = 0;
-    virtual status_t setAeWindow(const CameraWindow *window) = 0;
-    virtual status_t setAfWindows(const CameraWindow *windows, size_t numWindows) = 0;
+    virtual status_t setAeWindow(CameraWindow *window, const AAAWindowInfo *convWindow = NULL) = 0;
+    virtual status_t setAfWindows(CameraWindow *windows, size_t numWindows, const AAAWindowInfo *convWindow = NULL) = 0;
     virtual status_t setAeFlickerMode(FlickerMode mode) = 0;
     virtual status_t setUllEnabled(bool enabled) = 0;
 

@@ -215,9 +215,10 @@ public:
     virtual int setAeMeteringMode(v4l2_exposure_metering mode) = 0;
     virtual int getAeMeteringMode(v4l2_exposure_metering * mode) = 0;
     virtual int setAeFlickerMode(v4l2_power_line_frequency mode) = 0;
-    virtual int setAfMode(v4l2_auto_focus_range mode) = 0;
-    virtual int getAfMode(v4l2_auto_focus_range * mode) = 0;
+    virtual int setAfMode(int mode) = 0;
+    virtual int getAfMode(int *mode) = 0;
     virtual int setAfEnabled(bool enable) = 0;
+    virtual int setAfWindows(const CameraWindow *windows, int numWindows) = 0;
     virtual int set3ALock(int aaaLock) = 0;
     virtual int get3ALock(int * aaaLock) = 0;
     virtual int setAeFlashMode(v4l2_flash_led_mode mode) = 0;

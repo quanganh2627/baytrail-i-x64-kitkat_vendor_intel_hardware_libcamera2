@@ -24,6 +24,7 @@
 #include "PictureThread.h"
 #include "AtomAIQ.h"
 #include "AtomSoc3A.h"
+#include "AtomExtIsp3A.h"
 #include "AtomISP.h"
 #include "Callbacks.h"
 #include "CallbacksThread.h"
@@ -2123,8 +2124,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         size_t winCount(mFocusAreas.numOfAreas());
         CameraWindow *focusWindows = new CameraWindow[winCount];
         mFocusAreas.toWindows(focusWindows);
-        convertAfWindows(focusWindows, winCount);
-        if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
+        if (setAfWindowsTo3a(focusWindows, winCount) != NO_ERROR) {
             LOGE("Could not set AF windows. Resseting the AF to %d", CAM_AF_MODE_AUTO);
             m3AControls->setAfMode(CAM_AF_MODE_AUTO);
         }
@@ -2145,11 +2145,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOG1("%s: setting metering area with spot window.", __FUNCTION__);
         size_t winCount(mMeteringAreas.numOfAreas());
         CameraWindow *meteringWindows = new CameraWindow[winCount];
-        CameraWindow aeWindow;
-        mMeteringAreas.toWindows(meteringWindows);
-        convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
 
-        if (m3AControls->setAeWindow(&aeWindow) != NO_ERROR) {
+        mMeteringAreas.toWindows(meteringWindows);
+
+        if (m3AControls->setAeWindow(&meteringWindows[0]) != NO_ERROR) {
             LOGW("Error setting AE metering window. Metering will not work");
         }
         delete[] meteringWindows;
@@ -2217,6 +2216,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             mISP->detachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
         }
     }
+
+    // For ext-isp, enable AF here, after the preview is running
+    if (PlatformData::supportsContinuousJpegCapture(mCameraId))
+        m3AControls->setAfEnabled(true);
 
     if (videoMode) {
         /**
@@ -6252,22 +6255,27 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
     return status;
 }
 
-void ControlThread::convertAfWindows(CameraWindow* focusWindows, size_t winCount)
+status_t ControlThread::setAfWindowsTo3a(CameraWindow *focusWindows, size_t winCount)
 {
     LOG1("@%s", __FUNCTION__);
-    if (winCount > 0) {
 
-        for (size_t i = 0; i < winCount; i++) {
-            // Camera KEY_FOCUS_AREAS Coordinates range from -1000 to 1000. Let's convert..
-            convertFromAndroidToIaCoordinates(focusWindows[i], focusWindows[i]);
-            LOG1("Converted AF window %d: (%d,%d,%d,%d)",
-                    i,
-                    focusWindows[i].x_left,
-                    focusWindows[i].y_top,
-                    focusWindows[i].x_right,
-                    focusWindows[i].y_bottom);
-        }
+    status_t status = NO_ERROR;
+    AAAWindowInfo convWindow;
+
+    // Currently ext-ISP needs conversion window, otherwise we use the default
+    // conversion to Intel AIQ coordinates (i.e. no window)
+    if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+        int width, height;
+        mParameters.getPreviewSize(&width, &height);
+        convWindow.width = width;
+        convWindow.height = height;
+        status = m3AControls->setAfWindows(focusWindows, winCount, &convWindow);
+    } else {
+        // convWindow == NULL, does the default coordinate conversion to Intel AIQ coord
+        status = m3AControls->setAfWindows(focusWindows, winCount);
     }
+
+    return status;
 }
 
 status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
@@ -6289,6 +6297,8 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
             afMode = CAM_AF_MODE_FIXED;
         } else if (newVal == CameraParameters::FOCUS_MODE_MACRO) {
             afMode = CAM_AF_MODE_MACRO;
+            // TODO: Due to ext-isp af modes, we could use different enumerations for video/still CAF
+            // then need to change setAfMode() switch-case to use new enums
         } else if (newVal == CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO ||
                    newVal == CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE) {
             afMode = CAM_AF_MODE_CONTINUOUS;
@@ -6325,9 +6335,8 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
                 size_t winCount(mFocusAreas.numOfAreas());
                 CameraWindow *focusWindows = new CameraWindow[winCount];
                 mFocusAreas.toWindows(focusWindows);
-                convertAfWindows(focusWindows, winCount);
 
-                if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
+                if (setAfWindowsTo3a(focusWindows, winCount) != NO_ERROR) {
                     // If focus windows couldn't be set, previous AF mode is used
                     curAfMode = m3AControls->getAfMode();
                     LOGW("Could not set AF windows. Resetting the AF back to %d", curAfMode);
@@ -6355,14 +6364,14 @@ status_t ControlThread:: processParamSetMeteringAreas(const CameraParameters *ol
         //int w, h;
         size_t winCount(mMeteringAreas.numOfAreas());
         CameraWindow *meteringWindows = new CameraWindow[winCount];
-        CameraWindow aeWindow;
 
         mMeteringAreas.toWindows(meteringWindows);
-        convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
 
         if (m3AControls->setAeMeteringMode(CAM_AE_METERING_MODE_SPOT) == NO_ERROR) {
             LOG1("@%s, Got metering area, and \"spot\" mode set. Setting window.", __FUNCTION__ );
-            if (m3AControls->setAeWindow(&aeWindow) != NO_ERROR) {
+            // convWindow == NULL, using default conversion to Intel AIQ.
+            // AE windows only supported in Intel AIQ for now.
+            if (m3AControls->setAeWindow(&meteringWindows[0]) != NO_ERROR) {
                 LOGW("Error setting AE metering window. Metering will not work");
             }
         } else {
@@ -7161,6 +7170,8 @@ status_t ControlThread::createAtom3A()
 
     if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
         m3AControls = new AtomAIQ(mHwcg);
+    } else if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+        m3AControls = new AtomExtIsp3A(mCameraId, mHwcg);
     } else {
         m3AControls = new AtomSoc3A(mCameraId, mHwcg);
     }

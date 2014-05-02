@@ -369,23 +369,26 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
     return status;
 }
 
-status_t AtomAIQ::setAeWindow(const CameraWindow *window)
+status_t AtomAIQ::setAeWindow(CameraWindow *window, const AAAWindowInfo*)
 {
 
     LOG1("@%s", __FUNCTION__);
 
     if (window == NULL)
         return BAD_VALUE;
-    else
-        LOG1("window = %p (%d,%d,%d,%d,%d)", window,
-                                             window->x_left,
-                                             window->y_top,
-                                             window->x_right,
-                                             window->y_bottom,
-                                             window->weight);
+
+    // Convert to Intel AIQ coordinates
+    convertFromAndroidToIaCoordinates(*window, *window);
+
+    LOG1("window (%d,%d,%d,%d,%d)", window->x_left,
+                                    window->y_top,
+                                    window->x_right,
+                                    window->y_bottom,
+                                    window->weight);
+
 
     /* Calculate center coordinate of window. */
-    int width = window->x_right - window->x_left;
+    int width =  window->x_right - window->x_left;
     int height = window->y_bottom - window->y_top;
     mAeCoord.x = window->x_left + width/2;
     mAeCoord.y = window->y_top + height/2;
@@ -423,7 +426,7 @@ status_t AtomAIQ::setAfWindow(const CameraWindow *window)
     return NO_ERROR;
 }
 
-status_t AtomAIQ::setAfWindows(const CameraWindow *windows, size_t numWindows)
+status_t AtomAIQ::setAfWindows(CameraWindow *windows, size_t numWindows, const AAAWindowInfo*)
 {
     LOG2("@%s: windows = %p, num = %u", __FUNCTION__, windows, numWindows);
 
@@ -435,6 +438,11 @@ status_t AtomAIQ::setAfWindows(const CameraWindow *windows, size_t numWindows)
         setAfMeteringMode(ia_aiq_af_metering_mode_auto);
         return NO_ERROR;
     }
+
+    // Conversion func from AtomCommon:
+    // convWindow left to the default parameter NULL value
+    //  -> Intel AIQ coordinates used.
+    convertAfWindows(windows, numWindows);
 
     // at the moment we only support one window
     return setAfWindow(windows);

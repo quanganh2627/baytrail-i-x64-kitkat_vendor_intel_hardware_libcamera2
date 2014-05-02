@@ -29,6 +29,7 @@ LOCAL_SRC_FILES := \
 	Callbacks.cpp \
 	AtomAIQ.cpp \
 	AtomSoc3A.cpp \
+        AtomExtIsp3A.cpp \
 	AtomHAL.cpp \
 	CameraConf.cpp \
 	ColorConverter.cpp \
@@ -64,6 +65,7 @@ LOCAL_SRC_FILES := \
 	PostCaptureThread.cpp \
 	AccManagerThread.cpp \
 	SensorHW.cpp \
+        SensorHWExtIsp.cpp \
 	ValidateParameters.cpp \
 	v4l2dev/v4l2devicebase.cpp \
 	v4l2dev/v4l2videonode.cpp \

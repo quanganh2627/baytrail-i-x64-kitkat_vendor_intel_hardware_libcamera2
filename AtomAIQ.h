@@ -261,7 +261,7 @@ private:
     void setAfMeteringMode(ia_aiq_af_metering_mode mode);
     status_t moveFocusDriveToPos(long position);
     void afUpdateTimestamp(void);
-
+    status_t setAfWindow(const CameraWindow *window);
 
     //AE
     void resetAECParams();
@@ -325,8 +325,7 @@ public:
 
     // Getters and Setters
     virtual status_t getAiqConfig(ia_binary_data *cpfData);
-    status_t setAeWindow(const CameraWindow *window);
-    status_t setAfWindow(const CameraWindow *window);
+    virtual status_t setAeWindow(CameraWindow *window, const AAAWindowInfo *convWindow = NULL);
     status_t setAeFlickerMode(FlickerMode mode);
     status_t setUllEnabled(bool enabled);
     status_t setAfEnabled(bool en) { return 0; }
@@ -365,7 +364,7 @@ public:
     // not to be run in ControlThread
     size_t   getAeMaxNumWindows() { return 1; }
     size_t   getAfMaxNumWindows() { return MAX_NUM_AF_WINDOW; }
-    status_t setAfWindows(const CameraWindow *windows, size_t numWindows);
+    virtual status_t setAfWindows(CameraWindow *windows, size_t numWindows, const AAAWindowInfo *convWindow = NULL);
     status_t getExposureInfo(SensorAeConfig& sensorAeConfig);
     status_t getAeManualBrightness(float *ret);
     status_t setManualFocus(int focus, bool applyNow);

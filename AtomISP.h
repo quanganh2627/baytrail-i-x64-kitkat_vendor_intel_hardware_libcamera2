@@ -35,7 +35,7 @@
 #include "ScalerService.h"
 #include "ICameraHwControls.h"
 #include "IDvs.h"
-#include "SensorHW.h"
+#include "SensorHWExtIsp.h"
 #include "SensorEmbeddedMetaData.h"
 #include "CamHeapMem.h"
 

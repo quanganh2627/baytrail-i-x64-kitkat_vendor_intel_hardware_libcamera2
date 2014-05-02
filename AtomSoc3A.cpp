@@ -709,7 +709,7 @@ AfMode AtomSoc3A::getAfMode()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     AfMode mode = CAM_AF_MODE_AUTO;
-    v4l2_auto_focus_range v4lMode = V4L2_AUTO_FOCUS_RANGE_AUTO;
+    int v4lMode = V4L2_AUTO_FOCUS_RANGE_AUTO;
 
     // TODO: add supported modes to PlatformData
     if (mCameraId > 0) {

@@ -607,7 +607,7 @@ private:
     status_t processParamNREE(const CameraParameters *oldParams,
         CameraParameters *newParams);
 
-    void convertAfWindows(CameraWindow* focusWindows, size_t winCount);
+    status_t setAfWindowsTo3a(CameraWindow *focusWindows, size_t winCount);
 
     void selectFlashModeForScene(CameraParameters *newParams);
 
