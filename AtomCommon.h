@@ -354,7 +354,7 @@ static int pixelsToBytes(int fourcc, int pixels)
 static int frameSize(int fourcc, int width, int height)
 {
     if (fourcc == V4L2_PIX_FMT_JPEG)
-        return JPEG_FRAME_SIZE;
+        return HDR_FRAME_SIZE;
 
     const AtomFormatBridge* afb = getAtomFormatBridge(fourcc);
     return height * ALIGN8(afb->depth * width) / 8;

@@ -3447,6 +3447,19 @@ status_t AtomISP::setDVS(bool enable)
     }
     return status;
 }
+
+status_t AtomISP::setHDR(int mode)
+{
+    LOG1("@%s: %d", __FUNCTION__, mode);
+    struct atomisp_ext_isp_ctrl m10mo_ctrl;
+    CLEAR(m10mo_ctrl);
+    m10mo_ctrl.id = EXT_ISP_HDR_CAPTURE_CTRL;
+    m10mo_ctrl.data = mode;
+    status_t status = mMainDevice->xioctl(ATOMISP_IOC_EXT_ISP_CTRL, &m10mo_ctrl);
+
+    return status;
+}
+
 /**
  * Because first frame should be the reference frame for DVS2 lib to calculate
  * morph table, and zoom factor should not take effect on first 3 frames, so those
@@ -3467,7 +3480,8 @@ status_t AtomISP::setSkipFramesForVideoZoom()
 
 inline bool AtomISP::inContinuousMode() const
 {
-    return mMode == MODE_CONTINUOUS_VIDEO || mMode == MODE_CONTINUOUS_CAPTURE;
+    return mMode == MODE_CONTINUOUS_VIDEO || mMode == MODE_CONTINUOUS_CAPTURE ||
+           mMode == MODE_CONTINUOUS_JPEG;
 }
 
 inline bool AtomISP::inVideoMode() const
@@ -4033,6 +4047,7 @@ status_t AtomISP::getJpegCapturePreviewFrame(AtomBuffer *buff)
     mSnapshotBuffers[snapshotIndex].status = (FrameBufferStatus)bufInfo.vbuffer.reserved;
 
     mSnapshotBuffers[snapshotIndex].owner = this;
+
     mPreviewBuffers.editItemAt(previewIndex).auxBuf = &mSnapshotBuffers[snapshotIndex];
 
     *buff = mPreviewBuffers[previewIndex];
@@ -4496,7 +4511,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
     if (mMode != MODE_CAPTURE && !inContinuousMode())
         return INVALID_OPERATION;
 
-    if (mHALZSLEnabled || mHALSDVEnabled) {
+    if (postviewBuf && (mHALZSLEnabled || mHALSDVEnabled)) {
         return mUseMultiStreamsForSoC
                 ? getMultiStreamsHALZSLSnapshot(snapshotBuf, postviewBuf)
                 : getHALZSLSnapshot(snapshotBuf, postviewBuf);
@@ -4515,7 +4530,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
     mSnapshotBuffers[snapshotIndex].status = (FrameBufferStatus)(vinfo.vbuffer.reserved & FRAME_STATUS_MASK);
     mSnapshotBuffers[snapshotIndex].expId = (vinfo.vbuffer.reserved >> 16) & 0xFFFF;
 
-    if (isDumpRawImageReady()) {
+    if (isDumpRawImageReady() || postviewBuf == NULL) {
         postviewIndex = snapshotIndex;
         goto nopostview;
     }
@@ -4553,15 +4568,17 @@ nopostview:
     snapshotBuf->size = mConfig.snapshot.size;
     snapshotBuf->bpl = mConfig.snapshot.bpl;
 
-    mPostviewBuffers.editItemAt(postviewIndex).id = postviewIndex;
-    mPostviewBuffers.editItemAt(postviewIndex).frameCounter = mPostViewDevice->getFrameCount();
-    mPostviewBuffers.editItemAt(postviewIndex).ispPrivate = mSessionId;
-    *postviewBuf = mPostviewBuffers[postviewIndex];
-    postviewBuf->width = mConfig.postview.width;
-    postviewBuf->height = mConfig.postview.height;
-    postviewBuf->fourcc = mConfig.postview.fourcc;
-    postviewBuf->size = mConfig.postview.size;
-    postviewBuf->bpl = mConfig.postview.bpl;
+    if (postviewBuf) {
+        mPostviewBuffers.editItemAt(postviewIndex).id = postviewIndex;
+        mPostviewBuffers.editItemAt(postviewIndex).frameCounter = mPostViewDevice->getFrameCount();
+        mPostviewBuffers.editItemAt(postviewIndex).ispPrivate = mSessionId;
+        *postviewBuf = mPostviewBuffers[postviewIndex];
+        postviewBuf->width = mConfig.postview.width;
+        postviewBuf->height = mConfig.postview.height;
+        postviewBuf->fourcc = mConfig.postview.fourcc;
+        postviewBuf->size = mConfig.postview.size;
+        postviewBuf->bpl = mConfig.postview.bpl;
+    }
 
     mNumCapturegBuffersQueued--;
 
@@ -4583,12 +4600,12 @@ status_t AtomISP::putSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
     if (mHALZSLEnabled || mHALSDVEnabled)
         return OK;
 
-    if (snapshotBuf->ispPrivate != mSessionId || postviewBuf->ispPrivate != mSessionId)
+    if (snapshotBuf->ispPrivate != mSessionId || (postviewBuf && (postviewBuf->ispPrivate != mSessionId)))
         return DEAD_OBJECT;
 
     ret0 = mMainDevice->putFrame(snapshotBuf->id);
 
-    if (mConfig.snapshot.fourcc == mSensorHW.getRawFormat()) {
+    if (mConfig.snapshot.fourcc == mSensorHW.getRawFormat() || postviewBuf == NULL) {
         // for RAW captures we do not dequeue the postview, therefore we do
         // not need to return it.
         ret1 = 0;
@@ -6342,6 +6359,12 @@ void AtomISP::pauseObserver(ObserverType t)
 {
     mObserverManager.setState(OBSERVER_STATE_PAUSED,
             observerSubjectByType(t), true);
+}
+
+void AtomISP::startObserver(ObserverType t)
+{
+    mObserverManager.setState(OBSERVER_STATE_RUNNING,
+            observerSubjectByType(t), false);
 }
 
 /**

@@ -26,6 +26,8 @@ namespace android {
 
 const int NUM_OF_JPEG_CAPTURE_SNAPSHOT_BUF = 6;
 const int FMT_CONTINUOUS_JPEG_BPL = 2048;
+const int YUV_MAX_WIDTH = 4128;
+const int YUV_MAX_HEIGHT = 3096;
 
 // Frame size and place
 const size_t JPEG_INFO_START = 2048;
@@ -38,6 +40,15 @@ const size_t JPEG_DATA_START = JPEG_META_START + JPEG_META_SIZE;
 const size_t JPEG_DATA_SIZE = 0x800000;
 const size_t JPEG_FRAME_SIZE = JPEG_DATA_START + JPEG_DATA_SIZE;
 
+// HDR frame size and place
+const size_t HDR_INFO_START = 2048;
+const size_t HDR_INFO_SIZE = 2048;
+const size_t YUV_META_START = HDR_INFO_START + HDR_INFO_SIZE;
+const size_t YUV_META_SIZE = 4096;
+const size_t YUV422_DATA_START = YUV_META_START + YUV_META_SIZE;
+const size_t YUV422_DATA_SIZE = YUV_MAX_WIDTH * YUV_MAX_HEIGHT * 2;
+const size_t HDR_FRAME_SIZE = 25624576;
+
 // JPEG INFO addresses
 const size_t JPEG_INFO_START_MARKER_ADDR = 0x0;
 const size_t JPEG_INFO_MODE_ADDR = 0xF;
@@ -47,9 +58,19 @@ const size_t JPEG_INFO_YUV_FRAME_ID_ADDR = 0x17;
 const size_t JPEG_INFO_THUMBNAIL_FRAME_ID_ADDR = 0x1B;
 const size_t JPEG_INFO_END_MARKER_ADDR = 0x1F;
 
+// HDR INFO addresses
+const size_t HDR_INFO_START_MARKER_ADDR = 0x0;
+const size_t HDR_INFO_MODE_ADDR = 0x0F;
+const size_t HDR_INFO_COUNT_ADDR = 0x10;
+
+// HDR INFO DATA
+const char HDR_INFO_MODE_HDR = 0x10;
+const char HDR_INFO_MODE_LSS = 0x20;
+
 // JPEG INFO data
 const char JPEG_INFO_START_MARKER[] =  "JPEG INFO-START";
 const char JPEG_INFO_END_MARKER[] = "JPEG INFO-END";
+const char HDR_INFO_START_MARKER[] = "HDR INFO-START";
 
 enum JpegFrameType {
     JPEG_FRAME_TYPE_META = 0x00,

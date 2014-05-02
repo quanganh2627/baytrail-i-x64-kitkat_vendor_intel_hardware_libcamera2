@@ -1752,8 +1752,11 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
             break;
 
         case STATE_JPEG_CAPTURE:
-           ret = SHOOTING_MODE_JPEG;
-           break;
+            if (mHdr.enabled)
+                ret = SHOOTING_MODE_EXTISP_HDR_LSS;
+            else
+                ret = SHOOTING_MODE_JPEG;
+            break;
 
         case STATE_STOPPED:
         default:
@@ -2971,6 +2974,10 @@ status_t ControlThread::handleMessageTakePicture() {
 
         case SHOOTING_MODE_JPEG:
             status = captureJpegPic();
+            break;
+
+        case SHOOTING_MODE_EXTISP_HDR_LSS:
+            status = captureExtIspHDRLSSPic();
             break;
 
         default:
@@ -4257,6 +4264,112 @@ exit:
     // Restore the Burst related control variables
     mBurstLength = cachedBurstLength;
     mBurstStart = cachedBurstStart;
+    return status;
+}
+
+status_t ControlThread::captureExtIspHDRLSSPic()
+{
+    LOG1("@%s: ", __FUNCTION__);
+    status_t status = OK;
+
+    // pause preview observer, because extisp preview dies during HDR/LSS capture anyway,
+    // plus we want full control here for grabbing the frames (incl. preview for thumb)
+    mISP->pauseObserver(OBSERVE_PREVIEW_STREAM);
+
+    // flush picturethread, because our driver seems to deadlock if picturethread
+    // returns buffers at the same time we try to do getSnapshot.
+    mPictureThread->flushBuffers();
+
+    // Notify CallbacksThread that a picture was requested, so grab one from queue
+    bool syncJpegCbWithPostview = false;
+    bool requestPostviewCallback = false; // TODO CJC: true;
+    bool requestRawCallback = true;
+    mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback, syncJpegCbWithPostview);
+
+    // request the capture - note preview dies in HDR/LSS mode, so we don't seem to get
+    // reliably a preview frame for thumb before the YUV images for HDR
+    mISP->requestJpegCapture();
+
+    // Send request to play the Shutter Sound
+    mCallbacksThread->shutterSound();
+
+    // now fetch the buffers from snapshot device
+    AtomBuffer yuvBuffers[5];
+    AtomBuffer buffer = AtomBufferFactory::createAtomBuffer();
+    bool succesfull = false;
+    const int MAX_FRAME_GRABS = 16;
+    char *hdrinfo = NULL;
+    for (int i = 0; i < MAX_FRAME_GRABS; i++) {
+        mISP->getSnapshot(&buffer, NULL);
+
+        /* temporary logging */
+        char array[16];
+        unsigned char *meta = ((unsigned char*)buffer.dataPtr)+0x800;
+        strncpy(array, (char*) meta, 15);
+        array[15] = 0;
+        uint32_t yuvFrameIdDebug  = *(uint32_t*)(meta+0x17);
+        yuvFrameIdDebug = be32toh(yuvFrameIdDebug);
+        meta += 15;
+
+        LOG2("@%s JPEGINFO '%s'(%d) %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx", __FUNCTION__, array, yuvFrameIdDebug,
+             meta[0] , meta[1], meta[2], meta[3], meta[4], meta[5], meta[6], meta[7], meta[8] , meta[9], meta[10], meta[11], meta[12], meta[13], meta[14], meta[15]);
+        /** temporary logging end **/
+
+        hdrinfo = ((char*)buffer.dataPtr) + HDR_INFO_START;
+        if (strncmp((char*) &hdrinfo[HDR_INFO_START_MARKER_ADDR], HDR_INFO_START_MARKER, sizeof(HDR_INFO_START_MARKER) - 1) == 0) {
+
+            //mISP->putSnapshot(&buffer, NULL);
+            int frameIndex = hdrinfo[HDR_INFO_COUNT_ADDR];
+            yuvBuffers[frameIndex] = buffer; // store (copy) AtomBuffer
+
+            if ((hdrinfo[HDR_INFO_MODE_ADDR] == HDR_INFO_MODE_HDR && frameIndex == 0x02) ||
+                (hdrinfo[HDR_INFO_MODE_ADDR] == HDR_INFO_MODE_LSS && frameIndex == 0x04)) {
+                // restart preview so that we get something for thumbnail
+                mHwcg.mIspCI->setHDR(2);
+                // get preview frame for thumbnail
+                mISP->getPreviewFrame(&buffer);
+
+                mISP->startObserver(OBSERVE_PREVIEW_STREAM); // this can be left out if preview needs to stay stopped
+                succesfull = true;
+                // TODO FIXME this needs to be removed, this is here just because the processing HDR/LSS and return path is not implemented yet
+                mISP->putSnapshot(&buffer, NULL);
+
+                break; // out of for-loop
+            }
+
+            // TODO FIXME this needs to be removed, this is here just because the processing HDR/LSS and return path is not implemented yet
+            mISP->putSnapshot(&buffer, NULL);
+
+        } else
+            mISP->putSnapshot(&buffer, NULL); // wrong buf, return immediately
+    }
+
+    if (!succesfull) {
+        LOGE("Failed to capture HDR picture from extisp.");
+        // restart preview
+        mHwcg.mIspCI->setHDR(2);
+        mISP->startObserver(OBSERVE_PREVIEW_STREAM);
+        return UNKNOWN_ERROR;
+    }
+
+    // now, the yuvBuffers are properly captured in the array "yuvBuffers", and
+    // "buffer" has the preview frame for thumbnail. TODO: Process HDR/LSS
+    // preferably in some other thread than ControlThread, then send
+    // result to encoding, and handle returning of the buffers to AtomISP.
+    switch (hdrinfo[HDR_INFO_MODE_ADDR]) {
+        case HDR_INFO_MODE_HDR:
+            LOGW("HDR processing not implemented yet!");
+            break;
+        case HDR_INFO_MODE_LSS:
+            LOGW("LSS processing not implemented yet!");
+            break;
+        default:
+            LOGE("Unknown & unimplemented mode encountered in HDR/LSS processing");
+            break;
+    }
+
+    LOG1("@%s: HDR/LSS DONE!", __FUNCTION__);
+
     return status;
 }
 
@@ -5558,51 +5671,13 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               CameraParameters::KEY_SCENE_MODE);
 
-    if (!newVal.isEmpty() || !newValIntel.isEmpty()) {
-        if(newValIntel == "on" || newVal == CameraParameters::SCENE_MODE_HDR) {
-            mHdr.enabled = true;
-            mHdr.bracketMode = BRACKET_EXPOSURE;
-            mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
-
-            ia_binary_data aiqb_data;
-            memset(&aiqb_data, 0, sizeof(aiqb_data));
-            status = m3AControls->getAiqConfig(&aiqb_data);
-            if (status != NO_ERROR)
-                LOGW("@%s: cannot retrieve CPF binary data for HDR capture", __FUNCTION__);
-
-            status = mCP->initializeHDR(newWidth, newHeight, &aiqb_data);
-            if (status == NO_ERROR) {
+    if (!PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+        if (!newVal.isEmpty() || !newValIntel.isEmpty()) {
+            if(newValIntel == "on" || newVal == CameraParameters::SCENE_MODE_HDR) {
                 mHdr.enabled = true;
                 mHdr.bracketMode = BRACKET_EXPOSURE;
-                mHdr.savedBracketMode = mBracketManager->getBracketMode();
                 mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
-            } else {
-                LOGE("HDR buffer allocation failed");
-            }
-        } else if ((newValIntel.isEmpty() && newVal != CameraParameters::SCENE_MODE_HDR)
-                    || (newValIntel == "off" && newVal != CameraParameters::SCENE_MODE_HDR)) {
-            if(mHdr.enabled) {
-                status = mCP->uninitializeHDR();
-                if (status != NO_ERROR)
-                    LOGE("HDR buffer release failed");
-            }
-            mHdr.enabled = false;
-            mBracketManager->setBracketMode(mHdr.savedBracketMode);
-        } else {
-            if(!newValIntel.isEmpty()) {
-            LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_IMAGING, newVal.string());
-            status = BAD_VALUE;
-            }
-        }
-    } else {
-        // Re-allocate buffers if resolution changed and HDR was ON
-        const char* oIntel = oldParams->get(IntelCameraParameters::KEY_HDR_IMAGING);
-        const char* o = oldParams->get(CameraParameters::KEY_SCENE_MODE);
-        String8 oldVal (o, (o == NULL ? 0 : strlen(o)));
-        String8 oldValIntel (oIntel, (oIntel == NULL ? 0 : strlen(oIntel)));
-        if((oldValIntel == "on" || oldVal == CameraParameters::SCENE_MODE_HDR) && (newWidth != oldWidth || newHeight != oldHeight)) {
-            status = mCP->uninitializeHDR();
-            if (status == NO_ERROR) {
+
                 ia_binary_data aiqb_data;
                 CLEAR(aiqb_data);
                 status = m3AControls->getAiqConfig(&aiqb_data);
@@ -5610,36 +5685,82 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
                     LOGW("@%s: cannot retrieve CPF binary data for HDR capture", __FUNCTION__);
 
                 status = mCP->initializeHDR(newWidth, newHeight, &aiqb_data);
-                if (status != NO_ERROR) {
+                if (status == NO_ERROR) {
+                    mHdr.enabled = true;
+                    mHdr.bracketMode = BRACKET_EXPOSURE;
+                    mHdr.savedBracketMode = mBracketManager->getBracketMode();
+                    mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
+                } else {
                     LOGE("HDR buffer allocation failed");
                 }
+            } else if ((newValIntel.isEmpty() && newVal != CameraParameters::SCENE_MODE_HDR)
+                        || (newValIntel == "off" && newVal != CameraParameters::SCENE_MODE_HDR)) {
+                if(mHdr.enabled) {
+                    status = mCP->uninitializeHDR();
+                    if (status != NO_ERROR)
+                        LOGE("HDR buffer release failed");
+                }
+                mHdr.enabled = false;
+                mBracketManager->setBracketMode(mHdr.savedBracketMode);
             } else {
-                LOGE("HDR buffer release failed");
+                if(!newValIntel.isEmpty()) {
+                LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_IMAGING, newVal.string());
+                status = BAD_VALUE;
+                }
+            }
+        } else {
+            // Re-allocate buffers if resolution changed and HDR was ON
+            const char* oIntel = oldParams->get(IntelCameraParameters::KEY_HDR_IMAGING);
+            const char* o = oldParams->get(CameraParameters::KEY_SCENE_MODE);
+            String8 oldVal (o, (o == NULL ? 0 : strlen(o)));
+            String8 oldValIntel (oIntel, (oIntel == NULL ? 0 : strlen(oIntel)));
+            if((oldValIntel == "on" || oldVal == CameraParameters::SCENE_MODE_HDR) && (newWidth != oldWidth || newHeight != oldHeight)) {
+                status = mCP->uninitializeHDR();
+                if (status == NO_ERROR) {
+                    ia_binary_data aiqb_data;
+                    CLEAR(aiqb_data);
+                    status = m3AControls->getAiqConfig(&aiqb_data);
+                    if (status != NO_ERROR)
+                        LOGW("@%s: cannot retrieve CPF binary data for HDR capture", __FUNCTION__);
+
+                    status = mCP->initializeHDR(newWidth, newHeight, &aiqb_data);
+                    if (status != NO_ERROR) {
+                        LOGE("HDR buffer allocation failed");
+                    }
+                } else {
+                    LOGE("HDR buffer release failed");
+                }
             }
         }
-    }
 
-    if (mHdr.enabled) {
-        // Dependency parameters
-        mBurstLength = mHdr.bracketNum;
-        mBracketManager->setBracketMode(mHdr.bracketMode);
-    }
-
-    newVal = paramsReturnNewIfChanged(oldParams, newParams,
-                                              IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL);
-    if (!newVal.isEmpty()) {
-        localStatus = NO_ERROR;
-        if(newVal == "on") {
-            mHdr.saveOrig = true;
-        } else if(newVal == "off") {
-            mHdr.saveOrig = false;
-        } else {
-            // the default value is kept
-            LOGW("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, newVal.string());
-            localStatus = BAD_VALUE;
+        if (mHdr.enabled) {
+            // Dependency parameters
+            mBurstLength = mHdr.bracketNum;
+            mBracketManager->setBracketMode(mHdr.bracketMode);
         }
-        if (localStatus == NO_ERROR) {
-            LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, newVal.string());
+
+        newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                                  IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL);
+        if (!newVal.isEmpty()) {
+            localStatus = NO_ERROR;
+            if(newVal == "on") {
+                mHdr.saveOrig = true;
+            } else if(newVal == "off") {
+                mHdr.saveOrig = false;
+            } else {
+                // the default value is kept
+                LOGW("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, newVal.string());
+                localStatus = BAD_VALUE;
+            }
+            if (localStatus == NO_ERROR) {
+                LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, newVal.string());
+            }
+        }
+    } else {
+        if (!newVal.isEmpty()) {
+            bool enableHdr = (newVal == CameraParameters::SCENE_MODE_HDR);
+            mHwcg.mIspCI->setHDR(enableHdr ? 1 : 0);
+            mHdr.enabled = enableHdr;
         }
     }
 

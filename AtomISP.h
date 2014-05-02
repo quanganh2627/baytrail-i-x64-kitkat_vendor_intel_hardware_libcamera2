@@ -181,6 +181,7 @@ public:
     status_t attachObserver(IAtomIspObserver *observer, ObserverType t);
     status_t detachObserver(IAtomIspObserver *observer, ObserverType t);
     void pauseObserver(ObserverType t);
+    void startObserver(ObserverType t);
 
     // IBufferOwner override
     virtual void returnBuffer(AtomBuffer* buff);
@@ -278,6 +279,7 @@ protected:
     status_t setGDC(bool enable);
     status_t setDVS(bool enable);
     void setNrEE(bool en);
+    status_t setHDR(int mode);
 
     /* ISP related controls */
     int setAicParameter(struct atomisp_parameters *aic_params);
