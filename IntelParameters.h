@@ -200,6 +200,12 @@ namespace android {
     static const char KEY_DUAL_VIDEO[];
     static const char KEY_DUAL_VIDEO_SUPPORTED[];
 
+    // dual camera mode
+    static const char KEY_DUAL_CAMERA_MODE[];
+    static const char KEY_SUPPORTED_DUAL_CAMERA_MODE[];
+    static const char DUAL_CAMERA_MODE_NORMAL[];
+    static const char DUAL_CAMERA_MODE_DEPTH[];
+
     // Time nudge
     static const char KEY_BURST_START_INDEX[];
     static const char KEY_SUPPORTED_BURST_START_INDEX[];

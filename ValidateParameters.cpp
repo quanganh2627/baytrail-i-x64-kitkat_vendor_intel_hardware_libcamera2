@@ -247,6 +247,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
                                     IntelCameraParameters::KEY_SUPPORTED_RECORDING_FRAME_RATES,
                                     IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED_RESOLUTION_FPS,
                                     IntelCameraParameters::KEY_DUAL_VIDEO_SUPPORTED,
+                                    IntelCameraParameters::KEY_SUPPORTED_DUAL_CAMERA_MODE,
                                     IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX,
                                     IntelCameraParameters::KEY_MAX_BURST_LENGTH_WITH_NEGATIVE_START_INDEX,
                                     IntelCameraParameters::KEY_SUPPORTED_CONTRAST_MODES,
@@ -564,6 +565,14 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     // Dual video
     if (!validateBoolParameter(IntelCameraParameters::KEY_DUAL_VIDEO, IntelCameraParameters::KEY_DUAL_VIDEO_SUPPORTED, params)) {
         LOGE("bad value for dual video");
+        return BAD_VALUE;
+    }
+
+    // Dual Camera Mode
+    const char* dualCameraMode = params->get(IntelCameraParameters::KEY_DUAL_CAMERA_MODE);
+    const char* dualCameraModes = params->get(IntelCameraParameters::KEY_SUPPORTED_DUAL_CAMERA_MODE);
+    if (!validateString(dualCameraMode, dualCameraModes)) {
+        LOGE("bad value for dual camera mode: %s", dualCameraMode);
         return BAD_VALUE;
     }
 

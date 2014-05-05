@@ -586,6 +586,15 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     }
 
     /**
+     * DUAL CAMERA MODE
+     */
+    if (false == PlatformData::supportExtendedCamera())
+        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_DUAL_CAMERA_MODE, "normal");
+    else
+        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_DUAL_CAMERA_MODE, "normal,depth");
+    intel_params->set(IntelCameraParameters::KEY_DUAL_CAMERA_MODE, "normal");
+
+    /**
      * HIGH SPEED
      */
     if(strcmp(PlatformData::supportedHighSpeedResolutionFps(cameraId), ""))

@@ -46,6 +46,12 @@ namespace android {
     const char IntelCameraParameters::KEY_DUAL_VIDEO[] = "dual-video";
     const char IntelCameraParameters::KEY_DUAL_VIDEO_SUPPORTED[] = "dual-video-supported";
 
+    // Dual camera mode
+    const char IntelCameraParameters::KEY_DUAL_CAMERA_MODE[] = "dual-camera-mode";
+    const char IntelCameraParameters::KEY_SUPPORTED_DUAL_CAMERA_MODE[] = "dual-camera-mode-values";
+    const char IntelCameraParameters::DUAL_CAMERA_MODE_NORMAL[] = "normal";
+    const char IntelCameraParameters::DUAL_CAMERA_MODE_DEPTH[] = "depth";
+
     // Ultra low light
     const char IntelCameraParameters::KEY_ULL[] = "ull";
     const char IntelCameraParameters::KEY_SUPPORTED_ULL[] = "ull-values";

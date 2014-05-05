@@ -1156,9 +1156,15 @@ class PlatformData {
     /**
      * it will check if the current cameraId camera is the extended camera
      * \return true or false
-     */    
+     */
     static bool isExtendedCamera(int cameraId);
 
+    /**
+     * Whether extended camera is supported?
+     *
+     * \return true if supported
+     */
+    static bool supportExtendedCamera(void);
 };
 
 /**

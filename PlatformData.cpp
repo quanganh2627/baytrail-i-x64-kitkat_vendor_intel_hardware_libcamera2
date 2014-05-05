@@ -1565,4 +1565,10 @@ bool PlatformData::isExtendedCamera(int cameraId)
         return false;
 }
 
+bool PlatformData::supportExtendedCamera(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mHasExtendedCamera ? true : false;
+}
+
 }; // namespace android

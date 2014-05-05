@@ -4970,6 +4970,18 @@ status_t ControlThread::processParamDualVideo(const CameraParameters *oldParams,
     return status;
 }
 
+status_t ControlThread::processParamDualCameraMode(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, IntelCameraParameters::KEY_DUAL_CAMERA_MODE);
+    if (!newVal.isEmpty())
+        PlatformData::useExtendedCamera((newVal == IntelCameraParameters::DUAL_CAMERA_MODE_DEPTH) ? true : false);
+    return status;
+}
+
 status_t ControlThread::processParamDvs(const CameraParameters *oldParams,
         CameraParameters *newParams)
 {
@@ -7134,6 +7146,8 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
     }
 
     status = processParamDualVideo(oldParams,newParams, restartNeeded);
+
+    status = processParamDualCameraMode(oldParams,newParams);
 
     status = processParamDvs(oldParams,newParams);
 
