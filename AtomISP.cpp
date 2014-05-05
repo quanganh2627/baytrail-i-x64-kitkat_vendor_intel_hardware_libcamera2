@@ -2626,11 +2626,13 @@ status_t AtomISP::stopCapture()
         mPostViewDevice->close();
 
     if (mUsingClientSnapshotBuffers) {
+        CLEAR(mSnapshotBuffers);
         mConfig.num_snapshot = 0;
         mUsingClientSnapshotBuffers = false;
     }
 
     if (mUsingClientPostviewBuffers) {
+        mPostviewBuffers.clear();
         mConfig.num_postviews = 0;
         mUsingClientPostviewBuffers = false;
     }
